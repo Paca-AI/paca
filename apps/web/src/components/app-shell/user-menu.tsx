@@ -105,8 +105,8 @@ export function UserMenu() {
 						</Avatar>
 						<div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
 							<span className="truncate font-semibold">{displayName}</span>
-							<span className="truncate text-xs text-muted-foreground capitalize">
-								{user.role.toLowerCase()}
+							<span className="truncate text-xs text-muted-foreground">
+								{user.role}
 							</span>
 						</div>
 						<ChevronsUpDown className="ml-auto size-4 shrink-0 opacity-50 group-data-[collapsible=icon]:hidden" />

@@ -23,6 +23,10 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+	customFieldBadgeStyle,
+	getCustomFieldOptionColor,
+} from "@/lib/custom-field-colors";
 import { formatDate } from "@/lib/format-date";
 import type { Task } from "@/lib/interaction-api";
 import {
@@ -812,26 +816,41 @@ export function TaskRow({
 									)}
 								</span>
 							);
-						case "select":
+						case "select": {
+							const color = getCustomFieldOptionColor(cf.options, String(val));
 							return (
-								<span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary/80 truncate max-w-full">
+								<span
+									className={cn(
+										"inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium truncate max-w-full",
+										!color && "bg-primary/10 text-primary/80",
+									)}
+									style={customFieldBadgeStyle(color)}
+								>
 									{String(val)}
 								</span>
 							);
+						}
 						case "multi_select": {
 							const arr = Array.isArray(val)
 								? (val as string[])
 								: [String(val)];
 							return (
 								<span className="inline-flex gap-1 flex-wrap">
-									{arr.map((v) => (
-										<span
-											key={v}
-											className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary/80"
-										>
-											{v}
-										</span>
-									))}
+									{arr.map((v) => {
+										const color = getCustomFieldOptionColor(cf.options, v);
+										return (
+											<span
+												key={v}
+												className={cn(
+													"inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium",
+													!color && "bg-primary/10 text-primary/80",
+												)}
+												style={customFieldBadgeStyle(color)}
+											>
+												{v}
+											</span>
+										);
+									})}
 								</span>
 							);
 						}

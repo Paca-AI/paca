@@ -14,15 +14,26 @@ export const Route = createFileRoute(
 		context: { queryClient },
 		params: { projectId, environmentId },
 	}) => {
-		await Promise.all([
+		const [environment] = await Promise.all([
 			queryClient.ensureQueryData(
 				environmentQueryOptions(projectId, environmentId),
 			),
-			queryClient.ensureQueryData(
-				environmentSSHKeysQueryOptions(projectId, environmentId),
-			),
 			queryClient.ensureQueryData(environmentConfigQueryOptions()),
 		]);
+		// SSH keys are gated on RequireEnvironmentAccess when the environment
+		// is restricted — prefetching this unconditionally would 403 the
+		// whole route loader (and with it, this entire page) for a member
+		// who isn't granted access, instead of letting the page render its
+		// own "restricted" message. Sequenced after the environment fetch
+		// above since access_mode/access_granted live on that response.
+		if (
+			environment.access_mode !== "restricted" ||
+			environment.access_granted
+		) {
+			await queryClient.ensureQueryData(
+				environmentSSHKeysQueryOptions(projectId, environmentId),
+			);
+		}
 	},
 	component: ProjectEnvironmentConnectPage,
 });
@@ -30,10 +41,14 @@ export const Route = createFileRoute(
 function ProjectEnvironmentConnectPage() {
 	const { projectId, environmentId } = Route.useParams();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
+	// Gates the environment lifecycle action (starting a stopped
+	// environment) on the web-app tab — managing the environment's
+	// configuration is distinct from being able to open a shell inside it.
 	const canWrite = hasProjectPermission("environments.write");
-	// Gates only the terminal-open link (WebAppConnectTab) — opening a
-	// shell is a distinct capability from managing the environment's
-	// configuration, see router.go's own environments.connect comment.
+	// Gates every shell-access affordance: the terminal-open link
+	// (WebAppConnectTab) and adding/removing SSH keys (SSHConnectTab) — a
+	// registered key is just another way to reach the same root shell, see
+	// router.go's own environments.connect comment.
 	const canConnect = hasProjectPermission("environments.connect");
 	return (
 		<EnvironmentConnectView

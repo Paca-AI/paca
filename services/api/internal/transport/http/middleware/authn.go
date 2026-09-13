@@ -186,6 +186,20 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 		tokenStr = cookie.Value
 	}
 	if tokenStr == "" {
+		// Falls back to the browser extension's own, narrower-scoped
+		// cookie (see domainauth.ScopeAnnotation) — present whenever
+		// access_token itself isn't, e.g. because the extension's
+		// forwarded-preview page and this API differ in scheme, so
+		// SameSite withholds access_token but not this SameSite=None one.
+		// The Scope check below is what stops a token that arrived this
+		// way from authenticating anything but
+		// AnnotationExtensionPathPattern. Literal name must match
+		// handler.annotationAccessCookieName.
+		if cookie, err := r.Cookie("annotation_access_token"); err == nil && cookie.Value != "" {
+			tokenStr = cookie.Value
+		}
+	}
+	if tokenStr == "" {
 		header := r.Header.Get("Authorization")
 		if header != "" {
 			parts := strings.SplitN(header, " ", 2)
@@ -266,6 +280,17 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 	}
 	if claims.Kind != "access" {
 		presenter.Error(w, r, apierr.New(apierr.CodeTokenInvalid, "expected access token"))
+		return r, false
+	}
+	if !enforceTokenScope(claims, r.URL.Path) {
+		// A token whose Scope doesn't permit this path must never
+		// authenticate the request, even though it's a real, validly-
+		// signed token for a real user — see scope.go for the full policy.
+		// Same rejection whether this call came through Authn or
+		// OptionalAuthn: an out-of-scope credential is not "no
+		// credential", it's a credential this endpoint must actively
+		// refuse.
+		presenter.Error(w, r, apierr.New(apierr.CodeTokenInvalid, "token is not valid for this endpoint"))
 		return r, false
 	}
 

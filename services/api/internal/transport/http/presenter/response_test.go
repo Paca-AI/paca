@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Paca-AI/api/internal/apierr"
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/transport/http/httpx"
@@ -96,6 +97,51 @@ func TestError_APIErrorCodeMapping(t *testing.T) {
 	}
 }
 
+// TestError_AccessGrantCodeMapping guards against the exact class of bug
+// httpStatusForCode's own doc precedent warns about (see
+// TestStatusAndCodeFor_ProviderCLIErrors above): a code constructed directly
+// via apierr.New (as middleware.RequireAgentAccess/RequireEnvironmentAccess
+// do — they never go through the errors.Is(sentinel) switch
+// statusAndCodeFor uses) that isn't registered in httpStatusForCode's own
+// switch falls through to its default case — 500 Internal Server Error,
+// with the response message rewritten to the generic "internal server
+// error" — instead of the intended 4xx and a meaningful message.
+func TestError_AccessGrantCodeMapping(t *testing.T) {
+	tests := []struct {
+		code       apierr.Code
+		wantStatus int
+	}{
+		{apierr.CodeAgentAccessRestricted, http.StatusForbidden},
+		{apierr.CodeAgentAccessGrantExists, http.StatusConflict},
+		{apierr.CodeAgentAccessModeInvalid, http.StatusBadRequest},
+		{apierr.CodeEnvironmentAccessRestricted, http.StatusForbidden},
+		{apierr.CodeEnvironmentAccessGrantExists, http.StatusConflict},
+		{apierr.CodeEnvironmentAccessModeInvalid, http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.code), func(t *testing.T) {
+			w := httptest.NewRecorder()
+			r := newTestRequest("")
+
+			Error(w, r, apierr.New(tt.code, "test message"))
+
+			if w.Code != tt.wantStatus {
+				t.Fatalf("code %s: expected %d, got %d", tt.code, tt.wantStatus, w.Code)
+			}
+			var env envelope
+			if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if env.ErrorCode != string(tt.code) {
+				t.Fatalf("expected error_code %q, got %q", tt.code, env.ErrorCode)
+			}
+			if env.Error != "test message" {
+				t.Fatalf("expected message passthrough (not the generic 500 sanitization), got %q", env.Error)
+			}
+		})
+	}
+}
+
 func TestError_DetailsIncludedForAPIErrorWithDetails(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := newTestRequest("")
@@ -177,5 +223,50 @@ func TestStatusAndCodeFor_DomainAuthErrors(t *testing.T) {
 		if status != tc.wantStatus || code != tc.wantCode {
 			t.Fatalf("for %v expected (%d,%s), got (%d,%s)", tc.err, tc.wantStatus, tc.wantCode, status, code)
 		}
+	}
+}
+
+// TestStatusAndCodeFor_ProviderCLIErrors locks in that every provider_cli
+// validation error agentsvc.Service can return maps to a 400 Bad Request
+// with its own error code — before this test existed, none of these six
+// sentinels had a case in statusAndCodeFor's switch, so they silently fell
+// through to the default (500 Internal Server Error, CodeInternalError,
+// and a scrubbed "internal server error" message) for what are actually
+// ordinary client input errors (an invalid cli_provider, a missing
+// default_environment_id, etc.) — see Error's own sanitization branch for
+// why that default is specifically the wrong outcome for a 4xx-shaped
+// error: it hides the real message from the client and logs a false-positive
+// slog.Error for every occurrence.
+func TestStatusAndCodeFor_ProviderCLIErrors(t *testing.T) {
+	cases := []struct {
+		err      error
+		wantCode apierr.Code
+	}{
+		{agentdom.ErrCLIProviderInvalid, apierr.CodeAgentCLIProviderInvalid},
+		{agentdom.ErrCLIAuthModeInvalid, apierr.CodeAgentCLIAuthModeInvalid},
+		{agentdom.ErrCLIProviderNoAPIKeyAuth, apierr.CodeAgentCLIProviderNoAPIKeyAuth},
+		{agentdom.ErrDefaultEnvironmentRequiredForCLIProvider, apierr.CodeAgentDefaultEnvironmentRequiredForCLIProvider},
+		{agentdom.ErrCLIProviderNotSupportedForGlobalAgents, apierr.CodeAgentCLIProviderNotSupportedForGlobalAgents},
+		{agentdom.ErrAgentNotProviderCLI, apierr.CodeAgentNotProviderCLI},
+	}
+
+	for _, tc := range cases {
+		status, code := statusAndCodeFor(tc.err)
+		if status != http.StatusBadRequest || code != tc.wantCode {
+			t.Errorf("for %v expected (400,%s), got (%d,%s)", tc.err, tc.wantCode, status, code)
+		}
+	}
+}
+
+// TestStatusAndCodeFor_SkillNameInvalid is the same regression guard as
+// TestStatusAndCodeFor_ProviderCLIErrors, for agentdom.ErrSkillNameInvalid
+// (see validateSkillName's own doc comment on why an unmapped case here
+// specifically matters: a 500 would also mean this rejection gets logged
+// as an unhandled server error on every occurrence, not just a wrong
+// status code).
+func TestStatusAndCodeFor_SkillNameInvalid(t *testing.T) {
+	status, code := statusAndCodeFor(agentdom.ErrSkillNameInvalid)
+	if status != http.StatusBadRequest || code != apierr.CodeAgentSkillNameInvalid {
+		t.Errorf("expected (400,%s), got (%d,%s)", apierr.CodeAgentSkillNameInvalid, status, code)
 	}
 }

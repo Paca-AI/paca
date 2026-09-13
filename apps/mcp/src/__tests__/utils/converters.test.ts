@@ -130,6 +130,91 @@ describe("blocknoteToMarkdown", () => {
 		const result = blocknoteToMarkdown(blocks);
 		expect(result).toContain("@Bob");
 	});
+
+	// Regression test: mermaid/annotationCard are custom block types (see
+	// apps/web/src/components/shared/blocknote-schema.tsx) the bare
+	// BlockNoteEditor this file builds has never heard of. Left unconverted,
+	// blocksToMarkdownLossy looks up the block's type in its own schema and
+	// throws "Cannot read properties of undefined (reading 'propSchema')" —
+	// this broke every list_tasks call for a project with a mermaid diagram
+	// or a comment-reference card in any task's description (conversation
+	// 269da86a-05c8-4e12-9619-49397a85949e).
+	it("handles mermaid blocks by degrading to a fenced mermaid code block", () => {
+		const blocks = [
+			{
+				id: "1",
+				type: "mermaid",
+				props: { code: "graph TD; A-->B;" },
+				content: [],
+				children: [],
+			},
+		];
+		const result = blocknoteToMarkdown(blocks);
+		expect(result).toContain("```mermaid");
+		expect(result).toContain("graph TD; A-->B;");
+	});
+
+	it("handles annotationCard blocks by degrading to a plain reference line", () => {
+		const blocks = [
+			{
+				id: "1",
+				type: "annotationCard",
+				props: {
+					id: "annotation-1",
+					projectId: "p1",
+					environmentId: "e1",
+					portForwardId: "pf1",
+				},
+				content: [],
+				children: [],
+			},
+		];
+		const result = blocknoteToMarkdown(blocks);
+		expect(result).toContain("[Comment reference (id: annotation-1)]");
+	});
+
+	it("does not crash when mermaid/annotationCard blocks are mixed with ordinary content", () => {
+		const blocks = [
+			{
+				id: "1",
+				type: "paragraph",
+				props: {},
+				content: [{ type: "text", text: "Before", styles: {} }],
+				children: [],
+			},
+			{
+				id: "2",
+				type: "mermaid",
+				props: { code: "graph TD; A-->B;" },
+				content: [],
+				children: [],
+			},
+			{
+				id: "3",
+				type: "annotationCard",
+				props: {
+					id: "annotation-1",
+					projectId: "p1",
+					environmentId: "e1",
+					portForwardId: "pf1",
+				},
+				content: [],
+				children: [],
+			},
+			{
+				id: "4",
+				type: "paragraph",
+				props: {},
+				content: [{ type: "text", text: "After", styles: {} }],
+				children: [],
+			},
+		];
+		const result = blocknoteToMarkdown(blocks);
+		expect(result).toContain("Before");
+		expect(result).toContain("```mermaid");
+		expect(result).toContain("[Comment reference (id: annotation-1)]");
+		expect(result).toContain("After");
+	});
 });
 
 // ---------------------------------------------------------------------------

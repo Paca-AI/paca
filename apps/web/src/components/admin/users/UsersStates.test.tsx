@@ -2,11 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-	EmptyUsersState,
-	UsersErrorState,
-	UsersNoPermissionState,
-} from "./UsersStates";
+import { EmptyUsersState, UsersErrorState } from "./UsersStates";
 
 describe("EmptyUsersState", () => {
 	it("shows empty message", () => {
@@ -50,15 +46,5 @@ describe("UsersErrorState", () => {
 
 		expect(screen.getByText(/failed to load users/i)).toBeInTheDocument();
 		expect(screen.getByText(/please refresh/i)).toBeInTheDocument();
-	});
-});
-
-describe("UsersNoPermissionState", () => {
-	it("renders no-permission message", () => {
-		render(<UsersNoPermissionState />);
-
-		expect(
-			screen.getByText(/you don't have permission to view users/i),
-		).toBeInTheDocument();
 	});
 });

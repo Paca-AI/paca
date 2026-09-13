@@ -94,7 +94,7 @@ func TestCacheIntegration_TaskTypes_HitAndInvalidation(t *testing.T) {
 		projectPerms: map[uuid.UUID][]authz.Permission{
 			projectID: {
 				authz.PermissionTasksRead,
-				authz.PermissionTasksWrite,
+				authz.PermissionProjectSettingsTaskTypesWrite,
 			},
 		},
 	}
@@ -157,7 +157,7 @@ func TestCacheIntegration_TaskStatuses_HitAndInvalidation(t *testing.T) {
 		projectPerms: map[uuid.UUID][]authz.Permission{
 			projectID: {
 				authz.PermissionTasksRead,
-				authz.PermissionTasksWrite,
+				authz.PermissionProjectSettingsTaskStatusesWrite,
 			},
 		},
 	}
@@ -208,8 +208,8 @@ func TestCacheIntegration_PerProject_CacheIsolation(t *testing.T) {
 	projectB := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectA: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
-			projectB: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+			projectA: {authz.PermissionTasksRead, authz.PermissionProjectSettingsTaskTypesWrite},
+			projectB: {authz.PermissionTasksRead, authz.PermissionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r, _ := buildCachedTaskRouter(t, taskRepo, store)

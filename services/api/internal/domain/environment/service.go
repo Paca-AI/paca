@@ -12,6 +12,34 @@ type Service interface {
 	FolderService
 	SSHKeyService
 	PortForwardService
+	AccessGrantService
+}
+
+// AccessGrantService manages per-member access grants on a restricted
+// environment — see Environment.AccessMode's doc comment. Deliberately
+// separate from EnvironmentService: these gate *usage* (browsing, SSH keys,
+// port forwards, the terminal), never the environment's own lifecycle/
+// configuration, which stays governed purely by environments.write
+// regardless of access_mode.
+type AccessGrantService interface {
+	// HasEnvironmentUsageAccess reports whether memberID may use
+	// environmentID — always true when it's AccessModeOpen; when
+	// AccessModeRestricted, true only if memberID holds an explicit
+	// EnvironmentAccessGrant. Verifies environmentID belongs to projectID
+	// first (same as GetEnvironment), so a caller can't probe an
+	// environment outside their project.
+	HasEnvironmentUsageAccess(ctx context.Context, projectID, environmentID, memberID uuid.UUID) (bool, error)
+	ListEnvironmentAccessGrants(ctx context.Context, projectID, environmentID uuid.UUID) ([]*EnvironmentAccessGrant, error)
+	// AddEnvironmentAccessGrant returns ErrEnvironmentAccessGrantExists if
+	// memberID already has a grant. grantedBy is the acting user, recorded
+	// for audit purposes only.
+	AddEnvironmentAccessGrant(ctx context.Context, projectID, environmentID, memberID uuid.UUID, grantedBy *uuid.UUID) (*EnvironmentAccessGrant, error)
+	RemoveEnvironmentAccessGrant(ctx context.Context, projectID, environmentID, memberID uuid.UUID) error
+	// ListGrantedEnvironmentIDsForMember mirrors
+	// agentdom.AgentAccessGrantService.ListGrantedAgentIDsForMember —
+	// decorates ListEnvironments in one call instead of an N+1 check per
+	// environment.
+	ListGrantedEnvironmentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // EnvironmentService defines environment CRUD and lifecycle use cases.
@@ -77,6 +105,15 @@ type FolderService interface {
 	// (ErrEnvironmentNotRunning otherwise) since there's no live
 	// filesystem to read from a stopped container/Pod.
 	Browse(ctx context.Context, projectID, environmentID uuid.UUID, path string) (resolvedPath string, entries []BrowseEntry, err error)
+	// VerifyCLIAuth probes whether cliProvider's coding CLI is currently
+	// authenticated inside environmentID — a file-existence check against a
+	// known credential-file path, run via agent-runner's internal
+	// /cli-auth/verify endpoint (see internal/executor/providercli on the
+	// agent-runner side for the per-provider paths). Used by
+	// agentsvc.Service.VerifyCLILogin for a provider_cli agent's "Verify
+	// login" action. Requires the environment to be StatusRunning, same as
+	// Browse.
+	VerifyCLIAuth(ctx context.Context, projectID, environmentID uuid.UUID, cliProvider string) (authenticated bool, err error)
 }
 
 // SSHKeyService defines SSH key CRUD use cases. Pure CRUD against
@@ -94,6 +131,12 @@ type SSHKeyService interface {
 // reachable from outside.
 type PortForwardService interface {
 	ListPortForwards(ctx context.Context, projectID, environmentID uuid.UUID) ([]*EnvironmentPortForward, error)
+	// GetPortForward returns a single port forward, verifying it belongs to
+	// environmentID which belongs to projectID — mirrors GetEnvironment's
+	// own ownership-check convention. Backs the web app's port-forward
+	// detail page, and the annotation service's own port-forward ownership
+	// check.
+	GetPortForward(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID) (*EnvironmentPortForward, error)
 	// AddPortForward creates the port-forward row and, if the environment
 	// is currently running, asks agent-runner to assign it a host port and
 	// start relaying immediately rather than waiting for the environment's
@@ -134,6 +177,10 @@ type CreateEnvironmentInput struct {
 type UpdateEnvironmentInput struct {
 	Name               *string
 	IdleTimeoutMinutes *int
+	// AccessMode: nil means unchanged, same convention as every other
+	// pointer field here. Must be AccessModeOpen or AccessModeRestricted
+	// when set (ErrEnvironmentAccessModeInvalid otherwise).
+	AccessMode *string
 }
 
 // AddFolderInput carries fields to add a folder to an environment.

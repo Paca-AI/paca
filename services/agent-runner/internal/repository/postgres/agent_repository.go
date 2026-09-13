@@ -14,28 +14,38 @@ import (
 )
 
 // ErrNotLLMAgent is returned by FindByID for an agent that exists but isn't
-// agent_type='llm' — this service only ever executes llm-type conversations
-// (acp-type agents stay on apps/acp-bridge), so a caller that reaches this
-// for an acp agent has a routing bug upstream, not a data problem to paper
-// over here.
-var ErrNotLLMAgent = errors.New("postgres: agent is not agent_type=llm")
+// agent_type='llm' or 'provider_cli' — this service only ever executes
+// those two types (both run through the same goose-serve-over-ACP path;
+// acp-type agents stay entirely on apps/acp-bridge instead), so a caller
+// that reaches this for an acp agent has a routing bug upstream, not a
+// data problem to paper over here. Name kept as-is despite now covering
+// two types, not one — provider_cli reuses this exact same execution path
+// and error handling, so "not (llm or provider_cli)" reads naturally
+// enough as "not an [llm-serving-mechanism] agent" without a rename.
+var ErrNotLLMAgent = errors.New("postgres: agent is not agent_type=llm or provider_cli")
 
 type agentRecord struct {
-	ID                uuid.UUID `db:"id"`
-	Name              string    `db:"name"`
-	Handle            string    `db:"handle"`
-	AgentScope        string    `db:"agent_scope"`
-	AgentType         string    `db:"agent_type"`
-	LLMProvider       string    `db:"llm_provider"`
-	LLMModel          string    `db:"llm_model"`
-	LLMAPIKeySecret   string    `db:"llm_api_key_secret"`
-	LLMBaseURL        string    `db:"llm_base_url"`
-	SystemPrompt      string    `db:"system_prompt"`
-	MaxIterations     int       `db:"max_iterations"`
-	TimeoutMinutes    int       `db:"timeout_minutes"`
-	GitCommitterName  string    `db:"git_committer_name"`
-	GitCommitterEmail string    `db:"git_committer_email"`
-	DockerEnabled     bool      `db:"docker_enabled"`
+	ID              uuid.UUID `db:"id"`
+	Name            string    `db:"name"`
+	Handle          string    `db:"handle"`
+	AgentScope      string    `db:"agent_scope"`
+	AgentType       string    `db:"agent_type"`
+	LLMProvider     string    `db:"llm_provider"`
+	LLMModel        string    `db:"llm_model"`
+	LLMAPIKeySecret string    `db:"llm_api_key_secret"`
+	LLMBaseURL      string    `db:"llm_base_url"`
+	// CLIProvider/CLIModel/CLIAuthMode/CLIAPIKeySecret are provider_cli-only
+	// — see agent.Config.CLIProvider's doc comment.
+	CLIProvider       *string `db:"cli_provider"`
+	CLIModel          string  `db:"cli_model"`
+	CLIAuthMode       string  `db:"cli_auth_mode"`
+	CLIAPIKeySecret   string  `db:"cli_api_key_secret"`
+	SystemPrompt      string  `db:"system_prompt"`
+	MaxIterations     int     `db:"max_iterations"`
+	TimeoutMinutes    int     `db:"timeout_minutes"`
+	GitCommitterName  string  `db:"git_committer_name"`
+	GitCommitterEmail string  `db:"git_committer_email"`
+	DockerEnabled     bool    `db:"docker_enabled"`
 }
 
 type mcpServerRecord struct {
@@ -73,24 +83,28 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 	return &AgentRepository{db: db}
 }
 
-// FindByID loads one agent's full llm-type conversation config — the base
-// row plus its MCP servers, skills, and environment variables. Returns
-// ErrNotLLMAgent for a non-llm agent and sql.ErrNoRows (via the underlying
-// Get) for a missing/deleted one.
+// FindByID loads one agent's full llm-type or provider_cli-type
+// conversation config — the base row plus its MCP servers, skills, and
+// environment variables (the same three tables, and the same rows,
+// regardless of which of those two types the agent is — see
+// agent.Config.MCPServers' doc comment on why). Returns ErrNotLLMAgent for
+// an acp-type agent and sql.ErrNoRows (via the underlying Get) for a
+// missing/deleted one.
 func (r *AgentRepository) FindByID(ctx context.Context, id uuid.UUID) (*agent.Config, error) {
 	var rec agentRecord
 	err := r.db.GetContext(ctx, &rec, `
 		SELECT id, name, handle, agent_scope, agent_type, llm_provider, llm_model,
 		       llm_api_key_secret, llm_base_url, system_prompt,
 		       max_iterations, timeout_minutes,
-		       git_committer_name, git_committer_email, docker_enabled
+		       git_committer_name, git_committer_email, docker_enabled,
+		       cli_provider, cli_model, cli_auth_mode, cli_api_key_secret
 		FROM agents
 		WHERE id = $1 AND deleted_at IS NULL
 	`, id)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: find agent %s: %w", id, err)
 	}
-	if rec.AgentType != "llm" {
+	if rec.AgentType != agent.AgentTypeLLM && rec.AgentType != agent.AgentTypeProviderCLI {
 		return nil, fmt.Errorf("postgres: agent %s: %w", id, ErrNotLLMAgent)
 	}
 
@@ -112,10 +126,15 @@ func (r *AgentRepository) FindByID(ctx context.Context, id uuid.UUID) (*agent.Co
 		Name:              rec.Name,
 		Handle:            rec.Handle,
 		AgentScope:        rec.AgentScope,
+		AgentType:         rec.AgentType,
 		LLMProvider:       rec.LLMProvider,
 		LLMModel:          rec.LLMModel,
 		LLMAPIKeySecret:   rec.LLMAPIKeySecret,
 		LLMBaseURL:        rec.LLMBaseURL,
+		CLIProvider:       derefOr(rec.CLIProvider, ""),
+		CLIModel:          rec.CLIModel,
+		CLIAuthMode:       rec.CLIAuthMode,
+		CLIAPIKeySecret:   rec.CLIAPIKeySecret,
 		SystemPrompt:      rec.SystemPrompt,
 		MaxIterations:     rec.MaxIterations,
 		TimeoutMinutes:    rec.TimeoutMinutes,

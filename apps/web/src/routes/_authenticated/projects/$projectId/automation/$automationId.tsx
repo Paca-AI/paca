@@ -61,19 +61,23 @@ function extractErrorMessage(err: unknown, fallback: string): string {
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/automation/$automationId",
 )({
+	// Only the automation graph itself is prefetched (workflows.read).
+	// taskStatuses/taskTypes/members/customFields below are each used purely
+	// to render human-readable labels inside node-config summaries (status
+	// name instead of a bare UUID, etc.) — every one of those `useQuery`
+	// calls already defaults to [] and is never this route's only content,
+	// so prefetching them here just meant a role missing any one of
+	// project.settings.task_statuses/task_types/custom_fields.read or
+	// project.members.read (all independent permissions a role could lack
+	// without lacking workflows.read) crashed the whole automation page
+	// instead of showing raw IDs in a few summaries.
 	loader: async ({
 		context: { queryClient },
 		params: { projectId, automationId },
 	}) => {
-		await Promise.all([
-			queryClient.ensureQueryData(
-				automationQueryOptions(projectId, automationId),
-			),
-			queryClient.ensureQueryData(taskStatusesQueryOptions(projectId)),
-			queryClient.ensureQueryData(projectMembersQueryOptions(projectId)),
-			queryClient.ensureQueryData(customFieldsQueryOptions(projectId)),
-			queryClient.ensureQueryData(taskTypesQueryOptions(projectId)),
-		]);
+		await queryClient.ensureQueryData(
+			automationQueryOptions(projectId, automationId),
+		);
 	},
 	component: AutomationBuilderPage,
 });

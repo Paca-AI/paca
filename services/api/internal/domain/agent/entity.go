@@ -50,6 +50,43 @@ type Agent struct {
 	// via a small local override in apps/acp-bridge's runner.py (the SDK's
 	// registry doesn't know about goose).
 	ACPCommand []string
+	// CLIProvider is one of claude-code | codex | cursor-agent | gemini-cli;
+	// nil unless AgentType == provider_cli. Unlike ACPProvider (which names
+	// the ACP client the *user's own machine* runs via apps/acp-bridge),
+	// CLIProvider names which coding CLI Goose itself shells out to *inside*
+	// agent-runner's own sandbox/environment container, using Goose's "CLI
+	// providers" feature (GOOSE_PROVIDER=<CLIProvider>) — see
+	// docs/ai-agent/overview.md's provider_cli section. Turn control still
+	// goes through the exact same goose serve + ACP client path llm-type
+	// agents use; only the underlying model provider differs.
+	CLIProvider *string
+	// CLIModel is passed through as GOOSE_MODEL when CLIProvider is set —
+	// provider-specific free text (e.g. "sonnet"/"haiku" for claude-code),
+	// not validated against Paca's own LLM model catalog.
+	CLIModel string
+	// CLIAuthMode is "api_key" or "login" (default). Goose itself never
+	// brokers auth for a CLI provider — "Goose doesn't handle
+	// authentication, it assumes the underlying CLI is already logged in
+	// and functional" — so this is entirely about how *Paca* gets that CLI
+	// authenticated: "api_key" injects CLIAPIKeySecret under that CLI's own
+	// native non-interactive auth env var (see
+	// CLIProvidersWithAPIKeyAuth); "login" requires the user to run the
+	// CLI's own interactive login command in the agent's default
+	// environment's terminal. cursor-agent supports "login" only in this
+	// version.
+	CLIAuthMode string
+	// CLIAPIKeySecret is the encrypted value stored in
+	// agents.cli_api_key_secret — decrypt with secret.Encryptor before
+	// injecting into a container. Empty when CLIAuthMode is "login" or
+	// unset. Never log this field.
+	CLIAPIKeySecret string
+	// CLILoginVerifiedAt is set by the "Verify login" action — a file-
+	// existence probe run inside DefaultEnvironmentID, never an actual CLI
+	// invocation (see docs/ai-agent/overview.md). Advisory only: never
+	// re-validated automatically, so a login that later expires or is
+	// revoked won't clear this. nil until the user has verified at least
+	// once.
+	CLILoginVerifiedAt *time.Time
 	// HasACPBridgeToken reports whether a local-bridge auth token has been
 	// generated; the token itself (and its hash) are never exposed here.
 	HasACPBridgeToken bool
@@ -93,6 +130,14 @@ type Agent struct {
 	// AgentScopeGlobal agents (enforced by CreateAgent/UpdateAgent, not a
 	// DB constraint — see that validation for why). Overridable per
 	// conversation at chat-start.
+	//
+	// MANDATORY (not just optional) for AgentType == provider_cli: a
+	// provider_cli agent's underlying CLI persists its own login
+	// credentials on disk, which must survive across conversations/turns —
+	// only a static environment's persistent volume provides that, so this
+	// type never falls back to an ephemeral sandbox. Enforced by
+	// CreateAgent/UpdateAgent and re-checked at every conversation start
+	// (resolveConversationEnvironment), never just at creation time.
 	DefaultEnvironmentID *uuid.UUID
 	// DefaultFolderID, when set, is which folder
 	// (environmentdom.EnvironmentFolder) inside DefaultEnvironmentID this
@@ -103,10 +148,38 @@ type Agent struct {
 	// for why). Overridable per conversation at chat-start, same as
 	// DefaultEnvironmentID.
 	DefaultFolderID *uuid.UUID
-	CreatedBy       *uuid.UUID
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	DeletedAt       *time.Time
+	// ParallelismLimit caps how many of this agent's conversations may be
+	// status "running" at once, across every project it belongs to (a global
+	// agent's conversations all still share the same default
+	// environment/working directory regardless of which project triggered
+	// them, so this is never scoped per-project). Defaults to 1: without an
+	// explicit opt-in, an agent works through its conversations one at a
+	// time rather than racing several turns against the same working
+	// directory — see https://github.com/Paca-AI/paca/issues/462. A trigger
+	// that would exceed it is held in agent_pending_triggers instead of
+	// being dispatched — see PendingTrigger.
+	ParallelismLimit int
+	// AccessMode is "open" (default — any project member holding
+	// agents.read/conversations.* may use this agent) or "restricted" (only
+	// members with an AgentAccessGrant may chat with it — see
+	// Service.HasAgentUsageAccess). Deliberately independent of
+	// agents.write: reconfiguring a restricted agent's MCP servers/skills/
+	// env vars stays gated purely on the existing permission, project-wide,
+	// same as today — this only adds a per-instance gate on top of the
+	// *usage* actions (chat sessions, conversations).
+	//
+	// For a global-scope agent (AgentScope == AgentScopeGlobal), this is one
+	// shared switch, not per-project — the same as every other mutable
+	// field on a global agent (LLM settings, skills, etc.), editable from
+	// any project it's invited into. Restricting it takes effect everywhere
+	// it's invited at once; AgentAccessGrant.MemberID (a project_members.id)
+	// is what then lets each project's own admin independently decide which
+	// of *their* members regain access.
+	AccessMode string
+	CreatedBy  *uuid.UUID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	DeletedAt  *time.Time
 	// Member ID in project_members (populated on create / list)
 	MemberID   *uuid.UUID
 	MCPServers []*AgentMCPServer
@@ -116,8 +189,9 @@ type Agent struct {
 
 // AgentType values.
 const (
-	AgentTypeLLM = "llm"
-	AgentTypeACP = "acp"
+	AgentTypeLLM         = "llm"
+	AgentTypeACP         = "acp"
+	AgentTypeProviderCLI = "provider_cli"
 )
 
 // AgentScope discriminates a project-owned agent from an instance-wide
@@ -129,6 +203,26 @@ const (
 	AgentScopeProject AgentScope = "project"
 	AgentScopeGlobal  AgentScope = "global"
 )
+
+// AccessMode values — see Agent.AccessMode's doc comment.
+const (
+	AccessModeOpen       = "open"
+	AccessModeRestricted = "restricted"
+)
+
+// AgentAccessGrant is an explicit per-member exception to a restricted
+// agent's default deny. MemberID references project_members.id, not a raw
+// user/agent id — same convention AgentChatSession.MemberID already uses,
+// which is what naturally scopes a *global* agent's grants per project (the
+// same agent can be open in one project and restricted in another, since it
+// gets a separate project_members row per project it's invited into).
+type AgentAccessGrant struct {
+	ID        uuid.UUID
+	AgentID   uuid.UUID
+	MemberID  uuid.UUID
+	GrantedBy *uuid.UUID
+	CreatedAt time.Time
+}
 
 // ACPProvider values.
 const (
@@ -146,6 +240,46 @@ var ValidACPProviders = map[string]bool{
 	ACPProviderGeminiCLI:  true,
 	ACPProviderGoose:      true,
 	ACPProviderCustom:     true,
+}
+
+// CLIProvider values — see Agent.CLIProvider's doc comment. Deliberately a
+// separate set from ACPProvider's, even though claude-code/codex/gemini-cli
+// spell the same as three ACP provider values: the two enumerate unrelated
+// concepts (which CLI Goose shells out to inside agent-runner's own sandbox,
+// vs. which ACP client the user's own machine runs), and CLIProvider adds
+// cursor-agent, which has no ACP-provider equivalent.
+const (
+	CLIProviderClaudeCode = "claude-code"
+	CLIProviderCodex      = "codex"
+	CLIProviderCursor     = "cursor-agent"
+	CLIProviderGeminiCLI  = "gemini-cli"
+)
+
+// ValidCLIProviders is the set of allowed cli_provider values.
+var ValidCLIProviders = map[string]bool{
+	CLIProviderClaudeCode: true,
+	CLIProviderCodex:      true,
+	CLIProviderCursor:     true,
+	CLIProviderGeminiCLI:  true,
+}
+
+// CLIAuthMode values — see Agent.CLIAuthMode's doc comment.
+const (
+	CLIAuthModeAPIKey = "api_key"
+	CLIAuthModeLogin  = "login"
+)
+
+// CLIProvidersWithAPIKeyAuth is the set of cli_provider values that support
+// CLIAuthModeAPIKey — each CLI's own native non-interactive auth env var
+// (see executor's cliProviderAPIKeyEnvVar on the agent-runner side),
+// completely independent of Goose's own provider/API-key mechanism, which
+// does not apply once GOOSE_PROVIDER names a CLI provider. cursor-agent has
+// no known non-interactive API-key auth path as of this writing — login via
+// the environment terminal only.
+var CLIProvidersWithAPIKeyAuth = map[string]bool{
+	CLIProviderClaudeCode: true,
+	CLIProviderCodex:      true,
+	CLIProviderGeminiCLI:  true,
 }
 
 // AgentMCPServer is a custom MCP server configuration attached to an agent.
@@ -253,6 +387,7 @@ const (
 	ContextItemDoc          ContextItemType = "doc"
 	ContextItemConversation ContextItemType = "conversation"
 	ContextItemAutomation   ContextItemType = "automation"
+	ContextItemAnnotation   ContextItemType = "annotation"
 )
 
 // ContextItemRef is a reference to a Task, Doc, Conversation, or Automation
@@ -299,7 +434,7 @@ func ValidateContextItems(items []ContextItemRef) error {
 	}
 	for i, item := range items {
 		switch item.Type {
-		case ContextItemTask, ContextItemDoc, ContextItemConversation, ContextItemAutomation:
+		case ContextItemTask, ContextItemDoc, ContextItemConversation, ContextItemAutomation, ContextItemAnnotation:
 		default:
 			return fmt.Errorf("context_items[%d]: unknown type %q", i, item.Type)
 		}
@@ -379,6 +514,52 @@ type AgentConversationEvent struct {
 	Payload        map[string]any
 	CreatedAt      time.Time
 }
+
+// PendingTrigger is a trigger held back from dispatch, either because its
+// agent was already at ParallelismLimit running conversations (see
+// Agent.ParallelismLimit's doc comment) or because its target environment
+// folder already had another conversation running in it, from any agent
+// (see checkFolderCapacity's doc comment) — EnvironmentID/EnvironmentFolderID
+// are nil in the former case. Topic/Payload are exactly what would have
+// been passed to the service's publishTrigger at the moment the
+// conversation was created; AdvanceQueue/AdvanceFolderQueue replay them
+// unchanged once a slot frees up. Payload is a flat string map (not
+// arbitrary JSON) because that's what publishTrigger's own AppendFlat call
+// requires.
+type PendingTrigger struct {
+	ID             uuid.UUID
+	AgentID        uuid.UUID
+	ConversationID uuid.UUID
+	Topic          string
+	Payload        map[string]string
+	// EnvironmentID/EnvironmentFolderID mirror the same fields already
+	// embedded (as strings) in Payload — promoted to first-class fields so
+	// DequeueOldestPendingTriggerForFolder can find "whichever queued
+	// trigger, from any agent, was waiting on this folder" without parsing
+	// Payload. nil for a trigger that was only ever blocked by its agent's
+	// own ParallelismLimit (no shared folder to protect).
+	EnvironmentID       *uuid.UUID
+	EnvironmentFolderID *uuid.UUID
+	CreatedAt           time.Time
+}
+
+// OnBusy policy values a client may pass when sending an interactive chat
+// message to an agent that is already at ParallelismLimit running
+// conversations — see ChatSessionService.SendChatMessage's doc comment. The
+// zero value "" ("ask") is the default: the call fails with
+// apierr.CodeAgentParallelismLimitReached instead of creating anything,
+// leaving it to the caller to re-request with one of the two values below.
+const (
+	// OnBusyQueue creates the conversation and holds its trigger in
+	// PendingTrigger instead of dispatching it — the same behavior every
+	// non-interactive trigger (task_assigned, comment_mention, etc.) always
+	// gets, since there's no human to ask in those cases.
+	OnBusyQueue = "queue"
+	// OnBusyForce skips the parallelism check entirely and dispatches
+	// immediately, exceeding ParallelismLimit if necessary — today's
+	// unconditional pre-feature behavior.
+	OnBusyForce = "force"
+)
 
 // AgentChatSession is a persistent chat session between a user and an agent.
 // A project-scoped session (started from a project's own chat) has

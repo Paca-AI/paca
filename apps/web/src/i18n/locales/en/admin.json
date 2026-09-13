@@ -9,6 +9,10 @@
 			"title": "No global agents yet",
 			"description": "Create a global agent to make it available for chat and project invites.",
 			"createAgent": "Create agent"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view agents",
+			"description": "You can still create new agents using the button above."
 		}
 	},
 	"users": {

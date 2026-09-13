@@ -2,6 +2,13 @@
 	"activityPane": {
 		"title": "Hoạt động",
 		"empty": "Chưa có hoạt động nào",
+		"emptyComments": "Chưa có bình luận nào",
+		"showAllActivity": "Xem tất cả hoạt động",
+		"filter": {
+			"label": "Lọc hoạt động",
+			"comments": "Bình luận",
+			"all": "Tất cả hoạt động"
+		},
 		"editingComment": "Đang chỉnh sửa bình luận...",
 		"cancel": "Hủy",
 		"sendHint": "⌘↵ để gửi",

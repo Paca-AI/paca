@@ -132,6 +132,28 @@ Plan  →  Act  →  Check  →  Adapt
 
 ---
 
+## What's New in v0.15.0
+
+- **Browser extension for page annotations** — comment directly on an element of a running [environment](docs/ai-agent/environment-management.md)'s preview page, right on the page itself, and turn any comment into a real Paca task in one click. It authenticates through your existing Paca session — no separate login — via the same-hostname cookie trick documented in [apps/extension/README.md](apps/extension/README.md). Install the pre-built zip from each [release](https://github.com/Paca-AI/paca/releases), or build it from source.
+
+<p align="center">
+  <img src="docs/assets/demo-browser-extension.gif" width="720" alt="Paca v0.15.0 — Browser Extension for Commenting on Environment Previews" />
+</p>
+
+- **`provider_cli` agent type** — run an agent on a CLI you're already logged into — Claude Code, Codex, Gemini CLI, or Cursor CLI — inside one of its own static environments. Log into the CLI once from the environment's terminal (a static environment, because the CLI's own login has to persist across conversations), and Paca drives that CLI directly for every conversation afterward, syncing your configured MCP servers into its config along the way.
+
+---
+
+## What's New in v0.14.0
+
+- **Static environments** — create a named, long-lived container that persists independently of any single conversation: agents attach to it instead of spinning up a fresh disposable sandbox, so files on disk and background processes survive across chats. Reach a running environment through an in-browser terminal, real SSH with per-environment authorized keys, or user-managed port forwards to preview a live dev server — on both self-hosted Docker Compose and Kubernetes/Helm. See [docs/ai-agent/environment-management.md](docs/ai-agent/environment-management.md) for the full design.
+
+<p align="center">
+  <img src="docs/assets/demo-environments.gif" width="720" alt="Paca v0.14.0 — Static Environments with Terminal, SSH, and Port Forwarding" />
+</p>
+
+---
+
 ## What's New in v0.12.0
 
 - **Workspace branding** — customize your workspace's logo, favicon, and primary accent color from **Settings → Workspace Branding**. Upload a logo and favicon (PNG, JPEG, WEBP, or GIF, up to 5 MB) and pick from a curated set of accent colors, each with matching light- and dark-mode variants applied automatically across buttons, highlights, the sidebar, and the login screen.
@@ -420,6 +442,7 @@ But Paca is built from conviction: human-AI collaboration in a real Scrum team s
 | [docs/guides/local-development.md](docs/guides/local-development.md) | Contributor dev environment setup |
 | [docs/guides/mcp-server-setup.md](docs/guides/mcp-server-setup.md) | Connect AI agents via MCP |
 | [docs/guides/install-skills.md](docs/guides/install-skills.md) | `/paca` skill for Claude Code — manage Paca from your editor |
+| [apps/extension/README.md](apps/extension/README.md) | Browser extension — comment on environment preview pages, turn comments into tasks |
 | [docs/plugins/](docs/plugins/) | Plugin system: backend (WASM) and frontend |
 | [deploy/README.md](deploy/README.md) | Full deployment reference |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |

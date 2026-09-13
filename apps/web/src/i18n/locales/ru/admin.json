@@ -295,6 +295,10 @@
 			"title": "Глобальных агентов пока нет",
 			"description": "Создайте глобального агента, чтобы сделать его доступным для чата и приглашений в проекты.",
 			"createAgent": "Создать агента"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view agents",
+			"description": "You can still create new agents using the button above."
 		}
 	},
 	"settings": {

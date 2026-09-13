@@ -1,14 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Server } from "lucide-react";
+import { Lock, Plus, Server } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { EnvironmentCreateDialog } from "@/components/projects/environments/environment-create-dialog";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { isForbiddenError } from "@/lib/api-error";
 import {
 	ENVIRONMENT_STATUS_COLORS,
 	environmentsQueryOptions,
@@ -22,9 +24,10 @@ export const Route = createFileRoute(
 	validateSearch: (search: Record<string, unknown>) => ({
 		create: search.create === true || search.create === "true",
 	}),
-	loader: async ({ context: { queryClient }, params: { projectId } }) => {
-		await queryClient.ensureQueryData(environmentsQueryOptions(projectId));
-	},
+	// Not prefetched here — a role holding environments.write without
+	// environments.read is an unusual but valid combination, and gating in
+	// the loader would crash this entire page over a missing permission
+	// instead of showing NoPermissionState in place of just the grid below.
 	component: EnvironmentsPage,
 });
 
@@ -33,13 +36,25 @@ function EnvironmentsPage() {
 	const { projectId } = Route.useParams();
 	const { create } = Route.useSearch();
 	const navigate = Route.useNavigate();
-	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const { hasProjectPermission, isLoading: isPermissionsLoading } =
+		useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("environments.write");
+	const canRead = hasProjectPermission("environments.read");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
-	const { data: environments = [], isLoading } = useQuery(
-		environmentsQueryOptions(projectId),
-	);
+	const {
+		data: environments = [],
+		isLoading: isDataLoading,
+		isError,
+		error,
+	} = useQuery({ ...environmentsQueryOptions(projectId), enabled: canRead });
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — guard on isPermissionsLoading (and fold it into
+	// isLoading) so the page shows the skeleton instead of flashing
+	// NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading && (!canRead || (isError && isForbiddenError(error)));
 	const [createOpen, setCreateOpen] = useState(create);
 
 	function handleCreateOpenChange(nextOpen: boolean) {
@@ -90,7 +105,13 @@ function EnvironmentsPage() {
 
 			{/* Content */}
 			<div className="p-6">
-				{isLoading ? (
+				{noPermission ? (
+					<NoPermissionState
+						icon={Server}
+						title={t("environments.page.noPermission.title")}
+						description={t("environments.page.noPermission.description")}
+					/>
+				) : isLoading ? (
 					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 						{Array.from({ length: 3 }).map((_, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: skeleton
@@ -140,12 +161,22 @@ function EnvironmentsPage() {
 											</p>
 										</div>
 									</div>
-									<Badge
-										variant="secondary"
-										className="text-xs font-medium shrink-0"
-									>
-										{env.backend}
-									</Badge>
+									<div className="flex items-center gap-1.5 shrink-0">
+										{env.access_mode === "restricted" &&
+											!env.access_granted && (
+												<Badge
+													variant="outline"
+													className="text-xs font-medium gap-1"
+													title={t("environments.page.restrictedTooltip")}
+												>
+													<Lock className="size-3" />
+													{t("environments.page.restricted")}
+												</Badge>
+											)}
+										<Badge variant="secondary" className="text-xs font-medium">
+											{env.backend}
+										</Badge>
+									</div>
 								</div>
 								<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
 									{env.status === "running" && (

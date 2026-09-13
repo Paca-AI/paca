@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
 	Activity as ActivityIcon,
 	Bot,
 	Check,
+	CircleCheck,
 	Code2,
+	ExternalLink,
 	KeyRound,
 	Loader2,
+	Lock,
 	Plus,
 	Save,
 	Server,
@@ -14,11 +18,15 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { EnvironmentCreateDialog } from "@/components/projects/environments/environment-create-dialog";
-import { FolderCreateDialog } from "@/components/projects/environments/folder-create-dialog";
+import {
+	DefaultEnvironmentSelect,
+	DefaultFolderSelect,
+} from "@/components/projects/environments/environment-folder-select";
 import { AvatarUpload } from "@/components/shared/avatar-upload";
+import { EntityAvatarContent } from "@/components/shared/entity-avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -46,18 +54,22 @@ import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	type ACPProvider,
 	type Agent,
+	type AgentAccessMode,
 	type AgentMCPServer,
 	type AgentSkill,
+	addAgentAccessGrant,
 	addEnvVar,
 	addGlobalEnvVar,
 	addGlobalMCPServer,
 	addGlobalSkill,
 	addMCPServer,
 	addSkill,
+	agentAccessGrantsQueryOptions,
 	agentEnvVarsQueryOptions,
 	agentMCPServersQueryOptions,
 	agentQueryOptions,
 	agentSkillsQueryOptions,
+	type CLIProvider,
 	deleteEnvVar,
 	deleteGlobalEnvVar,
 	deleteGlobalMCPServer,
@@ -69,16 +81,23 @@ import {
 	globalAgentQueryOptions,
 	globalAgentSkillsQueryOptions,
 	llmModelsQueryOptions,
+	removeAgentAccessGrant,
 	updateAgent,
 	updateGlobalAgent,
 	updateGlobalMCPServer,
 	updateGlobalSkill,
 	updateMCPServer,
 	updateSkill,
+	verifyCLILogin,
 } from "@/lib/agent-api";
 import { environmentsQueryOptions } from "@/lib/environment-api";
-import { resolveAgentAvatarUrl } from "@/lib/provider-logos";
+import { projectMembersQueryOptions } from "@/lib/project-api";
+import {
+	resolveAgentAvatarUrl,
+	resolveMemberAvatarUrl,
+} from "@/lib/provider-logos";
 import { splitShellCommand } from "@/lib/shell-command";
+import { getInitials } from "@/lib/utils";
 import { AcpBridgeSetup } from "./acp-bridge-setup";
 import { AgentActivityTab } from "./agent-activity-tab";
 
@@ -94,13 +113,15 @@ import { AgentActivityTab } from "./agent-activity-tab";
 // may be invited into many projects or none — see AgentDetailView's
 // visibleTabs filtering below.
 
-type Tab = "overview" | "mcp-servers" | "skills" | "env-vars" | "activity";
+type Tab =
+	| "overview"
+	| "mcp-servers"
+	| "skills"
+	| "env-vars"
+	| "access"
+	| "activity";
 
 const CUSTOM = "__custom__";
-const NO_ENVIRONMENT = "__none__";
-const CREATE_NEW_ENVIRONMENT = "__create_environment__";
-const NO_FOLDER = "__none__";
-const CREATE_NEW_FOLDER = "__create_folder__";
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
@@ -160,35 +181,53 @@ function OverviewTab({
 		agent.git_committer_email,
 	);
 	const [dockerEnabled, setDockerEnabled] = useState(agent.docker_enabled);
+	const [parallelismLimit, setParallelismLimit] = useState(
+		agent.parallelism_limit,
+	);
 	const [defaultEnvironmentId, setDefaultEnvironmentIdState] = useState(
 		agent.default_environment_id ?? "",
 	);
-	const [createEnvironmentOpen, setCreateEnvironmentOpen] = useState(false);
 	const [defaultFolderId, setDefaultFolderId] = useState(
 		agent.default_folder_id ?? "",
 	);
-	const [createFolderOpen, setCreateFolderOpen] = useState(false);
 	// Changing the default environment clears any previously-picked default
 	// folder — a folder only ever belongs to one environment, so a folder
 	// picked under the old one is never valid under the new one (mirrors
 	// agent-picker.tsx's useEnvironmentPicker.onEnvironmentChange, which
 	// clears folderId the same way for the composer's own pickers).
+	//
+	// Also resets parallelismLimit back to 1 when a real environment is
+	// picked: the server rejects parallelism_limit > 1 for any agent
+	// attached to a static default_environment_id (its filesystem is shared
+	// across every conversation attached to it, unlike the default
+	// ephemeral per-conversation sandbox — see
+	// agentdom.ErrParallelismLimitRequiresIsolatedSandbox on the server),
+	// and the field itself becomes disabled once requiresSerialDispatch
+	// below is true, so this keeps the save payload consistent with what
+	// the disabled input already shows instead of silently carrying over a
+	// stale value the user can no longer see or edit.
 	const setDefaultEnvironmentId = (id: string) => {
 		if (id !== defaultEnvironmentId) {
 			setDefaultFolderId("");
+		}
+		if (id && parallelismLimit > 1) {
+			setParallelismLimit(1);
 		}
 		setDefaultEnvironmentIdState(id);
 	};
 	const selectedEnvironment = environments.find(
 		(env) => env.id === defaultEnvironmentId,
 	);
-	const selectedEnvironmentFolders = selectedEnvironment?.folders ?? [];
 	const [acpProviderSelect, setAcpProviderSelect] = useState<ACPProvider>(
 		agent.acp_provider ?? "claude-code",
 	);
 	const [acpCommand, setAcpCommand] = useState(
 		(agent.acp_command ?? []).join(" "),
 	);
+	const [cliProviderSelect, setCliProviderSelect] = useState<CLIProvider>(
+		agent.cli_provider ?? "claude-code",
+	);
+	const [cliModel, setCliModel] = useState(agent.cli_model ?? "");
 
 	// Derived final values sent to the API
 	const llmProvider =
@@ -196,6 +235,14 @@ function OverviewTab({
 	const llmModel = modelSelect === CUSTOM ? customModel.trim() : modelSelect;
 	const acpCommandParts = splitShellCommand(acpCommand);
 	const isAcp = agent.agent_type === "acp";
+	const isProviderCli = agent.agent_type === "provider_cli";
+	// Mirrors agentsvc.requiresSerialDispatch on the server exactly: an
+	// ACP-type agent (apps/acp-bridge's own session model rejects a second
+	// concurrent turn rather than queueing it) or any agent attached to a
+	// static environment (provider_cli always is) can never safely run more
+	// than one conversation at once, regardless of what parallelism_limit
+	// is configured to — see agentdom.ErrParallelismLimitRequiresIsolatedSandbox.
+	const requiresSerialDispatch = isAcp || !!defaultEnvironmentId;
 
 	const handleProviderChange = (v: string | null) => {
 		if (!v) return;
@@ -215,26 +262,41 @@ function OverviewTab({
 	const availableModels: string[] =
 		providerSelect !== CUSTOM ? (llmModels[providerSelect]?.models ?? []) : [];
 
+	// Defense in depth alongside setDefaultEnvironmentId's reset and the
+	// disabled input below: the value actually compared/saved is always
+	// forced to 1 when requiresSerialDispatch, regardless of whatever
+	// parallelismLimit itself currently holds.
+	const effectiveParallelismLimit = requiresSerialDispatch
+		? 1
+		: parallelismLimit;
+
 	const isDirty =
 		name !== agent.name ||
+		effectiveParallelismLimit !== agent.parallelism_limit ||
 		(isAcp
 			? acpProviderSelect !== (agent.acp_provider ?? "claude-code") ||
 				acpCommandParts.join(" ") !== (agent.acp_command ?? []).join(" ")
-			: llmProvider !== agent.llm_provider ||
-				llmModel !== agent.llm_model ||
-				llmApiKey !== "" ||
-				llmBaseUrl !== (agent.llm_base_url ?? "") ||
-				systemPrompt !== agent.system_prompt ||
-				committerName !== agent.git_committer_name ||
-				committerEmail !== agent.git_committer_email ||
-				dockerEnabled !== agent.docker_enabled ||
-				defaultEnvironmentId !== (agent.default_environment_id ?? "") ||
-				defaultFolderId !== (agent.default_folder_id ?? ""));
+			: isProviderCli
+				? cliProviderSelect !== (agent.cli_provider ?? "claude-code") ||
+					cliModel !== (agent.cli_model ?? "") ||
+					defaultEnvironmentId !== (agent.default_environment_id ?? "") ||
+					defaultFolderId !== (agent.default_folder_id ?? "")
+				: llmProvider !== agent.llm_provider ||
+					llmModel !== agent.llm_model ||
+					llmApiKey !== "" ||
+					llmBaseUrl !== (agent.llm_base_url ?? "") ||
+					systemPrompt !== agent.system_prompt ||
+					committerName !== agent.git_committer_name ||
+					committerEmail !== agent.git_committer_email ||
+					dockerEnabled !== agent.docker_enabled ||
+					defaultEnvironmentId !== (agent.default_environment_id ?? "") ||
+					defaultFolderId !== (agent.default_folder_id ?? ""));
 
 	const saveMutation = useMutation({
 		mutationFn: () => {
 			const payload = {
 				name: name.trim(),
+				parallelism_limit: effectiveParallelismLimit,
 				...(isAcp
 					? {
 							acp_provider: acpProviderSelect,
@@ -242,29 +304,33 @@ function OverviewTab({
 								? { acp_command: acpCommandParts }
 								: {}),
 						}
-					: {
-							llm_provider: llmProvider,
-							llm_model: llmModel,
-							...(llmApiKey ? { llm_api_key: llmApiKey } : {}),
-							llm_base_url: llmBaseUrl,
-							system_prompt: systemPrompt,
-							git_committer_name: committerName.trim(),
-							git_committer_email: committerEmail.trim(),
-							docker_enabled: dockerEnabled,
-							...(projectId
-								? {
-										default_environment_id:
-											defaultEnvironmentId === NO_ENVIRONMENT ||
-											!defaultEnvironmentId
-												? null
-												: defaultEnvironmentId,
-										default_folder_id:
-											defaultFolderId === NO_FOLDER || !defaultFolderId
-												? null
-												: defaultFolderId,
-									}
-								: {}),
-						}),
+					: isProviderCli
+						? {
+								cli_provider: cliProviderSelect,
+								cli_model: cliModel,
+								...(projectId
+									? {
+											default_environment_id: defaultEnvironmentId || undefined,
+											default_folder_id: defaultFolderId || undefined,
+										}
+									: {}),
+							}
+						: {
+								llm_provider: llmProvider,
+								llm_model: llmModel,
+								...(llmApiKey ? { llm_api_key: llmApiKey } : {}),
+								llm_base_url: llmBaseUrl,
+								system_prompt: systemPrompt,
+								git_committer_name: committerName.trim(),
+								git_committer_email: committerEmail.trim(),
+								docker_enabled: dockerEnabled,
+								...(projectId
+									? {
+											default_environment_id: defaultEnvironmentId || null,
+											default_folder_id: defaultFolderId || null,
+										}
+									: {}),
+							}),
 			};
 			return projectId
 				? updateAgent(projectId, agent.id, payload)
@@ -287,7 +353,9 @@ function OverviewTab({
 		(isAcp
 			? !!acpProviderSelect &&
 				(acpProviderSelect !== "custom" || acpCommandParts.length > 0)
-			: !!llmProvider && !!llmModel && !!llmBaseUrl.trim()) &&
+			: isProviderCli
+				? !!cliProviderSelect && !!defaultEnvironmentId
+				: !!llmProvider && !!llmModel && !!llmBaseUrl.trim()) &&
 		!saveMutation.isPending;
 
 	return (
@@ -301,9 +369,28 @@ function OverviewTab({
 				/>
 			</div>
 
+			<div className="space-y-1.5">
+				<Label>{t("agents.detail.overview.parallelismLimitLabel")}</Label>
+				<Input
+					type="number"
+					min={1}
+					className="w-24"
+					value={effectiveParallelismLimit}
+					onChange={(e) =>
+						setParallelismLimit(Math.max(1, Number(e.target.value) || 1))
+					}
+					disabled={!canWrite || requiresSerialDispatch}
+				/>
+				<p className="text-xs text-muted-foreground">
+					{requiresSerialDispatch
+						? t("agents.detail.overview.parallelismLimitFixedHint")
+						: t("agents.detail.overview.parallelismLimitHint")}
+				</p>
+			</div>
+
 			<Separator />
 
-			{!isAcp && (
+			{!isAcp && !isProviderCli && (
 				<div>
 					<p className="text-sm font-medium mb-3">
 						{t("agents.detail.overview.llmConfiguration")}
@@ -468,6 +555,78 @@ function OverviewTab({
 				</div>
 			)}
 
+			{isProviderCli && (
+				<div>
+					<p className="text-sm font-medium mb-3">
+						{t("agents.detail.overview.cliConfiguration")}
+					</p>
+					<div className="space-y-1.5">
+						<Label>{t("agents.detail.overview.cliProviderLabel")}</Label>
+						<Select
+							value={cliProviderSelect}
+							onValueChange={(v) => {
+								if (!v) return;
+								setCliProviderSelect(v as CLIProvider);
+							}}
+							disabled={!canWrite}
+							items={[
+								{
+									value: "claude-code",
+									label: t("agents.detail.overview.cliProviderClaudeCode"),
+								},
+								{
+									value: "codex",
+									label: t("agents.detail.overview.cliProviderCodex"),
+								},
+								{
+									value: "gemini-cli",
+									label: t("agents.detail.overview.cliProviderGeminiCli"),
+								},
+								{
+									value: "cursor-agent",
+									label: t("agents.detail.overview.cliProviderCursorAgent"),
+								},
+							]}
+						>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="claude-code">
+									{t("agents.detail.overview.cliProviderClaudeCode")}
+								</SelectItem>
+								<SelectItem value="codex">
+									{t("agents.detail.overview.cliProviderCodex")}
+								</SelectItem>
+								<SelectItem value="gemini-cli">
+									{t("agents.detail.overview.cliProviderGeminiCli")}
+								</SelectItem>
+								<SelectItem value="cursor-agent">
+									{t("agents.detail.overview.cliProviderCursorAgent")}
+								</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
+					<div className="space-y-1.5 mt-3">
+						<Label>
+							{t("agents.detail.overview.cliModelLabel")}{" "}
+							<span className="text-muted-foreground font-normal text-xs">
+								{t("agents.createDialog.optional")}
+							</span>
+						</Label>
+						<Input
+							placeholder={t("agents.detail.overview.cliModelPlaceholder")}
+							value={cliModel}
+							onChange={(e) => setCliModel(e.target.value)}
+							disabled={!canWrite}
+						/>
+					</div>
+					<p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2 mt-3">
+						{t("agents.detail.overview.cliGuidanceBanner")}
+					</p>
+				</div>
+			)}
+
 			<Separator />
 
 			{isAcp && (
@@ -494,9 +653,31 @@ function OverviewTab({
 				</>
 			)}
 
+			{isProviderCli && (
+				<>
+					<VerifyCLILoginPanel
+						projectId={projectId}
+						agentId={agent.id}
+						environmentId={agent.default_environment_id ?? null}
+						lastVerifiedAt={agent.cli_login_verified_at ?? null}
+						canWrite={canWrite}
+						onVerified={() =>
+							qc.invalidateQueries({
+								queryKey: (projectId
+									? agentQueryOptions(projectId, agent.id)
+									: globalAgentQueryOptions(agent.id)
+								).queryKey,
+							})
+						}
+					/>
+					<Separator />
+				</>
+			)}
+
 			{/* System prompt and git committer identity are LLM-only — an ACP
-			    agent's local CLI owns its own prompt and git identity. */}
-			{!isAcp && (
+			    or provider_cli agent's underlying CLI owns its own prompt and
+			    git identity. */}
+			{!isAcp && !isProviderCli && (
 				<>
 					<div className="space-y-1.5">
 						<Label>{t("agents.detail.overview.systemPromptLabel")}</Label>
@@ -540,7 +721,15 @@ function OverviewTab({
 							</div>
 						</div>
 					</div>
+				</>
+			)}
 
+			{/* Environment section applies to both llm (optional default) and
+			    provider_cli (mandatory — see canSave's isProviderCli branch)
+			    agents; an ACP agent's sandboxing is owned entirely by the
+			    user's own local ACP client, so it's excluded here too. */}
+			{!isAcp && (
+				<>
 					<Separator />
 
 					<div>
@@ -558,52 +747,14 @@ function OverviewTab({
 											{t("agents.detail.overview.defaultEnvironmentHint")}
 										</p>
 									</div>
-									<Select
-										value={defaultEnvironmentId || NO_ENVIRONMENT}
-										onValueChange={(v) => {
-											if (!v) return;
-											if (v === CREATE_NEW_ENVIRONMENT) {
-												setCreateEnvironmentOpen(true);
-												return;
-											}
-											setDefaultEnvironmentId(v === NO_ENVIRONMENT ? "" : v);
-										}}
-										items={[
-											{
-												value: NO_ENVIRONMENT,
-												label: t("agents.detail.overview.noDefaultEnvironment"),
-											},
-											...environments.map((env) => ({
-												value: env.id,
-												label: env.name,
-											})),
-											{
-												value: CREATE_NEW_ENVIRONMENT,
-												label: t("environments.picker.createNew"),
-											},
-										]}
+									<DefaultEnvironmentSelect
+										projectId={projectId}
+										environments={environments}
+										value={defaultEnvironmentId}
+										onChange={setDefaultEnvironmentId}
 										disabled={!canWrite}
-									>
-										<SelectTrigger className="w-56">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value={NO_ENVIRONMENT}>
-												{t("agents.detail.overview.noDefaultEnvironment")}
-											</SelectItem>
-											{environments.length > 0 && <SelectSeparator />}
-											{environments.map((env) => (
-												<SelectItem key={env.id} value={env.id}>
-													{env.name}
-												</SelectItem>
-											))}
-											<SelectSeparator />
-											<SelectItem value={CREATE_NEW_ENVIRONMENT}>
-												<Plus className="size-3.5" />
-												{t("environments.picker.createNew")}
-											</SelectItem>
-										</SelectContent>
-									</Select>
+										className="w-56"
+									/>
 								</div>
 							)}
 
@@ -617,54 +768,14 @@ function OverviewTab({
 											{t("agents.detail.overview.defaultFolderHint")}
 										</p>
 									</div>
-									<Select
-										value={defaultFolderId || NO_FOLDER}
-										onValueChange={(v) => {
-											if (!v) return;
-											if (v === CREATE_NEW_FOLDER) {
-												setCreateFolderOpen(true);
-												return;
-											}
-											setDefaultFolderId(v === NO_FOLDER ? "" : v);
-										}}
-										items={[
-											{
-												value: NO_FOLDER,
-												label: t("agents.detail.overview.noDefaultFolder"),
-											},
-											...selectedEnvironmentFolders.map((folder) => ({
-												value: folder.id,
-												label: folder.path,
-											})),
-											{
-												value: CREATE_NEW_FOLDER,
-												label: t("environments.picker.folderCreateNew"),
-											},
-										]}
+									<DefaultFolderSelect
+										projectId={projectId}
+										environment={selectedEnvironment}
+										value={defaultFolderId}
+										onChange={setDefaultFolderId}
 										disabled={!canWrite}
-									>
-										<SelectTrigger className="w-56">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value={NO_FOLDER}>
-												{t("agents.detail.overview.noDefaultFolder")}
-											</SelectItem>
-											{selectedEnvironmentFolders.length > 0 && (
-												<SelectSeparator />
-											)}
-											{selectedEnvironmentFolders.map((folder) => (
-												<SelectItem key={folder.id} value={folder.id}>
-													{folder.path}
-												</SelectItem>
-											))}
-											<SelectSeparator />
-											<SelectItem value={CREATE_NEW_FOLDER}>
-												<Plus className="size-3.5" />
-												{t("environments.picker.folderCreateNew")}
-											</SelectItem>
-										</SelectContent>
-									</Select>
+										className="w-56"
+									/>
 								</div>
 							)}
 
@@ -690,25 +801,6 @@ function OverviewTab({
 								</div>
 							)}
 						</div>
-
-						{projectId && (
-							<EnvironmentCreateDialog
-								projectId={projectId}
-								open={createEnvironmentOpen}
-								onOpenChange={setCreateEnvironmentOpen}
-								onCreated={(env) => setDefaultEnvironmentId(env.id)}
-							/>
-						)}
-						{projectId && selectedEnvironment && (
-							<FolderCreateDialog
-								projectId={projectId}
-								environmentId={selectedEnvironment.id}
-								environmentStatus={selectedEnvironment.status}
-								open={createFolderOpen}
-								onOpenChange={setCreateFolderOpen}
-								onCreated={(folder) => setDefaultFolderId(folder.id)}
-							/>
-						)}
 					</div>
 				</>
 			)}
@@ -777,6 +869,104 @@ function LocalBridgePanel({
 				canWrite={canWrite}
 				onTokenGenerated={onTokenGenerated}
 			/>
+		</div>
+	);
+}
+
+// ── Verify CLI Login Panel (provider_cli agents, embedded in Overview) ──────────
+//
+// provider_cli agents can't be global-scope (decision enforced server-side —
+// see agentdom.ErrCLIProviderNotSupportedForGlobalAgents), so projectId is
+// always defined in practice whenever this renders; still typed optional
+// (matching OverviewTab's own prop) and guarded rather than asserted.
+
+function VerifyCLILoginPanel({
+	projectId,
+	agentId,
+	environmentId,
+	lastVerifiedAt,
+	canWrite,
+	onVerified,
+}: {
+	projectId?: string;
+	agentId: string;
+	environmentId: string | null;
+	lastVerifiedAt: string | null;
+	canWrite: boolean;
+	onVerified: () => void;
+}) {
+	const { t } = useTranslation("projects");
+	const verifyMutation = useMutation({
+		mutationFn: () => {
+			if (!projectId) throw new Error("no project");
+			return verifyCLILogin(projectId, agentId);
+		},
+		onSuccess: onVerified,
+	});
+
+	return (
+		<div>
+			<p className="text-sm font-medium mb-1">
+				{t("agents.detail.overview.cliLoginPanelTitle")}
+			</p>
+			<p className="text-xs text-muted-foreground mb-3">
+				{t("agents.detail.overview.cliLoginPanelDescription")}
+			</p>
+			<div className="flex flex-wrap items-center gap-2">
+				{projectId && environmentId && (
+					<Link
+						to="/projects/$projectId/environments/$environmentId/terminal"
+						params={{ projectId, environmentId }}
+						target="_blank"
+						rel="noopener noreferrer"
+						className={buttonVariants({ variant: "outline", size: "sm" })}
+					>
+						<ExternalLink className="size-3.5 mr-1.5" />
+						{t("agents.detail.overview.cliLoginOpenTerminal")}
+					</Link>
+				)}
+				{canWrite && projectId && (
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={() => verifyMutation.mutate()}
+						disabled={verifyMutation.isPending || !environmentId}
+					>
+						{verifyMutation.isPending ? (
+							<Loader2 className="size-3.5 mr-1.5 animate-spin" />
+						) : (
+							<CircleCheck className="size-3.5 mr-1.5" />
+						)}
+						{t("agents.detail.overview.cliLoginVerify")}
+					</Button>
+				)}
+			</div>
+			{verifyMutation.isSuccess && (
+				<p
+					className={`mt-2 text-xs ${verifyMutation.data.authenticated ? "text-emerald-600" : "text-muted-foreground"}`}
+				>
+					{verifyMutation.data.authenticated
+						? t("agents.detail.overview.cliLoginVerifiedNow")
+						: t("agents.detail.overview.cliLoginNotAuthenticated")}
+				</p>
+			)}
+			{verifyMutation.isError && (
+				<p className="mt-2 text-xs text-destructive">
+					{t("agents.detail.overview.cliLoginVerifyFailed")}
+				</p>
+			)}
+			{!verifyMutation.isSuccess && lastVerifiedAt && (
+				<p className="mt-2 text-xs text-muted-foreground">
+					{t("agents.detail.overview.cliLoginLastVerified", {
+						date: new Date(lastVerifiedAt).toLocaleString(),
+					})}
+				</p>
+			)}
+			{!environmentId && (
+				<p className="mt-2 text-xs text-destructive">
+					{t("agents.detail.overview.cliLoginNoEnvironment")}
+				</p>
+			)}
 		</div>
 	);
 }
@@ -1054,6 +1244,212 @@ function MCPServersTab({
 				open={addOpen}
 				onOpenChange={setAddOpen}
 			/>
+		</div>
+	);
+}
+
+// ── Access Tab ────────────────────────────────────────────────────────────────
+// Project-scoped only (a global agent viewed with no projectId has no single
+// project's members to grant against — see AgentDetailView's visibleTabs
+// filtering, same reasoning as the Activity tab). Restricting/granting here
+// only ever governs *usage* (starting/replying to a chat) — MCP servers,
+// skills, and env vars above stay governed purely by agents.write regardless
+// of access_mode, same as the backend.
+
+function AccessTab({
+	projectId,
+	agentId,
+	accessMode,
+	canWrite,
+}: {
+	projectId: string;
+	agentId: string;
+	accessMode: AgentAccessMode;
+	canWrite: boolean;
+}) {
+	const { t } = useTranslation("projects");
+	const qc = useQueryClient();
+	const [selectedMemberId, setSelectedMemberId] = useState("");
+
+	const agentKey = agentQueryOptions(projectId, agentId).queryKey;
+	const grantsQuery = agentAccessGrantsQueryOptions(projectId, agentId);
+	const { data: grants = [] } = useQuery(grantsQuery);
+	const { data: members = [] } = useQuery(
+		projectMembersQueryOptions(projectId),
+	);
+
+	const toggleModeMutation = useMutation({
+		mutationFn: (restricted: boolean) =>
+			updateAgent(projectId, agentId, {
+				access_mode: restricted ? "restricted" : "open",
+			}),
+		onSuccess: () => qc.invalidateQueries({ queryKey: agentKey }),
+	});
+
+	const addMutation = useMutation({
+		mutationFn: (memberId: string) =>
+			addAgentAccessGrant(projectId, agentId, memberId),
+		onSuccess: () => {
+			setSelectedMemberId("");
+			qc.invalidateQueries({ queryKey: grantsQuery.queryKey });
+			qc.invalidateQueries({ queryKey: agentKey });
+		},
+	});
+
+	const removeMutation = useMutation({
+		mutationFn: (memberId: string) =>
+			removeAgentAccessGrant(projectId, agentId, memberId),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: grantsQuery.queryKey });
+			qc.invalidateQueries({ queryKey: agentKey });
+		},
+	});
+
+	const memberName = (m: {
+		member_type?: string;
+		agent_name?: string;
+		full_name: string;
+		username: string;
+	}) =>
+		m.member_type === "agent"
+			? (m.agent_name ?? m.username)
+			: m.full_name || m.username;
+
+	const grantedMemberIds = new Set(grants.map((g) => g.member_id));
+	const availableMembers = members.filter((m) => !grantedMemberIds.has(m.id));
+	const memberById = new Map(members.map((m) => [m.id, m]));
+
+	return (
+		<div className="space-y-6">
+			<div className="flex items-center justify-between rounded-lg border border-border/60 bg-card px-4 py-3">
+				<div className="space-y-0.5 pr-4">
+					<p className="text-sm font-medium">
+						{t("agents.detail.access.restrictLabel")}
+					</p>
+					<p className="text-xs text-muted-foreground">
+						{t("agents.detail.access.restrictDescription")}
+					</p>
+				</div>
+				<Switch
+					checked={accessMode === "restricted"}
+					onCheckedChange={(checked) =>
+						canWrite && toggleModeMutation.mutate(checked)
+					}
+					disabled={!canWrite || toggleModeMutation.isPending}
+				/>
+			</div>
+
+			{accessMode === "restricted" && (
+				<div className="space-y-3">
+					{canWrite && (
+						<div className="flex items-center gap-2">
+							<Select
+								value={selectedMemberId}
+								onValueChange={(v) => v && setSelectedMemberId(v)}
+								items={availableMembers.map((m) => ({
+									value: m.id,
+									label: memberName(m),
+								}))}
+							>
+								<SelectTrigger className="flex-1">
+									<SelectValue
+										placeholder={t("agents.detail.access.pickMember")}
+									/>
+								</SelectTrigger>
+								<SelectContent>
+									{availableMembers.map((m) => {
+										const isBot = m.member_type === "agent";
+										return (
+											<SelectItem key={m.id} value={m.id}>
+												<div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-[10px] font-bold text-primary ring-1 ring-primary/20">
+													<EntityAvatarContent
+														avatarUrl={resolveMemberAvatarUrl(m)}
+													>
+														{isBot ? (
+															<Bot className="size-3" />
+														) : (
+															getInitials(memberName(m))
+														)}
+													</EntityAvatarContent>
+												</div>
+												<span className="flex-1 truncate text-left">
+													{memberName(m)}
+												</span>
+											</SelectItem>
+										);
+									})}
+								</SelectContent>
+							</Select>
+							<Button
+								size="sm"
+								disabled={!selectedMemberId || addMutation.isPending}
+								onClick={() =>
+									selectedMemberId && addMutation.mutate(selectedMemberId)
+								}
+							>
+								<Plus className="size-4 mr-1.5" />
+								{t("agents.detail.access.grantAccess")}
+							</Button>
+						</div>
+					)}
+
+					{grants.length === 0 ? (
+						<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
+							<Lock className="size-8 text-muted-foreground/40" />
+							<p className="text-sm text-muted-foreground">
+								{t("agents.detail.access.empty")}
+							</p>
+						</div>
+					) : (
+						<div className="space-y-2">
+							{grants.map((g) => {
+								const member = memberById.get(g.member_id);
+								const display = member ? memberName(member) : g.member_id;
+								const isBot = member?.member_type === "agent";
+								const avatarUrl = member
+									? resolveMemberAvatarUrl(member)
+									: undefined;
+								return (
+									<div
+										key={g.id}
+										className="flex items-center gap-3 rounded-xl border border-border/50 bg-card px-4 py-3 transition-colors hover:bg-muted/30"
+									>
+										<Avatar className="size-9 shrink-0">
+											{avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+											<AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
+												{isBot ? (
+													<Bot className="size-4" />
+												) : (
+													getInitials(display)
+												)}
+											</AvatarFallback>
+										</Avatar>
+										<div className="min-w-0 flex-1">
+											<p className="text-sm font-medium truncate">{display}</p>
+											{member && (
+												<p className="text-xs text-muted-foreground truncate">
+													@{member.username}
+												</p>
+											)}
+										</div>
+										{canWrite && (
+											<Button
+												variant="ghost"
+												size="icon"
+												className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+												onClick={() => removeMutation.mutate(g.member_id)}
+												disabled={removeMutation.isPending}
+											>
+												<Trash2 className="size-3.5" />
+											</Button>
+										)}
+									</div>
+								);
+							})}
+						</div>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -1547,6 +1943,11 @@ const TABS = [
 		icon: KeyRound,
 	},
 	{
+		id: "access",
+		labelKey: "agents.detail.tabs.access",
+		icon: Lock,
+	},
+	{
 		id: "activity",
 		labelKey: "agents.detail.tabs.activity",
 		icon: ActivityIcon,
@@ -1626,11 +2027,23 @@ export function AgentDetailView({
 	// below share one definition — agent?.agent_type is undefined pre-load,
 	// which simply leaves the ACP-only filter a no-op until agent arrives.
 	const acpHiddenTabs: Tab[] = ["mcp-servers", "skills", "env-vars"];
+	// A provider_cli agent's skills are synced into its underlying CLI's own
+	// config (see internal/executor/providercli on the agent-runner side) —
+	// shipped for Claude Code only, since Codex/Cursor/Gemini CLI's native
+	// skill-file formats aren't confirmed with enough confidence to sync
+	// blindly. MCP servers and env vars still apply to every provider_cli
+	// agent regardless, so only the Skills tab is conditionally hidden here.
+	const cliSkillsUnsupported =
+		agent?.agent_type === "provider_cli" &&
+		agent.cli_provider !== "claude-code";
 	const visibleTabs = TABS.filter((tab) => {
-		if (tab.id === "activity" && !projectId) return false;
+		if ((tab.id === "activity" || tab.id === "access") && !projectId) {
+			return false;
+		}
 		if (agent?.agent_type === "acp" && acpHiddenTabs.includes(tab.id)) {
 			return false;
 		}
+		if (tab.id === "skills" && cliSkillsUnsupported) return false;
 		return true;
 	});
 
@@ -1728,7 +2141,9 @@ export function AgentDetailView({
 							<Badge variant="secondary" className="text-xs">
 								{agent.agent_type === "acp"
 									? (agent.acp_provider ?? "acp")
-									: agent.llm_provider}
+									: agent.agent_type === "provider_cli"
+										? (agent.cli_provider ?? "provider_cli")
+										: agent.llm_provider}
 							</Badge>
 						</div>
 					</div>
@@ -1782,17 +2197,27 @@ export function AgentDetailView({
 						canWrite={canWrite}
 					/>
 				)}
-				{activeTab === "skills" && agent.agent_type !== "acp" && (
-					<SkillsTab
+				{activeTab === "skills" &&
+					agent.agent_type !== "acp" &&
+					!cliSkillsUnsupported && (
+						<SkillsTab
+							projectId={projectId}
+							agentId={agentId}
+							canWrite={canWrite}
+						/>
+					)}
+				{activeTab === "env-vars" && agent.agent_type !== "acp" && (
+					<EnvVarsTab
 						projectId={projectId}
 						agentId={agentId}
 						canWrite={canWrite}
 					/>
 				)}
-				{activeTab === "env-vars" && agent.agent_type !== "acp" && (
-					<EnvVarsTab
+				{activeTab === "access" && projectId && (
+					<AccessTab
 						projectId={projectId}
 						agentId={agentId}
+						accessMode={agent.access_mode}
 						canWrite={canWrite}
 					/>
 				)}

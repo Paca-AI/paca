@@ -47,9 +47,18 @@ function lookupProviderLogo(
 	agentType: string | undefined,
 	llmProvider: string | undefined,
 	acpProvider: string | null | undefined,
+	cliProvider?: string | null,
 ): string | undefined {
 	if (agentType === "acp") {
 		return acpProvider ? ACP_PROVIDER_LOGOS[acpProvider] : undefined;
+	}
+	if (agentType === "provider_cli") {
+		// Same brand marks as ACP_PROVIDER_LOGOS — cli_provider and
+		// acp_provider name the same underlying CLI, just via two different
+		// execution paths (see agentdom.Agent.CLIProvider's doc comment).
+		// cursor-agent has no entry (no asset sourced yet — same reasoning
+		// as "goose" above) and falls back to initials.
+		return cliProvider ? ACP_PROVIDER_LOGOS[cliProvider] : undefined;
 	}
 	return llmProvider
 		? LLM_PROVIDER_LOGOS[llmProvider.toLowerCase()]
@@ -62,12 +71,16 @@ function lookupProviderLogo(
  * initials in that case, same as when the agent has no avatar at all).
  */
 function getDefaultAgentAvatar(
-	agent: Pick<Agent, "agent_type" | "llm_provider" | "acp_provider">,
+	agent: Pick<
+		Agent,
+		"agent_type" | "llm_provider" | "acp_provider" | "cli_provider"
+	>,
 ): string | undefined {
 	return lookupProviderLogo(
 		agent.agent_type,
 		agent.llm_provider,
 		agent.acp_provider,
+		agent.cli_provider,
 	);
 }
 
@@ -118,6 +131,7 @@ export function resolveAgentAvatarUrl(
 		| "agent_type"
 		| "llm_provider"
 		| "acp_provider"
+		| "cli_provider"
 	>,
 	size: "full" | "thumb" = "thumb",
 ): string | undefined {

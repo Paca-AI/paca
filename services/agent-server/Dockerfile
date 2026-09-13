@@ -118,6 +118,79 @@ RUN apt-get update \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
+# Coding CLIs for provider_cli-type agents — Goose's own "CLI providers"
+# feature (GOOSE_PROVIDER=claude-code|codex|cursor-agent|gemini-cli, see
+# https://goose-docs.ai/docs/guides/cli-providers/) shells out to whichever
+# one of these a given agent is configured for; see
+# internal/executor/providercli for how Paca syncs that agent's MCP
+# servers/skills into each CLI's own config afterward. Nothing here
+# performs any authentication — every CLI still needs its own login (an
+# injected API-key env var, or an interactive `<cli> login` run in the
+# environment's own terminal — see providercli.Adapter.APIKeyEnvVar /
+# CredentialProbePath), which is why these three are only ever installed
+# into `provider_cli`-type agents' static environments, never given
+# credentials at image-build time.
+#
+# claude-code/codex/gemini-cli package names confirmed directly against the
+# npm registry, and this entire layer (all 4 installs plus `<cli>
+# --version` for each) built and ran successfully end to end against a
+# node:22-bookworm-slim throwaway image on 2026-09-03 — not a guess:
+# claude 2.1.259, codex-cli 0.153.0, gemini 0.58.0, cursor-agent
+# 2026.09.02-c22c1a3 all reported their version correctly post-install. Not
+# version-pinned, unlike the base Goose image above, since these are meant
+# to track upstream fixes/features rather than be protocol-pinned the way
+# Goose's own ACP wire format is — expect (and accept) newer versions on
+# every image rebuild; re-verify package names specifically (not just that
+# `npm install` succeeds) if this layer is ever revisited after a long gap.
+#
+# cursor-agent has no npm package — Cursor's own installer
+# (https://cursor.com/install, confirmed directly by fetching and reading
+# it, then actually running it in the verification build above) downloads a
+# platform-specific tarball to $HOME/.local/share/cursor-agent and symlinks
+# the binary into $HOME/.local/bin/cursor-agent. HOME is pinned to
+# /home/goose explicitly here (not assumed inherited) so that install — and
+# every CLI's own config-dir resolution at runtime — lands exactly where
+# syncProviderCLIConfig's symlink bootstrap expects it
+# ($HOME/.claude, $HOME/.codex, $HOME/.cursor, $HOME/.gemini — see
+# executor.go's sandboxWorkdir doc comment for why /home/goose is this
+# image's real $HOME even while running as root). The installer's own
+# symlink is then re-linked onto /usr/local/bin so cursor-agent resolves
+# via PATH the same way the three npm-installed CLIs already do.
+#
+# @agentclientprotocol/claude-agent-acp and @agentclientprotocol/codex-acp
+# are two more npm packages, not a replacement for @anthropic-ai/claude-code/
+# @openai/codex above — both pairs wrap the SAME underlying claude/codex
+# binary. Goose's raw "CLI providers" feature (GOOSE_PROVIDER=claude-code|
+# codex) only ever forwards the wrapped CLI's final text: confirmed directly
+# in Goose 1.46.0's own source (crates/goose/src/providers/claude_code.rs's
+# stream() only parses content_block_delta/text_delta; codex.rs's
+# extract_text_from_item only extracts "agent_message" items) — every tool
+# call the CLI itself makes is silently dropped before it ever reaches
+# Goose, so it can never become an ACP tool_call/tool_call_update
+# notification, and (separately) neither raw provider has any real session-
+# resume mechanism, so Paca's own conversation memory breaks across
+# reconnects. Goose's own provider metadata already marks claude-code
+# "[Deprecated: use claude-acp instead]" for exactly this — claude-acp/
+# codex-acp are real ACP agent implementations that relay their own
+# session/update stream (tool calls included) straight through Goose,
+# instead of Goose trying to re-derive it from a wrapped CLI's raw output.
+# See executor/provider.go's gooseCLIProviderID for where cli_provider
+# "claude-code"/"codex" (Paca's own stable values, unchanged) get translated
+# to the "claude-acp"/"codex-acp" GOOSE_PROVIDER values these packages
+# register. Verified live (2026-09-04): claude-acp correctly preserved
+# conversation memory across a reconnect where claude-code lost it, using
+# the exact same real, authenticated `claude` CLI/login state either way —
+# see that mapping's own doc comment for the full trace. cursor-agent and
+# gemini-cli have no ACP equivalent (confirmed against
+# https://goose-docs.ai/docs/guides/acp-providers — only amp-acp/claude-acp/
+# codex-acp/pi-acp exist), so they stay on the raw CLI-providers path below,
+# unchanged.
+ENV HOME=/home/goose
+RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli \
+       @agentclientprotocol/claude-agent-acp @agentclientprotocol/codex-acp \
+    && curl -fsSL https://cursor.com/install | bash \
+    && ln -sf /home/goose/.local/bin/cursor-agent /usr/local/bin/cursor-agent
+
 # Real sshd for static environments' layer-4 SSH access (see
 # docs/ai-agent/environment-management.md's "Terminal / SSH Access" Phase B
 # section and internal/sandbox/environmentssh.go, which starts this

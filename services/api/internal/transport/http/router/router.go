@@ -3,13 +3,16 @@ package router
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -23,6 +26,16 @@ type Deps struct {
 	APIKeyAuth           httpmw.APIKeyAuthenticator
 	Authorizer           *authz.Authorizer
 	ProjectVisibilitySvc httpmw.ProjectVisibilityChecker
+	// AgentAccessSvc/EnvironmentAccessSvc back httpmw.RequireAgentAccess/
+	// RequireEnvironmentAccess — the same underlying service instance
+	// already passed to Agent/Environment below, just narrowed to the
+	// small checker interface those middleware need. MemberRepo resolves
+	// the caller to a project_members.id for that same check — the same
+	// canonical lookup task assignees and agent_chat_sessions.member_id
+	// already use.
+	AgentAccessSvc       httpmw.AgentAccessChecker
+	EnvironmentAccessSvc httpmw.EnvironmentAccessChecker
+	MemberRepo           projectdom.MemberRepository
 	Health               *handler.HealthHandler
 	Version              *handler.VersionHandler
 	Auth                 *handler.AuthHandler
@@ -41,6 +54,7 @@ type Deps struct {
 	Skills               *handler.SkillsHandler
 	Agent                *handler.AgentHandler
 	Environment          *handler.EnvironmentHandler
+	Annotation           *handler.AnnotationHandler
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
 	Settings             *handler.SettingsHandler
@@ -94,6 +108,7 @@ func New(deps Deps) http.Handler {
 			r.Route("/auth", func(r chi.Router) {
 				r.Post("/login", deps.Auth.Login)
 				r.Post("/refresh", deps.Auth.Refresh)
+				r.Post("/annotation-refresh", deps.Auth.AnnotationRefresh)
 				r.With(httpmw.Authn(deps.TokenManager)).Post("/logout", deps.Auth.Logout)
 				// Public — the link a password-set-token email points to;
 				// the token itself (not a session) proves the caller's right
@@ -270,6 +285,20 @@ func New(deps Deps) http.Handler {
 					Post("/projects", deps.Project.CreateProject)
 			})
 
+			// Port forward resolution — how the Paca browser extension
+			// turns "I'm on host:<port>" into "this is environment X in
+			// project Y" before it knows which project-scoped endpoint to
+			// call next. Not project-scoped in the URL (the caller doesn't
+			// know the project yet); scoped instead to the caller's own
+			// accessible projects inside the handler itself (see
+			// AnnotationRepository.ResolvePortForward).
+			if deps.Annotation != nil {
+				r.Group(func(r chi.Router) {
+					r.Use(httpmw.Authn(deps.TokenManager, deps.APIKeyAuth))
+					r.Get("/port-forwards/resolve", deps.Annotation.ResolvePortForward)
+				})
+			}
+
 			// LLM models, global agents, and global chat — accessible to any
 			// authenticated user (human or agent-API-key). Static children
 			// ("llm-models", "skill-templates", "me", "chat-sessions",
@@ -317,9 +346,10 @@ func New(deps Deps) http.Handler {
 					// page / admin pages, no project context. Any authenticated
 					// human may chat with any global agent, same as any project
 					// member may chat with a project agent — deliberately not
-					// gated behind PermissionAgentsRead (a regular USER-role
-					// human has no global agents.* permission by default, and
-					// this chat is meant to be available to every user).
+					// gated behind PermissionConversationsRead (a regular
+					// USER-role human has no global conversations.* permission
+					// by default, and this chat is meant to be available to
+					// every user).
 					r.Get("/{agentId}/chat-sessions", deps.Agent.ListGlobalChatSessions)
 					r.Post("/{agentId}/chat-sessions", deps.Agent.StartGlobalChatSession)
 					r.Post("/chat-sessions/{sessionId}/messages", deps.Agent.SendGlobalChatMessage)
@@ -387,38 +417,54 @@ func New(deps Deps) http.Handler {
 						Delete("/{roleId}", deps.Project.DeleteRole)
 				})
 
-				// Task types
+				// Task types — project *schema* (which task types exist).
+				// Redefining the type list is gated on
+				// project.settings.task_types.write, a different capability
+				// from editing a task's own content (see authz.
+				// PermissionProjectSettingsTaskTypesWrite's doc comment);
+				// viewing it is gated on tasks.read like the type list's own
+				// consumer (a task's type badge) rather than a dedicated
+				// read permission — no meaningful boundary in seeing what
+				// types exist that isn't already crossed by seeing the tasks
+				// that use them.
 				r.Route("/task-types", func(r chi.Router) {
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
 					)).Get("/", deps.Task.ListTaskTypes)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskTypesWrite)).
 						Post("/", deps.Task.CreateTaskType)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskTypesWrite)).
 						Patch("/{typeId}", deps.Task.UpdateTaskType)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskTypesWrite)).
 						Delete("/{typeId}", deps.Task.DeleteTaskType)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskTypesWrite)).
 						Put("/{typeId}/set-default", deps.Task.SetDefaultTaskType)
 				})
 
-				// Task statuses
+				// Task statuses — project *schema* (which statuses exist,
+				// their order, which is the default), same split as task
+				// types above (view via tasks.read, redefine via
+				// project.settings.task_statuses.write). Moving a task
+				// *between* existing statuses (PATCH /tasks/{id}, or
+				// drag-and-drop via /views/{id}/task-positions below) stays
+				// on tasks.write — that's editing a task, not the status
+				// list.
 				r.Route("/task-statuses", func(r chi.Router) {
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
 					)).Get("/", deps.Task.ListTaskStatuses)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskStatusesWrite)).
 						Post("/", deps.Task.CreateTaskStatus)
 					// Static /positions must be registered before /{statusId}.
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskStatusesWrite)).
 						Put("/positions", deps.Task.ReorderTaskStatuses)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskStatusesWrite)).
 						Patch("/{statusId}", deps.Task.UpdateTaskStatus)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskStatusesWrite)).
 						Delete("/{statusId}", deps.Task.DeleteTaskStatus)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskStatusesWrite)).
 						Put("/{statusId}/set-default", deps.Task.SetDefaultTaskStatus)
 				})
 
@@ -488,29 +534,32 @@ func New(deps Deps) http.Handler {
 						Post("/{sprintId}/complete", deps.Sprint.CompleteSprint)
 				})
 
-				// Views
+				// Views — gated on their own views.read/write, not a
+				// borrowed sprints.read/write (there was no dedicated
+				// permission for the view resource itself before). Moving a
+				// *task* within a view (below) stays on tasks.*.
 				r.Route("/views", func(r chi.Router) {
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
-						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionSprintsRead}},
+						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionViewsRead}},
 					)).Get("/", deps.View.ListViews)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionSprintsWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionViewsWrite)).
 						Post("/", deps.View.CreateView)
 					// Static /positions must be registered before /{viewId}.
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionSprintsWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionViewsWrite)).
 						Put("/positions", deps.View.ReorderViews)
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
-						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionSprintsRead}},
+						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionViewsRead}},
 					)).Get("/{viewId}", deps.View.GetView)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionSprintsWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionViewsWrite)).
 						Patch("/{viewId}", deps.View.UpdateView)
 					// Personal (per-user) view config: only needs read access to
-					// the project's sprints — a viewer may sort/filter their own
-					// view without permission to mutate the shared view.
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionSprintsRead)).
+					// the view — a viewer may sort/filter their own view without
+					// permission to mutate the shared view.
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionViewsRead)).
 						Put("/{viewId}/config", deps.View.UpdateMyViewConfig)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionSprintsWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionViewsWrite)).
 						Delete("/{viewId}", deps.View.DeleteView)
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
@@ -597,21 +646,23 @@ func New(deps Deps) http.Handler {
 					})
 				})
 
-				// Custom field definitions
+				// Custom field definitions — project schema, same split as
+				// task types/statuses above (view via tasks.read, redefine
+				// via project.settings.custom_fields.write).
 				r.Route("/custom-fields", func(r chi.Router) {
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
 					)).Get("/", deps.Task.ListCustomFieldDefinitions)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsCustomFieldsWrite)).
 						Post("/", deps.Task.CreateCustomFieldDefinition)
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
 					)).Get("/{fieldId}", deps.Task.GetCustomFieldDefinition)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsCustomFieldsWrite)).
 						Patch("/{fieldId}", deps.Task.UpdateCustomFieldDefinition)
-					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsCustomFieldsWrite)).
 						Delete("/{fieldId}", deps.Task.DeleteCustomFieldDefinition)
 				})
 
@@ -712,6 +763,11 @@ func New(deps Deps) http.Handler {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Post("/{agentId}/mcp-agent-key", deps.Agent.GenerateAgentMCPKey)
 
+						// Provider CLI — Write, not Read: it runs a live probe inside the
+						// agent's environment and persists cli_login_verified_at.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{agentId}/verify-cli-login", deps.Agent.VerifyCLILogin)
+
 						// Avatar
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Post("/{agentId}/avatar/initiate-upload", deps.Agent.InitiateAvatarUpload)
@@ -754,13 +810,54 @@ func New(deps Deps) http.Handler {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Delete("/{agentId}/env-vars/{envVarId}", deps.Agent.DeleteEnvVar)
 
-						// Chat sessions
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						// Chat sessions. A session's messages ARE a conversation, so
+						// these are gated on conversations.read/write, not agents.*
+						// (which governs the agent entity's own configuration —
+						// MCP servers, skills, env vars, etc). Starting a session
+						// and sending into one both create/drive a conversation (a
+						// real agent turn, possibly inside a live sandbox) — Write,
+						// the same tier as every conversation-mutating route below.
+						// Additionally gated on RequireAgentAccess: a restricted
+						// agent (agentdom.AccessModeRestricted) requires an
+						// explicit AgentAccessGrant on top of the plain
+						// conversations.read/write permission — see
+						// agentdom.AgentAccessGrantService's doc comment. Runs
+						// after RequirePermissions, not instead of it.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead),
+							httpmw.RequireAgentAccess(deps.AgentAccessSvc, deps.MemberRepo)).
 							Get("/{agentId}/chat-sessions", deps.Agent.ListChatSessions)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite),
+							httpmw.RequireAgentAccess(deps.AgentAccessSvc, deps.MemberRepo)).
 							Post("/{agentId}/chat-sessions", deps.Agent.StartChatSession)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite),
+							httpmw.RequireAgentAccess(deps.AgentAccessSvc, deps.MemberRepo)).
 							Post("/{agentId}/chat-sessions/{sessionId}/messages", deps.Agent.SendChatMessage)
+
+						// Access grants — who may use this agent when it's
+						// restricted. Gated on agents.write: managing the grant
+						// list is a configuration action, same tier as every
+						// other agent-entity-configuration route above.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Get("/{agentId}/access-grants", deps.Agent.ListAgentAccessGrants)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{agentId}/access-grants", deps.Agent.AddAgentAccessGrant)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Delete("/{agentId}/access-grants/{memberId}", deps.Agent.RemoveAgentAccessGrant)
+					})
+				}
+
+				// Project-wide annotation search — unlike the annotation
+				// routes nested under one specific port forward (below,
+				// inside Environments), this searches across every port
+				// forward in the project. Backs BlockNote mention search,
+				// the agent conversation's attach-context picker, and the
+				// MCP list_annotations/get_annotation tools.
+				if deps.Annotation != nil {
+					r.Route("/annotations", func(r chi.Router) {
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+							Get("/", deps.Annotation.SearchInProject)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+							Get("/{annotationId}", deps.Annotation.GetInProject)
 					})
 				}
 
@@ -793,38 +890,74 @@ func New(deps Deps) http.Handler {
 							Post("/{environmentId}/restart", deps.Environment.RestartEnvironment)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
 							Post("/{environmentId}/heartbeat", deps.Environment.Heartbeat)
-						// Mints a ticket for agent-runner's live-usage
-						// WebSocket (internal/acpbridge/stats.go) — read-only
-						// in spirit (viewing usage numbers, not a mutating
-						// action or an interactive session), unlike
-						// terminal-ticket below.
+						// Read-gated like Browse/ListFolders above — a live
+						// probe, not a mutating action, and the create-agent
+						// dialog's own "Verify login" button needs this before
+						// the agent (and its own agents.write-gated verify
+						// endpoint) exists yet — see EnvironmentHandler.
+						// VerifyCLILogin's own doc comment.
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Post("/{environmentId}/verify-cli-login", deps.Environment.VerifyCLILogin)
+						// Folders, stats-ticket, SSH keys, port forwards, and the
+						// terminal below are additionally gated on
+						// RequireEnvironmentAccess: a restricted environment
+						// (environmentdom.AccessModeRestricted) requires an
+						// explicit EnvironmentAccessGrant on top of the plain
+						// environments.* permission — see environmentdom.
+						// AccessGrantService's doc comment. An SSH key, port
+						// forward, or live-usage stream is itself an alternate
+						// access path into the container (not mere
+						// configuration), so each gets the same gate as
+						// browsing/the terminal, not just lifecycle actions
+						// (create/start/stop/etc above, deliberately left
+						// ungated by this).
+						envAccess := httpmw.RequireEnvironmentAccess(deps.EnvironmentAccessSvc, deps.MemberRepo)
+
+						// Mints a ticket for agent-runner's live-usage
+						// WebSocket (internal/acpbridge/stats.go). Not a
+						// mutating action, but it does hand the caller a live
+						// feed of what's running inside the container — a
+						// member locked out of a restricted environment
+						// shouldn't get that just because viewing usage
+						// numbers isn't itself destructive.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).
 							Post("/{environmentId}/stats-ticket", deps.Environment.StatsTicket)
 
 						// Folders
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).
 							Get("/{environmentId}/folders", deps.Environment.ListFolders)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite), envAccess).
 							Post("/{environmentId}/folders", deps.Environment.AddFolder)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite), envAccess).
 							Delete("/{environmentId}/folders/{folderId}", deps.Environment.DeleteFolder)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).
 							Get("/{environmentId}/browse", deps.Environment.BrowseFolder)
 
-						// SSH keys
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+						// SSH keys — registering/removing a key grants shell
+						// access the same way the terminal ticket below does
+						// (the ssh command connects as root), so this is
+						// gated on Connect, not Write, mirroring
+						// TerminalTicket: a Write-only member can configure
+						// the environment but shouldn't be able to mint
+						// themselves shell access this way, and a
+						// Connect-only member gains nothing new here since
+						// they can already open a root shell via the
+						// browser terminal.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).
 							Get("/{environmentId}/ssh-keys", deps.Environment.ListSSHKeys)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsConnect), envAccess).
 							Post("/{environmentId}/ssh-keys", deps.Environment.AddSSHKey)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsConnect), envAccess).
 							Delete("/{environmentId}/ssh-keys/{keyId}", deps.Environment.DeleteSSHKey)
 
 						// Port forwards
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).
 							Get("/{environmentId}/port-forwards", deps.Environment.ListPortForwards)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite), envAccess).
 							Post("/{environmentId}/port-forwards", deps.Environment.AddPortForward)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).
+							Get("/{environmentId}/port-forwards/{portForwardId}", deps.Environment.GetPortForward)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite), envAccess).
 							Delete("/{environmentId}/port-forwards/{portForwardId}", deps.Environment.DeletePortForward)
 
 						// Browser terminal — a minted ticket grants an
@@ -833,27 +966,107 @@ func New(deps Deps) http.Handler {
 						// Connect permission, not Write: being able to
 						// configure an environment doesn't by itself imply
 						// being able to open a shell inside it.
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsConnect)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsConnect), envAccess).
 							Post("/{environmentId}/terminal-ticket", deps.Environment.TerminalTicket)
+
+						// Access grants — who may use this environment when
+						// it's restricted. Gated on environments.write:
+						// managing the grant list is a configuration action,
+						// not itself subject to envAccess.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Get("/{environmentId}/access-grants", deps.Environment.ListEnvironmentAccessGrants)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Post("/{environmentId}/access-grants", deps.Environment.AddEnvironmentAccessGrant)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Delete("/{environmentId}/access-grants/{memberId}", deps.Environment.RemoveEnvironmentAccessGrant)
+
+						// Page annotations — on-page comments pinned via the
+						// Paca browser extension (apps/extension), created
+						// directly against this API from a content script
+						// running on the environment's own forwarded preview
+						// page (see corsMiddleware's same-hostname branch
+						// below for how that's authenticated). Nested under
+						// the specific port forward, not the environment
+						// directly: a comment belongs to one port forward's
+						// running app, and an environment can have several.
+						// Resolve is a separate tier from Write, same
+						// reasoning as Connect above: triaging/dismissing a
+						// comment shouldn't require the ability to author or
+						// delete one.
+						if deps.Annotation != nil {
+							r.Route("/{environmentId}/port-forwards/{portForwardId}/annotations", func(r chi.Router) {
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+									Get("/", deps.Annotation.List)
+								// The four POST routes below all decode their
+								// body with plain encoding/json, which parses
+								// JSON regardless of the declared Content-Type
+								// — so httpmw.RequireJSONContentType is what
+								// actually makes that header meaningful. These
+								// routes are reachable via the SameSite=None
+								// domainauth.ScopeAnnotation cookie (see
+								// AuthHandler.setAnnotationTokenCookies and
+								// httpmw.AnnotationExtensionPathPattern);
+								// without this, a cross-site request using a
+								// CORS-safelisted Content-Type (e.g.
+								// text/plain) would count as a "simple
+								// request" under the Fetch spec, skip CORS
+								// preflight entirely, and still be parsed —
+								// cookie attached — regardless of
+								// corsMiddleware's same-hostname check, which
+								// only ever gates a *preflighted* request.
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite), httpmw.RequireJSONContentType()).
+									Post("/", deps.Annotation.Create)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite), httpmw.RequireJSONContentType()).
+									Post("/upload-url", deps.Annotation.InitiateScreenshotUpload)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+									Get("/{annotationId}", deps.Annotation.Get)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite), httpmw.RequireJSONContentType()).
+									Post("/{annotationId}/complete-upload", deps.Annotation.CompleteScreenshotUpload)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+									Get("/{annotationId}/screenshot-url", deps.Annotation.GetScreenshotURL)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsResolve)).
+									Patch("/{annotationId}/resolve", deps.Annotation.Resolve)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsResolve)).
+									Patch("/{annotationId}/reopen", deps.Annotation.Reopen)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite), httpmw.RequireJSONContentType()).
+									Post("/{annotationId}/comments", deps.Annotation.AddComment)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite, authz.PermissionTasksWrite), httpmw.RequireJSONContentType()).
+									Post("/{annotationId}/create-task", deps.Annotation.CreateTask)
+							})
+						}
 					})
 				}
 
-				// Conversations
+				// Conversations. Gated on their own conversations.read/write
+				// permissions (not agents.*, which governs the agent entity's
+				// configuration — see the chat-sessions block above for the
+				// same split).
 				if deps.Conversation != nil {
 					r.Route("/conversations", func(r chi.Router) {
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead)).
 							Get("/", deps.Conversation.ListConversations)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead)).
 							Get("/{conversationId}", deps.Conversation.GetConversation)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead)).
 							Get("/{conversationId}/events", deps.Conversation.ListConversationEvents)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
 							Post("/{conversationId}/stop", deps.Conversation.StopConversation)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
 							Post("/{conversationId}/pause", deps.Conversation.PauseConversation)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						// Heartbeat deliberately stays Read: it's a passive
+						// "I'm still watching this" keep-alive (see
+						// Service.Heartbeat's doc comment) fired by any open tab,
+						// not a control action — a viewer legitimately watching a
+						// running conversation shouldn't cause it to idle-timeout
+						// out from under them.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead)).
 							Post("/{conversationId}/heartbeat", deps.Conversation.Heartbeat)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						// Write, not Read: sending a message resumes/drives the
+						// conversation (dispatches a real agent turn), the same
+						// capability tier as stop/pause above — a viewer (read
+						// only) must not be able to steer a conversation just
+						// because they can see it.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
 							Post("/{conversationId}/messages", deps.Conversation.SendConversationMessage)
 					})
 				}
@@ -882,23 +1095,32 @@ func New(deps Deps) http.Handler {
 				r.Handle("/plugins/{pluginId}/*", http.HandlerFunc(deps.Plugin.ProxyRequest))
 
 				// Admin plugin management
+				// Gated on plugins.read/write (previously borrowed
+				// users.write as a rough "is this someone important" proxy
+				// — there was no dedicated permission for plugin
+				// management).
 				r.Route("/admin/plugins", func(r chi.Router) {
 					r.Use(httpmw.Authn(deps.TokenManager, deps.APIKeyAuth))
 					r.Use(httpmw.RequireFreshPassword())
-					r.Use(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersWrite))
-					r.Get("/marketplace", deps.Plugin.ListMarketplacePlugins)
-					r.Post("/marketplace/install", deps.Plugin.InstallMarketplacePlugin)
-					r.Post("/", deps.Plugin.InstallPlugin)
-					r.Patch("/{pluginId}", deps.Plugin.UpdatePlugin)
-					r.Post("/{pluginId}/upgrade", deps.Plugin.UpgradeMarketplacePlugin)
-					r.Delete("/{pluginId}", deps.Plugin.DeletePlugin)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionPluginsRead)).
+						Get("/marketplace", deps.Plugin.ListMarketplacePlugins)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionPluginsWrite)).
+						Post("/marketplace/install", deps.Plugin.InstallMarketplacePlugin)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionPluginsWrite)).
+						Post("/", deps.Plugin.InstallPlugin)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionPluginsWrite)).
+						Patch("/{pluginId}", deps.Plugin.UpdatePlugin)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionPluginsWrite)).
+						Post("/{pluginId}/upgrade", deps.Plugin.UpgradeMarketplacePlugin)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionPluginsWrite)).
+						Delete("/{pluginId}", deps.Plugin.DeletePlugin)
 				})
 
 				// Admin extension settings
 				r.Route("/admin/plugin-extension-settings", func(r chi.Router) {
 					r.Use(httpmw.Authn(deps.TokenManager, deps.APIKeyAuth))
 					r.Use(httpmw.RequireFreshPassword())
-					r.Use(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersWrite))
+					r.Use(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionPluginsWrite))
 					r.Patch("/", deps.Plugin.UpdateExtensionSetting)
 				})
 			}
@@ -969,6 +1191,39 @@ func loggerMiddleware(log *slog.Logger) func(http.Handler) http.Handler {
 // by setting CORS_ORIGINS). Otherwise only an exact-match Origin gets
 // Access-Control-Allow-Origin echoed back; everything else gets no CORS
 // headers at all, so the browser blocks the response.
+//
+// One narrow exception, checked before either of those: a request whose
+// Origin has the same hostname as this server's own Host header (port
+// ignored) *and* whose path matches httpmw.AnnotationExtensionPathPattern
+// gets its exact Origin echoed back with Access-Control-Allow-Credentials:
+// true, regardless of CORS_ORIGINS. This is what lets the Paca browser
+// extension's content script — running directly on a forwarded environment
+// port, e.g. paca.example.com:31842 — call this API with `credentials:
+// "include"` and actually have a token attached: cookies are scoped by
+// hostname, not by port, so the browser already holds one there. Which
+// token depends on scheme, though: SameSite ignores port but NOT scheme
+// (modern browsers' "Schemeful Same-Site"), so access_token/refresh_token
+// (SameSite=Lax/Strict) only ride along when the forwarded port happens to
+// share the Paca app's own scheme; the domainauth.ScopeAnnotation pair
+// (SameSite=None — see AuthHandler.setAnnotationTokenCookies) is what
+// covers the far more common case where it doesn't. Either way, without
+// this branch the *response* would still be blocked from the extension's
+// own JS by CORS, cookies notwithstanding.
+//
+// The path check matters as much as the hostname check: the forwarded port
+// serves the *user's own dev app*, not code Paca controls, so any script
+// running there — not just the extension's content script — can make this
+// exact same credentialed request. Scoping the exception to
+// httpmw.AnnotationExtensionPathPattern means that page can, at most, act
+// on page annotations (and read its own port-forward's identity) on the
+// caller's behalf; without this scoping it would get free, ambient,
+// full-API access to every account the caller happens to be signed in as
+// (projects, tasks, docs, admin routes, ...) just because they had that
+// page open — and for a ScopeAnnotation token specifically,
+// middleware.applyAuthn enforces the exact same path restriction
+// independently of CORS, so it's held even if this Origin check were ever
+// loosened. Also can't be widened by CORS_ORIGINS — the pattern is fixed at
+// compile time, not configuration.
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	allowAll := len(allowedOrigins) == 0
 	allowed := make(map[string]bool, len(allowedOrigins))
@@ -984,6 +1239,11 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 			switch {
+			case origin != "" && sameHostnameOrigin(origin, r.Host) &&
+				httpmw.AnnotationExtensionPathPattern.MatchString(r.URL.Path):
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+				w.Header().Set("Vary", "Origin")
 			case allowAll:
 				w.Header().Set("Access-Control-Allow-Origin", "*")
 			case origin != "" && allowed[origin]:
@@ -1000,4 +1260,23 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// sameHostnameOrigin reports whether origin (a request's Origin header,
+// e.g. "https://paca.example.com:31842") has the same hostname as host (a
+// request's Host header, e.g. "paca.example.com" or "paca.example.com:443")
+// — ignoring port on both sides, and ignoring scheme entirely (a cookie's
+// Secure flag, not this check, is what actually gates whether it's ever
+// sent over plain HTTP in the first place). An unparseable origin never
+// matches.
+func sameHostnameOrigin(origin, host string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	reqHost := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		reqHost = h
+	}
+	return u.Hostname() == reqHost
 }

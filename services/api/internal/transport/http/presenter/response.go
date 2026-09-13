@@ -9,6 +9,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	annotationdom "github.com/Paca-AI/api/internal/domain/annotation"
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
@@ -346,6 +347,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeAgentSkillNotFound
 	case errors.Is(err, agentdom.ErrSkillNameReserved):
 		return http.StatusBadRequest, apierr.CodeAgentSkillNameReserved
+	case errors.Is(err, agentdom.ErrSkillNameInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentSkillNameInvalid
 	case errors.Is(err, agentdom.ErrNotSupportedForACPAgent):
 		return http.StatusBadRequest, apierr.CodeAgentNotSupportedForACPAgent
 	case errors.Is(err, agentdom.ErrConversationNotFound):
@@ -376,6 +379,28 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentDefaultEnvironmentInvalid
 	case errors.Is(err, agentdom.ErrDefaultFolderInvalid):
 		return http.StatusBadRequest, apierr.CodeAgentDefaultFolderInvalid
+	case errors.Is(err, agentdom.ErrParallelismLimitRequiresIsolatedSandbox):
+		return http.StatusBadRequest, apierr.CodeAgentParallelismLimitUnsupported
+	case errors.Is(err, agentdom.ErrOnBusyInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentOnBusyInvalid
+	case errors.Is(err, agentdom.ErrCLIProviderInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentCLIProviderInvalid
+	case errors.Is(err, agentdom.ErrCLIAuthModeInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentCLIAuthModeInvalid
+	case errors.Is(err, agentdom.ErrCLIProviderNoAPIKeyAuth):
+		return http.StatusBadRequest, apierr.CodeAgentCLIProviderNoAPIKeyAuth
+	case errors.Is(err, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider):
+		return http.StatusBadRequest, apierr.CodeAgentDefaultEnvironmentRequiredForCLIProvider
+	case errors.Is(err, agentdom.ErrCLIProviderNotSupportedForGlobalAgents):
+		return http.StatusBadRequest, apierr.CodeAgentCLIProviderNotSupportedForGlobalAgents
+	case errors.Is(err, agentdom.ErrAgentNotProviderCLI):
+		return http.StatusBadRequest, apierr.CodeAgentNotProviderCLI
+	case errors.Is(err, agentdom.ErrAgentAccessModeInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentAccessModeInvalid
+	case errors.Is(err, agentdom.ErrAgentAccessGrantExists):
+		return http.StatusConflict, apierr.CodeAgentAccessGrantExists
+	case errors.Is(err, agentdom.ErrAgentAccessRestricted):
+		return http.StatusForbidden, apierr.CodeAgentAccessRestricted
 	// --- Environment errors -------------------------------------------------
 	case errors.Is(err, environmentdom.ErrEnvironmentNotFound):
 		return http.StatusNotFound, apierr.CodeEnvironmentNotFound
@@ -409,6 +434,12 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeEnvironmentPortForwardContainerPortInvalid
 	case errors.Is(err, environmentdom.ErrPortForwardContainerPortTaken):
 		return http.StatusConflict, apierr.CodeEnvironmentPortForwardContainerPortTaken
+	case errors.Is(err, environmentdom.ErrEnvironmentAccessModeInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentAccessModeInvalid
+	case errors.Is(err, environmentdom.ErrEnvironmentAccessGrantExists):
+		return http.StatusConflict, apierr.CodeEnvironmentAccessGrantExists
+	case errors.Is(err, environmentdom.ErrEnvironmentAccessRestricted):
+		return http.StatusForbidden, apierr.CodeEnvironmentAccessRestricted
 	// --- Automation errors -----------------------------------------------------
 	case errors.Is(err, automationdom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeAutomationNotFound
@@ -450,6 +481,21 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAutomationActivateNoAction
 	case errors.Is(err, automationdom.ErrWebhookTokenInvalid):
 		return http.StatusUnauthorized, apierr.CodeAutomationWebhookTokenInvalid
+	case errors.Is(err, annotationdom.ErrAnnotationNotFound):
+		return http.StatusNotFound, apierr.CodeAnnotationNotFound
+	case errors.Is(err, annotationdom.ErrAnnotationBodyEmpty),
+		errors.Is(err, annotationdom.ErrCommentBodyEmpty):
+		return http.StatusBadRequest, apierr.CodeAnnotationBodyEmpty
+	case errors.Is(err, annotationdom.ErrAnnotationAlreadyHasTask):
+		return http.StatusConflict, apierr.CodeAnnotationAlreadyHasTask
+	case errors.Is(err, annotationdom.ErrAnnotationTaskCreationInProgress):
+		return http.StatusConflict, apierr.CodeAnnotationTaskCreationInProgress
+	case errors.Is(err, annotationdom.ErrAnnotationScreenshotNotUploaded):
+		return http.StatusNotFound, apierr.CodeAnnotationScreenshotNotUploaded
+	case errors.Is(err, annotationdom.ErrAnnotationScreenshotMismatch):
+		return http.StatusNotFound, apierr.CodeAnnotationScreenshotMismatch
+	case errors.Is(err, annotationdom.ErrPortForwardNotFound):
+		return http.StatusNotFound, apierr.CodePortForwardNotFound
 	default:
 		return http.StatusInternalServerError, apierr.CodeInternalError
 	}
@@ -467,7 +513,9 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusNotFound
 	case apierr.CodeUsernameTaken,
 		apierr.CodeEmailTaken,
-		apierr.CodeAgentConversationBusy:
+		apierr.CodeAgentConversationBusy,
+		apierr.CodeAgentParallelismLimitReached,
+		apierr.CodeAgentEnvironmentFolderBusy:
 		return http.StatusConflict
 	case apierr.CodeForbidden:
 		return http.StatusForbidden
@@ -625,11 +673,25 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAgentEnvVarKeyInvalid,
 		apierr.CodeAgentEnvVarKeyReserved,
 		apierr.CodeAgentSkillNameReserved,
+		apierr.CodeAgentSkillNameInvalid,
 		apierr.CodeAgentNotSupportedForACPAgent,
 		apierr.CodeAgentConversationInvalidCursor,
 		apierr.CodeAgentDefaultEnvironmentInvalid,
-		apierr.CodeAgentDefaultFolderInvalid:
+		apierr.CodeAgentDefaultFolderInvalid,
+		apierr.CodeAgentParallelismLimitUnsupported,
+		apierr.CodeAgentOnBusyInvalid,
+		apierr.CodeAgentCLIProviderInvalid,
+		apierr.CodeAgentCLIAuthModeInvalid,
+		apierr.CodeAgentCLIProviderNoAPIKeyAuth,
+		apierr.CodeAgentDefaultEnvironmentRequiredForCLIProvider,
+		apierr.CodeAgentCLIProviderNotSupportedForGlobalAgents,
+		apierr.CodeAgentNotProviderCLI,
+		apierr.CodeAgentAccessModeInvalid:
 		return http.StatusBadRequest
+	case apierr.CodeAgentAccessGrantExists:
+		return http.StatusConflict
+	case apierr.CodeAgentAccessRestricted:
+		return http.StatusForbidden
 	case apierr.CodeEnvironmentNotFound,
 		apierr.CodeEnvironmentFolderNotFound,
 		apierr.CodeEnvironmentSSHKeyNotFound,
@@ -647,8 +709,13 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeEnvironmentSSHKeyInvalid,
 		apierr.CodeEnvironmentPortForwardContainerPortInvalid,
 		apierr.CodeEnvironmentCPULimitInvalid,
-		apierr.CodeEnvironmentMemoryLimitInvalid:
+		apierr.CodeEnvironmentMemoryLimitInvalid,
+		apierr.CodeEnvironmentAccessModeInvalid:
 		return http.StatusBadRequest
+	case apierr.CodeEnvironmentAccessGrantExists:
+		return http.StatusConflict
+	case apierr.CodeEnvironmentAccessRestricted:
+		return http.StatusForbidden
 	case apierr.CodeAutomationNotFound,
 		apierr.CodeAutomationNodeNotFound,
 		apierr.CodeAutomationEdgeNotFound:
@@ -669,6 +736,15 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAutomationActivateNoTrigger,
 		apierr.CodeAutomationActivateNoAction:
 		return http.StatusBadRequest
+	case apierr.CodeAnnotationNotFound,
+		apierr.CodeAnnotationScreenshotNotUploaded,
+		apierr.CodeAnnotationScreenshotMismatch,
+		apierr.CodePortForwardNotFound:
+		return http.StatusNotFound
+	case apierr.CodeAnnotationBodyEmpty:
+		return http.StatusBadRequest
+	case apierr.CodeAnnotationAlreadyHasTask:
+		return http.StatusConflict
 	case apierr.CodeBadRequest:
 		return http.StatusBadRequest
 	case apierr.CodePasswordChangeRequired:

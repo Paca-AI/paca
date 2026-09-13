@@ -3,6 +3,7 @@ import {
 	defaultBlockSpecs,
 	defaultInlineContentSpecs,
 } from "@blocknote/core";
+import { AnnotationCardBlock } from "./blocknote-annotation-card-block";
 import {
 	DocumentationReference,
 	TaskReference,
@@ -14,6 +15,7 @@ export const customSchema = BlockNoteSchema.create({
 	blockSpecs: {
 		...defaultBlockSpecs,
 		mermaid: MermaidBlock(),
+		annotationCard: AnnotationCardBlock(),
 	},
 	inlineContentSpecs: {
 		...defaultInlineContentSpecs,

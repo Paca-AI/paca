@@ -2033,8 +2033,10 @@ func TestCreateCustomFieldDefinition_OK(t *testing.T) {
 		FieldKey:    "priority",
 		DisplayName: "Priority",
 		FieldType:   taskdom.FieldTypeSelect,
-		Options:     []string{"low", "medium", "high"},
-		IsRequired:  true,
+		Options: []taskdom.CustomFieldOption{
+			{Value: "low"}, {Value: "medium"}, {Value: "high"},
+		},
+		IsRequired: true,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -2146,7 +2148,7 @@ func TestUpdateCustomFieldDefinition_OK(t *testing.T) {
 	updated, err := svc.UpdateCustomFieldDefinition(ctx, f.ProjectID, f.ID, taskdom.UpdateCustomFieldDefinitionInput{
 		DisplayName: "Reason",
 		FieldType:   &newType,
-		Options:     []string{"blocked", "waiting"},
+		Options:     []taskdom.CustomFieldOption{{Value: "blocked"}, {Value: "waiting"}},
 		IsRequired:  &required,
 	})
 	if err != nil {

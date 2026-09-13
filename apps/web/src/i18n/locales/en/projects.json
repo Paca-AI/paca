@@ -12,6 +12,12 @@
 				"customFields": "Custom Fields",
 				"dangerZone": "Danger Zone",
 				"plugins": "Plugins"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "You don't have permission to view this tab",
+					"description": "Ask a project owner or admin to grant you access to {{pluginName}}."
+				}
 			}
 		}
 	},
@@ -37,6 +43,9 @@
 			"agentTypeLLMHint": "Paca calls a model API directly and runs the agent in a sandboxed container on the server hosting Paca.",
 			"agentTypeACP": "ACP (local CLI)",
 			"agentTypeACPHint": "Delegates to a coding CLI you run yourself — Claude Code, Codex, Gemini CLI, or a custom ACP server.",
+			"agentTypeProviderCLI": "Provider CLI",
+			"agentTypeProviderCLIHint": "Runs Claude Code, Codex, Cursor, or Gemini CLI in a Paca-hosted static environment, controlled the same way as an LLM agent.",
+			"agentTypeProviderCLIGlobalDisabledHint": "Only available for project agents. Create this from a project's Agents page instead.",
 			"modelSection": "Model",
 			"providerLabel": "Provider",
 			"modelLabel": "Model",
@@ -58,6 +67,22 @@
 			"acpCommandPlaceholder": "npx -y my-acp-server",
 			"acpCommandHint": "Space-separated command used to launch your ACP server.",
 			"acpGuidance": "Tools, MCP servers, and skills aren't configured here — they come from your ACP client's own local settings, running with your own git/gh credentials (clone, push, and open PRs all work natively). After you create this agent, we'll walk you through connecting the local bridge, installing the Paca skill, and wiring up the MCP server.",
+			"cliSection": "Provider CLI",
+			"cliProviderLabel": "CLI provider",
+			"cliProviderClaudeCode": "Claude Code",
+			"cliProviderCodex": "Codex",
+			"cliProviderGeminiCli": "Gemini CLI",
+			"cliProviderCursorAgent": "Cursor",
+			"cliModelLabel": "Model",
+			"cliModelPlaceholder": "e.g. sonnet, gpt-5.2-codex",
+			"cliGuidance": "MCP servers you configure below are synced into this CLI's own config on every conversation — Goose only uses this CLI to run the agent, it doesn't manage its tools. Skill sync currently only works for Claude Code.",
+			"cliEnvironmentHint": "Required — this CLI's login must persist across conversations, which only a static environment provides.",
+			"environmentPlaceholder": "Select an environment",
+			"cliAuthModeLabel": "Authentication",
+			"cliLoginModeHint": "This CLI needs its own one-time login inside the agent's environment terminal — API key auth isn't available for this agent type yet.",
+			"cliLoginCommandLabel": "Login command",
+			"cliOpenTerminal": "Open terminal",
+			"cliVerifyLogin": "Verify login",
 			"systemPromptLabel": "System Prompt",
 			"optional": "(optional)",
 			"charsCount": "{{count}} chars",
@@ -73,6 +98,8 @@
 		"card": {
 			"configure": "Configure",
 			"delete": "Delete",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "Online",
 			"acpStatusDisconnected": "Offline",
 			"deleteDialog": {
@@ -88,6 +115,10 @@
 			"title": "AI Agents",
 			"subtitle": "Autonomous agents that work on tasks and chat with your team",
 			"newAgent": "New Agent",
+			"noPermission": {
+				"title": "You don't have permission to view agents",
+				"description": "Ask a project admin to grant you the agents.read permission."
+			},
 			"empty": {
 				"title": "No agents yet",
 				"description": "Add an AI agent to automate tasks, review code, write documentation, and more.",
@@ -138,6 +169,7 @@
 				"mcpServers": "MCP Servers",
 				"skills": "Skills",
 				"envVars": "Environment",
+				"access": "Access",
 				"activity": "Activity"
 			},
 			"avatar": {
@@ -166,6 +198,9 @@
 				"committerEmailLabel": "Committer email",
 				"dockerEnabledLabel": "Docker access",
 				"dockerEnabledHint": "Give this agent a private Docker daemon inside its sandbox. Off by default — only enable it for agents that actually run Docker commands, since it adds startup time to every conversation.",
+				"parallelismLimitLabel": "Parallelism limit",
+				"parallelismLimitHint": "How many of this agent's conversations can run at the same time. Extra work waits in a queue until a slot frees up — default 1, so tickets are worked one at a time instead of racing each other in the same working directory.",
+				"parallelismLimitFixedHint": "Fixed at 1 for this agent — it works in a single shared directory (an ACP agent's local checkout, or a static default environment), so only one conversation can safely run at a time.",
 				"environmentSection": "Environment",
 				"defaultEnvironmentLabel": "Default Environment",
 				"defaultEnvironmentHint": "Attach this agent's conversations to a static environment instead of a fresh disposable sandbox each time.",
@@ -186,7 +221,25 @@
 				"acpProviderCustom": "Custom…",
 				"acpCommandLabel": "Command",
 				"acpCommandHint": "Space-separated command used to launch your ACP server.",
-				"acpGuidanceBanner": "This agent's tools, MCP servers, and skills are configured in your local ACP client, which runs with your own git/gh credentials — not in Paca."
+				"acpGuidanceBanner": "This agent's tools, MCP servers, and skills are configured in your local ACP client, which runs with your own git/gh credentials — not in Paca.",
+				"cliConfiguration": "Provider CLI Configuration",
+				"cliProviderLabel": "CLI provider",
+				"cliProviderClaudeCode": "Claude Code",
+				"cliProviderCodex": "Codex",
+				"cliProviderGeminiCli": "Gemini CLI",
+				"cliProviderCursorAgent": "Cursor",
+				"cliModelLabel": "Model",
+				"cliModelPlaceholder": "e.g. sonnet, gpt-5.2-codex",
+				"cliGuidanceBanner": "MCP servers configured below are synced into this CLI's own config on every conversation — Goose only runs the CLI, it doesn't manage its tools. Skill sync currently only works for Claude Code.",
+				"cliLoginPanelTitle": "CLI login",
+				"cliLoginPanelDescription": "Verify whether this agent's CLI is currently logged in, or open its environment's terminal to log in.",
+				"cliLoginOpenTerminal": "Open terminal",
+				"cliLoginVerify": "Verify login",
+				"cliLoginVerifiedNow": "Authenticated.",
+				"cliLoginNotAuthenticated": "Not authenticated yet — log in via the terminal, then verify again.",
+				"cliLoginVerifyFailed": "Couldn't check login status. Please try again.",
+				"cliLoginLastVerified": "Last verified {{date}}.",
+				"cliLoginNoEnvironment": "This agent has no environment set — pick one above first."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} server configured",
@@ -250,6 +303,13 @@
 					"addSkill": "Add skill"
 				}
 			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
+			},
 			"activity": {
 				"commented": "commented",
 				"sourceType": {
@@ -278,17 +338,33 @@
 		"conversationView": {
 			"stop": "Stop",
 			"notFound": "Conversation not found",
+			"noPermission": {
+				"title": "You don't have permission to view this conversation",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"chatSession": "Chat session",
 			"taskSession": "Task session",
 			"pr": "PR",
 			"connect": "Connect",
 			"conversationEnded": "This conversation has ended.",
 			"textOnlyMessage": "Only text messages are supported.",
+			"agentAccessRestricted": "This agent is restricted. Ask a project admin to grant you access before you can chat with it.",
+			"environmentAccessRestricted": "This conversation's environment is restricted. Ask a project admin to grant you access before you can chat with this agent.",
+			"chatNoPermission": "You don't have permission to send messages in this conversation.",
 			"failed": "Conversation failed",
 			"noOutput": "The agent did not produce any output.",
 			"loadingOlder": "Loading…",
 			"newBelow_one": "{{count}} new message",
 			"newBelow_other": "{{count}} new messages"
+		},
+		"busyDialog": {
+			"title": "Agent is busy",
+			"description": "This agent is already running {{running}}/{{limit}} conversation(s). Add this message to the queue and it'll start automatically once a slot frees up, or send it now anyway.",
+			"folderDescription": "Another conversation is already working in this environment folder. Add this message to the queue and it'll start automatically once that conversation finishes, or send it now anyway.",
+			"cancel": "Cancel",
+			"queue": "Add to Queue",
+			"force": "Send Now",
+			"cancelledError": "Message not sent."
 		},
 		"thread": {
 			"composerPlaceholder": "Message agent…",
@@ -348,6 +424,7 @@
 				"contextTypeDoc": "Doc",
 				"contextTypeConversation": "Conversation",
 				"contextTypeAutomation": "Automation",
+				"contextTypeAnnotation": "Comment",
 				"noContextResults": "No results found",
 				"contextSearchMinChars": "Type at least 2 characters to search"
 			}
@@ -368,6 +445,12 @@
 			"title": "Environments",
 			"subtitle": "Named, long-lived sandboxes your agents can attach to across conversations",
 			"newEnvironment": "New Environment",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
+			"noPermission": {
+				"title": "You don't have permission to view environments",
+				"description": "Ask a project admin to grant you the environments.read permission."
+			},
 			"empty": {
 				"title": "No environments yet",
 				"description": "Create a static environment to keep files and background processes running across conversations, instead of a fresh disposable sandbox each time.",
@@ -405,7 +488,8 @@
 			"tabs": {
 				"overview": "Overview",
 				"folders": "Folders",
-				"portForwards": "Port forwards"
+				"portForwards": "Port forwards",
+				"access": "Access"
 			},
 			"overview": {
 				"connect": "Connect",
@@ -450,6 +534,10 @@
 				"count_one": "{{count}} folder configured",
 				"count_other": "{{count}} folders configured",
 				"addFolder": "Add folder",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its folders."
+				},
 				"deleteFailed": "Failed to delete folder. Please try again.",
 				"empty": {
 					"title": "No folders added",
@@ -476,9 +564,14 @@
 				"count_one": "{{count}} port forward",
 				"count_other": "{{count}} port forwards",
 				"add": "Add port forward",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its port forwards."
+				},
 				"deleteFailed": "Failed to delete port forward. Please try again.",
 				"containerPort": "Container port {{port}}",
 				"unassigned": "Not assigned yet",
+				"open": "Open",
 				"restart": "Restart",
 				"pendingRestartRunning": "A port forward was added or removed. Restart the environment to apply it.",
 				"pendingRestartStopped": "A port forward was added or removed. It will be applied the next time this environment starts.",
@@ -503,6 +596,13 @@
 					"cancel": "Cancel",
 					"confirm": "Restart"
 				}
+			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
 				"connectHint": "Replace <bastion-host> with this deployment's configured SSH bastion address.",
@@ -551,6 +651,7 @@
 				"connect": "Connect",
 				"notRunning": "Start the environment before connecting.",
 				"readOnly": "You don't have permission to open a terminal on this environment.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can open a terminal.",
 				"hint": "Opens in a new full-page tab.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -561,7 +662,8 @@
 				"step1Description": "Register the public key of the SSH key pair you want to connect with.",
 				"step2Title": "Connect from your terminal",
 				"step2Description": "Run this command from your terminal:",
-				"notRunning": "Start the environment before connecting."
+				"notRunning": "Start the environment before connecting.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can connect via SSH."
 			}
 		}
 	},
@@ -570,6 +672,10 @@
 			"notFound": {
 				"title": "Document not found",
 				"description": "This document may have been deleted or the link is invalid."
+			},
+			"noPermission": {
+				"title": "You don't have permission to view this document",
+				"description": "Ask a project admin to grant you the docs.read permission."
 			},
 			"unsaved": "Unsaved",
 			"saving": "Saving…",
@@ -608,6 +714,8 @@
 			"roleNameLabel": "Role Name",
 			"roleNamePlaceholder": "e.g. PROJECT_REVIEWER",
 			"permissionsLabel": "Permissions",
+			"fullAccessBadge": "Full access",
+			"fullAccessDescription": "This role automatically includes every permission, including ones added in the future. Changing any toggle below converts it to today's fixed set.",
 			"enabledCount_one": "{{count}} enabled",
 			"enabledCount_other": "{{count}} enabled",
 			"cancel": "Cancel",
@@ -623,10 +731,6 @@
 			}
 		},
 		"permissions": {
-			"projectsRead": {
-				"label": "Read Project",
-				"description": "View project details and settings"
-			},
 			"projectsWrite": {
 				"label": "Edit Project",
 				"description": "Update project name, description, and settings"
@@ -651,6 +755,18 @@
 				"label": "Manage Roles",
 				"description": "Create, edit, and delete project roles"
 			},
+			"settingsTaskTypesWrite": {
+				"label": "Manage Task Types",
+				"description": "Create, edit, delete, and set the default task type"
+			},
+			"settingsTaskStatusesWrite": {
+				"label": "Manage Task Statuses",
+				"description": "Create, edit, delete, reorder, and set the default task status"
+			},
+			"settingsCustomFieldsWrite": {
+				"label": "Manage Custom Fields",
+				"description": "Create, edit, and delete custom field definitions"
+			},
 			"tasksRead": {
 				"label": "View Tasks",
 				"description": "Browse and read tasks in the project"
@@ -667,6 +783,14 @@
 				"label": "Manage Sprints",
 				"description": "Create, update, and close sprints"
 			},
+			"viewsRead": {
+				"label": "View Boards",
+				"description": "Browse saved board and list views"
+			},
+			"viewsWrite": {
+				"label": "Manage Boards",
+				"description": "Create, edit, delete, and reorder board and list views"
+			},
 			"docsRead": {
 				"label": "View Documents",
 				"description": "Browse and read documents in the project"
@@ -677,11 +801,19 @@
 			},
 			"agentsRead": {
 				"label": "View Agents",
-				"description": "Browse AI agents and view their configuration"
+				"description": "Browse AI agents and their configuration"
 			},
 			"agentsWrite": {
 				"label": "Manage Agents",
 				"description": "Create, configure, and delete AI agents"
+			},
+			"conversationsRead": {
+				"label": "View Conversations",
+				"description": "Browse agent conversations and watch them, without starting or replying to any"
+			},
+			"conversationsWrite": {
+				"label": "Manage Conversations",
+				"description": "Start conversations with an agent, reply to one, and stop or pause it"
 			},
 			"environmentsRead": {
 				"label": "View Environments",
@@ -695,6 +827,18 @@
 				"label": "Connect to Environments",
 				"description": "Open an interactive terminal session inside a running environment"
 			},
+			"annotationsRead": {
+				"label": "View Annotations",
+				"description": "View page comments pinned via the browser extension"
+			},
+			"annotationsWrite": {
+				"label": "Manage Annotations",
+				"description": "Create, edit, and delete page annotations"
+			},
+			"annotationsResolve": {
+				"label": "Resolve Annotations",
+				"description": "Mark a page annotation resolved or reopen it, without authoring or deleting one"
+			},
 			"workflowsRead": {
 				"label": "View Automation",
 				"description": "Browse automations and their configuration"
@@ -707,12 +851,15 @@
 		"permissionGroups": {
 			"project": "Project",
 			"members": "Members",
-			"roles": "Roles",
+			"settings": "Settings",
 			"tasks": "Tasks",
 			"sprints": "Sprints",
+			"views": "Views",
 			"documents": "Documents",
 			"aiAgents": "AI Agents",
+			"conversations": "Conversations",
 			"environments": "Environments",
+			"annotations": "Annotations",
 			"workflows": "Automation",
 			"plugins": "Plugins"
 		}
@@ -756,6 +903,10 @@
 			"description": "Manage roles and permissions for members of this project.",
 			"newRole": "New role",
 			"noPermissionsAssigned": "No permissions assigned",
+			"noPermission": {
+				"title": "You don't have permission to view roles",
+				"description": "Ask a project admin to grant you the project.roles.read permission."
+			},
 			"editRole": "Edit role",
 			"deleteRole": "Delete role",
 			"rolesDefined_one": "role defined",
@@ -778,6 +929,10 @@
 			"description": "Define the workflow statuses tasks move through in this project.",
 			"newStatus": "New status",
 			"reorderFailed": "Failed to save the new order. Please try again.",
+			"noPermission": {
+				"title": "You don't have permission to view task statuses",
+				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
+			},
 			"empty": {
 				"title": "No statuses defined",
 				"description": "Create statuses to define the workflow for tasks in this project.",
@@ -797,6 +952,10 @@
 			"title": "Task Types",
 			"description": "Categorise tasks with custom types (e.g. Bug, Feature, Story).",
 			"newType": "New type",
+			"noPermission": {
+				"title": "You don't have permission to view task types",
+				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
+			},
 			"empty": {
 				"title": "No task types defined",
 				"description": "Create types to categorise tasks by kind — e.g. Bug, Feature, Story.",
@@ -817,6 +976,10 @@
 			"title": "Custom Fields",
 			"description": "Define project-level custom task fields that extend tasks with additional data specific to your workflow.",
 			"newField": "New custom field",
+			"noPermission": {
+				"title": "You don't have permission to view custom fields",
+				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
+			},
 			"empty": {
 				"title": "No custom fields yet",
 				"description": "Custom fields let you capture data specific to your workflow — sprints, severity levels, release tags, and more.",
@@ -844,6 +1007,8 @@
 			"optionsLabel": "Options",
 			"addOptionPlaceholder": "Add option…",
 			"addOption": "Add",
+			"optionColorLabel": "Option color",
+			"noColor": "No color",
 			"requiredLabel": "Required",
 			"requiredHint": "Users must fill this field when creating or editing a task.",
 			"fieldTypes": {
@@ -934,6 +1099,10 @@
 		"addMember": "Add Member",
 		"memberCount_one": "{{count}} member",
 		"memberCount_other": "{{count}} members",
+		"noPermission": {
+			"title": "You don't have permission to view members",
+			"description": "Ask a project admin to grant you the project.members.read permission."
+		},
 		"empty": {
 			"title": "No members yet",
 			"description": "Add teammates or AI agents to this project to get started.",
@@ -1030,6 +1199,10 @@
 			"backToProject": "Back to project",
 			"projectFallback": "Project"
 		},
+		"noPermission": {
+			"title": "You don't have permission to view this task",
+			"description": "Ask a project admin to grant you the tasks.read permission."
+		},
 		"header": {
 			"created": "Created {{date}}",
 			"copied": "Copied!",
@@ -1057,6 +1230,7 @@
 			"reporter": "Reporter",
 			"sprint": "Sprint",
 			"productBacklog": "Product Backlog",
+			"sprintNotStarted": "(not started)",
 			"epic": "Epic",
 			"viewEpic": "View epic",
 			"removeEpic": "Remove epic",
@@ -1228,6 +1402,85 @@
 			"descriptionChangeDiff": "Description change diff"
 		}
 	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "Port forward not found",
+			"description": "This port forward may have been deleted or the link is invalid.",
+			"ariaLabel": "Port forward detail",
+			"backToEnvironment": "Back to environment"
+		},
+		"noPermission": {
+			"title": "You don't have access to this environment",
+			"description": "Ask a project admin to grant you access before you can view this port forward."
+		},
+		"tabs": {
+			"overview": "Overview",
+			"comments": "Comments"
+		},
+		"overview": {
+			"containerPort": "Container port {{port}}",
+			"hostPort": "Host port",
+			"unassigned": "Not assigned yet",
+			"createdAt": "Created {{date}}",
+			"open": "Open",
+			"delete": "Delete",
+			"deleteDialog": {
+				"title": "Delete port forward?",
+				"description_one": "This also deletes {{count}} comment made through this port forward. This action cannot be undone.",
+				"description_other": "This also deletes {{count}} comments made through this port forward. This action cannot be undone.",
+				"cancel": "Cancel",
+				"confirm": "Delete"
+			}
+		},
+		"comments": {
+			"empty": "No comments yet. Install the Paca browser extension to comment directly on elements of this port forward's preview.",
+			"status": {
+				"open": "Open",
+				"resolved": "Resolved"
+			},
+			"replyCount_one": "{{count}} reply",
+			"replyCount_other": "{{count}} replies",
+			"resolve": "Resolve",
+			"reopen": "Reopen",
+			"createTask": "Create task",
+			"taskCreated": "Task created"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "Comment not found",
+			"description": "This comment may have been deleted or the link is invalid.",
+			"ariaLabel": "Comment detail",
+			"backToPortForward": "Back to port forward"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this comment",
+			"description": "Ask a project admin to grant you the annotations.read permission."
+		},
+		"header": {
+			"createdAt": "Commented {{date}}"
+		},
+		"context": {
+			"title": "Context",
+			"pagePath": "Page",
+			"elementSelector": "Element selector",
+			"accessibleName": "Accessible name",
+			"consoleErrors": "Console errors",
+			"noConsoleErrors": "No console errors captured",
+			"failedRequests": "Failed requests",
+			"noFailedRequests": "No failed requests captured"
+		},
+		"thread": {
+			"replyPlaceholder": "Write a reply…",
+			"reply": "Reply"
+		},
+		"actions": {
+			"create": "Create",
+			"createConversation": "Create conversation",
+			"copyLink": "Copy link",
+			"linkCopied": "Copied!"
+		}
+	},
 	"epicPicker": {
 		"searchPlaceholder": "Search epics…",
 		"noEpicsFound": "No matching epics",
@@ -1329,6 +1582,10 @@
 			"clearAll": "Clear filters"
 		},
 		"list": {
+			"noPermission": {
+				"title": "You don't have permission to view conversations",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"empty": {
 				"title": "No conversations yet",
 				"description": "Conversations start when a task is assigned to an agent or someone messages one."
@@ -1452,12 +1709,14 @@
 		},
 		"startSprintModal": {
 			"title": "Start sprint",
+			"alreadyActiveWarning": "\"{{name}}\" is already active in this project. Starting this sprint won't stop it.",
 			"nameLabel": "Name",
 			"goalLabel": "Goal",
 			"optional": "(optional)",
 			"goalPlaceholder": "What should this sprint achieve?",
 			"startDateLabel": "Start date",
 			"endDateLabel": "End date",
+			"error": "Failed to start sprint. Please try again.",
 			"cancel": "Cancel",
 			"starting": "Starting…",
 			"startSprint": "Start sprint"
@@ -1469,11 +1728,12 @@
 		"sprintDetail": {
 			"notFound": "Sprint not found or access denied.",
 			"statusActive": "Active",
-			"statusPlanned": "Planned",
+			"statusPlanned": "Draft",
 			"statusCompleted": "Completed",
 			"description": "{{status}} sprint",
 			"descriptionWithStartDate": "{{status}} sprint · started {{date}}",
 			"editSprint": "Edit sprint",
+			"startSprint": "Start sprint",
 			"editSprintModal": {
 				"title": "Edit sprint",
 				"nameLabel": "Name",
@@ -1577,6 +1837,10 @@
 			"title": "Automation",
 			"subtitle": "React to task events with triggers, conditions, and actions",
 			"newAutomation": "New Automation",
+			"noPermission": {
+				"title": "You don't have permission to view automations",
+				"description": "Ask a project admin to grant you the workflows.read permission."
+			},
 			"empty": {
 				"title": "No automations yet",
 				"description": "Create an automation to react to task events with conditions and actions.",
@@ -1763,7 +2027,7 @@
 				"sprintGoalLabel": "Goal",
 				"sprintStatusLabel": "Status",
 				"sprintStatusUnchanged": "Leave unchanged",
-				"sprintStatusPlanned": "Planned",
+				"sprintStatusPlanned": "Draft",
 				"sprintStatusActive": "Active",
 				"sprintStatusCompleted": "Completed",
 				"completeSprintHint": "Marks the sprint complete and moves its unfinished tasks.",

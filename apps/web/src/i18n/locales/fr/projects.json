@@ -12,6 +12,12 @@
 				"customFields": "Champs personnalisés",
 				"dangerZone": "Zone de danger",
 				"plugins": "Plugins"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "Vous n'avez pas la permission de voir cet onglet",
+					"description": "Demandez à un propriétaire ou administrateur du projet de vous accorder l'accès à {{pluginName}}."
+				}
 			}
 		}
 	},
@@ -33,6 +39,9 @@
 			"agentTypeLLMHint": "Paca appelle directement l'API d'un modèle et exécute l'agent dans un conteneur isolé sur le serveur hébergeant Paca.",
 			"agentTypeACP": "ACP (CLI locale)",
 			"agentTypeACPHint": "Délègue à une CLI de code que vous exécutez vous-même — Claude Code, Codex, Gemini CLI ou un serveur ACP personnalisé.",
+			"agentTypeProviderCLI": "CLI fournisseur",
+			"agentTypeProviderCLIHint": "Exécute Claude Code, Codex, Cursor ou Gemini CLI dans un environnement statique hébergé par Paca, contrôlé de la même façon qu'un agent LLM.",
+			"agentTypeProviderCLIGlobalDisabledHint": "Disponible uniquement pour les agents de projet. Créez cet agent depuis la page Agents d'un projet.",
 			"modelSection": "Modèle",
 			"providerLabel": "Fournisseur",
 			"modelLabel": "Modèle",
@@ -54,6 +63,22 @@
 			"acpCommandPlaceholder": "npx -y my-acp-server",
 			"acpCommandHint": "Commande séparée par des espaces utilisée pour lancer votre serveur ACP.",
 			"acpGuidance": "Les outils, serveurs MCP et compétences ne sont pas configurés ici — ils proviennent des paramètres locaux propres à votre client ACP, exécuté avec vos propres identifiants git/gh (cloner, pousser et ouvrir des PR fonctionnent nativement). Une fois cet agent créé, nous vous guiderons pour connecter le bridge local, installer la compétence Paca et configurer le serveur MCP.",
+			"cliSection": "CLI fournisseur",
+			"cliProviderLabel": "Fournisseur de CLI",
+			"cliProviderClaudeCode": "Claude Code",
+			"cliProviderCodex": "Codex",
+			"cliProviderGeminiCli": "Gemini CLI",
+			"cliProviderCursorAgent": "Cursor",
+			"cliModelLabel": "Modèle",
+			"cliModelPlaceholder": "ex. sonnet, gpt-5.2-codex",
+			"cliGuidance": "Les serveurs MCP que vous configurez ci-dessous sont synchronisés dans la configuration propre de cette CLI à chaque conversation — Goose se contente d'exécuter cette CLI pour faire tourner l'agent, il ne gère pas ses outils. La synchronisation des compétences ne fonctionne actuellement qu'avec Claude Code.",
+			"cliEnvironmentHint": "Obligatoire — la connexion de cette CLI doit persister entre les conversations, ce que seul un environnement statique permet.",
+			"environmentPlaceholder": "Sélectionnez un environnement",
+			"cliAuthModeLabel": "Authentification",
+			"cliLoginModeHint": "Cette CLI nécessite sa propre connexion, une seule fois, dans le terminal de l'environnement de l'agent — l'authentification par clé API n'est pas encore disponible pour ce type d'agent.",
+			"cliLoginCommandLabel": "Commande de connexion",
+			"cliOpenTerminal": "Ouvrir le terminal",
+			"cliVerifyLogin": "Vérifier la connexion",
 			"systemPromptLabel": "Invite système",
 			"optional": "(optionnel)",
 			"charsCount": "{{count}} caractères",
@@ -73,6 +98,8 @@
 		"card": {
 			"configure": "Configurer",
 			"delete": "Supprimer",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "En ligne",
 			"acpStatusDisconnected": "Hors ligne",
 			"deleteDialog": {
@@ -92,6 +119,10 @@
 				"title": "Aucun agent pour le moment",
 				"description": "Ajoutez un agent IA pour automatiser des tâches, relire du code, rédiger de la documentation, et plus encore.",
 				"createFirstAgent": "Créer votre premier agent"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view agents",
+				"description": "Ask a project admin to grant you the agents.read permission."
 			}
 		},
 		"acpSetup": {
@@ -138,6 +169,7 @@
 				"mcpServers": "Serveurs MCP",
 				"skills": "Compétences",
 				"envVars": "Environnement",
+				"access": "Access",
 				"activity": "Activité"
 			},
 			"avatar": {
@@ -166,6 +198,9 @@
 				"committerEmailLabel": "E-mail du committer",
 				"dockerEnabledLabel": "Accès à Docker",
 				"dockerEnabledHint": "Donne à cet agent un démon Docker privé au sein de son sandbox. Désactivé par défaut — à activer uniquement pour les agents qui exécutent réellement des commandes Docker, car cela ajoute un temps de démarrage à chaque conversation.",
+				"parallelismLimitLabel": "Limite de parallélisme",
+				"parallelismLimitHint": "Combien de conversations de cet agent peuvent s'exécuter en même temps. Le travail supplémentaire attend dans une file jusqu'à ce qu'une place se libère — 1 par défaut, afin que les tickets soient traités un par un plutôt que de se disputer le même répertoire de travail.",
+				"parallelismLimitFixedHint": "Fixé à 1 pour cet agent — il travaille dans un répertoire partagé unique (le checkout local d'un agent ACP, ou un environnement par défaut statique), donc une seule conversation peut s'exécuter en toute sécurité à la fois.",
 				"environmentSection": "Environnement",
 				"defaultEnvironmentLabel": "Environnement par défaut",
 				"defaultEnvironmentHint": "Rattache les conversations de cet agent à un environnement statique au lieu d'un sandbox jetable à chaque fois.",
@@ -186,7 +221,25 @@
 				"acpProviderCustom": "Personnalisé…",
 				"acpCommandLabel": "Commande",
 				"acpCommandHint": "Commande séparée par des espaces utilisée pour lancer votre serveur ACP.",
-				"acpGuidanceBanner": "Les outils, serveurs MCP et compétences de cet agent sont configurés dans votre client ACP local, exécuté avec vos propres identifiants git/gh — pas dans Paca."
+				"acpGuidanceBanner": "Les outils, serveurs MCP et compétences de cet agent sont configurés dans votre client ACP local, exécuté avec vos propres identifiants git/gh — pas dans Paca.",
+				"cliConfiguration": "Configuration de la CLI fournisseur",
+				"cliProviderLabel": "Fournisseur de CLI",
+				"cliProviderClaudeCode": "Claude Code",
+				"cliProviderCodex": "Codex",
+				"cliProviderGeminiCli": "Gemini CLI",
+				"cliProviderCursorAgent": "Cursor",
+				"cliModelLabel": "Modèle",
+				"cliModelPlaceholder": "ex. sonnet, gpt-5.2-codex",
+				"cliGuidanceBanner": "Les serveurs MCP configurés ci-dessous sont synchronisés dans la configuration propre de cette CLI à chaque conversation — Goose se contente d'exécuter la CLI, il ne gère pas ses outils. La synchronisation des compétences ne fonctionne actuellement qu'avec Claude Code.",
+				"cliLoginPanelTitle": "Connexion CLI",
+				"cliLoginPanelDescription": "Vérifiez si la CLI de cet agent est actuellement connectée, ou ouvrez le terminal de son environnement pour vous connecter.",
+				"cliLoginOpenTerminal": "Ouvrir le terminal",
+				"cliLoginVerify": "Vérifier la connexion",
+				"cliLoginVerifiedNow": "Authentifié.",
+				"cliLoginNotAuthenticated": "Pas encore authentifié — connectez-vous via le terminal, puis vérifiez à nouveau.",
+				"cliLoginVerifyFailed": "Impossible de vérifier l'état de connexion. Veuillez réessayer.",
+				"cliLoginLastVerified": "Dernière vérification : {{date}}.",
+				"cliLoginNoEnvironment": "Cet agent n'a aucun environnement défini — choisissez-en un ci-dessus d'abord."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} serveur configuré",
@@ -250,6 +303,13 @@
 					"addSkill": "Ajouter la compétence"
 				}
 			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
+			},
 			"activity": {
 				"commented": "a commenté",
 				"sourceType": {
@@ -278,17 +338,33 @@
 		"conversationView": {
 			"stop": "Arrêter",
 			"notFound": "Conversation introuvable",
+			"noPermission": {
+				"title": "You don't have permission to view this conversation",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"chatSession": "Session de discussion",
 			"taskSession": "Session de tâche",
 			"pr": "PR",
 			"connect": "Se connecter",
 			"conversationEnded": "Cette conversation est terminée.",
 			"textOnlyMessage": "Seuls les messages texte sont pris en charge.",
+			"agentAccessRestricted": "Cet agent est à accès restreint. Demandez à un administrateur du projet de vous accorder l'accès avant de pouvoir discuter avec lui.",
+			"environmentAccessRestricted": "L'environnement de cette conversation est à accès restreint. Demandez à un administrateur du projet de vous accorder l'accès avant de pouvoir discuter avec cet agent.",
+			"chatNoPermission": "Vous n'avez pas la permission d'envoyer des messages dans cette conversation.",
 			"failed": "La conversation a échoué",
 			"noOutput": "L'agent n'a produit aucun résultat.",
 			"loadingOlder": "Chargement…",
 			"newBelow_one": "{{count}} nouveau message",
 			"newBelow_other": "{{count}} nouveaux messages"
+		},
+		"busyDialog": {
+			"title": "L'agent est occupé",
+			"description": "Cet agent exécute déjà {{running}}/{{limit}} conversation(s). Ajoutez ce message à la file d'attente pour qu'il démarre automatiquement dès qu'une place se libère, ou envoyez-le maintenant quand même.",
+			"folderDescription": "Une autre conversation travaille déjà dans ce dossier d'environnement. Ajoutez ce message à la file d'attente pour qu'il démarre automatiquement une fois cette conversation terminée, ou envoyez-le maintenant quand même.",
+			"cancel": "Annuler",
+			"queue": "Ajouter à la file",
+			"force": "Envoyer maintenant",
+			"cancelledError": "Message non envoyé."
 		},
 		"thread": {
 			"composerPlaceholder": "Message à l'agent…",
@@ -348,6 +424,7 @@
 				"contextTypeDoc": "Document",
 				"contextTypeConversation": "Conversation",
 				"contextTypeAutomation": "Automatisation",
+				"contextTypeAnnotation": "Commentaire",
 				"noContextResults": "Aucun résultat trouvé",
 				"contextSearchMinChars": "Saisissez au moins 2 caractères pour rechercher"
 			}
@@ -368,10 +445,16 @@
 			"title": "Environnements",
 			"subtitle": "Sandboxes nommés et persistants auxquels vos agents peuvent se rattacher d'une conversation à l'autre",
 			"newEnvironment": "Nouvel environnement",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "Aucun environnement pour le moment",
 				"description": "Créez un environnement statique pour conserver fichiers et processus en arrière-plan d'une conversation à l'autre, au lieu d'un sandbox jetable à chaque fois.",
 				"createFirstEnvironment": "Créez votre premier environnement"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view environments",
+				"description": "Ask a project admin to grant you the environments.read permission."
 			}
 		},
 		"createDialog": {
@@ -405,7 +488,8 @@
 			"tabs": {
 				"overview": "Aperçu",
 				"folders": "Dossiers",
-				"portForwards": "Transferts de ports"
+				"portForwards": "Transferts de ports",
+				"access": "Access"
 			},
 			"overview": {
 				"connect": "Se connecter",
@@ -450,6 +534,10 @@
 				"count_one": "{{count}} dossier configuré",
 				"count_other": "{{count}} dossiers configurés",
 				"addFolder": "Ajouter un dossier",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its folders."
+				},
 				"deleteFailed": "Échec de la suppression du dossier. Veuillez réessayer.",
 				"empty": {
 					"title": "Aucun dossier ajouté",
@@ -476,9 +564,14 @@
 				"count_one": "{{count}} transfert de port",
 				"count_other": "{{count}} transferts de ports",
 				"add": "Ajouter un transfert de port",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its port forwards."
+				},
 				"deleteFailed": "Échec de la suppression du transfert de port. Veuillez réessayer.",
 				"containerPort": "Port du conteneur {{port}}",
 				"unassigned": "Pas encore assigné",
+				"open": "Ouvrir",
 				"restart": "Redémarrer",
 				"pendingRestartRunning": "Un transfert de port a été ajouté ou supprimé. Redémarrez l'environnement pour l'appliquer.",
 				"pendingRestartStopped": "Un transfert de port a été ajouté ou supprimé. Il sera appliqué au prochain démarrage de cet environnement.",
@@ -503,6 +596,13 @@
 					"cancel": "Annuler",
 					"confirm": "Redémarrer"
 				}
+			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
 				"connectHint": "Remplacez <bastion-host> par l'adresse du bastion SSH configuré sur ce déploiement.",
@@ -551,6 +651,7 @@
 				"connect": "Se connecter",
 				"notRunning": "Démarrez l'environnement avant de vous connecter.",
 				"readOnly": "Vous n'avez pas la permission d'ouvrir un terminal sur cet environnement.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can open a terminal.",
 				"hint": "S'ouvre dans un nouvel onglet en plein écran.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -561,7 +662,8 @@
 				"step1Description": "Enregistrez la clé publique de la paire de clés SSH avec laquelle vous souhaitez vous connecter.",
 				"step2Title": "Connectez-vous depuis votre terminal",
 				"step2Description": "Exécutez cette commande depuis votre terminal :",
-				"notRunning": "Démarrez l'environnement avant de vous connecter."
+				"notRunning": "Démarrez l'environnement avant de vous connecter.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can connect via SSH."
 			}
 		}
 	},
@@ -570,6 +672,10 @@
 			"notFound": {
 				"title": "Document introuvable",
 				"description": "Ce document a peut-être été supprimé ou le lien est invalide."
+			},
+			"noPermission": {
+				"title": "You don't have permission to view this document",
+				"description": "Ask a project admin to grant you the docs.read permission."
 			},
 			"unsaved": "Non enregistré",
 			"saving": "Enregistrement…",
@@ -608,6 +714,8 @@
 			"roleNameLabel": "Nom du rôle",
 			"roleNamePlaceholder": "ex. PROJECT_REVIEWER",
 			"permissionsLabel": "Permissions",
+			"fullAccessBadge": "Accès complet",
+			"fullAccessDescription": "Ce rôle inclut automatiquement toutes les permissions, y compris celles ajoutées ultérieurement. Modifier un interrupteur ci-dessous le convertira en un ensemble fixe correspondant aux permissions actuelles.",
 			"enabledCount_one": "{{count}} activée",
 			"enabledCount_other": "{{count}} activées",
 			"cancel": "Annuler",
@@ -623,10 +731,6 @@
 			}
 		},
 		"permissions": {
-			"projectsRead": {
-				"label": "Lire le projet",
-				"description": "Voir les détails et paramètres du projet"
-			},
 			"projectsWrite": {
 				"label": "Modifier le projet",
 				"description": "Mettre à jour le nom, la description et les paramètres du projet"
@@ -651,6 +755,18 @@
 				"label": "Gérer les rôles",
 				"description": "Créer, modifier et supprimer les rôles du projet"
 			},
+			"settingsTaskTypesWrite": {
+				"label": "Manage Task Types",
+				"description": "Create, edit, delete, and set the default task type"
+			},
+			"settingsTaskStatusesWrite": {
+				"label": "Manage Task Statuses",
+				"description": "Create, edit, delete, reorder, and set the default task status"
+			},
+			"settingsCustomFieldsWrite": {
+				"label": "Manage Custom Fields",
+				"description": "Create, edit, and delete custom field definitions"
+			},
 			"tasksRead": {
 				"label": "Voir les tâches",
 				"description": "Parcourir et lire les tâches du projet"
@@ -666,6 +782,14 @@
 			"sprintsWrite": {
 				"label": "Gérer les sprints",
 				"description": "Créer, mettre à jour et clôturer des sprints"
+			},
+			"viewsRead": {
+				"label": "View Boards",
+				"description": "Browse saved board and list views"
+			},
+			"viewsWrite": {
+				"label": "Manage Boards",
+				"description": "Create, edit, delete, and reorder board and list views"
 			},
 			"docsRead": {
 				"label": "Voir les documents",
@@ -683,6 +807,14 @@
 				"label": "Gérer les agents",
 				"description": "Créer, configurer et supprimer des agents IA"
 			},
+			"conversationsRead": {
+				"label": "Voir les conversations",
+				"description": "Parcourir les conversations des agents et les observer, sans pouvoir en démarrer ni y répondre"
+			},
+			"conversationsWrite": {
+				"label": "Gérer les conversations",
+				"description": "Démarrer des conversations avec un agent, y répondre, et les arrêter ou les mettre en pause"
+			},
 			"environmentsRead": {
 				"label": "Voir les environnements",
 				"description": "Parcourir les environnements et consulter leur configuration"
@@ -694,6 +826,18 @@
 			"environmentsConnect": {
 				"label": "Se connecter aux environnements",
 				"description": "Ouvrir une session de terminal interactive dans un environnement en cours d'exécution"
+			},
+			"annotationsRead": {
+				"label": "View Annotations",
+				"description": "View page comments pinned via the browser extension"
+			},
+			"annotationsWrite": {
+				"label": "Manage Annotations",
+				"description": "Create, edit, and delete page annotations"
+			},
+			"annotationsResolve": {
+				"label": "Resolve Annotations",
+				"description": "Mark a page annotation resolved or reopen it, without authoring or deleting one"
 			},
 			"workflowsRead": {
 				"label": "Voir l'automatisation",
@@ -707,12 +851,15 @@
 		"permissionGroups": {
 			"project": "Projet",
 			"members": "Membres",
-			"roles": "Rôles",
+			"settings": "Settings",
 			"tasks": "Tâches",
 			"sprints": "Sprints",
+			"views": "Views",
 			"documents": "Documents",
 			"aiAgents": "Agents IA",
+			"conversations": "Conversations",
 			"environments": "Environnements",
+			"annotations": "Annotations",
 			"workflows": "Automatisation",
 			"plugins": "Plugins"
 		}
@@ -771,7 +918,11 @@
 				"permissions": "Permissions",
 				"created": "Créé"
 			},
-			"systemRolesNote": "Les rôles système sont des modèles partagés et ne peuvent pas être modifiés ou supprimés."
+			"systemRolesNote": "Les rôles système sont des modèles partagés et ne peuvent pas être modifiés ou supprimés.",
+			"noPermission": {
+				"title": "You don't have permission to view roles",
+				"description": "Ask a project admin to grant you the project.roles.read permission."
+			}
 		},
 		"taskStatuses": {
 			"title": "Statuts de tâche",
@@ -791,7 +942,11 @@
 			"default": "Par défaut",
 			"setAsDefault": "Définir comme statut par défaut",
 			"editStatus": "Modifier le statut",
-			"deleteStatus": "Supprimer le statut"
+			"deleteStatus": "Supprimer le statut",
+			"noPermission": {
+				"title": "You don't have permission to view task statuses",
+				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
+			}
 		},
 		"taskTypes": {
 			"title": "Types de tâche",
@@ -811,7 +966,11 @@
 			"default": "Par défaut",
 			"setAsDefault": "Définir comme type par défaut",
 			"editType": "Modifier le type",
-			"deleteType": "Supprimer le type"
+			"deleteType": "Supprimer le type",
+			"noPermission": {
+				"title": "You don't have permission to view task types",
+				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
+			}
 		},
 		"customFields": {
 			"title": "Champs personnalisés",
@@ -844,6 +1003,8 @@
 			"optionsLabel": "Options",
 			"addOptionPlaceholder": "Ajouter une option…",
 			"addOption": "Ajouter",
+			"optionColorLabel": "Couleur de l'option",
+			"noColor": "Aucune couleur",
 			"requiredLabel": "Requis",
 			"requiredHint": "Les utilisateurs doivent renseigner ce champ lors de la création ou de la modification d'une tâche.",
 			"fieldTypes": {
@@ -880,6 +1041,10 @@
 				"confirmTextSuffix": " ? Les données de tâches stockées dans ce champ seront perdues. Cette action est irréversible.",
 				"deleteFailed": "Échec de la suppression du champ. Veuillez réessayer.",
 				"deleteField": "Supprimer le champ"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view custom fields",
+				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
 		"dangerZone": {
@@ -975,6 +1140,10 @@
 			"removeFailed": "Échec du retrait du membre. Veuillez réessayer.",
 			"cancel": "Annuler",
 			"remove": "Retirer"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view members",
+			"description": "Ask a project admin to grant you the project.members.read permission."
 		}
 	},
 	"aiChat": {
@@ -1030,6 +1199,10 @@
 			"backToProject": "Retour au projet",
 			"projectFallback": "Projet"
 		},
+		"noPermission": {
+			"title": "You don't have permission to view this task",
+			"description": "Ask a project admin to grant you the tasks.read permission."
+		},
 		"header": {
 			"created": "Créée {{date}}",
 			"copied": "Copié !",
@@ -1057,6 +1230,7 @@
 			"reporter": "Rapporteur",
 			"sprint": "Sprint",
 			"productBacklog": "Backlog produit",
+			"sprintNotStarted": "(non démarré)",
 			"epic": "Epic",
 			"viewEpic": "Voir l'epic",
 			"removeEpic": "Retirer l'epic",
@@ -1228,6 +1402,85 @@
 			"descriptionChangeDiff": "Différences des modifications de la description"
 		}
 	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "Redirection de port introuvable",
+			"description": "Cette redirection de port a peut-être été supprimée ou le lien n'est pas valide.",
+			"ariaLabel": "Détail de la redirection de port",
+			"backToEnvironment": "Retour à l'environnement"
+		},
+		"noPermission": {
+			"title": "You don't have access to this environment",
+			"description": "Ask a project admin to grant you access before you can view this port forward."
+		},
+		"tabs": {
+			"overview": "Aperçu",
+			"comments": "Commentaires"
+		},
+		"overview": {
+			"containerPort": "Port du conteneur {{port}}",
+			"hostPort": "Port hôte",
+			"unassigned": "Pas encore assigné",
+			"createdAt": "Créé le {{date}}",
+			"open": "Ouvrir",
+			"delete": "Supprimer",
+			"deleteDialog": {
+				"title": "Supprimer la redirection de port ?",
+				"description_one": "Cela supprime également {{count}} commentaire fait via cette redirection de port. Cette action est irréversible.",
+				"description_other": "Cela supprime également {{count}} commentaires faits via cette redirection de port. Cette action est irréversible.",
+				"cancel": "Annuler",
+				"confirm": "Supprimer"
+			}
+		},
+		"comments": {
+			"empty": "Pas encore de commentaires. Installez l'extension de navigateur Paca pour commenter directement les éléments de l'aperçu de cette redirection de port.",
+			"status": {
+				"open": "Ouvert",
+				"resolved": "Résolu"
+			},
+			"replyCount_one": "{{count}} réponse",
+			"replyCount_other": "{{count}} réponses",
+			"resolve": "Résoudre",
+			"reopen": "Rouvrir",
+			"createTask": "Créer une tâche",
+			"taskCreated": "Tâche créée"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "Commentaire introuvable",
+			"description": "Ce commentaire a peut-être été supprimé ou le lien n'est pas valide.",
+			"ariaLabel": "Détail du commentaire",
+			"backToPortForward": "Retour à la redirection de port"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this comment",
+			"description": "Ask a project admin to grant you the annotations.read permission."
+		},
+		"header": {
+			"createdAt": "Commenté le {{date}}"
+		},
+		"context": {
+			"title": "Contexte",
+			"pagePath": "Page",
+			"elementSelector": "Sélecteur d'élément",
+			"accessibleName": "Nom accessible",
+			"consoleErrors": "Erreurs de console",
+			"noConsoleErrors": "Aucune erreur de console capturée",
+			"failedRequests": "Requêtes échouées",
+			"noFailedRequests": "Aucune requête échouée capturée"
+		},
+		"thread": {
+			"replyPlaceholder": "Écrire une réponse…",
+			"reply": "Répondre"
+		},
+		"actions": {
+			"create": "Créer",
+			"createConversation": "Créer une conversation",
+			"copyLink": "Copier le lien",
+			"linkCopied": "Copié !"
+		}
+	},
 	"epicPicker": {
 		"searchPlaceholder": "Rechercher des epics…",
 		"noEpicsFound": "Aucun epic correspondant",
@@ -1329,6 +1582,10 @@
 			"clearAll": "Effacer les filtres"
 		},
 		"list": {
+			"noPermission": {
+				"title": "You don't have permission to view conversations",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"empty": {
 				"title": "Aucune conversation pour le moment",
 				"description": "Les conversations démarrent lorsqu'une tâche est attribuée à un agent ou que quelqu'un lui envoie un message."
@@ -1452,12 +1709,14 @@
 		},
 		"startSprintModal": {
 			"title": "Démarrer le sprint",
+			"alreadyActiveWarning": "« {{name}} » est déjà actif dans ce projet. Démarrer ce sprint ne l'arrêtera pas.",
 			"nameLabel": "Nom",
 			"goalLabel": "Objectif",
 			"optional": "(optionnel)",
 			"goalPlaceholder": "Que devrait accomplir ce sprint ?",
 			"startDateLabel": "Date de début",
 			"endDateLabel": "Date de fin",
+			"error": "Échec du démarrage du sprint. Veuillez réessayer.",
 			"cancel": "Annuler",
 			"starting": "Démarrage…",
 			"startSprint": "Démarrer le sprint"
@@ -1469,11 +1728,12 @@
 		"sprintDetail": {
 			"notFound": "Sprint introuvable ou accès refusé.",
 			"statusActive": "Actif",
-			"statusPlanned": "Planifié",
+			"statusPlanned": "Brouillon",
 			"statusCompleted": "Terminé",
 			"description": "Sprint {{status}}",
 			"descriptionWithStartDate": "Sprint {{status}} · débuté le {{date}}",
 			"editSprint": "Modifier le sprint",
+			"startSprint": "Démarrer le sprint",
 			"editSprintModal": {
 				"title": "Modifier le sprint",
 				"nameLabel": "Nom",
@@ -1583,7 +1843,11 @@
 				"createFirst": "Créer votre première automatisation"
 			},
 			"noDescription": "Aucune description",
-			"updated": "Mis à jour {{time}}"
+			"updated": "Mis à jour {{time}}",
+			"noPermission": {
+				"title": "You don't have permission to view automations",
+				"description": "Ask a project admin to grant you the workflows.read permission."
+			}
 		},
 		"status": {
 			"active": "Actif",
@@ -1763,7 +2027,7 @@
 				"sprintGoalLabel": "Objectif",
 				"sprintStatusLabel": "Statut",
 				"sprintStatusUnchanged": "Ne pas modifier",
-				"sprintStatusPlanned": "Planifié",
+				"sprintStatusPlanned": "Brouillon",
 				"sprintStatusActive": "Actif",
 				"sprintStatusCompleted": "Terminé",
 				"completeSprintHint": "Marque le sprint comme terminé et déplace ses tâches non terminées.",

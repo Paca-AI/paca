@@ -294,6 +294,10 @@ const (
 	CodeAgentSkillNotFound Code = "AGENT_SKILL_NOT_FOUND"
 	// CodeAgentSkillNameReserved indicates the skill name collides with a name reserved for internal agent scaffolding.
 	CodeAgentSkillNameReserved Code = "AGENT_SKILL_NAME_RESERVED"
+	// CodeAgentSkillNameInvalid indicates the skill name is empty, ".", "..", or
+	// contains a path separator — any of which could escape the on-disk
+	// directory a skill's SKILL.md is written under.
+	CodeAgentSkillNameInvalid Code = "AGENT_SKILL_NAME_INVALID"
 	// CodeAgentNotSupportedForACPAgent indicates an MCP server/skill/env var operation was attempted on an ACP-type agent.
 	CodeAgentNotSupportedForACPAgent Code = "AGENT_NOT_SUPPORTED_FOR_ACP_AGENT"
 	// CodeAgentConversationNotFound indicates the requested conversation does not exist.
@@ -304,6 +308,23 @@ const (
 	CodeAgentConversationAlreadyStopped Code = "AGENT_CONVERSATION_ALREADY_STOPPED"
 	// CodeAgentConversationBusy indicates a chat reply was sent while the agent is still responding to the previous one.
 	CodeAgentConversationBusy Code = "AGENT_CONVERSATION_BUSY"
+	// CodeAgentParallelismLimitReached indicates a new chat message would
+	// exceed the agent's parallelism_limit of simultaneously running
+	// conversations. Carries Details["running"]/["limit"] (see
+	// apierr.NewWithDetails) so the client can show the current counts and
+	// offer to queue the message or send it anyway (on_busy=queue|force).
+	CodeAgentParallelismLimitReached Code = "AGENT_PARALLELISM_LIMIT_REACHED"
+	// CodeAgentEnvironmentFolderBusy indicates a new chat message would
+	// start a conversation in an environment folder another conversation
+	// (from any agent) is already running in. Carries
+	// Details["environment_id"] (see apierr.NewWithDetails) so the client
+	// can offer to queue the message or send it anyway
+	// (on_busy=queue|force) — same contract as CodeAgentParallelismLimitReached,
+	// just a different reason for being busy.
+	CodeAgentEnvironmentFolderBusy Code = "AGENT_ENVIRONMENT_FOLDER_BUSY"
+	// CodeAgentOnBusyInvalid indicates on_busy was set to something other
+	// than "", "queue", or "force".
+	CodeAgentOnBusyInvalid Code = "AGENT_ON_BUSY_INVALID"
 	// CodeAgentConversationInvalidCursor indicates a client-supplied pagination cursor failed to decode.
 	CodeAgentConversationInvalidCursor Code = "AGENT_CONVERSATION_INVALID_CURSOR"
 	// CodeAgentActivityInvalidCursor indicates a client-supplied activity feed pagination cursor failed to decode.
@@ -329,6 +350,38 @@ const (
 	// default_environment_id, was set without a default_environment_id
 	// also set, or was set on a global-scope agent.
 	CodeAgentDefaultFolderInvalid Code = "AGENT_DEFAULT_FOLDER_INVALID"
+	// CodeAgentParallelismLimitUnsupported indicates parallelism_limit > 1
+	// was requested for an agent that can't safely run more than one
+	// conversation at once (an ACP-type agent, or one attached to a shared
+	// default_environment_id) — see agentdom.ErrParallelismLimitRequiresIsolatedSandbox.
+	CodeAgentParallelismLimitUnsupported Code = "AGENT_PARALLELISM_LIMIT_UNSUPPORTED"
+	// CodeAgentCLIProviderInvalid indicates cli_provider is not one of the supported values.
+	CodeAgentCLIProviderInvalid Code = "AGENT_CLI_PROVIDER_INVALID"
+	// CodeAgentCLIAuthModeInvalid indicates cli_auth_mode is not one of the supported values.
+	CodeAgentCLIAuthModeInvalid Code = "AGENT_CLI_AUTH_MODE_INVALID"
+	// CodeAgentCLIProviderNoAPIKeyAuth indicates cli_auth_mode=api_key was requested for a
+	// cli_provider with no known non-interactive API-key auth path.
+	CodeAgentCLIProviderNoAPIKeyAuth Code = "AGENT_CLI_PROVIDER_NO_API_KEY_AUTH"
+	// CodeAgentDefaultEnvironmentRequiredForCLIProvider indicates a provider_cli agent was
+	// created/updated, or a conversation started for one, without a default_environment_id
+	// resolving to a real environment.
+	CodeAgentDefaultEnvironmentRequiredForCLIProvider Code = "AGENT_DEFAULT_ENVIRONMENT_REQUIRED_FOR_CLI_PROVIDER"
+	// CodeAgentCLIProviderNotSupportedForGlobalAgents indicates agent_type=provider_cli was
+	// requested for a global-scope agent.
+	CodeAgentCLIProviderNotSupportedForGlobalAgents Code = "AGENT_CLI_PROVIDER_NOT_SUPPORTED_FOR_GLOBAL_AGENTS"
+	// CodeAgentNotProviderCLI indicates VerifyCLILogin (or another provider_cli-only
+	// operation) was called on an agent whose agent_type isn't provider_cli.
+	CodeAgentNotProviderCLI Code = "AGENT_NOT_PROVIDER_CLI"
+	// CodeAgentAccessModeInvalid indicates access_mode is not "open" or "restricted".
+	CodeAgentAccessModeInvalid Code = "AGENT_ACCESS_MODE_INVALID"
+	// CodeAgentAccessGrantExists indicates the target member already has an
+	// access grant for this agent.
+	CodeAgentAccessGrantExists Code = "AGENT_ACCESS_GRANT_EXISTS"
+	// CodeAgentAccessRestricted indicates the agent is access_mode=restricted
+	// and the caller holds no grant for it — a usage action (starting/
+	// driving a conversation) was attempted, not a configuration one, which
+	// stays gated purely on agents.write regardless of access_mode.
+	CodeAgentAccessRestricted Code = "AGENT_ACCESS_RESTRICTED"
 
 	// --- Environment errors (static environments — see
 	// docs/ai-agent/environment-management.md) --------------------------------
@@ -370,6 +423,17 @@ const (
 	CodeEnvironmentPortForwardContainerPortInvalid Code = "ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_INVALID"
 	// CodeEnvironmentPortForwardContainerPortTaken indicates a port forward for this container port already exists on this environment.
 	CodeEnvironmentPortForwardContainerPortTaken Code = "ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_TAKEN"
+	// CodeEnvironmentAccessModeInvalid indicates access_mode is not "open" or "restricted".
+	CodeEnvironmentAccessModeInvalid Code = "ENVIRONMENT_ACCESS_MODE_INVALID"
+	// CodeEnvironmentAccessGrantExists indicates the target member already
+	// has an access grant for this environment.
+	CodeEnvironmentAccessGrantExists Code = "ENVIRONMENT_ACCESS_GRANT_EXISTS"
+	// CodeEnvironmentAccessRestricted indicates the environment is
+	// access_mode=restricted and the caller holds no grant for it — a usage
+	// action (browse, SSH keys, port forwards, terminal) was attempted, not
+	// a configuration one, which stays gated purely on environments.write
+	// regardless of access_mode.
+	CodeEnvironmentAccessRestricted Code = "ENVIRONMENT_ACCESS_RESTRICTED"
 
 	// --- Automation errors -----------------------------------------------------
 
@@ -414,6 +478,21 @@ const (
 	CodeAutomationActivateNoAction Code = "AUTOMATION_ACTIVATE_NO_ACTION"
 	// CodeAutomationWebhookTokenInvalid indicates a webhook trigger POST presented a missing, wrong, or revoked token.
 	CodeAutomationWebhookTokenInvalid Code = "AUTOMATION_WEBHOOK_TOKEN_INVALID"
+
+	// CodeAnnotationNotFound indicates the requested page annotation does not exist.
+	CodeAnnotationNotFound Code = "ANNOTATION_NOT_FOUND"
+	// CodeAnnotationBodyEmpty indicates a comment/reply body was empty.
+	CodeAnnotationBodyEmpty Code = "ANNOTATION_BODY_EMPTY"
+	// CodeAnnotationAlreadyHasTask indicates CreateTaskFromAnnotation was called on an annotation that already has a linked task.
+	CodeAnnotationAlreadyHasTask Code = "ANNOTATION_ALREADY_HAS_TASK"
+	// CodeAnnotationTaskCreationInProgress indicates another (or a very recent) call has already claimed this annotation for task creation.
+	CodeAnnotationTaskCreationInProgress Code = "ANNOTATION_TASK_CREATION_IN_PROGRESS"
+	// CodeAnnotationScreenshotNotUploaded indicates GetScreenshotURL was called on an annotation with no screenshot attached.
+	CodeAnnotationScreenshotNotUploaded Code = "ANNOTATION_SCREENSHOT_NOT_UPLOADED"
+	// CodeAnnotationScreenshotMismatch indicates the referenced file isn't a screenshot the caller uploaded for this annotation.
+	CodeAnnotationScreenshotMismatch Code = "ANNOTATION_SCREENSHOT_MISMATCH"
+	// CodePortForwardNotFound indicates no port forward matches the requested host port for a project the caller belongs to.
+	CodePortForwardNotFound Code = "PORT_FORWARD_NOT_FOUND"
 )
 
 // Error carries a machine-readable Code alongside a human-readable Message.

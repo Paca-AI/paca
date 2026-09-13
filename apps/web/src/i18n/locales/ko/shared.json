@@ -2,6 +2,13 @@
 	"activityPane": {
 		"title": "활동",
 		"empty": "아직 활동이 없습니다",
+		"emptyComments": "아직 댓글이 없습니다",
+		"showAllActivity": "전체 활동 보기",
+		"filter": {
+			"label": "활동 필터",
+			"comments": "댓글",
+			"all": "전체 활동"
+		},
 		"editingComment": "댓글 수정 중...",
 		"cancel": "취소",
 		"sendHint": "⌘↵ 로 전송",

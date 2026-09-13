@@ -1,4 +1,10 @@
 {
+	"common": {
+		"notFound": "Not found",
+		"somethingWentWrong": "Something went wrong",
+		"retry": "Retry",
+		"noPermissionToView": "You don't have permission to view this"
+	},
 	"dialog": {
 		"closeLabel": "閉じる",
 		"closeButton": "閉じる"

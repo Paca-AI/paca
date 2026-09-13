@@ -62,6 +62,33 @@ describe("hasPermission", () => {
 			};
 			expect(hasPermission(map, "tasks.read", "proj-1")).toBe(false);
 		});
+
+		// Regression coverage: some permission keys now nest three or more
+		// segments deep (project.settings.task_types.read), with the granted
+		// wildcard sitting below the top level (project.settings.*, not a
+		// bare project.*) — mirrors the Go backend's authorizer, which checks
+		// every granted "<prefix>.*" key rather than deriving a single
+		// candidate from the required key's first segment.
+		it("grants via a nested domain wildcard (project.settings.*)", () => {
+			const map: PermissionMap = {
+				global: { "project.settings.*": true },
+				projects: {},
+			};
+			expect(hasPermission(map, "project.settings.task_types.read")).toBe(true);
+			expect(hasPermission(map, "project.settings.custom_fields.write")).toBe(
+				true,
+			);
+		});
+
+		it("does not grant a nested permission via a same-prefix but unrelated wildcard", () => {
+			const map: PermissionMap = {
+				global: { "project.roles.*": true },
+				projects: {},
+			};
+			expect(hasPermission(map, "project.settings.task_types.read")).toBe(
+				false,
+			);
+		});
 	});
 
 	describe("project-scoped permissions", () => {
@@ -103,6 +130,16 @@ describe("hasPermission", () => {
 				projects: { "proj-1": { "tasks.read": true } },
 			};
 			expect(hasPermission(map, "tasks.read")).toBe(false);
+		});
+
+		it("grants via a nested project domain wildcard (views.* covering views.write)", () => {
+			const map: PermissionMap = {
+				global: {},
+				projects: { "proj-1": { "project.settings.*": true } },
+			};
+			expect(
+				hasPermission(map, "project.settings.task_statuses.write", "proj-1"),
+			).toBe(true);
 		});
 	});
 
@@ -161,13 +198,103 @@ describe("getToolPermission", () => {
 
 	it("returns the correct permission for list_views", () => {
 		const perm = getToolPermission("list_views");
+		expect(perm?.permissionKey).toBe("views.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	// Regression coverage: redefining a task-type/task-status/custom-field
+	// (create/update/delete/etc.) is split off tasks.write onto its own
+	// project.settings.*.write key, since the backend stopped requiring
+	// tasks.write to edit project schema (see router.go's task-types/task-
+	// statuses/custom-fields route comments) — these write tools previously
+	// stayed mapped to tasks.write, which would show them as available to a
+	// member who can edit tasks but was never granted schema access, only
+	// for the backend to 403 the call. Viewing the schema has no such split
+	// — it stays on tasks.read (see list_task_statuses below).
+	it("returns the correct permission for create_task_type", () => {
+		const perm = getToolPermission("create_task_type");
+		expect(perm?.permissionKey).toBe("project.settings.task_types.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	// list_task_types/list_task_statuses/list_custom_fields/get_custom_field
+	// have no dedicated read permission — viewing project schema is implied
+	// by tasks.read, same as viewing the tasks that reference it. Only
+	// redefining it (create/update/delete/set-default/reorder) is its own,
+	// narrower project.settings.*.write capability — see create_task_type
+	// and update_custom_field below.
+	it("returns the correct permission for list_task_statuses", () => {
+		const perm = getToolPermission("list_task_statuses");
 		expect(perm?.permissionKey).toBe("tasks.read");
 		expect(perm?.requiresProject).toBe(true);
 	});
 
-	it("has no permission mapping for read_conversation — it's always listed, since its real authorization is unconditional and self-scoped (see TOOL_PERMISSIONS' comment)", () => {
+	it("returns the correct permission for update_custom_field", () => {
+		const perm = getToolPermission("update_custom_field");
+		expect(perm?.permissionKey).toBe("project.settings.custom_fields.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	// list_task_positions/bulk_move_tasks/move_task stay on tasks.* even
+	// after the views.* split above — moving a task between statuses within
+	// a view is still editing a task, not the view or the status list.
+	it("returns the correct permission for bulk_move_tasks", () => {
+		const perm = getToolPermission("bulk_move_tasks");
+		expect(perm?.permissionKey).toBe("tasks.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for read_conversation — gated on conversations.read, not left unmapped, even though the backend also enforces its own agent_id match separately", () => {
 		const perm = getToolPermission("read_conversation");
-		expect(perm).toBeNull();
+		expect(perm?.permissionKey).toBe("conversations.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	// Regression coverage: these seven tools were added (task-link and
+	// doc-activity/doc-comment features) without a matching TOOL_PERMISSIONS
+	// entry, which left them unconditionally listed for every caller even
+	// though the backend itself always enforced tasks.read/tasks.write and
+	// docs.read/docs.write for these endpoints.
+	it("returns the correct permission for list_task_links", () => {
+		const perm = getToolPermission("list_task_links");
+		expect(perm?.permissionKey).toBe("tasks.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for create_task_link", () => {
+		const perm = getToolPermission("create_task_link");
+		expect(perm?.permissionKey).toBe("tasks.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for delete_task_link", () => {
+		const perm = getToolPermission("delete_task_link");
+		expect(perm?.permissionKey).toBe("tasks.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for list_doc_activities", () => {
+		const perm = getToolPermission("list_doc_activities");
+		expect(perm?.permissionKey).toBe("docs.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for add_doc_comment", () => {
+		const perm = getToolPermission("add_doc_comment");
+		expect(perm?.permissionKey).toBe("docs.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for update_doc_comment", () => {
+		const perm = getToolPermission("update_doc_comment");
+		expect(perm?.permissionKey).toBe("docs.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for delete_doc_comment", () => {
+		const perm = getToolPermission("delete_doc_comment");
+		expect(perm?.permissionKey).toBe("docs.write");
+		expect(perm?.requiresProject).toBe(true);
 	});
 });
 
@@ -193,6 +320,8 @@ describe("TOOL_PERMISSIONS", () => {
 			"create_custom_field",
 			"list_task_attachments",
 			"add_task_comment",
+			"list_task_links",
+			"list_doc_activities",
 		];
 		for (const name of expected) {
 			expect(names, `missing tool: ${name}`).toContain(name);

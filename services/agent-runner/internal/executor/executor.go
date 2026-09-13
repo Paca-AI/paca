@@ -15,6 +15,7 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/acp"
 	"github.com/Paca-AI/agent-runner/internal/agent"
 	"github.com/Paca-AI/agent-runner/internal/chatsandbox"
+	"github.com/Paca-AI/agent-runner/internal/executor/providercli"
 	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
 	"github.com/Paca-AI/agent-runner/internal/secret"
@@ -199,6 +200,20 @@ type Result struct {
 // make_event_callback plays in executor.py. Not done inside this package so
 // Run stays testable without a live Valkey/Postgres connection.
 func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trigger, resume *chatsandbox.State, onEvent func(acp.Event), onReady func()) (Result, error) {
+	// A provider_cli agent's underlying CLI persists its own login
+	// credentials on disk (see internal/executor/providercli's symlink
+	// bootstrap) — that state must survive across turns, which only a
+	// static environment's persistent volume provides, so this type must
+	// never take the ephemeral coldStart path below. services/api already
+	// enforces this at agent create/update time and at every conversation
+	// start (agentdom.ErrDefaultEnvironmentRequiredForCLIProvider), so
+	// reaching this with trigger.EnvironmentID == nil means that guarantee
+	// was somehow bypassed upstream — fail loudly here rather than
+	// silently spinning up a disposable sandbox with no persisted login.
+	if cfg.AgentType == agent.AgentTypeProviderCLI && trigger.EnvironmentID == nil {
+		return Result{}, fmt.Errorf("executor: provider_cli agent %s has no environment_id — refusing to fall back to an ephemeral sandbox", cfg.ID)
+	}
+
 	timeoutMinutes := cfg.TimeoutMinutes
 	if timeoutMinutes <= 0 {
 		timeoutMinutes = defaultTimeoutMinutes
@@ -428,6 +443,10 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 // Env included, must be safe to re-apply on every start, not just the
 // first).
 func (e *Executor) buildAgentContainerEnv(cfg agent.Config) (map[string]string, error) {
+	if cfg.AgentType == agent.AgentTypeProviderCLI {
+		return e.buildProviderCLIContainerEnv(cfg)
+	}
+
 	apiKey, err := e.encryptor.Decrypt(cfg.LLMAPIKeySecret)
 	if err != nil {
 		return nil, fmt.Errorf("executor: decrypt llm api key: %w", err)
@@ -446,6 +465,45 @@ func (e *Executor) buildAgentContainerEnv(cfg agent.Config) (map[string]string, 
 		// URL for a *named* provider (e.g. a private Anthropic-compatible
 		// gateway) isn't wired here; extend this once that case is real.
 		containerEnv["OPENAI_HOST"] = cfg.LLMBaseURL
+	}
+
+	for _, ev := range cfg.EnvVars {
+		val, err := e.encryptor.Decrypt(ev.EncryptedValue)
+		if err != nil {
+			return nil, fmt.Errorf("executor: decrypt env var %q: %w", ev.Key, err)
+		}
+		containerEnv[ev.Key] = val
+	}
+	return containerEnv, nil
+}
+
+// buildProviderCLIContainerEnv is buildAgentContainerEnv's provider_cli
+// branch: GOOSE_PROVIDER/GOOSE_MODEL/GOOSE_MODE (resolveCLIProviderEnv,
+// provider.go) instead of a raw model API's env set, plus — only when
+// cfg.CLIAuthMode is "api_key" — the underlying CLI's own native
+// non-interactive auth env var (see provider.go's cliProviderAPIKeyEnvVar
+// and the package doc comment on why this is NOT routed through Goose's
+// own provider/key mechanism the LLM branch above uses). Shared, like
+// buildAgentContainerEnv itself, between coldStart and coldStartEnvironment
+// — though in practice a provider_cli agent only ever reaches
+// coldStartEnvironment (see Run's environment-required guard).
+func (e *Executor) buildProviderCLIContainerEnv(cfg agent.Config) (map[string]string, error) {
+	containerEnv := resolveCLIProviderEnv(cfg)
+
+	if cfg.CLIAuthMode == agent.CLIAuthModeAPIKey && cfg.CLIAPIKeySecret != "" {
+		adapter, ok := providercli.Get(cfg.CLIProvider)
+		if !ok {
+			return nil, fmt.Errorf("executor: unknown cli_provider %q", cfg.CLIProvider)
+		}
+		envVar, supported := adapter.APIKeyEnvVar()
+		if !supported {
+			return nil, fmt.Errorf("executor: cli_provider %q does not support api_key auth", cfg.CLIProvider)
+		}
+		apiKey, err := e.encryptor.Decrypt(cfg.CLIAPIKeySecret)
+		if err != nil {
+			return nil, fmt.Errorf("executor: decrypt cli api key: %w", err)
+		}
+		containerEnv[envVar] = apiKey
 	}
 
 	for _, ev := range cfg.EnvVars {
@@ -776,20 +834,36 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 		e.log.Warn("executor: failed to touch environment", "environment_id", environmentID, "error", err)
 	}
 
-	// Written before Initialize/NewSession, same ordering and reasoning
-	// coldStart uses for its own skills tar (see that function's comment):
-	// Goose's skills platform extension discovers SKILL.md files from disk,
-	// so they must exist before anything that might read them. Targets
-	// sandboxWorkdir, not trigger.Workdir — see this function's own doc
-	// comment for why.
-	fileSkills := prepareFileSkills(cfg.Skills)
-	skillsTar, err := buildSkillsTar(fileSkills)
-	if err != nil {
-		return nil, "", "", fmt.Errorf("executor: build skills tar: %w", err)
-	}
-	if skillsTar != nil {
-		if err := e.sandboxMgr.CopyToEnvironment(ctx, handle.BackendRef, sandboxWorkdir, skillsTar); err != nil {
-			return nil, "", "", fmt.Errorf("executor: write skills to environment %s: %w", environmentID, err)
+	if cfg.AgentType == agent.AgentTypeProviderCLI {
+		// Goose ignores its own extension/skill config entirely once a CLI
+		// provider is active (see internal/executor/providercli's package
+		// doc comment) — writing .agents/skills here would be a harmless
+		// but pointless no-op, so this branch replaces it with a sync into
+		// the underlying CLI's own config files instead. Same "before
+		// Initialize" timing as the llm-type skills write below, for
+		// consistency with every other pre-session sandbox-preparation
+		// step in this function, even though the underlying CLI actually
+		// reads its config lazily on invocation (each turn, when Goose
+		// shells out to it) rather than at goose serve startup.
+		if err := e.syncProviderCLIConfig(ctx, handle.BackendRef, cfg, trigger); err != nil {
+			return nil, "", "", fmt.Errorf("executor: sync provider-cli config (environment %s): %w", environmentID, err)
+		}
+	} else {
+		// Written before Initialize/NewSession, same ordering and reasoning
+		// coldStart uses for its own skills tar (see that function's comment):
+		// Goose's skills platform extension discovers SKILL.md files from disk,
+		// so they must exist before anything that might read them. Targets
+		// sandboxWorkdir, not trigger.Workdir — see this function's own doc
+		// comment for why.
+		fileSkills := prepareFileSkills(cfg.Skills)
+		skillsTar, err := buildSkillsTar(fileSkills)
+		if err != nil {
+			return nil, "", "", fmt.Errorf("executor: build skills tar: %w", err)
+		}
+		if skillsTar != nil {
+			if err := e.sandboxMgr.CopyToEnvironment(ctx, handle.BackendRef, sandboxWorkdir, skillsTar); err != nil {
+				return nil, "", "", fmt.Errorf("executor: write skills to environment %s: %w", environmentID, err)
+			}
 		}
 	}
 
@@ -808,6 +882,116 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	}
 
 	return client, sessionID, envNote, nil
+}
+
+// providerCLIHomeRoot is where syncProviderCLIConfig points each CLI's own
+// config/home directory — a dot-prefixed subdirectory of the same
+// persisted workspace mount environmentGooseDataDir uses above, keyed by
+// cli_provider so each provider gets its own isolated subtree. A CLI's own
+// login credentials, written under its home dir (~/.claude, ~/.codex,
+// etc.), must survive environment container recreation exactly the same
+// way goose's own session store does — see environmentGooseDataDir's doc
+// comment for the underlying "only /home/paca/workspaces persists across
+// a recreate" fact this relies on.
+const providerCLIHomeRoot = "/home/paca/workspaces/.cli-home"
+
+// syncProviderCLIConfig bootstraps a provider_cli agent's CLI home
+// directory onto the environment's persistent volume (idempotent, safe to
+// re-run on every attach — same contract environmentssh.go's
+// BootstrapEnvironmentSSH already relies on for the SSH host key) and
+// syncs its configured MCP servers (and, for adapters that support it,
+// skills — see providercli.Adapter.SupportsSkillSync) into the CLI's own
+// config files. This is the ONLY channel through which a provider_cli
+// agent's Paca-configured MCP servers/skills ever reach the model: Goose
+// ignores its own extension/skill config entirely once a CLI provider is
+// active (see internal/executor/providercli's package doc comment).
+func (e *Executor) syncProviderCLIConfig(ctx context.Context, backendRef string, cfg agent.Config, trigger agent.Trigger) error {
+	adapter, ok := providercli.Get(cfg.CLIProvider)
+	if !ok {
+		return fmt.Errorf("unknown cli_provider %q", cfg.CLIProvider)
+	}
+
+	// 1. Symlink bootstrap: point ~/<HomeDirName> at this provider's own
+	// subtree of the persistent volume. Idempotent — a target that's
+	// already the correct symlink is left alone; anything else (missing,
+	// a stale symlink, or a real file/dir the CLI itself created before
+	// this ever ran) is replaced. One uniform mechanism for every
+	// provider rather than relying on each CLI's own (inconsistent,
+	// not-fully-confirmed) config-dir override env var.
+	persistDir := providerCLIHomeRoot + "/" + cfg.CLIProvider
+	target := sandboxWorkdir + "/" + adapter.HomeDirName()
+	bootstrapCmd := fmt.Sprintf(`mkdir -p "%[1]s"
+if [ -L "%[2]s" ]; then
+  cur=$(readlink -f "%[2]s")
+  want=$(readlink -f "%[1]s")
+  if [ "$cur" != "$want" ]; then rm -f "%[2]s"; ln -s "%[1]s" "%[2]s"; fi
+elif [ -e "%[2]s" ]; then
+  rm -rf "%[2]s"; ln -s "%[1]s" "%[2]s"
+else
+  ln -s "%[1]s" "%[2]s"
+fi`, persistDir, target)
+	if out, code, err := e.sandboxMgr.ExecEnvironment(ctx, backendRef, []string{"/bin/sh", "-c", bootstrapCmd}); err != nil || code != 0 {
+		return fmt.Errorf("bootstrap cli home symlink: exit %d: %s: %w", code, out, err)
+	}
+
+	// 2. Read the current content of every file the adapter wants to merge
+	// into, so SyncFiles can preserve unrelated user/CLI-set keys instead
+	// of blindly overwriting them. A non-zero exit (file doesn't exist
+	// yet) simply leaves that path unset in existing — every adapter
+	// treats a missing entry the same as "".
+	existing := map[string]string{}
+	for _, relPath := range adapter.MergeableFiles() {
+		out, code, err := e.sandboxMgr.ExecEnvironment(ctx, backendRef, []string{"cat", sandboxWorkdir + "/" + relPath})
+		if err != nil {
+			return fmt.Errorf("read existing %s: %w", relPath, err)
+		}
+		if code == 0 {
+			existing[relPath] = out
+		}
+	}
+
+	// 3. Render + upload. mcpServers appends the built-in Paca MCP server
+	// LAST (same ordering buildMCPServers uses for its ACP-shaped list),
+	// so a same-named user-configured entry can never shadow it once every
+	// adapter's map-keyed-by-name SyncFiles assigns over it. Without this,
+	// a provider_cli agent would have no way to reach Paca's own platform
+	// tools (task/comment context, read_conversation, repo tools) at all —
+	// Goose's own ACP-level list is ignored entirely once a CLI provider
+	// is active, so this sync is the only channel left. prepareFileSkills
+	// is the exact same filter+frontmatter-ensure step Goose's own skill
+	// sync uses (skills.go) — only run at all when the adapter actually
+	// consumes it.
+	mcpServers := cfg.MCPServers
+	if pacaSrv, ok := e.buildPacaMCPServerForCLI(trigger, cfg); ok {
+		mcpServers = append(append([]agent.MCPServer{}, cfg.MCPServers...), pacaSrv)
+	}
+	var skills []agent.Skill
+	if adapter.SupportsSkillSync() {
+		skills = prepareFileSkills(cfg.Skills)
+	}
+	files, err := adapter.SyncFiles(existing, mcpServers, skills)
+	if err != nil {
+		return fmt.Errorf("build cli config sync files: %w", err)
+	}
+	entries := make([]fileEntry, 0, len(files))
+	for _, f := range files {
+		entries = append(entries, fileEntry{RelPath: f.RelPath, Content: f.Content})
+	}
+	// adapter.HomeDirName() (e.g. ".claude") is excluded from the tar's
+	// auto-generated directory entries — the bootstrap step above already
+	// made it a symlink onto the persistent volume, and a literal
+	// directory header at that exact path conflicts with the symlink
+	// already there (see buildFileTar's own doc comment on this).
+	tarBuf, err := buildFileTar(entries, map[string]bool{adapter.HomeDirName(): true})
+	if err != nil {
+		return fmt.Errorf("build cli config tar: %w", err)
+	}
+	if tarBuf != nil {
+		if err := e.sandboxMgr.CopyToEnvironment(ctx, backendRef, sandboxWorkdir, tarBuf); err != nil {
+			return fmt.Errorf("write cli config to environment: %w", err)
+		}
+	}
+	return nil
 }
 
 // attachEnvironmentSession gives an environment-backed conversation goose's
@@ -915,6 +1099,16 @@ const pacaMCPBinPath = "/usr/bin/paca"
 // entirely for now — mapping OAuth to an http entry's bearer-token header
 // wasn't attempted this pass.
 func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []acp.MCPServerConfig {
+	if cfg.AgentType == agent.AgentTypeProviderCLI {
+		// Goose ignores its own ACP-level extension/MCP-server config
+		// entirely once a CLI provider is active (see
+		// internal/executor/providercli's package doc comment) — building
+		// this list would be wasted work whose result is silently
+		// discarded. A provider_cli agent's MCP servers instead reach the
+		// model via syncProviderCLIConfig, written into the underlying
+		// CLI's own config files.
+		return nil
+	}
 	servers := make([]acp.MCPServerConfig, 0, len(cfg.MCPServers)+1)
 	for _, s := range cfg.MCPServers {
 		if !s.IsEnabled {
@@ -952,10 +1146,35 @@ func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []ac
 		}
 	}
 
-	if e.opts.PacaAPIKey == "" {
+	command, args, env, ok := e.pacaMCPServerCommandAndEnv(trigger, cfg)
+	if !ok {
 		return servers
 	}
-	env := map[string]string{
+	pacaEnv := envMapToList(env)
+	servers = append(servers, acp.MCPServerConfig{
+		Type:    acp.McpServerStdio,
+		Name:    "paca",
+		Command: command,
+		Args:    &args,
+		Env:     &pacaEnv,
+	})
+	return servers
+}
+
+// pacaMCPServerCommandAndEnv resolves the built-in Paca MCP server's launch
+// command/args and its PACA_*-prefixed env vars — shared between
+// buildMCPServers' ACP-shaped entry (llm-type agents, appended to Goose's
+// own session/new MCP list) and buildPacaMCPServerForCLI's agent.MCPServer-
+// shaped entry (provider_cli agents, synced into the underlying CLI's own
+// config — see syncProviderCLIConfig). ok is false when e.opts.PacaAPIKey
+// is unset (self-hosted deployments that haven't wired the Paca MCP server
+// at all), the single condition under which neither caller should include
+// this server.
+func (e *Executor) pacaMCPServerCommandAndEnv(trigger agent.Trigger, cfg agent.Config) (command string, args []string, env map[string]string, ok bool) {
+	if e.opts.PacaAPIKey == "" {
+		return "", nil, nil, false
+	}
+	env = map[string]string{
 		"PACA_API_KEY":     e.opts.PacaAPIKey,
 		"PACA_API_URL":     e.opts.PacaAPIURL,
 		"PACA_GATEWAY_URL": e.opts.PacaGatewayURL,
@@ -1032,20 +1251,38 @@ func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []ac
 	// same way for both conversation kinds. The npm-installed
 	// pacaMCPBinPath, by contrast, is baked into every image regardless of
 	// backend, so it always exists.
-	command, args := pacaMCPBinPath, []string{}
+	command, args = pacaMCPBinPath, []string{}
 	if e.opts.MCPDevSourceDir != "" {
 		command = "/usr/bin/node"
 		args = []string{sandbox.MCPDevMountPath + "/build/index.js"}
 	}
-	pacaEnv := envMapToList(env)
-	servers = append(servers, acp.MCPServerConfig{
-		Type:    acp.McpServerStdio,
-		Name:    "paca",
-		Command: command,
-		Args:    &args,
-		Env:     &pacaEnv,
-	})
-	return servers
+	return command, args, env, true
+}
+
+// buildPacaMCPServerForCLI is buildMCPServers' provider_cli counterpart:
+// the built-in Paca MCP server as an agent.MCPServer entry, ready to append
+// onto cfg.MCPServers before handing the combined list to a
+// providercli.Adapter's SyncFiles — so a provider_cli agent gets the same
+// Paca-platform tools (task/comment context, read_conversation, repo
+// tools, etc.) an llm-type agent's ACP session/new list gets, synced into
+// the underlying CLI's own MCP config instead (Goose's own ACP-level list
+// is ignored entirely once a CLI provider is active — see
+// buildMCPServers' short-circuit and internal/executor/providercli's
+// package doc comment). Returns ok=false under the identical condition
+// pacaMCPServerCommandAndEnv does (e.opts.PacaAPIKey unset).
+func (e *Executor) buildPacaMCPServerForCLI(trigger agent.Trigger, cfg agent.Config) (srv agent.MCPServer, ok bool) {
+	command, args, env, ok := e.pacaMCPServerCommandAndEnv(trigger, cfg)
+	if !ok {
+		return agent.MCPServer{}, false
+	}
+	return agent.MCPServer{
+		ServerName: "paca",
+		Transport:  "stdio",
+		Command:    command,
+		Args:       args,
+		Env:        env,
+		IsEnabled:  true,
+	}, true
 }
 
 func envMapToList(env map[string]string) []acp.EnvVariable {

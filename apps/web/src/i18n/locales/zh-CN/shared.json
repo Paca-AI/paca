@@ -2,6 +2,13 @@
 	"activityPane": {
 		"title": "动态",
 		"empty": "暂无动态",
+		"emptyComments": "暂无评论",
+		"showAllActivity": "显示全部动态",
+		"filter": {
+			"label": "筛选动态",
+			"comments": "评论",
+			"all": "全部动态"
+		},
 		"editingComment": "正在编辑评论...",
 		"cancel": "取消",
 		"sendHint": "⌘↵ 发送",

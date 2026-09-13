@@ -560,13 +560,18 @@ export type FieldType =
 	| "boolean"
 	| "url";
 
+export interface CustomFieldOption {
+	value: string;
+	color?: string | null;
+}
+
 export interface CustomFieldDefinition {
 	id: string;
 	project_id: string;
 	field_key: string;
 	display_name: string;
 	field_type: FieldType;
-	options: string[];
+	options: CustomFieldOption[];
 	is_required: boolean;
 	created_at: string;
 	updated_at: string;
@@ -576,14 +581,14 @@ export interface CreateCustomFieldInput {
 	display_name: string;
 	field_key: string;
 	field_type: FieldType;
-	options?: string[];
+	options?: CustomFieldOption[];
 	is_required?: boolean;
 }
 
 export interface UpdateCustomFieldInput {
 	display_name?: string;
 	field_type?: FieldType;
-	options?: string[];
+	options?: CustomFieldOption[];
 	is_required?: boolean;
 }
 
@@ -973,6 +978,70 @@ export interface RepositoryCloneInfo {
 	full_name: string;
 	clone_url: string;
 	token: string;
+}
+
+/**
+ * A comment pinned to one element of one page, created via the Paca browser
+ * extension while viewing a forwarded port of a running environment. Mirrors
+ * services/api's PageAnnotationResponse — see
+ * services/api/internal/transport/http/dto/annotation_dto.go.
+ */
+export interface AnnotationElementSnapshot {
+	tag_name: string;
+	text_excerpt: string;
+	outer_html_excerpt: string;
+	accessible_name: string;
+	role: string;
+}
+
+export interface AnnotationConsoleEntry {
+	level: string;
+	message: string;
+	timestamp: string;
+}
+
+export interface AnnotationFailedRequest {
+	method: string;
+	url: string;
+	status_code: number;
+	error?: string;
+}
+
+export interface AnnotationComment {
+	id: string;
+	body: string;
+	created_by: string;
+	created_by_name: string;
+	created_by_username: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface PageAnnotation {
+	id: string;
+	project_id: string;
+	environment_id: string;
+	port_forward_id: string;
+	page_path: string;
+	element_selector: string;
+	element_snapshot: AnnotationElementSnapshot;
+	console_errors: AnnotationConsoleEntry[];
+	failed_requests: AnnotationFailedRequest[];
+	screenshot_file_id: string | null;
+	body: string;
+	status: "open" | "resolved";
+	task_id: string | null;
+	created_by: string;
+	created_by_name: string;
+	created_by_username: string;
+	created_at: string;
+	updated_at: string;
+	comments: AnnotationComment[];
+}
+
+export interface AnnotationListResult {
+	items: PageAnnotation[];
+	next_cursor?: string | null;
 }
 
 // ==================== API Response Helpers ====================

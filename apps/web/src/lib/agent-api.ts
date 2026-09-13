@@ -131,13 +131,31 @@ export interface AgentEnvVar {
 	created_at: string;
 }
 
-export type AgentType = "llm" | "acp";
+export type AgentType = "llm" | "acp" | "provider_cli";
 export type ACPProvider =
 	| "claude-code"
 	| "codex"
 	| "gemini-cli"
 	| "goose"
 	| "custom";
+
+// CLIProvider names which coding CLI Goose itself shells out to *inside*
+// agent-runner's own sandbox/environment container (Goose's "CLI providers"
+// feature, GOOSE_PROVIDER=<CLIProvider>) — a distinct concept from
+// ACPProvider, which names the ACP client the *user's own machine* runs via
+// apps/acp-bridge. Only meaningful for agent_type === "provider_cli".
+export type CLIProvider =
+	| "claude-code"
+	| "codex"
+	| "cursor-agent"
+	| "gemini-cli";
+
+// CLIAuthMode: "api_key" injects an encrypted key under the CLI's own
+// native non-interactive auth env var (only supported for some
+// CLIProviders — see CLI_PROVIDER_OPTIONS' supportsApiKey); "login"
+// requires the user to run the CLI's own login command in the agent's
+// default environment's terminal. Defaults to "login" server-side.
+export type CLIAuthMode = "api_key" | "login";
 
 // "project" agents belong to exactly one project (project_id set). "global"
 // agents belong to none (project_id null) — they chat on the home/admin
@@ -164,10 +182,28 @@ export interface Agent {
 	acp_command?: string[];
 	has_acp_bridge_token: boolean;
 	has_mcp_api_key: boolean;
+	// cli_provider/cli_model/cli_auth_mode/has_cli_api_key/
+	// cli_login_verified_at are provider_cli-only — see CLIProvider's doc
+	// comment. has_cli_api_key mirrors has_acp_bridge_token/has_mcp_api_key:
+	// the raw key is never returned. cli_login_verified_at is set only by
+	// the "Verify login" action (verifyCLILogin below) — a file-existence
+	// probe, never re-validated automatically, so it can go stale if a
+	// login later expires.
+	cli_provider?: CLIProvider | null;
+	cli_model?: string;
+	cli_auth_mode?: CLIAuthMode;
+	has_cli_api_key?: boolean;
+	cli_login_verified_at?: string | null;
 	system_prompt: string;
 	git_committer_name: string;
 	git_committer_email: string;
 	docker_enabled: boolean;
+	// Caps how many of this agent's conversations may be "running" at once,
+	// across every project it belongs to — default 1, so by default it works
+	// through assigned tickets one at a time instead of racing several turns
+	// against the same working directory. A trigger that would exceed it is
+	// queued instead (see AgentConversation.status "queued").
+	parallelism_limit: number;
 	// Static environment this agent attaches to by default when starting a
 	// new conversation, instead of the ephemeral per-conversation sandbox —
 	// see environment-api.ts / environment-detail.tsx. Null for a global
@@ -178,11 +214,28 @@ export interface Agent {
 	// work in by default — null unless default_environment_id is also set.
 	default_folder_id?: string | null;
 	member_id?: string | null;
+	// access_mode is "open" (default — any project member who can use agents
+	// at all may chat with this one) or "restricted" (only members with an
+	// explicit access grant may). access_granted is per-viewer: whether the
+	// current user could actually use this agent right now — always true
+	// when access_mode is "open". Together these drive the locked-agent UI.
+	access_mode: AgentAccessMode;
+	access_granted: boolean;
 	mcp_servers?: AgentMCPServer[];
 	skills?: AgentSkill[];
 	env_vars?: AgentEnvVar[];
 	created_at: string;
 	updated_at: string;
+}
+
+export type AgentAccessMode = "open" | "restricted";
+
+export interface AgentAccessGrant {
+	id: string;
+	agent_id: string;
+	member_id: string;
+	granted_by?: string | null;
+	created_at: string;
 }
 
 export type ConversationStatus =
@@ -295,10 +348,15 @@ export async function createAgent(
 		llm_base_url?: string;
 		acp_provider?: ACPProvider;
 		acp_command?: string[];
+		cli_provider?: CLIProvider;
+		cli_model?: string;
+		cli_auth_mode?: CLIAuthMode;
+		cli_api_key?: string;
 		system_prompt?: string;
 		git_committer_name?: string;
 		git_committer_email?: string;
 		docker_enabled?: boolean;
+		parallelism_limit?: number;
 		default_environment_id?: string | null;
 		default_folder_id?: string | null;
 		project_role_id: string;
@@ -323,12 +381,18 @@ export async function updateAgent(
 		llm_base_url?: string | null;
 		acp_provider?: ACPProvider;
 		acp_command?: string[];
+		cli_provider?: CLIProvider;
+		cli_model?: string;
+		cli_auth_mode?: CLIAuthMode;
+		cli_api_key?: string;
 		system_prompt?: string;
 		git_committer_name?: string;
 		git_committer_email?: string;
 		docker_enabled?: boolean;
+		parallelism_limit?: number;
 		default_environment_id?: string | null;
 		default_folder_id?: string | null;
+		access_mode?: AgentAccessMode;
 	},
 ): Promise<Agent> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
@@ -336,6 +400,45 @@ export async function updateAgent(
 		payload,
 	);
 	return data.data;
+}
+
+// ── Agent access grants ──────────────────────────────────────────────────────
+// Who may use a restricted agent — see Agent.access_mode's doc comment.
+// Managing the grant list itself requires agents.write, same tier as every
+// other agent-configuration action; the grants themselves gate the chat
+// actions, not this list.
+
+export async function listAgentAccessGrants(
+	projectId: string,
+	agentId: string,
+): Promise<AgentAccessGrant[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentAccessGrant[] }>
+	>(`/projects/${projectId}/agents/${agentId}/access-grants`);
+	return data.data.items;
+}
+
+export async function addAgentAccessGrant(
+	projectId: string,
+	agentId: string,
+	memberId: string,
+): Promise<AgentAccessGrant> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<AgentAccessGrant>
+	>(`/projects/${projectId}/agents/${agentId}/access-grants`, {
+		member_id: memberId,
+	});
+	return data.data;
+}
+
+export async function removeAgentAccessGrant(
+	projectId: string,
+	agentId: string,
+	memberId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/projects/${projectId}/agents/${agentId}/access-grants/${memberId}`,
+	);
 }
 
 // ── Global Agents (admin CRUD) ───────────────────────────────────────────────
@@ -374,6 +477,7 @@ export interface CreateGlobalAgentPayload {
 	git_committer_name?: string;
 	git_committer_email?: string;
 	docker_enabled?: boolean;
+	parallelism_limit?: number;
 	// Always omitted in practice — a global agent has no project to default
 	// an environment from, and the UI never shows this field at global scope
 	// (see agent-detail.tsx's OverviewTab). Kept here only for type parity
@@ -408,6 +512,7 @@ export interface UpdateGlobalAgentPayload {
 	git_committer_name?: string;
 	git_committer_email?: string;
 	docker_enabled?: boolean;
+	parallelism_limit?: number;
 	// See CreateGlobalAgentPayload.default_environment_id above — unused at
 	// global scope, kept only for DTO type parity.
 	default_environment_id?: string | null;
@@ -459,7 +564,12 @@ export async function listGlobalChatSessions(
 
 export async function startGlobalChatSession(
 	agentId: string,
-	payload: { message: string; title?: string; contextItems?: ContextItem[] },
+	payload: {
+		message: string;
+		title?: string;
+		contextItems?: ContextItem[];
+		on_busy?: "queue" | "force";
+	},
 ): Promise<StartChatSessionResponse> {
 	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<
@@ -470,7 +580,11 @@ export async function startGlobalChatSession(
 
 export async function sendGlobalChatMessage(
 	sessionId: string,
-	payload: { message: string; contextItems?: ContextItem[] },
+	payload: {
+		message: string;
+		contextItems?: ContextItem[];
+		on_busy?: "queue" | "force";
+	},
 ): Promise<AgentConversation> {
 	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<
@@ -600,15 +714,17 @@ export async function heartbeatGlobalConversation(
 
 // sendGlobalConversationMessage is sendConversationMessage's global-chat
 // sibling — replies to a global conversation directly by id (the ACP resume
-// path), rather than through a chat session.
+// path), rather than through a chat session. See sendConversationMessage's
+// own doc comment for onBusy.
 export async function sendGlobalConversationMessage(
 	conversationId: string,
 	message: string,
 	contextItems?: ContextItem[],
+	onBusy?: "queue" | "force",
 ): Promise<void> {
 	await apiClient.instance.post(
 		`/agents/conversations/${conversationId}/messages`,
-		withContextItems({ message }, contextItems),
+		withContextItems({ message, on_busy: onBusy }, contextItems),
 	);
 }
 
@@ -692,6 +808,48 @@ export async function generateGlobalAgentMCPKey(
 ): Promise<AgentMCPKey> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<AgentMCPKey>>(
 		`/admin/agents/${agentId}/mcp-agent-key`,
+	);
+	return data.data;
+}
+
+// ── Provider CLI ─────────────────────────────────────────────────────────────
+
+export interface VerifyCLILoginResult {
+	authenticated: boolean;
+}
+
+// verifyCLILogin probes (each CLI's own real status subcommand where one is
+// confirmed to exist, never an interactive CLI invocation — see
+// services/api's environmentdom.Service.VerifyCLIAuth doc comment) whether
+// a provider_cli agent's underlying CLI is currently authenticated, and, on
+// success, persists the check's timestamp as agent.cli_login_verified_at.
+export async function verifyCLILogin(
+	projectId: string,
+	agentId: string,
+): Promise<VerifyCLILoginResult> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<VerifyCLILoginResult>
+	>(`/projects/${projectId}/agents/${agentId}/verify-cli-login`);
+	return data.data;
+}
+
+// verifyEnvironmentCLILogin is verifyCLILogin's environment-scoped sibling —
+// same probe, but keyed directly by environmentId/cliProvider instead of an
+// agentId, for the create-agent dialog's own "Verify login" button (the
+// agent it's configuring doesn't exist yet, so there's no agentId to check
+// against). Does not persist a verification timestamp anywhere — there is
+// no agent row yet to persist it against.
+export async function verifyEnvironmentCLILogin(
+	projectId: string,
+	environmentId: string,
+	cliProvider: CLIProvider,
+): Promise<VerifyCLILoginResult> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<VerifyCLILoginResult>
+	>(
+		`/projects/${projectId}/environments/${environmentId}/verify-cli-login`,
+		null,
+		{ params: { cli_provider: cliProvider } },
 	);
 	return data.data;
 }
@@ -1171,15 +1329,21 @@ export async function pauseConversation(
 // alive regardless of why they were started. LLM conversations don't use
 // this path today; that flow is still the chat-session-based sendChatMessage
 // above.
+//
+// onBusy ("queue" | "force", omitted for "ask") only matters when this
+// resumes an ACP or environment-attached conversation that's currently at
+// its agent's parallelism_limit or whose target folder is occupied — see
+// AgentBusyError/agent-busy-dialog.tsx's doc comment. Ignored otherwise.
 export async function sendConversationMessage(
 	projectId: string,
 	conversationId: string,
 	message: string,
 	contextItems?: ContextItem[],
+	onBusy?: "queue" | "force",
 ): Promise<void> {
 	await apiClient.instance.post(
 		`/projects/${projectId}/conversations/${conversationId}/messages`,
-		withContextItems({ message }, contextItems),
+		withContextItems({ message, on_busy: onBusy }, contextItems),
 	);
 }
 
@@ -1241,6 +1405,11 @@ export async function startChatSession(
 		environment_id?: string;
 		folder_id?: string;
 		contextItems?: ContextItem[];
+		// "" (ask, the default) | "queue" | "force" — see
+		// AgentBusyError/agent-busy-dialog.tsx's doc comments. Only meaningful
+		// when the agent is already at its parallelism_limit of running
+		// conversations; ignored otherwise.
+		on_busy?: "queue" | "force";
 	},
 ): Promise<StartChatSessionResponse> {
 	const { contextItems, ...rest } = payload;
@@ -1257,7 +1426,11 @@ export async function sendChatMessage(
 	projectId: string,
 	agentId: string,
 	sessionId: string,
-	payload: { message: string; contextItems?: ContextItem[] },
+	payload: {
+		message: string;
+		contextItems?: ContextItem[];
+		on_busy?: "queue" | "force";
+	},
 ): Promise<AgentConversation> {
 	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<
@@ -1318,6 +1491,15 @@ export const agentEnvVarsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "env-vars"],
 		queryFn: () => listEnvVars(projectId, agentId),
+	});
+
+export const agentAccessGrantsQueryOptions = (
+	projectId: string,
+	agentId: string,
+) =>
+	queryOptions({
+		queryKey: ["projects", projectId, "agents", agentId, "access-grants"],
+		queryFn: () => listAgentAccessGrants(projectId, agentId),
 	});
 
 export const globalAgentMCPServersQueryOptions = (agentId: string) =>

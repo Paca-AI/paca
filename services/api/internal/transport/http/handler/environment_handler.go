@@ -14,6 +14,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -53,6 +54,12 @@ type EnvironmentHandler struct {
 	// safe and just means GetConfig reports the feature(s) as unconfigured.
 	sshBastionHost  string
 	portForwardHost string
+	// memberRepo resolves the caller (human or agent) to their
+	// project_members.id for AccessGranted response decoration — see
+	// resolveActorMemberIDForDecoration. Optional: nil just means every
+	// response's AccessGranted falls back to dto.EnvironmentFromEntity's
+	// own caller-agnostic approximation.
+	memberRepo projectdom.MemberRepository
 }
 
 // NewEnvironmentHandler returns an EnvironmentHandler wired to the
@@ -60,6 +67,14 @@ type EnvironmentHandler struct {
 // INTERNAL_API_KEY — see TerminalTicket's doc comment for how it's used.
 func NewEnvironmentHandler(svc environmentdom.Service, aiAgentInternalKey string) *EnvironmentHandler {
 	return &EnvironmentHandler{svc: svc, aiAgentInternalKey: aiAgentInternalKey}
+}
+
+// WithMemberRepo attaches the project member repository used to resolve the
+// authenticated caller's project_members.id — mirrors AgentHandler's own
+// WithMemberRepo.
+func (h *EnvironmentHandler) WithMemberRepo(repo projectdom.MemberRepository) *EnvironmentHandler {
+	h.memberRepo = repo
+	return h
 }
 
 // WithDeploymentConfig sets the values GetConfig reports — config.Config's
@@ -107,11 +122,81 @@ func (h *EnvironmentHandler) ListEnvironments(w http.ResponseWriter, r *http.Req
 		presenter.Error(w, r, err)
 		return
 	}
+	grantedIDs := h.callerGrantedEnvironmentIDs(r, projectID)
 	resp := make([]dto.EnvironmentResponse, 0, len(envs))
 	for _, e := range envs {
-		resp = append(resp, dto.EnvironmentFromEntity(e))
+		resp = append(resp, h.toEnvironmentResponseForCaller(e, grantedIDs))
 	}
 	presenter.OK(w, r, map[string]any{"environments": resp})
+}
+
+// toEnvironmentResponseForCaller is dto.EnvironmentFromEntity plus an
+// accurate AccessGranted for one specific caller — see
+// AgentHandler.toAgentResponseForCaller's identical reasoning.
+func (h *EnvironmentHandler) toEnvironmentResponseForCaller(env *environmentdom.Environment, grantedIDs map[uuid.UUID]bool) dto.EnvironmentResponse {
+	resp := dto.EnvironmentFromEntity(env)
+	if resp.AccessMode == environmentdom.AccessModeRestricted {
+		resp.AccessGranted = grantedIDs[env.ID]
+		if !resp.AccessGranted {
+			// SSHPort is per-instance connection metadata — combined with the
+			// deployment-wide (non-secret) bastion host GetConfig reports,
+			// it's enough to know where to attempt an SSH connection into
+			// this specific container. A member the admin explicitly locked
+			// out of a restricted environment shouldn't learn this just from
+			// the environment still being visible in list/detail views —
+			// same "alternate access path" rubric that already gates SSH
+			// keys/terminal/port-forwards behind RequireEnvironmentAccess
+			// rather than leaving them on environments.read alone.
+			resp.SSHPort = nil
+		}
+	}
+	return resp
+}
+
+// callerGrantedEnvironmentIDs mirrors AgentHandler.callerGrantedAgentIDs.
+func (h *EnvironmentHandler) callerGrantedEnvironmentIDs(r *http.Request, projectID uuid.UUID) map[uuid.UUID]bool {
+	memberID := h.resolveActorMemberIDForDecoration(r, projectID)
+	if memberID == uuid.Nil {
+		return map[uuid.UUID]bool{}
+	}
+	ids, err := h.svc.ListGrantedEnvironmentIDsForMember(r.Context(), memberID)
+	if err != nil {
+		return map[uuid.UUID]bool{}
+	}
+	set := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set
+}
+
+// resolveActorMemberIDForDecoration mirrors
+// AgentHandler.resolveActorMemberIDForDecoration exactly — see its doc
+// comment.
+func (h *EnvironmentHandler) resolveActorMemberIDForDecoration(r *http.Request, projectID uuid.UUID) uuid.UUID {
+	if h.memberRepo == nil {
+		return uuid.Nil
+	}
+	if agentID, ok := middleware.AgentIDFromRequest(r); ok {
+		m, err := h.memberRepo.FindMemberByActor(r.Context(), projectID, uuid.Nil, &agentID)
+		if err != nil {
+			return uuid.Nil
+		}
+		return m.ID
+	}
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		return uuid.Nil
+	}
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil
+	}
+	m, err := h.memberRepo.FindMemberByActor(r.Context(), projectID, userID, nil)
+	if err != nil {
+		return uuid.Nil
+	}
+	return m.ID
 }
 
 // CreateEnvironment handles POST /projects/:projectId/environments.
@@ -161,7 +246,7 @@ func (h *EnvironmentHandler) GetEnvironment(w http.ResponseWriter, r *http.Reque
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.OK(w, r, dto.EnvironmentFromEntity(env))
+	presenter.OK(w, r, h.toEnvironmentResponseForCaller(env, h.callerGrantedEnvironmentIDs(r, projectID)))
 }
 
 // UpdateEnvironment handles PATCH /projects/:projectId/environments/:environmentId.
@@ -179,6 +264,7 @@ func (h *EnvironmentHandler) UpdateEnvironment(w http.ResponseWriter, r *http.Re
 	env, err := h.svc.UpdateEnvironment(r.Context(), projectID, environmentID, environmentdom.UpdateEnvironmentInput{
 		Name:               req.Name,
 		IdleTimeoutMinutes: req.IdleTimeoutMinutes,
+		AccessMode:         req.AccessMode,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -261,6 +347,36 @@ func (h *EnvironmentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	presenter.NoContent(w)
+}
+
+// VerifyCLILogin handles POST
+// /projects/:projectId/environments/:environmentId/verify-cli-login?cli_provider=<provider>.
+// The environment-scoped sibling of AgentHandler.VerifyCLILogin — that one
+// resolves cli_provider from an already-created provider_cli agent's own
+// DefaultEnvironmentID/CLIProvider fields, which doesn't exist yet for the
+// create-agent dialog's own "Verify login" button (the agent it's
+// configuring hasn't been created). Takes both directly as parameters
+// instead, so login can be verified against the environment/provider
+// combination the user has picked before submitting the form. Does not
+// persist a verification timestamp anywhere (there is no agent row yet to
+// persist it against) — purely a live probe.
+func (h *EnvironmentHandler) VerifyCLILogin(w http.ResponseWriter, r *http.Request) {
+	projectID, environmentID, err := h.parseEnvironment(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	cliProvider := r.URL.Query().Get("cli_provider")
+	if cliProvider == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "cli_provider is required"))
+		return
+	}
+	authenticated, err := h.svc.VerifyCLIAuth(r.Context(), projectID, environmentID, cliProvider)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.VerifyCLILoginResponse{Authenticated: authenticated})
 }
 
 // --- Folders --------------------------------------------------------------
@@ -362,6 +478,79 @@ func (h *EnvironmentHandler) BrowseFolder(w http.ResponseWriter, r *http.Request
 	presenter.OK(w, r, resp)
 }
 
+// --- Access grants ------------------------------------------------------
+
+// ListEnvironmentAccessGrants handles GET
+// /projects/:projectId/environments/:environmentId/access-grants.
+func (h *EnvironmentHandler) ListEnvironmentAccessGrants(w http.ResponseWriter, r *http.Request) {
+	projectID, environmentID, err := h.parseEnvironment(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	grants, err := h.svc.ListEnvironmentAccessGrants(r.Context(), projectID, environmentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.EnvironmentAccessGrantResponse, 0, len(grants))
+	for _, g := range grants {
+		resp = append(resp, dto.EnvironmentAccessGrantFromEntity(g))
+	}
+	presenter.OK(w, r, map[string]any{"items": resp})
+}
+
+// AddEnvironmentAccessGrant handles POST
+// /projects/:projectId/environments/:environmentId/access-grants.
+func (h *EnvironmentHandler) AddEnvironmentAccessGrant(w http.ResponseWriter, r *http.Request) {
+	projectID, environmentID, err := h.parseEnvironment(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.AddEnvironmentAccessGrantRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if req.MemberID == uuid.Nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "member_id is required"))
+		return
+	}
+	var grantedBy *uuid.UUID
+	if claims := middleware.ClaimsFrom(r); claims != nil {
+		if id, err := uuid.Parse(claims.Subject); err == nil {
+			grantedBy = &id
+		}
+	}
+	g, err := h.svc.AddEnvironmentAccessGrant(r.Context(), projectID, environmentID, req.MemberID, grantedBy)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.Created(w, r, dto.EnvironmentAccessGrantFromEntity(g))
+}
+
+// RemoveEnvironmentAccessGrant handles DELETE
+// /projects/:projectId/environments/:environmentId/access-grants/:memberId.
+func (h *EnvironmentHandler) RemoveEnvironmentAccessGrant(w http.ResponseWriter, r *http.Request) {
+	projectID, environmentID, err := h.parseEnvironment(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	memberID, err := parseParamUUID(r, "memberId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.RemoveEnvironmentAccessGrant(r.Context(), projectID, environmentID, memberID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "access grant removed"})
+}
+
 // --- SSH keys ---------------------------------------------------------------
 
 // ListSSHKeys handles GET /projects/:projectId/environments/:environmentId/ssh-keys.
@@ -458,6 +647,28 @@ func (h *EnvironmentHandler) ListPortForwards(w http.ResponseWriter, r *http.Req
 		resp = append(resp, dto.EnvironmentPortForwardFromEntity(pf))
 	}
 	presenter.OK(w, r, map[string]any{"port_forwards": resp})
+}
+
+// GetPortForward handles GET
+// /projects/:projectId/environments/:environmentId/port-forwards/:portForwardId
+// — backs the web app's port-forward detail page.
+func (h *EnvironmentHandler) GetPortForward(w http.ResponseWriter, r *http.Request) {
+	projectID, environmentID, err := h.parseEnvironment(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	portForwardID, err := parseParamUUID(r, "portForwardId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	pf, err := h.svc.GetPortForward(r.Context(), projectID, environmentID, portForwardID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.EnvironmentPortForwardFromEntity(pf))
 }
 
 // AddPortForward handles POST

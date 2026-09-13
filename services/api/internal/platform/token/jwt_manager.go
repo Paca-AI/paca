@@ -29,23 +29,37 @@ func New(secret string, accessTTL, refreshTTL time.Duration) *Manager {
 
 // IssueAccess creates a signed access token for the given claims subject.
 func (m *Manager) IssueAccess(sub, username, role, familyID string, mustChangePassword bool) (string, error) {
-	return m.sign(sub, username, role, familyID, m.accessTTL, "access", false, mustChangePassword)
+	return m.sign(sub, username, role, familyID, m.accessTTL, "access", false, mustChangePassword, "")
 }
 
 // IssueRefresh creates a signed refresh token with the Manager's default TTL.
 // The session is treated as persistent (rememberMe=true).
 func (m *Manager) IssueRefresh(sub, username, role, familyID string) (string, error) {
-	return m.sign(sub, username, role, familyID, m.refreshTTL, "refresh", true, false)
+	return m.sign(sub, username, role, familyID, m.refreshTTL, "refresh", true, false, "")
 }
 
 // IssueRefreshWithTTL creates a signed refresh token with an explicit TTL and
 // rememberMe flag. Use this instead of IssueRefresh when the caller needs to
 // honour the user's "remember me" preference.
 func (m *Manager) IssueRefreshWithTTL(sub, username, role, familyID string, rememberMe bool, ttl time.Duration) (string, error) {
-	return m.sign(sub, username, role, familyID, ttl, "refresh", rememberMe, false)
+	return m.sign(sub, username, role, familyID, ttl, "refresh", rememberMe, false, "")
 }
 
-func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, kind string, rememberMe bool, mustChangePassword bool) (string, error) {
+// IssueAnnotationAccess creates a signed, domainauth.ScopeAnnotation access
+// token — same subject/username/role/family/MustChangePassword as
+// IssueAccess (permission checks and the fresh-password gate still need
+// them), same TTL, only Scope differs.
+func (m *Manager) IssueAnnotationAccess(sub, username, role, familyID string, mustChangePassword bool) (string, error) {
+	return m.sign(sub, username, role, familyID, m.accessTTL, "access", false, mustChangePassword, domainauth.ScopeAnnotation)
+}
+
+// IssueAnnotationRefreshWithTTL is IssueRefreshWithTTL's
+// domainauth.ScopeAnnotation counterpart.
+func (m *Manager) IssueAnnotationRefreshWithTTL(sub, username, role, familyID string, rememberMe bool, ttl time.Duration) (string, error) {
+	return m.sign(sub, username, role, familyID, ttl, "refresh", rememberMe, false, domainauth.ScopeAnnotation)
+}
+
+func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, kind string, rememberMe bool, mustChangePassword bool, scope string) (string, error) {
 	now := time.Now()
 	claims := domainauth.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -61,6 +75,7 @@ func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, 
 		FamilyID:           familyID,
 		RememberMe:         rememberMe,
 		MustChangePassword: mustChangePassword,
+		Scope:              scope,
 	}
 
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

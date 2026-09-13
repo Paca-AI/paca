@@ -35,6 +35,10 @@ name: cd
 #     paca-acp-bridge_<version>_<os>_<arch>.{tar.gz,zip} — ACP bridge local
 #       daemon (Go binary; end users run this on their own machine, so it
 #       ships as release assets rather than a Docker image)
+#     paca-extension.zip — pre-built Chrome extension (unpacked); not on the
+#       Chrome Web Store (see build-extension job below for why), so this
+#       fixed-name zip is what apps/extension/README.md's install steps
+#       point users at, same as install.sh/docker-compose.yml above
 #
 # "Latest" tag sequencing (promote-release, the last job below): no image is
 # pushed with a :latest Docker tag until every job in this workflow has
@@ -653,6 +657,64 @@ jobs:
             "${{ steps.package.outputs.asset }}" --clobber
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # Browser extension → GitHub Release asset
+  #
+  # apps/extension is loaded as an unpacked directory in Chrome rather than
+  # published to the Chrome Web Store — it needs <all_urls> host permissions
+  # to work against any self-hosted Paca instance (the hostname can't be
+  # known in advance), which doesn't fit through the Store's review model.
+  # So this just zips the build output and attaches it as a fixed-name
+  # release asset, same pattern as install.sh/docker-compose.yml below, so
+  # /releases/latest/download/paca-extension.zip is a stable URL end users
+  # can download and unzip without cloning the repo or installing Node. See
+  # apps/extension/README.md for the full install steps.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-extension:
+    name: Build browser extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # gh release upload
+
+    defaults:
+      run:
+        working-directory: apps/extension
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/extension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Zips a named paca-extension/ directory (copied from dist/) rather
+      # than dist/'s contents directly, so extracting the archive always
+      # yields a paca-extension/ folder to point "Load unpacked" at,
+      # regardless of which unzip tool a user's OS reaches for.
+      - name: Package archive
+        run: |
+          set -euo pipefail
+          cp -r dist paca-extension
+          zip -r paca-extension.zip paca-extension
+
+      - name: Upload archive to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            paca-extension.zip --clobber
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Deployment assets → GitHub Release
   #
   # Uploads four files so that users can run or upgrade Paca without cloning the repo:
@@ -685,6 +747,7 @@ jobs:
         helm-chart,
         publish-mcp,
         build-acp-bridge,
+        build-extension,
       ]
     permissions:
       contents: write
@@ -761,6 +824,7 @@ jobs:
         helm-chart,
         publish-mcp,
         build-acp-bridge,
+        build-extension,
         release-assets,
       ]
     permissions:

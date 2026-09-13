@@ -93,7 +93,7 @@ func TestE2ETaskFilters_CustomFieldSelect(t *testing.T) {
 		"field_key":    "priority",
 		"display_name": "Priority",
 		"field_type":   "select",
-		"options":      []string{"Open", "Closed", "Blocked"},
+		"options":      customFieldOptions("Open", "Closed", "Blocked"),
 	})
 
 	open1 := createTaskViaAPIWithBody(t, env, client, token, projID, map[string]any{
@@ -168,7 +168,7 @@ func TestE2ETaskFilters_CustomFieldMultiSelect(t *testing.T) {
 		"field_key":    "labels",
 		"display_name": "Labels",
 		"field_type":   "multi_select",
-		"options":      []string{"backend", "frontend", "urgent"},
+		"options":      customFieldOptions("backend", "frontend", "urgent"),
 	})
 
 	backendUrgent := createTaskViaAPIWithBody(t, env, client, token, projID, map[string]any{
@@ -452,7 +452,7 @@ func TestE2ETaskFilters_CustomFieldsCombinedAND(t *testing.T) {
 
 	createCustomFieldViaAPI(t, env, client, token, projID, map[string]any{
 		"field_key": "priority", "display_name": "Priority", "field_type": "select",
-		"options": []string{"High", "Low"},
+		"options": customFieldOptions("High", "Low"),
 	})
 	createCustomFieldViaAPI(t, env, client, token, projID, map[string]any{
 		"field_key": "effort", "display_name": "Effort", "field_type": "number",
@@ -778,7 +778,7 @@ func TestE2ETaskFilters_CombinedAcrossDimensions(t *testing.T) {
 
 	createCustomFieldViaAPI(t, env, client, token, projID, map[string]any{
 		"field_key": "priority", "display_name": "Priority", "field_type": "select",
-		"options": []string{"High", "Low"},
+		"options": customFieldOptions("High", "Low"),
 	})
 
 	match := createTaskViaAPIWithBody(t, env, client, token, projID, map[string]any{
@@ -828,7 +828,7 @@ func TestE2ETaskFilters_TotalCountAndFieldSumRespectFilters(t *testing.T) {
 
 	createCustomFieldViaAPI(t, env, client, token, projID, map[string]any{
 		"field_key": "priority", "display_name": "Priority", "field_type": "select",
-		"options": []string{"High", "Low"},
+		"options": customFieldOptions("High", "Low"),
 	})
 
 	createTaskViaAPIWithBody(t, env, client, token, projID, map[string]any{

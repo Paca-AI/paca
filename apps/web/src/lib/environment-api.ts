@@ -75,9 +75,28 @@ export interface Environment {
 	// Forwarding" section. When true, show a "restart required" prompt
 	// (see restartEnvironment below).
 	ports_pending_restart: boolean;
+	// access_mode is "open" (default — any project member who can use
+	// environments at all may use this one) or "restricted" (only members
+	// with an explicit access grant may browse, SSH, forward ports, or open
+	// a terminal in it). access_granted is per-viewer: whether the current
+	// user could actually use this environment right now — always true
+	// when access_mode is "open". Together these drive the locked-
+	// environment UI.
+	access_mode: EnvironmentAccessMode;
+	access_granted: boolean;
 	created_at: string;
 	updated_at: string;
 	folders: EnvironmentFolder[];
+}
+
+export type EnvironmentAccessMode = "open" | "restricted";
+
+export interface EnvironmentAccessGrant {
+	id: string;
+	environment_id: string;
+	member_id: string;
+	granted_by?: string | null;
+	created_at: string;
 }
 
 // EnvironmentStats is one message on the live-usage WebSocket
@@ -168,13 +187,55 @@ export async function createEnvironment(
 export async function updateEnvironment(
 	projectId: string,
 	environmentId: string,
-	payload: { name?: string; idle_timeout_minutes?: number },
+	payload: {
+		name?: string;
+		idle_timeout_minutes?: number;
+		access_mode?: EnvironmentAccessMode;
+	},
 ): Promise<Environment> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Environment>>(
 		`/projects/${projectId}/environments/${environmentId}`,
 		payload,
 	);
 	return data.data;
+}
+
+// ── Access grants ─────────────────────────────────────────────────────────────
+// Who may use a restricted environment — see Environment.access_mode's doc
+// comment. Managing the grant list itself requires environments.write, same
+// tier as every other environment-configuration action.
+
+export async function listEnvironmentAccessGrants(
+	projectId: string,
+	environmentId: string,
+): Promise<EnvironmentAccessGrant[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: EnvironmentAccessGrant[] }>
+	>(`/projects/${projectId}/environments/${environmentId}/access-grants`);
+	return data.data.items;
+}
+
+export async function addEnvironmentAccessGrant(
+	projectId: string,
+	environmentId: string,
+	memberId: string,
+): Promise<EnvironmentAccessGrant> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<EnvironmentAccessGrant>
+	>(`/projects/${projectId}/environments/${environmentId}/access-grants`, {
+		member_id: memberId,
+	});
+	return data.data;
+}
+
+export async function removeEnvironmentAccessGrant(
+	projectId: string,
+	environmentId: string,
+	memberId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/projects/${projectId}/environments/${environmentId}/access-grants/${memberId}`,
+	);
 }
 
 export async function deleteEnvironment(
@@ -334,6 +395,19 @@ export async function listPortForwards(
 	return data.data.port_forwards;
 }
 
+export async function getPortForward(
+	projectId: string,
+	environmentId: string,
+	portForwardId: string,
+): Promise<EnvironmentPortForward> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<EnvironmentPortForward>
+	>(
+		`/projects/${projectId}/environments/${environmentId}/port-forwards/${portForwardId}`,
+	);
+	return data.data;
+}
+
 export async function addPortForward(
 	projectId: string,
 	environmentId: string,
@@ -427,6 +501,19 @@ export async function getEnvironmentConfig(): Promise<EnvironmentDeploymentConfi
 	return data.data;
 }
 
+/**
+ * Builds the URL to open a forwarded port at, using the current page's own
+ * protocol rather than hardcoding http: — a forwarded preview shares the
+ * Paca app's own hostname, differing only by port (see services/api's
+ * corsMiddleware doc comment and the extension's content script, which
+ * builds its own baseUrl the same way), so a deployment fronting previews
+ * over TLS via a proxy on PORT_FORWARD_HOST would otherwise get a URL that
+ * opens a failing plain-HTTP origin instead of the real one.
+ */
+export function portForwardUrl(host: string, port: number, path = ""): string {
+	return `${window.location.protocol}//${host}:${port}${path}`;
+}
+
 // Not project- or environment-scoped (the same deployment-wide values for
 // everyone), so one shared query key/cache entry — mirrors how
 // currentUserQueryOptions/branding-style global config is fetched
@@ -492,6 +579,21 @@ export const environmentFoldersQueryOptions = (
 		queryFn: () => listFolders(projectId, environmentId),
 	});
 
+export const environmentAccessGrantsQueryOptions = (
+	projectId: string,
+	environmentId: string,
+) =>
+	queryOptions({
+		queryKey: [
+			"projects",
+			projectId,
+			"environments",
+			environmentId,
+			"access-grants",
+		],
+		queryFn: () => listEnvironmentAccessGrants(projectId, environmentId),
+	});
+
 export const environmentSSHKeysQueryOptions = (
 	projectId: string,
 	environmentId: string,
@@ -520,6 +622,23 @@ export const environmentPortForwardsQueryOptions = (
 			"port-forwards",
 		],
 		queryFn: () => listPortForwards(projectId, environmentId),
+	});
+
+export const portForwardQueryOptions = (
+	projectId: string,
+	environmentId: string,
+	portForwardId: string,
+) =>
+	queryOptions({
+		queryKey: [
+			"projects",
+			projectId,
+			"environments",
+			environmentId,
+			"port-forwards",
+			portForwardId,
+		],
+		queryFn: () => getPortForward(projectId, environmentId, portForwardId),
 	});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

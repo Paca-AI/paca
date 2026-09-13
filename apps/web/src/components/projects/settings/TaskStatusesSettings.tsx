@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DeleteTaskStatusDialog } from "@/components/projects/task-statuses/DeleteTaskStatusDialog";
 import { TaskStatusFormDialog } from "@/components/projects/task-statuses/TaskStatusFormDialog";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -21,6 +22,8 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { isForbiddenError } from "@/lib/api-error";
 import {
 	reorderTaskStatuses,
 	STATUS_CATEGORY_LABELS,
@@ -63,9 +66,29 @@ export function TaskStatusesSettings({
 	canWrite: boolean;
 }) {
 	const { t } = useTranslation("projects");
-	const { data: statuses, isLoading } = useQuery(
-		taskStatusesQueryOptions(projectId),
-	);
+	const { hasProjectPermission, isLoading: isPermissionsLoading } =
+		useProjectPermissions(projectId);
+	// No dedicated project.settings.task_statuses.read permission — viewing
+	// the status list is implied by tasks.read, same as viewing the tasks
+	// that reference it (see authz.PermissionProjectSettingsTaskTypesWrite's
+	// doc comment on the Go side).
+	const canRead = hasProjectPermission("tasks.read");
+	const {
+		data: statuses,
+		isLoading: isDataLoading,
+		isError,
+		error,
+	} = useQuery({
+		...taskStatusesQueryOptions(projectId),
+		enabled: canRead,
+	});
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — guard on isPermissionsLoading (and fold it into
+	// isLoading) so the section shows the skeleton instead of flashing
+	// NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading && (!canRead || (isError && isForbiddenError(error)));
 	const queryClient = useQueryClient();
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editStatus, setEditStatus] = useState<TaskStatus | null>(null);
@@ -159,7 +182,13 @@ export function TaskStatusesSettings({
 				</p>
 			) : null}
 
-			{isLoading ? (
+			{noPermission ? (
+				<NoPermissionState
+					icon={LayoutList}
+					title={t("settings.taskStatuses.noPermission.title")}
+					description={t("settings.taskStatuses.noPermission.description")}
+				/>
+			) : isLoading ? (
 				<div className="rounded-xl border overflow-hidden mt-4">
 					{["s1", "s2", "s3"].map((k) => (
 						<div

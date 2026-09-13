@@ -145,6 +145,56 @@ func TestLogin_WrongPassword(t *testing.T) {
 	}
 }
 
+func TestLogin_IssuesAnnotationPair(t *testing.T) {
+	u := &userdom.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Role:         userdom.RoleUser,
+		PasswordHash: hashedPassword(t, "secret123"),
+	}
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{
+		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
+	}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
+
+	pair, err := svc.Login(context.Background(), "alice", "secret123", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pair.AnnotationAccessToken == "" || pair.AnnotationRefreshToken == "" {
+		t.Fatal("expected non-empty annotation token pair")
+	}
+
+	accessClaims, err := tm.Verify(pair.AnnotationAccessToken)
+	if err != nil {
+		t.Fatalf("verify annotation access token: %v", err)
+	}
+	if accessClaims.Scope != domainauth.ScopeAnnotation {
+		t.Errorf("annotation access token Scope = %q, want %q", accessClaims.Scope, domainauth.ScopeAnnotation)
+	}
+	if accessClaims.Kind != "access" {
+		t.Errorf("annotation access token Kind = %q, want %q", accessClaims.Kind, "access")
+	}
+
+	refreshClaims, err := tm.Verify(pair.AnnotationRefreshToken)
+	if err != nil {
+		t.Fatalf("verify annotation refresh token: %v", err)
+	}
+	if refreshClaims.Scope != domainauth.ScopeAnnotation {
+		t.Errorf("annotation refresh token Scope = %q, want %q", refreshClaims.Scope, domainauth.ScopeAnnotation)
+	}
+
+	// The main pair must stay full-scope -- adding the annotation pair
+	// must not narrow what Login's original tokens can do.
+	mainAccessClaims, err := tm.Verify(pair.AccessToken)
+	if err != nil {
+		t.Fatalf("verify main access token: %v", err)
+	}
+	if mainAccessClaims.Scope != "" {
+		t.Errorf("main access token Scope = %q, want empty (full scope)", mainAccessClaims.Scope)
+	}
+}
+
 func TestLogin_RepoError(t *testing.T) {
 	repoErr := errors.New("db down")
 	svc := newAuthSvc(&stubUserRepo{
@@ -191,6 +241,148 @@ func TestRefresh_Success(t *testing.T) {
 	}
 }
 
+// TestRefresh_ReissuesAnnotationPair confirms the piggybacking behavior
+// this whole change is for: refreshing the main session also hands back a
+// fresh, valid domainauth.ScopeAnnotation pair, not just the main one.
+func TestRefresh_ReissuesAnnotationPair(t *testing.T) {
+	userID := uuid.New()
+	u := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleUser}
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	repo := &stubUserRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := authsvc.New(repo, tm, &stubRefreshStore{
+		isFamilyRevoked: func(_ context.Context, _ string) (bool, error) { return false, nil },
+		recordFirstUse:  func(_ context.Context, _ string, _ time.Duration) (*time.Time, error) { return nil, nil },
+	}, 7*24*time.Hour, 24*time.Hour)
+
+	refresh, err := tm.IssueRefresh(userID.String(), "alice", userdom.RoleUser, "fam1")
+	if err != nil {
+		t.Fatalf("IssueRefresh: %v", err)
+	}
+
+	pair, err := svc.Refresh(context.Background(), refresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pair.AnnotationAccessToken == "" || pair.AnnotationRefreshToken == "" {
+		t.Fatal("expected a freshly reissued annotation token pair")
+	}
+
+	accessClaims, err := tm.Verify(pair.AnnotationAccessToken)
+	if err != nil {
+		t.Fatalf("verify annotation access token: %v", err)
+	}
+	if accessClaims.Scope != domainauth.ScopeAnnotation {
+		t.Errorf("annotation access token Scope = %q, want %q", accessClaims.Scope, domainauth.ScopeAnnotation)
+	}
+	if accessClaims.Subject != userID.String() {
+		t.Errorf("annotation access token Subject = %q, want %q", accessClaims.Subject, userID.String())
+	}
+
+	refreshClaims, err := tm.Verify(pair.AnnotationRefreshToken)
+	if err != nil {
+		t.Fatalf("verify annotation refresh token: %v", err)
+	}
+	if refreshClaims.FamilyID != "fam1" {
+		t.Errorf("annotation refresh token FamilyID = %q, want %q (must share the main pair's family so Logout revokes both)", refreshClaims.FamilyID, "fam1")
+	}
+}
+
+// TestRefresh_ReflectsRoleChange guards against a regression where the
+// rotated tokens carried the presented refresh token's own (possibly stale)
+// Role claim instead of the freshly-reloaded user's current role — see
+// rotateRefreshToken's doc comment on why the user row is reloaded on every
+// refresh in the first place, and why that must apply to Role, not just
+// MustChangePassword: authz.LegacyPermissionsForRole grants a full wildcard
+// for a role named "ADMIN"/"SUPER_ADMIN", so a demotion that doesn't take
+// effect on refresh is a live privilege-revocation bug, not just staleness.
+func TestRefresh_ReflectsRoleChange(t *testing.T) {
+	userID := uuid.New()
+	u := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleAdmin}
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	repo := &stubUserRepo{
+		// Simulates an admin demoting this user to USER in between the
+		// refresh token being issued and it being presented here.
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := authsvc.New(repo, tm, &stubRefreshStore{
+		isFamilyRevoked: func(_ context.Context, _ string) (bool, error) { return false, nil },
+		recordFirstUse:  func(_ context.Context, _ string, _ time.Duration) (*time.Time, error) { return nil, nil },
+	}, 7*24*time.Hour, 24*time.Hour)
+
+	// Issue the refresh token while the user is still ADMIN...
+	refresh, err := tm.IssueRefresh(userID.String(), "alice", userdom.RoleAdmin, "fam1")
+	if err != nil {
+		t.Fatalf("IssueRefresh: %v", err)
+	}
+	// ...then demote them before it's ever redeemed.
+	u.Role = userdom.RoleUser
+
+	pair, err := svc.Refresh(context.Background(), refresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	accessClaims, err := tm.Verify(pair.AccessToken)
+	if err != nil {
+		t.Fatalf("verify access token: %v", err)
+	}
+	if accessClaims.Role != userdom.RoleUser {
+		t.Errorf("access token Role = %q, want %q (the demotion must take effect immediately, not just after re-login)", accessClaims.Role, userdom.RoleUser)
+	}
+
+	refreshClaims, err := tm.Verify(pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("verify refresh token: %v", err)
+	}
+	if refreshClaims.Role != userdom.RoleUser {
+		t.Errorf("rotated refresh token Role = %q, want %q", refreshClaims.Role, userdom.RoleUser)
+	}
+
+	annotationAccessClaims, err := tm.Verify(pair.AnnotationAccessToken)
+	if err != nil {
+		t.Fatalf("verify annotation access token: %v", err)
+	}
+	if annotationAccessClaims.Role != userdom.RoleUser {
+		t.Errorf("annotation access token Role = %q, want %q", annotationAccessClaims.Role, userdom.RoleUser)
+	}
+}
+
+// TestRefreshAnnotation_ReflectsRoleChange is TestRefresh_ReflectsRoleChange's
+// sibling for the ScopeAnnotation rotation path, which had the identical bug.
+func TestRefreshAnnotation_ReflectsRoleChange(t *testing.T) {
+	userID := uuid.New()
+	u := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleAdmin}
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	repo := &stubUserRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := authsvc.New(repo, tm, &stubRefreshStore{
+		isFamilyRevoked: func(_ context.Context, _ string) (bool, error) { return false, nil },
+		recordFirstUse:  func(_ context.Context, _ string, _ time.Duration) (*time.Time, error) { return nil, nil },
+	}, 7*24*time.Hour, 24*time.Hour)
+
+	annotationRefresh, err := tm.IssueAnnotationRefreshWithTTL(userID.String(), "alice", userdom.RoleAdmin, "fam1", true, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueAnnotationRefreshWithTTL: %v", err)
+	}
+	u.Role = userdom.RoleUser
+
+	pair, err := svc.RefreshAnnotation(context.Background(), annotationRefresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	accessClaims, err := tm.Verify(pair.AnnotationAccessToken)
+	if err != nil {
+		t.Fatalf("verify annotation access token: %v", err)
+	}
+	if accessClaims.Role != userdom.RoleUser {
+		t.Errorf("annotation access token Role = %q, want %q", accessClaims.Role, userdom.RoleUser)
+	}
+}
+
 func TestRefresh_WrongKind(t *testing.T) {
 	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
 	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
@@ -200,6 +392,26 @@ func TestRefresh_WrongKind(t *testing.T) {
 	_, err := svc.Refresh(context.Background(), access)
 	if !errors.Is(err, domainauth.ErrTokenInvalid) {
 		t.Fatalf("expected ErrTokenInvalid, got %v", err)
+	}
+}
+
+// TestRefresh_RejectsAnnotationScopedToken is the core security property of
+// the whole ScopeAnnotation design: a token minted only for the browser
+// extension's narrow annotation flow must never be usable to mint a
+// full-scope session. Without this check, rotateRefreshToken's wantScope
+// argument would be decorative.
+func TestRefresh_RejectsAnnotationScopedToken(t *testing.T) {
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
+
+	annotationRefresh, err := tm.IssueAnnotationRefreshWithTTL("sub", "alice", userdom.RoleUser, "fam1", true, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueAnnotationRefreshWithTTL: %v", err)
+	}
+
+	_, err = svc.Refresh(context.Background(), annotationRefresh)
+	if !errors.Is(err, domainauth.ErrTokenInvalid) {
+		t.Fatalf("expected ErrTokenInvalid for an annotation-scoped token, got %v", err)
 	}
 }
 
@@ -294,6 +506,88 @@ func TestRefresh_ReuseOutsideGrace_RevokeFamilyFailure(t *testing.T) {
 	}
 	if !errors.Is(err, revokeErr) {
 		t.Fatalf("expected revoke error to be wrapped, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RefreshAnnotation
+// ---------------------------------------------------------------------------
+
+func TestRefreshAnnotation_Success(t *testing.T) {
+	userID := uuid.New()
+	u := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleUser}
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	repo := &stubUserRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := authsvc.New(repo, tm, &stubRefreshStore{
+		isFamilyRevoked: func(_ context.Context, _ string) (bool, error) { return false, nil },
+		recordFirstUse:  func(_ context.Context, _ string, _ time.Duration) (*time.Time, error) { return nil, nil },
+	}, 7*24*time.Hour, 24*time.Hour)
+
+	refresh, err := tm.IssueAnnotationRefreshWithTTL(userID.String(), "alice", userdom.RoleUser, "fam1", true, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueAnnotationRefreshWithTTL: %v", err)
+	}
+
+	pair, err := svc.RefreshAnnotation(context.Background(), refresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pair.AnnotationAccessToken == "" || pair.AnnotationRefreshToken == "" {
+		t.Fatal("expected non-empty rotated annotation token pair")
+	}
+	// Must not touch the main pair's fields at all.
+	if pair.AccessToken != "" || pair.RefreshToken != "" {
+		t.Errorf("expected empty main token fields, got AccessToken=%q RefreshToken=%q", pair.AccessToken, pair.RefreshToken)
+	}
+
+	claims, err := tm.Verify(pair.AnnotationAccessToken)
+	if err != nil {
+		t.Fatalf("verify rotated annotation access token: %v", err)
+	}
+	if claims.Scope != domainauth.ScopeAnnotation {
+		t.Errorf("rotated access token Scope = %q, want %q", claims.Scope, domainauth.ScopeAnnotation)
+	}
+}
+
+// TestRefreshAnnotation_RejectsMainScopedToken is Refresh's cross-rejection
+// property, mirrored: a full-scope refresh token must not be accepted here
+// either. Not a privilege-escalation risk the way the reverse is (a full
+// token can already do everything an annotation token can), but accepting
+// it would blur the two rotation paths' independence -- e.g. logging out
+// only the annotation session should never be possible by design, and
+// letting either endpoint accept the other's token is a step toward that.
+func TestRefreshAnnotation_RejectsMainScopedToken(t *testing.T) {
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
+
+	mainRefresh, err := tm.IssueRefreshWithTTL("sub", "alice", userdom.RoleUser, "fam1", true, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueRefreshWithTTL: %v", err)
+	}
+
+	_, err = svc.RefreshAnnotation(context.Background(), mainRefresh)
+	if !errors.Is(err, domainauth.ErrTokenInvalid) {
+		t.Fatalf("expected ErrTokenInvalid for a main-scoped token, got %v", err)
+	}
+}
+
+func TestRefreshAnnotation_FamilyRevoked(t *testing.T) {
+	// The annotation pair shares its family with the main pair (see
+	// Service.Login) specifically so that Logout -- which revokes by family
+	// -- kills both. This confirms RefreshAnnotation actually honors that
+	// shared revocation rather than checking some separate state.
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	store := &stubRefreshStore{
+		isFamilyRevoked: func(_ context.Context, _ string) (bool, error) { return true, nil },
+	}
+	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour, 24*time.Hour)
+
+	refresh, _ := tm.IssueAnnotationRefreshWithTTL("sub", "alice", userdom.RoleUser, "fam1", true, 7*24*time.Hour)
+	_, err := svc.RefreshAnnotation(context.Background(), refresh)
+	if !errors.Is(err, domainauth.ErrSessionInvalidated) {
+		t.Fatalf("expected ErrSessionInvalidated, got %v", err)
 	}
 }
 

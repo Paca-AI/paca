@@ -9,6 +9,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	conversationQueryOptions,
 	globalConversationQueryOptions,
@@ -16,6 +17,7 @@ import {
 	startGlobalChatSession,
 } from "@/lib/agent-api";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
+import { useAgentBusyPrompt } from "./agent-busy-dialog";
 import {
 	AgentPickerContext,
 	AgentPickerInline,
@@ -26,7 +28,11 @@ import {
 	useEnvironmentPicker,
 	useGlobalAgentPicker,
 } from "./agent-picker";
-import { extractTextOnlyContent } from "./conversation-to-thread-messages";
+import { ConversationErrorBox } from "./conversation-error-box";
+import {
+	chatSessionAccessDeniedKey,
+	extractTextOnlyContent,
+} from "./conversation-to-thread-messages";
 
 // Shared between the project-scoped Conversations page's blank-composer
 // index route and the global one — see conversations-layout.tsx for the
@@ -70,6 +76,30 @@ export function NewConversationThread({
 	});
 
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	// assistant-ui's onNew rejection isn't caught anywhere in its own
+	// send/append chain (ComposerRuntimeCore.send -> handleSend ->
+	// ThreadRuntimeCore.append all call the next step unawaited, so a thrown
+	// Error here becomes an unhandled promise rejection, not a rendered
+	// MessageError — that primitive reads a message's own persisted
+	// status.reason==="error", which only a server-confirmed failed turn
+	// ever has). Driven by local state and rendered via viewportOverlay
+	// instead — the same ConversationErrorBox mechanism already used for
+	// conversation.error_message — so a dispatch failure is actually visible
+	// rather than silently dropped.
+	const [sendError, setSendError] = useState<string | null>(null);
+
+	// Global chat (no projectId) is deliberately open to any authenticated
+	// user (see router.go's global chat-session routes); only gate starting a
+	// project-scoped conversation, which the backend now requires
+	// conversations.write for — a PROJECT_VIEWER (conversations.read only)
+	// can land on this route directly (e.g. via the sidebar nav item) even
+	// with the "New conversation" button itself hidden elsewhere, so the
+	// composer needs its own guard too.
+	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
+	const canStartConversation =
+		!projectId || hasProjectPermission("conversations.write");
+	const { dialog: agentBusyDialog, send: sendWithBusyPrompt } =
+		useAgentBusyPrompt();
 
 	const onNew = async (message: AppendMessage) => {
 		if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
@@ -84,14 +114,18 @@ export function NewConversationThread({
 		// Guards against a fast double-Enter firing two chat sessions before
 		// the first request resolves and this component navigates away.
 		setIsSubmitting(true);
+		setSendError(null);
 		try {
 			if (projectId) {
-				const result = await startChatSession(projectId, agentId, {
-					message: text,
-					...(environmentId ? { environment_id: environmentId } : {}),
-					...(folderId ? { folder_id: folderId } : {}),
-					contextItems,
-				});
+				const result = await sendWithBusyPrompt((onBusy) =>
+					startChatSession(projectId, agentId, {
+						message: text,
+						...(environmentId ? { environment_id: environmentId } : {}),
+						...(folderId ? { folder_id: folderId } : {}),
+						contextItems,
+						on_busy: onBusy,
+					}),
+				);
 				useContextInjectionStore.getState().clear();
 				qc.setQueryData(
 					conversationQueryOptions(projectId, result.conversation.id).queryKey,
@@ -105,10 +139,13 @@ export function NewConversationThread({
 					params: { projectId, conversationId: result.conversation.id },
 				});
 			} else {
-				const result = await startGlobalChatSession(agentId, {
-					message: text,
-					contextItems,
-				});
+				const result = await sendWithBusyPrompt((onBusy) =>
+					startGlobalChatSession(agentId, {
+						message: text,
+						contextItems,
+						on_busy: onBusy,
+					}),
+				);
 				useContextInjectionStore.getState().clear();
 				qc.setQueryData(
 					globalConversationQueryOptions(result.conversation.id).queryKey,
@@ -122,6 +159,13 @@ export function NewConversationThread({
 					params: { conversationId: result.conversation.id },
 				});
 			}
+		} catch (err) {
+			const key = chatSessionAccessDeniedKey(err);
+			if (key) {
+				setSendError(t(key));
+				return;
+			}
+			throw err;
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -134,16 +178,25 @@ export function NewConversationThread({
 		isRunning: false,
 		convertMessage: (m) => m,
 		onNew,
-		isSendDisabled: !agentId || isSubmitting,
+		isDisabled: !canStartConversation,
+		isSendDisabled: !canStartConversation || !agentId || isSubmitting,
 	});
 
 	return (
 		<AgentPickerContext.Provider value={pickerState}>
 			<EnvironmentPickerContext.Provider value={environmentPickerState}>
 				<AssistantRuntimeProvider runtime={runtime}>
-					<Thread components={{ ComposerStart: ComposerStartRow }} />
+					<Thread
+						components={{ ComposerStart: ComposerStartRow }}
+						viewportOverlay={
+							sendError ? (
+								<ConversationErrorBox message={sendError} />
+							) : undefined
+						}
+					/>
 				</AssistantRuntimeProvider>
 			</EnvironmentPickerContext.Provider>
+			{agentBusyDialog}
 		</AgentPickerContext.Provider>
 	);
 }

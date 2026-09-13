@@ -16,33 +16,31 @@ import { GeneralSettings } from "@/components/projects/settings/GeneralSettings"
 import { RolesSettings } from "@/components/projects/settings/RolesSettings";
 import { TaskStatusesSettings } from "@/components/projects/settings/TaskStatusesSettings";
 import { TaskTypesSettings } from "@/components/projects/settings/TaskTypesSettings";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { usePermissions } from "@/hooks/use-permissions";
-import { currentUserQueryOptions } from "@/lib/auth-api";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { RemoteComponent } from "@/lib/plugins/loader";
 import { usePluginRegistry } from "@/lib/plugins/registry";
-import {
-	customFieldsQueryOptions,
-	type ProjectMember,
-	type ProjectRole,
-	projectMembersQueryOptions,
-	projectQueryOptions,
-	projectRolesQueryOptions,
-	taskStatusesQueryOptions,
-	taskTypesQueryOptions,
-} from "@/lib/project-api";
+import { projectQueryOptions } from "@/lib/project-api";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/settings/",
 )({
+	// Only the project itself is prefetched here (for the header's name —
+	// and already warm from the parent $projectId route's own loader
+	// anyway). Roles/members/task-statuses/task-types/custom-fields each
+	// belong to exactly one lazily-rendered tab below and are fetched by
+	// that tab's own component via useQuery, not prefetched here: each of
+	// those needs its own project.*.read permission (project.roles.read,
+	// project.members.read, project.settings.task_statuses.read, etc.), and
+	// a role that's missing just one of them — a hand-edited custom role
+	// especially — would previously fail this Promise.all and crash the
+	// entire settings page, including the General/Danger Zone tabs that
+	// role could otherwise use. A component-level useQuery fails softly
+	// (that one tab shows an empty/loading state) instead of blocking the
+	// whole route.
 	loader: async ({ context: { queryClient }, params: { projectId } }) => {
-		await Promise.all([
-			queryClient.ensureQueryData(projectQueryOptions(projectId)),
-			queryClient.ensureQueryData(projectRolesQueryOptions(projectId)),
-			queryClient.ensureQueryData(projectMembersQueryOptions(projectId)),
-			queryClient.ensureQueryData(taskStatusesQueryOptions(projectId)),
-			queryClient.ensureQueryData(taskTypesQueryOptions(projectId)),
-			queryClient.ensureQueryData(customFieldsQueryOptions(projectId)),
-		]);
+		await queryClient.ensureQueryData(projectQueryOptions(projectId));
 	},
 	component: SettingsPage,
 });
@@ -83,45 +81,38 @@ function SettingsPage() {
 	const { projectId } = Route.useParams();
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	const { hasPermission } = usePermissions();
-	const { data: currentUser } = useQuery(currentUserQueryOptions);
-	const { data: members = [] } = useQuery(
-		projectMembersQueryOptions(projectId),
-	);
-	const { data: roles = [] } = useQuery(projectRolesQueryOptions(projectId));
+	const { hasProjectPermission } = useProjectPermissions(projectId);
 
-	const myMembership = (members as ProjectMember[]).find(
-		(m) => m.user_id === currentUser?.id,
-	);
-	const myRole = (roles as ProjectRole[]).find(
-		(r) => r.id === myMembership?.project_role_id,
-	);
-	const hasProjectDelete = Boolean(
-		(myRole?.permissions as Record<string, boolean> | undefined)?.[
-			"projects.delete"
-		],
-	);
-	const hasProjectWrite = Boolean(
-		(myRole?.permissions as Record<string, boolean> | undefined)?.[
-			"projects.write"
-		],
-	);
-	const hasProjectRolesWrite = Boolean(
-		(myRole?.permissions as Record<string, boolean> | undefined)?.[
-			"project.roles.write"
-		],
-	);
-	const canDelete = hasPermission("projects.delete") || hasProjectDelete;
-	const canEditProject = hasPermission("projects.write") || hasProjectWrite;
+	const canDelete =
+		hasPermission("projects.delete") || hasProjectPermission("projects.delete");
+	const canEditProject =
+		hasPermission("projects.write") || hasProjectPermission("projects.write");
 	const canManageRoles =
-		hasPermission("project.roles.write") || hasProjectRolesWrite;
-	const hasTasksWrite = Boolean(
-		(myRole?.permissions as Record<string, boolean> | undefined)?.[
-			"tasks.write"
-		],
-	);
-	const canManageTasks = hasPermission("tasks.write") || hasTasksWrite;
+		hasPermission("project.roles.write") ||
+		hasProjectPermission("project.roles.write");
+	// Each schema area has its own write permission, independent of
+	// tasks.write (which only governs editing a task's own content) — see
+	// authz.PermissionProjectSettingsTaskTypesWrite's doc comment on the Go
+	// side. Previously all three tabs were gated on tasks.write here, so
+	// anyone who could edit a task (nearly every role) saw New/Edit/Delete
+	// on all three even without the dedicated grant — the backend correctly
+	// rejected the request, but the button shouldn't have been shown at all.
+	const canManageTaskTypes =
+		hasPermission("project.settings.task_types.write") ||
+		hasProjectPermission("project.settings.task_types.write");
+	const canManageTaskStatuses =
+		hasPermission("project.settings.task_statuses.write") ||
+		hasProjectPermission("project.settings.task_statuses.write");
+	const canManageCustomFields =
+		hasPermission("project.settings.custom_fields.write") ||
+		hasProjectPermission("project.settings.custom_fields.write");
 
 	const { getRegistrations } = usePluginRegistry();
+	// A tab's own requiredPermission no longer hides it from this list —
+	// matching how the built-in tabs above (task-types, custom-fields, etc.)
+	// are always shown and instead render NoPermissionState internally when
+	// the viewer lacks the relevant permission. See the plugin-tab render
+	// branch below for the equivalent check.
 	const pluginTabs = getRegistrations("project.settings.tab").filter(
 		(r) => !r.hidden,
 	);
@@ -262,34 +253,63 @@ function SettingsPage() {
 						{activeSection === "task-statuses" && (
 							<TaskStatusesSettings
 								projectId={projectId}
-								canWrite={canManageTasks}
+								canWrite={canManageTaskStatuses}
 							/>
 						)}
 						{activeSection === "task-types" && (
 							<TaskTypesSettings
 								projectId={projectId}
-								canWrite={canManageTasks}
+								canWrite={canManageTaskTypes}
 							/>
 						)}
 						{activeSection === "custom-fields" && (
 							<CustomFieldsSettings
 								projectId={projectId}
-								canWrite={canManageTasks}
+								canWrite={canManageCustomFields}
 							/>
 						)}
 						{activeSection === "danger" && canDelete && (
 							<DangerZone projectId={projectId} />
 						)}
 						{/* Plugin settings tabs */}
-						{pluginTabs.map((reg) =>
-							activeSection === `plugin:${reg.pluginId}:${reg.component}` ? (
+						{pluginTabs.map((reg) => {
+							if (activeSection !== `plugin:${reg.pluginId}:${reg.component}`) {
+								return null;
+							}
+							const authorized =
+								!reg.requiredPermission ||
+								hasProjectPermission(reg.requiredPermission);
+							if (!authorized) {
+								return (
+									<NoPermissionState
+										key={`${reg.pluginId}:${reg.component}`}
+										title={t(
+											"project.settingsPage.pluginTab.noPermission.title",
+										)}
+										description={t(
+											"project.settingsPage.pluginTab.noPermission.description",
+											{ pluginName: reg.pluginName },
+										)}
+									/>
+								);
+							}
+							return (
 								<RemoteComponent
 									key={`${reg.pluginId}:${reg.component}`}
 									registration={reg}
-									componentProps={{ projectId, canEdit: canEditProject }}
+									componentProps={{
+										projectId,
+										// A tab with its own requiredPermission is single-tier —
+										// having just passed the `authorized` check above means
+										// canEdit is simply true. A tab with no requiredPermission
+										// (fully open to any project member, the pre-existing
+										// default) falls back to the original projects.write
+										// check so its behavior is unchanged.
+										canEdit: reg.requiredPermission ? true : canEditProject,
+									}}
 								/>
-							) : null,
-						)}
+							);
+						})}
 					</div>
 				</div>
 			</div>

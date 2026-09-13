@@ -19,6 +19,8 @@ export interface ExtensionPointRegistration {
 	component: string;
 	label?: string;
 	order?: number;
+	/** See `PluginNavItem.requiredPermission` — same semantics, applied to an embedded registration instead of a full page. */
+	requiredPermission?: string;
 }
 
 export interface PluginNavItem {
@@ -199,6 +201,8 @@ export interface PluginRegistration {
 	component: string;
 	order: number;
 	hidden?: boolean;
+	/** See `ExtensionPointRegistration.requiredPermission`. */
+	requiredPermission?: string;
 }
 
 /** Build a Map<ExtensionPointId, PluginRegistration[]> from the plugins list. */
@@ -234,6 +238,7 @@ export function buildRegistryMap(
 				component: reg.component,
 				order,
 				hidden: setting?.settings.hidden ?? false,
+				requiredPermission: reg.requiredPermission,
 			});
 			map.set(point, regs);
 		}

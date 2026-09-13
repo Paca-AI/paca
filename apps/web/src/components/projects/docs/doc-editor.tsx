@@ -10,6 +10,7 @@ import {
 	useImperativeHandle,
 	useRef,
 } from "react";
+import { createAnnotationPasteHandler } from "@/components/shared/blocknote-annotation-paste-handler";
 import { CustomSideMenu } from "@/components/shared/blocknote-custom-side-menu";
 import { customSchema } from "@/components/shared/blocknote-schema";
 import { normalizeBlockContent } from "@/components/shared/comment-blocknote";
@@ -69,6 +70,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
 
 		const editor = useCreateBlockNote({
 			schema: customSchema,
+			pasteHandler: createAnnotationPasteHandler(),
 			uploadFile: async (file: File) => {
 				const pId = projectIdRef.current;
 				const dId = docIdRef.current;

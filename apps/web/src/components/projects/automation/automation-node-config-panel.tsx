@@ -1965,8 +1965,8 @@ function ConditionConfigForm({
 									</SelectTrigger>
 									<SelectContent>
 										{selectedCustomField.options.map((opt) => (
-											<SelectItem key={opt} value={opt}>
-												{opt}
+											<SelectItem key={opt.value} value={opt.value}>
+												{opt.value}
 											</SelectItem>
 										))}
 									</SelectContent>

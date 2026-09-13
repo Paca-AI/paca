@@ -2,15 +2,20 @@ package agentsvc
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
 // ---------------------------------------------------------------------------
@@ -56,7 +61,7 @@ func (f *fakeAvatarService) DeleteAvatarObjects(_ context.Context, keys ...*stri
 // findAgentByIDReturning stubs mockAgentRepo.findAgentByID to return a
 // minimal agent of the given type, regardless of the requested id — used by
 // tests exercising MCP server / skill / env var writes, which now check the
-// owning agent's type via requireNonACPAgent before touching the repo.
+// owning agent's type via requireGooseManagedAgent before touching the repo.
 func findAgentByIDReturning(agentType string) func(context.Context, uuid.UUID) (*agentdom.Agent, error) {
 	return func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
 		return &agentdom.Agent{ID: id, AgentType: agentType}, nil
@@ -64,56 +69,69 @@ func findAgentByIDReturning(agentType string) func(context.Context, uuid.UUID) (
 }
 
 type mockAgentRepo struct {
-	findAgentByID                   func(ctx context.Context, id uuid.UUID) (*agentdom.Agent, error)
-	findVisibleAgentInProject       func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
-	findAgentByHandle               func(ctx context.Context, projectID uuid.UUID, handle string) (*agentdom.Agent, error)
-	listAgents                      func(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error)
-	createAgent                     func(ctx context.Context, agent *agentdom.Agent) error
-	createAgentWithMembership       func(ctx context.Context, agent *agentdom.Agent, memberID, projectID, projectRoleID uuid.UUID) error
-	updateAgent                     func(ctx context.Context, agent *agentdom.Agent) error
-	softDeleteAgent                 func(ctx context.Context, id uuid.UUID) error
-	softDeleteAgentWithMembership   func(ctx context.Context, projectID, agentID uuid.UUID) error
-	setAgentMemberID                func(ctx context.Context, agentID, memberID uuid.UUID) error
-	setACPBridgeTokenHash           func(ctx context.Context, agentID uuid.UUID, hash string) error
-	setMCPAPIKeyHash                func(ctx context.Context, agentID uuid.UUID, hash string) error
-	findAgentByMCPAPIKeyHash        func(ctx context.Context, hash string) (*agentdom.Agent, error)
-	listMCPServers                  func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentMCPServer, error)
-	findMCPServerByID               func(ctx context.Context, id uuid.UUID) (*agentdom.AgentMCPServer, error)
-	createMCPServer                 func(ctx context.Context, server *agentdom.AgentMCPServer) error
-	updateMCPServer                 func(ctx context.Context, server *agentdom.AgentMCPServer) error
-	deleteMCPServer                 func(ctx context.Context, id uuid.UUID) error
-	listSkills                      func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentSkill, error)
-	findSkillByID                   func(ctx context.Context, id uuid.UUID) (*agentdom.AgentSkill, error)
-	createSkill                     func(ctx context.Context, skill *agentdom.AgentSkill) error
-	updateSkill                     func(ctx context.Context, skill *agentdom.AgentSkill) error
-	deleteSkill                     func(ctx context.Context, id uuid.UUID) error
-	listEnvVars                     func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentEnvironmentVariable, error)
-	findEnvVarByID                  func(ctx context.Context, id uuid.UUID) (*agentdom.AgentEnvironmentVariable, error)
-	findEnvVarByKey                 func(ctx context.Context, agentID uuid.UUID, key string) (*agentdom.AgentEnvironmentVariable, error)
-	createEnvVar                    func(ctx context.Context, v *agentdom.AgentEnvironmentVariable) error
-	updateEnvVar                    func(ctx context.Context, v *agentdom.AgentEnvironmentVariable) error
-	deleteEnvVar                    func(ctx context.Context, id uuid.UUID) error
-	listConversations               func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
-	findConversationByID            func(ctx context.Context, id uuid.UUID) (*agentdom.AgentConversation, error)
-	findLatestConversationBySession func(ctx context.Context, chatSessionID uuid.UUID) (*agentdom.AgentConversation, error)
-	createConversation              func(ctx context.Context, conv *agentdom.AgentConversation) error
-	updateConversationStatus        func(ctx context.Context, id uuid.UUID, status string) error
-	claimConversationStatus         func(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (bool, error)
-	updateConversation              func(ctx context.Context, conv *agentdom.AgentConversation) error
-	listConversationEvents          func(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error)
-	createConversationEvent         func(ctx context.Context, event *agentdom.AgentConversationEvent) error
-	listChatSessions                func(ctx context.Context, agentID, memberID uuid.UUID) ([]*agentdom.AgentChatSession, error)
-	findChatSessionByID             func(ctx context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error)
-	createChatSession               func(ctx context.Context, session *agentdom.AgentChatSession) error
-	updateChatSession               func(ctx context.Context, session *agentdom.AgentChatSession) error
-	listAgentActivities             func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
-	listGlobalAgents                func(ctx context.Context) ([]*agentdom.Agent, error)
-	findGlobalAgentByHandle         func(ctx context.Context, handle string) (*agentdom.Agent, error)
-	createGlobalAgent               func(ctx context.Context, agent *agentdom.Agent) error
-	softDeleteGlobalAgentCascade    func(ctx context.Context, agentID uuid.UUID) error
-	listInvitedProjectIDs           func(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error)
-	listGlobalChatSessions          func(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*agentdom.AgentChatSession, error)
-	hasActiveGlobalChatSession      func(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error)
+	findAgentByID                        func(ctx context.Context, id uuid.UUID) (*agentdom.Agent, error)
+	findVisibleAgentInProject            func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
+	findAgentByHandle                    func(ctx context.Context, projectID uuid.UUID, handle string) (*agentdom.Agent, error)
+	listAgents                           func(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error)
+	createAgent                          func(ctx context.Context, agent *agentdom.Agent) error
+	createAgentWithMembership            func(ctx context.Context, agent *agentdom.Agent, memberID, projectID, projectRoleID uuid.UUID) error
+	updateAgent                          func(ctx context.Context, agent *agentdom.Agent) error
+	softDeleteAgent                      func(ctx context.Context, id uuid.UUID) error
+	softDeleteAgentWithMembership        func(ctx context.Context, projectID, agentID uuid.UUID) error
+	setAgentMemberID                     func(ctx context.Context, agentID, memberID uuid.UUID) error
+	setACPBridgeTokenHash                func(ctx context.Context, agentID uuid.UUID, hash string) error
+	setMCPAPIKeyHash                     func(ctx context.Context, agentID uuid.UUID, hash string) error
+	setCLILoginVerifiedAt                func(ctx context.Context, agentID uuid.UUID, t time.Time) error
+	findAgentByMCPAPIKeyHash             func(ctx context.Context, hash string) (*agentdom.Agent, error)
+	listMCPServers                       func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentMCPServer, error)
+	findMCPServerByID                    func(ctx context.Context, id uuid.UUID) (*agentdom.AgentMCPServer, error)
+	createMCPServer                      func(ctx context.Context, server *agentdom.AgentMCPServer) error
+	updateMCPServer                      func(ctx context.Context, server *agentdom.AgentMCPServer) error
+	deleteMCPServer                      func(ctx context.Context, id uuid.UUID) error
+	listAgentAccessGrants                func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error)
+	addAgentAccessGrant                  func(ctx context.Context, g *agentdom.AgentAccessGrant) error
+	removeAgentAccessGrant               func(ctx context.Context, agentID, memberID uuid.UUID) error
+	hasAgentAccessGrant                  func(ctx context.Context, agentID, memberID uuid.UUID) (bool, error)
+	listGrantedAgentIDsForMember         func(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
+	listSkills                           func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentSkill, error)
+	findSkillByID                        func(ctx context.Context, id uuid.UUID) (*agentdom.AgentSkill, error)
+	createSkill                          func(ctx context.Context, skill *agentdom.AgentSkill) error
+	updateSkill                          func(ctx context.Context, skill *agentdom.AgentSkill) error
+	deleteSkill                          func(ctx context.Context, id uuid.UUID) error
+	listEnvVars                          func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentEnvironmentVariable, error)
+	findEnvVarByID                       func(ctx context.Context, id uuid.UUID) (*agentdom.AgentEnvironmentVariable, error)
+	findEnvVarByKey                      func(ctx context.Context, agentID uuid.UUID, key string) (*agentdom.AgentEnvironmentVariable, error)
+	createEnvVar                         func(ctx context.Context, v *agentdom.AgentEnvironmentVariable) error
+	updateEnvVar                         func(ctx context.Context, v *agentdom.AgentEnvironmentVariable) error
+	deleteEnvVar                         func(ctx context.Context, id uuid.UUID) error
+	listConversations                    func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
+	findConversationByID                 func(ctx context.Context, id uuid.UUID) (*agentdom.AgentConversation, error)
+	findLatestConversationBySession      func(ctx context.Context, chatSessionID uuid.UUID) (*agentdom.AgentConversation, error)
+	createConversation                   func(ctx context.Context, conv *agentdom.AgentConversation) error
+	updateConversationStatus             func(ctx context.Context, id uuid.UUID, status string) error
+	claimConversationStatus              func(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (bool, error)
+	claimQueuedForDispatch               func(ctx context.Context, conversationID, agentID uuid.UUID, limit int) (claimed, atCapacity bool, err error)
+	updateConversation                   func(ctx context.Context, conv *agentdom.AgentConversation) error
+	listConversationEvents               func(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error)
+	createConversationEvent              func(ctx context.Context, event *agentdom.AgentConversationEvent) error
+	listChatSessions                     func(ctx context.Context, agentID, memberID uuid.UUID) ([]*agentdom.AgentChatSession, error)
+	findChatSessionByID                  func(ctx context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error)
+	createChatSession                    func(ctx context.Context, session *agentdom.AgentChatSession) error
+	updateChatSession                    func(ctx context.Context, session *agentdom.AgentChatSession) error
+	listAgentActivities                  func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
+	listGlobalAgents                     func(ctx context.Context) ([]*agentdom.Agent, error)
+	findGlobalAgentByHandle              func(ctx context.Context, handle string) (*agentdom.Agent, error)
+	createGlobalAgent                    func(ctx context.Context, agent *agentdom.Agent) error
+	softDeleteGlobalAgentCascade         func(ctx context.Context, agentID uuid.UUID) error
+	listInvitedProjectIDs                func(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error)
+	listGlobalChatSessions               func(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*agentdom.AgentChatSession, error)
+	hasActiveGlobalChatSession           func(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error)
+	countRunningConversations            func(ctx context.Context, agentID uuid.UUID) (int, error)
+	countRunningConversationsInFolder    func(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (int, error)
+	createPendingTrigger                 func(ctx context.Context, t *agentdom.PendingTrigger) error
+	dequeueOldestPendingTrigger          func(ctx context.Context, agentID uuid.UUID) (*agentdom.PendingTrigger, error)
+	dequeueOldestPendingTriggerForFolder func(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (*agentdom.PendingTrigger, error)
+	deletePendingTriggerByConvID         func(ctx context.Context, conversationID uuid.UUID) (bool, error)
 }
 
 func (m *mockAgentRepo) ListAgents(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error) {
@@ -127,7 +145,13 @@ func (m *mockAgentRepo) FindAgentByID(ctx context.Context, id uuid.UUID) (*agent
 	if m.findAgentByID != nil {
 		return m.findAgentByID(ctx, id)
 	}
-	return nil, agentdom.ErrAgentNotFound
+	// Default to a plain open agent rather than erroring: most tests using
+	// this mock don't care about the backing agent at all (they're testing
+	// something else entirely, e.g. conversation access), and an
+	// unconfigured find shouldn't fail a test that never meant to exercise
+	// "agent not found" in the first place. Tests that do care configure
+	// findAgentByID explicitly (see the many that already do).
+	return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeOpen}, nil
 }
 
 func (m *mockAgentRepo) FindVisibleAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
@@ -246,6 +270,13 @@ func (m *mockAgentRepo) SetMCPAPIKeyHash(ctx context.Context, agentID uuid.UUID,
 	return nil
 }
 
+func (m *mockAgentRepo) SetCLILoginVerifiedAt(ctx context.Context, agentID uuid.UUID, t time.Time) error {
+	if m.setCLILoginVerifiedAt != nil {
+		return m.setCLILoginVerifiedAt(ctx, agentID, t)
+	}
+	return nil
+}
+
 func (m *mockAgentRepo) FindAgentByMCPAPIKeyHash(ctx context.Context, hash string) (*agentdom.Agent, error) {
 	if m.findAgentByMCPAPIKeyHash != nil {
 		return m.findAgentByMCPAPIKeyHash(ctx, hash)
@@ -286,6 +317,41 @@ func (m *mockAgentRepo) DeleteMCPServer(ctx context.Context, id uuid.UUID) error
 		return m.deleteMCPServer(ctx, id)
 	}
 	return nil
+}
+
+func (m *mockAgentRepo) ListAgentAccessGrants(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error) {
+	if m.listAgentAccessGrants != nil {
+		return m.listAgentAccessGrants(ctx, agentID)
+	}
+	return nil, nil
+}
+
+func (m *mockAgentRepo) AddAgentAccessGrant(ctx context.Context, g *agentdom.AgentAccessGrant) error {
+	if m.addAgentAccessGrant != nil {
+		return m.addAgentAccessGrant(ctx, g)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) RemoveAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) error {
+	if m.removeAgentAccessGrant != nil {
+		return m.removeAgentAccessGrant(ctx, agentID, memberID)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) HasAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) (bool, error) {
+	if m.hasAgentAccessGrant != nil {
+		return m.hasAgentAccessGrant(ctx, agentID, memberID)
+	}
+	return false, nil
+}
+
+func (m *mockAgentRepo) ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
+	if m.listGrantedAgentIDsForMember != nil {
+		return m.listGrantedAgentIDsForMember(ctx, memberID)
+	}
+	return nil, nil
 }
 
 func (m *mockAgentRepo) ListSkills(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentSkill, error) {
@@ -414,6 +480,13 @@ func (m *mockAgentRepo) ClaimConversationStatus(ctx context.Context, id uuid.UUI
 	return true, nil
 }
 
+func (m *mockAgentRepo) ClaimQueuedForDispatch(ctx context.Context, conversationID, agentID uuid.UUID, limit int) (bool, bool, error) {
+	if m.claimQueuedForDispatch != nil {
+		return m.claimQueuedForDispatch(ctx, conversationID, agentID, limit)
+	}
+	return true, false, nil
+}
+
 func (m *mockAgentRepo) UpdateConversation(ctx context.Context, conv *agentdom.AgentConversation) error {
 	if m.updateConversation != nil {
 		return m.updateConversation(ctx, conv)
@@ -433,6 +506,57 @@ func (m *mockAgentRepo) CreateConversationEvent(ctx context.Context, event *agen
 		return m.createConversationEvent(ctx, event)
 	}
 	return nil
+}
+
+// CountRunningConversations defaults to 0 — most tests never populate
+// agent_conversations with a second, unrelated "running" row for the same
+// agent, so leaving this unset means checkParallelismCapacity's default
+// ParallelismLimit of 1 is never exceeded and every pre-existing test's
+// dispatch-immediately behavior is unaffected.
+func (m *mockAgentRepo) CountRunningConversations(ctx context.Context, agentID uuid.UUID) (int, error) {
+	if m.countRunningConversations != nil {
+		return m.countRunningConversations(ctx, agentID)
+	}
+	return 0, nil
+}
+
+// CountRunningConversationsInFolder defaults to 0 — most tests never
+// populate agent_conversations with a "running" row in the same folder, so
+// leaving this unset means checkFolderCapacity never blocks and every
+// pre-existing test's dispatch-immediately behavior is unaffected.
+func (m *mockAgentRepo) CountRunningConversationsInFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (int, error) {
+	if m.countRunningConversationsInFolder != nil {
+		return m.countRunningConversationsInFolder(ctx, environmentID, folderID)
+	}
+	return 0, nil
+}
+
+func (m *mockAgentRepo) CreatePendingTrigger(ctx context.Context, t *agentdom.PendingTrigger) error {
+	if m.createPendingTrigger != nil {
+		return m.createPendingTrigger(ctx, t)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) DequeueOldestPendingTrigger(ctx context.Context, agentID uuid.UUID) (*agentdom.PendingTrigger, error) {
+	if m.dequeueOldestPendingTrigger != nil {
+		return m.dequeueOldestPendingTrigger(ctx, agentID)
+	}
+	return nil, nil
+}
+
+func (m *mockAgentRepo) DequeueOldestPendingTriggerForFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (*agentdom.PendingTrigger, error) {
+	if m.dequeueOldestPendingTriggerForFolder != nil {
+		return m.dequeueOldestPendingTriggerForFolder(ctx, environmentID, folderID)
+	}
+	return nil, nil
+}
+
+func (m *mockAgentRepo) DeletePendingTriggerByConversationID(ctx context.Context, conversationID uuid.UUID) (bool, error) {
+	if m.deletePendingTriggerByConvID != nil {
+		return m.deletePendingTriggerByConvID(ctx, conversationID)
+	}
+	return false, nil
 }
 
 func (m *mockAgentRepo) ListChatSessions(ctx context.Context, agentID, memberID uuid.UUID) ([]*agentdom.AgentChatSession, error) {
@@ -1084,6 +1208,9 @@ func TestStartGlobalChatSession_Success(t *testing.T) {
 	var createdConv *agentdom.AgentConversation
 
 	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id}, nil
+		},
 		createChatSession: func(_ context.Context, s *agentdom.AgentChatSession) error {
 			createdSession = s
 			return nil
@@ -1095,7 +1222,7 @@ func TestStartGlobalChatSession_Success(t *testing.T) {
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	session, conv, err := svc.StartGlobalChatSession(context.Background(), agentID, actorUserID, "hello", nil)
+	session, conv, err := svc.StartGlobalChatSession(context.Background(), agentID, actorUserID, "hello", nil, "")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, session)
@@ -1116,6 +1243,36 @@ func TestStartGlobalChatSession_Success(t *testing.T) {
 			assert.Equal(t, actorUserID, *createdConv.ActorUserID)
 		}
 	}
+}
+
+// TestStartGlobalChatSession_RestrictedAgent_Rejected pins
+// requireGlobalAgentOpen's enforcement on the global chat surface: a global
+// agent set to AccessModeRestricted has no project context for a per-member
+// grant lookup, so it must fail closed for every caller rather than being
+// silently reachable — global chat has no project-scoped
+// hasAgentUsageAccess gate of its own to fall back on.
+func TestStartGlobalChatSession_RestrictedAgent_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	actorUserID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createChatSession: func(_ context.Context, _ *agentdom.AgentChatSession) error {
+			t.Fatal("createChatSession must not be called for a restricted global agent")
+			return nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted global agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, _, err := svc.StartGlobalChatSession(context.Background(), agentID, actorUserID, "hello", nil, "")
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
 }
 
 func TestListMCPServers_Success(t *testing.T) {
@@ -1258,6 +1415,72 @@ func TestAddSkill_ReservedName_ReturnsError(t *testing.T) {
 	}
 }
 
+// TestAddSkill_InvalidName_ReturnsError guards the on-disk path
+// buildSkillsTar (agent-runner's executor/skills.go) and providercli's
+// claude_code.go SyncFiles build from a skill name — neither sanitizes it,
+// so a name like "../../../etc/cron.d/x" would otherwise let a project
+// member with agents:write on their own project write a SKILL.md outside
+// the intended skills directory inside the agent's own sandbox/environment
+// (see validateSkillName's own doc comment).
+func TestAddSkill_InvalidName_ReturnsError(t *testing.T) {
+	invalidNames := []string{
+		"",
+		".",
+		"..",
+		"../../../etc/cron.d/x",
+		"foo/bar",
+		"foo\\bar",
+		"/etc/passwd",
+	}
+
+	for _, name := range invalidNames {
+		t.Run(name, func(t *testing.T) {
+			agentID := uuid.New()
+			repo := &mockAgentRepo{
+				createSkill: func(_ context.Context, _ *agentdom.AgentSkill) error {
+					t.Fatal("createSkill should not be called for an invalid name")
+					return nil
+				},
+			}
+			svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+			result, err := svc.AddSkill(context.Background(), agentID, agentdom.AddSkillInput{
+				SkillName:    name,
+				SkillSource:  "file",
+				SkillContent: "skill content",
+			})
+
+			assert.Nil(t, result)
+			assert.ErrorIs(t, err, agentdom.ErrSkillNameInvalid)
+		})
+	}
+}
+
+// TestAddSkill_ValidNamesWithDotsAllowed confirms the new validateSkillName
+// guard only rejects an exact "." / ".." segment or a path separator — an
+// ordinary name that merely contains a dot (e.g. a version suffix) must
+// keep working, since it names one harmless directory segment, not a
+// traversal.
+func TestAddSkill_ValidNamesWithDotsAllowed(t *testing.T) {
+	agentID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
+		createSkill:   func(_ context.Context, _ *agentdom.AgentSkill) error { return nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.AddSkill(context.Background(), agentID, agentdom.AddSkillInput{
+		SkillName:    "my-skill.v1.2",
+		SkillSource:  "file",
+		SkillContent: "skill content",
+	})
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, result) {
+		assert.Equal(t, "my-skill.v1.2", result.SkillName)
+	}
+}
+
 func TestGetConversation_Success(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := uuid.New()
@@ -1307,6 +1530,79 @@ func TestGetConversation_WrongProject(t *testing.T) {
 	_, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
 
 	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+// TestGetConversation_RestrictedAgent_GrantedMember_Allowed and
+// TestGetConversation_RestrictedAgent_NonGrantedMember_Rejected cover
+// authorizeConversationAccess's unconditional hasAgentUsageAccess check for
+// the ordinary human-caller path (GetConversation, StartChatSession,
+// ListChatSessions, SendChatMessage all share this same check) — a
+// project-shared conversation with a restricted agent must still stay
+// hidden from a member holding no explicit grant, even though the "no
+// bypass" policy is really aimed at *starting* new usage; reading an
+// existing project-shared conversation is usage too.
+func TestGetConversation_RestrictedAgent_GrantedMember_Allowed(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	memberID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		AgentID:   agentID,
+		ProjectID: projectID,
+		Audience:  agentdom.AudienceProjectShared,
+		Status:    "running",
+	}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		hasAgentAccessGrant: func(_ context.Context, _, mID uuid.UUID) (bool, error) {
+			return mID == memberID, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
+func TestGetConversation_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	memberID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		AgentID:   agentID,
+		ProjectID: projectID,
+		Audience:  agentdom.AudienceProjectShared,
+		Status:    "running",
+	}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		hasAgentAccessGrant: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
+
+	assert.Error(t, err, "a project-shared conversation with a restricted agent must stay hidden from a non-granted member")
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
@@ -1566,6 +1862,52 @@ func TestGetConversationForAgent_Project_SharedAudience_Allowed(t *testing.T) {
 	assert.Equal(t, targetID, result.ID)
 }
 
+// TestGetConversationForAgent_RestrictedAgent_SystemTriggeredCurrent_SharedAudience_Allowed
+// is the regression case for a bug in hasAgentUsageAccess found while
+// tracing the MCP server's read_conversation tool (backed by this method)
+// end to end: current has no ChatSessionID (a task-assigned or
+// automation-triggered run — TriggerTaskAssigned/TriggerDirectMessage never
+// check access grants, since there's no human actor to check one against),
+// so authorizeAgentConversationRead falls through to
+// authorizeConversationAccess(ctx, target, uuid.Nil) — a pre-existing
+// sentinel meaning "no specific member, shared audience only", unrelated to
+// access grants. Before the fix, hasAgentUsageAccess's new unconditional
+// check treated that same uuid.Nil as "member not found" and rejected the
+// read outright, so setting an agent restricted silently broke its own
+// task-assigned/automation runs from reading their own project-shared
+// history — even though nothing about "restrict which humans may use this
+// agent" was meant to affect the agent's own system-triggered runs.
+// hasAgentAccessGrant is stubbed to always deny, proving the read succeeds
+// via the nil-actor short-circuit rather than by coincidentally matching a
+// grant.
+func TestGetConversationForAgent_RestrictedAgent_SystemTriggeredCurrent_SharedAudience_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: nil}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		hasAgentAccessGrant: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, targetID, result.ID)
+}
+
 // TestGetConversationForAgent_Project_OwnerPrivate_SameMember_Allowed and
 // TestGetConversationForAgent_Project_OwnerPrivate_DifferentMember_Rejected
 // are the project-scoped regression cases: a project-scoped agent can hold
@@ -1661,6 +2003,205 @@ func TestGetConversationForAgent_Project_DifferentProject_Rejected(t *testing.T)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
+// ---------------------------------------------------------------------------
+// GetConversationForAgent — conversations.read enforcement
+// ---------------------------------------------------------------------------
+//
+// GetConversationForAgent additionally requires the calling agent to hold
+// conversations.read (globally, or in the target conversation's own project)
+// once an authz.Authorizer is wired via WithAuthorizer — matching the MCP
+// server's own tool-listing gate for read_conversation
+// (apps/mcp/src/permissions.ts) — for any conversation *other* than the one
+// the agent is currently running as part of. Every test above constructs a
+// bare Service with no authorizer, so this check never engages for them
+// (see the authorizer field's doc comment) — these tests cover the wired
+// case specifically: the same-conversation shortcut stays unconditionally
+// allowed (an agent already has this data as that conversation's own active
+// participant, and gating it would break a global-scope agent with no
+// global role — the common case, since a global agent's global role is
+// optional), while a genuinely different (cross-conversation) target does
+// require the grant.
+
+// fakeAgentPermissionStore is a minimal authz.AgentPermissionStore double —
+// only the two agent-permission lookups GetConversationForAgent's check
+// actually calls are wired; the plain user-facing methods are unused here.
+type fakeAgentPermissionStore struct {
+	agentGlobalPerms  map[uuid.UUID][]authz.Permission
+	agentProjectPerms map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
+}
+
+func (f *fakeAgentPermissionStore) ListGlobalPermissions(_ context.Context, _ uuid.UUID) ([]authz.Permission, error) {
+	return nil, nil
+}
+
+func (f *fakeAgentPermissionStore) ListProjectPermissions(_ context.Context, _, _ uuid.UUID) ([]authz.Permission, error) {
+	return nil, nil
+}
+
+func (f *fakeAgentPermissionStore) ListAgentGlobalPermissions(_ context.Context, agentID uuid.UUID) ([]authz.Permission, error) {
+	return f.agentGlobalPerms[agentID], nil
+}
+
+func (f *fakeAgentPermissionStore) ListAgentProjectPermissions(_ context.Context, agentID, projectID uuid.UUID) ([]authz.Permission, error) {
+	if projMap, ok := f.agentProjectPerms[projectID]; ok {
+		return projMap[agentID], nil
+	}
+	return nil, nil
+}
+
+// fakeAgentRoleResolver reports every agent as a member (with an arbitrary
+// role name — HasPermissionsForAgent only uses the role name for the
+// legacy-role fallback, which these tests don't exercise) of every project
+// referenced in agentProjectPerms, so ListAgentProjectPermissions above is
+// actually reached instead of short-circuiting on ErrAgentNotInProject.
+type fakeAgentRoleResolver struct{}
+
+func (fakeAgentRoleResolver) GetAgentProjectRoleName(_ context.Context, _, _ uuid.UUID) (string, error) {
+	return "member", nil
+}
+
+// TestGetConversationForAgent_SelfRead_AllowedWithoutConversationsRead locks
+// in that the same-conversation shortcut stays exempt from the
+// conversations.read check even when an authorizer is wired and the agent
+// holds no grant anywhere — see GetConversationForAgent's doc comment for
+// why (most importantly: a global-scope agent's global role is optional and
+// commonly unset, so requiring a grant here would break reading its own
+// current conversation in the common case).
+func TestGetConversationForAgent_SelfRead_AllowedWithoutConversationsRead(t *testing.T) {
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, Audience: agentdom.AudienceOwnerPrivate}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	authorizer := authz.NewAuthorizer(&fakeAgentPermissionStore{}).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
+
+	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
+func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_GlobalGrant_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	actorUserID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	// Global, same actor on both sides — authorizeAgentConversationRead
+	// alone would already allow this (see
+	// TestGetConversationForAgent_Global_SameActor_Allowed); conversations.read
+	// must not additionally block it.
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ActorUserID: &actorUserID}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ActorUserID: &actorUserID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	store := &fakeAgentPermissionStore{
+		agentGlobalPerms: map[uuid.UUID][]authz.Permission{agentID: {authz.PermissionConversationsRead}},
+	}
+	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
+
+	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, targetID, result.ID)
+}
+
+func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_ProjectGrant_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	// project_shared — visible to any project member already, so
+	// authorizeAgentConversationRead alone would allow this; conversations.read
+	// must not additionally block it.
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	store := &fakeAgentPermissionStore{
+		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			projectID: {agentID: {authz.PermissionConversationsRead}},
+		},
+	}
+	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
+
+	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, targetID, result.ID)
+}
+
+func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_NoGrant_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	// project_shared again: authorizeAgentConversationRead alone would allow
+	// this, isolating conversations.read as the only reason this must fail.
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	authorizer := authz.NewAuthorizer(&fakeAgentPermissionStore{}).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
+
+	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_WrongProjectGrant_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	conversationProjectID := uuid.New()
+	grantedProjectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: conversationProjectID, Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: conversationProjectID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	store := &fakeAgentPermissionStore{
+		// conversations.read granted in a *different* project than the one the
+		// conversation actually belongs to — must not transfer.
+		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			grantedProjectID: {agentID: {authz.PermissionConversationsRead}},
+		},
+	}
+	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
+
+	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
 func TestSendChatMessage_WrongMember(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()
@@ -1681,7 +2222,7 @@ func TestSendChatMessage_WrongMember(t *testing.T) {
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, otherMemberID, "Hello", nil)
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, otherMemberID, "Hello", nil, "")
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrChatSessionNotFound)
@@ -1803,7 +2344,7 @@ func TestGlobalConversationMutators_RejectWrongActor(t *testing.T) {
 		assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 	})
 	t.Run("send message", func(t *testing.T) {
-		err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "hi", attacker, nil)
+		err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "hi", attacker, nil, "")
 		assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 	})
 }
@@ -1915,7 +2456,7 @@ func TestSendConversationMessage_Success(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "test message", uuid.New(), nil)
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "test message", uuid.New(), nil, "")
 
 	assert.NoError(t, err)
 }
@@ -1939,7 +2480,7 @@ func TestSendConversationMessage_NotRunning(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "test message", uuid.New(), nil)
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "test message", uuid.New(), nil, "")
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotRunning)
@@ -1980,7 +2521,7 @@ func TestSendConversationMessage_ACPResumesAnyTriggerType(t *testing.T) {
 			pluginRepo := &mockPluginRepo{}
 			svc := New(repo, projRepo, nil, pluginRepo)
 
-			err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New(), nil)
+			err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New(), nil, "")
 
 			assert.NoError(t, err)
 			assert.Equal(t, status, claimedFrom)
@@ -2014,7 +2555,7 @@ func TestSendConversationMessage_ACPBusyWhenRunning(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New(), nil)
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New(), nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 	assert.False(t, claimCalled, "must not attempt to claim/dispatch on top of an in-flight turn")
@@ -2040,7 +2581,7 @@ func TestSendConversationMessage_ACPBusyWhenQueued(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New(), nil)
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New(), nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2069,9 +2610,231 @@ func TestSendConversationMessage_ACPResumeRaceLoses(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New(), nil)
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New(), nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
+}
+
+// TestSendConversationMessage_ACPResumeBlockedAtCapacity is the regression
+// guard for a gap the parallelism-limit feature originally left open:
+// resumeConversationMessage used to claim+publish with no capacity check at
+// all, so a reply-in-place resume could push an ACP agent (forced to
+// ParallelismLimit=1 by requiresSerialDispatch) past its own limit. "Ask"
+// (onBusy="") must now reject before ever touching ClaimConversationStatus,
+// exactly like SendChatMessage's own resume branches already do.
+func TestSendConversationMessage_ACPResumeBlockedAtCapacity(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ProjectID:   projectID,
+		TriggerType: "task_assigned",
+		Status:      "finished",
+	}
+
+	claimCalled := false
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentType: agentdom.AgentTypeACP, ParallelismLimit: 1}, nil
+		},
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 1, nil // this agent already has a turn running elsewhere
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			claimCalled = true
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New(), nil, "")
+
+	var apiErr *apierr.Error
+	if assert.ErrorAs(t, err, &apiErr) {
+		assert.Equal(t, apierr.CodeAgentParallelismLimitReached, apiErr.Code)
+	}
+	assert.False(t, claimCalled, "must not claim/dispatch before the capacity check runs")
+}
+
+// TestSendConversationMessage_ACPResumeQueuesAtCapacity pins the "queue"
+// side of the same fix: instead of rejecting, onBusy=queue must claim the
+// conversation straight to "queued" (not "running") and persist a
+// PendingTrigger instead of publishing, so AdvanceQueue can replay it once a
+// slot frees up.
+func TestSendConversationMessage_ACPResumeQueuesAtCapacity(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	agentID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		AgentID:     agentID,
+		ProjectID:   projectID,
+		TriggerType: "task_assigned",
+		Status:      "finished",
+	}
+
+	var claimedFrom, claimedTo string
+	var createdPending *agentdom.PendingTrigger
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentType: agentdom.AgentTypeACP, ParallelismLimit: 1}, nil
+		},
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 1, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, from, to string) (bool, error) {
+			claimedFrom, claimedTo = from, to
+			return true, nil
+		},
+		createPendingTrigger: func(_ context.Context, p *agentdom.PendingTrigger) error {
+			createdPending = p
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New(), nil, agentdom.OnBusyQueue)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "finished", claimedFrom)
+	assert.Equal(t, "queued", claimedTo)
+	if assert.NotNil(t, createdPending, "must persist a pending trigger instead of publishing immediately") {
+		assert.Equal(t, conversationID, createdPending.ConversationID)
+		assert.Equal(t, agentID, createdPending.AgentID)
+	}
+}
+
+// TestSendConversationMessage_EnvironmentAttachedResumeBlockedByFolderCapacity
+// pins the other half of the same fix: an environment-attached (non-ACP)
+// conversation resumed in place must also be blocked by folder occupancy,
+// even when the agent's own ParallelismLimit has room — the same
+// checkDispatchCapacity composition
+// TestCheckDispatchCapacity_FolderBlocksEvenWithAgentCapacity already pins
+// for a fresh dispatch, now covered on the resume-in-place path too.
+func TestSendConversationMessage_EnvironmentAttachedResumeBlockedByFolderCapacity(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	envID := uuid.New()
+	folderID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:                  conversationID,
+		ProjectID:           projectID,
+		Status:              "paused",
+		EnvironmentID:       &envID,
+		EnvironmentFolderID: &folderID,
+	}
+
+	claimCalled := false
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentType: agentdom.AgentTypeLLM, DefaultEnvironmentID: &envID, ParallelismLimit: 1}, nil
+		},
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil // the agent itself has room
+		},
+		countRunningConversationsInFolder: func(context.Context, uuid.UUID, *uuid.UUID) (int, error) {
+			return 1, nil // but another conversation is already running in this folder
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			claimCalled = true
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New(), nil, "")
+
+	var apiErr *apierr.Error
+	if assert.ErrorAs(t, err, &apiErr) {
+		assert.Equal(t, apierr.CodeAgentEnvironmentFolderBusy, apiErr.Code)
+	}
+	assert.False(t, claimCalled, "agent-level capacity alone must not be enough to resume into an occupied folder")
+}
+
+// TestSendGlobalConversationMessage_ACPResumeBlockedAtCapacity is
+// TestSendConversationMessage_ACPResumeBlockedAtCapacity's global-chat
+// sibling — sendACPGlobalConversationMessage had the exact same gap.
+func TestSendGlobalConversationMessage_ACPResumeBlockedAtCapacity(t *testing.T) {
+	conversationID := uuid.New()
+	actorUserID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ActorUserID: &actorUserID,
+		TriggerType: "chat_message",
+		Status:      "finished",
+	}
+
+	claimCalled := false
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentType: agentdom.AgentTypeACP, ParallelismLimit: 1}, nil
+		},
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 1, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			claimCalled = true
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "keep going", actorUserID, nil, "")
+
+	var apiErr *apierr.Error
+	if assert.ErrorAs(t, err, &apiErr) {
+		assert.Equal(t, apierr.CodeAgentParallelismLimitReached, apiErr.Code)
+	}
+	assert.False(t, claimCalled, "must not claim/dispatch before the capacity check runs")
+}
+
+// TestSendGlobalConversationMessage_RestrictedAgent_Rejected closes a gap
+// pullfrog found in requireGlobalAgentOpen's original placement: gating only
+// Start/List/SendGlobalChatMessage left an existing global conversation's
+// resume path (the ACP branch here) able to keep a since-restricted agent
+// executing indefinitely, contradicting requireGlobalAgentOpen's own
+// "fails every global-chat caller closed, full stop" contract.
+func TestSendGlobalConversationMessage_RestrictedAgent_Rejected(t *testing.T) {
+	conversationID := uuid.New()
+	actorUserID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ActorUserID: &actorUserID,
+		TriggerType: "chat_message",
+		Status:      "finished",
+	}
+
+	claimCalled := false
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentType: agentdom.AgentTypeACP, AccessMode: agentdom.AccessModeRestricted, ParallelismLimit: 1}, nil
+		},
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			claimCalled = true
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "keep going", actorUserID, nil, "")
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+	assert.False(t, claimCalled, "a restricted agent's existing global conversation must not be resumed")
 }
 
 func TestStopConversation_Success(t *testing.T) {
@@ -2329,7 +3092,7 @@ func TestStartChatSession_Success(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultSession, resultConv, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil, nil)
+	resultSession, resultConv, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil, nil, "")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resultSession)
@@ -2363,7 +3126,7 @@ func TestStartChatSession_WrongProject_ReturnsNotFound(t *testing.T) {
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	_, _, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil, nil)
+	_, _, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil, nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
 }
@@ -2397,6 +3160,34 @@ func TestTriggerDescriptionWrite_WrongProject_ReturnsNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
 }
 
+// TestTriggerDescriptionWrite_RestrictedAgent_NonGrantedMember_Rejected is
+// TriggerDescriptionWrite's mirror of the sibling
+// Test{TriggerTaskAssigned,TriggerDirectMessage,TriggerCommentMention}_RestrictedAgent_NonGrantedMember_Rejected
+// tests — pullfrog's follow-up review noted this fourth
+// authorizeConversationTrigger path was the only one still missing its deny
+// side.
+func TestTriggerDescriptionWrite_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	taskID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, id, _ uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted agent with no grant")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.TriggerDescriptionWrite(context.Background(), projectID, agentID, taskID, memberID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+}
+
 func TestSendChatMessage_Success(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()
@@ -2410,6 +3201,9 @@ func TestSendChatMessage_Success(t *testing.T) {
 	}
 
 	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id}, nil
+		},
 		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
 			return session, nil
 		},
@@ -2427,7 +3221,7 @@ func TestSendChatMessage_Success(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello", nil)
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello", nil, "")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resultConv)
@@ -2457,6 +3251,9 @@ func TestSendChatMessage_ResumesPausedConversation(t *testing.T) {
 	createCalled := false
 	var claimedFrom, claimedTo string
 	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id}, nil
+		},
 		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
 			return session, nil
 		},
@@ -2482,7 +3279,7 @@ func TestSendChatMessage_ResumesPausedConversation(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
 
 	assert.NoError(t, err)
 	assert.False(t, createCalled, "resuming a paused conversation must not create a new one")
@@ -2546,7 +3343,7 @@ func TestSendChatMessage_ACPResumesTerminalConversation(t *testing.T) {
 			pluginRepo := &mockPluginRepo{}
 			svc := New(repo, projRepo, nil, pluginRepo)
 
-			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
+			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
 
 			assert.NoError(t, err)
 			assert.False(t, createCalled, "resuming a terminal ACP conversation must not create a new one")
@@ -2597,7 +3394,7 @@ func TestSendChatMessage_ACPResumeRaceLoses(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2626,7 +3423,14 @@ func TestSendChatMessage_LLMTerminalCreatesNewConversation(t *testing.T) {
 	}
 
 	createCalled := false
-	claimCalled := false
+	// Tracks which conversation IDs ever get a ClaimConversationStatus call.
+	// The old (terminal) conversation must never appear here — but the newly
+	// created one legitimately will, since dispatch now atomically claims a
+	// fresh "queued" conversation to "running" right before publishing (see
+	// claimQueuedForDispatch's doc comment), so a bare "was it called at all"
+	// check would no longer distinguish resuming the old conversation from
+	// correctly claiming the new one.
+	var claimedIDs []uuid.UUID
 	repo := &mockAgentRepo{
 		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
 		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
@@ -2635,8 +3439,8 @@ func TestSendChatMessage_LLMTerminalCreatesNewConversation(t *testing.T) {
 		findLatestConversationBySession: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 			return finished, nil
 		},
-		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
-			claimCalled = true
+		claimConversationStatus: func(_ context.Context, id uuid.UUID, _, _ string) (bool, error) {
+			claimedIDs = append(claimedIDs, id)
 			return true, nil
 		},
 		createConversation: func(_ context.Context, conv *agentdom.AgentConversation) error {
@@ -2654,11 +3458,11 @@ func TestSendChatMessage_LLMTerminalCreatesNewConversation(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello again", nil)
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello again", nil, "")
 
 	assert.NoError(t, err)
 	assert.True(t, createCalled, "a terminal LLM conversation must create a new conversation")
-	assert.False(t, claimCalled, "must not attempt to claim/resume a terminal LLM conversation")
+	assert.NotContains(t, claimedIDs, oldConvID, "must not attempt to claim/resume the old terminal LLM conversation")
 	assert.NotEqual(t, oldConvID, resultConv.ID)
 }
 
@@ -2723,7 +3527,7 @@ func TestSendChatMessage_EnvironmentBackedLLMResumesTerminalConversation(t *test
 			pluginRepo := &mockPluginRepo{}
 			svc := New(repo, projRepo, nil, pluginRepo)
 
-			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
+			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
 
 			assert.NoError(t, err)
 			assert.False(t, createCalled, "resuming a terminal environment-backed conversation must not create a new one")
@@ -2755,6 +3559,9 @@ func TestSendChatMessage_ResumeRaceLoses(t *testing.T) {
 	}
 
 	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id}, nil
+		},
 		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
 			return session, nil
 		},
@@ -2770,7 +3577,7 @@ func TestSendChatMessage_ResumeRaceLoses(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2807,7 +3614,7 @@ func TestSendChatMessage_BusyWhenQueued(t *testing.T) {
 
 	// A conversation that hasn't been dequeued yet must not let a second
 	// message create a duplicate conversation/sandbox for the same session.
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?", nil)
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?", nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2842,7 +3649,7 @@ func TestSendChatMessage_BusyWhenRunning(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?", nil)
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?", nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2868,7 +3675,7 @@ func TestSendChatMessage_WrongProject(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello", nil)
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello", nil, "")
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrChatSessionNotFound)
@@ -3012,6 +3819,91 @@ func TestTriggerCommentMention_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, "comment_mention", result.TriggerType)
+}
+
+// TestTriggerTaskAssigned_RestrictedAgent_NonGrantedMember_Rejected,
+// TestTriggerDirectMessage_RestrictedAgent_NonGrantedMember_Rejected, and
+// TestTriggerCommentMention_RestrictedAgent_NonGrantedMember_Rejected pin
+// authorizeConversationTrigger's deny path for the three human-actor
+// trigger routes, mirroring TestGetConversation_RestrictedAgent_
+// NonGrantedMember_Rejected's pattern. Without these, the three _Success
+// tests above (all exercising the mock's default AccessModeOpen agent)
+// would pass identically even if authorizeConversationTrigger were deleted
+// outright — for a security boundary, the deny side is the part that
+// actually matters.
+func TestTriggerTaskAssigned_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	taskID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted agent with no grant")
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	_, err := svc.TriggerTaskAssigned(context.Background(), projectID, agentID, taskID, &memberID, "")
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+}
+
+func TestTriggerDirectMessage_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted agent with no grant")
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	_, err := svc.TriggerDirectMessage(context.Background(), projectID, agentID, &memberID, "do the thing")
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+}
+
+func TestTriggerCommentMention_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	taskID := uuid.New()
+	commentID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted agent with no grant")
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	_, err := svc.TriggerCommentMention(context.Background(), projectID, agentID, taskID, commentID, memberID, "test comment")
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
 }
 
 func TestCreateAgent_ACPInvalidAgentType(t *testing.T) {
@@ -3395,10 +4287,12 @@ func TestGenerateGlobalAgentMCPKey_NotGlobalScope(t *testing.T) {
 }
 
 // -------------------------------------------------------------------------
-// requireNonACPAgent — MCP servers / skills / env vars are meaningless for
-// ACP-type agents (services/ai-agent's acp_dispatch.py never reads any of
-// these tables), so every write path must reject them outright instead of
-// silently accepting a change that will never take effect.
+// requireGooseManagedAgent — MCP servers / skills / env vars are meaningless
+// for ACP-type agents (services/ai-agent's acp_dispatch.py never reads any
+// of these tables), so every write path must reject them outright instead
+// of silently accepting a change that will never take effect. llm and
+// provider_cli agents both pass this check — see that function's own doc
+// comment.
 // -------------------------------------------------------------------------
 
 func TestAddMCPServer_ACPAgent_ReturnsError(t *testing.T) {
@@ -3713,4 +4607,1618 @@ func TestRemoveGlobalAvatar_ClearsKeysAndDeletesObjects(t *testing.T) {
 	avatarSvc.mu.Lock()
 	defer avatarSvc.mu.Unlock()
 	assert.ElementsMatch(t, []string{key, thumbKey}, avatarSvc.deletedKeys)
+}
+
+// ---------------------------------------------------------------------------
+// provider_cli — CreateAgent/UpdateAgent validation, CreateGlobalAgent's
+// rejection, and VerifyCLILogin. See agentdom.Agent.CLIProvider's doc
+// comment for the feature these all guard.
+// ---------------------------------------------------------------------------
+
+// fakeEnvironmentService is a minimal environmentdom.Service double. Only
+// GetEnvironment, ResolveConversationWorkdir, and VerifyCLIAuth are
+// configurable — the three methods agentsvc.Service actually calls (see
+// the Service.environmentSvc field's own doc comment) — every other method
+// of the interface is a stub that returns a zero value, since no test
+// below exercises them through this fake.
+type fakeEnvironmentService struct {
+	getEnvironment func(ctx context.Context, projectID, environmentID uuid.UUID) (*environmentdom.Environment, error)
+	verifyCLIAuth  func(ctx context.Context, projectID, environmentID uuid.UUID, cliProvider string) (bool, error)
+}
+
+func (f *fakeEnvironmentService) ListEnvironments(context.Context, uuid.UUID) ([]*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) GetEnvironment(ctx context.Context, projectID, environmentID uuid.UUID) (*environmentdom.Environment, error) {
+	if f.getEnvironment != nil {
+		return f.getEnvironment(ctx, projectID, environmentID)
+	}
+	return nil, environmentdom.ErrEnvironmentNotFound
+}
+
+func (f *fakeEnvironmentService) CreateEnvironment(context.Context, uuid.UUID, environmentdom.CreateEnvironmentInput) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) UpdateEnvironment(context.Context, uuid.UUID, uuid.UUID, environmentdom.UpdateEnvironmentInput) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) StartEnvironment(context.Context, uuid.UUID, uuid.UUID) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) StopEnvironment(context.Context, uuid.UUID, uuid.UUID) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) RestartEnvironment(context.Context, uuid.UUID, uuid.UUID) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) DeleteEnvironment(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) Heartbeat(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) ResolveConversationWorkdir(context.Context, uuid.UUID, *uuid.UUID, *uuid.UUID) (*environmentdom.Environment, *environmentdom.EnvironmentFolder, error) {
+	return nil, nil, nil
+}
+
+func (f *fakeEnvironmentService) ListFolders(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentFolder, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) AddFolder(context.Context, uuid.UUID, uuid.UUID, environmentdom.AddFolderInput) (*environmentdom.EnvironmentFolder, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) DeleteFolder(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) Browse(context.Context, uuid.UUID, uuid.UUID, string) (string, []environmentdom.BrowseEntry, error) {
+	return "", nil, nil
+}
+
+func (f *fakeEnvironmentService) VerifyCLIAuth(ctx context.Context, projectID, environmentID uuid.UUID, cliProvider string) (bool, error) {
+	if f.verifyCLIAuth != nil {
+		return f.verifyCLIAuth(ctx, projectID, environmentID, cliProvider)
+	}
+	return false, nil
+}
+
+func (f *fakeEnvironmentService) ListSSHKeys(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentSSHKey, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) AddSSHKey(context.Context, uuid.UUID, uuid.UUID, environmentdom.AddSSHKeyInput) (*environmentdom.EnvironmentSSHKey, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) DeleteSSHKey(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) ListPortForwards(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentPortForward, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) GetPortForward(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (*environmentdom.EnvironmentPortForward, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) AddPortForward(context.Context, uuid.UUID, uuid.UUID, environmentdom.AddPortForwardInput) (*environmentdom.EnvironmentPortForward, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) DeletePortForward(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) HasEnvironmentUsageAccess(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeEnvironmentService) ListEnvironmentAccessGrants(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentAccessGrant, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) AddEnvironmentAccessGrant(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, *uuid.UUID) (*environmentdom.EnvironmentAccessGrant, error) {
+	return &environmentdom.EnvironmentAccessGrant{ID: uuid.New()}, nil
+}
+
+func (f *fakeEnvironmentService) RemoveEnvironmentAccessGrant(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) ListGrantedEnvironmentIDsForMember(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+var _ environmentdom.Service = (*fakeEnvironmentService)(nil)
+
+func TestCreateAgent_ProviderCLI_Success(t *testing.T) {
+	projectID := uuid.New()
+	envID := uuid.New()
+	projectRoleID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(_ context.Context, _ *agentdom.Agent, _ uuid.UUID, pid, roleID uuid.UUID) error {
+			if pid != projectID || roleID != projectRoleID {
+				t.Fatalf("unexpected projectID or roleID")
+			}
+			return nil
+		},
+	}
+	envSvc := &fakeEnvironmentService{
+		getEnvironment: func(_ context.Context, pid, eid uuid.UUID) (*environmentdom.Environment, error) {
+			if pid != projectID || eid != envID {
+				t.Fatalf("unexpected project/environment id")
+			}
+			return &environmentdom.Environment{ID: envID, ProjectID: projectID}, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+
+	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:                 "CLI Agent",
+		Handle:               "cli-agent",
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          agentdom.CLIProviderClaudeCode,
+		CLIModel:             "sonnet",
+		ProjectRoleID:        projectRoleID,
+		DefaultEnvironmentID: &envID,
+	})
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, result.CLIProvider) {
+		assert.Equal(t, agentdom.CLIProviderClaudeCode, *result.CLIProvider)
+	}
+	assert.Equal(t, "sonnet", result.CLIModel)
+	// CLIAuthMode defaults to "login" when the request omits it.
+	assert.Equal(t, agentdom.CLIAuthModeLogin, result.CLIAuthMode)
+	if assert.NotNil(t, result.DefaultEnvironmentID) {
+		assert.Equal(t, envID, *result.DefaultEnvironmentID)
+	}
+}
+
+func TestCreateAgent_ProviderCLI_InvalidProvider(t *testing.T) {
+	projectID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:        "CLI Agent",
+		Handle:      "cli-agent",
+		AgentType:   agentdom.AgentTypeProviderCLI,
+		CLIProvider: "not-a-real-cli",
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIProviderInvalid)
+}
+
+func TestCreateAgent_ProviderCLI_RequiresDefaultEnvironment(t *testing.T) {
+	projectID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:        "CLI Agent",
+		Handle:      "cli-agent",
+		AgentType:   agentdom.AgentTypeProviderCLI,
+		CLIProvider: agentdom.CLIProviderClaudeCode,
+		// DefaultEnvironmentID intentionally omitted.
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider)
+}
+
+func TestCreateAgent_ProviderCLI_InvalidAuthMode(t *testing.T) {
+	projectID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:        "CLI Agent",
+		Handle:      "cli-agent",
+		AgentType:   agentdom.AgentTypeProviderCLI,
+		CLIProvider: agentdom.CLIProviderClaudeCode,
+		CLIAuthMode: "not-a-real-mode",
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIAuthModeInvalid)
+}
+
+func TestCreateAgent_ProviderCLI_APIKeyAuthUnsupportedForCursorAgent(t *testing.T) {
+	projectID := uuid.New()
+	envID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	envSvc := &fakeEnvironmentService{
+		getEnvironment: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{ID: envID, ProjectID: projectID}, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+
+	// cursor-agent has no confirmed non-interactive API-key auth path (see
+	// agentdom.CLIProvidersWithAPIKeyAuth) — requesting api_key auth for it
+	// must be rejected rather than silently falling back to login mode.
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:                 "CLI Agent",
+		Handle:               "cli-agent",
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          agentdom.CLIProviderCursor,
+		CLIAuthMode:          agentdom.CLIAuthModeAPIKey,
+		CLIAPIKey:            "secret-key",
+		DefaultEnvironmentID: &envID,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIProviderNoAPIKeyAuth)
+}
+
+func TestUpdateAgent_ProviderCLIAgentIgnoresLLMAndACPFields(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		Name:                 "CLI Agent",
+		Handle:               "cli-agent",
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		CLIAuthMode:          agentdom.CLIAuthModeLogin,
+		DefaultEnvironmentID: &envID,
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+		updateAgent: func(_ context.Context, _ *agentdom.Agent) error { return nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	newModel := "gpt-4"
+	newAPIKey := "sk-leaked-onto-provider-cli-agent"
+	newACPProvider := agentdom.ACPProviderCustom
+
+	result, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		LLMModel:    &newModel,
+		LLMAPIKey:   &newAPIKey,
+		ACPProvider: &newACPProvider,
+		ACPCommand:  []string{"my-server"},
+	})
+
+	assert.NoError(t, err)
+	assert.Empty(t, result.LLMModel)
+	assert.Empty(t, result.LLMAPIKeySecret)
+	assert.Nil(t, result.ACPProvider)
+	assert.Empty(t, result.ACPCommand)
+}
+
+func TestUpdateAgent_ProviderCLI_UpdatesCLIFields(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		CLIAuthMode:          agentdom.CLIAuthModeLogin,
+		DefaultEnvironmentID: &envID,
+	}
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) { return agent, nil },
+		updateAgent:   func(_ context.Context, _ *agentdom.Agent) error { return nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	newModel := "opus"
+	newProvider := agentdom.CLIProviderCodex
+
+	result, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		CLIProvider: &newProvider,
+		CLIModel:    &newModel,
+	})
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, result.CLIProvider) {
+		assert.Equal(t, agentdom.CLIProviderCodex, *result.CLIProvider)
+	}
+	assert.Equal(t, "opus", result.CLIModel)
+}
+
+func TestUpdateAgent_ProviderCLI_InvalidProvider(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) { return agent, nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	badProvider := "not-a-real-cli"
+	_, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		CLIProvider: &badProvider,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIProviderInvalid)
+}
+
+func TestUpdateAgent_ProviderCLI_ClearingDefaultEnvironmentFails(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) { return agent, nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	// uuid.Nil is UpdateAgentInput.DefaultEnvironmentID's "clear it"
+	// sentinel (see that field's own doc comment) — a provider_cli agent
+	// must reject this, not silently drop its CLI's persisted login state.
+	clearedEnv := uuid.Nil
+	_, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		DefaultEnvironmentID: &clearedEnv,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider)
+}
+
+func TestCreateGlobalAgent_RejectsProviderCLI(t *testing.T) {
+	repo := &mockAgentRepo{
+		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	// A global agent has no single project's environments to default to,
+	// so provider_cli (which requires one) is rejected outright — see
+	// agentdom.ErrCLIProviderNotSupportedForGlobalAgents's own doc comment.
+	_, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
+		Name:      "Global CLI Bot",
+		Handle:    "global-cli-bot",
+		AgentType: agentdom.AgentTypeProviderCLI,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIProviderNotSupportedForGlobalAgents)
+}
+
+func TestVerifyCLILogin_NonProviderCLIAgent_ReturnsError(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	agent := &agentdom.Agent{ID: agentID, ProjectID: projectID, AgentType: agentdom.AgentTypeLLM}
+
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.VerifyCLILogin(context.Background(), projectID, agentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotProviderCLI)
+}
+
+func TestVerifyCLILogin_NoEnvironmentService_ReturnsError(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	// No WithEnvironmentService call — a self-hosted deployment that never
+	// wired one up must fail loudly here, not panic on a nil interface.
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.VerifyCLILogin(context.Background(), projectID, agentID)
+
+	assert.Error(t, err)
+}
+
+func TestVerifyCLILogin_Authenticated_PersistsTimestamp(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	var setCalled bool
+	var setCalledFor uuid.UUID
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+		setCLILoginVerifiedAt: func(_ context.Context, id uuid.UUID, _ time.Time) error {
+			setCalled = true
+			setCalledFor = id
+			return nil
+		},
+	}
+	envSvc := &fakeEnvironmentService{
+		verifyCLIAuth: func(_ context.Context, pid, eid uuid.UUID, cliProvider string) (bool, error) {
+			if pid != projectID || eid != envID || cliProvider != agentdom.CLIProviderClaudeCode {
+				t.Fatalf("unexpected VerifyCLIAuth args: %s %s %s", pid, eid, cliProvider)
+			}
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+
+	authenticated, err := svc.VerifyCLILogin(context.Background(), projectID, agentID)
+
+	assert.NoError(t, err)
+	assert.True(t, authenticated)
+	assert.True(t, setCalled)
+	assert.Equal(t, agentID, setCalledFor)
+}
+
+func TestVerifyCLILogin_NotAuthenticated_DoesNotPersistTimestamp(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	setCalled := false
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+		setCLILoginVerifiedAt: func(_ context.Context, _ uuid.UUID, _ time.Time) error {
+			setCalled = true
+			return nil
+		},
+	}
+	envSvc := &fakeEnvironmentService{
+		verifyCLIAuth: func(context.Context, uuid.UUID, uuid.UUID, string) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+
+	authenticated, err := svc.VerifyCLILogin(context.Background(), projectID, agentID)
+
+	assert.NoError(t, err)
+	assert.False(t, authenticated)
+	assert.False(t, setCalled, "cli_login_verified_at must not be touched when the CLI isn't authenticated")
+}
+
+// -------------------------------------------------------------------------
+// Parallelism limit — concurrency-safety fixes.
+//
+// The tests below lock in two fixes made after a deliberate review for
+// cross-component races/conflicts (services/api, agent-runner,
+// apps/acp-bridge):
+//
+//  1. Dispatch (fresh, resumed, or dequeued from agent_pending_triggers)
+//     must atomically claim a conversation from "queued" to "running"
+//     immediately before publishing its trigger — see
+//     claimQueuedForDispatch's doc comment for the two races this closes
+//     (Valkey Streams at-least-once redelivery double-dispatching a
+//     terminal-status event's freed slot, and StopConversation racing
+//     AdvanceQueue's dequeue of the very conversation being stopped).
+//  2. parallelism_limit above 1 is rejected outright for an agent that
+//     can't safely run more than one conversation at once — an ACP-type
+//     agent (apps/acp-bridge's own Runner session model, keyed by task_id
+//     or agent_id rather than conversation_id, rejects a second concurrent
+//     turn sharing that key instead of queueing it) or any agent attached
+//     to a static default_environment_id (its filesystem is shared across
+//     every conversation attached to it, unlike the default ephemeral
+//     per-conversation sandbox) — see requiresSerialDispatch's doc comment.
+// -------------------------------------------------------------------------
+
+func TestRequiresSerialDispatch(t *testing.T) {
+	envID := uuid.New()
+	tests := []struct {
+		name  string
+		agent *agentdom.Agent
+		want  bool
+	}{
+		{"llm, no environment", &agentdom.Agent{AgentType: agentdom.AgentTypeLLM}, false},
+		{"acp", &agentdom.Agent{AgentType: agentdom.AgentTypeACP}, true},
+		{"llm, environment-backed", &agentdom.Agent{AgentType: agentdom.AgentTypeLLM, DefaultEnvironmentID: &envID}, true},
+		{"provider_cli (always environment-backed)", &agentdom.Agent{AgentType: agentdom.AgentTypeProviderCLI, DefaultEnvironmentID: &envID}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, requiresSerialDispatch(tt.agent))
+		})
+	}
+}
+
+func TestEffectiveParallelismLimit(t *testing.T) {
+	envID := uuid.New()
+	tests := []struct {
+		name  string
+		agent *agentdom.Agent
+		want  int
+	}{
+		{"unset defaults to 1", &agentdom.Agent{AgentType: agentdom.AgentTypeLLM}, 1},
+		{"configured value honored", &agentdom.Agent{AgentType: agentdom.AgentTypeLLM, ParallelismLimit: 5}, 5},
+		{"capped", &agentdom.Agent{AgentType: agentdom.AgentTypeLLM, ParallelismLimit: 999}, parallelismLimitCap},
+		{"acp forced to 1 regardless of stored value", &agentdom.Agent{AgentType: agentdom.AgentTypeACP, ParallelismLimit: 5}, 1},
+		{"environment-backed forced to 1 regardless of stored value", &agentdom.Agent{AgentType: agentdom.AgentTypeLLM, DefaultEnvironmentID: &envID, ParallelismLimit: 5}, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, effectiveParallelismLimit(tt.agent))
+		})
+	}
+}
+
+// TestValidateOnBusy pins the exact set of accepted on_busy values —
+// anything else must be rejected with agentdom.ErrOnBusyInvalid rather than
+// silently falling through checkParallelismCapacity/checkFolderCapacity's
+// own onBusy switches and being treated the same as "" (ask).
+func TestValidateOnBusy(t *testing.T) {
+	tests := []struct {
+		name    string
+		onBusy  string
+		wantErr bool
+	}{
+		{"empty (ask) is valid", "", false},
+		{"queue is valid", agentdom.OnBusyQueue, false},
+		{"force is valid", agentdom.OnBusyForce, false},
+		{"garbage value is rejected", "explode", true},
+		{"case-mismatched value is rejected", "Queue", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateOnBusy(tt.onBusy)
+			if tt.wantErr {
+				assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestSendChatMessage_RejectsInvalidOnBusy and the tests below it pin
+// validateOnBusy's actual wiring into each of the six public entry points
+// that accept onBusy from the HTTP layer — a regression guard against the
+// check being present but never called (or called after a mutation has
+// already happened) on any one of them. Each repo call that would only run
+// past the validation check panics/records if reached, so the assertion is
+// really "validateOnBusy ran first," not just "an error came back."
+func TestSendChatMessage_RejectsInvalidOnBusy(t *testing.T) {
+	repo := &mockAgentRepo{
+		findChatSessionByID: func(context.Context, uuid.UUID) (*agentdom.AgentChatSession, error) {
+			t.Fatal("must reject before looking up the chat session")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.SendChatMessage(context.Background(), uuid.New(), uuid.New(), uuid.New(), "hi", nil, "explode")
+
+	assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
+}
+
+func TestStartChatSession_RejectsInvalidOnBusy(t *testing.T) {
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(context.Context, uuid.UUID, uuid.UUID) (*agentdom.Agent, error) {
+			t.Fatal("must reject before looking up the agent")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, _, err := svc.StartChatSession(context.Background(), uuid.New(), uuid.New(), uuid.New(), "hi", nil, nil, nil, "explode")
+
+	assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
+}
+
+func TestStartGlobalChatSession_RejectsInvalidOnBusy(t *testing.T) {
+	repo := &mockAgentRepo{
+		findAgentByID: func(context.Context, uuid.UUID) (*agentdom.Agent, error) {
+			t.Fatal("must reject before looking up the agent")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, _, err := svc.StartGlobalChatSession(context.Background(), uuid.New(), uuid.New(), "hi", nil, "explode")
+
+	assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
+}
+
+func TestSendGlobalChatMessage_RejectsInvalidOnBusy(t *testing.T) {
+	repo := &mockAgentRepo{
+		findChatSessionByID: func(context.Context, uuid.UUID) (*agentdom.AgentChatSession, error) {
+			t.Fatal("must reject before looking up the chat session")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.SendGlobalChatMessage(context.Background(), uuid.New(), uuid.New(), "hi", nil, "explode")
+
+	assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
+}
+
+// TestSendGlobalChatMessage_RestrictedAgent_Rejected and
+// TestListGlobalChatSessions_RestrictedAgent_Rejected are
+// requireGlobalAgentOpen's other two call sites — see
+// TestStartGlobalChatSession_RestrictedAgent_Rejected's doc comment for why
+// this needs covering on each entry point rather than just once.
+func TestSendGlobalChatMessage_RestrictedAgent_Rejected(t *testing.T) {
+	sessionID := uuid.New()
+	agentID := uuid.New()
+	actorUserID := uuid.New()
+	session := &agentdom.AgentChatSession{ID: sessionID, AgentID: agentID, ActorUserID: &actorUserID}
+
+	repo := &mockAgentRepo{
+		findChatSessionByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error) {
+			return session, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		findLatestConversationBySession: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			t.Fatal("must reject before resolving the latest conversation")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.SendGlobalChatMessage(context.Background(), sessionID, actorUserID, "hi", nil, "")
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+}
+
+func TestListGlobalChatSessions_RestrictedAgent_Rejected(t *testing.T) {
+	agentID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		listGlobalChatSessions: func(_ context.Context, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {
+			t.Fatal("must reject before listing sessions")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.ListGlobalChatSessions(context.Background(), agentID, uuid.New())
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+}
+
+func TestSendConversationMessage_RejectsInvalidOnBusy(t *testing.T) {
+	repo := &mockAgentRepo{
+		findConversationByID: func(context.Context, uuid.UUID) (*agentdom.AgentConversation, error) {
+			t.Fatal("must reject before looking up the conversation")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.SendConversationMessage(context.Background(), uuid.New(), uuid.New(), "hi", uuid.New(), nil, "explode")
+
+	assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
+}
+
+func TestSendGlobalConversationMessage_RejectsInvalidOnBusy(t *testing.T) {
+	repo := &mockAgentRepo{
+		findConversationByID: func(context.Context, uuid.UUID) (*agentdom.AgentConversation, error) {
+			t.Fatal("must reject before looking up the conversation")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.SendGlobalConversationMessage(context.Background(), uuid.New(), "hi", uuid.New(), nil, "explode")
+
+	assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
+}
+
+func TestCreateAgent_RejectsParallelismLimitAboveOneForACP(t *testing.T) {
+	projectID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(context.Context, *agentdom.Agent, uuid.UUID, uuid.UUID, uuid.UUID) error {
+			t.Fatal("createAgentWithMembership must not be called when parallelism_limit is invalid for this agent type")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:             "ACP Agent",
+		Handle:           "acp-agent",
+		AgentType:        agentdom.AgentTypeACP,
+		ACPProvider:      agentdom.ACPProviderClaudeCode,
+		ParallelismLimit: 3,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrParallelismLimitRequiresIsolatedSandbox)
+}
+
+// TestCreateAgent_RejectsParallelismLimitAboveOneForEnvironmentBacked covers
+// the other requiresSerialDispatch case via a provider_cli agent, which
+// always has a DefaultEnvironmentID (see TestCreateAgent_ProviderCLI_Success
+// for the same environment fixture setup) — an ordinary LLM agent that opts
+// into a DefaultEnvironmentID hits the identical check.
+func TestCreateAgent_RejectsParallelismLimitAboveOneForEnvironmentBacked(t *testing.T) {
+	projectID := uuid.New()
+	envID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(context.Context, *agentdom.Agent, uuid.UUID, uuid.UUID, uuid.UUID) error {
+			t.Fatal("createAgentWithMembership must not be called when parallelism_limit is invalid for this agent type")
+			return nil
+		},
+	}
+	envSvc := &fakeEnvironmentService{
+		getEnvironment: func(_ context.Context, pid, eid uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{ID: eid, ProjectID: pid}, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:                 "CLI Agent",
+		Handle:               "cli-agent",
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          agentdom.CLIProviderClaudeCode,
+		DefaultEnvironmentID: &envID,
+		ParallelismLimit:     2,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrParallelismLimitRequiresIsolatedSandbox)
+}
+
+// TestAdvanceQueue_ClaimsConversationBeforeDispatch is the regression guard
+// for claimQueuedForDispatch's whole reason to exist: dispatching a
+// backlogged conversation must flip it from "queued" to "running" as part
+// of the same call that publishes its trigger, not leave that to
+// agent-runner's own (asynchronous, unbounded-delay) pickup — see that
+// function's doc comment.
+func TestAdvanceQueue_ClaimsConversationBeforeDispatch(t *testing.T) {
+	agentID := uuid.New()
+	convID := uuid.New()
+	pending := &agentdom.PendingTrigger{
+		ID:             uuid.New(),
+		AgentID:        agentID,
+		ConversationID: convID,
+		Topic:          "agent.task_assigned",
+		Payload:        map[string]string{"conversation_id": convID.String()},
+		CreatedAt:      time.Now(),
+	}
+	conv := &agentdom.AgentConversation{ID: convID, AgentID: agentID, Status: "queued"}
+
+	dequeueCalls := 0
+	var claimedConvID, claimedAgentID uuid.UUID
+	var claimedLimit int
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 1}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil
+		},
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conv, nil
+		},
+		dequeueOldestPendingTrigger: func(context.Context, uuid.UUID) (*agentdom.PendingTrigger, error) {
+			dequeueCalls++
+			if dequeueCalls > 1 {
+				return nil, nil
+			}
+			return pending, nil
+		},
+		claimQueuedForDispatch: func(_ context.Context, conversationID, agentID uuid.UUID, limit int) (bool, bool, error) {
+			claimedConvID, claimedAgentID, claimedLimit = conversationID, agentID, limit
+			return true, false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatched, err := svc.AdvanceQueue(context.Background(), agentID, 1)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, dispatched)
+	assert.Equal(t, convID, claimedConvID)
+	assert.Equal(t, agentID, claimedAgentID)
+	assert.Equal(t, 1, claimedLimit)
+}
+
+// TestAdvanceQueue_SkipsPendingTriggerWhenClaimFails is the regression guard
+// for the StopConversation-vs-AdvanceQueue race claimQueuedForDispatch
+// closes: if something else (most plausibly StopConversation) already moved
+// the dequeued conversation out of "queued" by the time this call reaches
+// it, the trigger must never be published, the failed claim must not count
+// against this call's dispatched budget, and the next pending item (if any)
+// still gets a fair attempt.
+func TestAdvanceQueue_SkipsPendingTriggerWhenClaimFails(t *testing.T) {
+	agentID := uuid.New()
+	stoppedConvID := uuid.New()
+	nextConvID := uuid.New()
+	stoppedPending := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: stoppedConvID, Topic: "agent.task_assigned"}
+	nextPending := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: nextConvID, Topic: "agent.task_assigned"}
+	conversations := map[uuid.UUID]*agentdom.AgentConversation{
+		stoppedConvID: {ID: stoppedConvID, AgentID: agentID, Status: "queued"},
+		nextConvID:    {ID: nextConvID, AgentID: agentID, Status: "queued"},
+	}
+
+	queue := []*agentdom.PendingTrigger{stoppedPending, nextPending}
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 1}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil
+		},
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversations[id], nil
+		},
+		dequeueOldestPendingTrigger: func(context.Context, uuid.UUID) (*agentdom.PendingTrigger, error) {
+			if len(queue) == 0 {
+				return nil, nil
+			}
+			next := queue[0]
+			queue = queue[1:]
+			return next, nil
+		},
+		claimQueuedForDispatch: func(_ context.Context, conversationID, _ uuid.UUID, _ int) (bool, bool, error) {
+			// Simulates StopConversation having already claimed/moved
+			// stoppedConvID out of "queued" between it being queued and
+			// AdvanceQueue reaching it.
+			return conversationID != stoppedConvID, false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatched, err := svc.AdvanceQueue(context.Background(), agentID, 2)
+
+	assert.NoError(t, err)
+	// Exactly one dispatch: the claim-failed item must not consume any of
+	// this call's dispatched budget, but the maxDispatch=2 passed in still
+	// bounds it to at most 2 successful claims — only one pending item
+	// (nextConvID) was actually claimable, so this must show 1, not 2 (which
+	// would mean the failed claim was silently counted as a dispatch) and
+	// not 0 (which would mean the second item was never tried at all).
+	assert.Equal(t, 1, dispatched)
+	assert.Empty(t, queue, "both pending triggers must have been dequeued exactly once")
+}
+
+// -------------------------------------------------------------------------
+// Folder-level capacity — a second, independent constraint alongside
+// ParallelismLimit: at most one conversation, from ANY agent, may run in a
+// given (environment_id, folder_id) at once. See checkFolderCapacity's doc
+// comment for why the per-agent limit alone can't cover this (two different
+// agents sharing one DefaultEnvironmentID, or an explicit per-conversation
+// environment/folder override via StartChatSession).
+// -------------------------------------------------------------------------
+
+func TestCheckFolderCapacity(t *testing.T) {
+	envID := uuid.New()
+	folderID := uuid.New()
+
+	t.Run("free returns true", func(t *testing.T) {
+		repo := &mockAgentRepo{
+			countRunningConversationsInFolder: func(context.Context, uuid.UUID, *uuid.UUID) (int, error) {
+				return 0, nil
+			},
+		}
+		svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+		ok, err := svc.checkFolderCapacity(context.Background(), envID, &folderID, "")
+
+		assert.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("occupied and asking returns CodeAgentEnvironmentFolderBusy", func(t *testing.T) {
+		repo := &mockAgentRepo{
+			countRunningConversationsInFolder: func(context.Context, uuid.UUID, *uuid.UUID) (int, error) {
+				return 1, nil
+			},
+		}
+		svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+		ok, err := svc.checkFolderCapacity(context.Background(), envID, &folderID, "")
+
+		assert.False(t, ok)
+		var apiErr *apierr.Error
+		if assert.ErrorAs(t, err, &apiErr) {
+			assert.Equal(t, apierr.CodeAgentEnvironmentFolderBusy, apiErr.Code)
+		}
+	})
+
+	t.Run("occupied and queueing returns false with no error", func(t *testing.T) {
+		repo := &mockAgentRepo{
+			countRunningConversationsInFolder: func(context.Context, uuid.UUID, *uuid.UUID) (int, error) {
+				return 1, nil
+			},
+		}
+		svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+		ok, err := svc.checkFolderCapacity(context.Background(), envID, &folderID, agentdom.OnBusyQueue)
+
+		assert.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("forcing skips the occupancy check entirely", func(t *testing.T) {
+		repo := &mockAgentRepo{
+			countRunningConversationsInFolder: func(context.Context, uuid.UUID, *uuid.UUID) (int, error) {
+				t.Fatal("must not query occupancy at all when forcing")
+				return 1, nil
+			},
+		}
+		svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+		ok, err := svc.checkFolderCapacity(context.Background(), envID, &folderID, agentdom.OnBusyForce)
+
+		assert.NoError(t, err)
+		assert.True(t, ok)
+	})
+}
+
+// TestCheckDispatchCapacity_FolderBlocksEvenWithAgentCapacity is the
+// regression guard for checkDispatchCapacity actually composing both
+// constraints: an agent well under its own ParallelismLimit must still be
+// blocked when its target folder is occupied by someone else's conversation.
+func TestCheckDispatchCapacity_FolderBlocksEvenWithAgentCapacity(t *testing.T) {
+	agentID := uuid.New()
+	envID := uuid.New()
+	folderID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 10}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil // this agent has plenty of room
+		},
+		countRunningConversationsInFolder: func(context.Context, uuid.UUID, *uuid.UUID) (int, error) {
+			return 1, nil // but the folder itself is taken
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatchNow, err := svc.checkDispatchCapacity(context.Background(), agentID, &envID, &folderID, agentdom.OnBusyQueue)
+
+	assert.NoError(t, err)
+	assert.False(t, dispatchNow, "agent capacity alone must not be enough to dispatch into an occupied folder")
+}
+
+// TestClaimQueuedForDispatch_UsesEffectiveParallelismLimit pins the
+// service-level wiring behind repo.ClaimQueuedForDispatch's atomic
+// capacity re-verification (see the repository doc comment for why a
+// fresh, same-transaction count is needed instead of trusting
+// checkParallelismCapacity's own earlier plain read — that's the
+// check-then-act race pullfrog's review flagged). It must look up the
+// agent fresh and pass its EFFECTIVE limit, not the raw stored field, so
+// an ACP agent's forced limit=1 is what actually gets re-verified even if
+// ParallelismLimit itself is stale/higher (e.g. a row that predates
+// validateParallelismLimit).
+func TestClaimQueuedForDispatch_UsesEffectiveParallelismLimit(t *testing.T) {
+	agentID := uuid.New()
+	convID := uuid.New()
+	var gotConvID, gotAgentID uuid.UUID
+	var gotLimit int
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentType: agentdom.AgentTypeACP, ParallelismLimit: 5}, nil
+		},
+		claimQueuedForDispatch: func(_ context.Context, conversationID, agentID uuid.UUID, limit int) (bool, bool, error) {
+			gotConvID, gotAgentID, gotLimit = conversationID, agentID, limit
+			return true, false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	claimed, atCapacity, err := svc.claimQueuedForDispatch(context.Background(), agentID, convID)
+
+	assert.NoError(t, err)
+	assert.True(t, claimed)
+	assert.False(t, atCapacity)
+	assert.Equal(t, convID, gotConvID)
+	assert.Equal(t, agentID, gotAgentID)
+	assert.Equal(t, 1, gotLimit, "ACP agents must be re-verified against their forced limit of 1, not the raw stored ParallelismLimit")
+}
+
+// TestRevertFailedDispatch_RevertsToQueuedAndRecreatesTrigger is the
+// regression guard for the fix to pullfrog's review finding that a
+// publishTrigger failure landing right after a successful claim would
+// otherwise strand a conversation "running" forever with its parallelism
+// slot permanently leaked — nothing else ever revisits a conversation
+// already sitting at "running", and (for the AdvanceQueue/AdvanceFolderQueue
+// callers) its agent_pending_triggers row is already gone by then, deleted
+// as part of the dequeue itself. revertFailedDispatch must claim the
+// conversation back to "queued" and persist a fresh PendingTrigger carrying
+// the same topic/payload/environment/folder, so the next
+// AdvanceQueue/AdvanceFolderQueue call gets a fair retry instead of a
+// silent, permanent leak.
+func TestRevertFailedDispatch_RevertsToQueuedAndRecreatesTrigger(t *testing.T) {
+	agentID := uuid.New()
+	convID := uuid.New()
+	envID := uuid.New()
+	folderID := uuid.New()
+
+	var claimedFrom, claimedTo string
+	var created *agentdom.PendingTrigger
+	repo := &mockAgentRepo{
+		claimConversationStatus: func(_ context.Context, id uuid.UUID, from, to string) (bool, error) {
+			assert.Equal(t, convID, id)
+			claimedFrom, claimedTo = from, to
+			return true, nil
+		},
+		createPendingTrigger: func(_ context.Context, p *agentdom.PendingTrigger) error {
+			created = p
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	publishErr := errors.New("valkey unavailable")
+	payload := map[string]any{"conversation_id": convID.String(), "message": "hi"}
+	err := svc.revertFailedDispatch(context.Background(), agentID, convID, "agent.chat_message", payload, &envID, &folderID, publishErr)
+
+	assert.ErrorIs(t, err, publishErr, "the original publish error must still surface to the caller's own error propagation/logging")
+	assert.Equal(t, "running", claimedFrom)
+	assert.Equal(t, "queued", claimedTo)
+	if assert.NotNil(t, created, "must persist a fresh pending trigger so the item isn't lost") {
+		assert.Equal(t, agentID, created.AgentID)
+		assert.Equal(t, convID, created.ConversationID)
+		assert.Equal(t, "agent.chat_message", created.Topic)
+		assert.Equal(t, &envID, created.EnvironmentID)
+		assert.Equal(t, &folderID, created.EnvironmentFolderID)
+		assert.Equal(t, "hi", created.Payload["message"])
+	}
+}
+
+// TestRevertFailedDispatch_LeavesConversationAloneIfAlreadyMovedElsewhere
+// covers the narrower case where something else (StopConversation, most
+// plausibly) already moved convID out of "running" between the failed
+// publish and this revert attempt: the revert must not overwrite whatever
+// convID is now at, and must not fabricate a PendingTrigger for a
+// conversation nothing is actually waiting to (re)start.
+func TestRevertFailedDispatch_LeavesConversationAloneIfAlreadyMovedElsewhere(t *testing.T) {
+	agentID := uuid.New()
+	convID := uuid.New()
+
+	createCalled := false
+	repo := &mockAgentRepo{
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			return false, nil // lost the race — e.g. StopConversation got there first
+		},
+		createPendingTrigger: func(_ context.Context, _ *agentdom.PendingTrigger) error {
+			createCalled = true
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	publishErr := errors.New("valkey unavailable")
+	err := svc.revertFailedDispatch(context.Background(), agentID, convID, "agent.chat_message", map[string]any{}, nil, nil, publishErr)
+
+	assert.ErrorIs(t, err, publishErr)
+	assert.False(t, createCalled, "must not recreate a pending trigger for a conversation that already moved on to something else")
+}
+
+// TestDeliverTrigger_AtCapacityRaceEnqueuesInsteadOfDropping is the
+// regression guard for pullfrog's follow-up finding on ClaimQueuedForDispatch
+// itself: claimed=false covers two different situations (gone for good vs.
+// still queued but the agent's atomic re-check found no room), and
+// deliverTrigger used to treat both identically — silently returning nil.
+// For a fresh dispatch (needsClaim=true: StartChatSession,
+// SendChatMessage's conv==nil branch, dispatchOrEnqueue, ...) that brand
+// new conversation has no agent_pending_triggers row yet, so silently
+// dropping it here would strand it "queued" forever with nothing left to
+// ever advance it — exactly the concurrent-burst scenario this whole
+// feature exists to absorb. atCapacity=true must instead persist a
+// PendingTrigger, the same as the plain "no capacity" branch would have.
+func TestDeliverTrigger_AtCapacityRaceEnqueuesInsteadOfDropping(t *testing.T) {
+	agentID := uuid.New()
+	convID := uuid.New()
+	envID := uuid.New()
+	folderID := uuid.New()
+
+	var created *agentdom.PendingTrigger
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 1}, nil
+		},
+		claimQueuedForDispatch: func(_ context.Context, _, _ uuid.UUID, _ int) (bool, bool, error) {
+			return false, true, nil // lost the capacity race, still queued
+		},
+		createPendingTrigger: func(_ context.Context, p *agentdom.PendingTrigger) error {
+			created = p
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	payload := map[string]any{"conversation_id": convID.String(), "message": "hi"}
+	err := svc.deliverTrigger(context.Background(), agentID, convID, true, true, "agent.chat_message", payload, &envID, &folderID)
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, created, "a capacity-race loss must persist a PendingTrigger, not silently drop the conversation") {
+		assert.Equal(t, agentID, created.AgentID)
+		assert.Equal(t, convID, created.ConversationID)
+		assert.Equal(t, "agent.chat_message", created.Topic)
+		assert.Equal(t, &envID, created.EnvironmentID)
+		assert.Equal(t, &folderID, created.EnvironmentFolderID)
+		assert.Equal(t, "hi", created.Payload["message"])
+	}
+}
+
+// TestDispatchPendingTrigger_AtCapacityRequeuesPreservingIdentity covers the
+// dequeue-path half of the same fix: pending's own agent_pending_triggers
+// row is already gone by the time dispatchPendingTrigger runs (deleted as
+// part of the dequeue that produced it), so a capacity-race loss here has
+// nothing else recording that it's still waiting — dispatchPendingTrigger
+// must re-create it, with its original ID/CreatedAt/Payload preserved
+// (same as requeueSkipped), and report atCapacity=true so its caller
+// (AdvanceQueue/AdvanceFolderQueue) knows this wasn't a "gone for good"
+// StopConversation-style loss.
+func TestDispatchPendingTrigger_AtCapacityRequeuesPreservingIdentity(t *testing.T) {
+	agentID := uuid.New()
+	convID := uuid.New()
+	pending := &agentdom.PendingTrigger{
+		ID:             uuid.New(),
+		AgentID:        agentID,
+		ConversationID: convID,
+		Topic:          "agent.task_assigned",
+		Payload:        map[string]string{"conversation_id": convID.String()},
+		CreatedAt:      time.Now().Add(-time.Hour),
+	}
+	conv := &agentdom.AgentConversation{ID: convID, AgentID: agentID, Status: "queued"}
+
+	var created *agentdom.PendingTrigger
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 1}, nil
+		},
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conv, nil
+		},
+		claimQueuedForDispatch: func(_ context.Context, _, _ uuid.UUID, _ int) (bool, bool, error) {
+			return false, true, nil
+		},
+		createPendingTrigger: func(_ context.Context, p *agentdom.PendingTrigger) error {
+			created = p
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatched, atCapacity, err := svc.dispatchPendingTrigger(context.Background(), pending)
+
+	assert.NoError(t, err)
+	assert.False(t, dispatched)
+	assert.True(t, atCapacity)
+	if assert.NotNil(t, created, "must re-create the pending trigger row, not drop it") {
+		assert.Equal(t, pending.ID, created.ID, "must keep its original id/FIFO position, exactly like requeueSkipped")
+		assert.Equal(t, pending.CreatedAt, created.CreatedAt)
+	}
+}
+
+// TestAdvanceQueue_StopsImmediatelyWhenCapacityLostMidCall pins AdvanceQueue's
+// reaction to atCapacity: once one item in this agent's own queue loses the
+// capacity race, every other item behind it is guaranteed to hit the exact
+// same agent-wide limit (it's the same agent, and the true running count
+// only goes up from here, never down, within one call) — so the loop must
+// stop immediately rather than waste a dequeue+re-queue round trip on each
+// remaining item up to maxDispatch.
+func TestAdvanceQueue_StopsImmediatelyWhenCapacityLostMidCall(t *testing.T) {
+	agentID := uuid.New()
+	pendingA := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: uuid.New(), Topic: "agent.task_assigned"}
+	pendingB := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: uuid.New(), Topic: "agent.task_assigned"}
+	queue := []*agentdom.PendingTrigger{pendingA, pendingB}
+
+	dequeueCalls := 0
+	var requeued []*agentdom.PendingTrigger
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 5}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil // this call's own (now-stale) snapshot says there's plenty of room
+		},
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			return &agentdom.AgentConversation{ID: id, AgentID: agentID, Status: "queued"}, nil
+		},
+		dequeueOldestPendingTrigger: func(context.Context, uuid.UUID) (*agentdom.PendingTrigger, error) {
+			dequeueCalls++
+			if len(queue) == 0 {
+				return nil, nil
+			}
+			next := queue[0]
+			queue = queue[1:]
+			return next, nil
+		},
+		claimQueuedForDispatch: func(_ context.Context, _, _ uuid.UUID, _ int) (bool, bool, error) {
+			return false, true, nil // every claim in this test loses the capacity race
+		},
+		createPendingTrigger: func(_ context.Context, p *agentdom.PendingTrigger) error {
+			requeued = append(requeued, p)
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatched, err := svc.AdvanceQueue(context.Background(), agentID, 3)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 0, dispatched)
+	assert.Equal(t, 1, dequeueCalls, "must not attempt a second item once the first hits capacity — the whole agent is equally blocked")
+	if assert.Len(t, requeued, 1, "the one item it dequeued must be put back, not dropped") {
+		assert.Equal(t, pendingA.ID, requeued[0].ID)
+	}
+}
+
+// TestAdvanceFolderQueue_ContinuesToNextItemWhenOneAgentIsAtCapacity is
+// AdvanceQueue's stop-immediately test's mirror image: AdvanceFolderQueue's
+// queue can hold items from DIFFERENT agents sharing one folder, so one
+// agent losing its own capacity race says nothing about whether the next
+// item (a different agent) still has room — it must keep trying instead of
+// giving up after the first capacity loss.
+func TestAdvanceFolderQueue_ContinuesToNextItemWhenOneAgentIsAtCapacity(t *testing.T) {
+	envID := uuid.New()
+	folderID := uuid.New()
+	busyAgentID := uuid.New()
+	freeAgentID := uuid.New()
+	busyConvID := uuid.New()
+	freeConvID := uuid.New()
+	pendingBusy := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: busyAgentID, ConversationID: busyConvID, Topic: "agent.chat_message", EnvironmentID: &envID, EnvironmentFolderID: &folderID}
+	pendingFree := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: freeAgentID, ConversationID: freeConvID, Topic: "agent.chat_message", EnvironmentID: &envID, EnvironmentFolderID: &folderID}
+	queue := []*agentdom.PendingTrigger{pendingBusy, pendingFree}
+	conversations := map[uuid.UUID]*agentdom.AgentConversation{
+		busyConvID: {ID: busyConvID, AgentID: busyAgentID, Status: "queued", EnvironmentID: &envID},
+		freeConvID: {ID: freeConvID, AgentID: freeAgentID, Status: "queued", EnvironmentID: &envID},
+	}
+
+	var requeued []*agentdom.PendingTrigger
+	var claimedConvID uuid.UUID
+	repo := &mockAgentRepo{
+		countRunningConversationsInFolder: func(context.Context, uuid.UUID, *uuid.UUID) (int, error) {
+			return 0, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 1}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil // the AdvanceFolderQueue pre-check sees room for both — the atomic re-check is what actually catches busyAgentID
+		},
+		dequeueOldestPendingTriggerForFolder: func(context.Context, uuid.UUID, *uuid.UUID) (*agentdom.PendingTrigger, error) {
+			if len(queue) == 0 {
+				return nil, nil
+			}
+			next := queue[0]
+			queue = queue[1:]
+			return next, nil
+		},
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversations[id], nil
+		},
+		claimQueuedForDispatch: func(_ context.Context, conversationID, _ uuid.UUID, _ int) (bool, bool, error) {
+			if conversationID == busyConvID {
+				return false, true, nil // busyAgentID lost the capacity race
+			}
+			claimedConvID = conversationID
+			return true, false, nil
+		},
+		createPendingTrigger: func(_ context.Context, p *agentdom.PendingTrigger) error {
+			requeued = append(requeued, p)
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatchedOne, err := svc.AdvanceFolderQueue(context.Background(), envID, &folderID)
+
+	assert.NoError(t, err)
+	assert.True(t, dispatchedOne, "freeAgentID's item must still be dispatched despite busyAgentID's capacity loss ahead of it")
+	assert.Equal(t, freeConvID, claimedConvID)
+	if assert.Len(t, requeued, 1, "busyAgentID's item must be put back, not dropped") {
+		assert.Equal(t, pendingBusy.ID, requeued[0].ID)
+	}
+}
+
+// TestAdvanceQueue_RequeuesFolderBlockedItemAndTriesNext is the regression
+// guard against the queue-starvation bug a naive "skip and continue" would
+// have: item A (older, but its folder is occupied by a different agent)
+// must not block item B (newer, folder free) from being tried and
+// dispatched within the same AdvanceQueue call — and A must still be sitting
+// in agent_pending_triggers afterwards, not lost.
+func TestAdvanceQueue_RequeuesFolderBlockedItemAndTriesNext(t *testing.T) {
+	agentID := uuid.New()
+	envID := uuid.New()
+	occupiedFolderID := uuid.New()
+	freeFolderID := uuid.New()
+	convA := uuid.New()
+	convB := uuid.New()
+	itemA := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: convA, Topic: "agent.task_assigned", EnvironmentID: &envID, EnvironmentFolderID: &occupiedFolderID, CreatedAt: time.Now().Add(-time.Minute)}
+	itemB := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: convB, Topic: "agent.task_assigned", EnvironmentID: &envID, EnvironmentFolderID: &freeFolderID, CreatedAt: time.Now()}
+	conversations := map[uuid.UUID]*agentdom.AgentConversation{
+		convA: {ID: convA, AgentID: agentID, Status: "queued", EnvironmentID: &envID, EnvironmentFolderID: &occupiedFolderID},
+		convB: {ID: convB, AgentID: agentID, Status: "queued", EnvironmentID: &envID, EnvironmentFolderID: &freeFolderID},
+	}
+
+	queue := []*agentdom.PendingTrigger{itemA, itemB}
+	var reinserted []*agentdom.PendingTrigger
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 10}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil
+		},
+		countRunningConversationsInFolder: func(_ context.Context, _ uuid.UUID, folderID *uuid.UUID) (int, error) {
+			if folderID != nil && *folderID == occupiedFolderID {
+				return 1, nil
+			}
+			return 0, nil
+		},
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversations[id], nil
+		},
+		dequeueOldestPendingTrigger: func(context.Context, uuid.UUID) (*agentdom.PendingTrigger, error) {
+			if len(queue) == 0 {
+				return nil, nil
+			}
+			next := queue[0]
+			queue = queue[1:]
+			return next, nil
+		},
+		createPendingTrigger: func(_ context.Context, t *agentdom.PendingTrigger) error {
+			reinserted = append(reinserted, t)
+			return nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatched, err := svc.AdvanceQueue(context.Background(), agentID, 1)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, dispatched, "item B must still be dispatched despite item A blocking ahead of it")
+	if assert.Len(t, reinserted, 1, "item A must be put back, not dropped") {
+		assert.Equal(t, itemA.ID, reinserted[0].ID)
+		assert.Equal(t, itemA.CreatedAt, reinserted[0].CreatedAt, "must keep its original FIFO position")
+	}
+}
+
+// TestAdvanceFolderQueue_DispatchesQueuedItemFromDifferentAgent is the
+// regression guard for the whole reason AdvanceFolderQueue exists: the
+// conversation that just freed a folder can belong to a different agent
+// than whichever one is next in line for it.
+func TestAdvanceFolderQueue_DispatchesQueuedItemFromDifferentAgent(t *testing.T) {
+	envID := uuid.New()
+	folderID := uuid.New()
+	otherAgentID := uuid.New()
+	convID := uuid.New()
+	pending := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: otherAgentID, ConversationID: convID, Topic: "agent.chat_message", EnvironmentID: &envID, EnvironmentFolderID: &folderID}
+	conv := &agentdom.AgentConversation{ID: convID, AgentID: otherAgentID, Status: "queued", EnvironmentID: &envID, EnvironmentFolderID: &folderID}
+
+	dequeueCalls := 0
+	var claimedID uuid.UUID
+	repo := &mockAgentRepo{
+		countRunningConversationsInFolder: func(context.Context, uuid.UUID, *uuid.UUID) (int, error) {
+			return 0, nil // the folder just freed up
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 1}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil // otherAgentID has room too
+		},
+		dequeueOldestPendingTriggerForFolder: func(context.Context, uuid.UUID, *uuid.UUID) (*agentdom.PendingTrigger, error) {
+			dequeueCalls++
+			if dequeueCalls > 1 {
+				return nil, nil
+			}
+			return pending, nil
+		},
+		findConversationByID: func(context.Context, uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conv, nil
+		},
+		claimQueuedForDispatch: func(_ context.Context, conversationID, _ uuid.UUID, _ int) (bool, bool, error) {
+			claimedID = conversationID
+			return true, false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatchedOne, err := svc.AdvanceFolderQueue(context.Background(), envID, &folderID)
+
+	assert.NoError(t, err)
+	assert.True(t, dispatchedOne)
+	assert.Equal(t, convID, claimedID)
+}
+
+// TestAdvanceFolderQueue_RequeuesWhenItsAgentIsBusy covers the mirror image
+// of TestAdvanceQueue_RequeuesFolderBlockedItemAndTriesNext: a folder that
+// just freed up must not be handed to a queued item whose own agent is
+// still at capacity — that item goes back to agent_pending_triggers
+// unchanged, for its own agent's AdvanceQueue to pick up once IT has room.
+func TestAdvanceFolderQueue_RequeuesWhenItsAgentIsBusy(t *testing.T) {
+	envID := uuid.New()
+	folderID := uuid.New()
+	busyAgentID := uuid.New()
+	convID := uuid.New()
+	pending := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: busyAgentID, ConversationID: convID, Topic: "agent.chat_message", EnvironmentID: &envID, EnvironmentFolderID: &folderID, CreatedAt: time.Now()}
+
+	dequeueCalls := 0
+	var reinserted []*agentdom.PendingTrigger
+	repo := &mockAgentRepo{
+		countRunningConversationsInFolder: func(context.Context, uuid.UUID, *uuid.UUID) (int, error) {
+			return 0, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 1}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 1, nil // busyAgentID is already at its limit elsewhere
+		},
+		dequeueOldestPendingTriggerForFolder: func(context.Context, uuid.UUID, *uuid.UUID) (*agentdom.PendingTrigger, error) {
+			dequeueCalls++
+			if dequeueCalls > 1 {
+				return nil, nil
+			}
+			return pending, nil
+		},
+		createPendingTrigger: func(_ context.Context, t *agentdom.PendingTrigger) error {
+			reinserted = append(reinserted, t)
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatchedOne, err := svc.AdvanceFolderQueue(context.Background(), envID, &folderID)
+
+	assert.NoError(t, err)
+	assert.False(t, dispatchedOne)
+	if assert.Len(t, reinserted, 1) {
+		assert.Equal(t, pending.ID, reinserted[0].ID)
+	}
+}
+
+// TestAdvanceFolderQueue_ChecksEachCandidatesOwnFolderNotJustTheOneThatFreed
+// guards against reintroducing a single upfront checkFolderCapacity(folderID)
+// gate (an earlier version of this function had exactly that): with
+// ancestor/descendant matching, DequeueOldestPendingTriggerForFolder can
+// return a candidate targeting a *different* folder than the one that just
+// freed (a parent, a child, or an unrelated sibling that merely shares an
+// ancestor with it) — so folderID no longer being occupied doesn't mean
+// every such candidate is actually free. Here, the oldest pending item's
+// own folder is still occupied by something unrelated to the conversation
+// that just finished; a newer item behind it, in a genuinely free sibling
+// folder, must still get dispatched instead of being blocked by the older
+// one's unrelated occupant.
+func TestAdvanceFolderQueue_ChecksEachCandidatesOwnFolderNotJustTheOneThatFreed(t *testing.T) {
+	envID := uuid.New()
+	freedFolderID := uuid.New()     // the folder whose conversation just finished
+	stillBusyFolderID := uuid.New() // a sibling, unrelated occupant still running here
+	freeFolderID := uuid.New()      // genuinely free
+	agentID := uuid.New()
+	convOld := uuid.New()
+	convNew := uuid.New()
+	itemOld := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: convOld, Topic: "agent.chat_message", EnvironmentID: &envID, EnvironmentFolderID: &stillBusyFolderID, CreatedAt: time.Now().Add(-time.Minute)}
+	itemNew := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: convNew, Topic: "agent.chat_message", EnvironmentID: &envID, EnvironmentFolderID: &freeFolderID, CreatedAt: time.Now()}
+
+	queue := []*agentdom.PendingTrigger{itemOld, itemNew}
+	var claimedID uuid.UUID
+	var reinserted []*agentdom.PendingTrigger
+	repo := &mockAgentRepo{
+		countRunningConversationsInFolder: func(_ context.Context, _ uuid.UUID, folderID *uuid.UUID) (int, error) {
+			if folderID != nil && *folderID == stillBusyFolderID {
+				return 1, nil
+			}
+			return 0, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 10}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil
+		},
+		dequeueOldestPendingTriggerForFolder: func(context.Context, uuid.UUID, *uuid.UUID) (*agentdom.PendingTrigger, error) {
+			if len(queue) == 0 {
+				return nil, nil
+			}
+			next := queue[0]
+			queue = queue[1:]
+			return next, nil
+		},
+		createPendingTrigger: func(_ context.Context, t *agentdom.PendingTrigger) error {
+			reinserted = append(reinserted, t)
+			return nil
+		},
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			return &agentdom.AgentConversation{ID: id, AgentID: agentID, Status: "queued", EnvironmentID: &envID}, nil
+		},
+		claimQueuedForDispatch: func(_ context.Context, conversationID, _ uuid.UUID, _ int) (bool, bool, error) {
+			claimedID = conversationID
+			return true, false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatchedOne, err := svc.AdvanceFolderQueue(context.Background(), envID, &freedFolderID)
+
+	assert.NoError(t, err)
+	assert.True(t, dispatchedOne, "the newer, genuinely free sibling must still be dispatched")
+	assert.Equal(t, convNew, claimedID)
+	if assert.Len(t, reinserted, 1, "the older, still-blocked item must be put back, not dropped") {
+		assert.Equal(t, itemOld.ID, reinserted[0].ID)
+	}
 }

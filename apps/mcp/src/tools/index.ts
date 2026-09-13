@@ -1,5 +1,6 @@
 import type { CallToolRequest, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type {
+	PacaAPIAnnotationClient,
 	PacaAPIAutomationClient,
 	PacaAPIClient,
 	PacaAPIConversationClient,
@@ -9,6 +10,10 @@ import type {
 	PacaAPIViewsClient,
 } from "../api/index.js";
 import { formatToolError } from "../utils/index.js";
+import {
+	getAnnotationTools,
+	handleAnnotationTool,
+} from "./annotation-tools.js";
 import {
 	getAttachmentTools,
 	handleAttachmentTool,
@@ -76,6 +81,7 @@ export function getAllTools(): Tool[] {
 		...getDocActivityTools(),
 		...getRepoTools(),
 		...getConversationTools(),
+		...getAnnotationTools(),
 	];
 }
 
@@ -93,6 +99,7 @@ export async function handleToolCall(
 		docClient: PacaAPIDocClient;
 		automationClient: PacaAPIAutomationClient;
 		conversationClient: PacaAPIConversationClient;
+		annotationClient: PacaAPIAnnotationClient;
 	},
 	repoPluginIds: string[] = [],
 ): Promise<any> {
@@ -269,6 +276,11 @@ export async function handleToolCall(
 		// Conversation tools
 		if (name === "read_conversation") {
 			return handleConversationTool(name, args, clients.conversationClient);
+		}
+
+		// Page annotation ("comment") tools
+		if (name === "list_annotations" || name === "get_annotation") {
+			return handleAnnotationTool(name, args, clients.annotationClient);
 		}
 
 		throw new Error(`Unknown tool: ${name}`);

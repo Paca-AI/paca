@@ -420,6 +420,26 @@ describe("agent-api", () => {
 				{ message: "hello" },
 			);
 		});
+
+		// This reply-in-place path resumes an ACP/environment-attached
+		// conversation server-side (resumeConversationMessage), which enforces
+		// the same parallelism/folder capacity check as every other dispatch —
+		// on_busy is how the busy dialog's "Add to Queue"/"Send Now" choice
+		// reaches that check.
+		it("sendConversationMessage forwards onBusy as on_busy", async () => {
+			mockPost.mockResolvedValue({});
+			await sendConversationMessage(
+				PROJECT_ID,
+				CONV_ID,
+				"hello",
+				undefined,
+				"force",
+			);
+			expect(mockPost).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/conversations/${CONV_ID}/messages`,
+				{ message: "hello", on_busy: "force" },
+			);
+		});
 	});
 
 	// ── Global conversations (/agents/conversations) ────────────────────────────
@@ -480,6 +500,15 @@ describe("agent-api", () => {
 			expect(mockPost).toHaveBeenCalledWith(
 				`/agents/conversations/${CONV_ID}/messages`,
 				{ message: "hello" },
+			);
+		});
+
+		it("sendGlobalConversationMessage forwards onBusy as on_busy", async () => {
+			mockPost.mockResolvedValue({});
+			await sendGlobalConversationMessage(CONV_ID, "hello", undefined, "queue");
+			expect(mockPost).toHaveBeenCalledWith(
+				`/agents/conversations/${CONV_ID}/messages`,
+				{ message: "hello", on_busy: "queue" },
 			);
 		});
 

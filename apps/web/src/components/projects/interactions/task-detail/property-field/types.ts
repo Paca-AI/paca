@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { CustomFieldOption } from "@/lib/project-api";
 
 export type PropertyFieldMode =
 	| "select"
@@ -20,6 +21,9 @@ export interface SelectOption {
 	label: string;
 	icon?: ReactNode;
 	colorDot?: string;
+	/** Small muted hint shown after the label in the dropdown list only (not
+	 * in the compact trigger pill once a value is selected). */
+	hint?: string;
 }
 
 export interface UserOption {
@@ -80,7 +84,7 @@ export interface PropertyFieldProps {
 		| "Url";
 	customRawValue?: unknown;
 	onCustomChange?: (value: unknown) => void;
-	customOptions?: string[];
+	customOptions?: CustomFieldOption[];
 
 	hidden?: boolean;
 	linkIcon?: ReactNode;

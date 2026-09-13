@@ -84,6 +84,46 @@ export const ApiErrorCode = {
 	PluginDowngradeNotAllowed: "PLUGIN_DOWNGRADE_NOT_ALLOWED",
 	PluginIncompatibleHostVersion: "PLUGIN_INCOMPATIBLE_HOST_VERSION",
 
+	// Agent domain errors.
+	// Sent instead of dispatching a new chat turn when the agent is already
+	// at parallelism_limit running conversations and the request didn't opt
+	// into on_busy: "queue" | "force" — error_details carries "running"/
+	// "limit" (see getApiErrorDetails). See agent-busy-dialog.tsx.
+	AgentParallelismLimitReached: "AGENT_PARALLELISM_LIMIT_REACHED",
+	// Sent instead of dispatching a new chat turn when another conversation
+	// — from any agent, not just this one — is already running in the same
+	// environment folder (an explicit environment/folder override, or two
+	// agents sharing one default environment, can both cross agent
+	// boundaries the parallelism_limit check above never sees). Carries
+	// error_details.environment_id. See agent-busy-dialog.tsx — same
+	// on_busy=queue|force retry as AgentParallelismLimitReached, just a
+	// different reason for being busy.
+	AgentEnvironmentFolderBusy: "AGENT_ENVIRONMENT_FOLDER_BUSY",
+	// Returned from create/update agent when parallelism_limit > 1 is
+	// requested for an agent that can't safely run more than one
+	// conversation at once (an ACP-type agent, or one attached to a shared
+	// default_environment_id) — see agent-detail.tsx's requiresSerialDispatch,
+	// which keeps the field disabled in that case so this should be
+	// unreachable from the UI in practice.
+	AgentParallelismLimitUnsupported: "AGENT_PARALLELISM_LIMIT_UNSUPPORTED",
+	// Returned when on_busy is set to anything other than "", "queue", or
+	// "force" — should be unreachable from the UI in practice, since
+	// agent-busy-dialog.tsx/useAgentBusyPrompt only ever sends one of those
+	// three values.
+	AgentOnBusyInvalid: "AGENT_ON_BUSY_INVALID",
+	// Sent instead of dispatching a chat turn when the agent itself is
+	// access_mode=restricted and the caller holds no grant for it. See
+	// conversation-to-thread-messages.ts's chatSessionAccessDeniedKey.
+	AgentAccessRestricted: "AGENT_ACCESS_RESTRICTED",
+	// Sent instead of dispatching a chat turn when the environment the
+	// conversation would attach to (explicit override, or the agent's own
+	// DefaultEnvironmentID) is access_mode=restricted and the caller holds
+	// no grant for it — a separate resource from the agent above, so a
+	// separate code/remedy ("ask for environment access", not agent
+	// access). See conversation-to-thread-messages.ts's
+	// chatSessionAccessDeniedKey.
+	EnvironmentAccessRestricted: "ENVIRONMENT_ACCESS_RESTRICTED",
+
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",
 	InternalError: "INTERNAL_ERROR",
@@ -100,6 +140,27 @@ export function isPasswordChangeRequired(err: unknown): boolean {
 		e?.response?.status === 403 &&
 		e?.response?.data?.error_code === ApiErrorCode.PasswordChangeRequired
 	);
+}
+
+/** The HTTP status code of an Axios error's response, or undefined for a
+ *  non-HTTP failure (network error, timeout) or a non-Axios error. */
+export function getHttpStatus(error: unknown): number | undefined {
+	return (error as { response?: { status?: number } } | undefined)?.response
+		?.status;
+}
+
+/**
+ * True for a plain "you don't have permission" 403 — every 403 except the
+ * one that means something more specific and is already handled elsewhere
+ * (AUTH_PASSWORD_CHANGE_REQUIRED triggers its own redirect to
+ * /change-password in api-client.ts's response interceptor, so a component
+ * reacting to it as a normal permission error would show a confusing
+ * message for the instant before that redirect lands). Use this to decide
+ * whether to render a NoPermissionState instead of a generic error state —
+ * see that component's doc comment.
+ */
+export function isForbiddenError(error: unknown): boolean {
+	return getHttpStatus(error) === 403 && !isPasswordChangeRequired(error);
 }
 
 /**

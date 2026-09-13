@@ -405,10 +405,14 @@ func parseTaskSort(ctx context.Context, svc taskdom.Service, projectID uuid.UUID
 		}
 		for _, cf := range cfs {
 			if cf.FieldKey == sortBy {
+				optValues := make([]string, len(cf.Options))
+				for i, o := range cf.Options {
+					optValues[i] = o.Value
+				}
 				return taskdom.TaskSort{
 					By:     sortBy,
 					CFType: string(cf.FieldType),
-					CFOpts: cf.Options,
+					CFOpts: optValues,
 				}
 			}
 		}
@@ -1419,7 +1423,7 @@ func (h *TaskHandler) CreateCustomFieldDefinition(w http.ResponseWriter, r *http
 		FieldKey:    req.FieldKey,
 		DisplayName: req.DisplayName,
 		FieldType:   req.FieldType,
-		Options:     req.Options,
+		Options:     req.CustomFieldOptionsToDomain(),
 		IsRequired:  req.IsRequired,
 	})
 	if err != nil {
@@ -1450,7 +1454,7 @@ func (h *TaskHandler) UpdateCustomFieldDefinition(w http.ResponseWriter, r *http
 	f, err := h.svc.UpdateCustomFieldDefinition(r.Context(), projectID, fieldID, taskdom.UpdateCustomFieldDefinitionInput{
 		DisplayName: req.DisplayName,
 		FieldType:   req.FieldType,
-		Options:     req.Options,
+		Options:     req.CustomFieldOptionsToDomain(),
 		IsRequired:  req.IsRequired,
 	})
 	if err != nil {

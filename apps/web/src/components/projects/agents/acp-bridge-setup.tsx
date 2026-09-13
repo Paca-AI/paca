@@ -177,7 +177,10 @@ function StepHeading({ index, title }: { index: number; title: string }) {
 	);
 }
 
-function CommandBox({
+// Exported so other setup flows needing the same "command + copy button"
+// treatment (e.g. create-agent-dialog.tsx's provider_cli login-command
+// hint) render it identically instead of hand-rolling a lookalike.
+export function CommandBox({
 	command,
 	copied,
 	onCopy,

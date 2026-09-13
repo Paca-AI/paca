@@ -289,6 +289,10 @@
 			"title": "暂无全局智能体",
 			"description": "创建一个全局智能体，使其可用于聊天和项目邀请。",
 			"createAgent": "创建智能体"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view agents",
+			"description": "You can still create new agents using the button above."
 		}
 	},
 	"settings": {

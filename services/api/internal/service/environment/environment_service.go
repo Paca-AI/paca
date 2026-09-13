@@ -453,6 +453,12 @@ func (s *Service) UpdateEnvironment(ctx context.Context, projectID, environmentI
 		}
 		env.IdleTimeoutMinutes = v
 	}
+	if in.AccessMode != nil {
+		if *in.AccessMode != environmentdom.AccessModeOpen && *in.AccessMode != environmentdom.AccessModeRestricted {
+			return nil, environmentdom.ErrEnvironmentAccessModeInvalid
+		}
+		env.AccessMode = *in.AccessMode
+	}
 	env.UpdatedAt = time.Now()
 	if err := s.repo.UpdateEnvironment(ctx, env); err != nil {
 		return nil, err
@@ -1012,6 +1018,33 @@ func (s *Service) Browse(ctx context.Context, projectID, environmentID uuid.UUID
 	return resp.Path, entries, nil
 }
 
+// VerifyCLIAuth probes whether cliProvider's coding CLI is currently
+// authenticated inside environmentID — each CLI's own real, non-interactive
+// status subcommand where one is confirmed to exist (claude/codex/
+// cursor-agent), a guessed file-existence check only for the one provider
+// without a confirmed status subcommand (gemini-cli) — never an interactive
+// CLI invocation (see agent-runner's internal/executor/providercli package
+// for why: avoids burning API usage or hanging on an interactive prompt).
+// Requires the environment to be StatusRunning, same as Browse.
+func (s *Service) VerifyCLIAuth(ctx context.Context, projectID, environmentID uuid.UUID, cliProvider string) (bool, error) {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return false, err
+	}
+	if env.BackendRef == nil || env.Status != environmentdom.StatusRunning {
+		return false, environmentdom.ErrEnvironmentNotRunning
+	}
+
+	q := url.Values{}
+	q.Set("backend_ref", *env.BackendRef)
+	q.Set("cli_provider", cliProvider)
+	var resp internalCLIAuthVerifyResponse
+	if err := s.callInternal(ctx, s.httpClient, http.MethodGet, "/internal/environments/"+env.ID.String()+"/cli-auth/verify?"+q.Encode(), nil, &resp); err != nil {
+		return false, fmt.Errorf("agent-runner: verify cli auth: %w", err)
+	}
+	return resp.Authenticated, nil
+}
+
 // DeleteFolder unregisters a folder — a folder row is only ever a pointer
 // to a working directory inside the environment's filesystem, not
 // something Paca owns the contents of, so deleting it never touches the
@@ -1125,6 +1158,77 @@ func (s *Service) syncSSHKeys(ctx context.Context, env *environmentdom.Environme
 }
 
 // -------------------------------------------------------------------------
+// Access grants — see environmentdom.AccessGrantService's doc comment.
+// -------------------------------------------------------------------------
+
+// HasEnvironmentUsageAccess reports whether memberID may use environmentID
+// — see environmentdom.AccessGrantService.HasEnvironmentUsageAccess.
+func (s *Service) HasEnvironmentUsageAccess(ctx context.Context, projectID, environmentID, memberID uuid.UUID) (bool, error) {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return false, err
+	}
+	return s.hasEnvironmentUsageAccess(ctx, env, memberID)
+}
+
+// hasEnvironmentUsageAccess is the internal check reused wherever the
+// caller already has the *Environment in hand (avoids a redundant
+// FindVisibleEnvironmentInProject round-trip).
+func (s *Service) hasEnvironmentUsageAccess(ctx context.Context, env *environmentdom.Environment, memberID uuid.UUID) (bool, error) {
+	if env.AccessMode != environmentdom.AccessModeRestricted {
+		return true, nil
+	}
+	return s.repo.HasEnvironmentAccessGrant(ctx, env.ID, memberID)
+}
+
+// ListEnvironmentAccessGrants returns every member explicitly granted
+// access to a restricted environment (regardless of its current
+// access_mode — see the repository method's doc comment).
+func (s *Service) ListEnvironmentAccessGrants(ctx context.Context, projectID, environmentID uuid.UUID) ([]*environmentdom.EnvironmentAccessGrant, error) {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ListEnvironmentAccessGrants(ctx, env.ID)
+}
+
+// AddEnvironmentAccessGrant grants memberID access to a restricted
+// environment.
+func (s *Service) AddEnvironmentAccessGrant(ctx context.Context, projectID, environmentID, memberID uuid.UUID, grantedBy *uuid.UUID) (*environmentdom.EnvironmentAccessGrant, error) {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	g := &environmentdom.EnvironmentAccessGrant{
+		ID:            uuid.New(),
+		EnvironmentID: env.ID,
+		MemberID:      memberID,
+		GrantedBy:     grantedBy,
+		CreatedAt:     time.Now(),
+	}
+	if err := s.repo.AddEnvironmentAccessGrant(ctx, g); err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
+// RemoveEnvironmentAccessGrant revokes memberID's access to a restricted
+// environment. A no-op if memberID had no grant.
+func (s *Service) RemoveEnvironmentAccessGrant(ctx context.Context, projectID, environmentID, memberID uuid.UUID) error {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return err
+	}
+	return s.repo.RemoveEnvironmentAccessGrant(ctx, env.ID, memberID)
+}
+
+// ListGrantedEnvironmentIDsForMember returns every restricted environment
+// memberID currently holds a grant for.
+func (s *Service) ListGrantedEnvironmentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
+	return s.repo.ListGrantedEnvironmentIDsForMember(ctx, memberID)
+}
+
+// -------------------------------------------------------------------------
 // Port forwards — user-managed, one row per container port they want
 // reachable from outside (see environmentdom.PortForwardService's doc
 // comment for how this differs from the environment's own auto-created
@@ -1139,6 +1243,25 @@ func (s *Service) ListPortForwards(ctx context.Context, projectID, environmentID
 		return nil, err
 	}
 	return s.repo.ListPortForwards(ctx, env.ID)
+}
+
+// GetPortForward returns a single port forward, verifying it belongs to
+// environmentID which belongs to projectID — the same ownership check
+// DeletePortForward already does, just returning the row instead of
+// removing it.
+func (s *Service) GetPortForward(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID) (*environmentdom.EnvironmentPortForward, error) {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	pf, err := s.repo.FindPortForwardByID(ctx, portForwardID)
+	if err != nil {
+		return nil, err
+	}
+	if pf.EnvironmentID != env.ID {
+		return nil, environmentdom.ErrPortForwardNotFound
+	}
+	return pf, nil
 }
 
 // AddPortForward creates the port-forward row and, if the environment is
@@ -1389,6 +1512,13 @@ type internalBrowseResponse struct {
 		Name  string `json:"name"`
 		IsDir bool   `json:"is_dir"`
 	} `json:"entries"`
+}
+
+// internalCLIAuthVerifyResponse mirrors agent-runner's
+// handleVerifyCLIAuth JSON response — see
+// internal/acpbridge/environment_handlers.go on that side.
+type internalCLIAuthVerifyResponse struct {
+	Authenticated bool `json:"authenticated"`
 }
 
 // environmentCommandReply is the JSON envelope agent-runner's own

@@ -40,7 +40,13 @@ func (s *AuthzPermissionStore) ListGlobalPermissions(ctx context.Context, userID
 }
 
 // ListProjectPermissions returns permissions from project role memberships for
-// the provided project.
+// the provided project. Any active membership implies projects.read
+// regardless of what the role's own stored permissions say — a project
+// member who can't fetch the project they belong to (e.g. a hand-edited
+// custom role that never included projects.read) is a contradiction the
+// role editor shouldn't be able to produce, so membership itself is the
+// authorization signal for that one permission. Every other capability
+// still comes strictly from the role's permissions, unchanged.
 func (s *AuthzPermissionStore) ListProjectPermissions(ctx context.Context, userID, projectID uuid.UUID) ([]authz.Permission, error) {
 	var rows []struct {
 		Permissions []byte `db:"permissions"`
@@ -49,12 +55,17 @@ func (s *AuthzPermissionStore) ListProjectPermissions(ctx context.Context, userI
 		SELECT pr.permissions
 		FROM project_roles pr
 		JOIN project_members pm ON pm.project_role_id = pr.id
-		WHERE pm.user_id = $1 AND pm.project_id = $2`, userID.String(), projectID.String())
+		WHERE pm.user_id = $1 AND pm.project_id = $2 AND pm.deleted_at IS NULL`,
+		userID.String(), projectID.String())
 	if err != nil {
 		return nil, fmt.Errorf("authz store: list project permissions: %w", err)
 	}
 
-	return collectPermissions(rows), nil
+	perms := collectPermissions(rows)
+	if len(rows) > 0 {
+		perms = append(perms, authz.PermissionProjectsRead)
+	}
+	return perms, nil
 }
 
 func collectPermissions(rows []struct {

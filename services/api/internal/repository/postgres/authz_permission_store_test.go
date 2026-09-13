@@ -50,8 +50,10 @@ func openAuthzStoreTestDB(t *testing.T) *sqlx.DB {
 		CREATE TABLE project_members (
 			id TEXT PRIMARY KEY,
 			project_id TEXT NOT NULL,
-			user_id TEXT NOT NULL,
-			project_role_id TEXT NOT NULL
+			user_id TEXT,
+			agent_id TEXT,
+			project_role_id TEXT NOT NULL,
+			deleted_at DATETIME
 		);`
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		t.Fatalf("create schema: %v", err)
@@ -132,5 +134,115 @@ func TestAuthzPermissionStore_ListProjectPermissions(t *testing.T) {
 	}
 	if !foundRead || !foundWrite {
 		t.Fatalf("expected tasks.read and tasks.write, got %v", perms)
+	}
+}
+
+// TestAuthzPermissionStore_ListProjectPermissions_GrantsProjectsReadForAnyMember
+// covers the "membership implies projects.read" fix: a role whose own
+// stored permissions omit projects.read entirely (e.g. a hand-edited
+// custom role) must not leave an actual project member unable to fetch the
+// project they belong to.
+func TestAuthzPermissionStore_ListProjectPermissions_GrantsProjectsReadForAnyMember(t *testing.T) {
+	db := openAuthzStoreTestDB(t)
+	store := NewAuthzPermissionStore(db)
+	ctx := context.Background()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	roleID := uuid.New()
+	now := time.Now()
+
+	globalRoleID := uuid.New().String()
+	db.MustExec(
+		`INSERT INTO global_roles (id, name, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
+		globalRoleID, "USER", []byte(`{}`), now, now,
+	)
+	db.MustExec(
+		`INSERT INTO users (id, username, password_hash, full_name, role_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		userID.String(), "alice", "hash", "Alice", globalRoleID, now, now,
+	)
+	// A custom role that never granted projects.read — only tasks.read.
+	db.MustExec(
+		`INSERT INTO project_roles (id, project_id, role_name, permissions, created_at, updated_at) VALUES ($1, NULL, $2, $3, $4, $5)`,
+		roleID.String(), "CUSTOM_NO_PROJECT_READ", []byte(`{"tasks.read":true}`), now, now,
+	)
+	db.MustExec(
+		`INSERT INTO project_members (id, project_id, user_id, project_role_id) VALUES ($1, $2, $3, $4)`,
+		uuid.New().String(), projectID.String(), userID.String(), roleID.String(),
+	)
+
+	perms, err := store.ListProjectPermissions(ctx, userID, projectID)
+	if err != nil {
+		t.Fatalf("list project permissions: %v", err)
+	}
+
+	found := false
+	for _, p := range perms {
+		if p == authz.PermissionProjectsRead {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected projects.read to be implied by membership, got %v", perms)
+	}
+}
+
+// TestAuthzPermissionStore_ListProjectPermissions_NonMemberGetsNothing guards
+// the other direction of the fix above: someone with no project_members row
+// at all must not get projects.read (or anything else) — the auto-grant is
+// keyed on actual membership, not applied unconditionally.
+func TestAuthzPermissionStore_ListProjectPermissions_NonMemberGetsNothing(t *testing.T) {
+	db := openAuthzStoreTestDB(t)
+	store := NewAuthzPermissionStore(db)
+	ctx := context.Background()
+
+	perms, err := store.ListProjectPermissions(ctx, uuid.New(), uuid.New())
+	if err != nil {
+		t.Fatalf("list project permissions: %v", err)
+	}
+	if len(perms) != 0 {
+		t.Fatalf("expected no permissions for a non-member, got %v", perms)
+	}
+}
+
+// TestAuthzPermissionStore_ListProjectPermissions_ExcludesSoftDeletedMembership
+// is a regression test for a separate bug found alongside the fix above:
+// this query had no deleted_at filter, so a removed member (RemoveMember
+// soft-deletes the project_members row rather than deleting it) kept
+// resolving their former role's permissions indefinitely.
+func TestAuthzPermissionStore_ListProjectPermissions_ExcludesSoftDeletedMembership(t *testing.T) {
+	db := openAuthzStoreTestDB(t)
+	store := NewAuthzPermissionStore(db)
+	ctx := context.Background()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	roleID := uuid.New()
+	now := time.Now()
+
+	globalRoleID := uuid.New().String()
+	db.MustExec(
+		`INSERT INTO global_roles (id, name, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
+		globalRoleID, "USER", []byte(`{}`), now, now,
+	)
+	db.MustExec(
+		`INSERT INTO users (id, username, password_hash, full_name, role_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		userID.String(), "alice", "hash", "Alice", globalRoleID, now, now,
+	)
+	db.MustExec(
+		`INSERT INTO project_roles (id, project_id, role_name, permissions, created_at, updated_at) VALUES ($1, NULL, $2, $3, $4, $5)`,
+		roleID.String(), "PROJECT_MANAGER", []byte(`{"tasks.write":true,"tasks.read":true}`), now, now,
+	)
+	db.MustExec(
+		`INSERT INTO project_members (id, project_id, user_id, project_role_id, deleted_at) VALUES ($1, $2, $3, $4, $5)`,
+		uuid.New().String(), projectID.String(), userID.String(), roleID.String(), now,
+	)
+
+	perms, err := store.ListProjectPermissions(ctx, userID, projectID)
+	if err != nil {
+		t.Fatalf("list project permissions: %v", err)
+	}
+	if len(perms) != 0 {
+		t.Fatalf("expected no permissions for a removed (soft-deleted) member, got %v", perms)
 	}
 }

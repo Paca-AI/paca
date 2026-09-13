@@ -49,6 +49,8 @@ import { Route as AuthenticatedProjectsProjectIdPluginsPluginIdSlugRouteImport }
 import { Route as AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRouteImport } from './routes/_authenticated/projects/$projectId/interactions/sprints/$sprintId'
 import { Route as AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRouteImport } from './routes/_authenticated/projects/$projectId/environments/$environmentId/terminal'
 import { Route as AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRouteImport } from './routes/_authenticated/projects/$projectId/environments/$environmentId/connect'
+import { Route as AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRouteImport } from './routes/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/index'
+import { Route as AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRouteImport } from './routes/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId'
 
 const SetPasswordRoute = SetPasswordRouteImport.update({
   id: '/set-password',
@@ -290,6 +292,22 @@ const AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute =
       getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
     } as any,
   )
+const AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRoute =
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRouteImport.update(
+    {
+      id: '/environments/$environmentId/port-forwards/$portForwardId/',
+      path: '/environments/$environmentId/port-forwards/$portForwardId/',
+      getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+    } as any,
+  )
+const AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRoute =
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRouteImport.update(
+    {
+      id: '/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId',
+      path: '/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId',
+      getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+    } as any,
+  )
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -331,6 +349,8 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/plugins/$pluginId/$slug': typeof AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute
   '/projects/$projectId/agents/$agentId/': typeof AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute
   '/projects/$projectId/environments/$environmentId/': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute
+  '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRoute
+  '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -369,6 +389,8 @@ export interface FileRoutesByTo {
   '/projects/$projectId/plugins/$pluginId/$slug': typeof AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute
   '/projects/$projectId/agents/$agentId': typeof AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute
   '/projects/$projectId/environments/$environmentId': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute
+  '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRoute
+  '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -412,6 +434,8 @@ export interface FileRoutesById {
   '/_authenticated/projects/$projectId/plugins/$pluginId/$slug': typeof AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute
   '/_authenticated/projects/$projectId/agents/$agentId/': typeof AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute
   '/_authenticated/projects/$projectId/environments/$environmentId/': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute
+  '/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRoute
+  '/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -455,6 +479,8 @@ export interface FileRouteTypes {
     | '/projects/$projectId/plugins/$pluginId/$slug'
     | '/projects/$projectId/agents/$agentId/'
     | '/projects/$projectId/environments/$environmentId/'
+    | '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/'
+    | '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -493,6 +519,8 @@ export interface FileRouteTypes {
     | '/projects/$projectId/plugins/$pluginId/$slug'
     | '/projects/$projectId/agents/$agentId'
     | '/projects/$projectId/environments/$environmentId'
+    | '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId'
+    | '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId'
   id:
     | '__root__'
     | '/'
@@ -535,6 +563,8 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$projectId/plugins/$pluginId/$slug'
     | '/_authenticated/projects/$projectId/agents/$agentId/'
     | '/_authenticated/projects/$projectId/environments/$environmentId/'
+    | '/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/'
+    | '/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -826,6 +856,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdRoute
     }
+    '/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/': {
+      id: '/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/'
+      path: '/environments/$environmentId/port-forwards/$portForwardId'
+      fullPath: '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
+    '/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId': {
+      id: '/_authenticated/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId'
+      path: '/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId'
+      fullPath: '/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId/comments/$annotationId'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
   }
 }
 
@@ -884,6 +928,8 @@ interface AuthenticatedProjectsProjectIdRouteChildren {
   AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute: typeof AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute
   AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute: typeof AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute
   AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRoute
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRoute
 }
 
 const AuthenticatedProjectsProjectIdRouteChildren: AuthenticatedProjectsProjectIdRouteChildren =
@@ -926,6 +972,10 @@ const AuthenticatedProjectsProjectIdRouteChildren: AuthenticatedProjectsProjectI
       AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute,
     AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute:
       AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute,
+    AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRoute:
+      AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdIndexRoute,
+    AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRoute:
+      AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortForwardIdCommentsAnnotationIdRoute,
   }
 
 const AuthenticatedProjectsProjectIdRouteWithChildren =

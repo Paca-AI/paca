@@ -2,6 +2,13 @@
 	"activityPane": {
 		"title": "アクティビティ",
 		"empty": "アクティビティはまだありません",
+		"emptyComments": "コメントはまだありません",
+		"showAllActivity": "すべてのアクティビティを表示",
+		"filter": {
+			"label": "アクティビティをフィルター",
+			"comments": "コメント",
+			"all": "すべてのアクティビティ"
+		},
 		"editingComment": "コメントを編集中...",
 		"cancel": "キャンセル",
 		"sendHint": "⌘↵ で送信",

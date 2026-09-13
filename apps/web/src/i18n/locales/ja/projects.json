@@ -12,6 +12,12 @@
 				"customFields": "カスタムフィールド",
 				"dangerZone": "危険な操作",
 				"plugins": "プラグイン"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "このタブを表示する権限がありません",
+					"description": "{{pluginName}}へのアクセス権限をプロジェクトのオーナーまたは管理者に依頼してください。"
+				}
 			}
 		}
 	},
@@ -33,6 +39,9 @@
 			"agentTypeLLMHint": "Pacaがモデル API を直接呼び出し、Paca をホストしているサーバー上のサンドボックス化されたコンテナでエージェントを実行します。",
 			"agentTypeACP": "ACP（ローカルCLI）",
 			"agentTypeACPHint": "自分で実行するコーディングCLI（Claude Code、Codex、Gemini CLI、またはカスタムACPサーバー）に処理を委任します。",
+			"agentTypeProviderCLI": "プロバイダーCLI",
+			"agentTypeProviderCLIHint": "Pacaがホストする静的環境内でClaude Code、Codex、Cursor、またはGemini CLIを実行し、LLMエージェントと同じ方法で制御します。",
+			"agentTypeProviderCLIGlobalDisabledHint": "プロジェクトエージェントでのみ利用可能です。プロジェクトの「エージェント」ページから作成してください。",
 			"modelSection": "モデル",
 			"providerLabel": "プロバイダー",
 			"modelLabel": "モデル",
@@ -54,6 +63,22 @@
 			"acpCommandPlaceholder": "npx -y my-acp-server",
 			"acpCommandHint": "ACPサーバーの起動に使用する、スペース区切りのコマンドです。",
 			"acpGuidance": "ツール、MCPサーバー、スキルはここでは設定しません — これらはACPクライアント自身のローカル設定から取得され、あなた自身のgit/gh認証情報で実行されます（クローン、push、PRの作成もすべてネイティブに動作します）。このエージェントを作成すると、ローカルブリッジの接続、Pacaスキルのインストール、MCPサーバーの設定を順を追ってご案内します。",
+			"cliSection": "プロバイダーCLI",
+			"cliProviderLabel": "CLIプロバイダー",
+			"cliProviderClaudeCode": "Claude Code",
+			"cliProviderCodex": "Codex",
+			"cliProviderGeminiCli": "Gemini CLI",
+			"cliProviderCursorAgent": "Cursor",
+			"cliModelLabel": "モデル",
+			"cliModelPlaceholder": "例: sonnet、gpt-5.2-codex",
+			"cliGuidance": "以下で設定したMCPサーバーは、会話のたびにこのCLI自身の設定に同期されます — Gooseはこのエージェントを実行するためだけにこのCLIを使用し、ツールの管理は行いません。スキルの同期は現在Claude Codeでのみ機能します。",
+			"cliEnvironmentHint": "必須 — このCLIのログイン状態は会話をまたいで保持される必要があり、これは静的環境でのみ実現できます。",
+			"environmentPlaceholder": "環境を選択",
+			"cliAuthModeLabel": "認証",
+			"cliLoginModeHint": "このCLIは、エージェントの環境ターミナル内で一度だけ独自のログインを行う必要があります — このエージェントタイプではAPIキー認証はまだ利用できません。",
+			"cliLoginCommandLabel": "ログインコマンド",
+			"cliOpenTerminal": "ターミナルを開く",
+			"cliVerifyLogin": "ログインを確認",
 			"systemPromptLabel": "システムプロンプト",
 			"optional": "（任意）",
 			"charsCount": "{{count}}文字",
@@ -73,6 +98,8 @@
 		"card": {
 			"configure": "設定",
 			"delete": "削除",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "オンライン",
 			"acpStatusDisconnected": "オフライン",
 			"deleteDialog": {
@@ -92,6 +119,10 @@
 				"title": "エージェントはまだいません",
 				"description": "AIエージェントを追加して、タスクの自動化、コードレビュー、ドキュメント作成などを行いましょう。",
 				"createFirstAgent": "最初のエージェントを作成"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view agents",
+				"description": "Ask a project admin to grant you the agents.read permission."
 			}
 		},
 		"acpSetup": {
@@ -138,6 +169,7 @@
 				"mcpServers": "MCPサーバー",
 				"skills": "スキル",
 				"envVars": "環境変数",
+				"access": "Access",
 				"activity": "アクティビティ"
 			},
 			"avatar": {
@@ -166,6 +198,9 @@
 				"committerEmailLabel": "コミッターのメールアドレス",
 				"dockerEnabledLabel": "Dockerアクセス",
 				"dockerEnabledHint": "このエージェントのサンドボックス内に専用のDockerデーモンを提供します。デフォルトでは無効です。すべての会話の起動時間が増えるため、実際にDockerコマンドを実行するエージェントにのみ有効にしてください。",
+				"parallelismLimitLabel": "並列実行数の上限",
+				"parallelismLimitHint": "このエージェントが同時に実行できる会話数です。上限を超えた分は空きが出るまでキューで待機します。デフォルトは1で、同じ作業ディレクトリで競合しないようチケットを1件ずつ処理します。",
+				"parallelismLimitFixedHint": "このエージェントでは1に固定されています。単一の共有ディレクトリ(ACPエージェントのローカルチェックアウト、または静的なデフォルト環境)で作業するため、安全に実行できる会話は一度に1つだけです。",
 				"environmentSection": "環境",
 				"defaultEnvironmentLabel": "デフォルト環境",
 				"defaultEnvironmentHint": "このエージェントの会話を、毎回使い捨てのサンドボックスを作成する代わりに静的環境に接続します。",
@@ -186,7 +221,25 @@
 				"acpProviderCustom": "カスタム…",
 				"acpCommandLabel": "コマンド",
 				"acpCommandHint": "ACPサーバーの起動に使用する、スペース区切りのコマンドです。",
-				"acpGuidanceBanner": "このエージェントのツール、MCPサーバー、スキルはPacaではなく、あなた自身のgit/gh認証情報で動作するローカルACPクライアントで設定されます。"
+				"acpGuidanceBanner": "このエージェントのツール、MCPサーバー、スキルはPacaではなく、あなた自身のgit/gh認証情報で動作するローカルACPクライアントで設定されます。",
+				"cliConfiguration": "プロバイダーCLI設定",
+				"cliProviderLabel": "CLIプロバイダー",
+				"cliProviderClaudeCode": "Claude Code",
+				"cliProviderCodex": "Codex",
+				"cliProviderGeminiCli": "Gemini CLI",
+				"cliProviderCursorAgent": "Cursor",
+				"cliModelLabel": "モデル",
+				"cliModelPlaceholder": "例: sonnet、gpt-5.2-codex",
+				"cliGuidanceBanner": "以下で設定したMCPサーバーは、会話のたびにこのCLI自身の設定に同期されます — GooseはこのCLIを実行するだけで、ツールの管理は行いません。スキルの同期は現在Claude Codeでのみ機能します。",
+				"cliLoginPanelTitle": "CLIログイン",
+				"cliLoginPanelDescription": "このエージェントのCLIが現在ログインしているかを確認するか、その環境のターミナルを開いてログインします。",
+				"cliLoginOpenTerminal": "ターミナルを開く",
+				"cliLoginVerify": "ログインを確認",
+				"cliLoginVerifiedNow": "認証されました。",
+				"cliLoginNotAuthenticated": "まだ認証されていません — ターミナルからログインし、再度確認してください。",
+				"cliLoginVerifyFailed": "ログイン状態を確認できませんでした。もう一度お試しください。",
+				"cliLoginLastVerified": "最終確認日時: {{date}}。",
+				"cliLoginNoEnvironment": "このエージェントには環境が設定されていません — まず上で環境を選択してください。"
 			},
 			"mcp": {
 				"serverCount_one": "{{count}}件のサーバーを設定済み",
@@ -250,6 +303,13 @@
 					"addSkill": "スキルを追加"
 				}
 			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
+			},
 			"activity": {
 				"commented": "コメントしました",
 				"sourceType": {
@@ -278,17 +338,33 @@
 		"conversationView": {
 			"stop": "停止",
 			"notFound": "会話が見つかりません",
+			"noPermission": {
+				"title": "You don't have permission to view this conversation",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"chatSession": "チャットセッション",
 			"taskSession": "タスクセッション",
 			"pr": "PR",
 			"connect": "接続",
 			"conversationEnded": "この会話は終了しました。",
 			"textOnlyMessage": "テキストメッセージのみサポートされています。",
+			"agentAccessRestricted": "このエージェントはアクセスが制限されています。チャットする前に、プロジェクト管理者にアクセス権を付与してもらってください。",
+			"environmentAccessRestricted": "この会話の環境はアクセスが制限されています。このエージェントとチャットする前に、プロジェクト管理者にアクセス権を付与してもらってください。",
+			"chatNoPermission": "この会話でメッセージを送信する権限がありません。",
 			"failed": "会話が失敗しました",
 			"noOutput": "エージェントは出力を生成しませんでした。",
 			"loadingOlder": "読み込み中…",
 			"newBelow_one": "新着メッセージ{{count}}件",
 			"newBelow_other": "新着メッセージ{{count}}件"
+		},
+		"busyDialog": {
+			"title": "エージェントは対応中です",
+			"description": "このエージェントは現在 {{running}}/{{limit}} 件の会話を実行中です。このメッセージをキューに追加すると空きが出次第自動的に開始されます。今すぐ送信することもできます。",
+			"folderDescription": "別の会話がすでにこの環境フォルダーで作業中です。このメッセージをキューに追加すると、その会話が終わり次第自動的に開始されます。今すぐ送信することもできます。",
+			"cancel": "キャンセル",
+			"queue": "キューに追加",
+			"force": "今すぐ送信",
+			"cancelledError": "メッセージは送信されませんでした。"
 		},
 		"thread": {
 			"composerPlaceholder": "エージェントにメッセージ…",
@@ -348,6 +424,7 @@
 				"contextTypeDoc": "ドキュメント",
 				"contextTypeConversation": "会話",
 				"contextTypeAutomation": "自動化",
+				"contextTypeAnnotation": "コメント",
 				"noContextResults": "結果が見つかりません",
 				"contextSearchMinChars": "検索するには2文字以上入力してください"
 			}
@@ -368,10 +445,16 @@
 			"title": "環境",
 			"subtitle": "エージェントが会話をまたいで接続できる、名前付きの長期稼働サンドボックス",
 			"newEnvironment": "新しい環境",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "まだ環境がありません",
 				"description": "毎回使い捨てのサンドボックスを作成する代わりに、静的環境を作成してファイルやバックグラウンドプロセスを会話をまたいで維持しましょう。",
 				"createFirstEnvironment": "最初の環境を作成"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view environments",
+				"description": "Ask a project admin to grant you the environments.read permission."
 			}
 		},
 		"createDialog": {
@@ -405,7 +488,8 @@
 			"tabs": {
 				"overview": "概要",
 				"folders": "フォルダー",
-				"portForwards": "ポートフォワード"
+				"portForwards": "ポートフォワード",
+				"access": "Access"
 			},
 			"overview": {
 				"connect": "接続",
@@ -450,6 +534,10 @@
 				"count_one": "{{count}}個のフォルダーが設定されています",
 				"count_other": "{{count}}個のフォルダーが設定されています",
 				"addFolder": "フォルダーを追加",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its folders."
+				},
 				"deleteFailed": "フォルダーの削除に失敗しました。もう一度お試しください。",
 				"empty": {
 					"title": "フォルダーが追加されていません",
@@ -476,9 +564,14 @@
 				"count_one": "{{count}}件のポートフォワード",
 				"count_other": "{{count}}件のポートフォワード",
 				"add": "ポートフォワードを追加",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its port forwards."
+				},
 				"deleteFailed": "ポートフォワードの削除に失敗しました。もう一度お試しください。",
 				"containerPort": "コンテナポート {{port}}",
 				"unassigned": "まだ割り当てられていません",
+				"open": "開く",
 				"restart": "再起動",
 				"pendingRestartRunning": "ポートフォワードが追加または削除されました。適用するには環境を再起動してください。",
 				"pendingRestartStopped": "ポートフォワードが追加または削除されました。次回この環境が起動するときに適用されます。",
@@ -503,6 +596,13 @@
 					"cancel": "キャンセル",
 					"confirm": "再起動"
 				}
+			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
 				"connectHint": "<bastion-host> を、このデプロイで設定されたSSH踏み台のアドレスに置き換えてください。",
@@ -551,6 +651,7 @@
 				"connect": "接続",
 				"notRunning": "接続する前に環境を起動してください。",
 				"readOnly": "この環境でターミナルを開く権限がありません。",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can open a terminal.",
 				"hint": "新しい全画面タブで開きます。",
 				"pageTitle": "{{name}} — ターミナル",
 				"pageTitleLoading": "ターミナル",
@@ -561,7 +662,8 @@
 				"step1Description": "接続に使用するSSH鍵ペアの公開鍵を登録してください。",
 				"step2Title": "ターミナルから接続",
 				"step2Description": "ターミナルで次のコマンドを実行してください：",
-				"notRunning": "接続する前に環境を起動してください。"
+				"notRunning": "接続する前に環境を起動してください。",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can connect via SSH."
 			}
 		}
 	},
@@ -570,6 +672,10 @@
 			"notFound": {
 				"title": "ドキュメントが見つかりません",
 				"description": "このドキュメントは削除されたか、リンクが無効である可能性があります。"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view this document",
+				"description": "Ask a project admin to grant you the docs.read permission."
 			},
 			"unsaved": "未保存",
 			"saving": "保存中…",
@@ -608,6 +714,8 @@
 			"roleNameLabel": "ロール名",
 			"roleNamePlaceholder": "例: PROJECT_REVIEWER",
 			"permissionsLabel": "権限",
+			"fullAccessBadge": "フルアクセス",
+			"fullAccessDescription": "このロールには、将来追加される権限を含め、すべての権限が自動的に含まれます。以下のいずれかを切り替えると、現在の権限の固定セットに変換されます。",
 			"enabledCount_one": "{{count}}件有効",
 			"enabledCount_other": "{{count}}件有効",
 			"cancel": "キャンセル",
@@ -623,10 +731,6 @@
 			}
 		},
 		"permissions": {
-			"projectsRead": {
-				"label": "プロジェクトの閲覧",
-				"description": "プロジェクトの詳細と設定を表示します"
-			},
 			"projectsWrite": {
 				"label": "プロジェクトの編集",
 				"description": "プロジェクト名、説明、設定を更新します"
@@ -651,6 +755,18 @@
 				"label": "ロールの管理",
 				"description": "プロジェクトロールの作成・編集・削除"
 			},
+			"settingsTaskTypesWrite": {
+				"label": "Manage Task Types",
+				"description": "Create, edit, delete, and set the default task type"
+			},
+			"settingsTaskStatusesWrite": {
+				"label": "Manage Task Statuses",
+				"description": "Create, edit, delete, reorder, and set the default task status"
+			},
+			"settingsCustomFieldsWrite": {
+				"label": "Manage Custom Fields",
+				"description": "Create, edit, and delete custom field definitions"
+			},
 			"tasksRead": {
 				"label": "タスクの閲覧",
 				"description": "プロジェクト内のタスクを閲覧します"
@@ -666,6 +782,14 @@
 			"sprintsWrite": {
 				"label": "スプリントの管理",
 				"description": "スプリントの作成・更新・終了を行います"
+			},
+			"viewsRead": {
+				"label": "View Boards",
+				"description": "Browse saved board and list views"
+			},
+			"viewsWrite": {
+				"label": "Manage Boards",
+				"description": "Create, edit, delete, and reorder board and list views"
 			},
 			"docsRead": {
 				"label": "ドキュメントの閲覧",
@@ -683,6 +807,14 @@
 				"label": "エージェントの管理",
 				"description": "AIエージェントの作成・設定・削除を行います"
 			},
+			"conversationsRead": {
+				"label": "会話を表示",
+				"description": "エージェントの会話を閲覧・確認できますが、開始や返信はできません"
+			},
+			"conversationsWrite": {
+				"label": "会話を管理",
+				"description": "エージェントとの会話を開始し、返信し、停止または一時停止できます"
+			},
 			"environmentsRead": {
 				"label": "環境の閲覧",
 				"description": "環境とその設定を閲覧します"
@@ -694,6 +826,18 @@
 			"environmentsConnect": {
 				"label": "環境への接続",
 				"description": "実行中の環境内でインタラクティブなターミナルセッションを開きます"
+			},
+			"annotationsRead": {
+				"label": "View Annotations",
+				"description": "View page comments pinned via the browser extension"
+			},
+			"annotationsWrite": {
+				"label": "Manage Annotations",
+				"description": "Create, edit, and delete page annotations"
+			},
+			"annotationsResolve": {
+				"label": "Resolve Annotations",
+				"description": "Mark a page annotation resolved or reopen it, without authoring or deleting one"
 			},
 			"workflowsRead": {
 				"label": "自動化を表示",
@@ -707,12 +851,15 @@
 		"permissionGroups": {
 			"project": "プロジェクト",
 			"members": "メンバー",
-			"roles": "ロール",
+			"settings": "Settings",
 			"tasks": "タスク",
 			"sprints": "スプリント",
+			"views": "Views",
 			"documents": "ドキュメント",
 			"aiAgents": "AIエージェント",
+			"conversations": "会話",
 			"environments": "環境",
+			"annotations": "Annotations",
 			"workflows": "自動化",
 			"plugins": "プラグイン"
 		}
@@ -771,7 +918,11 @@
 				"permissions": "権限",
 				"created": "作成日"
 			},
-			"systemRolesNote": "システムロールは共有テンプレートであり、編集・削除はできません。"
+			"systemRolesNote": "システムロールは共有テンプレートであり、編集・削除はできません。",
+			"noPermission": {
+				"title": "You don't have permission to view roles",
+				"description": "Ask a project admin to grant you the project.roles.read permission."
+			}
 		},
 		"taskStatuses": {
 			"title": "タスクステータス",
@@ -791,7 +942,11 @@
 			"default": "既定",
 			"setAsDefault": "既定のステータスに設定",
 			"editStatus": "ステータスを編集",
-			"deleteStatus": "ステータスを削除"
+			"deleteStatus": "ステータスを削除",
+			"noPermission": {
+				"title": "You don't have permission to view task statuses",
+				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
+			}
 		},
 		"taskTypes": {
 			"title": "タスクタイプ",
@@ -811,7 +966,11 @@
 			"default": "既定",
 			"setAsDefault": "既定のタイプに設定",
 			"editType": "タイプを編集",
-			"deleteType": "タイプを削除"
+			"deleteType": "タイプを削除",
+			"noPermission": {
+				"title": "You don't have permission to view task types",
+				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
+			}
 		},
 		"customFields": {
 			"title": "カスタムフィールド",
@@ -844,6 +1003,8 @@
 			"optionsLabel": "選択肢",
 			"addOptionPlaceholder": "選択肢を追加…",
 			"addOption": "追加",
+			"optionColorLabel": "オプションの色",
+			"noColor": "色なし",
 			"requiredLabel": "必須",
 			"requiredHint": "タスクの作成・編集時にユーザーはこのフィールドを入力する必要があります。",
 			"fieldTypes": {
@@ -880,6 +1041,10 @@
 				"confirmTextSuffix": "？このフィールドに保存されているタスクデータは失われます。この操作は取り消せません。",
 				"deleteFailed": "フィールドの削除に失敗しました。もう一度お試しください。",
 				"deleteField": "フィールドを削除"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view custom fields",
+				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
 		"dangerZone": {
@@ -975,6 +1140,10 @@
 			"removeFailed": "メンバーの削除に失敗しました。もう一度お試しください。",
 			"cancel": "キャンセル",
 			"remove": "削除"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view members",
+			"description": "Ask a project admin to grant you the project.members.read permission."
 		}
 	},
 	"aiChat": {
@@ -1030,6 +1199,10 @@
 			"backToProject": "プロジェクトに戻る",
 			"projectFallback": "プロジェクト"
 		},
+		"noPermission": {
+			"title": "You don't have permission to view this task",
+			"description": "Ask a project admin to grant you the tasks.read permission."
+		},
 		"header": {
 			"created": "{{date}}に作成",
 			"copied": "コピーしました！",
@@ -1057,6 +1230,7 @@
 			"reporter": "報告者",
 			"sprint": "スプリント",
 			"productBacklog": "プロダクトバックログ",
+			"sprintNotStarted": "(未開始)",
 			"epic": "エピック",
 			"viewEpic": "エピックを表示",
 			"removeEpic": "エピックを削除",
@@ -1228,6 +1402,85 @@
 			"descriptionChangeDiff": "説明の変更差分"
 		}
 	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "ポートフォワードが見つかりません",
+			"description": "このポートフォワードは削除されたか、リンクが無効です。",
+			"ariaLabel": "ポートフォワードの詳細",
+			"backToEnvironment": "環境に戻る"
+		},
+		"noPermission": {
+			"title": "You don't have access to this environment",
+			"description": "Ask a project admin to grant you access before you can view this port forward."
+		},
+		"tabs": {
+			"overview": "概要",
+			"comments": "コメント"
+		},
+		"overview": {
+			"containerPort": "コンテナポート {{port}}",
+			"hostPort": "ホストポート",
+			"unassigned": "まだ割り当てられていません",
+			"createdAt": "{{date}} に作成",
+			"open": "開く",
+			"delete": "削除",
+			"deleteDialog": {
+				"title": "ポートフォワードを削除しますか？",
+				"description_one": "これにより、このポートフォワード経由で行われた{{count}}件のコメントも削除されます。この操作は元に戻せません。",
+				"description_other": "これにより、このポートフォワード経由で行われた{{count}}件のコメントも削除されます。この操作は元に戻せません。",
+				"cancel": "キャンセル",
+				"confirm": "削除"
+			}
+		},
+		"comments": {
+			"empty": "コメントはまだありません。Paca ブラウザ拡張機能をインストールすると、このポートフォワードのプレビューの要素に直接コメントできます。",
+			"status": {
+				"open": "未解決",
+				"resolved": "解決済み"
+			},
+			"replyCount_one": "{{count}} 件の返信",
+			"replyCount_other": "{{count}} 件の返信",
+			"resolve": "解決",
+			"reopen": "再オープン",
+			"createTask": "タスクを作成",
+			"taskCreated": "タスクを作成しました"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "コメントが見つかりません",
+			"description": "このコメントは削除されたか、リンクが無効です。",
+			"ariaLabel": "コメントの詳細",
+			"backToPortForward": "ポートフォワードに戻る"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this comment",
+			"description": "Ask a project admin to grant you the annotations.read permission."
+		},
+		"header": {
+			"createdAt": "{{date}} にコメント"
+		},
+		"context": {
+			"title": "コンテキスト",
+			"pagePath": "ページ",
+			"elementSelector": "要素セレクター",
+			"accessibleName": "アクセシブルネーム",
+			"consoleErrors": "コンソールエラー",
+			"noConsoleErrors": "コンソールエラーはキャプチャされていません",
+			"failedRequests": "失敗したリクエスト",
+			"noFailedRequests": "失敗したリクエストはキャプチャされていません"
+		},
+		"thread": {
+			"replyPlaceholder": "返信を入力…",
+			"reply": "返信"
+		},
+		"actions": {
+			"create": "作成",
+			"createConversation": "会話を作成",
+			"copyLink": "リンクをコピー",
+			"linkCopied": "コピーしました！"
+		}
+	},
 	"epicPicker": {
 		"searchPlaceholder": "エピックを検索…",
 		"noEpicsFound": "一致するエピックがありません",
@@ -1329,6 +1582,10 @@
 			"clearAll": "フィルターをクリア"
 		},
 		"list": {
+			"noPermission": {
+				"title": "You don't have permission to view conversations",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"empty": {
 				"title": "会話はまだありません",
 				"description": "タスクがエージェントに割り当てられるか、誰かがメッセージを送ると会話が始まります。"
@@ -1452,12 +1709,14 @@
 		},
 		"startSprintModal": {
 			"title": "スプリントを開始",
+			"alreadyActiveWarning": "「{{name}}」はこのプロジェクトで既に進行中です。このスプリントを開始しても停止しません。",
 			"nameLabel": "名前",
 			"goalLabel": "目標",
 			"optional": "（任意）",
 			"goalPlaceholder": "このスプリントで達成したいことは？",
 			"startDateLabel": "開始日",
 			"endDateLabel": "終了日",
+			"error": "スプリントの開始に失敗しました。もう一度お試しください。",
 			"cancel": "キャンセル",
 			"starting": "開始中…",
 			"startSprint": "スプリントを開始"
@@ -1469,11 +1728,12 @@
 		"sprintDetail": {
 			"notFound": "スプリントが見つからないか、アクセスが拒否されました。",
 			"statusActive": "進行中",
-			"statusPlanned": "計画中",
+			"statusPlanned": "下書き",
 			"statusCompleted": "完了",
 			"description": "{{status}}のスプリント",
 			"descriptionWithStartDate": "{{status}}のスプリント・{{date}}に開始",
 			"editSprint": "スプリントを編集",
+			"startSprint": "スプリントを開始",
 			"editSprintModal": {
 				"title": "スプリントを編集",
 				"nameLabel": "名前",
@@ -1583,7 +1843,11 @@
 				"createFirst": "最初の自動化を作成"
 			},
 			"noDescription": "説明なし",
-			"updated": "{{time}}に更新"
+			"updated": "{{time}}に更新",
+			"noPermission": {
+				"title": "You don't have permission to view automations",
+				"description": "Ask a project admin to grant you the workflows.read permission."
+			}
 		},
 		"status": {
 			"active": "有効",
@@ -1763,7 +2027,7 @@
 				"sprintGoalLabel": "目標",
 				"sprintStatusLabel": "ステータス",
 				"sprintStatusUnchanged": "変更しない",
-				"sprintStatusPlanned": "計画中",
+				"sprintStatusPlanned": "下書き",
 				"sprintStatusActive": "進行中",
 				"sprintStatusCompleted": "完了",
 				"completeSprintHint": "スプリントを完了とし、未完了のタスクを移動します。",

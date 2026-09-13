@@ -1035,7 +1035,7 @@ func TestE2ECustomFieldFilters_FieldKeyReuseAfterDeleteDoesNotCrash(t *testing.T
 		"field_key":    "custom_1",
 		"display_name": "Custom 1",
 		"field_type":   "select",
-		"options":      []string{"Test 3", "Other"},
+		"options":      customFieldOptions("Test 3", "Other"),
 	})
 	createTaskWithCustomFieldViaAPI(t, env, client, token, projID, "Stale select value",
 		map[string]any{"custom_1": "Test 3"})

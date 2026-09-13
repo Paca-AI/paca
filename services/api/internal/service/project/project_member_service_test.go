@@ -349,7 +349,9 @@ func TestGetMyProjectPermissions_Success(t *testing.T) {
 	got, err := svc.GetMyProjectPermissions(context.Background(), projectID, userID, nil)
 
 	assert.NoError(t, err)
-	assert.Equal(t, role.Permissions, got)
+	// projects.read is membership-implied (see GetMyProjectPermissions'
+	// doc comment) on top of the role's own permissions.
+	assert.Equal(t, map[string]any{"tasks.read": true, "tasks.write": true, "projects.read": true}, got)
 }
 
 func TestUpdateMemberRole_Success(t *testing.T) {
@@ -470,8 +472,9 @@ func TestGetMyProjectPermissions_NilPermissions(t *testing.T) {
 	got, err := svc.GetMyProjectPermissions(context.Background(), projectID, userID, nil)
 
 	assert.NoError(t, err)
-	assert.NotNil(t, got)
-	assert.Empty(t, got)
+	// Not empty: projects.read is membership-implied even when the role
+	// itself carries no permissions at all.
+	assert.Equal(t, map[string]any{"projects.read": true}, got)
 }
 
 func TestGetMyProjectPermissions_Agent_Success(t *testing.T) {
@@ -504,7 +507,7 @@ func TestGetMyProjectPermissions_Agent_Success(t *testing.T) {
 	got, err := svc.GetMyProjectPermissions(context.Background(), projectID, uuid.Nil, &agentID)
 
 	assert.NoError(t, err)
-	assert.Equal(t, role.Permissions, got)
+	assert.Equal(t, map[string]any{"tasks.read": true, "tasks.write": true, "prs.create": true, "projects.read": true}, got)
 }
 
 func TestGetMyProjectPermissions_Agent_MemberNotFound(t *testing.T) {
@@ -576,6 +579,5 @@ func TestGetMyProjectPermissions_Agent_NilPermissions(t *testing.T) {
 	got, err := svc.GetMyProjectPermissions(context.Background(), projectID, uuid.Nil, &agentID)
 
 	assert.NoError(t, err)
-	assert.NotNil(t, got)
-	assert.Empty(t, got)
+	assert.Equal(t, map[string]any{"projects.read": true}, got)
 }

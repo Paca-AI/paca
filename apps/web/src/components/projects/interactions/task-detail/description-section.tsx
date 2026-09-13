@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { createAnnotationPasteHandler } from "@/components/shared/blocknote-annotation-paste-handler";
 import { CustomSideMenu } from "@/components/shared/blocknote-custom-side-menu";
 import { customSchema } from "@/components/shared/blocknote-schema";
 import { normalizeBlockContent } from "@/components/shared/comment-blocknote";
@@ -111,6 +112,7 @@ export function DescriptionSection({
 
 	const editor = useCreateBlockNote({
 		schema: customSchema,
+		pasteHandler: createAnnotationPasteHandler(),
 		/**
 		 * Called by BlockNote when the user inserts an image / file / video / audio.
 		 * Uploads via the task attachment API and returns a stable custom URI.

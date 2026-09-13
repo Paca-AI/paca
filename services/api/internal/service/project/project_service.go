@@ -188,16 +188,14 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 			ID:        uuid.New(),
 			ProjectID: &p.ID,
 			RoleName:  "Admin",
+			// Bare wildcard rather than an enumerated list of *All wildcards:
+			// Admin is meant to always have every project permission,
+			// including ones added after this project was created (like the
+			// project.settings.* split in 000054) without needing a matching
+			// migration each time. See 000056_set_admin_role_wildcard_permission.sql
+			// for the backfill onto existing projects' Admin rows.
 			Permissions: map[string]any{
-				string(authz.PermissionProjectsAll):       true,
-				string(authz.PermissionProjectMembersAll): true,
-				string(authz.PermissionProjectRolesAll):   true,
-				string(authz.PermissionTasksAll):          true,
-				string(authz.PermissionSprintsAll):        true,
-				string(authz.PermissionDocsAll):           true,
-				string(authz.PermissionAgentsAll):         true,
-				string(authz.PermissionWorkflowsAll):      true,
-				string(authz.PermissionEnvironmentsAll):   true,
+				string(authz.PermissionAll): true,
 			},
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -206,23 +204,42 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 			ID:        uuid.New(),
 			ProjectID: &p.ID,
 			RoleName:  "Editor",
+			// PermissionProjectsRead is omitted here and on Viewer below —
+			// AuthzPermissionStore.ListProjectPermissions grants it to any
+			// active project member unconditionally now, so listing it per
+			// role would be redundant (see that method's doc comment).
+			//
+			// The three ProjectSettings*Write grants are deliberately absent:
+			// redefining task types/statuses/custom fields is an Admin-level
+			// (project schema) action, not a content-editing one — same
+			// split tasks.write already draws between editing a task and
+			// reconfiguring what statuses/types exist. Editor can still see
+			// them (no dedicated read permission exists for the schema —
+			// TasksRead below already covers viewing it, same as it covers
+			// viewing the tasks that reference it).
 			Permissions: map[string]any{
-				string(authz.PermissionProjectsRead):        true,
 				string(authz.PermissionProjectMembersRead):  true,
 				string(authz.PermissionProjectRolesRead):    true,
 				string(authz.PermissionTasksRead):           true,
 				string(authz.PermissionTasksWrite):          true,
 				string(authz.PermissionSprintsRead):         true,
 				string(authz.PermissionSprintsWrite):        true,
+				string(authz.PermissionViewsRead):           true,
+				string(authz.PermissionViewsWrite):          true,
 				string(authz.PermissionDocsRead):            true,
 				string(authz.PermissionDocsWrite):           true,
 				string(authz.PermissionAgentsRead):          true,
 				string(authz.PermissionAgentsWrite):         true,
+				string(authz.PermissionConversationsRead):   true,
+				string(authz.PermissionConversationsWrite):  true,
 				string(authz.PermissionWorkflowsRead):       true,
 				string(authz.PermissionWorkflowsWrite):      true,
 				string(authz.PermissionEnvironmentsRead):    true,
 				string(authz.PermissionEnvironmentsWrite):   true,
 				string(authz.PermissionEnvironmentsConnect): true,
+				string(authz.PermissionAnnotationsRead):     true,
+				string(authz.PermissionAnnotationsWrite):    true,
+				string(authz.PermissionAnnotationsResolve):  true,
 			},
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -232,15 +249,17 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 			ProjectID: &p.ID,
 			RoleName:  "Viewer",
 			Permissions: map[string]any{
-				string(authz.PermissionProjectsRead):       true,
 				string(authz.PermissionProjectMembersRead): true,
 				string(authz.PermissionProjectRolesRead):   true,
 				string(authz.PermissionTasksRead):          true,
 				string(authz.PermissionSprintsRead):        true,
+				string(authz.PermissionViewsRead):          true,
 				string(authz.PermissionDocsRead):           true,
 				string(authz.PermissionAgentsRead):         true,
+				string(authz.PermissionConversationsRead):  true,
 				string(authz.PermissionWorkflowsRead):      true,
 				string(authz.PermissionEnvironmentsRead):   true,
+				string(authz.PermissionAnnotationsRead):    true,
 			},
 			CreatedAt: now,
 			UpdatedAt: now,

@@ -41,6 +41,7 @@
 		"title": "互动",
 		"timeline": "时间线",
 		"productBacklog": "产品待办列表",
+		"plannedSprints": "草稿冲刺",
 		"completedSprints": "已完成的冲刺"
 	},
 	"docs": {

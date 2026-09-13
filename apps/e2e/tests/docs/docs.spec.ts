@@ -530,6 +530,11 @@ test.describe('Document comments and activity', () => {
     // 1. Open the Comments & activity panel
     await page.getByRole('button', { name: 'Comments & activity' }).click();
 
+    // The panel defaults to a comments-only view; switch to All activity to see the creation event.
+    // exact: true avoids matching the empty-state "Show all activity" button, which also renders
+    // here (zero comments yet) and contains "All activity" as a substring.
+    await page.getByRole('button', { name: 'All activity', exact: true }).click();
+
     // The activity feed shows "created this document" for the doc.created event
     await expect(page.getByText(/created this document/i)).toBeVisible({ timeout: 15_000 });
   });

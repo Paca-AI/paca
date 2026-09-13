@@ -33,6 +33,9 @@ func (m *mockAuthSvc) Login(context.Context, string, string, bool) (*domainauth.
 func (m *mockAuthSvc) Refresh(context.Context, string) (*domainauth.TokenPair, error) {
 	return &domainauth.TokenPair{AccessToken: "at2", RefreshToken: "rt2", RefreshTTL: 24 * time.Hour}, nil
 }
+func (m *mockAuthSvc) RefreshAnnotation(context.Context, string) (*domainauth.TokenPair, error) {
+	return &domainauth.TokenPair{AnnotationAccessToken: "aat2", AnnotationRefreshToken: "art2", RefreshTTL: 24 * time.Hour}, nil
+}
 func (m *mockAuthSvc) Logout(context.Context, string) error { return nil }
 
 type mockUserSvc struct{}

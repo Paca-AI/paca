@@ -8,6 +8,7 @@ import (
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
 // ListMembers returns all members of the given project.
@@ -167,10 +168,20 @@ func (s *Service) GetMyProjectPermissions(ctx context.Context, projectID, userID
 	if err != nil {
 		return nil, err
 	}
-	perms := role.Permissions
-	if perms == nil {
-		perms = map[string]any{}
+	// Copy rather than alias role.Permissions — it may be a shared/cached
+	// map — then add the same membership-implied grant
+	// AuthzPermissionStore.ListProjectPermissions applies for the backend
+	// authorizer (any active membership implies projects.read regardless of
+	// role contents; see that method's doc comment). Without this, a role
+	// whose seed no longer lists projects.read explicitly (e.g. Editor/
+	// Member/Viewer after this PR) reports it as denied here while the
+	// backend actually grants it — the two sides of the same role
+	// disagreeing in the deny direction.
+	perms := make(map[string]any, len(role.Permissions)+1)
+	for k, v := range role.Permissions {
+		perms[k] = v
 	}
+	perms[string(authz.PermissionProjectsRead)] = true
 	return perms, nil
 }
 

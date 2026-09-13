@@ -17,9 +17,11 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	type AgentConversation,
 	agentQueryOptions,
@@ -42,11 +44,14 @@ import {
 	stopConversation,
 	stopGlobalConversation,
 } from "@/lib/agent-api";
+import { isForbiddenError } from "@/lib/api-error";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { cn } from "@/lib/utils";
+import { useAgentBusyPrompt } from "./agent-busy-dialog";
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	canReplyToConversation,
+	chatSessionAccessDeniedKey,
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 	isEnvironmentReady,
@@ -60,11 +65,14 @@ function ConversationControls({
 	projectId,
 	conversation,
 	isACP,
+	canControl,
 }: {
 	/** Absent for a global-chat conversation (home/admin pages, no project). */
 	projectId?: string;
 	conversation: AgentConversation;
 	isACP: boolean;
+	/** False for a project member who can view but not drive this conversation (conversations.read only). */
+	canControl: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -118,7 +126,8 @@ function ConversationControls({
 		conversation.status === "finished" ||
 		conversation.status === "failed" ||
 		conversation.status === "stopped";
-	if (isTerminal || isACP || conversation.environment_id) return null;
+	if (isTerminal || isACP || conversation.environment_id || !canControl)
+		return null;
 
 	return (
 		<div className="flex items-center gap-2">
@@ -163,17 +172,36 @@ export function ConversationView({
 	const [conversationId, setConversationId] = useState(routeConversationId);
 	useEffect(() => {
 		setConversationId(routeConversationId);
+		setSendError(null);
 	}, [routeConversationId]);
+
+	// assistant-ui's onNew rejection isn't caught anywhere in its own
+	// send/append chain (ComposerRuntimeCore.send -> handleSend ->
+	// ThreadRuntimeCore.append all call the next step unawaited, so a thrown
+	// Error here becomes an unhandled promise rejection, not a rendered
+	// MessageError — that primitive reads a message's own persisted
+	// status.reason==="error", which only a server-confirmed failed turn ever
+	// has). Driven by local state and rendered via viewportOverlay instead,
+	// alongside the existing conversation.error_message box below.
+	const [sendError, setSendError] = useState<string | null>(null);
 
 	const {
 		data: conversation,
 		isLoading: convLoading,
 		isError,
+		error: conversationError,
 	} = useQuery(
 		projectId
 			? conversationQueryOptions(projectId, conversationId)
 			: globalConversationQueryOptions(conversationId),
 	);
+	// A conversation that's owner-private to a different member, or whose
+	// agent is now access-restricted, 403s the same way a genuinely invalid
+	// conversationId 404s (both leave `data` undefined, or stale data plus
+	// isError true on a later refetch) — checked so a member who's simply
+	// not allowed to see it gets told why, instead of a "not found"/"failed"
+	// message implying the conversation itself is broken or gone.
+	const noPermission = isError && isForbiddenError(conversationError);
 	const {
 		events,
 		isLoading: eventsLoading,
@@ -218,7 +246,17 @@ export function ConversationView({
 		conversation?.status === "finished" ||
 		conversation?.status === "failed" ||
 		conversation?.status === "stopped";
-	const canReply = canReplyToConversation(conversation, isACP);
+	// Global chat (no projectId) stays open to any authenticated user by
+	// design (see router.go's global chat/conversation routes); a
+	// project-scoped conversation now requires conversations.write on the
+	// backend to reply/stop/pause, so a PROJECT_VIEWER (conversations.read
+	// only) gets a read-only view here instead of controls that would just
+	// 403.
+	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
+	const canControl = !projectId || hasProjectPermission("conversations.write");
+	const canReply = canControl && canReplyToConversation(conversation, isACP);
+	const { dialog: agentBusyDialog, send: sendWithBusyPrompt } =
+		useAgentBusyPrompt();
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -253,59 +291,77 @@ export function ConversationView({
 		// mid-send can't sneak into this message or get cleared under it.
 		const contextItems = useContextInjectionStore.getState().items;
 
-		if (!conversation.chat_session_id) {
-			// A conversation of a non-chat trigger type (task_assigned,
-			// comment_mention, etc.) — either ACP, or an LLM conversation
-			// attached to a static environment (see canReply's own doc
-			// comment) — reply in place on the same conversation_id rather
-			// than through a chat session.
-			if (projectId) {
-				await sendConversationMessage(
-					projectId,
-					conversation.id,
-					text,
-					contextItems,
+		setSendError(null);
+		try {
+			if (!conversation.chat_session_id) {
+				// A conversation of a non-chat trigger type (task_assigned,
+				// comment_mention, etc.) — either ACP, or an LLM conversation
+				// attached to a static environment (see canReply's own doc
+				// comment) — reply in place on the same conversation_id rather
+				// than through a chat session. Routed through the same busy
+				// prompt as the chat-session branch below: the server enforces
+				// the exact same parallelism/folder capacity check on this
+				// resume path (see services/api's resumeConversationMessage).
+				await sendWithBusyPrompt((onBusy) =>
+					projectId
+						? sendConversationMessage(
+								projectId,
+								conversation.id,
+								text,
+								contextItems,
+								onBusy,
+							)
+						: sendGlobalConversationMessage(
+								conversation.id,
+								text,
+								contextItems,
+								onBusy,
+							),
 				);
-			} else {
-				await sendGlobalConversationMessage(
-					conversation.id,
-					text,
-					contextItems,
-				);
+				useContextInjectionStore.getState().clear();
+				invalidate();
+				return;
 			}
-			useContextInjectionStore.getState().clear();
-			invalidate();
-			return;
-		}
 
-		const result = projectId
-			? await sendChatMessage(
-					projectId,
-					conversation.agent_id,
-					conversation.chat_session_id,
-					{ message: text, contextItems },
-				)
-			: await sendGlobalChatMessage(conversation.chat_session_id, {
-					message: text,
-					contextItems,
-				});
-		useContextInjectionStore.getState().clear();
-		// The previous conversation may have already ended (explicitly
-		// stopped, or reaped after 3 minutes with no heartbeat) — replying
-		// then silently starts a fresh conversation server-side. Follow it,
-		// otherwise this view keeps polling the old (now terminal)
-		// conversation and the reply appears to vanish.
-		if (result.id !== conversationId) {
-			qc.setQueryData(
-				(projectId
-					? conversationQueryOptions(projectId, result.id)
-					: globalConversationQueryOptions(result.id)
-				).queryKey,
-				result,
+			const chatSessionId = conversation.chat_session_id;
+			const result = await sendWithBusyPrompt((onBusy) =>
+				projectId
+					? sendChatMessage(projectId, conversation.agent_id, chatSessionId, {
+							message: text,
+							contextItems,
+							on_busy: onBusy,
+						})
+					: sendGlobalChatMessage(chatSessionId, {
+							message: text,
+							contextItems,
+							on_busy: onBusy,
+						}),
 			);
-			setConversationId(result.id);
+			useContextInjectionStore.getState().clear();
+			// The previous conversation may have already ended (explicitly
+			// stopped, or reaped after 3 minutes with no heartbeat) — replying
+			// then silently starts a fresh conversation server-side. Follow it,
+			// otherwise this view keeps polling the old (now terminal)
+			// conversation and the reply appears to vanish.
+			if (result.id !== conversationId) {
+				qc.setQueryData(
+					(projectId
+						? conversationQueryOptions(projectId, result.id)
+						: globalConversationQueryOptions(result.id)
+					).queryKey,
+					result,
+				);
+				setConversationId(result.id);
+			}
+			invalidate(result.id);
+		} catch (err) {
+			const key = chatSessionAccessDeniedKey(err);
+			if (key) {
+				setSendError(t(key));
+				return;
+			}
+			throw err;
 		}
-		invalidate(result.id);
 	};
 
 	const onCancel = async () => {
@@ -404,10 +460,36 @@ export function ConversationView({
 	}
 
 	if (!conversation) {
+		if (noPermission) {
+			return (
+				<div className="flex h-full flex-col items-center justify-center p-6">
+					<NoPermissionState
+						title={t("agents.conversationView.noPermission.title")}
+						description={t("agents.conversationView.noPermission.description")}
+					/>
+				</div>
+			);
+		}
 		return (
 			<div className="flex flex-col h-full items-center justify-center text-muted-foreground/50 gap-3">
 				<Bot className="size-10" />
 				<p className="text-sm">{t("agents.conversationView.notFound")}</p>
+			</div>
+		);
+	}
+
+	// A previously-loaded conversation whose access was revoked mid-session
+	// (or whose agent just became restricted) keeps its last-known data
+	// while a background refetch 403s — checked ahead of the generic failure
+	// fallback below so that case reads as a permission message, not as the
+	// agent run itself having failed.
+	if (noPermission) {
+		return (
+			<div className="flex h-full flex-col items-center justify-center p-6">
+				<NoPermissionState
+					title={t("agents.conversationView.noPermission.title")}
+					description={t("agents.conversationView.noPermission.description")}
+				/>
 			</div>
 		);
 	}
@@ -498,6 +580,7 @@ export function ConversationView({
 						projectId={projectId}
 						conversation={conversation}
 						isACP={isACP}
+						canControl={canControl}
 					/>
 				</div>
 			</div>
@@ -523,6 +606,7 @@ export function ConversationView({
 								{conversation.error_message && (
 									<ConversationErrorBox message={conversation.error_message} />
 								)}
+								{sendError && <ConversationErrorBox message={sendError} />}
 								<TailFollowIndicator
 									newBelow={newBelow}
 									following={following}
@@ -534,6 +618,7 @@ export function ConversationView({
 					/>
 				</AssistantRuntimeProvider>
 			</div>
+			{agentBusyDialog}
 		</div>
 	);
 }

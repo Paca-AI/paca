@@ -151,6 +151,83 @@ func TestAuthn_RefreshTokenRejected(t *testing.T) {
 	}
 }
 
+// TestAuthn_AnnotationScopedToken_AllowedOnAnnotationPath and
+// _RejectedOnOtherPath together are the core security property of
+// AnnotationExtensionPathPattern: a domainauth.ScopeAnnotation token is a
+// real, validly-signed credential for a real user, so it must authenticate
+// successfully on the narrow route set the browser extension actually
+// needs, and be refused everywhere else even though the signature and
+// Kind checks alone would happily accept it.
+
+func TestAuthn_AnnotationScopedToken_AllowedOnAnnotationPath(t *testing.T) {
+	tm := newTestTokenManager()
+	at, err := tm.IssueAnnotationAccess("user-id", "alice", "USER", "fam", false)
+	if err != nil {
+		t.Fatalf("issue annotation access token: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.With(Authn(tm)).Get("/api/v1/port-forwards/resolve", okHandler)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/port-forwards/resolve", nil)
+	req.AddCookie(&http.Cookie{Name: "annotation_access_token", Value: at})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestAuthn_AnnotationScopedToken_RejectedOnOtherPath(t *testing.T) {
+	tm := newTestTokenManager()
+	at, err := tm.IssueAnnotationAccess("user-id", "alice", "USER", "fam", false)
+	if err != nil {
+		t.Fatalf("issue annotation access token: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.With(Authn(tm)).Get("/api/v1/projects/{projectId}", okHandler)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/projects/proj1", nil)
+	req.AddCookie(&http.Cookie{Name: "annotation_access_token", Value: at})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for an annotation-scoped token outside its allowed paths, got %d", w.Code)
+	}
+}
+
+func TestAuthn_AnnotationScopedToken_FullAccessTokenTakesPrecedence(t *testing.T) {
+	tm := newTestTokenManager()
+	full, err := tm.IssueAccess("user-id", "alice", "USER", "fam", false)
+	if err != nil {
+		t.Fatalf("issue access token: %v", err)
+	}
+	annotation, err := tm.IssueAnnotationAccess("user-id", "alice", "USER", "fam", false)
+	if err != nil {
+		t.Fatalf("issue annotation access token: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.With(Authn(tm)).Get("/api/v1/projects/{projectId}", okHandler)
+
+	// Both cookies present, as they would be for a same-scheme request
+	// where the browser attaches everything -- the full-scope access_token
+	// must win so an out-of-scope annotation token never even gets
+	// consulted here.
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/projects/proj1", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: full})
+	req.AddCookie(&http.Cookie{Name: "annotation_access_token", Value: annotation})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 when a full-scope access_token is present alongside an annotation cookie, got %d", w.Code)
+	}
+}
+
 func TestClaimsFrom_Missing(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	if claims := ClaimsFrom(req); claims != nil {

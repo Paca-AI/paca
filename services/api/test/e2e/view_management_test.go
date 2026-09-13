@@ -199,8 +199,9 @@ func TestE2ETaskPositionManagement(t *testing.T) {
 	sprintID := createSprintViaAPI(t, env, client, token, projID, "Sprint for Positions")
 	viewID := createViewViaAPI(t, env, client, token, projID, sprintID, "Position View", "table")
 
-	// The task must exist and belong to the project: MoveTask/BulkMoveTasks
-	// verify task ownership, so a non-existent task_id now yields 404.
+	// MoveTask/BulkMoveTasks verify the task belongs to projID (see
+	// view_service.go), so a fixed/non-existent UUID 404s — a real task is
+	// required.
 	taskID := createTaskViaAPI(t, env, client, token, projID, "Position Task")
 
 	t.Run("move_task", func(t *testing.T) {
@@ -440,6 +441,8 @@ func TestE2EBacklogTaskPositionManagement(t *testing.T) {
 	projID := createProjectForTasksViaAPI(t, env, client, token)
 	viewID := createBacklogViewViaAPI(t, env, client, token, projID, "Backlog Position View", "table")
 
+	// MoveTask verifies the task belongs to projID (see view_service.go), so
+	// a fixed/non-existent UUID 404s — a real task is required.
 	taskID := createTaskViaAPI(t, env, client, token, projID, "Backlog Position Task")
 
 	t.Run("move_task", func(t *testing.T) {
@@ -522,8 +525,9 @@ func TestE2EBulkTaskPositionManagement(t *testing.T) {
 	sprintID := createSprintViaAPI(t, env, client, token, projID, "Sprint for Bulk Positions")
 	viewID := createViewViaAPI(t, env, client, token, projID, sprintID, "Bulk Position View", "table")
 
-	// Tasks must exist and belong to the project — MoveTask/BulkMoveTasks verify
-	// task ownership.
+	// BulkMoveTasks verifies every task belongs to projID (see
+	// view_service.go), so fixed/non-existent UUIDs 404 — real tasks are
+	// required.
 	task1 := createTaskViaAPI(t, env, client, token, projID, "Bulk Position Task 1")
 	task2 := createTaskViaAPI(t, env, client, token, projID, "Bulk Position Task 2")
 	task3 := createTaskViaAPI(t, env, client, token, projID, "Bulk Position Task 3")
@@ -617,6 +621,9 @@ func TestE2EBulkBacklogTaskPositionManagement(t *testing.T) {
 	projID := createProjectForTasksViaAPI(t, env, client, token)
 	viewID := createBacklogViewViaAPI(t, env, client, token, projID, "Bulk Backlog View", "table")
 
+	// BulkMoveTasks verifies every task belongs to projID (see
+	// view_service.go), so fixed/non-existent UUIDs 404 — real tasks are
+	// required.
 	task1 := createTaskViaAPI(t, env, client, token, projID, "Bulk Backlog Task 1")
 	task2 := createTaskViaAPI(t, env, client, token, projID, "Bulk Backlog Task 2")
 

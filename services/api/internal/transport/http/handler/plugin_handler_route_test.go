@@ -15,8 +15,8 @@ func TestRouteMiddlewares_NilVsEmpty(t *testing.T) {
 		if len(got) == 0 {
 			t.Fatalf("expected default middleware chain, got empty")
 		}
-		if got[0].Name != "optionalAuthn" {
-			t.Fatalf("expected default optionalAuthn first, got %q", got[0].Name)
+		if got[0].Name != "authn" {
+			t.Fatalf("expected default authn (fail closed for a route that forgot to declare middlewares) first, got %q", got[0].Name)
 		}
 	})
 
@@ -28,6 +28,19 @@ func TestRouteMiddlewares_NilVsEmpty(t *testing.T) {
 		}
 		if len(got) != 0 {
 			t.Fatalf("expected no middlewares, got %d", len(got))
+		}
+	})
+
+	// A nil *route* (no manifest entry matched this request's method+path at
+	// all) must NOT hit the fail-closed default meant for a declared-but-
+	// unprotected route: that default started requiring auth, which would
+	// make an unmatched path 401 instead of reaching the plugin's own WASM
+	// router to 404 it — i.e. you'd need to log in just to learn a path
+	// doesn't exist. See TestE2EPluginRuntime_APICall_UnmatchedPath_PluginReturns404.
+	t.Run("nil route (unmatched path) applies no middleware", func(t *testing.T) {
+		got := h.routeMiddlewares(nil)
+		if got != nil {
+			t.Fatalf("expected no middleware for an unmatched path, got %#v", got)
 		}
 	})
 }

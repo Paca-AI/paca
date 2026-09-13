@@ -41,6 +41,7 @@
 		"title": "Interactions",
 		"timeline": "Chronologie",
 		"productBacklog": "Backlog produit",
+		"plannedSprints": "Sprints en brouillon",
 		"completedSprints": "Sprints terminés"
 	},
 	"docs": {

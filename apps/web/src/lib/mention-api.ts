@@ -23,6 +23,18 @@ export interface MentionableDocument {
 	title: string;
 }
 
+/** Trims, collapses internal whitespace (a comment body can be
+ * multi-paragraph), and truncates for use as a short display label —
+ * mirrors annotationsvc.taskTitleFromBody's own short-title-from-body
+ * derivation on the Go side. Used for a pasted comment's attach-context
+ * chip title (thread.tsx) and the annotation card block's fallback title
+ * (blocknote-annotation-card-block.tsx). */
+export function excerptOf(body: string, max = 60): string {
+	const collapsed = body.trim().replace(/\s+/g, " ");
+	if (collapsed.length <= max) return collapsed || "Comment";
+	return `${collapsed.slice(0, max - 1)}…`;
+}
+
 export interface MentionData {
 	teamMembers: TeamMember[];
 	documents: MentionableDocument[];

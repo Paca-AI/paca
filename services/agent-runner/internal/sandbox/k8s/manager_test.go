@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
-	utilexec "k8s.io/utils/exec"
+	utilexec "k8s.io/client-go/util/exec"
 )
 
 // Unlike ../sandbox_test.go's Docker-backed Manager, Start/Stop/

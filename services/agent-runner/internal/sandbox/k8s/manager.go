@@ -33,7 +33,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
-	utilexec "k8s.io/utils/exec"
+	utilexec "k8s.io/client-go/util/exec"
 	"k8s.io/utils/ptr"
 
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
@@ -529,10 +529,13 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string) (o
 // out of Exec as its own pure function so the errors.As unwrapping can be
 // unit tested directly, without needing a real (or faked) exec stream.
 // k8s.io/client-go/tools/remotecommand wraps the remote command's exit
-// code in a k8s.io/utils/exec.CodeExitError (confirmed directly in that
-// package's v4.go, the streaming protocol version this client negotiates)
-// — the same type kubectl's own exec implementation unwraps for the
-// identical reason.
+// code in a k8s.io/client-go/util/exec.CodeExitError (confirmed directly
+// in that package's v4.go, the streaming protocol version this client
+// negotiates) — the same type kubectl's own exec implementation unwraps
+// for the identical reason. Note this is a *different* package from the
+// similarly-named k8s.io/utils/exec, which defines its own same-shaped
+// CodeExitError that errors.As will never match here — easy to reach for
+// by mistake since both are commonly aliased "utilexec".
 func exitCodeFromExecErr(err error) (code int, ok bool) {
 	var exitErr utilexec.CodeExitError
 	if errors.As(err, &exitErr) {

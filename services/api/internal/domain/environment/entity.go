@@ -109,12 +109,44 @@ type Environment struct {
 	// bookkeeping, not agent-runner's — it's UI-facing state about
 	// whether a restart is needed, not a routing fact.
 	PortsPendingRestart bool
-	CreatedBy           *uuid.UUID
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	DeletedAt           *time.Time
+	// AccessMode is "open" (default — any project member holding
+	// environments.read/write/connect may use this environment) or
+	// "restricted" (only members with an EnvironmentAccessGrant may browse,
+	// SSH, forward ports, or open a terminal in it — see
+	// Service.HasEnvironmentUsageAccess). Deliberately independent of
+	// environments.write: reconfiguring a restricted environment's own
+	// lifecycle (create/update/delete/start/stop/restart) stays gated
+	// purely on the existing permission, project-wide, same as today — this
+	// only adds a per-instance gate on top of everything that exposes the
+	// environment's live contents (folders/browse/ssh-keys/port-forwards/
+	// terminal — an SSH key or port forward is itself an alternate access
+	// path into the container, not mere configuration, so it's gated the
+	// same as the terminal is).
+	AccessMode string
+	CreatedBy  *uuid.UUID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	DeletedAt  *time.Time
 
 	Folders []*EnvironmentFolder
+}
+
+// AccessMode values — see Environment.AccessMode's doc comment.
+const (
+	AccessModeOpen       = "open"
+	AccessModeRestricted = "restricted"
+)
+
+// EnvironmentAccessGrant is an explicit per-member exception to a restricted
+// environment's default deny. MemberID references project_members.id — see
+// agentdom.AgentAccessGrant's doc comment for why (same convention, same
+// reasoning).
+type EnvironmentAccessGrant struct {
+	ID            uuid.UUID
+	EnvironmentID uuid.UUID
+	MemberID      uuid.UUID
+	GrantedBy     *uuid.UUID
+	CreatedAt     time.Time
 }
 
 // EnvironmentFolder is one working directory inside an Environment — what

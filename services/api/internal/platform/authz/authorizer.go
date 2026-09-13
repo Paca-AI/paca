@@ -118,10 +118,15 @@ func (a *Authorizer) hasPermissionsForActor(
 		return true, nil
 	}
 
+	// projectScoped gates how much a *global* grant (the legacy role claim,
+	// or an explicitly-assigned global role via ListGlobalPermissions) is
+	// allowed to contribute below: everywhere when the check is global, but
+	// only its PermissionAll entry — never a named permission — once the
+	// check is scoped to one project. See addGlobalGrants.
+	projectScoped := projectID != nil
+
 	granted := make(map[Permission]struct{})
-	for _, p := range LegacyPermissionsForRole(legacyRole) {
-		granted[p] = struct{}{}
-	}
+	addGlobalGrants(granted, LegacyPermissionsForRole(legacyRole), projectScoped)
 
 	if a.store != nil {
 		if userID != uuid.Nil {
@@ -129,9 +134,7 @@ func (a *Authorizer) hasPermissionsForActor(
 			if err != nil {
 				return false, fmt.Errorf("authz: list global permissions: %w", err)
 			}
-			for _, p := range globalPerms {
-				granted[p] = struct{}{}
-			}
+			addGlobalGrants(granted, globalPerms, projectScoped)
 		} else if agentID != nil && projectID == nil {
 			// Global-scope check for an agent (HasGlobalPermissionsForAgent):
 			// resolve via the agent's own global role, mirroring the userID
@@ -145,9 +148,10 @@ func (a *Authorizer) hasPermissionsForActor(
 			if err != nil {
 				return false, fmt.Errorf("authz: list agent global permissions: %w", err)
 			}
-			for _, p := range globalPerms {
-				granted[p] = struct{}{}
-			}
+			// projectScoped is always false here (guarded by projectID ==
+			// nil above), so this is a full, unfiltered merge — same as
+			// every other global grant at global scope.
+			addGlobalGrants(granted, globalPerms, projectScoped)
 		}
 
 		if projectID != nil {
@@ -180,6 +184,31 @@ func (a *Authorizer) hasPermissionsForActor(
 	}
 
 	return true, nil
+}
+
+// addGlobalGrants merges perms — permissions from a *global* source (the
+// legacy role claim, or an explicitly-assigned global role) — into granted.
+//
+// Regression guard for GHSA-hjcj-373w-vq8m: a global source is allowed to
+// satisfy a project-scoped check (projectScoped=true) only via the universal
+// PermissionAll wildcard — the same "god mode" SUPER_ADMIN already relies on
+// via LegacyPermissionsForRole and could equally hold via an explicit
+// PermissionAll global-role assignment. Every other, named permission a
+// global role carries (users.*, projects.*, agents.*, ...) must not reach
+// into a specific project's resources on its own; only that project's own
+// membership grant (ListProjectPermissions / ListAgentProjectPermissions)
+// can do that. Without this, any permission namespace a global role happens
+// to share with a project-scoped permission (agents.* and projects.* both
+// gate project-scoped routes too — see router.go) re-opens the exact
+// "global role reaches any project without membership" bug this advisory
+// reports, just narrower than the bare wildcard.
+func addGlobalGrants(granted map[Permission]struct{}, perms []Permission, projectScoped bool) {
+	for _, p := range perms {
+		if projectScoped && p != PermissionAll {
+			continue
+		}
+		granted[p] = struct{}{}
+	}
 }
 
 func hasPermission(granted map[Permission]struct{}, required Permission) bool {
