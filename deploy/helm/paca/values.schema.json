@@ -141,6 +141,30 @@
         "useSSL": { "type": "boolean" }
       }
     },
+    "nfsProvisioner": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "storageClass": { "type": "string" },
+            "size": { "type": "string" }
+          }
+        },
+        "storageClass": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "create": { "type": "boolean" },
+            "name": { "type": "string" }
+          }
+        }
+      }
+    },
     "api": {
       "type": "object",
       "additionalProperties": true,

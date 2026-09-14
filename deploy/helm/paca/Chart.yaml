@@ -23,6 +23,16 @@ dependencies:
     version: "1.0.0-rc.6"
     repository: https://charts.rustfs.com
     condition: rustfs.enabled
+  # Off by default — only needed on clusters whose default StorageClass is
+  # ReadWriteOnce-only (see nfsProvisioner's own values.yaml comment for
+  # why api.plugins.persistence needs this on clusters like that). Aliased
+  # to a camelCase name since the upstream chart's own name has a hyphen,
+  # which Helm/Go templates can't address with plain dot notation.
+  - name: nfs-server-provisioner
+    alias: nfsProvisioner
+    version: "1.8.0"
+    repository: https://kubernetes-sigs.github.io/nfs-ganesha-server-and-external-provisioner/
+    condition: nfsProvisioner.enabled
 keywords:
   - project-management
   - ai-agents
