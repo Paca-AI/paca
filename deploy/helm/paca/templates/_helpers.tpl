@@ -102,10 +102,13 @@ name would stop matching what the subchart actually renders.
 {{- define "paca.rustfsFullname" -}}
 {{- if .Values.rustfs.fullnameOverride -}}
 {{- .Values.rustfs.fullnameOverride | trunc 63 | trimSuffix "-" -}}
-{{- else if contains "rustfs" .Release.Name -}}
+{{- else -}}
+{{- $name := default "rustfs" .Values.rustfs.nameOverride -}}
+{{- if contains $name .Release.Name -}}
 {{- .Release.Name | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- printf "%s-rustfs" .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 
