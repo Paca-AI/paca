@@ -19,7 +19,9 @@ class requirements, and TLS/ingress guidance — see the full
 - Helm 3.8+ (OCI registry support)
 - A `ReadWriteMany`-capable StorageClass if you want `api.plugins.persistence`
   enabled (installed plugins shared between the `api` and gateway Pods) —
-  see the deployment guide linked above
+  either your cluster's own, or set `nfsProvisioner.enabled: true` to have
+  this chart provide one (see "NFS provisioner" below); either way see the
+  deployment guide linked above for the full picture
 
 ## Installing
 
@@ -106,6 +108,29 @@ surface, e.g. `rustfs.mtls`/`rustfs.pools`).
 
 **Upgrading a release still running the bundled MinIO?** Unlike the Docker Compose install path, `helm upgrade` has no automatic guard against this — see [docs/deployment/README.md](https://github.com/Paca-AI/paca/blob/master/docs/deployment/README.md#helm-users)'s "Helm users" section before upgrading, or your attachment data will be orphaned on the old release's PVC with no warning.
 
+### NFS provisioner (optional)
+
+Off by default — gives `api.plugins.persistence` below (not object storage
+above) a `ReadWriteMany` StorageClass on clusters whose default one is
+block storage only, e.g. most single-node/bare-metal clusters including
+k3s's own bundled `local-path-provisioner`. Skip this if your cluster
+already has a real RWX class (`efs-csi`, `filestore-csi`, `azurefile`,
+`longhorn`, `rook-ceph`, ...). Same real-dependency passthrough convention
+as `rustfs.*` above — upstream:
+[kvaps/nfs-server-provisioner](https://artifacthub.io/packages/helm/kvaps/nfs-server-provisioner).
+
+Creates a cluster-scoped `StorageClass` and `ClusterRole` (needs
+cluster-level RBAC to install, not just namespace-scoped access), and its
+Pod runs with the `DAC_READ_SEARCH`/`SYS_RESOURCE` Linux capabilities
+added.
+
+| Key | Description | Default |
+|---|---|---|
+| `nfsProvisioner.enabled` | Deploy the bundled NFS provisioner | `false` |
+| `nfsProvisioner.persistence.storageClass` | The ordinary `ReadWriteOnce` StorageClass backing this NFS server's own data volume. Empty uses the cluster's default. | `""` |
+| `nfsProvisioner.persistence.size` | | `1Gi` |
+| `nfsProvisioner.storageClass.name` | Name of the `ReadWriteMany` StorageClass this creates. Cluster-scoped like every StorageClass — give releases sharing a cluster distinct names, or the second `helm install` fails on an already-existing one. `api.plugins.persistence.storageClassName` falls back to this automatically when that's empty and this is enabled. | `nfs` |
+
 ### API (Go backend)
 
 | Key | Description | Default |
@@ -117,7 +142,7 @@ surface, e.g. `rustfs.mtls`/`rustfs.pools`).
 | `api.jwt.accessTtl` / `.refreshTtl` / `.refreshSessionTtl` | | `15m` / `168h` / `24h` |
 | `api.cookieSecure` | Set `false` only when TLS isn't terminated anywhere in front of this deployment — otherwise browsers silently drop the auth cookie and login never sticks | `true` |
 | `api.plugins.persistence.enabled` | Shared storage for installed plugins (backend WASM, frontend/MCP/skills bundles) — needs a `ReadWriteMany` StorageClass; set `false` to fall back to a per-Pod `emptyDir` (installed plugins then won't survive a restart or be visible to the gateway) | `true` |
-| `api.plugins.persistence.accessMode` / `.storageClassName` / `.size` | | `ReadWriteMany` / `""` / `5Gi` |
+| `api.plugins.persistence.accessMode` / `.storageClassName` / `.size` | `.storageClassName` empty auto-falls back to `nfsProvisioner`'s StorageClass when that's enabled (see "NFS provisioner" above), else the cluster default | `ReadWriteMany` / `""` / `5Gi` |
 
 ### Web (React SPA via Caddy)
 

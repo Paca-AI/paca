@@ -210,6 +210,9 @@ nfsProvisioner:
     size: 1Gi
   storageClass:
     create: true
+    # Cluster-scoped, like every StorageClass — installing a second release
+    # on the same cluster with this also enabled needs a distinct name here,
+    # or that second `helm install` fails on an already-existing one.
     name: nfs
 
 # ---------------------------------------------------------------------------
