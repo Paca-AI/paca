@@ -176,10 +176,25 @@ StorageClass (`api.plugins.persistence.storageClassName` in
 `values.yaml`) — examples: `efs-csi` (AWS), `filestore-csi` (GKE),
 `azurefile` (AKS), `nfs-subdir-external-provisioner`, `longhorn`,
 `rook-ceph`. Most clusters' *default* StorageClass is block storage
-(ReadWriteOnce only) and will fail to bind. If you have no RWX class
-available and don't need custom plugins yet, set
-`api.plugins.persistence.enabled: false` — the app still runs, just
-without a working plugin-install flow.
+(ReadWriteOnce only) and will fail to bind.
+
+If you have no RWX class available, set `nfsProvisioner.enabled: true`
+(off by default) — this bundles an in-cluster NFS-Ganesha server
+([kvaps/nfs-server-provisioner](https://artifacthub.io/packages/helm/kvaps/nfs-server-provisioner))
+backed by any ordinary ReadWriteOnce class, and `api.plugins.persistence`
+picks up its `nfs` StorageClass automatically. See that value's own
+comment in `values.yaml` for what it needs (mainly
+`nfsProvisioner.persistence.storageClass`, if your cluster's default RWO
+class isn't the one you want backing it). Creates a cluster-scoped
+`StorageClass` and `ClusterRole` — the identity running `helm
+install`/`upgrade` needs cluster-level RBAC, not just namespace-scoped
+access — and its Pod runs with the `DAC_READ_SEARCH`/`SYS_RESOURCE` Linux
+capabilities added (needed by the NFS-Ganesha server it runs, on top of
+whatever `agentRunner`'s own sandbox Pods already require).
+
+If you don't need custom plugins yet and would rather skip both, set
+`api.plugins.persistence.enabled: false` instead — the app still runs,
+just without a working plugin-install flow.
 
 ## Bringing your own Secret
 
@@ -322,16 +337,18 @@ helm template paca deploy/helm/paca -f my-values.yaml | less
 All three run entirely offline once `charts/` is populated — no cluster
 required — and are worth running after any `values.yaml` change. Skipping
 the first step is loud, not silent: `template`/`install` refuse to run at
-all ("found in Chart.yaml, but missing in charts/ directory: rustfs"), and
+all ("found in Chart.yaml, but missing in charts/ directory: rustfs" — or
+`nfs-server-provisioner`, whichever dependency's tarball is missing), and
 `lint` still passes but only after printing the same warning.
 
 ## Troubleshooting
 
 - **`helm install`/`template` fails with "found in Chart.yaml, but missing
-  in charts/ directory: rustfs"**: run
-  `helm dependency update deploy/helm/paca` first — see "Verifying before
-  you install" above. Only affects installing from a repository checkout;
-  the published OCI chart already bundles this dependency.
+  in charts/ directory: rustfs"** (or `nfs-server-provisioner`, whichever
+  dependency's tarball is missing): run `helm dependency update
+  deploy/helm/paca` first — see "Verifying before you install" above. Only
+  affects installing from a repository checkout; the published OCI chart
+  already bundles both dependencies.
 - **A sandbox Job never starts a Pod / stays Pending**: check
   `kubectl describe job -n <sandbox namespace> <job-name>` — usually a
   resource quota, an unavailable `agentRunner.sandbox.image`, or a Pod

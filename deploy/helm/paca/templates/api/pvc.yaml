@@ -8,8 +8,12 @@ metadata:
     {{- include "paca.labels" . | nindent 4 }}
 spec:
   accessModes: [{{ .Values.api.plugins.persistence.accessMode | quote }}]
-  {{- if .Values.api.plugins.persistence.storageClassName }}
-  storageClassName: {{ .Values.api.plugins.persistence.storageClassName | quote }}
+  {{- $storageClassName := .Values.api.plugins.persistence.storageClassName }}
+  {{- if and (not $storageClassName) .Values.nfsProvisioner.enabled }}
+  {{- $storageClassName = .Values.nfsProvisioner.storageClass.name }}
+  {{- end }}
+  {{- if $storageClassName }}
+  storageClassName: {{ $storageClassName | quote }}
   {{- end }}
   resources:
     requests:

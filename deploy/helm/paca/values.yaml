@@ -184,6 +184,38 @@ storage:
   useSSL: false
 
 # ---------------------------------------------------------------------------
+# NFS provisioner (optional, off by default) — gives api.plugins.persistence
+# (below) a ReadWriteMany-capable StorageClass on clusters whose default one
+# is block storage only, e.g. most single-node/bare-metal clusters including
+# k3s's own bundled local-path-provisioner. Skip this if your cluster
+# already has a real RWX class (efs-csi, filestore-csi, azurefile, longhorn,
+# rook-ceph, ...) — leave disabled and set
+# api.plugins.persistence.storageClassName to that class's name instead.
+#
+# Runs an NFS-Ganesha server in-cluster (upstream chart:
+# https://artifacthub.io/packages/helm/kvaps/nfs-server-provisioner),
+# backed by persistence.storageClass below (any ordinary RWO class), and
+# dynamically provisions RWX PVCs from it under storageClass.name. When
+# enabled, api.plugins.persistence.storageClassName defaults to that same
+# name automatically unless you set it explicitly (see
+# templates/api/pvc.yaml).
+# ---------------------------------------------------------------------------
+nfsProvisioner:
+  enabled: false
+  persistence:
+    enabled: true
+    # The ordinary ReadWriteOnce StorageClass backing this NFS server's own
+    # data volume — empty uses the cluster's default StorageClass.
+    storageClass: ""
+    size: 1Gi
+  storageClass:
+    create: true
+    # Cluster-scoped, like every StorageClass — installing a second release
+    # on the same cluster with this also enabled needs a distinct name here,
+    # or that second `helm install` fails on an already-existing one.
+    name: nfs
+
+# ---------------------------------------------------------------------------
 # API (Go backend)
 # ---------------------------------------------------------------------------
 api:
