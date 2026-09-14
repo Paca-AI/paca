@@ -87,7 +87,9 @@
 			"countInWorkspace_one": "您的工作区中有 {{count}} 个项目",
 			"countInWorkspace_other": "您的工作区中有 {{count}} 个项目",
 			"newShort": "新建",
-			"newProjectCard": "新建项目"
+			"newProjectCard": "新建项目",
+			"loadMore": "加载更多项目",
+			"loadingMore": "正在加载…"
 		},
 		"projectCard": {
 			"public": "公开",

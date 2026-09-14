@@ -1255,7 +1255,9 @@
 			"title": "子任务",
 			"addButton": "添加子任务",
 			"titlePlaceholder": "子任务标题…",
-			"empty": "暂无子任务"
+			"empty": "暂无子任务",
+			"loadMore": "加载更多子任务",
+			"loadingMore": "正在加载…"
 		},
 		"links": {
 			"title": "关联任务",

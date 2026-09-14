@@ -42,6 +42,7 @@ import {
 	projectMembersQueryOptions,
 	projectQueryOptions,
 	projectRolesQueryOptions,
+	projectsInfiniteQueryOptions,
 	projectsQueryOptions,
 	removeProjectMember,
 	setDefaultTaskType,
@@ -310,6 +311,35 @@ describe("project-api", () => {
 		it("projectsQueryOptions uses custom page and pageSize in key", () => {
 			const opts = projectsQueryOptions(3, 10);
 			expect(opts.queryKey).toEqual(["projects", { page: 3, pageSize: 10 }]);
+		});
+
+		it("projectsInfiniteQueryOptions exposes correct key and initial page param", () => {
+			const opts = projectsInfiniteQueryOptions();
+			expect(opts.queryKey).toEqual(["projects", "all"]);
+			expect(opts.initialPageParam).toBe(1);
+			expect(typeof opts.queryFn).toBe("function");
+		});
+
+		it("projectsInfiniteQueryOptions.getNextPageParam advances while more pages remain", () => {
+			const opts = projectsInfiniteQueryOptions();
+			const lastPage: ProjectListResult = {
+				items: [],
+				total: 120,
+				page: 1,
+				page_size: 50,
+			};
+			expect(opts.getNextPageParam?.(lastPage, [], 1, [])).toBe(2);
+		});
+
+		it("projectsInfiniteQueryOptions.getNextPageParam stops once every project is loaded", () => {
+			const opts = projectsInfiniteQueryOptions();
+			const lastPage: ProjectListResult = {
+				items: [],
+				total: 120,
+				page: 3,
+				page_size: 50,
+			};
+			expect(opts.getNextPageParam?.(lastPage, [], 3, [])).toBeUndefined();
 		});
 
 		it("projectQueryOptions exposes correct key, fn, and staleTime", () => {

@@ -38,7 +38,7 @@ vi.mock("@/lib/project-api", async () => {
 		);
 	return {
 		...actual,
-		projectsQueryOptions: () => ({
+		projectsInfiniteQueryOptions: () => ({
 			queryKey: ["test", "projects"],
 			queryFn: async () => ({
 				items: [
@@ -65,6 +65,15 @@ vi.mock("@/lib/project-api", async () => {
 				page: 1,
 				page_size: 50,
 			}),
+			initialPageParam: 1,
+			getNextPageParam: (lastPage: {
+				page: number;
+				page_size: number;
+				total: number;
+			}) =>
+				lastPage.page * lastPage.page_size < lastPage.total
+					? lastPage.page + 1
+					: undefined,
 		}),
 		taskStatusesQueryOptions: (projectId: string) => ({
 			queryKey: ["test", "statuses", projectId],

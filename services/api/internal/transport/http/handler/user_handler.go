@@ -184,6 +184,11 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
+	mustChangePasswordCount, err := h.svc.CountUsersMustChangePassword(r.Context())
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 
 	items := make([]dto.UserResponse, 0, len(users))
 	for _, u := range users {
@@ -191,10 +196,11 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	presenter.OK(w, r, dto.PagedUsersResponse{
-		Items:    items,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
+		Items:                   items,
+		Total:                   total,
+		Page:                    page,
+		PageSize:                pageSize,
+		MustChangePasswordCount: mustChangePasswordCount,
 	})
 }
 

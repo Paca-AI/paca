@@ -33,5 +33,12 @@
 		"hours_other": "{{count}} giờ trước",
 		"days_one": "{{count}} ngày trước",
 		"days_other": "{{count}} ngày trước"
+	},
+	"pagination": {
+		"navLabel": "Phân trang",
+		"previous": "Trang trước",
+		"next": "Trang sau",
+		"page": "Trang {{page}}",
+		"pageOfTotal": "Trang {{page}} / {{totalPages}}"
 	}
 }

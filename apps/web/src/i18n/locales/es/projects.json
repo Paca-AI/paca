@@ -1255,7 +1255,9 @@
 			"title": "Subtareas",
 			"addButton": "Añadir subtarea",
 			"titlePlaceholder": "Título de la subtarea…",
-			"empty": "Aún no hay subtareas"
+			"empty": "Aún no hay subtareas",
+			"loadMore": "Cargar más subtareas",
+			"loadingMore": "Cargando más…"
 		},
 		"links": {
 			"title": "Tareas vinculadas",

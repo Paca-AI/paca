@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	useInfiniteQuery,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import {
 	Link,
 	useNavigate,
@@ -21,6 +26,7 @@ import {
 	GanttChart,
 	Home,
 	KanbanSquare,
+	Loader2,
 	MessageSquare,
 	Monitor,
 	Moon,
@@ -41,6 +47,7 @@ import {
 	type ComponentType,
 	useCallback,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -100,8 +107,9 @@ import { usePluginRegistry } from "@/lib/plugins/registry";
 import {
 	getProjectInitials,
 	projectQueryOptions,
-	projectsQueryOptions,
+	projectsInfiniteQueryOptions,
 } from "@/lib/project-api";
+import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "./user-menu";
 
@@ -736,13 +744,26 @@ function ProjectSwitcher({
 }) {
 	const { t } = useTranslation("appShell");
 	const [open, setOpen] = useState(false);
-	const { data: projectsResult } = useQuery(projectsQueryOptions());
+	const {
+		data: projectsData,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+	} = useInfiniteQuery(projectsInfiniteQueryOptions());
 	const { data: currentProject } = useQuery({
 		...projectQueryOptions(currentProjectId ?? ""),
 		enabled: !!currentProjectId,
 	});
 
-	const projects = projectsResult?.items ?? [];
+	const projects = useMemo(
+		() => projectsData?.pages.flatMap((p) => p.items) ?? [],
+		[projectsData],
+	);
+	const handleProjectsScroll = createLoadMoreScrollHandler({
+		hasMore: !!hasNextPage,
+		isLoadingMore: isFetchingNextPage,
+		onLoadMore: () => void fetchNextPage(),
+	});
 	const label = currentProject?.name ?? t("projectSwitcher.projects");
 	const initials = currentProject?.name
 		? getProjectInitials(currentProject.name)
@@ -786,7 +807,12 @@ function ProjectSwitcher({
 					)}
 				/>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="start" sideOffset={6} className="w-60">
+			<DropdownMenuContent
+				align="start"
+				sideOffset={6}
+				className="w-60"
+				onScroll={handleProjectsScroll}
+			>
 				<DropdownMenuGroup>
 					<DropdownMenuLabel className="text-xs text-muted-foreground pb-1">
 						{t("projectSwitcher.yourProjects")}
@@ -817,6 +843,12 @@ function ProjectSwitcher({
 								)}
 							</DropdownMenuItem>
 						))}
+						{isFetchingNextPage ? (
+							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
+								<Loader2 className="size-3 animate-spin" />
+								{t("projectSwitcher.loadingMore")}
+							</div>
+						) : null}
 					</DropdownMenuGroup>
 				) : (
 					<div className="flex flex-col items-center gap-1 px-3 py-4">

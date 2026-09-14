@@ -35,7 +35,8 @@
 		"projects": "Проекты",
 		"yourProjects": "Ваши проекты",
 		"noProjectsYet": "Проектов пока нет",
-		"newProject": "Новый проект"
+		"newProject": "Новый проект",
+		"loadingMore": "Загрузка…"
 	},
 	"interactions": {
 		"title": "Взаимодействия",

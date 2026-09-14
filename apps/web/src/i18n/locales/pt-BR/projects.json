@@ -1255,7 +1255,9 @@
 			"title": "Subtarefas",
 			"addButton": "Adicionar subtarefa",
 			"titlePlaceholder": "Título da subtarefa…",
-			"empty": "Nenhuma subtarefa ainda"
+			"empty": "Nenhuma subtarefa ainda",
+			"loadMore": "Carregar mais subtarefas",
+			"loadingMore": "Carregando mais…"
 		},
 		"links": {
 			"title": "Tarefas vinculadas",

@@ -12,7 +12,7 @@ import {
 	createTask,
 	epicTasksInfiniteQueryOptions,
 	sprintsQueryOptions,
-	subtasksQueryOptions,
+	subtasksInfiniteQueryOptions,
 	taskQueryOptions,
 	updateTask,
 } from "@/lib/interaction-api";
@@ -85,10 +85,19 @@ export function TaskDetailModal({
 	const task = freshTask ?? taskProp;
 
 	// Fetch subtasks
-	const { data: subtasks = [] } = useQuery({
-		...subtasksQueryOptions(projectId ?? "", task?.id ?? ""),
+	const {
+		data: subtasksData,
+		fetchNextPage: fetchNextSubtasksPage,
+		hasNextPage: hasMoreSubtasks,
+		isFetchingNextPage: isFetchingMoreSubtasks,
+	} = useInfiniteQuery({
+		...subtasksInfiniteQueryOptions(projectId ?? "", task?.id ?? ""),
 		enabled: !!projectId && !!task?.id && (open || mode === "page"),
 	});
+	const subtasks = useMemo(
+		() => subtasksData?.pages.flatMap((p) => p.items) ?? [],
+		[subtasksData],
+	);
 
 	// Fetch sprints for sprint name display + assignment
 	const { data: sprints = [] } = useQuery({
@@ -440,12 +449,16 @@ export function TaskDetailModal({
 							task={task}
 							taskIdPrefix={taskIdPrefix}
 							normalTaskTypes={normalTaskTypes}
+							hasMore={!!hasMoreSubtasks}
+							isLoadingMore={isFetchingMoreSubtasks}
+							onLoadMore={() => void fetchNextSubtasksPage()}
 							onSubtaskClick={(sub) => navigateToTask(sub.id)}
 							onSubtaskUpdate={(subtaskId, payload) => {
 								if (!projectId) return;
 								updateTask(projectId, subtaskId, payload).then(() => {
 									qc.invalidateQueries({
-										queryKey: subtasksQueryOptions(projectId, task.id).queryKey,
+										queryKey: subtasksInfiniteQueryOptions(projectId, task.id)
+											.queryKey,
 									});
 								});
 							}}
@@ -459,7 +472,8 @@ export function TaskDetailModal({
 									parent_task_id: task.id,
 								}).then(() => {
 									qc.invalidateQueries({
-										queryKey: subtasksQueryOptions(projectId, task.id).queryKey,
+										queryKey: subtasksInfiniteQueryOptions(projectId, task.id)
+											.queryKey,
 									});
 								});
 							}}

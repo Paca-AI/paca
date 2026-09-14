@@ -49,6 +49,9 @@ func (m *mockUserSvc) List(context.Context, int, int) ([]*userdom.User, int64, e
 func (m *mockUserSvc) CountUsers(context.Context) (int64, error) {
 	return 0, nil
 }
+func (m *mockUserSvc) CountUsersMustChangePassword(context.Context) (int64, error) {
+	return 0, nil
+}
 func (m *mockUserSvc) ListGlobalPermissions(context.Context, uuid.UUID) ([]string, error) {
 	return []string{string(authz.PermissionUsersRead)}, nil
 }

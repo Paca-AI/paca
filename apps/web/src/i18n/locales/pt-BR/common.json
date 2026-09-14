@@ -33,5 +33,12 @@
 		"hours_other": "há {{count}}h",
 		"days_one": "há {{count}}d",
 		"days_other": "há {{count}}d"
+	},
+	"pagination": {
+		"navLabel": "Paginação",
+		"previous": "Página anterior",
+		"next": "Próxima página",
+		"page": "Página {{page}}",
+		"pageOfTotal": "Página {{page}} de {{totalPages}}"
 	}
 }

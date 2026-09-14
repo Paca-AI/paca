@@ -1255,7 +1255,9 @@
 			"title": "Nhiệm vụ con",
 			"addButton": "Thêm nhiệm vụ con",
 			"titlePlaceholder": "Tiêu đề nhiệm vụ con…",
-			"empty": "Chưa có nhiệm vụ con nào"
+			"empty": "Chưa có nhiệm vụ con nào",
+			"loadMore": "Tải thêm công việc con",
+			"loadingMore": "Đang tải thêm…"
 		},
 		"links": {
 			"title": "Nhiệm vụ liên kết",

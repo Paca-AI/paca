@@ -73,6 +73,10 @@ type PagedUsersResponse struct {
 	Total    int64          `json:"total"`
 	Page     int            `json:"page"`
 	PageSize int            `json:"page_size"`
+	// MustChangePasswordCount is the count across ALL users, not just Items
+	// (the current page) — so the admin users page's stats bar stays
+	// accurate no matter which page is displayed.
+	MustChangePasswordCount int64 `json:"must_change_password_count"`
 }
 
 // UserFromEntity maps a domain user to a transport response.

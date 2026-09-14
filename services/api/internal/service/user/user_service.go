@@ -118,6 +118,12 @@ func (s *Service) CountUsers(ctx context.Context) (int64, error) {
 	return s.repo.CountUsers(ctx)
 }
 
+// CountUsersMustChangePassword returns the total count of users who must
+// change their password on next login, without paginating rows.
+func (s *Service) CountUsersMustChangePassword(ctx context.Context) (int64, error) {
+	return s.repo.CountUsersMustChangePassword(ctx)
+}
+
 // ListGlobalPermissions returns effective global permissions for the user.
 func (s *Service) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]string, error) {
 	u, err := s.repo.FindByID(ctx, id)

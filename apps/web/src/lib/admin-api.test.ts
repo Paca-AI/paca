@@ -154,6 +154,7 @@ describe("admin-api", () => {
 			total: 1,
 			page: 1,
 			page_size: 20,
+			must_change_password_count: 0,
 		};
 		mockGet.mockResolvedValue({
 			data: { data: response, error_code: null, message: "ok" },
@@ -168,7 +169,13 @@ describe("admin-api", () => {
 	it("uses default page and page_size for getUsers", async () => {
 		mockGet.mockResolvedValue({
 			data: {
-				data: { items: [], total: 0, page: 1, page_size: 20 },
+				data: {
+					items: [],
+					total: 0,
+					page: 1,
+					page_size: 20,
+					must_change_password_count: 0,
+				},
 				error_code: null,
 				message: "ok",
 			},

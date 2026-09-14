@@ -1255,7 +1255,9 @@
 			"title": "하위 작업",
 			"addButton": "하위 작업 추가",
 			"titlePlaceholder": "하위 작업 제목…",
-			"empty": "아직 하위 작업이 없습니다"
+			"empty": "아직 하위 작업이 없습니다",
+			"loadMore": "하위 작업 더 보기",
+			"loadingMore": "불러오는 중…"
 		},
 		"links": {
 			"title": "연결된 작업",

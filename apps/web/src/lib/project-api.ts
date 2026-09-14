@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
@@ -521,6 +521,26 @@ export const projectsQueryOptions = (page = 1, pageSize = 50) =>
 	queryOptions({
 		queryKey: ["projects", { page, pageSize }],
 		queryFn: () => listProjects(page, pageSize),
+	});
+
+export const PROJECTS_PAGE_SIZE = 50;
+
+/** Infinite-query version of the project list — backs surfaces that need to
+ *  browse every project a user can access (the home dashboard grid, the
+ *  sidebar project switcher), since ListProjects caps page_size at 100 and
+ *  there's no server-side search to narrow the result set. Pages accumulate
+ *  as the caller scrolls/loads more, same pattern as
+ *  usersInfiniteQueryOptions. */
+export const projectsInfiniteQueryOptions = () =>
+	infiniteQueryOptions({
+		queryKey: ["projects", "all"],
+		queryFn: ({ pageParam }: { pageParam: number }) =>
+			listProjects(pageParam, PROJECTS_PAGE_SIZE),
+		initialPageParam: 1,
+		getNextPageParam: (lastPage) =>
+			lastPage.page * lastPage.page_size < lastPage.total
+				? lastPage.page + 1
+				: undefined,
 	});
 
 export const workspaceStatsQueryOptions = () =>

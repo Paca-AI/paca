@@ -1255,7 +1255,9 @@
 			"title": "Sous-tâches",
 			"addButton": "Ajouter une sous-tâche",
 			"titlePlaceholder": "Titre de la sous-tâche…",
-			"empty": "Aucune sous-tâche pour le moment"
+			"empty": "Aucune sous-tâche pour le moment",
+			"loadMore": "Charger plus de sous-tâches",
+			"loadingMore": "Chargement…"
 		},
 		"links": {
 			"title": "Tâches liées",

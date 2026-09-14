@@ -121,6 +121,9 @@ func (r *stubRepo) List(_ context.Context, _, _ int) ([]*userdom.User, int64, er
 	return nil, 0, nil
 }
 func (r *stubRepo) CountUsers(_ context.Context) (int64, error) { return 0, nil }
+func (r *stubRepo) CountUsersMustChangePassword(_ context.Context) (int64, error) {
+	return 0, nil
+}
 func (r *stubRepo) Create(ctx context.Context, u *userdom.User) error {
 	if r.create != nil {
 		return r.create(ctx, u)

@@ -1255,7 +1255,9 @@
 			"title": "Subtasks",
 			"addButton": "Add subtask",
 			"titlePlaceholder": "Subtask title…",
-			"empty": "No subtasks yet"
+			"empty": "No subtasks yet",
+			"loadMore": "Load more subtasks",
+			"loadingMore": "Loading more…"
 		},
 		"links": {
 			"title": "Linked Tasks",

@@ -33,5 +33,12 @@
 		"hours_other": "il y a {{count}} h",
 		"days_one": "il y a {{count}} j",
 		"days_other": "il y a {{count}} j"
+	},
+	"pagination": {
+		"navLabel": "Pagination",
+		"previous": "Page précédente",
+		"next": "Page suivante",
+		"page": "Page {{page}}",
+		"pageOfTotal": "Page {{page}} sur {{totalPages}}"
 	}
 }

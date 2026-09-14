@@ -33,5 +33,12 @@
 		"hours_other": "{{count}}時間前",
 		"days_one": "{{count}}日前",
 		"days_other": "{{count}}日前"
+	},
+	"pagination": {
+		"navLabel": "ページ送り",
+		"previous": "前のページ",
+		"next": "次のページ",
+		"page": "{{page}} ページ",
+		"pageOfTotal": "{{totalPages}} ページ中 {{page}} ページ目"
 	}
 }

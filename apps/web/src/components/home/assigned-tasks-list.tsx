@@ -1,14 +1,14 @@
-import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueries } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { assignedTasksQueryOptions, type Task } from "@/lib/interaction-api";
 import {
 	projectMembersQueryOptions,
-	projectsQueryOptions,
+	projectsInfiniteQueryOptions,
 	taskStatusesQueryOptions,
 	taskTypesQueryOptions,
 } from "@/lib/project-api";
@@ -55,7 +55,24 @@ export function AssignedTasksList() {
 		hasNextPage,
 		isFetchingNextPage,
 	} = useInfiniteQuery(assignedTasksQueryOptions());
-	const { data: projectsResult } = useQuery(projectsQueryOptions());
+	const {
+		data: projectsData,
+		fetchNextPage: fetchNextProjectsPage,
+		hasNextPage: hasMoreProjects,
+		isFetchingNextPage: isFetchingMoreProjects,
+	} = useInfiniteQuery(projectsInfiniteQueryOptions());
+	// This widget only needs a complete id -> project lookup (for the group
+	// header's name/task_id_prefix below), not a browsable list — so unlike
+	// the home page's own project grid, there's no "load more" affordance to
+	// put this behind. Drain every page in the background instead: harmless
+	// for the common case (well under one page), and for a workspace with
+	// more projects than that, it beats silently falling back to a raw
+	// project id in the header.
+	useEffect(() => {
+		if (hasMoreProjects && !isFetchingMoreProjects) {
+			void fetchNextProjectsPage();
+		}
+	}, [hasMoreProjects, isFetchingMoreProjects, fetchNextProjectsPage]);
 
 	const tasks = useMemo(
 		() => data?.pages.flatMap((page) => page.items) ?? [],
@@ -88,8 +105,14 @@ export function AssignedTasksList() {
 	});
 
 	const projectsById = useMemo(
-		() => new Map((projectsResult?.items ?? []).map((p) => [p.id, p])),
-		[projectsResult],
+		() =>
+			new Map(
+				(projectsData?.pages.flatMap((p) => p.items) ?? []).map((p) => [
+					p.id,
+					p,
+				]),
+			),
+		[projectsData],
 	);
 
 	if (isLoading) {

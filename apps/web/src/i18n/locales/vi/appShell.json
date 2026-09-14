@@ -35,7 +35,8 @@
 		"projects": "Dự án",
 		"yourProjects": "Dự án của bạn",
 		"noProjectsYet": "Chưa có dự án nào",
-		"newProject": "Dự án mới"
+		"newProject": "Dự án mới",
+		"loadingMore": "Đang tải thêm…"
 	},
 	"interactions": {
 		"title": "Tương tác",

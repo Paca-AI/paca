@@ -87,7 +87,9 @@
 			"countInWorkspace_one": "워크스페이스에 프로젝트 {{count}}개",
 			"countInWorkspace_other": "워크스페이스에 프로젝트 {{count}}개",
 			"newShort": "새로 만들기",
-			"newProjectCard": "새 프로젝트"
+			"newProjectCard": "새 프로젝트",
+			"loadMore": "프로젝트 더 보기",
+			"loadingMore": "불러오는 중…"
 		},
 		"projectCard": {
 			"public": "공개",

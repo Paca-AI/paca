@@ -47,6 +47,9 @@ type Service interface {
 	List(ctx context.Context, page, pageSize int) ([]*User, int64, error)
 	// CountUsers returns the total count of users without paginating rows.
 	CountUsers(ctx context.Context) (int64, error)
+	// CountUsersMustChangePassword returns the total count of users who must
+	// change their password on next login, without paginating rows.
+	CountUsersMustChangePassword(ctx context.Context) (int64, error)
 	ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]string, error)
 	Create(ctx context.Context, in CreateInput) (*User, error)
 	// UpdateProfile lets a user update their own profile.

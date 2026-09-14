@@ -87,7 +87,9 @@
 			"countInWorkspace_one": "ワークスペース内に{{count}}件のプロジェクト",
 			"countInWorkspace_other": "ワークスペース内に{{count}}件のプロジェクト",
 			"newShort": "新規",
-			"newProjectCard": "新しいプロジェクト"
+			"newProjectCard": "新しいプロジェクト",
+			"loadMore": "プロジェクトをもっと読み込む",
+			"loadingMore": "読み込み中…"
 		},
 		"projectCard": {
 			"public": "公開",

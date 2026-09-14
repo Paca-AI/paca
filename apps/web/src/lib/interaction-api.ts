@@ -724,16 +724,23 @@ export async function deleteTask(
 	await apiClient.instance.delete(`/projects/${projectId}/tasks/${taskId}`);
 }
 
+export const SUBTASKS_PAGE_SIZE = 50;
+
 export async function listSubtasks(
 	projectId: string,
 	parentTaskId: string,
-): Promise<Task[]> {
+	opts: { cursor?: string; pageSize?: number } = {},
+): Promise<TaskListResult> {
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<TaskListResult>
 	>(`/projects/${projectId}/tasks`, {
-		params: { parent_task_id: parentTaskId, page: 1, page_size: 200 },
+		params: {
+			parent_task_id: parentTaskId,
+			cursor: opts.cursor,
+			page_size: opts.pageSize ?? SUBTASKS_PAGE_SIZE,
+		},
 	});
-	return data.data.items;
+	return data.data;
 }
 
 export async function listViewTaskPositions(
@@ -755,10 +762,21 @@ export const taskQueryOptions = (projectId: string, taskId: string) =>
 		staleTime: 15_000,
 	});
 
-export const subtasksQueryOptions = (projectId: string, parentTaskId: string) =>
-	queryOptions({
+/** Infinite-query version of the subtasks fetch — backs the task detail
+ *  panel's Subtasks section. Pages load SUBTASKS_PAGE_SIZE at a time via
+ *  next_cursor, same pattern as epicTasksInfiniteQueryOptions, so a task
+ *  with more than one page of direct children stays fully reachable behind
+ *  a "load more" affordance instead of silently truncating. */
+export const subtasksInfiniteQueryOptions = (
+	projectId: string,
+	parentTaskId: string,
+) =>
+	infiniteQueryOptions({
 		queryKey: ["projects", projectId, "tasks", parentTaskId, "subtasks"],
-		queryFn: () => listSubtasks(projectId, parentTaskId),
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listSubtasks(projectId, parentTaskId, { cursor: pageParam }),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 		staleTime: 15_000,
 	});
 
@@ -903,14 +921,6 @@ export async function searchTasksForPicker(
 		cursor: opts.cursor,
 	});
 }
-
-/** Fetches child tasks of an epic (tasks with parent_task_id = epicId). */
-export const epicChildTasksQueryOptions = (projectId: string, epicId: string) =>
-	queryOptions({
-		queryKey: ["projects", projectId, "tasks", epicId, "children"],
-		queryFn: () => listSubtasks(projectId, epicId),
-		staleTime: 15_000,
-	});
 
 // ── Activity & Comments API ────────────────────────────────────────────────────
 
