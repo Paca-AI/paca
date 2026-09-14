@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { assignedTasksQueryOptions, type Task } from "@/lib/interaction-api";
 import {
 	projectMembersQueryOptions,
-	projectsInfiniteQueryOptions,
+	projectsLookupInfiniteQueryOptions,
 	taskStatusesQueryOptions,
 	taskTypesQueryOptions,
 } from "@/lib/project-api";
@@ -60,7 +60,8 @@ export function AssignedTasksList() {
 		fetchNextPage: fetchNextProjectsPage,
 		hasNextPage: hasMoreProjects,
 		isFetchingNextPage: isFetchingMoreProjects,
-	} = useInfiniteQuery(projectsInfiniteQueryOptions());
+		isFetchNextPageError: projectsPageFetchErrored,
+	} = useInfiniteQuery(projectsLookupInfiniteQueryOptions());
 	// This widget only needs a complete id -> project lookup (for the group
 	// header's name/task_id_prefix below), not a browsable list — so unlike
 	// the home page's own project grid, there's no "load more" affordance to
@@ -68,11 +69,29 @@ export function AssignedTasksList() {
 	// for the common case (well under one page), and for a workspace with
 	// more projects than that, it beats silently falling back to a raw
 	// project id in the header.
+	//
+	// Uses projectsLookupInfiniteQueryOptions rather than
+	// projectsInfiniteQueryOptions deliberately — the latter's cache entry
+	// (["projects", "all"]) is shared with the home grid's and sidebar
+	// switcher's own "Load more"/scroll-driven paging, and draining it here
+	// would silently exhaust their pages before the user ever gets to. Also
+	// stops retrying once a page fetch fails — hasNextPage stays true after
+	// a failed fetchNextPage (it's derived from the last *successful* page),
+	// so without this guard a persistent failure would retry forever.
 	useEffect(() => {
-		if (hasMoreProjects && !isFetchingMoreProjects) {
+		if (
+			hasMoreProjects &&
+			!isFetchingMoreProjects &&
+			!projectsPageFetchErrored
+		) {
 			void fetchNextProjectsPage();
 		}
-	}, [hasMoreProjects, isFetchingMoreProjects, fetchNextProjectsPage]);
+	}, [
+		hasMoreProjects,
+		isFetchingMoreProjects,
+		projectsPageFetchErrored,
+		fetchNextProjectsPage,
+	]);
 
 	const tasks = useMemo(
 		() => data?.pages.flatMap((page) => page.items) ?? [],
