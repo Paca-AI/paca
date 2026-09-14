@@ -12,6 +12,17 @@ home: https://github.com/Paca-AI/paca
 icon: https://raw.githubusercontent.com/Paca-AI/paca/master/docs/assets/paca-logo.svg
 sources:
   - https://github.com/Paca-AI/paca
+# rustfs's own chart always keeps version == appVersion (see
+# https://charts.rustfs.com/index.yaml), so pinning the dependency version
+# here is also what pins the deployed RustFS image — values.yaml deliberately
+# leaves rustfs.image.rustfs.tag empty to inherit it from here instead of
+# pinning the same version a second, independently-driftable time. Bump this
+# alongside the "image" note above when upgrading RustFS.
+dependencies:
+  - name: rustfs
+    version: "1.0.0-rc.6"
+    repository: https://charts.rustfs.com
+    condition: rustfs.enabled
 keywords:
   - project-management
   - ai-agents

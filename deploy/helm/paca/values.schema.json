@@ -93,17 +93,37 @@
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "repository": { "type": "string" },
-            "tag": { "type": "string" }
+            "rustfs": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "repository": { "type": "string" },
+                "tag": { "type": "string" }
+              }
+            }
           }
         },
-        "persistence": {
+        "secret": {
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "size": { "type": "string" },
-            "storageClassName": { "type": "string" }
+            "existingSecret": { "type": "string" },
+            "rustfs": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "access_key": { "type": "string" },
+                "secret_key": { "type": "string" }
+              }
+            }
+          }
+        },
+        "storageclass": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "name": { "type": "string" },
+            "dataStorageSize": { "type": "string" }
           }
         },
         "resources": { "$ref": "#/definitions/resources" }

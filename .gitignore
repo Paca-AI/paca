@@ -42,3 +42,7 @@ plugins/local
 
 # Python artifacts
 __pycache__/
+
+# Helm dependency charts fetched by `helm dependency update` (see
+# deploy/helm/paca/Chart.yaml's "dependencies" and the committed Chart.lock)
+deploy/helm/paca/charts/*.tgz

@@ -58,8 +58,8 @@ Generate strong values yourself, e.g. `openssl rand -hex 32`.
 | `secrets.internalApiKey` | Pre-shared key authenticating `api` <-> `agent-runner`'s internal routes (only required when `agentRunner.enabled`) | `""` |
 | `secrets.agentApiKey` | Agent API key | `""` |
 | `secrets.postgresPassword` | PostgreSQL password | `""` |
-| `secrets.storageAccessKeyId` | Object storage access key ID | `""` |
-| `secrets.storageSecretAccessKey` | Object storage secret access key | `""` |
+| `secrets.storageAccessKeyId` | External S3 access key ID — only used when `rustfs.enabled: false`; the bundled RustFS uses `rustfs.secret.rustfs.access_key` instead | `""` |
+| `secrets.storageSecretAccessKey` | External S3 secret access key — same condition as above | `""` |
 
 ### PostgreSQL (bundled)
 
@@ -84,11 +84,20 @@ Generate strong values yourself, e.g. `openssl rand -hex 32`.
 
 ### Object storage
 
+`rustfs` is the upstream [rustfs/rustfs](https://artifacthub.io/packages/helm/rustfs/rustfs)
+chart pulled in as a real dependency, not a template of this chart's own —
+every `rustfs.*` key below is that chart's own schema passed straight
+through (run `helm dependency update` then
+`helm show values charts/rustfs-*.tgz` for the full set this table doesn't
+surface, e.g. `rustfs.mtls`/`rustfs.pools`).
+
 | Key | Description | Default |
 |---|---|---|
 | `rustfs.enabled` | Deploy bundled RustFS. Set `false`, `storage.provider: s3`, and real AWS credentials to use S3 instead. | `true` |
-| `rustfs.image.repository` / `.tag` | | `rustfs/rustfs` / `1.0.0-rc.6` |
-| `rustfs.persistence.enabled` / `.size` / `.storageClassName` | | `true` / `20Gi` / `""` |
+| `rustfs.image.rustfs.repository` / `.tag` | Tag left empty on purpose — inherits the dependency's pinned `appVersion` (see `Chart.yaml`) | `rustfs/rustfs` / `""` |
+| `rustfs.secret.rustfs.access_key` / `.secret_key` | Credentials for the bundled instance (unrelated to `secrets.storageAccessKeyId` above, which is only for external S3) | `""` / `""` |
+| `rustfs.secret.existingSecret` | Name of a Secret you manage yourself instead of the two fields above (keys `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`) | `""` |
+| `rustfs.storageclass.name` / `.dataStorageSize` | | `""` / `20Gi` |
 | `rustfs.resources` | Requests/limits for the RustFS Pod | see `values.yaml` |
 | `storage.provider` | `rustfs` or `s3` | `rustfs` |
 | `storage.endpoint` | Empty defaults to the bundled RustFS's in-cluster Service address | `""` |

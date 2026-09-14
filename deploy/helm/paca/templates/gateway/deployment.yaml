@@ -50,7 +50,7 @@ spec:
             {{- end }}
             {{- if .Values.rustfs.enabled }}
             - name: STORAGE_UPSTREAM
-              value: "{{ include "paca.fullname" . }}-rustfs:9000"
+              value: {{ include "paca.rustfsEndpoint" . | quote }}
             {{- end }}
           volumeMounts:
             - name: caddyfile
