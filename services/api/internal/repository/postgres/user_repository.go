@@ -101,6 +101,17 @@ func (r *UserRepository) CountUsers(ctx context.Context) (int64, error) {
 	return total, nil
 }
 
+// CountUsersMustChangePassword returns the total count of non-deleted,
+// non-system users with must_change_password set. Matches CountUsers'
+// filter (see its doc comment) plus the must_change_password condition.
+func (r *UserRepository) CountUsersMustChangePassword(ctx context.Context) (int64, error) {
+	var total int64
+	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND username != '_paca_agent_bot' AND must_change_password`); err != nil {
+		return 0, fmt.Errorf("user repo: count users must change password: %w", err)
+	}
+	return total, nil
+}
+
 // FindByID returns the user with the given primary key, or userdom.ErrNotFound.
 func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
 	var row userReadRow

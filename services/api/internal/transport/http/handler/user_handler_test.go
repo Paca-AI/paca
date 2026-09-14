@@ -23,20 +23,21 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockUserSvc struct {
-	getByID               func(ctx context.Context, id uuid.UUID) (*domainuser.User, error)
-	list                  func(ctx context.Context, page, pageSize int) ([]*domainuser.User, int64, error)
-	listGlobalPermissions func(ctx context.Context, id uuid.UUID) ([]string, error)
-	create                func(ctx context.Context, in domainuser.CreateInput) (*domainuser.User, error)
-	updateProfile         func(ctx context.Context, id uuid.UUID, in domainuser.UpdateProfileInput) (*domainuser.User, error)
-	adminUpdate           func(ctx context.Context, id uuid.UUID, in domainuser.AdminUpdateInput) (*domainuser.User, error)
-	resetPassword         func(ctx context.Context, id uuid.UUID, newPassword string) error
-	changeMyPassword      func(ctx context.Context, id uuid.UUID, currentPassword, newPassword string) error
-	issuePasswordSetToken func(ctx context.Context, userID uuid.UUID) (string, time.Time, error)
-	setPasswordWithToken  func(ctx context.Context, rawToken, newPassword string) error
-	delete                func(ctx context.Context, id uuid.UUID) error
-	initiateAvatarUpload  func(ctx context.Context, userID uuid.UUID, fileName, contentType string, fileSize int64) (*attachmentdom.UploadSession, error)
-	completeAvatarUpload  func(ctx context.Context, userID, fileID uuid.UUID) (*domainuser.User, error)
-	removeAvatar          func(ctx context.Context, userID uuid.UUID) (*domainuser.User, error)
+	getByID                      func(ctx context.Context, id uuid.UUID) (*domainuser.User, error)
+	list                         func(ctx context.Context, page, pageSize int) ([]*domainuser.User, int64, error)
+	countUsersMustChangePassword func(ctx context.Context) (int64, error)
+	listGlobalPermissions        func(ctx context.Context, id uuid.UUID) ([]string, error)
+	create                       func(ctx context.Context, in domainuser.CreateInput) (*domainuser.User, error)
+	updateProfile                func(ctx context.Context, id uuid.UUID, in domainuser.UpdateProfileInput) (*domainuser.User, error)
+	adminUpdate                  func(ctx context.Context, id uuid.UUID, in domainuser.AdminUpdateInput) (*domainuser.User, error)
+	resetPassword                func(ctx context.Context, id uuid.UUID, newPassword string) error
+	changeMyPassword             func(ctx context.Context, id uuid.UUID, currentPassword, newPassword string) error
+	issuePasswordSetToken        func(ctx context.Context, userID uuid.UUID) (string, time.Time, error)
+	setPasswordWithToken         func(ctx context.Context, rawToken, newPassword string) error
+	delete                       func(ctx context.Context, id uuid.UUID) error
+	initiateAvatarUpload         func(ctx context.Context, userID uuid.UUID, fileName, contentType string, fileSize int64) (*attachmentdom.UploadSession, error)
+	completeAvatarUpload         func(ctx context.Context, userID, fileID uuid.UUID) (*domainuser.User, error)
+	removeAvatar                 func(ctx context.Context, userID uuid.UUID) (*domainuser.User, error)
 }
 
 func (m *mockUserSvc) GetByID(ctx context.Context, id uuid.UUID) (*domainuser.User, error) {
@@ -52,6 +53,12 @@ func (m *mockUserSvc) List(ctx context.Context, page, pageSize int) ([]*domainus
 	return nil, 0, nil
 }
 func (m *mockUserSvc) CountUsers(context.Context) (int64, error) {
+	return 0, nil
+}
+func (m *mockUserSvc) CountUsersMustChangePassword(ctx context.Context) (int64, error) {
+	if m.countUsersMustChangePassword != nil {
+		return m.countUsersMustChangePassword(ctx)
+	}
 	return 0, nil
 }
 func (m *mockUserSvc) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]string, error) {
@@ -930,10 +937,11 @@ func TestListUsers_ResponseShape(t *testing.T) {
 	var env struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Items    []any `json:"items"`
-			Total    int64 `json:"total"`
-			Page     int   `json:"page"`
-			PageSize int   `json:"page_size"`
+			Items                   []any `json:"items"`
+			Total                   int64 `json:"total"`
+			Page                    int   `json:"page"`
+			PageSize                int   `json:"page_size"`
+			MustChangePasswordCount int64 `json:"must_change_password_count"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&env); err != nil {
@@ -953,6 +961,61 @@ func TestListUsers_ResponseShape(t *testing.T) {
 	}
 	if len(env.Data.Items) != 1 {
 		t.Errorf("expected 1 item, got %d", len(env.Data.Items))
+	}
+}
+
+// TestListUsers_MustChangePasswordCountIsWorkspaceWide guards against the
+// count silently narrowing back to "just this page" — it must come from
+// CountUsersMustChangePassword (a system-wide count), not from filtering
+// the page's own Items, so it stays correct no matter which page is
+// displayed or how small page_size is.
+func TestListUsers_MustChangePasswordCountIsWorkspaceWide(t *testing.T) {
+	svc := &mockUserSvc{
+		list: func(_ context.Context, _, _ int) ([]*domainuser.User, int64, error) {
+			// Current page has zero must-change-password users...
+			return []*domainuser.User{
+				{ID: uuid.New(), Username: "alice", Role: domainuser.RoleUser, MustChangePassword: false},
+			}, 43, nil
+		},
+		countUsersMustChangePassword: func(context.Context) (int64, error) {
+			// ...but the workspace-wide count is nonzero.
+			return 7, nil
+		},
+	}
+	r := newUserRouter(svc)
+
+	w := do(t, r, http.MethodGet, "/admin/users?page=2&page_size=20", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var env struct {
+		Data struct {
+			MustChangePasswordCount int64 `json:"must_change_password_count"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&env); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if env.Data.MustChangePasswordCount != 7 {
+		t.Errorf("expected must_change_password_count=7, got %d", env.Data.MustChangePasswordCount)
+	}
+}
+
+func TestListUsers_MustChangePasswordCountServiceError(t *testing.T) {
+	svc := &mockUserSvc{
+		list: func(_ context.Context, _, _ int) ([]*domainuser.User, int64, error) {
+			return []*domainuser.User{}, 0, nil
+		},
+		countUsersMustChangePassword: func(context.Context) (int64, error) {
+			return 0, errors.New("db error")
+		},
+	}
+	r := newUserRouter(svc)
+
+	w := do(t, r, http.MethodGet, "/admin/users", nil)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

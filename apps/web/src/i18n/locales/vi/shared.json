@@ -87,7 +87,9 @@
 			"countInWorkspace_one": "{{count}} dự án trong không gian làm việc của bạn",
 			"countInWorkspace_other": "{{count}} dự án trong không gian làm việc của bạn",
 			"newShort": "Mới",
-			"newProjectCard": "Dự án mới"
+			"newProjectCard": "Dự án mới",
+			"loadMore": "Tải thêm dự án",
+			"loadingMore": "Đang tải thêm…"
 		},
 		"projectCard": {
 			"public": "Công khai",

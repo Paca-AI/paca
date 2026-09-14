@@ -1,4 +1,4 @@
-import { ListChecks } from "lucide-react";
+import { ListChecks, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Task } from "@/lib/interaction-api";
 import type { ProjectMember, TaskStatus, TaskType } from "@/lib/project-api";
@@ -17,6 +17,10 @@ interface SubtasksSectionProps {
 	taskIdPrefix?: string;
 	/** Available types for the type picker when creating subtasks */
 	normalTaskTypes?: TaskType[];
+	/** True while more subtasks exist beyond what's currently loaded. */
+	hasMore?: boolean;
+	isLoadingMore?: boolean;
+	onLoadMore?: () => void;
 	onSubtaskUpdate?: (
 		subtaskId: string,
 		payload: Partial<{
@@ -42,6 +46,9 @@ export function SubtasksSection({
 	canEdit = true,
 	taskIdPrefix = "",
 	normalTaskTypes = [],
+	hasMore = false,
+	isLoadingMore = false,
+	onLoadMore,
 	onSubtaskUpdate,
 	onSubtaskCreate,
 	onSubtaskClick,
@@ -70,6 +77,23 @@ export function SubtasksSection({
 							onClick={onSubtaskClick ? () => onSubtaskClick(sub) : undefined}
 						/>
 					))}
+					{hasMore && (
+						<button
+							type="button"
+							onClick={onLoadMore}
+							disabled={isLoadingMore}
+							className="flex w-full items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
+						>
+							{isLoadingMore ? (
+								<>
+									<Loader2 className="size-3 animate-spin" />
+									{t("taskDetail.subtasks.loadingMore")}
+								</>
+							) : (
+								t("taskDetail.subtasks.loadMore")
+							)}
+						</button>
+					)}
 					{canEdit && (
 						<AddTaskRow
 							variant="list"

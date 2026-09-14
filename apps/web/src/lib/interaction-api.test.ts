@@ -25,6 +25,9 @@ import {
 	layoutToViewType,
 	listAllTasks,
 	listSprintTasks,
+	listSubtasks,
+	SUBTASKS_PAGE_SIZE,
+	subtasksInfiniteQueryOptions,
 	type Task,
 	updateTask,
 } from "./interaction-api";
@@ -230,6 +233,84 @@ describe("interaction-api", () => {
 			expect(config.params?.context).toBeUndefined();
 			expect(config.params?.view_id).toBeUndefined();
 			expect(config.params?.backlog).toBeUndefined();
+		});
+	});
+
+	describe("listSubtasks", () => {
+		it("fetches the first page with the default page size and returns the full TaskListResult", async () => {
+			const task = makeTask({ parent_task_id: TASK_ID });
+			mockGet.mockResolvedValue(
+				ok({
+					items: [task],
+					page_size: SUBTASKS_PAGE_SIZE,
+					next_cursor: null,
+				}),
+			);
+
+			const result = await listSubtasks(PROJECT_ID, TASK_ID);
+
+			expect(result).toEqual({
+				items: [task],
+				page_size: SUBTASKS_PAGE_SIZE,
+				next_cursor: null,
+			});
+			expect(mockGet).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/tasks`, {
+				params: {
+					parent_task_id: TASK_ID,
+					cursor: undefined,
+					page_size: SUBTASKS_PAGE_SIZE,
+				},
+			});
+		});
+
+		it("forwards a cursor to page past the first batch of subtasks", async () => {
+			mockGet.mockResolvedValue(
+				ok({ items: [], page_size: SUBTASKS_PAGE_SIZE, next_cursor: null }),
+			);
+
+			await listSubtasks(PROJECT_ID, TASK_ID, { cursor: "cursor-1" });
+
+			expect(mockGet).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/tasks`, {
+				params: {
+					parent_task_id: TASK_ID,
+					cursor: "cursor-1",
+					page_size: SUBTASKS_PAGE_SIZE,
+				},
+			});
+		});
+	});
+
+	describe("subtasksInfiniteQueryOptions", () => {
+		it("exposes the same query key regardless of pagination state", () => {
+			const opts = subtasksInfiniteQueryOptions(PROJECT_ID, TASK_ID);
+			expect(opts.queryKey).toEqual([
+				"projects",
+				PROJECT_ID,
+				"tasks",
+				TASK_ID,
+				"subtasks",
+			]);
+			expect(opts.initialPageParam).toBeUndefined();
+		});
+
+		it("advances to the next page's cursor while more subtasks remain, and stops once next_cursor is null", () => {
+			const opts = subtasksInfiniteQueryOptions(PROJECT_ID, TASK_ID);
+			expect(
+				opts.getNextPageParam?.(
+					{ items: [], page_size: 50, next_cursor: "c2" },
+					[],
+					undefined,
+					[],
+				),
+			).toBe("c2");
+			expect(
+				opts.getNextPageParam?.(
+					{ items: [], page_size: 50, next_cursor: null },
+					[],
+					"c2",
+					[],
+				),
+			).toBeUndefined();
 		});
 	});
 

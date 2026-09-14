@@ -35,7 +35,8 @@
 		"projects": "프로젝트",
 		"yourProjects": "내 프로젝트",
 		"noProjectsYet": "아직 프로젝트가 없습니다",
-		"newProject": "새 프로젝트"
+		"newProject": "새 프로젝트",
+		"loadingMore": "불러오는 중…"
 	},
 	"interactions": {
 		"title": "인터랙션",

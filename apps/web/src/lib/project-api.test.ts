@@ -42,6 +42,8 @@ import {
 	projectMembersQueryOptions,
 	projectQueryOptions,
 	projectRolesQueryOptions,
+	projectsInfiniteQueryOptions,
+	projectsLookupInfiniteQueryOptions,
 	projectsQueryOptions,
 	removeProjectMember,
 	setDefaultTaskType,
@@ -310,6 +312,63 @@ describe("project-api", () => {
 		it("projectsQueryOptions uses custom page and pageSize in key", () => {
 			const opts = projectsQueryOptions(3, 10);
 			expect(opts.queryKey).toEqual(["projects", { page: 3, pageSize: 10 }]);
+		});
+
+		it("projectsInfiniteQueryOptions exposes correct key and initial page param", () => {
+			const opts = projectsInfiniteQueryOptions();
+			expect(opts.queryKey).toEqual(["projects", "all"]);
+			expect(opts.initialPageParam).toBe(1);
+			expect(typeof opts.queryFn).toBe("function");
+		});
+
+		it("projectsInfiniteQueryOptions.getNextPageParam advances while more pages remain", () => {
+			const opts = projectsInfiniteQueryOptions();
+			const lastPage: ProjectListResult = {
+				items: [],
+				total: 120,
+				page: 1,
+				page_size: 50,
+			};
+			expect(opts.getNextPageParam?.(lastPage, [], 1, [])).toBe(2);
+		});
+
+		it("projectsInfiniteQueryOptions.getNextPageParam stops once every project is loaded", () => {
+			const opts = projectsInfiniteQueryOptions();
+			const lastPage: ProjectListResult = {
+				items: [],
+				total: 120,
+				page: 3,
+				page_size: 50,
+			};
+			expect(opts.getNextPageParam?.(lastPage, [], 3, [])).toBeUndefined();
+		});
+
+		// projectsLookupInfiniteQueryOptions must use a cache key distinct from
+		// projectsInfiniteQueryOptions' ["projects", "all"] — they share a
+		// QueryClient with consumers that page through ["projects", "all"] at
+		// their own pace (the home grid's "Load more" button, the sidebar
+		// switcher's scroll). A consumer that eagerly drains every page in the
+		// background (assigned-tasks-list.tsx) must do so under its own key,
+		// or it silently empties those consumers' pages before the user ever
+		// sees a "Load more" button to click.
+		it("projectsLookupInfiniteQueryOptions uses a cache key distinct from projectsInfiniteQueryOptions", () => {
+			const browsable = projectsInfiniteQueryOptions();
+			const lookup = projectsLookupInfiniteQueryOptions();
+			expect(lookup.queryKey).not.toEqual(browsable.queryKey);
+			expect(lookup.queryKey).toEqual(["projects", "all", "lookup"]);
+		});
+
+		it("projectsLookupInfiniteQueryOptions pages the same way as projectsInfiniteQueryOptions", () => {
+			const opts = projectsLookupInfiniteQueryOptions();
+			expect(opts.initialPageParam).toBe(1);
+			expect(typeof opts.queryFn).toBe("function");
+			const lastPage: ProjectListResult = {
+				items: [],
+				total: 120,
+				page: 1,
+				page_size: 50,
+			};
+			expect(opts.getNextPageParam?.(lastPage, [], 1, [])).toBe(2);
 		});
 
 		it("projectQueryOptions exposes correct key, fn, and staleTime", () => {

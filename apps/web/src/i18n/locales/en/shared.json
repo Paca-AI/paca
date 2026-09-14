@@ -87,7 +87,9 @@
 			"countInWorkspace_one": "{{count}} project in your workspace",
 			"countInWorkspace_other": "{{count}} projects in your workspace",
 			"newShort": "New",
-			"newProjectCard": "New project"
+			"newProjectCard": "New project",
+			"loadMore": "Load more projects",
+			"loadingMore": "Loading more…"
 		},
 		"projectCard": {
 			"public": "Public",

@@ -91,7 +91,9 @@
 			"countInWorkspace_many": "{{count}} проектов в рабочем пространстве",
 			"countInWorkspace_other": "{{count}} проекта в рабочем пространстве",
 			"newShort": "Новый",
-			"newProjectCard": "Новый проект"
+			"newProjectCard": "Новый проект",
+			"loadMore": "Загрузить ещё проекты",
+			"loadingMore": "Загрузка…"
 		},
 		"projectCard": {
 			"public": "Публичный",

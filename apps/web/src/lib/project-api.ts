@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
@@ -521,6 +521,50 @@ export const projectsQueryOptions = (page = 1, pageSize = 50) =>
 	queryOptions({
 		queryKey: ["projects", { page, pageSize }],
 		queryFn: () => listProjects(page, pageSize),
+	});
+
+export const PROJECTS_PAGE_SIZE = 50;
+
+function fetchProjectsPage({ pageParam }: { pageParam: number }) {
+	return listProjects(pageParam, PROJECTS_PAGE_SIZE);
+}
+
+function getNextProjectsPageParam(lastPage: ProjectListResult) {
+	return lastPage.page * lastPage.page_size < lastPage.total
+		? lastPage.page + 1
+		: undefined;
+}
+
+/** Infinite-query version of the project list — backs surfaces that let the
+ *  user browse every project a user can access, page by page, at their own
+ *  pace (the home dashboard grid's "Load more" button, the sidebar project
+ *  switcher's scroll), since ListProjects caps page_size at 100 and there's
+ *  no server-side search to narrow the result set. Pages accumulate as the
+ *  caller scrolls/loads more, same pattern as usersInfiniteQueryOptions.
+ *
+ *  Do NOT point a background/eager consumer at this one — every caller
+ *  shares this exact cache entry (queryKey ["projects", "all"]), so eagerly
+ *  draining it from one place empties the "Load more" affordance for every
+ *  other place before the user ever sees it. Use
+ *  projectsLookupInfiniteQueryOptions for that instead. */
+export const projectsInfiniteQueryOptions = () =>
+	infiniteQueryOptions({
+		queryKey: ["projects", "all"],
+		queryFn: fetchProjectsPage,
+		initialPageParam: 1,
+		getNextPageParam: getNextProjectsPageParam,
+	});
+
+/** Same paging as projectsInfiniteQueryOptions, under its own cache key —
+ *  for a consumer that eagerly drains every page in the background (e.g. an
+ *  id -> project lookup) without stealing pages out from under the
+ *  user-paced "Load more" surfaces sharing ["projects", "all"] above. */
+export const projectsLookupInfiniteQueryOptions = () =>
+	infiniteQueryOptions({
+		queryKey: ["projects", "all", "lookup"],
+		queryFn: fetchProjectsPage,
+		initialPageParam: 1,
+		getNextPageParam: getNextProjectsPageParam,
 	});
 
 export const workspaceStatsQueryOptions = () =>

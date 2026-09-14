@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	useInfiniteQuery,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	ArrowRight,
@@ -14,7 +19,7 @@ import {
 	Users,
 	Zap,
 } from "lucide-react";
-import { type ComponentType, useState } from "react";
+import { type ComponentType, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AssignedTasksList } from "@/components/home/assigned-tasks-list";
 import { UpdateBanner } from "@/components/home/UpdateBanner";
@@ -44,7 +49,7 @@ import {
 	createProject,
 	getProjectInitials,
 	type Project,
-	projectsQueryOptions,
+	projectsInfiniteQueryOptions,
 	workspaceStatsQueryOptions,
 } from "@/lib/project-api";
 import { cn } from "@/lib/utils";
@@ -52,7 +57,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/home/")({
 	loader: async ({ context: { queryClient } }) => {
 		await Promise.all([
-			queryClient.ensureQueryData(projectsQueryOptions()),
+			queryClient.ensureInfiniteQueryData(projectsInfiniteQueryOptions()),
 			queryClient.ensureQueryData(workspaceStatsQueryOptions()),
 			queryClient.ensureInfiniteQueryData(assignedTasksQueryOptions()),
 		]);
@@ -449,15 +454,23 @@ const GETTING_STARTED = [
 function HomePage() {
 	const { t } = useTranslation("shared");
 	const { data: user } = useQuery(currentUserQueryOptions);
-	const { data: projectsResult } = useQuery(projectsQueryOptions());
+	const {
+		data: projectsData,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+	} = useInfiniteQuery(projectsInfiniteQueryOptions());
 	const { data: workspaceStats } = useQuery(workspaceStatsQueryOptions());
 	const { hasPermission } = usePermissions();
 	const [createOpen, setCreateOpen] = useState(false);
 
 	const canCreate = hasPermission("projects.create");
 
-	const projects = projectsResult?.items ?? [];
-	const projectCount = projectsResult?.total ?? 0;
+	const projects = useMemo(
+		() => projectsData?.pages.flatMap((p) => p.items) ?? [],
+		[projectsData],
+	);
+	const projectCount = projectsData?.pages[0]?.total ?? 0;
 	const openTaskCount = workspaceStats?.open_task_count ?? 0;
 	const teamMemberCount = workspaceStats?.team_member_count ?? 0;
 	const aiAgentCount = workspaceStats?.ai_agent_count ?? 0;
@@ -634,6 +647,24 @@ function HomePage() {
 								</button>
 							) : null}
 						</div>
+						{hasNextPage ? (
+							<div className="mt-4 flex justify-center">
+								<Button
+									size="sm"
+									variant="outline"
+									className="gap-1.5 border-border/60"
+									disabled={isFetchingNextPage}
+									onClick={() => fetchNextPage()}
+								>
+									{isFetchingNextPage ? (
+										<Loader2 className="size-3.5 animate-spin" />
+									) : null}
+									{isFetchingNextPage
+										? t("home.projectsSection.loadingMore")
+										: t("home.projectsSection.loadMore")}
+								</Button>
+							</div>
+						) : null}
 					</div>
 				) : (
 					<div className="grid gap-6 lg:grid-cols-[1fr_300px]">

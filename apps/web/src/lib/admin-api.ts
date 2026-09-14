@@ -84,6 +84,9 @@ export interface PagedUsersResponse {
 	total: number;
 	page: number;
 	page_size: number;
+	/** Count across ALL users, not just `items` (the current page) — safe to
+	 *  display regardless of which page is showing. */
+	must_change_password_count: number;
 }
 
 export async function getUsers(

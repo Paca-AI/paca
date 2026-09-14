@@ -33,5 +33,12 @@
 		"hours_other": "{{count}}시간 전",
 		"days_one": "{{count}}일 전",
 		"days_other": "{{count}}일 전"
+	},
+	"pagination": {
+		"navLabel": "페이지 탐색",
+		"previous": "이전 페이지",
+		"next": "다음 페이지",
+		"page": "{{page}} 페이지",
+		"pageOfTotal": "{{totalPages}}페이지 중 {{page}}페이지"
 	}
 }

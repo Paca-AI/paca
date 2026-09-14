@@ -39,5 +39,12 @@
 		"days_few": "{{count}} дн. назад",
 		"days_many": "{{count}} дн. назад",
 		"days_other": "{{count}} дн. назад"
+	},
+	"pagination": {
+		"navLabel": "Постраничная навигация",
+		"previous": "Предыдущая страница",
+		"next": "Следующая страница",
+		"page": "Страница {{page}}",
+		"pageOfTotal": "Страница {{page}} из {{totalPages}}"
 	}
 }

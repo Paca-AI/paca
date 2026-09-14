@@ -9,7 +9,34 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	navigateMock: vi.fn(),
 	listAssignedTasksMock: vi.fn(),
+	listProjectsMock: vi.fn(),
 }));
+
+const defaultProjectsPage = {
+	items: [
+		{
+			id: "proj-a",
+			name: "Project Alpha",
+			description: "",
+			is_public: false,
+			task_id_prefix: "ALP",
+			settings: {},
+			created_at: "2026-01-01T00:00:00Z",
+		},
+		{
+			id: "proj-b",
+			name: "Project Beta",
+			description: "",
+			is_public: false,
+			task_id_prefix: "BET",
+			settings: {},
+			created_at: "2026-01-01T00:00:00Z",
+		},
+	],
+	total: 2,
+	page: 1,
+	page_size: 50,
+};
 
 vi.mock("@tanstack/react-router", () => ({
 	useNavigate: () => mocks.navigateMock,
@@ -38,33 +65,18 @@ vi.mock("@/lib/project-api", async () => {
 		);
 	return {
 		...actual,
-		projectsQueryOptions: () => ({
-			queryKey: ["test", "projects"],
-			queryFn: async () => ({
-				items: [
-					{
-						id: "proj-a",
-						name: "Project Alpha",
-						description: "",
-						is_public: false,
-						task_id_prefix: "ALP",
-						settings: {},
-						created_at: "2026-01-01T00:00:00Z",
-					},
-					{
-						id: "proj-b",
-						name: "Project Beta",
-						description: "",
-						is_public: false,
-						task_id_prefix: "BET",
-						settings: {},
-						created_at: "2026-01-01T00:00:00Z",
-					},
-				],
-				total: 2,
-				page: 1,
-				page_size: 50,
-			}),
+		projectsLookupInfiniteQueryOptions: () => ({
+			queryKey: ["test", "projects", "lookup"],
+			queryFn: mocks.listProjectsMock,
+			initialPageParam: 1,
+			getNextPageParam: (lastPage: {
+				page: number;
+				page_size: number;
+				total: number;
+			}) =>
+				lastPage.page * lastPage.page_size < lastPage.total
+					? lastPage.page + 1
+					: undefined,
 		}),
 		taskStatusesQueryOptions: (projectId: string) => ({
 			queryKey: ["test", "statuses", projectId],
@@ -145,6 +157,8 @@ function renderWidget() {
 beforeEach(() => {
 	mocks.navigateMock.mockReset();
 	mocks.listAssignedTasksMock.mockReset();
+	mocks.listProjectsMock.mockReset();
+	mocks.listProjectsMock.mockResolvedValue(defaultProjectsPage);
 });
 
 describe("AssignedTasksList", () => {
@@ -234,5 +248,51 @@ describe("AssignedTasksList", () => {
 		expect(
 			screen.queryByRole("button", { name: "Load more" }),
 		).not.toBeInTheDocument();
+	});
+
+	it("does not retry the background project drain after a page fetch fails", async () => {
+		mocks.listAssignedTasksMock.mockResolvedValue({
+			items: [
+				makeTask({ id: "task-a1", project_id: "proj-a", title: "A task" }),
+			],
+			page_size: 10,
+			next_cursor: null,
+		});
+		let calls = 0;
+		mocks.listProjectsMock.mockImplementation(async () => {
+			calls += 1;
+			if (calls === 1) {
+				// One project loaded, two more still to come (hasNextPage stays
+				// true after this — it's derived from this page, not the failed
+				// one below).
+				return {
+					items: [defaultProjectsPage.items[0]],
+					total: 3,
+					page: 1,
+					page_size: 1,
+				};
+			}
+			throw new Error("network error");
+		});
+
+		renderWidget();
+		await screen.findByText("A task");
+
+		// First page succeeds (call 1), the background drain's one attempt at
+		// the next page fails (call 2).
+		await waitFor(() => {
+			expect(calls).toBe(2);
+		});
+
+		// hasNextPage stays true after a failed fetchNextPage — it's derived
+		// from the last *successful* page, not the failed one — so without
+		// the isFetchNextPageError guard the drain effect fires again as soon
+		// as isFetchingNextPage next flips back to false. Give any such
+		// pending re-render a real chance to land before asserting it didn't:
+		// a 3rd call would show up well within this window if the guard were
+		// missing (confirmed by temporarily removing it while writing this
+		// test).
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		expect(calls).toBe(2);
 	});
 });

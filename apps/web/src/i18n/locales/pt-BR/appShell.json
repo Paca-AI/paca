@@ -35,7 +35,8 @@
 		"projects": "Projetos",
 		"yourProjects": "Seus Projetos",
 		"noProjectsYet": "Nenhum projeto ainda",
-		"newProject": "Novo projeto"
+		"newProject": "Novo projeto",
+		"loadingMore": "Carregando mais…"
 	},
 	"interactions": {
 		"title": "Interações",

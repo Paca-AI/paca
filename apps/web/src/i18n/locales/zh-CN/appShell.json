@@ -35,7 +35,8 @@
 		"projects": "项目",
 		"yourProjects": "我的项目",
 		"noProjectsYet": "暂无项目",
-		"newProject": "新建项目"
+		"newProject": "新建项目",
+		"loadingMore": "正在加载…"
 	},
 	"interactions": {
 		"title": "互动",
