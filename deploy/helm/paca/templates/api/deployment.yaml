@@ -71,6 +71,18 @@ spec:
               value: {{ .Values.storage.region | quote }}
             - name: STORAGE_BUCKET
               value: {{ .Values.storage.bucket | quote }}
+            {{- if .Values.rustfs.enabled }}
+            - name: STORAGE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.rustfsSecretName" . }}
+                  key: RUSTFS_ACCESS_KEY
+            - name: STORAGE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.rustfsSecretName" . }}
+                  key: RUSTFS_SECRET_KEY
+            {{- else }}
             - name: STORAGE_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
@@ -81,6 +93,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "paca.secretName" . }}
                   key: STORAGE_SECRET_ACCESS_KEY
+            {{- end }}
             - name: STORAGE_USE_SSL
               value: {{ .Values.storage.useSSL | quote }}
             - name: ENCRYPTION_KEY

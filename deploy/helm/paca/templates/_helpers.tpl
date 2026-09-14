@@ -86,11 +86,63 @@ hand-rolling its own copy that could drift.
 {{- end -}}
 {{- end -}}
 
+{{/*
+The bundled rustfs dependency's own "rustfs.fullname" helper, replicated
+here verbatim (see
+https://github.com/rustfs/rustfs/blob/main/helm/rustfs/templates/_helpers.tpl).
+This isn't a guess: Helm never templates values.yaml, so a subchart's own
+computed resource names can't be threaded back up through values — the only
+way a parent chart's templates can address a dependency's resources by name
+is to recompute the same name from the same inputs (.Release.Name and the
+dependency's own override values, both equally visible here and in the
+subchart). Keep this in sync if that upstream helper ever changes shape —
+`helm template` catches drift immediately since the predicted Service/Secret
+name would stop matching what the subchart actually renders.
+*/}}
+{{- define "paca.rustfsFullname" -}}
+{{- if .Values.rustfs.fullnameOverride -}}
+{{- .Values.rustfs.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else if contains "rustfs" .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-rustfs" .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+In-cluster address of the bundled rustfs dependency's own Service (named
+"<rustfs.fullname>-svc" by that chart's templates/service.yaml, unconditionally
+— i.e. regardless of mode.standalone vs mode.distributed).
+*/}}
+{{- define "paca.rustfsEndpoint" -}}
+{{- printf "%s-svc:%v" (include "paca.rustfsFullname" .) (.Values.rustfs.service.endpoint.port | default 9000) -}}
+{{- end -}}
+
+{{/*
+Secret holding the bundled rustfs dependency's own access/secret key —
+either that chart's own generated Secret (mirroring its "rustfs.secretName"
+helper the same way paca.rustfsFullname mirrors "rustfs.fullname" above), or
+rustfs.secret.existingSecret verbatim when the operator brought their own.
+Either way the keys are RUSTFS_ACCESS_KEY/RUSTFS_SECRET_KEY — that chart's
+own envFrom expects those exact names, so api/deployment.yaml reads the same
+two keys from here instead of paca's own Secret, keeping the bundled
+instance's credentials at a single source of truth
+(rustfs.secret.rustfs.access_key/secret_key) instead of asking the operator
+to enter the same value twice.
+*/}}
+{{- define "paca.rustfsSecretName" -}}
+{{- if .Values.rustfs.secret.existingSecret -}}
+{{- .Values.rustfs.secret.existingSecret -}}
+{{- else -}}
+{{- printf "%s-secret" (include "paca.rustfsFullname" .) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "paca.storageEndpoint" -}}
 {{- if .Values.storage.endpoint -}}
 {{- .Values.storage.endpoint -}}
 {{- else if .Values.rustfs.enabled -}}
-{{- printf "%s-rustfs:9000" (include "paca.fullname" .) -}}
+{{- include "paca.rustfsEndpoint" . -}}
 {{- else -}}
 {{- required "storage.endpoint is required when rustfs.enabled is false (e.g. s3.amazonaws.com, or a region-specific S3 endpoint)" .Values.storage.endpoint -}}
 {{- end -}}

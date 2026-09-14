@@ -382,6 +382,18 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
+      # Chart.yaml declares rustfs (https://charts.rustfs.com) as a real
+      # dependency (see that file's own comment) — fetches it into
+      # deploy/helm/paca/charts/ so lint/package below render/bundle it
+      # instead of silently skipping it. `update` (not `build`) deliberately:
+      # `build` needs the repo already registered via `helm repo add`, which
+      # a CI runner (and a fresh contributor checkout) doesn't have, while
+      # `update` resolves an unregistered repo URL straight from Chart.yaml.
+      # Chart.yaml pins an exact version, so there's no re-resolution risk
+      # from not using the committed Chart.lock's digest here.
+      - name: Fetch chart dependencies
+        run: helm dependency update deploy/helm/paca
+
       - name: Lint chart
         run: helm lint deploy/helm/paca
 

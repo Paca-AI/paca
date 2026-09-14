@@ -44,6 +44,9 @@ secrets:
   internalApiKey: ""
   agentApiKey: ""
   postgresPassword: ""
+  # Only read when rustfs.enabled is false (external S3) — the bundled
+  # RustFS's own credentials live under rustfs.secret.rustfs.* instead, see
+  # that section's doc comment for why the two aren't unified into one.
   storageAccessKeyId: ""
   storageSecretAccessKey: ""
 
@@ -98,15 +101,68 @@ externalRedisUrl: ""
 # ---------------------------------------------------------------------------
 # RustFS (S3-compatible object storage, bundled)
 # ---------------------------------------------------------------------------
+# This is the upstream https://artifacthub.io/packages/helm/rustfs/rustfs
+# chart as a real dependency (see Chart.yaml), not a hand-rolled template —
+# every field below is that chart's own schema, passed straight through.
+# Anything not overridden here keeps upstream's own default; see
+# `helm show values` below for the full set this chart doesn't surface.
+#
+#   helm dependency update deploy/helm/paca   # fetches charts/rustfs-*.tgz
+#   helm show values deploy/helm/paca/charts/rustfs-*.tgz
+#
+# Several of upstream's own defaults are deliberately overridden below
+# because they don't fit a single bundled instance mirroring
+# docker-compose.prod.yml's own single-container rustfs service:
+#   - mode.distributed (4-node erasure-coded cluster) -> mode.standalone
+#     (one Deployment replica)
+#   - ingress.enabled: true -> false (this chart's own gateway is what
+#     fronts "/storage" externally — see templates/gateway — a second,
+#     direct Ingress to RustFS at upstream's default host
+#     "example.rustfs.com" is not wanted)
+#   - config.rustfs.obs_log_directory: "/logs" -> "" (upstream provisions a
+#     second PVC for file-based logs; compose's rustfs service, like every
+#     other component in this chart, just logs to stdout)
 rustfs:
   enabled: true
+  mode:
+    standalone:
+      enabled: true
+    distributed:
+      enabled: false
+  replicaCount: 1
   image:
-    repository: rustfs/rustfs
-    tag: "1.0.0-rc.6"
-  persistence:
-    enabled: true
-    size: 20Gi
-    storageClassName: ""
+    rustfs:
+      repository: rustfs/rustfs
+      # Left empty on purpose — falls back to this dependency's own
+      # appVersion, which Chart.yaml's "dependencies[].version" pins. See
+      # that field's own doc comment for why.
+      tag: ""
+  config:
+    rustfs:
+      obs_log_directory: ""
+      obs_environment: "production"
+  # Credentials for the bundled instance only — used to authenticate the
+  # `api` Pod against it (see paca.rustfsSecretName in _helpers.tpl). Same
+  # "no guessable default, fail loudly" policy as the `secrets` block above:
+  # upstream's own chart refuses to render unless both are set (or
+  # secret.existingSecret names a Secret you manage yourself instead).
+  # Unrelated to secrets.storageAccessKeyId/storageSecretAccessKey below,
+  # which only matter when rustfs.enabled is false.
+  secret:
+    existingSecret: ""
+    rustfs:
+      access_key: ""
+      secret_key: ""
+  storageclass:
+    name: ""
+    dataStorageSize: 20Gi
+  service:
+    endpoint:
+      port: 9000
+    console:
+      port: 9001
+  ingress:
+    enabled: false
   resources:
     requests:
       cpu: 100m
@@ -116,7 +172,7 @@ rustfs:
 
 storage:
   # rustfs | s3 — set s3 with real AWS credentials (storageAccessKeyId/
-  # storageSecretAccessKey above) and rustfs.enabled: false to use S3
+  # storageSecretAccessKey below) and rustfs.enabled: false to use S3
   # instead of the bundled RustFS, mirroring compose's `--scale rustfs=0`.
   provider: rustfs
   # Empty defaults to the bundled RustFS's in-cluster Service address.
