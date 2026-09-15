@@ -1,5 +1,7 @@
 import {
 	Check,
+	ChevronLeft,
+	ChevronRight,
 	GripVertical,
 	Layers,
 	Link,
@@ -23,6 +25,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
 	customFieldBadgeStyle,
 	getCustomFieldOptionColor,
@@ -107,6 +110,7 @@ export function TaskCard({
 	onMoveRight,
 }: TaskCardProps) {
 	const { t } = useTranslation("projects");
+	const isMobile = useIsMobile();
 	const [isHovered, setIsHovered] = useState(false);
 	const [typePopoverOpen, setTypePopoverOpen] = useState(false);
 	const [epicOpen, setEpicOpen] = useState(false);
@@ -816,6 +820,39 @@ export function TaskCard({
 			{fieldChips.length > 0 && (
 				<div className="mt-2 flex flex-wrap items-center gap-1.5">
 					{fieldChips}
+				</div>
+			)}
+
+			{/* Touch devices can't drag-and-drop (native HTML5 DnD doesn't fire
+			 * from touch input), so this is the only way to move a card between
+			 * columns on mobile — shown unconditionally rather than behind
+			 * group-hover, which touch has no equivalent of. */}
+			{isMobile && (onMoveLeft || onMoveRight) && (
+				<div className="nodrag mt-2 flex items-center justify-end gap-1.5 border-t border-border/20 pt-2">
+					<button
+						type="button"
+						disabled={!onMoveLeft}
+						onClick={(e) => {
+							e.stopPropagation();
+							onMoveLeft?.();
+						}}
+						aria-label={t("board.taskCard.moveLeft")}
+						className="flex size-7 items-center justify-center rounded-md border border-border/40 text-muted-foreground disabled:opacity-30"
+					>
+						<ChevronLeft className="size-3.5" />
+					</button>
+					<button
+						type="button"
+						disabled={!onMoveRight}
+						onClick={(e) => {
+							e.stopPropagation();
+							onMoveRight?.();
+						}}
+						aria-label={t("board.taskCard.moveRight")}
+						className="flex size-7 items-center justify-center rounded-md border border-border/40 text-muted-foreground disabled:opacity-30"
+					>
+						<ChevronRight className="size-3.5" />
+					</button>
 				</div>
 			)}
 		</div>

@@ -1524,7 +1524,9 @@
 			"reporterTitle": "Автор",
 			"epicLabel": "Эпик",
 			"noEpic": "Без эпика",
-			"storyPointsTitle": "Story Points"
+			"storyPointsTitle": "Story Points",
+			"moveLeft": "Переместить в предыдущий столбец",
+			"moveRight": "Переместить в следующий столбец"
 		},
 		"taskContextMenu": {
 			"open": "Открыть задачу",
@@ -1583,6 +1585,7 @@
 		}
 	},
 	"conversationsPage": {
+		"back": "Назад",
 		"title": "Диалоги",
 		"triggerChat": "Чат",
 		"triggerWriteDescription": "Написать описание",

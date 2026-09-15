@@ -31,6 +31,26 @@ beforeAll(() => {
 		configurable: true,
 		value: createStorageMock(),
 	});
+	// jsdom has no matchMedia implementation — any component that calls it
+	// (useIsMobile, useThemeMode's prefers-color-scheme check, …) throws
+	// "window.matchMedia is not a function" as soon as it mounts in a test
+	// otherwise. Defaults every query to "no match" (desktop, light);
+	// `configurable: true` so a test that needs specific results —
+	// ThemeToggle.test.tsx's own mockMatchMedia — can still override it.
+	Object.defineProperty(window, "matchMedia", {
+		configurable: true,
+		writable: true,
+		value: (query: string) => ({
+			matches: false,
+			media: query,
+			onchange: null,
+			addListener: () => {},
+			removeListener: () => {},
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			dispatchEvent: () => false,
+		}),
+	});
 });
 
 beforeEach(() => {

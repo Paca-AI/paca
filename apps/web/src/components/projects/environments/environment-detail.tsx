@@ -1010,7 +1010,7 @@ function PortForwardsTab({
 					{forwards.map((pf) => (
 						<div
 							key={pf.id}
-							className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-4 py-3"
+							className="flex flex-col gap-3 rounded-lg border border-border/60 bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
 						>
 							<div className="flex items-center gap-3 min-w-0 flex-1">
 								<Network className="size-4 text-muted-foreground shrink-0" />
@@ -1036,7 +1036,7 @@ function PortForwardsTab({
 							<div className="flex items-center gap-2 shrink-0">
 								{pf.host_port !== null ? (
 									<>
-										<div className="w-80">
+										<div className="w-full sm:w-80">
 											<CommandBox
 												command={`${host ?? "<host>"}:${pf.host_port}`}
 											/>
@@ -1330,8 +1330,8 @@ export function EnvironmentDetailView({
 			</div>
 
 			{/* Tabs */}
-			<div className="border-b border-border/50 px-6 shrink-0">
-				<div className="flex items-center gap-1 -mb-px">
+			<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
+				<div className="flex items-center gap-1 -mb-px w-max min-w-full">
 					{TABS.map((tab) => {
 						const Icon = tab.icon;
 						const isActive = activeTab === tab.id;
@@ -1340,7 +1340,7 @@ export function EnvironmentDetailView({
 								key={tab.id}
 								type="button"
 								onClick={() => handleTabChange(tab.id)}
-								className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+								className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
 									isActive
 										? "border-primary text-primary"
 										: "border-transparent text-muted-foreground hover:text-foreground"

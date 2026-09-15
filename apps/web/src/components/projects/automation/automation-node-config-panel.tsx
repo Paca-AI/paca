@@ -857,7 +857,11 @@ function Panel({
 }) {
 	const { t } = useTranslation("projects");
 	return (
-		<div className="flex h-full w-80 shrink-0 flex-col border-l border-border/60 bg-card">
+		// Absolute overlay below `lg`, since the canvas has no room to spare
+		// beside a fixed-width panel at phone/tablet widths — the panel's
+		// `relative` positioning context is the wrapping div in
+		// automation/$automationId.tsx.
+		<div className="absolute inset-y-0 right-0 z-20 flex h-full w-[88vw] max-w-80 shrink-0 flex-col border-l border-border/60 bg-card shadow-xl lg:static lg:z-auto lg:w-80 lg:shadow-none">
 			<div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
 				<div>
 					<div className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">

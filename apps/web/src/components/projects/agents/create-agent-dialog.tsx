@@ -482,7 +482,7 @@ export function CreateAgentDialog({
 						    a project's Agents page instead of being silently omitted. */}
 						<div className="space-y-1.5">
 							<Label>{t("agents.createDialog.agentTypeLabel")}</Label>
-							<div className="grid grid-cols-3 gap-2">
+							<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
 								{(["llm", "provider_cli", "acp"] as const).map((type) => {
 									const isSelected = agentType === type;
 									const isDisabled = type === "provider_cli" && !projectId;
