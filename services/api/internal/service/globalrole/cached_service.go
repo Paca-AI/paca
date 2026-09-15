@@ -98,6 +98,13 @@ func (c *CachedService) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// FindByID delegates directly to the underlying service (not cached — a
+// single-role-by-ID lookup isn't the List cache's key shape, and this isn't
+// a hot enough path to warrant one of its own).
+func (c *CachedService) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	return c.svc.FindByID(ctx, id)
+}
+
 // ReplaceUserRoles delegates directly to the underlying service and invalidates the list cache.
 func (c *CachedService) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
 	rs, err := c.svc.ReplaceUserRoles(ctx, userID, roleIDs)

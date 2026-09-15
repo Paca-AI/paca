@@ -21,6 +21,7 @@ type mockGlobalRoleSvc struct {
 	update           func(ctx context.Context, id uuid.UUID, in globalroledom.UpdateInput) (*globalroledom.GlobalRole, error)
 	delete           func(ctx context.Context, id uuid.UUID) error
 	replaceUserRoles func(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) ([]*globalroledom.GlobalRole, error)
+	findByID         func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
 }
 
 func (m *mockGlobalRoleSvc) List(ctx context.Context) ([]*globalroledom.GlobalRole, error) {
@@ -56,6 +57,13 @@ func (m *mockGlobalRoleSvc) ReplaceUserRoles(ctx context.Context, userID uuid.UU
 		return m.replaceUserRoles(ctx, userID, roleIDs)
 	}
 	return []*globalroledom.GlobalRole{}, nil
+}
+
+func (m *mockGlobalRoleSvc) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	if m.findByID != nil {
+		return m.findByID(ctx, id)
+	}
+	return nil, globalroledom.ErrNotFound
 }
 
 func newGlobalRoleRouter(svc globalroledom.Service) chi.Router {

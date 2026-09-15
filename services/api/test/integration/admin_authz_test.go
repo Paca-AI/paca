@@ -59,6 +59,10 @@ func (s *fakeGlobalRoleService) ReplaceUserRoles(context.Context, uuid.UUID, []u
 	return []*globalroledom.GlobalRole{}, nil
 }
 
+func (s *fakeGlobalRoleService) FindByID(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) {
+	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "TEST", Permissions: map[string]any{}}, nil
+}
+
 func buildAdminTestRouter(perms []authz.Permission) http.Handler {
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	store := &fakeRefreshStore{}

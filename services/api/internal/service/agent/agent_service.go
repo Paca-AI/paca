@@ -20,6 +20,7 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/events"
@@ -40,6 +41,14 @@ type projectMemberWriter interface {
 // pluginFinder is the minimal interface to find VCS plugins.
 type pluginFinder interface {
 	FindByCapability(ctx context.Context, capability string) ([]*plugindom.Plugin, error)
+}
+
+// globalRoleFinder validates a caller-supplied global_role_id before it's
+// bound to a global agent — see CreateGlobalAgent/UpdateGlobalAgent's
+// FindByID checks. Global roles have no project-ownership dimension the way
+// project roles do; existence is the whole check.
+type globalRoleFinder interface {
+	FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
 }
 
 // defaultParallelismLimit/parallelismLimitCap clamp Agent.ParallelismLimit
@@ -78,6 +87,16 @@ type Service struct {
 	// constructs a bare Service with no authorizer. Production wiring
 	// (bootstrap/app.go) always configures one via WithAuthorizer.
 	authorizer *authz.Authorizer
+	// globalRoleSvc backs CreateGlobalAgent/UpdateGlobalAgent's validation
+	// that a caller-supplied global_role_id actually names an existing
+	// global role (GHSA-xxc8-ggm7-vmxp's same root cause, applied to global
+	// agents). Nil is a valid, supported configuration (same convention as
+	// environmentSvc/authorizer above): the check is skipped rather than
+	// failing closed. Production wiring (bootstrap/app.go) always configures
+	// one via WithGlobalRoleService — the real security boundary here is the
+	// handler-layer global_roles.assign permission gate (agent_handler.go),
+	// not this existence check, so skipping it when unwired is safe.
+	globalRoleSvc globalRoleFinder
 }
 
 // New returns a configured agent service.
@@ -101,6 +120,13 @@ func (s *Service) WithAvatarService(svc attachmentdom.AvatarService) *Service {
 // environmentSvc field's doc comment for what it's used for.
 func (s *Service) WithEnvironmentService(svc environmentdom.Service) *Service {
 	s.environmentSvc = svc
+	return s
+}
+
+// WithGlobalRoleService wires in the global role lookup used to validate
+// global_role_id — see the globalRoleSvc field's doc comment.
+func (s *Service) WithGlobalRoleService(svc globalRoleFinder) *Service {
+	s.globalRoleSvc = svc
 	return s
 }
 
@@ -727,6 +753,17 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 		return nil, err
 	}
 
+	// A caller-supplied global_role_id must actually name an existing
+	// global role before it's bound to the new agent — see globalRoleSvc's
+	// doc comment (GHSA-xxc8-ggm7-vmxp). Whether the caller is even allowed
+	// to set one at all is enforced earlier, at the HTTP layer (see
+	// AgentHandler.CreateGlobalAgent's global_roles.assign check).
+	if in.GlobalRoleID != nil && s.globalRoleSvc != nil {
+		if _, err := s.globalRoleSvc.FindByID(ctx, *in.GlobalRoleID); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := s.repo.CreateGlobalAgent(ctx, a); err != nil {
 		return nil, fmt.Errorf("create global agent: %w", err)
 	}
@@ -844,6 +881,14 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 		if *in.GlobalRoleID == uuid.Nil {
 			a.GlobalRoleID = nil
 		} else {
+			// See CreateGlobalAgent's identical check for why
+			// (GHSA-xxc8-ggm7-vmxp) — clearing the role (above) needs no
+			// lookup, only binding to a new one does.
+			if s.globalRoleSvc != nil {
+				if _, err := s.globalRoleSvc.FindByID(ctx, *in.GlobalRoleID); err != nil {
+					return nil, err
+				}
+			}
 			a.GlobalRoleID = in.GlobalRoleID
 		}
 	}
