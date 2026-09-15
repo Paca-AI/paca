@@ -5,39 +5,51 @@
 # sandbox image in this directory and the one every deployment surface
 # (dev/prod/e2e compose, CD) actually builds and publishes.
 #
-# Pinned by DIGEST to the ghcr.io/aaif-goose/goose:1.46.0 release tag's own
-# manifest — this now DOES correspond to a real git tag/changelog entry
-# (github.com/aaif-goose/goose's v1.46.0 release, 2026-08-12), unlike the
-# previous pin. Two things changed since that previous pin was chosen, both
-# confirmed directly rather than assumed:
-#   - The GitHub org this was published under was renamed block -> aaif-goose
-#     sometime after the previous digest was published (same repo ID,
-#     confirmed via the GitHub API — `repos/block/goose` now redirects to
-#     `aaif-goose/goose`). ghcr.io does NOT rename container packages when a
-#     GitHub org renames, so ghcr.io/block/goose's `main`/`latest` tags are
-#     now permanently frozen at whatever they were just before the rename —
-#     any future rotation must pull from ghcr.io/aaif-goose/goose instead.
-#   - That renamed path publishes proper semver release tags now (confirmed:
-#     ghcr.io/aaif-goose/goose:1.46.0 exists and resolves to this digest),
-#     not just floating `main`/`main-<shortsha>` CI builds — so this pin
-#     could in principle track a tag instead of a bare digest, but stays
-#     digest-pinned for the same full-immutability reason as before (a tag
-#     can be force-moved upstream; a digest can't).
+# Pinned by DIGEST to the ghcr.io/aaif-goose/goose:1.50.1 release tag's own
+# manifest (bumped from 1.46.0, 2026-09-15) — the latest stable release as of
+# this writing, confirmed live via the GitHub API
+# (api.github.com/repos/aaif-goose/goose/releases/latest -> tag v1.50.1,
+# published 2026-09-14) rather than assumed. 1.50.1 is a same-day patch on
+# 1.50.0 ("Revert model updates for patch release" / "Roll back MCP default
+# version selection update" — per that release's own changelog); pinning
+# 1.50.1 rather than 1.50.0 means this image already reflects that revert,
+# not a stale pre-revert state.
 #
-# The previous pin (goose 1.30.0, built 2026-04-06) was replaced because it
-# predates Goose's own "skills" feature entirely — confirmed by grepping
-# that image's `goose` binary for the string `load_skill`: zero matches,
-# vs. 8 in this one. crates/goose/src/skills/mod.rs wasn't added upstream
-# until 2026-04-23, about 2.5 weeks after that old digest was built. Paca's
-# own bundled `paca` skill (services/api/internal/platform/bundledskills.go)
-# now routes specialized skills through Goose's `load_skill` tool, which
-# does not exist below this version.
+# The digest itself was resolved from the registry directly, not guessed:
+# `ghcr.io/v2/aaif-goose/goose/manifests/1.50.1` (both the `1.50.1` and
+# `v1.50.1` tag spellings resolve identically) returned this OCI image
+# index's Docker-Content-Digest, and the image was then pulled and run
+# end-to-end against that exact digest — `goose --version` reports 1.50.1,
+# `goose acp --help` still runs (the ACP server subcommand Paca launches via
+# apps/acp-bridge's provider registry), and grepping the binary for
+# `load_skill` still finds 8 matches, same count as the 1.46.0 image this
+# replaces — Paca's bundled `paca` skill
+# (services/api/internal/platform/bundledskills.go) keeps working.
+#
+# The E2E suite's raw-upstream-image subset (needs only this digest, no
+# Node/MCP build) was actually run against it, not just this Dockerfile's
+# usual instruction to do so: `PACA_E2E=1 go test ./test/e2e/... -run
+# 'TestACPClientAgainstRealGooseContainer|TestSandboxManagerLifecycle'`
+# (2026-09-15) — both passed, exercising the real acp.Client handshake
+# (types.go's agentCapabilities.loadSession check included) and
+# docker.Manager's container lifecycle against this exact digest, not a
+# manual curl probe alone. NOT run: the Node/MCP-enabled agentServerImage
+# tests (need a full `docker build` of this file) and the dind-sidecar
+# tests (privileged, and orthogonal to which Goose image is pinned) — CI's
+# test-e2e job covers those; let it run before merging.
+#
+# Provider surface changed enough between 1.46.0 and 1.50.1 to need a
+# separate model-list correction, not just this digest bump — see
+# internal/executor/provider.go's providerAPIKeyEnvVar/gooseProviderID
+# doc comments and data/llm_models.json (both updated alongside this pin,
+# 2026-09-15) for what was cross-checked directly against this version's
+# own crates/goose-providers source rather than carried over unverified.
 #
 # When rotating this digest again, run the full E2E suite
 # (services/agent-runner/test/e2e, PACA_E2E=1) against the new one before
 # changing it here — the ACP wire format and container behavior were only
 # ever verified against this specific digest.
-FROM ghcr.io/aaif-goose/goose@sha256:3c961bac6e4dcdb61a35f9ded3fe9a81fba33107dd804c611ebac862f5d72b46
+FROM ghcr.io/aaif-goose/goose@sha256:90ed80a60e11ad23b462b455c8541b3dfca48eba0a34f12b4f124f1fd1c91ec3
 
 # The base image has no Node.js at all (confirmed directly: `node`/`npm` are
 # both "not found") — needed because the Paca MCP server executor.go spawns

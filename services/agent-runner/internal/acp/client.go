@@ -258,14 +258,18 @@ func (c *Client) NewSession(ctx context.Context, cwd string, mcpServers []MCPSer
 // Requires goose to have advertised initialize's agentCapabilities.
 // loadSession as true (it does, as of goose 1.46.0 — verified directly
 // against a real goose serve instance, not assumed from the ACP spec
-// alone) — checked explicitly here rather than just letting a
-// non-supporting agent's session/load response come back some
-// unpredictable way.
+// alone; re-confirmed live against goose 1.50.1 on 2026-09-15, see
+// types.go's package doc comment) — checked explicitly here rather than
+// just letting a non-supporting agent's session/load response come back
+// some unpredictable way.
 //
-// Per the ACP spec (and verified the same way, including that it works
-// from a *different* connection than the one that originally created the
-// session — the expected shape here, since every turn builds a fresh
-// Client/connection), the Agent replays the session's entire history as
+// Per the ACP spec (and verified the same way against 1.46.0 — not
+// independently re-exercised on 1.50.1, which only re-checked initialize's
+// capability flag above, not this deeper replay behavior — see types.go's
+// doc comment), including that it works from a *different* connection than
+// the one that originally created the session — the expected shape here,
+// since every turn builds a fresh Client/connection — the Agent replays
+// the session's entire history as
 // session/update notifications on the session-scoped stream before
 // responding on that same stream — never the connection-scoped one, unlike
 // session/new's response (there is no session-scoped stream yet at that

@@ -58,6 +58,65 @@ func TestResolveProviderEnv_MistralResolvesToItself(t *testing.T) {
 	}
 }
 
+// TestResolveProviderEnv_AliasedToDifferentGooseProviderID covers the
+// providers added alongside the Goose 1.46.0 -> 1.50.1 bump (2026-09-15)
+// whose Goose-registered id differs from Paca's own pre-existing
+// llm_provider value — verified directly against aaif-goose/goose v1.50.1's
+// declarative provider definitions (declarative/definitions/*.json), same
+// as the gemini/deepseek cases above. Paca's own value is kept unchanged in
+// each case (not renamed to match Goose) so an already-configured agent's
+// stored llm_provider keeps resolving correctly.
+func TestResolveProviderEnv_AliasedToDifferentGooseProviderID(t *testing.T) {
+	cases := []struct {
+		llmProvider  string
+		wantProvider string
+		wantEnvVar   string
+	}{
+		{"fireworks_ai", "fireworks-ai", "FIREWORKS_API_KEY"},
+		{"friendliai", "friendli", "FRIENDLI_API_KEY"},
+		{"together_ai", "together", "TOGETHER_API_KEY"},
+		{"nvidia_nim", "nvidia", "NVIDIA_API_KEY"},
+		{"dashscope", "alibaba", "DASHSCOPE_API_KEY"},
+		{"aiml", "aimlapi", "AIMLAPI_API_KEY"},
+	}
+	for _, c := range cases {
+		provider, envVar := resolveProviderEnv(c.llmProvider)
+		if provider != c.wantProvider || envVar != c.wantEnvVar {
+			t.Errorf("resolveProviderEnv(%q) = (%q, %q), want (%q, %q)",
+				c.llmProvider, provider, envVar, c.wantProvider, c.wantEnvVar)
+		}
+	}
+}
+
+// TestResolveProviderEnv_NewDirectProvidersResolveToThemselves covers
+// providers added alongside the same 1.50.1 bump whose Goose-registered id
+// already matches Paca's llm_provider value verbatim, so no gooseProviderID
+// alias is needed — a mirror of TestResolveProviderEnv_MistralResolvesToItself
+// above, verified the same way against declarative/definitions/*.json.
+func TestResolveProviderEnv_NewDirectProvidersResolveToThemselves(t *testing.T) {
+	cases := []struct {
+		llmProvider string
+		wantEnvVar  string
+	}{
+		{"cerebras", "CEREBRAS_API_KEY"},
+		{"moonshot", "MOONSHOT_API_KEY"},
+		{"minimax", "MINIMAX_API_KEY"},
+		{"novita", "NOVITA_API_KEY"},
+		{"ovhcloud", "OVHCLOUD_API_KEY"},
+		{"perplexity", "PERPLEXITY_API_KEY"},
+		{"inception", "INCEPTION_API_KEY"},
+		{"vercel_ai_gateway", "AI_GATEWAY_API_KEY"},
+		{"zai", "ZHIPU_API_KEY"},
+	}
+	for _, c := range cases {
+		provider, envVar := resolveProviderEnv(c.llmProvider)
+		if provider != c.llmProvider || envVar != c.wantEnvVar {
+			t.Errorf("resolveProviderEnv(%q) = (%q, %q), want (%q, %q)",
+				c.llmProvider, provider, envVar, c.llmProvider, c.wantEnvVar)
+		}
+	}
+}
+
 // TestResolveCLIProviderEnv_SetsISSandbox is a regression test for a live
 // incident: GOOSE_MODE=auto makes Goose's claude-code provider spawn
 // `claude` with --dangerously-skip-permissions (see
