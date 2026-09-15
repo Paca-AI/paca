@@ -148,3 +148,125 @@ func TestDeleteDocFile_OwnProject_PassesOwnershipCheck(t *testing.T) {
 		t.Fatalf("same-project delete must not be rejected by the ownership check, got %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Service.InitiateDocUpload / Service.CompleteDocUpload (GHSA-mx24-j477-c5cm)
+// ---------------------------------------------------------------------------
+
+// newDocUploadTestService wires a Service around an empty file repo, plus a
+// real docOwnerChecker backed by docRepo, for exercising the
+// InitiateDocUpload/CompleteDocUpload project-ownership gate end to end.
+func newDocUploadTestService(docRepo *fakeDocRepoForChecker) (svc *Service, repo *fakeRepo) {
+	repo = &fakeRepo{
+		files:       map[uuid.UUID]*attachmentdom.File{},
+		attachments: map[uuid.UUID]*attachmentdom.TaskAttachment{},
+	}
+	store := &fakeStore{}
+	svc = New(repo, fakeTaskChecker{}, NewDocOwnerChecker(docRepo), store, "test-bucket")
+	return svc, repo
+}
+
+func TestInitiateDocUpload_WrongProject_ReturnsNotFound(t *testing.T) {
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+	docID := uuid.New()
+	docRepo := &fakeDocRepoForChecker{docs: map[uuid.UUID]*docdom.Document{
+		docID: {ID: docID, ProjectID: ownerProjectID},
+	}}
+	svc, repo := newDocUploadTestService(docRepo)
+
+	_, err := svc.InitiateDocUpload(context.Background(), attackerProjectID, attachmentdom.DocUploadInput{
+		DocID:       docID,
+		FileName:    "file.txt",
+		ContentType: "text/plain",
+		FileSize:    5,
+		UploadedBy:  uuid.New(),
+	})
+	if !errors.Is(err, attachmentdom.ErrDocNotInProject) {
+		t.Fatalf("expected ErrDocNotInProject for cross-project upload, got %v", err)
+	}
+	if len(repo.files) != 0 {
+		t.Errorf("file must not be created by a rejected cross-project request, got %d file(s)", len(repo.files))
+	}
+}
+
+func TestInitiateDocUpload_OwnProject_PassesOwnershipCheck(t *testing.T) {
+	ownerProjectID := uuid.New()
+	docID := uuid.New()
+	docRepo := &fakeDocRepoForChecker{docs: map[uuid.UUID]*docdom.Document{
+		docID: {ID: docID, ProjectID: ownerProjectID},
+	}}
+	svc, _ := newDocUploadTestService(docRepo)
+
+	// fakeStore.PresignPutObject is an unimplemented stub, so this can't
+	// return a real session — the point is that the request gets past the
+	// project-ownership gate instead of being rejected by it.
+	_, err := svc.InitiateDocUpload(context.Background(), ownerProjectID, attachmentdom.DocUploadInput{
+		DocID:       docID,
+		FileName:    "file.txt",
+		ContentType: "text/plain",
+		FileSize:    5,
+		UploadedBy:  uuid.New(),
+	})
+	if errors.Is(err, attachmentdom.ErrDocNotInProject) {
+		t.Fatalf("same-project upload must not be rejected by the ownership check, got %v", err)
+	}
+}
+
+func TestCompleteDocUpload_WrongProject_ReturnsNotFound(t *testing.T) {
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+	docID := uuid.New()
+	fileID := uuid.New()
+	docRepo := &fakeDocRepoForChecker{docs: map[uuid.UUID]*docdom.Document{
+		docID: {ID: docID, ProjectID: ownerProjectID},
+	}}
+	svc, repo := newDocUploadTestService(docRepo)
+	repo.files[fileID] = &attachmentdom.File{
+		ID:           fileID,
+		StorageKey:   "docs/" + docID.String() + "/" + fileID.String() + "/file.txt",
+		Bucket:       "test-bucket",
+		FileName:     "file.txt",
+		ContentType:  "text/plain",
+		FileSize:     5,
+		UploadStatus: attachmentdom.UploadStatusPending,
+	}
+
+	_, err := svc.CompleteDocUpload(context.Background(), attackerProjectID, attachmentdom.DocCompleteUploadInput{
+		FileID: fileID,
+		DocID:  docID,
+	})
+	if !errors.Is(err, attachmentdom.ErrDocNotInProject) {
+		t.Fatalf("expected ErrDocNotInProject for cross-project complete-upload, got %v", err)
+	}
+	if repo.files[fileID].UploadStatus != attachmentdom.UploadStatusPending {
+		t.Errorf("file status must not change on a rejected cross-project request, got %v", repo.files[fileID].UploadStatus)
+	}
+}
+
+func TestCompleteDocUpload_OwnProject_PassesOwnershipCheck(t *testing.T) {
+	ownerProjectID := uuid.New()
+	docID := uuid.New()
+	fileID := uuid.New()
+	docRepo := &fakeDocRepoForChecker{docs: map[uuid.UUID]*docdom.Document{
+		docID: {ID: docID, ProjectID: ownerProjectID},
+	}}
+	svc, repo := newDocUploadTestService(docRepo)
+	repo.files[fileID] = &attachmentdom.File{
+		ID:           fileID,
+		StorageKey:   "docs/" + docID.String() + "/" + fileID.String() + "/file.txt",
+		Bucket:       "test-bucket",
+		FileName:     "file.txt",
+		ContentType:  "text/plain",
+		FileSize:     5,
+		UploadStatus: attachmentdom.UploadStatusPending,
+	}
+
+	_, err := svc.CompleteDocUpload(context.Background(), ownerProjectID, attachmentdom.DocCompleteUploadInput{
+		FileID: fileID,
+		DocID:  docID,
+	})
+	if errors.Is(err, attachmentdom.ErrDocNotInProject) {
+		t.Fatalf("same-project complete-upload must not be rejected by the ownership check, got %v", err)
+	}
+}

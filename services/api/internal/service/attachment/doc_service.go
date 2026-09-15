@@ -14,8 +14,12 @@ import (
 
 // InitiateDocUpload creates a pending File record for a document and returns a
 // presigned upload session.  The storage key is organised under docs/{docId}/
-// to keep document files separate from task files.
-func (s *Service) InitiateDocUpload(ctx context.Context, in attachmentdom.DocUploadInput) (*attachmentdom.UploadSession, error) {
+// to keep document files separate from task files. Verifies in.DocID belongs
+// to projectID before proceeding.
+func (s *Service) InitiateDocUpload(ctx context.Context, projectID uuid.UUID, in attachmentdom.DocUploadInput) (*attachmentdom.UploadSession, error) {
+	if err := s.docChecker.DocBelongsToProject(ctx, projectID, in.DocID); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(in.FileName) == "" {
 		return nil, attachmentdom.ErrFileNameEmpty
 	}
@@ -71,8 +75,13 @@ func (s *Service) InitiateDocUpload(ctx context.Context, in attachmentdom.DocUpl
 	return session, nil
 }
 
-// CompleteDocUpload marks the file as uploaded and returns the updated file record.
-func (s *Service) CompleteDocUpload(ctx context.Context, in attachmentdom.DocCompleteUploadInput) (*attachmentdom.File, error) {
+// CompleteDocUpload marks the file as uploaded and returns the updated file
+// record. Verifies in.DocID belongs to projectID before proceeding.
+func (s *Service) CompleteDocUpload(ctx context.Context, projectID uuid.UUID, in attachmentdom.DocCompleteUploadInput) (*attachmentdom.File, error) {
+	if err := s.docChecker.DocBelongsToProject(ctx, projectID, in.DocID); err != nil {
+		return nil, err
+	}
+
 	f, err := s.repo.FindFileByID(ctx, in.FileID)
 	if err != nil {
 		return nil, err
