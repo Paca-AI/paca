@@ -55,8 +55,14 @@ import (
 // noopMemberCacheInvalidator satisfies agentsvc's projectMemberWriter
 // dependency without wiring a real members cache into the e2e harness — the
 // e2e suite doesn't exercise cache invalidation, only the agent CRUD /
-// ACP-bridge HTTP surface.
-type noopMemberCacheInvalidator struct{}
+// ACP-bridge HTTP surface. It embeds the real *projectsvc.Service (not the
+// caching decorator) so FindRoleByID — CreateAgent's project_role_id
+// ownership check, see GHSA-xxc8-ggm7-vmxp — still validates against real
+// project_roles rows; only InvalidateMembersCache, which the base Service
+// doesn't implement, is stubbed out.
+type noopMemberCacheInvalidator struct {
+	*projectsvc.Service
+}
 
 func (noopMemberCacheInvalidator) InvalidateMembersCache(context.Context, uuid.UUID) error {
 	return nil
@@ -230,7 +236,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	automationRepo := pgRepo.NewAutomationRepository(db)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	pluginRepoForAgent := pgRepo.NewPluginRepository(db)
-	agentService := agentsvc.New(agentRepo, noopMemberCacheInvalidator{}, publisher, pluginRepoForAgent)
+	agentService := agentsvc.New(agentRepo, noopMemberCacheInvalidator{Service: projectService}, publisher, pluginRepoForAgent)
 	var attachmentService *attachmentsvc.Service
 	if sharedStorageEndpoint != "" {
 		storageEndpoint := sharedStorageEndpoint

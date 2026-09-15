@@ -165,6 +165,9 @@ func (s *stubProjectSvc) UpdateRole(context.Context, uuid.UUID, uuid.UUID, proje
 	return nil, nil
 }
 func (s *stubProjectSvc) DeleteRole(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (s *stubProjectSvc) FindRoleByID(context.Context, uuid.UUID) (*projectdom.ProjectRole, error) {
+	return nil, projectdom.ErrRoleNotFound
+}
 
 // fakeSettingsSvc is a minimal settingsdom.Service — enough to exercise
 // routing/permission checks for the /admin/settings endpoints without a

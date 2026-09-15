@@ -353,3 +353,10 @@ func (c *CachedService) DeleteRole(ctx context.Context, projectID, roleID uuid.U
 	}
 	return nil
 }
+
+// FindRoleByID delegates directly to the underlying service (not cached — a
+// single-role-by-ID lookup isn't keyed by project the way the ListRoles
+// cache is, and this isn't a hot enough path to warrant one of its own).
+func (c *CachedService) FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+	return c.svc.FindRoleByID(ctx, id)
+}

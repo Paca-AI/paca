@@ -62,6 +62,7 @@ type stubProjectSvc struct {
 	createRole              func(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error)
 	updateRole              func(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error)
 	deleteRole              func(ctx context.Context, projectID, roleID uuid.UUID) error
+	findRoleByID            func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
 
 	getByIDCalls     int
 	listMembersCalls int
@@ -195,6 +196,13 @@ func (s *stubProjectSvc) DeleteRole(ctx context.Context, projectID, roleID uuid.
 		return s.deleteRole(ctx, projectID, roleID)
 	}
 	return nil
+}
+
+func (s *stubProjectSvc) FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+	if s.findRoleByID != nil {
+		return s.findRoleByID(ctx, id)
+	}
+	return nil, projectdom.ErrRoleNotFound
 }
 
 func (s *stubProjectSvc) AddAgentMember(_ context.Context, _, _, _, _ uuid.UUID) error { return nil }

@@ -750,7 +750,12 @@ func New(deps Deps) http.Handler {
 					r.Route("/agents", func(r chi.Router) {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
 							Get("/", deps.Agent.ListAgents)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+						// CreateAgent inserts a project_members row bound to a
+						// caller-supplied project_role_id, which is a
+						// membership-granting operation — so, like the sibling
+						// POST /members below, it requires project.members.write
+						// in addition to agents.write (GHSA-xxc8-ggm7-vmxp).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite, authz.PermissionProjectMembersWrite)).
 							Post("/", deps.Agent.CreateAgent)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
 							Get("/{agentId}", deps.Agent.GetAgent)

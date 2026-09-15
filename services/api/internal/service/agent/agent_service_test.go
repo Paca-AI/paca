@@ -15,6 +15,7 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
@@ -606,6 +607,7 @@ var _ agentdom.Repository = (*mockAgentRepo)(nil)
 type mockProjectRepo struct {
 	invalidateMembersCacheCalled bool
 	invalidatedProjectIDs        []uuid.UUID
+	findRoleByID                 func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
 }
 
 func (m *mockProjectRepo) InvalidateMembersCache(_ context.Context, projectID uuid.UUID) error {
@@ -614,7 +616,30 @@ func (m *mockProjectRepo) InvalidateMembersCache(_ context.Context, projectID uu
 	return nil
 }
 
+// FindRoleByID defaults to "not found" (rather than a role that happens to
+// validate) so that CreateAgent tests exercising unrelated failure paths
+// don't silently start depending on this mock's default role — tests whose
+// requests reach this check must configure findRoleByID explicitly, the same
+// convention mockAgentRepo.findChatSessionByID already uses above.
+func (m *mockProjectRepo) FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+	if m.findRoleByID != nil {
+		return m.findRoleByID(ctx, id)
+	}
+	return nil, projectdom.ErrRoleNotFound
+}
+
 var _ projectMemberWriter = (*mockProjectRepo)(nil)
+
+// projectRepoWithRole returns a mockProjectRepo whose FindRoleByID accepts
+// any role ID as belonging to projectID — the common case for CreateAgent
+// tests that aren't themselves exercising the role-ownership check.
+func projectRepoWithRole(projectID uuid.UUID) *mockProjectRepo {
+	return &mockProjectRepo{
+		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+			return &projectdom.ProjectRole{ID: id, ProjectID: &projectID}, nil
+		},
+	}
+}
 
 type mockPluginRepo struct {
 	findByName       func(ctx context.Context, name string) (*plugindom.Plugin, error)
@@ -795,7 +820,7 @@ func TestCreateAgent_Success(t *testing.T) {
 			return nil
 		},
 	}
-	projRepo := &mockProjectRepo{}
+	projRepo := projectRepoWithRole(projectID)
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
@@ -815,6 +840,80 @@ func TestCreateAgent_Success(t *testing.T) {
 	assert.Equal(t, "openai", result.LLMProvider)
 	assert.Equal(t, "gpt-4", result.LLMModel)
 	assert.True(t, projRepo.invalidateMembersCacheCalled)
+}
+
+// TestCreateAgent_RejectsRoleFromDifferentProject and
+// TestCreateAgent_RejectsGlobalTemplateRole guard against
+// GHSA-xxc8-ggm7-vmxp: CreateAgent grants project_role_id's permissions to
+// the new agent's membership, so — like AddMember/UpdateMemberRole* — it
+// must reject a role that doesn't concretely belong to the target project,
+// regardless of what permissions the caller was authorized with at the HTTP
+// layer.
+func TestCreateAgent_RejectsRoleFromDifferentProject(t *testing.T) {
+	projectID := uuid.New()
+	otherProjectID := uuid.New()
+	foreignRoleID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(context.Context, *agentdom.Agent, uuid.UUID, uuid.UUID, uuid.UUID) error {
+			t.Fatal("createAgentWithMembership must not be called for a role belonging to a different project")
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{
+		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+			return &projectdom.ProjectRole{ID: id, ProjectID: &otherProjectID}, nil
+		},
+	}
+	svc := New(repo, projRepo, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:          "Escalation Agent",
+		Handle:        "escalation-agent",
+		LLMProvider:   "openai",
+		LLMModel:      "gpt-4",
+		LLMAPIKey:     "sk-test",
+		ProjectRoleID: foreignRoleID,
+	})
+
+	assert.ErrorIs(t, err, projectdom.ErrRoleNotFound)
+}
+
+func TestCreateAgent_RejectsGlobalTemplateRole(t *testing.T) {
+	projectID := uuid.New()
+	templateRoleID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(context.Context, *agentdom.Agent, uuid.UUID, uuid.UUID, uuid.UUID) error {
+			t.Fatal("createAgentWithMembership must not be called for a global template role")
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{
+		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+			// ProjectID == nil mirrors a global template role such as
+			// PROJECT_OWNER, per the advisory's PoC.
+			return &projectdom.ProjectRole{ID: id, ProjectID: nil}, nil
+		},
+	}
+	svc := New(repo, projRepo, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:          "Escalation Agent",
+		Handle:        "escalation-agent",
+		LLMProvider:   "openai",
+		LLMModel:      "gpt-4",
+		LLMAPIKey:     "sk-test",
+		ProjectRoleID: templateRoleID,
+	})
+
+	assert.ErrorIs(t, err, projectdom.ErrRoleNotFound)
 }
 
 func TestCreateAgent_EmptyHandle(t *testing.T) {
@@ -3976,7 +4075,7 @@ func TestCreateAgent_ACPCustomProviderSuccess(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+	svc := New(repo, projectRepoWithRole(projectID), nil, &mockPluginRepo{})
 
 	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
 		Name:          "Custom ACP Agent",
@@ -4004,7 +4103,7 @@ func TestCreateAgent_ACPGooseProviderSuccess(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+	svc := New(repo, projectRepoWithRole(projectID), nil, &mockPluginRepo{})
 
 	// Unlike ACPProviderCustom, goose is a built-in provider — no
 	// acp_command is required from the caller. apps/acp-bridge's runner.py
@@ -4037,7 +4136,7 @@ func TestCreateAgent_ACPIgnoresSystemPromptAndGitCommitterFields(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+	svc := New(repo, projectRepoWithRole(projectID), nil, &mockPluginRepo{})
 
 	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
 		Name:              "ACP Agent",
@@ -4766,7 +4865,7 @@ func TestCreateAgent_ProviderCLI_Success(t *testing.T) {
 			return &environmentdom.Environment{ID: envID, ProjectID: projectID}, nil
 		},
 	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+	svc := New(repo, projectRepoWithRole(projectID), nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
 
 	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
 		Name:                 "CLI Agent",
