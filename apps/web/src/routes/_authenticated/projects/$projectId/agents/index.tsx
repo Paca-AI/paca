@@ -51,6 +51,13 @@ function AgentsPage() {
 		useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("agents.write");
 	const canRead = hasProjectPermission("agents.read");
+	// Creating an agent also grants it project membership at the chosen role,
+	// so the API requires project.members.write in addition to agents.write
+	// (GHSA-xxc8-ggm7-vmxp) — gate the create affordances on both so this
+	// button doesn't invite a 403 for an agents.write-only Editor. Managing
+	// an *existing* agent (AgentCard below, ACP bridge regen) stays on
+	// canWrite alone — those routes weren't changed.
+	const canCreate = canWrite && hasProjectPermission("project.members.write");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	// projectScopedAgentsQueryOptions server-side-filters out global-scope
@@ -117,7 +124,7 @@ function AgentsPage() {
 							{project?.name} · {t("agents.page.subtitle")}
 						</p>
 					</div>
-					{canWrite ? (
+					{canCreate ? (
 						<Button
 							size="sm"
 							className="gap-1.5 shadow-sm shadow-primary/20"
@@ -158,7 +165,7 @@ function AgentsPage() {
 								{t("agents.page.empty.description")}
 							</p>
 						</div>
-						{canWrite && (
+						{canCreate && (
 							<Button size="sm" onClick={() => setCreateOpen(true)}>
 								<Plus className="size-4 mr-1.5" />
 								{t("agents.page.empty.createFirstAgent")}

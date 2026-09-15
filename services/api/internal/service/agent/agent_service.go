@@ -21,6 +21,7 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/messaging"
@@ -28,9 +29,12 @@ import (
 )
 
 // projectMemberWriter is the minimal interface this service needs to bust the
-// member list cache after an agent is added or removed.
+// member list cache after an agent is added or removed, and to validate the
+// project_role_id a caller supplies to CreateAgent actually belongs to the
+// target project (see CreateAgent's FindRoleByID check — GHSA-xxc8-ggm7-vmxp).
 type projectMemberWriter interface {
 	InvalidateMembersCache(ctx context.Context, projectID uuid.UUID) error
+	FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
 }
 
 // pluginFinder is the minimal interface to find VCS plugins.
@@ -353,6 +357,20 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 	}
 	if err := validateParallelismLimit(a); err != nil {
 		return nil, err
+	}
+
+	// CreateAgent grants membership at whatever role in.ProjectRoleID names,
+	// so — like AddMember/UpdateMemberRole* — that role must actually belong
+	// to this project before it's bound to the new agent. Without this a
+	// caller could name any role ID at all, including one scoped to a
+	// different project or a global template role such as PROJECT_OWNER
+	// (ProjectID == nil), and inherit its permissions (GHSA-xxc8-ggm7-vmxp).
+	role, err := s.projRepo.FindRoleByID(ctx, in.ProjectRoleID)
+	if err != nil {
+		return nil, err
+	}
+	if role.ProjectID == nil || *role.ProjectID != projectID {
+		return nil, projectdom.ErrRoleNotFound
 	}
 
 	// Atomically create the agent and its project membership in one transaction.

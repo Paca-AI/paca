@@ -92,6 +92,12 @@ func (s *Service) UpdateRole(ctx context.Context, projectID, roleID uuid.UUID, i
 	return r, nil
 }
 
+// FindRoleByID returns a role by its primary key, with no project-ownership
+// check — see the doc comment on projectdom.RoleService.FindRoleByID.
+func (s *Service) FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+	return s.repo.FindRoleByID(ctx, id)
+}
+
 // DeleteRole removes a project-scoped role. It fails if members still have this role.
 func (s *Service) DeleteRole(ctx context.Context, projectID, roleID uuid.UUID) error {
 	if _, err := s.repo.FindByID(ctx, projectID); err != nil {

@@ -49,6 +49,7 @@ type mockProjectSvc struct {
 	createRole              func(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error)
 	updateRole              func(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error)
 	deleteRole              func(ctx context.Context, projectID, roleID uuid.UUID) error
+	findRoleByID            func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
 	getMyProjectPermissions func(ctx context.Context, projectID, userID uuid.UUID, agentID *uuid.UUID) (map[string]any, error)
 }
 
@@ -172,6 +173,13 @@ func (m *mockProjectSvc) DeleteRole(ctx context.Context, projectID, roleID uuid.
 		return m.deleteRole(ctx, projectID, roleID)
 	}
 	return nil
+}
+
+func (m *mockProjectSvc) FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+	if m.findRoleByID != nil {
+		return m.findRoleByID(ctx, id)
+	}
+	return nil, projectdom.ErrRoleNotFound
 }
 
 func (m *mockProjectSvc) GetMyProjectPermissions(ctx context.Context, projectID, userID uuid.UUID, agentID *uuid.UUID) (map[string]any, error) {
