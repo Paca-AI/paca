@@ -20,11 +20,13 @@ type DocOwnerChecker interface {
 // BlockNote document content.
 type DocFileService interface {
 	// InitiateDocUpload creates a pending File record and returns a presigned
-	// upload session (single-part or multipart).
-	InitiateDocUpload(ctx context.Context, in DocUploadInput) (*UploadSession, error)
+	// upload session (single-part or multipart). Verifies in.DocID belongs to
+	// projectID before proceeding.
+	InitiateDocUpload(ctx context.Context, projectID uuid.UUID, in DocUploadInput) (*UploadSession, error)
 
 	// CompleteDocUpload marks the file as uploaded and returns the file record.
-	CompleteDocUpload(ctx context.Context, in DocCompleteUploadInput) (*File, error)
+	// Verifies in.DocID belongs to projectID before proceeding.
+	CompleteDocUpload(ctx context.Context, projectID uuid.UUID, in DocCompleteUploadInput) (*File, error)
 
 	// GetDocFileDownloadURL returns a short-lived presigned GET URL for the
 	// given file. docID is used to verify the file belongs to the document,
@@ -51,6 +53,7 @@ type DocUploadInput struct {
 // DocCompleteUploadInput carries parameters for finishing a doc file upload.
 type DocCompleteUploadInput struct {
 	FileID uuid.UUID
+	DocID  uuid.UUID
 	// UploadID and Parts are required only for multipart uploads.
 	UploadID *string
 	Parts    []CompletedPart
