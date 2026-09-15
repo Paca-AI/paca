@@ -14,6 +14,7 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/platform/authz"
@@ -662,6 +663,25 @@ func (m *mockPluginRepo) FindByCapability(ctx context.Context, capability string
 
 var _ pluginFinder = (*mockPluginRepo)(nil)
 
+// mockGlobalRoleFinder is the globalRoleFinder test double for
+// CreateGlobalAgent/UpdateGlobalAgent's global_role_id existence check
+// (GHSA-xxc8-ggm7-vmxp). Unlike mockProjectRepo.FindRoleByID, tests that
+// don't wire this at all (leaving Service.globalRoleSvc nil) exercise the
+// "unwired — skip validation" branch instead, so there's no need for every
+// existing CreateGlobalAgent/UpdateGlobalAgent test to configure one.
+type mockGlobalRoleFinder struct {
+	findByID func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+}
+
+func (m *mockGlobalRoleFinder) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	if m.findByID != nil {
+		return m.findByID(ctx, id)
+	}
+	return nil, globalroledom.ErrNotFound
+}
+
+var _ globalRoleFinder = (*mockGlobalRoleFinder)(nil)
+
 func TestGetAgent_Success(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()
@@ -1239,6 +1259,126 @@ func TestCreateGlobalAgent_HandleTaken(t *testing.T) {
 	})
 
 	assert.ErrorIs(t, err, agentdom.ErrAgentHandleTaken)
+}
+
+// TestCreateGlobalAgent_RejectsUnknownGlobalRole and
+// TestUpdateGlobalAgent_RejectsUnknownGlobalRole guard the existence half of
+// GHSA-xxc8-ggm7-vmxp's global-agent fix: a global_role_id that doesn't name
+// a real global role must never reach the repository, regardless of what
+// permissions the caller was authorized with at the HTTP layer (see
+// AgentHandler's global_roles.assign check for the other half).
+func TestCreateGlobalAgent_RejectsUnknownGlobalRole(t *testing.T) {
+	roleID := uuid.New()
+	repo := &mockAgentRepo{
+		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createGlobalAgent: func(context.Context, *agentdom.Agent) error {
+			t.Fatal("createGlobalAgent must not be called for an unknown global_role_id")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
+		WithGlobalRoleService(&mockGlobalRoleFinder{})
+
+	_, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
+		Name:         "Global Bot",
+		Handle:       "global-bot",
+		LLMProvider:  "openai",
+		LLMModel:     "gpt-4",
+		LLMAPIKey:    "sk-test",
+		GlobalRoleID: &roleID,
+	})
+
+	assert.ErrorIs(t, err, globalroledom.ErrNotFound)
+}
+
+func TestCreateGlobalAgent_ValidatesGlobalRoleWhenWired(t *testing.T) {
+	roleID := uuid.New()
+	checkedID := uuid.Nil
+	repo := &mockAgentRepo{
+		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createGlobalAgent: func(_ context.Context, _ *agentdom.Agent) error {
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
+		WithGlobalRoleService(&mockGlobalRoleFinder{
+			findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+				checkedID = id
+				return &globalroledom.GlobalRole{ID: id, Name: "BOT_MANAGER"}, nil
+			},
+		})
+
+	_, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
+		Name:         "Global Bot",
+		Handle:       "global-bot",
+		LLMProvider:  "openai",
+		LLMModel:     "gpt-4",
+		LLMAPIKey:    "sk-test",
+		GlobalRoleID: &roleID,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, roleID, checkedID)
+}
+
+func TestUpdateGlobalAgent_RejectsUnknownGlobalRole(t *testing.T) {
+	agentID := uuid.New()
+	roleID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal}, nil
+		},
+		updateAgent: func(context.Context, *agentdom.Agent) error {
+			t.Fatal("UpdateAgent must not be called for an unknown global_role_id")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
+		WithGlobalRoleService(&mockGlobalRoleFinder{})
+
+	_, err := svc.UpdateGlobalAgent(context.Background(), agentID, agentdom.UpdateAgentInput{
+		GlobalRoleID: &roleID,
+	})
+
+	assert.ErrorIs(t, err, globalroledom.ErrNotFound)
+}
+
+// TestUpdateGlobalAgent_ClearingRoleSkipsLookup covers the &uuid.Nil "clear"
+// sentinel (see UpdateAgentInput.GlobalRoleID's doc comment): clearing an
+// existing role removes a grant rather than adding one, so — unlike setting
+// a real role — it needs no existence lookup.
+func TestUpdateGlobalAgent_ClearingRoleSkipsLookup(t *testing.T) {
+	agentID := uuid.New()
+	existingRole := uuid.New()
+	clear := uuid.Nil
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal, GlobalRoleID: &existingRole}, nil
+		},
+		updateAgent: func(_ context.Context, a *agentdom.Agent) error {
+			assert.Nil(t, a.GlobalRoleID)
+			return nil
+		},
+	}
+	lookupCalled := false
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
+		WithGlobalRoleService(&mockGlobalRoleFinder{
+			findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+				lookupCalled = true
+				return &globalroledom.GlobalRole{ID: id}, nil
+			},
+		})
+
+	_, err := svc.UpdateGlobalAgent(context.Background(), agentID, agentdom.UpdateAgentInput{
+		GlobalRoleID: &clear,
+	})
+
+	assert.NoError(t, err)
+	assert.False(t, lookupCalled, "clearing global_role_id must not look up a role")
 }
 
 func TestGetGlobalAgent_RejectsProjectScopedAgent(t *testing.T) {

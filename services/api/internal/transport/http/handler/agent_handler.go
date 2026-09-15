@@ -55,6 +55,9 @@ type AgentHandler struct {
 	globalPermReader   agentGlobalPermissionReader
 	avatarSvc          attachmentdom.AvatarService
 	taskChecker        attachmentdom.TaskOwnerChecker
+	// authorizer backs CreateGlobalAgent/UpdateGlobalAgent's conditional
+	// global_roles.assign check — see WithAuthorizer's doc comment.
+	authorizer *authz.Authorizer
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -105,6 +108,18 @@ func (h *AgentHandler) WithAvatarService(svc attachmentdom.AvatarService) *Agent
 // agent service itself has no task-repository dependency to do this).
 func (h *AgentHandler) WithTaskChecker(checker attachmentdom.TaskOwnerChecker) *AgentHandler {
 	h.taskChecker = checker
+	return h
+}
+
+// WithAuthorizer attaches the permission authorizer used by
+// CreateGlobalAgent/UpdateGlobalAgent to require global_roles.assign
+// whenever a request sets global_role_id — see those handlers' own
+// GHSA-xxc8-ggm7-vmxp comments. The route-level agents.write gate
+// (router.go) covers everything else these handlers do; this is a
+// narrower, conditional check on top of it, so it lives here rather than
+// as a second router.With(...) permission group.
+func (h *AgentHandler) WithAuthorizer(a *authz.Authorizer) *AgentHandler {
+	h.authorizer = a
 	return h
 }
 
@@ -520,6 +535,18 @@ func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_type must be one of: llm, acp"))
 		return
 	}
+	// Binding the new agent to a global role is a role-assignment action,
+	// not a plain agents.write one — require global_roles.assign in
+	// addition to the route's own agents.write gate, matching
+	// GlobalRoleHandler.ReplaceUserRoles' equivalent check for users
+	// (GHSA-xxc8-ggm7-vmxp). Optional field: a request that never sets
+	// global_role_id needs nothing beyond the route's own agents.write.
+	if req.GlobalRoleID != nil {
+		if !middleware.EnforcePermissions(w, r, h.authorizer, middleware.GlobalScope(), authz.PermissionGlobalRolesAssign) {
+			return
+		}
+	}
+
 	claims := middleware.ClaimsFrom(r)
 	callerID, _ := uuid.Parse(claims.Subject)
 
@@ -561,6 +588,15 @@ func (h *AgentHandler) UpdateGlobalAgent(w http.ResponseWriter, r *http.Request)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		presenter.Error(w, r, err)
 		return
+	}
+	// See CreateGlobalAgent's identical check for why (GHSA-xxc8-ggm7-vmxp).
+	// Gated on the field being present at all, not just non-clearing — even
+	// clearing an existing role is a role-assignment action, matching
+	// ReplaceUserRoles' all-or-nothing gate on the user-facing equivalent.
+	if req.GlobalRoleID != nil {
+		if !middleware.EnforcePermissions(w, r, h.authorizer, middleware.GlobalScope(), authz.PermissionGlobalRolesAssign) {
+			return
+		}
 	}
 	a, err := h.svc.UpdateGlobalAgent(r.Context(), agentID, agentdom.UpdateAgentInput{
 		Name:              req.Name,

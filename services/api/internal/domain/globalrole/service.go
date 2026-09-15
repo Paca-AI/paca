@@ -25,4 +25,10 @@ type Service interface {
 	Update(ctx context.Context, id uuid.UUID, in UpdateInput) (*GlobalRole, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) ([]*GlobalRole, error)
+	// FindByID returns a single global role by its primary key. Global roles
+	// have no project-ownership dimension to check (unlike project roles) —
+	// existence is the whole check, used to validate a caller-supplied
+	// global_role_id before it's bound to an agent (see
+	// agentsvc.Service.CreateGlobalAgent/UpdateGlobalAgent).
+	FindByID(ctx context.Context, id uuid.UUID) (*GlobalRole, error)
 }

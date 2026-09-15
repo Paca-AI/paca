@@ -99,6 +99,11 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in globalroledom.Upd
 	return role, nil
 }
 
+// FindByID returns a global role by its primary key.
+func (s *Service) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	return s.repo.FindByID(ctx, id)
+}
+
 // Delete removes a global role definition. It returns ErrHasAssignedUsers if
 // any user or global agent currently references this role via their
 // assigned global role (users.role_id or agents.global_role_id).

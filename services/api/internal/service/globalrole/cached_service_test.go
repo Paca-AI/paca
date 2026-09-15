@@ -47,6 +47,7 @@ type stubGlobalRoleSvc struct {
 	update           func(ctx context.Context, id uuid.UUID, in globalroledom.UpdateInput) (*globalroledom.GlobalRole, error)
 	delete           func(ctx context.Context, id uuid.UUID) error
 	replaceUserRoles func(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) ([]*globalroledom.GlobalRole, error)
+	findByID         func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
 
 	listCalls int
 }
@@ -85,6 +86,13 @@ func (s *stubGlobalRoleSvc) ReplaceUserRoles(ctx context.Context, userID uuid.UU
 		return s.replaceUserRoles(ctx, userID, roleIDs)
 	}
 	return nil, nil
+}
+
+func (s *stubGlobalRoleSvc) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	if s.findByID != nil {
+		return s.findByID(ctx, id)
+	}
+	return nil, globalroledom.ErrNotFound
 }
 
 // ---------------------------------------------------------------------------
