@@ -1789,8 +1789,8 @@ export function InteractionLayout({
 		<div className="flex h-full flex-col overflow-hidden">
 			{/* Header */}
 			<div className="shrink-0 border-b border-border/30 px-8 py-5">
-				<div className="flex items-center gap-3">
-					<h1 className="font-[Syne] text-2xl font-bold tracking-tight flex-1">
+				<div className="flex flex-wrap items-center gap-3">
+					<h1 className="font-[Syne] text-2xl font-bold tracking-tight flex-1 min-w-[8rem]">
 						{title}
 					</h1>
 					{headerActions}

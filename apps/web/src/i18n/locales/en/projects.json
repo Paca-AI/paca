@@ -1506,7 +1506,9 @@
 			"reporterTitle": "Reporter",
 			"epicLabel": "Epic",
 			"noEpic": "No Epic",
-			"storyPointsTitle": "Story Points"
+			"storyPointsTitle": "Story Points",
+			"moveLeft": "Move to previous column",
+			"moveRight": "Move to next column"
 		},
 		"taskContextMenu": {
 			"open": "Open task",
@@ -1565,6 +1567,7 @@
 		}
 	},
 	"conversationsPage": {
+		"back": "Back",
 		"title": "Conversations",
 		"triggerChat": "Chat",
 		"triggerWriteDescription": "Write description",

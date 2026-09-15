@@ -607,7 +607,7 @@ function AutomationBuilderPage() {
 
 			{/* View tabs (Graph / Run History) + view-specific actions */}
 			<div className="border-b border-border/50 px-4 shrink-0">
-				<div className="flex items-center justify-between gap-3">
+				<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 					<div className="flex items-center gap-1 -mb-px">
 						<button
 							type="button"

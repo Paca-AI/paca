@@ -1,15 +1,16 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Link, Outlet, useParams } from "@tanstack/react-router";
+import { Link, Outlet, useParams, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { Clock, Coins, MessageSquare, Plus } from "lucide-react";
+import { ArrowLeft, Clock, Coins, MessageSquare, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGlobalAgentRealtime } from "@/hooks/use-global-agent-realtime";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useProjectRealtime } from "@/hooks/use-project-realtime";
 import {
@@ -158,6 +159,28 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 	const { conversationId: activeConversationId } = useParams({
 		strict: false,
 	});
+	const isMobile = useIsMobile();
+	// Master-detail on mobile: the list and the Outlet detail pane can't sit
+	// side by side in a phone-width viewport (the list alone was eating the
+	// whole screen — see the mobile audit), so only one shows at a time.
+	//
+	// Which one isn't just a function of activeConversationId: the bare
+	// index route (no conversationId) renders NewConversationThread, not an
+	// empty state — it's the landing view AND what "New conversation" links
+	// to (see new-conversation-thread.tsx's own doc comment), so the same
+	// URL means two different things depending on how you got there.
+	// Landing fresh (e.g. the sidebar nav item) should show the list first;
+	// tapping "New conversation" from the list needs to force the composer
+	// into view even though the route isn't changing. `?compose=` (declared
+	// on the index route's own validateSearch — see conversations/index.tsx)
+	// is that explicit intent: living in the URL instead of component state
+	// means browser back/forward and the in-app Back link both just
+	// navigate, with no separate flag that can drift out of sync with
+	// what's on screen.
+	const { compose: mobileComposeIntent } = useSearch({ strict: false });
+	const showList = !isMobile || (!activeConversationId && !mobileComposeIntent);
+	const showDetail =
+		!isMobile || !!activeConversationId || !!mobileComposeIntent;
 
 	useProjectRealtime(projectId);
 	useGlobalAgentRealtime(!projectId);
@@ -238,83 +261,114 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 
 	return (
 		<div className="flex flex-1 min-h-0">
-			<div className="w-80 shrink-0 border-r border-border/50 flex flex-col min-h-0">
-				<div className="shrink-0 border-b border-border/50 px-4 py-3 flex items-center justify-between gap-2">
-					<h2 className="text-sm font-semibold">
-						{t("conversationsPage.title")}
-					</h2>
-					{canStartConversation && (
-						<Button
-							size="sm"
-							className="gap-1.5"
-							nativeButton={false}
-							render={<Link to={newConversationHref} />}
-						>
-							<Plus className="size-3.5" />
-							{t("aiChat.newConversation")}
-						</Button>
-					)}
-				</div>
-				<ConversationFilters
-					agents={agents}
-					filters={filters}
-					onFiltersChange={setFilters}
-				/>
+			{showList && (
 				<div
-					ref={scrollContainerRef}
-					className="flex-1 overflow-y-auto p-2 space-y-1.5"
-				>
-					{noPermission ? (
-						<NoPermissionState
-							icon={MessageSquare}
-							title={t("conversationsPage.list.noPermission.title")}
-							description={t("conversationsPage.list.noPermission.description")}
-						/>
-					) : isLoading ? (
-						Array.from({ length: 4 }).map((_, i) => (
-							// biome-ignore lint/suspicious/noArrayIndexKey: skeleton
-							<Skeleton key={i} className="h-16 rounded-lg" />
-						))
-					) : conversations.length === 0 ? (
-						<div className="flex flex-col items-center justify-center gap-3 py-14 px-3 text-center">
-							<MessageSquare className="size-8 text-muted-foreground/40" />
-							<p className="text-sm text-muted-foreground">
-								{hasActiveFilters
-									? t("conversationsPage.list.emptyFiltered.title")
-									: t("conversationsPage.list.empty.title")}
-							</p>
-							<p className="text-xs text-muted-foreground max-w-xs">
-								{hasActiveFilters
-									? t("conversationsPage.list.emptyFiltered.description")
-									: t("conversationsPage.list.empty.description")}
-							</p>
-						</div>
-					) : (
-						<>
-							{conversations.map((conv) => (
-								<ConversationListItem
-									key={conv.id}
-									conv={conv}
-									agent={agentsById.get(conv.agent_id)}
-									projectId={projectId}
-									isActive={conv.id === activeConversationId}
-								/>
-							))}
-							{hasNextPage && (
-								<div ref={loadMoreRef}>
-									{isFetchingNextPage && (
-										<Skeleton className="h-16 rounded-lg" />
-									)}
-								</div>
-							)}
-						</>
+					className={cn(
+						"shrink-0 border-r border-border/50 flex flex-col min-h-0",
+						isMobile ? "w-full" : "w-80",
 					)}
+				>
+					<div className="shrink-0 border-b border-border/50 px-4 py-3 flex items-center justify-between gap-2">
+						<h2 className="text-sm font-semibold">
+							{t("conversationsPage.title")}
+						</h2>
+						{canStartConversation && (
+							<Button
+								size="sm"
+								className="gap-1.5"
+								nativeButton={false}
+								render={
+									<Link to={newConversationHref} search={{ compose: true }} />
+								}
+							>
+								<Plus className="size-3.5" />
+								{t("aiChat.newConversation")}
+							</Button>
+						)}
+					</div>
+					<ConversationFilters
+						agents={agents}
+						filters={filters}
+						onFiltersChange={setFilters}
+					/>
+					<div
+						ref={scrollContainerRef}
+						className="flex-1 overflow-y-auto p-2 space-y-1.5"
+					>
+						{noPermission ? (
+							<NoPermissionState
+								icon={MessageSquare}
+								title={t("conversationsPage.list.noPermission.title")}
+								description={t(
+									"conversationsPage.list.noPermission.description",
+								)}
+							/>
+						) : isLoading ? (
+							Array.from({ length: 4 }).map((_, i) => (
+								// biome-ignore lint/suspicious/noArrayIndexKey: skeleton
+								<Skeleton key={i} className="h-16 rounded-lg" />
+							))
+						) : conversations.length === 0 ? (
+							<div className="flex flex-col items-center justify-center gap-3 py-14 px-3 text-center">
+								<MessageSquare className="size-8 text-muted-foreground/40" />
+								<p className="text-sm text-muted-foreground">
+									{hasActiveFilters
+										? t("conversationsPage.list.emptyFiltered.title")
+										: t("conversationsPage.list.empty.title")}
+								</p>
+								<p className="text-xs text-muted-foreground max-w-xs">
+									{hasActiveFilters
+										? t("conversationsPage.list.emptyFiltered.description")
+										: t("conversationsPage.list.empty.description")}
+								</p>
+							</div>
+						) : (
+							<>
+								{conversations.map((conv) => (
+									<ConversationListItem
+										key={conv.id}
+										conv={conv}
+										agent={agentsById.get(conv.agent_id)}
+										projectId={projectId}
+										isActive={conv.id === activeConversationId}
+									/>
+								))}
+								{hasNextPage && (
+									<div ref={loadMoreRef}>
+										{isFetchingNextPage && (
+											<Skeleton className="h-16 rounded-lg" />
+										)}
+									</div>
+								)}
+							</>
+						)}
+					</div>
 				</div>
-			</div>
+			)}
 
-			<div className="flex-1 min-h-0">
-				<Outlet />
-			</div>
+			{showDetail && (
+				<div className="flex-1 min-h-0 flex flex-col">
+					{isMobile && (activeConversationId || mobileComposeIntent) && (
+						<div className="shrink-0 border-b border-border/50 px-2 py-1.5">
+							<Link
+								to={newConversationHref}
+								search={{ compose: false }}
+								className={buttonVariants({
+									variant: "ghost",
+									size: "sm",
+									className: "gap-1.5 text-muted-foreground",
+								})}
+							>
+								<ArrowLeft className="size-3.5" />
+								{t("conversationsPage.back")}
+							</Link>
+						</div>
+					)}
+					<div className="flex-1 min-h-0">
+						<Outlet />
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

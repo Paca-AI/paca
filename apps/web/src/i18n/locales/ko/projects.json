@@ -1506,7 +1506,9 @@
 			"reporterTitle": "보고자",
 			"epicLabel": "에픽",
 			"noEpic": "에픽 없음",
-			"storyPointsTitle": "스토리 포인트"
+			"storyPointsTitle": "스토리 포인트",
+			"moveLeft": "이전 열로 이동",
+			"moveRight": "다음 열로 이동"
 		},
 		"taskContextMenu": {
 			"open": "작업 열기",
@@ -1565,6 +1567,7 @@
 		}
 	},
 	"conversationsPage": {
+		"back": "뒤로",
 		"title": "대화",
 		"triggerChat": "채팅",
 		"triggerWriteDescription": "설명 작성",
