@@ -17,8 +17,21 @@
 // serve` (originally image ghcr.io/block/goose@sha256:d85a724...30, goose
 // 1.30.0; re-verified against ghcr.io/aaif-goose/goose@sha256:3c961bac...46,
 // goose 1.46.0 — see services/agent-server/Dockerfile's doc comment on the
-// block->aaif-goose rename). Fields not exercised in that spike are marked
-// below; verify before depending on them.
+// block->aaif-goose rename). initialize's response shape (this file's one
+// load-bearing check, agentCapabilities.loadSession) was re-verified again
+// live against goose 1.50.1 (2026-09-15, alongside that Dockerfile's 1.46.0
+// -> 1.50.1 bump): still "loadSession":true, same authMethods shape (one
+// "goose-provider" entry), same /status "ok" response (manual curl probe).
+// Separately, test/e2e/acp_client_test.go's
+// TestACPClientAgainstRealGooseContainer (PACA_E2E=1) was actually run
+// against this same 1.50.1 digest and passed — this package's real
+// Initialize/NewSession/Prompt round trip, tool_call events included,
+// against a fake OpenAI-compatible backend. session/load specifically
+// (resuming a session, replaying its history) was NOT re-exercised in
+// either pass — no test here drives that path — so LoadSession's own
+// behavior still rests on the 1.46.0-era spike; see LoadSession's own doc
+// comment. Fields not exercised in any of these passes are marked below;
+// verify before depending on them.
 package acp
 
 import (
@@ -95,9 +108,9 @@ type AuthMethod struct {
 // every other field (promptCapabilities, mcpCapabilities,
 // sessionCapabilities, auth, authMethods, agentInfo) goes unused today, so
 // this only models the one path this package actually reads. Confirmed
-// against a real goose serve instance (goose 1.46.0): "loadSession":true —
-// see LoadSession's own doc comment for why this is checked rather than
-// assumed.
+// against a real goose serve instance (goose 1.46.0, re-confirmed live on
+// 1.50.1): "loadSession":true — see LoadSession's own doc comment for why
+// this is checked rather than assumed.
 type initializeResult struct {
 	AgentCapabilities struct {
 		LoadSession bool `json:"loadSession"`

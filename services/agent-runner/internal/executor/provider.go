@@ -13,39 +13,88 @@ import (
 // hit an unmapped provider rather than trying to enumerate every provider
 // up front.
 //
+// Every key below was cross-checked directly against aaif-goose/goose
+// v1.50.1's own provider registry (crates/goose-providers/src/*.rs plus
+// .../declarative/definitions/*.json, and crates/goose/src/providers for
+// anthropic/openai/google/openrouter/xai, which predate the goose-providers
+// crate split) — not assumed from data/llm_models.json, which had drifted
+// badly from what Goose can actually run: it was inherited wholesale from a
+// generic ~90-provider LiteLLM catalog mixing in non-chat services
+// (image/TTS/STT/web-search) and provider ids Goose has never registered.
+// data/llm_models.json was trimmed to match this table's keys (2026-09-15,
+// alongside the Goose 1.46.0 -> 1.50.1 bump — see services/agent-server/
+// Dockerfile) so every option the model picker offers actually routes
+// somewhere real; see this table's `gooseProviderID` sibling below for the
+// handful whose GOOSE_PROVIDER id differs from Paca's own llm_provider name.
+//
+// Deliberately NOT added despite being real, working aaif-goose/goose
+// providers: bedrock, databricks, azure_foundry, snowflake, sagemaker,
+// ollama (local), github_copilot. Each needs more than a single bearer-token
+// env var to actually authenticate — an AWS credential chain (bedrock,
+// sagemaker), a host+token pair with the host itself required
+// (DATABRICKS_HOST, confirmed required in goose-providers/src/databricks.rs;
+// AZURE_FOUNDRY_ENDPOINT likewise in azure_foundry.rs), an OAuth
+// device-code flow (github_copilot), or no secret at all, just a reachable
+// host (ollama, OLLAMA_HOST) — this table and resolveProviderEnv only ever
+// plumb through one API-key env var, so wiring any of these up for real
+// needs a broader mechanism, not a model-list correction. Unlike "cohere"
+// below, there's no single key that would even partially authenticate one
+// of these, so they're left out of this map entirely rather than mapped to
+// a var that can't work alone; all seven were also removed from
+// data/llm_models.json's picker for the same reason "cohere" was kept out
+// of it below — selecting one today would otherwise silently misroute
+// through the "openai" fallback with an unset OPENAI_API_KEY.
+//
 // "cohere" is kept here even though Goose cannot actually run it (verified
-// directly against block/goose: no dedicated Rust provider, no declarative
-// JSON definition under crates/goose-providers/src/declarative/definitions/
-// — "cohere" only ever appears there as a model-name prefix under other
-// aggregator providers, e.g. an OpenRouter-style "cohere/command-r..." model
-// id, never as a standalone GOOSE_PROVIDER value). Unlike gemini/deepseek
-// below, there's no id gooseProviderID could alias it to that would work —
-// removing the entry instead would silently reroute a Cohere-configured
-// agent through the generic openai fallback below with OPENAI_API_KEY
-// (almost certainly unset for such an agent), trading a clear "unknown
-// provider: cohere" failure for a confusing OpenAI auth error. Left as a
-// dead end deliberately: Paca's data/llm_models.json inherited "cohere"
-// from the old LiteLLM-backed catalog, and removing it from the model
-// picker (not resolvable here) is the actual fix.
+// directly against aaif-goose/goose: no dedicated Rust provider, no
+// declarative JSON definition under crates/goose-providers/src/declarative/
+// definitions/ — "cohere" only ever appears there as a model-name prefix
+// under other aggregator providers, e.g. an OpenRouter-style
+// "cohere/command-r..." model id, never as a standalone GOOSE_PROVIDER
+// value). Unlike gemini/deepseek below, there's no id gooseProviderID could
+// alias it to that would work — removing the entry instead would silently
+// reroute a Cohere-configured agent through the generic openai fallback
+// below with OPENAI_API_KEY (almost certainly unset for such an agent),
+// trading a clear "unknown provider: cohere" failure for a confusing OpenAI
+// auth error. Left as a dead end deliberately, same as the bedrock/
+// databricks/etc. reasoning above — cohere was also dropped from
+// data/llm_models.json's picker (2026-09-15) since there's no way to
+// configure it that actually works.
 var providerAPIKeyEnvVar = map[string]string{
-	"anthropic":  "ANTHROPIC_API_KEY",
-	"openai":     "OPENAI_API_KEY",
-	"google":     "GOOGLE_API_KEY",
-	"gemini":     "GOOGLE_API_KEY",
-	"groq":       "GROQ_API_KEY",
-	"mistral":    "MISTRAL_API_KEY",
-	"cohere":     "COHERE_API_KEY",
-	"deepseek":   "DEEPSEEK_API_KEY",
-	"openrouter": "OPENROUTER_API_KEY",
-	"xai":        "XAI_API_KEY",
+	"anthropic":         "ANTHROPIC_API_KEY",
+	"openai":            "OPENAI_API_KEY",
+	"google":            "GOOGLE_API_KEY",
+	"gemini":            "GOOGLE_API_KEY",
+	"groq":              "GROQ_API_KEY",
+	"mistral":           "MISTRAL_API_KEY",
+	"cohere":            "COHERE_API_KEY",
+	"deepseek":          "DEEPSEEK_API_KEY",
+	"openrouter":        "OPENROUTER_API_KEY",
+	"xai":               "XAI_API_KEY",
+	"cerebras":          "CEREBRAS_API_KEY",
+	"moonshot":          "MOONSHOT_API_KEY",
+	"minimax":           "MINIMAX_API_KEY",
+	"novita":            "NOVITA_API_KEY",
+	"ovhcloud":          "OVHCLOUD_API_KEY",
+	"perplexity":        "PERPLEXITY_API_KEY",
+	"inception":         "INCEPTION_API_KEY",
+	"vercel_ai_gateway": "AI_GATEWAY_API_KEY",
+	"zai":               "ZHIPU_API_KEY",
+	"fireworks_ai":      "FIREWORKS_API_KEY",
+	"friendliai":        "FRIENDLI_API_KEY",
+	"together_ai":       "TOGETHER_API_KEY",
+	"nvidia_nim":        "NVIDIA_API_KEY",
+	"dashscope":         "DASHSCOPE_API_KEY",
+	"aiml":              "AIMLAPI_API_KEY",
 }
 
 // gooseProviderID translates a Paca llm_provider value onto the provider id
 // Goose actually registers it under, for the cases where the two names
 // diverge — an unmapped GOOSE_PROVIDER value here means every conversation
-// for that provider fails to initialize its LLM provider at all. Both
-// entries verified directly against block/goose's source, not just its
-// docs (which get this wrong — see the "gemini" entry's own history):
+// for that provider fails to initialize its LLM provider at all. Every
+// entry verified directly against aaif-goose/goose v1.50.1's source, not
+// just its docs (which get this wrong — see the "gemini" entry's own
+// history):
 //   - "gemini" -> "google": Paca accepts "gemini" (matching the model
 //     catalog's naming), but Goose's own provider registry
 //     (crates/goose-providers/src/google.rs's GOOGLE_PROVIDER_NAME) calls it
@@ -57,9 +106,28 @@ var providerAPIKeyEnvVar = map[string]string{
 //   - "deepseek" -> "custom_deepseek": Goose's declarative provider
 //     definition for DeepSeek (declarative/definitions/deepseek.json) is
 //     registered under "custom_deepseek", not "deepseek".
+//   - "fireworks_ai" -> "fireworks-ai": declarative/definitions/fireworks.json
+//     registers a hyphen, not an underscore.
+//   - "friendliai" -> "friendli", "together_ai" -> "together",
+//     "nvidia_nim" -> "nvidia": Paca kept its own pre-existing catalog key
+//     (avoiding a churn-only rename of any agent already configured with
+//     the old value) where Goose's declarative definition file registers a
+//     shorter or differently-punctuated id.
+//   - "dashscope" -> "alibaba": Paca's key names the API product
+//     (Alibaba's DashScope), Goose's declarative/definitions/alibaba.json
+//     names the vendor; same DASHSCOPE_API_KEY either way.
+//   - "aiml" -> "aimlapi": declarative/definitions/aimlapi.json; Paca's
+//     shorter pre-existing key is kept as-is for the same no-churn reason
+//     as friendliai/together_ai/nvidia_nim above.
 var gooseProviderID = map[string]string{
-	"gemini":   "google",
-	"deepseek": "custom_deepseek",
+	"gemini":       "google",
+	"deepseek":     "custom_deepseek",
+	"fireworks_ai": "fireworks-ai",
+	"friendliai":   "friendli",
+	"together_ai":  "together",
+	"nvidia_nim":   "nvidia",
+	"dashscope":    "alibaba",
+	"aiml":         "aimlapi",
 }
 
 // resolveProviderEnv maps a Paca llm_provider value onto the Goose
