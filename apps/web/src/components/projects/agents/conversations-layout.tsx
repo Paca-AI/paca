@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Link, Outlet, useParams } from "@tanstack/react-router";
+import { Link, Outlet, useParams, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { ArrowLeft, Clock, Coins, MessageSquare, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -171,16 +171,16 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 	// URL means two different things depending on how you got there.
 	// Landing fresh (e.g. the sidebar nav item) should show the list first;
 	// tapping "New conversation" from the list needs to force the composer
-	// into view even though the URL isn't changing. This flag is that
-	// explicit intent — set on the button's click, cleared once a
-	// conversation actually exists (activeConversationId below) or the user
-	// taps Back.
-	const [mobileComposeIntent, setMobileComposeIntent] = useState(false);
-	useEffect(() => {
-		if (activeConversationId) setMobileComposeIntent(false);
-	}, [activeConversationId]);
+	// into view even though the route isn't changing. `?compose=` (declared
+	// on the index route's own validateSearch — see conversations/index.tsx)
+	// is that explicit intent: living in the URL instead of component state
+	// means browser back/forward and the in-app Back link both just
+	// navigate, with no separate flag that can drift out of sync with
+	// what's on screen.
+	const { compose: mobileComposeIntent } = useSearch({ strict: false });
 	const showList = !isMobile || (!activeConversationId && !mobileComposeIntent);
-	const showDetail = !isMobile || !!activeConversationId || mobileComposeIntent;
+	const showDetail =
+		!isMobile || !!activeConversationId || !!mobileComposeIntent;
 
 	useProjectRealtime(projectId);
 	useGlobalAgentRealtime(!projectId);
@@ -277,8 +277,9 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 								size="sm"
 								className="gap-1.5"
 								nativeButton={false}
-								onClick={() => setMobileComposeIntent(true)}
-								render={<Link to={newConversationHref} />}
+								render={
+									<Link to={newConversationHref} search={{ compose: true }} />
+								}
 							>
 								<Plus className="size-3.5" />
 								{t("aiChat.newConversation")}
@@ -351,7 +352,7 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 						<div className="shrink-0 border-b border-border/50 px-2 py-1.5">
 							<Link
 								to={newConversationHref}
-								onClick={() => setMobileComposeIntent(false)}
+								search={{ compose: false }}
 								className={buttonVariants({
 									variant: "ghost",
 									size: "sm",

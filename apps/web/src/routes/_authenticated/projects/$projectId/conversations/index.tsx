@@ -13,9 +13,17 @@ export const Route = createFileRoute(
 	// (unlike agents/index.tsx's `?create=`, this crosses a tab boundary, so
 	// there's no in-memory store state to hand off — the annotation id is
 	// all the URL can carry, and the effect below re-fetches from it).
+	//
+	// `compose` is conversations-layout.tsx's mobile master-detail flag:
+	// whether the bare index route (this one) should force its composer into
+	// view instead of the conversation list. It's read via useSearch there,
+	// not here — declared on this leaf (like agents/index.tsx's `?create=`)
+	// rather than the shared layout route, so linking to a sibling
+	// $conversationId route elsewhere in the app never has to know about it.
 	validateSearch: (search: Record<string, unknown>) => ({
 		annotationId:
 			typeof search.annotationId === "string" ? search.annotationId : undefined,
+		compose: search.compose === true || search.compose === "true",
 	}),
 	component: ProjectNewConversationThread,
 });

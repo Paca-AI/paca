@@ -1,10 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { Task } from "@/lib/interaction-api";
 import type { TaskStatus, TaskType } from "@/lib/project-api";
 import { TaskCard } from "./task-card";
+
+// Real by default (see test/setup.ts's window.matchMedia stub, which always
+// resolves to desktop) — mocked directly here so the move-button tests below
+// don't depend on jsdom viewport dimensions.
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: vi.fn(() => false) }));
 
 // TaskCard's epic-picker field now calls useEpicSearch (useInfiniteQuery)
 // unconditionally, so it needs a QueryClientProvider ancestor even though the
@@ -56,6 +62,10 @@ const bugType: TaskType = {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("TaskCard", () => {
+	beforeEach(() => {
+		vi.mocked(useIsMobile).mockReturnValue(false);
+	});
+
 	it("renders the task title", () => {
 		render(
 			<TaskCard
@@ -196,5 +206,124 @@ describe("TaskCard", () => {
 		// assigned state: filled avatar circle with the primary gradient
 		const assigneeEl = container.querySelector(".from-primary\\/20");
 		expect(assigneeEl).toBeInTheDocument();
+	});
+
+	describe("mobile move buttons", () => {
+		it("does not render on desktop even when handlers are provided", () => {
+			render(
+				<TaskCard
+					task={makeTask()}
+					statuses={NO_STATUSES}
+					taskTypes={NO_TYPES}
+					onMoveLeft={vi.fn()}
+					onMoveRight={vi.fn()}
+				/>,
+				{ wrapper },
+			);
+			expect(
+				screen.queryByRole("button", { name: "Move to previous column" }),
+			).not.toBeInTheDocument();
+			expect(
+				screen.queryByRole("button", { name: "Move to next column" }),
+			).not.toBeInTheDocument();
+		});
+
+		it("does not render on mobile when neither handler is provided", () => {
+			vi.mocked(useIsMobile).mockReturnValue(true);
+			render(
+				<TaskCard
+					task={makeTask()}
+					statuses={NO_STATUSES}
+					taskTypes={NO_TYPES}
+				/>,
+				{ wrapper },
+			);
+			expect(
+				screen.queryByRole("button", { name: "Move to previous column" }),
+			).not.toBeInTheDocument();
+			expect(
+				screen.queryByRole("button", { name: "Move to next column" }),
+			).not.toBeInTheDocument();
+		});
+
+		it("renders both buttons enabled on mobile when both handlers are provided", () => {
+			vi.mocked(useIsMobile).mockReturnValue(true);
+			render(
+				<TaskCard
+					task={makeTask()}
+					statuses={NO_STATUSES}
+					taskTypes={NO_TYPES}
+					onMoveLeft={vi.fn()}
+					onMoveRight={vi.fn()}
+				/>,
+				{ wrapper },
+			);
+			expect(
+				screen.getByRole("button", { name: "Move to previous column" }),
+			).toBeEnabled();
+			expect(
+				screen.getByRole("button", { name: "Move to next column" }),
+			).toBeEnabled();
+		});
+
+		it("disables move-left at the first column (no onMoveLeft)", () => {
+			vi.mocked(useIsMobile).mockReturnValue(true);
+			render(
+				<TaskCard
+					task={makeTask()}
+					statuses={NO_STATUSES}
+					taskTypes={NO_TYPES}
+					onMoveRight={vi.fn()}
+				/>,
+				{ wrapper },
+			);
+			expect(
+				screen.getByRole("button", { name: "Move to previous column" }),
+			).toBeDisabled();
+			expect(
+				screen.getByRole("button", { name: "Move to next column" }),
+			).toBeEnabled();
+		});
+
+		it("disables move-right at the last column (no onMoveRight)", () => {
+			vi.mocked(useIsMobile).mockReturnValue(true);
+			render(
+				<TaskCard
+					task={makeTask()}
+					statuses={NO_STATUSES}
+					taskTypes={NO_TYPES}
+					onMoveLeft={vi.fn()}
+				/>,
+				{ wrapper },
+			);
+			expect(
+				screen.getByRole("button", { name: "Move to previous column" }),
+			).toBeEnabled();
+			expect(
+				screen.getByRole("button", { name: "Move to next column" }),
+			).toBeDisabled();
+		});
+
+		it("calls onMoveRight without also triggering the card's onClick", () => {
+			vi.mocked(useIsMobile).mockReturnValue(true);
+			const onClick = vi.fn();
+			const onMoveRight = vi.fn();
+			render(
+				<TaskCard
+					task={makeTask()}
+					statuses={NO_STATUSES}
+					taskTypes={NO_TYPES}
+					onClick={onClick}
+					onMoveLeft={vi.fn()}
+					onMoveRight={onMoveRight}
+				/>,
+				{ wrapper },
+			);
+			fireEvent.click(
+				screen.getByRole("button", { name: "Move to next column" }),
+			);
+			expect(onMoveRight).toHaveBeenCalledOnce();
+			expect(onClick).not.toHaveBeenCalled();
+		});
 	});
 });
