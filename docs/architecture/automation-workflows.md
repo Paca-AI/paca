@@ -291,11 +291,12 @@ manual reconfiguration.
 Workflow management is exposed to AI agents as ordinary MCP tools in the
 existing Paca MCP server (`apps/mcp/src/tools/workflow-tools.ts`) — the same
 mechanism used for every other Paca resource (tasks, sprints, docs, etc.),
-not a special-cased sandbox tool or a separate server. Tool availability is
-gated the same way every other tool in that server is: by the calling
-agent's own `workflows.read` / `workflows.write` project permissions
-(`apps/mcp/src/permissions.ts`), resolved at MCP-session startup — there is
-no separate per-agent capability flag.
+not a special-cased sandbox tool or a separate server. The MCP server lists
+these tools unconditionally, the same as every other tool; enforcement of
+the calling agent's own `workflows.read` / `workflows.write` project
+permissions happens on the API side of each call, which returns 403 (surfaced
+to the agent as a "Permission denied" tool error) when the grant is missing —
+there is no separate per-agent capability flag.
 
 Tools: `get_workflow`, `create_workflow`, `update_workflow`,
 `delete_workflow` — just 4, not one per REST endpoint. An earlier version of

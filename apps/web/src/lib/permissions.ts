@@ -15,8 +15,7 @@ export type PermissionMap = Record<string, boolean>;
  * but checking only the immediate-parent candidate
  * ("project.settings.task_statuses.*") never looks at "project.settings.*"
  * at all, so a role granted just the broader wildcard read as having none
- * of its narrower permissions. (apps/mcp/src/permissions.ts had the same
- * class of bug, fixed the same way, for the same reason.)
+ * of its narrower permissions.
  */
 export function hasPermission(
 	grantedPermissions: string[],

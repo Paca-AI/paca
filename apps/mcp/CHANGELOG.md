@@ -6,6 +6,9 @@ The package version follows the main Paca repository release and is published on
 
 ## [Unreleased]
 
+### Removed
+- **Permission-based tool filtering** — the server no longer fetches the caller's permissions at startup or hides tools it predicts would fail. Every tool is listed unconditionally; the Paca API enforces permissions on each call and a disallowed call now surfaces as a normal "Permission denied: ..." tool error instead of the tool being missing from the list. This also fixes an unpinned caller (no `PACA_PROJECT_ID`) seeing few or no tools when their permission fetch returned little or nothing.
+
 ### Planned
 - Batch operations for bulk task updates
 - Pagination and filtering options for list tools

@@ -91,7 +91,6 @@ For a full setup walkthrough, see the [MCP Server Setup Guide](../../docs/guides
 ## Features
 
 - **API Key Authentication**: Secure access using Paca API keys
-- **Agent-Specific Permissions**: MCP tools are filtered based on agent's project permissions at startup
 - **Comprehensive Project Management**: Full project lifecycle with member and role management
 - **Advanced Task Management**: Tasks with types, statuses, custom fields, and attachments
 - **Sprint Management**: Complete sprint lifecycle management
@@ -102,18 +101,16 @@ For a full setup walkthrough, see the [MCP Server Setup Guide](../../docs/guides
 - **BlockNote Integration**: Automatic conversion between BlockNote JSON and Markdown
 - **Plugin MCP Tools**: Plugins can contribute additional MCP tools, loaded automatically at startup
 
-## Agent & User Permissions
+## Agent Mode vs. User Mode
 
-The MCP server automatically filters available tools based on permissions, whether you're using it as an agent or as a regular user.
+The MCP server always lists every tool it knows about — it doesn't fetch or check permissions itself. Each tool *call* is authorized by the Paca API, which returns `403` for anything the caller isn't allowed to do; the MCP server turns that into a "Permission denied: ..." error for the calling agent rather than hiding the tool up front. So whether a call succeeds depends on the caller's actual role, not on which mode below you're running in — these modes only control *identity* (who a call is made as) and *scope* (which project a call may target).
 
-### Agent Mode vs. User Mode
-
-| Mode | Trigger | API Key Source | Permission Source | Scope |
-|---|---|---|---|---|
-| **Agent Single-Project** | `PACA_AGENT_ID` + `PACA_PROJECT_ID` | That agent's own `PACA_API_KEY` | Agent's permissions in the specified project | Single project only |
-| **Agent Global** | `PACA_AGENT_ID` only (no `PACA_PROJECT_ID`) | That agent's own `PACA_API_KEY` | Agent's global role, plus its per-project permissions resolved as each tool call needs them | Every project the agent is invited into |
-| **User Single-Project** | `PACA_PROJECT_ID` only (no `PACA_AGENT_ID`) | User's personal API key | User's global + project permissions | Single project |
-| **User Global** | Neither set | User's personal API key | User's global permissions only | All projects (no project-scoped tools) |
+| Mode | Trigger | API Key Source | Scope |
+|---|---|---|---|
+| **Agent Single-Project** | `PACA_AGENT_ID` + `PACA_PROJECT_ID` | That agent's own `PACA_API_KEY` | Every tool call is pinned to the specified project |
+| **Agent Global** | `PACA_AGENT_ID` only (no `PACA_PROJECT_ID`) | That agent's own `PACA_API_KEY` | Each tool call may target any project the agent is invited into |
+| **User Single-Project** | `PACA_PROJECT_ID` only (no `PACA_AGENT_ID`) | User's personal API key | Every tool call is pinned to the specified project |
+| **User Global** | Neither set | User's personal API key | Each tool call may target any project you're a member of |
 
 **Note**: Each ACP agent has its own `PACA_API_KEY`, generated per-agent — not a key shared across every agent in the deployment. Generate (or regenerate) it from the agent's setup page in the Paca UI; regenerating immediately invalidates whatever key was live before, since only one key is ever active per agent.
 
@@ -122,10 +119,7 @@ The MCP server automatically filters available tools based on permissions, wheth
 Set `PACA_AGENT_ID` to connect as a specific ACP agent instead of as yourself. Add `PACA_PROJECT_ID` too if you want every tool call pinned to one project (recommended for a project-scoped agent); leave it unset for a global agent, which can then work across any project it's been invited into.
 
 1. **Authentication**: Uses that agent's own `PACA_API_KEY` — the key itself identifies the agent, so no separate impersonation header is needed or honored
-2. **Permission Fetch**: With `PACA_PROJECT_ID` set, only that project's permissions are fetched; without it, the agent's global role and per-project permissions are resolved as each tool call needs them
-3. **Tool Filtering**: Shows only tools the agent has permission to use
-4. **Project Validation**: With `PACA_PROJECT_ID` set, enforces that all tool calls use that project ID
-5. **Performance**: Single-project mode is optimized for that common case (one API call at startup)
+2. **Project Validation**: With `PACA_PROJECT_ID` set, enforces that all tool calls use that project ID
 
 **How to Get the Agent's API Key:**
 
@@ -189,9 +183,6 @@ When `PACA_AGENT_ID` is not set:
 
 1. **Authentication**: Uses user's personal API key (from Settings → API Keys)
 2. **No Impersonation**: Acts as the authenticated user directly
-3. **Global Permissions**: Fetches global permissions via `GET /api/v1/users/me/global-permissions`
-4. **Tool Filtering**: Shows only globally permitted tools (no project-scoped tools)
-5. **Best Practice**: Set `PACA_PROJECT_ID` to filter tools at the MCP level and reduce API errors
 
 **Configuration:**
 ```json
@@ -226,32 +217,15 @@ When `PACA_AGENT_ID` is not set:
 }
 ```
 
-**Note**: Without `PACA_PROJECT_ID`, project-scoped tools (like `list_tasks`, `create_task`) will not be available.
-
-### Supported Permissions
-
-| Permission | Tools Requiring It |
-|---|---|
-| `projects.read` | `list_projects`, `get_project` |
-| `projects.write` | `update_project`, `delete_project` |
-| `projects.create` | `create_project` |
-| `tasks.read` | `list_tasks`, `get_task`, `get_task_by_number`, `list_task_types`, `list_task_statuses` |
-| `tasks.write` | `create_task`, `update_task`, `delete_task`, `create_task_type`, `update_task_type`, `delete_task_type`, `set_default_task_type`, `create_task_status`, `update_task_status`, `delete_task_status`, `set_default_task_status` |
-| `sprints.read` | `list_sprints`, `get_sprint` |
-| `sprints.write` | `create_sprint`, `update_sprint`, `delete_sprint`, `complete_sprint` |
-| `docs.read` | `list_documents`, `get_document`, `list_doc_folders`, `list_doc_snapshots`, `get_doc_snapshot` |
-| `docs.write` | `create_document`, `update_document`, `delete_document`, `create_doc_folder`, `update_doc_folder`, `delete_doc_folder` |
-| `project.members.read` | `list_project_members`, `get_my_project_permissions` |
-| `project.members.write` | `add_project_member`, `update_project_member_role`, `remove_project_member` |
-| `project.roles.read` | `list_project_roles` |
-| `project.roles.write` | `create_project_role`, `update_project_role`, `delete_project_role` |
+**Note**: Without `PACA_PROJECT_ID`, project-scoped tool calls (like `list_tasks`, `create_task`) must pass a `projectId` argument explicitly — the tool is listed either way, but the call still needs a project to act on, and still needs the caller's role in that project to grant the underlying permission (e.g. `tasks.read`).
 
 ### Configuring Permissions
+
+Permissions live entirely on the Paca API side, so configuring them is the same regardless of the MCP server:
 
 **For Agents:**
 1. **Add Agent as Project Member**: Add the agent to the desired projects with appropriate roles
 2. **Configure Role Permissions**: Ensure the assigned roles have the necessary permissions
-3. **Restart MCP Server**: Restart the MCP server to refresh the permission cache
 
 **Important**: When using agent mode, `PACA_API_KEY` must be that agent's own key (see "How to Get the Agent's API Key" above) — the key itself is what identifies the agent to the server, so `PACA_AGENT_ID` alone is not a claim the server will trust from any other key.
 
@@ -259,7 +233,8 @@ When `PACA_AGENT_ID` is not set:
 1. **Assign Global Roles**: Grant users global permissions through their global roles
 2. **Add to Projects**: Add users to projects with appropriate project roles
 3. **Configure Project Roles**: Ensure project roles have the necessary permissions
-4. **Restart MCP Server**: Restart the MCP server to refresh the permission cache
+
+If a tool call fails with "Permission denied: ...", the role in question is missing the permission the underlying API endpoint requires — grant it and retry, no MCP server restart needed.
 
 ### Example Configuration
 
@@ -278,12 +253,6 @@ When `PACA_AGENT_ID` is not set:
   }
 }
 ```
-
-**Note**: The MCP server automatically filters tools based on your permissions:
-- **With `PACA_AGENT_ID`**: Filters tools based on the agent's project permissions
-- **Without `PACA_AGENT_ID`**: Filters tools based on your personal user permissions (including global permissions)
-
-If permission fetching fails, all tools will be shown to maintain backward compatibility.
 
 ## Available Tools
 

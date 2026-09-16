@@ -13,12 +13,6 @@ import {
 	PacaAPITaskExtendedClient,
 	PacaAPIViewsClient,
 } from "./api/index.js";
-import {
-	fetchAgentPermissions,
-	getToolPermission,
-	hasPermission,
-	type PermissionMap,
-} from "./permissions.js";
 import { loadPlugins, type PluginContextSection } from "./plugin-loader.js";
 import { getAllTools, handleToolCall } from "./tools/index.js";
 import type { PacaConfig } from "./types/index.js";
@@ -62,9 +56,6 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		annotationClient,
 	};
 
-	// Fetch agent permissions at startup
-	const permissionMap: PermissionMap = await fetchAgentPermissions(config);
-
 	const server = new Server(
 		{
 			name: "paca",
@@ -82,26 +73,28 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		const allCoreTools = getAllTools();
 		const allPluginTools = pluginRegistry.getAllTools();
 
-		// Filter core tools based on permissions
-		const filteredCoreTools = allCoreTools.filter((tool) =>
-			isToolVisible(tool.name, permissionMap, config.projectId),
-		);
-
-		// Repo tools are hidden entirely when no repository plugin is
+		// All tools are always listed — permissions are enforced by the API
+		// itself (a call the caller isn't allowed to make comes back as a 403,
+		// which formatApiRequestError turns into a "Permission denied: ..."
+		// tool error). The MCP server used to pre-filter this list by fetching
+		// the caller's permissions at startup and hiding tools it predicted
+		// would fail, but that duplicated the backend's own authorization
+		// logic and could drift from it — e.g. an unpinned caller (no
+		// PACA_PROJECT_ID) whose permission fetch returned little or nothing
+		// saw almost no tools at all, even though many of those calls would
+		// have succeeded.
+		//
+		// Repo tools are still hidden entirely when no repository plugin is
 		// configured for this conversation — mirrors executor.py's has_repos
 		// gate, which never attaches these tools to the agent at all rather
-		// than attaching them to fail against an empty plugin list.
+		// than attaching them to fail against an empty plugin list. This isn't
+		// a permission check: without a repo plugin these tools have no
+		// backend to call at all.
 		const hasRepoPlugins = (config.repoPluginIds?.length ?? 0) > 0;
 		const visibleCoreTools = hasRepoPlugins
-			? filteredCoreTools
-			: filteredCoreTools.filter((tool) => !REPO_TOOL_NAMES.has(tool.name));
+			? allCoreTools
+			: allCoreTools.filter((tool) => !REPO_TOOL_NAMES.has(tool.name));
 
-		console.error(
-			`[server] Filtered ${visibleCoreTools.length} tools from ${allCoreTools.length} total tools`,
-		);
-
-		// Note: Plugin tools are not filtered by permissions at this level
-		// Permissions are enforced at the API level
 		return {
 			tools: [...visibleCoreTools, ...allPluginTools],
 		};
@@ -168,70 +161,6 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 	});
 
 	return server;
-}
-
-/**
- * Determines whether a core tool should be listed for the current caller.
- *
- * `projectId` is `config.projectId` — set only in single-project (pinned)
- * mode. When unset, a `requiresProject` tool used to be gated solely on a
- * scan of `permissionMap.projects`, which is populated only for a pinned
- * project or a global agent's discovered invited projects (see
- * `fetchAgentPermissions` in permissions.ts). That left it empty for an
- * unpinned *human* user, so a global role grant (e.g. `{"*": true}`) was
- * never consulted and every project-scoped tool stayed hidden even for a
- * super-admin. Consulting the global permission map first fixes that
- * without granting anything extra: it's the same `hasPermission` check
- * already used for non-project-scoped tools, just applied here too.
- *
- * Exported for testing.
- */
-export function isToolVisible(
-	toolName: string,
-	permissionMap: PermissionMap,
-	projectId: string | undefined,
-): boolean {
-	const toolPerm = getToolPermission(toolName);
-	if (!toolPerm) {
-		console.error(
-			`[server] Tool ${toolName} has no permission mapping, allowing by default`,
-		);
-		return true;
-	}
-
-	if (projectId) {
-		const hasPerm = hasPermission(
-			permissionMap,
-			toolPerm.permissionKey,
-			projectId,
-		);
-		console.error(
-			`[server] Tool ${toolName} requires ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-		);
-		return hasPerm;
-	}
-
-	if (toolPerm.requiresProject) {
-		// Checked globally first, then any project — log wording deliberately
-		// doesn't say "project permission" here, since a grant via the
-		// global map alone (no project scan needed) would otherwise be
-		// misreported as project-scoped when reading server logs.
-		const hasPerm =
-			hasPermission(permissionMap, toolPerm.permissionKey) ||
-			Object.keys(permissionMap.projects).some((pid) =>
-				hasPermission(permissionMap, toolPerm.permissionKey, pid),
-			);
-		console.error(
-			`[server] Tool ${toolName} requires ${toolPerm.permissionKey} (global or any project), granted: ${hasPerm}`,
-		);
-		return hasPerm;
-	}
-
-	const hasPerm = hasPermission(permissionMap, toolPerm.permissionKey);
-	console.error(
-		`[server] Tool ${toolName} requires global permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-	);
-	return hasPerm;
 }
 
 /**

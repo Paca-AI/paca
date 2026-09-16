@@ -1703,10 +1703,11 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 // authorizeConversationsReadForConversation reports whether callerAgentID
 // holds conversations.read for the scope conv belongs to: its own global
 // role, or (for a project-scoped conversation) its role in that specific
-// project — an OR, mirroring the MCP server's own isToolVisible check for
-// read_conversation (apps/mcp/src/permissions.ts's requiresProject: true) so
-// tool-list visibility and backend enforcement agree. Skipped (always
-// allowed) when s.authorizer is nil — see that field's doc comment.
+// project — an OR. This is the sole enforcement point for read_conversation;
+// the MCP server lists that tool unconditionally and lets a disallowed call
+// come back from here as a 403 rather than pre-filtering the tool list by a
+// separately-fetched permission snapshot. Skipped (always allowed) when
+// s.authorizer is nil — see that field's doc comment.
 func (s *Service) authorizeConversationsReadForConversation(ctx context.Context, callerAgentID uuid.UUID, conv *agentdom.AgentConversation) error {
 	if s.authorizer == nil {
 		return nil
