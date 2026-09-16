@@ -271,11 +271,12 @@ const (
 
 // CLIProvidersWithAPIKeyAuth is the set of cli_provider values that support
 // CLIAuthModeAPIKey — each CLI's own native non-interactive auth env var
-// (see executor's cliProviderAPIKeyEnvVar on the agent-runner side),
-// completely independent of Goose's own provider/API-key mechanism, which
-// does not apply once GOOSE_PROVIDER names a CLI provider. cursor-agent has
-// no known non-interactive API-key auth path as of this writing — login via
-// the environment terminal only.
+// (see executor/providercli's per-adapter APIKeyEnvVar on the agent-runner
+// side), completely independent of Goose's own provider/API-key mechanism,
+// which does not apply once GOOSE_PROVIDER names a CLI provider. cursor-agent
+// is left out even though a CURSOR_API_KEY env var is confirmed to exist
+// (see providercli's cursor_agent.go, APIKeyEnvVar's own doc comment) —
+// deliberately not wired up yet, left as a follow-up.
 var CLIProvidersWithAPIKeyAuth = map[string]bool{
 	CLIProviderClaudeCode: true,
 	CLIProviderCodex:      true,

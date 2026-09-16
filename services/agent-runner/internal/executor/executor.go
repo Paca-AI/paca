@@ -481,12 +481,12 @@ func (e *Executor) buildAgentContainerEnv(cfg agent.Config) (map[string]string, 
 // branch: GOOSE_PROVIDER/GOOSE_MODEL/GOOSE_MODE (resolveCLIProviderEnv,
 // provider.go) instead of a raw model API's env set, plus — only when
 // cfg.CLIAuthMode is "api_key" — the underlying CLI's own native
-// non-interactive auth env var (see provider.go's cliProviderAPIKeyEnvVar
-// and the package doc comment on why this is NOT routed through Goose's
-// own provider/key mechanism the LLM branch above uses). Shared, like
-// buildAgentContainerEnv itself, between coldStart and coldStartEnvironment
-// — though in practice a provider_cli agent only ever reaches
-// coldStartEnvironment (see Run's environment-required guard).
+// non-interactive auth env var (see providercli.Adapter.APIKeyEnvVar's own
+// doc comment on why this is NOT routed through Goose's own provider/key
+// mechanism the LLM branch above uses). Shared, like buildAgentContainerEnv
+// itself, between coldStart and coldStartEnvironment — though in practice a
+// provider_cli agent only ever reaches coldStartEnvironment (see Run's
+// environment-required guard).
 func (e *Executor) buildProviderCLIContainerEnv(cfg agent.Config) (map[string]string, error) {
 	containerEnv := resolveCLIProviderEnv(cfg)
 

@@ -206,10 +206,6 @@ func newFakeUserRepo() *fakeUserRepo {
 	return &fakeUserRepo{byID: make(map[uuid.UUID]*userdom.User)}
 }
 
-func (r *fakeUserRepo) add(u *userdom.User) {
-	r.byID[u.ID] = u
-}
-
 func (r *fakeUserRepo) FindByID(_ context.Context, id uuid.UUID) (*userdom.User, error) {
 	r.mu.Lock()
 	r.calls = append(r.calls, id)

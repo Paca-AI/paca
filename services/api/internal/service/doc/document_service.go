@@ -3,7 +3,6 @@ package docsvc
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -300,10 +299,4 @@ func (s *Service) resolveMember(ctx context.Context, userID *uuid.UUID, projectI
 		return nil
 	}
 	return &member.ID
-}
-
-// buildFieldChanges constructs the content for a doc.updated activity.
-func buildFieldChanges(changes []docdom.FieldChange) json.RawMessage {
-	raw, _ := json.Marshal(map[string]any{"changes": changes})
-	return raw
 }
