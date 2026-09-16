@@ -271,18 +271,23 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
-		User:                 handler.NewUserHandler(userService),
-		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
-		Project:              handler.NewProjectHandler(projectService, authz.NewAuthorizer(authzStore)),
-		Task:                 handler.NewTaskHandler(taskService, viewService, activityService, handler.WithTaskAssignedProjectService(projectService)),
-		Sprint:               handler.NewSprintHandler(sprintService, viewService),
-		View:                 handler.NewViewHandler(viewService),
-		Attachment:           handler.NewAttachmentHandler(attachmentService),
-		APIKey:               handler.NewAPIKeyHandler(apiKeyService),
-		Automation:           handler.NewAutomationHandler(automationService),
-		Agent:                handler.NewAgentHandler(agentService, "", "", "").WithMemberRepo(projectRepo),
-		Conversation:         handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo),
-		Log:                  log,
+		User: handler.NewUserHandler(userService).
+			WithAuthorizer(authz.NewAuthorizer(authzStore)).
+			WithGlobalRoleService(globalRoleService),
+		GlobalRole: handler.NewGlobalRoleHandler(globalRoleService, authz.NewAuthorizer(authzStore)),
+		Project:    handler.NewProjectHandler(projectService, authz.NewAuthorizer(authzStore)),
+		Task:       handler.NewTaskHandler(taskService, viewService, activityService, handler.WithTaskAssignedProjectService(projectService)),
+		Sprint:     handler.NewSprintHandler(sprintService, viewService),
+		View:       handler.NewViewHandler(viewService),
+		Attachment: handler.NewAttachmentHandler(attachmentService),
+		APIKey:     handler.NewAPIKeyHandler(apiKeyService),
+		Automation: handler.NewAutomationHandler(automationService),
+		Agent: handler.NewAgentHandler(agentService, "", "", "").
+			WithMemberRepo(projectRepo).
+			WithAuthorizer(authz.NewAuthorizer(authzStore)).
+			WithGlobalRoleService(globalRoleService),
+		Conversation: handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo),
+		Log:          log,
 	})
 
 	srv := httptest.NewServer(engine)

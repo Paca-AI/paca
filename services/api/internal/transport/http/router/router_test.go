@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -81,7 +82,9 @@ func (m *mockUserSvc) RemoveAvatar(context.Context, uuid.UUID) (*userdom.User, e
 	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
 }
 
-type mockGlobalRoleSvc struct{}
+type mockGlobalRoleSvc struct {
+	findByID func(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error)
+}
 
 func (m *mockGlobalRoleSvc) List(context.Context) ([]*globalroledom.GlobalRole, error) {
 	return []*globalroledom.GlobalRole{{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}}, nil
@@ -96,8 +99,11 @@ func (m *mockGlobalRoleSvc) Delete(context.Context, uuid.UUID) error { return ni
 func (m *mockGlobalRoleSvc) ReplaceUserRoles(context.Context, uuid.UUID, []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
 	return []*globalroledom.GlobalRole{}, nil
 }
-func (m *mockGlobalRoleSvc) FindByID(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) {
-	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}, nil
+func (m *mockGlobalRoleSvc) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	if m.findByID != nil {
+		return m.findByID(ctx, id)
+	}
+	return &globalroledom.GlobalRole{ID: id, Name: "SUPER_ADMIN", Permissions: map[string]any{}}, nil
 }
 
 // stubProjectSvc is a minimal projectdom.Service with no projects, just
@@ -220,6 +226,10 @@ func newTestRouter(t *testing.T) http.Handler {
 }
 
 func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) http.Handler {
+	return newTestRouterWithStoreAndRoles(t, store, &mockGlobalRoleSvc{})
+}
+
+func newTestRouterWithStoreAndRoles(t *testing.T, store authz.PermissionStore, grs *mockGlobalRoleSvc) http.Handler {
 	t.Helper()
 
 	authorizer := authz.NewAuthorizer(store)
@@ -234,7 +244,7 @@ func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) http.Hand
 			RefreshSessionTTL: 12 * time.Hour,
 		}),
 		User:       handler.NewUserHandler(&mockUserSvc{}),
-		GlobalRole: handler.NewGlobalRoleHandler(&mockGlobalRoleSvc{}),
+		GlobalRole: handler.NewGlobalRoleHandler(grs, authorizer),
 		Project:    handler.NewProjectHandler(&stubProjectSvc{}, authorizer),
 		Settings:   handler.NewSettingsHandler(&fakeSettingsSvc{}),
 		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -408,6 +418,113 @@ func TestAdminRoute_CreateGlobalRole_RequiresWritePermission(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 without write permission, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// A caller with global_roles.write but without the universal PermissionAll
+// wildcard (an ADMIN) must not be able to mint a god-mode role.
+func TestAdminRoute_CreateGodRole_ForbiddenWithoutUniversalPermission(t *testing.T) {
+	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionGlobalRolesWrite}})
+	tok := issueAccessTokenForRouterTests(t)
+
+	body := bytes.NewBufferString(`{"name":"GOD","permissions":{"*":true}}`)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/global-roles", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for ADMIN creating a god role, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminRoute_CreateGodRole_AllowedWithUniversalPermission(t *testing.T) {
+	r := newTestRouterWithStore(t, &allowAllPermissionStore{})
+	tok := issueAccessTokenForRouterTests(t)
+
+	body := bytes.NewBufferString(`{"name":"GOD","permissions":{"*":true}}`)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/global-roles", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for SUPER_ADMIN creating a god role, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// An ADMIN with global_roles.assign must not be able to put the SUPER_ADMIN
+// role on a user (including themselves).
+func TestAdminRoute_AssignGodRole_ForbiddenWithoutUniversalPermission(t *testing.T) {
+	superAdminID := uuid.New()
+	r := newTestRouterWithStoreAndRoles(t,
+		&staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionGlobalRolesAssign}},
+		&mockGlobalRoleSvc{
+			findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: id, Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+			},
+		})
+	tok := issueAccessTokenForRouterTests(t)
+
+	body := bytes.NewBufferString(fmt.Sprintf(`{"role_ids":["%s"]}`, superAdminID.String()))
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/v1/admin/users/"+uuid.NewString()+"/global-roles", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for ADMIN assigning SUPER_ADMIN, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminRoute_AssignGodRole_AllowedWithUniversalPermission(t *testing.T) {
+	superAdminID := uuid.New()
+	r := newTestRouterWithStoreAndRoles(t,
+		&allowAllPermissionStore{},
+		&mockGlobalRoleSvc{
+			findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: id, Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+			},
+		})
+	tok := issueAccessTokenForRouterTests(t)
+
+	body := bytes.NewBufferString(fmt.Sprintf(`{"role_ids":["%s"]}`, superAdminID.String()))
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/v1/admin/users/"+uuid.NewString()+"/global-roles", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for SUPER_ADMIN assigning SUPER_ADMIN, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// Control: assigning a normal role stays open to ADMIN — the guard only
+// blocks god-mode grants, not legitimate role management.
+func TestAdminRoute_AssignNormalRole_AllowedWithAssignPermission(t *testing.T) {
+	userRoleID := uuid.New()
+	r := newTestRouterWithStoreAndRoles(t,
+		&staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionGlobalRolesAssign}},
+		&mockGlobalRoleSvc{
+			findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: id, Name: "USER", Permissions: map[string]any{"users.read": true}}, nil
+			},
+		})
+	tok := issueAccessTokenForRouterTests(t)
+
+	body := bytes.NewBufferString(fmt.Sprintf(`{"role_ids":["%s"]}`, userRoleID.String()))
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/v1/admin/users/"+uuid.NewString()+"/global-roles", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for ADMIN assigning a normal role, got %d (%s)", w.Code, w.Body.String())
 	}
 }
 

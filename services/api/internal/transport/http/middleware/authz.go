@@ -113,6 +113,38 @@ func Authz(authorizer *authz.Authorizer, permissions ...authz.Permission) func(h
 	return RequirePermissions(authorizer, GlobalScope(), permissions...)
 }
 
+// ActorHasPermissionAll reports whether the authenticated caller of r — human
+// via JWT/cookie, or global agent via agent API key — holds the universal
+// authz.PermissionAll wildcard.
+//
+// Handlers use this for grant-time checks that a route-level permission can't
+// express: "may this caller hand out god mode?" (assigning a role carrying "*"
+// to a user, or binding one to a global agent). It resolves the caller through
+// the same user/agent dual path as EnforcePermissions, so a handler-level
+// check can't disagree with the middleware about who the caller is or what
+// they hold. A nil authorizer reports false; a non-nil error means the
+// caller's identity or permissions could not be resolved and should be
+// surfaced rather than treated as "not allowed".
+func ActorHasPermissionAll(r *http.Request, authorizer *authz.Authorizer) (bool, error) {
+	if authorizer == nil {
+		return false, nil
+	}
+
+	if agentID, ok := AgentIDFromRequest(r); ok {
+		return authorizer.HasGlobalPermissionsForAgent(r.Context(), agentID, authz.PermissionAll)
+	}
+
+	claims := ClaimsFrom(r)
+	if claims == nil {
+		return false, apierr.New(apierr.CodeUnauthenticated, "unauthenticated")
+	}
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return false, apierr.New(apierr.CodeBadRequest, "invalid subject claim")
+	}
+	return authorizer.HasPermissions(r.Context(), userID, nil, claims.Role, authz.PermissionAll)
+}
+
 // PermissionGroup pairs a scope resolver with the permissions required in that scope.
 // Used with RequireAnyPermissions to express OR-style authorization policies.
 type PermissionGroup struct {

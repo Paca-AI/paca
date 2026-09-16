@@ -8,10 +8,13 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 )
 
@@ -169,5 +172,261 @@ func TestGlobalRoleUpdate_EmptyName_Returns400(t *testing.T) {
 		jsonBody(t, map[string]any{"name": "", "permissions": map[string]any{}}))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty name, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- Privilege-escalation guard (ADMIN must not self-promote to SUPER_ADMIN) ---
+
+// staticGlobalRolePermStore is a minimal authz.PermissionStore for the
+// escalation-guard tests: every user resolves to the configured global perms.
+type staticGlobalRolePermStore struct {
+	globalPerms []authz.Permission
+}
+
+func (s *staticGlobalRolePermStore) ListGlobalPermissions(context.Context, uuid.UUID) ([]authz.Permission, error) {
+	return append([]authz.Permission(nil), s.globalPerms...), nil
+}
+
+func (s *staticGlobalRolePermStore) ListProjectPermissions(context.Context, uuid.UUID, uuid.UUID) ([]authz.Permission, error) {
+	return nil, nil
+}
+
+// adminGlobalPerms returns the real built-in ADMIN role's grants — global
+// role management included, but NOT the PermissionAll wildcard — so the
+// guard tests exercise the exact production boundary.
+func adminGlobalPerms() []authz.Permission {
+	for _, def := range authz.DefaultGlobalRoles() {
+		if def.Name == "ADMIN" {
+			return def.Permissions
+		}
+	}
+	return nil
+}
+
+func globalRoleClaims(role string) *domainauth.Claims {
+	return &domainauth.Claims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: uuid.NewString()},
+		Role:             role,
+		Kind:             "access",
+	}
+}
+
+// newGlobalRoleRouterWithAuthz builds the global-role router with the
+// privilege-escalation guard enabled: every request carries claims and the
+// authorizer resolves permissions from the static store.
+func newGlobalRoleRouterWithAuthz(svc globalroledom.Service, claims *domainauth.Claims, perms []authz.Permission) chi.Router {
+	r := chi.NewRouter()
+	r.Use(injectClaims(claims))
+	h := handler.NewGlobalRoleHandler(svc, authz.NewAuthorizer(&staticGlobalRolePermStore{globalPerms: perms}))
+	r.Get("/admin/global-roles", h.List)
+	r.Post("/admin/global-roles", h.Create)
+	r.Patch("/admin/global-roles/{roleId}", h.Update)
+	r.Delete("/admin/global-roles/{roleId}", h.Delete)
+	r.Put("/admin/users/{userId}/global-roles", h.ReplaceUserRoles)
+	return r
+}
+
+func TestGlobalRoleCreate_GodRolePermissions_ForbiddenForAdmin(t *testing.T) {
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	w := do(t, r, http.MethodPost, "/admin/global-roles",
+		jsonBody(t, map[string]any{"name": "GOD", "permissions": map[string]any{"*": true}}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+	if code := errorCode(t, w); code != "FORBIDDEN" {
+		t.Fatalf("unexpected error_code: %s", code)
+	}
+}
+
+func TestGlobalRoleCreate_GodRolePermissions_AllowedForSuperAdmin(t *testing.T) {
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		create: func(_ context.Context, _ globalroledom.CreateInput) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: uuid.New(), Name: "GOD", Permissions: map[string]any{"*": true}}, nil
+		},
+	}, globalRoleClaims("SUPER_ADMIN"), nil)
+
+	w := do(t, r, http.MethodPost, "/admin/global-roles",
+		jsonBody(t, map[string]any{"name": "GOD", "permissions": map[string]any{"*": true}}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGlobalRoleUpdate_AddGodPermission_ForbiddenForAdmin(t *testing.T) {
+	roleID := uuid.New()
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "CUSTOM", Permissions: map[string]any{"users.read": true}}, nil
+		},
+	}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/admin/global-roles/%s", roleID),
+		jsonBody(t, map[string]any{"name": "CUSTOM", "permissions": map[string]any{"*": true}}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGlobalRoleUpdate_SuperAdminRoleDefinition_ForbiddenForAdmin(t *testing.T) {
+	roleID := uuid.New()
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+		},
+	}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	// Even a mutation that doesn't itself add "*" is reserved: an ADMIN must
+	// not be able to reshape the SUPER_ADMIN role definition.
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/admin/global-roles/%s", roleID),
+		jsonBody(t, map[string]any{"name": "SUPER_ADMIN", "permissions": map[string]any{"users.read": true}}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGlobalRoleUpdate_NormalRole_AllowedForAdmin(t *testing.T) {
+	roleID := uuid.New()
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "CUSTOM", Permissions: map[string]any{"users.read": true}}, nil
+		},
+		update: func(_ context.Context, _ uuid.UUID, _ globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: roleID, Name: "CUSTOM", Permissions: map[string]any{"users.read": true, "users.write": true}}, nil
+		},
+	}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/admin/global-roles/%s", roleID),
+		jsonBody(t, map[string]any{"name": "CUSTOM", "permissions": map[string]any{"users.read": true, "users.write": true}}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGlobalRoleDelete_SuperAdminRole_ForbiddenForAdmin(t *testing.T) {
+	roleID := uuid.New()
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+		},
+	}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	w := do(t, r, http.MethodDelete, fmt.Sprintf("/admin/global-roles/%s", roleID), nil)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReplaceUserGlobalRoles_GodRole_ForbiddenForAdmin(t *testing.T) {
+	superAdminID := uuid.New()
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+		},
+	}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	w := do(t, r, http.MethodPut, fmt.Sprintf("/admin/users/%s/global-roles", uuid.NewString()),
+		jsonBody(t, map[string]any{"role_ids": []string{superAdminID.String()}}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReplaceUserGlobalRoles_GodRole_AllowedForSuperAdmin(t *testing.T) {
+	superAdminID := uuid.New()
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+		},
+		replaceUserRoles: func(_ context.Context, _ uuid.UUID, _ []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+			return []*globalroledom.GlobalRole{{ID: superAdminID, Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}}, nil
+		},
+	}, globalRoleClaims("SUPER_ADMIN"), nil)
+
+	w := do(t, r, http.MethodPut, fmt.Sprintf("/admin/users/%s/global-roles", uuid.NewString()),
+		jsonBody(t, map[string]any{"role_ids": []string{superAdminID.String()}}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReplaceUserGlobalRoles_NormalRole_AllowedForAdmin(t *testing.T) {
+	userRoleID := uuid.New()
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "USER", Permissions: map[string]any{"users.read": true}}, nil
+		},
+		replaceUserRoles: func(_ context.Context, _ uuid.UUID, _ []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+			return []*globalroledom.GlobalRole{{ID: userRoleID, Name: "USER", Permissions: map[string]any{"users.read": true}}}, nil
+		},
+	}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	w := do(t, r, http.MethodPut, fmt.Sprintf("/admin/users/%s/global-roles", uuid.NewString()),
+		jsonBody(t, map[string]any{"role_ids": []string{userRoleID.String()}}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- Regression: the guard must read permission keys exactly like the store ---
+//
+// postgres.permissionsFromJSON trims keys before granting, so a whitespace-
+// padded "*" (" *", "*	", "\u00a0*") resolves to PermissionAll at request
+// time. A guard comparing raw keys would let it through — the bypass the
+// parser-sharing change closes. These tests pin the guard to the resolver.
+
+func TestGlobalRoleCreate_PaddedWildcardKey_ForbiddenForAdmin(t *testing.T) {
+	for _, key := range []string{" *", "* ", "	*", "\u00a0*"} {
+		t.Run(fmt.Sprintf("%q", key), func(t *testing.T) {
+			r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+			w := do(t, r, http.MethodPost, "/admin/global-roles",
+				jsonBody(t, map[string]any{"name": "GOD_PAD", "permissions": map[string]any{key: true}}))
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("expected 403 for padded wildcard %q, got %d: %s", key, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestGlobalRoleCreate_PaddedReservedName_ForbiddenForAdmin(t *testing.T) {
+	// The service trims names before persisting, so " SUPER_ADMIN " must be
+	// treated as the reserved role too.
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	w := do(t, r, http.MethodPost, "/admin/global-roles",
+		jsonBody(t, map[string]any{"name": " SUPER_ADMIN ", "permissions": map[string]any{"users.read": true}}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a padded reserved name, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGlobalRoleUpdate_AddPaddedWildcardKey_ForbiddenForAdmin(t *testing.T) {
+	roleID := uuid.New()
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "CUSTOM", Permissions: map[string]any{"users.read": true}}, nil
+		},
+	}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/admin/global-roles/%s", roleID),
+		jsonBody(t, map[string]any{"name": "CUSTOM", "permissions": map[string]any{"* ": true}}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a padded wildcard, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReplaceUserGlobalRoles_PaddedWildcardRole_ForbiddenForAdmin(t *testing.T) {
+	roleID := uuid.New()
+	r := newGlobalRoleRouterWithAuthz(&mockGlobalRoleSvc{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "GOD_PAD", Permissions: map[string]any{" * ": true}}, nil
+		},
+	}, globalRoleClaims("ADMIN"), adminGlobalPerms())
+
+	w := do(t, r, http.MethodPut, fmt.Sprintf("/admin/users/%s/global-roles", uuid.NewString()),
+		jsonBody(t, map[string]any{"role_ids": []string{roleID.String()}}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 assigning a role with a padded wildcard, got %d: %s", w.Code, w.Body.String())
 	}
 }

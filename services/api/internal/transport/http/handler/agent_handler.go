@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
@@ -43,6 +45,14 @@ type agentGlobalPermissionReader interface {
 	ListAgentGlobalPermissions(ctx context.Context, agentID uuid.UUID) ([]authz.Permission, error)
 }
 
+// globalRoleFinder resolves a global role by ID. CreateGlobalAgent and
+// UpdateGlobalAgent use it to refuse binding a global agent to a role that
+// grants the universal permission unless the caller holds it too — see
+// WithGlobalRoleService's doc comment. Satisfied by *globalrolesvc.Service.
+type globalRoleFinder interface {
+	FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+}
+
 // AgentHandler handles AI agent management endpoints.
 type AgentHandler struct {
 	svc                agentdom.Service
@@ -56,8 +66,12 @@ type AgentHandler struct {
 	avatarSvc          attachmentdom.AvatarService
 	taskChecker        attachmentdom.TaskOwnerChecker
 	// authorizer backs CreateGlobalAgent/UpdateGlobalAgent's conditional
-	// global_roles.assign check — see WithAuthorizer's doc comment.
+	// global_roles.assign and god-mode role-binding checks — see
+	// WithAuthorizer's doc comment.
 	authorizer *authz.Authorizer
+	// globalRoleSvc resolves a bound global_role_id so those same handlers can
+	// refuse god-mode bindings — see WithGlobalRoleService's doc comment.
+	globalRoleSvc globalRoleFinder
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -114,13 +128,61 @@ func (h *AgentHandler) WithTaskChecker(checker attachmentdom.TaskOwnerChecker) *
 // WithAuthorizer attaches the permission authorizer used by
 // CreateGlobalAgent/UpdateGlobalAgent to require global_roles.assign
 // whenever a request sets global_role_id — see those handlers' own
-// GHSA-xxc8-ggm7-vmxp comments. The route-level agents.write gate
-// (router.go) covers everything else these handlers do; this is a
-// narrower, conditional check on top of it, so it lives here rather than
+// GHSA-xxc8-ggm7-vmxp comments — and to refuse god-mode role bindings
+// (see WithGlobalRoleService). The route-level agents.write gate
+// (router.go) covers everything else these handlers do; these are
+// narrower, conditional checks on top of it, so they live here rather than
 // as a second router.With(...) permission group.
 func (h *AgentHandler) WithAuthorizer(a *authz.Authorizer) *AgentHandler {
 	h.authorizer = a
 	return h
+}
+
+// WithGlobalRoleService attaches the global-role lookup used by
+// CreateGlobalAgent/UpdateGlobalAgent to reject binding a global agent to a
+// role that grants the universal authz.PermissionAll unless the caller holds
+// it too. Binding is a grant, not just configuration: the agent's MCP key
+// (POST /admin/agents/:id/mcp-agent-key) authenticates as the agent and
+// resolves permissions from the bound role, so without this check an ADMIN —
+// who holds agents.write and global_roles.assign but not PermissionAll — could
+// mint itself a token that carries "*".
+func (h *AgentHandler) WithGlobalRoleService(svc globalRoleFinder) *AgentHandler {
+	h.globalRoleSvc = svc
+	return h
+}
+
+// requireGrantableGlobalRole refuses to bind roleID to a global agent when the
+// role grants the universal permission and the caller doesn't hold it.
+// Unknown roles are left to the service's own existence check (the binding is
+// rejected downstream either way), and with either dependency unwired — test
+// routers only — the guard is skipped.
+func (h *AgentHandler) requireGrantableGlobalRole(w http.ResponseWriter, r *http.Request, roleID uuid.UUID) bool {
+	if h.authorizer == nil || h.globalRoleSvc == nil {
+		return true
+	}
+
+	role, err := h.globalRoleSvc.FindByID(r.Context(), roleID)
+	if err != nil {
+		if errors.Is(err, globalroledom.ErrNotFound) {
+			return true
+		}
+		presenter.Error(w, r, err)
+		return false
+	}
+	if !authz.PermissionsGrantAll(role.Permissions) {
+		return true
+	}
+
+	allowed, err := middleware.ActorHasPermissionAll(r, h.authorizer)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return false
+	}
+	if !allowed {
+		presenter.Error(w, r, apierr.New(apierr.CodeForbidden, "only SUPER_ADMIN may bind an agent to a role that grants the universal permission"))
+		return false
+	}
+	return true
 }
 
 // toAgentResponse maps ag to an AgentResponse and, if an AvatarService is
@@ -545,6 +607,12 @@ func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		if !middleware.EnforcePermissions(w, r, h.authorizer, middleware.GlobalScope(), authz.PermissionGlobalRolesAssign) {
 			return
 		}
+		// Binding a role that grants the universal permission hands out that
+		// permission through the agent's MCP key — same god-mode boundary as
+		// assigning such a role to a user (GlobalRoleHandler.ReplaceUserRoles).
+		if !h.requireGrantableGlobalRole(w, r, *req.GlobalRoleID) {
+			return
+		}
 	}
 
 	claims := middleware.ClaimsFrom(r)
@@ -595,6 +663,12 @@ func (h *AgentHandler) UpdateGlobalAgent(w http.ResponseWriter, r *http.Request)
 	// ReplaceUserRoles' all-or-nothing gate on the user-facing equivalent.
 	if req.GlobalRoleID != nil {
 		if !middleware.EnforcePermissions(w, r, h.authorizer, middleware.GlobalScope(), authz.PermissionGlobalRolesAssign) {
+			return
+		}
+		// Binding a role that grants the universal permission hands out that
+		// permission through the agent's MCP key — same god-mode boundary as
+		// assigning such a role to a user (GlobalRoleHandler.ReplaceUserRoles).
+		if !h.requireGrantableGlobalRole(w, r, *req.GlobalRoleID) {
 			return
 		}
 	}

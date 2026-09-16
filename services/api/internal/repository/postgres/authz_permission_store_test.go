@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -244,5 +245,57 @@ func TestAuthzPermissionStore_ListProjectPermissions_ExcludesSoftDeletedMembersh
 	}
 	if len(perms) != 0 {
 		t.Fatalf("expected no permissions for a removed (soft-deleted) member, got %v", perms)
+	}
+}
+
+// TestPermissionsFromJSON_MatchesAuthzParser pins the store's own view of a
+// persisted permissions blob to the parser the authorization guards use
+// (authz.PermissionsGrantAll). The two must agree on whitespace-padded keys:
+// the store trims them before granting, so " *" is PermissionAll here — if a
+// guard disagreed, an ADMIN could persist a padded wildcard that resolves to
+// god mode at request time while sailing past the guard. Kept as a direct
+// parser test (no database) so it runs everywhere.
+func TestPermissionsFromJSON_MatchesAuthzParser(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want []authz.Permission
+	}{
+		{"wildcard", `{"*": true}`, []authz.Permission{authz.PermissionAll}},
+		{"leading-space wildcard", `{" *": true}`, []authz.Permission{authz.PermissionAll}},
+		{"trailing-space wildcard", `{"* ": true}`, []authz.Permission{authz.PermissionAll}},
+		{"tab-padded wildcard", "{\"\\t*\": true}", []authz.Permission{authz.PermissionAll}},
+		{"false wildcard", `{"*": false}`, []authz.Permission{}},
+		{"named permissions", `{"users.read": true}`, []authz.Permission{authz.PermissionUsersRead}},
+		{"array shape", `[" * "]`, []authz.Permission{authz.PermissionAll}},
+		{"empty", ``, nil},
+		{"malformed", `{`, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := permissionsFromJSON([]byte(tc.raw))
+			if len(got) != len(tc.want) {
+				t.Fatalf("permissionsFromJSON(%s) = %v, want %v", tc.raw, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("permissionsFromJSON(%s) = %v, want %v", tc.raw, got, tc.want)
+				}
+			}
+
+			// The guard's view must match: same blob, same verdict.
+			wantAll := false
+			for _, p := range tc.want {
+				if p == authz.PermissionAll {
+					wantAll = true
+				}
+			}
+			var payload any
+			if len(tc.raw) > 0 && json.Unmarshal([]byte(tc.raw), &payload) == nil {
+				if authz.PermissionsGrantAll(payload) != wantAll {
+					t.Fatalf("authz.PermissionsGrantAll(%s) disagrees with the store's parser", tc.raw)
+				}
+			}
+		})
 	}
 }

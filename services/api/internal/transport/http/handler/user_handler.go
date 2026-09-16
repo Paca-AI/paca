@@ -12,7 +12,9 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	domainuser "github.com/Paca-AI/api/internal/domain/user"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -45,11 +47,24 @@ type SessionInvalidator interface {
 	Logout(ctx context.Context, familyID string) error
 }
 
+// globalRoleLister resolves the global role a caller-supplied *name* refers to.
+// The global-role service exposes no look-up-by-name (only List/FindByID), and
+// the role count is tiny, so CreateUser/AdminUpdateUser scan List for the exact
+// trimmed name the service itself will resolve — see requireGrantableRole.
+// Satisfied by *globalrolesvc.CachedService.
+type globalRoleLister interface {
+	List(ctx context.Context) ([]*globalroledom.GlobalRole, error)
+}
+
 // UserHandler handles user-related endpoints.
 type UserHandler struct {
 	svc       domainuser.Service
 	authSvc   SessionInvalidator
 	avatarSvc attachmentdom.AvatarService
+	// authorizer and globalRoleSvc back CreateUser/AdminUpdateUser's role-name
+	// guard — see WithGlobalRoleService's doc comment.
+	authorizer    *authz.Authorizer
+	globalRoleSvc globalRoleLister
 }
 
 // NewUserHandler returns a UserHandler wired to the provided user service.
@@ -67,6 +82,65 @@ func NewUserHandler(svc domainuser.Service, authSvc ...SessionInvalidator) *User
 func (h *UserHandler) WithAvatarService(svc attachmentdom.AvatarService) *UserHandler {
 	h.avatarSvc = svc
 	return h
+}
+
+// WithAuthorizer attaches the permission authorizer used by
+// CreateUser/AdminUpdateUser's role-name guard — see WithGlobalRoleService.
+func (h *UserHandler) WithAuthorizer(a *authz.Authorizer) *UserHandler {
+	h.authorizer = a
+	return h
+}
+
+// WithGlobalRoleService attaches the global-role lookup used by
+// CreateUser/AdminUpdateUser to reject assigning a role that grants the
+// universal authz.PermissionAll to a caller who doesn't hold it themselves.
+//
+// These endpoints take a role *name* and set both users.role_id and the legacy
+// users.role claim (which the token issuer copies into every access token, and
+// authz.LegacyPermissionsForRole resolves to "*" for SUPER_ADMIN), so without
+// this check an ADMIN — who legitimately holds users.write — could promote
+// itself or anyone else to SUPER_ADMIN straight from the admin user form.
+func (h *UserHandler) WithGlobalRoleService(svc globalRoleLister) *UserHandler {
+	h.globalRoleSvc = svc
+	return h
+}
+
+// requireGrantableRole refuses roleName when the role it refers to grants the
+// universal permission and the caller doesn't hold it. Unknown names are left
+// to the service (they 4xx there anyway), and with either dependency unwired —
+// test routers only — the guard is skipped.
+func (h *UserHandler) requireGrantableRole(w http.ResponseWriter, r *http.Request, roleName string) bool {
+	wanted := strings.TrimSpace(roleName)
+	if wanted == "" || h.authorizer == nil || h.globalRoleSvc == nil {
+		return true
+	}
+
+	roles, err := h.globalRoleSvc.List(r.Context())
+	if err != nil {
+		presenter.Error(w, r, err)
+		return false
+	}
+	var target *globalroledom.GlobalRole
+	for _, role := range roles {
+		if role.Name == wanted {
+			target = role
+			break
+		}
+	}
+	if target == nil || !authz.PermissionsGrantAll(target.Permissions) {
+		return true
+	}
+
+	allowed, err := middleware.ActorHasPermissionAll(r, h.authorizer)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return false
+	}
+	if !allowed {
+		presenter.Error(w, r, apierr.New(apierr.CodeForbidden, "only SUPER_ADMIN may grant the universal permission"))
+		return false
+	}
+	return true
 }
 
 // toUserResponse maps u to a UserResponse and, if an AvatarService is
@@ -241,6 +315,12 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A caller-supplied role name that resolves to a god-mode role is a
+	// privilege grant, not just user administration — see WithGlobalRoleService.
+	if !h.requireGrantableRole(w, r, req.Role) {
+		return
+	}
+
 	u, err := h.svc.Create(r.Context(), domainuser.CreateInput{
 		Username:           req.Username,
 		Password:           req.Password,
@@ -272,6 +352,12 @@ func (h *UserHandler) AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	email, err := normalizeEmail(req.Email)
 	if err != nil {
 		presenter.Error(w, r, err)
+		return
+	}
+
+	// See CreateUser's identical check — same role-name grant boundary, and
+	// the same legacy users.role claim is written here too.
+	if !h.requireGrantableRole(w, r, req.Role) {
 		return
 	}
 

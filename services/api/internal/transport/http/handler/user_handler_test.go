@@ -14,7 +14,10 @@ import (
 	"github.com/google/uuid"
 
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	domainuser "github.com/Paca-AI/api/internal/domain/user"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 )
 
@@ -157,6 +160,38 @@ func newUserRouter(svc domainuser.Service) chi.Router {
 	r.Patch("/admin/users/{userId}", h.AdminUpdateUser)
 	r.Patch("/admin/users/{userId}/password", h.ResetPassword)
 	r.Delete("/admin/users/{userId}", h.DeleteUser)
+	return r
+}
+
+// fakeGlobalRoleLister serves a fixed role list to the role-name guard.
+type fakeGlobalRoleLister struct {
+	roles []*globalroledom.GlobalRole
+	err   error
+}
+
+func (f *fakeGlobalRoleLister) List(context.Context) ([]*globalroledom.GlobalRole, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.roles, nil
+}
+
+func superAdminRoleEntity() *globalroledom.GlobalRole {
+	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}
+}
+
+// newUserRouterWithRoleGuard wires the admin user routes with the god-mode
+// role-name guard enabled: every request carries claims and the authorizer
+// resolves permissions from a static store, so a caller's own level decides
+// whether it may hand out a "*"-carrying role.
+func newUserRouterWithRoleGuard(svc domainuser.Service, claims *domainauth.Claims, perms []authz.Permission, roles *fakeGlobalRoleLister) chi.Router {
+	r := chi.NewRouter()
+	r.Use(injectClaims(claims))
+	h := handler.NewUserHandler(svc).
+		WithAuthorizer(authz.NewAuthorizer(&staticGlobalRolePermStore{globalPerms: perms})).
+		WithGlobalRoleService(roles)
+	r.Post("/admin/users", h.CreateUser)
+	r.Patch("/admin/users/{userId}", h.AdminUpdateUser)
 	return r
 }
 
@@ -1086,5 +1121,139 @@ func TestCreateUser_ResponseIncludesMustChangePassword(t *testing.T) {
 	}
 	if !env.Data.MustChangePassword {
 		t.Error("expected must_change_password=true in response")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CreateUser / AdminUpdateUser — god-mode role-name guard
+//
+// These endpoints take a role *name* and write both users.role_id and the
+// legacy users.role claim, so they are a grant path in their own right: an
+// ADMIN holds users.write, and the admin user form's role dropdown offers every
+// global role. Without the guard, picking SUPER_ADMIN there promotes the caller
+// (or anyone) straight to god mode.
+// ---------------------------------------------------------------------------
+
+const superAdminRoleName = "SUPER_ADMIN"
+
+func godRoleList() *fakeGlobalRoleLister {
+	return &fakeGlobalRoleLister{roles: []*globalroledom.GlobalRole{
+		superAdminRoleEntity(),
+		{ID: uuid.New(), Name: "ADMIN", Permissions: map[string]any{"users.*": true}},
+		{ID: uuid.New(), Name: "USER", Permissions: map[string]any{"users.read": true}},
+	}}
+}
+
+func TestCreateUser_SuperAdminRole_ForbiddenForAdmin(t *testing.T) {
+	svc := &mockUserSvc{
+		create: func(context.Context, domainuser.CreateInput) (*domainuser.User, error) {
+			t.Fatal("CreateUser must not be called when assigning a god-mode role without PermissionAll")
+			return nil, nil
+		},
+	}
+	r := newUserRouterWithRoleGuard(svc, globalRoleClaims("ADMIN"), adminGlobalPerms(), godRoleList())
+
+	w := do(t, r, http.MethodPost, "/admin/users",
+		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob", "role": superAdminRoleName}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 assigning SUPER_ADMIN without PermissionAll, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateUser_SuperAdminRole_AllowedForSuperAdmin(t *testing.T) {
+	svc := &mockUserSvc{
+		create: func(_ context.Context, in domainuser.CreateInput) (*domainuser.User, error) {
+			return &domainuser.User{ID: uuid.New(), Username: in.Username, FullName: in.FullName, Role: in.Role}, nil
+		},
+	}
+	r := newUserRouterWithRoleGuard(svc, globalRoleClaims(superAdminRoleName), nil, godRoleList())
+
+	w := do(t, r, http.MethodPost, "/admin/users",
+		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob", "role": superAdminRoleName}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for a PermissionAll caller, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateUser_OrdinaryRole_AllowedForAdmin(t *testing.T) {
+	// Control: assigning an ordinary role stays open to an ADMIN — the guard
+	// only blocks god-mode grants.
+	svc := &mockUserSvc{
+		create: func(_ context.Context, in domainuser.CreateInput) (*domainuser.User, error) {
+			return &domainuser.User{ID: uuid.New(), Username: in.Username, FullName: in.FullName, Role: in.Role}, nil
+		},
+	}
+	r := newUserRouterWithRoleGuard(svc, globalRoleClaims("ADMIN"), adminGlobalPerms(), godRoleList())
+
+	w := do(t, r, http.MethodPost, "/admin/users",
+		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob", "role": "ADMIN"}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for an ordinary role, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateUser_PaddedSuperAdminRoleName_ForbiddenForAdmin(t *testing.T) {
+	// The service trims the requested name before resolving it, so the guard
+	// must trim too or " SUPER_ADMIN " slips past it.
+	svc := &mockUserSvc{
+		create: func(context.Context, domainuser.CreateInput) (*domainuser.User, error) {
+			t.Fatal("CreateUser must not be called for a padded god-mode role name")
+			return nil, nil
+		},
+	}
+	r := newUserRouterWithRoleGuard(svc, globalRoleClaims("ADMIN"), adminGlobalPerms(), godRoleList())
+
+	w := do(t, r, http.MethodPost, "/admin/users",
+		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob", "role": " " + superAdminRoleName + " "}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a padded god-mode role name, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminUpdateUser_SuperAdminRole_ForbiddenForAdmin(t *testing.T) {
+	svc := &mockUserSvc{
+		adminUpdate: func(context.Context, uuid.UUID, domainuser.AdminUpdateInput) (*domainuser.User, error) {
+			t.Fatal("AdminUpdate must not be called when assigning a god-mode role without PermissionAll")
+			return nil, nil
+		},
+	}
+	r := newUserRouterWithRoleGuard(svc, globalRoleClaims("ADMIN"), adminGlobalPerms(), godRoleList())
+
+	w := do(t, r, http.MethodPatch, "/admin/users/"+uuid.NewString(),
+		jsonBody(t, map[string]string{"role": superAdminRoleName}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 promoting to SUPER_ADMIN without PermissionAll, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminUpdateUser_SuperAdminRole_AllowedForSuperAdmin(t *testing.T) {
+	svc := &mockUserSvc{
+		adminUpdate: func(_ context.Context, id uuid.UUID, in domainuser.AdminUpdateInput) (*domainuser.User, error) {
+			return &domainuser.User{ID: id, Username: "bob", FullName: "Bob", Role: in.Role}, nil
+		},
+	}
+	r := newUserRouterWithRoleGuard(svc, globalRoleClaims(superAdminRoleName), nil, godRoleList())
+
+	w := do(t, r, http.MethodPatch, "/admin/users/"+uuid.NewString(),
+		jsonBody(t, map[string]string{"role": superAdminRoleName}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a PermissionAll caller, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminUpdateUser_NoRoleField_AllowedForAdmin(t *testing.T) {
+	// Control: an update that doesn't touch the role is unaffected — the guard
+	// is scoped to requests that actually name a role.
+	svc := &mockUserSvc{
+		adminUpdate: func(_ context.Context, id uuid.UUID, _ domainuser.AdminUpdateInput) (*domainuser.User, error) {
+			return &domainuser.User{ID: id, Username: "bob", FullName: "Robert"}, nil
+		},
+	}
+	r := newUserRouterWithRoleGuard(svc, globalRoleClaims("ADMIN"), adminGlobalPerms(), godRoleList())
+
+	w := do(t, r, http.MethodPatch, "/admin/users/"+uuid.NewString(),
+		jsonBody(t, map[string]string{"full_name": "Robert"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a role-free update, got %d: %s", w.Code, w.Body.String())
 	}
 }

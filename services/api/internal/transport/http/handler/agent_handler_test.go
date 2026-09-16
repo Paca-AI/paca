@@ -17,6 +17,7 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -358,6 +359,20 @@ func (f *fakeGlobalPermStore) ListProjectPermissions(context.Context, uuid.UUID,
 	return nil, nil
 }
 
+// fakeGlobalRoleFinder resolves global roles for the god-mode binding tests.
+// Unknown IDs resolve to ErrNotFound, exactly like the repository, so tests
+// that bind an arbitrary UUID (the pre-existing gate tests) are unaffected.
+type fakeGlobalRoleFinder struct {
+	findByID func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+}
+
+func (f *fakeGlobalRoleFinder) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	if f.findByID != nil {
+		return f.findByID(ctx, id)
+	}
+	return nil, globalroledom.ErrNotFound
+}
+
 // newGlobalAgentAdminRouter wires POST /admin/agents and PATCH
 // /admin/agents/{agentId} behind a real Authorizer backed by globalPerms, so
 // CreateGlobalAgent/UpdateGlobalAgent's conditional global_roles.assign gate
@@ -366,8 +381,19 @@ func (f *fakeGlobalPermStore) ListProjectPermissions(context.Context, uuid.UUID,
 // RequirePermissions middleware — that generic mechanism has its own tests;
 // this only exercises the handler's additional, conditional check.
 func newGlobalAgentAdminRouter(svc agentdom.Service, globalPerms ...authz.Permission) chi.Router {
+	return newGlobalAgentAdminRouterWithRoles(svc, nil, globalPerms...)
+}
+
+// newGlobalAgentAdminRouterWithRoles is newGlobalAgentAdminRouter plus a
+// global-role lookup, enabling the god-mode binding guard
+// (requireGrantableGlobalRole) — a nil roles means the guard is skipped, as
+// in the original helper.
+func newGlobalAgentAdminRouterWithRoles(svc agentdom.Service, roles *fakeGlobalRoleFinder, globalPerms ...authz.Permission) chi.Router {
 	authorizer := authz.NewAuthorizer(&fakeGlobalPermStore{globalPerms: globalPerms})
 	h := handler.NewAgentHandler(svc, "", "", "").WithAuthorizer(authorizer)
+	if roles != nil {
+		h = h.WithGlobalRoleService(roles)
+	}
 	claims := &domainauth.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: uuid.New().String()},
 		Kind:             "access",
@@ -1525,6 +1551,177 @@ func TestUpdateGlobalAgent_NoRoleField_AllowedWithoutRolesAssign(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !called {
+		t.Error("expected UpdateGlobalAgent to be called")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CreateGlobalAgent / UpdateGlobalAgent — god-mode role binding guard
+//
+// Binding a global_role_id that grants the universal permission is a grant,
+// not just configuration: the agent's MCP key carries the bound role's
+// permissions. An ADMIN holds agents.write and global_roles.assign but NOT
+// PermissionAll, so without the guard it could mint itself a "*" credential.
+// ---------------------------------------------------------------------------
+
+func godModeRole() *globalroledom.GlobalRole {
+	return &globalroledom.GlobalRole{Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}
+}
+
+func TestCreateGlobalAgent_GodRoleWithoutUniversalPermission_Returns403(t *testing.T) {
+	svc := &mockAgentSvc{
+		createGlobalAgent: func(context.Context, agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
+			t.Fatal("CreateGlobalAgent must not be called when binding a god-mode role without PermissionAll")
+			return nil, nil
+		},
+	}
+	r := newGlobalAgentAdminRouterWithRoles(svc,
+		&fakeGlobalRoleFinder{findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			role := godModeRole()
+			role.ID = id
+			return role, nil
+		}},
+		authz.PermissionAgentsWrite, authz.PermissionGlobalRolesAssign)
+
+	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents",
+		validGlobalAgentBody(map[string]any{"global_role_id": uuid.New()}))
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when binding a god-mode role without PermissionAll, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateGlobalAgent_GodRoleWithUniversalPermission_Allowed(t *testing.T) {
+	called := false
+	svc := &mockAgentSvc{
+		createGlobalAgent: func(context.Context, agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
+			called = true
+			return &agentdom.Agent{ID: uuid.New(), AgentScope: agentdom.AgentScopeGlobal, Name: "Test Bot", Handle: "test-bot"}, nil
+		},
+	}
+	r := newGlobalAgentAdminRouterWithRoles(svc,
+		&fakeGlobalRoleFinder{findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			role := godModeRole()
+			role.ID = id
+			return role, nil
+		}},
+		authz.PermissionAgentsWrite, authz.PermissionGlobalRolesAssign, authz.PermissionAll)
+
+	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents",
+		validGlobalAgentBody(map[string]any{"global_role_id": uuid.New()}))
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for a PermissionAll caller, got %d: %s", w.Code, w.Body.String())
+	}
+	if !called {
+		t.Error("expected CreateGlobalAgent to be called")
+	}
+}
+
+func TestCreateGlobalAgent_PaddedGodRoleKey_Returns403(t *testing.T) {
+	// Regression: the permission store trims keys, so " *" resolves to
+	// PermissionAll at request time and must be refused here too.
+	svc := &mockAgentSvc{
+		createGlobalAgent: func(context.Context, agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
+			t.Fatal("CreateGlobalAgent must not be called for a padded god-mode permission")
+			return nil, nil
+		},
+	}
+	r := newGlobalAgentAdminRouterWithRoles(svc,
+		&fakeGlobalRoleFinder{findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "GOD_PAD", Permissions: map[string]any{" *": true}}, nil
+		}},
+		authz.PermissionAgentsWrite, authz.PermissionGlobalRolesAssign)
+
+	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents",
+		validGlobalAgentBody(map[string]any{"global_role_id": uuid.New()}))
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a whitespace-padded wildcard, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateGlobalAgent_NormalRole_AllowedWithoutUniversalPermission(t *testing.T) {
+	// Control: binding an ordinary role stays open to an ADMIN — the guard
+	// only blocks god-mode grants.
+	called := false
+	svc := &mockAgentSvc{
+		createGlobalAgent: func(context.Context, agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
+			called = true
+			return &agentdom.Agent{ID: uuid.New(), AgentScope: agentdom.AgentScopeGlobal, Name: "Test Bot", Handle: "test-bot"}, nil
+		},
+	}
+	r := newGlobalAgentAdminRouterWithRoles(svc,
+		&fakeGlobalRoleFinder{findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "READ_ONLY", Permissions: map[string]any{"agents.read": true}}, nil
+		}},
+		authz.PermissionAgentsWrite, authz.PermissionGlobalRolesAssign)
+
+	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents",
+		validGlobalAgentBody(map[string]any{"global_role_id": uuid.New()}))
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for an ordinary role binding, got %d: %s", w.Code, w.Body.String())
+	}
+	if !called {
+		t.Error("expected CreateGlobalAgent to be called")
+	}
+}
+
+func TestUpdateGlobalAgent_GodRoleWithoutUniversalPermission_Returns403(t *testing.T) {
+	svc := &mockAgentSvc{
+		updateGlobalAgent: func(context.Context, uuid.UUID, agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
+			t.Fatal("UpdateGlobalAgent must not be called when rebinding to a god-mode role without PermissionAll")
+			return nil, nil
+		},
+	}
+	r := newGlobalAgentAdminRouterWithRoles(svc,
+		&fakeGlobalRoleFinder{findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			role := godModeRole()
+			role.ID = id
+			return role, nil
+		}},
+		authz.PermissionAgentsWrite, authz.PermissionGlobalRolesAssign)
+
+	w := doAgentRequest(t, r, http.MethodPatch, "/admin/agents/"+uuid.New().String(),
+		map[string]any{"global_role_id": uuid.New()})
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when rebinding to a god-mode role without PermissionAll, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateGlobalAgent_ClearingRoleWithoutUniversalPermission_Allowed(t *testing.T) {
+	// Clearing the binding (uuid.Nil) grants nothing, so it stays allowed —
+	// the guard must not over-block role removal.
+	called := false
+	svc := &mockAgentSvc{
+		updateGlobalAgent: func(context.Context, uuid.UUID, agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
+			called = true
+			return &agentdom.Agent{ID: uuid.New(), AgentScope: agentdom.AgentScopeGlobal, Name: "Test Bot", Handle: "test-bot"}, nil
+		},
+	}
+	r := newGlobalAgentAdminRouterWithRoles(svc,
+		&fakeGlobalRoleFinder{findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			// Clearing the binding sends uuid.Nil, which the repository cannot
+			// resolve — mirror that so the guard is skipped exactly as in
+			// production.
+			if id == uuid.Nil {
+				return nil, globalroledom.ErrNotFound
+			}
+			role := godModeRole()
+			role.ID = id
+			return role, nil
+		}},
+		authz.PermissionAgentsWrite, authz.PermissionGlobalRolesAssign)
+
+	w := doAgentRequest(t, r, http.MethodPatch, "/admin/agents/"+uuid.New().String(),
+		map[string]any{"global_role_id": uuid.Nil})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 when clearing the role binding, got %d: %s", w.Code, w.Body.String())
 	}
 	if !called {
 		t.Error("expected UpdateGlobalAgent to be called")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -85,6 +84,13 @@ func collectPermissions(rows []struct {
 	return out
 }
 
+// permissionsFromJSON decodes a persisted permissions blob and returns the
+// permissions it grants. The key/value rules themselves live in
+// authz.PermissionsFromValue — the same parser the authorization guards use
+// (authz.PermissionsGrantAll) — so this resolver and those guards can never
+// drift on what a role grants. That drift is exactly what let a
+// whitespace-padded "*" resolve to PermissionAll here while a hand-rolled
+// guard elsewhere failed to recognize it.
 func permissionsFromJSON(raw []byte) []authz.Permission {
 	if len(raw) == 0 {
 		return nil
@@ -95,47 +101,5 @@ func permissionsFromJSON(raw []byte) []authz.Permission {
 		return nil
 	}
 
-	seen := map[authz.Permission]struct{}{}
-	out := make([]authz.Permission, 0)
-
-	add := func(k string) {
-		k = strings.TrimSpace(k)
-		if k == "" {
-			return
-		}
-		p := authz.Permission(k)
-		if _, ok := seen[p]; ok {
-			return
-		}
-		seen[p] = struct{}{}
-		out = append(out, p)
-	}
-
-	switch v := payload.(type) {
-	case map[string]any:
-		for key, enabled := range v {
-			switch e := enabled.(type) {
-			case bool:
-				if e {
-					add(key)
-				}
-			case float64:
-				if e != 0 {
-					add(key)
-				}
-			case string:
-				if strings.EqualFold(e, "true") {
-					add(key)
-				}
-			}
-		}
-	case []any:
-		for _, item := range v {
-			if s, ok := item.(string); ok {
-				add(s)
-			}
-		}
-	}
-
-	return out
+	return authz.PermissionsFromValue(payload)
 }
