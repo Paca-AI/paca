@@ -121,13 +121,15 @@ func TestExecutorRun(t *testing.T) {
 // on the same image tier for realism (see helpers_test.go's
 // agentServerImage doc comment).
 //
-// executor.buildMCPServers always sets PACA_AGENT_ID, so the spawned
-// paca-mcp process always calls PACA_API_URL's
-// /api/v1/projects/{id}/members/me/permissions at startup (a project-scoped
-// trigger, not a global-scope agent — see apps/mcp/src/permissions.ts's
-// isGlobalAgent branch) — stubbed below so the run is deterministic instead
-// of depending on that call's own timeout/retry behavior against an
-// unreachable address.
+// The spawned paca-mcp process still makes its own startup HTTP calls
+// against PACA_API_URL (e.g. loading plugin MCP modules via GET
+// /api/v1/plugins — see apps/mcp/src/plugin-loader.ts), so PACA_API_URL
+// needs to point at a real, reachable server rather than hang/retry against
+// an unreachable address. The permissions endpoint this stub also answers
+// is no longer called at startup (the MCP server lists every tool
+// unconditionally now and lets the API enforce permissions per call — see
+// apps/mcp/src/server.ts) but is left wired up as a harmless catch-all in
+// case that changes again.
 func TestExecutorRunWithMCP(t *testing.T) {
 	if os.Getenv("PACA_E2E") != "1" {
 		t.Skip("set PACA_E2E=1 to run e2e tests (requires Docker)")

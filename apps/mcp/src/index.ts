@@ -50,10 +50,12 @@ async function main() {
 	// a global-scope agent (services/agent-runner's buildMCPServers omits
 	// PACA_PROJECT_ID entirely for a global-chat conversation) runs "unpinned"
 	// instead, the same mode a personal API key with no project already uses —
-	// each tool call may target any project the agent has permission in
+	// each tool call may target any project the caller has permission in
 	// (e.g. list/create/update a project, or work within one it's been
 	// invited into), passed explicitly per call rather than pinned once at
-	// startup. See fetchAgentPermissions in permissions.ts.
+	// startup. The API itself enforces permissions on each call (a
+	// disallowed call comes back as 403); the MCP server no longer
+	// pre-filters the tool list by permission.
 
 	// Create configuration object
 	const config: PacaConfig = {

@@ -2248,10 +2248,11 @@ func TestGetConversationForAgent_Project_DifferentProject_Rejected(t *testing.T)
 //
 // GetConversationForAgent additionally requires the calling agent to hold
 // conversations.read (globally, or in the target conversation's own project)
-// once an authz.Authorizer is wired via WithAuthorizer — matching the MCP
-// server's own tool-listing gate for read_conversation
-// (apps/mcp/src/permissions.ts) — for any conversation *other* than the one
-// the agent is currently running as part of. Every test above constructs a
+// once an authz.Authorizer is wired via WithAuthorizer — the sole
+// enforcement point for read_conversation (the MCP server lists that tool
+// unconditionally, see apps/mcp/src/server.ts) — for any conversation
+// *other* than the one the agent is currently running as part of. Every
+// test above constructs a
 // bare Service with no authorizer, so this check never engages for them
 // (see the authorizer field's doc comment) — these tests cover the wired
 // case specifically: the same-conversation shortcut stays unconditionally

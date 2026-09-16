@@ -54,11 +54,6 @@ export interface PacaConfig {
 	repoPluginIds?: string[];
 }
 
-export interface PermissionMap {
-	global: Record<string, boolean>;
-	projects: Record<string, Record<string, boolean>>;
-}
-
 export interface SuccessEnvelope<T> {
 	success: true;
 	data: T;
