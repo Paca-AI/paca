@@ -292,35 +292,6 @@ func (s *ActivitySvc) publishRealtimeOnly(ctx context.Context, topic string, pay
 	})
 }
 
-// extractTextFromBlocks walks a BlockNote JSON blocks array and concatenates
-// all "text" values found in inline content.  Falls back to the legacy
-// {"text":"..."} object format for backward compatibility.
-func extractTextFromBlocks(raw json.RawMessage) string {
-	var blocks []struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if json.Unmarshal(raw, &blocks) == nil && len(blocks) > 0 {
-		var parts []string
-		for _, b := range blocks {
-			for _, c := range b.Content {
-				if c.Text != "" {
-					parts = append(parts, c.Text)
-				}
-			}
-		}
-		return strings.Join(parts, " ")
-	}
-	var legacy struct {
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(raw, &legacy) == nil {
-		return legacy.Text
-	}
-	return ""
-}
-
 // isContentTypeValid returns true only when content is a JSON array (BlockNote
 // blocks) or the legacy {"text": "..."} object.  A bare JSON string, number,
 // boolean, or any other value is rejected to prevent comments that the web UI

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
@@ -21,8 +20,6 @@ import (
 )
 
 type mockNotificationSvc struct {
-	mu sync.RWMutex
-
 	listNotifications func(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error)
 	unreadCount       func(ctx context.Context, userID uuid.UUID) (int64, error)
 	markAsRead        func(ctx context.Context, id, userID uuid.UUID) error

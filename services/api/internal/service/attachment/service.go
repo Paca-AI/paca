@@ -19,12 +19,8 @@ import (
 	"github.com/Paca-AI/api/internal/platform/storage"
 )
 
-const (
-	// presignedUploadTTL is how long a presigned upload URL remains valid.
-	presignedUploadTTL = 1 * time.Hour
-	// presignedDownloadTTL is how long a presigned download URL remains valid.
-	presignedDownloadTTL = 15 * time.Minute
-)
+// presignedUploadTTL is how long a presigned upload URL remains valid.
+const presignedUploadTTL = 1 * time.Hour
 
 // Service is the concrete implementation of attachmentdom.Service.
 type Service struct {

@@ -148,22 +148,6 @@ func resolveProviderEnv(llmProvider string) (gooseProvider, apiKeyEnvVar string)
 	return provider, envVar
 }
 
-// cliProviderAPIKeyEnvVar maps a cli_provider value to the env var its own
-// CLI binary reads for non-interactive API-key auth — this is each CLI's
-// OWN native mechanism, completely independent of Goose's own
-// GOOSE_PROVIDER/provider-API-key plumbing above, which does not apply once
-// GOOSE_PROVIDER is set to a cli-provider value. Confirmed directly against
-// https://goose-docs.ai/docs/guides/cli-providers/: "Goose doesn't handle
-// authentication — it assumes the underlying CLI is already logged in and
-// functional." cursor-agent has no known non-interactive API-key auth
-// path as of this writing — login via the environment terminal only (see
-// providercli.cursorAgent.APIKeyEnvVar).
-var cliProviderAPIKeyEnvVar = map[string]string{
-	"claude-code": "ANTHROPIC_API_KEY",
-	"codex":       "OPENAI_API_KEY",
-	"gemini-cli":  "GEMINI_API_KEY",
-}
-
 // gooseCLIProviderID translates a Paca cli_provider value onto the
 // GOOSE_PROVIDER id Goose actually spawns for it, for the two cases where
 // they diverge — the CLI-providers counterpart to gooseProviderID above.

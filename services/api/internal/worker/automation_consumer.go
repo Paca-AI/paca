@@ -967,14 +967,6 @@ func (c *AutomationConsumer) finalizeRunIfDone(ctx context.Context, runID uuid.U
 	return c.repo.UpdateRun(ctx, &automationdom.Run{ID: runID, Status: status, FinishedAt: &now})
 }
 
-// agentConversationStatusPayload mirrors the fields
-// stream_store.publish_conversation_status (services/ai-agent/src/core/streams.py)
-// appends to StreamAgentConversationStatus.
-type agentConversationStatusPayload struct {
-	ConversationID string `json:"conversation_id"`
-	Status         string `json:"status"`
-}
-
 // handleAgentConversationStatus resumes a graph walk paused at a
 // trigger_ai_agent node once its conversation reaches a terminal status.
 // Most conversations aren't automation-driven at all, so a claim miss (no

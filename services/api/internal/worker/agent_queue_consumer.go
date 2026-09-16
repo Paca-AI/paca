@@ -24,7 +24,9 @@ const (
 // agentQueueConversationFinder is the minimal repository surface this
 // consumer needs: resolving a terminal-status event's conversation_id back
 // to the agent it belongs to (the status payload carries only
-// conversation_id/status — see agentConversationStatusPayload).
+// conversation_id/status — mirroring the fields stream_store.
+// publish_conversation_status, services/ai-agent/src/core/streams.py,
+// appends to StreamAgentConversationStatus).
 type agentQueueConversationFinder interface {
 	FindConversationByID(ctx context.Context, id uuid.UUID) (*agentdom.AgentConversation, error)
 }
