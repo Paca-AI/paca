@@ -272,7 +272,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
 		User:                 handler.NewUserHandler(userService).WithAuthorizer(authz.NewAuthorizer(authzStore)),
-		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
+		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService).WithAuthorizer(authz.NewAuthorizer(authzStore)),
 		Project:              handler.NewProjectHandler(projectService, authz.NewAuthorizer(authzStore)),
 		Task:                 handler.NewTaskHandler(taskService, viewService, activityService, handler.WithTaskAssignedProjectService(projectService)),
 		Sprint:               handler.NewSprintHandler(sprintService, viewService),
