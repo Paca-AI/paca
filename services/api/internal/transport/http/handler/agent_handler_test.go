@@ -179,7 +179,7 @@ func (m *mockAgentSvc) DeleteConversation(ctx context.Context, projectID, conver
 	}
 	return nil
 }
-func (m *mockAgentSvc) Heartbeat(_ context.Context, _, _, _ uuid.UUID) error         { return nil }
+func (m *mockAgentSvc) Heartbeat(_ context.Context, _, _, _ uuid.UUID) error { return nil }
 func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID, _ string, _ uuid.UUID, _ []agentdom.ContextItemRef, _ string) error {
 	return nil
 }
