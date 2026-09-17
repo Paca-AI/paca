@@ -453,7 +453,7 @@ func New(cfg *config.Config) (*App, error) {
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
-		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
+		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService).WithAuthorizer(authorizer),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,
 		Project: handler.NewProjectHandler(

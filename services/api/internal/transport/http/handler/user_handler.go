@@ -13,6 +13,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainuser "github.com/Paca-AI/api/internal/domain/user"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -50,6 +51,9 @@ type UserHandler struct {
 	svc       domainuser.Service
 	authSvc   SessionInvalidator
 	avatarSvc attachmentdom.AvatarService
+	// authorizer backs CreateUser/AdminUpdateUser's conditional god-mode role
+	// guard — see WithAuthorizer's doc comment.
+	authorizer *authz.Authorizer
 }
 
 // NewUserHandler returns a UserHandler wired to the provided user service.
@@ -67,6 +71,48 @@ func NewUserHandler(svc domainuser.Service, authSvc ...SessionInvalidator) *User
 func (h *UserHandler) WithAvatarService(svc attachmentdom.AvatarService) *UserHandler {
 	h.avatarSvc = svc
 	return h
+}
+
+// WithAuthorizer attaches the permission authorizer used by
+// CreateUser/AdminUpdateUser to require the universal authz.PermissionAll
+// wildcard whenever a request names a role that grants it — see
+// requireGrantableRole's own comment. The route-level users.write gate
+// (router.go) covers everything else these handlers do; this is a narrower,
+// conditional check on top of it, so it lives here rather than as a second
+// router.With(...) permission group — same shape as AgentHandler's own
+// conditional global_roles.assign check for global agents.
+func (h *UserHandler) WithAuthorizer(a *authz.Authorizer) *UserHandler {
+	h.authorizer = a
+	return h
+}
+
+// requireGrantableRole reports whether a request that wants to set a user's
+// role to roleName may proceed, writing the 403 itself when it may not.
+//
+// POST/PATCH /admin/users take a role *name* and write it to both
+// users.role_id and the legacy users.role claim. The token issuer copies that
+// claim into every access token, and authz.LegacyPermissionsForRole resolves
+// "SUPER_ADMIN" from it to the universal PermissionAll wildcard
+// (authz.DefaultGlobalRoles) — so naming that role here hands out a
+// privilege, it is not plain user administration. Without this check any
+// ADMIN, which legitimately holds users.write, could promote itself or anyone
+// else to SUPER_ADMIN straight from the admin user form whose role dropdown
+// lists every global role
+// (apps/web/src/components/admin/users/UserFormDialog.tsx).
+//
+// The name is resolved through the very function the request-time check uses
+// rather than a name comparison of our own: a look-alike such as
+// "SUPER_ADMıN" (which strings.ToUpper folds onto "SUPER_ADMIN") must be
+// refused here too, or the guard and the grant would disagree about what a
+// name means. An empty name — the optional field's "leave the role alone"
+// value — resolves to no permissions and is always let through.
+func (h *UserHandler) requireGrantableRole(w http.ResponseWriter, r *http.Request, roleName string) bool {
+	for _, p := range authz.LegacyPermissionsForRole(roleName) {
+		if p == authz.PermissionAll {
+			return middleware.EnforcePermissions(w, r, h.authorizer, middleware.GlobalScope(), authz.PermissionAll)
+		}
+	}
+	return true
 }
 
 // toUserResponse maps u to a UserResponse and, if an AvatarService is
@@ -241,6 +287,12 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// See requireGrantableRole: naming a role that carries the universal
+	// permission is a privilege grant, not a plain users.write action.
+	if !h.requireGrantableRole(w, r, req.Role) {
+		return
+	}
+
 	u, err := h.svc.Create(r.Context(), domainuser.CreateInput{
 		Username:           req.Username,
 		Password:           req.Password,
@@ -272,6 +324,12 @@ func (h *UserHandler) AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	email, err := normalizeEmail(req.Email)
 	if err != nil {
 		presenter.Error(w, r, err)
+		return
+	}
+
+	// See CreateUser's identical check — same role-name grant boundary, and
+	// the same legacy users.role claim is written here too.
+	if !h.requireGrantableRole(w, r, req.Role) {
 		return
 	}
 
