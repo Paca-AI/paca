@@ -37,10 +37,14 @@ type mockAgentSvc struct {
 	listConversationEvents        func(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error)
 	getConversation               func(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*agentdom.AgentConversation, error)
 	getConversationForAgent       func(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error)
+	updateConversationTitle       func(ctx context.Context, projectID, conversationID, memberID uuid.UUID, title string) (*agentdom.AgentConversation, error)
+	deleteConversation            func(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
 	listAgentActivities           func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
 	getGlobalConversation         func(ctx context.Context, conversationID, actorUserID uuid.UUID) (*agentdom.AgentConversation, error)
 	listGlobalConversations       func(ctx context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 	stopGlobalConversation        func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
+	updateGlobalConversationTitle func(ctx context.Context, conversationID, actorUserID uuid.UUID, title string) (*agentdom.AgentConversation, error)
+	deleteGlobalConversation      func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	pauseGlobalConversation       func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	globalHeartbeat               func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	sendGlobalConversationMessage func(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, onBusy string) error
@@ -163,7 +167,19 @@ func (m *mockAgentSvc) ListConversationEvents(ctx context.Context, conversationI
 }
 func (m *mockAgentSvc) StopConversation(_ context.Context, _, _, _ uuid.UUID) error  { return nil }
 func (m *mockAgentSvc) PauseConversation(_ context.Context, _, _, _ uuid.UUID) error { return nil }
-func (m *mockAgentSvc) Heartbeat(_ context.Context, _, _, _ uuid.UUID) error         { return nil }
+func (m *mockAgentSvc) UpdateConversationTitle(ctx context.Context, projectID, conversationID, memberID uuid.UUID, title string) (*agentdom.AgentConversation, error) {
+	if m.updateConversationTitle != nil {
+		return m.updateConversationTitle(ctx, projectID, conversationID, memberID, title)
+	}
+	return &agentdom.AgentConversation{ID: conversationID, ProjectID: projectID, Title: &title}, nil
+}
+func (m *mockAgentSvc) DeleteConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error {
+	if m.deleteConversation != nil {
+		return m.deleteConversation(ctx, projectID, conversationID, memberID)
+	}
+	return nil
+}
+func (m *mockAgentSvc) Heartbeat(_ context.Context, _, _, _ uuid.UUID) error { return nil }
 func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID, _ string, _ uuid.UUID, _ []agentdom.ContextItemRef, _ string) error {
 	return nil
 }
@@ -233,6 +249,18 @@ func (m *mockAgentSvc) GetGlobalConversation(ctx context.Context, conversationID
 		return m.getGlobalConversation(ctx, conversationID, actorUserID)
 	}
 	return nil, nil
+}
+func (m *mockAgentSvc) UpdateGlobalConversationTitle(ctx context.Context, conversationID, actorUserID uuid.UUID, title string) (*agentdom.AgentConversation, error) {
+	if m.updateGlobalConversationTitle != nil {
+		return m.updateGlobalConversationTitle(ctx, conversationID, actorUserID, title)
+	}
+	return &agentdom.AgentConversation{ID: conversationID, ActorUserID: &actorUserID, Title: &title}, nil
+}
+func (m *mockAgentSvc) DeleteGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	if m.deleteGlobalConversation != nil {
+		return m.deleteGlobalConversation(ctx, conversationID, actorUserID)
+	}
+	return nil
 }
 func (m *mockAgentSvc) StopGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
 	if m.stopGlobalConversation != nil {

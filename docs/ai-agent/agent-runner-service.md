@@ -111,6 +111,8 @@ The core flow, in `internal/executor/executor.go`'s `Run`:
 
 `Run` does **not** tear the sandbox down itself, on success or on error — that decision belongs to the caller, since whether to keep a sandbox alive depends on whether the trigger is chat-type and whether an interruption was a pause or a full stop, information `Run` doesn't have. See `Result`'s doc comment.
 
+After `Run` returns, `handler.Handle` makes one more best-effort ACP call before persisting the turn: `_goose/unstable/session/info` (`acp.Client.SessionInfo`) — a Goose-specific extension outside the standard ACP spec, verified directly against a real, pinned Goose container the same way every other wire shape in `internal/acp` is. If Goose has named the session (its `title` is no longer the `"New Chat"` default it starts every session with), that title is copied onto `agent_conversations.title`, unless the user has already renamed the conversation directly. Bounded by its own short timeout independent of the handler's own long-lived context — a stalled peer must not be able to wedge the turn goroutine over what is purely a naming nicety.
+
 ---
 
 ## Docker Container Strategy

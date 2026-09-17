@@ -136,12 +136,34 @@ type ConversationRepository interface {
 	// filter, ordered newest-first, plus whether more pages remain.
 	ListConversations(ctx context.Context, in ListConversationsFilter, limit int) (convs []*AgentConversation, hasMore bool, err error)
 	FindConversationByID(ctx context.Context, id uuid.UUID) (*AgentConversation, error)
-	// FindLatestConversationByChatSession returns the most recently created
-	// conversation for a chat session, or (nil, nil) if the session has none
-	// yet — an unstarted chat session is a normal state, not an error.
+	// FindLatestConversationByChatSession returns the most recently created,
+	// non-deleted conversation for a chat session, or (nil, nil) if the
+	// session has none yet — an unstarted chat session is a normal state,
+	// not an error, and so (deliberately, same nil result) is one whose
+	// latest conversation the user has since deleted: the caller's own
+	// conv == nil handling already starts a fresh conversation either way,
+	// which is what stops a deleted one from being resumed instead.
 	FindLatestConversationByChatSession(ctx context.Context, chatSessionID uuid.UUID) (*AgentConversation, error)
 	CreateConversation(ctx context.Context, c *AgentConversation) error
 	UpdateConversationStatus(ctx context.Context, id uuid.UUID, status string) error
+	// UpdateConversationTitle sets a user-chosen title, marking it
+	// TitleSetByUser so agent-runner's own best-effort copy of goose's
+	// session title (see docs/ai-agent/agent-runner-service.md) never
+	// overwrites it again. A narrow, single-column UPDATE — not routed
+	// through the (unused) full-record UpdateConversation below — so it
+	// can never clobber a concurrent status/token update made by
+	// agent-runner against the same row from an in-memory snapshot taken
+	// before this call.
+	UpdateConversationTitle(ctx context.Context, id uuid.UUID, title string) error
+	// SoftDeleteConversation marks a conversation deleted_at = now(). Never
+	// a hard DELETE — see agent_conversations' migration
+	// (000058_add_conversation_title.sql) doc comment for why: agent-runner
+	// may still be mid-teardown against this row, and
+	// worker.AgentQueueConsumer's terminal-status lookup must still resolve
+	// it. FindConversationByID is deliberately NOT filtered by deleted_at —
+	// callers that must treat a deleted conversation as not-found do that
+	// check themselves (see GetConversation/GetGlobalConversation).
+	SoftDeleteConversation(ctx context.Context, id uuid.UUID) error
 	// ClaimConversationStatus atomically transitions a conversation from
 	// fromStatus to toStatus and reports whether it won the race (false means
 	// another caller already moved the conversation out of fromStatus).

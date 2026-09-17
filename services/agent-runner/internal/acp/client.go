@@ -314,6 +314,41 @@ func (c *Client) LoadSession(ctx context.Context, sessionID, cwd string, mcpServ
 	return nil
 }
 
+// SessionInfo fetches goose's own current title for sessionID via the
+// goose-specific "_goose/unstable/session/info" extension method — see
+// GooseNewSessionDefaultTitle's doc comment for how this was verified; there
+// is no equivalent in the standard ACP spec. Returns "" (with a nil error)
+// both when goose hasn't named the session yet (still
+// GooseNewSessionDefaultTitle — this method returns it as-is, leaving that
+// comparison to the caller) and when the peer doesn't support the method at
+// all (JSON-RPC "Method not found", -32601 — an older goose, or some future
+// non-goose ACP peer): naming is a best-effort enhancement, never something
+// a caller should treat as fatal to the turn.
+func (c *Client) SessionInfo(ctx context.Context, sessionID string) (string, error) {
+	if c.sessionStream == nil {
+		return "", errors.New("acp: SessionInfo called before NewSession/LoadSession")
+	}
+	id := c.nextID.Add(1)
+	if err := c.post(ctx, id, "_goose/unstable/session/info", map[string]string{"sessionId": sessionID}, sessionID); err != nil {
+		return "", fmt.Errorf("acp: session/info: %w", err)
+	}
+	frame, err := c.awaitResponse(ctx, id, c.sessionStream)
+	if err != nil {
+		return "", fmt.Errorf("acp: session/info: %w", err)
+	}
+	if frame.Error != nil {
+		if frame.Error.Code == -32601 {
+			return "", nil
+		}
+		return "", fmt.Errorf("acp: session/info: %w", frame.Error)
+	}
+	var result sessionInfoResult
+	if err := json.Unmarshal(frame.Result, &result); err != nil {
+		return "", fmt.Errorf("acp: session/info: decoding result: %w", err)
+	}
+	return result.Session.Title, nil
+}
+
 // attachSessionStream (re)establishes this Client's one session-scoped SSE
 // stream for sessionID, tearing down any previous one first via
 // cancelSession — needed because a caller can fall back from a failed

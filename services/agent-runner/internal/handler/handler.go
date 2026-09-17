@@ -32,6 +32,20 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
 )
 
+// sessionInfoTimeout bounds the best-effort SessionInfo call below —
+// deliberately short and independent of the turn's own ctx (which lives
+// until process shutdown here, not until the turn ends: see Handle's
+// caller in messaging.Consumer). Every other acp.Client call in this
+// codebase is bounded by executor's turnCtx/timeoutFor for exactly the
+// reason defaultTimeoutMinutes's doc comment gives — acp.Client has no
+// timeout of its own, so an unresponsive goose would otherwise wedge this
+// turn's goroutine (and whatever lock/semaphore slot it holds) until
+// process shutdown. A metadata read like session/info should return in
+// well under a second against a healthy peer; 10s is generous headroom,
+// not a real turn's worth of patience — this is a naming nicety, not
+// something worth blocking capacity over.
+const sessionInfoTimeout = 10 * time.Second
+
 // Handler is messaging.Handler and messaging.ControlHandler both — one
 // instance shared across every trigger and control message the process
 // handles. Exported (unlike the "Handler" name might suggest is needed for
@@ -627,6 +641,29 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		); pubErr != nil {
 			h.Log.Warn("agent-runner: failed to publish turn_usage event",
 				"conversation_id", trigger.ConversationID, "error", pubErr)
+		}
+	}
+
+	// Best-effort: copy goose's own current session title onto the
+	// conversation, so the Conversations list (apps/web) can show a real
+	// name instead of falling back to the agent's name. Never fails the
+	// turn — a naming enhancement, not a correctness requirement — and
+	// UpdateTitleFromGoose's own WHERE clause already no-ops once the user
+	// has renamed the conversation directly, so no check is needed here.
+	// GooseNewSessionDefaultTitle is goose's own placeholder for "nothing
+	// has named this session yet" (see its doc comment) — skip persisting
+	// that, so a still-unnamed conversation keeps using the frontend's
+	// existing agent-name fallback instead of literally showing "New Chat".
+	sessionInfoCtx, cancelSessionInfo := context.WithTimeout(ctx, sessionInfoTimeout)
+	title, infoErr := result.Client.SessionInfo(sessionInfoCtx, result.SessionID)
+	cancelSessionInfo()
+	if infoErr != nil {
+		h.Log.Warn("agent-runner: session/info failed, skipping title update",
+			"conversation_id", trigger.ConversationID, "error", infoErr)
+	} else if title != "" && title != acp.GooseNewSessionDefaultTitle {
+		if err := h.ConvRepo.UpdateTitleFromGoose(ctx, trigger.ConversationID, title); err != nil {
+			h.Log.Warn("agent-runner: failed to update conversation title from goose",
+				"conversation_id", trigger.ConversationID, "error", err)
 		}
 	}
 

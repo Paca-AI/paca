@@ -1575,6 +1575,24 @@
 		"triggerAutomation": "Automatisation",
 		"usageTitle": "{{tokens}} jetons · {{cost}}",
 		"prOpened": "PR ouverte",
+		"moreActions": "Plus d'actions",
+		"rename": {
+			"menuLabel": "Renommer",
+			"dialogTitle": "Renommer la conversation",
+			"placeholder": "Nom de la conversation",
+			"cancel": "Annuler",
+			"confirm": "Renommer",
+			"renaming": "Renommage…",
+			"error": "Impossible de renommer la conversation. Veuillez réessayer."
+		},
+		"delete": {
+			"menuLabel": "Supprimer",
+			"dialogTitle": "Supprimer la conversation ?",
+			"dialogDescription": "Cette action supprime définitivement « {{title}} » et son historique. Cette action est irréversible.",
+			"cancel": "Annuler",
+			"confirm": "Supprimer",
+			"error": "Impossible de supprimer la conversation. Veuillez réessayer."
+		},
 		"filters": {
 			"title": "Filtres",
 			"agent": "Agent",

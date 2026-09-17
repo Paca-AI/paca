@@ -41,6 +41,8 @@ func newConversationRouter(svc agentdom.Service) chi.Router {
 	r.Route("/projects/{projectId}/conversations", func(r chi.Router) {
 		r.Get("/", h.ListConversations)
 		r.Get("/{conversationId}/events", h.ListConversationEvents)
+		r.Patch("/{conversationId}", h.UpdateConversation)
+		r.Delete("/{conversationId}", h.DeleteConversation)
 	})
 	return r
 }
@@ -703,6 +705,168 @@ func TestListConversations_InvalidProjectIDReturnsBadRequest(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// UpdateConversation / DeleteConversation
+// (PATCH|DELETE /projects/:projectId/conversations/:conversationId)
+// ---------------------------------------------------------------------------
+
+func doPatchConversation(t *testing.T, svc agentdom.Service, projectID, conversationID, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := newConversationRouter(svc)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/projects/"+projectID+"/conversations/"+conversationID, strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestUpdateConversation_Success(t *testing.T) {
+	projectID, convID := uuid.New(), uuid.New()
+	var gotTitle string
+	svc := &mockAgentSvc{
+		updateConversationTitle: func(_ context.Context, gotProjectID, gotConvID, _ uuid.UUID, title string) (*agentdom.AgentConversation, error) {
+			if gotProjectID != projectID || gotConvID != convID {
+				t.Fatalf("unexpected ids project=%s conv=%s", gotProjectID, gotConvID)
+			}
+			gotTitle = title
+			return &agentdom.AgentConversation{ID: convID, ProjectID: projectID, Title: &title}, nil
+		},
+	}
+	rec := doPatchConversation(t, svc, projectID.String(), convID.String(), `{"title":"  Fix the login bug  "}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotTitle != "Fix the login bug" {
+		t.Errorf("expected trimmed title %q forwarded to the service, got %q", "Fix the login bug", gotTitle)
+	}
+	var resp struct {
+		Data struct {
+			Title *string `json:"title"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Data.Title == nil || *resp.Data.Title != "Fix the login bug" {
+		t.Errorf("expected response title %q, got %v", "Fix the login bug", resp.Data.Title)
+	}
+}
+
+func TestUpdateConversation_EmptyOrBlankTitleRejected(t *testing.T) {
+	cases := []string{`{"title":""}`, `{"title":"   "}`, `{}`}
+	for _, body := range cases {
+		t.Run(body, func(t *testing.T) {
+			svcCalled := false
+			svc := &mockAgentSvc{
+				updateConversationTitle: func(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string) (*agentdom.AgentConversation, error) {
+					svcCalled = true
+					return nil, nil
+				},
+			}
+			rec := doPatchConversation(t, svc, uuid.New().String(), uuid.New().String(), body)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if svcCalled {
+				t.Error("the service must not be called for an empty/blank title")
+			}
+		})
+	}
+}
+
+func TestUpdateConversation_TooLongTitleRejected(t *testing.T) {
+	svcCalled := false
+	svc := &mockAgentSvc{
+		updateConversationTitle: func(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string) (*agentdom.AgentConversation, error) {
+			svcCalled = true
+			return nil, nil
+		},
+	}
+	tooLong := strings.Repeat("a", handler.MaxConversationTitleLength+1)
+	rec := doPatchConversation(t, svc, uuid.New().String(), uuid.New().String(), `{"title":"`+tooLong+`"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if svcCalled {
+		t.Error("the service must not be called for an over-length title")
+	}
+}
+
+// TestUpdateConversation_MultiByteTitleWithinRuneLimitAccepted is the
+// regression case for counting runes, not bytes: a 200-character Cyrillic
+// title is exactly at MaxConversationTitleLength in real character count,
+// but each character is 2 UTF-8 bytes — len() on the raw string would see
+// 400 and wrongly reject it as "exceeds 200 characters".
+func TestUpdateConversation_MultiByteTitleWithinRuneLimitAccepted(t *testing.T) {
+	title := strings.Repeat("б", handler.MaxConversationTitleLength) // 200 runes, 400 bytes
+	var gotTitle string
+	svc := &mockAgentSvc{
+		updateConversationTitle: func(_ context.Context, _, convID, _ uuid.UUID, t string) (*agentdom.AgentConversation, error) {
+			gotTitle = t
+			return &agentdom.AgentConversation{ID: convID, Title: &t}, nil
+		},
+	}
+	rec := doPatchConversation(t, svc, uuid.New().String(), uuid.New().String(), `{"title":"`+title+`"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a 200-rune (400-byte) title, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotTitle != title {
+		t.Errorf("expected the full title forwarded to the service, got %q", gotTitle)
+	}
+}
+
+func TestUpdateConversation_NotFoundPropagates(t *testing.T) {
+	svc := &mockAgentSvc{
+		updateConversationTitle: func(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string) (*agentdom.AgentConversation, error) {
+			return nil, agentdom.ErrConversationNotFound
+		},
+	}
+	rec := doPatchConversation(t, svc, uuid.New().String(), uuid.New().String(), `{"title":"New name"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeleteConversation_Success(t *testing.T) {
+	projectID, convID := uuid.New(), uuid.New()
+	var gotProjectID, gotConvID uuid.UUID
+	svc := &mockAgentSvc{
+		deleteConversation: func(_ context.Context, p, c, _ uuid.UUID) error {
+			gotProjectID, gotConvID = p, c
+			return nil
+		},
+	}
+	r := newConversationRouter(svc)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete,
+		"/projects/"+projectID.String()+"/conversations/"+convID.String(), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotProjectID != projectID || gotConvID != convID {
+		t.Errorf("expected ids project=%s conv=%s forwarded, got project=%s conv=%s", projectID, convID, gotProjectID, gotConvID)
+	}
+}
+
+func TestDeleteConversation_NotFoundPropagates(t *testing.T) {
+	svc := &mockAgentSvc{
+		deleteConversation: func(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+			return agentdom.ErrConversationNotFound
+		},
+	}
+	r := newConversationRouter(svc)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete,
+		"/projects/"+uuid.New().String()+"/conversations/"+uuid.New().String(), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
 // ListGlobalConversations (GET /agents/conversations)
 // ---------------------------------------------------------------------------
 
@@ -781,6 +945,8 @@ func newGlobalConversationRouter(svc agentdom.Service, subject string) chi.Route
 		r.Post("/pause", h.PauseGlobalConversation)
 		r.Post("/heartbeat", h.GlobalConversationHeartbeat)
 		r.Post("/messages", h.SendGlobalConversationMessage)
+		r.Patch("/", h.UpdateGlobalConversation)
+		r.Delete("/", h.DeleteGlobalConversation)
 	})
 	return r
 }
@@ -993,6 +1159,83 @@ func TestSendGlobalConversationMessage_RejectsInvalidContextItems(t *testing.T) 
 	}
 	if svcCalled {
 		t.Error("the service must not be called when context_items fails validation")
+	}
+}
+
+func TestUpdateGlobalConversation_ForwardsCallerIDNotBodySuppliedActor(t *testing.T) {
+	convID := uuid.New()
+	callerID := uuid.New()
+	var gotActorUserID uuid.UUID
+	var gotTitle string
+	svc := &mockAgentSvc{
+		updateGlobalConversationTitle: func(_ context.Context, id, actorUserID uuid.UUID, title string) (*agentdom.AgentConversation, error) {
+			if id != convID {
+				t.Fatalf("unexpected conversation id %s", id)
+			}
+			gotActorUserID = actorUserID
+			gotTitle = title
+			return &agentdom.AgentConversation{ID: convID, ActorUserID: &actorUserID, Title: &title}, nil
+		},
+	}
+	r := newGlobalConversationRouter(svc, callerID.String())
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/agents/conversations/"+convID.String(), strings.NewReader(`{"title":"Renamed chat"}`))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotActorUserID != callerID {
+		t.Fatalf("actorUserID must always be the authenticated caller (%s), got %s", callerID, gotActorUserID)
+	}
+	if gotTitle != "Renamed chat" {
+		t.Errorf("expected title %q forwarded to the service, got %q", "Renamed chat", gotTitle)
+	}
+}
+
+func TestUpdateGlobalConversation_BlankTitleRejected(t *testing.T) {
+	svcCalled := false
+	svc := &mockAgentSvc{
+		updateGlobalConversationTitle: func(context.Context, uuid.UUID, uuid.UUID, string) (*agentdom.AgentConversation, error) {
+			svcCalled = true
+			return nil, nil
+		},
+	}
+	r := newGlobalConversationRouter(svc, uuid.New().String())
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
+		"/agents/conversations/"+uuid.New().String(), strings.NewReader(`{"title":"  "}`))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if svcCalled {
+		t.Error("the service must not be called for a blank title")
+	}
+}
+
+func TestDeleteGlobalConversation_ForwardsCallerID(t *testing.T) {
+	convID := uuid.New()
+	callerID := uuid.New()
+	var gotConvID, gotActorUserID uuid.UUID
+	svc := &mockAgentSvc{
+		deleteGlobalConversation: func(_ context.Context, id, actorUserID uuid.UUID) error {
+			gotConvID, gotActorUserID = id, actorUserID
+			return nil
+		},
+	}
+	r := newGlobalConversationRouter(svc, callerID.String())
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/agents/conversations/"+convID.String(), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotConvID != convID || gotActorUserID != callerID {
+		t.Errorf("expected conv=%s actor=%s forwarded, got conv=%s actor=%s", convID, callerID, gotConvID, gotActorUserID)
 	}
 }
 

@@ -218,6 +218,11 @@ Table agent_conversations {
 
   persistence_dir varchar [null]
 
+  // Naming & soft delete (000058_add_conversation_title.sql)
+  title text [null, note: 'Set by agent-runner from the underlying Goose session title (best-effort, only while title_set_by_user is false), or directly by a user rename. NULL means no name yet — the frontend then falls back to the agent name.']
+  title_set_by_user boolean [not null, default: false, note: 'Once a user renames the conversation, the best-effort copy of the Goose title from agent-runner can never overwrite it again.']
+  deleted_at timestamp [null, note: 'Soft delete — never a hard DELETE, since agent-runner may still be mid-teardown against this row and the AgentQueueConsumer worker terminal-status lookup must keep resolving it. User-facing reads (GetConversation/GetGlobalConversation) treat a non-null value as not-found; FindConversationByID itself is not filtered.']
+
   started_at timestamp [null]
   finished_at timestamp [null]
   created_at timestamp [not null]

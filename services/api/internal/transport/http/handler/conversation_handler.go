@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -269,6 +270,85 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 		return
 	}
 	presenter.OK(w, r, dto.ConversationFromEntity(conv))
+}
+
+// MaxConversationTitleLength bounds UpdateConversationTitleRequest.Title —
+// same pattern as agentdom.MaxContextItemTitleLength.
+const MaxConversationTitleLength = 200
+
+// parseConversationTitle decodes and validates the shared PATCH body for
+// UpdateConversation/UpdateGlobalConversation. Counts runes, not bytes —
+// len(title) would count a multi-byte UTF-8 character (any CJK or
+// Cyrillic title, for instance) as 2-3 "characters" against the same limit
+// the error message reports, rejecting a title well under 200 actual
+// characters.
+func parseConversationTitle(r *http.Request) (string, error) {
+	var req dto.UpdateConversationTitleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return "", apierr.New(apierr.CodeBadRequest, "invalid request body")
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		return "", apierr.New(apierr.CodeBadRequest, "title is required")
+	}
+	if utf8.RuneCountInString(title) > MaxConversationTitleLength {
+		return "", apierr.New(apierr.CodeBadRequest, "title exceeds "+strconv.Itoa(MaxConversationTitleLength)+" characters")
+	}
+	return title, nil
+}
+
+// UpdateConversation handles PATCH /projects/:projectId/conversations/:conversationId.
+func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	title, err := parseConversationTitle(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	memberID, err := h.resolveMemberID(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	conv, err := h.svc.UpdateConversationTitle(r.Context(), projectID, convID, memberID, title)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.ConversationFromEntity(conv))
+}
+
+// DeleteConversation handles DELETE /projects/:projectId/conversations/:conversationId.
+func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	memberID, err := h.resolveMemberID(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.DeleteConversation(r.Context(), projectID, convID, memberID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "conversation deleted"})
 }
 
 // currentConversationIDFromHeader parses X-Conversation-ID — set by
@@ -586,6 +666,50 @@ func (h *ConversationHandler) GetGlobalConversation(w http.ResponseWriter, r *ht
 		return
 	}
 	presenter.OK(w, r, dto.ConversationFromEntity(conv))
+}
+
+// UpdateGlobalConversation handles PATCH /agents/conversations/:conversationId.
+func (h *ConversationHandler) UpdateGlobalConversation(w http.ResponseWriter, r *http.Request) {
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	title, err := parseConversationTitle(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	conv, err := h.svc.UpdateGlobalConversationTitle(r.Context(), convID, userID, title)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.ConversationFromEntity(conv))
+}
+
+// DeleteGlobalConversation handles DELETE /agents/conversations/:conversationId.
+func (h *ConversationHandler) DeleteGlobalConversation(w http.ResponseWriter, r *http.Request) {
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.DeleteGlobalConversation(r.Context(), convID, userID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "conversation deleted"})
 }
 
 // GetGlobalConversationEvents handles GET /agents/conversations/:conversationId/events.

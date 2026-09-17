@@ -198,6 +198,17 @@ type ConversationService interface {
 	// PauseConversation interrupts the in-flight turn only — the sandbox
 	// stays alive and the conversation can be replied to again once it pauses.
 	PauseConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
+	// UpdateConversationTitle renames a conversation, returning the updated
+	// row. Once set this way, agent-runner's own best-effort copy of
+	// goose's session title never overwrites it again (see
+	// ConversationRepository.UpdateConversationTitle).
+	UpdateConversationTitle(ctx context.Context, projectID, conversationID, memberID uuid.UUID, title string) (*AgentConversation, error)
+	// DeleteConversation removes a conversation from the Conversations list
+	// for good, auto-stopping it first if it isn't already in a terminal
+	// status — deleting a still-active conversation is one action, not
+	// "stop, then delete". Soft delete, not a hard DELETE — see
+	// ConversationRepository.SoftDeleteConversation's doc comment.
+	DeleteConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
 	// Heartbeat refreshes a chat conversation's idle timer; called
 	// periodically by the frontend while a conversation is loaded in a tab.
 	Heartbeat(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
@@ -229,6 +240,11 @@ type ConversationService interface {
 	GetGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) (*AgentConversation, error)
 	StopGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	PauseGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error
+	// UpdateGlobalConversationTitle/DeleteGlobalConversation are
+	// UpdateConversationTitle/DeleteConversation's global-chat siblings —
+	// see those doc comments.
+	UpdateGlobalConversationTitle(ctx context.Context, conversationID, actorUserID uuid.UUID, title string) (*AgentConversation, error)
+	DeleteGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	GlobalHeartbeat(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	// SendGlobalConversationMessage is SendConversationMessage's global-chat
 	// sibling — see its doc comment for onBusy.

@@ -508,7 +508,13 @@ type AgentConversationResponse struct {
 	// replace (see agentdom.AgentConversation.EnvironmentID's doc comment).
 	// No replacement field: branch_name no longer appears in conversation
 	// API responses at all.
-	PRUrl       *string    `json:"pr_url,omitempty"`
+	PRUrl *string `json:"pr_url,omitempty"`
+	// Title is nil until goose names the underlying session (agent-runner's
+	// best-effort copy) or the user renames the conversation directly (see
+	// UpdateConversationTitleRequest). apps/web falls back to displaying
+	// the agent's name when this is absent — there is no server-generated
+	// default string.
+	Title       *string    `json:"title,omitempty"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
 	FinishedAt  *time.Time `json:"finished_at,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
@@ -548,6 +554,16 @@ type SendMessageRequest struct {
 	OnBusy string `json:"on_busy,omitempty"`
 }
 
+// UpdateConversationTitleRequest is the body for PATCH
+// /conversations/:id — renames a conversation. Title is required and
+// trimmed/length-checked by the handler (see
+// handler.MaxConversationTitleLength), not by a struct tag: this package's
+// handlers decode with encoding/json directly rather than a binding
+// library that would enforce "binding" tags.
+type UpdateConversationTitleRequest struct {
+	Title string `json:"title"`
+}
+
 // ConversationFromEntity maps an AgentConversation entity to its DTO.
 func ConversationFromEntity(c *agentdom.AgentConversation) AgentConversationResponse {
 	resp := AgentConversationResponse{
@@ -566,6 +582,7 @@ func ConversationFromEntity(c *agentdom.AgentConversation) AgentConversationResp
 		CostUSD:             c.CostUSD,
 		ErrorMessage:        c.ErrorMessage,
 		PRUrl:               c.PRUrl,
+		Title:               c.Title,
 		StartedAt:           c.StartedAt,
 		FinishedAt:          c.FinishedAt,
 		CreatedAt:           c.CreatedAt,

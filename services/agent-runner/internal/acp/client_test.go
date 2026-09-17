@@ -479,6 +479,136 @@ func TestLoadSession_FailureFallsBackToNewSessionCleanly(t *testing.T) {
 	}
 }
 
+// TestSessionInfo_Success uses the exact response shape captured live
+// against a real goose 1.50.1 container (see GooseNewSessionDefaultTitle's
+// doc comment) — a session that's already been renamed away from goose's
+// own "New Chat" placeholder, userSetName true.
+func TestSessionInfo_Success(t *testing.T) {
+	const sessionID = "20260917_2"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		switch req.Method {
+		case "session/new":
+			s.enqueueConn(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"sessionId":%q}}`, req.ID, sessionID))
+		case "_goose/unstable/session/info":
+			if hdrSessionID != sessionID {
+				t.Errorf("session/info Acp-Session-Id header = %q, want %q", hdrSessionID, sessionID)
+			}
+			var params struct {
+				SessionID string `json:"sessionId"`
+			}
+			raw, _ := json.Marshal(req.Params)
+			_ = json.Unmarshal(raw, &params)
+			if params.SessionID != sessionID {
+				t.Errorf("session/info sessionId param = %q, want %q", params.SessionID, sessionID)
+			}
+			// Captured verbatim.
+			s.enqueueSession(sessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"session":{"sessionId":%q,"cwd":"/home/goose","title":"probe-name","updatedAt":"2026-09-17T01:47:39+00:00","_meta":{"messageCount":0,"createdAt":"2026-09-17T01:47:36Z","userSetName":true,"sessionType":"acp","providerId":"openai","modelId":"gpt-4o-mini"}}}}`, req.ID, sessionID))
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	title, err := c.SessionInfo(context.Background(), sessionID)
+	if err != nil {
+		t.Fatalf("SessionInfo: %v", err)
+	}
+	if title != "probe-name" {
+		t.Errorf("title = %q, want probe-name", title)
+	}
+}
+
+// TestSessionInfo_MethodNotFound is the regression guard for SessionInfo's
+// tolerant handling of a peer that doesn't support this goose-specific
+// extension (an older goose, or some future non-goose ACP agent): a plain
+// JSON-RPC "Method not found" must come back as "no title, no error" — a
+// missing name is a naming enhancement goose-runner should silently skip,
+// never a reason to fail the turn.
+func TestSessionInfo_MethodNotFound(t *testing.T) {
+	const sessionID = "20260917_3"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		switch req.Method {
+		case "session/new":
+			s.enqueueConn(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"sessionId":%q}}`, req.ID, sessionID))
+		case "_goose/unstable/session/info":
+			s.enqueueSession(sessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"error":{"code":-32601,"message":"Method not found"}}`, req.ID))
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	title, err := c.SessionInfo(context.Background(), sessionID)
+	if err != nil {
+		t.Fatalf("SessionInfo: want a nil error for Method not found, got %v", err)
+	}
+	if title != "" {
+		t.Errorf("title = %q, want empty", title)
+	}
+}
+
+// TestSessionInfo_RespectsContextDeadlineOnAHungServer is SessionInfo's
+// counterpart to TestPrompt_RespectsContextDeadlineOnAHungServer: this is
+// the one ACP call in the codebase a caller can reach without going through
+// executor's turnCtx/timeoutFor (see handler.Handle's sessionInfoTimeout,
+// added specifically because this call used the handler's own long-lived
+// consumer ctx before), so it needs the identical guarantee — a peer that
+// never responds to `_goose/unstable/session/info` must not be able to
+// block the caller past its own supplied deadline.
+func TestSessionInfo_RespectsContextDeadlineOnAHungServer(t *testing.T) {
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	srv.onPost = standardSessionNew(sessionID)
+	// No "_goose/unstable/session/info" case at all: accepted (202) by the
+	// generic onPost fallthrough, then never answered on the session stream.
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := c.SessionInfo(ctx, sessionID)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("SessionInfo: want a context-deadline error against a server that never responds, got nil")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("SessionInfo took %s to return after a 300ms context deadline — it isn't actually bounded by the context", elapsed)
+	}
+}
+
 func TestPrompt_AgentMessageChunk(t *testing.T) {
 	const sessionID = "20260810_1"
 	srv := newACPMockServer(t)

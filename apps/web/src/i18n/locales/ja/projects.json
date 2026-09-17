@@ -1575,6 +1575,24 @@
 		"triggerAutomation": "自動化",
 		"usageTitle": "{{tokens}}トークン · {{cost}}",
 		"prOpened": "PRを作成しました",
+		"moreActions": "その他の操作",
+		"rename": {
+			"menuLabel": "名前を変更",
+			"dialogTitle": "会話の名前を変更",
+			"placeholder": "会話名",
+			"cancel": "キャンセル",
+			"confirm": "変更",
+			"renaming": "変更中…",
+			"error": "会話の名前を変更できませんでした。もう一度お試しください。"
+		},
+		"delete": {
+			"menuLabel": "削除",
+			"dialogTitle": "会話を削除しますか?",
+			"dialogDescription": "「{{title}}」とその履歴を完全に削除します。この操作は元に戻せません。",
+			"cancel": "キャンセル",
+			"confirm": "削除",
+			"error": "会話を削除できませんでした。もう一度お試しください。"
+		},
 		"filters": {
 			"title": "フィルター",
 			"agent": "エージェント",

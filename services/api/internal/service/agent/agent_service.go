@@ -1642,6 +1642,15 @@ func (s *Service) GetConversation(ctx context.Context, projectID, conversationID
 	if err != nil {
 		return nil, err
 	}
+	// A soft-deleted conversation is gone as far as any user-facing read is
+	// concerned — see SoftDeleteConversation's doc comment for why the
+	// underlying row is kept instead of hard-deleted. Deliberately checked
+	// here (not by filtering FindConversationByID's own SQL), since
+	// worker.AgentQueueConsumer's internal lookup on that same method must
+	// keep resolving a just-deleted row.
+	if c.DeletedAt != nil {
+		return nil, agentdom.ErrConversationNotFound
+	}
 	if c.ProjectID != projectID {
 		return nil, agentdom.ErrConversationNotFound
 	}
@@ -1677,7 +1686,20 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 	// the common case (no other conversation was attached) without a
 	// second lookup.
 	if target.ID == currentConversationID {
+		// DeletedAt deliberately NOT checked here: a user can delete the
+		// conversation this very agent is mid-turn on (auto-stop-then-delete
+		// soft-deletes immediately; agent-runner's own teardown is
+		// asynchronous), and the agent must still be able to read its own
+		// live execution context for the remainder of that turn rather than
+		// erroring out from under itself the instant the delete lands.
 		return target, nil
+	}
+	// A deleted conversation is not-found for any *other* conversation this
+	// agent asks to read — same treatment GetConversation/GetGlobalConversation
+	// give a human caller. Checked only in this cross-conversation branch,
+	// not the same-conversation shortcut above.
+	if target.DeletedAt != nil {
+		return nil, agentdom.ErrConversationNotFound
 	}
 	if err := s.authorizeConversationsReadForConversation(ctx, callerAgentID, target); err != nil {
 		return nil, err
@@ -1851,10 +1873,22 @@ func (s *Service) StopConversation(ctx context.Context, projectID, conversationI
 	if err != nil {
 		return err
 	}
+	return s.stopConversation(ctx, c, projectID)
+}
+
+// stopConversation is StopConversation/StopGlobalConversation's shared
+// body, factored out so DeleteConversation/DeleteGlobalConversation's
+// auto-stop-then-delete step (a still-active conversation is stopped first,
+// then deleted, as one user-facing action) can reuse it against an
+// already-fetched/authorized c instead of re-running GetConversation.
+// projectID is uuid.Nil for a global conversation — StopGlobalConversation's
+// stop-trigger payload never carried a project_id key, unlike
+// StopConversation's, which always did.
+func (s *Service) stopConversation(ctx context.Context, c *agentdom.AgentConversation, projectID uuid.UUID) error {
 	if agentdom.ConversationStatus(c.Status).IsTerminal() {
 		return agentdom.ErrConversationAlreadyStopped
 	}
-	if err := s.repo.UpdateConversationStatus(ctx, conversationID, string(agentdom.ConversationStatusStopped)); err != nil {
+	if err := s.repo.UpdateConversationStatus(ctx, c.ID, string(agentdom.ConversationStatusStopped)); err != nil {
 		return err
 	}
 	// If this conversation was still sitting in the parallelism backlog
@@ -1864,24 +1898,51 @@ func (s *Service) StopConversation(ctx context.Context, projectID, conversationI
 	// been dispatched (no pending-trigger row to begin with) — agent-runner
 	// was never told about a conversation this never reached, so there's
 	// nothing there to interrupt.
-	wasQueued, _ := s.repo.DeletePendingTriggerByConversationID(ctx, conversationID)
+	wasQueued, _ := s.repo.DeletePendingTriggerByConversationID(ctx, c.ID)
 	// Best-effort: a failure here shouldn't fail the stop itself (the
-	// conversation is already marked stopped and ai-agent is about to be
-	// told to tear it down) — same posture as sprintsvc.publishSprintActivity.
-	// A graph walk genuinely left waiting on this conversation stays paused
-	// until the automation is edited/deactivated; there's no separate
-	// timeout/reaper for a pending wait today.
+	// conversation is already marked stopped and agent-runner is about to
+	// be told to tear it down) — same posture as
+	// sprintsvc.publishSprintActivity. A graph walk genuinely left waiting
+	// on this conversation stays paused until the automation is
+	// edited/deactivated; there's no separate timeout/reaper for a pending
+	// wait today.
 	_ = s.publisher.AppendFlat(ctx, events.StreamAgentConversationStatus, map[string]any{
-		"conversation_id": conversationID.String(),
+		"conversation_id": c.ID.String(),
 		"status":          string(agentdom.ConversationStatusStopped),
 	})
 	if wasQueued {
 		return nil
 	}
-	return s.publishTrigger(ctx, events.TopicAgentStop, map[string]any{
-		"conversation_id": conversationID.String(),
-		"project_id":      projectID.String(),
-	})
+	payload := map[string]any{"conversation_id": c.ID.String()}
+	if projectID != uuid.Nil {
+		payload["project_id"] = projectID.String()
+	}
+	return s.publishTrigger(ctx, events.TopicAgentStop, payload)
+}
+
+// UpdateConversationTitle implements agentdom.Service.UpdateConversationTitle.
+func (s *Service) UpdateConversationTitle(ctx context.Context, projectID, conversationID, memberID uuid.UUID, title string) (*agentdom.AgentConversation, error) {
+	if _, err := s.GetConversation(ctx, projectID, conversationID, memberID); err != nil {
+		return nil, err
+	}
+	if err := s.repo.UpdateConversationTitle(ctx, conversationID, title); err != nil {
+		return nil, err
+	}
+	return s.repo.FindConversationByID(ctx, conversationID)
+}
+
+// DeleteConversation implements agentdom.Service.DeleteConversation.
+func (s *Service) DeleteConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error {
+	c, err := s.GetConversation(ctx, projectID, conversationID, memberID)
+	if err != nil {
+		return err
+	}
+	if !agentdom.ConversationStatus(c.Status).IsTerminal() {
+		if err := s.stopConversation(ctx, c, projectID); err != nil {
+			return err
+		}
+	}
+	return s.repo.SoftDeleteConversation(ctx, conversationID)
 }
 
 // PauseConversation interrupts a conversation's in-flight turn without
@@ -2106,6 +2167,11 @@ func (s *Service) GetGlobalConversation(ctx context.Context, conversationID, act
 	if err != nil {
 		return nil, err
 	}
+	// See GetConversation's identical check for why this is enforced here
+	// rather than in FindConversationByID's own SQL.
+	if c.DeletedAt != nil {
+		return nil, agentdom.ErrConversationNotFound
+	}
 	if c.ProjectID != uuid.Nil || c.ActorUserID == nil || *c.ActorUserID != actorUserID {
 		return nil, agentdom.ErrConversationNotFound
 	}
@@ -2118,27 +2184,39 @@ func (s *Service) StopGlobalConversation(ctx context.Context, conversationID, ac
 	if err != nil {
 		return err
 	}
-	if agentdom.ConversationStatus(c.Status).IsTerminal() {
-		return agentdom.ErrConversationAlreadyStopped
+	// See stopConversation's doc comment — a global-chat conversation can be
+	// queued behind a busy global agent too, and AdvanceQueue needs the
+	// StreamAgentConversationStatus publish there to ever learn this
+	// agent's slot just freed. uuid.Nil omits project_id from the
+	// stop-trigger payload, matching this method's behavior before it was
+	// factored out.
+	return s.stopConversation(ctx, c, uuid.Nil)
+}
+
+// UpdateGlobalConversationTitle implements
+// agentdom.Service.UpdateGlobalConversationTitle.
+func (s *Service) UpdateGlobalConversationTitle(ctx context.Context, conversationID, actorUserID uuid.UUID, title string) (*agentdom.AgentConversation, error) {
+	if _, err := s.GetGlobalConversation(ctx, conversationID, actorUserID); err != nil {
+		return nil, err
 	}
-	if err := s.repo.UpdateConversationStatus(ctx, conversationID, string(agentdom.ConversationStatusStopped)); err != nil {
+	if err := s.repo.UpdateConversationTitle(ctx, conversationID, title); err != nil {
+		return nil, err
+	}
+	return s.repo.FindConversationByID(ctx, conversationID)
+}
+
+// DeleteGlobalConversation implements agentdom.Service.DeleteGlobalConversation.
+func (s *Service) DeleteGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	c, err := s.GetGlobalConversation(ctx, conversationID, actorUserID)
+	if err != nil {
 		return err
 	}
-	// See StopConversation's identical cleanup for why: a global-chat
-	// conversation can be queued behind a busy global agent too, and
-	// AdvanceQueue needs the StreamAgentConversationStatus publish below to
-	// ever learn this agent's slot just freed.
-	wasQueued, _ := s.repo.DeletePendingTriggerByConversationID(ctx, conversationID)
-	_ = s.publisher.AppendFlat(ctx, events.StreamAgentConversationStatus, map[string]any{
-		"conversation_id": conversationID.String(),
-		"status":          string(agentdom.ConversationStatusStopped),
-	})
-	if wasQueued {
-		return nil
+	if !agentdom.ConversationStatus(c.Status).IsTerminal() {
+		if err := s.stopConversation(ctx, c, uuid.Nil); err != nil {
+			return err
+		}
 	}
-	return s.publishTrigger(ctx, events.TopicAgentStop, map[string]any{
-		"conversation_id": conversationID.String(),
-	})
+	return s.repo.SoftDeleteConversation(ctx, conversationID)
 }
 
 // PauseGlobalConversation interrupts a global conversation's in-flight turn.

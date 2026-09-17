@@ -495,10 +495,28 @@ type AgentConversation struct {
 	ErrorMessage *string
 	RepoPluginID *uuid.UUID
 	PRUrl        *string
-	StartedAt    *time.Time
-	FinishedAt   *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// Title is nil until either goose names the underlying ACP session
+	// itself (agent-runner's best-effort copy — see
+	// docs/ai-agent/agent-runner-service.md) or the user renames the
+	// conversation directly (UpdateConversationTitle, which also sets
+	// TitleSetByUser so agent-runner's own copy never overwrites it again).
+	// A nil Title has no stored default: the frontend falls back to
+	// displaying the agent's name instead.
+	Title          *string
+	TitleSetByUser bool
+	// DeletedAt marks a soft-deleted conversation — see
+	// GetConversation/GetGlobalConversation, which treat a non-nil value as
+	// ErrConversationNotFound for user-facing reads. Deliberately NOT
+	// filtered out of the raw repository lookup by id (FindConversationByID)
+	// that worker.AgentQueueConsumer and internal/service/agent's own
+	// automation-resume path use — those must keep resolving a
+	// just-deleted conversation. Never a hard DELETE: see this entity's
+	// migration (000058_add_conversation_title.sql) doc comment for why.
+	DeletedAt  *time.Time
+	StartedAt  *time.Time
+	FinishedAt *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 	// Populated by JOIN
 	AgentName   string
 	AgentHandle string

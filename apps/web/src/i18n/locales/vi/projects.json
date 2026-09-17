@@ -1575,6 +1575,24 @@
 		"triggerAutomation": "Tự động hóa",
 		"usageTitle": "{{tokens}} token · {{cost}}",
 		"prOpened": "PR đã mở",
+		"moreActions": "Thao tác khác",
+		"rename": {
+			"menuLabel": "Đổi tên",
+			"dialogTitle": "Đổi tên cuộc trò chuyện",
+			"placeholder": "Tên cuộc trò chuyện",
+			"cancel": "Hủy",
+			"confirm": "Đổi tên",
+			"renaming": "Đang đổi tên…",
+			"error": "Không thể đổi tên cuộc trò chuyện. Vui lòng thử lại."
+		},
+		"delete": {
+			"menuLabel": "Xóa",
+			"dialogTitle": "Xóa cuộc trò chuyện?",
+			"dialogDescription": "Thao tác này sẽ xóa vĩnh viễn \"{{title}}\" và lịch sử của nó. Không thể hoàn tác.",
+			"cancel": "Hủy",
+			"confirm": "Xóa",
+			"error": "Không thể xóa cuộc trò chuyện. Vui lòng thử lại."
+		},
 		"filters": {
 			"title": "Bộ lọc",
 			"agent": "Tác nhân",

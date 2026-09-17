@@ -188,3 +188,23 @@ func (r *ConversationRepository) SetACPSessionID(ctx context.Context, conversati
 	}
 	return nil
 }
+
+// UpdateTitleFromGoose best-effort copies goose's own current session title
+// (see acp.Client.SessionInfo) onto conversationID — called after every
+// turn, not just the first, since goose may not settle on a real title
+// until a few messages in. Self-guarding: title_set_by_user = false in the
+// WHERE clause means a user's own rename (services/api's
+// UpdateConversationTitle, which sets that flag) is never clobbered by a
+// later turn's copy, with no read-before-write needed. Silently affects
+// zero rows (not an error) once a user has renamed, or if the conversation
+// was deleted out from under an in-flight turn.
+func (r *ConversationRepository) UpdateTitleFromGoose(ctx context.Context, conversationID uuid.UUID, title string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE agent_conversations SET title = $1, updated_at = now()
+		 WHERE id = $2 AND title_set_by_user = false AND deleted_at IS NULL`,
+		title, conversationID)
+	if err != nil {
+		return fmt.Errorf("postgres: update title from goose for conversation %s: %w", conversationID, err)
+	}
+	return nil
+}
