@@ -567,6 +567,48 @@ func TestSessionInfo_MethodNotFound(t *testing.T) {
 	}
 }
 
+// TestSessionInfo_RespectsContextDeadlineOnAHungServer is SessionInfo's
+// counterpart to TestPrompt_RespectsContextDeadlineOnAHungServer: this is
+// the one ACP call in the codebase a caller can reach without going through
+// executor's turnCtx/timeoutFor (see handler.Handle's sessionInfoTimeout,
+// added specifically because this call used the handler's own long-lived
+// consumer ctx before), so it needs the identical guarantee — a peer that
+// never responds to `_goose/unstable/session/info` must not be able to
+// block the caller past its own supplied deadline.
+func TestSessionInfo_RespectsContextDeadlineOnAHungServer(t *testing.T) {
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	srv.onPost = standardSessionNew(sessionID)
+	// No "_goose/unstable/session/info" case at all: accepted (202) by the
+	// generic onPost fallthrough, then never answered on the session stream.
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := c.SessionInfo(ctx, sessionID)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("SessionInfo: want a context-deadline error against a server that never responds, got nil")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("SessionInfo took %s to return after a 300ms context deadline — it isn't actually bounded by the context", elapsed)
+	}
+}
+
 func TestPrompt_AgentMessageChunk(t *testing.T) {
 	const sessionID = "20260810_1"
 	srv := newACPMockServer(t)

@@ -1951,6 +1951,37 @@ func TestGetConversationForAgent_SameConversation_Allowed(t *testing.T) {
 	assert.Equal(t, 1, lookups, "reading the current conversation itself should not need a second lookup")
 }
 
+// TestGetConversationForAgent_SameConversation_AllowedEvenIfDeleted pins
+// that the same-conversation shortcut deliberately does NOT check
+// DeletedAt: a user can delete the conversation this very agent is mid-turn
+// on (auto-stop-then-delete soft-deletes immediately; agent-runner's own
+// teardown is asynchronous), and the agent must still be able to read its
+// own live execution context for the rest of that turn rather than erroring
+// out from under itself the instant the delete lands.
+func TestGetConversationForAgent_SameConversation_AllowedEvenIfDeleted(t *testing.T) {
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	deletedAt := time.Now()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		AgentID:   agentID,
+		Audience:  agentdom.AudienceOwnerPrivate,
+		Status:    "stopped",
+		DeletedAt: &deletedAt,
+	}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
 // TestGetConversationForAgent_DifferentAgent_Rejected asserts the
 // authorization boundary: an agent may not read a conversation it wasn't
 // itself the agent of, even when it's project_shared — reading another
@@ -2115,6 +2146,34 @@ func TestGetConversationForAgent_Project_SharedAudience_Allowed(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, targetID, result.ID)
+}
+
+// TestGetConversationForAgent_CrossConversation_Deleted_Rejected is the
+// counterpart to TestGetConversationForAgent_SameConversation_AllowedEvenIfDeleted:
+// a *different* conversation the user has deleted must be not-found for the
+// agent too, same as it already is for a human via GetConversation/
+// GetGlobalConversation — otherwise the read_conversation MCP tool could
+// still return a deleted conversation's full transcript.
+func TestGetConversationForAgent_CrossConversation_Deleted_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	deletedAt := time.Now()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared, DeletedAt: &deletedAt}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: nil}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
 // TestGetConversationForAgent_RestrictedAgent_SystemTriggeredCurrent_SharedAudience_Allowed

@@ -791,6 +791,29 @@ func TestUpdateConversation_TooLongTitleRejected(t *testing.T) {
 	}
 }
 
+// TestUpdateConversation_MultiByteTitleWithinRuneLimitAccepted is the
+// regression case for counting runes, not bytes: a 200-character Cyrillic
+// title is exactly at MaxConversationTitleLength in real character count,
+// but each character is 2 UTF-8 bytes — len() on the raw string would see
+// 400 and wrongly reject it as "exceeds 200 characters".
+func TestUpdateConversation_MultiByteTitleWithinRuneLimitAccepted(t *testing.T) {
+	title := strings.Repeat("б", handler.MaxConversationTitleLength) // 200 runes, 400 bytes
+	var gotTitle string
+	svc := &mockAgentSvc{
+		updateConversationTitle: func(_ context.Context, _, convID, _ uuid.UUID, t string) (*agentdom.AgentConversation, error) {
+			gotTitle = t
+			return &agentdom.AgentConversation{ID: convID, Title: &t}, nil
+		},
+	}
+	rec := doPatchConversation(t, svc, uuid.New().String(), uuid.New().String(), `{"title":"`+title+`"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a 200-rune (400-byte) title, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotTitle != title {
+		t.Errorf("expected the full title forwarded to the service, got %q", gotTitle)
+	}
+}
+
 func TestUpdateConversation_NotFoundPropagates(t *testing.T) {
 	svc := &mockAgentSvc{
 		updateConversationTitle: func(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string) (*agentdom.AgentConversation, error) {

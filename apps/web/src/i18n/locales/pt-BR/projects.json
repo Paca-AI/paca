@@ -1582,14 +1582,16 @@
 			"placeholder": "Nome da conversa",
 			"cancel": "Cancelar",
 			"confirm": "Renomear",
-			"renaming": "Renomeando…"
+			"renaming": "Renomeando…",
+			"error": "Não foi possível renomear a conversa. Tente novamente."
 		},
 		"delete": {
 			"menuLabel": "Excluir",
 			"dialogTitle": "Excluir conversa?",
 			"dialogDescription": "Isso exclui permanentemente \"{{title}}\" e seu histórico. Essa ação não pode ser desfeita.",
 			"cancel": "Cancelar",
-			"confirm": "Excluir"
+			"confirm": "Excluir",
+			"error": "Não foi possível excluir a conversa. Tente novamente."
 		},
 		"filters": {
 			"title": "Filtros",

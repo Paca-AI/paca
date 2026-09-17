@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -272,11 +273,15 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 }
 
 // MaxConversationTitleLength bounds UpdateConversationTitleRequest.Title —
-// same pattern as MaxContextItemTitleLength above.
+// same pattern as agentdom.MaxContextItemTitleLength.
 const MaxConversationTitleLength = 200
 
 // parseConversationTitle decodes and validates the shared PATCH body for
-// UpdateConversation/UpdateGlobalConversation.
+// UpdateConversation/UpdateGlobalConversation. Counts runes, not bytes —
+// len(title) would count a multi-byte UTF-8 character (any CJK or
+// Cyrillic title, for instance) as 2-3 "characters" against the same limit
+// the error message reports, rejecting a title well under 200 actual
+// characters.
 func parseConversationTitle(r *http.Request) (string, error) {
 	var req dto.UpdateConversationTitleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -286,7 +291,7 @@ func parseConversationTitle(r *http.Request) (string, error) {
 	if title == "" {
 		return "", apierr.New(apierr.CodeBadRequest, "title is required")
 	}
-	if len(title) > MaxConversationTitleLength {
+	if utf8.RuneCountInString(title) > MaxConversationTitleLength {
 		return "", apierr.New(apierr.CodeBadRequest, "title exceeds "+strconv.Itoa(MaxConversationTitleLength)+" characters")
 	}
 	return title, nil

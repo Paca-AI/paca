@@ -1582,14 +1582,16 @@
 			"placeholder": "Tên cuộc trò chuyện",
 			"cancel": "Hủy",
 			"confirm": "Đổi tên",
-			"renaming": "Đang đổi tên…"
+			"renaming": "Đang đổi tên…",
+			"error": "Không thể đổi tên cuộc trò chuyện. Vui lòng thử lại."
 		},
 		"delete": {
 			"menuLabel": "Xóa",
 			"dialogTitle": "Xóa cuộc trò chuyện?",
 			"dialogDescription": "Thao tác này sẽ xóa vĩnh viễn \"{{title}}\" và lịch sử của nó. Không thể hoàn tác.",
 			"cancel": "Hủy",
-			"confirm": "Xóa"
+			"confirm": "Xóa",
+			"error": "Không thể xóa cuộc trò chuyện. Vui lòng thử lại."
 		},
 		"filters": {
 			"title": "Bộ lọc",

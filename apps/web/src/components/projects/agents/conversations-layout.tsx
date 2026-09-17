@@ -18,7 +18,7 @@ import {
 	Coins,
 	Loader2,
 	MessageSquare,
-	MoreHorizontal,
+	MoreVertical,
 	Pencil,
 	Plus,
 	Trash2,
@@ -58,6 +58,7 @@ import {
 	CONVERSATION_STATUS_LABELS,
 	type ConversationFilters as ConversationFiltersState,
 	chattableAgentsQueryOptions,
+	conversationEventWindowKey,
 	conversationQueryOptions,
 	conversationsQueryOptions,
 	deleteConversation,
@@ -67,7 +68,7 @@ import {
 	updateConversationTitle,
 	updateGlobalConversationTitle,
 } from "@/lib/agent-api";
-import { isForbiddenError } from "@/lib/api-error";
+import { getApiErrorMessage, isForbiddenError } from "@/lib/api-error";
 import { formatCompactTokens, formatUsageCost } from "@/lib/format-usage";
 import { resolveAgentAvatarUrl } from "@/lib/provider-logos";
 import { cn } from "@/lib/utils";
@@ -219,13 +220,13 @@ function ConversationListItem({
 				<DropdownMenu>
 					<DropdownMenuTrigger
 						aria-label={t("conversationsPage.moreActions")}
-						className="absolute right-1.5 top-2 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-all duration-150 hover:bg-accent hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+						className="absolute right-1.5 top-1/2 flex size-6 shrink-0 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-all duration-150 hover:bg-accent hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
 						onClick={(e) => {
 							e.preventDefault();
 							e.stopPropagation();
 						}}
 					>
-						<MoreHorizontal className="size-3.5" />
+						<MoreVertical className="size-3.5" />
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="w-36">
 						<DropdownMenuItem onClick={() => onRename(conv)}>
@@ -249,18 +250,26 @@ function ConversationListItem({
 
 // ── Rename dialog ───────────────────────────────────────────────────────────
 
+// Mirrors the server's handler.MaxConversationTitleLength
+// (services/api/internal/transport/http/handler/conversation_handler.go) —
+// keep the two in sync if that limit ever changes.
+const CONVERSATION_TITLE_MAX_LENGTH = 200;
+
 function RenameConversationDialog({
 	conv,
 	open,
 	onOpenChange,
 	onSubmit,
 	isPending,
+	error,
 }: {
 	conv: AgentConversation | null;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	onSubmit: (title: string) => void;
 	isPending: boolean;
+	/** Server-rejected-request message, if the last submit failed. */
+	error?: string | null;
 }) {
 	const { t } = useTranslation("projects");
 	const [title, setTitle] = useState(conv?.title ?? "");
@@ -285,8 +294,10 @@ function RenameConversationDialog({
 					onChange={(e) => setTitle(e.target.value)}
 					onKeyDown={(e) => e.key === "Enter" && submit()}
 					placeholder={t("conversationsPage.rename.placeholder")}
+					maxLength={CONVERSATION_TITLE_MAX_LENGTH}
 					className="w-full rounded-lg border border-border/30 bg-muted/15 px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 placeholder:text-muted-foreground/50 transition-all duration-150"
 				/>
+				{error && <p className="text-xs text-destructive">{error}</p>}
 				<DialogFooter>
 					<DialogClose render={<Button variant="outline" size="sm" />}>
 						{t("conversationsPage.rename.cancel")}
@@ -454,6 +465,15 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 				: deleteGlobalConversation(id),
 		onSuccess: (_data, id) => {
 			void qc.invalidateQueries({ queryKey: conversationsListQueryKey });
+			// The conversation's own detail cache
+			// (conversationQueryOptions/globalConversationQueryOptions) nests
+			// under conversationsListQueryKey's own prefix, so the
+			// invalidation above already covers it — but its events window
+			// lives under an unrelated top-level key
+			// (conversationEventWindowKey) and, per that key's own doc
+			// comment, is never implicitly refetched, so a stale, pre-delete
+			// transcript would otherwise sit in cache indefinitely.
+			void qc.invalidateQueries({ queryKey: conversationEventWindowKey(id) });
 			setDeleteTarget(null);
 			if (id === activeConversationId) {
 				navigate({ to: newConversationHref, search: { compose: false } });
@@ -584,6 +604,12 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 					renameTarget && renameMutation.mutate({ id: renameTarget.id, title })
 				}
 				isPending={renameMutation.isPending}
+				error={
+					renameMutation.isError
+						? (getApiErrorMessage(renameMutation.error) ??
+							t("conversationsPage.rename.error"))
+						: null
+				}
 			/>
 			<Dialog
 				open={!!deleteTarget}
@@ -605,6 +631,12 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 							})}
 						</DialogDescription>
 					</DialogHeader>
+					{deleteMutation.isError && (
+						<p className="text-xs text-destructive">
+							{getApiErrorMessage(deleteMutation.error) ??
+								t("conversationsPage.delete.error")}
+						</p>
+					)}
 					<DialogFooter>
 						<Button
 							variant="outline"

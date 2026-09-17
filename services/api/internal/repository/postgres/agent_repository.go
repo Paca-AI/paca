@@ -1183,9 +1183,18 @@ func (r *AgentRepository) FindConversationByID(ctx context.Context, id uuid.UUID
 // conversation for a chat session, or (nil, nil) if none exists yet.
 func (r *AgentRepository) FindLatestConversationByChatSession(ctx context.Context, chatSessionID uuid.UUID) (*agentdom.AgentConversation, error) {
 	var rec agentConversationRecord
+	// deleted_at IS NULL: every caller (SendChatMessage/SendGlobalChatMessage
+	// resuming a session's conversation, ListChatMessages reading its
+	// events) wants the latest *active* conversation, never one the user
+	// deleted — without this a deleted conversation could be claimed back
+	// to running/queued and its transcript kept reading as if delete had no
+	// effect. A session whose latest conversation was deleted falls back to
+	// nil here, same as a session with no conversation yet — the caller's
+	// existing conv == nil branch already handles that by starting a fresh
+	// one.
 	err := r.db.GetContext(ctx, &rec,
 		`SELECT `+conversationCols+` FROM agent_conversations
-		 WHERE chat_session_id = $1 ORDER BY created_at DESC LIMIT 1`,
+		 WHERE chat_session_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`,
 		chatSessionID.String(),
 	)
 	if err != nil {
@@ -1244,8 +1253,12 @@ func (r *AgentRepository) SoftDeleteConversation(ctx context.Context, id uuid.UU
 // ClaimConversationStatus atomically moves a conversation from fromStatus to
 // toStatus. Only one caller racing on the same conversation observes true.
 func (r *AgentRepository) ClaimConversationStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (bool, error) {
+	// deleted_at IS NULL: defense in depth alongside
+	// FindLatestConversationByChatSession's own filter — a deleted
+	// conversation must never be claimed back out of a terminal status by
+	// any caller, present or future.
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE agent_conversations SET status=$1, updated_at=$2 WHERE id=$3 AND status=$4`,
+		`UPDATE agent_conversations SET status=$1, updated_at=$2 WHERE id=$3 AND status=$4 AND deleted_at IS NULL`,
 		toStatus, time.Now(), id.String(), fromStatus,
 	)
 	if err != nil {

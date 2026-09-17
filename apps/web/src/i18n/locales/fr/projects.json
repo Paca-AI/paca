@@ -1582,14 +1582,16 @@
 			"placeholder": "Nom de la conversation",
 			"cancel": "Annuler",
 			"confirm": "Renommer",
-			"renaming": "Renommage…"
+			"renaming": "Renommage…",
+			"error": "Impossible de renommer la conversation. Veuillez réessayer."
 		},
 		"delete": {
 			"menuLabel": "Supprimer",
 			"dialogTitle": "Supprimer la conversation ?",
 			"dialogDescription": "Cette action supprime définitivement « {{title}} » et son historique. Cette action est irréversible.",
 			"cancel": "Annuler",
-			"confirm": "Supprimer"
+			"confirm": "Supprimer",
+			"error": "Impossible de supprimer la conversation. Veuillez réessayer."
 		},
 		"filters": {
 			"title": "Filtres",

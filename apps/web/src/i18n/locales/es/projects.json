@@ -1582,14 +1582,16 @@
 			"placeholder": "Nombre de la conversación",
 			"cancel": "Cancelar",
 			"confirm": "Cambiar nombre",
-			"renaming": "Cambiando nombre…"
+			"renaming": "Cambiando nombre…",
+			"error": "No se pudo cambiar el nombre de la conversación. Inténtalo de nuevo."
 		},
 		"delete": {
 			"menuLabel": "Eliminar",
 			"dialogTitle": "¿Eliminar conversación?",
 			"dialogDescription": "Esto elimina permanentemente \"{{title}}\" y su historial. Esta acción no se puede deshacer.",
 			"cancel": "Cancelar",
-			"confirm": "Eliminar"
+			"confirm": "Eliminar",
+			"error": "No se pudo eliminar la conversación. Inténtalo de nuevo."
 		},
 		"filters": {
 			"title": "Filtros",

@@ -1582,14 +1582,16 @@
 			"placeholder": "Conversation name",
 			"cancel": "Cancel",
 			"confirm": "Rename",
-			"renaming": "Renaming…"
+			"renaming": "Renaming…",
+			"error": "Couldn't rename the conversation. Please try again."
 		},
 		"delete": {
 			"menuLabel": "Delete",
 			"dialogTitle": "Delete conversation?",
 			"dialogDescription": "This permanently deletes \"{{title}}\" and its history. This can't be undone.",
 			"cancel": "Cancel",
-			"confirm": "Delete"
+			"confirm": "Delete",
+			"error": "Couldn't delete the conversation. Please try again."
 		},
 		"filters": {
 			"title": "Filters",

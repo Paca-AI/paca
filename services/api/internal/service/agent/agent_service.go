@@ -1686,7 +1686,20 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 	// the common case (no other conversation was attached) without a
 	// second lookup.
 	if target.ID == currentConversationID {
+		// DeletedAt deliberately NOT checked here: a user can delete the
+		// conversation this very agent is mid-turn on (auto-stop-then-delete
+		// soft-deletes immediately; agent-runner's own teardown is
+		// asynchronous), and the agent must still be able to read its own
+		// live execution context for the remainder of that turn rather than
+		// erroring out from under itself the instant the delete lands.
 		return target, nil
+	}
+	// A deleted conversation is not-found for any *other* conversation this
+	// agent asks to read — same treatment GetConversation/GetGlobalConversation
+	// give a human caller. Checked only in this cross-conversation branch,
+	// not the same-conversation shortcut above.
+	if target.DeletedAt != nil {
+		return nil, agentdom.ErrConversationNotFound
 	}
 	if err := s.authorizeConversationsReadForConversation(ctx, callerAgentID, target); err != nil {
 		return nil, err
