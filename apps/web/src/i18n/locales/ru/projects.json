@@ -1593,6 +1593,22 @@
 		"triggerAutomation": "Автоматизация",
 		"usageTitle": "{{tokens}} токенов · {{cost}}",
 		"prOpened": "PR открыт",
+		"moreActions": "Дополнительные действия",
+		"rename": {
+			"menuLabel": "Переименовать",
+			"dialogTitle": "Переименовать разговор",
+			"placeholder": "Название разговора",
+			"cancel": "Отмена",
+			"confirm": "Переименовать",
+			"renaming": "Переименование…"
+		},
+		"delete": {
+			"menuLabel": "Удалить",
+			"dialogTitle": "Удалить разговор?",
+			"dialogDescription": "Это навсегда удалит «{{title}}» и его историю. Это действие нельзя отменить.",
+			"cancel": "Отмена",
+			"confirm": "Удалить"
+		},
 		"filters": {
 			"title": "Фильтры",
 			"agent": "Агент",

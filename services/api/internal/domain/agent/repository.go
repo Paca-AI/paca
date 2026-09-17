@@ -142,6 +142,24 @@ type ConversationRepository interface {
 	FindLatestConversationByChatSession(ctx context.Context, chatSessionID uuid.UUID) (*AgentConversation, error)
 	CreateConversation(ctx context.Context, c *AgentConversation) error
 	UpdateConversationStatus(ctx context.Context, id uuid.UUID, status string) error
+	// UpdateConversationTitle sets a user-chosen title, marking it
+	// TitleSetByUser so agent-runner's own best-effort copy of goose's
+	// session title (see docs/ai-agent/agent-runner-service.md) never
+	// overwrites it again. A narrow, single-column UPDATE — not routed
+	// through the (unused) full-record UpdateConversation below — so it
+	// can never clobber a concurrent status/token update made by
+	// agent-runner against the same row from an in-memory snapshot taken
+	// before this call.
+	UpdateConversationTitle(ctx context.Context, id uuid.UUID, title string) error
+	// SoftDeleteConversation marks a conversation deleted_at = now(). Never
+	// a hard DELETE — see agent_conversations' migration
+	// (000058_add_conversation_title.sql) doc comment for why: agent-runner
+	// may still be mid-teardown against this row, and
+	// worker.AgentQueueConsumer's terminal-status lookup must still resolve
+	// it. FindConversationByID is deliberately NOT filtered by deleted_at —
+	// callers that must treat a deleted conversation as not-found do that
+	// check themselves (see GetConversation/GetGlobalConversation).
+	SoftDeleteConversation(ctx context.Context, id uuid.UUID) error
 	// ClaimConversationStatus atomically transitions a conversation from
 	// fromStatus to toStatus and reports whether it won the race (false means
 	// another caller already moved the conversation out of fromStatus).

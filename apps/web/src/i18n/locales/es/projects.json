@@ -1575,6 +1575,22 @@
 		"triggerAutomation": "Automatización",
 		"usageTitle": "{{tokens}} tokens · {{cost}}",
 		"prOpened": "PR abierto",
+		"moreActions": "Más acciones",
+		"rename": {
+			"menuLabel": "Cambiar nombre",
+			"dialogTitle": "Cambiar nombre de la conversación",
+			"placeholder": "Nombre de la conversación",
+			"cancel": "Cancelar",
+			"confirm": "Cambiar nombre",
+			"renaming": "Cambiando nombre…"
+		},
+		"delete": {
+			"menuLabel": "Eliminar",
+			"dialogTitle": "¿Eliminar conversación?",
+			"dialogDescription": "Esto elimina permanentemente \"{{title}}\" y su historial. Esta acción no se puede deshacer.",
+			"cancel": "Cancelar",
+			"confirm": "Eliminar"
+		},
 		"filters": {
 			"title": "Filtros",
 			"agent": "Agente",

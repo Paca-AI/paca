@@ -1,13 +1,50 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Link, Outlet, useParams, useSearch } from "@tanstack/react-router";
+import {
+	useInfiniteQuery,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
+import {
+	Link,
+	Outlet,
+	useNavigate,
+	useParams,
+	useSearch,
+} from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { ArrowLeft, Clock, Coins, MessageSquare, Plus } from "lucide-react";
+import {
+	ArrowLeft,
+	Clock,
+	Coins,
+	Loader2,
+	MessageSquare,
+	MoreHorizontal,
+	Pencil,
+	Plus,
+	Trash2,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGlobalAgentRealtime } from "@/hooks/use-global-agent-realtime";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -21,8 +58,14 @@ import {
 	CONVERSATION_STATUS_LABELS,
 	type ConversationFilters as ConversationFiltersState,
 	chattableAgentsQueryOptions,
+	conversationQueryOptions,
 	conversationsQueryOptions,
+	deleteConversation,
+	deleteGlobalConversation,
+	globalConversationQueryOptions,
 	globalConversationsQueryOptions,
+	updateConversationTitle,
+	updateGlobalConversationTitle,
 } from "@/lib/agent-api";
 import { isForbiddenError } from "@/lib/api-error";
 import { formatCompactTokens, formatUsageCost } from "@/lib/format-usage";
@@ -74,12 +117,21 @@ function ConversationListItem({
 	agent,
 	projectId,
 	isActive,
+	canManage,
+	onRename,
+	onDelete,
 }: {
 	conv: AgentConversation;
 	agent: Agent | undefined;
 	/** Absent for a global conversation (no project to scope the link to). */
 	projectId?: string;
 	isActive: boolean;
+	/** Whether the rename/delete menu is shown at all — conversations.write
+	 *  for a project item, always true for a global one (always the
+	 *  caller's own). */
+	canManage: boolean;
+	onRename: (conv: AgentConversation) => void;
+	onDelete: (conv: AgentConversation) => void;
 }) {
 	const { t } = useTranslation("projects");
 	const statusColor = CONVERSATION_STATUS_COLORS[conv.status];
@@ -92,63 +144,165 @@ function ConversationListItem({
 		.toUpperCase()
 		.slice(0, 2);
 	const avatarUrl = agent ? resolveAgentAvatarUrl(agent) : undefined;
+	// conv.title takes precedence once goose has named the underlying
+	// session or the user has renamed it — falling back to exactly what
+	// this list already showed before conversations could have a name at
+	// all, so an unnamed conversation renders identically to today.
+	const displayName = conv.title || agent?.name || conv.agent_id.slice(0, 8);
 
 	const href = projectId
 		? `/projects/${projectId}/conversations/${conv.id}`
 		: `/conversations/${conv.id}`;
 
 	return (
-		<Link
-			to={href}
+		<div
 			className={cn(
-				"flex w-full flex-col gap-1.5 rounded-lg border px-3 py-2.5 text-left transition-colors",
+				"group relative flex w-full flex-col gap-1.5 rounded-lg border transition-colors",
 				isActive
 					? "border-primary/40 bg-primary/5"
 					: "border-transparent hover:border-border hover:bg-accent/30",
 			)}
 		>
-			<div className="flex items-center gap-2 min-w-0">
-				<Avatar className="size-6 rounded-md bg-primary/10 shrink-0">
-					{avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
-					<AvatarFallback className="rounded-md bg-primary/10 text-primary text-[10px] font-semibold">
-						{initials}
-					</AvatarFallback>
-				</Avatar>
-				<span className="text-sm font-medium truncate flex-1">
-					{agent?.name ?? conv.agent_id.slice(0, 8)}
-				</span>
-				<Badge
-					variant="outline"
-					className={cn("text-[10px] font-semibold shrink-0", statusColor)}
-				>
-					{statusLabel}
-				</Badge>
-			</div>
-			<div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-8">
-				<span className="truncate">{triggerLabel}</span>
-				{conv.total_tokens > 0 && (
-					<>
-						<span className="text-muted-foreground/40">·</span>
-						<span
-							className="flex items-center gap-1 shrink-0"
-							title={t("conversationsPage.usageTitle", {
-								tokens: conv.total_tokens.toLocaleString(),
-								cost:
-									conv.cost_usd != null ? formatUsageCost(conv.cost_usd) : "—",
-							})}
-						>
-							<Coins className="size-3" />
-							{formatCompactTokens(conv.total_tokens)}
-							{conv.cost_usd != null && ` · ${formatUsageCost(conv.cost_usd)}`}
-						</span>
-					</>
+			<Link
+				to={href}
+				className={cn(
+					"flex flex-col gap-1.5 px-3 py-2.5 text-left",
+					canManage && "pr-8",
 				)}
-				<span className="ml-auto shrink-0 flex items-center gap-1">
-					<Clock className="size-3" />
-					{new Date(conv.created_at).toLocaleDateString()}
-				</span>
-			</div>
-		</Link>
+			>
+				<div className="flex items-center gap-2 min-w-0">
+					<Avatar className="size-6 rounded-md bg-primary/10 shrink-0">
+						{avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+						<AvatarFallback className="rounded-md bg-primary/10 text-primary text-[10px] font-semibold">
+							{initials}
+						</AvatarFallback>
+					</Avatar>
+					<span className="text-sm font-medium truncate flex-1">
+						{displayName}
+					</span>
+					<Badge
+						variant="outline"
+						className={cn("text-[10px] font-semibold shrink-0", statusColor)}
+					>
+						{statusLabel}
+					</Badge>
+				</div>
+				<div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-8">
+					<span className="truncate">{triggerLabel}</span>
+					{conv.total_tokens > 0 && (
+						<>
+							<span className="text-muted-foreground/40">·</span>
+							<span
+								className="flex items-center gap-1 shrink-0"
+								title={t("conversationsPage.usageTitle", {
+									tokens: conv.total_tokens.toLocaleString(),
+									cost:
+										conv.cost_usd != null
+											? formatUsageCost(conv.cost_usd)
+											: "—",
+								})}
+							>
+								<Coins className="size-3" />
+								{formatCompactTokens(conv.total_tokens)}
+								{conv.cost_usd != null &&
+									` · ${formatUsageCost(conv.cost_usd)}`}
+							</span>
+						</>
+					)}
+					<span className="ml-auto shrink-0 flex items-center gap-1">
+						<Clock className="size-3" />
+						{new Date(conv.created_at).toLocaleDateString()}
+					</span>
+				</div>
+			</Link>
+			{canManage && (
+				<DropdownMenu>
+					<DropdownMenuTrigger
+						aria-label={t("conversationsPage.moreActions")}
+						className="absolute right-1.5 top-2 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-all duration-150 hover:bg-accent hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+						onClick={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+						}}
+					>
+						<MoreHorizontal className="size-3.5" />
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-36">
+						<DropdownMenuItem onClick={() => onRename(conv)}>
+							<Pencil className="size-3.5 mr-2" />
+							{t("conversationsPage.rename.menuLabel")}
+						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem
+							className="text-destructive focus:text-destructive"
+							onClick={() => onDelete(conv)}
+						>
+							<Trash2 className="size-3.5 mr-2" />
+							{t("conversationsPage.delete.menuLabel")}
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			)}
+		</div>
+	);
+}
+
+// ── Rename dialog ───────────────────────────────────────────────────────────
+
+function RenameConversationDialog({
+	conv,
+	open,
+	onOpenChange,
+	onSubmit,
+	isPending,
+}: {
+	conv: AgentConversation | null;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	onSubmit: (title: string) => void;
+	isPending: boolean;
+}) {
+	const { t } = useTranslation("projects");
+	const [title, setTitle] = useState(conv?.title ?? "");
+
+	useEffect(() => {
+		if (conv) setTitle(conv.title ?? "");
+	}, [conv]);
+
+	const submit = () => {
+		const trimmed = title.trim();
+		if (trimmed) onSubmit(trimmed);
+	};
+
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="sm:max-w-xs">
+				<DialogHeader>
+					<DialogTitle>{t("conversationsPage.rename.dialogTitle")}</DialogTitle>
+				</DialogHeader>
+				<input
+					value={title}
+					onChange={(e) => setTitle(e.target.value)}
+					onKeyDown={(e) => e.key === "Enter" && submit()}
+					placeholder={t("conversationsPage.rename.placeholder")}
+					className="w-full rounded-lg border border-border/30 bg-muted/15 px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 placeholder:text-muted-foreground/50 transition-all duration-150"
+				/>
+				<DialogFooter>
+					<DialogClose render={<Button variant="outline" size="sm" />}>
+						{t("conversationsPage.rename.cancel")}
+					</DialogClose>
+					<Button
+						size="sm"
+						disabled={!title.trim() || isPending}
+						onClick={submit}
+					>
+						{isPending
+							? t("conversationsPage.rename.renaming")
+							: t("conversationsPage.rename.confirm")}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -159,6 +313,8 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 	const { conversationId: activeConversationId } = useParams({
 		strict: false,
 	});
+	const navigate = useNavigate();
+	const qc = useQueryClient();
 	const isMobile = useIsMobile();
 	// Master-detail on mobile: the list and the Outlet detail pane can't sit
 	// side by side in a phone-width viewport (the list alone was eating the
@@ -259,116 +415,220 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 		? `/projects/${projectId}/conversations`
 		: "/conversations";
 
-	return (
-		<div className="flex flex-1 min-h-0">
-			{showList && (
-				<div
-					className={cn(
-						"shrink-0 border-r border-border/50 flex flex-col min-h-0",
-						isMobile ? "w-full" : "w-80",
-					)}
-				>
-					<div className="shrink-0 border-b border-border/50 px-4 py-3 flex items-center justify-between gap-2">
-						<h2 className="text-sm font-semibold">
-							{t("conversationsPage.title")}
-						</h2>
-						{canStartConversation && (
-							<Button
-								size="sm"
-								className="gap-1.5"
-								nativeButton={false}
-								render={
-									<Link to={newConversationHref} search={{ compose: true }} />
-								}
-							>
-								<Plus className="size-3.5" />
-								{t("aiChat.newConversation")}
-							</Button>
-						)}
-					</div>
-					<ConversationFilters
-						agents={agents}
-						filters={filters}
-						onFiltersChange={setFilters}
-					/>
-					<div
-						ref={scrollContainerRef}
-						className="flex-1 overflow-y-auto p-2 space-y-1.5"
-					>
-						{noPermission ? (
-							<NoPermissionState
-								icon={MessageSquare}
-								title={t("conversationsPage.list.noPermission.title")}
-								description={t(
-									"conversationsPage.list.noPermission.description",
-								)}
-							/>
-						) : isLoading ? (
-							Array.from({ length: 4 }).map((_, i) => (
-								// biome-ignore lint/suspicious/noArrayIndexKey: skeleton
-								<Skeleton key={i} className="h-16 rounded-lg" />
-							))
-						) : conversations.length === 0 ? (
-							<div className="flex flex-col items-center justify-center gap-3 py-14 px-3 text-center">
-								<MessageSquare className="size-8 text-muted-foreground/40" />
-								<p className="text-sm text-muted-foreground">
-									{hasActiveFilters
-										? t("conversationsPage.list.emptyFiltered.title")
-										: t("conversationsPage.list.empty.title")}
-								</p>
-								<p className="text-xs text-muted-foreground max-w-xs">
-									{hasActiveFilters
-										? t("conversationsPage.list.emptyFiltered.description")
-										: t("conversationsPage.list.empty.description")}
-								</p>
-							</div>
-						) : (
-							<>
-								{conversations.map((conv) => (
-									<ConversationListItem
-										key={conv.id}
-										conv={conv}
-										agent={agentsById.get(conv.agent_id)}
-										projectId={projectId}
-										isActive={conv.id === activeConversationId}
-									/>
-								))}
-								{hasNextPage && (
-									<div ref={loadMoreRef}>
-										{isFetchingNextPage && (
-											<Skeleton className="h-16 rounded-lg" />
-										)}
-									</div>
-								)}
-							</>
-						)}
-					</div>
-				</div>
-			)}
+	// Every filter variant's list query shares this key prefix (filters are
+	// the queryKey's own last element — see conversationsQueryOptions/
+	// globalConversationsQueryOptions), so invalidating it here catches
+	// whichever filters happen to be active without needing to know them.
+	const conversationsListQueryKey = projectId
+		? ["projects", projectId, "conversations"]
+		: ["global-chat", "conversations"];
 
-			{showDetail && (
-				<div className="flex-1 min-h-0 flex flex-col">
-					{isMobile && (activeConversationId || mobileComposeIntent) && (
-						<div className="shrink-0 border-b border-border/50 px-2 py-1.5">
-							<Link
-								to={newConversationHref}
-								search={{ compose: false }}
-								className={buttonVariants({
-									variant: "ghost",
-									size: "sm",
-									className: "gap-1.5 text-muted-foreground",
-								})}
-							>
-								<ArrowLeft className="size-3.5" />
-								{t("conversationsPage.back")}
-							</Link>
+	const [renameTarget, setRenameTarget] = useState<AgentConversation | null>(
+		null,
+	);
+	const [deleteTarget, setDeleteTarget] = useState<AgentConversation | null>(
+		null,
+	);
+
+	const renameMutation = useMutation({
+		mutationFn: ({ id, title }: { id: string; title: string }) =>
+			projectId
+				? updateConversationTitle(projectId, id, title)
+				: updateGlobalConversationTitle(id, title),
+		onSuccess: (updated) => {
+			qc.setQueryData(
+				projectId
+					? conversationQueryOptions(projectId, updated.id).queryKey
+					: globalConversationQueryOptions(updated.id).queryKey,
+				updated,
+			);
+			void qc.invalidateQueries({ queryKey: conversationsListQueryKey });
+			setRenameTarget(null);
+		},
+	});
+
+	const deleteMutation = useMutation({
+		mutationFn: (id: string) =>
+			projectId
+				? deleteConversation(projectId, id)
+				: deleteGlobalConversation(id),
+		onSuccess: (_data, id) => {
+			void qc.invalidateQueries({ queryKey: conversationsListQueryKey });
+			setDeleteTarget(null);
+			if (id === activeConversationId) {
+				navigate({ to: newConversationHref, search: { compose: false } });
+			}
+		},
+	});
+
+	return (
+		<>
+			<div className="flex flex-1 min-h-0">
+				{showList && (
+					<div
+						className={cn(
+							"shrink-0 border-r border-border/50 flex flex-col min-h-0",
+							isMobile ? "w-full" : "w-80",
+						)}
+					>
+						<div className="shrink-0 border-b border-border/50 px-4 py-3 flex items-center justify-between gap-2">
+							<h2 className="text-sm font-semibold">
+								{t("conversationsPage.title")}
+							</h2>
+							{canStartConversation && (
+								<Button
+									size="sm"
+									className="gap-1.5"
+									nativeButton={false}
+									render={
+										<Link to={newConversationHref} search={{ compose: true }} />
+									}
+								>
+									<Plus className="size-3.5" />
+									{t("aiChat.newConversation")}
+								</Button>
+							)}
 						</div>
-					)}
-					<div className="flex-1 min-h-0">
-						<Outlet />
+						<ConversationFilters
+							agents={agents}
+							filters={filters}
+							onFiltersChange={setFilters}
+						/>
+						<div
+							ref={scrollContainerRef}
+							className="flex-1 overflow-y-auto p-2 space-y-1.5"
+						>
+							{noPermission ? (
+								<NoPermissionState
+									icon={MessageSquare}
+									title={t("conversationsPage.list.noPermission.title")}
+									description={t(
+										"conversationsPage.list.noPermission.description",
+									)}
+								/>
+							) : isLoading ? (
+								Array.from({ length: 4 }).map((_, i) => (
+									// biome-ignore lint/suspicious/noArrayIndexKey: skeleton
+									<Skeleton key={i} className="h-16 rounded-lg" />
+								))
+							) : conversations.length === 0 ? (
+								<div className="flex flex-col items-center justify-center gap-3 py-14 px-3 text-center">
+									<MessageSquare className="size-8 text-muted-foreground/40" />
+									<p className="text-sm text-muted-foreground">
+										{hasActiveFilters
+											? t("conversationsPage.list.emptyFiltered.title")
+											: t("conversationsPage.list.empty.title")}
+									</p>
+									<p className="text-xs text-muted-foreground max-w-xs">
+										{hasActiveFilters
+											? t("conversationsPage.list.emptyFiltered.description")
+											: t("conversationsPage.list.empty.description")}
+									</p>
+								</div>
+							) : (
+								<>
+									{conversations.map((conv) => (
+										<ConversationListItem
+											key={conv.id}
+											conv={conv}
+											agent={agentsById.get(conv.agent_id)}
+											projectId={projectId}
+											isActive={conv.id === activeConversationId}
+											canManage={canStartConversation}
+											onRename={setRenameTarget}
+											onDelete={setDeleteTarget}
+										/>
+									))}
+									{hasNextPage && (
+										<div ref={loadMoreRef}>
+											{isFetchingNextPage && (
+												<Skeleton className="h-16 rounded-lg" />
+											)}
+										</div>
+									)}
+								</>
+							)}
+						</div>
 					</div>
-				</div>
-			)}
-		</div>
+				)}
+
+				{showDetail && (
+					<div className="flex-1 min-h-0 flex flex-col">
+						{isMobile && (activeConversationId || mobileComposeIntent) && (
+							<div className="shrink-0 border-b border-border/50 px-2 py-1.5">
+								<Link
+									to={newConversationHref}
+									search={{ compose: false }}
+									className={buttonVariants({
+										variant: "ghost",
+										size: "sm",
+										className: "gap-1.5 text-muted-foreground",
+									})}
+								>
+									<ArrowLeft className="size-3.5" />
+									{t("conversationsPage.back")}
+								</Link>
+							</div>
+						)}
+						<div className="flex-1 min-h-0">
+							<Outlet />
+						</div>
+					</div>
+				)}
+			</div>
+			<RenameConversationDialog
+				conv={renameTarget}
+				open={!!renameTarget}
+				onOpenChange={(open) => !open && setRenameTarget(null)}
+				onSubmit={(title) =>
+					renameTarget && renameMutation.mutate({ id: renameTarget.id, title })
+				}
+				isPending={renameMutation.isPending}
+			/>
+			<Dialog
+				open={!!deleteTarget}
+				onOpenChange={(open) => !open && setDeleteTarget(null)}
+			>
+				<DialogContent className="sm:max-w-sm">
+					<DialogHeader>
+						<DialogTitle>
+							{t("conversationsPage.delete.dialogTitle")}
+						</DialogTitle>
+						<DialogDescription>
+							{t("conversationsPage.delete.dialogDescription", {
+								title:
+									deleteTarget?.title ??
+									(deleteTarget
+										? agentsById.get(deleteTarget.agent_id)?.name
+										: undefined) ??
+									"",
+							})}
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => setDeleteTarget(null)}
+							disabled={deleteMutation.isPending}
+						>
+							{t("conversationsPage.delete.cancel")}
+						</Button>
+						<Button
+							variant="destructive"
+							onClick={() =>
+								deleteTarget && deleteMutation.mutate(deleteTarget.id)
+							}
+							disabled={deleteMutation.isPending}
+						>
+							{deleteMutation.isPending ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								t("conversationsPage.delete.confirm")
+							)}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</>
 	);
 }

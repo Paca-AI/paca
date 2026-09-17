@@ -291,6 +291,34 @@ type LoadSessionParams struct {
 	Meta       *NewSessionMeta   `json:"_meta,omitempty"`
 }
 
+// ─── _goose/unstable/session/info (goose-specific extension) ──────────────
+
+// GooseNewSessionDefaultTitle is the title goose gives every fresh session
+// before anything renames it — confirmed empirically (not from the public
+// docs site's own `_goose/unstable/session/info` reference page, which
+// summarizes lossily; re-verified directly against a live container,
+// goose 1.50.1, matching the digest pinned in
+// services/agent-server/Dockerfile, 2026-09-17): session/new followed
+// immediately by "_goose/unstable/session/info" for that session returns
+// exactly this string, with the response's "_meta.userSetName" false. A
+// title still equal to this placeholder means "goose hasn't named this
+// conversation yet" — see Client.SessionInfo's doc comment.
+const GooseNewSessionDefaultTitle = "New Chat"
+
+// sessionInfoResult is "_goose/unstable/session/info"'s result shape,
+// verified the same way as GooseNewSessionDefaultTitle above:
+//
+//	{"session":{"sessionId":"...","cwd":"...","title":"...","updatedAt":"...",
+//	  "_meta":{"messageCount":0,"createdAt":"...","userSetName":false,
+//	  "sessionType":"acp","providerId":"...","modelId":"..."}}}
+//
+// Only Title is modeled — none of the other fields have a use here yet.
+type sessionInfoResult struct {
+	Session struct {
+		Title string `json:"title"`
+	} `json:"session"`
+}
+
 // ─── session/prompt ─────────────────────────────────────────────────────────
 
 type promptParams struct {

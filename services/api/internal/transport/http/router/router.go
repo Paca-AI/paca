@@ -362,6 +362,8 @@ func New(deps Deps) http.Handler {
 						r.Post("/conversations/{conversationId}/pause", deps.Conversation.PauseGlobalConversation)
 						r.Post("/conversations/{conversationId}/heartbeat", deps.Conversation.GlobalConversationHeartbeat)
 						r.Post("/conversations/{conversationId}/messages", deps.Conversation.SendGlobalConversationMessage)
+						r.Patch("/conversations/{conversationId}", deps.Conversation.UpdateGlobalConversation)
+						r.Delete("/conversations/{conversationId}", deps.Conversation.DeleteGlobalConversation)
 					}
 				})
 			}
@@ -1077,6 +1079,11 @@ func New(deps Deps) http.Handler {
 						// because they can see it.
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
 							Post("/{conversationId}/messages", deps.Conversation.SendConversationMessage)
+						// Rename/delete — same Write tier as stop/pause/messages above.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite), httpmw.RequireJSONContentType()).
+							Patch("/{conversationId}", deps.Conversation.UpdateConversation)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
+							Delete("/{conversationId}", deps.Conversation.DeleteConversation)
 					})
 				}
 			})

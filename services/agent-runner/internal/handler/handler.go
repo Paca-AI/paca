@@ -630,6 +630,26 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		}
 	}
 
+	// Best-effort: copy goose's own current session title onto the
+	// conversation, so the Conversations list (apps/web) can show a real
+	// name instead of falling back to the agent's name. Never fails the
+	// turn — a naming enhancement, not a correctness requirement — and
+	// UpdateTitleFromGoose's own WHERE clause already no-ops once the user
+	// has renamed the conversation directly, so no check is needed here.
+	// GooseNewSessionDefaultTitle is goose's own placeholder for "nothing
+	// has named this session yet" (see its doc comment) — skip persisting
+	// that, so a still-unnamed conversation keeps using the frontend's
+	// existing agent-name fallback instead of literally showing "New Chat".
+	if title, infoErr := result.Client.SessionInfo(ctx, result.SessionID); infoErr != nil {
+		h.Log.Warn("agent-runner: session/info failed, skipping title update",
+			"conversation_id", trigger.ConversationID, "error", infoErr)
+	} else if title != "" && title != acp.GooseNewSessionDefaultTitle {
+		if err := h.ConvRepo.UpdateTitleFromGoose(ctx, trigger.ConversationID, title); err != nil {
+			h.Log.Warn("agent-runner: failed to update conversation title from goose",
+				"conversation_id", trigger.ConversationID, "error", err)
+		}
+	}
+
 	if isChat && trigger.EnvironmentID == nil {
 		// A natural finish for an ephemeral chat conversation pauses rather
 		// than ends — mirrors _keep_sandbox_alive: is_chat && !errored &&

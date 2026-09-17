@@ -1575,6 +1575,22 @@
 		"triggerAutomation": "Automação",
 		"usageTitle": "{{tokens}} tokens · {{cost}}",
 		"prOpened": "PR aberto",
+		"moreActions": "Mais ações",
+		"rename": {
+			"menuLabel": "Renomear",
+			"dialogTitle": "Renomear conversa",
+			"placeholder": "Nome da conversa",
+			"cancel": "Cancelar",
+			"confirm": "Renomear",
+			"renaming": "Renomeando…"
+		},
+		"delete": {
+			"menuLabel": "Excluir",
+			"dialogTitle": "Excluir conversa?",
+			"dialogDescription": "Isso exclui permanentemente \"{{title}}\" e seu histórico. Essa ação não pode ser desfeita.",
+			"cancel": "Cancelar",
+			"confirm": "Excluir"
+		},
 		"filters": {
 			"title": "Filtros",
 			"agent": "Agente",

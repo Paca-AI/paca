@@ -274,6 +274,13 @@ export interface AgentConversation {
 	error_message?: string | null;
 	branch_name?: string | null;
 	pr_url?: string | null;
+	// Null until either goose names the underlying ACP session itself
+	// (agent-runner's best-effort copy) or the user renames the
+	// conversation directly (see updateConversationTitle below). There is
+	// no server-generated default string — fall back to the agent's name
+	// when this is absent, same as every conversation looked before this
+	// field existed.
+	title?: string | null;
 	started_at?: string | null;
 	finished_at?: string | null;
 	created_at: string;
@@ -710,6 +717,22 @@ export async function heartbeatGlobalConversation(
 	await apiClient.instance.post(
 		`/agents/conversations/${conversationId}/heartbeat`,
 	);
+}
+
+export async function updateGlobalConversationTitle(
+	conversationId: string,
+	title: string,
+): Promise<AgentConversation> {
+	const { data } = await apiClient.instance.patch<
+		SuccessEnvelope<AgentConversation>
+	>(`/agents/conversations/${conversationId}`, { title });
+	return data.data;
+}
+
+export async function deleteGlobalConversation(
+	conversationId: string,
+): Promise<void> {
+	await apiClient.instance.delete(`/agents/conversations/${conversationId}`);
 }
 
 // sendGlobalConversationMessage is sendConversationMessage's global-chat
@@ -1320,6 +1343,26 @@ export async function pauseConversation(
 		SuccessEnvelope<{ message: string }>
 	>(`/projects/${projectId}/conversations/${conversationId}/pause`);
 	return data.data;
+}
+
+export async function updateConversationTitle(
+	projectId: string,
+	conversationId: string,
+	title: string,
+): Promise<AgentConversation> {
+	const { data } = await apiClient.instance.patch<
+		SuccessEnvelope<AgentConversation>
+	>(`/projects/${projectId}/conversations/${conversationId}`, { title });
+	return data.data;
+}
+
+export async function deleteConversation(
+	projectId: string,
+	conversationId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/projects/${projectId}/conversations/${conversationId}`,
+	);
 }
 
 // sendConversationMessage replies to a conversation directly by id, rather

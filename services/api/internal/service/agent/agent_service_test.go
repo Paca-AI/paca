@@ -111,6 +111,8 @@ type mockAgentRepo struct {
 	findLatestConversationBySession      func(ctx context.Context, chatSessionID uuid.UUID) (*agentdom.AgentConversation, error)
 	createConversation                   func(ctx context.Context, conv *agentdom.AgentConversation) error
 	updateConversationStatus             func(ctx context.Context, id uuid.UUID, status string) error
+	updateConversationTitle              func(ctx context.Context, id uuid.UUID, title string) error
+	softDeleteConversation               func(ctx context.Context, id uuid.UUID) error
 	claimConversationStatus              func(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (bool, error)
 	claimQueuedForDispatch               func(ctx context.Context, conversationID, agentID uuid.UUID, limit int) (claimed, atCapacity bool, err error)
 	updateConversation                   func(ctx context.Context, conv *agentdom.AgentConversation) error
@@ -471,6 +473,20 @@ func (m *mockAgentRepo) CreateConversation(ctx context.Context, conv *agentdom.A
 func (m *mockAgentRepo) UpdateConversationStatus(ctx context.Context, id uuid.UUID, status string) error {
 	if m.updateConversationStatus != nil {
 		return m.updateConversationStatus(ctx, id, status)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) UpdateConversationTitle(ctx context.Context, id uuid.UUID, title string) error {
+	if m.updateConversationTitle != nil {
+		return m.updateConversationTitle(ctx, id, title)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) SoftDeleteConversation(ctx context.Context, id uuid.UUID) error {
+	if m.softDeleteConversation != nil {
+		return m.softDeleteConversation(ctx, id)
 	}
 	return nil
 }
@@ -3138,6 +3154,160 @@ func TestStopConversation_AlreadyStopped(t *testing.T) {
 			assert.False(t, updateCalled)
 		})
 	}
+}
+
+func TestUpdateConversationTitle_Success(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		ProjectID: projectID,
+		Status:    "running",
+	}
+	var gotTitle string
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		updateConversationTitle: func(_ context.Context, _ uuid.UUID, title string) error {
+			gotTitle = title
+			// Mutate the same pointer findConversationByID keeps returning,
+			// so the service's post-update re-fetch observes the change —
+			// mirrors what the real UPDATE-then-SELECT round trip does.
+			conversation.Title = &title
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	updated, err := svc.UpdateConversationTitle(context.Background(), projectID, conversationID, uuid.Nil, "Fix the login bug")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "Fix the login bug", gotTitle)
+	if assert.NotNil(t, updated.Title) {
+		assert.Equal(t, "Fix the login bug", *updated.Title)
+	}
+}
+
+func TestUpdateConversationTitle_NotFound(t *testing.T) {
+	updateCalled := false
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return nil, agentdom.ErrConversationNotFound
+		},
+		updateConversationTitle: func(_ context.Context, _ uuid.UUID, _ string) error {
+			updateCalled = true
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.UpdateConversationTitle(context.Background(), uuid.New(), uuid.New(), uuid.Nil, "New name")
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+	assert.False(t, updateCalled)
+}
+
+// TestDeleteConversation_AutoStopsRunningConversation pins the approved UX:
+// deleting a still-active conversation is one action, not "stop, then
+// delete" — see Service.DeleteConversation's doc comment.
+func TestDeleteConversation_AutoStopsRunningConversation(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		ProjectID: projectID,
+		Status:    "running",
+	}
+	var stoppedStatus string
+	softDeleted := false
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		updateConversationStatus: func(_ context.Context, _ uuid.UUID, status string) error {
+			stoppedStatus = status
+			return nil
+		},
+		softDeleteConversation: func(_ context.Context, id uuid.UUID) error {
+			if id != conversationID {
+				t.Fatalf("unexpected conversation id %s", id)
+			}
+			softDeleted = true
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.DeleteConversation(context.Background(), projectID, conversationID, uuid.Nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "stopped", stoppedStatus)
+	assert.True(t, softDeleted)
+}
+
+// TestDeleteConversation_SkipsStopWhenAlreadyTerminal covers the other half
+// of the auto-stop-then-delete UX: a conversation that's already
+// finished/failed/stopped is deleted directly, with no redundant stop call
+// (which would otherwise fail with ErrConversationAlreadyStopped and abort
+// the delete).
+func TestDeleteConversation_SkipsStopWhenAlreadyTerminal(t *testing.T) {
+	for _, status := range []string{"finished", "stopped", "failed"} {
+		t.Run(status, func(t *testing.T) {
+			projectID := uuid.New()
+			conversationID := uuid.New()
+			conversation := &agentdom.AgentConversation{
+				ID:        conversationID,
+				ProjectID: projectID,
+				Status:    status,
+			}
+			stopCalled := false
+			softDeleted := false
+
+			repo := &mockAgentRepo{
+				findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+					return conversation, nil
+				},
+				updateConversationStatus: func(_ context.Context, _ uuid.UUID, _ string) error {
+					stopCalled = true
+					return nil
+				},
+				softDeleteConversation: func(_ context.Context, _ uuid.UUID) error {
+					softDeleted = true
+					return nil
+				},
+			}
+			svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+			err := svc.DeleteConversation(context.Background(), projectID, conversationID, uuid.Nil)
+
+			assert.NoError(t, err)
+			assert.False(t, stopCalled, "already-terminal conversation must not be stopped again")
+			assert.True(t, softDeleted)
+		})
+	}
+}
+
+// TestGetConversation_DeletedReturnsNotFound pins that a soft-deleted
+// conversation (see SoftDeleteConversation's doc comment on why it's a
+// soft, not a hard, delete) is treated as gone for any user-facing read —
+// GetConversation must not just return the row back with DeletedAt set.
+func TestGetConversation_DeletedReturnsNotFound(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	deletedAt := time.Now()
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return &agentdom.AgentConversation{ID: conversationID, ProjectID: projectID, DeletedAt: &deletedAt}, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversation(context.Background(), projectID, conversationID, uuid.Nil)
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
 func TestPauseConversation_Success(t *testing.T) {

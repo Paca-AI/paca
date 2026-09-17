@@ -1575,6 +1575,22 @@
 		"triggerAutomation": "자동화",
 		"usageTitle": "{{tokens}} 토큰 · {{cost}}",
 		"prOpened": "PR 열림",
+		"moreActions": "더 보기",
+		"rename": {
+			"menuLabel": "이름 변경",
+			"dialogTitle": "대화 이름 변경",
+			"placeholder": "대화 이름",
+			"cancel": "취소",
+			"confirm": "이름 변경",
+			"renaming": "이름 변경 중…"
+		},
+		"delete": {
+			"menuLabel": "삭제",
+			"dialogTitle": "대화를 삭제하시겠습니까?",
+			"dialogDescription": "\"{{title}}\" 및 해당 기록이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+			"cancel": "취소",
+			"confirm": "삭제"
+		},
 		"filters": {
 			"title": "필터",
 			"agent": "에이전트",

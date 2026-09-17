@@ -1575,6 +1575,22 @@
 		"triggerAutomation": "Automation",
 		"usageTitle": "{{tokens}} tokens · {{cost}}",
 		"prOpened": "PR opened",
+		"moreActions": "More actions",
+		"rename": {
+			"menuLabel": "Rename",
+			"dialogTitle": "Rename conversation",
+			"placeholder": "Conversation name",
+			"cancel": "Cancel",
+			"confirm": "Rename",
+			"renaming": "Renaming…"
+		},
+		"delete": {
+			"menuLabel": "Delete",
+			"dialogTitle": "Delete conversation?",
+			"dialogDescription": "This permanently deletes \"{{title}}\" and its history. This can't be undone.",
+			"cancel": "Cancel",
+			"confirm": "Delete"
+		},
 		"filters": {
 			"title": "Filters",
 			"agent": "Agent",

@@ -139,6 +139,9 @@ type agentConversationRecord struct {
 	ErrorMessage        *string    `db:"error_message"`
 	RepoPluginID        *string    `db:"repo_plugin_id"`
 	PRUrl               *string    `db:"pr_url"`
+	Title               *string    `db:"title"`
+	TitleSetByUser      bool       `db:"title_set_by_user"`
+	DeletedAt           *time.Time `db:"deleted_at"`
 	StartedAt           *time.Time `db:"started_at"`
 	FinishedAt          *time.Time `db:"finished_at"`
 	CreatedAt           time.Time  `db:"created_at"`
@@ -1039,6 +1042,7 @@ const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comme
 	 ORDER BY e.event_index DESC LIMIT 1) AS cost_usd,
 	error_message,
 	repo_plugin_id, pr_url,
+	title, title_set_by_user, deleted_at,
 	started_at, finished_at, created_at, updated_at`
 
 // ListConversations returns a keyset-paginated page of conversations matching
@@ -1133,7 +1137,12 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 	limitP := b.placeholder()
 	b.args = append(b.args, limit+1)
 
-	whereSQL := "1=1"
+	// deleted_at IS NULL unconditionally — this is the user-facing list, and
+	// a soft-deleted conversation should never appear in it (see
+	// SoftDeleteConversation's doc comment). FindConversationByID below is
+	// deliberately NOT filtered the same way — internal callers
+	// (worker.AgentQueueConsumer) must still resolve a just-deleted row.
+	whereSQL := "deleted_at IS NULL"
 	if len(b.whereClauses) > 0 {
 		whereSQL += " AND " + strings.Join(b.whereClauses, " AND ")
 	}
@@ -1208,6 +1217,27 @@ func (r *AgentRepository) CreateConversation(ctx context.Context, c *agentdom.Ag
 // UpdateConversationStatus sets the status field of a conversation.
 func (r *AgentRepository) UpdateConversationStatus(ctx context.Context, id uuid.UUID, status string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE agent_conversations SET status=$1, updated_at=$2 WHERE id=$3`, status, time.Now(), id.String())
+	return err
+}
+
+// UpdateConversationTitle sets a user-chosen title — see this method's doc
+// comment on agentdom.ConversationRepository for why it's a narrow,
+// single-column UPDATE rather than routed through the full-record
+// UpdateConversation below.
+func (r *AgentRepository) UpdateConversationTitle(ctx context.Context, id uuid.UUID, title string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE agent_conversations SET title=$1, title_set_by_user=true, updated_at=$2 WHERE id=$3`,
+		title, time.Now(), id.String())
+	return err
+}
+
+// SoftDeleteConversation marks a conversation deleted — see this method's
+// doc comment on agentdom.ConversationRepository for why this is a soft
+// delete, not a hard DELETE.
+func (r *AgentRepository) SoftDeleteConversation(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE agent_conversations SET deleted_at=$1, updated_at=$1 WHERE id=$2`,
+		time.Now(), id.String())
 	return err
 }
 
@@ -1989,6 +2019,9 @@ func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversa
 		CostUSD:        rec.CostUSD,
 		ErrorMessage:   rec.ErrorMessage,
 		PRUrl:          rec.PRUrl,
+		Title:          rec.Title,
+		TitleSetByUser: rec.TitleSetByUser,
+		DeletedAt:      rec.DeletedAt,
 		StartedAt:      rec.StartedAt,
 		FinishedAt:     rec.FinishedAt,
 		CreatedAt:      rec.CreatedAt,
