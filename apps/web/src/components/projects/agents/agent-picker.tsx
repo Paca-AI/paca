@@ -251,6 +251,12 @@ export interface EnvironmentPickerState {
 	 * useEnvironmentPicker's own doc comment on why a provider_cli agent
 	 * locks environment but leaves folder pickable. */
 	environmentDisabled?: boolean;
+	/** True for an ACP-type agent — its sandboxing is owned entirely by the
+	 * user's own local ACP client, so no static environment/folder ever
+	 * applies (mirrors agent-detail.tsx's own `!isAcp` gate on its
+	 * Environment section). Both pickers stay hidden entirely rather than
+	 * merely disabled. */
+	hidden?: boolean;
 }
 
 export const EnvironmentPickerContext =
@@ -380,6 +386,12 @@ export function useEnvironmentPicker(
 	// caller-locked picker (e.g. an already-started conversation) must stay
 	// locked regardless of agent type.
 	const environmentDisabled = disabled || agent?.agent_type === "provider_cli";
+	// An ACP agent runs entirely through the user's own local ACP client
+	// (apps/acp-bridge) — it never attaches to one of this project's static
+	// environments, so both pickers are hidden outright instead of merely
+	// disabled (same `!isAcp` gate agent-detail.tsx's Environment section
+	// already uses).
+	const hidden = agent?.agent_type === "acp";
 	const pickerState = useMemo<EnvironmentPickerState>(
 		() => ({
 			projectId,
@@ -392,6 +404,7 @@ export function useEnvironmentPicker(
 			onFolderChange: setFolderId,
 			disabled,
 			environmentDisabled,
+			hidden,
 		}),
 		[
 			projectId,
@@ -403,6 +416,7 @@ export function useEnvironmentPicker(
 			folderId,
 			disabled,
 			environmentDisabled,
+			hidden,
 		],
 	);
 
@@ -428,11 +442,13 @@ export function EnvironmentPickerInline() {
 		onEnvironmentChange,
 		disabled,
 		environmentDisabled,
+		hidden,
 	} = picker;
 
-	// Nothing to pick from yet — this project hasn't created any static
-	// environments, so stay invisible rather than showing an empty picker.
-	if (environmentsLoading || environments.length === 0) {
+	// Hidden outright for an ACP-type agent (see EnvironmentPickerState.hidden),
+	// or when this project hasn't created any static environments yet — either
+	// way, stay invisible rather than showing an empty/meaningless picker.
+	if (hidden || environmentsLoading || environments.length === 0) {
 		return null;
 	}
 
@@ -508,9 +524,10 @@ export function FolderPickerInline() {
 		folderId,
 		onFolderChange,
 		disabled,
+		hidden,
 	} = picker;
 
-	if (!environmentId) return null;
+	if (hidden || !environmentId) return null;
 	const selectedEnvironment = environments.find((e) => e.id === environmentId);
 	if (!selectedEnvironment) return null;
 
