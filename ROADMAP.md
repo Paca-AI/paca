@@ -106,6 +106,13 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 - ✅ Agent-scoped MCP API keys and identity verification for programmatic agent authentication
 - ✅ Unified Conversations — direct, task-triggered, and automation-triggered agent conversations, with project-scoped and global views
 
+### AI Agent Environments
+- ✅ Static environments — named, long-lived containers that agents attach to instead of a fresh disposable sandbox, so files on disk and background processes persist across conversations, on both Docker Compose and Kubernetes/Helm
+- ✅ In-browser terminal and real SSH (per-environment authorized keys, managed from the environment's own settings) for pairing inside an environment
+- ✅ User-managed port forwards to preview a running dev server from an environment
+- ✅ `provider_cli` agent type — drive a CLI you're already logged into (Claude Code, Codex, Gemini CLI, Cursor CLI) inside a static environment, syncing configured MCP servers into its config
+- ✅ Browser extension for page annotations — comment directly on an element of an environment's live preview page and turn the comment into a Paca task in one click, authenticated via the existing Paca session
+
 ### Official Plugins
 - ✅ Webhook plugin (outgoing webhooks for task and sprint events, configurable per project)
 - 📋 GitLab plugin (MR status on task cards, branch linking)
@@ -127,10 +134,7 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 
 _These are ideas we find compelling but have not yet committed to._
 
-- 💡 Mobile-friendly progressive web app (PWA)
 - 💡 Multi-agent orchestration — agents that delegate sub-tasks to other agents
-- 💡 Git repository integration as a first-class feature (branch ↔ task linking, PR status on board)
-- 💡 Multi-workspace / organization support
 - 💡 Hosted cloud option (opt-in, for teams that don't want to self-host)
 
 ---
