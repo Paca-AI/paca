@@ -209,6 +209,7 @@ func newGlobalRoleAdminRouter(svc globalroledom.Service, role string) chi.Router
 	})
 	r.Post("/admin/global-roles", h.Create)
 	r.Patch("/admin/global-roles/{roleId}", h.Update)
+	r.Put("/admin/users/{userId}/global-roles", h.ReplaceUserRoles)
 	return r
 }
 
@@ -294,5 +295,183 @@ func TestGlobalRoleUpdate_AdminGrantingWildcard_Returns403(t *testing.T) {
 		jsonBody(t, map[string]any{"name": "Editor", "permissions": map[string]any{"docs.read": true, "*": true}}))
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGlobalRoleUpdate_AdminRenamingWildcardRole_Returns403(t *testing.T) {
+	// The bypass this guard exists for: the submitted payload grants nothing,
+	// but Update's in.Permissions == nil keeps the stored map, so the wildcard
+	// would move under a name the role-name guard on /admin/users doesn't
+	// recognize — and POST /admin/users {"role":"GOD"} would then escalate.
+	svc := &mockGlobalRoleSvc{
+		findByID: func(_ context.Context, _ uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+		},
+		update: func(context.Context, uuid.UUID, globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
+			t.Fatal("Update must not be called when the role keeps the wildcard")
+			return nil, nil
+		},
+	}
+	r := newGlobalRoleAdminRouter(svc, userdom.RoleAdmin)
+
+	w := do(t, r, http.MethodPatch, "/admin/global-roles/"+uuid.New().String(),
+		jsonBody(t, map[string]any{"name": "GOD"}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for renaming a stored wildcard role, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGlobalRoleUpdate_AdminEditingOrdinaryRoleWithoutPermissions_Allowed(t *testing.T) {
+	// Control for the case above: omitting "permissions" on a role that never
+	// held the wildcard is an ordinary global_roles.write edit and must keep
+	// working.
+	svc := &mockGlobalRoleSvc{
+		findByID: func(_ context.Context, _ uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{Name: "EDITOR", Permissions: map[string]any{"docs.read": true}}, nil
+		},
+		update: func(_ context.Context, _ uuid.UUID, in globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{Name: in.Name, Permissions: map[string]any{"docs.read": true}}, nil
+		},
+	}
+	r := newGlobalRoleAdminRouter(svc, userdom.RoleAdmin)
+
+	w := do(t, r, http.MethodPatch, "/admin/global-roles/"+uuid.New().String(),
+		jsonBody(t, map[string]any{"name": "Editor"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGlobalRoleUpdate_AdminClearingWildcardRole_Allowed(t *testing.T) {
+	// Removing the wildcard is never a privilege grant — an ADMIN must be able
+	// to strip god mode from a role it doesn't hold.
+	svc := &mockGlobalRoleSvc{
+		findByID: func(_ context.Context, _ uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+		},
+		update: func(_ context.Context, _ uuid.UUID, in globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{Name: in.Name, Permissions: in.Permissions}, nil
+		},
+	}
+	r := newGlobalRoleAdminRouter(svc, userdom.RoleAdmin)
+
+	w := do(t, r, http.MethodPatch, "/admin/global-roles/"+uuid.New().String(),
+		jsonBody(t, map[string]any{"name": "SUPER_ADMIN", "permissions": map[string]any{"users.read": true}}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 when clearing the wildcard, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGlobalRoleUpdate_SuperAdminRenamingWildcardRole_Allowed(t *testing.T) {
+	svc := &mockGlobalRoleSvc{
+		findByID: func(_ context.Context, _ uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+		},
+		update: func(_ context.Context, _ uuid.UUID, in globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{Name: in.Name, Permissions: map[string]any{"*": true}}, nil
+		},
+	}
+	r := newGlobalRoleAdminRouter(svc, "SUPER_ADMIN")
+
+	w := do(t, r, http.MethodPatch, "/admin/global-roles/"+uuid.New().String(),
+		jsonBody(t, map[string]any{"name": "GOD"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a SUPER_ADMIN caller, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// God-mode assignment guard (ReplaceUserRoles)
+// ---------------------------------------------------------------------------
+//
+// PUT /admin/users/:userId/global-roles writes users.role_id by role *id*, so
+// nothing in the request reveals whether it is a grant — the guard has to
+// resolve each id's stored permissions itself. An ADMIN reaches this route
+// because global_roles.* satisfies global_roles.assign through hasPermission's
+// .* suffix rule, and listing global roles (global_roles.read, also held)
+// hands it the SUPER_ADMIN id. See requireAssignableRoles' doc comment.
+
+func TestReplaceUserGlobalRoles_AdminAssigningWildcardRole_Returns403(t *testing.T) {
+	// The reported path: the request body carries only an id. FindByID is the
+	// guard's source of truth, so the stored permissions there are what must be
+	// refused — the payload grants nothing at all.
+	svc := &mockGlobalRoleSvc{
+		findByID: func(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+		},
+		replaceUserRoles: func(context.Context, uuid.UUID, []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+			t.Fatal("ReplaceUserRoles must not be called when the caller can't grant the wildcard")
+			return nil, nil
+		},
+	}
+	r := newGlobalRoleAdminRouter(svc, userdom.RoleAdmin)
+
+	w := do(t, r, http.MethodPut, "/admin/users/"+uuid.New().String()+"/global-roles",
+		jsonBody(t, map[string]any{"role_ids": []string{uuid.NewString()}}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for ADMIN assigning a wildcard role by id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReplaceUserGlobalRoles_AdminAssigningOrdinaryRole_Allowed(t *testing.T) {
+	// Controls: assigning an ordinary role is the ordinary reason ADMIN holds
+	// global_roles.assign, and clearing the assignment grants nothing.
+	for _, ids := range [][]string{[]string{uuid.NewString()}, {}} {
+		svc := &mockGlobalRoleSvc{
+			findByID: func(_ context.Context, _ uuid.UUID) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{Name: "EDITOR", Permissions: map[string]any{"docs.read": true}}, nil
+			},
+			replaceUserRoles: func(_ context.Context, _ uuid.UUID, _ []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+				return []*globalroledom.GlobalRole{}, nil
+			},
+		}
+		r := newGlobalRoleAdminRouter(svc, userdom.RoleAdmin)
+
+		w := do(t, r, http.MethodPut, "/admin/users/"+uuid.New().String()+"/global-roles",
+			jsonBody(t, map[string]any{"role_ids": ids}))
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200 for ids %v, got %d: %s", ids, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestReplaceUserGlobalRoles_AdminAssigningUnresolvableID_LeftToService(t *testing.T) {
+	// An id the lookup can't resolve must still reach the service so it keeps
+	// producing its own 404 — the guard only intervenes for roles it can prove
+	// grant the wildcard.
+	called := false
+	svc := &mockGlobalRoleSvc{
+		replaceUserRoles: func(context.Context, uuid.UUID, []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+			called = true
+			return nil, userdom.ErrNotFound
+		},
+	}
+	r := newGlobalRoleAdminRouter(svc, userdom.RoleAdmin)
+
+	w := do(t, r, http.MethodPut, "/admin/users/"+uuid.New().String()+"/global-roles",
+		jsonBody(t, map[string]any{"role_ids": []string{uuid.NewString()}}))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 from the service, got %d: %s", w.Code, w.Body.String())
+	}
+	if !called {
+		t.Error("expected ReplaceUserRoles to be called for an unresolvable role id")
+	}
+}
+
+func TestReplaceUserGlobalRoles_SuperAdminAssigningWildcardRole_Allowed(t *testing.T) {
+	svc := &mockGlobalRoleSvc{
+		findByID: func(_ context.Context, _ uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{Name: "SUPER_ADMIN", Permissions: map[string]any{"*": true}}, nil
+		},
+		replaceUserRoles: func(_ context.Context, _ uuid.UUID, _ []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+			return []*globalroledom.GlobalRole{}, nil
+		},
+	}
+	r := newGlobalRoleAdminRouter(svc, "SUPER_ADMIN")
+
+	w := do(t, r, http.MethodPut, "/admin/users/"+uuid.New().String()+"/global-roles",
+		jsonBody(t, map[string]any{"role_ids": []string{uuid.NewString()}}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a SUPER_ADMIN caller, got %d: %s", w.Code, w.Body.String())
 	}
 }

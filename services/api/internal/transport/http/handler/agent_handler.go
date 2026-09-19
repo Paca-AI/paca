@@ -17,6 +17,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
@@ -43,6 +44,11 @@ type agentGlobalPermissionReader interface {
 	ListAgentGlobalPermissions(ctx context.Context, agentID uuid.UUID) ([]authz.Permission, error)
 }
 
+// globalRoleLookup resolves a global role by ID.
+type globalRoleLookup interface {
+	FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+}
+
 // AgentHandler handles AI agent management endpoints.
 type AgentHandler struct {
 	svc                agentdom.Service
@@ -58,6 +64,8 @@ type AgentHandler struct {
 	// authorizer backs CreateGlobalAgent/UpdateGlobalAgent's conditional
 	// global_roles.assign check — see WithAuthorizer's doc comment.
 	authorizer *authz.Authorizer
+	// globalRoles backs the god-mode role guard in CreateGlobalAgent/UpdateGlobalAgent.
+	globalRoles globalRoleLookup
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -120,6 +128,12 @@ func (h *AgentHandler) WithTaskChecker(checker attachmentdom.TaskOwnerChecker) *
 // as a second router.With(...) permission group.
 func (h *AgentHandler) WithAuthorizer(a *authz.Authorizer) *AgentHandler {
 	h.authorizer = a
+	return h
+}
+
+// WithGlobalRoleLookup attaches the global role lookup for god-mode role checks.
+func (h *AgentHandler) WithGlobalRoleLookup(roles globalRoleLookup) *AgentHandler {
+	h.globalRoles = roles
 	return h
 }
 
@@ -494,6 +508,27 @@ func (h *AgentHandler) GetGlobalAgent(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, h.toAgentResponse(r.Context(), a))
 }
 
+// requireGrantableGlobalRole checks if binding an agent to roleID is allowed.
+// Binding a god-mode role (PermissionAll) to an agent hands the agent's API key
+// god mode — require PermissionAll from the caller. Degrades to the route's
+// global_roles.assign gate if the lookup isn't wired.
+func (h *AgentHandler) requireGrantableGlobalRole(w http.ResponseWriter, r *http.Request, roleID *uuid.UUID) bool {
+	if roleID == nil {
+		return true
+	}
+	if h.globalRoles == nil {
+		return true
+	}
+	role, err := h.globalRoles.FindByID(r.Context(), *roleID)
+	if err != nil || role == nil {
+		return true
+	}
+	if !permissionsGrantAll(role.Permissions) {
+		return true
+	}
+	return middleware.EnforcePermissions(w, r, h.authorizer, middleware.GlobalScope(), authz.PermissionAll)
+}
+
 // CreateGlobalAgent handles POST /admin/agents.
 func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateGlobalAgentRequest
@@ -546,6 +581,9 @@ func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
+	if !h.requireGrantableGlobalRole(w, r, req.GlobalRoleID) {
+		return
+	}
 
 	claims := middleware.ClaimsFrom(r)
 	callerID, _ := uuid.Parse(claims.Subject)
@@ -597,6 +635,9 @@ func (h *AgentHandler) UpdateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		if !middleware.EnforcePermissions(w, r, h.authorizer, middleware.GlobalScope(), authz.PermissionGlobalRolesAssign) {
 			return
 		}
+	}
+	if !h.requireGrantableGlobalRole(w, r, req.GlobalRoleID) {
+		return
 	}
 	a, err := h.svc.UpdateGlobalAgent(r.Context(), agentID, agentdom.UpdateAgentInput{
 		Name:              req.Name,

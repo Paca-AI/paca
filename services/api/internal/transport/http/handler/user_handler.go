@@ -13,6 +13,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainuser "github.com/Paca-AI/api/internal/domain/user"
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -46,6 +47,13 @@ type SessionInvalidator interface {
 	Logout(ctx context.Context, familyID string) error
 }
 
+// roleLookup resolves a global role by its unique name. Satisfied by
+// globalroledom.Repository, the same lookup the user service uses to resolve a
+// submitted role name into users.role_id.
+type roleLookup interface {
+	FindByName(ctx context.Context, name string) (*globalroledom.GlobalRole, error)
+}
+
 // UserHandler handles user-related endpoints.
 type UserHandler struct {
 	svc       domainuser.Service
@@ -54,6 +62,9 @@ type UserHandler struct {
 	// authorizer backs CreateUser/AdminUpdateUser's conditional god-mode role
 	// guard — see WithAuthorizer's doc comment.
 	authorizer *authz.Authorizer
+	// roles backs the same guard's lookup of a role's stored permissions — see
+	// roleNameGrantsAll's doc comment.
+	roles roleLookup
 }
 
 // NewUserHandler returns a UserHandler wired to the provided user service.
@@ -86,33 +97,69 @@ func (h *UserHandler) WithAuthorizer(a *authz.Authorizer) *UserHandler {
 	return h
 }
 
+// WithRoleLookup attaches the global role lookup requireGrantableRole needs to
+// see the stored permissions behind a non-built-in role name — see
+// roleNameGrantsAll's doc comment. Without it only the built-in names are
+// recognized, which is the rename-and-assign bypass this guard exists to close.
+func (h *UserHandler) WithRoleLookup(roles roleLookup) *UserHandler {
+	h.roles = roles
+	return h
+}
+
+// roleNameGrantsAll reports whether a role *name* grants authz.PermissionAll,
+// resolved the way the request-time grant is resolved — see
+// requireGrantableRole for why both sources are needed.
+func roleNameGrantsAll(ctx context.Context, name string, roles roleLookup) bool {
+	// The built-ins are checked first: their meaning is static, and
+	// LegacyPermissionsForRole is the same resolver the grant side uses, so the
+	// look-alike spellings that fold onto a built-in name are refused here too.
+	for _, p := range authz.LegacyPermissionsForRole(name) {
+		if p == authz.PermissionAll {
+			return true
+		}
+	}
+	if roles == nil {
+		return false
+	}
+	role, err := roles.FindByName(ctx, name)
+	if err != nil || role == nil {
+		return false
+	}
+	return permissionsGrantAll(role.Permissions)
+}
+
 // requireGrantableRole reports whether a request that wants to set a user's
 // role to roleName may proceed, writing the 403 itself when it may not.
 //
 // POST/PATCH /admin/users take a role *name* and write it to both
 // users.role_id and the legacy users.role claim. The token issuer copies that
-// claim into every access token, and authz.LegacyPermissionsForRole resolves
-// "SUPER_ADMIN" from it to the universal PermissionAll wildcard
-// (authz.DefaultGlobalRoles) — so naming that role here hands out a
-// privilege, it is not plain user administration. Without this check any
-// ADMIN, which legitimately holds users.write, could promote itself or anyone
-// else to SUPER_ADMIN straight from the admin user form whose role dropdown
-// lists every global role
+// claim into every access token, and the request-time grant comes from the
+// row's stored permissions either way (AuthzPermissionStore.ListGlobalPermissions
+// joins users.role_id to global_roles.permissions) — so naming a role that
+// carries the universal PermissionAll wildcard here hands out a privilege, it
+// is not plain user administration. Without this check any ADMIN, which
+// legitimately holds users.write, could promote itself or anyone else to
+// SUPER_ADMIN straight from the admin user form whose role dropdown lists
+// every global role
 // (apps/web/src/components/admin/users/UserFormDialog.tsx).
 //
-// The name is resolved through the very function the request-time check uses
-// rather than a name comparison of our own: a look-alike such as
-// "SUPER_ADMıN" (which strings.ToUpper folds onto "SUPER_ADMIN") must be
-// refused here too, or the guard and the grant would disagree about what a
-// name means. An empty name — the optional field's "leave the role alone"
-// value — resolves to no permissions and is always let through.
+// The built-in names are resolved through LegacyPermissionsForRole rather than
+// a name comparison of our own: a look-alike such as "SUPER_ADMıN" (which
+// strings.ToUpper folds onto "SUPER_ADMIN") must be refused here too, or the
+// guard and the grant would disagree about what a name means. A name that
+// resolves to no built-in is then looked up in the global_roles table, because
+// the user service resolves any row by name (user_service.go) and the grant
+// comes from its stored permissions — a wildcard under a custom name,
+// pre-existing or moved there by renaming a god-mode role through the
+// global-role Update endpoint, would otherwise pass this check and still yield
+// PermissionAll. A name that resolves nowhere is left to the service, which
+// produces its own 404; an empty name — the optional field's "leave the role
+// alone" value — is always let through.
 func (h *UserHandler) requireGrantableRole(w http.ResponseWriter, r *http.Request, roleName string) bool {
-	for _, p := range authz.LegacyPermissionsForRole(roleName) {
-		if p == authz.PermissionAll {
-			return middleware.EnforcePermissions(w, r, h.authorizer, middleware.GlobalScope(), authz.PermissionAll)
-		}
+	if roleName == "" || !roleNameGrantsAll(r.Context(), roleName, h.roles) {
+		return true
 	}
-	return true
+	return middleware.EnforcePermissions(w, r, h.authorizer, middleware.GlobalScope(), authz.PermissionAll)
 }
 
 // toUserResponse maps u to a UserResponse and, if an AvatarService is

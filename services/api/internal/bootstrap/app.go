@@ -425,7 +425,8 @@ func New(cfg *config.Config) (*App, error) {
 		WithGlobalPermissionReader(permissionStore).
 		WithAvatarService(attachmentService).
 		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo)).
-		WithAuthorizer(authorizer)
+		WithAuthorizer(authorizer).
+		WithGlobalRoleLookup(globalRoleService)
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
 		WithMemberRepo(projectRepo)
