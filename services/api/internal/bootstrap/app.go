@@ -425,7 +425,8 @@ func New(cfg *config.Config) (*App, error) {
 		WithGlobalPermissionReader(permissionStore).
 		WithAvatarService(attachmentService).
 		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo)).
-		WithAuthorizer(authorizer)
+		WithAuthorizer(authorizer).
+		WithGlobalRoleLookup(globalRoleService)
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
 		WithMemberRepo(projectRepo)
@@ -453,8 +454,8 @@ func New(cfg *config.Config) (*App, error) {
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
-		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
-		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
+		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService).WithAuthorizer(authorizer).WithRoleLookup(globalRoleRepo),
+		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService).WithAuthorizer(authorizer),
 		ProjectVisibilitySvc: projectService,
 		Project: handler.NewProjectHandler(
 			projectService,

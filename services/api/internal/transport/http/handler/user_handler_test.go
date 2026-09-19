@@ -11,11 +11,15 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	domainuser "github.com/Paca-AI/api/internal/domain/user"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
+	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
 )
 
 // ---------------------------------------------------------------------------
@@ -228,6 +232,138 @@ func TestCreateUser_UsernameTaken(t *testing.T) {
 	}
 	if code := errorCode(t, w); code != "USER_USERNAME_TAKEN" {
 		t.Errorf("expected error_code USER_USERNAME_TAKEN, got %q", code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// God-mode role guard (CreateUser / AdminUpdateUser)
+// ---------------------------------------------------------------------------
+//
+// POST/PATCH /admin/users take a role *name* and write it to both
+// users.role_id and the legacy users.role claim, which the token issuer copies
+// into every access token — naming SUPER_ADMIN there hands out PermissionAll,
+// it is not plain user administration. These tests drive that boundary
+// directly against the handlers; see newUserRoleGuardRouter's doc comment for
+// why the route-level users.write middleware isn't replicated here.
+
+// newUserRoleGuardRouter wires the two role-writing admin endpoints behind the
+// authorizer the guard needs, and injects access claims carrying role — the
+// legacy users.role claim authz.LegacyPermissionsForRole resolves into
+// permissions, which is where a real ADMIN's users.* grants come from. The
+// authorizer's store is nil on purpose: only that claim matters here.
+func newUserRoleGuardRouter(svc domainuser.Service, role string) chi.Router {
+	h := handler.NewUserHandler(svc).WithAuthorizer(authz.NewAuthorizer(nil))
+	claims := &domainauth.Claims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: uuid.New().String()},
+		Role:             role,
+		Kind:             "access",
+	}
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), httpmw.ClaimsContextKey(), claims)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	r.Post("/admin/users", h.CreateUser)
+	r.Patch("/admin/users/{userId}", h.AdminUpdateUser)
+	return r
+}
+
+func TestCreateUser_AdminGrantingSuperAdminRole_Returns403(t *testing.T) {
+	// The reported path: an ADMIN submitting the admin user form's role
+	// dropdown — its value is a role name. These are the spellings that
+	// resolve to PermissionAll at request time; "SUPER_ADMıN" (U+0131) is the
+	// one strings.ToUpper folds onto "SUPER_ADMIN", which is why the guard
+	// shares LegacyPermissionsForRole with the grant instead of comparing
+	// names itself.
+	for _, name := range []string{"SUPER_ADMIN", "super_admin", "  SUPER_ADMIN  ", "SUPER_ADMıN"} {
+		t.Run(name, func(t *testing.T) {
+			svc := &mockUserSvc{
+				create: func(context.Context, domainuser.CreateInput) (*domainuser.User, error) {
+					t.Fatal("CreateUser must not be called when the caller can't grant the named role")
+					return nil, nil
+				},
+			}
+			r := newUserRoleGuardRouter(svc, domainuser.RoleAdmin)
+
+			w := do(t, r, http.MethodPost, "/admin/users",
+				jsonBody(t, map[string]string{"username": "alice", "password": "pass1234", "full_name": "Alice", "role": name}))
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("expected 403 for ADMIN granting role %q, got %d: %s", name, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestCreateUser_AdminGrantingOrdinaryRole_Allowed(t *testing.T) {
+	// Control for the case above: assigning a role that carries no wildcard is
+	// the ordinary reason ADMIN holds users.write and must keep working.
+	var assignedRole string
+	svc := &mockUserSvc{
+		create: func(_ context.Context, in domainuser.CreateInput) (*domainuser.User, error) {
+			assignedRole = in.Role
+			return &domainuser.User{ID: uuid.New(), Username: in.Username, FullName: in.FullName, Role: in.Role}, nil
+		},
+	}
+	r := newUserRoleGuardRouter(svc, domainuser.RoleAdmin)
+
+	w := do(t, r, http.MethodPost, "/admin/users",
+		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob", "role": domainuser.RoleUser}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if assignedRole != domainuser.RoleUser {
+		t.Errorf("expected role %s to reach the service, got %q", domainuser.RoleUser, assignedRole)
+	}
+}
+
+func TestCreateUser_SuperAdminGrantingSuperAdminRole_Allowed(t *testing.T) {
+	svc := &mockUserSvc{
+		create: func(_ context.Context, in domainuser.CreateInput) (*domainuser.User, error) {
+			return &domainuser.User{ID: uuid.New(), Username: in.Username, FullName: in.FullName, Role: in.Role}, nil
+		},
+	}
+	r := newUserRoleGuardRouter(svc, "SUPER_ADMIN")
+
+	w := do(t, r, http.MethodPost, "/admin/users",
+		jsonBody(t, map[string]string{"username": "root2", "password": "pass1234", "full_name": "Root Two", "role": "SUPER_ADMIN"}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for a SUPER_ADMIN caller, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminUpdateUser_AdminGrantingSuperAdminRole_Returns403(t *testing.T) {
+	svc := &mockUserSvc{
+		adminUpdate: func(context.Context, uuid.UUID, domainuser.AdminUpdateInput) (*domainuser.User, error) {
+			t.Fatal("AdminUpdateUser must not be called when the caller can't grant the named role")
+			return nil, nil
+		},
+	}
+	r := newUserRoleGuardRouter(svc, domainuser.RoleAdmin)
+
+	w := do(t, r, http.MethodPatch, "/admin/users/"+uuid.New().String(),
+		jsonBody(t, map[string]string{"full_name": "Alice", "role": "SUPER_ADMIN"}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminUpdateUser_WithoutRole_Allowed(t *testing.T) {
+	// Omitting role is the form's "leave the role alone" value: the guard must
+	// not turn an ordinary profile edit into a permission check.
+	id := uuid.New()
+	svc := &mockUserSvc{
+		adminUpdate: func(_ context.Context, userID uuid.UUID, in domainuser.AdminUpdateInput) (*domainuser.User, error) {
+			return &domainuser.User{ID: userID, Username: "alice", FullName: in.FullName, Role: domainuser.RoleUser}, nil
+		},
+	}
+	r := newUserRoleGuardRouter(svc, domainuser.RoleAdmin)
+
+	w := do(t, r, http.MethodPatch, "/admin/users/"+id.String(),
+		jsonBody(t, map[string]string{"full_name": "Alice B"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
