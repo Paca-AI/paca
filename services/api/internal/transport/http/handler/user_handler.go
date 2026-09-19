@@ -12,8 +12,8 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
-	domainuser "github.com/Paca-AI/api/internal/domain/user"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	domainuser "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
