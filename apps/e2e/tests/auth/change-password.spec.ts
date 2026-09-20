@@ -1,6 +1,7 @@
 // spec: features/auth/change-password.feature
 // seed: tests/seed.spec.ts
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import {
 	expect,
 	test,
@@ -74,6 +75,7 @@ async function expectLoginPage(page: Page) {
 async function login(page: Page, username: string, password: string) {
 	await page.goto("/");
 	await expectLoginPage(page);
+	await ensureLoginForm(page);
 	await page.getByRole("textbox", { name: "Username" }).fill(username);
 	await page.getByRole("textbox", { name: "Password" }).fill(password);
 	await page.getByRole("button", { name: "Sign in" }).click();

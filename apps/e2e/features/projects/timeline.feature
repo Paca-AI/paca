@@ -121,7 +121,7 @@ Feature: Timeline interaction (Epic roadmap)
 
     Scenario: Timeline view settings "Column by" defaults to "Status"
       When the user opens the View settings panel
-      Then the "Column by" dropdown should show "Status" as the selected option
+      Then the "Column by" dropdown trigger should display "Status"
 
     Scenario: Timeline view settings "Column by" offers Sprint as an option
       When the user opens the View settings panel

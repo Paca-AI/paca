@@ -1,6 +1,7 @@
 // spec: features/projects/task-detail.feature
 // seed: tests/seed.spec.ts
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
@@ -128,6 +129,7 @@ async function getTaskTypes(request: APIRequestContext, projectId: string): Prom
 
 const signIn = async (page: Page) => {
   await page.goto(`${BASE_URL}/`);
+  await ensureLoginForm(page);
   await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
   await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -339,10 +341,9 @@ test.describe('Task detail two-pane layout', () => {
 
     // Use filter({ visible: true }) because on mobile the breadcrumb span is CSS-hidden
     await expect(page.getByText(task.title).filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 });
-    // Activity / comment input should be visible
-    await expect(
-      page.getByPlaceholder(/write a comment/i).or(page.getByText(/write a comment/i).first()),
-    ).toBeVisible({ timeout: 10_000 });
+    // The comment composer is a BlockNote editor in a <fieldset>; its contenteditable
+    // has no accessible name or placeholder text, so it is located by structure.
+    await expect(page.locator('fieldset [contenteditable="true"]').first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('Task detail properties section shows a Status field', async ({ page }) => {

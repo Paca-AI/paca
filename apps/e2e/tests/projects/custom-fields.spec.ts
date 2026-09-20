@@ -1,6 +1,7 @@
 // spec: features/projects/custom-fields.feature
 // seed: tests/seed.spec.ts
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
@@ -78,6 +79,7 @@ async function createCustomField(
 
 const signIn = async (page: Page) => {
   await page.goto(`${BASE_URL}/`);
+  await ensureLoginForm(page);
   await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
   await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -250,7 +252,7 @@ test.describe('Custom Fields Management', () => {
       await expect(dialog.getByRole('button', { name: 'Number' })).toBeVisible();
       await expect(dialog.getByRole('button', { name: 'Date' })).toBeVisible();
       await expect(dialog.getByRole('button', { name: 'Checkbox' })).toBeVisible();
-      await expect(dialog.getByRole('button', { name: 'Select' })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'Select', exact: true })).toBeVisible();
     });
 
     test('"Create field" button is disabled when Display name is empty', async ({ page }) => {
@@ -345,7 +347,7 @@ test.describe('Custom Fields Management', () => {
       await dialog.getByRole('textbox', { name: /Display name/i }).fill('E2E Select Field');
 
       // When the user selects "Select" field type
-      await dialog.getByRole('button', { name: 'Select' }).click();
+      await dialog.getByRole('button', { name: 'Select', exact: true }).click();
 
       // Then the options editor should appear
       await expect(dialog.getByPlaceholder('Add option…')).toBeVisible();
@@ -365,7 +367,7 @@ test.describe('Custom Fields Management', () => {
       await dialog.getByRole('textbox', { name: /Display name/i }).fill('E2E Select Options');
 
       // And the user selects "Select" field type
-      await dialog.getByRole('button', { name: 'Select' }).click();
+      await dialog.getByRole('button', { name: 'Select', exact: true }).click();
 
       // And the user types "High" in the "Add option…" field
       await dialog.getByPlaceholder('Add option…').fill('High');
@@ -390,7 +392,7 @@ test.describe('Custom Fields Management', () => {
       await dialog.getByRole('textbox', { name: /Display name/i }).fill('E2E Remove Option');
 
       // And the user selects "Select" field type
-      await dialog.getByRole('button', { name: 'Select' }).click();
+      await dialog.getByRole('button', { name: 'Select', exact: true }).click();
 
       // And the user adds option "Unwanted"
       await dialog.getByPlaceholder('Add option…').fill('Unwanted');
@@ -398,7 +400,8 @@ test.describe('Custom Fields Management', () => {
       await expect(dialog.locator('input[value="Unwanted"]')).toBeVisible();
 
       // When the user clicks the remove button next to "Unwanted"
-      await dialog.locator('input[value="Unwanted"]').locator('..').getByRole('button').click();
+      // (each option row now has an "Option color" picker button before the unnamed remove button)
+      await dialog.locator('input[value="Unwanted"]').locator('..').getByRole('button').last().click();
 
       // Then the option "Unwanted" should no longer appear in the options list
       await expect(dialog.locator('input[value="Unwanted"]')).not.toBeVisible();

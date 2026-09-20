@@ -4,14 +4,17 @@
   "description": "End-to-end tests for the paca web application using Playwright",
   "private": true,
   "scripts": {
-    "test": "playwright test",
+    "test": "bash scripts/test-all.sh",
+    "test:chromium": "playwright test --project=chromium",
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
     "test:headed": "playwright test --headed",
     "test:report": "playwright show-report",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "check": "biome check --write ."
+    "check": "biome check --write .",
+    "stack:up": "bash scripts/stack-up.sh",
+    "stack:down": "bash scripts/stack-down.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",

@@ -1,6 +1,7 @@
 // spec: features/projects/timeline.feature
 // seed: tests/seed.spec.ts
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
@@ -61,6 +62,7 @@ async function createSprint(
 
 const signIn = async (uiPage: Page) => {
   await uiPage.goto(`${BASE_URL}/`);
+  await ensureLoginForm(uiPage);
   await uiPage.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
   await uiPage.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
   await uiPage.getByRole('button', { name: 'Sign in' }).click();
@@ -253,9 +255,12 @@ test.describe('Timeline view settings defaults', () => {
     // Open view settings
     await page.getByRole('button', { name: 'View settings' }).click();
 
-    // Column by combobox should have Status as the default selected value
-    const columnBySelect = page.locator('select').first();
-    await expect(columnBySelect).toHaveValue('status');
+    // The "Column by" row is a custom dropdown: its trigger button follows the
+    // row label and shows the selected option's label.
+    const columnByTrigger = page
+      .getByText('Column by', { exact: true })
+      .locator('xpath=following-sibling::button');
+    await expect(columnByTrigger).toHaveText('Status');
 
     // Close settings panel
     await page.keyboard.press('Escape');

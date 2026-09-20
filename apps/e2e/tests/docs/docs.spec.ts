@@ -1,13 +1,10 @@
 // spec: features/docs/docs.feature
 // seed: tests/seed.spec.ts
 //
-// UI BUG (activity-pane.tsx): The comment options dropdown trigger has
-// `opacity-0 group-hover:opacity-100`, but the parent `<div class="flex gap-3">`
-// in ActivityItemInner is missing the `group` class.
-// Fix: change `<div className="flex gap-3">` → `<div className="flex gap-3 group">` in
-// apps/web/src/components/shared/activity-pane.tsx to make the options button visible on hover.
-// Until fixed, comment edit/delete tests use { force: true } to click the hidden button.
+// The document title is breadcrumb text in the page header (renamed from the sidebar), the
+// comment composer is a BlockNote editor, and history lives in the activity feed.
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
@@ -124,6 +121,7 @@ async function listSnapshots(
 
 const signIn = async (page: Page) => {
   await page.goto(`${BASE_URL}/`);
+  await ensureLoginForm(page);
   await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
   await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -139,16 +137,16 @@ const navigateToDocsPage = async (page: Page, projectId: string) => {
   if (viewport && viewport.width < 768) {
     await page.getByRole('main').getByRole('button', { name: 'Toggle Sidebar' }).click();
   }
-  await expect(page.getByText('Documentations')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Documentation', { exact: true })).toBeVisible({ timeout: 10_000 });
 };
 
 /**
- * Open the Add dropdown menu in the Documentations sidebar section.
+ * Open the Add dropdown menu in the Documentation sidebar section.
  * The Add button is always visible (no hover reveal) once the sidebar is open.
  * On mobile the sidebar must already be open via navigateToDocsPage.
  */
 const openDocAddMenu = async (page: Page) => {
-  await page.getByRole('button', { name: 'Add' }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
 };
 
 /**
@@ -177,6 +175,23 @@ const closeSidebarIfOpen = async (page: Page) => {
   }
 };
 
+/**
+ * The comment composer is a BlockNote rich-text editor inside a <fieldset> in the
+ * activity pane. Its contenteditable has no accessible name, so it is located by
+ * structure. Fill it with `.fill()` and submit with Ctrl+Enter.
+ */
+// Tailwind's bare `group` class (word match, so `group/x` or `group-hover:` don't count).
+const GROUP_ANCESTOR = "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]";
+
+const commentEditor = (page: Page) => page.locator('fieldset [contenteditable="true"]');
+
+/**
+ * The document page shows its title as plain breadcrumb text in the header (not a
+ * heading); the title is edited from the sidebar, not on the page itself.
+ */
+const docTitle = (page: Page, title: string) =>
+  page.getByRole('main').getByText(title, { exact: true });
+
 // ─── Test Suites ──────────────────────────────────────────────────────────────
 
 // ===========================================================================
@@ -201,7 +216,7 @@ test.describe('Document folders', () => {
     await signIn(page);
     await navigateToDocsPage(page, projectId);
 
-    // 1. Open the Add menu in the Documentations section
+    // 1. Open the Add menu in the Documentation section
     await openDocAddMenu(page);
 
     // 2. Select New Folder
@@ -295,7 +310,7 @@ test.describe('Document lifecycle', () => {
     // Close the sidebar sheet on mobile so the main editor area becomes accessible.
     await closeSidebarIfOpen(page);
     // Verify the editor opened with the default "Untitled" title.
-    await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible({ timeout: 8_000 });
+    await expect(docTitle(page, 'Untitled')).toBeVisible({ timeout: 8_000 });
   });
 
   test('Create a document inside a folder', async ({ page, request }) => {
@@ -309,7 +324,7 @@ test.describe('Document lifecycle', () => {
     await page.getByRole('menuitem', { name: 'New Document' }).click();
     // On mobile the sidebar sheet remains open after navigation; close it first.
     await closeSidebarIfOpen(page);
-    await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible({ timeout: 8_000 });
+    await expect(docTitle(page, 'Untitled')).toBeVisible({ timeout: 8_000 });
 
     // API verification: folder endpoint returns items properly structured
     const resp = await request.get(
@@ -319,23 +334,27 @@ test.describe('Document lifecycle', () => {
     expect(body.data).toHaveProperty('items');
   });
 
-  test('Rename a document via the title field', async ({ page, request }) => {
+  test('Rename a document from the sidebar', async ({ page, request }) => {
     const doc = await createDocument(request, projectId, { title: 'Draft' });
 
     await signIn(page);
-    await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
+    await navigateToDocsPage(page, projectId);
 
-    // 1. Click the heading to switch it to an editable textarea
-    await page.getByRole('heading', { name: 'Draft' }).click();
-    const titleInput = page.locator('textarea').first();
-    await expect(titleInput).toBeVisible({ timeout: 8_000 });
+    // 1. Open the document options in the sidebar and choose Rename
+    await openSidebarItemOptions(page, 'Draft');
+    await page.getByRole('menuitem', { name: 'Rename' }).click();
 
-    // 2. Type the new title and press Tab to commit
-    await titleInput.fill('Final');
-    await titleInput.press('Tab');
+    // 2. Type the new title and confirm with Enter
+    await page.getByRole('textbox').fill('Final');
+    await page.keyboard.press('Enter');
 
-    // Verify
-    await expect(page.getByRole('heading', { name: 'Final' })).toBeVisible({ timeout: 8_000 });
+    // Verify the sidebar shows the new title and the API persisted it
+    await expect(page.getByRole('button', { name: 'Final', exact: true })).toBeVisible({
+      timeout: 8_000,
+    });
+    await expect(page.getByRole('button', { name: 'Draft', exact: true })).not.toBeVisible();
+    const resp = await request.get(`${BASE_URL}/api/v1/projects/${projectId}/docs/${doc.id}`);
+    expect((await resp.json()).data.title).toBe('Final');
   });
 
   test('Delete a document', async ({ page, request }) => {
@@ -373,10 +392,7 @@ test.describe('Document editor', () => {
     projectId = await createProject(request, `${TEST_PROJECT_PREFIX}EDITOR_${RUN_ID}`);
     doc = await createDocument(request, projectId, {
       title: 'E2E_EDITOR_DOC',
-      content: {
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Version 1' }] }],
-      },
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Version 1' }] }],
     });
     await context.clearCookies();
     await context.clearPermissions();
@@ -391,9 +407,7 @@ test.describe('Document editor', () => {
     await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
 
     // The document heading and the BlockNote contenteditable area should be visible
-    await expect(page.getByRole('heading', { name: 'E2E_EDITOR_DOC' })).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(docTitle(page, 'E2E_EDITOR_DOC')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[contenteditable="true"]').last()).toBeVisible({ timeout: 10_000 });
   });
 
@@ -450,17 +464,11 @@ test.describe('Document history', () => {
     projectId = await createProject(request, `${TEST_PROJECT_PREFIX}HISTORY_${RUN_ID}`);
     doc = await createDocument(request, projectId, {
       title: 'E2E_HISTORY_DOC',
-      content: {
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Initial' }] }],
-      },
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Initial' }] }],
     });
     // Generate a snapshot by updating content
     await updateDocument(request, projectId, doc.id, {
-      content: {
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Updated' }] }],
-      },
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Updated' }] }],
     });
     await context.clearCookies();
     await context.clearPermissions();
@@ -470,36 +478,51 @@ test.describe('Document history', () => {
     await cleanupTestProjects(request);
   });
 
-  test('User can view snapshot history', async ({ page }) => {
+  // The standalone "Version history" panel is gone: content/title edits now show up in
+  // the Comments & activity feed as "updated content" entries with View diff / Revert.
+  const openUpdateEntryMenu = async (page: Page) => {
+    await page.getByRole('button', { name: 'Comments & activity' }).click();
+    await page.getByRole('button', { name: 'All activity', exact: true }).click();
+
+    const entry = page.getByText('updated content', { exact: true });
+    await expect(entry).toBeVisible({ timeout: 15_000 });
+    // The options trigger has no accessible name and is only revealed on hover.
+    await entry
+      .locator(GROUP_ANCESTOR)
+      .getByRole('button')
+      .click({ force: true });
+  };
+
+  test('User can view what changed in a document update', async ({ page }) => {
     await signIn(page);
     await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
 
-    // 1. Open the Version history panel
-    await page.getByRole('button', { name: 'Version history' }).click();
+    await openUpdateEntryMenu(page);
+    await page.getByRole('menuitem', { name: 'View diff' }).click();
 
-    // Snapshots appear as numbered buttons: "#1 …", "#2 …"
-    const snapshotEntries = page.getByRole('button', { name: /^#\d+/ });
-    await expect(snapshotEntries.first()).toBeVisible({ timeout: 8_000 });
-    expect(await snapshotEntries.count()).toBeGreaterThanOrEqual(1);
+    const dialog = page.getByRole('dialog', { name: 'Content change diff' });
+    await expect(dialog).toBeVisible({ timeout: 8_000 });
+    await expect(dialog.getByText('Initial')).toBeVisible();
+    await expect(dialog.getByText('Updated')).toBeVisible();
   });
 
-  test('User can view a specific snapshot', async ({ page }) => {
+  test('User can revert a document update', async ({ page, request }) => {
     await signIn(page);
     await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
 
-    // 1. Open Version history panel
-    await page.getByRole('button', { name: 'Version history' }).click();
+    await openUpdateEntryMenu(page);
+    await page.getByRole('menuitem', { name: 'Revert' }).click();
 
-    // 2. Click the first available snapshot entry
-    const firstSnapshot = page.getByRole('button', { name: /^#\d+/ }).first();
-    await expect(firstSnapshot).toBeVisible({ timeout: 8_000 });
-    await firstSnapshot.click();
-
-    // Verify: snapshot date/time is displayed in the content panel
-    // Use .first() because the date may also appear in the history-list sidebar button.
-    await expect(
-      page.locator('text=/Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/').first(),
-    ).toBeVisible({ timeout: 8_000 });
+    // The document content is restored to its pre-update value
+    await expect
+      .poll(
+        async () => {
+          const resp = await request.get(`${BASE_URL}/api/v1/projects/${projectId}/docs/${doc.id}`);
+          return JSON.stringify((await resp.json()).data.content);
+        },
+        { timeout: 10_000 },
+      )
+      .toContain('Initial');
   });
 });
 
@@ -547,7 +570,7 @@ test.describe('Document comments and activity', () => {
     await page.getByRole('button', { name: 'Comments & activity' }).click();
 
     // 2. Type a comment and submit with Ctrl+Enter
-    const commentInput = page.getByRole('textbox', { name: 'Write a comment…' });
+    const commentInput = commentEditor(page);
     await expect(commentInput).toBeVisible({ timeout: 8_000 });
     await commentInput.fill('Great document!');
     await page.keyboard.press('Control+Enter');
@@ -564,98 +587,78 @@ test.describe('Document comments and activity', () => {
     await page.getByRole('button', { name: 'Comments & activity' }).click();
 
     // 2. Submit a comment via Ctrl+Enter
-    const commentInput = page.getByRole('textbox', { name: 'Write a comment…' });
+    const commentInput = commentEditor(page);
     await expect(commentInput).toBeVisible({ timeout: 8_000 });
     await commentInput.fill('Keyboard shortcut test');
     await page.keyboard.press('Control+Enter');
 
     // Verify: comment appears and input is cleared
     await expect(page.getByText('Keyboard shortcut test')).toBeVisible({ timeout: 8_000 });
-    await expect(commentInput).toHaveValue('');
+    await expect(commentInput).toHaveText('');
   });
 
-  test('User can edit their own comment', async ({ page }) => {
-    // FIXME: The ActivityItem comment card does not render an options (⋯) button at all.
-    // The edit/delete comment UI has not been implemented in the docs activity pane
-    // (activity-item.tsx renders only the author, timestamp and text — no action button).
-    // Until the feature is added, this test cannot interact with a non-existent element.
-    test.fixme();
+  // The options trigger (⋯) has no accessible name and is only revealed on hover, so it is
+  // reached from the comment text via its `group` card and clicked with { force: true }.
+  const openCommentOptions = async (page: Page, text: string) => {
+    const card = page
+      .getByText(text, { exact: true })
+      .locator(GROUP_ANCESTOR);
+    await card.getByRole('button').click({ force: true });
+  };
 
+  const postComment = async (page: Page, text: string) => {
+    await page.getByRole('button', { name: 'Comments & activity' }).click();
+    const commentInput = commentEditor(page);
+    await expect(commentInput).toBeVisible({ timeout: 8_000 });
+    await commentInput.fill(text);
+    await page.keyboard.press('Control+Enter');
+    await expect(page.getByText(text, { exact: true })).toBeVisible({ timeout: 8_000 });
+  };
+
+  test('User can edit their own comment', async ({ page }) => {
     await signIn(page);
     await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
+    await postComment(page, 'Original comment');
 
-    // 1. Open Comments & activity panel and post a comment
-    await page.getByRole('button', { name: 'Comments & activity' }).click();
-    const commentInput = page.getByRole('textbox', { name: 'Write a comment…' });
-    await expect(commentInput).toBeVisible({ timeout: 8_000 });
-    await commentInput.fill('Original comment');
+    // Edit loads the comment into the composer; Ctrl+Enter saves the change
+    await openCommentOptions(page, 'Original comment');
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    const commentInput = commentEditor(page);
+    await expect(commentInput.getByText('Original comment')).toBeVisible({ timeout: 8_000 });
+    await commentInput.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('Updated comment');
     await page.keyboard.press('Control+Enter');
-    await expect(page.getByText('Original comment')).toBeVisible({ timeout: 8_000 });
-
-    // 2. Hover over the comment card and click its options button
-    //    The options button is the only <button> inside the comment card header.
-    const commentPara = page.locator('p').filter({ hasText: 'Original comment' });
-    const commentCard = commentPara.locator('..'); // the rounded-xl card div
-    await commentCard.hover();
-    await commentCard.locator('button').click({ force: true });
-
-    // 3. Select Edit from the dropdown
-    await page.getByRole('menuitem', { name: /edit/i }).click();
-
-    // 4. Update the comment text and save
-    const editInput = page.locator('textarea').filter({ hasText: 'Original comment' });
-    await editInput.fill('Updated comment');
-    await page.getByRole('button', { name: /save/i }).click();
 
     // Verify
-    await expect(page.getByText('Updated comment')).toBeVisible({ timeout: 8_000 });
-    await expect(page.getByText('Original comment')).not.toBeVisible();
+    await expect(page.getByText('Updated comment', { exact: true })).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByText('Original comment')).toHaveCount(0);
   });
 
   test('User can delete their own comment', async ({ page }) => {
-    // FIXME: Same as the edit-comment test — the ActivityItem comment card has no
-    // options button; comment delete is not yet implemented in the docs activity pane UI.
-    test.fixme();
-
     await signIn(page);
     await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
+    await postComment(page, 'Delete me');
 
-    // 1. Open Comments & activity panel and post a comment
-    await page.getByRole('button', { name: 'Comments & activity' }).click();
-    const commentInput = page.getByRole('textbox', { name: 'Write a comment…' });
-    await expect(commentInput).toBeVisible({ timeout: 8_000 });
-    await commentInput.fill('Delete me');
-    await page.keyboard.press('Control+Enter');
-    await expect(page.getByText('Delete me')).toBeVisible({ timeout: 8_000 });
-
-    // 2. Hover over the comment card and click its options button
-    const commentPara = page.locator('p').filter({ hasText: 'Delete me' });
-    const commentCard = commentPara.locator('..');
-    await commentCard.hover();
-    await commentCard.locator('button').click({ force: true });
-
-    // 3. Select Delete and confirm
-    await page.getByRole('menuitem', { name: /delete/i }).click();
-    const confirmBtn = page.getByRole('button', { name: /confirm|delete/i });
-    if (await confirmBtn.isVisible()) {
-      await confirmBtn.click();
-    }
+    // Delete removes the comment immediately (no confirmation dialog)
+    await openCommentOptions(page, 'Delete me');
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
 
     // Verify
-    await expect(page.getByText('Delete me')).not.toBeVisible({ timeout: 8_000 });
+    await expect(page.getByText('Delete me')).toHaveCount(0, { timeout: 8_000 });
   });
 
   // ─── API-level validation (fast, no browser) ─────────────────────────────
 
-  test('POST /comments with empty text returns 400', async ({ request }) => {
+  test('POST /comments without content returns 400', async ({ request }) => {
     await authRequest(request);
     const resp = await request.post(
       `${BASE_URL}/api/v1/projects/${projectId}/docs/${doc.id}/comments`,
-      { data: { text: '   ' } },
+      { data: {} },
     );
     expect(resp.status()).toBe(400);
     const body = await resp.json();
-    expect(body.error_code).toBe('DOC_COMMENT_TEXT_INVALID');
+    expect(body.error_code).toBe('BAD_REQUEST');
   });
 });
 
@@ -789,7 +792,7 @@ test.describe('Document API access control', () => {
     await authRequest(request);
     const doc = await createDocument(request, projectId, {
       title: 'Snapshot Test',
-      content: { type: 'doc', content: [] },
+      content: [],
     });
 
     // Initial: no snapshots
@@ -798,7 +801,7 @@ test.describe('Document API access control', () => {
 
     // Update content — triggers snapshot
     await updateDocument(request, projectId, doc.id, {
-      content: { type: 'doc', content: [{ type: 'paragraph' }] },
+      content: [{ type: 'paragraph' }],
     });
 
     const after = await listSnapshots(request, projectId, doc.id);

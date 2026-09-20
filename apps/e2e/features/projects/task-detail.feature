@@ -90,7 +90,7 @@ Feature: Task detail
     Scenario: The activity pane contains the event log and comment input
       When the user opens the task detail for "E2E_LAYOUT_TASK"
       Then the activity pane should contain an activity log showing task events
-      And the activity pane should contain a "Write a comment..." input
+      And the activity pane should contain a rich-text comment editor
 
     Scenario: The header shows the task short ID, created date, and action controls
       When the user opens the task detail for "E2E_LAYOUT_TASK"
@@ -517,7 +517,7 @@ Feature: Task detail
 
     Scenario: A comment input is always visible at the bottom of the activity pane
       When the user opens the task detail for "E2E_ACTIVITY_TASK"
-      Then the activity pane should display a "Write a comment..." input field
+      Then the activity pane should display a rich-text comment editor
 
     Scenario: A rich-text toolbar is shown next to the comment input
       When the user opens the task detail for "E2E_ACTIVITY_TASK"

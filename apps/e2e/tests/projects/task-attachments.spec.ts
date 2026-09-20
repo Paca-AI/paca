@@ -1,6 +1,7 @@
 // spec: features/projects/task-detail.feature (Attachments section)
 // seed: tests/seed.spec.ts
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 import path from 'node:path';
 
@@ -117,6 +118,7 @@ async function uploadAttachmentViaAPI(
 
 const signIn = async (page: Page) => {
   await page.goto(`${BASE_URL}/`);
+  await ensureLoginForm(page);
   await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
   await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -355,8 +357,9 @@ test.describe('Task detail – Attachments section – attachment item display',
     await signIn(page);
     await openTaskDetail(page, projectId, taskId);
 
-    // Attachment just seeded should show "just now"
-    await expect(page.getByText('just now', { exact: true })).toBeVisible();
+    // The item's meta line renders as "<size> · <relative time>" in a single paragraph,
+    // so a just-seeded attachment reads e.g. "23 B · just now".
+    await expect(page.getByText(/· just now$/)).toBeVisible();
   });
 
   test('Extension badge shows the correct uppercased file extension', async ({ page }) => {

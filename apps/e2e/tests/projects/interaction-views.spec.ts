@@ -1,6 +1,7 @@
 // spec: features/projects/interaction-views.feature
 // seed: tests/seed.spec.ts
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
@@ -135,6 +136,7 @@ async function createSprint(request: APIRequestContext, projectId: string, name:
 
 const signIn = async (page: Page) => {
   await page.goto(`${BASE_URL}/`);
+  await ensureLoginForm(page);
   await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
   await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -843,20 +845,7 @@ test.describe('Managing views (create, rename, delete)', () => {
     const optionsBtn = tab.locator('xpath=..').locator('button').last();
     await optionsBtn.click();
 
-    // The app's DropdownMenuItem uses onSelect (not onClick) which is a React synthetic event
-    // on a div that only fires via direct call, not via Playwright click or keyboard interaction.
-    // Trigger it directly via React internal props.
-    await expect(page.getByRole('menuitem', { name: 'Rename view' })).toBeVisible();
-    await page.evaluate(() => {
-      const items = document.querySelectorAll('[role="menuitem"]');
-      const renameItem = Array.from(items).find((el) => el.textContent?.includes('Rename'));
-      if (!renameItem) throw new Error('Rename view menuitem not found');
-      const propsKey = Object.keys(renameItem).find((k) => k.startsWith('__reactProps'));
-      if (!propsKey) throw new Error('No React props found on menuitem');
-      // biome-ignore lint/suspicious/noExplicitAny: React internal props require dynamic access
-      const props = (renameItem as any)[propsKey];
-      if (props.onSelect) props.onSelect(new Event('select'));
-    });
+    await page.getByRole('menuitem', { name: 'Rename view' }).click();
 
     // The rename dialog opens with the current name pre-filled
     const renameDialog = page.getByRole('dialog', { name: 'Rename view' });
@@ -889,18 +878,7 @@ test.describe('Managing views (create, rename, delete)', () => {
     const optionsBtn = betaTab.locator('xpath=..').locator('button').last();
     await optionsBtn.click();
 
-    // Same workaround: DropdownMenuItem uses onSelect (not onClick); trigger it directly.
-    await expect(page.getByRole('menuitem', { name: 'Delete view' })).toBeVisible();
-    await page.evaluate(() => {
-      const items = document.querySelectorAll('[role="menuitem"]');
-      const deleteItem = Array.from(items).find((el) => el.textContent?.includes('Delete'));
-      if (!deleteItem) throw new Error('Delete view menuitem not found');
-      const propsKey = Object.keys(deleteItem).find((k) => k.startsWith('__reactProps'));
-      if (!propsKey) throw new Error('No React props found on menuitem');
-      // biome-ignore lint/suspicious/noExplicitAny: React internal props require dynamic access
-      const props = (deleteItem as any)[propsKey];
-      if (props.onSelect) props.onSelect(new Event('select'));
-    });
+    await page.getByRole('menuitem', { name: 'Delete view' }).click();
 
     // The BETA tab should no longer be visible
     await expect(page.getByRole('button', { name: `${TEST_PROJECT_PREFIX}VIEW_BETA` })).not.toBeVisible({ timeout: 10_000 });
@@ -1086,6 +1064,24 @@ test.describe('Filtering and searching tasks within a view', () => {
 test.describe('View settings panel', () => {
   let projectId: string;
 
+  // The panel's dropdowns are custom popovers (not native <select>): each row is
+  // a label followed by a trigger button showing the current value, and picking
+  // an option leaves the dropdown popover open until the panel title is clicked.
+  const openSettings = async (page: Page) => {
+    await page.getByRole('button', { name: 'View settings', exact: true }).click();
+    await expect(page.getByText('View settings', { exact: true })).toBeVisible();
+  };
+
+  const rowButton = (page: Page, label: string) =>
+    page.getByText(label, { exact: true }).locator('xpath=following-sibling::button');
+
+  const chooseOption = async (page: Page, row: string, option: string) => {
+    await rowButton(page, row).click();
+    await page.getByRole('button', { name: option, exact: true }).last().click();
+    await page.getByText('View settings', { exact: true }).click();
+    await expect(rowButton(page, row)).toHaveText(option);
+  };
+
   test.beforeEach(async ({ request, context }) => {
     await cleanupTestProjects(request);
     projectId = await createProject(request, `${TEST_PROJECT_PREFIX}SETTINGS_${RUN_ID}`);
@@ -1102,98 +1098,91 @@ test.describe('View settings panel', () => {
     await signIn(page);
     await navigateToBacklog(page, projectId);
 
-    await page.getByRole('button', { name: 'View settings' }).click();
+    await openSettings(page);
 
     // All expected setting rows should be visible
-    await expect(page.getByText('Fields')).toBeVisible();
-    await expect(page.getByText('Column by')).toBeVisible();
-    await expect(page.getByText('Swimlanes')).toBeVisible();
-    await expect(page.getByText('Sort by')).toBeVisible();
-    await expect(page.getByText('Field sum')).toBeVisible();
+    await expect(page.getByText('Fields', { exact: true })).toBeVisible();
+    await expect(page.getByText('Column by', { exact: true })).toBeVisible();
+    await expect(page.getByText('Swimlanes', { exact: true })).toBeVisible();
+    await expect(page.getByText('Sort by', { exact: true })).toBeVisible();
+    await expect(page.getByText('Field sum', { exact: true })).toBeVisible();
   });
 
-  test('The settings panel has Save and Reset buttons', async ({ page }) => {
+  test('The settings panel offers a Save action and shows Reset only once the draft differs from the team default', async ({ page }) => {
     await signIn(page);
     await navigateToBacklog(page, projectId);
 
-    await page.getByRole('button', { name: 'View settings' }).click();
+    await openSettings(page);
 
-    await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Reset' })).toBeVisible();
+    // The admin holds views.write, so the footer is the split "Save for everyone" button;
+    // Reset is not offered while the draft equals the team default.
+    await expect(page.getByRole('button', { name: 'Save for everyone' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Reset', exact: true })).toHaveCount(0);
+
+    await chooseOption(page, 'Sort by', 'Importance');
+    await expect(page.getByRole('button', { name: 'Reset', exact: true })).toBeVisible();
   });
 
-  test('Changing "Sort by" to "Manual" shows manual value', async ({ page }) => {
+  test('Changing "Sort by" to "Importance" shows the new value', async ({ page }) => {
     await signIn(page);
     await navigateToBacklog(page, projectId);
 
-    await page.getByRole('button', { name: 'View settings' }).click();
+    await openSettings(page);
+    await expect(rowButton(page, 'Sort by')).toHaveText('Manual');
 
-    // Change Sort by setting to "manual"
-    await page.locator('select').nth(2).selectOption('manual');
-
-    // The select should now show "manual"
-    await expect(page.locator('select').nth(2)).toHaveValue('manual');
+    await chooseOption(page, 'Sort by', 'Importance');
+    await expect(rowButton(page, 'Sort by')).toHaveText('Importance');
   });
 
-  test('Clicking Save persists the settings and closes the popup', async ({ page }) => {
+  test('Clicking "Save for everyone" persists the settings and closes the popup', async ({ page }) => {
     await signIn(page);
     await navigateToBacklog(page, projectId);
 
-    await page.getByRole('button', { name: 'View settings' }).click();
+    await openSettings(page);
+    await chooseOption(page, 'Sort by', 'Importance');
 
-    // Change a setting
-    await page.locator('select').nth(2).selectOption('manual');
-
-    // Save
-    await page.getByRole('button', { name: 'Save' }).click();
+    await page.getByRole('button', { name: 'Save for everyone' }).click();
 
     // The settings panel should close
-    await expect(page.getByRole('button', { name: 'Save' })).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('button', { name: 'Save for everyone' })).not.toBeVisible({ timeout: 5_000 });
 
     // After reopening, the saved setting should persist
-    await page.getByRole('button', { name: 'View settings' }).click();
-    await expect(page.locator('select').nth(2)).toHaveValue('manual');
+    await openSettings(page);
+    await expect(rowButton(page, 'Sort by')).toHaveText('Importance');
   });
 
-  test('Clicking Reset reverts the draft to the last saved settings', async ({ page }) => {
+  test('Clicking Reset reverts the draft to the team default', async ({ page }) => {
     await signIn(page);
     await navigateToBacklog(page, projectId);
 
-    await page.getByRole('button', { name: 'View settings' }).click();
+    await openSettings(page);
+    const initialValue = await rowButton(page, 'Sort by').innerText();
 
-    // Note the initial value
-    const initialValue = await page.locator('select').nth(2).inputValue();
+    await chooseOption(page, 'Sort by', 'Importance');
 
-    // Change to manual
-    await page.locator('select').nth(2).selectOption('manual');
-    await expect(page.locator('select').nth(2)).toHaveValue('manual');
-
-    // Reset — should revert to last saved (initial)
-    await page.getByRole('button', { name: 'Reset' }).click();
-    await expect(page.locator('select').nth(2)).toHaveValue(initialValue);
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    await expect(rowButton(page, 'Sort by')).toHaveText(initialValue.trim());
+    await expect(page.getByRole('button', { name: 'Reset', exact: true })).toHaveCount(0);
   });
 
   test('Closing the popup without saving discards unsaved changes', async ({ page }) => {
     await signIn(page);
     await navigateToBacklog(page, projectId);
 
-    await page.getByRole('button', { name: 'View settings' }).click();
+    await openSettings(page);
+    const initialValue = (await rowButton(page, 'Sort by').innerText()).trim();
 
-    // Get initial sort value
-    const initialValue = await page.locator('select').nth(2).inputValue();
-
-    // Change a setting
-    await page.locator('select').nth(2).selectOption('manual');
+    await chooseOption(page, 'Sort by', 'Importance');
 
     // Close by pressing Escape
     await page.keyboard.press('Escape');
 
     // Panel should be closed
-    await expect(page.getByRole('button', { name: 'Save' })).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('button', { name: 'Save for everyone' })).not.toBeVisible({ timeout: 5_000 });
 
     // Reopen and verify the change was discarded
-    await page.getByRole('button', { name: 'View settings' }).click();
-    await expect(page.locator('select').nth(2)).toHaveValue(initialValue);
+    await openSettings(page);
+    await expect(rowButton(page, 'Sort by')).toHaveText(initialValue);
   });
 
   test('View settings are persisted per view', async ({ page, request }) => {
@@ -1206,23 +1195,22 @@ test.describe('View settings panel', () => {
     // Set a non-default "Sort by" on Board view and save
     // (default for all new views is "manual", so we choose a different option)
     await page.getByRole('button', { name: 'Board', exact: true }).click();
-    await page.getByRole('button', { name: 'View settings' }).click();
-    await page.locator('select').nth(2).selectOption({ label: 'Importance' });
-    const importanceSortValue = await page.locator('select').nth(2).inputValue();
-    await page.getByRole('button', { name: 'Save' }).click();
+    await openSettings(page);
+    await chooseOption(page, 'Sort by', 'Importance');
+    await page.getByRole('button', { name: 'Save for everyone' }).click();
+    await expect(page.getByRole('button', { name: 'Save for everyone' })).not.toBeVisible({ timeout: 5_000 });
 
     // Switch to MyTable view — it was never configured so its sort should still be the default
     await page.getByRole('button', { name: 'MyTable', exact: true }).click();
-    await page.getByRole('button', { name: 'View settings' }).click();
+    await openSettings(page);
     // MyTable view should have the default sort (manual), not the Board's explicit sort
-    await expect(page.locator('select').nth(2)).toHaveValue('manual');
+    await expect(rowButton(page, 'Sort by')).toHaveText('Manual');
     await page.keyboard.press('Escape');
 
     // Switch back to Board view — its explicitly saved setting must be preserved
     await page.getByRole('button', { name: 'Board', exact: true }).click();
-    await page.getByRole('button', { name: 'View settings' }).click();
-    // Board view should still have the explicitly saved sort
-    await expect(page.locator('select').nth(2)).toHaveValue(importanceSortValue);
+    await openSettings(page);
+    await expect(rowButton(page, 'Sort by')).toHaveText('Importance');
   });
 });
 

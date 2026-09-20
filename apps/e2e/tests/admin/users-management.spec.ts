@@ -134,9 +134,24 @@ function profileMenuButton(page: Page): Locator {
   return page.getByRole('button', { name: /Admin super_admin/i });
 }
 
-async function expectUsersSummary(page: Page, totalUsers: number) {
-  await expect(page.getByText(/users? in system/i)).toBeVisible();
-  await expect(page.getByRole('row')).toHaveCount(totalUsers + 1);
+// The users table paginates at 20 rows per page (see `pageSize` in
+// apps/web/src/routes/_authenticated/admin/users/index.tsx), so only the
+// first page of rows is ever rendered — cap the expected row count there.
+const USERS_PAGE_SIZE = 20;
+
+// Other workers create and delete users at the same time, so the total is read
+// from the page's own "N users in system" summary and checked against the rows
+// rendered, instead of being compared with a count taken from the API earlier.
+async function expectUsersSummary(page: Page) {
+  const summary = page.getByText(/users? in system/i);
+  await expect(summary).toBeVisible();
+  await expect
+    .poll(async () => {
+      const total = Number((await summary.innerText()).match(/\d+/)?.[0]);
+      const rows = await page.getByRole('row').count();
+      return Number.isFinite(total) && total > 0 && rows === Math.min(total, USERS_PAGE_SIZE) + 1;
+    })
+    .toBe(true);
 }
 
 async function expectLoginPage(page: Page) {
@@ -211,13 +226,12 @@ test.describe('User Management', () => {
 
   test('shows the users page header, summary, columns, and protected admin actions', async ({
     page,
-    request,
   }) => {
     await openUsersPage(page);
 
     await expect(page.getByText('View and manage user accounts and their assigned roles.')).toBeVisible();
     await expect(page.getByRole('button', { name: 'New User' })).toBeVisible();
-    await expectUsersSummary(page, (await listUsers(request)).length);
+    await expectUsersSummary(page);
 
     await expect(page.getByRole('columnheader', { name: 'Username' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Full Name' })).toBeVisible();
@@ -262,7 +276,6 @@ test.describe('User Management', () => {
 
   test('creates a user with the default USER role and requires a password change on first login', async ({
     page,
-    request,
   }) => {
     const username = uniqueUsername('DEFAULT');
 
@@ -289,7 +302,7 @@ test.describe('User Management', () => {
     await expect(createdRow).toBeVisible();
     await expect(createdRow.getByText('USER', { exact: true })).toBeVisible();
     await expect(createdRow.getByText(/pwd reset/i)).toBeVisible();
-    await expectUsersSummary(page, (await listUsers(request)).length);
+    await expectUsersSummary(page);
 
     await signOutAdmin(page);
     await login(page, username, temporaryPassword);
@@ -482,8 +495,6 @@ test.describe('User Management', () => {
       role: 'USER',
     });
 
-    const totalBeforeDelete = (await listUsers(request)).length;
-
     await openUsersPage(page);
     const row = userRow(page, username);
     await row.getByRole('button', { name: 'Delete user' }).click();
@@ -493,6 +504,6 @@ test.describe('User Management', () => {
 
     await expect(dialog).toHaveCount(0);
     await expect(userRow(page, username)).toHaveCount(0);
-    await expectUsersSummary(page, totalBeforeDelete - 1);
+    await expectUsersSummary(page);
   });
 });
