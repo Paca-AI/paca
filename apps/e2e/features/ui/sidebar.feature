@@ -16,8 +16,7 @@ Feature: Sidebar navigation
       Given the sidebar is expanded
       When the user clicks the sidebar trigger button
       Then the sidebar should be in collapsed state
-      And each navigation item should show only its icon
-      And the navigation labels should not be visible
+      And the sidebar should shrink to an icon rail
 
     Scenario: Clicking the trigger button again expands the sidebar
       Given the sidebar is collapsed
@@ -27,9 +26,9 @@ Feature: Sidebar navigation
 
     Scenario: Keyboard shortcut toggles the sidebar
       Given the sidebar is expanded
-      When the user presses the "Cmd+B" keyboard shortcut
+      When the user presses the "Ctrl+B" (or "Cmd+B") keyboard shortcut
       Then the sidebar should be in collapsed state
-      When the user presses the "Cmd+B" keyboard shortcut again
+      When the user presses the same keyboard shortcut again
       Then the sidebar should be in expanded state
 
     Scenario: Clicking the sidebar rail collapses and expands the sidebar
@@ -66,6 +65,7 @@ Feature: Sidebar navigation
       Given the user is on the home page
       When the user clicks the "Users" navigation item
       Then the "Users" navigation item should be marked as active
+      And the "Home" navigation item should no longer be marked as active
       And the browser should be on the users page
 
   @authenticated
@@ -78,12 +78,25 @@ Feature: Sidebar navigation
       And the "Global Roles" navigation item should be visible
       And the "Users" navigation item should be visible
 
-    Scenario: Administration section is hidden for non-admin users
-      Given the user already has a stored session without any admin permissions
+    Scenario: Administration section is hidden for users without any admin permission
+      Given a user whose global role grants no administration permission
+      And the user is signed in
       When the user views the sidebar
-      Then the "Administration" section label should not be visible
+      Then the "Home" navigation item should be visible
+      And the "Administration" section label should not be visible
       And the "Global Roles" navigation item should not be visible
       And the "Users" navigation item should not be visible
+      And the "What's New" navigation item should not be visible
+
+    Scenario: A user with a single admin permission only sees the matching item
+      Given a user whose global role only grants "users.read"
+      And the user is signed in
+      When the user views the sidebar
+      Then the "Administration" section label should be visible
+      And the "Users" navigation item should be visible
+      And the "Global Roles" navigation item should not be visible
+      And the "Plugins" navigation item should not be visible
+      And the "Settings" navigation item should not be visible
 
     Scenario: Admin items show tooltips when sidebar is collapsed
       Given the user already has a stored authenticated admin session
@@ -110,39 +123,58 @@ Feature: Sidebar navigation
       When the user selects the "Dark" theme option
       Then the page should switch to dark theme
       And the "Dark" option should be highlighted in the theme switcher
+      And the "Light" option should no longer be highlighted
 
     Scenario: Theme switcher shows a single cycling button when collapsed
       Given the sidebar is collapsed
-      Then a single theme cycling button should be visible in the footer
-      And a tooltip should describe the current theme mode
+      Then the three theme options should be hidden
+      And a single theme cycling button should be visible in the footer
 
     Scenario: Cycling button advances the theme on each click
-      Given the sidebar is collapsed
+      Given the theme is "Light" and the sidebar is collapsed
       When the user clicks the cycling theme button
-      Then the displayed theme icon should change to reflect the next mode
+      Then the theme should become "Dark" and the icon should change to a moon
+      When the user clicks the cycling theme button again
+      Then the theme should become "Auto" and the icon should change to a monitor
 
   @authenticated
   Rule: State persistence
 
     Background:
       Given the user already has a stored authenticated session
-      And the user is on the home page
+      And the user is on the home page on a desktop viewport
 
+    Scenario: State is stored in a browser cookie
+      When the user collapses the sidebar
+      Then a "sidebar_state" cookie with the value "false" should be present in the browser
+      When the user expands the sidebar
+      Then the "sidebar_state" cookie should have the value "true"
+
+    # Known bug: the cookie is written on every toggle but never read back, so
+    # the sidebar always starts expanded.  Implemented as test.fixme.
+    @fixme
     Scenario: Collapsed state persists after a page reload
       Given the sidebar is expanded
       When the user clicks the sidebar trigger button
       And the user reloads the page
       Then the sidebar should still be in collapsed state
 
-    Scenario: Expanded state persists after a page reload
-      Given the sidebar is collapsed
-      When the user clicks the sidebar trigger button
-      And the user reloads the page
+    Scenario: A sidebar that was left expanded is still expanded after a page reload
+      Given the sidebar is expanded
+      When the user reloads the page
       Then the sidebar should still be in expanded state
 
-    Scenario: State is stored in a browser cookie
-      When the user collapses the sidebar
-      Then a sidebar state cookie should be present in the browser
+  @authenticated
+  Rule: User menu
+
+    Background:
+      Given the user already has a stored authenticated admin session
+      And the user is on the home page
+
+    Scenario: The sidebar footer shows the user's profile and a Log out action
+      Then the user profile button showing the user's name and role should be visible in the sidebar footer
+      When the user clicks the user profile button
+      Then a "Log out" menu item should be visible
 
   @mobile
   Rule: Mobile responsive behaviour

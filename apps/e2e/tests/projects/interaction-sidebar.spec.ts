@@ -2,6 +2,7 @@
 //       Rule: Dragging a task onto a sidebar interaction entry reassigns its sprint
 // seed: tests/seed.spec.ts
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Locator, type Page, type APIRequestContext } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
@@ -122,6 +123,7 @@ async function getTaskTypes(request: APIRequestContext, projectId: string): Prom
 
 const signIn = async (page: Page): Promise<void> => {
   await page.goto(`${BASE_URL}/`);
+  await ensureLoginForm(page);
   await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
   await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();

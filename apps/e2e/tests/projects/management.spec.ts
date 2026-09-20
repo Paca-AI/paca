@@ -1,13 +1,24 @@
 // spec: features/projects/management.feature
 // seed: tests/seed.spec.ts
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
 const USERNAME = process.env.E2E_USERNAME ?? 'admin';
 const PASSWORD = process.env.E2E_PASSWORD ?? 'e2e-admin-password';
 
-const TEST_PROJECT_PREFIX = 'E2E_';
+// Only the projects this spec creates; a bare 'E2E_' would also delete other specs' projects.
+const TEST_PROJECT_PREFIXES = [
+  'E2E_EXPLORE_PROJECT',
+  'E2E_NAME_ONLY_',
+  'E2E_DESCRIBED_',
+  'E2E_SHOULD_NOT_EXIST_',
+  'E2E_SETTINGS_',
+  'E2E_RENAMED_SETTINGS_',
+  'E2E_DESC_SETTINGS_',
+  'E2E_DELETE_',
+];
 
 function permSwitch(page: Page, label: string) {
   return page.getByText(label, { exact: true }).locator('xpath=../following-sibling::*[@role="switch"]');
@@ -38,7 +49,7 @@ async function cleanupTestProjects(request: APIRequestContext): Promise<void> {
 
   await Promise.all(
     allProjects
-      .filter((p) => p.name.startsWith(TEST_PROJECT_PREFIX))
+      .filter((p) => TEST_PROJECT_PREFIXES.some((prefix) => p.name.startsWith(prefix)))
       .map((p) => request.delete(`${BASE_URL}/api/v1/projects/${p.id}`)),
   );
 }
@@ -48,6 +59,7 @@ test.describe('Project Management', () => {
 
   const signIn = async (page: Page) => {
     await page.goto(`${BASE_URL}/`);
+    await ensureLoginForm(page);
     await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
     await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
@@ -77,7 +89,11 @@ test.describe('Project Management', () => {
 
   const navigateToProjectSettings = async (page: Page, projectName: string) => {
     await page.getByRole('link', { name: new RegExp(projectName) }).click();
+    // The home sidebar also has an admin "Settings" link (/admin/settings); wait until the
+    // project sidebar has replaced it, or the click below can hit the wrong link.
+    await expect(page).toHaveURL(/\/projects\/[^/]+\//);
     await openMobileSidebar(page);
+    await expect(page.getByRole('link', { name: 'Team', exact: true })).toBeVisible();
     await page.getByRole('link', { name: 'Settings', exact: true }).click();
     await closeMobileSidebar(page);
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
@@ -217,25 +233,27 @@ test.describe('Project Management', () => {
   // ---------------------------------------------------------------------------
 
   test.describe('Navigating into a project', () => {
-    test('Clicking a project card opens the project dashboard', async ({ page }) => {
+    test('Clicking a project card opens the project Timeline', async ({ page }) => {
       await signInAndGoToHomePage(page);
 
       // When the user clicks the card for the project
       await page.getByRole('link', { name: new RegExp(BASE_PROJECT_NAME) }).click();
 
-      // The user should be on the project dashboard page
-      await expect(page.getByRole('heading', { name: new RegExp(`${BASE_PROJECT_NAME} Dashboard`) })).toBeVisible();
+      // The project root redirects to the Timeline interaction page
+      await expect(page).toHaveURL(/\/projects\/[^/]+\/interactions\/timeline$/);
+      await expect(page.getByRole('heading', { name: 'Timeline' })).toBeVisible();
     });
 
-    test('Project sidebar shows Dashboard, Interactions, Docs, Team, and Settings links', async ({ page }) => {
+    test('Project sidebar shows Interactions, Documentation, Team, and Settings links', async ({ page }) => {
       await signInAndGoToHomePage(page);
       await page.getByRole('link', { name: new RegExp(BASE_PROJECT_NAME) }).click();
       await openMobileSidebar(page);
 
       // The sidebar should contain all required project links
-      await expect(page.getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
       await expect(page.getByText('Interactions', { exact: true })).toBeVisible();
-      await expect(page.getByRole('link', { name: 'Docs', exact: true })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Timeline', exact: true })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Product Backlog', exact: true })).toBeVisible();
+      await expect(page.getByText('Documentation', { exact: true })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Team', exact: true })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
     });
@@ -656,7 +674,6 @@ test.describe('Project Management', () => {
       await page.getByRole('button', { name: 'New role' }).click();
 
       // Verify all permission descriptions
-      await expect(page.getByText('View project details and settings')).toBeVisible();
       await expect(page.getByText('Update project name, description, and settings')).toBeVisible();
       await expect(page.getByText('Permanently delete this project')).toBeVisible();
       await expect(page.getByText('List and view project members')).toBeVisible();
@@ -763,7 +780,7 @@ test.describe('Project Management', () => {
       }
     });
 
-    test('Permissions count in the table matches the granted permissions', async ({ page }) => {
+    test('Granting every permission of an area lists it as an area wildcard', async ({ page }) => {
       await signInAndGoToHomePage(page);
       await navigateToProjectSettings(page, BASE_PROJECT_NAME);
       await page.getByRole('button', { name: 'Roles' }).click();
@@ -779,10 +796,9 @@ test.describe('Project Management', () => {
 
       await expect(page.getByRole('dialog', { name: 'New Role' })).not.toBeVisible();
 
-      // The role should show 2 active permissions
+      // Granting every offered permission of an area is stored (and listed) as the area wildcard
       const roleRow = page.getByRole('row', { name: new RegExp(roleName) });
-      await expect(roleRow.getByText('projects.write')).toBeVisible();
-      await expect(roleRow.getByText('projects.delete')).toBeVisible();
+      await expect(roleRow.getByText('projects.*', { exact: true })).toBeVisible();
     });
 
     test('Toggling a permission on then off leaves it disabled', async ({ page }) => {

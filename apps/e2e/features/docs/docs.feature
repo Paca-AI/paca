@@ -15,7 +15,7 @@ Feature: Documentation
       And the user has navigated to the Docs page of "E2E_DOCS_FOLDERS"
 
     Scenario: Create a new folder
-      When the user opens the "Add" menu in the Documentations section
+      When the user opens the "Add" menu in the Documentation section
       And the user selects "New Folder"
       And the user renames the newly created folder to "Architecture"
       Then a folder named "Architecture" should appear in the folder list
@@ -37,7 +37,7 @@ Feature: Documentation
 
     Scenario: Member without write permission cannot create a folder
       Given the user is a member of the project with only "docs.read" permission
-      Then the "Add" button in the Documentations section should not be visible
+      Then the "Add" button in the Documentation section should not be visible
 
   @authenticated
   Rule: Document lifecycle
@@ -49,10 +49,10 @@ Feature: Documentation
       And the user has navigated to the Docs page of "E2E_DOCS_LIFECYCLE"
 
     Scenario: Create a document at the project root
-      When the user opens the "Add" menu in the Documentations section
+      When the user opens the "Add" menu in the Documentation section
       And the user selects "New Document"
       Then a new document editor should open with title "Untitled"
-      And the document should appear in the Documentations sidebar
+      And the document should appear in the Documentation sidebar
 
     Scenario: Create a document inside a folder
       Given a folder named "Engineering" exists in the project
@@ -60,17 +60,16 @@ Feature: Documentation
       Then the new document should be visible under the "Engineering" folder
 
     Scenario: Empty title defaults to "Untitled"
-      When the user clicks "New Document"
-      And the user leaves the title blank
-      And the user saves the document
+      When a document is created without a title
       Then the document title should be "Untitled"
 
     Scenario: Rename a document
       Given a document named "Draft" exists in the project
-      When the user opens the document "Draft"
-      And the user changes the title to "Final"
-      And the user saves the document
-      Then the document list should show "Final"
+      When the user opens the document options for "Draft"
+      And the user selects "Rename"
+      And the user types "Final" as the document title
+      And the user confirms the rename with Enter
+      Then the document list should show "Final" instead of "Draft"
 
     Scenario: Delete a document
       Given a document named "Temporary Doc" exists in the project
@@ -98,7 +97,7 @@ Feature: Documentation
     Scenario: Editor loads existing document content
       When the user opens the document "E2E_EDITOR_DOC"
       Then the BlockNote editor should be visible
-      And the document title should be displayed in the title field
+      And the document title should be displayed in the page header
 
     Scenario: User can type content into the editor
       When the user opens the document "E2E_EDITOR_DOC"
@@ -111,29 +110,36 @@ Feature: Documentation
       When the user opens the document "E2E_EDITOR_DOC"
       And the user changes the content to "Version 2"
       And the user saves the document
-      Then the document history should contain at least 1 snapshot
+      Then the document should have at least 1 snapshot
 
   @authenticated
-  Rule: Document history and snapshots
+  Rule: Document history and changes
+
+    The standalone "Version history" panel was replaced by the "Comments &
+    activity" feed: each content or title edit is logged as an "updated ..."
+    entry with "View diff" and "Revert" actions. Saved edits still create
+    snapshots that the API exposes.
 
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_DOCS_HISTORY" exists
       And the user is a member of the project with "docs.write" permission
-      And a document named "E2E_HISTORY_DOC" with multiple snapshots exists in the project
-      And the user has navigated to the Docs page of "E2E_DOCS_HISTORY"
+      And a document named "E2E_HISTORY_DOC" whose content was updated from "Initial" to "Updated" exists in the project
+      And the user has navigated to the document "E2E_HISTORY_DOC" in "E2E_DOCS_HISTORY"
 
-    Scenario: User can view snapshot history
-      When the user opens the document "E2E_HISTORY_DOC"
-      And the user clicks the "Version history" button
-      Then a list of numbered snapshots should be visible
-      And each snapshot entry should show its number, timestamp, and document title
+    Scenario: User can view what changed in a document update
+      When the user opens the "Comments & activity" panel
+      And the user switches the feed to "All activity"
+      And the user opens the options for the "updated content" entry
+      And the user selects "View diff"
+      Then a "Content change diff" dialog should show the "Initial" and "Updated" text
 
-    Scenario: User can view a specific snapshot
-      When the user opens the document "E2E_HISTORY_DOC"
-      And the user clicks the "Version history" button
-      And the user clicks on a snapshot entry
-      Then the snapshot content should be displayed in the history panel
+    Scenario: User can revert a document update
+      When the user opens the "Comments & activity" panel
+      And the user switches the feed to "All activity"
+      And the user opens the options for the "updated content" entry
+      And the user selects "Revert"
+      Then the document content should be restored to "Initial"
 
   @authenticated
   Rule: Document comments and activity
@@ -156,8 +162,8 @@ Feature: Documentation
       When the user opens the "Comments & activity" panel
       And the user opens the comment options for "Original comment"
       And the user selects "Edit"
-      And the user changes the comment text to "Updated comment"
-      And the user saves the comment
+      And the user replaces the comment text in the composer with "Updated comment"
+      And the user presses Ctrl+Enter to save the comment
       Then the activity panel should show "Updated comment"
 
     Scenario: User can delete their own comment
@@ -165,12 +171,12 @@ Feature: Documentation
       When the user opens the "Comments & activity" panel
       And the user opens the comment options for "Delete me"
       And the user selects "Delete"
-      And the user confirms the deletion
       Then the comment "Delete me" should no longer appear in the activity panel
 
     Scenario: Activity log shows document creation event
       When the user opens the "Comments & activity" panel
-      Then the activity panel should contain a "Document created" entry
+      And the user switches the feed to "All activity"
+      Then the activity panel should contain a "created this document" entry
 
     Scenario: Comment input accepts Ctrl+Enter keyboard shortcut
       When the user opens the "Comments & activity" panel

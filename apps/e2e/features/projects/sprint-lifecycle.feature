@@ -1,224 +1,246 @@
 @projects @sprints @sprint-lifecycle
 Feature: Sprint lifecycle management
-  Sprints move through three states: planned → active → completed.  A sprint
-  is created in the planned state with a system-generated default name
-  ("Sprint N") and no dates.  Authorised users start a planned sprint by
-  clicking the "Start sprint" button in the sprint column header on the
-  product backlog Table view, which opens a Start Sprint inline form where
-  they confirm (or edit) the name, goal, start date, and end date before
-  activating it.  The start date field is pre-populated with today's date;
-  end date is optional.  On confirmation the browser navigates directly to
-  the new sprint's interaction page.  Multiple sprints may be active at the
-  same time.  Authorised users complete an active sprint by clicking the
-  "Complete sprint" button on the sprint interaction page, which opens a
-  Complete Sprint inline panel prompting them to choose a destination sprint
-  for any remaining incomplete tasks.  Sprints in the planned state can
-  also be deleted.  Sprint creation is always a quick-create action triggered
-  from the product backlog page header or sprint column headers — no creation
-  modal is shown.
+  Sprints move through three states: planned (shown as "Draft") → active →
+  completed.  A sprint is quick-created in the planned state with a
+  system-generated name ("Sprint N", where N is the number of existing
+  sprints plus one) and no dates — no creation dialog is shown.  Users with
+  the "Manage Sprints" (sprints.write) project permission start a planned
+  sprint from a "Start sprint" button, found in the sprint's column header on
+  the product backlog Table view and in the header of the sprint's own page.
+  Either opens a "Start sprint" modal where they confirm or edit the name,
+  goal, start date (pre-filled with today) and end date before activating it.
+  Starting from the backlog then navigates to the sprint page; starting from
+  the sprint page stays on it.  More than one sprint may be active at once —
+  the modal only shows a non-blocking warning naming the other active sprint.
+  An active sprint is completed with the "Complete sprint" button in its page
+  header, which opens a "Complete sprint" modal asking where the sprint's
+  incomplete tasks should go (the product backlog or any other sprint that is
+  not completed); confirming completes the sprint and returns the user to the
+  product backlog.  Any sprint can be deleted through the "Edit sprint" modal
+  and a "Delete sprint?" confirmation; its tasks return to the product
+  backlog.  Draft sprints are listed under a collapsible "Draft Sprints"
+  section of the project sidebar, active sprints directly under "Product
+  Backlog", and completed sprints under a "Completed Sprints" section that is
+  collapsed by default.
 
   @authenticated
   Rule: Creating a sprint (quick create — no modal)
 
     Background:
       Given the user already has a stored authenticated session
-      And a project named "E2E_QUICK_CREATE_PROJECT" exists
-      And the user has the "View Sprints" project permission in "E2E_QUICK_CREATE_PROJECT"
-      And the user has the "Manage Sprints" project permission in "E2E_QUICK_CREATE_PROJECT"
-      And the user has navigated to the "Product Backlog" table view inside "E2E_QUICK_CREATE_PROJECT"
+      And a project named "E2E_SPRINT_CREATE" exists with no sprints
+      And the user has the "Manage Sprints" project permission in "E2E_SPRINT_CREATE"
+      And the user has navigated to the product backlog of "E2E_SPRINT_CREATE"
 
-    Scenario: Clicking "New sprint" in the page header creates a sprint with a default name
+    Scenario: Clicking "New sprint" in the page header creates a draft sprint with a default name
       When the user clicks "New sprint" in the product backlog page header
-      Then a new sprint should appear in the sidebar within the planned state
-      And the sprint name should match the pattern "Sprint \d+"
-      And no creation modal or dialog should appear
+      Then a sprint named "Sprint 1" should appear as a column with a "Draft" badge
+      And "Sprint 1" should be listed under "Draft Sprints" in the project sidebar
+      And no creation dialog should appear
 
     Scenario: Sequential quick-creates produce incrementally numbered names
-      Given the project has no existing sprints
       When the user clicks "New sprint" in the product backlog page header
-      Then the first sprint should be named "Sprint 1"
-      When the user clicks "New sprint" in the product backlog page header again
-      Then the second sprint should be named "Sprint 2"
+      And the user clicks "New sprint" in the product backlog page header again
+      Then sprints named "Sprint 1" and "Sprint 2" should both appear as columns
 
-    Scenario: A quick-created sprint appears as a column in the product backlog table view
-      When the user clicks "New sprint" in the product backlog page header
-      Then a new sprint column should appear in the product backlog table view
-
-    Scenario: A quick-created sprint has "planned" status
-      When the user clicks "New sprint" in the product backlog page header
-      Then the new sprint should have status "planned"
-
-    Scenario: "New sprint" button is not visible to users without "Manage Sprints" permission
-      Given the user does not have the "Manage Sprints" project permission
-      Then the "New sprint" button should not be visible in the product backlog page header
+    Scenario: The "New sprint" button is not shown without "Manage Sprints" permission
+      Given a member of "E2E_SPRINT_CREATE" who only has the "View Sprints" project permission
+      When that member opens the product backlog of "E2E_SPRINT_CREATE"
+      Then the "New sprint" button should not be visible
 
   @authenticated
   Rule: Starting a sprint
 
     Background:
       Given the user already has a stored authenticated session
-      And a project named "E2E_START_SPRINT_PROJECT" exists
-      And the project has a planned sprint named "E2E_START_SPRINT"
-      And the user has the "View Sprints" project permission in "E2E_START_SPRINT_PROJECT"
-      And the user has the "Manage Sprints" project permission in "E2E_START_SPRINT_PROJECT"
-      And the user has navigated to the "Product Backlog" table view inside "E2E_START_SPRINT_PROJECT"
+      And a project named "E2E_SPRINT_START" exists
+      And the project has a draft sprint named "E2E_SPRINT_START_ME"
+      And the user has the "Manage Sprints" project permission in "E2E_SPRINT_START"
+      And the user has navigated to the product backlog of "E2E_SPRINT_START"
 
-    Scenario: "Start sprint" button appears in the header of a planned sprint column
-      Then the column header for "E2E_START_SPRINT" should contain a "Start sprint" button
+    Scenario: A draft sprint column header shows a "Start sprint" button
+      Then the column header for "E2E_SPRINT_START_ME" should contain a "Start sprint" button
 
-    Scenario: Clicking "Start sprint" opens the Start Sprint inline form
-      When the user clicks "Start sprint" in the "E2E_START_SPRINT" column header
-      Then the Start sprint inline form should open within the sprint column
+    Scenario: Clicking "Start sprint" opens the Start sprint modal with the sprint's fields
+      When the user clicks "Start sprint" in the "E2E_SPRINT_START_ME" column header
+      Then a "Start sprint" modal should open
+      And the "Name" field should contain "E2E_SPRINT_START_ME"
+      And the "Goal" field should be empty
+      And the "Start date" field should contain today's date
+      And the "End date" field should be empty
 
-    Scenario: Start Sprint inline form shows sprint name, goal, start date, and end date fields
-      When the user clicks "Start sprint" in the "E2E_START_SPRINT" column header
-      Then the form should display a pre-filled "Name" field containing "E2E_START_SPRINT"
-      And the form should contain an optional "Goal" text field
-      And the form should contain a "Start date" field pre-populated with today's date
-      And the form should contain an optional "End date" date field
-
-    Scenario: Submitting the inline form with only the default name starts the sprint
-      When the user clicks "Start sprint" in the "E2E_START_SPRINT" column header
-      And the user clicks "Start sprint" in the form without changing any fields
-      Then the inline form should close
-      And the page should navigate to the "E2E_START_SPRINT" sprint interaction page
-      And the sprint "E2E_START_SPRINT" should have status "active"
-
-    Scenario: Submitting the modal after setting goal and dates saves all values
-      When the user clicks "Start sprint" in the "E2E_START_SPRINT" column header
-      And the user fills the goal with "Deliver authentication"
-      And the user sets the start date to "2026-04-14"
-      And the user sets the due date to "2026-04-27"
+    Scenario: Starting with the default values activates the sprint and opens its page
+      When the user clicks "Start sprint" in the "E2E_SPRINT_START_ME" column header
       And the user clicks "Start sprint" in the modal
-      Then the sprint "E2E_START_SPRINT" should have status "active"
-      And the sprint "E2E_START_SPRINT" should have goal "Deliver authentication"
-      And the sprint "E2E_START_SPRINT" should have start date "2026-04-14" and due date "2026-04-27"
+      Then the page should navigate to the "E2E_SPRINT_START_ME" sprint page
+      And the sprint page should show an "Active" badge and a "Complete sprint" button
 
-    Scenario: Renaming the sprint in the Start Sprint inline form updates the sprint name
-      When the user clicks "Start sprint" in the "E2E_START_SPRINT" column header
-      And the user clears the name field and types "E2E_RENAMED_SPRINT"
-      And the user clicks "Start sprint" in the form
-      Then the sprint formerly named "E2E_START_SPRINT" should now be named "E2E_RENAMED_SPRINT"
-      And it should have status "active"
+    Scenario: Goal and dates entered in the modal are saved
+      When the user clicks "Start sprint" in the "E2E_SPRINT_START_ME" column header
+      And the user fills the goal with "Deliver authentication"
+      And the user sets the start date to "2026-04-14" and the end date to "2026-04-27"
+      And the user clicks "Start sprint" in the modal
+      Then the sprint should be active with goal "Deliver authentication"
+      And the sprint should have start date "2026-04-14" and end date "2026-04-27"
+      And the sprint page description should show the goal
 
-    Scenario: Cancelling the inline form leaves the sprint in planned state
-      When the user clicks "Start sprint" in the "E2E_START_SPRINT" column header
+    Scenario: Renaming the sprint in the Start sprint modal updates its name
+      When the user clicks "Start sprint" in the "E2E_SPRINT_START_ME" column header
+      And the user changes the name to "E2E_SPRINT_RENAMED"
+      And the user clicks "Start sprint" in the modal
+      Then the sprint page heading should read "E2E_SPRINT_RENAMED"
+
+    Scenario: An end date before the start date is rejected in the modal
+      When the user clicks "Start sprint" in the "E2E_SPRINT_START_ME" column header
+      And the user sets the start date to "2026-04-27" and the end date to "2026-04-14"
+      Then the modal should show "Due date can't be before the start date."
+      And the modal's "Start sprint" button should be disabled
+
+    Scenario: Cancelling the modal leaves the sprint as a draft
+      When the user clicks "Start sprint" in the "E2E_SPRINT_START_ME" column header
       And the user fills the goal with "Should not be saved"
-      And the user clicks "Cancel" in the form
-      Then the inline form should close
-      And the sprint "E2E_START_SPRINT" should still have status "planned"
+      And the user clicks "Cancel" in the modal
+      Then the modal should close
+      And the sprint should still be a draft with no goal
 
-    Scenario: "Start sprint" button is not shown on an active sprint column
-      Given the project has an active sprint named "E2E_ACTIVE_SPRINT_COL"
-      And the user has navigated to the "Product Backlog" table view inside "E2E_START_SPRINT_PROJECT"
-      Then the column header for "E2E_ACTIVE_SPRINT_COL" should not contain a "Start sprint" button
+    Scenario: An active sprint column header has no "Start sprint" button
+      Given the project has an active sprint named "E2E_SPRINT_START_ACTIVE"
+      When the user opens the product backlog of "E2E_SPRINT_START"
+      Then the column header for "E2E_SPRINT_START_ACTIVE" should not contain a "Start sprint" button
+
+    Scenario: A draft sprint can also be started from its own page
+      When the user opens the "E2E_SPRINT_START_ME" sprint page
+      Then the page header should contain a "Start sprint" button
+      When the user clicks "Start sprint" in the page header
+      And the user clicks "Start sprint" in the modal
+      Then the user should stay on the "E2E_SPRINT_START_ME" sprint page
+      And the page should show an "Active" badge and a "Complete sprint" button
+
+    Scenario: "Start sprint" is not offered without "Manage Sprints" permission
+      Given a member of "E2E_SPRINT_START" who only has the "View Sprints" project permission
+      When that member opens the product backlog of "E2E_SPRINT_START"
+      Then the column header for "E2E_SPRINT_START_ME" should not contain a "Start sprint" button
 
   @authenticated
   Rule: Completing a sprint
 
     Background:
       Given the user already has a stored authenticated session
-      And a project named "E2E_COMPLETE_SPRINT_PROJECT" exists
-      And the project has an active sprint named "E2E_COMPLETE_SPRINT"
-      And the project has a planned sprint named "E2E_NEXT_SPRINT"
-      And the sprint "E2E_COMPLETE_SPRINT" has incomplete tasks "E2E_INCOMPLETE_TASK_1" and "E2E_INCOMPLETE_TASK_2"
-      And the sprint "E2E_COMPLETE_SPRINT" has a completed task "E2E_DONE_TASK" with status category "done"
-      And the user has the "View Sprints" project permission in "E2E_COMPLETE_SPRINT_PROJECT"
-      And the user has the "Manage Sprints" project permission in "E2E_COMPLETE_SPRINT_PROJECT"
-      And the user has navigated to the "E2E_COMPLETE_SPRINT" sprint page inside "E2E_COMPLETE_SPRINT_PROJECT"
+      And a project named "E2E_SPRINT_COMPLETE" exists
+      And the project has an active sprint named "E2E_SPRINT_COMPLETE_ME"
+      And the project has a draft sprint named "E2E_SPRINT_NEXT"
+      And the active sprint has incomplete tasks "E2E_SPRINT_TASK_1" and "E2E_SPRINT_TASK_2"
+      And the active sprint has a done task "E2E_SPRINT_DONE_TASK"
+      And the user has the "Manage Sprints" project permission in "E2E_SPRINT_COMPLETE"
+      And the user has opened the "E2E_SPRINT_COMPLETE_ME" sprint page
 
-    Scenario: A "Complete sprint" button is visible on the sprint interaction page header
-      Then the sprint page header should contain a "Complete sprint" button
+    Scenario: The sprint page header shows the sprint name, status and a "Complete sprint" button
+      Then the page heading should read "E2E_SPRINT_COMPLETE_ME"
+      And the page should show an "Active" badge and a "Complete sprint" button
 
-    Scenario: Clicking "Complete sprint" opens the Complete Sprint inline panel
-      When the user clicks "Complete sprint" in the sprint page header
-      Then the Complete sprint inline panel should open alongside the sprint page
+    Scenario: Clicking "Complete sprint" opens a modal counting the incomplete tasks
+      When the user clicks "Complete sprint" in the page header
+      Then a "Complete sprint" modal should open
+      And it should say "2 incomplete tasks will be moved to:"
 
-    Scenario: Complete Sprint inline panel shows the sprint name and incomplete task count
-      When the user clicks "Complete sprint" in the sprint page header
-      Then the panel should display the sprint name "E2E_COMPLETE_SPRINT"
-      And the panel should indicate that 2 tasks are incomplete
+    Scenario: The modal offers the product backlog and every other unfinished sprint as destinations
+      When the user clicks "Complete sprint" in the page header
+      Then the modal should offer a "Product Backlog" option, selected by default
+      And the modal should offer an "E2E_SPRINT_NEXT" option with a "Draft" badge
+      And the modal should not offer "E2E_SPRINT_COMPLETE_ME" itself
 
-    Scenario: Complete Sprint inline panel offers a dropdown to select a destination sprint for incomplete tasks
-      When the user clicks "Complete sprint" in the sprint page header
-      Then the panel should contain a sprint selector for incomplete tasks
-      And the selector should list "E2E_NEXT_SPRINT" as an option
-      And the selector should include a "Product Backlog (no sprint)" option
+    Scenario: Completing with another sprint as destination moves the incomplete tasks there
+      When the user clicks "Complete sprint" in the page header
+      And the user selects "E2E_SPRINT_NEXT" as the destination
+      And the user clicks "Complete sprint" in the modal
+      Then the user should be taken to the product backlog
+      And "E2E_SPRINT_COMPLETE_ME" should have status "completed"
+      And "E2E_SPRINT_TASK_1" and "E2E_SPRINT_TASK_2" should belong to "E2E_SPRINT_NEXT"
 
-    Scenario: Confirming completion with a destination sprint moves incomplete tasks there
-      When the user clicks "Complete sprint" in the sprint page header
-      And the user selects "E2E_NEXT_SPRINT" as the destination for incomplete tasks
-      And the user clicks "Complete sprint" in the panel
-      Then the inline panel should close
-      And the sprint "E2E_COMPLETE_SPRINT" should have status "completed"
-      And "E2E_INCOMPLETE_TASK_1" should now be assigned to sprint "E2E_NEXT_SPRINT"
-      And "E2E_INCOMPLETE_TASK_2" should now be assigned to sprint "E2E_NEXT_SPRINT"
+    Scenario: Completing with the product backlog as destination unassigns the incomplete tasks
+      When the user clicks "Complete sprint" in the page header
+      And the user clicks "Complete sprint" in the modal
+      Then "E2E_SPRINT_COMPLETE_ME" should have status "completed"
+      And "E2E_SPRINT_TASK_1" and "E2E_SPRINT_TASK_2" should belong to no sprint
 
-    Scenario: Confirming completion with "Product Backlog" moves incomplete tasks to no sprint
-      When the user clicks "Complete sprint" in the sprint page header
-      And the user selects "Product Backlog (no sprint)" as the destination for incomplete tasks
-      And the user clicks "Complete sprint" in the panel
-      Then the inline panel should close
-      And the sprint "E2E_COMPLETE_SPRINT" should have status "completed"
-      And "E2E_INCOMPLETE_TASK_1" should have no sprint assigned
-      And "E2E_INCOMPLETE_TASK_2" should have no sprint assigned
+    Scenario: Done tasks stay on the completed sprint
+      When the user clicks "Complete sprint" in the page header
+      And the user clicks "Complete sprint" in the modal
+      Then "E2E_SPRINT_DONE_TASK" should still belong to "E2E_SPRINT_COMPLETE_ME"
 
-    Scenario: Completed tasks remain on the completed sprint after closing
-      When the user clicks "Complete sprint" in the sprint page header
-      And the user selects "Product Backlog (no sprint)" as the destination
-      And the user clicks "Complete sprint" in the panel
-      Then the task "E2E_DONE_TASK" should still be associated with sprint "E2E_COMPLETE_SPRINT"
+    Scenario: A completed sprint moves to the collapsed "Completed Sprints" sidebar section
+      When the user clicks "Complete sprint" in the page header
+      And the user clicks "Complete sprint" in the modal
+      Then the project sidebar should show a "Completed Sprints" section with a count of 1
+      When the user expands "Completed Sprints"
+      Then "E2E_SPRINT_COMPLETE_ME" should be listed under it
 
-    Scenario: Cancelling the Complete Sprint inline panel leaves the sprint active
-      When the user clicks "Complete sprint" in the sprint page header
-      And the user clicks "Cancel" in the complete sprint panel
-      Then the inline panel should close
-      And the sprint "E2E_COMPLETE_SPRINT" should still have status "active"
-      And "E2E_INCOMPLETE_TASK_1" should still be in sprint "E2E_COMPLETE_SPRINT"
+    Scenario: Cancelling the modal leaves the sprint active
+      When the user clicks "Complete sprint" in the page header
+      And the user clicks "Cancel" in the modal
+      Then the modal should close
+      And "E2E_SPRINT_COMPLETE_ME" should still have status "active"
+      And "E2E_SPRINT_TASK_1" should still belong to "E2E_SPRINT_COMPLETE_ME"
 
-    Scenario: Completed sprints do not appear in the project sidebar
-      When the sprint "E2E_COMPLETE_SPRINT" is completed
-      Then the project sidebar should not contain an entry for "E2E_COMPLETE_SPRINT"
+    Scenario: A sprint with no incomplete tasks shows a confirmation message and no destinations
+      Given the active sprint has no incomplete tasks
+      When the user clicks "Complete sprint" in the page header
+      Then the modal should say "No incomplete tasks remain in this sprint."
+      And the modal should not offer any destination options
+      And the modal should still contain "Complete sprint" and "Cancel" buttons
 
-    Scenario: "Complete sprint" button is not visible without "Manage Sprints" permission
-      Given the user does not have the "Manage Sprints" project permission
-      When the user navigates to the "E2E_COMPLETE_SPRINT" sprint page
-      Then the sprint page header should not contain a "Complete sprint" button
-
-    Scenario: Complete Sprint inline panel on a sprint with no incomplete tasks shows a confirmation message
-      Given the sprint "E2E_COMPLETE_SPRINT" has no incomplete tasks
-      When the user clicks "Complete sprint" in the sprint page header
-      Then the Complete sprint inline panel should open
-      And the panel should display "No incomplete tasks remain in this sprint."
-      And the panel should still contain a "Complete sprint" and a "Cancel" button
+    Scenario: "Complete sprint" is not offered without "Manage Sprints" permission
+      Given a member of "E2E_SPRINT_COMPLETE" who only has the "View Sprints" project permission
+      When that member opens the "E2E_SPRINT_COMPLETE_ME" sprint page
+      Then the page header should not contain a "Complete sprint" button
 
   @authenticated
   Rule: Sprint lifecycle state constraints
 
     Background:
       Given the user already has a stored authenticated session
-      And a project named "E2E_LIFECYCLE_CONSTRAINTS_PROJECT" exists
-      And the user has the "View Sprints" project permission in "E2E_LIFECYCLE_CONSTRAINTS_PROJECT"
-      And the user has the "Manage Sprints" project permission in "E2E_LIFECYCLE_CONSTRAINTS_PROJECT"
+      And a project named "E2E_SPRINT_STATE" exists
+      And the user has the "Manage Sprints" project permission in "E2E_SPRINT_STATE"
 
     Scenario: Multiple sprints can be active at the same time
-      Given the project has an active sprint named "E2E_ACTIVE_SPRINT_A"
-      And the project has a planned sprint named "E2E_PLANNED_SPRINT_B"
-      When the user starts "E2E_PLANNED_SPRINT_B"
-      Then both "E2E_ACTIVE_SPRINT_A" and "E2E_PLANNED_SPRINT_B" should have status "active"
+      Given the project has an active sprint named "E2E_SPRINT_ACTIVE_A"
+      And the project has a draft sprint named "E2E_SPRINT_DRAFT_B"
+      When the user starts "E2E_SPRINT_DRAFT_B" from the product backlog
+      Then the Start sprint modal should warn that "E2E_SPRINT_ACTIVE_A" is already active
+      And both "E2E_SPRINT_ACTIVE_A" and "E2E_SPRINT_DRAFT_B" should have status "active"
 
-    Scenario: A planned sprint can be deleted
-      Given the project has a planned sprint named "E2E_DELETE_PLANNED_SPRINT"
-      When the user deletes the sprint "E2E_DELETE_PLANNED_SPRINT"
-      Then the sprint should be removed from the project
+    Scenario: A draft sprint can be deleted and its tasks return to the product backlog
+      Given the project has a draft sprint named "E2E_SPRINT_DELETE_DRAFT" containing task "E2E_SPRINT_ORPHAN"
+      When the user opens the "E2E_SPRINT_DELETE_DRAFT" sprint page
+      And the user clicks "Edit sprint"
+      And the user clicks "Delete sprint" in the Edit sprint modal
+      Then a "Delete sprint?" confirmation naming "E2E_SPRINT_DELETE_DRAFT" should appear
+      When the user confirms with "Delete sprint"
+      Then the user should be taken to the product backlog
+      And "E2E_SPRINT_DELETE_DRAFT" should no longer exist
+      And "E2E_SPRINT_ORPHAN" should belong to no sprint
 
-    Scenario: An active sprint cannot be deleted
-      Given the project has an active sprint named "E2E_ACTIVE_NO_DELETE"
-      When the user attempts to delete the sprint "E2E_ACTIVE_NO_DELETE"
-      Then an error should indicate that active sprints cannot be deleted
+    Scenario: Cancelling the delete confirmation keeps the sprint
+      Given the project has a draft sprint named "E2E_SPRINT_KEEP_DRAFT"
+      When the user opens the "E2E_SPRINT_KEEP_DRAFT" sprint page
+      And the user clicks "Edit sprint"
+      And the user clicks "Delete sprint" in the Edit sprint modal
+      And the user cancels the "Delete sprint?" confirmation
+      Then "E2E_SPRINT_KEEP_DRAFT" should still exist
 
-    Scenario: A completed sprint is read-only and cannot be restarted
-      Given the project has a completed sprint named "E2E_COMPLETED_SPRINT"
-      When the user navigates to the "E2E_COMPLETED_SPRINT" sprint page
-      Then the sprint page header should not contain a "Start sprint" button
-      And the sprint page header should not contain a "Complete sprint" button
+    Scenario: An active sprint can be deleted too
+      Given the project has an active sprint named "E2E_SPRINT_DELETE_ACTIVE"
+      When the user deletes "E2E_SPRINT_DELETE_ACTIVE" through the Edit sprint modal
+      Then "E2E_SPRINT_DELETE_ACTIVE" should no longer exist
+
+    Scenario: A completed sprint can be opened but cannot be started or completed again
+      Given the project has a completed sprint named "E2E_SPRINT_DONE"
+      When the user opens the "E2E_SPRINT_DONE" sprint page
+      Then the page should show a "Completed" badge
+      And the page header should not contain a "Start sprint" button
+      And the page header should not contain a "Complete sprint" button
+
+    Scenario: Completing an already-completed sprint through the API is rejected
+      Given the project has a completed sprint named "E2E_SPRINT_DONE_API"
+      When the sprint is completed again through the API
+      Then the request should be rejected

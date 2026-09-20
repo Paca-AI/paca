@@ -108,16 +108,15 @@ Feature: Project management
   @authenticated
   Rule: Navigating into a project
 
-    Scenario: Clicking a project card opens the project dashboard
+    Scenario: Clicking a project card opens the project Timeline
       Given the user has access to project "E2E_NAV_PROJECT"
       When the user clicks the card for "E2E_NAV_PROJECT"
-      Then the user should be on the "E2E_NAV_PROJECT" dashboard page
+      Then the user should be redirected to the "E2E_NAV_PROJECT" Timeline page
 
-    Scenario: Project sidebar shows Dashboard, Interactions, Docs, Team, and Settings links
+    Scenario: Project sidebar shows Interactions, Documentation, Team, and Settings links
       Given the user is inside project "E2E_NAV_PROJECT"
-      Then the sidebar should contain a "Dashboard" link
-      And the sidebar should contain an "Interactions" link
-      And the sidebar should contain a "Docs" link
+      Then the sidebar should contain an "Interactions" section with "Timeline" and "Product Backlog" links
+      And the sidebar should contain a "Documentation" section
       And the sidebar should contain a "Team" link
       And the sidebar should contain a "Settings" link
 
@@ -377,8 +376,7 @@ Feature: Project management
 
     Scenario: Each project permission shows expected label and description
       When the user clicks the "New role" button
-      Then the "Read Project" permission should show description "View project details and settings"
-      And the "Edit Project" permission should show description "Update project name, description, and settings"
+      Then the "Edit Project" permission should show description "Update project name, description, and settings"
       And the "Delete Project" permission should show description "Permanently delete this project"
       And the "View Members" permission should show description "List and view project members"
       And the "Manage Members" permission should show description "Add, remove, and reassign project members"
@@ -391,8 +389,7 @@ Feature: Project management
 
     Scenario: All permission switches are off by default
       When the user clicks the "New role" button
-      Then the "Read Project" permission switch should be off
-      And the "Edit Project" permission switch should be off
+      Then the "Edit Project" permission switch should be off
       And the "Delete Project" permission switch should be off
       And the "View Members" permission switch should be off
       And the "Manage Members" permission switch should be off
@@ -433,13 +430,13 @@ Feature: Project management
       And the user clicks the "New role" button again
       Then all permission switches should be in their default state
 
-    Scenario: Permissions count in the table matches the granted permissions
+    Scenario: Granting every permission of an area lists it as an area wildcard
       When the user clicks the "New role" button
       And the user fills the role name with "E2E_COUNT_ROLE"
       And the user enables the "Edit Project" permission
       And the user enables the "Delete Project" permission
       And the user clicks "Create role"
-      Then the role "E2E_COUNT_ROLE" should show 2 active permissions
+      Then the role "E2E_COUNT_ROLE" should be listed with the single "projects.*" permission badge
       And the statistics bar should reflect the added permission grants
 
     Scenario: Toggling a permission on then off leaves it disabled

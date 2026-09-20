@@ -1,6 +1,7 @@
 // spec: features/projects/task-types.feature
 // seed: tests/seed.spec.ts
 
+import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
@@ -58,6 +59,7 @@ async function createTaskType(request: APIRequestContext, projectId: string, nam
 
 const signIn = async (page: Page) => {
   await page.goto(`${BASE_URL}/`);
+  await ensureLoginForm(page);
   await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
   await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
