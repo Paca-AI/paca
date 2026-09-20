@@ -23,6 +23,8 @@
   <a href="https://m.do.co/c/cce1c135acd1"><img src="https://opensource.nyc3.cdn.digitaloceanspaces.com/attribution/assets/PoweredByDO/DO_Powered_by_Badge_blue.svg" alt="Powered by DigitalOcean" height="40" /></a>
   &nbsp;&nbsp;
   <a href="https://app.virtuals.io/referral?code=rXZ9nf"><img src="https://os.virtuals.io/favicon.png" alt="Sponsored by Virtuals Protocol" height="40" /></a>
+  &nbsp;&nbsp;
+  <a href="https://fluxionai.world/register?source=github&campaign=github-paca&promo=PACA" title="Sponsored by Fluxion AI"><img src="docs/assets/fluxion-ai-logo.svg" alt="Sponsored by Fluxion AI" height="40" /></a>
 </p>
 
 <p align="center">
