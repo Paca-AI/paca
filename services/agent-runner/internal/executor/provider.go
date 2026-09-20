@@ -86,6 +86,24 @@ var providerAPIKeyEnvVar = map[string]string{
 	"nvidia_nim":        "NVIDIA_API_KEY",
 	"dashscope":         "DASHSCOPE_API_KEY",
 	"aiml":              "AIMLAPI_API_KEY",
+	// "fluxionai" (fluxionai.world) is an AI API gateway that fronts several
+	// upstream vendors' models (Claude, GPT, Gemini, Grok, GLM, Kimi, ...)
+	// behind its own key. It exposes both an OpenAI-compatible
+	// /v1/chat/completions route and an Anthropic-compatible /v1/messages
+	// route (confirmed live: both 401 "API key required" rather than 404,
+	// so both are real) — but this repo only has a working host-override
+	// mechanism for the former (buildAgentContainerEnv's OPENAI_HOST
+	// branch in executor.go, which only takes effect when GOOSE_PROVIDER
+	// resolves to "openai"; there is no equivalent override for a
+	// named/Anthropic-style provider like anthropic/zai/minimax). So
+	// "fluxionai" is deliberately keyed to OPENAI_API_KEY and aliased to
+	// "openai" below (gooseProviderID) rather than given its own
+	// GOOSE_PROVIDER id or routed through the Messages path — see
+	// data/llm_models.json's "fluxionai" entry, whose base_url
+	// ("https://fluxionai.world", no path) is exactly what OPENAI_HOST
+	// needs so Goose's own openai client resolves it to
+	// {base_url}/v1/chat/completions.
+	"fluxionai": "OPENAI_API_KEY",
 }
 
 // gooseProviderID translates a Paca llm_provider value onto the provider id
@@ -119,6 +137,10 @@ var providerAPIKeyEnvVar = map[string]string{
 //   - "aiml" -> "aimlapi": declarative/definitions/aimlapi.json; Paca's
 //     shorter pre-existing key is kept as-is for the same no-churn reason
 //     as friendliai/together_ai/nvidia_nim above.
+//   - "fluxionai" -> "openai": not a Goose-native provider at all — this is
+//     the deliberate "route through Goose's own openai client" case
+//     explained above providerAPIKeyEnvVar's "fluxionai" entry, not a
+//     same-vendor rename like the others in this list.
 var gooseProviderID = map[string]string{
 	"gemini":       "google",
 	"deepseek":     "custom_deepseek",
@@ -128,6 +150,7 @@ var gooseProviderID = map[string]string{
 	"nvidia_nim":   "nvidia",
 	"dashscope":    "alibaba",
 	"aiml":         "aimlapi",
+	"fluxionai":    "openai",
 }
 
 // resolveProviderEnv maps a Paca llm_provider value onto the Goose
