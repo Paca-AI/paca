@@ -29,6 +29,7 @@ const LLM_PROVIDER_LOGOS: Record<string, string> = {
 	bedrock: "/provider-logos/bedrock.svg",
 	meta_llama: "/provider-logos/meta_llama.svg",
 	vertex_ai: "/provider-logos/vertex_ai.svg",
+	fluxionai: "/provider-logos/fluxionai.svg",
 };
 
 // "custom" has no fixed provider identity, so it's intentionally unmapped —
