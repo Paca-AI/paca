@@ -110,14 +110,12 @@
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-6-astra",
-      "gpt-image-2",
       "grok-4.5",
       "grok-4.6",
       "grok-build",
       "grok-composer-2.5-fast",
       "kimi-k2.6",
-      "kimi-k3",
-      "nano-banana-2"
+      "kimi-k3"
     ],
     "base_url": "https://fluxionai.world"
   },
