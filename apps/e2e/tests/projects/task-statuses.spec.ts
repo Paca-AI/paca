@@ -603,6 +603,58 @@ test.describe('Task Statuses Management', () => {
       await expect(page.getByRole('table').getByText('E2E Delete Me', { exact: true })).toBeVisible();
     });
 
+    test('The default status cannot be deleted: its action is disabled with the reason, and the API refuses', async ({
+      page,
+      request,
+    }) => {
+      await authRequest(request);
+      const list = await request.get(`${BASE_URL}/api/v1/projects/${projectId}/task-statuses`);
+      const statuses: Array<{ id: string; name: string; is_default?: boolean }> = (await list.json()).data.items;
+      const defaultStatus = statuses.find((status) => status.is_default);
+      if (!defaultStatus) throw new Error('a new project has a default status');
+
+      await signIn(page);
+      await navigateToProjectSettings(page, projectId);
+      await page.getByRole('button', { name: 'Task Statuses' }).click();
+
+      // The default status keeps its edit action but not its delete action, and says why.
+      const defaultRow = page.getByRole('row').filter({ has: page.getByText(defaultStatus.name, { exact: true }) });
+      const remove = defaultRow.getByRole('button', { name: 'Delete status' });
+      await expect(remove).toBeDisabled();
+      await expect(defaultRow.getByRole('button', { name: 'Edit status' })).toBeEnabled();
+      await expect(remove.locator('xpath=..')).toHaveAttribute(
+        'title',
+        "The default status can't be deleted. Make another status the default first.",
+      );
+
+      // Every other status can still be deleted.
+      const otherRow = page.getByRole('row').filter({ hasText: 'E2E Delete Me' });
+      await expect(otherRow.getByRole('button', { name: 'Delete status' })).toBeEnabled();
+
+      // The server holds the line too, for anything that bypasses the page.
+      const refused = await request.delete(
+        `${BASE_URL}/api/v1/projects/${projectId}/task-statuses/${defaultStatus.id}`,
+      );
+      expect(refused.status()).toBe(409);
+      expect((await refused.json()).error_code).toBe('TASK_STATUS_IS_DEFAULT');
+    });
+
+    test('Making another status the default lets the old default be deleted', async ({ page }) => {
+      await signIn(page);
+      await navigateToProjectSettings(page, projectId);
+      await page.getByRole('button', { name: 'Task Statuses' }).click();
+
+      const newDefault = page.getByRole('row').filter({ hasText: 'E2E Delete Me' });
+      await newDefault.hover();
+      await newDefault.getByRole('button', { name: 'Set as default status' }).click();
+
+      // The star moves: the new default cannot be deleted, and the others can.
+      await expect(newDefault.getByText('Default', { exact: true })).toBeVisible();
+      await expect(newDefault.getByRole('button', { name: 'Delete status' })).toBeDisabled();
+      const backlog = page.getByRole('row').filter({ hasText: 'Backlog' }).first();
+      await expect(backlog.getByRole('button', { name: 'Delete status' })).toBeEnabled();
+    });
+
     test('Closing the delete-status dialog with the Close button keeps the status', async ({ page }) => {
       await signIn(page);
       await navigateToProjectSettings(page, projectId);

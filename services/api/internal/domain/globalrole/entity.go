@@ -12,6 +12,10 @@ type GlobalRole struct {
 	ID          uuid.UUID
 	Name        string
 	Permissions map[string]any
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// IsDefault marks the role a new user (and a new global agent) starts
+	// with. At most one role is the default, and it cannot be deleted; change
+	// it with Service.SetDefault.
+	IsDefault bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

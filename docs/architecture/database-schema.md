@@ -19,6 +19,7 @@ Interactive diagram: [https://dbdiagram.io/d/Paca-69c212ae78c6c4bc7a4fc190](http
 | `000017_add_agent_environment_variables.sql` | Adds `agent_environment_variables` (per-agent secret env vars, encrypted at rest). |
 | `000022_add_acp_agents.sql` | Adds ACP (Agent Client Protocol) agent support to `agents`: `agent_type` ('llm' \| 'acp'), `acp_provider`, `acp_command`, `acp_bridge_token_hash` — a second agent "shape" that delegates to a local coding CLI over a bridge daemon instead of running an LLM loop in-cluster. |
 | `000031_add_global_agents.sql` | Adds "global" agents — an agent with no owning project (`agents.project_id` nullable, `agent_scope` discriminator, `global_role_id`) that is instead attached to zero or more projects via ordinary `project_members` rows, the same mechanism used to add a human member. Adds `actor_user_id` to `agent_chat_sessions` and `agent_conversations` for chat sessions/conversations started from the home page or admin pages, outside any project. See the comment above the `agents` table below. |
+| `000059_add_default_global_role.sql` | Adds `global_roles.is_default` (one default at a time, enforced by the partial unique index `uq_global_roles_one_default`) and marks `USER` the default where none is set. The API used to hardcode the role *named* `USER` for every new account; the default is data now, changed with `PUT /admin/global-roles/:roleId/set-default`. |
 
 *(Migrations between `000008` and `000017`/`000022`/`000031` that touch other subsystems — tasks, sprints, docs, notifications, etc. — are omitted here; see `services/api/migrations/` for the full, authoritative list.)*
 
@@ -42,6 +43,7 @@ Table global_roles {
   id uuid [primary key]
   name varchar [unique, not null]
   permissions jsonb [not null]
+  is_default boolean [not null, default: false, note: 'The role new users and new global agents start with. At most one row (partial unique index uq_global_roles_one_default); the row that holds it cannot be deleted.']
   created_at timestamp
   updated_at timestamp
 }

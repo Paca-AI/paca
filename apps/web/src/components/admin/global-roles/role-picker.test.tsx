@@ -152,6 +152,57 @@ describe("RolePicker", () => {
 	});
 });
 
+describe("RolePicker — the default role", () => {
+	const DEFAULT_USER = makeRole(
+		"role-user",
+		"USER",
+		{ "tasks.read": true },
+		{ isDefault: true },
+	);
+
+	it("marks the role new accounts start with as the default", () => {
+		renderPicker({}, { roles: [DEFAULT_USER, ADMIN, ROOT] });
+
+		expect(
+			screen.getByRole("radio", { name: "USER" }),
+		).toHaveAccessibleDescription(/Default/);
+		expect(
+			screen.getByRole("radio", { name: "ADMIN" }),
+		).not.toHaveAccessibleDescription(/Default/);
+	});
+
+	it("keeps the default apart from the current role", () => {
+		renderPicker(
+			{ currentRoleName: "ADMIN" },
+			{ roles: [DEFAULT_USER, ADMIN, ROOT] },
+		);
+
+		const user = screen.getByRole("radio", { name: "USER" });
+		expect(user).toHaveAccessibleDescription(/Default/);
+		expect(user).not.toHaveAccessibleDescription(/Current/);
+		const admin = screen.getByRole("radio", { name: "ADMIN" });
+		expect(admin).toHaveAccessibleDescription(/Current/);
+		expect(admin).not.toHaveAccessibleDescription(/Default/);
+	});
+
+	it("marks a role that is both the current one and the default", () => {
+		renderPicker(
+			{ currentRoleName: "USER" },
+			{ roles: [DEFAULT_USER, ADMIN, ROOT] },
+		);
+
+		const user = screen.getByRole("radio", { name: "USER" });
+		expect(user).toHaveAccessibleDescription(/Current/);
+		expect(user).toHaveAccessibleDescription(/Default/);
+	});
+
+	it("marks nothing when no role is the default", () => {
+		renderPicker();
+
+		expect(screen.queryByText("Default")).not.toBeInTheDocument();
+	});
+});
+
 describe("RolePicker — a long list", () => {
 	// jsdom has no layout and no scrollIntoView; stub it to see what is asked for.
 	const original = Element.prototype.scrollIntoView;
@@ -182,17 +233,6 @@ describe("RolePicker — a long list", () => {
 		await userEvent.click(screen.getByRole("radio", { name: "ADMIN" }));
 
 		expect(scrollIntoView).not.toHaveBeenCalled();
-	});
-});
-
-describe("RolePicker — a custom badge on the current role", () => {
-	it("shows the given text instead of 'Current' (a new account's role is its default)", () => {
-		renderPicker({ currentRoleName: "USER", currentBadge: "Default" });
-
-		expect(
-			screen.getByRole("radio", { name: "USER" }),
-		).toHaveAccessibleDescription(/Default/);
-		expect(screen.queryByText("Current")).not.toBeInTheDocument();
 	});
 });
 

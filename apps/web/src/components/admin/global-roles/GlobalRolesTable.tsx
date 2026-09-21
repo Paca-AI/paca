@@ -1,8 +1,7 @@
-import { Edit2, Lock, Trash2 } from "lucide-react";
+import { Edit2, Lock, Star, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
 	activePermissions,
-	formatDate,
 	permissionBadgeClass,
 } from "@/components/admin/global-roles/utils";
 import { Button } from "@/components/ui/button";
@@ -21,6 +20,8 @@ interface GlobalRolesTableProps {
 	canWrite: boolean;
 	onEdit: (role: GlobalRole) => void;
 	onDelete: (role: GlobalRole) => void;
+	/** Opens the confirmation for making `role` the default. */
+	onSetDefault: (role: GlobalRole) => void;
 }
 
 export function GlobalRolesTable({
@@ -28,6 +29,7 @@ export function GlobalRolesTable({
 	canWrite,
 	onEdit,
 	onDelete,
+	onSetDefault,
 }: GlobalRolesTableProps) {
 	const { t } = useTranslation("admin");
 
@@ -43,10 +45,10 @@ export function GlobalRolesTable({
 							{t("globalRoles.table.columnPermissions")}
 						</TableHead>
 						<TableHead className="w-32 px-5 text-xs font-semibold uppercase tracking-wide">
-							{t("globalRoles.table.columnCreated")}
+							{t("globalRoles.table.columnDefault")}
 						</TableHead>
 						{canWrite ? (
-							<TableHead className="w-20 px-5 text-xs font-semibold uppercase tracking-wide" />
+							<TableHead className="w-28 px-5 text-xs font-semibold uppercase tracking-wide" />
 						) : null}
 					</TableRow>
 				</TableHeader>
@@ -81,12 +83,28 @@ export function GlobalRolesTable({
 										</div>
 									)}
 								</TableCell>
-								<TableCell className="px-5 text-sm text-muted-foreground">
-									{formatDate(role.created_at)}
+								<TableCell className="px-5">
+									{role.is_default ? (
+										<span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+											<Star className="size-3 fill-current" />
+											{t("globalRoles.table.default")}
+										</span>
+									) : null}
 								</TableCell>
 								{canWrite ? (
 									<TableCell className="px-5">
 										<div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+											{!role.is_default ? (
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													onClick={() => onSetDefault(role)}
+													title={t("globalRoles.table.setDefaultAction")}
+													aria-label={t("globalRoles.table.setDefaultAction")}
+												>
+													<Star className="size-3.5" />
+												</Button>
+											) : null}
 											<Button
 												variant="ghost"
 												size="icon-sm"
@@ -95,15 +113,33 @@ export function GlobalRolesTable({
 											>
 												<Edit2 className="size-3.5" />
 											</Button>
-											<Button
-												variant="ghost"
-												size="icon-sm"
-												className="text-destructive hover:text-destructive hover:bg-destructive/10"
-												onClick={() => onDelete(role)}
-												title={t("globalRoles.table.deleteAction")}
-											>
-												<Trash2 className="size-3.5" />
-											</Button>
+											{role.is_default ? (
+												// New users and agents start with the default role, so it can't
+												// go; the span carries the explanation a disabled button can't.
+												<span
+													title={t("globalRoles.table.deleteDefaultDisabled")}
+												>
+													<Button
+														variant="ghost"
+														size="icon-sm"
+														className="text-destructive"
+														disabled
+														aria-label={t("globalRoles.table.deleteAction")}
+													>
+														<Trash2 className="size-3.5" />
+													</Button>
+												</span>
+											) : (
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													className="text-destructive hover:text-destructive hover:bg-destructive/10"
+													onClick={() => onDelete(role)}
+													title={t("globalRoles.table.deleteAction")}
+												>
+													<Trash2 className="size-3.5" />
+												</Button>
+											)}
 										</div>
 									</TableCell>
 								) : null}

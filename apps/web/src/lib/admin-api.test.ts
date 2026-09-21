@@ -35,6 +35,7 @@ import {
 	globalRolesQueryOptions,
 	myPermissionsQueryOptions,
 	resetUserPassword,
+	setDefaultGlobalRole,
 	type User,
 	updateGlobalRole,
 	updateUser,
@@ -52,6 +53,7 @@ describe("admin-api", () => {
 				id: "r1",
 				name: "Admin",
 				permissions: { "users.manage": true },
+				is_default: false,
 				created_at: "2026-03-29T00:00:00.000Z",
 				updated_at: "2026-03-29T00:00:00.000Z",
 			},
@@ -64,6 +66,23 @@ describe("admin-api", () => {
 		expect(mockGet).toHaveBeenCalledWith("/admin/global-roles");
 	});
 
+	it("puts to set-default to make a role the default, and unwraps the role", async () => {
+		const role: GlobalRole = {
+			id: "r9",
+			name: "Member",
+			permissions: {},
+			is_default: true,
+			created_at: "2026-03-29T00:00:00.000Z",
+			updated_at: "2026-03-29T00:02:00.000Z",
+		};
+		mockPut.mockResolvedValue({
+			data: { data: role, error_code: null, message: "ok" },
+		});
+
+		await expect(setDefaultGlobalRole("r9")).resolves.toEqual(role);
+		expect(mockPut).toHaveBeenCalledWith("/admin/global-roles/r9/set-default");
+	});
+
 	it("posts payload to create role and unwraps response", async () => {
 		const payload = {
 			name: "Editor",
@@ -73,6 +92,7 @@ describe("admin-api", () => {
 			id: "r2",
 			name: "Editor",
 			permissions: payload.permissions,
+			is_default: false,
 			created_at: "2026-03-29T00:00:00.000Z",
 			updated_at: "2026-03-29T00:00:00.000Z",
 		};
@@ -93,6 +113,7 @@ describe("admin-api", () => {
 			id: "r3",
 			name: "Support",
 			permissions: payload.permissions,
+			is_default: false,
 			created_at: "2026-03-29T00:00:00.000Z",
 			updated_at: "2026-03-29T00:01:00.000Z",
 		};

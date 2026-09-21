@@ -26,7 +26,7 @@
 			"title": "创建 AI 智能体",
 			"step1Description": "设置智能体的身份",
 			"step2Description": "配置驱动智能体的 AI 模型",
-			"step3DescriptionGlobal": "为智能体选择全局角色（可选）",
+			"step3DescriptionGlobal": "{{name}} 已使用默认全局角色创建。可保持不变、选择其他角色，或将其移除。",
 			"step3DescriptionProject": "选择智能体在此项目中的角色",
 			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "从预设开始",
@@ -84,7 +84,7 @@
 			"optional": "（可选）",
 			"charsCount": "{{count}} 个字符",
 			"createFailed": "创建智能体失败，请重试。",
-			"roleNotAssigned": "智能体已创建，但无法分配角色。请重试，或选择“无全局角色”完成创建，稍后在智能体的“全局角色”标签页中分配。",
+			"noDefaultRole": "没有可授予新智能体的默认角色。请先在“全局角色”页面设置一个，然后重试。",
 			"cancel": "取消",
 			"continue": "继续",
 			"back": "返回",
@@ -964,6 +964,7 @@
 			"setAsDefault": "设为默认状态",
 			"editStatus": "编辑状态",
 			"deleteStatus": "删除状态",
+			"deleteDefaultDisabled": "无法删除默认状态。请先将其他状态设为默认。",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -988,6 +989,7 @@
 			"setAsDefault": "设为默认类型",
 			"editType": "编辑类型",
 			"deleteType": "删除类型",
+			"deleteDefaultDisabled": "无法删除默认类型。请先将其他类型设为默认。",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1091,6 +1093,7 @@
 			"confirmTextPrefix": "删除",
 			"confirmTextSuffix": "？使用此状态的任务将失去其状态。此操作无法撤销。",
 			"deleteFailed": "删除状态失败，请重试。",
+			"isDefault": "无法删除默认状态。请先将其他状态设为默认。",
 			"cancel": "取消",
 			"deleteStatus": "删除状态"
 		},
@@ -1181,6 +1184,7 @@
 			"confirmTextPrefix": "删除",
 			"confirmTextSuffix": "？使用此类型的任务将失去其类型分配。此操作无法撤销。",
 			"deleteFailed": "删除任务类型失败，请重试。",
+			"isDefault": "无法删除默认类型。请先将其他类型设为默认。",
 			"cancel": "取消",
 			"deleteType": "删除类型"
 		},

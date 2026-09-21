@@ -26,7 +26,7 @@
 			"title": "Tạo AI Agent",
 			"step1Description": "Thiết lập danh tính của agent",
 			"step2Description": "Cấu hình mô hình AI vận hành agent của bạn",
-			"step3DescriptionGlobal": "Chọn vai trò toàn cục cho agent (tùy chọn)",
+			"step3DescriptionGlobal": "{{name}} đã được tạo với vai trò toàn cục mặc định. Giữ nguyên, chọn vai trò khác hoặc gỡ bỏ.",
 			"step3DescriptionProject": "Chọn vai trò của agent trong dự án này",
 			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Bắt đầu từ một mẫu có sẵn",
@@ -84,7 +84,7 @@
 			"optional": "(tùy chọn)",
 			"charsCount": "{{count}} ký tự",
 			"createFailed": "Tạo agent thất bại. Vui lòng thử lại.",
-			"roleNotAssigned": "Agent đã được tạo nhưng không thể gán vai trò. Hãy thử lại hoặc chọn “Không có vai trò toàn cục” để hoàn tất và gán sau ở tab Vai trò toàn cục của agent.",
+			"noDefaultRole": "Chưa có vai trò mặc định để gán cho agent mới. Hãy đặt một vai trò ở trang Vai trò toàn cục rồi thử lại.",
 			"cancel": "Hủy",
 			"continue": "Tiếp tục",
 			"back": "Quay lại",
@@ -964,6 +964,7 @@
 			"setAsDefault": "Đặt làm trạng thái mặc định",
 			"editStatus": "Chỉnh sửa trạng thái",
 			"deleteStatus": "Xóa trạng thái",
+			"deleteDefaultDisabled": "Không thể xóa trạng thái mặc định. Hãy đặt một trạng thái khác làm mặc định trước.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -988,6 +989,7 @@
 			"setAsDefault": "Đặt làm loại mặc định",
 			"editType": "Chỉnh sửa loại",
 			"deleteType": "Xóa loại",
+			"deleteDefaultDisabled": "Không thể xóa loại mặc định. Hãy đặt một loại khác làm mặc định trước.",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1091,6 +1093,7 @@
 			"confirmTextPrefix": "Xóa",
 			"confirmTextSuffix": "? Nhiệm vụ đang dùng trạng thái này sẽ mất trạng thái của chúng. Hành động này không thể hoàn tác.",
 			"deleteFailed": "Xóa trạng thái thất bại. Vui lòng thử lại.",
+			"isDefault": "Không thể xóa trạng thái mặc định. Hãy đặt một trạng thái khác làm mặc định trước.",
 			"cancel": "Hủy",
 			"deleteStatus": "Xóa trạng thái"
 		},
@@ -1181,6 +1184,7 @@
 			"confirmTextPrefix": "Xóa",
 			"confirmTextSuffix": "? Nhiệm vụ đang dùng loại này sẽ mất gán loại của chúng. Hành động này không thể hoàn tác.",
 			"deleteFailed": "Xóa loại nhiệm vụ thất bại. Vui lòng thử lại.",
+			"isDefault": "Không thể xóa loại mặc định. Hãy đặt một loại khác làm mặc định trước.",
 			"cancel": "Hủy",
 			"deleteType": "Xóa loại"
 		},

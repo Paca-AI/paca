@@ -26,7 +26,7 @@
 			"title": "Créer un agent IA",
 			"step1Description": "Configurez l'identité de votre agent",
 			"step2Description": "Configurez le modèle d'IA qui alimente votre agent",
-			"step3DescriptionGlobal": "Choisissez un rôle global pour l'agent (facultatif)",
+			"step3DescriptionGlobal": "{{name}} a été créé avec le rôle global par défaut. Conservez-le, choisissez-en un autre ou retirez-le.",
 			"step3DescriptionProject": "Choisissez le rôle de l'agent dans ce projet",
 			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Démarrer à partir d'un préréglage",
@@ -84,7 +84,7 @@
 			"optional": "(optionnel)",
 			"charsCount": "{{count}} caractères",
 			"createFailed": "Échec de la création de l'agent. Veuillez réessayer.",
-			"roleNotAssigned": "L'agent a été créé, mais son rôle n'a pas pu être attribué. Réessayez, ou choisissez « Aucun rôle global » pour terminer et en attribuer un plus tard depuis l'onglet Rôle global de l'agent.",
+			"noDefaultRole": "Aucun rôle par défaut n'est défini pour le nouvel agent. Définissez-en un sur la page Rôles globaux, puis réessayez.",
 			"cancel": "Annuler",
 			"continue": "Continuer",
 			"back": "Retour",
@@ -964,6 +964,7 @@
 			"setAsDefault": "Définir comme statut par défaut",
 			"editStatus": "Modifier le statut",
 			"deleteStatus": "Supprimer le statut",
+			"deleteDefaultDisabled": "Le statut par défaut ne peut pas être supprimé. Définissez d'abord un autre statut par défaut.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -988,6 +989,7 @@
 			"setAsDefault": "Définir comme type par défaut",
 			"editType": "Modifier le type",
 			"deleteType": "Supprimer le type",
+			"deleteDefaultDisabled": "Le type par défaut ne peut pas être supprimé. Définissez d'abord un autre type par défaut.",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1091,6 +1093,7 @@
 			"confirmTextPrefix": "Supprimer",
 			"confirmTextSuffix": " ? Les tâches utilisant ce statut perdront leur statut. Cette action est irréversible.",
 			"deleteFailed": "Échec de la suppression du statut. Veuillez réessayer.",
+			"isDefault": "Le statut par défaut ne peut pas être supprimé. Définissez d'abord un autre statut par défaut.",
 			"cancel": "Annuler",
 			"deleteStatus": "Supprimer le statut"
 		},
@@ -1181,6 +1184,7 @@
 			"confirmTextPrefix": "Supprimer",
 			"confirmTextSuffix": " ? Les tâches utilisant ce type perdront leur attribution de type. Cette action est irréversible.",
 			"deleteFailed": "Échec de la suppression du type de tâche. Veuillez réessayer.",
+			"isDefault": "Le type par défaut ne peut pas être supprimé. Définissez d'abord un autre type par défaut.",
 			"cancel": "Annuler",
 			"deleteType": "Supprimer le type"
 		},

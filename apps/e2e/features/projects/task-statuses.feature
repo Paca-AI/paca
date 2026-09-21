@@ -194,3 +194,15 @@ Feature: Task statuses management
       When the user clicks "Delete status" for the status named "E2E Delete Me"
       And the user clicks the Close button on the dialog
       Then the statuses table should still contain a status named "E2E Delete Me"
+
+    Scenario: The default status cannot be deleted
+      Then the default status should show "Delete status" disabled with the reason "The default status can't be deleted. Make another status the default first."
+      And the default status should still offer "Edit status"
+      And the status named "E2E Delete Me" should offer "Delete status"
+      And the API should refuse to delete the default status with the code "TASK_STATUS_IS_DEFAULT"
+
+    Scenario: Making another status the default lets the old default be deleted
+      When the user clicks "Set as default status" for the status named "E2E Delete Me"
+      Then the status named "E2E Delete Me" should carry the "Default" mark
+      And the status named "E2E Delete Me" should show "Delete status" disabled
+      And the status named "Backlog" should offer "Delete status"

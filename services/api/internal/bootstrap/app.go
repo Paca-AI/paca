@@ -669,6 +669,24 @@ func seedDefaultRoles(
 		}
 	}
 
+	// New users and global agents start with the default role, so one must
+	// exist. A database from before the default flag, or one whose default was
+	// removed, gets USER (re-created above if it was deleted) as the default.
+	// A default someone has chosen is never overridden here.
+	if _, err := globalRoleRepo.FindDefault(ctx); err != nil {
+		if !errors.Is(err, globalroledom.ErrNoDefault) {
+			return fmt.Errorf("seed global roles: find default role: %w", err)
+		}
+		userRole, err := globalRoleRepo.FindByName(ctx, userdom.RoleUser)
+		if err != nil {
+			return fmt.Errorf("seed global roles: load %s role: %w", userdom.RoleUser, err)
+		}
+		if err := globalRoleRepo.SetDefault(ctx, userRole.ID); err != nil {
+			return fmt.Errorf("seed global roles: set default role: %w", err)
+		}
+		log.Info("no default global role was set; USER is now the default")
+	}
+
 	if err := seedDefaultProjectRoleTemplates(ctx, db); err != nil {
 		return err
 	}

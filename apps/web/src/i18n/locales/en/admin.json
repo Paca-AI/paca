@@ -66,7 +66,7 @@
 			"createTitle": "Create User",
 			"editDescription": "Update the user's display name and email.",
 			"createDescription": "A secure temporary password will be generated automatically. The user will be required to change it on first login.",
-			"roleStepDescription": "Choose a role for {{username}}. New accounts start as USER.",
+			"roleStepDescription": "{{username}} was created with the {{role}} role. Keep it, or choose a different one.",
 			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Username",
 			"usernamePlaceholder": "e.g. john.doe",
@@ -76,13 +76,9 @@
 			"emailOptionalHint": "(optional — sends a welcome email with a link to set their password)",
 			"emailPlaceholder": "e.g. john.doe@example.com",
 			"roleStep": {
-				"title": "Role",
-				"assigned": "Role assigned",
-				"failed": "The account was created, but its role couldn't be assigned. Try again, or assign it later from the users table.",
-				"retry": "Try again"
+				"title": "Role"
 			},
 			"cancel": "Cancel",
-			"back": "Back",
 			"continue": "Continue",
 			"saving": "Saving…",
 			"creating": "Creating…",
@@ -95,6 +91,7 @@
 				"emailTaken": "This email is already in use.",
 				"userNotFound": "User not found. They may have already been deleted.",
 				"forbidden": "You don't have permission to perform this action.",
+				"noDefaultRole": "There is no default role to give the new account. Set one on the Global Roles page, then try again.",
 				"internalError": "Something went wrong on the server. Please try again.",
 				"generic": "Something went wrong."
 			}
@@ -176,10 +173,13 @@
 		"table": {
 			"columnName": "Name",
 			"columnPermissions": "Permissions",
-			"columnCreated": "Created",
+			"columnDefault": "Default",
 			"noPermissionsAssigned": "No permissions assigned",
+			"default": "Default",
+			"setDefaultAction": "Set as default role",
 			"editAction": "Edit role",
-			"deleteAction": "Delete role"
+			"deleteAction": "Delete role",
+			"deleteDefaultDisabled": "The default role can't be deleted. Make another role the default first."
 		},
 		"formDialog": {
 			"editTitle": "Edit Role",
@@ -216,6 +216,7 @@
 			"errors": {
 				"roleNotFound": "This role no longer exists.",
 				"hasUsersWarning": "This role cannot be deleted because it is still assigned to one or more users.",
+				"isDefault": "The default role can't be deleted. Make another role the default first.",
 				"forbidden": "You don't have permission to delete this role.",
 				"internalError": "Something went wrong. Please try again.",
 				"generic": "Something went wrong."
@@ -289,6 +290,19 @@
 			"projects": "Projects",
 			"plugins": "Plugins",
 			"settings": "Settings"
+		},
+		"defaultDialog": {
+			"title": "Set default role",
+			"description": "New users and new global agents will start with the {{role}} role. Accounts that already exist keep the role they have.",
+			"fullAccessWarning": "This role grants every permission, so every account you create from now on would start with full access. Make sure that's what you want.",
+			"cancel": "Cancel",
+			"confirm": "Set as default",
+			"confirming": "Saving…",
+			"errors": {
+				"roleNotFound": "This role no longer exists.",
+				"forbidden": "You don't have permission to change the default role.",
+				"generic": "Something went wrong. Please try again."
+			}
 		}
 	},
 	"rolePicker": {

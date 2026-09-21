@@ -26,7 +26,7 @@
 			"title": "AI 에이전트 생성",
 			"step1Description": "에이전트의 정체성을 설정하세요",
 			"step2Description": "에이전트를 구동할 AI 모델을 구성하세요",
-			"step3DescriptionGlobal": "에이전트의 전역 역할을 선택하세요 (선택 사항)",
+			"step3DescriptionGlobal": "{{name}}이(가) 기본 전역 역할로 생성되었습니다. 그대로 두거나 다른 역할을 선택하거나 제거할 수 있습니다.",
 			"step3DescriptionProject": "이 프로젝트에서 에이전트의 역할을 선택하세요",
 			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "프리셋으로 시작",
@@ -84,7 +84,7 @@
 			"optional": "(선택사항)",
 			"charsCount": "{{count}}자",
 			"createFailed": "에이전트 생성에 실패했습니다. 다시 시도해 주세요.",
-			"roleNotAssigned": "에이전트는 생성되었지만 역할을 할당하지 못했습니다. 다시 시도하거나 '전역 역할 없음'을 선택해 마친 뒤 나중에 에이전트의 '전역 역할' 탭에서 할당하세요.",
+			"noDefaultRole": "새 에이전트에 부여할 기본 역할이 없습니다. 전역 역할 페이지에서 설정한 후 다시 시도하세요.",
 			"cancel": "취소",
 			"continue": "계속",
 			"back": "뒤로",
@@ -964,6 +964,7 @@
 			"setAsDefault": "기본 상태로 설정",
 			"editStatus": "상태 수정",
 			"deleteStatus": "상태 삭제",
+			"deleteDefaultDisabled": "기본 상태는 삭제할 수 없습니다. 먼저 다른 상태를 기본값으로 설정하세요.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -988,6 +989,7 @@
 			"setAsDefault": "기본 유형으로 설정",
 			"editType": "유형 수정",
 			"deleteType": "유형 삭제",
+			"deleteDefaultDisabled": "기본 유형은 삭제할 수 없습니다. 먼저 다른 유형을 기본값으로 설정하세요.",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1091,6 +1093,7 @@
 			"confirmTextPrefix": "삭제",
 			"confirmTextSuffix": "? 이 상태를 사용하는 작업은 상태를 잃게 됩니다. 이 작업은 되돌릴 수 없습니다.",
 			"deleteFailed": "상태 삭제에 실패했습니다. 다시 시도해 주세요.",
+			"isDefault": "기본 상태는 삭제할 수 없습니다. 먼저 다른 상태를 기본값으로 설정하세요.",
 			"cancel": "취소",
 			"deleteStatus": "상태 삭제"
 		},
@@ -1181,6 +1184,7 @@
 			"confirmTextPrefix": "삭제",
 			"confirmTextSuffix": "? 이 유형을 사용하는 작업은 유형 배정을 잃게 됩니다. 이 작업은 되돌릴 수 없습니다.",
 			"deleteFailed": "작업 유형 삭제에 실패했습니다. 다시 시도해 주세요.",
+			"isDefault": "기본 유형은 삭제할 수 없습니다. 먼저 다른 유형을 기본값으로 설정하세요.",
 			"cancel": "취소",
 			"deleteType": "유형 삭제"
 		},

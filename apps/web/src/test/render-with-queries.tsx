@@ -12,11 +12,13 @@ export function makeRole(
 	id: string,
 	name: string,
 	permissions: Record<string, boolean> = {},
+	{ isDefault = false }: { isDefault?: boolean } = {},
 ): GlobalRole {
 	return {
 		id,
 		name,
 		permissions,
+		is_default: isDefault,
 		created_at: "2026-01-01T00:00:00.000Z",
 		updated_at: "2026-01-01T00:00:00.000Z",
 	};

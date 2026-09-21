@@ -26,7 +26,7 @@
 			"title": "AIエージェントを作成",
 			"step1Description": "エージェントの名前を設定します",
 			"step2Description": "エージェントを動かすAIモデルを構成します",
-			"step3DescriptionGlobal": "エージェントのグローバルロールを選択します（任意）",
+			"step3DescriptionGlobal": "{{name}} は既定のグローバルロールで作成されました。そのままにするか、別のロールを選ぶか、削除できます。",
 			"step3DescriptionProject": "このプロジェクトでのエージェントのロールを選択します",
 			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "プリセットから開始",
@@ -84,7 +84,7 @@
 			"optional": "（任意）",
 			"charsCount": "{{count}}文字",
 			"createFailed": "エージェントの作成に失敗しました。もう一度お試しください。",
-			"roleNotAssigned": "エージェントは作成されましたが、ロールを割り当てられませんでした。もう一度お試しいただくか、「グローバルロールなし」を選んで完了し、後でエージェントの「グローバルロール」タブから割り当ててください。",
+			"noDefaultRole": "新しいエージェントに付与する既定のロールがありません。グローバルロールのページで設定してから、もう一度お試しください。",
 			"cancel": "キャンセル",
 			"continue": "続ける",
 			"back": "戻る",
@@ -964,6 +964,7 @@
 			"setAsDefault": "既定のステータスに設定",
 			"editStatus": "ステータスを編集",
 			"deleteStatus": "ステータスを削除",
+			"deleteDefaultDisabled": "既定のステータスは削除できません。先に別のステータスを既定に設定してください。",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -988,6 +989,7 @@
 			"setAsDefault": "既定のタイプに設定",
 			"editType": "タイプを編集",
 			"deleteType": "タイプを削除",
+			"deleteDefaultDisabled": "既定のタイプは削除できません。先に別のタイプを既定に設定してください。",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1091,6 +1093,7 @@
 			"confirmTextPrefix": "削除しますか:",
 			"confirmTextSuffix": "？このステータスを使用しているタスクはステータスを失います。この操作は取り消せません。",
 			"deleteFailed": "ステータスの削除に失敗しました。もう一度お試しください。",
+			"isDefault": "既定のステータスは削除できません。先に別のステータスを既定に設定してください。",
 			"cancel": "キャンセル",
 			"deleteStatus": "ステータスを削除"
 		},
@@ -1181,6 +1184,7 @@
 			"confirmTextPrefix": "削除しますか:",
 			"confirmTextSuffix": "？このタイプを使用しているタスクはタイプの割り当てを失います。この操作は取り消せません。",
 			"deleteFailed": "タスクタイプの削除に失敗しました。もう一度お試しください。",
+			"isDefault": "既定のタイプは削除できません。先に別のタイプを既定に設定してください。",
 			"cancel": "キャンセル",
 			"deleteType": "タイプを削除"
 		},

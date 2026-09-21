@@ -10,8 +10,9 @@ import (
 )
 
 // CreateInput carries the data needed to create a new user. A new account
-// always starts with the default RoleUser: assigning any other global role is
-// a separate action (global_roles.assign) done through the global-role
+// always starts with the default global role (the one marked as the default,
+// see globalroledom.Service.SetDefault): assigning any other global role is a
+// separate action (global_roles.assign) done through the global-role
 // assignment route, so creation deliberately has no role to set.
 // MustChangePassword defaults to false when omitted.
 type CreateInput struct {

@@ -50,7 +50,7 @@
 			"createTitle": "创建用户",
 			"editDescription": "更新用户的显示名称和电子邮件。",
 			"createDescription": "系统将自动生成一个安全的临时密码。用户将在首次登录时被要求修改密码。",
-			"roleStepDescription": "为 {{username}} 选择角色。新账户默认为 USER。",
+			"roleStepDescription": "{{username}} 已创建，角色为 {{role}}。可保持不变，也可选择其他角色。",
 			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "用户名",
 			"usernamePlaceholder": "例如：john.doe",
@@ -60,13 +60,9 @@
 			"emailOptionalHint": "（可选 — 将发送包含设置密码链接的欢迎邮件）",
 			"emailPlaceholder": "例如：john.doe@example.com",
 			"roleStep": {
-				"title": "角色",
-				"assigned": "角色已分配",
-				"failed": "账户已创建，但无法分配角色。请重试，或稍后在用户列表中分配。",
-				"retry": "重试"
+				"title": "角色"
 			},
 			"cancel": "取消",
-			"back": "返回",
 			"continue": "继续",
 			"saving": "正在保存…",
 			"creating": "正在创建…",
@@ -79,6 +75,7 @@
 				"emailTaken": "该邮箱已被占用。",
 				"userNotFound": "未找到该用户，可能已被删除。",
 				"forbidden": "您没有权限执行此操作。",
+				"noDefaultRole": "没有可授予新账户的默认角色。请先在“全局角色”页面设置一个，然后重试。",
 				"internalError": "服务器出现错误，请重试。",
 				"generic": "出现错误。"
 			}
@@ -160,10 +157,13 @@
 		"table": {
 			"columnName": "名称",
 			"columnPermissions": "权限",
-			"columnCreated": "创建时间",
+			"columnDefault": "默认",
 			"noPermissionsAssigned": "未分配权限",
+			"default": "默认",
+			"setDefaultAction": "设为默认角色",
 			"editAction": "编辑角色",
-			"deleteAction": "删除角色"
+			"deleteAction": "删除角色",
+			"deleteDefaultDisabled": "无法删除默认角色。请先将其他角色设为默认。"
 		},
 		"formDialog": {
 			"editTitle": "编辑角色",
@@ -200,6 +200,7 @@
 			"errors": {
 				"roleNotFound": "该角色已不存在。",
 				"hasUsersWarning": "该角色仍被分配给一个或多个用户，无法删除。",
+				"isDefault": "无法删除默认角色。请先将其他角色设为默认。",
 				"forbidden": "您没有权限删除该角色。",
 				"internalError": "出现错误，请重试。",
 				"generic": "出现错误。"
@@ -273,6 +274,19 @@
 			"projects": "项目",
 			"plugins": "插件",
 			"settings": "设置"
+		},
+		"defaultDialog": {
+			"title": "设置默认角色",
+			"description": "新用户和新的全局智能体将以 {{role}} 角色起步。已有账户保持其当前角色不变。",
+			"fullAccessWarning": "该角色拥有所有权限，此后创建的每个账户都将以完全访问权限起步。请确认这是你想要的。",
+			"cancel": "取消",
+			"confirm": "设为默认",
+			"confirming": "保存中…",
+			"errors": {
+				"roleNotFound": "该角色已不存在。",
+				"forbidden": "你没有权限更改默认角色。",
+				"generic": "出现错误，请重试。"
+			}
 		}
 	},
 	"rolePicker": {

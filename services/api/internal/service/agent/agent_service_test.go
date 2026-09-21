@@ -686,7 +686,8 @@ var _ pluginFinder = (*mockPluginRepo)(nil)
 // "unwired — skip validation" branch instead, so there's no need for every
 // existing CreateGlobalAgent/UpdateGlobalAgent test to configure one.
 type mockGlobalRoleFinder struct {
-	findByID func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+	findByID    func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+	findDefault func(ctx context.Context) (*globalroledom.GlobalRole, error)
 }
 
 func (m *mockGlobalRoleFinder) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
@@ -694,6 +695,16 @@ func (m *mockGlobalRoleFinder) FindByID(ctx context.Context, id uuid.UUID) (*glo
 		return m.findByID(ctx, id)
 	}
 	return nil, globalroledom.ErrNotFound
+}
+
+// FindDefault reports no default unless a test configures one, so a test that
+// wires this double only for the role-existence check creates agents without a
+// role, as before.
+func (m *mockGlobalRoleFinder) FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error) {
+	if m.findDefault != nil {
+		return m.findDefault(ctx)
+	}
+	return nil, globalroledom.ErrNoDefault
 }
 
 var _ globalRoleFinder = (*mockGlobalRoleFinder)(nil)
@@ -1244,8 +1255,9 @@ func TestCreateGlobalAgent_Success(t *testing.T) {
 	assert.Equal(t, "Global Bot", result.Name)
 	assert.Equal(t, agentdom.AgentScopeGlobal, result.AgentScope)
 	assert.Equal(t, uuid.Nil, result.ProjectID)
-	// A new global agent holds no global role: it is bound afterwards with
-	// SetGlobalAgentRole, behind global_roles.assign.
+	// Without a default-role lookup wired, a new global agent holds no global
+	// role; a different one is bound afterwards with SetGlobalAgentRole,
+	// behind global_roles.assign.
 	assert.Nil(t, result.GlobalRoleID)
 	// The agent handed to the repo must carry the same scope, not just the
 	// returned value — CreateGlobalAgent must never fall back to
@@ -1255,6 +1267,85 @@ func TestCreateGlobalAgent_Success(t *testing.T) {
 		assert.Equal(t, uuid.Nil, created.ProjectID)
 		assert.Nil(t, created.GlobalRoleID)
 	}
+}
+
+// A new global agent starts with the default global role, the same one a new
+// user gets, so it is never left with no permissions by accident. Choosing a
+// different role is a separate request (SetGlobalAgentRole).
+func TestCreateGlobalAgent_StartsWithTheDefaultRole(t *testing.T) {
+	defaultRole := &globalroledom.GlobalRole{ID: uuid.New(), Name: "MEMBER", IsDefault: true}
+	var created *agentdom.Agent
+	repo := &mockAgentRepo{
+		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createGlobalAgent: func(_ context.Context, a *agentdom.Agent) error {
+			created = a
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithGlobalRoleService(
+		&mockGlobalRoleFinder{
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) { return defaultRole, nil },
+		},
+	)
+
+	result, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
+		Name: "Global Bot", Handle: "global-bot", LLMProvider: "openai", LLMModel: "gpt-4", LLMAPIKey: "sk-test",
+	})
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, result.GlobalRoleID) {
+		assert.Equal(t, defaultRole.ID, *result.GlobalRoleID)
+	}
+	// What was stored is what came back: the role is part of the insert, not a
+	// later, separate write that could be skipped.
+	if assert.NotNil(t, created) && assert.NotNil(t, created.GlobalRoleID) {
+		assert.Equal(t, defaultRole.ID, *created.GlobalRoleID)
+	}
+}
+
+func TestCreateGlobalAgent_NoDefaultRoleMeansNoRole(t *testing.T) {
+	repo := &mockAgentRepo{
+		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createGlobalAgent: func(_ context.Context, _ *agentdom.Agent) error { return nil },
+	}
+	// No default is set: a valid state for an agent (it just has no global
+	// permissions), unlike a user, which cannot exist without a role.
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithGlobalRoleService(&mockGlobalRoleFinder{})
+
+	result, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
+		Name: "Global Bot", Handle: "global-bot", LLMProvider: "openai", LLMModel: "gpt-4", LLMAPIKey: "sk-test",
+	})
+
+	assert.NoError(t, err)
+	assert.Nil(t, result.GlobalRoleID)
+}
+
+func TestCreateGlobalAgent_DefaultRoleLookupFailureFailsTheCreate(t *testing.T) {
+	lookupErr := errors.New("db down")
+	repo := &mockAgentRepo{
+		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createGlobalAgent: func(_ context.Context, _ *agentdom.Agent) error {
+			t.Fatal("the agent must not be stored when its default role could not be resolved")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithGlobalRoleService(
+		&mockGlobalRoleFinder{
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) { return nil, lookupErr },
+		},
+	)
+
+	_, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
+		Name: "Global Bot", Handle: "global-bot", LLMProvider: "openai", LLMModel: "gpt-4", LLMAPIKey: "sk-test",
+	})
+
+	assert.ErrorIs(t, err, lookupErr)
 }
 
 func TestCreateGlobalAgent_HandleTaken(t *testing.T) {

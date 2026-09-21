@@ -179,6 +179,10 @@ func New(deps Deps) http.Handler {
 				r.With(require.Global(authz.PermissionGlobalRolesWrite)).Post("/global-roles", deps.GlobalRole.Create)
 				r.With(require.Global(authz.PermissionGlobalRolesWrite)).Patch("/global-roles/{roleId}", deps.GlobalRole.Update)
 				r.With(require.Global(authz.PermissionGlobalRolesWrite)).Delete("/global-roles/{roleId}", deps.GlobalRole.Delete)
+				// The default is a property of the role definition, so setting it is
+				// global_roles.write like editing the role; it changes which role
+				// new users and agents *start with*, not who holds what today.
+				r.With(require.Global(authz.PermissionGlobalRolesWrite)).Put("/global-roles/{roleId}/set-default", deps.GlobalRole.SetDefault)
 				r.With(require.Global(authz.PermissionGlobalRolesAssign)).Put("/users/{userId}/global-roles", deps.GlobalRole.ReplaceUserRoles)
 
 				// Global agent management — CRUD for AgentScopeGlobal agents,

@@ -23,7 +23,14 @@ type Service interface {
 	List(ctx context.Context) ([]*GlobalRole, error)
 	Create(ctx context.Context, in CreateInput) (*GlobalRole, error)
 	Update(ctx context.Context, id uuid.UUID, in UpdateInput) (*GlobalRole, error)
+	// Delete removes a role. It refuses the default role (ErrIsDefault) and a
+	// role that users or global agents still hold (ErrHasAssignedUsers).
 	Delete(ctx context.Context, id uuid.UUID) error
+	// SetDefault makes id the role new users and global agents start with,
+	// replacing the previous default, and returns it.
+	SetDefault(ctx context.Context, id uuid.UUID) (*GlobalRole, error)
+	// FindDefault returns the default role, or ErrNoDefault.
+	FindDefault(ctx context.Context) (*GlobalRole, error)
 	ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) ([]*GlobalRole, error)
 	// FindByID returns a single global role by its primary key. Global roles
 	// have no project-ownership dimension to check (unlike project roles) —

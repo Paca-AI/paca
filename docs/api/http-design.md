@@ -118,15 +118,16 @@ In the **Auth** column, permissions joined by `+` are all required, and the perm
 | `PATCH` | `/api/v1/users/me` | Access token (fresh) | Update mutable profile fields (`full_name`) for the caller. |
 | `GET` | `/api/v1/users/me/global-permissions` | Access token (fresh) | Return the authenticated caller's effective global permissions. |
 | `GET` | `/api/v1/admin/users` | Access token (fresh) + `users.read` | List all users with pagination. |
-| `POST` | `/api/v1/admin/users` | Access token (fresh) + `users.write` | Create a new user account with the default `USER` role. Sets `must_change_password = true`. A `role` in the body is rejected with `400`. |
+| `POST` | `/api/v1/admin/users` | Access token (fresh) + `users.write` | Create a new user account with the default global role (the one marked `is_default`, `USER` unless changed). Sets `must_change_password = true`. A `role` in the body is rejected with `400`. Fails with `409 GLOBAL_ROLE_NO_DEFAULT` if no role is the default. |
 | `GET` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.read` | Get a user profile by ID. |
 | `PATCH` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.write` | Update a user's `full_name` or `email`. A `role` in the body is rejected with `400`; change roles with `PUT .../global-roles`. |
 | `PATCH` | `/api/v1/admin/users/:userId/password` | Access token (fresh) + `users.write` | Admin password reset. Sets `must_change_password = true`. |
 | `DELETE` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.delete` | Soft-delete a user account. |
-| `GET` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.read` | List available global roles and permissions. |
+| `GET` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.read` | List available global roles and permissions. Exactly one carries `is_default = true`. |
 | `POST` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.write` | Create a new global role definition. |
 | `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Update a global role definition. |
-| `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Remove a global role definition. Fails with `409` if users are assigned to it. |
+| `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Remove a global role definition. Fails with `409 GLOBAL_ROLE_IS_DEFAULT` for the default role, and with `409 GLOBAL_ROLE_HAS_ASSIGNED_USERS` if users or global agents are assigned to it. |
+| `PUT` | `/api/v1/admin/global-roles/:roleId/set-default` | Access token (fresh) + `global_roles.write` | Make a role the default that new users and new global agents start with, clearing the flag on the previous default. Returns the role. |
 | `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token (fresh) + `global_roles.assign` | Assign or replace the single global role for a user. The only route that changes a user's role. |
 | `PUT` | `/api/v1/admin/agents/:agentId/global-role` | Access token (fresh) + `agents.write` + `global_roles.assign` | Bind a global agent to the global role that decides what it may do. The only route that sets one. |
 | `DELETE` | `/api/v1/admin/agents/:agentId/global-role` | Access token (fresh) + `agents.write` + `global_roles.assign` | Unbind a global agent from its global role. |
@@ -146,11 +147,13 @@ In the **Auth** column, permissions joined by `+` are all required, and the perm
 | `GET` | `/api/v1/projects/:projectId/task-types` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project | List task type definitions. System types (`is_system = true`) are included in the response but are marked as non-editable. |
 | `POST` | `/api/v1/projects/:projectId/task-types` | Access token (fresh) + `project.settings.task_types.write` | Create a task type (e.g. story, bug, chore). Cannot be used to create system types (Epic, Subtask) — returns `400 TASK_TYPE_SYSTEM_TYPE_NOT_ALLOWED`. |
 | `PATCH` | `/api/v1/projects/:projectId/task-types/:typeId` | Access token (fresh) + `project.settings.task_types.write` | Update a task type. Returns `409 TASK_TYPE_IS_SYSTEM` if the target type is a system type. |
-| `DELETE` | `/api/v1/projects/:projectId/task-types/:typeId` | Access token (fresh) + `project.settings.task_types.write` | Delete a task type. Returns `409 TASK_TYPE_IS_SYSTEM` if the target type is a system type. |
+| `DELETE` | `/api/v1/projects/:projectId/task-types/:typeId` | Access token (fresh) + `project.settings.task_types.write` | Delete a task type. Returns `409 TASK_TYPE_IS_SYSTEM` if the target type is a system type, and `409 TASK_TYPE_IS_DEFAULT` if it is the project's default type. |
+| `PUT` | `/api/v1/projects/:projectId/task-types/:typeId/set-default` | Access token (fresh) + `project.settings.task_types.write` | Make a task type the default that new tasks get, clearing the flag on the previous default. |
 | `GET` | `/api/v1/projects/:projectId/task-statuses` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project | List workflow statuses in board order. |
 | `POST` | `/api/v1/projects/:projectId/task-statuses` | Access token (fresh) + `project.settings.task_statuses.write` | Create a workflow status. |
 | `PATCH` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Access token (fresh) + `project.settings.task_statuses.write` | Update a workflow status. |
-| `DELETE` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Access token (fresh) + `project.settings.task_statuses.write` | Delete a workflow status. |
+| `DELETE` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Access token (fresh) + `project.settings.task_statuses.write` | Delete a workflow status. Returns `409 TASK_STATUS_IS_DEFAULT` if it is the project's default status. |
+| `PUT` | `/api/v1/projects/:projectId/task-statuses/:statusId/set-default` | Access token (fresh) + `project.settings.task_statuses.write` | Make a status the default that new tasks start in, clearing the flag on the previous default. |
 | `GET` | `/api/v1/projects/:projectId/sprints` | Access token (fresh) + `sprints.read` (or global `projects.read`); anonymous on a public project | List sprints for a project ordered by creation date. |
 | `POST` | `/api/v1/projects/:projectId/sprints` | Access token (fresh) + `sprints.write` | Quick-create a sprint with a system-generated default name ("Sprint N"). No request body required. The sprint is created with `status = planned`. |
 | `GET` | `/api/v1/projects/:projectId/sprints/:sprintId` | Access token (fresh) + `sprints.read` (or global `projects.read`); anonymous on a public project | Get sprint details (goal, dates, status). |
@@ -396,11 +399,12 @@ Success response data:
 
 Function:
 
-- create a new user account with the default `USER` role;
+- create a new user account with the default global role (see `PUT /api/v1/admin/global-roles/:roleId/set-default`; `USER` until another role is made the default);
+- return `409 GLOBAL_ROLE_NO_DEFAULT` if no role is the default, rather than guessing one;
 - hash password before persistence;
 - set `must_change_password = true` so the user is required to change their password on first login.
 
-Assigning a role is a separate privilege (`global_roles.assign`) with its own route, so this body has no `role`: sending one is rejected with `400`. To create a user with another role, create the account and then call `PUT /api/v1/admin/users/:userId/global-roles`.
+Assigning a role is a separate privilege (`global_roles.assign`) with its own route, so this body has no `role`: sending one is rejected with `400`. The account always starts with the default role, whatever the caller may assign. To give it another role, create the account and then call `PUT /api/v1/admin/users/:userId/global-roles`.
 
 Request body:
 
@@ -473,7 +477,7 @@ Success response: `204 No Content`
 Function:
 
 - list global role definitions;
-- return each role with its assigned permission map.
+- return each role with its assigned permission map and whether it is the default (`is_default`).
 
 ### `POST /api/v1/admin/global-roles`
 
@@ -505,7 +509,19 @@ Function:
 Function:
 
 - remove a global role definition;
-- returns `409 GLOBAL_ROLE_HAS_ASSIGNED_USERS` if any users are currently assigned to the role — reassign users first.
+- returns `409 GLOBAL_ROLE_IS_DEFAULT` if the role is the default — new users and global agents start with it, so make another role the default first;
+- returns `409 GLOBAL_ROLE_HAS_ASSIGNED_USERS` if any users or global agents are currently assigned to the role — reassign them first.
+
+### `PUT /api/v1/admin/global-roles/:roleId/set-default`
+
+Function:
+
+- make the role the default: the one every new user and every new global agent starts with;
+- clear the flag on the previous default in the same transaction, so exactly one role is the default at any moment (a partial unique index on `global_roles.is_default` enforces it);
+- existing users and agents keep the role they have;
+- same shape as `PUT /api/v1/projects/:projectId/task-statuses/:statusId/set-default` and its task type sibling.
+
+No request body. Success response: `200 OK` with the role. Returns `404 GLOBAL_ROLE_NOT_FOUND` if the role does not exist.
 
 ### `PUT /api/v1/admin/users/:userId/global-roles`
 
@@ -530,7 +546,8 @@ Function:
 
 - bind a global agent to the global role that decides what it may do at global scope;
 - requires both `agents.write` and `global_roles.assign`;
-- the only route that sets an agent's global role: `POST /api/v1/admin/agents` and `PATCH /api/v1/admin/agents/:agentId` reject a `global_role_id` with `400`.
+- the only route that sets an agent's global role: `POST /api/v1/admin/agents` and `PATCH /api/v1/admin/agents/:agentId` reject a `global_role_id` with `400`;
+- a new global agent already holds the default global role (or `409 GLOBAL_ROLE_NO_DEFAULT` on create if there is none), so this route is for choosing a different one.
 
 Request body:
 
@@ -1690,7 +1707,9 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `GLOBAL_ROLE_NOT_FOUND` | 404 | Global role with the given ID does not exist. |
 | `GLOBAL_ROLE_NAME_TAKEN` | 409 | A global role with that name already exists. |
 | `GLOBAL_ROLE_NAME_INVALID` | 400 | Role name does not meet naming requirements. |
-| `GLOBAL_ROLE_HAS_ASSIGNED_USERS` | 409 | Role cannot be deleted while users are assigned to it. |
+| `GLOBAL_ROLE_HAS_ASSIGNED_USERS` | 409 | Role cannot be deleted while users or global agents are assigned to it. |
+| `GLOBAL_ROLE_IS_DEFAULT` | 409 | The default role cannot be deleted; make another role the default first. |
+| `GLOBAL_ROLE_NO_DEFAULT` | 409 | No global role is the default, so a new user or global agent cannot be given one. |
 | `PROJECT_NOT_FOUND` | 404 | Project with the given ID does not exist. |
 | `PROJECT_NAME_TAKEN` | 409 | A project with that name already exists. |
 | `PROJECT_NAME_INVALID` | 400 | Project name is empty or does not meet naming requirements. |
@@ -1704,8 +1723,10 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `TASK_TITLE_INVALID` | 400 | Task title is empty or invalid. |
 | `TASK_TYPE_NOT_FOUND` | 404 | Task type with the given ID does not exist. |
 | `TASK_TYPE_NAME_INVALID` | 400 | Task type name is empty or invalid. |
+| `TASK_TYPE_IS_DEFAULT` | 409 | The project's default task type cannot be deleted; make another type the default first. |
 | `TASK_STATUS_NOT_FOUND` | 404 | Task status with the given ID does not exist. |
 | `TASK_STATUS_NAME_INVALID` | 400 | Task status name is empty or invalid. |
+| `TASK_STATUS_IS_DEFAULT` | 409 | The project's default status cannot be deleted; make another status the default first. |
 | `TASK_STATUS_CATEGORY_INVALID` | 400 | Task status category value is not one of the allowed values. |
 | `SPRINT_NOT_FOUND` | 404 | Sprint with the given ID does not exist. |
 | `SPRINT_NAME_INVALID` | 400 | Sprint name is empty or invalid. |

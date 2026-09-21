@@ -13,6 +13,7 @@ import { GlobalRolesStats } from "@/components/admin/global-roles/GlobalRolesSta
 import { GlobalRolesTable } from "@/components/admin/global-roles/GlobalRolesTable";
 import { RoleFormDialog } from "@/components/admin/global-roles/RoleFormDialog";
 import { RolesTableSkeleton } from "@/components/admin/global-roles/RolesTableSkeleton";
+import { SetDefaultRoleDialog } from "@/components/admin/global-roles/SetDefaultRoleDialog";
 import { activePermissions } from "@/components/admin/global-roles/utils";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -61,6 +62,7 @@ function GlobalRolesPage() {
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editRole, setEditRole] = useState<GlobalRole | null>(null);
 	const [deleteRole, setDeleteRole] = useState<GlobalRole | null>(null);
+	const [defaultRole, setDefaultRole] = useState<GlobalRole | null>(null);
 
 	const totalGranted = roles.reduce(
 		(sum, r) => sum + activePermissions(r.permissions).length,
@@ -106,6 +108,7 @@ function GlobalRolesPage() {
 					canWrite={canWrite}
 					onEdit={setEditRole}
 					onDelete={setDeleteRole}
+					onSetDefault={setDefaultRole}
 				/>
 			)}
 
@@ -115,6 +118,16 @@ function GlobalRolesPage() {
 					open={!!editRole}
 					onOpenChange={(open) => {
 						if (!open) setEditRole(null);
+					}}
+				/>
+			) : null}
+
+			{defaultRole ? (
+				<SetDefaultRoleDialog
+					role={defaultRole}
+					open={!!defaultRole}
+					onOpenChange={(open) => {
+						if (!open) setDefaultRole(null);
 					}}
 				/>
 			) : null}

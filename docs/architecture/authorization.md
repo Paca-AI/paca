@@ -23,6 +23,10 @@ What a caller may do is decided **per request from the permissions their role ro
 
 **Built-in roles.** `SUPER_ADMIN` (`*`), `ADMIN` and `USER` are defined in `authz.DefaultGlobalRoles()` and written to their rows **on every startup**. Edits to a built-in role therefore last only until the next restart; make a custom role for a lasting change. The definitions are used only for seeding, never when authorizing.
 
+**The default role.** Exactly one global role has `global_roles.is_default` set: the role every new user and every new global agent starts with. It is data, not a name the API hardcodes, so it can be moved to another role with `PUT /admin/global-roles/{roleId}/set-default` (`global_roles.write`, the same shape as a project's default task status and type) and the role that holds it **cannot be deleted** (`409 GLOBAL_ROLE_IS_DEFAULT`; make another role the default first). A partial unique index keeps it to one. New accounts start with `USER` because startup marks `USER` the default when none is set; that also repairs a deployment that once deleted it. Creating a user or global agent when no default exists fails with `409 GLOBAL_ROLE_NO_DEFAULT` instead of guessing a role. Project roles have no default: a project agent's role is part of its create request.
+
+The default is assigned server-side at creation, so it does not need `global_roles.assign`: someone who may create users or agents but not assign roles still creates them with the default role, and cannot give them another.
+
 ## Where it is enforced: the router
 
 `internal/transport/http/router/router.go` builds each route with a gate from `guards.go`:
@@ -61,13 +65,13 @@ The UI offers only what the API would accept, using the same permissions (`useCa
 
 | Where | What | Needs |
 |---|---|---|
-| Create user (dialog) | a wizard, **Details → Role → Password**. Nothing is created until the role step's button; the one-time password comes last. Without the role permissions it is Details → Password and the account starts as `USER`. | `users.write`; the Role step also `global_roles.assign` + `read` |
+| Create user (dialog) | a wizard, **Details → Role → Password**. The first step's button creates the account, which holds the default role; the Role step is a separate request that changes it, and the one-time password comes last. Without the role permissions it is Details → Password. Once the account exists the Role step cannot be closed without reaching the password (closing it moves on), so the password is never lost. | `users.write`; the Role step also `global_roles.assign` + `read` |
 | Edit user (dialog) | name and email only, never a role | `users.write` |
 | Users table | the role is a button that opens "Change role" | `global_roles.assign` + `read`, independent of `users.write` |
-| Create agent (dialog) | a wizard, **Identity → AI configuration → Role**, the same for both scopes; nothing is created until the last step's button. A project agent's role is its required project role and part of the create request. A global agent's role is optional, a separate privilege, and only offered to someone who may assign roles; without them the wizard is Identity → AI configuration. | project agent: `agents.write` + `project.members.write`; global agent: `agents.write`, and the Role step also `global_roles.assign` + `read` |
+| Create agent (dialog) | a wizard, **Identity → AI configuration → Role**, the same for both scopes. A project agent's role is its required project role and part of the create request, so its last step creates it. A global agent is created by the second step's button and holds the default global role; the Role step then changes it (another role, or none) as a request of its own, and is offered only to someone who may assign roles (without them the wizard is Identity → AI configuration). Closing that step finishes the wizard. | project agent: `agents.write` + `project.members.write`; global agent: `agents.write`, and the Role step also `global_roles.assign` + `read` |
 | Global agent, "Global role" tab | shows, changes and removes the role | `agents.write` + `global_roles.assign` + `read` to change it; read-only otherwise |
 
-A global role is always a second request made once the account or agent exists (`PUT .../global-roles`, `PUT .../global-role`). If it fails the account or agent is **not** rolled back: the user dialog still shows the one-time password and offers a retry, and the agent dialog keeps the created agent and lets the person retry or finish without a role.
+Choosing a different global role is always a second request made once the account or agent exists (`PUT .../global-roles`, `PUT .../global-role`, or `DELETE .../global-role` for none), and each dialog makes it in a step of its own after the create request has succeeded. If it fails the account or agent is **not** rolled back: it keeps the default role, the step shows the error and offers a retry, and the person can carry on with the role it has.
 
 ## Adding or changing a route
 
@@ -83,6 +87,7 @@ A global role is always a second request made once the account or agent exists (
 - `TestRoleAssignmentIsSeparatePrivilege` (same file as the first) pins the boundary around roles: profile routes need only their own permission, and changing a role needs `global_roles.assign` (plus `agents.write` for an agent).
 - `internal/platform/authz` tests cover the authorizer, including that no role name grants anything and that a global permission does not cross into a project.
 - `test/e2e/admin_role_permissions_test.go` runs against a real database: a user whose role has been stripped of a permission is refused everywhere that permission is needed.
+- `test/e2e/default_role_test.go` runs against a real database too: one default at a time, it cannot be deleted, new users and global agents get it, and creating a user keeps working after the original `USER` role has been deleted once another role is the default.
 
 ## Behaviors worth knowing
 

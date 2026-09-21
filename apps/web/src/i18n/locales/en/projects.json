@@ -26,7 +26,7 @@
 			"title": "Create AI Agent",
 			"step1Description": "Set up your agent's identity",
 			"step2Description": "Configure the AI model powering your agent",
-			"step3DescriptionGlobal": "Choose a global role for the agent (optional)",
+			"step3DescriptionGlobal": "{{name}} was created with the default global role. Keep it, choose another, or remove it.",
 			"step3DescriptionProject": "Choose the agent's role in this project",
 			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Start from a preset",
@@ -84,7 +84,7 @@
 			"optional": "(optional)",
 			"charsCount": "{{count}} chars",
 			"createFailed": "Failed to create agent. Please try again.",
-			"roleNotAssigned": "The agent was created, but its role couldn't be assigned. Try again, or choose “No global role” to finish and assign one later from the agent's Global role tab.",
+			"noDefaultRole": "There is no default role to give the new agent. Set one on the Global Roles page, then try again.",
 			"cancel": "Cancel",
 			"continue": "Continue",
 			"back": "Back",
@@ -967,7 +967,8 @@
 			"default": "Default",
 			"setAsDefault": "Set as default status",
 			"editStatus": "Edit status",
-			"deleteStatus": "Delete status"
+			"deleteStatus": "Delete status",
+			"deleteDefaultDisabled": "The default status can't be deleted. Make another status the default first."
 		},
 		"taskTypes": {
 			"title": "Task Types",
@@ -991,7 +992,8 @@
 			"default": "Default",
 			"setAsDefault": "Set as default type",
 			"editType": "Edit type",
-			"deleteType": "Delete type"
+			"deleteType": "Delete type",
+			"deleteDefaultDisabled": "The default type can't be deleted. Make another type the default first."
 		},
 		"customFields": {
 			"title": "Custom Fields",
@@ -1091,6 +1093,7 @@
 			"confirmTextPrefix": "Delete",
 			"confirmTextSuffix": "? Tasks using this status will lose their status. This action cannot be undone.",
 			"deleteFailed": "Failed to delete status. Please try again.",
+			"isDefault": "The default status can't be deleted. Make another status the default first.",
 			"cancel": "Cancel",
 			"deleteStatus": "Delete status"
 		},
@@ -1181,6 +1184,7 @@
 			"confirmTextPrefix": "Delete",
 			"confirmTextSuffix": "? Tasks using this type will lose their type assignment. This action cannot be undone.",
 			"deleteFailed": "Failed to delete task type. Please try again.",
+			"isDefault": "The default type can't be deleted. Make another type the default first.",
 			"cancel": "Cancel",
 			"deleteType": "Delete type"
 		},

@@ -11,6 +11,8 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/transport/http/httpx"
 )
@@ -222,6 +224,28 @@ func TestStatusAndCodeFor_DomainAuthErrors(t *testing.T) {
 		status, code := statusAndCodeFor(tc.err)
 		if status != tc.wantStatus || code != tc.wantCode {
 			t.Fatalf("for %v expected (%d,%s), got (%d,%s)", tc.err, tc.wantStatus, tc.wantCode, status, code)
+		}
+	}
+}
+
+// The default of a kind (global role, task status, task type) cannot be
+// deleted; that is a conflict with the current state, so 409 with a code the
+// UI can tell apart from "still in use".
+func TestStatusAndCodeFor_DefaultCannotBeDeleted(t *testing.T) {
+	cases := []struct {
+		err      error
+		wantCode apierr.Code
+	}{
+		{globalroledom.ErrIsDefault, apierr.CodeGlobalRoleIsDefault},
+		{globalroledom.ErrNoDefault, apierr.CodeGlobalRoleNoDefault},
+		{taskdom.ErrStatusIsDefault, apierr.CodeTaskStatusIsDefault},
+		{taskdom.ErrTypeIsDefault, apierr.CodeTaskTypeIsDefault},
+	}
+
+	for _, tc := range cases {
+		status, code := statusAndCodeFor(tc.err)
+		if status != http.StatusConflict || code != tc.wantCode {
+			t.Fatalf("for %v expected (409,%s), got (%d,%s)", tc.err, tc.wantCode, status, code)
 		}
 	}
 }

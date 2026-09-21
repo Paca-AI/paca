@@ -7,6 +7,9 @@ export interface GlobalRole {
 	id: string;
 	name: string;
 	permissions: Record<string, boolean>;
+	/** The role a new user and a new global agent start with. Exactly one role
+	 *  is the default, and it can't be deleted. */
+	is_default: boolean;
 	created_at: string;
 	updated_at: string;
 }
@@ -42,6 +45,18 @@ export async function updateGlobalRole(
 
 export async function deleteGlobalRole(roleId: string): Promise<void> {
 	await apiClient.instance.delete(`/admin/global-roles/${roleId}`);
+}
+
+/** Makes a role the one new users and global agents start with, replacing the
+ *  previous default (requires `global_roles.write`). Accounts that already have
+ *  a role keep it. */
+export async function setDefaultGlobalRole(
+	roleId: string,
+): Promise<GlobalRole> {
+	const { data } = await apiClient.instance.put<SuccessEnvelope<GlobalRole>>(
+		`/admin/global-roles/${roleId}/set-default`,
+	);
+	return data.data;
 }
 
 export async function getMyGlobalPermissions(): Promise<string[]> {

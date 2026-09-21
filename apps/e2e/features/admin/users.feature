@@ -7,9 +7,10 @@ Feature: User management
 
   A role is its own permission (global_roles.assign), separate from managing
   users (users.write): creating or editing a user never carries one. Creating a
-  user is a short wizard - 1 Details, 2 Role, 3 Password - where nothing is
-  created until the role step's button and the one-time password comes last;
-  someone who may not assign roles gets 1 Details, 2 Password. A role is changed
+  user is a short wizard - 1 Details, 2 Role, 3 Password. The first step's button
+  creates the account, which starts with the default global role; the role step
+  is a separate request that changes it, and the one-time password comes last.
+  Someone who may not assign roles gets 1 Details, 2 Password. A role is changed
   later from the role button in the users table.
 
   @authenticated
@@ -48,48 +49,52 @@ Feature: User management
       And the dialog should explain that a secure temporary password will be generated automatically
       And the dialog should contain "Username" and "Full Name" fields
       And the dialog should not contain a role field
-      And the dialog should offer "Continue" rather than "Create user"
+      And the dialog should offer "Create user" rather than "Continue"
 
-    Scenario: Continuing with an empty form shows validation
+    Scenario: Creating with an empty form shows validation
       When the user clicks the "New User" button
-      And the user clicks "Continue"
+      And the user clicks "Create user"
       Then a validation message should indicate that the full name is required
 
     Scenario: Username is required when the full name is present
       When the user clicks the "New User" button
       And the user fills the full name with "Jane Doe"
-      And the user clicks "Continue"
+      And the user clicks "Create user"
       Then a validation message should indicate that the username is required
       And the dialog should remain on step 1 of 3
 
-    Scenario: The role step lists the available roles with USER as the default
+    Scenario: The account is created first, then the role step lists the available roles with the default one held
       When the user clicks the "New User" button
       And the user fills the username with "BDD_ROLE_STEP"
       And the user fills the full name with "BDD Role Step"
-      And the user clicks "Continue"
+      And the user clicks "Create user"
       Then the dialog should show step 2 of 3
-      And the dialog should say to choose a role for "BDD_ROLE_STEP"
+      And the dialog should say that "BDD_ROLE_STEP" was created with the "USER" role
       And the role step should list "ADMIN"
       And the role step should list "SUPER_ADMIN"
       And the role step should list "USER"
-      And "USER" should be selected and marked as the default
+      And "USER" should be selected and marked as both the current role and the default
+      And the user "BDD_ROLE_STEP" should exist with the role "USER"
+      And the dialog should not offer "Back" or "Cancel"
+      And the dialog should not show the temporary password yet
 
-    Scenario: Going back and closing on the role step creates nothing
+    Scenario: Closing the dialog on the role step carries on to the password instead of losing it
       When the user clicks the "New User" button
-      And the user fills the username with "BDD_ROLE_STEP"
-      And the user fills the full name with "BDD Role Step"
-      And the user clicks "Continue"
-      And the user clicks "Back"
-      Then the dialog should show step 1 of 3 with the username and full name still filled in
-      When the user closes the dialog
-      Then the user "BDD_ROLE_STEP" should not exist
+      And the user fills the username with "BDD_CLOSE_ROLE_STEP"
+      And the user fills the full name with "BDD Close Role Step"
+      And the user clicks "Create user"
+      And the user closes the dialog
+      Then the "User created" dialog should appear on step 3 of 3
+      And the dialog should show a one-time temporary password
+      When the user closes the success dialog
+      Then the user row should show the role "USER"
 
     Scenario: Creating a user with the default USER role and requiring a password change on first login
       When the user clicks the "New User" button
       And the user fills the username with "BDD_USER_DEFAULT_ROLE"
       And the user fills the full name with "BDD User Default Role"
-      And the user clicks "Continue"
       And the user clicks "Create user"
+      And the user clicks "Continue" on the role step
       Then the "User created" dialog should appear on step 3 of 3
       And the dialog should show a one-time temporary password
       And the dialog should show the role "USER"
@@ -110,15 +115,15 @@ Feature: User management
       And the user signs in as "BDD_USER_DEFAULT_ROLE" with password "BDDUserDefaultRole123!"
       Then the user should be redirected to the home page
 
-    Scenario: Creating a user with an explicitly selected role shows the password last
+    Scenario: Assigning a selected role through its own step shows the password last
       When the user clicks the "New User" button
       And the user fills the username with "BDD_ADMIN_USER"
       And the user fills the full name with "BDD Admin User"
-      And the user clicks "Continue"
-      And the user selects the role "ADMIN" on the role step
       And the user clicks "Create user"
+      And the user selects the role "ADMIN" on the role step
+      And the user clicks "Assign role"
       Then the "User created" dialog should appear on step 3 of 3
-      And the dialog should confirm that the role "ADMIN" was assigned
+      And the dialog should show the role "ADMIN"
       And the dialog should show a one-time temporary password
       When the user closes the success dialog
       Then the user "BDD_ADMIN_USER" should appear in the users table
@@ -211,7 +216,7 @@ Feature: User management
       When the user creates the user "BDD_NO_ROLE_STEP"
       Then the "User created" dialog should appear on step 2 of 2
       And the dialog should show a one-time temporary password
-      And the dialog should not show a role
+      And the dialog should show the role "USER"
 
     Scenario: Assigning roles without writing users offers the role button but no user editing
       Given the user has the "users.read", "global_roles.read" and "global_roles.assign" global permissions

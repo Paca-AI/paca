@@ -26,7 +26,7 @@
 			"title": "Crear agente de IA",
 			"step1Description": "Configura la identidad de tu agente",
 			"step2Description": "Configura el modelo de IA que impulsa a tu agente",
-			"step3DescriptionGlobal": "Elige un rol global para el agente (opcional)",
+			"step3DescriptionGlobal": "{{name}} se creó con el rol global predeterminado. Consérvalo, elige otro o quítalo.",
 			"step3DescriptionProject": "Elige el rol del agente en este proyecto",
 			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Empezar desde una plantilla",
@@ -84,7 +84,7 @@
 			"optional": "(opcional)",
 			"charsCount": "{{count}} caracteres",
 			"createFailed": "No se pudo crear el agente. Inténtalo de nuevo.",
-			"roleNotAssigned": "El agente se creó, pero no se pudo asignar su rol. Inténtalo de nuevo o elige «Sin rol global» para terminar y asignar uno más tarde desde la pestaña Rol global del agente.",
+			"noDefaultRole": "No hay ningún rol predeterminado para el nuevo agente. Establece uno en la página de Roles globales e inténtalo de nuevo.",
 			"cancel": "Cancelar",
 			"continue": "Continuar",
 			"back": "Atrás",
@@ -964,6 +964,7 @@
 			"setAsDefault": "Establecer como estado predeterminado",
 			"editStatus": "Editar estado",
 			"deleteStatus": "Eliminar estado",
+			"deleteDefaultDisabled": "El estado predeterminado no se puede eliminar. Primero establece otro estado como predeterminado.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -988,6 +989,7 @@
 			"setAsDefault": "Establecer como tipo predeterminado",
 			"editType": "Editar tipo",
 			"deleteType": "Eliminar tipo",
+			"deleteDefaultDisabled": "El tipo predeterminado no se puede eliminar. Primero establece otro tipo como predeterminado.",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1091,6 +1093,7 @@
 			"confirmTextPrefix": "Eliminar",
 			"confirmTextSuffix": "? Las tareas que usen este estado perderán su estado. Esta acción no se puede deshacer.",
 			"deleteFailed": "No se pudo eliminar el estado. Inténtalo de nuevo.",
+			"isDefault": "El estado predeterminado no se puede eliminar. Primero establece otro estado como predeterminado.",
 			"cancel": "Cancelar",
 			"deleteStatus": "Eliminar estado"
 		},
@@ -1181,6 +1184,7 @@
 			"confirmTextPrefix": "Eliminar",
 			"confirmTextSuffix": "? Las tareas que usen este tipo perderán su asignación de tipo. Esta acción no se puede deshacer.",
 			"deleteFailed": "No se pudo eliminar el tipo de tarea. Inténtalo de nuevo.",
+			"isDefault": "El tipo predeterminado no se puede eliminar. Primero establece otro tipo como predeterminado.",
 			"cancel": "Cancelar",
 			"deleteType": "Eliminar tipo"
 		},

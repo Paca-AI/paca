@@ -50,7 +50,7 @@
 			"createTitle": "Crear usuario",
 			"editDescription": "Actualiza el nombre para mostrar y el correo electrónico del usuario.",
 			"createDescription": "Se generará automáticamente una contraseña temporal segura. Se requerirá que el usuario la cambie en su primer inicio de sesión.",
-			"roleStepDescription": "Elige un rol para {{username}}. Las cuentas nuevas empiezan como USER.",
+			"roleStepDescription": "{{username}} se creó con el rol {{role}}. Consérvalo o elige otro.",
 			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Nombre de usuario",
 			"usernamePlaceholder": "p. ej. john.doe",
@@ -60,13 +60,9 @@
 			"emailOptionalHint": "(opcional: envía un correo de bienvenida con un enlace para establecer la contraseña)",
 			"emailPlaceholder": "p. ej. john.doe@example.com",
 			"roleStep": {
-				"title": "Rol",
-				"assigned": "Rol asignado",
-				"failed": "La cuenta se creó, pero no se pudo asignar su rol. Inténtalo de nuevo o asígnalo más tarde desde la tabla de usuarios.",
-				"retry": "Reintentar"
+				"title": "Rol"
 			},
 			"cancel": "Cancelar",
-			"back": "Atrás",
 			"continue": "Continuar",
 			"saving": "Guardando…",
 			"creating": "Creando…",
@@ -79,6 +75,7 @@
 				"emailTaken": "Este correo electrónico ya está en uso.",
 				"userNotFound": "Usuario no encontrado. Puede que ya haya sido eliminado.",
 				"forbidden": "No tienes permiso para realizar esta acción.",
+				"noDefaultRole": "No hay ningún rol predeterminado para la nueva cuenta. Establece uno en la página de Roles globales e inténtalo de nuevo.",
 				"internalError": "Algo salió mal en el servidor. Inténtalo de nuevo.",
 				"generic": "Algo salió mal."
 			}
@@ -160,10 +157,13 @@
 		"table": {
 			"columnName": "Nombre",
 			"columnPermissions": "Permisos",
-			"columnCreated": "Creado",
+			"columnDefault": "Predeterminado",
 			"noPermissionsAssigned": "Sin permisos asignados",
+			"default": "Predeterminado",
+			"setDefaultAction": "Establecer como rol predeterminado",
 			"editAction": "Editar rol",
-			"deleteAction": "Eliminar rol"
+			"deleteAction": "Eliminar rol",
+			"deleteDefaultDisabled": "El rol predeterminado no se puede eliminar. Primero establece otro rol como predeterminado."
 		},
 		"formDialog": {
 			"editTitle": "Editar rol",
@@ -200,6 +200,7 @@
 			"errors": {
 				"roleNotFound": "Este rol ya no existe.",
 				"hasUsersWarning": "Este rol no se puede eliminar porque todavía está asignado a uno o más usuarios.",
+				"isDefault": "El rol predeterminado no se puede eliminar. Primero establece otro rol como predeterminado.",
 				"forbidden": "No tienes permiso para eliminar este rol.",
 				"internalError": "Algo salió mal. Inténtalo de nuevo.",
 				"generic": "Algo salió mal."
@@ -273,6 +274,19 @@
 			"projects": "Proyectos",
 			"plugins": "Plugins",
 			"settings": "Configuración"
+		},
+		"defaultDialog": {
+			"title": "Establecer rol predeterminado",
+			"description": "Los nuevos usuarios y los nuevos agentes globales comenzarán con el rol {{role}}. Las cuentas existentes conservan su rol actual.",
+			"fullAccessWarning": "Este rol concede todos los permisos, por lo que cada cuenta que crees a partir de ahora empezará con acceso total. Asegúrate de que es lo que quieres.",
+			"cancel": "Cancelar",
+			"confirm": "Establecer como predeterminado",
+			"confirming": "Guardando…",
+			"errors": {
+				"roleNotFound": "Este rol ya no existe.",
+				"forbidden": "No tienes permiso para cambiar el rol predeterminado.",
+				"generic": "Algo salió mal. Inténtalo de nuevo."
+			}
 		}
 	},
 	"rolePicker": {

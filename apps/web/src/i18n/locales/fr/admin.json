@@ -50,7 +50,7 @@
 			"createTitle": "Créer un utilisateur",
 			"editDescription": "Mettez à jour le nom affiché et l'adresse e-mail de l'utilisateur.",
 			"createDescription": "Un mot de passe temporaire sécurisé sera généré automatiquement. L'utilisateur devra le changer lors de sa première connexion.",
-			"roleStepDescription": "Choisissez un rôle pour {{username}}. Les nouveaux comptes commencent avec le rôle USER.",
+			"roleStepDescription": "{{username}} a été créé avec le rôle {{role}}. Conservez-le ou choisissez-en un autre.",
 			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Nom d'utilisateur",
 			"usernamePlaceholder": "ex. john.doe",
@@ -60,13 +60,9 @@
 			"emailOptionalHint": "(facultatif — envoie un e-mail de bienvenue avec un lien pour définir le mot de passe)",
 			"emailPlaceholder": "ex. john.doe@example.com",
 			"roleStep": {
-				"title": "Rôle",
-				"assigned": "Rôle attribué",
-				"failed": "Le compte a été créé, mais son rôle n'a pas pu être attribué. Réessayez ou attribuez-le plus tard depuis la table des utilisateurs.",
-				"retry": "Réessayer"
+				"title": "Rôle"
 			},
 			"cancel": "Annuler",
-			"back": "Retour",
 			"continue": "Continuer",
 			"saving": "Enregistrement…",
 			"creating": "Création…",
@@ -79,6 +75,7 @@
 				"emailTaken": "Cette adresse e-mail est déjà utilisée.",
 				"userNotFound": "Utilisateur introuvable. Il a peut-être déjà été supprimé.",
 				"forbidden": "Vous n'avez pas la permission d'effectuer cette action.",
+				"noDefaultRole": "Aucun rôle par défaut n'est défini pour le nouveau compte. Définissez-en un sur la page Rôles globaux, puis réessayez.",
 				"internalError": "Une erreur s'est produite sur le serveur. Veuillez réessayer.",
 				"generic": "Une erreur s'est produite."
 			}
@@ -160,10 +157,13 @@
 		"table": {
 			"columnName": "Nom",
 			"columnPermissions": "Permissions",
-			"columnCreated": "Créé",
+			"columnDefault": "Par défaut",
 			"noPermissionsAssigned": "Aucune permission attribuée",
+			"default": "Par défaut",
+			"setDefaultAction": "Définir comme rôle par défaut",
 			"editAction": "Modifier le rôle",
-			"deleteAction": "Supprimer le rôle"
+			"deleteAction": "Supprimer le rôle",
+			"deleteDefaultDisabled": "Le rôle par défaut ne peut pas être supprimé. Définissez d'abord un autre rôle par défaut."
 		},
 		"formDialog": {
 			"editTitle": "Modifier le rôle",
@@ -200,6 +200,7 @@
 			"errors": {
 				"roleNotFound": "Ce rôle n'existe plus.",
 				"hasUsersWarning": "Ce rôle ne peut pas être supprimé car il est encore attribué à un ou plusieurs utilisateurs.",
+				"isDefault": "Le rôle par défaut ne peut pas être supprimé. Définissez d'abord un autre rôle par défaut.",
 				"forbidden": "Vous n'avez pas la permission de supprimer ce rôle.",
 				"internalError": "Une erreur s'est produite. Veuillez réessayer.",
 				"generic": "Une erreur s'est produite."
@@ -273,6 +274,19 @@
 			"projects": "Projets",
 			"plugins": "Plugins",
 			"settings": "Paramètres"
+		},
+		"defaultDialog": {
+			"title": "Définir le rôle par défaut",
+			"description": "Les nouveaux utilisateurs et les nouveaux agents globaux démarreront avec le rôle {{role}}. Les comptes existants conservent leur rôle actuel.",
+			"fullAccessWarning": "Ce rôle accorde toutes les permissions : chaque compte que vous créerez désormais démarrera avec un accès complet. Assurez-vous que c'est bien ce que vous souhaitez.",
+			"cancel": "Annuler",
+			"confirm": "Définir par défaut",
+			"confirming": "Enregistrement…",
+			"errors": {
+				"roleNotFound": "Ce rôle n'existe plus.",
+				"forbidden": "Vous n'avez pas la permission de modifier le rôle par défaut.",
+				"generic": "Une erreur s'est produite. Veuillez réessayer."
+			}
 		}
 	},
 	"rolePicker": {

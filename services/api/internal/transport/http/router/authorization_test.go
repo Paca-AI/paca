@@ -348,6 +348,57 @@ func TestRoleAssignmentIsSeparatePrivilege(t *testing.T) {
 	}
 }
 
+// The default role is a property of the role *definition*: it decides what new
+// users and agents start with, not who holds what today. So choosing it needs
+// global_roles.write, like editing or deleting the role, and neither
+// global_roles.assign (which hands roles to accounts) nor users.write is enough.
+func TestSettingTheDefaultRoleIsRoleDefinitionWork(t *testing.T) {
+	const (
+		rolesRead   = authz.PermissionGlobalRolesRead
+		rolesWrite  = authz.PermissionGlobalRolesWrite
+		rolesAssign = authz.PermissionGlobalRolesAssign
+		usersWrite  = authz.PermissionUsersWrite
+	)
+	routes := []string{
+		"PUT /api/v1/admin/global-roles/{roleId}/set-default",
+		"DELETE /api/v1/admin/global-roles/{roleId}",
+	}
+	candidates := []struct {
+		grants   []authz.Permission
+		wantOpen bool
+	}{
+		{[]authz.Permission{rolesWrite}, true},
+		{[]authz.Permission{rolesRead}, false},
+		{[]authz.Permission{rolesAssign}, false},
+		{[]authz.Permission{usersWrite}, false},
+		{[]authz.Permission{rolesRead, rolesAssign, usersWrite}, false},
+	}
+
+	token := issueAccessTokenForRouterTests(t)
+	for _, tc := range candidates {
+		authorizer := authz.NewAuthorizer(&scopedStore{global: tc.grants})
+		byKey := map[string]routeUnderTest{}
+		for _, rt := range allRoutes(t, authorizer, privateProjects{}) {
+			byKey[rt.key()] = rt
+		}
+
+		for _, route := range routes {
+			rt, ok := byKey[route]
+			if !ok {
+				t.Fatalf("%q is not a registered route", route)
+			}
+			req := httptest.NewRequestWithContext(t.Context(), rt.method, concretePath(rt.pattern), nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			rt.handler.ServeHTTP(rec, req)
+
+			if gotOpen := rec.Code == http.StatusNoContent; gotOpen != tc.wantOpen {
+				t.Errorf("%s with %v: open = %v, want %v (status %d)", route, tc.grants, gotOpen, tc.wantOpen, rec.Code)
+			}
+		}
+	}
+}
+
 // containsAll reports whether have holds every permission in want.
 func containsAll(have, want []authz.Permission) bool {
 	for _, w := range want {

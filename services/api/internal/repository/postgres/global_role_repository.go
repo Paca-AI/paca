@@ -22,6 +22,7 @@ type globalRoleRecord struct {
 	ID          string    `db:"id"`
 	Name        string    `db:"name"`
 	Permissions []byte    `db:"permissions"`
+	IsDefault   bool      `db:"is_default"`
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
 }
@@ -36,7 +37,7 @@ func NewGlobalRoleRepository(db *sqlx.DB) *GlobalRoleRepository {
 	return &GlobalRoleRepository{db: db}
 }
 
-const globalRoleSelectCols = `id, name, permissions, created_at, updated_at`
+const globalRoleSelectCols = `id, name, permissions, is_default, created_at, updated_at`
 
 // List returns all global roles sorted by name.
 func (r *GlobalRoleRepository) List(ctx context.Context) ([]*globalroledom.GlobalRole, error) {
@@ -82,6 +83,51 @@ func (r *GlobalRoleRepository) FindByName(ctx context.Context, name string) (*gl
 	return toGlobalRoleEntity(&record)
 }
 
+// FindDefault returns the role marked as the default, or ErrNoDefault when no
+// role is.
+func (r *GlobalRoleRepository) FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error) {
+	var record globalRoleRecord
+	err := r.db.GetContext(ctx, &record, `SELECT `+globalRoleSelectCols+` FROM global_roles WHERE is_default = true`)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, globalroledom.ErrNoDefault
+	}
+	if err != nil {
+		return nil, fmt.Errorf("global role repo: find default: %w", err)
+	}
+	return toGlobalRoleEntity(&record)
+}
+
+// SetDefault makes id the only default role, clearing is_default on every
+// other role in the same transaction (the partial unique index allows only
+// one).
+func (r *GlobalRoleRepository) SetDefault(ctx context.Context, id uuid.UUID) error {
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		// Lock every role to serialize concurrent calls.
+		var ids []string
+		if err := tx.SelectContext(ctx, &ids, `SELECT id FROM global_roles FOR UPDATE`); err != nil {
+			return fmt.Errorf("global role repo: set default (lock): %w", err)
+		}
+		found := false
+		for _, existing := range ids {
+			if existing == id.String() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return globalroledom.ErrNotFound
+		}
+
+		if _, err := tx.ExecContext(ctx, `UPDATE global_roles SET is_default = false, updated_at = NOW() WHERE is_default = true AND id <> $1`, id.String()); err != nil {
+			return fmt.Errorf("global role repo: set default (clear): %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE global_roles SET is_default = true, updated_at = NOW() WHERE id = $1`, id.String()); err != nil {
+			return fmt.Errorf("global role repo: set default (set): %w", err)
+		}
+		return nil
+	})
+}
+
 // Create persists a new global role.
 func (r *GlobalRoleRepository) Create(ctx context.Context, role *globalroledom.GlobalRole) error {
 	rec, err := fromGlobalRoleEntity(role)
@@ -89,9 +135,9 @@ func (r *GlobalRoleRepository) Create(ctx context.Context, role *globalroledom.G
 		return err
 	}
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO global_roles (id, name, permissions, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)`,
-		rec.ID, rec.Name, rec.Permissions, rec.CreatedAt, rec.UpdatedAt,
+		INSERT INTO global_roles (id, name, permissions, is_default, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
+		rec.ID, rec.Name, rec.Permissions, rec.IsDefault, rec.CreatedAt, rec.UpdatedAt,
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -180,7 +226,7 @@ func (r *GlobalRoleRepository) ReplaceUserRoles(ctx context.Context, userID uuid
 func (r *GlobalRoleRepository) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]*globalroledom.GlobalRole, error) {
 	var record globalRoleRecord
 	err := r.db.GetContext(ctx, &record, `
-		SELECT gr.id, gr.name, gr.permissions, gr.created_at, gr.updated_at
+		SELECT gr.id, gr.name, gr.permissions, gr.is_default, gr.created_at, gr.updated_at
 		FROM global_roles gr
 		JOIN users u ON u.role_id = gr.id
 		WHERE u.id = $1 AND u.deleted_at IS NULL`, userID.String())
@@ -219,6 +265,7 @@ func fromGlobalRoleEntity(role *globalroledom.GlobalRole) (*globalRoleRecord, er
 		ID:          role.ID.String(),
 		Name:        strings.TrimSpace(role.Name),
 		Permissions: permissionsRaw,
+		IsDefault:   role.IsDefault,
 		CreatedAt:   role.CreatedAt,
 		UpdatedAt:   role.UpdatedAt,
 	}, nil
@@ -239,6 +286,7 @@ func toGlobalRoleEntity(record *globalRoleRecord) (*globalroledom.GlobalRole, er
 		ID:          id,
 		Name:        record.Name,
 		Permissions: permissions,
+		IsDefault:   record.IsDefault,
 		CreatedAt:   record.CreatedAt,
 		UpdatedAt:   record.UpdatedAt,
 	}, nil

@@ -5,13 +5,14 @@ Feature: Global agent management
   creation wizard as a project's Agents page (see
   features/projects/agents.feature), gated by the agents.read/agents.write
   global permissions instead of a project permission. A global agent has no
-  project role to assign. Its global role is its own permission
+  project role to assign. It starts with the default global role, which the
+  server assigns at creation; changing it is its own permission
   (global_roles.assign) and its own request, so creating an agent never carries
-  one: the wizard gets a third, optional "Global role" step (an always-present
-  "No global role" choice plus the real global roles) for someone who may assign
-  roles, and stays at two steps for anyone else. Nothing is created until the
-  last step's button. An agent's role is later shown, changed and removed on its
-  own "Global role" tab.
+  one. The wizard creates the agent at its second step, then offers a third
+  "Global role" step (the real global roles plus an always-present "No global
+  role" choice) for someone who may assign roles, and stays at two steps for
+  anyone else. An agent's role is later shown, changed and removed on its own
+  "Global role" tab.
 
   @authenticated
   Rule: Admin > Agents — the global agent equivalent
@@ -65,9 +66,9 @@ Feature: Global agent management
       And the user fills the agent name with "E2E_GLOBAL_LLM_BOT"
       And the user clicks "Continue"
       And the user fills in the LLM API key
-      And the user clicks "Continue"
-      Then the create agent dialog should show step 3 of 3 with "No global role" selected
-      When the user clicks "Create Agent"
+      And the user clicks "Create Agent"
+      Then the create agent dialog should show step 3 of 3 with the default role "USER" selected
+      When the user clicks "Finish"
       Then the Admin Agents page should list "E2E_GLOBAL_LLM_BOT"
 
     Scenario: Deleting a global agent shows the global-scoped confirmation copy
@@ -90,37 +91,47 @@ Feature: Global agent management
       Then the page URL should be the admin agent detail URL for "E2E_GLOBAL_NAV_BOT"
 
   @authenticated
-  Rule: Creating a global agent - the global role is a third, optional step
+  Rule: Creating a global agent - its role is a third step, after the agent exists
 
     Background:
       Given the user already has a stored authenticated admin session
 
-    Scenario: The role step defaults to no role and lists the real roles
+    Scenario: The agent is created first, then the role step shows it holding the default role
       When the user navigates to the Admin Agents page
       And the user clicks the "New Agent" button
       Then the first step should describe setting up the agent's identity
       When the user fills the agent name with "E2E_GLOBAL_ROLE_STEP"
       And the user clicks "Continue"
       And the user fills in the LLM API key
-      And the user clicks "Continue"
+      And the user clicks "Create Agent"
       Then the create agent dialog should show step 3 of 3
-      And the dialog should say to choose a global role for the agent (optional)
-      And "No global role" should be selected
+      And the dialog should say that "E2E_GLOBAL_ROLE_STEP" was created with the default global role
+      And "USER" should be selected and marked as both the current role and the default
+      And "No global role" should not be selected
       And the role step should list "ADMIN" and "SUPER_ADMIN"
-      When the user clicks "Back"
-      Then the create agent dialog should show step 2 of 3
-      And no agent should have been created
+      And the dialog should not offer "Back"
+      And the agent "E2E_GLOBAL_ROLE_STEP" should hold the global role "USER"
 
-    Scenario: A global agent created with a role is bound to it once it exists
+    Scenario: Keeping the default role creates the agent with it
+      When the user creates a global agent "E2E_GLOBAL_DEFAULT_ROLE" and clicks "Finish" on the role step
+      Then the Admin Agents page should list "E2E_GLOBAL_DEFAULT_ROLE"
+      And the agent "E2E_GLOBAL_DEFAULT_ROLE" should hold the global role "USER"
+
+    Scenario: A different role is assigned through its own step once the agent exists
       When the user creates a global agent "E2E_GLOBAL_WITH_ROLE" choosing the role "ADMIN" on the role step
       Then the Admin Agents page should list "E2E_GLOBAL_WITH_ROLE"
       And the agent "E2E_GLOBAL_WITH_ROLE" should hold the global role "ADMIN"
 
-    Scenario: Keeping "No global role" creates the agent without one
-      When the user creates a global agent "E2E_GLOBAL_NO_ROLE" keeping "No global role" on the role step
+    Scenario: Choosing "No global role" removes the default role
+      When the user creates a global agent "E2E_GLOBAL_NO_ROLE" choosing "No global role" on the role step
       Then the agent "E2E_GLOBAL_NO_ROLE" should hold no global role
 
-    Scenario: A user who may write agents but not assign roles creates them in two steps
+    Scenario: Closing the dialog on the role step finishes with the role the agent has
+      When the user creates a global agent "E2E_GLOBAL_CLOSED_ON_ROLE" and closes the dialog on the role step
+      Then the Admin Agents page should list "E2E_GLOBAL_CLOSED_ON_ROLE"
+      And the agent "E2E_GLOBAL_CLOSED_ON_ROLE" should hold the global role "USER"
+
+    Scenario: A user who may write agents but not assign roles creates them in two steps and they still get the default role
       Given the user has the "agents.write" global permission
       And the user does not have the "global_roles.assign" global permission
       When the user navigates to the Admin Agents page
@@ -132,7 +143,7 @@ Feature: Global agent management
       And the dialog should offer "Create Agent" rather than "Continue"
       When the user fills in the LLM API key
       And the user clicks "Create Agent"
-      Then the agent "E2E_GLOBAL_TWO_STEPS" should hold no global role
+      Then the agent "E2E_GLOBAL_TWO_STEPS" should hold the global role "USER"
 
     Scenario: A user who may also assign roles gets the third step
       Given the user has the "agents.write", "global_roles.read" and "global_roles.assign" global permissions
@@ -147,31 +158,30 @@ Feature: Global agent management
       Given the user already has a stored authenticated admin session
       And there is a global agent named "E2E_GLOBAL_ROLE_TAB"
 
-    Scenario: Assigning, changing and removing the role
+    Scenario: Changing, removing and assigning the role
       When the user opens the "Global role" tab of "E2E_GLOBAL_ROLE_TAB"
-      Then the tab should say the agent has "No global role" and no global permissions
-      When the user clicks "Assign role"
-      Then "Assign role" should be disabled until a role is chosen
-      When the user chooses the role "ADMIN" and clicks "Assign role"
-      Then the tab should show the role "ADMIN" with "Change role" and "Remove role"
-      And the agent should hold the global role "ADMIN"
+      Then the tab should show the default role "USER" with "Change role" and "Remove role"
       When the user clicks "Change role"
-      Then the current role "ADMIN" should be selected and marked as current
-      When the user chooses the role "USER" and clicks "Assign role"
-      Then the agent should hold the global role "USER"
+      Then the current role "USER" should be selected and marked as current
+      And "Assign role" should be disabled until a role is chosen
+      When the user chooses the role "ADMIN" and clicks "Assign role"
+      Then the agent should hold the global role "ADMIN"
       When the user clicks "Remove role"
       Then the tab should ask whether to remove the role because the agent will lose the permissions it grants
       When the user confirms with "Remove role"
       Then the tab should say the agent has "No global role"
       And the agent should hold no global role
+      When the user clicks "Assign role"
+      And the user chooses the role "USER" and clicks "Assign role"
+      Then the agent should hold the global role "USER"
 
     Scenario: A full-access role is flagged before it is assigned
       When the user opens the "Global role" tab of "E2E_GLOBAL_ROLE_TAB"
-      And the user clicks "Assign role"
+      And the user clicks "Change role"
       And the user chooses the role "SUPER_ADMIN"
       Then the tab should warn that the agent will be able to do everything
       When the user clicks "Cancel"
-      Then the agent should hold no global role
+      Then the agent should still hold the default role "USER"
 
     Scenario: Someone who can see the role but not change it gets a read-only tab
       Given the agent "E2E_GLOBAL_ROLE_TAB" holds the global role "ADMIN"
@@ -185,5 +195,6 @@ Feature: Global agent management
       Given the user has the "agents.read", "agents.write" and "global_roles.read" global permissions
       And the user does not have the "global_roles.assign" global permission
       When the user opens the "Global role" tab of "E2E_GLOBAL_ROLE_TAB"
-      Then the tab should say the user cannot change the role
+      Then the tab should show the default role "USER"
+      And the tab should say the user cannot change the role
       And the tab should not offer "Assign role"

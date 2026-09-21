@@ -629,6 +629,52 @@ func TestDeleteTaskType_OK(t *testing.T) {
 	}
 }
 
+// New tasks without a type start as the project's default one, so the default
+// cannot be deleted until another type has been made the default.
+func TestDeleteTaskType_DefaultIsRefused(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	projectID := uuid.New()
+
+	tt, _ := svc.CreateTaskType(ctx, taskdom.CreateTaskTypeInput{ProjectID: projectID, Name: "Chore"})
+	if _, err := svc.SetDefaultTaskType(ctx, projectID, tt.ID); err != nil {
+		t.Fatalf("set default: %v", err)
+	}
+
+	err := svc.DeleteTaskType(ctx, projectID, tt.ID)
+	if !errors.Is(err, taskdom.ErrTypeIsDefault) {
+		t.Fatalf("expected ErrTypeIsDefault, got %v", err)
+	}
+	if _, err := svc.GetTaskType(ctx, tt.ID); err != nil {
+		t.Errorf("the default type must still exist after a refused delete, got %v", err)
+	}
+}
+
+func TestDeleteTaskType_FormerDefaultCanBeDeleted(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	projectID := uuid.New()
+
+	first, _ := svc.CreateTaskType(ctx, taskdom.CreateTaskTypeInput{ProjectID: projectID, Name: "Chore"})
+	second, _ := svc.CreateTaskType(ctx, taskdom.CreateTaskTypeInput{ProjectID: projectID, Name: "Spike"})
+	if _, err := svc.SetDefaultTaskType(ctx, projectID, first.ID); err != nil {
+		t.Fatalf("set default: %v", err)
+	}
+	// Making another type the default frees the first one.
+	if _, err := svc.SetDefaultTaskType(ctx, projectID, second.ID); err != nil {
+		t.Fatalf("switch default: %v", err)
+	}
+
+	if err := svc.DeleteTaskType(ctx, projectID, first.ID); err != nil {
+		t.Fatalf("the former default should be deletable, got %v", err)
+	}
+	if err := svc.DeleteTaskType(ctx, projectID, second.ID); !errors.Is(err, taskdom.ErrTypeIsDefault) {
+		t.Fatalf("the new default must be refused, got %v", err)
+	}
+}
+
 func TestSetDefaultTaskType_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeTaskRepo()
@@ -1610,6 +1656,78 @@ func TestDeleteTaskStatus_OK(t *testing.T) {
 	_, err := svc.GetTaskStatus(ctx, st.ID)
 	if err != taskdom.ErrStatusNotFound {
 		t.Errorf("expected ErrStatusNotFound after delete, got %v", err)
+	}
+}
+
+// New tasks without a status start in the project's default one, so the
+// default cannot be deleted until another status has been made the default.
+func TestDeleteTaskStatus_DefaultIsRefused(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	projectID := uuid.New()
+
+	st, _ := svc.CreateTaskStatus(ctx, taskdom.CreateTaskStatusInput{
+		ProjectID: projectID, Name: "Backlog", Position: 1, Category: taskdom.StatusCategoryBacklog,
+	})
+	if _, err := svc.SetDefaultTaskStatus(ctx, projectID, st.ID); err != nil {
+		t.Fatalf("set default: %v", err)
+	}
+
+	err := svc.DeleteTaskStatus(ctx, projectID, st.ID)
+	if !errors.Is(err, taskdom.ErrStatusIsDefault) {
+		t.Fatalf("expected ErrStatusIsDefault, got %v", err)
+	}
+	if _, err := svc.GetTaskStatus(ctx, st.ID); err != nil {
+		t.Errorf("the default status must still exist after a refused delete, got %v", err)
+	}
+}
+
+func TestDeleteTaskStatus_DefaultIsRefusedBeforeTheAutomationCheck(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo).WithAutomationStatusChecker(&stubAutomationStatusChecker{used: true})
+	projectID := uuid.New()
+
+	st, _ := svc.CreateTaskStatus(ctx, taskdom.CreateTaskStatusInput{
+		ProjectID: projectID, Name: "Backlog", Position: 1, Category: taskdom.StatusCategoryBacklog,
+	})
+	if _, err := svc.SetDefaultTaskStatus(ctx, projectID, st.ID); err != nil {
+		t.Fatalf("set default: %v", err)
+	}
+
+	// Both reasons apply; the person has to make another status the default
+	// first either way, so that is the one reported.
+	err := svc.DeleteTaskStatus(ctx, projectID, st.ID)
+	if !errors.Is(err, taskdom.ErrStatusIsDefault) {
+		t.Fatalf("expected ErrStatusIsDefault, got %v", err)
+	}
+}
+
+func TestDeleteTaskStatus_FormerDefaultCanBeDeleted(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	projectID := uuid.New()
+
+	first, _ := svc.CreateTaskStatus(ctx, taskdom.CreateTaskStatusInput{
+		ProjectID: projectID, Name: "Backlog", Position: 1, Category: taskdom.StatusCategoryBacklog,
+	})
+	second, _ := svc.CreateTaskStatus(ctx, taskdom.CreateTaskStatusInput{
+		ProjectID: projectID, Name: "Todo", Position: 2, Category: taskdom.StatusCategoryTodo,
+	})
+	if _, err := svc.SetDefaultTaskStatus(ctx, projectID, first.ID); err != nil {
+		t.Fatalf("set default: %v", err)
+	}
+	if _, err := svc.SetDefaultTaskStatus(ctx, projectID, second.ID); err != nil {
+		t.Fatalf("switch default: %v", err)
+	}
+
+	if err := svc.DeleteTaskStatus(ctx, projectID, first.ID); err != nil {
+		t.Fatalf("the former default should be deletable, got %v", err)
+	}
+	if err := svc.DeleteTaskStatus(ctx, projectID, second.ID); !errors.Is(err, taskdom.ErrStatusIsDefault) {
+		t.Fatalf("the new default must be refused, got %v", err)
 	}
 }
 

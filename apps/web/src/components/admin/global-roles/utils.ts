@@ -1,13 +1,4 @@
-import { formatDate as formatDateLocale } from "@/lib/format-date";
 import { dedupeGrantedPermissions } from "@/lib/permissions";
-
-export function formatDate(iso: string) {
-	return formatDateLocale(iso, {
-		year: "numeric",
-		month: "short",
-		day: "numeric",
-	});
-}
 
 export function permissionBadgeClass(key: string): string {
 	const domain = key.split(".")[0];

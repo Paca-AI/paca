@@ -28,16 +28,18 @@ type GlobalPermissionReader interface {
 	ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error)
 }
 
-// RoleByNameFinder looks up a global role by its unique name.
-type RoleByNameFinder interface {
-	FindByName(ctx context.Context, name string) (*globalroledom.GlobalRole, error)
+// DefaultRoleFinder looks up the global role a new user starts with: the one
+// marked as the default (see globalroledom.Service.SetDefault). Satisfied by
+// the global role repository and service.
+type DefaultRoleFinder interface {
+	FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error)
 }
 
 // Service is the concrete implementation of domain/user.Service.
 type Service struct {
 	repo                   userdom.Repository
 	globalPermissionReader GlobalPermissionReader
-	roleRepo               RoleByNameFinder
+	roleRepo               DefaultRoleFinder
 	avatarSvc              attachmentdom.AvatarService
 	tokenRepo              userdom.PasswordSetTokenRepository
 	publisher              *messaging.Publisher
@@ -60,14 +62,14 @@ var ErrPasswordSetTokenRepoRequired = errors.New("user svc: password set token r
 const passwordSetTokenTTL = 24 * time.Hour
 
 // New returns a configured user Service.
-// Pass optional GlobalPermissionReader and RoleByNameFinder as variadic args.
+// Pass optional GlobalPermissionReader and DefaultRoleFinder as variadic args.
 func New(repo userdom.Repository, opts ...any) *Service {
 	s := &Service{repo: repo}
 	for _, opt := range opts {
 		switch v := opt.(type) {
 		case GlobalPermissionReader:
 			s.globalPermissionReader = v
-		case RoleByNameFinder:
+		case DefaultRoleFinder:
 			s.roleRepo = v
 		}
 	}
@@ -158,8 +160,9 @@ func (s *Service) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]st
 }
 
 // Create registers a new user with a hashed password. The account is given
-// the default role, resolved to a RoleID via roleRepo; any other role is
-// assigned afterwards through the global-role assignment route.
+// the default global role (whichever role is marked as the default, not a role
+// with a fixed name); any other role is assigned afterwards through the
+// global-role assignment route.
 func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.User, error) {
 	// Check username uniqueness among active users only; a soft-deleted
 	// user's username is freed up for reuse.
@@ -182,19 +185,19 @@ func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.
 		return nil, fmt.Errorf("user svc: hash password: %w", err)
 	}
 
-	roleName := userdom.RoleUser
 	if s.roleRepo == nil {
 		return nil, ErrRoleResolverRequired
 	}
 
-	r, err := s.roleRepo.FindByName(ctx, roleName)
+	r, err := s.roleRepo.FindDefault(ctx)
 	if err != nil {
-		if errors.Is(err, globalroledom.ErrNotFound) {
-			return nil, globalroledom.ErrNotFound
+		if errors.Is(err, globalroledom.ErrNoDefault) {
+			return nil, globalroledom.ErrNoDefault
 		}
-		return nil, fmt.Errorf("user svc: create: lookup role: %w", err)
+		return nil, fmt.Errorf("user svc: create: lookup default role: %w", err)
 	}
 	roleID := r.ID
+	roleName := r.Name
 
 	now := time.Now()
 	u := &userdom.User{

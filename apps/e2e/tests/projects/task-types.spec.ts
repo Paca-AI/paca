@@ -523,6 +523,56 @@ test.describe('Task Types Management', () => {
       await cleanupTestProjects(request);
     });
 
+    test('The default type cannot be deleted: its action is disabled with the reason, and the API refuses', async ({
+      page,
+      request,
+    }) => {
+      await authRequest(request);
+      const list = await request.get(`${BASE_URL}/api/v1/projects/${projectId}/task-types`);
+      const types: Array<{ id: string; name: string; is_default?: boolean }> = (await list.json()).data.items;
+      const defaultType = types.find((type) => type.is_default);
+      if (!defaultType) throw new Error('a new project has a default task type');
+
+      await signIn(page);
+      await navigateToProjectSettings(page, projectId);
+      await page.getByRole('button', { name: 'Task Types' }).click();
+
+      // The default type keeps its edit action but not its delete action, and says why.
+      const defaultRow = page.getByRole('row').filter({ has: page.getByText(defaultType.name, { exact: true }) });
+      const remove = defaultRow.getByRole('button', { name: 'Delete type' });
+      await expect(remove).toBeDisabled();
+      await expect(defaultRow.getByRole('button', { name: 'Edit type' })).toBeEnabled();
+      await expect(remove.locator('xpath=..')).toHaveAttribute(
+        'title',
+        "The default type can't be deleted. Make another type the default first.",
+      );
+
+      // Every other type can still be deleted.
+      const otherRow = page.getByRole('row').filter({ hasText: 'E2E Delete Me Type' });
+      await expect(otherRow.getByRole('button', { name: 'Delete type' })).toBeEnabled();
+
+      // The server holds the line too, for anything that bypasses the page.
+      const refused = await request.delete(
+        `${BASE_URL}/api/v1/projects/${projectId}/task-types/${defaultType.id}`,
+      );
+      expect(refused.status()).toBe(409);
+      expect((await refused.json()).error_code).toBe('TASK_TYPE_IS_DEFAULT');
+    });
+
+    test('Making another type the default lets the old default be deleted', async ({ page }) => {
+      await signIn(page);
+      await navigateToProjectSettings(page, projectId);
+      await page.getByRole('button', { name: 'Task Types' }).click();
+
+      const newDefault = page.getByRole('row').filter({ hasText: 'E2E Delete Me Type' });
+      await newDefault.hover();
+      await newDefault.getByRole('button', { name: 'Set as default type' }).click();
+
+      // The star moves: the new default cannot be deleted.
+      await expect(newDefault.getByText('Default', { exact: true })).toBeVisible();
+      await expect(newDefault.getByRole('button', { name: 'Delete type' })).toBeDisabled();
+    });
+
     test('Opening the delete-type dialog shows a confirmation message', async ({ page }) => {
       await signIn(page);
       await navigateToProjectSettings(page, projectId);

@@ -140,12 +140,12 @@ async function createUserThroughAdmin(
 
 	const dialog = page.getByRole("dialog", { name: "Create User" });
 
-	// 2. Fill the new user's account details, then confirm the role step (the
-	// account keeps the default USER role) to create it.
+	// 2. Fill the new user's account details and create it, then carry on past
+	// the role step (the account keeps the default USER role).
 	await dialog.getByRole("textbox", { name: "Username" }).fill(username);
 	await dialog.getByRole("textbox", { name: "Full Name" }).fill(fullName);
-	await dialog.getByRole("button", { name: "Continue" }).click();
 	await dialog.getByRole("button", { name: "Create user" }).click();
+	await dialog.getByRole("button", { name: "Continue" }).click();
 
 	const successDialog = page.getByRole("dialog", { name: "User created" });
 

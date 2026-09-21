@@ -334,15 +334,37 @@ export function TaskStatusesSettings({
 												>
 													<Edit2 className="size-3.5" />
 												</Button>
-												<Button
-													variant="ghost"
-													size="icon-sm"
-													className="text-destructive hover:text-destructive hover:bg-destructive/10"
-													onClick={() => setDeleteStatus(status)}
-													title={t("settings.taskStatuses.deleteStatus")}
-												>
-													<Trash2 className="size-3.5" />
-												</Button>
+												{status.is_default ? (
+													// New tasks land in the default status, so it can't go; the
+													// span carries the explanation a disabled button can't.
+													<span
+														title={t(
+															"settings.taskStatuses.deleteDefaultDisabled",
+														)}
+													>
+														<Button
+															variant="ghost"
+															size="icon-sm"
+															className="text-destructive"
+															disabled
+															aria-label={t(
+																"settings.taskStatuses.deleteStatus",
+															)}
+														>
+															<Trash2 className="size-3.5" />
+														</Button>
+													</span>
+												) : (
+													<Button
+														variant="ghost"
+														size="icon-sm"
+														className="text-destructive hover:text-destructive hover:bg-destructive/10"
+														onClick={() => setDeleteStatus(status)}
+														title={t("settings.taskStatuses.deleteStatus")}
+													>
+														<Trash2 className="size-3.5" />
+													</Button>
+												)}
 											</div>
 										) : null}
 									</TableCell>

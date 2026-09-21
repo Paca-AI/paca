@@ -1,3 +1,4 @@
+import { Star } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,6 +13,8 @@ export interface RoleOption {
 	id: string;
 	name: string;
 	permissions: Record<string, unknown>;
+	/** Global roles only: the role new accounts start with, marked "Default". */
+	is_default?: boolean;
 }
 
 /** How many of a role's permissions a card lists before folding the rest into "+N". */
@@ -38,8 +41,6 @@ export interface RoleOptionListProps<T extends RoleOption> {
 	currentRoleId?: string | null;
 	/** ...or the name, for callers that only know that (the user API returns it). */
 	currentRoleName?: string | null;
-	/** Text of the mark on the current role. Defaults to "Current". */
-	currentBadge?: string;
 	disabled?: boolean;
 	/** Accessible name of the group of choices. */
 	label: string;
@@ -59,7 +60,6 @@ export function RoleOptionList<T extends RoleOption>({
 	none,
 	currentRoleId,
 	currentRoleName,
-	currentBadge,
 	disabled,
 	label,
 	badgeClass,
@@ -129,11 +129,19 @@ export function RoleOptionList<T extends RoleOption>({
 			{roles.map((role) => {
 				const checked = role.id === checkedId;
 				const current = isCurrent(role);
-				// The radio is named by the role's name alone; "Current" and what the
-				// role grants are its description, read after the name.
+				// The radio is named by the role's name alone; "Current", "Default"
+				// and what the role grants are its description, read after the name.
 				const nameId = `${groupName}-${role.id}-name`;
 				const currentId = `${groupName}-${role.id}-current`;
+				const defaultId = `${groupName}-${role.id}-default`;
 				const summaryId = `${groupName}-${role.id}-summary`;
+				const describedBy = [
+					current ? currentId : null,
+					role.is_default ? defaultId : null,
+					summaryId,
+				]
+					.filter(Boolean)
+					.join(" ");
 				return (
 					<label
 						key={role.id}
@@ -153,13 +161,11 @@ export function RoleOptionList<T extends RoleOption>({
 							disabled={disabled}
 							onChange={() => onChange(role)}
 							aria-labelledby={nameId}
-							aria-describedby={
-								current ? `${currentId} ${summaryId}` : summaryId
-							}
+							aria-describedby={describedBy}
 							className="mt-1 accent-primary"
 						/>
 						<div className="flex min-w-0 flex-1 flex-col gap-1.5">
-							<div className="flex items-center gap-2">
+							<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 								<span id={nameId} className="font-mono text-sm font-medium">
 									{role.name}
 								</span>
@@ -168,7 +174,19 @@ export function RoleOptionList<T extends RoleOption>({
 										id={currentId}
 										className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium leading-none text-muted-foreground"
 									>
-										{currentBadge ?? t("rolePicker.current")}
+										{t("rolePicker.current")}
+									</span>
+								) : null}
+								{role.is_default ? (
+									<span
+										id={defaultId}
+										className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium leading-none text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+									>
+										<Star
+											className="size-2.5 fill-current"
+											aria-hidden="true"
+										/>
+										{t("rolePicker.default")}
 									</span>
 								) : null}
 							</div>

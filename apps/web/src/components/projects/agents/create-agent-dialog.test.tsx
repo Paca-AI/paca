@@ -20,6 +20,7 @@ const agentApi = vi.hoisted(() => ({
 	createAgent: vi.fn(),
 	createGlobalAgent: vi.fn(),
 	setGlobalAgentRole: vi.fn(),
+	clearGlobalAgentRole: vi.fn(),
 	generateAcpBridgeToken: vi.fn(),
 	generateAgentMCPKey: vi.fn(),
 	generateGlobalAcpBridgeToken: vi.fn(),
@@ -89,7 +90,7 @@ vi.mock("@/lib/project-api", async () => {
 });
 
 const ROLES = [
-	makeRole("role-user", "USER", { "tasks.read": true }),
+	makeRole("role-user", "USER", { "tasks.read": true }, { isDefault: true }),
 	makeRole("role-admin", "ADMIN", { "users.read": true }),
 	makeRole("role-root", "SUPER_ADMIN", { "*": true }),
 ];
@@ -162,9 +163,11 @@ describe("CreateAgentDialog — agent type selector", () => {
 //
 // The wizard is the same for every agent: 1 Identity, 2 AI configuration,
 // 3 Role. A project agent's role (its project role) is required and part of
-// the create request. A global agent's role is optional, a separate privilege
-// (global_roles.assign) and a separate request, so its third step is offered
-// only to someone who may assign roles. Nothing is created until the last step.
+// the create request, so it is created by step 3's button. A global agent is
+// created by step 2's button and starts with the default global role, which
+// the server assigns; changing it is a separate privilege (global_roles.assign)
+// and a separate request, made in step 3, which is offered only to someone who
+// may assign roles.
 
 const button = (name: RegExp | string) => screen.getByRole("button", { name });
 
@@ -175,7 +178,8 @@ async function chooseAcpAndName(user: ReturnType<typeof userEvent.setup>) {
 	await user.type(screen.getByLabelText(/^Name/), "Bot");
 }
 
-/** Identity → Configuration → Role, for an ACP agent (the simplest to fill in). */
+/** Identity → Configuration → Role, for an ACP agent (the simplest to fill in).
+ * For a project agent, whose role is part of the create request. */
 async function goToRoleStep(
 	user: ReturnType<typeof userEvent.setup>,
 	group = "Global role",
@@ -184,6 +188,17 @@ async function goToRoleStep(
 	await user.click(button(/continue/i));
 	await user.click(button(/continue/i));
 	await screen.findByRole("radiogroup", { name: group });
+}
+
+/** Identity → Configuration → Create Agent → Role, for a global agent whose
+ * creator may assign roles: the agent exists by the time the role step shows. */
+async function createGlobalAgentAndGoToRoleStep(
+	user: ReturnType<typeof userEvent.setup>,
+) {
+	await chooseAcpAndName(user);
+	await user.click(button(/continue/i));
+	await user.click(button(/create agent/i));
+	await screen.findByRole("radiogroup", { name: "Global role" });
 }
 
 beforeEach(() => {
@@ -197,13 +212,16 @@ beforeEach(() => {
 	});
 	agentApi.generateAcpBridgeToken.mockResolvedValue({ token: "t" });
 	agentApi.generateAgentMCPKey.mockResolvedValue({ token: "k" });
+	// The server gives a new global agent the default role.
 	agentApi.createGlobalAgent.mockResolvedValue({
 		id: "agent-1",
 		name: "Bot",
 		handle: "bot",
 		agent_type: "acp",
+		global_role_id: "role-user",
 	});
 	agentApi.setGlobalAgentRole.mockResolvedValue({});
+	agentApi.clearGlobalAgentRole.mockResolvedValue({});
 	agentApi.generateGlobalAcpBridgeToken.mockResolvedValue({ token: "t" });
 	agentApi.generateGlobalAgentMCPKey.mockResolvedValue({ token: "k" });
 });
@@ -264,33 +282,46 @@ describe("CreateAgentDialog — steps by scope", () => {
 		).not.toBeInTheDocument();
 	});
 
-	it("gives a global agent a third step for someone who may assign roles", async () => {
+	it("gives a global agent a third step for someone who may assign roles, after creating the agent", async () => {
 		const user = userEvent.setup();
 		renderDialog({ permissions: CAN_ASSIGN });
 		expect(screen.getByText("1 / 3")).toBeInTheDocument();
 
 		await chooseAcpAndName(user);
 		await user.click(button(/continue/i));
-		// Step 2 does not create the agent any more: it leads on to the role.
+		// The agent is created here, before the role step: changing its role is a
+		// request of its own.
 		expect(screen.getByText("2 / 3")).toBeInTheDocument();
+		expect(button(/create agent/i)).toBeInTheDocument();
 		expect(
-			screen.queryByRole("button", { name: /create agent/i }),
+			screen.queryByRole("button", { name: /continue/i }),
 		).not.toBeInTheDocument();
+		expect(agentApi.createGlobalAgent).not.toHaveBeenCalled();
 
-		await user.click(button(/continue/i));
+		await user.click(button(/create agent/i));
 
-		expect(screen.getByText("3 / 3")).toBeInTheDocument();
+		expect(await screen.findByText("3 / 3")).toBeInTheDocument();
+		expect(agentApi.createGlobalAgent).toHaveBeenCalledTimes(1);
 		expect(
-			screen.getByText("Choose a global role for the agent (optional)"),
+			screen.getByText(
+				"Bot was created with the default global role. Keep it, choose another, or remove it.",
+			),
 		).toBeInTheDocument();
 		expect(
 			screen.getByText(/at global scope.*comes from its role in that project/i),
 		).toBeInTheDocument();
-		// "No global role" is chosen until another is picked, and is an option
-		// beside the real roles.
-		expect(screen.getByRole("radio", { name: "No global role" })).toBeChecked();
+		// The role it was created with is chosen, and marked as the current and
+		// the default one; "No global role" is an option beside the real roles.
+		const created = screen.getByRole("radio", { name: "USER" });
+		expect(created).toBeChecked();
+		expect(created).toHaveAccessibleDescription(/Current/);
+		expect(created).toHaveAccessibleDescription(/Default/);
+		expect(
+			screen.getByRole("radio", { name: "No global role" }),
+		).not.toBeChecked();
 		expect(screen.getAllByRole("radio")).toHaveLength(4);
-		expect(button(/create agent/i)).toBeInTheDocument();
+		// Nothing is different from what the agent has, so there is nothing to apply.
+		expect(button(/finish/i)).toBeInTheDocument();
 	});
 });
 
@@ -412,30 +443,48 @@ describe("CreateAgentDialog — the project role step", () => {
 });
 
 describe("CreateAgentDialog — the global role step", () => {
-	it("creates the agent without a role and never binds one when 'No global role' is kept", async () => {
+	async function reachRoleStep(
+		user: ReturnType<typeof userEvent.setup>,
+		props: Parameters<typeof renderDialog>[0] = {},
+	) {
+		const view = renderDialog({ permissions: CAN_ASSIGN, ...props });
+		await createGlobalAgentAndGoToRoleStep(user);
+		return view;
+	}
+
+	it("creates the agent without a role, and keeping the one it got makes no role request", async () => {
 		const user = userEvent.setup();
 		const onAcpAgentCreated = vi.fn();
-		renderDialog({ permissions: CAN_ASSIGN, onAcpAgentCreated });
-		await goToRoleStep(user);
+		const onOpenChange = vi.fn();
+		await reachRoleStep(user, { onAcpAgentCreated, onOpenChange });
 
-		await user.click(button(/create agent/i));
-
-		await waitFor(() => expect(onAcpAgentCreated).toHaveBeenCalled());
-		expect(agentApi.createGlobalAgent).toHaveBeenCalledTimes(1);
+		// The create request asks for no role: the server picks the default one.
 		const payload = agentApi.createGlobalAgent.mock.calls[0][0];
 		expect(payload).toMatchObject({ name: "Bot", handle: "bot" });
 		expect(payload).not.toHaveProperty("global_role_id");
+		// Not finished yet: the ACP setup only opens once the wizard is done.
+		expect(onAcpAgentCreated).not.toHaveBeenCalled();
+
+		await user.click(button(/finish/i));
+
+		expect(onOpenChange).toHaveBeenCalledWith(false);
+		expect(onAcpAgentCreated).toHaveBeenCalledTimes(1);
+		expect(onAcpAgentCreated).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "agent-1" }),
+			{ token: "t" },
+			"k",
+		);
 		expect(agentApi.setGlobalAgentRole).not.toHaveBeenCalled();
+		expect(agentApi.clearGlobalAgentRole).not.toHaveBeenCalled();
 	});
 
-	it("creates the agent and then binds the picked role through its own request", async () => {
+	it("assigns the picked role through its own request, once the agent exists, and then finishes", async () => {
 		const user = userEvent.setup();
 		const onAcpAgentCreated = vi.fn();
-		renderDialog({ permissions: CAN_ASSIGN, onAcpAgentCreated });
-		await goToRoleStep(user);
+		await reachRoleStep(user, { onAcpAgentCreated });
 
 		await user.click(screen.getByRole("radio", { name: "ADMIN" }));
-		await user.click(button(/create agent/i));
+		await user.click(button(/assign role/i));
 
 		await waitFor(() => expect(onAcpAgentCreated).toHaveBeenCalled());
 		expect(agentApi.createGlobalAgent).toHaveBeenCalledTimes(1);
@@ -450,116 +499,170 @@ describe("CreateAgentDialog — the global role step", () => {
 		expect(agentApi.createGlobalAgent.mock.invocationCallOrder[0]).toBeLessThan(
 			agentApi.setGlobalAgentRole.mock.invocationCallOrder[0],
 		);
+		expect(agentApi.clearGlobalAgentRole).not.toHaveBeenCalled();
 	});
 
-	it("lets the person go back to a role-less choice after picking one", async () => {
+	it("removes the role through its own request when 'No global role' is picked", async () => {
 		const user = userEvent.setup();
-		renderDialog({ permissions: CAN_ASSIGN });
-		await goToRoleStep(user);
-		await user.click(screen.getByRole("radio", { name: "ADMIN" }));
+		const onAcpAgentCreated = vi.fn();
+		await reachRoleStep(user, { onAcpAgentCreated });
 
 		await user.click(screen.getByRole("radio", { name: "No global role" }));
+		await user.click(button(/remove role/i));
 
-		expect(screen.getByRole("radio", { name: "No global role" })).toBeChecked();
-		expect(screen.getByRole("radio", { name: "ADMIN" })).not.toBeChecked();
-		await user.click(button(/create agent/i));
-		await waitFor(() =>
-			expect(agentApi.createGlobalAgent).toHaveBeenCalledTimes(1),
-		);
+		await waitFor(() => expect(onAcpAgentCreated).toHaveBeenCalled());
+		expect(agentApi.clearGlobalAgentRole).toHaveBeenCalledWith("agent-1");
 		expect(agentApi.setGlobalAgentRole).not.toHaveBeenCalled();
+		expect(agentApi.createGlobalAgent).toHaveBeenCalledTimes(1);
+	});
+
+	it("labels the button for what it will do, and goes back to Finish when the current role is picked again", async () => {
+		const user = userEvent.setup();
+		await reachRoleStep(user);
+		expect(button(/finish/i)).toBeInTheDocument();
+
+		await user.click(screen.getByRole("radio", { name: "ADMIN" }));
+		expect(button(/assign role/i)).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /finish/i }),
+		).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("radio", { name: "No global role" }));
+		expect(button(/remove role/i)).toBeInTheDocument();
+
+		await user.click(screen.getByRole("radio", { name: "USER" }));
+		expect(button(/finish/i)).toBeInTheDocument();
+		expect(agentApi.setGlobalAgentRole).not.toHaveBeenCalled();
+		expect(agentApi.clearGlobalAgentRole).not.toHaveBeenCalled();
 	});
 
 	it("warns before giving an agent a full-access role", async () => {
 		const user = userEvent.setup();
-		renderDialog({ permissions: CAN_ASSIGN });
-		await goToRoleStep(user);
+		await reachRoleStep(user);
 		expect(
 			screen.queryByText(/the agent will be able to do everything/i),
 		).toBeNull();
 
 		await user.click(screen.getByRole("radio", { name: "SUPER_ADMIN" }));
-
 		expect(
 			screen.getByText(/the agent will be able to do everything/i),
 		).toBeInTheDocument();
+
+		await user.click(screen.getByRole("radio", { name: "USER" }));
+		expect(
+			screen.queryByText(/the agent will be able to do everything/i),
+		).toBeNull();
 	});
 
-	it("creates nothing while the person is only choosing, and Back returns through the steps", async () => {
+	it("locks the earlier steps once the agent exists", async () => {
 		const user = userEvent.setup();
-		renderDialog({ permissions: CAN_ASSIGN });
-		await goToRoleStep(user);
-		await user.click(screen.getByRole("radio", { name: "ADMIN" }));
+		await reachRoleStep(user);
 
-		await user.click(button(/back/i));
-		expect(screen.getByText("2 / 3")).toBeInTheDocument();
-		await user.click(button(/back/i));
-		expect(screen.getByText("1 / 3")).toBeInTheDocument();
-		expect(screen.getByLabelText(/^Name/)).toHaveValue("Bot");
-
-		expect(agentApi.createGlobalAgent).not.toHaveBeenCalled();
-		expect(agentApi.setGlobalAgentRole).not.toHaveBeenCalled();
+		// Editing the name or type now would change nothing, so Back is gone.
+		expect(button(/back/i)).toHaveClass("invisible");
+		expect(
+			screen.queryByRole("button", { name: /create agent/i }),
+		).not.toBeInTheDocument();
 	});
 
-	it("keeps the role picked when the person steps back and forward again", async () => {
-		const user = userEvent.setup();
-		renderDialog({ permissions: CAN_ASSIGN });
-		await goToRoleStep(user);
-		await user.click(screen.getByRole("radio", { name: "ADMIN" }));
-
-		await user.click(button(/back/i));
-		await user.click(button(/continue/i));
-
-		expect(await screen.findByRole("radio", { name: "ADMIN" })).toBeChecked();
-	});
-
-	it("shows a failed creation on the role step, where the button was, and allows going back", async () => {
+	it("shows a failed creation on step 2, where its button is, and allows going back", async () => {
 		const user = userEvent.setup();
 		agentApi.createGlobalAgent.mockRejectedValue(new Error("handle taken"));
 		renderDialog({ permissions: CAN_ASSIGN });
-		await goToRoleStep(user);
-		await user.click(screen.getByRole("radio", { name: "ADMIN" }));
+		await chooseAcpAndName(user);
+		await user.click(button(/continue/i));
 
 		await user.click(button(/create agent/i));
 
 		expect(
 			await screen.findByText("Failed to create agent. Please try again."),
 		).toBeInTheDocument();
+		expect(screen.getByText("2 / 3")).toBeInTheDocument();
 		expect(agentApi.setGlobalAgentRole).not.toHaveBeenCalled();
 		// Nothing exists yet, so the earlier steps can still be fixed.
 		expect(button(/back/i)).not.toHaveClass("invisible");
 		expect(button(/create agent/i)).toBeEnabled();
 	});
+
+	it("says so when there is no default role to give the agent", async () => {
+		const user = userEvent.setup();
+		agentApi.createGlobalAgent.mockRejectedValue(
+			Object.assign(new Error("conflict"), {
+				response: { data: { error_code: "GLOBAL_ROLE_NO_DEFAULT" } },
+			}),
+		);
+		renderDialog({ permissions: CAN_ASSIGN });
+		await chooseAcpAndName(user);
+		await user.click(button(/continue/i));
+
+		await user.click(button(/create agent/i));
+
+		expect(
+			await screen.findByText(
+				/there is no default role to give the new agent/i,
+			),
+		).toBeInTheDocument();
+	});
+
+	it("does not close while the agent is being created", async () => {
+		const user = userEvent.setup();
+		agentApi.createGlobalAgent.mockReturnValue(new Promise(() => {}));
+		const onOpenChange = vi.fn();
+		renderDialog({ permissions: CAN_ASSIGN, onOpenChange });
+		await chooseAcpAndName(user);
+		await user.click(button(/continue/i));
+		await user.click(button(/create agent/i));
+		await screen.findByText("Creating…");
+
+		await user.click(screen.getByRole("button", { name: "Close" }));
+
+		expect(onOpenChange).not.toHaveBeenCalled();
+	});
+
+	it("finishes when the person closes the dialog on the role step: the agent keeps its role, the lists refresh, the ACP setup opens", async () => {
+		const user = userEvent.setup();
+		const onOpenChange = vi.fn();
+		const onAcpAgentCreated = vi.fn();
+		const { client } = await reachRoleStep(user, {
+			onOpenChange,
+			onAcpAgentCreated,
+		});
+		const invalidate = vi.spyOn(client, "invalidateQueries");
+
+		await user.click(screen.getByRole("button", { name: "Close" }));
+
+		expect(onOpenChange).toHaveBeenCalledWith(false);
+		expect(onAcpAgentCreated).toHaveBeenCalledTimes(1);
+		// The agent exists, so the list behind the dialog has to show it.
+		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["global-agents"] });
+		expect(agentApi.setGlobalAgentRole).not.toHaveBeenCalled();
+		expect(agentApi.clearGlobalAgentRole).not.toHaveBeenCalled();
+	});
 });
 
-// If binding the role fails the agent already exists. The dialog must not
-// create it a second time on retry, and must not trap the person either.
-describe("CreateAgentDialog — when the role cannot be bound", () => {
-	async function createWithFailingRole(
+// The agent exists before its role is changed, so a failed change must neither
+// create it a second time on retry nor trap the person.
+describe("CreateAgentDialog — when the role cannot be changed", () => {
+	async function failToAssign(
 		user: ReturnType<typeof userEvent.setup>,
 		props: Parameters<typeof renderDialog>[0] = {},
 	) {
-		agentApi.setGlobalAgentRole.mockRejectedValueOnce(new Error("forbidden"));
+		agentApi.setGlobalAgentRole.mockRejectedValueOnce(new Error("boom"));
 		const view = renderDialog({ permissions: CAN_ASSIGN, ...props });
-		await goToRoleStep(user);
+		await createGlobalAgentAndGoToRoleStep(user);
 		await user.click(screen.getByRole("radio", { name: "ADMIN" }));
-		await user.click(button(/create agent/i));
-		await screen.findByText(/the agent was created, but its role couldn't/i);
+		await user.click(button(/assign role/i));
+		await screen.findByText("Couldn't update the role. Please try again.");
 		return view;
 	}
 
-	it("says the agent was created, offers Finish, and locks the earlier steps", async () => {
+	it("says so, keeps the wizard on the role step, and offers to try again", async () => {
 		const user = userEvent.setup();
 		const onAcpAgentCreated = vi.fn();
-		await createWithFailingRole(user, { onAcpAgentCreated });
+		await failToAssign(user, { onAcpAgentCreated });
 
-		expect(
-			screen.getByText(/choose “No global role” to finish/i),
-		).toBeInTheDocument();
-		expect(button(/finish/i)).toBeEnabled();
-		expect(
-			screen.queryByRole("button", { name: /create agent/i }),
-		).not.toBeInTheDocument();
-		// Editing the name or type now would change nothing, so Back is gone.
+		expect(screen.getByText("3 / 3")).toBeInTheDocument();
+		expect(button(/assign role/i)).toBeEnabled();
 		expect(button(/back/i)).toHaveClass("invisible");
 		// Not finished yet: the ACP setup dialog has not been opened.
 		expect(onAcpAgentCreated).not.toHaveBeenCalled();
@@ -568,9 +671,9 @@ describe("CreateAgentDialog — when the role cannot be bound", () => {
 	it("retries only the role, never creating the agent again", async () => {
 		const user = userEvent.setup();
 		const onAcpAgentCreated = vi.fn();
-		await createWithFailingRole(user, { onAcpAgentCreated });
+		await failToAssign(user, { onAcpAgentCreated });
 
-		await user.click(button(/finish/i));
+		await user.click(button(/assign role/i));
 
 		await waitFor(() => expect(onAcpAgentCreated).toHaveBeenCalled());
 		expect(agentApi.createGlobalAgent).toHaveBeenCalledTimes(1);
@@ -581,12 +684,15 @@ describe("CreateAgentDialog — when the role cannot be bound", () => {
 		);
 	});
 
-	it("can finish without a role instead, and still opens the ACP setup", async () => {
+	it("can finish with the role the agent has instead, and still opens the ACP setup", async () => {
 		const user = userEvent.setup();
 		const onAcpAgentCreated = vi.fn();
-		await createWithFailingRole(user, { onAcpAgentCreated });
+		await failToAssign(user, { onAcpAgentCreated });
 
-		await user.click(screen.getByRole("radio", { name: "No global role" }));
+		await user.click(screen.getByRole("radio", { name: "USER" }));
+		expect(
+			screen.queryByText("Couldn't update the role. Please try again."),
+		).not.toBeInTheDocument();
 		await user.click(button(/finish/i));
 
 		await waitFor(() => expect(onAcpAgentCreated).toHaveBeenCalled());
@@ -594,16 +700,23 @@ describe("CreateAgentDialog — when the role cannot be bound", () => {
 		expect(agentApi.setGlobalAgentRole).toHaveBeenCalledTimes(1);
 	});
 
-	it("refreshes the agent lists if the person closes the dialog instead", async () => {
+	it("explains a refusal", async () => {
 		const user = userEvent.setup();
-		const onOpenChange = vi.fn();
-		const { client } = await createWithFailingRole(user, { onOpenChange });
-		const invalidate = vi.spyOn(client, "invalidateQueries");
+		agentApi.setGlobalAgentRole.mockRejectedValueOnce(
+			Object.assign(new Error("forbidden"), {
+				response: { data: { error_code: "FORBIDDEN" } },
+			}),
+		);
+		renderDialog({ permissions: CAN_ASSIGN });
+		await createGlobalAgentAndGoToRoleStep(user);
+		await user.click(screen.getByRole("radio", { name: "ADMIN" }));
 
-		await user.click(screen.getByRole("button", { name: "Close" }));
+		await user.click(button(/assign role/i));
 
-		// The agent exists, so the list behind the dialog has to show it.
-		expect(onOpenChange).toHaveBeenCalledWith(false);
-		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["global-agents"] });
+		expect(
+			await screen.findByText(
+				"You don't have permission to change global roles.",
+			),
+		).toBeInTheDocument();
 	});
 });

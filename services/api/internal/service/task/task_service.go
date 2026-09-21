@@ -125,6 +125,11 @@ func (s *Service) DeleteTaskType(ctx context.Context, projectID, id uuid.UUID) e
 	if t.IsSystem {
 		return taskdom.ErrTypeIsSystem
 	}
+	// New tasks without a type start as the default one, so it has to stay
+	// until another type is made the default.
+	if t.IsDefault {
+		return taskdom.ErrTypeIsDefault
+	}
 	return s.repo.DeleteTaskType(ctx, id)
 }
 
@@ -218,6 +223,11 @@ func (s *Service) DeleteTaskStatus(ctx context.Context, projectID, id uuid.UUID)
 	}
 	if st.ProjectID != projectID {
 		return taskdom.ErrStatusNotFound
+	}
+	// New tasks without a status start in the default one, so it has to stay
+	// until another status is made the default.
+	if st.IsDefault {
+		return taskdom.ErrStatusIsDefault
 	}
 	if s.automationChecker != nil {
 		used, err := s.automationChecker.StatusUsedByAutomation(ctx, id)

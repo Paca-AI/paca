@@ -341,6 +341,17 @@ func TestGlobalAgentRoleBindingIsItsOwnPrivilege(t *testing.T) {
 		return assertDataMap(t, got)["global_role_id"]
 	}
 
+	// Creating an agent never carries a role, but it does start with the default
+	// one (the same role a new user gets), so "unchanged" is that role, not none.
+	defaultRole, err := env.roleRepo.FindDefault(env.ctx)
+	if err != nil {
+		t.Fatalf("find the default role: %v", err)
+	}
+	startingRole := defaultRole.ID.String()
+	if got := boundRole(); got != startingRole {
+		t.Fatalf("new agent's role = %v, want the default %s", got, startingRole)
+	}
+
 	t.Run("create_and_update_refuse_a_role", func(t *testing.T) {
 		if got, _ := doJSON(t, env, manager, http.MethodPost, "/api/v1/admin/agents",
 			agentBody(map[string]any{"global_role_id": target.ID.String()})); got != http.StatusBadRequest {
@@ -349,8 +360,8 @@ func TestGlobalAgentRoleBindingIsItsOwnPrivilege(t *testing.T) {
 		if got, _ := doJSON(t, env, manager, http.MethodPatch, agentPath, bindBody); got != http.StatusBadRequest {
 			t.Errorf("update with global_role_id: want 400, got %d", got)
 		}
-		if got := boundRole(); got != nil {
-			t.Errorf("agent has role %v, want none", got)
+		if got := boundRole(); got != startingRole {
+			t.Errorf("agent role = %v after refused create/update, want it unchanged (%s)", got, startingRole)
 		}
 	})
 
@@ -360,8 +371,8 @@ func TestGlobalAgentRoleBindingIsItsOwnPrivilege(t *testing.T) {
 				t.Errorf("PUT as %s: want 403, got %d", name, got)
 			}
 		}
-		if got := boundRole(); got != nil {
-			t.Errorf("agent has role %v after refused attempts, want none", got)
+		if got := boundRole(); got != startingRole {
+			t.Errorf("agent role = %v after refused attempts, want it unchanged (%s)", got, startingRole)
 		}
 	})
 

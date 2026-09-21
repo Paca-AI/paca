@@ -273,7 +273,7 @@ test.describe('User Management', () => {
     await expect(adminRow.getByRole('button', { name: 'Delete user' })).toHaveCount(0);
   });
 
-  test('opens the create-user wizard on its details step and validates before continuing', async ({
+  test('opens the create-user wizard on its details step and validates before creating', async ({
     page,
   }) => {
     await openUsersPage(page);
@@ -288,20 +288,21 @@ test.describe('User Management', () => {
     ).toBeVisible();
     await expect(dialog.getByRole('textbox', { name: 'Username' })).toBeVisible();
     await expect(dialog.getByRole('textbox', { name: 'Full Name' })).toBeVisible();
-    // A role is a step of its own, not a field of the details form.
+    // A role is a step of its own, not a field of the details form: this step
+    // is the one that creates the account.
     await expect(dialog.getByRole('combobox')).toHaveCount(0);
-    await expect(dialog.getByRole('button', { name: 'Create user' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Continue' })).toHaveCount(0);
 
-    await dialog.getByRole('button', { name: 'Continue' }).click();
+    await dialog.getByRole('button', { name: 'Create user' }).click();
     await expect(dialog.getByText('Full name is required.')).toBeVisible();
 
     await dialog.getByRole('textbox', { name: 'Full Name' }).fill('Jane Doe');
-    await dialog.getByRole('button', { name: 'Continue' }).click();
+    await dialog.getByRole('button', { name: 'Create user' }).click();
     await expect(dialog.getByText('Username is required.')).toBeVisible();
     await expect(dialog.getByText('1 / 3')).toBeVisible();
   });
 
-  test('offers the roles on the second step with USER as the default, and creates nothing until the last action', async ({
+  test('creates the account first, then offers its roles on the second step with the default one held', async ({
     page,
     request,
   }) => {
@@ -312,25 +313,55 @@ test.describe('User Management', () => {
     const dialog = page.getByRole('dialog', { name: 'Create User' });
     await dialog.getByRole('textbox', { name: 'Username' }).fill(username);
     await dialog.getByRole('textbox', { name: 'Full Name' }).fill('Role Step User');
-    await dialog.getByRole('button', { name: 'Continue' }).click();
+    await dialog.getByRole('button', { name: 'Create user' }).click();
 
+    // The account exists now, holding the default role: choosing another one is
+    // a request of its own.
     await expect(dialog.getByText('2 / 3')).toBeVisible();
-    await expect(dialog.getByText(`Choose a role for ${username}.`)).toBeVisible();
+    await expect(dialog.getByText(`${username} was created with the USER role.`)).toBeVisible();
     const roles = dialog.getByRole('radiogroup', { name: 'Role' });
     await expect(roles.getByRole('radio', { name: 'ADMIN', exact: true })).toBeVisible();
     await expect(roles.getByRole('radio', { name: 'SUPER_ADMIN', exact: true })).toBeVisible();
     const defaultRole = roles.getByRole('radio', { name: 'USER', exact: true });
     await expect(defaultRole).toBeChecked();
     await expect(defaultRole).toHaveAccessibleDescription(/Default/);
+    await expect(defaultRole).toHaveAccessibleDescription(/Current/);
 
-    // Going back keeps what was typed; closing here leaves nothing behind.
-    await dialog.getByRole('button', { name: 'Back' }).click();
-    await expect(dialog.getByText('1 / 3')).toBeVisible();
-    await expect(dialog.getByRole('textbox', { name: 'Username' })).toHaveValue(username);
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(dialog).toHaveCount(0);
+    // There is no way back from here, and the password waits for the last step.
+    await expect(dialog.getByRole('button', { name: 'Back' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+    await expect(dialog.getByRole('textbox')).toHaveCount(0);
 
-    expect((await listUsers(request)).some((user) => user.username === username)).toBe(false);
+    const created = (await listUsers(request)).find((user) => user.username === username);
+    expect(created?.role).toBe('USER');
+  });
+
+  test('closing the dialog on the role step carries on to the password instead of losing it', async ({
+    page,
+    request,
+  }) => {
+    const username = uniqueUsername('CLOSE_ROLE');
+
+    await openUsersPage(page);
+    await page.getByRole('button', { name: 'New User' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Create User' });
+    await dialog.getByRole('textbox', { name: 'Username' }).fill(username);
+    await dialog.getByRole('textbox', { name: 'Full Name' }).fill('Close Role User');
+    await dialog.getByRole('button', { name: 'Create user' }).click();
+    await expect(dialog.getByText('2 / 3')).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Close' }).click();
+
+    // The account exists and its password has not been shown yet, so closing
+    // keeps the role as it is and moves on to the password.
+    const successDialog = page.getByRole('dialog', { name: 'User created' });
+    await expect(successDialog).toBeVisible();
+    await expect(successDialog.getByText('3 / 3')).toBeVisible();
+    await expect(successDialog.getByRole('textbox')).not.toHaveValue('');
+    await successDialog.getByRole('button', { name: 'Done' }).click();
+
+    await expect(userRow(page, username).getByText('USER', { exact: true })).toBeVisible();
+    expect((await listUsers(request)).some((user) => user.username === username)).toBe(true);
   });
 
   test('creates a user with the default USER role and requires a password change on first login', async ({
@@ -344,9 +375,9 @@ test.describe('User Management', () => {
     const dialog = page.getByRole('dialog', { name: 'Create User' });
     await dialog.getByRole('textbox', { name: 'Username' }).fill(username);
     await dialog.getByRole('textbox', { name: 'Full Name' }).fill('Default Role User');
-    await dialog.getByRole('button', { name: 'Continue' }).click();
-    // The role step keeps USER, the default, so nothing else is asked for.
     await dialog.getByRole('button', { name: 'Create user' }).click();
+    // The role step keeps USER, the default, so nothing else is asked for.
+    await dialog.getByRole('button', { name: 'Continue' }).click();
 
     const successDialog = page.getByRole('dialog', { name: 'User created' });
     await expect(successDialog).toBeVisible();
@@ -376,7 +407,7 @@ test.describe('User Management', () => {
     await expectHomePage(page);
   });
 
-  test('creates a user with an explicitly selected role, shows the password last, and cancels a discarded draft', async ({
+  test('creates a user, assigns the selected role through its own step, shows the password last, and cancels a discarded draft', async ({
     page,
   }) => {
     const selectedRoleUser = uniqueUsername('ADMIN');
@@ -388,15 +419,14 @@ test.describe('User Management', () => {
     let dialog = page.getByRole('dialog', { name: 'Create User' });
     await dialog.getByRole('textbox', { name: 'Username' }).fill(selectedRoleUser);
     await dialog.getByRole('textbox', { name: 'Full Name' }).fill('Admin Role User');
-    await dialog.getByRole('button', { name: 'Continue' }).click();
-    await dialog.getByRole('radio', { name: 'ADMIN', exact: true }).check();
     await dialog.getByRole('button', { name: 'Create user' }).click();
+    await dialog.getByRole('radio', { name: 'ADMIN', exact: true }).check();
+    await dialog.getByRole('button', { name: 'Assign role' }).click();
 
-    // The account, its role and its one-time password all come out of the last step.
+    // The role is assigned; the account's one-time password comes last.
     const successDialog = page.getByRole('dialog', { name: 'User created' });
     await expect(successDialog).toBeVisible();
     await expect(successDialog.getByText('3 / 3')).toBeVisible();
-    await expect(successDialog.getByText('Role assigned')).toBeVisible();
     await expect(successDialog.getByText('ADMIN', { exact: true })).toBeVisible();
     await expect(successDialog.getByRole('textbox')).not.toHaveValue('');
     await successDialog.getByRole('button', { name: 'Done' }).click();
@@ -703,8 +733,8 @@ test.describe('Role assignment is a separate permission from managing users', ()
     const successDialog = page.getByRole('dialog', { name: 'User created' });
     await expect(successDialog.getByText('2 / 2')).toBeVisible();
     await expect(successDialog.getByRole('textbox')).not.toHaveValue('');
-    // There was no role step, so there is no role line beside the password either.
-    await expect(successDialog.getByText('Role', { exact: true })).toHaveCount(0);
+    // There was no role step, but the role the account got is still confirmed.
+    await expect(successDialog.getByText('USER', { exact: true })).toBeVisible();
     await successDialog.getByRole('button', { name: 'Done' }).click();
   });
 

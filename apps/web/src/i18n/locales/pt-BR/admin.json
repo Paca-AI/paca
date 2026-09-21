@@ -50,7 +50,7 @@
 			"createTitle": "Criar Usuário",
 			"editDescription": "Atualize o nome de exibição e o e-mail do usuário.",
 			"createDescription": "Uma senha temporária segura será gerada automaticamente. Será solicitado ao usuário que a altere no primeiro login.",
-			"roleStepDescription": "Escolha uma função para {{username}}. Novas contas começam como USER.",
+			"roleStepDescription": "{{username}} foi criado com a função {{role}}. Mantenha-a ou escolha outra.",
 			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Usuário",
 			"usernamePlaceholder": "ex.: joao.silva",
@@ -60,13 +60,9 @@
 			"emailOptionalHint": "(opcional — envia um e-mail de boas-vindas com um link para definir a senha)",
 			"emailPlaceholder": "ex.: joao.silva@example.com",
 			"roleStep": {
-				"title": "Função",
-				"assigned": "Função atribuída",
-				"failed": "A conta foi criada, mas não foi possível atribuir a função. Tente novamente ou atribua depois na tabela de usuários.",
-				"retry": "Tentar novamente"
+				"title": "Função"
 			},
 			"cancel": "Cancelar",
-			"back": "Voltar",
 			"continue": "Continuar",
 			"saving": "Salvando…",
 			"creating": "Criando…",
@@ -79,6 +75,7 @@
 				"emailTaken": "Este e-mail já está em uso.",
 				"userNotFound": "Usuário não encontrado. Ele pode já ter sido excluído.",
 				"forbidden": "Você não tem permissão para executar esta ação.",
+				"noDefaultRole": "Não há uma função padrão para a nova conta. Defina uma na página Funções Globais e tente novamente.",
 				"internalError": "Algo deu errado no servidor. Tente novamente.",
 				"generic": "Algo deu errado."
 			}
@@ -160,10 +157,13 @@
 		"table": {
 			"columnName": "Nome",
 			"columnPermissions": "Permissões",
-			"columnCreated": "Criado em",
+			"columnDefault": "Padrão",
 			"noPermissionsAssigned": "Nenhuma permissão atribuída",
+			"default": "Padrão",
+			"setDefaultAction": "Definir como função padrão",
 			"editAction": "Editar função",
-			"deleteAction": "Excluir função"
+			"deleteAction": "Excluir função",
+			"deleteDefaultDisabled": "A função padrão não pode ser excluída. Defina primeiro outra função como padrão."
 		},
 		"formDialog": {
 			"editTitle": "Editar Função",
@@ -200,6 +200,7 @@
 			"errors": {
 				"roleNotFound": "Esta função não existe mais.",
 				"hasUsersWarning": "Esta função não pode ser excluída porque ainda está atribuída a um ou mais usuários.",
+				"isDefault": "A função padrão não pode ser excluída. Defina primeiro outra função como padrão.",
 				"forbidden": "Você não tem permissão para excluir esta função.",
 				"internalError": "Algo deu errado. Tente novamente.",
 				"generic": "Algo deu errado."
@@ -273,6 +274,19 @@
 			"projects": "Projetos",
 			"plugins": "Plugins",
 			"settings": "Configurações"
+		},
+		"defaultDialog": {
+			"title": "Definir função padrão",
+			"description": "Novos usuários e novos agentes globais começarão com a função {{role}}. As contas que já existem mantêm a função atual.",
+			"fullAccessWarning": "Esta função concede todas as permissões, então toda conta criada a partir de agora começará com acesso total. Confirme se é isso que você quer.",
+			"cancel": "Cancelar",
+			"confirm": "Definir como padrão",
+			"confirming": "Salvando…",
+			"errors": {
+				"roleNotFound": "Esta função não existe mais.",
+				"forbidden": "Você não tem permissão para alterar a função padrão.",
+				"generic": "Algo deu errado. Tente novamente."
+			}
 		}
 	},
 	"rolePicker": {

@@ -26,7 +26,7 @@
 			"title": "Создать AI-агента",
 			"step1Description": "Настройте личность агента",
 			"step2Description": "Настройте AI-модель, на которой работает агент",
-			"step3DescriptionGlobal": "Выберите глобальную роль для агента (необязательно)",
+			"step3DescriptionGlobal": "Агент {{name}} создан с глобальной ролью по умолчанию. Оставьте её, выберите другую или уберите.",
 			"step3DescriptionProject": "Выберите роль агента в этом проекте",
 			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Начать с пресета",
@@ -84,7 +84,7 @@
 			"optional": "(необязательно)",
 			"charsCount": "{{count}} символов",
 			"createFailed": "Не удалось создать агента. Попробуйте ещё раз.",
-			"roleNotAssigned": "Агент создан, но роль назначить не удалось. Повторите попытку или выберите «Без глобальной роли», чтобы завершить, и назначьте роль позже на вкладке «Глобальная роль» агента.",
+			"noDefaultRole": "Для нового агента не задана роль по умолчанию. Назначьте её на странице «Глобальные роли» и повторите попытку.",
 			"cancel": "Отмена",
 			"continue": "Продолжить",
 			"back": "Назад",
@@ -978,6 +978,7 @@
 			"setAsDefault": "Сделать статусом по умолчанию",
 			"editStatus": "Редактировать статус",
 			"deleteStatus": "Удалить статус",
+			"deleteDefaultDisabled": "Статус по умолчанию нельзя удалить. Сначала сделайте статусом по умолчанию другой.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -1002,6 +1003,7 @@
 			"setAsDefault": "Сделать типом по умолчанию",
 			"editType": "Редактировать тип",
 			"deleteType": "Удалить тип",
+			"deleteDefaultDisabled": "Тип по умолчанию нельзя удалить. Сначала сделайте типом по умолчанию другой.",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1105,6 +1107,7 @@
 			"confirmTextPrefix": "Удалить",
 			"confirmTextSuffix": "? Задачи с этим статусом потеряют статус. Это действие нельзя отменить.",
 			"deleteFailed": "Не удалось удалить статус. Попробуйте ещё раз.",
+			"isDefault": "Статус по умолчанию нельзя удалить. Сначала сделайте статусом по умолчанию другой.",
 			"cancel": "Отмена",
 			"deleteStatus": "Удалить статус"
 		},
@@ -1197,6 +1200,7 @@
 			"confirmTextPrefix": "Удалить",
 			"confirmTextSuffix": "? Задачи с этим типом потеряют назначенный тип. Это действие нельзя отменить.",
 			"deleteFailed": "Не удалось удалить тип задачи. Попробуйте ещё раз.",
+			"isDefault": "Тип по умолчанию нельзя удалить. Сначала сделайте типом по умолчанию другой.",
 			"cancel": "Отмена",
 			"deleteType": "Удалить тип"
 		},

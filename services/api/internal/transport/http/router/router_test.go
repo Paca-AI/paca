@@ -99,6 +99,12 @@ func (m *mockGlobalRoleSvc) ReplaceUserRoles(context.Context, uuid.UUID, []uuid.
 func (m *mockGlobalRoleSvc) FindByID(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) {
 	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}, nil
 }
+func (m *mockGlobalRoleSvc) SetDefault(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) {
+	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}, IsDefault: true}, nil
+}
+func (m *mockGlobalRoleSvc) FindDefault(context.Context) (*globalroledom.GlobalRole, error) {
+	return nil, globalroledom.ErrNoDefault
+}
 
 // stubProjectSvc is a minimal projectdom.Service with no projects, just
 // enough to exercise routing for the /projects collection endpoints.

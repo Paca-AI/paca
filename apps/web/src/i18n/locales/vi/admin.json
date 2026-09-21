@@ -50,7 +50,7 @@
 			"createTitle": "Tạo người dùng",
 			"editDescription": "Cập nhật tên hiển thị và email của người dùng.",
 			"createDescription": "Một mật khẩu tạm thời an toàn sẽ được tạo tự động. Người dùng sẽ phải đổi mật khẩu trong lần đăng nhập đầu tiên.",
-			"roleStepDescription": "Chọn vai trò cho {{username}}. Tài khoản mới bắt đầu với vai trò USER.",
+			"roleStepDescription": "{{username}} đã được tạo với vai trò {{role}}. Giữ nguyên hoặc chọn vai trò khác.",
 			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Tên đăng nhập",
 			"usernamePlaceholder": "vd: john.doe",
@@ -60,13 +60,9 @@
 			"emailOptionalHint": "(tùy chọn — gửi email chào mừng kèm liên kết để đặt mật khẩu)",
 			"emailPlaceholder": "vd: john.doe@example.com",
 			"roleStep": {
-				"title": "Vai trò",
-				"assigned": "Đã gán vai trò",
-				"failed": "Tài khoản đã được tạo nhưng không thể gán vai trò. Hãy thử lại hoặc gán sau từ danh sách người dùng.",
-				"retry": "Thử lại"
+				"title": "Vai trò"
 			},
 			"cancel": "Hủy",
-			"back": "Quay lại",
 			"continue": "Tiếp tục",
 			"saving": "Đang lưu…",
 			"creating": "Đang tạo…",
@@ -79,6 +75,7 @@
 				"emailTaken": "Email này đã được sử dụng.",
 				"userNotFound": "Không tìm thấy người dùng. Có thể người dùng đã bị xóa.",
 				"forbidden": "Bạn không có quyền thực hiện thao tác này.",
+				"noDefaultRole": "Chưa có vai trò mặc định để gán cho tài khoản mới. Hãy đặt một vai trò ở trang Vai trò toàn cục rồi thử lại.",
 				"internalError": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
 				"generic": "Đã xảy ra lỗi."
 			}
@@ -160,10 +157,13 @@
 		"table": {
 			"columnName": "Tên",
 			"columnPermissions": "Quyền hạn",
-			"columnCreated": "Ngày tạo",
+			"columnDefault": "Mặc định",
 			"noPermissionsAssigned": "Chưa gán quyền hạn nào",
+			"default": "Mặc định",
+			"setDefaultAction": "Đặt làm vai trò mặc định",
 			"editAction": "Chỉnh sửa vai trò",
-			"deleteAction": "Xóa vai trò"
+			"deleteAction": "Xóa vai trò",
+			"deleteDefaultDisabled": "Không thể xóa vai trò mặc định. Hãy đặt một vai trò khác làm mặc định trước."
 		},
 		"formDialog": {
 			"editTitle": "Chỉnh sửa vai trò",
@@ -200,6 +200,7 @@
 			"errors": {
 				"roleNotFound": "Vai trò này không còn tồn tại.",
 				"hasUsersWarning": "Không thể xóa vai trò này vì vẫn còn được gán cho một hoặc nhiều người dùng.",
+				"isDefault": "Không thể xóa vai trò mặc định. Hãy đặt một vai trò khác làm mặc định trước.",
 				"forbidden": "Bạn không có quyền xóa vai trò này.",
 				"internalError": "Đã xảy ra lỗi. Vui lòng thử lại.",
 				"generic": "Đã xảy ra lỗi."
@@ -273,6 +274,19 @@
 			"projects": "Dự án",
 			"plugins": "Plugin",
 			"settings": "Cài đặt"
+		},
+		"defaultDialog": {
+			"title": "Đặt vai trò mặc định",
+			"description": "Người dùng mới và agent toàn cục mới sẽ bắt đầu với vai trò {{role}}. Các tài khoản hiện có vẫn giữ vai trò hiện tại.",
+			"fullAccessWarning": "Vai trò này cấp mọi quyền, nên mọi tài khoản bạn tạo từ giờ sẽ bắt đầu với toàn quyền truy cập. Hãy chắc chắn đó là điều bạn muốn.",
+			"cancel": "Hủy",
+			"confirm": "Đặt làm mặc định",
+			"confirming": "Đang lưu…",
+			"errors": {
+				"roleNotFound": "Vai trò này không còn tồn tại.",
+				"forbidden": "Bạn không có quyền thay đổi vai trò mặc định.",
+				"generic": "Đã xảy ra lỗi. Vui lòng thử lại."
+			}
 		}
 	},
 	"rolePicker": {

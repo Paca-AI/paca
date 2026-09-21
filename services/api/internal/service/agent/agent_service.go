@@ -49,6 +49,9 @@ type pluginFinder interface {
 // existence is the whole check.
 type globalRoleFinder interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+	// FindDefault is the role a new global agent starts with, the same one a
+	// new user starts with.
+	FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error)
 }
 
 // defaultParallelismLimit/parallelismLimitCap clamp Agent.ParallelismLimit
@@ -655,7 +658,9 @@ func (s *Service) GetGlobalAgent(ctx context.Context, agentID uuid.UUID) (*agent
 
 // CreateGlobalAgent validates input and creates a global-scope agent. Unlike
 // CreateAgent, no project_members row is created — the agent starts out
-// invited into zero projects.
+// invited into zero projects. It starts with the default global role (the
+// same one a new user gets), like a new user does; a different role, or none,
+// is a separate action (SetGlobalAgentRole), so creation carries no role.
 func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
 	handle := strings.TrimSpace(in.Handle)
 	if handle == "" {
@@ -751,6 +756,19 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 	}
 	if err := validateParallelismLimit(a); err != nil {
 		return nil, err
+	}
+
+	if s.globalRoleSvc != nil {
+		role, err := s.globalRoleSvc.FindDefault(ctx)
+		switch {
+		case err == nil:
+			a.GlobalRoleID = &role.ID
+		case errors.Is(err, globalroledom.ErrNoDefault):
+			// No default is set: the agent starts with no global role, which
+			// is a valid state (it just has no global permissions).
+		default:
+			return nil, fmt.Errorf("create global agent: default role: %w", err)
+		}
 	}
 
 	if err := s.repo.CreateGlobalAgent(ctx, a); err != nil {

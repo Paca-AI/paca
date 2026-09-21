@@ -26,7 +26,7 @@
 			"title": "Criar agente",
 			"step1Description": "Defina a identidade do seu agente",
 			"step2Description": "Configure o modelo de IA que alimenta seu agente",
-			"step3DescriptionGlobal": "Escolha uma função global para o agente (opcional)",
+			"step3DescriptionGlobal": "{{name}} foi criado com a função global padrão. Mantenha-a, escolha outra ou remova-a.",
 			"step3DescriptionProject": "Escolha o papel do agente neste projeto",
 			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Começar a partir de um preset",
@@ -84,7 +84,7 @@
 			"optional": "(opcional)",
 			"charsCount": "{{count}} caracteres",
 			"createFailed": "Falha ao criar o agente. Tente novamente.",
-			"roleNotAssigned": "O agente foi criado, mas não foi possível atribuir a função. Tente novamente ou escolha “Sem função global” para concluir e atribuir uma depois na aba Função global do agente.",
+			"noDefaultRole": "Não há uma função padrão para o novo agente. Defina uma na página Funções Globais e tente novamente.",
 			"cancel": "Cancelar",
 			"continue": "Continuar",
 			"back": "Voltar",
@@ -964,6 +964,7 @@
 			"setAsDefault": "Definir como status padrão",
 			"editStatus": "Editar status",
 			"deleteStatus": "Excluir status",
+			"deleteDefaultDisabled": "O status padrão não pode ser excluído. Defina primeiro outro status como padrão.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -988,6 +989,7 @@
 			"setAsDefault": "Definir como tipo padrão",
 			"editType": "Editar tipo",
 			"deleteType": "Excluir tipo",
+			"deleteDefaultDisabled": "O tipo padrão não pode ser excluído. Defina primeiro outro tipo como padrão.",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1091,6 +1093,7 @@
 			"confirmTextPrefix": "Excluir",
 			"confirmTextSuffix": "? As tarefas que usam este status perderão seu status. Esta ação não pode ser desfeita.",
 			"deleteFailed": "Falha ao excluir o status. Tente novamente.",
+			"isDefault": "O status padrão não pode ser excluído. Defina primeiro outro status como padrão.",
 			"cancel": "Cancelar",
 			"deleteStatus": "Excluir status"
 		},
@@ -1181,6 +1184,7 @@
 			"confirmTextPrefix": "Excluir",
 			"confirmTextSuffix": "? As tarefas que usam este tipo perderão sua atribuição de tipo. Esta ação não pode ser desfeita.",
 			"deleteFailed": "Falha ao excluir o tipo de tarefa. Tente novamente.",
+			"isDefault": "O tipo padrão não pode ser excluído. Defina primeiro outro tipo como padrão.",
 			"cancel": "Cancelar",
 			"deleteType": "Excluir tipo"
 		},

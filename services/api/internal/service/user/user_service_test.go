@@ -78,16 +78,16 @@ func (r *stubPermissionReader) ListGlobalPermissions(ctx context.Context, userID
 	return nil, nil
 }
 
-// stubRoleRepo implements usersvc.RoleByNameFinder.
+// stubRoleRepo implements usersvc.DefaultRoleFinder.
 type stubRoleRepo struct {
-	findByName func(ctx context.Context, name string) (*globalroledom.GlobalRole, error)
+	findDefault func(ctx context.Context) (*globalroledom.GlobalRole, error)
 }
 
-func (r *stubRoleRepo) FindByName(ctx context.Context, name string) (*globalroledom.GlobalRole, error) {
-	if r.findByName != nil {
-		return r.findByName(ctx, name)
+func (r *stubRoleRepo) FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error) {
+	if r.findDefault != nil {
+		return r.findDefault(ctx)
 	}
-	return nil, globalroledom.ErrNotFound
+	return nil, globalroledom.ErrNoDefault
 }
 
 func (r *stubRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
@@ -301,8 +301,8 @@ func TestCreate_Success(t *testing.T) {
 	svc := usersvc.New(
 		&stubRepo{},
 		&stubRoleRepo{
-			findByName: func(_ context.Context, _ string) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser}, nil
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser, IsDefault: true}, nil
 			},
 		},
 	)
@@ -329,6 +329,69 @@ func TestCreate_Success(t *testing.T) {
 	}
 	if got.ID == uuid.Nil {
 		t.Fatal("expected non-nil UUID")
+	}
+}
+
+// The role a new user gets is whichever one is marked as the default, not a
+// role called USER: deleting or renaming USER must not break creating users.
+func TestCreate_UsesTheDefaultRoleWhateverItIsCalled(t *testing.T) {
+	roleID := uuid.New()
+	var stored *userdom.User
+	svc := usersvc.New(
+		&stubRepo{create: func(_ context.Context, u *userdom.User) error {
+			stored = u
+			return nil
+		}},
+		&stubRoleRepo{
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: "MEMBER", IsDefault: true}, nil
+			},
+		},
+	)
+
+	got, err := svc.Create(context.Background(), userdom.CreateInput{
+		Username: "alice", Password: "password123", FullName: "Alice",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Role != "MEMBER" || got.RoleID != roleID {
+		t.Fatalf("expected the default role MEMBER/%v, got %q/%v", roleID, got.Role, got.RoleID)
+	}
+	if stored == nil || stored.RoleID != roleID || stored.Role != "MEMBER" {
+		t.Fatalf("the stored user must carry the default role, got %+v", stored)
+	}
+}
+
+func TestCreate_NoDefaultRole(t *testing.T) {
+	svc := usersvc.New(
+		&stubRepo{create: func(context.Context, *userdom.User) error {
+			t.Fatal("no user may be stored without a role")
+			return nil
+		}},
+		&stubRoleRepo{}, // reports no default
+	)
+
+	_, err := svc.Create(context.Background(), userdom.CreateInput{
+		Username: "alice", Password: "password123", FullName: "Alice",
+	})
+	if !errors.Is(err, globalroledom.ErrNoDefault) {
+		t.Fatalf("expected ErrNoDefault, got %v", err)
+	}
+}
+
+func TestCreate_DefaultRoleLookupFailure(t *testing.T) {
+	lookupErr := errors.New("db down")
+	svc := usersvc.New(
+		&stubRepo{},
+		&stubRoleRepo{findDefault: func(context.Context) (*globalroledom.GlobalRole, error) { return nil, lookupErr }},
+	)
+
+	_, err := svc.Create(context.Background(), userdom.CreateInput{
+		Username: "alice", Password: "password123", FullName: "Alice",
+	})
+	if !errors.Is(err, lookupErr) {
+		t.Fatalf("expected the lookup error, got %v", err)
 	}
 }
 
@@ -362,8 +425,8 @@ func TestCreate_AllowsUsernameReuseAfterSoftDelete(t *testing.T) {
 			},
 		},
 		&stubRoleRepo{
-			findByName: func(_ context.Context, _ string) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser}, nil
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser, IsDefault: true}, nil
 			},
 		},
 	)
@@ -392,8 +455,8 @@ func TestCreate_RepoError(t *testing.T) {
 			create: func(_ context.Context, _ *userdom.User) error { return repoErr },
 		},
 		&stubRoleRepo{
-			findByName: func(_ context.Context, _ string) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser}, nil
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser, IsDefault: true}, nil
 			},
 		},
 	)
@@ -444,8 +507,8 @@ func TestAdminUpdate_NeverChangesRole(t *testing.T) {
 			},
 		},
 		&stubRoleRepo{
-			findByName: func(_ context.Context, name string) (*globalroledom.GlobalRole, error) {
-				t.Fatalf("role resolver consulted for %q during a profile update", name)
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				t.Fatal("role resolver consulted during a profile update")
 				return nil, nil
 			},
 		},
