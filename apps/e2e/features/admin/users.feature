@@ -1,9 +1,16 @@
 @admin @users
 Feature: User management
   Admins should be able to view user accounts, create new users, update
-  profile details and roles, reset passwords, and delete removable users.
+  profile details, change roles, reset passwords, and delete removable users.
   Sensitive actions should clearly communicate their impact before they are
   confirmed.
+
+  A role is its own permission (global_roles.assign), separate from managing
+  users (users.write): creating or editing a user never carries one. Creating a
+  user is a short wizard - 1 Details, 2 Role, 3 Password - where nothing is
+  created until the role step's button and the one-time password comes last;
+  someone who may not assign roles gets 1 Details, 2 Password. A role is changed
+  later from the role button in the users table.
 
   @authenticated
   Rule: Viewing the users list
@@ -35,38 +42,57 @@ Feature: User management
       Given the user already has a stored authenticated admin session
       And the user is on the users page
 
-    Scenario: Opening the create-user dialog
+    Scenario: Opening the create-user dialog on its details step
       When the user clicks the "New User" button
-      Then the "Create User" dialog should open
+      Then the "Create User" dialog should open on step 1 of 3
       And the dialog should explain that a secure temporary password will be generated automatically
-      And the dialog should contain "Username", "Full Name", and "Role" fields
+      And the dialog should contain "Username" and "Full Name" fields
+      And the dialog should not contain a role field
+      And the dialog should offer "Continue" rather than "Create user"
 
-    Scenario: Submitting an empty form shows validation
+    Scenario: Continuing with an empty form shows validation
       When the user clicks the "New User" button
-      And the user clicks "Create user"
+      And the user clicks "Continue"
       Then a validation message should indicate that the full name is required
 
     Scenario: Username is required when the full name is present
       When the user clicks the "New User" button
       And the user fills the full name with "Jane Doe"
-      And the user clicks "Create user"
+      And the user clicks "Continue"
       Then a validation message should indicate that the username is required
-      And the dialog should remain open
+      And the dialog should remain on step 1 of 3
 
-    Scenario: Role picker lists the available roles
+    Scenario: The role step lists the available roles with USER as the default
       When the user clicks the "New User" button
-      And the user opens the role picker
-      Then the role picker should list "ADMIN"
-      And the role picker should list "SUPER_ADMIN"
-      And the role picker should list "USER"
+      And the user fills the username with "BDD_ROLE_STEP"
+      And the user fills the full name with "BDD Role Step"
+      And the user clicks "Continue"
+      Then the dialog should show step 2 of 3
+      And the dialog should say to choose a role for "BDD_ROLE_STEP"
+      And the role step should list "ADMIN"
+      And the role step should list "SUPER_ADMIN"
+      And the role step should list "USER"
+      And "USER" should be selected and marked as the default
 
-    Scenario: Creating a user without selecting a role defaults to USER and requires a password change on first login
+    Scenario: Going back and closing on the role step creates nothing
+      When the user clicks the "New User" button
+      And the user fills the username with "BDD_ROLE_STEP"
+      And the user fills the full name with "BDD Role Step"
+      And the user clicks "Continue"
+      And the user clicks "Back"
+      Then the dialog should show step 1 of 3 with the username and full name still filled in
+      When the user closes the dialog
+      Then the user "BDD_ROLE_STEP" should not exist
+
+    Scenario: Creating a user with the default USER role and requiring a password change on first login
       When the user clicks the "New User" button
       And the user fills the username with "BDD_USER_DEFAULT_ROLE"
       And the user fills the full name with "BDD User Default Role"
+      And the user clicks "Continue"
       And the user clicks "Create user"
-      Then the "User created" dialog should appear
+      Then the "User created" dialog should appear on step 3 of 3
       And the dialog should show a one-time temporary password
+      And the dialog should show the role "USER"
       And the user stores the generated temporary password for "BDD_USER_DEFAULT_ROLE"
       And the dialog should warn that the password will not be shown again
       When the user closes the success dialog
@@ -84,13 +110,15 @@ Feature: User management
       And the user signs in as "BDD_USER_DEFAULT_ROLE" with password "BDDUserDefaultRole123!"
       Then the user should be redirected to the home page
 
-    Scenario: Creating a user with an explicitly selected role
+    Scenario: Creating a user with an explicitly selected role shows the password last
       When the user clicks the "New User" button
       And the user fills the username with "BDD_ADMIN_USER"
       And the user fills the full name with "BDD Admin User"
-      And the user selects the role "ADMIN"
+      And the user clicks "Continue"
+      And the user selects the role "ADMIN" on the role step
       And the user clicks "Create user"
-      Then the "User created" dialog should appear
+      Then the "User created" dialog should appear on step 3 of 3
+      And the dialog should confirm that the role "ADMIN" was assigned
       And the dialog should show a one-time temporary password
       When the user closes the success dialog
       Then the user "BDD_ADMIN_USER" should appear in the users table
@@ -115,17 +143,17 @@ Feature: User management
       When the user clicks the edit action for "EDITABLE_USER"
       Then the "Edit User" dialog should open
       And the full name field should be pre-filled with that user's current name
-      And the role field should be pre-filled with that user's current role
+      And the dialog should not contain a role field
+      And the dialog should be a single step rather than a wizard
 
-    Scenario: Saving updated full name and role
+    Scenario: Saving the updated full name
       When the user clicks the edit action for "EDITABLE_USER"
       And the user changes the full name to "Edited User Name"
-      And the user changes the role to "ADMIN"
       And the user clicks "Save changes"
       Then the dialog should close
       And the user "EDITABLE_USER" should appear in the users table
       And the user row should show the full name "Edited User Name"
-      And the user row should show the role "ADMIN"
+      And the user row should keep the role "USER"
 
     Scenario: Cancelling the edit dialog discards changes
       When the user clicks the edit action for "EDITABLE_USER"
@@ -133,6 +161,66 @@ Feature: User management
       And the user closes the dialog
       Then the dialog should close
       And the user row for "EDITABLE_USER" should not show the full name "Unsaved Name"
+
+  @authenticated
+  Rule: Changing a user's role
+
+    Background:
+      Given the user already has a stored authenticated admin session
+      And the user is on the users page
+      And a user named "ROLE_USER" exists
+
+    Scenario: The role in the users table opens a dialog of its own
+      When the user clicks the role of "ROLE_USER"
+      Then the "Change role" dialog should open
+      And the dialog should say to choose a role for "ROLE_USER"
+      And the dialog should list the available roles with the current role "USER" selected and marked as current
+      And "Assign role" should be disabled until a different role is chosen
+
+    Scenario: Assigning another role updates the user
+      When the user clicks the role of "ROLE_USER"
+      And the user chooses the role "ADMIN"
+      And the user clicks "Assign role"
+      Then the dialog should close
+      And the user row should show the role "ADMIN"
+
+    Scenario: A full-access role is flagged before it is assigned
+      When the user clicks the role of "ROLE_USER"
+      And the user chooses the role "SUPER_ADMIN"
+      Then the dialog should warn that the role has full access
+      When the user clicks "Cancel"
+      Then the user row should show the role "USER"
+
+    Scenario: Changing your own role warns that access can be lost
+      When the user clicks the role of the signed-in administrator
+      And the user chooses the role "USER"
+      Then the dialog should warn that this is their own account and access to the page can be lost
+      When the user clicks "Cancel"
+      Then the administrator row should show the role "SUPER_ADMIN"
+
+  Rule: Roles are a separate permission from managing users
+
+    Scenario: Writing users without assigning roles gives a two-step wizard and a plain role label
+      Given the user has the "users.read" and "users.write" global permissions
+      And the user does not have the "global_roles.assign" global permission
+      When the user navigates to the users page
+      Then the roles in the users table should be plain text rather than buttons
+      When the user clicks the "New User" button
+      Then the "Create User" dialog should open on step 1 of 2
+      And the dialog should offer "Create user" rather than "Continue"
+      When the user creates the user "BDD_NO_ROLE_STEP"
+      Then the "User created" dialog should appear on step 2 of 2
+      And the dialog should show a one-time temporary password
+      And the dialog should not show a role
+
+    Scenario: Assigning roles without writing users offers the role button but no user editing
+      Given the user has the "users.read", "global_roles.read" and "global_roles.assign" global permissions
+      And the user does not have the "users.write" global permission
+      And a user named "TARGET_USER" exists
+      When the user navigates to the users page
+      Then the "New User" button, the edit actions and the reset password actions should not be visible
+      When the user changes the role of "TARGET_USER" to "ADMIN"
+      Then the user row should show the role "ADMIN"
 
   @authenticated
   Rule: Resetting a password

@@ -50,6 +50,7 @@
 			"noFullName": "—",
 			"resetPasswordAction": "Reset password",
 			"editAction": "Edit user",
+			"changeRoleAction": "Change role",
 			"deleteAction": "Delete user"
 		},
 		"formDialog": {
@@ -63,8 +64,10 @@
 			"done": "Done",
 			"editTitle": "Edit User",
 			"createTitle": "Create User",
-			"editDescription": "Update the user's display name and role assignment.",
+			"editDescription": "Update the user's display name and email.",
 			"createDescription": "A secure temporary password will be generated automatically. The user will be required to change it on first login.",
+			"roleStepDescription": "Choose a role for {{username}}. New accounts start as USER.",
+			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Username",
 			"usernamePlaceholder": "e.g. john.doe",
 			"fullNameLabel": "Full Name",
@@ -72,10 +75,15 @@
 			"emailLabel": "Email",
 			"emailOptionalHint": "(optional — sends a welcome email with a link to set their password)",
 			"emailPlaceholder": "e.g. john.doe@example.com",
-			"roleLabel": "Role",
-			"roleOptionalHint": "(optional — defaults to USER)",
-			"rolePlaceholder": "Select a role…",
+			"roleStep": {
+				"title": "Role",
+				"assigned": "Role assigned",
+				"failed": "The account was created, but its role couldn't be assigned. Try again, or assign it later from the users table.",
+				"retry": "Try again"
+			},
 			"cancel": "Cancel",
+			"back": "Back",
+			"continue": "Continue",
 			"saving": "Saving…",
 			"creating": "Creating…",
 			"saveChanges": "Save changes",
@@ -88,8 +96,18 @@
 				"userNotFound": "User not found. They may have already been deleted.",
 				"forbidden": "You don't have permission to perform this action.",
 				"internalError": "Something went wrong on the server. Please try again.",
-				"generic": "Something went wrong.",
-				"roleNotAssigned": "The user was saved, but the role could not be assigned."
+				"generic": "Something went wrong."
+			}
+		},
+		"roleDialog": {
+			"title": "Change role",
+			"description": "Choose a role for {{username}}. It applies from their next request.",
+			"assign": "Assign role",
+			"assigning": "Assigning…",
+			"fullAccessWarning": "This role has full access. It can do everything, including managing users and roles.",
+			"selfWarning": "This is your own account. Changing your role can remove your access to this page.",
+			"errors": {
+				"roleNotFound": "That role no longer exists. Close this dialog and try again."
 			}
 		},
 		"resetPasswordDialog": {
@@ -272,6 +290,14 @@
 			"plugins": "Plugins",
 			"settings": "Settings"
 		}
+	},
+	"rolePicker": {
+		"current": "Current",
+		"fullAccess": "Full access",
+		"loadFailed": "Couldn't load the roles.",
+		"retry": "Try again",
+		"empty": "No roles have been created yet.",
+		"default": "Default"
 	},
 	"plugins": {
 		"title": "Plugin Settings",

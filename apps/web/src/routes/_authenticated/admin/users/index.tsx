@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { DeleteUserDialog } from "@/components/admin/users/DeleteUserDialog";
 import { ResetPasswordDialog } from "@/components/admin/users/ResetPasswordDialog";
 import { UserFormDialog } from "@/components/admin/users/UserFormDialog";
+import { UserRoleDialog } from "@/components/admin/users/UserRoleDialog";
 import { UsersHeader } from "@/components/admin/users/UsersHeader";
 import {
 	EmptyUsersState,
@@ -17,6 +18,7 @@ import { UsersTable } from "@/components/admin/users/UsersTable";
 import { UsersTableSkeleton } from "@/components/admin/users/UsersTableSkeleton";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Pagination } from "@/components/ui/pagination";
+import { useCanAssignGlobalRole } from "@/hooks/use-can-assign-global-role";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	myPermissionsQueryOptions,
@@ -49,6 +51,8 @@ function UsersManagementPage() {
 	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
 	const canRead = hasPermission("users.read");
 	const canWrite = hasPermission("users.write");
+	// Changing a role is its own permission, separate from editing the user.
+	const canAssignRole = useCanAssignGlobalRole();
 
 	const [page, setPage] = useState(1);
 	const pageSize = 20;
@@ -74,6 +78,7 @@ function UsersManagementPage() {
 	const [editUser, setEditUser] = useState<User | null>(null);
 	const [deleteUser, setDeleteUser] = useState<User | null>(null);
 	const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
+	const [roleUser, setRoleUser] = useState<User | null>(null);
 
 	const users = pagedUsers?.items ?? [];
 	const total = pagedUsers?.total ?? 0;
@@ -125,10 +130,12 @@ function UsersManagementPage() {
 					<UsersTable
 						users={users}
 						canWrite={canWrite}
+						canAssignRole={canAssignRole}
 						currentUserId={currentUser?.id}
 						onEdit={setEditUser}
 						onDelete={setDeleteUser}
 						onResetPassword={setResetPasswordUser}
+						onChangeRole={setRoleUser}
 					/>
 					<Pagination
 						page={page}
@@ -144,6 +151,17 @@ function UsersManagementPage() {
 					open={!!editUser}
 					onOpenChange={(open) => {
 						if (!open) setEditUser(null);
+					}}
+				/>
+			) : null}
+
+			{roleUser ? (
+				<UserRoleDialog
+					user={roleUser}
+					isSelf={roleUser.id === currentUser?.id}
+					open={!!roleUser}
+					onOpenChange={(open) => {
+						if (!open) setRoleUser(null);
 					}}
 				/>
 			) : null}

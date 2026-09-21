@@ -55,6 +55,20 @@ Other middleware add conditions on top of a gate, never instead of it: `RequireA
 - **Plugin routes.** A plugin declares its own middleware policy in its manifest, applied when the request arrives (`PluginHandler.applyPluginRouteMiddlewares`, which calls `middleware.EnforcePermissions`).
 - **Reading a conversation as an agent** (`agentsvc.Service.authorizeConversationsReadForConversation`): an OR of the agent's global and project roles that answers 404 rather than 403.
 
+## How the web app mirrors it
+
+The UI offers only what the API would accept, using the same permissions (`useCanAssignGlobalRole()` is `global_roles.assign` and `global_roles.read`: the first to assign, the second to list the roles to choose from). The server stays the authority; the UI just never offers a refusal.
+
+| Where | What | Needs |
+|---|---|---|
+| Create user (dialog) | a wizard, **Details → Role → Password**. Nothing is created until the role step's button; the one-time password comes last. Without the role permissions it is Details → Password and the account starts as `USER`. | `users.write`; the Role step also `global_roles.assign` + `read` |
+| Edit user (dialog) | name and email only, never a role | `users.write` |
+| Users table | the role is a button that opens "Change role" | `global_roles.assign` + `read`, independent of `users.write` |
+| Create agent (dialog) | a wizard, **Identity → AI configuration → Role**, the same for both scopes; nothing is created until the last step's button. A project agent's role is its required project role and part of the create request. A global agent's role is optional, a separate privilege, and only offered to someone who may assign roles; without them the wizard is Identity → AI configuration. | project agent: `agents.write` + `project.members.write`; global agent: `agents.write`, and the Role step also `global_roles.assign` + `read` |
+| Global agent, "Global role" tab | shows, changes and removes the role | `agents.write` + `global_roles.assign` + `read` to change it; read-only otherwise |
+
+A global role is always a second request made once the account or agent exists (`PUT .../global-roles`, `PUT .../global-role`). If it fails the account or agent is **not** rolled back: the user dialog still shows the one-time password and offers a retry, and the agent dialog keeps the created agent and lets the person retry or finish without a role.
+
 ## Adding or changing a route
 
 1. Give it a gate. Pick the permission for what the operation *does*; if it also grants something of its own (a role, membership, shell access), list that permission too.

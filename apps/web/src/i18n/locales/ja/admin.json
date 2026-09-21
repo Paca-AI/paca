@@ -34,6 +34,7 @@
 			"noFullName": "—",
 			"resetPasswordAction": "パスワードをリセット",
 			"editAction": "ユーザーを編集",
+			"changeRoleAction": "ロールを変更",
 			"deleteAction": "ユーザーを削除"
 		},
 		"formDialog": {
@@ -47,8 +48,10 @@
 			"done": "完了",
 			"editTitle": "ユーザーを編集",
 			"createTitle": "ユーザーを作成",
-			"editDescription": "ユーザーの表示名とロールの割り当てを更新します。",
+			"editDescription": "ユーザーの表示名とメールアドレスを更新します。",
 			"createDescription": "安全な仮パスワードが自動的に生成されます。ユーザーは初回ログイン時に変更を求められます。",
+			"roleStepDescription": "{{username}} のロールを選択してください。新しいアカウントは USER として作成されます。",
+			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "ユーザー名",
 			"usernamePlaceholder": "例: john.doe",
 			"fullNameLabel": "氏名",
@@ -56,10 +59,15 @@
 			"emailLabel": "メールアドレス",
 			"emailOptionalHint": "（任意 — パスワード設定用のリンクを記載したウェルカムメールを送信します）",
 			"emailPlaceholder": "例: john.doe@example.com",
-			"roleLabel": "ロール",
-			"roleOptionalHint": "（任意 — 既定はUSER）",
-			"rolePlaceholder": "ロールを選択…",
+			"roleStep": {
+				"title": "ロール",
+				"assigned": "ロールを割り当てました",
+				"failed": "アカウントは作成されましたが、ロールを割り当てられませんでした。もう一度お試しいただくか、後でユーザー一覧から割り当ててください。",
+				"retry": "再試行"
+			},
 			"cancel": "キャンセル",
+			"back": "戻る",
+			"continue": "続ける",
 			"saving": "保存中…",
 			"creating": "作成中…",
 			"saveChanges": "変更を保存",
@@ -72,8 +80,18 @@
 				"userNotFound": "ユーザーが見つかりません。既に削除された可能性があります。",
 				"forbidden": "この操作を実行する権限がありません。",
 				"internalError": "サーバーで問題が発生しました。もう一度お試しください。",
-				"generic": "問題が発生しました。",
-				"roleNotAssigned": "ユーザーは保存されましたが、ロールを割り当てられませんでした。"
+				"generic": "問題が発生しました。"
+			}
+		},
+		"roleDialog": {
+			"title": "ロールを変更",
+			"description": "{{username}} のロールを選択してください。次のリクエストから適用されます。",
+			"assign": "ロールを割り当て",
+			"assigning": "割り当て中…",
+			"fullAccessWarning": "このロールにはフルアクセス権があります。ユーザーやロールの管理を含め、すべての操作が可能です。",
+			"selfWarning": "これはご自身のアカウントです。ロールを変更すると、このページにアクセスできなくなる場合があります。",
+			"errors": {
+				"roleNotFound": "そのロールは存在しなくなりました。このダイアログを閉じてもう一度お試しください。"
 			}
 		},
 		"resetPasswordDialog": {
@@ -256,6 +274,14 @@
 			"plugins": "プラグイン",
 			"settings": "設定"
 		}
+	},
+	"rolePicker": {
+		"current": "現在",
+		"fullAccess": "フルアクセス",
+		"loadFailed": "ロールを読み込めませんでした。",
+		"retry": "再試行",
+		"empty": "ロールはまだ作成されていません。",
+		"default": "デフォルト"
 	},
 	"plugins": {
 		"title": "プラグイン設定",

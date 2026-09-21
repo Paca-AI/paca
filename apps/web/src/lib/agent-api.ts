@@ -554,23 +554,14 @@ export async function setGlobalAgentRole(
 	return data.data;
 }
 
-/** Creates a global agent and, when `roleId` is given, binds it to that global
- *  role. The server refuses a role on create, so this is two calls; if the
- *  second fails the agent is deleted again rather than left half-configured,
- *  so a retry starts clean instead of tripping over "handle already taken".
- *  Resolves to the agent as it ended up (with its role, if one was bound). */
-export async function createGlobalAgentWithRole(
-	payload: CreateGlobalAgentPayload,
-	roleId?: string | null,
-): Promise<Agent> {
-	const agent = await createGlobalAgent(payload);
-	if (!roleId) return agent;
-	try {
-		return await setGlobalAgentRole(agent.id, roleId);
-	} catch (err) {
-		await deleteGlobalAgent(agent.id).catch(() => undefined);
-		throw err;
-	}
+/** Unbinds a global agent from its global role, leaving it with no global
+ *  permissions. Gated like {@link setGlobalAgentRole}: removing a role is the
+ *  same privileged action as binding one. */
+export async function clearGlobalAgentRole(agentId: string): Promise<Agent> {
+	const { data } = await apiClient.instance.delete<SuccessEnvelope<Agent>>(
+		`/admin/agents/${agentId}/global-role`,
+	);
+	return data.data;
 }
 
 export async function deleteGlobalAgent(agentId: string): Promise<void> {

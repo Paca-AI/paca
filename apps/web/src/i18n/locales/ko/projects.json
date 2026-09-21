@@ -24,15 +24,16 @@
 	"agents": {
 		"createDialog": {
 			"title": "AI 에이전트 생성",
-			"step1Description": "에이전트의 정체성과 역할을 설정하세요",
+			"step1Description": "에이전트의 정체성을 설정하세요",
 			"step2Description": "에이전트를 구동할 AI 모델을 구성하세요",
-			"stepIndicator": "{{step}} / 2",
+			"step3DescriptionGlobal": "에이전트의 전역 역할을 선택하세요 (선택 사항)",
+			"step3DescriptionProject": "이 프로젝트에서 에이전트의 역할을 선택하세요",
+			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "프리셋으로 시작",
 			"nameLabel": "이름",
 			"handleLabel": "핸들",
 			"handleHint": "이름에서 자동으로 생성됩니다. 댓글에서 @멘션에 사용됩니다.",
 			"projectRoleLabel": "프로젝트 역할",
-			"projectRolePlaceholder": "프로젝트 역할을 선택하세요…",
 			"projectRoleHint": "이 프로젝트에서 에이전트가 읽고 수정할 수 있는 항목을 제어합니다.",
 			"agentTypeLabel": "에이전트 유형",
 			"agentTypeLLM": "LLM(API 키)",
@@ -83,17 +84,15 @@
 			"optional": "(선택사항)",
 			"charsCount": "{{count}}자",
 			"createFailed": "에이전트 생성에 실패했습니다. 다시 시도해 주세요.",
+			"roleNotAssigned": "에이전트는 생성되었지만 역할을 할당하지 못했습니다. 다시 시도하거나 '전역 역할 없음'을 선택해 마친 뒤 나중에 에이전트의 '전역 역할' 탭에서 할당하세요.",
 			"cancel": "취소",
 			"continue": "계속",
 			"back": "뒤로",
 			"creating": "생성 중…",
 			"createAgent": "에이전트 생성",
+			"finish": "완료",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "당신은 시니어 소프트웨어 엔지니어입니다…",
-			"globalRoleLabel": "전역 역할",
-			"globalRolePlaceholder": "전역 역할 선택…",
-			"globalRoleHint": "에이전트가 전역 범위(예: 홈/관리 채팅)에서 할 수 있는 작업을 결정합니다. 선택 사항입니다 — 프로젝트에 초대된 후 부여되는 역할과는 별개입니다.",
-			"noGlobalRoleOption": "역할 없음"
+			"systemPromptPlaceholder": "당신은 시니어 소프트웨어 엔지니어입니다…"
 		},
 		"card": {
 			"configure": "구성",
@@ -169,8 +168,30 @@
 				"mcpServers": "MCP 서버",
 				"skills": "스킬",
 				"envVars": "환경 변수",
+				"globalRole": "전역 역할",
 				"access": "Access",
 				"activity": "활동"
+			},
+			"globalRole": {
+				"title": "전역 역할",
+				"description": "이 에이전트가 전역 범위에서 할 수 있는 작업(예: 홈 및 관리자 채팅)을 결정합니다. 프로젝트 안에서 할 수 있는 작업은 해당 프로젝트에서의 역할에 따라 결정됩니다.",
+				"none": "전역 역할 없음",
+				"noneHint": "이 에이전트에는 전역 권한이 없습니다.",
+				"assign": "역할 할당",
+				"change": "역할 변경",
+				"assigning": "할당 중…",
+				"remove": "역할 제거",
+				"removing": "제거 중…",
+				"removeConfirm": "이 에이전트의 전역 역할을 제거할까요? 해당 역할이 부여한 권한을 잃게 됩니다.",
+				"cancel": "취소",
+				"readOnly": "이 에이전트의 전역 역할을 볼 수는 있지만 변경할 권한이 없습니다.",
+				"unknownRole": "전역 역할이 할당되어 있습니다. 역할을 볼 권한이 없어 이름은 표시되지 않습니다.",
+				"fullAccessWarning": "이 역할은 전체 액세스 권한이 있습니다. 에이전트가 사용자와 역할 관리를 포함해 모든 작업을 수행할 수 있게 됩니다.",
+				"errors": {
+					"generic": "역할을 업데이트하지 못했습니다. 다시 시도하세요.",
+					"forbidden": "전역 역할을 변경할 권한이 없습니다.",
+					"roleNotFound": "해당 역할이 더 이상 존재하지 않습니다. 페이지를 새로고침한 후 다시 시도하세요."
+				}
 			},
 			"avatar": {
 				"change": "아바타 변경",

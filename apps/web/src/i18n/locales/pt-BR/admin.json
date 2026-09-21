@@ -34,6 +34,7 @@
 			"noFullName": "—",
 			"resetPasswordAction": "Redefinir senha",
 			"editAction": "Editar usuário",
+			"changeRoleAction": "Alterar função",
 			"deleteAction": "Excluir usuário"
 		},
 		"formDialog": {
@@ -47,8 +48,10 @@
 			"done": "Concluído",
 			"editTitle": "Editar Usuário",
 			"createTitle": "Criar Usuário",
-			"editDescription": "Atualize o nome de exibição e a atribuição de função do usuário.",
+			"editDescription": "Atualize o nome de exibição e o e-mail do usuário.",
 			"createDescription": "Uma senha temporária segura será gerada automaticamente. Será solicitado ao usuário que a altere no primeiro login.",
+			"roleStepDescription": "Escolha uma função para {{username}}. Novas contas começam como USER.",
+			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Usuário",
 			"usernamePlaceholder": "ex.: joao.silva",
 			"fullNameLabel": "Nome Completo",
@@ -56,10 +59,15 @@
 			"emailLabel": "E-mail",
 			"emailOptionalHint": "(opcional — envia um e-mail de boas-vindas com um link para definir a senha)",
 			"emailPlaceholder": "ex.: joao.silva@example.com",
-			"roleLabel": "Função",
-			"roleOptionalHint": "(opcional — o padrão é USER)",
-			"rolePlaceholder": "Selecione uma função…",
+			"roleStep": {
+				"title": "Função",
+				"assigned": "Função atribuída",
+				"failed": "A conta foi criada, mas não foi possível atribuir a função. Tente novamente ou atribua depois na tabela de usuários.",
+				"retry": "Tentar novamente"
+			},
 			"cancel": "Cancelar",
+			"back": "Voltar",
+			"continue": "Continuar",
 			"saving": "Salvando…",
 			"creating": "Criando…",
 			"saveChanges": "Salvar alterações",
@@ -72,8 +80,18 @@
 				"userNotFound": "Usuário não encontrado. Ele pode já ter sido excluído.",
 				"forbidden": "Você não tem permissão para executar esta ação.",
 				"internalError": "Algo deu errado no servidor. Tente novamente.",
-				"generic": "Algo deu errado.",
-				"roleNotAssigned": "O usuário foi salvo, mas não foi possível atribuir a função."
+				"generic": "Algo deu errado."
+			}
+		},
+		"roleDialog": {
+			"title": "Alterar função",
+			"description": "Escolha uma função para {{username}}. Ela vale a partir da próxima requisição.",
+			"assign": "Atribuir função",
+			"assigning": "Atribuindo…",
+			"fullAccessWarning": "Esta função tem acesso total. Ela pode fazer tudo, inclusive gerenciar usuários e funções.",
+			"selfWarning": "Esta é a sua própria conta. Alterar sua função pode remover seu acesso a esta página.",
+			"errors": {
+				"roleNotFound": "Essa função não existe mais. Feche esta caixa de diálogo e tente novamente."
 			}
 		},
 		"resetPasswordDialog": {
@@ -256,6 +274,14 @@
 			"plugins": "Plugins",
 			"settings": "Configurações"
 		}
+	},
+	"rolePicker": {
+		"current": "Atual",
+		"fullAccess": "Acesso total",
+		"loadFailed": "Não foi possível carregar as funções.",
+		"retry": "Tentar novamente",
+		"empty": "Nenhuma função foi criada ainda.",
+		"default": "Padrão"
 	},
 	"plugins": {
 		"title": "Configurações de Plugins",

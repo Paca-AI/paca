@@ -1,54 +1,8 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-	mutate: vi.fn(),
-	invalidateQueries: vi.fn(),
-	isPending: false,
-	onSuccess: null as null | ((result: unknown) => void),
-	onError: null as null | ((err: unknown) => void),
-	mutationFn: null as null | (() => Promise<unknown>),
-	permissions: [] as string[],
-	rolesData: [] as Array<{
-		id: string;
-		name: string;
-		permissions: Record<string, boolean>;
-		created_at: string;
-		updated_at: string;
-	}>,
-}));
-
-vi.mock("@tanstack/react-query", async () => {
-	const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
-		"@tanstack/react-query",
-	);
-	return {
-		...actual,
-		useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
-		useQuery: () => ({ data: mocks.rolesData }),
-		useMutation: (opts: {
-			mutationFn: () => Promise<unknown>;
-			onSuccess: (result: unknown) => void;
-			onError: (err: unknown) => void;
-		}) => {
-			mocks.mutationFn = opts.mutationFn;
-			mocks.onSuccess = opts.onSuccess;
-			mocks.onError = opts.onError;
-			return { mutate: mocks.mutate, isPending: mocks.isPending };
-		},
-	};
-});
-
-vi.mock("@/hooks/use-permissions", () => ({
-	usePermissions: () => ({
-		permissions: mocks.permissions,
-		hasPermission: (p: string) => mocks.permissions.includes(p),
-		hasAnyPermission: (ps: string[]) =>
-			ps.some((p) => mocks.permissions.includes(p)),
-		isLoading: false,
-	}),
-}));
+import { makeRole, renderWithQueries } from "@/test/render-with-queries";
 
 vi.mock("@/lib/admin-api", async () => {
 	const actual =
@@ -82,277 +36,462 @@ const mockUser: User = {
 	created_at: "2026-01-15T00:00:00.000Z",
 };
 
-describe("UserFormDialog — create mode", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mocks.isPending = false;
-		mocks.onSuccess = null;
-		mocks.onError = null;
+const ROLES = [
+	makeRole("role-user", "USER", { "tasks.read": true }),
+	makeRole("role-admin", "ADMIN", { "users.read": true }),
+	makeRole("role-root", "SUPER_ADMIN", { "*": true }),
+];
+const CAN_ASSIGN = ["global_roles.assign", "global_roles.read"];
+
+beforeEach(() => {
+	vi.clearAllMocks();
+	vi.mocked(createUser).mockResolvedValue({
+		...mockUser,
+		id: "new-user",
+		username: "newuser",
+		role: "USER",
+	});
+	vi.mocked(updateUser).mockResolvedValue(mockUser);
+	vi.mocked(assignUserGlobalRole).mockResolvedValue(undefined);
+});
+
+const renderCreate = (permissions: string[] = CAN_ASSIGN) =>
+	renderWithQueries(<UserFormDialog open={true} onOpenChange={vi.fn()} />, {
+		permissions,
+		roles: ROLES,
 	});
 
-	it("shows Create User title", () => {
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
+const button = (name: RegExp | string) => screen.getByRole("button", { name });
+
+async function fillDetails(username = "newuser", fullName = "New User") {
+	await userEvent.type(screen.getByLabelText(/username/i), username);
+	await userEvent.type(screen.getByLabelText(/full name/i), fullName);
+}
+
+/** Details → Role (needs the role step, so CAN_ASSIGN). */
+async function goToRoleStep() {
+	await fillDetails();
+	await userEvent.click(button("Continue"));
+	await screen.findByRole("radiogroup", { name: "Role" });
+}
+
+const pickRole = (name: string) =>
+	userEvent.click(screen.getByRole("radio", { name }));
+
+// ---------------------------------------------------------------------------
+// Creating an account: 1 Details → 2 Role → 3 Password. The role step is
+// there for someone who may assign roles (its own permission); nothing is
+// created until the role step's button, and the one-time password is last.
+// ---------------------------------------------------------------------------
+
+describe("UserFormDialog — create wizard (with the role step)", () => {
+	it("starts on the details step of three, with no role field yet", () => {
+		renderCreate();
 
 		expect(screen.getByText("Create User")).toBeInTheDocument();
-	});
-
-	it("renders username and full name inputs", () => {
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
-
+		expect(screen.getByText("1 / 3")).toBeInTheDocument();
 		expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
 		expect(screen.getByLabelText(/full name/i)).toBeInTheDocument();
-	});
-
-	it("calls mutation.mutate when Create user button is clicked", async () => {
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
-
-		await userEvent.click(screen.getByRole("button", { name: /create user/i }));
-
-		expect(mocks.mutate).toHaveBeenCalledTimes(1);
-	});
-
-	it("shows generated password screen after successful creation", async () => {
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
-
-		mocks.onSuccess?.("MockPw1!MockPw1!");
-
-		await waitFor(() => {
-			expect(screen.getByText("User created")).toBeInTheDocument();
-		});
-	});
-
-	it("shows username-taken error when onError is called with UsernameTaken code", async () => {
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
-
-		const err = { response: { data: { error_code: "USER_USERNAME_TAKEN" } } };
-		mocks.onError?.(err);
-
-		await waitFor(() => {
-			expect(
-				screen.getByText(/this username is already taken/i),
-			).toBeInTheDocument();
-		});
-	});
-
-	it("shows generic error message on unknown error", async () => {
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
-
-		mocks.onError?.(new Error("Something went wrong."));
-
-		await waitFor(() => {
-			expect(screen.getByText("Something went wrong.")).toBeInTheDocument();
-		});
-	});
-
-	it("shows 'Creating…' and disables button while pending", () => {
-		mocks.isPending = true;
-
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
-
-		expect(screen.getByRole("button", { name: /creating/i })).toBeDisabled();
-	});
-});
-
-describe("UserFormDialog — edit mode", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mocks.isPending = false;
-		mocks.onSuccess = null;
-		mocks.onError = null;
-	});
-
-	it("shows Edit User title", () => {
-		render(
-			<UserFormDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
-		);
-
-		expect(screen.getByText("Edit User")).toBeInTheDocument();
-	});
-
-	it("hides the Username field in edit mode", () => {
-		render(
-			<UserFormDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
-		);
-
-		expect(screen.queryByLabelText(/username/i)).not.toBeInTheDocument();
-	});
-
-	it("pre-fills Full Name with existing user value", () => {
-		render(
-			<UserFormDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
-		);
-
-		expect(screen.getByLabelText(/full name/i)).toHaveValue("Alice Smith");
-	});
-
-	it("shows Save changes button", () => {
-		render(
-			<UserFormDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
-		);
-
+		expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+		expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+		expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+		// Continuing is not creating.
+		expect(button("Continue")).toBeInTheDocument();
 		expect(
-			screen.getByRole("button", { name: /save changes/i }),
+			screen.queryByRole("button", { name: "Create user" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("continues to the role step with USER selected and marked as the default, creating nothing yet", async () => {
+		renderCreate();
+
+		await goToRoleStep();
+
+		expect(screen.getByText("2 / 3")).toBeInTheDocument();
+		expect(screen.getByText(/Choose a role for newuser/)).toBeInTheDocument();
+		const user = screen.getByRole("radio", { name: "USER" });
+		expect(user).toBeChecked();
+		expect(user).toHaveAccessibleDescription(/Default/);
+		expect(screen.getAllByRole("radio")).toHaveLength(3);
+		expect(createUser).not.toHaveBeenCalled();
+	});
+
+	it("validates the details before continuing, next to the field", async () => {
+		renderCreate();
+
+		await userEvent.click(button("Continue"));
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Full name is required.",
+		);
+
+		await userEvent.type(screen.getByLabelText(/full name/i), "New User");
+		await userEvent.click(button("Continue"));
+		expect(
+			await screen.findByText("Username is required."),
 		).toBeInTheDocument();
-	});
-
-	it("calls onOpenChange(false) after successful edit", async () => {
-		const onOpenChange = vi.fn();
-		render(
-			<UserFormDialog
-				user={mockUser}
-				open={true}
-				onOpenChange={onOpenChange}
-			/>,
-		);
-
-		mocks.onSuccess?.(mockUser);
-
-		await waitFor(() => {
-			expect(onOpenChange).toHaveBeenCalledWith(false);
-		});
-	});
-
-	it("shows 'Saving…' and disables button while pending", () => {
-		mocks.isPending = true;
-
-		render(
-			<UserFormDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
-		);
-
-		expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Assigning a role is its own privilege (global_roles.assign) and its own
-// endpoint: create/update send profile fields only, and the role — when the
-// admin picked one — goes through assignUserGlobalRole afterwards.
-// ---------------------------------------------------------------------------
-
-const role = (id: string, name: string) => ({
-	id,
-	name,
-	permissions: {},
-	created_at: "2026-01-01T00:00:00.000Z",
-	updated_at: "2026-01-01T00:00:00.000Z",
-});
-
-async function pickRole(name: string) {
-	await userEvent.click(screen.getByRole("combobox"));
-	await userEvent.click(await screen.findByRole("option", { name }));
-}
-
-async function runMutation() {
-	let result: unknown;
-	await act(async () => {
-		result = await mocks.mutationFn?.();
-	});
-	return result;
-}
-
-describe("UserFormDialog — role assignment", () => {
-	const userWithRole: User = { ...mockUser, role: "USER" };
-
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mocks.isPending = false;
-		mocks.mutationFn = null;
-		mocks.permissions = ["global_roles.assign", "global_roles.read"];
-		mocks.rolesData = [role("role-user", "USER"), role("role-admin", "ADMIN")];
-		vi.mocked(updateUser).mockResolvedValue(userWithRole);
-		vi.mocked(createUser).mockResolvedValue({
-			...userWithRole,
-			id: "new-user",
-		});
-		vi.mocked(assignUserGlobalRole).mockResolvedValue(undefined);
-	});
-
-	it("saves only profile fields and makes no role call when the role is unchanged", async () => {
-		render(
-			<UserFormDialog user={userWithRole} open={true} onOpenChange={vi.fn()} />,
-		);
-
-		await runMutation();
-
-		expect(updateUser).toHaveBeenCalledWith("u1", {
-			full_name: "Alice Smith",
-			email: undefined,
-		});
-		expect(assignUserGlobalRole).not.toHaveBeenCalled();
-	});
-
-	it("assigns the role through its own endpoint when the selection changed", async () => {
-		render(
-			<UserFormDialog user={userWithRole} open={true} onOpenChange={vi.fn()} />,
-		);
-
-		await pickRole("ADMIN");
-		await runMutation();
-
-		expect(updateUser).toHaveBeenCalledWith("u1", {
-			full_name: "Alice Smith",
-			email: undefined,
-		});
-		expect(assignUserGlobalRole).toHaveBeenCalledWith("u1", "role-admin");
-	});
-
-	it("locks the role field, and never assigns, without global_roles.assign", async () => {
-		mocks.permissions = ["global_roles.read"];
-		render(
-			<UserFormDialog user={userWithRole} open={true} onOpenChange={vi.fn()} />,
-		);
-
-		expect(screen.getByRole("combobox")).toBeDisabled();
-		await runMutation();
-
-		expect(updateUser).toHaveBeenCalledTimes(1);
-		expect(assignUserGlobalRole).not.toHaveBeenCalled();
-	});
-
-	it("creates the user without a role, then assigns a non-default one", async () => {
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
 
 		await userEvent.type(screen.getByLabelText(/username/i), "newuser");
-		await userEvent.type(screen.getByLabelText(/full name/i), "New User");
-		await pickRole("ADMIN");
-		const result = await runMutation();
+		await userEvent.type(screen.getByLabelText(/email/i), "not-an-email");
+		await userEvent.click(button("Continue"));
+		expect(
+			await screen.findByText("Please enter a valid email address."),
+		).toBeInTheDocument();
 
+		// Still on the first step, still nothing created.
+		expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+		expect(createUser).not.toHaveBeenCalled();
+	});
+
+	it("goes back to the details with everything still filled in, keeping the picked role", async () => {
+		renderCreate();
+		await goToRoleStep();
+		await pickRole("ADMIN");
+
+		await userEvent.click(button("Back"));
+
+		expect(screen.getByText("1 / 3")).toBeInTheDocument();
+		expect(screen.getByLabelText(/username/i)).toHaveValue("newuser");
+		expect(screen.getByLabelText(/full name/i)).toHaveValue("New User");
+
+		await userEvent.click(button("Continue"));
+		expect(await screen.findByRole("radio", { name: "ADMIN" })).toBeChecked();
+	});
+
+	it("creates the account with the default role without assigning anything, then shows the password last", async () => {
+		renderCreate();
+		await goToRoleStep();
+
+		await userEvent.click(button("Create user"));
+
+		expect(await screen.findByText("User created")).toBeInTheDocument();
 		expect(createUser).toHaveBeenCalledWith({
 			username: "newuser",
 			password: "MockPw1!MockPw1!",
 			full_name: "New User",
 			email: undefined,
 		});
-		expect(assignUserGlobalRole).toHaveBeenCalledWith("new-user", "role-admin");
-		expect(result).toBe("MockPw1!MockPw1!");
+		expect(assignUserGlobalRole).not.toHaveBeenCalled();
+		expect(screen.getByText("3 / 3")).toBeInTheDocument();
+		expect(screen.getByDisplayValue("MockPw1!MockPw1!")).toBeInTheDocument();
+		// The role it holds is confirmed beside the password.
+		expect(screen.getByText("USER")).toBeInTheDocument();
+		expect(screen.queryByText("Role assigned")).not.toBeInTheDocument();
 	});
 
-	it("makes no role call when the default USER role is chosen at creation", async () => {
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
+	it("creates the account and then assigns the picked role through its own request", async () => {
+		renderCreate();
+		await goToRoleStep();
+		await pickRole("ADMIN");
 
-		await userEvent.type(screen.getByLabelText(/username/i), "newuser");
-		await userEvent.type(screen.getByLabelText(/full name/i), "New User");
-		await pickRole("USER");
-		await runMutation();
+		await userEvent.click(button("Create user"));
 
+		expect(await screen.findByText("User created")).toBeInTheDocument();
+		expect(assignUserGlobalRole).toHaveBeenCalledWith("new-user", "role-admin");
+		// Created first, role second: the role needs the account's id.
+		expect(vi.mocked(createUser).mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(assignUserGlobalRole).mock.invocationCallOrder[0] as number,
+		);
+		expect(screen.getByText("Role assigned")).toBeInTheDocument();
+		expect(screen.getByText("ADMIN")).toBeInTheDocument();
+		expect(screen.getByDisplayValue("MockPw1!MockPw1!")).toBeInTheDocument();
+	});
+
+	it("warns before handing out a full-access role", async () => {
+		renderCreate();
+		await goToRoleStep();
+
+		expect(screen.queryByText(/this role has full access/i)).toBeNull();
+		await pickRole("SUPER_ADMIN");
+
+		expect(screen.getByText(/this role has full access/i)).toBeInTheDocument();
+	});
+
+	it("still shows the one-time password when the role cannot be assigned, and lets the person retry", async () => {
+		vi.mocked(assignUserGlobalRole).mockRejectedValueOnce({
+			response: { data: { error_code: "FORBIDDEN" } },
+		});
+		renderCreate();
+		await goToRoleStep();
+		await pickRole("ADMIN");
+
+		await userEvent.click(button("Create user"));
+
+		// The account exists and its password is on screen — the failure did not
+		// take either away.
+		expect(await screen.findByText("User created")).toBeInTheDocument();
+		expect(screen.getByDisplayValue("MockPw1!MockPw1!")).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				/the account was created, but its role couldn't be assigned/i,
+			),
+		).toBeInTheDocument();
+		expect(screen.queryByText("Role assigned")).not.toBeInTheDocument();
+		expect(screen.getByText("USER")).toBeInTheDocument();
+
+		await userEvent.click(button("Try again"));
+
+		expect(await screen.findByText("Role assigned")).toBeInTheDocument();
+		expect(assignUserGlobalRole).toHaveBeenCalledTimes(2);
+		expect(assignUserGlobalRole).toHaveBeenLastCalledWith(
+			"new-user",
+			"role-admin",
+		);
+		expect(screen.queryByText(/couldn't be assigned/i)).not.toBeInTheDocument();
+		expect(screen.getByText("ADMIN")).toBeInTheDocument();
+	});
+
+	it("explains why a retry failed and keeps the retry available", async () => {
+		vi.mocked(assignUserGlobalRole).mockRejectedValue({
+			response: { data: { error_code: "GLOBAL_ROLE_NOT_FOUND" } },
+		});
+		renderCreate();
+		await goToRoleStep();
+		await pickRole("ADMIN");
+		await userEvent.click(button("Create user"));
+		await screen.findByText("User created");
+
+		await userEvent.click(button("Try again"));
+
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"That role no longer exists.",
+		);
+		expect(button("Try again")).toBeEnabled();
+	});
+
+	it("goes back to the details when the username is taken", async () => {
+		vi.mocked(createUser).mockRejectedValue({
+			response: { data: { error_code: "USER_USERNAME_TAKEN" } },
+		});
+		renderCreate();
+		await goToRoleStep();
+
+		await userEvent.click(button("Create user"));
+
+		// The error belongs to a field of the first step, so that is where it shows.
+		expect(
+			await screen.findByText(/this username is already taken/i),
+		).toBeInTheDocument();
+		expect(screen.getByText("1 / 3")).toBeInTheDocument();
+		expect(screen.getByLabelText(/username/i)).toHaveValue("newuser");
+	});
+
+	it("goes back to the details when the email is taken", async () => {
+		vi.mocked(createUser).mockRejectedValue({
+			response: { data: { error_code: "USER_EMAIL_TAKEN" } },
+		});
+		renderCreate();
+		await fillDetails();
+		await userEvent.type(screen.getByLabelText(/email/i), "a@b.co");
+		await userEvent.click(button("Continue"));
+		await screen.findByRole("radiogroup");
+
+		await userEvent.click(button("Create user"));
+
+		expect(
+			await screen.findByText(/this email is already in use/i),
+		).toBeInTheDocument();
+		expect(screen.getByText("1 / 3")).toBeInTheDocument();
+	});
+
+	it("shows any other failure on the role step and lets the person try again", async () => {
+		vi.mocked(createUser).mockRejectedValueOnce({
+			response: { data: { error_code: "INTERNAL_ERROR" } },
+		});
+		renderCreate();
+		await goToRoleStep();
+
+		await userEvent.click(button("Create user"));
+
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Something went wrong on the server. Please try again.",
+		);
+		expect(screen.getByText("2 / 3")).toBeInTheDocument();
+		expect(assignUserGlobalRole).not.toHaveBeenCalled();
+
+		await userEvent.click(button("Create user"));
+		expect(await screen.findByText("User created")).toBeInTheDocument();
+	});
+
+	it("shows 'Creating…' and locks the step while the request is in flight", async () => {
+		vi.mocked(createUser).mockReturnValue(new Promise(() => {}));
+		renderCreate();
+		await goToRoleStep();
+
+		await userEvent.click(button("Create user"));
+
+		expect(
+			await screen.findByRole("button", { name: /creating/i }),
+		).toBeDisabled();
+		expect(button("Back")).toBeDisabled();
+		expect(screen.getByRole("radio", { name: "USER" })).toBeDisabled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Someone who may not assign roles gets no role step: Details → Password, and
+// the account starts as USER. The role can still be changed by whoever holds
+// global_roles.assign, from the users table.
+// ---------------------------------------------------------------------------
+
+describe("UserFormDialog — create wizard (without the role step)", () => {
+	it.each([
+		["no role permissions", ["users.write"]],
+		["global_roles.read but not global_roles.assign", ["global_roles.read"]],
+		["global_roles.assign but not global_roles.read", ["global_roles.assign"]],
+	])("has two steps and creates straight from the details with %s", async (_label, permissions) => {
+		renderCreate(permissions);
+
+		expect(screen.getByText("1 / 2")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Continue" }),
+		).not.toBeInTheDocument();
+
+		await fillDetails();
+		await userEvent.click(button("Create user"));
+
+		expect(await screen.findByText("User created")).toBeInTheDocument();
+		expect(screen.getByText("2 / 2")).toBeInTheDocument();
 		expect(createUser).toHaveBeenCalledTimes(1);
+		expect(assignUserGlobalRole).not.toHaveBeenCalled();
+		expect(screen.getByDisplayValue("MockPw1!MockPw1!")).toBeInTheDocument();
+		// No role step, so no role line on the password step either.
+		expect(screen.queryByText("Role")).not.toBeInTheDocument();
+	});
+
+	it("validates before creating", async () => {
+		renderCreate(["users.write"]);
+
+		await userEvent.click(button("Create user"));
+
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Full name is required.",
+		);
+		expect(createUser).not.toHaveBeenCalled();
+	});
+
+	it("shows a username-taken error next to the username field", async () => {
+		vi.mocked(createUser).mockRejectedValue({
+			response: { data: { error_code: "USER_USERNAME_TAKEN" } },
+		});
+		renderCreate(["users.write"]);
+		await fillDetails();
+
+		await userEvent.click(button("Create user"));
+
+		expect(
+			await screen.findByText(/this username is already taken/i),
+		).toBeInTheDocument();
+	});
+
+	it("falls back to the error's own message on an unknown failure", async () => {
+		vi.mocked(createUser).mockRejectedValue(new Error("Disk on fire"));
+		renderCreate(["users.write"]);
+		await fillDetails();
+
+		await userEvent.click(button("Create user"));
+
+		expect(await screen.findByRole("alert")).toHaveTextContent("Disk on fire");
+	});
+
+	it("shows 'Creating…' and disables the button while the request is in flight", async () => {
+		vi.mocked(createUser).mockReturnValue(new Promise(() => {}));
+		renderCreate(["users.write"]);
+		await fillDetails();
+
+		await userEvent.click(button("Create user"));
+
+		expect(
+			await screen.findByRole("button", { name: /creating/i }),
+		).toBeDisabled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Editing is the profile only: never a step indicator, never a role.
+// ---------------------------------------------------------------------------
+
+describe("UserFormDialog — edit mode", () => {
+	const renderEdit = (
+		onOpenChange = vi.fn(),
+		permissions: string[] = CAN_ASSIGN,
+	) =>
+		renderWithQueries(
+			<UserFormDialog
+				user={mockUser}
+				open={true}
+				onOpenChange={onOpenChange}
+			/>,
+			{ permissions, roles: ROLES },
+		);
+
+	it("shows Edit User title and describes it as a name and email edit", () => {
+		renderEdit();
+
+		expect(screen.getByText("Edit User")).toBeInTheDocument();
+		expect(
+			screen.getByText("Update the user's display name and email."),
+		).toBeInTheDocument();
+	});
+
+	it("is a single step, not a wizard, even for someone who can assign roles", () => {
+		renderEdit();
+
+		expect(screen.queryByText(/^\d \/ \d$/)).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Continue" }),
+		).not.toBeInTheDocument();
+		expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+		expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+	});
+
+	it("hides the Username field in edit mode", () => {
+		renderEdit();
+
+		expect(screen.queryByLabelText(/username/i)).not.toBeInTheDocument();
+	});
+
+	it("pre-fills Full Name with existing user value", () => {
+		renderEdit();
+
+		expect(screen.getByLabelText(/full name/i)).toHaveValue("Alice Smith");
+	});
+
+	it("saves the profile through updateUser, never touches the role, and closes", async () => {
+		const onOpenChange = vi.fn();
+		renderEdit(onOpenChange);
+
+		await userEvent.clear(screen.getByLabelText(/full name/i));
+		await userEvent.type(screen.getByLabelText(/full name/i), "Alice Jones");
+		await userEvent.click(button("Save changes"));
+
+		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+		expect(updateUser).toHaveBeenCalledWith("u1", {
+			full_name: "Alice Jones",
+			email: undefined,
+		});
 		expect(assignUserGlobalRole).not.toHaveBeenCalled();
 	});
 
-	it("still hands back the one-time password when the role assignment fails", async () => {
-		vi.mocked(assignUserGlobalRole).mockRejectedValue(new Error("boom"));
-		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
+	it("requires a full name", async () => {
+		renderEdit();
 
-		await userEvent.type(screen.getByLabelText(/username/i), "newuser");
-		await userEvent.type(screen.getByLabelText(/full name/i), "New User");
-		await pickRole("ADMIN");
-		const result = await runMutation();
+		await userEvent.clear(screen.getByLabelText(/full name/i));
+		await userEvent.click(button("Save changes"));
 
-		// The user exists and the generated password is shown only once, so
-		// the failure must not throw it away.
-		expect(result).toBe("MockPw1!MockPw1!");
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Full name is required.",
+		);
+		expect(updateUser).not.toHaveBeenCalled();
+	});
+
+	it("shows 'Saving…' and disables the button while the request is in flight", async () => {
+		vi.mocked(updateUser).mockReturnValue(new Promise(() => {}));
+		renderEdit();
+
+		await userEvent.click(button("Save changes"));
+
 		expect(
-			await screen.findByText(/role could not be assigned/i),
-		).toBeInTheDocument();
+			await screen.findByRole("button", { name: /saving/i }),
+		).toBeDisabled();
 	});
 });

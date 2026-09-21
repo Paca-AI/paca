@@ -13,6 +13,7 @@ import {
 	Plus,
 	Save,
 	Server,
+	ShieldCheck,
 	Trash2,
 	Wand2,
 } from "lucide-react";
@@ -100,6 +101,7 @@ import { splitShellCommand } from "@/lib/shell-command";
 import { getInitials } from "@/lib/utils";
 import { AcpBridgeSetup } from "./acp-bridge-setup";
 import { AgentActivityTab } from "./agent-activity-tab";
+import { AgentGlobalRoleTab } from "./agent-global-role-tab";
 
 // Shared between the project agent detail page
 // (routes/.../projects/$projectId/agents/$agentId/index.tsx) and the global
@@ -111,13 +113,15 @@ import { AgentActivityTab } from "./agent-activity-tab";
 // can't carry over is Activity: an agent's activity feed is inherently
 // project-shaped (task/doc activity within one project), and a global agent
 // may be invited into many projects or none — see AgentDetailView's
-// visibleTabs filtering below.
+// visibleTabs filtering below. Global role is the reverse: it exists only at
+// global scope (a project agent's role is its project role).
 
 type Tab =
 	| "overview"
 	| "mcp-servers"
 	| "skills"
 	| "env-vars"
+	| "global-role"
 	| "access"
 	| "activity";
 
@@ -1943,6 +1947,11 @@ const TABS = [
 		icon: KeyRound,
 	},
 	{
+		id: "global-role",
+		labelKey: "agents.detail.tabs.globalRole",
+		icon: ShieldCheck,
+	},
+	{
 		id: "access",
 		labelKey: "agents.detail.tabs.access",
 		icon: Lock,
@@ -2040,6 +2049,7 @@ export function AgentDetailView({
 		if ((tab.id === "activity" || tab.id === "access") && !projectId) {
 			return false;
 		}
+		if (tab.id === "global-role" && projectId) return false;
 		if (agent?.agent_type === "acp" && acpHiddenTabs.includes(tab.id)) {
 			return false;
 		}
@@ -2212,6 +2222,9 @@ export function AgentDetailView({
 						agentId={agentId}
 						canWrite={canWrite}
 					/>
+				)}
+				{activeTab === "global-role" && !projectId && (
+					<AgentGlobalRoleTab agent={agent} canWrite={canWrite} />
 				)}
 				{activeTab === "access" && projectId && (
 					<AccessTab

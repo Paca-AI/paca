@@ -34,6 +34,7 @@
 			"noFullName": "—",
 			"resetPasswordAction": "Đặt lại mật khẩu",
 			"editAction": "Chỉnh sửa người dùng",
+			"changeRoleAction": "Đổi vai trò",
 			"deleteAction": "Xóa người dùng"
 		},
 		"formDialog": {
@@ -47,8 +48,10 @@
 			"done": "Xong",
 			"editTitle": "Chỉnh sửa người dùng",
 			"createTitle": "Tạo người dùng",
-			"editDescription": "Cập nhật tên hiển thị và vai trò được gán của người dùng.",
+			"editDescription": "Cập nhật tên hiển thị và email của người dùng.",
 			"createDescription": "Một mật khẩu tạm thời an toàn sẽ được tạo tự động. Người dùng sẽ phải đổi mật khẩu trong lần đăng nhập đầu tiên.",
+			"roleStepDescription": "Chọn vai trò cho {{username}}. Tài khoản mới bắt đầu với vai trò USER.",
+			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Tên đăng nhập",
 			"usernamePlaceholder": "vd: john.doe",
 			"fullNameLabel": "Họ và tên",
@@ -56,10 +59,15 @@
 			"emailLabel": "Email",
 			"emailOptionalHint": "(tùy chọn — gửi email chào mừng kèm liên kết để đặt mật khẩu)",
 			"emailPlaceholder": "vd: john.doe@example.com",
-			"roleLabel": "Vai trò",
-			"roleOptionalHint": "(tùy chọn — mặc định là USER)",
-			"rolePlaceholder": "Chọn một vai trò…",
+			"roleStep": {
+				"title": "Vai trò",
+				"assigned": "Đã gán vai trò",
+				"failed": "Tài khoản đã được tạo nhưng không thể gán vai trò. Hãy thử lại hoặc gán sau từ danh sách người dùng.",
+				"retry": "Thử lại"
+			},
 			"cancel": "Hủy",
+			"back": "Quay lại",
+			"continue": "Tiếp tục",
 			"saving": "Đang lưu…",
 			"creating": "Đang tạo…",
 			"saveChanges": "Lưu thay đổi",
@@ -72,8 +80,18 @@
 				"userNotFound": "Không tìm thấy người dùng. Có thể người dùng đã bị xóa.",
 				"forbidden": "Bạn không có quyền thực hiện thao tác này.",
 				"internalError": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
-				"generic": "Đã xảy ra lỗi.",
-				"roleNotAssigned": "Đã lưu người dùng nhưng không thể gán vai trò."
+				"generic": "Đã xảy ra lỗi."
+			}
+		},
+		"roleDialog": {
+			"title": "Đổi vai trò",
+			"description": "Chọn vai trò cho {{username}}. Có hiệu lực từ yêu cầu tiếp theo của họ.",
+			"assign": "Gán vai trò",
+			"assigning": "Đang gán…",
+			"fullAccessWarning": "Vai trò này có toàn quyền truy cập. Có thể làm mọi việc, bao gồm quản lý người dùng và vai trò.",
+			"selfWarning": "Đây là tài khoản của chính bạn. Đổi vai trò có thể khiến bạn mất quyền truy cập trang này.",
+			"errors": {
+				"roleNotFound": "Vai trò đó không còn tồn tại. Hãy đóng hộp thoại này và thử lại."
 			}
 		},
 		"resetPasswordDialog": {
@@ -256,6 +274,14 @@
 			"plugins": "Plugin",
 			"settings": "Cài đặt"
 		}
+	},
+	"rolePicker": {
+		"current": "Hiện tại",
+		"fullAccess": "Toàn quyền truy cập",
+		"loadFailed": "Không thể tải danh sách vai trò.",
+		"retry": "Thử lại",
+		"empty": "Chưa có vai trò nào được tạo.",
+		"default": "Mặc định"
 	},
 	"plugins": {
 		"title": "Cài đặt Plugin",

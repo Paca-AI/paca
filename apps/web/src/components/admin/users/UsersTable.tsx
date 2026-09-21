@@ -1,4 +1,4 @@
-import { Edit2, KeyRound, Lock, Trash2 } from "lucide-react";
+import { ChevronDown, Edit2, KeyRound, Lock, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -24,19 +24,28 @@ function formatDate(iso: string): string {
 interface UsersTableProps {
 	users: User[];
 	canWrite: boolean;
+	/** Whether the viewer may change a user's role. That is its own permission,
+	 * apart from `canWrite`, so it is shown (and hidden) independently. */
+	canAssignRole: boolean;
 	currentUserId?: string;
 	onEdit: (user: User) => void;
 	onDelete: (user: User) => void;
 	onResetPassword: (user: User) => void;
+	onChangeRole: (user: User) => void;
 }
+
+const ROLE_PILL =
+	"inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium leading-none text-foreground/80";
 
 export function UsersTable({
 	users,
 	canWrite,
+	canAssignRole,
 	currentUserId,
 	onEdit,
 	onDelete,
 	onResetPassword,
+	onChangeRole,
 }: UsersTableProps) {
 	const { t } = useTranslation("admin");
 
@@ -93,9 +102,22 @@ export function UsersTable({
 									)}
 								</TableCell>
 								<TableCell className="px-5">
-									<span className="inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium leading-none text-foreground/80">
-										{user.role}
-									</span>
+									{canAssignRole ? (
+										<button
+											type="button"
+											onClick={() => onChangeRole(user)}
+											title={t("users.table.changeRoleAction")}
+											className={`${ROLE_PILL} gap-1 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30`}
+										>
+											{user.role}
+											<ChevronDown
+												className="size-3 text-muted-foreground"
+												aria-hidden="true"
+											/>
+										</button>
+									) : (
+										<span className={ROLE_PILL}>{user.role}</span>
+									)}
 								</TableCell>
 								<TableCell className="px-5 text-sm text-muted-foreground">
 									{formatDate(user.created_at)}

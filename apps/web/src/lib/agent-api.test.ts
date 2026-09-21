@@ -26,8 +26,8 @@ import {
 	addGlobalEnvVar,
 	addGlobalMCPServer,
 	addGlobalSkill,
+	clearGlobalAgentRole,
 	createGlobalAgent,
-	createGlobalAgentWithRole,
 	deleteGlobalAgent,
 	deleteGlobalEnvVar,
 	deleteGlobalMCPServer,
@@ -246,61 +246,27 @@ describe("agent-api", () => {
 			expect(agent.global_role_id).toBe("role-1");
 		});
 
-		// The server refuses global_role_id on create, so a role is a second
-		// call — and a failure there must not strand a half-configured agent.
-		describe("createGlobalAgentWithRole", () => {
+		it("clearGlobalAgentRole deletes /admin/agents/:agentId/global-role", async () => {
+			mockDelete.mockResolvedValue(ok({ id: AGENT_ID, global_role_id: null }));
+
+			const agent = await clearGlobalAgentRole(AGENT_ID);
+
+			expect(mockDelete).toHaveBeenCalledWith(
+				`/admin/agents/${AGENT_ID}/global-role`,
+			);
+			expect(agent.global_role_id).toBeNull();
+		});
+
+		// The server refuses global_role_id on create: a role is its own step (and
+		// permission), so creating an agent sends none.
+		it("createGlobalAgent posts the payload as given, without any role", async () => {
+			mockPost.mockResolvedValue(ok({ id: AGENT_ID }));
 			const payload = { name: "Bot", handle: "bot" };
 
-			it("only creates the agent when no role is wanted", async () => {
-				mockPost.mockResolvedValue(ok({ id: AGENT_ID }));
+			await createGlobalAgent(payload);
 
-				await createGlobalAgentWithRole(payload);
-				await createGlobalAgentWithRole(payload, null);
-
-				expect(mockPost).toHaveBeenCalledTimes(2);
-				expect(mockPost).toHaveBeenCalledWith("/admin/agents", payload);
-				expect(mockPut).not.toHaveBeenCalled();
-			});
-
-			it("creates without the role in the body, then binds it and returns the bound agent", async () => {
-				mockPost.mockResolvedValue(ok({ id: AGENT_ID }));
-				mockPut.mockResolvedValue(
-					ok({ id: AGENT_ID, global_role_id: "role-1" }),
-				);
-
-				const agent = await createGlobalAgentWithRole(payload, "role-1");
-
-				expect(mockPost).toHaveBeenCalledWith("/admin/agents", payload);
-				expect(mockPut).toHaveBeenCalledWith(
-					`/admin/agents/${AGENT_ID}/global-role`,
-					{ global_role_id: "role-1" },
-				);
-				expect(agent.global_role_id).toBe("role-1");
-			});
-
-			it("deletes the agent again and rethrows when binding the role fails", async () => {
-				const failure = new Error("role gone");
-				mockPost.mockResolvedValue(ok({ id: AGENT_ID }));
-				mockPut.mockRejectedValue(failure);
-				mockDelete.mockResolvedValue({});
-
-				await expect(createGlobalAgentWithRole(payload, "role-1")).rejects.toBe(
-					failure,
-				);
-
-				expect(mockDelete).toHaveBeenCalledWith(`/admin/agents/${AGENT_ID}`);
-			});
-
-			it("still rethrows the original error if the cleanup delete also fails", async () => {
-				const failure = new Error("role gone");
-				mockPost.mockResolvedValue(ok({ id: AGENT_ID }));
-				mockPut.mockRejectedValue(failure);
-				mockDelete.mockRejectedValue(new Error("delete failed"));
-
-				await expect(createGlobalAgentWithRole(payload, "role-1")).rejects.toBe(
-					failure,
-				);
-			});
+			expect(mockPost).toHaveBeenCalledWith("/admin/agents", payload);
+			expect(mockPut).not.toHaveBeenCalled();
 		});
 	});
 

@@ -34,6 +34,7 @@
 			"noFullName": "—",
 			"resetPasswordAction": "Restablecer contraseña",
 			"editAction": "Editar usuario",
+			"changeRoleAction": "Cambiar rol",
 			"deleteAction": "Eliminar usuario"
 		},
 		"formDialog": {
@@ -47,8 +48,10 @@
 			"done": "Hecho",
 			"editTitle": "Editar usuario",
 			"createTitle": "Crear usuario",
-			"editDescription": "Actualiza el nombre visible y la asignación de rol del usuario.",
+			"editDescription": "Actualiza el nombre para mostrar y el correo electrónico del usuario.",
 			"createDescription": "Se generará automáticamente una contraseña temporal segura. Se requerirá que el usuario la cambie en su primer inicio de sesión.",
+			"roleStepDescription": "Elige un rol para {{username}}. Las cuentas nuevas empiezan como USER.",
+			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Nombre de usuario",
 			"usernamePlaceholder": "p. ej. john.doe",
 			"fullNameLabel": "Nombre completo",
@@ -56,10 +59,15 @@
 			"emailLabel": "Correo electrónico",
 			"emailOptionalHint": "(opcional: envía un correo de bienvenida con un enlace para establecer la contraseña)",
 			"emailPlaceholder": "p. ej. john.doe@example.com",
-			"roleLabel": "Rol",
-			"roleOptionalHint": "(opcional — por defecto USER)",
-			"rolePlaceholder": "Selecciona un rol…",
+			"roleStep": {
+				"title": "Rol",
+				"assigned": "Rol asignado",
+				"failed": "La cuenta se creó, pero no se pudo asignar su rol. Inténtalo de nuevo o asígnalo más tarde desde la tabla de usuarios.",
+				"retry": "Reintentar"
+			},
 			"cancel": "Cancelar",
+			"back": "Atrás",
+			"continue": "Continuar",
 			"saving": "Guardando…",
 			"creating": "Creando…",
 			"saveChanges": "Guardar cambios",
@@ -72,8 +80,18 @@
 				"userNotFound": "Usuario no encontrado. Puede que ya haya sido eliminado.",
 				"forbidden": "No tienes permiso para realizar esta acción.",
 				"internalError": "Algo salió mal en el servidor. Inténtalo de nuevo.",
-				"generic": "Algo salió mal.",
-				"roleNotAssigned": "El usuario se guardó, pero no se pudo asignar el rol."
+				"generic": "Algo salió mal."
+			}
+		},
+		"roleDialog": {
+			"title": "Cambiar rol",
+			"description": "Elige un rol para {{username}}. Se aplica desde su próxima solicitud.",
+			"assign": "Asignar rol",
+			"assigning": "Asignando…",
+			"fullAccessWarning": "Este rol tiene acceso total. Puede hacer todo, incluida la gestión de usuarios y roles.",
+			"selfWarning": "Esta es tu propia cuenta. Cambiar tu rol puede quitarte el acceso a esta página.",
+			"errors": {
+				"roleNotFound": "Ese rol ya no existe. Cierra este cuadro de diálogo e inténtalo de nuevo."
 			}
 		},
 		"resetPasswordDialog": {
@@ -256,6 +274,14 @@
 			"plugins": "Plugins",
 			"settings": "Configuración"
 		}
+	},
+	"rolePicker": {
+		"current": "Actual",
+		"fullAccess": "Acceso total",
+		"loadFailed": "No se pudieron cargar los roles.",
+		"retry": "Reintentar",
+		"empty": "Aún no se ha creado ningún rol.",
+		"default": "Predeterminado"
 	},
 	"plugins": {
 		"title": "Configuración de plugins",

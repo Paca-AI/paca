@@ -24,15 +24,16 @@
 	"agents": {
 		"createDialog": {
 			"title": "Tạo AI Agent",
-			"step1Description": "Thiết lập danh tính và vai trò của agent",
+			"step1Description": "Thiết lập danh tính của agent",
 			"step2Description": "Cấu hình mô hình AI vận hành agent của bạn",
-			"stepIndicator": "{{step}} / 2",
+			"step3DescriptionGlobal": "Chọn vai trò toàn cục cho agent (tùy chọn)",
+			"step3DescriptionProject": "Chọn vai trò của agent trong dự án này",
+			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Bắt đầu từ một mẫu có sẵn",
 			"nameLabel": "Tên",
 			"handleLabel": "Handle",
 			"handleHint": "Tự động tạo từ tên. Dùng để @nhắc đến trong bình luận.",
 			"projectRoleLabel": "Vai trò dự án",
-			"projectRolePlaceholder": "Chọn một vai trò dự án…",
 			"projectRoleHint": "Kiểm soát những gì agent có thể đọc và sửa đổi trong dự án này.",
 			"agentTypeLabel": "Loại agent",
 			"agentTypeLLM": "LLM (khóa API)",
@@ -83,17 +84,15 @@
 			"optional": "(tùy chọn)",
 			"charsCount": "{{count}} ký tự",
 			"createFailed": "Tạo agent thất bại. Vui lòng thử lại.",
+			"roleNotAssigned": "Agent đã được tạo nhưng không thể gán vai trò. Hãy thử lại hoặc chọn “Không có vai trò toàn cục” để hoàn tất và gán sau ở tab Vai trò toàn cục của agent.",
 			"cancel": "Hủy",
 			"continue": "Tiếp tục",
 			"back": "Quay lại",
 			"creating": "Đang tạo…",
 			"createAgent": "Tạo Agent",
+			"finish": "Hoàn tất",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Bạn là một kỹ sư phần mềm cấp cao…",
-			"globalRoleLabel": "Vai trò toàn cục",
-			"globalRolePlaceholder": "Chọn một vai trò toàn cục…",
-			"globalRoleHint": "Quyết định những gì agent có thể làm ở phạm vi toàn cục (ví dụ: từ trang chat trang chủ/quản trị). Tùy chọn — vai trò được cấp sau, khi được mời vào một dự án, là riêng biệt.",
-			"noGlobalRoleOption": "Không có vai trò"
+			"systemPromptPlaceholder": "Bạn là một kỹ sư phần mềm cấp cao…"
 		},
 		"card": {
 			"configure": "Cấu hình",
@@ -169,8 +168,30 @@
 				"mcpServers": "Máy chủ MCP",
 				"skills": "Skill",
 				"envVars": "Môi trường",
+				"globalRole": "Vai trò toàn cục",
 				"access": "Access",
 				"activity": "Hoạt động"
+			},
+			"globalRole": {
+				"title": "Vai trò toàn cục",
+				"description": "Những gì agent này được phép làm ở phạm vi toàn cục, ví dụ từ chat ở trang chủ và trang quản trị. Những gì nó được phép làm trong một dự án phụ thuộc vào vai trò của nó trong dự án đó.",
+				"none": "Không có vai trò toàn cục",
+				"noneHint": "Agent này không có quyền toàn cục nào.",
+				"assign": "Gán vai trò",
+				"change": "Đổi vai trò",
+				"assigning": "Đang gán…",
+				"remove": "Gỡ vai trò",
+				"removing": "Đang gỡ…",
+				"removeConfirm": "Gỡ vai trò toàn cục của agent này? Agent sẽ mất các quyền mà vai trò đó cấp.",
+				"cancel": "Hủy",
+				"readOnly": "Bạn có thể xem vai trò toàn cục của agent này nhưng không có quyền thay đổi.",
+				"unknownRole": "Đã gán một vai trò toàn cục. Bạn không có quyền xem vai trò nên tên không được hiển thị.",
+				"fullAccessWarning": "Vai trò này có toàn quyền truy cập. Agent sẽ có thể làm mọi việc, bao gồm quản lý người dùng và vai trò.",
+				"errors": {
+					"generic": "Không thể cập nhật vai trò. Vui lòng thử lại.",
+					"forbidden": "Bạn không có quyền thay đổi vai trò toàn cục.",
+					"roleNotFound": "Vai trò đó không còn tồn tại. Hãy tải lại trang và thử lại."
+				}
 			},
 			"avatar": {
 				"change": "Đổi ảnh đại diện",

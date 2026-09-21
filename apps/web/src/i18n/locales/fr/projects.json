@@ -24,15 +24,16 @@
 	"agents": {
 		"createDialog": {
 			"title": "Créer un agent IA",
-			"step1Description": "Configurez l'identité et le rôle de votre agent",
+			"step1Description": "Configurez l'identité de votre agent",
 			"step2Description": "Configurez le modèle d'IA qui alimente votre agent",
-			"stepIndicator": "{{step}} / 2",
+			"step3DescriptionGlobal": "Choisissez un rôle global pour l'agent (facultatif)",
+			"step3DescriptionProject": "Choisissez le rôle de l'agent dans ce projet",
+			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Démarrer à partir d'un préréglage",
 			"nameLabel": "Nom",
 			"handleLabel": "Identifiant",
 			"handleHint": "Dérivé automatiquement du nom. Utilisé pour les mentions @ dans les commentaires.",
 			"projectRoleLabel": "Rôle du projet",
-			"projectRolePlaceholder": "Sélectionner un rôle de projet…",
 			"projectRoleHint": "Contrôle ce que l'agent peut lire et modifier dans ce projet.",
 			"agentTypeLabel": "Type d'agent",
 			"agentTypeLLM": "LLM (clé API)",
@@ -83,17 +84,15 @@
 			"optional": "(optionnel)",
 			"charsCount": "{{count}} caractères",
 			"createFailed": "Échec de la création de l'agent. Veuillez réessayer.",
+			"roleNotAssigned": "L'agent a été créé, mais son rôle n'a pas pu être attribué. Réessayez, ou choisissez « Aucun rôle global » pour terminer et en attribuer un plus tard depuis l'onglet Rôle global de l'agent.",
 			"cancel": "Annuler",
 			"continue": "Continuer",
 			"back": "Retour",
 			"creating": "Création…",
 			"createAgent": "Créer l'agent",
+			"finish": "Terminer",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Vous êtes un ingénieur logiciel senior…",
-			"globalRoleLabel": "Rôle global",
-			"globalRolePlaceholder": "Sélectionnez un rôle global…",
-			"globalRoleHint": "Détermine ce que l'agent peut faire au niveau global (par exemple depuis le chat d'accueil/admin). Facultatif — un rôle attribué plus tard, une fois invité dans un projet, est distinct.",
-			"noGlobalRoleOption": "Aucun rôle"
+			"systemPromptPlaceholder": "Vous êtes un ingénieur logiciel senior…"
 		},
 		"card": {
 			"configure": "Configurer",
@@ -169,8 +168,30 @@
 				"mcpServers": "Serveurs MCP",
 				"skills": "Compétences",
 				"envVars": "Environnement",
+				"globalRole": "Rôle global",
 				"access": "Access",
 				"activity": "Activité"
+			},
+			"globalRole": {
+				"title": "Rôle global",
+				"description": "Ce que cet agent peut faire à l'échelle globale, par exemple depuis le chat de l'accueil et de l'administration. Ce qu'il peut faire dans un projet dépend de son rôle dans ce projet.",
+				"none": "Aucun rôle global",
+				"noneHint": "Cet agent n'a aucune permission globale.",
+				"assign": "Attribuer le rôle",
+				"change": "Changer le rôle",
+				"assigning": "Attribution…",
+				"remove": "Retirer le rôle",
+				"removing": "Retrait…",
+				"removeConfirm": "Retirer le rôle global de cet agent ? Il perdra les permissions accordées par ce rôle.",
+				"cancel": "Annuler",
+				"readOnly": "Vous pouvez voir le rôle global de cet agent, mais vous n'avez pas la permission de le modifier.",
+				"unknownRole": "Un rôle global est attribué. Vous n'avez pas la permission d'afficher les rôles, son nom n'est donc pas affiché.",
+				"fullAccessWarning": "Ce rôle donne un accès complet. L'agent pourra tout faire, y compris gérer les utilisateurs et les rôles.",
+				"errors": {
+					"generic": "Impossible de mettre à jour le rôle. Veuillez réessayer.",
+					"forbidden": "Vous n'avez pas la permission de modifier les rôles globaux.",
+					"roleNotFound": "Ce rôle n'existe plus. Rechargez la page et réessayez."
+				}
 			},
 			"avatar": {
 				"change": "Changer l’avatar",

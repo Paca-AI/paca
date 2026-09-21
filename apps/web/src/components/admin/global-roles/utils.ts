@@ -20,7 +20,7 @@ export function permissionBadgeClass(key: string): string {
 	return "bg-muted text-muted-foreground border-border";
 }
 
-export function activePermissions(perms: Record<string, boolean>) {
+export function activePermissions(perms: Record<string, unknown>) {
 	const active = Object.entries(perms)
 		.filter(([, value]) => value)
 		.map(([key]) => key);

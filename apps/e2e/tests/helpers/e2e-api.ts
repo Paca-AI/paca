@@ -139,14 +139,48 @@ export async function assignGlobalRole(
 ): Promise<void> {
 	const list = await request.get(`${API_URL}/admin/global-roles`);
 	expect(list.ok()).toBeTruthy();
-	const roles: Array<{ id: string; name: string }> = (await list.json()).data ?? [];
+	const roles: Array<{ id: string; name: string }> =
+		(await list.json()).data ?? [];
 	const role = roles.find((r) => r.name === roleName);
 	expect(role, `global role ${roleName} exists`).toBeTruthy();
 
-	const assigned = await request.put(`${API_URL}/admin/users/${userId}/global-roles`, {
-		data: { role_ids: [role?.id] },
-	});
+	const assigned = await request.put(
+		`${API_URL}/admin/users/${userId}/global-roles`,
+		{
+			data: { role_ids: [role?.id] },
+		},
+	);
 	expect(assigned.ok()).toBeTruthy();
+}
+
+/** The id of the global role called `roleName` (built-ins: SUPER_ADMIN, ADMIN, USER). */
+export async function globalRoleIdByName(
+	request: APIRequestContext,
+	roleName: string,
+): Promise<string> {
+	const list = await request.get(`${API_URL}/admin/global-roles`);
+	expect(list.ok()).toBeTruthy();
+	const roles: Array<{ id: string; name: string }> =
+		(await list.json()).data ?? [];
+	const role = roles.find((r) => r.name === roleName);
+	expect(role, `global role ${roleName} exists`).toBeTruthy();
+	return role?.id ?? "";
+}
+
+/**
+ * Binds a global agent to a global role by name, on the role's own endpoint
+ * (`agents.write` + `global_roles.assign`): creating an agent never carries one.
+ */
+export async function bindGlobalAgentRole(
+	request: APIRequestContext,
+	agentId: string,
+	roleName: string,
+): Promise<void> {
+	const bound = await request.put(
+		`${API_URL}/admin/agents/${agentId}/global-role`,
+		{ data: { global_role_id: await globalRoleIdByName(request, roleName) } },
+	);
+	expect(bound.ok()).toBeTruthy();
 }
 
 async function createUserWithPassword(
@@ -344,7 +378,9 @@ export async function createGlobalAgent(
 
 export async function listGlobalAgents(
 	request: APIRequestContext,
-): Promise<Array<{ id: string; name: string }>> {
+): Promise<
+	Array<{ id: string; name: string; global_role_id?: string | null }>
+> {
 	const response = await request.get(`${API_URL}/admin/agents`);
 	expect(response.ok()).toBeTruthy();
 	return (await response.json()).data.items ?? [];

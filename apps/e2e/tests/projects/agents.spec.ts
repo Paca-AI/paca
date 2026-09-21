@@ -9,12 +9,14 @@ import {
 	test,
 } from "@playwright/test";
 import {
+	API_URL,
 	BASE_URL,
 	cleanupProjectsByPrefix,
 	cleanupUsersByPrefix,
 	createProject,
 	createProjectAgent,
 	createUserWithProjectPermissions,
+	handleFor,
 	newRunId,
 	RESTRICTED_PASSWORD,
 	signIn,
@@ -57,14 +59,46 @@ const fillAgentName = async (dialog: Locator, name: string) => {
 	await dialog.getByRole("textbox", { name: /^Name/ }).fill(name);
 };
 
-const selectFirstProjectRole = async (page: Page, dialog: Locator) => {
-	await dialog.getByRole("combobox").click();
-	await page.getByRole("option").first().click();
-};
-
+// The wizard has three steps: identity, AI configuration, and the project role.
 const continueToStep2 = async (dialog: Locator) => {
 	await dialog.getByRole("button", { name: "Continue" }).click();
-	await expect(dialog.getByText("2 / 2")).toBeVisible();
+	await expect(dialog.getByText("2 / 3")).toBeVisible();
+};
+
+const continueToRoleStep = async (dialog: Locator) => {
+	await dialog.getByRole("button", { name: "Continue" }).click();
+	await expect(dialog.getByText("3 / 3")).toBeVisible();
+};
+
+const projectRoleChoices = (dialog: Locator) =>
+	dialog.getByRole("radiogroup", { name: "Project Role" });
+
+const selectFirstProjectRole = async (dialog: Locator) => {
+	await projectRoleChoices(dialog).getByRole("radio").first().check();
+};
+
+// The role a project agent joined the project with: its membership, by the
+// agent's own member id.
+const agentProjectRole = async (
+	request: APIRequestContext,
+	projectId: string,
+	agentName: string,
+): Promise<string | undefined> => {
+	const agentsResponse = await request.get(
+		`${API_URL}/projects/${projectId}/agents`,
+	);
+	expect(agentsResponse.ok()).toBeTruthy();
+	const agents: Array<{ handle: string; member_id: string }> = (
+		await agentsResponse.json()
+	).data.items;
+	const agent = agents.find((a) => a.handle === handleFor(agentName));
+	const membersResponse = await request.get(
+		`${API_URL}/projects/${projectId}/members`,
+	);
+	expect(membersResponse.ok()).toBeTruthy();
+	const body = (await membersResponse.json()).data;
+	const members: Array<{ id: string; role_name: string }> = body.items ?? body;
+	return members.find((m) => m.id === agent?.member_id)?.role_name;
 };
 
 const fillLlmApiKey = async (dialog: Locator) => {
@@ -279,7 +313,7 @@ test.describe("Creating an LLM-type agent", () => {
 	}) => {
 		const dialog = await openCreateDialog(page);
 
-		await expect(dialog.getByText("1 / 2")).toBeVisible();
+		await expect(dialog.getByText("1 / 3")).toBeVisible();
 		await expect(
 			dialog.getByRole("button", { name: /LLM \(API key\)/ }),
 		).toHaveClass(/border-primary/);
@@ -289,7 +323,7 @@ test.describe("Creating an LLM-type agent", () => {
 		).toBeVisible();
 	});
 
-	test("Step 1 requires a name, a handle, and a project role before continuing", async ({
+	test("Step 1 requires a name and a handle before continuing, and does not ask for a role", async ({
 		page,
 	}) => {
 		const dialog = await openCreateDialog(page);
@@ -301,10 +335,11 @@ test.describe("Creating an LLM-type agent", () => {
 		await expect(dialog.getByRole("textbox", { name: /^Handle/ })).toHaveValue(
 			"e2e-agents-new-bot",
 		);
-		await expect(continueButton).toBeDisabled();
-
-		await selectFirstProjectRole(page, dialog);
 		await expect(continueButton).toBeEnabled();
+
+		// The project role is the third step, not a field of the identity step.
+		await expect(dialog.getByRole("combobox")).toHaveCount(0);
+		await expect(dialog.getByText("Project Role")).toHaveCount(0);
 	});
 
 	test("Selecting a preset pre-fills the provider, model, and system prompt", async ({
@@ -314,7 +349,6 @@ test.describe("Creating an LLM-type agent", () => {
 
 		await dialog.getByRole("button", { name: /Code Reviewer/ }).click();
 		await fillAgentName(dialog, `${PROJECT_PREFIX}PRESET_BOT`);
-		await selectFirstProjectRole(page, dialog);
 		await continueToStep2(dialog);
 
 		await expect(dialog.getByRole("combobox").first()).toContainText(
@@ -325,19 +359,57 @@ test.describe("Creating an LLM-type agent", () => {
 		).toHaveValue(/meticulous code reviewer/);
 	});
 
-	test("Step 2 requires a provider, model, base URL, and API key before creating an LLM agent", async ({
+	test("Step 2 requires a provider, model, base URL, and API key before continuing to the role", async ({
 		page,
 	}) => {
 		const dialog = await openCreateDialog(page);
 		await fillAgentName(dialog, `${PROJECT_PREFIX}LLM_BOT`);
-		await selectFirstProjectRole(page, dialog);
 		await continueToStep2(dialog);
+
+		// Nothing is created here: the last step's button does that.
+		const continueButton = dialog.getByRole("button", { name: "Continue" });
+		await expect(continueButton).toBeDisabled();
+		await expect(
+			dialog.getByRole("button", { name: "Create Agent" }),
+		).toHaveCount(0);
+
+		await fillLlmApiKey(dialog);
+		await expect(continueButton).toBeEnabled();
+	});
+
+	test("Step 3 asks for the project role, and the agent cannot be created without one", async ({
+		page,
+	}) => {
+		const dialog = await openCreateDialog(page);
+		await fillAgentName(dialog, `${PROJECT_PREFIX}ROLE_STEP`);
+		await continueToStep2(dialog);
+		await fillLlmApiKey(dialog);
+		await continueToRoleStep(dialog);
+
+		await expect(
+			dialog.getByText("Choose the agent's role in this project"),
+		).toBeVisible();
+		await expect(
+			dialog.getByText(
+				"Controls what the agent can read and modify in this project.",
+			),
+		).toBeVisible();
+		// Every project role is offered with what it grants; nothing is preselected.
+		const roles = projectRoleChoices(dialog).getByRole("radio");
+		await expect(roles.first()).toBeVisible();
+		await expect(roles.first()).not.toBeChecked();
+		// A project agent always has a role: there is no "no role" choice.
+		await expect(dialog.getByText("No global role")).toHaveCount(0);
 
 		const createButton = dialog.getByRole("button", { name: "Create Agent" });
 		await expect(createButton).toBeDisabled();
 
-		await fillLlmApiKey(dialog);
+		await selectFirstProjectRole(dialog);
 		await expect(createButton).toBeEnabled();
+
+		// Backing out is free: nothing has been created.
+		await dialog.getByRole("button", { name: "Back" }).click();
+		await expect(dialog.getByText("2 / 3")).toBeVisible();
 	});
 
 	test("Creating a valid LLM agent adds it to the list and closes the dialog", async ({
@@ -346,13 +418,36 @@ test.describe("Creating an LLM-type agent", () => {
 		const agentName = `${PROJECT_PREFIX}LLM_CREATED`;
 		const dialog = await openCreateDialog(page);
 		await fillAgentName(dialog, agentName);
-		await selectFirstProjectRole(page, dialog);
 		await continueToStep2(dialog);
 		await fillLlmApiKey(dialog);
+		await continueToRoleStep(dialog);
+		await selectFirstProjectRole(dialog);
 		await dialog.getByRole("button", { name: "Create Agent" }).click();
 
 		await expect(dialog).not.toBeVisible();
 		await expect(page.getByText(agentName, { exact: true })).toBeVisible();
+	});
+
+	test("The project agent joins the project with the role chosen in step 3", async ({
+		page,
+		request,
+	}) => {
+		const agentName = `${PROJECT_PREFIX}ROLE_CHOSEN`;
+		const dialog = await openCreateDialog(page);
+		await fillAgentName(dialog, agentName);
+		await continueToStep2(dialog);
+		await fillLlmApiKey(dialog);
+		await continueToRoleStep(dialog);
+		await projectRoleChoices(dialog)
+			.getByRole("radio", { name: "Viewer", exact: true })
+			.check();
+		await dialog.getByRole("button", { name: "Create Agent" }).click();
+
+		await expect(dialog).not.toBeVisible();
+		await expect(page.getByText(agentName, { exact: true })).toBeVisible();
+		expect(await agentProjectRole(request, projectId, agentName)).toBe(
+			"Viewer",
+		);
 	});
 
 	test("Cancelling step 1 discards the in-progress agent", async ({ page }) => {
@@ -401,7 +496,6 @@ test.describe("Creating an ACP-type agent and setting up its local bridge", () =
 		await expect(dialog.getByText("Start from a preset")).toHaveCount(0);
 
 		await fillAgentName(dialog, `${PROJECT_PREFIX}ACP_FIELDS`);
-		await selectFirstProjectRole(page, dialog);
 		await continueToStep2(dialog);
 
 		await expect(dialog.getByText("ACP Server")).toBeVisible();
@@ -419,19 +513,18 @@ test.describe("Creating an ACP-type agent and setting up its local bridge", () =
 		const dialog = await openCreateDialog(page);
 		await selectAcpType(dialog);
 		await fillAgentName(dialog, `${PROJECT_PREFIX}CUSTOM_ACP`);
-		await selectFirstProjectRole(page, dialog);
 		await continueToStep2(dialog);
 
 		await dialog.getByRole("combobox").click();
 		await page.getByRole("option", { name: "Custom…" }).click();
 
-		const createButton = dialog.getByRole("button", { name: "Create Agent" });
-		await expect(createButton).toBeDisabled();
+		const continueButton = dialog.getByRole("button", { name: "Continue" });
+		await expect(continueButton).toBeDisabled();
 
 		await dialog
 			.getByRole("textbox", { name: "Command" })
 			.fill("npx -y my-acp-server");
-		await expect(createButton).toBeEnabled();
+		await expect(continueButton).toBeEnabled();
 	});
 
 	test("Creating an ACP agent opens the bridge setup dialog with a token already generated", async ({
@@ -444,8 +537,9 @@ test.describe("Creating an ACP-type agent and setting up its local bridge", () =
 		const dialog = await openCreateDialog(page);
 		await selectAcpType(dialog);
 		await fillAgentName(dialog, agentName);
-		await selectFirstProjectRole(page, dialog);
 		await continueToStep2(dialog);
+		await continueToRoleStep(dialog);
+		await selectFirstProjectRole(dialog);
 		await dialog.getByRole("button", { name: "Create Agent" }).click();
 
 		await expect(dialog).not.toBeVisible();
