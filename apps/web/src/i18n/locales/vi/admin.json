@@ -72,7 +72,8 @@
 				"userNotFound": "Không tìm thấy người dùng. Có thể người dùng đã bị xóa.",
 				"forbidden": "Bạn không có quyền thực hiện thao tác này.",
 				"internalError": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
-				"generic": "Đã xảy ra lỗi."
+				"generic": "Đã xảy ra lỗi.",
+				"roleNotAssigned": "Đã lưu người dùng nhưng không thể gán vai trò."
 			}
 		},
 		"resetPasswordDialog": {

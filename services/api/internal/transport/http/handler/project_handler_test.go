@@ -211,8 +211,10 @@ var _ projectdom.Service = (*mockProjectSvc)(nil)
 // router helper
 // ---------------------------------------------------------------------------
 
-// adminClaimsMiddleware injects a synthetic ADMIN claims into the request context so
-// unit tests can exercise the handler without a real JWT stack.
+// adminClaimsMiddleware injects synthetic claims into the request context so
+// unit tests can exercise the handler without a real JWT stack. The role name
+// is informational only — what the caller may do comes from the Authorizer's
+// store (see adminAuthorizer).
 func adminClaimsMiddleware() func(http.Handler) http.Handler {
 	claims := &domainauth.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -229,10 +231,16 @@ func adminClaimsMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
+// adminAuthorizer returns a real Authorizer whose store answers as an admin's
+// role row would for these tests: it stores a global projects.read. That —
+// not the "ADMIN" name on the synthetic claims above — is what makes
+// ListProjects/GetWorkspaceStats return every project.
+func adminAuthorizer() *authz.Authorizer {
+	return authz.NewAuthorizer(&fakeGlobalPermStore{globalPerms: []authz.Permission{authz.PermissionProjectsRead}})
+}
+
 func newProjectRouter(svc projectdom.Service) chi.Router {
-	// Use a real Authorizer with nil store — legacy ADMIN role grants everything
-	// without any database calls.
-	authorizer := authz.NewAuthorizer(nil)
+	authorizer := adminAuthorizer()
 	r := chi.NewRouter()
 	r.Use(adminClaimsMiddleware())
 	h := handler.NewProjectHandler(svc, authorizer)
@@ -412,7 +420,7 @@ func TestCreateProject_SeedsDefaultViews(t *testing.T) {
 		},
 	}
 
-	authorizer := authz.NewAuthorizer(nil)
+	authorizer := adminAuthorizer()
 	r := chi.NewRouter()
 	r.Use(adminClaimsMiddleware())
 	h := handler.NewProjectHandler(projectSvc, authorizer, handler.WithProjectDefaultViews(viewSvc, taskTypeSvc))
@@ -1193,7 +1201,7 @@ func TestGetWorkspaceStats_SingleAggregateQueryPerCounter(t *testing.T) {
 		},
 	}
 
-	authorizer := authz.NewAuthorizer(nil)
+	authorizer := adminAuthorizer()
 	r := chi.NewRouter()
 	r.Use(adminClaimsMiddleware())
 	h := handler.NewProjectHandler(projectSvc, authorizer, handler.WithProjectStatsServices(taskSvc, userSvc))

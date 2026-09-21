@@ -23,16 +23,49 @@ import (
 	"github.com/Paca-AI/api/internal/transport/http/router"
 )
 
+// integrationAdminID is the subject issueAdminToken signs for. It is not a row
+// in fakeUserRepo (so it never shows up in user listings); rolePermissionStore
+// simply treats it as a user assigned the built-in ADMIN role.
+var integrationAdminID = uuid.MustParse("aaaaaaaa-0000-0000-0000-000000000001")
+
+// rolePermissionStore resolves a user's permissions the way the real store
+// does — from the role the user is assigned, never from a name carried in a
+// token — using the built-in role definitions, i.e. what each built-in role
+// row stores right after startup. It also serves as the users service's
+// GlobalPermissionReader, so /users/me/global-permissions reports exactly what
+// the authorizer enforces.
+type rolePermissionStore struct{ repo *fakeUserRepo }
+
+func (s *rolePermissionStore) ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error) {
+	role := ""
+	if userID == integrationAdminID {
+		role = userdom.RoleAdmin
+	} else if u, err := s.repo.FindByID(ctx, userID); err == nil {
+		role = u.Role
+	}
+	for _, def := range authz.DefaultGlobalRoles() {
+		if def.Name == role {
+			return def.Permissions, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *rolePermissionStore) ListProjectPermissions(context.Context, uuid.UUID, uuid.UUID) ([]authz.Permission, error) {
+	return nil, nil
+}
+
 func buildUserTestRouter(repo *fakeUserRepo) http.Handler {
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	store := &fakeRefreshStore{}
 	authService := authsvc.New(repo, tm, store, 168*time.Hour, 24*time.Hour)
-	userService := usersvc.New(repo, repo)
+	perms := &rolePermissionStore{repo: repo}
+	userService := usersvc.New(repo, repo, perms)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(nil),
+		Authorizer:   authz.NewAuthorizer(perms),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),
@@ -41,10 +74,12 @@ func buildUserTestRouter(repo *fakeUserRepo) http.Handler {
 }
 
 // issueAdminToken issues a JWT for an admin user to authenticate admin routes.
+// The subject is integrationAdminID: what the token may do comes from the
+// ADMIN role rolePermissionStore resolves for it, not from the role claim.
 func issueAdminToken(t *testing.T) string {
 	t.Helper()
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
-	tok, err := tm.IssueAccess(uuid.NewString(), "admin-user", "ADMIN", "fam-admin", false)
+	tok, err := tm.IssueAccess(integrationAdminID.String(), "admin-user", "ADMIN", "fam-admin", false)
 	if err != nil {
 		t.Fatalf("issue admin token: %v", err)
 	}
@@ -661,11 +696,12 @@ func TestAdminResetPassword_SetsMustChangePassword(t *testing.T) {
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	store := &fakeRefreshStore{}
 	authService := authsvc.New(repo, tm, store, 168*time.Hour, 24*time.Hour)
-	userService := usersvc.New(repo, repo)
+	perms := &rolePermissionStore{repo: repo}
+	userService := usersvc.New(repo, repo, perms)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	r := router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(nil),
+		Authorizer:   authz.NewAuthorizer(perms),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService, authService),
@@ -761,11 +797,12 @@ func TestMustChangePassword_ChangeAllowedAndUnblocks(t *testing.T) {
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	store := &fakeRefreshStore{}
 	authService := authsvc.New(repo, tm, store, 168*time.Hour, 24*time.Hour)
-	userService := usersvc.New(repo, repo)
+	perms := &rolePermissionStore{repo: repo}
+	userService := usersvc.New(repo, repo, perms)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	r := router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(nil),
+		Authorizer:   authz.NewAuthorizer(perms),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService, authService),

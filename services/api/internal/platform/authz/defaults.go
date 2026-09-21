@@ -1,9 +1,6 @@
 package authz
 
-import (
-	"strings"
-	"sync"
-)
+import "sync"
 
 // RoleDefinition binds a role name to the permissions it grants.
 type RoleDefinition struct {
@@ -11,11 +8,16 @@ type RoleDefinition struct {
 	Permissions []Permission
 }
 
-// DefaultGlobalRoles returns the built-in global role set. Computed once and
-// cached: LegacyPermissionsForRole calls this on every permission check
-// (hasPermissionsForActor runs per request), and the data itself is static
-// for the process lifetime. Callers only ever range over the result, so a
-// shared cached slice is safe to hand out.
+// DefaultGlobalRoles returns the built-in global role set. It is the source
+// the built-in global_roles rows are seeded/synced from at startup — it is
+// never consulted when authorizing a request: the permissions a request is
+// checked against are always the ones the caller's role row actually stores
+// (see PermissionStore), so a role edited after seeding is enforced as
+// edited, not as defined here.
+//
+// Computed once and cached; the data is static for the process lifetime and
+// callers only ever range over the result, so a shared cached slice is safe
+// to hand out.
 var DefaultGlobalRoles = sync.OnceValue(func() []RoleDefinition {
 	return []RoleDefinition{
 		{
@@ -30,10 +32,12 @@ var DefaultGlobalRoles = sync.OnceValue(func() []RoleDefinition {
 				PermissionProjectsAll,
 				PermissionSettingsWrite,
 				// Global agents and plugins were previously left off this
-				// list — an ADMIN got 403s managing either, masked in
-				// practice only for accounts whose legacy role-name claim
-				// happened to also read "ADMIN" (which bypasses this table
-				// entirely via LegacyPermissionsForRole's blanket wildcard).
+				// list, so an ADMIN got 403s managing either. That was
+				// masked for accounts whose role-name claim happened to
+				// read "ADMIN", because authorization used to grant by
+				// role *name* on top of what the role row stored. That
+				// fallback is gone: this list, as synced into the ADMIN
+				// role row at startup, is exactly what ADMIN can do.
 				PermissionAgentsAll,
 				PermissionPluginsAll,
 			},
@@ -153,27 +157,4 @@ func DefaultProjectRoles() []RoleDefinition {
 			},
 		},
 	}
-}
-
-// LegacyPermissionsForRole preserves compatibility with the existing
-// users.role claim until all callers are migrated to explicit role assignment.
-//
-// Delegates to DefaultGlobalRoles rather than hand-maintaining a second,
-// parallel permission list per role name — GHSA-hjcj-373w-vq8m was exactly
-// that drift: this function's own ADMIN case had been hardcoded to the bare
-// PermissionAll wildcard while DefaultGlobalRoles' ADMIN entry was correctly
-// scoped to global-only permissions, so any caller keyed off the legacy role
-// claim (the authz middleware included, via claims.Role) granted a global
-// ADMIN every permission — including project-scoped ones like
-// environments.connect — for any project UUID in the request, with no
-// project-membership check. A single source of truth makes that class of
-// drift impossible going forward.
-func LegacyPermissionsForRole(role string) []Permission {
-	normalized := strings.ToUpper(strings.TrimSpace(role))
-	for _, def := range DefaultGlobalRoles() {
-		if def.Name == normalized {
-			return def.Permissions
-		}
-	}
-	return nil
 }

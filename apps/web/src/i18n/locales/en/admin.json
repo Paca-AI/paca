@@ -88,7 +88,8 @@
 				"userNotFound": "User not found. They may have already been deleted.",
 				"forbidden": "You don't have permission to perform this action.",
 				"internalError": "Something went wrong on the server. Please try again.",
-				"generic": "Something went wrong."
+				"generic": "Something went wrong.",
+				"roleNotAssigned": "The user was saved, but the role could not be assigned."
 			}
 		},
 		"resetPasswordDialog": {

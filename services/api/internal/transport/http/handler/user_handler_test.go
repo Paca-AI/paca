@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -180,24 +181,25 @@ func TestCreateUser_Success(t *testing.T) {
 	}
 }
 
-func TestCreateUser_WithRole(t *testing.T) {
-	id := uuid.New()
-	var capturedRole string
+// Assigning a role is a privilege of its own (global_roles.assign) with its own
+// route, so a create body that still names one is refused outright rather than
+// having the role silently ignored.
+func TestCreateUser_RejectsRole(t *testing.T) {
 	svc := &mockUserSvc{
-		create: func(_ context.Context, in domainuser.CreateInput) (*domainuser.User, error) {
-			capturedRole = in.Role
-			return &domainuser.User{ID: id, Username: in.Username, FullName: in.FullName, Role: in.Role}, nil
+		create: func(context.Context, domainuser.CreateInput) (*domainuser.User, error) {
+			t.Fatal("Create must not be called when the body names a role")
+			return nil, nil
 		},
 	}
 	r := newUserRouter(svc)
 
 	w := do(t, r, http.MethodPost, "/admin/users",
 		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob", "role": "ADMIN"}))
-	if w.Code != http.StatusCreated {
-		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
-	if capturedRole != "ADMIN" {
-		t.Errorf("expected role ADMIN, got %q", capturedRole)
+	if !strings.Contains(w.Body.String(), "global-roles") {
+		t.Errorf("expected the error to point at the global-roles route, got %s", w.Body.String())
 	}
 }
 
@@ -1036,24 +1038,23 @@ func TestAdminUpdateUser_MalformedJSON(t *testing.T) {
 	}
 }
 
-func TestAdminUpdateUser_RoleChange(t *testing.T) {
-	id := uuid.New()
-	var capturedRole string
+// See TestCreateUser_RejectsRole: a profile update must not carry a role.
+func TestAdminUpdateUser_RejectsRole(t *testing.T) {
 	svc := &mockUserSvc{
-		adminUpdate: func(_ context.Context, _ uuid.UUID, in domainuser.AdminUpdateInput) (*domainuser.User, error) {
-			capturedRole = in.Role
-			return &domainuser.User{ID: id, FullName: in.FullName, Role: in.Role}, nil
+		adminUpdate: func(context.Context, uuid.UUID, domainuser.AdminUpdateInput) (*domainuser.User, error) {
+			t.Fatal("AdminUpdate must not be called when the body names a role")
+			return nil, nil
 		},
 	}
 	r := newUserRouter(svc)
 
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/admin/users/%s", id),
-		jsonBody(t, map[string]string{"role": "ADMIN"}))
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/admin/users/%s", uuid.New()),
+		jsonBody(t, map[string]string{"full_name": "Renamed", "role": "ADMIN"}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
-	if capturedRole != "ADMIN" {
-		t.Errorf("expected role=ADMIN forwarded, got %q", capturedRole)
+	if !strings.Contains(w.Body.String(), "global-roles") {
+		t.Errorf("expected the error to point at the global-roles route, got %s", w.Body.String())
 	}
 }
 

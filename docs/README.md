@@ -9,6 +9,7 @@ This directory is the main documentation home for Paca.
 - [architecture/service-boundaries.md](architecture/service-boundaries.md): responsibilities for each service.
 - [architecture/database-schema.md](architecture/database-schema.md): database schema (DBML) and interactive diagram.
 - [architecture/interaction-views.md](architecture/interaction-views.md): how sprint, backlog, and timeline views share one model and one task-list API.
+- [architecture/authorization.md](architecture/authorization.md): how permissions, roles, and route gates decide what a caller may do, and how to add a route safely.
 - [guides/getting-started.md](guides/getting-started.md): what a new contributor should read first.
 - [guides/mcp-server-setup.md](guides/mcp-server-setup.md): setup guide for integrating AI agents (Claude, custom agents) with Paca via MCP server.
 - [guides/local-development.md](guides/local-development.md): local development intent and future setup direction.

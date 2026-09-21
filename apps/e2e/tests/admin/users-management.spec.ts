@@ -12,6 +12,7 @@ import { AUTH_FILE } from '../../playwright.config';
 
 const AUTH_URL = `${process.env.E2E_BASE_URL ?? 'http://localhost'}/api/v1/auth/login`;
 const USERS_URL = `${process.env.E2E_BASE_URL ?? 'http://localhost'}/api/v1/admin/users`;
+const GLOBAL_ROLES_URL = `${process.env.E2E_BASE_URL ?? 'http://localhost'}/api/v1/admin/global-roles`;
 const USERNAME = process.env.E2E_USERNAME ?? 'admin';
 const PASSWORD = process.env.E2E_PASSWORD ?? 'e2e-admin-password';
 const TEMP_PASSWORD = 'TempPassword123!';
@@ -67,6 +68,21 @@ async function cleanupTestUsers(request: APIRequestContext) {
   );
 }
 
+// The API assigns a global role by id, on its own endpoint (global_roles.assign):
+// creating or editing a user never carries one, so a role is set in a second call.
+async function assignRole(request: APIRequestContext, userId: string, roleName: string) {
+  const list = await request.get(GLOBAL_ROLES_URL);
+  expect(list.ok()).toBeTruthy();
+  const roles: Array<{ id: string; name: string }> = (await list.json()).data ?? [];
+  const role = roles.find((candidate) => candidate.name === roleName);
+  expect(role, `global role ${roleName} exists`).toBeTruthy();
+
+  const assigned = await request.put(`${USERS_URL}/${userId}/global-roles`, {
+    data: { role_ids: [role?.id] },
+  });
+  expect(assigned.ok()).toBeTruthy();
+}
+
 async function createUser(
   request: APIRequestContext,
   user: { username: string; fullName: string; role?: UserRole },
@@ -75,12 +91,17 @@ async function createUser(
     data: {
       username: user.username,
       full_name: user.fullName,
-      role: user.role ?? 'USER',
       password: TEMP_PASSWORD,
     },
   });
 
   expect(response.ok()).toBeTruthy();
+
+  // New accounts start as USER; anything else is a separate assignment.
+  if (user.role && user.role !== 'USER') {
+    const created = (await response.json()).data as { id: string };
+    await assignRole(request, created.id, user.role);
+  }
 }
 
 async function ensureUser(

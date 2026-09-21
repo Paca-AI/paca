@@ -101,10 +101,43 @@ func TestAgentAuthorization(t *testing.T) {
 	})
 
 	t.Run("user permissions remain unchanged", func(t *testing.T) {
-		allowed, err := authorizer.HasPermissions(context.Background(), userID, &projectID, "user", authz.PermissionTasksRead)
+		allowed, err := authorizer.HasPermissions(context.Background(), userID, &projectID, authz.PermissionTasksRead)
 		require.NoError(t, err)
 		assert.False(t, allowed)
 	})
+}
+
+// TestAgentAuthorization_RoleNameGrantsNothing guards the agent path against
+// the same name-based grant the user path used to have: the agent's project
+// role *name* is resolved (to tell members from non-members), and a
+// project-scoped role can be named anything — "Admin" is even the default
+// name of every project's own admin role. A name that happens to match a
+// built-in global role (any case) must confer nothing; only what the role
+// row stores may authorize.
+func TestAgentAuthorization_RoleNameGrantsNothing(t *testing.T) {
+	projectID := uuid.New()
+
+	for _, roleName := range []string{"SUPER_ADMIN", "super_admin", "ADMIN", "Admin", "USER"} {
+		t.Run(roleName, func(t *testing.T) {
+			agentID := uuid.New()
+			resolver := &mockAgentRoleResolver{
+				roles: map[uuid.UUID]map[uuid.UUID]string{projectID: {agentID: roleName}},
+			}
+			// The role row itself stores nothing.
+			authorizer := authz.NewAuthorizer(&mockPermissionStore{}).WithAgentRoleResolver(resolver)
+
+			for _, p := range []authz.Permission{
+				authz.PermissionAll,
+				authz.PermissionEnvironmentsConnect,
+				authz.PermissionTasksWrite,
+				authz.PermissionProjectsDelete,
+			} {
+				allowed, err := authorizer.HasPermissionsForAgent(context.Background(), agentID, projectID, p)
+				require.NoError(t, err)
+				assert.Falsef(t, allowed, "project role named %q must not grant %q when its stored permissions don't", roleName, p)
+			}
+		})
+	}
 }
 
 func TestAgentAuthorizationWithMultipleProjects(t *testing.T) {

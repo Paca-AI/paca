@@ -180,8 +180,8 @@ func New(cfg *config.Config) (*App, error) {
 	// Backs GetConversationForAgent's agents.read check (read_conversation
 	// MCP tool) — see agentsvc.Service.authorizer's doc comment.
 	agentService = agentService.WithAuthorizer(authorizer)
-	// Backs CreateGlobalAgent/UpdateGlobalAgent's global_role_id existence
-	// check — see agentsvc.Service.globalRoleSvc's doc comment
+	// Backs SetGlobalAgentRole's global_role_id existence check — see
+	// agentsvc.Service.globalRoleSvc's doc comment
 	// (GHSA-xxc8-ggm7-vmxp).
 	agentService = agentService.WithGlobalRoleService(globalRoleService)
 	settingsService := settingssvc.New(settingsRepo)
@@ -424,8 +424,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithMemberRepo(projectRepo).
 		WithGlobalPermissionReader(permissionStore).
 		WithAvatarService(attachmentService).
-		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo)).
-		WithAuthorizer(authorizer)
+		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo))
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
 		WithMemberRepo(projectRepo)

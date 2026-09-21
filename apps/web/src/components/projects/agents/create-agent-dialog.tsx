@@ -51,6 +51,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { usePermissions } from "@/hooks/use-permissions";
 import { globalRolesQueryOptions } from "@/lib/admin-api";
 import {
 	type ACPProvider,
@@ -60,7 +61,7 @@ import {
 	type AgentType,
 	type CLIProvider,
 	createAgent,
-	createGlobalAgent,
+	createGlobalAgentWithRole,
 	generateAcpBridgeToken,
 	generateAgentMCPKey,
 	generateGlobalAcpBridgeToken,
@@ -144,9 +145,15 @@ export function CreateAgentDialog({
 		...projectRolesQueryOptions(projectId ?? ""),
 		enabled: !!projectId,
 	});
+	// Binding a global agent to a role is a separate privilege from creating
+	// it: it needs global_roles.assign to bind, and global_roles.read to list
+	// the choices. Without both, the (optional) role field is shown but locked.
+	const { hasPermission } = usePermissions();
+	const canBindGlobalRole =
+		hasPermission("global_roles.assign") && hasPermission("global_roles.read");
 	const { data: globalRoles = [] } = useQuery({
 		...globalRolesQueryOptions,
-		enabled: !projectId,
+		enabled: !projectId && canBindGlobalRole,
 	});
 	const { data: llmModels = {} } = useQuery(llmModelsQueryOptions);
 	// Environments are project-scoped only — a global agent has no project to
@@ -329,13 +336,16 @@ export function CreateAgentDialog({
 						project_role_id: roleId,
 						...typeFields,
 					})
-				: await createGlobalAgent({
-						name: name.trim(),
-						handle: handle.trim(),
-						agent_type: agentType,
-						global_role_id: roleId === NO_GLOBAL_ROLE ? undefined : roleId,
-						...typeFields,
-					});
+				: await createGlobalAgentWithRole(
+						{
+							name: name.trim(),
+							handle: handle.trim(),
+							agent_type: agentType,
+							...typeFields,
+						},
+						// The role is optional, and only bindable with global_roles.assign.
+						canBindGlobalRole && roleId !== NO_GLOBAL_ROLE ? roleId : null,
+					);
 			if (agent.agent_type !== "acp") {
 				return { agent, token: null, mcpKey: null };
 			}
@@ -650,7 +660,11 @@ export function CreateAgentDialog({
 								)}{" "}
 								{projectId && <span className="text-destructive">*</span>}
 							</Label>
-							<Select value={roleId} onValueChange={(v) => v && setRoleId(v)}>
+							<Select
+								value={roleId}
+								onValueChange={(v) => v && setRoleId(v)}
+								disabled={!projectId && !canBindGlobalRole}
+							>
 								<SelectTrigger>
 									<SelectValue
 										placeholder={t(

@@ -1217,7 +1217,6 @@ func TestDeleteAgent_Success(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCreateGlobalAgent_Success(t *testing.T) {
-	roleID := uuid.New()
 	userID := uuid.New()
 	var created *agentdom.Agent
 
@@ -1233,28 +1232,28 @@ func TestCreateGlobalAgent_Success(t *testing.T) {
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
 	result, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
-		Name:         "Global Bot",
-		Handle:       "global-bot",
-		LLMProvider:  "openai",
-		LLMModel:     "gpt-4",
-		LLMAPIKey:    "sk-test",
-		GlobalRoleID: &roleID,
-		CreatedBy:    &userID,
+		Name:        "Global Bot",
+		Handle:      "global-bot",
+		LLMProvider: "openai",
+		LLMModel:    "gpt-4",
+		LLMAPIKey:   "sk-test",
+		CreatedBy:   &userID,
 	})
 
 	assert.NoError(t, err)
 	assert.Equal(t, "Global Bot", result.Name)
 	assert.Equal(t, agentdom.AgentScopeGlobal, result.AgentScope)
 	assert.Equal(t, uuid.Nil, result.ProjectID)
-	if assert.NotNil(t, result.GlobalRoleID) {
-		assert.Equal(t, roleID, *result.GlobalRoleID)
-	}
-	// The agent handed to the repo must carry the same scope/role, not just
-	// the returned value — CreateGlobalAgent must never fall back to
+	// A new global agent holds no global role: it is bound afterwards with
+	// SetGlobalAgentRole, behind global_roles.assign.
+	assert.Nil(t, result.GlobalRoleID)
+	// The agent handed to the repo must carry the same scope, not just the
+	// returned value — CreateGlobalAgent must never fall back to
 	// CreateAgentWithMembership's project-scoped insert path.
 	if assert.NotNil(t, created) {
 		assert.Equal(t, agentdom.AgentScopeGlobal, created.AgentScope)
 		assert.Equal(t, uuid.Nil, created.ProjectID)
+		assert.Nil(t, created.GlobalRoleID)
 	}
 }
 
@@ -1277,49 +1276,26 @@ func TestCreateGlobalAgent_HandleTaken(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrAgentHandleTaken)
 }
 
-// TestCreateGlobalAgent_RejectsUnknownGlobalRole and
-// TestUpdateGlobalAgent_RejectsUnknownGlobalRole guard the existence half of
-// GHSA-xxc8-ggm7-vmxp's global-agent fix: a global_role_id that doesn't name
-// a real global role must never reach the repository, regardless of what
-// permissions the caller was authorized with at the HTTP layer (see
-// AgentHandler's global_roles.assign check for the other half).
-func TestCreateGlobalAgent_RejectsUnknownGlobalRole(t *testing.T) {
+// SetGlobalAgentRole is the only path that changes a global agent's role. The
+// existence half of GHSA-xxc8-ggm7-vmxp's global-agent fix lives here: a
+// global_role_id that doesn't name a real global role must never reach the
+// repository. (Who may bind a role at all is the router's global_roles.assign
+// gate on the route that calls this.)
+
+func TestSetGlobalAgentRole_BindsExistingRole(t *testing.T) {
+	agentID := uuid.New()
 	roleID := uuid.New()
+	var saved *agentdom.Agent
 	repo := &mockAgentRepo{
-		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
-			return nil, agentdom.ErrAgentNotFound
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal}, nil
 		},
-		createGlobalAgent: func(context.Context, *agentdom.Agent) error {
-			t.Fatal("createGlobalAgent must not be called for an unknown global_role_id")
+		updateAgent: func(_ context.Context, a *agentdom.Agent) error {
+			saved = a
 			return nil
 		},
 	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
-		WithGlobalRoleService(&mockGlobalRoleFinder{})
-
-	_, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
-		Name:         "Global Bot",
-		Handle:       "global-bot",
-		LLMProvider:  "openai",
-		LLMModel:     "gpt-4",
-		LLMAPIKey:    "sk-test",
-		GlobalRoleID: &roleID,
-	})
-
-	assert.ErrorIs(t, err, globalroledom.ErrNotFound)
-}
-
-func TestCreateGlobalAgent_ValidatesGlobalRoleWhenWired(t *testing.T) {
-	roleID := uuid.New()
 	checkedID := uuid.Nil
-	repo := &mockAgentRepo{
-		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
-			return nil, agentdom.ErrAgentNotFound
-		},
-		createGlobalAgent: func(_ context.Context, _ *agentdom.Agent) error {
-			return nil
-		},
-	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
 		WithGlobalRoleService(&mockGlobalRoleFinder{
 			findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
@@ -1328,21 +1304,19 @@ func TestCreateGlobalAgent_ValidatesGlobalRoleWhenWired(t *testing.T) {
 			},
 		})
 
-	_, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
-		Name:         "Global Bot",
-		Handle:       "global-bot",
-		LLMProvider:  "openai",
-		LLMModel:     "gpt-4",
-		LLMAPIKey:    "sk-test",
-		GlobalRoleID: &roleID,
-	})
+	result, err := svc.SetGlobalAgentRole(context.Background(), agentID, &roleID)
 
 	assert.NoError(t, err)
 	assert.Equal(t, roleID, checkedID)
+	if assert.NotNil(t, result.GlobalRoleID) {
+		assert.Equal(t, roleID, *result.GlobalRoleID)
+	}
+	if assert.NotNil(t, saved) && assert.NotNil(t, saved.GlobalRoleID) {
+		assert.Equal(t, roleID, *saved.GlobalRoleID)
+	}
 }
 
-func TestUpdateGlobalAgent_RejectsUnknownGlobalRole(t *testing.T) {
-	agentID := uuid.New()
+func TestSetGlobalAgentRole_RejectsUnknownRole(t *testing.T) {
 	roleID := uuid.New()
 	repo := &mockAgentRepo{
 		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
@@ -1356,21 +1330,15 @@ func TestUpdateGlobalAgent_RejectsUnknownGlobalRole(t *testing.T) {
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
 		WithGlobalRoleService(&mockGlobalRoleFinder{})
 
-	_, err := svc.UpdateGlobalAgent(context.Background(), agentID, agentdom.UpdateAgentInput{
-		GlobalRoleID: &roleID,
-	})
+	_, err := svc.SetGlobalAgentRole(context.Background(), uuid.New(), &roleID)
 
 	assert.ErrorIs(t, err, globalroledom.ErrNotFound)
 }
 
-// TestUpdateGlobalAgent_ClearingRoleSkipsLookup covers the &uuid.Nil "clear"
-// sentinel (see UpdateAgentInput.GlobalRoleID's doc comment): clearing an
-// existing role removes a grant rather than adding one, so — unlike setting
-// a real role — it needs no existence lookup.
-func TestUpdateGlobalAgent_ClearingRoleSkipsLookup(t *testing.T) {
-	agentID := uuid.New()
+// Unbinding removes a grant rather than adding one, so — unlike binding — it
+// needs no existence lookup.
+func TestSetGlobalAgentRole_UnbindingSkipsLookup(t *testing.T) {
 	existingRole := uuid.New()
-	clear := uuid.Nil
 	repo := &mockAgentRepo{
 		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
 			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal, GlobalRoleID: &existingRole}, nil
@@ -1389,12 +1357,56 @@ func TestUpdateGlobalAgent_ClearingRoleSkipsLookup(t *testing.T) {
 			},
 		})
 
-	_, err := svc.UpdateGlobalAgent(context.Background(), agentID, agentdom.UpdateAgentInput{
-		GlobalRoleID: &clear,
-	})
+	result, err := svc.SetGlobalAgentRole(context.Background(), uuid.New(), nil)
 
 	assert.NoError(t, err)
-	assert.False(t, lookupCalled, "clearing global_role_id must not look up a role")
+	assert.Nil(t, result.GlobalRoleID)
+	assert.False(t, lookupCalled, "unbinding a role must not look one up")
+}
+
+func TestSetGlobalAgentRole_RejectsProjectScopedAgent(t *testing.T) {
+	roleID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ProjectID: uuid.New(), AgentScope: agentdom.AgentScopeProject}, nil
+		},
+		updateAgent: func(context.Context, *agentdom.Agent) error {
+			t.Fatal("a project-scoped agent must never be bound to a global role")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.SetGlobalAgentRole(context.Background(), uuid.New(), &roleID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+}
+
+// An ordinary update must leave a bound role exactly as it was: the role is
+// not among UpdateAgentInput's fields, so nothing in an update can change it.
+func TestUpdateGlobalAgent_LeavesGlobalRoleAlone(t *testing.T) {
+	existingRole := uuid.New()
+	renamed := "Renamed Bot"
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal, GlobalRoleID: &existingRole, Name: "Bot"}, nil
+		},
+		updateAgent: func(_ context.Context, a *agentdom.Agent) error {
+			if assert.NotNil(t, a.GlobalRoleID) {
+				assert.Equal(t, existingRole, *a.GlobalRoleID)
+			}
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.UpdateGlobalAgent(context.Background(), uuid.New(), agentdom.UpdateAgentInput{Name: &renamed})
+
+	assert.NoError(t, err)
+	assert.Equal(t, renamed, result.Name)
+	if assert.NotNil(t, result.GlobalRoleID) {
+		assert.Equal(t, existingRole, *result.GlobalRoleID)
+	}
 }
 
 func TestGetGlobalAgent_RejectsProjectScopedAgent(t *testing.T) {

@@ -297,9 +297,10 @@ func TestRefresh_ReissuesAnnotationPair(t *testing.T) {
 // Role claim instead of the freshly-reloaded user's current role — see
 // rotateRefreshToken's doc comment on why the user row is reloaded on every
 // refresh in the first place, and why that must apply to Role, not just
-// MustChangePassword: authz.LegacyPermissionsForRole grants a full wildcard
-// for a role named "ADMIN"/"SUPER_ADMIN", so a demotion that doesn't take
-// effect on refresh is a live privilege-revocation bug, not just staleness.
+// MustChangePassword. The role claim is informational (authorization reads the
+// role's stored permissions on every request), but it is what the UI and
+// plugins show as the caller's role, so a demotion that doesn't show up after a
+// refresh is misleading staleness that should not outlive the session.
 func TestRefresh_ReflectsRoleChange(t *testing.T) {
 	userID := uuid.New()
 	u := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleAdmin}

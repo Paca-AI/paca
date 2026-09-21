@@ -72,7 +72,8 @@
 				"userNotFound": "Usuário não encontrado. Ele pode já ter sido excluído.",
 				"forbidden": "Você não tem permissão para executar esta ação.",
 				"internalError": "Algo deu errado no servidor. Tente novamente.",
-				"generic": "Algo deu errado."
+				"generic": "Algo deu errado.",
+				"roleNotAssigned": "O usuário foi salvo, mas não foi possível atribuir a função."
 			}
 		},
 		"resetPasswordDialog": {

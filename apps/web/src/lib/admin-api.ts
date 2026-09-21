@@ -99,12 +99,14 @@ export async function getUsers(
 	return data.data;
 }
 
+/** Creates a user with the default USER role. To give them another role, call
+ *  {@link assignUserGlobalRole} afterwards — assigning a role needs
+ *  `global_roles.assign`, so the server no longer accepts `role` here. */
 export async function createUser(payload: {
 	username: string;
 	password: string;
 	full_name: string;
 	email?: string;
-	role?: string;
 }): Promise<User> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<User>>(
 		"/admin/users",
@@ -113,15 +115,28 @@ export async function createUser(payload: {
 	return data.data;
 }
 
+/** Edits a user's profile. The role is not part of it: change that with
+ *  {@link assignUserGlobalRole}. */
 export async function updateUser(
 	userId: string,
-	payload: { full_name?: string; email?: string; role?: string },
+	payload: { full_name?: string; email?: string },
 ): Promise<User> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<User>>(
 		`/admin/users/${userId}`,
 		payload,
 	);
 	return data.data;
+}
+
+/** Sets a user's global role (requires `global_roles.assign`). A user holds
+ *  exactly one global role, so this replaces whatever they had. */
+export async function assignUserGlobalRole(
+	userId: string,
+	roleId: string,
+): Promise<void> {
+	await apiClient.instance.put(`/admin/users/${userId}/global-roles`, {
+		role_ids: [roleId],
+	});
 }
 
 export async function deleteUser(userId: string): Promise<void> {

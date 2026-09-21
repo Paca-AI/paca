@@ -131,8 +131,8 @@ type CreateAgentRequest struct {
 }
 
 // UpdateAgentRequest is the body for PATCH /projects/:projectId/agents/:agentId
-// and PATCH /admin/agents/:agentId. GlobalRoleID is only meaningful for the
-// latter (global agents) — pass a zero UUID to clear an assigned role.
+// and PATCH /admin/agents/:agentId. GlobalRoleID is no longer accepted on
+// either — see its comment.
 type UpdateAgentRequest struct {
 	Name        *string  `json:"name"`
 	Handle      *string  `json:"handle"`
@@ -157,8 +157,13 @@ type UpdateAgentRequest struct {
 	DockerEnabled     *bool   `json:"docker_enabled"`
 	// ParallelismLimit: nil means unchanged, same convention as every other
 	// pointer field here.
-	ParallelismLimit *int       `json:"parallelism_limit"`
-	GlobalRoleID     *uuid.UUID `json:"global_role_id"`
+	ParallelismLimit *int `json:"parallelism_limit"`
+	// GlobalRoleID is not accepted here: binding a global agent to a role
+	// needs global_roles.assign, so it has its own routes
+	// (PUT/DELETE /admin/agents/:agentId/global-role). The field exists only
+	// so PATCH /admin/agents/:agentId can reject a request that still sends
+	// one with a clear 400 instead of ignoring it.
+	GlobalRoleID *uuid.UUID `json:"global_role_id"`
 	// DefaultEnvironmentID: omit to leave unchanged, pass a zero UUID
 	// ("00000000-0000-0000-0000-000000000000") to clear it, or a real
 	// environment ID to set it — see agentdom.UpdateAgentInput.
@@ -176,25 +181,34 @@ type UpdateAgentRequest struct {
 // CreateGlobalAgentRequest is the body for POST /admin/agents. Mirrors
 // CreateAgentRequest minus ProjectRoleID (nothing to assign at creation
 // time — a global agent gets a project role only later, when invited into a
-// project), plus GlobalRoleID.
+// project). A new global agent has no global role; bind one afterwards with
+// PUT /admin/agents/:agentId/global-role.
 type CreateGlobalAgentRequest struct {
-	Name              string     `json:"name" binding:"required"`
-	Handle            string     `json:"handle" binding:"required"`
-	AgentType         string     `json:"agent_type"`
-	LLMProvider       string     `json:"llm_provider"`
-	LLMModel          string     `json:"llm_model"`
-	LLMAPIKey         string     `json:"llm_api_key"`
-	LLMBaseURL        string     `json:"llm_base_url"`
-	ACPProvider       string     `json:"acp_provider"`
-	ACPCommand        []string   `json:"acp_command"`
-	SystemPrompt      string     `json:"system_prompt"`
-	MaxIterations     int        `json:"max_iterations"`
-	TimeoutMinutes    int        `json:"timeout_minutes"`
-	GitCommitterName  string     `json:"git_committer_name"`
-	GitCommitterEmail string     `json:"git_committer_email"`
-	DockerEnabled     bool       `json:"docker_enabled"`
-	ParallelismLimit  int        `json:"parallelism_limit"`
-	GlobalRoleID      *uuid.UUID `json:"global_role_id"`
+	Name              string   `json:"name" binding:"required"`
+	Handle            string   `json:"handle" binding:"required"`
+	AgentType         string   `json:"agent_type"`
+	LLMProvider       string   `json:"llm_provider"`
+	LLMModel          string   `json:"llm_model"`
+	LLMAPIKey         string   `json:"llm_api_key"`
+	LLMBaseURL        string   `json:"llm_base_url"`
+	ACPProvider       string   `json:"acp_provider"`
+	ACPCommand        []string `json:"acp_command"`
+	SystemPrompt      string   `json:"system_prompt"`
+	MaxIterations     int      `json:"max_iterations"`
+	TimeoutMinutes    int      `json:"timeout_minutes"`
+	GitCommitterName  string   `json:"git_committer_name"`
+	GitCommitterEmail string   `json:"git_committer_email"`
+	DockerEnabled     bool     `json:"docker_enabled"`
+	ParallelismLimit  int      `json:"parallelism_limit"`
+	// GlobalRoleID is not accepted here — see UpdateAgentRequest.GlobalRoleID.
+	GlobalRoleID *uuid.UUID `json:"global_role_id"`
+}
+
+// SetGlobalAgentRoleRequest is the body for PUT /admin/agents/:agentId/global-role:
+// the global role the agent is bound to. Requires global_roles.assign on top
+// of agents.write.
+type SetGlobalAgentRoleRequest struct {
+	GlobalRoleID uuid.UUID `json:"global_role_id" binding:"required"`
 }
 
 // GenerateACPBridgeTokenResponse is the body returned for POST

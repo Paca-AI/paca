@@ -72,7 +72,8 @@
 				"userNotFound": "未找到该用户，可能已被删除。",
 				"forbidden": "您没有权限执行此操作。",
 				"internalError": "服务器出现错误，请重试。",
-				"generic": "出现错误。"
+				"generic": "出现错误。",
+				"roleNotAssigned": "用户已保存，但无法分配角色。"
 			}
 		},
 		"resetPasswordDialog": {

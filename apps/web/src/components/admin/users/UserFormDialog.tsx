@@ -22,7 +22,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
+	assignUserGlobalRole,
 	createUser,
 	globalRolesQueryOptions,
 	type User,
@@ -32,6 +34,9 @@ import {
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { validateUsername } from "@/lib/auth-validation";
 import { generatePassword } from "@/lib/generate-password";
+
+/** The role every new account starts with (see the API's user creation). */
+const DEFAULT_ROLE = "USER";
 
 /** Loose RFC 5322-ish check — the server is the source of truth for validity;
  * this only catches obviously-malformed input before a round trip. */
@@ -66,7 +71,23 @@ export function UserFormDialog({
 	const [showPassword, setShowPassword] = useState(false);
 	const [copied, setCopied] = useState(false);
 
-	const { data: roles = [] } = useQuery(globalRolesQueryOptions);
+	// Picking a role is a separate privilege from editing the user: it needs
+	// global_roles.assign to change one, and global_roles.read to list the
+	// choices. Without both, the role field is shown but locked.
+	const { hasPermission } = usePermissions();
+	const canPickRole =
+		hasPermission("global_roles.assign") && hasPermission("global_roles.read");
+	const { data: roles = [] } = useQuery({
+		...globalRolesQueryOptions,
+		enabled: canPickRole,
+	});
+
+	/** Assigns the role currently selected in the form to `userId`. */
+	const assignSelectedRole = async (userId: string) => {
+		const target = roles.find((r) => r.name === role);
+		if (!target) throw new Error(t("users.formDialog.errors.roleNotAssigned"));
+		await assignUserGlobalRole(userId, target.id);
+	};
 
 	const reset = () => {
 		setUsername(user?.username ?? "");
@@ -104,24 +125,38 @@ export function UserFormDialog({
 			}
 
 			if (isEdit && user) {
-				return updateUser(user.id, {
+				const updated = await updateUser(user.id, {
 					full_name: fullName.trim(),
 					email: trimmedEmail || undefined,
-					role: role || undefined,
 				});
+				// The role has its own endpoint (and permission): only call it when
+				// the selection actually changed.
+				if (canPickRole && role && role !== user.role) {
+					await assignSelectedRole(user.id);
+				}
+				return updated;
 			}
 
 			const usernameError = validateUsername(username, tCommon);
 			if (usernameError) throw new Error(usernameError);
 
 			const password = generatePassword();
-			await createUser({
+			const created = await createUser({
 				username: username.trim(),
 				password,
 				full_name: fullName.trim(),
 				email: trimmedEmail || undefined,
-				role: role || undefined,
 			});
+			// New accounts start as USER. Any other role is a second call — and if
+			// it fails the user still exists, so don't throw: the generated
+			// password is shown only once and must not be lost with the error.
+			if (canPickRole && role && role !== DEFAULT_ROLE) {
+				try {
+					await assignSelectedRole(created.id);
+				} catch {
+					setError(t("users.formDialog.errors.roleNotAssigned"));
+				}
+			}
 			return password;
 		},
 		onSuccess: (result) => {
@@ -236,6 +271,12 @@ export function UserFormDialog({
 						<p className="text-xs text-muted-foreground">
 							{t("users.formDialog.passwordNotShownAgain")}
 						</p>
+						{error ? (
+							<div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+								<span className="shrink-0">⚠</span>
+								<span>{error}</span>
+							</div>
+						) : null}
 					</div>
 
 					<DialogFooter>
@@ -359,7 +400,11 @@ export function UserFormDialog({
 								{t("users.formDialog.roleOptionalHint")}
 							</span>
 						</Label>
-						<Select value={role} onValueChange={(v) => setRole(v ?? "")}>
+						<Select
+							value={role}
+							onValueChange={(v) => setRole(v ?? "")}
+							disabled={!canPickRole}
+						>
 							<SelectTrigger id="user-role" className="w-full">
 								<SelectValue
 									placeholder={t("users.formDialog.rolePlaceholder")}

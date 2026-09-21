@@ -38,8 +38,18 @@ func ProjectScopeFromParam(param string) ScopeResolver {
 	}
 }
 
+// PermissionGroup pairs a scope resolver with the permissions required in that
+// scope. A caller satisfies a group by holding ALL of its permissions in the
+// scope its resolver names. Used with RequirePublicProjectOrPermissions to
+// express OR-style policies: satisfying any one group is enough.
+type PermissionGroup struct {
+	Scope       ScopeResolver
+	Permissions []authz.Permission
+}
+
 // RequirePermissions enforces permission-based authorization and supports
-// global and project-scoped checks.
+// global and project-scoped checks: the caller must hold ALL of permissions in
+// the scope the resolver names.
 func RequirePermissions(authorizer *authz.Authorizer, scope ScopeResolver, permissions ...authz.Permission) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,146 +61,98 @@ func RequirePermissions(authorizer *authz.Authorizer, scope ScopeResolver, permi
 	}
 }
 
-// EnforcePermissions checks authorization without advancing the handler chain.
+// EnforcePermissions is RequirePermissions without the handler chain: it
+// writes the rejection itself and reports whether the request may proceed. For
+// callers whose gate is only known at request time, such as plugin routes
+// that declare their own requirePermissions in a manifest.
 func EnforcePermissions(w http.ResponseWriter, r *http.Request, authorizer *authz.Authorizer, scope ScopeResolver, permissions ...authz.Permission) bool {
+	allowed, err := evaluate(r, authorizer, []PermissionGroup{{Scope: scope, Permissions: permissions}})
+	return proceedIfAllowed(w, r, allowed, err)
+}
+
+// evaluate is the single place a request's caller is turned into authorizer
+// calls, so every gate treats callers identically. It reports whether the
+// caller satisfies at least one of groups, evaluated in order (the first
+// satisfied group short-circuits).
+//
+// The caller is either an agent — an agent-API-key request naming one, judged
+// by its own role: in the project for a project scope, its own global role
+// otherwise — or a human, judged by the permissions their assigned roles
+// store. Deliberately never the shared bot user behind the agent API key
+// (seeded SUPER_ADMIN), which would let any agent act with full privilege.
+//
+// A group whose scope cannot be resolved (e.g. a malformed project id) is
+// skipped rather than fatal, so another group can still admit the caller; if
+// none does, the first such error is returned in place of a plain denial.
+//
+// The result is (true, nil) when allowed, (false, nil) when merely not
+// permitted (the caller answers 403), and (false, err) when the request
+// could not be judged: unauthenticated, an invalid subject or scope, or an
+// authorizer failure.
+func evaluate(r *http.Request, authorizer *authz.Authorizer, groups []PermissionGroup) (bool, error) {
 	claims := ClaimsFrom(r)
 	if claims == nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
-		return false
+		return false, apierr.New(apierr.CodeUnauthenticated, "unauthenticated")
 	}
-
 	if authorizer == nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "authorization not configured"))
-		return false
+		return false, apierr.New(apierr.CodeInternalError, "authorization not configured")
 	}
 
-	resolver := scope
-	if resolver == nil {
-		resolver = GlobalScope()
+	agentID, isAgent := AgentIDFromRequest(r)
+	var userID uuid.UUID
+	if !isAgent {
+		id, err := uuid.Parse(claims.Subject)
+		if err != nil {
+			return false, apierr.New(apierr.CodeBadRequest, "invalid subject claim")
+		}
+		userID = id
 	}
-	projectID, err := resolver(r)
-	if err != nil {
+
+	var firstScopeErr error
+	for _, group := range groups {
+		resolve := group.Scope
+		if resolve == nil {
+			resolve = GlobalScope()
+		}
+		projectID, err := resolve(r)
+		if err != nil {
+			if firstScopeErr == nil {
+				firstScopeErr = err
+			}
+			continue
+		}
+
+		var allowed bool
+		switch {
+		case isAgent && projectID != nil:
+			allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, group.Permissions...)
+		case isAgent:
+			allowed, err = authorizer.HasGlobalPermissionsForAgent(r.Context(), agentID, group.Permissions...)
+		default:
+			allowed, err = authorizer.HasPermissions(r.Context(), userID, projectID, group.Permissions...)
+		}
+		if err != nil {
+			return false, err
+		}
+		if allowed {
+			return true, nil
+		}
+	}
+	return false, firstScopeErr
+}
+
+// proceedIfAllowed turns evaluate's result into a response: nothing (and true)
+// when the request may proceed, otherwise the matching error (and false).
+func proceedIfAllowed(w http.ResponseWriter, r *http.Request, allowed bool, err error) bool {
+	switch {
+	case err != nil:
 		presenter.Error(w, r, err)
 		return false
-	}
-
-	agentID, hasAgentID := AgentIDFromRequest(r)
-
-	var allowed bool
-	if hasAgentID {
-		if projectID != nil {
-			allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, permissions...)
-		} else {
-			// Global-scope, agent-authenticated request: narrow to this
-			// specific agent's own global role rather than falling through
-			// to the shared agent-API-key subject (which is a fixed
-			// SUPER_ADMIN bot user) — see HasGlobalPermissionsForAgent.
-			allowed, err = authorizer.HasGlobalPermissionsForAgent(r.Context(), agentID, permissions...)
-		}
-	} else {
-		userID, parseErr := uuid.Parse(claims.Subject)
-		if parseErr != nil {
-			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
-			return false
-		}
-		allowed, err = authorizer.HasPermissions(r.Context(), userID, projectID, claims.Role, permissions...)
-	}
-
-	if err != nil {
-		presenter.Error(w, r, err)
-		return false
-	}
-	if !allowed {
+	case !allowed:
 		presenter.Error(w, r, apierr.New(apierr.CodeForbidden, "insufficient permissions"))
 		return false
 	}
-
 	return true
-}
-
-// Authz keeps backwards-compatible middleware semantics for global scope.
-func Authz(authorizer *authz.Authorizer, permissions ...authz.Permission) func(http.Handler) http.Handler {
-	return RequirePermissions(authorizer, GlobalScope(), permissions...)
-}
-
-// PermissionGroup pairs a scope resolver with the permissions required in that scope.
-// Used with RequireAnyPermissions to express OR-style authorization policies.
-type PermissionGroup struct {
-	Scope       ScopeResolver
-	Permissions []authz.Permission
-}
-
-// RequireAnyPermissions grants access if the user satisfies at least one of the
-// provided PermissionGroups. Groups are evaluated in order; the first satisfied
-// group short-circuits the check. If no group is satisfied, 403 is returned.
-func RequireAnyPermissions(authorizer *authz.Authorizer, groups ...PermissionGroup) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			claims := ClaimsFrom(r)
-			if claims == nil {
-				presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
-				return
-			}
-
-			if authorizer == nil {
-				presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "authorization not configured"))
-				return
-			}
-
-			agentID, hasAgentID := AgentIDFromRequest(r)
-			var userID uuid.UUID
-
-			if !hasAgentID {
-				var parseErr error
-				userID, parseErr = uuid.Parse(claims.Subject)
-				if parseErr != nil {
-					presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
-					return
-				}
-			}
-
-			var firstScopeErr error
-			for _, group := range groups {
-				resolver := group.Scope
-				if resolver == nil {
-					resolver = GlobalScope()
-				}
-				projectID, err := resolver(r)
-				if err != nil {
-					if firstScopeErr == nil {
-						firstScopeErr = err
-					}
-					continue
-				}
-
-				var allowed bool
-				if hasAgentID {
-					if projectID != nil {
-						allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, group.Permissions...)
-					} else {
-						allowed, err = authorizer.HasGlobalPermissionsForAgent(r.Context(), agentID, group.Permissions...)
-					}
-				} else {
-					allowed, err = authorizer.HasPermissions(r.Context(), userID, projectID, claims.Role, group.Permissions...)
-				}
-
-				if err != nil {
-					presenter.Error(w, r, err)
-					return
-				}
-				if allowed {
-					next.ServeHTTP(w, r)
-					return
-				}
-			}
-
-			if firstScopeErr != nil {
-				presenter.Error(w, r, firstScopeErr)
-				return
-			}
-			presenter.Error(w, r, apierr.New(apierr.CodeForbidden, "insufficient permissions"))
-		})
-	}
 }
 
 // ProjectVisibilityChecker is the minimal interface the public-project
@@ -199,74 +161,27 @@ type ProjectVisibilityChecker interface {
 	IsProjectPublic(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
-// RequirePublicProjectOrPermissions grants access when at least one of the
-// following conditions is true:
+// RequirePublicProjectOrPermissions serves a read-only project route that may
+// also be reached without a project role:
 //
-//   - The request is authenticated and the caller satisfies any of the
-//     provided PermissionGroups (same logic as RequireAnyPermissions).
-//   - The project identified by the "projectId" route parameter has
-//     is_public = true, regardless of authentication status.
+//   - An authenticated caller must satisfy at least one of groups (the same
+//     logic every other gate uses). Being logged in does not fall back to the
+//     public flag below.
+//   - A caller who is not authenticated is admitted when the project named by
+//     the "projectId" route parameter has is_public = true, and receives 401
+//     otherwise.
 //
-// Use this instead of RequireAnyPermissions on read-only project-scoped routes
-// that should be accessible to anonymous users when the project is public.
+// Use it instead of RequirePermissions on read-only project-scoped routes that
+// should be open to anonymous visitors of a public project.
 func RequirePublicProjectOrPermissions(checker ProjectVisibilityChecker, authorizer *authz.Authorizer, groups ...PermissionGroup) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			claims := ClaimsFrom(r)
-
-			agentID, hasAgentID := AgentIDFromRequest(r)
-			var userID uuid.UUID
-
-			if !hasAgentID && claims != nil {
-				var parseErr error
-				userID, parseErr = uuid.Parse(claims.Subject)
-				if parseErr != nil {
-					presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
-					return
+			// Authenticated path: run the normal permission check.
+			if ClaimsFrom(r) != nil {
+				allowed, err := evaluate(r, authorizer, groups)
+				if proceedIfAllowed(w, r, allowed, err) {
+					next.ServeHTTP(w, r)
 				}
-			}
-
-			// Authenticated path: run normal permission check.
-			if claims != nil {
-				var firstScopeErr error
-				for _, group := range groups {
-					resolver := group.Scope
-					if resolver == nil {
-						resolver = GlobalScope()
-					}
-					projectID, err := resolver(r)
-					if err != nil {
-						if firstScopeErr == nil {
-							firstScopeErr = err
-						}
-						continue
-					}
-
-					var allowed bool
-					if hasAgentID {
-						if projectID != nil {
-							allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, group.Permissions...)
-						} else {
-							allowed, err = authorizer.HasGlobalPermissionsForAgent(r.Context(), agentID, group.Permissions...)
-						}
-					} else {
-						allowed, err = authorizer.HasPermissions(r.Context(), userID, projectID, claims.Role, group.Permissions...)
-					}
-
-					if err != nil {
-						presenter.Error(w, r, err)
-						return
-					}
-					if allowed {
-						next.ServeHTTP(w, r)
-						return
-					}
-				}
-				if firstScopeErr != nil {
-					presenter.Error(w, r, firstScopeErr)
-					return
-				}
-				presenter.Error(w, r, apierr.New(apierr.CodeForbidden, "insufficient permissions"))
 				return
 			}
 

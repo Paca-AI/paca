@@ -44,9 +44,9 @@ type pluginFinder interface {
 }
 
 // globalRoleFinder validates a caller-supplied global_role_id before it's
-// bound to a global agent — see CreateGlobalAgent/UpdateGlobalAgent's
-// FindByID checks. Global roles have no project-ownership dimension the way
-// project roles do; existence is the whole check.
+// bound to a global agent — see SetGlobalAgentRole's FindByID check. Global
+// roles have no project-ownership dimension the way project roles do;
+// existence is the whole check.
 type globalRoleFinder interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
 }
@@ -87,15 +87,16 @@ type Service struct {
 	// constructs a bare Service with no authorizer. Production wiring
 	// (bootstrap/app.go) always configures one via WithAuthorizer.
 	authorizer *authz.Authorizer
-	// globalRoleSvc backs CreateGlobalAgent/UpdateGlobalAgent's validation
+	// globalRoleSvc backs SetGlobalAgentRole's validation
 	// that a caller-supplied global_role_id actually names an existing
 	// global role (GHSA-xxc8-ggm7-vmxp's same root cause, applied to global
 	// agents). Nil is a valid, supported configuration (same convention as
 	// environmentSvc/authorizer above): the check is skipped rather than
 	// failing closed. Production wiring (bootstrap/app.go) always configures
 	// one via WithGlobalRoleService — the real security boundary here is the
-	// handler-layer global_roles.assign permission gate (agent_handler.go),
-	// not this existence check, so skipping it when unwired is safe.
+	// router-level global_roles.assign gate on the route that reaches
+	// SetGlobalAgentRole, not this existence check, so skipping it when
+	// unwired is safe.
 	globalRoleSvc globalRoleFinder
 }
 
@@ -688,7 +689,6 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 	a := &agentdom.Agent{
 		ID:               uuid.New(),
 		AgentScope:       agentdom.AgentScopeGlobal,
-		GlobalRoleID:     in.GlobalRoleID,
 		Name:             name,
 		Handle:           handle,
 		AgentType:        agentType,
@@ -753,25 +753,38 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 		return nil, err
 	}
 
-	// A caller-supplied global_role_id must actually name an existing
-	// global role before it's bound to the new agent — see globalRoleSvc's
-	// doc comment (GHSA-xxc8-ggm7-vmxp). Whether the caller is even allowed
-	// to set one at all is enforced earlier, at the HTTP layer (see
-	// AgentHandler.CreateGlobalAgent's global_roles.assign check).
-	if in.GlobalRoleID != nil && s.globalRoleSvc != nil {
-		if _, err := s.globalRoleSvc.FindByID(ctx, *in.GlobalRoleID); err != nil {
-			return nil, err
-		}
-	}
-
 	if err := s.repo.CreateGlobalAgent(ctx, a); err != nil {
 		return nil, fmt.Errorf("create global agent: %w", err)
 	}
 	return a, nil
 }
 
-// UpdateGlobalAgent patches mutable fields of an existing global agent,
-// including GlobalRoleID (set in.GlobalRoleID to &uuid.Nil to clear it).
+// SetGlobalAgentRole binds a global agent to the global role that decides what
+// it may do, or unbinds it when roleID is nil. A role must name an existing
+// global role before it is bound (GHSA-xxc8-ggm7-vmxp); unbinding needs no
+// lookup. Whether the caller may assign roles at all is not decided here: the
+// only route that reaches this declares global_roles.assign in the router.
+func (s *Service) SetGlobalAgentRole(ctx context.Context, agentID uuid.UUID, roleID *uuid.UUID) (*agentdom.Agent, error) {
+	a, err := s.GetGlobalAgent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	if roleID != nil && s.globalRoleSvc != nil {
+		if _, err := s.globalRoleSvc.FindByID(ctx, *roleID); err != nil {
+			return nil, err
+		}
+	}
+
+	a.GlobalRoleID = roleID
+	a.UpdatedAt = time.Now()
+	if err := s.repo.UpdateAgent(ctx, a); err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+// UpdateGlobalAgent patches mutable fields of an existing global agent. Its
+// global role is not among them — see SetGlobalAgentRole.
 func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
 	a, err := s.GetGlobalAgent(ctx, agentID)
 	if err != nil {
@@ -876,21 +889,6 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 			return nil, agentdom.ErrAgentAccessModeInvalid
 		}
 		a.AccessMode = *in.AccessMode
-	}
-	if in.GlobalRoleID != nil {
-		if *in.GlobalRoleID == uuid.Nil {
-			a.GlobalRoleID = nil
-		} else {
-			// See CreateGlobalAgent's identical check for why
-			// (GHSA-xxc8-ggm7-vmxp) — clearing the role (above) needs no
-			// lookup, only binding to a new one does.
-			if s.globalRoleSvc != nil {
-				if _, err := s.globalRoleSvc.FindByID(ctx, *in.GlobalRoleID); err != nil {
-					return nil, err
-				}
-			}
-			a.GlobalRoleID = in.GlobalRoleID
-		}
 	}
 	if err := validateParallelismLimit(a); err != nil {
 		return nil, err

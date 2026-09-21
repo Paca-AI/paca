@@ -72,7 +72,8 @@
 				"userNotFound": "Usuario no encontrado. Puede que ya haya sido eliminado.",
 				"forbidden": "No tienes permiso para realizar esta acción.",
 				"internalError": "Algo salió mal en el servidor. Inténtalo de nuevo.",
-				"generic": "Algo salió mal."
+				"generic": "Algo salió mal.",
+				"roleNotAssigned": "El usuario se guardó, pero no se pudo asignar el rol."
 			}
 		},
 		"resetPasswordDialog": {

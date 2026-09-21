@@ -176,7 +176,6 @@ async function createViewerMember(
 		data: {
 			username: VIEWER_USERNAME,
 			full_name: "E2E View Settings Viewer",
-			role: "USER",
 			password: VIEWER_TEMP_PASSWORD,
 		},
 	});

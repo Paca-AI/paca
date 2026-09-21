@@ -9,8 +9,10 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 )
 
-// CreateInput carries the data needed to create a new user.
-// Role is optional and defaults to RoleUser when empty.
+// CreateInput carries the data needed to create a new user. A new account
+// always starts with the default RoleUser: assigning any other global role is
+// a separate action (global_roles.assign) done through the global-role
+// assignment route, so creation deliberately has no role to set.
 // MustChangePassword defaults to false when omitted.
 type CreateInput struct {
 	Username string
@@ -18,7 +20,6 @@ type CreateInput struct {
 	FullName string
 	// Email is optional; empty means the account has no email on file.
 	Email              string
-	Role               string
 	MustChangePassword bool
 }
 
@@ -31,11 +32,12 @@ type UpdateProfileInput struct {
 	Email string
 }
 
-// AdminUpdateInput carries the fields an admin may change on any user account.
+// AdminUpdateInput carries the profile fields an admin may change on any user
+// account. A user's global role is not among them: changing it is a separate
+// action (global_roles.assign), done through the global-role assignment route.
 type AdminUpdateInput struct {
 	FullName string
-	Role     string
-	// Email is left unchanged when empty, matching FullName/Role's
+	// Email is left unchanged when empty, matching FullName's
 	// "empty means no change" convention above.
 	Email string
 }

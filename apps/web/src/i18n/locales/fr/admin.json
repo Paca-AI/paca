@@ -72,7 +72,8 @@
 				"userNotFound": "Utilisateur introuvable. Il a peut-être déjà été supprimé.",
 				"forbidden": "Vous n'avez pas la permission d'effectuer cette action.",
 				"internalError": "Une erreur s'est produite sur le serveur. Veuillez réessayer.",
-				"generic": "Une erreur s'est produite."
+				"generic": "Une erreur s'est produite.",
+				"roleNotAssigned": "L'utilisateur a été enregistré, mais le rôle n'a pas pu être attribué."
 			}
 		},
 		"resetPasswordDialog": {

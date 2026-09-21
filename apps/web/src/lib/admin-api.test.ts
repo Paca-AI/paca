@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockGet, mockPost, mockPatch, mockDelete } = vi.hoisted(() => ({
-	mockGet: vi.fn(),
-	mockPost: vi.fn(),
-	mockPatch: vi.fn(),
-	mockDelete: vi.fn(),
-}));
+const { mockGet, mockPost, mockPatch, mockPut, mockDelete } = vi.hoisted(
+	() => ({
+		mockGet: vi.fn(),
+		mockPost: vi.fn(),
+		mockPatch: vi.fn(),
+		mockPut: vi.fn(),
+		mockDelete: vi.fn(),
+	}),
+);
 
 vi.mock("./api-client", () => ({
 	apiClient: {
@@ -13,12 +16,14 @@ vi.mock("./api-client", () => ({
 			get: mockGet,
 			post: mockPost,
 			patch: mockPatch,
+			put: mockPut,
 			delete: mockDelete,
 		},
 	},
 }));
 
 import {
+	assignUserGlobalRole,
 	createGlobalRole,
 	createUser,
 	deleteGlobalRole,
@@ -192,15 +197,25 @@ describe("admin-api", () => {
 			data: { data: mockUser, error_code: null, message: "ok" },
 		});
 
+		// No role: assigning one is a separate call (assignUserGlobalRole).
 		const payload = {
 			username: "alice",
 			password: "P@ssw0rd!",
 			full_name: "Alice Smith",
-			role: "Admin",
 		};
 
 		await expect(createUser(payload)).resolves.toEqual(mockUser);
 		expect(mockPost).toHaveBeenCalledWith("/admin/users", payload);
+	});
+
+	it("assigns a user's global role through its own endpoint", async () => {
+		mockPut.mockResolvedValue({ data: { data: {}, error_code: null } });
+
+		await assignUserGlobalRole("u1", "role-admin");
+
+		expect(mockPut).toHaveBeenCalledWith("/admin/users/u1/global-roles", {
+			role_ids: ["role-admin"],
+		});
 	});
 
 	it("patches user by id and unwraps response", async () => {

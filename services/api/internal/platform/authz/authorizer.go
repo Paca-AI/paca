@@ -56,14 +56,20 @@ func (a *Authorizer) WithAgentRoleResolver(resolver AgentRoleResolver) *Authoriz
 
 // HasPermissions reports whether userID has all required permissions in the
 // given scope. projectID=nil means global scope only.
+//
+// Permissions come exclusively from what the user's assigned roles actually
+// store (see PermissionStore) — never from a role's *name*. A name such as
+// "ADMIN" (for instance the role claim carried in a JWT) confers nothing on
+// its own, so editing or stripping a role's stored permissions takes effect
+// immediately, and a stale or mismatched name can never grant access the
+// stored role does not.
 func (a *Authorizer) HasPermissions(
 	ctx context.Context,
 	userID uuid.UUID,
 	projectID *uuid.UUID,
-	legacyRole string,
 	required ...Permission,
 ) (bool, error) {
-	return a.hasPermissionsForActor(ctx, userID, nil, projectID, legacyRole, required...)
+	return a.hasPermissionsForActor(ctx, userID, nil, projectID, required...)
 }
 
 // HasPermissionsForAgent reports whether an agent has all required permissions in the
@@ -78,8 +84,12 @@ func (a *Authorizer) HasPermissionsForAgent(
 		return false, fmt.Errorf("authz: agent role resolver not configured")
 	}
 
-	roleName, err := a.agentRoleResolver.GetAgentProjectRoleName(ctx, agentID, projectID)
-	if err != nil {
+	// The resolver is consulted only to tell "not a member of this project"
+	// apart from a real failure. The role *name* it also returns is
+	// deliberately unused: permissions come from the role's stored
+	// permissions (ListAgentProjectPermissions), never from what the role
+	// happens to be called.
+	if _, err := a.agentRoleResolver.GetAgentProjectRoleName(ctx, agentID, projectID); err != nil {
 		if errors.Is(err, ErrAgentNotInProject) {
 			// Not a member of this project -> no permissions here, same as
 			// any other "granted nothing" outcome. Callers (the authz
@@ -90,7 +100,7 @@ func (a *Authorizer) HasPermissionsForAgent(
 		return false, fmt.Errorf("authz: resolve agent role: %w", err)
 	}
 
-	return a.hasPermissionsForActor(ctx, uuid.Nil, &agentID, &projectID, roleName, required...)
+	return a.hasPermissionsForActor(ctx, uuid.Nil, &agentID, &projectID, required...)
 }
 
 // HasGlobalPermissionsForAgent reports whether agentID has all required
@@ -102,7 +112,7 @@ func (a *Authorizer) HasGlobalPermissionsForAgent(
 	agentID uuid.UUID,
 	required ...Permission,
 ) (bool, error) {
-	return a.hasPermissionsForActor(ctx, uuid.Nil, &agentID, nil, "", required...)
+	return a.hasPermissionsForActor(ctx, uuid.Nil, &agentID, nil, required...)
 }
 
 // hasPermissionsForActor is the internal implementation that works for both users and agents.
@@ -111,22 +121,24 @@ func (a *Authorizer) hasPermissionsForActor(
 	userID uuid.UUID,
 	agentID *uuid.UUID,
 	projectID *uuid.UUID,
-	legacyRole string,
 	required ...Permission,
 ) (bool, error) {
 	if len(required) == 0 {
 		return true, nil
 	}
 
-	// projectScoped gates how much a *global* grant (the legacy role claim,
-	// or an explicitly-assigned global role via ListGlobalPermissions) is
-	// allowed to contribute below: everywhere when the check is global, but
-	// only its PermissionAll entry — never a named permission — once the
-	// check is scoped to one project. See addGlobalGrants.
+	// projectScoped gates how much a *global* grant (an explicitly-assigned
+	// global role via ListGlobalPermissions) is allowed to contribute below:
+	// everywhere when the check is global, but only its PermissionAll entry —
+	// never a named permission — once the check is scoped to one project. See
+	// addGlobalGrants.
 	projectScoped := projectID != nil
 
+	// granted starts empty and is filled only from the permission store: no
+	// role name (legacy claim, project role name, ...) ever contributes a
+	// grant here. With no store configured nothing is granted, i.e. the
+	// authorizer fails closed.
 	granted := make(map[Permission]struct{})
-	addGlobalGrants(granted, LegacyPermissionsForRole(legacyRole), projectScoped)
 
 	if a.store != nil {
 		if userID != uuid.Nil {
@@ -186,22 +198,22 @@ func (a *Authorizer) hasPermissionsForActor(
 	return true, nil
 }
 
-// addGlobalGrants merges perms — permissions from a *global* source (the
-// legacy role claim, or an explicitly-assigned global role) — into granted.
+// addGlobalGrants merges perms — permissions from a *global* source (an
+// explicitly-assigned global role) — into granted.
 //
 // Regression guard for GHSA-hjcj-373w-vq8m: a global source is allowed to
 // satisfy a project-scoped check (projectScoped=true) only via the universal
-// PermissionAll wildcard — the same "god mode" SUPER_ADMIN already relies on
-// via LegacyPermissionsForRole and could equally hold via an explicit
-// PermissionAll global-role assignment. Every other, named permission a
-// global role carries (users.*, projects.*, agents.*, ...) must not reach
-// into a specific project's resources on its own; only that project's own
-// membership grant (ListProjectPermissions / ListAgentProjectPermissions)
-// can do that. Without this, any permission namespace a global role happens
-// to share with a project-scoped permission (agents.* and projects.* both
-// gate project-scoped routes too — see router.go) re-opens the exact
-// "global role reaches any project without membership" bug this advisory
-// reports, just narrower than the bare wildcard.
+// PermissionAll wildcard — the same "god mode" SUPER_ADMIN holds through its
+// stored role and any other global role given an explicit PermissionAll.
+// Every other, named permission a global role carries (users.*, projects.*,
+// agents.*, ...) must not reach into a specific project's resources on its
+// own; only that project's own membership grant (ListProjectPermissions /
+// ListAgentProjectPermissions) can do that. Without this, any permission
+// namespace a global role happens to share with a project-scoped permission
+// (agents.* and projects.* both gate project-scoped routes too — see
+// router.go) re-opens the exact "global role reaches any project without
+// membership" bug this advisory reports, just narrower than the bare
+// wildcard.
 func addGlobalGrants(granted map[Permission]struct{}, perms []Permission, projectScoped bool) {
 	for _, p := range perms {
 		if projectScoped && p != PermissionAll {

@@ -493,7 +493,8 @@ export interface CreateGlobalAgentPayload {
 	// Same "always omitted, kept only for type parity" note as
 	// default_environment_id above.
 	default_folder_id?: string | null;
-	global_role_id?: string | null;
+	// No global_role_id: binding a role is its own privilege
+	// (global_roles.assign) with its own endpoint — see setGlobalAgentRole.
 }
 
 export async function createGlobalAgent(
@@ -525,7 +526,7 @@ export interface UpdateGlobalAgentPayload {
 	default_environment_id?: string | null;
 	// See CreateGlobalAgentPayload.default_folder_id above.
 	default_folder_id?: string | null;
-	global_role_id?: string | null;
+	// No global_role_id — see CreateGlobalAgentPayload and setGlobalAgentRole.
 }
 
 export async function updateGlobalAgent(
@@ -537,6 +538,39 @@ export async function updateGlobalAgent(
 		payload,
 	);
 	return data.data;
+}
+
+/** Binds a global agent to the global role that decides what it may do.
+ *  Requires both `agents.write` and `global_roles.assign`; the server refuses a
+ *  `global_role_id` on create/update, so this is the only way to set one. */
+export async function setGlobalAgentRole(
+	agentId: string,
+	roleId: string,
+): Promise<Agent> {
+	const { data } = await apiClient.instance.put<SuccessEnvelope<Agent>>(
+		`/admin/agents/${agentId}/global-role`,
+		{ global_role_id: roleId },
+	);
+	return data.data;
+}
+
+/** Creates a global agent and, when `roleId` is given, binds it to that global
+ *  role. The server refuses a role on create, so this is two calls; if the
+ *  second fails the agent is deleted again rather than left half-configured,
+ *  so a retry starts clean instead of tripping over "handle already taken".
+ *  Resolves to the agent as it ended up (with its role, if one was bound). */
+export async function createGlobalAgentWithRole(
+	payload: CreateGlobalAgentPayload,
+	roleId?: string | null,
+): Promise<Agent> {
+	const agent = await createGlobalAgent(payload);
+	if (!roleId) return agent;
+	try {
+		return await setGlobalAgentRole(agent.id, roleId);
+	} catch (err) {
+		await deleteGlobalAgent(agent.id).catch(() => undefined);
+		throw err;
+	}
 }
 
 export async function deleteGlobalAgent(agentId: string): Promise<void> {
