@@ -24,7 +24,11 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
-import { ApiErrorCode, getApiErrorCode, isForbiddenError } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	isForbiddenError,
+} from "@/lib/api-error";
 import {
 	reorderTaskStatuses,
 	STATUS_CATEGORY_LABELS,

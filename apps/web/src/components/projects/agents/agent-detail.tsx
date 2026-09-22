@@ -52,7 +52,6 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	type ACPProvider,
 	type Agent,
@@ -92,6 +91,7 @@ import {
 	updateSkill,
 	verifyCLILogin,
 } from "@/lib/agent-api";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { environmentsQueryOptions } from "@/lib/environment-api";
 import { projectMembersQueryOptions } from "@/lib/project-api";
 import {
@@ -843,9 +843,7 @@ function OverviewTab({
 						</span>
 					)}
 					{saveErrorMessage && (
-						<span className="text-xs text-destructive">
-							{saveErrorMessage}
-						</span>
+						<span className="text-xs text-destructive">{saveErrorMessage}</span>
 					)}
 				</div>
 			)}

@@ -434,7 +434,8 @@ function WebAppConnectTab({
 					)}
 					{startMutation.isError && (
 						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-							{getApiErrorCode(startMutation.error) === ApiErrorCode.EnvironmentBusy
+							{getApiErrorCode(startMutation.error) ===
+							ApiErrorCode.EnvironmentBusy
 								? t("environments.detail.busy")
 								: t("environments.detail.actionFailed")}
 						</p>

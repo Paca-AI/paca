@@ -184,7 +184,8 @@ function OverviewTab({
 	});
 
 	const saveErrorMessage = saveMutation.isError
-		? getApiErrorCode(saveMutation.error) === ApiErrorCode.EnvironmentNameInvalid
+		? getApiErrorCode(saveMutation.error) ===
+			ApiErrorCode.EnvironmentNameInvalid
 			? t("environments.detail.overview.nameRequired")
 			: t("environments.detail.overview.saveFailed")
 		: null;
@@ -335,9 +336,7 @@ function OverviewTab({
 						</span>
 					)}
 					{saveErrorMessage && (
-						<span className="text-xs text-destructive">
-							{saveErrorMessage}
-						</span>
+						<span className="text-xs text-destructive">{saveErrorMessage}</span>
 					)}
 				</div>
 			)}
@@ -570,9 +569,7 @@ function AddPortForwardDialog({
 		? (() => {
 				switch (getApiErrorCode(addMutation.error)) {
 					case ApiErrorCode.EnvironmentPortForwardContainerPortTaken:
-						return t(
-							"environments.detail.portForwards.addDialog.portTaken",
-						);
+						return t("environments.detail.portForwards.addDialog.portTaken");
 					case ApiErrorCode.EnvironmentPortForwardContainerPortInvalid:
 						return t(
 							"environments.detail.portForwards.addDialog.portOutOfRange",
@@ -693,9 +690,12 @@ function RestartEnvironmentDialog({
 				</DialogHeader>
 				{restartMutation.isError && (
 					<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-						{getApiErrorCode(restartMutation.error) === ApiErrorCode.EnvironmentBusy
+						{getApiErrorCode(restartMutation.error) ===
+						ApiErrorCode.EnvironmentBusy
 							? t("environments.detail.busy")
-							: t("environments.detail.portForwards.restartDialog.restartFailed")}
+							: t(
+									"environments.detail.portForwards.restartDialog.restartFailed",
+								)}
 					</p>
 				)}
 				<DialogFooter>
@@ -792,7 +792,8 @@ function AccessTab({
 	// availableMembers already excludes anyone with a grant, so this is
 	// mainly a race (stale member list, or granted concurrently elsewhere).
 	const addErrorMessage = addMutation.isError
-		? getApiErrorCode(addMutation.error) === ApiErrorCode.EnvironmentAccessGrantExists
+		? getApiErrorCode(addMutation.error) ===
+			ApiErrorCode.EnvironmentAccessGrantExists
 			? t("environments.detail.access.alreadyGranted")
 			: t("environments.detail.access.grantFailed")
 		: null;

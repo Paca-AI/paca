@@ -82,9 +82,9 @@ function SprintPage() {
 	const canManageSprints = hasProjectPermission("sprints.write");
 
 	const [completeOpen, setCompleteOpen] = useState(false);
-	const [completeSprintError, setCompleteSprintError] = useState<
-		string | null
-	>(null);
+	const [completeSprintError, setCompleteSprintError] = useState<string | null>(
+		null,
+	);
 	const [moveToSprintId, setMoveToSprintId] = useState<string | null>(null);
 
 	const [startSprintOpen, setStartSprintOpen] = useState(false);
