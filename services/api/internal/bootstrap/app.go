@@ -101,7 +101,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	tokenManager := jwttoken.New(cfg.JWT.Secret, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL)
 	permissionStore := pgRepo.NewAuthzPermissionStore(db)
-	authorizer := authz.NewAuthorizer(permissionStore).WithAgentRoleResolver(permissionStore)
+	authorizer := authz.NewAuthorizer(permissionStore)
 
 	// --- Repositories -------------------------------------------------------
 	userRepo := pgRepo.NewUserRepository(db)

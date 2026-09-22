@@ -133,11 +133,8 @@ func (s *Service) CountUsersMustChangePassword(ctx context.Context) (int64, erro
 // show and enable from this list, so a list broader than what the API will
 // actually allow would make it offer actions the server then rejects.
 func (s *Service) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]string, error) {
-	// Resolved only to return a clean not-found for an unknown or deleted user.
-	if _, err := s.repo.FindByID(ctx, id); err != nil {
-		return nil, err
-	}
-
+	// No separate user lookup: the permission source already yields nothing for
+	// an unknown or deleted user, and this runs on every page load.
 	seen := map[string]struct{}{}
 
 	if s.globalPermissionReader != nil {

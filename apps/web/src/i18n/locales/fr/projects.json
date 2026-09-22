@@ -84,7 +84,6 @@
 			"optional": "(optionnel)",
 			"charsCount": "{{count}} caractères",
 			"createFailed": "Échec de la création de l'agent. Veuillez réessayer.",
-			"noDefaultRole": "Aucun rôle par défaut n'est défini pour le nouvel agent. Définissez-en un sur la page Rôles globaux, puis réessayez.",
 			"cancel": "Annuler",
 			"continue": "Continuer",
 			"back": "Retour",

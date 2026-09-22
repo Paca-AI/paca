@@ -84,7 +84,6 @@
 			"optional": "(tùy chọn)",
 			"charsCount": "{{count}} ký tự",
 			"createFailed": "Tạo agent thất bại. Vui lòng thử lại.",
-			"noDefaultRole": "Chưa có vai trò mặc định để gán cho agent mới. Hãy đặt một vai trò ở trang Vai trò toàn cục rồi thử lại.",
 			"cancel": "Hủy",
 			"continue": "Tiếp tục",
 			"back": "Quay lại",

@@ -66,7 +66,6 @@ import {
 	type Agent,
 	type AgentType,
 	type CLIProvider,
-	clearGlobalAgentRole,
 	createAgent,
 	createGlobalAgent,
 	generateAcpBridgeToken,
@@ -75,15 +74,14 @@ import {
 	generateGlobalAgentMCPKey,
 	globalAgentsQueryOptions,
 	llmModelsQueryOptions,
-	setGlobalAgentRole,
 	verifyEnvironmentCLILogin,
 } from "@/lib/agent-api";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { environmentsQueryOptions } from "@/lib/environment-api";
 import { splitShellCommand } from "@/lib/shell-command";
 import { cn } from "@/lib/utils";
 import { AcpBridgeSetup, CommandBox } from "./acp-bridge-setup";
 import { ProjectRolePicker } from "./project-role-picker";
+import { useSetAgentGlobalRole } from "./use-set-agent-global-role";
 
 // Create Agent Dialog — shared between the project-scoped Agents page
 // (routes/_authenticated/projects/$projectId/agents/index.tsx) and the
@@ -252,7 +250,7 @@ export function CreateAgentDialog({
 		setPickedRole(undefined);
 		setCreated(null);
 		createMutation.reset();
-		roleMutation.reset();
+		clearRoleError();
 		setAgentType("llm");
 		setProviderSelect("anthropic");
 		setCustomProvider("");
@@ -300,7 +298,7 @@ export function CreateAgentDialog({
 			return;
 		}
 		// What a request brings back has to land somewhere, so no closing mid-way.
-		if (createMutation.isPending || roleMutation.isPending) return;
+		if (createMutation.isPending || roleIsPending) return;
 		// Once the role step shows, the agent exists and is complete as it is: closing
 		// keeps its role and finishes, like the Finish button.
 		if (created) {
@@ -444,18 +442,13 @@ export function CreateAgentDialog({
 	});
 
 	// The role step's request, made once the agent exists: another role, or none.
-	const roleMutation = useMutation({
-		mutationFn: ({
-			agentId,
-			role,
-		}: {
-			agentId: string;
-			role: GlobalRole | null;
-		}) =>
-			role
-				? setGlobalAgentRole(agentId, role.id)
-				: clearGlobalAgentRole(agentId),
-		onSuccess: () => {
+	const {
+		setRole,
+		isPending: roleIsPending,
+		error: roleError,
+		clearError: clearRoleError,
+	} = useSetAgentGlobalRole({
+		onChanged: () => {
 			if (created) finish(created);
 		},
 	});
@@ -526,30 +519,13 @@ export function CreateAgentDialog({
 			finish(created);
 			return;
 		}
-		roleMutation.mutate({
-			agentId: created.agent.id,
-			role: pickedRole ?? null,
-		});
-	};
-
-	const roleErrorMessage = (err: unknown) => {
-		const code = getApiErrorCode(err);
-		if (code === ApiErrorCode.GlobalRoleNotFound) {
-			return t("agents.detail.globalRole.errors.roleNotFound");
-		}
-		if (code === ApiErrorCode.Forbidden) {
-			return t("agents.detail.globalRole.errors.forbidden");
-		}
-		return t("agents.detail.globalRole.errors.generic");
+		setRole(created.agent.id, pickedRole ?? null);
 	};
 
 	// Shown on the step whose button creates the agent.
 	const createError = createMutation.isError ? (
 		<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-			{getApiErrorCode(createMutation.error) ===
-			ApiErrorCode.GlobalRoleNoDefault
-				? t("agents.createDialog.noDefaultRole")
-				: t("agents.createDialog.createFailed")}
+			{t("agents.createDialog.createFailed")}
 		</p>
 	) : null;
 
@@ -1327,18 +1303,18 @@ export function CreateAgentDialog({
 									value={chosenRoleId}
 									onChange={(role) => {
 										setPickedRole(role);
-										roleMutation.reset();
+										clearRoleError();
 									}}
 									none={{
 										label: t("agents.detail.globalRole.none"),
 										hint: t("agents.detail.globalRole.noneHint"),
 										onSelect: () => {
 											setPickedRole(null);
-											roleMutation.reset();
+											clearRoleError();
 										},
 									}}
 									currentRoleId={currentRoleId}
-									disabled={roleMutation.isPending}
+									disabled={roleIsPending}
 								/>
 								{roleChange === "assign" &&
 								pickedRole &&
@@ -1347,10 +1323,8 @@ export function CreateAgentDialog({
 										{t("agents.detail.globalRole.fullAccessWarning")}
 									</InlineNotice>
 								) : null}
-								{roleMutation.isError ? (
-									<InlineNotice tone="error">
-										{roleErrorMessage(roleMutation.error)}
-									</InlineNotice>
+								{roleError ? (
+									<InlineNotice tone="error">{roleError}</InlineNotice>
 								) : null}
 							</>
 						)}
@@ -1383,7 +1357,7 @@ export function CreateAgentDialog({
 								variant="ghost"
 								size="sm"
 								onClick={() => setStep(step === 3 ? 2 : 1)}
-								disabled={createMutation.isPending || roleMutation.isPending}
+								disabled={createMutation.isPending || roleIsPending}
 								// Once the agent exists the earlier steps can no longer change it.
 								className={cn("text-muted-foreground", created && "invisible")}
 							>
@@ -1412,9 +1386,9 @@ export function CreateAgentDialog({
 								<Button
 									size="sm"
 									onClick={submitRoleStep}
-									disabled={roleMutation.isPending}
+									disabled={roleIsPending}
 								>
-									{roleMutation.isPending ? (
+									{roleIsPending ? (
 										<>
 											<Loader2 className="size-4 mr-1.5 animate-spin" />
 											{roleChange === "remove"

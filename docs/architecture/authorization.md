@@ -23,7 +23,19 @@ What a caller may do is decided **per request from the permissions their role ro
 
 **Built-in roles.** `SUPER_ADMIN` (`*`), `ADMIN` and `USER` are defined in `authz.DefaultGlobalRoles()` and written to their rows **on every startup**. Edits to a built-in role therefore last only until the next restart; make a custom role for a lasting change. The definitions are used only for seeding, never when authorizing.
 
-**The default role.** Exactly one global role has `global_roles.is_default` set: the role every new user and every new global agent starts with. It is data, not a name the API hardcodes, so it can be moved to another role with `PUT /admin/global-roles/{roleId}/set-default` (`global_roles.write`, the same shape as a project's default task status and type) and the role that holds it **cannot be deleted** (`409 GLOBAL_ROLE_IS_DEFAULT`; make another role the default first). A partial unique index keeps it to one. New accounts start with `USER` because startup marks `USER` the default when none is set; that also repairs a deployment that once deleted it. Creating a user or global agent when no default exists fails with `409 GLOBAL_ROLE_NO_DEFAULT` instead of guessing a role. Project roles have no default: a project agent's role is part of its create request.
+`ADMIN` runs the workspace — `users.*`, `projects.*`, `agents.*`, `plugins.*`, `settings.write` — and can read the global roles (`global_roles.read`). It does **not** hold `global_roles.write` or `global_roles.assign`, which are root-equivalent (next paragraph). A deployment that upgrades to this definition gets it at the next startup, when the `ADMIN` row is re-synced: an existing `ADMIN` account stops being able to define, assign or set the default role until an operator gives those permissions to a custom role on purpose.
+
+**Root-equivalent permissions.** A few permissions let their holder give themselves everything, so holding one is holding `*`:
+
+- `*` itself;
+- `global_roles.write`: define or edit any role — one storing `*` included — and choose which role every new account starts with (`set-default`);
+- `global_roles.assign`: give any existing role, `SUPER_ADMIN` included, to any account (their own too), or to a global agent together with `agents.write`.
+
+The router can only ask whether a caller holds a permission. It cannot ask whether the role being written or assigned is above the caller's own, and handlers and services do not check either — by design, every permission decision is in the router. So the line is drawn in what each role holds: only `SUPER_ADMIN` is seeded with any of them (`TestDefaultGlobalRoles_OnlySuperAdminCanMintRoot`). Giving one to a custom role is allowed — the Global Roles page can, and the create-user and create-agent wizards' role step is built for it — but it is a decision to trust that role's holders as root, so keep such roles to the few people who would otherwise be `SUPER_ADMIN`.
+
+**Account takeover.** `users.write` can set any user's password (`PATCH /admin/users/{userId}/password`), a `SUPER_ADMIN`'s included, and then sign in as them (the reset forces a password change on first sign-in and publishes `user.password_reset`). A gate cannot say "only accounts at or below the caller", so treat `users.write` — and with it `ADMIN`'s `users.*` — as able to take over any account, and grant it accordingly.
+
+**The default role.** Exactly one global role has `global_roles.is_default` set: the role every new user and every new global agent starts with. It is data, not a name the API hardcodes, so it can be moved to another role with `PUT /admin/global-roles/{roleId}/set-default` (`global_roles.write`, the same shape as a project's default task status and type) and the role that holds it **cannot be deleted** (`409 GLOBAL_ROLE_IS_DEFAULT`; make another role the default first). A partial unique index keeps it to one. New accounts start with `USER` because startup marks `USER` the default when none is set; that also repairs a deployment that once deleted it. Creating a user when no default exists fails with `409 GLOBAL_ROLE_NO_DEFAULT` instead of guessing a role; a global agent, for which having no global role is a valid state, is simply created without one. Project roles have no default: a project agent's role is part of its create request.
 
 The default is assigned server-side at creation, so it does not need `global_roles.assign`: someone who may create users or agents but not assign roles still creates them with the default role, and cannot give them another.
 
@@ -79,6 +91,7 @@ Choosing a different global role is always a second request made once the accoun
 2. Do not check permissions in the handler.
 3. If it is open to any authenticated user or public by design, add it to `openRouteGroups` in `router/authorization_test.go` with the reason. Otherwise `TestEveryRouteIsGuarded` fails.
 4. Add the row to `docs/api/http-design.md`.
+5. If the operation can hand out or raise authority — a role, a membership, a credential — ask what its permission lets the holder reach. One that can mint root is root-equivalent: keep it off every built-in role except `SUPER_ADMIN` and add it to `TestDefaultGlobalRoles_OnlySuperAdminCanMintRoot`.
 
 ## Safety nets
 
@@ -86,6 +99,7 @@ Choosing a different global role is always a second request made once the accoun
 - `router/guards_test.go` pins what each gate means.
 - `TestRoleAssignmentIsSeparatePrivilege` (same file as the first) pins the boundary around roles: profile routes need only their own permission, and changing a role needs `global_roles.assign` (plus `agents.write` for an agent).
 - `internal/platform/authz` tests cover the authorizer, including that no role name grants anything and that a global permission does not cross into a project.
+- `TestDefaultGlobalRoles_OnlySuperAdminCanMintRoot` keeps every built-in role except `SUPER_ADMIN` unable to write or assign roles, so none of them can raise itself to root.
 - `test/e2e/admin_role_permissions_test.go` runs against a real database: a user whose role has been stripped of a permission is refused everywhere that permission is needed.
 - `test/e2e/default_role_test.go` runs against a real database too: one default at a time, it cannot be deleted, new users and global agents get it, and creating a user keeps working after the original `USER` role has been deleted once another role is the default.
 

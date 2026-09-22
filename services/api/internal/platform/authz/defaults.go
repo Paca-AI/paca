@@ -25,10 +25,20 @@ var DefaultGlobalRoles = sync.OnceValue(func() []RoleDefinition {
 			Permissions: []Permission{PermissionAll},
 		},
 		{
+			// ADMIN runs the workspace — users, projects, agents, plugins and
+			// settings — and may *see* the global roles. It deliberately does
+			// not hold global_roles.write or global_roles.assign: between them
+			// they let their holder define any role, one storing "*" included,
+			// and give it to any account, their own included. Both are
+			// root-equivalent, and the router can only ask whether a caller
+			// holds a permission — not whether the role being written or
+			// assigned is above the caller's own — so the line is drawn here,
+			// in what each role holds: they belong to SUPER_ADMIN alone unless
+			// an operator knowingly grants them to a custom role.
 			Name: "ADMIN",
 			Permissions: []Permission{
 				PermissionUsersAll,
-				PermissionGlobalRolesAll,
+				PermissionGlobalRolesRead,
 				PermissionProjectsAll,
 				PermissionSettingsWrite,
 				// Global agents and plugins were previously left off this

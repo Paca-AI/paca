@@ -613,6 +613,13 @@ func (h *PluginHandler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 	callerID := ""
 	userIDStr := ""
 	callerRole := ""
+	// An agent-API-key request names its agent; the runtime's permission_check
+	// judges it by that agent's own role rather than by userIDStr, which for an
+	// agent key is the shared bot user (see pluginrt.HTTPRequest.AgentID).
+	agentIDStr := ""
+	if agentID, ok := middleware.AgentIDFromRequest(r); ok {
+		agentIDStr = agentID.String()
+	}
 	if claims != nil {
 		callerRole = claims.Role
 		userIDStr = claims.Subject
@@ -685,6 +692,7 @@ func (h *PluginHandler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 		CallerID:   callerID,
 		UserID:     userIDStr,
 		CallerRole: callerRole,
+		AgentID:    agentIDStr,
 		Headers:    headers,
 	}
 	probeBytes, err := json.Marshal(envelopeProbe)
@@ -728,6 +736,7 @@ func (h *PluginHandler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 		CallerID:   callerID,
 		UserID:     userIDStr,
 		CallerRole: callerRole,
+		AgentID:    agentIDStr,
 		Headers:    headers,
 		Body:       bodyBytes,
 	}

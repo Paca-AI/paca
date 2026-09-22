@@ -2467,17 +2467,6 @@ func (f *fakeAgentPermissionStore) ListAgentProjectPermissions(_ context.Context
 	return nil, nil
 }
 
-// fakeAgentRoleResolver reports every agent as a member (with an arbitrary
-// role name — HasPermissionsForAgent only uses the role name for the
-// legacy-role fallback, which these tests don't exercise) of every project
-// referenced in agentProjectPerms, so ListAgentProjectPermissions above is
-// actually reached instead of short-circuiting on ErrAgentNotInProject.
-type fakeAgentRoleResolver struct{}
-
-func (fakeAgentRoleResolver) GetAgentProjectRoleName(_ context.Context, _, _ uuid.UUID) (string, error) {
-	return "member", nil
-}
-
 // TestGetConversationForAgent_SelfRead_AllowedWithoutConversationsRead locks
 // in that the same-conversation shortcut stays exempt from the
 // conversations.read check even when an authorizer is wired and the agent
@@ -2494,7 +2483,7 @@ func TestGetConversationForAgent_SelfRead_AllowedWithoutConversationsRead(t *tes
 			return conversation, nil
 		},
 	}
-	authorizer := authz.NewAuthorizer(&fakeAgentPermissionStore{}).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	authorizer := authz.NewAuthorizer(&fakeAgentPermissionStore{})
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
@@ -2524,7 +2513,7 @@ func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_Glo
 	store := &fakeAgentPermissionStore{
 		agentGlobalPerms: map[uuid.UUID][]authz.Permission{agentID: {authz.PermissionConversationsRead}},
 	}
-	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	authorizer := authz.NewAuthorizer(store)
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
@@ -2555,7 +2544,7 @@ func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_Pro
 			projectID: {agentID: {authz.PermissionConversationsRead}},
 		},
 	}
-	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	authorizer := authz.NewAuthorizer(store)
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
@@ -2580,7 +2569,7 @@ func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_NoG
 			return current, nil
 		},
 	}
-	authorizer := authz.NewAuthorizer(&fakeAgentPermissionStore{}).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	authorizer := authz.NewAuthorizer(&fakeAgentPermissionStore{})
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
@@ -2611,7 +2600,7 @@ func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_Wro
 			grantedProjectID: {agentID: {authz.PermissionConversationsRead}},
 		},
 	}
-	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	authorizer := authz.NewAuthorizer(store)
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)

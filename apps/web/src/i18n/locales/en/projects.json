@@ -84,7 +84,6 @@
 			"optional": "(optional)",
 			"charsCount": "{{count}} chars",
 			"createFailed": "Failed to create agent. Please try again.",
-			"noDefaultRole": "There is no default role to give the new agent. Set one on the Global Roles page, then try again.",
 			"cancel": "Cancel",
 			"continue": "Continue",
 			"back": "Back",

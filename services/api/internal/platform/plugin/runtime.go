@@ -1762,6 +1762,58 @@ type HTTPRequest struct {
 	CallerRole string            `json:"caller_role"`
 	Headers    map[string]string `json:"headers"`
 	Body       []byte            `json:"body"`
+
+	// AgentID is set when the request was made by an agent (an agent API key
+	// naming one). It stays on the host — never serialised to the plugin — and
+	// exists so permission_check can judge the agent by its own role, the way
+	// the router's gates do, instead of by UserID: for an agent-key request
+	// that is the shared bot user behind the key, seeded SUPER_ADMIN.
+	AgentID string `json:"-"`
+}
+
+// callerHolds reports whether the caller behind req holds permission, judged
+// the way the router's gates judge it: an agent by its own role — its role in
+// the request's project, or its own global role when the request carries no
+// project — and a human by the roles they are assigned. Never the shared bot
+// user an agent's key resolves to, whose SUPER_ADMIN role would let every agent
+// pass any check a plugin makes and so act beyond its own role. It fails
+// closed: anything it cannot resolve is a "no".
+func (r *Runtime) callerHolds(ctx context.Context, req *HTTPRequest, permission authz.Permission) bool {
+	if req == nil || permission == "" || r.services.Authorizer == nil {
+		return false
+	}
+
+	var projectID *uuid.UUID
+	if req.ProjectID != "" {
+		pid, err := uuid.Parse(req.ProjectID)
+		if err != nil {
+			return false
+		}
+		projectID = &pid
+	}
+
+	var (
+		granted bool
+		err     error
+	)
+	if req.AgentID != "" {
+		agentID, parseErr := uuid.Parse(req.AgentID)
+		if parseErr != nil {
+			return false
+		}
+		if projectID != nil {
+			granted, err = r.services.Authorizer.HasPermissionsForAgent(ctx, agentID, *projectID, permission)
+		} else {
+			granted, err = r.services.Authorizer.HasGlobalPermissionsForAgent(ctx, agentID, permission)
+		}
+	} else {
+		userID, parseErr := uuid.Parse(req.UserID)
+		if parseErr != nil {
+			return false
+		}
+		granted, err = r.services.Authorizer.HasPermissions(ctx, userID, projectID, permission)
+	}
+	return err == nil && granted
 }
 
 func (r *Runtime) registerHTTPFunctions(b wazero.HostModuleBuilder, _ plugindom.Plugin) {
@@ -1823,7 +1875,9 @@ func (r *Runtime) registerHTTPFunctions(b wazero.HostModuleBuilder, _ plugindom.
 	// on the caller's project/global role (never granted by role name). Scope
 	// (project vs global) is inferred from whether the request carries a
 	// project_id: project-scoped requests check project-role permissions,
-	// others check global-role permissions only.
+	// others check global-role permissions only. An agent-API-key request is
+	// judged by the agent's own role, exactly as the route gate judges it —
+	// see callerHolds.
 	//
 	// This lets plugin backend code enforce finer-grained authorization
 	// than the single all-or-nothing requirePermissions route gate allows —
@@ -1833,33 +1887,11 @@ func (r *Runtime) registerHTTPFunctions(b wazero.HostModuleBuilder, _ plugindom.
 		WithGoModuleFunction(api.GoModuleFunc(func(ctx context.Context, m api.Module, stack []uint64) {
 			permission, _ := readString(m, stack[0], stack[1])
 			req, _ := ctx.Value(pluginRequestKey{}).(*HTTPRequest)
-			if req == nil || permission == "" || r.services.Authorizer == nil {
-				stack[0] = 0
+			if r.callerHolds(ctx, req, authz.Permission(permission)) {
+				stack[0] = 1
 				return
 			}
-
-			userID, err := uuid.Parse(req.UserID)
-			if err != nil {
-				stack[0] = 0
-				return
-			}
-
-			var projectID *uuid.UUID
-			if req.ProjectID != "" {
-				pid, err := uuid.Parse(req.ProjectID)
-				if err != nil {
-					stack[0] = 0
-					return
-				}
-				projectID = &pid
-			}
-
-			granted, err := r.services.Authorizer.HasPermissions(ctx, userID, projectID, authz.Permission(permission))
-			if err != nil || !granted {
-				stack[0] = 0
-				return
-			}
-			stack[0] = 1
+			stack[0] = 0
 		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64}, []api.ValueType{api.ValueTypeI32}).
 		Export("permission_check")
 }

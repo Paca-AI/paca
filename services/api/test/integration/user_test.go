@@ -222,16 +222,16 @@ func TestGetMyGlobalPermissions_Unauthorized(t *testing.T) {
 }
 
 // TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard is a regression
-// test for GHSA-hjcj-373w-vq8m. The legacy ADMIN role claim used to resolve
-// (via authz.LegacyPermissionsForRole) to the bare PermissionAll wildcard,
-// which authz.hasPermission's granted["*"] short-circuit then let satisfy
-// every permission check anywhere it was consulted — project-scoped ones
-// (environments.connect, tasks.*, docs.*, conversations.*) included, with no
-// project-membership check. It must now resolve to ADMIN's real, narrower
-// global-scope permission set (see authz.DefaultGlobalRoles) instead. This
-// test (like the one it replaces) exercises only the legacy-role fallback —
-// buildUserTestRouter's fakeUserRepo satisfies no GlobalPermissionReader
-// interface, so nothing here is merged in from a DB-backed global role.
+// test for GHSA-hjcj-373w-vq8m. ADMIN used to be resolved from its role *name*
+// to the bare PermissionAll wildcard, which authz.hasPermission's granted["*"]
+// short-circuit then let satisfy every permission check anywhere it was
+// consulted — project-scoped ones (environments.connect, tasks.*, docs.*,
+// conversations.*) included, with no project-membership check. The list must
+// be exactly what the ADMIN role stores (see authz.DefaultGlobalRoles), never
+// the wildcard: rolePermissionStore resolves it from the role the user is
+// assigned, the way the real store does, and is both the users service's
+// GlobalPermissionReader and the authorizer's store, so this reports what is
+// actually enforced.
 func TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard(t *testing.T) {
 	repo := newFakeUserRepo()
 	hash, err := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.MinCost)
@@ -299,7 +299,7 @@ func TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard(t *testing.T) {
 
 	for _, want := range []authz.Permission{
 		authz.PermissionUsersAll,
-		authz.PermissionGlobalRolesAll,
+		authz.PermissionGlobalRolesRead,
 		authz.PermissionProjectsAll,
 		authz.PermissionSettingsWrite,
 		authz.PermissionAgentsAll,
@@ -307,6 +307,18 @@ func TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard(t *testing.T) {
 	} {
 		if !got[string(want)] {
 			t.Errorf("expected admin permissions to include %q, got %v", want, env.Data.Permissions)
+		}
+	}
+
+	// ADMIN may see the global roles but not define or hand them out: either
+	// would let it give itself the wildcard (see authz.DefaultGlobalRoles).
+	for _, unwanted := range []authz.Permission{
+		authz.PermissionGlobalRolesAll,
+		authz.PermissionGlobalRolesWrite,
+		authz.PermissionGlobalRolesAssign,
+	} {
+		if got[string(unwanted)] {
+			t.Errorf("expected admin permissions to NOT include the root-equivalent %q, got %v", unwanted, env.Data.Permissions)
 		}
 	}
 }

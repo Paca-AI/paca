@@ -84,7 +84,6 @@
 			"optional": "(opcional)",
 			"charsCount": "{{count}} caracteres",
 			"createFailed": "Falha ao criar o agente. Tente novamente.",
-			"noDefaultRole": "Não há uma função padrão para o novo agente. Defina uma na página Funções Globais e tente novamente.",
 			"cancel": "Cancelar",
 			"continue": "Continuar",
 			"back": "Voltar",

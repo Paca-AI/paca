@@ -4,6 +4,7 @@ import {
 	activePermissions,
 	permissionBadgeClass,
 } from "@/components/admin/global-roles/utils";
+import { DisabledDeleteButton } from "@/components/shared/disabled-delete-button";
 import { Button } from "@/components/ui/button";
 import {
 	Table,
@@ -114,21 +115,11 @@ export function GlobalRolesTable({
 												<Edit2 className="size-3.5" />
 											</Button>
 											{role.is_default ? (
-												// New users and agents start with the default role, so it can't
-												// go; the span carries the explanation a disabled button can't.
-												<span
-													title={t("globalRoles.table.deleteDefaultDisabled")}
-												>
-													<Button
-														variant="ghost"
-														size="icon-sm"
-														className="text-destructive"
-														disabled
-														aria-label={t("globalRoles.table.deleteAction")}
-													>
-														<Trash2 className="size-3.5" />
-													</Button>
-												</span>
+												// New users and agents start with the default role, so it can't go.
+												<DisabledDeleteButton
+													label={t("globalRoles.table.deleteAction")}
+													reason={t("globalRoles.table.deleteDefaultDisabled")}
+												/>
 											) : (
 												<Button
 													variant="ghost"

@@ -124,12 +124,12 @@ In the **Auth** column, permissions joined by `+` are all required, and the perm
 | `PATCH` | `/api/v1/admin/users/:userId/password` | Access token (fresh) + `users.write` | Admin password reset. Sets `must_change_password = true`. |
 | `DELETE` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.delete` | Soft-delete a user account. |
 | `GET` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.read` | List available global roles and permissions. Exactly one carries `is_default = true`. |
-| `POST` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.write` | Create a new global role definition. |
-| `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Update a global role definition. |
+| `POST` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.write` | Create a new global role definition. Root-equivalent: see [authorization](../architecture/authorization.md). |
+| `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Update a global role definition. Root-equivalent: see [authorization](../architecture/authorization.md). |
 | `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Remove a global role definition. Fails with `409 GLOBAL_ROLE_IS_DEFAULT` for the default role, and with `409 GLOBAL_ROLE_HAS_ASSIGNED_USERS` if users or global agents are assigned to it. |
-| `PUT` | `/api/v1/admin/global-roles/:roleId/set-default` | Access token (fresh) + `global_roles.write` | Make a role the default that new users and new global agents start with, clearing the flag on the previous default. Returns the role. |
-| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token (fresh) + `global_roles.assign` | Assign or replace the single global role for a user. The only route that changes a user's role. |
-| `PUT` | `/api/v1/admin/agents/:agentId/global-role` | Access token (fresh) + `agents.write` + `global_roles.assign` | Bind a global agent to the global role that decides what it may do. The only route that sets one. |
+| `PUT` | `/api/v1/admin/global-roles/:roleId/set-default` | Access token (fresh) + `global_roles.write` | Make a role the default that new users and new global agents start with, clearing the flag on the previous default. Returns the role. Root-equivalent: see [authorization](../architecture/authorization.md). |
+| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token (fresh) + `global_roles.assign` | Assign or replace the single global role for a user. The only route that changes a user's role. Root-equivalent: see [authorization](../architecture/authorization.md). |
+| `PUT` | `/api/v1/admin/agents/:agentId/global-role` | Access token (fresh) + `agents.write` + `global_roles.assign` | Bind a global agent to the global role that decides what it may do. The only route that sets one. Root-equivalent: see [authorization](../architecture/authorization.md). |
 | `DELETE` | `/api/v1/admin/agents/:agentId/global-role` | Access token (fresh) + `agents.write` + `global_roles.assign` | Unbind a global agent from its global role. |
 | `GET` | `/api/v1/projects` | Access token (fresh) | List projects visible to the caller. |
 | `POST` | `/api/v1/projects` | Access token (fresh) + `projects.create` | Create a new project. |
@@ -547,7 +547,7 @@ Function:
 - bind a global agent to the global role that decides what it may do at global scope;
 - requires both `agents.write` and `global_roles.assign`;
 - the only route that sets an agent's global role: `POST /api/v1/admin/agents` and `PATCH /api/v1/admin/agents/:agentId` reject a `global_role_id` with `400`;
-- a new global agent already holds the default global role (or `409 GLOBAL_ROLE_NO_DEFAULT` on create if there is none), so this route is for choosing a different one.
+- a new global agent already holds the default global role, or no role when none is the default (creating an agent never fails for lack of one), so this route is for choosing a different role or the first one.
 
 Request body:
 
@@ -1709,7 +1709,7 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `GLOBAL_ROLE_NAME_INVALID` | 400 | Role name does not meet naming requirements. |
 | `GLOBAL_ROLE_HAS_ASSIGNED_USERS` | 409 | Role cannot be deleted while users or global agents are assigned to it. |
 | `GLOBAL_ROLE_IS_DEFAULT` | 409 | The default role cannot be deleted; make another role the default first. |
-| `GLOBAL_ROLE_NO_DEFAULT` | 409 | No global role is the default, so a new user or global agent cannot be given one. |
+| `GLOBAL_ROLE_NO_DEFAULT` | 409 | No global role is the default, so a new user cannot be given one. Creating a global agent does not fail: it is created without a role. |
 | `PROJECT_NOT_FOUND` | 404 | Project with the given ID does not exist. |
 | `PROJECT_NAME_TAKEN` | 409 | A project with that name already exists. |
 | `PROJECT_NAME_INVALID` | 400 | Project name is empty or does not meet naming requirements. |

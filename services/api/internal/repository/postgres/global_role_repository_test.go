@@ -259,3 +259,68 @@ func TestIsUniqueViolation_FalseForUnrelatedError(t *testing.T) {
 		t.Fatal("expected false for an unrelated error")
 	}
 }
+
+// The default role is refused by the DELETE itself. The service reads the flag
+// first, but a SetDefault landing between that read and the delete would
+// otherwise let the new default go, leaving nothing for the next account to
+// start with.
+func TestGlobalRoleRepository_Delete(t *testing.T) {
+	ctx := context.Background()
+
+	newRepo := func(t *testing.T) (*GlobalRoleRepository, *globalroledom.GlobalRole, *globalroledom.GlobalRole) {
+		t.Helper()
+		repo := NewGlobalRoleRepository(openGlobalRoleRepoTestDB(t))
+		ordinary := testGlobalRole(uuid.New(), "EDITOR")
+		def := testGlobalRole(uuid.New(), "USER")
+		def.IsDefault = true
+		for _, r := range []*globalroledom.GlobalRole{ordinary, def} {
+			if err := repo.Create(ctx, r); err != nil {
+				t.Fatalf("create %s: %v", r.Name, err)
+			}
+		}
+		return repo, ordinary, def
+	}
+
+	t.Run("removes an ordinary role", func(t *testing.T) {
+		repo, ordinary, _ := newRepo(t)
+		if err := repo.Delete(ctx, ordinary.ID); err != nil {
+			t.Fatalf("Delete = %v, want nil", err)
+		}
+		if _, err := repo.FindByID(ctx, ordinary.ID); !errors.Is(err, globalroledom.ErrNotFound) {
+			t.Fatalf("FindByID after delete = %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("refuses the default role and keeps it", func(t *testing.T) {
+		repo, _, def := newRepo(t)
+		if err := repo.Delete(ctx, def.ID); !errors.Is(err, globalroledom.ErrIsDefault) {
+			t.Fatalf("Delete(default) = %v, want ErrIsDefault", err)
+		}
+		got, err := repo.FindDefault(ctx)
+		if err != nil || got.ID != def.ID {
+			t.Fatalf("the default role must survive the refused delete; FindDefault = %+v, %v", got, err)
+		}
+	})
+
+	t.Run("a role that is no longer the default can go", func(t *testing.T) {
+		repo, ordinary, def := newRepo(t)
+		// Move the flag with plain SQL: SetDefault locks with FOR UPDATE,
+		// which SQLite does not parse.
+		if _, err := repo.db.ExecContext(ctx, `UPDATE global_roles SET is_default = (id = $1)`, ordinary.ID.String()); err != nil {
+			t.Fatalf("move default: %v", err)
+		}
+		if err := repo.Delete(ctx, def.ID); err != nil {
+			t.Fatalf("Delete(former default) = %v, want nil", err)
+		}
+		if err := repo.Delete(ctx, ordinary.ID); !errors.Is(err, globalroledom.ErrIsDefault) {
+			t.Fatalf("Delete(new default) = %v, want ErrIsDefault", err)
+		}
+	})
+
+	t.Run("an unknown role is not found", func(t *testing.T) {
+		repo, _, _ := newRepo(t)
+		if err := repo.Delete(ctx, uuid.New()); !errors.Is(err, globalroledom.ErrNotFound) {
+			t.Fatalf("Delete(unknown) = %v, want ErrNotFound", err)
+		}
+	})
+}

@@ -223,11 +223,24 @@ func (r *TaskRepository) UpdateTaskType(ctx context.Context, t *taskdom.TaskType
 	return nil
 }
 
-// DeleteTaskType removes a task type by ID.
+// DeleteTaskType removes a task type by ID, except the project's default
+// (ErrTypeIsDefault): the check is part of the DELETE, so a SetDefaultTaskType
+// landing after the service read the row cannot leave the project with no
+// default. Deleting a type that is already gone is a no-op.
 func (r *TaskRepository) DeleteTaskType(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM task_types WHERE id = $1`, id.String())
+	result, err := r.db.ExecContext(ctx, `DELETE FROM task_types WHERE id = $1 AND is_default = false`, id.String())
 	if err != nil {
 		return fmt.Errorf("task type repo: delete: %w", err)
+	}
+	if n, _ := result.RowsAffected(); n > 0 {
+		return nil
+	}
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM task_types WHERE id = $1)`, id.String()); err != nil {
+		return fmt.Errorf("task type repo: delete: %w", err)
+	}
+	if exists {
+		return taskdom.ErrTypeIsDefault
 	}
 	return nil
 }
@@ -321,11 +334,23 @@ func (r *TaskRepository) UpdateTaskStatus(ctx context.Context, s *taskdom.TaskSt
 	return nil
 }
 
-// DeleteTaskStatus removes a task status by ID.
+// DeleteTaskStatus removes a task status by ID, except the project's default
+// (ErrStatusIsDefault) — see DeleteTaskType. Deleting a status that is already
+// gone is a no-op.
 func (r *TaskRepository) DeleteTaskStatus(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM task_statuses WHERE id = $1`, id.String())
+	result, err := r.db.ExecContext(ctx, `DELETE FROM task_statuses WHERE id = $1 AND is_default = false`, id.String())
 	if err != nil {
 		return fmt.Errorf("task status repo: delete: %w", err)
+	}
+	if n, _ := result.RowsAffected(); n > 0 {
+		return nil
+	}
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM task_statuses WHERE id = $1)`, id.String()); err != nil {
+		return fmt.Errorf("task status repo: delete: %w", err)
+	}
+	if exists {
+		return taskdom.ErrStatusIsDefault
 	}
 	return nil
 }

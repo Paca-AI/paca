@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DeleteTaskStatusDialog } from "@/components/projects/task-statuses/DeleteTaskStatusDialog";
 import { TaskStatusFormDialog } from "@/components/projects/task-statuses/TaskStatusFormDialog";
+import { DisabledDeleteButton } from "@/components/shared/disabled-delete-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -335,25 +336,13 @@ export function TaskStatusesSettings({
 													<Edit2 className="size-3.5" />
 												</Button>
 												{status.is_default ? (
-													// New tasks land in the default status, so it can't go; the
-													// span carries the explanation a disabled button can't.
-													<span
-														title={t(
+													// New tasks land in the default status, so it can't go.
+													<DisabledDeleteButton
+														label={t("settings.taskStatuses.deleteStatus")}
+														reason={t(
 															"settings.taskStatuses.deleteDefaultDisabled",
 														)}
-													>
-														<Button
-															variant="ghost"
-															size="icon-sm"
-															className="text-destructive"
-															disabled
-															aria-label={t(
-																"settings.taskStatuses.deleteStatus",
-															)}
-														>
-															<Trash2 className="size-3.5" />
-														</Button>
-													</span>
+													/>
 												) : (
 													<Button
 														variant="ghost"

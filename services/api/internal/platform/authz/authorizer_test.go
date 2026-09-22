@@ -124,7 +124,7 @@ func TestAuthorizer_AdminDefaultsFromStoreAuthorizeIntendedGlobalPermissions(t *
 	a := authz.NewAuthorizer(&stubPermissionStore{globalPerms: defaultRolePermissions(t, "ADMIN")})
 	for _, p := range []authz.Permission{
 		authz.PermissionUsersAll,
-		authz.PermissionGlobalRolesAll,
+		authz.PermissionGlobalRolesRead, // may see the roles, not change or hand them out
 		authz.PermissionProjectsAll,
 		authz.PermissionSettingsWrite,
 		authz.PermissionAgentsAll,

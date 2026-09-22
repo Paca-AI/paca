@@ -2,19 +2,11 @@ package authz
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 )
-
-// ErrAgentNotInProject indicates the agent has no project_members row for the
-// requested project (never added, or removed). This is an expected
-// authorization outcome — the agent simply has zero permissions in that
-// project — not a server error, so HasPermissionsForAgent treats it as
-// "not allowed" rather than propagating it as an error.
-var ErrAgentNotInProject = errors.New("authz: agent not found in project")
 
 // PermissionStore resolves effective permissions from global and project roles.
 type PermissionStore interface {
@@ -32,26 +24,14 @@ type AgentPermissionStore interface {
 	ListAgentGlobalPermissions(ctx context.Context, agentID uuid.UUID) ([]Permission, error)
 }
 
-// AgentRoleResolver resolves an agent's role in a project.
-type AgentRoleResolver interface {
-	GetAgentProjectRoleName(ctx context.Context, agentID, projectID uuid.UUID) (string, error)
-}
-
 // Authorizer checks required permissions for a user or agent.
 type Authorizer struct {
-	store             PermissionStore
-	agentRoleResolver AgentRoleResolver
+	store PermissionStore
 }
 
 // NewAuthorizer returns a permission-based authorizer.
 func NewAuthorizer(store PermissionStore) *Authorizer {
 	return &Authorizer{store: store}
-}
-
-// WithAgentRoleResolver configures an optional agent role resolver.
-func (a *Authorizer) WithAgentRoleResolver(resolver AgentRoleResolver) *Authorizer {
-	a.agentRoleResolver = resolver
-	return a
 }
 
 // HasPermissions reports whether userID has all required permissions in the
@@ -74,32 +54,18 @@ func (a *Authorizer) HasPermissions(
 
 // HasPermissionsForAgent reports whether an agent has all required permissions in the
 // given project scope.
+//
+// Permissions come from the permissions its project role stores
+// (PermissionStore's ListAgentProjectPermissions), never from what the role
+// happens to be called. An agent with no active membership in the project
+// simply has none there, so it is denied — not an error, which callers would
+// surface as a 500 instead of their normal 403.
 func (a *Authorizer) HasPermissionsForAgent(
 	ctx context.Context,
 	agentID uuid.UUID,
 	projectID uuid.UUID,
 	required ...Permission,
 ) (bool, error) {
-	if a.agentRoleResolver == nil {
-		return false, fmt.Errorf("authz: agent role resolver not configured")
-	}
-
-	// The resolver is consulted only to tell "not a member of this project"
-	// apart from a real failure. The role *name* it also returns is
-	// deliberately unused: permissions come from the role's stored
-	// permissions (ListAgentProjectPermissions), never from what the role
-	// happens to be called.
-	if _, err := a.agentRoleResolver.GetAgentProjectRoleName(ctx, agentID, projectID); err != nil {
-		if errors.Is(err, ErrAgentNotInProject) {
-			// Not a member of this project -> no permissions here, same as
-			// any other "granted nothing" outcome. Callers (the authz
-			// middleware) map allowed=false to a 403, so this must not be
-			// returned as an error or it surfaces as an unhandled 500.
-			return false, nil
-		}
-		return false, fmt.Errorf("authz: resolve agent role: %w", err)
-	}
-
 	return a.hasPermissionsForActor(ctx, uuid.Nil, &agentID, &projectID, required...)
 }
 

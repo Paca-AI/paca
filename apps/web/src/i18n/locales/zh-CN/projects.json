@@ -84,7 +84,6 @@
 			"optional": "（可选）",
 			"charsCount": "{{count}} 个字符",
 			"createFailed": "创建智能体失败，请重试。",
-			"noDefaultRole": "没有可授予新智能体的默认角色。请先在“全局角色”页面设置一个，然后重试。",
 			"cancel": "取消",
 			"continue": "继续",
 			"back": "返回",

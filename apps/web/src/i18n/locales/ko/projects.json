@@ -84,7 +84,6 @@
 			"optional": "(선택사항)",
 			"charsCount": "{{count}}자",
 			"createFailed": "에이전트 생성에 실패했습니다. 다시 시도해 주세요.",
-			"noDefaultRole": "새 에이전트에 부여할 기본 역할이 없습니다. 전역 역할 페이지에서 설정한 후 다시 시도하세요.",
 			"cancel": "취소",
 			"continue": "계속",
 			"back": "뒤로",

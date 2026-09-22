@@ -94,8 +94,10 @@ func TestBuiltinAdminRoleStoredPermissionsAreEnforced(t *testing.T) {
 	assignGlobalRolesByName(t, env, adminName, "ADMIN")
 
 	// Strip the ADMIN role down to read-only user access: no users.write, no
-	// global_roles.*, no agents.*. This is what an operator does in the Global
-	// Roles UI when they want ADMIN to stop managing roles.
+	// agents.*, nothing else. This is what an operator does in the Global Roles
+	// UI to narrow ADMIN further than the built-in definition; whatever the row
+	// no longer stores must stop working at once, with the "ADMIN" name in the
+	// caller's token granting nothing in its place.
 	adminRole, err := env.roleRepo.FindByName(env.ctx, "ADMIN")
 	if err != nil {
 		t.Fatalf("find ADMIN role: %v", err)

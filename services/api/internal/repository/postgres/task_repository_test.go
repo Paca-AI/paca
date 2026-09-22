@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -508,5 +509,95 @@ func TestUnmarshalCustomFieldOptions_Empty(t *testing.T) {
 	}
 	if len(opts) != 0 {
 		t.Fatalf("opts = %+v, want empty", opts)
+	}
+}
+
+// openTaskDefaultsTestDB has just the two tables whose default row the delete
+// queries protect.
+func openTaskDefaultsTestDB(t *testing.T) *sqlx.DB {
+	t.Helper()
+	db, err := sqlx.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	schema := `
+		CREATE TABLE task_types (
+			id         TEXT PRIMARY KEY,
+			project_id TEXT NOT NULL,
+			name       TEXT NOT NULL,
+			is_default BOOLEAN NOT NULL DEFAULT 0
+		);
+		CREATE TABLE task_statuses (
+			id         TEXT PRIMARY KEY,
+			project_id TEXT NOT NULL,
+			name       TEXT NOT NULL,
+			is_default BOOLEAN NOT NULL DEFAULT 0
+		);`
+	if _, err := db.ExecContext(context.Background(), schema); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	return db
+}
+
+// New tasks land in the project's default type and status, so neither may be
+// deleted. The service checks first, but the delete refuses too: a
+// SetDefault* landing between that read and the delete would otherwise remove
+// the new default and leave the project without one.
+func TestTaskRepository_DeleteRefusesTheDefault(t *testing.T) {
+	ctx := context.Background()
+	project := uuid.New().String()
+
+	type deleter func(repo *TaskRepository, id uuid.UUID) error
+	cases := []struct {
+		name     string
+		table    string
+		del      deleter
+		errIsDef error
+	}{
+		{"task type", "task_types", func(r *TaskRepository, id uuid.UUID) error { return r.DeleteTaskType(ctx, id) }, taskdom.ErrTypeIsDefault},
+		{"task status", "task_statuses", func(r *TaskRepository, id uuid.UUID) error { return r.DeleteTaskStatus(ctx, id) }, taskdom.ErrStatusIsDefault},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := openTaskDefaultsTestDB(t)
+			repo := NewTaskRepository(db)
+			ordinary, def := uuid.New(), uuid.New()
+			for _, row := range []struct {
+				id        uuid.UUID
+				isDefault bool
+			}{{ordinary, false}, {def, true}} {
+				if _, err := db.ExecContext(ctx, `INSERT INTO `+tc.table+` (id, project_id, name, is_default) VALUES ($1, $2, $3, $4)`,
+					row.id.String(), project, "n-"+row.id.String(), row.isDefault); err != nil {
+					t.Fatalf("seed: %v", err)
+				}
+			}
+			count := func() int {
+				var n int
+				if err := db.GetContext(ctx, &n, `SELECT COUNT(*) FROM `+tc.table); err != nil {
+					t.Fatalf("count: %v", err)
+				}
+				return n
+			}
+
+			if err := tc.del(repo, def); !errors.Is(err, tc.errIsDef) {
+				t.Fatalf("deleting the default = %v, want %v", err, tc.errIsDef)
+			}
+			if got := count(); got != 2 {
+				t.Fatalf("rows after refused delete = %d, want 2 (the default must survive)", got)
+			}
+
+			if err := tc.del(repo, ordinary); err != nil {
+				t.Fatalf("deleting an ordinary row = %v, want nil", err)
+			}
+			if got := count(); got != 1 {
+				t.Fatalf("rows after delete = %d, want 1", got)
+			}
+
+			// Deleting something already gone stays a no-op, as before.
+			if err := tc.del(repo, uuid.New()); err != nil {
+				t.Fatalf("deleting a missing row = %v, want nil", err)
+			}
+		})
 	}
 }

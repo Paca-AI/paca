@@ -584,26 +584,6 @@ describe("CreateAgentDialog — the global role step", () => {
 		expect(button(/create agent/i)).toBeEnabled();
 	});
 
-	it("says so when there is no default role to give the agent", async () => {
-		const user = userEvent.setup();
-		agentApi.createGlobalAgent.mockRejectedValue(
-			Object.assign(new Error("conflict"), {
-				response: { data: { error_code: "GLOBAL_ROLE_NO_DEFAULT" } },
-			}),
-		);
-		renderDialog({ permissions: CAN_ASSIGN });
-		await chooseAcpAndName(user);
-		await user.click(button(/continue/i));
-
-		await user.click(button(/create agent/i));
-
-		expect(
-			await screen.findByText(
-				/there is no default role to give the new agent/i,
-			),
-		).toBeInTheDocument();
-	});
-
 	it("does not close while the agent is being created", async () => {
 		const user = userEvent.setup();
 		agentApi.createGlobalAgent.mockReturnValue(new Promise(() => {}));

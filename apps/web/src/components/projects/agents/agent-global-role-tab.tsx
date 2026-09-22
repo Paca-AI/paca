@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, ShieldOff } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,13 +13,8 @@ import { Button } from "@/components/ui/button";
 import { useCanAssignGlobalRole } from "@/hooks/use-can-assign-global-role";
 import { usePermissions } from "@/hooks/use-permissions";
 import { type GlobalRole, globalRolesQueryOptions } from "@/lib/admin-api";
-import {
-	type Agent,
-	clearGlobalAgentRole,
-	globalAgentQueryOptions,
-	setGlobalAgentRole,
-} from "@/lib/agent-api";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import { type Agent, globalAgentQueryOptions } from "@/lib/agent-api";
+import { useSetAgentGlobalRole } from "./use-set-agent-global-role";
 
 /** How many of the role's permissions to list before folding the rest into "+N". */
 const SUMMARY_LIMIT = 12;
@@ -56,40 +51,20 @@ export function AgentGlobalRoleTab({
 
 	const [mode, setMode] = useState<Mode>("view");
 	const [selected, setSelected] = useState<GlobalRole | null>(null);
-	const [error, setError] = useState<string | null>(null);
 
-	const backToView = () => {
-		setMode("view");
-		setSelected(null);
-		setError(null);
-	};
-
-	const mutation = useMutation({
-		mutationFn: (next: GlobalRole | null) =>
-			next
-				? setGlobalAgentRole(agent.id, next.id)
-				: clearGlobalAgentRole(agent.id),
-		onSuccess: (updated) => {
+	const { setRole, isPending, error, clearError } = useSetAgentGlobalRole({
+		onChanged: (updated) => {
 			qc.setQueryData(globalAgentQueryOptions(agent.id).queryKey, updated);
 			void qc.invalidateQueries({ queryKey: ["global-agents"] });
 			backToView();
 		},
-		onError: (err: unknown) => {
-			const code = getApiErrorCode(err);
-			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.GlobalRoleNotFound]: t(
-					"agents.detail.globalRole.errors.roleNotFound",
-				),
-				[ApiErrorCode.Forbidden]: t(
-					"agents.detail.globalRole.errors.forbidden",
-				),
-			};
-			setError(
-				(code && messages[code]) ??
-					t("agents.detail.globalRole.errors.generic"),
-			);
-		},
 	});
+
+	const backToView = () => {
+		setMode("view");
+		setSelected(null);
+		clearError();
+	};
 
 	// Picking the role it already has changes nothing.
 	const change =
@@ -151,10 +126,10 @@ export function AgentGlobalRoleTab({
 							value={selected?.id ?? null}
 							onChange={(next) => {
 								setSelected(next);
-								setError(null);
+								clearError();
 							}}
 							currentRoleId={agent.global_role_id}
-							disabled={mutation.isPending}
+							disabled={isPending}
 						/>
 						{change && isFullAccessRole(change) ? (
 							<InlineNotice tone="warning">
@@ -166,15 +141,15 @@ export function AgentGlobalRoleTab({
 							<Button
 								variant="outline"
 								onClick={backToView}
-								disabled={mutation.isPending}
+								disabled={isPending}
 							>
 								{t("agents.detail.globalRole.cancel")}
 							</Button>
 							<Button
-								onClick={() => change && mutation.mutate(change)}
-								disabled={!change || mutation.isPending}
+								onClick={() => change && setRole(agent.id, change)}
+								disabled={!change || isPending}
 							>
-								{mutation.isPending
+								{isPending
 									? t("agents.detail.globalRole.assigning")
 									: t("agents.detail.globalRole.assign")}
 							</Button>
@@ -190,16 +165,16 @@ export function AgentGlobalRoleTab({
 							<Button
 								variant="outline"
 								onClick={backToView}
-								disabled={mutation.isPending}
+								disabled={isPending}
 							>
 								{t("agents.detail.globalRole.cancel")}
 							</Button>
 							<Button
 								variant="destructive"
-								onClick={() => mutation.mutate(null)}
-								disabled={mutation.isPending}
+								onClick={() => setRole(agent.id, null)}
+								disabled={isPending}
 							>
-								{mutation.isPending
+								{isPending
 									? t("agents.detail.globalRole.removing")
 									: t("agents.detail.globalRole.remove")}
 							</Button>

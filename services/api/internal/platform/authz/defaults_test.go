@@ -1,7 +1,10 @@
 package authz_test
 
 import (
+	"context"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/Paca-AI/api/internal/platform/authz"
 )
@@ -82,5 +85,38 @@ func TestDefaultGlobalRoles_OnlySuperAdminSeedsTheWildcard(t *testing.T) {
 	}
 	if !sawSuperAdmin {
 		t.Error("expected a SUPER_ADMIN role definition, found none")
+	}
+}
+
+// TestDefaultGlobalRoles_OnlySuperAdminCanMintRoot pins the other half of the
+// GHSA-hjcj-373w-vq8m fix. Keeping "*" off ADMIN means little if ADMIN can
+// simply write "*" into a role or hand itself SUPER_ADMIN: global_roles.write
+// defines any role and global_roles.assign gives any role to any account,
+// their own included, so each is root-equivalent — as is "*" itself. The router
+// can only ask whether a caller holds a permission, never whether the role
+// being written or assigned exceeds the caller's own, so what keeps ADMIN below
+// SUPER_ADMIN is what ADMIN is seeded with. Matching goes through the real
+// authorizer, so a wildcard such as global_roles.* cannot slip these in.
+func TestDefaultGlobalRoles_OnlySuperAdminCanMintRoot(t *testing.T) {
+	rootEquivalent := []authz.Permission{
+		authz.PermissionAll,
+		authz.PermissionGlobalRolesWrite,
+		authz.PermissionGlobalRolesAssign,
+		authz.PermissionGlobalRolesAll,
+	}
+	for _, def := range authz.DefaultGlobalRoles() {
+		if def.Name == "SUPER_ADMIN" {
+			continue
+		}
+		a := authz.NewAuthorizer(&stubPermissionStore{globalPerms: def.Permissions})
+		for _, p := range rootEquivalent {
+			ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, p)
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", def.Name, err)
+			}
+			if ok {
+				t.Errorf("built-in role %q must not be seeded able to %q — it could grant itself root", def.Name, p)
+			}
+		}
 	}
 }

@@ -171,17 +171,30 @@ func (r *GlobalRoleRepository) Update(ctx context.Context, role *globalroledom.G
 	return nil
 }
 
-// Delete removes a role and all user-role assignments pointing to it.
+// Delete removes a role — never the default (ErrIsDefault) — or reports it
+// missing (ErrNotFound).
 func (r *GlobalRoleRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM global_roles WHERE id = $1`, id.String())
+	// The default role is refused by the DELETE itself, not just by the
+	// service's earlier read: a SetDefault that lands in between would
+	// otherwise let the new default be deleted, leaving no role for the next
+	// account to start with.
+	result, err := r.db.ExecContext(ctx, `DELETE FROM global_roles WHERE id = $1 AND is_default = false`, id.String())
 	if err != nil {
 		return fmt.Errorf("global role repo: delete: %w", err)
 	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
-		return globalroledom.ErrNotFound
+	if n, _ := result.RowsAffected(); n > 0 {
+		return nil
 	}
-	return nil
+
+	// Nothing was deleted: the role never existed, or it is the default.
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM global_roles WHERE id = $1)`, id.String()); err != nil {
+		return fmt.Errorf("global role repo: delete: %w", err)
+	}
+	if exists {
+		return globalroledom.ErrIsDefault
+	}
+	return globalroledom.ErrNotFound
 }
 
 // ReplaceUserRoles sets the single global role for a user (users.role_id).

@@ -2,7 +2,6 @@ package authz_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -12,32 +11,14 @@ import (
 	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
-type mockAgentRoleResolver struct {
-	roles map[uuid.UUID]map[uuid.UUID]string // project_id -> agent_id -> role_name
-	// resolveErr, when set, is returned verbatim instead of
-	// authz.ErrAgentNotInProject for any agent/project not found in roles —
-	// lets tests distinguish "not a member" from a genuine resolver failure.
-	resolveErr error
-}
-
-func (m *mockAgentRoleResolver) GetAgentProjectRoleName(_ context.Context, agentID, projectID uuid.UUID) (string, error) {
-	if projectMap, ok := m.roles[projectID]; ok {
-		if role, ok := projectMap[agentID]; ok {
-			return role, nil
-		}
-	}
-	if m.resolveErr != nil {
-		return "", m.resolveErr
-	}
-	return "", authz.ErrAgentNotInProject
-}
-
 type mockPermissionStore struct {
 	globalPerms      map[uuid.UUID][]authz.Permission
 	projectPerms     map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> user_id -> permissions
 	agentPerms       map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
 	agentGlobalPerms map[uuid.UUID][]authz.Permission               // agent_id -> permissions (via its own global role)
-	legacyPerms      map[string][]authz.Permission
+	// agentProjectErr, when set, is returned by ListAgentProjectPermissions —
+	// lets tests tell a genuine store failure from "not a member".
+	agentProjectErr error
 }
 
 func (m *mockPermissionStore) ListGlobalPermissions(_ context.Context, userID uuid.UUID) ([]authz.Permission, error) {
@@ -52,6 +33,9 @@ func (m *mockPermissionStore) ListProjectPermissions(_ context.Context, userID, 
 }
 
 func (m *mockPermissionStore) ListAgentProjectPermissions(_ context.Context, agentID, projectID uuid.UUID) ([]authz.Permission, error) {
+	if m.agentProjectErr != nil {
+		return nil, m.agentProjectErr
+	}
 	if projMap, ok := m.agentPerms[projectID]; ok {
 		return projMap[agentID], nil
 	}
@@ -67,26 +51,15 @@ func TestAgentAuthorization(t *testing.T) {
 	agentID := uuid.New()
 	userID := uuid.New()
 
-	agentRoleResolver := &mockAgentRoleResolver{
-		roles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_developer",
-			},
-		},
-	}
-
 	permissionStore := &mockPermissionStore{
 		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 			projectID: {
 				agentID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
 			},
 		},
-		legacyPerms: map[string][]authz.Permission{
-			"agent_developer": {authz.PermissionTasksRead, authz.PermissionTasksWrite},
-		},
 	}
 
-	authorizer := authz.NewAuthorizer(permissionStore).WithAgentRoleResolver(agentRoleResolver)
+	authorizer := authz.NewAuthorizer(permissionStore)
 
 	t.Run("agent has correct project permissions", func(t *testing.T) {
 		allowed, err := authorizer.HasPermissionsForAgent(context.Background(), agentID, projectID, authz.PermissionTasksRead)
@@ -107,36 +80,29 @@ func TestAgentAuthorization(t *testing.T) {
 	})
 }
 
-// TestAgentAuthorization_RoleNameGrantsNothing guards the agent path against
-// the same name-based grant the user path used to have: the agent's project
-// role *name* is resolved (to tell members from non-members), and a
-// project-scoped role can be named anything — "Admin" is even the default
-// name of every project's own admin role. A name that happens to match a
-// built-in global role (any case) must confer nothing; only what the role
-// row stores may authorize.
-func TestAgentAuthorization_RoleNameGrantsNothing(t *testing.T) {
+// TestAgentAuthorization_MemberWhoseRoleStoresNothingHoldsNothing guards the
+// agent path against the same name-based grant the user path used to have. A
+// project role can be named anything — "Admin" is even the default name of
+// every project's own admin role — and the authorizer never reads the name at
+// all: a member whose role row stores nothing is denied every permission,
+// however that role is called.
+func TestAgentAuthorization_MemberWhoseRoleStoresNothingHoldsNothing(t *testing.T) {
 	projectID := uuid.New()
+	agentID := uuid.New()
+	store := &mockPermissionStore{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{projectID: {agentID: nil}},
+	}
+	authorizer := authz.NewAuthorizer(store)
 
-	for _, roleName := range []string{"SUPER_ADMIN", "super_admin", "ADMIN", "Admin", "USER"} {
-		t.Run(roleName, func(t *testing.T) {
-			agentID := uuid.New()
-			resolver := &mockAgentRoleResolver{
-				roles: map[uuid.UUID]map[uuid.UUID]string{projectID: {agentID: roleName}},
-			}
-			// The role row itself stores nothing.
-			authorizer := authz.NewAuthorizer(&mockPermissionStore{}).WithAgentRoleResolver(resolver)
-
-			for _, p := range []authz.Permission{
-				authz.PermissionAll,
-				authz.PermissionEnvironmentsConnect,
-				authz.PermissionTasksWrite,
-				authz.PermissionProjectsDelete,
-			} {
-				allowed, err := authorizer.HasPermissionsForAgent(context.Background(), agentID, projectID, p)
-				require.NoError(t, err)
-				assert.Falsef(t, allowed, "project role named %q must not grant %q when its stored permissions don't", roleName, p)
-			}
-		})
+	for _, p := range []authz.Permission{
+		authz.PermissionAll,
+		authz.PermissionEnvironmentsConnect,
+		authz.PermissionTasksWrite,
+		authz.PermissionProjectsDelete,
+	} {
+		allowed, err := authorizer.HasPermissionsForAgent(context.Background(), agentID, projectID, p)
+		require.NoError(t, err)
+		assert.Falsef(t, allowed, "a role storing nothing must not grant %q", p)
 	}
 }
 
@@ -144,17 +110,6 @@ func TestAgentAuthorizationWithMultipleProjects(t *testing.T) {
 	project1 := uuid.New()
 	project2 := uuid.New()
 	agentID := uuid.New()
-
-	agentRoleResolver := &mockAgentRoleResolver{
-		roles: map[uuid.UUID]map[uuid.UUID]string{
-			project1: {
-				agentID: "agent_developer",
-			},
-			project2: {
-				agentID: "agent_reader",
-			},
-		},
-	}
 
 	permissionStore := &mockPermissionStore{
 		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
@@ -165,13 +120,9 @@ func TestAgentAuthorizationWithMultipleProjects(t *testing.T) {
 				agentID: {authz.PermissionTasksRead},
 			},
 		},
-		legacyPerms: map[string][]authz.Permission{
-			"agent_developer": {authz.PermissionTasksRead, authz.PermissionTasksWrite},
-			"agent_reader":    {authz.PermissionTasksRead},
-		},
 	}
 
-	authorizer := authz.NewAuthorizer(permissionStore).WithAgentRoleResolver(agentRoleResolver)
+	authorizer := authz.NewAuthorizer(permissionStore)
 
 	t.Run("agent has write permission in project1", func(t *testing.T) {
 		allowed, err := authorizer.HasPermissionsForAgent(context.Background(), agentID, project1, authz.PermissionTasksWrite)
@@ -247,35 +198,30 @@ func TestHasGlobalPermissionsForAgent_ResolvesViaAgentsOwnGlobalRole(t *testing.
 // project_members row (never added, or removed) is denied (allowed=false)
 // without an error — regression test for the bug where this case propagated
 // as an unhandled error and surfaced to callers as a 500 instead of the
-// caller's normal 403 "insufficient permissions" path.
+// caller's normal 403 "insufficient permissions" path. The store simply has
+// nothing for such an agent, so no separate membership lookup is needed.
 func TestHasPermissionsForAgent_AgentNotInProject(t *testing.T) {
 	projectID := uuid.New()
 	strangerAgent := uuid.New()
 
-	resolver := &mockAgentRoleResolver{roles: map[uuid.UUID]map[uuid.UUID]string{}}
-	authorizer := authz.NewAuthorizer(&mockPermissionStore{}).WithAgentRoleResolver(resolver)
+	authorizer := authz.NewAuthorizer(&mockPermissionStore{})
 
 	allowed, err := authorizer.HasPermissionsForAgent(context.Background(), strangerAgent, projectID, authz.PermissionTasksRead)
 	require.NoError(t, err, "agent not being a project member must not surface as an error")
 	assert.False(t, allowed)
 }
 
-// TestHasPermissionsForAgent_ResolverFailure verifies a genuine resolver
-// failure (e.g. a DB error) still propagates as an error, so it is not
-// silently swallowed into a false "not allowed" the way ErrAgentNotInProject
-// deliberately is.
-func TestHasPermissionsForAgent_ResolverFailure(t *testing.T) {
+// TestHasPermissionsForAgent_StoreFailure verifies a genuine store failure
+// (e.g. a DB error) still propagates as an error, so it is not silently
+// swallowed into the false "not allowed" that a non-member deliberately gets.
+func TestHasPermissionsForAgent_StoreFailure(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()
 
-	resolver := &mockAgentRoleResolver{
-		roles:      map[uuid.UUID]map[uuid.UUID]string{},
-		resolveErr: assert.AnError,
-	}
-	authorizer := authz.NewAuthorizer(&mockPermissionStore{}).WithAgentRoleResolver(resolver)
+	authorizer := authz.NewAuthorizer(&mockPermissionStore{agentProjectErr: assert.AnError})
 
 	allowed, err := authorizer.HasPermissionsForAgent(context.Background(), agentID, projectID, authz.PermissionTasksRead)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, assert.AnError)
 	assert.False(t, allowed)
-	assert.False(t, errors.Is(err, authz.ErrAgentNotInProject))
 }

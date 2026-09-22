@@ -176,19 +176,13 @@ func TestGetByID_NotFound(t *testing.T) {
 
 // TestListGlobalPermissions_RoleNameAddsNothing: the listing feeds the web
 // UI's capability checks, so it must equal what the authorizer enforces —
-// exactly what the caller's role row stores. A role *name* adds nothing to it,
-// even one that used to imply a default permission set (ADMIN).
+// exactly what the caller's role row stores. The user record is never consulted
+// (the bare stubRepo would answer not-found if it were), so no role *name* —
+// not even one that used to imply a default permission set (ADMIN) — can add to it.
 func TestListGlobalPermissions_RoleNameAddsNothing(t *testing.T) {
 	id := uuid.New()
 	svc := usersvc.New(
-		&stubRepo{
-			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
-				if got != id {
-					t.Fatalf("unexpected id: %v", got)
-				}
-				return &userdom.User{ID: id, Role: userdom.RoleAdmin}, nil
-			},
-		},
+		&stubRepo{},
 		&stubPermissionReader{
 			listGlobalPermissions: func(context.Context, uuid.UUID) ([]authz.Permission, error) {
 				return []authz.Permission{authz.PermissionUsersRead}, nil
@@ -211,11 +205,7 @@ func TestListGlobalPermissions_RoleNameAddsNothing(t *testing.T) {
 // user's role name.
 func TestListGlobalPermissions_NoReaderGrantsNothing(t *testing.T) {
 	id := uuid.New()
-	svc := usersvc.New(&stubRepo{
-		findByID: func(context.Context, uuid.UUID) (*userdom.User, error) {
-			return &userdom.User{ID: id, Role: userdom.RoleAdmin}, nil
-		},
-	})
+	svc := usersvc.New(&stubRepo{})
 
 	got, err := svc.ListGlobalPermissions(context.Background(), id)
 	if err != nil {
@@ -229,14 +219,7 @@ func TestListGlobalPermissions_NoReaderGrantsNothing(t *testing.T) {
 func TestListGlobalPermissions_MergesAndDedupes(t *testing.T) {
 	id := uuid.New()
 	svc := usersvc.New(
-		&stubRepo{
-			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
-				if got != id {
-					t.Fatalf("unexpected id: %v", got)
-				}
-				return &userdom.User{ID: id, Role: userdom.RoleUser}, nil
-			},
-		},
+		&stubRepo{},
 		&stubPermissionReader{
 			listGlobalPermissions: func(_ context.Context, got uuid.UUID) ([]authz.Permission, error) {
 				if got != id {
@@ -257,12 +240,18 @@ func TestListGlobalPermissions_MergesAndDedupes(t *testing.T) {
 	}
 }
 
-func TestListGlobalPermissions_UserNotFound(t *testing.T) {
-	svc := usersvc.New(&stubRepo{})
+// An unknown or deleted user (a token can outlive its account) has no
+// permissions — the permission source yields nothing for it — rather than
+// costing every caller a separate lookup just to answer 404.
+func TestListGlobalPermissions_UnknownUserHasNoPermissions(t *testing.T) {
+	svc := usersvc.New(&stubRepo{}, &stubPermissionReader{})
 
-	_, err := svc.ListGlobalPermissions(context.Background(), uuid.New())
-	if !errors.Is(err, userdom.ErrNotFound) {
-		t.Fatalf("expected ErrNotFound, got %v", err)
+	got, err := svc.ListGlobalPermissions(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected no permissions, got %v", got)
 	}
 }
 
@@ -271,14 +260,7 @@ func TestListGlobalPermissions_ReaderError(t *testing.T) {
 	wantErr := errors.New("permission store failed")
 
 	svc := usersvc.New(
-		&stubRepo{
-			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
-				if got != id {
-					t.Fatalf("unexpected id: %v", got)
-				}
-				return &userdom.User{ID: id, Role: userdom.RoleUser}, nil
-			},
-		},
+		&stubRepo{},
 		&stubPermissionReader{
 			listGlobalPermissions: func(_ context.Context, _ uuid.UUID) ([]authz.Permission, error) {
 				return nil, wantErr
