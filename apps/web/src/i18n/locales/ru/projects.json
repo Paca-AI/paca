@@ -24,15 +24,16 @@
 	"agents": {
 		"createDialog": {
 			"title": "Создать AI-агента",
-			"step1Description": "Настройте личность и роль агента",
+			"step1Description": "Настройте личность агента",
 			"step2Description": "Настройте AI-модель, на которой работает агент",
-			"stepIndicator": "{{step}} / 2",
+			"step3DescriptionGlobal": "Агент {{name}} создан с глобальной ролью по умолчанию. Оставьте её, выберите другую или уберите.",
+			"step3DescriptionProject": "Выберите роль агента в этом проекте",
+			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Начать с пресета",
 			"nameLabel": "Имя",
 			"handleLabel": "Handle",
 			"handleHint": "Автоматически создаётся из имени. Используется для @упоминаний в комментариях.",
 			"projectRoleLabel": "Роль в проекте",
-			"projectRolePlaceholder": "Выберите роль проекта…",
 			"projectRoleHint": "Определяет, что агент может читать и изменять в этом проекте.",
 			"agentTypeLabel": "Тип агента",
 			"agentTypeLLM": "LLM (API-ключ)",
@@ -88,12 +89,9 @@
 			"back": "Назад",
 			"creating": "Создание…",
 			"createAgent": "Создать агента",
+			"finish": "Завершить",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Вы — senior software engineer…",
-			"globalRoleLabel": "Глобальная роль",
-			"globalRolePlaceholder": "Выберите глобальную роль…",
-			"globalRoleHint": "Определяет, что агент может делать в глобальной области (например, в чате на главной странице или в админке). Необязательно — роль, назначенная позже, после приглашения в проект, отдельна.",
-			"noGlobalRoleOption": "Без роли"
+			"systemPromptPlaceholder": "Вы — senior software engineer…"
 		},
 		"card": {
 			"configure": "Настроить",
@@ -169,8 +167,30 @@
 				"mcpServers": "MCP-серверы",
 				"skills": "Навыки",
 				"envVars": "Окружение",
+				"globalRole": "Глобальная роль",
 				"access": "Access",
 				"activity": "Активность"
+			},
+			"globalRole": {
+				"title": "Глобальная роль",
+				"description": "Что этот агент может делать на глобальном уровне, например из чата на главной странице и в разделе администрирования. Что он может делать внутри проекта, определяется его ролью в этом проекте.",
+				"none": "Без глобальной роли",
+				"noneHint": "У этого агента нет глобальных разрешений.",
+				"assign": "Назначить роль",
+				"change": "Изменить роль",
+				"assigning": "Назначение…",
+				"remove": "Убрать роль",
+				"removing": "Удаление…",
+				"removeConfirm": "Убрать глобальную роль у этого агента? Он потеряет разрешения, которые давала эта роль.",
+				"cancel": "Отмена",
+				"readOnly": "Вы можете видеть глобальную роль этого агента, но у вас нет прав её менять.",
+				"unknownRole": "Глобальная роль назначена. У вас нет прав на просмотр ролей, поэтому её название не показано.",
+				"fullAccessWarning": "У этой роли полный доступ. Агент сможет делать всё, включая управление пользователями и ролями.",
+				"errors": {
+					"generic": "Не удалось обновить роль. Повторите попытку.",
+					"forbidden": "У вас нет прав на изменение глобальных ролей.",
+					"roleNotFound": "Эта роль больше не существует. Обновите страницу и повторите попытку."
+				}
 			},
 			"avatar": {
 				"change": "Изменить аватар",
@@ -957,6 +977,7 @@
 			"setAsDefault": "Сделать статусом по умолчанию",
 			"editStatus": "Редактировать статус",
 			"deleteStatus": "Удалить статус",
+			"deleteDefaultDisabled": "Статус по умолчанию нельзя удалить. Сначала сделайте статусом по умолчанию другой.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -981,6 +1002,7 @@
 			"setAsDefault": "Сделать типом по умолчанию",
 			"editType": "Редактировать тип",
 			"deleteType": "Удалить тип",
+			"deleteDefaultDisabled": "Тип по умолчанию нельзя удалить. Сначала сделайте типом по умолчанию другой.",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1084,6 +1106,7 @@
 			"confirmTextPrefix": "Удалить",
 			"confirmTextSuffix": "? Задачи с этим статусом потеряют статус. Это действие нельзя отменить.",
 			"deleteFailed": "Не удалось удалить статус. Попробуйте ещё раз.",
+			"isDefault": "Статус по умолчанию нельзя удалить. Сначала сделайте статусом по умолчанию другой.",
 			"cancel": "Отмена",
 			"deleteStatus": "Удалить статус"
 		},
@@ -1176,6 +1199,7 @@
 			"confirmTextPrefix": "Удалить",
 			"confirmTextSuffix": "? Задачи с этим типом потеряют назначенный тип. Это действие нельзя отменить.",
 			"deleteFailed": "Не удалось удалить тип задачи. Попробуйте ещё раз.",
+			"isDefault": "Тип по умолчанию нельзя удалить. Сначала сделайте типом по умолчанию другой.",
 			"cancel": "Отмена",
 			"deleteType": "Удалить тип"
 		},

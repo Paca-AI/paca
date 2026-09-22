@@ -26,6 +26,8 @@ export const ApiErrorCode = {
 	GlobalRoleNameTaken: "GLOBAL_ROLE_NAME_TAKEN",
 	GlobalRoleNameInvalid: "GLOBAL_ROLE_NAME_INVALID",
 	GlobalRoleHasUsers: "GLOBAL_ROLE_HAS_ASSIGNED_USERS",
+	GlobalRoleIsDefault: "GLOBAL_ROLE_IS_DEFAULT",
+	GlobalRoleNoDefault: "GLOBAL_ROLE_NO_DEFAULT",
 
 	// Project domain errors.
 	ProjectNotFound: "PROJECT_NOT_FOUND",
@@ -44,12 +46,14 @@ export const ApiErrorCode = {
 	TaskTypeNameInvalid: "TASK_TYPE_NAME_INVALID",
 	TaskTypeIsSystem: "TASK_TYPE_IS_SYSTEM",
 	TaskTypeNameReserved: "TASK_TYPE_NAME_RESERVED",
+	TaskTypeIsDefault: "TASK_TYPE_IS_DEFAULT",
 
 	// Task status domain errors.
 	TaskStatusNotFound: "TASK_STATUS_NOT_FOUND",
 	TaskStatusNameInvalid: "TASK_STATUS_NAME_INVALID",
 	TaskStatusCategoryInvalid: "TASK_STATUS_CATEGORY_INVALID",
 	TaskStatusReorderInvalid: "TASK_STATUS_REORDER_INVALID",
+	TaskStatusIsDefault: "TASK_STATUS_IS_DEFAULT",
 
 	// Task domain errors.
 	TaskNotFound: "TASK_NOT_FOUND",

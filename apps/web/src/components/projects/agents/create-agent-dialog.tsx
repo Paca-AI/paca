@@ -22,9 +22,15 @@ import {
 import { type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+	isFullAccessRole,
+	RolePicker,
+} from "@/components/admin/global-roles/role-picker";
+import {
 	DefaultEnvironmentSelect,
 	DefaultFolderSelect,
 } from "@/components/projects/environments/environment-folder-select";
+import { InlineNotice } from "@/components/shared/inline-notice";
+import { StepIndicator } from "@/components/shared/step-indicator";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	Dialog,
@@ -51,7 +57,8 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { globalRolesQueryOptions } from "@/lib/admin-api";
+import { useCanAssignGlobalRole } from "@/hooks/use-can-assign-global-role";
+import type { GlobalRole } from "@/lib/admin-api";
 import {
 	type ACPProvider,
 	type AcpBridgeToken,
@@ -70,22 +77,31 @@ import {
 	verifyEnvironmentCLILogin,
 } from "@/lib/agent-api";
 import { environmentsQueryOptions } from "@/lib/environment-api";
-import { projectRolesQueryOptions } from "@/lib/project-api";
 import { splitShellCommand } from "@/lib/shell-command";
 import { cn } from "@/lib/utils";
 import { AcpBridgeSetup, CommandBox } from "./acp-bridge-setup";
+import { ProjectRolePicker } from "./project-role-picker";
+import { useSetAgentGlobalRole } from "./use-set-agent-global-role";
 
 // Create Agent Dialog — shared between the project-scoped Agents page
 // (routes/_authenticated/projects/$projectId/agents/index.tsx) and the
-// global one (routes/_authenticated/admin/agents/index.tsx). Same 2-step
+// global one (routes/_authenticated/admin/agents/index.tsx). Same 3-step
 // wizard, presets, agent type toggle, and LLM/ACP configuration either way —
-// the only real difference is the role picker in step 1 (a required project
-// role vs an optional global role) and which create/token-generation
-// endpoints get called underneath. See conversations-layout.tsx for the
-// equivalent generalization applied to the Conversations page.
+// the only real differences are which role step 3 asks for (see below) and
+// which create/token-generation endpoints get called underneath. See
+// conversations-layout.tsx for the equivalent generalization applied to the
+// Conversations page.
+//
+// The wizard: 1 Identity, 2 AI configuration, 3 Role. A project agent's role is
+// its project role: required, and part of the create request, so the agent is
+// created by step 3's button and backing out before then leaves nothing behind.
+// A global agent is created by step 2's button and starts with the default
+// global role, which the server assigns. Changing it is a separate privilege
+// (global_roles.assign) with a request of its own, so step 3 — offered only to
+// someone who has that privilege — runs after the agent exists, and closing it
+// finishes the wizard.
 
 const CUSTOM = "__custom__";
-const NO_GLOBAL_ROLE = "__none__";
 
 const PRESET_ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
 	"software-engineer": Code2,
@@ -122,6 +138,14 @@ function cliLoginCommand(provider: CLIProvider): string {
 	}
 }
 
+/** What creating an agent returns: the agent, plus the ACP bridge token and MCP
+ * key generated for it (null for other types, or if generating one failed). */
+interface CreatedAgent {
+	agent: Agent;
+	token: AcpBridgeToken | null;
+	mcpKey: string | null;
+}
+
 export function CreateAgentDialog({
 	projectId,
 	open,
@@ -140,14 +164,7 @@ export function CreateAgentDialog({
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
-	const { data: projectRoles = [] } = useQuery({
-		...projectRolesQueryOptions(projectId ?? ""),
-		enabled: !!projectId,
-	});
-	const { data: globalRoles = [] } = useQuery({
-		...globalRolesQueryOptions,
-		enabled: !projectId,
-	});
+
 	const { data: llmModels = {} } = useQuery(llmModelsQueryOptions);
 	// Environments are project-scoped only — a global agent has no project to
 	// default one from, so this query no-ops (via `enabled`) at global scope,
@@ -157,25 +174,34 @@ export function CreateAgentDialog({
 		enabled: !!projectId,
 	});
 
-	// Uniform {id, label} shape either way, so the role Select below is one
-	// JSX block regardless of scope. A global role is optional — NO_GLOBAL_ROLE
-	// is a real, always-present, always-truthy option so step1Valid's
-	// `!!roleId` check needs no scope-specific branching.
-	const roleOptions = projectId
-		? projectRoles.map((r) => ({ id: r.id, label: r.role_name }))
-		: [
-				{
-					id: NO_GLOBAL_ROLE,
-					label: t("agents.createDialog.noGlobalRoleOption"),
-				},
-				...globalRoles.map((r) => ({ id: r.id, label: r.name })),
-			];
-
-	const [step, setStep] = useState<1 | 2>(1);
+	const canAssignRole = useCanAssignGlobalRole();
+	// The agent held by a global wizard that has reached its role step, which
+	// only exists once the agent does (see below).
+	const [created, setCreated] = useState<CreatedAgent | null>(null);
+	// Every project agent ends with its (required) project role; a global agent
+	// only when the person may assign global roles. Losing that permission after
+	// the agent exists must not strand the wizard on a step that vanished.
+	const hasRoleStep = !!projectId || canAssignRole || created !== null;
+	const totalSteps = hasRoleStep ? 3 : 2;
+	// The step whose button creates the agent: a project agent needs its role in
+	// the request, so it is created last; a global agent's role is a request of
+	// its own, made after the agent exists.
+	const createStep = projectId ? 3 : 2;
+	const [requestedStep, setStep] = useState<1 | 2 | 3>(1);
+	// Losing the permission mid-dialog must not strand the wizard on a step
+	// that no longer exists.
+	const step = Math.min(requestedStep, totalSteps) as 1 | 2 | 3;
 	const [name, setName] = useState("");
 	const [handle, setHandle] = useState("");
 	const [presetId, setPresetId] = useState("");
-	const [roleId, setRoleId] = useState(() => (projectId ? "" : NO_GLOBAL_ROLE));
+	// The project role of a project agent, chosen in step 3.
+	const [roleId, setRoleId] = useState("");
+	// The global role picked in a global agent's step 3: a role, `null` for "no
+	// role", or `undefined` while nothing is picked (the agent keeps the role it
+	// was created with).
+	const [pickedRole, setPickedRole] = useState<GlobalRole | null | undefined>(
+		undefined,
+	);
 	const [agentType, setAgentType] = useState<AgentType>("llm");
 	const [providerSelect, setProviderSelect] = useState("anthropic");
 	const [customProvider, setCustomProvider] = useState("");
@@ -220,7 +246,11 @@ export function CreateAgentDialog({
 		setName("");
 		setHandle("");
 		setPresetId("");
-		setRoleId(projectId ? "" : NO_GLOBAL_ROLE);
+		setRoleId("");
+		setPickedRole(undefined);
+		setCreated(null);
+		createMutation.reset();
+		clearRoleError();
 		setAgentType("llm");
 		setProviderSelect("anthropic");
 		setCustomProvider("");
@@ -240,9 +270,43 @@ export function CreateAgentDialog({
 		setDefaultFolderId("");
 	};
 
+	const invalidateAgentLists = () => {
+		if (projectId) {
+			qc.invalidateQueries({
+				queryKey: ["projects", projectId, "agents"],
+			});
+		} else {
+			qc.invalidateQueries({ queryKey: globalAgentsQueryOptions.queryKey });
+			qc.invalidateQueries({ queryKey: ["global-agents", "chattable"] });
+		}
+	};
+
+	// Ends the wizard for an agent that exists: refresh the lists, close, and hand
+	// an ACP agent's one-time setup values to the setup dialog.
+	const finish = (done: CreatedAgent) => {
+		invalidateAgentLists();
+		reset();
+		onOpenChange(false);
+		if (done.agent.agent_type === "acp") {
+			onAcpAgentCreated(done.agent, done.token, done.mcpKey);
+		}
+	};
+
 	const handleClose = (v: boolean) => {
-		if (!v) reset();
-		onOpenChange(v);
+		if (v) {
+			onOpenChange(true);
+			return;
+		}
+		// What a request brings back has to land somewhere, so no closing mid-way.
+		if (createMutation.isPending || roleIsPending) return;
+		// Once the role step shows, the agent exists and is complete as it is: closing
+		// keeps its role and finishes, like the Finish button.
+		if (created) {
+			finish(created);
+			return;
+		}
+		reset();
+		onOpenChange(false);
 	};
 
 	const handleProviderChange = (v: string | null) => {
@@ -321,6 +385,9 @@ export function CreateAgentDialog({
 									? { acp_command: acpCommandParts }
 									: {}),
 							};
+			// A project agent's role is part of its request. A global agent gets
+			// no role here: the server gives it the default one, and changing that
+			// is the role step's own request.
 			const agent = projectId
 				? await createAgent(projectId, {
 						name: name.trim(),
@@ -333,7 +400,6 @@ export function CreateAgentDialog({
 						name: name.trim(),
 						handle: handle.trim(),
 						agent_type: agentType,
-						global_role_id: roleId === NO_GLOBAL_ROLE ? undefined : roleId,
 						...typeFields,
 					});
 			if (agent.agent_type !== "acp") {
@@ -363,21 +429,40 @@ export function CreateAgentDialog({
 				mcpKeyResult.status === "fulfilled" ? mcpKeyResult.value.token : null;
 			return { agent, token, mcpKey };
 		},
-		onSuccess: ({ agent, token, mcpKey }) => {
-			if (projectId) {
-				qc.invalidateQueries({
-					queryKey: ["projects", projectId, "agents"],
-				});
-			} else {
-				qc.invalidateQueries({ queryKey: globalAgentsQueryOptions.queryKey });
-				qc.invalidateQueries({ queryKey: ["global-agents", "chattable"] });
+		onSuccess: (result) => {
+			if (!projectId && hasRoleStep) {
+				// The agent exists and holds the default role. Keep what came back
+				// (an ACP agent's one-time setup values) until the role step is done.
+				setCreated(result);
+				setStep(3);
+				return;
 			}
-			handleClose(false);
-			if (agent.agent_type === "acp") {
-				onAcpAgentCreated(agent, token, mcpKey);
-			}
+			finish(result);
 		},
 	});
+
+	// The role step's request, made once the agent exists: another role, or none.
+	const {
+		setRole,
+		isPending: roleIsPending,
+		error: roleError,
+		clearError: clearRoleError,
+	} = useSetAgentGlobalRole({
+		onChanged: () => {
+			if (created) finish(created);
+		},
+	});
+
+	// What the role step shows as chosen, and what pressing its button would do.
+	const currentRoleId = created?.agent.global_role_id ?? null;
+	const chosenRoleId =
+		pickedRole === undefined ? currentRoleId : (pickedRole?.id ?? null);
+	const roleChange =
+		chosenRoleId === currentRoleId
+			? null
+			: chosenRoleId === null
+				? "remove"
+				: "assign";
 
 	// Lets the user confirm their terminal login actually worked before
 	// finishing agent creation — the environment-scoped sibling of
@@ -407,7 +492,7 @@ export function CreateAgentDialog({
 		);
 	};
 
-	const step1Valid = !!(name.trim() && handle.trim() && roleId);
+	const step1Valid = !!(name.trim() && handle.trim());
 	const step2Valid =
 		agentType === "llm"
 			? !!(llmProvider && llmModel && llmBaseUrl.trim() && llmApiKey.trim())
@@ -417,7 +502,32 @@ export function CreateAgentDialog({
 						acpProvider &&
 						(acpProvider !== "custom" || acpCommandParts.length > 0)
 					);
-	const canSubmit = !!(step1Valid && step2Valid && !createMutation.isPending);
+	// A project agent must have a project role, which is part of its create request.
+	const roleStepValid = !projectId || !!roleId;
+	const canSubmit = !!(
+		step1Valid &&
+		step2Valid &&
+		roleStepValid &&
+		!createMutation.isPending
+	);
+
+	// The role step's button: apply the change, or, with nothing to change,
+	// finish. Either way the wizard ends.
+	const submitRoleStep = () => {
+		if (!created) return;
+		if (roleChange === null) {
+			finish(created);
+			return;
+		}
+		setRole(created.agent.id, pickedRole ?? null);
+	};
+
+	// Shown on the step whose button creates the agent.
+	const createError = createMutation.isError ? (
+		<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+			{t("agents.createDialog.createFailed")}
+		</p>
+	) : null;
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
@@ -444,30 +554,24 @@ export function CreateAgentDialog({
 								<DialogDescription className="text-xs text-muted-foreground mt-0.5">
 									{step === 1
 										? t("agents.createDialog.step1Description")
-										: t("agents.createDialog.step2Description")}
+										: step === 2
+											? t("agents.createDialog.step2Description")
+											: projectId
+												? t("agents.createDialog.step3DescriptionProject")
+												: t("agents.createDialog.step3DescriptionGlobal", {
+														name: created?.agent.name ?? name.trim(),
+													})}
 								</DialogDescription>
 							</div>
 						</div>
-						{/* Step pill */}
-						<div className="flex items-center gap-1 rounded-full border border-border/60 bg-muted/50 px-2.5 py-1">
-							<div className="flex items-center gap-1">
-								<span
-									className={cn(
-										"size-1.5 rounded-full transition-colors duration-200",
-										step >= 1 ? "bg-primary" : "bg-muted-foreground/30",
-									)}
-								/>
-								<span
-									className={cn(
-										"size-1.5 rounded-full transition-colors duration-200",
-										step >= 2 ? "bg-primary" : "bg-muted-foreground/30",
-									)}
-								/>
-							</div>
-							<span className="text-xs text-muted-foreground font-medium ml-1">
-								{t("agents.createDialog.stepIndicator", { step })}
-							</span>
-						</div>
+						<StepIndicator
+							step={step}
+							total={totalSteps}
+							label={t("agents.createDialog.stepIndicator", {
+								step,
+								total: totalSteps,
+							})}
+						/>
 					</div>
 				</div>
 
@@ -638,45 +742,6 @@ export function CreateAgentDialog({
 									{t("agents.createDialog.handleHint")}
 								</p>
 							</div>
-						</div>
-
-						{/* Project Role / Global Role */}
-						<div className="space-y-1.5">
-							<Label>
-								{t(
-									projectId
-										? "agents.createDialog.projectRoleLabel"
-										: "agents.createDialog.globalRoleLabel",
-								)}{" "}
-								{projectId && <span className="text-destructive">*</span>}
-							</Label>
-							<Select value={roleId} onValueChange={(v) => v && setRoleId(v)}>
-								<SelectTrigger>
-									<SelectValue
-										placeholder={t(
-											projectId
-												? "agents.createDialog.projectRolePlaceholder"
-												: "agents.createDialog.globalRolePlaceholder",
-										)}
-									>
-										{roleOptions.find((r) => r.id === roleId)?.label}
-									</SelectValue>
-								</SelectTrigger>
-								<SelectContent>
-									{roleOptions.map((r) => (
-										<SelectItem key={r.id} value={r.id}>
-											{r.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<p className="text-xs text-muted-foreground">
-								{t(
-									projectId
-										? "agents.createDialog.projectRoleHint"
-										: "agents.createDialog.globalRoleHint",
-								)}
-							</p>
 						</div>
 					</div>
 				)}
@@ -1201,10 +1266,67 @@ export function CreateAgentDialog({
 							</div>
 						)}
 
-						{createMutation.isError && (
-							<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-								{t("agents.createDialog.createFailed")}
-							</p>
+						{createStep === 2 && createError}
+					</div>
+				)}
+
+				{/* ── Step 3: Role ─────────────────────────────────────────────── */}
+				{step === 3 && hasRoleStep && (
+					<div className="overflow-y-auto max-h-[62vh] px-6 py-5 space-y-4">
+						{projectId ? (
+							<>
+								<p className="text-sm text-muted-foreground">
+									{t("agents.createDialog.projectRoleHint")}
+								</p>
+								<div className="space-y-2">
+									<p className="text-sm font-medium">
+										{t("agents.createDialog.projectRoleLabel")}{" "}
+										<span className="text-destructive">*</span>
+									</p>
+									<ProjectRolePicker
+										projectId={projectId}
+										label={t("agents.createDialog.projectRoleLabel")}
+										value={roleId || null}
+										onChange={(role) => setRoleId(role.id)}
+										disabled={createMutation.isPending}
+									/>
+								</div>
+								{createError}
+							</>
+						) : (
+							<>
+								<p className="text-sm text-muted-foreground">
+									{t("agents.detail.globalRole.description")}
+								</p>
+								<RolePicker
+									label={t("agents.detail.globalRole.title")}
+									value={chosenRoleId}
+									onChange={(role) => {
+										setPickedRole(role);
+										clearRoleError();
+									}}
+									none={{
+										label: t("agents.detail.globalRole.none"),
+										hint: t("agents.detail.globalRole.noneHint"),
+										onSelect: () => {
+											setPickedRole(null);
+											clearRoleError();
+										},
+									}}
+									currentRoleId={currentRoleId}
+									disabled={roleIsPending}
+								/>
+								{roleChange === "assign" &&
+								pickedRole &&
+								isFullAccessRole(pickedRole) ? (
+									<InlineNotice tone="warning">
+										{t("agents.detail.globalRole.fullAccessWarning")}
+									</InlineNotice>
+								) : null}
+								{roleError ? (
+									<InlineNotice tone="error">{roleError}</InlineNotice>
+								) : null}
+							</>
 						)}
 					</div>
 				)}
@@ -1234,29 +1356,63 @@ export function CreateAgentDialog({
 							<Button
 								variant="ghost"
 								size="sm"
-								onClick={() => setStep(1)}
-								className="text-muted-foreground"
+								onClick={() => setStep(step === 3 ? 2 : 1)}
+								disabled={createMutation.isPending || roleIsPending}
+								// Once the agent exists the earlier steps can no longer change it.
+								className={cn("text-muted-foreground", created && "invisible")}
 							>
 								<ChevronLeft className="size-4 mr-1" />
 								{t("agents.createDialog.back")}
 							</Button>
-							<Button
-								size="sm"
-								onClick={() => createMutation.mutate()}
-								disabled={!canSubmit}
-							>
-								{createMutation.isPending ? (
-									<>
-										<Loader2 className="size-4 mr-1.5 animate-spin" />
-										{t("agents.createDialog.creating")}
-									</>
-								) : (
-									<>
-										<Sparkles className="size-4 mr-1.5" />
-										{t("agents.createDialog.createAgent")}
-									</>
-								)}
-							</Button>
+							{step === createStep ? (
+								<Button
+									size="sm"
+									onClick={() => createMutation.mutate()}
+									disabled={!canSubmit}
+								>
+									{createMutation.isPending ? (
+										<>
+											<Loader2 className="size-4 mr-1.5 animate-spin" />
+											{t("agents.createDialog.creating")}
+										</>
+									) : (
+										<>
+											<Sparkles className="size-4 mr-1.5" />
+											{t("agents.createDialog.createAgent")}
+										</>
+									)}
+								</Button>
+							) : step === 3 ? (
+								<Button
+									size="sm"
+									onClick={submitRoleStep}
+									disabled={roleIsPending}
+								>
+									{roleIsPending ? (
+										<>
+											<Loader2 className="size-4 mr-1.5 animate-spin" />
+											{roleChange === "remove"
+												? t("agents.detail.globalRole.removing")
+												: t("agents.detail.globalRole.assigning")}
+										</>
+									) : roleChange === "assign" ? (
+										t("agents.detail.globalRole.assign")
+									) : roleChange === "remove" ? (
+										t("agents.detail.globalRole.remove")
+									) : (
+										t("agents.createDialog.finish")
+									)}
+								</Button>
+							) : (
+								<Button
+									size="sm"
+									onClick={() => setStep(3)}
+									disabled={!step2Valid}
+								>
+									{t("agents.createDialog.continue")}
+									<ChevronRight className="size-4 ml-1" />
+								</Button>
+							)}
 						</>
 					)}
 				</div>

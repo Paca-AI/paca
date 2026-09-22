@@ -11,9 +11,14 @@ Feature: AI agent management
   Gemini CLI, or a custom command — bridged in over a generated token). Only
   an ACP agent shows the "Local Bridge" setup flow; an LLM agent has nothing
   to bridge. The Admin > Agents page (routes/_authenticated/admin/agents/)
-  is the same card grid, empty state, and two-step creation wizard reused
-  for project-less "global" agents — see features/admin/agents.feature for
-  that surface.
+  is the same card grid, empty state, and creation wizard reused for
+  project-less "global" agents — see features/admin/agents.feature for that
+  surface.
+
+  Creating an agent is a three-step wizard: 1 Identity, 2 AI configuration,
+  3 Role. A project agent's role is its project role: required, and part of
+  the create request, so the last step's "Create Agent" button stays disabled
+  until one is chosen and nothing is created before it.
 
   @authenticated
   Rule: Project Agents page — loading, empty state, and permission-gated actions
@@ -79,48 +84,75 @@ Feature: AI agent management
       And the project has at least one project role
       And the user has navigated to the Agents page for "E2E_AGENTS_CREATE_PROJECT"
 
-    Scenario: The create dialog opens on step 1 with the LLM type selected by default
+    Scenario: The create dialog opens on step 1 of 3 with the LLM type selected by default
       When the user clicks the "New Agent" button
-      Then the create agent dialog should open on step 1
+      Then the create agent dialog should open on step 1 of 3
       And the "LLM (API key)" agent type option should be selected by default
       And the preset grid should be visible
 
-    Scenario: Step 1 requires a name, a handle, and a project role before continuing
+    Scenario: Step 1 requires a name and a handle before continuing, and does not ask for a role
       When the user clicks the "New Agent" button
       Then the "Continue" button should be disabled
       When the user fills the agent name with "E2E_AGENTS_NEW_BOT"
       Then the handle field should be auto-filled with "e2e-agents-new-bot"
-      And the "Continue" button should still be disabled
-      When the user selects a project role for the new agent
-      Then the "Continue" button should be enabled
+      And the "Continue" button should be enabled
+      And the first step should not contain a project role field
 
     Scenario: Selecting a preset pre-fills the provider, model, and system prompt
       When the user clicks the "New Agent" button
       And the user selects the "Code Reviewer" preset
       And the user fills the agent name with "E2E_AGENTS_PRESET_BOT"
-      And the user selects a project role for the new agent
       And the user clicks "Continue"
       Then the provider select should default to "anthropic"
       And the system prompt field should be pre-filled with the "Code Reviewer" preset prompt
 
-    Scenario: Step 2 requires a provider, model, base URL, and API key before creating an LLM agent
+    Scenario: Step 2 requires a provider, model, base URL, and API key before continuing to the role
       When the user clicks the "New Agent" button
       And the user fills the agent name with "E2E_AGENTS_LLM_BOT"
-      And the user selects a project role for the new agent
       And the user clicks "Continue"
-      Then the "Create Agent" button should be disabled
+      Then the "Continue" button should be disabled
+      And there should be no "Create Agent" button yet
       When the user fills in the LLM API key
+      Then the "Continue" button should be enabled
+
+    Scenario: Step 3 asks for the project role, and the agent cannot be created without one
+      When the user clicks the "New Agent" button
+      And the user fills the agent name with "E2E_AGENTS_ROLE_STEP"
+      And the user clicks "Continue"
+      And the user fills in the LLM API key
+      And the user clicks "Continue"
+      Then the create agent dialog should show step 3 of 3
+      And the dialog should say to choose the agent's role in this project
+      And every project role should be offered, none of them preselected
+      And there should be no "No global role" choice
+      And the "Create Agent" button should be disabled
+      When the user selects a project role for the new agent
       Then the "Create Agent" button should be enabled
+      When the user clicks "Back"
+      Then the create agent dialog should show step 2 of 3
 
     Scenario: Creating a valid LLM agent adds it to the list and closes the dialog
       When the user clicks the "New Agent" button
       And the user fills the agent name with "E2E_AGENTS_LLM_CREATED"
-      And the user selects a project role for the new agent
       And the user clicks "Continue"
       And the user fills in the LLM API key
+      And the user clicks "Continue"
+      And the user selects a project role for the new agent
       And the user clicks "Create Agent"
       Then the create agent dialog should close
       And the Agents page should list "E2E_AGENTS_LLM_CREATED"
+
+    Scenario: The project agent joins the project with the role chosen in step 3
+      When the user clicks the "New Agent" button
+      And the user fills the agent name with "E2E_AGENTS_ROLE_CHOSEN"
+      And the user clicks "Continue"
+      And the user fills in the LLM API key
+      And the user clicks "Continue"
+      And the user chooses the project role "Viewer"
+      And the user clicks "Create Agent"
+      Then the create agent dialog should close
+      And the Agents page should list "E2E_AGENTS_ROLE_CHOSEN"
+      And the agent "E2E_AGENTS_ROLE_CHOSEN" should be a member of the project with the role "Viewer"
 
     Scenario: Cancelling step 1 discards the in-progress agent
       When the user clicks the "New Agent" button
@@ -144,7 +176,6 @@ Feature: AI agent management
       And the user selects the "ACP (local CLI)" agent type
       Then the preset grid should be hidden
       When the user fills the agent name with "E2E_AGENTS_ACP_FIELDS"
-      And the user selects a project role for the new agent
       And the user clicks "Continue"
       Then step 2 should show the "ACP Server" section
       And the system prompt field should be hidden
@@ -153,19 +184,19 @@ Feature: AI agent management
       When the user clicks the "New Agent" button
       And the user selects the "ACP (local CLI)" agent type
       And the user fills the agent name with "E2E_AGENTS_CUSTOM_ACP"
-      And the user selects a project role for the new agent
       And the user clicks "Continue"
       And the user selects the "Custom…" ACP provider
-      Then the "Create Agent" button should be disabled
+      Then the "Continue" button should be disabled
       When the user fills in a custom ACP command
-      Then the "Create Agent" button should be enabled
+      Then the "Continue" button should be enabled
 
     Scenario: Creating an ACP agent opens the bridge setup dialog with a token already generated
       When the user clicks the "New Agent" button
       And the user selects the "ACP (local CLI)" agent type
       And the user fills the agent name with "E2E_AGENTS_ACP_CREATED"
-      And the user selects a project role for the new agent
       And the user clicks "Continue"
+      And the user clicks "Continue"
+      And the user selects a project role for the new agent
       And the user clicks "Create Agent"
       Then the create agent dialog should close
       And the "Connect your local ACP bridge" dialog should open for "E2E_AGENTS_ACP_CREATED"

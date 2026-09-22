@@ -32,6 +32,7 @@ type mockAgentSvc struct {
 	createAgent                   func(ctx context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error)
 	createGlobalAgent             func(ctx context.Context, in agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error)
 	updateGlobalAgent             func(ctx context.Context, agentID uuid.UUID, in agentdom.UpdateAgentInput) (*agentdom.Agent, error)
+	setGlobalAgentRole            func(ctx context.Context, agentID uuid.UUID, roleID *uuid.UUID) (*agentdom.Agent, error)
 	startChatSession              func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
 	listConversations             func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 	listConversationEvents        func(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error)
@@ -222,6 +223,12 @@ func (m *mockAgentSvc) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID,
 	}
 	return nil, nil
 }
+func (m *mockAgentSvc) SetGlobalAgentRole(ctx context.Context, agentID uuid.UUID, roleID *uuid.UUID) (*agentdom.Agent, error) {
+	if m.setGlobalAgentRole != nil {
+		return m.setGlobalAgentRole(ctx, agentID, roleID)
+	}
+	return &agentdom.Agent{ID: agentID, AgentScope: agentdom.AgentScopeGlobal, GlobalRoleID: roleID}, nil
+}
 func (m *mockAgentSvc) DeleteGlobalAgent(_ context.Context, _ uuid.UUID) error { return nil }
 func (m *mockAgentSvc) ListInvitedProjectIDs(_ context.Context, _ uuid.UUID) ([]uuid.UUID, error) {
 	return nil, nil
@@ -368,13 +375,10 @@ func newGlobalAgentAcpRouter(svc agentdom.Service) chi.Router {
 	return r
 }
 
-// fakeGlobalPermStore implements authz.PermissionStore, returning a fixed
-// set of global permissions for every caller — enough to simulate a caller
-// who holds agents.write but not global_roles.assign (the exact gap
-// GHSA-xxc8-ggm7-vmxp closes for global agents), a combination none of the
-// three built-in legacy roles (SUPER_ADMIN/ADMIN/USER) can represent on
-// their own. ListProjectPermissions is unused — these tests are global-scope
-// only.
+// fakeGlobalPermStore implements authz.PermissionStore, returning a fixed set
+// of global permissions for every caller — a stand-in for "a caller whose
+// role stores exactly these permissions". ListProjectPermissions is unused:
+// these tests are global-scope only.
 type fakeGlobalPermStore struct {
 	globalPerms []authz.Permission
 }
@@ -386,16 +390,13 @@ func (f *fakeGlobalPermStore) ListProjectPermissions(context.Context, uuid.UUID,
 	return nil, nil
 }
 
-// newGlobalAgentAdminRouter wires POST /admin/agents and PATCH
-// /admin/agents/{agentId} behind a real Authorizer backed by globalPerms, so
-// CreateGlobalAgent/UpdateGlobalAgent's conditional global_roles.assign gate
-// (see agent_handler.go, GHSA-xxc8-ggm7-vmxp) can be exercised end-to-end.
-// Deliberately doesn't replicate router.go's own outer agents.write
-// RequirePermissions middleware — that generic mechanism has its own tests;
-// this only exercises the handler's additional, conditional check.
-func newGlobalAgentAdminRouter(svc agentdom.Service, globalPerms ...authz.Permission) chi.Router {
-	authorizer := authz.NewAuthorizer(&fakeGlobalPermStore{globalPerms: globalPerms})
-	h := handler.NewAgentHandler(svc, "", "", "").WithAuthorizer(authorizer)
+// newGlobalAgentAdminRouter wires the /admin/agents handlers that touch an
+// agent's own fields and its global role. It deliberately has no permission
+// middleware: who may call which route is the router's job (guards.go, proven
+// by the router package's tests); these tests cover only what the handlers do
+// once a request reaches them.
+func newGlobalAgentAdminRouter(svc agentdom.Service) chi.Router {
+	h := handler.NewAgentHandler(svc, "", "", "")
 	claims := &domainauth.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: uuid.New().String()},
 		Kind:             "access",
@@ -409,6 +410,8 @@ func newGlobalAgentAdminRouter(svc agentdom.Service, globalPerms ...authz.Permis
 	})
 	r.Post("/admin/agents", h.CreateGlobalAgent)
 	r.Patch("/admin/agents/{agentId}", h.UpdateGlobalAgent)
+	r.Put("/admin/agents/{agentId}/global-role", h.SetGlobalAgentRole)
+	r.Delete("/admin/agents/{agentId}/global-role", h.ClearGlobalAgentRole)
 	return r
 }
 
@@ -1421,15 +1424,13 @@ func TestVerifyCLILogin_WrongAgentType_Returns400(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// CreateGlobalAgent / UpdateGlobalAgent — global_role_id permission gate
-// (GHSA-xxc8-ggm7-vmxp)
+// Global agent role binding (GHSA-xxc8-ggm7-vmxp)
 //
-// CreateGlobalAgent/UpdateGlobalAgent insert or change an agent's
-// global_role_id, so — like GlobalRoleHandler.ReplaceUserRoles for users —
-// setting one requires global_roles.assign in addition to the route's own
-// agents.write. These tests exercise that conditional gate directly against
-// the handler (see newGlobalAgentAdminRouter's doc comment for why it
-// doesn't also replicate the outer route-level agents.write middleware).
+// Binding a global agent to a global role decides what the agent may do, so it
+// is a privilege of its own (global_roles.assign) and has its own routes,
+// PUT/DELETE /admin/agents/{agentId}/global-role, whose permissions the router
+// declares. Create/update therefore refuse global_role_id outright: silently
+// ignoring it would let a client believe the role was bound.
 // ---------------------------------------------------------------------------
 
 func validGlobalAgentBody(overrides map[string]any) map[string]any {
@@ -1446,26 +1447,25 @@ func validGlobalAgentBody(overrides map[string]any) map[string]any {
 	return base
 }
 
-func TestCreateGlobalAgent_SettingRoleWithoutRolesAssign_Returns403(t *testing.T) {
+func TestCreateGlobalAgent_RejectsGlobalRoleID(t *testing.T) {
 	svc := &mockAgentSvc{
 		createGlobalAgent: func(context.Context, agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
-			t.Fatal("CreateGlobalAgent must not be called when global_roles.assign is missing")
+			t.Fatal("CreateGlobalAgent must not be called when the body sets global_role_id")
 			return nil, nil
 		},
 	}
-	r := newGlobalAgentAdminRouter(svc, authz.PermissionAgentsWrite)
-	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents",
+	w := doAgentRequest(t, newGlobalAgentAdminRouter(svc), http.MethodPost, "/admin/agents",
 		validGlobalAgentBody(map[string]any{"global_role_id": uuid.New()}))
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 when setting global_role_id without global_roles.assign, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "global-role") {
+		t.Errorf("expected the error to point at the global-role route, got %s", w.Body.String())
 	}
 }
 
-func TestCreateGlobalAgent_NoRoleField_AllowedWithoutRolesAssign(t *testing.T) {
-	// The common case — agents.write alone creating a global agent with no
-	// role — must keep working: global_role_id is optional, and requiring
-	// global_roles.assign unconditionally would over-restrict this route.
+func TestCreateGlobalAgent_WithoutRoleField_Creates(t *testing.T) {
 	called := false
 	svc := &mockAgentSvc{
 		createGlobalAgent: func(context.Context, agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
@@ -1473,8 +1473,7 @@ func TestCreateGlobalAgent_NoRoleField_AllowedWithoutRolesAssign(t *testing.T) {
 			return &agentdom.Agent{ID: uuid.New(), AgentScope: agentdom.AgentScopeGlobal, Name: "Test Bot", Handle: "test-bot"}, nil
 		},
 	}
-	r := newGlobalAgentAdminRouter(svc, authz.PermissionAgentsWrite)
-	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents", validGlobalAgentBody(nil))
+	w := doAgentRequest(t, newGlobalAgentAdminRouter(svc), http.MethodPost, "/admin/agents", validGlobalAgentBody(nil))
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
@@ -1484,62 +1483,26 @@ func TestCreateGlobalAgent_NoRoleField_AllowedWithoutRolesAssign(t *testing.T) {
 	}
 }
 
-func TestCreateGlobalAgent_SettingRoleWithRolesAssign_Allowed(t *testing.T) {
-	called := false
-	svc := &mockAgentSvc{
-		createGlobalAgent: func(context.Context, agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
-			called = true
-			return &agentdom.Agent{ID: uuid.New(), AgentScope: agentdom.AgentScopeGlobal, Name: "Test Bot", Handle: "test-bot"}, nil
-		},
-	}
-	r := newGlobalAgentAdminRouter(svc, authz.PermissionAgentsWrite, authz.PermissionGlobalRolesAssign)
-	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents",
-		validGlobalAgentBody(map[string]any{"global_role_id": uuid.New()}))
+func TestUpdateGlobalAgent_RejectsGlobalRoleID(t *testing.T) {
+	for name, roleID := range map[string]uuid.UUID{"a real role": uuid.New(), "the old clear sentinel": uuid.Nil} {
+		t.Run(name, func(t *testing.T) {
+			svc := &mockAgentSvc{
+				updateGlobalAgent: func(context.Context, uuid.UUID, agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
+					t.Fatal("UpdateGlobalAgent must not be called when the body sets global_role_id")
+					return nil, nil
+				},
+			}
+			w := doAgentRequest(t, newGlobalAgentAdminRouter(svc), http.MethodPatch, "/admin/agents/"+uuid.New().String(),
+				map[string]any{"global_role_id": roleID})
 
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-	if !called {
-		t.Error("expected CreateGlobalAgent to be called")
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
 	}
 }
 
-func TestUpdateGlobalAgent_SettingRoleWithoutRolesAssign_Returns403(t *testing.T) {
-	svc := &mockAgentSvc{
-		updateGlobalAgent: func(context.Context, uuid.UUID, agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
-			t.Fatal("UpdateGlobalAgent must not be called when global_roles.assign is missing")
-			return nil, nil
-		},
-	}
-	r := newGlobalAgentAdminRouter(svc, authz.PermissionAgentsWrite)
-	w := doAgentRequest(t, r, http.MethodPatch, "/admin/agents/"+uuid.New().String(),
-		map[string]any{"global_role_id": uuid.New()})
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 when setting global_role_id without global_roles.assign, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestUpdateGlobalAgent_ClearingRoleWithoutRolesAssign_Returns403(t *testing.T) {
-	// Clearing an existing role is still a role-assignment action, matching
-	// ReplaceUserRoles' all-or-nothing gate on the user-facing equivalent —
-	// ability to grant a role implies ability to revoke it, not the reverse.
-	svc := &mockAgentSvc{
-		updateGlobalAgent: func(context.Context, uuid.UUID, agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
-			t.Fatal("UpdateGlobalAgent must not be called when global_roles.assign is missing")
-			return nil, nil
-		},
-	}
-	r := newGlobalAgentAdminRouter(svc, authz.PermissionAgentsWrite)
-	w := doAgentRequest(t, r, http.MethodPatch, "/admin/agents/"+uuid.New().String(),
-		map[string]any{"global_role_id": uuid.Nil})
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 when clearing global_role_id without global_roles.assign, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestUpdateGlobalAgent_NoRoleField_AllowedWithoutRolesAssign(t *testing.T) {
+func TestUpdateGlobalAgent_WithoutRoleField_Updates(t *testing.T) {
 	called := false
 	svc := &mockAgentSvc{
 		updateGlobalAgent: func(context.Context, uuid.UUID, agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
@@ -1547,8 +1510,7 @@ func TestUpdateGlobalAgent_NoRoleField_AllowedWithoutRolesAssign(t *testing.T) {
 			return &agentdom.Agent{ID: uuid.New(), AgentScope: agentdom.AgentScopeGlobal, Name: "Renamed", Handle: "test-bot"}, nil
 		},
 	}
-	r := newGlobalAgentAdminRouter(svc, authz.PermissionAgentsWrite)
-	w := doAgentRequest(t, r, http.MethodPatch, "/admin/agents/"+uuid.New().String(),
+	w := doAgentRequest(t, newGlobalAgentAdminRouter(svc), http.MethodPatch, "/admin/agents/"+uuid.New().String(),
 		map[string]any{"name": "Renamed"})
 
 	if w.Code != http.StatusOK {
@@ -1556,5 +1518,89 @@ func TestUpdateGlobalAgent_NoRoleField_AllowedWithoutRolesAssign(t *testing.T) {
 	}
 	if !called {
 		t.Error("expected UpdateGlobalAgent to be called")
+	}
+}
+
+func TestSetGlobalAgentRole_BindsRole(t *testing.T) {
+	agentID, roleID := uuid.New(), uuid.New()
+	svc := &mockAgentSvc{
+		setGlobalAgentRole: func(_ context.Context, gotAgent uuid.UUID, gotRole *uuid.UUID) (*agentdom.Agent, error) {
+			if gotAgent != agentID || gotRole == nil || *gotRole != roleID {
+				t.Fatalf("service called with agent %v role %v, want %v / %v", gotAgent, gotRole, agentID, roleID)
+			}
+			return &agentdom.Agent{ID: agentID, AgentScope: agentdom.AgentScopeGlobal, GlobalRoleID: gotRole}, nil
+		},
+	}
+	w := doAgentRequest(t, newGlobalAgentAdminRouter(svc), http.MethodPut,
+		"/admin/agents/"+agentID.String()+"/global-role", map[string]any{"global_role_id": roleID})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), roleID.String()) {
+		t.Errorf("expected the bound role in the response, got %s", w.Body.String())
+	}
+}
+
+func TestSetGlobalAgentRole_RejectsMissingOrZeroRole(t *testing.T) {
+	for name, body := range map[string]map[string]any{
+		"missing field": {},
+		"zero uuid":     {"global_role_id": uuid.Nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc := &mockAgentSvc{
+				setGlobalAgentRole: func(context.Context, uuid.UUID, *uuid.UUID) (*agentdom.Agent, error) {
+					t.Fatal("SetGlobalAgentRole must not be called without a role")
+					return nil, nil
+				},
+			}
+			w := doAgentRequest(t, newGlobalAgentAdminRouter(svc), http.MethodPut,
+				"/admin/agents/"+uuid.New().String()+"/global-role", body)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestSetGlobalAgentRole_InvalidAgentID(t *testing.T) {
+	w := doAgentRequest(t, newGlobalAgentAdminRouter(&mockAgentSvc{}), http.MethodPut,
+		"/admin/agents/not-a-uuid/global-role", map[string]any{"global_role_id": uuid.New()})
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSetGlobalAgentRole_UnknownAgentMapsToNotFound(t *testing.T) {
+	svc := &mockAgentSvc{
+		setGlobalAgentRole: func(context.Context, uuid.UUID, *uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	w := doAgentRequest(t, newGlobalAgentAdminRouter(svc), http.MethodPut,
+		"/admin/agents/"+uuid.New().String()+"/global-role", map[string]any{"global_role_id": uuid.New()})
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestClearGlobalAgentRole_Unbinds(t *testing.T) {
+	agentID := uuid.New()
+	svc := &mockAgentSvc{
+		setGlobalAgentRole: func(_ context.Context, gotAgent uuid.UUID, gotRole *uuid.UUID) (*agentdom.Agent, error) {
+			if gotAgent != agentID || gotRole != nil {
+				t.Fatalf("service called with agent %v role %v, want %v / nil", gotAgent, gotRole, agentID)
+			}
+			return &agentdom.Agent{ID: agentID, AgentScope: agentdom.AgentScopeGlobal}, nil
+		},
+	}
+	w := doAgentRequest(t, newGlobalAgentAdminRouter(svc), http.MethodDelete,
+		"/admin/agents/"+agentID.String()+"/global-role", nil)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }

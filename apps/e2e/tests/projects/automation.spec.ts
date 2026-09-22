@@ -222,7 +222,6 @@ async function createLimitedMember(
 		data: {
 			username,
 			full_name: "E2E Automation Member",
-			role: "USER",
 			password: TEMP_PASSWORD,
 		},
 	});

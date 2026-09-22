@@ -216,10 +216,12 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 
 	// u.Role (freshly reloaded above in rotateRefreshToken), not claims.Role
 	// (the presented token's own, possibly stale claim) — otherwise a role
-	// change (e.g. a demotion away from "ADMIN", which resolves to a full
-	// wildcard via authz.LegacyPermissionsForRole) never takes effect for an
-	// already-issued refresh token until the user explicitly logs out. Mirrors
-	// why MustChangePassword is read from the freshly-reloaded u just above.
+	// change never shows up in an already-issued refresh token's claims until
+	// the user explicitly logs out. The role claim is informational (what the
+	// UI and plugins display): what a caller may do is decided per request
+	// from the permissions their role row stores, never from this name.
+	// Mirrors why MustChangePassword is read from the freshly-reloaded u just
+	// above.
 	access, err := s.tokens.IssueAccess(claims.Subject, claims.Username, u.Role, claims.FamilyID, u.MustChangePassword)
 	if err != nil {
 		return nil, err

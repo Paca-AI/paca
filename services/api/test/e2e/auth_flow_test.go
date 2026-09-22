@@ -119,16 +119,24 @@ func TestAuthFlow(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected permissions array, got %T (%v)", data["permissions"], data["permissions"])
 		}
-
-		foundGlobalRolesWildcard := false
+		got := map[string]bool{}
 		for _, p := range rawPerms {
-			s, ok := p.(string)
-			if ok && s == "global_roles.*" {
-				foundGlobalRolesWildcard = true
+			if s, ok := p.(string); ok {
+				got[s] = true
 			}
 		}
-		if !foundGlobalRolesWildcard {
-			t.Fatalf("expected global_roles.* in permissions, got %v", rawPerms)
+
+		if !got["global_roles.read"] {
+			t.Fatalf("expected global_roles.read (from the assigned ADMIN role) in permissions, got %v", rawPerms)
+		}
+		// ADMIN may see the global roles but not define or hand them out — either
+		// would let it grant itself the wildcard (see authz.DefaultGlobalRoles,
+		// GHSA-hjcj-373w-vq8m). This must never regress back to the bare
+		// global_roles.* it held before that fix.
+		for _, rootEquivalent := range []string{"global_roles.*", "global_roles.write", "global_roles.assign", "*"} {
+			if got[rootEquivalent] {
+				t.Fatalf("expected ADMIN's permissions to NOT include the root-equivalent %q, got %v", rootEquivalent, rawPerms)
+			}
 		}
 	})
 

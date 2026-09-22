@@ -28,16 +28,18 @@ type GlobalPermissionReader interface {
 	ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error)
 }
 
-// RoleByNameFinder looks up a global role by its unique name.
-type RoleByNameFinder interface {
-	FindByName(ctx context.Context, name string) (*globalroledom.GlobalRole, error)
+// DefaultRoleFinder looks up the global role a new user starts with: the one
+// marked as the default (see globalroledom.Service.SetDefault). Satisfied by
+// the global role repository and service.
+type DefaultRoleFinder interface {
+	FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error)
 }
 
 // Service is the concrete implementation of domain/user.Service.
 type Service struct {
 	repo                   userdom.Repository
 	globalPermissionReader GlobalPermissionReader
-	roleRepo               RoleByNameFinder
+	roleRepo               DefaultRoleFinder
 	avatarSvc              attachmentdom.AvatarService
 	tokenRepo              userdom.PasswordSetTokenRepository
 	publisher              *messaging.Publisher
@@ -60,14 +62,14 @@ var ErrPasswordSetTokenRepoRequired = errors.New("user svc: password set token r
 const passwordSetTokenTTL = 24 * time.Hour
 
 // New returns a configured user Service.
-// Pass optional GlobalPermissionReader and RoleByNameFinder as variadic args.
+// Pass optional GlobalPermissionReader and DefaultRoleFinder as variadic args.
 func New(repo userdom.Repository, opts ...any) *Service {
 	s := &Service{repo: repo}
 	for _, opt := range opts {
 		switch v := opt.(type) {
 		case GlobalPermissionReader:
 			s.globalPermissionReader = v
-		case RoleByNameFinder:
+		case DefaultRoleFinder:
 			s.roleRepo = v
 		}
 	}
@@ -124,17 +126,16 @@ func (s *Service) CountUsersMustChangePassword(ctx context.Context) (int64, erro
 	return s.repo.CountUsersMustChangePassword(ctx)
 }
 
-// ListGlobalPermissions returns effective global permissions for the user.
+// ListGlobalPermissions returns effective global permissions for the user:
+// exactly what the permission store resolves from the role they are assigned,
+// i.e. the same set the authorizer enforces. It is deliberately not padded
+// with any default set keyed on the role's name — the web UI decides what to
+// show and enable from this list, so a list broader than what the API will
+// actually allow would make it offer actions the server then rejects.
 func (s *Service) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]string, error) {
-	u, err := s.repo.FindByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
+	// No separate user lookup: the permission source already yields nothing for
+	// an unknown or deleted user, and this runs on every page load.
 	seen := map[string]struct{}{}
-	for _, p := range authz.LegacyPermissionsForRole(u.Role) {
-		seen[string(p)] = struct{}{}
-	}
 
 	if s.globalPermissionReader != nil {
 		perms, err := s.globalPermissionReader.ListGlobalPermissions(ctx, id)
@@ -155,8 +156,10 @@ func (s *Service) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]st
 	return out, nil
 }
 
-// Create registers a new user with a hashed password.
-// If Role is provided, it is resolved to a RoleID via roleRepo.
+// Create registers a new user with a hashed password. The account is given
+// the default global role (whichever role is marked as the default, not a role
+// with a fixed name); any other role is assigned afterwards through the
+// global-role assignment route.
 func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.User, error) {
 	// Check username uniqueness among active users only; a soft-deleted
 	// user's username is freed up for reuse.
@@ -179,22 +182,19 @@ func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.
 		return nil, fmt.Errorf("user svc: hash password: %w", err)
 	}
 
-	roleName := in.Role
-	if roleName == "" {
-		roleName = userdom.RoleUser
-	}
 	if s.roleRepo == nil {
 		return nil, ErrRoleResolverRequired
 	}
 
-	r, err := s.roleRepo.FindByName(ctx, roleName)
+	r, err := s.roleRepo.FindDefault(ctx)
 	if err != nil {
-		if errors.Is(err, globalroledom.ErrNotFound) {
-			return nil, globalroledom.ErrNotFound
+		if errors.Is(err, globalroledom.ErrNoDefault) {
+			return nil, globalroledom.ErrNoDefault
 		}
-		return nil, fmt.Errorf("user svc: create: lookup role: %w", err)
+		return nil, fmt.Errorf("user svc: create: lookup default role: %w", err)
 	}
 	roleID := r.ID
+	roleName := r.Name
 
 	now := time.Now()
 	u := &userdom.User{
@@ -295,8 +295,10 @@ func (s *Service) checkEmailAvailable(ctx context.Context, email string) error {
 	return nil
 }
 
-// AdminUpdate applies admin-level changes to any user account.
-// If Role is provided, it is resolved to a RoleID via roleRepo.
+// AdminUpdate applies admin-level profile changes to any user account. It
+// never touches the user's role: that is a separate privilege
+// (global_roles.assign) with its own service path, so the role can only change
+// through the route that requires it.
 func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, in userdom.AdminUpdateInput) (*userdom.User, error) {
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -305,22 +307,6 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, in userdom.Admi
 
 	if in.FullName != "" {
 		u.FullName = in.FullName
-	}
-	if in.Role != "" {
-		if s.roleRepo == nil {
-			return nil, ErrRoleResolverRequired
-		}
-
-		r, err := s.roleRepo.FindByName(ctx, in.Role)
-		if err != nil {
-			if errors.Is(err, globalroledom.ErrNotFound) {
-				// propagate domain-typed not-found error so presenter can map to a 4xx
-				return nil, globalroledom.ErrNotFound
-			}
-			return nil, fmt.Errorf("user svc: admin update: lookup role: %w", err)
-		}
-		u.RoleID = r.ID
-		u.Role = in.Role
 	}
 	if in.Email != "" && (u.Email == nil || *u.Email != in.Email) {
 		if err := s.checkEmailAvailable(ctx, in.Email); err != nil {

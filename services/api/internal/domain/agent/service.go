@@ -91,6 +91,12 @@ type AgentService interface {
 	GetGlobalAgent(ctx context.Context, agentID uuid.UUID) (*Agent, error)
 	CreateGlobalAgent(ctx context.Context, in CreateGlobalAgentInput) (*Agent, error)
 	UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in UpdateAgentInput) (*Agent, error)
+	// SetGlobalAgentRole binds a global agent to the global role that decides
+	// what it may do, or unbinds it when roleID is nil. It is the only way an
+	// agent's role changes — CreateGlobalAgent/UpdateGlobalAgent don't carry
+	// one — because binding a role is a privilege of its own
+	// (global_roles.assign), so it lives behind a route that requires it.
+	SetGlobalAgentRole(ctx context.Context, agentID uuid.UUID, roleID *uuid.UUID) (*Agent, error)
 	// DeleteGlobalAgent soft-deletes the agent and every project_members row
 	// referencing it, across every project it was invited into.
 	DeleteGlobalAgent(ctx context.Context, agentID uuid.UUID) error
@@ -335,7 +341,8 @@ type CreateAgentInput struct {
 // CreateGlobalAgentInput carries fields required to create a global agent.
 // Mirrors CreateAgentInput minus ProjectRoleID (nothing to assign at
 // creation time — a global agent gets a project role only later, when
-// invited into a project), plus GlobalRoleID.
+// invited into a project). A new global agent has no global role either: it
+// is bound afterwards with SetGlobalAgentRole.
 type CreateGlobalAgentInput struct {
 	Name              string
 	Handle            string
@@ -353,7 +360,6 @@ type CreateGlobalAgentInput struct {
 	GitCommitterEmail string
 	DockerEnabled     bool
 	ParallelismLimit  int
-	GlobalRoleID      *uuid.UUID
 	CreatedBy         *uuid.UUID
 }
 
@@ -384,18 +390,13 @@ type UpdateAgentInput struct {
 	// ParallelismLimit: nil means unchanged, same convention as every other
 	// pointer field here. See Agent.ParallelismLimit's doc comment.
 	ParallelismLimit *int
-	// GlobalRoleID is only meaningful for AgentScopeGlobal agents (see
-	// UpdateGlobalAgent); ignored by UpdateAgent for project-scoped agents.
-	GlobalRoleID *uuid.UUID
 	// DefaultEnvironmentID: nil means "the request didn't mention
 	// default_environment_id — leave it unchanged" (a JSON body with the
 	// key absent, or explicit null, decode to the same nil pointer either
-	// way); a pointer to uuid.Nil explicitly clears it — same
-	// "pass a zero UUID to clear" convention GlobalRoleID above already
-	// uses, for the identical reason (a plain pointer can't otherwise tell
-	// "omitted" from "explicit null"). Ignored by UpdateGlobalAgent — a
-	// global agent can never have a default environment (see
-	// Agent.DefaultEnvironmentID's doc comment).
+	// way); a pointer to uuid.Nil explicitly clears it (a plain pointer
+	// can't otherwise tell "omitted" from "explicit null"). Ignored by
+	// UpdateGlobalAgent — a global agent can never have a default
+	// environment (see Agent.DefaultEnvironmentID's doc comment).
 	DefaultEnvironmentID *uuid.UUID
 	// DefaultFolderID: same "nil means unchanged, uuid.Nil clears" contract
 	// as DefaultEnvironmentID above. When both fields are set in the same

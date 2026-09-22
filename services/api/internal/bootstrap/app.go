@@ -101,7 +101,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	tokenManager := jwttoken.New(cfg.JWT.Secret, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL)
 	permissionStore := pgRepo.NewAuthzPermissionStore(db)
-	authorizer := authz.NewAuthorizer(permissionStore).WithAgentRoleResolver(permissionStore)
+	authorizer := authz.NewAuthorizer(permissionStore)
 
 	// --- Repositories -------------------------------------------------------
 	userRepo := pgRepo.NewUserRepository(db)
@@ -180,8 +180,8 @@ func New(cfg *config.Config) (*App, error) {
 	// Backs GetConversationForAgent's agents.read check (read_conversation
 	// MCP tool) — see agentsvc.Service.authorizer's doc comment.
 	agentService = agentService.WithAuthorizer(authorizer)
-	// Backs CreateGlobalAgent/UpdateGlobalAgent's global_role_id existence
-	// check — see agentsvc.Service.globalRoleSvc's doc comment
+	// Backs SetGlobalAgentRole's global_role_id existence check — see
+	// agentsvc.Service.globalRoleSvc's doc comment
 	// (GHSA-xxc8-ggm7-vmxp).
 	agentService = agentService.WithGlobalRoleService(globalRoleService)
 	settingsService := settingssvc.New(settingsRepo)
@@ -424,8 +424,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithMemberRepo(projectRepo).
 		WithGlobalPermissionReader(permissionStore).
 		WithAvatarService(attachmentService).
-		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo)).
-		WithAuthorizer(authorizer)
+		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo))
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
 		WithMemberRepo(projectRepo)
@@ -668,6 +667,24 @@ func seedDefaultRoles(
 		if err := globalRoleRepo.Update(ctx, role); err != nil {
 			return fmt.Errorf("seed global roles: update %s: %w", def.Name, err)
 		}
+	}
+
+	// New users and global agents start with the default role, so one must
+	// exist. A database from before the default flag, or one whose default was
+	// removed, gets USER (re-created above if it was deleted) as the default.
+	// A default someone has chosen is never overridden here.
+	if _, err := globalRoleRepo.FindDefault(ctx); err != nil {
+		if !errors.Is(err, globalroledom.ErrNoDefault) {
+			return fmt.Errorf("seed global roles: find default role: %w", err)
+		}
+		userRole, err := globalRoleRepo.FindByName(ctx, userdom.RoleUser)
+		if err != nil {
+			return fmt.Errorf("seed global roles: load %s role: %w", userdom.RoleUser, err)
+		}
+		if err := globalRoleRepo.SetDefault(ctx, userRole.ID); err != nil {
+			return fmt.Errorf("seed global roles: set default role: %w", err)
+		}
+		log.Info("no default global role was set; USER is now the default")
 	}
 
 	if err := seedDefaultProjectRoleTemplates(ctx, db); err != nil {

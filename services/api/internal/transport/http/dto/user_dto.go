@@ -10,7 +10,9 @@ import (
 )
 
 // CreateUserRequest is the body for POST /admin/users.
-// Only users with the users.write permission can create accounts.
+// Only users with the users.write permission can create accounts. A new
+// account always gets the default USER role; assign another with
+// PUT /admin/users/:userId/global-roles.
 type CreateUserRequest struct {
 	Username string `json:"username"  binding:"required"`
 	Password string `json:"password"  binding:"required,min=8"`
@@ -19,8 +21,10 @@ type CreateUserRequest struct {
 	// plugin's welcome/invite email) — not for login. When set, a
 	// user.created event carrying it is published for plugins to act on.
 	Email string `json:"email" binding:"omitempty"`
-	// Role is optional; defaults to "USER" when omitted.
-	// The provided role name is validated against the global_roles table.
+	// Role is no longer accepted here — assigning a role needs
+	// global_roles.assign, so it has its own route. The field exists only so
+	// a request that still sends one is rejected with a clear 400 instead of
+	// having it silently ignored.
 	Role string `json:"role" binding:"omitempty"`
 }
 
@@ -31,10 +35,12 @@ type UpdateProfileRequest struct {
 	Email string `json:"email" binding:"omitempty"`
 }
 
-// AdminUpdateUserRequest is the body for PATCH /admin/users/:userId.
+// AdminUpdateUserRequest is the body for PATCH /admin/users/:userId. It edits
+// the profile only; change a user's role with
+// PUT /admin/users/:userId/global-roles.
 type AdminUpdateUserRequest struct {
 	FullName string `json:"full_name" binding:"omitempty"`
-	// Role is optional; the provided name is validated against the global_roles table.
+	// Role is no longer accepted here — see CreateUserRequest.Role.
 	Role string `json:"role" binding:"omitempty"`
 	// Email is left unchanged when omitted/empty.
 	Email string `json:"email" binding:"omitempty"`

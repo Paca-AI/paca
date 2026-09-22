@@ -6,10 +6,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
+	"github.com/Paca-AI/api/internal/platform/authz"
+	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 )
 
 // envelope mirrors the presenter.envelope shape for JSON decoding.
@@ -95,6 +99,39 @@ func cookieValue(resp *http.Response, name string) string {
 		}
 	}
 	return ""
+}
+
+// syncBuiltinGlobalRoles brings the built-in global role rows in line with
+// authz.DefaultGlobalRoles, the way bootstrap's seedDefaultRoles does on every
+// production startup. The init migration seeds ADMIN with an older, narrower
+// permission set, and authorization grants only what a role row actually
+// stores (never anything keyed off the role's name), so without this the
+// harness's ADMIN would be weaker than a real deployment's.
+func syncBuiltinGlobalRoles(t *testing.T, roleRepo *pgRepo.GlobalRoleRepository) {
+	t.Helper()
+	ctx := context.Background()
+	for _, def := range authz.DefaultGlobalRoles() {
+		perms := make(map[string]any, len(def.Permissions))
+		for _, p := range def.Permissions {
+			perms[string(p)] = true
+		}
+
+		role, err := roleRepo.FindByName(ctx, def.Name)
+		if err != nil {
+			now := time.Now()
+			if createErr := roleRepo.Create(ctx, &globalroledom.GlobalRole{
+				ID: uuid.New(), Name: def.Name, Permissions: perms, CreatedAt: now, UpdatedAt: now,
+			}); createErr != nil {
+				t.Fatalf("create built-in role %q: %v", def.Name, createErr)
+			}
+			continue
+		}
+		role.Permissions = perms
+		role.UpdatedAt = time.Now()
+		if err := roleRepo.Update(ctx, role); err != nil {
+			t.Fatalf("sync built-in role %q: %v", def.Name, err)
+		}
+	}
 }
 
 func seedUser(t *testing.T, env *e2eEnv, username, password, fullName string) {

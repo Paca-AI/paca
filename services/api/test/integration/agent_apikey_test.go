@@ -84,7 +84,7 @@ func buildAgentKeyRouterWithBotID(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKey
 	if store == nil {
 		store = &projectPermStore{}
 	}
-	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(store)
+	authorizer := authz.NewAuthorizer(store)
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
@@ -163,11 +163,6 @@ func TestAgentAPIKey_CreateTask_Success(t *testing.T) {
 		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 			projectID: {
 				agentID: {authz.PermissionTasksWrite},
-			},
-		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_developer",
 			},
 		},
 	}
@@ -276,11 +271,6 @@ func TestAgentAPIKey_CreateTask_NoPermission_Returns403(t *testing.T) {
 				agentID: {authz.PermissionTasksRead},
 			},
 		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_reader",
-			},
-		},
 	}
 
 	r := buildAgentKeyRouter(taskRepo, apiKeyRepo, store)
@@ -317,11 +307,6 @@ func TestAgentAPIKey_AddComment_Success(t *testing.T) {
 		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 			projectID: {
 				agentID: {authz.PermissionTasksWrite},
-			},
-		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_developer",
 			},
 		},
 	}
@@ -445,11 +430,6 @@ func TestAgentAPIKey_UpdateComment_Success(t *testing.T) {
 				agentID: {authz.PermissionTasksWrite},
 			},
 		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_developer",
-			},
-		},
 	}
 
 	// Seed task and comment
@@ -514,11 +494,6 @@ func TestAgentAPIKey_UpdateTask_Success(t *testing.T) {
 				agentID: {authz.PermissionTasksWrite},
 			},
 		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_developer",
-			},
-		},
 	}
 
 	// Seed a task directly
@@ -576,11 +551,6 @@ func TestAgentAPIKey_ListTasks_Success(t *testing.T) {
 		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 			projectID: {
 				agentID: {authz.PermissionTasksRead},
-			},
-		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_reader",
 			},
 		},
 	}
@@ -643,11 +613,6 @@ func TestAgentAPIKey_GetTask_Success(t *testing.T) {
 				agentID: {authz.PermissionTasksRead},
 			},
 		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_reader",
-			},
-		},
 	}
 
 	// Seed a task directly
@@ -706,11 +671,6 @@ func TestAgentAPIKey_GetTask_NotFound(t *testing.T) {
 				agentID: {authz.PermissionTasksRead},
 			},
 		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_reader",
-			},
-		},
 	}
 
 	r := buildAgentKeyRouter(taskRepo, apiKeyRepo, store)
@@ -748,11 +708,6 @@ func TestAgentAPIKey_DeleteTask_Success(t *testing.T) {
 		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 			projectID: {
 				agentID: {authz.PermissionTasksWrite},
-			},
-		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_developer",
 			},
 		},
 	}
@@ -802,11 +757,6 @@ func TestAgentAPIKey_CommentWorkflow(t *testing.T) {
 		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 			projectID: {
 				agentID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
-			},
-		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_developer",
 			},
 		},
 	}
@@ -1007,11 +957,6 @@ func TestAgentAPIKey_BulkTaskOperations(t *testing.T) {
 				agentID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
 			},
 		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_developer",
-			},
-		},
 	}
 
 	r := buildAgentKeyRouter(taskRepo, apiKeyRepo, store)
@@ -1126,11 +1071,6 @@ func TestAgentAPIKey_PermissionScenarios(t *testing.T) {
 					agentID: {authz.PermissionTasksRead},
 				},
 			},
-			agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-				projectID: {
-					agentID: "agent_reader",
-				},
-			},
 		}
 		r := buildAgentKeyRouter(taskRepo, apiKeyRepo, store)
 
@@ -1150,11 +1090,6 @@ func TestAgentAPIKey_PermissionScenarios(t *testing.T) {
 			agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 				projectID: {
 					agentID: {authz.PermissionTasksWrite},
-				},
-			},
-			agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-				projectID: {
-					agentID: "agent_developer",
 				},
 			},
 		}
@@ -1178,11 +1113,6 @@ func TestAgentAPIKey_PermissionScenarios(t *testing.T) {
 			agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 				projectID: {
 					agentID: {},
-				},
-			},
-			agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-				projectID: {
-					agentID: "agent_no_perms",
 				},
 			},
 		}
@@ -1294,7 +1224,7 @@ func buildAgentMCPKeyRouter(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKeyRepo, 
 	if store == nil {
 		store = &projectPermStore{}
 	}
-	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(store)
+	authorizer := authz.NewAuthorizer(store)
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
@@ -1334,11 +1264,6 @@ func TestAgentMCPKey_CreateTask_Success(t *testing.T) {
 		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 			projectID: {
 				agentID: {authz.PermissionTasksWrite},
-			},
-		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				agentID: "agent_developer",
 			},
 		},
 	}
@@ -1409,9 +1334,6 @@ func TestAgentMCPKey_RegeneratedKey_InvalidatesOldKey(t *testing.T) {
 		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
 			projectID: {agentID: {authz.PermissionTasksRead}},
 		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {agentID: "agent_reader"},
-		},
 	}
 
 	r := buildAgentMCPKeyRouter(taskRepo, apiKeyRepo, store, identityStore)
@@ -1470,12 +1392,6 @@ func TestAgentMCPKey_XAgentIDHeaderIgnored(t *testing.T) {
 			projectID: {
 				ownAgentID:   {authz.PermissionTasksRead},
 				otherAgentID: {}, // explicitly no permissions
-			},
-		},
-		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
-			projectID: {
-				ownAgentID:   "agent_reader",
-				otherAgentID: "agent_no_perms",
 			},
 		},
 	}

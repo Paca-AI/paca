@@ -127,6 +127,62 @@ export async function firstProjectRoleId(
 
 // ─── Users / roles ───────────────────────────────────────────────────────────
 
+/**
+ * Sets a user's global role by name. The API assigns roles by id, on their own
+ * endpoint (`global_roles.assign`) — creating or editing a user never carries
+ * one — so this looks the id up first.
+ */
+export async function assignGlobalRole(
+	request: APIRequestContext,
+	userId: string,
+	roleName: string,
+): Promise<void> {
+	const list = await request.get(`${API_URL}/admin/global-roles`);
+	expect(list.ok()).toBeTruthy();
+	const roles: Array<{ id: string; name: string }> =
+		(await list.json()).data ?? [];
+	const role = roles.find((r) => r.name === roleName);
+	expect(role, `global role ${roleName} exists`).toBeTruthy();
+
+	const assigned = await request.put(
+		`${API_URL}/admin/users/${userId}/global-roles`,
+		{
+			data: { role_ids: [role?.id] },
+		},
+	);
+	expect(assigned.ok()).toBeTruthy();
+}
+
+/** The id of the global role called `roleName` (built-ins: SUPER_ADMIN, ADMIN, USER). */
+export async function globalRoleIdByName(
+	request: APIRequestContext,
+	roleName: string,
+): Promise<string> {
+	const list = await request.get(`${API_URL}/admin/global-roles`);
+	expect(list.ok()).toBeTruthy();
+	const roles: Array<{ id: string; name: string }> =
+		(await list.json()).data ?? [];
+	const role = roles.find((r) => r.name === roleName);
+	expect(role, `global role ${roleName} exists`).toBeTruthy();
+	return role?.id ?? "";
+}
+
+/**
+ * Binds a global agent to a global role by name, on the role's own endpoint
+ * (`agents.write` + `global_roles.assign`): creating an agent never carries one.
+ */
+export async function bindGlobalAgentRole(
+	request: APIRequestContext,
+	agentId: string,
+	roleName: string,
+): Promise<void> {
+	const bound = await request.put(
+		`${API_URL}/admin/agents/${agentId}/global-role`,
+		{ data: { global_role_id: await globalRoleIdByName(request, roleName) } },
+	);
+	expect(bound.ok()).toBeTruthy();
+}
+
 async function createUserWithPassword(
 	request: APIRequestContext,
 	playwright: Playwright,
@@ -137,11 +193,13 @@ async function createUserWithPassword(
 			username: user.username,
 			full_name: user.fullName,
 			password: TEMP_PASSWORD,
-			...(user.role ? { role: user.role } : {}),
 		},
 	});
 	expect(created.ok()).toBeTruthy();
 	const userId = (await created.json()).data.id as string;
+	if (user.role && user.role !== "USER") {
+		await assignGlobalRole(request, userId, user.role);
+	}
 
 	// A freshly created account must change its temporary password before
 	// it can do anything else; do that over the API so UI tests can sign in
@@ -320,7 +378,9 @@ export async function createGlobalAgent(
 
 export async function listGlobalAgents(
 	request: APIRequestContext,
-): Promise<Array<{ id: string; name: string }>> {
+): Promise<
+	Array<{ id: string; name: string; global_role_id?: string | null }>
+> {
 	const response = await request.get(`${API_URL}/admin/agents`);
 	expect(response.ok()).toBeTruthy();
 	return (await response.json()).data.items ?? [];

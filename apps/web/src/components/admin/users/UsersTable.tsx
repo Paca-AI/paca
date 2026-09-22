@@ -1,4 +1,4 @@
-import { Edit2, KeyRound, Lock, Trash2 } from "lucide-react";
+import { ChevronDown, Edit2, KeyRound, Lock, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -23,22 +23,42 @@ function formatDate(iso: string): string {
 
 interface UsersTableProps {
 	users: User[];
+	/** Whether the viewer may edit a profile and reset a password (`users.write`). */
 	canWrite: boolean;
+	/** Whether the viewer may delete a user. `users.delete` is its own
+	 * permission, apart from `canWrite` — a role that can edit users is not
+	 * necessarily allowed to remove them — so it is shown (and hidden)
+	 * independently, the same way `canAssignRole` already is below. */
+	canDelete: boolean;
+	/** Whether the viewer may change a user's role. That is its own permission,
+	 * apart from `canWrite`, so it is shown (and hidden) independently. */
+	canAssignRole: boolean;
 	currentUserId?: string;
 	onEdit: (user: User) => void;
 	onDelete: (user: User) => void;
 	onResetPassword: (user: User) => void;
+	onChangeRole: (user: User) => void;
 }
+
+const ROLE_PILL =
+	"inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium leading-none text-foreground/80";
 
 export function UsersTable({
 	users,
 	canWrite,
+	canDelete,
+	canAssignRole,
 	currentUserId,
 	onEdit,
 	onDelete,
 	onResetPassword,
+	onChangeRole,
 }: UsersTableProps) {
 	const { t } = useTranslation("admin");
+	// The actions column exists if either action it can hold is available —
+	// mirrors each button's own gate below, so the column never shows empty
+	// and never hides a button that should be there.
+	const hasActionsColumn = canWrite || canDelete;
 
 	return (
 		<div className="overflow-x-auto rounded-xl border">
@@ -57,7 +77,7 @@ export function UsersTable({
 						<TableHead className="w-32 px-5 text-xs font-semibold uppercase tracking-wide">
 							{t("users.table.columnCreated")}
 						</TableHead>
-						{canWrite ? (
+						{hasActionsColumn ? (
 							<TableHead className="w-28 px-5 text-xs font-semibold uppercase tracking-wide" />
 						) : null}
 					</TableRow>
@@ -93,33 +113,50 @@ export function UsersTable({
 									)}
 								</TableCell>
 								<TableCell className="px-5">
-									<span className="inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium leading-none text-foreground/80">
-										{user.role}
-									</span>
+									{canAssignRole ? (
+										<button
+											type="button"
+											onClick={() => onChangeRole(user)}
+											title={t("users.table.changeRoleAction")}
+											className={`${ROLE_PILL} gap-1 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30`}
+										>
+											{user.role}
+											<ChevronDown
+												className="size-3 text-muted-foreground"
+												aria-hidden="true"
+											/>
+										</button>
+									) : (
+										<span className={ROLE_PILL}>{user.role}</span>
+									)}
 								</TableCell>
 								<TableCell className="px-5 text-sm text-muted-foreground">
 									{formatDate(user.created_at)}
 								</TableCell>
-								{canWrite ? (
+								{hasActionsColumn ? (
 									<TableCell className="px-5">
 										<div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-											<Button
-												variant="ghost"
-												size="icon-sm"
-												onClick={() => onResetPassword(user)}
-												title={t("users.table.resetPasswordAction")}
-											>
-												<KeyRound className="size-3.5" />
-											</Button>
-											<Button
-												variant="ghost"
-												size="icon-sm"
-												onClick={() => onEdit(user)}
-												title={t("users.table.editAction")}
-											>
-												<Edit2 className="size-3.5" />
-											</Button>
-											{!isSelf ? (
+											{canWrite ? (
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													onClick={() => onResetPassword(user)}
+													title={t("users.table.resetPasswordAction")}
+												>
+													<KeyRound className="size-3.5" />
+												</Button>
+											) : null}
+											{canWrite ? (
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													onClick={() => onEdit(user)}
+													title={t("users.table.editAction")}
+												>
+													<Edit2 className="size-3.5" />
+												</Button>
+											) : null}
+											{canDelete && !isSelf ? (
 												<Button
 													variant="ghost"
 													size="icon-sm"

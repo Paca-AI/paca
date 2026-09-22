@@ -149,6 +149,10 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeGlobalRoleNameInvalid
 	case errors.Is(err, globalroledom.ErrHasAssignedUsers):
 		return http.StatusConflict, apierr.CodeGlobalRoleHasUsers
+	case errors.Is(err, globalroledom.ErrIsDefault):
+		return http.StatusConflict, apierr.CodeGlobalRoleIsDefault
+	case errors.Is(err, globalroledom.ErrNoDefault):
+		return http.StatusConflict, apierr.CodeGlobalRoleNoDefault
 	case errors.Is(err, projectdom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeProjectNotFound
 	case errors.Is(err, projectdom.ErrNameTaken):
@@ -191,6 +195,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusForbidden, apierr.CodeTaskTypeIsSystem
 	case errors.Is(err, taskdom.ErrTypeNameReserved):
 		return http.StatusConflict, apierr.CodeTaskTypeNameReserved
+	case errors.Is(err, taskdom.ErrTypeIsDefault):
+		return http.StatusConflict, apierr.CodeTaskTypeIsDefault
 	case errors.Is(err, taskdom.ErrStatusNotFound):
 		return http.StatusNotFound, apierr.CodeTaskStatusNotFound
 	case errors.Is(err, taskdom.ErrStatusNameInvalid):
@@ -201,6 +207,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeTaskStatusReorderInvalid
 	case errors.Is(err, taskdom.ErrStatusInUseByAutomation):
 		return http.StatusConflict, apierr.CodeTaskStatusInUseByAutomation
+	case errors.Is(err, taskdom.ErrStatusIsDefault):
+		return http.StatusConflict, apierr.CodeTaskStatusIsDefault
 	case errors.Is(err, sprintdom.ErrSprintNotFound):
 		return http.StatusNotFound, apierr.CodeSprintNotFound
 	case errors.Is(err, sprintdom.ErrSprintNameInvalid):

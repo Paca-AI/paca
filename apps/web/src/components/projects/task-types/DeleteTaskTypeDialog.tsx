@@ -51,6 +51,11 @@ export function DeleteTaskTypeDialog({
 				onOpenChange(false);
 				return;
 			}
+			// Someone made this the default while the dialog was open.
+			if (code === ApiErrorCode.TaskTypeIsDefault) {
+				setError(t("taskTypes.deleteDialog.isDefault"));
+				return;
+			}
 			setError(t("taskTypes.deleteDialog.deleteFailed"));
 		},
 	});

@@ -14,12 +14,14 @@ var (
 	ErrTypeNameInvalid  = errors.New("task type: name is empty or invalid")
 	ErrTypeIsSystem     = errors.New("task type: system types cannot be modified")
 	ErrTypeNameReserved = errors.New("task type: name is reserved for system types")
+	ErrTypeIsDefault    = errors.New("task type: the default type cannot be deleted")
 
 	ErrStatusNotFound          = errors.New("task status: not found")
 	ErrStatusNameInvalid       = errors.New("task status: name is empty or invalid")
 	ErrStatusCategoryInvalid   = errors.New("task status: invalid category value")
 	ErrStatusReorderInvalid    = errors.New("task status: provided status IDs do not match the project's statuses")
 	ErrStatusInUseByAutomation = errors.New("task status: still referenced by an automation")
+	ErrStatusIsDefault         = errors.New("task status: the default status cannot be deleted")
 
 	ErrCustomFieldNotFound    = errors.New("custom field: not found")
 	ErrCustomFieldKeyInvalid  = errors.New("custom field: key is empty or invalid")

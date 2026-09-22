@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { DeleteTaskTypeDialog } from "@/components/projects/task-types/DeleteTaskTypeDialog";
 import { TaskTypeFormDialog } from "@/components/projects/task-types/TaskTypeFormDialog";
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
+import { DisabledDeleteButton } from "@/components/shared/disabled-delete-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -227,16 +228,26 @@ export function TaskTypesSettings({
 												>
 													<Edit2 className="size-3.5" />
 												</Button>
-												<Button
-													variant="ghost"
-													size="icon-sm"
-													className="text-destructive hover:text-destructive hover:bg-destructive/10"
-													onClick={() => setDeleteType(type)}
-													title={t("settings.taskTypes.deleteType")}
-													aria-label={t("settings.taskTypes.deleteType")}
-												>
-													<Trash2 className="size-3.5" />
-												</Button>
+												{type.is_default ? (
+													// New tasks get the default type, so it can't go.
+													<DisabledDeleteButton
+														label={t("settings.taskTypes.deleteType")}
+														reason={t(
+															"settings.taskTypes.deleteDefaultDisabled",
+														)}
+													/>
+												) : (
+													<Button
+														variant="ghost"
+														size="icon-sm"
+														className="text-destructive hover:text-destructive hover:bg-destructive/10"
+														onClick={() => setDeleteType(type)}
+														title={t("settings.taskTypes.deleteType")}
+														aria-label={t("settings.taskTypes.deleteType")}
+													>
+														<Trash2 className="size-3.5" />
+													</Button>
+												)}
 											</div>
 										) : null}
 									</TableCell>

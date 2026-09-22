@@ -223,6 +223,17 @@ Feature: Task types management
       Then the "Delete task type" dialog should close
       And the task types table should still contain a type named "E2E Delete Me Type"
 
+    Scenario: The default type cannot be deleted
+      Then the default type should show "Delete type" disabled with the reason "The default type can't be deleted. Make another type the default first."
+      And the default type should still offer "Edit type"
+      And the type named "E2E Delete Me Type" should offer "Delete type"
+      And the API should refuse to delete the default type with the code "TASK_TYPE_IS_DEFAULT"
+
+    Scenario: Making another type the default moves the protection to it
+      When the user clicks "Set as default type" for the type named "E2E Delete Me Type"
+      Then the type named "E2E Delete Me Type" should carry the "Default" mark
+      And the type named "E2E Delete Me Type" should show "Delete type" disabled
+
   @authenticated
   Rule: System task types are protected from modification
 

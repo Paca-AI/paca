@@ -34,6 +34,7 @@
 			"noFullName": "—",
 			"resetPasswordAction": "비밀번호 재설정",
 			"editAction": "사용자 수정",
+			"changeRoleAction": "역할 변경",
 			"deleteAction": "사용자 삭제"
 		},
 		"formDialog": {
@@ -47,8 +48,10 @@
 			"done": "완료",
 			"editTitle": "사용자 수정",
 			"createTitle": "사용자 생성",
-			"editDescription": "사용자의 표시 이름과 역할 배정을 업데이트하세요.",
+			"editDescription": "사용자의 표시 이름과 이메일을 업데이트합니다.",
 			"createDescription": "안전한 임시 비밀번호가 자동으로 생성됩니다. 사용자는 첫 로그인 시 비밀번호를 변경해야 합니다.",
+			"roleStepDescription": "{{username}}이(가) {{role}} 역할로 생성되었습니다. 그대로 두거나 다른 역할을 선택하세요.",
+			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "사용자 이름",
 			"usernamePlaceholder": "예: john.doe",
 			"fullNameLabel": "전체 이름",
@@ -56,10 +59,11 @@
 			"emailLabel": "이메일",
 			"emailOptionalHint": "(선택 사항 — 비밀번호 설정 링크가 포함된 환영 이메일을 보냅니다)",
 			"emailPlaceholder": "예: john.doe@example.com",
-			"roleLabel": "역할",
-			"roleOptionalHint": "(선택사항 — 기본값은 USER)",
-			"rolePlaceholder": "역할을 선택하세요…",
+			"roleStep": {
+				"title": "역할"
+			},
 			"cancel": "취소",
+			"continue": "계속",
 			"saving": "저장 중…",
 			"creating": "생성 중…",
 			"saveChanges": "변경사항 저장",
@@ -71,8 +75,20 @@
 				"emailTaken": "이미 사용 중인 이메일입니다.",
 				"userNotFound": "사용자를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.",
 				"forbidden": "이 작업을 수행할 권한이 없습니다.",
+				"noDefaultRole": "새 계정에 부여할 기본 역할이 없습니다. 전역 역할 페이지에서 설정한 후 다시 시도하세요.",
 				"internalError": "서버에서 문제가 발생했습니다. 다시 시도해 주세요.",
 				"generic": "문제가 발생했습니다."
+			}
+		},
+		"roleDialog": {
+			"title": "역할 변경",
+			"description": "{{username}}의 역할을 선택하세요. 다음 요청부터 적용됩니다.",
+			"assign": "역할 할당",
+			"assigning": "할당 중…",
+			"fullAccessWarning": "이 역할은 전체 액세스 권한이 있습니다. 사용자와 역할 관리를 포함해 모든 작업을 수행할 수 있습니다.",
+			"selfWarning": "본인 계정입니다. 역할을 변경하면 이 페이지에 대한 접근 권한을 잃을 수 있습니다.",
+			"errors": {
+				"roleNotFound": "해당 역할이 더 이상 존재하지 않습니다. 대화 상자를 닫고 다시 시도하세요."
 			}
 		},
 		"resetPasswordDialog": {
@@ -141,10 +157,13 @@
 		"table": {
 			"columnName": "이름",
 			"columnPermissions": "권한",
-			"columnCreated": "생성일",
+			"columnDefault": "기본값",
 			"noPermissionsAssigned": "할당된 권한 없음",
+			"default": "기본값",
+			"setDefaultAction": "기본 역할로 설정",
 			"editAction": "역할 수정",
-			"deleteAction": "역할 삭제"
+			"deleteAction": "역할 삭제",
+			"deleteDefaultDisabled": "기본 역할은 삭제할 수 없습니다. 먼저 다른 역할을 기본값으로 설정하세요."
 		},
 		"formDialog": {
 			"editTitle": "역할 수정",
@@ -181,6 +200,7 @@
 			"errors": {
 				"roleNotFound": "이 역할은 더 이상 존재하지 않습니다.",
 				"hasUsersWarning": "하나 이상의 사용자에게 할당되어 있어 이 역할을 삭제할 수 없습니다.",
+				"isDefault": "기본 역할은 삭제할 수 없습니다. 먼저 다른 역할을 기본값으로 설정하세요.",
 				"forbidden": "이 역할을 삭제할 권한이 없습니다.",
 				"internalError": "문제가 발생했습니다. 다시 시도해 주세요.",
 				"generic": "문제가 발생했습니다."
@@ -254,7 +274,28 @@
 			"projects": "프로젝트",
 			"plugins": "플러그인",
 			"settings": "설정"
+		},
+		"defaultDialog": {
+			"title": "기본 역할 설정",
+			"description": "새 사용자와 새 전역 에이전트는 {{role}} 역할로 시작합니다. 이미 있는 계정은 현재 역할을 유지합니다.",
+			"fullAccessWarning": "이 역할은 모든 권한을 부여하므로 앞으로 만드는 모든 계정이 전체 액세스 권한으로 시작합니다. 의도한 설정인지 확인하세요.",
+			"cancel": "취소",
+			"confirm": "기본값으로 설정",
+			"confirming": "저장 중…",
+			"errors": {
+				"roleNotFound": "이 역할은 더 이상 존재하지 않습니다.",
+				"forbidden": "기본 역할을 변경할 권한이 없습니다.",
+				"generic": "문제가 발생했습니다. 다시 시도해 주세요."
+			}
 		}
+	},
+	"rolePicker": {
+		"current": "현재",
+		"fullAccess": "전체 액세스",
+		"loadFailed": "역할을 불러오지 못했습니다.",
+		"retry": "다시 시도",
+		"empty": "아직 생성된 역할이 없습니다.",
+		"default": "기본값"
 	},
 	"plugins": {
 		"title": "플러그인 설정",

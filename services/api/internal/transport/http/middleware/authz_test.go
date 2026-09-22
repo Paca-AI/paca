@@ -214,12 +214,14 @@ func TestRequirePermissions_ProjectScope(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// RequireAnyPermissions
+// OR semantics across PermissionGroups (the authenticated path of
+// RequirePublicProjectOrPermissions — the public flag is irrelevant to it, so
+// these all use a checker for a private project).
 // ---------------------------------------------------------------------------
 
-func TestRequireAnyPermissions_Unauthenticated(t *testing.T) {
+func TestPermissionGroups_Unauthenticated(t *testing.T) {
 	r := chi.NewRouter()
-	r.With(RequireAnyPermissions(authz.NewAuthorizer(nil),
+	r.With(RequirePublicProjectOrPermissions(&mockVisibilityChecker{}, authz.NewAuthorizer(nil),
 		PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 	)).Get("/resource", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
@@ -232,11 +234,11 @@ func TestRequireAnyPermissions_Unauthenticated(t *testing.T) {
 	}
 }
 
-func TestRequireAnyPermissions_Forbidden(t *testing.T) {
+func TestPermissionGroups_Forbidden(t *testing.T) {
 	store := &mockPermissionStore{globalPerms: []authz.Permission{authz.PermissionUsersRead}}
 	r := chi.NewRouter()
 	r.With(withClaims("USER"),
-		RequireAnyPermissions(authz.NewAuthorizer(store),
+		RequirePublicProjectOrPermissions(&mockVisibilityChecker{}, authz.NewAuthorizer(store),
 			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
 		)).Get("/projects/{projectId}/members", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -250,11 +252,11 @@ func TestRequireAnyPermissions_Forbidden(t *testing.T) {
 	}
 }
 
-func TestRequireAnyPermissions_AllowedByFirstGroup_GlobalProjectsRead(t *testing.T) {
+func TestPermissionGroups_AllowedByFirstGroup_GlobalProjectsRead(t *testing.T) {
 	store := &mockPermissionStore{globalPerms: []authz.Permission{authz.PermissionProjectsRead}}
 	r := chi.NewRouter()
 	r.With(withClaims("USER"),
-		RequireAnyPermissions(authz.NewAuthorizer(store),
+		RequirePublicProjectOrPermissions(&mockVisibilityChecker{}, authz.NewAuthorizer(store),
 			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
 		)).Get("/projects/{projectId}/members", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -268,11 +270,11 @@ func TestRequireAnyPermissions_AllowedByFirstGroup_GlobalProjectsRead(t *testing
 	}
 }
 
-func TestRequireAnyPermissions_AllowedBySecondGroup_ProjectScopedRead(t *testing.T) {
+func TestPermissionGroups_AllowedBySecondGroup_ProjectScopedRead(t *testing.T) {
 	store := &mockPermissionStore{projectPerms: []authz.Permission{authz.PermissionProjectMembersRead}}
 	r := chi.NewRouter()
 	r.With(withClaims("USER"),
-		RequireAnyPermissions(authz.NewAuthorizer(store),
+		RequirePublicProjectOrPermissions(&mockVisibilityChecker{}, authz.NewAuthorizer(store),
 			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
 		)).Get("/projects/{projectId}/members", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -286,11 +288,11 @@ func TestRequireAnyPermissions_AllowedBySecondGroup_ProjectScopedRead(t *testing
 	}
 }
 
-func TestRequireAnyPermissions_AllowedByWildcard_GlobalProjectsAll(t *testing.T) {
+func TestPermissionGroups_AllowedByWildcard_GlobalProjectsAll(t *testing.T) {
 	store := &mockPermissionStore{globalPerms: []authz.Permission{authz.PermissionProjectsAll}}
 	r := chi.NewRouter()
 	r.With(withClaims("USER"),
-		RequireAnyPermissions(authz.NewAuthorizer(store),
+		RequirePublicProjectOrPermissions(&mockVisibilityChecker{}, authz.NewAuthorizer(store),
 			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
 		)).Get("/projects/{projectId}/members", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -304,11 +306,11 @@ func TestRequireAnyPermissions_AllowedByWildcard_GlobalProjectsAll(t *testing.T)
 	}
 }
 
-func TestRequireAnyPermissions_InvalidProjectID_Returns400(t *testing.T) {
+func TestPermissionGroups_InvalidProjectID_Returns400(t *testing.T) {
 	store := &mockPermissionStore{}
 	r := chi.NewRouter()
 	r.With(withClaims("USER"),
-		RequireAnyPermissions(authz.NewAuthorizer(store),
+		RequirePublicProjectOrPermissions(&mockVisibilityChecker{}, authz.NewAuthorizer(store),
 			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
 		)).Get("/projects/{projectId}/members", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
@@ -321,11 +323,11 @@ func TestRequireAnyPermissions_InvalidProjectID_Returns400(t *testing.T) {
 	}
 }
 
-func TestRequireAnyPermissions_InvalidProjectID_GlobalGroupSucceeds(t *testing.T) {
+func TestPermissionGroups_InvalidProjectID_GlobalGroupSucceeds(t *testing.T) {
 	store := &mockPermissionStore{globalPerms: []authz.Permission{authz.PermissionProjectsRead}}
 	r := chi.NewRouter()
 	r.With(withClaims("USER"),
-		RequireAnyPermissions(authz.NewAuthorizer(store),
+		RequirePublicProjectOrPermissions(&mockVisibilityChecker{}, authz.NewAuthorizer(store),
 			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
 		)).Get("/projects/{projectId}/members", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })

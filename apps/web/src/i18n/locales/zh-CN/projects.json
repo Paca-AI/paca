@@ -24,15 +24,16 @@
 	"agents": {
 		"createDialog": {
 			"title": "创建 AI 智能体",
-			"step1Description": "设置智能体的身份和角色",
+			"step1Description": "设置智能体的身份",
 			"step2Description": "配置驱动智能体的 AI 模型",
-			"stepIndicator": "{{step}} / 2",
+			"step3DescriptionGlobal": "{{name}} 已使用默认全局角色创建。可保持不变、选择其他角色，或将其移除。",
+			"step3DescriptionProject": "选择智能体在此项目中的角色",
+			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "从预设开始",
 			"nameLabel": "名称",
 			"handleLabel": "Handle",
 			"handleHint": "自动根据名称生成，用于评论中的 @提及。",
 			"projectRoleLabel": "项目角色",
-			"projectRolePlaceholder": "选择一个项目角色…",
 			"projectRoleHint": "控制智能体在此项目中可以读取和修改的内容。",
 			"agentTypeLabel": "智能体类型",
 			"agentTypeLLM": "LLM（API 密钥）",
@@ -88,12 +89,9 @@
 			"back": "返回",
 			"creating": "正在创建…",
 			"createAgent": "创建智能体",
+			"finish": "完成",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "你是一名高级软件工程师…",
-			"globalRoleLabel": "全局角色",
-			"globalRolePlaceholder": "选择一个全局角色…",
-			"globalRoleHint": "决定智能体在全局范围内(例如在主页/管理聊天中)可以执行的操作。可选 — 之后邀请加入项目时授予的角色是另一回事。",
-			"noGlobalRoleOption": "无角色"
+			"systemPromptPlaceholder": "你是一名高级软件工程师…"
 		},
 		"card": {
 			"configure": "配置",
@@ -169,8 +167,30 @@
 				"mcpServers": "MCP 服务器",
 				"skills": "技能",
 				"envVars": "环境变量",
+				"globalRole": "全局角色",
 				"access": "Access",
 				"activity": "动态"
+			},
+			"globalRole": {
+				"title": "全局角色",
+				"description": "决定此智能体在全局范围内可执行的操作，例如从首页和管理页面的聊天中。它在某个项目内可执行的操作取决于其在该项目中的角色。",
+				"none": "无全局角色",
+				"noneHint": "此智能体没有全局权限。",
+				"assign": "分配角色",
+				"change": "更改角色",
+				"assigning": "正在分配…",
+				"remove": "移除角色",
+				"removing": "正在移除…",
+				"removeConfirm": "移除此智能体的全局角色？它将失去该角色授予的权限。",
+				"cancel": "取消",
+				"readOnly": "您可以查看此智能体的全局角色，但无权更改。",
+				"unknownRole": "已分配全局角色。您无权查看角色，因此不显示其名称。",
+				"fullAccessWarning": "此角色拥有完全访问权限。智能体将可执行所有操作，包括管理用户和角色。",
+				"errors": {
+					"generic": "无法更新角色，请重试。",
+					"forbidden": "您无权更改全局角色。",
+					"roleNotFound": "该角色已不存在。请刷新页面后重试。"
+				}
 			},
 			"avatar": {
 				"change": "更换头像",
@@ -943,6 +963,7 @@
 			"setAsDefault": "设为默认状态",
 			"editStatus": "编辑状态",
 			"deleteStatus": "删除状态",
+			"deleteDefaultDisabled": "无法删除默认状态。请先将其他状态设为默认。",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -967,6 +988,7 @@
 			"setAsDefault": "设为默认类型",
 			"editType": "编辑类型",
 			"deleteType": "删除类型",
+			"deleteDefaultDisabled": "无法删除默认类型。请先将其他类型设为默认。",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1070,6 +1092,7 @@
 			"confirmTextPrefix": "删除",
 			"confirmTextSuffix": "？使用此状态的任务将失去其状态。此操作无法撤销。",
 			"deleteFailed": "删除状态失败，请重试。",
+			"isDefault": "无法删除默认状态。请先将其他状态设为默认。",
 			"cancel": "取消",
 			"deleteStatus": "删除状态"
 		},
@@ -1160,6 +1183,7 @@
 			"confirmTextPrefix": "删除",
 			"confirmTextSuffix": "？使用此类型的任务将失去其类型分配。此操作无法撤销。",
 			"deleteFailed": "删除任务类型失败，请重试。",
+			"isDefault": "无法删除默认类型。请先将其他类型设为默认。",
 			"cancel": "取消",
 			"deleteType": "删除类型"
 		},

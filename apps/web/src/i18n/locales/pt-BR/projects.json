@@ -24,15 +24,16 @@
 	"agents": {
 		"createDialog": {
 			"title": "Criar agente",
-			"step1Description": "Defina a identidade e o papel do seu agente",
+			"step1Description": "Defina a identidade do seu agente",
 			"step2Description": "Configure o modelo de IA que alimenta seu agente",
-			"stepIndicator": "{{step}} / 2",
+			"step3DescriptionGlobal": "{{name}} foi criado com a função global padrão. Mantenha-a, escolha outra ou remova-a.",
+			"step3DescriptionProject": "Escolha o papel do agente neste projeto",
+			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Começar a partir de um preset",
 			"nameLabel": "Nome",
 			"handleLabel": "Identificador",
 			"handleHint": "Derivado automaticamente do nome. Usado para @menções em comentários.",
 			"projectRoleLabel": "Papel no projeto",
-			"projectRolePlaceholder": "Selecione um papel no projeto…",
 			"projectRoleHint": "Controla o que o agente pode ler e modificar neste projeto.",
 			"agentTypeLabel": "Tipo de agente",
 			"agentTypeLLM": "LLM (chave de API)",
@@ -88,12 +89,9 @@
 			"back": "Voltar",
 			"creating": "Criando…",
 			"createAgent": "Criar agente",
+			"finish": "Concluir",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Você é um engenheiro de software sênior…",
-			"globalRoleLabel": "Função Global",
-			"globalRolePlaceholder": "Selecione uma função global…",
-			"globalRoleHint": "Determina o que o agente pode fazer em escopo global (por exemplo, no chat da página inicial/admin). Opcional — uma função concedida depois, ao ser convidado para um projeto, é separada.",
-			"noGlobalRoleOption": "Sem função"
+			"systemPromptPlaceholder": "Você é um engenheiro de software sênior…"
 		},
 		"card": {
 			"configure": "Configurar",
@@ -169,8 +167,30 @@
 				"mcpServers": "Servidores MCP",
 				"skills": "Skills",
 				"envVars": "Ambiente",
+				"globalRole": "Função global",
 				"access": "Access",
 				"activity": "Atividade"
+			},
+			"globalRole": {
+				"title": "Função global",
+				"description": "O que este agente pode fazer no escopo global, por exemplo a partir do chat da página inicial e da administração. O que ele pode fazer dentro de um projeto vem da sua função nesse projeto.",
+				"none": "Sem função global",
+				"noneHint": "Este agente não tem permissões globais.",
+				"assign": "Atribuir função",
+				"change": "Alterar função",
+				"assigning": "Atribuindo…",
+				"remove": "Remover função",
+				"removing": "Removendo…",
+				"removeConfirm": "Remover a função global deste agente? Ele perderá as permissões concedidas pela função.",
+				"cancel": "Cancelar",
+				"readOnly": "Você pode ver a função global deste agente, mas não tem permissão para alterá-la.",
+				"unknownRole": "Há uma função global atribuída. Você não tem permissão para ver funções, então o nome não é exibido.",
+				"fullAccessWarning": "Esta função tem acesso total. O agente poderá fazer tudo, inclusive gerenciar usuários e funções.",
+				"errors": {
+					"generic": "Não foi possível atualizar a função. Tente novamente.",
+					"forbidden": "Você não tem permissão para alterar funções globais.",
+					"roleNotFound": "Essa função não existe mais. Recarregue a página e tente novamente."
+				}
 			},
 			"avatar": {
 				"change": "Alterar avatar",
@@ -943,6 +963,7 @@
 			"setAsDefault": "Definir como status padrão",
 			"editStatus": "Editar status",
 			"deleteStatus": "Excluir status",
+			"deleteDefaultDisabled": "O status padrão não pode ser excluído. Defina primeiro outro status como padrão.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -967,6 +988,7 @@
 			"setAsDefault": "Definir como tipo padrão",
 			"editType": "Editar tipo",
 			"deleteType": "Excluir tipo",
+			"deleteDefaultDisabled": "O tipo padrão não pode ser excluído. Defina primeiro outro tipo como padrão.",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1070,6 +1092,7 @@
 			"confirmTextPrefix": "Excluir",
 			"confirmTextSuffix": "? As tarefas que usam este status perderão seu status. Esta ação não pode ser desfeita.",
 			"deleteFailed": "Falha ao excluir o status. Tente novamente.",
+			"isDefault": "O status padrão não pode ser excluído. Defina primeiro outro status como padrão.",
 			"cancel": "Cancelar",
 			"deleteStatus": "Excluir status"
 		},
@@ -1160,6 +1183,7 @@
 			"confirmTextPrefix": "Excluir",
 			"confirmTextSuffix": "? As tarefas que usam este tipo perderão sua atribuição de tipo. Esta ação não pode ser desfeita.",
 			"deleteFailed": "Falha ao excluir o tipo de tarefa. Tente novamente.",
+			"isDefault": "O tipo padrão não pode ser excluído. Defina primeiro outro tipo como padrão.",
 			"cancel": "Cancelar",
 			"deleteType": "Excluir tipo"
 		},

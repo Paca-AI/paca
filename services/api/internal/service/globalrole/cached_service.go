@@ -11,7 +11,10 @@ import (
 	"github.com/Paca-AI/api/internal/platform/cache"
 )
 
-const globalRolesKey = "global-roles"
+// The cached list carries each role's is_default flag, so the key is versioned:
+// a list cached before that field existed must not be served as if no role
+// were the default.
+const globalRolesKey = "global-roles:v2"
 
 // CachedService decorates a globalroledom.Service with a Valkey/Redis-backed
 // cache.
@@ -96,6 +99,25 @@ func (c *CachedService) Delete(ctx context.Context, id uuid.UUID) error {
 		c.log.WarnContext(ctx, "cache: DeleteGlobalRole delete", "err", err)
 	}
 	return nil
+}
+
+// SetDefault delegates to the underlying service and invalidates the list
+// cache, whose entries carry the default flag.
+func (c *CachedService) SetDefault(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	r, err := c.svc.SetDefault(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.st.Delete(ctx, globalRolesKey); err != nil {
+		c.log.WarnContext(ctx, "cache: SetDefaultGlobalRole delete", "err", err)
+	}
+	return r, nil
+}
+
+// FindDefault delegates directly to the underlying service: it is read on
+// every user/agent creation and must never see a stale default.
+func (c *CachedService) FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error) {
+	return c.svc.FindDefault(ctx)
 }
 
 // FindByID delegates directly to the underlying service (not cached — a

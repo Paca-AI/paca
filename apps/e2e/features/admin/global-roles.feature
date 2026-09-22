@@ -4,6 +4,12 @@ Feature: Global roles management
   with granular permission assignments.  Users without the required
   permission should be blocked at the route level.
 
+  One global role is the default: the role every new user and every new
+  global agent starts with, marked in the table's "Default" column. It is data
+  rather than a name the API hardcodes, so it can be moved to another role
+  (needs global_roles.write) and, like the default task status and task type,
+  the role that holds it cannot be deleted.
+
   @authenticated
   Rule: Viewing the roles list
 
@@ -17,7 +23,7 @@ Feature: Global roles management
       And the statistics bar should show the total permission grants across all roles
 
     Scenario: Roles table displays expected columns and rows
-      Then the roles table should have columns "Name", "Permissions", and "Created"
+      Then the roles table should have columns "Name", "Permissions", and "Default"
       And each default role should appear as a row in the table
 
     Scenario: "New Role" button is displayed for users with write permission
@@ -325,6 +331,43 @@ Feature: Global roles management
       And the user clicks the delete button for that role
       And the user cancels the deletion
       Then the role "DELETABLE_ROLE" should still appear in the roles table
+
+  @authenticated
+  Rule: The default role
+
+    Background:
+      Given the user already has a stored authenticated admin session
+      And the user is on the global roles page
+
+    Scenario: The role new accounts start with is marked and cannot be deleted
+      Then exactly one role should be marked "Default" in the roles table
+      And the "USER" row should carry the "Default" mark
+      And the "USER" row should offer "Edit role" but not "Set as default role"
+      And the "USER" row should show "Delete role" disabled with the reason "The default role can't be deleted. Make another role the default first."
+      And the API should refuse to delete the default role with the code "GLOBAL_ROLE_IS_DEFAULT"
+
+    Scenario: Making another role the default asks first, then moves the mark
+      Given a custom role named "PROMOTED_ROLE" exists
+      When the user hovers over the "PROMOTED_ROLE" row
+      And the user clicks "Set as default role" for that role
+      Then the "Set default role" dialog should say that new users and new global agents will start with the "PROMOTED_ROLE" role
+      When the user confirms with "Set as default"
+      Then the "PROMOTED_ROLE" row should carry the "Default" mark instead of the "USER" row
+      And the "PROMOTED_ROLE" row should show "Delete role" disabled
+      And the "USER" row should show "Delete role" enabled
+
+    Scenario: Cancelling the confirmation changes nothing
+      Given a custom role named "NOT_PROMOTED_ROLE" exists
+      When the user hovers over the "NOT_PROMOTED_ROLE" row
+      And the user clicks "Set as default role" for that role
+      And the user clicks "Cancel"
+      Then the "USER" row should still carry the "Default" mark
+
+    Scenario: A full-access role is flagged before it becomes the default
+      Given a custom role named "FULL_ACCESS_ROLE" with the "*" permission exists
+      When the user hovers over the "FULL_ACCESS_ROLE" row
+      And the user clicks "Set as default role" for that role
+      Then the dialog should warn that the role grants every permission
 
   @authenticated
   Rule: Permission-based access control

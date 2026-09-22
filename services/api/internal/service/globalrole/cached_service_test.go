@@ -48,6 +48,8 @@ type stubGlobalRoleSvc struct {
 	delete           func(ctx context.Context, id uuid.UUID) error
 	replaceUserRoles func(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) ([]*globalroledom.GlobalRole, error)
 	findByID         func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+	setDefault       func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+	findDefault      func(ctx context.Context) (*globalroledom.GlobalRole, error)
 
 	listCalls int
 }
@@ -93,6 +95,20 @@ func (s *stubGlobalRoleSvc) FindByID(ctx context.Context, id uuid.UUID) (*global
 		return s.findByID(ctx, id)
 	}
 	return nil, globalroledom.ErrNotFound
+}
+
+func (s *stubGlobalRoleSvc) SetDefault(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	if s.setDefault != nil {
+		return s.setDefault(ctx, id)
+	}
+	return &globalroledom.GlobalRole{ID: id, IsDefault: true}, nil
+}
+
+func (s *stubGlobalRoleSvc) FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error) {
+	if s.findDefault != nil {
+		return s.findDefault(ctx)
+	}
+	return nil, globalroledom.ErrNoDefault
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +262,88 @@ func TestCachedGlobalRole_Delete_InvalidatesList(t *testing.T) {
 	}
 	if stub.listCalls != 2 {
 		t.Fatalf("expected 2 stub calls, got %d", stub.listCalls)
+	}
+}
+
+// The cached list carries each role's is_default flag, so changing the
+// default must not leave the old list (with the old default) being served.
+func TestCachedGlobalRole_SetDefault_InvalidatesList(t *testing.T) {
+	ctx := context.Background()
+	stub := &stubGlobalRoleSvc{
+		list: func(_ context.Context) ([]*globalroledom.GlobalRole, error) {
+			return []*globalroledom.GlobalRole{{ID: uuid.New()}}, nil
+		},
+	}
+	svc := globalrolesvc.NewCachedService(stub, newCacheStore(t), 5*time.Minute, discardLogger())
+
+	if _, err := svc.List(ctx); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	id := uuid.New()
+	got, err := svc.SetDefault(ctx, id)
+	if err != nil {
+		t.Fatalf("SetDefault: %v", err)
+	}
+	if got.ID != id || !got.IsDefault {
+		t.Fatalf("expected the role back as the default, got %+v", got)
+	}
+
+	if _, err := svc.List(ctx); err != nil {
+		t.Fatalf("List after SetDefault: %v", err)
+	}
+	if stub.listCalls != 2 {
+		t.Fatalf("expected the list to be re-read after SetDefault (2 stub calls), got %d", stub.listCalls)
+	}
+}
+
+func TestCachedGlobalRole_SetDefault_ServiceErrorLeavesTheCacheAlone(t *testing.T) {
+	ctx := context.Background()
+	sentinel := errors.New("repo error")
+	stub := &stubGlobalRoleSvc{
+		list: func(_ context.Context) ([]*globalroledom.GlobalRole, error) {
+			return []*globalroledom.GlobalRole{{ID: uuid.New()}}, nil
+		},
+		setDefault: func(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) { return nil, sentinel },
+	}
+	svc := globalrolesvc.NewCachedService(stub, newCacheStore(t), 5*time.Minute, discardLogger())
+	if _, err := svc.List(ctx); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	if _, err := svc.SetDefault(ctx, uuid.New()); !errors.Is(err, sentinel) {
+		t.Fatalf("expected the service error, got %v", err)
+	}
+
+	// Nothing changed, so the cached list is still good.
+	if _, err := svc.List(ctx); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if stub.listCalls != 1 {
+		t.Fatalf("a failed SetDefault must not invalidate the list (1 stub call), got %d", stub.listCalls)
+	}
+}
+
+// FindDefault is read on every user/agent creation and must never be a stale
+// cached answer.
+func TestCachedGlobalRole_FindDefault_IsNeverCached(t *testing.T) {
+	ctx := context.Background()
+	calls := 0
+	stub := &stubGlobalRoleSvc{
+		findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+			calls++
+			return &globalroledom.GlobalRole{ID: uuid.New(), IsDefault: true}, nil
+		},
+	}
+	svc := globalrolesvc.NewCachedService(stub, newCacheStore(t), 5*time.Minute, discardLogger())
+
+	for range 2 {
+		if _, err := svc.FindDefault(ctx); err != nil {
+			t.Fatalf("FindDefault: %v", err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("expected every FindDefault to reach the service, got %d calls", calls)
 	}
 }
 

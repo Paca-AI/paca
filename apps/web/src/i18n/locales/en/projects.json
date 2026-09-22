@@ -24,20 +24,17 @@
 	"agents": {
 		"createDialog": {
 			"title": "Create AI Agent",
-			"step1Description": "Set up your agent's identity and role",
+			"step1Description": "Set up your agent's identity",
 			"step2Description": "Configure the AI model powering your agent",
-			"stepIndicator": "{{step}} / 2",
+			"step3DescriptionGlobal": "{{name}} was created with the default global role. Keep it, choose another, or remove it.",
+			"step3DescriptionProject": "Choose the agent's role in this project",
+			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Start from a preset",
 			"nameLabel": "Name",
 			"handleLabel": "Handle",
 			"handleHint": "Auto-derived from name. Used for @mentions in comments.",
 			"projectRoleLabel": "Project Role",
-			"projectRolePlaceholder": "Select a project role…",
 			"projectRoleHint": "Controls what the agent can read and modify in this project.",
-			"globalRoleLabel": "Global Role",
-			"globalRolePlaceholder": "Select a global role…",
-			"globalRoleHint": "Controls what the agent can do at global scope (e.g. from the home/admin chat). Optional — a role granted later, once invited into a project, is separate.",
-			"noGlobalRoleOption": "No role",
 			"agentTypeLabel": "Agent Type",
 			"agentTypeLLM": "LLM (API key)",
 			"agentTypeLLMHint": "Paca calls a model API directly and runs the agent in a sandboxed container on the server hosting Paca.",
@@ -92,6 +89,7 @@
 			"back": "Back",
 			"creating": "Creating…",
 			"createAgent": "Create Agent",
+			"finish": "Finish",
 			"namePlaceholder": "Dev Bot",
 			"systemPromptPlaceholder": "You are a senior software engineer…"
 		},
@@ -169,8 +167,30 @@
 				"mcpServers": "MCP Servers",
 				"skills": "Skills",
 				"envVars": "Environment",
+				"globalRole": "Global role",
 				"access": "Access",
 				"activity": "Activity"
+			},
+			"globalRole": {
+				"title": "Global role",
+				"description": "What this agent may do at global scope, such as from the home and admin chat. What it may do inside a project comes from its role in that project.",
+				"none": "No global role",
+				"noneHint": "This agent has no global permissions.",
+				"assign": "Assign role",
+				"change": "Change role",
+				"assigning": "Assigning…",
+				"remove": "Remove role",
+				"removing": "Removing…",
+				"removeConfirm": "Remove this agent's global role? It will lose the permissions the role grants.",
+				"cancel": "Cancel",
+				"readOnly": "You can see this agent's global role but don't have permission to change it.",
+				"unknownRole": "A global role is assigned. You don't have permission to view roles, so its name isn't shown.",
+				"fullAccessWarning": "This role has full access. The agent will be able to do everything, including managing users and roles.",
+				"errors": {
+					"generic": "Couldn't update the role. Please try again.",
+					"forbidden": "You don't have permission to change global roles.",
+					"roleNotFound": "That role no longer exists. Reload the page and try again."
+				}
 			},
 			"avatar": {
 				"change": "Change avatar",
@@ -946,7 +966,8 @@
 			"default": "Default",
 			"setAsDefault": "Set as default status",
 			"editStatus": "Edit status",
-			"deleteStatus": "Delete status"
+			"deleteStatus": "Delete status",
+			"deleteDefaultDisabled": "The default status can't be deleted. Make another status the default first."
 		},
 		"taskTypes": {
 			"title": "Task Types",
@@ -970,7 +991,8 @@
 			"default": "Default",
 			"setAsDefault": "Set as default type",
 			"editType": "Edit type",
-			"deleteType": "Delete type"
+			"deleteType": "Delete type",
+			"deleteDefaultDisabled": "The default type can't be deleted. Make another type the default first."
 		},
 		"customFields": {
 			"title": "Custom Fields",
@@ -1070,6 +1092,7 @@
 			"confirmTextPrefix": "Delete",
 			"confirmTextSuffix": "? Tasks using this status will lose their status. This action cannot be undone.",
 			"deleteFailed": "Failed to delete status. Please try again.",
+			"isDefault": "The default status can't be deleted. Make another status the default first.",
 			"cancel": "Cancel",
 			"deleteStatus": "Delete status"
 		},
@@ -1160,6 +1183,7 @@
 			"confirmTextPrefix": "Delete",
 			"confirmTextSuffix": "? Tasks using this type will lose their type assignment. This action cannot be undone.",
 			"deleteFailed": "Failed to delete task type. Please try again.",
+			"isDefault": "The default type can't be deleted. Make another type the default first.",
 			"cancel": "Cancel",
 			"deleteType": "Delete type"
 		},

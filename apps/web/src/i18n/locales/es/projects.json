@@ -24,15 +24,16 @@
 	"agents": {
 		"createDialog": {
 			"title": "Crear agente de IA",
-			"step1Description": "Configura la identidad y el rol de tu agente",
+			"step1Description": "Configura la identidad de tu agente",
 			"step2Description": "Configura el modelo de IA que impulsa a tu agente",
-			"stepIndicator": "{{step}} / 2",
+			"step3DescriptionGlobal": "{{name}} se creó con el rol global predeterminado. Consérvalo, elige otro o quítalo.",
+			"step3DescriptionProject": "Elige el rol del agente en este proyecto",
+			"stepIndicator": "{{step}} / {{total}}",
 			"startFromPreset": "Empezar desde una plantilla",
 			"nameLabel": "Nombre",
 			"handleLabel": "Identificador",
 			"handleHint": "Se genera automáticamente a partir del nombre. Se usa para menciones @ en comentarios.",
 			"projectRoleLabel": "Rol del proyecto",
-			"projectRolePlaceholder": "Selecciona un rol del proyecto…",
 			"projectRoleHint": "Controla lo que el agente puede leer y modificar en este proyecto.",
 			"agentTypeLabel": "Tipo de agente",
 			"agentTypeLLM": "LLM (clave de API)",
@@ -88,12 +89,9 @@
 			"back": "Atrás",
 			"creating": "Creando…",
 			"createAgent": "Crear agente",
+			"finish": "Finalizar",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Eres un ingeniero de software sénior…",
-			"globalRoleLabel": "Rol global",
-			"globalRolePlaceholder": "Selecciona un rol global…",
-			"globalRoleHint": "Controla lo que el agente puede hacer a nivel global (por ejemplo, desde el chat de inicio o de administración). Opcional: un rol asignado más adelante, al invitarlo a un proyecto, es independiente.",
-			"noGlobalRoleOption": "Sin rol"
+			"systemPromptPlaceholder": "Eres un ingeniero de software sénior…"
 		},
 		"card": {
 			"configure": "Configurar",
@@ -169,8 +167,30 @@
 				"mcpServers": "Servidores MCP",
 				"skills": "Skills",
 				"envVars": "Entorno",
+				"globalRole": "Rol global",
 				"access": "Access",
 				"activity": "Actividad"
+			},
+			"globalRole": {
+				"title": "Rol global",
+				"description": "Lo que este agente puede hacer a nivel global, por ejemplo desde el chat de inicio y de administración. Lo que puede hacer dentro de un proyecto depende de su rol en ese proyecto.",
+				"none": "Sin rol global",
+				"noneHint": "Este agente no tiene permisos globales.",
+				"assign": "Asignar rol",
+				"change": "Cambiar rol",
+				"assigning": "Asignando…",
+				"remove": "Quitar rol",
+				"removing": "Quitando…",
+				"removeConfirm": "¿Quitar el rol global de este agente? Perderá los permisos que le otorga el rol.",
+				"cancel": "Cancelar",
+				"readOnly": "Puedes ver el rol global de este agente, pero no tienes permiso para cambiarlo.",
+				"unknownRole": "Hay un rol global asignado. No tienes permiso para ver los roles, por lo que no se muestra su nombre.",
+				"fullAccessWarning": "Este rol tiene acceso total. El agente podrá hacer todo, incluida la gestión de usuarios y roles.",
+				"errors": {
+					"generic": "No se pudo actualizar el rol. Inténtalo de nuevo.",
+					"forbidden": "No tienes permiso para cambiar los roles globales.",
+					"roleNotFound": "Ese rol ya no existe. Recarga la página e inténtalo de nuevo."
+				}
 			},
 			"avatar": {
 				"change": "Cambiar avatar",
@@ -943,6 +963,7 @@
 			"setAsDefault": "Establecer como estado predeterminado",
 			"editStatus": "Editar estado",
 			"deleteStatus": "Eliminar estado",
+			"deleteDefaultDisabled": "El estado predeterminado no se puede eliminar. Primero establece otro estado como predeterminado.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -967,6 +988,7 @@
 			"setAsDefault": "Establecer como tipo predeterminado",
 			"editType": "Editar tipo",
 			"deleteType": "Eliminar tipo",
+			"deleteDefaultDisabled": "El tipo predeterminado no se puede eliminar. Primero establece otro tipo como predeterminado.",
 			"noPermission": {
 				"title": "You don't have permission to view task types",
 				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
@@ -1070,6 +1092,7 @@
 			"confirmTextPrefix": "Eliminar",
 			"confirmTextSuffix": "? Las tareas que usen este estado perderán su estado. Esta acción no se puede deshacer.",
 			"deleteFailed": "No se pudo eliminar el estado. Inténtalo de nuevo.",
+			"isDefault": "El estado predeterminado no se puede eliminar. Primero establece otro estado como predeterminado.",
 			"cancel": "Cancelar",
 			"deleteStatus": "Eliminar estado"
 		},
@@ -1160,6 +1183,7 @@
 			"confirmTextPrefix": "Eliminar",
 			"confirmTextSuffix": "? Las tareas que usen este tipo perderán su asignación de tipo. Esta acción no se puede deshacer.",
 			"deleteFailed": "No se pudo eliminar el tipo de tarea. Inténtalo de nuevo.",
+			"isDefault": "El tipo predeterminado no se puede eliminar. Primero establece otro tipo como predeterminado.",
 			"cancel": "Cancelar",
 			"deleteType": "Eliminar tipo"
 		},

@@ -203,6 +203,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	tm := jwttoken.New(e2eJWTSecret, e2eAccessTTL, e2eRefreshTTL)
 	userRepo := pgRepo.NewUserRepository(db)
 	roleRepo := pgRepo.NewGlobalRoleRepository(db)
+	syncBuiltinGlobalRoles(t, roleRepo)
 	authzStore := pgRepo.NewAuthzPermissionStore(db)
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
 	authService := authsvc.New(userRepo, tm, refreshStore, e2eRefreshTTL, e2eRefreshSessionTTL)
@@ -236,7 +237,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	automationRepo := pgRepo.NewAutomationRepository(db)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	pluginRepoForAgent := pgRepo.NewPluginRepository(db)
-	agentService := agentsvc.New(agentRepo, noopMemberCacheInvalidator{Service: projectService}, publisher, pluginRepoForAgent)
+	agentService := agentsvc.New(agentRepo, noopMemberCacheInvalidator{Service: projectService}, publisher, pluginRepoForAgent).
+		WithGlobalRoleService(globalRoleService)
 	var attachmentService *attachmentsvc.Service
 	if sharedStorageEndpoint != "" {
 		storageEndpoint := sharedStorageEndpoint

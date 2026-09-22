@@ -34,6 +34,7 @@
 			"noFullName": "—",
 			"resetPasswordAction": "Đặt lại mật khẩu",
 			"editAction": "Chỉnh sửa người dùng",
+			"changeRoleAction": "Đổi vai trò",
 			"deleteAction": "Xóa người dùng"
 		},
 		"formDialog": {
@@ -47,8 +48,10 @@
 			"done": "Xong",
 			"editTitle": "Chỉnh sửa người dùng",
 			"createTitle": "Tạo người dùng",
-			"editDescription": "Cập nhật tên hiển thị và vai trò được gán của người dùng.",
+			"editDescription": "Cập nhật tên hiển thị và email của người dùng.",
 			"createDescription": "Một mật khẩu tạm thời an toàn sẽ được tạo tự động. Người dùng sẽ phải đổi mật khẩu trong lần đăng nhập đầu tiên.",
+			"roleStepDescription": "{{username}} đã được tạo với vai trò {{role}}. Giữ nguyên hoặc chọn vai trò khác.",
+			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "Tên đăng nhập",
 			"usernamePlaceholder": "vd: john.doe",
 			"fullNameLabel": "Họ và tên",
@@ -56,10 +59,11 @@
 			"emailLabel": "Email",
 			"emailOptionalHint": "(tùy chọn — gửi email chào mừng kèm liên kết để đặt mật khẩu)",
 			"emailPlaceholder": "vd: john.doe@example.com",
-			"roleLabel": "Vai trò",
-			"roleOptionalHint": "(tùy chọn — mặc định là USER)",
-			"rolePlaceholder": "Chọn một vai trò…",
+			"roleStep": {
+				"title": "Vai trò"
+			},
 			"cancel": "Hủy",
+			"continue": "Tiếp tục",
 			"saving": "Đang lưu…",
 			"creating": "Đang tạo…",
 			"saveChanges": "Lưu thay đổi",
@@ -71,8 +75,20 @@
 				"emailTaken": "Email này đã được sử dụng.",
 				"userNotFound": "Không tìm thấy người dùng. Có thể người dùng đã bị xóa.",
 				"forbidden": "Bạn không có quyền thực hiện thao tác này.",
+				"noDefaultRole": "Chưa có vai trò mặc định để gán cho tài khoản mới. Hãy đặt một vai trò ở trang Vai trò toàn cục rồi thử lại.",
 				"internalError": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
 				"generic": "Đã xảy ra lỗi."
+			}
+		},
+		"roleDialog": {
+			"title": "Đổi vai trò",
+			"description": "Chọn vai trò cho {{username}}. Có hiệu lực từ yêu cầu tiếp theo của họ.",
+			"assign": "Gán vai trò",
+			"assigning": "Đang gán…",
+			"fullAccessWarning": "Vai trò này có toàn quyền truy cập. Có thể làm mọi việc, bao gồm quản lý người dùng và vai trò.",
+			"selfWarning": "Đây là tài khoản của chính bạn. Đổi vai trò có thể khiến bạn mất quyền truy cập trang này.",
+			"errors": {
+				"roleNotFound": "Vai trò đó không còn tồn tại. Hãy đóng hộp thoại này và thử lại."
 			}
 		},
 		"resetPasswordDialog": {
@@ -141,10 +157,13 @@
 		"table": {
 			"columnName": "Tên",
 			"columnPermissions": "Quyền hạn",
-			"columnCreated": "Ngày tạo",
+			"columnDefault": "Mặc định",
 			"noPermissionsAssigned": "Chưa gán quyền hạn nào",
+			"default": "Mặc định",
+			"setDefaultAction": "Đặt làm vai trò mặc định",
 			"editAction": "Chỉnh sửa vai trò",
-			"deleteAction": "Xóa vai trò"
+			"deleteAction": "Xóa vai trò",
+			"deleteDefaultDisabled": "Không thể xóa vai trò mặc định. Hãy đặt một vai trò khác làm mặc định trước."
 		},
 		"formDialog": {
 			"editTitle": "Chỉnh sửa vai trò",
@@ -181,6 +200,7 @@
 			"errors": {
 				"roleNotFound": "Vai trò này không còn tồn tại.",
 				"hasUsersWarning": "Không thể xóa vai trò này vì vẫn còn được gán cho một hoặc nhiều người dùng.",
+				"isDefault": "Không thể xóa vai trò mặc định. Hãy đặt một vai trò khác làm mặc định trước.",
 				"forbidden": "Bạn không có quyền xóa vai trò này.",
 				"internalError": "Đã xảy ra lỗi. Vui lòng thử lại.",
 				"generic": "Đã xảy ra lỗi."
@@ -254,7 +274,28 @@
 			"projects": "Dự án",
 			"plugins": "Plugin",
 			"settings": "Cài đặt"
+		},
+		"defaultDialog": {
+			"title": "Đặt vai trò mặc định",
+			"description": "Người dùng mới và agent toàn cục mới sẽ bắt đầu với vai trò {{role}}. Các tài khoản hiện có vẫn giữ vai trò hiện tại.",
+			"fullAccessWarning": "Vai trò này cấp mọi quyền, nên mọi tài khoản bạn tạo từ giờ sẽ bắt đầu với toàn quyền truy cập. Hãy chắc chắn đó là điều bạn muốn.",
+			"cancel": "Hủy",
+			"confirm": "Đặt làm mặc định",
+			"confirming": "Đang lưu…",
+			"errors": {
+				"roleNotFound": "Vai trò này không còn tồn tại.",
+				"forbidden": "Bạn không có quyền thay đổi vai trò mặc định.",
+				"generic": "Đã xảy ra lỗi. Vui lòng thử lại."
+			}
 		}
+	},
+	"rolePicker": {
+		"current": "Hiện tại",
+		"fullAccess": "Toàn quyền truy cập",
+		"loadFailed": "Không thể tải danh sách vai trò.",
+		"retry": "Thử lại",
+		"empty": "Chưa có vai trò nào được tạo.",
+		"default": "Mặc định"
 	},
 	"plugins": {
 		"title": "Cài đặt Plugin",

@@ -34,6 +34,7 @@
 			"noFullName": "—",
 			"resetPasswordAction": "パスワードをリセット",
 			"editAction": "ユーザーを編集",
+			"changeRoleAction": "ロールを変更",
 			"deleteAction": "ユーザーを削除"
 		},
 		"formDialog": {
@@ -47,8 +48,10 @@
 			"done": "完了",
 			"editTitle": "ユーザーを編集",
 			"createTitle": "ユーザーを作成",
-			"editDescription": "ユーザーの表示名とロールの割り当てを更新します。",
+			"editDescription": "ユーザーの表示名とメールアドレスを更新します。",
 			"createDescription": "安全な仮パスワードが自動的に生成されます。ユーザーは初回ログイン時に変更を求められます。",
+			"roleStepDescription": "{{username}} は {{role}} ロールで作成されました。そのままにするか、別のロールを選択してください。",
+			"stepIndicator": "{{step}} / {{total}}",
 			"usernameLabel": "ユーザー名",
 			"usernamePlaceholder": "例: john.doe",
 			"fullNameLabel": "氏名",
@@ -56,10 +59,11 @@
 			"emailLabel": "メールアドレス",
 			"emailOptionalHint": "（任意 — パスワード設定用のリンクを記載したウェルカムメールを送信します）",
 			"emailPlaceholder": "例: john.doe@example.com",
-			"roleLabel": "ロール",
-			"roleOptionalHint": "（任意 — 既定はUSER）",
-			"rolePlaceholder": "ロールを選択…",
+			"roleStep": {
+				"title": "ロール"
+			},
 			"cancel": "キャンセル",
+			"continue": "続ける",
 			"saving": "保存中…",
 			"creating": "作成中…",
 			"saveChanges": "変更を保存",
@@ -71,8 +75,20 @@
 				"emailTaken": "このメールアドレスは既に使用されています。",
 				"userNotFound": "ユーザーが見つかりません。既に削除された可能性があります。",
 				"forbidden": "この操作を実行する権限がありません。",
+				"noDefaultRole": "新しいアカウントに付与する既定のロールがありません。グローバルロールのページで設定してから、もう一度お試しください。",
 				"internalError": "サーバーで問題が発生しました。もう一度お試しください。",
 				"generic": "問題が発生しました。"
+			}
+		},
+		"roleDialog": {
+			"title": "ロールを変更",
+			"description": "{{username}} のロールを選択してください。次のリクエストから適用されます。",
+			"assign": "ロールを割り当て",
+			"assigning": "割り当て中…",
+			"fullAccessWarning": "このロールにはフルアクセス権があります。ユーザーやロールの管理を含め、すべての操作が可能です。",
+			"selfWarning": "これはご自身のアカウントです。ロールを変更すると、このページにアクセスできなくなる場合があります。",
+			"errors": {
+				"roleNotFound": "そのロールは存在しなくなりました。このダイアログを閉じてもう一度お試しください。"
 			}
 		},
 		"resetPasswordDialog": {
@@ -141,10 +157,13 @@
 		"table": {
 			"columnName": "名前",
 			"columnPermissions": "権限",
-			"columnCreated": "作成日",
+			"columnDefault": "既定",
 			"noPermissionsAssigned": "権限が割り当てられていません",
+			"default": "既定",
+			"setDefaultAction": "既定のロールに設定",
 			"editAction": "ロールを編集",
-			"deleteAction": "ロールを削除"
+			"deleteAction": "ロールを削除",
+			"deleteDefaultDisabled": "既定のロールは削除できません。先に別のロールを既定に設定してください。"
 		},
 		"formDialog": {
 			"editTitle": "ロールを編集",
@@ -181,6 +200,7 @@
 			"errors": {
 				"roleNotFound": "このロールは既に存在しません。",
 				"hasUsersWarning": "このロールは1人以上のユーザーに割り当てられているため削除できません。",
+				"isDefault": "既定のロールは削除できません。先に別のロールを既定に設定してください。",
 				"forbidden": "このロールを削除する権限がありません。",
 				"internalError": "問題が発生しました。もう一度お試しください。",
 				"generic": "問題が発生しました。"
@@ -254,7 +274,28 @@
 			"projects": "プロジェクト",
 			"plugins": "プラグイン",
 			"settings": "設定"
+		},
+		"defaultDialog": {
+			"title": "既定のロールを設定",
+			"description": "新しいユーザーと新しいグローバルエージェントは {{role}} ロールで開始します。既存のアカウントのロールは変わりません。",
+			"fullAccessWarning": "このロールはすべての権限を付与するため、今後作成するすべてのアカウントがフルアクセスで開始します。意図した設定かどうか確認してください。",
+			"cancel": "キャンセル",
+			"confirm": "既定にする",
+			"confirming": "保存中…",
+			"errors": {
+				"roleNotFound": "このロールは既に存在しません。",
+				"forbidden": "既定のロールを変更する権限がありません。",
+				"generic": "問題が発生しました。もう一度お試しください。"
+			}
 		}
+	},
+	"rolePicker": {
+		"current": "現在",
+		"fullAccess": "フルアクセス",
+		"loadFailed": "ロールを読み込めませんでした。",
+		"retry": "再試行",
+		"empty": "ロールはまだ作成されていません。",
+		"default": "既定"
 	},
 	"plugins": {
 		"title": "プラグイン設定",

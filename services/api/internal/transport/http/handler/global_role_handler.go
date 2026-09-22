@@ -102,6 +102,23 @@ func (h *GlobalRoleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, map[string]any{"message": "global role deleted"})
 }
 
+// SetDefault handles PUT /admin/global-roles/:roleId/set-default: it makes the
+// role the one new users and global agents start with.
+func (h *GlobalRoleHandler) SetDefault(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "roleId"))
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid role id"))
+		return
+	}
+
+	role, err := h.svc.SetDefault(r.Context(), id)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.GlobalRoleFromEntity(role))
+}
+
 // ReplaceUserRoles handles PUT /admin/users/:userId/global-roles.
 func (h *GlobalRoleHandler) ReplaceUserRoles(w http.ResponseWriter, r *http.Request) {
 	userID, err := uuid.Parse(chi.URLParam(r, "userId"))

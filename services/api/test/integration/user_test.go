@@ -23,16 +23,49 @@ import (
 	"github.com/Paca-AI/api/internal/transport/http/router"
 )
 
+// integrationAdminID is the subject issueAdminToken signs for. It is not a row
+// in fakeUserRepo (so it never shows up in user listings); rolePermissionStore
+// simply treats it as a user assigned the built-in ADMIN role.
+var integrationAdminID = uuid.MustParse("aaaaaaaa-0000-0000-0000-000000000001")
+
+// rolePermissionStore resolves a user's permissions the way the real store
+// does — from the role the user is assigned, never from a name carried in a
+// token — using the built-in role definitions, i.e. what each built-in role
+// row stores right after startup. It also serves as the users service's
+// GlobalPermissionReader, so /users/me/global-permissions reports exactly what
+// the authorizer enforces.
+type rolePermissionStore struct{ repo *fakeUserRepo }
+
+func (s *rolePermissionStore) ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error) {
+	role := ""
+	if userID == integrationAdminID {
+		role = userdom.RoleAdmin
+	} else if u, err := s.repo.FindByID(ctx, userID); err == nil {
+		role = u.Role
+	}
+	for _, def := range authz.DefaultGlobalRoles() {
+		if def.Name == role {
+			return def.Permissions, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *rolePermissionStore) ListProjectPermissions(context.Context, uuid.UUID, uuid.UUID) ([]authz.Permission, error) {
+	return nil, nil
+}
+
 func buildUserTestRouter(repo *fakeUserRepo) http.Handler {
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	store := &fakeRefreshStore{}
 	authService := authsvc.New(repo, tm, store, 168*time.Hour, 24*time.Hour)
-	userService := usersvc.New(repo, repo)
+	perms := &rolePermissionStore{repo: repo}
+	userService := usersvc.New(repo, repo, perms)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(nil),
+		Authorizer:   authz.NewAuthorizer(perms),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),
@@ -41,10 +74,12 @@ func buildUserTestRouter(repo *fakeUserRepo) http.Handler {
 }
 
 // issueAdminToken issues a JWT for an admin user to authenticate admin routes.
+// The subject is integrationAdminID: what the token may do comes from the
+// ADMIN role rolePermissionStore resolves for it, not from the role claim.
 func issueAdminToken(t *testing.T) string {
 	t.Helper()
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
-	tok, err := tm.IssueAccess(uuid.NewString(), "admin-user", "ADMIN", "fam-admin", false)
+	tok, err := tm.IssueAccess(integrationAdminID.String(), "admin-user", "ADMIN", "fam-admin", false)
 	if err != nil {
 		t.Fatalf("issue admin token: %v", err)
 	}
@@ -187,16 +222,16 @@ func TestGetMyGlobalPermissions_Unauthorized(t *testing.T) {
 }
 
 // TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard is a regression
-// test for GHSA-hjcj-373w-vq8m. The legacy ADMIN role claim used to resolve
-// (via authz.LegacyPermissionsForRole) to the bare PermissionAll wildcard,
-// which authz.hasPermission's granted["*"] short-circuit then let satisfy
-// every permission check anywhere it was consulted — project-scoped ones
-// (environments.connect, tasks.*, docs.*, conversations.*) included, with no
-// project-membership check. It must now resolve to ADMIN's real, narrower
-// global-scope permission set (see authz.DefaultGlobalRoles) instead. This
-// test (like the one it replaces) exercises only the legacy-role fallback —
-// buildUserTestRouter's fakeUserRepo satisfies no GlobalPermissionReader
-// interface, so nothing here is merged in from a DB-backed global role.
+// test for GHSA-hjcj-373w-vq8m. ADMIN used to be resolved from its role *name*
+// to the bare PermissionAll wildcard, which authz.hasPermission's granted["*"]
+// short-circuit then let satisfy every permission check anywhere it was
+// consulted — project-scoped ones (environments.connect, tasks.*, docs.*,
+// conversations.*) included, with no project-membership check. The list must
+// be exactly what the ADMIN role stores (see authz.DefaultGlobalRoles), never
+// the wildcard: rolePermissionStore resolves it from the role the user is
+// assigned, the way the real store does, and is both the users service's
+// GlobalPermissionReader and the authorizer's store, so this reports what is
+// actually enforced.
 func TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard(t *testing.T) {
 	repo := newFakeUserRepo()
 	hash, err := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.MinCost)
@@ -264,7 +299,7 @@ func TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard(t *testing.T) {
 
 	for _, want := range []authz.Permission{
 		authz.PermissionUsersAll,
-		authz.PermissionGlobalRolesAll,
+		authz.PermissionGlobalRolesRead,
 		authz.PermissionProjectsAll,
 		authz.PermissionSettingsWrite,
 		authz.PermissionAgentsAll,
@@ -272,6 +307,18 @@ func TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard(t *testing.T) {
 	} {
 		if !got[string(want)] {
 			t.Errorf("expected admin permissions to include %q, got %v", want, env.Data.Permissions)
+		}
+	}
+
+	// ADMIN may see the global roles but not define or hand them out: either
+	// would let it give itself the wildcard (see authz.DefaultGlobalRoles).
+	for _, unwanted := range []authz.Permission{
+		authz.PermissionGlobalRolesAll,
+		authz.PermissionGlobalRolesWrite,
+		authz.PermissionGlobalRolesAssign,
+	} {
+		if got[string(unwanted)] {
+			t.Errorf("expected admin permissions to NOT include the root-equivalent %q, got %v", unwanted, env.Data.Permissions)
 		}
 	}
 }
@@ -661,11 +708,12 @@ func TestAdminResetPassword_SetsMustChangePassword(t *testing.T) {
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	store := &fakeRefreshStore{}
 	authService := authsvc.New(repo, tm, store, 168*time.Hour, 24*time.Hour)
-	userService := usersvc.New(repo, repo)
+	perms := &rolePermissionStore{repo: repo}
+	userService := usersvc.New(repo, repo, perms)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	r := router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(nil),
+		Authorizer:   authz.NewAuthorizer(perms),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService, authService),
@@ -761,11 +809,12 @@ func TestMustChangePassword_ChangeAllowedAndUnblocks(t *testing.T) {
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	store := &fakeRefreshStore{}
 	authService := authsvc.New(repo, tm, store, 168*time.Hour, 24*time.Hour)
-	userService := usersvc.New(repo, repo)
+	perms := &rolePermissionStore{repo: repo}
+	userService := usersvc.New(repo, repo, perms)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	r := router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(nil),
+		Authorizer:   authz.NewAuthorizer(perms),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService, authService),

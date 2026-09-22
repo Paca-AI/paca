@@ -22,129 +22,178 @@ func (s *stubPermissionStore) ListProjectPermissions(context.Context, uuid.UUID,
 	return s.projectPerms, nil
 }
 
-func TestAuthorizer_LegacyAdminFallback(t *testing.T) {
-	a := authz.NewAuthorizer(nil)
-	ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, "ADMIN", authz.PermissionUsersDelete)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+// defaultRolePermissions returns the permissions a built-in global role is
+// seeded with (authz.DefaultGlobalRoles) — what its role row stores right
+// after startup, before anyone edits it.
+func defaultRolePermissions(t *testing.T, name string) []authz.Permission {
+	t.Helper()
+	for _, def := range authz.DefaultGlobalRoles() {
+		if def.Name == name {
+			return def.Permissions
+		}
 	}
-	if !ok {
-		t.Fatal("expected ADMIN legacy role to authorize users.delete")
-	}
+	t.Fatalf("no built-in global role named %q", name)
+	return nil
 }
 
-// TestAuthorizer_LegacyAdminCannotSatisfyProjectScopedPermission is a
-// regression test for GHSA-hjcj-373w-vq8m. LegacyPermissionsForRole("ADMIN")
-// used to return PermissionAll, which short-circuits hasPermission for any
-// required permission — including project-scoped ones such as
-// environments.connect (the highest-impact reachable route: minting a
-// terminal ticket for shell access) — regardless of whether the caller is a
-// member of the requested project. The authorizer is given a nil store here
-// so the only thing granting permissions is the legacy role claim itself,
-// isolating the bug from any project-membership lookup: in production this
-// scope would also consult AuthzPermissionStore.ListProjectPermissions, which
-// correctly returns nothing for a non-member, but the wildcard grant used to
-// make that check unreachable (hasPermission returns true on granted["*"]
-// before ever looking at the required permission).
-func TestAuthorizer_LegacyAdminCannotSatisfyProjectScopedPermission(t *testing.T) {
+// TestAuthorizer_NoStoreGrantsNothing pins fail-closed behavior: with no
+// permission store there is nothing to grant from, so every permission is
+// denied in both scopes. Nothing keyed off a role name may stand in for it.
+func TestAuthorizer_NoStoreGrantsNothing(t *testing.T) {
 	a := authz.NewAuthorizer(nil)
 	projectID := uuid.New()
-	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "ADMIN", authz.PermissionEnvironmentsConnect)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if ok {
-		t.Fatal("global ADMIN role claim must not satisfy a project-scoped permission absent a project-membership grant")
+	for _, scope := range []*uuid.UUID{nil, &projectID} {
+		for _, p := range []authz.Permission{
+			authz.PermissionUsersDelete,
+			authz.PermissionGlobalRolesAssign,
+			authz.PermissionEnvironmentsConnect,
+			authz.PermissionAll,
+		} {
+			ok, err := a.HasPermissions(context.Background(), uuid.New(), scope, p)
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", p, err)
+			}
+			if ok {
+				t.Errorf("authorizer with no store granted %q (project scope: %v)", p, scope != nil)
+			}
+		}
 	}
 }
 
-// TestAuthorizer_LegacyAdminStillHasIntendedGlobalPermissions guards against
-// overcorrecting the GHSA-hjcj-373w-vq8m fix into denying ADMIN's real,
-// intended global-scope capabilities (defined in DefaultGlobalRoles).
-func TestAuthorizer_LegacyAdminStillHasIntendedGlobalPermissions(t *testing.T) {
-	a := authz.NewAuthorizer(nil)
+// TestAuthorizer_StrippedAdminRoleGrantsNothingFromItsDefaults is the
+// regression test for the bug where a user holding the built-in ADMIN role
+// could still change users' roles and edit global roles after those
+// permissions had been removed from the ADMIN role. Authorization used to
+// merge in the default permission set for the role's *name* on top of what
+// the role row stores, so stripping a permission from the role changed
+// nothing. The permissions ADMIN is *seeded* with are only a starting point:
+// once the row no longer stores them, they must not authorize anything.
+func TestAuthorizer_StrippedAdminRoleGrantsNothingFromItsDefaults(t *testing.T) {
+	a := authz.NewAuthorizer(&stubPermissionStore{}) // ADMIN row stripped bare
+
+	for _, p := range defaultRolePermissions(t, "ADMIN") {
+		ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, p)
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", p, err)
+		}
+		if ok {
+			t.Errorf("ADMIN's default permission %q authorized a caller whose role no longer stores it", p)
+		}
+	}
+}
+
+// TestAuthorizer_AdminRoleGrantsExactlyWhatItStores checks the same fix from
+// the other side: a partially-stripped role grants what it still stores and
+// nothing beyond it — including the role-management permissions the report
+// was about.
+func TestAuthorizer_AdminRoleGrantsExactlyWhatItStores(t *testing.T) {
+	a := authz.NewAuthorizer(&stubPermissionStore{
+		globalPerms: []authz.Permission{authz.PermissionUsersRead, authz.PermissionProjectsAll},
+	})
+
+	tests := []struct {
+		perm authz.Permission
+		want bool
+	}{
+		{authz.PermissionUsersRead, true},
+		{authz.PermissionProjectsCreate, true}, // via the stored projects.* wildcard
+		{authz.PermissionUsersWrite, false},
+		{authz.PermissionUsersDelete, false},
+		{authz.PermissionGlobalRolesRead, false},
+		{authz.PermissionGlobalRolesWrite, false},
+		{authz.PermissionGlobalRolesAssign, false},
+		{authz.PermissionSettingsWrite, false},
+		{authz.PermissionAgentsWrite, false},
+		{authz.PermissionPluginsWrite, false},
+	}
+	for _, tc := range tests {
+		ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, tc.perm)
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.perm, err)
+		}
+		if ok != tc.want {
+			t.Errorf("HasPermissions(%q) = %v, want %v", tc.perm, ok, tc.want)
+		}
+	}
+}
+
+// TestAuthorizer_AdminDefaultsFromStoreAuthorizeIntendedGlobalPermissions
+// guards against overcorrecting: a role row that stores ADMIN's seeded
+// defaults must still authorize ADMIN's real, intended global capabilities.
+func TestAuthorizer_AdminDefaultsFromStoreAuthorizeIntendedGlobalPermissions(t *testing.T) {
+	a := authz.NewAuthorizer(&stubPermissionStore{globalPerms: defaultRolePermissions(t, "ADMIN")})
 	for _, p := range []authz.Permission{
 		authz.PermissionUsersAll,
-		authz.PermissionGlobalRolesAll,
+		authz.PermissionGlobalRolesRead, // may see the roles, not change or hand them out
 		authz.PermissionProjectsAll,
 		authz.PermissionSettingsWrite,
 		authz.PermissionAgentsAll,
 		authz.PermissionPluginsAll,
 	} {
-		ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, "ADMIN", p)
+		ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, p)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !ok {
-			t.Errorf("expected ADMIN legacy role to still authorize global permission %q", p)
+			t.Errorf("expected a role storing ADMIN's defaults to authorize global permission %q", p)
 		}
 	}
 }
 
-// TestAuthorizer_LegacyAdminNamedPermissionsDoNotCrossIntoProjectScope closes
-// the gap TestAuthorizer_LegacyAdminCannotSatisfyProjectScopedPermission left
-// open: that test only checked environments.connect, which ADMIN's new
-// permission set never included. Two of ADMIN's real, intended global
-// permissions — agents.* and projects.* — are *also* used to gate
-// project-scoped routes (a project's own agent config/secrets, and a
-// project's own entity — see router.go's ProjectScopeFromParam("projectId")
-// routes for both). Because hasPermissionsForActor used to merge every
-// global grant in regardless of scope, ADMIN could still reach any project's
-// agent env vars/MCP servers or rename/delete any project without ever being
-// added to it — the exact bug this advisory reports, just narrower than the
-// bare wildcard. Every permission ADMIN holds must be checked here, not just
-// the two that happen to collide today, so a future addition to ADMIN's set
-// is automatically covered.
-func TestAuthorizer_LegacyAdminNamedPermissionsDoNotCrossIntoProjectScope(t *testing.T) {
-	a := authz.NewAuthorizer(nil)
+// TestAuthorizer_AdminDefaultNamedPermissionsDoNotCrossIntoProjectScope is the
+// GHSA-hjcj-373w-vq8m guard for ADMIN's seeded permission set. Two of ADMIN's
+// real, intended global permissions — agents.* and projects.* — are *also*
+// used to gate project-scoped routes (a project's own agent config/secrets,
+// and a project's own entity — see router.go's ProjectScopeFromParam
+// ("projectId") routes for both). A global role holding them must not be able
+// to reach into a project it was never added to. Every permission ADMIN is
+// seeded with is checked, not just the two that collide today, so a future
+// addition to ADMIN's set is covered automatically.
+func TestAuthorizer_AdminDefaultNamedPermissionsDoNotCrossIntoProjectScope(t *testing.T) {
+	a := authz.NewAuthorizer(&stubPermissionStore{globalPerms: defaultRolePermissions(t, "ADMIN")})
 	projectID := uuid.New()
-	for _, p := range authz.LegacyPermissionsForRole("ADMIN") {
-		ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "ADMIN", p)
+	for _, p := range defaultRolePermissions(t, "ADMIN") {
+		ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, p)
 		if err != nil {
 			t.Fatalf("%s: unexpected error: %v", p, err)
 		}
 		if ok {
-			t.Errorf("global ADMIN role claim must not satisfy project-scoped %q absent a project-membership grant (GHSA-hjcj-373w-vq8m)", p)
+			t.Errorf("a global role storing ADMIN's defaults must not satisfy project-scoped %q absent a project-membership grant (GHSA-hjcj-373w-vq8m)", p)
 		}
 	}
 }
 
-// TestAuthorizer_LegacySuperAdminWildcardStillAppliesInProjectScope guards
-// against overcorrecting: SUPER_ADMIN's PermissionAll is the one legacy grant
-// that is *supposed* to reach every project regardless of membership (see the
-// PR description for GHSA-hjcj-373w-vq8m — this is confirmed intentional,
-// unlike ADMIN's narrower set). addGlobalGrants must keep letting it through.
-func TestAuthorizer_LegacySuperAdminWildcardStillAppliesInProjectScope(t *testing.T) {
-	a := authz.NewAuthorizer(nil)
+// TestAuthorizer_SuperAdminWildcardStillAppliesInProjectScope guards against
+// overcorrecting: SUPER_ADMIN's PermissionAll is the one global grant that is
+// *supposed* to reach every project regardless of membership (confirmed
+// intentional in the PR for GHSA-hjcj-373w-vq8m, unlike ADMIN's narrower set).
+// addGlobalGrants must keep letting it through.
+func TestAuthorizer_SuperAdminWildcardStillAppliesInProjectScope(t *testing.T) {
+	a := authz.NewAuthorizer(&stubPermissionStore{globalPerms: defaultRolePermissions(t, "SUPER_ADMIN")})
 	projectID := uuid.New()
-	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "SUPER_ADMIN", authz.PermissionEnvironmentsConnect)
+	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, authz.PermissionEnvironmentsConnect)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !ok {
-		t.Fatal("legacy SUPER_ADMIN's wildcard must still satisfy project-scoped permissions with no membership grant")
+		t.Fatal("SUPER_ADMIN's stored wildcard must still satisfy project-scoped permissions with no membership grant")
 	}
 }
 
-// TestAuthorizer_GlobalRoleNamedPermissionDoesNotCrossIntoProjectScope is
-// TestAuthorizer_LegacyAdminNamedPermissionsDoNotCrossIntoProjectScope's
-// sibling for the *other* source of global permissions: an explicitly
-// assigned global role read via PermissionStore.ListGlobalPermissions
-// (backed by the global_roles DB table, not the legacy role claim). This
-// path has the identical scope-blind merge, and the seed migration
-// (000001_init.sql) has granted the DB-backed "ADMIN" global role
-// projects.* since before this advisory — independently of
-// LegacyPermissionsForRole, and independently of this fix's change to
-// DefaultGlobalRoles. A user whose users.role_id points at that seeded row
-// (rather than relying on the legacy claims.Role string) must not be able to
-// use it to rename or delete a project they were never added to.
+// TestAuthorizer_GlobalRoleNamedPermissionDoesNotCrossIntoProjectScope
+// covers a global role read via PermissionStore.ListGlobalPermissions (backed
+// by the global_roles DB table). The seed migration (000001_init.sql) has
+// granted the DB-backed "ADMIN" global role projects.* since before
+// GHSA-hjcj-373w-vq8m, so a user whose users.role_id points at that seeded
+// row must not be able to use it to rename or delete a project they were
+// never added to.
 func TestAuthorizer_GlobalRoleNamedPermissionDoesNotCrossIntoProjectScope(t *testing.T) {
 	projectID := uuid.New()
 	a := authz.NewAuthorizer(&stubPermissionStore{
 		globalPerms: []authz.Permission{authz.PermissionProjectsAll},
 	})
 
-	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "USER", authz.PermissionProjectsDelete)
+	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, authz.PermissionProjectsDelete)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,7 +214,7 @@ func TestAuthorizer_GlobalRoleWildcardStillAppliesInProjectScope(t *testing.T) {
 		globalPerms: []authz.Permission{authz.PermissionAll},
 	})
 
-	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "USER", authz.PermissionProjectsDelete)
+	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, authz.PermissionProjectsDelete)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,7 +230,7 @@ func TestAuthorizer_GlobalAndProjectPermissions(t *testing.T) {
 		projectPerms: []authz.Permission{authz.PermissionTasksWrite},
 	})
 
-	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "USER", authz.PermissionTasksWrite)
+	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, authz.PermissionTasksWrite)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -192,7 +241,7 @@ func TestAuthorizer_GlobalAndProjectPermissions(t *testing.T) {
 
 func TestAuthorizer_WildcardMatch(t *testing.T) {
 	a := authz.NewAuthorizer(&stubPermissionStore{globalPerms: []authz.Permission{authz.PermissionTasksAll}})
-	ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, "USER", authz.PermissionTasksWrite)
+	ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, authz.PermissionTasksWrite)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -216,7 +265,7 @@ func TestAuthorizer_ProjectSettingsWildcard(t *testing.T) {
 		authz.PermissionProjectSettingsTaskStatusesWrite,
 		authz.PermissionProjectSettingsCustomFieldsWrite,
 	} {
-		ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "USER", leaf)
+		ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, leaf)
 		if err != nil {
 			t.Fatalf("unexpected error for %s: %v", leaf, err)
 		}
@@ -237,7 +286,7 @@ func TestAuthorizer_TasksWriteNoLongerImpliesProjectSettings(t *testing.T) {
 		projectPerms: []authz.Permission{authz.PermissionTasksWrite},
 	})
 
-	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "USER", authz.PermissionProjectSettingsTaskStatusesWrite)
+	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, authz.PermissionProjectSettingsTaskStatusesWrite)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -254,7 +303,7 @@ func TestAuthorizer_ViewsNoLongerBorrowsSprintsPermission(t *testing.T) {
 		projectPerms: []authz.Permission{authz.PermissionSprintsAll},
 	})
 
-	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "USER", authz.PermissionViewsWrite)
+	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, authz.PermissionViewsWrite)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

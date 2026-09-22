@@ -493,7 +493,8 @@ export interface CreateGlobalAgentPayload {
 	// Same "always omitted, kept only for type parity" note as
 	// default_environment_id above.
 	default_folder_id?: string | null;
-	global_role_id?: string | null;
+	// No global_role_id: binding a role is its own privilege
+	// (global_roles.assign) with its own endpoint — see setGlobalAgentRole.
 }
 
 export async function createGlobalAgent(
@@ -525,7 +526,7 @@ export interface UpdateGlobalAgentPayload {
 	default_environment_id?: string | null;
 	// See CreateGlobalAgentPayload.default_folder_id above.
 	default_folder_id?: string | null;
-	global_role_id?: string | null;
+	// No global_role_id — see CreateGlobalAgentPayload and setGlobalAgentRole.
 }
 
 export async function updateGlobalAgent(
@@ -535,6 +536,30 @@ export async function updateGlobalAgent(
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
 		`/admin/agents/${agentId}`,
 		payload,
+	);
+	return data.data;
+}
+
+/** Binds a global agent to the global role that decides what it may do.
+ *  Requires both `agents.write` and `global_roles.assign`; the server refuses a
+ *  `global_role_id` on create/update, so this is the only way to set one. */
+export async function setGlobalAgentRole(
+	agentId: string,
+	roleId: string,
+): Promise<Agent> {
+	const { data } = await apiClient.instance.put<SuccessEnvelope<Agent>>(
+		`/admin/agents/${agentId}/global-role`,
+		{ global_role_id: roleId },
+	);
+	return data.data;
+}
+
+/** Unbinds a global agent from its global role, leaving it with no global
+ *  permissions. Gated like {@link setGlobalAgentRole}: removing a role is the
+ *  same privileged action as binding one. */
+export async function clearGlobalAgentRole(agentId: string): Promise<Agent> {
+	const { data } = await apiClient.instance.delete<SuccessEnvelope<Agent>>(
+		`/admin/agents/${agentId}/global-role`,
 	);
 	return data.data;
 }

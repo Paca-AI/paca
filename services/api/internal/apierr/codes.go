@@ -35,6 +35,12 @@ const (
 	// CodeGlobalRoleHasUsers indicates the role cannot be deleted because it
 	// still has assigned users.
 	CodeGlobalRoleHasUsers Code = "GLOBAL_ROLE_HAS_ASSIGNED_USERS"
+	// CodeGlobalRoleIsDefault indicates the role cannot be deleted because it
+	// is the default role new users and agents start with.
+	CodeGlobalRoleIsDefault Code = "GLOBAL_ROLE_IS_DEFAULT"
+	// CodeGlobalRoleNoDefault indicates no global role is marked as the
+	// default, so a new user has no role to start with.
+	CodeGlobalRoleNoDefault Code = "GLOBAL_ROLE_NO_DEFAULT"
 	// CodeBadRequest represents a bad request.
 	CodeBadRequest Code = "BAD_REQUEST"
 	// CodeInternalError represents an internal server error.
@@ -90,6 +96,8 @@ const (
 	CodeTaskTypeIsSystem Code = "TASK_TYPE_IS_SYSTEM"
 	// CodeTaskTypeNameReserved indicates an attempt to use a reserved system type name.
 	CodeTaskTypeNameReserved Code = "TASK_TYPE_NAME_RESERVED"
+	// CodeTaskTypeIsDefault indicates an attempt to delete the project's default task type.
+	CodeTaskTypeIsDefault Code = "TASK_TYPE_IS_DEFAULT"
 
 	// CodeTaskStatusNotFound indicates the requested task status does not exist.
 	CodeTaskStatusNotFound Code = "TASK_STATUS_NOT_FOUND"
@@ -101,6 +109,8 @@ const (
 	CodeTaskStatusReorderInvalid Code = "TASK_STATUS_REORDER_INVALID"
 	// CodeTaskStatusInUseByAutomation indicates the status is still referenced by an automation.
 	CodeTaskStatusInUseByAutomation Code = "TASK_STATUS_IN_USE_BY_AUTOMATION"
+	// CodeTaskStatusIsDefault indicates an attempt to delete the project's default task status.
+	CodeTaskStatusIsDefault Code = "TASK_STATUS_IS_DEFAULT"
 
 	// CodeSprintNotFound indicates the requested sprint does not exist.
 	CodeSprintNotFound Code = "SPRINT_NOT_FOUND"

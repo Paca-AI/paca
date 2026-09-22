@@ -78,16 +78,16 @@ func (r *stubPermissionReader) ListGlobalPermissions(ctx context.Context, userID
 	return nil, nil
 }
 
-// stubRoleRepo implements usersvc.RoleByNameFinder.
+// stubRoleRepo implements usersvc.DefaultRoleFinder.
 type stubRoleRepo struct {
-	findByName func(ctx context.Context, name string) (*globalroledom.GlobalRole, error)
+	findDefault func(ctx context.Context) (*globalroledom.GlobalRole, error)
 }
 
-func (r *stubRoleRepo) FindByName(ctx context.Context, name string) (*globalroledom.GlobalRole, error) {
-	if r.findByName != nil {
-		return r.findByName(ctx, name)
+func (r *stubRoleRepo) FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error) {
+	if r.findDefault != nil {
+		return r.findDefault(ctx)
 	}
-	return nil, globalroledom.ErrNotFound
+	return nil, globalroledom.ErrNoDefault
 }
 
 func (r *stubRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
@@ -174,16 +174,21 @@ func TestGetByID_NotFound(t *testing.T) {
 	}
 }
 
-func TestListGlobalPermissions_LegacyOnly(t *testing.T) {
+// TestListGlobalPermissions_RoleNameAddsNothing: the listing feeds the web
+// UI's capability checks, so it must equal what the authorizer enforces —
+// exactly what the caller's role row stores. The user record is never consulted
+// (the bare stubRepo would answer not-found if it were), so no role *name* —
+// not even one that used to imply a default permission set (ADMIN) — can add to it.
+func TestListGlobalPermissions_RoleNameAddsNothing(t *testing.T) {
 	id := uuid.New()
-	svc := usersvc.New(&stubRepo{
-		findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
-			if got != id {
-				t.Fatalf("unexpected id: %v", got)
-			}
-			return &userdom.User{ID: id, Role: userdom.RoleUser}, nil
+	svc := usersvc.New(
+		&stubRepo{},
+		&stubPermissionReader{
+			listGlobalPermissions: func(context.Context, uuid.UUID) ([]authz.Permission, error) {
+				return []authz.Permission{authz.PermissionUsersRead}, nil
+			},
 		},
-	})
+	)
 
 	got, err := svc.ListGlobalPermissions(context.Background(), id)
 	if err != nil {
@@ -195,17 +200,26 @@ func TestListGlobalPermissions_LegacyOnly(t *testing.T) {
 	}
 }
 
+// TestListGlobalPermissions_NoReaderGrantsNothing: with no permission source
+// configured there is nothing to list — never a default set derived from the
+// user's role name.
+func TestListGlobalPermissions_NoReaderGrantsNothing(t *testing.T) {
+	id := uuid.New()
+	svc := usersvc.New(&stubRepo{})
+
+	got, err := svc.ListGlobalPermissions(context.Background(), id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected no permissions, got %v", got)
+	}
+}
+
 func TestListGlobalPermissions_MergesAndDedupes(t *testing.T) {
 	id := uuid.New()
 	svc := usersvc.New(
-		&stubRepo{
-			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
-				if got != id {
-					t.Fatalf("unexpected id: %v", got)
-				}
-				return &userdom.User{ID: id, Role: userdom.RoleUser}, nil
-			},
-		},
+		&stubRepo{},
 		&stubPermissionReader{
 			listGlobalPermissions: func(_ context.Context, got uuid.UUID) ([]authz.Permission, error) {
 				if got != id {
@@ -226,12 +240,18 @@ func TestListGlobalPermissions_MergesAndDedupes(t *testing.T) {
 	}
 }
 
-func TestListGlobalPermissions_UserNotFound(t *testing.T) {
-	svc := usersvc.New(&stubRepo{})
+// An unknown or deleted user (a token can outlive its account) has no
+// permissions — the permission source yields nothing for it — rather than
+// costing every caller a separate lookup just to answer 404.
+func TestListGlobalPermissions_UnknownUserHasNoPermissions(t *testing.T) {
+	svc := usersvc.New(&stubRepo{}, &stubPermissionReader{})
 
-	_, err := svc.ListGlobalPermissions(context.Background(), uuid.New())
-	if !errors.Is(err, userdom.ErrNotFound) {
-		t.Fatalf("expected ErrNotFound, got %v", err)
+	got, err := svc.ListGlobalPermissions(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected no permissions, got %v", got)
 	}
 }
 
@@ -240,14 +260,7 @@ func TestListGlobalPermissions_ReaderError(t *testing.T) {
 	wantErr := errors.New("permission store failed")
 
 	svc := usersvc.New(
-		&stubRepo{
-			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
-				if got != id {
-					t.Fatalf("unexpected id: %v", got)
-				}
-				return &userdom.User{ID: id, Role: userdom.RoleUser}, nil
-			},
-		},
+		&stubRepo{},
 		&stubPermissionReader{
 			listGlobalPermissions: func(_ context.Context, _ uuid.UUID) ([]authz.Permission, error) {
 				return nil, wantErr
@@ -270,8 +283,8 @@ func TestCreate_Success(t *testing.T) {
 	svc := usersvc.New(
 		&stubRepo{},
 		&stubRoleRepo{
-			findByName: func(_ context.Context, _ string) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser}, nil
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser, IsDefault: true}, nil
 			},
 		},
 	)
@@ -298,6 +311,69 @@ func TestCreate_Success(t *testing.T) {
 	}
 	if got.ID == uuid.Nil {
 		t.Fatal("expected non-nil UUID")
+	}
+}
+
+// The role a new user gets is whichever one is marked as the default, not a
+// role called USER: deleting or renaming USER must not break creating users.
+func TestCreate_UsesTheDefaultRoleWhateverItIsCalled(t *testing.T) {
+	roleID := uuid.New()
+	var stored *userdom.User
+	svc := usersvc.New(
+		&stubRepo{create: func(_ context.Context, u *userdom.User) error {
+			stored = u
+			return nil
+		}},
+		&stubRoleRepo{
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: "MEMBER", IsDefault: true}, nil
+			},
+		},
+	)
+
+	got, err := svc.Create(context.Background(), userdom.CreateInput{
+		Username: "alice", Password: "password123", FullName: "Alice",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Role != "MEMBER" || got.RoleID != roleID {
+		t.Fatalf("expected the default role MEMBER/%v, got %q/%v", roleID, got.Role, got.RoleID)
+	}
+	if stored == nil || stored.RoleID != roleID || stored.Role != "MEMBER" {
+		t.Fatalf("the stored user must carry the default role, got %+v", stored)
+	}
+}
+
+func TestCreate_NoDefaultRole(t *testing.T) {
+	svc := usersvc.New(
+		&stubRepo{create: func(context.Context, *userdom.User) error {
+			t.Fatal("no user may be stored without a role")
+			return nil
+		}},
+		&stubRoleRepo{}, // reports no default
+	)
+
+	_, err := svc.Create(context.Background(), userdom.CreateInput{
+		Username: "alice", Password: "password123", FullName: "Alice",
+	})
+	if !errors.Is(err, globalroledom.ErrNoDefault) {
+		t.Fatalf("expected ErrNoDefault, got %v", err)
+	}
+}
+
+func TestCreate_DefaultRoleLookupFailure(t *testing.T) {
+	lookupErr := errors.New("db down")
+	svc := usersvc.New(
+		&stubRepo{},
+		&stubRoleRepo{findDefault: func(context.Context) (*globalroledom.GlobalRole, error) { return nil, lookupErr }},
+	)
+
+	_, err := svc.Create(context.Background(), userdom.CreateInput{
+		Username: "alice", Password: "password123", FullName: "Alice",
+	})
+	if !errors.Is(err, lookupErr) {
+		t.Fatalf("expected the lookup error, got %v", err)
 	}
 }
 
@@ -331,8 +407,8 @@ func TestCreate_AllowsUsernameReuseAfterSoftDelete(t *testing.T) {
 			},
 		},
 		&stubRoleRepo{
-			findByName: func(_ context.Context, _ string) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser}, nil
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser, IsDefault: true}, nil
 			},
 		},
 	)
@@ -361,8 +437,8 @@ func TestCreate_RepoError(t *testing.T) {
 			create: func(_ context.Context, _ *userdom.User) error { return repoErr },
 		},
 		&stubRoleRepo{
-			findByName: func(_ context.Context, _ string) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser}, nil
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser, IsDefault: true}, nil
 			},
 		},
 	)
@@ -394,67 +470,41 @@ func TestCreate_RequiresRoleResolver(t *testing.T) {
 // AdminUpdate
 // ---------------------------------------------------------------------------
 
-func TestAdminUpdate_SetsRoleAndRoleID(t *testing.T) {
+// TestAdminUpdate_NeverChangesRole: changing a user's role is a separate
+// privilege (global_roles.assign) with its own route, so a profile update must
+// leave the role exactly as it was — and never even consult the role resolver.
+func TestAdminUpdate_NeverChangesRole(t *testing.T) {
 	id := uuid.New()
 	roleID := uuid.New()
-	repoUser := &userdom.User{ID: id, Username: "alice", FullName: "Alice", Role: userdom.RoleUser}
+	repoUser := &userdom.User{ID: id, Username: "alice", FullName: "Alice", Role: userdom.RoleUser, RoleID: roleID}
 
 	svc := usersvc.New(
 		&stubRepo{
-			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
-				if got != id {
-					t.Fatalf("unexpected id: %v", got)
-				}
-				return repoUser, nil
-			},
+			findByID: func(context.Context, uuid.UUID) (*userdom.User, error) { return repoUser, nil },
 			update: func(_ context.Context, u *userdom.User) error {
-				if u.Role != userdom.RoleAdmin {
-					t.Fatalf("expected role %q, got %q", userdom.RoleAdmin, u.Role)
-				}
-				if u.RoleID != roleID {
-					t.Fatalf("expected roleID %v, got %v", roleID, u.RoleID)
+				if u.Role != userdom.RoleUser || u.RoleID != roleID {
+					t.Fatalf("role changed to %q/%v; a profile update must not touch it", u.Role, u.RoleID)
 				}
 				return nil
 			},
 		},
 		&stubRoleRepo{
-			findByName: func(_ context.Context, name string) (*globalroledom.GlobalRole, error) {
-				if name != userdom.RoleAdmin {
-					t.Fatalf("unexpected role lookup: %q", name)
-				}
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleAdmin}, nil
+			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
+				t.Fatal("role resolver consulted during a profile update")
+				return nil, nil
 			},
 		},
 	)
 
-	got, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{Role: userdom.RoleAdmin})
+	got, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{FullName: "Alice Renamed"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Role != userdom.RoleAdmin {
-		t.Fatalf("expected role %q, got %q", userdom.RoleAdmin, got.Role)
+	if got.FullName != "Alice Renamed" {
+		t.Fatalf("expected the name to change, got %q", got.FullName)
 	}
-	if got.RoleID != roleID {
-		t.Fatalf("expected roleID %v, got %v", roleID, got.RoleID)
-	}
-}
-
-func TestAdminUpdate_RoleChangeRequiresRoleResolver(t *testing.T) {
-	id := uuid.New()
-	svc := usersvc.New(
-		&stubRepo{
-			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
-				if got != id {
-					t.Fatalf("unexpected id: %v", got)
-				}
-				return &userdom.User{ID: id, Username: "alice", Role: userdom.RoleUser}, nil
-			},
-		},
-	)
-
-	_, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{Role: userdom.RoleAdmin})
-	if !errors.Is(err, usersvc.ErrRoleResolverRequired) {
-		t.Fatalf("expected ErrRoleResolverRequired, got %v", err)
+	if got.Role != userdom.RoleUser || got.RoleID != roleID {
+		t.Fatalf("role changed to %q/%v", got.Role, got.RoleID)
 	}
 }
 

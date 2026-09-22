@@ -420,7 +420,6 @@ type projectPermStore struct {
 	projectPerms     map[uuid.UUID][]authz.Permission
 	userPerms        map[uuid.UUID]map[uuid.UUID][]authz.Permission // user_id -> project_id -> permissions
 	agentPerms       map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
-	agentRoles       map[uuid.UUID]map[uuid.UUID]string             // project_id -> agent_id -> role_name
 	agentGlobalPerms map[uuid.UUID][]authz.Permission               // agent_id -> permissions (via its own global role)
 }
 
@@ -441,20 +440,13 @@ func (s *projectPermStore) ListProjectPermissions(_ context.Context, userID uuid
 	return nil, nil
 }
 
-func (s *projectPermStore) GetAgentProjectRoleName(_ context.Context, agentID, projectID uuid.UUID) (string, error) {
-	if projMap, ok := s.agentRoles[projectID]; ok {
-		if role, ok := projMap[agentID]; ok {
-			return role, nil
-		}
-	}
-	return "", authz.ErrAgentNotInProject
-}
-
+// ListAgentProjectPermissions mirrors the real store: an agent that is not a
+// member of the project simply has no permissions there.
 func (s *projectPermStore) ListAgentProjectPermissions(_ context.Context, agentID, projectID uuid.UUID) ([]authz.Permission, error) {
 	if projMap, ok := s.agentPerms[projectID]; ok {
 		return append([]authz.Permission(nil), projMap[agentID]...), nil
 	}
-	return nil, fmt.Errorf("agent permissions not found")
+	return nil, nil
 }
 
 func (s *projectPermStore) ListAgentGlobalPermissions(_ context.Context, agentID uuid.UUID) ([]authz.Permission, error) {

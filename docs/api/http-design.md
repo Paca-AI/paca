@@ -37,7 +37,7 @@ Where the current implementation and the schema diverge, this document calls tha
 - Protected endpoints require `Authorization: Bearer <access-token>`.
 - Access and refresh token lifecycle is handled under `/api/v1/auth`.
 - Authorization is permission-based and enforced in middleware for protected operations.
-- Permissions may come from legacy role compatibility, assigned global roles, and later project-scoped roles.
+- Permissions come only from what the caller's assigned roles store (a global role, and a role in each project they belong to) — never from a role's name. See [authorization](../architecture/authorization.md).
 
 ### Identifier strategy
 
@@ -105,6 +105,8 @@ Recommended paginated response shape:
 
 These routes already exist in the Go API service.
 
+In the **Auth** column, permissions joined by `+` are all required, and the permission a route lists is the only thing that grants access: it is read from the caller's role as stored, never inferred from the role's name. See [authorization](../architecture/authorization.md).
+
 | Method | Path | Auth | Function |
 |---|---|---|---|
 | `GET` | `/api/healthz` | No | Liveness/health probe for infrastructure, containers, and local development. |
@@ -116,63 +118,68 @@ These routes already exist in the Go API service.
 | `PATCH` | `/api/v1/users/me` | Access token (fresh) | Update mutable profile fields (`full_name`) for the caller. |
 | `GET` | `/api/v1/users/me/global-permissions` | Access token (fresh) | Return the authenticated caller's effective global permissions. |
 | `GET` | `/api/v1/admin/users` | Access token (fresh) + `users.read` | List all users with pagination. |
-| `POST` | `/api/v1/admin/users` | Access token (fresh) + `users.write` | Create a new user account. Sets `must_change_password = true`. |
+| `POST` | `/api/v1/admin/users` | Access token (fresh) + `users.write` | Create a new user account with the default global role (the one marked `is_default`, `USER` unless changed). Sets `must_change_password = true`. A `role` in the body is rejected with `400`. Fails with `409 GLOBAL_ROLE_NO_DEFAULT` if no role is the default. |
 | `GET` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.read` | Get a user profile by ID. |
-| `PATCH` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.write` | Update a user's `full_name` or `role`. |
+| `PATCH` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.write` | Update a user's `full_name` or `email`. A `role` in the body is rejected with `400`; change roles with `PUT .../global-roles`. |
 | `PATCH` | `/api/v1/admin/users/:userId/password` | Access token (fresh) + `users.write` | Admin password reset. Sets `must_change_password = true`. |
 | `DELETE` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.delete` | Soft-delete a user account. |
-| `GET` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.read` | List available global roles and permissions. |
-| `POST` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.write` | Create a new global role definition. |
-| `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Update a global role definition. |
-| `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Remove a global role definition. Fails with `409` if users are assigned to it. |
-| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token (fresh) + `global_roles.assign` | Assign or replace the single global role for a user. |
+| `GET` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.read` | List available global roles and permissions. Exactly one carries `is_default = true`. |
+| `POST` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.write` | Create a new global role definition. Root-equivalent: see [authorization](../architecture/authorization.md). |
+| `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Update a global role definition. Root-equivalent: see [authorization](../architecture/authorization.md). |
+| `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Remove a global role definition. Fails with `409 GLOBAL_ROLE_IS_DEFAULT` for the default role, and with `409 GLOBAL_ROLE_HAS_ASSIGNED_USERS` if users or global agents are assigned to it. |
+| `PUT` | `/api/v1/admin/global-roles/:roleId/set-default` | Access token (fresh) + `global_roles.write` | Make a role the default that new users and new global agents start with, clearing the flag on the previous default. Returns the role. Root-equivalent: see [authorization](../architecture/authorization.md). |
+| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token (fresh) + `global_roles.assign` | Assign or replace the single global role for a user. The only route that changes a user's role. Root-equivalent: see [authorization](../architecture/authorization.md). |
+| `PUT` | `/api/v1/admin/agents/:agentId/global-role` | Access token (fresh) + `agents.write` + `global_roles.assign` | Bind a global agent to the global role that decides what it may do. The only route that sets one. Root-equivalent: see [authorization](../architecture/authorization.md). |
+| `DELETE` | `/api/v1/admin/agents/:agentId/global-role` | Access token (fresh) + `agents.write` + `global_roles.assign` | Unbind a global agent from its global role. |
 | `GET` | `/api/v1/projects` | Access token (fresh) | List projects visible to the caller. |
 | `POST` | `/api/v1/projects` | Access token (fresh) + `projects.create` | Create a new project. |
 | `GET` | `/api/v1/projects/:projectId` | Access token (fresh) + `projects.read` | Get project details. |
 | `PATCH` | `/api/v1/projects/:projectId` | Access token (fresh) + `projects.write` | Update project name or description. |
 | `DELETE` | `/api/v1/projects/:projectId` | Access token (fresh) + `projects.delete` | Delete a project. |
-| `GET` | `/api/v1/projects/:projectId/members` | Access token (fresh) + `members.read` | List project members. |
-| `POST` | `/api/v1/projects/:projectId/members` | Access token (fresh) + `members.write` | Add a user to a project. |
-| `PATCH` | `/api/v1/projects/:projectId/members/:userId` | Access token (fresh) + `members.write` | Change a member's project role. |
-| `DELETE` | `/api/v1/projects/:projectId/members/:userId` | Access token (fresh) + `members.write` | Remove a member from a project. |
-| `GET` | `/api/v1/projects/:projectId/roles` | Access token (fresh) + `roles.read` | List custom project roles. |
-| `POST` | `/api/v1/projects/:projectId/roles` | Access token (fresh) + `roles.write` | Create a project-scoped role. |
-| `PATCH` | `/api/v1/projects/:projectId/roles/:roleId` | Access token (fresh) + `roles.write` | Update a project role. |
-| `DELETE` | `/api/v1/projects/:projectId/roles/:roleId` | Access token (fresh) + `roles.write` | Delete a project role. |
-| `GET` | `/api/v1/projects/:projectId/task-types` | Access token (fresh) + `tasks.read` | List task type definitions. System types (`is_system = true`) are included in the response but are marked as non-editable. |
-| `POST` | `/api/v1/projects/:projectId/task-types` | Access token (fresh) + `tasks.write` | Create a task type (e.g. story, bug, chore). Cannot be used to create system types (Epic, Subtask) — returns `400 TASK_TYPE_SYSTEM_TYPE_NOT_ALLOWED`. |
-| `PATCH` | `/api/v1/projects/:projectId/task-types/:typeId` | Access token (fresh) + `tasks.write` | Update a task type. Returns `409 TASK_TYPE_IS_SYSTEM` if the target type is a system type. |
-| `DELETE` | `/api/v1/projects/:projectId/task-types/:typeId` | Access token (fresh) + `tasks.write` | Delete a task type. Returns `409 TASK_TYPE_IS_SYSTEM` if the target type is a system type. |
-| `GET` | `/api/v1/projects/:projectId/task-statuses` | Access token (fresh) + `tasks.read` | List workflow statuses in board order. |
-| `POST` | `/api/v1/projects/:projectId/task-statuses` | Access token (fresh) + `tasks.write` | Create a workflow status. |
-| `PATCH` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Access token (fresh) + `tasks.write` | Update a workflow status. |
-| `DELETE` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Access token (fresh) + `tasks.write` | Delete a workflow status. |
-| `GET` | `/api/v1/projects/:projectId/sprints` | Access token (fresh) + `sprints.read` | List sprints for a project ordered by creation date. |
+| `GET` | `/api/v1/projects/:projectId/members` | Access token (fresh) + `project.members.read` (or global `projects.read`); anonymous on a public project | List project members. |
+| `POST` | `/api/v1/projects/:projectId/members` | Access token (fresh) + `project.members.write` | Add a user to a project. |
+| `PATCH` | `/api/v1/projects/:projectId/members/:userId` | Access token (fresh) + `project.members.write` | Change a member's project role. |
+| `DELETE` | `/api/v1/projects/:projectId/members/:userId` | Access token (fresh) + `project.members.write` | Remove a member from a project. |
+| `GET` | `/api/v1/projects/:projectId/roles` | Access token (fresh) + `project.roles.read` (or global `projects.read`); anonymous on a public project | List custom project roles. |
+| `POST` | `/api/v1/projects/:projectId/roles` | Access token (fresh) + `project.roles.write` | Create a project-scoped role. |
+| `PATCH` | `/api/v1/projects/:projectId/roles/:roleId` | Access token (fresh) + `project.roles.write` | Update a project role. |
+| `DELETE` | `/api/v1/projects/:projectId/roles/:roleId` | Access token (fresh) + `project.roles.write` | Delete a project role. |
+| `GET` | `/api/v1/projects/:projectId/task-types` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project | List task type definitions. System types (`is_system = true`) are included in the response but are marked as non-editable. |
+| `POST` | `/api/v1/projects/:projectId/task-types` | Access token (fresh) + `project.settings.task_types.write` | Create a task type (e.g. story, bug, chore). Cannot be used to create system types (Epic, Subtask) — returns `400 TASK_TYPE_SYSTEM_TYPE_NOT_ALLOWED`. |
+| `PATCH` | `/api/v1/projects/:projectId/task-types/:typeId` | Access token (fresh) + `project.settings.task_types.write` | Update a task type. Returns `409 TASK_TYPE_IS_SYSTEM` if the target type is a system type. |
+| `DELETE` | `/api/v1/projects/:projectId/task-types/:typeId` | Access token (fresh) + `project.settings.task_types.write` | Delete a task type. Returns `409 TASK_TYPE_IS_SYSTEM` if the target type is a system type, and `409 TASK_TYPE_IS_DEFAULT` if it is the project's default type. |
+| `PUT` | `/api/v1/projects/:projectId/task-types/:typeId/set-default` | Access token (fresh) + `project.settings.task_types.write` | Make a task type the default that new tasks get, clearing the flag on the previous default. |
+| `GET` | `/api/v1/projects/:projectId/task-statuses` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project | List workflow statuses in board order. |
+| `POST` | `/api/v1/projects/:projectId/task-statuses` | Access token (fresh) + `project.settings.task_statuses.write` | Create a workflow status. |
+| `PATCH` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Access token (fresh) + `project.settings.task_statuses.write` | Update a workflow status. |
+| `DELETE` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Access token (fresh) + `project.settings.task_statuses.write` | Delete a workflow status. Returns `409 TASK_STATUS_IS_DEFAULT` if it is the project's default status. |
+| `PUT` | `/api/v1/projects/:projectId/task-statuses/:statusId/set-default` | Access token (fresh) + `project.settings.task_statuses.write` | Make a status the default that new tasks start in, clearing the flag on the previous default. |
+| `GET` | `/api/v1/projects/:projectId/sprints` | Access token (fresh) + `sprints.read` (or global `projects.read`); anonymous on a public project | List sprints for a project ordered by creation date. |
 | `POST` | `/api/v1/projects/:projectId/sprints` | Access token (fresh) + `sprints.write` | Quick-create a sprint with a system-generated default name ("Sprint N"). No request body required. The sprint is created with `status = planned`. |
-| `GET` | `/api/v1/projects/:projectId/sprints/:sprintId` | Access token (fresh) + `sprints.read` | Get sprint details (goal, dates, status). |
+| `GET` | `/api/v1/projects/:projectId/sprints/:sprintId` | Access token (fresh) + `sprints.read` (or global `projects.read`); anonymous on a public project | Get sprint details (goal, dates, status). |
 | `PATCH` | `/api/v1/projects/:projectId/sprints/:sprintId` | Access token (fresh) + `sprints.write` | Update sprint metadata (name, goal, start_date, end_date). Cannot be used to change `status`; use the dedicated lifecycle actions instead. |
 | `DELETE` | `/api/v1/projects/:projectId/sprints/:sprintId` | Access token (fresh) + `sprints.write` | Delete a sprint. Fails with `409 SPRINT_IS_ACTIVE` if the sprint is currently active. |
 | `POST` | `/api/v1/projects/:projectId/sprints/:sprintId/start` | Access token (fresh) + `sprints.write` | Start a planned sprint: set name, goal, start date, and due date, then transition `status` to `active`. Multiple sprints may be active simultaneously. Fails with `409 SPRINT_NOT_PLANNED` if the sprint is not in `planned` state. |
 | `POST` | `/api/v1/projects/:projectId/sprints/:sprintId/complete` | Access token (fresh) + `sprints.write` | Complete an active sprint: transition `status` to `completed` and move all incomplete tasks to the specified sprint (or back to no-sprint if `move_to_sprint_id` is `null`). Fails with `409 SPRINT_NOT_ACTIVE` if the sprint is not in `active` state. |
 | `GET` | `/api/v1/projects/:projectId/views?context=sprint&sprint_id=:sprintId` | Access token (fresh) + `sprints.read` | List saved view configurations. `context` must be `sprint`, `backlog`, or `timeline`; the `sprint` context requires `sprint_id`. |
 | `POST` | `/api/v1/projects/:projectId/views?context=sprint&sprint_id=:sprintId` | Access token (fresh) + `sprints.write` | Create a saved view configuration. `context` must be `sprint`, `backlog`, or `timeline`; the `sprint` context requires `sprint_id`. Sprint creation seeds one Board and one Table view with `column_by = status`, the current sprint selected, and non-system task types. Project creation seeds one backlog Table view with `column_by = sprint` plus one timeline Roadmap view filtered to Epics. |
-| `GET` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `sprints.read` | Get a single view configuration. |
-| `PATCH` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `sprints.write` | Update a view's name or config. |
-| `DELETE` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `sprints.write` | Delete a view. Fails with `409 VIEW_IS_LAST_VIEW` if it is the only remaining view. |
+| `GET` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `views.read` (or global `projects.read`); anonymous on a public project | Get a single view configuration. |
+| `PATCH` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `views.write` | Update a view's name or config. |
+| `DELETE` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `views.write` | Delete a view. Fails with `409 VIEW_IS_LAST_VIEW` if it is the only remaining view. |
 | `PUT` | `/api/v1/projects/:projectId/views/positions?context=sprint&sprint_id=:sprintId` | Access token (fresh) + `sprints.write` | Reorder all views for the given context. `context` must be `sprint` (with `sprint_id`), `backlog`, or `timeline`. Body: `{ "view_ids": ["<uuid>", ...] }` — must include every view ID in the desired tab order. Returns `400 VIEW_REORDER_INVALID` if the list is missing or contains unknown IDs. |
-| `GET` | `/api/v1/projects/:projectId/views/:viewId/task-positions` | Access token (fresh) + `tasks.read` | List manual task ordering positions within a view. |
+| `GET` | `/api/v1/projects/:projectId/views/:viewId/task-positions` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project | List manual task ordering positions within a view. |
 | `PUT` | `/api/v1/projects/:projectId/views/:viewId/task-positions/:taskId` | Access token (fresh) + `tasks.write` | Set or update the manual position of a task within a view. |
 | `PUT` | `/api/v1/projects/:projectId/views/:viewId/task-positions` | Access token (fresh) + `tasks.write` | Bulk-upsert manual positions of multiple tasks within a view. |
-| `GET` | `/api/v1/projects/:projectId/tasks` | Access token (fresh) + `tasks.read` | List tasks through one shared endpoint. Supported filters include `sprint_id`, `sprint_ids`, `status_id`, `status_ids`, `assignee_id`, `assignee_ids`, `task_type_ids`, and `parent_task_id`. `sprint_id=null` is still supported for unscheduled-only backlog queries. Timeline pages should use `task_type_ids` to request Epic tasks, and manual ordering should be read from `/views/:viewId/task-positions`. |
+| `GET` | `/api/v1/projects/:projectId/tasks` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project | List tasks through one shared endpoint. Supported filters include `sprint_id`, `sprint_ids`, `status_id`, `status_ids`, `assignee_id`, `assignee_ids`, `task_type_ids`, and `parent_task_id`. `sprint_id=null` is still supported for unscheduled-only backlog queries. Timeline pages should use `task_type_ids` to request Epic tasks, and manual ordering should be read from `/views/:viewId/task-positions`. |
 | `POST` | `/api/v1/projects/:projectId/tasks` | Access token (fresh) + `tasks.write` | Create a task. |
-| `GET` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks.read` | Get task detail. |
+| `GET` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project | Get task detail. |
 | `PATCH` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks.write` | Update a task. |
 | `DELETE` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks.write` | Soft-delete a task. |
-| `GET` | `/api/v1/projects/:projectId/custom-fields` | Access token (fresh) + `tasks.read` | List custom field definitions for a project. |
-| `POST` | `/api/v1/projects/:projectId/custom-fields` | Access token (fresh) + `tasks.write` | Create a custom field definition. |
-| `GET` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Access token (fresh) + `tasks.read` | Get a custom field definition by ID. |
-| `PATCH` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Access token (fresh) + `tasks.write` | Update a custom field definition. |
-| `DELETE` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Access token (fresh) + `tasks.write` | Delete a custom field definition. |
+| `GET` | `/api/v1/projects/:projectId/custom-fields` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project | List custom field definitions for a project. |
+| `POST` | `/api/v1/projects/:projectId/custom-fields` | Access token (fresh) + `project.settings.custom_fields.write` | Create a custom field definition. |
+| `GET` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project | Get a custom field definition by ID. |
+| `PATCH` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Access token (fresh) + `project.settings.custom_fields.write` | Update a custom field definition. |
+| `DELETE` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Access token (fresh) + `project.settings.custom_fields.write` | Delete a custom field definition. |
 | `GET` | `/api/v1/projects/:projectId/github` | Access token (fresh) + `projects.write` | Get the GitHub integration for a project (token presence only — the PAT value is never returned). Returns `404 GITHUB_INTEGRATION_NOT_FOUND` when no integration is configured. |
 | `PUT` | `/api/v1/projects/:projectId/github/token` | Access token (fresh) + `projects.write` | Validate and store (or replace) a GitHub personal access token. The token is validated against the GitHub API before being encrypted at rest. Returns `422 GITHUB_INVALID_TOKEN` if the token is rejected. |
 | `DELETE` | `/api/v1/projects/:projectId/github/token` | Access token (fresh) + `projects.write` | Remove the stored GitHub integration and delete all linked repositories and their webhooks. |
@@ -392,10 +399,12 @@ Success response data:
 
 Function:
 
-- create a new user account;
-- resolve the provided role name against `global_roles`;
+- create a new user account with the default global role (see `PUT /api/v1/admin/global-roles/:roleId/set-default`; `USER` until another role is made the default);
+- return `409 GLOBAL_ROLE_NO_DEFAULT` if no role is the default, rather than guessing one;
 - hash password before persistence;
 - set `must_change_password = true` so the user is required to change their password on first login.
+
+Assigning a role is a separate privilege (`global_roles.assign`) with its own route, so this body has no `role`: sending one is rejected with `400`. The account always starts with the default role, whatever the caller may assign. To give it another role, create the account and then call `PUT /api/v1/admin/users/:userId/global-roles`.
 
 Request body:
 
@@ -403,8 +412,7 @@ Request body:
 {
   "username": "alice",
   "password": "secret123",
-  "full_name": "Alice",
-  "role": "USER"
+  "full_name": "Alice"
 }
 ```
 
@@ -427,15 +435,14 @@ Function:
 
 Function:
 
-- update a user's `full_name` or `role`;
-- role changes are validated against `global_roles` — the role name must exist.
+- update a user's profile: `full_name` and `email`;
+- a user's role is not part of the profile — a `role` in the body is rejected with `400`; change it with `PUT /api/v1/admin/users/:userId/global-roles`, which requires `global_roles.assign`.
 
 Request body:
 
 ```json
 {
-  "full_name": "New Name",
-  "role": "ADMIN"
+  "full_name": "New Name"
 }
 ```
 
@@ -470,7 +477,7 @@ Success response: `204 No Content`
 Function:
 
 - list global role definitions;
-- return each role with its assigned permission map.
+- return each role with its assigned permission map and whether it is the default (`is_default`).
 
 ### `POST /api/v1/admin/global-roles`
 
@@ -502,13 +509,26 @@ Function:
 Function:
 
 - remove a global role definition;
-- returns `409 GLOBAL_ROLE_HAS_ASSIGNED_USERS` if any users are currently assigned to the role — reassign users first.
+- returns `409 GLOBAL_ROLE_IS_DEFAULT` if the role is the default — new users and global agents start with it, so make another role the default first;
+- returns `409 GLOBAL_ROLE_HAS_ASSIGNED_USERS` if any users or global agents are currently assigned to the role — reassign them first.
+
+### `PUT /api/v1/admin/global-roles/:roleId/set-default`
+
+Function:
+
+- make the role the default: the one every new user and every new global agent starts with;
+- clear the flag on the previous default in the same transaction, so exactly one role is the default at any moment (a partial unique index on `global_roles.is_default` enforces it);
+- existing users and agents keep the role they have;
+- same shape as `PUT /api/v1/projects/:projectId/task-statuses/:statusId/set-default` and its task type sibling.
+
+No request body. Success response: `200 OK` with the role. Returns `404 GLOBAL_ROLE_NOT_FOUND` if the role does not exist.
 
 ### `PUT /api/v1/admin/users/:userId/global-roles`
 
 Function:
 
-- replace the complete set of global roles assigned to a user.
+- set the global role assigned to a user (a user holds exactly one, so this replaces it);
+- requires `global_roles.assign`, a privilege separate from `users.write`: no other route changes a user's role.
 
 Request body:
 
@@ -519,6 +539,32 @@ Request body:
   ]
 }
 ```
+
+### `PUT /api/v1/admin/agents/:agentId/global-role`
+
+Function:
+
+- bind a global agent to the global role that decides what it may do at global scope;
+- requires both `agents.write` and `global_roles.assign`;
+- the only route that sets an agent's global role: `POST /api/v1/admin/agents` and `PATCH /api/v1/admin/agents/:agentId` reject a `global_role_id` with `400`;
+- a new global agent already holds the default global role, or no role when none is the default (creating an agent never fails for lack of one), so this route is for choosing a different role or the first one.
+
+Request body:
+
+```json
+{
+  "global_role_id": "uuid"
+}
+```
+
+Success response: `200 OK` with the agent. Returns `404` if the agent is not a global agent or the role does not exist.
+
+### `DELETE /api/v1/admin/agents/:agentId/global-role`
+
+Function:
+
+- unbind a global agent from its global role, leaving it with no global permissions;
+- same permissions as binding one: removing a role is the same privileged action.
 
 ## Sprint Lifecycle Contracts
 
@@ -1586,7 +1632,7 @@ Sub-resources of tasks that are not yet implemented.
 |---|---|---|
 | `GET` | `/api/v1/projects/:projectId/tasks/:taskId/children` | List child tasks under a parent task. |
 | `POST` | `/api/v1/projects/:projectId/tasks/:taskId/children` | Create a child task under the specified parent task. |
-| `GET` | `/api/v1/projects/:projectId/tasks/:taskId/activities` | List audit/activity entries for a task. |
+| `GET` | `/api/v1/projects/:projectId/tasks/:taskId/activities` | Access token (fresh) + `tasks.read` (or global `projects.read`); anonymous on a public project |
 | `POST` | `/api/v1/projects/:projectId/tasks/:taskId/activities` | Add a task activity entry such as comment, status change note, or system event. |
 | `GET` | `/api/v1/projects/:projectId/tasks/:taskId/time-logs` | List time logs recorded against a task. |
 | `POST` | `/api/v1/projects/:projectId/tasks/:taskId/time-logs` | Record time spent on a task. |
@@ -1661,7 +1707,9 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `GLOBAL_ROLE_NOT_FOUND` | 404 | Global role with the given ID does not exist. |
 | `GLOBAL_ROLE_NAME_TAKEN` | 409 | A global role with that name already exists. |
 | `GLOBAL_ROLE_NAME_INVALID` | 400 | Role name does not meet naming requirements. |
-| `GLOBAL_ROLE_HAS_ASSIGNED_USERS` | 409 | Role cannot be deleted while users are assigned to it. |
+| `GLOBAL_ROLE_HAS_ASSIGNED_USERS` | 409 | Role cannot be deleted while users or global agents are assigned to it. |
+| `GLOBAL_ROLE_IS_DEFAULT` | 409 | The default role cannot be deleted; make another role the default first. |
+| `GLOBAL_ROLE_NO_DEFAULT` | 409 | No global role is the default, so a new user cannot be given one. Creating a global agent does not fail: it is created without a role. |
 | `PROJECT_NOT_FOUND` | 404 | Project with the given ID does not exist. |
 | `PROJECT_NAME_TAKEN` | 409 | A project with that name already exists. |
 | `PROJECT_NAME_INVALID` | 400 | Project name is empty or does not meet naming requirements. |
@@ -1675,8 +1723,10 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `TASK_TITLE_INVALID` | 400 | Task title is empty or invalid. |
 | `TASK_TYPE_NOT_FOUND` | 404 | Task type with the given ID does not exist. |
 | `TASK_TYPE_NAME_INVALID` | 400 | Task type name is empty or invalid. |
+| `TASK_TYPE_IS_DEFAULT` | 409 | The project's default task type cannot be deleted; make another type the default first. |
 | `TASK_STATUS_NOT_FOUND` | 404 | Task status with the given ID does not exist. |
 | `TASK_STATUS_NAME_INVALID` | 400 | Task status name is empty or invalid. |
+| `TASK_STATUS_IS_DEFAULT` | 409 | The project's default status cannot be deleted; make another status the default first. |
 | `TASK_STATUS_CATEGORY_INVALID` | 400 | Task status category value is not one of the allowed values. |
 | `SPRINT_NOT_FOUND` | 404 | Sprint with the given ID does not exist. |
 | `SPRINT_NAME_INVALID` | 400 | Sprint name is empty or invalid. |

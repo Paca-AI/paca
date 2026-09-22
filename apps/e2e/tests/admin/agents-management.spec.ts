@@ -9,12 +9,16 @@ import {
 	test,
 } from "@playwright/test";
 import {
+	authRequest,
 	BASE_URL,
+	bindGlobalAgentRole,
 	cleanupGlobalAgentsByPrefix,
 	cleanupGlobalRolesByPrefix,
 	cleanupUsersByPrefix,
 	createGlobalAgent,
 	createUserWithGlobalPermissions,
+	globalRoleIdByName,
+	listGlobalAgents,
 	newRunId,
 	RESTRICTED_PASSWORD,
 	signIn,
@@ -192,13 +196,10 @@ test.describe("Admin Agents empty state and create dialog", () => {
 
 		const dialog = page.getByRole("dialog", { name: "Create AI Agent" });
 		await expect(dialog).toBeVisible();
-		await expect(dialog.getByText("1 / 2")).toBeVisible();
-
-		// The picker defaults to "No role" and always offers it as an option.
-		const roleSelect = dialog.getByRole("combobox");
-		await expect(roleSelect).toContainText("No role");
-		await roleSelect.click();
-		await expect(page.getByRole("option", { name: "No role" })).toBeVisible();
+		// A global agent's role is a third step of its own (this account may
+		// assign roles), not a field of the first step.
+		await expect(dialog.getByText("1 / 3")).toBeVisible();
+		await expect(dialog.getByRole("combobox")).toHaveCount(0);
 	});
 
 	test("Visiting Admin Agents with ?create=true opens the create dialog immediately", async ({
@@ -242,9 +243,17 @@ test.describe("Managing global agents", () => {
 		const dialog = await openCreateDialog(page);
 		await dialog.getByRole("textbox", { name: /^Name/ }).fill(agentName);
 		await dialog.getByRole("button", { name: "Continue" }).click();
-		await expect(dialog.getByText("2 / 2")).toBeVisible();
+		await expect(dialog.getByText("2 / 3")).toBeVisible();
 		await fillLlmApiKey(dialog);
+		// The agent is created here; its role is the step after.
 		await dialog.getByRole("button", { name: "Create Agent" }).click();
+
+		// It holds the default role, and keeping it is what Finish does.
+		await expect(dialog.getByText("3 / 3")).toBeVisible();
+		await expect(
+			dialog.getByRole("radio", { name: "USER", exact: true }),
+		).toBeChecked();
+		await dialog.getByRole("button", { name: "Finish" }).click();
 
 		await expect(dialog).not.toBeVisible();
 		await expect(page.getByText(agentName, { exact: true })).toBeVisible();
@@ -292,5 +301,399 @@ test.describe("Managing global agents", () => {
 			new RegExp(`/admin/agents/${agent.id}(\\?.*)?$`),
 		);
 		await expect(page).not.toHaveURL(/\/projects\//);
+	});
+});
+
+// ===========================================================================
+// Rule: Creating a global agent — its role is a third step, after it exists
+// ===========================================================================
+
+// The API refuses a role on create: a global agent starts with the default
+// global role, and changing it is its own privilege (global_roles.assign) and
+// its own request. The wizard creates the agent at its second step, then offers
+// the role as a third step of its own, only to someone who may assign roles.
+
+const findGlobalAgent = async (request: APIRequestContext, name: string) => {
+	await authRequest(request);
+	return (await listGlobalAgents(request)).find((a) => a.name === name);
+};
+
+test.describe("Creating a global agent with a role", () => {
+	test.beforeEach(async ({ request, context }) => {
+		await cleanup(request);
+		await context.clearCookies();
+	});
+
+	test.afterEach(async ({ request }) => {
+		await cleanup(request);
+	});
+
+	test("The agent is created first, then the role step shows it holding the default role and lists the real roles", async ({
+		page,
+		request,
+	}) => {
+		const agentName = `${PREFIX}ROLE_STEP`;
+		await signIn(page);
+		await page.goto(ADMIN_AGENTS_URL);
+
+		const dialog = await openCreateDialog(page);
+		await expect(
+			dialog.getByText("Set up your agent's identity"),
+		).toBeVisible();
+		await dialog.getByRole("textbox", { name: /^Name/ }).fill(agentName);
+		await dialog.getByRole("button", { name: "Continue" }).click();
+		await fillLlmApiKey(dialog);
+		await dialog.getByRole("button", { name: "Create Agent" }).click();
+
+		await expect(dialog.getByText("3 / 3")).toBeVisible();
+		await expect(
+			dialog.getByText(
+				`${agentName} was created with the default global role.`,
+			),
+		).toBeVisible();
+		const roles = dialog.getByRole("radiogroup", { name: "Global role" });
+		const held = roles.getByRole("radio", { name: "USER", exact: true });
+		await expect(held).toBeChecked();
+		await expect(held).toHaveAccessibleDescription(/Current/);
+		await expect(held).toHaveAccessibleDescription(/Default/);
+		await expect(
+			roles.getByRole("radio", { name: "No global role" }),
+		).not.toBeChecked();
+		await expect(
+			roles.getByRole("radio", { name: "ADMIN", exact: true }),
+		).toBeVisible();
+		await expect(
+			roles.getByRole("radio", { name: "SUPER_ADMIN", exact: true }),
+		).toBeVisible();
+
+		// The agent exists already, with the default role, and there is no way back.
+		await expect(dialog.getByRole("button", { name: "Back" })).toBeHidden();
+		const agent = await findGlobalAgent(request, agentName);
+		expect(agent?.global_role_id).toBe(
+			await globalRoleIdByName(request, "USER"),
+		);
+	});
+
+	test("Keeping the default role creates the agent with it and changes nothing", async ({
+		page,
+		request,
+	}) => {
+		const agentName = `${PREFIX}DEFAULT_ROLE`;
+		await signIn(page);
+		await page.goto(ADMIN_AGENTS_URL);
+
+		const dialog = await openCreateDialog(page);
+		await dialog.getByRole("textbox", { name: /^Name/ }).fill(agentName);
+		await dialog.getByRole("button", { name: "Continue" }).click();
+		await fillLlmApiKey(dialog);
+		await dialog.getByRole("button", { name: "Create Agent" }).click();
+		await dialog.getByRole("button", { name: "Finish" }).click();
+
+		await expect(dialog).not.toBeVisible();
+		await expect(page.getByText(agentName, { exact: true })).toBeVisible();
+		const agent = await findGlobalAgent(request, agentName);
+		expect(agent?.global_role_id).toBe(
+			await globalRoleIdByName(request, "USER"),
+		);
+	});
+
+	test("A different role is assigned through its own step once the agent exists", async ({
+		page,
+		request,
+	}) => {
+		const agentName = `${PREFIX}WITH_ROLE`;
+		await signIn(page);
+		await page.goto(ADMIN_AGENTS_URL);
+
+		const dialog = await openCreateDialog(page);
+		await dialog.getByRole("textbox", { name: /^Name/ }).fill(agentName);
+		await dialog.getByRole("button", { name: "Continue" }).click();
+		await fillLlmApiKey(dialog);
+		await dialog.getByRole("button", { name: "Create Agent" }).click();
+		await dialog.getByRole("radio", { name: "ADMIN", exact: true }).check();
+		await dialog.getByRole("button", { name: "Assign role" }).click();
+
+		await expect(dialog).not.toBeVisible();
+		await expect(page.getByText(agentName, { exact: true })).toBeVisible();
+		const agent = await findGlobalAgent(request, agentName);
+		expect(agent?.global_role_id).toBe(
+			await globalRoleIdByName(request, "ADMIN"),
+		);
+	});
+
+	test("Choosing 'No global role' removes the default role through its own request", async ({
+		page,
+		request,
+	}) => {
+		const agentName = `${PREFIX}NO_ROLE`;
+		await signIn(page);
+		await page.goto(ADMIN_AGENTS_URL);
+
+		const dialog = await openCreateDialog(page);
+		await dialog.getByRole("textbox", { name: /^Name/ }).fill(agentName);
+		await dialog.getByRole("button", { name: "Continue" }).click();
+		await fillLlmApiKey(dialog);
+		await dialog.getByRole("button", { name: "Create Agent" }).click();
+		await dialog.getByRole("radio", { name: "No global role" }).check();
+		await dialog.getByRole("button", { name: "Remove role" }).click();
+
+		await expect(dialog).not.toBeVisible();
+		const agent = await findGlobalAgent(request, agentName);
+		expect(agent).toBeTruthy();
+		expect(agent?.global_role_id ?? null).toBeNull();
+	});
+
+	test("Closing the dialog on the role step finishes with the role the agent has", async ({
+		page,
+		request,
+	}) => {
+		const agentName = `${PREFIX}CLOSED_ON_ROLE`;
+		await signIn(page);
+		await page.goto(ADMIN_AGENTS_URL);
+
+		const dialog = await openCreateDialog(page);
+		await dialog.getByRole("textbox", { name: /^Name/ }).fill(agentName);
+		await dialog.getByRole("button", { name: "Continue" }).click();
+		await fillLlmApiKey(dialog);
+		await dialog.getByRole("button", { name: "Create Agent" }).click();
+		await expect(dialog.getByText("3 / 3")).toBeVisible();
+
+		await dialog.getByRole("button", { name: "Close" }).click();
+
+		await expect(dialog).not.toBeVisible();
+		await expect(page.getByText(agentName, { exact: true })).toBeVisible();
+		const agent = await findGlobalAgent(request, agentName);
+		expect(agent?.global_role_id).toBe(
+			await globalRoleIdByName(request, "USER"),
+		);
+	});
+
+	test("A user who may write agents but not assign roles creates them in two steps, and they still get the default role", async ({
+		page,
+		request,
+		playwright,
+	}) => {
+		const agentName = `${PREFIX}TWO_STEPS`;
+		const username = await createRestrictedUser(
+			request,
+			playwright,
+			"TWOSTEP",
+			{
+				"agents.write": true,
+			},
+		);
+
+		await signIn(page, username, RESTRICTED_PASSWORD);
+		await page.goto(ADMIN_AGENTS_URL);
+
+		const dialog = await openCreateDialog(page);
+		await expect(dialog.getByText("1 / 2")).toBeVisible();
+		await dialog.getByRole("textbox", { name: /^Name/ }).fill(agentName);
+		await dialog.getByRole("button", { name: "Continue" }).click();
+		await expect(dialog.getByText("2 / 2")).toBeVisible();
+		await fillLlmApiKey(dialog);
+		// No role step: the second step is the last, and creates.
+		await expect(dialog.getByRole("button", { name: "Continue" })).toHaveCount(
+			0,
+		);
+		await dialog.getByRole("button", { name: "Create Agent" }).click();
+
+		await expect(dialog).not.toBeVisible();
+		// Assigning a role is a privilege they lack, but the default one comes
+		// with every new agent.
+		const agent = await findGlobalAgent(request, agentName);
+		expect(agent).toBeTruthy();
+		expect(agent?.global_role_id).toBe(
+			await globalRoleIdByName(request, "USER"),
+		);
+	});
+
+	test("A user who may also assign roles gets the third step", async ({
+		page,
+		request,
+		playwright,
+	}) => {
+		const username = await createRestrictedUser(
+			request,
+			playwright,
+			"THREESTEP",
+			{
+				"agents.write": true,
+				"global_roles.read": true,
+				"global_roles.assign": true,
+			},
+		);
+
+		await signIn(page, username, RESTRICTED_PASSWORD);
+		await page.goto(ADMIN_AGENTS_URL);
+
+		const dialog = await openCreateDialog(page);
+		await expect(dialog.getByText("1 / 3")).toBeVisible();
+	});
+});
+
+// ===========================================================================
+// Rule: A global agent's Global role tab
+// ===========================================================================
+
+test.describe("Global agent role tab", () => {
+	test.beforeEach(async ({ request, context }) => {
+		await cleanup(request);
+		await context.clearCookies();
+	});
+
+	test.afterEach(async ({ request }) => {
+		await cleanup(request);
+	});
+
+	test("Changes, removes and assigns the role, each as its own request", async ({
+		page,
+		request,
+	}) => {
+		// A new agent starts with the default role.
+		const agent = await createGlobalAgent(request, `${PREFIX}ROLE_TAB`);
+		await signIn(page);
+		await page.goto(`${ADMIN_AGENTS_URL}/${agent.id}#global-role`);
+
+		await expect(page.getByText("USER", { exact: true })).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Change role" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Remove role" }),
+		).toBeVisible();
+
+		// Change
+		await page.getByRole("button", { name: "Change role" }).click();
+		const current = page.getByRole("radio", { name: "USER", exact: true });
+		await expect(current).toBeChecked();
+		await expect(current).toHaveAccessibleDescription(/Current/);
+		await expect(
+			page.getByRole("button", { name: "Assign role" }),
+		).toBeDisabled();
+		await page.getByRole("radio", { name: "ADMIN", exact: true }).check();
+		await page.getByRole("button", { name: "Assign role" }).click();
+		await expect(page.getByText("ADMIN", { exact: true })).toBeVisible();
+		expect((await findGlobalAgent(request, agent.name))?.global_role_id).toBe(
+			await globalRoleIdByName(request, "ADMIN"),
+		);
+
+		// Remove: asks first
+		await page.getByRole("button", { name: "Remove role" }).click();
+		await expect(
+			page.getByText(/It will lose the permissions the role grants/),
+		).toBeVisible();
+		await page.getByRole("button", { name: "Remove role" }).click();
+		await expect(page.getByText("No global role")).toBeVisible();
+		await expect(
+			page.getByText("This agent has no global permissions."),
+		).toBeVisible();
+		expect(
+			(await findGlobalAgent(request, agent.name))?.global_role_id ?? null,
+		).toBeNull();
+
+		// Assign, from none
+		await page.getByRole("button", { name: "Assign role" }).click();
+		await expect(
+			page.getByRole("button", { name: "Assign role" }),
+		).toBeDisabled();
+		await page.getByRole("radio", { name: "USER", exact: true }).check();
+		await page.getByRole("button", { name: "Assign role" }).click();
+		await expect(
+			page.getByRole("button", { name: "Change role" }),
+		).toBeVisible();
+		expect((await findGlobalAgent(request, agent.name))?.global_role_id).toBe(
+			await globalRoleIdByName(request, "USER"),
+		);
+	});
+
+	test("Flags a full-access role before it is assigned, and cancelling changes nothing", async ({
+		page,
+		request,
+	}) => {
+		const agent = await createGlobalAgent(request, `${PREFIX}ROLE_TAB_FULL`);
+		await signIn(page);
+		await page.goto(`${ADMIN_AGENTS_URL}/${agent.id}#global-role`);
+
+		await page.getByRole("button", { name: "Change role" }).click();
+		await page.getByRole("radio", { name: "SUPER_ADMIN", exact: true }).check();
+		await expect(
+			page.getByText(/The agent will be able to do everything/),
+		).toBeVisible();
+		await page.getByRole("button", { name: "Cancel" }).click();
+
+		// Still the default role it started with.
+		await expect(page.getByText("USER", { exact: true })).toBeVisible();
+		expect((await findGlobalAgent(request, agent.name))?.global_role_id).toBe(
+			await globalRoleIdByName(request, "USER"),
+		);
+	});
+
+	test("Is read-only for someone who can view the agent's role but not change it", async ({
+		page,
+		request,
+		playwright,
+	}) => {
+		const agent = await createGlobalAgent(request, `${PREFIX}ROLE_TAB_RO`);
+		await bindGlobalAgentRole(request, agent.id, "ADMIN");
+		const username = await createRestrictedUser(
+			request,
+			playwright,
+			"ROLEREADER",
+			{
+				"agents.read": true,
+				"global_roles.read": true,
+			},
+		);
+
+		await signIn(page, username, RESTRICTED_PASSWORD);
+		await page.goto(`${ADMIN_AGENTS_URL}/${agent.id}#global-role`);
+
+		await expect(page.getByText("ADMIN", { exact: true })).toBeVisible();
+		await expect(
+			page.getByText(
+				/You can see this agent's global role but don't have permission to change it/,
+			),
+		).toBeVisible();
+		await expect(page.getByRole("button", { name: "Change role" })).toHaveCount(
+			0,
+		);
+		await expect(page.getByRole("button", { name: "Remove role" })).toHaveCount(
+			0,
+		);
+	});
+
+	test("Is read-only without global_roles.assign even for someone who may write agents", async ({
+		page,
+		request,
+		playwright,
+	}) => {
+		const agent = await createGlobalAgent(
+			request,
+			`${PREFIX}ROLE_TAB_NOASSIGN`,
+		);
+		const username = await createRestrictedUser(
+			request,
+			playwright,
+			"NOASSIGN",
+			{
+				"agents.read": true,
+				"agents.write": true,
+				"global_roles.read": true,
+			},
+		);
+
+		await signIn(page, username, RESTRICTED_PASSWORD);
+		await page.goto(`${ADMIN_AGENTS_URL}/${agent.id}#global-role`);
+
+		// The agent holds the default role it was created with; they can see it
+		// (global_roles.read) but not change it.
+		await expect(page.getByText("USER", { exact: true })).toBeVisible();
+		await expect(
+			page.getByText(/don't have permission to change it/),
+		).toBeVisible();
+		await expect(page.getByRole("button", { name: "Assign role" })).toHaveCount(
+			0,
+		);
 	});
 });

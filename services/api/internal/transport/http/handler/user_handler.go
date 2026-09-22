@@ -221,10 +221,21 @@ func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, h.toUserResponse(r.Context(), u))
 }
 
+// errRoleNotAcceptedOnUser is returned when a create/update body still names a
+// role. Role assignment is its own privilege (global_roles.assign) and has its
+// own route; rejecting the field outright, rather than ignoring it, keeps a
+// client that still sends it from believing the role was changed.
+var errRoleNotAcceptedOnUser = apierr.New(apierr.CodeBadRequest,
+	"role cannot be set here; assign it with PUT /admin/users/{userId}/global-roles")
+
 // CreateUser handles POST /admin/users — admin-only user creation.
 func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateUserRequest
 	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.Role) != "" {
+		presenter.Error(w, r, errRoleNotAcceptedOnUser)
 		return
 	}
 	if req.Username == "" || req.FullName == "" {
@@ -246,7 +257,6 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		Password:           req.Password,
 		FullName:           req.FullName,
 		Email:              email,
-		Role:               req.Role,
 		MustChangePassword: true,
 	})
 	if err != nil {
@@ -269,6 +279,10 @@ func (h *UserHandler) AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	if strings.TrimSpace(req.Role) != "" {
+		presenter.Error(w, r, errRoleNotAcceptedOnUser)
+		return
+	}
 	email, err := normalizeEmail(req.Email)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -277,7 +291,6 @@ func (h *UserHandler) AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	u, err := h.svc.AdminUpdate(r.Context(), id, domainuser.AdminUpdateInput{
 		FullName: req.FullName,
-		Role:     req.Role,
 		Email:    email,
 	})
 	if err != nil {

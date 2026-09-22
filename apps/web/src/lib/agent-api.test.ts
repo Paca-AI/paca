@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockGet, mockPost, mockPatch, mockDelete } = vi.hoisted(() => ({
-	mockGet: vi.fn(),
-	mockPost: vi.fn(),
-	mockPatch: vi.fn(),
-	mockDelete: vi.fn(),
-}));
+const { mockGet, mockPost, mockPatch, mockPut, mockDelete } = vi.hoisted(
+	() => ({
+		mockGet: vi.fn(),
+		mockPost: vi.fn(),
+		mockPatch: vi.fn(),
+		mockPut: vi.fn(),
+		mockDelete: vi.fn(),
+	}),
+);
 
 vi.mock("./api-client", () => ({
 	apiClient: {
@@ -13,6 +16,7 @@ vi.mock("./api-client", () => ({
 			get: mockGet,
 			post: mockPost,
 			patch: mockPatch,
+			put: mockPut,
 			delete: mockDelete,
 		},
 	},
@@ -22,6 +26,7 @@ import {
 	addGlobalEnvVar,
 	addGlobalMCPServer,
 	addGlobalSkill,
+	clearGlobalAgentRole,
 	createGlobalAgent,
 	deleteGlobalAgent,
 	deleteGlobalEnvVar,
@@ -47,6 +52,7 @@ import {
 	sendConversationMessage,
 	sendGlobalChatMessage,
 	sendGlobalConversationMessage,
+	setGlobalAgentRole,
 	startChatSession,
 	startGlobalChatSession,
 	stopGlobalConversation,
@@ -226,6 +232,41 @@ describe("agent-api", () => {
 			mockDelete.mockResolvedValue({});
 			await deleteGlobalAgent(AGENT_ID);
 			expect(mockDelete).toHaveBeenCalledWith(`/admin/agents/${AGENT_ID}`);
+		});
+
+		it("setGlobalAgentRole puts the role to /admin/agents/:agentId/global-role", async () => {
+			mockPut.mockResolvedValue(ok({ id: AGENT_ID, global_role_id: "role-1" }));
+
+			const agent = await setGlobalAgentRole(AGENT_ID, "role-1");
+
+			expect(mockPut).toHaveBeenCalledWith(
+				`/admin/agents/${AGENT_ID}/global-role`,
+				{ global_role_id: "role-1" },
+			);
+			expect(agent.global_role_id).toBe("role-1");
+		});
+
+		it("clearGlobalAgentRole deletes /admin/agents/:agentId/global-role", async () => {
+			mockDelete.mockResolvedValue(ok({ id: AGENT_ID, global_role_id: null }));
+
+			const agent = await clearGlobalAgentRole(AGENT_ID);
+
+			expect(mockDelete).toHaveBeenCalledWith(
+				`/admin/agents/${AGENT_ID}/global-role`,
+			);
+			expect(agent.global_role_id).toBeNull();
+		});
+
+		// The server refuses global_role_id on create: a role is its own step (and
+		// permission), so creating an agent sends none.
+		it("createGlobalAgent posts the payload as given, without any role", async () => {
+			mockPost.mockResolvedValue(ok({ id: AGENT_ID }));
+			const payload = { name: "Bot", handle: "bot" };
+
+			await createGlobalAgent(payload);
+
+			expect(mockPost).toHaveBeenCalledWith("/admin/agents", payload);
+			expect(mockPut).not.toHaveBeenCalled();
 		});
 	});
 

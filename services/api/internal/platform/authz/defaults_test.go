@@ -1,7 +1,10 @@
 package authz_test
 
 import (
+	"context"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/Paca-AI/api/internal/platform/authz"
 )
@@ -55,55 +58,65 @@ func TestDefaultProjectRoles_ProjectMemberHasNoSettingsWritePermissions(t *testi
 	}
 }
 
-// TestLegacyPermissionsForRole_MatchesDefaultGlobalRoles is a regression test
-// for GHSA-hjcj-373w-vq8m: LegacyPermissionsForRole used to hand-maintain its
-// own permission list per role name, and its ADMIN case had drifted to the
-// bare PermissionAll wildcard while DefaultGlobalRoles' ADMIN entry was
-// correctly scoped to global-only permissions — letting any caller keyed off
-// the legacy role claim (the authz middleware included) bypass
-// project-membership checks entirely. Asserting exact set-equality against
-// DefaultGlobalRoles for every defined role, rather than re-asserting ADMIN's
-// list by hand, also catches the same class of drift for any future role.
-func TestLegacyPermissionsForRole_MatchesDefaultGlobalRoles(t *testing.T) {
+// TestDefaultGlobalRoles_OnlySuperAdminSeedsTheWildcard pins the
+// GHSA-hjcj-373w-vq8m fix at its source. The ADMIN row is synced from this
+// definition at startup, and a stored PermissionAll reaches every project
+// regardless of membership — so it may be seeded onto SUPER_ADMIN only, no
+// matter how DefaultGlobalRoles evolves.
+func TestDefaultGlobalRoles_OnlySuperAdminSeedsTheWildcard(t *testing.T) {
+	sawSuperAdmin := false
 	for _, def := range authz.DefaultGlobalRoles() {
-		got := authz.LegacyPermissionsForRole(def.Name)
-		if !samePermissionSet(got, def.Permissions) {
-			t.Errorf("LegacyPermissionsForRole(%q) = %v, want %v (DefaultGlobalRoles)", def.Name, got, def.Permissions)
+		hasWildcard := false
+		for _, p := range def.Permissions {
+			if p == authz.PermissionAll {
+				hasWildcard = true
+			}
 		}
+		if def.Name == "SUPER_ADMIN" {
+			sawSuperAdmin = true
+			if !hasWildcard {
+				t.Error("SUPER_ADMIN must be seeded with the PermissionAll wildcard")
+			}
+			continue
+		}
+		if hasWildcard {
+			t.Errorf("built-in role %q must not be seeded with the PermissionAll wildcard — see GHSA-hjcj-373w-vq8m", def.Name)
+		}
+	}
+	if !sawSuperAdmin {
+		t.Error("expected a SUPER_ADMIN role definition, found none")
 	}
 }
 
-// TestLegacyPermissionsForRole_AdminNoLongerGrantsWildcard directly pins the
-// GHSA-hjcj-373w-vq8m fix: the global ADMIN legacy role must never resolve to
-// PermissionAll, no matter how DefaultGlobalRoles evolves.
-func TestLegacyPermissionsForRole_AdminNoLongerGrantsWildcard(t *testing.T) {
-	for _, p := range authz.LegacyPermissionsForRole("ADMIN") {
-		if p == authz.PermissionAll {
-			t.Fatal(`LegacyPermissionsForRole("ADMIN") must not include the PermissionAll wildcard — see GHSA-hjcj-373w-vq8m`)
+// TestDefaultGlobalRoles_OnlySuperAdminCanMintRoot pins the other half of the
+// GHSA-hjcj-373w-vq8m fix. Keeping "*" off ADMIN means little if ADMIN can
+// simply write "*" into a role or hand itself SUPER_ADMIN: global_roles.write
+// defines any role and global_roles.assign gives any role to any account,
+// their own included, so each is root-equivalent — as is "*" itself. The router
+// can only ask whether a caller holds a permission, never whether the role
+// being written or assigned exceeds the caller's own, so what keeps ADMIN below
+// SUPER_ADMIN is what ADMIN is seeded with. Matching goes through the real
+// authorizer, so a wildcard such as global_roles.* cannot slip these in.
+func TestDefaultGlobalRoles_OnlySuperAdminCanMintRoot(t *testing.T) {
+	rootEquivalent := []authz.Permission{
+		authz.PermissionAll,
+		authz.PermissionGlobalRolesWrite,
+		authz.PermissionGlobalRolesAssign,
+		authz.PermissionGlobalRolesAll,
+	}
+	for _, def := range authz.DefaultGlobalRoles() {
+		if def.Name == "SUPER_ADMIN" {
+			continue
+		}
+		a := authz.NewAuthorizer(&stubPermissionStore{globalPerms: def.Permissions})
+		for _, p := range rootEquivalent {
+			ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, p)
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", def.Name, err)
+			}
+			if ok {
+				t.Errorf("built-in role %q must not be seeded able to %q — it could grant itself root", def.Name, p)
+			}
 		}
 	}
-}
-
-// samePermissionSet compares a and b as sets (order- and duplicate-
-// insensitive) — builds both sides into sets first so a duplicate on one
-// side can't paper over a genuinely missing element on the other, the way
-// comparing len(a) == len(b) against one-directional membership could.
-func samePermissionSet(a, b []authz.Permission) bool {
-	setA := make(map[authz.Permission]struct{}, len(a))
-	for _, p := range a {
-		setA[p] = struct{}{}
-	}
-	setB := make(map[authz.Permission]struct{}, len(b))
-	for _, p := range b {
-		setB[p] = struct{}{}
-	}
-	if len(setA) != len(setB) {
-		return false
-	}
-	for p := range setA {
-		if _, ok := setB[p]; !ok {
-			return false
-		}
-	}
-	return true
 }

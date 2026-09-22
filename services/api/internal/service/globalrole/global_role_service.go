@@ -104,10 +104,35 @@ func (s *Service) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.Gl
 	return s.repo.FindByID(ctx, id)
 }
 
-// Delete removes a global role definition. It returns ErrHasAssignedUsers if
-// any user or global agent currently references this role via their
-// assigned global role (users.role_id or agents.global_role_id).
+// SetDefault makes id the role new users and global agents start with,
+// clearing the flag on the previous default.
+func (s *Service) SetDefault(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+	if err := s.repo.SetDefault(ctx, id); err != nil {
+		return nil, err
+	}
+	return s.repo.FindByID(ctx, id)
+}
+
+// FindDefault returns the role new users and global agents start with, or
+// ErrNoDefault when none is set.
+func (s *Service) FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error) {
+	return s.repo.FindDefault(ctx)
+}
+
+// Delete removes a global role definition. It returns ErrIsDefault for the
+// default role (new users and agents start with it, so it has to stay until
+// another role is made the default) and ErrHasAssignedUsers if any user or
+// global agent currently references this role via their assigned global role
+// (users.role_id or agents.global_role_id).
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	role, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if role.IsDefault {
+		return globalroledom.ErrIsDefault
+	}
+
 	count, err := s.repo.CountUsersWithRole(ctx, id)
 	if err != nil {
 		return err
