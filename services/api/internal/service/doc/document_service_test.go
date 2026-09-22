@@ -457,6 +457,34 @@ func TestUpdateFolder_NameWithSlash(t *testing.T) {
 	}
 }
 
+func TestUpdateFolder_UnchangedNameWithSlash_OK(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+
+	// Simulate a legacy row created before the "/" restriction existed —
+	// bypass CreateFolder's validation by seeding the repo directly.
+	f := &docdom.DocFolder{ID: uuid.New(), ProjectID: projectID, Name: "Legacy/Name"}
+	_ = repo.CreateFolder(ctx, f)
+
+	pos := 3
+	updated, err := svc.UpdateFolder(ctx, f.ID, docdom.UpdateFolderInput{
+		ProjectID: projectID,
+		Name:      "Legacy/Name",
+		Position:  &pos,
+	})
+	if err != nil {
+		t.Fatalf("resubmitting an unchanged legacy name should not error, got: %v", err)
+	}
+	if updated.Name != "Legacy/Name" {
+		t.Errorf("expected Name to remain Legacy/Name, got %q", updated.Name)
+	}
+	if updated.Position != 3 {
+		t.Errorf("expected Position=3, got %d", updated.Position)
+	}
+}
+
 func TestUpdateFolder_NotFound(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeDocRepo()
@@ -802,6 +830,29 @@ func TestUpdateDocument_TitleWithSlash_Error(t *testing.T) {
 	_, err := svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{Title: &slashed})
 	if err != docdom.ErrDocTitleInvalid {
 		t.Errorf("expected ErrDocTitleInvalid, got %v", err)
+	}
+}
+
+func TestUpdateDocument_UnchangedTitleWithSlash_OK(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+
+	// Simulate a legacy row created before the "/" restriction existed —
+	// bypass CreateDocument's validation by seeding the repo directly.
+	d := &docdom.Document{ID: uuid.New(), ProjectID: projectID, Title: "Legacy/Title"}
+	_ = repo.CreateDocument(ctx, d)
+
+	unchanged := "Legacy/Title"
+	updated, err := svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{
+		Title: &unchanged,
+	})
+	if err != nil {
+		t.Fatalf("resubmitting an unchanged legacy title should not error, got: %v", err)
+	}
+	if updated.Title != "Legacy/Title" {
+		t.Errorf("expected Title to remain Legacy/Title, got %q", updated.Title)
 	}
 }
 

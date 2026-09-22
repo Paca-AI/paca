@@ -181,6 +181,13 @@ function DocsDocRow({
 	const qc = useQueryClient();
 	const [renaming, setRenaming] = useState(false);
 	const [renameError, setRenameError] = useState<string | null>(null);
+	// The title last submitted, so a failed attempt reopens the editor with
+	// what the person typed instead of reverting to the original title.
+	const [pendingTitle, setPendingTitle] = useState<string | null>(null);
+	// Bumped on every failed attempt to remount TreeInlineRename — it tracks
+	// "already confirmed" internally to dedupe Enter+blur, so without a fresh
+	// instance a retry after an error couldn't re-confirm.
+	const [renameAttempt, setRenameAttempt] = useState(0);
 
 	const isActive = location === `/projects/${projectId}/docs/${doc.id}`;
 
@@ -188,6 +195,8 @@ function DocsDocRow({
 		mutationFn: (title: string) => updateDocument(projectId, doc.id, { title }),
 		onSuccess: (updated) => {
 			setRenameError(null);
+			setRenaming(false);
+			setPendingTitle(null);
 			qc.setQueryData(docQueryKeys.detail(projectId, doc.id), updated);
 			qc.invalidateQueries({ queryKey: docQueryKeys.list(projectId) });
 			if (doc.folder_id) {
@@ -202,6 +211,7 @@ function DocsDocRow({
 					? t("docs.errors.titleInvalid")
 					: t("docs.errors.renameFailed"),
 			);
+			setRenameAttempt((n) => n + 1);
 		},
 	});
 
@@ -253,12 +263,17 @@ function DocsDocRow({
 					/>
 					{renaming ? (
 						<TreeInlineRename
-							initialValue={doc.title || t("docs.untitled")}
+							key={renameAttempt}
+							initialValue={pendingTitle ?? (doc.title || t("docs.untitled"))}
 							onConfirm={(title) => {
+								setPendingTitle(title);
 								renameMutation.mutate(title);
-								setRenaming(false);
 							}}
-							onCancel={() => setRenaming(false)}
+							onCancel={() => {
+								setRenaming(false);
+								setRenameError(null);
+								setPendingTitle(null);
+							}}
 						/>
 					) : (
 						<span className="truncate leading-snug">
@@ -339,6 +354,13 @@ function DocsFolderNode({
 	const qc = useQueryClient();
 	const [renaming, setRenaming] = useState(false);
 	const [renameError, setRenameError] = useState<string | null>(null);
+	// The name last submitted, so a failed attempt reopens the editor with
+	// what the person typed instead of reverting to the original name.
+	const [pendingName, setPendingName] = useState<string | null>(null);
+	// Bumped on every failed attempt to remount TreeInlineRename — it tracks
+	// "already confirmed" internally to dedupe Enter+blur, so without a fresh
+	// instance a retry after an error couldn't re-confirm.
+	const [renameAttempt, setRenameAttempt] = useState(0);
 	const [addingDoc, setAddingDoc] = useState(false);
 	const navigate = useNavigate();
 
@@ -354,6 +376,8 @@ function DocsFolderNode({
 		mutationFn: (name: string) => updateFolder(projectId, folder.id, { name }),
 		onSuccess: () => {
 			setRenameError(null);
+			setRenaming(false);
+			setPendingName(null);
 			qc.invalidateQueries({ queryKey: docQueryKeys.folders(projectId) });
 		},
 		onError: (err: unknown) => {
@@ -362,6 +386,7 @@ function DocsFolderNode({
 					? t("docs.errors.folderNameInvalid")
 					: t("docs.errors.renameFailed"),
 			);
+			setRenameAttempt((n) => n + 1);
 		},
 	});
 
@@ -425,12 +450,17 @@ function DocsFolderNode({
 					)}
 					{renaming ? (
 						<TreeInlineRename
-							initialValue={folder.name}
+							key={renameAttempt}
+							initialValue={pendingName ?? folder.name}
 							onConfirm={(name) => {
+								setPendingName(name);
 								renameMutation.mutate(name);
-								setRenaming(false);
 							}}
-							onCancel={() => setRenaming(false)}
+							onCancel={() => {
+								setRenaming(false);
+								setRenameError(null);
+								setPendingName(null);
+							}}
 						/>
 					) : (
 						<span className="truncate leading-snug font-medium">

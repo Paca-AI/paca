@@ -1293,16 +1293,17 @@ export function EnvironmentDetailView({
 	const hasAccess =
 		environment.access_mode !== "restricted" || environment.access_granted;
 
-	// Shared by the Start button and the Stop menu item below — both are
-	// simple lifecycle transitions with the same failure modes (mainly a
-	// race against another in-flight start/stop/restart).
-	const lifecycleError = startMutation.isError
-		? startMutation.error
-		: stopMutation.isError
-			? stopMutation.error
-			: null;
-	const lifecycleErrorMessage = lifecycleError
-		? getApiErrorCode(lifecycleError) === ApiErrorCode.EnvironmentBusy
+	// Start and Stop are independent controls (Start in the header, Stop in
+	// the dropdown menu) with the same failure modes — mainly a race against
+	// another in-flight start/stop/restart — so each gets its own message
+	// instead of one sharing slot that would hide whichever mutation lost.
+	const startErrorMessage = startMutation.isError
+		? getApiErrorCode(startMutation.error) === ApiErrorCode.EnvironmentBusy
+			? t("environments.detail.busy")
+			: t("environments.detail.actionFailed")
+		: null;
+	const stopErrorMessage = stopMutation.isError
+		? getApiErrorCode(stopMutation.error) === ApiErrorCode.EnvironmentBusy
 			? t("environments.detail.busy")
 			: t("environments.detail.actionFailed")
 		: null;
@@ -1391,9 +1392,14 @@ export function EnvironmentDetailView({
 						)}
 					</div>
 				</div>
-				{lifecycleErrorMessage && (
+				{startErrorMessage && (
 					<p className="mt-3 text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-						{lifecycleErrorMessage}
+						{startErrorMessage}
+					</p>
+				)}
+				{stopErrorMessage && (
+					<p className="mt-3 text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+						{stopErrorMessage}
 					</p>
 				)}
 			</div>
