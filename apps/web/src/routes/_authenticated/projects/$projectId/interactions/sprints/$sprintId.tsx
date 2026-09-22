@@ -16,6 +16,7 @@ import { SprintFormModal } from "@/components/projects/interactions/sprint-form-
 import { SprintStatusBadge } from "@/components/projects/interactions/sprint-status-badge";
 import { StartSprintModal } from "@/components/projects/interactions/start-sprint-modal";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { formatDate } from "@/lib/format-date";
 import {
 	completeSprint,
@@ -81,6 +82,9 @@ function SprintPage() {
 	const canManageSprints = hasProjectPermission("sprints.write");
 
 	const [completeOpen, setCompleteOpen] = useState(false);
+	const [completeSprintError, setCompleteSprintError] = useState<string | null>(
+		null,
+	);
 	const [moveToSprintId, setMoveToSprintId] = useState<string | null>(null);
 
 	const [startSprintOpen, setStartSprintOpen] = useState(false);
@@ -143,6 +147,13 @@ function SprintPage() {
 				to: "/projects/$projectId/interactions/backlog",
 				params: { projectId },
 			});
+		},
+		onError: (err: unknown) => {
+			setCompleteSprintError(
+				getApiErrorCode(err) === ApiErrorCode.SprintAlreadyComplete
+					? t("layout.sprintDetail.completeSprintModal.alreadyComplete")
+					: t("layout.sprintDetail.completeSprintModal.completeFailed"),
+			);
 		},
 	});
 
@@ -257,7 +268,10 @@ function SprintPage() {
 								{sprint.status === "active" && (
 									<button
 										type="button"
-										onClick={() => setCompleteOpen(true)}
+										onClick={() => {
+											setCompleteSprintError(null);
+											setCompleteOpen(true);
+										}}
 										className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-all duration-150"
 									>
 										<CheckCircle2 className="size-3.5 shrink-0" />
@@ -393,6 +407,12 @@ function SprintPage() {
 									</label>
 								))}
 							</div>
+						)}
+
+						{completeSprintError && (
+							<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2 mb-5">
+								{completeSprintError}
+							</p>
 						)}
 
 						<div className="flex justify-end gap-2">

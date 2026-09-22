@@ -24,7 +24,11 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
-import { isForbiddenError } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	isForbiddenError,
+} from "@/lib/api-error";
 import {
 	reorderTaskStatuses,
 	STATUS_CATEGORY_LABELS,
@@ -120,9 +124,14 @@ export function TaskStatusesSettings({
 				queryKey: taskStatusesQueryOptions(projectId).queryKey,
 			});
 		},
-		onError: () => {
+		onError: (err: unknown) => {
 			setLocalOrder(null);
-			setReorderError(t("settings.taskStatuses.reorderFailed"));
+			const code = getApiErrorCode(err);
+			setReorderError(
+				code === ApiErrorCode.TaskStatusReorderInvalid
+					? t("settings.taskStatuses.reorderInvalid")
+					: t("settings.taskStatuses.reorderFailed"),
+			);
 		},
 	});
 

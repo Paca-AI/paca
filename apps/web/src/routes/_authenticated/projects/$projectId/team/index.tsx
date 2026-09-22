@@ -55,7 +55,11 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { type User, usersInfiniteQueryOptions } from "@/lib/admin-api";
 import { type Agent, chattableAgentsQueryOptions } from "@/lib/agent-api";
-import { isForbiddenError } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	isForbiddenError,
+} from "@/lib/api-error";
 import {
 	addProjectMember,
 	type ProjectMember,
@@ -238,9 +242,13 @@ function AddMemberDialog({
 			handleClose();
 		},
 		onError: (err: unknown) => {
-			const e = err as { response?: { data?: { error?: string } } };
+			const code = getApiErrorCode(err);
 			setError(
-				e?.response?.data?.error ?? t("team.addMemberDialog.errors.addFailed"),
+				code === ApiErrorCode.ProjectMemberAlreadyAdded
+					? t("team.addMemberDialog.errors.alreadyAdded")
+					: code === ApiErrorCode.ProjectRoleNotFound
+						? t("team.addMemberDialog.errors.roleNotFound")
+						: t("team.addMemberDialog.errors.addFailed"),
 			);
 		},
 	});
@@ -585,15 +593,21 @@ function RoleChip({
 			}
 			return { previous };
 		},
-		onError: (_err, _vars, context) => {
+		onError: (err: unknown, _roleId, context) => {
 			if (context?.previous) {
 				queryClient.setQueryData(
 					projectMembersQueryOptions(projectId).queryKey,
 					context.previous,
 				);
 			}
-			const e = _err as { response?: { data?: { error?: string } } };
-			setError(e?.response?.data?.error ?? t("team.roleChip.changeFailed"));
+			const code = getApiErrorCode(err);
+			setError(
+				code === ApiErrorCode.ProjectMemberNotFound
+					? t("team.roleChip.errors.memberNotFound")
+					: code === ApiErrorCode.ProjectRoleNotFound
+						? t("team.roleChip.errors.roleNotFound")
+						: t("team.roleChip.errors.changeFailed"),
+			);
 		},
 		onSuccess: () => {
 			setOpen(false);

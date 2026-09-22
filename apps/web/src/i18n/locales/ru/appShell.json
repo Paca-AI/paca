@@ -56,7 +56,12 @@
 		"newSubfolder": "Новая подпапка",
 		"rename": "Переименовать",
 		"delete": "Удалить",
-		"untitled": "Без названия"
+		"untitled": "Без названия",
+		"errors": {
+			"titleInvalid": "Недопустимый заголовок.",
+			"folderNameInvalid": "Недопустимое имя папки.",
+			"renameFailed": "Не удалось переименовать. Попробуйте еще раз."
+		}
 	},
 	"notifications": {
 		"title": "Уведомления",

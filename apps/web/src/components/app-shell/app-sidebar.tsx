@@ -85,6 +85,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import type { ThemeMode } from "@/hooks/use-theme-mode";
 import { useThemeMode } from "@/hooks/use-theme-mode";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	createDocument,
@@ -179,12 +180,23 @@ function DocsDocRow({
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 	const [renaming, setRenaming] = useState(false);
+	const [renameError, setRenameError] = useState<string | null>(null);
+	// The title last submitted, so a failed attempt reopens the editor with
+	// what the person typed instead of reverting to the original title.
+	const [pendingTitle, setPendingTitle] = useState<string | null>(null);
+	// Bumped on every failed attempt to remount TreeInlineRename — it tracks
+	// "already confirmed" internally to dedupe Enter+blur, so without a fresh
+	// instance a retry after an error couldn't re-confirm.
+	const [renameAttempt, setRenameAttempt] = useState(0);
 
 	const isActive = location === `/projects/${projectId}/docs/${doc.id}`;
 
 	const renameMutation = useMutation({
 		mutationFn: (title: string) => updateDocument(projectId, doc.id, { title }),
 		onSuccess: (updated) => {
+			setRenameError(null);
+			setRenaming(false);
+			setPendingTitle(null);
 			qc.setQueryData(docQueryKeys.detail(projectId, doc.id), updated);
 			qc.invalidateQueries({ queryKey: docQueryKeys.list(projectId) });
 			if (doc.folder_id) {
@@ -192,6 +204,14 @@ function DocsDocRow({
 					queryKey: docQueryKeys.list(projectId, doc.folder_id),
 				});
 			}
+		},
+		onError: (err: unknown) => {
+			setRenameError(
+				getApiErrorCode(err) === ApiErrorCode.DocTitleInvalid
+					? t("docs.errors.titleInvalid")
+					: t("docs.errors.renameFailed"),
+			);
+			setRenameAttempt((n) => n + 1);
 		},
 	});
 
@@ -206,93 +226,109 @@ function DocsDocRow({
 	});
 
 	return (
-		<div
-			className="group relative flex items-center gap-1 pr-1"
-			style={{ paddingLeft: `${8 + depth * 16 + 16}px` }}
-		>
-			<button
-				type="button"
-				className={cn(
-					"flex flex-1 min-w-0 items-center gap-1.5 rounded-md px-2 py-1 cursor-pointer transition-all duration-150 text-sm",
-					isActive
-						? "bg-primary/10 text-primary font-medium"
-						: "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-				)}
-				onClick={() => {
-					if (renaming) return;
-					navigate({
-						to: "/projects/$projectId/docs/$docId",
-						params: { projectId, docId: doc.id },
-					});
-				}}
-				onKeyDown={(e) => {
-					if (e.key === "Enter" || e.key === " ") {
+		<>
+			<div
+				className="group relative flex items-center gap-1 pr-1"
+				style={{ paddingLeft: `${8 + depth * 16 + 16}px` }}
+			>
+				<button
+					type="button"
+					className={cn(
+						"flex flex-1 min-w-0 items-center gap-1.5 rounded-md px-2 py-1 cursor-pointer transition-all duration-150 text-sm",
+						isActive
+							? "bg-primary/10 text-primary font-medium"
+							: "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+					)}
+					onClick={() => {
+						if (renaming) return;
 						navigate({
 							to: "/projects/$projectId/docs/$docId",
 							params: { projectId, docId: doc.id },
 						});
-					}
-				}}
-			>
-				<FileText
-					className={cn(
-						"size-3.5 shrink-0 transition-colors",
-						isActive ? "text-primary/70" : "text-sidebar-foreground/40",
-					)}
-				/>
-				{renaming ? (
-					<TreeInlineRename
-						initialValue={doc.title || t("docs.untitled")}
-						onConfirm={(title) => {
-							renameMutation.mutate(title);
-							setRenaming(false);
-						}}
-						onCancel={() => setRenaming(false)}
-					/>
-				) : (
-					<span className="truncate leading-snug">
-						{doc.title || (
-							<span className="italic text-sidebar-foreground/40">
-								{t("docs.untitled")}
-							</span>
+					}}
+					onKeyDown={(e) => {
+						if (e.key === "Enter" || e.key === " ") {
+							navigate({
+								to: "/projects/$projectId/docs/$docId",
+								params: { projectId, docId: doc.id },
+							});
+						}
+					}}
+				>
+					<FileText
+						className={cn(
+							"size-3.5 shrink-0 transition-colors",
+							isActive ? "text-primary/70" : "text-sidebar-foreground/40",
 						)}
-					</span>
-				)}
-			</button>
+					/>
+					{renaming ? (
+						<TreeInlineRename
+							key={renameAttempt}
+							initialValue={pendingTitle ?? (doc.title || t("docs.untitled"))}
+							onConfirm={(title) => {
+								setPendingTitle(title);
+								renameMutation.mutate(title);
+							}}
+							onCancel={() => {
+								setRenaming(false);
+								setRenameError(null);
+								setPendingTitle(null);
+							}}
+						/>
+					) : (
+						<span className="truncate leading-snug">
+							{doc.title || (
+								<span className="italic text-sidebar-foreground/40">
+									{t("docs.untitled")}
+								</span>
+							)}
+						</span>
+					)}
+				</button>
 
-			{canWrite && !renaming && (
-				<DropdownMenu>
-					<DropdownMenuTrigger
-						className="opacity-0 group-hover:opacity-100 flex size-5 shrink-0 items-center justify-center rounded text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-150"
-						onClick={(e) => e.stopPropagation()}
-					>
-						<MoreHorizontal className="size-3" />
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="start" className="w-36">
-						<DropdownMenuItem
-							onClick={(e) => {
-								e.stopPropagation();
-								setRenaming(true);
-							}}
+				{canWrite && !renaming && (
+					<DropdownMenu>
+						<DropdownMenuTrigger
+							className="opacity-0 group-hover:opacity-100 flex size-5 shrink-0 items-center justify-center rounded text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-150"
+							onClick={(e) => e.stopPropagation()}
 						>
-							<Pencil className="size-3.5 mr-2" />
-							{t("docs.rename")}
-						</DropdownMenuItem>
-						<DropdownMenuSeparator />
-						<DropdownMenuItem
-							className="text-destructive focus:text-destructive"
-							onClick={(e) => {
-								e.stopPropagation();
-								deleteMutation.mutate();
-							}}
-						>
-							<Trash2 className="size-3.5 mr-2" />
-							{t("docs.delete")}
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
+							<MoreHorizontal className="size-3" />
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="start" className="w-36">
+							<DropdownMenuItem
+								onClick={(e) => {
+									e.stopPropagation();
+									setRenameError(null);
+									setRenaming(true);
+								}}
+							>
+								<Pencil className="size-3.5 mr-2" />
+								{t("docs.rename")}
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem
+								className="text-destructive focus:text-destructive"
+								onClick={(e) => {
+									e.stopPropagation();
+									deleteMutation.mutate();
+								}}
+							>
+								<Trash2 className="size-3.5 mr-2" />
+								{t("docs.delete")}
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				)}
+			</div>
+			{renameError && (
+				<p
+					className="text-xs text-destructive px-2 py-0.5"
+					style={{ paddingLeft: `${8 + depth * 16 + 16}px` }}
+				>
+					{renameError}
+				</p>
 			)}
-		</div>
+		</>
 	);
 }
 
@@ -317,6 +353,14 @@ function DocsFolderNode({
 	const { t } = useTranslation("appShell");
 	const qc = useQueryClient();
 	const [renaming, setRenaming] = useState(false);
+	const [renameError, setRenameError] = useState<string | null>(null);
+	// The name last submitted, so a failed attempt reopens the editor with
+	// what the person typed instead of reverting to the original name.
+	const [pendingName, setPendingName] = useState<string | null>(null);
+	// Bumped on every failed attempt to remount TreeInlineRename — it tracks
+	// "already confirmed" internally to dedupe Enter+blur, so without a fresh
+	// instance a retry after an error couldn't re-confirm.
+	const [renameAttempt, setRenameAttempt] = useState(0);
 	const [addingDoc, setAddingDoc] = useState(false);
 	const navigate = useNavigate();
 
@@ -330,8 +374,20 @@ function DocsFolderNode({
 	const childFolders = allFolders.filter((f) => f.parent_id === folder.id);
 	const renameMutation = useMutation({
 		mutationFn: (name: string) => updateFolder(projectId, folder.id, { name }),
-		onSuccess: () =>
-			qc.invalidateQueries({ queryKey: docQueryKeys.folders(projectId) }),
+		onSuccess: () => {
+			setRenameError(null);
+			setRenaming(false);
+			setPendingName(null);
+			qc.invalidateQueries({ queryKey: docQueryKeys.folders(projectId) });
+		},
+		onError: (err: unknown) => {
+			setRenameError(
+				getApiErrorCode(err) === ApiErrorCode.DocFolderNameInvalid
+					? t("docs.errors.folderNameInvalid")
+					: t("docs.errors.renameFailed"),
+			);
+			setRenameAttempt((n) => n + 1);
+		},
 	});
 
 	const deleteMutation = useMutation({
@@ -394,12 +450,17 @@ function DocsFolderNode({
 					)}
 					{renaming ? (
 						<TreeInlineRename
-							initialValue={folder.name}
+							key={renameAttempt}
+							initialValue={pendingName ?? folder.name}
 							onConfirm={(name) => {
+								setPendingName(name);
 								renameMutation.mutate(name);
-								setRenaming(false);
 							}}
-							onCancel={() => setRenaming(false)}
+							onCancel={() => {
+								setRenaming(false);
+								setRenameError(null);
+								setPendingName(null);
+							}}
 						/>
 					) : (
 						<span className="truncate leading-snug font-medium">
@@ -421,6 +482,7 @@ function DocsFolderNode({
 								<DropdownMenuItem
 									onClick={(e) => {
 										e.stopPropagation();
+										setRenameError(null);
 										setRenaming(true);
 									}}
 								>
@@ -443,6 +505,15 @@ function DocsFolderNode({
 					</div>
 				)}
 			</div>
+
+			{renameError && (
+				<p
+					className="text-xs text-destructive px-2 py-0.5"
+					style={{ paddingLeft: `${8 + depth * 16 + 26}px` }}
+				>
+					{renameError}
+				</p>
+			)}
 
 			{/* Children */}
 			{isExpanded && (

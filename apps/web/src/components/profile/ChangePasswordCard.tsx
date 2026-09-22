@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { changeMyPassword } from "@/lib/auth-api";
 import {
 	validateConfirmPassword,
@@ -36,21 +37,7 @@ export function ChangePasswordCard({ mustChange }: ChangePasswordCardProps) {
 	const [success, setSuccess] = useState(false);
 
 	const mutation = useMutation({
-		mutationFn: async () => {
-			const lengthError = validateNewPassword(
-				newPassword,
-				currentPassword,
-				tCommon,
-			);
-			if (lengthError) throw new Error(lengthError);
-			const confirmError = validateConfirmPassword(
-				confirmPassword,
-				newPassword,
-				tCommon,
-			);
-			if (confirmError) throw new Error(confirmError);
-			return changeMyPassword(currentPassword, newPassword);
-		},
+		mutationFn: () => changeMyPassword(currentPassword, newPassword),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
 			setCurrentPassword("");
@@ -59,11 +46,45 @@ export function ChangePasswordCard({ mustChange }: ChangePasswordCardProps) {
 			setError(null);
 			setSuccess(true);
 		},
-		onError: (err: Error) => {
-			setError(err.message ?? t("changePassword.errors.changeFailed"));
+		onError: (err: unknown) => {
+			const code = getApiErrorCode(err);
+			const message =
+				code === ApiErrorCode.InvalidCurrentPassword
+					? t("changePassword.errors.currentPasswordIncorrect")
+					: code === ApiErrorCode.Unauthenticated
+						? t("changePassword.errors.sessionExpired")
+						: code === ApiErrorCode.InternalError
+							? t("changePassword.errors.serverError")
+							: t("changePassword.errors.changeFailed");
+			setError(message);
 			setSuccess(false);
 		},
 	});
+
+	const handleSubmit = () => {
+		const lengthError = validateNewPassword(
+			newPassword,
+			currentPassword,
+			tCommon,
+		);
+		if (lengthError) {
+			setError(lengthError);
+			setSuccess(false);
+			return;
+		}
+		const confirmError = validateConfirmPassword(
+			confirmPassword,
+			newPassword,
+			tCommon,
+		);
+		if (confirmError) {
+			setError(confirmError);
+			setSuccess(false);
+			return;
+		}
+		setError(null);
+		mutation.mutate();
+	};
 
 	return (
 		<Card>
@@ -142,7 +163,7 @@ export function ChangePasswordCard({ mustChange }: ChangePasswordCardProps) {
 			<CardFooter className="border-t pt-4">
 				<Button
 					size="sm"
-					onClick={() => mutation.mutate()}
+					onClick={handleSubmit}
 					disabled={
 						mutation.isPending ||
 						!currentPassword ||

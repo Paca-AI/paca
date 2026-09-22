@@ -353,6 +353,20 @@ func TestCreateFolder_EmptyName(t *testing.T) {
 	}
 }
 
+func TestCreateFolder_NameWithSlash(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+
+	_, err := svc.CreateFolder(ctx, docdom.CreateFolderInput{
+		ProjectID: uuid.New(),
+		Name:      "Design/Docs",
+	})
+	if err != docdom.ErrFolderNameInvalid {
+		t.Errorf("expected ErrFolderNameInvalid, got %v", err)
+	}
+}
+
 func TestCreateFolder_WithParent_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeDocRepo()
@@ -423,6 +437,51 @@ func TestUpdateFolder_OK(t *testing.T) {
 	}
 	if updated.Position != 5 {
 		t.Errorf("expected Position=5, got %d", updated.Position)
+	}
+}
+
+func TestUpdateFolder_NameWithSlash(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+
+	f, _ := svc.CreateFolder(ctx, docdom.CreateFolderInput{ProjectID: projectID, Name: "Old Name"})
+
+	_, err := svc.UpdateFolder(ctx, f.ID, docdom.UpdateFolderInput{
+		ProjectID: projectID,
+		Name:      "New/Name",
+	})
+	if err != docdom.ErrFolderNameInvalid {
+		t.Errorf("expected ErrFolderNameInvalid, got %v", err)
+	}
+}
+
+func TestUpdateFolder_UnchangedNameWithSlash_OK(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+
+	// Simulate a legacy row created before the "/" restriction existed —
+	// bypass CreateFolder's validation by seeding the repo directly.
+	f := &docdom.DocFolder{ID: uuid.New(), ProjectID: projectID, Name: "Legacy/Name"}
+	_ = repo.CreateFolder(ctx, f)
+
+	pos := 3
+	updated, err := svc.UpdateFolder(ctx, f.ID, docdom.UpdateFolderInput{
+		ProjectID: projectID,
+		Name:      "Legacy/Name",
+		Position:  &pos,
+	})
+	if err != nil {
+		t.Fatalf("resubmitting an unchanged legacy name should not error, got: %v", err)
+	}
+	if updated.Name != "Legacy/Name" {
+		t.Errorf("expected Name to remain Legacy/Name, got %q", updated.Name)
+	}
+	if updated.Position != 3 {
+		t.Errorf("expected Position=3, got %d", updated.Position)
 	}
 }
 
@@ -595,6 +654,21 @@ func TestCreateDocument_EmptyTitleDefaultsToUntitled(t *testing.T) {
 	}
 }
 
+func TestCreateDocument_TitleWithSlash(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+
+	_, err := svc.CreateDocument(ctx, docdom.CreateDocumentInput{
+		ProjectID: projectID,
+		Title:     "Q1/Q2 Plan",
+	})
+	if err != docdom.ErrDocTitleInvalid {
+		t.Errorf("expected ErrDocTitleInvalid, got %v", err)
+	}
+}
+
 func TestCreateDocument_FolderNotInProject(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeDocRepo()
@@ -741,6 +815,44 @@ func TestUpdateDocument_EmptyTitle_Error(t *testing.T) {
 	_, err := svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{Title: &empty})
 	if err != docdom.ErrDocTitleInvalid {
 		t.Errorf("expected ErrDocTitleInvalid, got %v", err)
+	}
+}
+
+func TestUpdateDocument_TitleWithSlash_Error(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+
+	d, _ := svc.CreateDocument(ctx, docdom.CreateDocumentInput{ProjectID: projectID, Title: "Doc"})
+
+	slashed := "Before/After"
+	_, err := svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{Title: &slashed})
+	if err != docdom.ErrDocTitleInvalid {
+		t.Errorf("expected ErrDocTitleInvalid, got %v", err)
+	}
+}
+
+func TestUpdateDocument_UnchangedTitleWithSlash_OK(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+
+	// Simulate a legacy row created before the "/" restriction existed —
+	// bypass CreateDocument's validation by seeding the repo directly.
+	d := &docdom.Document{ID: uuid.New(), ProjectID: projectID, Title: "Legacy/Title"}
+	_ = repo.CreateDocument(ctx, d)
+
+	unchanged := "Legacy/Title"
+	updated, err := svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{
+		Title: &unchanged,
+	})
+	if err != nil {
+		t.Fatalf("resubmitting an unchanged legacy title should not error, got: %v", err)
+	}
+	if updated.Title != "Legacy/Title" {
+		t.Errorf("expected Title to remain Legacy/Title, got %q", updated.Title)
 	}
 }
 

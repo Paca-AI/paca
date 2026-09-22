@@ -84,6 +84,9 @@
 			"optional": "（可选）",
 			"charsCount": "{{count}} 个字符",
 			"createFailed": "创建智能体失败，请重试。",
+			"handleTaken": "该 Handle 已被占用，请返回并选择其他 Handle。",
+			"defaultEnvironmentInvalid": "该环境已不可用，请返回并选择其他环境。",
+			"defaultFolderInvalid": "该文件夹已不可用，请返回并选择其他文件夹。",
 			"cancel": "取消",
 			"continue": "继续",
 			"back": "返回",
@@ -227,6 +230,8 @@
 				"noDefaultEnvironment": "临时环境",
 				"defaultFolderLabel": "默认文件夹",
 				"defaultFolderHint": "该智能体的对话将在默认环境内的哪个文件夹中工作。",
+				"defaultEnvironmentInvalid": "该环境已不可用，请选择其他环境。",
+				"defaultFolderInvalid": "该文件夹已不可用，请选择其他文件夹。",
 				"noDefaultFolder": "无默认文件夹",
 				"saveChanges": "保存更改",
 				"saved": "已保存",
@@ -298,7 +303,10 @@
 					"keyHint": "（字母、数字、下划线，必须以字母或下划线开头）",
 					"valueLabel": "值",
 					"cancel": "取消",
-					"addVariable": "添加变量"
+					"addVariable": "添加变量",
+					"keyTaken": "该智能体已存在使用此键的环境变量。",
+					"keyReserved": "该键已被沙箱本身保留，请选择其他键。",
+					"addFailed": "添加环境变量失败，请重试。"
 				}
 			},
 			"skills": {
@@ -320,7 +328,10 @@
 					"skillContentLabel": "技能内容（Markdown）",
 					"urlLabel": "URL",
 					"cancel": "取消",
-					"addSkill": "添加技能"
+					"addSkill": "添加技能",
+					"nameReserved": "该名称已被 Paca 自身的内部脚手架保留，请选择其他名称。",
+					"nameInvalid": "技能名称不能是“.”“..”，也不能包含斜杠。",
+					"addFailed": "添加技能失败，请重试。"
 				}
 			},
 			"access": {
@@ -328,6 +339,8 @@
 				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"activity": {
@@ -492,6 +505,7 @@
 			"cpuLimitInvalid": "CPU 至少为 0.1(100m)。",
 			"memoryLimitInvalid": "内存至少为 256Mi。",
 			"diskLimitInvalid": "磁盘必须为正整数(GB)。",
+			"nameRequired": "请为环境命名。",
 			"createFailed": "创建环境失败，请重试。",
 			"cancel": "取消",
 			"creating": "创建中…",
@@ -511,6 +525,8 @@
 				"portForwards": "端口转发",
 				"access": "Access"
 			},
+			"busy": "该环境正在启动、停止或重启，请稍后重试。",
+			"actionFailed": "操作失败，请重试。",
 			"overview": {
 				"connect": "连接",
 				"start": "启动",
@@ -541,6 +557,7 @@
 				"portsPendingRestartLink": "查看端口转发",
 				"saveChanges": "保存更改",
 				"saved": "已保存",
+				"nameRequired": "请为环境命名。",
 				"saveFailed": "保存失败，请重试。",
 				"deleteDialog": {
 					"title": "删除 {{name}}?",
@@ -574,6 +591,8 @@
 						"empty": "此文件夹为空",
 						"notRunning": "启动环境后即可浏览其文件。"
 					},
+					"pathTaken": "该环境中已存在使用此路径的文件夹。",
+					"pathInvalid": "路径必须是绝对路径(以 / 开头)。",
 					"addFailed": "添加文件夹失败,请重试。",
 					"cancel": "取消",
 					"addFolder": "添加文件夹"
@@ -608,13 +627,16 @@
 					"labelPlaceholder": "开发服务器",
 					"cancel": "取消",
 					"add": "添加",
+					"portTaken": "该容器端口已在此环境中转发。",
+					"portOutOfRange": "端口必须在 1 到 65535 之间。",
 					"addFailed": "添加端口转发失败，请重试。"
 				},
 				"restartDialog": {
 					"title": "重启环境？",
 					"description": "这将重启环境的容器，以应用更新后的端口转发。容器内正在运行的进程将被中断；你的文件是安全的——它们存储在独立的卷中。",
 					"cancel": "取消",
-					"confirm": "重启"
+					"confirm": "重启",
+					"restartFailed": "重启环境失败，请重试。"
 				}
 			},
 			"access": {
@@ -622,6 +644,8 @@
 				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
@@ -645,6 +669,8 @@
 					"publicKeyLabel": "公钥",
 					"cancel": "取消",
 					"addKey": "添加密钥",
+					"keyTaken": "该密钥已在此环境中注册。",
+					"keyInvalid": "这看起来不是有效的 SSH 公钥。",
 					"addFailed": "添加 SSH 密钥失败，请重试。"
 				}
 			},
@@ -949,6 +975,7 @@
 			"description": "定义此项目中任务流转的工作流状态。",
 			"newStatus": "新建状态",
 			"reorderFailed": "保存新顺序失败，请重试。",
+			"reorderInvalid": "状态列表已在别处更改。请刷新页面后重试。",
 			"empty": {
 				"title": "未定义状态",
 				"description": "创建状态以定义此项目中任务的工作流。",
@@ -1093,6 +1120,7 @@
 			"confirmTextSuffix": "？使用此状态的任务将失去其状态。此操作无法撤销。",
 			"deleteFailed": "删除状态失败，请重试。",
 			"isDefault": "无法删除默认状态。请先将其他状态设为默认。",
+			"inUseByAutomation": "此状态正被某条自动化规则使用。请先更新或删除该规则。",
 			"cancel": "取消",
 			"deleteStatus": "删除状态"
 		},
@@ -1141,7 +1169,9 @@
 			"cancel": "取消",
 			"addMember": "添加成员",
 			"errors": {
-				"addFailed": "添加成员失败，请重试。"
+				"addFailed": "添加成员失败，请重试。",
+				"alreadyAdded": "该用户或智能体已是该项目的成员。",
+				"roleNotFound": "该角色已不存在，请选择其他角色。"
 			},
 			"modeUser": "用户",
 			"modeAgent": "AI 智能体",
@@ -1150,7 +1180,11 @@
 		},
 		"roleChip": {
 			"changeRole": "更改角色",
-			"changeFailed": "更改角色失败。"
+			"errors": {
+				"memberNotFound": "该成员已不再属于该项目。",
+				"roleNotFound": "该角色已不存在。",
+				"changeFailed": "更改角色失败。"
+			}
 		},
 		"memberRow": {
 			"removeMember": "移除成员"
@@ -1184,6 +1218,7 @@
 			"confirmTextSuffix": "？使用此类型的任务将失去其类型分配。此操作无法撤销。",
 			"deleteFailed": "删除任务类型失败，请重试。",
 			"isDefault": "无法删除默认类型。请先将其他类型设为默认。",
+			"isSystem": "系统类型无法删除。",
 			"cancel": "取消",
 			"deleteType": "删除类型"
 		},
@@ -1206,7 +1241,9 @@
 			"createType": "创建类型",
 			"errors": {
 				"nameInvalid": "类型名称为空或无效。",
-				"saveFailed": "保存任务类型失败，请重试。"
+				"nameReserved": "该名称已被内置类型保留。",
+				"saveFailed": "保存任务类型失败，请重试。",
+				"isSystem": "系统类型无法编辑。"
 			}
 		}
 	},
@@ -1288,7 +1325,15 @@
 			"addButton": "添加关联",
 			"openTask": "打开任务",
 			"removeLink": "移除关联",
-			"empty": "暂无关联任务"
+			"empty": "暂无关联任务",
+			"errors": {
+				"alreadyExists": "该关联已存在。",
+				"cannotLinkSelf": "任务不能关联自身。",
+				"crossProject": "只能关联同一项目内的任务。",
+				"createFailed": "添加关联失败，请重试。",
+				"notFound": "该关联已被移除。",
+				"deleteFailed": "移除关联失败，请重试。"
+			}
 		},
 		"attachments": {
 			"title": "附件",
@@ -1301,7 +1346,13 @@
 			"unitBytes_one": "{{count}} B",
 			"unitBytes_other": "{{count}} B",
 			"unitKilobytes": "{{value}} KB",
-			"unitMegabytes": "{{value}} MB"
+			"unitMegabytes": "{{value}} MB",
+			"errors": {
+				"invalid": "该文件无法上传，请选择其他文件。",
+				"uploadFailed": "文件上传失败，请重试。",
+				"notFound": "该附件已被删除。",
+				"deleteFailed": "删除附件失败，请重试。"
+			}
 		},
 		"addFieldDialog": {
 			"title": "创建自定义字段",
@@ -1469,7 +1520,12 @@
 			"resolve": "标记为已解决",
 			"reopen": "重新打开",
 			"createTask": "创建任务",
-			"taskCreated": "任务已创建"
+			"taskCreated": "任务已创建",
+			"errors": {
+				"alreadyHasTask": "该评论已创建过任务。",
+				"creationInProgress": "该评论的任务创建正在进行中。",
+				"createTaskFailed": "创建任务失败，请重试。"
+			}
 		}
 	},
 	"commentDetail": {
@@ -1498,7 +1554,11 @@
 		},
 		"thread": {
 			"replyPlaceholder": "写下回复…",
-			"reply": "回复"
+			"reply": "回复",
+			"errors": {
+				"bodyEmpty": "回复不能为空。",
+				"replyFailed": "发布回复失败，请重试。"
+			}
 		},
 		"actions": {
 			"create": "创建",
@@ -1655,7 +1715,13 @@
 			"renameView": "重命名视图",
 			"deleteView": "删除视图",
 			"searchTasksPlaceholder": "搜索任务…",
-			"pluginNotAvailable": "插件不可用"
+			"pluginNotAvailable": "插件不可用",
+			"viewErrors": {
+				"isLastView": "这是最后一个视图，无法删除。",
+				"deleteFailed": "删除视图失败，请重试。",
+				"reorderInvalid": "视图列表已在别处更改，请刷新页面后重试。",
+				"reorderFailed": "视图排序失败，请重试。"
+			}
 		},
 		"viewSettings": {
 			"viewSettingsAriaLabel": "视图设置",
@@ -1810,7 +1876,9 @@
 				"unassignedHint": "任务将从所有冲刺中取消分配",
 				"cancel": "取消",
 				"completing": "正在完成…",
-				"completeSprint": "完成冲刺"
+				"completeSprint": "完成冲刺",
+				"alreadyComplete": "此冲刺已经完成。",
+				"completeFailed": "完成冲刺失败，请重试。"
 			},
 			"deleteSprintModal": {
 				"title": "删除冲刺？",

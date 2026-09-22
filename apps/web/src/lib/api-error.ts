@@ -53,11 +53,19 @@ export const ApiErrorCode = {
 	TaskStatusNameInvalid: "TASK_STATUS_NAME_INVALID",
 	TaskStatusCategoryInvalid: "TASK_STATUS_CATEGORY_INVALID",
 	TaskStatusReorderInvalid: "TASK_STATUS_REORDER_INVALID",
+	// Delete blocked because an automation node still references this status.
+	TaskStatusInUseByAutomation: "TASK_STATUS_IN_USE_BY_AUTOMATION",
 	TaskStatusIsDefault: "TASK_STATUS_IS_DEFAULT",
 
 	// Task domain errors.
 	TaskNotFound: "TASK_NOT_FOUND",
 	TaskTitleInvalid: "TASK_TITLE_INVALID",
+
+	// Task link domain errors.
+	TaskLinkNotFound: "TASK_LINK_NOT_FOUND",
+	TaskLinkSelf: "TASK_LINK_CANNOT_LINK_TO_SELF",
+	TaskLinkAlreadyExists: "TASK_LINK_ALREADY_EXISTS",
+	TaskLinkCrossProject: "TASK_LINK_CROSS_PROJECT",
 
 	// Custom field domain errors.
 	CustomFieldNotFound: "CUSTOM_FIELD_NOT_FOUND",
@@ -65,6 +73,26 @@ export const ApiErrorCode = {
 	CustomFieldKeyTaken: "CUSTOM_FIELD_KEY_TAKEN",
 	CustomFieldTypeInvalid: "CUSTOM_FIELD_TYPE_INVALID",
 	CustomFieldNameInvalid: "CUSTOM_FIELD_NAME_INVALID",
+
+	// Sprint domain errors.
+	SprintAlreadyComplete: "SPRINT_ALREADY_COMPLETE",
+
+	// Board view domain errors.
+	ViewIsLastView: "VIEW_IS_LAST_VIEW",
+	ViewReorderInvalid: "VIEW_REORDER_INVALID",
+
+	// Document domain errors.
+	DocTitleInvalid: "DOC_TITLE_INVALID",
+	DocFolderNameInvalid: "DOC_FOLDER_NAME_INVALID",
+
+	// Annotation domain errors.
+	AnnotationBodyEmpty: "ANNOTATION_BODY_EMPTY",
+	AnnotationAlreadyHasTask: "ANNOTATION_ALREADY_HAS_TASK",
+	AnnotationTaskCreationInProgress: "ANNOTATION_TASK_CREATION_IN_PROGRESS",
+
+	// Attachment domain errors.
+	AttachmentNotFound: "ATTACHMENT_NOT_FOUND",
+	AttachmentInvalid: "ATTACHMENT_INVALID",
 
 	// GitHub integration errors.
 	GitHubIntegrationNotFound: "GITHUB_INTEGRATION_NOT_FOUND",
@@ -89,6 +117,30 @@ export const ApiErrorCode = {
 	PluginIncompatibleHostVersion: "PLUGIN_INCOMPATIBLE_HOST_VERSION",
 
 	// Agent domain errors.
+	// Sent from agent create/update when the requested handle is already
+	// used by another agent (handles are unique, like a username). See
+	// create-agent-dialog.tsx's createError.
+	AgentHandleTaken: "AGENT_HANDLE_TAKEN",
+	// Sent from agent create/update when default_environment_id/
+	// default_folder_id no longer resolve (e.g. deleted between load and
+	// submit) — see create-agent-dialog.tsx's createError and
+	// agent-detail.tsx's OverviewTab.
+	AgentDefaultEnvironmentInvalid: "AGENT_DEFAULT_ENVIRONMENT_INVALID",
+	AgentDefaultFolderInvalid: "AGENT_DEFAULT_FOLDER_INVALID",
+	// Sent from AddSkill when the skill name collides with one of Paca's own
+	// internal scaffolding names, or is malformed ("."/".."/contains a path
+	// separator) — see agent-detail.tsx's AddSkillDialog.
+	AgentSkillNameReserved: "AGENT_SKILL_NAME_RESERVED",
+	AgentSkillNameInvalid: "AGENT_SKILL_NAME_INVALID",
+	// Sent from AddEnvVar when the key is already set on this agent, or
+	// collides with a name reserved for the sandbox itself — see
+	// agent-detail.tsx's AddEnvVarDialog.
+	AgentEnvVarKeyTaken: "AGENT_ENV_VAR_KEY_TAKEN",
+	AgentEnvVarKeyReserved: "AGENT_ENV_VAR_KEY_RESERVED",
+	// Sent when granting access to a member who already holds a grant for
+	// this agent (usually a stale member picker) — see agent-detail.tsx's
+	// AccessTab.
+	AgentAccessGrantExists: "AGENT_ACCESS_GRANT_EXISTS",
 	// Sent instead of dispatching a new chat turn when the agent is already
 	// at parallelism_limit running conversations and the request didn't opt
 	// into on_busy: "queue" | "force" — error_details carries "running"/
@@ -119,6 +171,8 @@ export const ApiErrorCode = {
 	// access_mode=restricted and the caller holds no grant for it. See
 	// conversation-to-thread-messages.ts's chatSessionAccessDeniedKey.
 	AgentAccessRestricted: "AGENT_ACCESS_RESTRICTED",
+	// Environment domain errors (static environments — see
+	// docs/ai-agent/environment-management.md).
 	// Sent instead of dispatching a chat turn when the environment the
 	// conversation would attach to (explicit override, or the agent's own
 	// DefaultEnvironmentID) is access_mode=restricted and the caller holds
@@ -127,6 +181,30 @@ export const ApiErrorCode = {
 	// access). See conversation-to-thread-messages.ts's
 	// chatSessionAccessDeniedKey.
 	EnvironmentAccessRestricted: "ENVIRONMENT_ACCESS_RESTRICTED",
+	EnvironmentNameInvalid: "ENVIRONMENT_NAME_INVALID",
+	// Sent from start/stop/restart when the environment is already
+	// mid-transition — see environment-detail.tsx's header actions and
+	// RestartEnvironmentDialog, and environment-connect.tsx's
+	// WebAppConnectTab.
+	EnvironmentBusy: "ENVIRONMENT_BUSY",
+	EnvironmentCPULimitInvalid: "ENVIRONMENT_CPU_LIMIT_INVALID",
+	EnvironmentMemoryLimitInvalid: "ENVIRONMENT_MEMORY_LIMIT_INVALID",
+	// Sent from AddFolder — see folder-create-dialog.tsx.
+	EnvironmentFolderPathTaken: "ENVIRONMENT_FOLDER_PATH_TAKEN",
+	EnvironmentFolderPathInvalid: "ENVIRONMENT_FOLDER_PATH_INVALID",
+	// Sent from AddSSHKey — see environment-connect.tsx's AddSSHKeyDialog.
+	EnvironmentSSHKeyInvalid: "ENVIRONMENT_SSH_KEY_INVALID",
+	EnvironmentSSHKeyFingerprintTaken: "ENVIRONMENT_SSH_KEY_FINGERPRINT_TAKEN",
+	// Sent from AddPortForward — see environment-detail.tsx's
+	// AddPortForwardDialog.
+	EnvironmentPortForwardContainerPortInvalid:
+		"ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_INVALID",
+	EnvironmentPortForwardContainerPortTaken:
+		"ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_TAKEN",
+	// Sent when granting access to a member who already holds a grant for
+	// this environment (usually a stale member picker) — see
+	// environment-detail.tsx's AccessTab.
+	EnvironmentAccessGrantExists: "ENVIRONMENT_ACCESS_GRANT_EXISTS",
 
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",

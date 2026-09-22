@@ -84,6 +84,9 @@
 			"optional": "(tùy chọn)",
 			"charsCount": "{{count}} ký tự",
 			"createFailed": "Tạo agent thất bại. Vui lòng thử lại.",
+			"handleTaken": "Handle này đã được sử dụng. Quay lại và chọn một handle khác.",
+			"defaultEnvironmentInvalid": "Environment đó không còn khả dụng. Quay lại và chọn một environment khác.",
+			"defaultFolderInvalid": "Folder đó không còn khả dụng. Quay lại và chọn một folder khác.",
 			"cancel": "Hủy",
 			"continue": "Tiếp tục",
 			"back": "Quay lại",
@@ -227,6 +230,8 @@
 				"noDefaultEnvironment": "Môi trường tạm thời",
 				"defaultFolderLabel": "Thư mục mặc định",
 				"defaultFolderHint": "Thư mục bên trong môi trường mặc định mà các cuộc hội thoại của agent này sẽ làm việc.",
+				"defaultEnvironmentInvalid": "Environment đó không còn khả dụng. Hãy chọn một environment khác.",
+				"defaultFolderInvalid": "Folder đó không còn khả dụng. Hãy chọn một folder khác.",
 				"noDefaultFolder": "Không có thư mục mặc định",
 				"saveChanges": "Lưu thay đổi",
 				"saved": "Đã lưu",
@@ -298,7 +303,10 @@
 					"keyHint": "(chữ cái, chữ số, dấu gạch dưới — phải bắt đầu bằng chữ cái hoặc dấu gạch dưới)",
 					"valueLabel": "Giá trị",
 					"cancel": "Hủy",
-					"addVariable": "Thêm biến"
+					"addVariable": "Thêm biến",
+					"keyTaken": "Agent này đã có một biến môi trường với khóa đó.",
+					"keyReserved": "Khóa đó được dành riêng cho chính sandbox. Hãy chọn một khóa khác.",
+					"addFailed": "Không thể thêm biến môi trường. Vui lòng thử lại."
 				}
 			},
 			"skills": {
@@ -320,7 +328,10 @@
 					"skillContentLabel": "Nội dung skill (Markdown)",
 					"urlLabel": "URL",
 					"cancel": "Hủy",
-					"addSkill": "Thêm skill"
+					"addSkill": "Thêm skill",
+					"nameReserved": "Tên đó được dành riêng cho scaffolding nội bộ của Paca. Hãy chọn một tên khác.",
+					"nameInvalid": "Tên skill không được là \".\", \"..\" hoặc chứa dấu gạch chéo.",
+					"addFailed": "Không thể thêm skill. Vui lòng thử lại."
 				}
 			},
 			"access": {
@@ -328,6 +339,8 @@
 				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"activity": {
@@ -492,6 +505,7 @@
 			"cpuLimitInvalid": "CPU phải tối thiểu là 0.1 (100m).",
 			"memoryLimitInvalid": "Bộ nhớ phải tối thiểu là 256Mi.",
 			"diskLimitInvalid": "Ổ đĩa phải là số nguyên dương (GB).",
+			"nameRequired": "Đặt tên cho environment.",
 			"createFailed": "Tạo môi trường thất bại. Vui lòng thử lại.",
 			"cancel": "Hủy",
 			"creating": "Đang tạo…",
@@ -511,6 +525,8 @@
 				"portForwards": "Chuyển tiếp cổng",
 				"access": "Access"
 			},
+			"busy": "Environment này đang khởi động, dừng hoặc khởi động lại. Vui lòng thử lại sau giây lát.",
+			"actionFailed": "Thao tác không thành công. Vui lòng thử lại.",
 			"overview": {
 				"connect": "Kết nối",
 				"start": "Khởi động",
@@ -541,6 +557,7 @@
 				"portsPendingRestartLink": "Xem chuyển tiếp cổng",
 				"saveChanges": "Lưu thay đổi",
 				"saved": "Đã lưu",
+				"nameRequired": "Đặt tên cho environment.",
 				"saveFailed": "Lưu thất bại. Vui lòng thử lại.",
 				"deleteDialog": {
 					"title": "Xóa {{name}}?",
@@ -574,6 +591,8 @@
 						"empty": "Thư mục này trống",
 						"notRunning": "Khởi động môi trường để duyệt các tệp của nó."
 					},
+					"pathTaken": "Đã tồn tại một folder với đường dẫn này trong environment.",
+					"pathInvalid": "Đường dẫn phải là đường dẫn tuyệt đối (bắt đầu bằng /).",
 					"addFailed": "Không thể thêm thư mục. Vui lòng thử lại.",
 					"cancel": "Hủy",
 					"addFolder": "Thêm thư mục"
@@ -608,13 +627,16 @@
 					"labelPlaceholder": "Server phát triển",
 					"cancel": "Hủy",
 					"add": "Thêm",
+					"portTaken": "Container port này đã được forward trên environment.",
+					"portOutOfRange": "Port phải nằm trong khoảng từ 1 đến 65535.",
 					"addFailed": "Không thể thêm cổng chuyển tiếp. Vui lòng thử lại."
 				},
 				"restartDialog": {
 					"title": "Khởi động lại môi trường?",
 					"description": "Thao tác này sẽ khởi động lại container của môi trường để áp dụng các cổng chuyển tiếp đã cập nhật. Mọi tiến trình đang chạy bên trong sẽ bị gián đoạn; tệp của bạn vẫn an toàn — chúng nằm trên một volume riêng.",
 					"cancel": "Hủy",
-					"confirm": "Khởi động lại"
+					"confirm": "Khởi động lại",
+					"restartFailed": "Khởi động lại environment thất bại. Vui lòng thử lại."
 				}
 			},
 			"access": {
@@ -622,6 +644,8 @@
 				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
@@ -645,6 +669,8 @@
 					"publicKeyLabel": "Khóa công khai",
 					"cancel": "Hủy",
 					"addKey": "Thêm khóa",
+					"keyTaken": "Khóa này đã được đăng ký trên environment.",
+					"keyInvalid": "Đây có vẻ không phải là SSH public key hợp lệ.",
 					"addFailed": "Không thể thêm khóa SSH. Vui lòng thử lại."
 				}
 			},
@@ -949,6 +975,7 @@
 			"description": "Định nghĩa các trạng thái quy trình mà nhiệm vụ sẽ đi qua trong dự án này.",
 			"newStatus": "Trạng thái mới",
 			"reorderFailed": "Lưu thứ tự mới thất bại. Vui lòng thử lại.",
+			"reorderInvalid": "Danh sách trạng thái đã thay đổi ở nơi khác. Hãy làm mới trang và thử lại.",
 			"empty": {
 				"title": "Chưa có trạng thái nào được định nghĩa",
 				"description": "Tạo trạng thái để định nghĩa quy trình cho nhiệm vụ trong dự án này.",
@@ -1093,6 +1120,7 @@
 			"confirmTextSuffix": "? Nhiệm vụ đang dùng trạng thái này sẽ mất trạng thái của chúng. Hành động này không thể hoàn tác.",
 			"deleteFailed": "Xóa trạng thái thất bại. Vui lòng thử lại.",
 			"isDefault": "Không thể xóa trạng thái mặc định. Hãy đặt một trạng thái khác làm mặc định trước.",
+			"inUseByAutomation": "Trạng thái này đang được một quy tắc tự động hóa sử dụng. Hãy cập nhật hoặc xóa quy tắc đó trước.",
 			"cancel": "Hủy",
 			"deleteStatus": "Xóa trạng thái"
 		},
@@ -1141,7 +1169,9 @@
 			"cancel": "Hủy",
 			"addMember": "Thêm thành viên",
 			"errors": {
-				"addFailed": "Thêm thành viên thất bại. Vui lòng thử lại."
+				"addFailed": "Thêm thành viên thất bại. Vui lòng thử lại.",
+				"alreadyAdded": "Người dùng hoặc agent này đã là thành viên của dự án.",
+				"roleNotFound": "Vai trò đó không còn tồn tại. Vui lòng chọn vai trò khác."
 			},
 			"modeUser": "Người dùng",
 			"modeAgent": "Agent AI",
@@ -1150,7 +1180,11 @@
 		},
 		"roleChip": {
 			"changeRole": "Đổi vai trò",
-			"changeFailed": "Đổi vai trò thất bại."
+			"errors": {
+				"memberNotFound": "Thành viên này không còn thuộc dự án nữa.",
+				"roleNotFound": "Vai trò đó không còn tồn tại.",
+				"changeFailed": "Đổi vai trò thất bại."
+			}
 		},
 		"memberRow": {
 			"removeMember": "Xóa thành viên"
@@ -1184,6 +1218,7 @@
 			"confirmTextSuffix": "? Nhiệm vụ đang dùng loại này sẽ mất gán loại của chúng. Hành động này không thể hoàn tác.",
 			"deleteFailed": "Xóa loại nhiệm vụ thất bại. Vui lòng thử lại.",
 			"isDefault": "Không thể xóa loại mặc định. Hãy đặt một loại khác làm mặc định trước.",
+			"isSystem": "Không thể xóa loại hệ thống.",
 			"cancel": "Hủy",
 			"deleteType": "Xóa loại"
 		},
@@ -1206,7 +1241,9 @@
 			"createType": "Tạo loại",
 			"errors": {
 				"nameInvalid": "Tên loại trống hoặc không hợp lệ.",
-				"saveFailed": "Lưu loại nhiệm vụ thất bại. Vui lòng thử lại."
+				"nameReserved": "Tên đó được dành riêng cho một loại tích hợp sẵn.",
+				"saveFailed": "Lưu loại nhiệm vụ thất bại. Vui lòng thử lại.",
+				"isSystem": "Không thể chỉnh sửa loại hệ thống."
 			}
 		}
 	},
@@ -1288,7 +1325,15 @@
 			"addButton": "Thêm liên kết",
 			"openTask": "Mở nhiệm vụ",
 			"removeLink": "Gỡ liên kết",
-			"empty": "Không có nhiệm vụ liên kết"
+			"empty": "Không có nhiệm vụ liên kết",
+			"errors": {
+				"alreadyExists": "Liên kết này đã tồn tại.",
+				"cannotLinkSelf": "Không thể liên kết một nhiệm vụ với chính nó.",
+				"crossProject": "Chỉ có thể liên kết các nhiệm vụ trong cùng một dự án.",
+				"createFailed": "Không thể thêm liên kết. Vui lòng thử lại.",
+				"notFound": "Liên kết này đã bị gỡ bỏ.",
+				"deleteFailed": "Không thể gỡ liên kết. Vui lòng thử lại."
+			}
 		},
 		"attachments": {
 			"title": "Tệp đính kèm",
@@ -1301,7 +1346,13 @@
 			"unitBytes_one": "{{count}} B",
 			"unitBytes_other": "{{count}} B",
 			"unitKilobytes": "{{value}} KB",
-			"unitMegabytes": "{{value}} MB"
+			"unitMegabytes": "{{value}} MB",
+			"errors": {
+				"invalid": "Không thể tải lên tệp này. Vui lòng chọn tệp khác.",
+				"uploadFailed": "Không thể tải lên tệp. Vui lòng thử lại.",
+				"notFound": "Tệp đính kèm này đã bị xóa.",
+				"deleteFailed": "Không thể xóa tệp đính kèm. Vui lòng thử lại."
+			}
 		},
 		"addFieldDialog": {
 			"title": "Tạo trường tùy chỉnh",
@@ -1469,7 +1520,12 @@
 			"resolve": "Giải quyết",
 			"reopen": "Mở lại",
 			"createTask": "Tạo tác vụ",
-			"taskCreated": "Đã tạo tác vụ"
+			"taskCreated": "Đã tạo tác vụ",
+			"errors": {
+				"alreadyHasTask": "Đã có nhiệm vụ được tạo cho bình luận này.",
+				"creationInProgress": "Việc tạo nhiệm vụ cho bình luận này đang được xử lý.",
+				"createTaskFailed": "Không thể tạo nhiệm vụ. Vui lòng thử lại."
+			}
 		}
 	},
 	"commentDetail": {
@@ -1498,7 +1554,11 @@
 		},
 		"thread": {
 			"replyPlaceholder": "Viết phản hồi…",
-			"reply": "Trả lời"
+			"reply": "Trả lời",
+			"errors": {
+				"bodyEmpty": "Phản hồi không được để trống.",
+				"replyFailed": "Không thể đăng phản hồi. Vui lòng thử lại."
+			}
 		},
 		"actions": {
 			"create": "Tạo",
@@ -1655,7 +1715,13 @@
 			"renameView": "Đổi tên chế độ xem",
 			"deleteView": "Xóa chế độ xem",
 			"searchTasksPlaceholder": "Tìm kiếm nhiệm vụ…",
-			"pluginNotAvailable": "Plugin không khả dụng"
+			"pluginNotAvailable": "Plugin không khả dụng",
+			"viewErrors": {
+				"isLastView": "Đây là chế độ xem cuối cùng và không thể xóa.",
+				"deleteFailed": "Không thể xóa chế độ xem. Vui lòng thử lại.",
+				"reorderInvalid": "Danh sách chế độ xem đã thay đổi ở nơi khác. Hãy làm mới trang và thử lại.",
+				"reorderFailed": "Không thể sắp xếp lại chế độ xem. Vui lòng thử lại."
+			}
 		},
 		"viewSettings": {
 			"viewSettingsAriaLabel": "Cài đặt chế độ xem",
@@ -1810,7 +1876,9 @@
 				"unassignedHint": "Nhiệm vụ sẽ được gỡ khỏi mọi sprint",
 				"cancel": "Hủy",
 				"completing": "Đang hoàn thành…",
-				"completeSprint": "Hoàn thành sprint"
+				"completeSprint": "Hoàn thành sprint",
+				"alreadyComplete": "Sprint này đã được hoàn thành.",
+				"completeFailed": "Hoàn thành sprint thất bại. Vui lòng thử lại."
 			},
 			"deleteSprintModal": {
 				"title": "Xóa sprint?",

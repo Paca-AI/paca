@@ -56,7 +56,12 @@
 		"newSubfolder": "Nueva subcarpeta",
 		"rename": "Cambiar nombre",
 		"delete": "Eliminar",
-		"untitled": "Sin título"
+		"untitled": "Sin título",
+		"errors": {
+			"titleInvalid": "Ese título no es válido.",
+			"folderNameInvalid": "Ese nombre de carpeta no es válido.",
+			"renameFailed": "No se pudo cambiar el nombre. Inténtalo de nuevo."
+		}
 	},
 	"notifications": {
 		"title": "Notificaciones",

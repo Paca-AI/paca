@@ -89,6 +89,14 @@ export function TaskTypeFormDialog({
 				setNameError(t("taskTypes.formDialog.errors.nameInvalid"));
 				return;
 			}
+			if (code === ApiErrorCode.TaskTypeNameReserved) {
+				setNameError(t("taskTypes.formDialog.errors.nameReserved"));
+				return;
+			}
+			if (code === ApiErrorCode.TaskTypeIsSystem) {
+				setError(t("taskTypes.formDialog.errors.isSystem"));
+				return;
+			}
 			setError(t("taskTypes.formDialog.errors.saveFailed"));
 		},
 	});

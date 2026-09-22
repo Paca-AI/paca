@@ -7,6 +7,7 @@ import {
 	RotateCcw,
 	SquareCheckBig,
 } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import {
 	reopenAnnotation,
 	resolveAnnotation,
 } from "@/lib/annotation-api";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 
 // The web app's own view of page annotations — created via the Paca
 // browser extension (apps/extension) on a port forward's forwarded
@@ -54,6 +56,7 @@ export function PortForwardCommentsTab({
 	const { data: annotations, isLoading } = useQuery(
 		portForwardAnnotationsQueryOptions(projectId, environmentId, portForwardId),
 	);
+	const [taskErrors, setTaskErrors] = useState<Record<string, string>>({});
 
 	const resolveMutation = useMutation({
 		mutationFn: (annotationId: string) =>
@@ -73,7 +76,23 @@ export function PortForwardCommentsTab({
 				portForwardId,
 				annotationId,
 			),
-		onSuccess: () => qc.invalidateQueries({ queryKey: annotationsKey }),
+		onSuccess: (_, annotationId) => {
+			setTaskErrors((prev) => {
+				const { [annotationId]: _removed, ...rest } = prev;
+				return rest;
+			});
+			qc.invalidateQueries({ queryKey: annotationsKey });
+		},
+		onError: (err: unknown, annotationId) => {
+			const code = getApiErrorCode(err);
+			const message =
+				code === ApiErrorCode.AnnotationAlreadyHasTask
+					? t("portForwardDetail.comments.errors.alreadyHasTask")
+					: code === ApiErrorCode.AnnotationTaskCreationInProgress
+						? t("portForwardDetail.comments.errors.creationInProgress")
+						: t("portForwardDetail.comments.errors.createTaskFailed");
+			setTaskErrors((prev) => ({ ...prev, [annotationId]: message }));
+		},
 	});
 
 	if (isLoading) {
@@ -115,6 +134,7 @@ export function PortForwardCommentsTab({
 								annotation={annotation}
 								canResolve={canResolve}
 								canCreateTask={canCreateTask}
+								taskError={taskErrors[annotation.id]}
 								onResolve={() => resolveMutation.mutate(annotation.id)}
 								onReopen={() => reopenMutation.mutate(annotation.id)}
 								onCreateTask={() => createTaskMutation.mutate(annotation.id)}
@@ -146,6 +166,7 @@ function AnnotationCard({
 	annotation,
 	canResolve,
 	canCreateTask,
+	taskError,
 	onResolve,
 	onReopen,
 	onCreateTask,
@@ -156,6 +177,7 @@ function AnnotationCard({
 	annotation: PageAnnotation;
 	canResolve: boolean;
 	canCreateTask: boolean;
+	taskError?: string;
 	onResolve: () => void;
 	onReopen: () => void;
 	onCreateTask: () => void;
@@ -258,6 +280,11 @@ function AnnotationCard({
 						</span>
 					)}
 				</div>
+				{taskError && (
+					<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+						{taskError}
+					</p>
+				)}
 			</div>
 		</div>
 	);

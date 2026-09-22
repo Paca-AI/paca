@@ -56,7 +56,12 @@
 		"newSubfolder": "New Subfolder",
 		"rename": "Rename",
 		"delete": "Delete",
-		"untitled": "Untitled"
+		"untitled": "Untitled",
+		"errors": {
+			"titleInvalid": "That title isn't valid.",
+			"folderNameInvalid": "That folder name isn't valid.",
+			"renameFailed": "Rename failed. Please try again."
+		}
 	},
 	"notifications": {
 		"title": "Notifications",
