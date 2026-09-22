@@ -27,6 +27,7 @@ function renderTable(
 	users: User[],
 	opts: {
 		canWrite?: boolean;
+		canDelete?: boolean;
 		canAssignRole?: boolean;
 		currentUserId?: string;
 		onEdit?: (user: User) => void;
@@ -37,6 +38,7 @@ function renderTable(
 ) {
 	const {
 		canWrite = true,
+		canDelete = true,
 		canAssignRole = false,
 		currentUserId,
 		onEdit = vi.fn<(user: User) => void>(),
@@ -49,6 +51,7 @@ function renderTable(
 		<UsersTable
 			users={users}
 			canWrite={canWrite}
+			canDelete={canDelete}
 			canAssignRole={canAssignRole}
 			currentUserId={currentUserId}
 			onEdit={onEdit}
@@ -102,12 +105,49 @@ describe("UsersTable", () => {
 		expect(screen.getByText("—")).toBeInTheDocument();
 	});
 
-	it("hides action column when canWrite is false", () => {
-		renderTable([baseUser], { canWrite: false });
+	it("hides action column when neither canWrite nor canDelete is set", () => {
+		renderTable([baseUser], { canWrite: false, canDelete: false });
 
 		expect(screen.queryByTitle("Edit user")).not.toBeInTheDocument();
 		expect(screen.queryByTitle("Delete user")).not.toBeInTheDocument();
 		expect(screen.queryByTitle("Reset password")).not.toBeInTheDocument();
+	});
+
+	// users.delete is its own permission, apart from users.write (canWrite) —
+	// a role that can edit users is not necessarily allowed to remove them, and
+	// the reverse. Regression test: the delete button used to be gated on
+	// canWrite alone, so it showed for anyone who could edit a user even
+	// without users.delete, and the server then refused the click.
+	describe("deleting a user", () => {
+		it("hides only Delete when canWrite is true but canDelete is false", () => {
+			renderTable([baseUser], { canWrite: true, canDelete: false });
+
+			expect(screen.getByTitle("Edit user")).toBeInTheDocument();
+			expect(screen.getByTitle("Reset password")).toBeInTheDocument();
+			expect(screen.queryByTitle("Delete user")).not.toBeInTheDocument();
+		});
+
+		it("shows only Delete when canDelete is true but canWrite is false", () => {
+			renderTable([baseUser], {
+				canWrite: false,
+				canDelete: true,
+				currentUserId: "u999",
+			});
+
+			expect(screen.getByTitle("Delete user")).toBeInTheDocument();
+			expect(screen.queryByTitle("Edit user")).not.toBeInTheDocument();
+			expect(screen.queryByTitle("Reset password")).not.toBeInTheDocument();
+		});
+
+		it("still hides Delete for the current user even with canDelete", () => {
+			renderTable([baseUser], {
+				canWrite: false,
+				canDelete: true,
+				currentUserId: "u1",
+			});
+
+			expect(screen.queryByTitle("Delete user")).not.toBeInTheDocument();
+		});
 	});
 
 	it("calls onEdit when Edit button is clicked", async () => {

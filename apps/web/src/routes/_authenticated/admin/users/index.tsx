@@ -51,6 +51,11 @@ function UsersManagementPage() {
 	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
 	const canRead = hasPermission("users.read");
 	const canWrite = hasPermission("users.write");
+	// Deleting a user is its own permission, separate from editing one —
+	// mirrors canAssignRole below. Without this the delete button showed for
+	// anyone who could edit a user, even without users.delete, and the
+	// server then refused the request.
+	const canDelete = hasPermission("users.delete");
 	// Changing a role is its own permission, separate from editing the user.
 	const canAssignRole = useCanAssignGlobalRole();
 
@@ -130,6 +135,7 @@ function UsersManagementPage() {
 					<UsersTable
 						users={users}
 						canWrite={canWrite}
+						canDelete={canDelete}
 						canAssignRole={canAssignRole}
 						currentUserId={currentUser?.id}
 						onEdit={setEditUser}

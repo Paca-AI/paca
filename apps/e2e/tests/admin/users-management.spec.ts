@@ -777,3 +777,86 @@ test.describe('Role assignment is a separate permission from managing users', ()
     await expect(row.getByRole('button', { name: 'ADMIN', exact: true })).toBeVisible();
   });
 });
+
+// ===========================================================================
+// Rule: Deleting a user is a separate permission from managing users
+// ===========================================================================
+// Regression coverage: the Delete action used to be shown to anyone who could
+// edit a user (users.write), regardless of users.delete. Mirrors the "Role
+// assignment..." describe block above for both structure and cleanup.
+
+test.describe('Deleting a user is a separate permission from managing users', () => {
+  test.beforeEach(async ({ request, context }) => {
+    await authenticateAdmin(request);
+    await cleanupTestUsers(request);
+    await cleanupGlobalRolesByPrefix(request, TEST_USER_PREFIX);
+    await context.clearCookies();
+  });
+
+  test.afterEach(async ({ request }) => {
+    await authenticateAdmin(request);
+    await cleanupTestUsers(request);
+    await cleanupGlobalRolesByPrefix(request, TEST_USER_PREFIX);
+  });
+
+  test('writing users without deleting them hides Delete everywhere, but keeps editing and resetting', async ({
+    page,
+    request,
+    playwright,
+  }) => {
+    const writer = uniqueUsername('NODELETE');
+    await createUserWithGlobalPermissions(request, playwright, {
+      username: writer,
+      roleName: `${TEST_USER_PREFIX}ROLE_NODELETE_${TEST_RUN_ID}`,
+      // No users.delete: this account can manage users but not remove them.
+      permissions: { 'projects.read': true, 'users.read': true, 'users.write': true },
+    });
+    const target = uniqueUsername('NODELETE_TARGET');
+    await ensureUser(request, { username: target, fullName: 'No Delete Target', role: 'USER' });
+
+    await signIn(page, writer, RESTRICTED_PASSWORD);
+    await page.goto('/admin/users');
+    await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
+
+    for (const row of [userRow(page, writer), userRow(page, target)]) {
+      await expect(row.getByRole('button', { name: 'Edit user' })).toBeVisible();
+      await expect(row.getByRole('button', { name: 'Reset password' })).toBeVisible();
+      await expect(row.getByRole('button', { name: 'Delete user' })).toHaveCount(0);
+    }
+  });
+
+  test('deleting users without writing them offers only Delete, and it actually removes the user', async ({
+    page,
+    request,
+    playwright,
+  }) => {
+    const deleter = uniqueUsername('DELETEONLY');
+    await createUserWithGlobalPermissions(request, playwright, {
+      username: deleter,
+      roleName: `${TEST_USER_PREFIX}ROLE_DELETEONLY_${TEST_RUN_ID}`,
+      // No users.write: this account can remove users but not edit or create them.
+      permissions: { 'projects.read': true, 'users.read': true, 'users.delete': true },
+    });
+    const target = uniqueUsername('DELETEONLY_TARGET');
+    await ensureUser(request, { username: target, fullName: 'Delete Only Target', role: 'USER' });
+
+    await signIn(page, deleter, RESTRICTED_PASSWORD);
+    await page.goto('/admin/users');
+    await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
+
+    // Writing users is a different permission: no creating, editing or resetting.
+    await expect(page.getByRole('button', { name: 'New User' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Edit user' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Reset password' })).toHaveCount(0);
+
+    // Delete is still offered, and it is not a decoration: it works end to end.
+    const row = userRow(page, target);
+    await expect(row.getByRole('button', { name: 'Delete user' })).toBeVisible();
+    await row.getByRole('button', { name: 'Delete user' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Delete user' });
+    await dialog.getByRole('button', { name: 'Delete user' }).click();
+
+    await expect(dialog).toHaveCount(0);
+    await expect(userRow(page, target)).toHaveCount(0);
+  });
+});
