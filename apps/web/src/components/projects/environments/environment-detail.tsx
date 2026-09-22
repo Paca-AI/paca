@@ -61,6 +61,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	addEnvironmentAccessGrant,
 	addPortForward,
@@ -181,6 +182,12 @@ function OverviewTab({
 			qc.invalidateQueries({ queryKey: listKey });
 		},
 	});
+
+	const saveErrorMessage = saveMutation.isError
+		? getApiErrorCode(saveMutation.error) === ApiErrorCode.EnvironmentNameInvalid
+			? t("environments.detail.overview.nameRequired")
+			: t("environments.detail.overview.saveFailed")
+		: null;
 
 	const idleTimeoutNumber = Number(idleTimeout);
 	const canSave =
@@ -327,9 +334,9 @@ function OverviewTab({
 							{t("environments.detail.overview.saved")}
 						</span>
 					)}
-					{saveMutation.isError && (
+					{saveErrorMessage && (
 						<span className="text-xs text-destructive">
-							{t("environments.detail.overview.saveFailed")}
+							{saveErrorMessage}
 						</span>
 					)}
 				</div>
@@ -555,6 +562,27 @@ function AddPortForwardDialog({
 		portNum >= 1 &&
 		portNum <= 65535;
 
+	// isValidPort already blocks an out-of-range port, so
+	// EnvironmentPortForwardContainerPortInvalid mainly guards a stale check;
+	// EnvironmentPortForwardContainerPortTaken is the genuinely common case —
+	// the same port forwarded twice.
+	const addErrorMessage = addMutation.isError
+		? (() => {
+				switch (getApiErrorCode(addMutation.error)) {
+					case ApiErrorCode.EnvironmentPortForwardContainerPortTaken:
+						return t(
+							"environments.detail.portForwards.addDialog.portTaken",
+						);
+					case ApiErrorCode.EnvironmentPortForwardContainerPortInvalid:
+						return t(
+							"environments.detail.portForwards.addDialog.portOutOfRange",
+						);
+					default:
+						return t("environments.detail.portForwards.addDialog.addFailed");
+				}
+			})()
+		: null;
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-lg">
@@ -597,9 +625,9 @@ function AddPortForwardDialog({
 							onChange={(e) => setLabel(e.target.value)}
 						/>
 					</div>
-					{addMutation.isError && (
+					{addErrorMessage && (
 						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-							{t("environments.detail.portForwards.addDialog.addFailed")}
+							{addErrorMessage}
 						</p>
 					)}
 				</div>
@@ -663,6 +691,13 @@ function RestartEnvironmentDialog({
 						{t("environments.detail.portForwards.restartDialog.description")}
 					</DialogDescription>
 				</DialogHeader>
+				{restartMutation.isError && (
+					<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+						{getApiErrorCode(restartMutation.error) === ApiErrorCode.EnvironmentBusy
+							? t("environments.detail.busy")
+							: t("environments.detail.portForwards.restartDialog.restartFailed")}
+					</p>
+				)}
 				<DialogFooter>
 					<Button
 						variant="outline"
@@ -754,6 +789,14 @@ function AccessTab({
 			? (m.agent_name ?? m.username)
 			: m.full_name || m.username;
 
+	// availableMembers already excludes anyone with a grant, so this is
+	// mainly a race (stale member list, or granted concurrently elsewhere).
+	const addErrorMessage = addMutation.isError
+		? getApiErrorCode(addMutation.error) === ApiErrorCode.EnvironmentAccessGrantExists
+			? t("environments.detail.access.alreadyGranted")
+			: t("environments.detail.access.grantFailed")
+		: null;
+
 	const grantedMemberIds = new Set(grants.map((g) => g.member_id));
 	const availableMembers = members.filter((m) => !grantedMemberIds.has(m.id));
 	const memberById = new Map(members.map((m) => [m.id, m]));
@@ -831,6 +874,12 @@ function AccessTab({
 								{t("environments.detail.access.grantAccess")}
 							</Button>
 						</div>
+					)}
+
+					{addErrorMessage && (
+						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+							{addErrorMessage}
+						</p>
 					)}
 
 					{grants.length === 0 ? (
@@ -1243,6 +1292,20 @@ export function EnvironmentDetailView({
 	const hasAccess =
 		environment.access_mode !== "restricted" || environment.access_granted;
 
+	// Shared by the Start button and the Stop menu item below — both are
+	// simple lifecycle transitions with the same failure modes (mainly a
+	// race against another in-flight start/stop/restart).
+	const lifecycleError = startMutation.isError
+		? startMutation.error
+		: stopMutation.isError
+			? stopMutation.error
+			: null;
+	const lifecycleErrorMessage = lifecycleError
+		? getApiErrorCode(lifecycleError) === ApiErrorCode.EnvironmentBusy
+			? t("environments.detail.busy")
+			: t("environments.detail.actionFailed")
+		: null;
+
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
 			{/* Environment header */}
@@ -1327,6 +1390,11 @@ export function EnvironmentDetailView({
 						)}
 					</div>
 				</div>
+				{lifecycleErrorMessage && (
+					<p className="mt-3 text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+						{lifecycleErrorMessage}
+					</p>
+				)}
 			</div>
 
 			{/* Tabs */}

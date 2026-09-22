@@ -45,7 +45,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
-import { isTaskNotFoundError } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	isTaskNotFoundError,
+} from "@/lib/api-error";
 import {
 	allTasksQueryOptions,
 	bulkMoveViewTaskPositions,
@@ -1672,21 +1676,42 @@ export function InteractionLayout({
 		},
 	});
 
+	const [viewActionError, setViewActionError] = useState<string | null>(null);
+
 	const deleteViewMutation = useMutation({
 		mutationFn: (viewId: string) => deleteViewById(projectId, viewId),
 		onSuccess: (_, deletedId) => {
+			setViewActionError(null);
 			qc.invalidateQueries({ queryKey: viewsQueryKey });
 			if (preferredViewId === deletedId) {
 				const remaining = views.filter((v) => v.id !== deletedId);
 				setPreferredViewId(remaining[0]?.id ?? "");
 			}
 		},
+		onError: (err: unknown) => {
+			setViewActionError(
+				getApiErrorCode(err) === ApiErrorCode.ViewIsLastView
+					? t("layout.shell.viewErrors.isLastView")
+					: t("layout.shell.viewErrors.deleteFailed"),
+			);
+		},
 	});
 
 	const reorderViewMutation = useMutation({
 		mutationFn: (orderedIds: string[]) =>
 			reorderViewsByContext(projectId, context, orderedIds, sprintId),
-		onSuccess: () => qc.invalidateQueries({ queryKey: viewsQueryKey }),
+		onSuccess: () => {
+			setViewActionError(null);
+			qc.invalidateQueries({ queryKey: viewsQueryKey });
+		},
+		onError: (err: unknown) => {
+			setLocalViews(null);
+			setViewActionError(
+				getApiErrorCode(err) === ApiErrorCode.ViewReorderInvalid
+					? t("layout.shell.viewErrors.reorderInvalid")
+					: t("layout.shell.viewErrors.reorderFailed"),
+			);
+		},
 	});
 
 	const [tabDragId, setTabDragId] = useState<string | null>(null);
@@ -1904,7 +1929,10 @@ export function InteractionLayout({
 											<DropdownMenuSeparator />
 											<DropdownMenuItem
 												disabled={views.length <= 1}
-												onClick={() => deleteViewMutation.mutate(view.id)}
+												onClick={() => {
+													setViewActionError(null);
+													deleteViewMutation.mutate(view.id);
+												}}
 												className="text-destructive focus:text-destructive"
 											>
 												{t("layout.shell.deleteView")}
@@ -1998,6 +2026,12 @@ export function InteractionLayout({
 					)}
 				</div>
 			</div>
+
+			{viewActionError && (
+				<p className="shrink-0 border-b border-border/25 bg-destructive/10 px-8 py-2 text-xs text-destructive">
+					{viewActionError}
+				</p>
+			)}
 
 			{/* View content */}
 			<div

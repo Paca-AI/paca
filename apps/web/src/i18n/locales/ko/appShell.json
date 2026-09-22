@@ -56,7 +56,12 @@
 		"newSubfolder": "새 하위 폴더",
 		"rename": "이름 변경",
 		"delete": "삭제",
-		"untitled": "제목 없음"
+		"untitled": "제목 없음",
+		"errors": {
+			"titleInvalid": "제목이 유효하지 않습니다.",
+			"folderNameInvalid": "폴더 이름이 유효하지 않습니다.",
+			"renameFailed": "이름을 변경하지 못했습니다. 다시 시도해 주세요."
+		}
 	},
 	"notifications": {
 		"title": "알림",

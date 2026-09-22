@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	addSSHKey,
 	deleteSSHKey,
@@ -146,6 +147,19 @@ function AddSSHKeyDialog({
 		},
 	});
 
+	const addErrorMessage = addMutation.isError
+		? (() => {
+				switch (getApiErrorCode(addMutation.error)) {
+					case ApiErrorCode.EnvironmentSSHKeyFingerprintTaken:
+						return t("environments.detail.sshKeys.addDialog.keyTaken");
+					case ApiErrorCode.EnvironmentSSHKeyInvalid:
+						return t("environments.detail.sshKeys.addDialog.keyInvalid");
+					default:
+						return t("environments.detail.sshKeys.addDialog.addFailed");
+				}
+			})()
+		: null;
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-xl">
@@ -192,9 +206,9 @@ function AddSSHKeyDialog({
 							onChange={(e) => setPublicKey(e.target.value)}
 						/>
 					</div>
-					{addMutation.isError && (
+					{addErrorMessage && (
 						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-							{t("environments.detail.sshKeys.addDialog.addFailed")}
+							{addErrorMessage}
 						</p>
 					)}
 				</div>
@@ -417,6 +431,13 @@ function WebAppConnectTab({
 							)}
 							{t("environments.detail.overview.start")}
 						</Button>
+					)}
+					{startMutation.isError && (
+						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+							{getApiErrorCode(startMutation.error) === ApiErrorCode.EnvironmentBusy
+								? t("environments.detail.busy")
+								: t("environments.detail.actionFailed")}
+						</p>
 					)}
 				</div>
 			)}

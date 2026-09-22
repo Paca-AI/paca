@@ -84,6 +84,9 @@
 			"optional": "(opcional)",
 			"charsCount": "{{count}} caracteres",
 			"createFailed": "Falha ao criar o agente. Tente novamente.",
+			"handleTaken": "Este identificador já está em uso. Volte e escolha outro.",
+			"defaultEnvironmentInvalid": "Esse ambiente não está mais disponível. Volte e escolha outro.",
+			"defaultFolderInvalid": "Essa pasta não está mais disponível. Volte e escolha outra.",
 			"cancel": "Cancelar",
 			"continue": "Continuar",
 			"back": "Voltar",
@@ -227,6 +230,8 @@
 				"noDefaultEnvironment": "Ambiente temporário",
 				"defaultFolderLabel": "Pasta padrão",
 				"defaultFolderHint": "A pasta dentro do ambiente padrão em que as conversas deste agente vão trabalhar.",
+				"defaultEnvironmentInvalid": "Esse ambiente não está mais disponível. Escolha outro.",
+				"defaultFolderInvalid": "Essa pasta não está mais disponível. Escolha outra.",
 				"noDefaultFolder": "Sem pasta padrão",
 				"saveChanges": "Salvar alterações",
 				"saved": "Salvo",
@@ -298,7 +303,10 @@
 					"keyHint": "(letras, dígitos, underscores — deve começar com uma letra ou underscore)",
 					"valueLabel": "Valor",
 					"cancel": "Cancelar",
-					"addVariable": "Adicionar variável"
+					"addVariable": "Adicionar variável",
+					"keyTaken": "Este agente já tem uma variável de ambiente com essa chave.",
+					"keyReserved": "Essa chave é reservada para o próprio sandbox. Escolha outra.",
+					"addFailed": "Falha ao adicionar a variável de ambiente. Tente novamente."
 				}
 			},
 			"skills": {
@@ -320,7 +328,10 @@
 					"skillContentLabel": "Conteúdo da skill (Markdown)",
 					"urlLabel": "URL",
 					"cancel": "Cancelar",
-					"addSkill": "Adicionar skill"
+					"addSkill": "Adicionar skill",
+					"nameReserved": "Esse nome é reservado para o scaffolding interno do Paca. Escolha outro.",
+					"nameInvalid": "O nome da skill não pode ser \".\", \"..\" nem conter uma barra.",
+					"addFailed": "Falha ao adicionar a skill. Tente novamente."
 				}
 			},
 			"access": {
@@ -328,6 +339,8 @@
 				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"activity": {
@@ -492,6 +505,7 @@
 			"cpuLimitInvalid": "A CPU deve ser de no mínimo 0,1 (100m).",
 			"memoryLimitInvalid": "A memória deve ser de no mínimo 256Mi.",
 			"diskLimitInvalid": "O disco deve ser um número inteiro positivo de GB.",
+			"nameRequired": "Dê um nome ao ambiente.",
 			"createFailed": "Falha ao criar o ambiente. Tente novamente.",
 			"cancel": "Cancelar",
 			"creating": "Criando…",
@@ -511,6 +525,8 @@
 				"portForwards": "Encaminhamentos de porta",
 				"access": "Access"
 			},
+			"busy": "Este ambiente já está iniciando, parando ou reiniciando. Tente novamente em instantes.",
+			"actionFailed": "Isso não funcionou. Tente novamente.",
 			"overview": {
 				"connect": "Conectar",
 				"start": "Iniciar",
@@ -541,6 +557,7 @@
 				"portsPendingRestartLink": "Ver encaminhamentos de porta",
 				"saveChanges": "Salvar alterações",
 				"saved": "Salvo",
+				"nameRequired": "Dê um nome ao ambiente.",
 				"saveFailed": "Falha ao salvar. Tente novamente.",
 				"deleteDialog": {
 					"title": "Excluir {{name}}?",
@@ -574,6 +591,8 @@
 						"empty": "Esta pasta está vazia",
 						"notRunning": "Inicie o ambiente para procurar seus arquivos."
 					},
+					"pathTaken": "Já existe uma pasta com esse caminho neste ambiente.",
+					"pathInvalid": "O caminho deve ser absoluto (começar com /).",
 					"addFailed": "Falha ao adicionar a pasta. Tente novamente.",
 					"cancel": "Cancelar",
 					"addFolder": "Adicionar pasta"
@@ -608,13 +627,16 @@
 					"labelPlaceholder": "Servidor de desenvolvimento",
 					"cancel": "Cancelar",
 					"add": "Adicionar",
+					"portTaken": "Esta porta do contêiner já está redirecionada neste ambiente.",
+					"portOutOfRange": "A porta deve estar entre 1 e 65535.",
 					"addFailed": "Falha ao adicionar o encaminhamento de porta. Tente novamente."
 				},
 				"restartDialog": {
 					"title": "Reiniciar o ambiente?",
 					"description": "Isso reinicia o contêiner do ambiente para aplicar os encaminhamentos de porta atualizados. Qualquer processo em execução dentro dele será interrompido; seus arquivos estão seguros — eles ficam em um volume separado.",
 					"cancel": "Cancelar",
-					"confirm": "Reiniciar"
+					"confirm": "Reiniciar",
+					"restartFailed": "Falha ao reiniciar o ambiente. Tente novamente."
 				}
 			},
 			"access": {
@@ -622,6 +644,8 @@
 				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
@@ -645,6 +669,8 @@
 					"publicKeyLabel": "Chave pública",
 					"cancel": "Cancelar",
 					"addKey": "Adicionar chave",
+					"keyTaken": "Esta chave já está registrada neste ambiente.",
+					"keyInvalid": "Isso não parece uma chave pública SSH válida.",
 					"addFailed": "Falha ao adicionar a chave SSH. Tente novamente."
 				}
 			},
@@ -949,6 +975,7 @@
 			"description": "Defina os status de fluxo de trabalho pelos quais as tarefas passam neste projeto.",
 			"newStatus": "Novo status",
 			"reorderFailed": "Falha ao salvar a nova ordem. Tente novamente.",
+			"reorderInvalid": "A lista de status foi alterada em outro lugar. Atualize a página e tente novamente.",
 			"empty": {
 				"title": "Nenhum status definido",
 				"description": "Crie status para definir o fluxo de trabalho das tarefas neste projeto.",
@@ -1093,6 +1120,7 @@
 			"confirmTextSuffix": "? As tarefas que usam este status perderão seu status. Esta ação não pode ser desfeita.",
 			"deleteFailed": "Falha ao excluir o status. Tente novamente.",
 			"isDefault": "O status padrão não pode ser excluído. Defina primeiro outro status como padrão.",
+			"inUseByAutomation": "Este status está em uso por uma regra de automação. Atualize ou remova essa regra primeiro.",
 			"cancel": "Cancelar",
 			"deleteStatus": "Excluir status"
 		},
@@ -1141,7 +1169,9 @@
 			"cancel": "Cancelar",
 			"addMember": "Adicionar membro",
 			"errors": {
-				"addFailed": "Falha ao adicionar o membro. Tente novamente."
+				"addFailed": "Falha ao adicionar o membro. Tente novamente.",
+				"alreadyAdded": "Este usuário ou agente já é membro do projeto.",
+				"roleNotFound": "Esse papel não existe mais. Escolha outro papel."
 			},
 			"modeUser": "Usuário",
 			"modeAgent": "Agente de IA",
@@ -1150,7 +1180,11 @@
 		},
 		"roleChip": {
 			"changeRole": "Alterar papel",
-			"changeFailed": "Falha ao alterar o papel."
+			"errors": {
+				"memberNotFound": "Este membro não faz mais parte do projeto.",
+				"roleNotFound": "Esse papel não existe mais.",
+				"changeFailed": "Falha ao alterar o papel."
+			}
 		},
 		"memberRow": {
 			"removeMember": "Remover membro"
@@ -1184,6 +1218,7 @@
 			"confirmTextSuffix": "? As tarefas que usam este tipo perderão sua atribuição de tipo. Esta ação não pode ser desfeita.",
 			"deleteFailed": "Falha ao excluir o tipo de tarefa. Tente novamente.",
 			"isDefault": "O tipo padrão não pode ser excluído. Defina primeiro outro tipo como padrão.",
+			"isSystem": "Tipos do sistema não podem ser excluídos.",
 			"cancel": "Cancelar",
 			"deleteType": "Excluir tipo"
 		},
@@ -1206,7 +1241,9 @@
 			"createType": "Criar tipo",
 			"errors": {
 				"nameInvalid": "O nome do tipo está vazio ou inválido.",
-				"saveFailed": "Falha ao salvar o tipo de tarefa. Tente novamente."
+				"nameReserved": "Esse nome está reservado para um tipo integrado.",
+				"saveFailed": "Falha ao salvar o tipo de tarefa. Tente novamente.",
+				"isSystem": "Tipos do sistema não podem ser editados."
 			}
 		}
 	},
@@ -1288,7 +1325,15 @@
 			"addButton": "Adicionar vínculo",
 			"openTask": "Abrir tarefa",
 			"removeLink": "Remover vínculo",
-			"empty": "Nenhuma tarefa vinculada"
+			"empty": "Nenhuma tarefa vinculada",
+			"errors": {
+				"alreadyExists": "Este vínculo já existe.",
+				"cannotLinkSelf": "Uma tarefa não pode ser vinculada a si mesma.",
+				"crossProject": "As tarefas só podem ser vinculadas dentro do mesmo projeto.",
+				"createFailed": "Falha ao adicionar o vínculo. Tente novamente.",
+				"notFound": "Este vínculo já havia sido removido.",
+				"deleteFailed": "Falha ao remover o vínculo. Tente novamente."
+			}
 		},
 		"attachments": {
 			"title": "Anexos",
@@ -1301,7 +1346,13 @@
 			"unitBytes_one": "{{count}} B",
 			"unitBytes_other": "{{count}} B",
 			"unitKilobytes": "{{value}} KB",
-			"unitMegabytes": "{{value}} MB"
+			"unitMegabytes": "{{value}} MB",
+			"errors": {
+				"invalid": "Não é possível enviar esse arquivo. Escolha outro arquivo.",
+				"uploadFailed": "Falha ao enviar o arquivo. Tente novamente.",
+				"notFound": "Este anexo já foi excluído.",
+				"deleteFailed": "Falha ao excluir o anexo. Tente novamente."
+			}
 		},
 		"addFieldDialog": {
 			"title": "Criar campo personalizado",
@@ -1469,7 +1520,12 @@
 			"resolve": "Resolver",
 			"reopen": "Reabrir",
 			"createTask": "Criar tarefa",
-			"taskCreated": "Tarefa criada"
+			"taskCreated": "Tarefa criada",
+			"errors": {
+				"alreadyHasTask": "Já foi criada uma tarefa para este comentário.",
+				"creationInProgress": "A criação da tarefa para este comentário já está em andamento.",
+				"createTaskFailed": "Falha ao criar a tarefa. Tente novamente."
+			}
 		}
 	},
 	"commentDetail": {
@@ -1498,7 +1554,11 @@
 		},
 		"thread": {
 			"replyPlaceholder": "Escreva uma resposta…",
-			"reply": "Responder"
+			"reply": "Responder",
+			"errors": {
+				"bodyEmpty": "A resposta não pode estar vazia.",
+				"replyFailed": "Falha ao publicar a resposta. Tente novamente."
+			}
 		},
 		"actions": {
 			"create": "Criar",
@@ -1655,7 +1715,13 @@
 			"renameView": "Renomear visão",
 			"deleteView": "Excluir visão",
 			"searchTasksPlaceholder": "Buscar tarefas…",
-			"pluginNotAvailable": "Plugin não disponível"
+			"pluginNotAvailable": "Plugin não disponível",
+			"viewErrors": {
+				"isLastView": "Esta é a última visualização e não pode ser excluída.",
+				"deleteFailed": "Falha ao excluir a visualização. Tente novamente.",
+				"reorderInvalid": "A lista de visualizações foi alterada em outro lugar. Atualize a página e tente novamente.",
+				"reorderFailed": "Falha ao reordenar as visualizações. Tente novamente."
+			}
 		},
 		"viewSettings": {
 			"viewSettingsAriaLabel": "Configurações da visão",
@@ -1810,7 +1876,9 @@
 				"unassignedHint": "As tarefas serão desatribuídas de qualquer sprint",
 				"cancel": "Cancelar",
 				"completing": "Concluindo…",
-				"completeSprint": "Concluir sprint"
+				"completeSprint": "Concluir sprint",
+				"alreadyComplete": "Este sprint já foi concluído.",
+				"completeFailed": "Falha ao concluir o sprint. Tente novamente."
 			},
 			"deleteSprintModal": {
 				"title": "Deletar sprint?",

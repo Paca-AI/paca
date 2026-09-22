@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Link2, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	createTaskLink,
 	type DisplayLinkType,
@@ -54,6 +55,7 @@ export function TaskLinksSection({
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
 	const [modalOpen, setModalOpen] = useState(false);
+	const [linkActionError, setLinkActionError] = useState<string | null>(null);
 
 	const { data: links = [] } = useQuery(
 		taskLinksQueryOptions(projectId, taskId),
@@ -70,18 +72,43 @@ export function TaskLinksSection({
 				link_type: linkType,
 			}),
 		onSuccess: () => {
+			setLinkActionError(null);
 			qc.invalidateQueries({
 				queryKey: taskLinksQueryOptions(projectId, taskId).queryKey,
 			});
+		},
+		onError: (err: unknown) => {
+			const code = getApiErrorCode(err);
+			if (code === ApiErrorCode.TaskLinkAlreadyExists) {
+				setLinkActionError(t("taskDetail.links.errors.alreadyExists"));
+				return;
+			}
+			if (code === ApiErrorCode.TaskLinkSelf) {
+				setLinkActionError(t("taskDetail.links.errors.cannotLinkSelf"));
+				return;
+			}
+			if (code === ApiErrorCode.TaskLinkCrossProject) {
+				setLinkActionError(t("taskDetail.links.errors.crossProject"));
+				return;
+			}
+			setLinkActionError(t("taskDetail.links.errors.createFailed"));
 		},
 	});
 
 	const deleteMutation = useMutation({
 		mutationFn: (linkId: string) => deleteTaskLink(projectId, taskId, linkId),
 		onSuccess: () => {
+			setLinkActionError(null);
 			qc.invalidateQueries({
 				queryKey: taskLinksQueryOptions(projectId, taskId).queryKey,
 			});
+		},
+		onError: (err: unknown) => {
+			setLinkActionError(
+				getApiErrorCode(err) === ApiErrorCode.TaskLinkNotFound
+					? t("taskDetail.links.errors.notFound")
+					: t("taskDetail.links.errors.deleteFailed"),
+			);
 		},
 	});
 
@@ -103,7 +130,10 @@ export function TaskLinksSection({
 				{canEdit && (
 					<button
 						type="button"
-						onClick={() => setModalOpen(true)}
+						onClick={() => {
+							setLinkActionError(null);
+							setModalOpen(true);
+						}}
 						className="flex items-center gap-1.5 rounded-lg bg-primary/8 text-primary/80 hover:bg-primary/15 hover:text-primary px-2.5 py-1.5 text-xs font-semibold transition-all duration-150"
 					>
 						<Plus className="size-3" />
@@ -112,9 +142,9 @@ export function TaskLinksSection({
 				)}
 			</div>
 
-			{createMutation.error && (
-				<p className="text-sm text-destructive">
-					{createMutation.error.message}
+			{linkActionError && (
+				<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+					{linkActionError}
 				</p>
 			)}
 

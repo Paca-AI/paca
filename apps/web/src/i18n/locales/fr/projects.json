@@ -84,6 +84,9 @@
 			"optional": "(optionnel)",
 			"charsCount": "{{count}} caractères",
 			"createFailed": "Échec de la création de l'agent. Veuillez réessayer.",
+			"handleTaken": "Cet identifiant est déjà utilisé. Revenez en arrière et choisissez-en un autre.",
+			"defaultEnvironmentInvalid": "Cet environnement n'est plus disponible. Revenez en arrière et choisissez-en un autre.",
+			"defaultFolderInvalid": "Ce dossier n'est plus disponible. Revenez en arrière et choisissez-en un autre.",
 			"cancel": "Annuler",
 			"continue": "Continuer",
 			"back": "Retour",
@@ -227,6 +230,8 @@
 				"noDefaultEnvironment": "Environnement temporaire",
 				"defaultFolderLabel": "Dossier par défaut",
 				"defaultFolderHint": "Le dossier, à l'intérieur de l'environnement par défaut, dans lequel les conversations de cet agent travailleront.",
+				"defaultEnvironmentInvalid": "Cet environnement n'est plus disponible. Choisissez-en un autre.",
+				"defaultFolderInvalid": "Ce dossier n'est plus disponible. Choisissez-en un autre.",
 				"noDefaultFolder": "Aucun dossier par défaut",
 				"saveChanges": "Enregistrer les modifications",
 				"saved": "Enregistré",
@@ -298,7 +303,10 @@
 					"keyHint": "(lettres, chiffres, underscores — doit commencer par une lettre ou un underscore)",
 					"valueLabel": "Valeur",
 					"cancel": "Annuler",
-					"addVariable": "Ajouter la variable"
+					"addVariable": "Ajouter la variable",
+					"keyTaken": "Cet agent a déjà une variable d'environnement avec cette clé.",
+					"keyReserved": "Cette clé est réservée au sandbox lui-même. Choisissez-en une autre.",
+					"addFailed": "Échec de l'ajout de la variable d'environnement. Veuillez réessayer."
 				}
 			},
 			"skills": {
@@ -320,7 +328,10 @@
 					"skillContentLabel": "Contenu de la compétence (Markdown)",
 					"urlLabel": "URL",
 					"cancel": "Annuler",
-					"addSkill": "Ajouter la compétence"
+					"addSkill": "Ajouter la compétence",
+					"nameReserved": "Ce nom est réservé à l'échafaudage interne de Paca. Choisissez-en un autre.",
+					"nameInvalid": "Le nom de la compétence ne peut pas être « . », « .. » ni contenir de barre oblique.",
+					"addFailed": "Échec de l'ajout de la compétence. Veuillez réessayer."
 				}
 			},
 			"access": {
@@ -328,6 +339,8 @@
 				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"activity": {
@@ -492,6 +505,7 @@
 			"cpuLimitInvalid": "Le CPU doit être d'au moins 0,1 (100m).",
 			"memoryLimitInvalid": "La mémoire doit être d'au moins 256Mi.",
 			"diskLimitInvalid": "Le disque doit être un nombre entier positif de Go.",
+			"nameRequired": "Donnez un nom à l'environnement.",
 			"createFailed": "Échec de la création de l'environnement. Veuillez réessayer.",
 			"cancel": "Annuler",
 			"creating": "Création…",
@@ -511,6 +525,8 @@
 				"portForwards": "Transferts de ports",
 				"access": "Access"
 			},
+			"busy": "Cet environnement est déjà en train de démarrer, de s'arrêter ou de redémarrer. Réessayez dans un instant.",
+			"actionFailed": "Cette action a échoué. Veuillez réessayer.",
 			"overview": {
 				"connect": "Se connecter",
 				"start": "Démarrer",
@@ -541,6 +557,7 @@
 				"portsPendingRestartLink": "Voir les transferts de ports",
 				"saveChanges": "Enregistrer les modifications",
 				"saved": "Enregistré",
+				"nameRequired": "Donnez un nom à l'environnement.",
 				"saveFailed": "Échec de l'enregistrement. Veuillez réessayer.",
 				"deleteDialog": {
 					"title": "Supprimer {{name}} ?",
@@ -574,6 +591,8 @@
 						"empty": "Ce dossier est vide",
 						"notRunning": "Démarrez l'environnement pour parcourir ses fichiers."
 					},
+					"pathTaken": "Un dossier avec ce chemin existe déjà dans cet environnement.",
+					"pathInvalid": "Le chemin doit être absolu (commencer par /).",
 					"addFailed": "Échec de l'ajout du dossier. Veuillez réessayer.",
 					"cancel": "Annuler",
 					"addFolder": "Ajouter un dossier"
@@ -608,13 +627,16 @@
 					"labelPlaceholder": "Serveur de développement",
 					"cancel": "Annuler",
 					"add": "Ajouter",
+					"portTaken": "Ce port de conteneur est déjà redirigé sur cet environnement.",
+					"portOutOfRange": "Le port doit être compris entre 1 et 65535.",
 					"addFailed": "Échec de l'ajout du transfert de port. Veuillez réessayer."
 				},
 				"restartDialog": {
 					"title": "Redémarrer l'environnement ?",
 					"description": "Cela redémarre le conteneur de l'environnement pour appliquer les transferts de ports mis à jour. Tout processus en cours d'exécution à l'intérieur sera interrompu ; vos fichiers sont en sécurité — ils se trouvent sur un volume séparé.",
 					"cancel": "Annuler",
-					"confirm": "Redémarrer"
+					"confirm": "Redémarrer",
+					"restartFailed": "Échec du redémarrage de l'environnement. Veuillez réessayer."
 				}
 			},
 			"access": {
@@ -622,6 +644,8 @@
 				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
@@ -645,6 +669,8 @@
 					"publicKeyLabel": "Clé publique",
 					"cancel": "Annuler",
 					"addKey": "Ajouter une clé",
+					"keyTaken": "Cette clé est déjà enregistrée sur cet environnement.",
+					"keyInvalid": "Cela ne ressemble pas à une clé publique SSH valide.",
 					"addFailed": "Échec de l'ajout de la clé SSH. Veuillez réessayer."
 				}
 			},
@@ -949,6 +975,7 @@
 			"description": "Définissez les statuts du workflow par lesquels passent les tâches de ce projet.",
 			"newStatus": "Nouveau statut",
 			"reorderFailed": "Échec de l'enregistrement du nouvel ordre. Veuillez réessayer.",
+			"reorderInvalid": "La liste des statuts a été modifiée ailleurs. Actualisez la page et réessayez.",
 			"empty": {
 				"title": "Aucun statut défini",
 				"description": "Créez des statuts pour définir le workflow des tâches de ce projet.",
@@ -1093,6 +1120,7 @@
 			"confirmTextSuffix": " ? Les tâches utilisant ce statut perdront leur statut. Cette action est irréversible.",
 			"deleteFailed": "Échec de la suppression du statut. Veuillez réessayer.",
 			"isDefault": "Le statut par défaut ne peut pas être supprimé. Définissez d'abord un autre statut par défaut.",
+			"inUseByAutomation": "Ce statut est utilisé par une règle d'automatisation. Modifiez ou supprimez d'abord cette règle.",
 			"cancel": "Annuler",
 			"deleteStatus": "Supprimer le statut"
 		},
@@ -1141,7 +1169,9 @@
 			"cancel": "Annuler",
 			"addMember": "Ajouter le membre",
 			"errors": {
-				"addFailed": "Échec de l'ajout du membre. Veuillez réessayer."
+				"addFailed": "Échec de l'ajout du membre. Veuillez réessayer.",
+				"alreadyAdded": "Cet utilisateur ou agent est déjà membre du projet.",
+				"roleNotFound": "Ce rôle n'existe plus. Veuillez choisir un autre rôle."
 			},
 			"modeUser": "Utilisateur",
 			"modeAgent": "Agent IA",
@@ -1150,7 +1180,11 @@
 		},
 		"roleChip": {
 			"changeRole": "Changer de rôle",
-			"changeFailed": "Échec du changement de rôle."
+			"errors": {
+				"memberNotFound": "Ce membre ne fait plus partie du projet.",
+				"roleNotFound": "Ce rôle n'existe plus.",
+				"changeFailed": "Échec du changement de rôle."
+			}
 		},
 		"memberRow": {
 			"removeMember": "Retirer le membre"
@@ -1184,6 +1218,7 @@
 			"confirmTextSuffix": " ? Les tâches utilisant ce type perdront leur attribution de type. Cette action est irréversible.",
 			"deleteFailed": "Échec de la suppression du type de tâche. Veuillez réessayer.",
 			"isDefault": "Le type par défaut ne peut pas être supprimé. Définissez d'abord un autre type par défaut.",
+			"isSystem": "Les types système ne peuvent pas être supprimés.",
 			"cancel": "Annuler",
 			"deleteType": "Supprimer le type"
 		},
@@ -1206,7 +1241,9 @@
 			"createType": "Créer le type",
 			"errors": {
 				"nameInvalid": "Le nom du type est vide ou invalide.",
-				"saveFailed": "Échec de l'enregistrement du type de tâche. Veuillez réessayer."
+				"nameReserved": "Ce nom est réservé à un type intégré.",
+				"saveFailed": "Échec de l'enregistrement du type de tâche. Veuillez réessayer.",
+				"isSystem": "Les types système ne peuvent pas être modifiés."
 			}
 		}
 	},
@@ -1288,7 +1325,15 @@
 			"addButton": "Ajouter un lien",
 			"openTask": "Ouvrir la tâche",
 			"removeLink": "Retirer le lien",
-			"empty": "Aucune tâche liée"
+			"empty": "Aucune tâche liée",
+			"errors": {
+				"alreadyExists": "Ce lien existe déjà.",
+				"cannotLinkSelf": "Une tâche ne peut pas être liée à elle-même.",
+				"crossProject": "Les tâches ne peuvent être liées qu'au sein du même projet.",
+				"createFailed": "Échec de l'ajout du lien. Veuillez réessayer.",
+				"notFound": "Ce lien a déjà été supprimé.",
+				"deleteFailed": "Échec de la suppression du lien. Veuillez réessayer."
+			}
 		},
 		"attachments": {
 			"title": "Pièces jointes",
@@ -1301,7 +1346,13 @@
 			"unitBytes_one": "{{count}} o",
 			"unitBytes_other": "{{count}} o",
 			"unitKilobytes": "{{value}} Ko",
-			"unitMegabytes": "{{value}} Mo"
+			"unitMegabytes": "{{value}} Mo",
+			"errors": {
+				"invalid": "Ce fichier ne peut pas être téléversé. Veuillez choisir un autre fichier.",
+				"uploadFailed": "Échec du téléversement du fichier. Veuillez réessayer.",
+				"notFound": "Cette pièce jointe a déjà été supprimée.",
+				"deleteFailed": "Échec de la suppression de la pièce jointe. Veuillez réessayer."
+			}
 		},
 		"addFieldDialog": {
 			"title": "Créer un champ personnalisé",
@@ -1469,7 +1520,12 @@
 			"resolve": "Résoudre",
 			"reopen": "Rouvrir",
 			"createTask": "Créer une tâche",
-			"taskCreated": "Tâche créée"
+			"taskCreated": "Tâche créée",
+			"errors": {
+				"alreadyHasTask": "Une tâche a déjà été créée pour ce commentaire.",
+				"creationInProgress": "La création de la tâche pour ce commentaire est déjà en cours.",
+				"createTaskFailed": "Échec de la création de la tâche. Veuillez réessayer."
+			}
 		}
 	},
 	"commentDetail": {
@@ -1498,7 +1554,11 @@
 		},
 		"thread": {
 			"replyPlaceholder": "Écrire une réponse…",
-			"reply": "Répondre"
+			"reply": "Répondre",
+			"errors": {
+				"bodyEmpty": "La réponse ne peut pas être vide.",
+				"replyFailed": "Échec de l'envoi de la réponse. Veuillez réessayer."
+			}
 		},
 		"actions": {
 			"create": "Créer",
@@ -1655,7 +1715,13 @@
 			"renameView": "Renommer la vue",
 			"deleteView": "Supprimer la vue",
 			"searchTasksPlaceholder": "Rechercher des tâches…",
-			"pluginNotAvailable": "Plugin non disponible"
+			"pluginNotAvailable": "Plugin non disponible",
+			"viewErrors": {
+				"isLastView": "Il s'agit de la dernière vue, elle ne peut pas être supprimée.",
+				"deleteFailed": "Échec de la suppression de la vue. Veuillez réessayer.",
+				"reorderInvalid": "La liste des vues a changé ailleurs. Actualisez la page et réessayez.",
+				"reorderFailed": "Échec de la réorganisation des vues. Veuillez réessayer."
+			}
 		},
 		"viewSettings": {
 			"viewSettingsAriaLabel": "Paramètres de la vue",
@@ -1810,7 +1876,9 @@
 				"unassignedHint": "Les tâches seront retirées de tout sprint",
 				"cancel": "Annuler",
 				"completing": "Finalisation…",
-				"completeSprint": "Terminer le sprint"
+				"completeSprint": "Terminer le sprint",
+				"alreadyComplete": "Ce sprint a déjà été terminé.",
+				"completeFailed": "Échec de la finalisation du sprint. Veuillez réessayer."
 			},
 			"deleteSprintModal": {
 				"title": "Supprimer le sprint ?",

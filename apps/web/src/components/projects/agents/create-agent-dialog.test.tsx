@@ -440,6 +440,25 @@ describe("CreateAgentDialog — the project role step", () => {
 		expect(button(/back/i)).not.toHaveClass("invisible");
 		expect(button(/create agent/i)).toBeEnabled();
 	});
+
+	it("names a taken handle instead of the generic failure", async () => {
+		const user = userEvent.setup();
+		agentApi.createAgent.mockRejectedValueOnce({
+			response: { data: { error_code: "AGENT_HANDLE_TAKEN" } },
+		});
+		renderDialog({ projectId: "proj-1" });
+		await goToRoleStep(user, "Project Role");
+		await user.click(screen.getByRole("radio", { name: "Editor" }));
+
+		await user.click(button(/create agent/i));
+
+		expect(
+			await screen.findByText(/this handle is already taken/i),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText("Failed to create agent. Please try again."),
+		).not.toBeInTheDocument();
+	});
 });
 
 describe("CreateAgentDialog — the global role step", () => {
@@ -582,6 +601,22 @@ describe("CreateAgentDialog — the global role step", () => {
 		// Nothing exists yet, so the earlier steps can still be fixed.
 		expect(button(/back/i)).not.toHaveClass("invisible");
 		expect(button(/create agent/i)).toBeEnabled();
+	});
+
+	it("names a taken handle instead of the generic failure", async () => {
+		const user = userEvent.setup();
+		agentApi.createGlobalAgent.mockRejectedValueOnce({
+			response: { data: { error_code: "AGENT_HANDLE_TAKEN" } },
+		});
+		renderDialog({ permissions: CAN_ASSIGN });
+		await chooseAcpAndName(user);
+		await user.click(button(/continue/i));
+
+		await user.click(button(/create agent/i));
+
+		expect(
+			await screen.findByText(/this handle is already taken/i),
+		).toBeInTheDocument();
 	});
 
 	it("does not close while the agent is being created", async () => {

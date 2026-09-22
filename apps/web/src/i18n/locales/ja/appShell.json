@@ -56,7 +56,12 @@
 		"newSubfolder": "新規サブフォルダ",
 		"rename": "名前を変更",
 		"delete": "削除",
-		"untitled": "無題"
+		"untitled": "無題",
+		"errors": {
+			"titleInvalid": "そのタイトルは無効です。",
+			"folderNameInvalid": "そのフォルダ名は無効です。",
+			"renameFailed": "名前の変更に失敗しました。もう一度お試しください。"
+		}
 	},
 	"notifications": {
 		"title": "通知",

@@ -76,6 +76,7 @@ import {
 	llmModelsQueryOptions,
 	verifyEnvironmentCLILogin,
 } from "@/lib/agent-api";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { environmentsQueryOptions } from "@/lib/environment-api";
 import { splitShellCommand } from "@/lib/shell-command";
 import { cn } from "@/lib/utils";
@@ -522,10 +523,25 @@ export function CreateAgentDialog({
 		setRole(created.agent.id, pickedRole ?? null);
 	};
 
-	// Shown on the step whose button creates the agent.
+	// Shown on the step whose button creates the agent. The fields these
+	// codes point back at (handle on step 1, environment/folder on step 2)
+	// aren't visible from here in every scope — name the problem instead of
+	// the generic message, and let the person use the (already-visible) Back
+	// button to fix it.
 	const createError = createMutation.isError ? (
 		<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-			{t("agents.createDialog.createFailed")}
+			{(() => {
+				switch (getApiErrorCode(createMutation.error)) {
+					case ApiErrorCode.AgentHandleTaken:
+						return t("agents.createDialog.handleTaken");
+					case ApiErrorCode.AgentDefaultEnvironmentInvalid:
+						return t("agents.createDialog.defaultEnvironmentInvalid");
+					case ApiErrorCode.AgentDefaultFolderInvalid:
+						return t("agents.createDialog.defaultFolderInvalid");
+					default:
+						return t("agents.createDialog.createFailed");
+				}
+			})()}
 		</p>
 	) : null;
 

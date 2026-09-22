@@ -84,6 +84,9 @@
 			"optional": "(optional)",
 			"charsCount": "{{count}} chars",
 			"createFailed": "Failed to create agent. Please try again.",
+			"handleTaken": "This handle is already taken. Go back and choose a different one.",
+			"defaultEnvironmentInvalid": "That environment is no longer available. Go back and pick another.",
+			"defaultFolderInvalid": "That folder is no longer available. Go back and pick another.",
 			"cancel": "Cancel",
 			"continue": "Continue",
 			"back": "Back",
@@ -227,6 +230,8 @@
 				"noDefaultEnvironment": "Temporary environment",
 				"defaultFolderLabel": "Default Folder",
 				"defaultFolderHint": "Which folder inside the default environment this agent's conversations work in.",
+				"defaultEnvironmentInvalid": "That environment is no longer available. Pick another.",
+				"defaultFolderInvalid": "That folder is no longer available. Pick another.",
 				"noDefaultFolder": "No default folder",
 				"saveChanges": "Save changes",
 				"saved": "Saved",
@@ -298,7 +303,10 @@
 					"keyHint": "(letters, digits, underscores — must start with a letter or underscore)",
 					"valueLabel": "Value",
 					"cancel": "Cancel",
-					"addVariable": "Add variable"
+					"addVariable": "Add variable",
+					"keyTaken": "This agent already has an environment variable with that key.",
+					"keyReserved": "That key is reserved for the sandbox itself. Choose another.",
+					"addFailed": "Failed to add environment variable. Please try again."
 				}
 			},
 			"skills": {
@@ -320,7 +328,10 @@
 					"skillContentLabel": "Skill content (Markdown)",
 					"urlLabel": "URL",
 					"cancel": "Cancel",
-					"addSkill": "Add skill"
+					"addSkill": "Add skill",
+					"nameReserved": "That name is reserved for Paca's own scaffolding. Choose another.",
+					"nameInvalid": "Skill name can't be \".\", \"..\", or contain a slash.",
+					"addFailed": "Failed to add skill. Please try again."
 				}
 			},
 			"access": {
@@ -328,6 +339,8 @@
 				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"activity": {
@@ -492,6 +505,7 @@
 			"cpuLimitInvalid": "CPU must be at least 0.1 (100m).",
 			"memoryLimitInvalid": "Memory must be at least 256Mi.",
 			"diskLimitInvalid": "Disk must be a positive whole number of GB.",
+			"nameRequired": "Give the environment a name.",
 			"createFailed": "Failed to create environment. Please try again.",
 			"cancel": "Cancel",
 			"creating": "Creating…",
@@ -511,6 +525,8 @@
 				"portForwards": "Port forwards",
 				"access": "Access"
 			},
+			"busy": "This environment is already starting, stopping, or restarting. Try again in a moment.",
+			"actionFailed": "That didn't work. Please try again.",
 			"overview": {
 				"connect": "Connect",
 				"start": "Start",
@@ -541,6 +557,7 @@
 				"portsPendingRestartLink": "View port forwards",
 				"saveChanges": "Save changes",
 				"saved": "Saved",
+				"nameRequired": "Give the environment a name.",
 				"saveFailed": "Failed to save. Please try again.",
 				"deleteDialog": {
 					"title": "Delete {{name}}?",
@@ -574,6 +591,8 @@
 						"empty": "This folder is empty",
 						"notRunning": "Start the environment to browse its files."
 					},
+					"pathTaken": "A folder with this path already exists in this environment.",
+					"pathInvalid": "Path must be absolute (start with /).",
 					"addFailed": "Failed to add folder. Please try again.",
 					"cancel": "Cancel",
 					"addFolder": "Add folder"
@@ -608,13 +627,16 @@
 					"labelPlaceholder": "Dev server",
 					"cancel": "Cancel",
 					"add": "Add",
+					"portTaken": "This container port is already forwarded on this environment.",
+					"portOutOfRange": "Port must be between 1 and 65535.",
 					"addFailed": "Failed to add port forward. Please try again."
 				},
 				"restartDialog": {
 					"title": "Restart environment?",
 					"description": "This restarts the environment's container to apply the updated port forwards. Any running process inside it will be interrupted; your files are safe — they live on a separate volume.",
 					"cancel": "Cancel",
-					"confirm": "Restart"
+					"confirm": "Restart",
+					"restartFailed": "Failed to restart environment. Please try again."
 				}
 			},
 			"access": {
@@ -622,6 +644,8 @@
 				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
@@ -645,6 +669,8 @@
 					"publicKeyLabel": "Public key",
 					"cancel": "Cancel",
 					"addKey": "Add key",
+					"keyTaken": "This key is already registered on this environment.",
+					"keyInvalid": "That doesn't look like a valid SSH public key.",
 					"addFailed": "Failed to add SSH key. Please try again."
 				}
 			},
@@ -949,6 +975,7 @@
 			"description": "Define the workflow statuses tasks move through in this project.",
 			"newStatus": "New status",
 			"reorderFailed": "Failed to save the new order. Please try again.",
+			"reorderInvalid": "The status list changed elsewhere. Refresh the page and try again.",
 			"noPermission": {
 				"title": "You don't have permission to view task statuses",
 				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
@@ -1093,6 +1120,7 @@
 			"confirmTextSuffix": "? Tasks using this status will lose their status. This action cannot be undone.",
 			"deleteFailed": "Failed to delete status. Please try again.",
 			"isDefault": "The default status can't be deleted. Make another status the default first.",
+			"inUseByAutomation": "This status is used by an automation rule. Update or remove that rule first.",
 			"cancel": "Cancel",
 			"deleteStatus": "Delete status"
 		},
@@ -1149,12 +1177,18 @@
 			"cancel": "Cancel",
 			"addMember": "Add member",
 			"errors": {
-				"addFailed": "Failed to add member. Please try again."
+				"addFailed": "Failed to add member. Please try again.",
+				"alreadyAdded": "This user or agent is already a member of the project.",
+				"roleNotFound": "That role no longer exists. Please choose another role."
 			}
 		},
 		"roleChip": {
 			"changeRole": "Change role",
-			"changeFailed": "Failed to change role."
+			"errors": {
+				"memberNotFound": "This member is no longer part of the project.",
+				"roleNotFound": "That role no longer exists.",
+				"changeFailed": "Failed to change role."
+			}
 		},
 		"memberRow": {
 			"removeMember": "Remove member"
@@ -1184,6 +1218,7 @@
 			"confirmTextSuffix": "? Tasks using this type will lose their type assignment. This action cannot be undone.",
 			"deleteFailed": "Failed to delete task type. Please try again.",
 			"isDefault": "The default type can't be deleted. Make another type the default first.",
+			"isSystem": "System types can't be deleted.",
 			"cancel": "Cancel",
 			"deleteType": "Delete type"
 		},
@@ -1206,7 +1241,9 @@
 			"createType": "Create type",
 			"errors": {
 				"nameInvalid": "Type name is empty or invalid.",
-				"saveFailed": "Failed to save task type. Please try again."
+				"nameReserved": "That name is reserved for a built-in type.",
+				"saveFailed": "Failed to save task type. Please try again.",
+				"isSystem": "System types can't be edited."
 			}
 		}
 	},
@@ -1288,7 +1325,15 @@
 			"addButton": "Add Link",
 			"openTask": "Open task",
 			"removeLink": "Remove link",
-			"empty": "No linked tasks"
+			"empty": "No linked tasks",
+			"errors": {
+				"alreadyExists": "This link already exists.",
+				"cannotLinkSelf": "A task can't be linked to itself.",
+				"crossProject": "Tasks can only be linked within the same project.",
+				"createFailed": "Failed to add the link. Please try again.",
+				"notFound": "This link was already removed.",
+				"deleteFailed": "Failed to remove the link. Please try again."
+			}
 		},
 		"attachments": {
 			"title": "Attachments",
@@ -1301,7 +1346,13 @@
 			"unitBytes_one": "{{count}} B",
 			"unitBytes_other": "{{count}} B",
 			"unitKilobytes": "{{value}} KB",
-			"unitMegabytes": "{{value}} MB"
+			"unitMegabytes": "{{value}} MB",
+			"errors": {
+				"invalid": "That file can't be uploaded. Please choose a different file.",
+				"uploadFailed": "Failed to upload the file. Please try again.",
+				"notFound": "This attachment was already deleted.",
+				"deleteFailed": "Failed to delete the attachment. Please try again."
+			}
 		},
 		"addFieldDialog": {
 			"title": "Create custom field",
@@ -1469,7 +1520,12 @@
 			"resolve": "Resolve",
 			"reopen": "Reopen",
 			"createTask": "Create task",
-			"taskCreated": "Task created"
+			"taskCreated": "Task created",
+			"errors": {
+				"alreadyHasTask": "A task has already been created for this comment.",
+				"creationInProgress": "Task creation is already in progress for this comment.",
+				"createTaskFailed": "Failed to create the task. Please try again."
+			}
 		}
 	},
 	"commentDetail": {
@@ -1498,7 +1554,11 @@
 		},
 		"thread": {
 			"replyPlaceholder": "Write a reply…",
-			"reply": "Reply"
+			"reply": "Reply",
+			"errors": {
+				"bodyEmpty": "Reply can't be empty.",
+				"replyFailed": "Failed to post the reply. Please try again."
+			}
 		},
 		"actions": {
 			"create": "Create",
@@ -1655,7 +1715,13 @@
 			"renameView": "Rename view",
 			"deleteView": "Delete view",
 			"searchTasksPlaceholder": "Search tasks…",
-			"pluginNotAvailable": "Plugin not available"
+			"pluginNotAvailable": "Plugin not available",
+			"viewErrors": {
+				"isLastView": "This is the last view and can't be deleted.",
+				"deleteFailed": "Failed to delete the view. Please try again.",
+				"reorderInvalid": "The view list changed elsewhere. Refresh the page and try again.",
+				"reorderFailed": "Failed to reorder views. Please try again."
+			}
 		},
 		"viewSettings": {
 			"viewSettingsAriaLabel": "View settings",
@@ -1810,7 +1876,9 @@
 				"unassignedHint": "Tasks will be unassigned from any sprint",
 				"cancel": "Cancel",
 				"completing": "Completing…",
-				"completeSprint": "Complete sprint"
+				"completeSprint": "Complete sprint",
+				"alreadyComplete": "This sprint has already been completed.",
+				"completeFailed": "Failed to complete the sprint. Please try again."
 			},
 			"deleteSprintModal": {
 				"title": "Delete sprint?",

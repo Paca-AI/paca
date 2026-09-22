@@ -36,7 +36,11 @@ import {
 	reopenAnnotation,
 	resolveAnnotation,
 } from "@/lib/annotation-api";
-import { isForbiddenError } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	isForbiddenError,
+} from "@/lib/api-error";
 import {
 	environmentConfigQueryOptions,
 	portForwardQueryOptions,
@@ -107,6 +111,8 @@ export function CommentDetailView({
 
 	const [reply, setReply] = useState("");
 	const [linkCopied, setLinkCopied] = useState(false);
+	const [replyError, setReplyError] = useState<string | null>(null);
+	const [createTaskError, setCreateTaskError] = useState<string | null>(null);
 
 	const invalidate = () => qc.invalidateQueries({ queryKey: annotationKey });
 
@@ -131,8 +137,16 @@ export function CommentDetailView({
 		mutationFn: (body: string) =>
 			addComment(projectId, environmentId, portForwardId, annotationId, body),
 		onSuccess: () => {
+			setReplyError(null);
 			setReply("");
 			invalidate();
+		},
+		onError: (err: unknown) => {
+			setReplyError(
+				getApiErrorCode(err) === ApiErrorCode.AnnotationBodyEmpty
+					? t("commentDetail.thread.errors.bodyEmpty")
+					: t("commentDetail.thread.errors.replyFailed"),
+			);
 		},
 	});
 	// The backend's own description-builder already embeds the comment body
@@ -148,6 +162,7 @@ export function CommentDetailView({
 				annotationId,
 			),
 		onSuccess: (updated) => {
+			setCreateTaskError(null);
 			invalidate();
 			if (updated.task_id) {
 				window.open(
@@ -156,6 +171,24 @@ export function CommentDetailView({
 					"noopener,noreferrer",
 				);
 			}
+		},
+		onError: (err: unknown) => {
+			const code = getApiErrorCode(err);
+			if (code === ApiErrorCode.AnnotationAlreadyHasTask) {
+				setCreateTaskError(
+					t("portForwardDetail.comments.errors.alreadyHasTask"),
+				);
+				return;
+			}
+			if (code === ApiErrorCode.AnnotationTaskCreationInProgress) {
+				setCreateTaskError(
+					t("portForwardDetail.comments.errors.creationInProgress"),
+				);
+				return;
+			}
+			setCreateTaskError(
+				t("portForwardDetail.comments.errors.createTaskFailed"),
+			);
 		},
 	});
 
@@ -294,6 +327,12 @@ export function CommentDetailView({
 				</div>
 			</div>
 
+			{createTaskError && (
+				<p className="shrink-0 border-b border-border/40 bg-destructive/10 px-5 py-2 text-xs text-destructive">
+					{createTaskError}
+				</p>
+			)}
+
 			<div className="flex-1 overflow-y-auto px-4 lg:px-8 py-6 space-y-6 max-w-2xl mx-auto w-full">
 				{annotation.screenshot_file_id && (
 					<div className="rounded-lg border border-border/60 bg-muted overflow-hidden">
@@ -351,6 +390,11 @@ export function CommentDetailView({
 							placeholder={t("commentDetail.thread.replyPlaceholder")}
 							rows={3}
 						/>
+						{replyError && (
+							<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+								{replyError}
+							</p>
+						)}
 						<div className="flex justify-end">
 							<Button
 								size="sm"

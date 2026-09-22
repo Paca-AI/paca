@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Paperclip, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	deleteTaskAttachment,
 	taskAttachmentsQueryOptions,
@@ -25,6 +26,7 @@ export function AttachmentsSection({
 	const qc = useQueryClient();
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [isDragOver, setIsDragOver] = useState(false);
+	const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
 	// ── Query ──────────────────────────────────────────────────────────────
 	const { data: attachments = [] } = useQuery(
@@ -35,9 +37,17 @@ export function AttachmentsSection({
 	const uploadMutation = useMutation({
 		mutationFn: (file: File) => uploadAttachment(projectId, taskId, file),
 		onSuccess: () => {
+			setAttachmentError(null);
 			qc.invalidateQueries({
 				queryKey: ["projects", projectId, "tasks", taskId, "attachments"],
 			});
+		},
+		onError: (err: unknown) => {
+			setAttachmentError(
+				getApiErrorCode(err) === ApiErrorCode.AttachmentInvalid
+					? t("taskDetail.attachments.errors.invalid")
+					: t("taskDetail.attachments.errors.uploadFailed"),
+			);
 		},
 	});
 
@@ -46,14 +56,23 @@ export function AttachmentsSection({
 		mutationFn: (attachmentId: string) =>
 			deleteTaskAttachment(projectId, taskId, attachmentId),
 		onSuccess: () => {
+			setAttachmentError(null);
 			qc.invalidateQueries({
 				queryKey: ["projects", projectId, "tasks", taskId, "attachments"],
 			});
+		},
+		onError: (err: unknown) => {
+			setAttachmentError(
+				getApiErrorCode(err) === ApiErrorCode.AttachmentNotFound
+					? t("taskDetail.attachments.errors.notFound")
+					: t("taskDetail.attachments.errors.deleteFailed"),
+			);
 		},
 	});
 
 	const addFiles = (files: File[]) => {
 		if (!canEdit) return;
+		setAttachmentError(null);
 		for (const file of files) {
 			uploadMutation.mutate(file);
 		}
@@ -98,6 +117,12 @@ export function AttachmentsSection({
 					</>
 				)}
 			</div>
+
+			{attachmentError && (
+				<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+					{attachmentError}
+				</p>
+			)}
 
 			{/* Attachment list */}
 			{attachments.length > 0 && (

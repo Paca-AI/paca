@@ -56,6 +56,10 @@ export function DeleteTaskStatusDialog({
 				setError(t("taskStatuses.deleteDialog.isDefault"));
 				return;
 			}
+			if (code === ApiErrorCode.TaskStatusInUseByAutomation) {
+				setError(t("taskStatuses.deleteDialog.inUseByAutomation"));
+				return;
+			}
 			setError(t("taskStatuses.deleteDialog.deleteFailed"));
 		},
 	});

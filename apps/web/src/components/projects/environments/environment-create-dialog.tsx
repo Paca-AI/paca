@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { createEnvironment, type Environment } from "@/lib/environment-api";
 import { cn } from "@/lib/utils";
 import {
@@ -107,6 +108,25 @@ export function EnvironmentCreateDialog({
 		cpuValid &&
 		memoryValid &&
 		!createMutation.isPending;
+
+	// Client-side checks already cover name/cpu/memory in the normal case, so
+	// these mostly guard a race (e.g. the limits changing server-side between
+	// render and submit) — but a real failure still deserves its own message
+	// rather than the generic fallback.
+	const createErrorMessage = createMutation.isError
+		? (() => {
+				switch (getApiErrorCode(createMutation.error)) {
+					case ApiErrorCode.EnvironmentNameInvalid:
+						return t("environments.createDialog.nameRequired");
+					case ApiErrorCode.EnvironmentCPULimitInvalid:
+						return t("environments.createDialog.cpuLimitInvalid");
+					case ApiErrorCode.EnvironmentMemoryLimitInvalid:
+						return t("environments.createDialog.memoryLimitInvalid");
+					default:
+						return t("environments.createDialog.createFailed");
+				}
+			})()
+		: null;
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
@@ -264,9 +284,9 @@ export function EnvironmentCreateDialog({
 						)}
 					</div>
 
-					{createMutation.isError && (
+					{createErrorMessage && (
 						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-							{t("environments.createDialog.createFailed")}
+							{createErrorMessage}
 						</p>
 					)}
 				</div>

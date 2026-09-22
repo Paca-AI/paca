@@ -56,7 +56,12 @@
 		"newSubfolder": "Thư mục con mới",
 		"rename": "Đổi tên",
 		"delete": "Xóa",
-		"untitled": "Chưa đặt tên"
+		"untitled": "Chưa đặt tên",
+		"errors": {
+			"titleInvalid": "Tiêu đề đó không hợp lệ.",
+			"folderNameInvalid": "Tên thư mục đó không hợp lệ.",
+			"renameFailed": "Đổi tên không thành công. Vui lòng thử lại."
+		}
 	},
 	"notifications": {
 		"title": "Thông báo",

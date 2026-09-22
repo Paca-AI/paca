@@ -52,6 +52,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	type ACPProvider,
 	type Agent,
@@ -361,6 +362,22 @@ function OverviewTab({
 				? !!cliProviderSelect && !!defaultEnvironmentId
 				: !!llmProvider && !!llmModel && !!llmBaseUrl.trim()) &&
 		!saveMutation.isPending;
+
+	// The environment/folder pickers are populated from a live query, so a
+	// fresh pick is always valid — this mainly guards one deleted between
+	// load and submit.
+	const saveErrorMessage = saveMutation.isError
+		? (() => {
+				switch (getApiErrorCode(saveMutation.error)) {
+					case ApiErrorCode.AgentDefaultEnvironmentInvalid:
+						return t("agents.detail.overview.defaultEnvironmentInvalid");
+					case ApiErrorCode.AgentDefaultFolderInvalid:
+						return t("agents.detail.overview.defaultFolderInvalid");
+					default:
+						return t("agents.detail.overview.saveFailed");
+				}
+			})()
+		: null;
 
 	return (
 		<div className="space-y-6 max-w-2xl">
@@ -825,9 +842,9 @@ function OverviewTab({
 							{t("agents.detail.overview.saved")}
 						</span>
 					)}
-					{saveMutation.isError && (
+					{saveErrorMessage && (
 						<span className="text-xs text-destructive">
-							{t("agents.detail.overview.saveFailed")}
+							{saveErrorMessage}
 						</span>
 					)}
 				</div>
@@ -1300,6 +1317,14 @@ function AccessTab({
 		},
 	});
 
+	// availableMembers already excludes anyone with a grant, so this is
+	// mainly a race (stale member list, or granted concurrently elsewhere).
+	const addErrorMessage = addMutation.isError
+		? getApiErrorCode(addMutation.error) === ApiErrorCode.AgentAccessGrantExists
+			? t("agents.detail.access.alreadyGranted")
+			: t("agents.detail.access.grantFailed")
+		: null;
+
 	const removeMutation = useMutation({
 		mutationFn: (memberId: string) =>
 			removeAgentAccessGrant(projectId, agentId, memberId),
@@ -1395,6 +1420,12 @@ function AccessTab({
 								{t("agents.detail.access.grantAccess")}
 							</Button>
 						</div>
+					)}
+
+					{addErrorMessage && (
+						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+							{addErrorMessage}
+						</p>
 					)}
 
 					{grants.length === 0 ? (
@@ -1506,6 +1537,19 @@ function AddSkillDialog({
 		},
 	});
 
+	const addErrorMessage = addMutation.isError
+		? (() => {
+				switch (getApiErrorCode(addMutation.error)) {
+					case ApiErrorCode.AgentSkillNameReserved:
+						return t("agents.detail.skills.addDialog.nameReserved");
+					case ApiErrorCode.AgentSkillNameInvalid:
+						return t("agents.detail.skills.addDialog.nameInvalid");
+					default:
+						return t("agents.detail.skills.addDialog.addFailed");
+				}
+			})()
+		: null;
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-md">
@@ -1575,6 +1619,11 @@ function AddSkillDialog({
 								onChange={(e) => setSourceUrl(e.target.value)}
 							/>
 						</div>
+					)}
+					{addErrorMessage && (
+						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+							{addErrorMessage}
+						</p>
 					)}
 				</div>
 				<DialogFooter>
@@ -1766,6 +1815,19 @@ function AddEnvVarDialog({
 		},
 	});
 
+	const addErrorMessage = addMutation.isError
+		? (() => {
+				switch (getApiErrorCode(addMutation.error)) {
+					case ApiErrorCode.AgentEnvVarKeyTaken:
+						return t("agents.detail.envVars.addDialog.keyTaken");
+					case ApiErrorCode.AgentEnvVarKeyReserved:
+						return t("agents.detail.envVars.addDialog.keyReserved");
+					default:
+						return t("agents.detail.envVars.addDialog.addFailed");
+				}
+			})()
+		: null;
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-md">
@@ -1801,6 +1863,11 @@ function AddEnvVarDialog({
 							onChange={(e) => setValue(e.target.value)}
 						/>
 					</div>
+					{addErrorMessage && (
+						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+							{addErrorMessage}
+						</p>
+					)}
 				</div>
 				<DialogFooter>
 					<Button variant="outline" onClick={() => onOpenChange(false)}>

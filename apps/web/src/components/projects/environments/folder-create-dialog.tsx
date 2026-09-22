@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	addFolder,
 	type EnvironmentFolder,
@@ -106,6 +107,23 @@ export function FolderCreateDialog({
 
 	const trimmedPath = path.trim();
 	const isValidPath = trimmedPath.startsWith("/");
+
+	// isValidPath already blocks a relative path, so
+	// EnvironmentFolderPathInvalid mainly guards a stale check;
+	// EnvironmentFolderPathTaken is the genuinely common case — the same
+	// path added twice.
+	const addErrorMessage = addMutation.isError
+		? (() => {
+				switch (getApiErrorCode(addMutation.error)) {
+					case ApiErrorCode.EnvironmentFolderPathTaken:
+						return t("environments.detail.folders.addDialog.pathTaken");
+					case ApiErrorCode.EnvironmentFolderPathInvalid:
+						return t("environments.detail.folders.addDialog.pathInvalid");
+					default:
+						return t("environments.detail.folders.addDialog.addFailed");
+				}
+			})()
+		: null;
 
 	const relSegments = browsePath.startsWith(ENVIRONMENT_HOME_ROOT)
 		? browsePath.slice(ENVIRONMENT_HOME_ROOT.length).split("/").filter(Boolean)
@@ -222,9 +240,9 @@ export function FolderCreateDialog({
 							))}
 					</div>
 
-					{addMutation.isError && (
+					{addErrorMessage && (
 						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-							{t("environments.detail.folders.addDialog.addFailed")}
+							{addErrorMessage}
 						</p>
 					)}
 				</div>

@@ -84,6 +84,9 @@
 			"optional": "（任意）",
 			"charsCount": "{{count}}文字",
 			"createFailed": "エージェントの作成に失敗しました。もう一度お試しください。",
+			"handleTaken": "このハンドルはすでに使用されています。戻って別のハンドルを選択してください。",
+			"defaultEnvironmentInvalid": "この環境はもう利用できません。戻って別の環境を選択してください。",
+			"defaultFolderInvalid": "このフォルダーはもう利用できません。戻って別のフォルダーを選択してください。",
 			"cancel": "キャンセル",
 			"continue": "続ける",
 			"back": "戻る",
@@ -227,6 +230,8 @@
 				"noDefaultEnvironment": "一時的な環境",
 				"defaultFolderLabel": "デフォルトフォルダー",
 				"defaultFolderHint": "デフォルト環境内で、このエージェントの会話が作業するフォルダーです。",
+				"defaultEnvironmentInvalid": "この環境はもう利用できません。別の環境を選択してください。",
+				"defaultFolderInvalid": "このフォルダーはもう利用できません。別のフォルダーを選択してください。",
 				"noDefaultFolder": "デフォルトフォルダーなし",
 				"saveChanges": "変更を保存",
 				"saved": "保存しました",
@@ -298,7 +303,10 @@
 					"keyHint": "（英字・数字・アンダースコア。英字またはアンダースコアで始まる必要があります）",
 					"valueLabel": "値",
 					"cancel": "キャンセル",
-					"addVariable": "変数を追加"
+					"addVariable": "変数を追加",
+					"keyTaken": "このエージェントには同じキーの環境変数がすでに存在します。",
+					"keyReserved": "そのキーはサンドボックス自体のために予約されています。別のキーを選択してください。",
+					"addFailed": "環境変数の追加に失敗しました。もう一度お試しください。"
 				}
 			},
 			"skills": {
@@ -320,7 +328,10 @@
 					"skillContentLabel": "スキル内容（Markdown）",
 					"urlLabel": "URL",
 					"cancel": "キャンセル",
-					"addSkill": "スキルを追加"
+					"addSkill": "スキルを追加",
+					"nameReserved": "その名前はPaca自体の内部構造用に予約されています。別の名前を選択してください。",
+					"nameInvalid": "スキル名に「.」「..」を使用したり、スラッシュを含めたりすることはできません。",
+					"addFailed": "スキルの追加に失敗しました。もう一度お試しください。"
 				}
 			},
 			"access": {
@@ -328,6 +339,8 @@
 				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"activity": {
@@ -492,6 +505,7 @@
 			"cpuLimitInvalid": "CPUは0.1(100m)以上にしてください。",
 			"memoryLimitInvalid": "メモリは256Mi以上にしてください。",
 			"diskLimitInvalid": "ディスクは正の整数(GB)で指定してください。",
+			"nameRequired": "環境に名前を付けてください。",
 			"createFailed": "環境の作成に失敗しました。もう一度お試しください。",
 			"cancel": "キャンセル",
 			"creating": "作成中…",
@@ -511,6 +525,8 @@
 				"portForwards": "ポートフォワード",
 				"access": "Access"
 			},
+			"busy": "この環境はすでに起動、停止、または再起動中です。しばらくしてからもう一度お試しください。",
+			"actionFailed": "この操作に失敗しました。もう一度お試しください。",
 			"overview": {
 				"connect": "接続",
 				"start": "開始",
@@ -541,6 +557,7 @@
 				"portsPendingRestartLink": "ポートフォワードを表示",
 				"saveChanges": "変更を保存",
 				"saved": "保存しました",
+				"nameRequired": "環境に名前を付けてください。",
 				"saveFailed": "保存に失敗しました。もう一度お試しください。",
 				"deleteDialog": {
 					"title": "{{name}}を削除しますか?",
@@ -574,6 +591,8 @@
 						"empty": "このフォルダーは空です",
 						"notRunning": "ファイルを参照するには環境を起動してください。"
 					},
+					"pathTaken": "このパスのフォルダはこの環境にすでに存在します。",
+					"pathInvalid": "パスは絶対パス(/で始まる)である必要があります。",
 					"addFailed": "フォルダーの追加に失敗しました。もう一度お試しください。",
 					"cancel": "キャンセル",
 					"addFolder": "フォルダーを追加"
@@ -608,13 +627,16 @@
 					"labelPlaceholder": "開発サーバー",
 					"cancel": "キャンセル",
 					"add": "追加",
+					"portTaken": "このコンテナポートはこの環境ですでに転送されています。",
+					"portOutOfRange": "ポートは1〜65535の範囲で指定してください。",
 					"addFailed": "ポートフォワードの追加に失敗しました。もう一度お試しください。"
 				},
 				"restartDialog": {
 					"title": "環境を再起動しますか?",
 					"description": "更新されたポートフォワードを適用するために環境のコンテナを再起動します。内部で実行中のプロセスは中断されます。ファイルは別のボリュームに保存されているため安全です。",
 					"cancel": "キャンセル",
-					"confirm": "再起動"
+					"confirm": "再起動",
+					"restartFailed": "環境の再起動に失敗しました。もう一度お試しください。"
 				}
 			},
 			"access": {
@@ -622,6 +644,8 @@
 				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
 				"pickMember": "Select a member…",
 				"grantAccess": "Grant access",
+				"alreadyGranted": "This member already has access.",
+				"grantFailed": "Failed to grant access. Please try again.",
 				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
@@ -645,6 +669,8 @@
 					"publicKeyLabel": "公開鍵",
 					"cancel": "キャンセル",
 					"addKey": "鍵を追加",
+					"keyTaken": "この鍵はこの環境にすでに登録されています。",
+					"keyInvalid": "有効なSSH公開鍵ではないようです。",
 					"addFailed": "SSH鍵の追加に失敗しました。もう一度お試しください。"
 				}
 			},
@@ -949,6 +975,7 @@
 			"description": "このプロジェクトでタスクが進行するワークフローステータスを定義します。",
 			"newStatus": "新規ステータス",
 			"reorderFailed": "新しい順序の保存に失敗しました。もう一度お試しください。",
+			"reorderInvalid": "ステータス一覧が他の場所で変更されました。ページを更新してもう一度お試しください。",
 			"empty": {
 				"title": "ステータスが定義されていません",
 				"description": "ステータスを作成して、このプロジェクトのタスクワークフローを定義しましょう。",
@@ -1093,6 +1120,7 @@
 			"confirmTextSuffix": "？このステータスを使用しているタスクはステータスを失います。この操作は取り消せません。",
 			"deleteFailed": "ステータスの削除に失敗しました。もう一度お試しください。",
 			"isDefault": "既定のステータスは削除できません。先に別のステータスを既定に設定してください。",
+			"inUseByAutomation": "このステータスは自動化ルールで使用されています。先にそのルールを更新または削除してください。",
 			"cancel": "キャンセル",
 			"deleteStatus": "ステータスを削除"
 		},
@@ -1141,7 +1169,9 @@
 			"cancel": "キャンセル",
 			"addMember": "メンバーを追加",
 			"errors": {
-				"addFailed": "メンバーの追加に失敗しました。もう一度お試しください。"
+				"addFailed": "メンバーの追加に失敗しました。もう一度お試しください。",
+				"alreadyAdded": "このユーザーまたはエージェントはすでにプロジェクトのメンバーです。",
+				"roleNotFound": "そのロールはもう存在しません。別のロールを選択してください。"
 			},
 			"modeUser": "ユーザー",
 			"modeAgent": "AIエージェント",
@@ -1150,7 +1180,11 @@
 		},
 		"roleChip": {
 			"changeRole": "ロールを変更",
-			"changeFailed": "ロールの変更に失敗しました。"
+			"errors": {
+				"memberNotFound": "このメンバーはすでにプロジェクトのメンバーではありません。",
+				"roleNotFound": "そのロールはもう存在しません。",
+				"changeFailed": "ロールの変更に失敗しました。"
+			}
 		},
 		"memberRow": {
 			"removeMember": "メンバーを削除"
@@ -1184,6 +1218,7 @@
 			"confirmTextSuffix": "？このタイプを使用しているタスクはタイプの割り当てを失います。この操作は取り消せません。",
 			"deleteFailed": "タスクタイプの削除に失敗しました。もう一度お試しください。",
 			"isDefault": "既定のタイプは削除できません。先に別のタイプを既定に設定してください。",
+			"isSystem": "システムタイプは削除できません。",
 			"cancel": "キャンセル",
 			"deleteType": "タイプを削除"
 		},
@@ -1206,7 +1241,9 @@
 			"createType": "タイプを作成",
 			"errors": {
 				"nameInvalid": "タイプ名が空か無効です。",
-				"saveFailed": "タスクタイプの保存に失敗しました。もう一度お試しください。"
+				"nameReserved": "その名前は組み込みタイプ用に予約されています。",
+				"saveFailed": "タスクタイプの保存に失敗しました。もう一度お試しください。",
+				"isSystem": "システムタイプは編集できません。"
 			}
 		}
 	},
@@ -1288,7 +1325,15 @@
 			"addButton": "リンクを追加",
 			"openTask": "タスクを開く",
 			"removeLink": "リンクを削除",
-			"empty": "関連タスクはありません"
+			"empty": "関連タスクはありません",
+			"errors": {
+				"alreadyExists": "このリンクは既に存在します。",
+				"cannotLinkSelf": "タスクを自分自身にリンクすることはできません。",
+				"crossProject": "タスクは同じプロジェクト内でのみリンクできます。",
+				"createFailed": "リンクの追加に失敗しました。もう一度お試しください。",
+				"notFound": "このリンクは既に削除されています。",
+				"deleteFailed": "リンクの削除に失敗しました。もう一度お試しください。"
+			}
 		},
 		"attachments": {
 			"title": "添付ファイル",
@@ -1301,7 +1346,13 @@
 			"unitBytes_one": "{{count}} B",
 			"unitBytes_other": "{{count}} B",
 			"unitKilobytes": "{{value}} KB",
-			"unitMegabytes": "{{value}} MB"
+			"unitMegabytes": "{{value}} MB",
+			"errors": {
+				"invalid": "そのファイルはアップロードできません。別のファイルを選択してください。",
+				"uploadFailed": "ファイルのアップロードに失敗しました。もう一度お試しください。",
+				"notFound": "この添付ファイルはすでに削除されています。",
+				"deleteFailed": "添付ファイルの削除に失敗しました。もう一度お試しください。"
+			}
 		},
 		"addFieldDialog": {
 			"title": "カスタムフィールドを作成",
@@ -1469,7 +1520,12 @@
 			"resolve": "解決",
 			"reopen": "再オープン",
 			"createTask": "タスクを作成",
-			"taskCreated": "タスクを作成しました"
+			"taskCreated": "タスクを作成しました",
+			"errors": {
+				"alreadyHasTask": "このコメントにはすでにタスクが作成されています。",
+				"creationInProgress": "このコメントのタスク作成は既に進行中です。",
+				"createTaskFailed": "タスクの作成に失敗しました。もう一度お試しください。"
+			}
 		}
 	},
 	"commentDetail": {
@@ -1498,7 +1554,11 @@
 		},
 		"thread": {
 			"replyPlaceholder": "返信を入力…",
-			"reply": "返信"
+			"reply": "返信",
+			"errors": {
+				"bodyEmpty": "返信を空にすることはできません。",
+				"replyFailed": "返信の投稿に失敗しました。もう一度お試しください。"
+			}
 		},
 		"actions": {
 			"create": "作成",
@@ -1655,7 +1715,13 @@
 			"renameView": "ビュー名を変更",
 			"deleteView": "ビューを削除",
 			"searchTasksPlaceholder": "タスクを検索…",
-			"pluginNotAvailable": "プラグインを利用できません"
+			"pluginNotAvailable": "プラグインを利用できません",
+			"viewErrors": {
+				"isLastView": "最後のビューは削除できません。",
+				"deleteFailed": "ビューの削除に失敗しました。もう一度お試しください。",
+				"reorderInvalid": "他の場所でビューの一覧が変更されました。ページを更新してもう一度お試しください。",
+				"reorderFailed": "ビューの並べ替えに失敗しました。もう一度お試しください。"
+			}
 		},
 		"viewSettings": {
 			"viewSettingsAriaLabel": "ビュー設定",
@@ -1810,7 +1876,9 @@
 				"unassignedHint": "タスクはどのスプリントにも割り当てられない状態になります",
 				"cancel": "キャンセル",
 				"completing": "完了処理中…",
-				"completeSprint": "スプリントを完了"
+				"completeSprint": "スプリントを完了",
+				"alreadyComplete": "このスプリントはすでに完了しています。",
+				"completeFailed": "スプリントの完了に失敗しました。もう一度お試しください。"
 			},
 			"deleteSprintModal": {
 				"title": "スプリントを削除しますか？",

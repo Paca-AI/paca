@@ -56,6 +56,10 @@ export function DeleteTaskTypeDialog({
 				setError(t("taskTypes.deleteDialog.isDefault"));
 				return;
 			}
+			if (code === ApiErrorCode.TaskTypeIsSystem) {
+				setError(t("taskTypes.deleteDialog.isSystem"));
+				return;
+			}
 			setError(t("taskTypes.deleteDialog.deleteFailed"));
 		},
 	});

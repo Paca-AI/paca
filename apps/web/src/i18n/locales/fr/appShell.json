@@ -56,7 +56,12 @@
 		"newSubfolder": "Nouveau sous-dossier",
 		"rename": "Renommer",
 		"delete": "Supprimer",
-		"untitled": "Sans titre"
+		"untitled": "Sans titre",
+		"errors": {
+			"titleInvalid": "Ce titre n'est pas valide.",
+			"folderNameInvalid": "Ce nom de dossier n'est pas valide.",
+			"renameFailed": "Échec du renommage. Veuillez réessayer."
+		}
 	},
 	"notifications": {
 		"title": "Notifications",

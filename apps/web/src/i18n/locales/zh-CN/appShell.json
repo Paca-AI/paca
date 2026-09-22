@@ -56,7 +56,12 @@
 		"newSubfolder": "新建子文件夹",
 		"rename": "重命名",
 		"delete": "删除",
-		"untitled": "无标题"
+		"untitled": "无标题",
+		"errors": {
+			"titleInvalid": "该标题无效。",
+			"folderNameInvalid": "该文件夹名称无效。",
+			"renameFailed": "重命名失败，请重试。"
+		}
 	},
 	"notifications": {
 		"title": "通知",
