@@ -22,13 +22,13 @@ type automationStatusChecker interface {
 	StatusUsedByAutomation(ctx context.Context, statusID uuid.UUID) (bool, error)
 }
 
-// Service is the concrete implementation of taskdom.Service.
 // realtimePublisher is the minimal messaging surface Service needs to
 // broadcast task changes — *messaging.Publisher satisfies it directly.
 type realtimePublisher interface {
 	Publish(ctx context.Context, channel string, payload any) error
 }
 
+// Service is the concrete implementation of taskdom.Service.
 type Service struct {
 	repo              taskdom.Repository
 	automationChecker automationStatusChecker
@@ -40,9 +40,6 @@ func New(repo taskdom.Repository) *Service {
 	return &Service{repo: repo}
 }
 
-// WithAutomationStatusChecker configures a check that refuses to delete a
-// task status still referenced by an automation's node config. Without it,
-// DeleteTaskStatus does not guard against this (e.g. in tests).
 // WithPublisher attaches a publisher so every task write — whether from an
 // HTTP handler, the automation engine, Jev autofill/auto-assign, or any other
 // caller — broadcasts task.created/updated/deleted to ChannelRealtime. Doing
@@ -70,6 +67,9 @@ func (s *Service) publishTaskEvent(ctx context.Context, topic string, t *taskdom
 	})
 }
 
+// WithAutomationStatusChecker configures a check that refuses to delete a
+// task status still referenced by an automation's node config. Without it,
+// DeleteTaskStatus does not guard against this (e.g. in tests).
 func (s *Service) WithAutomationStatusChecker(checker automationStatusChecker) *Service {
 	s.automationChecker = checker
 	return s
