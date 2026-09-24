@@ -140,28 +140,28 @@ func TestValidateEdgeHandle_PluginConditionSource(t *testing.T) {
 	}
 }
 
-func TestValidateEdgeHandle_JevChoiceSource(t *testing.T) {
-	source := newNode(automationdom.KindCondition, automationdom.JevChoiceNodeType, `{"instructions":"?","criteria":{"billing":"money","tech":"bugs"}}`)
+func TestValidateEdgeHandle_JevConditionChoice(t *testing.T) {
+	source := newNode(automationdom.KindCondition, automationdom.JevConditionNodeType, `{"answer_type":"choice","instructions":"?","options":{"billing":"money","tech":"bugs"}}`)
 	billing := "billing"
 	if err := validateEdgeHandle(source, &billing); err != nil {
-		t.Fatalf("expected a declared criteria key to be a valid handle, got %v", err)
+		t.Fatalf("expected a declared option key to be a valid handle, got %v", err)
 	}
 	elseHandle := automationdom.ElseHandle
 	if err := validateEdgeHandle(source, &elseHandle); err != nil {
 		t.Fatalf("expected else handle to remain valid, got %v", err)
 	}
-	bogus := "not_a_criteria_key"
+	bogus := "not_an_option_key"
 	if err := validateEdgeHandle(source, &bogus); err == nil {
-		t.Fatal("expected an undeclared criteria key to be rejected")
+		t.Fatal("expected an undeclared option key to be rejected")
 	}
 	trueHandle := automationdom.PluginConditionTrueHandle
 	if err := validateEdgeHandle(source, &trueHandle); err == nil {
-		t.Fatal("the plugin-condition true handle is not automatically valid for jev_choice")
+		t.Fatal("the true handle is only valid for the noul answer type")
 	}
 }
 
-func TestValidateEdgeHandle_JevScoreSource(t *testing.T) {
-	source := newNode(automationdom.KindCondition, automationdom.JevScoreNodeType, `{"instructions":"?","criteria":["low","medium","high"]}`)
+func TestValidateEdgeHandle_JevConditionScore(t *testing.T) {
+	source := newNode(automationdom.KindCondition, automationdom.JevConditionNodeType, `{"answer_type":"score","instructions":"?","levels":["low","medium","high"]}`)
 	for _, h := range []string{"0", "1", "2"} {
 		handle := h
 		if err := validateEdgeHandle(source, &handle); err != nil {
@@ -178,11 +178,11 @@ func TestValidateEdgeHandle_JevScoreSource(t *testing.T) {
 	}
 }
 
-func TestValidateEdgeHandle_JevNoulSource(t *testing.T) {
-	source := newNode(automationdom.KindCondition, automationdom.JevNoulNodeType, `{"instructions":"?"}`)
+func TestValidateEdgeHandle_JevConditionNoul(t *testing.T) {
+	source := newNode(automationdom.KindCondition, automationdom.JevConditionNodeType, `{"answer_type":"noul","instructions":"?"}`)
 	trueHandle := automationdom.PluginConditionTrueHandle
 	if err := validateEdgeHandle(source, &trueHandle); err != nil {
-		t.Fatalf("expected the true handle to be valid for jev_noul, got %v", err)
+		t.Fatalf("expected the true handle to be valid for noul, got %v", err)
 	}
 	elseHandle := automationdom.ElseHandle
 	if err := validateEdgeHandle(source, &elseHandle); err != nil {
@@ -190,64 +190,66 @@ func TestValidateEdgeHandle_JevNoulSource(t *testing.T) {
 	}
 	bogus := "maybe"
 	if err := validateEdgeHandle(source, &bogus); err == nil {
-		t.Fatal("expected an arbitrary handle to be rejected for jev_noul")
+		t.Fatal("expected an arbitrary handle to be rejected for noul")
+	}
+}
+
+func TestValidateEdgeHandle_JevConditionWithoutAnswerTypeOnlyAllowsElse(t *testing.T) {
+	source := newNode(automationdom.KindCondition, automationdom.JevConditionNodeType, `{}`)
+	elseHandle := automationdom.ElseHandle
+	if err := validateEdgeHandle(source, &elseHandle); err != nil {
+		t.Fatalf("expected else handle to be valid on an unconfigured node, got %v", err)
+	}
+	trueHandle := automationdom.PluginConditionTrueHandle
+	if err := validateEdgeHandle(source, &trueHandle); err == nil {
+		t.Fatal("expected no non-else handle to be valid before answer_type is chosen")
 	}
 }
 
 func TestValidateJevConditionConfig(t *testing.T) {
 	s := &Service{}
 
-	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"","criteria":{"a":"x"}}`), true); err == nil {
-		t.Error("expected an error for empty instructions")
+	cases := []struct {
+		name    string
+		config  string
+		wantErr bool
+	}{
+		{"missing answer_type", `{"instructions":"?"}`, true},
+		{"unknown answer_type", `{"answer_type":"maybe","instructions":"?"}`, true},
+		{"choice: empty instructions", `{"answer_type":"choice","instructions":"","options":{"a":"x"}}`, true},
+		{"choice: no options", `{"answer_type":"choice","instructions":"?","options":{}}`, true},
+		{"choice: option collides with else", `{"answer_type":"choice","instructions":"?","options":{"else":"x"}}`, true},
+		{"choice: valid", `{"answer_type":"choice","instructions":"?","options":{"a":"x"}}`, false},
+		{"score: fewer than 2 levels", `{"answer_type":"score","instructions":"?","levels":["only one"]}`, true},
+		{"score: more than 10 levels", `{"answer_type":"score","instructions":"?","levels":["1","2","3","4","5","6","7","8","9","10","11"]}`, true},
+		{"score: valid", `{"answer_type":"score","instructions":"?","levels":["a","b"]}`, false},
+		{"noul: empty instructions", `{"answer_type":"noul","instructions":""}`, true},
+		{"noul: valid", `{"answer_type":"noul","instructions":"is this urgent?"}`, false},
 	}
-	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{}}`), true); err == nil {
-		t.Error("expected an error for empty criteria")
-	}
-	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{"else":"x"}}`), true); err == nil {
-		t.Error("expected an error for a criteria key that collides with the reserved else handle")
-	}
-	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{"a":"x"}}`), true); err != nil {
-		t.Errorf("expected a valid jev_choice config to pass, got %v", err)
-	}
-
-	if err := s.validateJevConditionConfig(automationdom.JevScoreNodeType, []byte(`{"instructions":"?","criteria":["only one"]}`), true); err == nil {
-		t.Error("expected an error for fewer than 2 score levels")
-	}
-	if err := s.validateJevConditionConfig(automationdom.JevScoreNodeType, []byte(`{"instructions":"?","criteria":["a","b"]}`), true); err != nil {
-		t.Errorf("expected a valid jev_score config to pass, got %v", err)
-	}
-
-	if err := s.validateJevConditionConfig(automationdom.JevNoulNodeType, []byte(`{"instructions":""}`), true); err == nil {
-		t.Error("expected an error for empty instructions")
-	}
-	if err := s.validateJevConditionConfig(automationdom.JevNoulNodeType, []byte(`{"instructions":"is this urgent?"}`), true); err != nil {
-		t.Errorf("expected a valid jev_noul config to pass, got %v", err)
+	for _, c := range cases {
+		err := s.validateJevConditionConfig([]byte(c.config), true)
+		if (err != nil) != c.wantErr {
+			t.Errorf("%s: wantErr=%v, got %v", c.name, c.wantErr, err)
+		}
 	}
 }
 
 // TestValidateJevConditionConfig_NotStrictAllowsEmptyConfig is a regression
 // test for a brand-new Jev condition node failing AUTOMATION_NODE_CONFIG_INVALID
-// ("instructions is required") immediately on creation, before the user ever
-// reaches the config panel: AddNode always creates nodes with an empty {}
-// config (see validateNodeTypeAndConfig's doc comment) and calls this with
-// strict=false, so the required-field checks must not run in that case —
-// mirroring validateTriggerConfig/validateConditionConfig/
-// validateActionConfig, which already skip their own required-field checks
-// when !strict.
+// immediately on creation, before the user ever reaches the config panel:
+// AddNode always creates nodes with an empty {} config and calls this with
+// strict=false, so the required-field checks must not run in that case.
 func TestValidateJevConditionConfig_NotStrictAllowsEmptyConfig(t *testing.T) {
 	s := &Service{}
-
-	for _, nodeType := range []string{
-		automationdom.JevChoiceNodeType,
-		automationdom.JevScoreNodeType,
-		automationdom.JevNoulNodeType,
-	} {
-		if err := s.validateJevConditionConfig(nodeType, []byte(`{}`), false); err != nil {
-			t.Errorf("%s: expected an empty config to pass when not strict, got %v", nodeType, err)
+	for _, cfg := range [][]byte{[]byte(`{}`), nil, []byte(`{"answer_type":"score"}`)} {
+		if err := s.validateJevConditionConfig(cfg, false); err != nil {
+			t.Errorf("config %s: expected to pass when not strict, got %v", cfg, err)
 		}
-		if err := s.validateJevConditionConfig(nodeType, nil, false); err != nil {
-			t.Errorf("%s: expected a nil config to pass when not strict, got %v", nodeType, err)
-		}
+	}
+	// An answer_type that is set but unknown is rejected even when not
+	// strict — it can never become valid by filling in more fields.
+	if err := s.validateJevConditionConfig([]byte(`{"answer_type":"maybe"}`), false); err == nil {
+		t.Error("expected an unknown answer_type to be rejected even when not strict")
 	}
 }
 

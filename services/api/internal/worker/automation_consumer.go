@@ -208,7 +208,7 @@ func (c *AutomationConsumer) WithPluginRuntime(rt automationPluginRuntime) *Auto
 }
 
 // WithJevProjectService attaches the project reader + secret decryptor so
-// jev_choice/jev_score/jev_noul condition nodes can build a per-project Jev
+// jev_condition nodes can build a per-project Jev
 // client from that project's own stored credentials (see jev.
 // ClientForProject) — there is no instance-wide Jev client. A project that
 // hasn't configured Jev is fine — every such node then just always routes
@@ -1300,7 +1300,7 @@ func (w *walker) walk(ctx context.Context, nodeID uuid.UUID) {
 }
 
 func (w *walker) walkCondition(ctx context.Context, node *automationdom.Node) {
-	if automationdom.ValidBuiltinAIConditionTypes[node.Type] {
+	if node.Type == automationdom.JevConditionNodeType {
 		w.walkJevCondition(ctx, node)
 		return
 	}
@@ -1335,8 +1335,8 @@ func (w *walker) walkCondition(ctx context.Context, node *automationdom.Node) {
 	}
 }
 
-// walkJevCondition handles the three Jev-backed condition node types
-// (jev_choice/jev_score/jev_noul). Unlike walkCondition's built-in switch, a
+// walkJevCondition handles the built-in Jev-backed condition node type
+// (jev_condition). Unlike walkCondition's built-in switch, a
 // Jev call failure (or low confidence) never fails the run step — it routes
 // to ElseHandle instead, same as the docs' own confidence-gated-routing
 // pattern, with the reason recorded in the step's output for visibility.
@@ -1376,7 +1376,11 @@ func (w *walker) resolveJevAnswer(ctx context.Context, node *automationdom.Node)
 	if !jevClient.Enabled() {
 		return automationdom.ElseHandle, nil, "this project has not configured Jev"
 	}
-	question, err := jevQuestionForNode(node)
+	var cfg automationdom.JevConditionConfig
+	if err := json.Unmarshal(node.Config, &cfg); err != nil {
+		return automationdom.ElseHandle, nil, "unmarshal jev_condition config: " + err.Error()
+	}
+	question, err := jevQuestionForConfig(cfg)
 	if err != nil {
 		return automationdom.ElseHandle, nil, err.Error()
 	}
@@ -1388,7 +1392,7 @@ func (w *walker) resolveJevAnswer(ctx context.Context, node *automationdom.Node)
 	if !ok {
 		return automationdom.ElseHandle, nil, "jev returned no answer"
 	}
-	return matchedHandleForAnswer(node.Type, node.Config, ans), &ans, ""
+	return matchedHandleForAnswer(cfg, ans), &ans, ""
 }
 
 // jevConditionState builds the Jev `state` for a condition node — always
@@ -1407,69 +1411,45 @@ func (w *walker) jevConditionState() map[string]any {
 	}
 }
 
-// jevQuestionForNode builds the single Jev question for a Jev condition
-// node from its Node.Config — the question type always matches the node's
-// own type (jev_choice -> choice, etc).
-func jevQuestionForNode(node *automationdom.Node) (jev.Question, error) {
-	switch node.Type {
-	case automationdom.JevChoiceNodeType:
-		var cfg automationdom.JevChoiceConfig
-		if err := json.Unmarshal(node.Config, &cfg); err != nil {
-			return jev.Question{}, fmt.Errorf("unmarshal jev_choice config: %w", err)
-		}
-		criteria := make(map[string]any, len(cfg.Criteria))
-		for k, v := range cfg.Criteria {
+// jevQuestionForConfig builds the single Jev question for a Jev condition
+// node — the question type is cfg.AnswerType.
+func jevQuestionForConfig(cfg automationdom.JevConditionConfig) (jev.Question, error) {
+	switch cfg.AnswerType {
+	case automationdom.JevAnswerChoice:
+		criteria := make(map[string]any, len(cfg.Options))
+		for k, v := range cfg.Options {
 			criteria[k] = v
 		}
 		return jev.Question{Type: jev.TypeChoice, Instructions: cfg.Instructions, Criteria: criteria}, nil
-	case automationdom.JevScoreNodeType:
-		var cfg automationdom.JevScoreConfig
-		if err := json.Unmarshal(node.Config, &cfg); err != nil {
-			return jev.Question{}, fmt.Errorf("unmarshal jev_score config: %w", err)
-		}
-		criteria := make([]any, len(cfg.Criteria))
-		for i, v := range cfg.Criteria {
+	case automationdom.JevAnswerScore:
+		criteria := make([]any, len(cfg.Levels))
+		for i, v := range cfg.Levels {
 			criteria[i] = v
 		}
 		return jev.Question{Type: jev.TypeScore, Instructions: cfg.Instructions, Criteria: criteria}, nil
-	case automationdom.JevNoulNodeType:
-		var cfg automationdom.JevNoulConfig
-		if err := json.Unmarshal(node.Config, &cfg); err != nil {
-			return jev.Question{}, fmt.Errorf("unmarshal jev_noul config: %w", err)
-		}
+	case automationdom.JevAnswerNoul:
 		return jev.Question{Type: jev.TypeNoul, Instructions: cfg.Instructions}, nil
 	default:
-		return jev.Question{}, fmt.Errorf("unknown jev condition node type %q", node.Type)
+		return jev.Question{}, fmt.Errorf("unknown jev_condition answer_type %q", cfg.AnswerType)
 	}
 }
 
 // matchedHandleForAnswer maps a Jev answer to the edge handle it should
-// follow, applying each node type's confidence/noul threshold — below
-// threshold (or an answer type mismatch) returns ElseHandle.
-func matchedHandleForAnswer(nodeType string, rawConfig json.RawMessage, ans jev.Answer) string {
-	switch nodeType {
-	case automationdom.JevChoiceNodeType:
-		var cfg automationdom.JevChoiceConfig
-		_ = json.Unmarshal(rawConfig, &cfg)
-		if ans.Confidence != nil && *ans.Confidence >= cfg.EffectiveConfidenceThreshold() {
+// follow, applying cfg's confidence/noul threshold — below threshold (or an
+// answer that isn't one of cfg's own handles) returns ElseHandle.
+func matchedHandleForAnswer(cfg automationdom.JevConditionConfig, ans jev.Answer) string {
+	confident := ans.Confidence != nil && *ans.Confidence >= cfg.EffectiveConfidenceThreshold()
+	switch cfg.AnswerType {
+	case automationdom.JevAnswerChoice:
+		if confident && cfg.HasHandle(ans.Choice) {
 			return ans.Choice
 		}
-	case automationdom.JevScoreNodeType:
-		var cfg automationdom.JevScoreConfig
-		_ = json.Unmarshal(rawConfig, &cfg)
-		if ans.Confidence != nil && *ans.Confidence >= cfg.EffectiveConfidenceThreshold() && len(cfg.Criteria) > 0 {
-			idx := int(math.Round(ans.Score))
-			if idx < 0 {
-				idx = 0
-			}
-			if idx > len(cfg.Criteria)-1 {
-				idx = len(cfg.Criteria) - 1
-			}
+	case automationdom.JevAnswerScore:
+		if confident && len(cfg.Levels) > 0 {
+			idx := min(max(int(math.Round(ans.Score)), 0), len(cfg.Levels)-1)
 			return strconv.Itoa(idx)
 		}
-	case automationdom.JevNoulNodeType:
-		var cfg automationdom.JevNoulConfig
-		_ = json.Unmarshal(rawConfig, &cfg)
+	case automationdom.JevAnswerNoul:
 		if ans.Noul >= cfg.EffectiveTrueThreshold() {
 			return automationdom.PluginConditionTrueHandle
 		}

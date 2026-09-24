@@ -2112,9 +2112,7 @@
 			"complete_sprint": "Complete sprint"
 		},
 		"conditionTypes": {
-			"jev_choice": "Jev Choice",
-			"jev_score": "Jev Score",
-			"jev_noul": "Jev Noul"
+			"jev_condition": "Jev Condition"
 		},
 		"nodeConfig": {
 			"save": "Save",
@@ -2194,11 +2192,18 @@
 				}
 			},
 			"jev": {
+				"answerTypeLabel": "Answer type",
+				"answerTypes": {
+					"choice": "Choice — pick one of several options",
+					"score": "Score — rate on a scale",
+					"noul": "Yes / No"
+				},
+				"answerTypeChangeHint": "Branches connected for the previous answer type won't be followed any more — reconnect them after saving.",
 				"instructionsLabel": "Question for Jev",
 				"instructionsPlaceholder": {
-					"jev_choice": "e.g. Which team should handle this?",
-					"jev_score": "e.g. How severe does this issue appear?",
-					"jev_noul": "e.g. The customer is asking for a refund."
+					"choice": "e.g. Which team should handle this?",
+					"score": "e.g. How severe does this issue appear?",
+					"noul": "e.g. The customer is asking for a refund."
 				},
 				"optionsTitle": "Options",
 				"optionKeyPlaceholder": "key",

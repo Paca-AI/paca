@@ -27,15 +27,12 @@ import type {
 	AutomationEdge,
 	AutomationNode,
 	ConditionConfig,
-	JevChoiceConfig,
-	JevScoreConfig,
+	JevConditionConfig,
 } from "@/lib/automation-api";
 import {
 	CONDITION_NODE_TYPE,
 	ELSE_HANDLE,
-	JEV_CHOICE_NODE_TYPE,
-	JEV_NOUL_NODE_TYPE,
-	JEV_SCORE_NODE_TYPE,
+	JEV_CONDITION_NODE_TYPE,
 	PLUGIN_CONDITION_TRUE_HANDLE,
 } from "@/lib/automation-api";
 import { cn } from "@/lib/utils";
@@ -167,11 +164,12 @@ function NodeShell({ data }: NodeProps<Node<BaseNodeData>>) {
 // separately below, not returned here):
 //   - the built-in N-branch switch (CONDITION_NODE_TYPE): one per declared
 //     ConditionConfig.Branches entry.
-//   - jev_choice: one per criteria key — the key itself is the handle (see
-//     JevChoiceConfig's doc comment), the description is the label.
-//   - jev_score: one per criteria level, by index — "0", "1", ... — since
-//     that's what the worker's matchedHandleForAnswer emits.
-//   - everything else (jev_noul, and any plugin-contributed condition, e.g.
+//   - jev_condition: depends on its answer_type (see JEV_ANSWER_TYPES) —
+//     choice: one per option key, the description as label; score: one per
+//     level, by index ("0", "1", ...), since that's what the worker's
+//     matchedHandleForAnswer emits; noul: the boolean-gate row below. No
+//     answer_type yet means no branches (mirrors the server's HasHandle).
+//   - everything else (any plugin-contributed condition, e.g.
 //     time_logging's total_minutes_exceeds) is a boolean gate: the worker
 //     only ever follows PLUGIN_CONDITION_TRUE_HANDLE on a match, so render
 //     that one synthetic branch — without it, only the ELSE_HANDLE row below
@@ -187,14 +185,24 @@ function branchesForNode(
 	switch (node.type) {
 		case CONDITION_NODE_TYPE:
 			return (node.config as unknown as ConditionConfig)?.branches ?? [];
-		case JEV_CHOICE_NODE_TYPE:
-			return Object.entries(
-				(node.config as unknown as JevChoiceConfig)?.criteria ?? {},
-			).map(([handle, label]) => ({ handle, label: label || handle }));
-		case JEV_SCORE_NODE_TYPE:
-			return ((node.config as unknown as JevScoreConfig)?.criteria ?? []).map(
-				(label, i) => ({ handle: String(i), label }),
-			);
+		case JEV_CONDITION_NODE_TYPE: {
+			const config = (node.config ?? {}) as JevConditionConfig;
+			switch (config.answer_type) {
+				case "choice":
+					return Object.entries(config.options ?? {}).map(
+						([handle, label]) => ({ handle, label: label || handle }),
+					);
+				case "score":
+					return (config.levels ?? []).map((label, i) => ({
+						handle: String(i),
+						label,
+					}));
+				case "noul":
+					return [{ handle: PLUGIN_CONDITION_TRUE_HANDLE }];
+				default:
+					return [];
+			}
+		}
 		default:
 			return [{ handle: PLUGIN_CONDITION_TRUE_HANDLE }];
 	}
@@ -208,7 +216,7 @@ function ConditionBranchRows({ node }: { node: AutomationNode }) {
 			: {
 					...b,
 					label:
-						node.type === JEV_NOUL_NODE_TYPE
+						node.type === JEV_CONDITION_NODE_TYPE
 							? t("automation.nodeConfig.description.jevNoulTrue")
 							: t("automation.nodeConfig.description.pluginConditionMatched"),
 				},

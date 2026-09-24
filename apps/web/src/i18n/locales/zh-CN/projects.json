@@ -2279,11 +2279,18 @@
 				"jevNoulTrue": "是"
 			},
 			"jev": {
+				"answerTypeLabel": "回答类型",
+				"answerTypes": {
+					"choice": "选择 — 从多个选项中选一个",
+					"score": "评分 — 按等级评估",
+					"noul": "是 / 否"
+				},
+				"answerTypeChangeHint": "为之前回答类型连接的分支将不再使用——保存后请重新连接。",
 				"instructionsLabel": "向 Jev 提出的问题",
 				"instructionsPlaceholder": {
-					"jev_choice": "例如：应由哪个团队处理此事？",
-					"jev_score": "例如：此问题看起来有多严重？",
-					"jev_noul": "例如：客户正在要求退款。"
+					"choice": "例如：应由哪个团队处理此事？",
+					"score": "例如：此问题看起来有多严重？",
+					"noul": "例如：客户正在要求退款。"
 				},
 				"optionsTitle": "选项",
 				"optionKeyPlaceholder": "键",
@@ -2320,9 +2327,7 @@
 			"watchedTasks": "等待 {{count}} 个任务"
 		},
 		"conditionTypes": {
-			"jev_choice": "Jev Choice",
-			"jev_score": "Jev Score",
-			"jev_noul": "Jev Noul"
+			"jev_condition": "Jev 条件"
 		}
 	}
 }

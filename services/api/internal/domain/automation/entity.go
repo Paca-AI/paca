@@ -20,6 +20,9 @@ package automationdom
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -127,40 +130,41 @@ var ValidBuiltinTriggerTypes = map[TriggerType]bool{
 // ConditionNodeType is the sole built-in "type" value for a deterministic,
 // field-comparison kind=condition node (there is only one shape — an
 // N-branch switch — unlike triggers and actions, which have several
-// distinct types). The three JevXNodeType constants below are a second,
-// separate family of built-in condition types: each routes on a typed
-// answer from Jev (the AI decision API, see internal/platform/jev) instead
-// of a hand-written field/operator/value comparison.
+// distinct types). JevConditionNodeType below is the other built-in
+// condition type: it routes on a typed answer from Jev (the AI decision API,
+// see internal/platform/jev) instead of a hand-written field/operator/value
+// comparison.
 const ConditionNodeType = "condition"
 
-// JevChoiceNodeType/JevScoreNodeType/JevNoulNodeType are the built-in
-// Jev-backed condition node types, each mapping 1:1 onto one of Jev's three
-// question primitives — see JevChoiceConfig/JevScoreConfig/JevNoulConfig for
-// their Node.Config shapes. Checked by the worker's walkCondition (which
-// dispatches to walkJevCondition) and by validateNodeTypeAndConfig/
-// validateEdgeHandle in automation_service.go — all three must agree on
-// ValidBuiltinAIConditionTypes.
-const (
-	JevChoiceNodeType = "jev_choice"
-	JevScoreNodeType  = "jev_score"
-	JevNoulNodeType   = "jev_noul"
-)
+// JevConditionNodeType is the built-in Jev-backed condition node type. Its
+// JevConditionConfig.AnswerType picks which Jev question primitive it asks.
+// Any condition Type that is neither ConditionNodeType nor this is assumed
+// to be a plugin-contributed condition (see validateEdgeHandle and
+// walkCondition's dispatch order).
+const JevConditionNodeType = "jev_condition"
 
-// ValidBuiltinAIConditionTypes is the set of built-in Jev-backed condition
-// node types. Any condition Type that is neither ConditionNodeType nor in
-// this set is assumed to be a plugin-contributed condition (see
-// validateEdgeHandle and walkCondition's dispatch order — this map is
-// checked before falling back to the plugin-condition path).
-var ValidBuiltinAIConditionTypes = map[string]bool{
-	JevChoiceNodeType: true,
-	JevScoreNodeType:  true,
-	JevNoulNodeType:   true,
-}
+// JevAnswerChoice/JevAnswerScore/JevAnswerNoul are the allowed values of
+// JevConditionConfig.AnswerType, one per Jev question primitive:
+//   - choice: pick one of several labeled options; one edge handle per
+//     option key
+//   - score: rate along an ordered scale; one edge handle per level index
+//     ("0".."len(Levels)-1", matching jev.Answer.Legend's keys)
+//   - noul: a yes/no statement; PluginConditionTrueHandle when true, reusing
+//     the plugin-condition boolean-gate handle so it needs no new frontend
+//     branch rendering (see ConditionBranchRows)
+//
+// All three also route to ElseHandle when confidence is below the node's
+// threshold or the Jev call fails.
+const (
+	JevAnswerChoice = "choice"
+	JevAnswerScore  = "score"
+	JevAnswerNoul   = "noul"
+)
 
 // DefaultJevConfidenceThreshold/DefaultJevNoulThreshold are the confidence/
 // noul gates a Jev condition node uses when its config doesn't set one
-// explicitly — see JevChoiceConfig.EffectiveConfidenceThreshold and
-// JevNoulConfig.EffectiveTrueThreshold. Matches the docs' own
+// explicitly — see JevConditionConfig.EffectiveConfidenceThreshold and
+// EffectiveTrueThreshold. Matches the docs' own
 // confidence-gated-routing starting point
 // (https://docs.typesafe.ai/patterns/confidence-routing).
 const (
@@ -587,77 +591,100 @@ type ConditionBranch struct {
 	Tree  *ConditionLeaf `json:"tree"`
 }
 
-// JevChoiceConfig holds a Jev Choice condition node's question — Node.Config
-// for Type == JevChoiceNodeType. One outgoing edge handle per Criteria key
-// (the option key IS the handle, unlike ConditionBranch's separate
-// Handle/Tree), plus the shared ElseHandle fallback used when the answer's
-// confidence is below ConfidenceThreshold or the Jev call fails.
-type JevChoiceConfig struct {
+// JevConditionConfig is Node.Config for Type == JevConditionNodeType.
+// AnswerType decides which of the other fields apply — see the JevAnswerX
+// constants for each type's edge handles.
+type JevConditionConfig struct {
+	AnswerType string `json:"answer_type"`
 	// Instructions is the question put to Jev, e.g. "Which team should
-	// handle this?" — shown to the user as a prompt they author.
-	Instructions string `json:"instructions"`
-	// Criteria maps an option key to a description of when to choose it —
-	// same shape as jev.Question.Criteria for type=choice. Each key becomes
-	// an outgoing edge handle.
-	Criteria map[string]string `json:"criteria"`
-	// ConfidenceThreshold: below this, the walk follows ElseHandle instead
-	// of the answer's Choice. Zero means "use DefaultJevConfidenceThreshold"
-	// — see EffectiveConfidenceThreshold.
-	ConfidenceThreshold float64 `json:"confidence_threshold,omitempty"`
-}
-
-// EffectiveConfidenceThreshold returns ConfidenceThreshold, or
-// DefaultJevConfidenceThreshold when unset (<= 0).
-func (c JevChoiceConfig) EffectiveConfidenceThreshold() float64 {
-	if c.ConfidenceThreshold <= 0 {
-		return DefaultJevConfidenceThreshold
-	}
-	return c.ConfidenceThreshold
-}
-
-// JevScoreConfig holds a Jev Score condition node's question — Node.Config
-// for Type == JevScoreNodeType. One outgoing edge handle per Criteria level
-// index ("0".."len(Criteria)-1", matching jev.Answer.Legend's keys), plus
-// ElseHandle for low confidence.
-type JevScoreConfig struct {
-	// Instructions is the question put to Jev, e.g. "How severe is this?".
-	Instructions string `json:"instructions"`
-	// Criteria is an ORDERED list of 2-10 level descriptions — same
-	// constraint as jev.Question.Criteria for type=score.
-	Criteria            []string `json:"criteria"`
-	ConfidenceThreshold float64  `json:"confidence_threshold,omitempty"`
-}
-
-// EffectiveConfidenceThreshold returns ConfidenceThreshold, or
-// DefaultJevConfidenceThreshold when unset (<= 0).
-func (c JevScoreConfig) EffectiveConfidenceThreshold() float64 {
-	if c.ConfidenceThreshold <= 0 {
-		return DefaultJevConfidenceThreshold
-	}
-	return c.ConfidenceThreshold
-}
-
-// JevNoulConfig holds a Jev Noul condition node's question — Node.Config for
-// Type == JevNoulNodeType. Exactly two outgoing edges: PluginConditionTrueHandle
-// when the noul answer is >= TrueThreshold, ElseHandle otherwise — this
-// reuses the plugin-condition boolean-gate handles so jev_noul needs no new
-// frontend branch-rendering support (see ConditionBranchRows).
-type JevNoulConfig struct {
-	// Instructions is the yes/no statement put to Jev, e.g. "The customer is
+	// handle this?", or for noul a yes/no statement such as "The customer is
 	// asking for a refund."
 	Instructions string `json:"instructions"`
-	// TrueThreshold: noul >= this follows PluginConditionTrueHandle. Zero
-	// means "use DefaultJevNoulThreshold" — see EffectiveTrueThreshold.
+	// Options (choice only) maps an option key to a description of when to
+	// choose it. Each key is also an outgoing edge handle.
+	Options map[string]string `json:"options,omitempty"`
+	// Levels (score only) is an ORDERED list of 2-10 level descriptions,
+	// lowest first.
+	Levels []string `json:"levels,omitempty"`
+	// ConfidenceThreshold (choice and score): below this the walk follows
+	// ElseHandle. Zero means DefaultJevConfidenceThreshold.
+	ConfidenceThreshold float64 `json:"confidence_threshold,omitempty"`
+	// TrueThreshold (noul only): noul >= this follows
+	// PluginConditionTrueHandle. Zero means DefaultJevNoulThreshold.
 	TrueThreshold float64 `json:"true_threshold,omitempty"`
+}
+
+// EffectiveConfidenceThreshold returns ConfidenceThreshold, or
+// DefaultJevConfidenceThreshold when unset (<= 0).
+func (c JevConditionConfig) EffectiveConfidenceThreshold() float64 {
+	if c.ConfidenceThreshold <= 0 {
+		return DefaultJevConfidenceThreshold
+	}
+	return c.ConfidenceThreshold
 }
 
 // EffectiveTrueThreshold returns TrueThreshold, or DefaultJevNoulThreshold
 // when unset (<= 0).
-func (c JevNoulConfig) EffectiveTrueThreshold() float64 {
+func (c JevConditionConfig) EffectiveTrueThreshold() float64 {
 	if c.TrueThreshold <= 0 {
 		return DefaultJevNoulThreshold
 	}
 	return c.TrueThreshold
+}
+
+// Validate checks c's shape. strict follows validateNodeTypeAndConfig's
+// contract: a brand-new node starts with an empty {} config, so the
+// required-field checks only apply when strict. An AnswerType that is set
+// but unknown is always rejected.
+func (c JevConditionConfig) Validate(strict bool) error {
+	switch c.AnswerType {
+	case JevAnswerChoice, JevAnswerScore, JevAnswerNoul:
+	case "":
+		if strict {
+			return fmt.Errorf("%w: answer_type is required", ErrNodeConfigInvalid)
+		}
+		return nil
+	default:
+		return fmt.Errorf("%w: answer_type must be %q, %q or %q", ErrNodeConfigInvalid, JevAnswerChoice, JevAnswerScore, JevAnswerNoul)
+	}
+	if !strict {
+		return nil
+	}
+	if strings.TrimSpace(c.Instructions) == "" {
+		return fmt.Errorf("%w: instructions is required", ErrNodeConfigInvalid)
+	}
+	switch c.AnswerType {
+	case JevAnswerChoice:
+		if len(c.Options) == 0 {
+			return fmt.Errorf("%w: at least one option is required", ErrNodeConfigInvalid)
+		}
+		for key := range c.Options {
+			if key == "" || key == ElseHandle {
+				return fmt.Errorf("%w: option key must be non-empty and not the reserved %q value", ErrNodeConfigInvalid, ElseHandle)
+			}
+		}
+	case JevAnswerScore:
+		if len(c.Levels) < 2 || len(c.Levels) > 10 {
+			return fmt.Errorf("%w: levels must have between 2 and 10 entries", ErrNodeConfigInvalid)
+		}
+	}
+	return nil
+}
+
+// HasHandle reports whether handle is one of c's own outgoing edge handles
+// (ElseHandle, valid for every answer type, is checked by the caller).
+func (c JevConditionConfig) HasHandle(handle string) bool {
+	switch c.AnswerType {
+	case JevAnswerChoice:
+		_, ok := c.Options[handle]
+		return ok
+	case JevAnswerScore:
+		idx, err := strconv.Atoi(handle)
+		return err == nil && idx >= 0 && idx < len(c.Levels)
+	case JevAnswerNoul:
+		return handle == PluginConditionTrueHandle
+	}
+	return false
 }
 
 // CronCandidate pairs a TriggerCron node with the last time it fired (nil if

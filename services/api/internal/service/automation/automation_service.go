@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -700,8 +699,8 @@ func (s *Service) validateNodeTypeAndConfig(ctx context.Context, projectID uuid.
 		return s.validateTriggerConfig(ctx, projectID, automationdom.TriggerType(nodeType), config, strict)
 	case automationdom.KindCondition:
 		if nodeType != automationdom.ConditionNodeType {
-			if automationdom.ValidBuiltinAIConditionTypes[nodeType] {
-				return s.validateJevConditionConfig(nodeType, config, strict)
+			if nodeType == automationdom.JevConditionNodeType {
+				return s.validateJevConditionConfig(config, strict)
 			}
 			// Not the built-in N-branch switch or a Jev condition — this
 			// must be a plugin-contributed condition node instead (its own
@@ -818,72 +817,20 @@ func (s *Service) validateConditionConfig(ctx context.Context, projectID uuid.UU
 	return nil
 }
 
-// validateJevConditionConfig validates a Jev Choice/Score/Noul condition
-// node's config — structural only (this service has no way to judge whether
-// a Jev question is well-formed beyond its shape; Jev itself rejects a
-// malformed question at call time with a 422, which the worker treats as a
-// graceful else-route rather than surfacing here).
-//
-// strict follows the same contract as validateTriggerConfig/
-// validateConditionConfig/validateActionConfig (see validateNodeTypeAndConfig's
-// doc comment): AddNode calls this with strict=false against an empty {}
-// config, so the instructions/criteria required-field checks below only
-// apply when strict — otherwise every brand-new Jev condition node would
-// fail validation before the user ever reaches the config panel.
-func (s *Service) validateJevConditionConfig(nodeType string, raw json.RawMessage, strict bool) error {
-	switch nodeType {
-	case automationdom.JevChoiceNodeType:
-		var cfg automationdom.JevChoiceConfig
-		if len(raw) > 0 {
-			if err := json.Unmarshal(raw, &cfg); err != nil {
-				return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
-			}
-		}
-		if !strict {
-			return nil
-		}
-		if strings.TrimSpace(cfg.Instructions) == "" {
-			return fmt.Errorf("%w: instructions is required", automationdom.ErrNodeConfigInvalid)
-		}
-		if len(cfg.Criteria) == 0 {
-			return fmt.Errorf("%w: at least one criteria option is required", automationdom.ErrNodeConfigInvalid)
-		}
-		for key := range cfg.Criteria {
-			if key == "" || key == automationdom.ElseHandle {
-				return fmt.Errorf("%w: criteria key must be non-empty and not the reserved %q value", automationdom.ErrNodeConfigInvalid, automationdom.ElseHandle)
-			}
-		}
-	case automationdom.JevScoreNodeType:
-		var cfg automationdom.JevScoreConfig
-		if len(raw) > 0 {
-			if err := json.Unmarshal(raw, &cfg); err != nil {
-				return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
-			}
-		}
-		if !strict {
-			return nil
-		}
-		if strings.TrimSpace(cfg.Instructions) == "" {
-			return fmt.Errorf("%w: instructions is required", automationdom.ErrNodeConfigInvalid)
-		}
-		if len(cfg.Criteria) < 2 || len(cfg.Criteria) > 10 {
-			return fmt.Errorf("%w: criteria must have between 2 and 10 levels", automationdom.ErrNodeConfigInvalid)
-		}
-	case automationdom.JevNoulNodeType:
-		var cfg automationdom.JevNoulConfig
-		if len(raw) > 0 {
-			if err := json.Unmarshal(raw, &cfg); err != nil {
-				return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
-			}
-		}
-		if !strict {
-			return nil
-		}
-		if strings.TrimSpace(cfg.Instructions) == "" {
-			return fmt.Errorf("%w: instructions is required", automationdom.ErrNodeConfigInvalid)
+// validateJevConditionConfig validates a Jev condition node's config —
+// structural only (this service has no way to judge whether a Jev question
+// is well-formed beyond its shape; Jev itself rejects a malformed question
+// at call time with a 422, which the worker treats as a graceful else-route
+// rather than surfacing here). strict follows validateNodeTypeAndConfig's
+// contract — see JevConditionConfig.Validate.
+func (s *Service) validateJevConditionConfig(raw json.RawMessage, strict bool) error {
+	var cfg automationdom.JevConditionConfig
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
 		}
 	}
-	return nil
+	return cfg.Validate(strict)
 }
 
 // validateTaskTarget validates a condition leaf's or action's TaskTarget:
@@ -1143,8 +1090,15 @@ func validateEdgeHandle(source *automationdom.Node, handle *string) error {
 		return nil
 	}
 	if source.Type != automationdom.ConditionNodeType {
-		if automationdom.ValidBuiltinAIConditionTypes[source.Type] {
-			return validateJevEdgeHandle(source, *handle)
+		if source.Type == automationdom.JevConditionNodeType {
+			var cfg automationdom.JevConditionConfig
+			if len(source.Config) > 0 {
+				_ = json.Unmarshal(source.Config, &cfg)
+			}
+			if cfg.HasHandle(*handle) {
+				return nil
+			}
+			return fmt.Errorf("%w: %q is not a valid handle for this jev_condition node's %q answer type", automationdom.ErrNodeConfigInvalid, *handle, cfg.AnswerType)
 		}
 		if *handle == automationdom.PluginConditionTrueHandle {
 			return nil
@@ -1161,41 +1115,6 @@ func validateEdgeHandle(source *automationdom.Node, handle *string) error {
 		}
 	}
 	return fmt.Errorf("%w: %q is not a declared branch on this condition node", automationdom.ErrNodeConfigInvalid, *handle)
-}
-
-// validateJevEdgeHandle validates an edge handle sourced from one of the
-// three Jev condition node types — jev_noul reuses the plugin-condition
-// boolean-gate handles (PluginConditionTrueHandle/ElseHandle); jev_choice
-// and jev_score each accept a handle per their own declared option/level,
-// plus ElseHandle (checked by the caller before this is reached).
-func validateJevEdgeHandle(source *automationdom.Node, handle string) error {
-	switch source.Type {
-	case automationdom.JevNoulNodeType:
-		if handle == automationdom.PluginConditionTrueHandle {
-			return nil
-		}
-		return fmt.Errorf("%w: %q is not a valid handle for a jev_noul node (only %q or %q)", automationdom.ErrNodeConfigInvalid, handle, automationdom.PluginConditionTrueHandle, automationdom.ElseHandle)
-	case automationdom.JevChoiceNodeType:
-		var cfg automationdom.JevChoiceConfig
-		if len(source.Config) > 0 {
-			_ = json.Unmarshal(source.Config, &cfg)
-		}
-		if _, ok := cfg.Criteria[handle]; ok {
-			return nil
-		}
-		return fmt.Errorf("%w: %q is not a declared criteria option on this jev_choice node", automationdom.ErrNodeConfigInvalid, handle)
-	case automationdom.JevScoreNodeType:
-		var cfg automationdom.JevScoreConfig
-		if len(source.Config) > 0 {
-			_ = json.Unmarshal(source.Config, &cfg)
-		}
-		if idx, err := strconv.Atoi(handle); err == nil && idx >= 0 && idx < len(cfg.Criteria) {
-			return nil
-		}
-		return fmt.Errorf("%w: %q is not a valid score level index on this jev_score node", automationdom.ErrNodeConfigInvalid, handle)
-	default:
-		return fmt.Errorf("%w: unknown jev condition node type %q", automationdom.ErrNodeConfigInvalid, source.Type)
-	}
 }
 
 // wouldCreateCycle reports whether adding an edge sourceID -> targetID would

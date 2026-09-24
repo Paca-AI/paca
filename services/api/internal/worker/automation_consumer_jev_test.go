@@ -12,12 +12,12 @@ import (
 	"github.com/Paca-AI/api/internal/platform/jev"
 )
 
-func TestJevQuestionForNode(t *testing.T) {
-	choiceCfg, _ := json.Marshal(automationdom.JevChoiceConfig{
+func TestJevQuestionForConfig(t *testing.T) {
+	q, err := jevQuestionForConfig(automationdom.JevConditionConfig{
+		AnswerType:   automationdom.JevAnswerChoice,
 		Instructions: "Which team?",
-		Criteria:     map[string]string{"billing": "money stuff", "tech": "bugs"},
+		Options:      map[string]string{"billing": "money stuff", "tech": "bugs"},
 	})
-	q, err := jevQuestionForNode(&automationdom.Node{Type: automationdom.JevChoiceNodeType, Config: choiceCfg})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -29,11 +29,11 @@ func TestJevQuestionForNode(t *testing.T) {
 		t.Errorf("unexpected criteria: %+v", q.Criteria)
 	}
 
-	scoreCfg, _ := json.Marshal(automationdom.JevScoreConfig{
+	q, err = jevQuestionForConfig(automationdom.JevConditionConfig{
+		AnswerType:   automationdom.JevAnswerScore,
 		Instructions: "How severe?",
-		Criteria:     []string{"low", "medium", "high"},
+		Levels:       []string{"low", "medium", "high"},
 	})
-	q, err = jevQuestionForNode(&automationdom.Node{Type: automationdom.JevScoreNodeType, Config: scoreCfg})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -45,8 +45,7 @@ func TestJevQuestionForNode(t *testing.T) {
 		t.Errorf("unexpected criteria: %+v", q.Criteria)
 	}
 
-	noulCfg, _ := json.Marshal(automationdom.JevNoulConfig{Instructions: "Is this urgent?"})
-	q, err = jevQuestionForNode(&automationdom.Node{Type: automationdom.JevNoulNodeType, Config: noulCfg})
+	q, err = jevQuestionForConfig(automationdom.JevConditionConfig{AnswerType: automationdom.JevAnswerNoul, Instructions: "Is this urgent?"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,31 +53,35 @@ func TestJevQuestionForNode(t *testing.T) {
 		t.Errorf("expected noul type, got %v", q.Type)
 	}
 
-	if _, err := jevQuestionForNode(&automationdom.Node{Type: "not_a_jev_type"}); err == nil {
-		t.Error("expected error for an unknown node type")
+	if _, err := jevQuestionForConfig(automationdom.JevConditionConfig{AnswerType: "not_an_answer_type"}); err == nil {
+		t.Error("expected error for an unknown answer type")
 	}
 }
 
 func TestMatchedHandleForAnswer_Choice(t *testing.T) {
-	cfg, _ := json.Marshal(automationdom.JevChoiceConfig{Criteria: map[string]string{"a": "x"}, ConfidenceThreshold: 0.7})
+	cfg := automationdom.JevConditionConfig{AnswerType: automationdom.JevAnswerChoice, Options: map[string]string{"a": "x"}, ConfidenceThreshold: 0.7}
 
 	high := 0.9
-	if got := matchedHandleForAnswer(automationdom.JevChoiceNodeType, cfg, jev.Answer{Type: jev.TypeChoice, Choice: "a", Confidence: &high}); got != "a" {
+	if got := matchedHandleForAnswer(cfg, jev.Answer{Type: jev.TypeChoice, Choice: "a", Confidence: &high}); got != "a" {
 		t.Errorf("expected handle 'a' at high confidence, got %q", got)
 	}
 
 	low := 0.5
-	if got := matchedHandleForAnswer(automationdom.JevChoiceNodeType, cfg, jev.Answer{Type: jev.TypeChoice, Choice: "a", Confidence: &low}); got != automationdom.ElseHandle {
+	if got := matchedHandleForAnswer(cfg, jev.Answer{Type: jev.TypeChoice, Choice: "a", Confidence: &low}); got != automationdom.ElseHandle {
 		t.Errorf("expected else at low confidence, got %q", got)
 	}
 
-	if got := matchedHandleForAnswer(automationdom.JevChoiceNodeType, cfg, jev.Answer{Type: jev.TypeChoice, Choice: "a"}); got != automationdom.ElseHandle {
+	if got := matchedHandleForAnswer(cfg, jev.Answer{Type: jev.TypeChoice, Choice: "a"}); got != automationdom.ElseHandle {
 		t.Errorf("expected else with nil confidence, got %q", got)
+	}
+
+	if got := matchedHandleForAnswer(cfg, jev.Answer{Type: jev.TypeChoice, Choice: "undeclared", Confidence: &high}); got != automationdom.ElseHandle {
+		t.Errorf("expected else for a choice that isn't one of the node's options, got %q", got)
 	}
 }
 
 func TestMatchedHandleForAnswer_Score(t *testing.T) {
-	cfg, _ := json.Marshal(automationdom.JevScoreConfig{Criteria: []string{"low", "medium", "high", "critical"}})
+	cfg := automationdom.JevConditionConfig{AnswerType: automationdom.JevAnswerScore, Levels: []string{"low", "medium", "high", "critical"}}
 	high := 0.95
 
 	cases := []struct {
@@ -88,7 +91,7 @@ func TestMatchedHandleForAnswer_Score(t *testing.T) {
 		{0, "0"}, {0.4, "0"}, {1.6, "2"}, {3, "3"}, {99, "3"}, {-5, "0"},
 	}
 	for _, c := range cases {
-		got := matchedHandleForAnswer(automationdom.JevScoreNodeType, cfg, jev.Answer{Type: jev.TypeScore, Score: c.score, Confidence: &high})
+		got := matchedHandleForAnswer(cfg, jev.Answer{Type: jev.TypeScore, Score: c.score, Confidence: &high})
 		if got != c.want {
 			t.Errorf("score %v: got handle %q, want %q", c.score, got, c.want)
 		}
@@ -96,18 +99,18 @@ func TestMatchedHandleForAnswer_Score(t *testing.T) {
 }
 
 func TestMatchedHandleForAnswer_Noul(t *testing.T) {
-	cfg, _ := json.Marshal(automationdom.JevNoulConfig{})
+	cfg := automationdom.JevConditionConfig{AnswerType: automationdom.JevAnswerNoul}
 
-	if got := matchedHandleForAnswer(automationdom.JevNoulNodeType, cfg, jev.Answer{Type: jev.TypeNoul, Noul: 0.8}); got != automationdom.PluginConditionTrueHandle {
+	if got := matchedHandleForAnswer(cfg, jev.Answer{Type: jev.TypeNoul, Noul: 0.8}); got != automationdom.PluginConditionTrueHandle {
 		t.Errorf("expected true handle for a confident yes, got %q", got)
 	}
-	if got := matchedHandleForAnswer(automationdom.JevNoulNodeType, cfg, jev.Answer{Type: jev.TypeNoul, Noul: 0.3}); got != automationdom.ElseHandle {
+	if got := matchedHandleForAnswer(cfg, jev.Answer{Type: jev.TypeNoul, Noul: 0.3}); got != automationdom.ElseHandle {
 		t.Errorf("expected else for a no, got %q", got)
 	}
 
 	// A custom (higher) threshold makes a middling answer fall to else.
-	strictCfg, _ := json.Marshal(automationdom.JevNoulConfig{TrueThreshold: 0.9})
-	if got := matchedHandleForAnswer(automationdom.JevNoulNodeType, strictCfg, jev.Answer{Type: jev.TypeNoul, Noul: 0.7}); got != automationdom.ElseHandle {
+	strictCfg := automationdom.JevConditionConfig{AnswerType: automationdom.JevAnswerNoul, TrueThreshold: 0.9}
+	if got := matchedHandleForAnswer(strictCfg, jev.Answer{Type: jev.TypeNoul, Noul: 0.7}); got != automationdom.ElseHandle {
 		t.Errorf("expected else below a custom stricter threshold, got %q", got)
 	}
 }
@@ -117,8 +120,8 @@ func TestResolveJevAnswer_UnconfiguredClientRoutesElse(t *testing.T) {
 		consumer: &AutomationConsumer{projectSvc: nil},
 		task:     &taskdom.Task{ID: uuid.New(), Title: "t"},
 	}
-	cfg, _ := json.Marshal(automationdom.JevNoulConfig{})
-	handle, answer, errMsg := w.resolveJevAnswer(context.Background(), &automationdom.Node{Type: automationdom.JevNoulNodeType, Config: cfg})
+	cfg, _ := json.Marshal(automationdom.JevConditionConfig{AnswerType: automationdom.JevAnswerNoul})
+	handle, answer, errMsg := w.resolveJevAnswer(context.Background(), &automationdom.Node{Type: automationdom.JevConditionNodeType, Config: cfg})
 	if handle != automationdom.ElseHandle {
 		t.Errorf("expected else handle when jev is unconfigured, got %q", handle)
 	}

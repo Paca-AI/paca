@@ -2279,11 +2279,18 @@
 				"jevNoulTrue": "Oui"
 			},
 			"jev": {
+				"answerTypeLabel": "Type de réponse",
+				"answerTypes": {
+					"choice": "Choix — choisir une option parmi plusieurs",
+					"score": "Score — noter sur une échelle",
+					"noul": "Oui / Non"
+				},
+				"answerTypeChangeHint": "Les branches connectées pour le type de réponse précédent ne seront plus suivies — reconnectez-les après l'enregistrement.",
 				"instructionsLabel": "Question pour Jev",
 				"instructionsPlaceholder": {
-					"jev_choice": "p. ex. Quelle équipe devrait s'en occuper ?",
-					"jev_score": "p. ex. Quelle est la gravité apparente de ce problème ?",
-					"jev_noul": "p. ex. Le client demande un remboursement."
+					"choice": "p. ex. Quelle équipe devrait s'en occuper ?",
+					"score": "p. ex. Quelle est la gravité apparente de ce problème ?",
+					"noul": "p. ex. Le client demande un remboursement."
 				},
 				"optionsTitle": "Options",
 				"optionKeyPlaceholder": "clé",
@@ -2320,9 +2327,7 @@
 			"watchedTasks": "En attente de {{count}} tâche(s)"
 		},
 		"conditionTypes": {
-			"jev_choice": "Jev Choice",
-			"jev_score": "Jev Score",
-			"jev_noul": "Jev Noul"
+			"jev_condition": "Condition Jev"
 		}
 	}
 }

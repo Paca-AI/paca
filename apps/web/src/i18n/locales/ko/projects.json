@@ -2279,11 +2279,18 @@
 				"jevNoulTrue": "예"
 			},
 			"jev": {
+				"answerTypeLabel": "답변 유형",
+				"answerTypes": {
+					"choice": "선택 — 여러 옵션 중 하나를 선택",
+					"score": "점수 — 척도로 평가",
+					"noul": "예 / 아니요"
+				},
+				"answerTypeChangeHint": "이전 답변 유형에 연결된 분기는 더 이상 사용되지 않습니다. 저장한 후 다시 연결하세요.",
 				"instructionsLabel": "Jev에게 질문",
 				"instructionsPlaceholder": {
-					"jev_choice": "예: 어떤 팀이 이 작업을 처리해야 하나요?",
-					"jev_score": "예: 이 문제가 얼마나 심각해 보이나요?",
-					"jev_noul": "예: 고객이 환불을 요청하고 있습니다."
+					"choice": "예: 어떤 팀이 이 작업을 처리해야 하나요?",
+					"score": "예: 이 문제가 얼마나 심각해 보이나요?",
+					"noul": "예: 고객이 환불을 요청하고 있습니다."
 				},
 				"optionsTitle": "옵션",
 				"optionKeyPlaceholder": "키",
@@ -2320,9 +2327,7 @@
 			"watchedTasks": "{{count}}개 태스크 대기 중"
 		},
 		"conditionTypes": {
-			"jev_choice": "Jev Choice",
-			"jev_score": "Jev Score",
-			"jev_noul": "Jev Noul"
+			"jev_condition": "Jev 조건"
 		}
 	}
 }

@@ -2279,11 +2279,18 @@
 				"jevNoulTrue": "Có"
 			},
 			"jev": {
+				"answerTypeLabel": "Loại câu trả lời",
+				"answerTypes": {
+					"choice": "Lựa chọn — chọn một trong nhiều phương án",
+					"score": "Điểm — đánh giá theo thang",
+					"noul": "Có / Không"
+				},
+				"answerTypeChangeHint": "Các nhánh đã kết nối cho loại câu trả lời trước sẽ không còn được dùng nữa — hãy kết nối lại sau khi lưu.",
 				"instructionsLabel": "Câu hỏi cho Jev",
 				"instructionsPlaceholder": {
-					"jev_choice": "ví dụ: Nhóm nào nên xử lý việc này?",
-					"jev_score": "ví dụ: Vấn đề này có vẻ nghiêm trọng đến mức nào?",
-					"jev_noul": "ví dụ: Khách hàng đang yêu cầu hoàn tiền."
+					"choice": "ví dụ: Nhóm nào nên xử lý việc này?",
+					"score": "ví dụ: Vấn đề này có vẻ nghiêm trọng đến mức nào?",
+					"noul": "ví dụ: Khách hàng đang yêu cầu hoàn tiền."
 				},
 				"optionsTitle": "Tùy chọn",
 				"optionKeyPlaceholder": "khóa",
@@ -2320,9 +2327,7 @@
 			"watchedTasks": "Đang chờ {{count}} công việc"
 		},
 		"conditionTypes": {
-			"jev_choice": "Jev Choice",
-			"jev_score": "Jev Score",
-			"jev_noul": "Jev Noul"
+			"jev_condition": "Điều kiện Jev"
 		}
 	}
 }

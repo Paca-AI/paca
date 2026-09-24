@@ -2279,11 +2279,18 @@
 				"jevNoulTrue": "Sim"
 			},
 			"jev": {
+				"answerTypeLabel": "Tipo de resposta",
+				"answerTypes": {
+					"choice": "Escolha — escolher uma entre várias opções",
+					"score": "Pontuação — avaliar em uma escala",
+					"noul": "Sim / Não"
+				},
+				"answerTypeChangeHint": "Os ramos conectados para o tipo de resposta anterior deixarão de ser seguidos — reconecte-os depois de salvar.",
 				"instructionsLabel": "Pergunta para o Jev",
 				"instructionsPlaceholder": {
-					"jev_choice": "ex.: Qual equipe deve cuidar disso?",
-					"jev_score": "ex.: Quão grave este problema parece ser?",
-					"jev_noul": "ex.: O cliente está pedindo um reembolso."
+					"choice": "ex.: Qual equipe deve cuidar disso?",
+					"score": "ex.: Quão grave este problema parece ser?",
+					"noul": "ex.: O cliente está pedindo um reembolso."
 				},
 				"optionsTitle": "Opções",
 				"optionKeyPlaceholder": "chave",
@@ -2320,9 +2327,7 @@
 			"watchedTasks": "Aguardando {{count}} tarefa(s)"
 		},
 		"conditionTypes": {
-			"jev_choice": "Jev Choice",
-			"jev_score": "Jev Score",
-			"jev_noul": "Jev Noul"
+			"jev_condition": "Condição Jev"
 		}
 	}
 }

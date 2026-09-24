@@ -56,14 +56,10 @@ import {
 	DEFAULT_JEV_CONFIDENCE_THRESHOLD,
 	DEFAULT_JEV_NOUL_THRESHOLD,
 	generateWebhookToken,
-	JEV_CHOICE_NODE_TYPE,
-	JEV_CONDITION_NODE_TYPES,
-	JEV_NOUL_NODE_TYPE,
-	JEV_SCORE_NODE_TYPE,
-	type JevChoiceConfig,
-	type JevConditionNodeType,
-	type JevNoulConfig,
-	type JevScoreConfig,
+	JEV_ANSWER_TYPES,
+	JEV_CONDITION_NODE_TYPE,
+	type JevAnswerType,
+	type JevConditionConfig,
 	MULTI_VALUED_TARGET_KINDS,
 	type PluginNodeConfigSchema,
 	type PluginNodeConfigSchemaProperty,
@@ -301,9 +297,7 @@ export function AutomationNodeConfigPanel({
 		node.type,
 	);
 	const isBuiltinCondition = node.type === CONDITION_NODE_TYPE;
-	const isJevCondition = (
-		JEV_CONDITION_NODE_TYPES as readonly string[]
-	).includes(node.type);
+	const isJevCondition = node.type === JEV_CONDITION_NODE_TYPE;
 
 	if (node.kind === "trigger") {
 		return (
@@ -363,9 +357,7 @@ export function AutomationNodeConfigPanel({
 					isBuiltinCondition
 						? t("automation.nodeKind.condition")
 						: isJevCondition
-							? t(
-									`automation.conditionTypes.${node.type as JevConditionNodeType}`,
-								)
+							? t("automation.conditionTypes.jev_condition")
 							: (pluginLabel ?? node.type)
 				}
 				kind="condition"
@@ -387,13 +379,7 @@ export function AutomationNodeConfigPanel({
 					/>
 				) : isJevCondition ? (
 					<JevConditionConfigForm
-						type={node.type as JevConditionNodeType}
-						config={
-							node.config as unknown as
-								| JevChoiceConfig
-								| JevScoreConfig
-								| JevNoulConfig
-						}
+						config={node.config as JevConditionConfig}
 						canEdit={canEdit}
 						onSave={onSave}
 						saving={saving}
@@ -2065,88 +2051,124 @@ function ConditionConfigForm({
 
 // ── Jev condition config form ────────────────────────────────────────────────
 
-// JevConditionConfigForm covers all three Jev-backed condition node types —
-// they share "instructions" and a confidence/noul threshold, differing only
-// in their criteria editor (jev_choice: key→description pairs, each key
-// becoming an outgoing edge handle; jev_score: an ordered list of 2-10
-// levels, low to high; jev_noul: no criteria at all, just a threshold).
+// JevConditionConfigForm edits a jev_condition node. answer_type picks the
+// Jev question and, with it, which editor is shown and which outgoing
+// branches the node has: choice edits key→description options (each key an
+// edge handle), score an ordered list of 2-10 levels (low to high), and noul
+// just a yes/no threshold. Each answer type's fields are kept in their own
+// state, so switching back and forth before saving loses nothing; only the
+// current type's fields are saved.
 function JevConditionConfigForm({
-	type,
 	config,
 	canEdit,
 	onSave,
 	saving,
 }: {
-	type: JevConditionNodeType;
-	config: JevChoiceConfig | JevScoreConfig | JevNoulConfig;
+	config: JevConditionConfig;
 	canEdit: boolean;
 	onSave: (config: Record<string, unknown>) => void;
 	saving?: boolean;
 }) {
 	const { t } = useTranslation("projects");
+	const [answerType, setAnswerType] = useState<JevAnswerType>(
+		config.answer_type ?? "choice",
+	);
 	const [instructions, setInstructions] = useState(config.instructions ?? "");
-	const [choiceOptions, setChoiceOptions] = useState<
-		{ key: string; description: string }[]
-	>(() =>
-		Object.entries((config as JevChoiceConfig).criteria ?? {}).map(
-			([key, description]) => ({ key, description }),
-		),
+	const [choiceOptions, setChoiceOptions] = useState(() =>
+		optionsToRows(config.options),
 	);
 	const [scoreLevels, setScoreLevels] = useState<string[]>(
-		() => (config as JevScoreConfig).criteria ?? ["", ""],
+		() => config.levels ?? ["", ""],
 	);
-	const [threshold, setThreshold] = useState(
-		type === JEV_NOUL_NODE_TYPE
-			? ((config as JevNoulConfig).true_threshold ?? DEFAULT_JEV_NOUL_THRESHOLD)
-			: ((config as JevChoiceConfig | JevScoreConfig).confidence_threshold ??
-					DEFAULT_JEV_CONFIDENCE_THRESHOLD),
+	const [confidenceThreshold, setConfidenceThreshold] = useState(
+		config.confidence_threshold ?? DEFAULT_JEV_CONFIDENCE_THRESHOLD,
+	);
+	const [trueThreshold, setTrueThreshold] = useState(
+		config.true_threshold ?? DEFAULT_JEV_NOUL_THRESHOLD,
 	);
 
 	useEffect(() => {
+		setAnswerType(config.answer_type ?? "choice");
 		setInstructions(config.instructions ?? "");
-		setChoiceOptions(
-			Object.entries((config as JevChoiceConfig).criteria ?? {}).map(
-				([key, description]) => ({ key, description }),
-			),
+		setChoiceOptions(optionsToRows(config.options));
+		setScoreLevels(config.levels ?? ["", ""]);
+		setConfidenceThreshold(
+			config.confidence_threshold ?? DEFAULT_JEV_CONFIDENCE_THRESHOLD,
 		);
-		setScoreLevels((config as JevScoreConfig).criteria ?? ["", ""]);
-		setThreshold(
-			type === JEV_NOUL_NODE_TYPE
-				? ((config as JevNoulConfig).true_threshold ??
-						DEFAULT_JEV_NOUL_THRESHOLD)
-				: ((config as JevChoiceConfig | JevScoreConfig).confidence_threshold ??
-						DEFAULT_JEV_CONFIDENCE_THRESHOLD),
-		);
-	}, [config, type]);
+		setTrueThreshold(config.true_threshold ?? DEFAULT_JEV_NOUL_THRESHOLD);
+	}, [config]);
 
 	function save() {
-		if (type === JEV_CHOICE_NODE_TYPE) {
-			const criteria: Record<string, string> = {};
+		if (answerType === "choice") {
+			const options: Record<string, string> = {};
 			for (const opt of choiceOptions) {
 				const key = opt.key.trim();
-				if (key) criteria[key] = opt.description;
+				if (key) options[key] = opt.description;
 			}
-			onSave({ instructions, criteria, confidence_threshold: threshold });
-		} else if (type === JEV_SCORE_NODE_TYPE) {
 			onSave({
+				answer_type: answerType,
 				instructions,
-				criteria: scoreLevels.filter((l) => l.trim() !== ""),
-				confidence_threshold: threshold,
+				options,
+				confidence_threshold: confidenceThreshold,
+			});
+		} else if (answerType === "score") {
+			onSave({
+				answer_type: answerType,
+				instructions,
+				levels: scoreLevels.filter((l) => l.trim() !== ""),
+				confidence_threshold: confidenceThreshold,
 			});
 		} else {
-			onSave({ instructions, true_threshold: threshold });
+			onSave({
+				answer_type: answerType,
+				instructions,
+				true_threshold: trueThreshold,
+			});
 		}
 	}
 
 	const canSave =
 		instructions.trim() !== "" &&
-		(type !== JEV_CHOICE_NODE_TYPE ||
+		(answerType !== "choice" ||
 			choiceOptions.some((o) => o.key.trim() !== "")) &&
-		(type !== JEV_SCORE_NODE_TYPE ||
+		(answerType !== "score" ||
 			scoreLevels.filter((l) => l.trim() !== "").length >= 2);
+
+	const threshold = answerType === "noul" ? trueThreshold : confidenceThreshold;
+	const setThreshold =
+		answerType === "noul" ? setTrueThreshold : setConfidenceThreshold;
 
 	return (
 		<div className="space-y-4">
+			<div className="space-y-1.5">
+				<Label className="text-xs">
+					{t("automation.nodeConfig.jev.answerTypeLabel")}
+				</Label>
+				<Select
+					value={answerType}
+					onValueChange={(v) => v && setAnswerType(v as JevAnswerType)}
+					disabled={!canEdit}
+				>
+					<SelectTrigger className="w-full">
+						<SelectValue>
+							{t(`automation.nodeConfig.jev.answerTypes.${answerType}`)}
+						</SelectValue>
+					</SelectTrigger>
+					<SelectContent>
+						{JEV_ANSWER_TYPES.map((type) => (
+							<SelectItem key={type} value={type}>
+								{t(`automation.nodeConfig.jev.answerTypes.${type}`)}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				{config.answer_type && config.answer_type !== answerType && (
+					<p className="text-[11px] text-muted-foreground">
+						{t("automation.nodeConfig.jev.answerTypeChangeHint")}
+					</p>
+				)}
+			</div>
+
 			<div className="space-y-1.5">
 				<Label className="text-xs">
 					{t("automation.nodeConfig.jev.instructionsLabel")}
@@ -2155,7 +2177,7 @@ function JevConditionConfigForm({
 					value={instructions}
 					onChange={(e) => setInstructions(e.target.value)}
 					placeholder={t(
-						`automation.nodeConfig.jev.instructionsPlaceholder.${type}`,
+						`automation.nodeConfig.jev.instructionsPlaceholder.${answerType}`,
 					)}
 					rows={3}
 					disabled={!canEdit}
@@ -2163,7 +2185,7 @@ function JevConditionConfigForm({
 				/>
 			</div>
 
-			{type === JEV_CHOICE_NODE_TYPE && (
+			{answerType === "choice" && (
 				<div className="space-y-2">
 					<div className="text-xs font-semibold text-muted-foreground">
 						{t("automation.nodeConfig.jev.optionsTitle")}
@@ -2238,7 +2260,7 @@ function JevConditionConfigForm({
 				</div>
 			)}
 
-			{type === JEV_SCORE_NODE_TYPE && (
+			{answerType === "score" && (
 				<div className="space-y-2">
 					<div className="text-xs font-semibold text-muted-foreground">
 						{t("automation.nodeConfig.jev.levelsTitle")}
@@ -2292,7 +2314,7 @@ function JevConditionConfigForm({
 
 			<div className="space-y-1.5">
 				<Label className="text-xs">
-					{type === JEV_NOUL_NODE_TYPE
+					{answerType === "noul"
 						? t("automation.nodeConfig.jev.trueThresholdLabel")
 						: t("automation.nodeConfig.jev.confidenceThresholdLabel")}
 				</Label>
@@ -2322,6 +2344,15 @@ function JevConditionConfigForm({
 			)}
 		</div>
 	);
+}
+
+function optionsToRows(
+	options: Record<string, string> | undefined,
+): { key: string; description: string }[] {
+	return Object.entries(options ?? {}).map(([key, description]) => ({
+		key,
+		description,
+	}));
 }
 
 // ── Action config form ───────────────────────────────────────────────────────

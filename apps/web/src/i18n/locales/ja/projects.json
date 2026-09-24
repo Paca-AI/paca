@@ -2279,11 +2279,18 @@
 				"jevNoulTrue": "はい"
 			},
 			"jev": {
+				"answerTypeLabel": "回答タイプ",
+				"answerTypes": {
+					"choice": "選択 — 複数の選択肢から1つを選ぶ",
+					"score": "スコア — 段階で評価する",
+					"noul": "はい / いいえ"
+				},
+				"answerTypeChangeHint": "以前の回答タイプ用に接続したブランチは使われなくなります。保存後に接続し直してください。",
 				"instructionsLabel": "Jevへの質問",
 				"instructionsPlaceholder": {
-					"jev_choice": "例：どのチームが対応すべきか？",
-					"jev_score": "例：この問題はどの程度深刻に見えるか？",
-					"jev_noul": "例：顧客が返金を求めている。"
+					"choice": "例：どのチームが対応すべきか？",
+					"score": "例：この問題はどの程度深刻に見えるか？",
+					"noul": "例：顧客が返金を求めている。"
 				},
 				"optionsTitle": "オプション",
 				"optionKeyPlaceholder": "キー",
@@ -2320,9 +2327,7 @@
 			"watchedTasks": "{{count}}件のタスクの完了待ち"
 		},
 		"conditionTypes": {
-			"jev_choice": "Jev Choice",
-			"jev_score": "Jev Score",
-			"jev_noul": "Jev Noul"
+			"jev_condition": "Jev 条件"
 		}
 	}
 }
