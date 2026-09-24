@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
-	"github.com/Paca-AI/api/internal/events"
 )
 
 var reservedSystemTypeNames = map[string]bool{
@@ -22,49 +21,15 @@ type automationStatusChecker interface {
 	StatusUsedByAutomation(ctx context.Context, statusID uuid.UUID) (bool, error)
 }
 
-// realtimePublisher is the minimal messaging surface Service needs to
-// broadcast task changes — *messaging.Publisher satisfies it directly.
-type realtimePublisher interface {
-	Publish(ctx context.Context, channel string, payload any) error
-}
-
 // Service is the concrete implementation of taskdom.Service.
 type Service struct {
 	repo              taskdom.Repository
 	automationChecker automationStatusChecker
-	publisher         realtimePublisher
 }
 
 // New returns a configured task service.
 func New(repo taskdom.Repository) *Service {
 	return &Service{repo: repo}
-}
-
-// WithPublisher attaches a publisher so every task write — whether from an
-// HTTP handler, the automation engine, Jev autofill/auto-assign, or any other
-// caller — broadcasts task.created/updated/deleted to ChannelRealtime. Doing
-// it here rather than in each caller guarantees server-side changes reach
-// connected clients without a page reload.
-func (s *Service) WithPublisher(p realtimePublisher) *Service {
-	s.publisher = p
-	return s
-}
-
-// publishTaskEvent sends a real-time pub/sub notification for a task change.
-// Realtime-only (no stream append): activity persistence, automation
-// triggers and plugin dispatch stay on their existing activity path.
-// Errors are swallowed so a messaging failure never fails the write.
-func (s *Service) publishTaskEvent(ctx context.Context, topic string, t *taskdom.Task) {
-	if s.publisher == nil || t == nil {
-		return
-	}
-	_ = s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
-		"type": topic,
-		"payload": map[string]any{
-			"project_id": t.ProjectID.String(),
-			"task_id":    t.ID.String(),
-		},
-	})
 }
 
 // WithAutomationStatusChecker configures a check that refuses to delete a
@@ -465,7 +430,6 @@ func (s *Service) CreateTask(ctx context.Context, in taskdom.CreateTaskInput) (*
 	if err := s.repo.CreateTask(ctx, t); err != nil {
 		return nil, err
 	}
-	s.publishTaskEvent(ctx, events.TopicTaskCreated, t)
 	return t, nil
 }
 
@@ -484,7 +448,6 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	if err := s.repo.UpdateTask(ctx, t); err != nil {
 		return nil, err
 	}
-	s.publishTaskEvent(ctx, events.TopicTaskUpdated, t)
 	return t, nil
 }
 
@@ -495,7 +458,7 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 // same applyTaskUpdate path UpdateTask uses, or ok=false to leave the task
 // untouched (no write, no error).
 func (s *Service) UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
-	t, err := s.repo.UpdateTaskAtomic(ctx, id, func(current *taskdom.Task) (*taskdom.Task, error) {
+	return s.repo.UpdateTaskAtomic(ctx, id, func(current *taskdom.Task) (*taskdom.Task, error) {
 		if current.ProjectID != projectID {
 			return nil, taskdom.ErrTaskNotFound
 		}
@@ -508,12 +471,6 @@ func (s *Service) UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID,
 		}
 		return current, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	// t is nil when decide declined to write — nothing changed, no event.
-	s.publishTaskEvent(ctx, events.TopicTaskUpdated, t)
-	return t, nil
 }
 
 // applyTaskUpdate validates in against t's current state and this task's
@@ -619,11 +576,7 @@ func (s *Service) DeleteTask(ctx context.Context, projectID, id uuid.UUID) error
 	if t.ProjectID != projectID {
 		return taskdom.ErrTaskNotFound
 	}
-	if err := s.repo.DeleteTask(ctx, id); err != nil {
-		return err
-	}
-	s.publishTaskEvent(ctx, events.TopicTaskDeleted, t)
-	return nil
+	return s.repo.DeleteTask(ctx, id)
 }
 
 // --- Custom Field Definitions -----------------------------------------------

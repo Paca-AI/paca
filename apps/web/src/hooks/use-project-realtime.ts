@@ -20,7 +20,7 @@
 //
 // Query invalidation strategy
 // ---------------------------
-// task.* events  → invalidateTaskViews():
+// task.* events and automation.applied → invalidateTaskViews():
 //                  ["projects", projectId, "tasks"], sprint task lists,
 //                  view task positions and ["users", "me", "tasks"].
 //                  This covers allTasksQueryOptions, taskQueryOptions,
@@ -36,7 +36,8 @@
 //                  docQueryOptions, etc. Also invalidates
 //                  ["projects", projectId, "agentActivities"], same reasoning
 //                  as task.* above.
-// sprint.* events → invalidate ["projects", projectId, "sprints"]
+// sprint.* events → invalidate ["projects", projectId, "sprints"] and
+//                  invalidateTaskViews() (sprint completion moves tasks)
 //                  This covers sprintsQueryOptions and sprintQueryOptions —
 //                  replaces the sidebar's old refetchInterval polling.
 // view.* events  → invalidate ["projects", projectId, "views"]
@@ -51,7 +52,7 @@
 //                  off "tasks" rather than "workflows", plus the
 //                  workflow.assigned bonus case — the automation engine
 //                  reassigning a task should refresh that task's data too).
-// automation.*   → invalidate
+// automation.*   → (other than automation.applied) invalidate
 //                  ["projects", projectId, "automations"] and the
 //                  automation dependency map.
 // environment.status_changed → invalidate ["projects", projectId,
@@ -130,9 +131,11 @@ export function useProjectRealtime(projectId: string | undefined): void {
 		function handleEvent(event: RealtimeEvent) {
 			const { type } = event;
 
-			// task.* is published by the API's task service on every write,
-			// including ones made by automations and Jev, not just by users.
-			if (type.startsWith("task.")) {
+			// task.* and automation.applied are task activities fanned out by
+			// the API's ActivitySvc — for user edits and for system-driven
+			// ones (Jev autofill/auto-assign record task.updated, the
+			// automation engine records automation.applied).
+			if (type.startsWith("task.") || type === "automation.applied") {
 				invalidateTaskViews();
 				return;
 			}
@@ -158,10 +161,13 @@ export function useProjectRealtime(projectId: string | undefined): void {
 				return;
 			}
 
+			// sprint.completed bulk-moves unfinished tasks to another sprint or
+			// the backlog, so every sprint event refreshes task views too.
 			if (type.startsWith("sprint.")) {
 				void queryClient.invalidateQueries({
 					queryKey: ["projects", currentProjectId, "sprints"],
 				});
+				invalidateTaskViews();
 				return;
 			}
 

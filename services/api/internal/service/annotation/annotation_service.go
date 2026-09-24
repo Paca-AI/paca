@@ -9,6 +9,7 @@ package annotationsvc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -120,6 +121,21 @@ type Service struct {
 	store     ObjectStore
 	bucket    string
 	publicURL string
+	activity  TaskActivityRecorder
+}
+
+// TaskActivityRecorder records the task.created activity for a task made
+// from an annotation. ActivitySvc fans that out to the activity stream,
+// plugins and realtime — the same path TaskHandler.CreateTask uses.
+type TaskActivityRecorder interface {
+	RecordActivity(ctx context.Context, in taskdom.RecordActivityInput) error
+}
+
+// WithActivityRecorder attaches the task activity recorder (see
+// TaskActivityRecorder). Without it no activity is recorded (e.g. in tests).
+func (s *Service) WithActivityRecorder(r TaskActivityRecorder) *Service {
+	s.activity = r
+	return s
 }
 
 // New returns a configured annotation Service. envSvc is used only to
@@ -341,6 +357,16 @@ func (s *Service) CreateTaskFromAnnotation(ctx context.Context, projectID, annot
 	})
 	if err != nil {
 		return nil, fmt.Errorf("annotation svc: create task: %w", err)
+	}
+	if s.activity != nil {
+		content, _ := json.Marshal(map[string]any{"title": task.Title})
+		_ = s.activity.RecordActivity(ctx, taskdom.RecordActivityInput{
+			TaskID:       task.ID,
+			ProjectID:    projectID,
+			ActorID:      &in.ReporterID,
+			ActivityType: taskdom.ActivityTypeTaskCreated,
+			Content:      content,
+		})
 	}
 
 	if a.ScreenshotFileID != nil {

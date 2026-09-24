@@ -242,12 +242,6 @@ func (s *Service) CompleteSprint(ctx context.Context, projectID, id uuid.UUID, i
 		"project_id": sp.ProjectID.String(),
 		"sprint_id":  sp.ID.String(),
 	})
-	// BulkMoveSprintTasks rewrote many tasks' sprint_id at once — tell
-	// clients to refresh their task lists too, not just the sprint.
-	s.publish(ctx, events.TopicTaskUpdated, map[string]any{
-		"project_id": sp.ProjectID.String(),
-		"sprint_id":  sp.ID.String(),
-	})
 	s.publishSprintActivity(ctx, "sprint_completed", sp)
 	return sp, nil
 }
