@@ -455,3 +455,11 @@ But Paca is built from conviction: human-AI collaboration in a real Scrum team s
 ## License
 
 Distributed under the **Apache License 2.0**. See [LICENSE](LICENSE) for details.
+
+---
+
+## A Small Thank-You for the Community
+
+Some partners offer a little extra to folks who find them through Paca — just perks for this project, not promotions:
+
+- **Fluxion AI** — signup bonus bumped to **$3** for anyone who joins through Paca's community link: [https://fluxionai.world/register?source=github&campaign=github-paca&promo=PACA](https://fluxionai.world/register?source=github&campaign=github-paca&promo=PACA)
