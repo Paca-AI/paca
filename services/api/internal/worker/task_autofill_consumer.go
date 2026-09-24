@@ -52,6 +52,14 @@ const (
 	// description before it's sent to Jev as state — well under Jev's 32k
 	// token state limit, generous for classification purposes.
 	maxStateDescriptionChars = 8000
+
+	// noneChoiceKey is the extra criteria option offered on choice questions
+	// for fields that may legitimately stay empty (parent epic, select custom
+	// fields, assignee). A choice question must pick one of its options, so
+	// without an explicit "none" Jev is forced to pick some candidate even
+	// when none fits. Picking it means "leave the field empty". Double
+	// underscores keep it from colliding with a real option value.
+	noneChoiceKey = "__none__"
 )
 
 // priorityBucketLabels/priorityBucketValues mirror
@@ -498,10 +506,11 @@ func (c *TaskAutofillConsumer) buildQuestions(ctx context.Context, projectID uui
 		!userSet["parent_task_id"] && !settings.Excludes("parent_task_id") {
 		epics, _, err := c.taskService.ListTasks(ctx, projectID, taskdom.TaskFilter{TaskTypeIDs: []uuid.UUID{epicType.ID}}, maxEpicCandidates, taskdom.TaskSort{})
 		if err == nil && len(epics) > 0 {
-			criteria := make(map[string]any, len(epics))
+			criteria := make(map[string]any, len(epics)+1)
 			for _, epic := range epics {
 				criteria[epic.ID.String()] = epic.Title
 			}
+			criteria[noneChoiceKey] = "None of these — the task doesn't clearly belong to any of the existing epics"
 			questions["parent_task_id"] = jev.Question{
 				Type:         jev.TypeChoice,
 				Instructions: "Which existing epic, if any, is this task most likely part of?",
@@ -546,10 +555,11 @@ func (c *TaskAutofillConsumer) buildQuestions(ctx context.Context, projectID uui
 			if len(fd.Options) == 0 {
 				continue
 			}
-			criteria := make(map[string]any, len(fd.Options))
+			criteria := make(map[string]any, len(fd.Options)+1)
 			for _, opt := range fd.Options {
 				criteria[opt.Value] = opt.Value
 			}
+			criteria[noneChoiceKey] = "None of these values clearly fits this task"
 			questions[key] = jev.Question{
 				Type:         jev.TypeChoice,
 				Instructions: fmt.Sprintf("Which %q value best fits this task?", fd.DisplayName),
@@ -618,7 +628,7 @@ func (c *TaskAutofillConsumer) buildAnswerUpdate(ctx context.Context, projectID 
 		dirty = true
 	}
 
-	if ans, ok := resp.Answers["parent_task_id"]; ok && !userSet["parent_task_id"] && meetsConfidence(ans, defaultConfidenceThreshold) {
+	if ans, ok := resp.Answers["parent_task_id"]; ok && ans.Choice != noneChoiceKey && !userSet["parent_task_id"] && meetsConfidence(ans, defaultConfidenceThreshold) {
 		if id, err := uuid.Parse(ans.Choice); err == nil {
 			idCopy := id
 			ptr := &idCopy
@@ -670,7 +680,7 @@ func (c *TaskAutofillConsumer) buildAnswerUpdate(ctx context.Context, projectID 
 		}
 		switch ans.Type {
 		case jev.TypeChoice:
-			if meetsConfidence(ans, defaultConfidenceThreshold) {
+			if ans.Choice != noneChoiceKey && meetsConfidence(ans, defaultConfidenceThreshold) {
 				customFields[fieldKey] = ans.Choice
 				customDirty = true
 			}

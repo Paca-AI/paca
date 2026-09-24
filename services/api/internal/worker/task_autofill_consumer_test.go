@@ -264,8 +264,8 @@ func TestBuildQuestions_ParentEpicOfferedFromExistingEpics(t *testing.T) {
 		t.Errorf("expected parent_task_id to map to choice, got %v", q.Type)
 	}
 	criteria, ok := q.Criteria.(map[string]any)
-	if !ok || len(criteria) != 2 {
-		t.Fatalf("expected 2 epic candidates in criteria, got %v", q.Criteria)
+	if !ok || len(criteria) != 3 {
+		t.Fatalf("expected 2 epic candidates plus the none option in criteria, got %v", q.Criteria)
 	}
 }
 
@@ -613,6 +613,45 @@ func TestBuildAnswerUpdate_ParentTaskIDInvalidChoiceIgnored(t *testing.T) {
 	in, _, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), &taskdom.Task{}, nil, resp)
 	if dirty || in.ParentTaskID != nil {
 		t.Error("an invalid (non-UUID) parent_task_id choice should not be applied")
+	}
+}
+
+func TestBuildQuestions_ChoiceQuestionsForOptionalFieldsOfferNone(t *testing.T) {
+	epicTypeID := uuid.New()
+	svc := &fakeAutofillTaskService{
+		taskTypes: []*taskdom.TaskType{{ID: epicTypeID, Name: "Epic", IsSystem: true}},
+		epics:     []*taskdom.Task{{ID: uuid.New(), Title: "Platform revamp"}},
+		customFields: []*taskdom.CustomFieldDefinition{
+			{FieldKey: "severity", DisplayName: "Severity", FieldType: taskdom.FieldTypeSelect,
+				Options: []taskdom.CustomFieldOption{{Value: "low"}, {Value: "high"}}},
+		},
+	}
+	c := newTestAutofillConsumer(svc)
+	questions := c.buildQuestions(context.Background(), uuid.New(), &taskdom.Task{}, nil, projectdom.DefaultJevSettings())
+	for _, key := range []string{"parent_task_id", "custom:severity"} {
+		criteria, ok := questions[key].Criteria.(map[string]any)
+		if !ok {
+			t.Fatalf("expected a %s choice question", key)
+		}
+		if _, ok := criteria[noneChoiceKey]; !ok {
+			t.Errorf("%s: a choice question for an optional field must offer a none option, got %v", key, criteria)
+		}
+	}
+}
+
+// TestBuildAnswerUpdate_NoneChoiceLeavesFieldsEmpty is a regression test for
+// the report that auto-fill assigned an epic even when no epic fit the task.
+func TestBuildAnswerUpdate_NoneChoiceLeavesFieldsEmpty(t *testing.T) {
+	c := newTestAutofillConsumer(&fakeAutofillTaskService{})
+	high := 0.95
+	resp := &jev.Response{Answers: map[string]jev.Answer{
+		"parent_task_id":  {Type: jev.TypeChoice, Choice: noneChoiceKey, Confidence: &high},
+		"custom:severity": {Type: jev.TypeChoice, Choice: noneChoiceKey, Confidence: &high},
+	}}
+
+	in, changes, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), &taskdom.Task{}, nil, resp)
+	if dirty || in.ParentTaskID != nil || in.CustomFields != nil || len(changes) != 0 {
+		t.Fatalf("expected a confident none to leave fields empty, got dirty=%v in=%+v changes=%+v", dirty, in, changes)
 	}
 }
 

@@ -281,6 +281,49 @@ func TestProcessTask_LowConfidenceRevertsToManualAndRecordsActivity(t *testing.T
 	}
 }
 
+// TestProcessTask_NoSuitableCandidateLeavesUnassigned verifies a confident
+// "nobody fits" answer never assigns anyone: the task reverts to manual and
+// the skip is recorded with its own reason.
+func TestProcessTask_NoSuitableCandidateLeavesUnassigned(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		confidence := 0.9
+		_ = json.NewEncoder(w).Encode(jev.Response{
+			Answers: map[string]jev.Answer{
+				"assignee": {Type: jev.TypeChoice, Choice: noneChoiceKey, Confidence: &confidence},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	taskID := uuid.New()
+	taskSvc := &fakeAutoAssignTaskService{task: &taskdom.Task{ID: taskID, AssignmentMode: taskdom.AssignmentModeAuto}}
+	memberLister := &fakeMemberLister{members: []*projectdom.ProjectMember{
+		{ID: uuid.New(), MemberType: "human", FullName: "Alice"},
+	}}
+	project := &projectdom.Project{ID: uuid.New(), JevAPIKeySecret: "test-key", JevBaseURL: srv.URL}
+	rec := &fakeActivityRecorder{}
+	c := newTestAutoAssignConsumer(taskSvc, memberLister, &fakeProjectReader{project: project})
+	c.activityRec = rec
+
+	if err := c.processTask(context.Background(), uuid.New(), taskID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if taskSvc.lastUpdate == nil || taskSvc.lastUpdate.AssigneeIDs != nil ||
+		taskSvc.lastUpdate.AssignmentMode == nil || *taskSvc.lastUpdate.AssignmentMode != taskdom.AssignmentModeManual {
+		t.Fatalf("expected a revert to manual with no assignee, got %+v", taskSvc.lastUpdate)
+	}
+	if len(rec.recorded) != 1 || rec.recorded[0].ActivityType != taskdom.ActivityTypeAutoAssignSkipped {
+		t.Fatalf("expected one skipped activity, got %+v", rec.recorded)
+	}
+	var payload struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.Unmarshal(rec.recorded[0].Content, &payload)
+	if payload.Reason != "no_suitable_candidate" {
+		t.Errorf("expected reason no_suitable_candidate, got %q", payload.Reason)
+	}
+}
+
 // TestProcessTask_DoesNotOverwriteConcurrentHumanAssignment is a regression
 // test for the race UpdateTaskAtomic exists to close: a human manually
 // assigning the task while the Jev call above is in flight must never be

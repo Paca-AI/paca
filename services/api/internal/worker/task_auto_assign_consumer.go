@@ -316,6 +316,9 @@ func (c *TaskAutoAssignConsumer) processTask(ctx context.Context, projectID, tas
 		criteria[m.ID.String()] = m.ComposeJevDescription()
 		byID[m.ID.String()] = m
 	}
+	// Without this, choice forces Jev to pick someone even when no member
+	// fits — see noneChoiceKey.
+	criteria[noneChoiceKey] = "Nobody — none of these members is a clear fit for this task"
 
 	state := map[string]any{
 		"title":       task.Title,
@@ -352,6 +355,7 @@ func (c *TaskAutoAssignConsumer) processTask(ctx context.Context, projectID, tas
 	// since decide only runs once the row is already locked.
 	var (
 		lowConfidence bool
+		skipReason    = "low_confidence"
 		confidence    any
 		assigned      *projectdom.ProjectMember
 	)
@@ -359,8 +363,11 @@ func (c *TaskAutoAssignConsumer) processTask(ctx context.Context, projectID, tas
 		if current.AssignmentMode != taskdom.AssignmentModeAuto || len(current.AssigneeIDs) > 0 {
 			return taskdom.UpdateTaskInput{}, false
 		}
-		if !meetsConfidence(ans, assigneeConfidenceThreshold) {
+		if ans.Choice == noneChoiceKey || !meetsConfidence(ans, assigneeConfidenceThreshold) {
 			lowConfidence = true
+			if ans.Choice == noneChoiceKey {
+				skipReason = "no_suitable_candidate"
+			}
 			if ans.Confidence != nil {
 				confidence = *ans.Confidence
 			}
@@ -393,7 +400,7 @@ func (c *TaskAutoAssignConsumer) processTask(ctx context.Context, projectID, tas
 
 	switch {
 	case lowConfidence:
-		c.recordSkippedActivity(ctx, projectID, taskID, "low_confidence", map[string]any{
+		c.recordSkippedActivity(ctx, projectID, taskID, skipReason, map[string]any{
 			"confidence": confidence,
 			"threshold":  assigneeConfidenceThreshold,
 		})
