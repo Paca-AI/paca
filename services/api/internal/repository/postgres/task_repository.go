@@ -718,7 +718,7 @@ func applyTaskSort(sort taskdom.TaskSort, b *queryBuilder) (fromClause, orderByC
 			p := b.placeholder()
 			b.args = append(b.args, sort.ViewID.String())
 			fromClause = "FROM tasks LEFT JOIN view_task_positions vtp ON vtp.task_id = tasks.id AND vtp.view_id = " + p
-			selectCols = "tasks.*, vtp.position AS vtp_position"
+			selectCols += ", vtp.position AS vtp_position"
 		}
 		orderByClause = "vtp.position ASC NULLS LAST, tasks.created_at ASC, tasks.id ASC"
 	case "importance":
