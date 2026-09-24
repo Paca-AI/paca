@@ -36,6 +36,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 	view_group_key: null,
 	created_at: "2026-01-01T00:00:00Z",
 	updated_at: "2026-01-01T00:00:00Z",
+	assignment_mode: "manual",
 	...overrides,
 });
 

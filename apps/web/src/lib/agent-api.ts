@@ -172,6 +172,11 @@ export interface Agent {
 	global_role_id?: string | null;
 	name: string;
 	handle: string;
+	// Shown to Jev (the AI decision API) when picking which agent should
+	// handle a chat in Auto mode, or whether to assign it a task — the
+	// provider/model is appended automatically, server-side, so this field
+	// itself should just describe what the agent is for.
+	description: string;
 	avatar_url?: string | null;
 	avatar_thumb_url?: string | null;
 	agent_type: AgentType;
@@ -348,6 +353,7 @@ export async function createAgent(
 	payload: {
 		name: string;
 		handle: string;
+		description?: string;
 		agent_type?: AgentType;
 		llm_provider?: string;
 		llm_model?: string;
@@ -382,6 +388,7 @@ export async function updateAgent(
 	payload: {
 		name?: string;
 		handle?: string;
+		description?: string;
 		llm_provider?: string;
 		llm_model?: string;
 		llm_api_key?: string;
@@ -473,6 +480,7 @@ export async function getGlobalAgent(agentId: string): Promise<Agent> {
 export interface CreateGlobalAgentPayload {
 	name: string;
 	handle: string;
+	description?: string;
 	agent_type?: AgentType;
 	llm_provider?: string;
 	llm_model?: string;
@@ -510,6 +518,7 @@ export async function createGlobalAgent(
 export interface UpdateGlobalAgentPayload {
 	name?: string;
 	handle?: string;
+	description?: string;
 	llm_provider?: string;
 	llm_model?: string;
 	llm_api_key?: string;
@@ -592,6 +601,17 @@ export async function listGlobalChatSessions(
 		SuccessEnvelope<{ items: AgentChatSession[] }>
 	>(`/agents/${agentId}/chat-sessions`);
 	return data.data.items;
+}
+
+// resolveGlobalAutoAgent is resolveAutoAgent's global-scope sibling (no
+// project — every global agent is a candidate).
+export async function resolveGlobalAutoAgent(
+	message: string,
+): Promise<ResolveAutoAgentResponse> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<ResolveAutoAgentResponse>
+	>("/agents/resolve-auto", { message });
+	return data.data;
 }
 
 export async function startGlobalChatSession(
@@ -1451,6 +1471,26 @@ export async function listChatSessions(
 		SuccessEnvelope<{ items: AgentChatSession[] }>
 	>(`/projects/${projectId}/agents/${agentId}/chat-sessions`);
 	return data.data.items;
+}
+
+export interface ResolveAutoAgentResponse {
+	agent_id: string;
+	confidence: number;
+}
+
+// resolveAutoAgent is Auto mode's first step (see agent-picker.tsx's
+// AUTO_AGENT_ID): given the user's opening message, asks Jev which of the
+// project's agents should handle it. Callers must call this before
+// startChatSession whenever the picker's agentId is AUTO_AGENT_ID, and use
+// the resolved agent_id for that call instead.
+export async function resolveAutoAgent(
+	projectId: string,
+	message: string,
+): Promise<ResolveAutoAgentResponse> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<ResolveAutoAgentResponse>
+	>(`/projects/${projectId}/agents/resolve-auto`, { message });
+	return data.data;
 }
 
 export interface StartChatSessionResponse {

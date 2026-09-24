@@ -27,10 +27,15 @@ import type {
 	AutomationEdge,
 	AutomationNode,
 	ConditionConfig,
+	JevChoiceConfig,
+	JevScoreConfig,
 } from "@/lib/automation-api";
 import {
 	CONDITION_NODE_TYPE,
 	ELSE_HANDLE,
+	JEV_CHOICE_NODE_TYPE,
+	JEV_NOUL_NODE_TYPE,
+	JEV_SCORE_NODE_TYPE,
 	PLUGIN_CONDITION_TRUE_HANDLE,
 } from "@/lib/automation-api";
 import { cn } from "@/lib/utils";
@@ -157,26 +162,57 @@ function NodeShell({ data }: NodeProps<Node<BaseNodeData>>) {
 	);
 }
 
+// branchesForNode computes the set of {handle, label} rows a condition node
+// needs, one per outgoing edge it can drive (ELSE_HANDLE is always added
+// separately below, not returned here):
+//   - the built-in N-branch switch (CONDITION_NODE_TYPE): one per declared
+//     ConditionConfig.Branches entry.
+//   - jev_choice: one per criteria key — the key itself is the handle (see
+//     JevChoiceConfig's doc comment), the description is the label.
+//   - jev_score: one per criteria level, by index — "0", "1", ... — since
+//     that's what the worker's matchedHandleForAnswer emits.
+//   - everything else (jev_noul, and any plugin-contributed condition, e.g.
+//     time_logging's total_minutes_exceeds) is a boolean gate: the worker
+//     only ever follows PLUGIN_CONDITION_TRUE_HANDLE on a match, so render
+//     that one synthetic branch — without it, only the ELSE_HANDLE row below
+//     would exist and the "matched" path could never be wired up.
+// Returns undefined `label` for the synthetic single-branch fallback case —
+// ConditionBranchRows fills it in, since it needs a translated string and
+// this function deliberately doesn't take a `t` (avoiding the strict,
+// generated TFunction type just to pass it one level down for two static
+// keys).
+function branchesForNode(
+	node: AutomationNode,
+): { handle: string; label?: string }[] {
+	switch (node.type) {
+		case CONDITION_NODE_TYPE:
+			return (node.config as unknown as ConditionConfig)?.branches ?? [];
+		case JEV_CHOICE_NODE_TYPE:
+			return Object.entries(
+				(node.config as unknown as JevChoiceConfig)?.criteria ?? {},
+			).map(([handle, label]) => ({ handle, label: label || handle }));
+		case JEV_SCORE_NODE_TYPE:
+			return ((node.config as unknown as JevScoreConfig)?.criteria ?? []).map(
+				(label, i) => ({ handle: String(i), label }),
+			);
+		default:
+			return [{ handle: PLUGIN_CONDITION_TRUE_HANDLE }];
+	}
+}
+
 function ConditionBranchRows({ node }: { node: AutomationNode }) {
 	const { t } = useTranslation("projects");
-	// A plugin-contributed condition node (e.g. time_logging's
-	// total_minutes_exceeds) isn't the built-in N-branch switch — its config
-	// holds the plugin's own fields, not a Branches array — but the worker
-	// still follows a "matched" edge for it (walkPluginCondition in
-	// automation_consumer.go), via the fixed PLUGIN_CONDITION_TRUE_HANDLE
-	// handle. Render that single synthetic branch here so it has somewhere
-	// to connect to; without it, only the ELSE_HANDLE row below existed and
-	// a plugin condition's "matched" path could never be wired up.
-	const isBuiltinCondition = node.type === CONDITION_NODE_TYPE;
-	const config = node.config as unknown as ConditionConfig;
-	const branches: { handle: string; label?: string }[] = isBuiltinCondition
-		? (config?.branches ?? [])
-		: [
-				{
-					handle: PLUGIN_CONDITION_TRUE_HANDLE,
-					label: t("automation.nodeConfig.description.pluginConditionMatched"),
+	const branches = branchesForNode(node).map((b) =>
+		b.label !== undefined
+			? b
+			: {
+					...b,
+					label:
+						node.type === JEV_NOUL_NODE_TYPE
+							? t("automation.nodeConfig.description.jevNoulTrue")
+							: t("automation.nodeConfig.description.pluginConditionMatched"),
 				},
-			];
+	);
 	const updateNodeInternals = useUpdateNodeInternals();
 	// React Flow caches each node's handle positions on mount and only
 	// re-measures when told to — a Condition node's branch handles are added

@@ -42,6 +42,10 @@ func (m *memberServiceRepoMock) Update(context.Context, *projectdom.Project) err
 	return nil
 }
 
+func (m *memberServiceRepoMock) UpdateJevConfig(context.Context, uuid.UUID, string, string, string) error {
+	return nil
+}
+
 func (m *memberServiceRepoMock) Delete(context.Context, uuid.UUID) error {
 	return nil
 }
@@ -144,6 +148,10 @@ func (m *memberServiceRepoMock) RemoveAgentMember(_ context.Context, _, _ uuid.U
 }
 
 func (m *memberServiceRepoMock) UpdateMemberRoleByMemberID(_ context.Context, _, _ uuid.UUID) error {
+	return nil
+}
+
+func (m *memberServiceRepoMock) UpdateMemberDescription(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
 }
 

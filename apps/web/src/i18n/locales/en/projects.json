@@ -10,6 +10,7 @@
 				"taskStatuses": "Task Statuses",
 				"taskTypes": "Task Types",
 				"customFields": "Custom Fields",
+				"jev": "Jev AI",
 				"dangerZone": "Danger Zone",
 				"plugins": "Plugins"
 			},
@@ -208,6 +209,9 @@
 			},
 			"overview": {
 				"nameLabel": "Name",
+				"descriptionLabel": "Description",
+				"descriptionPlaceholder": "What is this agent for?",
+				"descriptionHint": "Shown to Jev when deciding which agent should handle a chat, or whether to assign it a task, in Auto mode. The provider and model are added automatically.",
 				"llmConfiguration": "LLM Configuration",
 				"providerLabel": "Provider",
 				"modelLabel": "Model",
@@ -1096,6 +1100,59 @@
 				"deleteField": "Delete field"
 			}
 		},
+		"jev": {
+			"title": "Jev AI",
+			"description": "Configure how Jev, the AI decision engine, assists this project.",
+			"credentials": {
+				"title": "Provider Credentials",
+				"description": "Connect your own Jev-compatible provider — TypeSafe (default), OpenJev, or another host implementing the same API — to power the features below.",
+				"configuredBadge": "Configured",
+				"notConfiguredBadge": "Not configured",
+				"apiKeyLabel": "API Key",
+				"apiKeyPlaceholder": "Enter an API key",
+				"apiKeyConfiguredPlaceholder": "Leave blank to keep the current key",
+				"baseUrlLabel": "Host (optional)",
+				"baseUrlPlaceholder": "https://api.typesafe.ai (default)",
+				"modelLabel": "Model (optional)",
+				"modelPlaceholder": "jev-latest (default)",
+				"saveButton": "Save credentials",
+				"testButton": "Test connection",
+				"advancedLabel": "Advanced",
+				"testSuccess": "Connection successful",
+				"testFailed": "Couldn't connect. Check your credentials and try again."
+			},
+			"autofill": {
+				"title": "Task Auto-fill",
+				"description": "When a task is created, Jev fills in any of the fields below that the creator left blank.",
+				"enabledLabel": "Enable auto-fill",
+				"enabledHint": "Jev suggests values for blank fields shortly after a task is created.",
+				"excludedFieldsLabel": "Fields Jev can set",
+				"excludedFieldsHint": "Turn a field off to keep Jev from ever setting it automatically.",
+				"fieldImportance": "Importance",
+				"fieldTaskType": "Task Type",
+				"fieldStoryPoints": "Story Points",
+				"fieldTags": "Tags",
+				"fieldEpic": "Epic"
+			},
+			"autoAssign": {
+				"title": "Task Auto-assign",
+				"description": "Let Jev pick an assignee for tasks using Auto assignment.",
+				"scopeLabel": "Who Jev can assign to",
+				"scopeAll": "All members",
+				"scopeHuman": "Human members only",
+				"scopeHumanHint": "Excludes AI agents from consideration."
+			},
+			"saveChanges": "Save changes",
+			"saved": "Saved ✓",
+			"noPermission": "You don't have permission to edit this project.",
+			"errors": {
+				"updateFailed": "Failed to update settings. Please try again."
+			},
+			"notConfigured": {
+				"title": "Jev isn't configured yet",
+				"description": "Add provider credentials above to unlock task auto-fill and auto-assign."
+			}
+		},
 		"dangerZone": {
 			"title": "Danger Zone",
 			"deleteProjectTitle": "Delete this project",
@@ -1193,6 +1250,14 @@
 		"memberRow": {
 			"removeMember": "Remove member"
 		},
+		"descriptionChip": {
+			"edit": "Edit description",
+			"title": "Description",
+			"hint": "Shown to Jev when deciding whether to assign this person a task in Auto mode.",
+			"placeholder": "What does this person work on?",
+			"save": "Save",
+			"saveFailed": "Failed to save description."
+		},
 		"removeDialog": {
 			"title": "Remove member",
 			"removePrefix": "Remove",
@@ -1209,7 +1274,9 @@
 		"agentLabel": "Agent",
 		"selectAgentPlaceholder": "Select an agent…",
 		"selectAgentFirst": "Please select an agent first.",
-		"noAgentsAvailable": "No agents available yet."
+		"noAgentsAvailable": "No agents available yet.",
+		"autoAgent": "Auto",
+		"resolvingAgent": "Choosing an agent…"
 	},
 	"taskTypes": {
 		"deleteDialog": {
@@ -1284,6 +1351,7 @@
 			"dates": "Dates",
 			"type": "Type",
 			"assignees": "Assignees",
+			"autoAssign": "Auto",
 			"importance": "Importance",
 			"none": "None",
 			"storyPoints": "Story Points",
@@ -1476,7 +1544,9 @@
 			"startedAiSession": "started an AI session",
 			"watchSession": "Watch session",
 			"madeChange": "made a change",
-			"descriptionChangeDiff": "Description change diff"
+			"descriptionChangeDiff": "Description change diff",
+			"autoAssignSkippedLowConfidence": "couldn't confidently pick an assignee ({{confidence}}% confidence) — left the task unassigned",
+			"autoAssignSkipped": "skipped auto-assign — left the task unassigned"
 		}
 	},
 	"portForwardDetail": {
@@ -2041,6 +2111,11 @@
 			"update_sprint": "Update sprint",
 			"complete_sprint": "Complete sprint"
 		},
+		"conditionTypes": {
+			"jev_choice": "Jev Choice",
+			"jev_score": "Jev Score",
+			"jev_noul": "Jev Noul"
+		},
 		"nodeConfig": {
 			"save": "Save",
 			"cancel": "Cancel",
@@ -2117,6 +2192,24 @@
 					"sprint_start_date": "Sprint start date",
 					"sprint_end_date": "Sprint end date"
 				}
+			},
+			"jev": {
+				"instructionsLabel": "Question for Jev",
+				"instructionsPlaceholder": {
+					"jev_choice": "e.g. Which team should handle this?",
+					"jev_score": "e.g. How severe does this issue appear?",
+					"jev_noul": "e.g. The customer is asking for a refund."
+				},
+				"optionsTitle": "Options",
+				"optionKeyPlaceholder": "key",
+				"optionDescriptionPlaceholder": "When to choose this option",
+				"addOption": "Add option",
+				"levelsTitle": "Levels (lowest to highest)",
+				"levelPlaceholder": "Describe this level",
+				"addLevel": "Add level",
+				"confidenceThresholdLabel": "Confidence threshold",
+				"trueThresholdLabel": "\"True\" threshold",
+				"thresholdHint": "Below this, the workflow follows the Else branch instead of trusting the answer."
 			},
 			"action": {
 				"memberLabel": "Assignee",
@@ -2202,6 +2295,7 @@
 				"notConfigured": "Not configured",
 				"elseShort": "Else",
 				"pluginConditionMatched": "Matched",
+				"jevNoulTrue": "Yes",
 				"branchFallback": "Branch {{n}}",
 				"cronSchedule": "Runs {{expression}}",
 				"webhookReady": "Webhook configured",

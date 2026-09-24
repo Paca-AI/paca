@@ -20,6 +20,8 @@ import (
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/jev"
+	"github.com/Paca-AI/api/internal/platform/secret"
 	agentsvc "github.com/Paca-AI/api/internal/service/agent"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -43,6 +45,15 @@ type agentGlobalPermissionReader interface {
 	ListAgentGlobalPermissions(ctx context.Context, agentID uuid.UUID) ([]authz.Permission, error)
 }
 
+// agentProjectJevReader is the minimal project-service surface
+// ResolveAutoAgent needs to build a per-project Jev client (see jev.
+// ClientForProject) — there is no instance-wide Jev client, each project
+// brings its own key. ResolveGlobalAutoAgent has no project to read from
+// and always resolves without Jev (see resolveAutoAgent's doc comment).
+type agentProjectJevReader interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*projectdom.Project, error)
+}
+
 // AgentHandler handles AI agent management endpoints.
 type AgentHandler struct {
 	svc                agentdom.Service
@@ -55,6 +66,8 @@ type AgentHandler struct {
 	globalPermReader   agentGlobalPermissionReader
 	avatarSvc          attachmentdom.AvatarService
 	taskChecker        attachmentdom.TaskOwnerChecker
+	projectSvc         agentProjectJevReader
+	encryptor          *secret.Encryptor
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -105,6 +118,17 @@ func (h *AgentHandler) WithAvatarService(svc attachmentdom.AvatarService) *Agent
 // agent service itself has no task-repository dependency to do this).
 func (h *AgentHandler) WithTaskChecker(checker attachmentdom.TaskOwnerChecker) *AgentHandler {
 	h.taskChecker = checker
+	return h
+}
+
+// WithJevProjectService attaches the project reader + secret decryptor
+// ResolveAutoAgent uses to build a per-project Jev client (Auto mode's
+// agent-picking step). A project that hasn't configured Jev just means
+// resolution always falls back to an arbitrary candidate — see
+// resolveAutoAgent's doc comment.
+func (h *AgentHandler) WithJevProjectService(svc agentProjectJevReader, encryptor *secret.Encryptor) *AgentHandler {
+	h.projectSvc = svc
+	h.encryptor = encryptor
 	return h
 }
 
@@ -351,6 +375,7 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	a, err := h.svc.CreateAgent(r.Context(), projectID, agentdom.CreateAgentInput{
 		Name:                 req.Name,
 		Handle:               req.Handle,
+		Description:          req.Description,
 		AgentType:            agentType,
 		LLMProvider:          req.LLMProvider,
 		LLMModel:             req.LLMModel,
@@ -401,6 +426,7 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	a, err := h.svc.UpdateAgent(r.Context(), projectID, agentID, agentdom.UpdateAgentInput{
 		Name:                 req.Name,
 		Handle:               req.Handle,
+		Description:          req.Description,
 		LLMProvider:          req.LLMProvider,
 		LLMModel:             req.LLMModel,
 		LLMAPIKey:            req.LLMAPIKey,
@@ -582,6 +608,7 @@ func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request)
 	a, err := h.svc.CreateGlobalAgent(r.Context(), agentdom.CreateGlobalAgentInput{
 		Name:              req.Name,
 		Handle:            req.Handle,
+		Description:       req.Description,
 		AgentType:         agentType,
 		LLMProvider:       req.LLMProvider,
 		LLMModel:          req.LLMModel,
@@ -624,6 +651,7 @@ func (h *AgentHandler) UpdateGlobalAgent(w http.ResponseWriter, r *http.Request)
 	a, err := h.svc.UpdateGlobalAgent(r.Context(), agentID, agentdom.UpdateAgentInput{
 		Name:              req.Name,
 		Handle:            req.Handle,
+		Description:       req.Description,
 		LLMProvider:       req.LLMProvider,
 		LLMModel:          req.LLMModel,
 		LLMAPIKey:         req.LLMAPIKey,
@@ -1514,6 +1542,120 @@ func (h *AgentHandler) StartChatSession(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// ResolveAutoAgent handles POST /projects/:projectId/agents/resolve-auto —
+// Auto mode's first step: given the user's opening message, pick which of
+// the project's agents the frontend should then call StartChatSession with.
+// Candidates are filtered to exactly the agents this caller could otherwise
+// see and use (open-access agents, plus restricted ones they hold a grant
+// for) — the same access computation ListAgents/toAgentResponseForCaller
+// use, deliberately not a reimplementation, so Auto can never resolve to an
+// agent the caller couldn't have picked manually (which would otherwise
+// 403 on the StartChatSession call that follows).
+func (h *AgentHandler) ResolveAutoAgent(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.ResolveAutoAgentRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.Message) == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
+		return
+	}
+
+	agents, err := h.svc.ListAgents(r.Context(), projectID, "")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	grantedIDs := h.callerGrantedAgentIDs(r, projectID)
+	candidates := make([]*agentdom.Agent, 0, len(agents))
+	for _, a := range agents {
+		if a.AccessMode != agentdom.AccessModeRestricted || grantedIDs[a.ID] {
+			candidates = append(candidates, a)
+		}
+	}
+	if len(candidates) == 0 {
+		presenter.Error(w, r, apierr.New(apierr.CodeAgentNotFound, "no agents available to choose from"))
+		return
+	}
+
+	agentID, confidence := resolveAutoAgent(r.Context(), h.jevClientForProject(r.Context(), projectID), candidates, req.Message)
+	presenter.OK(w, r, dto.ResolveAutoAgentResponse{AgentID: agentID, Confidence: confidence})
+}
+
+// jevClientForProject builds a Jev client from projectID's own stored
+// credentials, or nil if the project hasn't configured Jev, can't be read,
+// or this handler has no project service configured (see
+// WithJevProjectService). Every caller treats a nil/unconfigured result as
+// "resolve without Jev" — never an error.
+func (h *AgentHandler) jevClientForProject(ctx context.Context, projectID uuid.UUID) *jev.Client {
+	if h.projectSvc == nil {
+		return nil
+	}
+	project, err := h.projectSvc.GetByID(ctx, projectID)
+	if err != nil {
+		return nil
+	}
+	return jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, h.encryptor)
+}
+
+// resolveAutoAgent picks one of candidates via Jev's choice primitive,
+// based on message, and always returns a real agent ID — never an error the
+// caller must handle. Unlike the confidence-gated Jev features elsewhere in
+// this codebase (task auto-fill, automation condition nodes), there is no
+// "leave it blank" option here: a new chat needs an agent to start with
+// regardless. So confidence is only ever informational (returned for the
+// frontend to display, e.g. "auto-picked, not very confident"), never a
+// gate — starting a conversation is a reversible, low-stakes action (the
+// user can simply address a different agent on their next message), unlike
+// this codebase's higher-stakes Jev-gated actions (auto-assigning a task,
+// routing an automation). On any failure to get a usable answer (Jev not
+// configured, call error, malformed response), this falls back to
+// candidates[0] — arbitrary but deterministic, so Auto mode always resolves
+// to *someone* rather than blocking the chat.
+func resolveAutoAgent(ctx context.Context, jevClient *jev.Client, candidates []*agentdom.Agent, message string) (agentID uuid.UUID, confidence float64) {
+	if len(candidates) == 0 {
+		return uuid.Nil, 0
+	}
+	if len(candidates) == 1 || !jevClient.Enabled() {
+		return candidates[0].ID, 0
+	}
+
+	criteria := make(map[string]any, len(candidates))
+	byID := make(map[string]*agentdom.Agent, len(candidates))
+	for _, a := range candidates {
+		criteria[a.ID.String()] = a.ComposeJevDescription()
+		byID[a.ID.String()] = a
+	}
+
+	resp, err := jevClient.SystemOne(ctx, message, map[string]jev.Question{
+		"agent": {
+			Type:         jev.TypeChoice,
+			Instructions: "Which agent is best suited to handle this conversation, based on the user's opening message?",
+			Criteria:     criteria,
+		},
+	})
+	if err != nil {
+		return candidates[0].ID, 0
+	}
+	ans, ok := resp.Answers["agent"]
+	if !ok {
+		return candidates[0].ID, 0
+	}
+	picked, ok := byID[ans.Choice]
+	if !ok {
+		return candidates[0].ID, 0
+	}
+	if ans.Confidence != nil {
+		confidence = *ans.Confidence
+	}
+	return picked.ID, confidence
+}
+
 // SendChatMessage handles POST /projects/:projectId/agents/:agentId/chat-sessions/:sessionId/messages.
 func (h *AgentHandler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
@@ -1582,6 +1724,38 @@ func (h *AgentHandler) ListGlobalChatSessions(w http.ResponseWriter, r *http.Req
 		resp = append(resp, dto.ChatSessionFromEntity(s))
 	}
 	presenter.OK(w, r, map[string]any{"items": resp})
+}
+
+// ResolveGlobalAutoAgent handles POST /agents/resolve-auto (global) — Auto
+// mode's first step for a global (no-project) chat. Global chat routes are
+// deliberately ungated (see the router's own comment: "any authenticated
+// human may chat with any global agent"), so unlike ResolveAutoAgent this
+// needs no per-caller access filtering — every global agent is a candidate.
+func (h *AgentHandler) ResolveGlobalAutoAgent(w http.ResponseWriter, r *http.Request) {
+	var req dto.ResolveAutoAgentRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.Message) == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
+		return
+	}
+
+	agents, err := h.svc.ListGlobalAgents(r.Context())
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if len(agents) == 0 {
+		presenter.Error(w, r, apierr.New(apierr.CodeAgentNotFound, "no agents available to choose from"))
+		return
+	}
+
+	// No project in a global (cross-project) chat, so no per-project Jev
+	// credentials to draw on — resolves deterministically (candidates[0]),
+	// same as any project that simply hasn't configured Jev.
+	agentID, confidence := resolveAutoAgent(r.Context(), nil, agents, req.Message)
+	presenter.OK(w, r, dto.ResolveAutoAgentResponse{AgentID: agentID, Confidence: confidence})
 }
 
 // StartGlobalChatSession handles POST /agents/:agentId/chat-sessions (global).

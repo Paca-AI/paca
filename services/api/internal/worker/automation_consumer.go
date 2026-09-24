@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,8 +28,10 @@ import (
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/pkg/vartemplate"
+	"github.com/Paca-AI/api/internal/platform/jev"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/netguard"
+	"github.com/Paca-AI/api/internal/platform/secret"
 )
 
 const (
@@ -183,6 +186,8 @@ type AutomationConsumer struct {
 	agentMessenger automationAgentMessenger
 	sprintRepo     automationSprintReader
 	sprintSvc      automationSprintUpdater
+	projectSvc     projectSettingsReader
+	encryptor      *secret.Encryptor
 	publisher      *messaging.Publisher
 	httpClient     *http.Client
 	log            *slog.Logger
@@ -199,6 +204,19 @@ type AutomationConsumer struct {
 // rather than panicking.
 func (c *AutomationConsumer) WithPluginRuntime(rt automationPluginRuntime) *AutomationConsumer {
 	c.pluginRuntime = rt
+	return c
+}
+
+// WithJevProjectService attaches the project reader + secret decryptor so
+// jev_choice/jev_score/jev_noul condition nodes can build a per-project Jev
+// client from that project's own stored credentials (see jev.
+// ClientForProject) — there is no instance-wide Jev client. A project that
+// hasn't configured Jev is fine — every such node then just always routes
+// to ElseHandle, recording why on the run step (see walker.
+// resolveJevAnswer), never failing the run.
+func (c *AutomationConsumer) WithJevProjectService(svc projectSettingsReader, encryptor *secret.Encryptor) *AutomationConsumer {
+	c.projectSvc = svc
+	c.encryptor = encryptor
 	return c
 }
 
@@ -1282,6 +1300,10 @@ func (w *walker) walk(ctx context.Context, nodeID uuid.UUID) {
 }
 
 func (w *walker) walkCondition(ctx context.Context, node *automationdom.Node) {
+	if automationdom.ValidBuiltinAIConditionTypes[node.Type] {
+		w.walkJevCondition(ctx, node)
+		return
+	}
 	if node.Type != automationdom.ConditionNodeType {
 		w.walkPluginCondition(ctx, node)
 		return
@@ -1311,6 +1333,148 @@ func (w *walker) walkCondition(ctx context.Context, node *automationdom.Node) {
 			w.walk(ctx, e.TargetNodeID)
 		}
 	}
+}
+
+// walkJevCondition handles the three Jev-backed condition node types
+// (jev_choice/jev_score/jev_noul). Unlike walkCondition's built-in switch, a
+// Jev call failure (or low confidence) never fails the run step — it routes
+// to ElseHandle instead, same as the docs' own confidence-gated-routing
+// pattern, with the reason recorded in the step's output for visibility.
+func (w *walker) walkJevCondition(ctx context.Context, node *automationdom.Node) {
+	matchedHandle, answer, jevErr := w.resolveJevAnswer(ctx, node)
+
+	output, _ := json.Marshal(map[string]any{
+		"matched_handle": matchedHandle,
+		"answer":         answer,
+		"error":          jevErr,
+	})
+	w.recordStep(ctx, node.ID, automationdom.RunStepCompleted, nil, output, "")
+
+	for _, e := range w.outgoing[node.ID] {
+		if e.SourceHandle != nil && *e.SourceHandle == matchedHandle {
+			w.walk(ctx, e.TargetNodeID)
+		}
+	}
+}
+
+// resolveJevAnswer calls Jev for node's question and returns the edge
+// handle to follow (ElseHandle on any failure or below-threshold
+// confidence), the raw answer for the run step's audit output (nil on
+// failure), and a human-readable error (empty on success). Never returns an
+// error the caller must handle — a Jev failure degrades to "else" rather
+// than failing the automation run, mirroring every other Jev-dependent
+// feature in this codebase.
+func (w *walker) resolveJevAnswer(ctx context.Context, node *automationdom.Node) (handle string, answer *jev.Answer, errMsg string) {
+	if w.consumer.projectSvc == nil {
+		return automationdom.ElseHandle, nil, "jev is not configured"
+	}
+	project, err := w.consumer.projectSvc.GetByID(ctx, w.projectID)
+	if err != nil {
+		return automationdom.ElseHandle, nil, "load project: " + err.Error()
+	}
+	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, w.consumer.encryptor)
+	if !jevClient.Enabled() {
+		return automationdom.ElseHandle, nil, "this project has not configured Jev"
+	}
+	question, err := jevQuestionForNode(node)
+	if err != nil {
+		return automationdom.ElseHandle, nil, err.Error()
+	}
+	resp, err := jevClient.SystemOne(ctx, w.jevConditionState(), map[string]jev.Question{"answer": question})
+	if err != nil {
+		return automationdom.ElseHandle, nil, err.Error()
+	}
+	ans, ok := resp.Answers["answer"]
+	if !ok {
+		return automationdom.ElseHandle, nil, "jev returned no answer"
+	}
+	return matchedHandleForAnswer(node.Type, node.Config, ans), &ans, ""
+}
+
+// jevConditionState builds the Jev `state` for a condition node — always
+// task-based: NodeRequiresTask(KindCondition, ...) is unconditionally true,
+// so w.walk already refuses to reach here with a nil task (see w.walk's own
+// task/sprint guard). description reuses extractBlockNoteText/truncate from
+// worker.TaskAutofillConsumer's file — same package, same "plain text for
+// Jev" need.
+func (w *walker) jevConditionState() map[string]any {
+	return map[string]any{
+		"title":         w.task.Title,
+		"description":   truncate(extractBlockNoteText(w.task.Description), maxStateDescriptionChars),
+		"importance":    w.task.Importance,
+		"tags":          w.task.Tags,
+		"custom_fields": w.task.CustomFields,
+	}
+}
+
+// jevQuestionForNode builds the single Jev question for a Jev condition
+// node from its Node.Config — the question type always matches the node's
+// own type (jev_choice -> choice, etc).
+func jevQuestionForNode(node *automationdom.Node) (jev.Question, error) {
+	switch node.Type {
+	case automationdom.JevChoiceNodeType:
+		var cfg automationdom.JevChoiceConfig
+		if err := json.Unmarshal(node.Config, &cfg); err != nil {
+			return jev.Question{}, fmt.Errorf("unmarshal jev_choice config: %w", err)
+		}
+		criteria := make(map[string]any, len(cfg.Criteria))
+		for k, v := range cfg.Criteria {
+			criteria[k] = v
+		}
+		return jev.Question{Type: jev.TypeChoice, Instructions: cfg.Instructions, Criteria: criteria}, nil
+	case automationdom.JevScoreNodeType:
+		var cfg automationdom.JevScoreConfig
+		if err := json.Unmarshal(node.Config, &cfg); err != nil {
+			return jev.Question{}, fmt.Errorf("unmarshal jev_score config: %w", err)
+		}
+		criteria := make([]any, len(cfg.Criteria))
+		for i, v := range cfg.Criteria {
+			criteria[i] = v
+		}
+		return jev.Question{Type: jev.TypeScore, Instructions: cfg.Instructions, Criteria: criteria}, nil
+	case automationdom.JevNoulNodeType:
+		var cfg automationdom.JevNoulConfig
+		if err := json.Unmarshal(node.Config, &cfg); err != nil {
+			return jev.Question{}, fmt.Errorf("unmarshal jev_noul config: %w", err)
+		}
+		return jev.Question{Type: jev.TypeNoul, Instructions: cfg.Instructions}, nil
+	default:
+		return jev.Question{}, fmt.Errorf("unknown jev condition node type %q", node.Type)
+	}
+}
+
+// matchedHandleForAnswer maps a Jev answer to the edge handle it should
+// follow, applying each node type's confidence/noul threshold — below
+// threshold (or an answer type mismatch) returns ElseHandle.
+func matchedHandleForAnswer(nodeType string, rawConfig json.RawMessage, ans jev.Answer) string {
+	switch nodeType {
+	case automationdom.JevChoiceNodeType:
+		var cfg automationdom.JevChoiceConfig
+		_ = json.Unmarshal(rawConfig, &cfg)
+		if ans.Confidence != nil && *ans.Confidence >= cfg.EffectiveConfidenceThreshold() {
+			return ans.Choice
+		}
+	case automationdom.JevScoreNodeType:
+		var cfg automationdom.JevScoreConfig
+		_ = json.Unmarshal(rawConfig, &cfg)
+		if ans.Confidence != nil && *ans.Confidence >= cfg.EffectiveConfidenceThreshold() && len(cfg.Criteria) > 0 {
+			idx := int(math.Round(ans.Score))
+			if idx < 0 {
+				idx = 0
+			}
+			if idx > len(cfg.Criteria)-1 {
+				idx = len(cfg.Criteria) - 1
+			}
+			return strconv.Itoa(idx)
+		}
+	case automationdom.JevNoulNodeType:
+		var cfg automationdom.JevNoulConfig
+		_ = json.Unmarshal(rawConfig, &cfg)
+		if ans.Noul >= cfg.EffectiveTrueThreshold() {
+			return automationdom.PluginConditionTrueHandle
+		}
+	}
+	return automationdom.ElseHandle
 }
 
 // evaluateLeaf evaluates leaf against the walk's own bound task or sprint,

@@ -13,6 +13,8 @@ import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	conversationQueryOptions,
 	globalConversationQueryOptions,
+	resolveAutoAgent,
+	resolveGlobalAutoAgent,
 	startChatSession,
 	startGlobalChatSession,
 } from "@/lib/agent-api";
@@ -21,6 +23,7 @@ import { useAgentBusyPrompt } from "./agent-busy-dialog";
 import {
 	AgentPickerContext,
 	AgentPickerInline,
+	AUTO_AGENT_ID,
 	EnvironmentPickerContext,
 	EnvironmentPickerInline,
 	FolderPickerInline,
@@ -116,9 +119,19 @@ export function NewConversationThread({
 		setIsSubmitting(true);
 		setSendError(null);
 		try {
+			// "Auto" isn't a real agent — resolve it to one via Jev, based on
+			// this opening message, before starting the session. Any failure
+			// here (e.g. no agents to choose from) surfaces through the same
+			// catch block below as an ordinary send failure.
+			const resolvedAgentId =
+				agentId === AUTO_AGENT_ID
+					? projectId
+						? (await resolveAutoAgent(projectId, text)).agent_id
+						: (await resolveGlobalAutoAgent(text)).agent_id
+					: agentId;
 			if (projectId) {
 				const result = await sendWithBusyPrompt((onBusy) =>
-					startChatSession(projectId, agentId, {
+					startChatSession(projectId, resolvedAgentId, {
 						message: text,
 						...(environmentId ? { environment_id: environmentId } : {}),
 						...(folderId ? { folder_id: folderId } : {}),
@@ -140,7 +153,7 @@ export function NewConversationThread({
 				});
 			} else {
 				const result = await sendWithBusyPrompt((onBusy) =>
-					startGlobalChatSession(agentId, {
+					startGlobalChatSession(resolvedAgentId, {
 						message: text,
 						contextItems,
 						on_busy: onBusy,

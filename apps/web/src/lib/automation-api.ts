@@ -313,6 +313,51 @@ export interface ConditionConfig {
 	branches: ConditionBranch[];
 }
 
+// Jev condition node types — each routes on a typed decision from Jev (an
+// AI decision API) instead of ConditionConfig's hand-written field
+// comparison. Mirrors automationdom.JevChoiceNodeType/JevScoreNodeType/
+// JevNoulNodeType server-side.
+export const JEV_CHOICE_NODE_TYPE = "jev_choice";
+export const JEV_SCORE_NODE_TYPE = "jev_score";
+export const JEV_NOUL_NODE_TYPE = "jev_noul";
+
+export const JEV_CONDITION_NODE_TYPES = [
+	JEV_CHOICE_NODE_TYPE,
+	JEV_SCORE_NODE_TYPE,
+	JEV_NOUL_NODE_TYPE,
+] as const;
+export type JevConditionNodeType = (typeof JEV_CONDITION_NODE_TYPES)[number];
+
+export const DEFAULT_JEV_CONFIDENCE_THRESHOLD = 0.6;
+export const DEFAULT_JEV_NOUL_THRESHOLD = 0.5;
+
+/** jev_choice's Node.Config — one outgoing edge handle per criteria key
+ * (the key IS the handle), plus the shared ELSE_HANDLE fallback used below
+ * confidence_threshold. Mirrors automationdom.JevChoiceConfig. */
+export interface JevChoiceConfig {
+	instructions: string;
+	criteria: Record<string, string>;
+	confidence_threshold?: number;
+}
+
+/** jev_score's Node.Config — one outgoing edge handle per criteria level
+ * index ("0".."criteria.length-1"), plus ELSE_HANDLE for low confidence.
+ * Mirrors automationdom.JevScoreConfig. criteria is ORDERED, low to high. */
+export interface JevScoreConfig {
+	instructions: string;
+	criteria: string[];
+	confidence_threshold?: number;
+}
+
+/** jev_noul's Node.Config — exactly two outgoing edges,
+ * PLUGIN_CONDITION_TRUE_HANDLE when the noul answer is >= true_threshold,
+ * ELSE_HANDLE otherwise (reuses the plugin-condition boolean-gate handles).
+ * Mirrors automationdom.JevNoulConfig. */
+export interface JevNoulConfig {
+	instructions: string;
+	true_threshold?: number;
+}
+
 /** ActionUpdateTask's config: every field change to apply, in one node —
  * replaces the old one-node-per-field actions (assign/set_status/
  * set_priority/add_tag/set_custom_field). A field left unset means "don't

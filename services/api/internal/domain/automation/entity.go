@@ -124,10 +124,49 @@ var ValidBuiltinTriggerTypes = map[TriggerType]bool{
 	TriggerSprintDeleted:   true,
 }
 
-// ConditionNodeType is the sole "type" value for kind=condition nodes (there
-// is only one condition node shape — an N-branch switch — unlike triggers
-// and actions, which have several distinct types).
+// ConditionNodeType is the sole built-in "type" value for a deterministic,
+// field-comparison kind=condition node (there is only one shape — an
+// N-branch switch — unlike triggers and actions, which have several
+// distinct types). The three JevXNodeType constants below are a second,
+// separate family of built-in condition types: each routes on a typed
+// answer from Jev (the AI decision API, see internal/platform/jev) instead
+// of a hand-written field/operator/value comparison.
 const ConditionNodeType = "condition"
+
+// JevChoiceNodeType/JevScoreNodeType/JevNoulNodeType are the built-in
+// Jev-backed condition node types, each mapping 1:1 onto one of Jev's three
+// question primitives — see JevChoiceConfig/JevScoreConfig/JevNoulConfig for
+// their Node.Config shapes. Checked by the worker's walkCondition (which
+// dispatches to walkJevCondition) and by validateNodeTypeAndConfig/
+// validateEdgeHandle in automation_service.go — all three must agree on
+// ValidBuiltinAIConditionTypes.
+const (
+	JevChoiceNodeType = "jev_choice"
+	JevScoreNodeType  = "jev_score"
+	JevNoulNodeType   = "jev_noul"
+)
+
+// ValidBuiltinAIConditionTypes is the set of built-in Jev-backed condition
+// node types. Any condition Type that is neither ConditionNodeType nor in
+// this set is assumed to be a plugin-contributed condition (see
+// validateEdgeHandle and walkCondition's dispatch order — this map is
+// checked before falling back to the plugin-condition path).
+var ValidBuiltinAIConditionTypes = map[string]bool{
+	JevChoiceNodeType: true,
+	JevScoreNodeType:  true,
+	JevNoulNodeType:   true,
+}
+
+// DefaultJevConfidenceThreshold/DefaultJevNoulThreshold are the confidence/
+// noul gates a Jev condition node uses when its config doesn't set one
+// explicitly — see JevChoiceConfig.EffectiveConfidenceThreshold and
+// JevNoulConfig.EffectiveTrueThreshold. Matches the docs' own
+// confidence-gated-routing starting point
+// (https://docs.typesafe.ai/patterns/confidence-routing).
+const (
+	DefaultJevConfidenceThreshold = 0.6
+	DefaultJevNoulThreshold       = 0.5
+)
 
 // ActionType enumerates the built-in Action node types. A plugin may
 // contribute additional, reverse-DNS-namespaced action types not listed
@@ -546,6 +585,79 @@ type ConditionBranch struct {
 	// (e.g. "type = Bug"). Purely cosmetic.
 	Label string         `json:"label,omitempty"`
 	Tree  *ConditionLeaf `json:"tree"`
+}
+
+// JevChoiceConfig holds a Jev Choice condition node's question — Node.Config
+// for Type == JevChoiceNodeType. One outgoing edge handle per Criteria key
+// (the option key IS the handle, unlike ConditionBranch's separate
+// Handle/Tree), plus the shared ElseHandle fallback used when the answer's
+// confidence is below ConfidenceThreshold or the Jev call fails.
+type JevChoiceConfig struct {
+	// Instructions is the question put to Jev, e.g. "Which team should
+	// handle this?" — shown to the user as a prompt they author.
+	Instructions string `json:"instructions"`
+	// Criteria maps an option key to a description of when to choose it —
+	// same shape as jev.Question.Criteria for type=choice. Each key becomes
+	// an outgoing edge handle.
+	Criteria map[string]string `json:"criteria"`
+	// ConfidenceThreshold: below this, the walk follows ElseHandle instead
+	// of the answer's Choice. Zero means "use DefaultJevConfidenceThreshold"
+	// — see EffectiveConfidenceThreshold.
+	ConfidenceThreshold float64 `json:"confidence_threshold,omitempty"`
+}
+
+// EffectiveConfidenceThreshold returns ConfidenceThreshold, or
+// DefaultJevConfidenceThreshold when unset (<= 0).
+func (c JevChoiceConfig) EffectiveConfidenceThreshold() float64 {
+	if c.ConfidenceThreshold <= 0 {
+		return DefaultJevConfidenceThreshold
+	}
+	return c.ConfidenceThreshold
+}
+
+// JevScoreConfig holds a Jev Score condition node's question — Node.Config
+// for Type == JevScoreNodeType. One outgoing edge handle per Criteria level
+// index ("0".."len(Criteria)-1", matching jev.Answer.Legend's keys), plus
+// ElseHandle for low confidence.
+type JevScoreConfig struct {
+	// Instructions is the question put to Jev, e.g. "How severe is this?".
+	Instructions string `json:"instructions"`
+	// Criteria is an ORDERED list of 2-10 level descriptions — same
+	// constraint as jev.Question.Criteria for type=score.
+	Criteria            []string `json:"criteria"`
+	ConfidenceThreshold float64  `json:"confidence_threshold,omitempty"`
+}
+
+// EffectiveConfidenceThreshold returns ConfidenceThreshold, or
+// DefaultJevConfidenceThreshold when unset (<= 0).
+func (c JevScoreConfig) EffectiveConfidenceThreshold() float64 {
+	if c.ConfidenceThreshold <= 0 {
+		return DefaultJevConfidenceThreshold
+	}
+	return c.ConfidenceThreshold
+}
+
+// JevNoulConfig holds a Jev Noul condition node's question — Node.Config for
+// Type == JevNoulNodeType. Exactly two outgoing edges: PluginConditionTrueHandle
+// when the noul answer is >= TrueThreshold, ElseHandle otherwise — this
+// reuses the plugin-condition boolean-gate handles so jev_noul needs no new
+// frontend branch-rendering support (see ConditionBranchRows).
+type JevNoulConfig struct {
+	// Instructions is the yes/no statement put to Jev, e.g. "The customer is
+	// asking for a refund."
+	Instructions string `json:"instructions"`
+	// TrueThreshold: noul >= this follows PluginConditionTrueHandle. Zero
+	// means "use DefaultJevNoulThreshold" — see EffectiveTrueThreshold.
+	TrueThreshold float64 `json:"true_threshold,omitempty"`
+}
+
+// EffectiveTrueThreshold returns TrueThreshold, or DefaultJevNoulThreshold
+// when unset (<= 0).
+func (c JevNoulConfig) EffectiveTrueThreshold() float64 {
+	if c.TrueThreshold <= 0 {
+		return DefaultJevNoulThreshold
+	}
+	return c.TrueThreshold
 }
 
 // CronCandidate pairs a TriggerCron node with the last time it fired (nil if

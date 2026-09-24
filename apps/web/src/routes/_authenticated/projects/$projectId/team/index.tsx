@@ -11,6 +11,7 @@ import {
 	ChevronDown,
 	Loader2,
 	MoreHorizontal,
+	PenLine,
 	Plus,
 	Search,
 	Shield,
@@ -51,6 +52,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { type User, usersInfiniteQueryOptions } from "@/lib/admin-api";
@@ -685,6 +687,98 @@ function RoleChip({
 	);
 }
 
+// DescriptionChip lets a manager set a human member's Jev-facing
+// description — shown to Jev (the AI decision API) when deciding whether to
+// assign this member a task in Auto mode. Agent members don't get one here:
+// their description lives on the Agent itself (edited from the agent's own
+// detail page) since it doesn't vary per project.
+function DescriptionChip({
+	member,
+	projectId,
+}: {
+	member: ProjectMember;
+	projectId: string;
+}) {
+	const { t } = useTranslation("projects");
+	const queryClient = useQueryClient();
+	const [open, setOpen] = useState(false);
+	const [value, setValue] = useState(member.description);
+	const [error, setError] = useState<string | null>(null);
+
+	const mutation = useMutation({
+		mutationFn: () =>
+			updateProjectMemberRole(projectId, member.id, {
+				description: value.trim(),
+			}),
+		onError: () => {
+			setError(t("team.descriptionChip.saveFailed"));
+		},
+		onSuccess: () => {
+			setOpen(false);
+			setError(null);
+		},
+		onSettled: () => {
+			queryClient.invalidateQueries({
+				queryKey: projectMembersQueryOptions(projectId).queryKey,
+			});
+		},
+	});
+
+	return (
+		<Popover
+			open={open}
+			onOpenChange={(v) => {
+				setOpen(v);
+				if (v) setValue(member.description);
+				else setError(null);
+			}}
+		>
+			<PopoverTrigger
+				type="button"
+				aria-label={t("team.descriptionChip.edit")}
+				title={member.description || t("team.descriptionChip.edit")}
+				className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+			>
+				<PenLine className="size-3.5" />
+			</PopoverTrigger>
+			<PopoverContent className="w-72 p-3" align="end">
+				<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+					{t("team.descriptionChip.title")}
+				</p>
+				<p className="mt-1 text-xs text-muted-foreground">
+					{t("team.descriptionChip.hint")}
+				</p>
+				<Textarea
+					value={value}
+					onChange={(e) => setValue(e.target.value)}
+					rows={3}
+					className="mt-2 text-sm"
+					placeholder={t("team.descriptionChip.placeholder")}
+					disabled={mutation.isPending}
+				/>
+				{error && (
+					<p className="mt-1.5 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+						{error}
+					</p>
+				)}
+				<div className="mt-2 flex justify-end">
+					<Button
+						size="sm"
+						onClick={() => mutation.mutate()}
+						disabled={mutation.isPending || value === member.description}
+					>
+						{mutation.isPending ? (
+							<Loader2 className="size-3.5 animate-spin" />
+						) : (
+							t("team.descriptionChip.save")
+						)}
+					</Button>
+				</div>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
 // ── Member Row ─────────────────────────────────────────────────────────────────
 
 function MemberRow({
@@ -722,6 +816,9 @@ function MemberRow({
 					@{member.username}
 				</p>
 			</div>
+			{canManage && !isBot ? (
+				<DescriptionChip member={member} projectId={projectId} />
+			) : null}
 			{canManage ? (
 				<RoleChip member={member} projectId={projectId} roles={roles} />
 			) : (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ type TaskHandler struct {
 	projectSvc      projectServiceForAssigned
 	avatarSvc       attachmentdom.AvatarService
 	notificationSvc notificationdom.Service
+	autofillRepo    taskdom.AutofillRepository
 }
 
 // NewTaskHandler returns a TaskHandler wired to the task service, view service,
@@ -110,6 +112,17 @@ type projectServiceForAssigned interface {
 func WithTaskAssignedProjectService(svc projectServiceForAssigned) TaskHandlerOption {
 	return func(h *TaskHandler) {
 		h.projectSvc = svc
+	}
+}
+
+// WithTaskAutofillRepository configures recording which fields a user
+// explicitly set at task creation — see taskdom.AutofillRepository. Omitting
+// this option means no provenance is recorded, so worker.TaskAutofillConsumer
+// would treat those fields as still-blank forever; harmless when Jev isn't
+// configured at all, but should be wired whenever it is.
+func WithTaskAutofillRepository(repo taskdom.AutofillRepository) TaskHandlerOption {
+	return func(h *TaskHandler) {
+		h.autofillRepo = repo
 	}
 }
 
@@ -936,10 +949,25 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req dto.CreateTaskRequest
-	if !middleware.BindJSON(w, r, &req) {
+	// Body is buffered (rather than using middleware.BindJSON's streaming
+	// decode) so it can be decoded twice: once into the typed DTO as usual,
+	// and once into rawFields to see which top-level keys the client
+	// actually sent — needed only to disambiguate CreateTaskRequest.
+	// Importance (a bare int, so JSON-absent and JSON-`0` otherwise decode
+	// identically) for userSetFieldKeys below.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "failed to read request body"))
 		return
 	}
+	var req dto.CreateTaskRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
+	var rawFields map[string]json.RawMessage
+	_ = json.Unmarshal(body, &rawFields) // best-effort; req above already validated the body decodes
+
 	if req.Description != nil {
 		if err := dto.ValidateBlockNoteContent(*req.Description); err != nil {
 			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "description: "+err.Error()))
@@ -948,25 +976,52 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := h.svc.CreateTask(r.Context(), taskdom.CreateTaskInput{
-		ProjectID:    projectID,
-		TaskTypeID:   req.TaskTypeID,
-		StatusID:     req.StatusID,
-		SprintID:     req.SprintID,
-		ParentTaskID: req.ParentTaskID,
-		Title:        req.Title,
-		Description:  req.NormalizedDescription(),
-		Importance:   req.Importance,
-		StoryPoints:  req.StoryPoints,
-		AssigneeIDs:  req.AssigneeIDs,
-		ReporterID:   req.ReporterID,
-		CustomFields: req.CustomFields,
-		StartDate:    req.StartDate,
-		DueDate:      req.DueDate,
-		Tags:         req.Tags,
+		ProjectID:      projectID,
+		TaskTypeID:     req.TaskTypeID,
+		StatusID:       req.StatusID,
+		SprintID:       req.SprintID,
+		ParentTaskID:   req.ParentTaskID,
+		Title:          req.Title,
+		Description:    req.NormalizedDescription(),
+		Importance:     req.Importance,
+		StoryPoints:    req.StoryPoints,
+		AssigneeIDs:    req.AssigneeIDs,
+		ReporterID:     req.ReporterID,
+		CustomFields:   req.CustomFields,
+		StartDate:      req.StartDate,
+		DueDate:        req.DueDate,
+		Tags:           req.Tags,
+		AssignmentMode: req.AssignmentMode,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
+	}
+
+	// Record which fields the user explicitly provided (best-effort), scoped
+	// to the fields worker.TaskAutofillConsumer might otherwise fill in —
+	// see taskdom.AutofillRepository's doc comment. custom_fields keys are
+	// read from the already-decoded map (no absent/explicit-null ambiguity
+	// there), but the rest need rawFields: Importance is a bare int (JSON
+	// absence and JSON 0 are indistinguishable), Tags is a bare []string
+	// (JSON absence and an explicit empty array are indistinguishable), and
+	// TaskTypeID/ParentTaskID are pointers that are still nil for both
+	// "omitted" and "explicitly set to null" — checking rawFields instead
+	// treats an explicit null as user-set too (the user deliberately cleared
+	// it), not as something autofill should still try to fill.
+	if h.autofillRepo != nil {
+		userSetFieldKeys := make([]string, 0, len(req.CustomFields)+5)
+		for _, key := range []string{"importance", "task_type_id", "story_points", "tags", "parent_task_id"} {
+			if _, ok := rawFields[key]; ok {
+				userSetFieldKeys = append(userSetFieldKeys, key)
+			}
+		}
+		for key := range req.CustomFields {
+			userSetFieldKeys = append(userSetFieldKeys, "custom:"+key)
+		}
+		if len(userSetFieldKeys) > 0 {
+			_ = h.autofillRepo.RecordUserSetFields(r.Context(), t.ID, userSetFieldKeys)
+		}
 	}
 
 	// Record creation activity (best-effort).
@@ -1024,24 +1079,62 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	oldTask, _ := h.svc.GetTask(r.Context(), projectID, taskID)
 
 	t, err := h.svc.UpdateTask(r.Context(), projectID, taskID, taskdom.UpdateTaskInput{
-		TaskTypeID:   req.TaskTypeID.Ptr(),
-		StatusID:     req.StatusID.Ptr(),
-		SprintID:     req.SprintID.Ptr(),
-		ParentTaskID: req.ParentTaskID.Ptr(),
-		Title:        req.Title,
-		Description:  req.Description.Ptr(),
-		Importance:   req.Importance,
-		StoryPoints:  req.StoryPoints.Ptr(),
-		AssigneeIDs:  req.AssigneeIDs.Ptr(),
-		ReporterID:   req.ReporterID.Ptr(),
-		CustomFields: req.CustomFields,
-		StartDate:    req.StartDate.Ptr(),
-		DueDate:      req.DueDate.Ptr(),
-		Tags:         req.Tags,
+		TaskTypeID:     req.TaskTypeID.Ptr(),
+		StatusID:       req.StatusID.Ptr(),
+		SprintID:       req.SprintID.Ptr(),
+		ParentTaskID:   req.ParentTaskID.Ptr(),
+		Title:          req.Title,
+		Description:    req.Description.Ptr(),
+		Importance:     req.Importance,
+		StoryPoints:    req.StoryPoints.Ptr(),
+		AssigneeIDs:    req.AssigneeIDs.Ptr(),
+		ReporterID:     req.ReporterID.Ptr(),
+		CustomFields:   req.CustomFields,
+		StartDate:      req.StartDate.Ptr(),
+		DueDate:        req.DueDate.Ptr(),
+		Tags:           req.Tags,
+		AssignmentMode: req.AssignmentMode,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
+	}
+
+	// Record which fields this PATCH explicitly touched (best-effort) — see
+	// the equivalent block in CreateTask. Unlike there, no rawFields trick is
+	// needed: TaskTypeID.Set/StoryPoints.Set/ParentTaskID.Set already
+	// distinguish omitted from explicit (the Optional* wrapper types decode
+	// that way), and CustomFields/Tags are already *map[string]any/*[]string
+	// (nil = omitted). Note CustomFields is a whole-map replace (see
+	// UpdateTaskInput's doc comment), so every key in a PATCH that touches
+	// custom_fields at all is marked user-set here, not just the key(s) that
+	// actually changed value — an accepted over-approximation since only the
+	// create-time snapshot gates the autofill consumer.
+	if h.autofillRepo != nil {
+		var userSetFieldKeys []string
+		if req.TaskTypeID.Set {
+			userSetFieldKeys = append(userSetFieldKeys, "task_type_id")
+		}
+		if req.Importance != nil {
+			userSetFieldKeys = append(userSetFieldKeys, "importance")
+		}
+		if req.StoryPoints.Set {
+			userSetFieldKeys = append(userSetFieldKeys, "story_points")
+		}
+		if req.ParentTaskID.Set {
+			userSetFieldKeys = append(userSetFieldKeys, "parent_task_id")
+		}
+		if req.Tags != nil {
+			userSetFieldKeys = append(userSetFieldKeys, "tags")
+		}
+		if req.CustomFields != nil {
+			for key := range *req.CustomFields {
+				userSetFieldKeys = append(userSetFieldKeys, "custom:"+key)
+			}
+		}
+		if len(userSetFieldKeys) > 0 {
+			_ = h.autofillRepo.RecordUserSetFields(r.Context(), taskID, userSetFieldKeys)
+		}
 	}
 
 	// Record update activity (best-effort).
@@ -1140,6 +1233,17 @@ func (h *TaskHandler) taskChangedFields(ctx context.Context, old *taskdom.Task, 
 		if !equalStrSets(oldVal, newVal) {
 			changes = append(changes, taskdom.FieldChange{Field: "assignee", Old: oldVal, New: newVal})
 		}
+	}
+
+	// Tracked even when AssigneeIDs doesn't itself change (e.g. switching an
+	// already-unassigned task into Auto mode): without this, flipping a task
+	// to Auto mode with an empty assignee list produces zero recorded
+	// changes, so no task.updated activity gets published to
+	// events.StreamTaskActivities, and TaskAutoAssignConsumer — which only
+	// reacts to task.created/task.updated stream messages — never even runs
+	// to pick an assignee.
+	if req.AssignmentMode != nil && *req.AssignmentMode != old.AssignmentMode {
+		changes = append(changes, taskdom.FieldChange{Field: "assignment_mode", Old: old.AssignmentMode, New: *req.AssignmentMode})
 	}
 
 	if req.ReporterID.Set {

@@ -4,11 +4,12 @@ import "errors"
 
 // Sentinel domain errors for the task aggregate.
 var (
-	ErrTaskNotFound            = errors.New("task: not found")
-	ErrTaskTitleInvalid        = errors.New("task: title is empty or invalid")
-	ErrEpicCannotHaveParent    = errors.New("task: epic tasks cannot have a parent task")
-	ErrTaskCannotBeOwnParent   = errors.New("task: a task cannot be its own parent")
-	ErrTaskParentCycleDetected = errors.New("task: setting this parent would create a cycle")
+	ErrTaskNotFound              = errors.New("task: not found")
+	ErrTaskTitleInvalid          = errors.New("task: title is empty or invalid")
+	ErrEpicCannotHaveParent      = errors.New("task: epic tasks cannot have a parent task")
+	ErrTaskCannotBeOwnParent     = errors.New("task: a task cannot be its own parent")
+	ErrTaskParentCycleDetected   = errors.New("task: setting this parent would create a cycle")
+	ErrTaskAssignmentModeInvalid = errors.New("task: assignment_mode must be \"manual\" or \"auto\"")
 
 	ErrTypeNotFound     = errors.New("task type: not found")
 	ErrTypeNameInvalid  = errors.New("task type: name is empty or invalid")

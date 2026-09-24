@@ -459,6 +459,10 @@ func (r *fakeTaskRepo) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID
 	return 0, nil
 }
 
+func (r *fakeTaskRepo) ListDistinctTags(_ context.Context, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
 // ---------------------------------------------------------------------------
 // Task Type tests
 // ---------------------------------------------------------------------------
@@ -864,6 +868,136 @@ func TestCreateTask_EmptyTitle(t *testing.T) {
 	})
 	if err != taskdom.ErrTaskTitleInvalid {
 		t.Errorf("expected ErrTaskTitleInvalid, got %v", err)
+	}
+}
+
+func TestCreateTask_AssignmentModeDefaultsToManual(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+
+	task, err := svc.CreateTask(ctx, taskdom.CreateTaskInput{
+		ProjectID: uuid.New(),
+		Title:     "Task",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if task.AssignmentMode != taskdom.AssignmentModeManual {
+		t.Errorf("expected default assignment_mode=manual, got %q", task.AssignmentMode)
+	}
+}
+
+func TestCreateTask_AssignmentModeExplicitAuto(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+
+	task, err := svc.CreateTask(ctx, taskdom.CreateTaskInput{
+		ProjectID:      uuid.New(),
+		Title:          "Task",
+		AssignmentMode: taskdom.AssignmentModeAuto,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if task.AssignmentMode != taskdom.AssignmentModeAuto {
+		t.Errorf("expected assignment_mode=auto, got %q", task.AssignmentMode)
+	}
+}
+
+func TestCreateTask_InvalidAssignmentMode(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+
+	_, err := svc.CreateTask(ctx, taskdom.CreateTaskInput{
+		ProjectID:      uuid.New(),
+		Title:          "Task",
+		AssignmentMode: "not-a-real-mode",
+	})
+	if err != taskdom.ErrTaskAssignmentModeInvalid {
+		t.Errorf("expected ErrTaskAssignmentModeInvalid, got %v", err)
+	}
+}
+
+func TestUpdateTask_ManualAssigneeChangeFlipsOutOfAutoMode(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	projectID := uuid.New()
+
+	task, err := svc.CreateTask(ctx, taskdom.CreateTaskInput{
+		ProjectID:      projectID,
+		Title:          "Task",
+		AssignmentMode: taskdom.AssignmentModeAuto,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	newAssignees := []uuid.UUID{uuid.New()}
+	updated, err := svc.UpdateTask(ctx, projectID, task.ID, taskdom.UpdateTaskInput{
+		AssigneeIDs: &newAssignees,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updated.AssignmentMode != taskdom.AssignmentModeManual {
+		t.Errorf("a human PATCHing assignee_ids without also restating assignment_mode should flip back to manual, got %q", updated.AssignmentMode)
+	}
+}
+
+func TestUpdateTask_SystemAssigneeWriteStaysAutoWhenModeRestated(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	projectID := uuid.New()
+
+	task, err := svc.CreateTask(ctx, taskdom.CreateTaskInput{
+		ProjectID:      projectID,
+		Title:          "Task",
+		AssignmentMode: taskdom.AssignmentModeAuto,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Mirrors worker.TaskAutoAssignConsumer's own UpdateTask call: it always
+	// resends AssignmentMode alongside AssigneeIDs specifically so this
+	// system-driven write isn't mistaken for a human manually reassigning.
+	newAssignees := []uuid.UUID{uuid.New()}
+	autoMode := taskdom.AssignmentModeAuto
+	updated, err := svc.UpdateTask(ctx, projectID, task.ID, taskdom.UpdateTaskInput{
+		AssigneeIDs:    &newAssignees,
+		AssignmentMode: &autoMode,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updated.AssignmentMode != taskdom.AssignmentModeAuto {
+		t.Errorf("expected assignment_mode to stay auto when explicitly restated, got %q", updated.AssignmentMode)
+	}
+	if len(updated.AssigneeIDs) != 1 || updated.AssigneeIDs[0] != newAssignees[0] {
+		t.Errorf("expected AssigneeIDs=%v, got %v", newAssignees, updated.AssigneeIDs)
+	}
+}
+
+func TestUpdateTask_InvalidAssignmentMode(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	projectID := uuid.New()
+
+	task, err := svc.CreateTask(ctx, taskdom.CreateTaskInput{ProjectID: projectID, Title: "Task"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	bogus := "not-a-real-mode"
+	_, err = svc.UpdateTask(ctx, projectID, task.ID, taskdom.UpdateTaskInput{AssignmentMode: &bogus})
+	if err != taskdom.ErrTaskAssignmentModeInvalid {
+		t.Errorf("expected ErrTaskAssignmentModeInvalid, got %v", err)
 	}
 }
 

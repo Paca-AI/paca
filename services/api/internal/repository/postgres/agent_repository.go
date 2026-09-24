@@ -27,6 +27,7 @@ type agentRecord struct {
 	GlobalRoleID       *string `db:"global_role_id"`
 	Name               string  `db:"name"`
 	Handle             string  `db:"handle"`
+	Description        string  `db:"description"`
 	AvatarKey          *string `db:"avatar_key"`
 	AvatarThumbKey     *string `db:"avatar_thumb_key"`
 	AgentType          string  `db:"agent_type"`
@@ -188,7 +189,7 @@ const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes, a.parallelism_limit,
 	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.default_folder_id, a.access_mode, a.created_by, a.created_at, a.updated_at, a.deleted_at,
-	a.cli_provider, a.cli_model, a.cli_auth_mode, a.cli_api_key_secret, a.cli_login_verified_at`
+	a.cli_provider, a.cli_model, a.cli_auth_mode, a.cli_api_key_secret, a.cli_login_verified_at, COALESCE(a.description, '') AS description`
 
 // agentSelectCols is used with a JOIN/LEFT JOIN against project_members
 // aliased pm, populating member_id from that join.
@@ -417,15 +418,15 @@ func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) er
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes, parallelism_limit,
 		  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at,
-		  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
+		  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at, description)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,
 		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
 		rec.MaxIterations, rec.TimeoutMinutes, rec.ParallelismLimit,
 		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.DefaultFolderID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
-		rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, rec.CLIAPIKeySecret, rec.CLILoginVerifiedAt,
+		rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, rec.CLIAPIKeySecret, rec.CLILoginVerifiedAt, rec.Description,
 	)
 	return err
 }
@@ -447,15 +448,15 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  max_iterations=$11, timeout_minutes=$12,
 			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15, global_role_id=$16,
 			  default_environment_id=$17, default_folder_id=$18, updated_at=$19,
-			  cli_provider=$20, cli_model=$21, cli_auth_mode=$22, parallelism_limit=$23, access_mode=$24
-			WHERE id=$25`,
+			  cli_provider=$20, cli_model=$21, cli_auth_mode=$22, parallelism_limit=$23, access_mode=$24, description=$25
+			WHERE id=$26`,
 			a.Name, a.Handle, a.AvatarKey, a.AvatarThumbKey, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
 			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled, rec.GlobalRoleID,
 			rec.DefaultEnvironmentID, rec.DefaultFolderID, time.Now(),
-			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ParallelismLimit, rec.AccessMode, a.ID.String(),
+			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ParallelismLimit, rec.AccessMode, a.Description, a.ID.String(),
 		)
 		if err != nil {
 			return err
@@ -553,15 +554,15 @@ func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agen
 			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 			  max_iterations, timeout_minutes, parallelism_limit,
 			  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at,
-			  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
+			  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at, description)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,
 			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 			rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			rec.SystemPrompt,
 			rec.MaxIterations, rec.TimeoutMinutes, rec.ParallelismLimit,
 			rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.DefaultFolderID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
-			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, rec.CLIAPIKeySecret, rec.CLILoginVerifiedAt,
+			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, rec.CLIAPIKeySecret, rec.CLILoginVerifiedAt, rec.Description,
 		)
 		if err != nil {
 			return err
@@ -623,15 +624,15 @@ func (r *AgentRepository) CreateGlobalAgent(ctx context.Context, a *agentdom.Age
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes, parallelism_limit,
 		  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at,
-		  cli_auth_mode)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+		  cli_auth_mode, description)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
 		rec.ID, rec.ProjectID, rec.AgentScope, rec.GlobalRoleID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
 		rec.MaxIterations, rec.TimeoutMinutes, rec.ParallelismLimit,
 		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
-		rec.CLIAuthMode,
+		rec.CLIAuthMode, rec.Description,
 	)
 	return err
 }
@@ -1779,6 +1780,7 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		AgentScope:         scope,
 		Name:               row.Name,
 		Handle:             row.Handle,
+		Description:        row.Description,
 		AvatarKey:          row.AvatarKey,
 		AvatarThumbKey:     row.AvatarThumbKey,
 		AgentType:          row.AgentType,
@@ -1876,6 +1878,7 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 		AgentScope:         scope,
 		Name:               a.Name,
 		Handle:             a.Handle,
+		Description:        a.Description,
 		AvatarKey:          a.AvatarKey,
 		AvatarThumbKey:     a.AvatarThumbKey,
 		AgentType:          agentType,

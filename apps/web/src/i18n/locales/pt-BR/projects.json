@@ -10,6 +10,7 @@
 				"taskStatuses": "Status de tarefas",
 				"taskTypes": "Tipos de tarefa",
 				"customFields": "Campos personalizados",
+				"jev": "Jev IA",
 				"dangerZone": "Zona de perigo",
 				"plugins": "Plugins"
 			},
@@ -264,7 +265,10 @@
 				"cliLoginNotAuthenticated": "Ainda não autenticado — faça login pelo terminal e verifique novamente.",
 				"cliLoginVerifyFailed": "Não foi possível verificar o status de login. Tente novamente.",
 				"cliLoginLastVerified": "Última verificação em {{date}}.",
-				"cliLoginNoEnvironment": "Este agente não tem um ambiente definido — escolha um acima primeiro."
+				"cliLoginNoEnvironment": "Este agente não tem um ambiente definido — escolha um acima primeiro.",
+				"descriptionLabel": "Descrição",
+				"descriptionPlaceholder": "Para que serve este agente?",
+				"descriptionHint": "Exibido para o Jev ao decidir qual agente deve atender a um chat, ou se deve atribuir uma tarefa a ele, no modo Automático. O provedor e o modelo são adicionados automaticamente."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} servidor configurado",
@@ -1096,6 +1100,59 @@
 				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
+		"jev": {
+			"title": "Jev IA",
+			"description": "Configure como o Jev, o mecanismo de decisão de IA, auxilia este projeto.",
+			"credentials": {
+				"title": "Credenciais do provedor",
+				"description": "Conecte seu próprio provedor compatível com o Jev — TypeSafe (padrão), OpenJev ou outro host que implemente a mesma API — para habilitar os recursos abaixo.",
+				"configuredBadge": "Configurado",
+				"notConfiguredBadge": "Não configurado",
+				"apiKeyLabel": "Chave de API",
+				"apiKeyPlaceholder": "Digite uma chave de API",
+				"apiKeyConfiguredPlaceholder": "Deixe em branco para manter a chave atual",
+				"baseUrlLabel": "Host (opcional)",
+				"baseUrlPlaceholder": "https://api.typesafe.ai (padrão)",
+				"modelLabel": "Modelo (opcional)",
+				"modelPlaceholder": "jev-latest (padrão)",
+				"saveButton": "Salvar credenciais",
+				"testButton": "Testar conexão",
+				"advancedLabel": "Avançado",
+				"testSuccess": "Conexão bem-sucedida",
+				"testFailed": "Não foi possível conectar. Verifique suas credenciais e tente novamente."
+			},
+			"autofill": {
+				"title": "Preenchimento automático de tarefas",
+				"description": "Quando uma tarefa é criada, o Jev preenche os campos abaixo que o criador deixou em branco.",
+				"enabledLabel": "Ativar preenchimento automático",
+				"enabledHint": "O Jev sugere valores para campos em branco logo após a criação da tarefa.",
+				"excludedFieldsLabel": "Campos que o Jev pode definir",
+				"excludedFieldsHint": "Desative um campo para impedir que o Jev o defina automaticamente.",
+				"fieldImportance": "Importância",
+				"fieldTaskType": "Tipo de tarefa",
+				"fieldStoryPoints": "Story Points",
+				"fieldTags": "Tags",
+				"fieldEpic": "Épico"
+			},
+			"autoAssign": {
+				"title": "Atribuição automática de tarefas",
+				"description": "Deixe o Jev escolher um responsável para tarefas com atribuição automática.",
+				"scopeLabel": "A quem o Jev pode atribuir",
+				"scopeAll": "Todos os membros",
+				"scopeHuman": "Somente membros humanos",
+				"scopeHumanHint": "Exclui agentes de IA."
+			},
+			"saveChanges": "Salvar alterações",
+			"saved": "Salvo ✓",
+			"noPermission": "Você não tem permissão para editar este projeto.",
+			"errors": {
+				"updateFailed": "Falha ao atualizar as configurações. Tente novamente."
+			},
+			"notConfigured": {
+				"title": "O Jev ainda não foi configurado",
+				"description": "Adicione as credenciais do provedor acima para desbloquear o preenchimento automático de tarefas e a atribuição automática."
+			}
+		},
 		"dangerZone": {
 			"title": "Zona de perigo",
 			"deleteProjectTitle": "Excluir este projeto",
@@ -1201,6 +1258,14 @@
 		"noPermission": {
 			"title": "You don't have permission to view members",
 			"description": "Ask a project admin to grant you the project.members.read permission."
+		},
+		"descriptionChip": {
+			"edit": "Editar descrição",
+			"title": "Descrição",
+			"hint": "Exibido para o Jev ao decidir se deve atribuir uma tarefa a esta pessoa no modo Automático.",
+			"placeholder": "Em que esta pessoa trabalha?",
+			"save": "Salvar",
+			"saveFailed": "Falha ao salvar a descrição."
 		}
 	},
 	"aiChat": {
@@ -1209,7 +1274,9 @@
 		"agentLabel": "Agente",
 		"selectAgentPlaceholder": "Selecione um agente…",
 		"selectAgentFirst": "Selecione um agente primeiro.",
-		"noAgentsAvailable": "Ainda não há agentes disponíveis."
+		"noAgentsAvailable": "Ainda não há agentes disponíveis.",
+		"autoAgent": "Automático",
+		"resolvingAgent": "Escolhendo um agente…"
 	},
 	"taskTypes": {
 		"deleteDialog": {
@@ -1298,7 +1365,8 @@
 			"parent": "Pai",
 			"viewParent": "Ver pai",
 			"removeParent": "Remover pai",
-			"addFields": "Adicionar campos"
+			"addFields": "Adicionar campos",
+			"autoAssign": "Automático"
 		},
 		"description": {
 			"title": "Descrição",
@@ -1476,7 +1544,9 @@
 			"startedAiSession": "iniciou uma sessão de IA",
 			"watchSession": "Assistir sessão",
 			"madeChange": "fez uma alteração",
-			"descriptionChangeDiff": "Diferença de alteração da descrição"
+			"descriptionChangeDiff": "Diferença de alteração da descrição",
+			"autoAssignSkippedLowConfidence": "não conseguiu escolher um responsável com confiança ({{confidence}}% de confiança) — a tarefa permaneceu não atribuída",
+			"autoAssignSkipped": "pulou a atribuição automática — a tarefa permaneceu não atribuída"
 		}
 	},
 	"portForwardDetail": {
@@ -2205,7 +2275,26 @@
 				"branchFallback": "Ramificação {{n}}",
 				"cronSchedule": "Executa {{expression}}",
 				"webhookReady": "Webhook configurado",
-				"callApiSummary": "{{method}} {{host}}"
+				"callApiSummary": "{{method}} {{host}}",
+				"jevNoulTrue": "Sim"
+			},
+			"jev": {
+				"instructionsLabel": "Pergunta para o Jev",
+				"instructionsPlaceholder": {
+					"jev_choice": "ex.: Qual equipe deve cuidar disso?",
+					"jev_score": "ex.: Quão grave este problema parece ser?",
+					"jev_noul": "ex.: O cliente está pedindo um reembolso."
+				},
+				"optionsTitle": "Opções",
+				"optionKeyPlaceholder": "chave",
+				"optionDescriptionPlaceholder": "Quando escolher esta opção",
+				"addOption": "Adicionar opção",
+				"levelsTitle": "Níveis (do mais baixo ao mais alto)",
+				"levelPlaceholder": "Descreva este nível",
+				"addLevel": "Adicionar nível",
+				"confidenceThresholdLabel": "Limite de confiança",
+				"trueThresholdLabel": "Limite de “verdadeiro”",
+				"thresholdHint": "Abaixo disso, o fluxo de trabalho segue o ramo Else em vez de confiar na resposta."
 			}
 		},
 		"runHistory": {
@@ -2229,6 +2318,11 @@
 			"subtitle": "Visão somente leitura de cada automação aguardando outras tarefas terminarem",
 			"empty": "Nenhuma dependência de predecessora configurada ainda",
 			"watchedTasks": "Aguardando {{count}} tarefa(s)"
+		},
+		"conditionTypes": {
+			"jev_choice": "Jev Choice",
+			"jev_score": "Jev Score",
+			"jev_noul": "Jev Noul"
 		}
 	}
 }

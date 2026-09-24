@@ -468,6 +468,7 @@ export type TaskFieldUpdate = Partial<{
 	custom_fields: Record<string, unknown>;
 	sprint_id: string | null;
 	parent_task_id: string | null;
+	assignment_mode: "manual" | "auto";
 }>;
 
 /**

@@ -19,8 +19,13 @@ type AddProjectMemberRequest struct {
 }
 
 // UpdateProjectMemberRoleRequest is the body for PATCH /v1/projects/:projectId/members/:memberId.
+// At least one of ProjectRoleID/Description must be set; either can be
+// changed independently of the other.
 type UpdateProjectMemberRoleRequest struct {
-	ProjectRoleID uuid.UUID `json:"project_role_id" binding:"required"`
+	ProjectRoleID *uuid.UUID `json:"project_role_id"`
+	// Description is only meaningful for a human member — see
+	// projectdom.ProjectMember.Description.
+	Description *string `json:"description"`
 }
 
 // ProjectMemberResponse is the public representation of a project membership.
@@ -48,6 +53,9 @@ type ProjectMemberResponse struct {
 	AgentType        string  `json:"agent_type,omitempty"`
 	AgentLLMProvider string  `json:"agent_llm_provider,omitempty"`
 	AgentACPProvider *string `json:"agent_acp_provider,omitempty"`
+	// Description is only meaningful for a human member — see
+	// projectdom.ProjectMember.Description.
+	Description string `json:"description"`
 }
 
 // ProjectMemberFromEntity maps a domain ProjectMember to a ProjectMemberResponse DTO.
@@ -66,6 +74,7 @@ func ProjectMemberFromEntity(m *projectdom.ProjectMember) ProjectMemberResponse 
 		AgentType:        m.AgentType,
 		AgentLLMProvider: m.AgentLLMProvider,
 		AgentACPProvider: m.AgentACPProvider,
+		Description:      m.Description,
 	}
 	if m.IsAgent() {
 		// For agent members, populate username/full_name from agent fields so

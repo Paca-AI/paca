@@ -4,6 +4,10 @@ import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import type { Environment, EnvironmentFolder } from "@/lib/environment-api";
 import {
+	AgentPickerContext,
+	AgentPickerInline,
+	type AgentPickerState,
+	AUTO_AGENT_ID,
 	EnvironmentPickerContext,
 	EnvironmentPickerInline,
 	type EnvironmentPickerState,
@@ -122,5 +126,35 @@ describe("FolderPickerInline", () => {
 			</EnvironmentPickerContext.Provider>,
 		);
 		expect(screen.getByText("Select a folder…")).toBeInTheDocument();
+	});
+});
+
+describe("AgentPickerInline", () => {
+	// Regression coverage for Auto mode (see useAgentPicker's own doc
+	// comment): when the picker's agent list includes the synthetic
+	// AUTO_AGENT_ID entry (prepended by useAgentPicker/useGlobalAgentPicker
+	// only when Jev is configured), it must render as a real, selectable
+	// option alongside the actual agents — tested here directly against a
+	// hand-built AgentPickerState, same as the EnvironmentPickerInline
+	// tests above, rather than through the hook's own query/useJevEnabled
+	// wiring.
+	const agentPickerState: AgentPickerState = {
+		agents: [
+			{ id: AUTO_AGENT_ID, name: "Auto" },
+			{ id: "agent-1", name: "Real Agent" },
+		],
+		agentsLoading: false,
+		agentId: AUTO_AGENT_ID,
+		onAgentChange: () => {},
+		emptyStateLink: null,
+	};
+
+	it("renders the Auto option alongside real agents", () => {
+		renderWithQueryClient(
+			<AgentPickerContext.Provider value={agentPickerState}>
+				<AgentPickerInline />
+			</AgentPickerContext.Provider>,
+		);
+		expect(screen.getByText("Auto")).toBeInTheDocument();
 	});
 });

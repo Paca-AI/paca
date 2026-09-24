@@ -63,6 +63,9 @@ const mockProject: Project = {
 	is_public: false,
 	task_id_prefix: "ALPH",
 	settings: {},
+	jev_configured: false,
+	jev_base_url: "",
+	jev_model: "",
 	created_by: "u1",
 	created_at: "2026-01-01T00:00:00.000Z",
 };
@@ -75,6 +78,7 @@ const mockMember: ProjectMember = {
 	username: "alice",
 	full_name: "Alice Smith",
 	role_name: "Developer",
+	description: "",
 };
 
 const mockRole: ProjectRole = {

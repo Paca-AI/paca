@@ -199,6 +199,10 @@ func (r *fakeTaskRepo) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID
 	return 0, nil
 }
 
+func (r *fakeTaskRepo) ListDistinctTags(_ context.Context, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
 func (r *fakeTaskRepo) BulkMoveSprintTasks(_ context.Context, projectID, sourceSprintID uuid.UUID, targetSprintID *uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -32,7 +32,10 @@ func openProjectRepoTestDB(t *testing.T) *sqlx.DB {
 			avatar_thumb_key TEXT,
 			created_by   TEXT,
 			created_at   DATETIME,
-			deleted_at   DATETIME
+			deleted_at   DATETIME,
+			jev_api_key_secret TEXT NOT NULL DEFAULT '',
+			jev_base_url TEXT NOT NULL DEFAULT '',
+			jev_model    TEXT NOT NULL DEFAULT ''
 		);`
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		t.Fatalf("create schema: %v", err)

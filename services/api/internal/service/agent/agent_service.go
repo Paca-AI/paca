@@ -271,6 +271,7 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		ProjectID:        projectID,
 		Name:             name,
 		Handle:           handle,
+		Description:      strings.TrimSpace(in.Description),
 		AgentType:        agentType,
 		MaxIterations:    in.MaxIterations,
 		TimeoutMinutes:   in.TimeoutMinutes,
@@ -434,6 +435,9 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 			}
 			a.Handle = h
 		}
+	}
+	if in.Description != nil {
+		a.Description = strings.TrimSpace(*in.Description)
 	}
 	// LLM/ACP/provider_cli fields are guarded by the agent's existing
 	// (immutable) type — agent_type can't be changed through this API, so
@@ -696,6 +700,7 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 		AgentScope:       agentdom.AgentScopeGlobal,
 		Name:             name,
 		Handle:           handle,
+		Description:      strings.TrimSpace(in.Description),
 		AgentType:        agentType,
 		MaxIterations:    in.MaxIterations,
 		TimeoutMinutes:   in.TimeoutMinutes,
@@ -820,6 +825,9 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 			}
 			a.Handle = h
 		}
+	}
+	if in.Description != nil {
+		a.Description = strings.TrimSpace(*in.Description)
 	}
 	// See the equivalent block in UpdateAgent for why LLM/ACP fields are
 	// guarded by the agent's existing (immutable) type.

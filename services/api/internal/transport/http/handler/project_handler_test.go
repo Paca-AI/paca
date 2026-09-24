@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ import (
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/jev"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -44,6 +46,7 @@ type mockProjectSvc struct {
 	updateMember            func(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error)
 	removeMember            func(ctx context.Context, projectID, userID uuid.UUID) error
 	updateMemberByMemberID  func(ctx context.Context, projectID, memberID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error)
+	updateMemberDescription func(ctx context.Context, projectID, memberID uuid.UUID, description string) (*projectdom.ProjectMember, error)
 	removeMemberByMemberID  func(ctx context.Context, projectID, memberID uuid.UUID) error
 	listRoles               func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error)
 	createRole              func(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error)
@@ -197,6 +200,12 @@ func (m *mockProjectSvc) UpdateMemberRoleByMemberID(_ context.Context, projectID
 	}
 	return nil, projectdom.ErrNotFound
 }
+func (m *mockProjectSvc) UpdateMemberDescription(_ context.Context, projectID, memberID uuid.UUID, description string) (*projectdom.ProjectMember, error) {
+	if m.updateMemberDescription != nil {
+		return m.updateMemberDescription(context.Background(), projectID, memberID, description)
+	}
+	return nil, projectdom.ErrNotFound
+}
 func (m *mockProjectSvc) RemoveMemberByMemberID(_ context.Context, projectID, memberID uuid.UUID) error {
 	if m.removeMemberByMemberID != nil {
 		return m.removeMemberByMemberID(context.Background(), projectID, memberID)
@@ -260,6 +269,10 @@ func newProjectRouter(svc projectdom.Service) chi.Router {
 	r.Post("/projects/{projectId}/roles", h.CreateRole)
 	r.Patch("/projects/{projectId}/roles/{roleId}", h.UpdateRole)
 	r.Delete("/projects/{projectId}/roles/{roleId}", h.DeleteRole)
+	// Jev config test route — encryptor is nil here (matches an instance
+	// with no ENCRYPTION_KEY configured; jev.ClientForProject treats stored
+	// keys as plaintext in that case, see its doc comment).
+	r.Post("/projects/{projectId}/jev-config/test", h.TestJevConfig)
 	return r
 }
 
@@ -387,6 +400,88 @@ func TestGetProject_NotFound(t *testing.T) {
 	}
 	if code := errorCode(t, w); code != "PROJECT_NOT_FOUND" {
 		t.Fatalf("unexpected error_code: %s", code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestJevConfig
+// ---------------------------------------------------------------------------
+
+func TestTestJevConfig_NotConfigured(t *testing.T) {
+	id := uuid.New()
+	r := newProjectRouter(&mockProjectSvc{
+		getByID: func(_ context.Context, _ uuid.UUID) (*projectdom.Project, error) {
+			return &projectdom.Project{ID: id}, nil // JevAPIKeySecret is empty
+		},
+	})
+
+	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/jev-config/test", id), nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTestJevConfig_ProjectNotFound(t *testing.T) {
+	id := uuid.New()
+	r := newProjectRouter(&mockProjectSvc{
+		getByID: func(_ context.Context, _ uuid.UUID) (*projectdom.Project, error) {
+			return nil, projectdom.ErrNotFound
+		},
+	})
+
+	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/jev-config/test", id), nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTestJevConfig_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(jev.Response{
+			Answers: map[string]jev.Answer{"connectivity": {Type: jev.TypeNoul, Noul: 1}},
+		})
+	}))
+	defer srv.Close()
+
+	id := uuid.New()
+	r := newProjectRouter(&mockProjectSvc{
+		getByID: func(_ context.Context, _ uuid.UUID) (*projectdom.Project, error) {
+			return &projectdom.Project{ID: id, JevAPIKeySecret: "test-key", JevBaseURL: srv.URL}, nil
+		},
+	})
+
+	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/jev-config/test", id), nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var envelope struct {
+		Data dto.TestJevConfigResponse `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !envelope.Data.Success {
+		t.Fatalf("expected success=true, got %+v", envelope.Data)
+	}
+}
+
+func TestTestJevConfig_CallFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"bad key"}`))
+	}))
+	defer srv.Close()
+
+	id := uuid.New()
+	r := newProjectRouter(&mockProjectSvc{
+		getByID: func(_ context.Context, _ uuid.UUID) (*projectdom.Project, error) {
+			return &projectdom.Project{ID: id, JevAPIKeySecret: "test-key", JevBaseURL: srv.URL}, nil
+		},
+	})
+
+	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/jev-config/test", id), nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

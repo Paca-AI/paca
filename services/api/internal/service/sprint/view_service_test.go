@@ -71,6 +71,9 @@ func (permissiveTaskRepo) ListAssignedTasks(context.Context, []uuid.UUID, int, *
 func (permissiveTaskRepo) CountOpenTasksByProjects(context.Context, []uuid.UUID) (int64, error) {
 	return 0, nil
 }
+func (permissiveTaskRepo) ListDistinctTags(context.Context, uuid.UUID) ([]string, error) {
+	return nil, nil
+}
 
 var _ taskdom.TaskRepository = permissiveTaskRepo{}
 

@@ -36,6 +36,9 @@ type MemberRepository interface {
 	RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error
 	// UpdateMemberRoleByMemberID changes the role of a member by their membership record ID.
 	UpdateMemberRoleByMemberID(ctx context.Context, memberID, roleID uuid.UUID) error
+	// UpdateMemberDescription changes a member's Jev-facing description by
+	// their membership record ID — see ProjectMember.Description.
+	UpdateMemberDescription(ctx context.Context, memberID uuid.UUID, description string) error
 	// RemoveMemberByMemberID removes a member by their membership record ID.
 	RemoveMemberByMemberID(ctx context.Context, memberID uuid.UUID) error
 	// AddAgentMember inserts an agent as a project member with the given role.

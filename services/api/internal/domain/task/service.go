@@ -119,6 +119,9 @@ type TaskService interface {
 	// SumTaskField sums a numeric field across all matching tasks, ignoring pagination.
 	// fieldKey is "story_points" or a custom field key.
 	SumTaskField(ctx context.Context, projectID uuid.UUID, filter TaskFilter, fieldKey string) (float64, error)
+	// ListDistinctTags returns every distinct tag value used anywhere in the
+	// project, sorted alphabetically — see Repository.ListDistinctTags.
+	ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error)
 	// GetTask returns the task identified by id, verifying it belongs to projectID.
 	GetTask(ctx context.Context, projectID, id uuid.UUID) (*Task, error)
 	GetTaskByNumber(ctx context.Context, projectID uuid.UUID, taskNumber int64) (*Task, error)
@@ -153,6 +156,10 @@ type CreateTaskInput struct {
 	StartDate    *time.Time
 	DueDate      *time.Time
 	Tags         []string
+	// AssignmentMode: empty defaults to AssignmentModeManual, unless
+	// AssigneeIDs is empty and it's explicitly AssignmentModeAuto (see
+	// CreateTask) — see Task.AssignmentMode's doc comment.
+	AssignmentMode string
 }
 
 // UpdateTaskInput carries mutable task fields for a PATCH operation.
@@ -181,6 +188,12 @@ type UpdateTaskInput struct {
 	StartDate    **time.Time
 	DueDate      **time.Time
 	Tags         *[]string
+	// AssignmentMode: nil means unchanged. When explicitly set to
+	// AssignmentModeManual, also fully overrides AssigneeIDs (even if
+	// AssigneeIDs itself is nil/absent in the same request) — see UpdateTask's
+	// own doc comment on the "human touched assignment, stop auto-managing
+	// it" rule this implements.
+	AssignmentMode *string
 }
 
 // --- Custom Field Definition Service --------------------------------------

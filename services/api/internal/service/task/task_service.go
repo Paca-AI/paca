@@ -317,6 +317,12 @@ func (s *Service) SumTaskField(ctx context.Context, projectID uuid.UUID, filter 
 	return s.repo.SumTaskField(ctx, projectID, filter, fieldKey)
 }
 
+// ListDistinctTags returns every distinct tag value used anywhere in the
+// project — see taskdom.Repository.ListDistinctTags.
+func (s *Service) ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error) {
+	return s.repo.ListDistinctTags(ctx, projectID)
+}
+
 // ListAssignedTasks returns open tasks assigned to any of memberIDs, across
 // their respective projects — see taskdom.Repository.ListAssignedTasks.
 func (s *Service) ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*taskdom.Task, bool, error) {
@@ -391,27 +397,34 @@ func (s *Service) CreateTask(ctx context.Context, in taskdom.CreateTaskInput) (*
 	if assigneeIDs == nil {
 		assigneeIDs = []uuid.UUID{}
 	}
+	assignmentMode := in.AssignmentMode
+	if assignmentMode == "" {
+		assignmentMode = taskdom.AssignmentModeManual
+	} else if !taskdom.ValidAssignmentModes[assignmentMode] {
+		return nil, taskdom.ErrTaskAssignmentModeInvalid
+	}
 
 	now := time.Now()
 	t := &taskdom.Task{
-		ID:           uuid.New(),
-		ProjectID:    in.ProjectID,
-		TaskTypeID:   taskTypeID,
-		StatusID:     statusID,
-		SprintID:     in.SprintID,
-		ParentTaskID: in.ParentTaskID,
-		Title:        title,
-		Description:  in.Description,
-		Importance:   in.Importance,
-		StoryPoints:  in.StoryPoints,
-		AssigneeIDs:  assigneeIDs,
-		ReporterID:   in.ReporterID,
-		CustomFields: cf,
-		StartDate:    in.StartDate,
-		DueDate:      in.DueDate,
-		Tags:         tags,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:             uuid.New(),
+		ProjectID:      in.ProjectID,
+		TaskTypeID:     taskTypeID,
+		StatusID:       statusID,
+		SprintID:       in.SprintID,
+		ParentTaskID:   in.ParentTaskID,
+		Title:          title,
+		Description:    in.Description,
+		Importance:     in.Importance,
+		StoryPoints:    in.StoryPoints,
+		AssigneeIDs:    assigneeIDs,
+		ReporterID:     in.ReporterID,
+		CustomFields:   cf,
+		StartDate:      in.StartDate,
+		DueDate:        in.DueDate,
+		Tags:           tags,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		AssignmentMode: assignmentMode,
 	}
 
 	if err := s.repo.CreateTask(ctx, t); err != nil {
@@ -481,8 +494,24 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	if in.StoryPoints != nil {
 		t.StoryPoints = *in.StoryPoints
 	}
+	// A human explicitly changing AssigneeIDs without also (re)stating
+	// AssignmentMode in the same request means "I'm picking this myself" —
+	// flip out of auto mode so a later empty-assignee event doesn't
+	// re-trigger Jev resolution and silently override their pick. The
+	// autofill consumer's own assignment writes always resend
+	// AssignmentMode: AssignmentModeAuto alongside AssigneeIDs specifically
+	// to avoid tripping this (see worker.TaskAutofillConsumer).
 	if in.AssigneeIDs != nil {
 		t.AssigneeIDs = *in.AssigneeIDs
+		if in.AssignmentMode == nil && t.AssignmentMode == taskdom.AssignmentModeAuto {
+			t.AssignmentMode = taskdom.AssignmentModeManual
+		}
+	}
+	if in.AssignmentMode != nil {
+		if !taskdom.ValidAssignmentModes[*in.AssignmentMode] {
+			return nil, taskdom.ErrTaskAssignmentModeInvalid
+		}
+		t.AssignmentMode = *in.AssignmentMode
 	}
 	if in.ReporterID != nil {
 		t.ReporterID = *in.ReporterID

@@ -111,6 +111,7 @@ var openRouteGroups = []struct {
 			"GET /api/v1/agents/me/projects",
 			"GET /api/v1/agents/me/conversations/{conversationId}",
 			"GET /api/v1/agents/me/conversations/{conversationId}/events",
+			"POST /api/v1/agents/resolve-auto",
 			"GET /api/v1/agents/{agentId}/chat-sessions",
 			"POST /api/v1/agents/{agentId}/chat-sessions",
 			"POST /api/v1/agents/chat-sessions/{sessionId}/messages",

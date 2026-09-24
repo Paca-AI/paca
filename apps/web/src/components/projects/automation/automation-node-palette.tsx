@@ -11,9 +11,11 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import {
 	ACTION_TYPES,
 	CONDITION_NODE_TYPE,
+	JEV_CONDITION_NODE_TYPES,
 	type PluginNodeType,
 	pluginNodeTypesQueryOptions,
 	TRIGGER_TYPE_GROUPS,
@@ -38,6 +40,7 @@ export function AutomationNodePalette({
 	const { data: pluginTypes } = useQuery(
 		pluginNodeTypesQueryOptions(projectId),
 	);
+	const jevEnabled = useJevEnabled(projectId);
 	if (!canEdit) return null;
 
 	const pluginTriggers = pluginTypes?.triggers ?? [];
@@ -100,6 +103,15 @@ export function AutomationNodePalette({
 						>
 							{t("automation.nodeKind.condition")}
 						</DropdownMenuItem>
+						{jevEnabled &&
+							JEV_CONDITION_NODE_TYPES.map((type) => (
+								<DropdownMenuItem
+									key={type}
+									onClick={() => onAddCondition(type)}
+								>
+									{t(`automation.conditionTypes.${type}`)}
+								</DropdownMenuItem>
+							))}
 					</DropdownMenuGroup>
 					{pluginConditions.length > 0 && (
 						<PluginTypeGroup

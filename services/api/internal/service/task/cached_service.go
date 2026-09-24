@@ -245,6 +245,11 @@ func (c *CachedService) SumTaskField(ctx context.Context, projectID uuid.UUID, f
 	return c.svc.SumTaskField(ctx, projectID, filter, fieldKey)
 }
 
+// ListDistinctTags delegates to the underlying service without caching.
+func (c *CachedService) ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error) {
+	return c.svc.ListDistinctTags(ctx, projectID)
+}
+
 // ListAssignedTasks delegates directly to the underlying service (not cached).
 func (c *CachedService) ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*taskdom.Task, bool, error) {
 	return c.svc.ListAssignedTasks(ctx, memberIDs, limit, cursorAfter)

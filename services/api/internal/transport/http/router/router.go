@@ -331,6 +331,11 @@ func New(deps Deps) http.Handler {
 					// USER-role human has no global conversations.* permission
 					// by default, and this chat is meant to be available to
 					// every user).
+					// Auto mode's resolve step for global chat — ungated like the
+					// routes below it (every global agent is a candidate, no
+					// per-caller filtering needed — see ResolveGlobalAutoAgent's
+					// doc comment).
+					r.Post("/resolve-auto", deps.Agent.ResolveGlobalAutoAgent)
 					r.Get("/{agentId}/chat-sessions", deps.Agent.ListGlobalChatSessions)
 					r.Post("/{agentId}/chat-sessions", deps.Agent.StartGlobalChatSession)
 					r.Post("/chat-sessions/{sessionId}/messages", deps.Agent.SendGlobalChatMessage)
@@ -357,6 +362,8 @@ func New(deps Deps) http.Handler {
 				r.With(require.ProjectOrPublic(authz.PermissionProjectsRead)).Get("/", deps.Project.GetProject)
 				r.With(require.Project(authz.PermissionProjectsWrite)).Patch("/", deps.Project.UpdateProject)
 				r.With(require.Project(authz.PermissionProjectsDelete)).Delete("/", deps.Project.DeleteProject)
+				r.With(require.Project(authz.PermissionProjectsWrite)).Patch("/jev-config", deps.Project.UpdateJevConfig)
+				r.With(require.Project(authz.PermissionProjectsWrite)).Post("/jev-config/test", deps.Project.TestJevConfig)
 
 				// Avatar
 				r.With(require.Project(authz.PermissionProjectsWrite)).Post("/avatar/initiate-upload", deps.Project.InitiateAvatarUpload)
@@ -633,6 +640,14 @@ func New(deps Deps) http.Handler {
 						// conversations.read/write permission — see
 						// agentdom.AgentAccessGrantService's doc comment. Runs
 						// after RequirePermissions, not instead of it.
+						// Auto mode's resolve step — no {agentId} yet (that's the
+						// whole point), so RequireAgentAccess can't apply here;
+						// ResolveAutoAgent itself filters candidates to exactly
+						// what this caller could otherwise see/use (mirrors
+						// ListAgents' own per-caller access computation), so the
+						// StartChatSession call that follows can never 403.
+						r.With(require.Project(authz.PermissionConversationsWrite)).
+							Post("/resolve-auto", deps.Agent.ResolveAutoAgent)
 						r.With(require.Project(authz.PermissionConversationsRead),
 							httpmw.RequireAgentAccess(deps.AgentAccessSvc, deps.MemberRepo)).
 							Get("/{agentId}/chat-sessions", deps.Agent.ListChatSessions)

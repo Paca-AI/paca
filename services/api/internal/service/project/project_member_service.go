@@ -226,6 +226,28 @@ func (s *Service) UpdateMemberRoleByMemberID(ctx context.Context, projectID, mem
 	return s.repo.FindMemberByID(ctx, memberID)
 }
 
+// UpdateMemberDescription changes a member's Jev-facing description by member ID.
+func (s *Service) UpdateMemberDescription(ctx context.Context, projectID, memberID uuid.UUID, description string) (*projectdom.ProjectMember, error) {
+	if _, err := s.repo.FindByID(ctx, projectID); err != nil {
+		return nil, err
+	}
+
+	member, err := s.repo.FindMemberByID(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+
+	if member.ProjectID != projectID {
+		return nil, projectdom.ErrMemberNotFound
+	}
+
+	if err := s.repo.UpdateMemberDescription(ctx, memberID, description); err != nil {
+		return nil, err
+	}
+
+	return s.repo.FindMemberByID(ctx, memberID)
+}
+
 // RemoveMemberByMemberID removes a project member by member ID.
 func (s *Service) RemoveMemberByMemberID(ctx context.Context, projectID, memberID uuid.UUID) error {
 	if _, err := s.repo.FindByID(ctx, projectID); err != nil {

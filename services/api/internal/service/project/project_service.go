@@ -4,6 +4,7 @@ package projectsvc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/secret"
 )
 
 // prefixRe validates that a task ID prefix contains only uppercase letters and digits.
@@ -103,6 +105,7 @@ type Service struct {
 	taskRepo  taskBootstrapper
 	agents    agentLookup
 	avatarSvc attachmentdom.AvatarService
+	encryptor *secret.Encryptor
 }
 
 // New returns a configured project service.
@@ -114,6 +117,65 @@ func New(repo projectdom.Repository, taskRepo taskBootstrapper, agents agentLook
 func (s *Service) WithAvatarService(svc attachmentdom.AvatarService) *Service {
 	s.avatarSvc = svc
 	return s
+}
+
+// WithEncryptor configures at-rest encryption for a project's Jev API key
+// (Project.JevAPIKeySecret) — the same *secret.Encryptor instance used for
+// agents.llm_api_key_secret, reused verbatim (see bootstrap/app.go).
+func (s *Service) WithEncryptor(enc *secret.Encryptor) *Service {
+	s.encryptor = enc
+	return s
+}
+
+// encryptJevKey mirrors agentsvc.Service.encryptKey exactly: a nil
+// encryptor (ENCRYPTION_KEY unset) falls back to storing the plaintext
+// unchanged rather than erroring, and an empty key is never encrypted —
+// there's nothing to protect and "" must stay recognizable as "not
+// configured" (see Project.JevConfigured). Decryption for actual use
+// against the Jev API happens at the call site via the same
+// *secret.Encryptor instance — see platform/jev.ClientForProject.
+func (s *Service) encryptJevKey(plaintext string) (string, error) {
+	if s.encryptor == nil || plaintext == "" {
+		return plaintext, nil
+	}
+	return s.encryptor.Encrypt(plaintext)
+}
+
+// UpdateJevConfig sets a project's Jev credentials. Each of apiKey/baseURL/
+// model is independently optional (nil = leave unchanged); apiKey's zero
+// value is the empty string, so passing a non-nil empty string explicitly
+// clears/disables Jev for this project, mirroring agentsvc.Service's
+// UpdateAgent semantics for LLMAPIKey.
+func (s *Service) UpdateJevConfig(ctx context.Context, projectID uuid.UUID, apiKey, baseURL, model *string) (*projectdom.Project, error) {
+	p, err := s.repo.FindByID(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	newKeySecret := p.JevAPIKeySecret
+	if apiKey != nil {
+		encrypted, err := s.encryptJevKey(strings.TrimSpace(*apiKey))
+		if err != nil {
+			return nil, fmt.Errorf("project svc: encrypt jev api key: %w", err)
+		}
+		newKeySecret = encrypted
+	}
+	newBaseURL := p.JevBaseURL
+	if baseURL != nil {
+		newBaseURL = strings.TrimSpace(*baseURL)
+	}
+	newModel := p.JevModel
+	if model != nil {
+		newModel = strings.TrimSpace(*model)
+	}
+
+	if err := s.repo.UpdateJevConfig(ctx, projectID, newKeySecret, newBaseURL, newModel); err != nil {
+		return nil, err
+	}
+	p.JevAPIKeySecret = newKeySecret
+	p.JevBaseURL = newBaseURL
+	p.JevModel = newModel
+	return p, nil
 }
 
 // ErrAvatarServiceRequired indicates a missing AvatarService dependency when

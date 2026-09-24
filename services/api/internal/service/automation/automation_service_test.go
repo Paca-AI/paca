@@ -140,6 +140,91 @@ func TestValidateEdgeHandle_PluginConditionSource(t *testing.T) {
 	}
 }
 
+func TestValidateEdgeHandle_JevChoiceSource(t *testing.T) {
+	source := newNode(automationdom.KindCondition, automationdom.JevChoiceNodeType, `{"instructions":"?","criteria":{"billing":"money","tech":"bugs"}}`)
+	billing := "billing"
+	if err := validateEdgeHandle(source, &billing); err != nil {
+		t.Fatalf("expected a declared criteria key to be a valid handle, got %v", err)
+	}
+	elseHandle := automationdom.ElseHandle
+	if err := validateEdgeHandle(source, &elseHandle); err != nil {
+		t.Fatalf("expected else handle to remain valid, got %v", err)
+	}
+	bogus := "not_a_criteria_key"
+	if err := validateEdgeHandle(source, &bogus); err == nil {
+		t.Fatal("expected an undeclared criteria key to be rejected")
+	}
+	trueHandle := automationdom.PluginConditionTrueHandle
+	if err := validateEdgeHandle(source, &trueHandle); err == nil {
+		t.Fatal("the plugin-condition true handle is not automatically valid for jev_choice")
+	}
+}
+
+func TestValidateEdgeHandle_JevScoreSource(t *testing.T) {
+	source := newNode(automationdom.KindCondition, automationdom.JevScoreNodeType, `{"instructions":"?","criteria":["low","medium","high"]}`)
+	for _, h := range []string{"0", "1", "2"} {
+		handle := h
+		if err := validateEdgeHandle(source, &handle); err != nil {
+			t.Fatalf("expected level index %q to be a valid handle, got %v", h, err)
+		}
+	}
+	outOfRange := "3"
+	if err := validateEdgeHandle(source, &outOfRange); err == nil {
+		t.Fatal("expected an out-of-range level index to be rejected")
+	}
+	notANumber := "high"
+	if err := validateEdgeHandle(source, &notANumber); err == nil {
+		t.Fatal("expected a non-numeric handle to be rejected (level indices, not labels)")
+	}
+}
+
+func TestValidateEdgeHandle_JevNoulSource(t *testing.T) {
+	source := newNode(automationdom.KindCondition, automationdom.JevNoulNodeType, `{"instructions":"?"}`)
+	trueHandle := automationdom.PluginConditionTrueHandle
+	if err := validateEdgeHandle(source, &trueHandle); err != nil {
+		t.Fatalf("expected the true handle to be valid for jev_noul, got %v", err)
+	}
+	elseHandle := automationdom.ElseHandle
+	if err := validateEdgeHandle(source, &elseHandle); err != nil {
+		t.Fatalf("expected else handle to remain valid, got %v", err)
+	}
+	bogus := "maybe"
+	if err := validateEdgeHandle(source, &bogus); err == nil {
+		t.Fatal("expected an arbitrary handle to be rejected for jev_noul")
+	}
+}
+
+func TestValidateJevConditionConfig(t *testing.T) {
+	s := &Service{}
+
+	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"","criteria":{"a":"x"}}`)); err == nil {
+		t.Error("expected an error for empty instructions")
+	}
+	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{}}`)); err == nil {
+		t.Error("expected an error for empty criteria")
+	}
+	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{"else":"x"}}`)); err == nil {
+		t.Error("expected an error for a criteria key that collides with the reserved else handle")
+	}
+	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{"a":"x"}}`)); err != nil {
+		t.Errorf("expected a valid jev_choice config to pass, got %v", err)
+	}
+
+	if err := s.validateJevConditionConfig(automationdom.JevScoreNodeType, []byte(`{"instructions":"?","criteria":["only one"]}`)); err == nil {
+		t.Error("expected an error for fewer than 2 score levels")
+	}
+	if err := s.validateJevConditionConfig(automationdom.JevScoreNodeType, []byte(`{"instructions":"?","criteria":["a","b"]}`)); err != nil {
+		t.Errorf("expected a valid jev_score config to pass, got %v", err)
+	}
+
+	if err := s.validateJevConditionConfig(automationdom.JevNoulNodeType, []byte(`{"instructions":""}`)); err == nil {
+		t.Error("expected an error for empty instructions")
+	}
+	if err := s.validateJevConditionConfig(automationdom.JevNoulNodeType, []byte(`{"instructions":"is this urgent?"}`)); err != nil {
+		t.Errorf("expected a valid jev_noul config to pass, got %v", err)
+	}
+}
+
 func TestHandlesEqual(t *testing.T) {
 	a, b := "x", "x"
 	c := "y"

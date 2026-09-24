@@ -210,6 +210,9 @@ func (s *stubProjectSvc) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) er
 func (s *stubProjectSvc) UpdateMemberRoleByMemberID(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
 	return nil, errors.New("not implemented in stub")
 }
+func (s *stubProjectSvc) UpdateMemberDescription(_ context.Context, _, _ uuid.UUID, _ string) (*projectdom.ProjectMember, error) {
+	return nil, errors.New("not implemented in stub")
+}
 func (s *stubProjectSvc) RemoveMemberByMemberID(_ context.Context, _, _ uuid.UUID) error {
 	return errors.New("not implemented in stub")
 }

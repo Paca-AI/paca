@@ -91,6 +91,12 @@ type TaskRepository interface {
 	// of projectIDs in a single query, for cross-project aggregates like the
 	// home page's workspace stats widget — avoids an N-query per-project loop.
 	CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
+	// ListDistinctTags returns every distinct tag value used by any
+	// non-deleted task in the project, sorted alphabetically. Used to build
+	// Jev's tag-autofill candidate set, which — unlike other autofill
+	// fields — must only ever suggest tags the project has already used,
+	// never invent new ones.
+	ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error)
 }
 
 // TaskSort carries resolved sort configuration for ListTasks.

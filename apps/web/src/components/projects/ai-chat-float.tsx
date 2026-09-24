@@ -11,6 +11,7 @@ import { Thread } from "@/components/assistant-ui/thread";
 import {
 	AgentPickerContext,
 	AgentPickerInline,
+	AUTO_AGENT_ID,
 	useAgentPicker,
 } from "@/components/projects/agents/agent-picker";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
 	conversationQueryOptions,
 	heartbeatConversation,
 	pauseConversation,
+	resolveAutoAgent,
 	sendChatMessage,
 	sendConversationMessage,
 	startChatSession,
@@ -158,7 +160,13 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		try {
 			if (!conversationId) {
 				if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
-				const result = await startChatSession(projectId, agentId, {
+				// "Auto" isn't a real agent — resolve it to one via Jev, based
+				// on this opening message, before starting the session.
+				const resolvedAgentId =
+					agentId === AUTO_AGENT_ID
+						? (await resolveAutoAgent(projectId, text)).agent_id
+						: agentId;
+				const result = await startChatSession(projectId, resolvedAgentId, {
 					message: text,
 					contextItems,
 				});

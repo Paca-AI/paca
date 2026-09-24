@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -699,11 +700,15 @@ func (s *Service) validateNodeTypeAndConfig(ctx context.Context, projectID uuid.
 		return s.validateTriggerConfig(ctx, projectID, automationdom.TriggerType(nodeType), config, strict)
 	case automationdom.KindCondition:
 		if nodeType != automationdom.ConditionNodeType {
-			// Not the built-in N-branch switch — this must be a
-			// plugin-contributed condition node instead (its own node type,
-			// evaluated via the plugin runtime's EvaluateCondition bridge
-			// rather than the built-in leaf-tree DSL). Config is opaque to
-			// this service; the plugin owns its own validation.
+			if automationdom.ValidBuiltinAIConditionTypes[nodeType] {
+				return s.validateJevConditionConfig(nodeType, config)
+			}
+			// Not the built-in N-branch switch or a Jev condition — this
+			// must be a plugin-contributed condition node instead (its own
+			// node type, evaluated via the plugin runtime's
+			// EvaluateCondition bridge rather than the built-in leaf-tree
+			// DSL). Config is opaque to this service; the plugin owns its
+			// own validation.
 			if s.pluginResolver != nil && s.pluginResolver.IsPluginCondition(nodeType) {
 				return nil
 			}
@@ -808,6 +813,58 @@ func (s *Service) validateConditionConfig(ctx context.Context, projectID uuid.UU
 			if err := s.validateTaskTarget(ctx, projectID, b.Tree.Target, strict); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// validateJevConditionConfig validates a Jev Choice/Score/Noul condition
+// node's config — structural only (this service has no way to judge whether
+// a Jev question is well-formed beyond its shape; Jev itself rejects a
+// malformed question at call time with a 422, which the worker treats as a
+// graceful else-route rather than surfacing here).
+func (s *Service) validateJevConditionConfig(nodeType string, raw json.RawMessage) error {
+	switch nodeType {
+	case automationdom.JevChoiceNodeType:
+		var cfg automationdom.JevChoiceConfig
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &cfg); err != nil {
+				return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
+			}
+		}
+		if strings.TrimSpace(cfg.Instructions) == "" {
+			return fmt.Errorf("%w: instructions is required", automationdom.ErrNodeConfigInvalid)
+		}
+		if len(cfg.Criteria) == 0 {
+			return fmt.Errorf("%w: at least one criteria option is required", automationdom.ErrNodeConfigInvalid)
+		}
+		for key := range cfg.Criteria {
+			if key == "" || key == automationdom.ElseHandle {
+				return fmt.Errorf("%w: criteria key must be non-empty and not the reserved %q value", automationdom.ErrNodeConfigInvalid, automationdom.ElseHandle)
+			}
+		}
+	case automationdom.JevScoreNodeType:
+		var cfg automationdom.JevScoreConfig
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &cfg); err != nil {
+				return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
+			}
+		}
+		if strings.TrimSpace(cfg.Instructions) == "" {
+			return fmt.Errorf("%w: instructions is required", automationdom.ErrNodeConfigInvalid)
+		}
+		if len(cfg.Criteria) < 2 || len(cfg.Criteria) > 10 {
+			return fmt.Errorf("%w: criteria must have between 2 and 10 levels", automationdom.ErrNodeConfigInvalid)
+		}
+	case automationdom.JevNoulNodeType:
+		var cfg automationdom.JevNoulConfig
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &cfg); err != nil {
+				return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
+			}
+		}
+		if strings.TrimSpace(cfg.Instructions) == "" {
+			return fmt.Errorf("%w: instructions is required", automationdom.ErrNodeConfigInvalid)
 		}
 	}
 	return nil
@@ -1070,6 +1127,9 @@ func validateEdgeHandle(source *automationdom.Node, handle *string) error {
 		return nil
 	}
 	if source.Type != automationdom.ConditionNodeType {
+		if automationdom.ValidBuiltinAIConditionTypes[source.Type] {
+			return validateJevEdgeHandle(source, *handle)
+		}
 		if *handle == automationdom.PluginConditionTrueHandle {
 			return nil
 		}
@@ -1085,6 +1145,41 @@ func validateEdgeHandle(source *automationdom.Node, handle *string) error {
 		}
 	}
 	return fmt.Errorf("%w: %q is not a declared branch on this condition node", automationdom.ErrNodeConfigInvalid, *handle)
+}
+
+// validateJevEdgeHandle validates an edge handle sourced from one of the
+// three Jev condition node types — jev_noul reuses the plugin-condition
+// boolean-gate handles (PluginConditionTrueHandle/ElseHandle); jev_choice
+// and jev_score each accept a handle per their own declared option/level,
+// plus ElseHandle (checked by the caller before this is reached).
+func validateJevEdgeHandle(source *automationdom.Node, handle string) error {
+	switch source.Type {
+	case automationdom.JevNoulNodeType:
+		if handle == automationdom.PluginConditionTrueHandle {
+			return nil
+		}
+		return fmt.Errorf("%w: %q is not a valid handle for a jev_noul node (only %q or %q)", automationdom.ErrNodeConfigInvalid, handle, automationdom.PluginConditionTrueHandle, automationdom.ElseHandle)
+	case automationdom.JevChoiceNodeType:
+		var cfg automationdom.JevChoiceConfig
+		if len(source.Config) > 0 {
+			_ = json.Unmarshal(source.Config, &cfg)
+		}
+		if _, ok := cfg.Criteria[handle]; ok {
+			return nil
+		}
+		return fmt.Errorf("%w: %q is not a declared criteria option on this jev_choice node", automationdom.ErrNodeConfigInvalid, handle)
+	case automationdom.JevScoreNodeType:
+		var cfg automationdom.JevScoreConfig
+		if len(source.Config) > 0 {
+			_ = json.Unmarshal(source.Config, &cfg)
+		}
+		if idx, err := strconv.Atoi(handle); err == nil && idx >= 0 && idx < len(cfg.Criteria) {
+			return nil
+		}
+		return fmt.Errorf("%w: %q is not a valid score level index on this jev_score node", automationdom.ErrNodeConfigInvalid, handle)
+	default:
+		return fmt.Errorf("%w: unknown jev condition node type %q", automationdom.ErrNodeConfigInvalid, source.Type)
+	}
 }
 
 // wouldCreateCycle reports whether adding an edge sourceID -> targetID would

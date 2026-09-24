@@ -45,6 +45,10 @@ export interface Task {
 	view_group_key?: string | null;
 	created_at: string;
 	updated_at: string;
+	// "manual" (default) or "auto" — see the assignees PropertyField in
+	// properties-panel.tsx, which shows an "Auto" toggle instead of the
+	// member picker when this is "auto".
+	assignment_mode: "manual" | "auto";
 }
 
 export interface TaskListResult {
@@ -708,6 +712,7 @@ export async function updateTask(
 		due_date: string | null;
 		tags: string[];
 		custom_fields: Record<string, unknown>;
+		assignment_mode: "manual" | "auto";
 	}>,
 ): Promise<Task> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Task>>(

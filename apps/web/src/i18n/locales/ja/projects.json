@@ -10,6 +10,7 @@
 				"taskStatuses": "タスクステータス",
 				"taskTypes": "タスクタイプ",
 				"customFields": "カスタムフィールド",
+				"jev": "Jev AI",
 				"dangerZone": "危険な操作",
 				"plugins": "プラグイン"
 			},
@@ -264,7 +265,10 @@
 				"cliLoginNotAuthenticated": "まだ認証されていません — ターミナルからログインし、再度確認してください。",
 				"cliLoginVerifyFailed": "ログイン状態を確認できませんでした。もう一度お試しください。",
 				"cliLoginLastVerified": "最終確認日時: {{date}}。",
-				"cliLoginNoEnvironment": "このエージェントには環境が設定されていません — まず上で環境を選択してください。"
+				"cliLoginNoEnvironment": "このエージェントには環境が設定されていません — まず上で環境を選択してください。",
+				"descriptionLabel": "説明",
+				"descriptionPlaceholder": "このエージェントの用途は？",
+				"descriptionHint": "自動モードで、どのエージェントがチャットを担当するか、またはタスクを割り当てるかをJevが判断する際に表示されます。プロバイダーとモデルは自動的に追加されます。"
 			},
 			"mcp": {
 				"serverCount_one": "{{count}}件のサーバーを設定済み",
@@ -1096,6 +1100,59 @@
 				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
+		"jev": {
+			"title": "Jev AI",
+			"description": "AI意思決定エンジンのJevがこのプロジェクトをどのように支援するかを設定します。",
+			"credentials": {
+				"title": "プロバイダーの認証情報",
+				"description": "Jev互換のプロバイダー(デフォルトのTypeSafe、OpenJev、または同じAPIを実装する他のホスト)を接続して、以下の機能を利用します。",
+				"configuredBadge": "設定済み",
+				"notConfiguredBadge": "未設定",
+				"apiKeyLabel": "APIキー",
+				"apiKeyPlaceholder": "APIキーを入力",
+				"apiKeyConfiguredPlaceholder": "空欄のままにすると現在のキーを保持します",
+				"baseUrlLabel": "ホスト(任意)",
+				"baseUrlPlaceholder": "https://api.typesafe.ai(デフォルト)",
+				"modelLabel": "モデル(任意)",
+				"modelPlaceholder": "jev-latest(デフォルト)",
+				"saveButton": "認証情報を保存",
+				"testButton": "接続をテスト",
+				"advancedLabel": "詳細設定",
+				"testSuccess": "接続に成功しました",
+				"testFailed": "接続できませんでした。認証情報を確認して再試行してください。"
+			},
+			"autofill": {
+				"title": "タスクの自動入力",
+				"description": "タスクが作成されると、Jevは作成者が空欄のままにしたフィールドに値を入力します。",
+				"enabledLabel": "自動入力を有効にする",
+				"enabledHint": "タスク作成の直後に、Jevが空欄のフィールドに値を提案します。",
+				"excludedFieldsLabel": "Jevが設定できるフィールド",
+				"excludedFieldsHint": "フィールドをオフにすると、Jevがそのフィールドを自動設定しなくなります。",
+				"fieldImportance": "重要度",
+				"fieldTaskType": "タスクタイプ",
+				"fieldStoryPoints": "ストーリーポイント",
+				"fieldTags": "タグ",
+				"fieldEpic": "エピック"
+			},
+			"autoAssign": {
+				"title": "タスクの自動割り当て",
+				"description": "自動割り当てのタスクの担当者をJevに選ばせます。",
+				"scopeLabel": "Jevが割り当てられる対象",
+				"scopeAll": "すべてのメンバー",
+				"scopeHuman": "人間のメンバーのみ",
+				"scopeHumanHint": "AIエージェントは対象外になります。"
+			},
+			"saveChanges": "変更を保存",
+			"saved": "保存しました ✓",
+			"noPermission": "このプロジェクトを編集する権限がありません。",
+			"errors": {
+				"updateFailed": "設定の更新に失敗しました。もう一度お試しください。"
+			},
+			"notConfigured": {
+				"title": "Jev はまだ設定されていません",
+				"description": "上のプロバイダー認証情報を追加すると、タスクの自動入力と自動割り当てが利用できます。"
+			}
+		},
 		"dangerZone": {
 			"title": "危険な操作",
 			"deleteProjectTitle": "このプロジェクトを削除",
@@ -1201,6 +1258,14 @@
 		"noPermission": {
 			"title": "You don't have permission to view members",
 			"description": "Ask a project admin to grant you the project.members.read permission."
+		},
+		"descriptionChip": {
+			"edit": "説明を編集",
+			"title": "説明",
+			"hint": "自動モードでこの人にタスクを割り当てるかどうかをJevが判断する際に表示されます。",
+			"placeholder": "この人の担当業務は？",
+			"save": "保存",
+			"saveFailed": "説明の保存に失敗しました。"
 		}
 	},
 	"aiChat": {
@@ -1209,7 +1274,9 @@
 		"agentLabel": "エージェント",
 		"selectAgentPlaceholder": "エージェントを選択…",
 		"selectAgentFirst": "まずエージェントを選択してください。",
-		"noAgentsAvailable": "利用できるエージェントはまだありません。"
+		"noAgentsAvailable": "利用できるエージェントはまだありません。",
+		"autoAgent": "自動",
+		"resolvingAgent": "エージェントを選択中…"
 	},
 	"taskTypes": {
 		"deleteDialog": {
@@ -1298,7 +1365,8 @@
 			"parent": "親タスク",
 			"viewParent": "親タスクを表示",
 			"removeParent": "親タスクを削除",
-			"addFields": "フィールドを追加"
+			"addFields": "フィールドを追加",
+			"autoAssign": "自動"
 		},
 		"description": {
 			"title": "説明",
@@ -1476,7 +1544,9 @@
 			"startedAiSession": "AIセッションを開始しました",
 			"watchSession": "セッションを見る",
 			"madeChange": "変更を加えました",
-			"descriptionChangeDiff": "説明の変更差分"
+			"descriptionChangeDiff": "説明の変更差分",
+			"autoAssignSkippedLowConfidence": "担当者を確信を持って選べませんでした（信頼度{{confidence}}%）— タスクは未割り当てのままです",
+			"autoAssignSkipped": "自動割り当てをスキップしました — タスクは未割り当てのままです"
 		}
 	},
 	"portForwardDetail": {
@@ -2205,7 +2275,26 @@
 				"branchFallback": "分岐{{n}}",
 				"cronSchedule": "{{expression}} に実行",
 				"webhookReady": "Webhook設定済み",
-				"callApiSummary": "{{method}} {{host}}"
+				"callApiSummary": "{{method}} {{host}}",
+				"jevNoulTrue": "はい"
+			},
+			"jev": {
+				"instructionsLabel": "Jevへの質問",
+				"instructionsPlaceholder": {
+					"jev_choice": "例：どのチームが対応すべきか？",
+					"jev_score": "例：この問題はどの程度深刻に見えるか？",
+					"jev_noul": "例：顧客が返金を求めている。"
+				},
+				"optionsTitle": "オプション",
+				"optionKeyPlaceholder": "キー",
+				"optionDescriptionPlaceholder": "このオプションを選ぶ条件",
+				"addOption": "オプションを追加",
+				"levelsTitle": "レベル（低い順から高い順）",
+				"levelPlaceholder": "このレベルを説明",
+				"addLevel": "レベルを追加",
+				"confidenceThresholdLabel": "信頼度のしきい値",
+				"trueThresholdLabel": "「真」のしきい値",
+				"thresholdHint": "これを下回ると、ワークフローは回答を信頼せずElse分岐に従います。"
 			}
 		},
 		"runHistory": {
@@ -2229,6 +2318,11 @@
 			"subtitle": "他のタスクの完了を待っているすべての自動化を表示する読み取り専用ビュー",
 			"empty": "先行タスクの依存関係はまだ設定されていません",
 			"watchedTasks": "{{count}}件のタスクの完了待ち"
+		},
+		"conditionTypes": {
+			"jev_choice": "Jev Choice",
+			"jev_score": "Jev Score",
+			"jev_noul": "Jev Noul"
 		}
 	}
 }

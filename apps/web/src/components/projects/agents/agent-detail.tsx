@@ -178,6 +178,7 @@ function OverviewTab({
 	);
 
 	const [name, setName] = useState(agent.name);
+	const [description, setDescription] = useState(agent.description);
 	const [llmApiKey, setLlmApiKey] = useState("");
 	const [llmBaseUrl, setLlmBaseUrl] = useState(agent.llm_base_url ?? "");
 	const [systemPrompt, setSystemPrompt] = useState(agent.system_prompt);
@@ -277,6 +278,7 @@ function OverviewTab({
 
 	const isDirty =
 		name !== agent.name ||
+		description !== agent.description ||
 		effectiveParallelismLimit !== agent.parallelism_limit ||
 		(isAcp
 			? acpProviderSelect !== (agent.acp_provider ?? "claude-code") ||
@@ -301,6 +303,7 @@ function OverviewTab({
 		mutationFn: () => {
 			const payload = {
 				name: name.trim(),
+				description: description.trim(),
 				parallelism_limit: effectiveParallelismLimit,
 				...(isAcp
 					? {
@@ -388,6 +391,20 @@ function OverviewTab({
 					onChange={(e) => setName(e.target.value)}
 					disabled={!canWrite}
 				/>
+			</div>
+
+			<div className="space-y-1.5">
+				<Label>{t("agents.detail.overview.descriptionLabel")}</Label>
+				<Textarea
+					value={description}
+					onChange={(e) => setDescription(e.target.value)}
+					rows={2}
+					disabled={!canWrite}
+					placeholder={t("agents.detail.overview.descriptionPlaceholder")}
+				/>
+				<p className="text-xs text-muted-foreground">
+					{t("agents.detail.overview.descriptionHint")}
+				</p>
 			</div>
 
 			<div className="space-y-1.5">

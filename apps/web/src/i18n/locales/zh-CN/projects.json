@@ -10,6 +10,7 @@
 				"taskStatuses": "任务状态",
 				"taskTypes": "任务类型",
 				"customFields": "自定义字段",
+				"jev": "Jev AI",
 				"dangerZone": "危险区域",
 				"plugins": "插件"
 			},
@@ -264,7 +265,10 @@
 				"cliLoginNotAuthenticated": "尚未通过身份验证 — 请通过终端登录，然后重新验证。",
 				"cliLoginVerifyFailed": "无法检查登录状态，请重试。",
 				"cliLoginLastVerified": "上次验证时间：{{date}}。",
-				"cliLoginNoEnvironment": "该智能体尚未设置环境 — 请先在上方选择一个环境。"
+				"cliLoginNoEnvironment": "该智能体尚未设置环境 — 请先在上方选择一个环境。",
+				"descriptionLabel": "描述",
+				"descriptionPlaceholder": "此代理的用途是什么？",
+				"descriptionHint": "在自动模式下，当 Jev 决定由哪个代理处理聊天或是否为其分配任务时会显示此内容。提供商和模型会自动添加。"
 			},
 			"mcp": {
 				"serverCount_one": "已配置 {{count}} 个服务器",
@@ -1096,6 +1100,59 @@
 				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
+		"jev": {
+			"title": "Jev AI",
+			"description": "配置 AI 决策引擎 Jev 为此项目提供协助的方式。",
+			"credentials": {
+				"title": "提供商凭据",
+				"description": "连接你自己的 Jev 兼容提供商——默认的 TypeSafe、OpenJev,或实现相同 API 的其他主机——以启用以下功能。",
+				"configuredBadge": "已配置",
+				"notConfiguredBadge": "未配置",
+				"apiKeyLabel": "API 密钥",
+				"apiKeyPlaceholder": "输入 API 密钥",
+				"apiKeyConfiguredPlaceholder": "留空以保留当前密钥",
+				"baseUrlLabel": "主机(可选)",
+				"baseUrlPlaceholder": "https://api.typesafe.ai(默认)",
+				"modelLabel": "模型(可选)",
+				"modelPlaceholder": "jev-latest(默认)",
+				"saveButton": "保存凭据",
+				"testButton": "测试连接",
+				"advancedLabel": "高级",
+				"testSuccess": "连接成功",
+				"testFailed": "无法连接,请检查凭据后重试。"
+			},
+			"autofill": {
+				"title": "任务自动填充",
+				"description": "创建任务时，Jev 会为创建者留空的以下字段自动填值。",
+				"enabledLabel": "启用自动填充",
+				"enabledHint": "任务创建后不久，Jev 会为空白字段建议取值。",
+				"excludedFieldsLabel": "Jev 可以设置的字段",
+				"excludedFieldsHint": "关闭某个字段后，Jev 将永远不会自动设置该字段。",
+				"fieldImportance": "重要程度",
+				"fieldTaskType": "任务类型",
+				"fieldStoryPoints": "故事点",
+				"fieldTags": "标签",
+				"fieldEpic": "史诗"
+			},
+			"autoAssign": {
+				"title": "任务自动分配",
+				"description": "让 Jev 为使用自动分配的任务选择负责人。",
+				"scopeLabel": "Jev 可分配给谁",
+				"scopeAll": "所有成员",
+				"scopeHuman": "仅人类成员",
+				"scopeHumanHint": "排除 AI 智能体。"
+			},
+			"saveChanges": "保存更改",
+			"saved": "已保存 ✓",
+			"noPermission": "您没有权限编辑此项目。",
+			"errors": {
+				"updateFailed": "更新设置失败，请重试。"
+			},
+			"notConfigured": {
+				"title": "尚未配置 Jev",
+				"description": "在上方添加提供商凭据以解锁任务自动填充和自动分配功能。"
+			}
+		},
 		"dangerZone": {
 			"title": "危险区域",
 			"deleteProjectTitle": "删除此项目",
@@ -1201,6 +1258,14 @@
 		"noPermission": {
 			"title": "You don't have permission to view members",
 			"description": "Ask a project admin to grant you the project.members.read permission."
+		},
+		"descriptionChip": {
+			"edit": "编辑描述",
+			"title": "描述",
+			"hint": "在自动模式下，当 Jev 决定是否为此人分配任务时会显示此内容。",
+			"placeholder": "此人负责什么工作？",
+			"save": "保存",
+			"saveFailed": "保存描述失败。"
 		}
 	},
 	"aiChat": {
@@ -1209,7 +1274,9 @@
 		"agentLabel": "智能体",
 		"selectAgentPlaceholder": "选择一个智能体…",
 		"selectAgentFirst": "请先选择一个智能体。",
-		"noAgentsAvailable": "暂无可用的智能体。"
+		"noAgentsAvailable": "暂无可用的智能体。",
+		"autoAgent": "自动",
+		"resolvingAgent": "正在选择代理…"
 	},
 	"taskTypes": {
 		"deleteDialog": {
@@ -1298,7 +1365,8 @@
 			"parent": "父任务",
 			"viewParent": "查看父任务",
 			"removeParent": "移除父任务",
-			"addFields": "添加字段"
+			"addFields": "添加字段",
+			"autoAssign": "自动"
 		},
 		"description": {
 			"title": "描述",
@@ -1476,7 +1544,9 @@
 			"startedAiSession": "启动了一个 AI 会话",
 			"watchSession": "查看会话",
 			"madeChange": "进行了更改",
-			"descriptionChangeDiff": "描述更改差异"
+			"descriptionChangeDiff": "描述更改差异",
+			"autoAssignSkippedLowConfidence": "无法确定地选出负责人（置信度 {{confidence}}%）— 任务仍未分配",
+			"autoAssignSkipped": "跳过了自动分配 — 任务仍未分配"
 		}
 	},
 	"portForwardDetail": {
@@ -2205,7 +2275,26 @@
 				"branchFallback": "分支 {{n}}",
 				"cronSchedule": "运行时间：{{expression}}",
 				"webhookReady": "已配置 Webhook",
-				"callApiSummary": "{{method}} {{host}}"
+				"callApiSummary": "{{method}} {{host}}",
+				"jevNoulTrue": "是"
+			},
+			"jev": {
+				"instructionsLabel": "向 Jev 提出的问题",
+				"instructionsPlaceholder": {
+					"jev_choice": "例如：应由哪个团队处理此事？",
+					"jev_score": "例如：此问题看起来有多严重？",
+					"jev_noul": "例如：客户正在要求退款。"
+				},
+				"optionsTitle": "选项",
+				"optionKeyPlaceholder": "键",
+				"optionDescriptionPlaceholder": "何时选择此选项",
+				"addOption": "添加选项",
+				"levelsTitle": "级别（从低到高）",
+				"levelPlaceholder": "描述此级别",
+				"addLevel": "添加级别",
+				"confidenceThresholdLabel": "置信度阈值",
+				"trueThresholdLabel": "“真”阈值",
+				"thresholdHint": "低于此值时，工作流将走 Else 分支，而不采信该答案。"
 			}
 		},
 		"runHistory": {
@@ -2229,6 +2318,11 @@
 			"subtitle": "只读视图，展示所有等待其他任务完成的自动化",
 			"empty": "尚未配置前置任务依赖关系",
 			"watchedTasks": "等待 {{count}} 个任务"
+		},
+		"conditionTypes": {
+			"jev_choice": "Jev Choice",
+			"jev_score": "Jev Score",
+			"jev_noul": "Jev Noul"
 		}
 	}
 }

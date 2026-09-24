@@ -53,7 +53,17 @@ import {
 	type ConditionField,
 	type ConditionLeaf,
 	type ConditionOperator,
+	DEFAULT_JEV_CONFIDENCE_THRESHOLD,
+	DEFAULT_JEV_NOUL_THRESHOLD,
 	generateWebhookToken,
+	JEV_CHOICE_NODE_TYPE,
+	JEV_CONDITION_NODE_TYPES,
+	JEV_NOUL_NODE_TYPE,
+	JEV_SCORE_NODE_TYPE,
+	type JevChoiceConfig,
+	type JevConditionNodeType,
+	type JevNoulConfig,
+	type JevScoreConfig,
 	MULTI_VALUED_TARGET_KINDS,
 	type PluginNodeConfigSchema,
 	type PluginNodeConfigSchemaProperty,
@@ -291,6 +301,9 @@ export function AutomationNodeConfigPanel({
 		node.type,
 	);
 	const isBuiltinCondition = node.type === CONDITION_NODE_TYPE;
+	const isJevCondition = (
+		JEV_CONDITION_NODE_TYPES as readonly string[]
+	).includes(node.type);
 
 	if (node.kind === "trigger") {
 		return (
@@ -349,7 +362,11 @@ export function AutomationNodeConfigPanel({
 				title={
 					isBuiltinCondition
 						? t("automation.nodeKind.condition")
-						: (pluginLabel ?? node.type)
+						: isJevCondition
+							? t(
+									`automation.conditionTypes.${node.type as JevConditionNodeType}`,
+								)
+							: (pluginLabel ?? node.type)
 				}
 				kind="condition"
 				canEdit={canEdit}
@@ -364,6 +381,19 @@ export function AutomationNodeConfigPanel({
 						members={members}
 						customFields={customFields}
 						taskTypes={taskTypes}
+						canEdit={canEdit}
+						onSave={onSave}
+						saving={saving}
+					/>
+				) : isJevCondition ? (
+					<JevConditionConfigForm
+						type={node.type as JevConditionNodeType}
+						config={
+							node.config as unknown as
+								| JevChoiceConfig
+								| JevScoreConfig
+								| JevNoulConfig
+						}
 						canEdit={canEdit}
 						onSave={onSave}
 						saving={saving}
@@ -2028,6 +2058,267 @@ function ConditionConfigForm({
 					</Button>
 					<SaveButton saving={saving} onClick={() => onSave({ branches })} />
 				</>
+			)}
+		</div>
+	);
+}
+
+// ── Jev condition config form ────────────────────────────────────────────────
+
+// JevConditionConfigForm covers all three Jev-backed condition node types —
+// they share "instructions" and a confidence/noul threshold, differing only
+// in their criteria editor (jev_choice: key→description pairs, each key
+// becoming an outgoing edge handle; jev_score: an ordered list of 2-10
+// levels, low to high; jev_noul: no criteria at all, just a threshold).
+function JevConditionConfigForm({
+	type,
+	config,
+	canEdit,
+	onSave,
+	saving,
+}: {
+	type: JevConditionNodeType;
+	config: JevChoiceConfig | JevScoreConfig | JevNoulConfig;
+	canEdit: boolean;
+	onSave: (config: Record<string, unknown>) => void;
+	saving?: boolean;
+}) {
+	const { t } = useTranslation("projects");
+	const [instructions, setInstructions] = useState(config.instructions ?? "");
+	const [choiceOptions, setChoiceOptions] = useState<
+		{ key: string; description: string }[]
+	>(() =>
+		Object.entries((config as JevChoiceConfig).criteria ?? {}).map(
+			([key, description]) => ({ key, description }),
+		),
+	);
+	const [scoreLevels, setScoreLevels] = useState<string[]>(
+		() => (config as JevScoreConfig).criteria ?? ["", ""],
+	);
+	const [threshold, setThreshold] = useState(
+		type === JEV_NOUL_NODE_TYPE
+			? ((config as JevNoulConfig).true_threshold ?? DEFAULT_JEV_NOUL_THRESHOLD)
+			: ((config as JevChoiceConfig | JevScoreConfig).confidence_threshold ??
+					DEFAULT_JEV_CONFIDENCE_THRESHOLD),
+	);
+
+	useEffect(() => {
+		setInstructions(config.instructions ?? "");
+		setChoiceOptions(
+			Object.entries((config as JevChoiceConfig).criteria ?? {}).map(
+				([key, description]) => ({ key, description }),
+			),
+		);
+		setScoreLevels((config as JevScoreConfig).criteria ?? ["", ""]);
+		setThreshold(
+			type === JEV_NOUL_NODE_TYPE
+				? ((config as JevNoulConfig).true_threshold ??
+						DEFAULT_JEV_NOUL_THRESHOLD)
+				: ((config as JevChoiceConfig | JevScoreConfig).confidence_threshold ??
+						DEFAULT_JEV_CONFIDENCE_THRESHOLD),
+		);
+	}, [config, type]);
+
+	function save() {
+		if (type === JEV_CHOICE_NODE_TYPE) {
+			const criteria: Record<string, string> = {};
+			for (const opt of choiceOptions) {
+				const key = opt.key.trim();
+				if (key) criteria[key] = opt.description;
+			}
+			onSave({ instructions, criteria, confidence_threshold: threshold });
+		} else if (type === JEV_SCORE_NODE_TYPE) {
+			onSave({
+				instructions,
+				criteria: scoreLevels.filter((l) => l.trim() !== ""),
+				confidence_threshold: threshold,
+			});
+		} else {
+			onSave({ instructions, true_threshold: threshold });
+		}
+	}
+
+	const canSave =
+		instructions.trim() !== "" &&
+		(type !== JEV_CHOICE_NODE_TYPE ||
+			choiceOptions.some((o) => o.key.trim() !== "")) &&
+		(type !== JEV_SCORE_NODE_TYPE ||
+			scoreLevels.filter((l) => l.trim() !== "").length >= 2);
+
+	return (
+		<div className="space-y-4">
+			<div className="space-y-1.5">
+				<Label className="text-xs">
+					{t("automation.nodeConfig.jev.instructionsLabel")}
+				</Label>
+				<Textarea
+					value={instructions}
+					onChange={(e) => setInstructions(e.target.value)}
+					placeholder={t(
+						`automation.nodeConfig.jev.instructionsPlaceholder.${type}`,
+					)}
+					rows={3}
+					disabled={!canEdit}
+					className="text-xs"
+				/>
+			</div>
+
+			{type === JEV_CHOICE_NODE_TYPE && (
+				<div className="space-y-2">
+					<div className="text-xs font-semibold text-muted-foreground">
+						{t("automation.nodeConfig.jev.optionsTitle")}
+					</div>
+					{choiceOptions.map((opt, i) => (
+						<div
+							// biome-ignore lint/suspicious/noArrayIndexKey: option keys aren't stable input keys until saved
+							key={i}
+							className="flex items-center gap-1.5"
+						>
+							<Input
+								value={opt.key}
+								onChange={(e) =>
+									setChoiceOptions((prev) =>
+										prev.map((o, idx) =>
+											idx === i ? { ...o, key: e.target.value } : o,
+										),
+									)
+								}
+								placeholder={t(
+									"automation.nodeConfig.jev.optionKeyPlaceholder",
+								)}
+								disabled={!canEdit}
+								className="h-7 w-28 text-xs font-mono"
+							/>
+							<Input
+								value={opt.description}
+								onChange={(e) =>
+									setChoiceOptions((prev) =>
+										prev.map((o, idx) =>
+											idx === i ? { ...o, description: e.target.value } : o,
+										),
+									)
+								}
+								placeholder={t(
+									"automation.nodeConfig.jev.optionDescriptionPlaceholder",
+								)}
+								disabled={!canEdit}
+								className="h-7 flex-1 text-xs"
+							/>
+							{canEdit && (
+								<button
+									type="button"
+									onClick={() =>
+										setChoiceOptions((prev) =>
+											prev.filter((_, idx) => idx !== i),
+										)
+									}
+									className="shrink-0 text-muted-foreground hover:text-destructive"
+								>
+									<Trash2 className="size-3.5" />
+								</button>
+							)}
+						</div>
+					))}
+					{canEdit && (
+						<Button
+							variant="outline"
+							size="sm"
+							className="w-full gap-1.5"
+							onClick={() =>
+								setChoiceOptions((prev) => [
+									...prev,
+									{ key: "", description: "" },
+								])
+							}
+						>
+							<Plus className="size-3.5" />
+							{t("automation.nodeConfig.jev.addOption")}
+						</Button>
+					)}
+				</div>
+			)}
+
+			{type === JEV_SCORE_NODE_TYPE && (
+				<div className="space-y-2">
+					<div className="text-xs font-semibold text-muted-foreground">
+						{t("automation.nodeConfig.jev.levelsTitle")}
+					</div>
+					{scoreLevels.map((level, i) => (
+						<div
+							// biome-ignore lint/suspicious/noArrayIndexKey: levels aren't stable input keys until saved
+							key={i}
+							className="flex items-center gap-1.5"
+						>
+							<span className="w-4 shrink-0 text-center text-[10px] text-muted-foreground">
+								{i}
+							</span>
+							<Input
+								value={level}
+								onChange={(e) =>
+									setScoreLevels((prev) =>
+										prev.map((l, idx) => (idx === i ? e.target.value : l)),
+									)
+								}
+								placeholder={t("automation.nodeConfig.jev.levelPlaceholder")}
+								disabled={!canEdit}
+								className="h-7 flex-1 text-xs"
+							/>
+							{canEdit && scoreLevels.length > 2 && (
+								<button
+									type="button"
+									onClick={() =>
+										setScoreLevels((prev) => prev.filter((_, idx) => idx !== i))
+									}
+									className="shrink-0 text-muted-foreground hover:text-destructive"
+								>
+									<Trash2 className="size-3.5" />
+								</button>
+							)}
+						</div>
+					))}
+					{canEdit && scoreLevels.length < 10 && (
+						<Button
+							variant="outline"
+							size="sm"
+							className="w-full gap-1.5"
+							onClick={() => setScoreLevels((prev) => [...prev, ""])}
+						>
+							<Plus className="size-3.5" />
+							{t("automation.nodeConfig.jev.addLevel")}
+						</Button>
+					)}
+				</div>
+			)}
+
+			<div className="space-y-1.5">
+				<Label className="text-xs">
+					{type === JEV_NOUL_NODE_TYPE
+						? t("automation.nodeConfig.jev.trueThresholdLabel")
+						: t("automation.nodeConfig.jev.confidenceThresholdLabel")}
+				</Label>
+				<Input
+					type="number"
+					min={0}
+					max={1}
+					step={0.05}
+					value={threshold}
+					onChange={(e) =>
+						setThreshold(Math.min(1, Math.max(0, Number(e.target.value))))
+					}
+					disabled={!canEdit}
+					className="h-7 w-24 text-xs"
+				/>
+				<p className="text-[11px] text-muted-foreground">
+					{t("automation.nodeConfig.jev.thresholdHint")}
+				</p>
+			</div>
+
+			<div className="rounded-lg border border-dashed border-border/60 p-2.5 text-xs text-muted-foreground">
+				{t("automation.nodeConfig.condition.elseLabel")}
+			</div>
+
+			{canEdit && (
+				<SaveButton saving={saving} disabled={!canSave} onClick={save} />
 			)}
 		</div>
 	);

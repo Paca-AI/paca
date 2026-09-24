@@ -626,6 +626,10 @@ func (r *fakeTaskRepo) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID
 	return 0, nil
 }
 
+func (r *fakeTaskRepo) ListDistinctTags(_ context.Context, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
 // ---------------------------------------------------------------------------
 // In-memory fake activity repository
 // ---------------------------------------------------------------------------

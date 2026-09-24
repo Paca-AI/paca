@@ -225,6 +225,18 @@ func (c *CachedService) UpdateMemberRole(ctx context.Context, projectID, userID 
 	return m, nil
 }
 
+// UpdateMemberDescription delegates to the underlying service and invalidates the members cache.
+func (c *CachedService) UpdateMemberDescription(ctx context.Context, projectID, memberID uuid.UUID, description string) (*projectdom.ProjectMember, error) {
+	m, err := c.svc.UpdateMemberDescription(ctx, projectID, memberID, description)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.st.Delete(ctx, membersKey(projectID)); err != nil {
+		c.log.WarnContext(ctx, "cache: UpdateMemberDescription delete", "err", err)
+	}
+	return m, nil
+}
+
 // RemoveMember delegates to the underlying service and invalidates the members cache.
 func (c *CachedService) RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error {
 	if err := c.svc.RemoveMember(ctx, projectID, userID); err != nil {

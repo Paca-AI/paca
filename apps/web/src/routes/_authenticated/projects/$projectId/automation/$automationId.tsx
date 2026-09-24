@@ -33,6 +33,8 @@ import {
 	automationRunsQueryOptions,
 	type ConditionConfig,
 	deactivateAutomation,
+	JEV_CONDITION_NODE_TYPES,
+	type JevConditionNodeType,
 	type PluginNodeConfigSchema,
 	pluginNodeTypesQueryOptions,
 	removeAutomationEdge,
@@ -145,6 +147,12 @@ function AutomationBuilderPage() {
 	): string {
 		if (kind === "condition" && type === "condition") {
 			return t("automation.nodeKind.condition");
+		}
+		if (
+			kind === "condition" &&
+			(JEV_CONDITION_NODE_TYPES as readonly string[]).includes(type)
+		) {
+			return t(`automation.conditionTypes.${type as JevConditionNodeType}`);
 		}
 		if (
 			kind === "trigger" &&
@@ -296,6 +304,17 @@ function AutomationBuilderPage() {
 			return t("automation.nodeConfig.description.branches", {
 				count: cfg.branches?.length ?? 0,
 			});
+		}
+		if (
+			node.kind === "condition" &&
+			(JEV_CONDITION_NODE_TYPES as readonly string[]).includes(node.type)
+		) {
+			const cfg = node.config as unknown as {
+				instructions?: string;
+			};
+			return (
+				cfg.instructions || t("automation.nodeConfig.description.notConfigured")
+			);
 		}
 		if (node.kind === "action") {
 			const cfg = node.config as ActionConfig;
