@@ -353,6 +353,16 @@ func (s *ActivitySvc) publishRealtimeOnly(ctx context.Context, topic string, pay
 	s.fanout(ctx, topic, payload, false)
 }
 
+// taskServiceOwnedTopics are already broadcast to ChannelRealtime by
+// tasksvc.Service itself on every task write (whoever the caller is), so
+// fanout skips its own realtime publish for them to avoid sending clients
+// the same notification twice. They're still appended to the streams.
+var taskServiceOwnedTopics = map[string]bool{
+	events.TopicTaskCreated: true,
+	events.TopicTaskUpdated: true,
+	events.TopicTaskDeleted: true,
+}
+
 // fanout is the single dispatch point for an activity event. It writes the
 // event into Valkey exactly once per destination, and every listener —
 // ActivityConsumer (DB persistence), PluginEventConsumer (plugin dispatch),
@@ -375,6 +385,9 @@ func (s *ActivitySvc) fanout(ctx context.Context, topic string, payload any, app
 		_ = s.publisher.Append(ctx, events.StreamTaskActivities, topic, payload)
 	}
 	_ = s.publisher.Append(ctx, events.StreamPluginEvents, topic, payload)
+	if taskServiceOwnedTopics[topic] {
+		return
+	}
 	_ = s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
 		"type":    topic,
 		"payload": payload,

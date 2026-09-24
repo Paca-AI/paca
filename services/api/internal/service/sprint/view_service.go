@@ -261,7 +261,14 @@ func (s *ViewService) MoveTask(ctx context.Context, projectID, viewID uuid.UUID,
 		Position: in.Position,
 		GroupKey: in.GroupKey,
 	}
-	return s.repo.UpsertTaskPosition(ctx, pos)
+	if err := s.repo.UpsertTaskPosition(ctx, pos); err != nil {
+		return err
+	}
+	s.publish(ctx, events.TopicViewTaskMoved, map[string]any{
+		"project_id": projectID.String(),
+		"view_id":    viewID.String(),
+	})
+	return nil
 }
 
 // BulkMoveTasks updates the manual positions of multiple tasks within a view
@@ -294,7 +301,14 @@ func (s *ViewService) BulkMoveTasks(ctx context.Context, projectID, viewID uuid.
 			GroupKey: in.GroupKey,
 		})
 	}
-	return s.repo.BulkUpsertTaskPositions(ctx, positions)
+	if err := s.repo.BulkUpsertTaskPositions(ctx, positions); err != nil {
+		return err
+	}
+	s.publish(ctx, events.TopicViewTaskMoved, map[string]any{
+		"project_id": projectID.String(),
+		"view_id":    viewID.String(),
+	})
+	return nil
 }
 
 // ListTaskPositions returns the manual ordering for all tasks in a view,

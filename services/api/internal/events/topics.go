@@ -148,6 +148,9 @@ const (
 	TopicViewUpdated   = "view.updated"
 	TopicViewDeleted   = "view.deleted"
 	TopicViewReordered = "view.reordered"
+	// TopicViewTaskMoved is published when a task's manual position within a
+	// view changes (drag-and-drop reorder), so other clients re-sort too.
+	TopicViewTaskMoved = "view.task_moved"
 
 	// --- Notification events ------------------------------------------------
 	// TopicNotificationCreated is published to ChannelRealtime when a new
