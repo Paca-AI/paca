@@ -134,6 +134,20 @@ Plan  →  Act  →  Check  →  Adapt
 
 ---
 
+## What's New in v0.17.0
+
+- **Jev AI integration** — plug [Jev](https://docs.typesafe.ai), an AI decision engine, into any project to let it make the small routing calls a team makes all day. It's opt-in and per-project: bring your own key for TypeSafe (the default) or any Jev-compatible provider such as [OpenJev](https://openjev.sh/docs) from **Settings → Jev AI**. The key is encrypted at rest and never shown again, and a project without a key behaves exactly as before.
+  - **Agent Auto-routing** — pick **Auto** in the chat's agent picker and Jev hands your message to the best-fit agent, based on each agent's description.
+  - **Task Auto-fill** — when a task is created, Jev fills in the fields left blank (priority, type, story points, tags, epic, and select/boolean custom fields). It only applies confident answers and never overwrites a field a person set.
+  - **Task Auto-assign** — set a task's assignee to **Auto** and Jev picks the best-matching member from their descriptions. If it isn't confident, it leaves the task unassigned and says why in the activity feed.
+  - **Jev Condition in automations** — a new condition node that routes a workflow on Jev's answer (a choice, a score, or yes/no), falling back to the **Else** branch whenever Jev is unsure or unavailable.
+
+<p align="center">
+  <img src="docs/assets/demo-jev.gif" width="720" alt="Paca v0.17.0 — Jev AI: Agent Auto-routing, Task Auto-fill, Auto-assign, and Jev Conditions" />
+</p>
+
+---
+
 ## What's New in v0.15.0
 
 - **Browser extension for page annotations** — comment directly on an element of a running [environment](docs/ai-agent/environment-management.md)'s preview page, right on the page itself, and turn any comment into a real Paca task in one click. It authenticates through your existing Paca session — no separate login — via the same-hostname cookie trick documented in [apps/extension/README.md](apps/extension/README.md). Install the pre-built zip from each [release](https://github.com/Paca-AI/paca/releases), or build it from source.
