@@ -45,6 +45,7 @@ import {
 	type ColumnGroupDef,
 	createEpicScrollHandler,
 	type EpicsPagination,
+	isAutoAssignPending,
 	type TaskFieldUpdate,
 } from "./view-utils";
 
@@ -105,7 +106,7 @@ export function TaskContextMenu({
 	const { t } = useTranslation("projects");
 	const isMac = isMacPlatform();
 	const jevEnabled = useJevEnabled(task.project_id);
-	const isAutoAssign = task.assignment_mode === "auto";
+	const isAutoAssign = isAutoAssignPending(task);
 	const taskLabel = taskIdPrefix
 		? `${taskIdPrefix}-${task.task_number}`
 		: `#${task.task_number}`;

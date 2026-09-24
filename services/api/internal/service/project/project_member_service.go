@@ -3,6 +3,7 @@ package projectsvc
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -63,6 +64,7 @@ func (s *Service) AddMember(ctx context.Context, projectID uuid.UUID, in project
 		ProjectID:     projectID,
 		UserID:        in.UserID,
 		ProjectRoleID: in.ProjectRoleID,
+		Description:   strings.TrimSpace(in.Description),
 	}
 	if err := s.repo.AddMember(ctx, m); err != nil {
 		return nil, err

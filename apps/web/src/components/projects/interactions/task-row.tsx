@@ -53,6 +53,7 @@ import {
 	createEpicScrollHandler,
 	DEFAULT_VISIBLE_FIELDS,
 	type EpicsPagination,
+	isAutoAssignPending,
 	type TaskFieldUpdate,
 } from "./view-utils";
 
@@ -201,7 +202,7 @@ export function TaskRow({
 	const { t } = useTranslation("projects");
 	const status = statuses.find((s) => s.id === task.status_id);
 	const jevEnabled = useJevEnabled(task.project_id);
-	const isAutoAssign = task.assignment_mode === "auto";
+	const isAutoAssign = isAutoAssignPending(task);
 	const [isHovered, setIsHovered] = useState(false);
 	const [epicOpen, setEpicOpen] = useState(false);
 	const epicTypeId = findEpicType(taskTypes)?.id;

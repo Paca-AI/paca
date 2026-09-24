@@ -167,6 +167,7 @@ function AddMemberDialog({
 	const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
 	const [selectedRoleId, setSelectedRoleId] = useState<string>("");
 	const [userSearch, setUserSearch] = useState("");
+	const [description, setDescription] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
 	const canReadUsers = can("users.read");
@@ -235,6 +236,7 @@ function AddMemberDialog({
 			return addProjectMember(projectId, {
 				user_id: selectedUser.id,
 				project_role_id: selectedRoleId,
+				description: description.trim(),
 			});
 		},
 		onSuccess: async () => {
@@ -261,6 +263,7 @@ function AddMemberDialog({
 		setSelectedAgent(null);
 		setSelectedRoleId("");
 		setUserSearch("");
+		setDescription("");
 		setError(null);
 		onOpenChange(false);
 	}
@@ -511,6 +514,26 @@ function AddMemberDialog({
 							</SelectContent>
 						</Select>
 					</div>
+
+					{/* Only for humans — an invited agent's description lives on the
+					    agent itself, edited from the agent's own detail page. */}
+					{mode === "user" && (
+						<div className="space-y-1.5">
+							<p className="text-sm font-medium">
+								{t("team.descriptionChip.title")}
+							</p>
+							<Textarea
+								value={description}
+								onChange={(e) => setDescription(e.target.value)}
+								placeholder={t("team.descriptionChip.placeholder")}
+								rows={2}
+								className="text-sm"
+							/>
+							<p className="text-xs text-muted-foreground">
+								{t("team.descriptionChip.hint")}
+							</p>
+						</div>
+					)}
 
 					{error && (
 						<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">

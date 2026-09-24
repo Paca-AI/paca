@@ -73,6 +73,7 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		UserID:        req.UserID,
 		AgentID:       req.AgentID,
 		ProjectRoleID: req.ProjectRoleID,
+		Description:   req.Description,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)

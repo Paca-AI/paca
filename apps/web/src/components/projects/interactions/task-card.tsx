@@ -56,6 +56,7 @@ import {
 	createEpicScrollHandler,
 	DEFAULT_VISIBLE_FIELDS,
 	type EpicsPagination,
+	isAutoAssignPending,
 	type TaskFieldUpdate,
 } from "./view-utils";
 
@@ -115,7 +116,7 @@ export function TaskCard({
 	const { t } = useTranslation("projects");
 	const isMobile = useIsMobile();
 	const jevEnabled = useJevEnabled(task.project_id);
-	const isAutoAssign = task.assignment_mode === "auto";
+	const isAutoAssign = isAutoAssignPending(task);
 	const [isHovered, setIsHovered] = useState(false);
 	const [typePopoverOpen, setTypePopoverOpen] = useState(false);
 	const [epicOpen, setEpicOpen] = useState(false);

@@ -11,6 +11,7 @@ import type {
 	TaskListResult,
 } from "@/lib/interaction-api";
 import {
+	isAutoAssignPending,
 	keepPreviousDataOnPageSizeChangeOnly,
 	resolveSelectedTask,
 	shouldClearColumnExtras,
@@ -184,5 +185,28 @@ describe("keepPreviousDataOnPageSizeChangeOnly", () => {
 		const placeholderFn = keepPreviousDataOnPageSizeChangeOnly(searchChanged);
 		const previousQuery = { queryKey: ["col", opts] as const };
 		expect(placeholderFn(prevData, previousQuery)).toBeUndefined();
+	});
+});
+
+describe("isAutoAssignPending", () => {
+	it("is pending only while in auto mode with nobody assigned yet", () => {
+		expect(
+			isAutoAssignPending({ assignment_mode: "auto", assignee_ids: [] }),
+		).toBe(true);
+		expect(isAutoAssignPending({ assignment_mode: "auto" })).toBe(true);
+	});
+
+	// Regression: the server keeps assignment_mode "auto" after Jev picks
+	// someone, which used to keep showing "Auto" instead of that assignee.
+	it("is not pending once Auto has assigned someone", () => {
+		expect(
+			isAutoAssignPending({ assignment_mode: "auto", assignee_ids: ["m-1"] }),
+		).toBe(false);
+	});
+
+	it("is never pending in manual mode", () => {
+		expect(
+			isAutoAssignPending({ assignment_mode: "manual", assignee_ids: [] }),
+		).toBe(false);
 	});
 });

@@ -38,7 +38,11 @@ import {
 } from "../priority";
 import { TaskTypeSelector } from "../task-type-selector";
 import { useEpicSearch } from "../use-epic-search";
-import { createEpicScrollHandler, type EpicsPagination } from "../view-utils";
+import {
+	createEpicScrollHandler,
+	type EpicsPagination,
+	isAutoAssignPending,
+} from "../view-utils";
 import { AddFieldDialog } from "./add-field-dialog";
 import { FieldRow } from "./primitives";
 import type { SelectOption, UserOption } from "./property-field";
@@ -122,7 +126,7 @@ export function PropertiesPanel({
 }: PropertiesPanelProps) {
 	const { t } = useTranslation("projects");
 	const jevEnabled = useJevEnabled(projectId);
-	const isAutoAssign = task.assignment_mode === "auto";
+	const isAutoAssign = isAutoAssignPending(task);
 	const [localCustomFields, setLocalCustomFields] =
 		useState<CustomFieldDef[]>(initialCustomFields);
 	const [addFieldOpen, setAddFieldOpen] = useState(false);

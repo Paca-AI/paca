@@ -506,12 +506,13 @@ func (r *ProjectRepository) FindMemberByID(ctx context.Context, memberID uuid.UU
 // AddMember inserts a project_members row, or restores a previously soft-deleted one.
 func (r *ProjectRepository) AddMember(ctx context.Context, m *projectdom.ProjectMember) error {
 	// First try to restore a previously soft-deleted membership for this
-	// project+user pair, updating only the role (preserving original created_at).
+	// project+user pair, updating its role and description (preserving
+	// original created_at).
 	restore, err := r.db.ExecContext(ctx, `
 		UPDATE project_members
-		SET project_role_id = $1, deleted_at = NULL
+		SET project_role_id = $1, description = $4, deleted_at = NULL
 		WHERE project_id = $2 AND user_id = $3 AND deleted_at IS NOT NULL`,
-		m.ProjectRoleID.String(), m.ProjectID.String(), m.UserID.String(),
+		m.ProjectRoleID.String(), m.ProjectID.String(), m.UserID.String(), m.Description,
 	)
 	if err != nil {
 		return fmt.Errorf("project repo: restore member: %w", err)
@@ -522,10 +523,10 @@ func (r *ProjectRepository) AddMember(ctx context.Context, m *projectdom.Project
 
 	// No soft-deleted row to restore; insert a fresh membership.
 	result, err := r.db.ExecContext(ctx, `
-		INSERT INTO project_members (id, project_id, user_id, project_role_id, member_type, created_at, deleted_at)
-		VALUES ($1, $2, $3, $4, 'human', NOW(), NULL)
+		INSERT INTO project_members (id, project_id, user_id, project_role_id, member_type, description, created_at, deleted_at)
+		VALUES ($1, $2, $3, $4, 'human', $5, NOW(), NULL)
 		ON CONFLICT (project_id, user_id) WHERE deleted_at IS NULL DO NOTHING`,
-		m.ID.String(), m.ProjectID.String(), m.UserID.String(), m.ProjectRoleID.String(),
+		m.ID.String(), m.ProjectID.String(), m.UserID.String(), m.ProjectRoleID.String(), m.Description,
 	)
 	if err != nil {
 		return fmt.Errorf("project repo: add member: %w", err)

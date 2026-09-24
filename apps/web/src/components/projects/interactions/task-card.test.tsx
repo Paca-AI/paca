@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { Task } from "@/lib/interaction-api";
-import type { TaskStatus, TaskType } from "@/lib/project-api";
+import type { ProjectMember, TaskStatus, TaskType } from "@/lib/project-api";
 import { TaskCard } from "./task-card";
 
 // Real by default (see test/setup.ts's window.matchMedia stub, which always
@@ -77,6 +77,38 @@ describe("TaskCard", () => {
 			{ wrapper },
 		);
 		expect(screen.getByText("Fix the login bug")).toBeInTheDocument();
+	});
+
+	// Regression: after Auto (Jev) assigns someone the task keeps
+	// assignment_mode "auto", and the card used to keep showing the Auto
+	// sparkle instead of the person it picked.
+	it("shows the assignee Auto picked, not the Auto placeholder", () => {
+		const member = {
+			id: "member-2",
+			full_name: "Test 2",
+			username: "test2",
+		} as ProjectMember;
+		const renderCard = (assigneeIds: string[]) =>
+			render(
+				<TaskCard
+					task={makeTask({
+						assignment_mode: "auto",
+						assignee_ids: assigneeIds,
+					})}
+					statuses={NO_STATUSES}
+					taskTypes={NO_TYPES}
+					members={[member]}
+					visibleFields={["assignee"]}
+				/>,
+				{ wrapper },
+			);
+
+		const { unmount } = renderCard([]);
+		expect(screen.queryByText("T")).not.toBeInTheDocument();
+		unmount();
+
+		renderCard(["member-2"]);
+		expect(screen.getByText("T")).toBeInTheDocument();
 	});
 
 	it("does not render a type badge when task has no task_type_id", () => {

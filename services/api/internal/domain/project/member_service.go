@@ -13,6 +13,8 @@ type AddMemberInput struct {
 	UserID        uuid.UUID
 	AgentID       *uuid.UUID
 	ProjectRoleID uuid.UUID
+	// Description applies to human members only — see ProjectMember.Description.
+	Description string
 }
 
 // UpdateMemberRoleInput carries fields for changing a member's role.

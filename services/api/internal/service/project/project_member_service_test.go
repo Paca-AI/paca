@@ -17,6 +17,7 @@ type memberServiceRepoMock struct {
 	findMemberByAgent func(ctx context.Context, projectID, agentID uuid.UUID) (*projectdom.ProjectMember, error)
 	findRoleByID      func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
 	updateMemberRole  func(ctx context.Context, projectID, userID, roleID uuid.UUID) error
+	addMember         func(ctx context.Context, m *projectdom.ProjectMember) error
 }
 
 func (m *memberServiceRepoMock) List(context.Context, int, int) ([]*projectdom.Project, int64, error) {
@@ -89,7 +90,10 @@ func (m *memberServiceRepoMock) FindMemberByUserProject(_ context.Context, _, _ 
 	return nil, projectdom.ErrMemberNotFound
 }
 
-func (m *memberServiceRepoMock) AddMember(context.Context, *projectdom.ProjectMember) error {
+func (m *memberServiceRepoMock) AddMember(ctx context.Context, member *projectdom.ProjectMember) error {
+	if m.addMember != nil {
+		return m.addMember(ctx, member)
+	}
 	return nil
 }
 
@@ -180,6 +184,39 @@ func (m *memberServiceAgentLookupMock) FindAgentByHandle(ctx context.Context, pr
 		return m.findAgentByHandle(ctx, projectID, handle)
 	}
 	return nil, agentdom.ErrAgentNotFound
+}
+
+func TestAddMember_HumanStoresTrimmedDescription(t *testing.T) {
+	projectID, userID, roleID := uuid.New(), uuid.New(), uuid.New()
+	var stored *projectdom.ProjectMember
+	repo := &memberServiceRepoMock{
+		findByID: func(_ context.Context, id uuid.UUID) (*projectdom.Project, error) {
+			return &projectdom.Project{ID: id}, nil
+		},
+		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+			return &projectdom.ProjectRole{ID: id, ProjectID: &projectID}, nil
+		},
+		findMember: func(_ context.Context, _, _ uuid.UUID) (*projectdom.ProjectMember, error) {
+			if stored == nil {
+				return nil, projectdom.ErrMemberNotFound // not yet a member
+			}
+			return stored, nil // re-fetch after AddMember
+		},
+		addMember: func(_ context.Context, m *projectdom.ProjectMember) error {
+			stored = m
+			return nil
+		},
+	}
+	svc := New(repo, nil, nil)
+
+	got, err := svc.AddMember(context.Background(), projectID, projectdom.AddMemberInput{
+		UserID:        userID,
+		ProjectRoleID: roleID,
+		Description:   "  Frontend lead on this project  ",
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "Frontend lead on this project", got.Description)
 }
 
 // TestAddMember_InvitesGlobalAgent covers the "invite" flow: AddMember with

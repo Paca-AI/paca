@@ -16,6 +16,10 @@ type AddProjectMemberRequest struct {
 	UserID        uuid.UUID  `json:"user_id,omitempty"`
 	AgentID       *uuid.UUID `json:"agent_id,omitempty"`
 	ProjectRoleID uuid.UUID  `json:"project_role_id" binding:"required"`
+	// Description is the human member's Jev-facing description — see
+	// projectdom.ProjectMember.Description. Ignored when inviting an agent,
+	// whose description lives on the agent itself.
+	Description string `json:"description,omitempty"`
 }
 
 // UpdateProjectMemberRoleRequest is the body for PATCH /v1/projects/:projectId/members/:memberId.
