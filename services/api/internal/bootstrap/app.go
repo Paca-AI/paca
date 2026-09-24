@@ -271,7 +271,8 @@ func New(cfg *config.Config) (*App, error) {
 	// environmentService/storageClient are the same instances already
 	// wired above, not new ones.
 	annotationService := annotationsvc.New(annotationRepo, environmentService, taskService, attachmentRepo, attachmentRepo, storageClient, cfg.Storage.Bucket).
-		WithPublicURL(cfg.Server.PublicURL)
+		WithPublicURL(cfg.Server.PublicURL).
+		WithActivityRecorder(activityService)
 	userService = userService.WithAvatarService(attachmentService)
 	agentService = agentService.WithAvatarService(attachmentService)
 	// Unlike userService/agentService above, this return value isn't

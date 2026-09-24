@@ -72,6 +72,13 @@ export function eventNamespace(type: string): EventNamespace | undefined {
 	// itself (nodes, edges, rules, transitions, lifecycle) and require
 	// workflows.read — a permission distinct from tasks.read.
 	if (type.startsWith("workflow.")) return "workflows";
+	// automation.applied is the task activity ActivitySvc fans out when the
+	// automation engine changes a task — task-scoped, so it routes on
+	// tasks.read ahead of the generic automation.* rule below.
+	if (type === "automation.applied") return "tasks";
+	// Other automation.* events are automation graph/lifecycle changes,
+	// gated on workflows.read (the same permission the automation routes use).
+	if (type.startsWith("automation.")) return "workflows";
 	if (type.startsWith("sprint.")) return "sprints";
 	// view.* events cover sprint/backlog/timeline interaction views. They
 	// require the same sprints.read permission as sprint.* (see
