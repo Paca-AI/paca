@@ -1340,6 +1340,17 @@ func (r *TaskRepository) CreateTask(ctx context.Context, t *taskdom.Task) error 
 
 // UpdateTask persists changes to an existing task.
 func (r *TaskRepository) UpdateTask(ctx context.Context, t *taskdom.Task) error {
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		return updateTaskTx(ctx, tx, t)
+	})
+}
+
+// updateTaskTx performs UpdateTask's write against an already-open
+// transaction — shared by UpdateTask (which opens its own, single-purpose
+// transaction) and UpdateTaskAtomic (which reuses the transaction already
+// holding its row lock, so the lock-acquiring read and this write commit
+// together atomically).
+func updateTaskTx(ctx context.Context, tx *sqlx.Tx, t *taskdom.Task) error {
 	cf, err := json.Marshal(t.CustomFields)
 	if err != nil {
 		return fmt.Errorf("task repo: marshal custom_fields: %w", err)
@@ -1352,29 +1363,73 @@ func (r *TaskRepository) UpdateTask(ctx context.Context, t *taskdom.Task) error 
 	if err != nil {
 		return fmt.Errorf("task repo: marshal tags: %w", err)
 	}
-	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
-		_, err := tx.ExecContext(ctx, `
-			UPDATE tasks SET
-			  task_type_id=$1, status_id=$2, sprint_id=$3, parent_task_id=$4,
-			  title=$5, description=$6, importance=$7, story_points=$8,
-			  reporter_id=$9, custom_fields=$10,
-			  start_date=$11, due_date=$12, tags=$13, updated_at=$14, assignment_mode=$15
-			WHERE id=$16`,
-			uuidPtrToStrPtr(t.TaskTypeID), uuidPtrToStrPtr(t.StatusID),
-			uuidPtrToStrPtr(t.SprintID), uuidPtrToStrPtr(t.ParentTaskID),
-			t.Title, t.Description, t.Importance, t.StoryPoints,
-			uuidPtrToStrPtr(t.ReporterID),
-			cf, t.StartDate, t.DueDate, tagsJSON, t.UpdatedAt,
-			assignmentModeOrDefault(t.AssignmentMode), t.ID.String(),
-		)
-		if err != nil {
-			return fmt.Errorf("task repo: update: %w", err)
+	_, err = tx.ExecContext(ctx, `
+		UPDATE tasks SET
+		  task_type_id=$1, status_id=$2, sprint_id=$3, parent_task_id=$4,
+		  title=$5, description=$6, importance=$7, story_points=$8,
+		  reporter_id=$9, custom_fields=$10,
+		  start_date=$11, due_date=$12, tags=$13, updated_at=$14, assignment_mode=$15
+		WHERE id=$16`,
+		uuidPtrToStrPtr(t.TaskTypeID), uuidPtrToStrPtr(t.StatusID),
+		uuidPtrToStrPtr(t.SprintID), uuidPtrToStrPtr(t.ParentTaskID),
+		t.Title, t.Description, t.Importance, t.StoryPoints,
+		uuidPtrToStrPtr(t.ReporterID),
+		cf, t.StartDate, t.DueDate, tagsJSON, t.UpdatedAt,
+		assignmentModeOrDefault(t.AssignmentMode), t.ID.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("task repo: update: %w", err)
+	}
+	return syncTaskAssignees(ctx, tx, t.ID, t.AssigneeIDs)
+}
+
+// UpdateTaskAtomic implements taskdom.Repository — see its doc comment. The
+// SELECT ... FOR UPDATE locks id's row for the rest of the transaction, so
+// any concurrent UpdateTask/UpdateTaskAtomic call for the same id blocks
+// until this one commits or rolls back, instead of racing decide's read.
+func (r *TaskRepository) UpdateTaskAtomic(ctx context.Context, id uuid.UUID, decide func(current *taskdom.Task) (*taskdom.Task, error)) (*taskdom.Task, error) {
+	var result *taskdom.Task
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var rec taskRecord
+		err := tx.GetContext(ctx, &rec, `SELECT `+taskCols+` FROM tasks WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id.String())
+		if errors.Is(err, sql.ErrNoRows) {
+			return taskdom.ErrTaskNotFound
 		}
-		if err := syncTaskAssignees(ctx, tx, t.ID, t.AssigneeIDs); err != nil {
+		if err != nil {
+			return fmt.Errorf("task repo: find by id for update: %w", err)
+		}
+		current, err := toTaskEntity(&rec)
+		if err != nil {
 			return err
 		}
+		// Reads r.db (its own connection, outside tx) rather than tx — safe
+		// here specifically because every writer of task_assignees for this
+		// task goes through UpdateTask/UpdateTaskAtomic, both of which touch
+		// the now-locked tasks row in the same transaction as their
+		// syncTaskAssignees call; nothing can have changed task_assignees
+		// for this id without first taking the lock we're already holding.
+		if err := r.attachAssigneeIDs(ctx, []*taskdom.Task{current}); err != nil {
+			return err
+		}
+
+		next, err := decide(current)
+		if err != nil {
+			return err
+		}
+		if next == nil {
+			result = current
+			return nil
+		}
+		if err := updateTaskTx(ctx, tx, next); err != nil {
+			return err
+		}
+		result = next
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // syncTaskAssignees reconciles task_assignees with wantIDs by removing only

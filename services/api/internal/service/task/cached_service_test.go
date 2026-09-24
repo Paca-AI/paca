@@ -184,6 +184,11 @@ func (s *stubTaskSvc) UpdateTask(_ context.Context, _, id uuid.UUID, _ taskdom.U
 	return &taskdom.Task{ID: id}, nil
 }
 
+func (s *stubTaskSvc) UpdateTaskAtomic(_ context.Context, _, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	decide(&taskdom.Task{ID: id})
+	return &taskdom.Task{ID: id}, nil
+}
+
 func (s *stubTaskSvc) DeleteTask(_ context.Context, _, _ uuid.UUID) error { return nil }
 
 // CustomFieldDefinition methods

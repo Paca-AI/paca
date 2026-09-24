@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"maps"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -18,7 +20,8 @@ import (
 )
 
 // fakeAutofillTaskService is a minimal in-memory taskAutofillTaskService for
-// exercising buildQuestions/applyAnswers without a database.
+// exercising buildQuestions/buildAnswerUpdate/processTask without a
+// database.
 type fakeAutofillTaskService struct {
 	tasks        map[uuid.UUID]*taskdom.Task
 	taskTypes    []*taskdom.TaskType
@@ -27,13 +30,36 @@ type fakeAutofillTaskService struct {
 	distinctTags []string
 	updateErr    error
 	lastUpdate   taskdom.UpdateTaskInput
+	// beforeDecide, if set, runs against the live task immediately before
+	// UpdateTaskAtomic's decide callback sees it — simulating a concurrent
+	// write (e.g. a human's PATCH) landing exactly once the "row lock" is
+	// taken, i.e. after GetTask's earlier, now-stale read but before
+	// decide's fresh one.
+	beforeDecide func(task *taskdom.Task)
 }
 
 func (f *fakeAutofillTaskService) GetTask(_ context.Context, _, id uuid.UUID) (*taskdom.Task, error) {
-	return f.tasks[id], nil
+	t := f.tasks[id]
+	if t == nil {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	cp := *t
+	return &cp, nil
 }
 
-func (f *fakeAutofillTaskService) UpdateTask(_ context.Context, _, _ uuid.UUID, in taskdom.UpdateTaskInput) (*taskdom.Task, error) {
+func (f *fakeAutofillTaskService) UpdateTaskAtomic(_ context.Context, _, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	t := f.tasks[id]
+	if t == nil {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	if f.beforeDecide != nil {
+		f.beforeDecide(t)
+	}
+	current := *t
+	in, ok := decide(&current)
+	if !ok {
+		return &current, nil
+	}
 	f.lastUpdate = in
 	if f.updateErr != nil {
 		return nil, f.updateErr
@@ -67,6 +93,52 @@ type fakeActivityRecorder struct {
 
 func (f *fakeActivityRecorder) RecordActivity(_ context.Context, in taskdom.RecordActivityInput) error {
 	f.recorded = append(f.recorded, in)
+	return nil
+}
+
+// fakeAutofillRepo is a minimal in-memory taskdom.AutofillRepository for
+// exercising TaskAutofillConsumer.processTask's full flow, including its
+// interaction with user-set-field/already-processed bookkeeping.
+type fakeAutofillRepo struct {
+	userSet    map[uuid.UUID]map[string]bool
+	autofilled map[uuid.UUID]bool
+	// onListUserSetFields, if set, runs immediately before ListUserSetFields
+	// returns — lets a test simulate a human's RecordUserSetFields call
+	// landing exactly at the point processTask re-reads it (see
+	// processTask's own comment on why that read is deferred as late as
+	// possible, right before the row lock decides).
+	onListUserSetFields func()
+}
+
+func newFakeAutofillRepo() *fakeAutofillRepo {
+	return &fakeAutofillRepo{userSet: map[uuid.UUID]map[string]bool{}, autofilled: map[uuid.UUID]bool{}}
+}
+
+func (f *fakeAutofillRepo) RecordUserSetFields(_ context.Context, taskID uuid.UUID, fieldKeys []string) error {
+	if f.userSet[taskID] == nil {
+		f.userSet[taskID] = map[string]bool{}
+	}
+	for _, k := range fieldKeys {
+		f.userSet[taskID][k] = true
+	}
+	return nil
+}
+
+func (f *fakeAutofillRepo) ListUserSetFields(_ context.Context, taskID uuid.UUID) (map[string]bool, error) {
+	if f.onListUserSetFields != nil {
+		f.onListUserSetFields()
+	}
+	out := make(map[string]bool, len(f.userSet[taskID]))
+	maps.Copy(out, f.userSet[taskID])
+	return out, nil
+}
+
+func (f *fakeAutofillRepo) IsTaskAutofilled(_ context.Context, taskID uuid.UUID) (bool, error) {
+	return f.autofilled[taskID], nil
+}
+
+func (f *fakeAutofillRepo) MarkTaskAutofilled(_ context.Context, taskID uuid.UUID) error {
+	f.autofilled[taskID] = true
 	return nil
 }
 
@@ -249,7 +321,7 @@ func TestBuildQuestions_TagsNoopWhenProjectHasNoTags(t *testing.T) {
 	}
 }
 
-func TestApplyAnswers_ImportanceBelowThresholdLeftBlank(t *testing.T) {
+func TestBuildAnswerUpdate_ImportanceBelowThresholdLeftBlank(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
 	task := &taskdom.Task{}
@@ -258,15 +330,16 @@ func TestApplyAnswers_ImportanceBelowThresholdLeftBlank(t *testing.T) {
 		"importance": {Type: jev.TypeScore, Score: 4, Confidence: &low},
 	}}
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), task, resp); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	in, _, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), task, nil, resp)
+	if in.Importance != nil {
+		t.Errorf("low-confidence importance should not be applied, got %v", *in.Importance)
 	}
-	if svc.lastUpdate.Importance != nil {
-		t.Errorf("low-confidence importance should not be applied, got %v", *svc.lastUpdate.Importance)
+	if dirty {
+		t.Error("expected dirty=false")
 	}
 }
 
-func TestApplyAnswers_ImportanceAppliedAtConfidence(t *testing.T) {
+func TestBuildAnswerUpdate_ImportanceAppliedAtConfidence(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
 	task := &taskdom.Task{}
@@ -275,33 +348,67 @@ func TestApplyAnswers_ImportanceAppliedAtConfidence(t *testing.T) {
 		"importance": {Type: jev.TypeScore, Score: 4, Confidence: &high}, // bucket 4 -> Critical -> 150
 	}}
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), task, resp); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	in, changes, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), task, nil, resp)
+	if !dirty || in.Importance == nil || *in.Importance != 150 {
+		t.Fatalf("expected importance 150 (critical bucket), got dirty=%v %v", dirty, in.Importance)
 	}
-	if svc.lastUpdate.Importance == nil || *svc.lastUpdate.Importance != 150 {
-		t.Fatalf("expected importance 150 (critical bucket), got %v", svc.lastUpdate.Importance)
+	if len(changes) != 1 || changes[0].Field != "importance" {
+		t.Fatalf("expected a single importance change, got %+v", changes)
 	}
 }
 
-// TestApplyAnswers_RecordsActivityForAppliedChanges verifies autofilled
-// changes are recorded as a task.updated activity (this consumer bypasses
-// TaskHandler, which is the only place activity recording otherwise
-// happens) — a regression test for the "auto-fill/auto-assign changes never
-// show up in the activity feed" report.
-func TestApplyAnswers_RecordsActivityForAppliedChanges(t *testing.T) {
+func TestBuildAnswerUpdate_UserSetFieldNeverOverwritten(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
-	rec := &fakeActivityRecorder{}
 	c := newTestAutofillConsumer(svc)
-	c.activityRec = rec
-	task := &taskdom.Task{Importance: 0}
+	task := &taskdom.Task{}
 	high := 0.95
 	resp := &jev.Response{Answers: map[string]jev.Answer{
 		"importance": {Type: jev.TypeScore, Score: 4, Confidence: &high},
 	}}
 
+	// userSet re-checked here mirrors a human having set importance between
+	// buildQuestions asking about it and this being called — see
+	// processTask's own comment on why userSet is re-read immediately
+	// before this.
+	in, changes, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), task, map[string]bool{"importance": true}, resp)
+	if dirty || in.Importance != nil || len(changes) != 0 {
+		t.Fatalf("expected a user-set field to never be applied even with a confident answer, got dirty=%v in=%+v changes=%+v", dirty, in, changes)
+	}
+}
+
+// TestProcessTask_RecordsActivityForAppliedChanges verifies autofilled
+// changes are recorded as a task.updated activity (this consumer bypasses
+// TaskHandler, which is the only place activity recording otherwise
+// happens) — a regression test for the "auto-fill/auto-assign changes never
+// show up in the activity feed" report.
+func TestProcessTask_RecordsActivityForAppliedChanges(t *testing.T) {
 	taskID := uuid.New()
-	if err := c.applyAnswers(context.Background(), uuid.New(), taskID, task, resp); err != nil {
+	high := 0.95
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(jev.Response{Answers: map[string]jev.Answer{
+			"importance": {Type: jev.TypeScore, Score: 4, Confidence: &high},
+		}})
+	}))
+	defer srv.Close()
+
+	taskSvc := &fakeAutofillTaskService{tasks: map[uuid.UUID]*taskdom.Task{taskID: {ID: taskID, Importance: 0}}}
+	autofillRepo := newFakeAutofillRepo()
+	rec := &fakeActivityRecorder{}
+	project := &projectdom.Project{ID: uuid.New(), JevAPIKeySecret: "test-key", JevBaseURL: srv.URL}
+	c := &TaskAutofillConsumer{
+		taskService:   taskSvc,
+		autofillRepo:  autofillRepo,
+		projectSvc:    &fakeProjectReader{project: project},
+		activityRec:   rec,
+		jevHTTPClient: &http.Client{Timeout: 5 * time.Second},
+		log:           slog.Default(),
+	}
+
+	if err := c.processTask(context.Background(), uuid.New(), taskID); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if taskSvc.lastUpdate.Importance == nil || *taskSvc.lastUpdate.Importance != 150 {
+		t.Fatalf("expected importance 150 to be applied, got %v", taskSvc.lastUpdate.Importance)
 	}
 	if len(rec.recorded) != 1 {
 		t.Fatalf("expected exactly one recorded activity, got %d", len(rec.recorded))
@@ -322,22 +429,36 @@ func TestApplyAnswers_RecordsActivityForAppliedChanges(t *testing.T) {
 	if len(payload.Changes) != 1 || payload.Changes[0].Field != "importance" {
 		t.Fatalf("expected a single importance change, got %+v", payload.Changes)
 	}
+	if !autofillRepo.autofilled[taskID] {
+		t.Error("expected the task to be marked autofilled")
+	}
 }
 
-// TestApplyAnswers_NoRecordedActivityWhenNothingApplied verifies a no-op
+// TestProcessTask_NoRecordedActivityWhenNothingApplied verifies a no-op
 // autofill (nothing confidently answered) never records an empty activity.
-func TestApplyAnswers_NoRecordedActivityWhenNothingApplied(t *testing.T) {
-	svc := &fakeAutofillTaskService{}
-	rec := &fakeActivityRecorder{}
-	c := newTestAutofillConsumer(svc)
-	c.activityRec = rec
-	task := &taskdom.Task{}
+func TestProcessTask_NoRecordedActivityWhenNothingApplied(t *testing.T) {
+	taskID := uuid.New()
 	low := 0.3
-	resp := &jev.Response{Answers: map[string]jev.Answer{
-		"importance": {Type: jev.TypeScore, Score: 4, Confidence: &low},
-	}}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(jev.Response{Answers: map[string]jev.Answer{
+			"importance": {Type: jev.TypeScore, Score: 4, Confidence: &low},
+		}})
+	}))
+	defer srv.Close()
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), task, resp); err != nil {
+	taskSvc := &fakeAutofillTaskService{tasks: map[uuid.UUID]*taskdom.Task{taskID: {ID: taskID}}}
+	rec := &fakeActivityRecorder{}
+	project := &projectdom.Project{ID: uuid.New(), JevAPIKeySecret: "test-key", JevBaseURL: srv.URL}
+	c := &TaskAutofillConsumer{
+		taskService:   taskSvc,
+		autofillRepo:  newFakeAutofillRepo(),
+		projectSvc:    &fakeProjectReader{project: project},
+		activityRec:   rec,
+		jevHTTPClient: &http.Client{Timeout: 5 * time.Second},
+		log:           slog.Default(),
+	}
+
+	if err := c.processTask(context.Background(), uuid.New(), taskID); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(rec.recorded) != 0 {
@@ -345,7 +466,56 @@ func TestApplyAnswers_NoRecordedActivityWhenNothingApplied(t *testing.T) {
 	}
 }
 
-func TestApplyAnswers_MergesCustomFieldsWithoutClobberingExisting(t *testing.T) {
+// TestProcessTask_DoesNotOverwriteFieldSetDuringJevCall is a regression test
+// for the race UpdateTaskAtomic (plus re-reading userSet as late as
+// possible) exists to close: a human explicitly setting a field — one Jev
+// was already asked about — while the Jev call is in flight must never be
+// silently overwritten by a now-stale confident answer.
+func TestProcessTask_DoesNotOverwriteFieldSetDuringJevCall(t *testing.T) {
+	taskID := uuid.New()
+	high := 0.95
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(jev.Response{Answers: map[string]jev.Answer{
+			"importance": {Type: jev.TypeScore, Score: 4, Confidence: &high},
+		}})
+	}))
+	defer srv.Close()
+
+	taskSvc := &fakeAutofillTaskService{tasks: map[uuid.UUID]*taskdom.Task{taskID: {ID: taskID, Importance: 0}}}
+	autofillRepo := newFakeAutofillRepo()
+	// Simulates a human explicitly setting importance (an ordinary PATCH,
+	// which calls RecordUserSetFields) while the Jev call above is in
+	// flight — landing exactly when processTask re-reads ListUserSetFields,
+	// i.e. after buildQuestions' earlier, now-stale read saw it as unset.
+	autofillRepo.onListUserSetFields = func() {
+		_ = autofillRepo.RecordUserSetFields(context.Background(), taskID, []string{"importance"})
+	}
+	rec := &fakeActivityRecorder{}
+	project := &projectdom.Project{ID: uuid.New(), JevAPIKeySecret: "test-key", JevBaseURL: srv.URL}
+	c := &TaskAutofillConsumer{
+		taskService:   taskSvc,
+		autofillRepo:  autofillRepo,
+		projectSvc:    &fakeProjectReader{project: project},
+		activityRec:   rec,
+		jevHTTPClient: &http.Client{Timeout: 5 * time.Second},
+		log:           slog.Default(),
+	}
+
+	if err := c.processTask(context.Background(), uuid.New(), taskID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if taskSvc.lastUpdate.Importance != nil {
+		t.Fatalf("expected importance to be left alone once it became user-set, got %v", *taskSvc.lastUpdate.Importance)
+	}
+	if len(rec.recorded) != 0 {
+		t.Fatalf("expected no activity recorded, got %+v", rec.recorded)
+	}
+	if !autofillRepo.autofilled[taskID] {
+		t.Error("expected the task to still be marked autofilled (processed, even though nothing was applied)")
+	}
+}
+
+func TestBuildAnswerUpdate_MergesCustomFieldsWithoutClobberingExisting(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
 	task := &taskdom.Task{CustomFields: map[string]any{"already_set": "keep-me"}}
@@ -358,13 +528,11 @@ func TestApplyAnswers_MergesCustomFieldsWithoutClobberingExisting(t *testing.T) 
 		"task_type_id":              {Type: jev.TypeChoice, Choice: "not-a-uuid", Confidence: &high},
 	}}
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), task, resp); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if svc.lastUpdate.CustomFields == nil {
+	in, _, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), task, nil, resp)
+	if !dirty || in.CustomFields == nil {
 		t.Fatal("expected CustomFields to be set")
 	}
-	got := *svc.lastUpdate.CustomFields
+	got := *in.CustomFields
 	if got["already_set"] != "keep-me" {
 		t.Errorf("existing custom field value was clobbered: %v", got["already_set"])
 	}
@@ -377,24 +545,21 @@ func TestApplyAnswers_MergesCustomFieldsWithoutClobberingExisting(t *testing.T) 
 	if !reflect.DeepEqual(got["affected_areas"], []string{"web"}) {
 		t.Errorf("expected affected_areas=[web] (api below threshold), got %v", got["affected_areas"])
 	}
-	if svc.lastUpdate.TaskTypeID != nil {
+	if in.TaskTypeID != nil {
 		t.Error("an invalid (non-UUID) task_type_id choice should not be applied")
 	}
 }
 
-func TestApplyAnswers_NoConfidentAnswersIsNoop(t *testing.T) {
+func TestBuildAnswerUpdate_NoConfidentAnswersIsNoop(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), &taskdom.Task{}, &jev.Response{}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	zero := taskdom.UpdateTaskInput{}
-	if !reflect.DeepEqual(svc.lastUpdate, zero) {
-		t.Error("UpdateTask should not have been called when nothing is dirty")
+	in, changes, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), &taskdom.Task{}, nil, &jev.Response{})
+	if dirty || len(changes) != 0 || !reflect.DeepEqual(in, taskdom.UpdateTaskInput{}) {
+		t.Errorf("expected a no-op update when nothing is dirty, got dirty=%v in=%+v changes=%+v", dirty, in, changes)
 	}
 }
 
-func TestApplyAnswers_StoryPointsAppliedAtConfidence(t *testing.T) {
+func TestBuildAnswerUpdate_StoryPointsAppliedAtConfidence(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
 	high := 0.9
@@ -402,15 +567,13 @@ func TestApplyAnswers_StoryPointsAppliedAtConfidence(t *testing.T) {
 		"story_points": {Type: jev.TypeScore, Score: 5, Confidence: &high}, // bucket 5 -> 8
 	}}
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), &taskdom.Task{}, resp); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if svc.lastUpdate.StoryPoints == nil || *svc.lastUpdate.StoryPoints == nil || **svc.lastUpdate.StoryPoints != 8 {
-		t.Fatalf("expected story_points 8, got %v", svc.lastUpdate.StoryPoints)
+	in, _, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), &taskdom.Task{}, nil, resp)
+	if !dirty || in.StoryPoints == nil || *in.StoryPoints == nil || **in.StoryPoints != 8 {
+		t.Fatalf("expected story_points 8, got %v", in.StoryPoints)
 	}
 }
 
-func TestApplyAnswers_StoryPointsBelowThresholdLeftBlank(t *testing.T) {
+func TestBuildAnswerUpdate_StoryPointsBelowThresholdLeftBlank(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
 	low := 0.3
@@ -418,15 +581,13 @@ func TestApplyAnswers_StoryPointsBelowThresholdLeftBlank(t *testing.T) {
 		"story_points": {Type: jev.TypeScore, Score: 5, Confidence: &low},
 	}}
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), &taskdom.Task{}, resp); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if svc.lastUpdate.StoryPoints != nil {
+	in, _, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), &taskdom.Task{}, nil, resp)
+	if dirty || in.StoryPoints != nil {
 		t.Error("low-confidence story_points should not be applied")
 	}
 }
 
-func TestApplyAnswers_ParentTaskIDAppliedAtConfidence(t *testing.T) {
+func TestBuildAnswerUpdate_ParentTaskIDAppliedAtConfidence(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
 	epicID := uuid.New()
@@ -435,15 +596,13 @@ func TestApplyAnswers_ParentTaskIDAppliedAtConfidence(t *testing.T) {
 		"parent_task_id": {Type: jev.TypeChoice, Choice: epicID.String(), Confidence: &high},
 	}}
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), &taskdom.Task{}, resp); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if svc.lastUpdate.ParentTaskID == nil || *svc.lastUpdate.ParentTaskID == nil || **svc.lastUpdate.ParentTaskID != epicID {
-		t.Fatalf("expected parent_task_id %v, got %v", epicID, svc.lastUpdate.ParentTaskID)
+	in, _, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), &taskdom.Task{}, nil, resp)
+	if !dirty || in.ParentTaskID == nil || *in.ParentTaskID == nil || **in.ParentTaskID != epicID {
+		t.Fatalf("expected parent_task_id %v, got %v", epicID, in.ParentTaskID)
 	}
 }
 
-func TestApplyAnswers_ParentTaskIDInvalidChoiceIgnored(t *testing.T) {
+func TestBuildAnswerUpdate_ParentTaskIDInvalidChoiceIgnored(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
 	high := 0.9
@@ -451,15 +610,13 @@ func TestApplyAnswers_ParentTaskIDInvalidChoiceIgnored(t *testing.T) {
 		"parent_task_id": {Type: jev.TypeChoice, Choice: "not-a-uuid", Confidence: &high},
 	}}
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), &taskdom.Task{}, resp); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if svc.lastUpdate.ParentTaskID != nil {
+	in, _, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), &taskdom.Task{}, nil, resp)
+	if dirty || in.ParentTaskID != nil {
 		t.Error("an invalid (non-UUID) parent_task_id choice should not be applied")
 	}
 }
 
-func TestApplyAnswers_TagsMergedWithExisting(t *testing.T) {
+func TestBuildAnswerUpdate_TagsMergedWithExisting(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
 	task := &taskdom.Task{Tags: []string{"backend"}}
@@ -468,19 +625,17 @@ func TestApplyAnswers_TagsMergedWithExisting(t *testing.T) {
 		"tags:frontend": {Type: jev.TypeNoul, Noul: 0.1}, // below threshold, excluded
 	}}
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), task, resp); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if svc.lastUpdate.Tags == nil {
+	in, _, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), task, nil, resp)
+	if !dirty || in.Tags == nil {
 		t.Fatal("expected Tags to be set")
 	}
-	got := *svc.lastUpdate.Tags
+	got := *in.Tags
 	if !reflect.DeepEqual(got, []string{"backend", "urgent"}) {
 		t.Errorf("expected tags [backend urgent], got %v", got)
 	}
 }
 
-func TestApplyAnswers_NoConfidentTagsIsNoop(t *testing.T) {
+func TestBuildAnswerUpdate_NoConfidentTagsIsNoop(t *testing.T) {
 	svc := &fakeAutofillTaskService{}
 	c := newTestAutofillConsumer(svc)
 	task := &taskdom.Task{Tags: []string{"backend"}}
@@ -488,10 +643,8 @@ func TestApplyAnswers_NoConfidentTagsIsNoop(t *testing.T) {
 		"tags:urgent": {Type: jev.TypeNoul, Noul: 0.1},
 	}}
 
-	if err := c.applyAnswers(context.Background(), uuid.New(), uuid.New(), task, resp); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if svc.lastUpdate.Tags != nil {
+	in, _, dirty := c.buildAnswerUpdate(context.Background(), uuid.New(), task, nil, resp)
+	if dirty || in.Tags != nil {
 		t.Error("no tag answer met threshold, Tags should not be set")
 	}
 }

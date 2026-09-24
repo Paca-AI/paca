@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -1020,7 +1021,14 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			userSetFieldKeys = append(userSetFieldKeys, "custom:"+key)
 		}
 		if len(userSetFieldKeys) > 0 {
-			_ = h.autofillRepo.RecordUserSetFields(r.Context(), t.ID, userSetFieldKeys)
+			if err := h.autofillRepo.RecordUserSetFields(r.Context(), t.ID, userSetFieldKeys); err != nil {
+				// Best-effort: a failure here just means autofill might later
+				// fill in a field this request explicitly set, not that the
+				// request itself failed — but it's worth a log line since it's
+				// a silent gap in the "never overwrite a human-set field"
+				// guarantee (see taskdom.AutofillRepository's doc comment).
+				slog.Warn("task handler: failed to record user-set fields", "task_id", t.ID, "err", err)
+			}
 		}
 	}
 
@@ -1133,7 +1141,10 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if len(userSetFieldKeys) > 0 {
-			_ = h.autofillRepo.RecordUserSetFields(r.Context(), taskID, userSetFieldKeys)
+			if err := h.autofillRepo.RecordUserSetFields(r.Context(), taskID, userSetFieldKeys); err != nil {
+				// Best-effort — see the identical comment in CreateTask.
+				slog.Warn("task handler: failed to record user-set fields", "task_id", taskID, "err", err)
+			}
 		}
 	}
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"net/http"
 	"os"
@@ -109,10 +110,14 @@ type taskActivityRecorder interface {
 
 // taskAutofillTaskService is the minimal task-service surface
 // TaskAutofillConsumer needs: reading a task and its project's task
-// types/custom field definitions, and writing back resolved fields.
+// types/custom field definitions, and writing back resolved fields. The
+// write goes through UpdateTaskAtomic, not UpdateTask — see processTask's
+// own comment on why the final decision has to be made under the row lock
+// UpdateTaskAtomic holds, not against the task read at the top of
+// processTask.
 type taskAutofillTaskService interface {
 	GetTask(ctx context.Context, projectID, id uuid.UUID) (*taskdom.Task, error)
-	UpdateTask(ctx context.Context, projectID, id uuid.UUID, in taskdom.UpdateTaskInput) (*taskdom.Task, error)
+	UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error)
 	ListTaskTypes(ctx context.Context, projectID uuid.UUID) ([]*taskdom.TaskType, error)
 	ListCustomFieldDefinitions(ctx context.Context, projectID uuid.UUID) ([]*taskdom.CustomFieldDefinition, error)
 	// ListTasks is used to find the project's existing Epic-type tasks for
@@ -403,8 +408,29 @@ func (c *TaskAutofillConsumer) processTask(ctx context.Context, projectID, taskI
 		return c.autofillRepo.MarkTaskAutofilled(ctx, taskID)
 	}
 
-	if err := c.applyAnswers(ctx, projectID, taskID, task, resp); err != nil {
+	// From here on, the decision must be built and applied atomically under
+	// UpdateTaskAtomic's row lock, not against the `task` read above. The
+	// Jev round trip can take several seconds (including retries) — long
+	// enough for a human to have edited the task, including explicitly
+	// setting one of the very fields being asked about, while it was in
+	// flight. buildAnswerUpdate's tags/custom-fields merges need the task's
+	// current state to merge against, and userSet is re-read here — as late
+	// as possible, right before deciding — so a field that's become
+	// user-set since buildQuestions ran is still excluded.
+	var changes []taskdom.FieldChange
+	if _, err := c.taskService.UpdateTaskAtomic(ctx, projectID, taskID, func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool) {
+		freshUserSet, err := c.autofillRepo.ListUserSetFields(ctx, taskID)
+		if err != nil {
+			c.log.Warn("task autofill consumer: failed to reload user-set fields before apply", "task_id", taskID, "err", err)
+			return taskdom.UpdateTaskInput{}, false
+		}
+		in, fieldChanges, dirty := c.buildAnswerUpdate(ctx, projectID, current, freshUserSet, resp)
+		changes = fieldChanges
+		return in, dirty
+	}); err != nil {
 		c.log.Warn("task autofill consumer: failed to apply answers", "task_id", taskID, "err", err)
+	} else if len(changes) > 0 {
+		c.recordActivity(ctx, projectID, taskID, changes)
 	}
 
 	return c.autofillRepo.MarkTaskAutofilled(ctx, taskID)
@@ -552,27 +578,28 @@ func (c *TaskAutofillConsumer) buildQuestions(ctx context.Context, projectID uui
 	return questions
 }
 
-// applyAnswers maps confident Jev answers onto an UpdateTaskInput and, if
-// anything actually changed, calls UpdateTask. Unlike a human's PATCH, this
-// goes straight through the service layer rather than TaskHandler, so it
-// doesn't get that handler's activity recording for free — this method
-// builds the same []taskdom.FieldChange shape TaskHandler.taskChangedFields
-// would and records it itself (best-effort; a recording failure never fails
-// the autofill) so autofilled changes still show up in the task's activity
-// feed.
-func (c *TaskAutofillConsumer) applyAnswers(ctx context.Context, projectID, taskID uuid.UUID, task *taskdom.Task, resp *jev.Response) error {
-	in := taskdom.UpdateTaskInput{}
-	var changes []taskdom.FieldChange
-	dirty := false
-
-	if ans, ok := resp.Answers["importance"]; ok && meetsConfidence(ans, defaultConfidenceThreshold) {
+// buildAnswerUpdate maps confident Jev answers onto an UpdateTaskInput,
+// against task's current state and userSet — both read immediately before
+// this is called, under UpdateTaskAtomic's row lock (see processTask).
+// userSet gates every field the same way buildQuestions' own userSet check
+// did when the questions were built — a field a human has set since is
+// never applied, even if Jev already returned a confident answer for it.
+// dirty is false when nothing is left to apply, in which case in and
+// changes are both zero/empty and the caller should skip the write
+// entirely. Also builds the same []taskdom.FieldChange shape
+// TaskHandler.taskChangedFields would, for the caller to record as activity
+// once the write succeeds — unlike a human's PATCH, this goes straight
+// through the service layer rather than TaskHandler, so it doesn't get that
+// handler's activity recording for free.
+func (c *TaskAutofillConsumer) buildAnswerUpdate(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, userSet map[string]bool, resp *jev.Response) (in taskdom.UpdateTaskInput, changes []taskdom.FieldChange, dirty bool) {
+	if ans, ok := resp.Answers["importance"]; ok && !userSet["importance"] && meetsConfidence(ans, defaultConfidenceThreshold) {
 		v := priorityBucketValues[nearestBucket(ans.Score)]
 		in.Importance = &v
 		changes = append(changes, taskdom.FieldChange{Field: "importance", Old: task.Importance, New: v})
 		dirty = true
 	}
 
-	if ans, ok := resp.Answers["task_type_id"]; ok && meetsConfidence(ans, defaultConfidenceThreshold) {
+	if ans, ok := resp.Answers["task_type_id"]; ok && !userSet["task_type_id"] && meetsConfidence(ans, defaultConfidenceThreshold) {
 		if id, err := uuid.Parse(ans.Choice); err == nil {
 			idCopy := id
 			ptr := &idCopy
@@ -583,7 +610,7 @@ func (c *TaskAutofillConsumer) applyAnswers(ctx context.Context, projectID, task
 		}
 	}
 
-	if ans, ok := resp.Answers["story_points"]; ok && meetsConfidence(ans, defaultConfidenceThreshold) {
+	if ans, ok := resp.Answers["story_points"]; ok && !userSet["story_points"] && meetsConfidence(ans, defaultConfidenceThreshold) {
 		v := storyPointBucketValues[nearestStoryPointBucket(ans.Score)]
 		ptr := &v
 		in.StoryPoints = &ptr
@@ -591,7 +618,7 @@ func (c *TaskAutofillConsumer) applyAnswers(ctx context.Context, projectID, task
 		dirty = true
 	}
 
-	if ans, ok := resp.Answers["parent_task_id"]; ok && meetsConfidence(ans, defaultConfidenceThreshold) {
+	if ans, ok := resp.Answers["parent_task_id"]; ok && !userSet["parent_task_id"] && meetsConfidence(ans, defaultConfidenceThreshold) {
 		if id, err := uuid.Parse(ans.Choice); err == nil {
 			idCopy := id
 			ptr := &idCopy
@@ -602,13 +629,15 @@ func (c *TaskAutofillConsumer) applyAnswers(ctx context.Context, projectID, task
 	}
 
 	var tagsAccum []string
-	for qKey, ans := range resp.Answers {
-		tag, ok := strings.CutPrefix(qKey, "tags:")
-		if !ok {
-			continue
-		}
-		if ans.Noul >= defaultNoulThreshold {
-			tagsAccum = append(tagsAccum, tag)
+	if !userSet["tags"] {
+		for qKey, ans := range resp.Answers {
+			tag, ok := strings.CutPrefix(qKey, "tags:")
+			if !ok {
+				continue
+			}
+			if ans.Noul >= defaultNoulThreshold {
+				tagsAccum = append(tagsAccum, tag)
+			}
 		}
 	}
 	if len(tagsAccum) > 0 {
@@ -619,9 +648,7 @@ func (c *TaskAutofillConsumer) applyAnswers(ctx context.Context, projectID, task
 	}
 
 	customFields := make(map[string]any, len(task.CustomFields))
-	for k, v := range task.CustomFields {
-		customFields[k] = v
-	}
+	maps.Copy(customFields, task.CustomFields)
 	customDirty := false
 	multiSelectAccum := map[string][]string{}
 	for qKey, ans := range resp.Answers {
@@ -630,9 +657,15 @@ func (c *TaskAutofillConsumer) applyAnswers(ctx context.Context, projectID, task
 			continue
 		}
 		if base, option, isMulti := strings.Cut(fieldKey, ":"); isMulti {
+			if userSet["custom:"+base] {
+				continue
+			}
 			if ans.Noul >= defaultNoulThreshold {
 				multiSelectAccum[base] = append(multiSelectAccum[base], option)
 			}
+			continue
+		}
+		if userSet[qKey] {
 			continue
 		}
 		switch ans.Type {
@@ -656,14 +689,7 @@ func (c *TaskAutofillConsumer) applyAnswers(ctx context.Context, projectID, task
 		dirty = true
 	}
 
-	if !dirty {
-		return nil
-	}
-	if _, err := c.taskService.UpdateTask(ctx, projectID, taskID, in); err != nil {
-		return err
-	}
-	c.recordActivity(ctx, projectID, taskID, changes)
-	return nil
+	return in, changes, dirty
 }
 
 // resolveTaskTypeNames looks up display names for an old/new task type ID

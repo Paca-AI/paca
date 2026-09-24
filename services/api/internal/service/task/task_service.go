@@ -442,7 +442,42 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	if t.ProjectID != projectID {
 		return nil, taskdom.ErrTaskNotFound
 	}
+	if err := s.applyTaskUpdate(ctx, t, in); err != nil {
+		return nil, err
+	}
+	if err := s.repo.UpdateTask(ctx, t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
 
+// UpdateTaskAtomic is UpdateTask, but the read decide bases its decision on
+// and the resulting write happen inside one DB transaction with the row
+// locked for the duration — see taskdom.Repository.UpdateTaskAtomic's doc
+// comment. decide returns (in, true) to validate and apply in through the
+// same applyTaskUpdate path UpdateTask uses, or ok=false to leave the task
+// untouched (no write, no error).
+func (s *Service) UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	return s.repo.UpdateTaskAtomic(ctx, id, func(current *taskdom.Task) (*taskdom.Task, error) {
+		if current.ProjectID != projectID {
+			return nil, taskdom.ErrTaskNotFound
+		}
+		in, ok := decide(current)
+		if !ok {
+			return nil, nil
+		}
+		if err := s.applyTaskUpdate(ctx, current, in); err != nil {
+			return nil, err
+		}
+		return current, nil
+	})
+}
+
+// applyTaskUpdate validates in against t's current state and this task's
+// project (parent-cycle/epic-parent constraints) and mutates t in place —
+// shared by UpdateTask and UpdateTaskAtomic so both apply identical
+// validation no matter how the read that produced t was obtained.
+func (s *Service) applyTaskUpdate(ctx context.Context, t *taskdom.Task, in taskdom.UpdateTaskInput) error {
 	if title := strings.TrimSpace(in.Title); title != "" {
 		t.Title = title
 	}
@@ -459,17 +494,17 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	// Validate parent constraints using the post-update effective values.
 	if effectiveParentID != nil {
 		if *effectiveParentID == t.ID {
-			return nil, taskdom.ErrTaskCannotBeOwnParent
+			return taskdom.ErrTaskCannotBeOwnParent
 		}
 		if s.wouldCreateCycle(ctx, t.ID, *effectiveParentID) {
-			return nil, taskdom.ErrTaskParentCycleDetected
+			return taskdom.ErrTaskParentCycleDetected
 		}
 		isEpic, err := s.isEpicTaskType(ctx, effectiveTypeID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if isEpic {
-			return nil, taskdom.ErrEpicCannotHaveParent
+			return taskdom.ErrEpicCannotHaveParent
 		}
 	}
 
@@ -509,7 +544,7 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	}
 	if in.AssignmentMode != nil {
 		if !taskdom.ValidAssignmentModes[*in.AssignmentMode] {
-			return nil, taskdom.ErrTaskAssignmentModeInvalid
+			return taskdom.ErrTaskAssignmentModeInvalid
 		}
 		t.AssignmentMode = *in.AssignmentMode
 	}
@@ -529,11 +564,7 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 		t.Tags = *in.Tags
 	}
 	t.UpdatedAt = time.Now()
-
-	if err := s.repo.UpdateTask(ctx, t); err != nil {
-		return nil, err
-	}
-	return t, nil
+	return nil
 }
 
 // DeleteTask soft-deletes a task by ID, verifying it belongs to projectID.

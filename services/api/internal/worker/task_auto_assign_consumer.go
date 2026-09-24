@@ -36,10 +36,13 @@ const (
 
 // taskAutoAssignTaskService is the minimal task-service surface
 // TaskAutoAssignConsumer needs: reading a task and writing back a resolved
-// assignee.
+// assignee. The write goes through UpdateTaskAtomic, not UpdateTask — see
+// processTask's own comment on why the final decision has to be made under
+// the row lock UpdateTaskAtomic holds, not against the task read at the top
+// of processTask.
 type taskAutoAssignTaskService interface {
 	GetTask(ctx context.Context, projectID, id uuid.UUID) (*taskdom.Task, error)
-	UpdateTask(ctx context.Context, projectID, id uuid.UUID, in taskdom.UpdateTaskInput) (*taskdom.Task, error)
+	UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error)
 }
 
 // projectMemberLister is the minimal project-service surface used to list
@@ -335,48 +338,68 @@ func (c *TaskAutoAssignConsumer) processTask(ctx context.Context, projectID, tas
 	if !ok {
 		return nil
 	}
-	if !meetsConfidence(ans, assigneeConfidenceThreshold) {
-		var confVal any
-		if ans.Confidence != nil {
-			confVal = *ans.Confidence
+
+	// From here on, the decision must be made and applied atomically under
+	// UpdateTaskAtomic's row lock, not against the `task` read at the top of
+	// this function. The Jev round trip above can take several seconds
+	// (including retries) — long enough for a human to have manually
+	// assigned the task, or otherwise changed its AssignmentMode, while it
+	// was in flight. A plain GetTask-then-UpdateTask pair would leave that
+	// exact window open for a stale decision to silently clobber a
+	// concurrent, higher-priority human action, undoing the "once touched by
+	// a human, stop auto-managing it" guarantee this type's doc comment
+	// describes; deciding inside UpdateTaskAtomic's callback closes it,
+	// since decide only runs once the row is already locked.
+	var (
+		lowConfidence bool
+		confidence    any
+		assigned      *projectdom.ProjectMember
+	)
+	if _, err := c.taskService.UpdateTaskAtomic(ctx, projectID, taskID, func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool) {
+		if current.AssignmentMode != taskdom.AssignmentModeAuto || len(current.AssigneeIDs) > 0 {
+			return taskdom.UpdateTaskInput{}, false
 		}
-		// Revert to "manual" rather than leaving the task sitting in "auto"
-		// with no assignee — the latter renders as a perpetually-pending
-		// "Auto" state in the UI, indistinguishable from a task Jev simply
-		// hasn't gotten to yet. Reverting makes the outcome legible: the
-		// task is unassigned, full stop. A human who wants another attempt
-		// re-enables auto-assign, the same PATCH that got it here.
-		manualMode := taskdom.AssignmentModeManual
-		if _, err := c.taskService.UpdateTask(ctx, projectID, taskID, taskdom.UpdateTaskInput{
-			AssignmentMode: &manualMode,
-		}); err != nil {
-			return fmt.Errorf("revert assignment mode after low-confidence skip: %w", err)
+		if !meetsConfidence(ans, assigneeConfidenceThreshold) {
+			lowConfidence = true
+			if ans.Confidence != nil {
+				confidence = *ans.Confidence
+			}
+			// Revert to "manual" rather than leaving the task sitting in
+			// "auto" with no assignee — the latter renders as a
+			// perpetually-pending "Auto" state in the UI, indistinguishable
+			// from a task Jev simply hasn't gotten to yet. Reverting makes
+			// the outcome legible: the task is unassigned, full stop. A
+			// human who wants another attempt re-enables auto-assign, the
+			// same PATCH that got it here.
+			manualMode := taskdom.AssignmentModeManual
+			return taskdom.UpdateTaskInput{AssignmentMode: &manualMode}, true
 		}
-		c.recordSkippedActivity(ctx, projectID, taskID, "low_confidence", map[string]any{
-			"confidence": confVal,
-			"threshold":  assigneeConfidenceThreshold,
-		})
-		return nil
-	}
-	picked, ok := byID[ans.Choice]
-	if !ok {
-		return nil
+		picked, ok := byID[ans.Choice]
+		if !ok {
+			return taskdom.UpdateTaskInput{}, false
+		}
+		assigned = picked
+		// AssignmentMode is re-sent as "auto" alongside AssigneeIDs
+		// specifically so service/task's UpdateTask doesn't treat this
+		// system-driven write as a human manually picking an assignee
+		// (which would otherwise flip the task back to "manual" — see
+		// UpdateTask's own doc comment).
+		autoMode := taskdom.AssignmentModeAuto
+		assigneeIDs := []uuid.UUID{picked.ID}
+		return taskdom.UpdateTaskInput{AssigneeIDs: &assigneeIDs, AssignmentMode: &autoMode}, true
+	}); err != nil {
+		return fmt.Errorf("apply assignee decision: %w", err)
 	}
 
-	// AssignmentMode is re-sent as "auto" alongside AssigneeIDs specifically
-	// so service/task's UpdateTask doesn't treat this system-driven write as
-	// a human manually picking an assignee (which would otherwise flip the
-	// task back to "manual" — see UpdateTask's own doc comment).
-	autoMode := taskdom.AssignmentModeAuto
-	assigneeIDs := []uuid.UUID{picked.ID}
-	_, err = c.taskService.UpdateTask(ctx, projectID, taskID, taskdom.UpdateTaskInput{
-		AssigneeIDs:    &assigneeIDs,
-		AssignmentMode: &autoMode,
-	})
-	if err != nil {
-		return err
+	switch {
+	case lowConfidence:
+		c.recordSkippedActivity(ctx, projectID, taskID, "low_confidence", map[string]any{
+			"confidence": confidence,
+			"threshold":  assigneeConfidenceThreshold,
+		})
+	case assigned != nil:
+		c.recordActivity(ctx, projectID, taskID, assigned.ID)
 	}
-	c.recordActivity(ctx, projectID, taskID, picked.ID)
 	return nil
 }
 

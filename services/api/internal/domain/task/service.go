@@ -128,6 +128,20 @@ type TaskService interface {
 	CreateTask(ctx context.Context, in CreateTaskInput) (*Task, error)
 	// UpdateTask updates the task identified by id, verifying it belongs to projectID.
 	UpdateTask(ctx context.Context, projectID, id uuid.UUID, in UpdateTaskInput) (*Task, error)
+	// UpdateTaskAtomic is UpdateTask, but the read decide bases its decision
+	// on and the resulting write happen inside one DB transaction with the
+	// row locked for the duration — see Repository.UpdateTaskAtomic. decide
+	// returns (in, true) to validate and apply in through UpdateTask's own
+	// validation, or ok=false to leave the task untouched (no write, no
+	// error).
+	//
+	// Built for callers whose decision depends on a slow external call made
+	// before this is invoked (see worker.TaskAutofillConsumer/
+	// TaskAutoAssignConsumer): a plain GetTask-then-UpdateTask pair leaves a
+	// gap between the two exactly as wide as that external call for another
+	// writer to interleave in; UpdateTaskAtomic closes it by deferring the
+	// decision itself until the row is already locked.
+	UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID, decide func(current *Task) (in UpdateTaskInput, ok bool)) (*Task, error)
 	// DeleteTask removes the task identified by id, verifying it belongs to projectID.
 	DeleteTask(ctx context.Context, projectID, id uuid.UUID) error
 	// ListAssignedTasks returns open (non-done) tasks assigned to any of

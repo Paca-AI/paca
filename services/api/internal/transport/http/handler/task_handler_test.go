@@ -247,6 +247,32 @@ func (f *fakeTaskSvc) UpdateTask(_ context.Context, _, id uuid.UUID, in taskdom.
 	if !ok {
 		return nil, taskdom.ErrTaskNotFound
 	}
+	applyFakeTaskUpdate(t, in)
+	cp := *t
+	return &cp, nil
+}
+
+func (f *fakeTaskSvc) UpdateTaskAtomic(_ context.Context, _, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.tasks[id]
+	if !ok {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	current := *t
+	in, ok := decide(&current)
+	if !ok {
+		return &current, nil
+	}
+	applyFakeTaskUpdate(t, in)
+	cp := *t
+	return &cp, nil
+}
+
+// applyFakeTaskUpdate mutates t with whatever subset of fields this fake
+// supports — shared by UpdateTask and UpdateTaskAtomic so both apply
+// identical (if intentionally partial) field handling.
+func applyFakeTaskUpdate(t *taskdom.Task, in taskdom.UpdateTaskInput) {
 	if in.StatusID != nil {
 		t.StatusID = *in.StatusID
 	}
@@ -259,8 +285,6 @@ func (f *fakeTaskSvc) UpdateTask(_ context.Context, _, id uuid.UUID, in taskdom.
 	if in.Description != nil {
 		t.Description = *in.Description
 	}
-	cp := *t
-	return &cp, nil
 }
 
 func (f *fakeTaskSvc) DeleteTask(_ context.Context, _, id uuid.UUID) error {

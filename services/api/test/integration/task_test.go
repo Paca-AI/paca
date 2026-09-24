@@ -446,6 +446,26 @@ func (r *fakeTaskRepo) UpdateTask(_ context.Context, t *taskdom.Task) error {
 	return nil
 }
 
+func (r *fakeTaskRepo) UpdateTaskAtomic(_ context.Context, id uuid.UUID, decide func(current *taskdom.Task) (*taskdom.Task, error)) (*taskdom.Task, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	t, ok := r.tasks[id]
+	if !ok || t.DeletedAt != nil {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	cp := *t
+	next, err := decide(&cp)
+	if err != nil {
+		return nil, err
+	}
+	if next == nil {
+		return &cp, nil
+	}
+	nc := *next
+	r.tasks[id] = &nc
+	return next, nil
+}
+
 func (r *fakeTaskRepo) DeleteTask(_ context.Context, id uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

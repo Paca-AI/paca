@@ -275,6 +275,11 @@ func (c *CachedService) UpdateTask(ctx context.Context, projectID, id uuid.UUID,
 	return c.svc.UpdateTask(ctx, projectID, id, in)
 }
 
+// UpdateTaskAtomic delegates directly to the underlying service (not cached).
+func (c *CachedService) UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	return c.svc.UpdateTaskAtomic(ctx, projectID, id, decide)
+}
+
 // DeleteTask delegates directly to the underlying service (not cached).
 func (c *CachedService) DeleteTask(ctx context.Context, projectID, id uuid.UUID) error {
 	return c.svc.DeleteTask(ctx, projectID, id)

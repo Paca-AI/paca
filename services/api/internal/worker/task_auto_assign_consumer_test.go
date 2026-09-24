@@ -19,13 +19,28 @@ import (
 type fakeAutoAssignTaskService struct {
 	task       *taskdom.Task
 	lastUpdate *taskdom.UpdateTaskInput
+	// beforeDecide, if set, runs against the live task immediately before
+	// UpdateTaskAtomic's decide callback sees it — simulating a concurrent
+	// write (e.g. a human's PATCH) that lands exactly once the "row lock"
+	// is taken, i.e. after GetTask's earlier, now-stale read but before
+	// decide's fresh one.
+	beforeDecide func(task *taskdom.Task)
 }
 
 func (f *fakeAutoAssignTaskService) GetTask(_ context.Context, _, _ uuid.UUID) (*taskdom.Task, error) {
-	return f.task, nil
+	cp := *f.task
+	return &cp, nil
 }
 
-func (f *fakeAutoAssignTaskService) UpdateTask(_ context.Context, _, _ uuid.UUID, in taskdom.UpdateTaskInput) (*taskdom.Task, error) {
+func (f *fakeAutoAssignTaskService) UpdateTaskAtomic(_ context.Context, _, _ uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	if f.beforeDecide != nil {
+		f.beforeDecide(f.task)
+	}
+	current := *f.task
+	in, ok := decide(&current)
+	if !ok {
+		return f.task, nil
+	}
 	f.lastUpdate = &in
 	return f.task, nil
 }
@@ -263,5 +278,56 @@ func TestProcessTask_LowConfidenceRevertsToManualAndRecordsActivity(t *testing.T
 	}
 	if payload.Reason != "low_confidence" || payload.Confidence != 0.34 || payload.Threshold != assigneeConfidenceThreshold {
 		t.Fatalf("unexpected activity content: %+v", payload)
+	}
+}
+
+// TestProcessTask_DoesNotOverwriteConcurrentHumanAssignment is a regression
+// test for the race UpdateTaskAtomic exists to close: a human manually
+// assigning the task while the Jev call above is in flight must never be
+// silently overwritten by a Jev decision that was only ever valid against
+// the task's state from before that assignment happened.
+func TestProcessTask_DoesNotOverwriteConcurrentHumanAssignment(t *testing.T) {
+	memberID := uuid.New()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		confidence := 0.9
+		_ = json.NewEncoder(w).Encode(jev.Response{
+			Answers: map[string]jev.Answer{
+				"assignee": {Type: jev.TypeChoice, Choice: memberID.String(), Confidence: &confidence},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	taskID := uuid.New()
+	humanPickID := uuid.New()
+	task := &taskdom.Task{ID: taskID, AssignmentMode: taskdom.AssignmentModeAuto}
+	taskSvc := &fakeAutoAssignTaskService{task: task}
+	// Simulates a human manually assigning the task via an ordinary PATCH
+	// while the Jev call (srv, above) is in flight — by the time
+	// UpdateTaskAtomic's decide runs (the row is now "locked"), the task is
+	// no longer eligible.
+	taskSvc.beforeDecide = func(current *taskdom.Task) {
+		current.AssignmentMode = taskdom.AssignmentModeManual
+		current.AssigneeIDs = []uuid.UUID{humanPickID}
+	}
+	memberLister := &fakeMemberLister{members: []*projectdom.ProjectMember{
+		{ID: memberID, MemberType: "human", FullName: "Alice"},
+	}}
+	project := &projectdom.Project{ID: uuid.New(), JevAPIKeySecret: "test-key", JevBaseURL: srv.URL}
+	rec := &fakeActivityRecorder{}
+	c := newTestAutoAssignConsumer(taskSvc, memberLister, &fakeProjectReader{project: project})
+	c.activityRec = rec
+
+	if err := c.processTask(context.Background(), uuid.New(), taskID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if taskSvc.lastUpdate != nil {
+		t.Fatalf("expected no write once the task is no longer eligible, got %+v", taskSvc.lastUpdate)
+	}
+	if task.AssignmentMode != taskdom.AssignmentModeManual || len(task.AssigneeIDs) != 1 || task.AssigneeIDs[0] != humanPickID {
+		t.Fatalf("expected the human's concurrent assignment to survive untouched, got mode=%v assignees=%v", task.AssignmentMode, task.AssigneeIDs)
+	}
+	if len(rec.recorded) != 0 {
+		t.Fatalf("expected no activity recorded once the task is no longer eligible, got %+v", rec.recorded)
 	}
 }
