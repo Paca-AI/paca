@@ -198,7 +198,6 @@ type PluginLimitsConfig struct {
 	MaxRequestBodyBytes int64
 }
 
-
 // SecurityConfig holds secrets used by first-party and plugin features.
 type SecurityConfig struct {
 	// EncryptionKey is a 32-byte AES-256 key (hex-encoded) used to encrypt

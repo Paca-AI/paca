@@ -108,4 +108,3 @@ type ProjectJevConfigResponse struct {
 type TestJevConfigResponse struct {
 	Success bool `json:"success"`
 }
-

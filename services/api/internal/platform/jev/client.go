@@ -214,7 +214,7 @@ func (c *Client) doRequest(ctx context.Context, body []byte) (*Response, error) 
 	if err != nil {
 		return nil, fmt.Errorf("jev: request failed: %w", err)
 	}
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 
 	respBody, err := io.ReadAll(io.LimitReader(httpResp.Body, 1<<20))
 	if err != nil {

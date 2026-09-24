@@ -17,20 +17,20 @@ import (
 // --- sqlx models ------------------------------------------------------------
 
 type projectRecord struct {
-	ID             string     `db:"id"`
-	Name           string     `db:"name"`
-	Description    string     `db:"description"`
-	TaskIDPrefix   string     `db:"task_id_prefix"`
-	IsPublic       bool       `db:"is_public"`
-	Settings       []byte     `db:"settings"`
-	AvatarKey      *string    `db:"avatar_key"`
-	AvatarThumbKey *string    `db:"avatar_thumb_key"`
-	CreatedBy      *string    `db:"created_by"`
-	CreatedAt      time.Time  `db:"created_at"`
-	DeletedAt      *time.Time `db:"deleted_at"`
-	JevAPIKeySecret string    `db:"jev_api_key_secret"`
-	JevBaseURL      string    `db:"jev_base_url"`
-	JevModel        string    `db:"jev_model"`
+	ID              string     `db:"id"`
+	Name            string     `db:"name"`
+	Description     string     `db:"description"`
+	TaskIDPrefix    string     `db:"task_id_prefix"`
+	IsPublic        bool       `db:"is_public"`
+	Settings        []byte     `db:"settings"`
+	AvatarKey       *string    `db:"avatar_key"`
+	AvatarThumbKey  *string    `db:"avatar_thumb_key"`
+	CreatedBy       *string    `db:"created_by"`
+	CreatedAt       time.Time  `db:"created_at"`
+	DeletedAt       *time.Time `db:"deleted_at"`
+	JevAPIKeySecret string     `db:"jev_api_key_secret"`
+	JevBaseURL      string     `db:"jev_base_url"`
+	JevModel        string     `db:"jev_model"`
 }
 
 type projectRoleRecord struct {

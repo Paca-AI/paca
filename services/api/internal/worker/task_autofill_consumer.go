@@ -453,7 +453,7 @@ func (c *TaskAutofillConsumer) buildQuestions(ctx context.Context, projectID uui
 	// combined UpdateTask call in applyAnswers fails, dropping every other
 	// confidently-answered field along with it).
 	if epicType := findEpicTaskType(taskTypes); epicType != nil &&
-		!(task.TaskTypeID != nil && *task.TaskTypeID == epicType.ID) &&
+		(task.TaskTypeID == nil || *task.TaskTypeID != epicType.ID) &&
 		!userSet["parent_task_id"] && !settings.Excludes("parent_task_id") {
 		epics, _, err := c.taskService.ListTasks(ctx, projectID, taskdom.TaskFilter{TaskTypeIDs: []uuid.UUID{epicType.ID}}, maxEpicCandidates, taskdom.TaskSort{})
 		if err == nil && len(epics) > 0 {
@@ -529,6 +529,9 @@ func (c *TaskAutofillConsumer) buildQuestions(ctx context.Context, projectID uui
 					Instructions: fmt.Sprintf("Should %q be included in this task's %q?", opt.Value, fd.DisplayName),
 				}
 			}
+		default:
+			// text/number/date/url: no Jev question type maps cleanly onto
+			// free-form input, so these are left for a human to fill in.
 		}
 	}
 	return questions

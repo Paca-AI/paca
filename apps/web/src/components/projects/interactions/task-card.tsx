@@ -26,8 +26,8 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useJevEnabled } from "@/hooks/use-jev-enabled";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
 	customFieldBadgeStyle,
 	getCustomFieldOptionColor,
@@ -226,9 +226,7 @@ export function TaskCard({
 									<span className="flex-1 text-left truncate">
 										{t("taskDetail.properties.autoAssign")}
 									</span>
-									{isAutoAssign && (
-										<Check className="size-3.5 text-primary" />
-									)}
+									{isAutoAssign && <Check className="size-3.5 text-primary" />}
 								</button>
 							)}
 							<button
