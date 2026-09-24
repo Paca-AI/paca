@@ -3,11 +3,16 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/jev"
 )
@@ -149,5 +154,144 @@ func TestJevConditionState_UsesTaskFields(t *testing.T) {
 	}
 	if state["importance"] != 35 {
 		t.Errorf("unexpected importance: %v", state["importance"])
+	}
+}
+
+// stubProjectReader is a projectSettingsReader returning a fixed project.
+type stubProjectReader struct {
+	project *projectdom.Project
+	err     error
+}
+
+func (s stubProjectReader) GetByID(context.Context, uuid.UUID) (*projectdom.Project, error) {
+	return s.project, s.err
+}
+
+// newJevWalker builds a walker whose consumer reaches jevURL through a plain
+// (non-SSRF-guarded) transport, so the Jev call hits a local httptest.Server.
+func newJevWalker(project *projectdom.Project, readErr error) *walker {
+	return &walker{
+		consumer: &AutomationConsumer{
+			projectSvc: stubProjectReader{project: project, err: readErr},
+			httpClient: &http.Client{Timeout: 5 * time.Second},
+		},
+		projectID: uuid.New(),
+		task:      &taskdom.Task{ID: uuid.New(), Title: "Refund request", Tags: []string{"billing"}},
+	}
+}
+
+func jevNode(t *testing.T, cfg automationdom.JevConditionConfig) *automationdom.Node {
+	t.Helper()
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal cfg: %v", err)
+	}
+	return &automationdom.Node{ID: uuid.New(), Type: automationdom.JevConditionNodeType, Config: raw}
+}
+
+func TestResolveJevAnswer_ChoiceRoutesToMatchedOption(t *testing.T) {
+	var gotReq jev.Request
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_ = json.NewDecoder(r.Body).Decode(&gotReq)
+		conf := 0.92
+		_ = json.NewEncoder(w).Encode(jev.Response{Answers: map[string]jev.Answer{
+			"answer": {Type: jev.TypeChoice, Choice: "billing", Confidence: &conf},
+		}})
+	}))
+	defer srv.Close()
+
+	w := newJevWalker(&projectdom.Project{JevAPIKeySecret: "k", JevBaseURL: srv.URL, JevModel: "m"}, nil)
+	handle, ans, errMsg := w.resolveJevAnswer(context.Background(), jevNode(t, automationdom.JevConditionConfig{
+		AnswerType:   automationdom.JevAnswerChoice,
+		Instructions: "Which team?",
+		Options:      map[string]string{"billing": "money", "tech": "bugs"},
+	}))
+	if errMsg != "" || handle != "billing" || ans == nil || ans.Choice != "billing" {
+		t.Fatalf("unexpected result: handle=%q ans=%+v err=%q", handle, ans, errMsg)
+	}
+	if gotAuth != "Bearer k" {
+		t.Errorf("expected the project's key as bearer token, got %q", gotAuth)
+	}
+	if gotReq.Model != "m" {
+		t.Errorf("expected the project's model, got %q", gotReq.Model)
+	}
+	q, ok := gotReq.Questions["answer"]
+	if !ok || q.Type != jev.TypeChoice || q.Instructions != "Which team?" {
+		t.Errorf("unexpected question sent: %+v", gotReq.Questions)
+	}
+	state, _ := gotReq.State.(map[string]any)
+	if state["title"] != "Refund request" {
+		t.Errorf("expected the task title in state, got %v", gotReq.State)
+	}
+}
+
+func TestResolveJevAnswer_APIErrorRoutesElse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	w := newJevWalker(&projectdom.Project{JevAPIKeySecret: "k", JevBaseURL: srv.URL}, nil)
+	handle, ans, errMsg := w.resolveJevAnswer(context.Background(), jevNode(t, automationdom.JevConditionConfig{
+		AnswerType: automationdom.JevAnswerNoul, Instructions: "Is it urgent?",
+	}))
+	if handle != automationdom.ElseHandle || ans != nil || errMsg == "" {
+		t.Fatalf("expected else with an error, got handle=%q ans=%+v err=%q", handle, ans, errMsg)
+	}
+}
+
+func TestResolveJevAnswer_MissingAnswerRoutesElse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(jev.Response{Answers: map[string]jev.Answer{}})
+	}))
+	defer srv.Close()
+
+	w := newJevWalker(&projectdom.Project{JevAPIKeySecret: "k", JevBaseURL: srv.URL}, nil)
+	handle, _, errMsg := w.resolveJevAnswer(context.Background(), jevNode(t, automationdom.JevConditionConfig{
+		AnswerType: automationdom.JevAnswerNoul, Instructions: "Is it urgent?",
+	}))
+	if handle != automationdom.ElseHandle || errMsg != "jev returned no answer" {
+		t.Fatalf("unexpected result: handle=%q err=%q", handle, errMsg)
+	}
+}
+
+func TestResolveJevAnswer_ProjectWithoutKeyRoutesElse(t *testing.T) {
+	w := newJevWalker(&projectdom.Project{}, nil)
+	handle, _, errMsg := w.resolveJevAnswer(context.Background(), jevNode(t, automationdom.JevConditionConfig{
+		AnswerType: automationdom.JevAnswerNoul, Instructions: "x",
+	}))
+	if handle != automationdom.ElseHandle || errMsg == "" {
+		t.Fatalf("unexpected result: handle=%q err=%q", handle, errMsg)
+	}
+}
+
+func TestResolveJevAnswer_ProjectLoadErrorRoutesElse(t *testing.T) {
+	w := newJevWalker(nil, errors.New("db down"))
+	handle, _, errMsg := w.resolveJevAnswer(context.Background(), jevNode(t, automationdom.JevConditionConfig{
+		AnswerType: automationdom.JevAnswerNoul, Instructions: "x",
+	}))
+	if handle != automationdom.ElseHandle || errMsg == "" {
+		t.Fatalf("unexpected result: handle=%q err=%q", handle, errMsg)
+	}
+}
+
+func TestResolveJevAnswer_BadConfigRoutesElse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("jev must not be called for an invalid node config")
+	}))
+	defer srv.Close()
+	w := newJevWalker(&projectdom.Project{JevAPIKeySecret: "k", JevBaseURL: srv.URL}, nil)
+
+	handle, _, errMsg := w.resolveJevAnswer(context.Background(),
+		&automationdom.Node{Type: automationdom.JevConditionNodeType, Config: json.RawMessage(`not json`)})
+	if handle != automationdom.ElseHandle || errMsg == "" {
+		t.Fatalf("malformed config: handle=%q err=%q", handle, errMsg)
+	}
+
+	handle, _, errMsg = w.resolveJevAnswer(context.Background(), jevNode(t, automationdom.JevConditionConfig{AnswerType: "bogus"}))
+	if handle != automationdom.ElseHandle || errMsg == "" {
+		t.Fatalf("unknown answer type: handle=%q err=%q", handle, errMsg)
 	}
 }

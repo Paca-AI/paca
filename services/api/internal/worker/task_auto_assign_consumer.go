@@ -93,6 +93,8 @@ type TaskAutoAssignConsumer struct {
 	jevHTTPClient *http.Client
 	log           *slog.Logger
 	consumerName  string
+	groupName     string
+	groupStartID  string
 	stopCh        chan struct{}
 	doneCh        chan struct{}
 }
@@ -129,23 +131,38 @@ func NewTaskAutoAssignConsumer(client *redis.Client, taskService taskAutoAssignT
 		activityRec:  activityRec,
 		encryptor:    encryptor,
 		log:          log,
+		groupName:    taskAutoAssignConsumerGroup,
+		groupStartID: "0",
 		consumerName: fmt.Sprintf("%s.%s", taskAutoAssignConsumerGroup, hostname),
 		stopCh:       make(chan struct{}),
 		doneCh:       make(chan struct{}),
 	}
 }
 
+// WithConsumerGroup overrides the consumer group this consumer joins
+// (default: taskAutoAssignConsumerGroup). Production has no reason to call
+// this — it exists for e2e tests that share one Redis stream across many
+// parallel, DB-isolated tests; see AutomationConsumer.WithConsumerGroup for
+// the full reasoning. The group starts from "$" (now) so it never replays
+// earlier tests' events.
+func (c *TaskAutoAssignConsumer) WithConsumerGroup(name string) *TaskAutoAssignConsumer {
+	c.groupName = name
+	c.groupStartID = "$"
+	c.consumerName = fmt.Sprintf("%s.%s", name, uuid.New().String())
+	return c
+}
+
 // Start creates the consumer group if needed and begins processing in a
 // background goroutine. Call Stop to drain and exit cleanly.
 func (c *TaskAutoAssignConsumer) Start(ctx context.Context) {
-	if err := c.ensureGroup(ctx, "0"); err != nil {
+	if err := c.ensureGroup(ctx, c.groupStartID); err != nil {
 		c.log.Warn("task auto-assign consumer: could not create consumer group, will retry on first read", "err", err)
 	}
 	go c.run()
 }
 
 func (c *TaskAutoAssignConsumer) ensureGroup(ctx context.Context, startID string) error {
-	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskActivities, taskAutoAssignConsumerGroup, startID).Err()
+	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskActivities, c.groupName, startID).Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		return err
 	}
@@ -174,7 +191,7 @@ func (c *TaskAutoAssignConsumer) run() {
 
 		ctx, cancel := context.WithTimeout(context.Background(), taskAutoAssignReadBlock+time.Second)
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    taskAutoAssignConsumerGroup,
+			Group:    c.groupName,
 			Consumer: c.consumerName,
 			Streams:  []string{events.StreamTaskActivities, ">"},
 			Count:    taskAutoAssignReadCount,
@@ -191,7 +208,7 @@ func (c *TaskAutoAssignConsumer) run() {
 				// "0": safe and preferable to replay — see this type's own
 				// doc comment on why processing is idempotent.
 				recoverCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				geErr := c.ensureGroup(recoverCtx, "0")
+				geErr := c.ensureGroup(recoverCtx, c.groupStartID)
 				cancel()
 				if geErr != nil {
 					c.log.Warn("task auto-assign consumer: failed to recreate consumer group", "err", geErr)
@@ -211,7 +228,7 @@ func (c *TaskAutoAssignConsumer) run() {
 
 func (c *TaskAutoAssignConsumer) processPending(ctx context.Context) {
 	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
-		Group:    taskAutoAssignConsumerGroup,
+		Group:    c.groupName,
 		Consumer: c.consumerName,
 		Streams:  []string{events.StreamTaskActivities, "0"},
 		Count:    taskAutoAssignReadCount,
@@ -228,7 +245,7 @@ func (c *TaskAutoAssignConsumer) processPending(ctx context.Context) {
 }
 
 func (c *TaskAutoAssignConsumer) ack(ctx context.Context, id string) {
-	if err := c.client.XAck(ctx, events.StreamTaskActivities, taskAutoAssignConsumerGroup, id).Err(); err != nil {
+	if err := c.client.XAck(ctx, events.StreamTaskActivities, c.groupName, id).Err(); err != nil {
 		c.log.Warn("task auto-assign consumer: xack failed", "id", id, "err", err)
 	}
 }

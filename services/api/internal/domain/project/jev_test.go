@@ -95,3 +95,12 @@ func TestParseJevSettings_MalformedShapeFallsBackToDefaults(t *testing.T) {
 		t.Errorf("expected an invalid scope value to fall back to the default, got %q", got.AutoAssignScope)
 	}
 }
+
+func TestProjectJevConfigured(t *testing.T) {
+	if (Project{}).JevConfigured() {
+		t.Error("a project without a stored key must not report Jev as configured")
+	}
+	if !(Project{JevAPIKeySecret: "enc"}).JevConfigured() {
+		t.Error("a project with a stored key must report Jev as configured")
+	}
+}

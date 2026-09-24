@@ -275,16 +275,26 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
 		User:                 handler.NewUserHandler(userService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
-		Project:              handler.NewProjectHandler(projectService, authz.NewAuthorizer(authzStore)),
-		Task:                 handler.NewTaskHandler(taskService, viewService, activityService, handler.WithTaskAssignedProjectService(projectService)),
-		Sprint:               handler.NewSprintHandler(sprintService, viewService),
-		View:                 handler.NewViewHandler(viewService),
-		Attachment:           handler.NewAttachmentHandler(attachmentService),
-		APIKey:               handler.NewAPIKeyHandler(apiKeyService),
-		Automation:           handler.NewAutomationHandler(automationService),
-		Agent:                handler.NewAgentHandler(agentService, "", "", "").WithMemberRepo(projectRepo),
-		Conversation:         handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo),
-		Log:                  log,
+		Project: handler.NewProjectHandler(projectService, authz.NewAuthorizer(authzStore),
+			// Same Jev wiring as bootstrap/app.go (nil encryptor: keys are
+			// stored as plaintext, as on an instance without ENCRYPTION_KEY),
+			// plus a plain transport so jev-config/test can reach a test's
+			// local fake Jev server, which the SSRF-safe default would reject.
+			handler.WithProjectJevConfigService(projectService, nil),
+			handler.WithProjectJevHTTPClient(&http.Client{Timeout: 10 * time.Second})),
+		Task: handler.NewTaskHandler(taskService, viewService, activityService,
+			handler.WithTaskAssignedProjectService(projectService),
+			// Records which fields a human explicitly set, so the Jev
+			// autofill consumer never overwrites them — as in bootstrap/app.go.
+			handler.WithTaskAutofillRepository(taskRepo)),
+		Sprint:       handler.NewSprintHandler(sprintService, viewService),
+		View:         handler.NewViewHandler(viewService),
+		Attachment:   handler.NewAttachmentHandler(attachmentService),
+		APIKey:       handler.NewAPIKeyHandler(apiKeyService),
+		Automation:   handler.NewAutomationHandler(automationService),
+		Agent:        handler.NewAgentHandler(agentService, "", "", "").WithMemberRepo(projectRepo),
+		Conversation: handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo),
+		Log:          log,
 	})
 
 	srv := httptest.NewServer(engine)

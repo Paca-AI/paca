@@ -1373,6 +1373,11 @@ func (w *walker) resolveJevAnswer(ctx context.Context, node *automationdom.Node)
 		return automationdom.ElseHandle, nil, "load project: " + err.Error()
 	}
 	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, w.consumer.encryptor)
+	if jevClient.Enabled() && w.consumer.httpClient != nil {
+		// Same transport as call_api (SSRF-safe by default); WithHTTPClient
+		// overrides both, so tests can point Jev at a local httptest.Server.
+		jevClient = jevClient.WithHTTPClient(w.consumer.httpClient)
+	}
 	if !jevClient.Enabled() {
 		return automationdom.ElseHandle, nil, "this project has not configured Jev"
 	}

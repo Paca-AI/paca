@@ -738,3 +738,46 @@ func TestTruncate(t *testing.T) {
 		t.Errorf("expected truncation with ellipsis, got %q", got)
 	}
 }
+
+// TestProcessTask_IgnoresAnswersToUnaskedQuestions verifies an answer for a
+// field that was never asked (here: importance, excluded in the project's
+// Jev settings) is dropped even if the provider returns one anyway.
+func TestProcessTask_IgnoresAnswersToUnaskedQuestions(t *testing.T) {
+	taskID := uuid.New()
+	high := 0.95
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jev.Request
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if _, asked := req.Questions["importance"]; asked {
+			t.Error("an excluded field must not be asked about")
+		}
+		_ = json.NewEncoder(w).Encode(jev.Response{Answers: map[string]jev.Answer{
+			"importance":   {Type: jev.TypeScore, Score: 4, Confidence: &high},
+			"story_points": {Type: jev.TypeScore, Score: 2, Confidence: &high},
+		}})
+	}))
+	defer srv.Close()
+
+	taskSvc := &fakeAutofillTaskService{tasks: map[uuid.UUID]*taskdom.Task{taskID: {ID: taskID, Importance: 0}}}
+	project := &projectdom.Project{
+		ID: uuid.New(), JevAPIKeySecret: "test-key", JevBaseURL: srv.URL,
+		Settings: map[string]any{"jev": map[string]any{"autofill_excluded_fields": []any{"importance"}}},
+	}
+	c := &TaskAutofillConsumer{
+		taskService:   taskSvc,
+		autofillRepo:  newFakeAutofillRepo(),
+		projectSvc:    &fakeProjectReader{project: project},
+		jevHTTPClient: &http.Client{Timeout: 5 * time.Second},
+		log:           slog.Default(),
+	}
+
+	if err := c.processTask(context.Background(), uuid.New(), taskID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if taskSvc.lastUpdate.Importance != nil {
+		t.Errorf("an unasked answer must not be applied, got importance %v", *taskSvc.lastUpdate.Importance)
+	}
+	if taskSvc.lastUpdate.StoryPoints == nil || *taskSvc.lastUpdate.StoryPoints == nil || **taskSvc.lastUpdate.StoryPoints != 2 {
+		t.Errorf("expected the asked story_points answer to be applied, got %v", taskSvc.lastUpdate.StoryPoints)
+	}
+}
