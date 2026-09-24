@@ -701,7 +701,7 @@ func (s *Service) validateNodeTypeAndConfig(ctx context.Context, projectID uuid.
 	case automationdom.KindCondition:
 		if nodeType != automationdom.ConditionNodeType {
 			if automationdom.ValidBuiltinAIConditionTypes[nodeType] {
-				return s.validateJevConditionConfig(nodeType, config)
+				return s.validateJevConditionConfig(nodeType, config, strict)
 			}
 			// Not the built-in N-branch switch or a Jev condition — this
 			// must be a plugin-contributed condition node instead (its own
@@ -823,7 +823,14 @@ func (s *Service) validateConditionConfig(ctx context.Context, projectID uuid.UU
 // a Jev question is well-formed beyond its shape; Jev itself rejects a
 // malformed question at call time with a 422, which the worker treats as a
 // graceful else-route rather than surfacing here).
-func (s *Service) validateJevConditionConfig(nodeType string, raw json.RawMessage) error {
+//
+// strict follows the same contract as validateTriggerConfig/
+// validateConditionConfig/validateActionConfig (see validateNodeTypeAndConfig's
+// doc comment): AddNode calls this with strict=false against an empty {}
+// config, so the instructions/criteria required-field checks below only
+// apply when strict — otherwise every brand-new Jev condition node would
+// fail validation before the user ever reaches the config panel.
+func (s *Service) validateJevConditionConfig(nodeType string, raw json.RawMessage, strict bool) error {
 	switch nodeType {
 	case automationdom.JevChoiceNodeType:
 		var cfg automationdom.JevChoiceConfig
@@ -831,6 +838,9 @@ func (s *Service) validateJevConditionConfig(nodeType string, raw json.RawMessag
 			if err := json.Unmarshal(raw, &cfg); err != nil {
 				return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
 			}
+		}
+		if !strict {
+			return nil
 		}
 		if strings.TrimSpace(cfg.Instructions) == "" {
 			return fmt.Errorf("%w: instructions is required", automationdom.ErrNodeConfigInvalid)
@@ -850,6 +860,9 @@ func (s *Service) validateJevConditionConfig(nodeType string, raw json.RawMessag
 				return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
 			}
 		}
+		if !strict {
+			return nil
+		}
 		if strings.TrimSpace(cfg.Instructions) == "" {
 			return fmt.Errorf("%w: instructions is required", automationdom.ErrNodeConfigInvalid)
 		}
@@ -862,6 +875,9 @@ func (s *Service) validateJevConditionConfig(nodeType string, raw json.RawMessag
 			if err := json.Unmarshal(raw, &cfg); err != nil {
 				return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
 			}
+		}
+		if !strict {
+			return nil
 		}
 		if strings.TrimSpace(cfg.Instructions) == "" {
 			return fmt.Errorf("%w: instructions is required", automationdom.ErrNodeConfigInvalid)

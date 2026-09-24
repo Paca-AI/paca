@@ -197,31 +197,57 @@ func TestValidateEdgeHandle_JevNoulSource(t *testing.T) {
 func TestValidateJevConditionConfig(t *testing.T) {
 	s := &Service{}
 
-	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"","criteria":{"a":"x"}}`)); err == nil {
+	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"","criteria":{"a":"x"}}`), true); err == nil {
 		t.Error("expected an error for empty instructions")
 	}
-	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{}}`)); err == nil {
+	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{}}`), true); err == nil {
 		t.Error("expected an error for empty criteria")
 	}
-	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{"else":"x"}}`)); err == nil {
+	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{"else":"x"}}`), true); err == nil {
 		t.Error("expected an error for a criteria key that collides with the reserved else handle")
 	}
-	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{"a":"x"}}`)); err != nil {
+	if err := s.validateJevConditionConfig(automationdom.JevChoiceNodeType, []byte(`{"instructions":"?","criteria":{"a":"x"}}`), true); err != nil {
 		t.Errorf("expected a valid jev_choice config to pass, got %v", err)
 	}
 
-	if err := s.validateJevConditionConfig(automationdom.JevScoreNodeType, []byte(`{"instructions":"?","criteria":["only one"]}`)); err == nil {
+	if err := s.validateJevConditionConfig(automationdom.JevScoreNodeType, []byte(`{"instructions":"?","criteria":["only one"]}`), true); err == nil {
 		t.Error("expected an error for fewer than 2 score levels")
 	}
-	if err := s.validateJevConditionConfig(automationdom.JevScoreNodeType, []byte(`{"instructions":"?","criteria":["a","b"]}`)); err != nil {
+	if err := s.validateJevConditionConfig(automationdom.JevScoreNodeType, []byte(`{"instructions":"?","criteria":["a","b"]}`), true); err != nil {
 		t.Errorf("expected a valid jev_score config to pass, got %v", err)
 	}
 
-	if err := s.validateJevConditionConfig(automationdom.JevNoulNodeType, []byte(`{"instructions":""}`)); err == nil {
+	if err := s.validateJevConditionConfig(automationdom.JevNoulNodeType, []byte(`{"instructions":""}`), true); err == nil {
 		t.Error("expected an error for empty instructions")
 	}
-	if err := s.validateJevConditionConfig(automationdom.JevNoulNodeType, []byte(`{"instructions":"is this urgent?"}`)); err != nil {
+	if err := s.validateJevConditionConfig(automationdom.JevNoulNodeType, []byte(`{"instructions":"is this urgent?"}`), true); err != nil {
 		t.Errorf("expected a valid jev_noul config to pass, got %v", err)
+	}
+}
+
+// TestValidateJevConditionConfig_NotStrictAllowsEmptyConfig is a regression
+// test for a brand-new Jev condition node failing AUTOMATION_NODE_CONFIG_INVALID
+// ("instructions is required") immediately on creation, before the user ever
+// reaches the config panel: AddNode always creates nodes with an empty {}
+// config (see validateNodeTypeAndConfig's doc comment) and calls this with
+// strict=false, so the required-field checks must not run in that case —
+// mirroring validateTriggerConfig/validateConditionConfig/
+// validateActionConfig, which already skip their own required-field checks
+// when !strict.
+func TestValidateJevConditionConfig_NotStrictAllowsEmptyConfig(t *testing.T) {
+	s := &Service{}
+
+	for _, nodeType := range []string{
+		automationdom.JevChoiceNodeType,
+		automationdom.JevScoreNodeType,
+		automationdom.JevNoulNodeType,
+	} {
+		if err := s.validateJevConditionConfig(nodeType, []byte(`{}`), false); err != nil {
+			t.Errorf("%s: expected an empty config to pass when not strict, got %v", nodeType, err)
+		}
+		if err := s.validateJevConditionConfig(nodeType, nil, false); err != nil {
+			t.Errorf("%s: expected a nil config to pass when not strict, got %v", nodeType, err)
+		}
 	}
 }
 
