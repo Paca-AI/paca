@@ -63,10 +63,12 @@ type stubProjectSvc struct {
 	updateRole              func(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error)
 	deleteRole              func(ctx context.Context, projectID, roleID uuid.UUID) error
 	findRoleByID            func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
+	updateJevConfig         func(ctx context.Context, projectID uuid.UUID, apiKey, baseURL, model *string) (*projectdom.Project, error)
 
-	getByIDCalls     int
-	listMembersCalls int
-	listRolesCalls   int
+	getByIDCalls         int
+	listMembersCalls     int
+	listRolesCalls       int
+	updateJevConfigCalls int
 }
 
 func (s *stubProjectSvc) List(ctx context.Context, page, pageSize int) ([]*projectdom.Project, int64, error) {
@@ -210,8 +212,21 @@ func (s *stubProjectSvc) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) er
 func (s *stubProjectSvc) UpdateMemberRoleByMemberID(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
 	return nil, errors.New("not implemented in stub")
 }
+func (s *stubProjectSvc) UpdateMemberDescription(_ context.Context, _, _ uuid.UUID, _ string) (*projectdom.ProjectMember, error) {
+	return nil, errors.New("not implemented in stub")
+}
 func (s *stubProjectSvc) RemoveMemberByMemberID(_ context.Context, _, _ uuid.UUID) error {
 	return errors.New("not implemented in stub")
+}
+
+// UpdateJevConfig is the one method CachedService adds on top of
+// projectdom.Service, picked up by assertion — see NewCachedService.
+func (s *stubProjectSvc) UpdateJevConfig(ctx context.Context, projectID uuid.UUID, apiKey, baseURL, model *string) (*projectdom.Project, error) {
+	s.updateJevConfigCalls++
+	if s.updateJevConfig != nil {
+		return s.updateJevConfig(ctx, projectID, apiKey, baseURL, model)
+	}
+	return &projectdom.Project{ID: projectID}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +298,38 @@ func TestCachedProject_Update_InvalidatesGetByID(t *testing.T) {
 	// Must call stub again (cache evicted).
 	if _, err := svc.GetByID(ctx, projectID); err != nil {
 		t.Fatalf("GetByID after Update: %v", err)
+	}
+	if stub.getByIDCalls != 2 {
+		t.Fatalf("expected 2 stub calls, got %d", stub.getByIDCalls)
+	}
+}
+
+// TestCachedProject_UpdateJevConfig_InvalidatesGetByID is the regression test
+// for the save-then-test bug: UpdateJevConfig is the one write whose result is
+// only ever read back off the cached Project entity (JevAPIKeySecret/
+// JevBaseURL/JevModel are plain fields on it), so a write that didn't evict
+// the project key would leave the handler's own TestJevConfig — and every
+// Jev-dependent worker — reading the credentials the caller just replaced.
+func TestCachedProject_UpdateJevConfig_InvalidatesGetByID(t *testing.T) {
+	ctx := context.Background()
+	projectID := uuid.New()
+	stub := &stubProjectSvc{}
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+
+	// Populate cache.
+	if _, err := svc.GetByID(ctx, projectID); err != nil {
+		t.Fatalf("initial GetByID: %v", err)
+	}
+
+	// UpdateJevConfig should evict the project key.
+	baseURL := "https://jev.example.com"
+	if _, err := svc.UpdateJevConfig(ctx, projectID, nil, &baseURL, nil); err != nil {
+		t.Fatalf("UpdateJevConfig: %v", err)
+	}
+
+	// Must call the underlying service again (cache evicted).
+	if _, err := svc.GetByID(ctx, projectID); err != nil {
+		t.Fatalf("GetByID after UpdateJevConfig: %v", err)
 	}
 	if stub.getByIDCalls != 2 {
 		t.Fatalf("expected 2 stub calls, got %d", stub.getByIDCalls)
@@ -488,5 +535,17 @@ func TestCachedProject_GetByID_ServiceErrorPropagated(t *testing.T) {
 	_, err := svc.GetByID(ctx, uuid.New())
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("expected sentinel error, got %v", err)
+	}
+}
+
+// TestCachedProject_UpdateJevConfig_IsWiredByName guards the assertion-based
+// wiring in NewCachedService. The error names ErrJevConfigUnsupported rather
+// than something generic precisely because that is the only observable
+// difference between "the assertion matched" and "it didn't": a double that
+// does implement the method reaches its own copy and would pass either way.
+func TestCachedProject_UpdateJevConfig_IsWiredByName(t *testing.T) {
+	notWired := projectsvc.NewCachedService(nil, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	if _, err := notWired.UpdateJevConfig(context.Background(), uuid.New(), nil, nil, nil); !errors.Is(err, projectsvc.ErrJevConfigUnsupported) {
+		t.Errorf("expected ErrJevConfigUnsupported against an unwired service, got %v", err)
 	}
 }

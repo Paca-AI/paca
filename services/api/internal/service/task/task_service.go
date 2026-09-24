@@ -317,6 +317,12 @@ func (s *Service) SumTaskField(ctx context.Context, projectID uuid.UUID, filter 
 	return s.repo.SumTaskField(ctx, projectID, filter, fieldKey)
 }
 
+// ListDistinctTags returns every distinct tag value used anywhere in the
+// project — see taskdom.Repository.ListDistinctTags.
+func (s *Service) ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error) {
+	return s.repo.ListDistinctTags(ctx, projectID)
+}
+
 // ListAssignedTasks returns open tasks assigned to any of memberIDs, across
 // their respective projects — see taskdom.Repository.ListAssignedTasks.
 func (s *Service) ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*taskdom.Task, bool, error) {
@@ -391,27 +397,34 @@ func (s *Service) CreateTask(ctx context.Context, in taskdom.CreateTaskInput) (*
 	if assigneeIDs == nil {
 		assigneeIDs = []uuid.UUID{}
 	}
+	assignmentMode := in.AssignmentMode
+	if assignmentMode == "" {
+		assignmentMode = taskdom.AssignmentModeManual
+	} else if !taskdom.ValidAssignmentModes[assignmentMode] {
+		return nil, taskdom.ErrTaskAssignmentModeInvalid
+	}
 
 	now := time.Now()
 	t := &taskdom.Task{
-		ID:           uuid.New(),
-		ProjectID:    in.ProjectID,
-		TaskTypeID:   taskTypeID,
-		StatusID:     statusID,
-		SprintID:     in.SprintID,
-		ParentTaskID: in.ParentTaskID,
-		Title:        title,
-		Description:  in.Description,
-		Importance:   in.Importance,
-		StoryPoints:  in.StoryPoints,
-		AssigneeIDs:  assigneeIDs,
-		ReporterID:   in.ReporterID,
-		CustomFields: cf,
-		StartDate:    in.StartDate,
-		DueDate:      in.DueDate,
-		Tags:         tags,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:             uuid.New(),
+		ProjectID:      in.ProjectID,
+		TaskTypeID:     taskTypeID,
+		StatusID:       statusID,
+		SprintID:       in.SprintID,
+		ParentTaskID:   in.ParentTaskID,
+		Title:          title,
+		Description:    in.Description,
+		Importance:     in.Importance,
+		StoryPoints:    in.StoryPoints,
+		AssigneeIDs:    assigneeIDs,
+		ReporterID:     in.ReporterID,
+		CustomFields:   cf,
+		StartDate:      in.StartDate,
+		DueDate:        in.DueDate,
+		Tags:           tags,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		AssignmentMode: assignmentMode,
 	}
 
 	if err := s.repo.CreateTask(ctx, t); err != nil {
@@ -429,7 +442,42 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	if t.ProjectID != projectID {
 		return nil, taskdom.ErrTaskNotFound
 	}
+	if err := s.applyTaskUpdate(ctx, t, in); err != nil {
+		return nil, err
+	}
+	if err := s.repo.UpdateTask(ctx, t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
 
+// UpdateTaskAtomic is UpdateTask, but the read decide bases its decision on
+// and the resulting write happen inside one DB transaction with the row
+// locked for the duration — see taskdom.Repository.UpdateTaskAtomic's doc
+// comment. decide returns (in, true) to validate and apply in through the
+// same applyTaskUpdate path UpdateTask uses, or ok=false to leave the task
+// untouched (no write, no error).
+func (s *Service) UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	return s.repo.UpdateTaskAtomic(ctx, id, func(current *taskdom.Task) (*taskdom.Task, error) {
+		if current.ProjectID != projectID {
+			return nil, taskdom.ErrTaskNotFound
+		}
+		in, ok := decide(current)
+		if !ok {
+			return nil, nil
+		}
+		if err := s.applyTaskUpdate(ctx, current, in); err != nil {
+			return nil, err
+		}
+		return current, nil
+	})
+}
+
+// applyTaskUpdate validates in against t's current state and this task's
+// project (parent-cycle/epic-parent constraints) and mutates t in place —
+// shared by UpdateTask and UpdateTaskAtomic so both apply identical
+// validation no matter how the read that produced t was obtained.
+func (s *Service) applyTaskUpdate(ctx context.Context, t *taskdom.Task, in taskdom.UpdateTaskInput) error {
 	if title := strings.TrimSpace(in.Title); title != "" {
 		t.Title = title
 	}
@@ -446,17 +494,17 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	// Validate parent constraints using the post-update effective values.
 	if effectiveParentID != nil {
 		if *effectiveParentID == t.ID {
-			return nil, taskdom.ErrTaskCannotBeOwnParent
+			return taskdom.ErrTaskCannotBeOwnParent
 		}
 		if s.wouldCreateCycle(ctx, t.ID, *effectiveParentID) {
-			return nil, taskdom.ErrTaskParentCycleDetected
+			return taskdom.ErrTaskParentCycleDetected
 		}
 		isEpic, err := s.isEpicTaskType(ctx, effectiveTypeID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if isEpic {
-			return nil, taskdom.ErrEpicCannotHaveParent
+			return taskdom.ErrEpicCannotHaveParent
 		}
 	}
 
@@ -481,8 +529,24 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	if in.StoryPoints != nil {
 		t.StoryPoints = *in.StoryPoints
 	}
+	// A human explicitly changing AssigneeIDs without also (re)stating
+	// AssignmentMode in the same request means "I'm picking this myself" —
+	// flip out of auto mode so a later empty-assignee event doesn't
+	// re-trigger Jev resolution and silently override their pick. The
+	// autofill consumer's own assignment writes always resend
+	// AssignmentMode: AssignmentModeAuto alongside AssigneeIDs specifically
+	// to avoid tripping this (see worker.TaskAutofillConsumer).
 	if in.AssigneeIDs != nil {
 		t.AssigneeIDs = *in.AssigneeIDs
+		if in.AssignmentMode == nil && t.AssignmentMode == taskdom.AssignmentModeAuto {
+			t.AssignmentMode = taskdom.AssignmentModeManual
+		}
+	}
+	if in.AssignmentMode != nil {
+		if !taskdom.ValidAssignmentModes[*in.AssignmentMode] {
+			return taskdom.ErrTaskAssignmentModeInvalid
+		}
+		t.AssignmentMode = *in.AssignmentMode
 	}
 	if in.ReporterID != nil {
 		t.ReporterID = *in.ReporterID
@@ -500,11 +564,7 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 		t.Tags = *in.Tags
 	}
 	t.UpdatedAt = time.Now()
-
-	if err := s.repo.UpdateTask(ctx, t); err != nil {
-		return nil, err
-	}
-	return t, nil
+	return nil
 }
 
 // DeleteTask soft-deletes a task by ID, verifying it belongs to projectID.

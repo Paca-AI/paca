@@ -44,6 +44,10 @@ func startAutomationConsumer(t *testing.T, env *e2eEnv) *worker.AutomationConsum
 		// dispatch, and lets a Task-triggered walk resolve a sprint via the
 		// triggering task's own sprint_id (resolveSprintFor).
 		WithSprintService(env.sprintRepo, env.sprintSvc).
+		// Same wiring as bootstrap/app.go — lets jev_condition nodes build a
+		// per-project Jev client (a project without a key routes to else).
+		// Its Jev calls share WithHTTPClient's plain transport above.
+		WithJevProjectService(env.projectSvc, nil).
 		// Every test shares one physical Redis instance and stream (see
 		// TestMain), but each gets its own Postgres database — without a
 		// consumer group of its own, parallel tests (t.Parallel()) would

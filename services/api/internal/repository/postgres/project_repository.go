@@ -17,17 +17,20 @@ import (
 // --- sqlx models ------------------------------------------------------------
 
 type projectRecord struct {
-	ID             string     `db:"id"`
-	Name           string     `db:"name"`
-	Description    string     `db:"description"`
-	TaskIDPrefix   string     `db:"task_id_prefix"`
-	IsPublic       bool       `db:"is_public"`
-	Settings       []byte     `db:"settings"`
-	AvatarKey      *string    `db:"avatar_key"`
-	AvatarThumbKey *string    `db:"avatar_thumb_key"`
-	CreatedBy      *string    `db:"created_by"`
-	CreatedAt      time.Time  `db:"created_at"`
-	DeletedAt      *time.Time `db:"deleted_at"`
+	ID              string     `db:"id"`
+	Name            string     `db:"name"`
+	Description     string     `db:"description"`
+	TaskIDPrefix    string     `db:"task_id_prefix"`
+	IsPublic        bool       `db:"is_public"`
+	Settings        []byte     `db:"settings"`
+	AvatarKey       *string    `db:"avatar_key"`
+	AvatarThumbKey  *string    `db:"avatar_thumb_key"`
+	CreatedBy       *string    `db:"created_by"`
+	CreatedAt       time.Time  `db:"created_at"`
+	DeletedAt       *time.Time `db:"deleted_at"`
+	JevAPIKeySecret string     `db:"jev_api_key_secret"`
+	JevBaseURL      string     `db:"jev_base_url"`
+	JevModel        string     `db:"jev_model"`
 }
 
 type projectRoleRecord struct {
@@ -59,6 +62,8 @@ type projectMemberReadRow struct {
 	AgentType           string     `db:"agent_type"`
 	AgentLLMProvider    string     `db:"agent_llm_provider"`
 	AgentACPProvider    *string    `db:"agent_acp_provider"`
+	AgentDescription    string     `db:"agent_description"`
+	Description         string     `db:"description"`
 	CreatedAt           time.Time  `db:"created_at"`
 	DeletedAt           *time.Time `db:"deleted_at"`
 }
@@ -75,8 +80,8 @@ func NewProjectRepository(db *sqlx.DB) *ProjectRepository {
 	return &ProjectRepository{db: db}
 }
 
-const projectSelectCols = `id, name, description, task_id_prefix, is_public, settings, avatar_key, avatar_thumb_key, created_by, created_at, deleted_at`
-const projectSelectColsQualified = `projects.id, projects.name, projects.description, projects.task_id_prefix, projects.is_public, projects.settings, projects.avatar_key, projects.avatar_thumb_key, projects.created_by, projects.created_at, projects.deleted_at`
+const projectSelectCols = `id, name, description, task_id_prefix, is_public, settings, avatar_key, avatar_thumb_key, created_by, created_at, deleted_at, jev_api_key_secret, jev_base_url, jev_model`
+const projectSelectColsQualified = `projects.id, projects.name, projects.description, projects.task_id_prefix, projects.is_public, projects.settings, projects.avatar_key, projects.avatar_thumb_key, projects.created_by, projects.created_at, projects.deleted_at, projects.jev_api_key_secret, projects.jev_base_url, projects.jev_model`
 
 // --- Projects ---------------------------------------------------------------
 
@@ -207,6 +212,29 @@ func (r *ProjectRepository) Update(ctx context.Context, p *projectdom.Project) e
 			return projectdom.ErrNameTaken
 		}
 		return fmt.Errorf("project repo: update: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return projectdom.ErrNotFound
+	}
+	return nil
+}
+
+// UpdateJevConfig sets a project's Jev (AI decision API) credentials — a
+// dedicated statement separate from Update, mirroring how agents.
+// llm_api_key_secret is written through its own statement rather than
+// folded into the general agent update (see agent_repository.go's
+// UpdateAgent). apiKeySecret is stored exactly as given (already encrypted
+// by the caller, service/project's encryptJevKey) — this method has no
+// encryption awareness of its own.
+func (r *ProjectRepository) UpdateJevConfig(ctx context.Context, projectID uuid.UUID, apiKeySecret, baseURL, model string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE projects SET jev_api_key_secret=$1, jev_base_url=$2, jev_model=$3
+		WHERE id=$4 AND deleted_at IS NULL`,
+		apiKeySecret, baseURL, model, projectID.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("project repo: update jev config: %w", err)
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
@@ -350,7 +378,8 @@ const projectMemberCols = `
 	u.avatar_key AS user_avatar_key, u.avatar_thumb_key AS user_avatar_thumb_key,
 	a.avatar_key AS agent_avatar_key, a.avatar_thumb_key AS agent_avatar_thumb_key,
 	COALESCE(a.agent_type, '') AS agent_type, COALESCE(a.llm_provider, '') AS agent_llm_provider,
-	a.acp_provider AS agent_acp_provider`
+	a.acp_provider AS agent_acp_provider, COALESCE(a.description, '') AS agent_description,
+	COALESCE(pm.description, '') AS description`
 
 // ListMembers returns all active (non-deleted) members of a project enriched with user and role info.
 func (r *ProjectRepository) ListMembers(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error) {
@@ -477,12 +506,13 @@ func (r *ProjectRepository) FindMemberByID(ctx context.Context, memberID uuid.UU
 // AddMember inserts a project_members row, or restores a previously soft-deleted one.
 func (r *ProjectRepository) AddMember(ctx context.Context, m *projectdom.ProjectMember) error {
 	// First try to restore a previously soft-deleted membership for this
-	// project+user pair, updating only the role (preserving original created_at).
+	// project+user pair, updating its role and description (preserving
+	// original created_at).
 	restore, err := r.db.ExecContext(ctx, `
 		UPDATE project_members
-		SET project_role_id = $1, deleted_at = NULL
+		SET project_role_id = $1, description = $4, deleted_at = NULL
 		WHERE project_id = $2 AND user_id = $3 AND deleted_at IS NOT NULL`,
-		m.ProjectRoleID.String(), m.ProjectID.String(), m.UserID.String(),
+		m.ProjectRoleID.String(), m.ProjectID.String(), m.UserID.String(), m.Description,
 	)
 	if err != nil {
 		return fmt.Errorf("project repo: restore member: %w", err)
@@ -493,10 +523,10 @@ func (r *ProjectRepository) AddMember(ctx context.Context, m *projectdom.Project
 
 	// No soft-deleted row to restore; insert a fresh membership.
 	result, err := r.db.ExecContext(ctx, `
-		INSERT INTO project_members (id, project_id, user_id, project_role_id, member_type, created_at, deleted_at)
-		VALUES ($1, $2, $3, $4, 'human', NOW(), NULL)
+		INSERT INTO project_members (id, project_id, user_id, project_role_id, member_type, description, created_at, deleted_at)
+		VALUES ($1, $2, $3, $4, 'human', $5, NOW(), NULL)
 		ON CONFLICT (project_id, user_id) WHERE deleted_at IS NULL DO NOTHING`,
-		m.ID.String(), m.ProjectID.String(), m.UserID.String(), m.ProjectRoleID.String(),
+		m.ID.String(), m.ProjectID.String(), m.UserID.String(), m.ProjectRoleID.String(), m.Description,
 	)
 	if err != nil {
 		return fmt.Errorf("project repo: add member: %w", err)
@@ -582,6 +612,22 @@ func (r *ProjectRepository) UpdateMemberRoleByMemberID(ctx context.Context, memb
 	return nil
 }
 
+// UpdateMemberDescription changes the Jev-facing description of an existing
+// active project member by member ID.
+func (r *ProjectRepository) UpdateMemberDescription(ctx context.Context, memberID uuid.UUID, description string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE project_members SET description = $1 WHERE id = $2 AND deleted_at IS NULL`,
+		description, memberID.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("project repo: update member description: %w", err)
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return projectdom.ErrMemberNotFound
+	}
+	return nil
+}
+
 // RemoveMemberByMemberID soft-deletes the membership row for the given member ID.
 func (r *ProjectRepository) RemoveMemberByMemberID(ctx context.Context, memberID uuid.UUID) error {
 	now := time.Now().UTC()
@@ -618,17 +664,20 @@ func toProjectEntity(rec *projectRecord) (*projectdom.Project, error) {
 		}
 	}
 	return &projectdom.Project{
-		ID:             id,
-		Name:           rec.Name,
-		Description:    rec.Description,
-		TaskIDPrefix:   rec.TaskIDPrefix,
-		IsPublic:       rec.IsPublic,
-		Settings:       settings,
-		AvatarKey:      rec.AvatarKey,
-		AvatarThumbKey: rec.AvatarThumbKey,
-		CreatedBy:      createdBy,
-		CreatedAt:      rec.CreatedAt,
-		DeletedAt:      rec.DeletedAt,
+		ID:              id,
+		Name:            rec.Name,
+		Description:     rec.Description,
+		TaskIDPrefix:    rec.TaskIDPrefix,
+		IsPublic:        rec.IsPublic,
+		Settings:        settings,
+		AvatarKey:       rec.AvatarKey,
+		AvatarThumbKey:  rec.AvatarThumbKey,
+		CreatedBy:       createdBy,
+		CreatedAt:       rec.CreatedAt,
+		DeletedAt:       rec.DeletedAt,
+		JevAPIKeySecret: rec.JevAPIKeySecret,
+		JevBaseURL:      rec.JevBaseURL,
+		JevModel:        rec.JevModel,
 	}, nil
 }
 
@@ -724,6 +773,8 @@ func toMemberEntity(row *projectMemberReadRow) *projectdom.ProjectMember {
 		AgentType:           row.AgentType,
 		AgentLLMProvider:    row.AgentLLMProvider,
 		AgentACPProvider:    row.AgentACPProvider,
+		AgentDescription:    row.AgentDescription,
+		Description:         row.Description,
 	}
 	if row.UserID != nil {
 		userID, _ := uuid.Parse(*row.UserID)

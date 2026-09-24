@@ -31,6 +31,18 @@ var ValidStatusCategories = map[StatusCategory]bool{
 	StatusCategoryDone:       true,
 }
 
+// AssignmentMode values — see Task.AssignmentMode's doc comment.
+const (
+	AssignmentModeManual = "manual"
+	AssignmentModeAuto   = "auto"
+)
+
+// ValidAssignmentModes is the set of allowed Task.AssignmentMode values.
+var ValidAssignmentModes = map[string]bool{
+	AssignmentModeManual: true,
+	AssignmentModeAuto:   true,
+}
+
 // TaskType categorises tasks within a project.
 type TaskType struct {
 	ID          uuid.UUID
@@ -181,6 +193,14 @@ type Task struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	DeletedAt    *time.Time
+	// AssignmentMode is AssignmentModeManual (default) or AssignmentModeAuto.
+	// When "auto", worker.TaskAutofillConsumer resolves AssigneeIDs via Jev
+	// whenever it's empty — see that consumer's own doc comment. A human
+	// explicitly changing AssigneeIDs flips this back to "manual" (see
+	// service/task's UpdateTask), mirroring
+	// agent_conversations.title_set_by_user's "once touched by a human, stop
+	// auto-managing it" precedent.
+	AssignmentMode string
 	// ViewPosition is a transient field populated only when ListTasks is called
 	// with a view_position sort (i.e. view_id provided + manual sort). It is not
 	// persisted in the tasks table.

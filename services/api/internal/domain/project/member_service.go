@@ -13,6 +13,8 @@ type AddMemberInput struct {
 	UserID        uuid.UUID
 	AgentID       *uuid.UUID
 	ProjectRoleID uuid.UUID
+	// Description applies to human members only — see ProjectMember.Description.
+	Description string
 }
 
 // UpdateMemberRoleInput carries fields for changing a member's role.
@@ -31,6 +33,9 @@ type MemberService interface {
 	RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error
 	// UpdateMemberRoleByMemberID changes the role of a member by their membership record ID.
 	UpdateMemberRoleByMemberID(ctx context.Context, projectID, memberID uuid.UUID, in UpdateMemberRoleInput) (*ProjectMember, error)
+	// UpdateMemberDescription changes a member's Jev-facing description by
+	// their membership record ID — see ProjectMember.Description.
+	UpdateMemberDescription(ctx context.Context, projectID, memberID uuid.UUID, description string) (*ProjectMember, error)
 	// RemoveMemberByMemberID removes a member by their membership record ID.
 	RemoveMemberByMemberID(ctx context.Context, projectID, memberID uuid.UUID) error
 	// GetMyProjectPermissions returns the effective permission map of the

@@ -12,10 +12,23 @@ export interface Project {
 	is_public: boolean;
 	task_id_prefix: string;
 	settings: Record<string, unknown>;
+	// Describes this project's Jev (AI decision API) setup without ever
+	// exposing the API key itself — see ProjectJevConfig's doc comment.
+	jev_configured: boolean;
+	jev_base_url: string;
+	jev_model: string;
 	avatar_url?: string | null;
 	avatar_thumb_url?: string | null;
 	created_by?: string;
 	created_at: string;
+}
+
+/** Mirrors dto.ProjectJevConfigResponse — returned by both GET /projects/:id
+ *  (nested via Project's own jev_* fields) and PATCH .../jev-config. */
+export interface ProjectJevConfig {
+	configured: boolean;
+	base_url: string;
+	model: string;
 }
 
 /** Text-avatar fallback for a project — one letter per word, up to two
@@ -62,6 +75,11 @@ export interface ProjectMember {
 	agent_type?: string; // "llm" | "acp"
 	agent_llm_provider?: string;
 	agent_acp_provider?: string | null;
+	// Only meaningful for a human member — shown to Jev (the AI decision
+	// API) when deciding whether to assign this member a task in Auto mode.
+	// An agent member's Jev-facing description comes from the Agent itself
+	// (Agent.description) instead.
+	description: string;
 }
 
 export interface ProjectRole {
@@ -119,6 +137,7 @@ export async function updateProject(
 		description?: string;
 		task_id_prefix?: string;
 		is_public?: boolean;
+		settings?: Record<string, unknown>;
 	},
 ): Promise<Project> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Project>>(
@@ -130,6 +149,36 @@ export async function updateProject(
 
 export async function deleteProject(projectId: string): Promise<void> {
 	await apiClient.instance.delete(`/projects/${projectId}`);
+}
+
+/** Sets this project's Jev credentials/host/model. Each field is
+ *  independently optional (omit = leave unchanged); passing api_key: ""
+ *  clears the key and disables Jev for this project. The API key itself is
+ *  never returned — only the resulting jev_configured/jev_base_url/jev_model
+ *  (see ProjectJevConfig). */
+export async function updateProjectJevConfig(
+	projectId: string,
+	payload: { api_key?: string; base_url?: string; model?: string },
+): Promise<ProjectJevConfig> {
+	const { data } = await apiClient.instance.patch<
+		SuccessEnvelope<ProjectJevConfig>
+	>(`/projects/${projectId}/jev-config`, payload);
+	return data.data;
+}
+
+/** Sends a throwaway question to this project's currently-*stored* Jev
+ *  credentials (whatever was last saved via updateProjectJevConfig, not
+ *  unsaved form input) and reports whether Jev answered successfully — lets
+ *  a user verify their key/host/model actually work. Rejects (the caller's
+ *  mutation onError) if Jev isn't configured or the call fails; the
+ *  rejection's message is server-provided, human-readable detail. */
+export async function testProjectJevConfig(
+	projectId: string,
+): Promise<{ success: boolean }> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<{ success: boolean }>
+	>(`/projects/${projectId}/jev-config/test`);
+	return data.data;
 }
 
 // ── Members ───────────────────────────────────────────────────────────────────
@@ -146,7 +195,7 @@ export async function listProjectMembers(
 export async function addProjectMember(
 	projectId: string,
 	payload:
-		| { user_id: string; project_role_id: string }
+		| { user_id: string; project_role_id: string; description?: string }
 		| { agent_id: string; project_role_id: string },
 ): Promise<ProjectMember> {
 	const { data } = await apiClient.instance.post<
@@ -158,7 +207,8 @@ export async function addProjectMember(
 export async function updateProjectMemberRole(
 	projectId: string,
 	memberId: string,
-	payload: { project_role_id: string },
+	// At least one of the two must be set.
+	payload: { project_role_id?: string; description?: string },
 ): Promise<ProjectMember> {
 	const { data } = await apiClient.instance.patch<
 		SuccessEnvelope<ProjectMember>

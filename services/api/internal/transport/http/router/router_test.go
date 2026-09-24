@@ -154,6 +154,9 @@ func (s *stubProjectSvc) RemoveMember(context.Context, uuid.UUID, uuid.UUID) err
 func (s *stubProjectSvc) UpdateMemberRoleByMemberID(context.Context, uuid.UUID, uuid.UUID, projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
 	return nil, nil
 }
+func (s *stubProjectSvc) UpdateMemberDescription(context.Context, uuid.UUID, uuid.UUID, string) (*projectdom.ProjectMember, error) {
+	return nil, nil
+}
 func (s *stubProjectSvc) RemoveMemberByMemberID(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }

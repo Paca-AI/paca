@@ -25,6 +25,10 @@ type AgentResponse struct {
 	MemberID     *uuid.UUID `json:"member_id,omitempty"`
 	Name         string     `json:"name"`
 	Handle       string     `json:"handle"`
+	// Description is shown to Jev (the AI decision API) when picking which
+	// agent should handle a chat in Auto mode, or whether to assign it a
+	// task — see agentdom.Agent.ComposeJevDescription.
+	Description string `json:"description"`
 	// AvatarURL/AvatarThumbURL are presigned GET URLs, populated by the
 	// handler (not this mapper) via attachmentdom.AvatarService — nil when
 	// no avatar has been uploaded.
@@ -92,6 +96,7 @@ type AgentResponse struct {
 type CreateAgentRequest struct {
 	Name        string   `json:"name" binding:"required"`
 	Handle      string   `json:"handle" binding:"required"`
+	Description string   `json:"description"`
 	AgentType   string   `json:"agent_type"`
 	LLMProvider string   `json:"llm_provider"`
 	LLMModel    string   `json:"llm_model"`
@@ -136,6 +141,7 @@ type CreateAgentRequest struct {
 type UpdateAgentRequest struct {
 	Name        *string  `json:"name"`
 	Handle      *string  `json:"handle"`
+	Description *string  `json:"description"`
 	LLMProvider *string  `json:"llm_provider"`
 	LLMModel    *string  `json:"llm_model"`
 	LLMAPIKey   *string  `json:"llm_api_key"`
@@ -186,6 +192,7 @@ type UpdateAgentRequest struct {
 type CreateGlobalAgentRequest struct {
 	Name              string   `json:"name" binding:"required"`
 	Handle            string   `json:"handle" binding:"required"`
+	Description       string   `json:"description"`
 	AgentType         string   `json:"agent_type"`
 	LLMProvider       string   `json:"llm_provider"`
 	LLMModel          string   `json:"llm_model"`
@@ -254,6 +261,7 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		MemberID:             a.MemberID,
 		Name:                 a.Name,
 		Handle:               a.Handle,
+		Description:          a.Description,
 		AgentType:            a.AgentType,
 		LLMProvider:          a.LLMProvider,
 		LLMModel:             a.LLMModel,
@@ -697,6 +705,24 @@ type StartChatSessionRequest struct {
 	// the agent is already at its parallelism_limit of running
 	// conversations; ignored otherwise.
 	OnBusy string `json:"on_busy,omitempty"`
+}
+
+// ResolveAutoAgentRequest is the body for POST /projects/:projectId/agents/resolve-auto
+// and POST /agents/resolve-auto (global) — Auto mode's first step, resolving
+// which agent should handle a new conversation before StartChatSession/
+// StartGlobalChatSession is called with the answer.
+type ResolveAutoAgentRequest struct {
+	Message string `json:"message" binding:"required"`
+}
+
+// ResolveAutoAgentResponse is the resolved agent to start (or continue) the
+// chat with. Confidence is 0 when Jev wasn't configured/reachable and the
+// resolution fell back to an arbitrary candidate — see
+// handler.resolveAutoAgent's doc comment on why that's the right fallback
+// for a low-stakes, reversible action like picking a chat agent.
+type ResolveAutoAgentResponse struct {
+	AgentID    uuid.UUID `json:"agent_id"`
+	Confidence float64   `json:"confidence"`
 }
 
 // SendChatMessageRequest is the body for POST /chat-sessions/:sessionId/messages.

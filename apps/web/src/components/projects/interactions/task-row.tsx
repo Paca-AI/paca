@@ -6,6 +6,7 @@ import {
 	Link,
 	Loader2,
 	Search,
+	Sparkles,
 	User,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -23,6 +24,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import {
 	customFieldBadgeStyle,
 	getCustomFieldOptionColor,
@@ -51,6 +53,7 @@ import {
 	createEpicScrollHandler,
 	DEFAULT_VISIBLE_FIELDS,
 	type EpicsPagination,
+	isAutoAssignPending,
 	type TaskFieldUpdate,
 } from "./view-utils";
 
@@ -198,6 +201,8 @@ export function TaskRow({
 }: TaskRowProps) {
 	const { t } = useTranslation("projects");
 	const status = statuses.find((s) => s.id === task.status_id);
+	const jevEnabled = useJevEnabled(task.project_id);
+	const isAutoAssign = isAutoAssignPending(task);
 	const [isHovered, setIsHovered] = useState(false);
 	const [epicOpen, setEpicOpen] = useState(false);
 	const epicTypeId = findEpicType(taskTypes)?.id;
@@ -421,7 +426,11 @@ export function TaskRow({
 				const assigneeIds = task.assignee_ids ?? [];
 				const visible = assigneeIds.slice(0, 3);
 				const overflow = assigneeIds.length - visible.length;
-				const avatarStack = (
+				const avatarStack = isAutoAssign ? (
+					<div className="flex size-6 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary ring-1 ring-border/25">
+						<Sparkles className="size-3" />
+					</div>
+				) : (
 					<div className="flex items-center -space-x-1.5">
 						{visible.length > 0 ? (
 							visible.map((id) => {
@@ -475,31 +484,67 @@ export function TaskRow({
 								className="w-48 p-1 rounded-xl border border-border/40 shadow-lg"
 								align="start"
 							>
+								{jevEnabled && (
+									<button
+										type="button"
+										className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-muted/60 transition-colors duration-100"
+										onClick={() =>
+											onUpdateTaskField(
+												task.id,
+												isAutoAssign
+													? { assignment_mode: "manual" }
+													: { assignment_mode: "auto", assignee_ids: [] },
+											)
+										}
+									>
+										<div className="flex size-5 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary shrink-0">
+											<Sparkles className="size-3" />
+										</div>
+										<span className="flex-1 text-left truncate">
+											{t("taskDetail.properties.autoAssign")}
+										</span>
+										{isAutoAssign && (
+											<Check className="size-3.5 text-primary" />
+										)}
+									</button>
+								)}
 								<button
 									type="button"
 									className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted/60 transition-colors duration-100"
 									onClick={() =>
-										onUpdateTaskField(task.id, { assignee_ids: [] })
+										onUpdateTaskField(task.id, {
+											...(isAutoAssign
+												? { assignment_mode: "manual" as const }
+												: {}),
+											assignee_ids: [],
+										})
 									}
 								>
 									<User className="size-3.5 opacity-60" />
 									<span className="flex-1 text-left">
 										{t("board.taskRow.unassigned")}
 									</span>
-									{assigneeIds.length === 0 && (
+									{!isAutoAssign && assigneeIds.length === 0 && (
 										<Check className="size-3.5 text-primary" />
 									)}
 								</button>
 								{members.map((m) => {
-									const isSelected = task.assignee_ids?.includes(m.id) ?? false;
+									const isSelected =
+										!isAutoAssign &&
+										(task.assignee_ids?.includes(m.id) ?? false);
 									return (
 										<button
 											key={m.id}
 											type="button"
 											className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-muted/60 transition-colors duration-100"
 											onClick={() => {
-												const current = task.assignee_ids ?? [];
+												const current = isAutoAssign
+													? []
+													: (task.assignee_ids ?? []);
 												onUpdateTaskField(task.id, {
+													...(isAutoAssign
+														? { assignment_mode: "manual" as const }
+														: {}),
 													assignee_ids: isSelected
 														? current.filter((id) => id !== m.id)
 														: [...current, m.id],

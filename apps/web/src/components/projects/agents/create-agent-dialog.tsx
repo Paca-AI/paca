@@ -194,6 +194,7 @@ export function CreateAgentDialog({
 	const step = Math.min(requestedStep, totalSteps) as 1 | 2 | 3;
 	const [name, setName] = useState("");
 	const [handle, setHandle] = useState("");
+	const [description, setDescription] = useState("");
 	const [presetId, setPresetId] = useState("");
 	// The project role of a project agent, chosen in step 3.
 	const [roleId, setRoleId] = useState("");
@@ -246,6 +247,7 @@ export function CreateAgentDialog({
 		setStep(1);
 		setName("");
 		setHandle("");
+		setDescription("");
 		setPresetId("");
 		setRoleId("");
 		setPickedRole(undefined);
@@ -328,6 +330,17 @@ export function CreateAgentDialog({
 	const onPresetChange = (id: string) => {
 		setPresetId(id);
 		const preset = AGENT_PRESETS.find((p) => p.id === id);
+		// Pre-fill the description from the preset, but never over text the
+		// user wrote themselves — only while it's empty or still another
+		// preset's text. "custom"'s blurb describes the preset, not an agent.
+		if (
+			description === "" ||
+			AGENT_PRESETS.some((p) => p.description === description)
+		) {
+			setDescription(
+				preset && preset.id !== "custom" ? preset.description : "",
+			);
+		}
 		if (preset) {
 			if (preset.defaultLLMProvider) {
 				setProviderSelect(preset.defaultLLMProvider);
@@ -393,6 +406,7 @@ export function CreateAgentDialog({
 				? await createAgent(projectId, {
 						name: name.trim(),
 						handle: handle.trim(),
+						description: description.trim(),
 						agent_type: agentType,
 						project_role_id: roleId,
 						...typeFields,
@@ -400,6 +414,7 @@ export function CreateAgentDialog({
 				: await createGlobalAgent({
 						name: name.trim(),
 						handle: handle.trim(),
+						description: description.trim(),
 						agent_type: agentType,
 						...typeFields,
 					});
@@ -756,6 +771,23 @@ export function CreateAgentDialog({
 								</div>
 								<p className="text-xs text-muted-foreground">
 									{t("agents.createDialog.handleHint")}
+								</p>
+							</div>
+							<div className="space-y-1.5">
+								<Label htmlFor="agent-description">
+									{t("agents.detail.overview.descriptionLabel")}
+								</Label>
+								<Textarea
+									id="agent-description"
+									value={description}
+									onChange={(e) => setDescription(e.target.value)}
+									rows={2}
+									placeholder={t(
+										"agents.detail.overview.descriptionPlaceholder",
+									)}
+								/>
+								<p className="text-xs text-muted-foreground">
+									{t("agents.detail.overview.descriptionHint")}
 								</p>
 							</div>
 						</div>

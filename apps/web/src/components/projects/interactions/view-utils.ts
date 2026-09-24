@@ -459,6 +459,23 @@ export function buildAllFieldOptions(
 export type EpicsPagination = LoadMorePagination;
 export const createEpicScrollHandler = createLoadMoreScrollHandler;
 
+/**
+ * Whether a task is still waiting for Auto (Jev) to pick its assignee — the
+ * only time the UI should show "Auto" in place of the assignees. The server
+ * keeps assignment_mode at "auto" after Jev assigns someone, so the mode
+ * alone doesn't mean the assignment is pending: once assignee_ids is set,
+ * those assignees are shown like any other. Picking someone else then
+ * switches the task back to "manual" server-side.
+ */
+export function isAutoAssignPending(task: {
+	assignment_mode?: "manual" | "auto";
+	assignee_ids?: string[] | null;
+}): boolean {
+	return (
+		task.assignment_mode === "auto" && (task.assignee_ids ?? []).length === 0
+	);
+}
+
 export type TaskFieldUpdate = Partial<{
 	status_id: string | null;
 	assignee_ids: string[];
@@ -468,6 +485,7 @@ export type TaskFieldUpdate = Partial<{
 	custom_fields: Record<string, unknown>;
 	sprint_id: string | null;
 	parent_task_id: string | null;
+	assignment_mode: "manual" | "auto";
 }>;
 
 /**

@@ -10,6 +10,7 @@
 				"taskStatuses": "Trạng thái nhiệm vụ",
 				"taskTypes": "Loại nhiệm vụ",
 				"customFields": "Trường tùy chỉnh",
+				"jev": "Jev AI",
 				"dangerZone": "Khu vực nguy hiểm",
 				"plugins": "Plugin"
 			},
@@ -264,7 +265,10 @@
 				"cliLoginNotAuthenticated": "Chưa được xác thực — hãy đăng nhập qua terminal rồi xác minh lại.",
 				"cliLoginVerifyFailed": "Không thể kiểm tra trạng thái đăng nhập. Vui lòng thử lại.",
 				"cliLoginLastVerified": "Xác minh lần cuối lúc {{date}}.",
-				"cliLoginNoEnvironment": "Agent này chưa có môi trường nào được đặt — hãy chọn một môi trường ở trên trước."
+				"cliLoginNoEnvironment": "Agent này chưa có môi trường nào được đặt — hãy chọn một môi trường ở trên trước.",
+				"descriptionLabel": "Mô tả",
+				"descriptionPlaceholder": "Tác nhân này dùng để làm gì?",
+				"descriptionHint": "Hiển thị cho Jev khi quyết định tác nhân nào sẽ xử lý cuộc trò chuyện, hoặc có nên giao nhiệm vụ cho tác nhân đó hay không, ở chế độ Tự động. Nhà cung cấp và mô hình được thêm tự động."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} máy chủ đã cấu hình",
@@ -1096,6 +1100,59 @@
 				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
+		"jev": {
+			"title": "Jev AI",
+			"description": "Định cấu hình cách Jev, công cụ ra quyết định AI, hỗ trợ dự án này.",
+			"credentials": {
+				"title": "Thông tin xác thực nhà cung cấp",
+				"description": "Kết nối nhà cung cấp tương thích Jev của riêng bạn — TypeSafe (mặc định), OpenJev hoặc máy chủ khác triển khai cùng API — để kích hoạt các tính năng bên dưới.",
+				"configuredBadge": "Đã cấu hình",
+				"notConfiguredBadge": "Chưa cấu hình",
+				"apiKeyLabel": "Khóa API",
+				"apiKeyPlaceholder": "Nhập khóa API",
+				"apiKeyConfiguredPlaceholder": "Để trống để giữ khóa hiện tại",
+				"baseUrlLabel": "Máy chủ (tùy chọn)",
+				"baseUrlPlaceholder": "https://api.typesafe.ai (mặc định)",
+				"modelLabel": "Mô hình (tùy chọn)",
+				"modelPlaceholder": "jev-latest (mặc định)",
+				"saveButton": "Lưu thông tin xác thực",
+				"testButton": "Kiểm tra kết nối",
+				"advancedLabel": "Nâng cao",
+				"testSuccess": "Kết nối thành công",
+				"testFailed": "Không thể kết nối. Vui lòng kiểm tra thông tin xác thực và thử lại."
+			},
+			"autofill": {
+				"title": "Tự động điền công việc",
+				"description": "Khi một công việc được tạo, Jev sẽ điền vào các trường bên dưới mà người tạo để trống.",
+				"enabledLabel": "Bật tự động điền",
+				"enabledHint": "Jev đề xuất giá trị cho các trường trống ngay sau khi công việc được tạo.",
+				"excludedFieldsLabel": "Các trường Jev có thể đặt",
+				"excludedFieldsHint": "Tắt một trường để Jev không bao giờ tự động đặt giá trị cho trường đó.",
+				"fieldImportance": "Mức độ quan trọng",
+				"fieldTaskType": "Loại công việc",
+				"fieldStoryPoints": "Story Points",
+				"fieldTags": "Thẻ",
+				"fieldEpic": "Epic"
+			},
+			"autoAssign": {
+				"title": "Tự động phân công công việc",
+				"description": "Để Jev chọn người phụ trách cho các công việc dùng chế độ phân công tự động.",
+				"scopeLabel": "Jev có thể phân công cho ai",
+				"scopeAll": "Tất cả thành viên",
+				"scopeHuman": "Chỉ thành viên là người",
+				"scopeHumanHint": "Loại trừ các tác nhân AI."
+			},
+			"saveChanges": "Lưu thay đổi",
+			"saved": "Đã lưu ✓",
+			"noPermission": "Bạn không có quyền chỉnh sửa dự án này.",
+			"errors": {
+				"updateFailed": "Cập nhật cài đặt thất bại. Vui lòng thử lại."
+			},
+			"notConfigured": {
+				"title": "Jev chưa được cấu hình",
+				"description": "Thêm thông tin xác thực nhà cung cấp ở trên để mở khóa tính năng tự động điền và tự động gán nhiệm vụ."
+			}
+		},
 		"dangerZone": {
 			"title": "Khu vực nguy hiểm",
 			"deleteProjectTitle": "Xóa dự án này",
@@ -1201,6 +1258,14 @@
 		"noPermission": {
 			"title": "You don't have permission to view members",
 			"description": "Ask a project admin to grant you the project.members.read permission."
+		},
+		"descriptionChip": {
+			"edit": "Chỉnh sửa mô tả",
+			"title": "Mô tả",
+			"hint": "Hiển thị cho Jev khi quyết định có nên giao nhiệm vụ cho người này ở chế độ Tự động hay không.",
+			"placeholder": "Người này làm công việc gì?",
+			"save": "Lưu",
+			"saveFailed": "Không thể lưu mô tả."
 		}
 	},
 	"aiChat": {
@@ -1209,7 +1274,9 @@
 		"agentLabel": "Agent",
 		"selectAgentPlaceholder": "Chọn một agent…",
 		"selectAgentFirst": "Vui lòng chọn một agent trước.",
-		"noAgentsAvailable": "Chưa có agent nào khả dụng."
+		"noAgentsAvailable": "Chưa có agent nào khả dụng.",
+		"autoAgent": "Tự động",
+		"resolvingAgent": "Đang chọn tác nhân…"
 	},
 	"taskTypes": {
 		"deleteDialog": {
@@ -1298,7 +1365,8 @@
 			"parent": "Nhiệm vụ cha",
 			"viewParent": "Xem nhiệm vụ cha",
 			"removeParent": "Gỡ nhiệm vụ cha",
-			"addFields": "Thêm trường"
+			"addFields": "Thêm trường",
+			"autoAssign": "Tự động"
 		},
 		"description": {
 			"title": "Mô tả",
@@ -1476,7 +1544,9 @@
 			"startedAiSession": "đã bắt đầu một phiên AI",
 			"watchSession": "Theo dõi phiên",
 			"madeChange": "đã thực hiện một thay đổi",
-			"descriptionChangeDiff": "Thay đổi mô tả"
+			"descriptionChangeDiff": "Thay đổi mô tả",
+			"autoAssignSkippedLowConfidence": "không thể tự tin chọn người được giao ({{confidence}}% độ tin cậy) — nhiệm vụ vẫn chưa được giao",
+			"autoAssignSkipped": "đã bỏ qua tự động giao việc — nhiệm vụ vẫn chưa được giao"
 		}
 	},
 	"portForwardDetail": {
@@ -2205,7 +2275,33 @@
 				"branchFallback": "Nhánh {{n}}",
 				"cronSchedule": "Chạy {{expression}}",
 				"webhookReady": "Đã cấu hình webhook",
-				"callApiSummary": "{{method}} {{host}}"
+				"callApiSummary": "{{method}} {{host}}",
+				"jevNoulTrue": "Có"
+			},
+			"jev": {
+				"answerTypeLabel": "Loại câu trả lời",
+				"answerTypes": {
+					"choice": "Lựa chọn — chọn một trong nhiều phương án",
+					"score": "Điểm — đánh giá theo thang",
+					"noul": "Có / Không"
+				},
+				"answerTypeChangeHint": "Các nhánh đã kết nối cho loại câu trả lời trước sẽ không còn được dùng nữa — hãy kết nối lại sau khi lưu.",
+				"instructionsLabel": "Câu hỏi cho Jev",
+				"instructionsPlaceholder": {
+					"choice": "ví dụ: Nhóm nào nên xử lý việc này?",
+					"score": "ví dụ: Vấn đề này có vẻ nghiêm trọng đến mức nào?",
+					"noul": "ví dụ: Khách hàng đang yêu cầu hoàn tiền."
+				},
+				"optionsTitle": "Tùy chọn",
+				"optionKeyPlaceholder": "khóa",
+				"optionDescriptionPlaceholder": "Khi nào chọn tùy chọn này",
+				"addOption": "Thêm tùy chọn",
+				"levelsTitle": "Cấp độ (từ thấp đến cao)",
+				"levelPlaceholder": "Mô tả cấp độ này",
+				"addLevel": "Thêm cấp độ",
+				"confidenceThresholdLabel": "Ngưỡng độ tin cậy",
+				"trueThresholdLabel": "Ngưỡng \"đúng\"",
+				"thresholdHint": "Dưới ngưỡng này, quy trình sẽ đi theo nhánh Else thay vì tin tưởng câu trả lời."
 			}
 		},
 		"runHistory": {
@@ -2229,6 +2325,9 @@
 			"subtitle": "Chế độ xem chỉ đọc về mọi tự động hóa đang chờ các công việc khác hoàn thành",
 			"empty": "Chưa có phụ thuộc công việc trước nào được cấu hình",
 			"watchedTasks": "Đang chờ {{count}} công việc"
+		},
+		"conditionTypes": {
+			"jev_condition": "Điều kiện Jev"
 		}
 	}
 }

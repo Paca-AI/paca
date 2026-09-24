@@ -63,19 +63,21 @@ var agentBotUserID = userdom.SystemActorUserID
 
 // App holds the HTTP server and any resources that need graceful shutdown.
 type App struct {
-	server               *http.Server
-	publisher            *messaging.Publisher
-	activityConsumer     *worker.ActivityConsumer
-	docActivityConsumer  *worker.DocActivityConsumer
-	notificationConsumer *worker.NotificationConsumer
-	pluginEventConsumer  *worker.PluginEventConsumer
-	environmentConsumer  *worker.EnvironmentCommandConsumer
-	automationConsumer   *worker.AutomationConsumer
-	agentQueueConsumer   *worker.AgentQueueConsumer
-	dueDateScheduler     *worker.DueDateScheduler
-	cronScheduler        *worker.CronScheduler
-	waitScheduler        *worker.WaitScheduler
-	log                  *slog.Logger
+	server                 *http.Server
+	publisher              *messaging.Publisher
+	activityConsumer       *worker.ActivityConsumer
+	docActivityConsumer    *worker.DocActivityConsumer
+	notificationConsumer   *worker.NotificationConsumer
+	pluginEventConsumer    *worker.PluginEventConsumer
+	environmentConsumer    *worker.EnvironmentCommandConsumer
+	automationConsumer     *worker.AutomationConsumer
+	taskAutofillConsumer   *worker.TaskAutofillConsumer
+	taskAutoAssignConsumer *worker.TaskAutoAssignConsumer
+	agentQueueConsumer     *worker.AgentQueueConsumer
+	dueDateScheduler       *worker.DueDateScheduler
+	cronScheduler          *worker.CronScheduler
+	waitScheduler          *worker.WaitScheduler
+	log                    *slog.Logger
 }
 
 // New builds all dependencies and returns a ready-to-run App.
@@ -185,6 +187,12 @@ func New(cfg *config.Config) (*App, error) {
 	// (GHSA-xxc8-ggm7-vmxp).
 	agentService = agentService.WithGlobalRoleService(globalRoleService)
 	settingsService := settingssvc.New(settingsRepo)
+	// encryptor is reused, verbatim, for every at-rest secret in this
+	// codebase (agent LLM keys, environment secrets, and — see below —
+	// each project's own Jev API key): a nil encryptor (ENCRYPTION_KEY
+	// unset) is a valid, non-fatal state that every WithEncryptor-style
+	// caller falls back to storing/reading plaintext for.
+	var encryptor *secret.Encryptor
 	if cfg.Security.EncryptionKey != "" {
 		keyBytes, hexErr := secret.DecodeHexKey(cfg.Security.EncryptionKey)
 		if hexErr != nil {
@@ -192,6 +200,7 @@ func New(cfg *config.Config) (*App, error) {
 		} else if enc, encErr := secret.NewEncryptor(keyBytes); encErr != nil {
 			log.Warn("agent LLM key encryption disabled: encryptor init failed", "error", encErr)
 		} else {
+			encryptor = enc
 			agentService = agentService.WithEncryptor(enc)
 			// Same Encryptor instance, reused verbatim — an environment's
 			// secret_key_encrypted is encrypted at rest exactly like
@@ -205,10 +214,17 @@ func New(cfg *config.Config) (*App, error) {
 		// with stored secrets have nothing to encrypt. But when this is
 		// unintentional, the effect is silent: encryptKey() falls back to
 		// storing the plaintext unchanged when no encryptor is configured, so
-		// LLM API keys and plugin secrets end up in the database in plaintext
-		// with no error or signal anywhere. Surface it once at startup.
-		log.Warn("ENCRYPTION_KEY not set: agent LLM API keys and plugin secrets will be stored in plaintext, not encrypted")
+		// LLM API keys, plugin secrets, and per-project Jev API keys end up
+		// in the database in plaintext with no error or signal anywhere.
+		// Surface it once at startup.
+		log.Warn("ENCRYPTION_KEY not set: agent LLM API keys, plugin secrets, and project Jev API keys will be stored in plaintext, not encrypted")
 	}
+	// Reassigned (unlike agentService/environmentService above) because
+	// projectServiceBase is a local var read again below when wiring
+	// ProjectHandler's Jev-config option — WithEncryptor mutates in place,
+	// so this is belt-and-suspenders, not load-bearing, but keeps the
+	// pointer's provenance obvious at every read site.
+	projectServiceBase = projectServiceBase.WithEncryptor(encryptor)
 	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, projectRepo, publisher).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(agentService)
@@ -222,6 +238,8 @@ func New(cfg *config.Config) (*App, error) {
 	docActivityConsumer := worker.NewDocActivityConsumer(redisClient, docRepo, projectRepo, log)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log)
+	taskAutofillConsumer := worker.NewTaskAutofillConsumer(redisClient, taskService, taskRepo, projectService, activityService, encryptor, log)
+	taskAutoAssignConsumer := worker.NewTaskAutoAssignConsumer(redisClient, taskService, projectRepo, projectService, activityService, encryptor, log)
 	dueDateScheduler := worker.NewDueDateScheduler(redisClient, automationConsumer, log)
 	cronScheduler := worker.NewCronScheduler(redisClient, automationConsumer, log)
 	waitScheduler := worker.NewWaitScheduler(redisClient, automationConsumer, log)
@@ -388,6 +406,7 @@ func New(cfg *config.Config) (*App, error) {
 	// the same EvaluateCondition/RunAction WASM bridge HandleRequest uses.
 	automationService.WithPluginNodeResolver(pluginRuntime)
 	automationConsumer.WithPluginRuntime(pluginRuntime)
+	automationConsumer.WithJevProjectService(projectService, encryptor)
 	// trigger_ai_agent starts an agent conversation without ever touching the
 	// task's assignee: task-bound, it dispatches straight to
 	// agentService.TriggerTaskAssigned; task-less (a cron/api_trigger/
@@ -424,7 +443,8 @@ func New(cfg *config.Config) (*App, error) {
 		WithMemberRepo(projectRepo).
 		WithGlobalPermissionReader(permissionStore).
 		WithAvatarService(attachmentService).
-		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo))
+		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo)).
+		WithJevProjectService(projectService, encryptor)
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
 		WithMemberRepo(projectRepo)
@@ -461,12 +481,24 @@ func New(cfg *config.Config) (*App, error) {
 			handler.WithProjectDefaultViews(viewService, taskService),
 			handler.WithProjectStatsServices(taskService, userService),
 			handler.WithProjectAvatarService(attachmentService),
+			// projectService, the cached wrapper — not projectServiceBase.
+			// UpdateJevConfig writes credentials that every read path then
+			// reads back off a cached *projectdom.Project (this handler's own
+			// TestJevConfig/GetProject, and the Jev-dependent workers), so a
+			// write through the base service would leave save-then-test
+			// exercising the credentials the caller just replaced. The
+			// wrapper's UpdateJevConfig delegates and drops the cache entry;
+			// it picks up the method by assertion, so projectdom.Service
+			// still doesn't carry it and its mocks are unaffected (see
+			// WithProjectJevConfigService's doc comment).
+			handler.WithProjectJevConfigService(projectService, encryptor),
 		),
 		Task: handler.NewTaskHandler(taskService, viewService, activityService,
 			handler.WithTaskPublisher(publisher),
 			handler.WithTaskAssignedProjectService(projectService),
 			handler.WithTaskAvatarService(attachmentService),
-			handler.WithTaskNotificationService(notificationService)),
+			handler.WithTaskNotificationService(notificationService),
+			handler.WithTaskAutofillRepository(taskRepo)),
 		Sprint: handler.NewSprintHandler(sprintService, viewService,
 			handler.WithSprintDefaultTaskTypes(taskService),
 			handler.WithSprintDefaultTaskStatuses(taskService),
@@ -501,7 +533,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, automationConsumer: automationConsumer, agentQueueConsumer: agentQueueConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -514,6 +546,8 @@ func (a *App) Run() error {
 	a.pluginEventConsumer.Start(context.Background())
 	a.environmentConsumer.Start(context.Background())
 	a.automationConsumer.Start(context.Background())
+	a.taskAutofillConsumer.Start(context.Background())
+	a.taskAutoAssignConsumer.Start(context.Background())
 	a.agentQueueConsumer.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
@@ -530,6 +564,8 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.pluginEventConsumer.Stop()
 	a.environmentConsumer.Stop()
 	a.automationConsumer.Stop()
+	a.taskAutofillConsumer.Stop()
+	a.taskAutoAssignConsumer.Stop()
 	a.agentQueueConsumer.Stop()
 	a.dueDateScheduler.Stop()
 	a.cronScheduler.Stop()

@@ -10,6 +10,7 @@
 				"taskStatuses": "Статусы задач",
 				"taskTypes": "Типы задач",
 				"customFields": "Пользовательские поля",
+				"jev": "Jev ИИ",
 				"dangerZone": "Опасная зона",
 				"plugins": "Плагины"
 			},
@@ -264,7 +265,10 @@
 				"cliLoginNotAuthenticated": "Пока не аутентифицировано — войдите через терминал, затем проверьте снова.",
 				"cliLoginVerifyFailed": "Не удалось проверить статус входа. Попробуйте ещё раз.",
 				"cliLoginLastVerified": "Последняя проверка: {{date}}.",
-				"cliLoginNoEnvironment": "У этого агента не задано окружение — сначала выберите его выше."
+				"cliLoginNoEnvironment": "У этого агента не задано окружение — сначала выберите его выше.",
+				"descriptionLabel": "Описание",
+				"descriptionPlaceholder": "Для чего предназначен этот агент?",
+				"descriptionHint": "Отображается для Jev при выборе агента для обработки чата или назначения задачи в режиме Авто. Провайдер и модель добавляются автоматически."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} сервер настроен",
@@ -1110,6 +1114,59 @@
 				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
+		"jev": {
+			"title": "Jev ИИ",
+			"description": "Настройте, как Jev, движок принятия решений на основе ИИ, помогает этому проекту.",
+			"credentials": {
+				"title": "Учётные данные провайдера",
+				"description": "Подключите собственного Jev-совместимого провайдера — TypeSafe (по умолчанию), OpenJev или другой хост с той же API — чтобы включить функции ниже.",
+				"configuredBadge": "Настроено",
+				"notConfiguredBadge": "Не настроено",
+				"apiKeyLabel": "API-ключ",
+				"apiKeyPlaceholder": "Введите API-ключ",
+				"apiKeyConfiguredPlaceholder": "Оставьте пустым, чтобы сохранить текущий ключ",
+				"baseUrlLabel": "Хост (необязательно)",
+				"baseUrlPlaceholder": "https://api.typesafe.ai (по умолчанию)",
+				"modelLabel": "Модель (необязательно)",
+				"modelPlaceholder": "jev-latest (по умолчанию)",
+				"saveButton": "Сохранить учётные данные",
+				"testButton": "Проверить соединение",
+				"advancedLabel": "Дополнительно",
+				"testSuccess": "Соединение успешно установлено",
+				"testFailed": "Не удалось подключиться. Проверьте учётные данные и попробуйте снова."
+			},
+			"autofill": {
+				"title": "Автозаполнение задач",
+				"description": "При создании задачи Jev заполняет поля ниже, которые создатель оставил пустыми.",
+				"enabledLabel": "Включить автозаполнение",
+				"enabledHint": "Jev предлагает значения для пустых полей вскоре после создания задачи.",
+				"excludedFieldsLabel": "Поля, которые может задавать Jev",
+				"excludedFieldsHint": "Отключите поле, чтобы Jev никогда не устанавливал его автоматически.",
+				"fieldImportance": "Важность",
+				"fieldTaskType": "Тип задачи",
+				"fieldStoryPoints": "Story Points",
+				"fieldTags": "Теги",
+				"fieldEpic": "Эпик"
+			},
+			"autoAssign": {
+				"title": "Автоназначение задач",
+				"description": "Позвольте Jev выбирать исполнителя для задач с автоматическим назначением.",
+				"scopeLabel": "Кому Jev может назначать",
+				"scopeAll": "Все участники",
+				"scopeHuman": "Только участники-люди",
+				"scopeHumanHint": "Исключает ИИ-агентов."
+			},
+			"saveChanges": "Сохранить изменения",
+			"saved": "Сохранено ✓",
+			"noPermission": "У вас нет прав на редактирование этого проекта.",
+			"errors": {
+				"updateFailed": "Не удалось обновить настройки. Попробуйте ещё раз."
+			},
+			"notConfigured": {
+				"title": "Jev ещё не настроен",
+				"description": "Добавьте учётные данные провайдера выше, чтобы включить автозаполнение задач и автоназначение."
+			}
+		},
 		"dangerZone": {
 			"title": "Опасная зона",
 			"deleteProjectTitle": "Удалить этот проект",
@@ -1217,6 +1274,14 @@
 		"noPermission": {
 			"title": "You don't have permission to view members",
 			"description": "Ask a project admin to grant you the project.members.read permission."
+		},
+		"descriptionChip": {
+			"edit": "Изменить описание",
+			"title": "Описание",
+			"hint": "Отображается для Jev при решении, назначать ли этому человеку задачу в режиме Авто.",
+			"placeholder": "Чем занимается этот человек?",
+			"save": "Сохранить",
+			"saveFailed": "Не удалось сохранить описание."
 		}
 	},
 	"aiChat": {
@@ -1225,7 +1290,9 @@
 		"agentLabel": "Агент",
 		"selectAgentPlaceholder": "Выберите агента…",
 		"selectAgentFirst": "Сначала выберите агента.",
-		"noAgentsAvailable": "Пока нет доступных агентов."
+		"noAgentsAvailable": "Пока нет доступных агентов.",
+		"autoAgent": "Авто",
+		"resolvingAgent": "Выбор агента…"
 	},
 	"taskTypes": {
 		"deleteDialog": {
@@ -1314,7 +1381,8 @@
 			"parent": "Родительская",
 			"viewParent": "Открыть родительскую",
 			"removeParent": "Убрать родительскую",
-			"addFields": "Добавить поля"
+			"addFields": "Добавить поля",
+			"autoAssign": "Авто"
 		},
 		"description": {
 			"title": "Описание",
@@ -1494,7 +1562,9 @@
 			"startedAiSession": "запустил(а) AI-сессию",
 			"watchSession": "Смотреть сессию",
 			"madeChange": "внёс(ла) изменение",
-			"descriptionChangeDiff": "Diff изменения описания"
+			"descriptionChangeDiff": "Diff изменения описания",
+			"autoAssignSkippedLowConfidence": "не смог уверенно выбрать исполнителя (уверенность {{confidence}}%) — задача осталась без назначения",
+			"autoAssignSkipped": "пропустил автоназначение — задача осталась без назначения"
 		}
 	},
 	"portForwardDetail": {
@@ -2225,7 +2295,33 @@
 				"branchFallback": "Ветвь {{n}}",
 				"cronSchedule": "Выполняется {{expression}}",
 				"webhookReady": "Webhook настроен",
-				"callApiSummary": "{{method}} {{host}}"
+				"callApiSummary": "{{method}} {{host}}",
+				"jevNoulTrue": "Да"
+			},
+			"jev": {
+				"answerTypeLabel": "Тип ответа",
+				"answerTypes": {
+					"choice": "Выбор — один из нескольких вариантов",
+					"score": "Оценка — по шкале",
+					"noul": "Да / Нет"
+				},
+				"answerTypeChangeHint": "Ветки, подключённые для прежнего типа ответа, больше не будут использоваться — подключите их заново после сохранения.",
+				"instructionsLabel": "Вопрос для Jev",
+				"instructionsPlaceholder": {
+					"choice": "например, какая команда должна этим заниматься?",
+					"score": "например, насколько серьёзной кажется эта проблема?",
+					"noul": "например, клиент просит возврат средств."
+				},
+				"optionsTitle": "Варианты",
+				"optionKeyPlaceholder": "ключ",
+				"optionDescriptionPlaceholder": "Когда выбирать этот вариант",
+				"addOption": "Добавить вариант",
+				"levelsTitle": "Уровни (от низшего к высшему)",
+				"levelPlaceholder": "Опишите этот уровень",
+				"addLevel": "Добавить уровень",
+				"confidenceThresholdLabel": "Порог уверенности",
+				"trueThresholdLabel": "Порог «истина»",
+				"thresholdHint": "Ниже этого значения рабочий процесс идёт по ветке Else, а не доверяет ответу."
 			}
 		},
 		"runHistory": {
@@ -2249,6 +2345,9 @@
 			"subtitle": "Доступный только для чтения обзор всех автоматизаций, ожидающих завершения других задач",
 			"empty": "Зависимости от предшествующих задач пока не настроены",
 			"watchedTasks": "Ожидание {{count}} задач(и)"
+		},
+		"conditionTypes": {
+			"jev_condition": "Условие Jev"
 		}
 	}
 }

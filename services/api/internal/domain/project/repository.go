@@ -24,4 +24,9 @@ type ProjectRepository interface {
 	Create(ctx context.Context, p *Project) error
 	Update(ctx context.Context, p *Project) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	// UpdateJevConfig sets a project's Jev credentials (see Project.
+	// JevAPIKeySecret's doc comment) — a dedicated method, not folded into
+	// Update, since it needs its own encrypt-before-write handling
+	// (service/project's encryptJevKey) that plain Update fields don't.
+	UpdateJevConfig(ctx context.Context, projectID uuid.UUID, apiKeySecret, baseURL, model string) error
 }

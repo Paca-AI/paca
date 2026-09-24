@@ -135,6 +135,25 @@ func (r *fakeTaskRepo) UpdateTask(_ context.Context, t *taskdom.Task) error {
 	r.tasks[t.ID] = &cp
 	return nil
 }
+func (r *fakeTaskRepo) UpdateTaskAtomic(_ context.Context, id uuid.UUID, decide func(current *taskdom.Task) (*taskdom.Task, error)) (*taskdom.Task, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	t, ok := r.tasks[id]
+	if !ok {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	cp := *t
+	next, err := decide(&cp)
+	if err != nil {
+		return nil, err
+	}
+	if next == nil {
+		return &cp, nil
+	}
+	nc := *next
+	r.tasks[id] = &nc
+	return next, nil
+}
 func (r *fakeTaskRepo) DeleteTask(_ context.Context, id uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -197,6 +216,10 @@ func (r *fakeTaskRepo) ListAssignedTasks(_ context.Context, _ []uuid.UUID, _ int
 
 func (r *fakeTaskRepo) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
 	return 0, nil
+}
+
+func (r *fakeTaskRepo) ListDistinctTags(_ context.Context, _ uuid.UUID) ([]string, error) {
+	return nil, nil
 }
 
 func (r *fakeTaskRepo) BulkMoveSprintTasks(_ context.Context, projectID, sourceSprintID uuid.UUID, targetSprintID *uuid.UUID) error {

@@ -170,6 +170,20 @@ func (r *fakeProjectRepo) Update(_ context.Context, p *projectdom.Project) error
 	return nil
 }
 
+func (r *fakeProjectRepo) UpdateJevConfig(_ context.Context, projectID uuid.UUID, apiKeySecret, baseURL, model string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	p, ok := r.projects[projectID]
+	if !ok {
+		return projectdom.ErrNotFound
+	}
+	p.JevAPIKeySecret = apiKeySecret
+	p.JevBaseURL = baseURL
+	p.JevModel = model
+	return nil
+}
+
 func (r *fakeProjectRepo) Delete(_ context.Context, id uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -398,6 +412,17 @@ func (r *fakeProjectRepo) UpdateMemberRoleByMemberID(_ context.Context, memberID
 	for _, m := range r.members {
 		if m.ID == memberID {
 			m.ProjectRoleID = roleID
+			return nil
+		}
+	}
+	return projectdom.ErrMemberNotFound
+}
+func (r *fakeProjectRepo) UpdateMemberDescription(_ context.Context, memberID uuid.UUID, description string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.members {
+		if m.ID == memberID {
+			m.Description = description
 			return nil
 		}
 	}

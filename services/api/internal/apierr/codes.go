@@ -87,6 +87,8 @@ const (
 	CodeTaskCannotBeOwnParent Code = "TASK_CANNOT_BE_OWN_PARENT"
 	// CodeTaskParentCycleDetected indicates the requested parent assignment would create a cycle.
 	CodeTaskParentCycleDetected Code = "TASK_PARENT_CYCLE_DETECTED"
+	// CodeTaskAssignmentModeInvalid indicates an invalid assignment_mode value.
+	CodeTaskAssignmentModeInvalid Code = "TASK_ASSIGNMENT_MODE_INVALID"
 
 	// CodeTaskTypeNotFound indicates the requested task type does not exist.
 	CodeTaskTypeNotFound Code = "TASK_TYPE_NOT_FOUND"

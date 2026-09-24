@@ -699,11 +699,15 @@ func (s *Service) validateNodeTypeAndConfig(ctx context.Context, projectID uuid.
 		return s.validateTriggerConfig(ctx, projectID, automationdom.TriggerType(nodeType), config, strict)
 	case automationdom.KindCondition:
 		if nodeType != automationdom.ConditionNodeType {
-			// Not the built-in N-branch switch — this must be a
-			// plugin-contributed condition node instead (its own node type,
-			// evaluated via the plugin runtime's EvaluateCondition bridge
-			// rather than the built-in leaf-tree DSL). Config is opaque to
-			// this service; the plugin owns its own validation.
+			if nodeType == automationdom.JevConditionNodeType {
+				return s.validateJevConditionConfig(config, strict)
+			}
+			// Not the built-in N-branch switch or a Jev condition — this
+			// must be a plugin-contributed condition node instead (its own
+			// node type, evaluated via the plugin runtime's
+			// EvaluateCondition bridge rather than the built-in leaf-tree
+			// DSL). Config is opaque to this service; the plugin owns its
+			// own validation.
 			if s.pluginResolver != nil && s.pluginResolver.IsPluginCondition(nodeType) {
 				return nil
 			}
@@ -811,6 +815,22 @@ func (s *Service) validateConditionConfig(ctx context.Context, projectID uuid.UU
 		}
 	}
 	return nil
+}
+
+// validateJevConditionConfig validates a Jev condition node's config —
+// structural only (this service has no way to judge whether a Jev question
+// is well-formed beyond its shape; Jev itself rejects a malformed question
+// at call time with a 422, which the worker treats as a graceful else-route
+// rather than surfacing here). strict follows validateNodeTypeAndConfig's
+// contract — see JevConditionConfig.Validate.
+func (s *Service) validateJevConditionConfig(raw json.RawMessage, strict bool) error {
+	var cfg automationdom.JevConditionConfig
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
+		}
+	}
+	return cfg.Validate(strict)
 }
 
 // validateTaskTarget validates a condition leaf's or action's TaskTarget:
@@ -1070,6 +1090,16 @@ func validateEdgeHandle(source *automationdom.Node, handle *string) error {
 		return nil
 	}
 	if source.Type != automationdom.ConditionNodeType {
+		if source.Type == automationdom.JevConditionNodeType {
+			var cfg automationdom.JevConditionConfig
+			if len(source.Config) > 0 {
+				_ = json.Unmarshal(source.Config, &cfg)
+			}
+			if cfg.HasHandle(*handle) {
+				return nil
+			}
+			return fmt.Errorf("%w: %q is not a valid handle for this jev_condition node's %q answer type", automationdom.ErrNodeConfigInvalid, *handle, cfg.AnswerType)
+		}
 		if *handle == automationdom.PluginConditionTrueHandle {
 			return nil
 		}

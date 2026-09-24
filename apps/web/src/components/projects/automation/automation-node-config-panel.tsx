@@ -53,7 +53,13 @@ import {
 	type ConditionField,
 	type ConditionLeaf,
 	type ConditionOperator,
+	DEFAULT_JEV_CONFIDENCE_THRESHOLD,
+	DEFAULT_JEV_NOUL_THRESHOLD,
 	generateWebhookToken,
+	JEV_ANSWER_TYPES,
+	JEV_CONDITION_NODE_TYPE,
+	type JevAnswerType,
+	type JevConditionConfig,
 	MULTI_VALUED_TARGET_KINDS,
 	type PluginNodeConfigSchema,
 	type PluginNodeConfigSchemaProperty,
@@ -291,6 +297,7 @@ export function AutomationNodeConfigPanel({
 		node.type,
 	);
 	const isBuiltinCondition = node.type === CONDITION_NODE_TYPE;
+	const isJevCondition = node.type === JEV_CONDITION_NODE_TYPE;
 
 	if (node.kind === "trigger") {
 		return (
@@ -349,7 +356,9 @@ export function AutomationNodeConfigPanel({
 				title={
 					isBuiltinCondition
 						? t("automation.nodeKind.condition")
-						: (pluginLabel ?? node.type)
+						: isJevCondition
+							? t("automation.conditionTypes.jev_condition")
+							: (pluginLabel ?? node.type)
 				}
 				kind="condition"
 				canEdit={canEdit}
@@ -364,6 +373,13 @@ export function AutomationNodeConfigPanel({
 						members={members}
 						customFields={customFields}
 						taskTypes={taskTypes}
+						canEdit={canEdit}
+						onSave={onSave}
+						saving={saving}
+					/>
+				) : isJevCondition ? (
+					<JevConditionConfigForm
+						config={node.config as JevConditionConfig}
 						canEdit={canEdit}
 						onSave={onSave}
 						saving={saving}
@@ -2031,6 +2047,312 @@ function ConditionConfigForm({
 			)}
 		</div>
 	);
+}
+
+// ── Jev condition config form ────────────────────────────────────────────────
+
+// JevConditionConfigForm edits a jev_condition node. answer_type picks the
+// Jev question and, with it, which editor is shown and which outgoing
+// branches the node has: choice edits key→description options (each key an
+// edge handle), score an ordered list of 2-10 levels (low to high), and noul
+// just a yes/no threshold. Each answer type's fields are kept in their own
+// state, so switching back and forth before saving loses nothing; only the
+// current type's fields are saved.
+function JevConditionConfigForm({
+	config,
+	canEdit,
+	onSave,
+	saving,
+}: {
+	config: JevConditionConfig;
+	canEdit: boolean;
+	onSave: (config: Record<string, unknown>) => void;
+	saving?: boolean;
+}) {
+	const { t } = useTranslation("projects");
+	const [answerType, setAnswerType] = useState<JevAnswerType>(
+		config.answer_type ?? "choice",
+	);
+	const [instructions, setInstructions] = useState(config.instructions ?? "");
+	const [choiceOptions, setChoiceOptions] = useState(() =>
+		optionsToRows(config.options),
+	);
+	const [scoreLevels, setScoreLevels] = useState<string[]>(
+		() => config.levels ?? ["", ""],
+	);
+	const [confidenceThreshold, setConfidenceThreshold] = useState(
+		config.confidence_threshold ?? DEFAULT_JEV_CONFIDENCE_THRESHOLD,
+	);
+	const [trueThreshold, setTrueThreshold] = useState(
+		config.true_threshold ?? DEFAULT_JEV_NOUL_THRESHOLD,
+	);
+
+	useEffect(() => {
+		setAnswerType(config.answer_type ?? "choice");
+		setInstructions(config.instructions ?? "");
+		setChoiceOptions(optionsToRows(config.options));
+		setScoreLevels(config.levels ?? ["", ""]);
+		setConfidenceThreshold(
+			config.confidence_threshold ?? DEFAULT_JEV_CONFIDENCE_THRESHOLD,
+		);
+		setTrueThreshold(config.true_threshold ?? DEFAULT_JEV_NOUL_THRESHOLD);
+	}, [config]);
+
+	function save() {
+		if (answerType === "choice") {
+			const options: Record<string, string> = {};
+			for (const opt of choiceOptions) {
+				const key = opt.key.trim();
+				if (key) options[key] = opt.description;
+			}
+			onSave({
+				answer_type: answerType,
+				instructions,
+				options,
+				confidence_threshold: confidenceThreshold,
+			});
+		} else if (answerType === "score") {
+			onSave({
+				answer_type: answerType,
+				instructions,
+				levels: scoreLevels.filter((l) => l.trim() !== ""),
+				confidence_threshold: confidenceThreshold,
+			});
+		} else {
+			onSave({
+				answer_type: answerType,
+				instructions,
+				true_threshold: trueThreshold,
+			});
+		}
+	}
+
+	const canSave =
+		instructions.trim() !== "" &&
+		(answerType !== "choice" ||
+			choiceOptions.some((o) => o.key.trim() !== "")) &&
+		(answerType !== "score" ||
+			scoreLevels.filter((l) => l.trim() !== "").length >= 2);
+
+	const threshold = answerType === "noul" ? trueThreshold : confidenceThreshold;
+	const setThreshold =
+		answerType === "noul" ? setTrueThreshold : setConfidenceThreshold;
+
+	return (
+		<div className="space-y-4">
+			<div className="space-y-1.5">
+				<Label className="text-xs">
+					{t("automation.nodeConfig.jev.answerTypeLabel")}
+				</Label>
+				<Select
+					value={answerType}
+					onValueChange={(v) => v && setAnswerType(v as JevAnswerType)}
+					disabled={!canEdit}
+				>
+					<SelectTrigger className="w-full">
+						<SelectValue>
+							{t(`automation.nodeConfig.jev.answerTypes.${answerType}`)}
+						</SelectValue>
+					</SelectTrigger>
+					<SelectContent>
+						{JEV_ANSWER_TYPES.map((type) => (
+							<SelectItem key={type} value={type}>
+								{t(`automation.nodeConfig.jev.answerTypes.${type}`)}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				{config.answer_type && config.answer_type !== answerType && (
+					<p className="text-[11px] text-muted-foreground">
+						{t("automation.nodeConfig.jev.answerTypeChangeHint")}
+					</p>
+				)}
+			</div>
+
+			<div className="space-y-1.5">
+				<Label className="text-xs">
+					{t("automation.nodeConfig.jev.instructionsLabel")}
+				</Label>
+				<Textarea
+					value={instructions}
+					onChange={(e) => setInstructions(e.target.value)}
+					placeholder={t(
+						`automation.nodeConfig.jev.instructionsPlaceholder.${answerType}`,
+					)}
+					rows={3}
+					disabled={!canEdit}
+					className="text-xs"
+				/>
+			</div>
+
+			{answerType === "choice" && (
+				<div className="space-y-2">
+					<div className="text-xs font-semibold text-muted-foreground">
+						{t("automation.nodeConfig.jev.optionsTitle")}
+					</div>
+					{choiceOptions.map((opt, i) => (
+						<div
+							// biome-ignore lint/suspicious/noArrayIndexKey: option keys aren't stable input keys until saved
+							key={i}
+							className="flex items-center gap-1.5"
+						>
+							<Input
+								value={opt.key}
+								onChange={(e) =>
+									setChoiceOptions((prev) =>
+										prev.map((o, idx) =>
+											idx === i ? { ...o, key: e.target.value } : o,
+										),
+									)
+								}
+								placeholder={t(
+									"automation.nodeConfig.jev.optionKeyPlaceholder",
+								)}
+								disabled={!canEdit}
+								className="h-7 w-28 text-xs font-mono"
+							/>
+							<Input
+								value={opt.description}
+								onChange={(e) =>
+									setChoiceOptions((prev) =>
+										prev.map((o, idx) =>
+											idx === i ? { ...o, description: e.target.value } : o,
+										),
+									)
+								}
+								placeholder={t(
+									"automation.nodeConfig.jev.optionDescriptionPlaceholder",
+								)}
+								disabled={!canEdit}
+								className="h-7 flex-1 text-xs"
+							/>
+							{canEdit && (
+								<button
+									type="button"
+									onClick={() =>
+										setChoiceOptions((prev) =>
+											prev.filter((_, idx) => idx !== i),
+										)
+									}
+									className="shrink-0 text-muted-foreground hover:text-destructive"
+								>
+									<Trash2 className="size-3.5" />
+								</button>
+							)}
+						</div>
+					))}
+					{canEdit && (
+						<Button
+							variant="outline"
+							size="sm"
+							className="w-full gap-1.5"
+							onClick={() =>
+								setChoiceOptions((prev) => [
+									...prev,
+									{ key: "", description: "" },
+								])
+							}
+						>
+							<Plus className="size-3.5" />
+							{t("automation.nodeConfig.jev.addOption")}
+						</Button>
+					)}
+				</div>
+			)}
+
+			{answerType === "score" && (
+				<div className="space-y-2">
+					<div className="text-xs font-semibold text-muted-foreground">
+						{t("automation.nodeConfig.jev.levelsTitle")}
+					</div>
+					{scoreLevels.map((level, i) => (
+						<div
+							// biome-ignore lint/suspicious/noArrayIndexKey: levels aren't stable input keys until saved
+							key={i}
+							className="flex items-center gap-1.5"
+						>
+							<span className="w-4 shrink-0 text-center text-[10px] text-muted-foreground">
+								{i}
+							</span>
+							<Input
+								value={level}
+								onChange={(e) =>
+									setScoreLevels((prev) =>
+										prev.map((l, idx) => (idx === i ? e.target.value : l)),
+									)
+								}
+								placeholder={t("automation.nodeConfig.jev.levelPlaceholder")}
+								disabled={!canEdit}
+								className="h-7 flex-1 text-xs"
+							/>
+							{canEdit && scoreLevels.length > 2 && (
+								<button
+									type="button"
+									onClick={() =>
+										setScoreLevels((prev) => prev.filter((_, idx) => idx !== i))
+									}
+									className="shrink-0 text-muted-foreground hover:text-destructive"
+								>
+									<Trash2 className="size-3.5" />
+								</button>
+							)}
+						</div>
+					))}
+					{canEdit && scoreLevels.length < 10 && (
+						<Button
+							variant="outline"
+							size="sm"
+							className="w-full gap-1.5"
+							onClick={() => setScoreLevels((prev) => [...prev, ""])}
+						>
+							<Plus className="size-3.5" />
+							{t("automation.nodeConfig.jev.addLevel")}
+						</Button>
+					)}
+				</div>
+			)}
+
+			<div className="space-y-1.5">
+				<Label className="text-xs">
+					{answerType === "noul"
+						? t("automation.nodeConfig.jev.trueThresholdLabel")
+						: t("automation.nodeConfig.jev.confidenceThresholdLabel")}
+				</Label>
+				<Input
+					type="number"
+					min={0}
+					max={1}
+					step={0.05}
+					value={threshold}
+					onChange={(e) =>
+						setThreshold(Math.min(1, Math.max(0, Number(e.target.value))))
+					}
+					disabled={!canEdit}
+					className="h-7 w-24 text-xs"
+				/>
+				<p className="text-[11px] text-muted-foreground">
+					{t("automation.nodeConfig.jev.thresholdHint")}
+				</p>
+			</div>
+
+			<div className="rounded-lg border border-dashed border-border/60 p-2.5 text-xs text-muted-foreground">
+				{t("automation.nodeConfig.condition.elseLabel")}
+			</div>
+
+			{canEdit && (
+				<SaveButton saving={saving} disabled={!canSave} onClick={save} />
+			)}
+		</div>
+	);
+}
+
+function optionsToRows(
+	options: Record<string, string> | undefined,
+): { key: string; description: string }[] {
+	return Object.entries(options ?? {}).map(([key, description]) => ({
+		key,
+		description,
+	}));
 }
 
 // ── Action config form ───────────────────────────────────────────────────────

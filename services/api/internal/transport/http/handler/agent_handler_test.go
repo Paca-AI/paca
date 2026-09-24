@@ -460,6 +460,9 @@ func (f *fakeMemberRepo) RemoveMember(context.Context, uuid.UUID, uuid.UUID) err
 func (f *fakeMemberRepo) UpdateMemberRoleByMemberID(context.Context, uuid.UUID, uuid.UUID) error {
 	panic("fakeMemberRepo: UpdateMemberRoleByMemberID not used by resolveMemberID tests")
 }
+func (f *fakeMemberRepo) UpdateMemberDescription(context.Context, uuid.UUID, string) error {
+	panic("fakeMemberRepo: UpdateMemberDescription not used by resolveMemberID tests")
+}
 func (f *fakeMemberRepo) RemoveMemberByMemberID(context.Context, uuid.UUID) error {
 	panic("fakeMemberRepo: RemoveMemberByMemberID not used by resolveMemberID tests")
 }

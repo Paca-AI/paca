@@ -313,6 +313,38 @@ export interface ConditionConfig {
 	branches: ConditionBranch[];
 }
 
+// The Jev condition node type — routes on a typed decision from Jev (an AI
+// decision API) instead of ConditionConfig's hand-written field comparison.
+// Mirrors automationdom.JevConditionNodeType server-side.
+export const JEV_CONDITION_NODE_TYPE = "jev_condition";
+
+/** Which Jev question a Jev condition asks — mirrors automationdom's
+ * JevAnswerX constants. Each has its own outgoing edge handles:
+ *   - choice: one per option key (the key IS the handle)
+ *   - score: one per level index ("0".."levels.length-1")
+ *   - noul: PLUGIN_CONDITION_TRUE_HANDLE when the answer is a confident yes
+ * plus the shared ELSE_HANDLE fallback for all three. */
+export const JEV_ANSWER_TYPES = ["choice", "score", "noul"] as const;
+export type JevAnswerType = (typeof JEV_ANSWER_TYPES)[number];
+
+export const DEFAULT_JEV_CONFIDENCE_THRESHOLD = 0.6;
+export const DEFAULT_JEV_NOUL_THRESHOLD = 0.5;
+
+/** jev_condition's Node.Config. answer_type decides which of the other
+ * fields apply. Mirrors automationdom.JevConditionConfig. */
+export interface JevConditionConfig {
+	answer_type?: JevAnswerType;
+	instructions?: string;
+	/** choice only: option key -> description of when to pick it. */
+	options?: Record<string, string>;
+	/** score only: ORDERED level descriptions, lowest first. */
+	levels?: string[];
+	/** choice and score. */
+	confidence_threshold?: number;
+	/** noul only. */
+	true_threshold?: number;
+}
+
 /** ActionUpdateTask's config: every field change to apply, in one node —
  * replaces the old one-node-per-field actions (assign/set_status/
  * set_priority/add_tag/set_custom_field). A field left unset means "don't

@@ -290,8 +290,9 @@ type ActivityFeedService interface {
 
 // CreateAgentInput carries fields required to create an agent.
 type CreateAgentInput struct {
-	Name   string
-	Handle string
+	Name        string
+	Handle      string
+	Description string
 	// AgentType is "llm" (default) or "acp". LLM fields below are required
 	// (and ACP fields ignored) for "llm"; ACP fields are required (and LLM
 	// fields ignored) for "acp".
@@ -346,6 +347,7 @@ type CreateAgentInput struct {
 type CreateGlobalAgentInput struct {
 	Name              string
 	Handle            string
+	Description       string
 	AgentType         string
 	LLMProvider       string
 	LLMModel          string
@@ -367,6 +369,7 @@ type CreateGlobalAgentInput struct {
 type UpdateAgentInput struct {
 	Name        *string
 	Handle      *string
+	Description *string
 	LLMProvider *string
 	LLMModel    *string
 	LLMAPIKey   *string

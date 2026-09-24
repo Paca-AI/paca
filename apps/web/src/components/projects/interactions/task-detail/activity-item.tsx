@@ -180,6 +180,18 @@ export function activityDescription(
 		}
 		case "task.link.removed":
 			return t("taskDetail.activity.removedTaskLink");
+		case "task.auto_assign.skipped": {
+			const confidence = content.confidence as number | null | undefined;
+			if (
+				content.reason === "low_confidence" &&
+				typeof confidence === "number"
+			) {
+				return t("taskDetail.activity.autoAssignSkippedLowConfidence", {
+					confidence: Math.round(confidence * 100),
+				});
+			}
+			return t("taskDetail.activity.autoAssignSkipped");
+		}
 		default:
 			return (
 				(content._description as string | undefined) ??

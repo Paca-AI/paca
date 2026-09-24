@@ -19,6 +19,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import type { Sprint, Task } from "@/lib/interaction-api";
 import {
 	findEpicType,
@@ -37,11 +38,16 @@ import {
 } from "../priority";
 import { TaskTypeSelector } from "../task-type-selector";
 import { useEpicSearch } from "../use-epic-search";
-import { createEpicScrollHandler, type EpicsPagination } from "../view-utils";
+import {
+	createEpicScrollHandler,
+	type EpicsPagination,
+	isAutoAssignPending,
+} from "../view-utils";
 import { AddFieldDialog } from "./add-field-dialog";
 import { FieldRow } from "./primitives";
 import type { SelectOption, UserOption } from "./property-field";
 import { PropertyField } from "./property-field";
+import { MultiUserEditor } from "./property-field/multi-user-editor";
 import { NumberEditor } from "./property-field/number-editor";
 import { StoryPointsEditor } from "./property-field/story-points-editor";
 import type { CustomFieldDef } from "./types";
@@ -59,6 +65,7 @@ type UpdatePayload = Partial<{
 	sprint_id: string | null;
 	parent_task_id: string | null;
 	custom_fields: Record<string, unknown>;
+	assignment_mode: "manual" | "auto";
 }>;
 
 interface PropertiesPanelProps {
@@ -118,6 +125,8 @@ export function PropertiesPanel({
 	onNavigateToTask,
 }: PropertiesPanelProps) {
 	const { t } = useTranslation("projects");
+	const jevEnabled = useJevEnabled(projectId);
+	const isAutoAssign = isAutoAssignPending(task);
 	const [localCustomFields, setLocalCustomFields] =
 		useState<CustomFieldDef[]>(initialCustomFields);
 	const [addFieldOpen, setAddFieldOpen] = useState(false);
@@ -200,14 +209,34 @@ export function PropertiesPanel({
 					</FieldRow>
 				)}
 
-				<PropertyField
-					label={t("taskDetail.properties.assignees")}
-					mode="multi-user"
-					userValues={assigneeUserOptions}
-					users={memberUserOptions}
-					onUsersChange={(v) => onUpdate?.({ assignee_ids: v })}
-					canEdit={canEdit && members.length > 0}
-				/>
+				<FieldRow label={t("taskDetail.properties.assignees")}>
+					<MultiUserEditor
+						userValues={isAutoAssign ? [] : assigneeUserOptions}
+						users={memberUserOptions}
+						onChange={(v) =>
+							onUpdate?.(
+								isAutoAssign
+									? { assignment_mode: "manual", assignee_ids: v }
+									: { assignee_ids: v },
+							)
+						}
+						canEdit={canEdit && members.length > 0}
+						autoOption={
+							jevEnabled
+								? {
+										isSelected: isAutoAssign,
+										label: t("taskDetail.properties.autoAssign"),
+										onToggle: () =>
+											onUpdate?.(
+												isAutoAssign
+													? { assignment_mode: "manual" }
+													: { assignment_mode: "auto", assignee_ids: [] },
+											),
+									}
+								: undefined
+						}
+					/>
+				</FieldRow>
 
 				<FieldRow label={t("taskDetail.properties.importance")}>
 					{canEdit ? (

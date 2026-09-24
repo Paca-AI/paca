@@ -5,6 +5,7 @@ import {
 	Link2,
 	Loader2,
 	Search,
+	Sparkles,
 	Trash2,
 	User,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import {
 	ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { KbdChord } from "@/components/ui/kbd";
+import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import type { Task } from "@/lib/interaction-api";
 import {
 	findEpicType,
@@ -43,6 +45,7 @@ import {
 	type ColumnGroupDef,
 	createEpicScrollHandler,
 	type EpicsPagination,
+	isAutoAssignPending,
 	type TaskFieldUpdate,
 } from "./view-utils";
 
@@ -102,6 +105,8 @@ export function TaskContextMenu({
 }: TaskContextMenuProps) {
 	const { t } = useTranslation("projects");
 	const isMac = isMacPlatform();
+	const jevEnabled = useJevEnabled(task.project_id);
+	const isAutoAssign = isAutoAssignPending(task);
 	const taskLabel = taskIdPrefix
 		? `${taskIdPrefix}-${task.task_number}`
 		: `#${task.task_number}`;
@@ -196,25 +201,58 @@ export function TaskContextMenu({
 							{t("board.taskContextMenu.assignee")}
 						</ContextMenuSubTrigger>
 						<ContextMenuSubContent className="w-48">
+							{jevEnabled && (
+								<ContextMenuItem
+									onClick={() =>
+										onUpdate?.(
+											task.id,
+											isAutoAssign
+												? { assignment_mode: "manual" }
+												: { assignment_mode: "auto", assignee_ids: [] },
+										)
+									}
+								>
+									<Sparkles className="size-3.5 text-primary shrink-0" />
+									<span className="flex-1 truncate">
+										{t("taskDetail.properties.autoAssign")}
+									</span>
+									{isAutoAssign && (
+										<Check className="size-3.5 text-primary shrink-0" />
+									)}
+								</ContextMenuItem>
+							)}
 							<ContextMenuItem
-								onClick={() => onUpdate?.(task.id, { assignee_ids: [] })}
+								onClick={() =>
+									onUpdate?.(task.id, {
+										...(isAutoAssign
+											? { assignment_mode: "manual" as const }
+											: {}),
+										assignee_ids: [],
+									})
+								}
 							>
 								<User className="size-3.5 opacity-60" />
 								<span className="flex-1 truncate">
 									{t("board.taskContextMenu.unassigned")}
 								</span>
-								{(task.assignee_ids ?? []).length === 0 && (
+								{!isAutoAssign && (task.assignee_ids ?? []).length === 0 && (
 									<Check className="size-3.5 text-primary shrink-0" />
 								)}
 							</ContextMenuItem>
 							{members.map((m) => {
-								const isSelected = task.assignee_ids?.includes(m.id) ?? false;
+								const isSelected =
+									!isAutoAssign && (task.assignee_ids?.includes(m.id) ?? false);
 								return (
 									<ContextMenuItem
 										key={m.id}
 										onClick={() => {
-											const current = task.assignee_ids ?? [];
+											const current = isAutoAssign
+												? []
+												: (task.assignee_ids ?? []);
 											onUpdate?.(task.id, {
+												...(isAutoAssign
+													? { assignment_mode: "manual" as const }
+													: {}),
 												assignee_ids: isSelected
 													? current.filter((id) => id !== m.id)
 													: [...current, m.id],

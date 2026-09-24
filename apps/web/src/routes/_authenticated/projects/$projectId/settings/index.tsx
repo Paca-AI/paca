@@ -6,6 +6,7 @@ import {
 	Plus,
 	Settings,
 	Shield,
+	Sparkles,
 	Tag,
 } from "lucide-react";
 import { useState } from "react";
@@ -13,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { CustomFieldsSettings } from "@/components/projects/settings/CustomFieldsSettings";
 import { DangerZone } from "@/components/projects/settings/DangerZone";
 import { GeneralSettings } from "@/components/projects/settings/GeneralSettings";
+import { JevSettings } from "@/components/projects/settings/JevSettings";
 import { RolesSettings } from "@/components/projects/settings/RolesSettings";
 import { TaskStatusesSettings } from "@/components/projects/settings/TaskStatusesSettings";
 import { TaskTypesSettings } from "@/components/projects/settings/TaskTypesSettings";
@@ -70,6 +72,11 @@ const NAV_ITEMS = [
 		icon: Plus,
 	},
 	{
+		id: "jev",
+		labelKey: "project.settingsPage.nav.jev",
+		icon: Sparkles,
+	},
+	{
 		id: "danger",
 		labelKey: "project.settingsPage.nav.dangerZone",
 		icon: AlertTriangle,
@@ -117,9 +124,10 @@ function SettingsPage() {
 		(r) => !r.hidden,
 	);
 
-	const visibleNavItems = canDelete
-		? NAV_ITEMS
-		: NAV_ITEMS.filter((i) => i.id !== "danger");
+	const visibleNavItems = NAV_ITEMS.filter((i) => {
+		if (i.id === "danger") return canDelete;
+		return true;
+	});
 
 	const [activeSection, setActiveSection] = useState<
 		| "general"
@@ -127,6 +135,7 @@ function SettingsPage() {
 		| "task-statuses"
 		| "task-types"
 		| "custom-fields"
+		| "jev"
 		| "danger"
 		| string
 	>("general");
@@ -267,6 +276,9 @@ function SettingsPage() {
 								projectId={projectId}
 								canWrite={canManageCustomFields}
 							/>
+						)}
+						{activeSection === "jev" && (
+							<JevSettings projectId={projectId} canEdit={canEditProject} />
 						)}
 						{activeSection === "danger" && canDelete && (
 							<DangerZone projectId={projectId} />

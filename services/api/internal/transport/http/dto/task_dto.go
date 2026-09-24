@@ -326,6 +326,10 @@ type CreateTaskRequest struct {
 	StartDate    *time.Time       `json:"start_date"`
 	DueDate      *time.Time       `json:"due_date"`
 	Tags         []string         `json:"tags"`
+	// AssignmentMode: omit for the default ("manual"). "auto" asks
+	// worker.TaskAutofillConsumer to resolve AssigneeIDs via Jev — see
+	// taskdom.Task.AssignmentMode's doc comment.
+	AssignmentMode string `json:"assignment_mode"`
 }
 
 // NormalizedDescription returns the description as a json.RawMessage suitable
@@ -357,6 +361,9 @@ type UpdateTaskRequest struct {
 	StartDate    OptionalTime      `json:"start_date"`
 	DueDate      OptionalTime      `json:"due_date"`
 	Tags         *[]string         `json:"tags"`
+	// AssignmentMode: nil means unchanged. See CreateTaskRequest's own doc
+	// comment.
+	AssignmentMode *string `json:"assignment_mode"`
 }
 
 // TaskResponse is the public representation of a task.
@@ -385,6 +392,9 @@ type TaskResponse struct {
 	ViewGroupKey *string         `json:"view_group_key,omitempty"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
+	// AssignmentMode is "manual" or "auto" — see taskdom.Task.AssignmentMode's
+	// doc comment.
+	AssignmentMode string `json:"assignment_mode"`
 }
 
 // TaskFromEntity maps a domain Task to a TaskResponse DTO.
@@ -402,25 +412,26 @@ func TaskFromEntity(t *taskdom.Task) TaskResponse {
 		assigneeIDs = []uuid.UUID{}
 	}
 	return TaskResponse{
-		ID:           t.ID,
-		ProjectID:    t.ProjectID,
-		TaskNumber:   t.TaskNumber,
-		Title:        t.Title,
-		TaskTypeID:   t.TaskTypeID,
-		StatusID:     t.StatusID,
-		SprintID:     t.SprintID,
-		ParentTaskID: t.ParentTaskID,
-		Description:  t.Description,
-		Importance:   t.Importance,
-		StoryPoints:  t.StoryPoints,
-		AssigneeIDs:  assigneeIDs,
-		ReporterID:   t.ReporterID,
-		CustomFields: cf,
-		StartDate:    t.StartDate,
-		DueDate:      t.DueDate,
-		Tags:         tags,
-		CreatedAt:    t.CreatedAt,
-		UpdatedAt:    t.UpdatedAt,
+		ID:             t.ID,
+		ProjectID:      t.ProjectID,
+		TaskNumber:     t.TaskNumber,
+		Title:          t.Title,
+		TaskTypeID:     t.TaskTypeID,
+		StatusID:       t.StatusID,
+		SprintID:       t.SprintID,
+		ParentTaskID:   t.ParentTaskID,
+		Description:    t.Description,
+		Importance:     t.Importance,
+		StoryPoints:    t.StoryPoints,
+		AssigneeIDs:    assigneeIDs,
+		ReporterID:     t.ReporterID,
+		CustomFields:   cf,
+		StartDate:      t.StartDate,
+		DueDate:        t.DueDate,
+		Tags:           tags,
+		CreatedAt:      t.CreatedAt,
+		UpdatedAt:      t.UpdatedAt,
+		AssignmentMode: t.AssignmentMode,
 	}
 }
 

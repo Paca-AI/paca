@@ -73,6 +73,7 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		UserID:        req.UserID,
 		AgentID:       req.AgentID,
 		ProjectRoleID: req.ProjectRoleID,
+		Description:   req.Description,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -82,6 +83,8 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateMemberRole handles PATCH /projects/:projectId/members/:memberId.
+// Accepts project_role_id and/or description; either may be omitted to
+// leave it unchanged, but at least one must be present.
 func (h *ProjectHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
@@ -98,17 +101,27 @@ func (h *ProjectHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
-	if req.ProjectRoleID == uuid.Nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "project_role_id is required"))
+	if req.ProjectRoleID == nil && req.Description == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "at least one of project_role_id or description is required"))
 		return
 	}
 
-	m, err := h.svc.UpdateMemberRoleByMemberID(r.Context(), projectID, memberID, projectdom.UpdateMemberRoleInput{
-		ProjectRoleID: req.ProjectRoleID,
-	})
-	if err != nil {
-		presenter.Error(w, r, err)
-		return
+	var m *projectdom.ProjectMember
+	if req.ProjectRoleID != nil {
+		m, err = h.svc.UpdateMemberRoleByMemberID(r.Context(), projectID, memberID, projectdom.UpdateMemberRoleInput{
+			ProjectRoleID: *req.ProjectRoleID,
+		})
+		if err != nil {
+			presenter.Error(w, r, err)
+			return
+		}
+	}
+	if req.Description != nil {
+		m, err = h.svc.UpdateMemberDescription(r.Context(), projectID, memberID, *req.Description)
+		if err != nil {
+			presenter.Error(w, r, err)
+			return
+		}
 	}
 	presenter.OK(w, r, h.toProjectMemberResponse(r.Context(), m))
 }

@@ -30,6 +30,13 @@ type Agent struct {
 	GlobalRoleID *uuid.UUID
 	Name         string
 	Handle       string
+	// Description is free text describing what this agent is for. Shown to
+	// Jev (the AI decision API, see internal/platform/jev) as the criteria
+	// description when deciding which agent should handle a chat in Auto
+	// mode, or whether to assign it a task — see ComposeJevDescription,
+	// which appends this agent's provider/model at call time rather than
+	// storing them merged into this field.
+	Description string
 	// AvatarKey and AvatarThumbKey are object-storage keys for the two
 	// server-generated avatar variants (256x256 full, 64x64 thumb). Both nil
 	// when no avatar has been uploaded. See attachmentdom.AvatarService.

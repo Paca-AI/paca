@@ -22,6 +22,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	agentQueryOptions,
@@ -60,6 +61,15 @@ export interface AgentPickerState {
 
 export const AgentPickerContext = createContext<AgentPickerState | null>(null);
 
+// AUTO_AGENT_ID is the picker's sentinel "Auto" selection — Jev (the AI
+// decision API) picks which real agent handles the conversation, based on
+// the user's opening message, at send time. Not a real agent id: whichever
+// send handler owns the picker (new-conversation-thread.tsx, the floating
+// chat widget) must resolve it to a real id via resolveAutoAgent/
+// resolveGlobalAutoAgent before calling startChatSession — see those
+// handlers' own "Auto" branch.
+export const AUTO_AGENT_ID = "__auto__";
+
 // Fetches the project's agents and owns the selected-agent state that feeds
 // `AgentPickerState` — shared by the floating chat widget and the
 // Conversations page's inline "new conversation" thread so neither duplicates
@@ -69,6 +79,8 @@ export function useAgentPicker(
 	projectId: string,
 	options?: { disabled?: boolean; enabled?: boolean },
 ) {
+	const { t } = useTranslation("projects");
+	const jevEnabled = useJevEnabled(projectId);
 	const { data: allAgents = [], isLoading: agentsLoading } = useQuery({
 		...agentsQueryOptions(projectId),
 		enabled: options?.enabled ?? true,
@@ -78,22 +90,36 @@ export function useAgentPicker(
 	// selectable here — starting a chat with it would just fail with
 	// AGENT_ACCESS_RESTRICTED, so it's left off the composer's own list
 	// instead of offering a choice guaranteed to error.
-	const agents = useMemo(
+	const realAgents = useMemo(
 		() =>
 			allAgents.filter(
 				(a) => a.access_mode !== "restricted" || a.access_granted,
 			),
 		[allAgents],
 	);
+	// "Auto" is prepended as a synthetic first option — only when Jev is
+	// configured AND there's at least one real agent to resolve it to
+	// (otherwise it'd be a dead end: picking it just 404s at send time).
+	const agents = useMemo(
+		() =>
+			jevEnabled && realAgents.length > 0
+				? [{ id: AUTO_AGENT_ID, name: t("aiChat.autoAgent") }, ...realAgents]
+				: realAgents,
+		[realAgents, jevEnabled, t],
+	);
 	const [agentId, setAgentId] = useState("");
 
-	// Nothing to actually pick between — auto-select the project's only agent
-	// instead of forcing an explicit choice before the composer will send.
+	// Default to Auto once Jev is available; otherwise fall back to the
+	// pre-Auto behavior — auto-select the project's only agent instead of
+	// forcing an explicit choice before the composer will send.
 	useEffect(() => {
-		if (!agentId && agents.length === 1 && agents[0]) {
-			setAgentId(agents[0].id);
+		if (agentId) return;
+		if (jevEnabled && realAgents.length > 0) {
+			setAgentId(AUTO_AGENT_ID);
+		} else if (realAgents.length === 1 && realAgents[0]) {
+			setAgentId(realAgents[0].id);
 		}
-	}, [agents, agentId]);
+	}, [realAgents, agentId, jevEnabled]);
 
 	const disabled = options?.disabled;
 	const pickerState = useMemo<AgentPickerState>(
@@ -122,18 +148,33 @@ export function useGlobalAgentPicker(options?: {
 	disabled?: boolean;
 	enabled?: boolean;
 }) {
+	const { t } = useTranslation("projects");
+	// No project in scope here (this is the global, cross-project picker), so
+	// Jev is always treated as unconfigured — matches ResolveGlobalAutoAgent's
+	// own graceful nil-project fallback on the backend.
+	const jevEnabled = useJevEnabled(undefined);
 	const { hasPermission } = usePermissions();
-	const { data: agents = [], isLoading: agentsLoading } = useQuery({
+	const { data: realAgents = [], isLoading: agentsLoading } = useQuery({
 		...chattableAgentsQueryOptions,
 		enabled: options?.enabled ?? true,
 	});
+	const agents = useMemo(
+		() =>
+			jevEnabled && realAgents.length > 0
+				? [{ id: AUTO_AGENT_ID, name: t("aiChat.autoAgent") }, ...realAgents]
+				: realAgents,
+		[realAgents, jevEnabled, t],
+	);
 	const [agentId, setAgentId] = useState("");
 
 	useEffect(() => {
-		if (!agentId && agents.length === 1 && agents[0]) {
-			setAgentId(agents[0].id);
+		if (agentId) return;
+		if (jevEnabled && realAgents.length > 0) {
+			setAgentId(AUTO_AGENT_ID);
+		} else if (realAgents.length === 1 && realAgents[0]) {
+			setAgentId(realAgents[0].id);
 		}
-	}, [agents, agentId]);
+	}, [realAgents, agentId, jevEnabled]);
 
 	const disabled = options?.disabled;
 	const canCreate = hasPermission("agents.write");

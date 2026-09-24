@@ -13,6 +13,8 @@ import (
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/jev"
+	"github.com/Paca-AI/api/internal/platform/secret"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -32,15 +34,28 @@ type userServiceForStats interface {
 	CountUsers(ctx context.Context) (int64, error)
 }
 
+// projectJevConfigService is the minimal surface used to update a
+// project's Jev credentials — deliberately not part of projectdom.Service
+// (see WithProjectJevConfigService's doc comment for why).
+type projectJevConfigService interface {
+	UpdateJevConfig(ctx context.Context, projectID uuid.UUID, apiKey, baseURL, model *string) (*projectdom.Project, error)
+}
+
 // ProjectHandler handles project management endpoints.
 type ProjectHandler struct {
-	svc         projectdom.Service
-	authorizer  *authz.Authorizer
-	viewSvc     sprintdom.ViewService
-	taskTypeSvc taskTypeLister
-	taskSvc     taskServiceForStats
-	userSvc     userServiceForStats
-	avatarSvc   attachmentdom.AvatarService
+	svc          projectdom.Service
+	authorizer   *authz.Authorizer
+	viewSvc      sprintdom.ViewService
+	taskTypeSvc  taskTypeLister
+	taskSvc      taskServiceForStats
+	userSvc      userServiceForStats
+	avatarSvc    attachmentdom.AvatarService
+	jevConfigSvc projectJevConfigService
+	encryptor    *secret.Encryptor
+	// jevHTTPClient is the transport TestJevConfig's Jev client uses. Nil
+	// means "use jev.New's own SSRF-safe default" — see
+	// WithProjectJevHTTPClient.
+	jevHTTPClient *http.Client
 }
 
 // ProjectHandlerOption customizes optional project-handler dependencies.
@@ -73,6 +88,41 @@ func WithProjectStatsServices(taskSvc taskServiceForStats, userSvc userServiceFo
 func WithProjectAvatarService(svc attachmentdom.AvatarService) ProjectHandlerOption {
 	return func(h *ProjectHandler) {
 		h.avatarSvc = svc
+	}
+}
+
+// WithProjectJevHTTPClient overrides the transport TestJevConfig's Jev
+// client uses. Defaults to jev.New's own SSRF-safe client — override only for
+// tests that need to reach a local httptest.Server, which the default would
+// otherwise reject as a private address (see netguard). Mirrors
+// AutomationConsumer.WithHTTPClient.
+func WithProjectJevHTTPClient(client *http.Client) ProjectHandlerOption {
+	return func(h *ProjectHandler) {
+		h.jevHTTPClient = client
+	}
+}
+
+// WithProjectJevConfigService wires the update path for a project's Jev
+// credentials (UpdateJevConfig, the encrypt-at-write handler). Passed
+// separately from svc (projectdom.Service) — bootstrap wires this straight
+// to the cached wrapper, which delegates to the concrete *projectsvc.Service
+// while also dropping the project's cache entry (see its own UpdateJevConfig:
+// without that, save-then-test would exercise the credentials just replaced)
+// rather than rippling
+// UpdateJevConfig through the projectdom.Service interface and every mock
+// that implements it (see the many-file cost of doing that for
+// UpdateMemberDescription, an earlier, narrower precedent for this same
+// project handler). Reads still go through the normal svc.GetByID path —
+// Project already carries JevConfigured/JevBaseURL/JevModel as plain
+// fields, no new read capability needed.
+//
+// enc decrypts the stored API key secret for TestJevConfig (see
+// jev.ClientForProject) — may be nil, matching every other at-rest secret
+// in this codebase when ENCRYPTION_KEY is unset.
+func WithProjectJevConfigService(svc projectJevConfigService, enc *secret.Encryptor) ProjectHandlerOption {
+	return func(h *ProjectHandler) {
+		h.jevConfigSvc = svc
+		h.encryptor = enc
 	}
 }
 
@@ -331,6 +381,81 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	presenter.OK(w, r, h.toProjectResponse(r.Context(), p))
+}
+
+// UpdateJevConfig handles PATCH /projects/:projectId/jev-config — sets this
+// project's own Jev (AI decision API) credentials. There is no instance-
+// wide Jev config; every project brings its own key and, optionally, its
+// own Jev-compatible provider (base_url/model — see platform/jev.New's
+// doc comment on third-party providers like OpenJev).
+func (h *ProjectHandler) UpdateJevConfig(w http.ResponseWriter, r *http.Request) {
+	id, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if h.jevConfigSvc == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "jev config is not available"))
+		return
+	}
+
+	var req dto.UpdateProjectJevConfigRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	p, err := h.jevConfigSvc.UpdateJevConfig(r.Context(), id, req.APIKey, req.BaseURL, req.Model)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.ProjectJevConfigResponse{
+		Configured: p.JevConfigured(),
+		BaseURL:    p.JevBaseURL,
+		Model:      p.JevModel,
+	})
+}
+
+// TestJevConfig handles POST /projects/:projectId/jev-config/test — sends a
+// minimal, throwaway question to this project's currently-stored Jev
+// credentials (whatever was last saved via UpdateJevConfig, not whatever the
+// caller may have typed but not yet saved) and reports whether Jev answered
+// successfully, so a user can verify their key/host/model actually work
+// before relying on them for autofill/auto-assign.
+func (h *ProjectHandler) TestJevConfig(w http.ResponseWriter, r *http.Request) {
+	id, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	p, err := h.svc.GetByID(r.Context(), id)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	client := jev.ClientForProject(p.JevAPIKeySecret, p.JevBaseURL, p.JevModel, h.encryptor)
+	if h.jevHTTPClient != nil && client.Enabled() {
+		client = client.WithHTTPClient(h.jevHTTPClient)
+	}
+	if !client.Enabled() {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "Jev is not configured for this project"))
+		return
+	}
+
+	_, err = client.SystemOne(r.Context(), map[string]any{"ping": "test"}, map[string]jev.Question{
+		"connectivity": {
+			Type:         jev.TypeNoul,
+			Instructions: "This is a connectivity test, not a real decision — answer true.",
+		},
+	})
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "Could not reach Jev with these credentials: "+err.Error()))
+		return
+	}
+
+	presenter.OK(w, r, dto.TestJevConfigResponse{Success: true})
 }
 
 // DeleteProject handles DELETE /projects/:projectId.

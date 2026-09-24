@@ -3,6 +3,7 @@ package projectsvc
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -63,6 +64,7 @@ func (s *Service) AddMember(ctx context.Context, projectID uuid.UUID, in project
 		ProjectID:     projectID,
 		UserID:        in.UserID,
 		ProjectRoleID: in.ProjectRoleID,
+		Description:   strings.TrimSpace(in.Description),
 	}
 	if err := s.repo.AddMember(ctx, m); err != nil {
 		return nil, err
@@ -220,6 +222,28 @@ func (s *Service) UpdateMemberRoleByMemberID(ctx context.Context, projectID, mem
 	}
 
 	if err := s.repo.UpdateMemberRoleByMemberID(ctx, memberID, in.ProjectRoleID); err != nil {
+		return nil, err
+	}
+
+	return s.repo.FindMemberByID(ctx, memberID)
+}
+
+// UpdateMemberDescription changes a member's Jev-facing description by member ID.
+func (s *Service) UpdateMemberDescription(ctx context.Context, projectID, memberID uuid.UUID, description string) (*projectdom.ProjectMember, error) {
+	if _, err := s.repo.FindByID(ctx, projectID); err != nil {
+		return nil, err
+	}
+
+	member, err := s.repo.FindMemberByID(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+
+	if member.ProjectID != projectID {
+		return nil, projectdom.ErrMemberNotFound
+	}
+
+	if err := s.repo.UpdateMemberDescription(ctx, memberID, description); err != nil {
 		return nil, err
 	}
 

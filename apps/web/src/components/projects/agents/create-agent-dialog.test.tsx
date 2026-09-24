@@ -735,3 +735,57 @@ describe("CreateAgentDialog — when the role cannot be changed", () => {
 		).toBeInTheDocument();
 	});
 });
+
+describe("CreateAgentDialog — description", () => {
+	const descriptionField = () => screen.getByLabelText("Description");
+	const preset = (label: string) =>
+		screen.getByText(label).closest("button") as HTMLElement;
+
+	it("sends the trimmed description when creating a project agent", async () => {
+		const user = userEvent.setup();
+		renderDialog({ projectId: "proj-1", onAcpAgentCreated: vi.fn() });
+		await user.type(descriptionField(), "  Handles frontend bugs  ");
+		await goToRoleStep(user, "Project Role");
+		await user.click(screen.getByRole("radio", { name: "Editor" }));
+		await user.click(button(/create agent/i));
+
+		await waitFor(() =>
+			expect(agentApi.createAgent).toHaveBeenCalledWith(
+				"proj-1",
+				expect.objectContaining({ description: "Handles frontend bugs" }),
+			),
+		);
+	});
+
+	it("sends the description when creating a global agent", async () => {
+		const user = userEvent.setup();
+		renderDialog({});
+		await user.type(descriptionField(), "Triages incoming bugs");
+		await chooseAcpAndName(user);
+		await user.click(button(/continue/i));
+		await user.click(button(/create agent/i));
+
+		await waitFor(() =>
+			expect(agentApi.createGlobalAgent).toHaveBeenCalledWith(
+				expect.objectContaining({ description: "Triages incoming bugs" }),
+			),
+		);
+	});
+
+	it("pre-fills from a preset, but never replaces text the user wrote", async () => {
+		const user = userEvent.setup();
+		renderDialog({ projectId: "proj-1" });
+
+		await user.click(preset("QA Engineer"));
+		expect(descriptionField()).toHaveValue(
+			"An AI agent specialized in writing and running tests.",
+		);
+		// "Custom" describes the preset, not an agent, so it clears the pre-fill.
+		await user.click(preset("Custom"));
+		expect(descriptionField()).toHaveValue("");
+
+		await user.type(descriptionField(), "My own words");
+		await user.click(preset("QA Engineer"));
+		expect(descriptionField()).toHaveValue("My own words");
+	});
+});

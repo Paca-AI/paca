@@ -55,6 +55,16 @@ const (
 	// {automation_name, ...action-specific fields} so the activity feed can
 	// attribute the change to the automation instead of a human actor.
 	ActivityTypeAutomationApplied ActivityType = "automation.applied"
+
+	// --- Auto-assign events -----------------------------------------------------
+
+	// ActivityTypeAutoAssignSkipped is recorded when TaskAutoAssignConsumer
+	// declines to assign a task it was asked to auto-assign — e.g. Jev's
+	// pick fell below assigneeConfidenceThreshold. The task is (and stays)
+	// unassigned; this activity is the only visible trace that auto-assign
+	// even ran, since the alternative is total silence from the user's
+	// point of view. Content carries {reason, ...reason-specific fields}.
+	ActivityTypeAutoAssignSkipped ActivityType = "task.auto_assign.skipped"
 )
 
 // Activity is a single entry in a task's activity log.  It represents either

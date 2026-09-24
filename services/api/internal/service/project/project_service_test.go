@@ -100,6 +100,18 @@ func (r *fakeProjectRepo) Update(_ context.Context, p *projectdom.Project) error
 	r.projects[p.ID] = p
 	return nil
 }
+func (r *fakeProjectRepo) UpdateJevConfig(_ context.Context, projectID uuid.UUID, apiKeySecret, baseURL, model string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, ok := r.projects[projectID]
+	if !ok {
+		return projectdom.ErrNotFound
+	}
+	p.JevAPIKeySecret = apiKeySecret
+	p.JevBaseURL = baseURL
+	p.JevModel = model
+	return nil
+}
 func (r *fakeProjectRepo) Delete(_ context.Context, id uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -166,6 +178,9 @@ func (r *fakeProjectRepo) FindMemberByID(_ context.Context, _ uuid.UUID) (*proje
 func (r *fakeProjectRepo) AddAgentMember(_ context.Context, _, _, _, _ uuid.UUID) error { return nil }
 func (r *fakeProjectRepo) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error    { return nil }
 func (r *fakeProjectRepo) UpdateMemberRoleByMemberID(_ context.Context, _, _ uuid.UUID) error {
+	return nil
+}
+func (r *fakeProjectRepo) UpdateMemberDescription(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
 }
 func (r *fakeProjectRepo) RemoveMemberByMemberID(_ context.Context, _ uuid.UUID) error { return nil }

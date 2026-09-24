@@ -187,6 +187,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeTaskCannotBeOwnParent
 	case errors.Is(err, taskdom.ErrTaskParentCycleDetected):
 		return http.StatusBadRequest, apierr.CodeTaskParentCycleDetected
+	case errors.Is(err, taskdom.ErrTaskAssignmentModeInvalid):
+		return http.StatusBadRequest, apierr.CodeTaskAssignmentModeInvalid
 	case errors.Is(err, taskdom.ErrTypeNotFound):
 		return http.StatusNotFound, apierr.CodeTaskTypeNotFound
 	case errors.Is(err, taskdom.ErrTypeNameInvalid):

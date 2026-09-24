@@ -11,6 +11,7 @@ import { Thread } from "@/components/assistant-ui/thread";
 import {
 	AgentPickerContext,
 	AgentPickerInline,
+	AUTO_AGENT_ID,
 	useGlobalAgentPicker,
 } from "@/components/projects/agents/agent-picker";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import {
 	globalConversationQueryOptions,
 	heartbeatGlobalConversation,
 	pauseGlobalConversation,
+	resolveGlobalAutoAgent,
 	sendGlobalChatMessage,
 	sendGlobalConversationMessage,
 	startGlobalChatSession,
@@ -144,7 +146,13 @@ export function GlobalAIChatFloat() {
 		try {
 			if (!conversationId) {
 				if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
-				const result = await startGlobalChatSession(agentId, {
+				// "Auto" isn't a real agent — resolve it to one via Jev, based
+				// on this opening message, before starting the session.
+				const resolvedAgentId =
+					agentId === AUTO_AGENT_ID
+						? (await resolveGlobalAutoAgent(text)).agent_id
+						: agentId;
+				const result = await startGlobalChatSession(resolvedAgentId, {
 					message: text,
 					contextItems,
 				});

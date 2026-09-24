@@ -45,25 +45,26 @@ type taskStatusRecord struct {
 }
 
 type taskRecord struct {
-	ID           string           `db:"id"`
-	ProjectID    string           `db:"project_id"`
-	TaskNumber   int64            `db:"task_number"`
-	TaskTypeID   *string          `db:"task_type_id"`
-	StatusID     *string          `db:"status_id"`
-	SprintID     *string          `db:"sprint_id"`
-	ParentTaskID *string          `db:"parent_task_id"`
-	Title        string           `db:"title"`
-	Description  *json.RawMessage `db:"description"`
-	Importance   int              `db:"importance"`
-	StoryPoints  *int             `db:"story_points"`
-	ReporterID   *string          `db:"reporter_id"`
-	CustomFields []byte           `db:"custom_fields"`
-	StartDate    *time.Time       `db:"start_date"`
-	DueDate      *time.Time       `db:"due_date"`
-	Tags         []byte           `db:"tags"`
-	CreatedAt    time.Time        `db:"created_at"`
-	UpdatedAt    time.Time        `db:"updated_at"`
-	DeletedAt    *time.Time       `db:"deleted_at"`
+	ID             string           `db:"id"`
+	ProjectID      string           `db:"project_id"`
+	TaskNumber     int64            `db:"task_number"`
+	TaskTypeID     *string          `db:"task_type_id"`
+	StatusID       *string          `db:"status_id"`
+	SprintID       *string          `db:"sprint_id"`
+	ParentTaskID   *string          `db:"parent_task_id"`
+	Title          string           `db:"title"`
+	Description    *json.RawMessage `db:"description"`
+	Importance     int              `db:"importance"`
+	StoryPoints    *int             `db:"story_points"`
+	ReporterID     *string          `db:"reporter_id"`
+	CustomFields   []byte           `db:"custom_fields"`
+	StartDate      *time.Time       `db:"start_date"`
+	DueDate        *time.Time       `db:"due_date"`
+	Tags           []byte           `db:"tags"`
+	CreatedAt      time.Time        `db:"created_at"`
+	UpdatedAt      time.Time        `db:"updated_at"`
+	DeletedAt      *time.Time       `db:"deleted_at"`
+	AssignmentMode string           `db:"assignment_mode"`
 }
 
 // taskCounterRecord mirrors the task_counters table used for atomic
@@ -75,49 +76,51 @@ type taskCounterRecord struct {
 
 // taskWithPositionRow is a flat struct for scanning the view_position LEFT JOIN result.
 type taskWithPositionRow struct {
-	ID           string           `db:"id"`
-	ProjectID    string           `db:"project_id"`
-	TaskNumber   int64            `db:"task_number"`
-	TaskTypeID   *string          `db:"task_type_id"`
-	StatusID     *string          `db:"status_id"`
-	SprintID     *string          `db:"sprint_id"`
-	ParentTaskID *string          `db:"parent_task_id"`
-	Title        string           `db:"title"`
-	Description  *json.RawMessage `db:"description"`
-	Importance   int              `db:"importance"`
-	StoryPoints  *int             `db:"story_points"`
-	ReporterID   *string          `db:"reporter_id"`
-	CustomFields []byte           `db:"custom_fields"`
-	StartDate    *time.Time       `db:"start_date"`
-	DueDate      *time.Time       `db:"due_date"`
-	Tags         []byte           `db:"tags"`
-	CreatedAt    time.Time        `db:"created_at"`
-	UpdatedAt    time.Time        `db:"updated_at"`
-	DeletedAt    *time.Time       `db:"deleted_at"`
-	VTPPosition  *float64         `db:"vtp_position"`
+	ID             string           `db:"id"`
+	ProjectID      string           `db:"project_id"`
+	TaskNumber     int64            `db:"task_number"`
+	TaskTypeID     *string          `db:"task_type_id"`
+	StatusID       *string          `db:"status_id"`
+	SprintID       *string          `db:"sprint_id"`
+	ParentTaskID   *string          `db:"parent_task_id"`
+	Title          string           `db:"title"`
+	Description    *json.RawMessage `db:"description"`
+	Importance     int              `db:"importance"`
+	StoryPoints    *int             `db:"story_points"`
+	ReporterID     *string          `db:"reporter_id"`
+	CustomFields   []byte           `db:"custom_fields"`
+	StartDate      *time.Time       `db:"start_date"`
+	DueDate        *time.Time       `db:"due_date"`
+	Tags           []byte           `db:"tags"`
+	CreatedAt      time.Time        `db:"created_at"`
+	UpdatedAt      time.Time        `db:"updated_at"`
+	DeletedAt      *time.Time       `db:"deleted_at"`
+	AssignmentMode string           `db:"assignment_mode"`
+	VTPPosition    *float64         `db:"vtp_position"`
 }
 
 func (r *taskWithPositionRow) asTaskRecord() taskRecord {
 	return taskRecord{
-		ID:           r.ID,
-		ProjectID:    r.ProjectID,
-		TaskNumber:   r.TaskNumber,
-		TaskTypeID:   r.TaskTypeID,
-		StatusID:     r.StatusID,
-		SprintID:     r.SprintID,
-		ParentTaskID: r.ParentTaskID,
-		Title:        r.Title,
-		Description:  r.Description,
-		Importance:   r.Importance,
-		StoryPoints:  r.StoryPoints,
-		ReporterID:   r.ReporterID,
-		CustomFields: r.CustomFields,
-		StartDate:    r.StartDate,
-		DueDate:      r.DueDate,
-		Tags:         r.Tags,
-		CreatedAt:    r.CreatedAt,
-		UpdatedAt:    r.UpdatedAt,
-		DeletedAt:    r.DeletedAt,
+		ID:             r.ID,
+		ProjectID:      r.ProjectID,
+		TaskNumber:     r.TaskNumber,
+		TaskTypeID:     r.TaskTypeID,
+		StatusID:       r.StatusID,
+		SprintID:       r.SprintID,
+		ParentTaskID:   r.ParentTaskID,
+		Title:          r.Title,
+		Description:    r.Description,
+		Importance:     r.Importance,
+		StoryPoints:    r.StoryPoints,
+		ReporterID:     r.ReporterID,
+		CustomFields:   r.CustomFields,
+		StartDate:      r.StartDate,
+		DueDate:        r.DueDate,
+		Tags:           r.Tags,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		DeletedAt:      r.DeletedAt,
+		AssignmentMode: r.AssignmentMode,
 	}
 }
 
@@ -451,7 +454,7 @@ func (r *TaskRepository) FindDefaultTaskStatus(ctx context.Context, projectID uu
 
 const taskCols = `id, project_id, task_number, task_type_id, status_id, sprint_id, parent_task_id,
 	title, description, importance, story_points, reporter_id,
-	custom_fields, start_date, due_date, tags, created_at, updated_at, deleted_at`
+	custom_fields, start_date, due_date, tags, created_at, updated_at, deleted_at, assignment_mode`
 
 // applyTaskFilter adds WHERE predicates for all TaskFilter fields.
 // b is the shared queryBuilder; the base "project_id = $1 AND deleted_at IS NULL" clause is already set.
@@ -715,7 +718,7 @@ func applyTaskSort(sort taskdom.TaskSort, b *queryBuilder) (fromClause, orderByC
 			p := b.placeholder()
 			b.args = append(b.args, sort.ViewID.String())
 			fromClause = "FROM tasks LEFT JOIN view_task_positions vtp ON vtp.task_id = tasks.id AND vtp.view_id = " + p
-			selectCols = "tasks.*, vtp.position AS vtp_position"
+			selectCols += ", vtp.position AS vtp_position"
 		}
 		orderByClause = "vtp.position ASC NULLS LAST, tasks.created_at ASC, tasks.id ASC"
 	case "importance":
@@ -1195,6 +1198,23 @@ func (r *TaskRepository) CountOpenTasksByProjects(ctx context.Context, projectID
 	return count, nil
 }
 
+// ListDistinctTags returns every distinct tag value used by any non-deleted
+// task in the project, sorted alphabetically. tags is stored as a JSONB
+// array of strings (see the tags column's containment filter above in
+// applyTaskFilter), so jsonb_array_elements_text unnests it for DISTINCT.
+func (r *TaskRepository) ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error) {
+	var tags []string
+	query := `
+		SELECT DISTINCT tag
+		FROM tasks, LATERAL jsonb_array_elements_text(tags) AS tag
+		WHERE project_id = $1 AND deleted_at IS NULL
+		ORDER BY tag ASC`
+	if err := r.db.SelectContext(ctx, &tags, query, projectID.String()); err != nil {
+		return nil, fmt.Errorf("task repo: list distinct tags: %w", err)
+	}
+	return tags, nil
+}
+
 // SumTaskField sums a numeric task field across all tasks matching filter.
 func (r *TaskRepository) SumTaskField(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter, fieldKey string) (float64, error) {
 	b := newQueryBuilder()
@@ -1298,14 +1318,15 @@ func (r *TaskRepository) CreateTask(ctx context.Context, t *taskdom.Task) error 
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO tasks (id, project_id, task_number, task_type_id, status_id, sprint_id, parent_task_id,
 			  title, description, importance, story_points, reporter_id,
-			  custom_fields, start_date, due_date, tags, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+			  custom_fields, start_date, due_date, tags, created_at, updated_at, assignment_mode)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
 			t.ID.String(), t.ProjectID.String(), t.TaskNumber,
 			uuidPtrToStrPtr(t.TaskTypeID), uuidPtrToStrPtr(t.StatusID),
 			uuidPtrToStrPtr(t.SprintID), uuidPtrToStrPtr(t.ParentTaskID),
 			t.Title, t.Description, t.Importance, t.StoryPoints,
 			uuidPtrToStrPtr(t.ReporterID),
 			cf, t.StartDate, t.DueDate, tagsJSON, t.CreatedAt, t.UpdatedAt,
+			assignmentModeOrDefault(t.AssignmentMode),
 		)
 		if err != nil {
 			return fmt.Errorf("task repo: create: %w", err)
@@ -1319,6 +1340,17 @@ func (r *TaskRepository) CreateTask(ctx context.Context, t *taskdom.Task) error 
 
 // UpdateTask persists changes to an existing task.
 func (r *TaskRepository) UpdateTask(ctx context.Context, t *taskdom.Task) error {
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		return updateTaskTx(ctx, tx, t)
+	})
+}
+
+// updateTaskTx performs UpdateTask's write against an already-open
+// transaction — shared by UpdateTask (which opens its own, single-purpose
+// transaction) and UpdateTaskAtomic (which reuses the transaction already
+// holding its row lock, so the lock-acquiring read and this write commit
+// together atomically).
+func updateTaskTx(ctx context.Context, tx *sqlx.Tx, t *taskdom.Task) error {
 	cf, err := json.Marshal(t.CustomFields)
 	if err != nil {
 		return fmt.Errorf("task repo: marshal custom_fields: %w", err)
@@ -1331,28 +1363,73 @@ func (r *TaskRepository) UpdateTask(ctx context.Context, t *taskdom.Task) error 
 	if err != nil {
 		return fmt.Errorf("task repo: marshal tags: %w", err)
 	}
-	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
-		_, err := tx.ExecContext(ctx, `
-			UPDATE tasks SET
-			  task_type_id=$1, status_id=$2, sprint_id=$3, parent_task_id=$4,
-			  title=$5, description=$6, importance=$7, story_points=$8,
-			  reporter_id=$9, custom_fields=$10,
-			  start_date=$11, due_date=$12, tags=$13, updated_at=$14
-			WHERE id=$15`,
-			uuidPtrToStrPtr(t.TaskTypeID), uuidPtrToStrPtr(t.StatusID),
-			uuidPtrToStrPtr(t.SprintID), uuidPtrToStrPtr(t.ParentTaskID),
-			t.Title, t.Description, t.Importance, t.StoryPoints,
-			uuidPtrToStrPtr(t.ReporterID),
-			cf, t.StartDate, t.DueDate, tagsJSON, t.UpdatedAt, t.ID.String(),
-		)
-		if err != nil {
-			return fmt.Errorf("task repo: update: %w", err)
+	_, err = tx.ExecContext(ctx, `
+		UPDATE tasks SET
+		  task_type_id=$1, status_id=$2, sprint_id=$3, parent_task_id=$4,
+		  title=$5, description=$6, importance=$7, story_points=$8,
+		  reporter_id=$9, custom_fields=$10,
+		  start_date=$11, due_date=$12, tags=$13, updated_at=$14, assignment_mode=$15
+		WHERE id=$16`,
+		uuidPtrToStrPtr(t.TaskTypeID), uuidPtrToStrPtr(t.StatusID),
+		uuidPtrToStrPtr(t.SprintID), uuidPtrToStrPtr(t.ParentTaskID),
+		t.Title, t.Description, t.Importance, t.StoryPoints,
+		uuidPtrToStrPtr(t.ReporterID),
+		cf, t.StartDate, t.DueDate, tagsJSON, t.UpdatedAt,
+		assignmentModeOrDefault(t.AssignmentMode), t.ID.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("task repo: update: %w", err)
+	}
+	return syncTaskAssignees(ctx, tx, t.ID, t.AssigneeIDs)
+}
+
+// UpdateTaskAtomic implements taskdom.Repository — see its doc comment. The
+// SELECT ... FOR UPDATE locks id's row for the rest of the transaction, so
+// any concurrent UpdateTask/UpdateTaskAtomic call for the same id blocks
+// until this one commits or rolls back, instead of racing decide's read.
+func (r *TaskRepository) UpdateTaskAtomic(ctx context.Context, id uuid.UUID, decide func(current *taskdom.Task) (*taskdom.Task, error)) (*taskdom.Task, error) {
+	var result *taskdom.Task
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var rec taskRecord
+		err := tx.GetContext(ctx, &rec, `SELECT `+taskCols+` FROM tasks WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id.String())
+		if errors.Is(err, sql.ErrNoRows) {
+			return taskdom.ErrTaskNotFound
 		}
-		if err := syncTaskAssignees(ctx, tx, t.ID, t.AssigneeIDs); err != nil {
+		if err != nil {
+			return fmt.Errorf("task repo: find by id for update: %w", err)
+		}
+		current, err := toTaskEntity(&rec)
+		if err != nil {
 			return err
 		}
+		// Reads r.db (its own connection, outside tx) rather than tx — safe
+		// here specifically because every writer of task_assignees for this
+		// task goes through UpdateTask/UpdateTaskAtomic, both of which touch
+		// the now-locked tasks row in the same transaction as their
+		// syncTaskAssignees call; nothing can have changed task_assignees
+		// for this id without first taking the lock we're already holding.
+		if err := r.attachAssigneeIDs(ctx, []*taskdom.Task{current}); err != nil {
+			return err
+		}
+
+		next, err := decide(current)
+		if err != nil {
+			return err
+		}
+		if next == nil {
+			result = current
+			return nil
+		}
+		if err := updateTaskTx(ctx, tx, next); err != nil {
+			return err
+		}
+		result = next
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // syncTaskAssignees reconciles task_assignees with wantIDs by removing only
@@ -1539,6 +1616,18 @@ func toTaskStatusEntity(r *taskStatusRecord) *taskdom.TaskStatus {
 	}
 }
 
+// assignmentModeOrDefault defaults an empty AssignmentMode to "manual" —
+// mirrors assignment_mode's own column-level DEFAULT 'manual' (migration
+// 000062), so a Task built without explicitly setting AssignmentMode (e.g.
+// existing service-layer code that predates this field) still round-trips a
+// value satisfying the column's CHECK constraint instead of an empty string.
+func assignmentModeOrDefault(mode string) string {
+	if mode == "" {
+		return "manual"
+	}
+	return mode
+}
+
 func toTaskEntity(r *taskRecord) (*taskdom.Task, error) {
 	id, _ := uuid.Parse(r.ID)
 	pid, _ := uuid.Parse(r.ProjectID)
@@ -1569,25 +1658,26 @@ func toTaskEntity(r *taskRecord) (*taskdom.Task, error) {
 	}
 
 	return &taskdom.Task{
-		ID:           id,
-		ProjectID:    pid,
-		TaskNumber:   r.TaskNumber,
-		TaskTypeID:   strPtrToUUIDPtr(r.TaskTypeID),
-		StatusID:     strPtrToUUIDPtr(r.StatusID),
-		SprintID:     strPtrToUUIDPtr(r.SprintID),
-		ParentTaskID: strPtrToUUIDPtr(r.ParentTaskID),
-		Title:        r.Title,
-		Description:  desc,
-		Importance:   r.Importance,
-		StoryPoints:  r.StoryPoints,
-		ReporterID:   strPtrToUUIDPtr(r.ReporterID),
-		CustomFields: cf,
-		StartDate:    r.StartDate,
-		DueDate:      r.DueDate,
-		Tags:         tags,
-		CreatedAt:    r.CreatedAt,
-		UpdatedAt:    r.UpdatedAt,
-		DeletedAt:    r.DeletedAt,
+		ID:             id,
+		ProjectID:      pid,
+		TaskNumber:     r.TaskNumber,
+		TaskTypeID:     strPtrToUUIDPtr(r.TaskTypeID),
+		StatusID:       strPtrToUUIDPtr(r.StatusID),
+		SprintID:       strPtrToUUIDPtr(r.SprintID),
+		ParentTaskID:   strPtrToUUIDPtr(r.ParentTaskID),
+		Title:          r.Title,
+		Description:    desc,
+		Importance:     r.Importance,
+		StoryPoints:    r.StoryPoints,
+		ReporterID:     strPtrToUUIDPtr(r.ReporterID),
+		CustomFields:   cf,
+		StartDate:      r.StartDate,
+		DueDate:        r.DueDate,
+		Tags:           tags,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		DeletedAt:      r.DeletedAt,
+		AssignmentMode: r.AssignmentMode,
 	}, nil
 }
 
@@ -1706,6 +1796,63 @@ func (r *TaskRepository) DeleteCustomFieldDefinition(ctx context.Context, id uui
 		}
 		return nil
 	})
+}
+
+// --- Jev autofill bookkeeping (taskdom.AutofillRepository) ------------------
+
+// RecordUserSetFields records that fieldKeys were explicitly provided by a
+// human on taskID — see taskdom.AutofillRepository's doc comment.
+func (r *TaskRepository) RecordUserSetFields(ctx context.Context, taskID uuid.UUID, fieldKeys []string) error {
+	if len(fieldKeys) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(fieldKeys))
+	args := make([]any, 0, len(fieldKeys)*2)
+	for i, key := range fieldKeys {
+		placeholders[i] = fmt.Sprintf("($%d,$%d)", i*2+1, i*2+2)
+		args = append(args, taskID.String(), key)
+	}
+	query := `INSERT INTO task_field_sources (task_id, field_key) VALUES ` + strings.Join(placeholders, ",") + ` ON CONFLICT DO NOTHING`
+	if _, err := r.db.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("task repo: record user set fields: %w", err)
+	}
+	return nil
+}
+
+// ListUserSetFields returns the set of field keys previously recorded via
+// RecordUserSetFields for taskID.
+func (r *TaskRepository) ListUserSetFields(ctx context.Context, taskID uuid.UUID) (map[string]bool, error) {
+	var keys []string
+	if err := r.db.SelectContext(ctx, &keys, `SELECT field_key FROM task_field_sources WHERE task_id = $1`, taskID.String()); err != nil {
+		return nil, fmt.Errorf("task repo: list user set fields: %w", err)
+	}
+	out := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		out[k] = true
+	}
+	return out, nil
+}
+
+// IsTaskAutofilled reports whether the autofill pass has already run for taskID.
+func (r *TaskRepository) IsTaskAutofilled(ctx context.Context, taskID uuid.UUID) (bool, error) {
+	var autofilled bool
+	err := r.db.GetContext(ctx, &autofilled, `SELECT jev_autofilled_at IS NOT NULL FROM tasks WHERE id = $1`, taskID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, taskdom.ErrTaskNotFound
+	}
+	if err != nil {
+		return false, fmt.Errorf("task repo: is task autofilled: %w", err)
+	}
+	return autofilled, nil
+}
+
+// MarkTaskAutofilled records that the autofill pass has run for taskID —
+// idempotent, and a no-op (0 rows affected, no error) if already marked.
+func (r *TaskRepository) MarkTaskAutofilled(ctx context.Context, taskID uuid.UUID) error {
+	if _, err := r.db.ExecContext(ctx, `UPDATE tasks SET jev_autofilled_at = now() WHERE id = $1 AND jev_autofilled_at IS NULL`, taskID.String()); err != nil {
+		return fmt.Errorf("task repo: mark task autofilled: %w", err)
+	}
+	return nil
 }
 
 func toCustomFieldEntity(r *customFieldDefinitionRecord) (*taskdom.CustomFieldDefinition, error) {

@@ -2,6 +2,7 @@ package projectsvc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -33,11 +34,27 @@ import (
 // write/delete errors are logged so mutations always succeed.
 type CachedService struct {
 	svc        projectdom.Service
+	jevConfig  projectJevConfigWriter
 	st         *cache.Store
 	projectTTL time.Duration
 	configTTL  time.Duration
 	log        *slog.Logger
 }
+
+// projectJevConfigWriter is the one method this decorator adds on top of
+// projectdom.Service. UpdateJevConfig is deliberately absent from that
+// interface (see the handler's WithProjectJevConfigService doc comment), so
+// it's picked up here by assertion against the concrete service rather than
+// by widening projectdom.Service and every mock implementing it.
+type projectJevConfigWriter interface {
+	UpdateJevConfig(ctx context.Context, projectID uuid.UUID, apiKey, baseURL, model *string) (*projectdom.Project, error)
+}
+
+// ErrJevConfigUnsupported is returned by UpdateJevConfig when the service
+// this decorator wraps doesn't implement projectJevConfigWriter. Only the
+// concrete production service does; test doubles that don't care about Jev
+// credentials can leave it unimplemented.
+var ErrJevConfigUnsupported = errors.New("project svc: jev config updates are not supported by the underlying service")
 
 // NewCachedService wraps svc with a caching layer backed by st.
 //
@@ -47,8 +64,14 @@ type CachedService struct {
 // Pass zero for either TTL to disable caching for that category.
 // log receives non-fatal cache warnings.
 func NewCachedService(svc projectdom.Service, st *cache.Store, projectTTL, configTTL time.Duration, log *slog.Logger) *CachedService {
+	// UpdateJevConfig isn't part of projectdom.Service, so it's picked up by
+	// assertion — production passes the concrete service, which has it; test
+	// doubles that don't care simply leave it unset and UpdateJevConfig then
+	// reports ErrJevConfigUnsupported.
+	config, _ := svc.(projectJevConfigWriter)
 	return &CachedService{
 		svc:        svc,
+		jevConfig:  config,
 		st:         st,
 		projectTTL: projectTTL,
 		configTTL:  configTTL,
@@ -168,6 +191,30 @@ func (c *CachedService) RemoveAvatar(ctx context.Context, projectID uuid.UUID) (
 	return p, nil
 }
 
+// UpdateJevConfig delegates to the underlying service and invalidates the
+// project cache entry.
+//
+// The invalidation is the whole reason this wrapper exists. Jev credentials
+// are read back off a cached *projectdom.Project (GetByID caches the entity
+// whole, JevAPIKeySecret/JevBaseURL/JevModel included) by this handler's own
+// TestJevConfig/GetProject and by every Jev-dependent worker, so a write that
+// didn't drop the entry would leave the save-then-test flow — the two
+// endpoints are adjacent in the router — testing the credentials the caller
+// just replaced, for up to projectTTL.
+func (c *CachedService) UpdateJevConfig(ctx context.Context, projectID uuid.UUID, apiKey, baseURL, model *string) (*projectdom.Project, error) {
+	if c.jevConfig == nil {
+		return nil, ErrJevConfigUnsupported
+	}
+	p, err := c.jevConfig.UpdateJevConfig(ctx, projectID, apiKey, baseURL, model)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.st.Delete(ctx, projectKey(projectID)); err != nil {
+		c.log.WarnContext(ctx, "cache: UpdateJevConfig delete", "err", err)
+	}
+	return p, nil
+}
+
 // --- Members -----------------------------------------------------------------
 
 // ListMembers returns all members of a project, reading from cache when
@@ -221,6 +268,18 @@ func (c *CachedService) UpdateMemberRole(ctx context.Context, projectID, userID 
 	}
 	if err := c.st.Delete(ctx, membersKey(projectID)); err != nil {
 		c.log.WarnContext(ctx, "cache: UpdateMemberRole delete", "err", err)
+	}
+	return m, nil
+}
+
+// UpdateMemberDescription delegates to the underlying service and invalidates the members cache.
+func (c *CachedService) UpdateMemberDescription(ctx context.Context, projectID, memberID uuid.UUID, description string) (*projectdom.ProjectMember, error) {
+	m, err := c.svc.UpdateMemberDescription(ctx, projectID, memberID, description)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.st.Delete(ctx, membersKey(projectID)); err != nil {
+		c.log.WarnContext(ctx, "cache: UpdateMemberDescription delete", "err", err)
 	}
 	return m, nil
 }

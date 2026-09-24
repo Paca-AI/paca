@@ -157,6 +157,10 @@ func (f *fakeTaskSvc) SumTaskField(_ context.Context, projectID uuid.UUID, _ tas
 	return sum, nil
 }
 
+func (f *fakeTaskSvc) ListDistinctTags(_ context.Context, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
 func (f *fakeTaskSvc) ListAssignedTasks(_ context.Context, memberIDs []uuid.UUID, limit int, _ *string) ([]*taskdom.Task, bool, error) {
 	f.mu.Lock()
 	f.lastAssignedMemberIDs = memberIDs
@@ -243,6 +247,32 @@ func (f *fakeTaskSvc) UpdateTask(_ context.Context, _, id uuid.UUID, in taskdom.
 	if !ok {
 		return nil, taskdom.ErrTaskNotFound
 	}
+	applyFakeTaskUpdate(t, in)
+	cp := *t
+	return &cp, nil
+}
+
+func (f *fakeTaskSvc) UpdateTaskAtomic(_ context.Context, _, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.tasks[id]
+	if !ok {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	current := *t
+	in, ok := decide(&current)
+	if !ok {
+		return &current, nil
+	}
+	applyFakeTaskUpdate(t, in)
+	cp := *t
+	return &cp, nil
+}
+
+// applyFakeTaskUpdate mutates t with whatever subset of fields this fake
+// supports — shared by UpdateTask and UpdateTaskAtomic so both apply
+// identical (if intentionally partial) field handling.
+func applyFakeTaskUpdate(t *taskdom.Task, in taskdom.UpdateTaskInput) {
 	if in.StatusID != nil {
 		t.StatusID = *in.StatusID
 	}
@@ -255,8 +285,6 @@ func (f *fakeTaskSvc) UpdateTask(_ context.Context, _, id uuid.UUID, in taskdom.
 	if in.Description != nil {
 		t.Description = *in.Description
 	}
-	cp := *t
-	return &cp, nil
 }
 
 func (f *fakeTaskSvc) DeleteTask(_ context.Context, _, id uuid.UUID) error {
@@ -1196,6 +1224,65 @@ func TestTaskHandler_UpdateTask_NullSprintIDClearsField(t *testing.T) {
 	gotSprintID := decodeTaskField(t, w.Body.Bytes(), "sprint_id")
 	if gotSprintID != nil {
 		t.Errorf("expected sprint_id=nil after explicit null, got %v", gotSprintID)
+	}
+}
+
+// TestTaskHandler_UpdateTask_AssignmentModeOnlyRecordsActivity is a
+// regression test for the report that switching a task to Auto assignment
+// mode never resulted in an assignment: TaskAutoAssignConsumer only reacts
+// to task.updated activity events on events.StreamTaskActivities, and
+// UpdateTask only publishes one when taskChangedFields finds at least one
+// change. Flipping an already-unassigned task's assignment_mode to "auto"
+// (assignee_ids stays empty, so it isn't itself a "change") used to compute
+// zero changes and thus never publish anything — silently stranding the
+// task in Auto mode with no consumer ever waking up to resolve an assignee.
+func TestTaskHandler_UpdateTask_AssignmentModeOnlyRecordsActivity(t *testing.T) {
+	svc := newFakeTaskSvc()
+	actSvc := newFakeActivitySvc()
+	r := buildTaskHandlerRouterWithActivity(svc, actSvc)
+	projectID := uuid.New()
+	actorID := uuid.New()
+
+	createW := doTaskRequestWithActor(r, http.MethodPost,
+		fmt.Sprintf("/projects/%s/tasks", projectID),
+		map[string]any{"title": "Needs an owner"},
+		actorID,
+	)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create: got %d: %s", createW.Code, createW.Body.String())
+	}
+	taskID := decodeTaskID(t, createW.Body.Bytes())
+
+	patchW := doTaskRequestWithActor(r, http.MethodPatch,
+		fmt.Sprintf("/projects/%s/tasks/%s", projectID, taskID),
+		map[string]any{"assignment_mode": "auto", "assignee_ids": []string{}},
+		actorID,
+	)
+	if patchW.Code != http.StatusOK {
+		t.Fatalf("patch: expected 200, got %d: %s", patchW.Code, patchW.Body.String())
+	}
+
+	activities, err := actSvc.ListActivities(context.Background(), projectID, uuid.MustParse(taskID))
+	if err != nil {
+		t.Fatalf("unexpected error listing activities: %v", err)
+	}
+	found := false
+	for _, a := range activities {
+		if a.ActivityType == taskdom.ActivityTypeTaskUpdated {
+			var payload struct {
+				Changes []taskdom.FieldChange `json:"changes"`
+			}
+			if err := json.Unmarshal(a.Content, &payload); err == nil {
+				for _, ch := range payload.Changes {
+					if ch.Field == "assignment_mode" {
+						found = true
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected a task.updated activity recording the assignment_mode change, found none — TaskAutoAssignConsumer would never be woken up for this task")
 	}
 }
 

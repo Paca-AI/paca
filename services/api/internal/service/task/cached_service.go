@@ -245,6 +245,11 @@ func (c *CachedService) SumTaskField(ctx context.Context, projectID uuid.UUID, f
 	return c.svc.SumTaskField(ctx, projectID, filter, fieldKey)
 }
 
+// ListDistinctTags delegates to the underlying service without caching.
+func (c *CachedService) ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error) {
+	return c.svc.ListDistinctTags(ctx, projectID)
+}
+
 // ListAssignedTasks delegates directly to the underlying service (not cached).
 func (c *CachedService) ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*taskdom.Task, bool, error) {
 	return c.svc.ListAssignedTasks(ctx, memberIDs, limit, cursorAfter)
@@ -268,6 +273,11 @@ func (c *CachedService) CreateTask(ctx context.Context, in taskdom.CreateTaskInp
 // UpdateTask delegates directly to the underlying service (not cached).
 func (c *CachedService) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in taskdom.UpdateTaskInput) (*taskdom.Task, error) {
 	return c.svc.UpdateTask(ctx, projectID, id, in)
+}
+
+// UpdateTaskAtomic delegates directly to the underlying service (not cached).
+func (c *CachedService) UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	return c.svc.UpdateTaskAtomic(ctx, projectID, id, decide)
 }
 
 // DeleteTask delegates directly to the underlying service (not cached).

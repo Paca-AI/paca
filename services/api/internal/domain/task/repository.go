@@ -74,6 +74,19 @@ type TaskRepository interface {
 	FindTaskByNumber(ctx context.Context, projectID uuid.UUID, taskNumber int64) (*Task, error)
 	CreateTask(ctx context.Context, t *Task) error
 	UpdateTask(ctx context.Context, t *Task) error
+	// UpdateTaskAtomic loads id under a row-level lock (SELECT ... FOR
+	// UPDATE) and, within that same transaction, calls decide with the
+	// freshly-locked task. decide returns (nil, nil) to abort with no write
+	// (used when the locked read shows the caller's intended update no
+	// longer applies), a non-nil *Task to persist via the same write
+	// UpdateTask itself performs, or a non-nil error to abort the
+	// transaction entirely. Because the read and the write share one
+	// transaction and the row stays locked for its whole duration, no other
+	// UpdateTask/UpdateTaskAtomic call for the same id can land between
+	// decide's read and its write — unlike a plain FindTaskByID followed
+	// later by UpdateTask, which leaves exactly that gap open to whatever
+	// the caller does in between (e.g. a slow external API call).
+	UpdateTaskAtomic(ctx context.Context, id uuid.UUID, decide func(current *Task) (*Task, error)) (*Task, error)
 	DeleteTask(ctx context.Context, id uuid.UUID) error
 	// BulkMoveSprintTasks reassigns all non-done tasks in sourceSprintID to
 	// targetSprintID. A nil targetSprintID moves tasks to the backlog (sprint_id = NULL).
@@ -91,6 +104,12 @@ type TaskRepository interface {
 	// of projectIDs in a single query, for cross-project aggregates like the
 	// home page's workspace stats widget — avoids an N-query per-project loop.
 	CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
+	// ListDistinctTags returns every distinct tag value used by any
+	// non-deleted task in the project, sorted alphabetically. Used to build
+	// Jev's tag-autofill candidate set, which — unlike other autofill
+	// fields — must only ever suggest tags the project has already used,
+	// never invent new ones.
+	ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error)
 }
 
 // TaskSort carries resolved sort configuration for ListTasks.

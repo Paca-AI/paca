@@ -156,6 +156,10 @@ func (s *stubTaskSvc) SumTaskField(ctx context.Context, projectID uuid.UUID, fil
 	return 0, nil
 }
 
+func (s *stubTaskSvc) ListDistinctTags(_ context.Context, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
 func (s *stubTaskSvc) ListAssignedTasks(_ context.Context, _ []uuid.UUID, _ int, _ *string) ([]*taskdom.Task, bool, error) {
 	return nil, false, nil
 }
@@ -177,6 +181,11 @@ func (s *stubTaskSvc) CreateTask(_ context.Context, in taskdom.CreateTaskInput) 
 }
 
 func (s *stubTaskSvc) UpdateTask(_ context.Context, _, id uuid.UUID, _ taskdom.UpdateTaskInput) (*taskdom.Task, error) {
+	return &taskdom.Task{ID: id}, nil
+}
+
+func (s *stubTaskSvc) UpdateTaskAtomic(_ context.Context, _, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error) {
+	decide(&taskdom.Task{ID: id})
 	return &taskdom.Task{ID: id}, nil
 }
 
