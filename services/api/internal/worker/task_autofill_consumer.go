@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -140,16 +141,27 @@ type taskAutofillTaskService interface {
 // so unlike NotificationConsumer this consumer is safe to replay from the
 // beginning of the stream after a NOGROUP recovery — see run()'s comment.
 type TaskAutofillConsumer struct {
-	client       *redis.Client
-	taskService  taskAutofillTaskService
-	autofillRepo taskdom.AutofillRepository
-	projectSvc   projectSettingsReader
-	activityRec  taskActivityRecorder
-	encryptor    *secret.Encryptor
-	log          *slog.Logger
-	consumerName string
-	stopCh       chan struct{}
-	doneCh       chan struct{}
+	client        *redis.Client
+	taskService   taskAutofillTaskService
+	autofillRepo  taskdom.AutofillRepository
+	projectSvc    projectSettingsReader
+	activityRec   taskActivityRecorder
+	encryptor     *secret.Encryptor
+	jevHTTPClient *http.Client
+	log           *slog.Logger
+	consumerName  string
+	stopCh        chan struct{}
+	doneCh        chan struct{}
+}
+
+// WithHTTPClient overrides the transport the Jev client uses. Nil (the
+// default) means jev.New's own SSRF-safe client — override only for tests
+// that need to reach a local httptest.Server, which the default would
+// otherwise reject as a private address. Mirrors
+// AutomationConsumer.WithHTTPClient.
+func (c *TaskAutofillConsumer) WithHTTPClient(client *http.Client) *TaskAutofillConsumer {
+	c.jevHTTPClient = client
+	return c
 }
 
 // NewTaskAutofillConsumer creates a consumer ready to be started. encryptor
@@ -353,6 +365,9 @@ func (c *TaskAutofillConsumer) processTask(ctx context.Context, projectID, taskI
 		return fmt.Errorf("load project: %w", err)
 	}
 	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, c.encryptor)
+	if c.jevHTTPClient != nil && jevClient.Enabled() {
+		jevClient = jevClient.WithHTTPClient(c.jevHTTPClient)
+	}
 	if !jevClient.Enabled() {
 		return c.autofillRepo.MarkTaskAutofilled(ctx, taskID)
 	}

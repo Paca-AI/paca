@@ -481,13 +481,17 @@ func New(cfg *config.Config) (*App, error) {
 			handler.WithProjectDefaultViews(viewService, taskService),
 			handler.WithProjectStatsServices(taskService, userService),
 			handler.WithProjectAvatarService(attachmentService),
-			// projectServiceBase, not projectService (the cached wrapper):
-			// UpdateJevConfig is a rare, security-sensitive write with no
-			// caching value, and going through the base service avoids
-			// rippling this one-off method through the projectdom.Service
-			// interface and its many mocks (see WithProjectJevConfigService's
-			// doc comment).
-			handler.WithProjectJevConfigService(projectServiceBase, encryptor),
+			// projectService, the cached wrapper — not projectServiceBase.
+			// UpdateJevConfig writes credentials that every read path then
+			// reads back off a cached *projectdom.Project (this handler's own
+			// TestJevConfig/GetProject, and the Jev-dependent workers), so a
+			// write through the base service would leave save-then-test
+			// exercising the credentials the caller just replaced. The
+			// wrapper's UpdateJevConfig delegates and drops the cache entry;
+			// it picks up the method by assertion, so projectdom.Service
+			// still doesn't carry it and its mocks are unaffected (see
+			// WithProjectJevConfigService's doc comment).
+			handler.WithProjectJevConfigService(projectService, encryptor),
 		),
 		Task: handler.NewTaskHandler(taskService, viewService, activityService,
 			handler.WithTaskPublisher(publisher),

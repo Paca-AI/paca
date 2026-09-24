@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -63,24 +64,44 @@ type projectMemberLister interface {
 // the field-autofill consumer's one-shot logic would make both harder to
 // reason about — so each stays its own consumer with its own Jev call.
 //
-// Naturally idempotent with no separate tracking column needed: a
-// confidently-resolved task leaves AssigneeIDs no longer empty, and a task
-// Jev couldn't confidently resolve is reverted to AssignmentMode "manual"
-// (see processTask) — either way, a later event for the same task is never
-// reconsidered unless a human explicitly re-enables auto-assign. Safe to
-// replay from the beginning of the stream after a NOGROUP recovery for the
-// same reason (see run()'s comment).
+// Idempotent with no separate tracking column needed, because every path
+// that reaches Jev re-checks the same guard first (AssignmentMode "auto" AND
+// AssigneeIDs empty — see processTask). A confidently-resolved task leaves
+// AssigneeIDs non-empty, and a low-confidence answer reverts the task to
+// AssignmentMode "manual"; either way a later event finds the guard already
+// failed and stops there, so a task is never reconsidered unless a human
+// explicitly re-enables auto-assign.
+//
+// The one case that stays live is a task Jev couldn't be asked about at all
+// — the call errored, the response carried no "assignee" answer key, or the
+// chosen key wasn't one of the candidates. processTask leaves those sitting
+// in "auto" with no assignee, so the next task.updated does retry them. That
+// is the intent (a transient Jev outage self-heals), but it means the stream
+// is not strictly one-shot per task, and it's why replay-from-"0" after a
+// NOGROUP recovery is still safe: those retries can only ever resolve a task
+// that is unassigned and explicitly in auto mode.
 type TaskAutoAssignConsumer struct {
-	client       *redis.Client
-	taskService  taskAutoAssignTaskService
-	memberLister projectMemberLister
-	projectSvc   projectSettingsReader
-	activityRec  taskActivityRecorder
-	encryptor    *secret.Encryptor
-	log          *slog.Logger
-	consumerName string
-	stopCh       chan struct{}
-	doneCh       chan struct{}
+	client        *redis.Client
+	taskService   taskAutoAssignTaskService
+	memberLister  projectMemberLister
+	projectSvc    projectSettingsReader
+	activityRec   taskActivityRecorder
+	encryptor     *secret.Encryptor
+	jevHTTPClient *http.Client
+	log           *slog.Logger
+	consumerName  string
+	stopCh        chan struct{}
+	doneCh        chan struct{}
+}
+
+// WithHTTPClient overrides the transport the Jev client uses. Nil (the
+// default) means jev.New's own SSRF-safe client — override only for tests
+// that need to reach a local httptest.Server, which the default would
+// otherwise reject as a private address. Mirrors
+// AutomationConsumer.WithHTTPClient.
+func (c *TaskAutoAssignConsumer) WithHTTPClient(client *http.Client) *TaskAutoAssignConsumer {
+	c.jevHTTPClient = client
+	return c
 }
 
 // NewTaskAutoAssignConsumer creates a consumer ready to be started.
@@ -262,6 +283,9 @@ func (c *TaskAutoAssignConsumer) processTask(ctx context.Context, projectID, tas
 		return fmt.Errorf("load project: %w", err)
 	}
 	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, c.encryptor)
+	if c.jevHTTPClient != nil && jevClient.Enabled() {
+		jevClient = jevClient.WithHTTPClient(c.jevHTTPClient)
+	}
 	if !jevClient.Enabled() {
 		return nil
 	}

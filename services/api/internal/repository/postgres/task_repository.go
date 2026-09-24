@@ -76,28 +76,27 @@ type taskCounterRecord struct {
 
 // taskWithPositionRow is a flat struct for scanning the view_position LEFT JOIN result.
 type taskWithPositionRow struct {
-	ID              string           `db:"id"`
-	ProjectID       string           `db:"project_id"`
-	TaskNumber      int64            `db:"task_number"`
-	TaskTypeID      *string          `db:"task_type_id"`
-	StatusID        *string          `db:"status_id"`
-	SprintID        *string          `db:"sprint_id"`
-	ParentTaskID    *string          `db:"parent_task_id"`
-	Title           string           `db:"title"`
-	Description     *json.RawMessage `db:"description"`
-	Importance      int              `db:"importance"`
-	StoryPoints     *int             `db:"story_points"`
-	ReporterID      *string          `db:"reporter_id"`
-	CustomFields    []byte           `db:"custom_fields"`
-	StartDate       *time.Time       `db:"start_date"`
-	DueDate         *time.Time       `db:"due_date"`
-	Tags            []byte           `db:"tags"`
-	CreatedAt       time.Time        `db:"created_at"`
-	UpdatedAt       time.Time        `db:"updated_at"`
-	DeletedAt       *time.Time       `db:"deleted_at"`
-	AssignmentMode  string           `db:"assignment_mode"`
-	JevAutofilledAt *time.Time       `db:"jev_autofilled_at"`
-	VTPPosition     *float64         `db:"vtp_position"`
+	ID             string           `db:"id"`
+	ProjectID      string           `db:"project_id"`
+	TaskNumber     int64            `db:"task_number"`
+	TaskTypeID     *string          `db:"task_type_id"`
+	StatusID       *string          `db:"status_id"`
+	SprintID       *string          `db:"sprint_id"`
+	ParentTaskID   *string          `db:"parent_task_id"`
+	Title          string           `db:"title"`
+	Description    *json.RawMessage `db:"description"`
+	Importance     int              `db:"importance"`
+	StoryPoints    *int             `db:"story_points"`
+	ReporterID     *string          `db:"reporter_id"`
+	CustomFields   []byte           `db:"custom_fields"`
+	StartDate      *time.Time       `db:"start_date"`
+	DueDate        *time.Time       `db:"due_date"`
+	Tags           []byte           `db:"tags"`
+	CreatedAt      time.Time        `db:"created_at"`
+	UpdatedAt      time.Time        `db:"updated_at"`
+	DeletedAt      *time.Time       `db:"deleted_at"`
+	AssignmentMode string           `db:"assignment_mode"`
+	VTPPosition    *float64         `db:"vtp_position"`
 }
 
 func (r *taskWithPositionRow) asTaskRecord() taskRecord {

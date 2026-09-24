@@ -252,7 +252,11 @@ func newProjectRouter(svc projectdom.Service) chi.Router {
 	authorizer := adminAuthorizer()
 	r := chi.NewRouter()
 	r.Use(adminClaimsMiddleware())
-	h := handler.NewProjectHandler(svc, authorizer)
+	// h also gets a plain transport for its Jev client: the default is
+	// SSRF-safe (netguard) and rejects the loopback httptest.Servers these
+	// tests point jev_base_url at — see WithProjectJevHTTPClient.
+	h := handler.NewProjectHandler(svc, authorizer,
+		handler.WithProjectJevHTTPClient(&http.Client{Timeout: 5 * time.Second}))
 	// Admin project CRUD
 	r.Get("/admin/projects", h.ListProjects)
 	r.Post("/admin/projects", h.CreateProject)

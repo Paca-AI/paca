@@ -52,6 +52,10 @@ type ProjectHandler struct {
 	avatarSvc    attachmentdom.AvatarService
 	jevConfigSvc projectJevConfigService
 	encryptor    *secret.Encryptor
+	// jevHTTPClient is the transport TestJevConfig's Jev client uses. Nil
+	// means "use jev.New's own SSRF-safe default" — see
+	// WithProjectJevHTTPClient.
+	jevHTTPClient *http.Client
 }
 
 // ProjectHandlerOption customizes optional project-handler dependencies.
@@ -87,10 +91,24 @@ func WithProjectAvatarService(svc attachmentdom.AvatarService) ProjectHandlerOpt
 	}
 }
 
+// WithProjectJevHTTPClient overrides the transport TestJevConfig's Jev
+// client uses. Defaults to jev.New's own SSRF-safe client — override only for
+// tests that need to reach a local httptest.Server, which the default would
+// otherwise reject as a private address (see netguard). Mirrors
+// AutomationConsumer.WithHTTPClient.
+func WithProjectJevHTTPClient(client *http.Client) ProjectHandlerOption {
+	return func(h *ProjectHandler) {
+		h.jevHTTPClient = client
+	}
+}
+
 // WithProjectJevConfigService wires the update path for a project's Jev
 // credentials (UpdateJevConfig, the encrypt-at-write handler). Passed
 // separately from svc (projectdom.Service) — bootstrap wires this straight
-// to the uncached concrete *projectsvc.Service rather than rippling
+// to the cached wrapper, which delegates to the concrete *projectsvc.Service
+// while also dropping the project's cache entry (see its own UpdateJevConfig:
+// without that, save-then-test would exercise the credentials just replaced)
+// rather than rippling
 // UpdateJevConfig through the projectdom.Service interface and every mock
 // that implements it (see the many-file cost of doing that for
 // UpdateMemberDescription, an earlier, narrower precedent for this same
@@ -418,6 +436,9 @@ func (h *ProjectHandler) TestJevConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := jev.ClientForProject(p.JevAPIKeySecret, p.JevBaseURL, p.JevModel, h.encryptor)
+	if h.jevHTTPClient != nil && client.Enabled() {
+		client = client.WithHTTPClient(h.jevHTTPClient)
+	}
 	if !client.Enabled() {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "Jev is not configured for this project"))
 		return

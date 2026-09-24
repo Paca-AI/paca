@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -50,7 +51,11 @@ func newTestAutoAssignConsumer(taskSvc taskAutoAssignTaskService, memberLister p
 		taskService:  taskSvc,
 		memberLister: memberLister,
 		projectSvc:   projectSvc,
-		log:          slog.Default(),
+		// The consumer's default transport is SSRF-safe (netguard) and
+		// rejects the loopback httptest.Servers these tests point
+		// jev_base_url at — see WithHTTPClient.
+		jevHTTPClient: &http.Client{Timeout: 5 * time.Second},
+		log:           slog.Default(),
 	}
 }
 

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -71,7 +73,11 @@ func (f *fakeActivityRecorder) RecordActivity(_ context.Context, in taskdom.Reco
 func newTestAutofillConsumer(svc taskAutofillTaskService) *TaskAutofillConsumer {
 	return &TaskAutofillConsumer{
 		taskService: svc,
-		log:         slog.Default(),
+		// The consumer's default transport is SSRF-safe (netguard) and
+		// rejects the loopback httptest.Servers these tests point
+		// jev_base_url at — see WithHTTPClient.
+		jevHTTPClient: &http.Client{Timeout: 5 * time.Second},
+		log:           slog.Default(),
 	}
 }
 

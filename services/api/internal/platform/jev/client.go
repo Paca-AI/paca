@@ -17,6 +17,8 @@ import (
 	"math/rand"
 	"net/http"
 	"time"
+
+	"github.com/Paca-AI/api/internal/platform/netguard"
 )
 
 const (
@@ -25,6 +27,12 @@ const (
 	// specific reason not to — see https://docs.typesafe.ai/models.
 	DefaultModel = "jev-latest"
 	maxRetries   = 3
+	// maxErrorBodyBytes caps how much of a failed response's body is kept on
+	// APIError. The status code is the only part callers act on (see
+	// APIError's doc comment) — the body exists purely for the log line, so
+	// echoing a whole 1 MiB error page back is waste. Applied to the error
+	// path only; a successful response is always parsed in full.
+	maxErrorBodyBytes = 512
 )
 
 // Question type discriminants — see https://docs.typesafe.ai/primitives.
@@ -127,11 +135,26 @@ func New(apiKey, baseURL, model string) *Client {
 		model = DefaultModel
 	}
 	return &Client{
-		apiKey:     apiKey,
-		baseURL:    baseURL,
-		model:      model,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		model:   model,
+		// SSRF-safe by default: baseURL is a per-project, user-supplied value
+		// (see UpdateJevConfig — it's only TrimSpace'd, never validated), so
+		// without this any project admin could point it at an internal
+		// address and make the API process issue an authenticated POST there.
+		// Same client the automation engine's call_api action uses for its
+		// own user-configurable URL — see netguard's package doc.
+		httpClient: netguard.NewSafeHTTPClient(30 * time.Second),
 	}
+}
+
+// WithHTTPClient overrides the client's transport. Defaults to
+// netguard.NewSafeHTTPClient — override only for tests that need to reach a
+// local httptest.Server, which the default client would otherwise reject as
+// a private address. Mirrors AutomationConsumer.WithHTTPClient.
+func (c *Client) WithHTTPClient(client *http.Client) *Client {
+	c.httpClient = client
+	return c
 }
 
 // Enabled reports whether c is a usable, configured client. Safe to call on
@@ -222,7 +245,7 @@ func (c *Client) doRequest(ctx context.Context, body []byte) (*Response, error) 
 	}
 
 	if httpResp.StatusCode != http.StatusOK {
-		return nil, &APIError{StatusCode: httpResp.StatusCode, Body: string(respBody)}
+		return nil, &APIError{StatusCode: httpResp.StatusCode, Body: truncateBody(respBody)}
 	}
 
 	var out Response
@@ -230,4 +253,13 @@ func (c *Client) doRequest(ctx context.Context, body []byte) (*Response, error) 
 		return nil, fmt.Errorf("jev: unmarshal response: %w", err)
 	}
 	return &out, nil
+}
+
+// truncateBody clips a failed response's body to maxErrorBodyBytes so a
+// verbose error page can't bloat the log line APIError's Error() builds.
+func truncateBody(body []byte) string {
+	if len(body) <= maxErrorBodyBytes {
+		return string(body)
+	}
+	return string(body[:maxErrorBodyBytes]) + "... (truncated)"
 }
