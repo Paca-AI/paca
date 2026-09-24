@@ -163,6 +163,8 @@ type TaskAutofillConsumer struct {
 	jevHTTPClient *http.Client
 	log           *slog.Logger
 	consumerName  string
+	groupName     string
+	groupStartID  string
 	stopCh        chan struct{}
 	doneCh        chan struct{}
 }
@@ -201,23 +203,38 @@ func NewTaskAutofillConsumer(client *redis.Client, taskService taskAutofillTaskS
 		activityRec:  activityRec,
 		encryptor:    encryptor,
 		log:          log,
+		groupName:    taskAutofillConsumerGroup,
+		groupStartID: "0",
 		consumerName: fmt.Sprintf("%s.%s", taskAutofillConsumerGroup, hostname),
 		stopCh:       make(chan struct{}),
 		doneCh:       make(chan struct{}),
 	}
 }
 
+// WithConsumerGroup overrides the consumer group this consumer joins
+// (default: taskAutofillConsumerGroup). Production has no reason to call
+// this — it exists for e2e tests that share one Redis stream across many
+// parallel, DB-isolated tests; see AutomationConsumer.WithConsumerGroup for
+// the full reasoning. The group starts from "$" (now) so it never replays
+// earlier tests' events.
+func (c *TaskAutofillConsumer) WithConsumerGroup(name string) *TaskAutofillConsumer {
+	c.groupName = name
+	c.groupStartID = "$"
+	c.consumerName = fmt.Sprintf("%s.%s", name, uuid.New().String())
+	return c
+}
+
 // Start creates the consumer group if needed and begins processing in a
 // background goroutine. Call Stop to drain and exit cleanly.
 func (c *TaskAutofillConsumer) Start(ctx context.Context) {
-	if err := c.ensureGroup(ctx, "0"); err != nil {
+	if err := c.ensureGroup(ctx, c.groupStartID); err != nil {
 		c.log.Warn("task autofill consumer: could not create consumer group, will retry on first read", "err", err)
 	}
 	go c.run()
 }
 
 func (c *TaskAutofillConsumer) ensureGroup(ctx context.Context, startID string) error {
-	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskActivities, taskAutofillConsumerGroup, startID).Err()
+	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskActivities, c.groupName, startID).Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		return err
 	}
@@ -246,7 +263,7 @@ func (c *TaskAutofillConsumer) run() {
 
 		ctx, cancel := context.WithTimeout(context.Background(), taskAutofillReadBlock+time.Second)
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    taskAutofillConsumerGroup,
+			Group:    c.groupName,
 			Consumer: c.consumerName,
 			Streams:  []string{events.StreamTaskActivities, ">"},
 			Count:    taskAutofillReadCount,
@@ -268,7 +285,7 @@ func (c *TaskAutofillConsumer) run() {
 				// task-creation event this consumer hadn't gotten to yet
 				// doesn't just silently go unprocessed.
 				recoverCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				geErr := c.ensureGroup(recoverCtx, "0")
+				geErr := c.ensureGroup(recoverCtx, c.groupStartID)
 				cancel()
 				if geErr != nil {
 					c.log.Warn("task autofill consumer: failed to recreate consumer group", "err", geErr)
@@ -288,7 +305,7 @@ func (c *TaskAutofillConsumer) run() {
 
 func (c *TaskAutofillConsumer) processPending(ctx context.Context) {
 	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
-		Group:    taskAutofillConsumerGroup,
+		Group:    c.groupName,
 		Consumer: c.consumerName,
 		Streams:  []string{events.StreamTaskActivities, "0"},
 		Count:    taskAutofillReadCount,
@@ -305,7 +322,7 @@ func (c *TaskAutofillConsumer) processPending(ctx context.Context) {
 }
 
 func (c *TaskAutofillConsumer) ack(ctx context.Context, id string) {
-	if err := c.client.XAck(ctx, events.StreamTaskActivities, taskAutofillConsumerGroup, id).Err(); err != nil {
+	if err := c.client.XAck(ctx, events.StreamTaskActivities, c.groupName, id).Err(); err != nil {
 		c.log.Warn("task autofill consumer: xack failed", "id", id, "err", err)
 	}
 }
@@ -414,6 +431,14 @@ func (c *TaskAutofillConsumer) processTask(ctx context.Context, projectID, taskI
 	if err != nil {
 		c.log.Warn("task autofill consumer: jev call failed, leaving fields blank", "task_id", taskID, "err", err)
 		return c.autofillRepo.MarkTaskAutofilled(ctx, taskID)
+	}
+	// Only apply answers to questions actually asked. A Jev-compatible
+	// provider returning extra answer keys must not reach fields that were
+	// deliberately left out — excluded in settings, or not eligible.
+	for key := range resp.Answers {
+		if _, asked := questions[key]; !asked {
+			delete(resp.Answers, key)
+		}
 	}
 
 	// From here on, the decision must be built and applied atomically under
