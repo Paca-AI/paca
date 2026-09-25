@@ -13,6 +13,7 @@ import (
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 )
 
 // ViewService is the concrete implementation of sprintdom.ViewService.
@@ -21,6 +22,7 @@ type ViewService struct {
 	sprintRepo sprintdom.SprintRepository
 	taskRepo   taskdom.TaskRepository
 	publisher  *messaging.Publisher
+	activity   activitysvc.Recorder
 }
 
 // NewViewService returns a configured ViewService. sprintRepo and taskRepo
@@ -28,7 +30,7 @@ type ViewService struct {
 // position's task, belong to the project the caller was authorized against.
 // publisher may be nil; real-time events are then skipped silently.
 func NewViewService(repo sprintdom.ViewRepository, sprintRepo sprintdom.SprintRepository, taskRepo taskdom.TaskRepository, publisher *messaging.Publisher) *ViewService {
-	return &ViewService{repo: repo, sprintRepo: sprintRepo, taskRepo: taskRepo, publisher: publisher}
+	return &ViewService{repo: repo, sprintRepo: sprintRepo, taskRepo: taskRepo, publisher: publisher, activity: activitysvc.NewRecorder(publisher)}
 }
 
 // sprintInProject returns nil when sprintID resolves to a sprint that
@@ -56,6 +58,21 @@ func (s *ViewService) publish(ctx context.Context, topic string, payload map[str
 	_ = s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
 		"type":    topic,
 		"payload": payload,
+	})
+}
+
+// record fans a view's create/update/delete out to realtime and the activity
+// log. Reorders and task moves stay realtime-only: they are drag-and-drop
+// noise, not changes anyone audits.
+func (s *ViewService) record(ctx context.Context, topic string, v *sprintdom.SprintView) {
+	payload := viewPayload(v)
+	payload["name"] = v.Name
+	s.activity.Record(ctx, activitysvc.Entry{
+		ProjectID:  v.ProjectID,
+		EntityType: events.EntityView,
+		EntityID:   v.ID,
+		Topic:      topic,
+		Payload:    payload,
 	})
 }
 
@@ -160,7 +177,7 @@ func (s *ViewService) CreateView(ctx context.Context, in sprintdom.CreateViewInp
 	if err := s.repo.CreateView(ctx, v); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicViewCreated, viewPayload(v))
+	s.record(ctx, events.TopicViewCreated, v)
 	return v, nil
 }
 
@@ -202,7 +219,7 @@ func (s *ViewService) UpdateView(ctx context.Context, projectID, id uuid.UUID, i
 	if err := s.repo.UpdateView(ctx, v); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicViewUpdated, viewPayload(v))
+	s.record(ctx, events.TopicViewUpdated, v)
 	return v, nil
 }
 
@@ -233,7 +250,7 @@ func (s *ViewService) DeleteView(ctx context.Context, projectID, id uuid.UUID) e
 	if err := s.repo.DeleteView(ctx, id); err != nil {
 		return err
 	}
-	s.publish(ctx, events.TopicViewDeleted, viewPayload(v))
+	s.record(ctx, events.TopicViewDeleted, v)
 	return nil
 }
 

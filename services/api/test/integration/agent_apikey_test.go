@@ -17,12 +17,14 @@ import (
 
 	"github.com/google/uuid"
 
+	activitydom "github.com/Paca-AI/api/internal/domain/activity"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
@@ -70,7 +72,7 @@ func buildAgentKeyRouterWithBotID(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKey
 	} else {
 		activityRepo = newFakeTaskActivityRepo()
 	}
-	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, &fakeActivityMemberRepo{}, nil)
+	activityService := tasksvc.NewActivityService(activitysvc.New(activityRepo, &fakeActivityMemberRepo{}, nil), taskRepo, &fakeActivityMemberRepo{})
 
 	apiKeyService := apikeysvc.New(apiKeyRepo).WithAgentKey(testAgentAPIKey, botUserID)
 	// None of these task/comment-focused tests exercise the X-Actor-User-ID
@@ -443,15 +445,17 @@ func TestAgentAPIKey_UpdateComment_Success(t *testing.T) {
 
 	_ = agentID // referenced only to confirm the bot user exists
 	commentContent := json.RawMessage(`[{"type":"paragraph","content":[{"type":"text","text":"Original comment"}]}]`)
-	activityRepo.activities[commentID] = &taskdom.Activity{
+	_ = activityRepo.Create(t.Context(), &activitydom.Activity{
 		ID:           commentID,
-		TaskID:       taskID,
+		ProjectID:    projectID,
+		EntityType:   "task",
+		EntityID:     &taskID,
 		ActorID:      &agentID,
-		ActivityType: taskdom.ActivityTypeComment,
+		ActivityType: activitydom.TypeComment,
 		Content:      commentContent,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
-	}
+	})
 
 	r := buildAgentKeyRouter(taskRepo, apiKeyRepo, store, activityRepo)
 	commentURL := fmt.Sprintf("/api/v1/projects/%s/tasks/%s/activities/comments/%s", projectID, taskID, commentID)
@@ -1215,7 +1219,7 @@ func buildAgentMCPKeyRouter(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKeyRepo, 
 	sprintService := sprintsvc.New(newFakeSprintRepoIT(), taskRepo, nil)
 	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), newFakeSprintRepoIT(), taskRepo, nil)
 	activityRepo := newFakeTaskActivityRepo()
-	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, &fakeActivityMemberRepo{}, nil)
+	activityService := tasksvc.NewActivityService(activitysvc.New(activityRepo, &fakeActivityMemberRepo{}, nil), taskRepo, &fakeActivityMemberRepo{})
 
 	apiKeyService := apikeysvc.New(apiKeyRepo).
 		WithAgentKey(testAgentAPIKey, uuid.MustParse(testAgentBotUserID)).

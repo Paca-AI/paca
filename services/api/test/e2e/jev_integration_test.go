@@ -172,7 +172,7 @@ func waitForStreamActivity(t *testing.T, env *e2eEnv, taskID string, timeout tim
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		msgs, err := env.redisClient.XRevRangeN(env.ctx, events.StreamTaskActivities, "+", "-", 2000).Result()
+		msgs, err := env.redisClient.XRevRangeN(env.ctx, events.StreamActivities, "+", "-", 2000).Result()
 		if err != nil {
 			t.Fatalf("read task activity stream: %v", err)
 		}

@@ -17,6 +17,7 @@ import (
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
@@ -226,7 +227,7 @@ func buildViewTestRouter(viewRepo *fakeViewRepoIT, sprintRepo *fakeSprintRepoIT,
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(sprintRepo, taskRepo, nil)
 	viewService := sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, nil)
-	activityService := tasksvc.NewActivityService(newFakeTaskActivityRepo(), taskRepo, &fakeActivityMemberRepo{}, nil)
+	activityService := tasksvc.NewActivityService(activitysvc.New(newFakeTaskActivityRepo(), &fakeActivityMemberRepo{}, nil), taskRepo, &fakeActivityMemberRepo{})
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{

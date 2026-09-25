@@ -93,19 +93,45 @@ type FieldChange struct {
 	New   any    `json:"new"`
 }
 
-// ActivityRepository defines persistence for task activities.
-type ActivityRepository interface {
-	// ListActivities returns all non-deleted activity entries for a task
-	// ordered by created_at ascending.
-	ListActivities(ctx context.Context, taskID uuid.UUID) ([]*Activity, error)
-	// FindActivityByID returns a single activity (including soft-deleted).
-	FindActivityByID(ctx context.Context, id uuid.UUID) (*Activity, error)
-	// CreateActivity persists a new activity entry.
-	CreateActivity(ctx context.Context, a *Activity) error
-	// UpdateActivity persists mutable changes to an existing activity.
-	UpdateActivity(ctx context.Context, a *Activity) error
-	// DeleteActivity soft-deletes the activity (sets deleted_at).
-	DeleteActivity(ctx context.Context, id uuid.UUID) error
+// Origin identifies what caused an activity, independently of the actor.
+//
+// It exists because ActorID/ActorAgentID are both nil for every system-driven
+// change, so they cannot distinguish "the automation engine did this" from
+// "Jev autofill did this" — and that distinction is load-bearing: the
+// automation consumer matches triggers off task.updated events, so an event
+// the automation engine itself caused must be distinguishable from one a
+// human caused, or a status_changed automation that sets a status re-triggers
+// itself indefinitely. See OriginAutomation.
+type Origin string
+
+// Origin values. "user" and "agent" describe a human or agent acting through
+// the API; the rest are system paths.
+const (
+	// OriginUser is a human acting through the HTTP API.
+	OriginUser Origin = "user"
+	// OriginAgent is an AI agent acting through the API.
+	OriginAgent Origin = "agent"
+	// OriginAutomation is the automation graph engine applying an action.
+	// The automation consumer skips events carrying this origin — that guard
+	// is what keeps a walk from re-triggering on its own writes, and it means
+	// automations intentionally do not chain into one another.
+	OriginAutomation Origin = "automation"
+	// OriginJev is a Jev-backed flow (task autofill, task auto-assign).
+	OriginJev Origin = "jev"
+	// OriginAnnotation is work started from a page annotation.
+	OriginAnnotation Origin = "annotation"
+	// OriginSystem is any other system path, and the default when Origin is
+	// left unset.
+	OriginSystem Origin = "system"
+)
+
+// OrSystem returns the origin itself, or OriginSystem when unset, so callers
+// never have to special-case the empty string.
+func (o Origin) OrSystem() Origin {
+	if o == "" {
+		return OriginSystem
+	}
+	return o
 }
 
 // ActivityService defines use-cases for task activity and comments.
@@ -156,4 +182,9 @@ type RecordActivityInput struct {
 	ActorAgentID *uuid.UUID // agent UUID when the actor is an agent (takes priority over ActorID for resolution)
 	ActivityType ActivityType
 	Content      json.RawMessage
+	// Origin identifies what caused this activity. Left unset it is treated
+	// as OriginSystem. It travels as a stream envelope field, is stored in
+	// activities.origin, and drives the automation engine's self-trigger
+	// guard.
+	Origin Origin
 }

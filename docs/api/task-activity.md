@@ -4,18 +4,22 @@
 
 Every task has an **activity log** — a unified, time-ordered stream of
 system-generated change events and user-authored comments. Both are stored in
-the same `task_activities` table and returned through the same list endpoint so
-the UI can render them in a single chronological feed.
+the project-wide `activities` table (rows with `entity_type = 'task'`) and
+returned through the same list endpoint so the UI can render them in a single
+chronological feed.
 
 ---
 
 ## Database Schema
 
 ```sql
-CREATE TABLE task_activities (
+CREATE TABLE activities (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    task_id       UUID        NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id    UUID        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    entity_type   TEXT        NOT NULL,          -- 'task' for this API
+    entity_id     UUID,                          -- the task id
     actor_id      UUID        REFERENCES project_members(id) ON DELETE SET NULL,
+    origin        TEXT        NOT NULL DEFAULT 'system',
     activity_type TEXT        NOT NULL,
     content       JSONB       NOT NULL DEFAULT '{}'::jsonb,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -184,22 +188,30 @@ Only the original author may delete their comment. Performs a soft-delete
 ## Valkey Event Stream
 
 System-generated activities (task created, updated, BDD changes, etc.) are
-published to the Valkey stream `paca.task_activities` for durable persistence.
-The `ActivityConsumer` worker reads that stream and writes each entry to
-PostgreSQL. All activity events also publish a real-time notification to the
-`paca.events` Pub/Sub channel for immediate fan-out via `services/realtime`.
+published through `events.Fanout` to the Valkey stream `paca.activities` —
+the single stream every activity in a project goes to, whatever the entity.
+The `ActivityConsumer` worker reads that stream and writes each entry to the
+`activities` table. Fanout also publishes each event to the `paca.events`
+Pub/Sub channel for immediate fan-out via `services/realtime`.
 
 > **Note:** Comment operations (add/update/delete) write directly to the
-> database and publish only to the `paca.events` Pub/Sub channel — they are
-> **not** appended to the stream.
+> database, because the request returns the row. They are still appended to
+> the stream; the consumer's insert conflicts on the comment's `id` and is
+> dropped.
 
 ### Stream Entry Format
 
 ```
-Stream: paca.task_activities
+Stream: paca.activities
 Fields:
-  type    = "task.created" | "task.updated" | ...  (system activities only)
-  payload = <JSON-encoded activity payload>
+  type           = "task.created" | "task.updated" | ...
+  payload        = <JSON-encoded activity payload>
+  project_id     = <uuid>
+  entity_type    = "task"
+  entity_id      = <task uuid>
+  origin         = "user" | "agent" | "automation" | "jev" | "system" | ...
+  actor_id       = <user uuid>   (optional)
+  actor_agent_id = <agent uuid>  (optional)
 ```
 
 ### Stream Payload
@@ -229,10 +241,10 @@ before persisting to the database.
 ## Stream Consumer
 
 A background worker (`internal/worker/activity_consumer.go`) reads from
-`paca.task_activities` using `XREADGROUP`. It:
+`paca.activities` using `XREADGROUP`. It:
 
 1. Resolves the stream `actor_id` (user UUID) to `project_members.id`
-2. Writes the activity entry to `task_activities` in PostgreSQL
+2. Writes the activity entry to `activities` in PostgreSQL
 3. Acknowledges the message
 
 Consumer group name: `api.activity_writer`  

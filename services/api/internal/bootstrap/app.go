@@ -32,6 +32,7 @@ import (
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	redisRepo "github.com/Paca-AI/api/internal/repository/redis"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	agentsvc "github.com/Paca-AI/api/internal/service/agent"
 	annotationsvc "github.com/Paca-AI/api/internal/service/annotation"
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
@@ -66,7 +67,6 @@ type App struct {
 	server                 *http.Server
 	publisher              *messaging.Publisher
 	activityConsumer       *worker.ActivityConsumer
-	docActivityConsumer    *worker.DocActivityConsumer
 	notificationConsumer   *worker.NotificationConsumer
 	pluginEventConsumer    *worker.PluginEventConsumer
 	environmentConsumer    *worker.EnvironmentCommandConsumer
@@ -110,7 +110,11 @@ func New(cfg *config.Config) (*App, error) {
 	globalRoleRepo := pgRepo.NewGlobalRoleRepository(db)
 	projectRepo := pgRepo.NewProjectRepository(db)
 	taskRepo := pgRepo.NewTaskRepository(db)
-	activityRepo := pgRepo.NewTaskActivityRepository(db)
+	// The activity log: one repository and one service behind every
+	// entity's timeline, the project feed, the agent tab and comments, and
+	// the one Recorder every domain service records its changes through.
+	activityRecorder := activitysvc.NewRecorder(publisher)
+	activityLog := activitysvc.New(pgRepo.NewActivityRepository(db), projectRepo, activityRecorder)
 	notificationRepo := pgRepo.NewNotificationRepository(db)
 	sprintRepo := pgRepo.NewSprintRepository(db)
 	viewRepo := pgRepo.NewViewRepository(db)
@@ -159,9 +163,9 @@ func New(cfg *config.Config) (*App, error) {
 	environmentRepo := pgRepo.NewEnvironmentRepository(db)
 	annotationRepo := pgRepo.NewAnnotationRepository(db)
 	globalRoleService := globalrolesvc.NewCachedService(globalrolesvc.New(globalRoleRepo, agentRepo), cacheStore, cfg.Cache.ConfigTTL, log)
-	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo)
+	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo).WithActivityRecorder(activityRecorder)
 	projectService := projectsvc.NewCachedService(projectServiceBase, cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
-	taskService := tasksvc.NewCachedService(tasksvc.New(taskRepo).WithAutomationStatusChecker(rawAutomationRepo), cacheStore, cfg.Cache.ConfigTTL, log)
+	taskService := tasksvc.NewCachedService(tasksvc.New(taskRepo).WithAutomationStatusChecker(rawAutomationRepo).WithActivityRecorder(activityRecorder), cacheStore, cfg.Cache.ConfigTTL, log)
 	sprintService := sprintsvc.NewCachedSprintService(sprintsvc.New(sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher).
@@ -225,17 +229,15 @@ func New(cfg *config.Config) (*App, error) {
 	// so this is belt-and-suspenders, not load-bearing, but keeps the
 	// pointer's provenance obvious at every read site.
 	projectServiceBase = projectServiceBase.WithEncryptor(encryptor)
-	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, projectRepo, publisher).
+	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(agentService)
 	notificationConsumer := worker.NewNotificationConsumer(redisClient, notificationService, log, projectRepo, agentService).
 		WithActivityRecorder(activityService)
-	activityConsumer := worker.NewActivityConsumer(redisClient, activityRepo, projectRepo, log)
+	activityConsumer := worker.NewActivityConsumer(redisClient, pgRepo.NewActivityRepository(db), projectRepo, log)
 	environmentConsumer := worker.NewEnvironmentCommandConsumer(redisClient, environmentService, log)
 	docService := docsvc.New(docRepo, projectRepo)
-	docActivityService := docsvc.NewActivityService(docRepo, docRepo, projectRepo, publisher).
-		WithNotificationService(notificationService)
-	docActivityConsumer := worker.NewDocActivityConsumer(redisClient, docRepo, projectRepo, log)
+	docActivityService := docsvc.NewActivityService(activityLog, docRepo)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log)
 	taskAutofillConsumer := worker.NewTaskAutofillConsumer(redisClient, taskService, taskRepo, projectService, activityService, encryptor, log)
@@ -272,7 +274,8 @@ func New(cfg *config.Config) (*App, error) {
 	// wired above, not new ones.
 	annotationService := annotationsvc.New(annotationRepo, environmentService, taskService, attachmentRepo, attachmentRepo, storageClient, cfg.Storage.Bucket).
 		WithPublicURL(cfg.Server.PublicURL).
-		WithActivityRecorder(activityService)
+		WithActivityRecorder(activityService).
+		WithActivityLog(activityRecorder)
 	userService = userService.WithAvatarService(attachmentService)
 	agentService = agentService.WithAvatarService(attachmentService)
 	// Unlike userService/agentService above, this return value isn't
@@ -441,6 +444,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	agentHandler := handler.NewAgentHandler(agentService, cfg.AIAgentURL, cfg.AIAgentInternalKey, cfg.Server.PublicURL).
 		WithActivityRecorder(activityService).
+		WithActivityLister(activityLog).
 		WithMemberRepo(projectRepo).
 		WithGlobalPermissionReader(permissionStore).
 		WithAvatarService(attachmentService).
@@ -476,6 +480,7 @@ func New(cfg *config.Config) (*App, error) {
 		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,
+		ProjectActivity:      handler.NewProjectActivityHandler(activityLog, attachmentService),
 		Project: handler.NewProjectHandler(
 			projectService,
 			authorizer,
@@ -534,7 +539,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -542,7 +547,6 @@ func New(cfg *config.Config) (*App, error) {
 func (a *App) Run() error {
 	a.log.Info("starting server", "addr", a.server.Addr)
 	a.activityConsumer.Start(context.Background())
-	a.docActivityConsumer.Start(context.Background())
 	a.notificationConsumer.Start(context.Background())
 	a.pluginEventConsumer.Start(context.Background())
 	a.environmentConsumer.Start(context.Background())
@@ -560,7 +564,6 @@ func (a *App) Run() error {
 func (a *App) Shutdown(ctx context.Context) error {
 	a.log.Info("shutting down server")
 	a.activityConsumer.Stop()
-	a.docActivityConsumer.Stop()
 	a.notificationConsumer.Stop()
 	a.pluginEventConsumer.Stop()
 	a.environmentConsumer.Stop()

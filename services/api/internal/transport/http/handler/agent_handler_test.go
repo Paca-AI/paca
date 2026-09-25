@@ -14,6 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	activitydom "github.com/Paca-AI/api/internal/domain/activity"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
@@ -40,7 +41,6 @@ type mockAgentSvc struct {
 	getConversationForAgent       func(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error)
 	updateConversationTitle       func(ctx context.Context, projectID, conversationID, memberID uuid.UUID, title string) (*agentdom.AgentConversation, error)
 	deleteConversation            func(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
-	listAgentActivities           func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
 	getGlobalConversation         func(ctx context.Context, conversationID, actorUserID uuid.UUID) (*agentdom.AgentConversation, error)
 	listGlobalConversations       func(ctx context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 	stopGlobalConversation        func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
@@ -137,12 +137,6 @@ func (m *mockAgentSvc) DeleteEnvVar(_ context.Context, _, _ uuid.UUID) error { r
 func (m *mockAgentSvc) ListConversations(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
 	if m.listConversations != nil {
 		return m.listConversations(ctx, filter, limit)
-	}
-	return nil, false, nil
-}
-func (m *mockAgentSvc) ListAgentActivities(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error) {
-	if m.listAgentActivities != nil {
-		return m.listAgentActivities(ctx, filter, limit)
 	}
 	return nil, false, nil
 }
@@ -495,7 +489,13 @@ func claimsMiddleware(subject string) func(http.Handler) http.Handler {
 // injects claims with the given subject, so resolveMemberID's branches can
 // be exercised end-to-end through the HTTP layer.
 func newAgentRouterWithMemberRepo(svc agentdom.Service, memberRepo projectdom.MemberRepository, subject string) chi.Router {
-	h := handler.NewAgentHandler(svc, "", "", "")
+	return newAgentRouterWithActivities(svc, memberRepo, &fakeActivityLister{}, subject)
+}
+
+// newAgentRouterWithActivities is newAgentRouterWithMemberRepo with the
+// activity log the agent tab reads from.
+func newAgentRouterWithActivities(svc agentdom.Service, memberRepo projectdom.MemberRepository, lister *fakeActivityLister, subject string) chi.Router {
+	h := handler.NewAgentHandler(svc, "", "", "").WithActivityLister(lister)
 	if memberRepo != nil {
 		h = h.WithMemberRepo(memberRepo)
 	}
@@ -1030,6 +1030,17 @@ func TestListAgentActivities_InvalidType_Returns400(t *testing.T) {
 	}
 }
 
+// fakeActivityLister records the filter the handler asks the activity log for.
+type fakeActivityLister struct {
+	gotFilter activitydom.ListFilter
+	items     []*activitydom.Activity
+}
+
+func (f *fakeActivityLister) List(_ context.Context, filter activitydom.ListFilter, _ int) ([]*activitydom.Activity, bool, error) {
+	f.gotFilter = filter
+	return f.items, false, nil
+}
+
 func TestListAgentActivities_Success_ResolvesMemberAndForwardsFilters(t *testing.T) {
 	memberID := uuid.New()
 	memberRepo := &fakeMemberRepo{
@@ -1037,15 +1048,11 @@ func TestListAgentActivities_Success_ResolvesMemberAndForwardsFilters(t *testing
 			return &projectdom.ProjectMember{ID: memberID}, nil
 		},
 	}
-	var gotFilter agentdom.ListAgentActivitiesFilter
-	svc := validAgentSvc()
-	svc.listAgentActivities = func(_ context.Context, filter agentdom.ListAgentActivitiesFilter, _ int) ([]*agentdom.ActivityFeedItem, bool, error) {
-		gotFilter = filter
-		return []*agentdom.ActivityFeedItem{
-			{ID: uuid.New(), SourceType: agentdom.ActivitySourceTask, ActivityType: "task.created"},
-		}, false, nil
-	}
-	r := newAgentRouterWithMemberRepo(svc, memberRepo, uuid.New().String())
+	taskID := uuid.New()
+	lister := &fakeActivityLister{items: []*activitydom.Activity{
+		{ID: uuid.New(), EntityType: "task", EntityID: &taskID, ActivityType: "task.created"},
+	}}
+	r := newAgentRouterWithActivities(validAgentSvc(), memberRepo, lister, uuid.New().String())
 	projectID := uuid.New()
 	agentID := uuid.New()
 
@@ -1054,27 +1061,52 @@ func TestListAgentActivities_Success_ResolvesMemberAndForwardsFilters(t *testing
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if gotFilter.ActorMemberID != memberID {
-		t.Fatalf("expected the resolved member ID %v to reach the service, got %v", memberID, gotFilter.ActorMemberID)
+	got := lister.gotFilter
+	if len(got.ActorMemberIDs) != 1 || got.ActorMemberIDs[0] != memberID {
+		t.Fatalf("expected the resolved member ID %v to reach the log, got %v", memberID, got.ActorMemberIDs)
 	}
-	wantTypes := []agentdom.ActivitySourceType{agentdom.ActivitySourceTask, agentdom.ActivitySourceDoc}
-	if len(gotFilter.SourceTypes) != len(wantTypes) || gotFilter.SourceTypes[0] != wantTypes[0] || gotFilter.SourceTypes[1] != wantTypes[1] {
-		t.Fatalf("expected source types %v, got %v", wantTypes, gotFilter.SourceTypes)
+	if got.ProjectID != projectID {
+		t.Fatalf("expected project %v, got %v", projectID, got.ProjectID)
 	}
-	if gotFilter.Search == nil || *gotFilter.Search != "hello" {
-		t.Fatalf("expected search %q, got %v", "hello", gotFilter.Search)
+	if len(got.EntityTypes) != 2 || got.EntityTypes[0] != "task" || got.EntityTypes[1] != "doc" {
+		t.Fatalf("expected entity types [task doc], got %v", got.EntityTypes)
+	}
+	if got.Search != "hello" {
+		t.Fatalf("expected search %q, got %q", "hello", got.Search)
 	}
 
 	var body struct {
 		Data struct {
-			Items []any `json:"items"`
+			Items []struct {
+				SourceType string `json:"source_type"`
+				SourceID   string `json:"source_id"`
+			} `json:"items"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("failed to decode response body: %v", err)
 	}
-	if len(body.Data.Items) != 1 {
-		t.Fatalf("expected 1 item in response, got %d", len(body.Data.Items))
+	if len(body.Data.Items) != 1 || body.Data.Items[0].SourceType != "task" || body.Data.Items[0].SourceID != taskID.String() {
+		t.Fatalf("expected one task item for %v, got %+v", taskID, body.Data.Items)
+	}
+}
+
+func TestListAgentActivities_NoTypeFilter_DefaultsToTaskAndDoc(t *testing.T) {
+	memberRepo := &fakeMemberRepo{
+		findByAgent: func(context.Context, uuid.UUID, uuid.UUID) (*projectdom.ProjectMember, error) {
+			return &projectdom.ProjectMember{ID: uuid.New()}, nil
+		},
+	}
+	lister := &fakeActivityLister{}
+	r := newAgentRouterWithActivities(validAgentSvc(), memberRepo, lister, uuid.New().String())
+
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+uuid.New().String()+"/agents/"+uuid.New().String()+"/activities", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(lister.gotFilter.EntityTypes) != 2 {
+		t.Fatalf("expected the agent tab to default to task and doc entries, got %v", lister.gotFilter.EntityTypes)
 	}
 }
 

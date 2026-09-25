@@ -39,6 +39,12 @@ export const PROJECT_KNOWN_PERMISSIONS = [
 		descriptionKey: "roles.permissions.projectsDelete.description",
 		domain: "projects",
 	},
+	{
+		key: "project.activities.read",
+		labelKey: "roles.permissions.activitiesRead.label",
+		descriptionKey: "roles.permissions.activitiesRead.description",
+		domain: "projects",
+	},
 	// project members
 	{
 		key: "project.members.read",

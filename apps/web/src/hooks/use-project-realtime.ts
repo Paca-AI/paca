@@ -84,6 +84,26 @@ import {
 // and global scope (e.g. the Conversations page) — the hook is a no-op in
 // that case rather than requiring the caller to conditionally call it, which
 // would violate the rules of hooks.
+// Realtime event types that correspond to a new project activity log entry.
+// agent.* is deliberately absent: it carries per-token conversation events,
+// and the work an agent does arrives as task.*/doc.* anyway.
+const ACTIVITY_LOG_EVENT_PREFIXES = [
+	"task.",
+	"doc.",
+	"sprint.",
+	"view.created",
+	"view.updated",
+	"view.deleted",
+	"automation.",
+	"environment.",
+];
+// Realtime-only events under those prefixes, which are never logged.
+const ACTIVITY_LOG_SKIPPED_EVENTS = new Set([
+	"environment.status_changed",
+	"automation.node.updated",
+]);
+const ACTIVITY_LOG_REFRESH_DELAY_MS = 1500;
+
 export function useProjectRealtime(projectId: string | undefined): void {
 	const queryClient = useQueryClient();
 
@@ -128,8 +148,29 @@ export function useProjectRealtime(projectId: string | undefined): void {
 			});
 		}
 
+		// The project activity log is written by a worker reading the same
+		// event stream, so it lands shortly *after* this event arrives —
+		// refetching immediately would miss it. Debounced, which also
+		// collapses a burst of events into one refetch.
+		let activityRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+		function scheduleActivityLogRefresh() {
+			clearTimeout(activityRefreshTimer);
+			activityRefreshTimer = setTimeout(() => {
+				void queryClient.invalidateQueries({
+					queryKey: ["projects", currentProjectId, "projectActivities"],
+				});
+			}, ACTIVITY_LOG_REFRESH_DELAY_MS);
+		}
+
 		function handleEvent(event: RealtimeEvent) {
 			const { type } = event;
+
+			if (
+				ACTIVITY_LOG_EVENT_PREFIXES.some((p) => type.startsWith(p)) &&
+				!ACTIVITY_LOG_SKIPPED_EVENTS.has(type)
+			) {
+				scheduleActivityLogRefresh();
+			}
 
 			// task.* and automation.applied are task activities fanned out by
 			// the API's ActivitySvc — for user edits and for system-driven
@@ -279,6 +320,7 @@ export function useProjectRealtime(projectId: string | undefined): void {
 		socket.on("connect", handleConnect);
 
 		return () => {
+			clearTimeout(activityRefreshTimer);
 			socket.off("event", handleEvent);
 			socket.off("connect", handleConnect);
 			leaveProject(currentProjectId);

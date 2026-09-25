@@ -132,6 +132,7 @@ type BrandingSnapshot struct {
 type EventPublisher interface {
 	Publish(ctx context.Context, channel string, payload any) error
 	Append(ctx context.Context, stream, eventType string, payload any) error
+	AppendFlat(ctx context.Context, stream string, fields map[string]any) error
 }
 
 // pluginInstance wraps a compiled wazero module for a single installed plugin.
@@ -1948,7 +1949,7 @@ func (r *Runtime) registerEventFunctions(b wazero.HostModuleBuilder, p plugindom
 		Export("event_subscribe")
 
 	// paca.activity_record(payloadPtr i64, payloadLen i64) -> ok i32
-	// Appends a task-activity event to paca.task_activities stream so the
+	// Appends a task-activity event to the paca.activities stream so the
 	// ActivityConsumer worker can persist it to PostgreSQL.
 	// Payload JSON shape:
 	//   {"task_id":"uuid","activity_type":"task.checklist.created","content":{...}}
@@ -2043,10 +2044,22 @@ func (r *Runtime) registerEventFunctions(b wazero.HostModuleBuilder, p plugindom
 			}
 			payload["actor_id"] = actorID
 			if r.services.Publisher != nil {
-				_ = r.services.Publisher.Append(ctx, events.StreamTaskActivities, inp.ActivityType, payload)
-				_ = r.services.Publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
-					"type":    inp.ActivityType,
-					"payload": payload,
+				var actorUUID *uuid.UUID
+				if id, err := uuid.Parse(actorID); err == nil {
+					actorUUID = &id
+				}
+				// Through the shared fanout like every other activity. A
+				// plugin's own record is kept off the plugin event stream so a
+				// plugin reacting to activity can't re-trigger itself.
+				events.FanoutTo(ctx, r.services.Publisher, events.Event{
+					Topic:            inp.ActivityType,
+					Payload:          payload,
+					ProjectID:        projectID,
+					EntityType:       events.EntityTask,
+					EntityID:         &taskID,
+					ActorID:          actorUUID,
+					Origin:           events.OriginUser,
+					SkipPluginEvents: true,
 				})
 			}
 			stack[0] = 1

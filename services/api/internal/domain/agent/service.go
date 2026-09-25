@@ -16,7 +16,6 @@ type Service interface {
 	EnvVarService
 	ConversationService
 	ChatSessionService
-	ActivityFeedService
 	AgentAccessGrantService
 }
 
@@ -279,11 +278,6 @@ type ChatSessionService interface {
 	ListGlobalChatSessions(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*AgentChatSession, error)
 	StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string, contextItems []ContextItemRef, onBusy string) (*AgentChatSession, *AgentConversation, error)
 	SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string, contextItems []ContextItemRef, onBusy string) (*AgentConversation, error)
-}
-
-// ActivityFeedService defines the agent activity feed use case.
-type ActivityFeedService interface {
-	ListAgentActivities(ctx context.Context, in ListAgentActivitiesFilter, limit int) (items []*ActivityFeedItem, hasMore bool, err error)
 }
 
 // --- Input types ---

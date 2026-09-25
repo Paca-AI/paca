@@ -1230,7 +1230,7 @@ func TestTaskHandler_UpdateTask_NullSprintIDClearsField(t *testing.T) {
 // TestTaskHandler_UpdateTask_AssignmentModeOnlyRecordsActivity is a
 // regression test for the report that switching a task to Auto assignment
 // mode never resulted in an assignment: TaskAutoAssignConsumer only reacts
-// to task.updated activity events on events.StreamTaskActivities, and
+// to task.updated activity events on events.StreamActivities, and
 // UpdateTask only publishes one when taskChangedFields finds at least one
 // change. Flipping an already-unassigned task's assignment_mode to "auto"
 // (assignee_ids stays empty, so it isn't itself a "change") used to compute

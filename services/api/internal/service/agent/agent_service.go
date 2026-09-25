@@ -27,6 +27,7 @@ import (
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/secret"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 )
 
 // projectMemberWriter is the minimal interface this service needs to bust the
@@ -69,6 +70,7 @@ type Service struct {
 	repo       agentdom.Repository
 	projRepo   projectMemberWriter
 	publisher  *messaging.Publisher
+	activity   activitysvc.Recorder
 	pluginRepo pluginFinder
 	encryptor  *secret.Encryptor
 	avatarSvc  attachmentdom.AvatarService
@@ -105,7 +107,7 @@ type Service struct {
 
 // New returns a configured agent service.
 func New(repo agentdom.Repository, projRepo projectMemberWriter, publisher *messaging.Publisher, pluginRepo pluginFinder) *Service {
-	return &Service{repo: repo, projRepo: projRepo, publisher: publisher, pluginRepo: pluginRepo}
+	return &Service{repo: repo, projRepo: projRepo, publisher: publisher, pluginRepo: pluginRepo, activity: activitysvc.NewRecorder(publisher)}
 }
 
 // WithEncryptor configures AES-256-GCM encryption for the LLM API key stored at rest.
@@ -414,6 +416,7 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 	// Best-effort cache invalidation so the new member appears immediately.
 	_ = s.projRepo.InvalidateMembersCache(ctx, projectID)
 
+	s.recordAgent(ctx, projectID, a, TopicProjectAgentCreated)
 	return a, nil
 }
 
@@ -613,6 +616,7 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 	if a.ParallelismLimit > oldParallelismLimit {
 		_, _ = s.AdvanceQueue(ctx, a.ID, a.ParallelismLimit-oldParallelismLimit)
 	}
+	s.recordAgent(ctx, projectID, a, TopicProjectAgentUpdated)
 	return a, nil
 }
 
@@ -628,7 +632,30 @@ func (s *Service) DeleteAgent(ctx context.Context, projectID, agentID uuid.UUID)
 	}
 	// Best-effort cache invalidation so the deleted member disappears immediately.
 	_ = s.projRepo.InvalidateMembersCache(ctx, projectID)
+	s.recordAgent(ctx, projectID, a, TopicProjectAgentDeleted)
 	return nil
+}
+
+// Activity topics for a project agent's own configuration. The work an agent
+// does is recorded by the task/doc services, with the agent as actor. Not
+// "agent.*": services/realtime routes that prefix to the tasks room as
+// conversation events.
+const (
+	TopicProjectAgentCreated = "project_agent.created"
+	TopicProjectAgentUpdated = "project_agent.updated"
+	TopicProjectAgentDeleted = "project_agent.deleted"
+)
+
+// recordAgent fans a project agent's create/update/delete out to the
+// activity log; the actor comes from the request context.
+func (s *Service) recordAgent(ctx context.Context, projectID uuid.UUID, a *agentdom.Agent, topic string) {
+	s.activity.Record(ctx, activitysvc.Entry{
+		ProjectID:  projectID,
+		EntityType: events.EntityAgent,
+		EntityID:   a.ID,
+		Topic:      topic,
+		Payload:    map[string]any{"project_id": projectID.String(), "agent_id": a.ID.String(), "name": a.Name, "handle": a.Handle},
+	})
 }
 
 // -------------------------------------------------------------------------
@@ -1652,11 +1679,6 @@ func (s *Service) DeleteEnvVar(ctx context.Context, agentID, envVarID uuid.UUID)
 // ListConversations returns a page of conversations matching the filter.
 func (s *Service) ListConversations(ctx context.Context, in agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
 	return s.repo.ListConversations(ctx, in, limit)
-}
-
-// ListAgentActivities returns a page of an agent's unified task+doc activity feed.
-func (s *Service) ListAgentActivities(ctx context.Context, in agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error) {
-	return s.repo.ListAgentActivities(ctx, in, limit)
 }
 
 // GetConversation returns a single conversation after verifying project

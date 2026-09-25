@@ -182,7 +182,7 @@ full DDL. Key constraints:
 
 `internal/worker/workflow_consumer.go` (`WorkflowConsumer`) subscribes to the
 same Valkey stream the task-activity pipeline already writes to,
-`paca.task_activities` (`events.StreamTaskActivities`), under its own
+`paca.activities` (`events.StreamActivities`), under its own
 consumer group `api.workflow_engine` — it is a sibling reader, not a special
 case wired into the HTTP handler.
 

@@ -896,6 +896,10 @@
 			"workflowsWrite": {
 				"label": "Gestionar automatización",
 				"description": "Crear, editar, activar y eliminar automatizaciones"
+			},
+			"activitiesRead": {
+				"label": "Ver registro de actividad",
+				"description": "Ver toda la actividad registrada en este proyecto"
 			}
 		},
 		"permissionGroups": {
@@ -2328,6 +2332,129 @@
 		},
 		"conditionTypes": {
 			"jev_condition": "Condición Jev"
+		}
+	},
+	"activityLog": {
+		"title": "Actividad",
+		"subtitle": "Todo lo que ha ocurrido en este proyecto",
+		"today": "Hoy",
+		"yesterday": "Ayer",
+		"deletedEntity": "Este elemento se ha eliminado",
+		"noPermission": {
+			"title": "No puedes ver el registro de actividad",
+			"description": "Pide a un gestor del proyecto el permiso “Ver registro de actividad”."
+		},
+		"empty": {
+			"title": "Aún no hay actividad",
+			"description": "Los cambios en este proyecto aparecerán aquí."
+		},
+		"emptyFiltered": {
+			"title": "No hay actividad que coincida",
+			"description": "Prueba a quitar filtros o cambiar la búsqueda."
+		},
+		"filters": {
+			"title": "Filtros",
+			"searchPlaceholder": "Buscar actividad…",
+			"type": "Tipo",
+			"people": "Personas",
+			"source": "Origen",
+			"dateRange": "Rango de fechas",
+			"dateFrom": "Desde",
+			"dateTo": "Hasta",
+			"clearAll": "Borrar todo"
+		},
+		"entityTypes": {
+			"task": "Tareas",
+			"doc": "Documentos",
+			"sprint": "Sprints",
+			"view": "Vistas",
+			"automation": "Automatizaciones",
+			"environment": "Entornos",
+			"member": "Miembros",
+			"role": "Roles",
+			"agent": "Agentes",
+			"project": "Proyecto"
+		},
+		"origins": {
+			"user": "Usuario",
+			"agent": "Agente",
+			"automation": "Automatización",
+			"jev": "Jev",
+			"annotation": "Anotación",
+			"system": "Sistema"
+		},
+		"detail": {
+			"asRole": "como {{role}}",
+			"roleChange": "{{from}} → {{to}}",
+			"renamedFrom": "antes “{{name}}”",
+			"member": "para {{name}}"
+		},
+		"projectFields": {
+			"name": "Nombre",
+			"description": "Descripción",
+			"task_id_prefix": "Prefijo de ID de tarea",
+			"is_public": "Visibilidad",
+			"settings": "Configuración",
+			"jev_config": "Configuración de Jev"
+		},
+		"types": {
+			"sprint_created": "creó el sprint",
+			"sprint_updated": "actualizó el sprint",
+			"sprint_deleted": "eliminó el sprint",
+			"sprint_completed": "completó el sprint",
+			"view_created": "creó la vista",
+			"view_updated": "actualizó la vista",
+			"view_deleted": "eliminó la vista",
+			"automation_created": "creó la automatización",
+			"automation_updated": "actualizó la automatización",
+			"automation_deleted": "eliminó la automatización",
+			"automation_activated": "activó la automatización",
+			"automation_deactivated": "desactivó la automatización",
+			"automation_node_added": "añadió un paso a",
+			"automation_node_removed": "quitó un paso de",
+			"automation_edge_added": "conectó pasos en",
+			"automation_edge_removed": "desconectó pasos en",
+			"environment_created": "creó el entorno",
+			"environment_updated": "actualizó el entorno",
+			"environment_deleted": "eliminó el entorno",
+			"environment_started": "inició el entorno",
+			"environment_stopped": "detuvo el entorno",
+			"environment_restarted": "reinició el entorno",
+			"environment_ssh_key_added": "añadió la clave SSH “{{label}}” a",
+			"environment_ssh_key_removed": "quitó la clave SSH “{{label}}” de",
+			"environment_access_granted": "concedió acceso a",
+			"environment_access_revoked": "revocó el acceso a",
+			"environment_port_forward_added": "reenvió el puerto {{port}} en",
+			"environment_port_forward_removed": "dejó de reenviar el puerto {{port}} en",
+			"annotation_created": "añadió una anotación en",
+			"annotation_resolved": "resolvió una anotación en",
+			"annotation_reopened": "reabrió una anotación en",
+			"annotation_commented": "respondió a una anotación en",
+			"member_added": "añadió al miembro",
+			"member_role_changed": "cambió el rol de",
+			"member_updated": "actualizó al miembro",
+			"member_removed": "eliminó al miembro",
+			"role_created": "creó el rol",
+			"role_updated": "actualizó el rol",
+			"role_deleted": "eliminó el rol",
+			"project_updated": "actualizó la configuración de",
+			"project_task_type_created": "creó el tipo de tarea “{{name}}” en",
+			"project_task_type_updated": "actualizó el tipo de tarea “{{name}}” en",
+			"project_task_type_deleted": "eliminó el tipo de tarea “{{name}}” en",
+			"project_task_type_default_set": "estableció “{{name}}” como tipo de tarea predeterminado en",
+			"project_task_status_created": "creó el estado “{{name}}” en",
+			"project_task_status_updated": "actualizó el estado “{{name}}” en",
+			"project_task_status_deleted": "eliminó el estado “{{name}}” en",
+			"project_task_status_default_set": "estableció “{{name}}” como estado predeterminado en",
+			"project_task_status_reordered": "reordenó los estados en",
+			"project_custom_field_created": "creó el campo “{{name}}” en",
+			"project_custom_field_updated": "actualizó el campo “{{name}}” en",
+			"project_custom_field_deleted": "eliminó el campo “{{name}}” en",
+			"project_agent_created": "añadió el agente",
+			"project_agent_updated": "actualizó el agente",
+			"project_agent_deleted": "quitó el agente",
+			"comment": "comentó en",
+			"fallback": "realizó {{type}} en"
 		}
 	}
 }

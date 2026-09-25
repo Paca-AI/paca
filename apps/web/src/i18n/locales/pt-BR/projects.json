@@ -896,6 +896,10 @@
 			"workflowsWrite": {
 				"label": "Gerenciar automação",
 				"description": "Criar, editar, ativar e excluir automações"
+			},
+			"activitiesRead": {
+				"label": "Ver registro de atividades",
+				"description": "Ver todas as atividades registradas neste projeto"
 			}
 		},
 		"permissionGroups": {
@@ -2328,6 +2332,129 @@
 		},
 		"conditionTypes": {
 			"jev_condition": "Condição Jev"
+		}
+	},
+	"activityLog": {
+		"title": "Atividade",
+		"subtitle": "Tudo o que aconteceu neste projeto",
+		"today": "Hoje",
+		"yesterday": "Ontem",
+		"deletedEntity": "Este item foi excluído",
+		"noPermission": {
+			"title": "Você não pode ver o registro de atividades",
+			"description": "Peça a um gerente do projeto a permissão “Ver registro de atividades”."
+		},
+		"empty": {
+			"title": "Nenhuma atividade ainda",
+			"description": "As alterações neste projeto aparecerão aqui."
+		},
+		"emptyFiltered": {
+			"title": "Nenhuma atividade correspondente",
+			"description": "Tente remover alguns filtros ou mudar a busca."
+		},
+		"filters": {
+			"title": "Filtros",
+			"searchPlaceholder": "Buscar atividade…",
+			"type": "Tipo",
+			"people": "Pessoas",
+			"source": "Origem",
+			"dateRange": "Período",
+			"dateFrom": "De",
+			"dateTo": "Até",
+			"clearAll": "Limpar tudo"
+		},
+		"entityTypes": {
+			"task": "Tarefas",
+			"doc": "Documentos",
+			"sprint": "Sprints",
+			"view": "Visualizações",
+			"automation": "Automações",
+			"environment": "Ambientes",
+			"member": "Membros",
+			"role": "Funções",
+			"agent": "Agentes",
+			"project": "Projeto"
+		},
+		"origins": {
+			"user": "Usuário",
+			"agent": "Agente",
+			"automation": "Automação",
+			"jev": "Jev",
+			"annotation": "Anotação",
+			"system": "Sistema"
+		},
+		"detail": {
+			"asRole": "como {{role}}",
+			"roleChange": "{{from}} → {{to}}",
+			"renamedFrom": "antes “{{name}}”",
+			"member": "para {{name}}"
+		},
+		"projectFields": {
+			"name": "Nome",
+			"description": "Descrição",
+			"task_id_prefix": "Prefixo do ID de tarefa",
+			"is_public": "Visibilidade",
+			"settings": "Configurações",
+			"jev_config": "Configuração do Jev"
+		},
+		"types": {
+			"sprint_created": "criou o sprint",
+			"sprint_updated": "atualizou o sprint",
+			"sprint_deleted": "excluiu o sprint",
+			"sprint_completed": "concluiu o sprint",
+			"view_created": "criou a visualização",
+			"view_updated": "atualizou a visualização",
+			"view_deleted": "excluiu a visualização",
+			"automation_created": "criou a automação",
+			"automation_updated": "atualizou a automação",
+			"automation_deleted": "excluiu a automação",
+			"automation_activated": "ativou a automação",
+			"automation_deactivated": "desativou a automação",
+			"automation_node_added": "adicionou uma etapa a",
+			"automation_node_removed": "removeu uma etapa de",
+			"automation_edge_added": "conectou etapas em",
+			"automation_edge_removed": "desconectou etapas em",
+			"environment_created": "criou o ambiente",
+			"environment_updated": "atualizou o ambiente",
+			"environment_deleted": "excluiu o ambiente",
+			"environment_started": "iniciou o ambiente",
+			"environment_stopped": "parou o ambiente",
+			"environment_restarted": "reiniciou o ambiente",
+			"environment_ssh_key_added": "adicionou a chave SSH “{{label}}” a",
+			"environment_ssh_key_removed": "removeu a chave SSH “{{label}}” de",
+			"environment_access_granted": "concedeu acesso a",
+			"environment_access_revoked": "revogou o acesso a",
+			"environment_port_forward_added": "encaminhou a porta {{port}} em",
+			"environment_port_forward_removed": "parou de encaminhar a porta {{port}} em",
+			"annotation_created": "adicionou uma anotação em",
+			"annotation_resolved": "resolveu uma anotação em",
+			"annotation_reopened": "reabriu uma anotação em",
+			"annotation_commented": "respondeu a uma anotação em",
+			"member_added": "adicionou o membro",
+			"member_role_changed": "alterou a função de",
+			"member_updated": "atualizou o membro",
+			"member_removed": "removeu o membro",
+			"role_created": "criou a função",
+			"role_updated": "atualizou a função",
+			"role_deleted": "excluiu a função",
+			"project_updated": "atualizou as configurações de",
+			"project_task_type_created": "criou o tipo de tarefa “{{name}}” em",
+			"project_task_type_updated": "atualizou o tipo de tarefa “{{name}}” em",
+			"project_task_type_deleted": "excluiu o tipo de tarefa “{{name}}” em",
+			"project_task_type_default_set": "definiu “{{name}}” como tipo de tarefa padrão em",
+			"project_task_status_created": "criou o status “{{name}}” em",
+			"project_task_status_updated": "atualizou o status “{{name}}” em",
+			"project_task_status_deleted": "excluiu o status “{{name}}” em",
+			"project_task_status_default_set": "definiu “{{name}}” como status padrão em",
+			"project_task_status_reordered": "reordenou os status em",
+			"project_custom_field_created": "criou o campo “{{name}}” em",
+			"project_custom_field_updated": "atualizou o campo “{{name}}” em",
+			"project_custom_field_deleted": "excluiu o campo “{{name}}” em",
+			"project_agent_created": "adicionou o agente",
+			"project_agent_updated": "atualizou o agente",
+			"project_agent_deleted": "removeu o agente",
+			"comment": "comentou em",
+			"fallback": "realizou {{type}} em"
 		}
 	}
 }

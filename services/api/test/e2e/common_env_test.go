@@ -38,6 +38,7 @@ import (
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	redisRepo "github.com/Paca-AI/api/internal/repository/redis"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	agentsvc "github.com/Paca-AI/api/internal/service/agent"
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
@@ -215,7 +216,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	projectService := projectsvc.New(projectRepo, taskRepo, agentRepo)
 	taskService := tasksvc.New(taskRepo)
 	// A real (non-nil) publisher is required so that task.updated activity
-	// events actually reach StreamTaskActivities — otherwise a per-test
+	// events actually reach StreamActivities — otherwise a per-test
 	// worker.AutomationConsumer would never observe task status changes made
 	// through the HTTP API. Declared before sprintService below for the same
 	// reason: a sprint reaching sprint_started/etc. must durably reach
@@ -232,8 +233,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	attachmentRepo := pgRepo.NewAttachmentRepository(db)
 	apiKeyRepo := pgRepo.NewAPIKeyRepository(db)
 	apiKeyService := apikeysvc.New(apiKeyRepo)
-	activityRepo := pgRepo.NewTaskActivityRepository(db)
-	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, projectRepo, publisher)
+	activityLog := activitysvc.New(pgRepo.NewActivityRepository(db), projectRepo, activitysvc.NewRecorder(publisher))
+	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo)
 	automationRepo := pgRepo.NewAutomationRepository(db)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	pluginRepoForAgent := pgRepo.NewPluginRepository(db)
@@ -292,7 +293,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		Attachment:   handler.NewAttachmentHandler(attachmentService),
 		APIKey:       handler.NewAPIKeyHandler(apiKeyService),
 		Automation:   handler.NewAutomationHandler(automationService),
-		Agent:        handler.NewAgentHandler(agentService, "", "", "").WithMemberRepo(projectRepo),
+		Agent:        handler.NewAgentHandler(agentService, "", "", "").WithMemberRepo(projectRepo).WithActivityLister(activityLog),
 		Conversation: handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo),
 		Log:          log,
 	})

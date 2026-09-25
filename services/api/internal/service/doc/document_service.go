@@ -9,7 +9,13 @@ import (
 	"github.com/google/uuid"
 
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 )
+
+// memberLookup resolves an actor to their project membership.
+type memberLookup interface {
+	FindMemberByActor(ctx context.Context, projectID, actorID uuid.UUID, agentID *uuid.UUID) (*projectdom.ProjectMember, error)
+}
 
 // Service is the concrete implementation of docdom.Service.
 type Service struct {

@@ -10,9 +10,11 @@ import (
 
 	"github.com/google/uuid"
 
+	activitydom "github.com/Paca-AI/api/internal/domain/activity"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 )
 
@@ -20,60 +22,52 @@ import (
 // Fakes
 // ---------------------------------------------------------------------------
 
-// fakeCommentActivityRepo is a minimal in-memory docdom.ActivityRepository
-// that also serves as the documentLookup ActivitySvc uses to verify a
-// document belongs to the caller's authorized project.
+// fakeCommentActivityRepo holds the docs ActivitySvc checks project
+// ownership against, plus the shared in-memory activity log behind it.
 type fakeCommentActivityRepo struct {
-	activities map[uuid.UUID]*docdom.Activity
-	docs       map[uuid.UUID]*docdom.Document
+	docs map[uuid.UUID]*docdom.Document
+	log  *activitysvc.MemoryRepository
 }
 
 func newFakeCommentActivityRepo() *fakeCommentActivityRepo {
 	return &fakeCommentActivityRepo{
-		activities: make(map[uuid.UUID]*docdom.Activity),
-		docs:       make(map[uuid.UUID]*docdom.Document),
+		docs: make(map[uuid.UUID]*docdom.Document),
+		log:  activitysvc.NewMemoryRepository(),
 	}
 }
 
 func (r *fakeCommentActivityRepo) FindDocumentByID(_ context.Context, id uuid.UUID) (*docdom.Document, error) {
-	d, ok := r.docs[id]
+	e, ok := r.docs[id]
 	if !ok {
 		return nil, docdom.ErrDocNotFound
 	}
-	return d, nil
+	return e, nil
 }
 
-func (r *fakeCommentActivityRepo) ListActivities(_ context.Context, documentID uuid.UUID) ([]*docdom.Activity, error) {
-	var out []*docdom.Activity
-	for _, a := range r.activities {
-		if a.DocumentID == documentID {
-			out = append(out, a)
-		}
-	}
-	return out, nil
+// seed stores a in the activity log, under its doc's project.
+func (r *fakeCommentActivityRepo) seed(a *docdom.Activity) {
+	entityID := a.DocumentID
+	_ = r.log.Create(context.Background(), &activitydom.Activity{
+		ID:           a.ID,
+		ProjectID:    r.docs[entityID].ProjectID,
+		EntityType:   "doc",
+		EntityID:     &entityID,
+		ActorID:      a.ActorID,
+		ActivityType: string(a.ActivityType),
+		Content:      a.Content,
+	})
 }
 
-func (r *fakeCommentActivityRepo) FindActivityByID(_ context.Context, id uuid.UUID) (*docdom.Activity, error) {
-	a, ok := r.activities[id]
-	if !ok {
-		return nil, docdom.ErrActivityNotFound
-	}
-	return a, nil
+// count returns how many entries the activity log holds for the project.
+func (r *fakeCommentActivityRepo) count(projectID uuid.UUID) int {
+	items, _, _ := r.log.List(context.Background(), activitydom.ListFilter{ProjectID: projectID}, 1000)
+	return len(items)
 }
 
-func (r *fakeCommentActivityRepo) CreateActivity(_ context.Context, a *docdom.Activity) error {
-	r.activities[a.ID] = a
-	return nil
-}
-
-func (r *fakeCommentActivityRepo) UpdateActivity(_ context.Context, a *docdom.Activity) error {
-	r.activities[a.ID] = a
-	return nil
-}
-
-func (r *fakeCommentActivityRepo) DeleteActivity(_ context.Context, id uuid.UUID) error {
-	delete(r.activities, id)
-	return nil
+// find returns one entry from the activity log.
+func (r *fakeCommentActivityRepo) find(id uuid.UUID) *activitydom.Activity {
+	a, _ := r.log.FindByID(context.Background(), id)
+	return a
 }
 
 // fakeCommentMemberRepo mirrors production FindMemberByActor semantics
@@ -113,7 +107,7 @@ func TestActivitySvc_AddComment_UnidentifiedSystemActor_ReturnsClearError(t *tes
 	projectID := uuid.New()
 	repo.docs[documentID] = &docdom.Document{ID: documentID, ProjectID: projectID}
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
-	svc := docsvc.NewActivityService(repo, repo, memberRepo, nil)
+	svc := docsvc.NewActivityService(activitysvc.New(repo.log, memberRepo, nil), repo)
 
 	_, err := svc.AddComment(context.Background(), docdom.AddCommentInput{
 		DocumentID: documentID,
@@ -137,7 +131,7 @@ func TestActivitySvc_AddComment_GenuineNonMember_ReturnsMemberNotFound(t *testin
 	projectID := uuid.New()
 	repo.docs[documentID] = &docdom.Document{ID: documentID, ProjectID: projectID}
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
-	svc := docsvc.NewActivityService(repo, repo, memberRepo, nil)
+	svc := docsvc.NewActivityService(activitysvc.New(repo.log, memberRepo, nil), repo)
 
 	realUserID := uuid.New() // a real human, just not a member of this project
 
@@ -167,7 +161,7 @@ func TestActivitySvc_AddComment_ResolvedMember_Succeeds(t *testing.T) {
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{
 		actorID: {ID: memberID, MemberType: "human"},
 	}}
-	svc := docsvc.NewActivityService(repo, repo, memberRepo, nil)
+	svc := docsvc.NewActivityService(activitysvc.New(repo.log, memberRepo, nil), repo)
 
 	a, err := svc.AddComment(context.Background(), docdom.AddCommentInput{
 		DocumentID: documentID,
@@ -194,15 +188,15 @@ func TestActivitySvc_UpdateComment_UnidentifiedSystemActor_ReturnsClearError(t *
 	projectID := uuid.New()
 	existingAuthor := uuid.New()
 	repo.docs[documentID] = &docdom.Document{ID: documentID, ProjectID: projectID}
-	repo.activities[commentID] = &docdom.Activity{
+	repo.seed(&docdom.Activity{
 		ID:           commentID,
 		DocumentID:   documentID,
 		ActivityType: docdom.ActivityTypeComment,
 		ActorID:      &existingAuthor,
 		Content:      validCommentContent(),
-	}
+	})
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
-	svc := docsvc.NewActivityService(repo, repo, memberRepo, nil)
+	svc := docsvc.NewActivityService(activitysvc.New(repo.log, memberRepo, nil), repo)
 
 	_, err := svc.UpdateComment(context.Background(), commentID, projectID, userdom.SystemActorUserID, nil, validCommentContent())
 
@@ -218,15 +212,15 @@ func TestActivitySvc_DeleteComment_UnidentifiedSystemActor_ReturnsClearError(t *
 	projectID := uuid.New()
 	existingAuthor := uuid.New()
 	repo.docs[documentID] = &docdom.Document{ID: documentID, ProjectID: projectID}
-	repo.activities[commentID] = &docdom.Activity{
+	repo.seed(&docdom.Activity{
 		ID:           commentID,
 		DocumentID:   documentID,
 		ActivityType: docdom.ActivityTypeComment,
 		ActorID:      &existingAuthor,
 		Content:      validCommentContent(),
-	}
+	})
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
-	svc := docsvc.NewActivityService(repo, repo, memberRepo, nil)
+	svc := docsvc.NewActivityService(activitysvc.New(repo.log, memberRepo, nil), repo)
 
 	err := svc.DeleteComment(context.Background(), commentID, projectID, userdom.SystemActorUserID, nil)
 
@@ -250,8 +244,9 @@ func TestActivitySvc_ListActivities_WrongProject_ReturnsNotFound(t *testing.T) {
 	ownerProjectID := uuid.New()
 	attackerProjectID := uuid.New()
 	repo.docs[documentID] = &docdom.Document{ID: documentID, ProjectID: ownerProjectID}
-	repo.activities[uuid.New()] = &docdom.Activity{ID: uuid.New(), DocumentID: documentID, ActivityType: docdom.ActivityTypeDocCreated}
-	svc := docsvc.NewActivityService(repo, repo, &fakeCommentMemberRepo{}, nil)
+	repo.seed(&docdom.Activity{ID: uuid.New(), DocumentID: documentID, ActivityType: docdom.ActivityTypeDocCreated})
+	memberRepo := &fakeCommentMemberRepo{}
+	svc := docsvc.NewActivityService(activitysvc.New(repo.log, memberRepo, nil), repo)
 
 	_, err := svc.ListActivities(context.Background(), attackerProjectID, documentID)
 	if !errors.Is(err, docdom.ErrDocNotFound) {
@@ -269,7 +264,7 @@ func TestActivitySvc_AddComment_WrongProject_ReturnsNotFound(t *testing.T) {
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{
 		actorID: {ID: uuid.New(), MemberType: "human"},
 	}}
-	svc := docsvc.NewActivityService(repo, repo, memberRepo, nil)
+	svc := docsvc.NewActivityService(activitysvc.New(repo.log, memberRepo, nil), repo)
 
 	// actorID is a legitimate member of attackerProjectID, but documentID
 	// belongs to a different project — the comment must be rejected even
@@ -283,8 +278,8 @@ func TestActivitySvc_AddComment_WrongProject_ReturnsNotFound(t *testing.T) {
 	if !errors.Is(err, docdom.ErrDocNotFound) {
 		t.Fatalf("expected ErrDocNotFound for cross-project AddComment, got %v", err)
 	}
-	if len(repo.activities) != 0 {
-		t.Errorf("no comment should have been persisted, found %d activities", len(repo.activities))
+	if repo.count(attackerProjectID) != 0 {
+		t.Errorf("no comment should have been persisted, found %d activities", repo.count(attackerProjectID))
 	}
 }
 
@@ -296,17 +291,17 @@ func TestActivitySvc_UpdateComment_WrongProject_ReturnsNotFound(t *testing.T) {
 	attackerProjectID := uuid.New()
 	author := uuid.New()
 	repo.docs[documentID] = &docdom.Document{ID: documentID, ProjectID: ownerProjectID}
-	repo.activities[commentID] = &docdom.Activity{
+	repo.seed(&docdom.Activity{
 		ID:           commentID,
 		DocumentID:   documentID,
 		ActivityType: docdom.ActivityTypeComment,
 		ActorID:      &author,
 		Content:      validCommentContent(),
-	}
+	})
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{
 		author: {ID: author, MemberType: "human"},
 	}}
-	svc := docsvc.NewActivityService(repo, repo, memberRepo, nil)
+	svc := docsvc.NewActivityService(activitysvc.New(repo.log, memberRepo, nil), repo)
 
 	_, err := svc.UpdateComment(context.Background(), commentID, attackerProjectID, author, nil, validCommentContent())
 	if !errors.Is(err, docdom.ErrActivityNotFound) {
@@ -322,23 +317,23 @@ func TestActivitySvc_DeleteComment_WrongProject_ReturnsNotFound(t *testing.T) {
 	attackerProjectID := uuid.New()
 	author := uuid.New()
 	repo.docs[documentID] = &docdom.Document{ID: documentID, ProjectID: ownerProjectID}
-	repo.activities[commentID] = &docdom.Activity{
+	repo.seed(&docdom.Activity{
 		ID:           commentID,
 		DocumentID:   documentID,
 		ActivityType: docdom.ActivityTypeComment,
 		ActorID:      &author,
 		Content:      validCommentContent(),
-	}
+	})
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{
 		author: {ID: author, MemberType: "human"},
 	}}
-	svc := docsvc.NewActivityService(repo, repo, memberRepo, nil)
+	svc := docsvc.NewActivityService(activitysvc.New(repo.log, memberRepo, nil), repo)
 
 	err := svc.DeleteComment(context.Background(), commentID, attackerProjectID, author, nil)
 	if !errors.Is(err, docdom.ErrActivityNotFound) {
 		t.Fatalf("expected ErrActivityNotFound for cross-project DeleteComment, got %v", err)
 	}
-	if repo.activities[commentID].DeletedAt != nil {
+	if repo.find(commentID).DeletedAt != nil {
 		t.Error("comment must not be deleted by a cross-project request")
 	}
 }

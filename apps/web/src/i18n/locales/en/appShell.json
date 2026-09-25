@@ -29,7 +29,8 @@
 		"automation": "Automation",
 		"team": "Team",
 		"settings": "Settings",
-		"changelog": "What's New"
+		"changelog": "What's New",
+		"activity": "Activity"
 	},
 	"projectSwitcher": {
 		"projects": "Projects",

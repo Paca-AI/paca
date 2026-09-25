@@ -896,6 +896,10 @@
 			"workflowsWrite": {
 				"label": "Quản lý tự động hóa",
 				"description": "Tạo, chỉnh sửa, kích hoạt và xóa tự động hóa"
+			},
+			"activitiesRead": {
+				"label": "Xem nhật ký hoạt động",
+				"description": "Xem mọi hoạt động được ghi lại trong dự án này"
 			}
 		},
 		"permissionGroups": {
@@ -2328,6 +2332,129 @@
 		},
 		"conditionTypes": {
 			"jev_condition": "Điều kiện Jev"
+		}
+	},
+	"activityLog": {
+		"title": "Hoạt động",
+		"subtitle": "Mọi thứ đã diễn ra trong dự án này",
+		"today": "Hôm nay",
+		"yesterday": "Hôm qua",
+		"deletedEntity": "Mục này đã bị xóa",
+		"noPermission": {
+			"title": "Bạn không thể xem nhật ký hoạt động",
+			"description": "Hãy đề nghị quản lý dự án cấp quyền “Xem nhật ký hoạt động”."
+		},
+		"empty": {
+			"title": "Chưa có hoạt động nào",
+			"description": "Các thay đổi trong dự án này sẽ hiển thị ở đây."
+		},
+		"emptyFiltered": {
+			"title": "Không có hoạt động phù hợp",
+			"description": "Hãy thử bỏ bớt bộ lọc hoặc đổi từ khóa tìm kiếm."
+		},
+		"filters": {
+			"title": "Bộ lọc",
+			"searchPlaceholder": "Tìm hoạt động…",
+			"type": "Loại",
+			"people": "Thành viên",
+			"source": "Nguồn",
+			"dateRange": "Khoảng thời gian",
+			"dateFrom": "Từ",
+			"dateTo": "Đến",
+			"clearAll": "Xóa tất cả"
+		},
+		"entityTypes": {
+			"task": "Công việc",
+			"doc": "Tài liệu",
+			"sprint": "Sprint",
+			"view": "Chế độ xem",
+			"automation": "Tự động hóa",
+			"environment": "Môi trường",
+			"member": "Thành viên",
+			"role": "Vai trò",
+			"agent": "Agent",
+			"project": "Dự án"
+		},
+		"origins": {
+			"user": "Người dùng",
+			"agent": "Agent",
+			"automation": "Tự động hóa",
+			"jev": "Jev",
+			"annotation": "Chú thích",
+			"system": "Hệ thống"
+		},
+		"detail": {
+			"asRole": "với vai trò {{role}}",
+			"roleChange": "{{from}} → {{to}}",
+			"renamedFrom": "tên cũ “{{name}}”",
+			"member": "cho {{name}}"
+		},
+		"projectFields": {
+			"name": "Tên",
+			"description": "Mô tả",
+			"task_id_prefix": "Tiền tố ID công việc",
+			"is_public": "Chế độ hiển thị",
+			"settings": "Cài đặt",
+			"jev_config": "Cấu hình Jev"
+		},
+		"types": {
+			"sprint_created": "đã tạo sprint",
+			"sprint_updated": "đã cập nhật sprint",
+			"sprint_deleted": "đã xóa sprint",
+			"sprint_completed": "đã hoàn thành sprint",
+			"view_created": "đã tạo chế độ xem",
+			"view_updated": "đã cập nhật chế độ xem",
+			"view_deleted": "đã xóa chế độ xem",
+			"automation_created": "đã tạo tự động hóa",
+			"automation_updated": "đã cập nhật tự động hóa",
+			"automation_deleted": "đã xóa tự động hóa",
+			"automation_activated": "đã bật tự động hóa",
+			"automation_deactivated": "đã tắt tự động hóa",
+			"automation_node_added": "đã thêm một bước vào",
+			"automation_node_removed": "đã gỡ một bước khỏi",
+			"automation_edge_added": "đã nối các bước trong",
+			"automation_edge_removed": "đã ngắt các bước trong",
+			"environment_created": "đã tạo môi trường",
+			"environment_updated": "đã cập nhật môi trường",
+			"environment_deleted": "đã xóa môi trường",
+			"environment_started": "đã khởi động môi trường",
+			"environment_stopped": "đã dừng môi trường",
+			"environment_restarted": "đã khởi động lại môi trường",
+			"environment_ssh_key_added": "đã thêm khóa SSH “{{label}}” vào",
+			"environment_ssh_key_removed": "đã gỡ khóa SSH “{{label}}” khỏi",
+			"environment_access_granted": "đã cấp quyền truy cập",
+			"environment_access_revoked": "đã thu hồi quyền truy cập",
+			"environment_port_forward_added": "đã chuyển tiếp cổng {{port}} trên",
+			"environment_port_forward_removed": "đã ngừng chuyển tiếp cổng {{port}} trên",
+			"annotation_created": "đã thêm chú thích trên",
+			"annotation_resolved": "đã giải quyết chú thích trên",
+			"annotation_reopened": "đã mở lại chú thích trên",
+			"annotation_commented": "đã trả lời chú thích trên",
+			"member_added": "đã thêm thành viên",
+			"member_role_changed": "đã đổi vai trò của",
+			"member_updated": "đã cập nhật thành viên",
+			"member_removed": "đã xóa thành viên",
+			"role_created": "đã tạo vai trò",
+			"role_updated": "đã cập nhật vai trò",
+			"role_deleted": "đã xóa vai trò",
+			"project_updated": "đã cập nhật cài đặt của",
+			"project_task_type_created": "đã tạo loại công việc “{{name}}” trong",
+			"project_task_type_updated": "đã cập nhật loại công việc “{{name}}” trong",
+			"project_task_type_deleted": "đã xóa loại công việc “{{name}}” trong",
+			"project_task_type_default_set": "đã đặt “{{name}}” làm loại công việc mặc định trong",
+			"project_task_status_created": "đã tạo trạng thái “{{name}}” trong",
+			"project_task_status_updated": "đã cập nhật trạng thái “{{name}}” trong",
+			"project_task_status_deleted": "đã xóa trạng thái “{{name}}” trong",
+			"project_task_status_default_set": "đã đặt “{{name}}” làm trạng thái mặc định trong",
+			"project_task_status_reordered": "đã sắp xếp lại trạng thái trong",
+			"project_custom_field_created": "đã tạo trường “{{name}}” trong",
+			"project_custom_field_updated": "đã cập nhật trường “{{name}}” trong",
+			"project_custom_field_deleted": "đã xóa trường “{{name}}” trong",
+			"project_agent_created": "đã thêm agent",
+			"project_agent_updated": "đã cập nhật agent",
+			"project_agent_deleted": "đã gỡ agent",
+			"comment": "đã bình luận về",
+			"fallback": "đã thực hiện {{type}} trên"
 		}
 	}
 }

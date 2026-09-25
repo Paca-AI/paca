@@ -52,7 +52,7 @@ type projectMemberLister interface {
 }
 
 // TaskAutoAssignConsumer reads task.created and task.updated events off
-// StreamTaskActivities (a third independent consumer group on the same
+// StreamActivities (a third independent consumer group on the same
 // stream TaskAutofillConsumer and AutomationConsumer already read — Valkey
 // Streams supports this natively) and, if Jev is configured and the
 // project has auto-assign enabled, asks Jev to pick an assignee for any
@@ -162,7 +162,7 @@ func (c *TaskAutoAssignConsumer) Start(ctx context.Context) {
 }
 
 func (c *TaskAutoAssignConsumer) ensureGroup(ctx context.Context, startID string) error {
-	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskActivities, c.groupName, startID).Err()
+	err := c.client.XGroupCreateMkStream(ctx, events.StreamActivities, c.groupName, startID).Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		return err
 	}
@@ -177,7 +177,7 @@ func (c *TaskAutoAssignConsumer) Stop() {
 
 func (c *TaskAutoAssignConsumer) run() {
 	defer close(c.doneCh)
-	c.log.Info("task auto-assign consumer: started", "stream", events.StreamTaskActivities)
+	c.log.Info("task auto-assign consumer: started", "stream", events.StreamActivities)
 
 	c.processPending(context.Background())
 
@@ -193,7 +193,7 @@ func (c *TaskAutoAssignConsumer) run() {
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    c.groupName,
 			Consumer: c.consumerName,
-			Streams:  []string{events.StreamTaskActivities, ">"},
+			Streams:  []string{events.StreamActivities, ">"},
 			Count:    taskAutoAssignReadCount,
 			Block:    taskAutoAssignReadBlock,
 		}).Result()
@@ -230,7 +230,7 @@ func (c *TaskAutoAssignConsumer) processPending(ctx context.Context) {
 	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    c.groupName,
 		Consumer: c.consumerName,
-		Streams:  []string{events.StreamTaskActivities, "0"},
+		Streams:  []string{events.StreamActivities, "0"},
 		Count:    taskAutoAssignReadCount,
 	}).Result()
 	if err != nil && err != redis.Nil {
@@ -245,13 +245,18 @@ func (c *TaskAutoAssignConsumer) processPending(ctx context.Context) {
 }
 
 func (c *TaskAutoAssignConsumer) ack(ctx context.Context, id string) {
-	if err := c.client.XAck(ctx, events.StreamTaskActivities, c.groupName, id).Err(); err != nil {
+	if err := c.client.XAck(ctx, events.StreamActivities, c.groupName, id).Err(); err != nil {
 		c.log.Warn("task auto-assign consumer: xack failed", "id", id, "err", err)
 	}
 }
 
 func (c *TaskAutoAssignConsumer) handle(msg redis.XMessage) {
 	ctx := context.Background()
+
+	if !isTaskEntry(msg) {
+		c.ack(ctx, msg.ID)
+		return
+	}
 
 	raw, ok := msg.Values["payload"].(string)
 	if !ok {

@@ -12,6 +12,7 @@ import (
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 )
 
 // Service is the concrete implementation of sprintdom.SprintService.
@@ -19,25 +20,30 @@ type Service struct {
 	repo      sprintdom.SprintRepository
 	taskRepo  taskdom.TaskRepository
 	publisher *messaging.Publisher
+	activity  activitysvc.Recorder
 }
 
 // New returns a configured sprint service. publisher may be nil; real-time
 // events are then skipped silently.
 func New(repo sprintdom.SprintRepository, taskRepo taskdom.TaskRepository, publisher *messaging.Publisher) *Service {
-	return &Service{repo: repo, taskRepo: taskRepo, publisher: publisher}
+	return &Service{repo: repo, taskRepo: taskRepo, publisher: publisher, activity: activitysvc.NewRecorder(publisher)}
 }
 
-// publish sends a real-time pub/sub notification for a sprint change.
-// Errors are silently swallowed so a messaging failure never blocks the
-// primary HTTP response — this is how the frontend now learns to refresh
-// its sprint list/detail instead of polling on an interval.
-func (s *Service) publish(ctx context.Context, topic string, payload map[string]any) {
-	if s.publisher == nil {
-		return
-	}
-	_ = s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
-		"type":    topic,
-		"payload": payload,
+// record fans a sprint change out to realtime and the activity log. The
+// payload keeps the project_id/sprint_id realtime clients key on, plus the
+// name and status so a deleted sprint's entry still reads correctly.
+func (s *Service) record(ctx context.Context, topic string, sp *sprintdom.Sprint) {
+	s.activity.Record(ctx, activitysvc.Entry{
+		ProjectID:  sp.ProjectID,
+		EntityType: events.EntitySprint,
+		EntityID:   sp.ID,
+		Topic:      topic,
+		Payload: map[string]any{
+			"project_id": sp.ProjectID.String(),
+			"sprint_id":  sp.ID.String(),
+			"name":       sp.Name,
+			"status":     string(sp.Status),
+		},
 	})
 }
 
@@ -126,10 +132,7 @@ func (s *Service) CreateSprint(ctx context.Context, in sprintdom.CreateSprintInp
 	if err := s.repo.CreateSprint(ctx, sp); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicSprintCreated, map[string]any{
-		"project_id": sp.ProjectID.String(),
-		"sprint_id":  sp.ID.String(),
-	})
+	s.record(ctx, events.TopicSprintCreated, sp)
 	s.publishSprintActivity(ctx, "sprint_created", sp)
 	return sp, nil
 }
@@ -173,10 +176,7 @@ func (s *Service) UpdateSprint(ctx context.Context, projectID, id uuid.UUID, in 
 	if err := s.repo.UpdateSprint(ctx, sp); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicSprintUpdated, map[string]any{
-		"project_id": sp.ProjectID.String(),
-		"sprint_id":  sp.ID.String(),
-	})
+	s.record(ctx, events.TopicSprintUpdated, sp)
 	if sp.Status == sprintdom.SprintStatusActive && !wasActive {
 		s.publishSprintActivity(ctx, "sprint_started", sp)
 	}
@@ -195,10 +195,7 @@ func (s *Service) DeleteSprint(ctx context.Context, projectID, id uuid.UUID) err
 	if err := s.repo.DeleteSprint(ctx, id); err != nil {
 		return err
 	}
-	s.publish(ctx, events.TopicSprintDeleted, map[string]any{
-		"project_id": sp.ProjectID.String(),
-		"sprint_id":  sp.ID.String(),
-	})
+	s.record(ctx, events.TopicSprintDeleted, sp)
 	s.publishSprintActivity(ctx, "sprint_deleted", sp)
 	return nil
 }
@@ -238,10 +235,7 @@ func (s *Service) CompleteSprint(ctx context.Context, projectID, id uuid.UUID, i
 	if err := s.repo.UpdateSprint(ctx, sp); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicSprintCompleted, map[string]any{
-		"project_id": sp.ProjectID.String(),
-		"sprint_id":  sp.ID.String(),
-	})
+	s.record(ctx, events.TopicSprintCompleted, sp)
 	s.publishSprintActivity(ctx, "sprint_completed", sp)
 	return sp, nil
 }

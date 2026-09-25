@@ -1283,7 +1283,7 @@ export interface ListConversationsOptions {
 }
 
 /** Start of the local calendar day `dateStr` ("YYYY-MM-DD"), as a UTC instant. */
-function localDateStartISO(dateStr: string): string {
+export function localDateStartISO(dateStr: string): string {
 	const [y, m, d] = dateStr.split("-").map(Number);
 	return new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
 }
@@ -1294,7 +1294,7 @@ function localDateStartISO(dateStr: string): string {
  * date) means a range picked in the user's local timezone covers the same
  * wall-clock day server-side, instead of being reinterpreted as a UTC day.
  */
-function localDateExclusiveEndISO(dateStr: string): string {
+export function localDateExclusiveEndISO(dateStr: string): string {
 	const [y, m, d] = dateStr.split("-").map(Number);
 	return new Date(y, m - 1, d + 1, 0, 0, 0, 0).toISOString();
 }

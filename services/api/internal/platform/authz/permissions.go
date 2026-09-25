@@ -31,6 +31,11 @@ const (
 	PermissionProjectRolesWrite Permission = "project.roles.write"
 	PermissionProjectRolesAll   Permission = "project.roles.*"
 
+	// PermissionProjectActivitiesRead gates the project-wide activity log —
+	// every change to every entity in the project, by anyone. A separate
+	// grant from the per-entity reads because it spans all of them.
+	PermissionProjectActivitiesRead Permission = "project.activities.read"
+
 	PermissionTasksRead  Permission = "tasks.read"
 	PermissionTasksWrite Permission = "tasks.write"
 	PermissionTasksAll   Permission = "tasks.*"

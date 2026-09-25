@@ -29,7 +29,8 @@
 		"automation": "自动化",
 		"team": "团队",
 		"settings": "设置",
-		"changelog": "最新动态"
+		"changelog": "最新动态",
+		"activity": "动态"
 	},
 	"projectSwitcher": {
 		"projects": "项目",

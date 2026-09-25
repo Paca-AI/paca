@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	activitydom "github.com/Paca-AI/api/internal/domain/activity"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 )
 
@@ -633,18 +634,19 @@ type AgentActivityResponse struct {
 	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
-// AgentActivityFromEntity maps a domain ActivityFeedItem to an AgentActivityResponse DTO.
-func AgentActivityFromEntity(a *agentdom.ActivityFeedItem) AgentActivityResponse {
+// AgentActivityFromEntity maps an activity log entry to the agent tab's
+// task/doc-shaped view of it.
+func AgentActivityFromEntity(a *activitydom.Activity) AgentActivityResponse {
 	content := a.Content
 	if len(content) == 0 {
 		content = json.RawMessage("{}")
 	}
 	return AgentActivityResponse{
 		ID:            a.ID,
-		SourceType:    string(a.SourceType),
-		SourceID:      a.SourceID,
-		SourceTitle:   a.SourceTitle,
-		SourceDeleted: a.SourceDeleted,
+		SourceType:    a.EntityType,
+		SourceID:      a.EntityIDOrNil(),
+		SourceTitle:   a.EntityTitle,
+		SourceDeleted: a.EntityDeleted,
 		ActivityType:  a.ActivityType,
 		Content:       content,
 		CreatedAt:     a.CreatedAt,

@@ -11,6 +11,7 @@ import {
 	useRouterState,
 } from "@tanstack/react-router";
 import {
+	Activity,
 	ArrowLeft,
 	BookOpen,
 	Bot,
@@ -1001,8 +1002,16 @@ const PROJECT_NAV_ITEMS = [
 	},
 	{ segment: "automation", icon: Workflow, labelKey: "nav.automation" },
 	{ segment: "team", icon: Users, labelKey: "nav.team" },
+	{ segment: "activity", icon: Activity, labelKey: "nav.activity" },
 	{ segment: "settings", icon: Settings, labelKey: "nav.settings" },
 ] as const;
+
+// Unlike the rest of the project nav, the activity log is hidden from members
+// who can't read it: by default only owners/managers/admins can, so showing
+// it to everyone would mostly lead to a no-permission page.
+const PERMISSION_GATED_SEGMENTS: Partial<Record<string, string>> = {
+	activity: "project.activities.read",
+};
 
 function ProjectNav() {
 	const { t } = useTranslation("appShell");
@@ -1032,6 +1041,7 @@ const ANON_HIDDEN_SEGMENTS = new Set([
 	"conversations",
 	"automation",
 	"team",
+	"activity",
 	"settings",
 ]);
 
@@ -1044,6 +1054,7 @@ function ProjectNavItems({
 }) {
 	const { t } = useTranslation("appShell");
 	const location = useRouterState({ select: (s) => s.location.pathname });
+	const { hasProjectPermission } = useProjectPermissions(projectId);
 
 	const [collapsed, setCollapsed] = useState(() => {
 		try {
@@ -1089,9 +1100,12 @@ function ProjectNavItems({
 			{!collapsed && (
 				<SidebarGroupContent>
 					<SidebarMenu>
-						{PROJECT_NAV_ITEMS.filter(
-							(item) => !isAnonymous || !ANON_HIDDEN_SEGMENTS.has(item.segment),
-						).map(({ segment, icon: Icon, labelKey }) => {
+						{PROJECT_NAV_ITEMS.filter((item) => {
+							if (isAnonymous && ANON_HIDDEN_SEGMENTS.has(item.segment))
+								return false;
+							const required = PERMISSION_GATED_SEGMENTS[item.segment];
+							return !required || hasProjectPermission(required);
+						}).map(({ segment, icon: Icon, labelKey }) => {
 							const href = segment
 								? `/projects/${projectId}/${segment}`
 								: `/projects/${projectId}`;

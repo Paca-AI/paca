@@ -15,6 +15,7 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	"github.com/Paca-AI/api/internal/events"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
@@ -297,6 +298,7 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 	ctx := context.WithValue(r.Context(), claimsContextKey{}, claims)
 	if actorID, parseErr := uuid.Parse(claims.Subject); parseErr == nil {
 		ctx = context.WithValue(ctx, actorContextKey{}, actorID)
+		ctx = events.WithRequestActor(ctx, actorID, nil)
 	}
 	r = r.WithContext(ctx)
 	return r, true
@@ -382,6 +384,11 @@ func setAPIKeyAuthContext(r *http.Request, userID, agentID, actorUserID uuid.UUI
 	ctx := context.WithValue(r.Context(), claimsContextKey{}, syntheticClaims)
 	ctx = context.WithValue(ctx, authMethodContextKey{}, "apikey")
 	ctx = context.WithValue(ctx, actorContextKey{}, userID)
+	var eventAgentID *uuid.UUID
+	if agentID != uuid.Nil {
+		eventAgentID = &agentID
+	}
+	ctx = events.WithRequestActor(ctx, userID, eventAgentID)
 	if agentID != uuid.Nil {
 		ctx = context.WithValue(ctx, agentContextKey{}, agentID)
 		// Only ever paired with a resolved agent ID — see

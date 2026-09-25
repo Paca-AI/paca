@@ -896,6 +896,10 @@
 			"workflowsWrite": {
 				"label": "Manage Automation",
 				"description": "Create, edit, activate, and delete automations"
+			},
+			"activitiesRead": {
+				"label": "View Activity Log",
+				"description": "See every activity recorded in this project"
 			}
 		},
 		"permissionGroups": {
@@ -2328,6 +2332,129 @@
 			"subtitle": "Read-only view of every automation waiting on other tasks to finish",
 			"empty": "No predecessor dependencies configured yet",
 			"watchedTasks": "Waiting on {{count}} task(s)"
+		}
+	},
+	"activityLog": {
+		"title": "Activity",
+		"subtitle": "Everything that happened in this project",
+		"today": "Today",
+		"yesterday": "Yesterday",
+		"deletedEntity": "This item has been deleted",
+		"noPermission": {
+			"title": "You can't view the activity log",
+			"description": "Ask a project manager for the “View Activity Log” permission."
+		},
+		"empty": {
+			"title": "No activity yet",
+			"description": "Changes made in this project will show up here."
+		},
+		"emptyFiltered": {
+			"title": "No matching activity",
+			"description": "Try removing some filters or changing your search."
+		},
+		"filters": {
+			"title": "Filters",
+			"searchPlaceholder": "Search activity…",
+			"type": "Type",
+			"people": "People",
+			"source": "Source",
+			"dateRange": "Date range",
+			"dateFrom": "From",
+			"dateTo": "To",
+			"clearAll": "Clear all"
+		},
+		"entityTypes": {
+			"task": "Tasks",
+			"doc": "Docs",
+			"sprint": "Sprints",
+			"view": "Views",
+			"automation": "Automations",
+			"environment": "Environments",
+			"member": "Members",
+			"role": "Roles",
+			"agent": "Agents",
+			"project": "Project"
+		},
+		"origins": {
+			"user": "User",
+			"agent": "Agent",
+			"automation": "Automation",
+			"jev": "Jev",
+			"annotation": "Annotation",
+			"system": "System"
+		},
+		"detail": {
+			"asRole": "as {{role}}",
+			"roleChange": "{{from}} → {{to}}",
+			"renamedFrom": "renamed from “{{name}}”",
+			"member": "for {{name}}"
+		},
+		"projectFields": {
+			"name": "Name",
+			"description": "Description",
+			"task_id_prefix": "Task ID prefix",
+			"is_public": "Visibility",
+			"settings": "Settings",
+			"jev_config": "Jev configuration"
+		},
+		"types": {
+			"sprint_created": "created sprint",
+			"sprint_updated": "updated sprint",
+			"sprint_deleted": "deleted sprint",
+			"sprint_completed": "completed sprint",
+			"view_created": "created view",
+			"view_updated": "updated view",
+			"view_deleted": "deleted view",
+			"automation_created": "created automation",
+			"automation_updated": "updated automation",
+			"automation_deleted": "deleted automation",
+			"automation_activated": "activated automation",
+			"automation_deactivated": "deactivated automation",
+			"automation_node_added": "added a step to",
+			"automation_node_removed": "removed a step from",
+			"automation_edge_added": "connected steps in",
+			"automation_edge_removed": "disconnected steps in",
+			"environment_created": "created environment",
+			"environment_updated": "updated environment",
+			"environment_deleted": "deleted environment",
+			"environment_started": "started environment",
+			"environment_stopped": "stopped environment",
+			"environment_restarted": "restarted environment",
+			"environment_ssh_key_added": "added SSH key “{{label}}” to",
+			"environment_ssh_key_removed": "removed SSH key “{{label}}” from",
+			"environment_access_granted": "granted access to",
+			"environment_access_revoked": "revoked access to",
+			"environment_port_forward_added": "forwarded port {{port}} on",
+			"environment_port_forward_removed": "stopped forwarding port {{port}} on",
+			"annotation_created": "added an annotation on",
+			"annotation_resolved": "resolved an annotation on",
+			"annotation_reopened": "reopened an annotation on",
+			"annotation_commented": "replied to an annotation on",
+			"member_added": "added member",
+			"member_role_changed": "changed the role of",
+			"member_updated": "updated member",
+			"member_removed": "removed member",
+			"role_created": "created role",
+			"role_updated": "updated role",
+			"role_deleted": "deleted role",
+			"project_updated": "updated settings of",
+			"project_task_type_created": "created task type “{{name}}” in",
+			"project_task_type_updated": "updated task type “{{name}}” in",
+			"project_task_type_deleted": "deleted task type “{{name}}” in",
+			"project_task_type_default_set": "set “{{name}}” as the default task type in",
+			"project_task_status_created": "created status “{{name}}” in",
+			"project_task_status_updated": "updated status “{{name}}” in",
+			"project_task_status_deleted": "deleted status “{{name}}” in",
+			"project_task_status_default_set": "set “{{name}}” as the default status in",
+			"project_task_status_reordered": "reordered statuses in",
+			"project_custom_field_created": "created field “{{name}}” in",
+			"project_custom_field_updated": "updated field “{{name}}” in",
+			"project_custom_field_deleted": "deleted field “{{name}}” in",
+			"project_agent_created": "added agent",
+			"project_agent_updated": "updated agent",
+			"project_agent_deleted": "removed agent",
+			"comment": "commented on",
+			"fallback": "did {{type}} on"
 		}
 	}
 }

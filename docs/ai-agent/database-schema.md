@@ -197,7 +197,7 @@ Table agent_conversations {
   // Trigger context
   trigger_type varchar [not null, note: 'task_assigned | comment_mention | chat_message | description_write | automation_message. Global chat always uses chat_message — project_id IS NULL is what distinguishes it.']
   task_id uuid [null, ref: > tasks.id]
-  comment_id uuid [null, note: 'task_activities row id for the triggering comment']
+  comment_id uuid [null, note: 'activities row id for the triggering comment']
   chat_session_id uuid [null, ref: > agent_chat_sessions.id]
   triggered_by_member_id uuid [null, ref: > project_members.id, note: 'A project-scoped human member. NULL for the automation-workflow engine or a global-chat conversation (see actor_user_id).']
   actor_user_id uuid [null, ref: > users.id, note: 'Set only for a global-chat conversation — the human chatting with a global agent, identified directly. ON DELETE RESTRICT.']

@@ -9,6 +9,7 @@ import (
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
@@ -75,6 +76,7 @@ func (s *Service) AddMember(ctx context.Context, projectID uuid.UUID, in project
 	if err != nil {
 		return nil, err
 	}
+	s.record(ctx, projectID, events.EntityMember, added.ID, TopicMemberAdded, memberPayload(added))
 	return added, nil
 }
 
@@ -111,7 +113,12 @@ func (s *Service) addAgentMember(ctx context.Context, projectID, agentID, roleID
 	if err := s.repo.AddAgentMember(ctx, memberID, projectID, agentID, roleID); err != nil {
 		return nil, err
 	}
-	return s.repo.FindMemberByAgent(ctx, projectID, agentID)
+	added, err := s.repo.FindMemberByAgent(ctx, projectID, agentID)
+	if err != nil {
+		return nil, err
+	}
+	s.record(ctx, projectID, events.EntityMember, added.ID, TopicMemberAdded, memberPayload(added))
+	return added, nil
 }
 
 // UpdateMemberRole changes the role of an existing project member.
@@ -225,7 +232,16 @@ func (s *Service) UpdateMemberRoleByMemberID(ctx context.Context, projectID, mem
 		return nil, err
 	}
 
-	return s.repo.FindMemberByID(ctx, memberID)
+	updated, err := s.repo.FindMemberByID(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+	if member.ProjectRoleID != in.ProjectRoleID {
+		payload := memberPayload(updated)
+		payload["previous_role_name"] = member.RoleName
+		s.record(ctx, projectID, events.EntityMember, memberID, TopicMemberRoleChanged, payload)
+	}
+	return updated, nil
 }
 
 // UpdateMemberDescription changes a member's Jev-facing description by member ID.
@@ -247,7 +263,14 @@ func (s *Service) UpdateMemberDescription(ctx context.Context, projectID, member
 		return nil, err
 	}
 
-	return s.repo.FindMemberByID(ctx, memberID)
+	updated, err := s.repo.FindMemberByID(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+	payload := memberPayload(updated)
+	payload["changes"] = []string{"description"}
+	s.record(ctx, projectID, events.EntityMember, memberID, TopicMemberUpdated, payload)
+	return updated, nil
 }
 
 // RemoveMemberByMemberID removes a project member by member ID.
@@ -265,5 +288,9 @@ func (s *Service) RemoveMemberByMemberID(ctx context.Context, projectID, memberI
 		return projectdom.ErrMemberNotFound
 	}
 
-	return s.repo.RemoveMemberByMemberID(ctx, memberID)
+	if err := s.repo.RemoveMemberByMemberID(ctx, memberID); err != nil {
+		return err
+	}
+	s.record(ctx, projectID, events.EntityMember, memberID, TopicMemberRemoved, memberPayload(member))
+	return nil
 }

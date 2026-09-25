@@ -20,6 +20,7 @@ Interactive diagram: [https://dbdiagram.io/d/Paca-69c212ae78c6c4bc7a4fc190](http
 | `000022_add_acp_agents.sql` | Adds ACP (Agent Client Protocol) agent support to `agents`: `agent_type` ('llm' \| 'acp'), `acp_provider`, `acp_command`, `acp_bridge_token_hash` — a second agent "shape" that delegates to a local coding CLI over a bridge daemon instead of running an LLM loop in-cluster. |
 | `000031_add_global_agents.sql` | Adds "global" agents — an agent with no owning project (`agents.project_id` nullable, `agent_scope` discriminator, `global_role_id`) that is instead attached to zero or more projects via ordinary `project_members` rows, the same mechanism used to add a human member. Adds `actor_user_id` to `agent_chat_sessions` and `agent_conversations` for chat sessions/conversations started from the home page or admin pages, outside any project. See the comment above the `agents` table below. |
 | `000059_add_default_global_role.sql` | Adds `global_roles.is_default` (one default at a time, enforced by the partial unique index `uq_global_roles_one_default`) and marks `USER` the default where none is set. The API used to hardcode the role *named* `USER` for every new account; the default is data now, changed with `PUT /admin/global-roles/:roleId/set-default`. |
+| `000061_unify_activities.sql` | Creates the single `activities` table for every entity in a project (task, doc, sprint, view, automation, environment, member) with an `origin` column, copies all `task_activities` and `doc_activities` rows into it under their original IDs, then drops both old tables. |
 
 *(Migrations between `000008` and `000017`/`000022`/`000031` that touch other subsystems — tasks, sprints, docs, notifications, etc. — are omitted here; see `services/api/migrations/` for the full, authoritative list.)*
 
@@ -286,26 +287,18 @@ Table doc_snapshots {
   created_at      timestamp
 }
 
-Table doc_activities {
-  id            uuid [primary key]
-  document_id   uuid [not null, ref: > documents.id]
-  actor_id      uuid [null, ref: > project_members.id, note: 'NULL for system events or if the member was removed']
-  activity_type varchar [not null, note: 'doc.created | doc.updated | doc.deleted | doc.moved | doc.folder.created | doc.folder.updated | doc.folder.deleted | comment']
-  content       jsonb [not null, default: '{}', note: 'For doc.updated: [{field, old, new}]. For comment: {text}. For doc.moved: {from_folder_id, to_folder_id}.']
+Table activities {
+  id            uuid [primary key, note: 'Producer-assigned; comments are inserted directly and their stream copy conflicts on this id']
+  project_id    uuid [not null, ref: > projects.id]
+  entity_type   text [not null, note: 'task | doc | sprint | view | automation | environment | member']
+  entity_id     uuid [null, note: 'No FK on purpose: the record of a deletion must outlive the deleted entity']
+  actor_id      uuid [null, ref: > project_members.id, note: 'Resolved from the user/agent UUID by ActivityConsumer. NULL for system events or a removed member']
+  origin        text [not null, default: 'system', note: 'user | agent | automation | jev | annotation | system']
+  activity_type text [not null, note: 'Event topic, e.g. task.updated, doc.moved, sprint.completed, comment']
+  content       jsonb [not null, default: '{}']
   created_at    timestamp
   updated_at    timestamp
   deleted_at    timestamp [null, note: 'Soft-delete for comments']
-}
-
-Table task_activities {
-  id uuid [primary key]
-  task_id uuid [not null, ref: > tasks.id]
-  actor_id uuid [null, ref: > project_members.id, note: 'References project_members(id). Resolved from the authenticated user UUID by the ActivityConsumer at consume-time using the task project_id. NULL for system events or if the member was removed before the stream message was processed.']
-  activity_type varchar [not null]
-  content jsonb [not null, default: '{}']
-  created_at timestamp
-  updated_at timestamp
-  deleted_at timestamp [null, note: 'Soft-delete for comments']
 }
 
 // --- PLUGINS ---

@@ -24,6 +24,7 @@ import (
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
@@ -654,66 +655,11 @@ func (r *fakeTaskRepo) ListDistinctTags(_ context.Context, _ uuid.UUID) ([]strin
 // In-memory fake activity repository
 // ---------------------------------------------------------------------------
 
-type fakeTaskActivityRepo struct {
-	mu         sync.RWMutex
-	activities map[uuid.UUID]*taskdom.Activity
-}
+// fakeTaskActivityRepo is the shared in-memory activity log.
+type fakeTaskActivityRepo = activitysvc.MemoryRepository
 
 func newFakeTaskActivityRepo() *fakeTaskActivityRepo {
-	return &fakeTaskActivityRepo{activities: make(map[uuid.UUID]*taskdom.Activity)}
-}
-
-func (r *fakeTaskActivityRepo) ListActivities(_ context.Context, taskID uuid.UUID) ([]*taskdom.Activity, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	var out []*taskdom.Activity
-	for _, a := range r.activities {
-		if a.TaskID == taskID && a.DeletedAt == nil {
-			cp := *a
-			out = append(out, &cp)
-		}
-	}
-	return out, nil
-}
-
-func (r *fakeTaskActivityRepo) FindActivityByID(_ context.Context, id uuid.UUID) (*taskdom.Activity, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	a, ok := r.activities[id]
-	if !ok {
-		return nil, taskdom.ErrActivityNotFound
-	}
-	cp := *a
-	return &cp, nil
-}
-
-func (r *fakeTaskActivityRepo) CreateActivity(_ context.Context, a *taskdom.Activity) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.activities[a.ID] = a
-	return nil
-}
-
-func (r *fakeTaskActivityRepo) UpdateActivity(_ context.Context, a *taskdom.Activity) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, ok := r.activities[a.ID]; !ok {
-		return taskdom.ErrActivityNotFound
-	}
-	r.activities[a.ID] = a
-	return nil
-}
-
-func (r *fakeTaskActivityRepo) DeleteActivity(_ context.Context, id uuid.UUID) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	a, ok := r.activities[id]
-	if !ok {
-		return taskdom.ErrActivityNotFound
-	}
-	now := time.Now()
-	a.DeletedAt = &now
-	return nil
+	return activitysvc.NewMemoryRepository()
 }
 
 // fakeActivityMemberRepo is a minimal memberLookup stub that resolves any
@@ -760,7 +706,7 @@ func buildTaskTestRouterWithSprints(taskRepo *fakeTaskRepo, sprintRepo *fakeSpri
 	sprintService := sprintsvc.New(sprintRepo, taskRepo, nil)
 	viewService := sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, nil)
 	activityRepo := newFakeTaskActivityRepo()
-	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, &fakeActivityMemberRepo{}, nil)
+	activityService := tasksvc.NewActivityService(activitysvc.New(activityRepo, &fakeActivityMemberRepo{}, nil), taskRepo, &fakeActivityMemberRepo{})
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
