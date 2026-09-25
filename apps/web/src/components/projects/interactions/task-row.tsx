@@ -90,7 +90,7 @@ export function getRowColConfig(
 			};
 		case "status":
 			return {
-				className: "w-24 shrink-0",
+				className: "w-32 shrink-0",
 				headerLabel: t("board.taskRow.columnHeaders.status"),
 				responsive: true,
 			};
@@ -403,7 +403,7 @@ export function TaskRow({
 						className={cn(col.className, responsiveClass, "items-center")}
 					>
 						{status ? (
-							<span className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide">
+							<span className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide whitespace-nowrap max-w-full">
 								<span
 									className="size-1.5 rounded-full shrink-0"
 									style={{
@@ -414,7 +414,7 @@ export function TaskRow({
 											: undefined,
 									}}
 								/>
-								{status.name}
+								<span className="truncate">{status.name}</span>
 							</span>
 						) : (
 							<span className="text-xs text-muted-foreground/50">—</span>
