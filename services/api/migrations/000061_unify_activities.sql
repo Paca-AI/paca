@@ -46,8 +46,17 @@ CREATE INDEX IF NOT EXISTS idx_activities_actor_cursor
     WHERE actor_id IS NOT NULL AND deleted_at IS NULL;
 
 -- Guarded so a re-run after the drop is a no-op rather than an error.
+-- The source tables are locked before the copy so a still-running previous
+-- release can't commit a row between the copy's snapshot and the DROP (it
+-- would be silently lost); its writes block, then fail loudly instead.
 DO $$
 BEGIN
+    IF to_regclass('public.task_activities') IS NOT NULL THEN
+        LOCK TABLE task_activities IN EXCLUSIVE MODE;
+    END IF;
+    IF to_regclass('public.doc_activities') IS NOT NULL THEN
+        LOCK TABLE doc_activities IN EXCLUSIVE MODE;
+    END IF;
     IF to_regclass('public.task_activities') IS NOT NULL THEN
         INSERT INTO activities (id, project_id, entity_type, entity_id, actor_id, origin, activity_type, content, created_at, updated_at, deleted_at)
         SELECT ta.id, t.project_id, 'task', ta.task_id, ta.actor_id,

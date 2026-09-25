@@ -426,6 +426,7 @@ func (s *Service) CreateTaskFromAnnotation(ctx context.Context, projectID, annot
 			TaskID:       task.ID,
 			ProjectID:    projectID,
 			ActorID:      &in.ReporterID,
+			Origin:       taskdom.OriginAnnotation,
 			ActivityType: taskdom.ActivityTypeTaskCreated,
 			Content:      content,
 		})

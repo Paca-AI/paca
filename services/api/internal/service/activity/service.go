@@ -223,6 +223,20 @@ func (s *Service) publishComment(ctx context.Context, k CommentKind, topic strin
 	})
 }
 
+// OriginFor returns explicit when set, otherwise the origin implied by the
+// actor: agent, user, or system when there is none.
+func OriginFor(explicit events.Origin, actorID, agentID *uuid.UUID) events.Origin {
+	switch {
+	case explicit != "":
+		return explicit
+	case agentID != nil:
+		return events.OriginAgent
+	case actorID != nil:
+		return events.OriginUser
+	}
+	return events.OriginSystem
+}
+
 func actorOrigin(agentID *uuid.UUID) events.Origin {
 	if agentID != nil {
 		return events.OriginAgent

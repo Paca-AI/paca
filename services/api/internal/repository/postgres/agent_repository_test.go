@@ -100,4 +100,3 @@ func TestAgentToRecord_GlobalAgent(t *testing.T) {
 		assert.Equal(t, roleID.String(), *rec.GlobalRoleID)
 	}
 }
-

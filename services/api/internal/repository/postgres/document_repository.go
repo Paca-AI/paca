@@ -424,4 +424,3 @@ func (r *DocumentRepository) DeleteRecentSnapshotsExcept(ctx context.Context, do
 	)
 	return err
 }
-

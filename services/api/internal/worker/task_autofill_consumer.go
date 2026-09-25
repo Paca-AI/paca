@@ -791,6 +791,7 @@ func (c *TaskAutofillConsumer) recordActivity(ctx context.Context, projectID, ta
 	if err := c.activityRec.RecordActivity(ctx, taskdom.RecordActivityInput{
 		TaskID:       taskID,
 		ProjectID:    projectID,
+		Origin:       taskdom.OriginJev,
 		ActivityType: taskdom.ActivityTypeTaskUpdated,
 		Content:      content,
 	}); err != nil {

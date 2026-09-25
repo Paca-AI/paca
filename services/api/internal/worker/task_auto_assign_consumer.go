@@ -455,6 +455,7 @@ func (c *TaskAutoAssignConsumer) recordActivity(ctx context.Context, projectID, 
 	if err := c.activityRec.RecordActivity(ctx, taskdom.RecordActivityInput{
 		TaskID:       taskID,
 		ProjectID:    projectID,
+		Origin:       taskdom.OriginJev,
 		ActivityType: taskdom.ActivityTypeTaskUpdated,
 		Content:      content,
 	}); err != nil {
@@ -481,6 +482,7 @@ func (c *TaskAutoAssignConsumer) recordSkippedActivity(ctx context.Context, proj
 	if err := c.activityRec.RecordActivity(ctx, taskdom.RecordActivityInput{
 		TaskID:       taskID,
 		ProjectID:    projectID,
+		Origin:       taskdom.OriginJev,
 		ActivityType: taskdom.ActivityTypeAutoAssignSkipped,
 		Content:      content,
 	}); err != nil {

@@ -2221,6 +2221,7 @@ func (c *AutomationConsumer) applyTriggerAIAgentOnTask(ctx context.Context, proj
 			TaskID:       task.ID,
 			ProjectID:    projectID,
 			ActorAgentID: &agentID,
+			Origin:       taskdom.OriginAutomation,
 			ActivityType: taskdom.ActivityTypeAgentSessionStarted,
 			Content:      content,
 		}); recErr != nil {
@@ -2620,6 +2621,7 @@ func (c *AutomationConsumer) recordAppliedActivity(ctx context.Context, projectI
 	_ = c.activityRec.RecordActivity(ctx, taskdom.RecordActivityInput{
 		TaskID:       taskID,
 		ProjectID:    projectID,
+		Origin:       taskdom.OriginAutomation,
 		ActivityType: taskdom.ActivityTypeAutomationApplied,
 		Content:      content,
 	})

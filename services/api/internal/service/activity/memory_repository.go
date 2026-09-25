@@ -79,8 +79,8 @@ func matches(a *activitydom.Activity, f activitydom.ListFilter) bool {
 		return false
 	case f.Search != "" && !strings.Contains(strings.ToLower(a.EntityTitle+" "+string(a.Content)), strings.ToLower(f.Search)):
 		return false
-	case f.Cursor != nil && !(a.CreatedAt.Before(f.Cursor.CreatedAt) ||
-		(a.CreatedAt.Equal(f.Cursor.CreatedAt) && a.ID.String() < f.Cursor.ID.String())):
+	case f.Cursor != nil && !a.CreatedAt.Before(f.Cursor.CreatedAt) &&
+		(!a.CreatedAt.Equal(f.Cursor.CreatedAt) || a.ID.String() >= f.Cursor.ID.String()):
 		return false
 	}
 	return true

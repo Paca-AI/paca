@@ -86,12 +86,6 @@ func (s *ActivitySvc) RecordActivity(ctx context.Context, in docdom.RecordActivi
 	if in.ActorAgentID != nil {
 		payload["actor_agent_id"] = in.ActorAgentID.String()
 	}
-	origin := events.OriginSystem
-	if in.ActorAgentID != nil {
-		origin = events.OriginAgent
-	} else if in.ActorID != nil {
-		origin = events.OriginUser
-	}
 	s.act.Record(ctx, activitysvc.Entry{
 		ProjectID:    in.ProjectID,
 		EntityType:   events.EntityDoc,
@@ -100,7 +94,7 @@ func (s *ActivitySvc) RecordActivity(ctx context.Context, in docdom.RecordActivi
 		Payload:      payload,
 		ActorID:      in.ActorID,
 		ActorAgentID: in.ActorAgentID,
-		Origin:       origin,
+		Origin:       activitysvc.OriginFor("", in.ActorID, in.ActorAgentID),
 		Plugins:      true,
 	})
 	return nil

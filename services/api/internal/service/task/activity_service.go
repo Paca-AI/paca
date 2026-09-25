@@ -130,7 +130,7 @@ func (s *ActivitySvc) RecordActivity(ctx context.Context, in taskdom.RecordActiv
 		Payload:      payload,
 		ActorID:      in.ActorID,
 		ActorAgentID: in.ActorAgentID,
-		Origin:       events.Origin(in.Origin.OrSystem()),
+		Origin:       activitysvc.OriginFor(events.Origin(in.Origin), in.ActorID, in.ActorAgentID),
 		Plugins:      true,
 	})
 	return nil

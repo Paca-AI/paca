@@ -2198,4 +2198,3 @@ func chatSessionToRecord(s *agentdom.AgentChatSession) agentChatSessionRecord {
 // -------------------------------------------------------------------------
 // Activity Feed
 // -------------------------------------------------------------------------
-
