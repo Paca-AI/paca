@@ -30,6 +30,7 @@ import (
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/secret"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 )
 
 // Default resource limits, mirroring migration 000042_add_environments.sql's
@@ -113,6 +114,7 @@ type Service struct {
 	// callEnvironmentCommand) and publishes environment.status_changed for
 	// services/realtime — see publishStatusChanged.
 	publisher environmentPublisher
+	activity  activitysvc.Recorder
 }
 
 // environmentPublisher is the minimal messaging.Publisher surface this
@@ -136,6 +138,7 @@ func New(repo environmentdom.Repository, aiAgentURL, aiAgentInternalKey string) 
 		aiAgentURL:         aiAgentURL,
 		aiAgentInternalKey: aiAgentInternalKey,
 		httpClient:         &http.Client{Timeout: aiAgentHTTPTimeout},
+		activity:           activitysvc.Discard,
 	}
 }
 
@@ -162,6 +165,9 @@ func (s *Service) WithRedisClient(c *redis.Client) *Service {
 // Service functions without it.
 func (s *Service) WithPublisher(p environmentPublisher) *Service {
 	s.publisher = p
+	if p != nil {
+		s.activity = activitysvc.NewRecorderTo(p)
+	}
 	return s
 }
 
@@ -203,6 +209,46 @@ func (s *Service) publishStatusChanged(ctx context.Context, projectID, environme
 	_ = s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
 		"type":    events.TopicEnvironmentStatusChanged,
 		"payload": payload,
+	})
+}
+
+// Activity topics for user-driven environment changes. Status transitions
+// (environment.status_changed) stay realtime-only: they are the system
+// catching up with one of these, not a separate action.
+const (
+	TopicEnvironmentCreated            = "environment.created"
+	TopicEnvironmentUpdated            = "environment.updated"
+	TopicEnvironmentDeleted            = "environment.deleted"
+	TopicEnvironmentStarted            = "environment.started"
+	TopicEnvironmentStopped            = "environment.stopped"
+	TopicEnvironmentRestarted          = "environment.restarted"
+	TopicEnvironmentSSHKeyAdded        = "environment.ssh_key.added"
+	TopicEnvironmentSSHKeyRemoved      = "environment.ssh_key.removed"
+	TopicEnvironmentAccessGranted      = "environment.access.granted"
+	TopicEnvironmentAccessRevoked      = "environment.access.revoked"
+	TopicEnvironmentPortForwardAdded   = "environment.port_forward.added"
+	TopicEnvironmentPortForwardRemoved = "environment.port_forward.removed"
+)
+
+// record fans an environment change out to the activity log (and realtime).
+// The name travels in the payload so a deleted environment's entries still
+// read correctly. A stop from the idle reaper carries no request actor, so it
+// is recorded as a system action.
+func (s *Service) record(ctx context.Context, env *environmentdom.Environment, topic string, extra map[string]any) {
+	payload := map[string]any{
+		"project_id":     env.ProjectID.String(),
+		"environment_id": env.ID.String(),
+		"name":           env.Name,
+	}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	s.activity.Record(ctx, activitysvc.Entry{
+		ProjectID:  env.ProjectID,
+		EntityType: events.EntityEnvironment,
+		EntityID:   env.ID,
+		Topic:      topic,
+		Payload:    payload,
 	})
 }
 
@@ -350,6 +396,7 @@ func (s *Service) CreateEnvironment(ctx context.Context, projectID uuid.UUID, in
 		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
 		return nil, fmt.Errorf("queue environment create: %w", err)
 	}
+	s.record(ctx, env, TopicEnvironmentCreated, nil)
 	return env, nil
 }
 
@@ -463,6 +510,7 @@ func (s *Service) UpdateEnvironment(ctx context.Context, projectID, environmentI
 	if err := s.repo.UpdateEnvironment(ctx, env); err != nil {
 		return nil, err
 	}
+	s.record(ctx, env, TopicEnvironmentUpdated, nil)
 	return env, nil
 }
 
@@ -524,6 +572,7 @@ func (s *Service) StartEnvironment(ctx context.Context, projectID, environmentID
 	}
 	env.Status = environmentdom.StatusStarting
 	env.ErrorMessage = nil
+	s.record(ctx, env, TopicEnvironmentStarted, nil)
 	return env, nil
 }
 
@@ -677,7 +726,12 @@ func (s *Service) RestartEnvironment(ctx context.Context, projectID, environment
 	if env.BackendRef == nil || env.VolumeRef == nil {
 		return nil, fmt.Errorf("environment %s has never been provisioned (no backend_ref/volume_ref)", env.ID)
 	}
-	return s.restartEnvironmentPorts(context.Background(), env)
+	restarted, err := s.restartEnvironmentPorts(context.Background(), env)
+	if err != nil {
+		return nil, err
+	}
+	s.record(ctx, env, TopicEnvironmentRestarted, nil)
+	return restarted, nil
 }
 
 // restartEnvironmentPorts sends agent-runner a restart-ports command to
@@ -796,6 +850,7 @@ func (s *Service) StopEnvironment(ctx context.Context, projectID, environmentID 
 	}
 	env.Status = environmentdom.StatusStopping
 	env.ErrorMessage = nil
+	s.record(ctx, env, TopicEnvironmentStopped, nil)
 	return env, nil
 }
 
@@ -871,7 +926,11 @@ func (s *Service) DeleteEnvironment(ctx context.Context, projectID, environmentI
 			return fmt.Errorf("agent-runner: delete environment: %w", err)
 		}
 	}
-	return s.repo.SoftDeleteEnvironment(ctx, env.ID)
+	if err := s.repo.SoftDeleteEnvironment(ctx, env.ID); err != nil {
+		return err
+	}
+	s.record(ctx, env, TopicEnvironmentDeleted, nil)
+	return nil
 }
 
 // Heartbeat bumps last_active_at — called periodically by the browser
@@ -1114,6 +1173,7 @@ func (s *Service) AddSSHKey(ctx context.Context, projectID, environmentID uuid.U
 		return nil, err
 	}
 	s.syncSSHKeys(ctx, env)
+	s.record(ctx, env, TopicEnvironmentSSHKeyAdded, map[string]any{"label": key.Label, "fingerprint": key.Fingerprint})
 	return key, nil
 }
 
@@ -1135,6 +1195,7 @@ func (s *Service) DeleteSSHKey(ctx context.Context, projectID, environmentID, ke
 		return err
 	}
 	s.syncSSHKeys(ctx, env)
+	s.record(ctx, env, TopicEnvironmentSSHKeyRemoved, map[string]any{"label": key.Label, "fingerprint": key.Fingerprint})
 	return nil
 }
 
@@ -1209,6 +1270,7 @@ func (s *Service) AddEnvironmentAccessGrant(ctx context.Context, projectID, envi
 	if err := s.repo.AddEnvironmentAccessGrant(ctx, g); err != nil {
 		return nil, err
 	}
+	s.record(ctx, env, TopicEnvironmentAccessGranted, map[string]any{"member_id": memberID.String()})
 	return g, nil
 }
 
@@ -1219,7 +1281,11 @@ func (s *Service) RemoveEnvironmentAccessGrant(ctx context.Context, projectID, e
 	if err != nil {
 		return err
 	}
-	return s.repo.RemoveEnvironmentAccessGrant(ctx, env.ID, memberID)
+	if err := s.repo.RemoveEnvironmentAccessGrant(ctx, env.ID, memberID); err != nil {
+		return err
+	}
+	s.record(ctx, env, TopicEnvironmentAccessRevoked, map[string]any{"member_id": memberID.String()})
+	return nil
 }
 
 // ListGrantedEnvironmentIDsForMember returns every restricted environment
@@ -1314,6 +1380,7 @@ func (s *Service) AddPortForward(ctx context.Context, projectID, environmentID u
 	if err := s.repo.SetPortsPendingRestart(ctx, env.ID, true); err != nil {
 		return nil, err
 	}
+	s.record(ctx, env, TopicEnvironmentPortForwardAdded, map[string]any{"label": pf.Label, "container_port": pf.ContainerPort})
 	return pf, nil
 }
 
@@ -1340,7 +1407,11 @@ func (s *Service) DeletePortForward(ctx context.Context, projectID, environmentI
 	if err := s.repo.DeletePortForward(ctx, pf.ID); err != nil {
 		return err
 	}
-	return s.repo.SetPortsPendingRestart(ctx, env.ID, true)
+	if err := s.repo.SetPortsPendingRestart(ctx, env.ID, true); err != nil {
+		return err
+	}
+	s.record(ctx, env, TopicEnvironmentPortForwardRemoved, map[string]any{"label": pf.Label, "container_port": pf.ContainerPort})
+	return nil
 }
 
 // -------------------------------------------------------------------------

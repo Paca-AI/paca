@@ -35,6 +35,7 @@ import { Route as AuthenticatedProjectsProjectIdDocsIndexRouteImport } from './r
 import { Route as AuthenticatedProjectsProjectIdConversationsIndexRouteImport } from './routes/_authenticated/projects/$projectId/conversations/index'
 import { Route as AuthenticatedProjectsProjectIdAutomationIndexRouteImport } from './routes/_authenticated/projects/$projectId/automation/index'
 import { Route as AuthenticatedProjectsProjectIdAgentsIndexRouteImport } from './routes/_authenticated/projects/$projectId/agents/index'
+import { Route as AuthenticatedProjectsProjectIdActivityIndexRouteImport } from './routes/_authenticated/projects/$projectId/activity/index'
 import { Route as AuthenticatedAdminAgentsAgentIdIndexRouteImport } from './routes/_authenticated/admin/agents/$agentId/index'
 import { Route as AuthenticatedProjectsProjectIdTasksTaskIdRouteImport } from './routes/_authenticated/projects/$projectId/tasks/$taskId'
 import { Route as AuthenticatedProjectsProjectIdInteractionsTimelineRouteImport } from './routes/_authenticated/projects/$projectId/interactions/timeline'
@@ -202,6 +203,12 @@ const AuthenticatedProjectsProjectIdAgentsIndexRoute =
     path: '/agents/',
     getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
   } as any)
+const AuthenticatedProjectsProjectIdActivityIndexRoute =
+  AuthenticatedProjectsProjectIdActivityIndexRouteImport.update({
+    id: '/activity/',
+    path: '/activity/',
+    getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+  } as any)
 const AuthenticatedAdminAgentsAgentIdIndexRoute =
   AuthenticatedAdminAgentsAgentIdIndexRouteImport.update({
     id: '/admin/agents/$agentId/',
@@ -336,6 +343,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/interactions/timeline': typeof AuthenticatedProjectsProjectIdInteractionsTimelineRoute
   '/projects/$projectId/tasks/$taskId': typeof AuthenticatedProjectsProjectIdTasksTaskIdRoute
   '/admin/agents/$agentId/': typeof AuthenticatedAdminAgentsAgentIdIndexRoute
+  '/projects/$projectId/activity/': typeof AuthenticatedProjectsProjectIdActivityIndexRoute
   '/projects/$projectId/agents/': typeof AuthenticatedProjectsProjectIdAgentsIndexRoute
   '/projects/$projectId/automation/': typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
   '/projects/$projectId/conversations/': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
@@ -376,6 +384,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/interactions/timeline': typeof AuthenticatedProjectsProjectIdInteractionsTimelineRoute
   '/projects/$projectId/tasks/$taskId': typeof AuthenticatedProjectsProjectIdTasksTaskIdRoute
   '/admin/agents/$agentId': typeof AuthenticatedAdminAgentsAgentIdIndexRoute
+  '/projects/$projectId/activity': typeof AuthenticatedProjectsProjectIdActivityIndexRoute
   '/projects/$projectId/agents': typeof AuthenticatedProjectsProjectIdAgentsIndexRoute
   '/projects/$projectId/automation': typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
   '/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
@@ -421,6 +430,7 @@ export interface FileRoutesById {
   '/_authenticated/projects/$projectId/interactions/timeline': typeof AuthenticatedProjectsProjectIdInteractionsTimelineRoute
   '/_authenticated/projects/$projectId/tasks/$taskId': typeof AuthenticatedProjectsProjectIdTasksTaskIdRoute
   '/_authenticated/admin/agents/$agentId/': typeof AuthenticatedAdminAgentsAgentIdIndexRoute
+  '/_authenticated/projects/$projectId/activity/': typeof AuthenticatedProjectsProjectIdActivityIndexRoute
   '/_authenticated/projects/$projectId/agents/': typeof AuthenticatedProjectsProjectIdAgentsIndexRoute
   '/_authenticated/projects/$projectId/automation/': typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
   '/_authenticated/projects/$projectId/conversations/': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
@@ -466,6 +476,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/interactions/timeline'
     | '/projects/$projectId/tasks/$taskId'
     | '/admin/agents/$agentId/'
+    | '/projects/$projectId/activity/'
     | '/projects/$projectId/agents/'
     | '/projects/$projectId/automation/'
     | '/projects/$projectId/conversations/'
@@ -506,6 +517,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/interactions/timeline'
     | '/projects/$projectId/tasks/$taskId'
     | '/admin/agents/$agentId'
+    | '/projects/$projectId/activity'
     | '/projects/$projectId/agents'
     | '/projects/$projectId/automation'
     | '/projects/$projectId/conversations'
@@ -550,6 +562,7 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$projectId/interactions/timeline'
     | '/_authenticated/projects/$projectId/tasks/$taskId'
     | '/_authenticated/admin/agents/$agentId/'
+    | '/_authenticated/projects/$projectId/activity/'
     | '/_authenticated/projects/$projectId/agents/'
     | '/_authenticated/projects/$projectId/automation/'
     | '/_authenticated/projects/$projectId/conversations/'
@@ -758,6 +771,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdAgentsIndexRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdRoute
     }
+    '/_authenticated/projects/$projectId/activity/': {
+      id: '/_authenticated/projects/$projectId/activity/'
+      path: '/activity'
+      fullPath: '/projects/$projectId/activity/'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdActivityIndexRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
     '/_authenticated/admin/agents/$agentId/': {
       id: '/_authenticated/admin/agents/$agentId/'
       path: '/admin/agents/$agentId'
@@ -916,6 +936,7 @@ interface AuthenticatedProjectsProjectIdRouteChildren {
   AuthenticatedProjectsProjectIdInteractionsBacklogRoute: typeof AuthenticatedProjectsProjectIdInteractionsBacklogRoute
   AuthenticatedProjectsProjectIdInteractionsTimelineRoute: typeof AuthenticatedProjectsProjectIdInteractionsTimelineRoute
   AuthenticatedProjectsProjectIdTasksTaskIdRoute: typeof AuthenticatedProjectsProjectIdTasksTaskIdRoute
+  AuthenticatedProjectsProjectIdActivityIndexRoute: typeof AuthenticatedProjectsProjectIdActivityIndexRoute
   AuthenticatedProjectsProjectIdAgentsIndexRoute: typeof AuthenticatedProjectsProjectIdAgentsIndexRoute
   AuthenticatedProjectsProjectIdAutomationIndexRoute: typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
   AuthenticatedProjectsProjectIdDocsIndexRoute: typeof AuthenticatedProjectsProjectIdDocsIndexRoute
@@ -948,6 +969,8 @@ const AuthenticatedProjectsProjectIdRouteChildren: AuthenticatedProjectsProjectI
       AuthenticatedProjectsProjectIdInteractionsTimelineRoute,
     AuthenticatedProjectsProjectIdTasksTaskIdRoute:
       AuthenticatedProjectsProjectIdTasksTaskIdRoute,
+    AuthenticatedProjectsProjectIdActivityIndexRoute:
+      AuthenticatedProjectsProjectIdActivityIndexRoute,
     AuthenticatedProjectsProjectIdAgentsIndexRoute:
       AuthenticatedProjectsProjectIdAgentsIndexRoute,
     AuthenticatedProjectsProjectIdAutomationIndexRoute:

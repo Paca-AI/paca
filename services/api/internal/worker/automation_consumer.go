@@ -167,7 +167,7 @@ type automationSprintUpdater interface {
 	CompleteSprint(ctx context.Context, projectID, id uuid.UUID, in sprintdom.CompleteSprintInput) (*sprintdom.Sprint, error)
 }
 
-// AutomationConsumer reads task-activity events from StreamTaskActivities
+// AutomationConsumer reads task-activity events from StreamActivities
 // and evaluates the automation graph engine whenever a task event that
 // could match a trigger occurs: created, status changed, assignee changed,
 // priority changed, or a tag added. On a match it walks the matched
@@ -311,7 +311,7 @@ func (c *AutomationConsumer) Start(ctx context.Context) {
 }
 
 func (c *AutomationConsumer) ensureGroup(ctx context.Context) error {
-	for _, stream := range []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, events.StreamAgentConversationStatus, events.StreamSprintActivities} {
+	for _, stream := range []string{events.StreamActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, events.StreamAgentConversationStatus, events.StreamSprintActivities} {
 		err := c.client.XGroupCreateMkStream(ctx, stream, c.groupName, c.groupStartID).Err()
 		if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 			return err
@@ -328,7 +328,7 @@ func (c *AutomationConsumer) Stop() {
 
 func (c *AutomationConsumer) run() {
 	defer close(c.doneCh)
-	c.log.Info("automation consumer: started", "stream", events.StreamTaskActivities)
+	c.log.Info("automation consumer: started", "stream", events.StreamActivities)
 
 	c.processPending(context.Background())
 
@@ -344,7 +344,7 @@ func (c *AutomationConsumer) run() {
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    c.groupName,
 			Consumer: c.consumerName,
-			Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, events.StreamAgentConversationStatus, events.StreamSprintActivities, ">", ">", ">", ">", ">"},
+			Streams:  []string{events.StreamActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, events.StreamAgentConversationStatus, events.StreamSprintActivities, ">", ">", ">", ">", ">"},
 			Count:    automationReadCount,
 			Block:    automationReadBlock,
 		}).Result()
@@ -401,7 +401,7 @@ func (c *AutomationConsumer) processPending(ctx context.Context) {
 	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    c.groupName,
 		Consumer: c.consumerName,
-		Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, events.StreamAgentConversationStatus, events.StreamSprintActivities, "0", "0", "0", "0", "0"},
+		Streams:  []string{events.StreamActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, events.StreamAgentConversationStatus, events.StreamSprintActivities, "0", "0", "0", "0", "0"},
 		Count:    automationReadCount,
 	}).Result()
 	if err != nil && err != redis.Nil {
@@ -433,26 +433,50 @@ func (c *AutomationConsumer) ack(ctx context.Context, stream, id string) {
 func (c *AutomationConsumer) handle(msg redis.XMessage) {
 	ctx := context.Background()
 
+	if !isTaskEntry(msg) {
+		c.ack(ctx, events.StreamActivities, msg.ID)
+		return
+	}
+
+	// Self-trigger guard. The engine records a real task.updated for every
+	// task an Action node mutates (instead of the old automation.applied,
+	// which this matcher ignored), so without this check a status_changed
+	// automation that sets a status would match its own write and re-fire
+	// forever. Origin travels as a sibling stream field rather than inside
+	// the payload (see events.Event.streamFields), and a message predating
+	// the field simply has no origin — treated as non-automation, which is
+	// what those messages were.
+	//
+	// This deliberately also means an automation can never trigger another
+	// automation: skipping every origin=automation event is the whole
+	// mechanism, not a side effect. If chaining is ever wanted, add a
+	// bounded hop counter or a per-walk id to distinguish "my own write"
+	// from "someone else's", rather than weakening this.
+	if origin, _ := msg.Values["origin"].(string); origin == string(events.OriginAutomation) {
+		c.ack(ctx, events.StreamActivities, msg.ID)
+		return
+	}
+
 	raw, ok := msg.Values["payload"].(string)
 	if !ok {
-		c.ack(ctx, events.StreamTaskActivities, msg.ID)
+		c.ack(ctx, events.StreamActivities, msg.ID)
 		return
 	}
 	var p automationActivityStreamPayload
 	if err := json.Unmarshal([]byte(raw), &p); err != nil {
 		c.log.Warn("automation consumer: failed to decode payload", "id", msg.ID, "err", err)
-		c.ack(ctx, events.StreamTaskActivities, msg.ID)
+		c.ack(ctx, events.StreamActivities, msg.ID)
 		return
 	}
 
 	taskID, err := uuid.Parse(p.TaskID)
 	if err != nil {
-		c.ack(ctx, events.StreamTaskActivities, msg.ID)
+		c.ack(ctx, events.StreamActivities, msg.ID)
 		return
 	}
 	projectID, err := uuid.Parse(p.ProjectID)
 	if err != nil {
-		c.ack(ctx, events.StreamTaskActivities, msg.ID)
+		c.ack(ctx, events.StreamActivities, msg.ID)
 		return
 	}
 
@@ -482,7 +506,7 @@ func (c *AutomationConsumer) handle(msg redis.XMessage) {
 	}
 
 	if len(candidates) == 0 && !checkPredecessors {
-		c.ack(ctx, events.StreamTaskActivities, msg.ID)
+		c.ack(ctx, events.StreamActivities, msg.ID)
 		return
 	}
 
@@ -491,7 +515,7 @@ func (c *AutomationConsumer) handle(msg redis.XMessage) {
 		// Do not ack — retried via processPending on next restart.
 		return
 	}
-	c.ack(ctx, events.StreamTaskActivities, msg.ID)
+	c.ack(ctx, events.StreamActivities, msg.ID)
 }
 
 // automationExternalTriggerPayload mirrors the payload
@@ -2197,6 +2221,7 @@ func (c *AutomationConsumer) applyTriggerAIAgentOnTask(ctx context.Context, proj
 			TaskID:       task.ID,
 			ProjectID:    projectID,
 			ActorAgentID: &agentID,
+			Origin:       taskdom.OriginAutomation,
 			ActivityType: taskdom.ActivityTypeAgentSessionStarted,
 			Content:      content,
 		}); recErr != nil {
@@ -2596,6 +2621,7 @@ func (c *AutomationConsumer) recordAppliedActivity(ctx context.Context, projectI
 	_ = c.activityRec.RecordActivity(ctx, taskdom.RecordActivityInput{
 		TaskID:       taskID,
 		ProjectID:    projectID,
+		Origin:       taskdom.OriginAutomation,
 		ActivityType: taskdom.ActivityTypeAutomationApplied,
 		Content:      content,
 	})

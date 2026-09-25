@@ -29,7 +29,8 @@
 		"automation": "Автоматизация",
 		"team": "Команда",
 		"settings": "Настройки",
-		"changelog": "Что нового"
+		"changelog": "Что нового",
+		"activity": "Активность"
 	},
 	"projectSwitcher": {
 		"projects": "Проекты",

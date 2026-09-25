@@ -19,6 +19,7 @@ import (
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
@@ -34,19 +35,17 @@ import (
 // ---------------------------------------------------------------------------
 
 type fakeDocRepoIT struct {
-	mu         sync.RWMutex
-	folders    map[uuid.UUID]*docdom.DocFolder
-	docs       map[uuid.UUID]*docdom.Document
-	snapshots  map[uuid.UUID]*docdom.DocSnapshot
-	activities map[uuid.UUID]*docdom.Activity
+	mu        sync.RWMutex
+	folders   map[uuid.UUID]*docdom.DocFolder
+	docs      map[uuid.UUID]*docdom.Document
+	snapshots map[uuid.UUID]*docdom.DocSnapshot
 }
 
 func newFakeDocRepoIT() *fakeDocRepoIT {
 	return &fakeDocRepoIT{
-		folders:    make(map[uuid.UUID]*docdom.DocFolder),
-		docs:       make(map[uuid.UUID]*docdom.Document),
-		snapshots:  make(map[uuid.UUID]*docdom.DocSnapshot),
-		activities: make(map[uuid.UUID]*docdom.Activity),
+		folders:   make(map[uuid.UUID]*docdom.DocFolder),
+		docs:      make(map[uuid.UUID]*docdom.Document),
+		snapshots: make(map[uuid.UUID]*docdom.DocSnapshot),
 	}
 }
 
@@ -236,61 +235,6 @@ func (r *fakeDocRepoIT) DeleteRecentSnapshotsExcept(_ context.Context, documentI
 	return nil
 }
 
-func (r *fakeDocRepoIT) ListActivities(_ context.Context, documentID uuid.UUID) ([]*docdom.Activity, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	var out []*docdom.Activity
-	for _, a := range r.activities {
-		if a.DocumentID == documentID && a.DeletedAt == nil {
-			cp := *a
-			out = append(out, &cp)
-		}
-	}
-	return out, nil
-}
-
-func (r *fakeDocRepoIT) FindActivityByID(_ context.Context, id uuid.UUID) (*docdom.Activity, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	a, ok := r.activities[id]
-	if !ok {
-		return nil, docdom.ErrActivityNotFound
-	}
-	cp := *a
-	return &cp, nil
-}
-
-func (r *fakeDocRepoIT) CreateActivity(_ context.Context, a *docdom.Activity) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	cp := *a
-	r.activities[a.ID] = &cp
-	return nil
-}
-
-func (r *fakeDocRepoIT) UpdateActivity(_ context.Context, a *docdom.Activity) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, ok := r.activities[a.ID]; !ok {
-		return docdom.ErrActivityNotFound
-	}
-	cp := *a
-	r.activities[a.ID] = &cp
-	return nil
-}
-
-func (r *fakeDocRepoIT) DeleteActivity(_ context.Context, id uuid.UUID) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	a, ok := r.activities[id]
-	if !ok {
-		return docdom.ErrActivityNotFound
-	}
-	now := time.Now()
-	a.DeletedAt = &now
-	return nil
-}
-
 // ---------------------------------------------------------------------------
 // Doc member lookup stub — resolves any actor to a ProjectMember whose ID
 // is the agent ID (when present) or the user UUID.
@@ -330,9 +274,9 @@ func buildDocTestRouter(docRepo *fakeDocRepoIT, store *projectPermStore) http.Ha
 	sprintService := sprintsvc.New(sprintRepo, taskRepo, nil)
 	viewService := sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, nil)
 	activityRepo := newFakeTaskActivityRepo()
-	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, &fakeActivityMemberRepo{}, nil)
+	activityService := tasksvc.NewActivityService(activitysvc.New(activityRepo, &fakeActivityMemberRepo{}, nil), taskRepo, &fakeActivityMemberRepo{})
 	docService := docsvc.New(docRepo, &fakeDocMemberLookup{})
-	docActivityService := docsvc.NewActivityService(docRepo, docRepo, &fakeDocMemberLookup{}, nil)
+	docActivityService := docsvc.NewActivityService(activitysvc.New(newFakeTaskActivityRepo(), &fakeDocMemberLookup{}, nil), docRepo)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{

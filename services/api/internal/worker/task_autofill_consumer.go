@@ -136,7 +136,7 @@ type taskAutofillTaskService interface {
 	ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error)
 }
 
-// TaskAutofillConsumer reads task.created events off StreamTaskActivities
+// TaskAutofillConsumer reads task.created events off StreamActivities
 // (the same stream AutomationConsumer reads for its task_created trigger —
 // a second independent consumer group on the same stream, which Valkey
 // Streams supports natively) and, if Jev is configured and the project has
@@ -234,7 +234,7 @@ func (c *TaskAutofillConsumer) Start(ctx context.Context) {
 }
 
 func (c *TaskAutofillConsumer) ensureGroup(ctx context.Context, startID string) error {
-	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskActivities, c.groupName, startID).Err()
+	err := c.client.XGroupCreateMkStream(ctx, events.StreamActivities, c.groupName, startID).Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		return err
 	}
@@ -249,7 +249,7 @@ func (c *TaskAutofillConsumer) Stop() {
 
 func (c *TaskAutofillConsumer) run() {
 	defer close(c.doneCh)
-	c.log.Info("task autofill consumer: started", "stream", events.StreamTaskActivities)
+	c.log.Info("task autofill consumer: started", "stream", events.StreamActivities)
 
 	c.processPending(context.Background())
 
@@ -265,7 +265,7 @@ func (c *TaskAutofillConsumer) run() {
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    c.groupName,
 			Consumer: c.consumerName,
-			Streams:  []string{events.StreamTaskActivities, ">"},
+			Streams:  []string{events.StreamActivities, ">"},
 			Count:    taskAutofillReadCount,
 			Block:    taskAutofillReadBlock,
 		}).Result()
@@ -307,7 +307,7 @@ func (c *TaskAutofillConsumer) processPending(ctx context.Context) {
 	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    c.groupName,
 		Consumer: c.consumerName,
-		Streams:  []string{events.StreamTaskActivities, "0"},
+		Streams:  []string{events.StreamActivities, "0"},
 		Count:    taskAutofillReadCount,
 	}).Result()
 	if err != nil && err != redis.Nil {
@@ -322,7 +322,7 @@ func (c *TaskAutofillConsumer) processPending(ctx context.Context) {
 }
 
 func (c *TaskAutofillConsumer) ack(ctx context.Context, id string) {
-	if err := c.client.XAck(ctx, events.StreamTaskActivities, c.groupName, id).Err(); err != nil {
+	if err := c.client.XAck(ctx, events.StreamActivities, c.groupName, id).Err(); err != nil {
 		c.log.Warn("task autofill consumer: xack failed", "id", id, "err", err)
 	}
 }
@@ -339,6 +339,11 @@ type taskActivityStreamPayload struct {
 
 func (c *TaskAutofillConsumer) handle(msg redis.XMessage) {
 	ctx := context.Background()
+
+	if !isTaskEntry(msg) {
+		c.ack(ctx, msg.ID)
+		return
+	}
 
 	raw, ok := msg.Values["payload"].(string)
 	if !ok {
@@ -786,6 +791,7 @@ func (c *TaskAutofillConsumer) recordActivity(ctx context.Context, projectID, ta
 	if err := c.activityRec.RecordActivity(ctx, taskdom.RecordActivityInput{
 		TaskID:       taskID,
 		ProjectID:    projectID,
+		Origin:       taskdom.OriginJev,
 		ActivityType: taskdom.ActivityTypeTaskUpdated,
 		Content:      content,
 	}); err != nil {

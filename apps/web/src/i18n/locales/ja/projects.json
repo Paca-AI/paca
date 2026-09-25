@@ -896,6 +896,10 @@
 			"workflowsWrite": {
 				"label": "自動化を管理",
 				"description": "自動化の作成、編集、有効化、削除を行う"
+			},
+			"activitiesRead": {
+				"label": "アクティビティログの閲覧",
+				"description": "このプロジェクトで記録されたすべてのアクティビティを表示"
 			}
 		},
 		"permissionGroups": {
@@ -2328,6 +2332,129 @@
 		},
 		"conditionTypes": {
 			"jev_condition": "Jev 条件"
+		}
+	},
+	"activityLog": {
+		"title": "アクティビティ",
+		"subtitle": "このプロジェクトで起きたすべての出来事",
+		"today": "今日",
+		"yesterday": "昨日",
+		"deletedEntity": "この項目は削除されました",
+		"noPermission": {
+			"title": "アクティビティログを閲覧できません",
+			"description": "プロジェクトマネージャーに「アクティビティログの閲覧」権限を依頼してください。"
+		},
+		"empty": {
+			"title": "まだアクティビティはありません",
+			"description": "このプロジェクトでの変更がここに表示されます。"
+		},
+		"emptyFiltered": {
+			"title": "一致するアクティビティはありません",
+			"description": "フィルターを外すか、検索語を変更してください。"
+		},
+		"filters": {
+			"title": "フィルター",
+			"searchPlaceholder": "アクティビティを検索…",
+			"type": "種類",
+			"people": "メンバー",
+			"source": "ソース",
+			"dateRange": "期間",
+			"dateFrom": "開始",
+			"dateTo": "終了",
+			"clearAll": "すべてクリア"
+		},
+		"entityTypes": {
+			"task": "タスク",
+			"doc": "ドキュメント",
+			"sprint": "スプリント",
+			"view": "ビュー",
+			"automation": "オートメーション",
+			"environment": "環境",
+			"member": "メンバー",
+			"role": "ロール",
+			"agent": "エージェント",
+			"project": "プロジェクト"
+		},
+		"origins": {
+			"user": "ユーザー",
+			"agent": "エージェント",
+			"automation": "オートメーション",
+			"jev": "Jev",
+			"annotation": "アノテーション",
+			"system": "システム"
+		},
+		"detail": {
+			"asRole": "ロール: {{role}}",
+			"roleChange": "{{from}} → {{to}}",
+			"renamedFrom": "旧名「{{name}}」",
+			"member": "対象: {{name}}"
+		},
+		"projectFields": {
+			"name": "名前",
+			"description": "説明",
+			"task_id_prefix": "タスクIDプレフィックス",
+			"is_public": "公開設定",
+			"settings": "設定",
+			"jev_config": "Jev の設定"
+		},
+		"types": {
+			"sprint_created": "スプリントを作成:",
+			"sprint_updated": "スプリントを更新:",
+			"sprint_deleted": "スプリントを削除:",
+			"sprint_completed": "スプリントを完了:",
+			"view_created": "ビューを作成:",
+			"view_updated": "ビューを更新:",
+			"view_deleted": "ビューを削除:",
+			"automation_created": "オートメーションを作成:",
+			"automation_updated": "オートメーションを更新:",
+			"automation_deleted": "オートメーションを削除:",
+			"automation_activated": "オートメーションを有効化:",
+			"automation_deactivated": "オートメーションを無効化:",
+			"automation_node_added": "ステップを追加:",
+			"automation_node_removed": "ステップを削除:",
+			"automation_edge_added": "ステップを接続:",
+			"automation_edge_removed": "ステップの接続を解除:",
+			"environment_created": "環境を作成:",
+			"environment_updated": "環境を更新:",
+			"environment_deleted": "環境を削除:",
+			"environment_started": "環境を起動:",
+			"environment_stopped": "環境を停止:",
+			"environment_restarted": "環境を再起動:",
+			"environment_ssh_key_added": "SSH キー「{{label}}」を追加:",
+			"environment_ssh_key_removed": "SSH キー「{{label}}」を削除:",
+			"environment_access_granted": "アクセス権を付与:",
+			"environment_access_revoked": "アクセス権を取り消し:",
+			"environment_port_forward_added": "ポート {{port}} を転送:",
+			"environment_port_forward_removed": "ポート {{port}} の転送を停止:",
+			"annotation_created": "アノテーションを追加:",
+			"annotation_resolved": "アノテーションを解決:",
+			"annotation_reopened": "アノテーションを再オープン:",
+			"annotation_commented": "アノテーションに返信:",
+			"member_added": "メンバーを追加:",
+			"member_role_changed": "ロールを変更:",
+			"member_updated": "メンバーを更新:",
+			"member_removed": "メンバーを削除:",
+			"role_created": "ロールを作成:",
+			"role_updated": "ロールを更新:",
+			"role_deleted": "ロールを削除:",
+			"project_updated": "設定を更新:",
+			"project_task_type_created": "タスクタイプ「{{name}}」を作成:",
+			"project_task_type_updated": "タスクタイプ「{{name}}」を更新:",
+			"project_task_type_deleted": "タスクタイプ「{{name}}」を削除:",
+			"project_task_type_default_set": "「{{name}}」をデフォルトのタスクタイプに設定:",
+			"project_task_status_created": "ステータス「{{name}}」を作成:",
+			"project_task_status_updated": "ステータス「{{name}}」を更新:",
+			"project_task_status_deleted": "ステータス「{{name}}」を削除:",
+			"project_task_status_default_set": "「{{name}}」をデフォルトのステータスに設定:",
+			"project_task_status_reordered": "ステータスを並べ替え:",
+			"project_custom_field_created": "フィールド「{{name}}」を作成:",
+			"project_custom_field_updated": "フィールド「{{name}}」を更新:",
+			"project_custom_field_deleted": "フィールド「{{name}}」を削除:",
+			"project_agent_created": "エージェントを追加:",
+			"project_agent_updated": "エージェントを更新:",
+			"project_agent_deleted": "エージェントを削除:",
+			"comment": "コメント:",
+			"fallback": "{{type}}:"
 		}
 	}
 }

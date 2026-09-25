@@ -1250,7 +1250,7 @@ func (h *TaskHandler) taskChangedFields(ctx context.Context, old *taskdom.Task, 
 	// already-unassigned task into Auto mode): without this, flipping a task
 	// to Auto mode with an empty assignee list produces zero recorded
 	// changes, so no task.updated activity gets published to
-	// events.StreamTaskActivities, and TaskAutoAssignConsumer — which only
+	// events.StreamActivities, and TaskAutoAssignConsumer — which only
 	// reacts to task.created/task.updated stream messages — never even runs
 	// to pick an assignee.
 	if req.AssignmentMode != nil && *req.AssignmentMode != old.AssignmentMode {

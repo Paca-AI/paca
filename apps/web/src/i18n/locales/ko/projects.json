@@ -896,6 +896,10 @@
 			"workflowsWrite": {
 				"label": "자동화 관리",
 				"description": "자동화 생성, 편집, 활성화 및 삭제"
+			},
+			"activitiesRead": {
+				"label": "활동 로그 보기",
+				"description": "이 프로젝트에 기록된 모든 활동 보기"
 			}
 		},
 		"permissionGroups": {
@@ -2328,6 +2332,129 @@
 		},
 		"conditionTypes": {
 			"jev_condition": "Jev 조건"
+		}
+	},
+	"activityLog": {
+		"title": "활동",
+		"subtitle": "이 프로젝트에서 일어난 모든 일",
+		"today": "오늘",
+		"yesterday": "어제",
+		"deletedEntity": "이 항목은 삭제되었습니다",
+		"noPermission": {
+			"title": "활동 로그를 볼 수 없습니다",
+			"description": "프로젝트 관리자에게 “활동 로그 보기” 권한을 요청하세요."
+		},
+		"empty": {
+			"title": "아직 활동이 없습니다",
+			"description": "이 프로젝트의 변경 사항이 여기에 표시됩니다."
+		},
+		"emptyFiltered": {
+			"title": "일치하는 활동이 없습니다",
+			"description": "필터를 제거하거나 검색어를 바꿔 보세요."
+		},
+		"filters": {
+			"title": "필터",
+			"searchPlaceholder": "활동 검색…",
+			"type": "유형",
+			"people": "사람",
+			"source": "출처",
+			"dateRange": "기간",
+			"dateFrom": "시작",
+			"dateTo": "종료",
+			"clearAll": "모두 지우기"
+		},
+		"entityTypes": {
+			"task": "작업",
+			"doc": "문서",
+			"sprint": "스프린트",
+			"view": "보기",
+			"automation": "자동화",
+			"environment": "환경",
+			"member": "멤버",
+			"role": "역할",
+			"agent": "에이전트",
+			"project": "프로젝트"
+		},
+		"origins": {
+			"user": "사용자",
+			"agent": "에이전트",
+			"automation": "자동화",
+			"jev": "Jev",
+			"annotation": "주석",
+			"system": "시스템"
+		},
+		"detail": {
+			"asRole": "역할: {{role}}",
+			"roleChange": "{{from}} → {{to}}",
+			"renamedFrom": "이전 이름 “{{name}}”",
+			"member": "대상: {{name}}"
+		},
+		"projectFields": {
+			"name": "이름",
+			"description": "설명",
+			"task_id_prefix": "작업 ID 접두사",
+			"is_public": "공개 범위",
+			"settings": "설정",
+			"jev_config": "Jev 구성"
+		},
+		"types": {
+			"sprint_created": "스프린트 생성:",
+			"sprint_updated": "스프린트 수정:",
+			"sprint_deleted": "스프린트 삭제:",
+			"sprint_completed": "스프린트 완료:",
+			"view_created": "보기 생성:",
+			"view_updated": "보기 수정:",
+			"view_deleted": "보기 삭제:",
+			"automation_created": "자동화 생성:",
+			"automation_updated": "자동화 수정:",
+			"automation_deleted": "자동화 삭제:",
+			"automation_activated": "자동화 활성화:",
+			"automation_deactivated": "자동화 비활성화:",
+			"automation_node_added": "단계 추가:",
+			"automation_node_removed": "단계 제거:",
+			"automation_edge_added": "단계 연결:",
+			"automation_edge_removed": "단계 연결 해제:",
+			"environment_created": "환경 생성:",
+			"environment_updated": "환경 수정:",
+			"environment_deleted": "환경 삭제:",
+			"environment_started": "환경 시작:",
+			"environment_stopped": "환경 중지:",
+			"environment_restarted": "환경 재시작:",
+			"environment_ssh_key_added": "SSH 키 “{{label}}” 추가:",
+			"environment_ssh_key_removed": "SSH 키 “{{label}}” 제거:",
+			"environment_access_granted": "접근 권한 부여:",
+			"environment_access_revoked": "접근 권한 회수:",
+			"environment_port_forward_added": "포트 {{port}} 포워딩:",
+			"environment_port_forward_removed": "포트 {{port}} 포워딩 중지:",
+			"annotation_created": "주석 추가:",
+			"annotation_resolved": "주석 해결:",
+			"annotation_reopened": "주석 다시 열기:",
+			"annotation_commented": "주석에 답글:",
+			"member_added": "멤버 추가:",
+			"member_role_changed": "역할 변경:",
+			"member_updated": "멤버 수정:",
+			"member_removed": "멤버 제거:",
+			"role_created": "역할 생성:",
+			"role_updated": "역할 수정:",
+			"role_deleted": "역할 삭제:",
+			"project_updated": "설정 수정:",
+			"project_task_type_created": "작업 유형 “{{name}}” 생성:",
+			"project_task_type_updated": "작업 유형 “{{name}}” 수정:",
+			"project_task_type_deleted": "작업 유형 “{{name}}” 삭제:",
+			"project_task_type_default_set": "“{{name}}”을(를) 기본 작업 유형으로 설정:",
+			"project_task_status_created": "상태 “{{name}}” 생성:",
+			"project_task_status_updated": "상태 “{{name}}” 수정:",
+			"project_task_status_deleted": "상태 “{{name}}” 삭제:",
+			"project_task_status_default_set": "“{{name}}”을(를) 기본 상태로 설정:",
+			"project_task_status_reordered": "상태 순서 변경:",
+			"project_custom_field_created": "필드 “{{name}}” 생성:",
+			"project_custom_field_updated": "필드 “{{name}}” 수정:",
+			"project_custom_field_deleted": "필드 “{{name}}” 삭제:",
+			"project_agent_created": "에이전트 추가:",
+			"project_agent_updated": "에이전트 수정:",
+			"project_agent_deleted": "에이전트 제거:",
+			"comment": "댓글:",
+			"fallback": "{{type}}:"
 		}
 	}
 }

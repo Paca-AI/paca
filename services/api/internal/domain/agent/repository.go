@@ -15,7 +15,6 @@ type Repository interface {
 	EnvVarRepository
 	ConversationRepository
 	ChatSessionRepository
-	ActivityFeedRepository
 	AccessGrantRepository
 }
 

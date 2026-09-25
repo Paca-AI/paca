@@ -16,8 +16,10 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
+	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/secret"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 )
 
 // prefixRe validates that a task ID prefix contains only uppercase letters and digits.
@@ -106,11 +108,12 @@ type Service struct {
 	agents    agentLookup
 	avatarSvc attachmentdom.AvatarService
 	encryptor *secret.Encryptor
+	activity  activitysvc.Recorder
 }
 
 // New returns a configured project service.
 func New(repo projectdom.Repository, taskRepo taskBootstrapper, agents agentLookup) *Service {
-	return &Service{repo: repo, taskRepo: taskRepo, agents: agents}
+	return &Service{repo: repo, taskRepo: taskRepo, agents: agents, activity: activitysvc.Discard}
 }
 
 // WithAvatarService configures avatar upload support.
@@ -175,6 +178,11 @@ func (s *Service) UpdateJevConfig(ctx context.Context, projectID uuid.UUID, apiK
 	p.JevAPIKeySecret = newKeySecret
 	p.JevBaseURL = newBaseURL
 	p.JevModel = newModel
+	// Names the change only — never the key or its ciphertext.
+	s.record(ctx, p.ID, events.EntityProject, p.ID, TopicProjectUpdated, map[string]any{
+		"name":    p.Name,
+		"changes": []string{"jev_config"},
+	})
 	return p, nil
 }
 
@@ -430,7 +438,33 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in projectdom.Update
 	if err := s.repo.Update(ctx, p); err != nil {
 		return nil, err
 	}
+	s.record(ctx, p.ID, events.EntityProject, p.ID, TopicProjectUpdated, map[string]any{
+		"name":    p.Name,
+		"changes": projectChangedFields(in),
+	})
 	return p, nil
+}
+
+// projectChangedFields lists the fields an update touched, for the activity
+// log. Settings are not diffed — the log only says they changed.
+func projectChangedFields(in projectdom.UpdateProjectInput) []string {
+	var out []string
+	if strings.TrimSpace(in.Name) != "" {
+		out = append(out, "name")
+	}
+	if strings.TrimSpace(in.Description) != "" {
+		out = append(out, "description")
+	}
+	if strings.TrimSpace(in.TaskIDPrefix) != "" {
+		out = append(out, "task_id_prefix")
+	}
+	if in.IsPublic != nil {
+		out = append(out, "is_public")
+	}
+	if in.Settings != nil {
+		out = append(out, "settings")
+	}
+	return out
 }
 
 // IsProjectPublic returns true when the project exists and has is_public set.

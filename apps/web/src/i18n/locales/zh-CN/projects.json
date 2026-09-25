@@ -896,6 +896,10 @@
 			"workflowsWrite": {
 				"label": "管理自动化",
 				"description": "创建、编辑、启用和删除自动化"
+			},
+			"activitiesRead": {
+				"label": "查看动态日志",
+				"description": "查看此项目中记录的所有动态"
 			}
 		},
 		"permissionGroups": {
@@ -2328,6 +2332,129 @@
 		},
 		"conditionTypes": {
 			"jev_condition": "Jev 条件"
+		}
+	},
+	"activityLog": {
+		"title": "动态",
+		"subtitle": "此项目中发生的一切",
+		"today": "今天",
+		"yesterday": "昨天",
+		"deletedEntity": "此项已被删除",
+		"noPermission": {
+			"title": "你无法查看动态日志",
+			"description": "请向项目经理申请“查看动态日志”权限。"
+		},
+		"empty": {
+			"title": "暂无动态",
+			"description": "此项目中的更改将显示在这里。"
+		},
+		"emptyFiltered": {
+			"title": "没有匹配的动态",
+			"description": "请尝试移除部分筛选条件或更改搜索词。"
+		},
+		"filters": {
+			"title": "筛选",
+			"searchPlaceholder": "搜索动态…",
+			"type": "类型",
+			"people": "成员",
+			"source": "来源",
+			"dateRange": "日期范围",
+			"dateFrom": "从",
+			"dateTo": "至",
+			"clearAll": "全部清除"
+		},
+		"entityTypes": {
+			"task": "任务",
+			"doc": "文档",
+			"sprint": "迭代",
+			"view": "视图",
+			"automation": "自动化",
+			"environment": "环境",
+			"member": "成员",
+			"role": "角色",
+			"agent": "智能体",
+			"project": "项目"
+		},
+		"origins": {
+			"user": "用户",
+			"agent": "智能体",
+			"automation": "自动化",
+			"jev": "Jev",
+			"annotation": "批注",
+			"system": "系统"
+		},
+		"detail": {
+			"asRole": "角色为 {{role}}",
+			"roleChange": "{{from}} → {{to}}",
+			"renamedFrom": "原名“{{name}}”",
+			"member": "对象：{{name}}"
+		},
+		"projectFields": {
+			"name": "名称",
+			"description": "描述",
+			"task_id_prefix": "任务 ID 前缀",
+			"is_public": "可见性",
+			"settings": "设置",
+			"jev_config": "Jev 配置"
+		},
+		"types": {
+			"sprint_created": "创建了迭代",
+			"sprint_updated": "更新了迭代",
+			"sprint_deleted": "删除了迭代",
+			"sprint_completed": "完成了迭代",
+			"view_created": "创建了视图",
+			"view_updated": "更新了视图",
+			"view_deleted": "删除了视图",
+			"automation_created": "创建了自动化",
+			"automation_updated": "更新了自动化",
+			"automation_deleted": "删除了自动化",
+			"automation_activated": "启用了自动化",
+			"automation_deactivated": "停用了自动化",
+			"automation_node_added": "添加了步骤到",
+			"automation_node_removed": "移除了步骤自",
+			"automation_edge_added": "连接了步骤于",
+			"automation_edge_removed": "断开了步骤于",
+			"environment_created": "创建了环境",
+			"environment_updated": "更新了环境",
+			"environment_deleted": "删除了环境",
+			"environment_started": "启动了环境",
+			"environment_stopped": "停止了环境",
+			"environment_restarted": "重启了环境",
+			"environment_ssh_key_added": "添加了 SSH 密钥“{{label}}”到",
+			"environment_ssh_key_removed": "移除了 SSH 密钥“{{label}}”自",
+			"environment_access_granted": "授予了访问权限：",
+			"environment_access_revoked": "撤销了访问权限：",
+			"environment_port_forward_added": "转发了端口 {{port}}：",
+			"environment_port_forward_removed": "停止转发端口 {{port}}：",
+			"annotation_created": "添加了批注于",
+			"annotation_resolved": "解决了批注于",
+			"annotation_reopened": "重新打开了批注于",
+			"annotation_commented": "回复了批注于",
+			"member_added": "添加了成员",
+			"member_role_changed": "更改了角色：",
+			"member_updated": "更新了成员",
+			"member_removed": "移除了成员",
+			"role_created": "创建了角色",
+			"role_updated": "更新了角色",
+			"role_deleted": "删除了角色",
+			"project_updated": "更新了设置：",
+			"project_task_type_created": "创建了任务类型“{{name}}”于",
+			"project_task_type_updated": "更新了任务类型“{{name}}”于",
+			"project_task_type_deleted": "删除了任务类型“{{name}}”于",
+			"project_task_type_default_set": "将“{{name}}”设为默认任务类型于",
+			"project_task_status_created": "创建了状态“{{name}}”于",
+			"project_task_status_updated": "更新了状态“{{name}}”于",
+			"project_task_status_deleted": "删除了状态“{{name}}”于",
+			"project_task_status_default_set": "将“{{name}}”设为默认状态于",
+			"project_task_status_reordered": "重新排序了状态于",
+			"project_custom_field_created": "创建了字段“{{name}}”于",
+			"project_custom_field_updated": "更新了字段“{{name}}”于",
+			"project_custom_field_deleted": "删除了字段“{{name}}”于",
+			"project_agent_created": "添加了智能体",
+			"project_agent_updated": "更新了智能体",
+			"project_agent_deleted": "移除了智能体",
+			"comment": "评论了",
+			"fallback": "执行了 {{type}}："
 		}
 	}
 }

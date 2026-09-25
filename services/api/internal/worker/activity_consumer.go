@@ -8,14 +8,15 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	activitydom "github.com/Paca-AI/api/internal/domain/activity"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/events"
 )
@@ -26,20 +27,30 @@ const (
 	activityReadCount     = 50
 )
 
-// ActivityConsumer reads task-activity events from the StreamTaskActivities
-// Valkey stream (written by ActivitySvc.RecordActivity) and persists each
-// entry to the database via ActivityRepository.
+// activityIDNamespace seeds the row ID derived from a stream message ID for
+// events whose payload carries no "id" of its own, so a message redelivered
+// after a crash between insert and ack maps to the same row and the insert's
+// ON CONFLICT drops it.
+var activityIDNamespace = uuid.MustParse("5b0f5a9e-4c1e-4a57-9d2f-7f1c6b3e8a41")
+
+// ActivityConsumer is the single writer of the activities table. It reads
+// every entry on StreamActivities — task, doc, sprint, view, automation,
+// environment and member events alike — and persists each one.
 //
-// The actor_id stored in the stream is the authenticated user's UUID.  The
-// consumer resolves it to the corresponding project_members.id via memberRepo
-// before writing to the DB (since task_activities.actor_id references
-// project_members, not users).
+// It is one peer listener among several on that stream (see events.Fanout):
+// it reads only the envelope fields Fanout writes as siblings of "payload"
+// (project_id, entity_type, entity_id, actor_id, actor_agent_id, origin), so
+// it never has to know any one domain's payload shape.
 //
-// Comment operations (AddComment / UpdateComment / DeleteComment) write to the
-// database directly, so they are NOT handled here.
+// The actor in the envelope is a user or agent UUID; the consumer resolves it
+// to project_members.id, which is what activities.actor_id references.
+//
+// Comments are inserted directly by their service, because the request
+// returns the row. Their stream copy carries the same "id", so the insert
+// here conflicts and is dropped.
 type ActivityConsumer struct {
 	client       *redis.Client
-	repo         taskdom.ActivityRepository
+	repo         activitydom.Repository
 	memberRepo   projectdom.MemberRepository
 	log          *slog.Logger
 	consumerName string // unique per instance, derived from hostname
@@ -50,7 +61,7 @@ type ActivityConsumer struct {
 // NewActivityConsumer creates a consumer that is ready to be started.
 // The consumer name is derived from the hostname so it is unique per pod/instance.
 // If hostname retrieval fails, a random UUID suffix is used as fallback.
-func NewActivityConsumer(client *redis.Client, repo taskdom.ActivityRepository, memberRepo projectdom.MemberRepository, log *slog.Logger) *ActivityConsumer {
+func NewActivityConsumer(client *redis.Client, repo activitydom.Repository, memberRepo projectdom.MemberRepository, log *slog.Logger) *ActivityConsumer {
 	hostname, err := os.Hostname()
 	if err != nil || hostname == "" {
 		hostname = uuid.New().String()
@@ -81,14 +92,11 @@ func (c *ActivityConsumer) Start(ctx context.Context) {
 
 // ensureGroup creates the consumer group at startID if it doesn't already
 // exist. MKSTREAM ensures the stream key is created if it doesn't exist
-// yet. startID is "0" only for Start's own first-ever creation (see doc
-// comment there) — the NOGROUP recovery path in run() below passes "$"
-// instead, since recreating at "0" there would redeliver the stream's
-// entire retained history (including entries already processed and acked
-// before the group vanished) through handlers with no event-level
-// deduplication.
+// yet. startID is "0" only for Start's own first-ever creation — the NOGROUP
+// recovery path in run() passes "$" instead, since recreating at "0" there
+// would redeliver the stream's entire retained history.
 func (c *ActivityConsumer) ensureGroup(ctx context.Context, startID string) error {
-	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskActivities, activityConsumerGroup, startID).Err()
+	err := c.client.XGroupCreateMkStream(ctx, events.StreamActivities, activityConsumerGroup, startID).Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		return err
 	}
@@ -104,7 +112,7 @@ func (c *ActivityConsumer) Stop() {
 // run is the main loop executed in a goroutine by Start.
 func (c *ActivityConsumer) run() {
 	defer close(c.doneCh)
-	c.log.Info("activity consumer: started", "stream", events.StreamTaskActivities)
+	c.log.Info("activity consumer: started", "stream", events.StreamActivities)
 
 	// On startup, replay any pending messages (PEL) that were delivered but
 	// never acknowledged (e.g. after a crash).  "0" fetches the backlog.
@@ -122,7 +130,7 @@ func (c *ActivityConsumer) run() {
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    activityConsumerGroup,
 			Consumer: c.consumerName,
-			Streams:  []string{events.StreamTaskActivities, ">"},
+			Streams:  []string{events.StreamActivities, ">"},
 			Count:    activityReadCount,
 			Block:    activityReadBlock,
 		}).Result()
@@ -135,18 +143,9 @@ func (c *ActivityConsumer) run() {
 			}
 			c.log.Error("activity consumer: xreadgroup error", "err", err)
 			if strings.Contains(err.Error(), "NOGROUP") {
-				// The stream and/or consumer group vanished out from under
-				// an already-running consumer (e.g. a Valkey restart
-				// without persistence, or the group's initial creation at
-				// Start failing transiently) — without this, every
-				// subsequent XReadGroup call keeps failing the exact same
-				// way forever, since nothing else recreates the group.
-				// Recreate at "$" (from now), not "0": unlike Start's own
-				// first-ever creation, the stream itself may still hold
-				// this consumer's own already-processed history (e.g. a
-				// manual XGROUP DESTROY that left the stream intact), and
-				// this handler has no event-level dedup to make replaying
-				// that safe.
+				// The stream and/or group vanished under a running consumer
+				// (e.g. a Valkey restart without persistence); nothing else
+				// recreates it, so every later read would fail the same way.
 				recoverCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				geErr := c.ensureGroup(recoverCtx, "$")
 				cancel()
@@ -172,7 +171,7 @@ func (c *ActivityConsumer) processPending(ctx context.Context) {
 	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    activityConsumerGroup,
 		Consumer: c.consumerName,
-		Streams:  []string{events.StreamTaskActivities, "0"},
+		Streams:  []string{events.StreamActivities, "0"},
 		Count:    activityReadCount,
 	}).Result()
 	if err != nil && err != redis.Nil {
@@ -186,144 +185,142 @@ func (c *ActivityConsumer) processPending(ctx context.Context) {
 	}
 }
 
-// handle deserialises one stream message and writes the activity to the DB.
+// handle decodes one stream message and writes the activity to the DB.
 func (c *ActivityConsumer) handle(msg redis.XMessage) {
 	ctx := context.Background()
 
-	// The Publisher.Append method stores the body in a "payload" field as a
-	// JSON-encoded string.
-	raw, ok := msg.Values["payload"].(string)
+	a, actorUserID, actorAgentID, ok := activityFromMessage(msg)
 	if !ok {
-		c.log.Warn("activity consumer: message has no payload field", "id", msg.ID)
-		c.ack(ctx, msg.ID) // skip unrecognised messages
-		return
-	}
-
-	var p activityStreamPayload
-	if err := json.Unmarshal([]byte(raw), &p); err != nil {
-		c.log.Warn("activity consumer: failed to decode payload", "id", msg.ID, "err", err)
+		c.log.Warn("activity consumer: skipping malformed entry", "id", msg.ID)
 		c.ack(ctx, msg.ID)
 		return
 	}
 
-	a, err := p.toActivity()
-	if err != nil {
-		c.log.Warn("activity consumer: invalid payload fields", "id", msg.ID, "err", err)
-		c.ack(ctx, msg.ID)
-		return
-	}
-
-	// Resolve actor → project_members.id so that task_activities.actor_id
-	// correctly references the project_members table.
-	// FindMemberByActor picks agent lookup or user lookup based on agentID.
-	if p.ProjectID != "" {
-		projectID, pErr := uuid.Parse(p.ProjectID)
-		if pErr == nil {
-			var actorID uuid.UUID
-			if a.ActorID != nil {
-				actorID = *a.ActorID
-			}
-			var agentID *uuid.UUID
-			if p.ActorAgentID != nil && *p.ActorAgentID != "" {
-				if id, aErr := uuid.Parse(*p.ActorAgentID); aErr == nil {
-					agentID = &id
-				}
-			}
-			if agentID != nil || a.ActorID != nil {
-				member, mErr := c.memberRepo.FindMemberByActor(ctx, projectID, actorID, agentID)
-				if mErr == nil {
-					a.ActorID = &member.ID
-				} else {
-					// actorID is userdom.SystemActorUserID for requests
-					// authenticated with the shared agent API key but no
-					// X-Agent-ID header — that identity is never itself a
-					// project member by design, so ErrMemberNotFound is
-					// expected there, not a bug; only warn when a genuine
-					// actor can't be resolved to a member, or when the
-					// lookup failed for some other (unexpected) reason.
-					expected := userdom.IsUnidentifiedSystemActor(actorID, agentID) && errors.Is(mErr, projectdom.ErrMemberNotFound)
-					if !expected {
-						c.log.Warn("activity consumer: could not resolve member for actor", "actor_id", a.ActorID, "agent_id", p.ActorAgentID, "project_id", projectID, "err", mErr)
-					}
-					// Member may have been removed; store nil rather than a stale UUID.
-					a.ActorID = nil
-				}
-			}
+	// Resolve the actor to project_members.id. An unresolvable actor (e.g. a
+	// removed member) is stored as nil rather than dropping the entry.
+	if actorUserID != nil || actorAgentID != nil {
+		var userID uuid.UUID
+		if actorUserID != nil {
+			userID = *actorUserID
+		}
+		member, err := c.memberRepo.FindMemberByActor(ctx, a.ProjectID, userID, actorAgentID)
+		if err == nil {
+			a.ActorID = &member.ID
+		} else if !userdom.IsUnidentifiedSystemActor(userID, actorAgentID) || !errors.Is(err, projectdom.ErrMemberNotFound) {
+			// The shared-agent-API-key identity is never a member by design,
+			// so ErrMemberNotFound is expected for it and not worth a warning.
+			c.log.Warn("activity consumer: could not resolve member for actor", "actor_id", actorUserID, "agent_id", actorAgentID, "project_id", a.ProjectID, "err", err)
 		}
 	}
 
-	if err := c.repo.CreateActivity(ctx, a); err != nil {
-		// Log and do NOT ack — the message stays in the PEL and will be
-		// retried on next startup via processPending.
+	if err := c.repo.Create(ctx, a); err != nil {
+		// Not acked: left in the PEL for processPending to retry.
 		c.log.Error("activity consumer: failed to persist activity", "id", msg.ID, "err", err)
 		return
 	}
-
 	c.ack(ctx, msg.ID)
 }
 
 func (c *ActivityConsumer) ack(ctx context.Context, id string) {
-	if err := c.client.XAck(ctx, events.StreamTaskActivities, activityConsumerGroup, id).Err(); err != nil {
+	if err := c.client.XAck(ctx, events.StreamActivities, activityConsumerGroup, id).Err(); err != nil {
 		c.log.Warn("activity consumer: xack failed", "id", id, "err", err)
 	}
 }
 
-// activityStreamPayload mirrors the JSON shape produced by activityPayload()
-// in activity_service.go.
-type activityStreamPayload struct {
-	ID           string  `json:"id"`
-	TaskID       string  `json:"task_id"`
-	ProjectID    string  `json:"project_id"`
-	ActorID      *string `json:"actor_id"`
-	ActorAgentID *string `json:"actor_agent_id"`
-	ActivityType string  `json:"activity_type"`
-	Content      string  `json:"content"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
+// activityPayloadFields are the payload keys the task and doc activity
+// services write. Other domains' payloads have their own shapes; every field
+// here is optional.
+type activityPayloadFields struct {
+	ID        string          `json:"id"`
+	Content   json.RawMessage `json:"content"`
+	CreatedAt string          `json:"created_at"`
 }
 
-func (p activityStreamPayload) toActivity() (*taskdom.Activity, error) {
+// activityFromMessage decodes one Fanout envelope. It returns the actor
+// user/agent UUIDs separately because the row stores the resolved member ID.
+func activityFromMessage(msg redis.XMessage) (a *activitydom.Activity, actorUserID, actorAgentID *uuid.UUID, ok bool) {
+	str := func(k string) string { s, _ := msg.Values[k].(string); return s }
+	optUUID := func(k string) *uuid.UUID {
+		id, err := uuid.Parse(str(k))
+		if err != nil {
+			return nil
+		}
+		return &id
+	}
+
+	projectID, err := uuid.Parse(str("project_id"))
+	if err != nil || projectID == uuid.Nil {
+		return nil, nil, nil, false
+	}
+	topic := str("type")
+	if topic == "" {
+		return nil, nil, nil, false
+	}
+	origin := str("origin")
+	if origin == "" {
+		origin = string(events.OriginSystem)
+	}
+
+	raw := str("payload")
+	var p activityPayloadFields
+	_ = json.Unmarshal([]byte(raw), &p)
+
+	// Prefer the producer's own ID: it is what a comment's direct insert
+	// used, and what the per-entity feeds and comment edits refer to.
 	id, err := uuid.Parse(p.ID)
 	if err != nil {
-		return nil, fmt.Errorf("parse id: %w", err)
-	}
-	taskID, err := uuid.Parse(p.TaskID)
-	if err != nil {
-		return nil, fmt.Errorf("parse task_id: %w", err)
-	}
-	var actorID *uuid.UUID
-	if p.ActorID != nil && *p.ActorID != "" {
-		aid, err := uuid.Parse(*p.ActorID)
-		if err != nil {
-			return nil, fmt.Errorf("parse actor_id: %w", err)
-		}
-		actorID = &aid
-	}
-	content := json.RawMessage(p.Content)
-	if len(content) == 0 {
-		content = json.RawMessage("{}")
+		id = uuid.NewSHA1(activityIDNamespace, []byte(msg.ID))
 	}
 	createdAt, err := time.Parse(time.RFC3339Nano, p.CreatedAt)
 	if err != nil {
-		// Fallback: accept the Go default format used by time.Time.MarshalJSON.
-		createdAt, err = time.Parse(`"2006-01-02T15:04:05.999999999Z07:00"`, p.CreatedAt)
-		if err != nil {
-			createdAt = time.Now()
-		}
+		createdAt = streamIDTime(msg.ID)
 	}
-	updatedAt := createdAt
-	if p.UpdatedAt != "" {
-		if t, err := time.Parse(time.RFC3339Nano, p.UpdatedAt); err == nil {
-			updatedAt = t
-		}
-	}
-	return &taskdom.Activity{
+
+	a = &activitydom.Activity{
 		ID:           id,
-		TaskID:       taskID,
-		ActorID:      actorID,
-		ActivityType: taskdom.ActivityType(p.ActivityType),
-		Content:      content,
+		ProjectID:    projectID,
+		EntityType:   str("entity_type"),
+		EntityID:     optUUID("entity_id"),
+		Origin:       origin,
+		ActivityType: topic,
+		Content:      activityContent(raw, p.Content),
 		CreatedAt:    createdAt,
-		UpdatedAt:    updatedAt,
-	}, nil
+	}
+	return a, optUUID("actor_id"), optUUID("actor_agent_id"), true
+}
+
+// activityContent picks what the row stores as content. Task and doc
+// activity payloads carry their real body as a JSON string under "content"
+// (see their services' activityPayload); that inner document is what the
+// per-entity feeds have always rendered, so it is unwrapped. Any other
+// payload is stored as-is.
+func activityContent(raw string, inner json.RawMessage) json.RawMessage {
+	var s string
+	if len(inner) > 0 && json.Unmarshal(inner, &s) == nil && json.Valid([]byte(s)) {
+		return json.RawMessage(s)
+	}
+	if !json.Valid([]byte(raw)) {
+		return json.RawMessage("{}")
+	}
+	return json.RawMessage(raw)
+}
+
+// streamIDTime returns the millisecond timestamp Valkey encodes in a stream
+// entry ID ("<ms>-<seq>") — when the event was published, which is when it
+// happened. Falls back to now for a malformed ID.
+func streamIDTime(id string) time.Time {
+	msPart, _, _ := strings.Cut(id, "-")
+	ms, err := strconv.ParseInt(msPart, 10, 64)
+	if err != nil {
+		return time.Now()
+	}
+	return time.UnixMilli(ms)
+}
+
+// isTaskEntry reports whether a StreamActivities entry concerns a task — the
+// only entries the task listeners (autofill, auto-assign, automation) act
+// on. An entry with no entity_type predates the unified stream's envelope.
+func isTaskEntry(msg redis.XMessage) bool {
+	et, _ := msg.Values["entity_type"].(string)
+	return et == "" || et == string(events.EntityTask)
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/events"
 )
 
 // ListRoles returns all roles defined for a project.
@@ -48,6 +49,7 @@ func (s *Service) CreateRole(ctx context.Context, projectID uuid.UUID, in projec
 	if err := s.repo.CreateRole(ctx, r); err != nil {
 		return nil, err
 	}
+	s.record(ctx, projectID, events.EntityRole, r.ID, TopicRoleCreated, map[string]any{"name": r.RoleName})
 	return r, nil
 }
 
@@ -80,6 +82,7 @@ func (s *Service) UpdateRole(ctx context.Context, projectID, roleID uuid.UUID, i
 		}
 	}
 
+	previousName := r.RoleName
 	r.RoleName = name
 	if in.Permissions != nil {
 		r.Permissions = cloneSettings(in.Permissions)
@@ -89,6 +92,11 @@ func (s *Service) UpdateRole(ctx context.Context, projectID, roleID uuid.UUID, i
 	if err := s.repo.UpdateRole(ctx, r); err != nil {
 		return nil, err
 	}
+	payload := map[string]any{"name": r.RoleName, "permissions_changed": in.Permissions != nil}
+	if previousName != r.RoleName {
+		payload["previous_name"] = previousName
+	}
+	s.record(ctx, projectID, events.EntityRole, r.ID, TopicRoleUpdated, payload)
 	return r, nil
 }
 
@@ -119,5 +127,9 @@ func (s *Service) DeleteRole(ctx context.Context, projectID, roleID uuid.UUID) e
 	if count > 0 {
 		return projectdom.ErrRoleHasMembers
 	}
-	return s.repo.DeleteRole(ctx, roleID)
+	if err := s.repo.DeleteRole(ctx, roleID); err != nil {
+		return err
+	}
+	s.record(ctx, projectID, events.EntityRole, roleID, TopicRoleDeleted, map[string]any{"name": r.RoleName})
+	return nil
 }

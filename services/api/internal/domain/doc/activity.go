@@ -60,20 +60,6 @@ type FieldChange struct {
 	New   any    `json:"new"`
 }
 
-// ActivityRepository defines persistence for doc activities.
-type ActivityRepository interface {
-	// ListActivities returns all non-deleted activities for a document, oldest first.
-	ListActivities(ctx context.Context, documentID uuid.UUID) ([]*Activity, error)
-	// FindActivityByID returns a single activity entry (including soft-deleted).
-	FindActivityByID(ctx context.Context, id uuid.UUID) (*Activity, error)
-	// CreateActivity persists a new activity entry.
-	CreateActivity(ctx context.Context, a *Activity) error
-	// UpdateActivity persists mutable changes to an existing activity.
-	UpdateActivity(ctx context.Context, a *Activity) error
-	// DeleteActivity soft-deletes the activity (sets deleted_at).
-	DeleteActivity(ctx context.Context, id uuid.UUID) error
-}
-
 // ActivityService defines use-cases for doc activity and comments.
 type ActivityService interface {
 	ActivityRecorder

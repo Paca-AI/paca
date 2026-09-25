@@ -58,6 +58,7 @@ type Deps struct {
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
 	Settings             *handler.SettingsHandler
+	ProjectActivity      *handler.ProjectActivityHandler
 	Log                  *slog.Logger
 	// CORSAllowedOrigins is the CORS allow-list — see corsMiddleware. A nil
 	// or empty slice (the zero value, so every existing caller of this
@@ -369,6 +370,9 @@ func New(deps Deps) http.Handler {
 				r.With(require.Project(authz.PermissionProjectsWrite)).Post("/avatar/initiate-upload", deps.Project.InitiateAvatarUpload)
 				r.With(require.Project(authz.PermissionProjectsWrite)).Post("/avatar/complete-upload", deps.Project.CompleteAvatarUpload)
 				r.With(require.Project(authz.PermissionProjectsWrite)).Delete("/avatar", deps.Project.DeleteAvatar)
+
+				// Activity log
+				r.With(require.Project(authz.PermissionProjectActivitiesRead)).Get("/activities", deps.ProjectActivity.ListActivities)
 
 				// Members
 				r.Route("/members", func(r chi.Router) {

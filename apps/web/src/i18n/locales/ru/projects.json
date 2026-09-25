@@ -908,6 +908,10 @@
 			"workflowsWrite": {
 				"label": "Управление автоматизацией",
 				"description": "Создание, редактирование, активация и удаление автоматизаций"
+			},
+			"activitiesRead": {
+				"label": "Просмотр журнала активности",
+				"description": "Просмотр всей активности, записанной в этом проекте"
 			}
 		},
 		"permissionGroups": {
@@ -2348,6 +2352,129 @@
 		},
 		"conditionTypes": {
 			"jev_condition": "Условие Jev"
+		}
+	},
+	"activityLog": {
+		"title": "Активность",
+		"subtitle": "Всё, что происходило в этом проекте",
+		"today": "Сегодня",
+		"yesterday": "Вчера",
+		"deletedEntity": "Этот элемент удалён",
+		"noPermission": {
+			"title": "Вы не можете просматривать журнал активности",
+			"description": "Попросите менеджера проекта выдать право «Просмотр журнала активности»."
+		},
+		"empty": {
+			"title": "Активности пока нет",
+			"description": "Изменения в этом проекте появятся здесь."
+		},
+		"emptyFiltered": {
+			"title": "Ничего не найдено",
+			"description": "Попробуйте убрать фильтры или изменить запрос."
+		},
+		"filters": {
+			"title": "Фильтры",
+			"searchPlaceholder": "Поиск по активности…",
+			"type": "Тип",
+			"people": "Люди",
+			"source": "Источник",
+			"dateRange": "Период",
+			"dateFrom": "С",
+			"dateTo": "По",
+			"clearAll": "Сбросить всё"
+		},
+		"entityTypes": {
+			"task": "Задачи",
+			"doc": "Документы",
+			"sprint": "Спринты",
+			"view": "Представления",
+			"automation": "Автоматизации",
+			"environment": "Окружения",
+			"member": "Участники",
+			"role": "Роли",
+			"agent": "Агенты",
+			"project": "Проект"
+		},
+		"origins": {
+			"user": "Пользователь",
+			"agent": "Агент",
+			"automation": "Автоматизация",
+			"jev": "Jev",
+			"annotation": "Аннотация",
+			"system": "Система"
+		},
+		"detail": {
+			"asRole": "с ролью {{role}}",
+			"roleChange": "{{from}} → {{to}}",
+			"renamedFrom": "ранее «{{name}}»",
+			"member": "для {{name}}"
+		},
+		"projectFields": {
+			"name": "Название",
+			"description": "Описание",
+			"task_id_prefix": "Префикс ID задач",
+			"is_public": "Видимость",
+			"settings": "Настройки",
+			"jev_config": "Настройки Jev"
+		},
+		"types": {
+			"sprint_created": "создал(а) спринт",
+			"sprint_updated": "обновил(а) спринт",
+			"sprint_deleted": "удалил(а) спринт",
+			"sprint_completed": "завершил(а) спринт",
+			"view_created": "создал(а) представление",
+			"view_updated": "обновил(а) представление",
+			"view_deleted": "удалил(а) представление",
+			"automation_created": "создал(а) автоматизацию",
+			"automation_updated": "обновил(а) автоматизацию",
+			"automation_deleted": "удалил(а) автоматизацию",
+			"automation_activated": "включил(а) автоматизацию",
+			"automation_deactivated": "отключил(а) автоматизацию",
+			"automation_node_added": "добавил(а) шаг в",
+			"automation_node_removed": "удалил(а) шаг из",
+			"automation_edge_added": "соединил(а) шаги в",
+			"automation_edge_removed": "разъединил(а) шаги в",
+			"environment_created": "создал(а) окружение",
+			"environment_updated": "обновил(а) окружение",
+			"environment_deleted": "удалил(а) окружение",
+			"environment_started": "запустил(а) окружение",
+			"environment_stopped": "остановил(а) окружение",
+			"environment_restarted": "перезапустил(а) окружение",
+			"environment_ssh_key_added": "добавил(а) SSH-ключ «{{label}}» в",
+			"environment_ssh_key_removed": "удалил(а) SSH-ключ «{{label}}» из",
+			"environment_access_granted": "выдал(а) доступ к",
+			"environment_access_revoked": "отозвал(а) доступ к",
+			"environment_port_forward_added": "пробросил(а) порт {{port}} в",
+			"environment_port_forward_removed": "отключил(а) проброс порта {{port}} в",
+			"annotation_created": "добавил(а) аннотацию в",
+			"annotation_resolved": "решил(а) аннотацию в",
+			"annotation_reopened": "переоткрыл(а) аннотацию в",
+			"annotation_commented": "ответил(а) на аннотацию в",
+			"member_added": "добавил(а) участника",
+			"member_role_changed": "изменил(а) роль участника",
+			"member_updated": "обновил(а) участника",
+			"member_removed": "удалил(а) участника",
+			"role_created": "создал(а) роль",
+			"role_updated": "обновил(а) роль",
+			"role_deleted": "удалил(а) роль",
+			"project_updated": "обновил(а) настройки проекта",
+			"project_task_type_created": "создал(а) тип задачи «{{name}}» в",
+			"project_task_type_updated": "обновил(а) тип задачи «{{name}}» в",
+			"project_task_type_deleted": "удалил(а) тип задачи «{{name}}» в",
+			"project_task_type_default_set": "сделал(а) «{{name}}» типом задачи по умолчанию в",
+			"project_task_status_created": "создал(а) статус «{{name}}» в",
+			"project_task_status_updated": "обновил(а) статус «{{name}}» в",
+			"project_task_status_deleted": "удалил(а) статус «{{name}}» в",
+			"project_task_status_default_set": "сделал(а) «{{name}}» статусом по умолчанию в",
+			"project_task_status_reordered": "изменил(а) порядок статусов в",
+			"project_custom_field_created": "создал(а) поле «{{name}}» в",
+			"project_custom_field_updated": "обновил(а) поле «{{name}}» в",
+			"project_custom_field_deleted": "удалил(а) поле «{{name}}» в",
+			"project_agent_created": "добавил(а) агента",
+			"project_agent_updated": "обновил(а) агента",
+			"project_agent_deleted": "удалил(а) агента",
+			"comment": "прокомментировал(а)",
+			"fallback": "выполнил(а) {{type}} для"
 		}
 	}
 }

@@ -20,6 +20,8 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
+	"github.com/Paca-AI/api/internal/events"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 )
 
 // presignedUploadTTL bounds how long a screenshot upload URL stays valid —
@@ -113,15 +115,62 @@ func verifyAnnotationScreenshotFile(f *attachmentdom.File, uploadedBy uuid.UUID)
 
 // Service is the concrete PageAnnotation service.
 type Service struct {
-	repo      annotationdom.Repository
-	envSvc    environmentdom.Service
-	tasks     TaskCreator
-	attach    TaskAttachmentLinker
-	files     FileFinder
-	store     ObjectStore
-	bucket    string
-	publicURL string
-	activity  TaskActivityRecorder
+	repo        annotationdom.Repository
+	envSvc      environmentdom.Service
+	tasks       TaskCreator
+	attach      TaskAttachmentLinker
+	files       FileFinder
+	store       ObjectStore
+	bucket      string
+	publicURL   string
+	activity    TaskActivityRecorder
+	activityLog activitysvc.Recorder
+}
+
+// Activity topics for page annotations. They are recorded against the
+// annotation's environment, which is what the activity log can link to.
+const (
+	TopicAnnotationCreated   = "annotation.created"
+	TopicAnnotationResolved  = "annotation.resolved"
+	TopicAnnotationReopened  = "annotation.reopened"
+	TopicAnnotationCommented = "annotation.commented"
+)
+
+// WithActivityLog sets where annotation changes are recorded. Without it
+// nothing is recorded.
+func (s *Service) WithActivityLog(rec activitysvc.Recorder) *Service {
+	s.activityLog = rec
+	return s
+}
+
+// record fans an annotation change out to the activity log; the actor comes
+// from the request context.
+func (s *Service) record(ctx context.Context, a *annotationdom.PageAnnotation, topic string) {
+	if s.activityLog == nil {
+		return
+	}
+	s.activityLog.Record(ctx, activitysvc.Entry{
+		Topic: topic,
+		Payload: map[string]any{
+			"project_id":      a.ProjectID.String(),
+			"annotation_id":   a.ID.String(),
+			"port_forward_id": a.PortForwardID.String(),
+			"page_path":       a.PagePath,
+			"body":            truncateRunes(a.Body, 200),
+		},
+		ProjectID:  a.ProjectID,
+		EntityType: events.EntityEnvironment,
+		EntityID:   a.EnvironmentID,
+	})
+}
+
+// truncateRunes cuts s to at most n runes, marking the cut with an ellipsis.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 // TaskActivityRecorder records the task.created activity for a task made
@@ -268,6 +317,7 @@ func (s *Service) Create(ctx context.Context, projectID, environmentID, portForw
 	if err := s.repo.Create(ctx, a); err != nil {
 		return nil, err
 	}
+	s.record(ctx, a, TopicAnnotationCreated)
 	return a, nil
 }
 
@@ -280,7 +330,12 @@ func (s *Service) Resolve(ctx context.Context, projectID, annotationID, resolved
 	if err := s.repo.SetStatus(ctx, annotationID, annotationdom.StatusResolved, &resolvedBy, &now); err != nil {
 		return nil, err
 	}
-	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
+	a, err := s.repo.FindVisibleInProject(ctx, projectID, annotationID)
+	if err != nil {
+		return nil, err
+	}
+	s.record(ctx, a, TopicAnnotationResolved)
+	return a, nil
 }
 
 // Reopen moves a resolved annotation back to open.
@@ -291,7 +346,12 @@ func (s *Service) Reopen(ctx context.Context, projectID, annotationID uuid.UUID)
 	if err := s.repo.SetStatus(ctx, annotationID, annotationdom.StatusOpen, nil, nil); err != nil {
 		return nil, err
 	}
-	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
+	a, err := s.repo.FindVisibleInProject(ctx, projectID, annotationID)
+	if err != nil {
+		return nil, err
+	}
+	s.record(ctx, a, TopicAnnotationReopened)
+	return a, nil
 }
 
 // AddComment appends a reply to an annotation's thread.
@@ -299,7 +359,8 @@ func (s *Service) AddComment(ctx context.Context, projectID, annotationID, creat
 	if strings.TrimSpace(body) == "" {
 		return nil, annotationdom.ErrCommentBodyEmpty
 	}
-	if _, err := s.repo.FindVisibleInProject(ctx, projectID, annotationID); err != nil {
+	a, err := s.repo.FindVisibleInProject(ctx, projectID, annotationID)
+	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
@@ -314,6 +375,7 @@ func (s *Service) AddComment(ctx context.Context, projectID, annotationID, creat
 	if err := s.repo.AddComment(ctx, c); err != nil {
 		return nil, err
 	}
+	s.record(ctx, a, TopicAnnotationCommented)
 	return c, nil
 }
 
@@ -364,6 +426,7 @@ func (s *Service) CreateTaskFromAnnotation(ctx context.Context, projectID, annot
 			TaskID:       task.ID,
 			ProjectID:    projectID,
 			ActorID:      &in.ReporterID,
+			Origin:       taskdom.OriginAnnotation,
 			ActivityType: taskdom.ActivityTypeTaskCreated,
 			Content:      content,
 		})

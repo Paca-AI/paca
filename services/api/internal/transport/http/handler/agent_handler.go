@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
+	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/jev"
 	"github.com/Paca-AI/api/internal/platform/secret"
@@ -62,6 +62,7 @@ type AgentHandler struct {
 	publicURL          string
 	httpClient         *http.Client
 	activityRec        agentActivityRecorder
+	activities         activityLister
 	memberRepo         projectdom.MemberRepository
 	globalPermReader   agentGlobalPermissionReader
 	avatarSvc          attachmentdom.AvatarService
@@ -89,6 +90,13 @@ func NewAgentHandler(svc agentdom.Service, aiAgentURL, aiAgentInternalKey, publi
 // "agent.session.started" activity is recorded when a description-write is triggered.
 func (h *AgentHandler) WithActivityRecorder(r agentActivityRecorder) *AgentHandler {
 	h.activityRec = r
+	return h
+}
+
+// WithActivityLister attaches the activity log reader behind the agent's
+// activity tab.
+func (h *AgentHandler) WithActivityLister(l activityLister) *AgentHandler {
+	h.activities = l
 	return h
 }
 
@@ -2354,12 +2362,15 @@ func (h *AgentHandler) DeleteGlobalAvatar(w http.ResponseWriter, r *http.Request
 
 // --- Activity Feed ------------------------------------------------------------
 
-var validActivitySourceTypes = []string{"task", "doc"}
+// agentActivityEntityTypes are the entity types the agent tab shows — the two
+// with a detail page it can link to.
+var agentActivityEntityTypes = []string{string(events.EntityTask), string(events.EntityDoc)}
 
-// ListAgentActivities handles GET /projects/:projectId/agents/:agentId/activities.
+// ListAgentActivities handles GET /projects/:projectId/agents/:agentId/activities
+// — the project activity log narrowed to entries the agent made.
 //
 // Supported query params (all optional, combine with AND):
-//   - type=<task|doc>|<task,doc>            filter by one or more source types
+//   - type=<task|doc>|<task,doc>            filter by one or more entity types
 //   - created_after=<YYYY-MM-DD|RFC3339>    activities created on/after this date/instant
 //   - created_before=<YYYY-MM-DD|RFC3339>   activities created before this date/instant
 //   - search=<text>                         matches the linked task/doc title or activity content
@@ -2370,8 +2381,8 @@ func (h *AgentHandler) ListAgentActivities(w http.ResponseWriter, r *http.Reques
 		presenter.Error(w, r, err)
 		return
 	}
-	if h.memberRepo == nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "member resolver not available"))
+	if h.memberRepo == nil || h.activities == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "activity log not available"))
 		return
 	}
 	member, err := h.memberRepo.FindMemberByAgent(r.Context(), projectID, agentID)
@@ -2379,47 +2390,24 @@ func (h *AgentHandler) ListAgentActivities(w http.ResponseWriter, r *http.Reques
 		presenter.Error(w, r, err)
 		return
 	}
-
 	pageSize, err := parsePageSize(r, 20, 200)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
 
-	filter := agentdom.ListAgentActivitiesFilter{ActorMemberID: member.ID}
-	if typesRaw := r.URL.Query().Get("type"); typesRaw != "" {
-		for _, t := range splitCommaList(typesRaw) {
-			if !slices.Contains(validActivitySourceTypes, t) {
-				presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid type: "+t))
-				return
-			}
-			filter.SourceTypes = append(filter.SourceTypes, agentdom.ActivitySourceType(t))
-		}
+	f, err := parseActivityFilter(r, "type", agentActivityEntityTypes)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
 	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("created_after")); raw != "" {
-		t, ok := parseCreatedAfterBound(raw)
-		if !ok {
-			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid created_after"))
-			return
-		}
-		filter.CreatedAfter = t
-	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("created_before")); raw != "" {
-		t, ok := parseCreatedBeforeBound(raw)
-		if !ok {
-			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid created_before"))
-			return
-		}
-		filter.CreatedBefore = t
-	}
-	if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
-		filter.Search = &search
-	}
-	if cursorRaw := r.URL.Query().Get("cursor"); cursorRaw != "" {
-		filter.CursorAfter = &cursorRaw
+	f.ProjectID = projectID
+	f.ActorMemberIDs = []uuid.UUID{member.ID}
+	if len(f.EntityTypes) == 0 {
+		f.EntityTypes = agentActivityEntityTypes
 	}
 
-	items, hasMore, err := h.svc.ListAgentActivities(r.Context(), filter, pageSize)
+	items, hasMore, err := h.activities.List(r.Context(), f, pageSize)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -2428,15 +2416,9 @@ func (h *AgentHandler) ListAgentActivities(w http.ResponseWriter, r *http.Reques
 	for _, item := range items {
 		resp = append(resp, dto.AgentActivityFromEntity(item))
 	}
-
-	var nextCursor *string
-	if hasMore && len(items) > 0 {
-		s := agentdom.EncodeActivityFeedCursor(items[len(items)-1])
-		nextCursor = &s
-	}
 	presenter.OK(w, r, map[string]any{
 		"items":       resp,
 		"page_size":   pageSize,
-		"next_cursor": nextCursor,
+		"next_cursor": nextActivityCursor(items, hasMore),
 	})
 }

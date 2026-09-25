@@ -22,6 +22,7 @@ import (
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
+	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 )
 
 // taskLookup is the minimal task-domain surface the automation service needs.
@@ -44,13 +45,14 @@ type Service struct {
 	taskRepo       taskLookup
 	memberRepo     memberLookup
 	publisher      *messaging.Publisher
+	activity       activitysvc.Recorder
 	pluginResolver automationdom.PluginNodeResolver
 }
 
 // New returns a Service backed by repo, taskRepo, and memberRepo.
 // publisher may be nil; real-time events are then skipped silently.
 func New(repo automationdom.Repository, taskRepo taskLookup, memberRepo memberLookup, publisher *messaging.Publisher) *Service {
-	return &Service{repo: repo, taskRepo: taskRepo, memberRepo: memberRepo, publisher: publisher}
+	return &Service{repo: repo, taskRepo: taskRepo, memberRepo: memberRepo, publisher: publisher, activity: activitysvc.NewRecorder(publisher)}
 }
 
 // WithPluginNodeResolver configures a fallback checked whenever a node's
@@ -62,16 +64,29 @@ func (s *Service) WithPluginNodeResolver(resolver automationdom.PluginNodeResolv
 	return s
 }
 
-// publish sends a real-time pub/sub notification for an automation-graph
-// change. Errors are silently swallowed so a messaging failure never blocks
-// the primary HTTP response.
-func (s *Service) publish(ctx context.Context, topic string, payload map[string]any) {
+// publish fans an automation change out to realtime and the activity log.
+// Errors are swallowed inside Fanout so a messaging failure never blocks the
+// primary HTTP response. Node edits stay realtime-only: the builder saves a
+// node on every drag and keystroke, which is not something anyone audits —
+// adding or removing a node or edge is.
+func (s *Service) publish(ctx context.Context, a *automationdom.Automation, topic string, payload map[string]any) {
 	if s.publisher == nil {
 		return
 	}
-	_ = s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
-		"type":    topic,
-		"payload": payload,
+	if topic == events.TopicAutomationNodeUpdated {
+		_ = s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
+			"type":    topic,
+			"payload": payload,
+		})
+		return
+	}
+	payload["name"] = a.Name
+	s.activity.Record(ctx, activitysvc.Entry{
+		ProjectID:  a.ProjectID,
+		EntityType: events.EntityAutomation,
+		EntityID:   a.ID,
+		Topic:      topic,
+		Payload:    payload,
 	})
 }
 
@@ -117,7 +132,7 @@ func (s *Service) CreateAutomation(ctx context.Context, in automationdom.CreateA
 	if err := s.repo.CreateAutomation(ctx, a); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicAutomationCreated, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationCreated, map[string]any{
 		"project_id":    a.ProjectID.String(),
 		"automation_id": a.ID.String(),
 	})
@@ -144,7 +159,7 @@ func (s *Service) UpdateAutomation(ctx context.Context, projectID, automationID 
 	if err := s.repo.UpdateAutomation(ctx, a); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicAutomationUpdated, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationUpdated, map[string]any{
 		"project_id":    projectID.String(),
 		"automation_id": a.ID.String(),
 	})
@@ -160,7 +175,7 @@ func (s *Service) DeleteAutomation(ctx context.Context, projectID, automationID 
 	if err := s.repo.DeleteAutomation(ctx, a.ID); err != nil {
 		return err
 	}
-	s.publish(ctx, events.TopicAutomationDeleted, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationDeleted, map[string]any{
 		"project_id":    projectID.String(),
 		"automation_id": a.ID.String(),
 	})
@@ -220,7 +235,7 @@ func (s *Service) Activate(ctx context.Context, projectID, automationID uuid.UUI
 	if err := s.repo.UpdateAutomation(ctx, a); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicAutomationActivated, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationActivated, map[string]any{
 		"project_id":    projectID.String(),
 		"automation_id": a.ID.String(),
 	})
@@ -241,7 +256,7 @@ func (s *Service) Deactivate(ctx context.Context, projectID, automationID uuid.U
 	if err := s.repo.UpdateAutomation(ctx, a); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicAutomationDeactivated, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationDeactivated, map[string]any{
 		"project_id":    projectID.String(),
 		"automation_id": a.ID.String(),
 	})
@@ -275,7 +290,7 @@ func (s *Service) AddNode(ctx context.Context, projectID, automationID uuid.UUID
 	if err := s.repo.CreateNode(ctx, n); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicAutomationNodeAdded, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationNodeAdded, map[string]any{
 		"project_id":    projectID.String(),
 		"automation_id": a.ID.String(),
 		"node_id":       n.ID.String(),
@@ -338,7 +353,7 @@ func (s *Service) UpdateNode(ctx context.Context, projectID, automationID, nodeI
 	if err := s.repo.UpdateNode(ctx, n); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicAutomationNodeUpdated, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationNodeUpdated, map[string]any{
 		"project_id":    projectID.String(),
 		"automation_id": a.ID.String(),
 		"node_id":       n.ID.String(),
@@ -359,7 +374,7 @@ func (s *Service) RemoveNode(ctx context.Context, projectID, automationID, nodeI
 	if err := s.repo.DeleteNode(ctx, n.ID); err != nil {
 		return err
 	}
-	s.publish(ctx, events.TopicAutomationNodeRemoved, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationNodeRemoved, map[string]any{
 		"project_id":    projectID.String(),
 		"automation_id": a.ID.String(),
 		"node_id":       n.ID.String(),
@@ -430,7 +445,7 @@ func (s *Service) AddEdge(ctx context.Context, projectID, automationID uuid.UUID
 	if err := s.repo.CreateEdge(ctx, e); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicAutomationEdgeAdded, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationEdgeAdded, map[string]any{
 		"project_id":     projectID.String(),
 		"automation_id":  a.ID.String(),
 		"edge_id":        e.ID.String(),
@@ -456,7 +471,7 @@ func (s *Service) RemoveEdge(ctx context.Context, projectID, automationID, edgeI
 	if err := s.repo.DeleteEdge(ctx, e.ID); err != nil {
 		return err
 	}
-	s.publish(ctx, events.TopicAutomationEdgeRemoved, map[string]any{
+	s.publish(ctx, a, events.TopicAutomationEdgeRemoved, map[string]any{
 		"project_id":    projectID.String(),
 		"automation_id": a.ID.String(),
 		"edge_id":       e.ID.String(),

@@ -7,18 +7,16 @@ const ChannelRealtime = "paca.events"
 // StreamAnalytics is the Valkey Stream key used for durable analytics and audit log events.
 const StreamAnalytics = "paca.analytics"
 
-// StreamTaskActivities is the Valkey Stream key used to fan out task-activity
-// events from the API to the internal consumer that persists them to PostgreSQL.
-// System-generated activities (task created, updated, plugin changes, etc.) are
-// appended here instead of being written directly to the database; the
-// ActivityConsumer worker reads this stream and handles the DB write.
-const StreamTaskActivities = "paca.task_activities"
-
-// StreamDocActivities is the Valkey Stream key used to fan out doc-activity
-// events from the API to the internal consumer that persists them to PostgreSQL.
-// System-generated activities (doc created, updated, etc.) are appended here;
-// the DocActivityConsumer worker reads this stream and handles the DB write.
-const StreamDocActivities = "paca.doc_activities"
+// StreamActivities is the single Valkey Stream every recorded activity in a
+// project is appended to, whatever it happened to — task, doc, sprint, view,
+// automation, environment, member. events.Fanout is its only writer.
+//
+// It is read by independent consumer groups, each a peer of the others:
+// api.activity_writer persists every entry to the activities table, and
+// api.task_autofill, api.task_auto_assign and api.automation_engine each read
+// the same entries and act on the task ones. None of them is downstream of
+// another — see Fanout.
+const StreamActivities = "paca.activities"
 
 // StreamTaskAssignments is the Valkey Stream key used to fan out task
 // assignment events (task created/updated with a new assignee) to the
