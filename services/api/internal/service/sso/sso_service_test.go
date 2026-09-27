@@ -585,6 +585,38 @@ func TestResolveUser(t *testing.T) {
 		}
 	})
 
+	t.Run("losing to a winner that linked our provisioned account keeps it", func(t *testing.T) {
+		users := newFakeUsers()
+		svc, repo, _ := newTestService(t, users)
+		p := provider(func(p *ssodom.Provider) {
+			p.AutoProvision = true
+			p.LinkByEmail = true
+		})
+		const email = "jane@corp.example"
+		// The concurrent winner finds the account this attempt just
+		// provisioned by its email and links it first.
+		repo.beforeCreateIdentity = func() {
+			repo.beforeCreateIdentity = nil
+			adopted, err := users.FindByEmail(ctx, email)
+			if err != nil {
+				t.Fatalf("winner: %v", err)
+			}
+			repo.identities = append(repo.identities,
+				&ssodom.Identity{ID: uuid.New(), UserID: adopted.ID, ProviderID: p.ID, Subject: "s"})
+		}
+		u, err := svc.ResolveUser(ctx, p, Claims{Subject: "s", Email: email, EmailVerified: true})
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if u.DeletedAt != nil {
+			t.Fatal("the account the winner linked was deleted")
+		}
+		// And later sign-ins still work.
+		if _, err := svc.ResolveUser(ctx, p, Claims{Subject: "s", Email: email, EmailVerified: true}); err != nil {
+			t.Fatalf("later sign-in: %v", err)
+		}
+	})
+
 	t.Run("username collision gets a suffix", func(t *testing.T) {
 		taken := &userdom.User{ID: uuid.New(), Username: "jane"}
 		svc, _, _ := newTestService(t, newFakeUsers(taken))

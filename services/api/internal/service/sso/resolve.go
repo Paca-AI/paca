@@ -150,19 +150,22 @@ func (s *Service) ResolveUser(ctx context.Context, p *ssodom.Provider, c Claims)
 		LastLoginAt: now,
 	}); errors.Is(err, ssodom.ErrIdentityExists) {
 		// A concurrent first sign-in for the same subject linked it first
-		// (both missed FindIdentity above). Sign in as whatever it linked,
-		// and drop the account this attempt provisioned for nothing.
-		if provisioned {
-			if err := s.users.Delete(ctx, u.ID); err != nil {
-				s.log.Warn("sso: remove duplicate provisioned user", "user_id", u.ID, "error", err)
-			}
-		}
+		// (both missed FindIdentity above). Sign in as whatever it linked.
 		ident, err := s.repo.FindIdentity(ctx, p.ID, c.Subject)
 		if err != nil {
 			return nil, err
 		}
 		if ident == nil {
 			return nil, ssodom.ErrNoAccount
+		}
+		// Drop the account this attempt provisioned only if the winner linked
+		// a different one. With LinkByEmail the winner may have adopted this
+		// very account (found by the email provision just set), and deleting
+		// it would lock that user out.
+		if provisioned && ident.UserID != u.ID {
+			if err := s.users.Delete(ctx, u.ID); err != nil {
+				s.log.Warn("sso: remove duplicate provisioned user", "user_id", u.ID, "error", err)
+			}
 		}
 		return s.signInLinked(ctx, ident, emailPtr)
 	} else if err != nil {
