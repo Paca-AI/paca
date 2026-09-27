@@ -178,12 +178,25 @@ const closeSidebarIfOpen = async (page: Page) => {
 /**
  * The comment composer is a BlockNote rich-text editor inside a <fieldset> in the
  * activity pane. Its contenteditable has no accessible name, so it is located by
- * structure. Fill it with `.fill()` and submit with Ctrl+Enter.
+ * structure. Fill it with `.fill()` and submit it with `submitComment`.
  */
 // Tailwind's bare `group` class (word match, so `group/x` or `group-hover:` don't count).
 const GROUP_ANCESTOR = "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]";
 
 const commentEditor = (page: Page) => page.locator('fieldset [contenteditable="true"]');
+
+/**
+ * Sends the comment in the composer. Desktop uses the Ctrl+Enter shortcut; phones
+ * have no such shortcut (and Android Chrome's editor input path swallows it), so
+ * mobile projects press the Send button next to the composer instead.
+ */
+const submitComment = async (page: Page) => {
+  if ((page.viewportSize()?.width ?? 1280) <= 768) {
+    await page.locator('fieldset + div').getByRole('button').click();
+  } else {
+    await page.keyboard.press('Control+Enter');
+  }
+};
 
 /**
  * The document page shows its title as plain breadcrumb text in the header (not a
@@ -569,17 +582,21 @@ test.describe('Document comments and activity', () => {
     // 1. Open the Comments & activity panel
     await page.getByRole('button', { name: 'Comments & activity' }).click();
 
-    // 2. Type a comment and submit with Ctrl+Enter
+    // 2. Type a comment and submit it (Ctrl+Enter on desktop, Send button on mobile)
     const commentInput = commentEditor(page);
     await expect(commentInput).toBeVisible({ timeout: 8_000 });
     await commentInput.fill('Great document!');
-    await page.keyboard.press('Control+Enter');
+    await submitComment(page);
 
     // Verify
     await expect(page.getByText('Great document!')).toBeVisible({ timeout: 8_000 });
   });
 
   test('Comment input clears after submission', async ({ page }) => {
+    test.skip(
+      (page.viewportSize()?.width ?? 1280) <= 768,
+      'Phones have no keyboard shortcut to send a comment',
+    );
     await signIn(page);
     await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
 
@@ -611,7 +628,7 @@ test.describe('Document comments and activity', () => {
     const commentInput = commentEditor(page);
     await expect(commentInput).toBeVisible({ timeout: 8_000 });
     await commentInput.fill(text);
-    await page.keyboard.press('Control+Enter');
+    await submitComment(page);
     await expect(page.getByText(text, { exact: true })).toBeVisible({ timeout: 8_000 });
   };
 
@@ -620,7 +637,7 @@ test.describe('Document comments and activity', () => {
     await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
     await postComment(page, 'Original comment');
 
-    // Edit loads the comment into the composer; Ctrl+Enter saves the change
+    // Edit loads the comment into the composer; submitting saves the change
     await openCommentOptions(page, 'Original comment');
     await page.getByRole('menuitem', { name: 'Edit' }).click();
     const commentInput = commentEditor(page);
@@ -628,7 +645,7 @@ test.describe('Document comments and activity', () => {
     await commentInput.click();
     await page.keyboard.press('Control+a');
     await page.keyboard.type('Updated comment');
-    await page.keyboard.press('Control+Enter');
+    await submitComment(page);
 
     // Verify
     await expect(page.getByText('Updated comment', { exact: true })).toBeVisible({ timeout: 8_000 });

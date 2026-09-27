@@ -548,17 +548,17 @@ function AutomationBuilderPage() {
 							<ArrowLeft className="size-4" />
 						</Link>
 						{renaming ? (
-							<div className="flex items-center gap-1.5">
+							<div className="flex items-center gap-1.5 min-w-0">
 								<Input
 									autoFocus
 									value={nameDraft}
 									onChange={(e) => setNameDraft(e.target.value)}
-									className="h-8 w-56"
+									className="h-8 w-56 min-w-0"
 								/>
 								<Button
 									size="icon"
 									variant="ghost"
-									className="size-8"
+									className="size-8 shrink-0"
 									onClick={() => renameMutation.mutate()}
 								>
 									<Save className="size-3.5" />
@@ -566,7 +566,7 @@ function AutomationBuilderPage() {
 								<Button
 									size="icon"
 									variant="ghost"
-									className="size-8"
+									className="size-8 shrink-0"
 									onClick={() => setRenaming(false)}
 								>
 									<X className="size-3.5" />

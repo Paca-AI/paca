@@ -154,7 +154,7 @@ Feature: Documentation
     Scenario: User can add a comment to a document
       When the user opens the "Comments & activity" panel
       And the user types "Great document!" in the comment input
-      And the user presses Ctrl+Enter to submit the comment
+      And the user submits the comment (Ctrl+Enter on desktop, the Send button on mobile)
       Then the comment "Great document!" should appear in the activity panel
 
     Scenario: User can edit their own comment
@@ -163,7 +163,7 @@ Feature: Documentation
       And the user opens the comment options for "Original comment"
       And the user selects "Edit"
       And the user replaces the comment text in the composer with "Updated comment"
-      And the user presses Ctrl+Enter to save the comment
+      And the user submits the comment to save it (Ctrl+Enter on desktop, the Send button on mobile)
       Then the activity panel should show "Updated comment"
 
     Scenario: User can delete their own comment
@@ -178,6 +178,7 @@ Feature: Documentation
       And the user switches the feed to "All activity"
       Then the activity panel should contain a "created this document" entry
 
+    # Desktop only: phones have no keyboard shortcut to send a comment.
     Scenario: Comment input accepts Ctrl+Enter keyboard shortcut
       When the user opens the "Comments & activity" panel
       And the user types "Keyboard shortcut test" in the comment input

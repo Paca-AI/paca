@@ -48,7 +48,7 @@ export function AutomationNodePalette({
 	const pluginActions = pluginTypes?.actions ?? [];
 
 	return (
-		<div className="flex items-center gap-2">
+		<div className="flex flex-wrap items-center gap-2 py-2">
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					render={
