@@ -105,6 +105,7 @@ func (s *Service) ResolveUser(ctx context.Context, p *ssodom.Provider, c Claims)
 		emailPtr = &email
 	}
 
+	// Fast path: a returning user is already linked.
 	ident, err := s.repo.FindIdentity(ctx, p.ID, c.Subject)
 	if err != nil {
 		return nil, err
@@ -113,8 +114,23 @@ func (s *Service) ResolveUser(ctx context.Context, p *ssodom.Provider, c Claims)
 		return s.signInLinked(ctx, ident, emailPtr)
 	}
 
+	// First sign-in. Take turns with any concurrent callback for the same
+	// identity (a double-submit or browser retry), then check again: if the
+	// other one linked an account while we waited, sign in to that one.
+	// This way a duplicate account is never created in the first place.
+	unlock, err := s.repo.LockIdentity(ctx, p.ID, c.Subject)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	if ident, err = s.repo.FindIdentity(ctx, p.ID, c.Subject); err != nil {
+		return nil, err
+	}
+	if ident != nil {
+		return s.signInLinked(ctx, ident, emailPtr)
+	}
+
 	var u *userdom.User
-	provisioned := false
 	if email != "" {
 		existing, err := s.users.FindByEmail(ctx, email)
 		switch {
@@ -136,7 +152,6 @@ func (s *Service) ResolveUser(ctx context.Context, p *ssodom.Provider, c Claims)
 		if u, err = s.provision(ctx, c, email); err != nil {
 			return nil, err
 		}
-		provisioned = true
 	}
 
 	now := time.Now().UTC()
@@ -148,27 +163,7 @@ func (s *Service) ResolveUser(ctx context.Context, p *ssodom.Provider, c Claims)
 		Email:       emailPtr,
 		CreatedAt:   now,
 		LastLoginAt: now,
-	}); errors.Is(err, ssodom.ErrIdentityExists) {
-		// A concurrent first sign-in for the same subject linked it first
-		// (both missed FindIdentity above). Sign in as whatever it linked.
-		ident, err := s.repo.FindIdentity(ctx, p.ID, c.Subject)
-		if err != nil {
-			return nil, err
-		}
-		if ident == nil {
-			return nil, ssodom.ErrNoAccount
-		}
-		// Drop the account this attempt provisioned only if the winner linked
-		// a different one. With LinkByEmail the winner may have adopted this
-		// very account (found by the email provision just set), and deleting
-		// it would lock that user out.
-		if provisioned && ident.UserID != u.ID {
-			if err := s.users.Delete(ctx, u.ID); err != nil {
-				s.log.Warn("sso: remove duplicate provisioned user", "user_id", u.ID, "error", err)
-			}
-		}
-		return s.signInLinked(ctx, ident, emailPtr)
-	} else if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	return u, nil

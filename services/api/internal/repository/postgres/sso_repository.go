@@ -210,6 +210,33 @@ func (r *SSORepository) FindIdentity(ctx context.Context, providerID uuid.UUID, 
 	}, nil
 }
 
+// ssoIdentityLockTimeout bounds how long a sign-in waits for a concurrent
+// one for the same identity to finish linking.
+const ssoIdentityLockTimeout = 15 * time.Second
+
+// LockIdentity takes a session-level advisory lock keyed on the (provider,
+// subject) pair. Session-level, on a dedicated connection, because the work
+// done under it (provisioning a user, linking it) runs on other pooled
+// connections — see runMigrations for the same reasoning. The lock is
+// released by unlock, or by Postgres if the connection dies.
+func (r *SSORepository) LockIdentity(ctx context.Context, providerID uuid.UUID, subject string) (func(), error) {
+	key := "sso:identity:" + providerID.String() + ":" + subject
+	conn, err := r.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sso repo: lock identity: acquire connection: %w", err)
+	}
+	lockCtx, cancel := context.WithTimeout(ctx, ssoIdentityLockTimeout)
+	defer cancel()
+	if _, err := conn.ExecContext(lockCtx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, key); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("sso repo: lock identity: %w", err)
+	}
+	return func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, key)
+		_ = conn.Close()
+	}, nil
+}
+
 // CreateIdentity inserts the link.
 func (r *SSORepository) CreateIdentity(ctx context.Context, i *ssodom.Identity) error {
 	_, err := r.db.ExecContext(ctx, `

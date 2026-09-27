@@ -32,9 +32,14 @@ type fakeRepo struct {
 	mu         sync.Mutex
 	providers  map[uuid.UUID]*ssodom.Provider
 	identities []*ssodom.Identity
-	// beforeCreateIdentity, when set, runs (unlocked) before each
-	// CreateIdentity — used to simulate a concurrent sign-in winning the race.
-	beforeCreateIdentity func()
+	locks      sync.Map // "provider:subject" -> *sync.Mutex
+}
+
+func (r *fakeRepo) LockIdentity(_ context.Context, providerID uuid.UUID, subject string) (func(), error) {
+	m, _ := r.locks.LoadOrStore(providerID.String()+":"+subject, &sync.Mutex{})
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock, nil
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{providers: map[uuid.UUID]*ssodom.Provider{}} }
@@ -105,9 +110,6 @@ func (r *fakeRepo) FindIdentity(_ context.Context, providerID uuid.UUID, subject
 	return nil, nil
 }
 func (r *fakeRepo) CreateIdentity(_ context.Context, i *ssodom.Identity) error {
-	if r.beforeCreateIdentity != nil {
-		r.beforeCreateIdentity()
-	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, x := range r.identities {
@@ -143,7 +145,10 @@ func (s *fakeStates) Take(_ context.Context, state string) (*ssodom.AuthAttempt,
 // UserCreator.
 type fakeUsers struct {
 	userdom.Repository
+	mu   sync.Mutex
 	byID map[uuid.UUID]*userdom.User
+	// createDelay slows provisioning so concurrent sign-ins overlap.
+	createDelay time.Duration
 }
 
 func newFakeUsers(us ...*userdom.User) *fakeUsers {
@@ -154,12 +159,16 @@ func newFakeUsers(us ...*userdom.User) *fakeUsers {
 	return f
 }
 func (f *fakeUsers) FindByID(_ context.Context, id uuid.UUID) (*userdom.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if u, ok := f.byID[id]; ok && u.DeletedAt == nil {
 		return u, nil
 	}
 	return nil, userdom.ErrNotFound
 }
 func (f *fakeUsers) FindByUsername(_ context.Context, name string) (*userdom.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for _, u := range f.byID {
 		if u.Username == name && u.DeletedAt == nil {
 			return u, nil
@@ -168,6 +177,8 @@ func (f *fakeUsers) FindByUsername(_ context.Context, name string) (*userdom.Use
 	return nil, userdom.ErrNotFound
 }
 func (f *fakeUsers) FindByEmail(_ context.Context, email string) (*userdom.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for _, u := range f.byID {
 		if u.Email != nil && *u.Email == email && u.DeletedAt == nil {
 			return u, nil
@@ -175,18 +186,14 @@ func (f *fakeUsers) FindByEmail(_ context.Context, email string) (*userdom.User,
 	}
 	return nil, userdom.ErrNotFound
 }
-func (f *fakeUsers) Delete(_ context.Context, id uuid.UUID) error {
-	if u, ok := f.byID[id]; ok {
-		now := time.Now()
-		u.DeletedAt = &now
-	}
-	return nil
-}
 
 // fakeCreator provisions into a fakeUsers (usersvc.Service.Create's role).
 type fakeCreator struct{ *fakeUsers }
 
 func (f fakeCreator) Create(_ context.Context, in userdom.CreateInput) (*userdom.User, error) {
+	time.Sleep(f.createDelay)
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	u := &userdom.User{ID: uuid.New(), Username: in.Username, FullName: in.FullName, Role: "USER"}
 	if in.Email != "" {
 		u.Email = &in.Email
@@ -564,56 +571,38 @@ func TestResolveUser(t *testing.T) {
 		}
 	})
 
-	t.Run("losing a concurrent first sign-in signs in as the winner", func(t *testing.T) {
-		winner := &userdom.User{ID: uuid.New(), Username: "winner"}
-		users := newFakeUsers(winner)
+	t.Run("concurrent first sign-ins create one account", func(t *testing.T) {
+		users := newFakeUsers()
+		users.createDelay = 20 * time.Millisecond
 		svc, repo, _ := newTestService(t, users)
 		p := provider(func(p *ssodom.Provider) { p.AutoProvision = true })
-		repo.beforeCreateIdentity = func() {
-			repo.beforeCreateIdentity = nil
-			repo.identities = append(repo.identities,
-				&ssodom.Identity{ID: uuid.New(), UserID: winner.ID, ProviderID: p.ID, Subject: "s"})
+		const n = 10
+		ids := make(chan uuid.UUID, n)
+		var wg sync.WaitGroup
+		for range n {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				u, err := svc.ResolveUser(ctx, p, Claims{Subject: "s", PreferredUsername: "jane"})
+				if err != nil {
+					t.Errorf("ResolveUser: %v", err)
+					return
+				}
+				ids <- u.ID
+			}()
 		}
-		u, err := svc.ResolveUser(ctx, p, Claims{Subject: "s", PreferredUsername: "jane"})
-		if err != nil || u.ID != winner.ID {
-			t.Fatalf("u=%+v err=%v, want the winner", u, err)
-		}
-		for _, x := range users.byID {
-			if x.Username == "jane" && x.DeletedAt == nil {
-				t.Fatalf("the losing attempt's provisioned account was left behind: %+v", x)
+		wg.Wait()
+		close(ids)
+		var first uuid.UUID
+		for id := range ids {
+			if first == uuid.Nil {
+				first = id
+			} else if id != first {
+				t.Fatalf("sign-ins resolved to different accounts: %s and %s", first, id)
 			}
 		}
-	})
-
-	t.Run("losing to a winner that linked our provisioned account keeps it", func(t *testing.T) {
-		users := newFakeUsers()
-		svc, repo, _ := newTestService(t, users)
-		p := provider(func(p *ssodom.Provider) {
-			p.AutoProvision = true
-			p.LinkByEmail = true
-		})
-		const email = "jane@corp.example"
-		// The concurrent winner finds the account this attempt just
-		// provisioned by its email and links it first.
-		repo.beforeCreateIdentity = func() {
-			repo.beforeCreateIdentity = nil
-			adopted, err := users.FindByEmail(ctx, email)
-			if err != nil {
-				t.Fatalf("winner: %v", err)
-			}
-			repo.identities = append(repo.identities,
-				&ssodom.Identity{ID: uuid.New(), UserID: adopted.ID, ProviderID: p.ID, Subject: "s"})
-		}
-		u, err := svc.ResolveUser(ctx, p, Claims{Subject: "s", Email: email, EmailVerified: true})
-		if err != nil {
-			t.Fatalf("err = %v", err)
-		}
-		if u.DeletedAt != nil {
-			t.Fatal("the account the winner linked was deleted")
-		}
-		// And later sign-ins still work.
-		if _, err := svc.ResolveUser(ctx, p, Claims{Subject: "s", Email: email, EmailVerified: true}); err != nil {
-			t.Fatalf("later sign-in: %v", err)
+		if len(users.byID) != 1 || len(repo.identities) != 1 {
+			t.Fatalf("want 1 account and 1 link, got %d accounts and %d links", len(users.byID), len(repo.identities))
 		}
 	})
 

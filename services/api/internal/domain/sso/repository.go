@@ -20,6 +20,11 @@ type Repository interface {
 	// FindIdentity returns nil, nil when no account is linked to the
 	// subject.
 	FindIdentity(ctx context.Context, providerID uuid.UUID, subject string) (*Identity, error)
+	// LockIdentity serializes first sign-ins for one (provider, subject):
+	// it blocks until no other caller holds the lock, then holds it until
+	// unlock is called. Resolving and linking an account under it means two
+	// simultaneous callbacks for the same person can never both create one.
+	LockIdentity(ctx context.Context, providerID uuid.UUID, subject string) (unlock func(), err error)
 	// CreateIdentity returns ErrIdentityExists when the (provider, subject)
 	// pair is already linked.
 	CreateIdentity(ctx context.Context, id *Identity) error

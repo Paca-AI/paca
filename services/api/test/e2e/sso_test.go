@@ -229,6 +229,32 @@ func TestSSOSignIn(t *testing.T) {
 		}
 	})
 
+	t.Run("simultaneous_first_sign_ins_create_one_account", func(t *testing.T) {
+		// No email, so the unique email index can't stop duplicates: only
+		// the per-identity advisory lock does.
+		idp.signInAs(map[string]any{"sub": "u-race", "preferred_username": "racer"})
+		const n = 8
+		var wg sync.WaitGroup
+		for range n {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if landed := ssoSignIn(t, env, ssoBrowser(t, env), "corp", ""); landed != "/home" {
+					t.Errorf("landed on %q, want /home", landed)
+				}
+			}()
+		}
+		wg.Wait()
+		var count int
+		if err := env.db.GetContext(env.ctx, &count,
+			`SELECT COUNT(*) FROM users WHERE username LIKE 'racer%' AND deleted_at IS NULL`); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("simultaneous sign-ins created %d accounts, want 1", count)
+		}
+	})
+
 	t.Run("without_provisioning_unknown_users_are_refused", func(t *testing.T) {
 		update := map[string]any{}
 		for k, v := range provider {
