@@ -178,7 +178,7 @@ const closeSidebarIfOpen = async (page: Page) => {
 /**
  * The comment composer is a BlockNote rich-text editor inside a <fieldset> in the
  * activity pane. Its contenteditable has no accessible name, so it is located by
- * structure. Fill it with `.fill()` and submit with Ctrl+Enter.
+ * structure. Fill it with `.fill()` and submit it with `submitComment`.
  */
 // Tailwind's bare `group` class (word match, so `group/x` or `group-hover:` don't count).
 const GROUP_ANCESTOR = "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]";
@@ -582,7 +582,7 @@ test.describe('Document comments and activity', () => {
     // 1. Open the Comments & activity panel
     await page.getByRole('button', { name: 'Comments & activity' }).click();
 
-    // 2. Type a comment and submit with Ctrl+Enter
+    // 2. Type a comment and submit it (Ctrl+Enter on desktop, Send button on mobile)
     const commentInput = commentEditor(page);
     await expect(commentInput).toBeVisible({ timeout: 8_000 });
     await commentInput.fill('Great document!');
@@ -593,6 +593,10 @@ test.describe('Document comments and activity', () => {
   });
 
   test('Comment input clears after submission', async ({ page }) => {
+    test.skip(
+      (page.viewportSize()?.width ?? 1280) <= 768,
+      'Phones have no keyboard shortcut to send a comment',
+    );
     await signIn(page);
     await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
 
@@ -603,7 +607,7 @@ test.describe('Document comments and activity', () => {
     const commentInput = commentEditor(page);
     await expect(commentInput).toBeVisible({ timeout: 8_000 });
     await commentInput.fill('Keyboard shortcut test');
-    await submitComment(page);
+    await page.keyboard.press('Control+Enter');
 
     // Verify: comment appears and input is cleared
     await expect(page.getByText('Keyboard shortcut test')).toBeVisible({ timeout: 8_000 });
