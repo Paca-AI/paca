@@ -148,6 +148,21 @@ services:
       timeout: 5s
       retries: 20
 
+  # Mock OpenID Connect provider for the SSO specs (apps/e2e/tests/admin/
+  # sso.spec.ts). interactiveLogin serves a form where a spec types any
+  # subject and claims. The API reaches it as http://mock-oidc:9090 (the
+  # issuer is taken from the Host header, so that is the issuer too); the
+  # browser can't resolve "mock-oidc", so the spec proxies those requests to
+  # the published port with page.route.
+  mock-oidc:
+    image: ghcr.io/navikt/mock-oauth2-server:2.1.10
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: "9090"
+      JSON_CONFIG: '{"interactiveLogin": true}'
+    ports:
+      - "9090:9090"
+
   gateway:
     image: caddy:2-alpine
     restart: unless-stopped

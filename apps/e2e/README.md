@@ -27,6 +27,11 @@ references but does not build itself, then runs `docker compose up -d --build --
 The stack has no LLM credentials, so anything that needs a live agent reply is
 marked `test.fixme` in the specs.
 
+It also runs a mock OpenID Connect provider (`mock-oidc`,
+[mock-oauth2-server](https://github.com/navikt/mock-oauth2-server)) for the SSO
+specs. The API reaches it at `http://mock-oidc:9090`, and it is published on host port
+`9090` for the browser (override the host URL with `E2E_MOCK_OIDC_URL`).
+
 ## Setup
 
 ```bash
