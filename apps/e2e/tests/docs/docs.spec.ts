@@ -186,6 +186,19 @@ const GROUP_ANCESTOR = "xpath=ancestor::div[contains(concat(' ', normalize-space
 const commentEditor = (page: Page) => page.locator('fieldset [contenteditable="true"]');
 
 /**
+ * Sends the comment in the composer. Desktop uses the Ctrl+Enter shortcut; phones
+ * have no such shortcut (and Android Chrome's editor input path swallows it), so
+ * mobile projects press the Send button next to the composer instead.
+ */
+const submitComment = async (page: Page) => {
+  if ((page.viewportSize()?.width ?? 1280) <= 768) {
+    await page.locator('fieldset + div').getByRole('button').click();
+  } else {
+    await page.keyboard.press('Control+Enter');
+  }
+};
+
+/**
  * The document page shows its title as plain breadcrumb text in the header (not a
  * heading); the title is edited from the sidebar, not on the page itself.
  */
@@ -573,7 +586,7 @@ test.describe('Document comments and activity', () => {
     const commentInput = commentEditor(page);
     await expect(commentInput).toBeVisible({ timeout: 8_000 });
     await commentInput.fill('Great document!');
-    await page.keyboard.press('Control+Enter');
+    await submitComment(page);
 
     // Verify
     await expect(page.getByText('Great document!')).toBeVisible({ timeout: 8_000 });
@@ -590,7 +603,7 @@ test.describe('Document comments and activity', () => {
     const commentInput = commentEditor(page);
     await expect(commentInput).toBeVisible({ timeout: 8_000 });
     await commentInput.fill('Keyboard shortcut test');
-    await page.keyboard.press('Control+Enter');
+    await submitComment(page);
 
     // Verify: comment appears and input is cleared
     await expect(page.getByText('Keyboard shortcut test')).toBeVisible({ timeout: 8_000 });
@@ -611,7 +624,7 @@ test.describe('Document comments and activity', () => {
     const commentInput = commentEditor(page);
     await expect(commentInput).toBeVisible({ timeout: 8_000 });
     await commentInput.fill(text);
-    await page.keyboard.press('Control+Enter');
+    await submitComment(page);
     await expect(page.getByText(text, { exact: true })).toBeVisible({ timeout: 8_000 });
   };
 
@@ -620,7 +633,7 @@ test.describe('Document comments and activity', () => {
     await page.goto(`${BASE_URL}/projects/${projectId}/docs/${doc.id}`);
     await postComment(page, 'Original comment');
 
-    // Edit loads the comment into the composer; Ctrl+Enter saves the change
+    // Edit loads the comment into the composer; submitting saves the change
     await openCommentOptions(page, 'Original comment');
     await page.getByRole('menuitem', { name: 'Edit' }).click();
     const commentInput = commentEditor(page);
@@ -628,7 +641,7 @@ test.describe('Document comments and activity', () => {
     await commentInput.click();
     await page.keyboard.press('Control+a');
     await page.keyboard.type('Updated comment');
-    await page.keyboard.press('Control+Enter');
+    await submitComment(page);
 
     // Verify
     await expect(page.getByText('Updated comment', { exact: true })).toBeVisible({ timeout: 8_000 });

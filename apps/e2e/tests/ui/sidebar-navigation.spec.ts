@@ -549,10 +549,8 @@ test.describe("Sidebar Navigation - Active state", () => {
 		await page.getByRole("link", { name: "Users" }).click();
 		await expect(page).toHaveURL(/\/admin\/users/);
 
-		if (isMobileViewport(page)) {
-			// Navigating closes the mobile sheet; reopen it to inspect the items.
-			await page.getByRole("button", { name: "Toggle Sidebar" }).click();
-		}
+		// On mobile the sheet stays open across navigation, so the items are
+		// still in view.
 		await expect(page.getByRole("link", { name: "Users" })).toHaveClass(
 			ACTIVE_NAV_CLASS,
 		);
@@ -714,10 +712,11 @@ test.describe("Sidebar Navigation - State persistence", () => {
 		page,
 		browserName,
 	}) => {
-		// The app writes the cookie through the Cookie Store API, which Firefox lacks.
+		// The app writes the cookie only through the Cookie Store API. Firefox lacks
+		// it, and in Playwright's WebKit the write never reaches the context's cookies.
 		test.skip(
-			browserName === "firefox",
-			"Cookie Store API is not available in Firefox",
+			browserName === "firefox" || browserName === "webkit",
+			"Cookie Store API writes are not observable in Firefox or WebKit",
 		);
 
 		await sidebarTrigger(page).click();
