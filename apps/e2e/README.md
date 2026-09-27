@@ -84,9 +84,11 @@ self-contained so any file can run on any worker:
   page itself reports.
 
 When adding a spec, pick a new unique prefix and only delete data that starts
-with it. Browsers must not run at the same time (the same spec in two browsers
+with it. Browsers must not share a stack at the same time (the same spec in two browsers
 would share its prefix), which is why `bun run test` loops over them; a bare
-`bunx playwright test` with several `--project` flags is not safe.
+`bunx playwright test` with several `--project` flags is not safe. The
+`e2e-tests` workflow runs browsers in parallel only because each one gets its
+own runner and its own stack.
 
 ### Running a subset
 

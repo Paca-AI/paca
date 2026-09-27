@@ -28,8 +28,9 @@ export default defineConfig({
 	 *   - instance-wide state (branding, global agents, user totals) is either
 	 *     stubbed with page.route or asserted without assuming nobody else is
 	 *     changing it.
-	 * Browser projects must NOT run at the same time, because the same spec in
-	 * two browsers shares its prefix - `bun run test` runs them one after another.
+	 * Browser projects must NOT run at the same time against the same stack,
+	 * because the same spec in two browsers shares its prefix - `bun run test`
+	 * runs them one after another (CI runs them in parallel, one stack each).
 	 * Override the worker count with E2E_WORKERS.
 	 */
 	fullyParallel: false,
