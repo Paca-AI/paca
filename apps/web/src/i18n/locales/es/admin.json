@@ -266,6 +266,10 @@
 			"settingsWrite": {
 				"label": "Escribir configuración del espacio de trabajo",
 				"description": "Actualizar el logotipo, el favicon y el color principal del espacio de trabajo"
+			},
+			"settingsSsoWrite": {
+				"label": "Gestionar proveedores SSO",
+				"description": "Configurar los proveedores de identidad con los que los usuarios inician sesión. Permite iniciar sesión como otros usuarios, así que trátalo como acceso total de administrador."
 			}
 		},
 		"permissionGroups": {
@@ -337,8 +341,8 @@
 		}
 	},
 	"settings": {
-		"title": "Marca del espacio de trabajo",
-		"description": "Configura el logotipo, el favicon y el color principal usados en todos los proyectos de este espacio de trabajo.",
+		"title": "Configuración del espacio de trabajo",
+		"description": "Opciones de marca e inicio de sesión de este espacio de trabajo.",
 		"images": {
 			"title": "Logotipo y favicon",
 			"logo": {
@@ -380,6 +384,61 @@
 			"saved": "Guardado",
 			"errors": {
 				"updateFailed": "No se pudo guardar. Inténtalo de nuevo."
+			}
+		},
+		"sso": {
+			"title": "Inicio de sesión único (SSO)",
+			"description": "Permite iniciar sesión con un proveedor de identidad OpenID Connect como Google, Microsoft Entra ID, Okta o Keycloak.",
+			"add": "Añadir proveedor",
+			"empty": "Aún no hay proveedores SSO. Los usuarios inician sesión con usuario y contraseña.",
+			"enabled": "Activado",
+			"disabled": "Desactivado",
+			"edit": "Editar {{name}}",
+			"delete": "Eliminar {{name}}",
+			"copy": "Copiar",
+			"dialog": {
+				"createTitle": "Añadir proveedor SSO",
+				"editTitle": "Editar proveedor SSO",
+				"description": "Registra Paca como cliente OpenID Connect en tu proveedor de identidad y luego introduce los datos que te proporcione.",
+				"cancel": "Cancelar",
+				"save": "Guardar"
+			},
+			"fields": {
+				"displayName": "Nombre visible",
+				"displayNamePlaceholder": "SSO de la empresa",
+				"slug": "Identificador",
+				"slugHint": "Se usa en las URL de inicio de sesión y de retorno. Cambiarlo invalida la URL de retorno registrada en el proveedor.",
+				"callbackUrl": "URL de retorno",
+				"callbackUrlHint": "Regístrala como URI de redirección en tu proveedor de identidad.",
+				"issuerUrl": "URL del emisor",
+				"issuerUrlHint": "El emisor OpenID Connect. Su documento de descubrimiento debe ser accesible desde el servidor de Paca.",
+				"clientId": "ID de cliente",
+				"clientSecret": "Secreto de cliente",
+				"clientSecretKeepHint": "Hay un secreto guardado. Déjalo en blanco para conservarlo.",
+				"scopes": "Ámbitos",
+				"scopesHint": "Separados por espacios. \"openid\" siempre se incluye.",
+				"allowedDomains": "Dominios de correo permitidos",
+				"allowedDomainsHint": "Separados por comas. Déjalo vacío para permitir cualquier dominio. Solo se aceptan correos verificados.",
+				"enabled": "Activado",
+				"enabledHint": "Mostrar este proveedor en la página de inicio de sesión.",
+				"autoProvision": "Crear cuentas automáticamente",
+				"autoProvisionHint": "Los usuarios nuevos reciben una cuenta con el rol predeterminado.",
+				"linkByEmail": "Vincular cuentas existentes por correo",
+				"linkByEmailHint": "Un usuario nuevo cuyo correo verificado coincida con una cuenta existente inicia sesión con esa cuenta.",
+				"linkByEmailWarning": "Actívalo solo con un proveedor de total confianza: quien lo controle puede iniciar sesión como cualquier cuenta con un correo coincidente, incluidos los administradores."
+			},
+			"deleteDialog": {
+				"title": "Eliminar proveedor SSO",
+				"description": "¿Eliminar \"{{name}}\"? Ya no se podrá iniciar sesión con él y las cuentas que creó perderán su vínculo. Las cuentas se conservan.",
+				"confirm": "Eliminar"
+			},
+			"errors": {
+				"slugTaken": "Otro proveedor ya usa este identificador.",
+				"discoveryFailed": "No se pudo acceder al documento de descubrimiento OpenID Connect del emisor. Revisa la URL del emisor.",
+				"invalid": "Algunos campos no son válidos. Revisa el identificador, la URL del emisor, el ID de cliente y los dominios.",
+				"saveFailed": "No se pudo guardar el proveedor. Inténtalo de nuevo.",
+				"loadFailed": "No se pudieron cargar los proveedores SSO.",
+				"deleteFailed": "No se pudo eliminar el proveedor. Inténtalo de nuevo."
 			}
 		}
 	}

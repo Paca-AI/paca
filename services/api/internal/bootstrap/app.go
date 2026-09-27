@@ -38,6 +38,7 @@ import (
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
+	ssosvc "github.com/Paca-AI/api/internal/service/sso"
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
@@ -229,6 +230,8 @@ func New(cfg *config.Config) (*App, error) {
 	// so this is belt-and-suspenders, not load-bearing, but keeps the
 	// pointer's provenance obvious at every read site.
 	projectServiceBase = projectServiceBase.WithEncryptor(encryptor)
+	ssoService := ssosvc.New(pgRepo.NewSSORepository(db), redisRepo.NewSSOStateStore(redisClient, 10*time.Minute),
+		userRepo, userService, authService, log).WithEncryptor(encryptor)
 	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(agentService)
@@ -467,6 +470,7 @@ func New(cfg *config.Config) (*App, error) {
 		RefreshSessionTTL: cfg.JWT.RefreshSessionTTL,
 	}
 
+	authHandler := handler.NewAuthHandler(authService, cookieCfg)
 	deps := router.Deps{
 		TokenManager:         tokenManager,
 		APIKeyAuth:           apiKeyService,
@@ -476,7 +480,8 @@ func New(cfg *config.Config) (*App, error) {
 		MemberRepo:           projectRepo,
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
-		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
+		Auth:                 authHandler,
+		SSO:                  handler.NewSSOHandler(ssoService, authHandler, cfg.Server.PublicURL),
 		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,

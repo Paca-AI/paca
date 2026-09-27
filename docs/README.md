@@ -14,6 +14,7 @@ This directory is the main documentation home for Paca.
 - [guides/mcp-server-setup.md](guides/mcp-server-setup.md): setup guide for integrating AI agents (Claude, custom agents) with Paca via MCP server.
 - [guides/local-development.md](guides/local-development.md): local development intent and future setup direction.
 - [guides/design-system.md](guides/design-system.md): visual language, component patterns, and interaction conventions for the web UI.
+- [guides/sso-oidc.md](guides/sso-oidc.md): letting users sign in with an OpenID Connect identity provider (Google, Entra ID, Okta, Keycloak, …).
 - [api/README.md](api/README.md): API and event contract documentation index.
 - [api/http-design.md](api/http-design.md): HTTP API paths, endpoint responsibilities, and future resource design.
 - [deployment/README.md](deployment/README.md): deployment and environment documentation index.

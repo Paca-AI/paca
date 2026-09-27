@@ -115,7 +115,6 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 
 ### Official Plugins
 - ✅ Webhook plugin (outgoing webhooks for task and sprint events, configurable per project)
-- 📋 GitLab plugin (MR status on task cards, branch linking)
 - ✅ Time logging plugin (track time spent per task, per sprint)
 - ✅ Dashboard plugin
 

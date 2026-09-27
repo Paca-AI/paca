@@ -137,6 +137,13 @@ const (
 	// public endpoint, so the only thing to gate is writing to it.
 	PermissionSettingsWrite Permission = "settings.write"
 
+	// PermissionSettingsSSOWrite gates configuring SSO / OIDC identity
+	// providers. Deliberately separate from PermissionSettingsWrite and held
+	// by SUPER_ADMIN alone by default: whoever controls a provider that links
+	// accounts by email can sign in as any account with a matching email,
+	// SUPER_ADMIN's included — root-equivalent, like global_roles.write.
+	PermissionSettingsSSOWrite Permission = "settings.sso.write"
+
 	// PermissionPlugins{Read,Write} gate global plugin installation/
 	// marketplace management — previously reused PermissionUsersWrite as a
 	// rough "is this someone important" proxy, with no permission of its

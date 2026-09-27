@@ -1698,7 +1698,8 @@ export function AppSidebar() {
 	// check was never updated when that happened.
 	const canAccessPlugins = hasPermission("plugins.write");
 
-	const canAccessSettings = hasPermission("settings.write");
+	const canAccessSettings =
+		hasPermission("settings.write") || hasPermission("settings.sso.write");
 
 	const canCreateProject = hasPermission("projects.create");
 

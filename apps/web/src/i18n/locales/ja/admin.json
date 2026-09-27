@@ -266,6 +266,10 @@
 			"settingsWrite": {
 				"label": "ワークスペース設定の書き込み",
 				"description": "ワークスペースのロゴ、ファビコン、プライマリカラーを更新する"
+			},
+			"settingsSsoWrite": {
+				"label": "SSO プロバイダーの管理",
+				"description": "ユーザーがサインインに使う ID プロバイダーを設定します。他のユーザーとしてサインインできるため、完全な管理者権限と同等に扱ってください。"
 			}
 		},
 		"permissionGroups": {
@@ -337,8 +341,8 @@
 		}
 	},
 	"settings": {
-		"title": "ワークスペースのブランディング",
-		"description": "このワークスペース内のすべてのプロジェクトで使用されるロゴ、ファビコン、プライマリカラーを設定します。",
+		"title": "ワークスペース設定",
+		"description": "このワークスペースのブランディングとサインインのオプションです。",
 		"images": {
 			"title": "ロゴとファビコン",
 			"logo": {
@@ -380,6 +384,61 @@
 			"saved": "保存しました",
 			"errors": {
 				"updateFailed": "保存に失敗しました。もう一度お試しください。"
+			}
+		},
+		"sso": {
+			"title": "シングルサインオン (SSO)",
+			"description": "Google、Microsoft Entra ID、Okta、Keycloak などの OpenID Connect ID プロバイダーでサインインできるようにします。",
+			"add": "プロバイダーを追加",
+			"empty": "SSO プロバイダーはまだありません。ユーザーはユーザー名とパスワードでサインインします。",
+			"enabled": "有効",
+			"disabled": "無効",
+			"edit": "{{name}} を編集",
+			"delete": "{{name}} を削除",
+			"copy": "コピー",
+			"dialog": {
+				"createTitle": "SSO プロバイダーを追加",
+				"editTitle": "SSO プロバイダーを編集",
+				"description": "ID プロバイダーに Paca を OpenID Connect クライアントとして登録し、発行された情報を入力してください。",
+				"cancel": "キャンセル",
+				"save": "保存"
+			},
+			"fields": {
+				"displayName": "表示名",
+				"displayNamePlaceholder": "社内 SSO",
+				"slug": "スラッグ",
+				"slugHint": "サインイン URL とコールバック URL に使われます。変更するとプロバイダーに登録したコールバック URL が使えなくなります。",
+				"callbackUrl": "コールバック URL",
+				"callbackUrlHint": "これを ID プロバイダーのリダイレクト URI として登録してください。",
+				"issuerUrl": "発行者 URL",
+				"issuerUrlHint": "OpenID Connect の発行者 (issuer) です。Paca サーバーからディスカバリードキュメントにアクセスできる必要があります。",
+				"clientId": "クライアント ID",
+				"clientSecret": "クライアントシークレット",
+				"clientSecretKeepHint": "シークレットは保存済みです。変更しない場合は空欄のままにしてください。",
+				"scopes": "スコープ",
+				"scopesHint": "スペース区切り。「openid」は常に含まれます。",
+				"allowedDomains": "許可するメールドメイン",
+				"allowedDomainsHint": "カンマ区切り。空欄にするとすべてのドメインを許可します。確認済みのメールアドレスのみ受け付けます。",
+				"enabled": "有効",
+				"enabledHint": "サインインページにこのプロバイダーを表示します。",
+				"autoProvision": "アカウントを自動作成",
+				"autoProvisionHint": "初めてのユーザーにはデフォルトロールで新しいアカウントが作成されます。",
+				"linkByEmail": "既存アカウントをメールで紐付け",
+				"linkByEmailHint": "確認済みメールアドレスが既存アカウントと一致する初回ユーザーは、そのアカウントでサインインします。",
+				"linkByEmailWarning": "完全に信頼できるプロバイダーでのみ有効にしてください。プロバイダーを制御できる人は、管理者を含め、メールアドレスが一致する任意のアカウントとしてサインインできます。"
+			},
+			"deleteDialog": {
+				"title": "SSO プロバイダーを削除",
+				"description": "「{{name}}」を削除しますか？このプロバイダーではサインインできなくなり、作成されたアカウントとの紐付けも解除されます。アカウント自体は残ります。",
+				"confirm": "削除"
+			},
+			"errors": {
+				"slugTaken": "このスラッグは別のプロバイダーで使用されています。",
+				"discoveryFailed": "発行者の OpenID Connect ディスカバリードキュメントにアクセスできませんでした。発行者 URL を確認してください。",
+				"invalid": "無効な項目があります。スラッグ、発行者 URL、クライアント ID、メールドメインを確認してください。",
+				"saveFailed": "プロバイダーを保存できませんでした。もう一度お試しください。",
+				"loadFailed": "SSO プロバイダーを読み込めませんでした。",
+				"deleteFailed": "プロバイダーを削除できませんでした。もう一度お試しください。"
 			}
 		}
 	}

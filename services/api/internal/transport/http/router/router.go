@@ -58,6 +58,7 @@ type Deps struct {
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
 	Settings             *handler.SettingsHandler
+	SSO                  *handler.SSOHandler
 	ProjectActivity      *handler.ProjectActivityHandler
 	Log                  *slog.Logger
 	// CORSAllowedOrigins is the CORS allow-list — see corsMiddleware. A nil
@@ -118,6 +119,15 @@ func New(deps Deps) http.Handler {
 				// the token itself (not a session) proves the caller's right
 				// to act on the account.
 				r.Post("/password/set", deps.User.SetPassword)
+
+				// SSO / OIDC sign-in — public: the login page lists the
+				// enabled providers, and login/callback are top-level
+				// browser navigations to and back from the provider.
+				if deps.SSO != nil {
+					r.Get("/sso/providers", deps.SSO.ListPublicProviders)
+					r.Get("/sso/{slug}/login", deps.SSO.Login)
+					r.Get("/sso/{slug}/callback", deps.SSO.Callback)
+				}
 			})
 
 			// Users
@@ -250,6 +260,18 @@ func New(deps Deps) http.Handler {
 					r.With(write).Post("/settings/favicon/avatar/initiate-upload", deps.Settings.InitiateFaviconUpload)
 					r.With(write).Post("/settings/favicon/avatar/complete-upload", deps.Settings.CompleteFaviconUpload)
 					r.With(write).Delete("/settings/favicon/avatar", deps.Settings.DeleteFavicon)
+				}
+
+				// SSO / OIDC identity providers. A separate permission from
+				// settings.write — see authz.PermissionSettingsSSOWrite for
+				// why it is root-equivalent. Reads are gated by it too: the
+				// list carries each provider's full configuration.
+				if deps.SSO != nil {
+					sso := require.Global(authz.PermissionSettingsSSOWrite)
+					r.With(sso).Get("/sso/providers", deps.SSO.ListProviders)
+					r.With(sso).Post("/sso/providers", deps.SSO.CreateProvider)
+					r.With(sso).Put("/sso/providers/{providerId}", deps.SSO.UpdateProvider)
+					r.With(sso).Delete("/sso/providers/{providerId}", deps.SSO.DeleteProvider)
 				}
 			})
 

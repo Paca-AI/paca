@@ -266,6 +266,10 @@
 			"settingsWrite": {
 				"label": "编辑工作区设置",
 				"description": "更新工作区的徽标、favicon 和主色调"
+			},
+			"settingsSsoWrite": {
+				"label": "管理 SSO 提供商",
+				"description": "配置用户登录所用的身份提供商。该权限可用于以其他用户身份登录，请视同完整管理员权限。"
 			}
 		},
 		"permissionGroups": {
@@ -337,8 +341,8 @@
 		}
 	},
 	"settings": {
-		"title": "工作区品牌设置",
-		"description": "设置此工作区中所有项目通用的徽标、favicon 和主色调。",
+		"title": "工作区设置",
+		"description": "此工作区的品牌与登录选项。",
 		"images": {
 			"title": "徽标与 Favicon",
 			"logo": {
@@ -380,6 +384,61 @@
 			"saved": "已保存",
 			"errors": {
 				"updateFailed": "保存失败，请重试。"
+			}
+		},
+		"sso": {
+			"title": "单点登录 (SSO)",
+			"description": "允许用户通过 Google、Microsoft Entra ID、Okta 或 Keycloak 等 OpenID Connect 身份提供商登录。",
+			"add": "添加提供商",
+			"empty": "尚未配置 SSO 提供商。用户使用用户名和密码登录。",
+			"enabled": "已启用",
+			"disabled": "已停用",
+			"edit": "编辑 {{name}}",
+			"delete": "删除 {{name}}",
+			"copy": "复制",
+			"dialog": {
+				"createTitle": "添加 SSO 提供商",
+				"editTitle": "编辑 SSO 提供商",
+				"description": "在身份提供商处将 Paca 注册为 OpenID Connect 客户端，然后填写其提供的信息。",
+				"cancel": "取消",
+				"save": "保存"
+			},
+			"fields": {
+				"displayName": "显示名称",
+				"displayNamePlaceholder": "公司 SSO",
+				"slug": "标识符",
+				"slugHint": "用于登录和回调 URL。修改后，在提供商处注册的回调 URL 将失效。",
+				"callbackUrl": "回调 URL",
+				"callbackUrlHint": "请在身份提供商处将其注册为重定向 URI。",
+				"issuerUrl": "Issuer URL",
+				"issuerUrlHint": "OpenID Connect 签发者。Paca 服务器必须能访问其发现文档。",
+				"clientId": "客户端 ID",
+				"clientSecret": "客户端密钥",
+				"clientSecretKeepHint": "已保存密钥。留空则保持不变。",
+				"scopes": "作用域",
+				"scopesHint": "以空格分隔。始终包含 \"openid\"。",
+				"allowedDomains": "允许的邮箱域名",
+				"allowedDomainsHint": "以逗号分隔。留空则允许任何域名。仅接受已验证的邮箱。",
+				"enabled": "启用",
+				"enabledHint": "在登录页显示此提供商。",
+				"autoProvision": "自动创建账户",
+				"autoProvisionHint": "首次登录的用户将获得一个默认角色的新账户。",
+				"linkByEmail": "通过邮箱关联已有账户",
+				"linkByEmailHint": "已验证邮箱与现有账户一致的首次登录用户，将登录到该账户。",
+				"linkByEmailWarning": "仅对完全信任的提供商开启：控制该提供商的人可以登录任何邮箱匹配的账户，包括管理员。"
+			},
+			"deleteDialog": {
+				"title": "删除 SSO 提供商",
+				"description": "删除“{{name}}”？之后将无法再通过它登录，由它创建的账户也会失去关联。账户本身会保留。",
+				"confirm": "删除"
+			},
+			"errors": {
+				"slugTaken": "该标识符已被其他提供商使用。",
+				"discoveryFailed": "无法访问签发者的 OpenID Connect 发现文档。请检查 Issuer URL。",
+				"invalid": "部分字段无效。请检查标识符、Issuer URL、客户端 ID 和邮箱域名。",
+				"saveFailed": "保存提供商失败，请重试。",
+				"loadFailed": "加载 SSO 提供商失败。",
+				"deleteFailed": "删除提供商失败，请重试。"
 			}
 		}
 	}

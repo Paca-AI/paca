@@ -266,6 +266,10 @@
 			"settingsWrite": {
 				"label": "Editar configurações do workspace",
 				"description": "Atualizar o logotipo, o favicon e a cor principal do workspace"
+			},
+			"settingsSsoWrite": {
+				"label": "Gerenciar provedores SSO",
+				"description": "Configurar os provedores de identidade usados para login. Permite entrar como outros usuários, então trate como acesso total de administrador."
 			}
 		},
 		"permissionGroups": {
@@ -337,8 +341,8 @@
 		}
 	},
 	"settings": {
-		"title": "Identidade visual do workspace",
-		"description": "Defina o logotipo, o favicon e a cor principal usados em todos os projetos deste workspace.",
+		"title": "Configurações do espaço de trabalho",
+		"description": "Opções de marca e de login deste espaço de trabalho.",
 		"images": {
 			"title": "Logotipo e favicon",
 			"logo": {
@@ -380,6 +384,61 @@
 			"saved": "Salvo",
 			"errors": {
 				"updateFailed": "Falha ao salvar. Tente novamente."
+			}
+		},
+		"sso": {
+			"title": "Login único (SSO)",
+			"description": "Permita o login com um provedor de identidade OpenID Connect, como Google, Microsoft Entra ID, Okta ou Keycloak.",
+			"add": "Adicionar provedor",
+			"empty": "Nenhum provedor SSO ainda. Os usuários entram com nome de usuário e senha.",
+			"enabled": "Ativado",
+			"disabled": "Desativado",
+			"edit": "Editar {{name}}",
+			"delete": "Excluir {{name}}",
+			"copy": "Copiar",
+			"dialog": {
+				"createTitle": "Adicionar provedor SSO",
+				"editTitle": "Editar provedor SSO",
+				"description": "Registre o Paca como cliente OpenID Connect no seu provedor de identidade e depois informe os dados fornecidos por ele.",
+				"cancel": "Cancelar",
+				"save": "Salvar"
+			},
+			"fields": {
+				"displayName": "Nome de exibição",
+				"displayNamePlaceholder": "SSO da empresa",
+				"slug": "Identificador",
+				"slugHint": "Usado nas URLs de login e de retorno. Alterá-lo invalida a URL de retorno registrada no provedor.",
+				"callbackUrl": "URL de retorno",
+				"callbackUrlHint": "Registre-a como URI de redirecionamento no seu provedor de identidade.",
+				"issuerUrl": "URL do emissor",
+				"issuerUrlHint": "O emissor OpenID Connect. Seu documento de descoberta precisa estar acessível a partir do servidor do Paca.",
+				"clientId": "ID do cliente",
+				"clientSecret": "Segredo do cliente",
+				"clientSecretKeepHint": "Há um segredo salvo. Deixe em branco para mantê-lo.",
+				"scopes": "Escopos",
+				"scopesHint": "Separados por espaços. \"openid\" é sempre incluído.",
+				"allowedDomains": "Domínios de e-mail permitidos",
+				"allowedDomainsHint": "Separados por vírgulas. Deixe vazio para permitir qualquer domínio. Apenas e-mails verificados são aceitos.",
+				"enabled": "Ativado",
+				"enabledHint": "Mostrar este provedor na página de login.",
+				"autoProvision": "Criar contas automaticamente",
+				"autoProvisionHint": "Usuários de primeiro acesso recebem uma conta nova com a função padrão.",
+				"linkByEmail": "Vincular contas existentes por e-mail",
+				"linkByEmailHint": "Um usuário de primeiro acesso cujo e-mail verificado corresponda a uma conta existente entra nessa conta.",
+				"linkByEmailWarning": "Ative apenas para um provedor totalmente confiável: quem o controla pode entrar como qualquer conta com e-mail correspondente, inclusive administradores."
+			},
+			"deleteDialog": {
+				"title": "Excluir provedor SSO",
+				"description": "Excluir \"{{name}}\"? Não será mais possível entrar com ele, e as contas criadas por ele perderão o vínculo. As contas em si são mantidas.",
+				"confirm": "Excluir"
+			},
+			"errors": {
+				"slugTaken": "Outro provedor já usa este identificador.",
+				"discoveryFailed": "Não foi possível acessar o documento de descoberta OpenID Connect do emissor. Verifique a URL do emissor.",
+				"invalid": "Alguns campos são inválidos. Verifique o identificador, a URL do emissor, o ID do cliente e os domínios.",
+				"saveFailed": "Falha ao salvar o provedor. Tente novamente.",
+				"loadFailed": "Falha ao carregar os provedores SSO.",
+				"deleteFailed": "Falha ao excluir o provedor. Tente novamente."
 			}
 		}
 	}

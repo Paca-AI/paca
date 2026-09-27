@@ -29,6 +29,12 @@ export const ApiErrorCode = {
 	GlobalRoleIsDefault: "GLOBAL_ROLE_IS_DEFAULT",
 	GlobalRoleNoDefault: "GLOBAL_ROLE_NO_DEFAULT",
 
+	// SSO provider errors.
+	SSOProviderNotFound: "SSO_PROVIDER_NOT_FOUND",
+	SSOProviderSlugTaken: "SSO_PROVIDER_SLUG_TAKEN",
+	SSOProviderInvalid: "SSO_PROVIDER_INVALID",
+	SSODiscoveryFailed: "SSO_DISCOVERY_FAILED",
+
 	// Project domain errors.
 	ProjectNotFound: "PROJECT_NOT_FOUND",
 	ProjectNameTaken: "PROJECT_NAME_TAKEN",
