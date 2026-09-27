@@ -50,4 +50,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uni_user_identities_provider_subject
 	ON user_identities (provider_id, subject);
 CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities (user_id);
 
+-- Email lookups (SSO link-by-email, the duplicate-email check) compare
+-- case-insensitively: providers lowercase addresses, while users.email keeps
+-- whatever case an admin typed. Not UNIQUE — existing rows may already
+-- differ only by case, and that must not block the upgrade.
+CREATE INDEX IF NOT EXISTS idx_users_email_lower_active
+	ON users (lower(email))
+	WHERE deleted_at IS NULL AND email IS NOT NULL;
+
 COMMIT;

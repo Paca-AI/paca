@@ -9,6 +9,7 @@ export const ApiErrorCode = {
 	MissingToken: "AUTH_MISSING_TOKEN",
 	TokenInvalid: "AUTH_TOKEN_INVALID",
 	Unauthenticated: "AUTH_UNAUTHENTICATED",
+	TooManyRequests: "TOO_MANY_REQUESTS",
 
 	// Password / session gate errors.
 	PasswordChangeRequired: "AUTH_PASSWORD_CHANGE_REQUIRED",

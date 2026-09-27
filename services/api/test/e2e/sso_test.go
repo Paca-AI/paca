@@ -271,6 +271,35 @@ func TestSSOSignIn(t *testing.T) {
 		}
 	})
 
+	t.Run("link_by_email_ignores_case", func(t *testing.T) {
+		// An admin typed the address with capitals; the provider sends it
+		// lowercased. It must link, not provision a duplicate.
+		seedUser(t, env, "bob", password, "Bob")
+		if _, err := env.db.ExecContext(env.ctx,
+			`UPDATE users SET email = 'Bob@Corp.Example' WHERE username = 'bob'`); err != nil {
+			t.Fatal(err)
+		}
+		update := map[string]any{}
+		for k, v := range provider {
+			update[k] = v
+		}
+		delete(update, "client_secret")
+		update["auto_provision"] = false
+		update["link_by_email"] = true
+		if status, out := doJSON(t, env, root, http.MethodPut, "/api/v1/admin/sso/providers/"+providerID, update); status != http.StatusOK {
+			t.Fatalf("update: want 200, got %d (%s)", status, out.ErrorCode)
+		}
+		idp.signInAs(map[string]any{"sub": "u-2", "email": "bob@corp.example", "email_verified": true})
+		browser := ssoBrowser(t, env)
+		if landed := ssoSignIn(t, env, browser, "corp", ""); landed != "/home" {
+			t.Fatalf("landed on %q, want /home", landed)
+		}
+		_, out := doJSON(t, env, browser, http.MethodGet, "/api/v1/users/me", nil)
+		if me := assertDataMap(t, out); me["username"] != "bob" {
+			t.Fatalf("signed in as %v, want bob", me["username"])
+		}
+	})
+
 	t.Run("disabled_providers_cannot_be_used", func(t *testing.T) {
 		update := map[string]any{}
 		for k, v := range provider {

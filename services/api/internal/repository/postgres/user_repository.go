@@ -148,14 +148,18 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 
 // FindByEmail returns the user with the given email, or userdom.ErrNotFound.
 // Scoped to active users only, matching uni_users_email_active — a
-// soft-deleted user's email is freed up for reuse, same as username.
+// soft-deleted user's email is freed up for reuse, same as username. The
+// match ignores case (addresses are case-insensitive in practice); should
+// legacy rows differ only by case, an exact match wins.
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*userdom.User, error) {
 	var row userReadRow
 	err := r.db.GetContext(ctx, &row, `
 		SELECT `+userReadCols+`
 		FROM users
 		`+userReadJoin+`
-		WHERE users.email = $1 AND users.deleted_at IS NULL`, email)
+		WHERE lower(users.email) = lower($1) AND users.deleted_at IS NULL
+		ORDER BY users.email = $1 DESC, users.created_at
+		LIMIT 1`, email)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, userdom.ErrNotFound
 	}

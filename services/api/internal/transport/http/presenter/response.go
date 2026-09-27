@@ -768,6 +768,8 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusConflict
 	case apierr.CodeBadRequest:
 		return http.StatusBadRequest
+	case apierr.CodeTooManyRequests:
+		return http.StatusTooManyRequests
 	case apierr.CodePasswordChangeRequired:
 		return http.StatusForbidden
 	case apierr.CodeInvalidCurrentPassword:

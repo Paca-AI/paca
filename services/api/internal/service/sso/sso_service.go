@@ -10,17 +10,20 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/google/uuid"
 	"golang.org/x/oauth2"
+	"golang.org/x/sync/singleflight"
 
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	ssodom "github.com/Paca-AI/api/internal/domain/sso"
@@ -70,6 +73,7 @@ type Service struct {
 
 	mu        sync.Mutex
 	discovery map[uuid.UUID]*cachedProvider
+	inflight  singleflight.Group
 }
 
 type cachedProvider struct {
@@ -86,7 +90,7 @@ func New(repo ssodom.Repository, states ssodom.StateStore, users userdom.Reposit
 		users:      users,
 		creator:    creator,
 		sessions:   sessions,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: providerHTTPClient(),
 		log:        log,
 		discovery:  map[uuid.UUID]*cachedProvider{},
 	}
@@ -97,6 +101,37 @@ func New(repo ssodom.Repository, states ssodom.StateStore, users userdom.Reposit
 func (s *Service) WithEncryptor(enc *secret.Encryptor) *Service {
 	s.encryptor = enc
 	return s
+}
+
+// providerHTTPClient returns the client used to reach identity providers.
+// Issuer URLs are admin-entered, so the server fetching them is an SSRF
+// vector: its dialer refuses link-local (cloud metadata endpoints such as
+// 169.254.169.254), multicast and unspecified addresses. Loopback and private
+// ranges stay reachable — a self-hosted IdP on the same network is a normal
+// setup.
+func providerHTTPClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout: 5 * time.Second,
+		Control: func(_, address string, _ syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return err
+			}
+			if ip := net.ParseIP(host); ip != nil && blockedProviderIP(ip) {
+				return fmt.Errorf("%w: address %s is not allowed", ssodom.ErrDiscoveryFailed, ip)
+			}
+			return nil
+		},
+	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = nil // a proxy would dial on our behalf, bypassing the check
+	tr.DialContext = dialer.DialContext
+	return &http.Client{Timeout: 10 * time.Second, Transport: tr}
+}
+
+func blockedProviderIP(ip net.IP) bool {
+	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified()
 }
 
 // WithHTTPClient overrides the client used to reach providers (tests).
@@ -424,17 +459,25 @@ func (s *Service) discover(ctx context.Context, p *ssodom.Provider) (*oidc.Provi
 	if c != nil && c.updatedAt.Equal(p.UpdatedAt) && time.Since(c.fetchedAt) < discoveryTTL {
 		return c.provider, nil
 	}
-	// The discovery context must outlive this request: go-oidc's key set
-	// keeps it for fetching rotated signing keys later.
-	op, err := oidc.NewProvider(oidc.ClientContext(context.WithoutCancel(ctx), s.httpClient), p.IssuerURL)
+	// Concurrent misses for the same provider version share one fetch.
+	key := p.ID.String() + "@" + p.UpdatedAt.Format(time.RFC3339Nano)
+	v, err, _ := s.inflight.Do(key, func() (any, error) {
+		// The discovery context must outlive this request: go-oidc's key
+		// set keeps it for fetching rotated signing keys later.
+		op, err := oidc.NewProvider(oidc.ClientContext(context.WithoutCancel(ctx), s.httpClient), p.IssuerURL)
+		if err != nil {
+			s.log.Warn("sso: issuer discovery failed", "provider", p.Slug, "error", err)
+			return nil, fmt.Errorf("%w: %v", ssodom.ErrDiscoveryFailed, err)
+		}
+		s.mu.Lock()
+		s.discovery[p.ID] = &cachedProvider{updatedAt: p.UpdatedAt, fetchedAt: time.Now(), provider: op}
+		s.mu.Unlock()
+		return op, nil
+	})
 	if err != nil {
-		s.log.Warn("sso: issuer discovery failed", "provider", p.Slug, "error", err)
-		return nil, fmt.Errorf("%w: %v", ssodom.ErrDiscoveryFailed, err)
+		return nil, err
 	}
-	s.mu.Lock()
-	s.discovery[p.ID] = &cachedProvider{updatedAt: p.UpdatedAt, fetchedAt: time.Now(), provider: op}
-	s.mu.Unlock()
-	return op, nil
+	return v.(*oidc.Provider), nil
 }
 
 func (s *Service) forget(id uuid.UUID) {

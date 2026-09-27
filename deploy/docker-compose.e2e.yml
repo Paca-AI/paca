@@ -51,6 +51,8 @@ services:
       JWT_ACCESS_TTL: 15m
       JWT_REFRESH_TTL: 168h
       COOKIE_SECURE: "false"
+      # Every test logs in from the same IP; the per-IP auth limit would trip.
+      AUTH_RATE_LIMIT_PER_MINUTE: "0"
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: e2e-admin-password
       STORAGE_PROVIDER: rustfs

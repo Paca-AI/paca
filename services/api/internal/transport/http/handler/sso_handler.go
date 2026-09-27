@@ -57,17 +57,15 @@ func NewSSOHandler(svc SSOService, auth *AuthHandler, publicURL string) *SSOHand
 }
 
 // baseURL is the origin the provider redirects back to. PUBLIC_URL wins;
-// otherwise the host the browser used, which is only right when no proxy
-// rewrites Host — set PUBLIC_URL in production.
+// otherwise the Host the request arrived with (the bundled Caddy proxy
+// preserves it). X-Forwarded-Host is deliberately ignored: a client can set
+// it, and it would flow into the redirect URI and the callback URL admins
+// are told to register. Set PUBLIC_URL in production.
 func (h *SSOHandler) baseURL(r *http.Request) string {
 	if h.publicURL != "" {
 		return h.publicURL
 	}
-	host := r.Header.Get("X-Forwarded-Host")
-	if host == "" {
-		host = r.Host
-	}
-	return h.auth.requestScheme() + "://" + host
+	return h.auth.requestScheme() + "://" + r.Host
 }
 
 // ListPublicProviders handles GET /auth/sso/providers — the enabled
@@ -133,6 +131,12 @@ func (h *SSOHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	h.auth.setTokenCookies(w, r, pair, pair.RefreshTTL)
 	http.Redirect(w, r, redirect, http.StatusFound)
+}
+
+// RateLimited sends a browser that hit the SSO rate limit back to the login
+// page with ?sso_error=rate_limited.
+func (h *SSOHandler) RateLimited(w http.ResponseWriter, r *http.Request) {
+	redirectToLogin(w, r, "rate_limited")
 }
 
 func (h *SSOHandler) failRedirect(w http.ResponseWriter, r *http.Request, err error) {

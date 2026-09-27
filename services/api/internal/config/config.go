@@ -71,6 +71,11 @@ type ServerConfig struct {
 	// value is an exact-match allow-list. Configure via the comma-separated
 	// CORS_ORIGINS environment variable, e.g. "https://paca.example.com".
 	CORSAllowedOrigins []string
+	// AuthRateLimit is how many requests per minute one client IP may make
+	// to each credential endpoint under /auth (password login, password set,
+	// SSO login/callback); token refresh gets 3x that. 0 disables the
+	// limits. Configure via AUTH_RATE_LIMIT_PER_MINUTE (default 20).
+	AuthRateLimit int
 }
 
 // AdminConfig holds the default administrator credentials seeded on first startup.

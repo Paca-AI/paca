@@ -532,6 +532,7 @@ func New(cfg *config.Config) (*App, error) {
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),
 		Log:                log,
 		CORSAllowedOrigins: cfg.Server.CORSAllowedOrigins,
+		AuthRateLimit:      cfg.Server.AuthRateLimit,
 	}
 
 	engine := router.New(deps)

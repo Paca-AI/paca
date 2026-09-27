@@ -16,6 +16,7 @@ const SSO_ERROR_CODES = [
 	"email_not_allowed",
 	"no_account",
 	"account_exists",
+	"rate_limited",
 ] as const;
 
 type SsoErrorKey = (typeof SSO_ERROR_CODES)[number] | "generic";

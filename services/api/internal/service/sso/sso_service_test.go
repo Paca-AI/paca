@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -670,5 +671,21 @@ func TestFlexBool(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(`{"email_verified":false}`), &c); err != nil || bool(c.EmailVerified) {
 		t.Fatalf("bool false: %v %v", c.EmailVerified, err)
+	}
+}
+
+func TestBlockedProviderIP(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"169.254.169.254": true,
+		"fe80::1":         true,
+		"0.0.0.0":         true,
+		"224.0.0.1":       true,
+		"127.0.0.1":       false,
+		"10.1.2.3":        false,
+		"93.184.216.34":   false,
+	} {
+		if got := blockedProviderIP(net.ParseIP(addr)); got != want {
+			t.Errorf("blockedProviderIP(%s) = %v, want %v", addr, got, want)
+		}
 	}
 }

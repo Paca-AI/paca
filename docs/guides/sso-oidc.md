@@ -8,7 +8,7 @@ Providers are managed under **Administration → Settings → Single sign-on (SS
 
 ## Before you start
 
-- Set `PUBLIC_URL` on the API to the address users reach Paca at (for example `https://paca.example.com`). The callback URL is built from it. Without it, the API falls back to the request's `Host` / `X-Forwarded-Host`, which is wrong behind many proxies.
+- Set `PUBLIC_URL` on the API to the address users reach Paca at (for example `https://paca.example.com`). The callback URL is built from it. Without it, the API falls back to the request's `Host` header (the bundled Caddy proxy preserves it); `X-Forwarded-Host` is ignored because clients can forge it.
 - Set `ENCRYPTION_KEY` so client secrets are encrypted at rest. Without it they are stored in plaintext, the same as every other secret in Paca.
 - The API server must be able to reach the IdP's issuer URL: it fetches the discovery document, signing keys, and token endpoint server-side.
 
@@ -35,7 +35,7 @@ Common issuer URLs:
 | --- | --- |
 | **Enabled** | Shows a "Continue with …" button on the sign-in page. A disabled provider cannot be used at all. |
 | **Create accounts automatically** | A first-time user gets a new account with the [default global role](../architecture/authorization.md). Their username comes from `preferred_username` or their email (with a numeric suffix if it's taken), and their name and email come from the ID token. The account gets a random password nobody knows, so it signs in only through SSO until an admin resets the password. |
-| **Link existing accounts by email** | A first-time user whose *verified* email matches an existing account signs in as that account, and the link is remembered. Only turn this on for a provider you fully trust. |
+| **Link existing accounts by email** | A first-time user whose *verified* email matches an existing account signs in as that account, and the link is remembered. Only turn this on for a provider you fully trust — and never for a *multi-tenant* issuer (e.g. Microsoft Entra's `common`/`organizations` endpoints), where any tenant's admin can put an arbitrary address in the `email` claim. Emails match case-insensitively. |
 | **Allowed email domains** | Only users whose verified email is in one of these domains may sign in. Leave empty to allow any. |
 | **Scopes** | Defaults to `openid profile email`. `openid` is always added. |
 
@@ -49,6 +49,12 @@ A returning user is recognised by the provider's stable subject (`sub`) claim, n
 4. Otherwise sign-in is refused (`no_account`).
 
 Unverified emails (`email_verified` not `true`) are never used for linking, provisioning, or the domain allow-list.
+
+Linking relies on the provider's `email_verified` claim, which is only as trustworthy as the provider itself. Point link-by-email providers at a single-tenant issuer URL.
+
+The API fetches each issuer's discovery document and signing keys itself. To keep an admin-entered issuer URL from reaching cloud metadata endpoints, it refuses link-local (`169.254.0.0/16`, `fe80::/10`), multicast and unspecified addresses; loopback and private addresses are allowed so a self-hosted IdP on the same network works.
+
+Like password login, `/auth/sso/{slug}/login` and `/callback` are rate-limited per client IP — `AUTH_RATE_LIMIT_PER_MINUTE`, default 20 per endpoint (the IP is the rightmost `X-Forwarded-For` entry, which the reverse proxy sets). The limit is per API instance.
 
 Deleting a Paca user keeps them out: user deletion is a soft delete, so their SSO link stays attached to the deleted account and they are not re-provisioned. (`user_identities.user_id` cascades on a hard delete, so if Paca ever gains a hard-delete path, the same identity could then provision a fresh account.) Deleting a provider removes its links but keeps the accounts.
 
@@ -72,3 +78,4 @@ When SSO sign-in fails, the user is sent back to the sign-in page with `?sso_err
 | `email_not_allowed` | The email domain isn't allowed, or the email isn't verified. |
 | `no_account` | No linked account, and the provider neither links nor creates accounts. |
 | `account_exists` | An account already has this email, and linking is off. |
+| `rate_limited` | Too many SSO sign-in requests from this IP (`AUTH_RATE_LIMIT_PER_MINUTE`). |

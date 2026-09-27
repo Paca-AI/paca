@@ -43,6 +43,8 @@ const (
 	CodeGlobalRoleNoDefault Code = "GLOBAL_ROLE_NO_DEFAULT"
 	// CodeBadRequest represents a bad request.
 	CodeBadRequest Code = "BAD_REQUEST"
+	// CodeTooManyRequests indicates the client exceeded a rate limit.
+	CodeTooManyRequests Code = "TOO_MANY_REQUESTS"
 	// CodeInternalError represents an internal server error.
 	CodeInternalError Code = "INTERNAL_ERROR"
 	// CodePasswordChangeRequired indicates the user must change their password
