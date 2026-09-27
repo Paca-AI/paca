@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"slices"
@@ -117,8 +118,12 @@ func providerHTTPClient() *http.Client {
 			if err != nil {
 				return err
 			}
-			if ip := net.ParseIP(host); ip != nil && blockedProviderIP(ip) {
-				return fmt.Errorf("%w: address %s is not allowed", ssodom.ErrDiscoveryFailed, ip)
+			// netip, not net.ParseIP: the latter rejects a zoned IPv6
+			// address (fe80::1%eth0), which would skip the check. Anything
+			// unparseable is refused rather than let through.
+			ip, err := netip.ParseAddr(host)
+			if err != nil || blockedProviderIP(ip) {
+				return fmt.Errorf("%w: address %s is not allowed", ssodom.ErrDiscoveryFailed, host)
 			}
 			return nil
 		},
@@ -129,7 +134,8 @@ func providerHTTPClient() *http.Client {
 	return &http.Client{Timeout: 10 * time.Second, Transport: tr}
 }
 
-func blockedProviderIP(ip net.IP) bool {
+func blockedProviderIP(ip netip.Addr) bool {
+	ip = ip.WithZone("").Unmap()
 	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
 		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified()
 }

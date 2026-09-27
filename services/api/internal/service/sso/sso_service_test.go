@@ -8,9 +8,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -676,15 +676,17 @@ func TestFlexBool(t *testing.T) {
 
 func TestBlockedProviderIP(t *testing.T) {
 	for addr, want := range map[string]bool{
-		"169.254.169.254": true,
-		"fe80::1":         true,
-		"0.0.0.0":         true,
-		"224.0.0.1":       true,
-		"127.0.0.1":       false,
-		"10.1.2.3":        false,
-		"93.184.216.34":   false,
+		"169.254.169.254":        true,
+		"fe80::1":                true,
+		"0.0.0.0":                true,
+		"224.0.0.1":              true,
+		"127.0.0.1":              false,
+		"10.1.2.3":               false,
+		"93.184.216.34":          false,
+		"fe80::1%eth0":           true,
+		"::ffff:169.254.169.254": true,
 	} {
-		if got := blockedProviderIP(net.ParseIP(addr)); got != want {
+		if got := blockedProviderIP(netip.MustParseAddr(addr)); got != want {
 			t.Errorf("blockedProviderIP(%s) = %v, want %v", addr, got, want)
 		}
 	}

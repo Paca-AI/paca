@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -125,14 +126,30 @@ func ssoBrowser(t *testing.T, env *e2eEnv) *http.Client {
 // in the web app (e.g. "/home" or "/?sso_error=no_account").
 func ssoSignIn(t *testing.T, env *e2eEnv, browser *http.Client, slug, redirect string) string {
 	t.Helper()
-	req := mustRequest(env.ctx, t, http.MethodGet,
-		env.base+"/api/v1/auth/sso/"+slug+"/login?redirect="+url.QueryEscape(redirect), nil)
-	resp := mustDo(t, browser, req)
+	landed, err := trySSOSignIn(env, browser, slug, redirect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return landed
+}
+
+// trySSOSignIn is ssoSignIn reporting failure as an error instead of
+// t.Fatal, so it is safe to call from a goroutine other than the test's.
+func trySSOSignIn(env *e2eEnv, browser *http.Client, slug, redirect string) (string, error) {
+	req, err := http.NewRequestWithContext(env.ctx, http.MethodGet,
+		env.base+"/api/v1/auth/sso/"+slug+"/login?redirect="+url.QueryEscape(redirect), http.NoBody)
+	if err != nil {
+		return "", err
+	}
+	resp, err := browser.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("sso sign-in: %w", err)
+	}
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusFound {
-		t.Fatalf("sso flow ended with HTTP %d at %s, want a redirect into the app", resp.StatusCode, resp.Request.URL)
+		return "", fmt.Errorf("sso flow ended with HTTP %d at %s, want a redirect into the app", resp.StatusCode, resp.Request.URL)
 	}
-	return resp.Header.Get("Location")
+	return resp.Header.Get("Location"), nil
 }
 
 // TestSSOSignIn covers SSO end to end on a real database: provider
@@ -234,12 +251,23 @@ func TestSSOSignIn(t *testing.T) {
 		// the per-identity advisory lock does.
 		idp.signInAs(map[string]any{"sub": "u-race", "preferred_username": "racer"})
 		const n = 8
+		// Browsers are built here: helpers that t.Fatal must run on the
+		// test goroutine. The workers only report errors.
+		browsers := make([]*http.Client, n)
+		for i := range browsers {
+			browsers[i] = ssoBrowser(t, env)
+		}
 		var wg sync.WaitGroup
-		for range n {
+		for _, browser := range browsers {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if landed := ssoSignIn(t, env, ssoBrowser(t, env), "corp", ""); landed != "/home" {
+				landed, err := trySSOSignIn(env, browser, "corp", "")
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if landed != "/home" {
 					t.Errorf("landed on %q, want /home", landed)
 				}
 			}()
