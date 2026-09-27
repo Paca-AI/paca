@@ -2,7 +2,8 @@ name: e2e-tests
 
 # Runs the Playwright specs in apps/e2e against the dedicated E2E docker stack
 # (deploy/docker-compose.e2e.yml). Manual trigger only: the stack builds every
-# service from source, so a run takes a while.
+# service from source, so a run takes a while. Each selected browser runs as
+# its own parallel job with its own stack.
 on:
   workflow_dispatch:
     inputs:
@@ -32,10 +33,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Turns the space-separated `browsers` input into a JSON matrix so every
+  # browser runs as its own parallel job. Each job gets its own runner and its
+  # own E2E stack, so browsers never share a stack (which the specs forbid —
+  # see apps/e2e/playwright.config.ts).
+  plan:
+    name: Plan browser matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      browsers: ${{ steps.matrix.outputs.browsers }}
+    steps:
+      - name: Build matrix
+        id: matrix
+        env:
+          E2E_BROWSERS: ${{ inputs.browsers }}
+        run: |
+          json=$(echo $E2E_BROWSERS | tr ' ' '\n' | sed '/^$/d' | sort -u | jq -R . | jq -cs .)
+          if [ "$json" = "[]" ]; then echo "No browsers given" >&2; exit 1; fi
+          echo "browsers=$json" >> "$GITHUB_OUTPUT"
+
   e2e:
-    name: Playwright (${{ inputs.browsers }})
+    name: Playwright (${{ matrix.browser }})
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: ${{ fromJSON(needs.plan.outputs.browsers) }}
 
     steps:
       - name: Checkout repository
@@ -63,19 +89,15 @@ jobs:
       - name: Install Playwright browsers
         working-directory: apps/e2e
         env:
-          E2E_BROWSERS: ${{ inputs.browsers }}
+          E2E_BROWSER: ${{ matrix.browser }}
         run: |
-          engines=""
-          for project in $E2E_BROWSERS; do
-            case "$project" in
-              chromium|mobile-chrome) engines="$engines chromium" ;;
-              firefox) engines="$engines firefox" ;;
-              webkit|mobile-safari) engines="$engines webkit" ;;
-              *) echo "Unknown Playwright project: $project" >&2; exit 1 ;;
-            esac
-          done
-          engines=$(echo $engines | tr ' ' '\n' | sort -u | tr '\n' ' ')
-          bunx playwright install --with-deps $engines
+          case "$E2E_BROWSER" in
+            chromium|mobile-chrome) engine=chromium ;;
+            firefox) engine=firefox ;;
+            webkit|mobile-safari) engine=webkit ;;
+            *) echo "Unknown Playwright project: $E2E_BROWSER" >&2; exit 1 ;;
+          esac
+          bunx playwright install --with-deps "$engine"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -100,21 +122,13 @@ jobs:
         env:
           CI: "true"
           E2E_BASE_URL: http://localhost
-          E2E_BROWSERS: ${{ inputs.browsers }}
+          E2E_BROWSER: ${{ matrix.browser }}
           E2E_WORKERS: ${{ inputs.workers }}
           E2E_SPECS: ${{ inputs.specs }}
-        # Browsers run one after another (they must never share the stack at
-        # the same time — see scripts/test-all.sh), each into its own report
-        # folder so later runs do not overwrite earlier ones. E2E_SPECS is
-        # left unquoted on purpose so several paths split into args.
+        # E2E_SPECS is left unquoted on purpose so several paths split into args.
         run: |
-          status=0
-          for project in $E2E_BROWSERS; do
-            echo "==> $project"
-            PLAYWRIGHT_HTML_OUTPUT_DIR="playwright-report/$project" PLAYWRIGHT_HTML_OPEN=never \
-              bunx playwright test --project="$project" --output="test-results/$project" $E2E_SPECS || status=1
-          done
-          exit $status
+          PLAYWRIGHT_HTML_OUTPUT_DIR="playwright-report/$E2E_BROWSER" PLAYWRIGHT_HTML_OPEN=never \
+            bunx playwright test --project="$E2E_BROWSER" --output="test-results/$E2E_BROWSER" $E2E_SPECS
 
       - name: Dump stack logs
         if: failure()
@@ -124,7 +138,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: |
             apps/e2e/playwright-report/
             apps/e2e/test-results/
