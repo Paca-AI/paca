@@ -217,6 +217,9 @@ func (r *SSORepository) CreateIdentity(ctx context.Context, i *ssodom.Identity) 
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		i.ID.String(), i.UserID.String(), i.ProviderID.String(), i.Subject, i.Email, i.CreatedAt, i.LastLoginAt,
 	)
+	if isUniqueViolation(err) {
+		return ssodom.ErrIdentityExists
+	}
 	if err != nil {
 		return fmt.Errorf("sso repo: create identity: %w", err)
 	}

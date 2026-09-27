@@ -20,6 +20,8 @@ type Repository interface {
 	// FindIdentity returns nil, nil when no account is linked to the
 	// subject.
 	FindIdentity(ctx context.Context, providerID uuid.UUID, subject string) (*Identity, error)
+	// CreateIdentity returns ErrIdentityExists when the (provider, subject)
+	// pair is already linked.
 	CreateIdentity(ctx context.Context, id *Identity) error
 	// TouchIdentity records a sign-in: sets last_login_at to now and
 	// refreshes the stored email.

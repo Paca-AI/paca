@@ -32,6 +32,9 @@ type fakeRepo struct {
 	mu         sync.Mutex
 	providers  map[uuid.UUID]*ssodom.Provider
 	identities []*ssodom.Identity
+	// beforeCreateIdentity, when set, runs (unlocked) before each
+	// CreateIdentity — used to simulate a concurrent sign-in winning the race.
+	beforeCreateIdentity func()
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{providers: map[uuid.UUID]*ssodom.Provider{}} }
@@ -102,8 +105,16 @@ func (r *fakeRepo) FindIdentity(_ context.Context, providerID uuid.UUID, subject
 	return nil, nil
 }
 func (r *fakeRepo) CreateIdentity(_ context.Context, i *ssodom.Identity) error {
+	if r.beforeCreateIdentity != nil {
+		r.beforeCreateIdentity()
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for _, x := range r.identities {
+		if x.ProviderID == i.ProviderID && x.Subject == i.Subject {
+			return ssodom.ErrIdentityExists
+		}
+	}
 	r.identities = append(r.identities, i)
 	return nil
 }
@@ -164,6 +175,14 @@ func (f *fakeUsers) FindByEmail(_ context.Context, email string) (*userdom.User,
 	}
 	return nil, userdom.ErrNotFound
 }
+func (f *fakeUsers) Delete(_ context.Context, id uuid.UUID) error {
+	if u, ok := f.byID[id]; ok {
+		now := time.Now()
+		u.DeletedAt = &now
+	}
+	return nil
+}
+
 // fakeCreator provisions into a fakeUsers (usersvc.Service.Create's role).
 type fakeCreator struct{ *fakeUsers }
 
@@ -187,10 +206,10 @@ func (f *fakeSessions) IssueSession(u *userdom.User, _ bool) (*domainauth.TokenP
 // fake identity provider
 // ---------------------------------------------------------------------------
 
-// fakeIdP is a minimal OIDC provider: discovery, JWKS, and a token endpoint
+// fakeIDP is a minimal OIDC provider: discovery, JWKS, and a token endpoint
 // that returns an RS256 ID token carrying claims plus the nonce and PKCE
 // challenge it was given at the authorize step.
-type fakeIdP struct {
+type fakeIDP struct {
 	t      *testing.T
 	srv    *httptest.Server
 	key    *rsa.PrivateKey
@@ -201,13 +220,13 @@ type fakeIdP struct {
 	challenge string
 }
 
-func newFakeIdP(t *testing.T, claims map[string]any) *fakeIdP {
+func newFakeIDP(t *testing.T, claims map[string]any) *fakeIDP {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	idp := &fakeIdP{t: t, key: key, claims: claims}
+	idp := &fakeIDP{t: t, key: key, claims: claims}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -253,7 +272,7 @@ func newFakeIdP(t *testing.T, claims map[string]any) *fakeIdP {
 	return idp
 }
 
-func (idp *fakeIdP) sign(payload map[string]any) string {
+func (idp *fakeIDP) sign(payload map[string]any) string {
 	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: idp.key},
 		(&jose.SignerOptions{}).WithHeader("kid", "k1"))
 	if err != nil {
@@ -270,7 +289,7 @@ func (idp *fakeIdP) sign(payload map[string]any) string {
 
 // authorize plays the browser visiting authURL: records the nonce and
 // returns the state the provider would redirect back with.
-func (idp *fakeIdP) authorize(t *testing.T, authURL string) string {
+func (idp *fakeIDP) authorize(t *testing.T, authURL string) string {
 	t.Helper()
 	u, err := url.Parse(authURL)
 	if err != nil {
@@ -321,7 +340,7 @@ func createCorp(t *testing.T, svc *Service, issuer string, mutate func(*ssodom.P
 }
 
 func TestLoginFlow_ProvisionsThenSignsBackIn(t *testing.T) {
-	idp := newFakeIdP(t, map[string]any{
+	idp := newFakeIDP(t, map[string]any{
 		"sub": "abc-123", "email": "Jane.Doe@Corp.example", "email_verified": true,
 		"name": "Jane Doe", "preferred_username": "jane.doe@corp.example",
 	})
@@ -354,7 +373,7 @@ func TestLoginFlow_ProvisionsThenSignsBackIn(t *testing.T) {
 }
 
 func TestCompleteLogin_RejectsWrongBrowserAndReplay(t *testing.T) {
-	idp := newFakeIdP(t, map[string]any{"sub": "abc", "email": "a@corp.example", "email_verified": true})
+	idp := newFakeIDP(t, map[string]any{"sub": "abc", "email": "a@corp.example", "email_verified": true})
 	svc, _, _ := newTestService(t, newFakeUsers())
 	createCorp(t, svc, idp.srv.URL, nil)
 	ctx := context.Background()
@@ -375,7 +394,7 @@ func TestCompleteLogin_RejectsWrongBrowserAndReplay(t *testing.T) {
 }
 
 func TestCompleteLogin_BadCodeFails(t *testing.T) {
-	idp := newFakeIdP(t, map[string]any{"sub": "abc"})
+	idp := newFakeIDP(t, map[string]any{"sub": "abc"})
 	svc, _, _ := newTestService(t, newFakeUsers())
 	createCorp(t, svc, idp.srv.URL, nil)
 	ctx := context.Background()
@@ -536,6 +555,36 @@ func TestResolveUser(t *testing.T) {
 		}
 	})
 
+	t.Run("verified email without @ does not panic", func(t *testing.T) {
+		svc, _, _ := newTestService(t, newFakeUsers())
+		p := provider(func(p *ssodom.Provider) { p.AutoProvision = true })
+		u, err := svc.ResolveUser(ctx, p, Claims{Subject: "s", Email: "not-an-email", EmailVerified: true})
+		if err != nil || u.Username != "not-an-email" {
+			t.Fatalf("u=%+v err=%v", u, err)
+		}
+	})
+
+	t.Run("losing a concurrent first sign-in signs in as the winner", func(t *testing.T) {
+		winner := &userdom.User{ID: uuid.New(), Username: "winner"}
+		users := newFakeUsers(winner)
+		svc, repo, _ := newTestService(t, users)
+		p := provider(func(p *ssodom.Provider) { p.AutoProvision = true })
+		repo.beforeCreateIdentity = func() {
+			repo.beforeCreateIdentity = nil
+			repo.identities = append(repo.identities,
+				&ssodom.Identity{ID: uuid.New(), UserID: winner.ID, ProviderID: p.ID, Subject: "s"})
+		}
+		u, err := svc.ResolveUser(ctx, p, Claims{Subject: "s", PreferredUsername: "jane"})
+		if err != nil || u.ID != winner.ID {
+			t.Fatalf("u=%+v err=%v, want the winner", u, err)
+		}
+		for _, x := range users.byID {
+			if x.Username == "jane" && x.DeletedAt == nil {
+				t.Fatalf("the losing attempt's provisioned account was left behind: %+v", x)
+			}
+		}
+	})
+
 	t.Run("username collision gets a suffix", func(t *testing.T) {
 		taken := &userdom.User{ID: uuid.New(), Username: "jane"}
 		svc, _, _ := newTestService(t, newFakeUsers(taken))
@@ -545,6 +594,15 @@ func TestResolveUser(t *testing.T) {
 			t.Fatalf("u=%+v err=%v", u, err)
 		}
 	})
+}
+
+func TestWithSuffix(t *testing.T) {
+	if got := withSuffix(strings.Repeat("a", 32), "2"); got != strings.Repeat("a", 31)+"2" {
+		t.Errorf("got %q", got)
+	}
+	if got := withSuffix("jane", strings.Repeat("x", 40)); len(got) != maxUsernameLen {
+		t.Errorf("oversized suffix: len %d", len(got))
+	}
 }
 
 func TestUsernameBase(t *testing.T) {

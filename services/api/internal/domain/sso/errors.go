@@ -9,6 +9,9 @@ var (
 	ErrProviderNotFound = errors.New("sso: provider not found")
 	// ErrSlugTaken indicates another provider already uses the slug.
 	ErrSlugTaken = errors.New("sso: provider slug already in use")
+	// ErrIdentityExists indicates the (provider, subject) pair is already
+	// linked to an account — a concurrent first sign-in got there first.
+	ErrIdentityExists = errors.New("sso: identity already linked")
 	// ErrInvalidProvider indicates a provider's configuration is invalid
 	// (bad slug, missing issuer/client ID, non-http(s) issuer…). Wrapped
 	// with the specific reason.

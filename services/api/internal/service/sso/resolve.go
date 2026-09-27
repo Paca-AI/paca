@@ -110,20 +110,11 @@ func (s *Service) ResolveUser(ctx context.Context, p *ssodom.Provider, c Claims)
 		return nil, err
 	}
 	if ident != nil {
-		u, err := s.users.FindByID(ctx, ident.UserID)
-		if errors.Is(err, userdom.ErrNotFound) {
-			return nil, ssodom.ErrNoAccount
-		}
-		if err != nil {
-			return nil, err
-		}
-		if err := s.repo.TouchIdentity(ctx, ident.ID, emailPtr); err != nil {
-			s.log.Warn("sso: record identity sign-in", "error", err)
-		}
-		return u, nil
+		return s.signInLinked(ctx, ident, emailPtr)
 	}
 
 	var u *userdom.User
+	provisioned := false
 	if email != "" {
 		existing, err := s.users.FindByEmail(ctx, email)
 		switch {
@@ -145,6 +136,7 @@ func (s *Service) ResolveUser(ctx context.Context, p *ssodom.Provider, c Claims)
 		if u, err = s.provision(ctx, c, email); err != nil {
 			return nil, err
 		}
+		provisioned = true
 	}
 
 	now := time.Now().UTC()
@@ -156,8 +148,41 @@ func (s *Service) ResolveUser(ctx context.Context, p *ssodom.Provider, c Claims)
 		Email:       emailPtr,
 		CreatedAt:   now,
 		LastLoginAt: now,
-	}); err != nil {
+	}); errors.Is(err, ssodom.ErrIdentityExists) {
+		// A concurrent first sign-in for the same subject linked it first
+		// (both missed FindIdentity above). Sign in as whatever it linked,
+		// and drop the account this attempt provisioned for nothing.
+		if provisioned {
+			if err := s.users.Delete(ctx, u.ID); err != nil {
+				s.log.Warn("sso: remove duplicate provisioned user", "user_id", u.ID, "error", err)
+			}
+		}
+		ident, err := s.repo.FindIdentity(ctx, p.ID, c.Subject)
+		if err != nil {
+			return nil, err
+		}
+		if ident == nil {
+			return nil, ssodom.ErrNoAccount
+		}
+		return s.signInLinked(ctx, ident, emailPtr)
+	} else if err != nil {
 		return nil, err
+	}
+	return u, nil
+}
+
+// signInLinked returns the active account ident links to and records the
+// sign-in. A linked account that has since been deleted does not sign in.
+func (s *Service) signInLinked(ctx context.Context, ident *ssodom.Identity, email *string) (*userdom.User, error) {
+	u, err := s.users.FindByID(ctx, ident.UserID)
+	if errors.Is(err, userdom.ErrNotFound) {
+		return nil, ssodom.ErrNoAccount
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.TouchIdentity(ctx, ident.ID, email); err != nil {
+		s.log.Warn("sso: record identity sign-in", "error", err)
 	}
 	return u, nil
 }
@@ -238,7 +263,7 @@ func usernameBase(c Claims, email string) string {
 		raw = raw[:at]
 	}
 	if strings.TrimSpace(raw) == "" && email != "" {
-		raw = email[:strings.IndexByte(email, '@')]
+		raw, _, _ = strings.Cut(email, "@")
 	}
 	v := usernameInvalidRe.ReplaceAllString(strings.ToLower(raw), "-")
 	v = strings.Trim(v, "-._")
@@ -252,6 +277,9 @@ func usernameBase(c Claims, email string) string {
 }
 
 func withSuffix(base, suffix string) string {
+	if len(suffix) >= maxUsernameLen {
+		return suffix[:maxUsernameLen]
+	}
 	if len(base)+len(suffix) > maxUsernameLen {
 		base = base[:maxUsernameLen-len(suffix)]
 	}

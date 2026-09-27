@@ -16,11 +16,11 @@ import (
 	"github.com/go-jose/go-jose/v4"
 )
 
-// e2eIdP is a minimal OpenID Connect provider whose /authorize endpoint
+// e2eIDP is a minimal OpenID Connect provider whose /authorize endpoint
 // signs the user in immediately as whoever `claims` describes and redirects
 // straight back to the caller's redirect_uri — the whole browser round trip
 // with no login form.
-type e2eIdP struct {
+type e2eIDP struct {
 	srv *httptest.Server
 	key *rsa.PrivateKey
 
@@ -29,13 +29,13 @@ type e2eIdP struct {
 	nonces map[string]string // code -> nonce
 }
 
-func newE2EIdP(t *testing.T) *e2eIdP {
+func newE2EIDP(t *testing.T) *e2eIDP {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	idp := &e2eIdP{key: key, nonces: map[string]string{}}
+	idp := &e2eIDP{key: key, nonces: map[string]string{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -94,7 +94,7 @@ func newE2EIdP(t *testing.T) *e2eIdP {
 	return idp
 }
 
-func (idp *e2eIdP) signInAs(claims map[string]any) {
+func (idp *e2eIDP) signInAs(claims map[string]any) {
 	idp.mu.Lock()
 	idp.claims = claims
 	idp.mu.Unlock()
@@ -142,7 +142,7 @@ func ssoSignIn(t *testing.T, env *e2eEnv, browser *http.Client, slug, redirect s
 func TestSSOSignIn(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
-	idp := newE2EIdP(t)
+	idp := newE2EIDP(t)
 
 	const password = "supersecret"
 	seedUser(t, env, "root", password, "Root")

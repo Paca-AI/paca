@@ -50,7 +50,7 @@ A returning user is recognised by the provider's stable subject (`sub`) claim, n
 
 Unverified emails (`email_verified` not `true`) are never used for linking, provisioning, or the domain allow-list.
 
-Deleting a Paca user keeps them out: their SSO link stays attached to the deleted account and is not re-provisioned. Deleting a provider removes its links but keeps the accounts.
+Deleting a Paca user keeps them out: user deletion is a soft delete, so their SSO link stays attached to the deleted account and they are not re-provisioned. (`user_identities.user_id` cascades on a hard delete, so if Paca ever gains a hard-delete path, the same identity could then provision a fresh account.) Deleting a provider removes its links but keeps the accounts.
 
 ## Security notes
 
