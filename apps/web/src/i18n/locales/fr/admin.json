@@ -266,6 +266,10 @@
 			"settingsWrite": {
 				"label": "Modifier les paramètres de l’espace de travail",
 				"description": "Mettre à jour le logo, le favicon et la couleur principale de l’espace de travail"
+			},
+			"settingsSsoWrite": {
+				"label": "Gérer les fournisseurs SSO",
+				"description": "Configurer les fournisseurs d'identité utilisés pour la connexion. Permet de se connecter en tant qu'autres utilisateurs : à traiter comme un accès administrateur complet."
 			}
 		},
 		"permissionGroups": {
@@ -337,8 +341,8 @@
 		}
 	},
 	"settings": {
-		"title": "Image de marque de l’espace de travail",
-		"description": "Définissez le logo, le favicon et la couleur principale utilisés dans tous les projets de cet espace de travail.",
+		"title": "Paramètres de l'espace de travail",
+		"description": "Options d'image de marque et de connexion de cet espace de travail.",
 		"images": {
 			"title": "Logo et favicon",
 			"logo": {
@@ -380,6 +384,61 @@
 			"saved": "Enregistré",
 			"errors": {
 				"updateFailed": "Échec de l’enregistrement. Veuillez réessayer."
+			}
+		},
+		"sso": {
+			"title": "Authentification unique (SSO)",
+			"description": "Permettez la connexion via un fournisseur d'identité OpenID Connect comme Google, Microsoft Entra ID, Okta ou Keycloak.",
+			"add": "Ajouter un fournisseur",
+			"empty": "Aucun fournisseur SSO pour l'instant. Les utilisateurs se connectent avec un identifiant et un mot de passe.",
+			"enabled": "Activé",
+			"disabled": "Désactivé",
+			"edit": "Modifier {{name}}",
+			"delete": "Supprimer {{name}}",
+			"copy": "Copier",
+			"dialog": {
+				"createTitle": "Ajouter un fournisseur SSO",
+				"editTitle": "Modifier le fournisseur SSO",
+				"description": "Enregistrez Paca comme client OpenID Connect auprès de votre fournisseur d'identité, puis saisissez les informations qu'il vous fournit.",
+				"cancel": "Annuler",
+				"save": "Enregistrer"
+			},
+			"fields": {
+				"displayName": "Nom affiché",
+				"displayNamePlaceholder": "SSO de l'entreprise",
+				"slug": "Identifiant",
+				"slugHint": "Utilisé dans les URL de connexion et de retour. Le modifier invalide l'URL de retour enregistrée chez le fournisseur.",
+				"callbackUrl": "URL de retour",
+				"callbackUrlHint": "Enregistrez-la comme URI de redirection auprès de votre fournisseur d'identité.",
+				"issuerUrl": "URL de l'émetteur",
+				"issuerUrlHint": "L'émetteur OpenID Connect. Son document de découverte doit être accessible depuis le serveur Paca.",
+				"clientId": "ID client",
+				"clientSecret": "Secret client",
+				"clientSecretKeepHint": "Un secret est enregistré. Laissez vide pour le conserver.",
+				"scopes": "Portées",
+				"scopesHint": "Séparées par des espaces. « openid » est toujours inclus.",
+				"allowedDomains": "Domaines e-mail autorisés",
+				"allowedDomainsHint": "Séparés par des virgules. Laissez vide pour autoriser tous les domaines. Seuls les e-mails vérifiés sont acceptés.",
+				"enabled": "Activé",
+				"enabledHint": "Afficher ce fournisseur sur la page de connexion.",
+				"autoProvision": "Créer les comptes automatiquement",
+				"autoProvisionHint": "Les nouveaux utilisateurs reçoivent un compte avec le rôle par défaut.",
+				"linkByEmail": "Associer les comptes existants par e-mail",
+				"linkByEmailHint": "Un nouvel utilisateur dont l'e-mail vérifié correspond à un compte existant se connecte avec ce compte.",
+				"linkByEmailWarning": "N'activez cette option que pour un fournisseur de totale confiance : quiconque le contrôle peut se connecter à n'importe quel compte ayant le même e-mail, administrateurs compris."
+			},
+			"deleteDialog": {
+				"title": "Supprimer le fournisseur SSO",
+				"description": "Supprimer « {{name}} » ? Il ne sera plus possible de se connecter avec, et les comptes qu'il a créés perdront leur association. Les comptes eux-mêmes sont conservés.",
+				"confirm": "Supprimer"
+			},
+			"errors": {
+				"slugTaken": "Un autre fournisseur utilise déjà cet identifiant.",
+				"discoveryFailed": "Impossible d'accéder au document de découverte OpenID Connect de l'émetteur. Vérifiez l'URL de l'émetteur.",
+				"invalid": "Certains champs sont invalides. Vérifiez l'identifiant, l'URL de l'émetteur, l'ID client et les domaines.",
+				"saveFailed": "Échec de l'enregistrement du fournisseur. Veuillez réessayer.",
+				"loadFailed": "Impossible de charger les fournisseurs SSO.",
+				"deleteFailed": "Échec de la suppression du fournisseur. Veuillez réessayer."
 			}
 		}
 	}

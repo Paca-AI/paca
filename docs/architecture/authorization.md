@@ -30,6 +30,7 @@ What a caller may do is decided **per request from the permissions their role ro
 - `*` itself;
 - `global_roles.write`: define or edit any role — one storing `*` included — and choose which role every new account starts with (`set-default`);
 - `global_roles.assign`: give any existing role, `SUPER_ADMIN` included, to any account (their own too), or to a global agent together with `agents.write`.
+- `settings.sso.write`: configure an SSO provider — one the holder controls, with "link existing accounts by email" on — and sign in as any account whose email it asserts, a `SUPER_ADMIN`'s included (see [SSO / OpenID Connect](../guides/sso-oidc.md)).
 
 The router can only ask whether a caller holds a permission. It cannot ask whether the role being written or assigned is above the caller's own, and handlers and services do not check either — by design, every permission decision is in the router. So the line is drawn in what each role holds: only `SUPER_ADMIN` is seeded with any of them (`TestDefaultGlobalRoles_OnlySuperAdminCanMintRoot`). Giving one to a custom role is allowed — the Global Roles page can, and the create-user and create-agent wizards' role step is built for it — but it is a decision to trust that role's holders as root, so keep such roles to the few people who would otherwise be `SUPER_ADMIN`.
 

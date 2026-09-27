@@ -266,6 +266,10 @@
 			"settingsWrite": {
 				"label": "Chỉnh sửa cài đặt không gian làm việc",
 				"description": "Cập nhật logo, favicon và màu chủ đạo của không gian làm việc"
+			},
+			"settingsSsoWrite": {
+				"label": "Quản lý nhà cung cấp SSO",
+				"description": "Cấu hình các nhà cung cấp danh tính dùng để đăng nhập. Quyền này cho phép đăng nhập với tư cách người dùng khác, nên hãy coi nó như quyền quản trị toàn phần."
 			}
 		},
 		"permissionGroups": {
@@ -337,8 +341,8 @@
 		}
 	},
 	"settings": {
-		"title": "Thương hiệu không gian làm việc",
-		"description": "Đặt logo, favicon và màu chủ đạo được sử dụng trên tất cả dự án trong không gian làm việc này.",
+		"title": "Cài đặt không gian làm việc",
+		"description": "Tùy chọn thương hiệu và đăng nhập cho không gian làm việc này.",
 		"images": {
 			"title": "Logo và Favicon",
 			"logo": {
@@ -380,6 +384,61 @@
 			"saved": "Đã lưu",
 			"errors": {
 				"updateFailed": "Lưu thất bại. Vui lòng thử lại."
+			}
+		},
+		"sso": {
+			"title": "Đăng nhập một lần (SSO)",
+			"description": "Cho phép đăng nhập bằng nhà cung cấp danh tính OpenID Connect như Google, Microsoft Entra ID, Okta hoặc Keycloak.",
+			"add": "Thêm nhà cung cấp",
+			"empty": "Chưa có nhà cung cấp SSO nào. Người dùng đăng nhập bằng tên người dùng và mật khẩu.",
+			"enabled": "Đang bật",
+			"disabled": "Đang tắt",
+			"edit": "Sửa {{name}}",
+			"delete": "Xóa {{name}}",
+			"copy": "Sao chép",
+			"dialog": {
+				"createTitle": "Thêm nhà cung cấp SSO",
+				"editTitle": "Sửa nhà cung cấp SSO",
+				"description": "Đăng ký Paca làm ứng dụng OpenID Connect tại nhà cung cấp danh tính của bạn, sau đó nhập các thông tin được cấp.",
+				"cancel": "Hủy",
+				"save": "Lưu"
+			},
+			"fields": {
+				"displayName": "Tên hiển thị",
+				"displayNamePlaceholder": "SSO công ty",
+				"slug": "Mã định danh",
+				"slugHint": "Dùng trong URL đăng nhập và URL callback. Thay đổi sẽ làm hỏng URL callback đã đăng ký tại nhà cung cấp.",
+				"callbackUrl": "URL callback",
+				"callbackUrlHint": "Đăng ký URL này làm redirect URI tại nhà cung cấp danh tính.",
+				"issuerUrl": "URL issuer",
+				"issuerUrlHint": "Issuer OpenID Connect. Máy chủ Paca phải truy cập được tài liệu discovery của nó.",
+				"clientId": "Client ID",
+				"clientSecret": "Client secret",
+				"clientSecretKeepHint": "Đã lưu một secret. Để trống để giữ nguyên.",
+				"scopes": "Scope",
+				"scopesHint": "Phân tách bằng dấu cách. \"openid\" luôn được thêm vào.",
+				"allowedDomains": "Tên miền email được phép",
+				"allowedDomainsHint": "Phân tách bằng dấu phẩy. Để trống để cho phép mọi tên miền. Chỉ chấp nhận email đã xác minh.",
+				"enabled": "Bật",
+				"enabledHint": "Hiển thị nhà cung cấp này trên trang đăng nhập.",
+				"autoProvision": "Tự động tạo tài khoản",
+				"autoProvisionHint": "Người dùng lần đầu sẽ được tạo tài khoản mới với vai trò mặc định.",
+				"linkByEmail": "Liên kết tài khoản có sẵn qua email",
+				"linkByEmailHint": "Người dùng lần đầu có email đã xác minh trùng với một tài khoản có sẵn sẽ đăng nhập vào tài khoản đó.",
+				"linkByEmailWarning": "Chỉ bật với nhà cung cấp bạn hoàn toàn tin tưởng: ai kiểm soát nó đều có thể đăng nhập vào bất kỳ tài khoản nào có email trùng khớp, kể cả quản trị viên."
+			},
+			"deleteDialog": {
+				"title": "Xóa nhà cung cấp SSO",
+				"description": "Xóa \"{{name}}\"? Mọi người sẽ không thể đăng nhập bằng nó nữa và các tài khoản nó đã tạo sẽ mất liên kết. Bản thân các tài khoản vẫn được giữ lại.",
+				"confirm": "Xóa"
+			},
+			"errors": {
+				"slugTaken": "Mã định danh này đã được nhà cung cấp khác sử dụng.",
+				"discoveryFailed": "Không thể truy cập tài liệu discovery OpenID Connect của issuer. Hãy kiểm tra URL issuer.",
+				"invalid": "Một số trường không hợp lệ. Hãy kiểm tra mã định danh, URL issuer, client ID và tên miền email.",
+				"saveFailed": "Không thể lưu nhà cung cấp. Vui lòng thử lại.",
+				"loadFailed": "Không thể tải danh sách nhà cung cấp SSO.",
+				"deleteFailed": "Không thể xóa nhà cung cấp. Vui lòng thử lại."
 			}
 		}
 	}

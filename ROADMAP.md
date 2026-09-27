@@ -115,7 +115,6 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 
 ### Official Plugins
 - ✅ Webhook plugin (outgoing webhooks for task and sprint events, configurable per project)
-- 📋 GitLab plugin (MR status on task cards, branch linking)
 - ✅ Time logging plugin (track time spent per task, per sprint)
 - ✅ Dashboard plugin
 
@@ -123,7 +122,7 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 - ✅ Global RBAC — admin-managed global roles with granular, per-domain permission control
 - ✅ User administration — admin-created accounts, forced password change on first login, password reset, account deletion
 - ✅ Personal API keys — Settings → API Keys for human users
-- 📋 SSO / OIDC support (connect to your IdP)
+- ✅ SSO / OIDC support (connect to your IdP)
 
 ### Observability & Operations
 - ✅ Backup and restore tooling for PostgreSQL data

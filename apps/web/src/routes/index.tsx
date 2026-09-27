@@ -10,6 +10,9 @@ import ThemeToggle from "@/components/ThemeToggle";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 
 export const Route = createFileRoute("/")({
+	// Set by the API when an SSO sign-in fails (see SsoErrorNotice).
+	validateSearch: (search: Record<string, unknown>): { sso_error?: string } =>
+		typeof search.sso_error === "string" ? { sso_error: search.sso_error } : {},
 	beforeLoad: async ({ context: { queryClient } }) => {
 		const user = await queryClient
 			.fetchQuery(currentUserQueryOptions)
@@ -20,6 +23,7 @@ export const Route = createFileRoute("/")({
 });
 
 function LoginPage() {
+	const { sso_error: ssoError } = Route.useSearch();
 	return (
 		<div className="flex min-h-screen flex-col">
 			{/* Top bar */}
@@ -33,7 +37,7 @@ function LoginPage() {
 				<div className="island-shell rise-in w-full max-w-4xl overflow-hidden rounded-xl">
 					<div className="grid lg:grid-cols-[1fr_400px]">
 						<BrandPanel />
-						<LoginFormPanel />
+						<LoginFormPanel ssoError={ssoError} />
 					</div>
 				</div>
 			</main>

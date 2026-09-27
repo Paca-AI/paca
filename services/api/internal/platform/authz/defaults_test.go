@@ -92,7 +92,9 @@ func TestDefaultGlobalRoles_OnlySuperAdminSeedsTheWildcard(t *testing.T) {
 // GHSA-hjcj-373w-vq8m fix. Keeping "*" off ADMIN means little if ADMIN can
 // simply write "*" into a role or hand itself SUPER_ADMIN: global_roles.write
 // defines any role and global_roles.assign gives any role to any account,
-// their own included, so each is root-equivalent — as is "*" itself. The router
+// their own included, so each is root-equivalent — as is "*" itself, and
+// settings.sso.write (a provider that links accounts by email signs in as any
+// account with a matching email). The router
 // can only ask whether a caller holds a permission, never whether the role
 // being written or assigned exceeds the caller's own, so what keeps ADMIN below
 // SUPER_ADMIN is what ADMIN is seeded with. Matching goes through the real
@@ -103,6 +105,7 @@ func TestDefaultGlobalRoles_OnlySuperAdminCanMintRoot(t *testing.T) {
 		authz.PermissionGlobalRolesWrite,
 		authz.PermissionGlobalRolesAssign,
 		authz.PermissionGlobalRolesAll,
+		authz.PermissionSettingsSSOWrite,
 	}
 	for _, def := range authz.DefaultGlobalRoles() {
 		if def.Name == "SUPER_ADMIN" {

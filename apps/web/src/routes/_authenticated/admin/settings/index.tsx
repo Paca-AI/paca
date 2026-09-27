@@ -2,6 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { Palette } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { BrandingSettings } from "@/components/admin/settings/BrandingSettings";
+import { SsoSettings } from "@/components/admin/settings/SsoSettings";
 import { myPermissionsQueryOptions } from "@/lib/admin-api";
 import { hasPermission } from "@/lib/permissions";
 import { brandingQueryOptions } from "@/lib/settings-api";
@@ -12,9 +13,12 @@ export const Route = createFileRoute("/_authenticated/admin/settings/")({
 			.fetchQuery(myPermissionsQueryOptions)
 			.catch(() => [] as string[]);
 
-		if (!hasPermission(permissions, "settings.write")) {
+		const canBrand = hasPermission(permissions, "settings.write");
+		const canSso = hasPermission(permissions, "settings.sso.write");
+		if (!canBrand && !canSso) {
 			throw redirect({ to: "/home" });
 		}
+		return { canBrand, canSso };
 	},
 	loader: async ({ context: { queryClient } }) => {
 		await queryClient.ensureQueryData(brandingQueryOptions);
@@ -24,6 +28,7 @@ export const Route = createFileRoute("/_authenticated/admin/settings/")({
 
 function SettingsPage() {
 	const { t } = useTranslation("admin");
+	const { canBrand, canSso } = Route.useRouteContext();
 
 	return (
 		<div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
@@ -41,7 +46,8 @@ function SettingsPage() {
 				</div>
 			</header>
 
-			<BrandingSettings />
+			{canBrand ? <BrandingSettings /> : null}
+			{canSso ? <SsoSettings /> : null}
 		</div>
 	);
 }

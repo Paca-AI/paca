@@ -11,7 +11,8 @@ type Repository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
 	FindByUsername(ctx context.Context, username string) (*User, error)
 	// FindByEmail returns a user by email, scoped to active (non-deleted)
-	// users, matching the uni_users_email_active unique index.
+	// users, matching the uni_users_email_active unique index. The match
+	// ignores case.
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	// FindByUsernameIncludingDeleted returns a user by username even when
 	// the row is soft-deleted.

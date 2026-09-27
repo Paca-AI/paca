@@ -9,6 +9,7 @@ export const ApiErrorCode = {
 	MissingToken: "AUTH_MISSING_TOKEN",
 	TokenInvalid: "AUTH_TOKEN_INVALID",
 	Unauthenticated: "AUTH_UNAUTHENTICATED",
+	TooManyRequests: "TOO_MANY_REQUESTS",
 
 	// Password / session gate errors.
 	PasswordChangeRequired: "AUTH_PASSWORD_CHANGE_REQUIRED",
@@ -28,6 +29,12 @@ export const ApiErrorCode = {
 	GlobalRoleHasUsers: "GLOBAL_ROLE_HAS_ASSIGNED_USERS",
 	GlobalRoleIsDefault: "GLOBAL_ROLE_IS_DEFAULT",
 	GlobalRoleNoDefault: "GLOBAL_ROLE_NO_DEFAULT",
+
+	// SSO provider errors.
+	SSOProviderNotFound: "SSO_PROVIDER_NOT_FOUND",
+	SSOProviderSlugTaken: "SSO_PROVIDER_SLUG_TAKEN",
+	SSOProviderInvalid: "SSO_PROVIDER_INVALID",
+	SSODiscoveryFailed: "SSO_DISCOVERY_FAILED",
 
 	// Project domain errors.
 	ProjectNotFound: "PROJECT_NOT_FOUND",

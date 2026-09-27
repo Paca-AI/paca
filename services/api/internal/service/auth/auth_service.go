@@ -68,6 +68,14 @@ func (s *Service) Login(ctx context.Context, username, password string, remember
 		return nil, domainauth.ErrInvalidCredentials
 	}
 
+	return s.IssueSession(u, rememberMe)
+}
+
+// IssueSession starts a new session for an already-authenticated user: a
+// fresh token family with the same token pairs Login returns. Login calls it
+// after checking the password; SSO sign-in calls it after the identity
+// provider has vouched for the user, so both paths yield identical sessions.
+func (s *Service) IssueSession(u *userdom.User, rememberMe bool) (*domainauth.TokenPair, error) {
 	familyID := uuid.NewString()
 	sub := u.ID.String()
 

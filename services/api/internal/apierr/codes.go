@@ -43,6 +43,8 @@ const (
 	CodeGlobalRoleNoDefault Code = "GLOBAL_ROLE_NO_DEFAULT"
 	// CodeBadRequest represents a bad request.
 	CodeBadRequest Code = "BAD_REQUEST"
+	// CodeTooManyRequests indicates the client exceeded a rate limit.
+	CodeTooManyRequests Code = "TOO_MANY_REQUESTS"
 	// CodeInternalError represents an internal server error.
 	CodeInternalError Code = "INTERNAL_ERROR"
 	// CodePasswordChangeRequired indicates the user must change their password
@@ -53,6 +55,16 @@ const (
 	// CodePasswordSetTokenInvalid indicates the password-set token is
 	// unknown, expired, or already used.
 	CodePasswordSetTokenInvalid Code = "USER_PASSWORD_SET_TOKEN_INVALID"
+
+	// CodeSSOProviderNotFound indicates no (enabled) SSO provider matches.
+	CodeSSOProviderNotFound Code = "SSO_PROVIDER_NOT_FOUND"
+	// CodeSSOProviderSlugTaken indicates another SSO provider uses the slug.
+	CodeSSOProviderSlugTaken Code = "SSO_PROVIDER_SLUG_TAKEN"
+	// CodeSSOProviderInvalid indicates an invalid SSO provider configuration.
+	CodeSSOProviderInvalid Code = "SSO_PROVIDER_INVALID"
+	// CodeSSODiscoveryFailed indicates the issuer's OIDC discovery document
+	// could not be fetched.
+	CodeSSODiscoveryFailed Code = "SSO_DISCOVERY_FAILED"
 
 	// CodeProjectNotFound indicates the requested project does not exist.
 	CodeProjectNotFound Code = "PROJECT_NOT_FOUND"

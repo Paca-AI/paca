@@ -515,3 +515,47 @@ func TestProjectsRoute_GetByID_StillParsesProjectID(t *testing.T) {
 		t.Fatalf("expected 404 (unknown project id from stub service), got %d (%s)", w.Code, w.Body.String())
 	}
 }
+
+func TestNew_AuthRateLimit(t *testing.T) {
+	deps := Deps{
+		TokenManager: jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour),
+		Authorizer:   authz.NewAuthorizer(&allowAllPermissionStore{}),
+		Health:       handler.NewHealthHandler(),
+		Auth: handler.NewAuthHandler(&mockAuthSvc{}, handler.CookieConfig{
+			AccessTTL: 15 * time.Minute, RefreshTTL: 24 * time.Hour, RefreshSessionTTL: 12 * time.Hour,
+		}),
+		User:          handler.NewUserHandler(&mockUserSvc{}),
+		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		AuthRateLimit: 2,
+	}
+	r := New(deps)
+	login := func(ip string) int {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/login",
+			strings.NewReader(`{"username":"alice","password":"pw"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = ip + ":1234"
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+	for i := range 2 {
+		if code := login("203.0.113.1"); code == http.StatusTooManyRequests {
+			t.Fatalf("login %d rate-limited too early", i+1)
+		}
+	}
+	if code := login("203.0.113.1"); code != http.StatusTooManyRequests {
+		t.Fatalf("third login: got %d, want 429", code)
+	}
+	if code := login("203.0.113.2"); code == http.StatusTooManyRequests {
+		t.Fatal("another client was rate-limited")
+	}
+
+	// Refresh has its own, larger budget: exhausting login doesn't block it.
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/refresh", nil)
+	req.RemoteAddr = "203.0.113.1:1234"
+	r.ServeHTTP(w, req)
+	if w.Code == http.StatusTooManyRequests {
+		t.Fatal("refresh shares login's budget")
+	}
+}

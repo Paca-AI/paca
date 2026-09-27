@@ -45,6 +45,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: COOKIE_SECURE: %w", err)
 	}
 
+	authRateLimit, err := strconv.Atoi(env("AUTH_RATE_LIMIT_PER_MINUTE", "20"))
+	if err != nil || authRateLimit < 0 {
+		return nil, fmt.Errorf("config: AUTH_RATE_LIMIT_PER_MINUTE must be a non-negative integer, got %q", env("AUTH_RATE_LIMIT_PER_MINUTE", "20"))
+	}
+
 	// Collect all missing required keys before returning so the caller sees
 	// every problem in a single error rather than one failure at a time.
 	var errs []error
@@ -158,6 +163,7 @@ func Load() (*Config, error) {
 			CookieSecure:       cookieSecure,
 			PublicURL:          env("PUBLIC_URL", ""),
 			CORSAllowedOrigins: parseCORSOrigins(env("CORS_ORIGINS", "*")),
+			AuthRateLimit:      authRateLimit,
 		},
 		Database: DatabaseConfig{
 			DSN: dsn,

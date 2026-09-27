@@ -47,6 +47,7 @@ import (
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	settingssvc "github.com/Paca-AI/api/internal/service/settings"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
+	ssosvc "github.com/Paca-AI/api/internal/service/sso"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -229,6 +230,8 @@ func New(cfg *config.Config) (*App, error) {
 	// so this is belt-and-suspenders, not load-bearing, but keeps the
 	// pointer's provenance obvious at every read site.
 	projectServiceBase = projectServiceBase.WithEncryptor(encryptor)
+	ssoService := ssosvc.New(pgRepo.NewSSORepository(db), redisRepo.NewSSOStateStore(redisClient, 10*time.Minute),
+		userRepo, userService, authService, log).WithEncryptor(encryptor)
 	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(agentService)
@@ -467,6 +470,7 @@ func New(cfg *config.Config) (*App, error) {
 		RefreshSessionTTL: cfg.JWT.RefreshSessionTTL,
 	}
 
+	authHandler := handler.NewAuthHandler(authService, cookieCfg)
 	deps := router.Deps{
 		TokenManager:         tokenManager,
 		APIKeyAuth:           apiKeyService,
@@ -476,7 +480,8 @@ func New(cfg *config.Config) (*App, error) {
 		MemberRepo:           projectRepo,
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
-		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
+		Auth:                 authHandler,
+		SSO:                  handler.NewSSOHandler(ssoService, authHandler, cfg.Server.PublicURL),
 		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,
@@ -527,6 +532,7 @@ func New(cfg *config.Config) (*App, error) {
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),
 		Log:                log,
 		CORSAllowedOrigins: cfg.Server.CORSAllowedOrigins,
+		AuthRateLimit:      cfg.Server.AuthRateLimit,
 	}
 
 	engine := router.New(deps)

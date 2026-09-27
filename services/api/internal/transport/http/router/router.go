@@ -58,6 +58,7 @@ type Deps struct {
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
 	Settings             *handler.SettingsHandler
+	SSO                  *handler.SSOHandler
 	ProjectActivity      *handler.ProjectActivityHandler
 	Log                  *slog.Logger
 	// CORSAllowedOrigins is the CORS allow-list — see corsMiddleware. A nil
@@ -65,6 +66,10 @@ type Deps struct {
 	// struct literal keeps working unchanged) is treated the same as ["*"]:
 	// reflect Access-Control-Allow-Origin: * for every request.
 	CORSAllowedOrigins []string
+	// AuthRateLimit caps requests per minute per client IP on each public
+	// credential endpoint under /auth; refresh gets 3x. 0 (the zero value)
+	// disables the limits.
+	AuthRateLimit int
 }
 
 // New builds and returns a configured http.Handler.
@@ -108,16 +113,40 @@ func New(deps Deps) http.Handler {
 				r.Get("/environments/config", deps.Environment.GetConfig)
 			}
 
-			// Auth
+			// Auth. Every public endpoint here is rate-limited per client IP
+			// (password guessing, token-set brute force, and SSO login
+			// filling Redis with sign-in attempts). Each endpoint has its own
+			// budget so refreshes can't starve logins.
+			authLimitWith := func(perMinute int, onLimited http.Handler) func(http.Handler) http.Handler {
+				if perMinute <= 0 {
+					return func(next http.Handler) http.Handler { return next }
+				}
+				return httpmw.RateLimit(perMinute, time.Minute, onLimited)
+			}
+			authLimit := func(perMinute int) func(http.Handler) http.Handler {
+				return authLimitWith(perMinute, nil)
+			}
 			r.Route("/auth", func(r chi.Router) {
-				r.Post("/login", deps.Auth.Login)
-				r.Post("/refresh", deps.Auth.Refresh)
-				r.Post("/annotation-refresh", deps.Auth.AnnotationRefresh)
+				r.With(authLimit(deps.AuthRateLimit)).Post("/login", deps.Auth.Login)
+				r.With(authLimit(3*deps.AuthRateLimit)).Post("/refresh", deps.Auth.Refresh)
+				r.With(authLimit(3*deps.AuthRateLimit)).Post("/annotation-refresh", deps.Auth.AnnotationRefresh)
 				r.With(httpmw.Authn(deps.TokenManager)).Post("/logout", deps.Auth.Logout)
 				// Public — the link a password-set-token email points to;
 				// the token itself (not a session) proves the caller's right
 				// to act on the account.
-				r.Post("/password/set", deps.User.SetPassword)
+				r.With(authLimit(deps.AuthRateLimit)).Post("/password/set", deps.User.SetPassword)
+
+				// SSO / OIDC sign-in — public: the login page lists the
+				// enabled providers, and login/callback are top-level
+				// browser navigations to and back from the provider.
+				if deps.SSO != nil {
+					r.Get("/sso/providers", deps.SSO.ListPublicProviders)
+					// Browser navigations: over the limit, back to the login
+					// page with an error rather than a bare JSON 429.
+					ssoLimited := http.HandlerFunc(deps.SSO.RateLimited)
+					r.With(authLimitWith(deps.AuthRateLimit, ssoLimited)).Get("/sso/{slug}/login", deps.SSO.Login)
+					r.With(authLimitWith(deps.AuthRateLimit, ssoLimited)).Get("/sso/{slug}/callback", deps.SSO.Callback)
+				}
 			})
 
 			// Users
@@ -250,6 +279,18 @@ func New(deps Deps) http.Handler {
 					r.With(write).Post("/settings/favicon/avatar/initiate-upload", deps.Settings.InitiateFaviconUpload)
 					r.With(write).Post("/settings/favicon/avatar/complete-upload", deps.Settings.CompleteFaviconUpload)
 					r.With(write).Delete("/settings/favicon/avatar", deps.Settings.DeleteFavicon)
+				}
+
+				// SSO / OIDC identity providers. A separate permission from
+				// settings.write — see authz.PermissionSettingsSSOWrite for
+				// why it is root-equivalent. Reads are gated by it too: the
+				// list carries each provider's full configuration.
+				if deps.SSO != nil {
+					sso := require.Global(authz.PermissionSettingsSSOWrite)
+					r.With(sso).Get("/sso/providers", deps.SSO.ListProviders)
+					r.With(sso).Post("/sso/providers", deps.SSO.CreateProvider)
+					r.With(sso).Put("/sso/providers/{providerId}", deps.SSO.UpdateProvider)
+					r.With(sso).Delete("/sso/providers/{providerId}", deps.SSO.DeleteProvider)
 				}
 			})
 

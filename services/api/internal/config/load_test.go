@@ -275,3 +275,26 @@ func setLoadDefaults(t *testing.T) {
 	t.Setenv("STORAGE_SECRET_ACCESS_KEY", "secret-key")
 	t.Setenv("AI_AGENT_INTERNAL_KEY", "internal-key")
 }
+
+func TestLoadAuthRateLimit(t *testing.T) {
+	setLoadDefaults(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.AuthRateLimit != 20 {
+		t.Fatalf("default AuthRateLimit = %d, want 20", cfg.Server.AuthRateLimit)
+	}
+
+	t.Setenv("AUTH_RATE_LIMIT_PER_MINUTE", "0")
+	if cfg, err = Load(); err != nil || cfg.Server.AuthRateLimit != 0 {
+		t.Fatalf("AUTH_RATE_LIMIT_PER_MINUTE=0: cfg=%v err=%v", cfg, err)
+	}
+
+	for _, bad := range []string{"-1", "lots"} {
+		t.Setenv("AUTH_RATE_LIMIT_PER_MINUTE", bad)
+		if _, err := Load(); err == nil {
+			t.Fatalf("AUTH_RATE_LIMIT_PER_MINUTE=%q: want error", bad)
+		}
+	}
+}

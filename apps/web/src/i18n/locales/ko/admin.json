@@ -266,6 +266,10 @@
 			"settingsWrite": {
 				"label": "워크스페이스 설정 쓰기",
 				"description": "워크스페이스 로고, 파비콘, 기본 색상 업데이트"
+			},
+			"settingsSsoWrite": {
+				"label": "SSO 공급자 관리",
+				"description": "사용자가 로그인에 사용하는 ID 공급자를 설정합니다. 다른 사용자로 로그인할 수 있게 되므로 전체 관리자 권한처럼 다루세요."
 			}
 		},
 		"permissionGroups": {
@@ -337,8 +341,8 @@
 		}
 	},
 	"settings": {
-		"title": "워크스페이스 브랜딩",
-		"description": "이 워크스페이스의 모든 프로젝트에서 사용되는 로고, 파비콘, 기본 색상을 설정합니다.",
+		"title": "워크스페이스 설정",
+		"description": "이 워크스페이스의 브랜딩 및 로그인 옵션입니다.",
 		"images": {
 			"title": "로고 및 파비콘",
 			"logo": {
@@ -380,6 +384,61 @@
 			"saved": "저장됨",
 			"errors": {
 				"updateFailed": "저장에 실패했습니다. 다시 시도해 주세요."
+			}
+		},
+		"sso": {
+			"title": "싱글 사인온 (SSO)",
+			"description": "Google, Microsoft Entra ID, Okta, Keycloak 같은 OpenID Connect ID 공급자로 로그인할 수 있게 합니다.",
+			"add": "공급자 추가",
+			"empty": "아직 SSO 공급자가 없습니다. 사용자는 사용자 이름과 비밀번호로 로그인합니다.",
+			"enabled": "사용",
+			"disabled": "사용 안 함",
+			"edit": "{{name}} 편집",
+			"delete": "{{name}} 삭제",
+			"copy": "복사",
+			"dialog": {
+				"createTitle": "SSO 공급자 추가",
+				"editTitle": "SSO 공급자 편집",
+				"description": "ID 공급자에 Paca를 OpenID Connect 클라이언트로 등록한 뒤, 발급된 정보를 입력하세요.",
+				"cancel": "취소",
+				"save": "저장"
+			},
+			"fields": {
+				"displayName": "표시 이름",
+				"displayNamePlaceholder": "회사 SSO",
+				"slug": "슬러그",
+				"slugHint": "로그인 URL과 콜백 URL에 사용됩니다. 변경하면 공급자에 등록된 콜백 URL이 동작하지 않습니다.",
+				"callbackUrl": "콜백 URL",
+				"callbackUrlHint": "이 주소를 ID 공급자의 리디렉션 URI로 등록하세요.",
+				"issuerUrl": "발급자 URL",
+				"issuerUrlHint": "OpenID Connect 발급자입니다. Paca 서버에서 디스커버리 문서에 접근할 수 있어야 합니다.",
+				"clientId": "클라이언트 ID",
+				"clientSecret": "클라이언트 시크릿",
+				"clientSecretKeepHint": "시크릿이 저장되어 있습니다. 유지하려면 비워 두세요.",
+				"scopes": "스코프",
+				"scopesHint": "공백으로 구분합니다. \"openid\"는 항상 포함됩니다.",
+				"allowedDomains": "허용된 이메일 도메인",
+				"allowedDomainsHint": "쉼표로 구분합니다. 비워 두면 모든 도메인을 허용합니다. 인증된 이메일만 허용됩니다.",
+				"enabled": "사용",
+				"enabledHint": "로그인 페이지에 이 공급자를 표시합니다.",
+				"autoProvision": "계정 자동 생성",
+				"autoProvisionHint": "처음 로그인하는 사용자에게 기본 역할로 새 계정을 만들어 줍니다.",
+				"linkByEmail": "이메일로 기존 계정 연결",
+				"linkByEmailHint": "인증된 이메일이 기존 계정과 일치하는 신규 사용자는 해당 계정으로 로그인합니다.",
+				"linkByEmailWarning": "완전히 신뢰하는 공급자에서만 켜세요. 공급자를 제어하는 사람은 관리자를 포함해 이메일이 일치하는 모든 계정으로 로그인할 수 있습니다."
+			},
+			"deleteDialog": {
+				"title": "SSO 공급자 삭제",
+				"description": "\"{{name}}\"을(를) 삭제할까요? 더 이상 이 공급자로 로그인할 수 없고, 생성된 계정과의 연결도 해제됩니다. 계정 자체는 유지됩니다.",
+				"confirm": "삭제"
+			},
+			"errors": {
+				"slugTaken": "다른 공급자가 이미 이 슬러그를 사용하고 있습니다.",
+				"discoveryFailed": "발급자의 OpenID Connect 디스커버리 문서에 접근할 수 없습니다. 발급자 URL을 확인하세요.",
+				"invalid": "일부 항목이 올바르지 않습니다. 슬러그, 발급자 URL, 클라이언트 ID, 이메일 도메인을 확인하세요.",
+				"saveFailed": "공급자를 저장하지 못했습니다. 다시 시도하세요.",
+				"loadFailed": "SSO 공급자를 불러오지 못했습니다.",
+				"deleteFailed": "공급자를 삭제하지 못했습니다. 다시 시도하세요."
 			}
 		}
 	}

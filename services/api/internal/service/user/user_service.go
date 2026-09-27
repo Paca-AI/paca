@@ -172,7 +172,7 @@ func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.
 	}
 
 	if in.Email != "" {
-		if err := s.checkEmailAvailable(ctx, in.Email); err != nil {
+		if err := s.checkEmailAvailable(ctx, in.Email, uuid.Nil); err != nil {
 			return nil, err
 		}
 	}
@@ -266,7 +266,7 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, in userdom.Up
 
 	u.FullName = in.FullName
 	if in.Email != "" && (u.Email == nil || *u.Email != in.Email) {
-		if err := s.checkEmailAvailable(ctx, in.Email); err != nil {
+		if err := s.checkEmailAvailable(ctx, in.Email, u.ID); err != nil {
 			return nil, err
 		}
 		u.Email = &in.Email
@@ -283,10 +283,14 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, in userdom.Up
 // use by another active user. Same uniqueness pre-check as username: catches
 // a duplicate email before insert/update so it maps to a 409, instead of
 // surfacing the raw uni_users_email_active constraint violation as an
-// unhandled 500.
-func (s *Service) checkEmailAvailable(ctx context.Context, email string) error {
-	_, err := s.repo.FindByEmail(ctx, email)
+// unhandled 500. The lookup ignores case, so self (uuid.Nil on create) is
+// exempt — a user re-casing their own address is not a conflict.
+func (s *Service) checkEmailAvailable(ctx context.Context, email string, self uuid.UUID) error {
+	existing, err := s.repo.FindByEmail(ctx, email)
 	if err == nil {
+		if existing.ID == self {
+			return nil
+		}
 		return userdom.ErrEmailTaken
 	}
 	if !errors.Is(err, userdom.ErrNotFound) {
@@ -309,7 +313,7 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, in userdom.Admi
 		u.FullName = in.FullName
 	}
 	if in.Email != "" && (u.Email == nil || *u.Email != in.Email) {
-		if err := s.checkEmailAvailable(ctx, in.Email); err != nil {
+		if err := s.checkEmailAvailable(ctx, in.Email, u.ID); err != nil {
 			return nil, err
 		}
 		u.Email = &in.Email

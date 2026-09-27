@@ -47,6 +47,7 @@ import (
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
+	ssosvc "github.com/Paca-AI/api/internal/service/sso"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -267,13 +268,21 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		RefreshTTL:        e2eRefreshTTL,
 		RefreshSessionTTL: e2eRefreshSessionTTL,
 	}
+	authHandler := handler.NewAuthHandler(authService, cookieCfg)
+	// Empty public URL: the callback URL is derived from the request's
+	// Host, i.e. this test server's own address.
+	ssoHandler := handler.NewSSOHandler(
+		ssosvc.New(pgRepo.NewSSORepository(db), redisRepo.NewSSOStateStore(redisClient, 10*time.Minute),
+			userRepo, userService, authService, log),
+		authHandler, "")
 	engine := router.New(router.Deps{
 		TokenManager:         tm,
 		APIKeyAuth:           apiKeyService,
 		Authorizer:           authz.NewAuthorizer(authzStore),
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
-		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
+		Auth:                 authHandler,
+		SSO:                  ssoHandler,
 		User:                 handler.NewUserHandler(userService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		Project: handler.NewProjectHandler(projectService, authz.NewAuthorizer(authzStore),

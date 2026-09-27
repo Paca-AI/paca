@@ -17,6 +17,9 @@ function loginErrorMessage(
 	if (code === ApiErrorCode.Unauthenticated) {
 		return t("login.errors.sessionExpired");
 	}
+	if (code === ApiErrorCode.TooManyRequests) {
+		return t("login.errors.tooManyAttempts");
+	}
 	return t("login.errors.genericError");
 }
 

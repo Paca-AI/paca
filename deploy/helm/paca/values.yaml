@@ -244,6 +244,10 @@ api:
   # leaving this at true makes browsers silently drop the auth cookie and
   # login never sticks — set it to false in that case.
   cookieSecure: true
+  # Requests per minute one client IP may make to each login / password-set
+  # / SSO endpoint (token refresh gets 3x). 0 disables the limit. The client
+  # IP is the rightmost X-Forwarded-For entry, which the gateway sets.
+  authRateLimitPerMinute: 20
 
   # Installed-plugin storage (backend WASM, frontend bundles, MCP bundles,
   # Agent Skills bundles — deploy/docker-compose.prod.yml's

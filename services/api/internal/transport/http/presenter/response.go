@@ -22,6 +22,7 @@ import (
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	settingsdom "github.com/Paca-AI/api/internal/domain/settings"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
+	ssodom "github.com/Paca-AI/api/internal/domain/sso"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/transport/http/httpx"
@@ -161,6 +162,14 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeProjectNameInvalid
 	case errors.Is(err, projectdom.ErrPrefixInvalid):
 		return http.StatusBadRequest, apierr.CodeProjectPrefixInvalid
+	case errors.Is(err, ssodom.ErrProviderNotFound):
+		return http.StatusNotFound, apierr.CodeSSOProviderNotFound
+	case errors.Is(err, ssodom.ErrSlugTaken):
+		return http.StatusConflict, apierr.CodeSSOProviderSlugTaken
+	case errors.Is(err, ssodom.ErrInvalidProvider):
+		return http.StatusBadRequest, apierr.CodeSSOProviderInvalid
+	case errors.Is(err, ssodom.ErrDiscoveryFailed):
+		return http.StatusBadRequest, apierr.CodeSSODiscoveryFailed
 	case errors.Is(err, settingsdom.ErrInvalidColor):
 		return http.StatusBadRequest, apierr.CodeBadRequest
 	case errors.Is(err, settingsdom.ErrBrandNameTooLong):
@@ -517,8 +526,12 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeTokenInvalid,
 		apierr.CodeUnauthenticated:
 		return http.StatusUnauthorized
-	case apierr.CodeUserNotFound:
+	case apierr.CodeUserNotFound, apierr.CodeSSOProviderNotFound:
 		return http.StatusNotFound
+	case apierr.CodeSSOProviderSlugTaken:
+		return http.StatusConflict
+	case apierr.CodeSSOProviderInvalid, apierr.CodeSSODiscoveryFailed:
+		return http.StatusBadRequest
 	case apierr.CodeUsernameTaken,
 		apierr.CodeEmailTaken,
 		apierr.CodeAgentConversationBusy,
@@ -755,6 +768,8 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusConflict
 	case apierr.CodeBadRequest:
 		return http.StatusBadRequest
+	case apierr.CodeTooManyRequests:
+		return http.StatusTooManyRequests
 	case apierr.CodePasswordChangeRequired:
 		return http.StatusForbidden
 	case apierr.CodeInvalidCurrentPassword:
