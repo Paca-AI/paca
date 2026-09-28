@@ -326,7 +326,7 @@ export const PAGE_SIZE_DEFAULTS: Record<
 	{ initial: number; perPage: number }
 > = {
 	Table: { initial: 5, perPage: 20 },
-	Board: { initial: 15, perPage: 15 },
+	Board: { initial: 20, perPage: 20 },
 	Roadmap: { initial: 100, perPage: 100 },
 	Plugin: { initial: 5, perPage: 20 },
 };
@@ -344,7 +344,6 @@ export function getDefaultPageSize(layout: ViewLayout | undefined): number {
 export const PAGE_SIZE_OPTIONS: { key: string; label: string }[] = [
 	{ key: "5", label: "5" },
 	{ key: "10", label: "10" },
-	{ key: "15", label: "15" },
 	{ key: "20", label: "20" },
 	{ key: "50", label: "50" },
 	{ key: "100", label: "100" },
