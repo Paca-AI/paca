@@ -73,6 +73,10 @@
 #                                "Storage backend migration" below) — set to
 #                                1 only after migrating its data to RustFS
 #                                by hand (docs/deployment/README.md).
+#   PACA_PRUNE_IMAGES           Remove the images the stack ran on      (default: yes)
+#                                before this upgrade once they're no
+#                                longer used (yes/no), so repeated
+#                                upgrades don't slowly fill the disk.
 #   PACA_KEEP_MINIO              Keep STORAGE_PROVIDER=minio instead of   (default: unset)
 #                                migrating to rustfs (see "Storage
 #                                backend migration" below) — a stopgap,
@@ -369,6 +373,10 @@ fi
 # container state doesn't change out from under this script between here
 # and there.
 STORAGE_PROVIDER_AT_START="$(get_env_var .env STORAGE_PROVIDER)"
+# Read before the version re-pin and the OpenHands migration below rewrite
+# it, so "Clean up old images" removes the image the stack actually ran on,
+# not the one it's being upgraded to.
+AGENT_SERVER_IMAGE_AT_START="$(get_env_var .env AGENT_SERVER_IMAGE)"
 HAD_MINIO_CONTAINER="no"
 service_has_container minio && HAD_MINIO_CONTAINER="yes"
 HAD_RUSTFS_CONTAINER="no"
@@ -787,6 +795,20 @@ fi
 
 heading "Pulling images and restarting"
 
+# Remember which images the stack is running on *before* pulling, so they can
+# be cleaned up once the new ones are up (see "Clean up old images" below).
+OLD_IMAGE_IDS=()
+if [[ "${PACA_PRUNE_IMAGES:-yes}" != "no" ]]; then
+    # shellcheck disable=SC2086
+    while IFS= read -r _id; do
+        [[ -n "$_id" ]] && OLD_IMAGE_IDS+=("$_id")
+    done < <($COMPOSE_CMD --env-file .env images -q 2>/dev/null || true)
+    if [[ -n "$AGENT_SERVER_IMAGE_AT_START" ]]; then
+        _id="$(docker image inspect --format '{{.Id}}' "$AGENT_SERVER_IMAGE_AT_START" 2>/dev/null || true)"
+        [[ -n "$_id" ]] && OLD_IMAGE_IDS+=("$_id")
+    fi
+fi
+
 # AGENT_SERVER_IMAGE isn't a docker-compose service, just an env var
 # agent-runner reads and pulls for itself — lazily, the first time a
 # conversation actually needs a sandbox (see
@@ -816,6 +838,29 @@ if [[ "$KEEP_MINIO" != "yes" ]]; then
 fi
 # shellcheck disable=SC2086
 $COMPOSE_CMD --env-file .env up "${UP_FLAGS[@]}" ${SCALE_OPTS[@]+"${SCALE_OPTS[@]}"} "$@"
+
+# ── Clean up old images ───────────────────────────────────────────────────────
+#
+# Every upgrade pulls a fresh set of images but leaves the previous ones on
+# disk, which eventually fills the server. Remove the images the stack was
+# running on before this upgrade — only those, never unrelated images on the
+# host. `docker rmi` without -f refuses anything still in use (an image the
+# upgrade didn't change, a sandbox still running the old agent-server image),
+# so those are simply skipped. Removing by ID also catches images left
+# untagged when a pull replaced the same tag (e.g. :latest). Set
+# PACA_PRUNE_IMAGES=no to keep them, e.g. to be able to roll back without
+# re-pulling.
+
+if [[ "${PACA_PRUNE_IMAGES:-yes}" != "no" && ${#OLD_IMAGE_IDS[@]} -gt 0 ]]; then
+    heading "Cleaning up old images"
+    _removed=0
+    for _id in $(printf '%s\n' "${OLD_IMAGE_IDS[@]}" | sort -u); do
+        if docker rmi "$_id" >/dev/null 2>&1; then
+            _removed=$((_removed + 1))
+        fi
+    done
+    info "Removed ${_removed} old image(s)."
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 

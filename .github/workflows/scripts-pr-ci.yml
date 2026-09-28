@@ -160,8 +160,18 @@ jobs:
           info)
           exit 0
           ;;
-          pull)
+          pull|rmi)
           exit 0
+          ;;
+          image)
+          # `image inspect --format ... <ref>`: only the pre-upgrade agent-server
+          # image "exists" locally, so capturing the post-migration ref instead
+          # (not pulled yet) records nothing and the rmi assertion below fails.
+          if [[ "${1:-} ${2:-}" == "image inspect" && "${!#}" == "${FAKE_DOCKER_LOCAL_IMAGE:-}" ]]; then
+          echo "sha256:old-agent-server"
+          exit 0
+          fi
+          exit 1
           ;;
           compose)
           shift
@@ -174,6 +184,10 @@ jobs:
           ;;
           ps)
           printf '%s\n' "${FAKE_DOCKER_PS_SERVICES:-}"
+          exit 0
+          ;;
+          images)
+          printf '%s\n' "${FAKE_DOCKER_IMAGE_IDS:-}"
           exit 0
           ;;
           *)
@@ -234,6 +248,13 @@ jobs:
           FAKE_DOCKER_PS_SERVICES: |
             web
             postgres
+          # Images the stack "runs on" before the upgrade — each should be
+          # passed to `docker rmi` afterwards. The agent-server image is the
+          # .env value *before* the OpenHands migration rewrites it.
+          FAKE_DOCKER_IMAGE_IDS: |
+            sha256:old-api
+            sha256:old-web
+          FAKE_DOCKER_LOCAL_IMAGE: ghcr.io/openhands/agent-server:latest
         run: |
           set -euo pipefail
           : > "$FAKE_DOCKER_LOG"
@@ -259,7 +280,33 @@ jobs:
             echo "expected no --scale flags (every service should have resolved to 'keep running'), got: $up_line" >&2
             exit 1
           fi
+          for id in sha256:old-api sha256:old-web sha256:old-agent-server; do
+            if ! grep -qx "rmi $id" "$FAKE_DOCKER_LOG"; then
+              echo "expected old image $id to be removed; docker calls were:" >&2
+              cat "$FAKE_DOCKER_LOG" >&2
+              exit 1
+            fi
+          done
           echo "All upgrade.sh migration assertions passed."
+
+      - name: Verify PACA_PRUNE_IMAGES=no keeps old images
+        env:
+          PACA_YES: "1"
+          PACA_PRUNE_IMAGES: "no"
+          FAKE_DOCKER_PS_SERVICES: |
+            web
+            postgres
+          FAKE_DOCKER_IMAGE_IDS: sha256:old-api
+        run: |
+          set -euo pipefail
+          : > "$FAKE_DOCKER_LOG"
+          PACA_DIR="$WORK" bash scripts/upgrade.sh
+          if grep -q '^rmi ' "$FAKE_DOCKER_LOG"; then
+            echo "expected no docker rmi with PACA_PRUNE_IMAGES=no, got:" >&2
+            grep '^rmi ' "$FAKE_DOCKER_LOG" >&2
+            exit 1
+          fi
+          echo "PACA_PRUNE_IMAGES=no skipped image cleanup."
 
       - name: Seed a synthetic install with a live MinIO container
         run: |
