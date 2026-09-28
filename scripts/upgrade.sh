@@ -373,6 +373,10 @@ fi
 # container state doesn't change out from under this script between here
 # and there.
 STORAGE_PROVIDER_AT_START="$(get_env_var .env STORAGE_PROVIDER)"
+# Read before the version re-pin and the OpenHands migration below rewrite
+# it, so "Clean up old images" removes the image the stack actually ran on,
+# not the one it's being upgraded to.
+AGENT_SERVER_IMAGE_AT_START="$(get_env_var .env AGENT_SERVER_IMAGE)"
 HAD_MINIO_CONTAINER="no"
 service_has_container minio && HAD_MINIO_CONTAINER="yes"
 HAD_RUSTFS_CONTAINER="no"
@@ -791,14 +795,6 @@ fi
 
 heading "Pulling images and restarting"
 
-# AGENT_SERVER_IMAGE isn't a docker-compose service, just an env var
-# agent-runner reads and pulls for itself — lazily, the first time a
-# conversation actually needs a sandbox (see
-# services/agent-runner/internal/sandbox/sandbox.go's ensureImage). Left
-# alone, that first conversation after every upgrade pays for a cold pull (or
-# times out entirely on a slow link/large image) instead of just running.
-# Pulling it here too, best-effort: ensureImage's own pull-on-first-use stays
-# the real safety net, so a failure here only costs the win, not correctness.
 # Remember which images the stack is running on *before* pulling, so they can
 # be cleaned up once the new ones are up (see "Clean up old images" below).
 OLD_IMAGE_IDS=()
@@ -807,13 +803,20 @@ if [[ "${PACA_PRUNE_IMAGES:-yes}" != "no" ]]; then
     while IFS= read -r _id; do
         [[ -n "$_id" ]] && OLD_IMAGE_IDS+=("$_id")
     done < <($COMPOSE_CMD --env-file .env images -q 2>/dev/null || true)
-    _old_agent_server_image="$(get_env_var .env AGENT_SERVER_IMAGE)"
-    if [[ -n "$_old_agent_server_image" ]]; then
-        _id="$(docker image inspect --format '{{.Id}}' "$_old_agent_server_image" 2>/dev/null || true)"
+    if [[ -n "$AGENT_SERVER_IMAGE_AT_START" ]]; then
+        _id="$(docker image inspect --format '{{.Id}}' "$AGENT_SERVER_IMAGE_AT_START" 2>/dev/null || true)"
         [[ -n "$_id" ]] && OLD_IMAGE_IDS+=("$_id")
     fi
 fi
 
+# AGENT_SERVER_IMAGE isn't a docker-compose service, just an env var
+# agent-runner reads and pulls for itself — lazily, the first time a
+# conversation actually needs a sandbox (see
+# services/agent-runner/internal/sandbox/sandbox.go's ensureImage). Left
+# alone, that first conversation after every upgrade pays for a cold pull (or
+# times out entirely on a slow link/large image) instead of just running.
+# Pulling it here too, best-effort: ensureImage's own pull-on-first-use stays
+# the real safety net, so a failure here only costs the win, not correctness.
 if [[ "$(get_env_var .env PACA_AGENT_RUNNER)" != "no" ]]; then
     _agent_server_image="$(get_env_var .env AGENT_SERVER_IMAGE)"
     if [[ -n "$_agent_server_image" ]]; then
@@ -844,8 +847,9 @@ $COMPOSE_CMD --env-file .env up "${UP_FLAGS[@]}" ${SCALE_OPTS[@]+"${SCALE_OPTS[@
 # host. `docker rmi` without -f refuses anything still in use (an image the
 # upgrade didn't change, a sandbox still running the old agent-server image),
 # so those are simply skipped. Removing by ID also catches images left
-# untagged when a pull replaced the same tag (e.g. :latest). Set PACA_PRUNE_IMAGES=no to keep them, e.g. to
-# be able to roll back without re-pulling.
+# untagged when a pull replaced the same tag (e.g. :latest). Set
+# PACA_PRUNE_IMAGES=no to keep them, e.g. to be able to roll back without
+# re-pulling.
 
 if [[ "${PACA_PRUNE_IMAGES:-yes}" != "no" && ${#OLD_IMAGE_IDS[@]} -gt 0 ]]; then
     heading "Cleaning up old images"
