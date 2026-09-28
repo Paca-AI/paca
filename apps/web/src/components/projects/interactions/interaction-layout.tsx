@@ -14,6 +14,7 @@ const POSITION_MAX = Number.MAX_SAFE_INTEGER; // 2^53 − 1 ≈ 9 × 10^15
 
 import {
 	ChevronDown,
+	Download,
 	KanbanSquare,
 	List,
 	Loader2,
@@ -87,6 +88,12 @@ import { RemoteComponent } from "@/lib/plugins/loader";
 import { usePluginBaseProps } from "@/lib/plugins/plugin-props";
 import { usePluginRegistry } from "@/lib/plugins/registry";
 import {
+	buildExportFilename,
+	downloadCsv,
+	fetchAllTasksForExport,
+	tasksToCsv,
+} from "@/lib/export-tasks-csv";
+import {
 	customFieldsQueryOptions,
 	findEpicType,
 	projectMembersQueryOptions,
@@ -100,7 +107,7 @@ import { cn } from "@/lib/utils";
 import { BoardView } from "./board-view";
 import { ListView } from "./list-view";
 import { NewViewPopover } from "./new-view-popover";
-import { getImportanceBucketBounds } from "./priority";
+import { getImportanceBucketBounds, type PriorityLabelKey } from "./priority";
 import { RenameViewDialog } from "./rename-view-dialog";
 import { RoadmapView } from "./roadmap-view";
 import type { SprintFormPayload } from "./sprint-form-modal";
@@ -1677,6 +1684,65 @@ export function InteractionLayout({
 	});
 
 	const [viewActionError, setViewActionError] = useState<string | null>(null);
+	const [isExporting, setIsExporting] = useState(false);
+	const [exportError, setExportError] = useState<string | null>(null);
+
+	const handleExportCsv = useCallback(async () => {
+		if (isExporting) return;
+		setIsExporting(true);
+		setExportError(null);
+		try {
+			// Full project dump — matches PE-3 ("all cards belonging to a project").
+			// View filters are intentionally not applied so reporting gets every card.
+			const tasks = await fetchAllTasksForExport(projectId);
+			const csv = tasksToCsv(
+				tasks,
+				{
+					statuses,
+					taskTypes,
+					members,
+					sprints,
+					customFields,
+					priorityLabel: (key: PriorityLabelKey) => t(key),
+				},
+				{
+					id: t("layout.shell.exportColumns.id"),
+					title: t("layout.shell.exportColumns.title"),
+					status: t("layout.shell.exportColumns.status"),
+					type: t("layout.shell.exportColumns.type"),
+					sprint: t("layout.shell.exportColumns.sprint"),
+					parent: t("layout.shell.exportColumns.parent"),
+					assignees: t("layout.shell.exportColumns.assignees"),
+					reporter: t("layout.shell.exportColumns.reporter"),
+					priority: t("layout.shell.exportColumns.priority"),
+					importance: t("layout.shell.exportColumns.importance"),
+					storyPoints: t("layout.shell.exportColumns.storyPoints"),
+					tags: t("layout.shell.exportColumns.tags"),
+					startDate: t("layout.shell.exportColumns.startDate"),
+					dueDate: t("layout.shell.exportColumns.dueDate"),
+					createdAt: t("layout.shell.exportColumns.createdAt"),
+					updatedAt: t("layout.shell.exportColumns.updatedAt"),
+				},
+			);
+			const slug = project?.name || project?.task_id_prefix || projectId;
+			downloadCsv(buildExportFilename(slug), csv);
+		} catch {
+			setExportError(t("layout.shell.exportFailed"));
+		} finally {
+			setIsExporting(false);
+		}
+	}, [
+		isExporting,
+		projectId,
+		statuses,
+		taskTypes,
+		members,
+		sprints,
+		customFields,
+		project?.name,
+		project?.task_id_prefix,
+		t,
+	]);
 
 	const deleteViewMutation = useMutation({
 		mutationFn: (viewId: string) => deleteViewById(projectId, viewId),
@@ -1819,6 +1885,21 @@ export function InteractionLayout({
 						{title}
 					</h1>
 					{headerActions}
+					<button
+						type="button"
+						onClick={() => void handleExportCsv()}
+						disabled={isExporting}
+						className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/10 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:border-primary/50 hover:bg-primary/5 hover:text-primary transition-all duration-150 disabled:opacity-50"
+					>
+						{isExporting ? (
+							<Loader2 className="size-3.5 shrink-0 animate-spin" />
+						) : (
+							<Download className="size-3.5 shrink-0" />
+						)}
+						{isExporting
+							? t("layout.shell.exportingCsv")
+							: t("layout.shell.exportCsv")}
+					</button>
 					{context === "backlog" && canManageSprints && (
 						<button
 							type="button"
@@ -1833,6 +1914,11 @@ export function InteractionLayout({
 				</div>
 				{description && (
 					<p className="mt-1 text-sm text-muted-foreground">{description}</p>
+				)}
+				{exportError && (
+					<p className="mt-2 text-sm text-destructive" role="alert">
+						{exportError}
+					</p>
 				)}
 			</div>
 

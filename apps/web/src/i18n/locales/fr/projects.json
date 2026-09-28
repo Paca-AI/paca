@@ -1795,6 +1795,27 @@
 				"deleteFailed": "Échec de la suppression de la vue. Veuillez réessayer.",
 				"reorderInvalid": "La liste des vues a changé ailleurs. Actualisez la page et réessayez.",
 				"reorderFailed": "Échec de la réorganisation des vues. Veuillez réessayer."
+			},
+			"exportCsv": "Exporter CSV",
+			"exportingCsv": "Export…",
+			"exportFailed": "Échec de l'export des tâches. Réessayez.",
+			"exportColumns": {
+				"id": "ID",
+				"title": "Titre",
+				"status": "Statut",
+				"type": "Type",
+				"sprint": "Sprint",
+				"parent": "Parent",
+				"assignees": "Assignés",
+				"reporter": "Rapporteur",
+				"priority": "Priorité",
+				"importance": "Importance",
+				"storyPoints": "Story points",
+				"tags": "Tags",
+				"startDate": "Date de début",
+				"dueDate": "Échéance",
+				"createdAt": "Créé",
+				"updatedAt": "Mis à jour"
 			}
 		},
 		"viewSettings": {

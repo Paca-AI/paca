@@ -1795,6 +1795,27 @@
 				"deleteFailed": "删除视图失败，请重试。",
 				"reorderInvalid": "视图列表已在别处更改，请刷新页面后重试。",
 				"reorderFailed": "视图排序失败，请重试。"
+			},
+			"exportCsv": "导出 CSV",
+			"exportingCsv": "正在导出…",
+			"exportFailed": "导出任务失败，请重试。",
+			"exportColumns": {
+				"id": "ID",
+				"title": "标题",
+				"status": "状态",
+				"type": "类型",
+				"sprint": "冲刺",
+				"parent": "父项",
+				"assignees": "经办人",
+				"reporter": "报告人",
+				"priority": "优先级",
+				"importance": "重要度",
+				"storyPoints": "故事点",
+				"tags": "标签",
+				"startDate": "开始日期",
+				"dueDate": "截止日期",
+				"createdAt": "创建时间",
+				"updatedAt": "更新时间"
 			}
 		},
 		"viewSettings": {

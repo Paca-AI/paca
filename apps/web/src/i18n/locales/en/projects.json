@@ -1786,10 +1786,31 @@
 	"layout": {
 		"shell": {
 			"newSprint": "New sprint",
+			"exportCsv": "Export CSV",
+			"exportingCsv": "Exporting…",
+			"exportFailed": "Failed to export tasks. Please try again.",
 			"renameView": "Rename view",
 			"deleteView": "Delete view",
 			"searchTasksPlaceholder": "Search tasks…",
 			"pluginNotAvailable": "Plugin not available",
+			"exportColumns": {
+				"id": "ID",
+				"title": "Title",
+				"status": "Status",
+				"type": "Type",
+				"sprint": "Sprint",
+				"parent": "Parent",
+				"assignees": "Assignees",
+				"reporter": "Reporter",
+				"priority": "Priority",
+				"importance": "Importance",
+				"storyPoints": "Story Points",
+				"tags": "Tags",
+				"startDate": "Start Date",
+				"dueDate": "Due Date",
+				"createdAt": "Created",
+				"updatedAt": "Updated"
+			},
 			"viewErrors": {
 				"isLastView": "This is the last view and can't be deleted.",
 				"deleteFailed": "Failed to delete the view. Please try again.",

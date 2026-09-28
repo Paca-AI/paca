@@ -1795,6 +1795,27 @@
 				"deleteFailed": "ビューの削除に失敗しました。もう一度お試しください。",
 				"reorderInvalid": "他の場所でビューの一覧が変更されました。ページを更新してもう一度お試しください。",
 				"reorderFailed": "ビューの並べ替えに失敗しました。もう一度お試しください。"
+			},
+			"exportCsv": "CSVをエクスポート",
+			"exportingCsv": "エクスポート中…",
+			"exportFailed": "タスクのエクスポートに失敗しました。もう一度お試しください。",
+			"exportColumns": {
+				"id": "ID",
+				"title": "タイトル",
+				"status": "ステータス",
+				"type": "タイプ",
+				"sprint": "スプリント",
+				"parent": "親",
+				"assignees": "担当者",
+				"reporter": "報告者",
+				"priority": "優先度",
+				"importance": "重要度",
+				"storyPoints": "ストーリーポイント",
+				"tags": "タグ",
+				"startDate": "開始日",
+				"dueDate": "期限",
+				"createdAt": "作成日時",
+				"updatedAt": "更新日時"
 			}
 		},
 		"viewSettings": {

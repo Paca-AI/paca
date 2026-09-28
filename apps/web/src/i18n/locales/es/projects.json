@@ -1795,6 +1795,27 @@
 				"deleteFailed": "No se pudo eliminar la vista. Inténtalo de nuevo.",
 				"reorderInvalid": "La lista de vistas cambió en otro lugar. Actualiza la página e inténtalo de nuevo.",
 				"reorderFailed": "No se pudo reordenar las vistas. Inténtalo de nuevo."
+			},
+			"exportCsv": "Exportar CSV",
+			"exportingCsv": "Exportando…",
+			"exportFailed": "No se pudieron exportar las tareas. Inténtalo de nuevo.",
+			"exportColumns": {
+				"id": "ID",
+				"title": "Título",
+				"status": "Estado",
+				"type": "Tipo",
+				"sprint": "Sprint",
+				"parent": "Padre",
+				"assignees": "Asignados",
+				"reporter": "Informador",
+				"priority": "Prioridad",
+				"importance": "Importancia",
+				"storyPoints": "Story points",
+				"tags": "Etiquetas",
+				"startDate": "Fecha de inicio",
+				"dueDate": "Fecha límite",
+				"createdAt": "Creado",
+				"updatedAt": "Actualizado"
 			}
 		},
 		"viewSettings": {

@@ -1795,6 +1795,27 @@
 				"deleteFailed": "뷰를 삭제하지 못했습니다. 다시 시도해 주세요.",
 				"reorderInvalid": "다른 곳에서 뷰 목록이 변경되었습니다. 페이지를 새로고침한 후 다시 시도해 주세요.",
 				"reorderFailed": "뷰 순서를 변경하지 못했습니다. 다시 시도해 주세요."
+			},
+			"exportCsv": "CSV 내보내기",
+			"exportingCsv": "내보내는 중…",
+			"exportFailed": "작업을 내보내지 못했습니다. 다시 시도하세요.",
+			"exportColumns": {
+				"id": "ID",
+				"title": "제목",
+				"status": "상태",
+				"type": "유형",
+				"sprint": "스프린트",
+				"parent": "상위",
+				"assignees": "담당자",
+				"reporter": "보고자",
+				"priority": "우선순위",
+				"importance": "중요도",
+				"storyPoints": "스토리 포인트",
+				"tags": "태그",
+				"startDate": "시작일",
+				"dueDate": "마감일",
+				"createdAt": "생성",
+				"updatedAt": "업데이트"
 			}
 		},
 		"viewSettings": {

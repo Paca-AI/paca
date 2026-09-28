@@ -1813,6 +1813,27 @@
 				"deleteFailed": "Не удалось удалить представление. Попробуйте еще раз.",
 				"reorderInvalid": "Список представлений изменился в другом месте. Обновите страницу и повторите попытку.",
 				"reorderFailed": "Не удалось изменить порядок представлений. Попробуйте еще раз."
+			},
+			"exportCsv": "Экспорт CSV",
+			"exportingCsv": "Экспорт…",
+			"exportFailed": "Не удалось экспортировать задачи. Попробуйте ещё раз.",
+			"exportColumns": {
+				"id": "ID",
+				"title": "Название",
+				"status": "Статус",
+				"type": "Тип",
+				"sprint": "Спринт",
+				"parent": "Родитель",
+				"assignees": "Исполнители",
+				"reporter": "Автор",
+				"priority": "Приоритет",
+				"importance": "Важность",
+				"storyPoints": "Story points",
+				"tags": "Теги",
+				"startDate": "Дата начала",
+				"dueDate": "Срок",
+				"createdAt": "Создано",
+				"updatedAt": "Обновлено"
 			}
 		},
 		"viewSettings": {

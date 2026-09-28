@@ -1795,6 +1795,27 @@
 				"deleteFailed": "Không thể xóa chế độ xem. Vui lòng thử lại.",
 				"reorderInvalid": "Danh sách chế độ xem đã thay đổi ở nơi khác. Hãy làm mới trang và thử lại.",
 				"reorderFailed": "Không thể sắp xếp lại chế độ xem. Vui lòng thử lại."
+			},
+			"exportCsv": "Xuất CSV",
+			"exportingCsv": "Đang xuất…",
+			"exportFailed": "Không xuất được task. Vui lòng thử lại.",
+			"exportColumns": {
+				"id": "ID",
+				"title": "Tiêu đề",
+				"status": "Trạng thái",
+				"type": "Loại",
+				"sprint": "Sprint",
+				"parent": "Cha",
+				"assignees": "Người được giao",
+				"reporter": "Người báo cáo",
+				"priority": "Độ ưu tiên",
+				"importance": "Mức độ",
+				"storyPoints": "Story points",
+				"tags": "Tags",
+				"startDate": "Ngày bắt đầu",
+				"dueDate": "Hạn",
+				"createdAt": "Tạo lúc",
+				"updatedAt": "Cập nhật"
 			}
 		},
 		"viewSettings": {
