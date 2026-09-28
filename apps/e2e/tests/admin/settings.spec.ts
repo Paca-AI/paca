@@ -72,7 +72,7 @@ async function openSettings(page: Page) {
 	await signIn(page);
 	await page.goto(SETTINGS_URL);
 	await expect(
-		page.getByRole("heading", { name: "Workspace Branding" }),
+		page.getByRole("heading", { name: "Workspace Settings" }),
 	).toBeVisible();
 }
 
@@ -134,7 +134,7 @@ test.describe("Settings page permission gating", () => {
 		await expect(page).toHaveURL(/\/home/);
 		await expect(page).not.toHaveURL(/\/admin\/settings/);
 		await expect(
-			page.getByRole("heading", { name: "Workspace Branding" }),
+			page.getByRole("heading", { name: "Workspace Settings" }),
 		).toHaveCount(0);
 	});
 
@@ -154,7 +154,7 @@ test.describe("Settings page permission gating", () => {
 		await page.goto(SETTINGS_URL);
 
 		await expect(
-			page.getByRole("heading", { name: "Workspace Branding" }),
+			page.getByRole("heading", { name: "Workspace Settings" }),
 		).toBeVisible();
 		await expect(brandNameField(page)).toBeVisible();
 	});
@@ -312,7 +312,7 @@ test.describe("Branding form", () => {
 
 		await page.reload();
 		await expect(
-			page.getByRole("heading", { name: "Workspace Branding" }),
+			page.getByRole("heading", { name: "Workspace Settings" }),
 		).toBeVisible();
 
 		await expect(brandNameField(page)).toHaveValue(brandName);

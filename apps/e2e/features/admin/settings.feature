@@ -1,7 +1,7 @@
 @admin @settings
 Feature: Workspace branding settings
   The Settings page (Admin > Settings, route /admin/settings) is titled
-  "Workspace Branding" and lets an administrator customise the whole
+  "Workspace Settings" and lets an administrator customise the whole
   instance: a logo and favicon, a brand name, and a primary accent colour
   chosen from eight curated light/dark presets (Green, Blue, Teal, Indigo,
   Purple, Pink, Red, Orange). The page is gated by the global "settings.write"
@@ -22,12 +22,12 @@ Feature: Workspace branding settings
       Given a user exists whose global role does not grant "settings.write"
       When that user signs in and navigates to the Settings page
       Then the user should be redirected to the Home page
-      And the "Workspace Branding" heading should not be displayed
+      And the "Workspace Settings" heading should not be displayed
 
     Scenario: A user with only settings.write can open the Settings page
       Given a user exists whose global role grants "settings.write"
       When that user signs in and navigates to the Settings page
-      Then the "Workspace Branding" heading should be displayed
+      Then the "Workspace Settings" heading should be displayed
       And the "Brand Name" field should be displayed
 
   @authenticated
@@ -39,7 +39,7 @@ Feature: Workspace branding settings
       And the user has navigated to the Settings page
 
     Scenario: The Settings page shows the branding form with nothing selected
-      Then the page should display the heading "Workspace Branding"
+      Then the page should display the heading "Workspace Settings"
       And the "Brand Name" field should be empty
       And none of the eight colour presets should be selected
       And the "Save changes" button should be disabled

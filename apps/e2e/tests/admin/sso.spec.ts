@@ -98,14 +98,24 @@ async function updateProvider(
 async function routeMockProvider(page: Page): Promise<void> {
 	await page.route("**/api/v1/auth/sso/*/login*", async (route) => {
 		const response = await route.fetch({ maxRedirects: 0 });
-		const headers = response.headers();
-		headers.location = (headers.location ?? "").replace(
+		const location = (response.headers().location ?? "").replace(
 			MOCK_OIDC_INTERNAL,
 			MOCK_OIDC_PUBLIC,
 		);
+		// WebKit refuses to fulfill a navigation with a redirect status, so
+		// answer 200 with a meta refresh to the rewritten location instead.
 		// The original headers include Set-Cookie: sso_state, which binds
 		// the sign-in to this browser.
-		await route.fulfill({ response, headers });
+		const headers = response.headers();
+		delete headers.location;
+		delete headers["content-length"];
+		headers["content-type"] = "text/html; charset=utf-8";
+		const url = location.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+		await route.fulfill({
+			status: 200,
+			headers,
+			body: `<!doctype html><meta http-equiv="refresh" content="0;url=${url}">`,
+		});
 	});
 }
 
