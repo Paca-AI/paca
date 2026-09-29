@@ -223,6 +223,8 @@ type fakeIDP struct {
 	key    *rsa.PrivateKey
 	claims map[string]any
 
+	issuerSuffix string // appended to the advertised issuer (e.g. "/")
+
 	mu        sync.Mutex
 	nonce     string
 	challenge string
@@ -238,7 +240,7 @@ func newFakeIDP(t *testing.T, claims map[string]any) *fakeIDP {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer":                                idp.srv.URL,
+			"issuer":                                idp.srv.URL + idp.issuerSuffix,
 			"authorization_endpoint":                idp.srv.URL + "/authorize",
 			"token_endpoint":                        idp.srv.URL + "/token",
 			"jwks_uri":                              idp.srv.URL + "/jwks",
@@ -462,9 +464,24 @@ func TestCreateProvider_Validation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Slug != "corp" || p.IssuerURL != "https://idp.example" ||
+	if p.Slug != "corp" || p.IssuerURL != "https://idp.example/" ||
 		strings.Join(p.Scopes, " ") != "openid email" || p.AllowedDomains[0] != "corp.example" {
 		t.Fatalf("normalized provider = %+v", p)
+	}
+}
+
+func TestCreateProvider_PreservesTrailingSlashIssuer(t *testing.T) {
+	svc, _, _ := newTestService(t, newFakeUsers())
+	idp := newFakeIDP(t, nil)
+	idp.issuerSuffix = "/"
+	p, err := svc.CreateProvider(context.Background(), ssodom.ProviderInput{
+		Slug: "corp", DisplayName: "Corp", IssuerURL: idp.srv.URL + "/", ClientID: "c", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("slash-terminated issuer rejected: %v", err)
+	}
+	if p.IssuerURL != idp.srv.URL+"/" {
+		t.Fatalf("issuer = %q, want trailing slash preserved", p.IssuerURL)
 	}
 }
 

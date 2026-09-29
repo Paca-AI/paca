@@ -242,7 +242,10 @@ func applyInput(p *ssodom.Provider, in ssodom.ProviderInput) error {
 	if name == "" || len(name) > 100 {
 		return fmt.Errorf("%w: display name must be 1-100 characters", ssodom.ErrInvalidProvider)
 	}
-	issuer := strings.TrimRight(strings.TrimSpace(in.IssuerURL), "/")
+	// The issuer is an opaque identifier compared exactly against the IdP's
+	// discovery document (OIDC Discovery 4.3), so a trailing slash is
+	// significant (e.g. authentik) and must be stored as entered.
+	issuer := strings.TrimSpace(in.IssuerURL)
 	u, err := url.Parse(issuer)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return fmt.Errorf("%w: issuer URL must be an absolute http(s) URL", ssodom.ErrInvalidProvider)
