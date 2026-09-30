@@ -2113,6 +2113,10 @@ export function InteractionLayout({
 						customFields={customFields}
 						columnBy={columnBy}
 						canCreate={canCreate}
+						canEdit={canEdit}
+						manualSort={isManualSort}
+						onReorderTask={effectiveViewId ? handleReorderTask : undefined}
+						onMoveToColumn={canEdit ? handleMoveToColumn : undefined}
 						pagination={globalPagination}
 						onCreateTask={handleCreateTask}
 						onTaskClick={handleTaskClick}
