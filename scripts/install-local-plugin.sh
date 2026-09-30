@@ -142,15 +142,12 @@ if [[ ! -f "$PLUGIN_DIR/plugin.json" ]]; then
     exit 1
 fi
 
-if [[ ! -d "$PLUGIN_DIR/backend" ]]; then
-    print_error "backend directory not found in $PLUGIN_DIR"
-    exit 1
-fi
-
-if [[ ! -d "$PLUGIN_DIR/frontend" ]]; then
-    print_error "frontend directory not found in $PLUGIN_DIR"
-    exit 1
-fi
+# backend/, frontend/, mcp/ and skills/ are all optional: a plugin may ship any
+# combination of them (e.g. a skills-only plugin has none of the first three).
+HAS_BACKEND=false
+HAS_FRONTEND=false
+[[ -d "$PLUGIN_DIR/backend" ]] && HAS_BACKEND=true
+[[ -d "$PLUGIN_DIR/frontend" ]] && HAS_FRONTEND=true
 
 if ! command -v jq >/dev/null 2>&1; then
     print_error "jq is required but not installed"
@@ -195,7 +192,7 @@ MCP_DIR="$PACA_DIR/plugins/local/mcp/$PLUGIN_ID"
 SKILLS_DIR="$PACA_DIR/plugins/local/skills/$PLUGIN_ID"
 
 # Build backend
-if [[ "$SKIP_BUILD" = false ]]; then
+if [[ "$HAS_BACKEND" = true && "$SKIP_BUILD" = false ]]; then
     print_step "Building backend WASM..."
     cd "$PLUGIN_DIR/backend"
     
@@ -225,6 +222,8 @@ if [[ "$SKIP_BUILD" = false ]]; then
     fi
     
     print_success "Backend WASM built successfully"
+elif [[ "$HAS_BACKEND" = false ]]; then
+    print_info "No backend directory found — skipping backend build (plugin has no backend)"
 else
     print_step "Skipping backend build (--skip-build)"
 fi
@@ -233,16 +232,16 @@ fi
 print_step "Populating backend store..."
 mkdir -p "$BACKEND_DIR/migrations"
 
-if [[ "$SKIP_BUILD" = false ]]; then
-    cp backend.wasm "$BACKEND_DIR/backend.wasm"
-    cp migrations/*.sql "$BACKEND_DIR/migrations/" 2>/dev/null || true
+if [[ "$HAS_BACKEND" = true && "$SKIP_BUILD" = false ]]; then
+    cp "$PLUGIN_DIR/backend/backend.wasm" "$BACKEND_DIR/backend.wasm"
+    cp "$PLUGIN_DIR"/backend/migrations/*.sql "$BACKEND_DIR/migrations/" 2>/dev/null || true
 fi
 
 cp "$PLUGIN_DIR/plugin.json" "$BACKEND_DIR/plugin.json"
 print_success "Backend store populated"
 
 # Build frontend
-if [[ "$SKIP_BUILD" = false ]]; then
+if [[ "$HAS_FRONTEND" = true && "$SKIP_BUILD" = false ]]; then
     print_step "Building frontend..."
     cd "$PLUGIN_DIR/frontend"
     
@@ -266,19 +265,23 @@ if [[ "$SKIP_BUILD" = false ]]; then
     fi
     
     print_success "Frontend built successfully"
+elif [[ "$HAS_FRONTEND" = false ]]; then
+    print_info "No frontend directory found — skipping frontend build (plugin has no frontend)"
 else
     print_step "Skipping frontend build (--skip-build)"
 fi
 
 # Populate frontend store
-print_step "Populating frontend store..."
-mkdir -p "$FRONTEND_DIR"
+if [[ "$HAS_FRONTEND" = true ]]; then
+    print_step "Populating frontend store..."
+    mkdir -p "$FRONTEND_DIR"
 
-if [[ "$SKIP_BUILD" = false ]]; then
-    cp -r dist/. "$FRONTEND_DIR/"
+    if [[ "$SKIP_BUILD" = false ]]; then
+        cp -r "$PLUGIN_DIR/frontend/dist/." "$FRONTEND_DIR/"
+    fi
+
+    print_success "Frontend store populated"
 fi
-
-print_success "Frontend store populated"
 
 # Build and populate MCP bundle (optional — not every plugin has MCP tools)
 if [[ -d "$PLUGIN_DIR/mcp" ]]; then
@@ -469,7 +472,9 @@ fi
 echo ""
 print_success "Plugin $PLUGIN_ID v$PLUGIN_VERSION build and installation complete!"
 print_info "Backend artifacts: $BACKEND_DIR"
-print_info "Frontend artifacts: $FRONTEND_DIR"
+if [[ "$HAS_FRONTEND" = true ]]; then
+    print_info "Frontend artifacts: $FRONTEND_DIR"
+fi
 if [[ -d "$PLUGIN_DIR/mcp" ]]; then
     print_info "MCP artifacts: $MCP_DIR"
 fi

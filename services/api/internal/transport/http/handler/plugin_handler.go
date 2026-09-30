@@ -584,7 +584,7 @@ func (h *PluginHandler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	if found == nil {
+	if found == nil || found.Manifest.Backend == nil {
 		presenter.Error(w, r, apierr.New(apierr.CodePluginNotFound, "plugin not found or disabled"))
 		return
 	}
