@@ -1,8 +1,8 @@
 import { CalendarDays } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { Sprint, Task } from "@/lib/interaction-api";
+import type { Sprint, Task, ViewConfig } from "@/lib/interaction-api";
 import type {
 	CustomFieldDefinition,
 	ProjectMember,
@@ -12,9 +12,12 @@ import type {
 import { cn } from "@/lib/utils";
 import { AddTaskRow } from "./add-task-row";
 import {
+	applyStatusFilterToColumnDefs,
+	buildColumnDropUpdate,
 	type ColumnGroupDef,
 	getColumnGroupDefs,
 	getTaskColumnKeys,
+	type TaskFieldUpdate,
 } from "./view-utils";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -47,7 +50,15 @@ interface RoadmapViewProps {
 	sprints?: Sprint[];
 	customFields?: CustomFieldDefinition[];
 	columnBy?: string;
+	/** Active view config — used to hide status columns the view filters out. */
+	viewConfig?: ViewConfig;
 	canCreate?: boolean;
+	canEdit?: boolean;
+	/** True when the view is sorted "manual" — enables drag-to-reorder. */
+	manualSort?: boolean;
+	onReorderTask?: (groupKey: string, taskId: string, newIndex: number) => void;
+	/** Moves a task to another group (drag between groups). */
+	onMoveToColumn?: (taskId: string, update: TaskFieldUpdate) => void;
 	onCreateTask?: (
 		statusId: string,
 		title: string,
@@ -84,12 +95,74 @@ export function RoadmapView({
 	sprints = [],
 	customFields = [],
 	columnBy = "status",
+	viewConfig,
 	canCreate = false,
+	canEdit = false,
+	manualSort = false,
+	onReorderTask,
+	onMoveToColumn,
 	onCreateTask,
 	onTaskClick,
 	pagination,
 }: RoadmapViewProps) {
 	const { t } = useTranslation("projects");
+	const [draggingId, setDraggingId] = useState<string | null>(null);
+	const [overGroupKey, setOverGroupKey] = useState<string | null>(null);
+	const [overTaskId, setOverTaskId] = useState<string | null>(null);
+	const isStatusGrouping = !columnBy || columnBy === "status";
+	const canDrag = canEdit && !!onMoveToColumn;
+	const canReorder = manualSort && !!onReorderTask;
+
+	const dragStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const resetDrag = () => {
+		if (dragStartTimer.current) clearTimeout(dragStartTimer.current);
+		dragStartTimer.current = null;
+		setDraggingId(null);
+		setOverGroupKey(null);
+		setOverTaskId(null);
+	};
+
+	/** Drop onto a group (`targetTaskId` null → group body) or onto a row. */
+	const handleDrop = (
+		e: React.DragEvent,
+		group: ColumnGroupDef,
+		groupTasks: Task[],
+		targetTaskId: string | null,
+	) => {
+		e.preventDefault();
+		e.stopPropagation();
+		const taskId = e.dataTransfer.getData("text/plain");
+		const task = tasks.find((tk) => tk.id === taskId);
+		resetDrag();
+		if (!task || !canDrag) return;
+
+		const colChanged = !getTaskColumnKeys(task, columnBy, viewCtx).includes(
+			group.key,
+		);
+		if (colChanged) {
+			const update = buildColumnDropUpdate(
+				columnBy,
+				group.fieldValue,
+				customFields,
+			);
+			// Keep the sprint so a status change doesn't move it to the backlog.
+			if (isStatusGrouping) update.sprint_id = task.sprint_id;
+			if (Object.keys(update).length > 0) onMoveToColumn?.(taskId, update);
+			return;
+		}
+
+		if (!canReorder || !targetTaskId || targetTaskId === taskId) return;
+		const srcIdx = groupTasks.findIndex((tk) => tk.id === taskId);
+		const targetIdx = groupTasks.findIndex((tk) => tk.id === targetTaskId);
+		if (srcIdx === -1 || targetIdx === -1) return;
+		// Land BEFORE the drop target (top-border indicator).
+		onReorderTask?.(
+			group.key,
+			taskId,
+			srcIdx < targetIdx ? targetIdx - 1 : targetIdx,
+		);
+	};
 	// Stable "now" — fixed at mount so all bars are consistent
 	const now = useMemo(() => Date.now(), []);
 
@@ -98,9 +171,24 @@ export function RoadmapView({
 		[statuses, taskTypes, members, customFields, sprints],
 	);
 
+	// Drop targets must respect the view's status filter (as Board/List do),
+	// otherwise a drop could move a task into a status the view hides.
 	const groupDefs = useMemo(
-		() => getColumnGroupDefs(columnBy, viewCtx, t),
-		[columnBy, viewCtx, t],
+		() =>
+			applyStatusFilterToColumnDefs(
+				getColumnGroupDefs(columnBy, viewCtx, t),
+				isStatusGrouping,
+				viewConfig?.filters?.statuses,
+				statuses,
+			),
+		[
+			columnBy,
+			viewCtx,
+			t,
+			isStatusGrouping,
+			viewConfig?.filters?.statuses,
+			statuses,
+		],
 	);
 
 	const defaultStatusId = useMemo(
@@ -244,40 +332,82 @@ export function RoadmapView({
 	}
 
 	// ── Task row ──────────────────────────────────────────────────────────────
-	function RoadmapTaskRow({ task }: { task: Task }) {
+	// Called as a function (not rendered as a component) so the draggable node
+	// isn't remounted by state changes mid-drag.
+	function renderTaskRow(
+		task: Task,
+		group: ColumnGroupDef,
+		groupTasks: Task[],
+	) {
 		const bar = getBar(task);
 		const type = taskTypes.find((tt) => tt.id === task.task_type_id) ?? null;
+		// Position only matters for same-group drops; cross-group drops just
+		// change the column, so don't show the "insert before" indicator.
+		const draggingInGroup = groupTasks.some((tk) => tk.id === draggingId);
 
 		return (
-			<button
-				type="button"
-				className="group flex w-full cursor-pointer border-b border-border/10 text-left last:border-0"
-				onClick={() => onTaskClick(task)}
+			// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop row slot
+			<div
+				key={task.id}
+				draggable={canDrag}
+				className={cn(
+					draggingId === task.id && "opacity-40",
+					canReorder &&
+						overTaskId === task.id &&
+						draggingId !== task.id &&
+						draggingInGroup &&
+						"border-t-2 border-primary/60",
+				)}
+				onDragStart={(e) => {
+					e.dataTransfer.effectAllowed = "move";
+					e.dataTransfer.setData("text/plain", task.id);
+					// Defer: empty groups render while dragging, and changing the
+					// layout synchronously inside dragstart makes Chrome cancel the
+					// drag (hit rows below an empty group, e.g. non-backlog statuses).
+					const id = task.id;
+					dragStartTimer.current = setTimeout(() => setDraggingId(id), 0);
+				}}
+				onDragEnd={resetDrag}
+				onDragOver={(e) => {
+					if (!canDrag) return;
+					e.preventDefault();
+					e.stopPropagation();
+					e.dataTransfer.dropEffect = "move";
+					setOverGroupKey(group.key);
+					setOverTaskId(task.id);
+				}}
+				onDrop={(e) => handleDrop(e, group, groupTasks, task.id)}
 			>
-				{/* Sticky task name */}
-				<div
-					className={cn(
-						"sticky left-0 z-10 flex shrink-0 items-center gap-2",
-						"border-r border-border/20 bg-background px-4 py-2.5",
-						"group-hover:bg-muted/30 transition-colors duration-100",
-					)}
-					style={{ width: LEFT_COL_W }}
+				<button
+					type="button"
+					className="group flex w-full cursor-pointer border-b border-border/10 text-left last:border-0"
+					onClick={() => onTaskClick(task)}
 				>
-					<span
-						className="size-1.5 shrink-0 rounded-full"
-						style={{
-							background:
-								type?.color ?? "oklch(var(--muted-foreground) / 0.25)",
-						}}
-					/>
-					<span className="min-w-0 truncate text-sm font-medium text-foreground/85">
-						{task.title}
-					</span>
-				</div>
+					{/* Sticky task name */}
+					<div
+						className={cn(
+							"sticky left-0 z-10 flex shrink-0 items-center gap-2",
+							"border-r border-border/20 bg-background px-4 py-2.5",
+							"group-hover:bg-muted/30 transition-colors duration-100",
+						)}
+						style={{ width: LEFT_COL_W }}
+					>
+						<span
+							className="size-1.5 shrink-0 rounded-full"
+							style={{
+								background:
+									type?.color ?? "oklch(var(--muted-foreground) / 0.25)",
+							}}
+						/>
+						<span className="min-w-0 truncate text-sm font-medium text-foreground/85">
+							{task.title}
+						</span>
+					</div>
 
-				{/* Chart area */}
-				<ChartCell bar={bar} />
-			</button>
+					{/* Chart area */}
+					<ChartCell bar={bar} />
+				</button>
+			</div>
 		);
 	}
 
@@ -384,17 +514,39 @@ export function RoadmapView({
 							const groupTasks = tasks.filter((task) =>
 								getTaskColumnKeys(task, columnBy, viewCtx).includes(group.key),
 							);
-							if (groupTasks.length === 0) return null;
+							// Keep empty groups as drop targets while dragging.
+							if (groupTasks.length === 0 && !(canDrag && draggingId))
+								return null;
 
 							return (
+								// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop group drop zone
 								<div
 									key={group.key}
-									className="border-b border-border/20 last:border-0"
+									className={cn(
+										"border-b border-border/20 last:border-0",
+										canDrag &&
+											overGroupKey === group.key &&
+											draggingId &&
+											"bg-primary/5",
+									)}
+									onDragOver={(e) => {
+										if (!canDrag) return;
+										e.preventDefault();
+										e.dataTransfer.dropEffect = "move";
+										setOverGroupKey(group.key);
+									}}
+									onDragLeave={(e) => {
+										if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+											setOverGroupKey(null);
+											setOverTaskId(null);
+										}
+									}}
+									onDrop={(e) => handleDrop(e, group, groupTasks, null)}
 								>
 									<GroupHeader group={group} count={groupTasks.length} />
-									{groupTasks.map((task) => (
-										<RoadmapTaskRow key={task.id} task={task} />
-									))}
+									{groupTasks.map((task) =>
+										renderTaskRow(task, group, groupTasks),
+									)}
 								</div>
 							);
 						})
