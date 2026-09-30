@@ -308,6 +308,30 @@ func (r *DocumentRepository) ListDocuments(ctx context.Context, projectID uuid.U
 	return out, hasMore, nil
 }
 
+// SearchDocuments matches query (literally, case-insensitively) against the
+// title or any inline "text" node inside the BlockNote JSON content. The
+// jsonpath walk restricts body matching to visible text so structural keys
+// like "type":"paragraph" never match.
+func (r *DocumentRepository) SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]*docdom.Document, error) {
+	pattern := "%" + escapeLikePattern(strings.TrimSpace(query)) + "%"
+	var records []documentRecord
+	err := r.db.SelectContext(ctx, &records, `SELECT `+documentCols+` FROM documents
+		WHERE project_id = $1 AND deleted_at IS NULL
+		  AND (title ILIKE $2 OR EXISTS (
+		        SELECT 1 FROM jsonb_path_query(COALESCE(content, 'null'::jsonb), 'lax $.**.text') AS t
+		        WHERE jsonb_typeof(t) = 'string' AND (t #>> '{}') ILIKE $2))
+		ORDER BY updated_at DESC, id ASC
+		LIMIT $3`, projectID.String(), pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*docdom.Document, 0, len(records))
+	for _, rec := range records {
+		out = append(out, documentFromRecord(rec))
+	}
+	return out, nil
+}
+
 // FindDocumentByID returns a single non-deleted document.
 func (r *DocumentRepository) FindDocumentByID(_ context.Context, id uuid.UUID) (*docdom.Document, error) {
 	var rec documentRecord

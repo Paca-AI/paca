@@ -127,6 +127,10 @@ func (r *fakeDocRepoIT) ListDocuments(_ context.Context, projectID uuid.UUID, fo
 	return out, false, nil
 }
 
+func (r *fakeDocRepoIT) SearchDocuments(context.Context, uuid.UUID, string, int) ([]*docdom.Document, error) {
+	return nil, nil
+}
+
 func (r *fakeDocRepoIT) FindDocumentByID(_ context.Context, id uuid.UUID) (*docdom.Document, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

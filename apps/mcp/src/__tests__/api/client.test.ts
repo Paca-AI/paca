@@ -320,6 +320,21 @@ describe("PacaAPIClient – listTasks", () => {
 		expect(url).toContain("page_size=20");
 	});
 
+	it("sends search and search_content only when a query is given", async () => {
+		vi.stubGlobal("fetch", mockFetchOk({ items: [] }));
+		await makeClient().listTasks("proj-1", {
+			search: "log in",
+			searchContent: true,
+		});
+		const url = (fetch as any).mock.calls[0][0] as string;
+		expect(url).toContain("search=log%20in");
+		expect(url).toContain("search_content=true");
+
+		vi.stubGlobal("fetch", mockFetchOk({ items: [] }));
+		await makeClient().listTasks("proj-1", { searchContent: true });
+		expect((fetch as any).mock.calls[0][0]).not.toContain("search");
+	});
+
 	it("returns nextCursor from response", async () => {
 		vi.stubGlobal(
 			"fetch",

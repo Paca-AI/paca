@@ -160,6 +160,8 @@ export class PacaAPIClient {
 			assigneeId?: string;
 			taskTypeIds?: string[];
 			parentTaskId?: string;
+			search?: string;
+			searchContent?: boolean;
 			pageSize?: number;
 			cursor?: string;
 		} = {},
@@ -178,6 +180,10 @@ export class PacaAPIClient {
 			params.push(`task_type_ids=${options.taskTypeIds.join(",")}`);
 		if (options.parentTaskId !== undefined)
 			params.push(`parent_task_id=${options.parentTaskId}`);
+		if (options.search) {
+			params.push(`search=${encodeURIComponent(options.search)}`);
+			if (options.searchContent) params.push("search_content=true");
+		}
 
 		const queryString = params.length > 0 ? `?${params.join("&")}` : "";
 		const response = await this.get(

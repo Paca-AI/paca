@@ -231,6 +231,41 @@ func (h *DocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Request) 
 	presenter.OK(w, r, map[string]any{"items": resp, "next_cursor": nextCursor})
 }
 
+// SearchDocuments handles GET /projects/:projectId/docs/search.
+// Query params: q (required) — text to find in a document's title or body,
+// case-insensitive; limit (1-50, default 20).
+func (h *DocumentHandler) SearchDocuments(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "q is required"))
+		return
+	}
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 50 {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "limit must be an integer between 1 and 50"))
+			return
+		}
+		limit = n
+	}
+	hits, err := h.svc.SearchDocuments(r.Context(), projectID, q, limit)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.DocumentSearchHitResponse, 0, len(hits))
+	for _, hit := range hits {
+		resp = append(resp, dto.DocumentSearchHitFromEntity(hit))
+	}
+	presenter.OK(w, r, map[string]any{"items": resp})
+}
+
 // GetDocument handles GET /projects/:projectId/docs/:docId.
 func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)

@@ -34,6 +34,10 @@ This document lists all MCP tools implemented for the Paca API server.
 - `update_document` - Update an existing document
 - `delete_document` - Delete a document
 
+### Search (2 tools)
+- `search_docs` - Keyword search over document titles and body text; returns path, match location and an excerpt
+- `search_tasks` - Keyword search over task title, `#number` and description text; returns excerpts
+
 ### 5. Project Members (5 tools)
 - `list_project_members` - List all members of a project
 - `add_project_member` - Add a member to a project

@@ -41,6 +41,7 @@ import {
 } from "./member-tools.js";
 import { getProjectTools, handleProjectTool } from "./project-tools.js";
 import { getRepoTools, handleRepoTool } from "./repo-tools.js";
+import { getSearchTools, handleSearchTool } from "./search-tools.js";
 import { getSprintTools, handleSprintTool } from "./sprint-tools.js";
 import {
 	getTaskActivityTools,
@@ -68,6 +69,7 @@ export function getAllTools(): Tool[] {
 		...getTaskTools(),
 		...getSprintTools(),
 		...getFilesystemDocTools(),
+		...getSearchTools(),
 		...getProjectMemberTools(),
 		...getProjectRoleTools(),
 		...getTaskTypeTools(),
@@ -161,6 +163,11 @@ export async function handleToolCall(
 				clients.apiClient,
 				clients.docClient,
 			);
+		}
+
+		// Search tools
+		if (name === "search_docs" || name === "search_tasks") {
+			return handleSearchTool(name, args, clients.apiClient, clients.docClient);
 		}
 
 		// Project member and role tools

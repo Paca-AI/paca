@@ -591,6 +591,10 @@ func New(deps Deps) http.Handler {
 						r.With(require.Project(authz.PermissionDocsWrite)).Delete("/{folderId}", deps.Document.DeleteFolder)
 					})
 
+					// Documents — search (registered before /{docId} so "search"
+					// isn't parsed as a document ID)
+					r.With(require.ProjectOrPublic(authz.PermissionDocsRead)).Get("/search", deps.Document.SearchDocuments)
+
 					// Documents — collection
 					r.With(require.ProjectOrPublic(authz.PermissionDocsRead)).Get("/", deps.Document.ListDocuments)
 					r.With(require.Project(authz.PermissionDocsWrite)).Post("/", deps.Document.CreateDocument)

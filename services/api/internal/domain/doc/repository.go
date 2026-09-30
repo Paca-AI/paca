@@ -47,6 +47,12 @@ type DocumentRepository interface {
 	// the document EncodeDocumentCursor produced for the last row of the
 	// previous page.
 	ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID, search *string, cursor *string, limit *int) (docs []*Document, hasMore bool, err error)
+	// SearchDocuments returns up to limit non-deleted documents of a project
+	// whose title OR body text contains query (case-insensitive, matched
+	// literally). Body text means the inline "text" nodes of the BlockNote
+	// JSON, not its structural keys. Results include Content so the caller can
+	// build snippets; ordered updated_at DESC, id ASC.
+	SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]*Document, error)
 	// FindDocumentByID returns a single non-deleted document.
 	FindDocumentByID(ctx context.Context, id uuid.UUID) (*Document, error)
 	// CreateDocument persists a new document.
