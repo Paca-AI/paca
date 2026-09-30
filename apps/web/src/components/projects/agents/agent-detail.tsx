@@ -58,6 +58,7 @@ import {
 	type AgentAccessMode,
 	type AgentMCPServer,
 	type AgentSkill,
+	type AgentType,
 	addAgentAccessGrant,
 	addEnvVar,
 	addGlobalEnvVar,
@@ -1729,10 +1730,12 @@ function AddSkillDialog({
 function SkillsTab({
 	projectId,
 	agentId,
+	agentType,
 	canWrite,
 }: {
 	projectId?: string;
 	agentId: string;
+	agentType: AgentType;
 	canWrite: boolean;
 }) {
 	const { t } = useTranslation("projects");
@@ -1742,7 +1745,9 @@ function SkillsTab({
 			? agentSkillsQueryOptions(projectId, agentId)
 			: globalAgentSkillsQueryOptions(agentId),
 	);
-	const { data: systemSkills = [] } = useQuery(systemSkillsQueryOptions());
+	const { data: systemSkills = [] } = useQuery(
+		systemSkillsQueryOptions(agentType),
+	);
 	const [addOpen, setAddOpen] = useState(false);
 
 	const skillsKey = (
@@ -2382,6 +2387,7 @@ export function AgentDetailView({
 						<SkillsTab
 							projectId={projectId}
 							agentId={agentId}
+							agentType={agent.agent_type}
 							canWrite={canWrite}
 						/>
 					)}

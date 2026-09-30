@@ -1012,12 +1012,33 @@ export async function deleteMCPServer(
 	);
 }
 
-export async function listSystemSkills(): Promise<SystemSkill[]> {
-	const { data } =
-		await apiClient.instance.get<SuccessEnvelope<{ skills: SystemSkill[] }>>(
-			"/skills",
-		);
+async function fetchSkills(target?: "agent"): Promise<SystemSkill[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ skills: SystemSkill[] }>
+	>("/skills", { params: target ? { target } : undefined });
 	return data.data.skills;
+}
+
+// A plugin skill's path is "<plugin>/<name>/SKILL.md"; a bundled skill's is
+// "<name>/SKILL.md" (or the legacy "paca.md").
+const isPluginSkill = (s: SystemSkill) => s.path.split("/").length === 3;
+
+// listSystemSkills returns the Paca-provided skills for an agent type. An llm
+// agent is delivered the "agent" flavor of the bundled skills (no CLI-only
+// ones like paca-setup); every other type gets the default "cli" flavor.
+// Plugin skills are only in the cli flavor, so for llm they're merged in from
+// it to keep them visible.
+export async function listSystemSkills(
+	agentType: AgentType,
+): Promise<SystemSkill[]> {
+	if (agentType !== "llm") return fetchSkills();
+	const [bundled, all] = await Promise.all([
+		fetchSkills("agent"),
+		fetchSkills(),
+	]);
+	return [...bundled, ...all.filter(isPluginSkill)].sort((x, y) =>
+		x.name.localeCompare(y.name),
+	);
 }
 
 // ── Skills ────────────────────────────────────────────────────────────────────
@@ -1613,10 +1634,10 @@ export const agentSkillsQueryOptions = (projectId: string, agentId: string) =>
 		queryFn: () => listSkills(projectId, agentId),
 	});
 
-export const systemSkillsQueryOptions = () =>
+export const systemSkillsQueryOptions = (agentType: AgentType) =>
 	queryOptions({
-		queryKey: ["skills", "system"] as const,
-		queryFn: listSystemSkills,
+		queryKey: ["skills", "system", agentType] as const,
+		queryFn: () => listSystemSkills(agentType),
 		staleTime: 5 * 60 * 1000,
 	});
 
