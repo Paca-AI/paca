@@ -2112,6 +2112,7 @@ export function InteractionLayout({
 						sprints={sprints}
 						customFields={customFields}
 						columnBy={columnBy}
+						viewConfig={activeViewConfig}
 						canCreate={canCreate}
 						canEdit={canEdit}
 						manualSort={isManualSort}

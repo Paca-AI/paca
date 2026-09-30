@@ -1,8 +1,8 @@
 import { CalendarDays } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { Sprint, Task } from "@/lib/interaction-api";
+import type { Sprint, Task, ViewConfig } from "@/lib/interaction-api";
 import type {
 	CustomFieldDefinition,
 	ProjectMember,
@@ -12,6 +12,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { AddTaskRow } from "./add-task-row";
 import {
+	applyStatusFilterToColumnDefs,
 	buildColumnDropUpdate,
 	type ColumnGroupDef,
 	getColumnGroupDefs,
@@ -49,6 +50,8 @@ interface RoadmapViewProps {
 	sprints?: Sprint[];
 	customFields?: CustomFieldDefinition[];
 	columnBy?: string;
+	/** Active view config — used to hide status columns the view filters out. */
+	viewConfig?: ViewConfig;
 	canCreate?: boolean;
 	canEdit?: boolean;
 	/** True when the view is sorted "manual" — enables drag-to-reorder. */
@@ -92,6 +95,7 @@ export function RoadmapView({
 	sprints = [],
 	customFields = [],
 	columnBy = "status",
+	viewConfig,
 	canCreate = false,
 	canEdit = false,
 	manualSort = false,
@@ -109,7 +113,11 @@ export function RoadmapView({
 	const canDrag = canEdit && !!onMoveToColumn;
 	const canReorder = manualSort && !!onReorderTask;
 
+	const dragStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 	const resetDrag = () => {
+		if (dragStartTimer.current) clearTimeout(dragStartTimer.current);
+		dragStartTimer.current = null;
 		setDraggingId(null);
 		setOverGroupKey(null);
 		setOverTaskId(null);
@@ -163,9 +171,24 @@ export function RoadmapView({
 		[statuses, taskTypes, members, customFields, sprints],
 	);
 
+	// Drop targets must respect the view's status filter (as Board/List do),
+	// otherwise a drop could move a task into a status the view hides.
 	const groupDefs = useMemo(
-		() => getColumnGroupDefs(columnBy, viewCtx, t),
-		[columnBy, viewCtx, t],
+		() =>
+			applyStatusFilterToColumnDefs(
+				getColumnGroupDefs(columnBy, viewCtx, t),
+				isStatusGrouping,
+				viewConfig?.filters?.statuses,
+				statuses,
+			),
+		[
+			columnBy,
+			viewCtx,
+			t,
+			isStatusGrouping,
+			viewConfig?.filters?.statuses,
+			statuses,
+		],
 	);
 
 	const defaultStatusId = useMemo(
@@ -318,6 +341,9 @@ export function RoadmapView({
 	) {
 		const bar = getBar(task);
 		const type = taskTypes.find((tt) => tt.id === task.task_type_id) ?? null;
+		// Position only matters for same-group drops; cross-group drops just
+		// change the column, so don't show the "insert before" indicator.
+		const draggingInGroup = groupTasks.some((tk) => tk.id === draggingId);
 
 		return (
 			// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop row slot
@@ -329,6 +355,7 @@ export function RoadmapView({
 					canReorder &&
 						overTaskId === task.id &&
 						draggingId !== task.id &&
+						draggingInGroup &&
 						"border-t-2 border-primary/60",
 				)}
 				onDragStart={(e) => {
@@ -338,7 +365,7 @@ export function RoadmapView({
 					// layout synchronously inside dragstart makes Chrome cancel the
 					// drag (hit rows below an empty group, e.g. non-backlog statuses).
 					const id = task.id;
-					setTimeout(() => setDraggingId(id), 0);
+					dragStartTimer.current = setTimeout(() => setDraggingId(id), 0);
 				}}
 				onDragEnd={resetDrag}
 				onDragOver={(e) => {
