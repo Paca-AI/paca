@@ -59,6 +59,19 @@ describe("PacaAPIDocClient", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("searchDocuments hits /docs/search with an encoded query and limit", async () => {
+		fetchMock.mockResolvedValue(okEnvelope({ items: [{ id: "d1" }] }));
+		const hits = await new PacaAPIDocClient(CONFIG).searchDocuments(
+			"p1",
+			"a&b c",
+			5,
+		);
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			"https://api.example.com/api/v1/projects/p1/docs/search?q=a%26b%20c&limit=5",
+		);
+		expect(hits).toEqual([{ id: "d1" }]);
+	});
+
 	// ---------------------------------------------------------------------------
 	// Basic request behaviour
 	// ---------------------------------------------------------------------------

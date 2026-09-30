@@ -38,6 +38,15 @@ vi.mock("../../tools/filesystem-doc-tools.js", () => ({
 		.fn()
 		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
 }));
+vi.mock("../../tools/search-tools.js", () => ({
+	getSearchTools: vi.fn(() => [
+		{ name: "search_docs" },
+		{ name: "search_tasks" },
+	]),
+	handleSearchTool: vi
+		.fn()
+		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
+}));
 vi.mock("../../tools/member-tools.js", () => ({
 	getProjectMemberTools: vi.fn(() => [{ name: "list_project_members" }]),
 	getProjectRoleTools: vi.fn(() => [{ name: "list_project_roles" }]),
@@ -118,6 +127,7 @@ import { getAllTools, handleToolCall } from "../../tools/index.js";
 import { handleProjectMemberTool } from "../../tools/member-tools.js";
 import { handleProjectTool } from "../../tools/project-tools.js";
 import { handleRepoTool } from "../../tools/repo-tools.js";
+import { handleSearchTool } from "../../tools/search-tools.js";
 import { handleSprintTool } from "../../tools/sprint-tools.js";
 import { handleTaskActivityTool } from "../../tools/task-activity-tools.js";
 import { handleTaskTool } from "../../tools/task-tools.js";
@@ -247,6 +257,21 @@ describe("handleToolCall – document tool routing", () => {
 		await handleToolCall(makeRequest("list_docs"), stubClients);
 		expect(handleFilesystemDocTool).toHaveBeenCalledWith(
 			"list_docs",
+			{},
+			stubClients.apiClient,
+			stubClients.docClient,
+		);
+	});
+});
+
+describe("handleToolCall – search tool routing", () => {
+	it.each([
+		"search_docs",
+		"search_tasks",
+	])("routes %s to handleSearchTool", async (name) => {
+		await handleToolCall(makeRequest(name), stubClients);
+		expect(handleSearchTool).toHaveBeenCalledWith(
+			name,
 			{},
 			stubClients.apiClient,
 			stubClients.docClient,

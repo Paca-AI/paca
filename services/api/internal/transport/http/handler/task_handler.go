@@ -527,6 +527,7 @@ func parseImportanceRanges(raw string) ([]taskdom.IntRange, error) {
 //   - task_type_ids=<uuid,uuid>
 //   - parent_task_id=<uuid>
 //   - search=<text> (matches title or "#<task_number>", case-insensitive)
+//   - search_content=true (with search: also match description text)
 //   - custom_field_filters=<json> (object keyed by custom field key; see
 //     customFieldFilterParam for the shape of each entry)
 //   - start_date_after=<YYYY-MM-DD>, start_date_before=<YYYY-MM-DD>
@@ -628,6 +629,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 	if raw := strings.TrimSpace(r.URL.Query().Get("search")); raw != "" {
 		filter.Search = &raw
+		filter.SearchContent = r.URL.Query().Get("search_content") == "true"
 	}
 	if raw := strings.TrimSpace(r.URL.Query().Get("custom_field_filters")); raw != "" {
 		cfFilters, err := parseCustomFieldFilters(r.Context(), h.svc, projectID, raw)

@@ -143,6 +143,9 @@ type TaskFilter struct {
 	// Search, when non-nil and non-blank, restricts results to tasks whose title
 	// or "#<task_number>" id contains the text (case-insensitive).
 	Search *string
+	// SearchContent, when true and Search is set, also matches the task's
+	// description text (inline BlockNote "text" nodes), not just title/number.
+	SearchContent bool
 	// CustomFieldFilters filters tasks by custom field values, keyed by field key.
 	CustomFieldFilters map[string]CustomFieldFilterQuery
 	// StartDateAfter/StartDateBefore filter tasks by start_date (inclusive,

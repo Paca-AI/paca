@@ -55,6 +55,10 @@ type DocumentService interface {
 	// ListDocuments — see Repository.ListDocuments's doc comment for the
 	// limit/cursor/hasMore pagination contract.
 	ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID, search *string, cursor *string, limit *int) (docs []*Document, hasMore bool, err error)
+	// SearchDocuments finds documents whose title or body contains query and
+	// returns each with a match location and excerpt. limit is clamped to
+	// [1, 50] (default 20 when <= 0).
+	SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]SearchHit, error)
 	// GetDocument returns a single document by ID.
 	GetDocument(ctx context.Context, id uuid.UUID) (*Document, error)
 	// CreateDocument creates a new document in the project.

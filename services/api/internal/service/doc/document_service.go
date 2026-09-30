@@ -136,6 +136,29 @@ func (s *Service) ListDocuments(ctx context.Context, projectID uuid.UUID, folder
 	return s.repo.ListDocuments(ctx, projectID, folderID, search, cursor, limit)
 }
 
+// SearchDocuments finds documents whose title or body contains query.
+func (s *Service) SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]docdom.SearchHit, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	docs, err := s.repo.SearchDocuments(ctx, projectID, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	hits := make([]docdom.SearchHit, 0, len(docs))
+	for _, d := range docs {
+		hits = append(hits, docdom.NewSearchHit(d, query))
+	}
+	return hits, nil
+}
+
 // GetDocument returns a single document.
 func (s *Service) GetDocument(ctx context.Context, id uuid.UUID) (*docdom.Document, error) {
 	return s.repo.FindDocumentByID(ctx, id)

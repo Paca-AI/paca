@@ -222,6 +222,16 @@ export interface Document {
 	updated_at: string;
 }
 
+export interface DocumentSearchHit {
+	id: string;
+	project_id?: string | null;
+	folder_id?: string | null;
+	title: string;
+	matched_in: "title" | "content";
+	snippet?: string;
+	updated_at: string;
+}
+
 export interface DocumentListResult {
 	items: Document[];
 }

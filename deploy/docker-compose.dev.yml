@@ -372,13 +372,15 @@ services:
       # session/new forever. This Dockerfile adds Node.js and
       # pre-installs the MCP package specifically to avoid this.
       #
-      # For local dev, build a locally-tagged image before starting this
-      # service (CD publishes ghcr.io/paca-ai/paca-agent-server-goose from
-      # this same Dockerfile for real releases). Run from the repo root, matching
-      # how README.md/CONTRIBUTING.md document starting this whole stack:
+      # Defaults to the published image (CD builds ghcr.io/paca-ai/
+      # paca-agent-server-goose from this same Dockerfile), so a fresh
+      # checkout works without building anything. To test local changes to
+      # services/agent-server instead, build and point at your own tag
+      # (run from the repo root):
       #   docker build -f services/agent-server/Dockerfile \
       #     -t paca-agent-server-goose:dev services/agent-server
-      AGENT_SERVER_IMAGE: "paca-agent-server-goose:dev"
+      #   AGENT_SERVER_IMAGE=paca-agent-server-goose:dev docker compose ... up
+      AGENT_SERVER_IMAGE: ${AGENT_SERVER_IMAGE:-ghcr.io/paca-ai/paca-agent-server-goose:latest}
       # Runs every sandbox's built-in Paca MCP server from this checkout's
       # apps/mcp instead of the image's globally npm-installed
       # @paca-ai/paca-mcp (see services/agent-server/Dockerfile) — so a

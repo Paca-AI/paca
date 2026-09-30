@@ -523,8 +523,15 @@ func applyTaskFilter(b *queryBuilder, filter taskdom.TaskFilter) {
 			b.args = append(b.args, pattern)
 			p2 := b.placeholder()
 			b.args = append(b.args, pattern)
-			b.whereClauses = append(b.whereClauses, fmt.Sprintf(
-				"(title ILIKE %s OR ('#' || task_number::text) ILIKE %s)", p1, p2))
+			clause := fmt.Sprintf("title ILIKE %s OR ('#' || task_number::text) ILIKE %s", p1, p2)
+			if filter.SearchContent {
+				p3 := b.placeholder()
+				b.args = append(b.args, pattern)
+				clause += fmt.Sprintf(` OR EXISTS (
+					SELECT 1 FROM jsonb_path_query(COALESCE(description, 'null'::jsonb), 'lax $.**.text') AS t
+					WHERE jsonb_typeof(t) = 'string' AND (t #>> '{}') ILIKE %s)`, p3)
+			}
+			b.whereClauses = append(b.whereClauses, "("+clause+")")
 		}
 	}
 
