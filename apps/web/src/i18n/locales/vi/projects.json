@@ -289,6 +289,11 @@
 					"urlLabel": "URL",
 					"cancel": "Hủy",
 					"addServer": "Thêm máy chủ"
+				},
+				"system": {
+					"title": "Máy chủ MCP hệ thống",
+					"description": "Do Paca cung cấp cho mọi agent. Không thể chỉnh sửa.",
+					"pacaDetail": "Công cụ tích hợp sẵn của Paca (dự án, tác vụ, tài liệu)"
 				}
 			},
 			"envVars": {
@@ -336,6 +341,10 @@
 					"nameReserved": "Tên đó được dành riêng cho scaffolding nội bộ của Paca. Hãy chọn một tên khác.",
 					"nameInvalid": "Tên skill không được là \".\", \"..\" hoặc chứa dấu gạch chéo.",
 					"addFailed": "Không thể thêm skill. Vui lòng thử lại."
+				},
+				"system": {
+					"title": "Kỹ năng hệ thống",
+					"description": "Được đóng gói cùng Paca và có sẵn cho mọi agent. Không thể chỉnh sửa."
 				}
 			},
 			"access": {
@@ -370,6 +379,9 @@
 					"dateTo": "Đến ngày",
 					"clearAll": "Xóa bộ lọc"
 				}
+			},
+			"system": {
+				"badge": "Hệ thống"
 			}
 		},
 		"conversationView": {

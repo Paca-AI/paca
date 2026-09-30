@@ -151,13 +151,18 @@ export function PropertiesPanel({
 		colorDot: s.color ?? undefined,
 	}));
 
+	const selectableSprints = sprints.filter(
+		(s) => s.status !== "completed" || s.id === task.sprint_id,
+	);
 	const sprintOptions: SelectOption[] = [
 		{
 			value: "__backlog__",
 			label: t("taskDetail.properties.productBacklog"),
 			icon: <BookOpen className="size-3 shrink-0 opacity-60" />,
 		},
-		...sprints.map((s) => ({
+		// Completed sprints can't be assigned to, but keep the task's current
+		// sprint so the select still shows its value.
+		...selectableSprints.map((s) => ({
 			value: s.id,
 			label: s.name,
 			icon: (
@@ -361,8 +366,8 @@ export function PropertiesPanel({
 								v === "__backlog__" ? null : typeof v === "string" ? v : null,
 						})
 					}
-					canEdit={canEdit && sprints.length > 0}
-					hidden={!task.sprint_id && !(canEdit && sprints.length > 0)}
+					canEdit={canEdit && selectableSprints.length > 0}
+					hidden={!task.sprint_id && !(canEdit && selectableSprints.length > 0)}
 				/>
 
 				{/* Epic field – normal tasks only */}

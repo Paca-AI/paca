@@ -289,6 +289,11 @@
 					"urlLabel": "URL",
 					"cancel": "Cancelar",
 					"addServer": "Adicionar servidor"
+				},
+				"system": {
+					"title": "Servidores MCP do sistema",
+					"description": "Fornecidos pelo Paca a todos os agentes. Não podem ser editados.",
+					"pacaDetail": "Ferramentas integradas do Paca (projetos, tarefas, documentos)"
 				}
 			},
 			"envVars": {
@@ -336,6 +341,10 @@
 					"nameReserved": "Esse nome é reservado para o scaffolding interno do Paca. Escolha outro.",
 					"nameInvalid": "O nome da skill não pode ser \".\", \"..\" nem conter uma barra.",
 					"addFailed": "Falha ao adicionar a skill. Tente novamente."
+				},
+				"system": {
+					"title": "Habilidades do sistema",
+					"description": "Incluídas no Paca e disponíveis para todos os agentes. Não podem ser editadas."
 				}
 			},
 			"access": {
@@ -370,6 +379,9 @@
 					"dateTo": "Até",
 					"clearAll": "Limpar filtros"
 				}
+			},
+			"system": {
+				"badge": "Sistema"
 			}
 		},
 		"conversationView": {

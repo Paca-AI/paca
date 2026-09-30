@@ -289,6 +289,11 @@
 					"urlLabel": "URL",
 					"cancel": "Annuler",
 					"addServer": "Ajouter le serveur"
+				},
+				"system": {
+					"title": "Serveurs MCP système",
+					"description": "Fournis par Paca à tous les agents. Ils ne peuvent pas être modifiés.",
+					"pacaDetail": "Outils Paca intégrés (projets, tâches, documents)"
 				}
 			},
 			"envVars": {
@@ -336,6 +341,10 @@
 					"nameReserved": "Ce nom est réservé à l'échafaudage interne de Paca. Choisissez-en un autre.",
 					"nameInvalid": "Le nom de la compétence ne peut pas être « . », « .. » ni contenir de barre oblique.",
 					"addFailed": "Échec de l'ajout de la compétence. Veuillez réessayer."
+				},
+				"system": {
+					"title": "Compétences système",
+					"description": "Fournies avec Paca et disponibles pour tous les agents. Elles ne peuvent pas être modifiées."
 				}
 			},
 			"access": {
@@ -370,6 +379,9 @@
 					"dateTo": "Au",
 					"clearAll": "Effacer les filtres"
 				}
+			},
+			"system": {
+				"badge": "Système"
 			}
 		},
 		"conversationView": {

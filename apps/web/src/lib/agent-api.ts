@@ -122,6 +122,16 @@ export interface AgentSkill {
 	updated_at: string;
 }
 
+// SystemSkill is a Paca-provided skill from GET /skills: either one of Paca's
+// bundled skills or one contributed by an enabled plugin (the default "cli"
+// flavor — ?target=agent would omit plugin skills). Neither is an agent-owned
+// agent_skills row. Read-only — it isn't an agent-owned record, so it has no id/toggle.
+export interface SystemSkill {
+	name: string;
+	path: string;
+	content: string;
+}
+
 export interface AgentEnvVar {
 	id: string;
 	agent_id: string;
@@ -1002,6 +1012,14 @@ export async function deleteMCPServer(
 	);
 }
 
+export async function listSystemSkills(): Promise<SystemSkill[]> {
+	const { data } =
+		await apiClient.instance.get<SuccessEnvelope<{ skills: SystemSkill[] }>>(
+			"/skills",
+		);
+	return data.data.skills;
+}
+
 // ── Skills ────────────────────────────────────────────────────────────────────
 
 export async function listSkills(
@@ -1593,6 +1611,13 @@ export const agentSkillsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "skills"],
 		queryFn: () => listSkills(projectId, agentId),
+	});
+
+export const systemSkillsQueryOptions = () =>
+	queryOptions({
+		queryKey: ["skills", "system"] as const,
+		queryFn: listSystemSkills,
+		staleTime: 5 * 60 * 1000,
 	});
 
 export const agentEnvVarsQueryOptions = (projectId: string, agentId: string) =>

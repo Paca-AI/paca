@@ -289,6 +289,11 @@
 					"urlLabel": "URL",
 					"cancel": "キャンセル",
 					"addServer": "サーバーを追加"
+				},
+				"system": {
+					"title": "システム MCP サーバー",
+					"description": "Paca がすべてのエージェントに提供します。編集はできません。",
+					"pacaDetail": "Paca 組み込みツール（プロジェクト、タスク、ドキュメント）"
 				}
 			},
 			"envVars": {
@@ -336,6 +341,10 @@
 					"nameReserved": "その名前はPaca自体の内部構造用に予約されています。別の名前を選択してください。",
 					"nameInvalid": "スキル名に「.」「..」を使用したり、スラッシュを含めたりすることはできません。",
 					"addFailed": "スキルの追加に失敗しました。もう一度お試しください。"
+				},
+				"system": {
+					"title": "システムスキル",
+					"description": "Paca に同梱され、すべてのエージェントで利用できます。編集はできません。"
 				}
 			},
 			"access": {
@@ -370,6 +379,9 @@
 					"dateTo": "終了日",
 					"clearAll": "フィルターをクリア"
 				}
+			},
+			"system": {
+				"badge": "システム"
 			}
 		},
 		"conversationView": {
