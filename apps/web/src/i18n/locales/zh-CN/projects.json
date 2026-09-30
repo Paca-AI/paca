@@ -289,6 +289,11 @@
 					"urlLabel": "URL",
 					"cancel": "取消",
 					"addServer": "添加服务器"
+				},
+				"system": {
+					"title": "系统 MCP 服务器",
+					"description": "由 Paca 提供给所有智能体，无法编辑。",
+					"pacaDetail": "Paca 内置工具（项目、任务、文档）"
 				}
 			},
 			"envVars": {
@@ -336,6 +341,10 @@
 					"nameReserved": "该名称已被 Paca 自身的内部脚手架保留，请选择其他名称。",
 					"nameInvalid": "技能名称不能是“.”“..”，也不能包含斜杠。",
 					"addFailed": "添加技能失败，请重试。"
+				},
+				"system": {
+					"title": "系统技能",
+					"description": "随 Paca 内置并对所有智能体可用，无法编辑。"
 				}
 			},
 			"access": {
@@ -370,6 +379,9 @@
 					"dateTo": "结束日期",
 					"clearAll": "清除筛选"
 				}
+			},
+			"system": {
+				"badge": "系统"
 			}
 		},
 		"conversationView": {

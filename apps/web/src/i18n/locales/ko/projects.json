@@ -289,6 +289,11 @@
 					"urlLabel": "URL",
 					"cancel": "취소",
 					"addServer": "서버 추가"
+				},
+				"system": {
+					"title": "시스템 MCP 서버",
+					"description": "Paca가 모든 에이전트에 제공합니다. 편집할 수 없습니다.",
+					"pacaDetail": "Paca 내장 도구(프로젝트, 작업, 문서)"
 				}
 			},
 			"envVars": {
@@ -336,6 +341,10 @@
 					"nameReserved": "해당 이름은 Paca 자체 스캐폴딩용으로 예약되어 있습니다. 다른 이름을 선택하세요.",
 					"nameInvalid": "스킬 이름은 \".\", \"..\"일 수 없으며 슬래시를 포함할 수 없습니다.",
 					"addFailed": "스킬을 추가하지 못했습니다. 다시 시도해 주세요."
+				},
+				"system": {
+					"title": "시스템 스킬",
+					"description": "Paca에 포함되어 모든 에이전트에서 사용할 수 있습니다. 편집할 수 없습니다."
 				}
 			},
 			"access": {
@@ -370,6 +379,9 @@
 					"dateTo": "종료일",
 					"clearAll": "필터 초기화"
 				}
+			},
+			"system": {
+				"badge": "시스템"
 			}
 		},
 		"conversationView": {

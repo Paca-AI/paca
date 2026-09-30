@@ -58,6 +58,7 @@ import {
 	type AgentAccessMode,
 	type AgentMCPServer,
 	type AgentSkill,
+	type AgentType,
 	addAgentAccessGrant,
 	addEnvVar,
 	addGlobalEnvVar,
@@ -83,6 +84,7 @@ import {
 	globalAgentSkillsQueryOptions,
 	llmModelsQueryOptions,
 	removeAgentAccessGrant,
+	systemSkillsQueryOptions,
 	updateAgent,
 	updateGlobalAgent,
 	updateGlobalMCPServer,
@@ -1007,6 +1009,54 @@ function VerifyCLILoginPanel({
 	);
 }
 
+// ── System (read-only) rows ───────────────────────────────────────────────────
+// Paca-provided MCP servers/skills every agent gets regardless of its own
+// configuration. Shown for visibility only: always on, never editable.
+
+function SystemResourceRow({
+	icon,
+	name,
+	detail,
+}: {
+	icon: React.ReactNode;
+	name: string;
+	detail?: string;
+}) {
+	const { t } = useTranslation("projects");
+	return (
+		<div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-4 py-3">
+			<div className="flex items-center gap-3 min-w-0">
+				{icon}
+				<div className="min-w-0">
+					<div className="flex items-center gap-2">
+						<p className="text-sm font-medium truncate">{name}</p>
+						<Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+							{t("agents.detail.system.badge")}
+						</Badge>
+					</div>
+					{detail && (
+						<p className="text-xs text-muted-foreground truncate">{detail}</p>
+					)}
+				</div>
+			</div>
+			<Switch checked disabled aria-label={name} />
+		</div>
+	);
+}
+
+// skillDescription pulls the one-line description out of a bundled skill's
+// YAML frontmatter (folded/quoted forms included); "" when there isn't one.
+function skillDescription(content: string): string {
+	const fm = content.match(/^---\s*\n([\s\S]*?)\n---/);
+	if (!fm) return "";
+	const m = fm[1].match(
+		/^description:\s*(?:[>|][-+]?\s*\n((?:[ \t]+.*\n?)+)|(.*))$/m,
+	);
+	if (!m) return "";
+	const raw = (m[1] ?? m[2] ?? "").replace(/\s*\n\s*/g, " ").trim();
+	return raw.replace(/^(["'])(.*)\1$/, "$2");
+}
+
 // ── MCP Servers Tab ───────────────────────────────────────────────────────────
 
 function AddMCPServerDialog({
@@ -1273,6 +1323,22 @@ function MCPServersTab({
 					))}
 				</div>
 			)}
+
+			<div className="space-y-2">
+				<div>
+					<p className="text-sm font-medium">
+						{t("agents.detail.mcp.system.title")}
+					</p>
+					<p className="text-xs text-muted-foreground">
+						{t("agents.detail.mcp.system.description")}
+					</p>
+				</div>
+				<SystemResourceRow
+					icon={<Server className="size-4 text-muted-foreground shrink-0" />}
+					name="paca"
+					detail={t("agents.detail.mcp.system.pacaDetail")}
+				/>
+			</div>
 
 			<AddMCPServerDialog
 				projectId={projectId}
@@ -1664,10 +1730,12 @@ function AddSkillDialog({
 function SkillsTab({
 	projectId,
 	agentId,
+	agentType,
 	canWrite,
 }: {
 	projectId?: string;
 	agentId: string;
+	agentType: AgentType;
 	canWrite: boolean;
 }) {
 	const { t } = useTranslation("projects");
@@ -1676,6 +1744,9 @@ function SkillsTab({
 		projectId
 			? agentSkillsQueryOptions(projectId, agentId)
 			: globalAgentSkillsQueryOptions(agentId),
+	);
+	const { data: systemSkills = [] } = useQuery(
+		systemSkillsQueryOptions(agentType),
 	);
 	const [addOpen, setAddOpen] = useState(false);
 
@@ -1774,6 +1845,27 @@ function SkillsTab({
 								)}
 							</div>
 						</div>
+					))}
+				</div>
+			)}
+
+			{systemSkills.length > 0 && (
+				<div className="space-y-2">
+					<div>
+						<p className="text-sm font-medium">
+							{t("agents.detail.skills.system.title")}
+						</p>
+						<p className="text-xs text-muted-foreground">
+							{t("agents.detail.skills.system.description")}
+						</p>
+					</div>
+					{systemSkills.map((s) => (
+						<SystemResourceRow
+							key={s.path}
+							icon={<Code2 className="size-4 text-muted-foreground shrink-0" />}
+							name={s.name}
+							detail={skillDescription(s.content)}
+						/>
 					))}
 				</div>
 			)}
@@ -2295,6 +2387,7 @@ export function AgentDetailView({
 						<SkillsTab
 							projectId={projectId}
 							agentId={agentId}
+							agentType={agent.agent_type}
 							canWrite={canWrite}
 						/>
 					)}

@@ -122,6 +122,16 @@ export interface AgentSkill {
 	updated_at: string;
 }
 
+// SystemSkill is a Paca-provided skill from GET /skills: either one of Paca's
+// bundled skills or one contributed by an enabled plugin (the default "cli"
+// flavor — ?target=agent would omit plugin skills). Neither is an agent-owned
+// agent_skills row. Read-only — it isn't an agent-owned record, so it has no id/toggle.
+export interface SystemSkill {
+	name: string;
+	path: string;
+	content: string;
+}
+
 export interface AgentEnvVar {
 	id: string;
 	agent_id: string;
@@ -1002,6 +1012,35 @@ export async function deleteMCPServer(
 	);
 }
 
+async function fetchSkills(target?: "agent"): Promise<SystemSkill[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ skills: SystemSkill[] }>
+	>("/skills", { params: target ? { target } : undefined });
+	return data.data.skills;
+}
+
+// A plugin skill's path is "<plugin>/<name>/SKILL.md"; a bundled skill's is
+// "<name>/SKILL.md" (or the legacy "paca.md").
+const isPluginSkill = (s: SystemSkill) => s.path.split("/").length === 3;
+
+// listSystemSkills returns the Paca-provided skills for an agent type. An llm
+// agent is delivered the "agent" flavor of the bundled skills (no CLI-only
+// ones like paca-setup); every other type gets the default "cli" flavor.
+// Plugin skills are only in the cli flavor, so for llm they're merged in from
+// it to keep them visible.
+export async function listSystemSkills(
+	agentType: AgentType,
+): Promise<SystemSkill[]> {
+	if (agentType !== "llm") return fetchSkills();
+	const [bundled, all] = await Promise.all([
+		fetchSkills("agent"),
+		fetchSkills(),
+	]);
+	return [...bundled, ...all.filter(isPluginSkill)].sort((x, y) =>
+		x.name.localeCompare(y.name),
+	);
+}
+
 // ── Skills ────────────────────────────────────────────────────────────────────
 
 export async function listSkills(
@@ -1593,6 +1632,13 @@ export const agentSkillsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "skills"],
 		queryFn: () => listSkills(projectId, agentId),
+	});
+
+export const systemSkillsQueryOptions = (agentType: AgentType) =>
+	queryOptions({
+		queryKey: ["skills", "system", agentType] as const,
+		queryFn: () => listSystemSkills(agentType),
+		staleTime: 5 * 60 * 1000,
 	});
 
 export const agentEnvVarsQueryOptions = (projectId: string, agentId: string) =>

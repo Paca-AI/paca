@@ -289,6 +289,11 @@
 					"urlLabel": "URL",
 					"cancel": "Cancel",
 					"addServer": "Add server"
+				},
+				"system": {
+					"title": "System MCP servers",
+					"description": "Provided by Paca to every agent. These can't be edited.",
+					"pacaDetail": "Built-in Paca tools (projects, tasks, docs)"
 				}
 			},
 			"envVars": {
@@ -336,6 +341,10 @@
 					"nameReserved": "That name is reserved for Paca's own scaffolding. Choose another.",
 					"nameInvalid": "Skill name can't be \".\", \"..\", or contain a slash.",
 					"addFailed": "Failed to add skill. Please try again."
+				},
+				"system": {
+					"title": "System skills",
+					"description": "Bundled with Paca and available to every agent. These can't be edited."
 				}
 			},
 			"access": {
@@ -370,6 +379,9 @@
 					"dateTo": "To",
 					"clearAll": "Clear filters"
 				}
+			},
+			"system": {
+				"badge": "System"
 			}
 		},
 		"conversationView": {
