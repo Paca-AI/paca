@@ -717,3 +717,27 @@ func TestHandleRequest_Concurrent_DoesNotCorruptSharedInstance(t *testing.T) {
 		}
 	}
 }
+
+// TestEmitEvent_PluginWithoutBackend_DoesNotPanic pins that a frontend-only
+// plugin (nil Manifest.Backend) is skipped by EmitEvent instead of causing a
+// nil-pointer panic on every task event.
+func TestEmitEvent_PluginWithoutBackend_DoesNotPanic(t *testing.T) {
+	rt := NewRuntime(nil, HostServices{}, DefaultResourceLimits(), slog.Default())
+	rt.plugins["frontend.only"] = &pluginInstance{
+		plugin: plugindom.Plugin{Name: "frontend.only"},
+	}
+	rt.EmitEvent(context.Background(), "task.created", map[string]string{"id": "1"})
+}
+
+// TestLoad_PluginWithoutBackend_Succeeds pins that a plugin with no backend
+// section (e.g. skills-only) loads without needing a backend.wasm.
+func TestLoad_PluginWithoutBackend_Succeeds(t *testing.T) {
+	rt := NewRuntime(nil, HostServices{}, DefaultResourceLimits(), slog.Default())
+	p := plugindom.Plugin{Name: "skills.only"}
+	if err := rt.Load(context.Background(), p); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := rt.LoadedNames(); len(got) != 0 {
+		t.Fatalf("expected no runtime instance, got %v", got)
+	}
+}

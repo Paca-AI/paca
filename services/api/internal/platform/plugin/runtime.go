@@ -266,7 +266,16 @@ func (r *Runtime) LoadAll(ctx context.Context, plugins []*plugindom.Plugin) erro
 
 // Load compiles and instantiates a single plugin module.
 // If a module with the same name is already loaded it is unloaded first.
+//
+// A plugin whose manifest has no backend section (frontend-only, MCP-only,
+// skills-only, ...) has no WASM module to run, so there is nothing to
+// instantiate: any previously loaded instance is dropped and Load succeeds.
 func (r *Runtime) Load(ctx context.Context, p plugindom.Plugin) error {
+	if p.Manifest.Backend == nil {
+		r.Unload(ctx, p.Name)
+		r.log.Info("plugin has no backend; nothing to load", "name", p.Name, "version", p.Version)
+		return nil
+	}
 	wasmBytes, err := r.store.LoadWASM(ctx, p.Name)
 	if err != nil {
 		return fmt.Errorf("runtime load %q: %w", p.Name, err)
@@ -514,6 +523,10 @@ func (r *Runtime) EmitEvent(ctx context.Context, topic string, payload any) {
 	r.mu.RLock()
 	instances := make([]*pluginInstance, 0, len(r.plugins))
 	for _, inst := range r.plugins {
+		// Frontend-only plugins have no backend section and no subscriptions.
+		if inst.plugin.Manifest.Backend == nil {
+			continue
+		}
 		for _, sub := range inst.plugin.Manifest.Backend.EventSubscriptions {
 			if sub == topic {
 				instances = append(instances, inst)

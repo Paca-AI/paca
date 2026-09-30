@@ -115,7 +115,7 @@ source ~/.bashrc
 
 ## What the Script Does
 
-1. **Validates the plugin directory** - Checks for `plugin.json`, `backend/`, and `frontend/`
+1. **Validates the plugin directory** - Checks for `plugin.json`; `backend/`, `frontend/`, `mcp/` and `skills/` are each optional (e.g. a skills-only plugin needs just `plugin.json` and `skills/`)
 2. **Extracts plugin metadata** - Reads plugin ID and version from `plugin.json`
 3. **Builds backend WASM** - Compiles Go backend to WASM using TinyGo (`tinygo build -target=wasip1 -buildmode=c-shared`) — requires TinyGo to be installed
 4. **Populates backend store** - Copies WASM binary, migrations, and manifest to `plugins/local/backend/<plugin-id>/`

@@ -145,7 +145,7 @@ SKILLS_DIR="$PACA_DIR/plugins/local/skills/$PLUGIN_ID"
 
 # Check if plugin exists
 PLUGIN_EXISTS=false
-if [[ -d "$BACKEND_DIR" ]] || [[ -d "$FRONTEND_DIR" ]]; then
+if [[ -d "$BACKEND_DIR" ]] || [[ -d "$FRONTEND_DIR" ]] || [[ -d "$MCP_DIR" ]] || [[ -d "$SKILLS_DIR" ]]; then
     PLUGIN_EXISTS=true
 fi
 

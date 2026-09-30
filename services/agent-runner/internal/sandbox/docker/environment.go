@@ -704,6 +704,27 @@ func (m *Manager) recreateGoneEnvironmentContainer(ctx context.Context, cfg sand
 		return nil, err
 	}
 
+	// The caller's backendRef was not found, but that only proves the *ID*
+	// is stale — not that the deterministic name is free. A previous
+	// recreate can have succeeded in creating a container under this name
+	// and then failed a later step (e.g. the dind sidecar not ready right
+	// after a host reboot/upgrade), discarding the handle before the new ID
+	// was persisted; the next Start then holds the old ID, hits not-found
+	// here, and ContainerCreate fails with a name Conflict. The named volume
+	// (the environment's real data) is intact, so clear whatever squats on
+	// the name and create fresh.
+	name := environmentContainerName(cfg.EnvironmentID)
+	if inspect, err := m.docker.ContainerInspect(ctx, name, client.ContainerInspectOptions{}); err == nil {
+		if state := m.popState(inspect.Container.ID); state.hostPort != 0 {
+			m.releasePort(state.hostPort)
+		}
+		if _, err := m.docker.ContainerRemove(ctx, inspect.Container.ID, client.ContainerRemoveOptions{Force: true}); err != nil && !cerrdefs.IsNotFound(err) {
+			return nil, fmt.Errorf("sandbox/docker: remove conflicting environment container %s (%s): %w", name, inspect.Container.ID, err)
+		}
+	} else if !cerrdefs.IsNotFound(err) {
+		return nil, fmt.Errorf("sandbox/docker: inspect environment container %s: %w", name, err)
+	}
+
 	containerID, baseURL, err := m.createAndStartEnvironmentContainer(ctx, image, volumeName, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("sandbox/docker: recreate environment container removed outside of Paca: %w", err)
