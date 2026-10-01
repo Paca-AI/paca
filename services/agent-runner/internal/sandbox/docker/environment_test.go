@@ -225,3 +225,29 @@ func TestEnsureEnvironmentInfraEnv_NoopWhenCfgHasNoEnv(t *testing.T) {
 		t.Errorf("ensureEnvironmentInfraEnv with no cfg.Env = %+v, want nil handle", handle)
 	}
 }
+
+// TestInfraEnvKeysFor_GooseModelOnlyForSameProvider: GOOSE_MODEL is refreshed
+// on attach only when the attaching agent's GOOSE_PROVIDER matches the one
+// already baked into the container, so a cli_model edit reaches a static
+// environment without a different provider's model id leaking into it.
+func TestInfraEnvKeysFor_GooseModelOnlyForSameProvider(t *testing.T) {
+	has := func(keys []string, k string) bool {
+		for _, key := range keys {
+			if key == k {
+				return true
+			}
+		}
+		return false
+	}
+	cfg := sandbox.EnvironmentConfig{Env: map[string]string{"GOOSE_PROVIDER": "codex-acp"}}
+
+	if !has(infraEnvKeysFor(cfg, map[string]string{"GOOSE_PROVIDER": "codex-acp"}), "GOOSE_MODEL") {
+		t.Error("same provider: GOOSE_MODEL missing from refreshed keys")
+	}
+	if has(infraEnvKeysFor(cfg, map[string]string{"GOOSE_PROVIDER": "anthropic"}), "GOOSE_MODEL") {
+		t.Error("different provider: GOOSE_MODEL must stay frozen")
+	}
+	if has(pacaInfraEnvKeys, "GOOSE_MODEL") {
+		t.Error("infraEnvKeysFor must not mutate pacaInfraEnvKeys")
+	}
+}

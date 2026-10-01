@@ -770,3 +770,56 @@ func TestRecreateGoneEnvironmentDeployment_ProceedsPastGoneCheckWhenPVCSurvives(
 		t.Errorf("recreateGoneEnvironmentDeployment with a cancelled context = %v, want it to reach the pod-wait step and fail via context.Canceled", err)
 	}
 }
+
+// TestEnsureEnvironmentInfraEnv_RefreshesGooseModelForSameProvider guards the
+// bug where editing an agent's model (cli_model) never reached a static
+// environment: GOOSE_MODEL was frozen at first attach, so a bad model could
+// not be fixed. With a matching GOOSE_PROVIDER it must be replaced, while
+// GOOSE_PROVIDER itself stays untouched.
+func TestEnsureEnvironmentInfraEnv_RefreshesGooseModelForSameProvider(t *testing.T) {
+	const name = "paca-env-env5"
+	m := managerWithDeployment("paca", deploymentFixtureWithEnv(name, []corev1.EnvVar{
+		{Name: "GOOSE_PROVIDER", Value: "codex-acp"},
+		{Name: "GOOSE_MODEL", Value: "old-model"},
+	}))
+
+	cfg := sandbox.EnvironmentConfig{Env: map[string]string{"GOOSE_PROVIDER": "codex-acp", "GOOSE_MODEL": "gpt-6-luna"}}
+	if err := m.ensureEnvironmentInfraEnv(context.Background(), name, cfg); err != nil {
+		t.Fatalf("ensureEnvironmentInfraEnv: %v", err)
+	}
+	if got := deploymentEnvMap(t, m, name); got["GOOSE_MODEL"] != "gpt-6-luna" || got["GOOSE_PROVIDER"] != "codex-acp" {
+		t.Errorf("env = %v, want GOOSE_MODEL=gpt-6-luna and GOOSE_PROVIDER=codex-acp", got)
+	}
+}
+
+// TestEnsureEnvironmentInfraEnv_KeepsGooseModelForDifferentProvider: a model
+// id from another provider's agent must never be applied to the provider the
+// environment is frozen to.
+func TestEnsureEnvironmentInfraEnv_KeepsGooseModelForDifferentProvider(t *testing.T) {
+	const name = "paca-env-env6"
+	m := managerWithDeployment("paca", deploymentFixtureWithEnv(name, []corev1.EnvVar{
+		{Name: "GOOSE_PROVIDER", Value: "codex-acp"},
+		{Name: "GOOSE_MODEL", Value: "gpt-6-luna"},
+	}))
+
+	cfg := sandbox.EnvironmentConfig{Env: map[string]string{"GOOSE_PROVIDER": "anthropic", "GOOSE_MODEL": "claude-x"}}
+	if err := m.ensureEnvironmentInfraEnv(context.Background(), name, cfg); err != nil {
+		t.Fatalf("ensureEnvironmentInfraEnv: %v", err)
+	}
+	if got := deploymentEnvMap(t, m, name); got["GOOSE_MODEL"] != "gpt-6-luna" || got["GOOSE_PROVIDER"] != "codex-acp" {
+		t.Errorf("env = %v, want frozen GOOSE_PROVIDER=codex-acp/GOOSE_MODEL=gpt-6-luna", got)
+	}
+}
+
+func deploymentEnvMap(t *testing.T, m *Manager, name string) map[string]string {
+	t.Helper()
+	got, err := m.clientset.AppsV1().Deployments("paca").Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	out := map[string]string{}
+	for _, ev := range got.Spec.Template.Spec.Containers[0].Env {
+		out[ev.Name] = ev.Value
+	}
+	return out
+}

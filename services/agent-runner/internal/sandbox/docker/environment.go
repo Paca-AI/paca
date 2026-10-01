@@ -553,6 +553,22 @@ var pacaInfraEnvKeys = []string{
 	"GOOSE_PATH_ROOT",
 }
 
+// infraEnvKeysFor is pacaInfraEnvKeys plus GOOSE_MODEL when cfg targets the
+// same GOOSE_PROVIDER the container already has baked in. GOOSE_PROVIDER
+// stays frozen to whichever agent attached first (see
+// recreateEnvironmentIfMissingEnv), but the model is per-agent config the
+// user edits after the fact (e.g. a provider_cli agent's cli_model) — left
+// frozen too, an edit never reaches a static environment, so a bad model
+// can't be fixed and a wrong one silently keeps working. Gated on a
+// matching provider because a model id from a different provider's agent
+// is meaningless to the provider the container is frozen to.
+func infraEnvKeysFor(cfg sandbox.EnvironmentConfig, existing map[string]string) []string {
+	if cfg.Env["GOOSE_PROVIDER"] == "" || cfg.Env["GOOSE_PROVIDER"] != existing["GOOSE_PROVIDER"] {
+		return pacaInfraEnvKeys
+	}
+	return append(append([]string(nil), pacaInfraEnvKeys...), "GOOSE_MODEL")
+}
+
 // ensureEnvironmentInfraEnv keeps pacaInfraEnvKeys in sync with this
 // agent-runner process's own current config on every StartEnvironment call
 // — a container/Pod baked before the platform's PACA_API_KEY was
@@ -613,8 +629,9 @@ func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef stri
 		}
 	}
 
+	keys := infraEnvKeysFor(cfg, existing)
 	stale := false
-	for _, key := range pacaInfraEnvKeys {
+	for _, key := range keys {
 		if cfg.Env[key] != existing[key] {
 			stale = true
 			break
@@ -635,7 +652,7 @@ func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef stri
 		return nil, fmt.Errorf("sandbox/docker: environment container %s has no %s volume mount to reattach while refreshing infra env", backendRef, environmentVolumeMountPath)
 	}
 
-	mergedEnv := make(map[string]string, len(existing)+len(pacaInfraEnvKeys))
+	mergedEnv := make(map[string]string, len(existing)+len(keys))
 	for k, v := range existing {
 		mergedEnv[k] = v
 	}
@@ -646,7 +663,7 @@ func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef stri
 	// never linger duplicated alongside the fresh ones it appends.
 	delete(mergedEnv, "GOOSE_SERVER__SECRET_KEY")
 	delete(mergedEnv, "DOCKER_HOST")
-	for _, key := range pacaInfraEnvKeys {
+	for _, key := range keys {
 		if v := cfg.Env[key]; v != "" {
 			mergedEnv[key] = v
 		} else {
