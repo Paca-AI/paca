@@ -574,6 +574,22 @@ var pacaInfraEnvKeys = []string{
 	"GOOSE_PATH_ROOT",
 }
 
+// infraEnvKeysFor is pacaInfraEnvKeys plus GOOSE_MODEL when cfg targets the
+// same GOOSE_PROVIDER the container already has baked in. GOOSE_PROVIDER
+// stays frozen to whichever agent attached first (see
+// ensureEnvironmentEnv), but the model is per-agent config the
+// user edits after the fact (e.g. a provider_cli agent's cli_model) — left
+// frozen too, an edit never reaches a static environment, so a bad model
+// can't be fixed and a wrong one silently keeps working. Gated on a
+// matching provider because a model id from a different provider's agent
+// is meaningless to the provider the container is frozen to.
+func infraEnvKeysFor(cfg sandbox.EnvironmentConfig, existing map[string]string) []string {
+	if cfg.Env["GOOSE_PROVIDER"] == "" || cfg.Env["GOOSE_PROVIDER"] != existing["GOOSE_PROVIDER"] {
+		return pacaInfraEnvKeys
+	}
+	return append(append([]string(nil), pacaInfraEnvKeys...), "GOOSE_MODEL")
+}
+
 // ensureEnvironmentInfraEnv keeps pacaInfraEnvKeys in sync with cfg.Env on
 // every StartEnvironment call — the Kubernetes counterpart to
 // docker/environment.go's identically-named function; see that function's
@@ -630,8 +646,9 @@ func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef stri
 		existing[ev.Name] = ev.Value
 	}
 
+	keys := infraEnvKeysFor(cfg, existing)
 	stale := false
-	for _, key := range pacaInfraEnvKeys {
+	for _, key := range keys {
 		if cfg.Env[key] != existing[key] {
 			stale = true
 			break
@@ -641,18 +658,18 @@ func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef stri
 		return nil
 	}
 
-	skip := make(map[string]bool, len(pacaInfraEnvKeys))
-	for _, key := range pacaInfraEnvKeys {
+	skip := make(map[string]bool, len(keys))
+	for _, key := range keys {
 		skip[key] = true
 	}
-	desired := make([]corev1.EnvVar, 0, len(container.Env)+len(pacaInfraEnvKeys))
+	desired := make([]corev1.EnvVar, 0, len(container.Env)+len(keys))
 	for _, ev := range container.Env {
 		if skip[ev.Name] {
 			continue
 		}
 		desired = append(desired, ev)
 	}
-	for _, key := range pacaInfraEnvKeys {
+	for _, key := range keys {
 		if v := cfg.Env[key]; v != "" {
 			desired = append(desired, corev1.EnvVar{Name: key, Value: v})
 		}

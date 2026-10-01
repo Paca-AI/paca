@@ -129,7 +129,7 @@ const PRESET_ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
 function cliLoginCommand(provider: CLIProvider): string {
 	switch (provider) {
 		case "codex":
-			return "codex login";
+			return "codex login --device-auth";
 		case "cursor-agent":
 			return "cursor-agent login";
 		case "gemini-cli":
