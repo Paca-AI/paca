@@ -1047,11 +1047,11 @@ func (r *Runtime) registerCacheFunctions(b wazero.HostModuleBuilder, p plugindom
 // sensitiveColumnsForQuery and checkWriteAllowed).
 func (r *Runtime) execQuery(ctx context.Context, caller plugindom.Plugin, schema, sqlStr, paramsJSON string) (*dbQueryResult, error) {
 	// Allow SELECT and DML statements that use RETURNING.
-	trimmed := strings.TrimSpace(strings.ToUpper(sqlStr))
-	isDML := strings.HasPrefix(trimmed, "INSERT") || strings.HasPrefix(trimmed, "UPDATE") || strings.HasPrefix(trimmed, "DELETE")
-	if !strings.HasPrefix(trimmed, "SELECT") && (!isDML || !strings.Contains(trimmed, "RETURNING")) {
-		return nil, fmt.Errorf("paca.db_query: only SELECT and DML with RETURNING statements are allowed")
+	verb, err := validatePluginSQL(sqlStr, sqlModeQuery)
+	if err != nil {
+		return nil, fmt.Errorf("paca.db_query: %w", err)
 	}
+	isDML := verb != "select"
 	if isDML {
 		if err := r.checkWriteAllowed(caller, sqlStr, "paca.db_query"); err != nil {
 			return nil, err
@@ -1467,13 +1467,10 @@ func redactColumns(cols []string, rows [][]any, sensitive map[string]struct{}) {
 	}
 }
 
-// execStatement runs a non-SELECT DML statement scoped to the plugin schema.
+// execStatement runs a single INSERT/UPDATE/DELETE statement scoped to the plugin schema.
 func (r *Runtime) execStatement(ctx context.Context, caller plugindom.Plugin, schema, sqlStr, paramsJSON string) (int64, error) {
-	trimmed := strings.TrimSpace(strings.ToUpper(sqlStr))
-	for _, banned := range []string{"DROP", "TRUNCATE", "ALTER", "CREATE", "GRANT", "REVOKE"} {
-		if strings.HasPrefix(trimmed, banned) {
-			return 0, fmt.Errorf("paca.db_exec: DDL/DCL statements are not allowed")
-		}
+	if _, err := validatePluginSQL(sqlStr, sqlModeExec); err != nil {
+		return 0, fmt.Errorf("paca.db_exec: %w", err)
 	}
 	if err := r.checkWriteAllowed(caller, sqlStr, "paca.db_exec"); err != nil {
 		return 0, err
