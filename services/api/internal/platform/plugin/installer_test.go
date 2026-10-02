@@ -211,3 +211,22 @@ func TestInstall_NilCheckManifest_StillWrites(t *testing.T) {
 		t.Fatalf("unexpected error with nil checkManifest: %v", err)
 	}
 }
+
+func TestInstaller_Uninstall_RejectsTraversalNames(t *testing.T) {
+	base := t.TempDir()
+	victim := filepath.Join(base, "victim")
+	if err := os.MkdirAll(victim, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	roots := filepath.Join(base, "roots")
+	inst := NewInstaller(filepath.Join(roots, "backend"), filepath.Join(roots, "frontend"), filepath.Join(roots, "mcp"), filepath.Join(roots, "skills"), nil, nil)
+
+	for _, name := range []string{"../../victim", "../victim", "..", ".", "a/../../../victim", "/abs", "a/b", `a\b`, ""} {
+		if err := inst.Uninstall(name); err == nil {
+			t.Errorf("Uninstall(%q) = nil, want error", name)
+		}
+	}
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("victim directory was removed: %v", err)
+	}
+}
