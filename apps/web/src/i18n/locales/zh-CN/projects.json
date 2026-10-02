@@ -1282,6 +1282,19 @@
 			"placeholder": "此人负责什么工作？",
 			"save": "保存",
 			"saveFailed": "保存描述失败。"
+		},
+		"filters": {
+			"searchPlaceholder": "按姓名或用户名搜索…",
+			"searchLabel": "搜索成员",
+			"roleLabel": "按角色筛选",
+			"allRoles": "全部",
+			"clearSearch": "清除搜索",
+			"showingOf": "显示 {{shown}} / {{total}}"
+		},
+		"noMatch": {
+			"title": "没有匹配的成员",
+			"description": "请尝试其他搜索词或角色筛选。",
+			"clear": "清除筛选"
 		}
 	},
 	"aiChat": {

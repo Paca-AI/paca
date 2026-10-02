@@ -1282,6 +1282,19 @@
 			"removeFailed": "Failed to remove member. Please try again.",
 			"cancel": "Cancel",
 			"remove": "Remove"
+		},
+		"filters": {
+			"searchPlaceholder": "Search by name or username…",
+			"searchLabel": "Search members",
+			"roleLabel": "Filter by role",
+			"allRoles": "All",
+			"clearSearch": "Clear search",
+			"showingOf": "Showing {{shown}} of {{total}}"
+		},
+		"noMatch": {
+			"title": "No members match",
+			"description": "Try a different search or role filter.",
+			"clear": "Clear filters"
 		}
 	},
 	"aiChat": {

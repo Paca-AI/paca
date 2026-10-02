@@ -127,6 +127,20 @@
 				"internalError": "Algo deu errado. Tente novamente.",
 				"generic": "Algo deu errado."
 			}
+		},
+		"filters": {
+			"searchPlaceholder": "Pesquisar por nome, usuário ou e-mail…",
+			"searchLabel": "Pesquisar usuários",
+			"roleLabel": "Filtrar por função",
+			"allRoles": "Todas as funções",
+			"clearSearch": "Limpar pesquisa",
+			"resultsCount": "Resultados: {{count}}",
+			"clearAll": "Limpar filtros"
+		},
+		"noMatch": {
+			"title": "Nenhum usuário encontrado",
+			"description": "Tente outra pesquisa ou filtro de função.",
+			"clear": "Limpar filtros"
 		}
 	},
 	"globalRoles": {

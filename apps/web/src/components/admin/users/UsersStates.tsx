@@ -32,6 +32,27 @@ export function EmptyUsersState({ canWrite, onCreate }: EmptyUsersStateProps) {
 	);
 }
 
+export function NoUsersMatchState({ onClear }: { onClear: () => void }) {
+	const { t } = useTranslation("admin");
+
+	return (
+		<div className="flex flex-col items-center gap-4 rounded-xl border border-dashed bg-muted/20 py-16 text-center">
+			<div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
+				<Users className="size-6" />
+			</div>
+			<div>
+				<p className="text-sm font-medium">{t("users.noMatch.title")}</p>
+				<p className="mt-1 text-xs text-muted-foreground">
+					{t("users.noMatch.description")}
+				</p>
+			</div>
+			<Button size="sm" variant="outline" onClick={onClear}>
+				{t("users.noMatch.clear")}
+			</Button>
+		</div>
+	);
+}
+
 export function UsersErrorState() {
 	const { t } = useTranslation("admin");
 

@@ -1282,6 +1282,19 @@
 			"placeholder": "この人の担当業務は？",
 			"save": "保存",
 			"saveFailed": "説明の保存に失敗しました。"
+		},
+		"filters": {
+			"searchPlaceholder": "名前またはユーザー名で検索…",
+			"searchLabel": "メンバーを検索",
+			"roleLabel": "ロールで絞り込み",
+			"allRoles": "すべて",
+			"clearSearch": "検索をクリア",
+			"showingOf": "{{total}} 件中 {{shown}} 件を表示"
+		},
+		"noMatch": {
+			"title": "一致するメンバーがいません",
+			"description": "別の検索語やロールフィルターをお試しください。",
+			"clear": "フィルターをクリア"
 		}
 	},
 	"aiChat": {

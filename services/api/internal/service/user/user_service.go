@@ -103,8 +103,8 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*userdom.User, err
 	return s.repo.FindByID(ctx, id)
 }
 
-// List returns a page of users and the total count.
-func (s *Service) List(ctx context.Context, page, pageSize int) ([]*userdom.User, int64, error) {
+// List returns a page of users matching filter and the total count of matches.
+func (s *Service) List(ctx context.Context, page, pageSize int, filter userdom.ListFilter) ([]*userdom.User, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -112,7 +112,7 @@ func (s *Service) List(ctx context.Context, page, pageSize int) ([]*userdom.User
 		pageSize = 20
 	}
 	offset := (page - 1) * pageSize
-	return s.repo.List(ctx, offset, pageSize)
+	return s.repo.List(ctx, offset, pageSize, filter)
 }
 
 // CountUsers returns the total count of users without paginating rows.

@@ -1282,6 +1282,19 @@
 			"placeholder": "Sur quoi travaille cette personne ?",
 			"save": "Enregistrer",
 			"saveFailed": "Échec de l'enregistrement de la description."
+		},
+		"filters": {
+			"searchPlaceholder": "Rechercher par nom ou identifiant…",
+			"searchLabel": "Rechercher des membres",
+			"roleLabel": "Filtrer par rôle",
+			"allRoles": "Tous",
+			"clearSearch": "Effacer la recherche",
+			"showingOf": "{{shown}} sur {{total}} affichés"
+		},
+		"noMatch": {
+			"title": "Aucun membre ne correspond",
+			"description": "Essayez une autre recherche ou un autre filtre de rôle.",
+			"clear": "Effacer les filtres"
 		}
 	},
 	"aiChat": {

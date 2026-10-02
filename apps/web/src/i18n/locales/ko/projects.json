@@ -1282,6 +1282,19 @@
 			"placeholder": "이 사람은 어떤 업무를 담당하나요?",
 			"save": "저장",
 			"saveFailed": "설명을 저장하지 못했습니다."
+		},
+		"filters": {
+			"searchPlaceholder": "이름 또는 사용자 이름으로 검색…",
+			"searchLabel": "멤버 검색",
+			"roleLabel": "역할로 필터링",
+			"allRoles": "전체",
+			"clearSearch": "검색 지우기",
+			"showingOf": "{{total}}명 중 {{shown}}명 표시"
+		},
+		"noMatch": {
+			"title": "일치하는 멤버가 없습니다",
+			"description": "다른 검색어나 역할 필터를 시도해 보세요.",
+			"clear": "필터 지우기"
 		}
 	},
 	"aiChat": {

@@ -42,7 +42,7 @@ func (r *stubUserRepo) FindByUsernameIncludingDeleted(ctx context.Context, usern
 func (r *stubUserRepo) FindByEmail(_ context.Context, _ string) (*userdom.User, error) {
 	return nil, userdom.ErrNotFound
 }
-func (r *stubUserRepo) List(_ context.Context, _, _ int) ([]*userdom.User, int64, error) {
+func (r *stubUserRepo) List(_ context.Context, _, _ int, _ userdom.ListFilter) ([]*userdom.User, int64, error) {
 	return nil, 0, nil
 }
 func (r *stubUserRepo) CountUsers(_ context.Context) (int64, error) { return 0, nil }

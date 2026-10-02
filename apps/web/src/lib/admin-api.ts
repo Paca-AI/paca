@@ -104,13 +104,28 @@ export interface PagedUsersResponse {
 	must_change_password_count: number;
 }
 
+export interface UsersFilter {
+	/** Every whitespace-separated word must appear in the username, full name
+	 *  or email (case-insensitive). */
+	search?: string;
+	/** Exact global role name. */
+	role?: string;
+}
+
 export async function getUsers(
 	page = 1,
 	pageSize = 20,
+	filter: UsersFilter = {},
 ): Promise<PagedUsersResponse> {
+	const params: Record<string, string | number> = {
+		page,
+		page_size: pageSize,
+	};
+	if (filter.search) params.search = filter.search;
+	if (filter.role) params.role = filter.role;
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<PagedUsersResponse>
-	>("/admin/users", { params: { page, page_size: pageSize } });
+	>("/admin/users", { params });
 	return data.data;
 }
 
@@ -167,10 +182,22 @@ export async function resetUserPassword(
 	});
 }
 
-export function usersQueryOptions(page = 1, pageSize = 20) {
+export function usersQueryOptions(
+	page = 1,
+	pageSize = 20,
+	filter: UsersFilter = {},
+) {
 	return queryOptions({
-		queryKey: ["admin", "users", page, pageSize],
-		queryFn: () => getUsers(page, pageSize),
+		queryKey: [
+			"admin",
+			"users",
+			page,
+			pageSize,
+			...(filter.search || filter.role
+				? [{ search: filter.search ?? "", role: filter.role ?? "" }]
+				: []),
+		],
+		queryFn: () => getUsers(page, pageSize, filter),
 	});
 }
 

@@ -1282,6 +1282,19 @@
 			"placeholder": "Em que esta pessoa trabalha?",
 			"save": "Salvar",
 			"saveFailed": "Falha ao salvar a descrição."
+		},
+		"filters": {
+			"searchPlaceholder": "Pesquisar por nome ou usuário…",
+			"searchLabel": "Pesquisar membros",
+			"roleLabel": "Filtrar por função",
+			"allRoles": "Todos",
+			"clearSearch": "Limpar pesquisa",
+			"showingOf": "Mostrando {{shown}} de {{total}}"
+		},
+		"noMatch": {
+			"title": "Nenhum membro encontrado",
+			"description": "Tente outra pesquisa ou filtro de função.",
+			"clear": "Limpar filtros"
 		}
 	},
 	"aiChat": {

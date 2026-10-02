@@ -129,6 +129,20 @@
 				"internalError": "Что-то пошло не так. Попробуйте ещё раз.",
 				"generic": "Что-то пошло не так."
 			}
+		},
+		"filters": {
+			"searchPlaceholder": "Поиск по имени, логину или email…",
+			"searchLabel": "Поиск пользователей",
+			"roleLabel": "Фильтр по роли",
+			"allRoles": "Все роли",
+			"clearSearch": "Очистить поиск",
+			"resultsCount": "Результатов: {{count}}",
+			"clearAll": "Сбросить фильтры"
+		},
+		"noMatch": {
+			"title": "Пользователи не найдены",
+			"description": "Попробуйте другой запрос или фильтр роли.",
+			"clear": "Сбросить фильтры"
 		}
 	},
 	"globalRoles": {

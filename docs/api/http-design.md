@@ -117,7 +117,7 @@ In the **Auth** column, permissions joined by `+` are all required, and the perm
 | `GET` | `/api/v1/users/me` | Access token (fresh) | Return the authenticated caller's own profile. |
 | `PATCH` | `/api/v1/users/me` | Access token (fresh) | Update mutable profile fields (`full_name`) for the caller. |
 | `GET` | `/api/v1/users/me/global-permissions` | Access token (fresh) | Return the authenticated caller's effective global permissions. |
-| `GET` | `/api/v1/admin/users` | Access token (fresh) + `users.read` | List all users with pagination. |
+| `GET` | `/api/v1/admin/users` | Access token (fresh) + `users.read` | List users with pagination, optional `search` and `role` filters. |
 | `POST` | `/api/v1/admin/users` | Access token (fresh) + `users.write` | Create a new user account with the default global role (the one marked `is_default`, `USER` unless changed). Sets `must_change_password = true`. A `role` in the body is rejected with `400`. Fails with `409 GLOBAL_ROLE_NO_DEFAULT` if no role is the default. |
 | `GET` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.read` | Get a user profile by ID. |
 | `PATCH` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.write` | Update a user's `full_name` or `email`. A `role` in the body is rejected with `400`; change roles with `PUT .../global-roles`. |
@@ -365,7 +365,7 @@ Success response:
 
 Function:
 
-- list all non-deleted users ordered by creation date;
+- list all non-deleted users sorted by name (full name, falling back to username), optionally narrowed by `search` and `role`;
 - paginated via `page` and `page_size` query parameters.
 
 Query parameters:
@@ -374,6 +374,10 @@ Query parameters:
 |---|---|---|
 | `page` | `1` | 1-based page number |
 | `page_size` | `20` | Items per page (max 100) |
+| `search` | _(none)_ | Case-insensitive; split on whitespace and every word must appear in the username, full name or email. `%` and `_` match literally. |
+| `role` | _(none)_ | Exact global role name |
+
+`total` counts the users matching the filters, not all users.
 
 Success response data:
 

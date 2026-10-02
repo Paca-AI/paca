@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { MembersFilters } from "@/components/projects/team/MembersFilters";
+import { HighlightMatch } from "@/components/shared/highlight-match";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -62,6 +64,7 @@ import {
 	getApiErrorCode,
 	isForbiddenError,
 } from "@/lib/api-error";
+import { filterProjectMembers } from "@/lib/filter-project-members";
 import {
 	addProjectMember,
 	type ProjectMember,
@@ -809,12 +812,15 @@ function MemberRow({
 	projectId,
 	roles,
 	canManage,
+	highlight = "",
 	onRemove,
 }: {
 	member: ProjectMember;
 	projectId: string;
 	roles: ProjectRole[];
 	canManage: boolean;
+	/** Search text to highlight in the member's name and handle. */
+	highlight?: string;
 	onRemove: (member: ProjectMember) => void;
 }) {
 	const { t } = useTranslation("projects");
@@ -834,9 +840,11 @@ function MemberRow({
 				</AvatarFallback>
 			</Avatar>
 			<div className="min-w-0 flex-1">
-				<p className="text-sm font-medium truncate">{display}</p>
+				<p className="text-sm font-medium truncate">
+					<HighlightMatch text={display} query={highlight} />
+				</p>
 				<p className="text-xs text-muted-foreground truncate">
-					@{member.username}
+					@<HighlightMatch text={member.username} query={highlight} />
 				</p>
 			</div>
 			{canManage && !isBot ? (
@@ -877,6 +885,8 @@ function TeamPage() {
 	const { projectId } = Route.useParams();
 	const queryClient = useQueryClient();
 	const [addMemberOpen, setAddMemberOpen] = useState(false);
+	const [search, setSearch] = useState("");
+	const [roleFilter, setRoleFilter] = useState("");
 	const [removingMember, setRemovingMember] = useState<ProjectMember | null>(
 		null,
 	);
@@ -930,6 +940,25 @@ function TeamPage() {
 			),
 		[members],
 	);
+
+	const visibleMembers = useMemo(
+		() => filterProjectMembers(members ?? [], search, roleFilter),
+		[members, search, roleFilter],
+	);
+
+	const roleChips = useMemo(
+		() =>
+			roles.map((r) => ({
+				name: r.role_name,
+				count: (members ?? []).filter((m) => m.role_name === r.role_name)
+					.length,
+			})),
+		[roles, members],
+	);
+	const clearFilters = () => {
+		setSearch("");
+		setRoleFilter("");
+	};
 
 	const removeMutation = useMutation({
 		mutationFn: () => {
@@ -1034,23 +1063,53 @@ function TeamPage() {
 					</div>
 				) : (
 					<div>
+						<MembersFilters
+							search={search}
+							roles={roleChips}
+							totalCount={members.length}
+							selectedRole={roleFilter}
+							shownCount={visibleMembers.length}
+							onSearchChange={setSearch}
+							onRoleChange={setRoleFilter}
+							onClear={clearFilters}
+						/>
 						<div className="mb-3 flex items-center justify-between">
 							<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-								{t("team.memberCount", { count: members.length })}
+								{t("team.memberCount", { count: visibleMembers.length })}
 							</p>
 						</div>
-						<div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-							{members.map((member) => (
-								<MemberRow
-									key={member.id}
-									member={member}
-									projectId={projectId}
-									roles={roles}
-									canManage={canManageMembers}
-									onRemove={setRemovingMember}
-								/>
-							))}
-						</div>
+						{visibleMembers.length === 0 ? (
+							<div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 bg-muted/10 py-14">
+								<div className="flex size-12 items-center justify-center rounded-xl bg-muted">
+									<Search className="size-6 text-muted-foreground/60" />
+								</div>
+								<div className="text-center">
+									<p className="text-sm font-medium">
+										{t("team.noMatch.title")}
+									</p>
+									<p className="mt-0.5 text-xs text-muted-foreground">
+										{t("team.noMatch.description")}
+									</p>
+								</div>
+								<Button size="sm" variant="outline" onClick={clearFilters}>
+									{t("team.noMatch.clear")}
+								</Button>
+							</div>
+						) : (
+							<div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+								{visibleMembers.map((member) => (
+									<MemberRow
+										key={member.id}
+										member={member}
+										projectId={projectId}
+										roles={roles}
+										canManage={canManageMembers}
+										highlight={search}
+										onRemove={setRemovingMember}
+									/>
+								))}
+							</div>
+						)}
 					</div>
 				)}
 			</div>

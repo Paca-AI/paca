@@ -143,6 +143,20 @@
 				"internalError": "Something went wrong. Please try again.",
 				"generic": "Something went wrong."
 			}
+		},
+		"filters": {
+			"searchPlaceholder": "Search by name, username or email…",
+			"searchLabel": "Search users",
+			"roleLabel": "Filter by role",
+			"allRoles": "All roles",
+			"clearSearch": "Clear search",
+			"resultsCount": "Results: {{count}}",
+			"clearAll": "Clear filters"
+		},
+		"noMatch": {
+			"title": "No users match",
+			"description": "Try a different search or role filter.",
+			"clear": "Clear filters"
 		}
 	},
 	"globalRoles": {

@@ -98,7 +98,7 @@ func (r *fakeUserRepo) Update(_ context.Context, u *userdom.User) error {
 	r.byID[u.ID] = u
 	return nil
 }
-func (r *fakeUserRepo) List(_ context.Context, offset, limit int) ([]*userdom.User, int64, error) {
+func (r *fakeUserRepo) List(_ context.Context, offset, limit int, _ userdom.ListFilter) ([]*userdom.User, int64, error) {
 	all := make([]*userdom.User, 0, len(r.byID))
 	for _, u := range r.byID {
 		all = append(all, u)

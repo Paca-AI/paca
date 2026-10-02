@@ -127,6 +127,20 @@
 				"internalError": "出现错误，请重试。",
 				"generic": "出现错误。"
 			}
+		},
+		"filters": {
+			"searchPlaceholder": "按姓名、用户名或邮箱搜索…",
+			"searchLabel": "搜索用户",
+			"roleLabel": "按角色筛选",
+			"allRoles": "所有角色",
+			"clearSearch": "清除搜索",
+			"resultsCount": "结果：{{count}}",
+			"clearAll": "清除筛选"
+		},
+		"noMatch": {
+			"title": "没有匹配的用户",
+			"description": "请尝试其他搜索词或角色筛选。",
+			"clear": "清除筛选"
 		}
 	},
 	"globalRoles": {

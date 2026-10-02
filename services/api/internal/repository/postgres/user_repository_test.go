@@ -291,3 +291,73 @@ func TestUserRepoErr_WrapsUnrelatedErrorsGenerically(t *testing.T) {
 		t.Errorf("unrelated error should not map to a uniqueness sentinel, got %v", err)
 	}
 }
+
+func TestUserRepository_List_SearchRoleAndOrder(t *testing.T) {
+	db, userRoleID := openUserRepoTestDB(t)
+	adminRoleID := uuid.New()
+	now := time.Now()
+	db.MustExec(
+		`INSERT INTO global_roles (id, name, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
+		adminRoleID.String(), "ADMIN", []byte("{}"), now, now,
+	)
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+
+	email := func(s string) *string { return &s }
+	seed := []struct {
+		username, fullName string
+		email              *string
+		roleID             uuid.UUID
+	}{
+		{"zed", "Alice Smith", email("zed@corp.io"), userRoleID},
+		{"bob", "Bob Jones", email("bob@corp.io"), adminRoleID},
+		{"carol", "carol 100%", nil, userRoleID},
+		{"dave_x", "Dave", email("dave@other.io"), userRoleID},
+	}
+	for _, s := range seed {
+		u := testUser(uuid.New(), s.roleID)
+		u.Username, u.FullName, u.Email = s.username, s.fullName, s.email
+		if err := repo.Create(ctx, u); err != nil {
+			t.Fatalf("create %s: %v", s.username, err)
+		}
+	}
+
+	names := func(f userdom.ListFilter) []string {
+		t.Helper()
+		users, total, err := repo.List(ctx, 0, 10, f)
+		if err != nil {
+			t.Fatalf("List(%+v): %v", f, err)
+		}
+		if int(total) != len(users) {
+			t.Fatalf("total = %d, len = %d", total, len(users))
+		}
+		out := make([]string, 0, len(users))
+		for _, u := range users {
+			out = append(out, u.Username)
+		}
+		return out
+	}
+	eq := func(got, want []string) {
+		t.Helper()
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+
+	eq(names(userdom.ListFilter{}), []string{"zed", "bob", "carol", "dave_x"})
+	eq(names(userdom.ListFilter{Search: "ALICE"}), []string{"zed"})
+	eq(names(userdom.ListFilter{Search: "smith alice"}), []string{"zed"}) // all words, any order
+	eq(names(userdom.ListFilter{Search: "corp.io"}), []string{"zed", "bob"})
+	eq(names(userdom.ListFilter{Search: "100%"}), []string{"carol"})
+	eq(names(userdom.ListFilter{Search: "%"}), []string{"carol"}) // wildcard is literal
+	eq(names(userdom.ListFilter{Search: "dave_"}), []string{"dave_x"})
+	eq(names(userdom.ListFilter{Search: "a_e"}), []string{}) // "_" is literal, not any-char
+	eq(names(userdom.ListFilter{Role: "ADMIN"}), []string{"bob"})
+	eq(names(userdom.ListFilter{Role: "ADMIN", Search: "alice"}), []string{})
+
+	// total reflects the filter, not just the page.
+	users, total, err := repo.List(ctx, 0, 1, userdom.ListFilter{Search: "corp.io"})
+	if err != nil || total != 2 || len(users) != 1 {
+		t.Fatalf("paged: users=%d total=%d err=%v", len(users), total, err)
+	}
+}

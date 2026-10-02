@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -63,23 +64,39 @@ func NewUserRepository(db *sqlx.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-// List returns a page of non-deleted, non-system users ordered by creation
-// date plus the total count across all pages.  The built-in agent bot account
-// is excluded because it is an internal system identity, not a real user.
-func (r *UserRepository) List(ctx context.Context, offset, limit int) ([]*userdom.User, int64, error) {
-	total, err := r.CountUsers(ctx)
-	if err != nil {
-		return nil, 0, err
+// List returns a page of non-deleted, non-system users matching filter,
+// ordered by name, plus the count of matches across all pages. Every
+// whitespace-separated search word must appear (case-insensitively) in the
+// username, full name or email; Role is an exact global role name. The
+// built-in agent bot account is excluded because it is an internal system
+// identity, not a real user.
+func (r *UserRepository) List(ctx context.Context, offset, limit int, filter userdom.ListFilter) ([]*userdom.User, int64, error) {
+	where := `users.deleted_at IS NULL AND users.username != '_paca_agent_bot'`
+	var args []any
+	if filter.Role != "" {
+		args = append(args, filter.Role)
+		where += fmt.Sprintf(" AND gr.name = $%d", len(args))
+	}
+	for _, word := range strings.Fields(filter.Search) {
+		args = append(args, "%"+escapeLike(word)+"%")
+		n := len(args)
+		where += fmt.Sprintf(` AND (LOWER(users.username) LIKE LOWER($%[1]d) ESCAPE '\' OR LOWER(users.full_name) LIKE LOWER($%[1]d) ESCAPE '\' OR LOWER(COALESCE(users.email, '')) LIKE LOWER($%[1]d) ESCAPE '\')`, n)
 	}
 
+	var total int64
+	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM users `+userReadJoin+` WHERE `+where, args...); err != nil {
+		return nil, 0, fmt.Errorf("user repo: list count: %w", err)
+	}
+
+	args = append(args, limit, offset)
 	var rows []userReadRow
 	if err := r.db.SelectContext(ctx, &rows, `
 		SELECT `+userReadCols+`
 		FROM users
 		`+userReadJoin+`
-		WHERE users.deleted_at IS NULL AND users.username != '_paca_agent_bot'
-		ORDER BY users.created_at ASC
-		OFFSET $1 LIMIT $2`, offset, limit); err != nil {
+		WHERE `+where+fmt.Sprintf(`
+		ORDER BY LOWER(COALESCE(NULLIF(users.full_name, ''), users.username)), LOWER(users.username), users.id
+		LIMIT $%d OFFSET $%d`, len(args)-1, len(args)), args...); err != nil {
 		return nil, 0, fmt.Errorf("user repo: list: %w", err)
 	}
 
@@ -88,6 +105,11 @@ func (r *UserRepository) List(ctx context.Context, offset, limit int) ([]*userdo
 		users = append(users, rowToEntity(&rows[i]))
 	}
 	return users, total, nil
+}
+
+// escapeLike escapes the LIKE wildcards in s so it matches literally.
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
 // CountUsers returns the total count of non-deleted, non-system users. The
