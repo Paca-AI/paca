@@ -33,6 +33,9 @@ var forbiddenSQLIdentifierPrefixes = []string{
 	"dblink",
 	"set_config",
 	"query_to_", "cursor_to_", "table_to_", "schema_to_", "database_to_",
+	// Planner statistics embed sampled column values (most_common_vals,
+	// histogram_bounds), so they would leak data from sensitive columns.
+	"pg_stats", "pg_statistic",
 }
 
 // validatePluginSQL is the statement-type admission gate for plugin-authored
@@ -256,7 +259,9 @@ func lexSQL(s string) ([]sqlToken, error) {
 			i++
 
 		default:
-			toks = append(toks, sqlToken{kind: sqlTokOther})
+			// Punctuation and operators keep their character so the
+			// sensitive-read shape check can recognise "." "," "(" "*" etc.
+			toks = append(toks, sqlToken{kind: sqlTokOther, text: string(c)})
 			i++
 		}
 	}
