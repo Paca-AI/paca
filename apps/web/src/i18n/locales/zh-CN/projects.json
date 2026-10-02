@@ -1382,7 +1382,12 @@
 			"viewParent": "查看父任务",
 			"removeParent": "移除父任务",
 			"addFields": "添加字段",
-			"autoAssign": "自动"
+			"autoAssign": "自动",
+			"sprintGroup": {
+				"active": "进行中",
+				"planned": "即将开始",
+				"completed": "已完成"
+			}
 		},
 		"description": {
 			"title": "描述",
@@ -1563,6 +1568,10 @@
 			"descriptionChangeDiff": "描述更改差异",
 			"autoAssignSkippedLowConfidence": "无法确定地选出负责人（置信度 {{confidence}}%）— 任务仍未分配",
 			"autoAssignSkipped": "跳过了自动分配 — 任务仍未分配"
+		},
+		"searchableList": {
+			"searchPlaceholder": "搜索…",
+			"noResults": "没有匹配项"
 		}
 	},
 	"portForwardDetail": {

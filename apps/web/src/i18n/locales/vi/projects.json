@@ -1382,7 +1382,12 @@
 			"viewParent": "Xem nhiệm vụ cha",
 			"removeParent": "Gỡ nhiệm vụ cha",
 			"addFields": "Thêm trường",
-			"autoAssign": "Tự động"
+			"autoAssign": "Tự động",
+			"sprintGroup": {
+				"active": "Đang hoạt động",
+				"planned": "Sắp tới",
+				"completed": "Đã hoàn thành"
+			}
 		},
 		"description": {
 			"title": "Mô tả",
@@ -1563,6 +1568,10 @@
 			"descriptionChangeDiff": "Thay đổi mô tả",
 			"autoAssignSkippedLowConfidence": "không thể tự tin chọn người được giao ({{confidence}}% độ tin cậy) — nhiệm vụ vẫn chưa được giao",
 			"autoAssignSkipped": "đã bỏ qua tự động giao việc — nhiệm vụ vẫn chưa được giao"
+		},
+		"searchableList": {
+			"searchPlaceholder": "Tìm kiếm…",
+			"noResults": "Không có kết quả"
 		}
 	},
 	"portForwardDetail": {

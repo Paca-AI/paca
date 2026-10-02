@@ -1,21 +1,15 @@
-import { Check, User } from "lucide-react";
+import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
 import type { Task } from "@/lib/interaction-api";
 import type { ProjectMember, TaskStatus, TaskType } from "@/lib/project-api";
-import { resolveMemberAvatarUrl } from "@/lib/provider-logos";
 import { cn } from "@/lib/utils";
+import { AssigneePicker } from "../assignee-picker";
 import {
 	getPriority,
 	IMPORTANCE_BUCKET_VALUES,
@@ -110,110 +104,12 @@ export function SubtaskRow({
 				onClick={(e) => e.stopPropagation()}
 				onKeyDown={(e) => e.stopPropagation()}
 			>
-				{(() => {
-					const assigneeIds = task.assignee_ids ?? [];
-					const visible = assigneeIds.slice(0, 3);
-					const overflow = assigneeIds.length - visible.length;
-					const avatarStack = (
-						<div className="flex items-center -space-x-1.5">
-							{visible.length > 0 ? (
-								visible.map((id) => {
-									const m = members.find((mm) => mm.id === id);
-									return (
-										<div
-											key={id}
-											className="flex size-5.5 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary text-xs font-bold ring-2 ring-card"
-										>
-											<EntityAvatarContent
-												avatarUrl={m ? resolveMemberAvatarUrl(m) : undefined}
-											>
-												{m ? (
-													(m.full_name || m.username).slice(0, 1).toUpperCase()
-												) : (
-													<User className="size-2.5" />
-												)}
-											</EntityAvatarContent>
-										</div>
-									);
-								})
-							) : (
-								<div className="flex size-5.5 items-center justify-center rounded-full bg-linear-to-br from-muted/80 to-muted/40 text-muted-foreground text-xs font-bold ring-1 ring-border/25">
-									<User className="size-2.5" />
-								</div>
-							)}
-							{overflow > 0 && (
-								<div className="flex size-5.5 items-center justify-center rounded-full bg-muted text-muted-foreground text-[10px] font-bold ring-2 ring-card">
-									+{overflow}
-								</div>
-							)}
-						</div>
-					);
-
-					return canEditField && members.length > 0 ? (
-						<Popover>
-							<PopoverTrigger
-								type="button"
-								className="flex items-center rounded-full hover:ring-2 hover:ring-primary/30 transition-all duration-150"
-							>
-								{avatarStack}
-							</PopoverTrigger>
-							<PopoverContent
-								className="w-48 p-1 rounded-xl border border-border/40 shadow-lg"
-								align="end"
-							>
-								<button
-									type="button"
-									className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted/60 transition-colors duration-100"
-									onClick={() => onUpdate?.(task.id, { assignee_ids: [] })}
-								>
-									<User className="size-3.5 opacity-60" />
-									<span className="flex-1 text-left">
-										{t("taskDetail.common.unassigned")}
-									</span>
-									{assigneeIds.length === 0 && (
-										<Check className="size-3.5 text-primary" />
-									)}
-								</button>
-								{members.map((m) => {
-									const isSelected = task.assignee_ids?.includes(m.id) ?? false;
-									return (
-										<button
-											key={m.id}
-											type="button"
-											className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-muted/60 transition-colors duration-100"
-											onClick={() => {
-												const current = task.assignee_ids ?? [];
-												onUpdate?.(task.id, {
-													assignee_ids: isSelected
-														? current.filter((id) => id !== m.id)
-														: [...current, m.id],
-												});
-											}}
-										>
-											<div className="flex size-5 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary text-xs font-bold">
-												<EntityAvatarContent
-													avatarUrl={resolveMemberAvatarUrl(m)}
-												>
-													{(m.full_name || m.username)
-														.slice(0, 1)
-														.toUpperCase()}
-												</EntityAvatarContent>
-											</div>
-											<span className="flex-1 text-left truncate">
-												{m.full_name || m.username}
-											</span>
-											{isSelected && (
-												<Check className="size-3.5 text-primary" />
-											)}
-										</button>
-									);
-								})}
-							</PopoverContent>
-						</Popover>
-					) : (
-						avatarStack
-					);
-				})()}
+				<AssigneePicker
+					members={members}
+					assigneeIds={task.assignee_ids ?? []}
+					canEdit={canEditField}
+					onChange={(patch) => onUpdate?.(task.id, patch)}
+				/>
 			</div>
 
 			{/* Priority */}

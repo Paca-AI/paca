@@ -1,13 +1,13 @@
-import { Check } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import type { TaskType } from "@/lib/project-api";
+import { SearchableList } from "./task-detail/property-field/searchable-list";
 
 interface TaskTypeSelectorProps {
 	taskTypes: TaskType[];
@@ -26,6 +26,7 @@ export function TaskTypeSelector({
 	align = "start",
 }: TaskTypeSelectorProps) {
 	const { t } = useTranslation("projects");
+	const [open, setOpen] = useState(false);
 	const taskType = taskTypes.find((tt) => tt.id === value);
 	const Icon = taskType ? getTaskTypeIconComponent(taskType.icon) : null;
 
@@ -62,40 +63,44 @@ export function TaskTypeSelector({
 	}
 
 	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger
 				type="button"
 				className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-bold leading-tight tracking-wide border truncate max-w-full hover:opacity-80 transition-opacity"
 				style={badgeStyle}
 			>
 				{badgeContent}
-			</DropdownMenuTrigger>
-			<DropdownMenuContent
+			</PopoverTrigger>
+			<PopoverContent
 				className="w-44 p-1 rounded-xl border border-border/40 shadow-lg"
 				align={align}
 			>
-				{taskTypes.map((tt) => {
-					const TtIcon = getTaskTypeIconComponent(tt.icon);
-					return (
-						<DropdownMenuItem
-							key={tt.id}
-							className="rounded-lg px-3 py-2"
-							onClick={() => onChange?.(tt.id)}
-						>
-							{TtIcon && (
-								<TtIcon
-									className="size-3.5 shrink-0"
-									style={tt.color ? { color: tt.color } : undefined}
-								/>
-							)}
-							<span className="flex-1 text-left truncate">{tt.name}</span>
-							{tt.id === value && (
-								<Check className="size-3.5 text-primary shrink-0" />
-							)}
-						</DropdownMenuItem>
-					);
-				})}
-			</DropdownMenuContent>
-		</DropdownMenu>
+				<SearchableList
+					items={taskTypes.map((tt) => {
+						const TtIcon = getTaskTypeIconComponent(tt.icon);
+						return {
+							key: tt.id,
+							label: tt.name,
+							selected: tt.id === value,
+							onSelect: () => {
+								onChange?.(tt.id);
+								setOpen(false);
+							},
+							content: (
+								<>
+									{TtIcon && (
+										<TtIcon
+											className="size-3.5 shrink-0"
+											style={tt.color ? { color: tt.color } : undefined}
+										/>
+									)}
+									<span className="flex-1 text-left truncate">{tt.name}</span>
+								</>
+							),
+						};
+					})}
+				/>
+			</PopoverContent>
+		</Popover>
 	);
 }

@@ -1382,7 +1382,12 @@
 			"parent": "Parent",
 			"viewParent": "View parent",
 			"removeParent": "Remove parent",
-			"addFields": "Add fields"
+			"addFields": "Add fields",
+			"sprintGroup": {
+				"active": "Active",
+				"planned": "Upcoming",
+				"completed": "Completed"
+			}
 		},
 		"description": {
 			"title": "Description",
@@ -1563,6 +1568,10 @@
 			"descriptionChangeDiff": "Description change diff",
 			"autoAssignSkippedLowConfidence": "couldn't confidently pick an assignee ({{confidence}}% confidence) — left the task unassigned",
 			"autoAssignSkipped": "skipped auto-assign — left the task unassigned"
+		},
+		"searchableList": {
+			"searchPlaceholder": "Search…",
+			"noResults": "No matches"
 		}
 	},
 	"portForwardDetail": {

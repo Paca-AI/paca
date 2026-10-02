@@ -4,7 +4,8 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { OptionListButton } from "./option-list-button";
+import { toOptionItem } from "./option-list-button";
+import { SearchableList } from "./searchable-list";
 import type { SelectOption } from "./types";
 
 export function SelectEditor({
@@ -54,17 +55,14 @@ export function SelectEditor({
 				className="w-52 p-1 rounded-xl border border-border/40 shadow-lg"
 				align={align}
 			>
-				{options.map((opt) => {
-					const isSelected = selectedArr.includes(opt.value);
-					return (
-						<OptionListButton
-							key={opt.value}
-							option={opt}
-							isSelected={isSelected}
-							onClick={() => onChange(isSelected ? null : opt.value)}
-						/>
-					);
-				})}
+				<SearchableList
+					items={options.map((opt) => {
+						const isSelected = selectedArr.includes(opt.value);
+						return toOptionItem(opt, isSelected, () =>
+							onChange(isSelected ? null : opt.value),
+						);
+					})}
+				/>
 			</PopoverContent>
 		</Popover>
 	);

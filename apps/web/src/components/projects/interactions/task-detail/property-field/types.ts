@@ -24,6 +24,8 @@ export interface SelectOption {
 	/** Small muted hint shown after the label in the dropdown list only (not
 	 * in the compact trigger pill once a value is selected). */
 	hint?: string;
+	/** Group heading in the dropdown list (e.g. Active / Upcoming sprints). */
+	group?: string;
 }
 
 export interface UserOption {

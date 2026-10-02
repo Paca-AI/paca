@@ -34,3 +34,20 @@ export function displayDate(iso?: string | null) {
 		timeZone: "UTC",
 	});
 }
+
+/** Picker search: every whitespace-separated word must appear (any order,
+ * case-insensitive) in the item's label or group. */
+export function matchesQuery(
+	query: string,
+	...fields: (string | undefined)[]
+): boolean {
+	const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+	const haystack = fields.join(" ").toLowerCase();
+	return words.every((w) => haystack.includes(w));
+}
+
+export function filterSearchableItems<
+	T extends { label: string; group?: string },
+>(items: T[], query: string): T[] {
+	return items.filter((i) => matchesQuery(query, i.label, i.group));
+}

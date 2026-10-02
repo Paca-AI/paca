@@ -1382,7 +1382,12 @@
 			"viewParent": "상위 항목 보기",
 			"removeParent": "상위 항목 제거",
 			"addFields": "필드 추가",
-			"autoAssign": "자동"
+			"autoAssign": "자동",
+			"sprintGroup": {
+				"active": "진행 중",
+				"planned": "예정",
+				"completed": "완료됨"
+			}
 		},
 		"description": {
 			"title": "설명",
@@ -1563,6 +1568,10 @@
 			"descriptionChangeDiff": "설명 변경 차이",
 			"autoAssignSkippedLowConfidence": "담당자를 확신 있게 선택하지 못했습니다 (신뢰도 {{confidence}}%) — 작업이 미할당 상태로 남았습니다",
 			"autoAssignSkipped": "자동 배정을 건너뛰었습니다 — 작업이 미할당 상태로 남았습니다"
+		},
+		"searchableList": {
+			"searchPlaceholder": "검색…",
+			"noResults": "일치하는 항목 없음"
 		}
 	},
 	"portForwardDetail": {

@@ -29,6 +29,7 @@ import {
 } from "@/lib/project-api";
 import { resolveMemberAvatarUrl } from "@/lib/provider-logos";
 import { getTaskTypeIconComponent } from "../../task-types/task-type-icons";
+import { AssigneePicker } from "../assignee-picker";
 import type { PriorityMeta } from "../priority";
 import {
 	getImportanceBucket,
@@ -47,7 +48,6 @@ import { AddFieldDialog } from "./add-field-dialog";
 import { FieldRow } from "./primitives";
 import type { SelectOption, UserOption } from "./property-field";
 import { PropertyField } from "./property-field";
-import { MultiUserEditor } from "./property-field/multi-user-editor";
 import { NumberEditor } from "./property-field/number-editor";
 import { StoryPointsEditor } from "./property-field/story-points-editor";
 import type { CustomFieldDef } from "./types";
@@ -73,7 +73,6 @@ interface PropertiesPanelProps {
 	status: TaskStatus | undefined;
 	taskType: TaskType | undefined;
 	priority: PriorityMeta;
-	assignees: ProjectMember[];
 	reporter: ProjectMember | undefined;
 	statuses?: TaskStatus[];
 	taskTypes?: TaskType[];
@@ -104,11 +103,12 @@ function toUserOption(m: ProjectMember): UserOption {
 	};
 }
 
+const SPRINT_GROUP_ORDER = { active: 0, planned: 1, completed: 2 } as const;
+
 export function PropertiesPanel({
 	task,
 	status,
 	taskType,
-	assignees,
 	reporter,
 	statuses = [],
 	taskTypes = [],
@@ -161,22 +161,26 @@ export function PropertiesPanel({
 			icon: <BookOpen className="size-3 shrink-0 opacity-60" />,
 		},
 		// Completed sprints can't be assigned to, but keep the task's current
-		// sprint so the select still shows its value.
-		...selectableSprints.map((s) => ({
-			value: s.id,
-			label: s.name,
-			icon: (
-				<KanbanSquare className="size-3 shrink-0 text-muted-foreground/70" />
-			),
-			hint:
-				s.status === "planned"
-					? t("taskDetail.properties.sprintNotStarted")
-					: undefined,
-		})),
+		// sprint so the select still shows its value. Grouped by status (stable
+		// sort keeps the API order within each group).
+		...[...selectableSprints]
+			.sort(
+				(a, b) => SPRINT_GROUP_ORDER[a.status] - SPRINT_GROUP_ORDER[b.status],
+			)
+			.map((s) => ({
+				value: s.id,
+				label: s.name,
+				group: t(`taskDetail.properties.sprintGroup.${s.status}`),
+				icon: (
+					<KanbanSquare className="size-3 shrink-0 text-muted-foreground/70" />
+				),
+				hint:
+					s.status === "planned"
+						? t("taskDetail.properties.sprintNotStarted")
+						: undefined,
+			})),
 	];
 
-	const memberUserOptions: UserOption[] = members.map(toUserOption);
-	const assigneeUserOptions: UserOption[] = assignees.map(toUserOption);
 	const reporterUserOption = reporter ? toUserOption(reporter) : null;
 
 	return (
@@ -215,31 +219,15 @@ export function PropertiesPanel({
 				)}
 
 				<FieldRow label={t("taskDetail.properties.assignees")}>
-					<MultiUserEditor
-						userValues={isAutoAssign ? [] : assigneeUserOptions}
-						users={memberUserOptions}
-						onChange={(v) =>
-							onUpdate?.(
-								isAutoAssign
-									? { assignment_mode: "manual", assignee_ids: v }
-									: { assignee_ids: v },
-							)
-						}
-						canEdit={canEdit && members.length > 0}
-						autoOption={
-							jevEnabled
-								? {
-										isSelected: isAutoAssign,
-										label: t("taskDetail.properties.autoAssign"),
-										onToggle: () =>
-											onUpdate?.(
-												isAutoAssign
-													? { assignment_mode: "manual" }
-													: { assignment_mode: "auto", assignee_ids: [] },
-											),
-									}
-								: undefined
-						}
+					<AssigneePicker
+						members={members}
+						assigneeIds={task.assignee_ids ?? []}
+						isAutoAssign={isAutoAssign}
+						autoEnabled={jevEnabled}
+						canEdit={canEdit}
+						size="md"
+						showNames
+						onChange={(patch) => onUpdate?.(patch)}
 					/>
 				</FieldRow>
 
