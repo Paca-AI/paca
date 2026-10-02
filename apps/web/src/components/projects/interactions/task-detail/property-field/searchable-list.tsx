@@ -54,7 +54,9 @@ export function SearchableList({
 								e.preventDefault();
 								// Never act on an already-selected row, so Enter can't
 								// silently unassign / deselect.
-								const first = visible[0];
+								// Also a no-op until something is typed, so an Enter right
+								// after opening can't pick the first row by accident.
+								const first = searching ? visible[0] : undefined;
 								if (first && !first.selected) first.onSelect();
 							}
 						}}

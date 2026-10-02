@@ -34,6 +34,13 @@ describe("SearchableList", () => {
 		expect(onSelect).toHaveBeenCalledExactlyOnceWith(7);
 	});
 
+	it("Enter does nothing before a query is typed", async () => {
+		const onSelect = vi.fn();
+		render(<SearchableList items={makeItems(12, onSelect)} />);
+		await userEvent.type(screen.getByRole("textbox"), "{Enter}");
+		expect(onSelect).not.toHaveBeenCalled();
+	});
+
 	it("Enter never acts on an already-selected row", async () => {
 		const onSelect = vi.fn();
 		render(<SearchableList items={makeItems(12, onSelect, 7)} />);

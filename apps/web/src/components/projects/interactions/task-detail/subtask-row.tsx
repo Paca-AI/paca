@@ -108,6 +108,7 @@ export function SubtaskRow({
 					members={members}
 					assigneeIds={task.assignee_ids ?? []}
 					canEdit={canEditField}
+					align="end"
 					onChange={(patch) => onUpdate?.(task.id, patch)}
 				/>
 			</div>
