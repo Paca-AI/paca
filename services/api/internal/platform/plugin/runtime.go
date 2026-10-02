@@ -1058,6 +1058,17 @@ func (r *Runtime) execQuery(ctx context.Context, caller plugindom.Plugin, schema
 		}
 	}
 
+	// Redaction below masks result columns by output name only, so a SELECT
+	// that reaches a sensitive table must keep every sensitive value under a
+	// recognisable name (see checkSensitiveReadShape).
+	var aliases []string
+	if tables, cols := r.sensitiveReadTables(caller, sqlStr); len(tables) > 0 {
+		aliases, err = checkSensitiveReadShape(sqlStr, cols, tables)
+		if err != nil {
+			return nil, fmt.Errorf("paca.db_query: %w", err)
+		}
+	}
+
 	var queryParams []any
 	if paramsJSON != "" && paramsJSON != "null" {
 		if err := json.Unmarshal([]byte(paramsJSON), &queryParams); err != nil {
@@ -1123,6 +1134,9 @@ func (r *Runtime) execQuery(ctx context.Context, caller plugindom.Plugin, schema
 	}
 
 	if sensitive := r.sensitiveColumnsForQuery(caller, sqlStr); len(sensitive) > 0 {
+		for _, a := range aliases {
+			sensitive[strings.ToLower(a)] = struct{}{}
+		}
 		redactColumns(result.Columns, result.Rows, sensitive)
 	}
 
