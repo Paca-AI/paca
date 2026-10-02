@@ -1382,7 +1382,12 @@
 			"viewParent": "Ver pai",
 			"removeParent": "Remover pai",
 			"addFields": "Adicionar campos",
-			"autoAssign": "Automático"
+			"autoAssign": "Automático",
+			"sprintGroup": {
+				"active": "Ativos",
+				"planned": "Próximos",
+				"completed": "Concluídos"
+			}
 		},
 		"description": {
 			"title": "Descrição",
@@ -1563,6 +1568,10 @@
 			"descriptionChangeDiff": "Diferença de alteração da descrição",
 			"autoAssignSkippedLowConfidence": "não conseguiu escolher um responsável com confiança ({{confidence}}% de confiança) — a tarefa permaneceu não atribuída",
 			"autoAssignSkipped": "pulou a atribuição automática — a tarefa permaneceu não atribuída"
+		},
+		"searchableList": {
+			"searchPlaceholder": "Pesquisar…",
+			"noResults": "Nenhum resultado"
 		}
 	},
 	"portForwardDetail": {

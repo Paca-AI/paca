@@ -1382,7 +1382,12 @@
 			"viewParent": "Voir le parent",
 			"removeParent": "Retirer le parent",
 			"addFields": "Ajouter des champs",
-			"autoAssign": "Automatique"
+			"autoAssign": "Automatique",
+			"sprintGroup": {
+				"active": "Actifs",
+				"planned": "À venir",
+				"completed": "Terminés"
+			}
 		},
 		"description": {
 			"title": "Description",
@@ -1563,6 +1568,10 @@
 			"descriptionChangeDiff": "Différences des modifications de la description",
 			"autoAssignSkippedLowConfidence": "n'a pas pu choisir un responsable avec certitude ({{confidence}} % de confiance) — la tâche reste non assignée",
 			"autoAssignSkipped": "a ignoré l'attribution automatique — la tâche reste non assignée"
+		},
+		"searchableList": {
+			"searchPlaceholder": "Rechercher…",
+			"noResults": "Aucun résultat"
 		}
 	},
 	"portForwardDetail": {

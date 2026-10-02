@@ -1398,7 +1398,12 @@
 			"viewParent": "Открыть родительскую",
 			"removeParent": "Убрать родительскую",
 			"addFields": "Добавить поля",
-			"autoAssign": "Авто"
+			"autoAssign": "Авто",
+			"sprintGroup": {
+				"active": "Активные",
+				"planned": "Предстоящие",
+				"completed": "Завершённые"
+			}
 		},
 		"description": {
 			"title": "Описание",
@@ -1581,6 +1586,10 @@
 			"descriptionChangeDiff": "Diff изменения описания",
 			"autoAssignSkippedLowConfidence": "не смог уверенно выбрать исполнителя (уверенность {{confidence}}%) — задача осталась без назначения",
 			"autoAssignSkipped": "пропустил автоназначение — задача осталась без назначения"
+		},
+		"searchableList": {
+			"searchPlaceholder": "Поиск…",
+			"noResults": "Ничего не найдено"
 		}
 	},
 	"portForwardDetail": {

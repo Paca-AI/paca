@@ -118,7 +118,6 @@ export function TaskDetailModal({
 	const status = statuses.find((s) => s.id === task?.status_id);
 	const taskType = taskTypes.find((t) => t.id === task?.task_type_id);
 	const priority = getPriority(task?.importance ?? 0);
-	const assignees = members.filter((m) => task?.assignee_ids?.includes(m.id));
 	const reporter = members.find((m) => m.id === task?.reporter_id);
 
 	// ── Task role detection ────────────────────────────────────────────────────
@@ -277,7 +276,14 @@ export function TaskDetailModal({
 	useEffect(() => {
 		if (!open || mode === "page") return;
 		const handler = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onOpenChange(false);
+			if (e.key !== "Escape") return;
+			// Escape inside a picker popover closes only that popover.
+			if (
+				e.target instanceof Element &&
+				e.target.closest('[data-slot="popover-content"]')
+			)
+				return;
+			onOpenChange(false);
 		};
 		document.addEventListener("keydown", handler);
 		return () => document.removeEventListener("keydown", handler);
@@ -411,7 +417,6 @@ export function TaskDetailModal({
 								status={status}
 								taskType={taskType}
 								priority={priority}
-								assignees={assignees}
 								reporter={reporter}
 								statuses={statuses}
 								taskTypes={taskTypes}

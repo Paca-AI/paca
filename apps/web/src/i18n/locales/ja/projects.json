@@ -1382,7 +1382,12 @@
 			"viewParent": "親タスクを表示",
 			"removeParent": "親タスクを削除",
 			"addFields": "フィールドを追加",
-			"autoAssign": "自動"
+			"autoAssign": "自動",
+			"sprintGroup": {
+				"active": "進行中",
+				"planned": "予定",
+				"completed": "完了"
+			}
 		},
 		"description": {
 			"title": "説明",
@@ -1563,6 +1568,10 @@
 			"descriptionChangeDiff": "説明の変更差分",
 			"autoAssignSkippedLowConfidence": "担当者を確信を持って選べませんでした（信頼度{{confidence}}%）— タスクは未割り当てのままです",
 			"autoAssignSkipped": "自動割り当てをスキップしました — タスクは未割り当てのままです"
+		},
+		"searchableList": {
+			"searchPlaceholder": "検索…",
+			"noResults": "一致なし"
 		}
 	},
 	"portForwardDetail": {

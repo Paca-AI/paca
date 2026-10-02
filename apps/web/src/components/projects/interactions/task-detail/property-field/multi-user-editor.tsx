@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import { FieldValue } from "../primitives";
 import { ChipField } from "./chip-field";
+import { SearchableList } from "./searchable-list";
 import type { UserOption } from "./types";
 
 // Sentinel chip key for the "Auto" row — namespaced with underscores so it
@@ -22,28 +23,6 @@ function UserAvatar({
 				{initials}
 			</EntityAvatarContent>
 		</div>
-	);
-}
-
-function UserListButton({
-	user,
-	isSelected,
-	onClick,
-}: {
-	user: UserOption;
-	isSelected: boolean;
-	onClick: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-muted/60 transition-colors duration-100"
-			onClick={onClick}
-		>
-			<UserAvatar initials={user.initials} avatarUrl={user.avatarUrl} />
-			<span className="flex-1 text-left truncate">{user.label}</span>
-			{isSelected && <Check className="size-3.5 text-primary" />}
-		</button>
 	);
 }
 
@@ -168,21 +147,29 @@ export function MultiUserEditor({
 			canEdit={canEdit}
 			addLabel={t("taskDetail.propertyField.multiSelectEditor.addOption")}
 		>
-			{autoOption && (
-				<AutoListButton
-					label={autoOption.label}
-					isSelected={autoOption.isSelected}
-					onClick={autoOption.onToggle}
-				/>
-			)}
-			{users.map((u) => (
-				<UserListButton
-					key={u.value}
-					user={u}
-					isSelected={selectedIds.includes(u.value)}
-					onClick={() => toggle(u.value)}
-				/>
-			))}
+			<SearchableList
+				pinned={
+					autoOption && (
+						<AutoListButton
+							label={autoOption.label}
+							isSelected={autoOption.isSelected}
+							onClick={autoOption.onToggle}
+						/>
+					)
+				}
+				items={users.map((u) => ({
+					key: u.value,
+					label: u.label,
+					selected: selectedIds.includes(u.value),
+					onSelect: () => toggle(u.value),
+					content: (
+						<>
+							<UserAvatar initials={u.initials} avatarUrl={u.avatarUrl} />
+							<span className="flex-1 text-left truncate">{u.label}</span>
+						</>
+					),
+				}))}
+			/>
 		</ChipField>
 	);
 }

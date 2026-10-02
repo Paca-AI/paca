@@ -13,7 +13,12 @@
 ).process.env.TZ = "America/Sao_Paulo";
 
 import { describe, expect, it } from "vitest";
-import { displayDate, toDateObject, toISODate } from "./helpers";
+import {
+	displayDate,
+	filterSearchableItems,
+	toDateObject,
+	toISODate,
+} from "./helpers";
 
 describe("date helpers (timezone-safe, calendar-date semantics)", () => {
 	it("displayDate shows the stored calendar day, not the day before", () => {
@@ -43,5 +48,26 @@ describe("date helpers (timezone-safe, calendar-date semantics)", () => {
 		expect(displayDate("not-a-date")).toBeNull();
 		expect(toDateObject(null)).toBeUndefined();
 		expect(toDateObject("")).toBeUndefined();
+	});
+});
+
+describe("picker search helpers", () => {
+	const items = [
+		{ label: "Jane Doe", group: undefined },
+		{ label: "Sprint 12", group: "Active" },
+		{ label: "Sprint 3", group: "Completed" },
+	];
+
+	it("matches every word in any order, case-insensitively", () => {
+		expect(filterSearchableItems(items, "doe JANE")).toEqual([items[0]]);
+	});
+
+	it("matches against the group as well as the label", () => {
+		expect(filterSearchableItems(items, "sprint active")).toEqual([items[1]]);
+	});
+
+	it("returns everything for a blank query and nothing for no match", () => {
+		expect(filterSearchableItems(items, "  ")).toHaveLength(3);
+		expect(filterSearchableItems(items, "zzz")).toHaveLength(0);
 	});
 });

@@ -1382,7 +1382,12 @@
 			"viewParent": "Ver tarea principal",
 			"removeParent": "Eliminar tarea principal",
 			"addFields": "Añadir campos",
-			"autoAssign": "Automático"
+			"autoAssign": "Automático",
+			"sprintGroup": {
+				"active": "Activos",
+				"planned": "Próximos",
+				"completed": "Completados"
+			}
 		},
 		"description": {
 			"title": "Descripción",
@@ -1563,6 +1568,10 @@
 			"descriptionChangeDiff": "Diferencias del cambio de descripción",
 			"autoAssignSkippedLowConfidence": "no pudo elegir un responsable con confianza ({{confidence}}% de confianza); la tarea quedó sin asignar",
 			"autoAssignSkipped": "omitió la asignación automática; la tarea quedó sin asignar"
+		},
+		"searchableList": {
+			"searchPlaceholder": "Buscar…",
+			"noResults": "Sin resultados"
 		}
 	},
 	"portForwardDetail": {
