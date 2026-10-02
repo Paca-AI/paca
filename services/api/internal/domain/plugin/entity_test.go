@@ -1,6 +1,7 @@
 package plugindom
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Paca-AI/api/internal/platform/bundledskills"
@@ -269,5 +270,19 @@ func TestPluginManifestValidate_Skills(t *testing.T) {
 				t.Fatalf("unexpected validation error: %v", err)
 			}
 		})
+	}
+}
+
+func TestValidatePluginName(t *testing.T) {
+	for _, ok := range []string{"com.paca.checklist", "com.paca.time-logging", "test.plugin", "alpha", "a_b.c-d"} {
+		if err := ValidatePluginName(ok); err != nil {
+			t.Errorf("ValidatePluginName(%q) = %v, want nil", ok, err)
+		}
+	}
+	long := strings.Repeat("a", 129)
+	for _, bad := range []string{"", "..", ".", "../../tmp/x", "a/b", `a\b`, "/abs", "a..b", ".a", "a.", "a b", "a;b", long} {
+		if err := ValidatePluginName(bad); err == nil {
+			t.Errorf("ValidatePluginName(%q) = nil, want error", bad)
+		}
 	}
 }

@@ -90,6 +90,30 @@ type CustomPermission struct {
 // skillNamePattern mirrors the AgentSkills name convention enforced by the
 // OpenHands SDK (openhands/sdk/skills/utils.py's SKILL_NAME_PATTERN):
 // lowercase alphanumeric segments joined by single hyphens.
+// pluginNamePattern restricts plugin names to dot-separated segments of
+// letters, digits, '_' and '-' (e.g. "com.paca.time-logging"). Names are used
+// as directory names on disk and as Postgres schema names, so path separators
+// and ".." must never be accepted.
+var pluginNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9][A-Za-z0-9_-]*)*$`)
+
+// maxPluginNameLen bounds plugin names (also the Postgres identifier limit
+// leaves headroom for the schema prefix).
+const maxPluginNameLen = 128
+
+// ValidatePluginName reports whether name is a safe reverse-DNS plugin id.
+func ValidatePluginName(name string) error {
+	if name == "" {
+		return fmt.Errorf("plugin name is required")
+	}
+	if len(name) > maxPluginNameLen {
+		return fmt.Errorf("plugin name must be at most %d characters", maxPluginNameLen)
+	}
+	if !pluginNamePattern.MatchString(name) {
+		return fmt.Errorf("plugin name %q is invalid: use dot-separated segments of letters, digits, '_' and '-'", name)
+	}
+	return nil
+}
+
 var skillNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // pluginKeyNamespace derives the required custom-permission key prefix from a

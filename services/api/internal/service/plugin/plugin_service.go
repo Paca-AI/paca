@@ -3,7 +3,6 @@ package pluginsvc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,8 +59,8 @@ func (s *Service) CheckHostCompatibility(manifest plugindom.PluginManifest) erro
 
 // InstallPlugin validates and inserts a new plugin into the registry.
 func (s *Service) InstallPlugin(ctx context.Context, input plugindom.InstallInput) (*plugindom.Plugin, error) {
-	if input.Name == "" {
-		return nil, fmt.Errorf("plugin name is required")
+	if err := plugindom.ValidatePluginName(input.Name); err != nil {
+		return nil, apierr.New(apierr.CodeBadRequest, err.Error())
 	}
 	if err := input.Manifest.Validate(); err != nil {
 		return nil, apierr.New(apierr.CodeBadRequest, "invalid plugin manifest: "+err.Error())
