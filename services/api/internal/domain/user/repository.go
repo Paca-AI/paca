@@ -6,6 +6,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// ListFilter narrows a user listing. The zero value matches every user.
+type ListFilter struct {
+	// Search is split on whitespace; every word must appear (case-insensitive)
+	// in the username, full name or email.
+	Search string
+	// Role, when non-empty, is the exact global role name to match.
+	Role string
+}
+
 // Repository defines persistence operations for the user aggregate.
 type Repository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
@@ -17,8 +26,9 @@ type Repository interface {
 	// FindByUsernameIncludingDeleted returns a user by username even when
 	// the row is soft-deleted.
 	FindByUsernameIncludingDeleted(ctx context.Context, username string) (*User, error)
-	// List returns a page of users and the total count of all users.
-	List(ctx context.Context, offset, limit int) ([]*User, int64, error)
+	// List returns a page of users matching filter, sorted by name, and the
+	// total count of users matching filter (not just this page).
+	List(ctx context.Context, offset, limit int, filter ListFilter) ([]*User, int64, error)
 	// CountUsers returns the total count of active, non-system users — the
 	// same count List returns as its total, without paginating any rows.
 	// Used by the home page's workspace stats widget for team-member count.

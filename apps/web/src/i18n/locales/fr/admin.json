@@ -127,6 +127,20 @@
 				"internalError": "Une erreur s'est produite. Veuillez réessayer.",
 				"generic": "Une erreur s'est produite."
 			}
+		},
+		"filters": {
+			"searchPlaceholder": "Rechercher par nom, identifiant ou e-mail…",
+			"searchLabel": "Rechercher des utilisateurs",
+			"roleLabel": "Filtrer par rôle",
+			"allRoles": "Tous les rôles",
+			"clearSearch": "Effacer la recherche",
+			"resultsCount": "Résultats : {{count}}",
+			"clearAll": "Effacer les filtres"
+		},
+		"noMatch": {
+			"title": "Aucun utilisateur ne correspond",
+			"description": "Essayez une autre recherche ou un autre filtre de rôle.",
+			"clear": "Effacer les filtres"
 		}
 	},
 	"globalRoles": {

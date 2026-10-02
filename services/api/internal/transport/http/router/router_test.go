@@ -43,7 +43,7 @@ type mockUserSvc struct{}
 func (m *mockUserSvc) GetByID(context.Context, uuid.UUID) (*userdom.User, error) {
 	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
 }
-func (m *mockUserSvc) List(context.Context, int, int) ([]*userdom.User, int64, error) {
+func (m *mockUserSvc) List(context.Context, int, int, userdom.ListFilter) ([]*userdom.User, int64, error) {
 	return []*userdom.User{}, 0, nil
 }
 func (m *mockUserSvc) CountUsers(context.Context) (int64, error) {

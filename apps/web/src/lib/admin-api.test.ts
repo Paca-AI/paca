@@ -213,6 +213,34 @@ describe("admin-api", () => {
 		});
 	});
 
+	it("sends search and role to getUsers only when set", async () => {
+		mockGet.mockResolvedValue({
+			data: {
+				data: {
+					items: [],
+					total: 0,
+					page: 1,
+					page_size: 20,
+					must_change_password_count: 0,
+				},
+				error_code: null,
+				message: "ok",
+			},
+		});
+
+		await getUsers(2, 20, { search: "alice", role: "ADMIN" });
+		expect(mockGet).toHaveBeenCalledWith("/admin/users", {
+			params: { page: 2, page_size: 20, search: "alice", role: "ADMIN" },
+		});
+		expect(usersQueryOptions(1, 20, { search: "alice" }).queryKey).toEqual([
+			"admin",
+			"users",
+			1,
+			20,
+			{ search: "alice", role: "" },
+		]);
+	});
+
 	it("posts payload to create user and unwraps response", async () => {
 		mockPost.mockResolvedValue({
 			data: { data: mockUser, error_code: null, message: "ok" },

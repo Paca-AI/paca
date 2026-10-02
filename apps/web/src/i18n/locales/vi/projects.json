@@ -1282,6 +1282,19 @@
 			"placeholder": "Người này làm công việc gì?",
 			"save": "Lưu",
 			"saveFailed": "Không thể lưu mô tả."
+		},
+		"filters": {
+			"searchPlaceholder": "Tìm theo tên hoặc tên người dùng…",
+			"searchLabel": "Tìm thành viên",
+			"roleLabel": "Lọc theo vai trò",
+			"allRoles": "Tất cả",
+			"clearSearch": "Xóa tìm kiếm",
+			"showingOf": "Hiển thị {{shown}} / {{total}}"
+		},
+		"noMatch": {
+			"title": "Không có thành viên phù hợp",
+			"description": "Hãy thử từ khóa hoặc bộ lọc vai trò khác.",
+			"clear": "Xóa bộ lọc"
 		}
 	},
 	"aiChat": {

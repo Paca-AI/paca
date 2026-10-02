@@ -127,6 +127,20 @@
 				"internalError": "문제가 발생했습니다. 다시 시도해 주세요.",
 				"generic": "문제가 발생했습니다."
 			}
+		},
+		"filters": {
+			"searchPlaceholder": "이름, 사용자 이름 또는 이메일로 검색…",
+			"searchLabel": "사용자 검색",
+			"roleLabel": "역할로 필터링",
+			"allRoles": "모든 역할",
+			"clearSearch": "검색 지우기",
+			"resultsCount": "결과: {{count}}",
+			"clearAll": "필터 지우기"
+		},
+		"noMatch": {
+			"title": "일치하는 사용자가 없습니다",
+			"description": "다른 검색어나 역할 필터를 시도해 보세요.",
+			"clear": "필터 지우기"
 		}
 	},
 	"globalRoles": {

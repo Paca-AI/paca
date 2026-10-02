@@ -127,6 +127,20 @@
 				"internalError": "Algo salió mal. Inténtalo de nuevo.",
 				"generic": "Algo salió mal."
 			}
+		},
+		"filters": {
+			"searchPlaceholder": "Buscar por nombre, usuario o correo…",
+			"searchLabel": "Buscar usuarios",
+			"roleLabel": "Filtrar por rol",
+			"allRoles": "Todos los roles",
+			"clearSearch": "Borrar búsqueda",
+			"resultsCount": "Resultados: {{count}}",
+			"clearAll": "Borrar filtros"
+		},
+		"noMatch": {
+			"title": "Ningún usuario coincide",
+			"description": "Prueba con otra búsqueda o filtro de rol.",
+			"clear": "Borrar filtros"
 		}
 	},
 	"globalRoles": {

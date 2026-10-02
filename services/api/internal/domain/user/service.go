@@ -46,8 +46,9 @@ type AdminUpdateInput struct {
 // Service defines the user use-case contract.
 type Service interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
-	// List returns a page of users and the total count.
-	List(ctx context.Context, page, pageSize int) ([]*User, int64, error)
+	// List returns a page of users matching filter and the total count of
+	// matches.
+	List(ctx context.Context, page, pageSize int, filter ListFilter) ([]*User, int64, error)
 	// CountUsers returns the total count of users without paginating rows.
 	CountUsers(ctx context.Context) (int64, error)
 	// CountUsersMustChangePassword returns the total count of users who must

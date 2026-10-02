@@ -25,7 +25,7 @@ import (
 
 type mockUserSvc struct {
 	getByID                      func(ctx context.Context, id uuid.UUID) (*domainuser.User, error)
-	list                         func(ctx context.Context, page, pageSize int) ([]*domainuser.User, int64, error)
+	list                         func(ctx context.Context, page, pageSize int, filter domainuser.ListFilter) ([]*domainuser.User, int64, error)
 	countUsersMustChangePassword func(ctx context.Context) (int64, error)
 	listGlobalPermissions        func(ctx context.Context, id uuid.UUID) ([]string, error)
 	create                       func(ctx context.Context, in domainuser.CreateInput) (*domainuser.User, error)
@@ -47,9 +47,9 @@ func (m *mockUserSvc) GetByID(ctx context.Context, id uuid.UUID) (*domainuser.Us
 	}
 	return nil, domainuser.ErrNotFound
 }
-func (m *mockUserSvc) List(ctx context.Context, page, pageSize int) ([]*domainuser.User, int64, error) {
+func (m *mockUserSvc) List(ctx context.Context, page, pageSize int, filter domainuser.ListFilter) ([]*domainuser.User, int64, error) {
 	if m.list != nil {
-		return m.list(ctx, page, pageSize)
+		return m.list(ctx, page, pageSize, filter)
 	}
 	return nil, 0, nil
 }
@@ -240,7 +240,7 @@ func TestCreateUser_UsernameTaken(t *testing.T) {
 func TestListUsers_Success(t *testing.T) {
 	id := uuid.New()
 	svc := &mockUserSvc{
-		list: func(_ context.Context, _, _ int) ([]*domainuser.User, int64, error) {
+		list: func(_ context.Context, _, _ int, _ domainuser.ListFilter) ([]*domainuser.User, int64, error) {
 			return []*domainuser.User{
 				{ID: id, Username: "alice", FullName: "Alice", Role: domainuser.RoleUser},
 			}, 1, nil
@@ -254,9 +254,28 @@ func TestListUsers_Success(t *testing.T) {
 	}
 }
 
+func TestListUsers_PassesSearchAndRoleFilter(t *testing.T) {
+	var got domainuser.ListFilter
+	svc := &mockUserSvc{
+		list: func(_ context.Context, _, _ int, f domainuser.ListFilter) ([]*domainuser.User, int64, error) {
+			got = f
+			return nil, 0, nil
+		},
+	}
+	r := newUserRouter(svc)
+
+	w := do(t, r, http.MethodGet, "/admin/users?search=%20alice%20smith%20&role=ADMIN", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if got.Search != "alice smith" || got.Role != "ADMIN" {
+		t.Fatalf("filter = %+v, want search=%q role=%q", got, "alice smith", "ADMIN")
+	}
+}
+
 func TestListUsers_ServiceError(t *testing.T) {
 	svc := &mockUserSvc{
-		list: func(_ context.Context, _, _ int) ([]*domainuser.User, int64, error) {
+		list: func(_ context.Context, _, _ int, _ domainuser.ListFilter) ([]*domainuser.User, int64, error) {
 			return nil, 0, errors.New("db error")
 		},
 	}
@@ -281,7 +300,7 @@ func TestListUsers_PageValid(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var gotPage int
 			svc := &mockUserSvc{
-				list: func(_ context.Context, page, _ int) ([]*domainuser.User, int64, error) {
+				list: func(_ context.Context, page, _ int, _ domainuser.ListFilter) ([]*domainuser.User, int64, error) {
 					gotPage = page
 					return []*domainuser.User{}, 0, nil
 				},
@@ -307,7 +326,7 @@ func TestListUsers_PageInvalidRejected(t *testing.T) {
 	for _, query := range cases {
 		t.Run(query, func(t *testing.T) {
 			svc := &mockUserSvc{
-				list: func(_ context.Context, page, _ int) ([]*domainuser.User, int64, error) {
+				list: func(_ context.Context, page, _ int, _ domainuser.ListFilter) ([]*domainuser.User, int64, error) {
 					t.Fatalf("service should not be called for invalid page, got page=%d", page)
 					return nil, 0, nil
 				},
@@ -923,7 +942,7 @@ func TestCreateUser_PasswordTooShort(t *testing.T) {
 func TestListUsers_ResponseShape(t *testing.T) {
 	id := uuid.New()
 	svc := &mockUserSvc{
-		list: func(_ context.Context, _, _ int) ([]*domainuser.User, int64, error) {
+		list: func(_ context.Context, _, _ int, _ domainuser.ListFilter) ([]*domainuser.User, int64, error) {
 			return []*domainuser.User{
 				{ID: id, Username: "alice", FullName: "Alice", Role: domainuser.RoleUser},
 			}, 1, nil
@@ -973,7 +992,7 @@ func TestListUsers_ResponseShape(t *testing.T) {
 // displayed or how small page_size is.
 func TestListUsers_MustChangePasswordCountIsWorkspaceWide(t *testing.T) {
 	svc := &mockUserSvc{
-		list: func(_ context.Context, _, _ int) ([]*domainuser.User, int64, error) {
+		list: func(_ context.Context, _, _ int, _ domainuser.ListFilter) ([]*domainuser.User, int64, error) {
 			// Current page has zero must-change-password users...
 			return []*domainuser.User{
 				{ID: uuid.New(), Username: "alice", Role: domainuser.RoleUser, MustChangePassword: false},
@@ -1006,7 +1025,7 @@ func TestListUsers_MustChangePasswordCountIsWorkspaceWide(t *testing.T) {
 
 func TestListUsers_MustChangePasswordCountServiceError(t *testing.T) {
 	svc := &mockUserSvc{
-		list: func(_ context.Context, _, _ int) ([]*domainuser.User, int64, error) {
+		list: func(_ context.Context, _, _ int, _ domainuser.ListFilter) ([]*domainuser.User, int64, error) {
 			return []*domainuser.User{}, 0, nil
 		},
 		countUsersMustChangePassword: func(context.Context) (int64, error) {

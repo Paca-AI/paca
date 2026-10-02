@@ -127,6 +127,20 @@
 				"internalError": "Đã xảy ra lỗi. Vui lòng thử lại.",
 				"generic": "Đã xảy ra lỗi."
 			}
+		},
+		"filters": {
+			"searchPlaceholder": "Tìm theo tên, tên người dùng hoặc email…",
+			"searchLabel": "Tìm người dùng",
+			"roleLabel": "Lọc theo vai trò",
+			"allRoles": "Tất cả vai trò",
+			"clearSearch": "Xóa tìm kiếm",
+			"resultsCount": "Kết quả: {{count}}",
+			"clearAll": "Xóa bộ lọc"
+		},
+		"noMatch": {
+			"title": "Không có người dùng phù hợp",
+			"description": "Hãy thử từ khóa hoặc bộ lọc vai trò khác.",
+			"clear": "Xóa bộ lọc"
 		}
 	},
 	"globalRoles": {

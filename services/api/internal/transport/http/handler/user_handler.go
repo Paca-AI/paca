@@ -179,7 +179,10 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	users, total, err := h.svc.List(r.Context(), page, pageSize)
+	users, total, err := h.svc.List(r.Context(), page, pageSize, domainuser.ListFilter{
+		Search: strings.TrimSpace(r.URL.Query().Get("search")),
+		Role:   strings.TrimSpace(r.URL.Query().Get("role")),
+	})
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

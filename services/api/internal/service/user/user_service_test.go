@@ -117,7 +117,7 @@ func (r *stubRepo) FindByUsernameIncludingDeleted(ctx context.Context, username 
 	}
 	return nil, userdom.ErrNotFound
 }
-func (r *stubRepo) List(_ context.Context, _, _ int) ([]*userdom.User, int64, error) {
+func (r *stubRepo) List(_ context.Context, _, _ int, _ userdom.ListFilter) ([]*userdom.User, int64, error) {
 	return nil, 0, nil
 }
 func (r *stubRepo) CountUsers(_ context.Context) (int64, error) { return 0, nil }
