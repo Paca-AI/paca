@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
 	AlertTriangle,
+	Download,
 	LayoutList,
 	Plus,
 	Settings,
@@ -13,6 +14,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CustomFieldsSettings } from "@/components/projects/settings/CustomFieldsSettings";
 import { DangerZone } from "@/components/projects/settings/DangerZone";
+import { ExportSettings } from "@/components/projects/settings/ExportSettings";
 import { GeneralSettings } from "@/components/projects/settings/GeneralSettings";
 import { JevSettings } from "@/components/projects/settings/JevSettings";
 import { RolesSettings } from "@/components/projects/settings/RolesSettings";
@@ -77,6 +79,11 @@ const NAV_ITEMS = [
 		icon: Sparkles,
 	},
 	{
+		id: "export",
+		labelKey: "project.settingsPage.nav.export",
+		icon: Download,
+	},
+	{
 		id: "danger",
 		labelKey: "project.settingsPage.nav.dangerZone",
 		icon: AlertTriangle,
@@ -114,6 +121,12 @@ function SettingsPage() {
 		hasPermission("project.settings.custom_fields.write") ||
 		hasProjectPermission("project.settings.custom_fields.write");
 
+	// Exporting hands over the whole project in one file, so it has its own
+	// permission (project.export) rather than riding on tasks.read — see
+	// authz.PermissionProjectExport's doc comment on the Go side.
+	const canExport =
+		hasPermission("project.export") || hasProjectPermission("project.export");
+
 	const { getRegistrations } = usePluginRegistry();
 	// A tab's own requiredPermission no longer hides it from this list —
 	// matching how the built-in tabs above (task-types, custom-fields, etc.)
@@ -126,6 +139,7 @@ function SettingsPage() {
 
 	const visibleNavItems = NAV_ITEMS.filter((i) => {
 		if (i.id === "danger") return canDelete;
+		if (i.id === "export") return canExport;
 		return true;
 	});
 
@@ -136,6 +150,7 @@ function SettingsPage() {
 		| "task-types"
 		| "custom-fields"
 		| "jev"
+		| "export"
 		| "danger"
 		| string
 	>("general");
@@ -279,6 +294,9 @@ function SettingsPage() {
 						)}
 						{activeSection === "jev" && (
 							<JevSettings projectId={projectId} canEdit={canEditProject} />
+						)}
+						{activeSection === "export" && canExport && (
+							<ExportSettings projectId={projectId} canExport={canExport} />
 						)}
 						{activeSection === "danger" && canDelete && (
 							<DangerZone projectId={projectId} />

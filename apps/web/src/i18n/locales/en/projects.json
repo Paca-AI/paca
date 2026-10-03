@@ -12,7 +12,8 @@
 				"customFields": "Custom Fields",
 				"jev": "Jev AI",
 				"dangerZone": "Danger Zone",
-				"plugins": "Plugins"
+				"plugins": "Plugins",
+				"export": "Export"
 			},
 			"pluginTab": {
 				"noPermission": {
@@ -912,6 +913,10 @@
 			"activitiesRead": {
 				"label": "View Activity Log",
 				"description": "See every activity recorded in this project"
+			},
+			"projectExport": {
+				"label": "Export Project Data",
+				"description": "Export tasks (with comments and activities) and documentation of this project"
 			}
 		},
 		"permissionGroups": {
@@ -1183,6 +1188,41 @@
 				"deleteFailed": "Failed to delete project. Please try again.",
 				"cancel": "Cancel",
 				"deletePermanently": "Delete permanently"
+			}
+		},
+		"export": {
+			"title": "Export",
+			"description": "Download your project's data. Exports are generated in the background and kept for 7 days.",
+			"recent": {
+				"title": "Recent exports",
+				"empty": "No exports yet."
+			},
+			"status": {
+				"pending": "Queued",
+				"processing": "Generating…",
+				"completed": "Ready",
+				"failed": "Failed",
+				"expired": "Expired"
+			},
+			"rows": "Tasks: {{count}}",
+			"availableUntil": "Available until {{date}}",
+			"download": "Download",
+			"failedMessage": "The export could not be generated. Please try again.",
+			"errors": {
+				"inProgress": "An export is already in progress for this project.",
+				"requestFailed": "Could not start the export. Please try again.",
+				"downloadFailed": "Could not download the export. Please try again.",
+				"expired": "This export has expired. Request a new one."
+			},
+			"noPermission": {
+				"title": "You don't have permission to export this project",
+				"description": "Ask a project owner or admin to grant you the export permission."
+			},
+			"archive": {
+				"title": "Project data (ZIP)",
+				"description": "Every task as CSV, with their comments and activities as separate CSV files, plus your documentation as Markdown files.",
+				"button": "Export project",
+				"inProgress": "Exporting…"
 			}
 		}
 	},

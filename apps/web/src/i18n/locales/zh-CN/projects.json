@@ -12,7 +12,8 @@
 				"customFields": "自定义字段",
 				"jev": "Jev AI",
 				"dangerZone": "危险区域",
-				"plugins": "插件"
+				"plugins": "插件",
+				"export": "导出"
 			},
 			"pluginTab": {
 				"noPermission": {
@@ -912,6 +913,10 @@
 			"activitiesRead": {
 				"label": "查看动态日志",
 				"description": "查看此项目中记录的所有动态"
+			},
+			"projectExport": {
+				"label": "导出项目数据",
+				"description": "导出此项目的任务（含评论和活动）和文档"
 			}
 		},
 		"permissionGroups": {
@@ -1183,6 +1188,41 @@
 				"deleteFailed": "删除项目失败，请重试。",
 				"cancel": "取消",
 				"deletePermanently": "永久删除"
+			}
+		},
+		"export": {
+			"title": "导出",
+			"description": "下载项目数据。导出文件在后台生成，并保留 7 天。",
+			"recent": {
+				"title": "最近的导出",
+				"empty": "暂无导出记录。"
+			},
+			"status": {
+				"pending": "排队中",
+				"processing": "生成中…",
+				"completed": "已就绪",
+				"failed": "失败",
+				"expired": "已过期"
+			},
+			"rows": "任务数：{{count}}",
+			"availableUntil": "可下载至 {{date}}",
+			"download": "下载",
+			"failedMessage": "无法生成导出文件，请重试。",
+			"errors": {
+				"inProgress": "此项目已有正在进行的导出。",
+				"requestFailed": "无法开始导出，请重试。",
+				"downloadFailed": "无法下载导出文件，请重试。",
+				"expired": "此导出已过期，请重新申请。"
+			},
+			"noPermission": {
+				"title": "你没有导出此项目的权限",
+				"description": "请联系项目所有者或管理员授予导出权限。"
+			},
+			"archive": {
+				"title": "项目数据（ZIP）",
+				"description": "所有任务导出为 CSV，其评论和活动导出为单独的 CSV 文件，文档导出为 Markdown 文件。",
+				"button": "导出项目",
+				"inProgress": "正在导出…"
 			}
 		}
 	},

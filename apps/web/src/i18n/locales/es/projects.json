@@ -12,7 +12,8 @@
 				"customFields": "Campos personalizados",
 				"jev": "Jev IA",
 				"dangerZone": "Zona de peligro",
-				"plugins": "Plugins"
+				"plugins": "Plugins",
+				"export": "Exportar"
 			},
 			"pluginTab": {
 				"noPermission": {
@@ -912,6 +913,10 @@
 			"activitiesRead": {
 				"label": "Ver registro de actividad",
 				"description": "Ver toda la actividad registrada en este proyecto"
+			},
+			"projectExport": {
+				"label": "Exportar datos del proyecto",
+				"description": "Exportar las tareas (con comentarios y actividades) y la documentación de este proyecto"
 			}
 		},
 		"permissionGroups": {
@@ -1183,6 +1188,41 @@
 				"deleteFailed": "No se pudo eliminar el proyecto. Inténtalo de nuevo.",
 				"cancel": "Cancelar",
 				"deletePermanently": "Eliminar permanentemente"
+			}
+		},
+		"export": {
+			"title": "Exportar",
+			"description": "Descarga los datos de tu proyecto. Las exportaciones se generan en segundo plano y se conservan durante 7 días.",
+			"recent": {
+				"title": "Exportaciones recientes",
+				"empty": "Aún no hay exportaciones."
+			},
+			"status": {
+				"pending": "En cola",
+				"processing": "Generando…",
+				"completed": "Lista",
+				"failed": "Fallida",
+				"expired": "Caducada"
+			},
+			"rows": "Tareas: {{count}}",
+			"availableUntil": "Disponible hasta {{date}}",
+			"download": "Descargar",
+			"failedMessage": "No se pudo generar la exportación. Inténtalo de nuevo.",
+			"errors": {
+				"inProgress": "Ya hay una exportación en curso para este proyecto.",
+				"requestFailed": "No se pudo iniciar la exportación. Inténtalo de nuevo.",
+				"downloadFailed": "No se pudo descargar la exportación. Inténtalo de nuevo.",
+				"expired": "Esta exportación ha caducado. Solicita una nueva."
+			},
+			"noPermission": {
+				"title": "No tienes permiso para exportar este proyecto",
+				"description": "Pide a un propietario o administrador del proyecto que te conceda el permiso de exportación."
+			},
+			"archive": {
+				"title": "Datos del proyecto (ZIP)",
+				"description": "Todas las tareas en CSV, con sus comentarios y actividades en archivos CSV aparte, además de la documentación en archivos Markdown.",
+				"button": "Exportar proyecto",
+				"inProgress": "Exportando…"
 			}
 		}
 	},

@@ -41,6 +41,7 @@ import (
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
+	exportsvc "github.com/Paca-AI/api/internal/service/export"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
@@ -71,6 +72,7 @@ type App struct {
 	notificationConsumer   *worker.NotificationConsumer
 	pluginEventConsumer    *worker.PluginEventConsumer
 	environmentConsumer    *worker.EnvironmentCommandConsumer
+	projectExportConsumer  *worker.ProjectExportConsumer
 	automationConsumer     *worker.AutomationConsumer
 	taskAutofillConsumer   *worker.TaskAutofillConsumer
 	taskAutoAssignConsumer *worker.TaskAutoAssignConsumer
@@ -270,6 +272,12 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepo), storageClient, cfg.Storage.Bucket)
+	// projectExportService builds asynchronous project exports (a zip of tasks,
+	// task comments/activities and docs):
+	// the handler only queues them on a Valkey stream, projectExportConsumer
+	// runs them and uploads the file to the same object store attachments use.
+	projectExportService := exportsvc.New(pgRepo.NewProjectExportRepository(db), projectRepo, projectRepo, taskRepo, sprintRepo, docRepo, pgRepo.NewActivityRepository(db), storageClient, cfg.Storage.Bucket, publisher, log).WithPublicURL(cfg.Server.PublicURL)
+	projectExportConsumer := worker.NewProjectExportConsumer(redisClient, projectExportService, log)
 	// annotationService backs the Paca browser extension's on-page comments
 	// (apps/extension) — attachmentRepo satisfies TaskAttachmentLinker
 	// directly (its own CreateTaskAttachment), and taskService/
@@ -486,6 +494,7 @@ func New(cfg *config.Config) (*App, error) {
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,
 		ProjectActivity:      handler.NewProjectActivityHandler(activityLog, attachmentService),
+		ProjectExport:        handler.NewProjectExportHandler(projectExportService),
 		Project: handler.NewProjectHandler(
 			projectService,
 			authorizer,
@@ -545,7 +554,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -556,6 +565,7 @@ func (a *App) Run() error {
 	a.notificationConsumer.Start(context.Background())
 	a.pluginEventConsumer.Start(context.Background())
 	a.environmentConsumer.Start(context.Background())
+	a.projectExportConsumer.Start(context.Background())
 	a.automationConsumer.Start(context.Background())
 	a.taskAutofillConsumer.Start(context.Background())
 	a.taskAutoAssignConsumer.Start(context.Background())
@@ -573,6 +583,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.notificationConsumer.Stop()
 	a.pluginEventConsumer.Stop()
 	a.environmentConsumer.Stop()
+	a.projectExportConsumer.Stop()
 	a.automationConsumer.Stop()
 	a.taskAutofillConsumer.Stop()
 	a.taskAutoAssignConsumer.Stop()

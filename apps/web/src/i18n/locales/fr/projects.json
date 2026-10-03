@@ -12,7 +12,8 @@
 				"customFields": "Champs personnalisés",
 				"jev": "Jev IA",
 				"dangerZone": "Zone de danger",
-				"plugins": "Plugins"
+				"plugins": "Plugins",
+				"export": "Exporter"
 			},
 			"pluginTab": {
 				"noPermission": {
@@ -912,6 +913,10 @@
 			"activitiesRead": {
 				"label": "Voir le journal d'activité",
 				"description": "Voir toute l'activité enregistrée dans ce projet"
+			},
+			"projectExport": {
+				"label": "Exporter les données du projet",
+				"description": "Exporter les tâches (avec commentaires et activités) et la documentation de ce projet"
 			}
 		},
 		"permissionGroups": {
@@ -1183,6 +1188,41 @@
 				"deleteFailed": "Échec de la suppression du projet. Veuillez réessayer.",
 				"cancel": "Annuler",
 				"deletePermanently": "Supprimer définitivement"
+			}
+		},
+		"export": {
+			"title": "Exporter",
+			"description": "Téléchargez les données de votre projet. Les exports sont générés en arrière-plan et conservés 7 jours.",
+			"recent": {
+				"title": "Exports récents",
+				"empty": "Aucun export pour le moment."
+			},
+			"status": {
+				"pending": "En attente",
+				"processing": "Génération…",
+				"completed": "Prêt",
+				"failed": "Échec",
+				"expired": "Expiré"
+			},
+			"rows": "Tâches : {{count}}",
+			"availableUntil": "Disponible jusqu'au {{date}}",
+			"download": "Télécharger",
+			"failedMessage": "L'export n'a pas pu être généré. Veuillez réessayer.",
+			"errors": {
+				"inProgress": "Un export est déjà en cours pour ce projet.",
+				"requestFailed": "Impossible de lancer l'export. Veuillez réessayer.",
+				"downloadFailed": "Impossible de télécharger l'export. Veuillez réessayer.",
+				"expired": "Cet export a expiré. Demandez-en un nouveau."
+			},
+			"noPermission": {
+				"title": "Vous n'avez pas la permission d'exporter ce projet",
+				"description": "Demandez à un propriétaire ou administrateur du projet de vous accorder la permission d'export."
+			},
+			"archive": {
+				"title": "Données du projet (ZIP)",
+				"description": "Toutes les tâches en CSV, avec leurs commentaires et activités dans des fichiers CSV séparés, ainsi que la documentation en fichiers Markdown.",
+				"button": "Exporter le projet",
+				"inProgress": "Export en cours…"
 			}
 		}
 	},

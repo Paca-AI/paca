@@ -12,7 +12,8 @@
 				"customFields": "Campos personalizados",
 				"jev": "Jev IA",
 				"dangerZone": "Zona de perigo",
-				"plugins": "Plugins"
+				"plugins": "Plugins",
+				"export": "Exportar"
 			},
 			"pluginTab": {
 				"noPermission": {
@@ -912,6 +913,10 @@
 			"activitiesRead": {
 				"label": "Ver registro de atividades",
 				"description": "Ver todas as atividades registradas neste projeto"
+			},
+			"projectExport": {
+				"label": "Exportar dados do projeto",
+				"description": "Exportar as tarefas (com comentários e atividades) e a documentação deste projeto"
 			}
 		},
 		"permissionGroups": {
@@ -1183,6 +1188,41 @@
 				"deleteFailed": "Falha ao excluir o projeto. Tente novamente.",
 				"cancel": "Cancelar",
 				"deletePermanently": "Excluir permanentemente"
+			}
+		},
+		"export": {
+			"title": "Exportar",
+			"description": "Baixe os dados do seu projeto. As exportações são geradas em segundo plano e mantidas por 7 dias.",
+			"recent": {
+				"title": "Exportações recentes",
+				"empty": "Nenhuma exportação ainda."
+			},
+			"status": {
+				"pending": "Na fila",
+				"processing": "Gerando…",
+				"completed": "Pronta",
+				"failed": "Falhou",
+				"expired": "Expirada"
+			},
+			"rows": "Tarefas: {{count}}",
+			"availableUntil": "Disponível até {{date}}",
+			"download": "Baixar",
+			"failedMessage": "Não foi possível gerar a exportação. Tente novamente.",
+			"errors": {
+				"inProgress": "Já há uma exportação em andamento para este projeto.",
+				"requestFailed": "Não foi possível iniciar a exportação. Tente novamente.",
+				"downloadFailed": "Não foi possível baixar a exportação. Tente novamente.",
+				"expired": "Esta exportação expirou. Solicite uma nova."
+			},
+			"noPermission": {
+				"title": "Você não tem permissão para exportar este projeto",
+				"description": "Peça a um proprietário ou administrador do projeto que conceda a você a permissão de exportação."
+			},
+			"archive": {
+				"title": "Dados do projeto (ZIP)",
+				"description": "Todas as tarefas em CSV, com seus comentários e atividades em arquivos CSV separados, além da documentação em arquivos Markdown.",
+				"button": "Exportar projeto",
+				"inProgress": "Exportando…"
 			}
 		}
 	},
