@@ -74,6 +74,13 @@ const StreamSprintActivities = "paca.sprint_activities"
 // should have to stay open for.
 const StreamEnvironmentCommands = "paca.environment_commands"
 
+// StreamProjectExports is the Valkey Stream key exportsvc.Service appends to
+// when a project export is requested — worker.ProjectExportConsumer reads it,
+// builds the file and uploads it to object storage. The request path only
+// records the export and queues it, so a large project never holds an HTTP
+// request open while its tasks are read and serialized.
+const StreamProjectExports = "paca.project_exports"
+
 // Event type constants used in both Pub/Sub messages and Stream entries.
 const (
 	// --- Auth events --------------------------------------------------------
@@ -209,6 +216,11 @@ const (
 	// StreamAutomationExternalTriggers by the webhook receiver handler once
 	// a POST's token has been verified.
 	TopicAutomationAPITriggerFired = "automation.api_trigger.fired"
+
+	// --- Project export events ----------------------------------------------
+	// TopicProjectExportRequested is StreamProjectExports' event type for a
+	// queued project export, consumed by worker.ProjectExportConsumer.
+	TopicProjectExportRequested = "project.export.requested"
 
 	// --- Environment lifecycle events ---------------------------------------
 	// TopicEnvironmentCreate is StreamEnvironmentCommands' event type for a

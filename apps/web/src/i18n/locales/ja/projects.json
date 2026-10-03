@@ -12,7 +12,8 @@
 				"customFields": "カスタムフィールド",
 				"jev": "Jev AI",
 				"dangerZone": "危険な操作",
-				"plugins": "プラグイン"
+				"plugins": "プラグイン",
+				"export": "エクスポート"
 			},
 			"pluginTab": {
 				"noPermission": {
@@ -912,6 +913,10 @@
 			"activitiesRead": {
 				"label": "アクティビティログの閲覧",
 				"description": "このプロジェクトで記録されたすべてのアクティビティを表示"
+			},
+			"projectExport": {
+				"label": "プロジェクトデータのエクスポート",
+				"description": "このプロジェクトのタスク（コメントとアクティビティを含む）とドキュメントをエクスポートします"
 			}
 		},
 		"permissionGroups": {
@@ -1183,6 +1188,41 @@
 				"deleteFailed": "プロジェクトの削除に失敗しました。もう一度お試しください。",
 				"cancel": "キャンセル",
 				"deletePermanently": "完全に削除"
+			}
+		},
+		"export": {
+			"title": "エクスポート",
+			"description": "プロジェクトのデータをダウンロードします。エクスポートはバックグラウンドで生成され、7日間保存されます。",
+			"recent": {
+				"title": "最近のエクスポート",
+				"empty": "エクスポートはまだありません。"
+			},
+			"status": {
+				"pending": "待機中",
+				"processing": "生成中…",
+				"completed": "完了",
+				"failed": "失敗",
+				"expired": "期限切れ"
+			},
+			"rows": "タスク数: {{count}}",
+			"availableUntil": "{{date}}まで利用可能",
+			"download": "ダウンロード",
+			"failedMessage": "エクスポートを生成できませんでした。もう一度お試しください。",
+			"errors": {
+				"inProgress": "このプロジェクトではすでにエクスポートが進行中です。",
+				"requestFailed": "エクスポートを開始できませんでした。もう一度お試しください。",
+				"downloadFailed": "エクスポートをダウンロードできませんでした。もう一度お試しください。",
+				"expired": "このエクスポートは期限切れです。新しくリクエストしてください。"
+			},
+			"noPermission": {
+				"title": "このプロジェクトをエクスポートする権限がありません",
+				"description": "プロジェクトのオーナーまたは管理者にエクスポート権限の付与を依頼してください。"
+			},
+			"archive": {
+				"title": "プロジェクトデータ（ZIP）",
+				"description": "すべてのタスクをCSVで、コメントとアクティビティを別々のCSVファイルで、ドキュメントをMarkdownファイルで書き出します。",
+				"button": "プロジェクトをエクスポート",
+				"inProgress": "エクスポート中…"
 			}
 		}
 	},

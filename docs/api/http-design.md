@@ -136,6 +136,10 @@ In the **Auth** column, permissions joined by `+` are all required, and the perm
 | `GET` | `/api/v1/projects/:projectId` | Access token (fresh) + `projects.read` | Get project details. |
 | `PATCH` | `/api/v1/projects/:projectId` | Access token (fresh) + `projects.write` | Update project name or description. |
 | `DELETE` | `/api/v1/projects/:projectId` | Access token (fresh) + `projects.delete` | Delete a project. |
+| `POST` | `/api/v1/projects/:projectId/exports` | Access token (fresh) + `project.export` | Queue an export of the project: tasks, task comments and activities as CSV files, and the documentation as Markdown files, zipped together. Answers `202` with the queued export; returns `409 PROJECT_EXPORT_IN_PROGRESS` while another is queued or running. See [Project Export Contracts](#project-export-contracts). |
+| `GET` | `/api/v1/projects/:projectId/exports` | Access token (fresh) + `project.export` | List the project's recent exports, newest first. |
+| `GET` | `/api/v1/projects/:projectId/exports/:exportId` | Access token (fresh) + `project.export` | Get one export's status and file metadata. |
+| `GET` | `/api/v1/projects/:projectId/exports/:exportId/download` | Access token (fresh) + `project.export` | Get a short-lived presigned URL for a completed export's zip. `409 PROJECT_EXPORT_NOT_READY` until it is `completed`; `410 PROJECT_EXPORT_EXPIRED` after the retention window. |
 | `GET` | `/api/v1/projects/:projectId/members` | Access token (fresh) + `project.members.read` (or global `projects.read`); anonymous on a public project | List project members. |
 | `POST` | `/api/v1/projects/:projectId/members` | Access token (fresh) + `project.members.write` | Add a user to a project. |
 | `PATCH` | `/api/v1/projects/:projectId/members/:userId` | Access token (fresh) + `project.members.write` | Change a member's project role. |
@@ -569,6 +573,68 @@ Function:
 
 - unbind a global agent from its global role, leaving it with no global permissions;
 - same permissions as binding one: removing a role is the same privileged action.
+
+## Project Export Contracts
+
+Exporting a project is asynchronous so a large project never holds an HTTP request open or makes the web app loop over the task API:
+
+1. `POST .../exports` records a `pending` export and appends a message to the `paca.project_exports` Valkey stream, then returns `202`.
+2. `worker.ProjectExportConsumer` (a stream consumer inside the API service) claims the export (`processing`), reads every task with the keyset cursor, builds the zip, uploads it to object storage (RustFS or S3, the same bucket attachments use) and marks it `completed` — or `failed`.
+3. The client polls `GET .../exports` until the export settles, then calls `GET .../exports/:exportId/download` for a presigned URL (valid for 10 minutes, `Content-Disposition: attachment`).
+
+All four routes require the dedicated `project.export` permission, including list/get/download: an export is the whole project in one file, so it is not implied by `tasks.read`. It is granted to the built-in `PROJECT_OWNER` and `PROJECT_MANAGER` templates and to every project's `Admin` role (which holds `*`); grant it to other roles from the project role editor.
+
+Only one export per project may be queued or running at a time. Files are kept for 7 days (`expires_at`), after which the consumer's hourly sweep deletes the object and the row; a failed export is kept (without a file) for the same 7 days so the failure stays visible, then swept too. Requests are serialized per project, so concurrent requests cannot queue two exports. An export stuck `pending`/`processing` for 30 minutes (its worker died) is failed by the same sweep and stops blocking new requests.
+
+### Export response
+
+```json
+{
+  "id": "0b1c...",
+  "project_id": "7d2e...",
+  "requested_by": "a3f4...",
+  "kind": "project_archive",
+  "status": "completed",
+  "file_name": "Paca-export-2026-10-03.zip",
+  "file_size": 18234,
+  "row_count": 120,
+  "created_at": "2026-10-03T10:00:00Z",
+  "completed_at": "2026-10-03T10:00:05Z",
+  "expires_at": "2026-10-10T10:00:05Z",
+  "expired": false
+}
+```
+
+`status` is one of `pending`, `processing`, `completed`, `failed`. A `failed` export carries a generic `error_message`; the underlying cause is only logged server-side. The storage key is never exposed.
+
+### Archive contents
+
+`<project>-export-<date>.zip` contains:
+
+| Entry | Contents |
+| --- | --- |
+| `tasks.csv` | One row per task, oldest first. |
+| `task-comments.csv` | Every task comment, newest first: `Task ID`, `Task Title`, `Author`, `Origin`, `Comment` (plain text), `Created At`, `Edited At`. |
+| `task-activities.csv` | Every other task activity (status changes, field edits, assignments, ...), newest first: `Task ID`, `Task Title`, `Event` (the event topic, e.g. `task.updated`), `Actor`, `Origin`, `Details`, `Created At`. `Details` is the entry's own JSON as stored; its shape depends on the event. |
+| `docs/**.md` | Each document as a Markdown file, in the same folder tree as in the app, starting with a `# <title>` heading. |
+
+Comments and activities of a since-deleted task keep their title but have an empty `Task ID`. Task comments and activities are exported; doc comments are not.
+
+#### `tasks.csv`
+
+Columns: `ID` (e.g. `PAC-12`), `Title`, `Description` (plain text), `Type`, `Status`, `Status Category`, `Sprint`, `Parent` (parent task's ID), `Assignees`, `Reporter`, `Priority`, `Story Points`, `Start Date`, `Due Date`, `Tags`, `Created At`, `Updated At`, then one column per custom field (its display name). IDs are resolved to names; multi-valued cells are joined with `; `.
+
+#### CSV conventions
+
+All three CSVs are UTF-8 with a BOM (so Excel opens them correctly). Cells beginning with `=`, `+`, `-`, `@`, tab or CR are prefixed with `'` so spreadsheet apps cannot evaluate user-controlled text as a formula.
+
+#### Markdown conversion
+
+Documents are stored as BlockNote JSON and converted to Markdown by [`github.com/Paca-AI/go-blocknote2md`](https://github.com/Paca-AI/go-blocknote2md), a Go port of BlockNote's own `blocksToMarkdownLossy`. The output is byte-identical to what the editor's "Copy as Markdown" produces, so BlockNote's quirks are intentional: ordinary text is not escaped, bullets use `*`, lists with paragraphs are loose, tables get an empty header row unless they have header rows/columns, image captions become a separate paragraph, and mentions export as their plain name. The library's README describes how that equivalence is verified against the real BlockNote.
+
+The converter is given the app's public URL (`PUBLIC_URL`) so annotation cards export as a working link. Folder and document titles are sanitized into path segments (no separators or `..`) and de-duplicated, so an extracted archive can never write outside its own folder.
+
+When the web app upgrades BlockNote or its Markdown dependencies, upgrade the library's pinned versions with it (see its README, "Pinned versions").
 
 ## Sprint Lifecycle Contracts
 

@@ -12,7 +12,8 @@
 				"customFields": "Trường tùy chỉnh",
 				"jev": "Jev AI",
 				"dangerZone": "Khu vực nguy hiểm",
-				"plugins": "Plugin"
+				"plugins": "Plugin",
+				"export": "Xuất dữ liệu"
 			},
 			"pluginTab": {
 				"noPermission": {
@@ -912,6 +913,10 @@
 			"activitiesRead": {
 				"label": "Xem nhật ký hoạt động",
 				"description": "Xem mọi hoạt động được ghi lại trong dự án này"
+			},
+			"projectExport": {
+				"label": "Xuất dữ liệu dự án",
+				"description": "Xuất công việc (kèm bình luận và hoạt động) và tài liệu của dự án này"
 			}
 		},
 		"permissionGroups": {
@@ -1183,6 +1188,41 @@
 				"deleteFailed": "Xóa dự án thất bại. Vui lòng thử lại.",
 				"cancel": "Hủy",
 				"deletePermanently": "Xóa vĩnh viễn"
+			}
+		},
+		"export": {
+			"title": "Xuất dữ liệu",
+			"description": "Tải xuống dữ liệu dự án của bạn. Bản xuất được tạo ở chế độ nền và lưu giữ trong 7 ngày.",
+			"recent": {
+				"title": "Các bản xuất gần đây",
+				"empty": "Chưa có bản xuất nào."
+			},
+			"status": {
+				"pending": "Đang chờ",
+				"processing": "Đang tạo…",
+				"completed": "Sẵn sàng",
+				"failed": "Thất bại",
+				"expired": "Đã hết hạn"
+			},
+			"rows": "Công việc: {{count}}",
+			"availableUntil": "Có thể tải đến {{date}}",
+			"download": "Tải xuống",
+			"failedMessage": "Không thể tạo bản xuất. Vui lòng thử lại.",
+			"errors": {
+				"inProgress": "Dự án này đang có một bản xuất được xử lý.",
+				"requestFailed": "Không thể bắt đầu xuất dữ liệu. Vui lòng thử lại.",
+				"downloadFailed": "Không thể tải xuống bản xuất. Vui lòng thử lại.",
+				"expired": "Bản xuất này đã hết hạn. Hãy yêu cầu bản mới."
+			},
+			"noPermission": {
+				"title": "Bạn không có quyền xuất dữ liệu dự án này",
+				"description": "Hãy nhờ chủ sở hữu hoặc quản trị viên dự án cấp cho bạn quyền xuất dữ liệu."
+			},
+			"archive": {
+				"title": "Dữ liệu dự án (ZIP)",
+				"description": "Tất cả công việc dạng CSV, kèm bình luận và hoạt động trong các tệp CSV riêng, cùng tài liệu dưới dạng tệp Markdown.",
+				"button": "Xuất dự án",
+				"inProgress": "Đang xuất…"
 			}
 		}
 	},

@@ -713,6 +713,13 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusConflict
 	case apierr.CodeAgentAccessRestricted:
 		return http.StatusForbidden
+	case apierr.CodeProjectExportNotFound:
+		return http.StatusNotFound
+	case apierr.CodeProjectExportInProgress,
+		apierr.CodeProjectExportNotReady:
+		return http.StatusConflict
+	case apierr.CodeProjectExportExpired:
+		return http.StatusGone
 	case apierr.CodeEnvironmentNotFound,
 		apierr.CodeEnvironmentFolderNotFound,
 		apierr.CodeEnvironmentSSHKeyNotFound,

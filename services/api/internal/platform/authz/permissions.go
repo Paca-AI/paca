@@ -36,6 +36,12 @@ const (
 	// grant from the per-entity reads because it spans all of them.
 	PermissionProjectActivitiesRead Permission = "project.activities.read"
 
+	// PermissionProjectExport gates exporting a project's data (currently all
+	// of its tasks as CSV). A separate capability from tasks.read: an export
+	// hands over the whole project in one file, so it is granted deliberately
+	// rather than implied by being able to view tasks.
+	PermissionProjectExport Permission = "project.export"
+
 	PermissionTasksRead  Permission = "tasks.read"
 	PermissionTasksWrite Permission = "tasks.write"
 	PermissionTasksAll   Permission = "tasks.*"

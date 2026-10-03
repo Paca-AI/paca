@@ -1,0 +1,248 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
+
+	exportdom "github.com/Paca-AI/api/internal/domain/export"
+)
+
+type projectExportRecord struct {
+	ID           string     `db:"id"`
+	ProjectID    string     `db:"project_id"`
+	RequestedBy  *string    `db:"requested_by"`
+	Kind         string     `db:"kind"`
+	Status       string     `db:"status"`
+	FileKey      *string    `db:"file_key"`
+	FileName     *string    `db:"file_name"`
+	FileSize     *int64     `db:"file_size"`
+	RowCount     *int       `db:"row_count"`
+	ErrorMessage *string    `db:"error_message"`
+	CreatedAt    time.Time  `db:"created_at"`
+	UpdatedAt    time.Time  `db:"updated_at"`
+	CompletedAt  *time.Time `db:"completed_at"`
+	ExpiresAt    *time.Time `db:"expires_at"`
+}
+
+const projectExportColumns = `id, project_id, requested_by, kind, status, file_key, file_name,
+	file_size, row_count, error_message, created_at, updated_at, completed_at, expires_at`
+
+func (r *projectExportRecord) toEntity() (*exportdom.ProjectExport, error) {
+	id, err := uuid.Parse(r.ID)
+	if err != nil {
+		return nil, fmt.Errorf("project export repo: parse id: %w", err)
+	}
+	projectID, err := uuid.Parse(r.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project export repo: parse project id: %w", err)
+	}
+	e := &exportdom.ProjectExport{
+		ID:           id,
+		ProjectID:    projectID,
+		Kind:         exportdom.Kind(r.Kind),
+		Status:       exportdom.Status(r.Status),
+		FileKey:      r.FileKey,
+		FileName:     r.FileName,
+		FileSize:     r.FileSize,
+		RowCount:     r.RowCount,
+		ErrorMessage: r.ErrorMessage,
+		CreatedAt:    r.CreatedAt,
+		UpdatedAt:    r.UpdatedAt,
+		CompletedAt:  r.CompletedAt,
+		ExpiresAt:    r.ExpiresAt,
+	}
+	if r.RequestedBy != nil {
+		uid, err := uuid.Parse(*r.RequestedBy)
+		if err != nil {
+			return nil, fmt.Errorf("project export repo: parse requested_by: %w", err)
+		}
+		e.RequestedBy = &uid
+	}
+	return e, nil
+}
+
+// ProjectExportRepository is the PostgreSQL implementation of exportdom.Repository.
+type ProjectExportRepository struct {
+	db *sqlx.DB
+}
+
+// NewProjectExportRepository returns a ProjectExportRepository backed by db.
+func NewProjectExportRepository(db *sqlx.DB) *ProjectExportRepository {
+	return &ProjectExportRepository{db: db}
+}
+
+var _ exportdom.Repository = (*ProjectExportRepository)(nil)
+
+// FindByID returns the export or exportdom.ErrNotFound.
+func (r *ProjectExportRepository) FindByID(ctx context.Context, id uuid.UUID) (*exportdom.ProjectExport, error) {
+	var rec projectExportRecord
+	err := r.db.GetContext(ctx, &rec, `SELECT `+projectExportColumns+` FROM project_exports WHERE id = $1`, id.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, exportdom.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("project export repo: find: %w", err)
+	}
+	return rec.toEntity()
+}
+
+// ListByProject returns the project's newest exports first.
+func (r *ProjectExportRepository) ListByProject(ctx context.Context, projectID uuid.UUID, limit int) ([]*exportdom.ProjectExport, error) {
+	var recs []projectExportRecord
+	err := r.db.SelectContext(ctx, &recs,
+		`SELECT `+projectExportColumns+` FROM project_exports
+		 WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2`,
+		projectID.String(), limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("project export repo: list: %w", err)
+	}
+	return toExportEntities(recs)
+}
+
+// CreateIfIdle inserts the export unless the project already has an active one,
+// holding a per-project advisory lock across the check and the insert so two
+// concurrent requests cannot both pass the check.
+func (r *ProjectExportRepository) CreateIfIdle(ctx context.Context, e *exportdom.ProjectExport, notBefore time.Time) (bool, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("project export repo: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "project_exports:"+e.ProjectID.String()); err != nil {
+		return false, fmt.Errorf("project export repo: lock: %w", err)
+	}
+	var active bool
+	if err := tx.GetContext(ctx, &active,
+		`SELECT EXISTS (
+		   SELECT 1 FROM project_exports
+		   WHERE project_id = $1 AND status IN ('pending', 'processing') AND updated_at >= $2
+		 )`,
+		e.ProjectID.String(), notBefore,
+	); err != nil {
+		return false, fmt.Errorf("project export repo: has active: %w", err)
+	}
+	if active {
+		return false, nil
+	}
+
+	var requestedBy *string
+	if e.RequestedBy != nil {
+		s := e.RequestedBy.String()
+		requestedBy = &s
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO project_exports (id, project_id, requested_by, kind, status, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		e.ID.String(), e.ProjectID.String(), requestedBy, string(e.Kind), string(e.Status), e.CreatedAt, e.UpdatedAt,
+	); err != nil {
+		return false, fmt.Errorf("project export repo: create: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("project export repo: commit: %w", err)
+	}
+	return true, nil
+}
+
+// Claim moves a pending export to processing, reporting whether this call won it.
+func (r *ProjectExportRepository) Claim(ctx context.Context, id uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE project_exports SET status = 'processing', updated_at = now()
+		 WHERE id = $1 AND status = 'pending'`,
+		id.String(),
+	)
+	if err != nil {
+		return false, fmt.Errorf("project export repo: claim: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("project export repo: claim rows: %w", err)
+	}
+	return n > 0, nil
+}
+
+// MarkCompleted records the generated file and finishes the export.
+func (r *ProjectExportRepository) MarkCompleted(ctx context.Context, id uuid.UUID, fileKey, fileName string, fileSize int64, rowCount int, expiresAt time.Time) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE project_exports
+		 SET status = 'completed', file_key = $2, file_name = $3, file_size = $4, row_count = $5,
+		     error_message = NULL, completed_at = now(), updated_at = now(), expires_at = $6
+		 WHERE id = $1`,
+		id.String(), fileKey, fileName, fileSize, rowCount, expiresAt,
+	)
+	if err != nil {
+		return fmt.Errorf("project export repo: mark completed: %w", err)
+	}
+	return nil
+}
+
+// MarkFailed finishes the export with an error message and a sweep time.
+func (r *ProjectExportRepository) MarkFailed(ctx context.Context, id uuid.UUID, message string, expiresAt time.Time) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE project_exports
+		 SET status = 'failed', error_message = $2, completed_at = now(), updated_at = now(), expires_at = $3
+		 WHERE id = $1`,
+		id.String(), message, expiresAt,
+	)
+	if err != nil {
+		return fmt.Errorf("project export repo: mark failed: %w", err)
+	}
+	return nil
+}
+
+// ListExpired returns exports whose retention window has passed.
+func (r *ProjectExportRepository) ListExpired(ctx context.Context, now time.Time, limit int) ([]*exportdom.ProjectExport, error) {
+	var recs []projectExportRecord
+	err := r.db.SelectContext(ctx, &recs,
+		`SELECT `+projectExportColumns+` FROM project_exports
+		 WHERE expires_at IS NOT NULL AND expires_at < $1
+		 ORDER BY expires_at LIMIT $2`,
+		now, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("project export repo: list expired: %w", err)
+	}
+	return toExportEntities(recs)
+}
+
+// ListStale returns active exports untouched since before notAfter.
+func (r *ProjectExportRepository) ListStale(ctx context.Context, notAfter time.Time, limit int) ([]*exportdom.ProjectExport, error) {
+	var recs []projectExportRecord
+	err := r.db.SelectContext(ctx, &recs,
+		`SELECT `+projectExportColumns+` FROM project_exports
+		 WHERE status IN ('pending', 'processing') AND updated_at < $1
+		 ORDER BY updated_at LIMIT $2`,
+		notAfter, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("project export repo: list stale: %w", err)
+	}
+	return toExportEntities(recs)
+}
+
+// Delete removes an export row.
+func (r *ProjectExportRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM project_exports WHERE id = $1`, id.String()); err != nil {
+		return fmt.Errorf("project export repo: delete: %w", err)
+	}
+	return nil
+}
+
+func toExportEntities(recs []projectExportRecord) ([]*exportdom.ProjectExport, error) {
+	out := make([]*exportdom.ProjectExport, 0, len(recs))
+	for i := range recs {
+		e, err := recs[i].toEntity()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}

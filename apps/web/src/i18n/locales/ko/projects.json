@@ -12,7 +12,8 @@
 				"customFields": "커스텀 필드",
 				"jev": "Jev AI",
 				"dangerZone": "위험 구역",
-				"plugins": "플러그인"
+				"plugins": "플러그인",
+				"export": "내보내기"
 			},
 			"pluginTab": {
 				"noPermission": {
@@ -912,6 +913,10 @@
 			"activitiesRead": {
 				"label": "활동 로그 보기",
 				"description": "이 프로젝트에 기록된 모든 활동 보기"
+			},
+			"projectExport": {
+				"label": "프로젝트 데이터 내보내기",
+				"description": "이 프로젝트의 작업(댓글 및 활동 포함)과 문서를 내보냅니다"
 			}
 		},
 		"permissionGroups": {
@@ -1183,6 +1188,41 @@
 				"deleteFailed": "프로젝트 삭제에 실패했습니다. 다시 시도해 주세요.",
 				"cancel": "취소",
 				"deletePermanently": "영구 삭제"
+			}
+		},
+		"export": {
+			"title": "내보내기",
+			"description": "프로젝트 데이터를 다운로드합니다. 내보내기는 백그라운드에서 생성되며 7일간 보관됩니다.",
+			"recent": {
+				"title": "최근 내보내기",
+				"empty": "아직 내보내기가 없습니다."
+			},
+			"status": {
+				"pending": "대기 중",
+				"processing": "생성 중…",
+				"completed": "완료",
+				"failed": "실패",
+				"expired": "만료됨"
+			},
+			"rows": "작업 수: {{count}}",
+			"availableUntil": "{{date}}까지 사용 가능",
+			"download": "다운로드",
+			"failedMessage": "내보내기를 생성하지 못했습니다. 다시 시도해 주세요.",
+			"errors": {
+				"inProgress": "이 프로젝트에서 이미 내보내기가 진행 중입니다.",
+				"requestFailed": "내보내기를 시작하지 못했습니다. 다시 시도해 주세요.",
+				"downloadFailed": "내보내기를 다운로드하지 못했습니다. 다시 시도해 주세요.",
+				"expired": "이 내보내기는 만료되었습니다. 새로 요청해 주세요."
+			},
+			"noPermission": {
+				"title": "이 프로젝트를 내보낼 권한이 없습니다",
+				"description": "프로젝트 소유자 또는 관리자에게 내보내기 권한을 요청하세요."
+			},
+			"archive": {
+				"title": "프로젝트 데이터 (ZIP)",
+				"description": "모든 작업은 CSV로, 댓글과 활동은 별도의 CSV 파일로, 문서는 Markdown 파일로 내보냅니다.",
+				"button": "프로젝트 내보내기",
+				"inProgress": "내보내는 중…"
 			}
 		}
 	},

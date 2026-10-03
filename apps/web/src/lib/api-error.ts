@@ -189,6 +189,13 @@ export const ApiErrorCode = {
 	// chatSessionAccessDeniedKey.
 	EnvironmentAccessRestricted: "ENVIRONMENT_ACCESS_RESTRICTED",
 	EnvironmentNameInvalid: "ENVIRONMENT_NAME_INVALID",
+	// Project export errors — see export-api.ts and ExportSettings.tsx.
+	ProjectExportNotFound: "PROJECT_EXPORT_NOT_FOUND",
+	// Sent from POST /exports when one is already queued/running.
+	ProjectExportInProgress: "PROJECT_EXPORT_IN_PROGRESS",
+	ProjectExportNotReady: "PROJECT_EXPORT_NOT_READY",
+	ProjectExportExpired: "PROJECT_EXPORT_EXPIRED",
+
 	// Sent from start/stop/restart when the environment is already
 	// mid-transition — see environment-detail.tsx's header actions and
 	// RestartEnvironmentDialog, and environment-connect.tsx's

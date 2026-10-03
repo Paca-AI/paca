@@ -156,6 +156,14 @@ func (r *ActivityRepository) List(ctx context.Context, f activitydom.ListFilter,
 	addIn("a.entity_type", f.EntityTypes)
 	addIn("a.origin", f.Origins)
 	addIn("a.activity_type", f.ActivityTypes)
+	if len(f.ExcludeActivityTypes) > 0 {
+		ph := make([]string, len(f.ExcludeActivityTypes))
+		for i, v := range f.ExcludeActivityTypes {
+			args = append(args, v)
+			ph[i] = fmt.Sprintf("$%d", len(args))
+		}
+		where = append(where, "a.activity_type NOT IN ("+strings.Join(ph, ", ")+")")
+	}
 	if len(f.ActorMemberIDs) > 0 {
 		ids := make([]string, len(f.ActorMemberIDs))
 		for i, id := range f.ActorMemberIDs {

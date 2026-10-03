@@ -3,6 +3,7 @@ module github.com/Paca-AI/api
 go 1.26.0
 
 require (
+	github.com/Paca-AI/go-blocknote2md v0.1.0
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.14

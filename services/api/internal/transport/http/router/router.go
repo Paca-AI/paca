@@ -60,6 +60,7 @@ type Deps struct {
 	Settings             *handler.SettingsHandler
 	SSO                  *handler.SSOHandler
 	ProjectActivity      *handler.ProjectActivityHandler
+	ProjectExport        *handler.ProjectExportHandler
 	Log                  *slog.Logger
 	// CORSAllowedOrigins is the CORS allow-list — see corsMiddleware. A nil
 	// or empty slice (the zero value, so every existing caller of this
@@ -414,6 +415,17 @@ func New(deps Deps) http.Handler {
 
 				// Activity log
 				r.With(require.Project(authz.PermissionProjectActivitiesRead)).Get("/activities", deps.ProjectActivity.ListActivities)
+
+				// Exports — asynchronous dumps of project data. Every route needs
+				// project.export, including list/get/download: an export is the
+				// whole project in one file, so even seeing that one exists, or
+				// fetching it, is gated like requesting it.
+				r.Route("/exports", func(r chi.Router) {
+					r.With(require.Project(authz.PermissionProjectExport)).Post("/", deps.ProjectExport.RequestExport)
+					r.With(require.Project(authz.PermissionProjectExport)).Get("/", deps.ProjectExport.ListExports)
+					r.With(require.Project(authz.PermissionProjectExport)).Get("/{exportId}", deps.ProjectExport.GetExport)
+					r.With(require.Project(authz.PermissionProjectExport)).Get("/{exportId}/download", deps.ProjectExport.DownloadExport)
+				})
 
 				// Members
 				r.Route("/members", func(r chi.Router) {

@@ -459,6 +459,20 @@ const (
 	// regardless of access_mode.
 	CodeEnvironmentAccessRestricted Code = "ENVIRONMENT_ACCESS_RESTRICTED"
 
+	// --- Project export errors -------------------------------------------------
+
+	// CodeProjectExportNotFound indicates the requested project export does not exist.
+	CodeProjectExportNotFound Code = "PROJECT_EXPORT_NOT_FOUND"
+	// CodeProjectExportInProgress indicates an export is already queued or
+	// running for the project, so a new one cannot be requested yet.
+	CodeProjectExportInProgress Code = "PROJECT_EXPORT_IN_PROGRESS"
+	// CodeProjectExportNotReady indicates the export has no downloadable file
+	// (still running, or it failed).
+	CodeProjectExportNotReady Code = "PROJECT_EXPORT_NOT_READY"
+	// CodeProjectExportExpired indicates the export's file is past its
+	// retention window and has been (or is about to be) removed.
+	CodeProjectExportExpired Code = "PROJECT_EXPORT_EXPIRED"
+
 	// --- Automation errors -----------------------------------------------------
 
 	// CodeAutomationNotFound indicates the requested automation does not exist.

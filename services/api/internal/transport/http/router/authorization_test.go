@@ -176,6 +176,7 @@ func allRoutes(t *testing.T, authorizer *authz.Authorizer, visibility privatePro
 		Skills:               handler.NewSkillsHandler(nil, ""),
 		Agent:                handler.NewAgentHandler(nil, "", "", ""),
 		Environment:          handler.NewEnvironmentHandler(nil, ""),
+		ProjectExport:        handler.NewProjectExportHandler(nil),
 		Annotation:           handler.NewAnnotationHandler(nil),
 		Conversation:         handler.NewConversationHandler(nil),
 		Automation:           handler.NewAutomationHandler(nil),
