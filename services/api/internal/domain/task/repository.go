@@ -74,6 +74,13 @@ type TaskRepository interface {
 	FindTaskByNumber(ctx context.Context, projectID uuid.UUID, taskNumber int64) (*Task, error)
 	CreateTask(ctx context.Context, t *Task) error
 	UpdateTask(ctx context.Context, t *Task) error
+	// UpdateTaskFields writes only the listed fields of t (plus updated_at),
+	// leaving every other column as stored, so overlapping saves that touch
+	// different fields can't overwrite each other with stale values.
+	//
+	// For TaskFieldCustomFields, customFieldsPatch is merged key by key into
+	// the stored custom_fields in SQL rather than replacing it.
+	UpdateTaskFields(ctx context.Context, t *Task, fields []TaskField, customFieldsPatch map[string]any) error
 	// UpdateTaskAtomic loads id under a row-level lock (SELECT ... FOR
 	// UPDATE) and, within that same transaction, calls decide with the
 	// freshly-locked task. decide returns (nil, nil) to abort with no write

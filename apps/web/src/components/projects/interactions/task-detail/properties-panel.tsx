@@ -545,10 +545,8 @@ export function PropertiesPanel({
 						customRawValue={task.custom_fields?.[cf.field_key]}
 						onCustomChange={(v) => {
 							onUpdate?.({
-								custom_fields: {
-									...task.custom_fields,
-									[cf.field_key]: v,
-								},
+								// Only the edited key: the API merges custom_fields by key.
+								custom_fields: { [cf.field_key]: v },
 							});
 						}}
 						customOptions={cf.options}

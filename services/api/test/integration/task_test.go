@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -444,6 +445,56 @@ func (r *fakeTaskRepo) UpdateTask(_ context.Context, t *taskdom.Task) error {
 	}
 	cp := *t
 	r.tasks[t.ID] = &cp
+	return nil
+}
+
+func (r *fakeTaskRepo) UpdateTaskFields(_ context.Context, t *taskdom.Task, fields []taskdom.TaskField, customFieldsPatch map[string]any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cur, ok := r.tasks[t.ID]
+	if !ok {
+		return taskdom.ErrTaskNotFound
+	}
+	next := *cur
+	for _, f := range fields {
+		switch f {
+		case taskdom.TaskFieldTaskType:
+			next.TaskTypeID = t.TaskTypeID
+		case taskdom.TaskFieldStatus:
+			next.StatusID = t.StatusID
+		case taskdom.TaskFieldSprint:
+			next.SprintID = t.SprintID
+		case taskdom.TaskFieldParentTask:
+			next.ParentTaskID = t.ParentTaskID
+		case taskdom.TaskFieldTitle:
+			next.Title = t.Title
+		case taskdom.TaskFieldDescription:
+			next.Description = t.Description
+		case taskdom.TaskFieldImportance:
+			next.Importance = t.Importance
+		case taskdom.TaskFieldStoryPoints:
+			next.StoryPoints = t.StoryPoints
+		case taskdom.TaskFieldAssignees:
+			next.AssigneeIDs = t.AssigneeIDs
+		case taskdom.TaskFieldReporter:
+			next.ReporterID = t.ReporterID
+		case taskdom.TaskFieldCustomFields:
+			merged := map[string]any{}
+			maps.Copy(merged, cur.CustomFields)
+			maps.Copy(merged, customFieldsPatch)
+			next.CustomFields = merged
+		case taskdom.TaskFieldStartDate:
+			next.StartDate = t.StartDate
+		case taskdom.TaskFieldDueDate:
+			next.DueDate = t.DueDate
+		case taskdom.TaskFieldTags:
+			next.Tags = t.Tags
+		case taskdom.TaskFieldAssignmentMode:
+			next.AssignmentMode = t.AssignmentMode
+		}
+	}
+	next.UpdatedAt = t.UpdatedAt
+	r.tasks[t.ID] = &next
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -357,6 +358,56 @@ func (r *fakeTaskRepo) UpdateTask(_ context.Context, t *taskdom.Task) error {
 	}
 	cp := *t
 	r.tasks[t.ID] = &cp
+	return nil
+}
+
+func (r *fakeTaskRepo) UpdateTaskFields(_ context.Context, t *taskdom.Task, fields []taskdom.TaskField, customFieldsPatch map[string]any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cur, ok := r.tasks[t.ID]
+	if !ok {
+		return taskdom.ErrTaskNotFound
+	}
+	next := *cur
+	for _, f := range fields {
+		switch f {
+		case taskdom.TaskFieldTaskType:
+			next.TaskTypeID = t.TaskTypeID
+		case taskdom.TaskFieldStatus:
+			next.StatusID = t.StatusID
+		case taskdom.TaskFieldSprint:
+			next.SprintID = t.SprintID
+		case taskdom.TaskFieldParentTask:
+			next.ParentTaskID = t.ParentTaskID
+		case taskdom.TaskFieldTitle:
+			next.Title = t.Title
+		case taskdom.TaskFieldDescription:
+			next.Description = t.Description
+		case taskdom.TaskFieldImportance:
+			next.Importance = t.Importance
+		case taskdom.TaskFieldStoryPoints:
+			next.StoryPoints = t.StoryPoints
+		case taskdom.TaskFieldAssignees:
+			next.AssigneeIDs = t.AssigneeIDs
+		case taskdom.TaskFieldReporter:
+			next.ReporterID = t.ReporterID
+		case taskdom.TaskFieldCustomFields:
+			merged := map[string]any{}
+			maps.Copy(merged, cur.CustomFields)
+			maps.Copy(merged, customFieldsPatch)
+			next.CustomFields = merged
+		case taskdom.TaskFieldStartDate:
+			next.StartDate = t.StartDate
+		case taskdom.TaskFieldDueDate:
+			next.DueDate = t.DueDate
+		case taskdom.TaskFieldTags:
+			next.Tags = t.Tags
+		case taskdom.TaskFieldAssignmentMode:
+			next.AssignmentMode = t.AssignmentMode
+		}
+	}
+	next.UpdatedAt = t.UpdatedAt
+	r.tasks[t.ID] = &next
 	return nil
 }
 
@@ -2590,5 +2641,79 @@ func TestListCustomFieldDefinitions_MultiProject(t *testing.T) {
 	}
 	if len(fields) != 2 {
 		t.Errorf("expected 2 fields for projA, got %d", len(fields))
+	}
+}
+
+// TestUpdateTask_ConcurrentSavesKeepEveryChange guards against the lost-update
+// race where UpdateTask wrote back every column from a stale read, so the
+// slower of two overlapping saves reverted the faster one's field.
+func TestUpdateTask_ConcurrentSavesKeepEveryChange(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	projectID := uuid.New()
+
+	task, err := svc.CreateTask(ctx, taskdom.CreateTaskInput{ProjectID: projectID, Title: "orig"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	title := "renamed"
+	pts := 7
+	points := &pts
+	due := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	dueP := &due
+	inputs := []taskdom.UpdateTaskInput{
+		{Title: title},
+		{StoryPoints: &points},
+		{DueDate: &dueP},
+	}
+
+	var wg sync.WaitGroup
+	for _, in := range inputs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := svc.UpdateTask(ctx, projectID, task.ID, in); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	got, err := repo.FindTaskByID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Title != title || got.StoryPoints == nil || *got.StoryPoints != pts || got.DueDate == nil || !got.DueDate.Equal(due) {
+		t.Errorf("lost update: title=%q points=%v due=%v", got.Title, got.StoryPoints, got.DueDate)
+	}
+}
+
+// TestUpdateTask_CustomFieldsMergeByKey guards that a PATCH carrying only one
+// custom field key leaves the task's other custom fields untouched.
+func TestUpdateTask_CustomFieldsMergeByKey(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	projectID := uuid.New()
+
+	task, err := svc.CreateTask(ctx, taskdom.CreateTaskInput{
+		ProjectID:    projectID,
+		Title:        "Task",
+		CustomFields: map[string]any{"a": "1", "b": "2"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	patch := map[string]any{"b": "3", "c": "4"}
+	updated, err := svc.UpdateTask(ctx, projectID, task.ID, taskdom.UpdateTaskInput{CustomFields: &patch})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := map[string]any{"a": "1", "b": "3", "c": "4"}
+	if !maps.Equal(updated.CustomFields, want) {
+		t.Errorf("custom_fields = %v, want %v", updated.CustomFields, want)
 	}
 }

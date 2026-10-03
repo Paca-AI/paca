@@ -3,6 +3,7 @@ package tasksvc
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"time"
 
@@ -509,13 +510,21 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	if t.ProjectID != projectID {
 		return nil, taskdom.ErrTaskNotFound
 	}
-	if err := s.applyTaskUpdate(ctx, t, in); err != nil {
+	fields, err := s.applyTaskUpdate(ctx, t, in)
+	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.UpdateTask(ctx, t); err != nil {
+	// Write only the submitted fields: t was read without a lock, so writing
+	// every column back would revert any field a concurrent save changed.
+	var customFieldsPatch map[string]any
+	if in.CustomFields != nil {
+		customFieldsPatch = *in.CustomFields
+	}
+	if err := s.repo.UpdateTaskFields(ctx, t, fields, customFieldsPatch); err != nil {
 		return nil, err
 	}
-	return t, nil
+	// t's untouched fields may be stale; return what is actually stored.
+	return s.repo.FindTaskByID(ctx, id)
 }
 
 // UpdateTaskAtomic is UpdateTask, but the read decide bases its decision on
@@ -533,7 +542,7 @@ func (s *Service) UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID,
 		if !ok {
 			return nil, nil
 		}
-		if err := s.applyTaskUpdate(ctx, current, in); err != nil {
+		if _, err := s.applyTaskUpdate(ctx, current, in); err != nil {
 			return nil, err
 		}
 		return current, nil
@@ -544,9 +553,11 @@ func (s *Service) UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID,
 // project (parent-cycle/epic-parent constraints) and mutates t in place —
 // shared by UpdateTask and UpdateTaskAtomic so both apply identical
 // validation no matter how the read that produced t was obtained.
-func (s *Service) applyTaskUpdate(ctx context.Context, t *taskdom.Task, in taskdom.UpdateTaskInput) error {
+func (s *Service) applyTaskUpdate(ctx context.Context, t *taskdom.Task, in taskdom.UpdateTaskInput) ([]taskdom.TaskField, error) {
+	var fields []taskdom.TaskField
 	if title := strings.TrimSpace(in.Title); title != "" {
 		t.Title = title
+		fields = append(fields, taskdom.TaskFieldTitle)
 	}
 
 	// Compute the effective parent and type IDs after the update to validate constraints.
@@ -561,40 +572,47 @@ func (s *Service) applyTaskUpdate(ctx context.Context, t *taskdom.Task, in taskd
 	// Validate parent constraints using the post-update effective values.
 	if effectiveParentID != nil {
 		if *effectiveParentID == t.ID {
-			return taskdom.ErrTaskCannotBeOwnParent
+			return nil, taskdom.ErrTaskCannotBeOwnParent
 		}
 		if s.wouldCreateCycle(ctx, t.ID, *effectiveParentID) {
-			return taskdom.ErrTaskParentCycleDetected
+			return nil, taskdom.ErrTaskParentCycleDetected
 		}
 		isEpic, err := s.isEpicTaskType(ctx, effectiveTypeID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if isEpic {
-			return taskdom.ErrEpicCannotHaveParent
+			return nil, taskdom.ErrEpicCannotHaveParent
 		}
 	}
 
 	if in.TaskTypeID != nil {
 		t.TaskTypeID = *in.TaskTypeID
+		fields = append(fields, taskdom.TaskFieldTaskType)
 	}
 	if in.StatusID != nil {
 		t.StatusID = *in.StatusID
+		fields = append(fields, taskdom.TaskFieldStatus)
 	}
 	if in.SprintID != nil {
 		t.SprintID = *in.SprintID
+		fields = append(fields, taskdom.TaskFieldSprint)
 	}
 	if in.ParentTaskID != nil {
 		t.ParentTaskID = *in.ParentTaskID
+		fields = append(fields, taskdom.TaskFieldParentTask)
 	}
 	if in.Description != nil {
 		t.Description = *in.Description
+		fields = append(fields, taskdom.TaskFieldDescription)
 	}
 	if in.Importance != nil {
 		t.Importance = *in.Importance
+		fields = append(fields, taskdom.TaskFieldImportance)
 	}
 	if in.StoryPoints != nil {
 		t.StoryPoints = *in.StoryPoints
+		fields = append(fields, taskdom.TaskFieldStoryPoints)
 	}
 	// A human explicitly changing AssigneeIDs without also (re)stating
 	// AssignmentMode in the same request means "I'm picking this myself" —
@@ -605,33 +623,45 @@ func (s *Service) applyTaskUpdate(ctx context.Context, t *taskdom.Task, in taskd
 	// to avoid tripping this (see worker.TaskAutofillConsumer).
 	if in.AssigneeIDs != nil {
 		t.AssigneeIDs = *in.AssigneeIDs
+		fields = append(fields, taskdom.TaskFieldAssignees)
 		if in.AssignmentMode == nil && t.AssignmentMode == taskdom.AssignmentModeAuto {
 			t.AssignmentMode = taskdom.AssignmentModeManual
+			fields = append(fields, taskdom.TaskFieldAssignmentMode)
 		}
 	}
 	if in.AssignmentMode != nil {
 		if !taskdom.ValidAssignmentModes[*in.AssignmentMode] {
-			return taskdom.ErrTaskAssignmentModeInvalid
+			return nil, taskdom.ErrTaskAssignmentModeInvalid
 		}
 		t.AssignmentMode = *in.AssignmentMode
+		fields = append(fields, taskdom.TaskFieldAssignmentMode)
 	}
 	if in.ReporterID != nil {
 		t.ReporterID = *in.ReporterID
+		fields = append(fields, taskdom.TaskFieldReporter)
 	}
 	if in.CustomFields != nil {
-		t.CustomFields = *in.CustomFields
+		// Merge, don't replace: see UpdateTaskInput's doc comment.
+		merged := make(map[string]any, len(t.CustomFields)+len(*in.CustomFields))
+		maps.Copy(merged, t.CustomFields)
+		maps.Copy(merged, *in.CustomFields)
+		t.CustomFields = merged
+		fields = append(fields, taskdom.TaskFieldCustomFields)
 	}
 	if in.StartDate != nil {
 		t.StartDate = *in.StartDate
+		fields = append(fields, taskdom.TaskFieldStartDate)
 	}
 	if in.DueDate != nil {
 		t.DueDate = *in.DueDate
+		fields = append(fields, taskdom.TaskFieldDueDate)
 	}
 	if in.Tags != nil {
 		t.Tags = *in.Tags
+		fields = append(fields, taskdom.TaskFieldTags)
 	}
 	t.UpdatedAt = time.Now()
-	return nil
+	return fields, nil
 }
 
 // DeleteTask soft-deletes a task by ID, verifying it belongs to projectID.

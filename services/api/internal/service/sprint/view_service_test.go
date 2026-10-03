@@ -60,6 +60,9 @@ func (permissiveTaskRepo) FindTaskByNumber(context.Context, uuid.UUID, int64) (*
 	return nil, taskdom.ErrTaskNotFound
 }
 func (permissiveTaskRepo) CreateTask(context.Context, *taskdom.Task) error { return nil }
+func (permissiveTaskRepo) UpdateTaskFields(context.Context, *taskdom.Task, []taskdom.TaskField, map[string]any) error {
+	return nil
+}
 func (permissiveTaskRepo) UpdateTask(context.Context, *taskdom.Task) error { return nil }
 func (permissiveTaskRepo) UpdateTaskAtomic(_ context.Context, id uuid.UUID, decide func(current *taskdom.Task) (*taskdom.Task, error)) (*taskdom.Task, error) {
 	next, err := decide(&taskdom.Task{ID: id})

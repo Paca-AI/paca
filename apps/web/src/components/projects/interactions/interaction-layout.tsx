@@ -1389,19 +1389,11 @@ export function InteractionLayout({
 	};
 
 	const updateStatusMutation = useMutation({
-		mutationFn: ({
-			taskId,
-			statusId,
-			taskSprintId,
-		}: {
-			taskId: string;
-			statusId: string;
-			taskSprintId: string | null | undefined;
-		}) =>
-			updateTask(projectId, taskId, {
-				status_id: statusId,
-				sprint_id: taskSprintId ?? null,
-			}),
+		// Send only status_id: the PATCH writes just the submitted fields, so
+		// echoing back sprint_id from a possibly stale cached task could
+		// overwrite a concurrent sprint change.
+		mutationFn: ({ taskId, statusId }: { taskId: string; statusId: string }) =>
+			updateTask(projectId, taskId, { status_id: statusId }),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: tasksListQueryKey });
 			// Status changes affect a sprint's incomplete-task count (surfaced in
@@ -1412,14 +1404,9 @@ export function InteractionLayout({
 
 	const handleStatusChange = useCallback(
 		(taskId: string, newStatusId: string) => {
-			const task = tasks.find((t) => t.id === taskId);
-			updateStatusMutation.mutate({
-				taskId,
-				statusId: newStatusId,
-				taskSprintId: task?.sprint_id,
-			});
+			updateStatusMutation.mutate({ taskId, statusId: newStatusId });
 		},
-		[updateStatusMutation, tasks],
+		[updateStatusMutation],
 	);
 
 	const createTaskMutation = useMutation({

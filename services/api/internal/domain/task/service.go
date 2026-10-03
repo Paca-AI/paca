@@ -186,7 +186,10 @@ type CreateTaskInput struct {
 // For slice/map fields (Tags, CustomFields, AssigneeIDs), a nil pointer means
 // the field was absent and should not be overwritten; a non-nil pointer (even
 // to an empty slice/map) means the field was explicitly set and replaces the
-// stored value in full.
+// stored value in full. The exception is CustomFields, which is merged key by
+// key into the stored map (keys not mentioned are left alone; a null value
+// is stored as null), so concurrent edits of different custom fields can't
+// overwrite each other.
 type UpdateTaskInput struct {
 	TaskTypeID   **uuid.UUID
 	StatusID     **uuid.UUID

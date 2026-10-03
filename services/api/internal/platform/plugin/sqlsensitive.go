@@ -95,7 +95,7 @@ func checkSensitiveReadShape(sqlStr string, cols, tables map[string]struct{}) ([
 			continue
 		}
 		if isWord(i+1, "select") || isWord(i+1, "values") || isWord(i+1, "table") {
-			if !(isWord(i-1, "in") || isWord(i-1, "exists") || isWord(i-1, "any") || isWord(i-1, "all") || isWord(i-1, "some")) {
+			if !isWord(i-1, "in") && !isWord(i-1, "exists") && !isWord(i-1, "any") && !isWord(i-1, "all") && !isWord(i-1, "some") {
 				return nil, fmt.Errorf("subqueries are only allowed as IN/EXISTS/ANY/ALL/SOME operands in a query that reads sensitive columns")
 			}
 		}
@@ -204,7 +204,7 @@ func checkSensitiveReadShape(sqlStr string, cols, tables map[string]struct{}) ([
 			if !itemStart(qualifierStart(i)) {
 				return nil, fmt.Errorf("\"*\" may only be selected directly in a query that reads sensitive columns")
 			}
-			if !(i+1 >= n || isPunct(i+1, ",") || isWord(i+1, "from")) {
+			if i+1 < n && !isPunct(i+1, ",") && !isWord(i+1, "from") {
 				return nil, fmt.Errorf("\"*\" may only be selected directly in a query that reads sensitive columns")
 			}
 		}
