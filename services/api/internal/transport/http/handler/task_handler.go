@@ -1115,11 +1115,11 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	// needed: TaskTypeID.Set/StoryPoints.Set/ParentTaskID.Set already
 	// distinguish omitted from explicit (the Optional* wrapper types decode
 	// that way), and CustomFields/Tags are already *map[string]any/*[]string
-	// (nil = omitted). Note CustomFields is a whole-map replace (see
-	// UpdateTaskInput's doc comment), so every key in a PATCH that touches
-	// custom_fields at all is marked user-set here, not just the key(s) that
-	// actually changed value — an accepted over-approximation since only the
-	// create-time snapshot gates the autofill consumer.
+	// (nil = omitted). Note CustomFields is merged key by key (see
+	// UpdateTaskInput's doc comment); every key submitted is marked user-set
+	// here, even one whose value didn't change — an accepted
+	// over-approximation since only the create-time snapshot gates the
+	// autofill consumer.
 	if h.autofillRepo != nil {
 		var userSetFieldKeys []string
 		if req.TaskTypeID.Set {
@@ -1308,10 +1308,14 @@ func (h *TaskHandler) taskChangedFields(ctx context.Context, old *taskdom.Task, 
 	}
 
 	if req.CustomFields != nil {
-		oldJSON, oldErr := json.Marshal(old.CustomFields)
-		newJSON, newErr := json.Marshal(*req.CustomFields)
-		if oldErr != nil || newErr != nil || string(oldJSON) != string(newJSON) {
-			changes = append(changes, taskdom.FieldChange{Field: "custom_fields"})
+		// custom_fields is merged key by key, so only the submitted keys can change.
+		for key, v := range *req.CustomFields {
+			oldJSON, oldErr := json.Marshal(old.CustomFields[key])
+			newJSON, newErr := json.Marshal(v)
+			if oldErr != nil || newErr != nil || string(oldJSON) != string(newJSON) {
+				changes = append(changes, taskdom.FieldChange{Field: "custom_fields"})
+				break
+			}
 		}
 	}
 

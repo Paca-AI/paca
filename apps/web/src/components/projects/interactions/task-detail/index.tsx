@@ -203,10 +203,18 @@ export function TaskDetailModal({
 						filtered.assignee_ids = a;
 					}
 				} else if (key === "custom_fields") {
-					const a = newValue as Record<string, unknown> | undefined;
-					const b = oldValue as Record<string, unknown> | undefined;
-					if (JSON.stringify(a) !== JSON.stringify(b)) {
-						filtered.custom_fields = a;
+					// The API merges custom_fields by key, so send only the keys
+					// whose value actually changed.
+					const a = (newValue ?? {}) as Record<string, unknown>;
+					const b = (oldValue ?? {}) as Record<string, unknown>;
+					const changedKeys = Object.keys(a).filter(
+						(k) =>
+							JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null),
+					);
+					if (changedKeys.length > 0) {
+						filtered.custom_fields = Object.fromEntries(
+							changedKeys.map((k) => [k, a[k]]),
+						);
 					}
 				} else if (key === "description") {
 					const normalizedNewValue = newValue ?? null;

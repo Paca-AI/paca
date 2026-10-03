@@ -135,6 +135,10 @@ func (r *fakeTaskRepo) UpdateTask(_ context.Context, t *taskdom.Task) error {
 	r.tasks[t.ID] = &cp
 	return nil
 }
+func (r *fakeTaskRepo) UpdateTaskFields(ctx context.Context, t *taskdom.Task, _ []taskdom.TaskField, _ map[string]any) error {
+	return r.UpdateTask(ctx, t)
+}
+
 func (r *fakeTaskRepo) UpdateTaskAtomic(_ context.Context, id uuid.UUID, decide func(current *taskdom.Task) (*taskdom.Task, error)) (*taskdom.Task, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

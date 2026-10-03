@@ -1352,6 +1352,82 @@ func (r *TaskRepository) UpdateTask(ctx context.Context, t *taskdom.Task) error 
 	})
 }
 
+// UpdateTaskFields implements taskdom.Repository — see its doc comment.
+func (r *TaskRepository) UpdateTaskFields(ctx context.Context, t *taskdom.Task, fields []taskdom.TaskField, customFieldsPatch map[string]any) error {
+	sets := []string{"updated_at=$1"}
+	args := []any{t.UpdatedAt}
+	add := func(col string, v any) {
+		args = append(args, v)
+		sets = append(sets, fmt.Sprintf("%s=$%d", col, len(args)))
+	}
+	syncAssignees := false
+	for _, f := range fields {
+		switch f {
+		case taskdom.TaskFieldTaskType:
+			add("task_type_id", uuidPtrToStrPtr(t.TaskTypeID))
+		case taskdom.TaskFieldStatus:
+			add("status_id", uuidPtrToStrPtr(t.StatusID))
+		case taskdom.TaskFieldSprint:
+			add("sprint_id", uuidPtrToStrPtr(t.SprintID))
+		case taskdom.TaskFieldParentTask:
+			add("parent_task_id", uuidPtrToStrPtr(t.ParentTaskID))
+		case taskdom.TaskFieldTitle:
+			add("title", t.Title)
+		case taskdom.TaskFieldDescription:
+			add("description", t.Description)
+		case taskdom.TaskFieldImportance:
+			add("importance", t.Importance)
+		case taskdom.TaskFieldStoryPoints:
+			add("story_points", t.StoryPoints)
+		case taskdom.TaskFieldReporter:
+			add("reporter_id", uuidPtrToStrPtr(t.ReporterID))
+		case taskdom.TaskFieldCustomFields:
+			if customFieldsPatch == nil {
+				customFieldsPatch = map[string]any{}
+			}
+			patch, err := json.Marshal(customFieldsPatch)
+			if err != nil {
+				return fmt.Errorf("task repo: marshal custom_fields: %w", err)
+			}
+			// Merged in SQL (jsonb ||) so keys this save didn't touch keep
+			// whatever a concurrent save wrote.
+			args = append(args, patch)
+			sets = append(sets, fmt.Sprintf("custom_fields=COALESCE(custom_fields, '{}'::jsonb) || $%d::jsonb", len(args)))
+		case taskdom.TaskFieldStartDate:
+			add("start_date", t.StartDate)
+		case taskdom.TaskFieldDueDate:
+			add("due_date", t.DueDate)
+		case taskdom.TaskFieldTags:
+			tags := t.Tags
+			if tags == nil {
+				tags = []string{}
+			}
+			tagsJSON, err := json.Marshal(tags)
+			if err != nil {
+				return fmt.Errorf("task repo: marshal tags: %w", err)
+			}
+			add("tags", tagsJSON)
+		case taskdom.TaskFieldAssignmentMode:
+			add("assignment_mode", assignmentModeOrDefault(t.AssignmentMode))
+		case taskdom.TaskFieldAssignees:
+			syncAssignees = true
+		default:
+			return fmt.Errorf("task repo: unknown task field %q", f)
+		}
+	}
+	args = append(args, t.ID.String())
+	query := "UPDATE tasks SET " + strings.Join(sets, ", ") + fmt.Sprintf(" WHERE id=$%d", len(args))
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("task repo: update fields: %w", err)
+		}
+		if syncAssignees {
+			return syncTaskAssignees(ctx, tx, t.ID, t.AssigneeIDs)
+		}
+		return nil
+	})
+}
+
 // updateTaskTx performs UpdateTask's write against an already-open
 // transaction — shared by UpdateTask (which opens its own, single-purpose
 // transaction) and UpdateTaskAtomic (which reuses the transaction already
