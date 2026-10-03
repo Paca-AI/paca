@@ -105,7 +105,7 @@ func (c *ProjectExportConsumer) run() {
 	c.log.Info("project export consumer: started", "stream", events.StreamProjectExports)
 
 	// Replay messages delivered before a crash but never acked.
-	c.processPending(context.Background())
+	c.processPending(c.baseCtx)
 
 	for {
 		select {
@@ -151,12 +151,23 @@ func (c *ProjectExportConsumer) run() {
 	}
 }
 
+// processPending replays messages this consumer was delivered before a crash
+// but never acked. It walks the pending list once, advancing past each message
+// it has seen: one left unacked on purpose (a failed claim) stays pending for
+// the next start but must not be re-read here, or an unreachable database would
+// make this loop spin. It stops early on shutdown.
 func (c *ProjectExportConsumer) processPending(ctx context.Context) {
+	startID := "0"
 	for {
+		select {
+		case <-c.stopCh:
+			return
+		default:
+		}
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    projectExportConsumerGroup,
 			Consumer: c.consumerName,
-			Streams:  []string{events.StreamProjectExports, "0"},
+			Streams:  []string{events.StreamProjectExports, startID},
 			Count:    projectExportReadCount,
 		}).Result()
 		if err != nil && !errors.Is(err, redis.Nil) {
@@ -166,11 +177,17 @@ func (c *ProjectExportConsumer) processPending(ctx context.Context) {
 		delivered := 0
 		for _, stream := range msgs {
 			for _, msg := range stream.Messages {
+				select {
+				case <-c.stopCh:
+					return
+				default:
+				}
 				c.handle(msg)
+				startID = msg.ID
 				delivered++
 			}
 		}
-		if delivered < projectExportReadCount {
+		if delivered == 0 {
 			return
 		}
 	}
