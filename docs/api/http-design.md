@@ -584,7 +584,7 @@ Exporting a project is asynchronous so a large project never holds an HTTP reque
 
 All four routes require the dedicated `project.export` permission, including list/get/download: an export is the whole project in one file, so it is not implied by `tasks.read`. It is granted to the built-in `PROJECT_OWNER` and `PROJECT_MANAGER` templates and to every project's `Admin` role (which holds `*`); grant it to other roles from the project role editor.
 
-Only one export per project may be queued or running at a time. Files are kept for 7 days (`expires_at`), after which the consumer's hourly sweep deletes the object and the row. An export stuck `pending`/`processing` for 30 minutes (its worker died) is failed by the same sweep and stops blocking new requests.
+Only one export per project may be queued or running at a time. Files are kept for 7 days (`expires_at`), after which the consumer's hourly sweep deletes the object and the row; a failed export is kept (without a file) for the same 7 days so the failure stays visible, then swept too. Requests are serialized per project, so concurrent requests cannot queue two exports. An export stuck `pending`/`processing` for 30 minutes (its worker died) is failed by the same sweep and stops blocking new requests.
 
 ### Export response
 

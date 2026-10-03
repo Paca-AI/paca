@@ -98,14 +98,6 @@ func (s *Service) WithPublicURL(url string) *Service {
 // RequestExport implements exportdom.Service.
 func (s *Service) RequestExport(ctx context.Context, projectID, requestedBy uuid.UUID) (*exportdom.ProjectExport, error) {
 	now := s.now()
-	active, err := s.repo.HasActive(ctx, projectID, now.Add(-exportdom.StaleAfter))
-	if err != nil {
-		return nil, err
-	}
-	if active {
-		return nil, apierr.New(apierr.CodeProjectExportInProgress, "an export is already in progress for this project")
-	}
-
 	e := &exportdom.ProjectExport{
 		ID:          uuid.New(),
 		ProjectID:   projectID,
@@ -115,8 +107,12 @@ func (s *Service) RequestExport(ctx context.Context, projectID, requestedBy uuid
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := s.repo.Create(ctx, e); err != nil {
+	created, err := s.repo.CreateIfIdle(ctx, e, now.Add(-exportdom.StaleAfter))
+	if err != nil {
 		return nil, err
+	}
+	if !created {
+		return nil, apierr.New(apierr.CodeProjectExportInProgress, "an export is already in progress for this project")
 	}
 
 	payload := map[string]string{"export_id": e.ID.String(), "project_id": projectID.String()}
@@ -124,7 +120,7 @@ func (s *Service) RequestExport(ctx context.Context, projectID, requestedBy uuid
 		// Nothing will ever pick this row up: fail it now so it neither
 		// blocks the next request nor sits "pending" forever.
 		s.log.Error("project export: queue failed", "export_id", e.ID, "err", err)
-		if ferr := s.repo.MarkFailed(ctx, e.ID, ErrorMessageGeneric); ferr != nil {
+		if ferr := s.repo.MarkFailed(ctx, e.ID, ErrorMessageGeneric, s.failedExpiry()); ferr != nil {
 			s.log.Error("project export: mark failed after queue error", "export_id", e.ID, "err", ferr)
 		}
 		return nil, fmt.Errorf("export: queue: %w", err)
@@ -216,9 +212,13 @@ func (s *Service) Execute(ctx context.Context, exportID uuid.UUID) error {
 	return nil
 }
 
+// failedExpiry is when a failed export's row is swept: failures stay visible for
+// the same retention as a completed export's file, then go.
+func (s *Service) failedExpiry() time.Time { return s.now().Add(exportdom.RetentionPeriod) }
+
 func (s *Service) fail(ctx context.Context, id uuid.UUID, cause error) error {
 	s.log.Error("project export: failed", "export_id", id, "err", cause)
-	if err := s.repo.MarkFailed(ctx, id, ErrorMessageGeneric); err != nil {
+	if err := s.repo.MarkFailed(ctx, id, ErrorMessageGeneric, s.failedExpiry()); err != nil {
 		s.log.Error("project export: mark failed", "export_id", id, "err", err)
 	}
 	return cause
@@ -234,7 +234,7 @@ func (s *Service) CleanupExpired(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	for _, e := range stale {
-		if err := s.repo.MarkFailed(ctx, e.ID, ErrorMessageGeneric); err != nil {
+		if err := s.repo.MarkFailed(ctx, e.ID, ErrorMessageGeneric, s.failedExpiry()); err != nil {
 			s.log.Warn("project export: fail stale export", "export_id", e.ID, "err", err)
 		}
 	}
@@ -312,7 +312,7 @@ func (s *Service) buildArchive(ctx context.Context, projectID uuid.UUID) (data [
 		return nil, 0, "", err
 	}
 
-	if err := s.writeDocs(ctx, zw, entry, project.ID); err != nil {
+	if err := s.writeDocs(ctx, entry, project.ID); err != nil {
 		return nil, 0, "", err
 	}
 
@@ -408,7 +408,7 @@ func (s *Service) writeTaskActivity(ctx context.Context, out io.Writer, projectI
 }
 
 // writeDocs adds each document as a Markdown file under docs/.
-func (s *Service) writeDocs(ctx context.Context, zw *zip.Writer, entry func(string) (io.Writer, error), projectID uuid.UUID) error {
+func (s *Service) writeDocs(ctx context.Context, entry func(string) (io.Writer, error), projectID uuid.UUID) error {
 	folders, err := s.docs.ListFolders(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("list doc folders: %w", err)

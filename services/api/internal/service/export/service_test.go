@@ -35,12 +35,25 @@ type fakeRepo struct {
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{rows: map[uuid.UUID]*exportdom.ProjectExport{}} }
 
-func (r *fakeRepo) Create(_ context.Context, e *exportdom.ProjectExport) error {
+// seed stores a row directly, bypassing the idle check (test fixtures).
+func (r *fakeRepo) seed(e *exportdom.ProjectExport) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c := *e
 	r.rows[e.ID] = &c
-	return nil
+}
+
+func (r *fakeRepo) CreateIfIdle(_ context.Context, e *exportdom.ProjectExport, notBefore time.Time) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, x := range r.rows {
+		if x.ProjectID == e.ProjectID && x.Status.Active() && !x.UpdatedAt.Before(notBefore) {
+			return false, nil
+		}
+	}
+	c := *e
+	r.rows[e.ID] = &c
+	return true, nil
 }
 func (r *fakeRepo) FindByID(_ context.Context, id uuid.UUID) (*exportdom.ProjectExport, error) {
 	r.mu.Lock()
@@ -61,14 +74,6 @@ func (r *fakeRepo) ListByProject(_ context.Context, pid uuid.UUID, _ int) ([]*ex
 	}
 	return out, nil
 }
-func (r *fakeRepo) HasActive(_ context.Context, pid uuid.UUID, notBefore time.Time) (bool, error) {
-	for _, e := range r.rows {
-		if e.ProjectID == pid && e.Status.Active() && !e.UpdatedAt.Before(notBefore) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
 func (r *fakeRepo) Claim(_ context.Context, id uuid.UUID) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -84,9 +89,9 @@ func (r *fakeRepo) MarkCompleted(_ context.Context, id uuid.UUID, key, name stri
 	e.Status, e.FileKey, e.FileName, e.FileSize, e.RowCount, e.ExpiresAt = exportdom.StatusCompleted, &key, &name, &size, &rows, &exp
 	return nil
 }
-func (r *fakeRepo) MarkFailed(_ context.Context, id uuid.UUID, msg string) error {
+func (r *fakeRepo) MarkFailed(_ context.Context, id uuid.UUID, msg string, expiresAt time.Time) error {
 	e := r.rows[id]
-	e.Status, e.ErrorMessage = exportdom.StatusFailed, &msg
+	e.Status, e.ErrorMessage, e.ExpiresAt = exportdom.StatusFailed, &msg, &expiresAt
 	return nil
 }
 func (r *fakeRepo) ListExpired(_ context.Context, now time.Time, _ int) ([]*exportdom.ProjectExport, error) {
@@ -587,7 +592,7 @@ func TestCleanupExpired(t *testing.T) {
 	// A second project's export that never finished: stuck "processing".
 	stuck := &exportdom.ProjectExport{ID: uuid.New(), ProjectID: uuid.New(), Kind: exportdom.KindProjectArchive,
 		Status: exportdom.StatusProcessing, CreatedAt: h.now, UpdatedAt: h.now}
-	_ = h.repo.Create(context.Background(), stuck)
+	h.repo.seed(stuck)
 
 	if n, err := h.svc.CleanupExpired(context.Background()); err != nil || n != 0 {
 		t.Fatalf("nothing is due yet: n=%d err=%v", n, err)
@@ -606,5 +611,58 @@ func TestCleanupExpired(t *testing.T) {
 	}
 	if s, _ := h.repo.FindByID(context.Background(), stuck.ID); s.Status != exportdom.StatusFailed {
 		t.Errorf("stuck export status = %s, want failed", s.Status)
+	}
+}
+
+func TestRequestExport_ConcurrentRequestsQueueOnlyOne(t *testing.T) {
+	h := newHarness(0)
+	const n = 20
+	results := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			_, err := h.svc.RequestExport(context.Background(), h.pid, uuid.New())
+			results <- err
+		}()
+	}
+	ok, busy := 0, 0
+	for i := 0; i < n; i++ {
+		switch err := <-results; {
+		case err == nil:
+			ok++
+		case errCode(err) == apierr.CodeProjectExportInProgress:
+			busy++
+		default:
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if ok != 1 || busy != n-1 {
+		t.Fatalf("queued %d, rejected %d; want exactly 1 queued", ok, busy)
+	}
+	if len(h.pub.appended) != 1 {
+		t.Errorf("stream messages = %d, want 1", len(h.pub.appended))
+	}
+}
+
+func TestCleanupExpired_SweepsFailedExports(t *testing.T) {
+	h := newHarness(1)
+	h.tasks.listErr = errors.New("db down")
+	e, _ := h.svc.RequestExport(context.Background(), h.pid, uuid.New())
+	if err := h.svc.Execute(context.Background(), e.ID); err == nil {
+		t.Fatal("expected the failure to be returned")
+	}
+	failed, _ := h.repo.FindByID(context.Background(), e.ID)
+	if failed.Status != exportdom.StatusFailed || failed.ExpiresAt == nil {
+		t.Fatalf("a failed export must get an expiry, got %+v", failed)
+	}
+
+	if n, _ := h.svc.CleanupExpired(context.Background()); n != 0 {
+		t.Fatalf("a fresh failure must stay visible, swept %d", n)
+	}
+	h.now = h.now.Add(exportdom.RetentionPeriod + time.Hour)
+	if n, err := h.svc.CleanupExpired(context.Background()); err != nil || n != 1 {
+		t.Fatalf("cleanup n=%d err=%v, want the failed row swept", n, err)
+	}
+	if _, err := h.repo.FindByID(context.Background(), e.ID); !errors.Is(err, exportdom.ErrNotFound) {
+		t.Error("failed row was not deleted")
 	}
 }

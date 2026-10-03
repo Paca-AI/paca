@@ -11,8 +11,8 @@
 -- expires_at is when the stored file stops being downloadable; the consumer's
 -- periodic cleanup deletes the object and the row once it has passed.
 --
--- IF NOT EXISTS throughout so this migration is safe to re-run (there is no
--- migration-tracking table, every file here re-runs every startup).
+-- Applied once and recorded in schema_migrations by database.RunMigrationsFS;
+-- IF NOT EXISTS only keeps it harmless should it ever be replayed.
 
 BEGIN;
 
@@ -33,10 +33,6 @@ CREATE TABLE IF NOT EXISTS project_exports (
     completed_at  TIMESTAMPTZ,
     expires_at    TIMESTAMPTZ
 );
-
--- kind's default changed before release; keeps databases that already ran an
--- earlier version of this file in step.
-ALTER TABLE project_exports ALTER COLUMN kind SET DEFAULT 'project_archive';
 
 CREATE INDEX IF NOT EXISTS idx_project_exports_project
     ON project_exports (project_id, created_at DESC);

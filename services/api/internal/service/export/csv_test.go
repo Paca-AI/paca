@@ -187,3 +187,30 @@ func TestCSVWriter_MissingReferencesYieldEmptyCells(t *testing.T) {
 		}
 	}
 }
+
+func TestCSVWriter_NeutralizesHeaderCells(t *testing.T) {
+	var out bytes.Buffer
+	look := &lookups{taskNumbers: map[uuid.UUID]int64{}}
+	// A custom field's display name is user-controlled and lands in the header.
+	fields := []*taskdom.CustomFieldDefinition{
+		{FieldKey: "a", DisplayName: `=HYPERLINK("http://evil","x")`},
+		{FieldKey: "b", DisplayName: "+1"},
+		{FieldKey: "c", DisplayName: "Fine"},
+	}
+	cw, err := newCSVWriter(&out, look, tasksHeader(fields))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cw.finish(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(out.String(), csvBOM))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := recs[0]
+	n := len(header)
+	if got := header[n-3:]; got[0] != `'=HYPERLINK("http://evil","x")` || got[1] != "'+1" || got[2] != "Fine" {
+		t.Errorf("custom-field header cells = %q", got)
+	}
+}

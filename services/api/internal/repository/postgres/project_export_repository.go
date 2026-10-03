@@ -79,24 +79,6 @@ func NewProjectExportRepository(db *sqlx.DB) *ProjectExportRepository {
 
 var _ exportdom.Repository = (*ProjectExportRepository)(nil)
 
-// Create inserts a new export row.
-func (r *ProjectExportRepository) Create(ctx context.Context, e *exportdom.ProjectExport) error {
-	var requestedBy *string
-	if e.RequestedBy != nil {
-		s := e.RequestedBy.String()
-		requestedBy = &s
-	}
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO project_exports (id, project_id, requested_by, kind, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		e.ID.String(), e.ProjectID.String(), requestedBy, string(e.Kind), string(e.Status), e.CreatedAt, e.UpdatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("project export repo: create: %w", err)
-	}
-	return nil
-}
-
 // FindByID returns the export or exportdom.ErrNotFound.
 func (r *ProjectExportRepository) FindByID(ctx context.Context, id uuid.UUID) (*exportdom.ProjectExport, error) {
 	var rec projectExportRecord
@@ -124,20 +106,49 @@ func (r *ProjectExportRepository) ListByProject(ctx context.Context, projectID u
 	return toExportEntities(recs)
 }
 
-// HasActive reports a pending/processing export updated at or after notBefore.
-func (r *ProjectExportRepository) HasActive(ctx context.Context, projectID uuid.UUID, notBefore time.Time) (bool, error) {
-	var exists bool
-	err := r.db.GetContext(ctx, &exists,
+// CreateIfIdle inserts the export unless the project already has an active one,
+// holding a per-project advisory lock across the check and the insert so two
+// concurrent requests cannot both pass the check.
+func (r *ProjectExportRepository) CreateIfIdle(ctx context.Context, e *exportdom.ProjectExport, notBefore time.Time) (bool, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("project export repo: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "project_exports:"+e.ProjectID.String()); err != nil {
+		return false, fmt.Errorf("project export repo: lock: %w", err)
+	}
+	var active bool
+	if err := tx.GetContext(ctx, &active,
 		`SELECT EXISTS (
 		   SELECT 1 FROM project_exports
 		   WHERE project_id = $1 AND status IN ('pending', 'processing') AND updated_at >= $2
 		 )`,
-		projectID.String(), notBefore,
-	)
-	if err != nil {
+		e.ProjectID.String(), notBefore,
+	); err != nil {
 		return false, fmt.Errorf("project export repo: has active: %w", err)
 	}
-	return exists, nil
+	if active {
+		return false, nil
+	}
+
+	var requestedBy *string
+	if e.RequestedBy != nil {
+		s := e.RequestedBy.String()
+		requestedBy = &s
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO project_exports (id, project_id, requested_by, kind, status, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		e.ID.String(), e.ProjectID.String(), requestedBy, string(e.Kind), string(e.Status), e.CreatedAt, e.UpdatedAt,
+	); err != nil {
+		return false, fmt.Errorf("project export repo: create: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("project export repo: commit: %w", err)
+	}
+	return true, nil
 }
 
 // Claim moves a pending export to processing, reporting whether this call won it.
@@ -172,13 +183,13 @@ func (r *ProjectExportRepository) MarkCompleted(ctx context.Context, id uuid.UUI
 	return nil
 }
 
-// MarkFailed finishes the export with an error message.
-func (r *ProjectExportRepository) MarkFailed(ctx context.Context, id uuid.UUID, message string) error {
+// MarkFailed finishes the export with an error message and a sweep time.
+func (r *ProjectExportRepository) MarkFailed(ctx context.Context, id uuid.UUID, message string, expiresAt time.Time) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE project_exports
-		 SET status = 'failed', error_message = $2, completed_at = now(), updated_at = now()
+		 SET status = 'failed', error_message = $2, completed_at = now(), updated_at = now(), expires_at = $3
 		 WHERE id = $1`,
-		id.String(), message,
+		id.String(), message, expiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("project export repo: mark failed: %w", err)

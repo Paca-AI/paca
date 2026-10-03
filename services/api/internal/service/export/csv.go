@@ -50,7 +50,13 @@ func newCSVWriter(out io.Writer, look *lookups, header []string) (*csvWriter, er
 		return nil, fmt.Errorf("write csv bom: %w", err)
 	}
 	cw := &csvWriter{w: csv.NewWriter(out), look: look}
-	if err := cw.w.Write(header); err != nil {
+	// Header cells can carry user data too (a custom field's display name), so
+	// they get the same formula neutralization as the rows.
+	safeHeader := make([]string, len(header))
+	for i, h := range header {
+		safeHeader[i] = neutralizeFormula(h)
+	}
+	if err := cw.w.Write(safeHeader); err != nil {
 		return nil, fmt.Errorf("write csv header: %w", err)
 	}
 	return cw, nil
