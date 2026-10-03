@@ -1122,10 +1122,18 @@ export function InteractionLayout({
 		setGlobalExtraTasks([]);
 	}, [colQueriesEnabled, fallbackQuery.data?.next_cursor]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only when filters/layout change
+	// Compare by value, not reference (see colBaseOptsKey above): an upstream
+	// dependency can recompute fallbackBaseOpts to a new object with identical
+	// values after a background refetch (e.g. on tab refocus), which must not
+	// wipe the "load more" depth back to the first page.
+	const fallbackBaseOptsKey = useMemo(
+		() => JSON.stringify(fallbackBaseOpts),
+		[fallbackBaseOpts],
+	);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the *value* of fallbackBaseOpts or the layout page size changes
 	useEffect(() => {
 		setGlobalExpandedPageSize(null);
-	}, [fallbackBaseOpts, initialGlobalPageSize]);
+	}, [fallbackBaseOptsKey, initialGlobalPageSize]);
 
 	const handleLoadMoreGlobal = useCallback(async () => {
 		if (globalLoadingMore) return;
