@@ -29,8 +29,9 @@ import (
 // ---- fakes ----
 
 type fakeRepo struct {
-	mu   sync.Mutex
-	rows map[uuid.UUID]*exportdom.ProjectExport
+	mu       sync.Mutex
+	rows     map[uuid.UUID]*exportdom.ProjectExport
+	claimErr error
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{rows: map[uuid.UUID]*exportdom.ProjectExport{}} }
@@ -77,6 +78,9 @@ func (r *fakeRepo) ListByProject(_ context.Context, pid uuid.UUID, _ int) ([]*ex
 func (r *fakeRepo) Claim(_ context.Context, id uuid.UUID) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.claimErr != nil {
+		return false, r.claimErr
+	}
 	e, ok := r.rows[id]
 	if !ok || e.Status != exportdom.StatusPending {
 		return false, nil
@@ -89,7 +93,10 @@ func (r *fakeRepo) MarkCompleted(_ context.Context, id uuid.UUID, key, name stri
 	e.Status, e.FileKey, e.FileName, e.FileSize, e.RowCount, e.ExpiresAt = exportdom.StatusCompleted, &key, &name, &size, &rows, &exp
 	return nil
 }
-func (r *fakeRepo) MarkFailed(_ context.Context, id uuid.UUID, msg string, expiresAt time.Time) error {
+func (r *fakeRepo) MarkFailed(ctx context.Context, id uuid.UUID, msg string, expiresAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	e := r.rows[id]
 	e.Status, e.ErrorMessage, e.ExpiresAt = exportdom.StatusFailed, &msg, &expiresAt
 	return nil
@@ -219,6 +226,9 @@ func (f *fakeActivity) List(_ context.Context, flt activitydom.ListFilter, limit
 			continue
 		}
 		if len(flt.ActivityTypes) > 0 && !contains(flt.ActivityTypes, a.ActivityType) {
+			continue
+		}
+		if contains(flt.ExcludeActivityTypes, a.ActivityType) {
 			continue
 		}
 		matched = append(matched, a)
@@ -664,5 +674,43 @@ func TestCleanupExpired_SweepsFailedExports(t *testing.T) {
 	}
 	if _, err := h.repo.FindByID(context.Background(), e.ID); !errors.Is(err, exportdom.ErrNotFound) {
 		t.Error("failed row was not deleted")
+	}
+}
+
+func TestExecute_RecordsFailureEvenWhenRunContextIsDone(t *testing.T) {
+	h := newHarness(3)
+	e, _ := h.svc.RequestExport(context.Background(), h.pid, uuid.New())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the run timed out or was shut down
+	if err := h.svc.Execute(ctx, e.ID); err == nil {
+		t.Fatal("expected an error")
+	}
+	got, _ := h.repo.FindByID(context.Background(), e.ID)
+	if got.Status != exportdom.StatusFailed {
+		t.Fatalf("status = %s, want failed (it would block new requests as processing)", got.Status)
+	}
+}
+
+func TestExecute_ClaimErrorIsDistinguishableAndLeavesRowPending(t *testing.T) {
+	h := newHarness(1)
+	e, _ := h.svc.RequestExport(context.Background(), h.pid, uuid.New())
+	h.repo.claimErr = errors.New("connection refused")
+	err := h.svc.Execute(context.Background(), e.ID)
+	if !errors.Is(err, ErrClaim) {
+		t.Fatalf("err = %v, want ErrClaim", err)
+	}
+	got, _ := h.repo.FindByID(context.Background(), e.ID)
+	if got.Status != exportdom.StatusPending {
+		t.Errorf("status = %s, want pending so a replay can run it", got.Status)
+	}
+}
+
+func TestCapWriter_RefusesToGrowPastLimit(t *testing.T) {
+	cw := &capWriter{buf: &bytes.Buffer{}, limit: 4}
+	if _, err := cw.Write([]byte("abcd")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cw.Write([]byte("e")); !errors.Is(err, ErrArchiveTooLarge) {
+		t.Fatalf("err = %v, want ErrArchiveTooLarge", err)
 	}
 }

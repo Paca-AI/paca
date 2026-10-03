@@ -69,8 +69,10 @@ type ListFilter struct {
 	Origins        []string
 	// ActivityTypes matches the event topic exactly, e.g. "task.created".
 	ActivityTypes []string
-	CreatedAfter  *time.Time
-	CreatedBefore *time.Time
+	// ExcludeActivityTypes drops entries of these exact event topics.
+	ExcludeActivityTypes []string
+	CreatedAfter         *time.Time
+	CreatedBefore        *time.Time
 	// Search matches the entity's title or the activity content,
 	// case-insensitively.
 	Search string

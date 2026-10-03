@@ -41,6 +41,31 @@ const (
 	archiveContentType = "application/zip"
 )
 
+// ErrClaim wraps a failure to claim an export (the database was unreachable).
+// The row is untouched and still pending, so the caller should leave the queue
+// message unacked to have it replayed.
+var ErrClaim = errors.New("export: claim")
+
+// maxArchiveBytes caps the in-memory zip; a bigger project fails cleanly
+// instead of exhausting the worker's memory.
+const maxArchiveBytes = 256 << 20
+
+// ErrArchiveTooLarge is returned when the zip outgrows maxArchiveBytes.
+var ErrArchiveTooLarge = errors.New("export: archive too large")
+
+// capWriter is a bytes.Buffer that refuses to grow past limit.
+type capWriter struct {
+	buf   *bytes.Buffer
+	limit int
+}
+
+func (c *capWriter) Write(p []byte) (int, error) {
+	if c.buf.Len()+len(p) > c.limit {
+		return 0, ErrArchiveTooLarge
+	}
+	return c.buf.Write(p)
+}
+
 // ErrorMessageGeneric is what a failed export records. The real cause is only
 // logged: it can carry internal detail (storage endpoints, SQL) that the
 // requesting user has no business seeing.
@@ -176,7 +201,7 @@ func (s *Service) DownloadURL(ctx context.Context, projectID, exportID uuid.UUID
 func (s *Service) Execute(ctx context.Context, exportID uuid.UUID) error {
 	claimed, err := s.repo.Claim(ctx, exportID)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrClaim, err)
 	}
 	if !claimed {
 		// Redelivered, already running elsewhere, or deleted — nothing to do.
@@ -203,7 +228,9 @@ func (s *Service) Execute(ctx context.Context, exportID uuid.UUID) error {
 	expires := s.now().Add(exportdom.RetentionPeriod)
 	if err := s.repo.MarkCompleted(ctx, exportID, key, name, int64(len(data)), rows, expires); err != nil {
 		// The file is orphaned if we can't record it; remove it.
-		if derr := s.store.DeleteObject(ctx, s.bucket, key); derr != nil {
+		dctx, cancel := detached(ctx)
+		defer cancel()
+		if derr := s.store.DeleteObject(dctx, s.bucket, key); derr != nil {
 			s.log.Warn("project export: delete orphaned object", "key", key, "err", derr)
 		}
 		return s.fail(ctx, exportID, fmt.Errorf("record completion: %w", err))
@@ -212,12 +239,22 @@ func (s *Service) Execute(ctx context.Context, exportID uuid.UUID) error {
 	return nil
 }
 
+// detached returns a short-lived context that outlives ctx's cancellation, for
+// bookkeeping that must still happen after the run's own context has expired.
+func detached(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+}
+
 // failedExpiry is when a failed export's row is swept: failures stay visible for
 // the same retention as a completed export's file, then go.
 func (s *Service) failedExpiry() time.Time { return s.now().Add(exportdom.RetentionPeriod) }
 
 func (s *Service) fail(ctx context.Context, id uuid.UUID, cause error) error {
 	s.log.Error("project export: failed", "export_id", id, "err", cause)
+	// The run's context may be what failed (timeout, shutdown); recording the
+	// failure must not depend on it, or the row would stay "processing".
+	ctx, cancel := detached(ctx)
+	defer cancel()
 	if err := s.repo.MarkFailed(ctx, id, ErrorMessageGeneric, s.failedExpiry()); err != nil {
 		s.log.Error("project export: mark failed", "export_id", id, "err", err)
 	}
@@ -282,7 +319,7 @@ func (s *Service) buildArchive(ctx context.Context, projectID uuid.UUID) (data [
 	}
 
 	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
+	zw := zip.NewWriter(&capWriter{buf: &buf, limit: maxArchiveBytes})
 	modified := s.now()
 	entry := func(name string) (io.Writer, error) {
 		return zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Deflate, Modified: modified})
@@ -376,6 +413,8 @@ func (s *Service) writeTaskActivity(ctx context.Context, out io.Writer, projectI
 	f := activitydom.ListFilter{ProjectID: projectID, EntityTypes: []string{string(events.EntityTask)}}
 	if comments {
 		f.ActivityTypes = []string{activitydom.TypeComment}
+	} else {
+		f.ExcludeActivityTypes = []string{activitydom.TypeComment}
 	}
 	for {
 		if err := ctx.Err(); err != nil {

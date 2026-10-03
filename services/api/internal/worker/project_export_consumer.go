@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Paca-AI/api/internal/events"
+	exportsvc "github.com/Paca-AI/api/internal/service/export"
 )
 
 const (
@@ -45,6 +47,10 @@ type ProjectExportConsumer struct {
 	consumerName string
 	stopCh       chan struct{}
 	doneCh       chan struct{}
+	// baseCtx parents every export run; Stop cancels it so shutdown does not
+	// wait out a long export.
+	baseCtx    context.Context
+	cancelBase context.CancelFunc
 }
 
 // NewProjectExportConsumer creates a consumer ready to be started. The
@@ -54,7 +60,10 @@ func NewProjectExportConsumer(client *redis.Client, svc projectExportExecutor, l
 	if err != nil || hostname == "" {
 		hostname = uuid.New().String()
 	}
+	baseCtx, cancelBase := context.WithCancel(context.Background())
 	return &ProjectExportConsumer{
+		baseCtx:      baseCtx,
+		cancelBase:   cancelBase,
 		client:       client,
 		svc:          svc,
 		log:          log,
@@ -74,11 +83,12 @@ func (c *ProjectExportConsumer) Start(ctx context.Context) {
 	go c.cleanupLoop()
 }
 
-// Stop signals the consumer to stop and waits for the read loop to return. An
-// export still running is not interrupted by shutdown itself; its row is left
-// 'processing' and swept as stale if the process exits first.
+// Stop signals the consumer to stop, cancels any export still running (it is
+// recorded as failed, so the user can request a new one) and waits for the read
+// loop to return.
 func (c *ProjectExportConsumer) Stop() {
 	close(c.stopCh)
+	c.cancelBase()
 	<-c.doneCh
 }
 
@@ -149,7 +159,7 @@ func (c *ProjectExportConsumer) processPending(ctx context.Context) {
 			Streams:  []string{events.StreamProjectExports, "0"},
 			Count:    projectExportReadCount,
 		}).Result()
-		if err != nil && err != redis.Nil {
+		if err != nil && !errors.Is(err, redis.Nil) {
 			c.log.Warn("project export consumer: could not read pending messages", "err", err)
 			return
 		}
@@ -171,12 +181,20 @@ type projectExportPayload struct {
 	ExportID string `json:"export_id"`
 }
 
-// handle runs one export. Always acks: a failed export is recorded on its row
-// (the user sees "failed" and requests a new one), so redelivering the same
-// message would only repeat the failure.
+// handle runs one export. It acks in every case but one: a failed export is
+// recorded on its row (the user sees "failed" and requests a new one), so
+// redelivering the same message would only repeat the failure. The exception is
+// a failed claim, where the row is still pending and the message stays in the
+// pending list to be replayed on the next start.
 func (c *ProjectExportConsumer) handle(msg redis.XMessage) {
-	ctx := context.Background()
-	defer c.ack(ctx, msg.ID)
+	ctx := c.baseCtx
+	acknowledge := true
+	defer func() {
+		if acknowledge {
+			// Ack even when shutdown has cancelled ctx.
+			c.ack(context.WithoutCancel(ctx), msg.ID)
+		}
+	}()
 
 	eventType, _ := msg.Values["type"].(string)
 	if eventType != events.TopicProjectExportRequested {
@@ -202,6 +220,9 @@ func (c *ProjectExportConsumer) handle(msg redis.XMessage) {
 	runCtx, cancel := context.WithTimeout(ctx, projectExportRunTimeout)
 	defer cancel()
 	if err := c.svc.Execute(runCtx, exportID); err != nil {
+		if errors.Is(err, exportsvc.ErrClaim) {
+			acknowledge = false
+		}
 		c.log.Error("project export consumer: export failed", "export_id", exportID, "err", err)
 	}
 }
