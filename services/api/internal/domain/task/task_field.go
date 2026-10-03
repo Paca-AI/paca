@@ -4,6 +4,8 @@ package taskdom
 // exactly which columns it writes.
 type TaskField string
 
+// Task fields a partial update can write. The values match the task columns,
+// except TaskFieldAssignees, which lives in the task_assignees table.
 const (
 	TaskFieldTaskType       TaskField = "task_type_id"
 	TaskFieldStatus         TaskField = "status_id"
