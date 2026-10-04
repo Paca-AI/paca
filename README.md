@@ -294,6 +294,10 @@ helm install paca oci://ghcr.io/paca-ai/charts/paca --version <release-version> 
 
 See [Artifact Hub](https://artifacthub.io/packages/helm/paca/paca) for the full values reference, exposing the app via Ingress/TLS or a LoadBalancer, what's bundled vs. pointing at managed Postgres/Redis/S3, the AI agent sandbox's Kubernetes-specific RBAC, and troubleshooting.
 
+## ☁️ One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/Paca/)
+
 ---
 
 ## MCP Server — Connect Any AI Agent to Paca
