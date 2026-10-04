@@ -513,7 +513,7 @@ export function CreateAgentDialog({
 		agentType === "llm"
 			? !!(llmProvider && llmModel && llmBaseUrl.trim() && llmApiKey.trim())
 			: agentType === "provider_cli"
-				? !!(cliProvider && defaultEnvironmentId)
+				? !!(cliProvider && defaultEnvironmentId && defaultFolderId)
 				: !!(
 						acpProvider &&
 						(acpProvider !== "custom" || acpCommandParts.length > 0)
@@ -968,13 +968,15 @@ export function CreateAgentDialog({
 									{selectedEnvironment && (
 										<div className="space-y-1.5">
 											<Label>
-												{t("agents.detail.overview.defaultFolderLabel")}
+												{t("agents.detail.overview.defaultFolderLabel")}{" "}
+												<span className="text-destructive">*</span>
 											</Label>
 											<DefaultFolderSelect
 												projectId={projectId}
 												environment={selectedEnvironment}
 												value={defaultFolderId}
 												onChange={setDefaultFolderId}
+												required
 												className="w-full"
 											/>
 										</div>
