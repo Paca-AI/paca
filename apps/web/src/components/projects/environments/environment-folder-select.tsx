@@ -140,8 +140,11 @@ export function DefaultFolderSelect({
 	disabled,
 	className,
 	triggerSize,
+	required = false,
 }: {
 	projectId: string;
+	/** Drops the "no default folder" choice — the caller needs a folder. */
+	required?: boolean;
 	/** The currently-selected default environment — the folder select has
 	 * nothing to offer (and isn't rendered by any caller) without one. */
 	environment: Environment;
@@ -162,20 +165,24 @@ export function DefaultFolderSelect({
 	return (
 		<>
 			<Select
-				value={value || NO_FOLDER}
+				value={required ? value : value || NO_FOLDER}
 				onValueChange={(v) => {
 					if (!v) return;
 					if (v === CREATE_NEW_FOLDER) {
 						setCreateOpen(true);
 						return;
 					}
-					onChange(v === NO_FOLDER ? "" : v);
+					onChange(!required && v === NO_FOLDER ? "" : v);
 				}}
 				items={[
-					{
-						value: NO_FOLDER,
-						label: t("agents.detail.overview.noDefaultFolder"),
-					},
+					...(required
+						? []
+						: [
+								{
+									value: NO_FOLDER,
+									label: t("agents.detail.overview.noDefaultFolder"),
+								},
+							]),
 					...folders.map((folder) => ({
 						value: folder.id,
 						label: folder.path,
@@ -191,10 +198,12 @@ export function DefaultFolderSelect({
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
-					<SelectItem value={NO_FOLDER}>
-						{t("agents.detail.overview.noDefaultFolder")}
-					</SelectItem>
-					{folders.length > 0 && <SelectSeparator />}
+					{!required && (
+						<SelectItem value={NO_FOLDER}>
+							{t("agents.detail.overview.noDefaultFolder")}
+						</SelectItem>
+					)}
+					{!required && folders.length > 0 && <SelectSeparator />}
 					{folders.map((folder) => (
 						<SelectItem key={folder.id} value={folder.id}>
 							{folder.path}
