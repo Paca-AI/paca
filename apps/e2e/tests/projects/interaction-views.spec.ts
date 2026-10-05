@@ -1114,9 +1114,9 @@ test.describe('View settings panel', () => {
 
     await openSettings(page);
 
-    // The admin holds views.write, so the footer is the split "Save for everyone" button;
+    // The admin holds views.write, so the footer is the split "Save only for me" button;
     // Reset is not offered while the draft equals the team default.
-    await expect(page.getByRole('button', { name: 'Save for everyone' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save only for me' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Reset', exact: true })).toHaveCount(0);
 
     await chooseOption(page, 'Sort by', 'Importance');
@@ -1134,17 +1134,17 @@ test.describe('View settings panel', () => {
     await expect(rowButton(page, 'Sort by')).toHaveText('Importance');
   });
 
-  test('Clicking "Save for everyone" persists the settings and closes the popup', async ({ page }) => {
+  test('Clicking "Save only for me" persists the settings and closes the popup', async ({ page }) => {
     await signIn(page);
     await navigateToBacklog(page, projectId);
 
     await openSettings(page);
     await chooseOption(page, 'Sort by', 'Importance');
 
-    await page.getByRole('button', { name: 'Save for everyone' }).click();
+    await page.getByRole('button', { name: 'Save only for me' }).click();
 
     // The settings panel should close
-    await expect(page.getByRole('button', { name: 'Save for everyone' })).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('button', { name: 'Save only for me' })).not.toBeVisible({ timeout: 5_000 });
 
     // After reopening, the saved setting should persist
     await openSettings(page);
@@ -1178,7 +1178,7 @@ test.describe('View settings panel', () => {
     await page.keyboard.press('Escape');
 
     // Panel should be closed
-    await expect(page.getByRole('button', { name: 'Save for everyone' })).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('button', { name: 'Save only for me' })).not.toBeVisible({ timeout: 5_000 });
 
     // Reopen and verify the change was discarded
     await openSettings(page);
@@ -1197,8 +1197,8 @@ test.describe('View settings panel', () => {
     await page.getByRole('button', { name: 'Board', exact: true }).click();
     await openSettings(page);
     await chooseOption(page, 'Sort by', 'Importance');
-    await page.getByRole('button', { name: 'Save for everyone' }).click();
-    await expect(page.getByRole('button', { name: 'Save for everyone' })).not.toBeVisible({ timeout: 5_000 });
+    await page.getByRole('button', { name: 'Save only for me' }).click();
+    await expect(page.getByRole('button', { name: 'Save only for me' })).not.toBeVisible({ timeout: 5_000 });
 
     // Switch to MyTable view — it was never configured so its sort should still be the default
     await page.getByRole('button', { name: 'MyTable', exact: true }).click();
