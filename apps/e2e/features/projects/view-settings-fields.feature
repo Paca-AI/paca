@@ -14,10 +14,10 @@ Feature: View settings — field visibility on Board and List views
 
   Field settings are per view AND per user: a member without "views.write"
   saves them only for themselves ("Save"), while a "views.write" holder
-  chooses between "Save for everyone" (the team default) and "Save only for
-  me" (a personal override marked "Only visible to you").  Every scenario
-  below says "the user saves the view settings", which is "Save for
-  everyone" for a views.write holder (the Background user) — see
+  chooses between "Save only for me" (the default personal override, marked
+  "Only visible to you") and "Save for everyone" (the team default).  Every
+  scenario below says "the user saves the view settings", which is "Save
+  only for me" for a views.write holder (the Background user) — see
   view-settings.feature for the personal-vs-shared behaviour itself.
 
   ═══════════════════════════════════════════════════════════════════════════

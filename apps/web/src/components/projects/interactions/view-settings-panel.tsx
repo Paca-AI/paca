@@ -1674,18 +1674,18 @@ export function ViewSettingsPanel({
 					)}
 					{canSaveForEveryone ? (
 						<div className="flex items-stretch">
-							{/* "Save for everyone" is primary here: for anyone who can
-							    publish shared settings, that's the common case — a
-							    personal-only save is the exception, tucked in the menu. */}
+							{/* PE-1: personal save is the default so Timeline/Board filters
+							    never leak to other users. Publishing the team default stays
+							    in the dropdown for views.write holders. */}
 							<button
 								type="button"
-								onClick={handleSaveForEveryone}
-								disabled={isPending || !differsFromShared}
+								onClick={handleSave}
+								disabled={isPending || !differsFromEffective}
 								className="rounded-l-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90 disabled:opacity-40"
 							>
 								{isPending
 									? t("layout.viewSettings.saving")
-									: t("layout.viewSettings.saveForEveryone")}
+									: t("layout.viewSettings.saveOnlyForMe")}
 							</button>
 							<Popover>
 								<PopoverTrigger
@@ -1701,11 +1701,11 @@ export function ViewSettingsPanel({
 								>
 									<button
 										type="button"
-										onClick={handleSave}
-										disabled={isPending || !differsFromEffective}
+										onClick={handleSaveForEveryone}
+										disabled={isPending || !differsFromShared}
 										className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors duration-100 hover:bg-muted/60 disabled:opacity-40"
 									>
-										{t("layout.viewSettings.saveOnlyForMe")}
+										{t("layout.viewSettings.saveForEveryone")}
 									</button>
 								</PopoverContent>
 							</Popover>

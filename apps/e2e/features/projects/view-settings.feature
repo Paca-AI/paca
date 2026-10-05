@@ -16,9 +16,10 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
   "user_view_configs" row) that other members never see.  What the footer
   offers depends on the "views.write" project permission:
     - A views.write holder (Admin/Editor by default) sees a split button:
-      "Save for everyone" publishes the draft as the team default (and clears
-      that user's own override); the dropdown next to it offers "Save only
-      for me" for a personal override.
+      "Save only for me" stores the draft as a personal override (PE-1 default
+      so Timeline/Board filters never leak to other users); the dropdown next
+      to it offers "Save for everyone", which publishes the team default
+      (and clears that user's own override).
     - Anyone else (e.g. Viewer) sees a single "Save" button, which is always
       personal-only — they can tweak how THEY see a view without being able
       to change the shared view.
@@ -29,8 +30,8 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
   Save buttons stay disabled until the draft actually differs from what they
   would replace.
 
-  Scenarios below that say "the user saves the view settings" mean "Save for
-  everyone" for the views.write Background user; the personal/shared split
+  Scenarios below that say "the user saves the view settings" mean "Save only
+  for me" for the views.write Background user; the personal/shared split
   itself is specified in the "Personal vs shared view settings" rules.
 
   ═══════════════════════════════════════════════════════════════════════════
@@ -60,7 +61,7 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
     And the panel should display an "Initial size" row
     And the panel should display a "Per page" row
     And the panel should display a "Filters" section
-    And the panel should contain a "Save for everyone" button
+    And the panel should contain a "Save only for me" button
 
   Scenario: The Reset button only appears once the draft differs from the team default
     When the user clicks the "View settings" button in the view toolbar
@@ -553,20 +554,20 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
   Background:
     Given the user has navigated to the Product Backlog of "E2E_VS_PROJECT"
 
-  Scenario: The footer offers "Save for everyone" plus a "Save only for me" menu entry
+  Scenario: The footer offers "Save only for me" plus a "Save for everyone" menu entry
     When the user clicks the "View settings" button in the view toolbar
-    Then the panel footer should contain a "Save for everyone" button
+    Then the panel footer should contain a "Save only for me" button
     And the panel footer should contain a dropdown trigger next to it
-    And opening that dropdown should offer a "Save only for me" entry
+    And opening that dropdown should offer a "Save for everyone" entry
     And the panel footer should not contain a plain "Save" button
 
   Scenario: Both save actions are disabled until the draft differs
     When the user clicks the "View settings" button in the view toolbar
-    Then the "Save for everyone" button should be disabled
-    And the "Save only for me" entry should be disabled
+    Then the "Save only for me" button should be disabled
+    And the "Save for everyone" entry should be disabled
     When the user selects "Title" in the "Sort by" dropdown
-    Then the "Save for everyone" button should be enabled
-    And the "Save only for me" entry should be enabled
+    Then the "Save only for me" button should be enabled
+    And the "Save for everyone" entry should be enabled
 
   Scenario: "Save for everyone" publishes the settings as the team default
     When the user clicks the "View settings" button in the view toolbar
@@ -580,7 +581,7 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
   Scenario: "Save only for me" keeps the settings personal
     When the user clicks the "View settings" button in the view toolbar
     And the user selects "Title" in the "Sort by" dropdown
-    And the user opens the save dropdown and clicks "Save only for me"
+    And the user clicks "Save only for me"
     Then the settings panel should close
     And the view's shared "Sort by" setting should be unchanged
     And the user's own "Sort by" setting for the view should be "Title"

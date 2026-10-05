@@ -287,12 +287,12 @@ const selectDropdownOption = async (
 	await expect(settingRowButton(page, rowLabel)).toHaveText(option);
 };
 
-const saveForEveryoneButton = (page: Page): Locator =>
-	page.getByRole("button", { name: "Save for everyone" });
-const saveDropdownTrigger = (page: Page): Locator =>
-	saveForEveryoneButton(page).locator("xpath=following-sibling::button");
 const saveOnlyForMeButton = (page: Page): Locator =>
 	page.getByRole("button", { name: "Save only for me" });
+const saveDropdownTrigger = (page: Page): Locator =>
+	saveOnlyForMeButton(page).locator("xpath=following-sibling::button");
+const saveForEveryoneButton = (page: Page): Locator =>
+	page.getByRole("button", { name: "Save for everyone" });
 const plainSaveButton = (page: Page): Locator =>
 	page.getByRole("button", { name: "Save", exact: true });
 const resetButton = (page: Page): Locator =>
@@ -309,8 +309,9 @@ const openFieldPicker = async (page: Page) => {
 };
 
 const saveForEveryoneAndWaitClosed = async (page: Page) => {
+	await saveDropdownTrigger(page).click();
 	await saveForEveryoneButton(page).click();
-	await expect(saveForEveryoneButton(page)).toBeHidden();
+	await expect(saveOnlyForMeButton(page)).toBeHidden();
 };
 
 // ===========================================================================
@@ -354,7 +355,7 @@ test.describe("View settings panel content", () => {
 		}
 		await expect(page.getByText("Display", { exact: true })).toBeVisible();
 		await expect(page.getByText("Filters", { exact: true })).toBeVisible();
-		await expect(saveForEveryoneButton(page)).toBeVisible();
+		await expect(saveOnlyForMeButton(page)).toBeVisible();
 	});
 
 	test("The Reset button only appears once the draft differs from the team default", async ({
@@ -812,7 +813,7 @@ test.describe("Unsaved settings changes", () => {
 		await selectDropdownOption(page, "Sort by", "Title");
 
 		await page.keyboard.press("Escape");
-		await expect(saveForEveryoneButton(page)).toBeHidden();
+		await expect(saveOnlyForMeButton(page)).toBeHidden();
 
 		await openSettings(page);
 		await expect(settingRowButton(page, "Sort by")).toHaveText("Manual");
@@ -843,19 +844,19 @@ test.describe("Personal vs shared view settings — views.write holder", () => {
 		await deleteUser(request, viewerUserId);
 	});
 
-	test('The footer offers "Save for everyone" plus a "Save only for me" menu entry', async ({
+	test('The footer offers "Save only for me" plus a "Save for everyone" menu entry', async ({
 		page,
 	}) => {
 		await signIn(page);
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
 
-		await expect(saveForEveryoneButton(page)).toBeVisible();
+		await expect(saveOnlyForMeButton(page)).toBeVisible();
 		await expect(saveDropdownTrigger(page)).toBeVisible();
 		await expect(plainSaveButton(page)).toHaveCount(0);
 
 		await saveDropdownTrigger(page).click();
-		await expect(saveOnlyForMeButton(page)).toBeVisible();
+		await expect(saveForEveryoneButton(page)).toBeVisible();
 	});
 
 	test("Both save actions are disabled until the draft differs", async ({
@@ -865,17 +866,17 @@ test.describe("Personal vs shared view settings — views.write holder", () => {
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
 
-		await expect(saveForEveryoneButton(page)).toBeDisabled();
-		await saveDropdownTrigger(page).click();
 		await expect(saveOnlyForMeButton(page)).toBeDisabled();
 		await saveDropdownTrigger(page).click();
-		await expect(saveOnlyForMeButton(page)).toBeHidden();
+		await expect(saveForEveryoneButton(page)).toBeDisabled();
+		await saveDropdownTrigger(page).click();
+		await expect(saveForEveryoneButton(page)).toBeHidden();
 
 		await selectDropdownOption(page, "Sort by", "Title");
 
-		await expect(saveForEveryoneButton(page)).toBeEnabled();
-		await saveDropdownTrigger(page).click();
 		await expect(saveOnlyForMeButton(page)).toBeEnabled();
+		await saveDropdownTrigger(page).click();
+		await expect(saveForEveryoneButton(page)).toBeEnabled();
 	});
 
 	test('"Save for everyone" publishes the settings as the team default', async ({
@@ -907,9 +908,8 @@ test.describe("Personal vs shared view settings — views.write holder", () => {
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
 		await selectDropdownOption(page, "Sort by", "Title");
-		await saveDropdownTrigger(page).click();
 		await saveOnlyForMeButton(page).click();
-		await expect(saveForEveryoneButton(page)).toBeHidden();
+		await expect(saveOnlyForMeButton(page)).toBeHidden();
 
 		const view = await getBacklogView(request, projectId);
 		expect(view.shared_config.sort_by).toEqual(before.shared_config.sort_by);
@@ -932,9 +932,8 @@ test.describe("Personal vs shared view settings — views.write holder", () => {
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
 		await selectDropdownOption(page, "Sort by", "Title");
-		await saveDropdownTrigger(page).click();
 		await saveOnlyForMeButton(page).click();
-		await expect(saveForEveryoneButton(page)).toBeHidden();
+		await expect(saveOnlyForMeButton(page)).toBeHidden();
 
 		const viewer = await viewerApiContext();
 		try {
