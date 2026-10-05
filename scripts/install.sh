@@ -265,8 +265,12 @@ download() {
 }
 
 # get_env_var FILE VAR
+# Prints VAR's value, or nothing when VAR is absent. A missing variable is a
+# normal case (e.g. an .env that predates it), not an error: under
+# `set -euo pipefail` a bare `grep` miss would fail the pipeline and silently
+# kill any `X="$(get_env_var ...)"` assignment, so the miss is swallowed here.
 get_env_var() {
-    grep "^${2}=" "$1" 2>/dev/null | head -1 | cut -d= -f2-
+    { grep "^${2}=" "$1" 2>/dev/null || true; } | head -1 | cut -d= -f2-
 }
 
 # ── Version / URL resolution ──────────────────────────────────────────────────

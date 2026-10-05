@@ -637,6 +637,72 @@ jobs:
           grep -qx 'STORAGE_ENDPOINT=minio:9000' "$WORK6/.env"
           echo "PACA_KEEP_MINIO=1 proceeded as expected for the no-fallback case too, .env left unchanged."
 
+      # Regression check for https://github.com/Paca-AI/paca/issues/546: an
+      # .env with no AGENT_SERVER_IMAGE line (installs that predate it, or
+      # that opted out of Agent Runner) made `get_env_var` fail under
+      # `set -euo pipefail`, so upgrade.sh exited 1 right after the
+      # "Proceed with upgrade?" prompt without printing any error. Every
+      # other seed above carries AGENT_SERVER_IMAGE, which is why this went
+      # unnoticed. The two variants cover Agent Runner enabled and disabled
+      # (install.sh lets users opt out of it).
+      - name: Upgrade an install whose .env has no AGENT_SERVER_IMAGE (Agent Runner enabled and disabled)
+        env:
+          FAKE_DOCKER_PS_SERVICES: |
+            web
+            postgres
+        run: |
+          set -euo pipefail
+          for agent_runner in yes no; do
+            DIR="$RUNNER_TEMP/upgrade-seed-no-agent-server-image-$agent_runner"
+            mkdir -p "$DIR"
+            echo '# placeholder' > "$DIR/docker-compose.yml"
+            cat <<ENV > "$DIR/.env"
+          PACA_API_IMAGE=pacaai/paca-api:0.18.0
+          PACA_WEB_IMAGE=pacaai/paca-web:0.18.0
+          PACA_REALTIME_IMAGE=pacaai/paca-realtime:0.18.0
+          PACA_AGENT_RUNNER=$agent_runner
+          PUBLIC_URL=https://old.example.com
+          SITE_ADDRESS=old.example.com
+          GATEWAY_HTTPS_PORT=443
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=oldpassword123
+          JWT_SECRET=deadbeef
+          POSTGRES_DB=paca
+          POSTGRES_USER=paca
+          POSTGRES_PASSWORD=oldpgpass
+          DATABASE_URL=
+          STORAGE_PROVIDER=rustfs
+          STORAGE_ENDPOINT=rustfs:9000
+          STORAGE_REGION=us-east-1
+          STORAGE_BUCKET=paca
+          STORAGE_ACCESS_KEY_ID=oldaccesskey
+          STORAGE_SECRET_ACCESS_KEY=oldsecretkey
+          STORAGE_USE_SSL=false
+          ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000
+          AGENT_API_KEY=oldagentkey
+          INTERNAL_API_KEY=oldinternalkey
+          ENV
+            if grep -q '^AGENT_SERVER_IMAGE=' "$DIR/.env"; then
+              echo "seed .env must not contain AGENT_SERVER_IMAGE" >&2
+              exit 1
+            fi
+            : > "$FAKE_DOCKER_LOG"
+            if ! PACA_YES=1 PACA_DIR="$DIR" bash scripts/upgrade.sh; then
+              echo "upgrade.sh failed (PACA_AGENT_RUNNER=$agent_runner) on an .env without AGENT_SERVER_IMAGE" >&2
+              exit 1
+            fi
+            grep -q '^compose .* up ' "$FAKE_DOCKER_LOG"
+            grep -qx "PACA_AGENT_RUNNER=$agent_runner" "$DIR/.env"
+            # upgrade.sh must not invent an AGENT_SERVER_IMAGE for a user who
+            # never had one, nor try to pre-pull one.
+            if grep -q '^pull ' "$FAKE_DOCKER_LOG"; then
+              echo "unexpected docker pull with no AGENT_SERVER_IMAGE configured:" >&2
+              grep '^pull ' "$FAKE_DOCKER_LOG" >&2
+              exit 1
+            fi
+            echo "upgrade.sh handled a missing AGENT_SERVER_IMAGE (PACA_AGENT_RUNNER=$agent_runner)."
+          done
+
   # ---------------------------------------------------------------------------
   # 4. install-paca-skills.sh smoke test — runs the real script fully
   #    non-interactively against a tiny local HTTP server that serves fixed
