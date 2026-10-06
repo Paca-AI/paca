@@ -388,6 +388,22 @@ func (r *DocumentRepository) FindDocumentByID(_ context.Context, id uuid.UUID) (
 	return documentFromRecord(rec), nil
 }
 
+// FindDocumentTitleByID returns only the title of a non-deleted document — a
+// cheaper read than FindDocumentByID (which pulls the full row, including the
+// content) for callers that need just the title, e.g. building a notification
+// event payload. Returns ErrDocNotFound when the document doesn't exist or is
+// deleted.
+func (r *DocumentRepository) FindDocumentTitleByID(_ context.Context, id uuid.UUID) (string, error) {
+	var title string
+	if err := r.db.Get(&title, `SELECT title FROM documents WHERE id = $1 AND deleted_at IS NULL`, id.String()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", docdom.ErrDocNotFound
+		}
+		return "", err
+	}
+	return title, nil
+}
+
 // CreateDocument persists a new document.
 func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Document) error {
 	rec := documentToRecord(d)

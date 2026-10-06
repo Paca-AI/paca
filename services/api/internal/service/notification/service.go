@@ -10,13 +10,10 @@ import (
 
 	"github.com/google/uuid"
 
-	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/events"
-	"github.com/Paca-AI/api/internal/platform/messaging"
 )
 
 // userLookup resolves a recipient's name/email for the notification.assigned/
@@ -46,24 +43,35 @@ type memberLookup interface {
 // taskLookup resolves a task's title for the entity_title field of the
 // notification.{assigned,mentioned,task_description_mentioned} plugin-event
 // payloads, so a subscribing plugin (e.g. an email sender) can name the task
-// a notification is about instead of only linking to it. Minimal by design —
-// the full task repository already satisfies it.
+// a notification is about instead of only linking to it. Deliberately a
+// title-only read, not FindTaskByID, so this doesn't pull the full task row
+// (description JSONB + assignees) on the synchronous comment/update path.
 type taskLookup interface {
-	FindTaskByID(ctx context.Context, id uuid.UUID) (*taskdom.Task, error)
+	FindTaskTitleByID(ctx context.Context, id uuid.UUID) (string, error)
 }
 
 // docLookup resolves a document's title for the entity_title field of the
-// notification.doc_mentioned plugin-event payload. Minimal by design — the
-// full document repository already satisfies it.
+// notification.doc_mentioned plugin-event payload. Title-only, for the same
+// reason as taskLookup (avoids loading the full document content).
 type docLookup interface {
-	FindDocumentByID(ctx context.Context, id uuid.UUID) (*docdom.Document, error)
+	FindDocumentTitleByID(ctx context.Context, id uuid.UUID) (string, error)
+}
+
+// eventPublisher is the subset of messaging.Publisher this service uses:
+// Append for the durable plugin-event stream and Publish for the real-time
+// channel. Declared as an interface (rather than the concrete
+// *messaging.Publisher) so a test can capture what's published;
+// *messaging.Publisher satisfies it.
+type eventPublisher interface {
+	Append(ctx context.Context, stream, eventType string, payload any) error
+	Publish(ctx context.Context, channel string, payload any) error
 }
 
 // Svc implements notificationdom.Service.
 type Svc struct {
 	repo       notificationdom.Repository
 	memberRepo memberLookup
-	publisher  *messaging.Publisher
+	publisher  eventPublisher
 	userRepo   userLookup
 	taskRepo   taskLookup
 	docRepo    docLookup
@@ -72,7 +80,7 @@ type Svc struct {
 
 // New returns a configured Svc.
 // publisher may be nil; real-time events are then skipped silently.
-func New(repo notificationdom.Repository, memberRepo memberLookup, publisher *messaging.Publisher) *Svc {
+func New(repo notificationdom.Repository, memberRepo memberLookup, publisher eventPublisher) *Svc {
 	return &Svc{repo: repo, memberRepo: memberRepo, publisher: publisher}
 }
 
@@ -145,11 +153,11 @@ func (s *Svc) taskTitle(ctx context.Context, taskID uuid.UUID) string {
 	if s.taskRepo == nil {
 		return ""
 	}
-	t, err := s.taskRepo.FindTaskByID(ctx, taskID)
-	if err != nil || t == nil {
+	title, err := s.taskRepo.FindTaskTitleByID(ctx, taskID)
+	if err != nil {
 		return ""
 	}
-	return t.Title
+	return title
 }
 
 // docTitle resolves docID's title for an event payload, returning "" when no
@@ -158,11 +166,11 @@ func (s *Svc) docTitle(ctx context.Context, docID uuid.UUID) string {
 	if s.docRepo == nil {
 		return ""
 	}
-	d, err := s.docRepo.FindDocumentByID(ctx, docID)
-	if err != nil || d == nil {
+	title, err := s.docRepo.FindDocumentTitleByID(ctx, docID)
+	if err != nil {
 		return ""
 	}
-	return d.Title
+	return title
 }
 
 // resolveUserName returns userID's full name, or "" if it can't be resolved

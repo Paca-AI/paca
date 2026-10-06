@@ -1272,6 +1272,23 @@ func (r *TaskRepository) FindTaskByID(ctx context.Context, id uuid.UUID) (*taskd
 	return t, nil
 }
 
+// FindTaskTitleByID returns only the title of a non-deleted task — a cheaper
+// read than FindTaskByID (which pulls the full row, including the description
+// JSONB, plus a second assignee query) for callers that need just the title,
+// e.g. building a notification event payload. Returns ErrTaskNotFound when the
+// task doesn't exist or is deleted.
+func (r *TaskRepository) FindTaskTitleByID(ctx context.Context, id uuid.UUID) (string, error) {
+	var title string
+	err := r.db.GetContext(ctx, &title, `SELECT title FROM tasks WHERE id = $1 AND deleted_at IS NULL`, id.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", taskdom.ErrTaskNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("task repo: find title by id: %w", err)
+	}
+	return title, nil
+}
+
 // FindTaskByNumber returns the task with the given project-scoped task number (non-deleted).
 func (r *TaskRepository) FindTaskByNumber(ctx context.Context, projectID uuid.UUID, taskNumber int64) (*taskdom.Task, error) {
 	var rec taskRecord

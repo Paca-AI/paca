@@ -10,10 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
-	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
@@ -235,11 +233,11 @@ type fakeTaskRepo struct {
 	calls int
 }
 
-func (r *fakeTaskRepo) FindTaskByID(_ context.Context, id uuid.UUID) (*taskdom.Task, error) {
+func (r *fakeTaskRepo) FindTaskTitleByID(_ context.Context, _ uuid.UUID) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls++
-	return &taskdom.Task{ID: id, Title: r.title}, nil
+	return r.title, nil
 }
 
 func (r *fakeTaskRepo) callCount() int {
@@ -254,17 +252,50 @@ type fakeDocRepo struct {
 	calls int
 }
 
-func (r *fakeDocRepo) FindDocumentByID(_ context.Context, id uuid.UUID) (*docdom.Document, error) {
+func (r *fakeDocRepo) FindDocumentTitleByID(_ context.Context, _ uuid.UUID) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls++
-	return &docdom.Document{ID: id, Title: r.title}, nil
+	return r.title, nil
 }
 
 func (r *fakeDocRepo) callCount() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.calls
+}
+
+// fakePublisher satisfies eventPublisher and captures every Append so a test
+// can assert the exact payload published to the plugin event stream (the real
+// *messaging.Publisher is a concrete Redis-backed struct that can't be
+// observed in a unit test).
+type capturedEvent struct {
+	stream    string
+	eventType string
+	payload   any
+}
+
+type fakePublisher struct {
+	mu      sync.Mutex
+	appends []capturedEvent
+}
+
+func (p *fakePublisher) Append(_ context.Context, stream, eventType string, payload any) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.appends = append(p.appends, capturedEvent{stream: stream, eventType: eventType, payload: payload})
+	return nil
+}
+
+func (p *fakePublisher) Publish(_ context.Context, _ string, _ any) error { return nil }
+
+func (p *fakePublisher) lastAppend() (capturedEvent, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.appends) == 0 {
+		return capturedEvent{}, false
+	}
+	return p.appends[len(p.appends)-1], true
 }
 
 type errCreateRepo struct {
@@ -1274,5 +1305,51 @@ func TestNotifyTaskDescriptionMentioned_ResolvesTitleOnlyForMember(t *testing.T)
 	svc2.NotifyTaskDescriptionMentioned(ctx, uuid.New(), actorUserID, projectID, uuid.New())
 	if got := tasks2.callCount(); got != 0 {
 		t.Errorf("expected no task title lookup for a mention naming a non-member, got %d lookups", got)
+	}
+}
+
+// TestNotifyAssigned_PublishesEntityTitle is the direct output test the rest
+// of this group's count-based assertions can't give: it captures the payload
+// handed to the publisher and proves entity_title carries the resolved title.
+func TestNotifyAssigned_PublishesEntityTitle(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	users := newFakeUserRepo()
+	pub := &fakePublisher{}
+	tasks := &fakeTaskRepo{title: "Ship the landing page"}
+	svc := New(repo, members, pub).
+		WithEventPublishing(users, "https://paca.example").
+		WithTitleLookup(tasks, nil)
+
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+	assigneeUserID := uuid.New()
+	actorMemberID := uuid.New()
+	assigneeMemberID := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: actorMemberID, ProjectID: projectID, UserID: actorUserID, Username: "actor"})
+	members.add(&projectdom.ProjectMember{ID: assigneeMemberID, ProjectID: projectID, UserID: assigneeUserID, Username: "assignee"})
+	email := "assignee@example.com"
+	users.byID[assigneeUserID] = &userdom.User{ID: assigneeUserID, FullName: "Assignee", Email: &email}
+
+	if err := svc.NotifyAssigned(ctx, notificationdom.NotifyAssignedInput{
+		TaskID:              uuid.New(),
+		ProjectID:           projectID,
+		NewAssigneeMemberID: assigneeMemberID,
+		ActorUserID:         actorUserID,
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	evt, ok := pub.lastAppend()
+	if !ok {
+		t.Fatal("expected a plugin event to be published")
+	}
+	payload, ok := evt.payload.(map[string]any)
+	if !ok {
+		t.Fatalf("expected a map payload, got %T", evt.payload)
+	}
+	if got := payload["entity_title"]; got != "Ship the landing page" {
+		t.Errorf("expected entity_title=%q in the published payload, got %v", "Ship the landing page", got)
 	}
 }
