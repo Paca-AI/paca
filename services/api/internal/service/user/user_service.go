@@ -115,6 +115,14 @@ func (s *Service) List(ctx context.Context, page, pageSize int, filter userdom.L
 	return s.repo.List(ctx, offset, pageSize, filter)
 }
 
+// ListAfter returns a cursor-paginated page of users matching filter.
+func (s *Service) ListAfter(ctx context.Context, limit int, cursorAfter *string, filter userdom.ListFilter) ([]*userdom.User, bool, error) {
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+	return s.repo.ListAfter(ctx, limit, cursorAfter, filter)
+}
+
 // CountUsers returns the total count of users without paginating rows.
 func (s *Service) CountUsers(ctx context.Context) (int64, error) {
 	return s.repo.CountUsers(ctx)

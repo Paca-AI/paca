@@ -1,12 +1,15 @@
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link2, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import {
 	type DisplayLinkType,
 	type LinkType,
 	listAllTasks,
 	type Task,
 } from "@/lib/interaction-api";
+import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 
 export interface AddTaskLinkPayload {
 	sourceTaskId: string;
@@ -66,23 +69,11 @@ const DISPLAY_TO_CANONICAL: Partial<
 	duplicates: { linkType: "duplicates", otherTaskIsSource: false },
 };
 
-// The task list API caps page_size at 200, so the search box needs to page
-// through the full project rather than fetching a single page - otherwise
-// tasks past the first 200 are invisible to the search.
-const MAX_TASK_PAGES = 25;
-
-async function fetchAllProjectTasks(projectId: string): Promise<Task[]> {
-	const all: Task[] = [];
-	let cursor: string | undefined;
-	for (let page = 0; page < MAX_TASK_PAGES; page++) {
-		const result = await listAllTasks(projectId, { pageSize: 200, cursor });
-		all.push(...result.items);
-		const next = result.next_cursor;
-		if (!next) break;
-		cursor = next;
-	}
-	return all;
-}
+const TASK_PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
+// Hiding the current task can leave a page with few rows (and nothing to
+// scroll), so keep loading until a few rows are visible.
+const MIN_VISIBLE_TASK_ROWS = 5;
 
 export function AddTaskLinkModal({
 	open,
@@ -96,34 +87,74 @@ export function AddTaskLinkModal({
 	const [selectedLinkType, setSelectedLinkType] =
 		useState<DisplayLinkType>("blocks");
 	const [query, setQuery] = useState("");
-	const [tasks, setTasks] = useState<Task[]>([]);
-	const [loading, setLoading] = useState(false);
+	const [debouncedQuery, setDebouncedQuery] = useState("");
+	const applyQuery = useDebouncedCallback(
+		setDebouncedQuery,
+		SEARCH_DEBOUNCE_MS,
+	);
 	const searchRef = useRef<HTMLInputElement>(null);
 
-	// Load tasks once when modal opens
 	useEffect(() => {
-		if (!open) return;
-		setLoading(true);
-		fetchAllProjectTasks(projectId)
-			.then(setTasks)
-			.catch(() => setTasks([]))
-			.finally(() => setLoading(false));
-		setTimeout(() => searchRef.current?.focus(), 50);
-	}, [open, projectId]);
+		if (!open) {
+			setQuery("");
+			setDebouncedQuery("");
+			return;
+		}
+		const timer = setTimeout(() => searchRef.current?.focus(), 50);
+		return () => clearTimeout(timer);
+	}, [open]);
 
-	const filteredTasks = useMemo(() => {
-		const q = query.trim().toLowerCase();
-		return tasks.filter((t) => {
-			if (t.id === currentTaskId) return false;
-			if (!q) return true;
-			const prefix = taskIdPrefix
-				? `${taskIdPrefix}-${t.task_number}`
-				: String(t.task_number);
-			return (
-				t.title.toLowerCase().includes(q) || prefix.toLowerCase().includes(q)
-			);
-		});
-	}, [tasks, query, currentTaskId, taskIdPrefix]);
+	// Cursor-paginated, server-side search (matches title and "#<number>"),
+	// so every task in the project is reachable without loading them all.
+	const {
+		data,
+		isLoading: loading,
+		isFetchingNextPage,
+		hasNextPage,
+		fetchNextPage,
+	} = useInfiniteQuery({
+		queryKey: ["projects", projectId, "tasks", "link-picker", debouncedQuery],
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listAllTasks(projectId, {
+				search: debouncedQuery || undefined,
+				pageSize: TASK_PAGE_SIZE,
+				cursor: pageParam,
+			}),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+		enabled: open && !!projectId,
+	});
+
+	const filteredTasks = useMemo<Task[]>(
+		() =>
+			(data?.pages.flatMap((page) => page.items) ?? []).filter(
+				(t) => t.id !== currentTaskId,
+			),
+		[data, currentTaskId],
+	);
+
+	useEffect(() => {
+		if (
+			hasNextPage &&
+			!isFetchingNextPage &&
+			!loading &&
+			filteredTasks.length < MIN_VISIBLE_TASK_ROWS
+		) {
+			void fetchNextPage();
+		}
+	}, [
+		hasNextPage,
+		isFetchingNextPage,
+		loading,
+		filteredTasks.length,
+		fetchNextPage,
+	]);
+
+	const handleListScroll = createLoadMoreScrollHandler({
+		hasMore: !!hasNextPage,
+		isLoadingMore: isFetchingNextPage,
+		onLoadMore: () => void fetchNextPage(),
+	});
 
 	function handleSelect(task: Task) {
 		const canonical = DISPLAY_TO_CANONICAL[selectedLinkType];
@@ -200,7 +231,10 @@ export function AddTaskLinkModal({
 							ref={searchRef}
 							type="text"
 							value={query}
-							onChange={(e) => setQuery(e.target.value)}
+							onChange={(e) => {
+								setQuery(e.target.value);
+								applyQuery(e.target.value.trim());
+							}}
 							placeholder={t("taskDetail.addTaskLinkModal.searchPlaceholder")}
 							className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-border/30 bg-muted/20 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150"
 						/>
@@ -208,7 +242,10 @@ export function AddTaskLinkModal({
 				</div>
 
 				{/* Task list */}
-				<div className="mx-5 mb-5 rounded-xl border border-border/20 overflow-hidden max-h-64 overflow-y-auto [scrollbar-gutter:stable]">
+				<div
+					className="mx-5 mb-5 rounded-xl border border-border/20 overflow-hidden max-h-64 overflow-y-auto [scrollbar-gutter:stable]"
+					onScroll={handleListScroll}
+				>
 					{loading && (
 						<div className="flex items-center justify-center py-8 text-muted-foreground/50 text-sm">
 							{t("taskDetail.addTaskLinkModal.loadingTasks")}
@@ -240,6 +277,11 @@ export function AddTaskLinkModal({
 								</button>
 							);
 						})}
+					{isFetchingNextPage && (
+						<div className="flex items-center justify-center py-3 text-muted-foreground/50 text-xs">
+							{t("taskDetail.addTaskLinkModal.loadingTasks")}
+						</div>
+					)}
 				</div>
 			</div>
 		</div>

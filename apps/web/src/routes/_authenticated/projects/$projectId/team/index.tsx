@@ -19,7 +19,7 @@ import {
 	UserRound,
 	Users,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MembersFilters } from "@/components/projects/team/MembersFilters";
 import { HighlightMatch } from "@/components/shared/highlight-match";
@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { type User, usersInfiniteQueryOptions } from "@/lib/admin-api";
@@ -97,6 +98,8 @@ export const Route = createFileRoute(
 	// instead, same as the agents/environments/automation list pages.
 	component: TeamPage,
 });
+
+const MIN_VISIBLE_USER_ROWS = 5;
 
 function getInitials(name: string): string {
 	return name
@@ -170,6 +173,8 @@ function AddMemberDialog({
 	const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
 	const [selectedRoleId, setSelectedRoleId] = useState<string>("");
 	const [userSearch, setUserSearch] = useState("");
+	const [debouncedUserSearch, setDebouncedUserSearch] = useState("");
+	const applyUserSearch = useDebouncedCallback(setDebouncedUserSearch, 300);
 	const [description, setDescription] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
@@ -191,7 +196,7 @@ function AddMemberDialog({
 		hasNextPage,
 		isFetchingNextPage,
 	} = useInfiniteQuery({
-		...usersInfiniteQueryOptions(),
+		...usersInfiniteQueryOptions(debouncedUserSearch),
 		enabled: open && canReadUsers,
 	});
 
@@ -206,18 +211,30 @@ function AddMemberDialog({
 		onLoadMore: () => void fetchNextPage(),
 	});
 
-	const filteredUsers = useMemo<User[]>(() => {
-		const items: User[] = usersData;
-		const q = userSearch.toLowerCase();
-		return items
-			.filter((u) => !existingMemberIds.has(u.id))
-			.filter(
-				(u) =>
-					!q ||
-					u.username.toLowerCase().includes(q) ||
-					(u.full_name ?? "").toLowerCase().includes(q),
-			);
-	}, [usersData, existingMemberIds, userSearch]);
+	// Search is done server-side; existing members are only hidden here.
+	const filteredUsers = useMemo<User[]>(
+		() => usersData.filter((u) => !existingMemberIds.has(u.id)),
+		[usersData, existingMemberIds],
+	);
+
+	// Hiding existing members can leave a page with few or no rows (and then
+	// nothing to scroll), so keep loading until a few rows are visible.
+	useEffect(() => {
+		if (
+			hasNextPage &&
+			!isFetchingNextPage &&
+			!isLoadingUsers &&
+			filteredUsers.length < MIN_VISIBLE_USER_ROWS
+		) {
+			void fetchNextPage();
+		}
+	}, [
+		hasNextPage,
+		isFetchingNextPage,
+		isLoadingUsers,
+		filteredUsers.length,
+		fetchNextPage,
+	]);
 
 	const addMutation = useMutation({
 		mutationFn: () => {
@@ -266,6 +283,7 @@ function AddMemberDialog({
 		setSelectedAgent(null);
 		setSelectedRoleId("");
 		setUserSearch("");
+		setDebouncedUserSearch("");
 		setDescription("");
 		setError(null);
 		onOpenChange(false);
@@ -448,7 +466,10 @@ function AddMemberDialog({
 											className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
 											placeholder={t("team.addMemberDialog.searchPlaceholder")}
 											value={userSearch}
-											onChange={(e) => setUserSearch(e.target.value)}
+											onChange={(e) => {
+												setUserSearch(e.target.value);
+												applyUserSearch(e.target.value.trim());
+											}}
 											autoFocus
 										/>
 									</div>

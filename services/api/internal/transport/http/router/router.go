@@ -199,6 +199,7 @@ func New(deps Deps) http.Handler {
 				// global role is a privilege of its own (global_roles.assign) and is
 				// changed solely by PUT /users/{userId}/global-roles below.
 				r.With(require.Global(authz.PermissionUsersRead)).Get("/users", deps.User.ListUsers)
+				r.With(require.Global(authz.PermissionUsersRead)).Get("/users/cursor", deps.User.ListUsersByCursor)
 				r.With(require.Global(authz.PermissionUsersWrite)).Post("/users", deps.User.CreateUser)
 				r.With(require.Global(authz.PermissionUsersRead)).Get("/users/{userId}", deps.User.GetUserByID)
 				r.With(require.Global(authz.PermissionUsersWrite)).Patch("/users/{userId}", deps.User.AdminUpdateUser)

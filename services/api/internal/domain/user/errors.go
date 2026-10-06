@@ -13,4 +13,7 @@ var (
 	// "already used" alike — deliberately not distinguished for callers, so
 	// a caller can't use response differences to enumerate tokens.
 	ErrPasswordSetTokenInvalid = errors.New("user: password set token invalid or expired")
+	// ErrInvalidCursor is returned when a client-supplied pagination cursor
+	// fails to decode.
+	ErrInvalidCursor = errors.New("user: invalid pagination cursor")
 )

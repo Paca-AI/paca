@@ -37,6 +37,7 @@ type mockUserSvc struct {
 	setPasswordWithToken         func(ctx context.Context, rawToken, newPassword string) error
 	delete                       func(ctx context.Context, id uuid.UUID) error
 	initiateAvatarUpload         func(ctx context.Context, userID uuid.UUID, fileName, contentType string, fileSize int64) (*attachmentdom.UploadSession, error)
+	listAfter                    func(ctx context.Context, limit int, cursor *string, filter domainuser.ListFilter) ([]*domainuser.User, bool, error)
 	completeAvatarUpload         func(ctx context.Context, userID, fileID uuid.UUID) (*domainuser.User, error)
 	removeAvatar                 func(ctx context.Context, userID uuid.UUID) (*domainuser.User, error)
 }
@@ -52,6 +53,12 @@ func (m *mockUserSvc) List(ctx context.Context, page, pageSize int, filter domai
 		return m.list(ctx, page, pageSize, filter)
 	}
 	return nil, 0, nil
+}
+func (m *mockUserSvc) ListAfter(ctx context.Context, limit int, cursor *string, filter domainuser.ListFilter) ([]*domainuser.User, bool, error) {
+	if m.listAfter != nil {
+		return m.listAfter(ctx, limit, cursor, filter)
+	}
+	return nil, false, nil
 }
 func (m *mockUserSvc) CountUsers(context.Context) (int64, error) {
 	return 0, nil
@@ -153,6 +160,7 @@ func newUserRouter(svc domainuser.Service) chi.Router {
 	r.Get("/users/me/global-permissions", h.GetMyGlobalPermissions)
 	// admin routes
 	r.Get("/admin/users", h.ListUsers)
+	r.Get("/admin/users/cursor", h.ListUsersByCursor)
 	r.Post("/admin/users", h.CreateUser)
 	r.Get("/admin/users/{userId}", h.GetUserByID)
 	r.Patch("/admin/users/{userId}", h.AdminUpdateUser)
@@ -270,6 +278,68 @@ func TestListUsers_PassesSearchAndRoleFilter(t *testing.T) {
 	}
 	if got.Search != "alice smith" || got.Role != "ADMIN" {
 		t.Fatalf("filter = %+v, want search=%q role=%q", got, "alice smith", "ADMIN")
+	}
+}
+
+func TestListUsersByCursor_NextCursorAndFilter(t *testing.T) {
+	last := &domainuser.User{ID: uuid.New(), Username: "bob", FullName: "Bob", Role: domainuser.RoleUser}
+	var gotLimit int
+	var gotCursor *string
+	var gotFilter domainuser.ListFilter
+	svc := &mockUserSvc{
+		listAfter: func(_ context.Context, limit int, cursor *string, f domainuser.ListFilter) ([]*domainuser.User, bool, error) {
+			gotLimit, gotCursor, gotFilter = limit, cursor, f
+			return []*domainuser.User{last}, true, nil
+		},
+	}
+	r := newUserRouter(svc)
+
+	w := do(t, r, http.MethodGet, "/admin/users/cursor?page_size=1&cursor=abc&search=%20bo%20", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+	if gotLimit != 1 || gotCursor == nil || *gotCursor != "abc" || gotFilter.Search != "bo" {
+		t.Fatalf("limit=%d cursor=%v filter=%+v", gotLimit, gotCursor, gotFilter)
+	}
+	var env struct {
+		Data struct {
+			Items      []map[string]any `json:"items"`
+			NextCursor *string          `json:"next_cursor"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Data.Items) != 1 || env.Data.NextCursor == nil {
+		t.Fatalf("unexpected body: %s", w.Body.String())
+	}
+	dec, err := domainuser.DecodeCursor(*env.Data.NextCursor)
+	if err != nil || dec.ID != last.ID.String() {
+		t.Fatalf("next_cursor = %v (%v), want id %s", *env.Data.NextCursor, err, last.ID)
+	}
+}
+
+func TestListUsersByCursor_LastPageHasNoCursor(t *testing.T) {
+	svc := &mockUserSvc{
+		listAfter: func(context.Context, int, *string, domainuser.ListFilter) ([]*domainuser.User, bool, error) {
+			return []*domainuser.User{{ID: uuid.New(), Username: "a", Role: domainuser.RoleUser}}, false, nil
+		},
+	}
+	w := do(t, newUserRouter(svc), http.MethodGet, "/admin/users/cursor", nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"next_cursor":null`) {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestListUsersByCursor_InvalidCursor(t *testing.T) {
+	svc := &mockUserSvc{
+		listAfter: func(context.Context, int, *string, domainuser.ListFilter) ([]*domainuser.User, bool, error) {
+			return nil, false, domainuser.ErrInvalidCursor
+		},
+	}
+	w := do(t, newUserRouter(svc), http.MethodGet, "/admin/users/cursor?cursor=%21", nil)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "USER_INVALID_CURSOR") {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 }
 

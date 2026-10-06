@@ -46,6 +46,9 @@ func (r *stubUserRepo) List(_ context.Context, _, _ int, _ userdom.ListFilter) (
 	return nil, 0, nil
 }
 func (r *stubUserRepo) CountUsers(_ context.Context) (int64, error) { return 0, nil }
+func (r *stubUserRepo) ListAfter(context.Context, int, *string, userdom.ListFilter) ([]*userdom.User, bool, error) {
+	return nil, false, nil
+}
 func (r *stubUserRepo) CountUsersMustChangePassword(_ context.Context) (int64, error) {
 	return 0, nil
 }

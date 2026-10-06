@@ -49,6 +49,9 @@ type Service interface {
 	// List returns a page of users matching filter and the total count of
 	// matches.
 	List(ctx context.Context, page, pageSize int, filter ListFilter) ([]*User, int64, error)
+	// ListAfter returns a keyset-paginated page of users matching filter,
+	// sorted by name, and whether more users follow.
+	ListAfter(ctx context.Context, limit int, cursorAfter *string, filter ListFilter) ([]*User, bool, error)
 	// CountUsers returns the total count of users without paginating rows.
 	CountUsers(ctx context.Context) (int64, error)
 	// CountUsersMustChangePassword returns the total count of users who must
