@@ -234,15 +234,59 @@ func (r *DocumentRepository) CreateFolder(ctx context.Context, f *docdom.DocFold
 	return err
 }
 
-// UpdateFolder persists mutable changes to a folder.
-func (r *DocumentRepository) UpdateFolder(ctx context.Context, f *docdom.DocFolder) error {
-	rec := folderToRecord(f)
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE doc_folders SET project_id=$1, parent_id=$2, name=$3, position=$4, created_by=$5, updated_at=$6
-		WHERE id=$7`,
-		rec.ProjectID, rec.ParentID, rec.Name, rec.Position, rec.CreatedBy, rec.UpdatedAt, rec.ID,
-	)
-	return err
+// UpdateFolderAtomic implements docdom.DocFolderRepository — see its doc
+// comment. A per-project advisory lock serializes folder updates so two
+// concurrent moves can't each pass a cycle check against the other's old
+// parent; the row lock then guards the read-modify-write itself.
+func (r *DocumentRepository) UpdateFolderAtomic(ctx context.Context, id uuid.UUID, decide func(current *docdom.DocFolder, find func(id uuid.UUID) (*docdom.DocFolder, error)) error) (*docdom.DocFolder, error) {
+	var result *docdom.DocFolder
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var projectID string
+		if err := tx.GetContext(ctx, &projectID, `SELECT project_id FROM doc_folders WHERE id = $1`, id.String()); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return docdom.ErrFolderNotFound
+			}
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('doc_folders:' || $1::text, 0))`, projectID); err != nil {
+			return err
+		}
+		var rec docFolderRecord
+		if err := tx.GetContext(ctx, &rec, `SELECT `+docFolderCols+` FROM doc_folders WHERE id = $1 FOR UPDATE`, id.String()); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return docdom.ErrFolderNotFound
+			}
+			return err
+		}
+		current := folderFromRecord(rec)
+		find := func(fid uuid.UUID) (*docdom.DocFolder, error) {
+			var fr docFolderRecord
+			if err := tx.GetContext(ctx, &fr, `SELECT `+docFolderCols+` FROM doc_folders WHERE id = $1`, fid.String()); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return nil, docdom.ErrFolderNotFound
+				}
+				return nil, err
+			}
+			return folderFromRecord(fr), nil
+		}
+		if err := decide(current, find); err != nil {
+			return err
+		}
+		out := folderToRecord(current)
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE doc_folders SET parent_id=$1, name=$2, position=$3, updated_at=$4
+			WHERE id=$5`,
+			out.ParentID, out.Name, out.Position, out.UpdatedAt, out.ID,
+		); err != nil {
+			return err
+		}
+		result = current
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // DeleteFolder permanently deletes a folder.
@@ -356,17 +400,37 @@ func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Docum
 	return err
 }
 
-// UpdateDocument persists mutable changes to a document.
-func (r *DocumentRepository) UpdateDocument(ctx context.Context, d *docdom.Document) error {
-	rec := documentToRecord(d)
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE documents SET project_id=$1, folder_id=$2, title=$3, content=$4, position=$5,
-		  created_by=$6, updated_by=$7, updated_at=$8, deleted_at=$9
-		WHERE id=$10`,
-		rec.ProjectID, rec.FolderID, rec.Title, rec.Content, rec.Position,
-		rec.CreatedBy, rec.UpdatedBy, rec.UpdatedAt, rec.DeletedAt, rec.ID,
-	)
-	return err
+// UpdateDocumentAtomic implements docdom.DocumentRepository — see its doc
+// comment.
+func (r *DocumentRepository) UpdateDocumentAtomic(ctx context.Context, id uuid.UUID, decide func(current *docdom.Document) error) (*docdom.Document, error) {
+	var result *docdom.Document
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var rec documentRecord
+		if err := tx.GetContext(ctx, &rec, `SELECT `+documentCols+` FROM documents WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id.String()); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return docdom.ErrDocNotFound
+			}
+			return err
+		}
+		current := documentFromRecord(rec)
+		if err := decide(current); err != nil {
+			return err
+		}
+		out := documentToRecord(current)
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE documents SET folder_id=$1, title=$2, content=$3, position=$4, updated_by=$5, updated_at=$6
+			WHERE id=$7 AND deleted_at IS NULL`,
+			out.FolderID, out.Title, out.Content, out.Position, out.UpdatedBy, out.UpdatedAt, out.ID,
+		); err != nil {
+			return err
+		}
+		result = current
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // DeleteDocument soft-deletes a document.

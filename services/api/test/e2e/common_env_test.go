@@ -44,6 +44,7 @@ import (
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
+	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
@@ -236,6 +237,9 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	apiKeyService := apikeysvc.New(apiKeyRepo)
 	activityLog := activitysvc.New(pgRepo.NewActivityRepository(db), projectRepo, activitysvc.NewRecorder(publisher))
 	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo)
+	docRepo := pgRepo.NewDocumentRepository(db)
+	docService := docsvc.New(docRepo, projectRepo)
+	docActivityService := docsvc.NewActivityService(activityLog, docRepo)
 	automationRepo := pgRepo.NewAutomationRepository(db)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	pluginRepoForAgent := pgRepo.NewPluginRepository(db)
@@ -258,8 +262,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		if err := storageClient.EnsureBucket(ctx, attachBucket); err != nil {
 			t.Fatalf("ensure bucket: %v", err)
 		}
-		docRepoForAttachments := pgRepo.NewDocumentRepository(db)
-		attachmentService = attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepoForAttachments), storageClient, attachBucket)
+		attachmentService = attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepo), storageClient, attachBucket)
 	}
 
 	cookieCfg := handler.CookieConfig{
@@ -298,6 +301,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 			// autofill consumer never overwrites them — as in bootstrap/app.go.
 			handler.WithTaskAutofillRepository(taskRepo)),
 		Sprint:       handler.NewSprintHandler(sprintService, viewService),
+		Document:     handler.NewDocumentHandler(docService, docActivityService),
 		View:         handler.NewViewHandler(viewService),
 		Attachment:   handler.NewAttachmentHandler(attachmentService),
 		APIKey:       handler.NewAPIKeyHandler(apiKeyService),

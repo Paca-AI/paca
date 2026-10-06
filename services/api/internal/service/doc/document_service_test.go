@@ -83,6 +83,22 @@ func (r *fakeDocRepo) UpdateFolder(_ context.Context, f *docdom.DocFolder) error
 	return nil
 }
 
+func (r *fakeDocRepo) UpdateFolderAtomic(ctx context.Context, id uuid.UUID, decide func(*docdom.DocFolder, func(uuid.UUID) (*docdom.DocFolder, error)) error) (*docdom.DocFolder, error) {
+	cur, err := r.FindFolderByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	cp := *cur
+	if err := decide(&cp, func(fid uuid.UUID) (*docdom.DocFolder, error) { return r.FindFolderByID(ctx, fid) }); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st := cp
+	r.folders[id] = &st
+	return &cp, nil
+}
+
 func (r *fakeDocRepo) DeleteFolder(_ context.Context, id uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -191,6 +207,22 @@ func (r *fakeDocRepo) UpdateDocument(_ context.Context, d *docdom.Document) erro
 	cp := *d
 	r.docs[d.ID] = &cp
 	return nil
+}
+
+func (r *fakeDocRepo) UpdateDocumentAtomic(ctx context.Context, id uuid.UUID, decide func(*docdom.Document) error) (*docdom.Document, error) {
+	cur, err := r.FindDocumentByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	cp := *cur
+	if err := decide(&cp); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st := cp
+	r.docs[id] = &st
+	return &cp, nil
 }
 
 func (r *fakeDocRepo) DeleteDocument(_ context.Context, id uuid.UUID) error {
@@ -1212,5 +1244,23 @@ func TestSearchDocuments_TitleAndBody(t *testing.T) {
 	}
 	if hits, _ := svc.SearchDocuments(ctx, projectID, "   ", 5); len(hits) != 0 {
 		t.Error("blank query should return nothing")
+	}
+}
+
+func TestUpdateFolder_Cycle(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+
+	a, _ := svc.CreateFolder(ctx, docdom.CreateFolderInput{ProjectID: projectID, Name: "A"})
+	b, _ := svc.CreateFolder(ctx, docdom.CreateFolderInput{ProjectID: projectID, Name: "B", ParentID: &a.ID})
+	c, _ := svc.CreateFolder(ctx, docdom.CreateFolderInput{ProjectID: projectID, Name: "C", ParentID: &b.ID})
+
+	// Moving A under its grandchild C would make A its own ancestor.
+	cPtr := &c.ID
+	_, err := svc.UpdateFolder(ctx, a.ID, docdom.UpdateFolderInput{ProjectID: projectID, ParentID: &cPtr})
+	if err != docdom.ErrFolderCycle {
+		t.Errorf("expected ErrFolderCycle, got %v", err)
 	}
 }

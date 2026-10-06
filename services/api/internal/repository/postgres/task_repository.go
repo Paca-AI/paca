@@ -1416,10 +1416,17 @@ func (r *TaskRepository) UpdateTaskFields(ctx context.Context, t *taskdom.Task, 
 		}
 	}
 	args = append(args, t.ID.String())
-	query := "UPDATE tasks SET " + strings.Join(sets, ", ") + fmt.Sprintf(" WHERE id=$%d", len(args))
+	query := "UPDATE tasks SET " + strings.Join(sets, ", ") + fmt.Sprintf(" WHERE id=$%d AND deleted_at IS NULL", len(args))
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
-		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		res, err := tx.ExecContext(ctx, query, args...)
+		if err != nil {
 			return fmt.Errorf("task repo: update fields: %w", err)
+		}
+		// A save racing a soft-delete matches no live row.
+		if n, err := res.RowsAffected(); err != nil {
+			return fmt.Errorf("task repo: update fields: rows affected: %w", err)
+		} else if n == 0 {
+			return taskdom.ErrTaskNotFound
 		}
 		if syncAssignees {
 			return syncTaskAssignees(ctx, tx, t.ID, t.AssigneeIDs)

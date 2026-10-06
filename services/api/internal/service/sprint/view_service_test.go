@@ -38,7 +38,11 @@ func (permissiveSprintRepo) FindSprintByID(_ context.Context, id uuid.UUID) (*sp
 }
 func (permissiveSprintRepo) CreateSprint(context.Context, *sprintdom.Sprint) error { return nil }
 func (permissiveSprintRepo) UpdateSprint(context.Context, *sprintdom.Sprint) error { return nil }
-func (permissiveSprintRepo) DeleteSprint(context.Context, uuid.UUID) error         { return nil }
+func (permissiveSprintRepo) UpdateSprintAtomic(_ context.Context, id uuid.UUID, decide func(*sprintdom.Sprint) error) (*sprintdom.Sprint, error) {
+	sp := &sprintdom.Sprint{ID: id}
+	return sp, decide(sp)
+}
+func (permissiveSprintRepo) DeleteSprint(context.Context, uuid.UUID) error { return nil }
 
 var _ sprintdom.SprintRepository = permissiveSprintRepo{}
 
@@ -200,6 +204,22 @@ func (r *fakeViewRepo) UpdateView(_ context.Context, v *sprintdom.SprintView) er
 	cp := *v
 	r.views[v.ID] = &cp
 	return nil
+}
+
+func (r *fakeViewRepo) UpdateViewAtomic(ctx context.Context, id uuid.UUID, decide func(*sprintdom.SprintView) error) (*sprintdom.SprintView, error) {
+	cur, err := r.FindViewByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	cp := *cur
+	if err := decide(&cp); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st := cp
+	r.views[id] = &st
+	return &cp, nil
 }
 
 func (r *fakeViewRepo) DeleteView(_ context.Context, id uuid.UUID) error {

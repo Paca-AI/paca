@@ -11,7 +11,11 @@ type SprintRepository interface {
 	ListSprints(ctx context.Context, projectID uuid.UUID) ([]*Sprint, error)
 	FindSprintByID(ctx context.Context, id uuid.UUID) (*Sprint, error)
 	CreateSprint(ctx context.Context, s *Sprint) error
-	UpdateSprint(ctx context.Context, s *Sprint) error
+	// UpdateSprintAtomic loads sprint id under a row lock, calls decide to
+	// validate and mutate it, and writes it back in the same transaction, so
+	// concurrent updates can't revert each other. decide's error aborts the
+	// write and is returned as is. Returns ErrSprintNotFound if id is missing.
+	UpdateSprintAtomic(ctx context.Context, id uuid.UUID, decide func(current *Sprint) error) (*Sprint, error)
 	DeleteSprint(ctx context.Context, id uuid.UUID) error
 }
 
@@ -27,7 +31,9 @@ type ViewRepository interface {
 
 	FindViewByID(ctx context.Context, id uuid.UUID) (*SprintView, error)
 	CreateView(ctx context.Context, v *SprintView) error
-	UpdateView(ctx context.Context, v *SprintView) error
+	// UpdateViewAtomic is the view counterpart of SprintRepository.UpdateSprintAtomic.
+	// Returns ErrViewNotFound if id is missing.
+	UpdateViewAtomic(ctx context.Context, id uuid.UUID, decide func(current *SprintView) error) (*SprintView, error)
 	DeleteView(ctx context.Context, id uuid.UUID) error
 
 	// CountViews returns the number of views belonging to a sprint.  Used to

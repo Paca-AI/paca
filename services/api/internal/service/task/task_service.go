@@ -503,6 +503,15 @@ func (s *Service) CreateTask(ctx context.Context, in taskdom.CreateTaskInput) (*
 
 // UpdateTask updates the mutable fields of an existing task.
 func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in taskdom.UpdateTaskInput) (*taskdom.Task, error) {
+	// The parent/type rules (own parent, cycles, Epic-can't-have-parent) depend
+	// on both fields together, so a save touching either must read and check
+	// them under the row lock — otherwise two concurrent saves each validate
+	// against the old value of the other's field and both write.
+	if in.ParentTaskID != nil || in.TaskTypeID != nil {
+		return s.UpdateTaskAtomic(ctx, projectID, id, func(*taskdom.Task) (taskdom.UpdateTaskInput, bool) {
+			return in, true
+		})
+	}
 	t, err := s.repo.FindTaskByID(ctx, id)
 	if err != nil {
 		return nil, err
