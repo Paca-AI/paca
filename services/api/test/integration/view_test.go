@@ -99,6 +99,21 @@ func (r *fakeViewRepoIT) CreateView(_ context.Context, v *sprintdom.SprintView) 
 	return nil
 }
 
+func (r *fakeViewRepoIT) UpdateViewAtomic(ctx context.Context, id uuid.UUID, decide func(*sprintdom.SprintView) error) (*sprintdom.SprintView, error) {
+	cur, err := r.FindViewByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := decide(cur); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st := *cur
+	r.views[id] = &st
+	return cur, nil
+}
+
 func (r *fakeViewRepoIT) UpdateView(_ context.Context, v *sprintdom.SprintView) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

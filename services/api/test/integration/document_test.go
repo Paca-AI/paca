@@ -92,6 +92,21 @@ func (r *fakeDocRepoIT) UpdateFolder(_ context.Context, f *docdom.DocFolder) err
 	return nil
 }
 
+func (r *fakeDocRepoIT) UpdateFolderAtomic(ctx context.Context, id uuid.UUID, decide func(*docdom.DocFolder, func(uuid.UUID) (*docdom.DocFolder, error)) error) (*docdom.DocFolder, error) {
+	cur, err := r.FindFolderByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := decide(cur, func(fid uuid.UUID) (*docdom.DocFolder, error) { return r.FindFolderByID(ctx, fid) }); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st := *cur
+	r.folders[id] = &st
+	return cur, nil
+}
+
 func (r *fakeDocRepoIT) DeleteFolder(_ context.Context, id uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -159,6 +174,21 @@ func (r *fakeDocRepoIT) UpdateDocument(_ context.Context, d *docdom.Document) er
 	cp := *d
 	r.docs[d.ID] = &cp
 	return nil
+}
+
+func (r *fakeDocRepoIT) UpdateDocumentAtomic(ctx context.Context, id uuid.UUID, decide func(*docdom.Document) error) (*docdom.Document, error) {
+	cur, err := r.FindDocumentByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := decide(cur); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st := *cur
+	r.docs[id] = &st
+	return cur, nil
 }
 
 func (r *fakeDocRepoIT) DeleteDocument(_ context.Context, id uuid.UUID) error {
