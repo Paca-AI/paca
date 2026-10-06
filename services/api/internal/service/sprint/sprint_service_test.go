@@ -71,6 +71,22 @@ func (r *fakeSprintRepo) UpdateSprint(_ context.Context, s *sprintdom.Sprint) er
 	return nil
 }
 
+func (r *fakeSprintRepo) UpdateSprintAtomic(ctx context.Context, id uuid.UUID, decide func(*sprintdom.Sprint) error) (*sprintdom.Sprint, error) {
+	cur, err := r.FindSprintByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	cp := *cur
+	if err := decide(&cp); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st := cp
+	r.sprints[id] = &st
+	return &cp, nil
+}
+
 func (r *fakeSprintRepo) DeleteSprint(_ context.Context, id uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

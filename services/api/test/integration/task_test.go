@@ -499,13 +499,16 @@ func (r *fakeTaskRepo) UpdateTaskFields(_ context.Context, t *taskdom.Task, fiel
 }
 
 func (r *fakeTaskRepo) UpdateTaskAtomic(_ context.Context, id uuid.UUID, decide func(current *taskdom.Task) (*taskdom.Task, error)) (*taskdom.Task, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	// decide may call back into the repository (parent/type validation reads
+	// other tasks and task types), so r.mu must not be held across it.
+	r.mu.RLock()
 	t, ok := r.tasks[id]
 	if !ok || t.DeletedAt != nil {
+		r.mu.RUnlock()
 		return nil, taskdom.ErrTaskNotFound
 	}
 	cp := *t
+	r.mu.RUnlock()
 	next, err := decide(&cp)
 	if err != nil {
 		return nil, err
@@ -513,6 +516,8 @@ func (r *fakeTaskRepo) UpdateTaskAtomic(_ context.Context, id uuid.UUID, decide 
 	if next == nil {
 		return &cp, nil
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	nc := *next
 	r.tasks[id] = &nc
 	return next, nil
@@ -595,6 +600,21 @@ func (r *fakeSprintRepoIT) CreateSprint(_ context.Context, s *sprintdom.Sprint) 
 	cp := *s
 	r.sprints[s.ID] = &cp
 	return nil
+}
+
+func (r *fakeSprintRepoIT) UpdateSprintAtomic(ctx context.Context, id uuid.UUID, decide func(*sprintdom.Sprint) error) (*sprintdom.Sprint, error) {
+	cur, err := r.FindSprintByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := decide(cur); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st := *cur
+	r.sprints[id] = &st
+	return cur, nil
 }
 
 func (r *fakeSprintRepoIT) UpdateSprint(_ context.Context, s *sprintdom.Sprint) error {

@@ -3,6 +3,7 @@ package docsvc
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -73,48 +74,58 @@ func (s *Service) CreateFolder(ctx context.Context, in docdom.CreateFolderInput)
 	return f, nil
 }
 
-// UpdateFolder updates the mutable fields of a folder.
+// UpdateFolder updates the mutable fields of a folder. Validation runs inside
+// the repository's locked read-modify-write so concurrent moves can't combine
+// into a parent cycle.
 func (s *Service) UpdateFolder(ctx context.Context, id uuid.UUID, in docdom.UpdateFolderInput) (*docdom.DocFolder, error) {
-	f, err := s.repo.FindFolderByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	if f.ProjectID != in.ProjectID {
-		return nil, docdom.ErrFolderNotFound
-	}
-
-	if name := strings.TrimSpace(in.Name); name != "" && name != f.Name {
-		if strings.Contains(name, "/") {
-			return nil, docdom.ErrFolderNameInvalid
+	return s.repo.UpdateFolderAtomic(ctx, id, func(f *docdom.DocFolder, find func(uuid.UUID) (*docdom.DocFolder, error)) error {
+		if f.ProjectID != in.ProjectID {
+			return docdom.ErrFolderNotFound
 		}
-		f.Name = name
-	}
-	if in.ParentID != nil { // double-pointer present → update parent
-		if *in.ParentID != nil {
-			newParentID := **in.ParentID
-			if newParentID == id {
-				return nil, docdom.ErrFolderSelfParent
-			}
-			parent, err := s.repo.FindFolderByID(ctx, newParentID)
-			if err != nil {
-				return nil, err
-			}
-			if parent.ProjectID != f.ProjectID {
-				return nil, docdom.ErrFolderNotInProject
-			}
-		}
-		f.ParentID = *in.ParentID
-	}
-	if in.Position != nil {
-		f.Position = *in.Position
-	}
-	f.UpdatedAt = time.Now()
 
-	if err := s.repo.UpdateFolder(ctx, f); err != nil {
-		return nil, err
-	}
-	return f, nil
+		if name := strings.TrimSpace(in.Name); name != "" && name != f.Name {
+			if strings.Contains(name, "/") {
+				return docdom.ErrFolderNameInvalid
+			}
+			f.Name = name
+		}
+		if in.ParentID != nil { // double-pointer present → update parent
+			if *in.ParentID != nil {
+				newParentID := **in.ParentID
+				if newParentID == id {
+					return docdom.ErrFolderSelfParent
+				}
+				parent, err := find(newParentID)
+				if err != nil {
+					return err
+				}
+				if parent.ProjectID != f.ProjectID {
+					return docdom.ErrFolderNotInProject
+				}
+				// Walk up from the new parent; reaching f means f would end up
+				// inside its own subtree.
+				const maxDepth = 100
+				cur := parent
+				for range maxDepth {
+					if cur.ParentID == nil {
+						break
+					}
+					if *cur.ParentID == id {
+						return docdom.ErrFolderCycle
+					}
+					if cur, err = find(*cur.ParentID); err != nil {
+						return err
+					}
+				}
+			}
+			f.ParentID = *in.ParentID
+		}
+		if in.Position != nil {
+			f.Position = *in.Position
+		}
+		f.UpdatedAt = time.Now()
+		return nil
+	})
 }
 
 // DeleteFolder deletes a folder.
@@ -205,56 +216,61 @@ func (s *Service) CreateDocument(ctx context.Context, in docdom.CreateDocumentIn
 }
 
 // UpdateDocument updates a document's mutable fields and creates a snapshot
-// when the content changes.
+// when the content changes. The read-modify-write runs under a row lock so a
+// concurrent save isn't reverted and a concurrent delete isn't undone.
 func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, in docdom.UpdateDocumentInput) (*docdom.Document, error) {
-	d, err := s.repo.FindDocumentByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if d.ProjectID != projectID {
-		return nil, docdom.ErrDocNotFound
-	}
-
 	contentChanged := false
-	oldContent := d.Content
-	oldTitle := d.Title
+	var oldContent json.RawMessage
+	var oldTitle string
 
-	if in.Title != nil {
-		title := strings.TrimSpace(*in.Title)
-		if title == "" {
-			return nil, docdom.ErrDocTitleInvalid
+	// Lookups that don't depend on the locked row run before the transaction,
+	// so the row lock isn't held across extra round trips on other connections.
+	if in.FolderID != nil && *in.FolderID != nil {
+		folder, ferr := s.repo.FindFolderByID(ctx, **in.FolderID)
+		if ferr != nil {
+			return nil, ferr
 		}
-		if title != d.Title && strings.Contains(title, "/") {
-			return nil, docdom.ErrDocTitleInvalid
+		if folder.ProjectID != projectID {
+			return nil, docdom.ErrFolderNotInProject
 		}
-		d.Title = title
 	}
-	if in.Content != nil {
-		// Only treat as changed if the raw JSON differs.
-		if string(*in.Content) != string(d.Content) {
-			contentChanged = true
-		}
-		d.Content = *in.Content
-	}
-	if in.FolderID != nil { // double-pointer present → update folder
-		if *in.FolderID != nil {
-			folder, ferr := s.repo.FindFolderByID(ctx, **in.FolderID)
-			if ferr != nil {
-				return nil, ferr
-			}
-			if folder.ProjectID != d.ProjectID {
-				return nil, docdom.ErrFolderNotInProject
-			}
-		}
-		d.FolderID = *in.FolderID
-	}
-	if in.Position != nil {
-		d.Position = *in.Position
-	}
-	d.UpdatedBy = s.resolveMember(ctx, in.UpdatedBy, d.ProjectID)
-	d.UpdatedAt = time.Now()
+	updatedBy := s.resolveMember(ctx, in.UpdatedBy, projectID)
 
-	if err := s.repo.UpdateDocument(ctx, d); err != nil {
+	d, err := s.repo.UpdateDocumentAtomic(ctx, id, func(d *docdom.Document) error {
+		if d.ProjectID != projectID {
+			return docdom.ErrDocNotFound
+		}
+		oldContent = d.Content
+		oldTitle = d.Title
+
+		if in.Title != nil {
+			title := strings.TrimSpace(*in.Title)
+			if title == "" {
+				return docdom.ErrDocTitleInvalid
+			}
+			if title != d.Title && strings.Contains(title, "/") {
+				return docdom.ErrDocTitleInvalid
+			}
+			d.Title = title
+		}
+		if in.Content != nil {
+			// Only treat as changed if the raw JSON differs.
+			if string(*in.Content) != string(d.Content) {
+				contentChanged = true
+			}
+			d.Content = *in.Content
+		}
+		if in.FolderID != nil { // double-pointer present → update folder
+			d.FolderID = *in.FolderID
+		}
+		if in.Position != nil {
+			d.Position = *in.Position
+		}
+		d.UpdatedBy = updatedBy
+		d.UpdatedAt = time.Now()
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 

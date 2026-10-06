@@ -129,21 +129,43 @@ func (r *ViewRepository) CreateView(ctx context.Context, v *sprintdom.SprintView
 	return nil
 }
 
-// UpdateView persists changes to an existing sprint view.
-func (r *ViewRepository) UpdateView(ctx context.Context, v *sprintdom.SprintView) error {
-	configBytes, err := json.Marshal(v.Config)
+// UpdateViewAtomic implements sprintdom.ViewRepository — see its doc comment.
+func (r *ViewRepository) UpdateViewAtomic(ctx context.Context, id uuid.UUID, decide func(current *sprintdom.SprintView) error) (*sprintdom.SprintView, error) {
+	var out *sprintdom.SprintView
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var rec sprintViewRecord
+		err := tx.GetContext(ctx, &rec, `SELECT `+sprintViewSelectCols+` FROM sprint_views WHERE id = $1 FOR UPDATE`, id.String())
+		if errors.Is(err, sql.ErrNoRows) {
+			return sprintdom.ErrViewNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("view repo: find by id for update: %w", err)
+		}
+		v, err := toViewEntity(&rec)
+		if err != nil {
+			return err
+		}
+		if err := decide(v); err != nil {
+			return err
+		}
+		configBytes, err := json.Marshal(v.Config)
+		if err != nil {
+			return fmt.Errorf("view repo: marshal config: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE sprint_views SET name = $1, view_type = $2, config = $3, position = $4, updated_at = $5
+			WHERE id = $6`,
+			v.Name, string(v.ViewType), configBytes, v.Position, v.UpdatedAt, v.ID.String(),
+		); err != nil {
+			return fmt.Errorf("view repo: update: %w", err)
+		}
+		out = v
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("view repo: marshal config: %w", err)
+		return nil, err
 	}
-	_, err = r.db.ExecContext(ctx, `
-		UPDATE sprint_views SET name = $1, view_type = $2, config = $3, position = $4, updated_at = $5
-		WHERE id = $6`,
-		v.Name, string(v.ViewType), configBytes, v.Position, v.UpdatedAt, v.ID.String(),
-	)
-	if err != nil {
-		return fmt.Errorf("view repo: update: %w", err)
-	}
-	return nil
+	return out, nil
 }
 
 // DeleteView removes a sprint view by ID.

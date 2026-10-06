@@ -144,36 +144,35 @@ func (s *Service) CreateSprint(ctx context.Context, in sprintdom.CreateSprintInp
 // pub/sub TopicSprintUpdated, same as before this method looked at what
 // changed at all.
 func (s *Service) UpdateSprint(ctx context.Context, projectID, id uuid.UUID, in sprintdom.UpdateSprintInput) (*sprintdom.Sprint, error) {
-	sp, err := s.repo.FindSprintByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if sp.ProjectID != projectID {
-		return nil, sprintdom.ErrSprintNotFound
-	}
-	wasActive := sp.Status == sprintdom.SprintStatusActive
-
-	if name := strings.TrimSpace(in.Name); name != "" {
-		sp.Name = name
-	}
-	if in.StartDate != nil {
-		sp.StartDate = *in.StartDate
-	}
-	if in.EndDate != nil {
-		sp.EndDate = *in.EndDate
-	}
-	if in.Goal != nil {
-		sp.Goal = *in.Goal
-	}
-	if in.Status != nil {
-		if !sprintdom.ValidSprintStatuses[*in.Status] {
-			return nil, sprintdom.ErrSprintStatusInvalid
+	wasActive := false
+	sp, err := s.repo.UpdateSprintAtomic(ctx, id, func(sp *sprintdom.Sprint) error {
+		if sp.ProjectID != projectID {
+			return sprintdom.ErrSprintNotFound
 		}
-		sp.Status = *in.Status
-	}
-	sp.UpdatedAt = time.Now()
+		wasActive = sp.Status == sprintdom.SprintStatusActive
 
-	if err := s.repo.UpdateSprint(ctx, sp); err != nil {
+		if name := strings.TrimSpace(in.Name); name != "" {
+			sp.Name = name
+		}
+		if in.StartDate != nil {
+			sp.StartDate = *in.StartDate
+		}
+		if in.EndDate != nil {
+			sp.EndDate = *in.EndDate
+		}
+		if in.Goal != nil {
+			sp.Goal = *in.Goal
+		}
+		if in.Status != nil {
+			if !sprintdom.ValidSprintStatuses[*in.Status] {
+				return sprintdom.ErrSprintStatusInvalid
+			}
+			sp.Status = *in.Status
+		}
+		sp.UpdatedAt = time.Now()
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	s.record(ctx, events.TopicSprintUpdated, sp)
@@ -226,13 +225,21 @@ func (s *Service) CompleteSprint(ctx context.Context, projectID, id uuid.UUID, i
 
 	// Move non-done tasks first so a subsequent failure leaves the sprint
 	// in its original state (retrying the complete is then still possible).
+	// The move is idempotent, so two concurrent completes both running it is
+	// harmless; the status flip below is the serialized step and only one wins.
 	if err := s.taskRepo.BulkMoveSprintTasks(ctx, sp.ProjectID, id, in.MoveToSprintID); err != nil {
 		return nil, err
 	}
 
-	sp.Status = sprintdom.SprintStatusCompleted
-	sp.UpdatedAt = time.Now()
-	if err := s.repo.UpdateSprint(ctx, sp); err != nil {
+	sp, err = s.repo.UpdateSprintAtomic(ctx, id, func(cur *sprintdom.Sprint) error {
+		if cur.Status == sprintdom.SprintStatusCompleted {
+			return sprintdom.ErrSprintAlreadyComplete
+		}
+		cur.Status = sprintdom.SprintStatusCompleted
+		cur.UpdatedAt = time.Now()
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	s.record(ctx, events.TopicSprintCompleted, sp)

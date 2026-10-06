@@ -34,7 +34,10 @@ func (r *fakeDocRepoForChecker) FindDocumentByID(_ context.Context, id uuid.UUID
 }
 func (r *fakeDocRepoForChecker) CreateDocument(context.Context, *docdom.Document) error { return nil }
 func (r *fakeDocRepoForChecker) UpdateDocument(context.Context, *docdom.Document) error { return nil }
-func (r *fakeDocRepoForChecker) DeleteDocument(context.Context, uuid.UUID) error        { return nil }
+func (r *fakeDocRepoForChecker) UpdateDocumentAtomic(context.Context, uuid.UUID, func(*docdom.Document) error) (*docdom.Document, error) {
+	return nil, nil
+}
+func (r *fakeDocRepoForChecker) DeleteDocument(context.Context, uuid.UUID) error { return nil }
 
 var _ docdom.DocumentRepository = (*fakeDocRepoForChecker)(nil)
 

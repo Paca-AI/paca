@@ -184,39 +184,37 @@ func (s *ViewService) CreateView(ctx context.Context, in sprintdom.CreateViewInp
 // UpdateView updates the mutable fields of an existing view,
 // verifying it belongs to projectID.
 func (s *ViewService) UpdateView(ctx context.Context, projectID, id uuid.UUID, in sprintdom.UpdateViewInput) (*sprintdom.SprintView, error) {
-	v, err := s.repo.FindViewByID(ctx, id)
+	v, err := s.repo.UpdateViewAtomic(ctx, id, func(v *sprintdom.SprintView) error {
+		if v.ProjectID != projectID {
+			return sprintdom.ErrViewNotFound
+		}
+
+		if in.Name != nil {
+			name := strings.TrimSpace(*in.Name)
+			if name == "" {
+				return sprintdom.ErrViewNameInvalid
+			}
+			v.Name = name
+		}
+		if in.ViewType != nil {
+			if !sprintdom.ValidViewTypes[*in.ViewType] {
+				return sprintdom.ErrViewTypeInvalid
+			}
+			v.ViewType = *in.ViewType
+		}
+		if in.Config != nil {
+			v.Config = *in.Config
+		}
+		if in.Position != nil {
+			v.Position = *in.Position
+		}
+		if !hasPluginConfig(v.ViewType, &v.Config) {
+			return sprintdom.ErrViewPluginConfigRequired
+		}
+		v.UpdatedAt = time.Now()
+		return nil
+	})
 	if err != nil {
-		return nil, err
-	}
-	if v.ProjectID != projectID {
-		return nil, sprintdom.ErrViewNotFound
-	}
-
-	if in.Name != nil {
-		name := strings.TrimSpace(*in.Name)
-		if name == "" {
-			return nil, sprintdom.ErrViewNameInvalid
-		}
-		v.Name = name
-	}
-	if in.ViewType != nil {
-		if !sprintdom.ValidViewTypes[*in.ViewType] {
-			return nil, sprintdom.ErrViewTypeInvalid
-		}
-		v.ViewType = *in.ViewType
-	}
-	if in.Config != nil {
-		v.Config = *in.Config
-	}
-	if in.Position != nil {
-		v.Position = *in.Position
-	}
-	if !hasPluginConfig(v.ViewType, &v.Config) {
-		return nil, sprintdom.ErrViewPluginConfigRequired
-	}
-	v.UpdatedAt = time.Now()
-
-	if err := s.repo.UpdateView(ctx, v); err != nil {
 		return nil, err
 	}
 	s.record(ctx, events.TopicViewUpdated, v)

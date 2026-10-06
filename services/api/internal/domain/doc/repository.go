@@ -22,8 +22,13 @@ type DocFolderRepository interface {
 	FindFolderByID(ctx context.Context, id uuid.UUID) (*DocFolder, error)
 	// CreateFolder persists a new folder.
 	CreateFolder(ctx context.Context, f *DocFolder) error
-	// UpdateFolder persists mutable changes to a folder.
-	UpdateFolder(ctx context.Context, f *DocFolder) error
+	// UpdateFolderAtomic loads folder id under a row lock, calls decide to
+	// validate and mutate it, and writes it back in the same transaction.
+	// Updates of folders in the same project are serialized (creates and
+	// deletes are not) so a parent-cycle check cannot race a concurrent move. find reads a folder inside that
+	// transaction. decide's error aborts the write and is returned as is.
+	// Returns ErrFolderNotFound when the folder doesn't exist.
+	UpdateFolderAtomic(ctx context.Context, id uuid.UUID, decide func(current *DocFolder, find func(id uuid.UUID) (*DocFolder, error)) error) (*DocFolder, error)
 	// DeleteFolder permanently deletes a folder and cascades to child folders
 	// and documents (folder_id is set to NULL on documents, not deleted).
 	DeleteFolder(ctx context.Context, id uuid.UUID) error
@@ -57,8 +62,12 @@ type DocumentRepository interface {
 	FindDocumentByID(ctx context.Context, id uuid.UUID) (*Document, error)
 	// CreateDocument persists a new document.
 	CreateDocument(ctx context.Context, d *Document) error
-	// UpdateDocument persists mutable changes to a document.
-	UpdateDocument(ctx context.Context, d *Document) error
+	// UpdateDocumentAtomic loads the non-deleted document id under a row lock,
+	// calls decide to validate and mutate it, and writes it back in the same
+	// transaction, so a concurrent save or delete can neither be reverted nor
+	// have the document resurrected. Returns ErrDocNotFound when the document
+	// doesn't exist or is deleted. decide's error aborts the write.
+	UpdateDocumentAtomic(ctx context.Context, id uuid.UUID, decide func(current *Document) error) (*Document, error)
 	// DeleteDocument soft-deletes a document (sets deleted_at).
 	DeleteDocument(ctx context.Context, id uuid.UUID) error
 }
