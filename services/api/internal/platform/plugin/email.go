@@ -18,6 +18,7 @@ import (
 	"github.com/tetratelabs/wazero/api"
 
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	"github.com/Paca-AI/api/internal/platform/netguard"
 )
 
 // -------------------------------------------------------------------------
@@ -75,11 +76,11 @@ func (req smtpSendRequest) validate() error {
 // This is the only way a WASM plugin can reach outside the sandbox other
 // than paca.fetch (HTTPS to an allowlisted domain) — genuine SMTP requires a
 // raw TCP/TLS socket, which WASI does not expose to guests, so the host
-// dials it directly, unsandboxed, on the plugin's behalf. Unlike fetch there
-// is no domain allowlist to constrain the target (the SMTP host is
-// admin-configured plugin data, not caller-supplied request input), so this
-// is instead restricted to plugins that explicitly declare the "email.send"
-// permission in their manifest.
+// dials it directly, unsandboxed, on the plugin's behalf. The host/port come
+// from the plugin's request JSON, so they are untrusted: the dial goes
+// through netguard (private/loopback/link-local/metadata IPs are refused),
+// and the capability is additionally restricted to plugins that explicitly
+// declare the "email.send" permission in their manifest.
 func (r *Runtime) registerEmailFunction(b wazero.HostModuleBuilder, p plugindom.Plugin) {
 	// paca.send_email(reqPtr, reqLen, resPtrPtr, resLenPtr)
 	// Request JSON: smtpSendRequest.
@@ -135,6 +136,12 @@ func hasPermission(perms []string, want string) bool {
 	return false
 }
 
+// smtpDialContext opens the TCP connection for send_email. It defaults to
+// netguard.SafeDialContext so a plugin-supplied host can never reach
+// loopback, link-local/cloud-metadata or other private/internal addresses
+// (the same protection paca.fetch gets). Overridable in tests only.
+var smtpDialContext = netguard.SafeDialContext
+
 // dialAndSendSMTP connects to req.Host:req.Port and sends the message via
 // the standard SMTP conversation (EHLO, optional STARTTLS, optional AUTH,
 // MAIL FROM/RCPT TO/DATA). Uses only the standard library: net/smtp plus
@@ -142,20 +149,22 @@ func hasPermission(perms []string, want string) bool {
 // (port 587/25 style) cases.
 func dialAndSendSMTP(ctx context.Context, req smtpSendRequest) error {
 	addr := net.JoinHostPort(req.Host, fmt.Sprintf("%d", req.Port))
-	dialer := &net.Dialer{Timeout: smtpDialTimeout}
 
-	var conn net.Conn
-	var err error
-	if req.UseTLS {
-		tlsDialer := tls.Dialer{NetDialer: dialer, Config: &tls.Config{ServerName: req.Host}}
-		conn, err = tlsDialer.DialContext(ctx, "tcp", addr)
-	} else {
-		conn, err = dialer.DialContext(ctx, "tcp", addr)
-	}
+	// Dial through the SSRF guard (resolve, reject private IPs, connect to
+	// the validated IP), then layer implicit TLS on top when requested.
+	conn, err := smtpDialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("send_email: dial %s: %w", addr, err)
 	}
 	defer func() { _ = conn.Close() }()
+
+	if req.UseTLS {
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: req.Host})
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			return fmt.Errorf("send_email: tls handshake %s: %w", addr, err)
+		}
+		conn = tlsConn
+	}
 
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(deadline)
