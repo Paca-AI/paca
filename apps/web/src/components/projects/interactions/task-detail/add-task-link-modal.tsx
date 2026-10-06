@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { Link2, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -75,6 +75,22 @@ const SEARCH_DEBOUNCE_MS = 300;
 // scroll), so keep loading until a few rows are visible.
 const MIN_VISIBLE_TASK_ROWS = 5;
 
+/** The server matches the title and "#<number>", so a full display id such as
+ *  "PRJ-12" is rewritten to "#12" to keep matching what users see in the UI. */
+function toServerSearch(
+	query: string,
+	taskIdPrefix: string | undefined,
+): string | undefined {
+	if (!query) return undefined;
+	if (taskIdPrefix) {
+		const m = query.match(/^(.+)-(\d+)$/);
+		if (m && m[1].toLowerCase() === taskIdPrefix.toLowerCase()) {
+			return `#${m[2]}`;
+		}
+	}
+	return query;
+}
+
 export function AddTaskLinkModal({
 	open,
 	onClose,
@@ -98,17 +114,22 @@ export function AddTaskLinkModal({
 		if (!open) {
 			setQuery("");
 			setDebouncedQuery("");
+			// Supersede any pending debounce so it can't restore the old term.
+			applyQuery("");
 			return;
 		}
 		const timer = setTimeout(() => searchRef.current?.focus(), 50);
 		return () => clearTimeout(timer);
-	}, [open]);
+	}, [open, applyQuery]);
 
 	// Cursor-paginated, server-side search (matches title and "#<number>"),
 	// so every task in the project is reachable without loading them all.
 	const {
 		data,
 		isLoading: loading,
+		isError,
+		isFetchNextPageError,
+		isPlaceholderData,
 		isFetchingNextPage,
 		hasNextPage,
 		fetchNextPage,
@@ -116,13 +137,15 @@ export function AddTaskLinkModal({
 		queryKey: ["projects", projectId, "tasks", "link-picker", debouncedQuery],
 		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
 			listAllTasks(projectId, {
-				search: debouncedQuery || undefined,
+				search: toServerSearch(debouncedQuery, taskIdPrefix),
+
 				pageSize: TASK_PAGE_SIZE,
 				cursor: pageParam,
 			}),
 		initialPageParam: undefined as string | undefined,
 		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 		enabled: open && !!projectId,
+		placeholderData: keepPreviousData,
 	});
 
 	const filteredTasks = useMemo<Task[]>(
@@ -137,6 +160,8 @@ export function AddTaskLinkModal({
 		if (
 			hasNextPage &&
 			!isFetchingNextPage &&
+			!isFetchNextPageError &&
+			!isPlaceholderData &&
 			!loading &&
 			filteredTasks.length < MIN_VISIBLE_TASK_ROWS
 		) {
@@ -145,6 +170,8 @@ export function AddTaskLinkModal({
 	}, [
 		hasNextPage,
 		isFetchingNextPage,
+		isFetchNextPageError,
+		isPlaceholderData,
 		loading,
 		filteredTasks.length,
 		fetchNextPage,
@@ -251,7 +278,12 @@ export function AddTaskLinkModal({
 							{t("taskDetail.addTaskLinkModal.loadingTasks")}
 						</div>
 					)}
-					{!loading && filteredTasks.length === 0 && (
+					{!loading && isError && filteredTasks.length === 0 && (
+						<div className="flex items-center justify-center py-8 text-destructive/80 text-sm">
+							{t("taskDetail.addTaskLinkModal.loadError")}
+						</div>
+					)}
+					{!loading && !isError && filteredTasks.length === 0 && (
 						<div className="flex items-center justify-center py-8 text-muted-foreground/45 text-sm italic">
 							{t("taskDetail.addTaskLinkModal.noTasksFound")}
 						</div>

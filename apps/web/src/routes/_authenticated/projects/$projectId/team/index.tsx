@@ -1,4 +1,5 @@
 import {
+	keepPreviousData,
 	useInfiniteQuery,
 	useMutation,
 	useQuery,
@@ -192,12 +193,15 @@ function AddMemberDialog({
 	const {
 		data: usersPages,
 		isLoading: isLoadingUsers,
+		isFetchNextPageError,
+		isPlaceholderData,
 		fetchNextPage,
 		hasNextPage,
 		isFetchingNextPage,
 	} = useInfiniteQuery({
 		...usersInfiniteQueryOptions(debouncedUserSearch),
 		enabled: open && canReadUsers,
+		placeholderData: keepPreviousData,
 	});
 
 	const usersData = useMemo(
@@ -223,6 +227,8 @@ function AddMemberDialog({
 		if (
 			hasNextPage &&
 			!isFetchingNextPage &&
+			!isFetchNextPageError &&
+			!isPlaceholderData &&
 			!isLoadingUsers &&
 			filteredUsers.length < MIN_VISIBLE_USER_ROWS
 		) {
@@ -231,6 +237,8 @@ function AddMemberDialog({
 	}, [
 		hasNextPage,
 		isFetchingNextPage,
+		isFetchNextPageError,
+		isPlaceholderData,
 		isLoadingUsers,
 		filteredUsers.length,
 		fetchNextPage,
@@ -284,6 +292,8 @@ function AddMemberDialog({
 		setSelectedRoleId("");
 		setUserSearch("");
 		setDebouncedUserSearch("");
+		// Supersede any pending debounce so it can't restore the old term.
+		applyUserSearch("");
 		setDescription("");
 		setError(null);
 		onOpenChange(false);

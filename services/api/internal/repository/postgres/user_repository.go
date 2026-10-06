@@ -130,9 +130,16 @@ func (r *UserRepository) ListAfter(ctx context.Context, limit int, cursorAfter *
 		if err != nil {
 			return nil, false, err
 		}
+		// Soft-deleted rows still count: a user removed between page loads
+		// must not invalidate the cursor. An id that never existed does.
+		var exists bool
+		if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)`, cur.ID); err != nil {
+			return nil, false, fmt.Errorf("user repo: list after: cursor lookup: %w", err)
+		}
+		if !exists {
+			return nil, false, fmt.Errorf("%w: unknown user", userdom.ErrInvalidCursor)
+		}
 		args = append(args, cur.ID)
-		// The cursor row is looked up regardless of deleted_at so a user
-		// removed between page loads doesn't invalidate the cursor.
 		where += fmt.Sprintf(` AND (`+userNameSortKey+`, LOWER(users.username), users.id) > (
 			SELECT `+userNameSortKey+`, LOWER(users.username), users.id FROM users WHERE users.id = $%d)`, len(args))
 	}

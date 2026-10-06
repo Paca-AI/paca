@@ -1523,6 +1523,7 @@
 			"searchPlaceholder": "タイトルまたは番号でタスクを検索...",
 			"loadingTasks": "タスクを読み込み中…",
 			"noTasksFound": "タスクが見つかりません",
+			"loadError": "タスクを読み込めませんでした。もう一度お試しください。",
 			"linkTypes": {
 				"blocks": {
 					"label": "ブロックする",
