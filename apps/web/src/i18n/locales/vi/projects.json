@@ -1523,6 +1523,7 @@
 			"searchPlaceholder": "Tìm nhiệm vụ theo tiêu đề hoặc số...",
 			"loadingTasks": "Đang tải nhiệm vụ…",
 			"noTasksFound": "Không tìm thấy nhiệm vụ nào",
+			"loadError": "Không thể tải công việc. Vui lòng thử lại.",
 			"linkTypes": {
 				"blocks": {
 					"label": "Chặn",

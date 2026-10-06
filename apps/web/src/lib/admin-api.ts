@@ -129,6 +129,28 @@ export async function getUsers(
 	return data.data;
 }
 
+export interface CursorUsersResponse {
+	items: User[];
+	page_size: number;
+	/** Opaque token for the next page; null on the last page. */
+	next_cursor: string | null;
+}
+
+export async function getUsersByCursor(
+	cursor: string | null,
+	pageSize = 20,
+	filter: UsersFilter = {},
+): Promise<CursorUsersResponse> {
+	const params: Record<string, string | number> = { page_size: pageSize };
+	if (cursor) params.cursor = cursor;
+	if (filter.search) params.search = filter.search;
+	if (filter.role) params.role = filter.role;
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<CursorUsersResponse>
+	>("/admin/users/cursor", { params });
+	return data.data;
+}
+
 /** Creates a user with the default USER role. To give them another role, call
  *  {@link assignUserGlobalRole} afterwards — assigning a role needs
  *  `global_roles.assign`, so the server no longer accepts `role` here. */
@@ -203,19 +225,15 @@ export function usersQueryOptions(
 
 export const ADMIN_USERS_PAGE_SIZE = 20;
 
-/** Infinite-query version of the user list — backs pickers that need to
- *  page through every user (e.g. the "add team member" dialog), since the
- *  backend caps page_size at 100 and there's no server-side search to
- *  narrow the result set. Pages accumulate as the caller scrolls, same
- *  pattern as the epic picker's infinite query. */
-export const usersInfiniteQueryOptions = () =>
+/** Cursor-paginated infinite query over the user list — backs pickers that
+ *  page through every user (e.g. the "add team member" dialog). `search` is
+ *  sent to the server (it matches username, full name and email) so users
+ *  beyond the first page are still findable. */
+export const usersInfiniteQueryOptions = (search = "") =>
 	infiniteQueryOptions({
-		queryKey: ["admin", "users", "all"],
-		queryFn: ({ pageParam }: { pageParam: number }) =>
-			getUsers(pageParam, ADMIN_USERS_PAGE_SIZE),
-		initialPageParam: 1,
-		getNextPageParam: (lastPage) =>
-			lastPage.page * lastPage.page_size < lastPage.total
-				? lastPage.page + 1
-				: undefined,
+		queryKey: ["admin", "users", "cursor", search],
+		queryFn: ({ pageParam }: { pageParam: string | null }) =>
+			getUsersByCursor(pageParam, ADMIN_USERS_PAGE_SIZE, { search }),
+		initialPageParam: null as string | null,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 	});

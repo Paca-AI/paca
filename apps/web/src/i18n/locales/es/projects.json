@@ -1523,6 +1523,7 @@
 			"searchPlaceholder": "Buscar tareas por título o número...",
 			"loadingTasks": "Cargando tareas…",
 			"noTasksFound": "No se encontraron tareas",
+			"loadError": "No se pudieron cargar las tareas. Inténtalo de nuevo.",
 			"linkTypes": {
 				"blocks": {
 					"label": "Bloquea",

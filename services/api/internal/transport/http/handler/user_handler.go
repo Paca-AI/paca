@@ -207,6 +207,51 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListUsersByCursor handles GET /admin/users/cursor — a keyset-paginated
+// variant of ListUsers for infinite-scroll pickers.
+//
+// Supported query params (all optional):
+//   - page_size=<1-100>  defaults to 20
+//   - cursor=<opaque>    from the previous page's next_cursor; omit for the first page
+//   - search=<text>      same matching as ListUsers
+//   - role=<name>        same matching as ListUsers
+func (h *UserHandler) ListUsersByCursor(w http.ResponseWriter, r *http.Request) {
+	pageSize, err := parsePageSize(r, 20, 100)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var cursor *string
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		cursor = &raw
+	}
+
+	users, hasMore, err := h.svc.ListAfter(r.Context(), pageSize, cursor, domainuser.ListFilter{
+		Search: strings.TrimSpace(r.URL.Query().Get("search")),
+		Role:   strings.TrimSpace(r.URL.Query().Get("role")),
+	})
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	items := make([]dto.UserResponse, 0, len(users))
+	for _, u := range users {
+		items = append(items, h.toUserResponse(r.Context(), u))
+	}
+	var nextCursor *string
+	if hasMore && len(users) > 0 {
+		s := domainuser.EncodeCursor(users[len(users)-1])
+		nextCursor = &s
+	}
+
+	presenter.OK(w, r, dto.CursorUsersResponse{
+		Items:      items,
+		PageSize:   pageSize,
+		NextCursor: nextCursor,
+	})
+}
+
 // GetUserByID handles GET /admin/users/:userId.
 func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "userId"))

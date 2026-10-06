@@ -1523,6 +1523,7 @@
 			"searchPlaceholder": "按标题或编号搜索任务...",
 			"loadingTasks": "正在加载任务…",
 			"noTasksFound": "未找到任务",
+			"loadError": "无法加载任务。请重试。",
 			"linkTypes": {
 				"blocks": {
 					"label": "阻塞",

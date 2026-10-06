@@ -114,6 +114,10 @@ func (r *fakeUserRepo) List(_ context.Context, offset, limit int, _ userdom.List
 	return all[offset:end], total, nil
 }
 
+func (r *fakeUserRepo) ListAfter(_ context.Context, _ int, _ *string, _ userdom.ListFilter) ([]*userdom.User, bool, error) {
+	return nil, false, nil
+}
+
 func (r *fakeUserRepo) CountUsers(_ context.Context) (int64, error) {
 	return int64(len(r.byID)), nil
 }

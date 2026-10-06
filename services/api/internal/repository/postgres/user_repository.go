@@ -64,13 +64,12 @@ func NewUserRepository(db *sqlx.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-// List returns a page of non-deleted, non-system users matching filter,
-// ordered by name, plus the count of matches across all pages. Every
-// whitespace-separated search word must appear (case-insensitively) in the
-// username, full name or email; Role is an exact global role name. The
-// built-in agent bot account is excluded because it is an internal system
-// identity, not a real user.
-func (r *UserRepository) List(ctx context.Context, offset, limit int, filter userdom.ListFilter) ([]*userdom.User, int64, error) {
+// userNameSortKey is the primary sort key of every user listing.
+const userNameSortKey = `LOWER(COALESCE(NULLIF(users.full_name, ''), users.username))`
+
+// userListWhere builds the WHERE clause (and its args) shared by List and
+// ListAfter.
+func userListWhere(filter userdom.ListFilter) (string, []any) {
 	where := `users.deleted_at IS NULL AND users.username != '_paca_agent_bot'`
 	var args []any
 	if filter.Role != "" {
@@ -82,6 +81,17 @@ func (r *UserRepository) List(ctx context.Context, offset, limit int, filter use
 		n := len(args)
 		where += fmt.Sprintf(` AND (LOWER(users.username) LIKE LOWER($%[1]d) ESCAPE '\' OR LOWER(users.full_name) LIKE LOWER($%[1]d) ESCAPE '\' OR LOWER(COALESCE(users.email, '')) LIKE LOWER($%[1]d) ESCAPE '\')`, n)
 	}
+	return where, args
+}
+
+// List returns a page of non-deleted, non-system users matching filter,
+// ordered by name, plus the count of matches across all pages. Every
+// whitespace-separated search word must appear (case-insensitively) in the
+// username, full name or email; Role is an exact global role name. The
+// built-in agent bot account is excluded because it is an internal system
+// identity, not a real user.
+func (r *UserRepository) List(ctx context.Context, offset, limit int, filter userdom.ListFilter) ([]*userdom.User, int64, error) {
+	where, args := userListWhere(filter)
 
 	var total int64
 	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM users `+userReadJoin+` WHERE `+where, args...); err != nil {
@@ -95,7 +105,7 @@ func (r *UserRepository) List(ctx context.Context, offset, limit int, filter use
 		FROM users
 		`+userReadJoin+`
 		WHERE `+where+fmt.Sprintf(`
-		ORDER BY LOWER(COALESCE(NULLIF(users.full_name, ''), users.username)), LOWER(users.username), users.id
+		ORDER BY `+userNameSortKey+`, LOWER(users.username), users.id
 		LIMIT $%d OFFSET $%d`, len(args)-1, len(args)), args...); err != nil {
 		return nil, 0, fmt.Errorf("user repo: list: %w", err)
 	}
@@ -105,6 +115,56 @@ func (r *UserRepository) List(ctx context.Context, offset, limit int, filter use
 		users = append(users, rowToEntity(&rows[i]))
 	}
 	return users, total, nil
+}
+
+// ListAfter is the keyset-paginated counterpart of List: same filter and
+// ordering, but it resumes after the user named by cursorAfter instead of
+// using an offset, so pages stay stable while users are added or removed.
+func (r *UserRepository) ListAfter(ctx context.Context, limit int, cursorAfter *string, filter userdom.ListFilter) ([]*userdom.User, bool, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	where, args := userListWhere(filter)
+	if cursorAfter != nil {
+		cur, err := userdom.DecodeCursor(*cursorAfter)
+		if err != nil {
+			return nil, false, err
+		}
+		// Soft-deleted rows still count: a user removed between page loads
+		// must not invalidate the cursor. An id that never existed does.
+		var exists bool
+		if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)`, cur.ID); err != nil {
+			return nil, false, fmt.Errorf("user repo: list after: cursor lookup: %w", err)
+		}
+		if !exists {
+			return nil, false, fmt.Errorf("%w: unknown user", userdom.ErrInvalidCursor)
+		}
+		args = append(args, cur.ID)
+		where += fmt.Sprintf(` AND (`+userNameSortKey+`, LOWER(users.username), users.id) > (
+			SELECT `+userNameSortKey+`, LOWER(users.username), users.id FROM users WHERE users.id = $%d)`, len(args))
+	}
+	args = append(args, limit+1)
+
+	var rows []userReadRow
+	if err := r.db.SelectContext(ctx, &rows, `
+		SELECT `+userReadCols+`
+		FROM users
+		`+userReadJoin+`
+		WHERE `+where+fmt.Sprintf(`
+		ORDER BY `+userNameSortKey+`, LOWER(users.username), users.id
+		LIMIT $%d`, len(args)), args...); err != nil {
+		return nil, false, fmt.Errorf("user repo: list after: %w", err)
+	}
+
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
+	}
+	users := make([]*userdom.User, 0, len(rows))
+	for i := range rows {
+		users = append(users, rowToEntity(&rows[i]))
+	}
+	return users, hasMore, nil
 }
 
 // escapeLike escapes the LIKE wildcards in s so it matches literally.

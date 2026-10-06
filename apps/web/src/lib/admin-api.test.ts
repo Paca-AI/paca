@@ -32,6 +32,7 @@ import {
 	getGlobalRoles,
 	getMyGlobalPermissions,
 	getUsers,
+	getUsersByCursor,
 	globalRolesQueryOptions,
 	myPermissionsQueryOptions,
 	resetUserPassword,
@@ -39,6 +40,7 @@ import {
 	type User,
 	updateGlobalRole,
 	updateUser,
+	usersInfiniteQueryOptions,
 	usersQueryOptions,
 } from "./admin-api";
 
@@ -211,6 +213,34 @@ describe("admin-api", () => {
 		expect(mockGet).toHaveBeenCalledWith("/admin/users", {
 			params: { page: 1, page_size: 20 },
 		});
+	});
+
+	it("sends cursor, search and page_size to getUsersByCursor only when set", async () => {
+		const page = { items: [], page_size: 20, next_cursor: "c2" };
+		mockGet.mockResolvedValue({
+			data: { data: page, error_code: null, message: "ok" },
+		});
+
+		await expect(getUsersByCursor(null)).resolves.toEqual(page);
+		expect(mockGet).toHaveBeenLastCalledWith("/admin/users/cursor", {
+			params: { page_size: 20 },
+		});
+
+		await getUsersByCursor("c1", 5, { search: "alice" });
+		expect(mockGet).toHaveBeenLastCalledWith("/admin/users/cursor", {
+			params: { page_size: 5, cursor: "c1", search: "alice" },
+		});
+	});
+
+	it("usersInfiniteQueryOptions follows next_cursor and stops when null", () => {
+		const opts = usersInfiniteQueryOptions("al");
+		expect(opts.queryKey).toEqual(["admin", "users", "cursor", "al"]);
+		expect(opts.initialPageParam).toBeNull();
+		const next = opts.getNextPageParam as (p: unknown) => unknown;
+		expect(next({ items: [], page_size: 20, next_cursor: "abc" })).toBe("abc");
+		expect(
+			next({ items: [], page_size: 20, next_cursor: null }),
+		).toBeUndefined();
 	});
 
 	it("sends search and role to getUsers only when set", async () => {

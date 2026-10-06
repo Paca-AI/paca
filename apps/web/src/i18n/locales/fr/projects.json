@@ -1523,6 +1523,7 @@
 			"searchPlaceholder": "Rechercher des tâches par titre ou numéro...",
 			"loadingTasks": "Chargement des tâches…",
 			"noTasksFound": "Aucune tâche trouvée",
+			"loadError": "Impossible de charger les tâches. Veuillez réessayer.",
 			"linkTypes": {
 				"blocks": {
 					"label": "Bloque",

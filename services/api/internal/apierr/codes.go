@@ -19,6 +19,8 @@ const (
 
 	// CodeUserNotFound represents a user that was not found.
 	CodeUserNotFound Code = "USER_NOT_FOUND"
+	// CodeUserInvalidCursor indicates a client-supplied pagination cursor failed to decode.
+	CodeUserInvalidCursor Code = "USER_INVALID_CURSOR"
 	// CodeUsernameTaken represents a username that is already taken.
 	CodeUsernameTaken Code = "USER_USERNAME_TAKEN"
 	// CodeEmailTaken represents an email that is already taken.

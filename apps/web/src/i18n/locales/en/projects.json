@@ -1523,6 +1523,7 @@
 			"searchPlaceholder": "Search tasks by title or number...",
 			"loadingTasks": "Loading tasks…",
 			"noTasksFound": "No tasks found",
+			"loadError": "Couldn't load tasks. Please try again.",
 			"linkTypes": {
 				"blocks": {
 					"label": "Blocks",

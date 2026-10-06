@@ -73,6 +73,14 @@ type UserResponse struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+// CursorUsersResponse is a keyset-paginated page of users. NextCursor is nil
+// when this is the last page.
+type CursorUsersResponse struct {
+	Items      []UserResponse `json:"items"`
+	PageSize   int            `json:"page_size"`
+	NextCursor *string        `json:"next_cursor"`
+}
+
 // PagedUsersResponse wraps a list of users with pagination metadata.
 type PagedUsersResponse struct {
 	Items    []UserResponse `json:"items"`

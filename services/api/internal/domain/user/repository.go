@@ -29,6 +29,10 @@ type Repository interface {
 	// List returns a page of users matching filter, sorted by name, and the
 	// total count of users matching filter (not just this page).
 	List(ctx context.Context, offset, limit int, filter ListFilter) ([]*User, int64, error)
+	// ListAfter returns up to limit users matching filter, sorted by name
+	// (the same order as List), starting after the user identified by
+	// cursorAfter (nil for the first page), and whether more users follow.
+	ListAfter(ctx context.Context, limit int, cursorAfter *string, filter ListFilter) ([]*User, bool, error)
 	// CountUsers returns the total count of active, non-system users — the
 	// same count List returns as its total, without paginating any rows.
 	// Used by the home page's workspace stats widget for team-member count.
