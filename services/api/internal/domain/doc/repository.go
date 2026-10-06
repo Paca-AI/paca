@@ -24,8 +24,8 @@ type DocFolderRepository interface {
 	CreateFolder(ctx context.Context, f *DocFolder) error
 	// UpdateFolderAtomic loads folder id under a row lock, calls decide to
 	// validate and mutate it, and writes it back in the same transaction.
-	// Updates of folders in the same project are serialized so a parent-cycle
-	// check cannot race a concurrent move. find reads a folder inside that
+	// Updates of folders in the same project are serialized (creates and
+	// deletes are not) so a parent-cycle check cannot race a concurrent move. find reads a folder inside that
 	// transaction. decide's error aborts the write and is returned as is.
 	// Returns ErrFolderNotFound when the folder doesn't exist.
 	UpdateFolderAtomic(ctx context.Context, id uuid.UUID, decide func(current *DocFolder, find func(id uuid.UUID) (*DocFolder, error)) error) (*DocFolder, error)

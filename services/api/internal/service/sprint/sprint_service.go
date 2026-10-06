@@ -225,6 +225,8 @@ func (s *Service) CompleteSprint(ctx context.Context, projectID, id uuid.UUID, i
 
 	// Move non-done tasks first so a subsequent failure leaves the sprint
 	// in its original state (retrying the complete is then still possible).
+	// The move is idempotent, so two concurrent completes both running it is
+	// harmless; the status flip below is the serialized step and only one wins.
 	if err := s.taskRepo.BulkMoveSprintTasks(ctx, sp.ProjectID, id, in.MoveToSprintID); err != nil {
 		return nil, err
 	}

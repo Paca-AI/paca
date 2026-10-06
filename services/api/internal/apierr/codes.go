@@ -218,7 +218,6 @@ const (
 	CodeDocFolderNotInProject Code = "DOC_FOLDER_NOT_IN_PROJECT"
 	// CodeDocFolderSelfParent indicates a folder cannot be set as its own parent.
 	CodeDocFolderSelfParent Code = "DOC_FOLDER_SELF_PARENT"
-
 	// CodeDocFolderCycle indicates a move would put a folder inside its own subtree.
 	CodeDocFolderCycle Code = "DOC_FOLDER_CYCLE"
 	// CodeDocSnapshotNotFound indicates the requested snapshot does not exist.

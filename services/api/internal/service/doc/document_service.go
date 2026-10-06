@@ -223,6 +223,19 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 	var oldContent json.RawMessage
 	var oldTitle string
 
+	// Lookups that don't depend on the locked row run before the transaction,
+	// so the row lock isn't held across extra round trips on other connections.
+	if in.FolderID != nil && *in.FolderID != nil {
+		folder, ferr := s.repo.FindFolderByID(ctx, **in.FolderID)
+		if ferr != nil {
+			return nil, ferr
+		}
+		if folder.ProjectID != projectID {
+			return nil, docdom.ErrFolderNotInProject
+		}
+	}
+	updatedBy := s.resolveMember(ctx, in.UpdatedBy, projectID)
+
 	d, err := s.repo.UpdateDocumentAtomic(ctx, id, func(d *docdom.Document) error {
 		if d.ProjectID != projectID {
 			return docdom.ErrDocNotFound
@@ -248,21 +261,12 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 			d.Content = *in.Content
 		}
 		if in.FolderID != nil { // double-pointer present → update folder
-			if *in.FolderID != nil {
-				folder, ferr := s.repo.FindFolderByID(ctx, **in.FolderID)
-				if ferr != nil {
-					return ferr
-				}
-				if folder.ProjectID != d.ProjectID {
-					return docdom.ErrFolderNotInProject
-				}
-			}
 			d.FolderID = *in.FolderID
 		}
 		if in.Position != nil {
 			d.Position = *in.Position
 		}
-		d.UpdatedBy = s.resolveMember(ctx, in.UpdatedBy, d.ProjectID)
+		d.UpdatedBy = updatedBy
 		d.UpdatedAt = time.Now()
 		return nil
 	})
