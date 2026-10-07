@@ -172,7 +172,8 @@ func New(cfg *config.Config) (*App, error) {
 	sprintService := sprintsvc.NewCachedSprintService(sprintsvc.New(sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher).
-		WithEventPublishing(userRepo, cfg.Server.PublicURL)
+		WithEventPublishing(userRepo, cfg.Server.PublicURL).
+		WithTitleLookup(taskRepo, docRepo)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
 	// environmentService calls agent-runner via the same AI_AGENT_URL/
 	// AI_AGENT_INTERNAL_KEY pair AgentHandler already uses for its fast

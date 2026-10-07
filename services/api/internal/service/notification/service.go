@@ -14,7 +14,6 @@ import (
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/events"
-	"github.com/Paca-AI/api/internal/platform/messaging"
 )
 
 // userLookup resolves a recipient's name/email for the notification.assigned/
@@ -41,18 +40,47 @@ type memberLookup interface {
 	ListMembers(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
 }
 
+// taskLookup resolves a task's title for the entity_title field of the
+// notification.{assigned,mentioned,task_description_mentioned} plugin-event
+// payloads, so a subscribing plugin (e.g. an email sender) can name the task
+// a notification is about instead of only linking to it. Deliberately a
+// title-only read, not FindTaskByID, so this doesn't pull the full task row
+// (description JSONB + assignees) on the synchronous comment/update path.
+type taskLookup interface {
+	FindTaskTitleByID(ctx context.Context, id uuid.UUID) (string, error)
+}
+
+// docLookup resolves a document's title for the entity_title field of the
+// notification.doc_mentioned plugin-event payload. Title-only, for the same
+// reason as taskLookup (avoids loading the full document content).
+type docLookup interface {
+	FindDocumentTitleByID(ctx context.Context, id uuid.UUID) (string, error)
+}
+
+// eventPublisher is the subset of messaging.Publisher this service uses:
+// Append for the durable plugin-event stream and Publish for the real-time
+// channel. Declared as an interface (rather than the concrete
+// *messaging.Publisher) so a test can capture what's published;
+// *messaging.Publisher satisfies it.
+type eventPublisher interface {
+	Append(ctx context.Context, stream, eventType string, payload any) error
+	Publish(ctx context.Context, channel string, payload any) error
+}
+
 // Svc implements notificationdom.Service.
 type Svc struct {
 	repo       notificationdom.Repository
 	memberRepo memberLookup
-	publisher  *messaging.Publisher
+	publisher  eventPublisher
 	userRepo   userLookup
+	taskRepo   taskLookup
+	docRepo    docLookup
 	publicURL  string
 }
 
 // New returns a configured Svc.
 // publisher may be nil; real-time events are then skipped silently.
-func New(repo notificationdom.Repository, memberRepo memberLookup, publisher *messaging.Publisher) *Svc {
+func New(repo notificationdom.Repository, memberRepo memberLookup, publisher eventPublisher) *Svc {
 	return &Svc{repo: repo, memberRepo: memberRepo, publisher: publisher}
 }
 
@@ -70,6 +98,17 @@ func (s *Svc) WithEventPublishing(userRepo userLookup, publicURL string) *Svc {
 	return s
 }
 
+// WithTitleLookup configures resolving the task/document title carried as
+// entity_title in the notification plugin-event payloads. Both lookups are
+// optional and best-effort: when a repo is nil (or the lookup fails) the
+// title is simply empty in the payload — exactly the behaviour before this was
+// added — so a subscribing plugin must tolerate an empty entity_title.
+func (s *Svc) WithTitleLookup(taskRepo taskLookup, docRepo docLookup) *Svc {
+	s.taskRepo = taskRepo
+	s.docRepo = docRepo
+	return s
+}
+
 // publishNotificationEvent resolves recipientUserID's name/email and
 // publishes topic to the plugin event stream with recipient/actor names and
 // a direct link to whatever was mentioned/assigned — the same event fires
@@ -80,7 +119,10 @@ func (s *Svc) WithEventPublishing(userRepo userLookup, publicURL string) *Svc {
 // errors are swallowed, matching publishCreated's existing convention,
 // since the in-app notification (already created by the caller, where one
 // exists) is this service's primary responsibility.
-func (s *Svc) publishNotificationEvent(ctx context.Context, topic string, recipientUserID uuid.UUID, actorName, linkURL string) {
+// entityTitle is the title of the task or document the notification is about
+// (resolved via WithTitleLookup); it may be empty when no lookup is configured
+// or the entity can't be loaded, and a subscribing plugin must tolerate that.
+func (s *Svc) publishNotificationEvent(ctx context.Context, topic string, recipientUserID uuid.UUID, actorName, linkURL, entityTitle string) {
 	if s.publisher == nil || s.userRepo == nil {
 		return
 	}
@@ -99,8 +141,36 @@ func (s *Svc) publishNotificationEvent(ctx context.Context, topic string, recipi
 		"recipient_name":    recipient.FullName,
 		"actor_name":        actorName,
 		"link_url":          linkURL,
+		"entity_title":      entityTitle,
 	}
 	_ = s.publisher.Append(ctx, events.StreamPluginEvents, topic, payload)
+}
+
+// taskTitle resolves taskID's title for an event payload, returning "" when no
+// task lookup is configured or the task can't be loaded — best-effort, like
+// the rest of publishNotificationEvent.
+func (s *Svc) taskTitle(ctx context.Context, taskID uuid.UUID) string {
+	if s.taskRepo == nil {
+		return ""
+	}
+	title, err := s.taskRepo.FindTaskTitleByID(ctx, taskID)
+	if err != nil {
+		return ""
+	}
+	return title
+}
+
+// docTitle resolves docID's title for an event payload, returning "" when no
+// document lookup is configured or the document can't be loaded.
+func (s *Svc) docTitle(ctx context.Context, docID uuid.UUID) string {
+	if s.docRepo == nil {
+		return ""
+	}
+	title, err := s.docRepo.FindDocumentTitleByID(ctx, docID)
+	if err != nil {
+		return ""
+	}
+	return title
 }
 
 // resolveUserName returns userID's full name, or "" if it can't be resolved
@@ -176,7 +246,7 @@ func (s *Svc) NotifyAssigned(ctx context.Context, in notificationdom.NotifyAssig
 	if actorMember != nil {
 		actorName = actorMember.FullName
 	}
-	s.publishNotificationEvent(ctx, events.TopicNotificationAssigned, assigneeMember.UserID, actorName, s.taskURL(in.ProjectID, taskID))
+	s.publishNotificationEvent(ctx, events.TopicNotificationAssigned, assigneeMember.UserID, actorName, s.taskURL(in.ProjectID, taskID), s.taskTitle(ctx, taskID))
 	return nil
 }
 
@@ -223,6 +293,9 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 	if actorMember, err := s.memberRepo.FindMemberByID(ctx, actorID); err == nil {
 		actorName = actorMember.FullName
 	}
+	// Resolved once (not per-mentioned-user) — the task is the same for every
+	// notification created below.
+	taskTitle := s.taskTitle(ctx, in.TaskID)
 	seen := make(map[uuid.UUID]bool) // avoid duplicate notifications
 	for _, mentionedUserID := range mentionedUserIDs {
 		// Skip self-mention.
@@ -255,7 +328,7 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 			continue // best-effort; don't abort for one failure
 		}
 		s.publishCreated(ctx, n, mentionedUserID)
-		s.publishNotificationEvent(ctx, events.TopicNotificationMentioned, mentionedUserID, actorName, s.taskURL(in.ProjectID, taskID))
+		s.publishNotificationEvent(ctx, events.TopicNotificationMentioned, mentionedUserID, actorName, s.taskURL(in.ProjectID, taskID), taskTitle)
 	}
 	return nil
 }
@@ -286,7 +359,7 @@ func (s *Svc) NotifyDocMentioned(ctx context.Context, mentionedUserID, actorUser
 		return // mentioned user isn't a member of this project; nothing to notify
 	}
 	actorName := s.resolveUserName(ctx, actorUserID)
-	s.publishNotificationEvent(ctx, events.TopicNotificationDocMentioned, mentionedUserID, actorName, s.docURL(projectID, docID))
+	s.publishNotificationEvent(ctx, events.TopicNotificationDocMentioned, mentionedUserID, actorName, s.docURL(projectID, docID), s.docTitle(ctx, docID))
 }
 
 // NotifyTaskDescriptionMentioned publishes a
@@ -303,7 +376,7 @@ func (s *Svc) NotifyTaskDescriptionMentioned(ctx context.Context, mentionedUserI
 		return // mentioned user isn't a member of this project; nothing to notify
 	}
 	actorName := s.resolveUserName(ctx, actorUserID)
-	s.publishNotificationEvent(ctx, events.TopicNotificationTaskDescriptionMentioned, mentionedUserID, actorName, s.taskURL(projectID, taskID))
+	s.publishNotificationEvent(ctx, events.TopicNotificationTaskDescriptionMentioned, mentionedUserID, actorName, s.taskURL(projectID, taskID), s.taskTitle(ctx, taskID))
 }
 
 // ListNotifications returns up to limit notifications for the user, newest

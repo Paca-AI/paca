@@ -223,6 +223,81 @@ func (r *fakeUserRepo) callCount() int {
 	return len(r.calls)
 }
 
+// fakeTaskRepo / fakeDocRepo back the optional WithTitleLookup dependency,
+// tracking lookups so a test can prove the entity_title resolution runs (and,
+// for the client-supplied-mention cases, that it runs only once the recipient
+// has passed the project-membership check).
+type fakeTaskRepo struct {
+	mu    sync.Mutex
+	title string
+	calls int
+}
+
+func (r *fakeTaskRepo) FindTaskTitleByID(_ context.Context, _ uuid.UUID) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	return r.title, nil
+}
+
+func (r *fakeTaskRepo) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
+type fakeDocRepo struct {
+	mu    sync.Mutex
+	title string
+	calls int
+}
+
+func (r *fakeDocRepo) FindDocumentTitleByID(_ context.Context, _ uuid.UUID) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	return r.title, nil
+}
+
+func (r *fakeDocRepo) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
+// fakePublisher satisfies eventPublisher and captures every Append so a test
+// can assert the exact payload published to the plugin event stream (the real
+// *messaging.Publisher is a concrete Redis-backed struct that can't be
+// observed in a unit test).
+type capturedEvent struct {
+	stream    string
+	eventType string
+	payload   any
+}
+
+type fakePublisher struct {
+	mu      sync.Mutex
+	appends []capturedEvent
+}
+
+func (p *fakePublisher) Append(_ context.Context, stream, eventType string, payload any) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.appends = append(p.appends, capturedEvent{stream: stream, eventType: eventType, payload: payload})
+	return nil
+}
+
+func (p *fakePublisher) Publish(_ context.Context, _ string, _ any) error { return nil }
+
+func (p *fakePublisher) lastAppend() (capturedEvent, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.appends) == 0 {
+		return capturedEvent{}, false
+	}
+	return p.appends[len(p.appends)-1], true
+}
+
 type errCreateRepo struct {
 	*fakeNotificationRepo
 }
@@ -1110,5 +1185,171 @@ func TestNotifyTaskDescriptionMentioned_MemberNotified(t *testing.T) {
 
 	if got := users.callCount(); got != 1 {
 		t.Errorf("expected the actor-name lookup to proceed for a mentioned project member, got %d calls", got)
+	}
+}
+
+// --- entity_title resolution (WithTitleLookup) ------------------------------
+//
+// These tests run with a nil publisher as the rest of the file does: the title
+// helpers are evaluated as arguments to publishNotificationEvent, so they run
+// (and the lookup is observable) even though the publish itself is a no-op.
+
+func TestNotifyAssigned_ResolvesTaskTitle(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	tasks := &fakeTaskRepo{title: "Ship the landing page"}
+	svc := New(repo, members, nil).WithTitleLookup(tasks, nil)
+
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+	assigneeUserID := uuid.New()
+	actorMemberID := uuid.New()
+	assigneeMemberID := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: actorMemberID, ProjectID: projectID, UserID: actorUserID, Username: "actor"})
+	members.add(&projectdom.ProjectMember{ID: assigneeMemberID, ProjectID: projectID, UserID: assigneeUserID, Username: "assignee"})
+
+	if err := svc.NotifyAssigned(ctx, notificationdom.NotifyAssignedInput{
+		TaskID:              uuid.New(),
+		ProjectID:           projectID,
+		NewAssigneeMemberID: assigneeMemberID,
+		ActorUserID:         actorUserID,
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := tasks.callCount(); got != 1 {
+		t.Errorf("expected the task title to be resolved once for the assignment event, got %d lookups", got)
+	}
+}
+
+func TestNotifyMentioned_ResolvesTaskTitleOnce(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	tasks := &fakeTaskRepo{title: "Ship the landing page"}
+	svc := New(repo, members, nil).WithTitleLookup(tasks, nil)
+
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+	actorMemberID := uuid.New()
+	alice := uuid.New()
+	bob := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: actorMemberID, ProjectID: projectID, UserID: actorUserID, Username: "actor"})
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: alice, Username: "alice"})
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: bob, Username: "bob"})
+
+	if err := svc.NotifyMentioned(ctx, notificationdom.NotifyMentionedInput{
+		TaskID:        uuid.New(),
+		ProjectID:     projectID,
+		CommentText:   "hey @alice and @bob",
+		ActorMemberID: actorMemberID,
+		ActorUserID:   actorUserID,
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Two members mentioned, but the task title is the same for both — it must
+	// be resolved once, not once per recipient.
+	if got := tasks.callCount(); got != 1 {
+		t.Errorf("expected the task title to be resolved once for the whole comment, got %d lookups", got)
+	}
+}
+
+func TestNotifyDocMentioned_ResolvesTitleOnlyForMember(t *testing.T) {
+	ctx := context.Background()
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+
+	// Member path: title resolved exactly once.
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	users := newFakeUserRepo()
+	docs := &fakeDocRepo{title: "Q4 roadmap"}
+	svc := New(repo, members, nil).WithEventPublishing(users, "https://paca.example").WithTitleLookup(nil, docs)
+	mentioned := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: mentioned, Username: "alice"})
+	svc.NotifyDocMentioned(ctx, mentioned, actorUserID, projectID, uuid.New())
+	if got := docs.callCount(); got != 1 {
+		t.Errorf("expected the document title to be resolved once for a mentioned member, got %d lookups", got)
+	}
+
+	// Non-member path: membership check short-circuits before any title lookup.
+	docs2 := &fakeDocRepo{title: "Q4 roadmap"}
+	svc2 := New(newFakeNotificationRepo(), newFakeMemberRepo(), nil).WithEventPublishing(newFakeUserRepo(), "https://paca.example").WithTitleLookup(nil, docs2)
+	svc2.NotifyDocMentioned(ctx, uuid.New(), actorUserID, projectID, uuid.New())
+	if got := docs2.callCount(); got != 0 {
+		t.Errorf("expected no document title lookup for a mention naming a non-member, got %d lookups", got)
+	}
+}
+
+func TestNotifyTaskDescriptionMentioned_ResolvesTitleOnlyForMember(t *testing.T) {
+	ctx := context.Background()
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	users := newFakeUserRepo()
+	tasks := &fakeTaskRepo{title: "Ship the landing page"}
+	svc := New(repo, members, nil).WithEventPublishing(users, "https://paca.example").WithTitleLookup(tasks, nil)
+	mentioned := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: mentioned, Username: "alice"})
+	svc.NotifyTaskDescriptionMentioned(ctx, mentioned, actorUserID, projectID, uuid.New())
+	if got := tasks.callCount(); got != 1 {
+		t.Errorf("expected the task title to be resolved once for a mentioned member, got %d lookups", got)
+	}
+
+	tasks2 := &fakeTaskRepo{title: "Ship the landing page"}
+	svc2 := New(newFakeNotificationRepo(), newFakeMemberRepo(), nil).WithEventPublishing(newFakeUserRepo(), "https://paca.example").WithTitleLookup(tasks2, nil)
+	svc2.NotifyTaskDescriptionMentioned(ctx, uuid.New(), actorUserID, projectID, uuid.New())
+	if got := tasks2.callCount(); got != 0 {
+		t.Errorf("expected no task title lookup for a mention naming a non-member, got %d lookups", got)
+	}
+}
+
+// TestNotifyAssigned_PublishesEntityTitle is the direct output test the rest
+// of this group's count-based assertions can't give: it captures the payload
+// handed to the publisher and proves entity_title carries the resolved title.
+func TestNotifyAssigned_PublishesEntityTitle(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	users := newFakeUserRepo()
+	pub := &fakePublisher{}
+	tasks := &fakeTaskRepo{title: "Ship the landing page"}
+	svc := New(repo, members, pub).
+		WithEventPublishing(users, "https://paca.example").
+		WithTitleLookup(tasks, nil)
+
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+	assigneeUserID := uuid.New()
+	actorMemberID := uuid.New()
+	assigneeMemberID := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: actorMemberID, ProjectID: projectID, UserID: actorUserID, Username: "actor"})
+	members.add(&projectdom.ProjectMember{ID: assigneeMemberID, ProjectID: projectID, UserID: assigneeUserID, Username: "assignee"})
+	email := "assignee@example.com"
+	users.byID[assigneeUserID] = &userdom.User{ID: assigneeUserID, FullName: "Assignee", Email: &email}
+
+	if err := svc.NotifyAssigned(ctx, notificationdom.NotifyAssignedInput{
+		TaskID:              uuid.New(),
+		ProjectID:           projectID,
+		NewAssigneeMemberID: assigneeMemberID,
+		ActorUserID:         actorUserID,
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	evt, ok := pub.lastAppend()
+	if !ok {
+		t.Fatal("expected a plugin event to be published")
+	}
+	payload, ok := evt.payload.(map[string]any)
+	if !ok {
+		t.Fatalf("expected a map payload, got %T", evt.payload)
+	}
+	if got := payload["entity_title"]; got != "Ship the landing page" {
+		t.Errorf("expected entity_title=%q in the published payload, got %v", "Ship the landing page", got)
 	}
 }
