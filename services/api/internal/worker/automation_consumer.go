@@ -481,6 +481,7 @@ func (c *AutomationConsumer) handle(msg redis.XMessage) {
 	}
 
 	var candidates []automationdom.TriggerType
+	var added []string
 	checkPredecessors := false
 
 	switch p.ActivityType {
@@ -499,7 +500,11 @@ func (c *AutomationConsumer) handle(msg redis.XMessage) {
 				case "importance":
 					candidates = append(candidates, automationdom.TriggerPriorityChanged)
 				case "tags":
-					candidates = append(candidates, automationdom.TriggerTagAdded)
+					// Only an actual addition is a tag_added event: removals and
+					// edits that keep an existing tag must not re-fire it (#554).
+					if added = addedTags(change); len(added) > 0 {
+						candidates = append(candidates, automationdom.TriggerTagAdded)
+					}
 				}
 			}
 		}
@@ -510,7 +515,7 @@ func (c *AutomationConsumer) handle(msg redis.XMessage) {
 		return
 	}
 
-	if err := c.processEvent(ctx, projectID, taskID, candidates, checkPredecessors); err != nil {
+	if err := c.processEvent(ctx, projectID, taskID, candidates, checkPredecessors, added); err != nil {
 		c.log.Error("automation consumer: failed to process event", "id", msg.ID, "task_id", taskID, "err", err)
 		// Do not ack — retried via processPending on next restart.
 		return
@@ -760,7 +765,7 @@ func (c *AutomationConsumer) handleSprintActivity(msg redis.XMessage) {
 // automation are logged and skipped (best-effort) rather than aborting the
 // whole batch. An error is returned only when the foundational task lookup
 // fails, so the message is retried.
-func (c *AutomationConsumer) processEvent(ctx context.Context, projectID, taskID uuid.UUID, candidates []automationdom.TriggerType, checkPredecessors bool) error {
+func (c *AutomationConsumer) processEvent(ctx context.Context, projectID, taskID uuid.UUID, candidates []automationdom.TriggerType, checkPredecessors bool, added []string) error {
 	task, err := c.taskRepo.FindTaskByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("find task: %w", err)
@@ -773,7 +778,7 @@ func (c *AutomationConsumer) processEvent(ctx context.Context, projectID, taskID
 			continue
 		}
 		for _, node := range nodes {
-			if !c.triggerMatches(node, task) {
+			if !c.triggerMatches(node, task, added) {
 				continue
 			}
 			if err := c.executeRun(ctx, projectID, node, task); err != nil {
@@ -822,8 +827,9 @@ func (c *AutomationConsumer) processEvent(ctx context.Context, projectID, taskID
 
 // triggerMatches checks a trigger node's config filter against the task's
 // current authoritative state (not the raw activity payload — the payload
-// only carries resolved names/diffs for some fields).
-func (c *AutomationConsumer) triggerMatches(node *automationdom.Node, task *taskdom.Task) bool {
+// only carries resolved names/diffs for some fields). added lists the tags the
+// triggering update introduced; tag_added matches only those.
+func (c *AutomationConsumer) triggerMatches(node *automationdom.Node, task *taskdom.Task, added []string) bool {
 	var cfg automationdom.TriggerConfig
 	if len(node.Config) > 0 {
 		_ = json.Unmarshal(node.Config, &cfg)
@@ -835,10 +841,12 @@ func (c *AutomationConsumer) triggerMatches(node *automationdom.Node, task *task
 		}
 		return task.StatusID != nil && *task.StatusID == *cfg.StatusID
 	case automationdom.TriggerTagAdded:
+		// added holds the tags this update introduced; the task's current tags
+		// confirm the tag is still there by the time the event is processed.
 		if cfg.Tag == "" {
-			return true
+			return len(added) > 0
 		}
-		return slices.Contains(task.Tags, cfg.Tag)
+		return slices.Contains(added, cfg.Tag) && slices.Contains(task.Tags, cfg.Tag)
 	case automationdom.TriggerTaskCreated, automationdom.TriggerAssigneeChanged, automationdom.TriggerPriorityChanged:
 		return true
 	default:
@@ -2625,4 +2633,27 @@ func (c *AutomationConsumer) recordAppliedActivity(ctx context.Context, projectI
 		ActivityType: taskdom.ActivityTypeAutomationApplied,
 		Content:      content,
 	})
+}
+
+// addedTags returns the tags present in change.New but not in change.Old, in
+// the order they appear in New. Old and New arrive JSON-decoded ([]any), as
+// recorded by the task handler and the autofill consumer.
+func addedTags(change taskdom.FieldChange) []string {
+	before := map[string]bool{}
+	if old, ok := change.Old.([]any); ok {
+		for _, v := range old {
+			if s, ok := v.(string); ok {
+				before[s] = true
+			}
+		}
+	}
+	var added []string
+	if next, ok := change.New.([]any); ok {
+		for _, v := range next {
+			if s, ok := v.(string); ok && !before[s] {
+				added = append(added, s)
+			}
+		}
+	}
+	return added
 }

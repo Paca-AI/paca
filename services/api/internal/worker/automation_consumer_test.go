@@ -48,7 +48,7 @@ func TestTriggerMatches_StatusChanged_AnyStatusWhenConfigEmpty(t *testing.T) {
 	statusID := uuid.New()
 	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerStatusChanged), Config: json.RawMessage(`{}`)}
 	task := &taskdom.Task{StatusID: &statusID}
-	if !c.triggerMatches(node, task) {
+	if !c.triggerMatches(node, task, nil) {
 		t.Fatal("expected status_changed trigger with no status_id filter to match any status")
 	}
 }
@@ -60,10 +60,10 @@ func TestTriggerMatches_StatusChanged_FiltersToConfiguredStatus(t *testing.T) {
 	cfg, _ := json.Marshal(automationdom.TriggerConfig{StatusID: &wantStatus})
 	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerStatusChanged), Config: cfg}
 
-	if !c.triggerMatches(node, &taskdom.Task{StatusID: &wantStatus}) {
+	if !c.triggerMatches(node, &taskdom.Task{StatusID: &wantStatus}, nil) {
 		t.Fatal("expected match when task's status equals the configured status")
 	}
-	if c.triggerMatches(node, &taskdom.Task{StatusID: &otherStatus}) {
+	if c.triggerMatches(node, &taskdom.Task{StatusID: &otherStatus}, nil) {
 		t.Fatal("expected no match when task's status differs from the configured status")
 	}
 }
@@ -73,11 +73,52 @@ func TestTriggerMatches_TagAdded_FiltersToConfiguredTag(t *testing.T) {
 	cfg, _ := json.Marshal(automationdom.TriggerConfig{Tag: "urgent"})
 	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerTagAdded), Config: cfg}
 
-	if !c.triggerMatches(node, &taskdom.Task{Tags: []string{"urgent", "bug"}}) {
-		t.Fatal("expected match when the configured tag is present")
+	if !c.triggerMatches(node, &taskdom.Task{Tags: []string{"urgent", "bug"}}, []string{"urgent"}) {
+		t.Fatal("expected match when the configured tag was added")
 	}
-	if c.triggerMatches(node, &taskdom.Task{Tags: []string{"bug"}}) {
+	if c.triggerMatches(node, &taskdom.Task{Tags: []string{"bug"}}, []string{"bug"}) {
 		t.Fatal("expected no match when the configured tag is absent")
+	}
+}
+
+// Regression for #554: tag_added used to match whenever the configured tag was
+// merely present, so any later tag edit on the task re-fired it.
+func TestTriggerMatches_TagAdded_OnlyWhenThisUpdateAddedTheTag(t *testing.T) {
+	c := newTestConsumer(nil)
+	cfg, _ := json.Marshal(automationdom.TriggerConfig{Tag: "spec-ok"})
+	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerTagAdded), Config: cfg}
+	task := &taskdom.Task{Tags: []string{"spec-ok", "security-ok"}}
+
+	if c.triggerMatches(node, task, []string{"security-ok"}) {
+		t.Fatal("expected no match when an unrelated tag was added and the configured tag was already present")
+	}
+	if !c.triggerMatches(node, task, []string{"spec-ok"}) {
+		t.Fatal("expected a match when this update added the configured tag")
+	}
+}
+
+func TestTriggerMatches_TagAdded_EmptyConfigNeedsAnAddition(t *testing.T) {
+	c := newTestConsumer(nil)
+	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerTagAdded), Config: json.RawMessage(`{}`)}
+	task := &taskdom.Task{Tags: []string{"bug"}}
+
+	if c.triggerMatches(node, task, nil) {
+		t.Fatal("expected no match when the update only removed tags")
+	}
+	if !c.triggerMatches(node, task, []string{"bug"}) {
+		t.Fatal("expected a match when the update added any tag")
+	}
+}
+
+func TestAddedTags_ComparesOldAndNewAfterAJSONRoundTrip(t *testing.T) {
+	raw, _ := json.Marshal(taskdom.FieldChange{Field: "tags", Old: []string{"a", "b"}, New: []string{"b", "c", "d"}})
+	var change taskdom.FieldChange
+	if err := json.Unmarshal(raw, &change); err != nil {
+		t.Fatal(err)
+	}
+	got := addedTags(change)
+	if strings.Join(got, ",") != "c,d" {
+		t.Fatalf("expected [c d], got %v", got)
 	}
 }
 
@@ -85,7 +126,7 @@ func TestTriggerMatches_UnconditionalTypesAlwaysMatch(t *testing.T) {
 	c := newTestConsumer(nil)
 	for _, tt := range []automationdom.TriggerType{automationdom.TriggerTaskCreated, automationdom.TriggerAssigneeChanged, automationdom.TriggerPriorityChanged} {
 		node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(tt), Config: json.RawMessage(`{}`)}
-		if !c.triggerMatches(node, &taskdom.Task{}) {
+		if !c.triggerMatches(node, &taskdom.Task{}, nil) {
 			t.Errorf("expected trigger type %q to always match", tt)
 		}
 	}
