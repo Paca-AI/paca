@@ -69,9 +69,10 @@ func Evaluate(grants []Grant, req Request) Result {
 				continue
 			}
 			res.Matched = append(res.Matched, MatchedStatement{RoleID: g.RoleID, Sid: st.Sid, Effect: st.Effect, Index: i})
-			if st.Effect == EffectDeny {
+			switch st.Effect {
+			case EffectDeny:
 				deny = true
-			} else if st.Effect == EffectAllow {
+			case EffectAllow:
 				allow = true
 			}
 		}

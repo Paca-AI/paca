@@ -44,7 +44,7 @@ func newSeedTestDB(t *testing.T) (*sqlx.DB, func(upTo string)) {
 	}
 	t.Cleanup(func() { _ = admin.Close() })
 	name := "seed_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
-	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
+	if _, err := admin.ExecContext(t.Context(), "CREATE DATABASE "+name); err != nil {
 		t.Fatal(err)
 	}
 	u, _ := url.Parse(dsn)
@@ -55,7 +55,7 @@ func newSeedTestDB(t *testing.T) (*sqlx.DB, func(upTo string)) {
 	}
 	t.Cleanup(func() {
 		_ = db.Close()
-		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
+		_, _ = admin.ExecContext(t.Context(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 	})
 	// apply(upTo) applies every embedded migration whose file name sorts
 	// strictly before upTo ("~" = all of them).
@@ -85,7 +85,7 @@ func newSeedTestDB(t *testing.T) (*sqlx.DB, func(upTo string)) {
 
 func must(t *testing.T, db *sqlx.DB, q string, args ...any) {
 	t.Helper()
-	if _, err := db.Exec(q, args...); err != nil {
+	if _, err := db.ExecContext(t.Context(), q, args...); err != nil {
 		t.Fatalf("exec %q: %v", q, err)
 	}
 }

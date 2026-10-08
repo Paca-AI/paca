@@ -140,7 +140,7 @@ func seedShippedRoles(t *testing.T, db *sqlx.DB) {
 func createPlatformRole(t *testing.T, env *e2eEnv, name string, actions ...string) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
-	if _, err := env.db.Exec(`INSERT INTO roles (id, name, policy) VALUES ($1, $2, $3::jsonb)`,
+	if _, err := env.db.ExecContext(t.Context(), `INSERT INTO roles (id, name, policy) VALUES ($1, $2, $3::jsonb)`,
 		id, name, platformPolicy(actions...)); err != nil {
 		t.Fatalf("create platform role %q: %v", name, err)
 	}
@@ -183,11 +183,11 @@ func platformRoleExists(t *testing.T, env *e2eEnv, name string) bool {
 // platform roles named roleNames.
 func attachPlatformRole(t *testing.T, env *e2eEnv, userID uuid.UUID, roleNames ...string) {
 	t.Helper()
-	if _, err := env.db.Exec(`DELETE FROM role_attachments WHERE principal_type = 'user' AND principal_id = $1 AND project_id IS NULL`, userID); err != nil {
+	if _, err := env.db.ExecContext(t.Context(), `DELETE FROM role_attachments WHERE principal_type = 'user' AND principal_id = $1 AND project_id IS NULL`, userID); err != nil {
 		t.Fatalf("clear platform roles: %v", err)
 	}
 	for _, name := range roleNames {
-		res, err := env.db.Exec(`INSERT INTO role_attachments (role_id, principal_type, principal_id)
+		res, err := env.db.ExecContext(t.Context(), `INSERT INTO role_attachments (role_id, principal_type, principal_id)
 			SELECT id, 'user', $1 FROM roles WHERE name = $2 AND project_id IS NULL`, userID, name)
 		if err != nil {
 			t.Fatalf("attach platform role %q: %v", name, err)

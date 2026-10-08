@@ -96,6 +96,8 @@ func Not(k *Node) *Node {
 		return nodeTrue
 	case NodeNot:
 		return k.Kids[0]
+	case NodeAnd, NodeOr, NodeCond:
+		// Composite and condition nodes cannot be folded further.
 	}
 	return &Node{Kind: NodeNot, Kids: []*Node{k}}
 }
@@ -248,7 +250,7 @@ func patternID(pattern, projectID, kind string) (all bool, id string, ok bool) {
 		case i == 3:
 			// "<kind>/<id>/*" also matches "<kind>/<id>": a trailing "*" spans
 			// zero segments, so it names the same single resource.
-			if len(segs) != 4 && !(len(segs) == 5 && segs[4] == "*") {
+			if len(segs) != 4 && (len(segs) != 5 || segs[4] != "*") {
 				return false, "", false // deeper than a direct child
 			}
 			if s == "*" {

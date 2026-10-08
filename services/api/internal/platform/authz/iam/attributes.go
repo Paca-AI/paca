@@ -11,8 +11,10 @@ import (
 type ValueType string
 
 const (
+	// TypeString declares a string-valued attribute.
 	TypeString ValueType = "string"
-	TypeBool   ValueType = "bool"
+	// TypeBool declares a boolean-valued attribute.
+	TypeBool ValueType = "bool"
 )
 
 // AttributeDef declares one attribute conditions may reference.
@@ -67,7 +69,7 @@ func validKeyPart(p string) bool {
 		return false
 	}
 	for _, r := range p {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_') {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' {
 			return false
 		}
 	}

@@ -72,7 +72,7 @@ func TestRolesAssignMigration(t *testing.T) {
 
 	stamp := func(name string) time.Time {
 		var ts time.Time
-		if err := db.QueryRow(`SELECT updated_at FROM roles WHERE name = $1`, name).Scan(&ts); err != nil {
+		if err := db.QueryRowContext(t.Context(), `SELECT updated_at FROM roles WHERE name = $1`, name).Scan(&ts); err != nil {
 			t.Fatal(err)
 		}
 		return ts
@@ -83,13 +83,13 @@ func TestRolesAssignMigration(t *testing.T) {
 	}
 	time.Sleep(20 * time.Millisecond)
 
-	if _, err := db.Exec(assignSQL); err != nil {
+	if _, err := db.ExecContext(t.Context(), assignSQL); err != nil {
 		t.Fatalf("apply roles:assign compatibility: %v", err)
 	}
 
 	actionsOf := func(name string) [][]string {
 		var raw string
-		if err := db.QueryRow(`SELECT policy::text FROM roles WHERE name = $1`, name).Scan(&raw); err != nil {
+		if err := db.QueryRowContext(t.Context(), `SELECT policy::text FROM roles WHERE name = $1`, name).Scan(&raw); err != nil {
 			t.Fatal(err)
 		}
 		var doc struct {
@@ -140,7 +140,7 @@ func TestRolesAssignMigration(t *testing.T) {
 	}
 
 	// Replay the extracted transformation to verify idempotence.
-	if _, err := db.Exec(assignSQL); err != nil {
+	if _, err := db.ExecContext(t.Context(), assignSQL); err != nil {
 		t.Fatalf("replay roles:assign compatibility: %v", err)
 	}
 	check("replay")

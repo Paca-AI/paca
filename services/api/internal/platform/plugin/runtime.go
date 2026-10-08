@@ -264,16 +264,7 @@ func (r *Runtime) LoadAll(ctx context.Context, plugins []*plugindom.Plugin) erro
 	return nil
 }
 
-// Load compiles and instantiates a single plugin module.
-// If a module with the same name is already loaded it is unloaded first.
-//
-// A plugin whose manifest has no backend section (frontend-only, MCP-only,
-// skills-only, ...) has no WASM module to run, so there is nothing to
-// instantiate: any previously loaded instance is dropped and Load succeeds.
-// UsesLegacyPermissions reports whether the installed package of the named
-// plugin still declares the retired requirePermissions middleware in its
-// plugin.json (see plugindom.ManifestJSONUsesRequirePermissions). A missing or
-// unreadable plugin.json (a plugin without a backend has none) reports false.
+// UsesLegacyPermissions reports whether the installed package declares the retired permission middleware.
 func (r *Runtime) UsesLegacyPermissions(ctx context.Context, name string) bool {
 	if r == nil || r.store == nil {
 		return false
@@ -285,6 +276,8 @@ func (r *Runtime) UsesLegacyPermissions(ctx context.Context, name string) bool {
 	return plugindom.ManifestJSONUsesRequirePermissions(raw)
 }
 
+// Load compiles and instantiates a single plugin module. If a module with the same
+// name is already loaded it is unloaded first.
 func (r *Runtime) Load(ctx context.Context, p plugindom.Plugin) error {
 	if p.Manifest.Backend == nil {
 		r.Unload(ctx, p.Name)

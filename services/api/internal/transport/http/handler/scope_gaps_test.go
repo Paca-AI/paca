@@ -76,7 +76,7 @@ func TestAnnotationLists_AttachScopeForTheRepository(t *testing.T) {
 				r.Get("/projects/{projectId}/annotations/", h.SearchInProject)
 
 				rec := httptest.NewRecorder()
-				r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+				r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, nil))
 				if rec.Code != c.wantStatus {
 					t.Fatalf("status = %d, want %d: %s", rec.Code, c.wantStatus, rec.Body)
 				}
@@ -106,7 +106,7 @@ func TestAnnotationLists_WithoutScoperLeaveContextUnscoped(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/projects/{projectId}/annotations/", h.SearchInProject)
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/"+uuid.NewString()+"/annotations/", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/"+uuid.NewString()+"/annotations/", nil))
 	if rec.Code != http.StatusOK || svc.hasIt {
 		t.Fatalf("status %d, scope attached = %v", rec.Code, svc.hasIt)
 	}
@@ -147,7 +147,7 @@ func TestListTaskPositions_AttachesTaskScopeForTheRepository(t *testing.T) {
 			r.Use(claimsMiddleware(userID.String()))
 			r.Get("/projects/{projectId}/views/{viewId}/task-positions", h.ListTaskPositions)
 			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/"+projectID.String()+"/views/"+viewID.String()+"/task-positions", nil))
+			r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/"+projectID.String()+"/views/"+viewID.String()+"/task-positions", nil))
 			if rec.Code != c.wantStatus || svc.called != c.wantCalled {
 				t.Fatalf("status = %d (want %d), service called = %v (want %v): %s", rec.Code, c.wantStatus, svc.called, c.wantCalled, rec.Body)
 			}

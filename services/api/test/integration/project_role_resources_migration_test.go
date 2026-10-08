@@ -49,12 +49,12 @@ func TestProjectRoleResourcesMigration(t *testing.T) {
 	insert("onlyForeign", &p, policy(stmt("Allow", "project/"+q.String()+"/*")))
 	insert("workspace", nil, policy(stmt("Allow", "project/*")))
 
-	if _, err := db.Exec(resourceSQL); err != nil {
+	if _, err := db.ExecContext(t.Context(), resourceSQL); err != nil {
 		t.Fatalf("apply project-role resource normalization: %v", err)
 	}
 	resourcesOf := func(name string) [][]string {
 		var raw string
-		if err := db.QueryRow(`SELECT policy::text FROM roles WHERE name = $1`, name).Scan(&raw); err != nil {
+		if err := db.QueryRowContext(t.Context(), `SELECT policy::text FROM roles WHERE name = $1`, name).Scan(&raw); err != nil {
 			t.Fatal(err)
 		}
 		var doc struct {

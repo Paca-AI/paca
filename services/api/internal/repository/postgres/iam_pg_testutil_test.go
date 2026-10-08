@@ -30,7 +30,7 @@ func newIAMPGTestDB(t *testing.T) *sqlx.DB {
 	t.Cleanup(func() { _ = admin.Close() })
 
 	name := "iam_pg_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
-	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
+	if _, err := admin.ExecContext(t.Context(), "CREATE DATABASE "+name); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
 	u, err := url.Parse(dsn)
@@ -44,7 +44,7 @@ func newIAMPGTestDB(t *testing.T) *sqlx.DB {
 	}
 	t.Cleanup(func() {
 		_ = db.Close()
-		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
+		_, _ = admin.ExecContext(t.Context(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 	})
 	if err := database.RunMigrationsFS(db.DB, migrations.FS); err != nil {
 		t.Fatalf("apply migrations: %v", err)
@@ -54,7 +54,7 @@ func newIAMPGTestDB(t *testing.T) *sqlx.DB {
 
 func pgExec(t *testing.T, db *sqlx.DB, q string, args ...any) {
 	t.Helper()
-	if _, err := db.Exec(q, args...); err != nil {
+	if _, err := db.ExecContext(t.Context(), q, args...); err != nil {
 		t.Fatalf("exec %q: %v", q, err)
 	}
 }

@@ -255,7 +255,7 @@ func TestRoleRepository_ReplaceAttachments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(changed) != 2 || !(contains(changed, r1.ID) && contains(changed, r3.ID)) {
+	if len(changed) != 2 || !contains(changed, r1.ID) || !contains(changed, r3.ID) {
 		t.Fatalf("changed must be exactly the added/removed roles: %v", changed)
 	}
 	var r2Row2, r2By, r3By string

@@ -597,14 +597,12 @@ func TestScopedListTaskPositions(t *testing.T) {
 	pgExec(t, f.db, `INSERT INTO sprints (id, project_id, name) VALUES ($1,$3,'S5'), ($2,$3,'S6')`, s5, s6, f.p)
 	view := uuid.New()
 	pgExec(t, f.db, `INSERT INTO sprint_views (id, project_id, name, view_type, config, position, view_context) VALUES ($1,$2,'v','table','{}',0,'backlog')`, view, f.p)
-	var in5, in6 []string
+	var in5 []string
 	for i := 1; i <= 6; i++ {
 		id, sprint := uuid.New(), s6
 		if i%2 == 0 {
 			sprint = s5
 			in5 = append(in5, id.String())
-		} else {
-			in6 = append(in6, id.String())
 		}
 		pgExec(t, f.db, `INSERT INTO tasks (id, project_id, task_number, sprint_id, title) VALUES ($1,$2,$3,$4,'t')`, id, f.p, i, sprint)
 		pgExec(t, f.db, `INSERT INTO view_task_positions (id, view_id, task_id, position) VALUES ($1,$2,$3,$4)`, uuid.New(), view, id, i)

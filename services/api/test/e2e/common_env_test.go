@@ -283,6 +283,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		APIKeyAuth:           apiKeyService,
 		IAM:                  authorizer,
 		AgentEnvironments:    httpmw.AgentRepoLookups{Repo: agentRepo},
+		MemberPrincipals:     httpmw.MemberRepoLookup{Repo: projectRepo},
+		TaskNumbers:          taskRepo,
 		SessionEnvironments:  httpmw.AgentRepoLookups{Repo: agentRepo},
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),

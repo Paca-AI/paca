@@ -813,7 +813,7 @@ func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
 	projID := createProjectViaAPI(t, env, adminClient, adminToken, "perm-test-project-"+uuid.NewString(), "")
 
 	managerRoleID := createProjectRoleViaAPI(t, env, adminClient, adminToken, projID, "proj-manager",
-		"projects:read", "projects:write", "project.members:read", "project.members:write", "roles:read", "roles:write")
+		"projects:read", "projects:write", "project.members:read", "project.members:write", "roles:read", "roles:write", "roles:assign")
 	viewerRoleID := createProjectRoleViaAPI(t, env, adminClient, adminToken, projID, "proj-viewer", "projects:read")
 
 	// Seed and add manager user.

@@ -62,7 +62,7 @@ func newMigrationTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { _ = admin.Close() })
 
 	name := "iam_mig_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
-	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
+	if _, err := admin.ExecContext(t.Context(), "CREATE DATABASE "+name); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
 	u, err := url.Parse(dsn)
@@ -76,7 +76,7 @@ func newMigrationTestDB(t *testing.T) *sql.DB {
 	}
 	t.Cleanup(func() {
 		_ = db.Close()
-		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
+		_, _ = admin.ExecContext(t.Context(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 	})
 	return db
 }
@@ -145,7 +145,7 @@ func markedBlock(t *testing.T, src, tag string) (before, block, after string) {
 
 func mustExec(t *testing.T, db *sql.DB, q string, args ...any) {
 	t.Helper()
-	if _, err := db.Exec(q, args...); err != nil {
+	if _, err := db.ExecContext(t.Context(), q, args...); err != nil {
 		t.Fatalf("exec %q: %v", q, err)
 	}
 }
@@ -197,7 +197,7 @@ func seedIAMFixture(t *testing.T, db *sql.DB) *iamFixture {
 	f := &iamFixture{P1: uuid.New(), P2: uuid.New(), E1: uuid.New()}
 	roleID := func(name string) uuid.UUID {
 		var id uuid.UUID
-		if err := db.QueryRow(`SELECT id FROM global_roles WHERE name = $1`, name).Scan(&id); err != nil {
+		if err := db.QueryRowContext(t.Context(), `SELECT id FROM global_roles WHERE name = $1`, name).Scan(&id); err != nil {
 			t.Fatalf("global role %s: %v", name, err)
 		}
 		return id
@@ -325,7 +325,7 @@ type legacyResolver struct {
 
 func (l legacyResolver) perms(q string, args ...any) []string {
 	l.t.Helper()
-	rows, err := l.db.Query(q, args...)
+	rows, err := l.db.QueryContext(l.t.Context(), q, args...)
 	if err != nil {
 		l.t.Fatalf("legacy query: %v", err)
 	}
@@ -412,7 +412,7 @@ func (l legacyResolver) projectPerms(p principal, project string) []string {
 		WHERE pm.` + col + ` = $1 AND pm.project_id = $2 AND pm.deleted_at IS NULL`
 	rows := l.perms(q, p.id, project)
 	var n int
-	if err := l.db.QueryRow(`SELECT count(*) FROM project_members pm WHERE pm.`+col+` = $1 AND pm.project_id = $2
+	if err := l.db.QueryRowContext(l.t.Context(), `SELECT count(*) FROM project_members pm WHERE pm.`+col+` = $1 AND pm.project_id = $2
 		AND pm.deleted_at IS NULL`, p.id, project).Scan(&n); err != nil {
 		l.t.Fatal(err)
 	}
@@ -425,7 +425,7 @@ func (l legacyResolver) projectPerms(p principal, project string) []string {
 func (l legacyResolver) exists(q string, args ...any) bool {
 	l.t.Helper()
 	var ok bool
-	if err := l.db.QueryRow(`SELECT EXISTS (`+q+`)`, args...).Scan(&ok); err != nil {
+	if err := l.db.QueryRowContext(l.t.Context(), `SELECT EXISTS (`+q+`)`, args...).Scan(&ok); err != nil {
 		l.t.Fatalf("legacy exists: %v", err)
 	}
 	return ok
@@ -445,7 +445,7 @@ func (l legacyResolver) activeMemberID(p principal, project string) (string, boo
 		col = "agent_id"
 	}
 	var id string
-	err := l.db.QueryRow(`SELECT id FROM project_members WHERE `+col+` = $1 AND project_id = $2 AND deleted_at IS NULL`,
+	err := l.db.QueryRowContext(l.t.Context(), `SELECT id FROM project_members WHERE `+col+` = $1 AND project_id = $2 AND deleted_at IS NULL`,
 		p.id, project).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", false
@@ -535,7 +535,7 @@ func (l legacyResolver) decide(p principal, legacyKey, resource string, gated bo
 
 func loadGrants(t *testing.T, db *sql.DB, p principal) []iam.Grant {
 	t.Helper()
-	rows, err := db.Query(`SELECT r.id, COALESCE(ra.project_id::text, ''), r.policy
+	rows, err := db.QueryContext(t.Context(), `SELECT r.id, COALESCE(ra.project_id::text, ''), r.policy
 		FROM role_attachments ra JOIN roles r ON r.id = ra.role_id
 		WHERE ra.principal_type = $1 AND ra.principal_id = $2`, p.typ, p.id)
 	if err != nil {
@@ -576,7 +576,7 @@ type rolePolicy struct {
 
 func loadRoles(t *testing.T, db *sql.DB) []rolePolicy {
 	t.Helper()
-	rows, err := db.Query(`SELECT name, COALESCE(legacy_kind, ''), project_id::text, policy FROM roles ORDER BY name`)
+	rows, err := db.QueryContext(t.Context(), `SELECT name, COALESCE(legacy_kind, ''), project_id::text, policy FROM roles ORDER BY name`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,7 +668,7 @@ func TestIAMMigration(t *testing.T) {
 		{"project", `SELECT count(*) FROM project_roles`},
 	} {
 		var n int
-		if err := db.QueryRow(q.sql).Scan(&n); err != nil {
+		if err := db.QueryRowContext(t.Context(), q.sql).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		legacyCounts[q.kind] = n
@@ -680,7 +680,7 @@ func TestIAMMigration(t *testing.T) {
 
 	for _, c := range []struct{ table, column string }{{"users", "role_id"}, {"project_members", "project_role_id"}} {
 		var nullable string
-		if err := db.QueryRow(`SELECT is_nullable FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`, c.table, c.column).Scan(&nullable); err != nil {
+		if err := db.QueryRowContext(t.Context(), `SELECT is_nullable FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`, c.table, c.column).Scan(&nullable); err != nil {
 			t.Fatal(err)
 		}
 		if nullable != "YES" {
@@ -770,7 +770,7 @@ func TestIAMMigration(t *testing.T) {
 			[]string{"conversations:read", "environments:*", "projects:read", "tasks:*"}, []string{"project/*"})
 
 		var system []string
-		rows, err := db.Query(`SELECT name FROM roles WHERE is_system ORDER BY name`)
+		rows, err := db.QueryContext(t.Context(), `SELECT name FROM roles WHERE is_system ORDER BY name`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -784,7 +784,7 @@ func TestIAMMigration(t *testing.T) {
 			t.Errorf("system roles = %v", system)
 		}
 		var defaults []string
-		rows, err = db.Query(`SELECT name FROM roles WHERE is_default`)
+		rows, err = db.QueryContext(t.Context(), `SELECT name FROM roles WHERE is_default`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -811,7 +811,7 @@ func TestIAMMigration(t *testing.T) {
 		// The fixture assertions cover the final consolidated migration, including
 		// the now-nullable legacy role columns and normalized policy resources.
 		var n int
-		if err := db.QueryRow(`SELECT (SELECT count(*) FROM agents WHERE access_mode = 'restricted')
+		if err := db.QueryRowContext(t.Context(), `SELECT (SELECT count(*) FROM agents WHERE access_mode = 'restricted')
 			+ (SELECT count(*) FROM environments WHERE access_mode = 'restricted')
 			+ (SELECT count(*) FROM agent_access_grants) + (SELECT count(*) FROM environment_access_grants)`).Scan(&n); err != nil {
 			t.Fatal(err)
@@ -846,20 +846,20 @@ func TestIAMMigration(t *testing.T) {
 
 	t.Run("attachments", func(t *testing.T) {
 		var n int
-		if err := db.QueryRow(`SELECT count(*) FROM role_attachments WHERE principal_id = $1 AND project_id = $2`,
+		if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM role_attachments WHERE principal_id = $1 AND project_id = $2`,
 			f.M3.id, f.P1).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		if n != 0 {
 			t.Errorf("M3 (soft-deleted membership) has %d attachments in P1", n)
 		}
-		if err := db.QueryRow(`SELECT count(*) FROM role_attachments WHERE principal_id = $1`, f.DU.id).Scan(&n); err != nil {
+		if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM role_attachments WHERE principal_id = $1`, f.DU.id).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		if n != 0 {
 			t.Errorf("DU (soft-deleted user) has %d attachments", n)
 		}
-		if err := db.QueryRow(`SELECT count(*) FROM role_attachments WHERE principal_id = $1 AND project_id IS NULL`,
+		if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM role_attachments WHERE principal_id = $1 AND project_id IS NULL`,
 			f.M3.id).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
@@ -1003,7 +1003,7 @@ func TestIAMMigrationSelfCheckAborts(t *testing.T) {
 		t.Fatalf("broken migration: err = %v, want the self-check to abort", err)
 	}
 	var exists bool
-	if err := db.QueryRow(`SELECT to_regclass('roles') IS NOT NULL`).Scan(&exists); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT to_regclass('roles') IS NOT NULL`).Scan(&exists); err != nil {
 		t.Fatal(err)
 	}
 	if exists {

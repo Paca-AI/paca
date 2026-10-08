@@ -66,12 +66,12 @@ func convertPermissionKeys(v any) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, child := range x {
-			switch {
-			case k == "requiredPermission":
+			switch k {
+			case "requiredPermission":
 				if s, ok := child.(string); ok {
 					x[k] = toAction(s)
 				}
-			case k == "customPermissions":
+			case "customPermissions":
 				list, _ := child.([]any)
 				for _, c := range list {
 					if cm, ok := c.(map[string]any); ok {
@@ -126,13 +126,13 @@ func TestPluginManifestActionsMigration(t *testing.T) {
 		mustExec(t, db, `INSERT INTO plugins (id, name, manifest) VALUES ($1, $2, $3::jsonb)`, uuid.New(), name, m)
 	}
 
-	if _, err := db.Exec(pluginSQL); err != nil {
+	if _, err := db.ExecContext(t.Context(), pluginSQL); err != nil {
 		t.Fatalf("apply plugin-manifest conversion: %v", err)
 	}
 	check := func(round string) {
 		for name, m := range manifests {
 			var got string
-			if err := db.QueryRow(`SELECT manifest::text FROM plugins WHERE name = $1`, name).Scan(&got); err != nil {
+			if err := db.QueryRowContext(t.Context(), `SELECT manifest::text FROM plugins WHERE name = $1`, name).Scan(&got); err != nil {
 				t.Fatal(err)
 			}
 			var gotV any
@@ -151,7 +151,7 @@ func TestPluginManifestActionsMigration(t *testing.T) {
 
 	// Literal expectations, independent of the Go conversion rule above.
 	var tl string
-	if err := db.QueryRow(`SELECT manifest::text FROM plugins WHERE name = 'com.paca.time-logging'`).Scan(&tl); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT manifest::text FROM plugins WHERE name = 'com.paca.time-logging'`).Scan(&tl); err != nil {
 		t.Fatal(err)
 	}
 	var tlManifest struct {
@@ -203,7 +203,7 @@ func TestPluginManifestActionsMigration(t *testing.T) {
 	}
 
 	// Idempotent: replaying the conversion block changes nothing.
-	if _, err := db.Exec(pluginSQL); err != nil {
+	if _, err := db.ExecContext(t.Context(), pluginSQL); err != nil {
 		t.Fatalf("replay plugin-manifest conversion: %v", err)
 	}
 	check("replay")

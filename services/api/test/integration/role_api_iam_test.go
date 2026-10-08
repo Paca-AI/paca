@@ -69,7 +69,7 @@ func newRoleAPIEnv(t *testing.T) *roleAPIEnv {
 
 func (e *roleAPIEnv) exec(q string, args ...any) {
 	e.t.Helper()
-	if _, err := e.db.Exec(q, args...); err != nil {
+	if _, err := e.db.ExecContext(e.t.Context(), q, args...); err != nil {
 		e.t.Fatalf("exec %q: %v", q, err)
 	}
 }

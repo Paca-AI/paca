@@ -16,8 +16,10 @@ import (
 type Effect string
 
 const (
+	// EffectAllow grants access when a statement matches.
 	EffectAllow Effect = "Allow"
-	EffectDeny  Effect = "Deny"
+	// EffectDeny rejects access when a statement matches.
+	EffectDeny Effect = "Deny"
 )
 
 // ValueList is a condition operand. JSON may supply a string, a bool or a

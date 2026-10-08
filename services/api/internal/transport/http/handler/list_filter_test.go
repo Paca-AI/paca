@@ -67,7 +67,7 @@ func TestListSprints_AttachesScopeForTheRepository(t *testing.T) {
 			r.Get("/projects/{projectId}/sprints", h.ListSprints)
 
 			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/"+projectID.String()+"/sprints", nil))
+			r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/"+projectID.String()+"/sprints", nil))
 			if rec.Code != c.wantStatus {
 				t.Fatalf("status = %d, want %d: %s", rec.Code, c.wantStatus, rec.Body)
 			}
@@ -91,7 +91,7 @@ func TestListSprints_WithoutScoperLeavesContextUnscoped(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/projects/{projectId}/sprints", h.ListSprints)
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/"+uuid.NewString()+"/sprints", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/"+uuid.NewString()+"/sprints", nil))
 	if rec.Code != http.StatusOK || svc.hasIt {
 		t.Fatalf("status %d, scope attached = %v", rec.Code, svc.hasIt)
 	}
