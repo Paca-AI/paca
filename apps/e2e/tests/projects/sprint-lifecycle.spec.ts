@@ -34,9 +34,9 @@ const PROJECT_PREFIX = "E2E_SPRINT_";
 const USER_PREFIX = "E2E_SPRINT_MEMBER_";
 const RUN_ID = newRunId();
 const VIEW_ONLY_PERMISSIONS = {
-	"sprints.read": true,
-	"tasks.read": true,
-	"views.read": true,
+	"sprints:read": true,
+	"tasks:read": true,
+	"views:read": true,
 };
 
 let counter = 0;

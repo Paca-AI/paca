@@ -363,8 +363,8 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 	// Global chat has no project-scoped permissions to wait on.
 	const isPermissionsLoading = !!projectId && isProjectPermissionsLoading;
 	const canStartConversation =
-		!projectId || hasProjectPermission("conversations.write");
-	const canRead = !projectId || hasProjectPermission("conversations.read");
+		!projectId || hasProjectPermission("conversations:write");
+	const canRead = !projectId || hasProjectPermission("conversations:read");
 
 	const [filters, setFilters] = useState<ConversationFiltersState>({});
 

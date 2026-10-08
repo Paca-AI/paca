@@ -7,7 +7,7 @@ Feature: Project activity log
   entity that has since been deleted is shown struck through and is not a
   link. The list can be narrowed with a search box and a "Filters" popover
   (type, people, source, date range), and it refreshes when realtime events
-  arrive. Reading it needs the project.activities.read permission, which also
+  arrive. Reading it needs the project.activities:read permission, which also
   decides whether the sidebar shows the "Activity" item.
 
   @authenticated
@@ -66,15 +66,15 @@ Feature: Project activity log
   @authenticated
   Rule: Permission
 
-    Scenario: A member without project.activities.read cannot see the log
-      Given a member whose role only grants "tasks.read"
+    Scenario: A member without project.activities:read cannot see the log
+      Given a member whose role only grants "tasks:read"
       When the member opens the project
       Then the sidebar should not show "Activity"
       When the member opens the activity page directly
       Then "You can't view the activity log" should be visible
 
-    Scenario: A member with project.activities.read can see the log
-      Given a member whose role grants "project.activities.read"
+    Scenario: A member with project.activities:read can see the log
+      Given a member whose role grants "project.activities:read"
       When the member opens the project
       Then the sidebar should show "Activity"
       And the activity page should list the sprint entry

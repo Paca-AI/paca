@@ -161,9 +161,9 @@ The host validates the requested permissions at install time against the allowli
           { "name": "authn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "project",
-            "permissions": ["tasks.write"]
+            "actions": ["tasks:write"]
           }
         ]
       },
@@ -208,17 +208,60 @@ Supported middleware names:
 - `optionalAuthn`
 - `requireFreshPassword`
 - `requireJWTAuth`
-- `requirePermissions`
+- `requireActions`
 
-`requirePermissions` options:
+`requireActions` options:
 - `scope`: `global` or `project` (default: `global`)
 - `projectParam`: route param name for project scope (default: `projectId`)
-- `permissions`: required permission keys (for example `projects.read`, `tasks.write`)
+- `actions`: IAM actions the caller must ALL be allowed, each of the form
+  `<domain>:<verb>` — built-in (for example `projects:read`, `tasks:write`)
+  or plugin-declared (for example `time_logging:manage_all`). The same migration converted every
+`customPermissions[].key` and `requiredPermission` to an action.
 
-If `middlewares` is omitted, the host applies the backward-compatible default policy:
-- `optionalAuthn`
+Each action is decided by the host's IAM engine on a resource:
+- `project` scope, with the project id present in the path: `project/<projectId>`
+  for a built-in action, and `project/<projectId>/plugin/<plugin row id>` for
+  one of the plugin's own actions, so a role can grant a plugin's permission in
+  one project only. Grants on `project/<projectId>/*` cover both.
+- otherwise: the action's platform root (`users:*` → `user/*`, `roles:*` →
+  `role/*`, `plugins:*` → `plugin/*`, `settings:*` → `settings`,
+  `settings.sso:*` → `sso`, `agents:*` → `agent/*`, `projects:*` → `project`),
+  or — for a plugin's own or any other non-platform action — the plugin's own
+  resource `plugin/<plugin row id>` (covered by grants on `plugin/*` or `*`).
+
+### Declaring permissions
+
+A plugin declares the permissions it adds in `customPermissions`. Each `key` is
+an IAM action of the form `<namespace>:<verb>`, where the namespace is the last
+segment of the plugin id with `-` replaced by `_` (`com.paca.time-logging` →
+`time_logging:manage_all`). Declared actions are known to the host while the
+plugin is installed: role policies may name them, the role editor lists them,
+and `requireActions`/`paca.permission_check` can check them. Two plugins cannot
+declare the same action. A nav item's or registration's `requiredPermission` is
+an action too, built-in or the plugin's own.
+
+The legacy `requirePermissions` middleware (dotted permission keys) is no
+longer supported: installing or updating a manifest that declares it fails
+with "requirePermissions is no longer supported; use requireActions with IAM
+actions", and a stored manifest still declaring it fails closed (500) at
+request time. Migration `000065_plugin_manifest_actions.sql` rewrote every
+installed manifest (`requirePermissions` → `requireActions`, each key's last
+`.` replaced by `:`, e.g. `time_logging.manage_all` →
+`time_logging:manage_all`).
+
+**Legacy permissions warning.** The migration rewrites the *stored* manifest, but a plugin package on disk may still ship a `plugin.json` that declares `requirePermissions`. `GET /api/v1/plugins` flags such an installed plugin with `"legacy_permissions": true` (only for plugins with a backend). Administrators who can write plugins (`plugins:write`) then see a dismissible banner on the home page listing the affected plugins, and a "legacy permissions" badge on the plugin's card in the marketplace panel. The plugin keeps working with its converted manifest, but reinstalling or updating that build is rejected until its author ships a version that uses `requireActions`.
+
+The backend's `paca.permission_check` host function (SDK:
+`ctx.Permissions().Check(action)`) takes an IAM action too and is decided
+on the same resource rule, with the request's project (if any) as the project.
+
+If `middlewares` is omitted, the host applies the authenticated-only default
+policy:
+- `authn`
 - `requireFreshPassword`
-- `requirePermissions` with project scope and `projects.read`
+
+(no action check — declare `requireActions` explicitly; an anonymous caller is
+refused, any authenticated caller is admitted).
 
 For legacy manifests, `backend.routes[].public: true` is still supported and means "no host auth middleware" for that route.
 

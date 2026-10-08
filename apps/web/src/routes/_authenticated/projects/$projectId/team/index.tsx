@@ -22,9 +22,13 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RoleOptionList } from "@/components/admin/global-roles/role-option-list";
+import { RoleSelectPanel } from "@/components/admin/global-roles/role-select";
+import { projectPermissionBadgeClass } from "@/components/projects/roles/utils";
 import { MembersFilters } from "@/components/projects/team/MembersFilters";
 import { HighlightMatch } from "@/components/shared/highlight-match";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
+import { enrichRoles, RoleBadgeList } from "@/components/shared/role-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,15 +51,9 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useCanAssignProjectRole } from "@/hooks/use-can-assign-project-role";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -67,13 +65,12 @@ import {
 	isForbiddenError,
 } from "@/lib/api-error";
 import { filterProjectMembers } from "@/lib/filter-project-members";
+import { getInitials } from "@/lib/initials";
 import {
 	addProjectMember,
 	type ProjectMember,
-	type ProjectRole,
 	projectMembersQueryOptions,
 	projectQueryOptions,
-	projectRolesQueryOptions,
 	removeProjectMember,
 	updateProjectMemberRole,
 } from "@/lib/project-api";
@@ -81,6 +78,11 @@ import {
 	resolveAgentAvatarUrl,
 	resolveMemberAvatarUrl,
 } from "@/lib/provider-logos";
+import {
+	projectRolesQueryOptions,
+	type Role,
+	replaceMemberRoles,
+} from "@/lib/role-api";
 import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 
 export const Route = createFileRoute(
@@ -100,17 +102,12 @@ export const Route = createFileRoute(
 	component: TeamPage,
 });
 
-const MIN_VISIBLE_USER_ROWS = 5;
-
-function getInitials(name: string): string {
-	return name
-		.split(" ")
-		.filter(Boolean)
-		.map((n) => n[0])
-		.join("")
-		.toUpperCase()
-		.slice(0, 2);
+/** The roles a member holds, as one label. */
+function memberRoleNames(member: ProjectMember): string {
+	return member.roles.map((r) => r.name).join(", ");
 }
+
+const MIN_VISIBLE_USER_ROWS = 5;
 
 // ── Add Member Dialog ──────────────────────────────────────────────────────────
 
@@ -162,7 +159,7 @@ function AddMemberDialog({
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	projectId: string;
-	roles: ProjectRole[];
+	roles: Role[];
 	existingMemberIds: Set<string>;
 	existingAgentIds: Set<string>;
 }) {
@@ -172,14 +169,14 @@ function AddMemberDialog({
 	const [mode, setMode] = useState<"user" | "agent">("user");
 	const [selectedUser, setSelectedUser] = useState<User | null>(null);
 	const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-	const [selectedRoleId, setSelectedRoleId] = useState<string>("");
+	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
 	const [userSearch, setUserSearch] = useState("");
 	const [debouncedUserSearch, setDebouncedUserSearch] = useState("");
 	const applyUserSearch = useDebouncedCallback(setDebouncedUserSearch, 300);
 	const [description, setDescription] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
-	const canReadUsers = can("users.read");
+	const canReadUsers = can("users:read");
 	const selectedAgentAvatarUrl = selectedAgent
 		? resolveAgentAvatarUrl(selectedAgent)
 		: undefined;
@@ -246,7 +243,7 @@ function AddMemberDialog({
 
 	const addMutation = useMutation({
 		mutationFn: () => {
-			if (!selectedRoleId) {
+			if (selectedRoleIds.length === 0) {
 				return Promise.reject(new Error("Role is required"));
 			}
 			if (mode === "agent") {
@@ -255,7 +252,7 @@ function AddMemberDialog({
 				}
 				return addProjectMember(projectId, {
 					agent_id: selectedAgent.id,
-					project_role_id: selectedRoleId,
+					role_ids: selectedRoleIds,
 				});
 			}
 			if (!selectedUser) {
@@ -263,7 +260,7 @@ function AddMemberDialog({
 			}
 			return addProjectMember(projectId, {
 				user_id: selectedUser.id,
-				project_role_id: selectedRoleId,
+				role_ids: selectedRoleIds,
 				description: description.trim(),
 			});
 		},
@@ -278,9 +275,12 @@ function AddMemberDialog({
 			setError(
 				code === ApiErrorCode.ProjectMemberAlreadyAdded
 					? t("team.addMemberDialog.errors.alreadyAdded")
-					: code === ApiErrorCode.ProjectRoleNotFound
-						? t("team.addMemberDialog.errors.roleNotFound")
-						: t("team.addMemberDialog.errors.addFailed"),
+					: code === ApiErrorCode.Forbidden
+						? t("team.addMemberDialog.errors.roleForbidden")
+						: code === ApiErrorCode.RoleNotAttachable ||
+								code === ApiErrorCode.RoleNotFound
+							? t("team.addMemberDialog.errors.roleNotFound")
+							: t("team.addMemberDialog.errors.addFailed"),
 			);
 		},
 	});
@@ -289,7 +289,7 @@ function AddMemberDialog({
 		setMode("user");
 		setSelectedUser(null);
 		setSelectedAgent(null);
-		setSelectedRoleId("");
+		setSelectedRoleIds([]);
 		setUserSearch("");
 		setDebouncedUserSearch("");
 		// Supersede any pending debounce so it can't restore the old term.
@@ -300,7 +300,7 @@ function AddMemberDialog({
 	}
 
 	const canSubmit =
-		!!selectedRoleId &&
+		selectedRoleIds.length > 0 &&
 		!addMutation.isPending &&
 		(mode === "agent" ? !!selectedAgent : !!selectedUser);
 	const selectedUserId = selectedUser?.id ?? null;
@@ -524,29 +524,13 @@ function AddMemberDialog({
 						<p className="text-sm font-medium">
 							{t("team.addMemberDialog.roleLabel")}
 						</p>
-						<Select
-							value={selectedRoleId}
-							onValueChange={(v) => {
-								if (v != null) setSelectedRoleId(v);
-							}}
-							items={roles.map((r) => ({
-								value: r.id,
-								label: r.role_name,
-							}))}
-						>
-							<SelectTrigger className="w-full">
-								<SelectValue
-									placeholder={t("team.addMemberDialog.rolePlaceholder")}
-								/>
-							</SelectTrigger>
-							<SelectContent>
-								{roles.map((role) => (
-									<SelectItem key={role.id} value={role.id}>
-										{role.role_name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+						<RoleOptionList
+							roles={roles}
+							values={selectedRoleIds}
+							onChange={(ids) => setSelectedRoleIds(ids)}
+							label={t("team.addMemberDialog.roleLabel")}
+							badgeClass={projectPermissionBadgeClass}
+						/>
 					</div>
 
 					{/* Only for humans — an invited agent's description lives on the
@@ -615,44 +599,42 @@ function RoleChip({
 }: {
 	member: ProjectMember;
 	projectId: string;
-	roles: ProjectRole[];
+	roles: Role[];
 }) {
 	const { t } = useTranslation("projects");
 	const queryClient = useQueryClient();
 	const [open, setOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	const heldIds = member.roles.map((r) => r.id);
+
 	const mutation = useMutation({
-		mutationFn: (roleId: string) =>
-			updateProjectMemberRole(projectId, member.id, {
-				project_role_id: roleId,
-			}),
-		onMutate: async (roleId) => {
+		mutationFn: (roleIds: string[]) =>
+			replaceMemberRoles(projectId, member.id, roleIds),
+		onMutate: async (roleIds) => {
 			await queryClient.cancelQueries({
 				queryKey: projectMembersQueryOptions(projectId).queryKey,
 			});
 			const previous = queryClient.getQueryData(
 				projectMembersQueryOptions(projectId).queryKey,
 			);
-			const newRole = roles.find((r) => r.id === roleId);
-			if (newRole) {
-				queryClient.setQueryData(
-					projectMembersQueryOptions(projectId).queryKey,
-					(old: ProjectMember[] | undefined) =>
-						old?.map((m) =>
-							m.user_id === member.user_id
-								? {
-										...m,
-										project_role_id: roleId,
-										role_name: newRole.role_name,
-									}
-								: m,
-						),
-				);
-			}
+			queryClient.setQueryData(
+				projectMembersQueryOptions(projectId).queryKey,
+				(old: ProjectMember[] | undefined) =>
+					old?.map((m) =>
+						m.id === member.id
+							? {
+									...m,
+									roles: roles
+										.filter((r) => roleIds.includes(r.id))
+										.map((r) => ({ id: r.id, name: r.name })),
+								}
+							: m,
+					),
+			);
 			return { previous };
 		},
-		onError: (err: unknown, _roleId, context) => {
+		onError: (err: unknown, _roleIds, context) => {
 			if (context?.previous) {
 				queryClient.setQueryData(
 					projectMembersQueryOptions(projectId).queryKey,
@@ -663,13 +645,15 @@ function RoleChip({
 			setError(
 				code === ApiErrorCode.ProjectMemberNotFound
 					? t("team.roleChip.errors.memberNotFound")
-					: code === ApiErrorCode.ProjectRoleNotFound
-						? t("team.roleChip.errors.roleNotFound")
-						: t("team.roleChip.errors.changeFailed"),
+					: code === ApiErrorCode.Forbidden
+						? t("team.roleChip.errors.roleForbidden")
+						: code === ApiErrorCode.RoleNotAttachable ||
+								code === ApiErrorCode.RoleNotFound
+							? t("team.roleChip.errors.roleNotFound")
+							: t("team.roleChip.errors.changeFailed"),
 			);
 		},
 		onSuccess: () => {
-			setOpen(false);
 			setError(null);
 		},
 		onSettled: () => {
@@ -690,52 +674,49 @@ function RoleChip({
 			<PopoverTrigger
 				type="button"
 				aria-label={t("team.roleChip.changeRole")}
+				title={t("team.roleChip.changeRole")}
 				disabled={mutation.isPending}
-				className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-secondary/50 px-2.5 py-1 text-xs font-medium text-secondary-foreground transition-all hover:bg-accent hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+				className="flex min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-secondary/40 py-1 pr-2 pl-1.5 text-xs font-medium text-secondary-foreground transition-all hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
 			>
 				{mutation.isPending ? (
-					<Loader2 className="size-3 animate-spin text-muted-foreground" />
+					<Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
 				) : (
-					<Shield className="size-3 text-muted-foreground" />
+					<Shield className="size-3 shrink-0 text-muted-foreground" />
 				)}
-				<span>{member.role_name}</span>
+				<RoleBadgeList
+					roles={enrichRoles(member.roles, roles)}
+					max={2}
+					interactive={false}
+				/>
 				{!mutation.isPending && (
-					<ChevronDown className="size-3 text-muted-foreground/70" />
+					<ChevronDown className="size-3 shrink-0 text-muted-foreground/70" />
 				)}
 			</PopoverTrigger>
-			<PopoverContent className="w-52 p-1.5" align="end">
-				<p className="px-2 py-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+			<PopoverContent
+				className="w-80 max-w-[calc(100vw-2rem)] p-2.5"
+				align="end"
+				initialFocus={false}
+			>
+				<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
 					{t("team.roleChip.changeRole")}
 				</p>
-				<div className="mt-0.5 space-y-px">
-					{roles.map((role) => {
-						const isCurrent = role.id === member.project_role_id;
-						return (
-							<button
-								key={role.id}
-								type="button"
-								className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent ${
-									isCurrent
-										? "font-medium text-foreground"
-										: "text-muted-foreground hover:text-foreground"
-								}`}
-								onClick={() => {
-									if (!isCurrent) mutation.mutate(role.id);
-									else setOpen(false);
-								}}
-							>
-								<Check
-									className={`size-3.5 shrink-0 text-primary transition-opacity ${
-										isCurrent ? "opacity-100" : "opacity-0"
-									}`}
-								/>
-								{role.role_name}
-							</button>
-						);
-					})}
-				</div>
+				<RoleSelectPanel
+					autoFocus
+					roles={roles}
+					values={heldIds}
+					label={t("team.roleChip.changeRole")}
+					badgeClass={projectPermissionBadgeClass}
+					// A member keeps at least one role: with none they could do
+					// nothing, and removing them is its own action.
+					minSelected={1}
+					disabled={mutation.isPending}
+					onChange={(ids) => mutation.mutate(ids)}
+				/>
 				{error && (
-					<p className="mt-1.5 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+					<p
+						role="alert"
+						className="rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
+					>
 						{error}
 					</p>
 				)}
@@ -843,13 +824,16 @@ function MemberRow({
 	projectId,
 	roles,
 	canManage,
+	canAssignRoles,
 	highlight = "",
 	onRemove,
 }: {
 	member: ProjectMember;
 	projectId: string;
-	roles: ProjectRole[];
+	roles: Role[];
 	canManage: boolean;
+	/** Whether the viewer may change roles (roles:assign alone; not members:write). */
+	canAssignRoles: boolean;
 	/** Search text to highlight in the member's name and handle. */
 	highlight?: string;
 	onRemove: (member: ProjectMember) => void;
@@ -859,52 +843,65 @@ function MemberRow({
 	const isBot =
 		member.member_type === "agent" ||
 		member.username.startsWith("bot-") ||
-		member.role_name.toLowerCase().includes("agent");
+		memberRoleNames(member).toLowerCase().includes("agent");
 	const memberAvatarUrl = resolveMemberAvatarUrl(member);
 
+	const memberRoles = enrichRoles(member.roles, roles);
+
 	return (
-		<div className="flex items-center gap-3 rounded-xl border border-border/50 bg-card px-4 py-3 transition-colors hover:bg-muted/30">
+		<div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border/50 bg-card px-4 py-3 transition-colors hover:bg-muted/30">
 			<Avatar className="size-9 shrink-0">
-				{memberAvatarUrl ? <AvatarImage src={memberAvatarUrl} /> : null}
+				{memberAvatarUrl ? <AvatarImage src={memberAvatarUrl} alt="" /> : null}
 				<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
 					{isBot ? <Bot className="size-4" /> : getInitials(display)}
 				</AvatarFallback>
 			</Avatar>
-			<div className="min-w-0 flex-1">
-				<p className="text-sm font-medium truncate">
-					<HighlightMatch text={display} query={highlight} />
+			<div className="min-w-0 flex-1 basis-40">
+				<p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+					<span className="truncate">
+						<HighlightMatch text={display} query={highlight} />
+					</span>
+					{isBot ? (
+						<span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium leading-none text-muted-foreground">
+							{t("team.memberRow.agentBadge")}
+						</span>
+					) : null}
 				</p>
 				<p className="text-xs text-muted-foreground truncate">
 					@<HighlightMatch text={member.username} query={highlight} />
 				</p>
 			</div>
-			{canManage && !isBot ? (
-				<DescriptionChip member={member} projectId={projectId} />
-			) : null}
-			{canManage ? (
-				<RoleChip member={member} projectId={projectId} roles={roles} />
-			) : (
-				<span className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-secondary/50 px-2.5 py-1 text-xs font-medium text-secondary-foreground">
-					<Shield className="size-3 text-muted-foreground" />
-					{member.role_name}
-				</span>
-			)}
-			{canManage ? (
-				<DropdownMenu>
-					<DropdownMenuTrigger className="flex size-7 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-						<MoreHorizontal className="size-4" />
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="w-44">
-						<DropdownMenuItem
-							className="text-destructive focus:text-destructive focus:bg-destructive/10"
-							onClick={() => onRemove(member)}
+			<div className="ml-auto flex min-w-0 max-w-full items-center gap-1.5 max-sm:order-last max-sm:w-full max-sm:pl-12">
+				{canManage && !isBot ? (
+					<DescriptionChip member={member} projectId={projectId} />
+				) : null}
+				<div className="flex min-w-0 flex-1 justify-end max-sm:justify-start">
+					{canAssignRoles ? (
+						<RoleChip member={member} projectId={projectId} roles={roles} />
+					) : (
+						<RoleBadgeList roles={memberRoles} max={3} />
+					)}
+				</div>
+				{canManage ? (
+					<DropdownMenu>
+						<DropdownMenuTrigger
+							aria-label={t("team.memberRow.actions")}
+							className="flex size-7 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						>
-							<Trash2 className="size-3.5 mr-2" />
-							{t("team.memberRow.removeMember")}
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			) : null}
+							<MoreHorizontal className="size-4" />
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-44">
+							<DropdownMenuItem
+								className="text-destructive focus:text-destructive focus:bg-destructive/10"
+								onClick={() => onRemove(member)}
+							>
+								<Trash2 className="size-3.5 mr-2" />
+								{t("team.memberRow.removeMember")}
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				) : null}
+			</div>
 		</div>
 	);
 }
@@ -933,8 +930,8 @@ function TeamPage() {
 		isGlobalPermissionsLoading || isProjectPermissionsLoading;
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	const canReadMembers =
-		hasPermission("project.members.read") ||
-		hasProjectPermission("project.members.read");
+		hasPermission("project.members:read") ||
+		hasProjectPermission("project.members:read");
 	const {
 		data: members,
 		isLoading: isDataLoading,
@@ -955,8 +952,17 @@ function TeamPage() {
 	const { data: roles = [] } = useQuery(projectRolesQueryOptions(projectId));
 
 	const canManageMembers =
-		hasPermission("project.members.write") ||
-		hasProjectPermission("project.members.write");
+		hasPermission("project.members:write") ||
+		hasProjectPermission("project.members:write");
+	// Handing out roles is a privilege of its own (roles:assign). Editing an
+	// existing member's roles needs only that; project.members:write is not
+	// required. The API judges every role added or removed on its own resource,
+	// so the UI offers all roles and a refusal comes back as FORBIDDEN (shown by
+	// the role error mapping).
+	const { canAssignRoles } = useCanAssignProjectRole(projectId);
+	// Adding a member is member management (members:write) and, because a new
+	// member needs at least one role, also needs roles:assign.
+	const canAddMembers = canManageMembers && canAssignRoles;
 
 	const existingMemberIds = useMemo(
 		() => new Set((members ?? []).map((m) => m.user_id)),
@@ -980,8 +986,8 @@ function TeamPage() {
 	const roleChips = useMemo(
 		() =>
 			roles.map((r) => ({
-				name: r.role_name,
-				count: (members ?? []).filter((m) => m.role_name === r.role_name)
+				name: r.name,
+				count: (members ?? []).filter((m) => m.roles.some((x) => x.id === r.id))
 					.length,
 			})),
 		[roles, members],
@@ -1027,7 +1033,7 @@ function TeamPage() {
 							{project?.name} · {t("team.subtitle")}
 						</p>
 					</div>
-					{canManageMembers ? (
+					{canAddMembers ? (
 						<Button
 							size="sm"
 							className="gap-1.5 shadow-sm shadow-primary/20"
@@ -1081,7 +1087,7 @@ function TeamPage() {
 								{t("team.empty.description")}
 							</p>
 						</div>
-						{canManageMembers ? (
+						{canAddMembers ? (
 							<Button
 								size="sm"
 								className="gap-1.5 mt-1"
@@ -1135,6 +1141,7 @@ function TeamPage() {
 										projectId={projectId}
 										roles={roles}
 										canManage={canManageMembers}
+										canAssignRoles={canAssignRoles}
 										highlight={search}
 										onRemove={setRemovingMember}
 									/>

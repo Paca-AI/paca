@@ -10,35 +10,17 @@ import (
 
 	"github.com/google/uuid"
 
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 )
 
-// seedProjectAdminUser creates a user and assigns them a global role that grants
-// all project, project-role and project-member permissions.
+// seedProjectAdminUser creates a user and assigns them a platform role that
+// grants all project permissions (the creator of a project is its Admin).
 func seedProjectAdminUser(t *testing.T, env *e2eEnv, username, password string) {
 	t.Helper()
 	seedUser(t, env, username, password, "Project Admin")
 	roleName := "PROJECT_ADMIN_" + uuid.NewString()
-	if err := env.roleRepo.Create(env.ctx, &globalroledom.GlobalRole{
-		ID:   uuid.New(),
-		Name: roleName,
-		Permissions: map[string]any{
-			"projects.create":       true,
-			"projects.read":         true,
-			"projects.write":        true,
-			"projects.delete":       true,
-			"project.roles.read":    true,
-			"project.roles.write":   true,
-			"project.members.read":  true,
-			"project.members.write": true,
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}); err != nil {
-		t.Fatalf("create project-admin role: %v", err)
-	}
-	assignGlobalRolesByName(t, env, username, roleName)
+	createPlatformRole(t, env, roleName, "projects:create", "projects:read", "projects:write", "projects:delete")
+	assignPlatformRole(t, env, username, roleName)
 }
 
 // projectAdminLogin creates a fresh HTTP client with a cookie jar, logs in as
@@ -70,12 +52,29 @@ func createProjectViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, 
 	return id
 }
 
-// createProjectRoleViaAPI creates a project-scoped role and returns its ID.
-func createProjectRoleViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, roleName string) string {
+// projectRolePolicy is the IAM policy of a project role allowing exactly
+// actions on the project and everything inside it.
+func projectRolePolicy(projectID string, actions ...string) map[string]any {
+	return map[string]any{
+		"version": "2026-10-01",
+		"statements": []any{map[string]any{
+			"effect":    "Allow",
+			"actions":   actions,
+			"resources": []string{"project/" + projectID, "project/" + projectID + "/*"},
+		}},
+	}
+}
+
+// createProjectRoleViaAPI creates a project-owned role allowing exactly
+// actions and returns its ID.
+func createProjectRoleViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, roleName string, actions ...string) string {
 	t.Helper()
+	if len(actions) == 0 {
+		actions = []string{"projects:read"}
+	}
 	body := jsonBody(t, map[string]any{
-		"role_name":   roleName,
-		"permissions": map[string]any{"read": true},
+		"name":   roleName,
+		"policy": projectRolePolicy(projectID, actions...),
 	})
 	url := fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projectID)
 	req := mustRequest(env.ctx, t, http.MethodPost, url, body)
@@ -246,33 +245,12 @@ func TestE2EProjectRoles_FullLifecycle(t *testing.T) {
 	seedProjectAdminUser(t, env, "roles-admin", "rolespass1")
 	client, token := projectAdminLogin(t, env, "roles-admin", "rolespass1")
 	projID := createProjectViaAPI(t, env, client, token, "roles-project-"+uuid.NewString(), "")
+	rolesURL := fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projID)
 
 	var roleID string
 
-	t.Run("create_role", func(t *testing.T) {
-		body := jsonBody(t, map[string]any{
-			"role_name":   "viewer",
-			"permissions": map[string]any{"read": true},
-		})
-		url := fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projID)
-		req := mustRequest(env.ctx, t, http.MethodPost, url, body)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+token)
-		resp := mustDo(t, client, req)
-		defer func() { _ = resp.Body.Close() }()
-		assertStatus(t, resp, http.StatusCreated)
-		var env2 envelope
-		decodeJSON(t, resp, &env2)
-		data := assertDataMap(t, env2)
-		if rn, _ := data["role_name"].(string); rn != "viewer" {
-			t.Errorf("expected role_name 'viewer', got %q", rn)
-		}
-		roleID, _ = data["id"].(string)
-	})
-
-	t.Run("list_roles", func(t *testing.T) {
-		url := fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projID)
-		req := mustRequest(env.ctx, t, http.MethodGet, url, nil)
+	t.Run("a_new_project_has_the_default_roles", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet, rolesURL, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
 		defer func() { _ = resp.Body.Close() }()
@@ -283,30 +261,77 @@ func TestE2EProjectRoles_FullLifecycle(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected roles array, got %T", env2.Data)
 		}
-		if len(roles) < 1 {
-			t.Error("expected at least one role")
+		names := map[string]bool{}
+		for _, r := range roles {
+			if m, ok := r.(map[string]any); ok {
+				name, _ := m["name"].(string)
+				names[name] = true
+			}
+		}
+		for _, want := range []string{"Admin", "Editor", "Viewer"} {
+			if !names[want] {
+				t.Errorf("the new project has no %q role (got %v)", want, names)
+			}
 		}
 	})
 
+	t.Run("create_role", func(t *testing.T) {
+		body := jsonBody(t, map[string]any{
+			"name":   "viewer-2",
+			"policy": projectRolePolicy(projID, "projects:read"),
+		})
+		req := mustRequest(env.ctx, t, http.MethodPost, rolesURL, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusCreated)
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		if rn, _ := data["name"].(string); rn != "viewer-2" {
+			t.Errorf("expected name 'viewer-2', got %q", rn)
+		}
+		if owner, _ := data["project_id"].(string); owner != projID {
+			t.Errorf("expected the role to be owned by the project, got project_id %q", owner)
+		}
+		roleID, _ = data["id"].(string)
+	})
+
 	t.Run("create_duplicate_role_conflict", func(t *testing.T) {
-		body := jsonBody(t, map[string]any{"role_name": "viewer"})
-		url := fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projID)
-		req := mustRequest(env.ctx, t, http.MethodPost, url, body)
+		body := jsonBody(t, map[string]any{
+			"name":   "viewer-2",
+			"policy": projectRolePolicy(projID, "projects:read"),
+		})
+		req := mustRequest(env.ctx, t, http.MethodPost, rolesURL, body)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusConflict)
-		assertErrorCode(t, resp, "PROJECT_ROLE_NAME_TAKEN")
+		assertErrorCode(t, resp, "ROLE_NAME_TAKEN")
+	})
+
+	t.Run("a_permission_map_is_not_a_policy", func(t *testing.T) {
+		body := jsonBody(t, map[string]any{
+			"name":        "legacy-shaped",
+			"permissions": map[string]any{"tasks.read": true},
+		})
+		req := mustRequest(env.ctx, t, http.MethodPost, rolesURL, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusUnprocessableEntity)
+		assertErrorCode(t, resp, "ROLE_POLICY_INVALID")
 	})
 
 	t.Run("update_role", func(t *testing.T) {
 		body := jsonBody(t, map[string]any{
-			"role_name":   "contributor",
-			"permissions": map[string]any{"read": true, "write": true},
+			"name":   "contributor",
+			"policy": projectRolePolicy(projID, "projects:read", "tasks:read", "tasks:write"),
 		})
-		url := fmt.Sprintf("%s/api/v1/projects/%s/roles/%s", env.base, projID, roleID)
-		req := mustRequest(env.ctx, t, http.MethodPatch, url, body)
+		req := mustRequest(env.ctx, t, http.MethodPut, rolesURL+"/"+roleID, body)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
@@ -315,59 +340,97 @@ func TestE2EProjectRoles_FullLifecycle(t *testing.T) {
 		var env2 envelope
 		decodeJSON(t, resp, &env2)
 		data := assertDataMap(t, env2)
-		if rn, _ := data["role_name"].(string); rn != "contributor" {
-			t.Errorf("expected updated role_name 'contributor', got %q", rn)
+		if rn, _ := data["name"].(string); rn != "contributor" {
+			t.Errorf("expected updated name 'contributor', got %q", rn)
 		}
 	})
 
 	t.Run("delete_role", func(t *testing.T) {
-		url := fmt.Sprintf("%s/api/v1/projects/%s/roles/%s", env.base, projID, roleID)
-		req := mustRequest(env.ctx, t, http.MethodDelete, url, nil)
+		req := mustRequest(env.ctx, t, http.MethodDelete, rolesURL+"/"+roleID, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
 		defer func() { _ = resp.Body.Close() }()
-		assertStatus(t, resp, http.StatusOK)
+		assertStatus(t, resp, http.StatusNoContent)
 	})
 }
 
 // ---------------------------------------------------------------------------
-// Delete role blocked when members still assigned
+// System roles cannot be deleted; deleting a held role revokes it
 // ---------------------------------------------------------------------------
 
-func TestE2EProjectRoles_DeleteRoleWithMembersConflict(t *testing.T) {
+func TestE2EProjectRoles_SystemRoleAndRevocation(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "roles-conflict-admin", "rcpass123")
 	client, token := projectAdminLogin(t, env, "roles-conflict-admin", "rcpass123")
 	projID := createProjectViaAPI(t, env, client, token, "roles-conflict-"+uuid.NewString(), "")
-	roleID := createProjectRoleViaAPI(t, env, client, token, projID, "locked-role")
+	rolesURL := fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projID)
 
-	// Seed a real user so the FK constraint on project_members is satisfied.
-	seedUser(t, env, "locked-role-member", "memberpass1", "Locked Member")
-	memberUser, err := env.userRepo.FindByUsername(env.ctx, "locked-role-member")
-	if err != nil {
-		t.Fatalf("find locked-role-member: %v", err)
-	}
+	t.Run("the_project_admin_role_is_a_system_role", func(t *testing.T) {
+		adminRoleID := projectRoleIDByName(t, env, client, token, projID, "Admin")
+		req := mustRequest(env.ctx, t, http.MethodDelete, rolesURL+"/"+adminRoleID, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusConflict)
+		assertErrorCode(t, resp, "ROLE_IS_SYSTEM")
+	})
 
-	// Seed a member directly via repo so the role cannot be deleted.
-	projUUID, _ := uuid.Parse(projID)
-	roleUUID, _ := uuid.Parse(roleID)
-	if err := env.projectRepo.AddMember(context.Background(), &projectdom.ProjectMember{
-		ID:            uuid.New(),
-		ProjectID:     projUUID,
-		UserID:        memberUser.ID,
-		ProjectRoleID: roleUUID,
-	}); err != nil {
-		t.Fatalf("seed project member: %v", err)
-	}
+	t.Run("deleting_a_held_role_revokes_it", func(t *testing.T) {
+		roleID := createProjectRoleViaAPI(t, env, client, token, projID, "locked-role", "projects:read")
+		seedUser(t, env, "locked-role-member", "memberpass1", "Locked Member")
+		memberUser, err := env.userRepo.FindByUsername(env.ctx, "locked-role-member")
+		if err != nil {
+			t.Fatalf("find locked-role-member: %v", err)
+		}
+		addMemberViaAPI(t, env, client, token, projID, memberUser.ID.String(), roleID)
+		memberClient, memberToken := loginUser(t, env, "locked-role-member", "memberpass1")
 
-	url := fmt.Sprintf("%s/api/v1/projects/%s/roles/%s", env.base, projID, roleID)
-	req := mustRequest(env.ctx, t, http.MethodDelete, url, nil)
+		get := func() int {
+			req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/projects/"+projID, nil)
+			req.Header.Set("Authorization", "Bearer "+memberToken)
+			resp := mustDo(t, memberClient, req)
+			defer func() { _ = resp.Body.Close() }()
+			return resp.StatusCode
+		}
+		if got := get(); got != http.StatusOK {
+			t.Fatalf("a member holding the role must read the project, got %d", got)
+		}
+
+		req := mustRequest(env.ctx, t, http.MethodDelete, rolesURL+"/"+roleID, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusNoContent)
+
+		if got := get(); got != http.StatusForbidden {
+			t.Errorf("after the role was deleted the member must lose access, got %d", got)
+		}
+	})
+}
+
+// projectRoleIDByName looks up a project role's id by its name through the
+// roles API.
+func projectRoleIDByName(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, roleName string) string {
+	t.Helper()
+	req := mustRequest(env.ctx, t, http.MethodGet,
+		fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projectID), nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp := mustDo(t, client, req)
 	defer func() { _ = resp.Body.Close() }()
-	assertStatus(t, resp, http.StatusConflict)
-	assertErrorCode(t, resp, "PROJECT_ROLE_HAS_MEMBERS")
+	assertStatus(t, resp, http.StatusOK)
+	var env2 envelope
+	decodeJSON(t, resp, &env2)
+	roles, _ := env2.Data.([]any)
+	for _, r := range roles {
+		role, _ := r.(map[string]any)
+		if role["name"] == roleName {
+			id, _ := role["id"].(string)
+			return id
+		}
+	}
+	t.Fatalf("project %s has no role named %q", projectID, roleName)
+	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -396,9 +459,31 @@ func TestE2EProjectMembers_FullLifecycle(t *testing.T) {
 
 	var memberID string // project_member record UUID returned by the add_member endpoint
 
+	roleIDsOf := func(data map[string]any) []string {
+		var ids []string
+		roles, _ := data["roles"].([]any)
+		for _, r := range roles {
+			m, _ := r.(map[string]any)
+			id, _ := m["id"].(string)
+			ids = append(ids, id)
+		}
+		return ids
+	}
+
+	t.Run("add_member_requires_roles", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodPost, membersURL,
+			jsonBody(t, map[string]any{"user_id": memberUserID}))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusBadRequest)
+		assertErrorCode(t, resp, "ROLE_REQUIRED")
+	})
+
 	t.Run("add_member", func(t *testing.T) {
 		req := mustRequest(env.ctx, t, http.MethodPost, membersURL,
-			jsonBody(t, map[string]any{"user_id": memberUserID, "project_role_id": roleID}))
+			jsonBody(t, map[string]any{"user_id": memberUserID, "role_ids": []string{roleID}}))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
@@ -409,6 +494,9 @@ func TestE2EProjectMembers_FullLifecycle(t *testing.T) {
 		data := assertDataMap(t, env2)
 		if uid, _ := data["user_id"].(string); uid != memberUserID {
 			t.Errorf("expected user_id %q, got %q", memberUserID, uid)
+		}
+		if ids := roleIDsOf(data); len(ids) != 1 || ids[0] != roleID {
+			t.Errorf("expected the member to hold exactly %s, got %v", roleID, ids)
 		}
 		memberID, _ = data["id"].(string)
 		if memberID == "" {
@@ -435,7 +523,7 @@ func TestE2EProjectMembers_FullLifecycle(t *testing.T) {
 
 	t.Run("add_duplicate_member_conflict", func(t *testing.T) {
 		req := mustRequest(env.ctx, t, http.MethodPost, membersURL,
-			jsonBody(t, map[string]any{"user_id": memberUserID, "project_role_id": roleID}))
+			jsonBody(t, map[string]any{"user_id": memberUserID, "role_ids": []string{roleID}}))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
@@ -444,10 +532,10 @@ func TestE2EProjectMembers_FullLifecycle(t *testing.T) {
 		assertErrorCode(t, resp, "PROJECT_MEMBER_ALREADY_ADDED")
 	})
 
-	t.Run("update_member_role", func(t *testing.T) {
-		url := membersURL + "/" + memberID
-		req := mustRequest(env.ctx, t, http.MethodPatch, url,
-			jsonBody(t, map[string]any{"project_role_id": updatedRoleID}))
+	t.Run("replace_member_roles", func(t *testing.T) {
+		url := membersURL + "/" + memberID + "/roles"
+		req := mustRequest(env.ctx, t, http.MethodPut, url,
+			jsonBody(t, map[string]any{"role_ids": []string{updatedRoleID}}))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
@@ -455,16 +543,19 @@ func TestE2EProjectMembers_FullLifecycle(t *testing.T) {
 		assertStatus(t, resp, http.StatusOK)
 		var env2 envelope
 		decodeJSON(t, resp, &env2)
-		data := assertDataMap(t, env2)
-		if rid, _ := data["project_role_id"].(string); rid != updatedRoleID {
-			t.Errorf("expected project_role_id %q, got %q", updatedRoleID, rid)
+		roles, _ := env2.Data.([]any)
+		if len(roles) != 1 {
+			t.Fatalf("expected the member's new role set, got %v", env2.Data)
+		}
+		if m, _ := roles[0].(map[string]any); m["id"] != updatedRoleID {
+			t.Errorf("expected role %s, got %v", updatedRoleID, m["id"])
 		}
 	})
 
-	t.Run("update_member_role_missing_member", func(t *testing.T) {
-		url := membersURL + "/" + uuid.NewString()
-		req := mustRequest(env.ctx, t, http.MethodPatch, url,
-			jsonBody(t, map[string]any{"project_role_id": updatedRoleID}))
+	t.Run("replace_roles_of_missing_member", func(t *testing.T) {
+		url := membersURL + "/" + uuid.NewString() + "/roles"
+		req := mustRequest(env.ctx, t, http.MethodPut, url,
+			jsonBody(t, map[string]any{"role_ids": []string{updatedRoleID}}))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
@@ -515,11 +606,10 @@ func TestE2EProject_DeleteCascadesRolesAndMembers(t *testing.T) {
 	projUUID, _ := uuid.Parse(projID)
 	roleUUID, _ := uuid.Parse(roleID)
 	if err := env.projectRepo.AddMember(context.Background(), &projectdom.ProjectMember{
-		ID:            uuid.New(),
-		ProjectID:     projUUID,
-		UserID:        cascadeMember.ID,
-		ProjectRoleID: roleUUID,
-	}); err != nil {
+		ID:        uuid.New(),
+		ProjectID: projUUID,
+		UserID:    cascadeMember.ID,
+	}, []uuid.UUID{roleUUID}, nil); err != nil {
 		t.Fatalf("seed project member: %v", err)
 	}
 
@@ -544,28 +634,6 @@ func TestE2EProject_DeleteCascadesRolesAndMembers(t *testing.T) {
 // Role-based access control workflow tests
 // ---------------------------------------------------------------------------
 
-// createProjectRoleWithPermsViaAPI creates a project-scoped role with arbitrary
-// permissions and returns its ID.
-func createProjectRoleWithPermsViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, roleName string, permissions map[string]any) string {
-	t.Helper()
-	body := jsonBody(t, map[string]any{
-		"role_name":   roleName,
-		"permissions": permissions,
-	})
-	url := fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projectID)
-	req := mustRequest(env.ctx, t, http.MethodPost, url, body)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp := mustDo(t, client, req)
-	defer func() { _ = resp.Body.Close() }()
-	assertStatus(t, resp, http.StatusCreated)
-	var env2 envelope
-	decodeJSON(t, resp, &env2)
-	data := assertDataMap(t, env2)
-	id, _ := data["id"].(string)
-	return id
-}
-
 // loginUser creates a fresh HTTP client, logs in, and returns the client plus
 // access token extracted from the response cookie.
 func loginUser(t *testing.T, env *e2eEnv, username, password string) (*http.Client, string) {
@@ -582,7 +650,7 @@ func addMemberViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, proj
 	t.Helper()
 	url := fmt.Sprintf("%s/api/v1/projects/%s/members", env.base, projectID)
 	req := mustRequest(env.ctx, t, http.MethodPost, url,
-		jsonBody(t, map[string]any{"user_id": userID, "project_role_id": roleID}))
+		jsonBody(t, map[string]any{"user_id": userID, "role_ids": []string{roleID}}))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp := mustDo(t, client, req)
@@ -591,7 +659,7 @@ func addMemberViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, proj
 }
 
 // TestE2EProject_ProjectViewerAccess verifies that a project member with a
-// viewer-only role (projects.read) can GET the project but cannot update or
+// viewer-only role (projects:read) can GET the project but cannot update or
 // delete it, and that the project appears in their accessible list.
 func TestE2EProject_ProjectViewerAccess(t *testing.T) {
 	t.Parallel()
@@ -601,9 +669,8 @@ func TestE2EProject_ProjectViewerAccess(t *testing.T) {
 	adminClient, adminToken := projectAdminLogin(t, env, "viewer-access-admin", "adminpass1")
 	projID := createProjectViaAPI(t, env, adminClient, adminToken, "viewer-access-project-"+uuid.NewString(), "")
 
-	// Create a project role that only grants projects.read.
-	viewerRoleID := createProjectRoleWithPermsViaAPI(t, env, adminClient, adminToken, projID, "read-only",
-		map[string]any{"projects.read": true})
+	// Create a project role that only grants projects:read.
+	viewerRoleID := createProjectRoleViaAPI(t, env, adminClient, adminToken, projID, "read-only", "projects:read")
 
 	// Seed a plain user and add them as a project member with the viewer role.
 	seedUser(t, env, "viewer-access-user", "viewerpass1", "Viewer Access User")
@@ -735,8 +802,8 @@ func TestE2EProject_NonMemberForbidden(t *testing.T) {
 
 // TestE2EProject_MemberRolePermissionsEnforced verifies that project members
 // can only perform the operations their project role grants. A "manager" role
-// (with members.write, roles.write, projects.write) is compared against a
-// "viewer" role (projects.read only).
+// (with members:write, roles:write, projects:write) is compared against a
+// "viewer" role (projects:read only).
 func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
@@ -745,17 +812,9 @@ func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
 	adminClient, adminToken := projectAdminLogin(t, env, "perm-test-admin", "adminpass3")
 	projID := createProjectViaAPI(t, env, adminClient, adminToken, "perm-test-project-"+uuid.NewString(), "")
 
-	managerRoleID := createProjectRoleWithPermsViaAPI(t, env, adminClient, adminToken, projID, "proj-manager",
-		map[string]any{
-			"projects.read":         true,
-			"projects.write":        true,
-			"project.members.read":  true,
-			"project.members.write": true,
-			"project.roles.read":    true,
-			"project.roles.write":   true,
-		})
-	viewerRoleID := createProjectRoleWithPermsViaAPI(t, env, adminClient, adminToken, projID, "proj-viewer",
-		map[string]any{"projects.read": true})
+	managerRoleID := createProjectRoleViaAPI(t, env, adminClient, adminToken, projID, "proj-manager",
+		"projects:read", "projects:write", "project.members:read", "project.members:write", "roles:read", "roles:write")
+	viewerRoleID := createProjectRoleViaAPI(t, env, adminClient, adminToken, projID, "proj-viewer", "projects:read")
 
 	// Seed and add manager user.
 	seedUser(t, env, "perm-mgr-user", "mgrpass1", "Perm Manager User")
@@ -813,7 +872,7 @@ func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
 
 	t.Run("manager_can_add_member", func(t *testing.T) {
 		req := mustRequest(env.ctx, t, http.MethodPost, membersURL,
-			jsonBody(t, map[string]any{"user_id": extraUser.ID.String(), "project_role_id": viewerRoleID}))
+			jsonBody(t, map[string]any{"user_id": extraUser.ID.String(), "role_ids": []string{viewerRoleID}}))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+mgrToken)
 		resp := mustDo(t, mgrClient, req)
@@ -831,7 +890,7 @@ func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
 	t.Run("viewer_cannot_add_member", func(t *testing.T) {
 		// extraUser is already a member, but 403 is checked before the conflict.
 		req := mustRequest(env.ctx, t, http.MethodPost, membersURL,
-			jsonBody(t, map[string]any{"user_id": extraUser.ID.String(), "project_role_id": viewerRoleID}))
+			jsonBody(t, map[string]any{"user_id": extraUser.ID.String(), "role_ids": []string{viewerRoleID}}))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+viewerToken)
 		resp := mustDo(t, viewerClient, req)
@@ -862,8 +921,8 @@ func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
 
 	t.Run("manager_can_create_project_role", func(t *testing.T) {
 		body := jsonBody(t, map[string]any{
-			"role_name":   "mgr-created-role",
-			"permissions": map[string]any{"projects.read": true},
+			"name":   "mgr-created-role",
+			"policy": projectRolePolicy(projID, "projects:read"),
 		})
 		req := mustRequest(env.ctx, t, http.MethodPost, rolesURL, body)
 		req.Header.Set("Content-Type", "application/json")
@@ -875,8 +934,8 @@ func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
 
 	t.Run("viewer_cannot_create_project_role", func(t *testing.T) {
 		body := jsonBody(t, map[string]any{
-			"role_name":   "viewer-attempted-role",
-			"permissions": map[string]any{"projects.read": true},
+			"name":   "viewer-attempted-role",
+			"policy": projectRolePolicy(projID, "projects:read"),
 		})
 		req := mustRequest(env.ctx, t, http.MethodPost, rolesURL, body)
 		req.Header.Set("Content-Type", "application/json")
@@ -903,18 +962,8 @@ func TestE2EProject_GlobalReadSeesAllProjects(t *testing.T) {
 	// Seed user B who has global projects.read but is NOT a member of A's project.
 	seedUser(t, env, "global-read-user-b", "adminpassB", "Global Read User B")
 	roleName := "GLOBAL_READ_" + uuid.NewString()
-	if err := env.roleRepo.Create(env.ctx, &globalroledom.GlobalRole{
-		ID:   uuid.New(),
-		Name: roleName,
-		Permissions: map[string]any{
-			"projects.read": true,
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}); err != nil {
-		t.Fatalf("create global-read role: %v", err)
-	}
-	assignGlobalRolesByName(t, env, "global-read-user-b", roleName)
+	createPlatformRole(t, env, roleName, "projects:read")
+	assignPlatformRole(t, env, "global-read-user-b", roleName)
 
 	clientB, tokenB := loginUser(t, env, "global-read-user-b", "adminpassB")
 
@@ -1151,7 +1200,7 @@ func TestE2ETaskTypes_SetDefault(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // getMyProjectPermissionsViaAPI calls GET /api/v1/projects/:id/members/me/permissions
-// and returns the decoded permissions map on success.
+// and returns the caller's effective IAM actions in the project, as a set.
 func getMyProjectPermissionsViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID string) map[string]any {
 	t.Helper()
 	url := fmt.Sprintf("%s/api/v1/projects/%s/members/me/permissions", env.base, projectID)
@@ -1163,10 +1212,15 @@ func getMyProjectPermissionsViaAPI(t *testing.T, env *e2eEnv, client *http.Clien
 	var env2 envelope
 	decodeJSON(t, resp, &env2)
 	data := assertDataMap(t, env2)
-	rawPerms := data["permissions"]
-	perms, ok := rawPerms.(map[string]any)
+	raw, ok := data["actions"].([]any)
 	if !ok {
-		t.Fatalf("expected data.permissions to be an object, got %T: %#v", rawPerms, rawPerms)
+		t.Fatalf("expected data.actions to be an array, got %T: %#v", data["actions"], data["actions"])
+	}
+	perms := map[string]any{}
+	for _, a := range raw {
+		if s, ok := a.(string); ok {
+			perms[s] = true
+		}
 	}
 	return perms
 }
@@ -1181,12 +1235,8 @@ func TestE2EGetMyProjectPermissions_Success(t *testing.T) {
 	adminClient, adminToken := projectAdminLogin(t, env, "perms-admin", "permspass1")
 	projID := createProjectViaAPI(t, env, adminClient, adminToken, "perms-project-"+uuid.NewString(), "")
 
-	editorPerms := map[string]any{
-		"tasks.read":   true,
-		"tasks.write":  true,
-		"sprints.read": true,
-	}
-	editorRoleID := createProjectRoleWithPermsViaAPI(t, env, adminClient, adminToken, projID, "editor", editorPerms)
+	editorRoleID := createProjectRoleViaAPI(t, env, adminClient, adminToken, projID, "custom-editor",
+		"tasks:read", "tasks:write", "sprints:read")
 
 	memberUsername := "perms-member-" + uuid.NewString()
 	seedUser(t, env, memberUsername, "permspass1", "Perms Member")
@@ -1199,15 +1249,15 @@ func TestE2EGetMyProjectPermissions_Success(t *testing.T) {
 	memberClient, memberToken := loginUser(t, env, memberUsername, "permspass1")
 	perms := getMyProjectPermissionsViaAPI(t, env, memberClient, memberToken, projID)
 
-	for _, key := range []string{"tasks.read", "tasks.write", "sprints.read"} {
+	for _, key := range []string{"tasks:read", "tasks:write", "sprints:read"} {
 		if v, _ := perms[key].(bool); !v {
-			t.Errorf("expected permission %q=true, got %v", key, perms[key])
+			t.Errorf("expected action %q, got %v", key, perms)
 		}
 	}
 }
 
 // TestE2EGetMyProjectPermissions_NotMember verifies that an authenticated user
-// who is not a project member receives a 404 PROJECT_MEMBER_NOT_FOUND.
+// who is not a project member has no actions there (200, empty list).
 func TestE2EGetMyProjectPermissions_NotMember(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
@@ -1225,8 +1275,12 @@ func TestE2EGetMyProjectPermissions_NotMember(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+nmToken)
 	resp := mustDo(t, nmClient, req)
 	defer func() { _ = resp.Body.Close() }()
-	assertStatus(t, resp, http.StatusNotFound)
-	assertErrorCode(t, resp, "PROJECT_MEMBER_NOT_FOUND")
+	assertStatus(t, resp, http.StatusOK)
+	var body envelope
+	decodeJSON(t, resp, &body)
+	if acts, _ := assertDataMap(t, body)["actions"].([]any); len(acts) != 0 {
+		t.Fatalf("expected no actions for a non-member, got %v", acts)
+	}
 }
 
 // TestE2EGetMyProjectPermissions_Unauthenticated verifies that requests without

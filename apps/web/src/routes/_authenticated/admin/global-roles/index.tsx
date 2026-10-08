@@ -17,12 +17,9 @@ import { SetDefaultRoleDialog } from "@/components/admin/global-roles/SetDefault
 import { activePermissions } from "@/components/admin/global-roles/utils";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { usePermissions } from "@/hooks/use-permissions";
-import {
-	type GlobalRole,
-	globalRolesQueryOptions,
-	myPermissionsQueryOptions,
-} from "@/lib/admin-api";
+import { myPermissionsQueryOptions } from "@/lib/admin-api";
 import { hasPermission } from "@/lib/permissions";
+import { platformRolesQueryOptions, type Role } from "@/lib/role-api";
 
 export const Route = createFileRoute("/_authenticated/admin/global-roles/")({
 	beforeLoad: async ({ context: { queryClient } }) => {
@@ -31,9 +28,9 @@ export const Route = createFileRoute("/_authenticated/admin/global-roles/")({
 			.catch(() => [] as string[]);
 
 		const canAccess =
-			hasPermission(permissions, "global_roles.read") ||
-			hasPermission(permissions, "global_roles.write") ||
-			hasPermission(permissions, "global_roles.assign");
+			hasPermission(permissions, "roles:read") ||
+			hasPermission(permissions, "roles:write") ||
+			hasPermission(permissions, "roles:assign");
 
 		if (!canAccess) {
 			throw redirect({ to: "/home" });
@@ -45,14 +42,14 @@ export const Route = createFileRoute("/_authenticated/admin/global-roles/")({
 function GlobalRolesPage() {
 	const { t } = useTranslation("admin");
 	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
-	const canRead = hasPermission("global_roles.read");
-	const canWrite = hasPermission("global_roles.write");
+	const canRead = hasPermission("roles:read");
+	const canWrite = hasPermission("roles:write");
 
 	const {
 		data: roles = [],
 		isLoading: isDataLoading,
 		isError,
-	} = useQuery({ ...globalRolesQueryOptions, enabled: canRead });
+	} = useQuery({ ...platformRolesQueryOptions, enabled: canRead });
 	// While permissions are still loading, canRead defaults to false same as
 	// a confirmed denial — fold isPermissionsLoading into isLoading (and
 	// guard the noPermission check below) so the page shows the skeleton
@@ -60,12 +57,12 @@ function GlobalRolesPage() {
 	const isLoading = isPermissionsLoading || isDataLoading;
 
 	const [createOpen, setCreateOpen] = useState(false);
-	const [editRole, setEditRole] = useState<GlobalRole | null>(null);
-	const [deleteRole, setDeleteRole] = useState<GlobalRole | null>(null);
-	const [defaultRole, setDefaultRole] = useState<GlobalRole | null>(null);
+	const [editRole, setEditRole] = useState<Role | null>(null);
+	const [deleteRole, setDeleteRole] = useState<Role | null>(null);
+	const [defaultRole, setDefaultRole] = useState<Role | null>(null);
 
 	const totalGranted = roles.reduce(
-		(sum, r) => sum + activePermissions(r.permissions).length,
+		(sum, r) => sum + activePermissions(r.policy).length,
 		0,
 	);
 

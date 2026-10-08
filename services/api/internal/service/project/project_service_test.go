@@ -3,16 +3,18 @@ package projectsvc
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/Paca-AI/api/internal/bootstrap/defaultroles"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 )
 
 // ---------------------------------------------------------------------------
@@ -62,14 +64,15 @@ func (f *fakeAvatarService) DeleteAvatarObjects(_ context.Context, keys ...*stri
 type fakeProjectRepo struct {
 	mu       sync.Mutex
 	projects map[uuid.UUID]*projectdom.Project
-	roles    map[uuid.UUID]*projectdom.ProjectRole
 	members  []projectdom.ProjectMember
+	// setups records what Create was asked to write next to each project.
+	setups map[uuid.UUID]projectdom.ProjectSetup
 }
 
 func newFakeProjectRepo() *fakeProjectRepo {
 	return &fakeProjectRepo{
 		projects: make(map[uuid.UUID]*projectdom.Project),
-		roles:    make(map[uuid.UUID]*projectdom.ProjectRole),
+		setups:   make(map[uuid.UUID]projectdom.ProjectSetup),
 	}
 }
 
@@ -88,10 +91,11 @@ func (r *fakeProjectRepo) FindByID(_ context.Context, id uuid.UUID) (*projectdom
 	}
 	return p, nil
 }
-func (r *fakeProjectRepo) Create(_ context.Context, p *projectdom.Project) error {
+func (r *fakeProjectRepo) Create(_ context.Context, p *projectdom.Project, setup projectdom.ProjectSetup) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.projects[p.ID] = p
+	r.setups[p.ID] = setup
 	return nil
 }
 func (r *fakeProjectRepo) Update(_ context.Context, p *projectdom.Project) error {
@@ -118,32 +122,6 @@ func (r *fakeProjectRepo) Delete(_ context.Context, id uuid.UUID) error {
 	delete(r.projects, id)
 	return nil
 }
-func (r *fakeProjectRepo) ListRoles(_ context.Context, _ uuid.UUID) ([]*projectdom.ProjectRole, error) {
-	return nil, nil
-}
-func (r *fakeProjectRepo) FindRoleByID(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	role, ok := r.roles[id]
-	if !ok {
-		return nil, projectdom.ErrRoleNotFound
-	}
-	return role, nil
-}
-func (r *fakeProjectRepo) FindRoleByName(_ context.Context, _ uuid.UUID, _ string) (*projectdom.ProjectRole, error) {
-	return nil, projectdom.ErrRoleNotFound
-}
-func (r *fakeProjectRepo) CreateRole(_ context.Context, role *projectdom.ProjectRole) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.roles[role.ID] = role
-	return nil
-}
-func (r *fakeProjectRepo) UpdateRole(_ context.Context, _ *projectdom.ProjectRole) error { return nil }
-func (r *fakeProjectRepo) DeleteRole(_ context.Context, _ uuid.UUID) error               { return nil }
-func (r *fakeProjectRepo) CountMembersWithRole(_ context.Context, _ uuid.UUID) (int64, error) {
-	return 0, nil
-}
 func (r *fakeProjectRepo) ListMembers(_ context.Context, _ uuid.UUID) ([]*projectdom.ProjectMember, error) {
 	return nil, nil
 }
@@ -159,13 +137,10 @@ func (r *fakeProjectRepo) FindMemberByAgent(_ context.Context, _ uuid.UUID, _ uu
 func (r *fakeProjectRepo) FindMemberByActor(_ context.Context, _, _ uuid.UUID, _ *uuid.UUID) (*projectdom.ProjectMember, error) {
 	return nil, projectdom.ErrMemberNotFound
 }
-func (r *fakeProjectRepo) AddMember(_ context.Context, m *projectdom.ProjectMember) error {
+func (r *fakeProjectRepo) AddMember(_ context.Context, m *projectdom.ProjectMember, _ []uuid.UUID, _ *uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.members = append(r.members, *m)
-	return nil
-}
-func (r *fakeProjectRepo) UpdateMemberRole(_ context.Context, _, _, _ uuid.UUID) error {
 	return nil
 }
 func (r *fakeProjectRepo) RemoveMember(_ context.Context, _, _ uuid.UUID) error { return nil }
@@ -175,11 +150,10 @@ func (r *fakeProjectRepo) FindMemberByUserProject(_ context.Context, _, _ uuid.U
 func (r *fakeProjectRepo) FindMemberByID(_ context.Context, _ uuid.UUID) (*projectdom.ProjectMember, error) {
 	return nil, projectdom.ErrMemberNotFound
 }
-func (r *fakeProjectRepo) AddAgentMember(_ context.Context, _, _, _, _ uuid.UUID) error { return nil }
-func (r *fakeProjectRepo) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error    { return nil }
-func (r *fakeProjectRepo) UpdateMemberRoleByMemberID(_ context.Context, _, _ uuid.UUID) error {
+func (r *fakeProjectRepo) AddAgentMember(_ context.Context, _, _, _ uuid.UUID, _ []uuid.UUID, _ *uuid.UUID) error {
 	return nil
 }
+func (r *fakeProjectRepo) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error { return nil }
 func (r *fakeProjectRepo) UpdateMemberDescription(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
 }
@@ -359,56 +333,53 @@ func TestCreate_SeedsWithCorrectTimestamps(t *testing.T) {
 	}
 }
 
-// TestCreate_EditorRoleHasNoSettingsWritePermissions is a regression test:
-// the seeded "Editor" role previously granted project.settings.{task_types,
-// task_statuses,custom_fields}.write, letting any editor redefine the
-// project's task schema — an Admin-level (project configuration) action, not
-// a content-editing one. Nothing exercised this distinction before, so the
-// over-grant shipped unnoticed.
-func TestCreate_EditorRoleHasNoSettingsWritePermissions(t *testing.T) {
+// TestCreate_InstantiatesRoleTemplatesForTheProject: a new project gets the
+// Admin, Editor, Member and Viewer roles with the project's real id in their
+// policies (no template token left), and the creator is set up as an Admin.
+func TestCreate_InstantiatesRoleTemplatesForTheProject(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeProjectRepo()
-	tb := &fakeTaskBootstrapper{}
-	svc := New(repo, tb, nil)
+	svc := New(repo, &fakeTaskBootstrapper{}, nil)
 
 	creatorID := uuid.New()
-	_, err := svc.Create(ctx, projectdom.CreateProjectInput{
-		Name:      "Editor Permissions Test",
-		CreatedBy: &creatorID,
-	})
+	p, err := svc.Create(ctx, projectdom.CreateProjectInput{Name: "Templates", CreatedBy: &creatorID})
 	if err != nil {
 		t.Fatalf("Create returned unexpected error: %v", err)
 	}
-
-	var editor *projectdom.ProjectRole
-	for _, r := range repo.roles {
-		if r.RoleName == "Editor" {
-			editor = r
-			break
+	setup := repo.setups[p.ID]
+	if setup.Creator == nil || *setup.Creator != creatorID || setup.CreatorRole != "Admin" {
+		t.Fatalf("creator setup = %+v, want the creator as Admin", setup)
+	}
+	byName := map[string]projectdom.SetupRole{}
+	for _, r := range setup.Roles {
+		byName[r.Name] = r
+		if strings.Contains(string(r.Policy), defaultroles.ProjectIDToken) {
+			t.Errorf("%s: template token left in %s", r.Name, r.Policy)
+		}
+		if !strings.Contains(string(r.Policy), p.ID.String()) {
+			t.Errorf("%s: policy does not name the project", r.Name)
+		}
+		pol, err := iam.ParsePolicy(r.Policy)
+		if err != nil {
+			t.Fatalf("%s: %v", r.Name, err)
+		}
+		if issues := iam.Validate(pol, iam.NewRegistry(), iam.NewAttributeSchema()); len(issues) != 0 {
+			t.Errorf("%s: invalid policy: %v", r.Name, issues)
 		}
 	}
-	if editor == nil {
-		t.Fatal("expected a seeded \"Editor\" role, found none")
-	}
-
-	writePerms := []authz.Permission{
-		authz.PermissionProjectSettingsTaskTypesWrite,
-		authz.PermissionProjectSettingsTaskStatusesWrite,
-		authz.PermissionProjectSettingsCustomFieldsWrite,
-		authz.PermissionProjectSettingsAll,
-	}
-	for _, perm := range writePerms {
-		if granted, _ := editor.Permissions[string(perm)].(bool); granted {
-			t.Errorf("Editor role must not grant %q", perm)
+	for _, n := range []string{"Admin", "Editor", "Viewer"} {
+		if _, ok := byName[n]; !ok {
+			t.Errorf("missing project role %q", n)
 		}
 	}
-
-	// There's no dedicated read permission for the schema at all (see
-	// authz.PermissionProjectSettingsTaskTypesWrite's doc comment) — viewing
-	// task types/statuses/custom fields is implied by tasks.read, which
-	// Editor must still hold.
-	if granted, _ := editor.Permissions[string(authz.PermissionTasksRead)].(bool); !granted {
-		t.Error("Editor role should still grant tasks.read")
+	// Editor must not redefine the project's task schema (an Admin-level action).
+	editor, _ := iam.ParsePolicy(byName["Editor"].Policy)
+	for _, st := range editor.Statements {
+		for _, a := range st.Actions {
+			if strings.HasPrefix(a, "project.settings") || a == "*" {
+				t.Errorf("Editor grants %q", a)
+			}
+		}
 	}
 }
 
@@ -602,7 +573,7 @@ func TestCompleteAvatarUpload_SwapsKeysAndDeletesOld(t *testing.T) {
 		AvatarKey:      &oldKey,
 		AvatarThumbKey: &oldThumbKey,
 		CreatedAt:      time.Now(),
-	}); err != nil {
+	}, projectdom.ProjectSetup{}); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
 
@@ -645,7 +616,7 @@ func TestRemoveAvatar_NoExistingAvatar_NoOps(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeProjectRepo()
 	projectID := uuid.New()
-	if err := repo.Create(ctx, &projectdom.Project{ID: projectID, Name: "No Avatar", CreatedAt: time.Now()}); err != nil {
+	if err := repo.Create(ctx, &projectdom.Project{ID: projectID, Name: "No Avatar", CreatedAt: time.Now()}, projectdom.ProjectSetup{}); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
 
@@ -670,7 +641,7 @@ func TestRemoveAvatar_ClearsKeysAndDeletesObjects(t *testing.T) {
 	projectID := uuid.New()
 	if err := repo.Create(ctx, &projectdom.Project{
 		ID: projectID, Name: "Has Avatar", AvatarKey: &key, AvatarThumbKey: &thumbKey, CreatedAt: time.Now(),
-	}); err != nil {
+	}, projectdom.ProjectSetup{}); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
 

@@ -110,8 +110,8 @@ Tracked fields: `title`, `status_id`, `assignee_id`, `reporter_id`,
 ## API Endpoints
 
 All endpoints are under `/api/v1/projects/:projectId/tasks/:taskId`.
-Authentication is required. Project `tasks.read` permission is required for
-reading; `tasks.write` is required for posting/editing/deleting comments.
+Authentication is required. Project `tasks:read` permission is required for
+reading; `tasks:write` is required for posting/editing/deleting comments.
 
 ### List Activities
 
@@ -264,7 +264,7 @@ Service methods read it with `middleware.ActorIDFromContext(ctx)`.
 
 | Action              | Required permission      |
 |---------------------|--------------------------|
-| List activities     | `tasks.read` (project)   |
-| Post comment        | `tasks.write` (project)  |
-| Edit own comment    | `tasks.write` (project)  |
-| Delete own comment  | `tasks.write` (project)  |
+| List activities     | `tasks:read` (project)   |
+| Post comment        | `tasks:write` (project)  |
+| Edit own comment    | `tasks:write` (project)  |
+| Delete own comment  | `tasks:write` (project)  |

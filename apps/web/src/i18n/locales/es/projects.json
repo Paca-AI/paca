@@ -102,7 +102,6 @@
 			"configure": "Configurar",
 			"delete": "Eliminar",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "En línea",
 			"acpStatusDisconnected": "Desconectado",
 			"deleteDialog": {
@@ -173,7 +172,6 @@
 				"skills": "Skills",
 				"envVars": "Entorno",
 				"globalRole": "Rol global",
-				"access": "Access",
 				"activity": "Actividad"
 			},
 			"globalRole": {
@@ -348,15 +346,6 @@
 					"description": "Incluidas con Paca y disponibles para todos los agentes. No se pueden editar."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"activity": {
 				"commented": "comentó",
 				"sourceType": {
@@ -398,8 +387,6 @@
 			"connect": "Conectar",
 			"conversationEnded": "Esta conversación ha finalizado.",
 			"textOnlyMessage": "Solo se admiten mensajes de texto.",
-			"agentAccessRestricted": "Este agente tiene acceso restringido. Pide a un administrador del proyecto que te conceda acceso antes de poder chatear con él.",
-			"environmentAccessRestricted": "El entorno de esta conversación tiene acceso restringido. Pide a un administrador del proyecto que te conceda acceso antes de poder chatear con este agente.",
 			"chatNoPermission": "No tienes permiso para enviar mensajes en esta conversación.",
 			"failed": "La conversación falló",
 			"noOutput": "El agente no produjo ninguna salida.",
@@ -496,7 +483,6 @@
 			"subtitle": "Sandboxes persistentes y con nombre a los que tus agentes pueden conectarse entre conversaciones",
 			"newEnvironment": "Nuevo entorno",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "Aún no hay entornos",
 				"description": "Crea un entorno estático para mantener archivos y procesos en segundo plano activos entre conversaciones, en lugar de un sandbox desechable nuevo cada vez.",
@@ -539,8 +525,7 @@
 			"tabs": {
 				"overview": "Resumen",
 				"folders": "Carpetas",
-				"portForwards": "Reenvíos de puertos",
-				"access": "Access"
+				"portForwards": "Reenvíos de puertos"
 			},
 			"busy": "Este entorno ya se está iniciando, deteniendo o reiniciando. Inténtalo de nuevo en un momento.",
 			"actionFailed": "Eso no funcionó. Inténtalo de nuevo.",
@@ -656,15 +641,6 @@
 					"restartFailed": "No se pudo reiniciar el entorno. Inténtalo de nuevo."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"sshKeys": {
 				"connectHint": "Sustituye <bastion-host> por la dirección del bastión SSH configurado en este despliegue.",
 				"connectUnavailable": "El acceso SSH aún no está configurado en este despliegue.",
@@ -763,7 +739,6 @@
 			"deleteRole": "Eliminar rol",
 			"errors": {
 				"notFound": "Este rol ya no existe.",
-				"hasMembers": "Este rol no se puede eliminar porque todavía está asignado a uno o más miembros.",
 				"forbidden": "No tienes permiso para eliminar este rol.",
 				"internalError": "Algo salió mal. Inténtalo de nuevo.",
 				"generic": "Algo salió mal."
@@ -777,23 +752,18 @@
 			"roleNameLabel": "Nombre del rol",
 			"roleNamePlaceholder": "p. ej. PROJECT_REVIEWER",
 			"permissionsLabel": "Permisos",
-			"fullAccessBadge": "Acceso total",
 			"fullAccessDescription": "Este rol incluye automáticamente todos los permisos, incluidos los que se añadan en el futuro. Cambiar cualquier permiso a continuación lo convertirá en un conjunto fijo con los permisos actuales.",
 			"enabledCount_one": "{{count}} habilitado",
 			"enabledCount_other": "{{count}} habilitados",
 			"cancel": "Cancelar",
 			"saveChanges": "Guardar cambios",
-			"createRole": "Crear rol",
-			"errors": {
-				"nameTaken": "Ya existe un rol con este nombre.",
-				"nameInvalid": "El nombre del rol debe usar letras mayúsculas, números y guiones bajos.",
-				"notFound": "Este rol ya no existe. Puede que ya haya sido eliminado.",
-				"forbidden": "No tienes permiso para realizar esta acción.",
-				"internalError": "Algo salió mal en el servidor. Inténtalo de nuevo.",
-				"generic": "Algo salió mal."
-			}
+			"createRole": "Crear rol"
 		},
 		"permissions": {
+			"projectsRead": {
+				"label": "Ver proyecto",
+				"description": "Abrir el proyecto y ver sus datos básicos"
+			},
 			"projectsWrite": {
 				"label": "Editar proyecto",
 				"description": "Actualizar el nombre, la descripción y la configuración del proyecto"
@@ -808,7 +778,7 @@
 			},
 			"membersWrite": {
 				"label": "Gestionar miembros",
-				"description": "Añadir, eliminar y reasignar miembros del proyecto"
+				"description": "Añadir y quitar miembros del proyecto (cambiar sus roles requiere Asignar roles)"
 			},
 			"rolesRead": {
 				"label": "Ver roles",
@@ -817,6 +787,10 @@
 			"rolesWrite": {
 				"label": "Gestionar roles",
 				"description": "Crear, editar y eliminar roles del proyecto"
+			},
+			"rolesAssign": {
+				"label": "Asignar roles",
+				"description": "Dar a miembros y agentes cualquier rol de este proyecto, o quitárselos"
 			},
 			"settingsTaskTypesWrite": {
 				"label": "Manage Task Types",
@@ -973,7 +947,6 @@
 			"title": "Roles del proyecto",
 			"description": "Administra los roles y permisos de los miembros de este proyecto.",
 			"newRole": "Nuevo rol",
-			"noPermissionsAssigned": "Sin permisos asignados",
 			"editRole": "Editar rol",
 			"deleteRole": "Eliminar rol",
 			"rolesDefined_one": "rol definido",
@@ -986,14 +959,15 @@
 			},
 			"table": {
 				"name": "Nombre",
-				"permissions": "Permisos",
+				"description": "Descripción",
 				"created": "Creado"
 			},
-			"systemRolesNote": "Los roles del sistema son plantillas compartidas y no se pueden editar ni eliminar.",
+			"systemRolesNote": "Los roles compartidos del espacio de trabajo solo se pueden cambiar en los ajustes de roles del espacio de trabajo.",
 			"noPermission": {
 				"title": "You don't have permission to view roles",
 				"description": "Ask a project admin to grant you the project.roles.read permission."
-			}
+			},
+			"noDescription": "Sin descripción"
 		},
 		"taskStatuses": {
 			"title": "Estados de tarea",
@@ -1278,12 +1252,12 @@
 			"noUsersAvailable": "No hay usuarios disponibles para añadir.",
 			"loadingMore": "Cargando…",
 			"roleLabel": "Rol",
-			"rolePlaceholder": "Selecciona un rol…",
 			"cancel": "Cancelar",
 			"addMember": "Añadir miembro",
 			"errors": {
 				"addFailed": "No se pudo añadir al miembro. Inténtalo de nuevo.",
 				"alreadyAdded": "Este usuario o agente ya es miembro del proyecto.",
+				"roleForbidden": "No tienes permiso para asignar uno de estos roles.",
 				"roleNotFound": "Ese rol ya no existe. Elige otro rol."
 			},
 			"modeUser": "Usuario",
@@ -1295,12 +1269,15 @@
 			"changeRole": "Cambiar rol",
 			"errors": {
 				"memberNotFound": "Este miembro ya no forma parte del proyecto.",
+				"roleForbidden": "No tienes permiso para asignar o quitar uno de estos roles.",
 				"roleNotFound": "Ese rol ya no existe.",
 				"changeFailed": "No se pudo cambiar el rol."
 			}
 		},
 		"memberRow": {
-			"removeMember": "Eliminar miembro"
+			"removeMember": "Eliminar miembro",
+			"agentBadge": "Agente",
+			"actions": "Acciones del miembro"
 		},
 		"removeDialog": {
 			"title": "Eliminar miembro",

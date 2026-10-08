@@ -166,6 +166,34 @@
 				"prefixInvalid": "접두사는 1~10자의 대문자/숫자여야 합니다(예: PACA).",
 				"generic": "문제가 발생했습니다. 다시 시도해 주세요."
 			}
+		},
+		"legacyPluginsBanner": {
+			"title_one": "플러그인 업데이트 필요",
+			"title_other": "플러그인 업데이트 필요",
+			"description_one": "{{names}}은(는) 이전 권한 모델인 requirePermissions를 아직 사용합니다. 계속 작동하지만, 작성자가 requireActions를 사용하는 버전을 게시할 때까지 다시 설치하거나 업그레이드할 수 없습니다.",
+			"description_other": "{{names}}은(는) 이전 권한 모델인 requirePermissions를 아직 사용합니다. 계속 작동하지만, 작성자가 requireActions를 사용하는 버전을 게시할 때까지 다시 설치하거나 업그레이드할 수 없습니다.",
+			"manage": "플러그인 관리",
+			"dismiss": "닫기"
 		}
+	},
+	"roleBadge": {
+		"fullAccess": "전체 권한",
+		"builtIn": "기본 제공",
+		"default": "기본",
+		"current": "현재",
+		"noDescription": "설명 없음",
+		"noRoles": "역할 없음",
+		"showMore": "역할 더 보기 (+{{count}})",
+		"allRoles": "모든 역할 ({{count}})"
+	},
+	"roleSelect": {
+		"searchLabel": "역할 검색",
+		"searchPlaceholder": "역할 검색…",
+		"clearSearch": "검색 지우기",
+		"noMatch": "“{{query}}”와(과) 일치하는 역할이 없습니다",
+		"selectedCount": "선택됨: {{count}}",
+		"minOne": "역할이 하나 이상 필요합니다.",
+		"clear": "지우기",
+		"placeholder": "역할 선택"
 	}
 }

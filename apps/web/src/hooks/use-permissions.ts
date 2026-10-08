@@ -1,23 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffectiveActions } from "@/hooks/use-effective-actions";
 
-import { myPermissionsQueryOptions } from "@/lib/admin-api";
-import {
-	hasAnyPermission as checkAnyPermission,
-	hasPermission as checkPermission,
-} from "@/lib/permissions";
-
+/** The caller's workspace-wide effective actions; a thin wrapper over
+ *  `useEffectiveActions()` kept so call sites do not change. */
 export function usePermissions() {
-	const { data: permissions = [], isLoading } = useQuery(
-		myPermissionsQueryOptions,
-	);
+	const { actions, has, hasAny, isLoading } = useEffectiveActions();
 
-	const hasPermission = (permission: string) => {
-		return checkPermission(permissions, permission);
+	return {
+		permissions: actions,
+		hasPermission: has,
+		hasAnyPermission: hasAny,
+		isLoading,
 	};
-
-	const hasAnyPermission = (perms: string[]) => {
-		return checkAnyPermission(permissions, perms);
-	};
-
-	return { permissions, hasPermission, hasAnyPermission, isLoading };
 }

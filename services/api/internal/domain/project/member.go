@@ -4,18 +4,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 )
 
-// ProjectMember represents a member (human or agent) of a project with an assigned role.
+// ProjectMember represents a member (human or agent) of a project.
 type ProjectMember struct {
-	ID            uuid.UUID
-	ProjectID     uuid.UUID
-	UserID        uuid.UUID // zero-value for agent members
-	ProjectRoleID uuid.UUID
+	ID        uuid.UUID
+	ProjectID uuid.UUID
+	UserID    uuid.UUID // zero-value for agent members
+	// Roles are the roles attached to the member inside this project (their
+	// project-scoped role attachments), sorted by name. Populated by reads.
+	Roles []roledom.Summary
 	// Populated by JOIN for display purposes.
 	Username  string
 	FullName  string
-	RoleName  string
 	CreatedAt time.Time
 	DeletedAt *time.Time
 	// Description is free text about this member's role/context on this
@@ -63,4 +66,13 @@ func (m *ProjectMember) DisplayName() string {
 		return m.AgentName
 	}
 	return m.FullName
+}
+
+// RoleNames returns the names of the member's roles in the project.
+func (m *ProjectMember) RoleNames() []string {
+	out := make([]string, 0, len(m.Roles))
+	for _, r := range m.Roles {
+		out = append(out, r.Name)
+	}
+	return out
 }

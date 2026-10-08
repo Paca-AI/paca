@@ -166,6 +166,34 @@
 				"prefixInvalid": "Prefix must be 1–10 uppercase letters/digits (e.g. PACA).",
 				"generic": "Something went wrong. Please try again."
 			}
+		},
+		"legacyPluginsBanner": {
+			"title_one": "Plugin needs an update",
+			"title_other": "Plugins need an update",
+			"description_one": "{{names}} still uses the old requirePermissions permission model. It keeps working, but it can't be reinstalled or upgraded until its author publishes a version that uses requireActions.",
+			"description_other": "{{names}} still use the old requirePermissions permission model. They keep working, but they can't be reinstalled or upgraded until their authors publish versions that use requireActions.",
+			"manage": "Manage plugins",
+			"dismiss": "Dismiss"
 		}
+	},
+	"roleBadge": {
+		"fullAccess": "Full access",
+		"builtIn": "Built-in",
+		"default": "Default",
+		"current": "Current",
+		"noDescription": "No description",
+		"noRoles": "No roles",
+		"showMore": "Show more roles (+{{count}})",
+		"allRoles": "All roles ({{count}})"
+	},
+	"roleSelect": {
+		"searchLabel": "Search roles",
+		"searchPlaceholder": "Search roles…",
+		"clearSearch": "Clear search",
+		"noMatch": "No roles match “{{query}}”",
+		"selectedCount": "Selected: {{count}}",
+		"minOne": "At least one role is required.",
+		"clear": "Clear",
+		"placeholder": "Select roles"
 	}
 }

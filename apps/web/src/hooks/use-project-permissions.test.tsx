@@ -1,9 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockUseQuery, mockCheckPermission } = vi.hoisted(() => ({
+const { mockUseQuery } = vi.hoisted(() => ({
 	mockUseQuery: vi.fn(),
-	mockCheckPermission: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-query", async () => {
@@ -16,10 +15,6 @@ vi.mock("@tanstack/react-query", async () => {
 		useQuery: mockUseQuery,
 	};
 });
-
-vi.mock("@/lib/permissions", () => ({
-	hasPermission: mockCheckPermission,
-}));
 
 import { useProjectPermissions } from "./use-project-permissions";
 
@@ -46,7 +41,7 @@ describe("useProjectPermissions", () => {
 
 	it("reports isLoading false once the permissions map has loaded", () => {
 		mockUseQuery.mockReturnValue({
-			data: { "tasks.write": true },
+			data: ["tasks:write"],
 			isLoading: false,
 		});
 
@@ -55,20 +50,16 @@ describe("useProjectPermissions", () => {
 		expect(result.current.isLoading).toBe(false);
 	});
 
-	it("delegates hasProjectPermission checks to the permissions helper with only granted keys", () => {
+	it("answers hasProjectPermission from the granted actions, wildcards included", () => {
 		mockUseQuery.mockReturnValue({
-			data: { "tasks.write": true, "tasks.delete": false },
+			data: ["tasks:*", "docs:read"],
 			isLoading: false,
 		});
-		mockCheckPermission.mockReturnValue(true);
 
 		const { result } = renderHook(() => useProjectPermissions("proj-1"));
-		const canWrite = result.current.hasProjectPermission("tasks.write");
 
-		expect(canWrite).toBe(true);
-		expect(mockCheckPermission).toHaveBeenCalledWith(
-			["tasks.write"],
-			"tasks.write",
-		);
+		expect(result.current.hasProjectPermission("tasks:write")).toBe(true);
+		expect(result.current.hasProjectPermission("docs:read")).toBe(true);
+		expect(result.current.hasProjectPermission("docs:write")).toBe(false);
 	});
 });

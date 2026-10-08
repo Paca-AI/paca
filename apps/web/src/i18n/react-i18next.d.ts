@@ -8,6 +8,7 @@ import errors from "./locales/en/errors.json";
 import plugins from "./locales/en/plugins.json";
 import profile from "./locales/en/profile.json";
 import projects from "./locales/en/projects.json";
+import roles from "./locales/en/roles.json";
 import shared from "./locales/en/shared.json";
 import shortcuts from "./locales/en/shortcuts.json";
 
@@ -23,6 +24,7 @@ declare module "i18next" {
 			plugins: typeof plugins;
 			profile: typeof profile;
 			projects: typeof projects;
+			roles: typeof roles;
 			shared: typeof shared;
 			shortcuts: typeof shortcuts;
 		};

@@ -89,7 +89,7 @@ function AutomationBuilderPage() {
 	const { projectId, automationId } = Route.useParams();
 	const qc = useQueryClient();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canManage = hasProjectPermission("workflows.write");
+	const canManage = hasProjectPermission("workflows:write");
 
 	const { data: graph } = useQuery(
 		automationQueryOptions(projectId, automationId),

@@ -47,7 +47,7 @@ const mockUser: User = {
 	id: "u1",
 	username: "alice",
 	full_name: "Alice Smith",
-	role: "Admin",
+	roles: [{ id: "r-Admin", name: "Admin" }],
 	must_change_password: false,
 	created_at: "2026-01-15T00:00:00.000Z",
 };

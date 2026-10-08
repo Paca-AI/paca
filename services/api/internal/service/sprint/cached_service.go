@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/cache"
 )
 
@@ -54,7 +55,9 @@ func sprintItemKey(id uuid.UUID) string {
 // ListSprints returns all sprints for a project, reading from cache when
 // available and populating it on a miss.
 func (c *CachedSprintService) ListSprints(ctx context.Context, projectID uuid.UUID) ([]*sprintdom.Sprint, error) {
-	if c.ttl == 0 {
+	// A scoped list is specific to its caller: never read or fill the shared
+	// per-project entry with it.
+	if c.ttl == 0 || iam.Restricted(ctx, "sprint") {
 		return c.svc.ListSprints(ctx, projectID)
 	}
 	key := sprintListKey(projectID)

@@ -250,6 +250,7 @@ interface ProjectMember {
   id: string;
   username: string;
   full_name: string;
+  /** Names of the roles the member holds in the project, comma-separated (a member can hold several). */
   role_name: string;
 }
 

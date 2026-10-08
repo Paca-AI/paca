@@ -166,6 +166,34 @@
 				"prefixInvalid": "Le préfixe doit comporter entre 1 et 10 lettres majuscules/chiffres (ex. PACA).",
 				"generic": "Une erreur s'est produite. Veuillez réessayer."
 			}
+		},
+		"legacyPluginsBanner": {
+			"title_one": "Un plugin doit être mis à jour",
+			"title_other": "Des plugins doivent être mis à jour",
+			"description_one": "{{names}} utilise encore l'ancien modèle de permissions requirePermissions. Il continue de fonctionner, mais il ne peut être ni réinstallé ni mis à niveau tant que son auteur n'a pas publié une version qui utilise requireActions.",
+			"description_other": "{{names}} utilisent encore l'ancien modèle de permissions requirePermissions. Ils continuent de fonctionner, mais ils ne peuvent être ni réinstallés ni mis à niveau tant que leurs auteurs n'ont pas publié des versions qui utilisent requireActions.",
+			"manage": "Gérer les plugins",
+			"dismiss": "Ignorer"
 		}
+	},
+	"roleBadge": {
+		"fullAccess": "Accès total",
+		"builtIn": "Intégré",
+		"default": "Par défaut",
+		"current": "Actuel",
+		"noDescription": "Aucune description",
+		"noRoles": "Aucun rôle",
+		"showMore": "Afficher plus de rôles (+{{count}})",
+		"allRoles": "Tous les rôles ({{count}})"
+	},
+	"roleSelect": {
+		"searchLabel": "Rechercher des rôles",
+		"searchPlaceholder": "Rechercher des rôles…",
+		"clearSearch": "Effacer la recherche",
+		"noMatch": "Aucun rôle ne correspond à « {{query}} »",
+		"selectedCount": "Sélectionnés : {{count}}",
+		"minOne": "Au moins un rôle est requis.",
+		"clear": "Effacer",
+		"placeholder": "Sélectionner des rôles"
 	}
 }

@@ -25,6 +25,7 @@ import (
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -33,6 +34,7 @@ import (
 
 // TaskHandler handles task management endpoints.
 type TaskHandler struct {
+	listScoper      ListScoper
 	svc             taskdom.Service
 	viewSvc         sprintdom.ViewService
 	activitySvc     taskdom.ActivityService
@@ -55,6 +57,12 @@ func NewTaskHandler(svc taskdom.Service, viewSvc sprintdom.ViewService, activity
 
 // TaskHandlerOption is a functional option for TaskHandler.
 type TaskHandlerOption func(*TaskHandler)
+
+// WithTaskListScoper limits task lists, counts and sums to the tasks the
+// caller may read, inside the queries (see scopedContext).
+func WithTaskListScoper(s ListScoper) TaskHandlerOption {
+	return func(h *TaskHandler) { h.listScoper = s }
+}
 
 // WithTaskPublisher attaches a Valkey publisher used to enqueue assignment
 // events for the NotificationConsumer worker.
@@ -705,6 +713,14 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 	sort := parseTaskSort(r.Context(), h.svc, projectID, r.URL.Query().Get("sort_by"))
 
+	// The page, the total and the sum are all computed over the tasks the
+	// caller may read: the scope is applied by the repository in each query.
+	scopeCtx, err := scopedContext(r, h.listScoper, iam.ActionTasksRead, projectID, "task")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
 	var posMap map[uuid.UUID]*sprintdom.ViewTaskPosition
 	if raw := r.URL.Query().Get("view_id"); raw != "" {
 		viewID, err := uuid.Parse(raw)
@@ -712,7 +728,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid view_id"))
 			return
 		}
-		positions, err := h.viewSvc.ListTaskPositions(r.Context(), projectID, viewID)
+		positions, err := h.viewSvc.ListTaskPositions(scopeCtx, projectID, viewID)
 		if err != nil {
 			presenter.Error(w, r, err)
 			return
@@ -743,7 +759,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		totalCount int64
 		fieldSumV  float64
 	)
-	g, gctx := errgroup.WithContext(r.Context())
+	g, gctx := errgroup.WithContext(scopeCtx)
 	g.Go(func() error {
 		var err error
 		tasks, hasMore, err = h.svc.ListTasks(gctx, projectID, filter, pageSize, sort)
@@ -853,6 +869,7 @@ func (h *TaskHandler) ListAssignedToMe(w http.ResponseWriter, r *http.Request) {
 	g.SetLimit(assignedToMeMemberLookupConcurrency)
 	var mu sync.Mutex
 	var memberIDs []uuid.UUID
+	var memberProjects []uuid.UUID
 	for _, p := range projects {
 		projectID := p.ID
 		g.Go(func() error {
@@ -864,6 +881,7 @@ func (h *TaskHandler) ListAssignedToMe(w http.ResponseWriter, r *http.Request) {
 				if m.UserID == userID {
 					mu.Lock()
 					memberIDs = append(memberIDs, m.ID)
+					memberProjects = append(memberProjects, projectID)
 					mu.Unlock()
 					break
 				}
@@ -880,7 +898,27 @@ func (h *TaskHandler) ListAssignedToMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, hasMore, err := h.svc.ListAssignedTasks(r.Context(), memberIDs, pageSize, cursor)
+	// Each project the caller has an assignment in contributes the scope of the
+	// tasks they may read there, applied by the repository inside the query.
+	listCtx := r.Context()
+	if h.listScoper != nil {
+		principal, perr := middleware.IAMPrincipalFrom(r)
+		if perr != nil {
+			presenter.Error(w, r, perr)
+			return
+		}
+		byProject := map[string]*iam.Node{}
+		for _, pid := range memberProjects {
+			n, serr := h.listScoper.ListScope(r.Context(), principal, string(iam.ActionTasksRead), pid.String(), "task")
+			if serr != nil {
+				presenter.Error(w, r, serr)
+				return
+			}
+			byProject[pid.String()] = n
+		}
+		listCtx = iam.WithProjectScopes(listCtx, "task", byProject)
+	}
+	tasks, hasMore, err := h.svc.ListAssignedTasks(listCtx, memberIDs, pageSize, cursor)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

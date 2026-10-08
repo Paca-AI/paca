@@ -25,8 +25,7 @@
 			"description": "위의 버튼을 사용하여 새 사용자를 만들 수는 있습니다."
 		},
 		"table": {
-			"columnUsername": "사용자 이름",
-			"columnFullName": "전체 이름",
+			"columnUser": "사용자",
 			"columnRole": "역할",
 			"columnCreated": "생성일",
 			"pwdResetBadge": "비밀번호 재설정",
@@ -35,7 +34,9 @@
 			"resetPasswordAction": "비밀번호 재설정",
 			"editAction": "사용자 수정",
 			"changeRoleAction": "역할 변경",
-			"deleteAction": "사용자 삭제"
+			"deleteAction": "사용자 삭제",
+			"pwdResetHint": "이 사용자는 다음 로그인 시 새 비밀번호를 설정해야 합니다",
+			"columnActions": "작업"
 		},
 		"formDialog": {
 			"createdTitle": "사용자가 생성되었습니다",
@@ -170,14 +171,16 @@
 		},
 		"table": {
 			"columnName": "이름",
-			"columnPermissions": "권한",
+			"columnDescription": "설명",
 			"columnDefault": "기본값",
 			"noPermissionsAssigned": "할당된 권한 없음",
 			"default": "기본값",
 			"setDefaultAction": "기본 역할로 설정",
 			"editAction": "역할 수정",
 			"deleteAction": "역할 삭제",
-			"deleteDefaultDisabled": "기본 역할은 삭제할 수 없습니다. 먼저 다른 역할을 기본값으로 설정하세요."
+			"deleteDefaultDisabled": "기본 역할은 삭제할 수 없습니다. 먼저 다른 역할을 기본값으로 설정하세요.",
+			"builtIn": "기본 제공 역할",
+			"noDescription": "설명 없음"
 		},
 		"formDialog": {
 			"editTitle": "역할 수정",
@@ -192,16 +195,7 @@
 			"cancel": "취소",
 			"saving": "저장 중…",
 			"saveChanges": "변경사항 저장",
-			"createRole": "역할 생성",
-			"errors": {
-				"roleNameRequired": "역할 이름을 입력해 주세요.",
-				"nameTaken": "이미 존재하는 역할 이름입니다.",
-				"nameInvalid": "역할 이름은 대문자, 숫자, 밑줄만 사용할 수 있습니다.",
-				"roleNotFound": "이 역할은 더 이상 존재하지 않습니다. 이미 삭제되었을 수 있습니다.",
-				"forbidden": "이 작업을 수행할 권한이 없습니다.",
-				"internalError": "서버에서 문제가 발생했습니다. 다시 시도해 주세요.",
-				"generic": "문제가 발생했습니다."
-			}
+			"createRole": "역할 생성"
 		},
 		"deleteDialog": {
 			"title": "역할 삭제",
@@ -213,7 +207,6 @@
 			"confirmButton": "역할 삭제",
 			"errors": {
 				"roleNotFound": "이 역할은 더 이상 존재하지 않습니다.",
-				"hasUsersWarning": "하나 이상의 사용자에게 할당되어 있어 이 역할을 삭제할 수 없습니다.",
 				"isDefault": "기본 역할은 삭제할 수 없습니다. 먼저 다른 역할을 기본값으로 설정하세요.",
 				"forbidden": "이 역할을 삭제할 권한이 없습니다.",
 				"internalError": "문제가 발생했습니다. 다시 시도해 주세요.",
@@ -284,11 +277,28 @@
 			"settingsSsoWrite": {
 				"label": "SSO 공급자 관리",
 				"description": "사용자가 로그인에 사용하는 ID 공급자를 설정합니다. 다른 사용자로 로그인할 수 있게 되므로 전체 관리자 권한처럼 다루세요."
+			},
+			"agentsRead": {
+				"label": "에이전트 보기",
+				"description": "워크스페이스 수준 AI 에이전트 보기"
+			},
+			"agentsWrite": {
+				"label": "에이전트 관리",
+				"description": "워크스페이스 수준 AI 에이전트 생성, 편집, 삭제"
+			},
+			"pluginsRead": {
+				"label": "플러그인 보기",
+				"description": "설치된 플러그인 보기"
+			},
+			"pluginsWrite": {
+				"label": "플러그인 관리",
+				"description": "플러그인 설치, 업데이트, 활성화, 제거"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "전역 역할",
 			"users": "사용자",
+			"agents": "AI 에이전트",
 			"projects": "프로젝트",
 			"plugins": "플러그인",
 			"settings": "설정"

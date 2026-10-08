@@ -300,7 +300,7 @@ test.describe("Project activity log", () => {
 				projectId,
 				username,
 				roleName: uniqueName("NOREAD_ROLE"),
-				permissions: { "tasks.read": true },
+				permissions: { "tasks:read": true },
 			});
 
 			await signIn(page, username, RESTRICTED_PASSWORD);
@@ -332,7 +332,7 @@ test.describe("Project activity log", () => {
 				projectId,
 				username,
 				roleName: uniqueName("READER_ROLE"),
-				permissions: { "tasks.read": true, "project.activities.read": true },
+				permissions: { "tasks:read": true, "project.activities:read": true },
 			});
 
 			await signIn(page, username, RESTRICTED_PASSWORD);

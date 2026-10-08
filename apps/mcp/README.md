@@ -217,24 +217,24 @@ When `PACA_AGENT_ID` is not set:
 }
 ```
 
-**Note**: Without `PACA_PROJECT_ID`, project-scoped tool calls (like `list_tasks`, `create_task`) must pass a `projectId` argument explicitly — the tool is listed either way, but the call still needs a project to act on, and still needs the caller's role in that project to grant the underlying permission (e.g. `tasks.read`).
+**Note**: Without `PACA_PROJECT_ID`, project-scoped tool calls (like `list_tasks`, `create_task`) must pass a `projectId` argument explicitly — the tool is listed either way, but the call still needs a project to act on, and still needs a role attached to the caller in that project that allows the underlying action (e.g. `tasks:read`).
 
 ### Configuring Permissions
 
 Permissions live entirely on the Paca API side, so configuring them is the same regardless of the MCP server:
 
 **For Agents:**
-1. **Add Agent as Project Member**: Add the agent to the desired projects with appropriate roles
-2. **Configure Role Permissions**: Ensure the assigned roles have the necessary permissions
+1. **Add the agent to the project** with one or more roles (`add_project_member` / the Team page). A project agent holds only the roles attached inside its project; a global agent holds platform roles attached by an administrator.
+2. **Check the roles' policies**: the attached roles must allow the actions the tools need (for example `tasks:write` for `create_task`).
 
 **Important**: When using agent mode, `PACA_API_KEY` must be that agent's own key (see "How to Get the Agent's API Key" above) — the key itself is what identifies the agent to the server, so `PACA_AGENT_ID` alone is not a claim the server will trust from any other key.
 
 **For Users:**
-1. **Assign Global Roles**: Grant users global permissions through their global roles
-2. **Add to Projects**: Add users to projects with appropriate project roles
-3. **Configure Project Roles**: Ensure project roles have the necessary permissions
+1. **Attach platform roles**: an administrator attaches one or more roles to the user (Administration, Users). A platform role applies across the workspace.
+2. **Add to projects**: add the user to projects with one or more roles (`roleIds`).
+3. **Check the policies**: roles are IAM policy documents (default deny, an explicit `Deny` wins). See [IAM authorization](../../docs/guides/iam-authorization.md) and [Roles and policies](../../docs/guides/roles-and-policies.md).
 
-If a tool call fails with "Permission denied: ...", the role in question is missing the permission the underlying API endpoint requires — grant it and retry, no MCP server restart needed.
+If a tool call fails with `403` / "Permission denied: ...", none of the caller's roles allows the action the underlying endpoint requires. Use `get_my_project_permissions` to list the actions you hold in a project, adjust the role, and retry; no MCP server restart is needed.
 
 ### Example Configuration
 
@@ -291,15 +291,15 @@ The MCP server provides **81 tools** across **16 categories** for comprehensive 
 ### 👥 Project Members (5 tools)
 - `list_project_members` - List all members of a project
 - `add_project_member` - Add a member to a project
-- `get_my_project_permissions` - Get the current user's permissions
-- `update_project_member_role` - Update a member's role
+- `get_my_project_permissions` - List the IAM actions (e.g. `tasks:write`) the caller may perform in a project
+- `update_project_member_role` - Replace the set of roles (`roleIds`) a member holds in the project
 - `remove_project_member` - Remove a member from a project
 
 ### 🎭 Project Roles (4 tools)
-- `list_project_roles` - List all roles in a project
-- `create_project_role` - Create a new project role
-- `update_project_role` - Update an existing project role
-- `delete_project_role` - Delete a project role
+- `list_project_roles` - List the roles available in a project (its own roles plus attachable workspace roles)
+- `create_project_role` - Create a project role from an IAM `policy` document (`name`, `description`, `policy`)
+- `update_project_role` - Update a project role's name, description or policy
+- `delete_project_role` - Delete a project role (it is detached from its holders)
 
 ### 🏷️ Task Types (5 tools)
 - `list_task_types` - List all task types in a project

@@ -52,9 +52,9 @@ function AdminPluginPage() {
 	}
 
 	// Nav items without a declared `requiredPermission` fall back to
-	// `plugins.write`, matching the blanket gate the built-in "Plugins"
+	// `plugins:write`, matching the blanket gate the built-in "Plugins"
 	// admin nav item (and this route, previously via redirect) already use.
-	const requiredPermission = navItem.requiredPermission ?? "plugins.write";
+	const requiredPermission = navItem.requiredPermission ?? "plugins:write";
 
 	if (!hasPermission(permissions, requiredPermission)) {
 		return (

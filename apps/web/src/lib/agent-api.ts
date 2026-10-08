@@ -10,6 +10,7 @@ import {
 } from "@/lib/context-items";
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+import type { RoleSummary } from "./role-api";
 
 // Appends `context_items` (wire shape, snake_case) onto a request body when
 // contextItems is non-empty — shared by every send/start function below so
@@ -178,8 +179,9 @@ export interface Agent {
 	// Null for a global-scope agent.
 	project_id?: string | null;
 	agent_scope: AgentScope;
-	// Only ever set for a global-scope agent — mirrors users.role_id.
-	global_role_id?: string | null;
+	// The roles the agent holds, sorted by name: its workspace roles for a
+	// global-scope agent. Omitted when it has none.
+	roles?: RoleSummary[];
 	name: string;
 	handle: string;
 	// Shown to Jev (the AI decision API) when picking which agent should
@@ -229,28 +231,11 @@ export interface Agent {
 	// work in by default — null unless default_environment_id is also set.
 	default_folder_id?: string | null;
 	member_id?: string | null;
-	// access_mode is "open" (default — any project member who can use agents
-	// at all may chat with this one) or "restricted" (only members with an
-	// explicit access grant may). access_granted is per-viewer: whether the
-	// current user could actually use this agent right now — always true
-	// when access_mode is "open". Together these drive the locked-agent UI.
-	access_mode: AgentAccessMode;
-	access_granted: boolean;
 	mcp_servers?: AgentMCPServer[];
 	skills?: AgentSkill[];
 	env_vars?: AgentEnvVar[];
 	created_at: string;
 	updated_at: string;
-}
-
-export type AgentAccessMode = "open" | "restricted";
-
-export interface AgentAccessGrant {
-	id: string;
-	agent_id: string;
-	member_id: string;
-	granted_by?: string | null;
-	created_at: string;
 }
 
 export type ConversationStatus =
@@ -382,7 +367,7 @@ export async function createAgent(
 		parallelism_limit?: number;
 		default_environment_id?: string | null;
 		default_folder_id?: string | null;
-		project_role_id: string;
+		role_ids: string[];
 	},
 ): Promise<Agent> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<Agent>>(
@@ -416,7 +401,6 @@ export async function updateAgent(
 		parallelism_limit?: number;
 		default_environment_id?: string | null;
 		default_folder_id?: string | null;
-		access_mode?: AgentAccessMode;
 	},
 ): Promise<Agent> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
@@ -424,45 +408,6 @@ export async function updateAgent(
 		payload,
 	);
 	return data.data;
-}
-
-// ── Agent access grants ──────────────────────────────────────────────────────
-// Who may use a restricted agent — see Agent.access_mode's doc comment.
-// Managing the grant list itself requires agents.write, same tier as every
-// other agent-configuration action; the grants themselves gate the chat
-// actions, not this list.
-
-export async function listAgentAccessGrants(
-	projectId: string,
-	agentId: string,
-): Promise<AgentAccessGrant[]> {
-	const { data } = await apiClient.instance.get<
-		SuccessEnvelope<{ items: AgentAccessGrant[] }>
-	>(`/projects/${projectId}/agents/${agentId}/access-grants`);
-	return data.data.items;
-}
-
-export async function addAgentAccessGrant(
-	projectId: string,
-	agentId: string,
-	memberId: string,
-): Promise<AgentAccessGrant> {
-	const { data } = await apiClient.instance.post<
-		SuccessEnvelope<AgentAccessGrant>
-	>(`/projects/${projectId}/agents/${agentId}/access-grants`, {
-		member_id: memberId,
-	});
-	return data.data;
-}
-
-export async function removeAgentAccessGrant(
-	projectId: string,
-	agentId: string,
-	memberId: string,
-): Promise<void> {
-	await apiClient.instance.delete(
-		`/projects/${projectId}/agents/${agentId}/access-grants/${memberId}`,
-	);
 }
 
 // ── Global Agents (admin CRUD) ───────────────────────────────────────────────
@@ -511,8 +456,8 @@ export interface CreateGlobalAgentPayload {
 	// Same "always omitted, kept only for type parity" note as
 	// default_environment_id above.
 	default_folder_id?: string | null;
-	// No global_role_id: binding a role is its own privilege
-	// (global_roles.assign) with its own endpoint — see setGlobalAgentRole.
+	// No roles: assigning them is its own privilege (roles:assign) with its
+	// own endpoint — see replaceAgentRoles in role-api.
 }
 
 export async function createGlobalAgent(
@@ -545,7 +490,7 @@ export interface UpdateGlobalAgentPayload {
 	default_environment_id?: string | null;
 	// See CreateGlobalAgentPayload.default_folder_id above.
 	default_folder_id?: string | null;
-	// No global_role_id — see CreateGlobalAgentPayload and setGlobalAgentRole.
+	// No roles — see CreateGlobalAgentPayload.
 }
 
 export async function updateGlobalAgent(
@@ -555,30 +500,6 @@ export async function updateGlobalAgent(
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
 		`/admin/agents/${agentId}`,
 		payload,
-	);
-	return data.data;
-}
-
-/** Binds a global agent to the global role that decides what it may do.
- *  Requires both `agents.write` and `global_roles.assign`; the server refuses a
- *  `global_role_id` on create/update, so this is the only way to set one. */
-export async function setGlobalAgentRole(
-	agentId: string,
-	roleId: string,
-): Promise<Agent> {
-	const { data } = await apiClient.instance.put<SuccessEnvelope<Agent>>(
-		`/admin/agents/${agentId}/global-role`,
-		{ global_role_id: roleId },
-	);
-	return data.data;
-}
-
-/** Unbinds a global agent from its global role, leaving it with no global
- *  permissions. Gated like {@link setGlobalAgentRole}: removing a role is the
- *  same privileged action as binding one. */
-export async function clearGlobalAgentRole(agentId: string): Promise<Agent> {
-	const { data } = await apiClient.instance.delete<SuccessEnvelope<Agent>>(
-		`/admin/agents/${agentId}/global-role`,
 	);
 	return data.data;
 }
@@ -1645,15 +1566,6 @@ export const agentEnvVarsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "env-vars"],
 		queryFn: () => listEnvVars(projectId, agentId),
-	});
-
-export const agentAccessGrantsQueryOptions = (
-	projectId: string,
-	agentId: string,
-) =>
-	queryOptions({
-		queryKey: ["projects", projectId, "agents", agentId, "access-grants"],
-		queryFn: () => listAgentAccessGrants(projectId, agentId),
 	});
 
 export const globalAgentMCPServersQueryOptions = (agentId: string) =>

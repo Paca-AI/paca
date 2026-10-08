@@ -26,11 +26,13 @@ import {
 	test,
 } from "@playwright/test";
 import {
+	API_URL,
 	BASE_URL,
 	cleanupProjectsByPrefix,
 	cleanupUsersByPrefix,
 	createProject,
 	createUserWithProjectPermissions,
+	denyResourceToMember,
 	newRunId,
 	RESTRICTED_PASSWORD,
 	signIn,
@@ -40,7 +42,6 @@ import {
 	createEnvironment,
 	listEnvironments,
 	type SeededEnvironment,
-	setEnvironmentAccessMode,
 	waitForSettledStatus,
 } from "../helpers/environments";
 
@@ -134,7 +135,7 @@ test.describe("Environments page", () => {
 			projectId,
 			username,
 			roleName: `${PREFIX}WRITE_ROLE_${RUN_ID}`,
-			permissions: { "environments.read": true, "environments.write": true },
+			permissions: { "environments:read": true, "environments:write": true },
 		});
 
 		await signIn(page, username, RESTRICTED_PASSWORD);
@@ -155,7 +156,7 @@ test.describe("Environments page", () => {
 			projectId,
 			username,
 			roleName: `${PREFIX}READ_ROLE_${RUN_ID}`,
-			permissions: { "environments.read": true },
+			permissions: { "environments:read": true },
 		});
 
 		await signIn(page, username, RESTRICTED_PASSWORD);
@@ -180,7 +181,7 @@ test.describe("Environments page", () => {
 			projectId,
 			username,
 			roleName: `${PREFIX}NOREAD_ROLE_${RUN_ID}`,
-			permissions: { "tasks.read": true },
+			permissions: { "tasks:read": true },
 		});
 
 		await signIn(page, username, RESTRICTED_PASSWORD);
@@ -266,7 +267,9 @@ test.describe("Creating an environment", () => {
 		await expect(dialog.getByRole("textbox", { name: "Image" })).toBeVisible();
 		await expect(dialog.getByRole("textbox", { name: "CPU" })).toBeVisible();
 		await expect(dialog.getByRole("textbox", { name: "Memory" })).toBeVisible();
-		await expect(dialog.getByRole("spinbutton", { name: "Disk" })).toBeVisible();
+		await expect(
+			dialog.getByRole("spinbutton", { name: "Disk" }),
+		).toBeVisible();
 		await expect(
 			dialog.getByText(
 				"Leave blank to use the platform defaults (2 vCPU, 4Gi memory, 20GB disk).",
@@ -370,7 +373,10 @@ test.describe("Environment cards", () => {
 
 	test.beforeEach(async ({ request }) => {
 		await cleanup(request);
-		projectId = await createProject(request, `${PREFIX}CARDS_PROJECT_${RUN_ID}`);
+		projectId = await createProject(
+			request,
+			`${PREFIX}CARDS_PROJECT_${RUN_ID}`,
+		);
 	});
 
 	test.afterEach(async ({ request }) => {
@@ -415,7 +421,7 @@ test.describe("Environment cards", () => {
 		await expect(page).toHaveURL(detailUrl(projectId, env.id));
 	});
 
-	test('A restricted environment shows a "Restricted" badge to a member with no access grant', async ({
+	test("An environment denied to a member by a role is left out of their list and refused", async ({
 		page,
 		request,
 		playwright,
@@ -430,33 +436,62 @@ test.describe("Environment cards", () => {
 			projectId,
 			`${PREFIX}UNLOCKED_${RUN_ID}`,
 		);
-		// Let provisioning settle first so the worker's own status writes
-		// can't race the access-mode update.
-		await waitForSettledStatus(request, projectId, locked.id);
-		await setEnvironmentAccessMode(request, projectId, locked.id, "restricted");
 
+		// An environment is restricted by a role: this member's roles allow
+		// environments.read everywhere, and one more role denies every
+		// environments action on the locked one. Deny always wins.
 		const username = `${PREFIX}MEMBER_${RUN_ID}`;
-		await createUserWithProjectPermissions(request, playwright, {
+		const { memberId, roleId } = await createUserWithProjectPermissions(
+			request,
+			playwright,
+			{
+				projectId,
+				username,
+				roleName: `${PREFIX}MEMBER_ROLE_${RUN_ID}`,
+				permissions: { "environments:read": true },
+			},
+		);
+		await denyResourceToMember(request, {
 			projectId,
-			username,
-			roleName: `${PREFIX}MEMBER_ROLE_${RUN_ID}`,
-			permissions: { "environments.read": true },
+			memberId,
+			keepRoleIds: [roleId],
+			roleName: `${PREFIX}DENY_LOCKED_${RUN_ID}`,
+			kind: "environment",
+			resourceId: locked.id,
+			actions: ["environments:*"],
 		});
 
 		await signIn(page, username, RESTRICTED_PASSWORD);
 		await page.goto(environmentsUrl(projectId));
 
-		await expect(
-			environmentCard(page, locked.name).getByText("Restricted", {
-				exact: true,
-			}),
-		).toBeVisible();
 		await expect(environmentCard(page, unlocked.name)).toBeVisible();
-		await expect(
-			environmentCard(page, unlocked.name).getByText("Restricted", {
-				exact: true,
-			}),
-		).toHaveCount(0);
+		await expect(environmentCard(page, locked.name)).toHaveCount(0);
+		// There is no "restricted" marker for anyone: the environment is simply
+		// not among what this member may see.
+		await expect(page.getByText("Restricted", { exact: true })).toHaveCount(0);
+
+		// The API refuses the member's direct request too, while the admin
+		// still sees it.
+		const memberApi = await playwright.request.newContext();
+		try {
+			const login = await memberApi.post(`${API_URL}/auth/login`, {
+				data: { username, password: RESTRICTED_PASSWORD, rememberMe: false },
+			});
+			expect(login.ok()).toBeTruthy();
+			const denied = await memberApi.get(
+				`${API_URL}/projects/${projectId}/environments/${locked.id}`,
+			);
+			expect(denied.status()).toBe(403);
+			const allowed = await memberApi.get(
+				`${API_URL}/projects/${projectId}/environments/${unlocked.id}`,
+			);
+			expect(allowed.ok()).toBeTruthy();
+		} finally {
+			await memberApi.dispose();
+		}
+		expect(
+			(await listEnvironments(request, projectId)).map((e) => e.id),
+		).toContain(locked.id);
 	});
 });
 
@@ -474,7 +509,11 @@ test.describe("Environment detail Overview", () => {
 			request,
 			`${PREFIX}DETAIL_PROJECT_${RUN_ID}`,
 		);
-		env = await createEnvironment(request, projectId, `${PREFIX}DETAIL_${RUN_ID}`);
+		env = await createEnvironment(
+			request,
+			projectId,
+			`${PREFIX}DETAIL_${RUN_ID}`,
+		);
 	});
 
 	test.afterEach(async ({ request }) => {
@@ -491,7 +530,7 @@ test.describe("Environment detail Overview", () => {
 		await expect(page.getByText(env.slug, { exact: true })).toBeVisible();
 		await expect(page.getByText(STATUS_LABEL).first()).toBeVisible();
 
-		for (const tab of ["Overview", "Folders", "Port forwards", "Access"]) {
+		for (const tab of ["Overview", "Folders", "Port forwards"]) {
 			await expect(
 				page.getByRole("button", { name: tab, exact: true }),
 			).toBeVisible();
@@ -500,7 +539,13 @@ test.describe("Environment detail Overview", () => {
 			page.getByRole("link", { name: "Connect", exact: true }),
 		).toBeVisible();
 		// Overview is the default tab.
-		await expect(page.getByText("Configuration", { exact: true })).toBeVisible();
+		await expect(
+			page.getByText("Configuration", { exact: true }),
+		).toBeVisible();
+		// Who may use an environment is decided by roles, not by a tab of its own.
+		await expect(
+			page.getByRole("button", { name: "Access", exact: true }),
+		).toHaveCount(0);
 	});
 
 	test("The Overview tab shows usage vitals and the environment's configuration", async ({
@@ -512,7 +557,9 @@ test.describe("Environment detail Overview", () => {
 		for (const vital of ["CPU", "Memory", "Disk", "Last active"]) {
 			await expect(page.getByText(vital, { exact: true })).toBeVisible();
 		}
-		await expect(page.getByText("Configuration", { exact: true })).toBeVisible();
+		await expect(
+			page.getByText("Configuration", { exact: true }),
+		).toBeVisible();
 		// The name input has no accessible label; locate it by its value.
 		await expect(page.locator(`input[value="${env.name}"]`)).toBeVisible();
 		await expect(page.getByText("Default (agent-server)")).toBeVisible();
@@ -524,8 +571,8 @@ test.describe("Environment detail Overview", () => {
 		await signIn(page);
 		await page.goto(detailUrl(projectId, env.id));
 
-		await page.getByRole("button", { name: "Access", exact: true }).click();
-		await expect(page).toHaveURL(/#access$/);
+		await page.getByRole("button", { name: "Folders", exact: true }).click();
+		await expect(page).toHaveURL(/#folders$/);
 
 		await page
 			.getByRole("button", { name: "Port forwards", exact: true })
@@ -543,7 +590,7 @@ test.describe("Environment detail Overview", () => {
 			projectId,
 			username,
 			roleName: `${PREFIX}EDITOR_ROLE_${RUN_ID}`,
-			permissions: { "environments.read": true, "environments.write": true },
+			permissions: { "environments:read": true, "environments:write": true },
 		});
 
 		await signIn(page, username, RESTRICTED_PASSWORD);
@@ -566,7 +613,7 @@ test.describe("Environment detail Overview", () => {
 			projectId,
 			username,
 			roleName: `${PREFIX}VIEWER_ROLE_${RUN_ID}`,
-			permissions: { "environments.read": true },
+			permissions: { "environments:read": true },
 		});
 
 		await signIn(page, username, RESTRICTED_PASSWORD);
@@ -574,9 +621,9 @@ test.describe("Environment detail Overview", () => {
 
 		await expect(page.locator(`input[value="${env.name}"]`)).toBeDisabled();
 		await expect(page.getByRole("spinbutton")).toBeDisabled();
-		await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(
-			0,
-		);
+		await expect(
+			page.getByRole("button", { name: "Save changes" }),
+		).toHaveCount(0);
 	});
 });
 

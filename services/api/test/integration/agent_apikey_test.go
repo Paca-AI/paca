@@ -22,7 +22,7 @@ import (
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
@@ -86,19 +86,18 @@ func buildAgentKeyRouterWithBotID(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKey
 	if store == nil {
 		store = &projectPermStore{}
 	}
-	authorizer := authz.NewAuthorizer(store)
+	authorizer := newIAM(store)
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
 		TokenManager:         tm,
 		APIKeyAuth:           apiKeyService,
-		Authorizer:           authorizer,
+		IAM:                  authorizer,
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
 		User:                 handler.NewUserHandler(userService),
-		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
 		Project:              handler.NewProjectHandler(projectService, authorizer),
 		Task:                 handler.NewTaskHandler(taskService, viewService, activityService),
 		Sprint:               handler.NewSprintHandler(sprintService, viewService),
@@ -157,14 +156,14 @@ func TestAgentAPIKey_CreateTask_Success(t *testing.T) {
 	agentID := uuid.New()
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			uuid.MustParse(testAgentBotUserID): {
-				projectID: {authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksWrite},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksWrite},
+				agentID: {iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -208,9 +207,9 @@ func TestAgentAPIKey_CreateTask_MissingAgentID_Returns401(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -235,8 +234,8 @@ func TestAgentAPIKey_CreateTask_InvalidAPIKey_Returns401(t *testing.T) {
 	agentID := uuid.New()
 
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionTasksWrite},
 		},
 	}
 
@@ -263,14 +262,14 @@ func TestAgentAPIKey_CreateTask_NoPermission_Returns403(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksRead},
+				projectID: {iam.ActionTasksRead},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksRead},
+				agentID: {iam.ActionTasksRead},
 			},
 		},
 	}
@@ -301,14 +300,14 @@ func TestAgentAPIKey_AddComment_Success(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksWrite},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksWrite},
+				agentID: {iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -368,9 +367,9 @@ func TestAgentAPIKey_AddComment_MissingAgentID_ReturnsClearError(t *testing.T) {
 	botUserID := userdom.SystemActorUserID
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -422,14 +421,14 @@ func TestAgentAPIKey_UpdateComment_Success(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksWrite},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksWrite},
+				agentID: {iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -488,14 +487,14 @@ func TestAgentAPIKey_UpdateTask_Success(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksWrite},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksWrite},
+				agentID: {iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -547,14 +546,14 @@ func TestAgentAPIKey_ListTasks_Success(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksRead},
+				projectID: {iam.ActionTasksRead},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksRead},
+				agentID: {iam.ActionTasksRead},
 			},
 		},
 	}
@@ -607,14 +606,14 @@ func TestAgentAPIKey_GetTask_Success(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksRead},
+				projectID: {iam.ActionTasksRead},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksRead},
+				agentID: {iam.ActionTasksRead},
 			},
 		},
 	}
@@ -665,14 +664,14 @@ func TestAgentAPIKey_GetTask_NotFound(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksRead},
+				projectID: {iam.ActionTasksRead},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksRead},
+				agentID: {iam.ActionTasksRead},
 			},
 		},
 	}
@@ -704,14 +703,14 @@ func TestAgentAPIKey_DeleteTask_Success(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksWrite},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksWrite},
+				agentID: {iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -753,14 +752,14 @@ func TestAgentAPIKey_CommentWorkflow(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksRead, iam.ActionTasksWrite},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+				agentID: {iam.ActionTasksRead, iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -867,9 +866,9 @@ func TestAgentAPIKey_InvalidAgentIDHeaderIgnored(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -903,8 +902,8 @@ func TestAgentAPIKey_UserAPIKeyCannotUseAgentID(t *testing.T) {
 	userID := uuid.New()
 
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionTasksWrite},
 		},
 	}
 
@@ -951,14 +950,14 @@ func TestAgentAPIKey_BulkTaskOperations(t *testing.T) {
 	botUserID := uuid.MustParse(testAgentBotUserID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksRead, iam.ActionTasksWrite},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+				agentID: {iam.ActionTasksRead, iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -1065,14 +1064,14 @@ func TestAgentAPIKey_PermissionScenarios(t *testing.T) {
 
 	t.Run("read_permission_allows_get", func(t *testing.T) {
 		store := &projectPermStore{
-			userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 				botUserID: {
-					projectID: {authz.PermissionTasksRead},
+					projectID: {iam.ActionTasksRead},
 				},
 			},
-			agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 				projectID: {
-					agentID: {authz.PermissionTasksRead},
+					agentID: {iam.ActionTasksRead},
 				},
 			},
 		}
@@ -1086,14 +1085,14 @@ func TestAgentAPIKey_PermissionScenarios(t *testing.T) {
 
 	t.Run("write_permission_allows_update", func(t *testing.T) {
 		store := &projectPermStore{
-			userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 				botUserID: {
-					projectID: {authz.PermissionTasksWrite},
+					projectID: {iam.ActionTasksWrite},
 				},
 			},
-			agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 				projectID: {
-					agentID: {authz.PermissionTasksWrite},
+					agentID: {iam.ActionTasksWrite},
 				},
 			},
 		}
@@ -1109,12 +1108,12 @@ func TestAgentAPIKey_PermissionScenarios(t *testing.T) {
 
 	t.Run("no_permission_denies_all", func(t *testing.T) {
 		store := &projectPermStore{
-			userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 				botUserID: {
 					projectID: {},
 				},
 			},
-			agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 				projectID: {
 					agentID: {},
 				},
@@ -1228,19 +1227,18 @@ func buildAgentMCPKeyRouter(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKeyRepo, 
 	if store == nil {
 		store = &projectPermStore{}
 	}
-	authorizer := authz.NewAuthorizer(store)
+	authorizer := newIAM(store)
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
 		TokenManager:         tm,
 		APIKeyAuth:           apiKeyService,
-		Authorizer:           authorizer,
+		IAM:                  authorizer,
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
 		User:                 handler.NewUserHandler(userService),
-		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
 		Project:              handler.NewProjectHandler(projectService, authorizer),
 		Task:                 handler.NewTaskHandler(taskService, viewService, activityService),
 		Sprint:               handler.NewSprintHandler(sprintService, viewService),
@@ -1260,14 +1258,14 @@ func TestAgentMCPKey_CreateTask_Success(t *testing.T) {
 	mcpKey := identityStore.registerKey(agentID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			botUserID: {
-				projectID: {authz.PermissionTasksWrite},
+				projectID: {iam.ActionTasksWrite},
 			},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				agentID: {authz.PermissionTasksWrite},
+				agentID: {iam.ActionTasksWrite},
 			},
 		},
 	}
@@ -1332,11 +1330,11 @@ func TestAgentMCPKey_RegeneratedKey_InvalidatesOldKey(t *testing.T) {
 	oldKey := identityStore.registerKey(agentID)
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
-			botUserID: {projectID: {authz.PermissionTasksRead}},
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
+			botUserID: {projectID: {iam.ActionTasksRead}},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
-			projectID: {agentID: {authz.PermissionTasksRead}},
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
+			projectID: {agentID: {iam.ActionTasksRead}},
 		},
 	}
 
@@ -1389,12 +1387,12 @@ func TestAgentMCPKey_XAgentIDHeaderIgnored(t *testing.T) {
 	}
 
 	store := &projectPermStore{
-		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
-			botUserID: {projectID: {authz.PermissionTasksRead}},
+		userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
+			botUserID: {projectID: {iam.ActionTasksRead}},
 		},
-		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
 			projectID: {
-				ownAgentID:   {authz.PermissionTasksRead},
+				ownAgentID:   {iam.ActionTasksRead},
 				otherAgentID: {}, // explicitly no permissions
 			},
 		},

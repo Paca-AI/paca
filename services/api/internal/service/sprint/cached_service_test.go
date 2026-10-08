@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
 )
@@ -123,6 +124,33 @@ func TestCachedSprint_ListSprints_CacheMissPopulatesCache(t *testing.T) {
 	}
 	if stub.listCalls != 1 {
 		t.Fatalf("cache hit: stub called again; got %d calls", stub.listCalls)
+	}
+}
+
+// A scoped list belongs to one caller: it must neither be served from nor be
+// stored in the per-project cache entry other callers read.
+func TestCachedSprint_ListSprints_RestrictedScopeBypassesCache(t *testing.T) {
+	projectID := uuid.New()
+	stub := &stubSprintSvc{}
+	svc := sprintsvc.NewCachedSprintService(stub, newCacheStore(t), 2*time.Minute, discardLogger())
+
+	restricted := iam.WithScope(context.Background(), "sprint", iam.False())
+	for i := 0; i < 2; i++ {
+		if _, err := svc.ListSprints(restricted, projectID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if stub.listCalls != 2 {
+		t.Fatalf("restricted calls must reach the service; got %d", stub.listCalls)
+	}
+	// Nothing was stored: the next unrestricted call is a miss, then a hit.
+	for i := 0; i < 2; i++ {
+		if _, err := svc.ListSprints(iam.WithScope(context.Background(), "sprint", iam.True()), projectID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if stub.listCalls != 3 {
+		t.Fatalf("unrestricted scope should use the cache; got %d calls", stub.listCalls)
 	}
 }
 

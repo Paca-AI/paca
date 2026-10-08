@@ -28,6 +28,10 @@
 				"notFound": "Plugin này không còn khả dụng trong chợ plugin.",
 				"nameTaken": "Đã có plugin với tên này được cài đặt.",
 				"generic": "Đã xảy ra lỗi. Vui lòng thử lại."
+			},
+			"legacyPermissions": {
+				"badge": "Dùng quyền cũ",
+				"description": "Plugin này vẫn dùng mô hình quyền cũ requirePermissions. Plugin vẫn hoạt động, nhưng không thể cài lại hoặc nâng cấp cho đến khi tác giả phát hành phiên bản dùng requireActions."
 			}
 		}
 	},

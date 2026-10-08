@@ -62,7 +62,7 @@ Create a new agent. This also creates the corresponding `project_members` row wi
   "system_prompt": "You are a senior software engineer...",
   "max_iterations": 50,
   "timeout_minutes": 30,
-  "project_role_id": "uuid"
+  "role_ids": ["uuid"]
 }
 ```
 
@@ -75,7 +75,7 @@ Create a new agent. This also creates the corresponding `project_members` row wi
   "handle": "local-claude",
   "agent_type": "acp",
   "acp_provider": "claude-code",
-  "project_role_id": "uuid"
+  "role_ids": ["uuid"]
 }
 ```
 

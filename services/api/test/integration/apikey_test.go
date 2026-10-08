@@ -16,7 +16,6 @@ import (
 
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
-	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
@@ -126,7 +125,7 @@ func buildAPIKeyTestRouter(apiKeyRepo *fakeAPIKeyRepo) (http.Handler, *jwttoken.
 	r := router.New(router.Deps{
 		TokenManager: tm,
 		APIKeyAuth:   apiKeyService,
-		Authorizer:   authz.NewAuthorizer(nil),
+		IAM:          newIAM(nil),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),
@@ -294,7 +293,7 @@ func TestAPIKey_AuthenticateViaAPIKey(t *testing.T) {
 	_ = userRepo.Create(context.Background(), &userdom.User{
 		ID:       userID,
 		Username: "apikeyuser",
-		Role:     userdom.RoleUser,
+		Roles:    testRoles("USER"),
 	})
 	tok := issueUserToken(t, userID.String())
 

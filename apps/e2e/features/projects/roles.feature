@@ -1,19 +1,24 @@
 @projects @roles
 Feature: Project role management
   A project's Settings page has a "Roles" section where members with the
-  project.roles.write permission define what each role may do inside that
+  roles:write permission define what each role may do inside that
   project (routes/_authenticated/projects/$projectId/settings/, component
-  RolesSettings). Every new project is seeded with three project-scoped
-  roles — "Admin", "Editor" and "Viewer". Each role is a set of permission
-  grants that are edited through the role form dialog (ProjectRoleFormDialog):
-  one switch per permission, grouped by area. When every permission of an area
+  RolesSettings). Every new project is seeded with four project-scoped
+  roles - "Admin", "Editor" and "Viewer"; "Admin" is built in: it can be
+  edited but not deleted. The list also shows workspace roles that are already
+  attached to someone inside the project (with a lock, as they are shared and
+  cannot be changed here), not every workspace role. A role is an IAM policy document (Allow and Deny statements over
+  actions and resources), edited through the role form dialog
+  (ProjectRoleFormDialog) either as one switch per permission, grouped by
+  area (Simple), or as the policy JSON (Advanced), which can say more than the
+  switches can, such as a Deny on one agent. When every permission of an area
   is enabled the grant is stored as that area's wildcard (for example
-  "tasks.*"). The seeded "Admin" role is stored as the bare wildcard "*", which
-  the form shows as a "Full access" badge — that role automatically includes
-  every permission, including ones added in the future, until a toggle is
-  changed. Viewing the section needs project.roles.read; creating, editing and
-  deleting roles need project.roles.write. A role that is still assigned to a
-  member cannot be deleted.
+  "tasks:*"). A role stored as the bare wildcard "*" is shown by the form as a
+  "Full access" badge - it automatically includes every permission, including
+  ones added in the future, until a switch is changed. Viewing the section
+  needs roles:read; creating, editing and deleting roles need roles:write.
+  A member can hold several roles. Deleting a role that is still assigned
+  removes it from its members.
 
   @authenticated
   Rule: Roles list
@@ -26,22 +31,23 @@ Feature: Project role management
     Scenario: The Roles section lists the default project roles
       When the user opens the "Roles" section
       Then the "Project Roles" heading should be visible
-      And the roles table should have the columns "Name", "Permissions" and "Created"
+      And the roles table should have the columns "Name", "Description" and "Created", and no "Permissions" column
       And the roles table should list the roles "Admin", "Editor" and "Viewer"
 
-    Scenario: The seeded Admin role shows the wildcard grant
+    Scenario: The seeded Admin role is a full-access role
       When the user opens the "Roles" section
-      Then the "Admin" row should show the permission badge "*"
+      Then the "Admin" role should be stored with the wildcard grant "*"
 
-    Scenario: A role with no permissions shows a placeholder
+    Scenario: A role without a description shows a placeholder
       Given a project role named "E2E_ROLES_EMPTY" with no permissions exists in "E2E_ROLES_LIST"
       When the user opens the "Roles" section
-      Then the "E2E_ROLES_EMPTY" row should show "No permissions assigned"
+      Then the "E2E_ROLES_EMPTY" row should show "No description"
 
-    Scenario: The permission badges of a role list its granted permissions
-      Given a project role named "E2E_ROLES_BADGES" granting "tasks.read" and "docs.read" exists in "E2E_ROLES_LIST"
+    Scenario: The description of a role is listed instead of its permissions
+      Given a project role named "E2E_ROLES_DESCRIBED" described as "Reads tasks and documents" and granting "tasks:read" and "docs:read" exists in "E2E_ROLES_LIST"
       When the user opens the "Roles" section
-      Then the "E2E_ROLES_BADGES" row should show the permission badges "tasks.read" and "docs.read"
+      Then the "E2E_ROLES_DESCRIBED" row should show "Reads tasks and documents"
+      And the "E2E_ROLES_DESCRIBED" row should not show any permission badge
 
   @authenticated
   Rule: Creating a role
@@ -55,12 +61,32 @@ Feature: Project role management
       When the user clicks "New role"
       Then a dialog titled "New Role" should open
       And the "Role Name" field should be empty
-      And the "Create role" button should be disabled
+      When the user clicks "Create role"
+      Then the message "Enter a role name of up to 100 characters." should be shown
+      And the dialog should stay open
 
-    Scenario: The Create role button is enabled once a name is entered
+    Scenario: The New role form starts in the Simple view with every switch off
       When the user clicks "New role"
-      And the user types "E2E_ROLES_NEW" into the "Role Name" field
-      Then the "Create role" button should be enabled
+      Then the "Simple" mode should be selected
+      And every permission switch should be off
+      And the "Create role" button should be enabled
+
+    Scenario: A role is created with a description that the list shows
+      When the user clicks "New role"
+      And the user fills the role name with "E2E_ROLES_DESCRIBED_NEW"
+      And the user fills the description with "Can read tasks, nothing else"
+      And the user turns on the "View Tasks" switch
+      And the user clicks "Create role"
+      Then the "E2E_ROLES_DESCRIBED_NEW" row should show "Can read tasks, nothing else"
+
+    Scenario: The permission list can be searched and a group switched on at once
+      When the user clicks "New role"
+      And the user searches the permissions for "View Tasks"
+      Then only the "View Tasks" switch should be listed
+      When the user searches the permissions for "no such permission"
+      Then no switch is listed and a "Clear search" button is offered
+      When the user clicks "Select all in Tasks"
+      Then every Tasks switch should be on
 
     Scenario: Enabling permission switches updates the enabled count
       When the user clicks "New role"
@@ -74,14 +100,28 @@ Feature: Project role management
       And the user clicks "Create role"
       Then the dialog should close
       And the roles table should list "E2E_ROLES_READER"
-      And the "E2E_ROLES_READER" row should show the permission badges "tasks.read" and "docs.read"
+      And the "E2E_ROLES_READER" role should be stored with the permissions "tasks:read" and "docs:read"
 
     Scenario: Enabling every permission of an area is stored as the area wildcard
       When the user clicks "New role"
       And the user types "E2E_ROLES_TASKS" into the "Role Name" field
       And the user turns on the "View Tasks" and "Edit Tasks" switches
       And the user clicks "Create role"
-      Then the "E2E_ROLES_TASKS" row should show the permission badge "tasks.*"
+      Then the "E2E_ROLES_TASKS" role should be stored with the permissions "tasks:*"
+
+    Scenario: A role can be written as a policy in the Advanced view, Deny included
+      When the user clicks "New role"
+      And the user types "E2E_ROLES_POLICY" into the "Role Name" field
+      And the user switches to "Advanced (JSON)"
+      And the user enters a policy that allows "tasks:read" and "tasks:write" and denies "tasks:write"
+      And the user clicks "Create role"
+      Then the "E2E_ROLES_POLICY" role should be stored with the permissions "tasks:read" and "tasks:write"
+      And the stored policy of "E2E_ROLES_POLICY" should be an Allow statement followed by a Deny statement
+
+    Scenario: A project role cannot name resources outside its project
+      When a project role with the resource "project/*" is created through the API
+      Then the request should be rejected with 422 ROLE_POLICY_INVALID at "statements[0].resources[0]"
+      And a workspace role with the resource "project/<projectId>/*" can be created
 
     Scenario: A role name that already exists is rejected
       When the user clicks "New role"
@@ -103,7 +143,7 @@ Feature: Project role management
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_ROLES_EDIT" exists
-      And a project role named "E2E_ROLES_EDITABLE" granting "tasks.read" exists in "E2E_ROLES_EDIT"
+      And a project role named "E2E_ROLES_EDITABLE" granting "tasks:read" exists in "E2E_ROLES_EDIT"
       And the user has opened the "Roles" section of the Settings page of "E2E_ROLES_EDIT"
 
     Scenario: The edit form is pre-filled with the role's name and permissions
@@ -122,13 +162,23 @@ Feature: Project role management
       Then the dialog should close
       And the roles table should list "E2E_ROLES_RENAMED"
       And the roles table should not list "E2E_ROLES_EDITABLE"
-      And the "E2E_ROLES_RENAMED" row should show the permission badges "tasks.read" and "docs.read"
+      And the "E2E_ROLES_RENAMED" role should be stored with the permissions "tasks:read" and "docs:read"
+
+    Scenario: The description can be edited and cleared
+      When the user clicks "Edit role" on the "E2E_ROLES_EDITABLE" row
+      And the user changes the "Description" field to "Edited description"
+      And the user clicks "Save changes"
+      Then the "E2E_ROLES_EDITABLE" row should show "Edited description"
+      When the user clicks "Edit role" on the "E2E_ROLES_EDITABLE" row
+      And the user clears the "Description" field
+      And the user clicks "Save changes"
+      Then the "E2E_ROLES_EDITABLE" row should show "No description"
 
     Scenario: Turning a permission off removes it from the role
       When the user clicks "Edit role" on the "E2E_ROLES_EDITABLE" row
       And the user turns off the "View Tasks" switch
       And the user clicks "Save changes"
-      Then the "E2E_ROLES_EDITABLE" row should show "No permissions assigned"
+      Then the "E2E_ROLES_EDITABLE" role should be stored with no permissions
 
     Scenario: Cancelling the edit form leaves the role unchanged
       When the user clicks "Edit role" on the "E2E_ROLES_EDITABLE" row
@@ -152,12 +202,12 @@ Feature: Project role management
       And the explanation "This role automatically includes every permission, including ones added in the future" should be visible
       And every permission switch should be on
 
-    Scenario: The seeded Admin role is a Full access role
-      When the user clicks "Edit role" on the "Admin" row
-      Then the permissions header should show the "Full access" badge
+    Scenario: The built-in Admin role is full access and can be edited but not deleted
+      Then the "Admin" role should be stored with the permissions "*"
+      And the "Admin" row should offer "Edit role" but not "Delete role"
 
     Scenario: A role with an enumerated permission set does not show the Full access badge
-      Given a project role named "E2E_ROLES_PARTIAL" granting "tasks.read" exists in "E2E_ROLES_FULL"
+      Given a project role named "E2E_ROLES_PARTIAL" granting "tasks:read" exists in "E2E_ROLES_FULL"
       When the user clicks "Edit role" on the "E2E_ROLES_PARTIAL" row
       Then the "Full access" badge should not be visible
 
@@ -167,13 +217,13 @@ Feature: Project role management
       Then the "Full access" badge should not be visible
       And the permissions header should show an enabled count
       When the user clicks "Save changes"
-      Then the "E2E_ROLES_EVERYTHING" row should no longer show the permission badge "*"
-      And the stored permissions of "E2E_ROLES_EVERYTHING" should not contain "*"
+      Then the "E2E_ROLES_EVERYTHING" role should no longer be stored with the wildcard grant "*"
+      And the stored actions of "E2E_ROLES_EVERYTHING" should not contain "*" or "roles:write"
 
     Scenario: Saving an untouched Full access role keeps the wildcard
       When the user clicks "Edit role" on the "E2E_ROLES_EVERYTHING" row
       And the user clicks "Save changes"
-      Then the stored permissions of "E2E_ROLES_EVERYTHING" should still be the bare wildcard "*"
+      Then the stored actions of "E2E_ROLES_EVERYTHING" should still be the bare wildcard "*"
 
   @authenticated
   Rule: Deleting a role
@@ -181,7 +231,7 @@ Feature: Project role management
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_ROLES_DELETE" exists
-      And a project role named "E2E_ROLES_DISPOSABLE" granting "tasks.read" exists in "E2E_ROLES_DELETE"
+      And a project role named "E2E_ROLES_DISPOSABLE" granting "tasks:read" exists in "E2E_ROLES_DELETE"
       And the user has opened the "Roles" section of the Settings page of "E2E_ROLES_DELETE"
 
     Scenario: Deleting a role asks for confirmation naming the role
@@ -201,13 +251,14 @@ Feature: Project role management
       Then the dialog should close
       And the roles table should list "E2E_ROLES_DISPOSABLE"
 
-    Scenario: A role that is still assigned to a member cannot be deleted
+    Scenario: Deleting a role that is assigned to a member takes it away from them
       Given a member "E2E_ROLES_ASSIGNED" is assigned the role "E2E_ROLES_IN_USE" in "E2E_ROLES_DELETE"
       When the user reloads the Roles section
       And the user clicks "Delete role" on the "E2E_ROLES_IN_USE" row
-      And the user confirms with "Delete role"
-      Then the error "This role cannot be deleted because it is still assigned to one or more members." should be shown
-      And the roles table should still list "E2E_ROLES_IN_USE" after the dialog is closed
+      Then the dialog should warn that members assigned this role will lose their access
+      When the user confirms with "Delete role"
+      Then the roles table should not list "E2E_ROLES_IN_USE"
+      And "E2E_ROLES_ASSIGNED" should still be a member of "E2E_ROLES_DELETE" without that role
 
   @authenticated
   Rule: Access to role management is permission gated
@@ -215,21 +266,22 @@ Feature: Project role management
     Background:
       Given a project named "E2E_ROLES_GATING" exists
 
-    Scenario: A member without project.roles.read sees the no-permission state
-      Given the user is a member of "E2E_ROLES_GATING" with only the "tasks.read" permission
+    Scenario: A member without roles:read sees the no-permission state
+      Given the user is a member of "E2E_ROLES_GATING" with only the "tasks:read" permission
       When the user opens the "Roles" section of the Settings page of "E2E_ROLES_GATING"
       Then the message "You don't have permission to view roles" should be displayed
       And the roles table should not be displayed
 
-    Scenario: A member with only project.roles.read can view roles but not change them
-      Given the user is a member of "E2E_ROLES_GATING" with only the "project.roles.read" permission
+    Scenario: A member with only roles:read can view roles but not change them
+      Given the user is a member of "E2E_ROLES_GATING" with only the "roles:read" permission
       When the user opens the "Roles" section of the Settings page of "E2E_ROLES_GATING"
       Then the roles table should list the roles "Admin", "Editor" and "Viewer"
       And the "New role" button should not be visible
-      And the "Admin" row should not offer "Edit role" or "Delete role"
+      And the "Editor" row should not offer "Edit role" or "Delete role"
 
-    Scenario: A member with project.roles.write can create, edit and delete roles
-      Given the user is a member of "E2E_ROLES_GATING" with the "project.roles.read" and "project.roles.write" permissions
+    Scenario: A member with roles:write can create, edit and delete roles
+      Given the user is a member of "E2E_ROLES_GATING" with the "roles:read" and "roles:write" permissions
       When the user opens the "Roles" section of the Settings page of "E2E_ROLES_GATING"
       Then the "New role" button should be visible
-      And the "Admin" row should offer "Edit role" and "Delete role"
+      And the "Editor" row should offer "Edit role" and "Delete role"
+      And the built-in "Admin" row should offer "Edit role" but not "Delete role"

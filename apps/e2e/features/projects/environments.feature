@@ -10,10 +10,12 @@ Feature: Project environments
   status keeps changing (Creating, Starting, Running, Error, ...) and the
   final status depends on whether the stack can launch sandboxes at all.
   These scenarios therefore assert that a status is shown, never which one.
-  A restricted environment shows a "Restricted" badge to every member who
-  holds no explicit access grant. Viewing the page is gated by
-  environments.read; the "New Environment" button and every write action on
-  the detail page are gated by environments.write. Live terminal, SSH connect
+  An environment is restricted by a role, not by a setting on the environment:
+  a project role with a Deny statement on it, held by the member it should not
+  reach. Such an environment is left out of that member's list and every route
+  on it is refused. Viewing the page is gated by
+  environments:read; the "New Environment" button and every write action on
+  the detail page are gated by environments:write. Live terminal, SSH connect
   and port-forward tunnelling need a running sandbox container and are out of
   scope here.
 
@@ -30,19 +32,19 @@ Feature: Project environments
       Then the Environments page should display the "No environments yet" empty state
       And the empty state should offer a "Create your first environment" action
 
-    Scenario: The "New Environment" button is visible with environments.write permission
-      Given the user has the "environments.read" and "environments.write" project permissions in "E2E_ENV_PROJECT"
+    Scenario: The "New Environment" button is visible with environments:write permission
+      Given the user has the "environments:read" and "environments:write" project permissions in "E2E_ENV_PROJECT"
       When the user navigates to the Environments page for "E2E_ENV_PROJECT"
       Then the "New Environment" button should be visible
 
-    Scenario: The "New Environment" button is hidden without environments.write permission
-      Given the user has only the "environments.read" project permission in "E2E_ENV_PROJECT"
+    Scenario: The "New Environment" button is hidden without environments:write permission
+      Given the user has only the "environments:read" project permission in "E2E_ENV_PROJECT"
       When the user navigates to the Environments page for "E2E_ENV_PROJECT"
       Then the "New Environment" button should not be visible
       And the empty state should not offer a "Create your first environment" action
 
-    Scenario: A member without environments.read permission sees the no-permission state
-      Given the user does not have the "environments.read" project permission in "E2E_ENV_PROJECT"
+    Scenario: A member without environments:read permission sees the no-permission state
+      Given the user does not have the "environments:read" project permission in "E2E_ENV_PROJECT"
       When the user navigates to the Environments page for "E2E_ENV_PROJECT"
       Then the Environments page should display the "You don't have permission to view environments" message
       And the "New Environment" button should not be visible
@@ -140,13 +142,14 @@ Feature: Project environments
       And the user clicks the card for "E2E_ENV_OPEN_CARD"
       Then the page URL should be the detail URL of "E2E_ENV_OPEN_CARD"
 
-    Scenario: A restricted environment shows a "Restricted" badge to a member with no access grant
-      Given "E2E_ENV_CARDS_PROJECT" has a restricted environment named "E2E_ENV_LOCKED"
-      And "E2E_ENV_CARDS_PROJECT" has an open environment named "E2E_ENV_UNLOCKED"
-      And the user has only the "environments.read" project permission in "E2E_ENV_CARDS_PROJECT"
+    Scenario: An environment denied to a member by a role is left out of their list and refused
+      Given "E2E_ENV_CARDS_PROJECT" has environments named "E2E_ENV_LOCKED" and "E2E_ENV_UNLOCKED"
+      And the user has only the "environments:read" project permission in "E2E_ENV_CARDS_PROJECT"
+      And the user also holds a project role that denies "environments:*" on "E2E_ENV_LOCKED"
       When the user navigates to the Environments page for "E2E_ENV_CARDS_PROJECT"
-      Then the card for "E2E_ENV_LOCKED" should display a "Restricted" badge
-      And the card for "E2E_ENV_UNLOCKED" should not display a "Restricted" badge
+      Then the card for "E2E_ENV_UNLOCKED" should be visible
+      And there should be no card for "E2E_ENV_LOCKED" and no "Restricted" badge
+      And the API should answer 403 for "E2E_ENV_LOCKED" and 200 for "E2E_ENV_UNLOCKED"
 
   @authenticated
   Rule: Environment detail — Overview tab
@@ -160,7 +163,7 @@ Feature: Project environments
       When the user opens the detail page of "E2E_ENV_DETAIL"
       Then the page heading should be "E2E_ENV_DETAIL"
       And the header should display the environment's slug and a status label
-      And the tab bar should offer "Overview", "Folders", "Port forwards" and "Access"
+      And the tab bar should offer "Overview", "Folders" and "Port forwards", and no "Access" tab
       And the "Connect" link should be visible
 
     Scenario: The Overview tab shows usage vitals and the environment's configuration
@@ -173,19 +176,19 @@ Feature: Project environments
 
     Scenario: Switching tabs updates the URL hash
       When the user opens the detail page of "E2E_ENV_DETAIL"
-      And the user clicks the "Access" tab
-      Then the page URL should end with "#access"
+      And the user clicks the "Folders" tab
+      Then the page URL should end with "#folders"
       When the user clicks the "Port forwards" tab
       Then the page URL should end with "#portForwards"
 
-    Scenario: A member with environments.write can edit the configuration
-      Given the user has the "environments.read" and "environments.write" project permissions in "E2E_ENV_DETAIL_PROJECT"
+    Scenario: A member with environments:write can edit the configuration
+      Given the user has the "environments:read" and "environments:write" project permissions in "E2E_ENV_DETAIL_PROJECT"
       When the user opens the detail page of "E2E_ENV_DETAIL"
       Then the environment name and idle timeout fields should be enabled
       And the "Save changes" button should be visible but disabled until a field changes
 
-    Scenario: A member without environments.write sees a read-only Overview
-      Given the user has only the "environments.read" project permission in "E2E_ENV_DETAIL_PROJECT"
+    Scenario: A member without environments:write sees a read-only Overview
+      Given the user has only the "environments:read" project permission in "E2E_ENV_DETAIL_PROJECT"
       When the user opens the detail page of "E2E_ENV_DETAIL"
       Then the environment name and idle timeout fields should be disabled
       And the "Save changes" button should not be visible

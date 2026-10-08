@@ -8,6 +8,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -15,12 +16,20 @@ import (
 
 // ViewHandler handles sprint-view and task-position endpoints.
 type ViewHandler struct {
-	svc sprintdom.ViewService
+	svc        sprintdom.ViewService
+	listScoper ListScoper
 }
 
 // NewViewHandler returns a ViewHandler wired to the view service.
 func NewViewHandler(svc sprintdom.ViewService) *ViewHandler {
 	return &ViewHandler{svc: svc}
+}
+
+// WithViewListScoper limits view lists to the views the caller may read,
+// inside the query (see scopedContext).
+func (h *ViewHandler) WithViewListScoper(s ListScoper) *ViewHandler {
+	h.listScoper = s
+	return h
 }
 
 // viewContextFromQuery reads the ?context query param (sprint | backlog | timeline).
@@ -63,6 +72,11 @@ func (h *ViewHandler) ListViews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scopeCtx, err := scopedContext(r, h.listScoper, iam.ActionViewsRead, projectID, "view")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	var views []*sprintdom.SprintView
 	if viewCtx == sprintdom.ViewContextSprint {
 		var sprintID uuid.UUID
@@ -71,9 +85,9 @@ func (h *ViewHandler) ListViews(w http.ResponseWriter, r *http.Request) {
 			presenter.Error(w, r, err)
 			return
 		}
-		views, err = h.svc.ListViews(r.Context(), projectID, sprintID)
+		views, err = h.svc.ListViews(scopeCtx, projectID, sprintID)
 	} else {
-		views, err = h.svc.ListProjectViews(r.Context(), projectID, viewCtx)
+		views, err = h.svc.ListProjectViews(scopeCtx, projectID, viewCtx)
 	}
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -289,7 +303,14 @@ func (h *ViewHandler) ListTaskPositions(w http.ResponseWriter, r *http.Request) 
 		presenter.Error(w, r, err)
 		return
 	}
-	positions, err := h.svc.ListTaskPositions(r.Context(), projectID, viewID)
+	// Only the positions of tasks the caller may read: the repository applies
+	// the task scope inside the query.
+	scopeCtx, err := scopedContext(r, h.listScoper, iam.ActionTasksRead, projectID, "task")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	positions, err := h.svc.ListTaskPositions(scopeCtx, projectID, viewID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

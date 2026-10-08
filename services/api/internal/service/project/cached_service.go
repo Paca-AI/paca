@@ -21,12 +21,9 @@ import (
 //
 //   - GetByID        – project detail; keyed by project ID.
 //   - ListMembers    – project member list; keyed by project ID.
-//   - ListRoles      – project role list; keyed by project ID.
 //
 // List/ListAccessible are NOT cached because they are paginated, potentially
 // user-scoped, and have high result-set cardinality.
-// GetMyProjectPermissions is NOT cached because it is user-specific and
-// depends on the member's current role.
 // IsProjectPublic is NOT cached; it is a single-column read used in hot-path
 // middleware and is already handled by the database's plan cache.
 //
@@ -37,7 +34,6 @@ type CachedService struct {
 	jevConfig  projectJevConfigWriter
 	st         *cache.Store
 	projectTTL time.Duration
-	configTTL  time.Duration
 	log        *slog.Logger
 }
 
@@ -59,11 +55,10 @@ var ErrJevConfigUnsupported = errors.New("project svc: jev config updates are no
 // NewCachedService wraps svc with a caching layer backed by st.
 //
 //   - projectTTL governs project detail and member data.
-//   - configTTL governs project role data.
 //
-// Pass zero for either TTL to disable caching for that category.
+// Pass zero to disable caching.
 // log receives non-fatal cache warnings.
-func NewCachedService(svc projectdom.Service, st *cache.Store, projectTTL, configTTL time.Duration, log *slog.Logger) *CachedService {
+func NewCachedService(svc projectdom.Service, st *cache.Store, projectTTL time.Duration, log *slog.Logger) *CachedService {
 	// UpdateJevConfig isn't part of projectdom.Service, so it's picked up by
 	// assertion — production passes the concrete service, which has it; test
 	// doubles that don't care simply leave it unset and UpdateJevConfig then
@@ -74,7 +69,6 @@ func NewCachedService(svc projectdom.Service, st *cache.Store, projectTTL, confi
 		jevConfig:  config,
 		st:         st,
 		projectTTL: projectTTL,
-		configTTL:  configTTL,
 		log:        log,
 	}
 }
@@ -87,10 +81,6 @@ func projectKey(id uuid.UUID) string {
 
 func membersKey(projectID uuid.UUID) string {
 	return fmt.Sprintf("project:%s:members", projectID)
-}
-
-func rolesKey(projectID uuid.UUID) string {
-	return fmt.Sprintf("project:%s:roles", projectID)
 }
 
 // --- Project -----------------------------------------------------------------
@@ -156,7 +146,7 @@ func (c *CachedService) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := c.svc.Delete(ctx, id); err != nil {
 		return err
 	}
-	if err := c.st.Delete(ctx, projectKey(id), membersKey(id), rolesKey(id)); err != nil {
+	if err := c.st.Delete(ctx, projectKey(id), membersKey(id)); err != nil {
 		c.log.WarnContext(ctx, "cache: DeleteProject delete", "err", err)
 	}
 	return nil
@@ -242,7 +232,7 @@ func (c *CachedService) ListMembers(ctx context.Context, projectID uuid.UUID) ([
 }
 
 // CountDistinctAgentsByProjects delegates to the underlying service without
-// caching — like GetMyProjectPermissions, an arbitrary-project-ID-set
+// caching — an arbitrary-project-ID-set
 // aggregate isn't a good fit for this cache's per-project key scheme.
 func (c *CachedService) CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
 	return c.svc.CountDistinctAgentsByProjects(ctx, projectIDs)
@@ -256,18 +246,6 @@ func (c *CachedService) AddMember(ctx context.Context, projectID uuid.UUID, in p
 	}
 	if err := c.st.Delete(ctx, membersKey(projectID)); err != nil {
 		c.log.WarnContext(ctx, "cache: AddMember delete", "err", err)
-	}
-	return m, nil
-}
-
-// UpdateMemberRole delegates to the underlying service and invalidates the members cache.
-func (c *CachedService) UpdateMemberRole(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-	m, err := c.svc.UpdateMemberRole(ctx, projectID, userID, in)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.st.Delete(ctx, membersKey(projectID)); err != nil {
-		c.log.WarnContext(ctx, "cache: UpdateMemberRole delete", "err", err)
 	}
 	return m, nil
 }
@@ -295,18 +273,6 @@ func (c *CachedService) RemoveMember(ctx context.Context, projectID, userID uuid
 	return nil
 }
 
-// UpdateMemberRoleByMemberID delegates to the underlying service and invalidates the members cache.
-func (c *CachedService) UpdateMemberRoleByMemberID(ctx context.Context, projectID, memberID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-	m, err := c.svc.UpdateMemberRoleByMemberID(ctx, projectID, memberID, in)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.st.Delete(ctx, membersKey(projectID)); err != nil {
-		c.log.WarnContext(ctx, "cache: UpdateMemberRoleByMemberID delete", "err", err)
-	}
-	return m, nil
-}
-
 // RemoveMemberByMemberID delegates to the underlying service and invalidates the members cache.
 func (c *CachedService) RemoveMemberByMemberID(ctx context.Context, projectID, memberID uuid.UUID) error {
 	if err := c.svc.RemoveMemberByMemberID(ctx, projectID, memberID); err != nil {
@@ -319,8 +285,8 @@ func (c *CachedService) RemoveMemberByMemberID(ctx context.Context, projectID, m
 }
 
 // AddAgentMember delegates to the underlying service and invalidates the members cache.
-func (c *CachedService) AddAgentMember(ctx context.Context, memberID, projectID, agentID, roleID uuid.UUID) error {
-	if err := c.svc.AddAgentMember(ctx, memberID, projectID, agentID, roleID); err != nil {
+func (c *CachedService) AddAgentMember(ctx context.Context, memberID, projectID, agentID uuid.UUID, roleIDs []uuid.UUID, createdBy *uuid.UUID) error {
+	if err := c.svc.AddAgentMember(ctx, memberID, projectID, agentID, roleIDs, createdBy); err != nil {
 		return err
 	}
 	if err := c.st.Delete(ctx, membersKey(projectID)); err != nil {
@@ -345,77 +311,4 @@ func (c *CachedService) RemoveAgentMember(ctx context.Context, projectID, agentI
 // fetches fresh data from the database.
 func (c *CachedService) InvalidateMembersCache(ctx context.Context, projectID uuid.UUID) error {
 	return c.st.Delete(ctx, membersKey(projectID))
-}
-
-// GetMyProjectPermissions delegates directly to the underlying service (not cached).
-func (c *CachedService) GetMyProjectPermissions(ctx context.Context, projectID, userID uuid.UUID, agentID *uuid.UUID) (map[string]any, error) {
-	return c.svc.GetMyProjectPermissions(ctx, projectID, userID, agentID)
-}
-
-// --- Roles -------------------------------------------------------------------
-
-// ListRoles returns all roles for a project, reading from cache when available
-// and populating it on a miss.
-func (c *CachedService) ListRoles(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error) {
-	if c.configTTL == 0 {
-		return c.svc.ListRoles(ctx, projectID)
-	}
-	key := rolesKey(projectID)
-	var result []*projectdom.ProjectRole
-	if ok, err := c.st.Get(ctx, key, &result); ok {
-		return result, nil
-	} else if err != nil {
-		c.log.WarnContext(ctx, "cache: ListRoles get", "err", err)
-	}
-
-	result, err := c.svc.ListRoles(ctx, projectID)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.st.Set(ctx, key, result, c.configTTL); err != nil {
-		c.log.WarnContext(ctx, "cache: ListRoles set", "err", err)
-	}
-	return result, nil
-}
-
-// CreateRole delegates to the underlying service and invalidates the roles cache.
-func (c *CachedService) CreateRole(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error) {
-	r, err := c.svc.CreateRole(ctx, projectID, in)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.st.Delete(ctx, rolesKey(projectID)); err != nil {
-		c.log.WarnContext(ctx, "cache: CreateRole delete", "err", err)
-	}
-	return r, nil
-}
-
-// UpdateRole delegates to the underlying service and invalidates the roles cache.
-func (c *CachedService) UpdateRole(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error) {
-	r, err := c.svc.UpdateRole(ctx, projectID, roleID, in)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.st.Delete(ctx, rolesKey(projectID)); err != nil {
-		c.log.WarnContext(ctx, "cache: UpdateRole delete", "err", err)
-	}
-	return r, nil
-}
-
-// DeleteRole delegates to the underlying service and invalidates the roles cache.
-func (c *CachedService) DeleteRole(ctx context.Context, projectID, roleID uuid.UUID) error {
-	if err := c.svc.DeleteRole(ctx, projectID, roleID); err != nil {
-		return err
-	}
-	if err := c.st.Delete(ctx, rolesKey(projectID)); err != nil {
-		c.log.WarnContext(ctx, "cache: DeleteRole delete", "err", err)
-	}
-	return nil
-}
-
-// FindRoleByID delegates directly to the underlying service (not cached — a
-// single-role-by-ID lookup isn't keyed by project the way the ListRoles
-// cache is, and this isn't a hot enough path to warrant one of its own).
-func (c *CachedService) FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
-	return c.svc.FindRoleByID(ctx, id)
 }

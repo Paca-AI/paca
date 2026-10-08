@@ -1,6 +1,7 @@
 package plugindom
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -283,6 +284,90 @@ func TestValidatePluginName(t *testing.T) {
 	for _, bad := range []string{"", "..", ".", "../../tmp/x", "a/b", `a\b`, "/abs", "a..b", ".a", "a.", "a b", "a;b", long} {
 		if err := ValidatePluginName(bad); err == nil {
 			t.Errorf("ValidatePluginName(%q) = nil, want error", bad)
+		}
+	}
+}
+
+func TestValidate_RouteMiddlewares(t *testing.T) {
+	withMW := func(mw PluginRouteMiddleware) PluginManifest {
+		return PluginManifest{ID: "com.paca.time-logging", Backend: &BackendManifest{Routes: []PluginRoute{
+			{Method: "GET", Path: "/x", Middlewares: []PluginRouteMiddleware{{Name: "authn"}, mw}},
+		}}}
+	}
+	tests := []struct {
+		name    string
+		mw      PluginRouteMiddleware
+		wantErr string
+	}{
+		{"requireActions builtin", PluginRouteMiddleware{Name: "requireActions", Actions: []string{"tasks:read"}}, ""},
+		{"requireActions plugin action", PluginRouteMiddleware{Name: "requireActions", Scope: "project", Actions: []string{"time_logging:manage_all"}}, ""},
+		{"requireActions dotted domain", PluginRouteMiddleware{Name: "requireActions", Actions: []string{"project.settings.task_types:write"}}, ""},
+		{"legacy requirePermissions rejected", PluginRouteMiddleware{Name: "requirePermissions", Permissions: []string{"tasks.read"}}, "requirePermissions is no longer supported; use requireActions with IAM actions"},
+		{"legacy key in requireActions rejected", PluginRouteMiddleware{Name: "requireActions", Actions: []string{"tasks.read"}}, "<domain>:<verb>"},
+		{"wildcard rejected", PluginRouteMiddleware{Name: "requireActions", Actions: []string{"tasks:*"}}, "<domain>:<verb>"},
+		{"empty actions rejected", PluginRouteMiddleware{Name: "requireActions"}, "at least one action"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := withMW(tt.mw).Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("got %v, want error containing %q", err, tt.wantErr)
+			}
+		})
+	}
+	if err := withMW(PluginRouteMiddleware{Name: "requirePermissions"}).Validate(); !errors.Is(err, ErrRequirePermissionsUnsupported) {
+		t.Fatalf("want ErrRequirePermissionsUnsupported, got %v", err)
+	}
+}
+
+func TestManifestCustomPermissionsAreActions(t *testing.T) {
+	base := PluginManifest{ID: "com.paca.time-logging"}
+	cases := []struct {
+		name string
+		keys []string
+		ok   bool
+	}{
+		{"own namespace", []string{"time_logging:manage_all", "time_logging:log"}, true},
+		{"none", nil, true},
+		{"legacy dotted key", []string{"time_logging.manage_all"}, false},
+		{"someone else's namespace", []string{"tasks:write"}, false},
+		{"a wildcard", []string{"time_logging:*"}, false},
+		{"duplicate", []string{"time_logging:log", "time_logging:log"}, false},
+	}
+	for _, c := range cases {
+		m := base
+		for _, k := range c.keys {
+			m.CustomPermissions = append(m.CustomPermissions, CustomPermission{Key: k, Label: k})
+		}
+		if err := m.Validate(); (err == nil) != c.ok {
+			t.Errorf("%s: err = %v, want ok=%v", c.name, err, c.ok)
+		}
+		if c.ok && len(m.Actions()) != len(c.keys) {
+			t.Errorf("%s: Actions() = %v", c.name, m.Actions())
+		}
+	}
+}
+
+func TestManifestJSONUsesRequirePermissions(t *testing.T) {
+	cases := []struct {
+		name, raw string
+		want      bool
+	}{
+		{"legacy", `{"backend":{"routes":[{"middlewares":[{"name":"authn"},{"name":"RequirePermissions"}]}]}}`, true},
+		{"actions", `{"backend":{"routes":[{"middlewares":[{"name":"requireActions"}]}]}}`, false},
+		{"no backend", `{"id":"x"}`, false},
+		{"no middlewares", `{"backend":{"routes":[{"method":"GET"}]}}`, false},
+		{"not json", `nope`, false},
+	}
+	for _, c := range cases {
+		if got := ManifestJSONUsesRequirePermissions([]byte(c.raw)); got != c.want {
+			t.Errorf("%s: got %v want %v", c.name, got, c.want)
 		}
 	}
 }

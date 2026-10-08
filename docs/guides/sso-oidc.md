@@ -4,7 +4,7 @@ Paca can let people sign in with an external identity provider (IdP) that speaks
 
 ## Who can configure it
 
-Providers are managed under **Administration → Settings → Single sign-on (SSO)**, which needs the `settings.sso.write` global permission. By default only `SUPER_ADMIN` holds it: a provider with *Link existing accounts by email* turned on lets whoever controls that provider sign in as any account with a matching email, so the permission is root-equivalent (see [authorization](../architecture/authorization.md)).
+Providers are managed under **Administration → Settings → Single sign-on (SSO)**, which needs the `settings.sso:write` action. By default only `SUPER_ADMIN` holds it: a provider with *Link existing accounts by email* turned on lets whoever controls that provider sign in as any account with a matching email, so the permission is root-equivalent (see [authorization](../architecture/authorization.md)).
 
 ## Before you start
 

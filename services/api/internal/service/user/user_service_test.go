@@ -11,9 +11,9 @@ import (
 	"github.com/google/uuid"
 
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
 )
 
@@ -68,26 +68,14 @@ type stubRepo struct {
 }
 
 type stubPermissionReader struct {
-	listGlobalPermissions func(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error)
+	listGlobalPermissions func(ctx context.Context, userID uuid.UUID) ([]iam.Action, error)
 }
 
-func (r *stubPermissionReader) ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error) {
+func (r *stubPermissionReader) ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]iam.Action, error) {
 	if r.listGlobalPermissions != nil {
 		return r.listGlobalPermissions(ctx, userID)
 	}
 	return nil, nil
-}
-
-// stubRoleRepo implements usersvc.DefaultRoleFinder.
-type stubRoleRepo struct {
-	findDefault func(ctx context.Context) (*globalroledom.GlobalRole, error)
-}
-
-func (r *stubRoleRepo) FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error) {
-	if r.findDefault != nil {
-		return r.findDefault(ctx)
-	}
-	return nil, globalroledom.ErrNoDefault
 }
 
 func (r *stubRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
@@ -155,7 +143,7 @@ var _ userdom.Service = (*usersvc.Service)(nil)
 
 func TestGetByID_Found(t *testing.T) {
 	id := uuid.New()
-	want := &userdom.User{ID: id, Username: "alice", Role: userdom.RoleUser}
+	want := &userdom.User{ID: id, Username: "alice"}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return want, nil },
 	})
@@ -187,8 +175,8 @@ func TestListGlobalPermissions_RoleNameAddsNothing(t *testing.T) {
 	svc := usersvc.New(
 		&stubRepo{},
 		&stubPermissionReader{
-			listGlobalPermissions: func(context.Context, uuid.UUID) ([]authz.Permission, error) {
-				return []authz.Permission{authz.PermissionUsersRead}, nil
+			listGlobalPermissions: func(context.Context, uuid.UUID) ([]iam.Action, error) {
+				return []iam.Action{iam.ActionUsersRead}, nil
 			},
 		},
 	)
@@ -197,7 +185,7 @@ func TestListGlobalPermissions_RoleNameAddsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []string{string(authz.PermissionUsersRead)}
+	want := []string{string(iam.ActionUsersRead)}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected permissions: want %v got %v", want, got)
 	}
@@ -224,11 +212,11 @@ func TestListGlobalPermissions_MergesAndDedupes(t *testing.T) {
 	svc := usersvc.New(
 		&stubRepo{},
 		&stubPermissionReader{
-			listGlobalPermissions: func(_ context.Context, got uuid.UUID) ([]authz.Permission, error) {
+			listGlobalPermissions: func(_ context.Context, got uuid.UUID) ([]iam.Action, error) {
 				if got != id {
 					t.Fatalf("unexpected id: %v", got)
 				}
-				return []authz.Permission{authz.PermissionUsersRead, authz.PermissionGlobalRolesRead}, nil
+				return []iam.Action{iam.ActionUsersRead, iam.ActionRolesRead}, nil
 			},
 		},
 	)
@@ -237,7 +225,7 @@ func TestListGlobalPermissions_MergesAndDedupes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []string{string(authz.PermissionGlobalRolesRead), string(authz.PermissionUsersRead)}
+	want := []string{string(iam.ActionRolesRead), string(iam.ActionUsersRead)}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected permissions: want %v got %v", want, got)
 	}
@@ -265,7 +253,7 @@ func TestListGlobalPermissions_ReaderError(t *testing.T) {
 	svc := usersvc.New(
 		&stubRepo{},
 		&stubPermissionReader{
-			listGlobalPermissions: func(_ context.Context, _ uuid.UUID) ([]authz.Permission, error) {
+			listGlobalPermissions: func(_ context.Context, _ uuid.UUID) ([]iam.Action, error) {
 				return nil, wantErr
 			},
 		},
@@ -282,14 +270,8 @@ func TestListGlobalPermissions_ReaderError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCreate_Success(t *testing.T) {
-	roleID := uuid.New()
 	svc := usersvc.New(
 		&stubRepo{},
-		&stubRoleRepo{
-			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser, IsDefault: true}, nil
-			},
-		},
 	)
 
 	got, err := svc.Create(context.Background(), userdom.CreateInput{
@@ -306,8 +288,8 @@ func TestCreate_Success(t *testing.T) {
 	if got.FullName != "Alice" {
 		t.Errorf("unexpected full name: %s", got.FullName)
 	}
-	if got.Role != userdom.RoleUser {
-		t.Errorf("expected role USER, got %s", got.Role)
+	if len(got.Roles) != 0 {
+		t.Errorf("the service must not pick roles itself (the repository attaches the default), got %+v", got.Roles)
 	}
 	if got.PasswordHash == "password123" {
 		t.Fatal("password must be hashed, not stored in plain text")
@@ -317,66 +299,39 @@ func TestCreate_Success(t *testing.T) {
 	}
 }
 
-// The role a new user gets is whichever one is marked as the default, not a
-// role called USER: deleting or renaming USER must not break creating users.
-func TestCreate_UsesTheDefaultRoleWhateverItIsCalled(t *testing.T) {
-	roleID := uuid.New()
+// The service names no role: the repository attaches whichever role is the
+// default in the transaction that stores the user.
+func TestCreate_PassesNoRolesToTheRepository(t *testing.T) {
 	var stored *userdom.User
 	svc := usersvc.New(
 		&stubRepo{create: func(_ context.Context, u *userdom.User) error {
 			stored = u
 			return nil
 		}},
-		&stubRoleRepo{
-			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: "MEMBER", IsDefault: true}, nil
-			},
-		},
 	)
 
-	got, err := svc.Create(context.Background(), userdom.CreateInput{
+	if _, err := svc.Create(context.Background(), userdom.CreateInput{
 		Username: "alice", Password: "password123", FullName: "Alice",
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Role != "MEMBER" || got.RoleID != roleID {
-		t.Fatalf("expected the default role MEMBER/%v, got %q/%v", roleID, got.Role, got.RoleID)
-	}
-	if stored == nil || stored.RoleID != roleID || stored.Role != "MEMBER" {
-		t.Fatalf("the stored user must carry the default role, got %+v", stored)
+	if stored == nil || len(stored.Roles) != 0 {
+		t.Fatalf("expected a user with no explicit roles, got %+v", stored)
 	}
 }
 
+// Creating a user with no default role set is refused by the repository
+// (nothing is stored) and reported as roledom.ErrNoDefault.
 func TestCreate_NoDefaultRole(t *testing.T) {
-	svc := usersvc.New(
-		&stubRepo{create: func(context.Context, *userdom.User) error {
-			t.Fatal("no user may be stored without a role")
-			return nil
-		}},
-		&stubRoleRepo{}, // reports no default
-	)
+	svc := usersvc.New(&stubRepo{create: func(context.Context, *userdom.User) error {
+		return roledom.ErrNoDefault
+	}})
 
 	_, err := svc.Create(context.Background(), userdom.CreateInput{
 		Username: "alice", Password: "password123", FullName: "Alice",
 	})
-	if !errors.Is(err, globalroledom.ErrNoDefault) {
+	if !errors.Is(err, roledom.ErrNoDefault) {
 		t.Fatalf("expected ErrNoDefault, got %v", err)
-	}
-}
-
-func TestCreate_DefaultRoleLookupFailure(t *testing.T) {
-	lookupErr := errors.New("db down")
-	svc := usersvc.New(
-		&stubRepo{},
-		&stubRoleRepo{findDefault: func(context.Context) (*globalroledom.GlobalRole, error) { return nil, lookupErr }},
-	)
-
-	_, err := svc.Create(context.Background(), userdom.CreateInput{
-		Username: "alice", Password: "password123", FullName: "Alice",
-	})
-	if !errors.Is(err, lookupErr) {
-		t.Fatalf("expected the lookup error, got %v", err)
 	}
 }
 
@@ -397,7 +352,6 @@ func TestCreate_DuplicateUsername(t *testing.T) {
 }
 
 func TestCreate_AllowsUsernameReuseAfterSoftDelete(t *testing.T) {
-	roleID := uuid.New()
 	deletedUser := &userdom.User{ID: uuid.New(), Username: "alice"}
 	svc := usersvc.New(
 		&stubRepo{
@@ -407,11 +361,6 @@ func TestCreate_AllowsUsernameReuseAfterSoftDelete(t *testing.T) {
 			},
 			findByUsernameIncludingDeleted: func(_ context.Context, _ string) (*userdom.User, error) {
 				return deletedUser, nil
-			},
-		},
-		&stubRoleRepo{
-			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser, IsDefault: true}, nil
 			},
 		},
 	)
@@ -434,15 +383,9 @@ func TestCreate_AllowsUsernameReuseAfterSoftDelete(t *testing.T) {
 
 func TestCreate_RepoError(t *testing.T) {
 	repoErr := errors.New("insert failed")
-	roleID := uuid.New()
 	svc := usersvc.New(
 		&stubRepo{
 			create: func(_ context.Context, _ *userdom.User) error { return repoErr },
-		},
-		&stubRoleRepo{
-			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
-				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser, IsDefault: true}, nil
-			},
 		},
 	)
 
@@ -456,45 +399,26 @@ func TestCreate_RepoError(t *testing.T) {
 	}
 }
 
-func TestCreate_RequiresRoleResolver(t *testing.T) {
-	svc := usersvc.New(&stubRepo{})
-
-	_, err := svc.Create(context.Background(), userdom.CreateInput{
-		Username: "alice",
-		Password: "password123",
-		FullName: "Alice",
-	})
-	if !errors.Is(err, usersvc.ErrRoleResolverRequired) {
-		t.Fatalf("expected ErrRoleResolverRequired, got %v", err)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // AdminUpdate
 // ---------------------------------------------------------------------------
 
-// TestAdminUpdate_NeverChangesRole: changing a user's role is a separate
-// privilege (global_roles.assign) with its own route, so a profile update must
-// leave the role exactly as it was — and never even consult the role resolver.
-func TestAdminUpdate_NeverChangesRole(t *testing.T) {
+// TestAdminUpdate_NeverChangesRoles: changing a user's roles is a separate
+// privilege (roles:assign) with its own route, so a profile update must leave
+// the roles exactly as they were.
+func TestAdminUpdate_NeverChangesRoles(t *testing.T) {
 	id := uuid.New()
-	roleID := uuid.New()
-	repoUser := &userdom.User{ID: id, Username: "alice", FullName: "Alice", Role: userdom.RoleUser, RoleID: roleID}
+	roles := []roledom.Summary{{ID: uuid.New(), Name: "USER"}}
+	repoUser := &userdom.User{ID: id, Username: "alice", FullName: "Alice", Roles: roles}
 
 	svc := usersvc.New(
 		&stubRepo{
 			findByID: func(context.Context, uuid.UUID) (*userdom.User, error) { return repoUser, nil },
 			update: func(_ context.Context, u *userdom.User) error {
-				if u.Role != userdom.RoleUser || u.RoleID != roleID {
-					t.Fatalf("role changed to %q/%v; a profile update must not touch it", u.Role, u.RoleID)
+				if len(u.Roles) != 1 || u.Roles[0] != roles[0] {
+					t.Fatalf("roles changed to %+v; a profile update must not touch them", u.Roles)
 				}
 				return nil
-			},
-		},
-		&stubRoleRepo{
-			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) {
-				t.Fatal("role resolver consulted during a profile update")
-				return nil, nil
 			},
 		},
 	)
@@ -506,8 +430,8 @@ func TestAdminUpdate_NeverChangesRole(t *testing.T) {
 	if got.FullName != "Alice Renamed" {
 		t.Fatalf("expected the name to change, got %q", got.FullName)
 	}
-	if got.Role != userdom.RoleUser || got.RoleID != roleID {
-		t.Fatalf("role changed to %q/%v", got.Role, got.RoleID)
+	if len(got.Roles) != 1 || got.Roles[0] != roles[0] {
+		t.Fatalf("roles changed to %+v", got.Roles)
 	}
 }
 
@@ -517,7 +441,7 @@ func TestAdminUpdate_NeverChangesRole(t *testing.T) {
 
 func TestUpdateProfile_Success(t *testing.T) {
 	id := uuid.New()
-	original := &userdom.User{ID: id, Username: "alice", FullName: "Old Name", Role: userdom.RoleUser}
+	original := &userdom.User{ID: id, Username: "alice", FullName: "Old Name"}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return original, nil },
 	})
@@ -548,7 +472,7 @@ func TestResetPassword_Success(t *testing.T) {
 	var savedHash string
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
-			return &userdom.User{ID: id, Role: userdom.RoleUser, PasswordHash: "oldhash"}, nil
+			return &userdom.User{ID: id, PasswordHash: "oldhash"}, nil
 		},
 		update: func(_ context.Context, u *userdom.User) error {
 			savedHash = u.PasswordHash
@@ -668,7 +592,7 @@ func TestSetPasswordWithToken_Success_WhenMustChangePassword(t *testing.T) {
 	}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
-			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: true}, nil
+			return &userdom.User{ID: userID, PasswordHash: "oldhash", MustChangePassword: true}, nil
 		},
 		update: func(_ context.Context, u *userdom.User) error {
 			savedHash = u.PasswordHash
@@ -708,7 +632,7 @@ func TestSetPasswordWithToken_RejectsWhenPasswordAlreadySet(t *testing.T) {
 	}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
-			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: false}, nil
+			return &userdom.User{ID: userID, PasswordHash: "oldhash", MustChangePassword: false}, nil
 		},
 		update: func(_ context.Context, _ *userdom.User) error {
 			updateCalled = true
@@ -745,7 +669,7 @@ func TestSetPasswordWithToken_RejectsLostRace(t *testing.T) {
 	}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
-			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: true}, nil
+			return &userdom.User{ID: userID, PasswordHash: "oldhash", MustChangePassword: true}, nil
 		},
 		update: func(_ context.Context, _ *userdom.User) error {
 			updateCalled = true

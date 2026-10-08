@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
@@ -35,7 +34,7 @@ func newPluginE2EEnv(t *testing.T) *pluginE2EEnv {
 	env := newE2EEnv(t)
 	db := env.db
 
-	authzStore := pgRepo.NewAuthzPermissionStore(db)
+	authorizer := pgRepo.NewIAMAuthorizer(db)
 	pluginRepo := pgRepo.NewPluginRepository(db)
 	pluginService := pluginsvc.New(pluginRepo)
 	pluginHandler := handler.NewPluginHandler(pluginService, nil, env.projectRepo)
@@ -44,7 +43,7 @@ func newPluginE2EEnv(t *testing.T) *pluginE2EEnv {
 
 	engine := router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(authzStore),
+		IAM:          authorizer,
 		Health:       handler.NewHealthHandler(),
 		Plugin:       pluginHandler,
 		Log:          slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn})),
@@ -70,7 +69,7 @@ func (p *pluginE2EEnv) issueAdminToken(t *testing.T) string {
 	// The account must actually hold the ADMIN role: authorization grants only
 	// what the caller's role row stores, never anything implied by the "ADMIN"
 	// name in the token below.
-	assignGlobalRolesByName(t, p.env, "plugin-admin", "ADMIN")
+	assignPlatformRole(t, p.env, "plugin-admin", "ADMIN")
 	admin, err := p.env.userRepo.FindByUsername(p.env.ctx, "plugin-admin")
 	if err != nil {
 		t.Fatalf("find admin user: %v", err)

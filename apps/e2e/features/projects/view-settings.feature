@@ -14,8 +14,8 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
   Settings are per view AND per user.  A view itself is shared by the whole
   project, but a member's edits live in a personal override (a
   "user_view_configs" row) that other members never see.  What the footer
-  offers depends on the "views.write" project permission:
-    - A views.write holder (Admin/Editor by default) sees a split button:
+  offers depends on the "views:write" project permission:
+    - A views:write holder (Admin/Editor by default) sees a split button:
       "Save only for me" stores the draft as a personal override (PE-1 default
       so Timeline/Board filters never leak to other users); the dropdown next
       to it offers "Save for everyone", which publishes the team default
@@ -31,7 +31,7 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
   would replace.
 
   Scenarios below that say "the user saves the view settings" mean "Save only
-  for me" for the views.write Background user; the personal/shared split
+  for me" for the views:write Background user; the personal/shared split
   itself is specified in the "Personal vs shared view settings" rules.
 
   ═══════════════════════════════════════════════════════════════════════════
@@ -43,7 +43,7 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
     Given the user already has a stored authenticated session
     And a project named "E2E_VS_PROJECT" exists
     And the project has a "Product Backlog" interaction with at least one view
-    And the user has the "views.write" project permission in "E2E_VS_PROJECT"
+    And the user has the "views:write" project permission in "E2E_VS_PROJECT"
     And the user has navigated to the "E2E_VS_PROJECT" project
 
   ═══════════════════════════════════════════════════════════════════════════
@@ -548,7 +548,7 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
     And the original view should revert to its saved settings
 
   ═══════════════════════════════════════════════════════════════════════════
-  Rule: A views.write holder can save settings for everyone or only for themselves
+  Rule: A views:write holder can save settings for everyone or only for themselves
   ═══════════════════════════════════════════════════════════════════════════
 
   Background:
@@ -612,11 +612,11 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
     And the "Reset" button should no longer be shown
 
   ═══════════════════════════════════════════════════════════════════════════
-  Rule: A member without views.write can only save personal settings
+  Rule: A member without views:write can only save personal settings
   ═══════════════════════════════════════════════════════════════════════════
 
   Background:
-    Given a user "E2E_VS_VIEWER" is a member of "E2E_VS_PROJECT" with the "Viewer" role (views.read only)
+    Given a user "E2E_VS_VIEWER" is a member of "E2E_VS_PROJECT" with the "Viewer" role (views:read only)
     And the user is signed in as "E2E_VS_VIEWER" instead of the admin
     And the user has navigated to the Product Backlog of "E2E_VS_PROJECT"
 
@@ -691,21 +691,21 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
 
   Scenario: Dragging a task between status columns updates the task's status
     Given the view is configured with "Column by: Status"
-    And the user has the "tasks.write" project permission
+    And the user has the "tasks:write" project permission
     And the interaction has a task "E2E_DRAG_STATUS" in column "Todo"
     When the user drags "E2E_DRAG_STATUS" to the "In Progress" column
     Then the task's status should be updated to "In Progress"
 
   Scenario: Dragging a task between importance columns updates the task's importance
     Given the view is configured with "Column by: Importance"
-    And the user has the "tasks.write" project permission
+    And the user has the "tasks:write" project permission
     And the interaction has a task "E2E_DRAG_IMP" in column "Low"
     When the user drags "E2E_DRAG_IMP" to the "High" column
     Then the task's importance should be updated to 3 (High)
 
   Scenario: Dragging a task between assignee columns updates the task's assignee
     Given the view is configured with "Column by: Assignee"
-    And the user has the "tasks.write" project permission
+    And the user has the "tasks:write" project permission
     And the interaction has a task "E2E_DRAG_ASSIGNEE" in column "E2E_ALICE"
     When the user drags "E2E_DRAG_ASSIGNEE" to the "E2E_BOB" column
     Then the task's assignee should be updated to "E2E_BOB"
@@ -713,7 +713,7 @@ Feature: View settings — dynamic fields, grouping, sorting, and aggregation
   Scenario: Dragging a task between custom select field columns updates the field
     Given the project has a custom field "Severity" of type "select" with options "Low,Medium,High"
     And the view is configured with "Column by: Severity"
-    And the user has the "tasks.write" project permission
+    And the user has the "tasks:write" project permission
     And the interaction has a task "E2E_DRAG_SEV" with custom field "Severity" set to "Low"
     When the user drags "E2E_DRAG_SEV" to the "High" column
     Then the task's "Severity" custom field should be updated to "High"

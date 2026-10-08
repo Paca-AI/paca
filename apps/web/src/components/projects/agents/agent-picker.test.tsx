@@ -60,8 +60,6 @@ const environment: Environment = {
 	idle_timeout_minutes: 30,
 	last_active_at: "2024-01-01T00:00:00.000Z",
 	ports_pending_restart: false,
-	access_mode: "open",
-	access_granted: true,
 	created_at: "2024-01-01T00:00:00.000Z",
 	updated_at: "2024-01-01T00:00:00.000Z",
 	folders: [folder],

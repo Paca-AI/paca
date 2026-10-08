@@ -3,11 +3,7 @@ import type {
 	AgentConversation,
 	AgentConversationEvent,
 } from "@/lib/agent-api";
-import {
-	ApiErrorCode,
-	getApiErrorCode,
-	isForbiddenError,
-} from "@/lib/api-error";
+import { isForbiddenError } from "@/lib/api-error";
 import { parseContextItems } from "@/lib/context-items";
 
 // Our chat runtimes (conversation-view.tsx / ai-chat-float.tsx / the
@@ -27,10 +23,7 @@ export function extractTextOnlyContent(message: AppendMessage): string | null {
 // react-i18next's `t()` — its typed key argument rejects a widened `string`
 // (see the "Type 'string' is not assignable to type ..." error this
 // produces if loosened).
-type ChatSessionAccessDeniedKey =
-	| "agents.conversationView.agentAccessRestricted"
-	| "agents.conversationView.environmentAccessRestricted"
-	| "agents.conversationView.chatNoPermission";
+type ChatSessionAccessDeniedKey = "agents.conversationView.chatNoPermission";
 
 // Classifies a failed chat-session dispatch (startChatSession/sendChatMessage
 // and their sibling calls in new-conversation-thread.tsx,
@@ -50,13 +43,6 @@ type ChatSessionAccessDeniedKey =
 export function chatSessionAccessDeniedKey(
 	err: unknown,
 ): ChatSessionAccessDeniedKey | null {
-	const code = getApiErrorCode(err);
-	if (code === ApiErrorCode.AgentAccessRestricted) {
-		return "agents.conversationView.agentAccessRestricted";
-	}
-	if (code === ApiErrorCode.EnvironmentAccessRestricted) {
-		return "agents.conversationView.environmentAccessRestricted";
-	}
 	if (isForbiddenError(err)) {
 		return "agents.conversationView.chatNoPermission";
 	}

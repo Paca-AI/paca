@@ -12,34 +12,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
-// userRecord is the sqlx write model for the users table. It mirrors the
-// columns defined in 000001_init.sql.
-type userRecord struct {
-	ID                 string     `db:"id"`
-	Username           string     `db:"username"`
-	PasswordHash       string     `db:"password_hash"`
-	FullName           string     `db:"full_name"`
-	Email              *string    `db:"email"`
-	RoleID             string     `db:"role_id"`
-	MustChangePassword bool       `db:"must_change_password"`
-	CreatedAt          time.Time  `db:"created_at"`
-	UpdatedAt          time.Time  `db:"updated_at"`
-	DeletedAt          *time.Time `db:"deleted_at"`
-}
-
-// userReadRow is the result of a SELECT … JOIN global_roles used for all read
-// operations so that the role name is always available alongside the FK.
+// userReadRow is the result of every user read. The user's roles are not part
+// of the row: they are attachments, loaded by loadUserRoles.
 type userReadRow struct {
 	ID                 string     `db:"id"`
 	Username           string     `db:"username"`
 	PasswordHash       string     `db:"password_hash"`
 	FullName           string     `db:"full_name"`
 	Email              *string    `db:"email"`
-	RoleID             string     `db:"role_id"`
-	RoleName           string     `db:"role_name"`
 	MustChangePassword bool       `db:"must_change_password"`
 	AvatarKey          *string    `db:"avatar_key"`
 	AvatarThumbKey     *string    `db:"avatar_thumb_key"`
@@ -48,11 +32,8 @@ type userReadRow struct {
 	DeletedAt          *time.Time `db:"deleted_at"`
 }
 
-// userReadCols and userReadJoin are shared by all read queries.
-const (
-	userReadCols = `users.id, users.username, users.password_hash, users.full_name, users.email, users.role_id, users.must_change_password, users.avatar_key, users.avatar_thumb_key, users.created_at, users.updated_at, users.deleted_at, gr.name AS role_name`
-	userReadJoin = `JOIN global_roles gr ON gr.id = users.role_id`
-)
+// userReadCols is shared by all read queries.
+const userReadCols = `users.id, users.username, users.password_hash, users.full_name, users.email, users.must_change_password, users.avatar_key, users.avatar_thumb_key, users.created_at, users.updated_at, users.deleted_at`
 
 // UserRepository is the sqlx implementation of userdom.Repository.
 type UserRepository struct {
@@ -74,7 +55,10 @@ func userListWhere(filter userdom.ListFilter) (string, []any) {
 	var args []any
 	if filter.Role != "" {
 		args = append(args, filter.Role)
-		where += fmt.Sprintf(" AND gr.name = $%d", len(args))
+		where += fmt.Sprintf(` AND EXISTS (
+			SELECT 1 FROM role_attachments ra JOIN roles r ON r.id = ra.role_id
+			WHERE ra.principal_type = 'user' AND ra.principal_id = users.id
+			  AND ra.project_id IS NULL AND r.name = $%d)`, len(args))
 	}
 	for _, word := range strings.Fields(filter.Search) {
 		args = append(args, "%"+escapeLike(word)+"%")
@@ -87,14 +71,15 @@ func userListWhere(filter userdom.ListFilter) (string, []any) {
 // List returns a page of non-deleted, non-system users matching filter,
 // ordered by name, plus the count of matches across all pages. Every
 // whitespace-separated search word must appear (case-insensitively) in the
-// username, full name or email; Role is an exact global role name. The
+// username, full name or email; Role is the exact name of a platform role
+// attached to the user. The
 // built-in agent bot account is excluded because it is an internal system
 // identity, not a real user.
 func (r *UserRepository) List(ctx context.Context, offset, limit int, filter userdom.ListFilter) ([]*userdom.User, int64, error) {
 	where, args := userListWhere(filter)
 
 	var total int64
-	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM users `+userReadJoin+` WHERE `+where, args...); err != nil {
+	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM users WHERE `+where, args...); err != nil {
 		return nil, 0, fmt.Errorf("user repo: list count: %w", err)
 	}
 
@@ -103,16 +88,15 @@ func (r *UserRepository) List(ctx context.Context, offset, limit int, filter use
 	if err := r.db.SelectContext(ctx, &rows, `
 		SELECT `+userReadCols+`
 		FROM users
-		`+userReadJoin+`
 		WHERE `+where+fmt.Sprintf(`
 		ORDER BY `+userNameSortKey+`, LOWER(users.username), users.id
 		LIMIT $%d OFFSET $%d`, len(args)-1, len(args)), args...); err != nil {
 		return nil, 0, fmt.Errorf("user repo: list: %w", err)
 	}
 
-	users := make([]*userdom.User, 0, len(rows))
-	for i := range rows {
-		users = append(users, rowToEntity(&rows[i]))
+	users, err := r.entitiesWithRoles(ctx, rows)
+	if err != nil {
+		return nil, 0, err
 	}
 	return users, total, nil
 }
@@ -149,7 +133,6 @@ func (r *UserRepository) ListAfter(ctx context.Context, limit int, cursorAfter *
 	if err := r.db.SelectContext(ctx, &rows, `
 		SELECT `+userReadCols+`
 		FROM users
-		`+userReadJoin+`
 		WHERE `+where+fmt.Sprintf(`
 		ORDER BY `+userNameSortKey+`, LOWER(users.username), users.id
 		LIMIT $%d`, len(args)), args...); err != nil {
@@ -160,9 +143,9 @@ func (r *UserRepository) ListAfter(ctx context.Context, limit int, cursorAfter *
 	if hasMore {
 		rows = rows[:limit]
 	}
-	users := make([]*userdom.User, 0, len(rows))
-	for i := range rows {
-		users = append(users, rowToEntity(&rows[i]))
+	users, err := r.entitiesWithRoles(ctx, rows)
+	if err != nil {
+		return nil, false, err
 	}
 	return users, hasMore, nil
 }
@@ -200,7 +183,6 @@ func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*userdom.U
 	err := r.db.GetContext(ctx, &row, `
 		SELECT `+userReadCols+`
 		FROM users
-		`+userReadJoin+`
 		WHERE users.id = $1 AND users.deleted_at IS NULL`, id.String())
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, userdom.ErrNotFound
@@ -208,7 +190,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*userdom.U
 	if err != nil {
 		return nil, fmt.Errorf("user repo: find by id: %w", err)
 	}
-	return rowToEntity(&row), nil
+	return r.entityWithRoles(ctx, &row)
 }
 
 // FindByUsername returns the user with the given username, or userdom.ErrNotFound.
@@ -217,7 +199,6 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 	err := r.db.GetContext(ctx, &row, `
 		SELECT `+userReadCols+`
 		FROM users
-		`+userReadJoin+`
 		WHERE users.username = $1 AND users.deleted_at IS NULL`, username)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, userdom.ErrNotFound
@@ -225,7 +206,7 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 	if err != nil {
 		return nil, fmt.Errorf("user repo: find by username: %w", err)
 	}
-	return rowToEntity(&row), nil
+	return r.entityWithRoles(ctx, &row)
 }
 
 // FindByEmail returns the user with the given email, or userdom.ErrNotFound.
@@ -238,7 +219,6 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*userdo
 	err := r.db.GetContext(ctx, &row, `
 		SELECT `+userReadCols+`
 		FROM users
-		`+userReadJoin+`
 		WHERE lower(users.email) = lower($1) AND users.deleted_at IS NULL
 		ORDER BY users.email = $1 DESC, users.created_at
 		LIMIT 1`, email)
@@ -248,7 +228,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*userdo
 	if err != nil {
 		return nil, fmt.Errorf("user repo: find by email: %w", err)
 	}
-	return rowToEntity(&row), nil
+	return r.entityWithRoles(ctx, &row)
 }
 
 // FindByUsernameIncludingDeleted returns the user with the given username,
@@ -258,7 +238,6 @@ func (r *UserRepository) FindByUsernameIncludingDeleted(ctx context.Context, use
 	err := r.db.GetContext(ctx, &row, `
 		SELECT `+userReadCols+`
 		FROM users
-		`+userReadJoin+`
 		WHERE users.username = $1`, username)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, userdom.ErrNotFound
@@ -266,35 +245,62 @@ func (r *UserRepository) FindByUsernameIncludingDeleted(ctx context.Context, use
 	if err != nil {
 		return nil, fmt.Errorf("user repo: find by username including deleted: %w", err)
 	}
-	return rowToEntity(&row), nil
+	return r.entityWithRoles(ctx, &row)
 }
 
-// Create persists a new user record. A username/email that collides with an
-// active row surfaces as the corresponding userdom sentinel (checked
-// up front by the service layer already, but that pre-check can still lose
-// a race to a concurrent request — see userRepoErr) rather than a raw
-// constraint-violation error.
+// Create persists a new user record together with its role attachments, in
+// one transaction. u.Roles names the platform roles to attach; left empty, the
+// account starts with the default role (roledom.ErrNoDefault when none is
+// set). u.Roles is replaced by the roles actually attached.
+//
+// A username/email that collides with an active row surfaces as the
+// corresponding userdom sentinel (checked up front by the service layer
+// already, but that pre-check can still lose a race to a concurrent request —
+// see userRepoErr) rather than a raw constraint-violation error.
 func (r *UserRepository) Create(ctx context.Context, u *userdom.User) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO users (id, username, password_hash, full_name, email, role_id, must_change_password, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		u.ID.String(), u.Username, u.PasswordHash, u.FullName, u.Email,
-		u.RoleID.String(), u.MustChangePassword, u.CreatedAt, u.UpdatedAt, u.DeletedAt,
-	)
+	var attached []roledom.Summary
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO users (id, username, password_hash, full_name, email, must_change_password, created_at, updated_at, deleted_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			u.ID.String(), u.Username, u.PasswordHash, u.FullName, u.Email,
+			u.MustChangePassword, u.CreatedAt, u.UpdatedAt, u.DeletedAt,
+		); err != nil {
+			return userRepoErr("create", err)
+		}
+		if len(u.Roles) == 0 {
+			if _, err := attachDefaultRoleTx(ctx, tx, roledom.PrincipalUser, u.ID, true); err != nil {
+				return err
+			}
+		} else {
+			ids := make([]uuid.UUID, 0, len(u.Roles))
+			for _, role := range u.Roles {
+				ids = append(ids, role.ID)
+			}
+			if _, err := attachRolesTx(ctx, tx, roledom.PrincipalUser, u.ID, nil, ids, nil); err != nil {
+				return err
+			}
+		}
+		var err error
+		attached, err = summariesTx(ctx, tx, roledom.PrincipalUser, u.ID, nil)
+		return err
+	})
 	if err != nil {
-		return userRepoErr("create", err)
+		return err
 	}
+	u.Roles = attached
 	return nil
 }
 
-// Update saves changes to an existing user record. See Create's doc comment
-// re: username/email uniqueness errors.
+// Update saves changes to an existing user record. It never touches the
+// user's role attachments. See Create's doc comment re: username/email
+// uniqueness errors.
 func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE users SET username = $1, password_hash = $2, full_name = $3, email = $4, role_id = $5,
-		  must_change_password = $6, avatar_key = $7, avatar_thumb_key = $8, updated_at = $9, deleted_at = $10
-		WHERE id = $11`,
-		u.Username, u.PasswordHash, u.FullName, u.Email, u.RoleID.String(),
+		UPDATE users SET username = $1, password_hash = $2, full_name = $3, email = $4,
+		  must_change_password = $5, avatar_key = $6, avatar_thumb_key = $7, updated_at = $8, deleted_at = $9
+		WHERE id = $10`,
+		u.Username, u.PasswordHash, u.FullName, u.Email,
 		u.MustChangePassword, u.AvatarKey, u.AvatarThumbKey, u.UpdatedAt, u.DeletedAt, u.ID.String(),
 	)
 	if err != nil {
@@ -339,15 +345,13 @@ func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 func rowToEntity(row *userReadRow) *userdom.User {
 	id, _ := uuid.Parse(row.ID)
-	roleID, _ := uuid.Parse(row.RoleID)
 	return &userdom.User{
 		ID:                 id,
 		Username:           row.Username,
 		PasswordHash:       row.PasswordHash,
 		FullName:           row.FullName,
 		Email:              row.Email,
-		RoleID:             roleID,
-		Role:               row.RoleName,
+		Roles:              []roledom.Summary{},
 		MustChangePassword: row.MustChangePassword,
 		AvatarKey:          row.AvatarKey,
 		AvatarThumbKey:     row.AvatarThumbKey,
@@ -355,4 +359,55 @@ func rowToEntity(row *userReadRow) *userdom.User {
 		UpdatedAt:          row.UpdatedAt,
 		DeletedAt:          row.DeletedAt,
 	}
+}
+
+// entityWithRoles maps row and loads the user's platform roles.
+func (r *UserRepository) entityWithRoles(ctx context.Context, row *userReadRow) (*userdom.User, error) {
+	users, err := r.entitiesWithRoles(ctx, []userReadRow{*row})
+	if err != nil {
+		return nil, err
+	}
+	return users[0], nil
+}
+
+// entitiesWithRoles maps rows (keeping their order) and loads the platform
+// roles of all of them in one query: the platform-wide attachments of each
+// user, sorted by role name.
+func (r *UserRepository) entitiesWithRoles(ctx context.Context, rows []userReadRow) ([]*userdom.User, error) {
+	users := make([]*userdom.User, 0, len(rows))
+	if len(rows) == 0 {
+		return users, nil
+	}
+	ids := make([]string, 0, len(rows))
+	byID := make(map[string]*userdom.User, len(rows))
+	for i := range rows {
+		u := rowToEntity(&rows[i])
+		users = append(users, u)
+		ids = append(ids, rows[i].ID)
+		byID[rows[i].ID] = u
+	}
+	var attached []struct {
+		UserID string `db:"user_id"`
+		ID     string `db:"id"`
+		Name   string `db:"name"`
+	}
+	if err := r.db.SelectContext(ctx, &attached, `
+		SELECT ra.principal_id::text AS user_id, r.id::text AS id, r.name
+		FROM role_attachments ra JOIN roles r ON r.id = ra.role_id
+		WHERE ra.principal_type = 'user' AND ra.project_id IS NULL AND ra.principal_id = ANY($1::uuid[])
+		ORDER BY r.name, r.id`, ids); err != nil {
+		return nil, fmt.Errorf("user repo: load roles: %w", err)
+	}
+	for _, a := range attached {
+		u, ok := byID[a.UserID]
+		if !ok {
+			continue
+		}
+		rid, err := uuid.Parse(a.ID)
+		if err != nil {
+			return nil, fmt.Errorf("user repo: load roles: bad role id %q: %w", a.ID, err)
+		}
+		u.Roles = append(u.Roles, roledom.Summary{ID: rid, Name: a.Name})
+	}
+	return users, nil
 }

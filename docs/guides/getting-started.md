@@ -102,6 +102,7 @@ See [mcp-server-setup.md](mcp-server-setup.md) for platform-specific instruction
 | Document | When to read it |
 |---|---|
 | [local-development.md](local-development.md) | Setting up a contributor environment |
+| [iam-authorization.md](iam-authorization.md) | Understanding roles, permissions and who can do what |
 | [mcp-server-setup.md](mcp-server-setup.md) | Connecting AI agents via MCP |
 | [../architecture/overview.md](../architecture/overview.md) | Understanding the system architecture |
 | [../plugins/overview.md](../plugins/overview.md) | Writing or installing plugins |

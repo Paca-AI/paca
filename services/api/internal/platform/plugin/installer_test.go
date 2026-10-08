@@ -212,6 +212,93 @@ func TestInstall_NilCheckManifest_StillWrites(t *testing.T) {
 	}
 }
 
+// TestInstall_RejectsRequirePermissions_LeavesInstalledPluginUntouched pins
+// that a manifest the registry would reject (the retired requirePermissions
+// middleware) is refused by Install itself, before checkManifest and before
+// any artifact write: an upgrade leaves the installed plugin's backend,
+// migrations and frontend exactly as they were, and a fresh install writes
+// nothing.
+func TestInstall_RejectsRequirePermissions_LeavesInstalledPluginUntouched(t *testing.T) {
+	const pluginName = "com.paca.test"
+	badManifest := `{"id":"com.paca.test","version":"2.0.0","backend":{"routes":[` +
+		`{"method":"GET","path":"/items","middlewares":[{"name":"requirePermissions","permissions":["tasks.read"]}]}]}}`
+
+	mux := http.NewServeMux()
+	serve := func(path string, files map[string]string) {
+		body := buildTarGz(t, files)
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) })
+	}
+	serve("/manifest.tar.gz", map[string]string{"plugin.json": badManifest})
+	serve("/backend.tar.gz", map[string]string{"backend.wasm": "NEW-WASM-BYTES"})
+	serve("/migrations.tar.gz", map[string]string{"001_new.sql": "SELECT 1;"})
+	serve("/frontend.tar.gz", map[string]string{"dist/index.js": "NEW-JS"})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	item := MarketplacePlugin{
+		Name:    pluginName,
+		Version: "2.0.0",
+		Artifacts: MarketplacePluginArtifact{
+			ManifestTarGzURL:   srv.URL + "/manifest.tar.gz",
+			BackendTarGzURL:    srv.URL + "/backend.tar.gz",
+			MigrationsTarGzURL: srv.URL + "/migrations.tar.gz",
+			FrontendTarGzURL:   srv.URL + "/frontend.tar.gz",
+		},
+	}
+	checked := false
+	check := func(plugindom.PluginManifest) error { checked = true; return nil }
+
+	t.Run("upgrade", func(t *testing.T) {
+		backendDir, frontendDir := t.TempDir(), t.TempDir()
+		pluginDir := filepath.Join(backendDir, pluginName)
+		seed := map[string]string{
+			filepath.Join(pluginDir, "backend.wasm"):              "OLD-WASM-BYTES",
+			filepath.Join(pluginDir, "plugin.json"):               `{"id":"com.paca.test","version":"1.0.0"}`,
+			filepath.Join(pluginDir, "migrations", "001_old.sql"): "SELECT 0;",
+			filepath.Join(frontendDir, pluginName, "old.js"):      "OLD-JS",
+		}
+		for path, content := range seed {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		_, err := newTestInstaller(t, backendDir, frontendDir).Install(context.Background(), item, check)
+		if err == nil || !errors.Is(err, plugindom.ErrRequirePermissionsUnsupported) {
+			t.Fatalf("want ErrRequirePermissionsUnsupported, got %v", err)
+		}
+		if checked {
+			t.Error("checkManifest ran for a manifest that fails Validate")
+		}
+		for path, want := range seed {
+			got, err := os.ReadFile(path)
+			if err != nil || string(got) != want {
+				t.Errorf("%s changed after a rejected upgrade: %q, %v", path, got, err)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(pluginDir, "migrations", "001_new.sql")); err == nil {
+			t.Error("new migration was written despite the rejection")
+		}
+	})
+
+	t.Run("fresh install", func(t *testing.T) {
+		backendDir, frontendDir := t.TempDir(), t.TempDir()
+		_, err := newTestInstaller(t, backendDir, frontendDir).Install(context.Background(), item, check)
+		if !errors.Is(err, plugindom.ErrRequirePermissionsUnsupported) {
+			t.Fatalf("want ErrRequirePermissionsUnsupported, got %v", err)
+		}
+		for _, dir := range []string{backendDir, frontendDir} {
+			entries, _ := os.ReadDir(dir)
+			if len(entries) != 0 {
+				t.Errorf("%s was written on a rejected fresh install: %v", dir, entries)
+			}
+		}
+	})
+}
+
 func TestInstaller_Uninstall_RejectsTraversalNames(t *testing.T) {
 	base := t.TempDir()
 	victim := filepath.Join(base, "victim")

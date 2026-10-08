@@ -230,8 +230,8 @@ func (s *ActivitySvc) triggerMentionedAgent(ctx context.Context, in taskdom.AddC
 	conv, err := s.agentTrigger.TriggerCommentMention(ctx, in.ProjectID, agentID, in.TaskID, commentID, member.ID, commentText)
 	if err != nil {
 		// The comment still succeeds — this is visibility only. Without it a
-		// restricted-agent denial is indistinguishable from the mention
-		// doing nothing.
+		// denied trigger (the mentioner may not use the agent or its
+		// environment) is indistinguishable from the mention doing nothing.
 		slog.WarnContext(ctx, "comment mention trigger failed", "error", err, "project_id", in.ProjectID, "agent_id", agentID, "task_id", in.TaskID)
 	}
 	if conv != nil {

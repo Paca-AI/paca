@@ -4,7 +4,7 @@ Feature: Workspace branding settings
   "Workspace Settings" and lets an administrator customise the whole
   instance: a logo and favicon, a brand name, and a primary accent colour
   chosen from eight curated light/dark presets (Green, Blue, Teal, Indigo,
-  Purple, Pink, Red, Orange). The page is gated by the global "settings.write"
+  Purple, Pink, Red, Orange). The page is gated by the global "settings:write"
   permission: users without it are redirected to the home page. The form
   tracks unsaved changes — "Save changes" stays disabled until the brand name
   or colour differs from what is stored — and a successful save (PATCH
@@ -13,19 +13,19 @@ Feature: Workspace branding settings
   afterwards. Logo and favicon uploads are not covered here.
 
   @authenticated
-  Rule: Access is gated by the settings.write permission
+  Rule: Access is gated by the settings:write permission
 
     Background:
       Given the user already has a stored authenticated session
 
-    Scenario: A user without settings.write is redirected away from the Settings page
-      Given a user exists whose global role does not grant "settings.write"
+    Scenario: A user without settings:write is redirected away from the Settings page
+      Given a user exists whose global role does not grant "settings:write"
       When that user signs in and navigates to the Settings page
       Then the user should be redirected to the Home page
       And the "Workspace Settings" heading should not be displayed
 
-    Scenario: A user with only settings.write can open the Settings page
-      Given a user exists whose global role grants "settings.write"
+    Scenario: A user with only settings:write can open the Settings page
+      Given a user exists whose global role grants "settings:write"
       When that user signs in and navigates to the Settings page
       Then the "Workspace Settings" heading should be displayed
       And the "Brand Name" field should be displayed

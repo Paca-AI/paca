@@ -209,6 +209,15 @@ Writes or updates a document in Paca Docs. Reads existing docs first to match to
 /paca-doc ABC-17 update                ← update an existing doc
 ```
 
+### `/paca-role-policy <what the role should allow>`
+
+Drafts the JSON policy of a Paca role: read-only roles, limiting someone to one sprint, restricting an agent or environment, access to specific projects. It asks a few clarifying questions and replies with one JSON policy, a plain-language summary and caveats. It **only drafts**: it never creates, updates, attaches or deletes a role. Paste the result into the role editor's Advanced (JSON) view (see [Roles and policies](roles-and-policies.md)).
+
+```
+/paca-role-policy read-only role for project ABC
+/paca-role-policy keep the sales bot away from contractors
+```
+
 ### `/paca-setup`
 
 Interactive setup wizard. Walks you through connecting Claude Code to your Paca instance and verifying the connection.

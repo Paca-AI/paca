@@ -609,14 +609,13 @@ func TestCheckWriteAllowed(t *testing.T) {
 // identity/authorization tables are rejected for every plugin write
 // unconditionally, unlike coreSensitiveFields tables which a plugin can
 // unlock by declaring RequestedSensitiveFields. Before this test's cases
-// were enforced, a plugin with zero manifest declarations could run
-// "UPDATE project_members SET project_role_id = <owner-role> WHERE
-// user_id = <attacker>" (or the equivalent against global_roles,
-// project_roles, or password_set_tokens) and grant itself admin on every
-// project or every tenant on the instance — the escalation step of the
-// advisory's PoC — and a plugin could unlock unrestricted writes to the
-// entire users or api_keys table merely by declaring that table's one
-// coreSensitiveFields column as requested.
+// were enforced, a plugin with zero manifest declarations could write its
+// own role attachment ("INSERT INTO role_attachments ...", or the
+// equivalent against roles, project_members, or password_set_tokens) and
+// grant itself admin on every project or every tenant on the instance —
+// the escalation step of the advisory's PoC — and a plugin could unlock
+// unrestricted writes to the entire users or api_keys table merely by
+// declaring that table's one coreSensitiveFields column as requested.
 func TestCheckWriteAllowed_AlwaysBlockedTables(t *testing.T) {
 	rt := &Runtime{plugins: map[string]*pluginInstance{}}
 
@@ -625,15 +624,15 @@ func TestCheckWriteAllowed_AlwaysBlockedTables(t *testing.T) {
 		caller plugindom.Plugin
 		sql    string
 	}{
-		{"project_members: grant self a project role, no manifest declarations", callerPlugin("com.paca.evil"), "UPDATE project_members SET project_role_id = $1 WHERE user_id = $2"},
-		{"project_members: insert self as a member", callerPlugin("com.paca.evil"), "INSERT INTO project_members (project_id, user_id, project_role_id) VALUES ($1, $2, $3)"},
-		{"project_roles: rewrite a role's permissions to superadmin", callerPlugin("com.paca.evil"), `UPDATE project_roles SET permissions = '{"*": true}' WHERE id = $1`},
-		{"global_roles: rewrite the baseline USER role to superadmin", callerPlugin("com.paca.evil"), `UPDATE global_roles SET permissions = '{"*": true}' WHERE name = 'USER'`},
-		{"users: escalate own global role_id, no manifest declarations", callerPlugin("com.paca.evil"), "UPDATE users SET role_id = $1 WHERE id = $2"},
-		{"users: escalate own global role_id even with password_hash requested", callerPlugin("com.paca.evil", "users.password_hash"), "UPDATE users SET role_id = $1 WHERE id = $2"},
+		{"project_members: reactivate a removed membership, no manifest declarations", callerPlugin("com.paca.evil"), "UPDATE project_members SET deleted_at = NULL WHERE user_id = $1"},
+		{"project_members: insert self as a member", callerPlugin("com.paca.evil"), "INSERT INTO project_members (project_id, user_id) VALUES ($1, $2)"},
+		{"role_attachments: attach self to a role", callerPlugin("com.paca.evil"), "INSERT INTO role_attachments (role_id, principal_type, principal_id) VALUES ($1, 'user', $2)"},
+		{"roles: rewrite a role's policy to superadmin", callerPlugin("com.paca.evil"), `UPDATE roles SET policy = '{"statements":[{"effect":"Allow","actions":["*"],"resources":["*"]}]}' WHERE name = 'USER'`},
+		{"users: take over another account, no manifest declarations", callerPlugin("com.paca.evil"), "UPDATE users SET username = $1 WHERE id = $2"},
+		{"users: take over another account even with password_hash requested", callerPlugin("com.paca.evil", "users.password_hash"), "UPDATE users SET username = $1 WHERE id = $2"},
 		{"api_keys: forge a key even with key_hash requested", callerPlugin("com.paca.evil", "api_keys.key_hash"), "INSERT INTO api_keys (user_id, key_hash) VALUES ($1, $2)"},
 		{"password_set_tokens: plant a token to take over an account", callerPlugin("com.paca.evil"), "INSERT INTO password_set_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)"},
-		{"explicit public schema qualification is blocked the same way", callerPlugin("com.paca.evil"), "UPDATE public.project_members SET project_role_id = $1 WHERE user_id = $2"},
+		{"explicit public schema qualification is blocked the same way", callerPlugin("com.paca.evil"), "UPDATE public.project_members SET deleted_at = NULL WHERE user_id = $1"},
 		{"delete wiping every project membership is blocked", callerPlugin("com.paca.evil"), "DELETE FROM project_members WHERE true"},
 	}
 
@@ -647,7 +646,7 @@ func TestCheckWriteAllowed_AlwaysBlockedTables(t *testing.T) {
 
 	t.Run("a plugin's own identically-named table is unaffected", func(t *testing.T) {
 		caller := callerPlugin("com.paca.evil")
-		sql := "UPDATE " + schemaName(caller.Name) + ".users SET role_id = $1 WHERE id = $2"
+		sql := "UPDATE " + schemaName(caller.Name) + ".users SET username = $1 WHERE id = $2"
 		if err := rt.checkWriteAllowed(caller, sql, "paca.db_exec"); err != nil {
 			t.Fatalf("expected write to the plugin's own schema-qualified table to be unaffected, got error: %v", err)
 		}
@@ -739,5 +738,39 @@ func TestLoad_PluginWithoutBackend_Succeeds(t *testing.T) {
 	}
 	if got := rt.LoadedNames(); len(got) != 0 {
 		t.Fatalf("expected no runtime instance, got %v", got)
+	}
+}
+
+func TestRuntimeUsesLegacyPermissions(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(t.Context(), StoreConfig{Store: "local", WASMDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, manifest string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name, "plugin.json"), []byte(manifest), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("legacy", `{"id":"legacy","backend":{"routes":[{"method":"GET","path":"/x","middlewares":[{"name":"requirePermissions","permissions":["tasks.read"]}]}]}}`)
+	write("modern", `{"id":"modern","backend":{"routes":[{"method":"GET","path":"/x","middlewares":[{"name":"requireActions","actions":["tasks:read"]}]}]}}`)
+	rt := NewRuntime(store, HostServices{}, ResourceLimits{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	if !rt.UsesLegacyPermissions(t.Context(), "legacy") {
+		t.Error("a package declaring requirePermissions must be reported")
+	}
+	if rt.UsesLegacyPermissions(t.Context(), "modern") {
+		t.Error("a package using requireActions must not be reported")
+	}
+	if rt.UsesLegacyPermissions(t.Context(), "missing") {
+		t.Error("a plugin without a plugin.json must not be reported")
+	}
+	var none *Runtime
+	if none.UsesLegacyPermissions(t.Context(), "legacy") {
+		t.Error("a nil runtime reports nothing")
 	}
 }

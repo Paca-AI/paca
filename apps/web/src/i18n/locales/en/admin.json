@@ -41,8 +41,7 @@
 			"description": "You can still create new users using the button above."
 		},
 		"table": {
-			"columnUsername": "Username",
-			"columnFullName": "Full Name",
+			"columnUser": "User",
 			"columnRole": "Role",
 			"columnCreated": "Created",
 			"pwdResetBadge": "pwd reset",
@@ -51,7 +50,9 @@
 			"resetPasswordAction": "Reset password",
 			"editAction": "Edit user",
 			"changeRoleAction": "Change role",
-			"deleteAction": "Delete user"
+			"deleteAction": "Delete user",
+			"pwdResetHint": "This user must set a new password at next sign-in",
+			"columnActions": "Actions"
 		},
 		"formDialog": {
 			"createdTitle": "User created",
@@ -186,14 +187,16 @@
 		},
 		"table": {
 			"columnName": "Name",
-			"columnPermissions": "Permissions",
+			"columnDescription": "Description",
 			"columnDefault": "Default",
 			"noPermissionsAssigned": "No permissions assigned",
 			"default": "Default",
 			"setDefaultAction": "Set as default role",
 			"editAction": "Edit role",
 			"deleteAction": "Delete role",
-			"deleteDefaultDisabled": "The default role can't be deleted. Make another role the default first."
+			"deleteDefaultDisabled": "The default role can't be deleted. Make another role the default first.",
+			"builtIn": "Built-in role",
+			"noDescription": "No description"
 		},
 		"formDialog": {
 			"editTitle": "Edit Role",
@@ -208,16 +211,7 @@
 			"cancel": "Cancel",
 			"saving": "Saving…",
 			"saveChanges": "Save changes",
-			"createRole": "Create role",
-			"errors": {
-				"roleNameRequired": "Role name is required.",
-				"nameTaken": "A role with this name already exists.",
-				"nameInvalid": "Role name must be uppercase letters, numbers, and underscores only.",
-				"roleNotFound": "This role no longer exists. It may have already been deleted.",
-				"forbidden": "You don't have permission to perform this action.",
-				"internalError": "Something went wrong on the server. Please try again.",
-				"generic": "Something went wrong."
-			}
+			"createRole": "Create role"
 		},
 		"deleteDialog": {
 			"title": "Delete role",
@@ -229,7 +223,6 @@
 			"confirmButton": "Delete role",
 			"errors": {
 				"roleNotFound": "This role no longer exists.",
-				"hasUsersWarning": "This role cannot be deleted because it is still assigned to one or more users.",
 				"isDefault": "The default role can't be deleted. Make another role the default first.",
 				"forbidden": "You don't have permission to delete this role.",
 				"internalError": "Something went wrong. Please try again.",
@@ -300,11 +293,28 @@
 			"settingsSsoWrite": {
 				"label": "Manage SSO Providers",
 				"description": "Configure the identity providers users can sign in with. Grants the ability to sign in as other users, so treat it like full admin access."
+			},
+			"agentsRead": {
+				"label": "Read Agents",
+				"description": "View workspace-level AI agents"
+			},
+			"agentsWrite": {
+				"label": "Manage Agents",
+				"description": "Create, edit and delete workspace-level AI agents"
+			},
+			"pluginsRead": {
+				"label": "Read Plugins",
+				"description": "View installed plugins"
+			},
+			"pluginsWrite": {
+				"label": "Manage Plugins",
+				"description": "Install, update, enable and remove plugins"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "Global Roles",
 			"users": "Users",
+			"agents": "AI Agents",
 			"projects": "Projects",
 			"plugins": "Plugins",
 			"settings": "Settings"

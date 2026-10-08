@@ -43,10 +43,10 @@ export function PortForwardCommentsTab({
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canResolve = hasProjectPermission("annotations.resolve");
+	const canResolve = hasProjectPermission("annotations:resolve");
 	const canCreateTask =
-		hasProjectPermission("annotations.write") &&
-		hasProjectPermission("tasks.write");
+		hasProjectPermission("annotations:write") &&
+		hasProjectPermission("tasks:write");
 
 	const annotationsKey = portForwardAnnotationsQueryOptions(
 		projectId,

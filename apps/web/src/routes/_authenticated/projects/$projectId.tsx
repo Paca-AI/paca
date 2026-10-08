@@ -49,7 +49,7 @@ function ProjectLayout() {
 	// conversation routes), so showing it would just offer a control that
 	// 403s on click.
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canChat = hasProjectPermission("conversations.write");
+	const canChat = hasProjectPermission("conversations:write");
 
 	if (isError || !project) {
 		return (

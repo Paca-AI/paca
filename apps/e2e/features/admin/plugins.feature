@@ -9,7 +9,7 @@ Feature: Plugin settings
   or description. The Extension Point Layout tab lets an administrator
   reorder and hide plugin panels; when no installed plugin contributes an
   extension point it shows an empty state. The page is gated by the global
-  "plugins.write" permission: users without it are redirected to the home
+  "plugins:write" permission: users without it are redirected to the home
   page. A plugin can also contribute its own full admin page at
   /admin/plugins/{pluginId}/{slug}; an unknown plugin/slug combination
   renders the router's Not Found page. The public marketplace catalog and the
@@ -18,19 +18,19 @@ Feature: Plugin settings
   they need a real, downloadable plugin package.
 
   @authenticated
-  Rule: Access is gated by the plugins.write permission
+  Rule: Access is gated by the plugins:write permission
 
     Background:
       Given the user already has a stored authenticated session
 
-    Scenario: A user without plugins.write is redirected away from the Plugins page
-      Given a user exists whose global role does not grant "plugins.write"
+    Scenario: A user without plugins:write is redirected away from the Plugins page
+      Given a user exists whose global role does not grant "plugins:write"
       When that user signs in and navigates to the Plugins page
       Then the user should be redirected to the Home page
       And the "Plugin Settings" heading should not be displayed
 
-    Scenario: A user with only plugins.write can open the Plugins page
-      Given a user exists whose global role grants "plugins.write"
+    Scenario: A user with only plugins:write can open the Plugins page
+      Given a user exists whose global role grants "plugins:write"
       When that user signs in and navigates to the Plugins page
       Then the "Plugin Settings" heading should be displayed
       And the "Marketplace" and "Extension Point Layout" tabs should be displayed

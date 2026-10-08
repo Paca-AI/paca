@@ -60,7 +60,7 @@ const activityTitleSQL = `CASE a.entity_type
 	           WHEN 'environment' THEN e.name
 	           WHEN 'member'      THEN COALESCE(mu.full_name, mag.name)
 	           WHEN 'project'     THEN pr.name
-	           WHEN 'role'        THEN ro.role_name
+	           WHEN 'role'        THEN ro.name
 	           WHEN 'agent'       THEN eag.name
 	       END`
 
@@ -106,7 +106,7 @@ var activitySelectSQL = fmt.Sprintf(`
 	LEFT JOIN users mu            ON mu.id = mpm.user_id
 	LEFT JOIN agents mag          ON mag.id = mpm.agent_id
 	LEFT JOIN projects pr         ON a.entity_type = 'project'     AND pr.id = a.entity_id
-	LEFT JOIN project_roles ro    ON a.entity_type = 'role'        AND ro.id = a.entity_id
+	LEFT JOIN roles ro            ON a.entity_type = 'role'        AND ro.id = a.entity_id
 	LEFT JOIN agents eag          ON a.entity_type = 'agent'       AND eag.id = a.entity_id`,
 	activityTitleSQL, activityDeletedSQL)
 

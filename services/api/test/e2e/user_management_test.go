@@ -63,7 +63,7 @@ func TestUserManagement_AdminCRUD(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "crud-admin", "adminpass1", "CRUD Admin")
-	assignGlobalRolesByName(t, env, "crud-admin", "ADMIN")
+	assignPlatformRole(t, env, "crud-admin", "ADMIN")
 	adminToken := adminBearerToken(t, env, "crud-admin", "adminpass1")
 
 	t.Run("list_users_empty", func(t *testing.T) {
@@ -318,7 +318,7 @@ func TestUserManagement_AdminResetPassword(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "reset-admin", "adminpass1", "Reset Admin")
-	assignGlobalRolesByName(t, env, "reset-admin", "ADMIN")
+	assignPlatformRole(t, env, "reset-admin", "ADMIN")
 	adminToken := adminBearerToken(t, env, "reset-admin", "adminpass1")
 
 	t.Run("reset_password_sets_must_change", func(t *testing.T) {
@@ -343,7 +343,7 @@ func TestUserManagement_MustChangePasswordFlow(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "flow-admin", "adminpass1", "Flow Admin")
-	assignGlobalRolesByName(t, env, "flow-admin", "ADMIN")
+	assignPlatformRole(t, env, "flow-admin", "ADMIN")
 	adminToken := adminBearerToken(t, env, "flow-admin", "adminpass1")
 
 	t.Run("new_user_is_blocked_until_password_changed", func(t *testing.T) {

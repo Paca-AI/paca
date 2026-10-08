@@ -17,6 +17,7 @@ import {
 } from "@/components/admin/global-roles/role-picker";
 import { useAssignUserRole } from "@/components/admin/users/use-assign-user-role";
 import { InlineNotice } from "@/components/shared/inline-notice";
+import { RoleBadgeList } from "@/components/shared/role-badge";
 import { StepIndicator } from "@/components/shared/step-indicator";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,7 +34,6 @@ import { Label } from "@/components/ui/label";
 import { useCanAssignGlobalRole } from "@/hooks/use-can-assign-global-role";
 import {
 	createUser,
-	type GlobalRole,
 	type User,
 	updateUser,
 	usersQueryOptions,
@@ -41,6 +41,7 @@ import {
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { validateUsername } from "@/lib/auth-validation";
 import { generatePassword } from "@/lib/generate-password";
+import type { Role, RoleSummary } from "@/lib/role-api";
 
 /** Loose RFC 5322-ish check — the server is the source of truth for validity;
  * this only catches obviously-malformed input before a round trip. */
@@ -51,8 +52,8 @@ interface CreatedAccount {
 	user: User;
 	/** Generated for the account. Shown once, on the last step. */
 	password: string;
-	/** Name of the role it holds now: the default role until step 2 changes it. */
-	role: string;
+	/** The roles it holds now: the default role until step 2 changes them. */
+	roles: RoleSummary[];
 }
 
 /** Where the create wizard is. Editing stays on "details". */
@@ -78,7 +79,7 @@ interface UserFormDialogProps {
  * Creating is a short wizard: 1 Details → 2 Role → 3 Password. The account is
  * created at the end of step 1 — with the default role, which the server
  * assigns — and step 2 is a separate request that changes the role (its own
- * privilege, `global_roles.assign`, so the step exists only for someone who
+ * privilege, `roles:assign`, so the step exists only for someone who
  * has it; without it the wizard is Details → Password). The one-time password
  * is the very last thing shown, and since the account already exists by then
  * the role step cannot be closed without getting there. Editing never touches
@@ -101,7 +102,10 @@ export function UserFormDialog({
 	const [username, setUsername] = useState(user?.username ?? "");
 	const [fullName, setFullName] = useState(user?.full_name ?? "");
 	const [email, setEmail] = useState(user?.email ?? "");
-	const [selectedRole, setSelectedRole] = useState<GlobalRole | null>(null);
+	const [selection, setSelection] = useState<{
+		ids: string[];
+		roles: Role[];
+	} | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [usernameError, setUsernameError] = useState<string | null>(null);
 	const [emailError, setEmailError] = useState<string | null>(null);
@@ -120,12 +124,15 @@ export function UserFormDialog({
 		clearError: clearAssignError,
 	} = useAssignUserRole({
 		userId: account?.user.id ?? "",
-		onAssigned: (role) =>
+		onAssigned: (roles) =>
 			setStep((current) =>
 				current.phase === "role"
 					? {
 							phase: "password",
-							account: { ...current.account, role: role.name },
+							account: {
+								...current.account,
+								roles: roles.map((r) => ({ id: r.id, name: r.name })),
+							},
 						}
 					: current,
 			),
@@ -136,7 +143,7 @@ export function UserFormDialog({
 		setUsername(user?.username ?? "");
 		setFullName(user?.full_name ?? "");
 		setEmail(user?.email ?? "");
-		setSelectedRole(null);
+		setSelection(null);
 		setError(null);
 		setUsernameError(null);
 		setEmailError(null);
@@ -175,7 +182,7 @@ export function UserFormDialog({
 			}
 			// The account exists and holds the default role. Choosing another is a
 			// request of its own, so it is the next step.
-			const created = { user: saved, password, role: saved.role };
+			const created = { user: saved, password, roles: saved.roles };
 			setStep({ phase: hasRoleStep ? "role" : "password", account: created });
 		},
 		onError: (err: unknown) => {
@@ -194,7 +201,7 @@ export function UserFormDialog({
 			const messages: Partial<Record<string, string>> = {
 				[ApiErrorCode.UserNotFound]: t("users.formDialog.errors.userNotFound"),
 				[ApiErrorCode.Forbidden]: t("users.formDialog.errors.forbidden"),
-				[ApiErrorCode.GlobalRoleNoDefault]: t(
+				[ApiErrorCode.RoleNoDefault]: t(
 					"users.formDialog.errors.noDefaultRole",
 				),
 				[ApiErrorCode.InternalError]: t(
@@ -275,17 +282,25 @@ export function UserFormDialog({
 		mutation.mutate();
 	};
 
-	// Picking the role the account already holds changes nothing.
+	// Picking the roles the account already holds changes nothing.
+	const heldIds =
+		step.phase === "details" ? [] : step.account.roles.map((r) => r.id);
 	const change =
 		step.phase === "role" &&
-		selectedRole &&
-		selectedRole.name !== step.account.role
-			? selectedRole
+		selection &&
+		!(
+			selection.ids.length === heldIds.length &&
+			selection.ids.every((id) => heldIds.includes(id))
+		)
+			? selection
 			: null;
+	const addsFullAccess = !!change?.roles.some(
+		(r) => !heldIds.includes(r.id) && isFullAccessRole(r),
+	);
 
 	const handleRoleStepAction = () => {
 		if (step.phase !== "role") return;
-		if (change) assign(change);
+		if (change) assign(change.ids);
 		else setStep({ phase: "password", account: step.account });
 	};
 
@@ -335,7 +350,7 @@ export function UserFormDialog({
 						) : step.phase === "role" ? (
 							t("users.formDialog.roleStepDescription", {
 								username: step.account.user.username,
-								role: step.account.role,
+								role: step.account.roles.map((r) => r.name).join(", "),
 							})
 						) : isEdit ? (
 							t("users.formDialog.editDescription")
@@ -433,15 +448,15 @@ export function UserFormDialog({
 					<div className="flex flex-col gap-3 py-1">
 						<RolePicker
 							label={t("users.formDialog.roleStep.title")}
-							value={selectedRole?.id ?? null}
-							onChange={(role) => {
-								setSelectedRole(role);
+							values={selection?.ids ?? heldIds}
+							onChange={(ids, roles) => {
+								setSelection({ ids, roles });
 								clearAssignError();
 							}}
-							currentRoleName={step.account.role}
+							currentRoleIds={heldIds}
 							disabled={assigning}
 						/>
-						{change && isFullAccessRole(change) ? (
+						{addsFullAccess ? (
 							<InlineNotice tone="warning">
 								{t("users.roleDialog.fullAccessWarning")}
 							</InlineNotice>
@@ -503,9 +518,7 @@ export function UserFormDialog({
 							<Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 								{t("users.formDialog.roleStep.title")}
 							</Label>
-							<span className="inline-flex w-fit items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium leading-none text-foreground/80">
-								{step.account.role}
-							</span>
+							<RoleBadgeList roles={step.account.roles} max={4} />
 						</section>
 					</div>
 				)}

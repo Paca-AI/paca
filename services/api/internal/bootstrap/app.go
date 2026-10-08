@@ -4,23 +4,17 @@ package bootstrap
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"database/sql"
-
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
-	"golang.org/x/crypto/bcrypt"
 
+	"github.com/Paca-AI/api/internal/bootstrap/defaultroles"
 	"github.com/Paca-AI/api/internal/config"
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/Paca-AI/api/internal/platform/database"
 	"github.com/Paca-AI/api/internal/platform/logger"
@@ -42,17 +36,19 @@ import (
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
 	exportsvc "github.com/Paca-AI/api/internal/service/export"
-	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
+	rolesvc "github.com/Paca-AI/api/internal/service/role"
 	settingssvc "github.com/Paca-AI/api/internal/service/settings"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
 	ssosvc "github.com/Paca-AI/api/internal/service/sso"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
+	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/router"
+	"github.com/Paca-AI/api/internal/transport/triggergate"
 	"github.com/Paca-AI/api/internal/worker"
 	"github.com/Paca-AI/api/migrations"
 )
@@ -105,12 +101,19 @@ func New(cfg *config.Config) (*App, error) {
 	publisher := messaging.NewPublisher(redisClient, log)
 
 	tokenManager := jwttoken.New(cfg.JWT.Secret, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL)
-	permissionStore := pgRepo.NewAuthzPermissionStore(db)
-	authorizer := authz.NewAuthorizer(permissionStore)
+	// Every authorization decision (route gates, plugin permission checks,
+	// effective-permission listings) goes through the IAM authorizer.
+	authorizer := pgRepo.NewIAMAuthorizer(db)
+	// The "my platform actions" listings, answered by the same engine.
+	permissionStore := platformActionsReader{a: authorizer}
 
 	// --- Repositories -------------------------------------------------------
 	userRepo := pgRepo.NewUserRepository(db)
-	globalRoleRepo := pgRepo.NewGlobalRoleRepository(db)
+	// IAM roles and attachments. The service invalidates the authorizer's
+	// cached policies after every committed change, and simulates through the
+	// same engine and action registry the gates use.
+	roleRepo := pgRepo.NewRoleRepository(db)
+	roleService := rolesvc.New(roleRepo, authorizer, authorizer, authorizer.Registry(), authorizer.Schema())
 	projectRepo := pgRepo.NewProjectRepository(db)
 	taskRepo := pgRepo.NewTaskRepository(db)
 	// The activity log: one repository and one service behind every
@@ -144,30 +147,36 @@ func New(cfg *config.Config) (*App, error) {
 	}
 	log.Info("schema migrations applied")
 
-	// --- Admin seeding -------------------------------------------------------
-	// seedDefaultRoles must run first so the ADMIN global role exists before
-	// seedAdmin tries to reference it by FK.
-	if err := seedDefaultRoles(context.Background(), db, userRepo, globalRoleRepo, cfg.Admin.Username, log); err != nil {
+	// --- Role and admin seeding ---------------------------------------------
+	// The shipped platform roles must exist (as system roles) before the
+	// bootstrap accounts are given SUPER_ADMIN. Every step is idempotent and
+	// touches only the shipped roles and the bootstrap accounts.
+	roleSeeder := pgRepo.NewRoleSeedRepository(db)
+	shippedRoles, err := seedPlatformRoles(context.Background(), roleSeeder, authorizer, log)
+	if err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
-	if err := seedAdmin(context.Background(), userRepo, globalRoleRepo, cfg.Admin, log); err != nil {
+	superAdminRoleID := shippedRoles[defaultroles.SuperAdmin]
+	if err := seedAdmin(context.Background(), userRepo, roleSeeder, superAdminRoleID, cfg.Admin, log); err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
-	if err := seedAgentBotUser(context.Background(), userRepo, globalRoleRepo, log); err != nil {
+	if err := seedAgentBotUser(context.Background(), userRepo, roleSeeder, superAdminRoleID, log); err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
 
 	// --- Services -----------------------------------------------------------
 	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
-	userService := usersvc.New(userRepo, permissionStore, globalRoleRepo).
+	userService := usersvc.New(userRepo, permissionStore).
 		WithPasswordSetTokenRepo(passwordSetTokenRepo).
 		WithEventPublishing(publisher)
 	agentRepo := pgRepo.NewAgentRepository(db)
 	environmentRepo := pgRepo.NewEnvironmentRepository(db)
 	annotationRepo := pgRepo.NewAnnotationRepository(db)
-	globalRoleService := globalrolesvc.NewCachedService(globalrolesvc.New(globalRoleRepo, agentRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo).WithActivityRecorder(activityRecorder)
-	projectService := projectsvc.NewCachedService(projectServiceBase, cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
+	projectServiceBase = projectServiceBase.WithRoleInvalidator(authorizer)
+	projectService := projectsvc.NewCachedService(projectServiceBase, cacheStore, cfg.Cache.ProjectTTL, log)
+	// Member lists show each member's roles, so changing them drops the cache.
+	roleService = roleService.WithMembersCache(projectService)
 	taskService := tasksvc.NewCachedService(tasksvc.New(taskRepo).WithAutomationStatusChecker(rawAutomationRepo).WithActivityRecorder(activityRecorder), cacheStore, cfg.Cache.ConfigTTL, log)
 	sprintService := sprintsvc.NewCachedSprintService(sprintsvc.New(sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
@@ -190,10 +199,11 @@ func New(cfg *config.Config) (*App, error) {
 	// Backs GetConversationForAgent's agents.read check (read_conversation
 	// MCP tool) — see agentsvc.Service.authorizer's doc comment.
 	agentService = agentService.WithAuthorizer(authorizer)
-	// Backs SetGlobalAgentRole's global_role_id existence check — see
-	// agentsvc.Service.globalRoleSvc's doc comment
-	// (GHSA-xxc8-ggm7-vmxp).
-	agentService = agentService.WithGlobalRoleService(globalRoleService)
+	// Every agent run started without an HTTP request of its own (task
+	// assignment, automation, comment mention) and the description-write
+	// trigger go through this gate — see package triggergate. The agent
+	// service itself carries no authorization for them.
+	triggerGate := triggergate.New(agentService, authorizer, projectRepo, httpmw.AgentRepoLookups{Repo: agentRepo})
 	settingsService := settingssvc.New(settingsRepo)
 	// encryptor is reused, verbatim, for every at-rest secret in this
 	// codebase (agent LLM keys, environment secrets, and — see below —
@@ -237,8 +247,8 @@ func New(cfg *config.Config) (*App, error) {
 		userRepo, userService, authService, log).WithEncryptor(encryptor)
 	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo).
 		WithNotificationService(notificationService).
-		WithAgentTrigger(agentService)
-	notificationConsumer := worker.NewNotificationConsumer(redisClient, notificationService, log, projectRepo, agentService).
+		WithAgentTrigger(triggerGate)
+	notificationConsumer := worker.NewNotificationConsumer(redisClient, notificationService, log, projectRepo, triggerGate).
 		WithActivityRecorder(activityService)
 	activityConsumer := worker.NewActivityConsumer(redisClient, pgRepo.NewActivityRepository(db), projectRepo, log)
 	environmentConsumer := worker.NewEnvironmentCommandConsumer(redisClient, environmentService, log)
@@ -394,7 +404,13 @@ func New(cfg *config.Config) (*App, error) {
 	installerHTTPClient := &http.Client{Timeout: cfg.Plugins.MarketplaceTimeout}
 	pluginInstaller := pluginrt.NewInstaller(cfg.Plugins.WASMDir, cfg.Plugins.FrontendDir, cfg.Plugins.MCPDir, cfg.Plugins.SkillsDir, installerHTTPClient, log)
 
-	pluginService := pluginsvc.New(pluginRepo).WithHostVersion(cfg.Release.Version)
+	pluginService := pluginsvc.New(pluginRepo).WithHostVersion(cfg.Release.Version).WithActionRegistry(authorizer.Registry())
+
+	// Make the actions installed plugins declare known to role validation
+	// (a clash between two plugins is logged; the rest are still registered).
+	if err := pluginService.SyncActions(context.Background()); err != nil {
+		log.Error("plugin: registering declared actions", "error", err)
+	}
 
 	// Load all enabled plugins from the DB into the WASM runtime.
 	installedPlugins, err := pluginService.ListPlugins(context.Background())
@@ -429,7 +445,7 @@ func New(cfg *config.Config) (*App, error) {
 	// predecessor_done trigger with no target task configured) it instead
 	// fires a standalone message via agentService.TriggerDirectMessage.
 	// Either way, projectRepo resolves the configured member to its AgentID.
-	automationConsumer.WithAgentMessaging(projectRepo, agentService)
+	automationConsumer.WithAgentMessaging(projectRepo, triggerGate)
 	// update_sprint/complete_sprint dispatch through sprintService (not
 	// sprintRepo directly) so they get the same validation/event-publishing
 	// side effects as an HTTP-driven change; sprintRepo alone backs
@@ -454,22 +470,24 @@ func New(cfg *config.Config) (*App, error) {
 		WithRouteAuth(tokenManager, apiKeyService, authorizer).
 		WithMarketplace(marketplaceClient, pluginInstaller, pluginMigrationRunner)
 
-	agentHandler := handler.NewAgentHandler(agentService, cfg.AIAgentURL, cfg.AIAgentInternalKey, cfg.Server.PublicURL).
+	agentHandler := handler.NewAgentHandler(triggerGate.WrapService(agentService), cfg.AIAgentURL, cfg.AIAgentInternalKey, cfg.Server.PublicURL).
 		WithActivityRecorder(activityService).
 		WithActivityLister(activityLog).
 		WithMemberRepo(projectRepo).
+		WithListScoper(authorizer).
 		WithGlobalPermissionReader(permissionStore).
 		WithAvatarService(attachmentService).
 		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo)).
 		WithJevProjectService(projectService, encryptor)
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
-		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
-		WithMemberRepo(projectRepo)
+		WithListScoper(authorizer).
+		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost)
 	annotationHandler := handler.NewAnnotationHandler(annotationService).
+		WithAnnotationListScoper(authorizer).
 		WithAvatarService(attachmentService).
 		WithMemberRepo(projectRepo)
-	convHandler := handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo)
-	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime)
+	convHandler := handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo).WithConversationListScoper(authorizer)
+	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime).WithAutomationListScoper(authorizer)
 
 	// --- Handlers -----------------------------------------------------------
 	cookieCfg := handler.CookieConfig{
@@ -483,16 +501,19 @@ func New(cfg *config.Config) (*App, error) {
 	deps := router.Deps{
 		TokenManager:         tokenManager,
 		APIKeyAuth:           apiKeyService,
-		Authorizer:           authorizer,
-		AgentAccessSvc:       agentService,
-		EnvironmentAccessSvc: environmentService,
-		MemberRepo:           projectRepo,
+		IAM:                  authorizer,
+		AgentEnvironments:    httpmw.AgentRepoLookups{Repo: agentRepo},
+		MemberPrincipals:     httpmw.MemberRepoLookup{Repo: projectRepo},
+		TaskNumbers:          taskRepo,
+		SessionEnvironments:  httpmw.AgentRepoLookups{Repo: agentRepo},
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                 authHandler,
 		SSO:                  handler.NewSSOHandler(ssoService, authHandler, cfg.Server.PublicURL),
 		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
-		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
+		Role:                 handler.NewRoleHandler(roleService),
+		RolePolicies:         roleRepo,
+		RoleAttachments:      httpmw.NewRoleServiceAttachments(roleService),
 		ProjectVisibilitySvc: projectService,
 		ProjectActivity:      handler.NewProjectActivityHandler(activityLog, attachmentService),
 		ProjectExport:        handler.NewProjectExportHandler(projectExportService),
@@ -501,6 +522,7 @@ func New(cfg *config.Config) (*App, error) {
 			authorizer,
 			handler.WithProjectDefaultViews(viewService, taskService),
 			handler.WithProjectStatsServices(taskService, userService),
+			handler.WithProjectTaskScoper(authorizer),
 			handler.WithProjectAvatarService(attachmentService),
 			// projectService, the cached wrapper — not projectServiceBase.
 			// UpdateJevConfig writes credentials that every read path then
@@ -515,18 +537,21 @@ func New(cfg *config.Config) (*App, error) {
 			handler.WithProjectJevConfigService(projectService, encryptor),
 		),
 		Task: handler.NewTaskHandler(taskService, viewService, activityService,
+			handler.WithTaskListScoper(authorizer),
 			handler.WithTaskPublisher(publisher),
 			handler.WithTaskAssignedProjectService(projectService),
 			handler.WithTaskAvatarService(attachmentService),
 			handler.WithTaskNotificationService(notificationService),
 			handler.WithTaskAutofillRepository(taskRepo)),
 		Sprint: handler.NewSprintHandler(sprintService, viewService,
+			handler.WithSprintListScoper(authorizer),
 			handler.WithSprintDefaultTaskTypes(taskService),
 			handler.WithSprintDefaultTaskStatuses(taskService),
 		),
-		View:       handler.NewViewHandler(viewService),
+		View:       handler.NewViewHandler(viewService).WithViewListScoper(authorizer),
 		Attachment: handler.NewAttachmentHandler(attachmentService),
 		Document: handler.NewDocumentHandler(docService, docActivityService).
+			WithDocListScoper(authorizer).
 			WithDocAvatarService(attachmentService).
 			WithDocNotificationService(notificationService),
 		DocFile:            handler.NewDocFileHandler(attachmentService),
@@ -556,6 +581,33 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
+}
+
+// platformActionsReader lists a user's or agent's effective platform-level
+// IAM actions (iam.Authorizer.EffectiveActions with no project) for the
+// /users/me and /agents/me global-permissions endpoints.
+type platformActionsReader struct{ a *iam.Authorizer }
+
+func (r platformActionsReader) list(ctx context.Context, p iam.Principal) ([]iam.Action, error) {
+	acts, err := r.a.EffectiveActions(ctx, p, "")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]iam.Action, len(acts))
+	for i, a := range acts {
+		out[i] = iam.Action(a)
+	}
+	return out, nil
+}
+
+// ListGlobalPermissions lists a user's platform-level actions.
+func (r platformActionsReader) ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]iam.Action, error) {
+	return r.list(ctx, iam.User(userID.String()))
+}
+
+// ListAgentGlobalPermissions lists an agent's platform-level actions.
+func (r platformActionsReader) ListAgentGlobalPermissions(ctx context.Context, agentID uuid.UUID) ([]iam.Action, error) {
+	return r.list(ctx, iam.Agent(agentID.String()))
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -596,240 +648,4 @@ func (a *App) Shutdown(ctx context.Context) error {
 		a.publisher.Close()
 	}
 	return a.server.Shutdown(ctx)
-}
-
-// seedAdmin ensures the default admin account exists in the database.
-// It must be called after seedDefaultRoles so the ADMIN global role exists.
-// If the account already exists it is left unchanged.
-func seedAdmin(ctx context.Context, repo userdom.Repository, globalRoleRepo *pgRepo.GlobalRoleRepository, cfg config.AdminConfig, log *slog.Logger) error {
-	_, err := repo.FindByUsernameIncludingDeleted(ctx, cfg.Username)
-	if err == nil {
-		// Admin already exists — nothing to do.
-		return nil
-	}
-	if !errors.Is(err, userdom.ErrNotFound) {
-		return fmt.Errorf("seed admin: lookup: %w", err)
-	}
-
-	// Resolve the ADMIN global role FK.
-	adminRole, err := globalRoleRepo.FindByName(ctx, "ADMIN")
-	if err != nil {
-		return fmt.Errorf("seed admin: find ADMIN role: %w", err)
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("seed admin: hash password: %w", err)
-	}
-
-	now := time.Now()
-	admin := &userdom.User{
-		ID:           uuid.New(),
-		Username:     cfg.Username,
-		PasswordHash: string(hash),
-		FullName:     "Admin",
-		RoleID:       adminRole.ID,
-		Role:         adminRole.Name,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-
-	if err := repo.Create(ctx, admin); err != nil {
-		return fmt.Errorf("seed admin: create: %w", err)
-	}
-
-	// Immediately assign the SUPER_ADMIN global role via users.role_id so the
-	// admin user has full permissions from the first request.
-	superAdminRole, err := globalRoleRepo.FindByName(ctx, "SUPER_ADMIN")
-	if err != nil {
-		return fmt.Errorf("seed admin: find SUPER_ADMIN role: %w", err)
-	}
-	if err := globalRoleRepo.ReplaceUserRoles(ctx, admin.ID, []uuid.UUID{superAdminRole.ID}); err != nil {
-		return fmt.Errorf("seed admin: assign SUPER_ADMIN: %w", err)
-	}
-
-	log.Info("admin account created", "username", cfg.Username)
-	return nil
-}
-
-// seedAgentBotUser ensures the built-in agent bot user exists in the database.
-// This user has the SUPER_ADMIN global role and is used as the identity for
-// requests authenticated via AGENT_API_KEY.  The bot can never log in with a
-// password because its password_hash is set to an invalid value.
-func seedAgentBotUser(ctx context.Context, repo userdom.Repository, globalRoleRepo *pgRepo.GlobalRoleRepository, log *slog.Logger) error {
-	_, err := repo.FindByUsernameIncludingDeleted(ctx, "_paca_agent_bot")
-	if err == nil {
-		// Already exists — nothing to do.
-		return nil
-	}
-	if !errors.Is(err, userdom.ErrNotFound) {
-		return fmt.Errorf("seed agent bot: lookup: %w", err)
-	}
-
-	superAdminRole, err := globalRoleRepo.FindByName(ctx, "SUPER_ADMIN")
-	if err != nil {
-		return fmt.Errorf("seed agent bot: find SUPER_ADMIN role: %w", err)
-	}
-
-	now := time.Now()
-	bot := &userdom.User{
-		ID:           agentBotUserID,
-		Username:     "_paca_agent_bot",
-		PasswordHash: "!", // intentionally invalid — bot cannot log in with a password
-		FullName:     "Paca Agent Bot",
-		RoleID:       superAdminRole.ID,
-		Role:         superAdminRole.Name,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	if err := repo.Create(ctx, bot); err != nil {
-		return fmt.Errorf("seed agent bot: create: %w", err)
-	}
-	if err := globalRoleRepo.ReplaceUserRoles(ctx, bot.ID, []uuid.UUID{superAdminRole.ID}); err != nil {
-		return fmt.Errorf("seed agent bot: assign SUPER_ADMIN: %w", err)
-	}
-
-	log.Info("agent bot user created")
-	return nil
-}
-
-func seedDefaultRoles(
-	ctx context.Context,
-	db *sqlx.DB,
-	userRepo userdom.Repository,
-	globalRoleRepo *pgRepo.GlobalRoleRepository,
-	adminUsername string,
-	log *slog.Logger,
-) error {
-	for _, def := range authz.DefaultGlobalRoles() {
-		role, err := globalRoleRepo.FindByName(ctx, def.Name)
-		if err != nil {
-			if !errors.Is(err, globalroledom.ErrNotFound) {
-				return fmt.Errorf("seed global roles: find %s: %w", def.Name, err)
-			}
-			now := time.Now()
-			if err := globalRoleRepo.Create(ctx, &globalroledom.GlobalRole{
-				ID:          uuid.New(),
-				Name:        def.Name,
-				Permissions: permissionMap(def.Permissions),
-				CreatedAt:   now,
-				UpdatedAt:   now,
-			}); err != nil {
-				return fmt.Errorf("seed global roles: create %s: %w", def.Name, err)
-			}
-			continue
-		}
-
-		role.Permissions = permissionMap(def.Permissions)
-		role.UpdatedAt = time.Now()
-		if err := globalRoleRepo.Update(ctx, role); err != nil {
-			return fmt.Errorf("seed global roles: update %s: %w", def.Name, err)
-		}
-	}
-
-	// New users and global agents start with the default role, so one must
-	// exist. A database from before the default flag, or one whose default was
-	// removed, gets USER (re-created above if it was deleted) as the default.
-	// A default someone has chosen is never overridden here.
-	if _, err := globalRoleRepo.FindDefault(ctx); err != nil {
-		if !errors.Is(err, globalroledom.ErrNoDefault) {
-			return fmt.Errorf("seed global roles: find default role: %w", err)
-		}
-		userRole, err := globalRoleRepo.FindByName(ctx, userdom.RoleUser)
-		if err != nil {
-			return fmt.Errorf("seed global roles: load %s role: %w", userdom.RoleUser, err)
-		}
-		if err := globalRoleRepo.SetDefault(ctx, userRole.ID); err != nil {
-			return fmt.Errorf("seed global roles: set default role: %w", err)
-		}
-		log.Info("no default global role was set; USER is now the default")
-	}
-
-	if err := seedDefaultProjectRoleTemplates(ctx, db); err != nil {
-		return err
-	}
-
-	adminUser, err := userRepo.FindByUsername(ctx, adminUsername)
-	if err != nil {
-		if errors.Is(err, userdom.ErrNotFound) {
-			return nil
-		}
-		return fmt.Errorf("seed global roles: load admin user: %w", err)
-	}
-
-	superAdminRole, err := globalRoleRepo.FindByName(ctx, "SUPER_ADMIN")
-	if err != nil {
-		return fmt.Errorf("seed global roles: load SUPER_ADMIN role: %w", err)
-	}
-
-	// Under the single-role schema users.role_id holds exactly one role.
-	// Check whether the admin already has SUPER_ADMIN; if not, assign it (replacing whatever role they have).
-	existingRoles, err := globalRoleRepo.ListUserRoles(ctx, adminUser.ID)
-	if err != nil {
-		return fmt.Errorf("seed global roles: list admin user roles: %w", err)
-	}
-	hasSuperAdmin := false
-	for _, role := range existingRoles {
-		if role.ID == superAdminRole.ID {
-			hasSuperAdmin = true
-			break
-		}
-	}
-	if !hasSuperAdmin {
-		if err := globalRoleRepo.ReplaceUserRoles(ctx, adminUser.ID, []uuid.UUID{superAdminRole.ID}); err != nil {
-			return fmt.Errorf("seed global roles: assign SUPER_ADMIN: %w", err)
-		}
-		log.Info("assigned SUPER_ADMIN role to admin user", "username", adminUsername)
-	}
-
-	return nil
-}
-
-func seedDefaultProjectRoleTemplates(ctx context.Context, db *sqlx.DB) error {
-	for _, def := range authz.DefaultProjectRoles() {
-		permissionsRaw, err := json.Marshal(permissionMap(def.Permissions))
-		if err != nil {
-			return fmt.Errorf("seed project roles: marshal %s permissions: %w", def.Name, err)
-		}
-
-		var existingID string
-		err = db.QueryRowContext(ctx,
-			`SELECT id FROM project_roles WHERE project_id IS NULL AND role_name = $1`,
-			def.Name,
-		).Scan(&existingID)
-
-		if errors.Is(err, sql.ErrNoRows) {
-			now := time.Now()
-			_, err = db.ExecContext(ctx,
-				`INSERT INTO project_roles (id, project_id, role_name, permissions, created_at, updated_at)
-				 VALUES ($1, NULL, $2, $3, $4, $5)`,
-				uuid.NewString(), def.Name, permissionsRaw, now, now,
-			)
-			if err != nil {
-				return fmt.Errorf("seed project roles: create template %s: %w", def.Name, err)
-			}
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("seed project roles: find template %s: %w", def.Name, err)
-		}
-
-		_, err = db.ExecContext(ctx,
-			`UPDATE project_roles SET permissions = $1, updated_at = $2 WHERE id = $3`,
-			permissionsRaw, time.Now(), existingID,
-		)
-		if err != nil {
-			return fmt.Errorf("seed project roles: update template %s: %w", def.Name, err)
-		}
-	}
-
-	return nil
-}
-
-func permissionMap(permissions []authz.Permission) map[string]any {
-	out := make(map[string]any, len(permissions))
-	for _, p := range permissions {
-		out[string(p)] = true
-	}
-	return out
 }

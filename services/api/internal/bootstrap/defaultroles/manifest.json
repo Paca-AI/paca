@@ -1,0 +1,45 @@
+{
+  "roles": [
+    {
+      "name": "SUPER_ADMIN",
+      "kind": "platform",
+      "description": "Full access to everything in the workspace.",
+      "policy": "policies/super_admin.json",
+      "system": true
+    },
+    {
+      "name": "ADMIN",
+      "kind": "platform",
+      "description": "Runs the workspace: users, projects, agents, plugins and settings. Can see roles but not define or assign them.",
+      "policy": "policies/admin.json",
+      "system": true
+    },
+    {
+      "name": "USER",
+      "kind": "platform",
+      "description": "The role every new account starts with.",
+      "policy": "policies/user.json",
+      "system": true,
+      "default": true
+    },
+    {
+      "name": "Admin",
+      "kind": "project",
+      "description": "Full access inside the project.",
+      "policy": "policies/project_admin.json",
+      "system": true
+    },
+    {
+      "name": "Editor",
+      "kind": "project",
+      "description": "Create and edit project content.",
+      "policy": "policies/project_editor.json"
+    },
+    {
+      "name": "Viewer",
+      "kind": "project",
+      "description": "Read-only access to the project.",
+      "policy": "policies/project_viewer.json"
+    }
+  ]
+}

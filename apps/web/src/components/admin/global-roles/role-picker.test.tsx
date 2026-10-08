@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 
@@ -11,12 +11,13 @@ vi.mock("@/lib/api-client", () => ({
 }));
 
 import { makeRole, renderWithQueries } from "@/test/render-with-queries";
+import { openRoleSelect } from "@/test/role-select";
 import { isFullAccessRole, RolePicker } from "./role-picker";
 
-const USER = makeRole("role-user", "USER", { "tasks.read": true });
+const USER = makeRole("role-user", "USER", { "tasks:read": true });
 const ADMIN = makeRole("role-admin", "ADMIN", {
-	"users.read": true,
-	"users.write": true,
+	"users:read": true,
+	"users:write": true,
 });
 const ROOT = makeRole("role-root", "SUPER_ADMIN", { "*": true });
 
@@ -29,8 +30,8 @@ function renderPicker(
 	const onChange = vi.fn();
 	const view = renderWithQueries(
 		<RolePicker
-			label="Change role"
-			value={null}
+			label="Change roles"
+			values={[]}
 			onChange={onChange}
 			{...props}
 		/>,
@@ -41,82 +42,150 @@ function renderPicker(
 
 beforeEach(() => vi.clearAllMocks());
 
+const selected = (name: string) =>
+	screen.getByRole("option", { name }).getAttribute("aria-selected") === "true";
+
 describe("RolePicker", () => {
-	it("lists every role as a radio in a group with the given label", () => {
+	it("shows a field that opens a labelled list with every role as an option", async () => {
 		renderPicker();
 
-		const group = screen.getByRole("radiogroup", { name: "Change role" });
-		expect(group).toBeInTheDocument();
-		expect(screen.getAllByRole("radio")).toHaveLength(3);
-		expect(screen.getByRole("radio", { name: "ADMIN" })).toBeInTheDocument();
+		expect(
+			screen.getByRole("combobox", { name: "Change roles" }),
+		).toBeInTheDocument();
+		// Nothing is listed until the field is opened.
+		expect(screen.queryByRole("option")).not.toBeInTheDocument();
+
+		const list = await openRoleSelect("Change roles");
+
+		expect(list).toHaveAccessibleName("Change roles");
+		expect(list).toHaveAttribute("aria-multiselectable", "true");
+		expect(screen.getAllByRole("option")).toHaveLength(3);
+		expect(screen.getByRole("option", { name: "ADMIN" })).toBeInTheDocument();
 	});
 
-	it("shows what a role grants, so it is chosen for what it allows", () => {
+	it("shows what a role grants, so it is chosen for what it allows", async () => {
 		renderPicker();
+		await openRoleSelect();
 
-		expect(screen.getByText("tasks.read")).toBeInTheDocument();
-		expect(screen.getByText("users.write")).toBeInTheDocument();
+		expect(screen.getByText("tasks:read")).toBeInTheDocument();
+		expect(screen.getByText("users:write")).toBeInTheDocument();
 		expect(screen.getByText("Full access")).toBeInTheDocument();
 	});
 
-	it("folds a long permission list into +N", () => {
+	it("shows a role's description in place of the permission glance", async () => {
+		const described = {
+			...makeRole("role-d", "DESCRIBED", { "tasks:read": true }),
+			description: "Reads tasks and nothing else",
+		};
+		renderPicker({}, { roles: [described] });
+		await openRoleSelect();
+
+		expect(
+			screen.getByText("Reads tasks and nothing else"),
+		).toBeInTheDocument();
+		expect(screen.queryByText("tasks:read")).not.toBeInTheDocument();
+	});
+
+	it("folds a long permission list down to the first few", async () => {
 		const many = makeRole(
 			"role-many",
 			"MANY",
 			Object.fromEntries(
-				["a", "b", "c", "d", "e", "f"].map((k) => [`tasks.${k}`, true]),
+				["a", "b", "c", "d", "e", "f"].map((k) => [`tasks:${k}`, true]),
 			),
 		);
 		renderPicker({}, { roles: [many] });
+		await openRoleSelect();
 
-		expect(screen.getByText("tasks.a")).toBeInTheDocument();
-		expect(screen.queryByText("tasks.f")).not.toBeInTheDocument();
-		expect(screen.getByText("+2")).toHaveAttribute("title", "tasks.e, tasks.f");
+		expect(screen.getByText("tasks:a")).toBeInTheDocument();
+		expect(screen.queryByText("tasks:f")).not.toBeInTheDocument();
+		expect(screen.getByText("+3")).toHaveAttribute(
+			"title",
+			"tasks:d, tasks:e, tasks:f",
+		);
 	});
 
-	it("says so when a role grants nothing", () => {
+	it("says so when a role grants nothing", async () => {
 		renderPicker({}, { roles: [makeRole("role-none", "NONE")] });
+		await openRoleSelect();
 
 		expect(screen.getByText("No permissions assigned")).toBeInTheDocument();
 	});
 
-	it("marks the current role (by name) and selects it until another is picked", () => {
-		renderPicker({ currentRoleName: "ADMIN" });
+	it("selects the picked roles, and several can be selected at once", async () => {
+		renderPicker({ values: ["role-user", "role-admin"] });
+		await openRoleSelect();
 
-		const admin = screen.getByRole("radio", { name: "ADMIN" });
-		expect(admin).toBeChecked();
-		expect(admin).toHaveAccessibleDescription(/Current/);
-		expect(screen.getByRole("radio", { name: "USER" })).not.toBeChecked();
-		expect(screen.getAllByText("Current")).toHaveLength(1);
+		expect(selected("USER")).toBe(true);
+		expect(selected("ADMIN")).toBe(true);
+		expect(selected("SUPER_ADMIN")).toBe(false);
 	});
 
-	it("marks the current role by id too", () => {
-		renderPicker({ currentRoleId: "role-user" });
+	it("shows the picked roles as badges on the field, and says so when none", () => {
+		const { unmount } = renderPicker({ values: ["role-user", "role-admin"] });
+		const field = screen.getByRole("combobox", { name: "Change roles" });
+		expect(field).toHaveTextContent("USER");
+		expect(field).toHaveTextContent("ADMIN");
+		unmount();
 
-		expect(screen.getByRole("radio", { name: "USER" })).toBeChecked();
+		renderPicker();
+		expect(
+			screen.getByRole("combobox", { name: "Change roles" }),
+		).toHaveTextContent("Select roles");
 	});
 
-	it("reports the whole role when one is picked", async () => {
-		const { onChange } = renderPicker({ currentRoleName: "USER" });
+	it("marks the roles held today", async () => {
+		renderPicker({
+			values: ["role-admin"],
+			currentRoleIds: ["role-admin", "role-user"],
+		});
+		await openRoleSelect();
 
-		await userEvent.click(screen.getByRole("radio", { name: "ADMIN" }));
-
-		expect(onChange).toHaveBeenCalledWith(ADMIN);
+		expect(
+			screen.getByRole("option", { name: "ADMIN" }),
+		).toHaveAccessibleDescription(/Current/);
+		expect(
+			screen.getByRole("option", { name: "USER" }),
+		).toHaveAccessibleDescription(/Current/);
+		expect(screen.getAllByText("Current")).toHaveLength(2);
 	});
 
-	it("shows the picked role as selected instead of the current one", () => {
-		renderPicker({ currentRoleName: "USER", value: "role-admin" });
+	it("reports the new set of ids, and the roles, when one is added", async () => {
+		const { onChange } = renderPicker({ values: ["role-user"] });
+		await openRoleSelect();
 
-		expect(screen.getByRole("radio", { name: "ADMIN" })).toBeChecked();
-		expect(screen.getByRole("radio", { name: "USER" })).not.toBeChecked();
+		await userEvent.click(screen.getByRole("option", { name: "ADMIN" }));
+
+		expect(onChange).toHaveBeenCalledWith(
+			["role-user", "role-admin"],
+			[USER, ADMIN],
+		);
 	});
 
-	it("disables every choice when disabled", () => {
+	it("reports the set without a role that is unpicked", async () => {
+		const { onChange } = renderPicker({ values: ["role-user", "role-admin"] });
+		await openRoleSelect();
+
+		await userEvent.click(screen.getByRole("option", { name: "USER" }));
+
+		expect(onChange).toHaveBeenCalledWith(["role-admin"], [ADMIN]);
+	});
+
+	it("allows picking none at all", async () => {
+		const { onChange } = renderPicker({ values: ["role-user"] });
+		await openRoleSelect();
+
+		await userEvent.click(screen.getByRole("option", { name: "USER" }));
+
+		expect(onChange).toHaveBeenCalledWith([], []);
+	});
+
+	it("disables the field when disabled", () => {
 		renderPicker({ disabled: true });
 
-		for (const radio of screen.getAllByRole("radio")) {
-			expect(radio).toBeDisabled();
-		}
+		expect(
+			screen.getByRole("combobox", { name: "Change roles" }),
+		).toBeDisabled();
 	});
 
 	it("says so when there are no roles", () => {
@@ -125,14 +194,14 @@ describe("RolePicker", () => {
 		expect(
 			screen.getByText("No roles have been created yet."),
 		).toBeInTheDocument();
-		expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+		expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
 	});
 
-	it("shows placeholders, not choices, while the roles load", () => {
+	it("shows a placeholder, not choices, while the roles load", () => {
 		mockGet.mockReturnValue(new Promise(() => {}));
 		renderPicker({}, { roles: null });
 
-		expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+		expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
 		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 	});
 
@@ -147,159 +216,65 @@ describe("RolePicker", () => {
 
 		await userEvent.click(screen.getByRole("button", { name: "Try again" }));
 
-		await waitFor(() => expect(screen.getAllByRole("radio")).toHaveLength(2));
+		await openRoleSelect();
+		await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
 		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 	});
 });
 
-describe("RolePicker — the default role", () => {
+describe("RolePicker: the default role", () => {
 	const DEFAULT_USER = makeRole(
 		"role-user",
 		"USER",
-		{ "tasks.read": true },
+		{ "tasks:read": true },
 		{ isDefault: true },
 	);
 
-	it("marks the role new accounts start with as the default", () => {
+	it("marks the role new accounts start with as the default", async () => {
 		renderPicker({}, { roles: [DEFAULT_USER, ADMIN, ROOT] });
+		await openRoleSelect();
 
 		expect(
-			screen.getByRole("radio", { name: "USER" }),
+			screen.getByRole("option", { name: "USER" }),
 		).toHaveAccessibleDescription(/Default/);
 		expect(
-			screen.getByRole("radio", { name: "ADMIN" }),
+			screen.getByRole("option", { name: "ADMIN" }),
 		).not.toHaveAccessibleDescription(/Default/);
 	});
 
-	it("keeps the default apart from the current role", () => {
+	it("keeps the default apart from the roles held", async () => {
 		renderPicker(
-			{ currentRoleName: "ADMIN" },
+			{ currentRoleIds: ["role-admin"] },
 			{ roles: [DEFAULT_USER, ADMIN, ROOT] },
 		);
+		await openRoleSelect();
 
-		const user = screen.getByRole("radio", { name: "USER" });
+		const user = screen.getByRole("option", { name: "USER" });
 		expect(user).toHaveAccessibleDescription(/Default/);
 		expect(user).not.toHaveAccessibleDescription(/Current/);
-		const admin = screen.getByRole("radio", { name: "ADMIN" });
+		const admin = screen.getByRole("option", { name: "ADMIN" });
 		expect(admin).toHaveAccessibleDescription(/Current/);
 		expect(admin).not.toHaveAccessibleDescription(/Default/);
 	});
 
-	it("marks a role that is both the current one and the default", () => {
-		renderPicker(
-			{ currentRoleName: "USER" },
-			{ roles: [DEFAULT_USER, ADMIN, ROOT] },
-		);
-
-		const user = screen.getByRole("radio", { name: "USER" });
-		expect(user).toHaveAccessibleDescription(/Current/);
-		expect(user).toHaveAccessibleDescription(/Default/);
-	});
-
-	it("marks nothing when no role is the default", () => {
+	it("marks nothing when no role is the default", async () => {
 		renderPicker();
+		await openRoleSelect();
 
 		expect(screen.queryByText("Default")).not.toBeInTheDocument();
 	});
 });
 
-describe("RolePicker — a long list", () => {
-	// jsdom has no layout and no scrollIntoView; stub it to see what is asked for.
-	const original = Element.prototype.scrollIntoView;
-	afterEach(() => {
-		Element.prototype.scrollIntoView = original;
-	});
-
-	it("brings the role that is selected on arrival into view, so it never sits below the fold", () => {
-		const scrollIntoView = vi.fn();
-		Element.prototype.scrollIntoView = scrollIntoView;
-
-		renderPicker({ currentRoleName: "SUPER_ADMIN" });
-
-		expect(scrollIntoView).toHaveBeenCalledTimes(1);
-		const scrolled = scrollIntoView.mock.contexts[0] as HTMLElement;
-		expect(scrolled).toContainElement(
-			screen.getByRole("radio", { name: "SUPER_ADMIN" }),
-		);
-		expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
-	});
-
-	it("does not scroll again when the person picks another role", async () => {
-		const scrollIntoView = vi.fn();
-		Element.prototype.scrollIntoView = scrollIntoView;
-		renderPicker({ currentRoleName: "USER" });
-		scrollIntoView.mockClear();
-
-		await userEvent.click(screen.getByRole("radio", { name: "ADMIN" }));
-
-		expect(scrollIntoView).not.toHaveBeenCalled();
-	});
-});
-
-describe("RolePicker — offering 'no role'", () => {
-	const none = (onSelect = vi.fn()) => ({
-		label: "No global role",
-		hint: "This agent has no global permissions.",
-		onSelect,
-	});
-
-	it("lists 'no role' first, described by its hint, and selects it while nothing is picked", () => {
-		renderPicker({ none: none() });
-
-		const radios = screen.getAllByRole("radio");
-		expect(radios).toHaveLength(4);
-		expect(radios[0]).toHaveAccessibleName("No global role");
-		expect(radios[0]).toHaveAccessibleDescription(
-			"This agent has no global permissions.",
-		);
-		expect(radios[0]).toBeChecked();
-		for (const radio of radios.slice(1)) expect(radio).not.toBeChecked();
-	});
-
-	it("selects a role instead once one is picked", () => {
-		renderPicker({ none: none(), value: "role-admin" });
-
-		expect(
-			screen.getByRole("radio", { name: "No global role" }),
-		).not.toBeChecked();
-		expect(screen.getByRole("radio", { name: "ADMIN" })).toBeChecked();
-	});
-
-	it("reports 'no role' through onSelect, not onChange", async () => {
-		const onSelect = vi.fn();
-		const { onChange } = renderPicker({
-			none: none(onSelect),
-			value: "role-admin",
-		});
-
-		await userEvent.click(
-			screen.getByRole("radio", { name: "No global role" }),
-		);
-
-		expect(onSelect).toHaveBeenCalledTimes(1);
-		expect(onChange).not.toHaveBeenCalled();
-	});
-
-	it("does not fall back to the current role: with 'no role' on offer, null means none", () => {
-		renderPicker({ none: none(), currentRoleName: "USER" });
-
-		expect(screen.getByRole("radio", { name: "No global role" })).toBeChecked();
-		expect(screen.getByRole("radio", { name: "USER" })).not.toBeChecked();
-	});
-
-	it("disables it with the rest when disabled", () => {
-		renderPicker({ none: none(), disabled: true });
-
-		expect(
-			screen.getByRole("radio", { name: "No global role" }),
-		).toBeDisabled();
-	});
-
-	it("offers no 'no role' choice unless asked to", () => {
+describe("RolePicker: a long list", () => {
+	it("keeps the search box focused when the list opens", async () => {
 		renderPicker();
+		await openRoleSelect();
 
-		expect(screen.queryByText("No global role")).not.toBeInTheDocument();
-		expect(screen.getAllByRole("radio")).toHaveLength(3);
+		await waitFor(() =>
+			expect(
+				screen.getByRole("combobox", { name: "Search roles" }),
+			).toHaveFocus(),
+		);
 	});
 });
 

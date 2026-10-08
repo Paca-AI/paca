@@ -337,7 +337,7 @@ Feature: Project management
       And the statistics bar should show the total permission grants across all project roles
 
     Scenario: Roles table displays expected columns
-      Then the project roles table should have columns "Name", "Permissions", and "Created"
+      Then the project roles table should have columns "Name", "Description", and "Created", and no "Permissions" column
 
     Scenario: Default roles Admin, Editor, and Viewer are pre-seeded
       Then the role "Admin" should appear in the project roles table
@@ -379,7 +379,7 @@ Feature: Project management
       Then the "Edit Project" permission should show description "Update project name, description, and settings"
       And the "Delete Project" permission should show description "Permanently delete this project"
       And the "View Members" permission should show description "List and view project members"
-      And the "Manage Members" permission should show description "Add, remove, and reassign project members"
+      And the "Manage Members" permission should show description "Add and remove project members (changing their roles needs Assign Roles)"
       And the "View Roles" permission should show description "List and view project role definitions"
       And the "Manage Roles" permission should show description "Create, edit, and delete project roles"
       And the "View Tasks" permission should show description "Browse and read tasks in the project"
@@ -415,7 +415,7 @@ Feature: Project management
       And the user fills the role name with "E2E_EMPTY_ROLE"
       And the user clicks "Create role"
       Then the role "E2E_EMPTY_ROLE" should appear in the project roles table
-      And the role should show zero active permissions
+      And the role should show the "No description" placeholder
 
     Scenario: Cancelling the dialog discards changes
       When the user clicks the "New role" button
@@ -436,7 +436,7 @@ Feature: Project management
       And the user enables the "Edit Project" permission
       And the user enables the "Delete Project" permission
       And the user clicks "Create role"
-      Then the role "E2E_COUNT_ROLE" should be listed with the single "projects.*" permission badge
+      Then the role "E2E_COUNT_ROLE" should be stored with the single "projects:*" permission
       And the statistics bar should reflect the added permission grants
 
     Scenario: Toggling a permission on then off leaves it disabled
@@ -482,7 +482,7 @@ Feature: Project management
       And the user enables the "Manage Members" permission
       And the user clicks "Save changes"
       Then the dialog should close
-      And the role "E2E_EDITABLE_ROLE" should show 3 active permissions
+      And the role "E2E_EDITABLE_ROLE" should be stored with 3 permissions
 
     Scenario: Edit dialog pre-populates the correct permission switches
       Given "E2E_EDITABLE_ROLE" exists with "Delete Project" and "Manage Sprints" permissions
@@ -499,7 +499,7 @@ Feature: Project management
       And the user disables the "View Tasks" permission
       And the user clicks "Save changes"
       Then the dialog should close
-      And the role "E2E_EDITABLE_ROLE" should show zero active permissions
+      And the role "E2E_EDITABLE_ROLE" should be stored with no permissions
 
     Scenario: Toggling a permission off during edit persists after save
       Given "E2E_EDITABLE_ROLE" exists with "Manage Members" permission

@@ -83,25 +83,25 @@ func TestAuthFlow(t *testing.T) {
 		decodeJSON(t, resp, &envResp)
 		data := assertDataMap(t, envResp)
 
-		rawPerms, ok := data["permissions"].([]any)
+		rawPerms, ok := data["actions"].([]any)
 		if !ok {
-			t.Fatalf("expected permissions array, got %T (%v)", data["permissions"], data["permissions"])
+			t.Fatalf("expected actions array, got %T (%v)", data["actions"], data["actions"])
 		}
 
 		foundUsersRead := false
 		for _, p := range rawPerms {
 			s, ok := p.(string)
-			if ok && s == "users.read" {
+			if ok && s == "users:read" {
 				foundUsersRead = true
 			}
 		}
 		if !foundUsersRead {
-			t.Fatalf("expected users.read in permissions, got %v", rawPerms)
+			t.Fatalf("expected users:read in actions, got %v", rawPerms)
 		}
 	})
 
 	t.Run("me_global_permissions_includes_assigned_global_role_permissions", func(t *testing.T) {
-		assignGlobalRolesByName(t, env, "alice", "ADMIN")
+		assignPlatformRole(t, env, "alice", "ADMIN")
 
 		loginResp := login(env.ctx, t, env.client, env.base, "alice", "supersecret")
 		_ = loginResp.Body.Close()
@@ -115,9 +115,9 @@ func TestAuthFlow(t *testing.T) {
 		decodeJSON(t, resp, &envResp)
 		data := assertDataMap(t, envResp)
 
-		rawPerms, ok := data["permissions"].([]any)
+		rawPerms, ok := data["actions"].([]any)
 		if !ok {
-			t.Fatalf("expected permissions array, got %T (%v)", data["permissions"], data["permissions"])
+			t.Fatalf("expected actions array, got %T (%v)", data["actions"], data["actions"])
 		}
 		got := map[string]bool{}
 		for _, p := range rawPerms {
@@ -126,14 +126,12 @@ func TestAuthFlow(t *testing.T) {
 			}
 		}
 
-		if !got["global_roles.read"] {
-			t.Fatalf("expected global_roles.read (from the assigned ADMIN role) in permissions, got %v", rawPerms)
+		if !got["roles:read"] {
+			t.Fatalf("expected roles:read (from the assigned ADMIN role) in actions, got %v", rawPerms)
 		}
-		// ADMIN may see the global roles but not define or hand them out — either
-		// would let it grant itself the wildcard (see authz.DefaultGlobalRoles,
-		// GHSA-hjcj-373w-vq8m). This must never regress back to the bare
-		// global_roles.* it held before that fix.
-		for _, rootEquivalent := range []string{"global_roles.*", "global_roles.write", "global_roles.assign", "*"} {
+		// ADMIN may see the roles but not define or hand them out — either
+		// would let it grant itself the wildcard (GHSA-hjcj-373w-vq8m).
+		for _, rootEquivalent := range []string{"roles:write", "roles:assign", "settings.sso:write", "*"} {
 			if got[rootEquivalent] {
 				t.Fatalf("expected ADMIN's permissions to NOT include the root-equivalent %q, got %v", rootEquivalent, rawPerms)
 			}

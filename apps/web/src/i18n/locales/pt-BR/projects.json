@@ -102,7 +102,6 @@
 			"configure": "Configurar",
 			"delete": "Excluir",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "Online",
 			"acpStatusDisconnected": "Offline",
 			"deleteDialog": {
@@ -173,7 +172,6 @@
 				"skills": "Skills",
 				"envVars": "Ambiente",
 				"globalRole": "Função global",
-				"access": "Access",
 				"activity": "Atividade"
 			},
 			"globalRole": {
@@ -348,15 +346,6 @@
 					"description": "Incluídas no Paca e disponíveis para todos os agentes. Não podem ser editadas."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"activity": {
 				"commented": "comentou",
 				"sourceType": {
@@ -398,8 +387,6 @@
 			"connect": "Conectar",
 			"conversationEnded": "Esta conversa foi encerrada.",
 			"textOnlyMessage": "Apenas mensagens de texto são suportadas.",
-			"agentAccessRestricted": "Este agente tem acesso restrito. Peça a um administrador do projeto para conceder acesso antes de poder conversar com ele.",
-			"environmentAccessRestricted": "O ambiente desta conversa tem acesso restrito. Peça a um administrador do projeto para conceder acesso antes de poder conversar com este agente.",
 			"chatNoPermission": "Você não tem permissão para enviar mensagens nesta conversa.",
 			"failed": "A conversa falhou",
 			"noOutput": "O agente não produziu nenhuma saída.",
@@ -496,7 +483,6 @@
 			"subtitle": "Sandboxes nomeados e de longa duração aos quais seus agentes podem se conectar entre conversas",
 			"newEnvironment": "Novo ambiente",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "Ainda não há ambientes",
 				"description": "Crie um ambiente estático para manter arquivos e processos em segundo plano ativos entre conversas, em vez de um sandbox descartável a cada vez.",
@@ -539,8 +525,7 @@
 			"tabs": {
 				"overview": "Visão geral",
 				"folders": "Pastas",
-				"portForwards": "Encaminhamentos de porta",
-				"access": "Access"
+				"portForwards": "Encaminhamentos de porta"
 			},
 			"busy": "Este ambiente já está iniciando, parando ou reiniciando. Tente novamente em instantes.",
 			"actionFailed": "Isso não funcionou. Tente novamente.",
@@ -656,15 +641,6 @@
 					"restartFailed": "Falha ao reiniciar o ambiente. Tente novamente."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"sshKeys": {
 				"connectHint": "Substitua <bastion-host> pelo endereço do bastion SSH configurado nesta implantação.",
 				"connectUnavailable": "O acesso SSH ainda não está configurado nesta implantação.",
@@ -763,7 +739,6 @@
 			"deleteRole": "Excluir papel",
 			"errors": {
 				"notFound": "Este papel não existe mais.",
-				"hasMembers": "Este papel não pode ser excluído porque ainda está atribuído a um ou mais membros.",
 				"forbidden": "Você não tem permissão para excluir este papel.",
 				"internalError": "Algo deu errado. Tente novamente.",
 				"generic": "Algo deu errado."
@@ -777,23 +752,18 @@
 			"roleNameLabel": "Nome do papel",
 			"roleNamePlaceholder": "ex.: PROJECT_REVIEWER",
 			"permissionsLabel": "Permissões",
-			"fullAccessBadge": "Acesso total",
 			"fullAccessDescription": "Esta função inclui automaticamente todas as permissões, incluindo as adicionadas no futuro. Alterar qualquer opção abaixo irá convertê-la em um conjunto fixo com as permissões atuais.",
 			"enabledCount_one": "{{count}} ativada",
 			"enabledCount_other": "{{count}} ativadas",
 			"cancel": "Cancelar",
 			"saveChanges": "Salvar alterações",
-			"createRole": "Criar papel",
-			"errors": {
-				"nameTaken": "Já existe um papel com este nome.",
-				"nameInvalid": "O nome do papel deve usar letras maiúsculas, números e underscores.",
-				"notFound": "Este papel não existe mais. Ele pode já ter sido excluído.",
-				"forbidden": "Você não tem permissão para realizar esta ação.",
-				"internalError": "Algo deu errado no servidor. Tente novamente.",
-				"generic": "Algo deu errado."
-			}
+			"createRole": "Criar papel"
 		},
 		"permissions": {
+			"projectsRead": {
+				"label": "Ver projeto",
+				"description": "Abrir o projeto e ver seus detalhes básicos"
+			},
 			"projectsWrite": {
 				"label": "Editar projeto",
 				"description": "Atualizar nome, descrição e configurações do projeto"
@@ -808,7 +778,7 @@
 			},
 			"membersWrite": {
 				"label": "Gerenciar membros",
-				"description": "Adicionar, remover e reatribuir membros do projeto"
+				"description": "Adicionar e remover membros do projeto (alterar as funções deles exige Atribuir funções)"
 			},
 			"rolesRead": {
 				"label": "Ver papéis",
@@ -817,6 +787,10 @@
 			"rolesWrite": {
 				"label": "Gerenciar papéis",
 				"description": "Criar, editar e excluir papéis do projeto"
+			},
+			"rolesAssign": {
+				"label": "Atribuir funções",
+				"description": "Dar a membros e agentes qualquer função deste projeto, ou retirá-las"
 			},
 			"settingsTaskTypesWrite": {
 				"label": "Manage Task Types",
@@ -973,7 +947,6 @@
 			"title": "Papéis do projeto",
 			"description": "Gerencie os papéis e permissões dos membros deste projeto.",
 			"newRole": "Novo papel",
-			"noPermissionsAssigned": "Nenhuma permissão atribuída",
 			"editRole": "Editar papel",
 			"deleteRole": "Excluir papel",
 			"rolesDefined_one": "papel definido",
@@ -986,14 +959,15 @@
 			},
 			"table": {
 				"name": "Nome",
-				"permissions": "Permissões",
+				"description": "Descrição",
 				"created": "Criado em"
 			},
-			"systemRolesNote": "Papéis de sistema são modelos compartilhados e não podem ser editados ou excluídos.",
+			"systemRolesNote": "Funções compartilhadas do espaço de trabalho só podem ser alteradas nas configurações de funções do espaço de trabalho.",
 			"noPermission": {
 				"title": "You don't have permission to view roles",
 				"description": "Ask a project admin to grant you the project.roles.read permission."
-			}
+			},
+			"noDescription": "Sem descrição"
 		},
 		"taskStatuses": {
 			"title": "Status de tarefas",
@@ -1278,12 +1252,12 @@
 			"noUsersAvailable": "Nenhum usuário disponível para adicionar.",
 			"loadingMore": "Carregando…",
 			"roleLabel": "Papel",
-			"rolePlaceholder": "Selecione um papel…",
 			"cancel": "Cancelar",
 			"addMember": "Adicionar membro",
 			"errors": {
 				"addFailed": "Falha ao adicionar o membro. Tente novamente.",
 				"alreadyAdded": "Este usuário ou agente já é membro do projeto.",
+				"roleForbidden": "Você não tem permissão para atribuir um desses papéis.",
 				"roleNotFound": "Esse papel não existe mais. Escolha outro papel."
 			},
 			"modeUser": "Usuário",
@@ -1295,12 +1269,15 @@
 			"changeRole": "Alterar papel",
 			"errors": {
 				"memberNotFound": "Este membro não faz mais parte do projeto.",
+				"roleForbidden": "Você não tem permissão para atribuir ou remover um desses papéis.",
 				"roleNotFound": "Esse papel não existe mais.",
 				"changeFailed": "Falha ao alterar o papel."
 			}
 		},
 		"memberRow": {
-			"removeMember": "Remover membro"
+			"removeMember": "Remover membro",
+			"agentBadge": "Agente",
+			"actions": "Ações do membro"
 		},
 		"removeDialog": {
 			"title": "Remover membro",

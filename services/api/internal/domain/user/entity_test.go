@@ -5,14 +5,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 )
 
-func TestRoleConstants(t *testing.T) {
-	if RoleUser == "" || RoleAdmin == "" {
-		t.Fatal("role constants must be non-empty")
+func TestRoleClaim(t *testing.T) {
+	u := User{Roles: []roledom.Summary{{ID: uuid.New(), Name: "ADMIN"}, {ID: uuid.New(), Name: "Support"}}}
+	if got := u.RoleClaim(); got != "ADMIN,Support" {
+		t.Fatalf("RoleClaim = %q", got)
 	}
-	if RoleUser == RoleAdmin {
-		t.Fatal("role constants must be distinct")
+	if got := (&User{}).RoleClaim(); got != "" {
+		t.Fatalf("empty RoleClaim = %q", got)
 	}
 }
 
@@ -24,13 +27,13 @@ func TestUserEntityFields(t *testing.T) {
 		Username:     "alice",
 		PasswordHash: "hash",
 		FullName:     "Alice",
-		Role:         RoleUser,
+		Roles:        []roledom.Summary{{ID: uuid.New(), Name: "USER"}},
 		CreatedAt:    now,
 		UpdatedAt:    now,
 		DeletedAt:    &deletedAt,
 	}
 
-	if u.Username != "alice" || u.FullName != "Alice" || u.Role != RoleUser {
+	if u.Username != "alice" || u.FullName != "Alice" || len(u.Roles) != 1 || u.Roles[0].Name != "USER" {
 		t.Fatalf("unexpected user entity values: %+v", u)
 	}
 	if u.DeletedAt == nil || !u.DeletedAt.Equal(deletedAt) {

@@ -102,7 +102,7 @@ function TaskDetailPage() {
 	const { projectId, taskId } = Route.useParams();
 
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canEdit = hasProjectPermission("tasks.write");
+	const canEdit = hasProjectPermission("tasks:write");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	const { data: taskStatuses = [] } = useQuery(

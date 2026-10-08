@@ -10,7 +10,7 @@ const ListProjectMembersSchema = z.object({
 const AddProjectMemberSchema = z.object({
 	projectId: z.string(),
 	userId: z.string(),
-	roleId: z.string(),
+	roleIds: z.array(z.string()).min(1),
 });
 
 const GetMyProjectPermissionsSchema = z.object({
@@ -20,7 +20,7 @@ const GetMyProjectPermissionsSchema = z.object({
 const UpdateProjectMemberRoleSchema = z.object({
 	projectId: z.string(),
 	userId: z.string(),
-	roleId: z.string(),
+	roleIds: z.array(z.string()).min(1),
 });
 
 const RemoveProjectMemberSchema = z.object({
@@ -32,11 +32,26 @@ const ListProjectRolesSchema = z.object({
 	projectId: z.string(),
 });
 
+const POLICY_VERSION = "2026-10-01";
+
+const PolicySchema = z.object({
+	version: z.string().optional(),
+	statements: z.array(
+		z.object({
+			sid: z.string().optional(),
+			effect: z.enum(["Allow", "Deny"]),
+			actions: z.array(z.string()),
+			resources: z.array(z.string()),
+			conditions: z.record(z.record(z.unknown())).optional(),
+		}),
+	),
+});
+
 const CreateProjectRoleSchema = z.object({
 	projectId: z.string(),
 	name: z.string(),
 	description: z.string().optional(),
-	permissions: z.array(z.string()),
+	policy: PolicySchema,
 });
 
 const UpdateProjectRoleSchema = z.object({
@@ -44,7 +59,7 @@ const UpdateProjectRoleSchema = z.object({
 	roleId: z.string(),
 	name: z.string().optional(),
 	description: z.string().optional(),
-	permissions: z.array(z.string()).optional(),
+	policy: PolicySchema.optional(),
 });
 
 const DeleteProjectRoleSchema = z.object({
@@ -88,18 +103,20 @@ export function getProjectMemberTools(): Tool[] {
 						description:
 							"The technical UUID of the user to add (e.g., '550e8400-e29b-41d4-a716-446655440000'). Use list_project_members to see existing member user IDs.",
 					},
-					roleId: {
-						type: "string",
+					roleIds: {
+						type: "array",
+						items: { type: "string" },
 						description:
-							"The technical UUID of the role to assign (e.g., '550e8400-e29b-41d4-a716-446655440000'). Use list_project_roles to get the role ID.",
+							"The technical UUIDs of the roles the member holds in the project. Use list_project_roles to get the role IDs.",
 					},
 				},
-				required: ["projectId", "userId", "roleId"],
+				required: ["projectId", "userId", "roleIds"],
 			},
 		},
 		{
 			name: "get_my_project_permissions",
-			description: "Get the current user's permissions in a project",
+			description:
+				"Get the IAM actions (e.g. 'tasks:write') the current user may perform in a project",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -114,7 +131,8 @@ export function getProjectMemberTools(): Tool[] {
 		},
 		{
 			name: "update_project_member_role",
-			description: "Update a project member's role",
+			description:
+				"Replace the set of roles a project member holds in the project",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -128,13 +146,14 @@ export function getProjectMemberTools(): Tool[] {
 						description:
 							"The technical UUID of the user (e.g., '550e8400-e29b-41d4-a716-446655440000'). Use list_project_members to get user IDs.",
 					},
-					roleId: {
-						type: "string",
+					roleIds: {
+						type: "array",
+						items: { type: "string" },
 						description:
-							"The technical UUID of the new role (e.g., '550e8400-e29b-41d4-a716-446655440000'). Use list_project_roles to get the role ID.",
+							"The technical UUIDs of the roles the member should hold (replaces the current set). Use list_project_roles to get the role IDs.",
 					},
 				},
-				required: ["projectId", "userId", "roleId"],
+				required: ["projectId", "userId", "roleIds"],
 			},
 		},
 		{
@@ -199,13 +218,31 @@ export function getProjectRoleTools(): Tool[] {
 						type: "string",
 						description: "The description of the role",
 					},
-					permissions: {
-						type: "array",
-						items: { type: "string" },
-						description: "Array of permission strings",
+					policy: {
+						type: "object",
+						description:
+							'IAM policy document: {"version":"2026-10-01","statements":[{"effect":"Allow"|"Deny","actions":["tasks:read"],"resources":["project/<projectId>/*"],"conditions":{...}}]}. Actions are \'domain:verb\' (wildcards \'*\' and \'domain:*\'); a Deny always wins. Use get_my_project_permissions to see action names.',
+						properties: {
+							version: { type: "string" },
+							statements: {
+								type: "array",
+								items: {
+									type: "object",
+									properties: {
+										sid: { type: "string" },
+										effect: { type: "string", enum: ["Allow", "Deny"] },
+										actions: { type: "array", items: { type: "string" } },
+										resources: { type: "array", items: { type: "string" } },
+										conditions: { type: "object" },
+									},
+									required: ["effect", "actions", "resources"],
+								},
+							},
+						},
+						required: ["statements"],
 					},
 				},
-				required: ["projectId", "name", "permissions"],
+				required: ["projectId", "name", "policy"],
 			},
 		},
 		{
@@ -232,10 +269,28 @@ export function getProjectRoleTools(): Tool[] {
 						type: "string",
 						description: "The new description of the role",
 					},
-					permissions: {
-						type: "array",
-						items: { type: "string" },
-						description: "Array of permission strings",
+					policy: {
+						type: "object",
+						description:
+							'IAM policy document: {"version":"2026-10-01","statements":[{"effect":"Allow"|"Deny","actions":["tasks:read"],"resources":["project/<projectId>/*"],"conditions":{...}}]}. Actions are \'domain:verb\' (wildcards \'*\' and \'domain:*\'); a Deny always wins. Use get_my_project_permissions to see action names.',
+						properties: {
+							version: { type: "string" },
+							statements: {
+								type: "array",
+								items: {
+									type: "object",
+									properties: {
+										sid: { type: "string" },
+										effect: { type: "string", enum: ["Allow", "Deny"] },
+										actions: { type: "array", items: { type: "string" } },
+										resources: { type: "array", items: { type: "string" } },
+										conditions: { type: "object" },
+									},
+									required: ["effect", "actions", "resources"],
+								},
+							},
+						},
+						required: ["statements"],
 					},
 				},
 				required: ["projectId", "roleId"],
@@ -273,17 +328,19 @@ function formatProjectMember(member: any): string {
 	return `Member: ${member.username} (${member.full_name})
 Member ID: ${member.id}
 User ID: ${member.user_id}
-Role: ${member.role_name}
-Role ID: ${member.project_role_id}
+Roles: ${
+		(member.roles ?? []).map((r: any) => `${r.name} (${r.id})`).join(", ") ||
+		"None"
+	}
 Joined: ${member.joined_at || "N/A"}`;
 }
 
 function formatProjectRole(role: any): string {
-	return `Role: ${role.role_name}
+	return `Role: ${role.name}
 ID: ${role.id}
 Description: ${role.description || "None"}
 System: ${role.is_system}
-Permissions: ${JSON.stringify(role.permissions, null, 2)}
+Policy: ${JSON.stringify(role.policy, null, 2)}
 Created: ${role.created_at}`;
 }
 
@@ -311,10 +368,10 @@ export async function handleProjectMemberTool(
 		}
 
 		case "add_project_member": {
-			const { projectId, userId, roleId } = AddProjectMemberSchema.parse(args);
+			const { projectId, userId, roleIds } = AddProjectMemberSchema.parse(args);
 			const member = await client.addProjectMember(projectId, {
 				user_id: userId,
-				project_role_id: roleId,
+				role_ids: roleIds,
 			});
 			return {
 				content: [
@@ -328,28 +385,28 @@ export async function handleProjectMemberTool(
 
 		case "get_my_project_permissions": {
 			const { projectId } = GetMyProjectPermissionsSchema.parse(args);
-			const permissions = await client.getMyProjectPermissions(projectId);
+			const actions = await client.getMyProjectPermissions(projectId);
 			return {
 				content: [
 					{
 						type: "text",
-						text: `My Permissions:\n\n${JSON.stringify(permissions, null, 2)}`,
+						text: `My Actions:\n\n${JSON.stringify(actions, null, 2)}`,
 					},
 				],
 			};
 		}
 
 		case "update_project_member_role": {
-			const { projectId, userId, roleId } =
+			const { projectId, userId, roleIds } =
 				UpdateProjectMemberRoleSchema.parse(args);
-			const member = await client.updateProjectMemberRole(projectId, userId, {
-				project_role_id: roleId,
+			const roles = await client.updateProjectMemberRole(projectId, userId, {
+				role_ids: roleIds,
 			});
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Member role updated successfully:\n\n${formatProjectMember(member)}`,
+						text: `Member roles updated successfully:\n\n${formatList(roles, formatProjectRole)}`,
 					},
 				],
 			};
@@ -383,16 +440,12 @@ export async function handleProjectMemberTool(
 		}
 
 		case "create_project_role": {
-			const { projectId, name, description, permissions } =
+			const { projectId, name, description, policy } =
 				CreateProjectRoleSchema.parse(args);
-			const permissionsRecord: Record<string, unknown> = {};
-			for (const perm of permissions) {
-				permissionsRecord[perm] = true;
-			}
 			const role = await client.createProjectRole(projectId, {
-				role_name: name,
+				name,
 				description,
-				permissions: permissionsRecord,
+				policy: { version: POLICY_VERSION, ...policy },
 			});
 			return {
 				content: [
@@ -405,15 +458,17 @@ export async function handleProjectMemberTool(
 		}
 
 		case "update_project_role": {
-			const { projectId, roleId, name, description, permissions } =
+			const { projectId, roleId, name, description, policy } =
 				UpdateProjectRoleSchema.parse(args);
-			const permissionsRecord: Record<string, unknown> | undefined = permissions
-				? Object.fromEntries(permissions.map((perm) => [perm, true]))
-				: undefined;
+			// The API replaces the whole role, so omitted fields keep their
+			// current value.
+			const current = await client.getProjectRole(projectId, roleId);
 			const role = await client.updateProjectRole(projectId, roleId, {
-				role_name: name,
-				description,
-				permissions: permissionsRecord,
+				name: name ?? current.name,
+				description: description ?? current.description ?? "",
+				policy: policy
+					? { version: POLICY_VERSION, ...policy }
+					: current.policy,
 			});
 			return {
 				content: [

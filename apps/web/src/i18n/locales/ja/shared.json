@@ -166,6 +166,34 @@
 				"prefixInvalid": "プレフィックスは1〜10文字の大文字英数字で入力してください（例: PACA）。",
 				"generic": "問題が発生しました。もう一度お試しください。"
 			}
+		},
+		"legacyPluginsBanner": {
+			"title_one": "プラグインの更新が必要です",
+			"title_other": "プラグインの更新が必要です",
+			"description_one": "{{names}} は旧式の権限モデル requirePermissions を使用しています。動作は続きますが、作者が requireActions を使うバージョンを公開するまで、再インストールもアップグレードもできません。",
+			"description_other": "{{names}} は旧式の権限モデル requirePermissions を使用しています。動作は続きますが、作者が requireActions を使うバージョンを公開するまで、再インストールもアップグレードもできません。",
+			"manage": "プラグインを管理",
+			"dismiss": "閉じる"
 		}
+	},
+	"roleBadge": {
+		"fullAccess": "フルアクセス",
+		"builtIn": "組み込み",
+		"default": "デフォルト",
+		"current": "現在",
+		"noDescription": "説明なし",
+		"noRoles": "ロールなし",
+		"showMore": "他のロールを表示 (+{{count}})",
+		"allRoles": "すべてのロール ({{count}})"
+	},
+	"roleSelect": {
+		"searchLabel": "ロールを検索",
+		"searchPlaceholder": "ロールを検索…",
+		"clearSearch": "検索をクリア",
+		"noMatch": "「{{query}}」に一致するロールはありません",
+		"selectedCount": "選択中: {{count}}",
+		"minOne": "ロールは1つ以上必要です。",
+		"clear": "クリア",
+		"placeholder": "ロールを選択"
 	}
 }

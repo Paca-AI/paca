@@ -17,7 +17,7 @@ import (
 func apiKeyUserLogin(t *testing.T, env *e2eEnv, username, password string) (*http.Client, string) {
 	t.Helper()
 	seedUser(t, env, username, password, "API Key User")
-	assignGlobalRolesByName(t, env, username, "USER")
+	assignPlatformRole(t, env, username, "USER")
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
 	resp := login(env.ctx, t, client, env.base, username, password)

@@ -72,14 +72,14 @@ function SprintPage() {
 		taskStatusesQueryOptions(projectId),
 	);
 
-	const canCreate = hasProjectPermission("tasks.write");
-	const canEdit = hasProjectPermission("tasks.write");
+	const canCreate = hasProjectPermission("tasks:write");
+	const canEdit = hasProjectPermission("tasks:write");
 	// views.* was split out from sprints.write as its own permission (see
 	// authz.PermissionViewsWrite's doc comment) — projects.write governs
 	// only the project entity itself (name/description), an unrelated
 	// permission that happened to be reused here.
-	const canManageViews = hasProjectPermission("views.write");
-	const canManageSprints = hasProjectPermission("sprints.write");
+	const canManageViews = hasProjectPermission("views:write");
+	const canManageSprints = hasProjectPermission("sprints:write");
 
 	const [completeOpen, setCompleteOpen] = useState(false);
 	const [completeSprintError, setCompleteSprintError] = useState<string | null>(

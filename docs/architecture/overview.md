@@ -22,6 +22,7 @@ Paca is a single open-source monorepo with a small set of clearly separated runt
 - `apps/web` connects to `services/realtime` over Socket.IO for live updates.
 - `apps/mcp` calls `services/api` over HTTP using an API key; plugin tools route to `/api/v1/plugins/{pluginId}/…`.
 - `apps/e2e` drives a real browser against the full running stack and validates cross-cutting flows that span multiple runtime surfaces.
+- `services/api` authorizes every request with IAM-style role policies (default deny, explicit `Deny` wins) evaluated per route and per resource; see [authorization](authorization.md).
 - `services/api` remains the system of record for product state and publishes real-time relevant domain events to a Valkey Stream.
 - `services/realtime` consumes Valkey Stream messages from `services/api` and fans out client-safe events to connected Socket.IO rooms and users.
 - `services/agent-runner` reads agent trigger events from a Valkey Stream, spawns a Docker container per `llm`-type conversation and drives it over ACP, and publishes conversation events back to Valkey.

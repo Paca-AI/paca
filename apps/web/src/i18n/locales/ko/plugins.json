@@ -28,6 +28,10 @@
 				"notFound": "이 플러그인은 더 이상 마켓플레이스에서 사용할 수 없습니다.",
 				"nameTaken": "이 이름의 플러그인이 이미 설치되어 있습니다.",
 				"generic": "문제가 발생했습니다. 다시 시도해 주세요."
+			},
+			"legacyPermissions": {
+				"badge": "이전 권한 사용",
+				"description": "이 플러그인은 이전 권한 모델인 requirePermissions를 아직 사용합니다. 계속 작동하지만, 작성자가 requireActions를 사용하는 버전을 게시할 때까지 다시 설치하거나 업그레이드할 수 없습니다."
 			}
 		}
 	},

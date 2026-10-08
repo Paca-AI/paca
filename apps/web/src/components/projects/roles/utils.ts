@@ -1,13 +1,13 @@
 /** Colors a project permission's badge by the area it belongs to. */
 export function projectPermissionBadgeClass(key: string): string {
-	const domain = key.split(".").slice(0, 2).join(".");
+	const domain = key.split(":")[0];
 	if (domain === "projects") {
 		return "bg-primary/10 text-primary border-primary/20 dark:bg-primary/20";
 	}
 	if (domain === "project.members") {
 		return "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/20 dark:text-violet-400 dark:border-violet-700/30";
 	}
-	if (domain === "project.roles") {
+	if (domain === "roles") {
 		return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-400 dark:border-sky-700/30";
 	}
 	if (domain === "tasks") {

@@ -12,6 +12,7 @@ import {
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCanAssignProjectRole } from "@/hooks/use-can-assign-project-role";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	type AcpBridgeToken,
@@ -49,15 +50,19 @@ function AgentsPage() {
 	const navigate = Route.useNavigate();
 	const { hasProjectPermission, isLoading: isPermissionsLoading } =
 		useProjectPermissions(projectId);
-	const canWrite = hasProjectPermission("agents.write");
-	const canRead = hasProjectPermission("agents.read");
+	const canWrite = hasProjectPermission("agents:write");
+	const canRead = hasProjectPermission("agents:read");
 	// Creating an agent also grants it project membership at the chosen role,
 	// so the API requires project.members.write in addition to agents.write
 	// (GHSA-xxc8-ggm7-vmxp) — gate the create affordances on both so this
 	// button doesn't invite a 403 for an agents.write-only Editor. Managing
 	// an *existing* agent (AgentCard below, ACP bridge regen) stays on
-	// canWrite alone — those routes weren't changed.
-	const canCreate = canWrite && hasProjectPermission("project.members.write");
+	// canWrite alone — those routes weren't changed. The new agent's role_ids
+	// are checked per role against roles:assign (hand-out is its own privilege,
+	// like iam:PassRole), so that is required too.
+	const { canAssignRoles } = useCanAssignProjectRole(projectId);
+	const canCreate =
+		canWrite && hasProjectPermission("project.members:write") && canAssignRoles;
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	// projectScopedAgentsQueryOptions server-side-filters out global-scope

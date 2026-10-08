@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +12,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/transport/http/httpx"
@@ -99,51 +100,6 @@ func TestError_APIErrorCodeMapping(t *testing.T) {
 	}
 }
 
-// TestError_AccessGrantCodeMapping guards against the exact class of bug
-// httpStatusForCode's own doc precedent warns about (see
-// TestStatusAndCodeFor_ProviderCLIErrors above): a code constructed directly
-// via apierr.New (as middleware.RequireAgentAccess/RequireEnvironmentAccess
-// do — they never go through the errors.Is(sentinel) switch
-// statusAndCodeFor uses) that isn't registered in httpStatusForCode's own
-// switch falls through to its default case — 500 Internal Server Error,
-// with the response message rewritten to the generic "internal server
-// error" — instead of the intended 4xx and a meaningful message.
-func TestError_AccessGrantCodeMapping(t *testing.T) {
-	tests := []struct {
-		code       apierr.Code
-		wantStatus int
-	}{
-		{apierr.CodeAgentAccessRestricted, http.StatusForbidden},
-		{apierr.CodeAgentAccessGrantExists, http.StatusConflict},
-		{apierr.CodeAgentAccessModeInvalid, http.StatusBadRequest},
-		{apierr.CodeEnvironmentAccessRestricted, http.StatusForbidden},
-		{apierr.CodeEnvironmentAccessGrantExists, http.StatusConflict},
-		{apierr.CodeEnvironmentAccessModeInvalid, http.StatusBadRequest},
-	}
-	for _, tt := range tests {
-		t.Run(string(tt.code), func(t *testing.T) {
-			w := httptest.NewRecorder()
-			r := newTestRequest("")
-
-			Error(w, r, apierr.New(tt.code, "test message"))
-
-			if w.Code != tt.wantStatus {
-				t.Fatalf("code %s: expected %d, got %d", tt.code, tt.wantStatus, w.Code)
-			}
-			var env envelope
-			if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
-				t.Fatalf("decode response: %v", err)
-			}
-			if env.ErrorCode != string(tt.code) {
-				t.Fatalf("expected error_code %q, got %q", tt.code, env.ErrorCode)
-			}
-			if env.Error != "test message" {
-				t.Fatalf("expected message passthrough (not the generic 500 sanitization), got %q", env.Error)
-			}
-		})
-	}
-}
-
 func TestError_DetailsIncludedForAPIErrorWithDetails(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := newTestRequest("")
@@ -174,6 +130,61 @@ func TestError_DetailsOmittedWhenNotSet(t *testing.T) {
 
 	if strings := w.Body.String(); jsonHasKey(t, strings, "error_details") {
 		t.Fatalf("expected error_details to be omitted, got body: %s", strings)
+	}
+}
+
+func TestError_IssuesIncludedForPolicyErrors(t *testing.T) {
+	w := httptest.NewRecorder()
+	Error(w, newTestRequest(""), apierr.NewWithIssues(apierr.CodeRolePolicyInvalid, "the policy is not valid",
+		[]apierr.Issue{{Path: "statements[0].actions[1]", Message: `unknown action "x:y"`}}))
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", w.Code)
+	}
+	var env envelope
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.ErrorCode != "ROLE_POLICY_INVALID" || len(env.Issues) != 1 || env.Issues[0].Path != "statements[0].actions[1]" {
+		t.Fatalf("envelope = %+v", env)
+	}
+	// ... and omitted for every other error
+	w = httptest.NewRecorder()
+	Error(w, newTestRequest(""), apierr.New(apierr.CodeBadRequest, "x"))
+	if jsonHasKey(t, w.Body.String(), "issues") {
+		t.Fatalf("issues must be omitted when empty: %s", w.Body.String())
+	}
+}
+
+func TestError_RoleDomainMapping(t *testing.T) {
+	cases := []struct {
+		err    error
+		status int
+		code   apierr.Code
+	}{
+		{roledom.ErrNotFound, 404, apierr.CodeRoleNotFound},
+		{roledom.ErrNameTaken, 409, apierr.CodeRoleNameTaken},
+		{roledom.ErrNameInvalid, 400, apierr.CodeRoleNameInvalid},
+		{roledom.ErrSystemRole, 409, apierr.CodeRoleIsSystem},
+		{roledom.ErrIsDefault, 409, apierr.CodeRoleIsDefault},
+		{roledom.ErrLastWildcard, 409, apierr.CodeRoleLastAdmin},
+		{roledom.ErrNotAttachable, 422, apierr.CodeRoleNotAttachable},
+		{fmt.Errorf("wrapped: %w", roledom.ErrNotAttachable), 422, apierr.CodeRoleNotAttachable},
+		{roledom.ErrMemberNotFound, 404, apierr.CodeProjectMemberNotFound},
+	}
+	for _, tc := range cases {
+		w := httptest.NewRecorder()
+		Error(w, newTestRequest(""), tc.err)
+		var env envelope
+		_ = json.Unmarshal(w.Body.Bytes(), &env)
+		if w.Code != tc.status || env.ErrorCode != string(tc.code) {
+			t.Errorf("%v: %d %s, want %d %s", tc.err, w.Code, env.ErrorCode, tc.status, tc.code)
+		}
+		// the same code raised as an *apierr.Error maps to the same status
+		w = httptest.NewRecorder()
+		Error(w, newTestRequest(""), apierr.New(tc.code, "x"))
+		if w.Code != tc.status {
+			t.Errorf("apierr %s: status %d, want %d", tc.code, w.Code, tc.status)
+		}
 	}
 }
 
@@ -228,7 +239,7 @@ func TestStatusAndCodeFor_DomainAuthErrors(t *testing.T) {
 	}
 }
 
-// The default of a kind (global role, task status, task type) cannot be
+// The default of a kind (role, task status, task type) cannot be
 // deleted; that is a conflict with the current state, so 409 with a code the
 // UI can tell apart from "still in use".
 func TestStatusAndCodeFor_DefaultCannotBeDeleted(t *testing.T) {
@@ -236,8 +247,8 @@ func TestStatusAndCodeFor_DefaultCannotBeDeleted(t *testing.T) {
 		err      error
 		wantCode apierr.Code
 	}{
-		{globalroledom.ErrIsDefault, apierr.CodeGlobalRoleIsDefault},
-		{globalroledom.ErrNoDefault, apierr.CodeGlobalRoleNoDefault},
+		{roledom.ErrIsDefault, apierr.CodeRoleIsDefault},
+		{roledom.ErrNoDefault, apierr.CodeRoleNoDefault},
 		{taskdom.ErrStatusIsDefault, apierr.CodeTaskStatusIsDefault},
 		{taskdom.ErrTypeIsDefault, apierr.CodeTaskTypeIsDefault},
 	}

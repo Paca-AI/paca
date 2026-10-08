@@ -17,7 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Paca-AI/api/internal/config"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 )
@@ -61,7 +61,7 @@ var openRouteGroups = []struct {
 	{
 		reason: "plugin proxy: each plugin route declares its own middleware " +
 			"policy in its manifest, enforced inside the handler with " +
-			"middleware.EnforcePermissions",
+			"middleware.EnforceActions (requireActions)",
 		routes: []string{
 			"GET /api/v1/plugins/{pluginId}/*",
 			"POST /api/v1/plugins/{pluginId}/*",
@@ -97,6 +97,18 @@ var openRouteGroups = []struct {
 			"GET /api/v1/projects/workspace-stats",
 			"GET /api/v1/port-forwards/resolve",
 			"GET /api/v1/projects/{projectId}/members/me/permissions",
+		},
+	},
+	{
+		reason: "IAM role editor helpers: pure functions over the action registry " +
+			"and attribute schema, no workspace data; any authenticated caller " +
+			"(a simulation naming a principal additionally needs roles:read, " +
+			"enforced by middleware and pinned in TestRouteCoverage_RoleHelpersAreAuthenticatedOnly)",
+		routes: []string{
+			"GET /api/v1/roles/actions",
+			"GET /api/v1/roles/attribute-schema",
+			"POST /api/v1/roles/validate",
+			"POST /api/v1/roles/simulate",
 		},
 	},
 	{
@@ -150,19 +162,21 @@ func (rt routeUnderTest) key() string { return rt.method + " " + rt.pattern }
 // exactly as it does in the real router, so scope resolvers behave the same.
 // Running the real handlers instead is not an option: with no services behind
 // them they panic, some in goroutines of their own.
-func allRoutes(t *testing.T, authorizer *authz.Authorizer, visibility privateProjects) []routeUnderTest {
+func allRoutes(t *testing.T, authorizer *iam.Authorizer, visibility privateProjects) []routeUnderTest {
 	t.Helper()
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	router := New(Deps{
 		TokenManager:         jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour),
-		Authorizer:           authorizer,
+		IAM:                  authorizer,
 		ProjectVisibilitySvc: visibility,
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(config.ReleaseConfig{}, nil, log),
 		Auth:                 handler.NewAuthHandler(nil, handler.CookieConfig{}),
 		User:                 handler.NewUserHandler(nil),
-		GlobalRole:           handler.NewGlobalRoleHandler(nil),
+		Role:                 handler.NewRoleHandler(nil),
+		RolePolicies:         noRolePolicies{},
+		RoleAttachments:      noRoleAttachments{},
 		Project:              handler.NewProjectHandler(nil, authorizer),
 		Task:                 handler.NewTaskHandler(nil, nil, nil),
 		Sprint:               handler.NewSprintHandler(nil, nil),
@@ -233,7 +247,7 @@ func errorCodeOf(rec *httptest.ResponseRecorder) string {
 // The only routes exempt are the reviewed openRouteGroups. A new route
 // registered without a gate therefore fails here, instead of shipping open.
 func TestEveryRouteIsGuarded(t *testing.T) {
-	authorizer := authz.NewAuthorizer(&staticPermissionStore{}) // holds nothing
+	authorizer := newTestIAM(&staticPermissionStore{}) // holds nothing
 	routes := allRoutes(t, authorizer, privateProjects{})
 	token := issueAccessTokenForRouterTests(t)
 
@@ -251,7 +265,13 @@ func TestEveryRouteIsGuarded(t *testing.T) {
 			continue
 		}
 
-		req := httptest.NewRequestWithContext(t.Context(), rt.method, concretePath(rt.pattern), nil)
+		// The assignment gates judge the roles the body names; without a body
+		// there is nothing to refuse and the handler answers 400.
+		var body io.Reader
+		if _, assigns := assignGates[rt.key()]; assigns {
+			body = strings.NewReader(assignBody)
+		}
+		req := httptest.NewRequestWithContext(t.Context(), rt.method, concretePath(rt.pattern), body)
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -287,39 +307,38 @@ func TestEveryRouteIsGuarded(t *testing.T) {
 
 // TestRoleAssignmentIsSeparatePrivilege pins the boundary this router draws
 // around roles: editing a user or an agent needs only its own permission, but
-// changing who holds which global role needs global_roles.assign — and on the
-// agent route agents.write as well, since it changes an agent. The profile
-// routes must not double as a back door to a role, so they neither need nor
-// accept global_roles.assign on its own.
+// changing who holds which role needs roles:assign on the roles concerned —
+// and on the agent route agents:write as well, since it changes an agent. The profile routes must
+// not double as a back door to a role, so they neither need nor accept
+// roles:assign on its own.
 func TestRoleAssignmentIsSeparatePrivilege(t *testing.T) {
 	const (
-		usersWrite    = authz.PermissionUsersWrite
-		agentsWrite   = authz.PermissionAgentsWrite
-		rolesAssign   = authz.PermissionGlobalRolesAssign
+		usersWrite    = iam.ActionUsersWrite
+		agentsWrite   = iam.ActionAgentsWrite
+		rolesAssign   = iam.ActionRolesAssign
 		userPath      = "/api/v1/admin/users/{userId}"
 		agentPath     = "/api/v1/admin/agents/{agentId}"
-		agentRolePath = agentPath + "/global-role"
+		agentRolePath = agentPath + "/roles"
 	)
 	tests := []struct {
 		route   string
-		allowed [][]authz.Permission // any one of these grant sets opens the route
+		allowed [][]iam.Action // any one of these grant sets opens the route
 	}{
-		{"POST /api/v1/admin/users", [][]authz.Permission{{usersWrite}}},
-		{"PATCH " + userPath, [][]authz.Permission{{usersWrite}}},
-		{"POST /api/v1/admin/agents", [][]authz.Permission{{agentsWrite}}},
-		{"PATCH " + agentPath, [][]authz.Permission{{agentsWrite}}},
-		{"PUT " + userPath + "/global-roles", [][]authz.Permission{{rolesAssign}}},
-		{"PUT " + agentRolePath, [][]authz.Permission{{agentsWrite, rolesAssign}}},
-		{"DELETE " + agentRolePath, [][]authz.Permission{{agentsWrite, rolesAssign}}},
+		{"POST /api/v1/admin/users", [][]iam.Action{{usersWrite}}},
+		{"PATCH " + userPath, [][]iam.Action{{usersWrite}}},
+		{"POST /api/v1/admin/agents", [][]iam.Action{{agentsWrite}}},
+		{"PATCH " + agentPath, [][]iam.Action{{agentsWrite}}},
+		{"PUT " + userPath + "/roles", [][]iam.Action{{rolesAssign}}},
+		{"PUT " + agentRolePath, [][]iam.Action{{agentsWrite, rolesAssign}}},
 	}
 	// Every grant set worth trying; a route is open to exactly the ones it lists.
-	candidates := [][]authz.Permission{
+	candidates := [][]iam.Action{
 		{usersWrite}, {agentsWrite}, {rolesAssign}, {usersWrite, agentsWrite}, {agentsWrite, rolesAssign},
 	}
 
 	token := issueAccessTokenForRouterTests(t)
 	for _, grants := range candidates {
-		authorizer := authz.NewAuthorizer(&scopedStore{global: grants})
+		authorizer := newTestIAM(&scopedStore{global: grants})
 		byKey := map[string]routeUnderTest{}
 		for _, rt := range allRoutes(t, authorizer, privateProjects{}) {
 			byKey[rt.key()] = rt
@@ -337,7 +356,11 @@ func TestRoleAssignmentIsSeparatePrivilege(t *testing.T) {
 				}
 			}
 
-			req := httptest.NewRequestWithContext(t.Context(), rt.method, concretePath(rt.pattern), nil)
+			var body io.Reader
+			if _, assigns := assignGates[rt.key()]; assigns {
+				body = strings.NewReader(assignBody) // the gate judges the roles the body names
+			}
+			req := httptest.NewRequestWithContext(t.Context(), rt.method, concretePath(rt.pattern), body)
 			req.Header.Set("Authorization", "Bearer "+token)
 			rec := httptest.NewRecorder()
 			rt.handler.ServeHTTP(rec, req)
@@ -352,33 +375,33 @@ func TestRoleAssignmentIsSeparatePrivilege(t *testing.T) {
 
 // The default role is a property of the role *definition*: it decides what new
 // users and agents start with, not who holds what today. So choosing it needs
-// global_roles.write, like editing or deleting the role, and neither
-// global_roles.assign (which hands roles to accounts) nor users.write is enough.
+// roles:write, like editing or deleting the role, and neither roles:assign
+// (which hands roles to accounts) nor users:write is enough.
 func TestSettingTheDefaultRoleIsRoleDefinitionWork(t *testing.T) {
 	const (
-		rolesRead   = authz.PermissionGlobalRolesRead
-		rolesWrite  = authz.PermissionGlobalRolesWrite
-		rolesAssign = authz.PermissionGlobalRolesAssign
-		usersWrite  = authz.PermissionUsersWrite
+		rolesRead   = iam.ActionRolesRead
+		rolesWrite  = iam.ActionRolesWrite
+		rolesAssign = iam.ActionRolesAssign
+		usersWrite  = iam.ActionUsersWrite
 	)
 	routes := []string{
-		"PUT /api/v1/admin/global-roles/{roleId}/set-default",
-		"DELETE /api/v1/admin/global-roles/{roleId}",
+		"PUT /api/v1/admin/roles/{roleId}/default",
+		"DELETE /api/v1/admin/roles/{roleId}",
 	}
 	candidates := []struct {
-		grants   []authz.Permission
+		grants   []iam.Action
 		wantOpen bool
 	}{
-		{[]authz.Permission{rolesWrite}, true},
-		{[]authz.Permission{rolesRead}, false},
-		{[]authz.Permission{rolesAssign}, false},
-		{[]authz.Permission{usersWrite}, false},
-		{[]authz.Permission{rolesRead, rolesAssign, usersWrite}, false},
+		{[]iam.Action{rolesWrite}, true},
+		{[]iam.Action{rolesRead}, false},
+		{[]iam.Action{rolesAssign}, false},
+		{[]iam.Action{usersWrite}, false},
+		{[]iam.Action{rolesRead, rolesAssign, usersWrite}, false},
 	}
 
 	token := issueAccessTokenForRouterTests(t)
 	for _, tc := range candidates {
-		authorizer := authz.NewAuthorizer(&scopedStore{global: tc.grants})
+		authorizer := newTestIAM(&scopedStore{global: tc.grants})
 		byKey := map[string]routeUnderTest{}
 		for _, rt := range allRoutes(t, authorizer, privateProjects{}) {
 			byKey[rt.key()] = rt
@@ -402,7 +425,7 @@ func TestSettingTheDefaultRoleIsRoleDefinitionWork(t *testing.T) {
 }
 
 // containsAll reports whether have holds every permission in want.
-func containsAll(have, want []authz.Permission) bool {
+func containsAll(have, want []iam.Action) bool {
 	for _, w := range want {
 		found := false
 		for _, h := range have {

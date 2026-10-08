@@ -75,9 +75,9 @@ my-plugin/
           { "name": "authn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "project",
-            "permissions": ["tasks.write"]
+            "actions": ["tasks:write"]
           }
         ]
       },
@@ -96,8 +96,12 @@ my-plugin/
 }
 ```
 
-When `middlewares` is omitted on a route, Paca applies a secure default policy
-(`optionalAuthn` + `requireFreshPassword` + project-scoped `projects.read`).
+When `middlewares` is omitted on a route, Paca applies an authenticated-only
+default policy (`authn` + `requireFreshPassword`, no action check). Authorization is
+declared with `requireActions` and IAM actions (`<domain>:<verb>`, e.g.
+`tasks:write` or your plugin's own `time_logging:manage_all`); the legacy
+`requirePermissions` is rejected at install (an installed plugin whose package still uses it is flagged `legacy_permissions` in `GET /api/v1/plugins` and shown in a banner to administrators). See
+[backend-plugin-system.md](backend-plugin-system.md#route-middleware-policy).
 Use explicit `middlewares` when you need different behavior (for example,
 webhook endpoints that must accept anonymous requests).
 

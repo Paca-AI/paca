@@ -23,13 +23,13 @@ import { Pagination } from "@/components/ui/pagination";
 import { useCanAssignGlobalRole } from "@/hooks/use-can-assign-global-role";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
-	globalRolesQueryOptions,
 	myPermissionsQueryOptions,
 	type User,
 	usersQueryOptions,
 } from "@/lib/admin-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import { hasPermission } from "@/lib/permissions";
+import { platformRolesQueryOptions } from "@/lib/role-api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/admin/users/")({
@@ -39,9 +39,9 @@ export const Route = createFileRoute("/_authenticated/admin/users/")({
 			.catch(() => [] as string[]);
 
 		const canAccess =
-			hasPermission(permissions, "users.read") ||
-			hasPermission(permissions, "users.write") ||
-			hasPermission(permissions, "users.delete");
+			hasPermission(permissions, "users:read") ||
+			hasPermission(permissions, "users:write") ||
+			hasPermission(permissions, "users:delete");
 
 		if (!canAccess) {
 			throw redirect({ to: "/home" });
@@ -53,13 +53,13 @@ export const Route = createFileRoute("/_authenticated/admin/users/")({
 function UsersManagementPage() {
 	const { t } = useTranslation("admin");
 	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
-	const canRead = hasPermission("users.read");
-	const canWrite = hasPermission("users.write");
+	const canRead = hasPermission("users:read");
+	const canWrite = hasPermission("users:write");
 	// Deleting a user is its own permission, separate from editing one —
 	// mirrors canAssignRole below. Without this the delete button showed for
 	// anyone who could edit a user, even without users.delete, and the
 	// server then refused the request.
-	const canDelete = hasPermission("users.delete");
+	const canDelete = hasPermission("users:delete");
 	// Changing a role is its own permission, separate from editing the user.
 	const canAssignRole = useCanAssignGlobalRole();
 
@@ -75,7 +75,7 @@ function UsersManagementPage() {
 	// Role chips need global_roles.read. Without it the chip row is simply
 	// hidden — search still works.
 	const { data: globalRoles } = useQuery({
-		...globalRolesQueryOptions,
+		...platformRolesQueryOptions,
 		retry: false,
 	});
 
@@ -195,6 +195,7 @@ function UsersManagementPage() {
 						canDelete={canDelete}
 						canAssignRole={canAssignRole}
 						currentUserId={currentUser?.id}
+						roleDirectory={globalRoles}
 						onEdit={setEditUser}
 						onDelete={setDeleteUser}
 						onResetPassword={setResetPasswordUser}

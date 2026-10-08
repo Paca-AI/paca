@@ -126,6 +126,8 @@ apps/e2e/
     ├── admin/              # users, global roles, agents, settings, plugins, changelog
     ├── auth/               # login flows, forced password change
     ├── docs/               # project documentation (folders, editor, history, comments)
+    ├── iam/                # IAM authorization: evaluation, scoped access, roles:assign,
+    │                       # role scope rules, role editor, badges, plugin legacy warning
     ├── profile/            # profile editing, personal API keys
     ├── projects/           # project management, tasks, sprints, views, roles,
     │                       # agents, automation, conversations, environments
@@ -148,6 +150,7 @@ Playwright-BDD adapter is wired in.
 | `admin/` | `agents`, `changelog`, `global-roles`, `plugins`, `settings`, `users` |
 | `auth/` | `login`, `change-password` |
 | `docs/` | `docs` |
+| `iam/` | `evaluation`, `scoped-access`, `list-scoping`, `roles-assign`, `role-scope-rules`, `role-editor`, `role-badges-selector`, `plugin-legacy-warning`, `docs-guide-examples` |
 | `profile/` | `profile`, `api-keys` |
 | `projects/` | `agents`, `automation`, `conversations`, `custom-fields`, `environments`, `interaction-sidebar`, `interaction-views`, `management`, `roles`, `sprint-lifecycle`, `task-detail`, `task-statuses`, `task-types`, `timeline`, `view-settings`, `view-settings-fields` |
 | `security/` | `login` |
@@ -185,6 +188,7 @@ fully isolated.
 | `E2E_BASE_URL` | `http://localhost`     | Base URL of the running app    |
 | `E2E_USERNAME` | `admin`                | Test user username             |
 | `E2E_PASSWORD` | `e2e-admin-password`   | Test user password             |
+| `E2E_AGENT_API_KEY` | `e2e-agent-api-key` | Shared agent key of the stack, used by `tests/iam/evaluation.spec.ts` to act as an agent |
 | `E2E_WORKERS`  | `3` (`2` on CI)        | Parallel workers per browser   |
 | `E2E_BROWSERS` | all five projects      | Browsers run by `bun run test` |
 

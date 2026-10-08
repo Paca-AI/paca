@@ -25,8 +25,7 @@
 			"description": "上のボタンから新しいユーザーを作成することはできます。"
 		},
 		"table": {
-			"columnUsername": "ユーザー名",
-			"columnFullName": "氏名",
+			"columnUser": "ユーザー",
 			"columnRole": "ロール",
 			"columnCreated": "作成日",
 			"pwdResetBadge": "パスワード再設定",
@@ -35,7 +34,9 @@
 			"resetPasswordAction": "パスワードをリセット",
 			"editAction": "ユーザーを編集",
 			"changeRoleAction": "ロールを変更",
-			"deleteAction": "ユーザーを削除"
+			"deleteAction": "ユーザーを削除",
+			"pwdResetHint": "このユーザーは次回サインイン時に新しいパスワードを設定する必要があります",
+			"columnActions": "操作"
 		},
 		"formDialog": {
 			"createdTitle": "ユーザーを作成しました",
@@ -170,14 +171,16 @@
 		},
 		"table": {
 			"columnName": "名前",
-			"columnPermissions": "権限",
+			"columnDescription": "説明",
 			"columnDefault": "既定",
 			"noPermissionsAssigned": "権限が割り当てられていません",
 			"default": "既定",
 			"setDefaultAction": "既定のロールに設定",
 			"editAction": "ロールを編集",
 			"deleteAction": "ロールを削除",
-			"deleteDefaultDisabled": "既定のロールは削除できません。先に別のロールを既定に設定してください。"
+			"deleteDefaultDisabled": "既定のロールは削除できません。先に別のロールを既定に設定してください。",
+			"builtIn": "組み込みロール",
+			"noDescription": "説明なし"
 		},
 		"formDialog": {
 			"editTitle": "ロールを編集",
@@ -192,16 +195,7 @@
 			"cancel": "キャンセル",
 			"saving": "保存中…",
 			"saveChanges": "変更を保存",
-			"createRole": "ロールを作成",
-			"errors": {
-				"roleNameRequired": "ロール名を入力してください。",
-				"nameTaken": "この名前のロールは既に存在します。",
-				"nameInvalid": "ロール名は大文字、数字、アンダースコアのみ使用できます。",
-				"roleNotFound": "このロールは既に存在しません。既に削除された可能性があります。",
-				"forbidden": "この操作を実行する権限がありません。",
-				"internalError": "サーバーで問題が発生しました。もう一度お試しください。",
-				"generic": "問題が発生しました。"
-			}
+			"createRole": "ロールを作成"
 		},
 		"deleteDialog": {
 			"title": "ロールを削除",
@@ -213,7 +207,6 @@
 			"confirmButton": "ロールを削除",
 			"errors": {
 				"roleNotFound": "このロールは既に存在しません。",
-				"hasUsersWarning": "このロールは1人以上のユーザーに割り当てられているため削除できません。",
 				"isDefault": "既定のロールは削除できません。先に別のロールを既定に設定してください。",
 				"forbidden": "このロールを削除する権限がありません。",
 				"internalError": "問題が発生しました。もう一度お試しください。",
@@ -284,11 +277,28 @@
 			"settingsSsoWrite": {
 				"label": "SSO プロバイダーの管理",
 				"description": "ユーザーがサインインに使う ID プロバイダーを設定します。他のユーザーとしてサインインできるため、完全な管理者権限と同等に扱ってください。"
+			},
+			"agentsRead": {
+				"label": "エージェントの閲覧",
+				"description": "ワークスペースレベルの AI エージェントを表示"
+			},
+			"agentsWrite": {
+				"label": "エージェントの管理",
+				"description": "ワークスペースレベルの AI エージェントを作成・編集・削除"
+			},
+			"pluginsRead": {
+				"label": "プラグインの閲覧",
+				"description": "インストール済みのプラグインを表示"
+			},
+			"pluginsWrite": {
+				"label": "プラグインの管理",
+				"description": "プラグインのインストール・更新・有効化・削除"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "グローバルロール",
 			"users": "ユーザー",
+			"agents": "AI エージェント",
 			"projects": "プロジェクト",
 			"plugins": "プラグイン",
 			"settings": "設定"

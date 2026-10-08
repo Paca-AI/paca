@@ -2,42 +2,38 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/agent-api", async () => {
+vi.mock("@/lib/role-api", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/lib/agent-api")>("@/lib/agent-api");
-	return {
-		...actual,
-		setGlobalAgentRole: vi.fn(),
-		clearGlobalAgentRole: vi.fn(),
-	};
+		await vi.importActual<typeof import("@/lib/role-api")>("@/lib/role-api");
+	return { ...actual, replaceAgentRoles: vi.fn() };
 });
 
-import {
-	type Agent,
-	clearGlobalAgentRole,
-	globalAgentQueryOptions,
-	setGlobalAgentRole,
-} from "@/lib/agent-api";
+import { type Agent, globalAgentQueryOptions } from "@/lib/agent-api";
+import { replaceAgentRoles } from "@/lib/role-api";
 import { makeRole, renderWithQueries } from "@/test/render-with-queries";
+import { roleOption, toggleRole } from "@/test/role-select";
 import { AgentGlobalRoleTab } from "./agent-global-role-tab";
 
 const ROLES = [
-	makeRole("role-user", "USER", { "tasks.read": true }),
-	makeRole("role-admin", "ADMIN", { "users.read": true }),
+	makeRole("role-user", "USER", { "tasks:read": true }),
+	makeRole("role-admin", "ADMIN", { "users:read": true }),
 	makeRole("role-root", "SUPER_ADMIN", { "*": true }),
 ];
-const CAN_ASSIGN = ["global_roles.assign", "global_roles.read"];
+const CAN_ASSIGN = ["roles:assign", "roles:read"];
 
-const agentWith = (globalRoleId: string | null): Agent =>
+const agentWith = (roleIds: string[]): Agent =>
 	({
 		id: "agent-1",
 		name: "Bot",
 		handle: "bot",
-		global_role_id: globalRoleId,
+		roles: ROLES.filter((r) => roleIds.includes(r.id)).map((r) => ({
+			id: r.id,
+			name: r.name,
+		})),
 	}) as Agent;
 
 function renderTab({
-	roleId = null,
+	roleId = null as string | null,
 	canWrite = true,
 	permissions = CAN_ASSIGN,
 	roles = ROLES,
@@ -47,7 +43,7 @@ function renderTab({
 	permissions?: string[];
 	roles?: typeof ROLES | null;
 } = {}) {
-	const agent = agentWith(roleId);
+	const agent = agentWith(roleId ? [roleId] : []);
 	const view = renderWithQueries(
 		<AgentGlobalRoleTab agent={agent} canWrite={canWrite} />,
 		{ permissions, roles },
@@ -61,10 +57,9 @@ const noButton = (name: RegExp | string) =>
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	vi.mocked(setGlobalAgentRole).mockImplementation(async (_id, roleId) =>
-		agentWith(roleId),
+	vi.mocked(replaceAgentRoles).mockImplementation(async (_id, ids) =>
+		ROLES.filter((r) => ids.includes(r.id)),
 	);
-	vi.mocked(clearGlobalAgentRole).mockResolvedValue(agentWith(null));
 });
 
 describe("AgentGlobalRoleTab — showing the role", () => {
@@ -84,7 +79,7 @@ describe("AgentGlobalRoleTab — showing the role", () => {
 		renderTab({ roleId: "role-admin" });
 
 		expect(screen.getByText("ADMIN")).toBeInTheDocument();
-		expect(screen.getByText("users.read")).toBeInTheDocument();
+		expect(screen.getByText("users:read")).toBeInTheDocument();
 		expect(screen.queryByText("No global role")).not.toBeInTheDocument();
 		expect(button("Change role")).toBeInTheDocument();
 		expect(button("Remove role")).toBeInTheDocument();
@@ -120,8 +115,8 @@ describe("AgentGlobalRoleTab — who may change it", () => {
 		noButton("Remove role");
 	});
 
-	it("is read-only without global_roles.assign, even with agents.write", () => {
-		renderTab({ roleId: "role-admin", permissions: ["global_roles.read"] });
+	it("is read-only without roles:assign, even with agents.write", () => {
+		renderTab({ roleId: "role-admin", permissions: ["roles:read"] });
 
 		expect(screen.getByText("ADMIN")).toBeInTheDocument();
 		expect(
@@ -131,10 +126,10 @@ describe("AgentGlobalRoleTab — who may change it", () => {
 		noButton("Remove role");
 	});
 
-	it("offers no controls, and says the name is hidden, without global_roles.read", () => {
+	it("offers no controls, and says the name is hidden, without roles:read", () => {
 		renderTab({
 			roleId: "role-admin",
-			permissions: ["global_roles.assign"],
+			permissions: ["roles:assign"],
 			roles: null,
 		});
 
@@ -157,41 +152,46 @@ describe("AgentGlobalRoleTab — who may change it", () => {
 describe("AgentGlobalRoleTab — assigning and changing", () => {
 	it("assigns the chosen role through its own endpoint and shows it", async () => {
 		const { client } = renderTab();
+		const invalidate = vi.spyOn(client, "invalidateQueries");
 
 		await userEvent.click(button("Assign role"));
 		// Nothing chosen yet: nothing to assign.
 		expect(button("Assign role")).toBeDisabled();
-		await userEvent.click(screen.getByRole("radio", { name: "ADMIN" }));
+		await toggleRole("ADMIN");
 		await userEvent.click(button("Assign role"));
 
 		await waitFor(() =>
-			expect(setGlobalAgentRole).toHaveBeenCalledWith("agent-1", "role-admin"),
+			expect(replaceAgentRoles).toHaveBeenCalledWith("agent-1", ["role-admin"]),
 		);
-		// The agent's cache carries the new role straight away, and the picker closes.
+		// The agent is refetched so it shows the new role, and the picker closes.
 		await waitFor(() =>
-			expect(
-				client.getQueryData<Agent>(globalAgentQueryOptions("agent-1").queryKey)
-					?.global_role_id,
-			).toBe("role-admin"),
+			expect(invalidate).toHaveBeenCalledWith({
+				queryKey: globalAgentQueryOptions("agent-1").queryKey,
+			}),
 		);
-		expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("combobox", { name: "Global role" }),
+		).not.toBeInTheDocument();
 	});
 
-	it("changes an existing role, marking the current one and not offering it again", async () => {
+	it("changes the set of roles, marking the ones held", async () => {
 		renderTab({ roleId: "role-user" });
 
 		await userEvent.click(button("Change role"));
 
-		const current = screen.getByRole("radio", { name: "USER" });
-		expect(current).toBeChecked();
+		const current = await roleOption("USER");
+		expect(current).toHaveAttribute("aria-selected", "true");
 		expect(current).toHaveAccessibleDescription(/Current/);
 		expect(button("Assign role")).toBeDisabled();
 
-		await userEvent.click(screen.getByRole("radio", { name: "ADMIN" }));
+		await toggleRole("ADMIN");
 		await userEvent.click(button("Assign role"));
 
 		await waitFor(() =>
-			expect(setGlobalAgentRole).toHaveBeenCalledWith("agent-1", "role-admin"),
+			expect(replaceAgentRoles).toHaveBeenCalledWith("agent-1", [
+				"role-user",
+				"role-admin",
+			]),
 		);
 	});
 
@@ -199,7 +199,7 @@ describe("AgentGlobalRoleTab — assigning and changing", () => {
 		renderTab();
 		await userEvent.click(button("Assign role"));
 
-		await userEvent.click(screen.getByRole("radio", { name: "SUPER_ADMIN" }));
+		await toggleRole("SUPER_ADMIN");
 
 		expect(
 			screen.getByText(/the agent will be able to do everything/i),
@@ -209,47 +209,50 @@ describe("AgentGlobalRoleTab — assigning and changing", () => {
 	it("leaves the picker without changing anything on Cancel", async () => {
 		renderTab({ roleId: "role-user" });
 		await userEvent.click(button("Change role"));
-		await userEvent.click(screen.getByRole("radio", { name: "ADMIN" }));
+		await toggleRole("ADMIN");
 
 		await userEvent.click(button("Cancel"));
 
-		expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
-		expect(setGlobalAgentRole).not.toHaveBeenCalled();
+		expect(
+			screen.queryByRole("combobox", { name: "Global role" }),
+		).not.toBeInTheDocument();
+		expect(replaceAgentRoles).not.toHaveBeenCalled();
 		expect(button("Change role")).toBeInTheDocument();
 	});
 
 	it("disables the choices and the button while the request is in flight", async () => {
-		vi.mocked(setGlobalAgentRole).mockReturnValue(new Promise(() => {}));
+		vi.mocked(replaceAgentRoles).mockReturnValue(new Promise(() => {}));
 		renderTab();
 		await userEvent.click(button("Assign role"));
-		await userEvent.click(screen.getByRole("radio", { name: "ADMIN" }));
+		await toggleRole("ADMIN");
 
 		await userEvent.click(button("Assign role"));
 
 		expect(
 			await screen.findByRole("button", { name: /assigning/i }),
 		).toBeDisabled();
-		expect(screen.getByRole("radio", { name: "USER" })).toBeDisabled();
+		expect(
+			screen.getByRole("combobox", { name: "Global role" }),
+		).toBeDisabled();
 	});
 
 	it.each([
-		["FORBIDDEN", "You don't have permission to change global roles."],
-		[
-			"GLOBAL_ROLE_NOT_FOUND",
-			"That role no longer exists. Reload the page and try again.",
-		],
-		["INTERNAL_ERROR", "Couldn't update the role. Please try again."],
+		["FORBIDDEN", "You don't have permission to do this."],
+		["ROLE_NOT_ATTACHABLE", "One of the roles can't be assigned here."],
+		["INTERNAL_ERROR", "Something went wrong on the server. Try again."],
 	])("explains a %s failure and lets the person retry", async (code, message) => {
-		vi.mocked(setGlobalAgentRole).mockRejectedValue({
+		vi.mocked(replaceAgentRoles).mockRejectedValue({
 			response: { data: { error_code: code } },
 		});
 		renderTab();
 		await userEvent.click(button("Assign role"));
-		await userEvent.click(screen.getByRole("radio", { name: "ADMIN" }));
+		await toggleRole("ADMIN");
 		await userEvent.click(button("Assign role"));
 
 		expect(await screen.findByRole("alert")).toHaveTextContent(message);
-		expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+		expect(
+			screen.getByRole("combobox", { name: "Global role" }),
+		).toBeInTheDocument();
 		expect(button("Assign role")).toBeEnabled();
 	});
 });
@@ -257,23 +260,23 @@ describe("AgentGlobalRoleTab — assigning and changing", () => {
 describe("AgentGlobalRoleTab — removing", () => {
 	it("asks first, then clears the role through its own endpoint", async () => {
 		const { client } = renderTab({ roleId: "role-admin" });
+		const invalidate = vi.spyOn(client, "invalidateQueries");
 
 		await userEvent.click(button("Remove role"));
 		expect(
 			screen.getByText(/it will lose the permissions the role grants/i),
 		).toBeInTheDocument();
-		expect(clearGlobalAgentRole).not.toHaveBeenCalled();
+		expect(replaceAgentRoles).not.toHaveBeenCalled();
 
 		await userEvent.click(button("Remove role"));
 
 		await waitFor(() =>
-			expect(clearGlobalAgentRole).toHaveBeenCalledWith("agent-1"),
+			expect(replaceAgentRoles).toHaveBeenCalledWith("agent-1", []),
 		);
 		await waitFor(() =>
-			expect(
-				client.getQueryData<Agent>(globalAgentQueryOptions("agent-1").queryKey)
-					?.global_role_id,
-			).toBeNull(),
+			expect(invalidate).toHaveBeenCalledWith({
+				queryKey: globalAgentQueryOptions("agent-1").queryKey,
+			}),
 		);
 	});
 
@@ -283,13 +286,13 @@ describe("AgentGlobalRoleTab — removing", () => {
 
 		await userEvent.click(button("Cancel"));
 
-		expect(clearGlobalAgentRole).not.toHaveBeenCalled();
+		expect(replaceAgentRoles).not.toHaveBeenCalled();
 		expect(screen.queryByText(/lose the permissions/i)).not.toBeInTheDocument();
 		expect(button("Remove role")).toBeInTheDocument();
 	});
 
 	it("reports a failed removal and stays on the confirmation", async () => {
-		vi.mocked(clearGlobalAgentRole).mockRejectedValue({
+		vi.mocked(replaceAgentRoles).mockRejectedValue({
 			response: { data: { error_code: "FORBIDDEN" } },
 		});
 		renderTab({ roleId: "role-admin" });
@@ -297,7 +300,7 @@ describe("AgentGlobalRoleTab — removing", () => {
 		await userEvent.click(button("Remove role"));
 
 		expect(await screen.findByRole("alert")).toHaveTextContent(
-			"You don't have permission to change global roles.",
+			"You don't have permission to do this.",
 		);
 		expect(screen.getByText(/lose the permissions/i)).toBeInTheDocument();
 	});

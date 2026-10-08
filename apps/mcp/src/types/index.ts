@@ -345,49 +345,70 @@ export interface DocumentActivityListResult {
 
 // ==================== Project Members ====================
 
+export interface MemberRoleSummary {
+	id: string;
+	name: string;
+}
+
 export interface ProjectMember {
 	id: string;
 	project_id: string;
 	user_id: string;
-	project_role_id: string;
+	roles: MemberRoleSummary[];
 	username: string;
 	full_name: string;
-	role_name: string;
 	joined_at?: string;
 }
 
 export interface AddMemberInput {
 	user_id: string;
-	project_role_id: string;
+	role_ids: string[];
 }
 
-export interface UpdateMemberRoleInput {
-	project_role_id: string;
+export interface ReplaceMemberRolesInput {
+	role_ids: string[];
 }
 
 // ==================== Project Roles ====================
 
+/** One statement of an IAM policy document. */
+export interface PolicyStatement {
+	sid?: string;
+	effect: "Allow" | "Deny";
+	actions: string[];
+	resources: string[];
+	conditions?: Record<string, Record<string, unknown>>;
+}
+
+/** An IAM policy document: the only shape the roles API accepts. */
+export interface RolePolicy {
+	version?: string;
+	statements: PolicyStatement[];
+}
+
 export interface ProjectRole {
 	id: string;
-	project_id?: string;
-	role_name: string;
+	project_id?: string | null;
+	name: string;
 	description?: string | null;
-	permissions: Record<string, unknown>;
+	policy: RolePolicy;
 	is_system?: boolean;
+	is_default?: boolean;
+	attachment_count?: number;
 	created_at: string;
 	updated_at: string;
 }
 
 export interface CreateRoleInput {
-	role_name: string;
+	name: string;
 	description?: string;
-	permissions: Record<string, unknown>;
+	policy: RolePolicy;
 }
 
 export interface UpdateRoleInput {
-	role_name?: string;
-	description?: string;
-	permissions?: Record<string, unknown>;
+	name: string;
+	description: string;
+	policy: RolePolicy;
 }
 
 // ==================== Task Types ====================

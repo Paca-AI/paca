@@ -20,8 +20,8 @@ export const Route = createFileRoute("/_authenticated/admin/agents/$agentId/")({
 			.catch(() => [] as string[]);
 
 		const canAccess =
-			hasPermission(permissions, "agents.read") ||
-			hasPermission(permissions, "agents.write");
+			hasPermission(permissions, "agents:read") ||
+			hasPermission(permissions, "agents:write");
 
 		if (!canAccess) {
 			throw redirect({ to: "/home" });

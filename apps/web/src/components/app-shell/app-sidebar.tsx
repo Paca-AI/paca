@@ -597,7 +597,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 	const navigate = useNavigate();
 	const location = useRouterState({ select: (s) => s.location.pathname });
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canWrite = hasProjectPermission("docs.write");
+	const canWrite = hasProjectPermission("docs:write");
 
 	const isDocsSection = location.startsWith(`/projects/${projectId}/docs`);
 
@@ -1010,7 +1010,7 @@ const PROJECT_NAV_ITEMS = [
 // who can't read it: by default only owners/managers/admins can, so showing
 // it to everyone would mostly lead to a no-permission page.
 const PERMISSION_GATED_SEGMENTS: Partial<Record<string, string>> = {
-	activity: "project.activities.read",
+	activity: "project.activities:read",
 };
 
 function ProjectNav() {
@@ -1248,9 +1248,9 @@ function ProjectInteractionsSection({
 	// users with a project-scoped "Editor" / "Viewer" role (global role = User)
 	// can still see Timeline, Backlog, and open sprints.
 	const canViewSprints =
-		hasPermission("sprints.read") || hasProjectPermission("sprints.read");
+		hasPermission("sprints:read") || hasProjectPermission("sprints:read");
 	const canEditTasks =
-		hasPermission("tasks.write") || hasProjectPermission("tasks.write");
+		hasPermission("tasks:write") || hasProjectPermission("tasks:write");
 
 	const [dragOverInteractionId, setDragOverInteractionId] = useState<
 		string | null
@@ -1684,24 +1684,24 @@ export function AppSidebar() {
 	const brandName = branding?.brand_name;
 
 	const canAccessGlobalRoles =
-		hasPermission("global_roles.read") || hasPermission("global_roles.write");
+		hasPermission("roles:read") || hasPermission("roles:write");
 
 	const canAccessUsers =
-		hasPermission("users.read") || hasPermission("users.write");
+		hasPermission("users:read") || hasPermission("users:write");
 
 	const canAccessGlobalAgents =
-		hasPermission("agents.read") || hasPermission("agents.write");
+		hasPermission("agents:read") || hasPermission("agents:write");
 
 	// plugins.write replaced users.write as a rough "is this someone
 	// important" proxy once it got its own dedicated permission — see authz.
 	// PermissionPluginsRead's doc comment on the Go side. This nav-link
 	// check was never updated when that happened.
-	const canAccessPlugins = hasPermission("plugins.write");
+	const canAccessPlugins = hasPermission("plugins:write");
 
 	const canAccessSettings =
-		hasPermission("settings.write") || hasPermission("settings.sso.write");
+		hasPermission("settings:write") || hasPermission("settings.sso:write");
 
-	const canCreateProject = hasPermission("projects.create");
+	const canCreateProject = hasPermission("projects:create");
 
 	// A plugin admin nav item's own declared `requiredPermission` no longer
 	// hides it from the sidebar — the page it routes to renders a

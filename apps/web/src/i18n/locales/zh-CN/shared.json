@@ -166,6 +166,34 @@
 				"prefixInvalid": "前缀必须为 1–10 个大写字母/数字（例如 PACA）。",
 				"generic": "出现错误，请重试。"
 			}
+		},
+		"legacyPluginsBanner": {
+			"title_one": "有插件需要更新",
+			"title_other": "有插件需要更新",
+			"description_one": "{{names}} 仍在使用旧的 requirePermissions 权限模型。它仍可正常运行，但在作者发布使用 requireActions 的版本之前，无法重新安装或升级。",
+			"description_other": "{{names}} 仍在使用旧的 requirePermissions 权限模型。它们仍可正常运行，但在作者发布使用 requireActions 的版本之前，无法重新安装或升级。",
+			"manage": "管理插件",
+			"dismiss": "关闭"
 		}
+	},
+	"roleBadge": {
+		"fullAccess": "完全访问",
+		"builtIn": "内置",
+		"default": "默认",
+		"current": "当前",
+		"noDescription": "无描述",
+		"noRoles": "无角色",
+		"showMore": "显示更多角色 (+{{count}})",
+		"allRoles": "所有角色 ({{count}})"
+	},
+	"roleSelect": {
+		"searchLabel": "搜索角色",
+		"searchPlaceholder": "搜索角色…",
+		"clearSearch": "清除搜索",
+		"noMatch": "没有与“{{query}}”匹配的角色",
+		"selectedCount": "已选择：{{count}}",
+		"minOne": "至少需要一个角色。",
+		"clear": "清除",
+		"placeholder": "选择角色"
 	}
 }

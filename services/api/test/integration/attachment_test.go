@@ -22,7 +22,7 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/storage"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	activitysvc "github.com/Paca-AI/api/internal/service/activity"
@@ -287,13 +287,12 @@ func buildAttachmentTestRouter(attachRepo *fakeAttachmentRepo, store *fakeStorag
 
 	return router.New(router.Deps{
 		TokenManager:         tm,
-		Authorizer:           authz.NewAuthorizer(permStore),
+		IAM:                  newIAM(permStore),
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
 		User:                 handler.NewUserHandler(userService),
-		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
-		Project:              handler.NewProjectHandler(projectService, authz.NewAuthorizer(permStore)),
+		Project:              handler.NewProjectHandler(projectService, newIAM(permStore)),
 		Task:                 handler.NewTaskHandler(taskService, viewService, active),
 		Sprint:               handler.NewSprintHandler(sprintService, viewService),
 		View:                 handler.NewViewHandler(viewService),
@@ -318,11 +317,10 @@ func buildAvatarTestRouter(attachRepo *fakeAttachmentRepo, store *fakeStorageCli
 
 	h := router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(&projectPermStore{}),
+		IAM:          newIAM(&projectPermStore{}),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
-		GlobalRole:   handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
 		Log:          log,
 	})
 	return h, userRepo
@@ -346,12 +344,11 @@ func buildProjectAvatarTestRouter(attachRepo *fakeAttachmentRepo, store *fakeSto
 
 	return router.New(router.Deps{
 		TokenManager:         tm,
-		Authorizer:           authz.NewAuthorizer(permStore),
+		IAM:                  newIAM(permStore),
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
-		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
-		Project: handler.NewProjectHandler(projectService, authz.NewAuthorizer(permStore),
+		Project: handler.NewProjectHandler(projectService, newIAM(permStore),
 			handler.WithProjectAvatarService(attachmentService)),
 		Log: log,
 	})
@@ -360,10 +357,10 @@ func buildProjectAvatarTestRouter(attachRepo *fakeAttachmentRepo, store *fakeSto
 // fullPermStore returns a projectPermStore granting all task/attachment perms for the given project.
 func fullPermStore(projectID uuid.UUID) *projectPermStore {
 	return &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
+		projectPerms: map[uuid.UUID][]iam.Action{
 			projectID: {
-				authz.PermissionTasksRead,
-				authz.PermissionTasksWrite,
+				iam.ActionTasksRead,
+				iam.ActionTasksWrite,
 			},
 		},
 	}
@@ -871,7 +868,7 @@ func TestAvatarUpload_SelfService(t *testing.T) {
 		ID:       userID,
 		Username: "avatartester",
 		FullName: "Avatar Tester",
-		Role:     userdom.RoleUser,
+		Roles:    testRoles("USER"),
 	}); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
@@ -937,7 +934,7 @@ func TestAvatarUpload_RejectsNonImageContentType(t *testing.T) {
 	userID := uuid.New()
 	r, userRepo := buildAvatarTestRouter(newFakeAttachmentRepo(), newFakeStorageClient())
 	if err := userRepo.Create(context.Background(), &userdom.User{
-		ID: userID, Username: "avatartester2", FullName: "Avatar Tester 2", Role: userdom.RoleUser,
+		ID: userID, Username: "avatartester2", FullName: "Avatar Tester 2", Roles: testRoles("USER"),
 	}); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
@@ -957,7 +954,7 @@ func TestAvatarUpload_RejectsOversizedFile(t *testing.T) {
 	userID := uuid.New()
 	r, userRepo := buildAvatarTestRouter(newFakeAttachmentRepo(), newFakeStorageClient())
 	if err := userRepo.Create(context.Background(), &userdom.User{
-		ID: userID, Username: "avatartester3", FullName: "Avatar Tester 3", Role: userdom.RoleUser,
+		ID: userID, Username: "avatartester3", FullName: "Avatar Tester 3", Roles: testRoles("USER"),
 	}); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
@@ -983,8 +980,8 @@ func TestAvatarUpload_OwnerMismatch_RejectsCompletingAnotherUsersUpload(t *testi
 	store := newFakeStorageClient()
 	r, userRepo := buildAvatarTestRouter(repo, store)
 	for _, u := range []*userdom.User{
-		{ID: userA, Username: "owner-a", FullName: "Owner A", Role: userdom.RoleUser},
-		{ID: userB, Username: "owner-b", FullName: "Owner B", Role: userdom.RoleUser},
+		{ID: userA, Username: "owner-a", FullName: "Owner A", Roles: testRoles("USER")},
+		{ID: userB, Username: "owner-b", FullName: "Owner B", Roles: testRoles("USER")},
 	} {
 		if err := userRepo.Create(context.Background(), u); err != nil {
 			t.Fatalf("seed user %s: %v", u.Username, err)
@@ -1036,7 +1033,7 @@ func TestAvatarUpload_ActualBytesExceedDeclaredSize_RejectedAtComplete(t *testin
 	store := newFakeStorageClient()
 	r, userRepo := buildAvatarTestRouter(newFakeAttachmentRepo(), store)
 	if err := userRepo.Create(context.Background(), &userdom.User{
-		ID: userID, Username: "avatartester4", FullName: "Avatar Tester 4", Role: userdom.RoleUser,
+		ID: userID, Username: "avatartester4", FullName: "Avatar Tester 4", Roles: testRoles("USER"),
 	}); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
@@ -1078,12 +1075,12 @@ func TestAvatarUpload_ActualBytesExceedDeclaredSize_RejectedAtComplete(t *testin
 func TestAvatarUpload_Project_FullFlow(t *testing.T) {
 	store := newFakeStorageClient()
 	permStore := &projectPermStore{
-		globalPerms: []authz.Permission{
-			authz.PermissionProjectsRead,
-			authz.PermissionProjectsWrite,
-			authz.PermissionProjectsCreate,
+		globalPerms: []iam.Action{
+			iam.ActionProjectsRead,
+			iam.ActionProjectsWrite,
+			iam.ActionProjectsCreate,
 		},
-		projectPerms: map[uuid.UUID][]authz.Permission{},
+		projectPerms: map[uuid.UUID][]iam.Action{},
 	}
 	r := buildProjectAvatarTestRouter(newFakeAttachmentRepo(), store, permStore)
 	tok := issueProjectToken(t, uuid.NewString())
@@ -1105,7 +1102,7 @@ func TestAvatarUpload_Project_FullFlow(t *testing.T) {
 	// the GHSA-hjcj-373w-vq8m fix to hasPermissionsForActor, this test's
 	// requests below passed via the *global* projects.write set above
 	// leaking into the project-scoped check instead of real membership.
-	permStore.projectPerms[uuid.MustParse(projectID)] = []authz.Permission{authz.PermissionAll}
+	permStore.projectPerms[uuid.MustParse(projectID)] = []iam.Action{actionAll}
 	avatarPath := "/api/v1/projects/" + projectID + "/avatar"
 
 	pngBytes := fakePNG(t, 120, 80)

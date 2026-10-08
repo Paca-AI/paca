@@ -100,7 +100,7 @@ export function NewConversationThread({
 	// composer needs its own guard too.
 	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
 	const canStartConversation =
-		!projectId || hasProjectPermission("conversations.write");
+		!projectId || hasProjectPermission("conversations:write");
 	const { dialog: agentBusyDialog, send: sendWithBusyPrompt } =
 		useAgentBusyPrompt();
 

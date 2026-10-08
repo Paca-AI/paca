@@ -10,16 +10,18 @@ import (
 // (UserID) or, exclusively, a global agent being invited (AgentID). Exactly
 // one of UserID/AgentID must be set.
 type AddMemberInput struct {
-	UserID        uuid.UUID
-	AgentID       *uuid.UUID
-	ProjectRoleID uuid.UUID
+	UserID  uuid.UUID
+	AgentID *uuid.UUID
+	// RoleIDs are the roles the new member holds in the project (at least
+	// one): platform roles and the project's own roles. They become
+	// project-scoped attachments, written in the same transaction as the
+	// membership row.
+	RoleIDs []uuid.UUID
 	// Description applies to human members only — see ProjectMember.Description.
 	Description string
-}
-
-// UpdateMemberRoleInput carries fields for changing a member's role.
-type UpdateMemberRoleInput struct {
-	ProjectRoleID uuid.UUID
+	// CreatedBy is recorded on the attachments (the caller's user id); nil when
+	// unknown.
+	CreatedBy *uuid.UUID
 }
 
 // MemberService defines member management use cases.
@@ -29,22 +31,15 @@ type MemberService interface {
 	// across projectIDs — see MemberRepository.CountDistinctAgentsByProjects.
 	CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
 	AddMember(ctx context.Context, projectID uuid.UUID, in AddMemberInput) (*ProjectMember, error)
-	UpdateMemberRole(ctx context.Context, projectID, userID uuid.UUID, in UpdateMemberRoleInput) (*ProjectMember, error)
 	RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error
-	// UpdateMemberRoleByMemberID changes the role of a member by their membership record ID.
-	UpdateMemberRoleByMemberID(ctx context.Context, projectID, memberID uuid.UUID, in UpdateMemberRoleInput) (*ProjectMember, error)
 	// UpdateMemberDescription changes a member's Jev-facing description by
 	// their membership record ID — see ProjectMember.Description.
 	UpdateMemberDescription(ctx context.Context, projectID, memberID uuid.UUID, description string) (*ProjectMember, error)
 	// RemoveMemberByMemberID removes a member by their membership record ID.
 	RemoveMemberByMemberID(ctx context.Context, projectID, memberID uuid.UUID) error
-	// GetMyProjectPermissions returns the effective permission map of the
-	// calling user's project role. Returns ErrMemberNotFound when the user
-	// is not a member. Optionally accepts an agentID to look up agent
-	// permissions instead of user permissions.
-	GetMyProjectPermissions(ctx context.Context, projectID, userID uuid.UUID, agentID *uuid.UUID) (map[string]any, error)
-	// AddAgentMember inserts an agent as a project member with the given role.
-	AddAgentMember(ctx context.Context, memberID, projectID, agentID, roleID uuid.UUID) error
+	// AddAgentMember inserts an agent as a project member holding roleIDs
+	// (project-scoped attachments, written with the membership row).
+	AddAgentMember(ctx context.Context, memberID, projectID, agentID uuid.UUID, roleIDs []uuid.UUID, createdBy *uuid.UUID) error
 	// RemoveAgentMember soft-deletes the agent's membership record.
 	RemoveAgentMember(ctx context.Context, projectID, agentID uuid.UUID) error
 }

@@ -40,6 +40,10 @@ The production compose file is intentionally self-hostable:
 
 That makes it a better open-source baseline: users can run the full platform immediately, while operators with managed infrastructure can still swap the bundled services for externally hosted equivalents by changing the connection settings.
 
+## Upgrading to IAM authorization (migrations 000064-000068)
+
+The release that introduced IAM-style roles ships five migrations that apply automatically the first time the new API starts: `000064_iam_roles.sql` (converts every role and membership, then self-checks before committing), `000065_plugin_manifest_actions.sql` (rewrites installed plugin manifests), `000066_relax_legacy_role_columns.sql` and `000067_project_role_resources.sql` (rewrites project-owned role policies to name only their own project) and `000068_add_roles_assign.sql` (adds `roles:assign` next to `project.members:write` so roles that could change a member's roles still can). They are up-only: **there is no down migration and no application downgrade**, so take and verify a database dump first (the bundled `db-backup` container's last dump may be hours old; see [Database backups](../../deploy/README.md#database-backups)). If the 000064 self-check finds any difference between the old and new access rules it aborts and rolls back, and the API does not start. Restricted agents and environments are **not** migrated and become open until an administrator recreates the restriction with a `Deny` role. Full procedure and rollback: [release notes](../releases/2026-10-iam-authorization.md).
+
 ## Object Storage
 
 All environments ship with [RustFS](https://rustfs.com), an S3-compatible object store, so file attachments work out of the box without an AWS account. The API service is storage-provider-agnostic: switching to AWS S3 only requires changing a handful of environment variables, and switching the self-hosted backend itself (as happened when this project moved off MinIO — see below) only ever requires changing the bundled container, never application code.

@@ -102,7 +102,6 @@
 			"configure": "配置",
 			"delete": "删除",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "在线",
 			"acpStatusDisconnected": "离线",
 			"deleteDialog": {
@@ -173,7 +172,6 @@
 				"skills": "技能",
 				"envVars": "环境变量",
 				"globalRole": "全局角色",
-				"access": "Access",
 				"activity": "动态"
 			},
 			"globalRole": {
@@ -348,15 +346,6 @@
 					"description": "随 Paca 内置并对所有智能体可用，无法编辑。"
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"activity": {
 				"commented": "发表了评论",
 				"sourceType": {
@@ -398,8 +387,6 @@
 			"connect": "连接",
 			"conversationEnded": "此对话已结束。",
 			"textOnlyMessage": "仅支持文本消息。",
-			"agentAccessRestricted": "此代理已被限制访问。请让项目管理员授予你访问权限后再与其聊天。",
-			"environmentAccessRestricted": "此对话的环境已被限制访问。请让项目管理员授予你访问权限后再与该代理聊天。",
 			"chatNoPermission": "你没有权限在此对话中发送消息。",
 			"failed": "对话失败",
 			"noOutput": "代理未生成任何输出。",
@@ -496,7 +483,6 @@
 			"subtitle": "具名的长期运行沙盒，您的智能体可以在多次对话之间连接使用",
 			"newEnvironment": "新建环境",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "暂无环境",
 				"description": "创建一个静态环境，让文件和后台进程在多次对话之间保持运行，而不是每次都使用一次性沙盒。",
@@ -539,8 +525,7 @@
 			"tabs": {
 				"overview": "概览",
 				"folders": "文件夹",
-				"portForwards": "端口转发",
-				"access": "Access"
+				"portForwards": "端口转发"
 			},
 			"busy": "该环境正在启动、停止或重启，请稍后重试。",
 			"actionFailed": "操作失败，请重试。",
@@ -656,15 +641,6 @@
 					"restartFailed": "重启环境失败，请重试。"
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"sshKeys": {
 				"connectHint": "将 <bastion-host> 替换为此部署配置的 SSH 堡垒机地址。",
 				"connectUnavailable": "此部署尚未配置 SSH 访问。",
@@ -763,7 +739,6 @@
 			"deleteRole": "删除角色",
 			"errors": {
 				"notFound": "该角色已不存在。",
-				"hasMembers": "该角色仍被分配给一个或多个成员，无法删除。",
 				"forbidden": "您没有权限删除该角色。",
 				"internalError": "出现错误，请重试。",
 				"generic": "出现错误。"
@@ -777,23 +752,18 @@
 			"roleNameLabel": "角色名称",
 			"roleNamePlaceholder": "例如：PROJECT_REVIEWER",
 			"permissionsLabel": "权限",
-			"fullAccessBadge": "完全访问权限",
 			"fullAccessDescription": "此角色自动包含所有权限，包括将来添加的权限。切换下方任意权限都会将其转换为当前权限的固定集合。",
 			"enabledCount_one": "已启用 {{count}} 项",
 			"enabledCount_other": "已启用 {{count}} 项",
 			"cancel": "取消",
 			"saveChanges": "保存更改",
-			"createRole": "创建角色",
-			"errors": {
-				"nameTaken": "已存在同名角色。",
-				"nameInvalid": "角色名称只能使用大写字母、数字和下划线。",
-				"notFound": "该角色已不存在，可能已被删除。",
-				"forbidden": "您没有权限执行此操作。",
-				"internalError": "服务器出现错误，请重试。",
-				"generic": "出现错误。"
-			}
+			"createRole": "创建角色"
 		},
 		"permissions": {
+			"projectsRead": {
+				"label": "查看项目",
+				"description": "打开项目并查看其基本信息"
+			},
 			"projectsWrite": {
 				"label": "编辑项目",
 				"description": "更新项目名称、描述和设置"
@@ -808,7 +778,7 @@
 			},
 			"membersWrite": {
 				"label": "管理成员",
-				"description": "添加、移除和重新分配项目成员"
+				"description": "添加和移除项目成员（更改其角色需要“分配角色”权限）"
 			},
 			"rolesRead": {
 				"label": "查看角色",
@@ -817,6 +787,10 @@
 			"rolesWrite": {
 				"label": "管理角色",
 				"description": "创建、编辑和删除项目角色"
+			},
+			"rolesAssign": {
+				"label": "分配角色",
+				"description": "为此项目的成员和智能体授予任意角色，或撤销角色"
 			},
 			"settingsTaskTypesWrite": {
 				"label": "Manage Task Types",
@@ -973,7 +947,6 @@
 			"title": "项目角色",
 			"description": "管理此项目成员的角色和权限。",
 			"newRole": "新建角色",
-			"noPermissionsAssigned": "未分配权限",
 			"editRole": "编辑角色",
 			"deleteRole": "删除角色",
 			"rolesDefined_one": "个已定义角色",
@@ -986,14 +959,15 @@
 			},
 			"table": {
 				"name": "名称",
-				"permissions": "权限",
+				"description": "描述",
 				"created": "创建时间"
 			},
-			"systemRolesNote": "系统角色是共享模板，无法编辑或删除。",
+			"systemRolesNote": "来自工作区的共享角色只能在工作区的角色设置中修改。",
 			"noPermission": {
 				"title": "You don't have permission to view roles",
 				"description": "Ask a project admin to grant you the project.roles.read permission."
-			}
+			},
+			"noDescription": "无描述"
 		},
 		"taskStatuses": {
 			"title": "任务状态",
@@ -1278,12 +1252,12 @@
 			"noUsersAvailable": "没有可添加的用户。",
 			"loadingMore": "加载中…",
 			"roleLabel": "角色",
-			"rolePlaceholder": "选择一个角色…",
 			"cancel": "取消",
 			"addMember": "添加成员",
 			"errors": {
 				"addFailed": "添加成员失败，请重试。",
 				"alreadyAdded": "该用户或智能体已是该项目的成员。",
+				"roleForbidden": "你没有权限分配其中某个角色。",
 				"roleNotFound": "该角色已不存在，请选择其他角色。"
 			},
 			"modeUser": "用户",
@@ -1295,12 +1269,15 @@
 			"changeRole": "更改角色",
 			"errors": {
 				"memberNotFound": "该成员已不再属于该项目。",
+				"roleForbidden": "你没有权限分配或移除其中某个角色。",
 				"roleNotFound": "该角色已不存在。",
 				"changeFailed": "更改角色失败。"
 			}
 		},
 		"memberRow": {
-			"removeMember": "移除成员"
+			"removeMember": "移除成员",
+			"agentBadge": "代理",
+			"actions": "成员操作"
 		},
 		"removeDialog": {
 			"title": "移除成员",

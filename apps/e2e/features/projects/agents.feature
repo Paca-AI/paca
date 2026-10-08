@@ -18,7 +18,8 @@ Feature: AI agent management
   Creating an agent is a three-step wizard: 1 Identity, 2 AI configuration,
   3 Role. A project agent's role is its project role: required, and part of
   the create request, so the last step's "Create Agent" button stays disabled
-  until one is chosen and nothing is created before it.
+  until one is chosen and nothing is created before it. Roles are a list of
+  checkboxes: an agent can hold several roles in the project.
 
   @authenticated
   Rule: Project Agents page — loading, empty state, and permission-gated actions
@@ -37,25 +38,25 @@ Feature: AI agent management
       When the user navigates to the Agents page for "E2E_AGENTS_PROJECT"
       Then the Agents page should display an empty state with a "Create your first agent" action
 
-    Scenario: The "New Agent" button is visible with agents.write and project.members.write permissions
-      Given the user has the "agents.write" project permission in "E2E_AGENTS_PROJECT"
-      And the user has the "project.members.write" project permission in "E2E_AGENTS_PROJECT"
+    Scenario: The "New Agent" button is visible with agents:write and project.members:write permissions
+      Given the user has the "agents:write" project permission in "E2E_AGENTS_PROJECT"
+      And the user has the "project.members:write" project permission in "E2E_AGENTS_PROJECT"
       When the user navigates to the Agents page for "E2E_AGENTS_PROJECT"
       Then the "New Agent" button should be visible
 
-    Scenario: The "New Agent" button is hidden without agents.write permission
-      Given the user does not have the "agents.write" project permission in "E2E_AGENTS_PROJECT"
+    Scenario: The "New Agent" button is hidden without agents:write permission
+      Given the user does not have the "agents:write" project permission in "E2E_AGENTS_PROJECT"
       When the user navigates to the Agents page for "E2E_AGENTS_PROJECT"
       Then the "New Agent" button should not be visible
 
-    Scenario: The "New Agent" button stays hidden with agents.write but no project.members.write
-      Given the user has the "agents.write" project permission in "E2E_AGENTS_PROJECT"
-      And the user does not have the "project.members.write" project permission in "E2E_AGENTS_PROJECT"
+    Scenario: The "New Agent" button stays hidden with agents:write but no project.members:write
+      Given the user has the "agents:write" project permission in "E2E_AGENTS_PROJECT"
+      And the user does not have the "project.members:write" project permission in "E2E_AGENTS_PROJECT"
       When the user navigates to the Agents page for "E2E_AGENTS_PROJECT"
       Then the "New Agent" button should not be visible
 
-    Scenario: The per-card configure/delete menu is hidden without agents.write permission
-      Given the user does not have the "agents.write" project permission in "E2E_AGENTS_PROJECT"
+    Scenario: The per-card configure/delete menu is hidden without agents:write permission
+      Given the user does not have the "agents:write" project permission in "E2E_AGENTS_PROJECT"
       And "E2E_AGENTS_PROJECT" has an agent named "E2E_AGENTS_READONLY_BOT"
       When the user navigates to the Agents page for "E2E_AGENTS_PROJECT"
       Then the card for "E2E_AGENTS_READONLY_BOT" should not show a configure/delete menu
@@ -79,8 +80,8 @@ Feature: AI agent management
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_AGENTS_CREATE_PROJECT" exists
-      And the user has the "agents.write" project permission in "E2E_AGENTS_CREATE_PROJECT"
-      And the user has the "project.members.write" project permission in "E2E_AGENTS_CREATE_PROJECT"
+      And the user has the "agents:write" project permission in "E2E_AGENTS_CREATE_PROJECT"
+      And the user has the "project.members:write" project permission in "E2E_AGENTS_CREATE_PROJECT"
       And the project has at least one project role
       And the user has navigated to the Agents page for "E2E_AGENTS_CREATE_PROJECT"
 
@@ -148,11 +149,21 @@ Feature: AI agent management
       And the user clicks "Continue"
       And the user fills in the LLM API key
       And the user clicks "Continue"
-      And the user chooses the project role "Viewer"
+      And the user checks the project role "Viewer"
       And the user clicks "Create Agent"
       Then the create agent dialog should close
       And the Agents page should list "E2E_AGENTS_ROLE_CHOSEN"
       And the agent "E2E_AGENTS_ROLE_CHOSEN" should be a member of the project with the role "Viewer"
+
+    Scenario: A project agent can be given several roles in step 3
+      When the user clicks the "New Agent" button
+      And the user fills the agent name with "E2E_AGENTS_ROLES_CHOSEN"
+      And the user clicks "Continue"
+      And the user fills in the LLM API key
+      And the user clicks "Continue"
+      And the user checks the project roles "Viewer" and "Editor"
+      And the user clicks "Create Agent"
+      Then the agent "E2E_AGENTS_ROLES_CHOSEN" should be a member of the project with the roles "Editor" and "Viewer"
 
     Scenario: Cancelling step 1 discards the in-progress agent
       When the user clicks the "New Agent" button
@@ -167,7 +178,7 @@ Feature: AI agent management
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_AGENTS_ACP_PROJECT" exists
-      And the user has the "agents.write" project permission in "E2E_AGENTS_ACP_PROJECT"
+      And the user has the "agents:write" project permission in "E2E_AGENTS_ACP_PROJECT"
       And the project has at least one project role
       And the user has navigated to the Agents page for "E2E_AGENTS_ACP_PROJECT"
 
@@ -226,8 +237,8 @@ Feature: AI agent management
       And a copyable run command containing the generated token should be displayed
       And the connection status should still read "Not connected" until the bridge connects
 
-    Scenario: Generate token is disabled without agents.write permission
-      Given the user has only the "agents.read" project permission in "E2E_AGENTS_ACP_PROJECT"
+    Scenario: Generate token is disabled without agents:write permission
+      Given the user has only the "agents:read" project permission in "E2E_AGENTS_ACP_PROJECT"
       And "E2E_AGENTS_ACP_PROJECT" has an ACP agent named "E2E_AGENTS_LOCKED_BOT" using provider "claude-code"
       When the user opens the detail page of "E2E_AGENTS_LOCKED_BOT"
       Then the "Generate token" button should be disabled
@@ -238,7 +249,7 @@ Feature: AI agent management
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_AGENTS_DELETE_PROJECT" exists
-      And the user has the "agents.write" project permission in "E2E_AGENTS_DELETE_PROJECT"
+      And the user has the "agents:write" project permission in "E2E_AGENTS_DELETE_PROJECT"
       And "E2E_AGENTS_DELETE_PROJECT" has an agent named "E2E_AGENTS_TO_DELETE"
       And the user has navigated to the Agents page for "E2E_AGENTS_DELETE_PROJECT"
 

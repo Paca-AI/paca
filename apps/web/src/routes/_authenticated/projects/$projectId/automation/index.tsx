@@ -59,8 +59,8 @@ function AutomationListPage() {
 	const navigate = useNavigate();
 	const { hasProjectPermission, isLoading: isPermissionsLoading } =
 		useProjectPermissions(projectId);
-	const canManage = hasProjectPermission("workflows.write");
-	const canRead = hasProjectPermission("workflows.read");
+	const canManage = hasProjectPermission("workflows:write");
+	const canRead = hasProjectPermission("workflows:read");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	const {

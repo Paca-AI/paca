@@ -195,7 +195,7 @@ func (f fakeCreator) Create(_ context.Context, in userdom.CreateInput) (*userdom
 	time.Sleep(f.createDelay)
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	u := &userdom.User{ID: uuid.New(), Username: in.Username, FullName: in.FullName, Role: "USER"}
+	u := &userdom.User{ID: uuid.New(), Username: in.Username, FullName: in.FullName}
 	if in.Email != "" {
 		u.Email = &in.Email
 	}

@@ -14,10 +14,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
+	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/router"
 )
 
@@ -26,10 +26,10 @@ import (
 // ---------------------------------------------------------------------------
 
 // seedACPUser creates a user, a project (the creator becomes the project's
-// "Admin" role — full permissions, including agents.*, so no extra project
+// "Admin" role — full permissions, including agents:*, so no extra project
 // role wiring is needed to exercise the agent endpoints below), and returns
 // everything a test needs to drive the HTTP API plus the "Editor" role id
-// (which has agents.read/write) used as new agents' own project_role_id.
+// (which has agents:read/write) that new agents are given as their role.
 func seedACPUser(t *testing.T, env *e2eEnv) (client *http.Client, token, projectID, editorRoleID string) {
 	t.Helper()
 	username := "acp-user-" + uuid.NewString()
@@ -40,48 +40,15 @@ func seedACPUser(t *testing.T, env *e2eEnv) (client *http.Client, token, project
 	return client, token, projectID, editorRoleID
 }
 
-// projectRoleIDByName looks up a project role's id by its role_name (the
-// three built-in roles — Admin/Editor/Viewer — are created alongside every
-// project, see project_service.go's CreateProject).
-func projectRoleIDByName(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, roleName string) string {
-	t.Helper()
-	req := mustRequest(env.ctx, t, http.MethodGet,
-		fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projectID), nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp := mustDo(t, client, req)
-	defer func() { _ = resp.Body.Close() }()
-	assertStatus(t, resp, http.StatusOK)
-	var e envelope
-	decodeJSON(t, resp, &e)
-	roles, ok := e.Data.([]any)
-	if !ok {
-		t.Fatalf("expected roles array, got %T", e.Data)
-	}
-	for _, r := range roles {
-		role, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
-		if role["role_name"] == roleName {
-			id, _ := role["id"].(string)
-			if id != "" {
-				return id
-			}
-		}
-	}
-	t.Fatalf("project role %q not found", roleName)
-	return ""
-}
-
 // acpAgentBody returns a minimal valid create-agent body for an ACP agent
 // with the given handle, plus any overrides.
 func acpAgentBody(roleID, handle string, overrides map[string]any) map[string]any {
 	base := map[string]any{
-		"name":            "ACP Agent " + handle,
-		"handle":          handle,
-		"agent_type":      "acp",
-		"acp_provider":    "claude-code",
-		"project_role_id": roleID,
+		"name":         "ACP Agent " + handle,
+		"handle":       handle,
+		"agent_type":   "acp",
+		"acp_provider": "claude-code",
+		"role_ids":     []string{roleID},
 	}
 	for k, v := range overrides {
 		base[k] = v
@@ -93,12 +60,12 @@ func acpAgentBody(roleID, handle string, overrides map[string]any) map[string]an
 // (agent_type defaults to "llm" when omitted) with the given handle.
 func llmAgentBody(roleID, handle string, overrides map[string]any) map[string]any {
 	base := map[string]any{
-		"name":            "LLM Agent " + handle,
-		"handle":          handle,
-		"llm_provider":    "openai",
-		"llm_model":       "gpt-4",
-		"llm_api_key":     "sk-test",
-		"project_role_id": roleID,
+		"name":         "LLM Agent " + handle,
+		"handle":       handle,
+		"llm_provider": "openai",
+		"llm_model":    "gpt-4",
+		"llm_api_key":  "sk-test",
+		"role_ids":     []string{roleID},
 	}
 	for k, v := range overrides {
 		base[k] = v
@@ -199,11 +166,13 @@ func newAgentAPIServer(t *testing.T, env *e2eEnv, aiAgentURL, aiAgentInternalKey
 	agentHandler := handler.NewAgentHandler(env.agentSvc, aiAgentURL, aiAgentInternalKey, "").
 		WithMemberRepo(env.projectRepo)
 	engine := router.New(router.Deps{
-		TokenManager: jwttoken.New(e2eJWTSecret, e2eAccessTTL, e2eRefreshTTL),
-		Authorizer:   authz.NewAuthorizer(pgRepo.NewAuthzPermissionStore(env.db)),
-		Health:       handler.NewHealthHandler(),
-		Agent:        agentHandler,
-		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		TokenManager:        jwttoken.New(e2eJWTSecret, e2eAccessTTL, e2eRefreshTTL),
+		IAM:                 pgRepo.NewIAMAuthorizer(env.db),
+		Health:              handler.NewHealthHandler(),
+		Agent:               agentHandler,
+		AgentEnvironments:   httpmw.AgentRepoLookups{Repo: env.agentRepo},
+		SessionEnvironments: httpmw.AgentRepoLookups{Repo: env.agentRepo},
+		Log:                 slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	srv := httptest.NewServer(engine)
 	t.Cleanup(srv.Close)
@@ -242,10 +211,10 @@ func TestE2EACPAgent_CreateValidation(t *testing.T) {
 
 	t.Run("missing_acp_provider_returns_400", func(t *testing.T) {
 		status, e := createAgentRequest(t, env, client, token, projID, map[string]any{
-			"name":            "Bad Agent",
-			"handle":          "bad-agent-" + uuid.NewString(),
-			"agent_type":      "acp",
-			"project_role_id": roleID,
+			"name":       "Bad Agent",
+			"handle":     "bad-agent-" + uuid.NewString(),
+			"agent_type": "acp",
+			"role_ids":   []string{roleID},
 		})
 		if status != http.StatusBadRequest {
 			t.Fatalf("expected 400 for missing acp_provider, got %d: %+v", status, e)

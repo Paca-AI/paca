@@ -52,7 +52,7 @@ describe("auth-api", () => {
 			id: "u1",
 			username: "alice",
 			full_name: "Alice Example",
-			role: "admin",
+			roles: [{ id: "r1", name: "admin" }],
 			must_change_password: false,
 			created_at: "2026-03-28T10:00:00.000Z",
 		};

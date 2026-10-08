@@ -11,6 +11,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -26,6 +27,14 @@ type pluginAutomationNodeLister interface {
 type AutomationHandler struct {
 	svc           automationdom.Service
 	pluginRuntime pluginAutomationNodeLister
+	listScoper    ListScoper
+}
+
+// WithAutomationListScoper limits automation lists to the automations the
+// caller may read, inside the query (see scopedContext).
+func (h *AutomationHandler) WithAutomationListScoper(s ListScoper) *AutomationHandler {
+	h.listScoper = s
+	return h
 }
 
 // NewAutomationHandler returns an AutomationHandler wired to the automation service.
@@ -98,7 +107,12 @@ func (h *AutomationHandler) ListAutomations(w http.ResponseWriter, r *http.Reque
 		cursor = &raw
 	}
 
-	automations, hasMore, err := h.svc.ListAutomations(r.Context(), projectID, status, search, cursor, limit)
+	ctx, err := scopedContext(r, h.listScoper, iam.ActionWorkflowsRead, projectID, "workflow")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	automations, hasMore, err := h.svc.ListAutomations(ctx, projectID, status, search, cursor, limit)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

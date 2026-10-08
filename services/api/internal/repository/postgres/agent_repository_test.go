@@ -50,19 +50,17 @@ func TestAgentFromReadRow_MalformedACPCommand(t *testing.T) {
 }
 
 // TestAgentFromReadRow_GlobalAgent verifies a global-scope agent row (NULL
-// project_id, agent_scope='global', global_role_id set) maps to the
+// project_id, agent_scope='global') maps to the
 // zero-value ProjectID sentinel (uuid.Nil) rather than erroring — the
 // mustParseUUID(nil-safe) conversion path exercised by uuidFromNullable.
 func TestAgentFromReadRow_GlobalAgent(t *testing.T) {
-	roleID := uuid.New()
 	row := agentRecord{
-		ID:           uuid.New().String(),
-		ProjectID:    nil,
-		AgentScope:   "global",
-		GlobalRoleID: strPtr(roleID.String()),
-		AgentType:    "llm",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:         uuid.New().String(),
+		ProjectID:  nil,
+		AgentScope: "global",
+		AgentType:  "llm",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	a, err := agentFromReadRow(row)
@@ -70,25 +68,20 @@ func TestAgentFromReadRow_GlobalAgent(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, uuid.Nil, a.ProjectID)
 	assert.Equal(t, agentdom.AgentScopeGlobal, a.AgentScope)
-	if assert.NotNil(t, a.GlobalRoleID) {
-		assert.Equal(t, roleID, *a.GlobalRoleID)
-	}
 }
 
 // TestAgentToRecord_GlobalAgent verifies the inverse mapping: a domain Agent
 // with ProjectID == uuid.Nil (global scope) serializes to a nil project_id
 // record field rather than the all-zeros UUID string.
 func TestAgentToRecord_GlobalAgent(t *testing.T) {
-	roleID := uuid.New()
 	a := &agentdom.Agent{
-		ID:           uuid.New(),
-		AgentScope:   agentdom.AgentScopeGlobal,
-		GlobalRoleID: &roleID,
-		Handle:       "global-bot",
-		Name:         "Global Bot",
-		AgentType:    "llm",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:         uuid.New(),
+		AgentScope: agentdom.AgentScopeGlobal,
+		Handle:     "global-bot",
+		Name:       "Global Bot",
+		AgentType:  "llm",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	rec, err := agentToRecord(a)
@@ -96,7 +89,4 @@ func TestAgentToRecord_GlobalAgent(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Nil(t, rec.ProjectID)
 	assert.Equal(t, "global", rec.AgentScope)
-	if assert.NotNil(t, rec.GlobalRoleID) {
-		assert.Equal(t, roleID.String(), *rec.GlobalRoleID)
-	}
 }

@@ -10,57 +10,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
 
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
-// openUserRepoTestDB sets up an in-memory SQLite DB for user repository tests.
-// It creates the necessary schema, seeds a "USER" global role so FK constraints
-// are satisfied, and returns the DB plus the seeded role's UUID.
+// openUserRepoTestDB returns a migrated Postgres test database and the id of
+// the platform role "USER" (skipped without PACA_TEST_PG_DSN: user creation
+// writes role attachments in the same transaction).
 func openUserRepoTestDB(t *testing.T) (*sqlx.DB, uuid.UUID) {
 	t.Helper()
-	db, err := sqlx.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
+	db := newIAMPGTestDB(t)
+	var roleID uuid.UUID
+	if err := db.Get(&roleID, `SELECT id FROM roles WHERE project_id IS NULL AND name = 'USER'`); err != nil {
+		t.Fatalf("USER role: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	schema := `
-		CREATE TABLE global_roles (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			permissions BLOB NOT NULL,
-			created_at DATETIME,
-			updated_at DATETIME
-		);
-		CREATE TABLE users (
-			id TEXT PRIMARY KEY,
-			username TEXT NOT NULL,
-			password_hash TEXT NOT NULL,
-			full_name TEXT NOT NULL,
-			email TEXT,
-			role_id TEXT NOT NULL,
-			must_change_password INTEGER NOT NULL DEFAULT 0,
-			avatar_key TEXT,
-			avatar_thumb_key TEXT,
-			created_at DATETIME,
-			updated_at DATETIME,
-			deleted_at DATETIME
-		);
-		CREATE UNIQUE INDEX uni_users_username_active ON users (username) WHERE deleted_at IS NULL;
-		CREATE UNIQUE INDEX uni_users_email_active ON users (email) WHERE deleted_at IS NULL AND email IS NOT NULL;`
-	if _, err := db.ExecContext(context.Background(), schema); err != nil {
-		t.Fatalf("create schema: %v", err)
-	}
-
-	// Seed a global role so foreign-key constraints are satisfied.
-	roleID := uuid.New()
-	now := time.Now()
-	db.MustExec(
-		`INSERT INTO global_roles (id, name, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
-		roleID.String(), userdom.RoleUser, []byte("{}"), now, now,
-	)
 	return db, roleID
 }
 
@@ -71,8 +35,7 @@ func testUser(id, roleID uuid.UUID) *userdom.User {
 		Username:     "alice",
 		PasswordHash: "hashed",
 		FullName:     "Alice",
-		RoleID:       roleID,
-		Role:         userdom.RoleUser,
+		Roles:        []roledom.Summary{{ID: roleID, Name: "USER"}},
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -166,11 +129,11 @@ func TestUserRepository_DeleteSoftDelete(t *testing.T) {
 	}
 
 	// Verify deleted_at was set via raw query (bypassing soft-delete filter).
-	var rec userRecord
-	if err := db.GetContext(ctx, &rec, "SELECT id, username, password_hash, full_name, role_id, must_change_password, created_at, updated_at, deleted_at FROM users WHERE id = $1", u.ID.String()); err != nil {
+	var deletedAt *time.Time
+	if err := db.GetContext(ctx, &deletedAt, "SELECT deleted_at FROM users WHERE id = $1", u.ID.String()); err != nil {
 		t.Fatalf("query deleted row: %v", err)
 	}
-	if rec.DeletedAt == nil {
+	if deletedAt == nil {
 		t.Fatal("expected deleted_at to be set")
 	}
 }
@@ -254,7 +217,7 @@ func TestUniqueViolationConstraint_MatchesPgUniqueViolation(t *testing.T) {
 }
 
 func TestUniqueViolationConstraint_IgnoresOtherPgErrorCodes(t *testing.T) {
-	pgErr := &pgconn.PgError{Code: "23503", ConstraintName: "users_role_id_fkey"} // FK violation, not unique
+	pgErr := &pgconn.PgError{Code: "23503", ConstraintName: "role_attachments_role_id_fkey"} // FK violation, not unique
 	if _, ok := uniqueViolationConstraint(fmt.Errorf("insert: %w", pgErr)); ok {
 		t.Error("expected a non-unique-violation PgError not to be recognized")
 	}
@@ -294,12 +257,10 @@ func TestUserRepoErr_WrapsUnrelatedErrorsGenerically(t *testing.T) {
 
 func TestUserRepository_List_SearchRoleAndOrder(t *testing.T) {
 	db, userRoleID := openUserRepoTestDB(t)
-	adminRoleID := uuid.New()
-	now := time.Now()
-	db.MustExec(
-		`INSERT INTO global_roles (id, name, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
-		adminRoleID.String(), "ADMIN", []byte("{}"), now, now,
-	)
+	var adminRoleID uuid.UUID
+	if err := db.Get(&adminRoleID, `SELECT id FROM roles WHERE project_id IS NULL AND name = 'ADMIN'`); err != nil {
+		t.Fatalf("ADMIN role: %v", err)
+	}
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
@@ -316,6 +277,9 @@ func TestUserRepository_List_SearchRoleAndOrder(t *testing.T) {
 	}
 	for _, s := range seed {
 		u := testUser(uuid.New(), s.roleID)
+		if s.roleID == adminRoleID {
+			u.Roles = []roledom.Summary{{ID: adminRoleID, Name: "ADMIN"}}
+		}
 		u.Username, u.FullName, u.Email = s.username, s.fullName, s.email
 		if err := repo.Create(ctx, u); err != nil {
 			t.Fatalf("create %s: %v", s.username, err)
@@ -359,5 +323,97 @@ func TestUserRepository_List_SearchRoleAndOrder(t *testing.T) {
 	users, total, err := repo.List(ctx, 0, 1, userdom.ListFilter{Search: "corp.io"})
 	if err != nil || total != 2 || len(users) != 1 {
 		t.Fatalf("paged: users=%d total=%d err=%v", len(users), total, err)
+	}
+}
+
+// A user created without roles starts with the default role, attached in the
+// same transaction; the roles come back sorted on every read path.
+func TestUserRepository_Create_DefaultRoleAndRolesOnReads(t *testing.T) {
+	db, userRoleID := openUserRepoTestDB(t)
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+
+	u := testUser(uuid.New(), userRoleID)
+	u.Roles = nil
+	if err := repo.Create(ctx, u); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(u.Roles) != 1 || u.Roles[0].ID != userRoleID {
+		t.Fatalf("Create did not report the attached default role: %+v", u.Roles)
+	}
+
+	got, err := repo.FindByID(ctx, u.ID)
+	if err != nil || len(got.Roles) != 1 || got.Roles[0].Name != "USER" {
+		t.Fatalf("FindByID roles = %+v, %v", got, err)
+	}
+	// A second platform role shows up sorted by name; project-scoped
+	// attachments never count as the user's platform roles.
+	var adminID uuid.UUID
+	pgExec(t, db, `INSERT INTO role_attachments (role_id, principal_type, principal_id) SELECT id, 'user', $1 FROM roles WHERE name = 'ADMIN' AND project_id IS NULL`, u.ID)
+	_ = db.Get(&adminID, `SELECT id FROM roles WHERE name = 'ADMIN' AND project_id IS NULL`)
+	pid := uuid.New()
+	pgExec(t, db, `INSERT INTO projects (id, name) VALUES ($1, 'P')`, pid)
+	pgExec(t, db, `INSERT INTO roles (name, policy, project_id) VALUES ('Scoped', '{"version":"2026-10-01","statements":[]}', $1)`, pid)
+	pgExec(t, db, `INSERT INTO role_attachments (role_id, principal_type, principal_id, project_id) SELECT id, 'user', $1, $2 FROM roles WHERE name = 'Scoped'`, u.ID, pid)
+
+	users, _, err := repo.List(ctx, 0, 10, userdom.ListFilter{})
+	if err != nil || len(users) != 1 {
+		t.Fatalf("list: %v %v", users, err)
+	}
+	if names := users[0].RoleNames(); fmt.Sprint(names) != "[ADMIN USER]" {
+		t.Fatalf("list roles = %v, want [ADMIN USER]", names)
+	}
+	page, _, err := repo.ListAfter(ctx, 10, nil, userdom.ListFilter{Role: "ADMIN"})
+	if err != nil || len(page) != 1 {
+		t.Fatalf("ListAfter role filter: %v %v", page, err)
+	}
+	if none, _, _ := repo.ListAfter(ctx, 10, nil, userdom.ListFilter{Role: "Scoped"}); len(none) != 0 {
+		t.Fatalf("a project-scoped role must not match the platform role filter: %v", none)
+	}
+
+	// Update never touches attachments.
+	u.FullName = "Renamed"
+	u.Roles = nil
+	if err := repo.Update(ctx, u); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	after, _ := repo.FindByID(ctx, u.ID)
+	if len(after.Roles) != 2 {
+		t.Fatalf("update changed the roles: %+v", after.Roles)
+	}
+}
+
+// With no default role the account is refused and nothing is stored.
+func TestUserRepository_Create_NoDefaultRole(t *testing.T) {
+	db, userRoleID := openUserRepoTestDB(t)
+	repo := NewUserRepository(db)
+	pgExec(t, db, `UPDATE roles SET is_default = FALSE`)
+
+	u := testUser(uuid.New(), userRoleID)
+	u.Roles = nil
+	if err := repo.Create(context.Background(), u); !errors.Is(err, roledom.ErrNoDefault) {
+		t.Fatalf("expected ErrNoDefault, got %v", err)
+	}
+	var n int
+	if err := db.Get(&n, `SELECT COUNT(*) FROM users WHERE id = $1`, u.ID); err != nil || n != 0 {
+		t.Fatalf("the user must not be stored without a role: %d %v", n, err)
+	}
+}
+
+// Naming a role the account cannot hold (unknown, or owned by a project)
+// rolls the whole creation back.
+func TestUserRepository_Create_RejectsUnattachableRole(t *testing.T) {
+	db, userRoleID := openUserRepoTestDB(t)
+	repo := NewUserRepository(db)
+	for name, id := range map[string]uuid.UUID{"unknown": uuid.New()} {
+		u := testUser(uuid.New(), userRoleID)
+		u.Roles = []roledom.Summary{{ID: id}}
+		if err := repo.Create(context.Background(), u); !errors.Is(err, roledom.ErrNotAttachable) {
+			t.Fatalf("%s: expected ErrNotAttachable, got %v", name, err)
+		}
+		var n int
+		if err := db.Get(&n, `SELECT COUNT(*) FROM users WHERE id = $1`, u.ID); err != nil || n != 0 {
+			t.Fatalf("%s: user stored despite the failure", name)
+		}
 	}
 }

@@ -2,13 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
 	AlertTriangle,
-	Bot,
 	Check,
 	Copy,
 	ExternalLink,
 	Folder as FolderIcon,
 	Loader2,
-	Lock,
 	MoreHorizontal,
 	Network,
 	Play,
@@ -30,9 +28,6 @@ import {
 	useEnvironmentUsage,
 } from "@/components/projects/environments/environment-status-ring";
 import { FolderCreateDialog } from "@/components/projects/environments/folder-create-dialog";
-import { EntityAvatarContent } from "@/components/shared/entity-avatar";
-import { NoPermissionState } from "@/components/shared/no-permission-state";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	Dialog,
@@ -50,43 +45,28 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
-	addEnvironmentAccessGrant,
 	addPortForward,
 	deleteEnvironment,
 	deleteFolder,
 	deletePortForward,
 	type Environment,
-	type EnvironmentAccessMode,
 	type EnvironmentStatus,
-	environmentAccessGrantsQueryOptions,
 	environmentConfigQueryOptions,
 	environmentFoldersQueryOptions,
 	environmentPortForwardsQueryOptions,
 	environmentQueryOptions,
 	portForwardUrl,
-	removeEnvironmentAccessGrant,
 	restartEnvironment,
 	startEnvironment,
 	stopEnvironment,
 	updateEnvironment,
 } from "@/lib/environment-api";
-import { projectMembersQueryOptions } from "@/lib/project-api";
-import { resolveMemberAvatarUrl } from "@/lib/provider-logos";
 import { timeAgo } from "@/lib/time-ago";
-import { getInitials } from "@/lib/utils";
 
 // Shared by the environment detail route
 // (routes/.../projects/$projectId/environments/$environmentId/index.tsx).
@@ -102,7 +82,7 @@ import { getInitials } from "@/lib/utils";
 // its own tab — it's config about *this* environment's own row set
 // (mirrors Folders), not a "how do I reach it" walkthrough like Connect.
 
-type Tab = "overview" | "folders" | "portForwards" | "access";
+type Tab = "overview" | "folders" | "portForwards";
 
 const TRANSITIONAL_STATUSES: EnvironmentStatus[] = [
 	"creating",
@@ -351,25 +331,16 @@ function FoldersTab({
 	environmentId,
 	environmentStatus,
 	canWrite,
-	hasAccess,
 }: {
 	projectId: string;
 	environmentId: string;
 	environmentStatus: EnvironmentStatus;
 	canWrite: boolean;
-	hasAccess: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
 	const { data: folders = [] } = useQuery({
 		...environmentFoldersQueryOptions(projectId, environmentId),
-		// Gated on RequireEnvironmentAccess when the environment is
-		// restricted — the route loader already skips prefetching this for
-		// a non-granted member (see the index route's own loader), and this
-		// is the matching client-side guard for whenever this tab renders
-		// without having gone through that loader (e.g. switching tabs
-		// client-side after the page already loaded).
-		enabled: hasAccess,
 	});
 	const [addOpen, setAddOpen] = useState(false);
 	const foldersKey = environmentFoldersQueryOptions(
@@ -387,15 +358,6 @@ function FoldersTab({
 			});
 		},
 	});
-
-	if (!hasAccess) {
-		return (
-			<NoPermissionState
-				title={t("environments.detail.folders.noPermission.title")}
-				description={t("environments.detail.folders.noPermission.description")}
-			/>
-		);
-	}
 
 	return (
 		<div className="space-y-4">
@@ -723,246 +685,20 @@ function RestartEnvironmentDialog({
 	);
 }
 
-// ── Access Tab ────────────────────────────────────────────────────────────────
-// Restricting/granting here only ever governs *usage* (browsing, SSH keys,
-// port forwards, the terminal) — the environment's own lifecycle
-// (start/stop/restart/delete, header actions above) stays governed purely
-// by environments.write regardless of access_mode, same as the backend.
-
-function AccessTab({
-	projectId,
-	environment,
-	canWrite,
-}: {
-	projectId: string;
-	environment: Environment;
-	canWrite: boolean;
-}) {
-	const { t } = useTranslation("projects");
-	const qc = useQueryClient();
-	const [selectedMemberId, setSelectedMemberId] = useState("");
-
-	const envKey = environmentQueryOptions(projectId, environment.id).queryKey;
-	const grantsQuery = environmentAccessGrantsQueryOptions(
-		projectId,
-		environment.id,
-	);
-	const { data: grants = [] } = useQuery(grantsQuery);
-	const { data: members = [] } = useQuery(
-		projectMembersQueryOptions(projectId),
-	);
-
-	const toggleModeMutation = useMutation({
-		mutationFn: (restricted: boolean) =>
-			updateEnvironment(projectId, environment.id, {
-				access_mode: restricted ? "restricted" : "open",
-			}),
-		onSuccess: () => qc.invalidateQueries({ queryKey: envKey }),
-	});
-
-	const addMutation = useMutation({
-		mutationFn: (memberId: string) =>
-			addEnvironmentAccessGrant(projectId, environment.id, memberId),
-		onSuccess: () => {
-			setSelectedMemberId("");
-			qc.invalidateQueries({ queryKey: grantsQuery.queryKey });
-			qc.invalidateQueries({ queryKey: envKey });
-		},
-	});
-
-	const removeMutation = useMutation({
-		mutationFn: (memberId: string) =>
-			removeEnvironmentAccessGrant(projectId, environment.id, memberId),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: grantsQuery.queryKey });
-			qc.invalidateQueries({ queryKey: envKey });
-		},
-	});
-
-	const memberName = (m: {
-		member_type?: string;
-		agent_name?: string;
-		full_name: string;
-		username: string;
-	}) =>
-		m.member_type === "agent"
-			? (m.agent_name ?? m.username)
-			: m.full_name || m.username;
-
-	// availableMembers already excludes anyone with a grant, so this is
-	// mainly a race (stale member list, or granted concurrently elsewhere).
-	const addErrorMessage = addMutation.isError
-		? getApiErrorCode(addMutation.error) ===
-			ApiErrorCode.EnvironmentAccessGrantExists
-			? t("environments.detail.access.alreadyGranted")
-			: t("environments.detail.access.grantFailed")
-		: null;
-
-	const grantedMemberIds = new Set(grants.map((g) => g.member_id));
-	const availableMembers = members.filter((m) => !grantedMemberIds.has(m.id));
-	const memberById = new Map(members.map((m) => [m.id, m]));
-	const accessMode: EnvironmentAccessMode = environment.access_mode;
-
-	return (
-		<div className="space-y-6">
-			<div className="flex items-center justify-between rounded-lg border border-border/60 bg-card px-4 py-3">
-				<div className="space-y-0.5 pr-4">
-					<p className="text-sm font-medium">
-						{t("environments.detail.access.restrictLabel")}
-					</p>
-					<p className="text-xs text-muted-foreground">
-						{t("environments.detail.access.restrictDescription")}
-					</p>
-				</div>
-				<Switch
-					checked={accessMode === "restricted"}
-					onCheckedChange={(checked) =>
-						canWrite && toggleModeMutation.mutate(checked)
-					}
-					disabled={!canWrite || toggleModeMutation.isPending}
-				/>
-			</div>
-
-			{accessMode === "restricted" && (
-				<div className="space-y-3">
-					{canWrite && (
-						<div className="flex items-center gap-2">
-							<Select
-								value={selectedMemberId}
-								onValueChange={(v) => v && setSelectedMemberId(v)}
-								items={availableMembers.map((m) => ({
-									value: m.id,
-									label: memberName(m),
-								}))}
-							>
-								<SelectTrigger className="flex-1">
-									<SelectValue
-										placeholder={t("environments.detail.access.pickMember")}
-									/>
-								</SelectTrigger>
-								<SelectContent>
-									{availableMembers.map((m) => {
-										const isBot = m.member_type === "agent";
-										return (
-											<SelectItem key={m.id} value={m.id}>
-												<div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-[10px] font-bold text-primary ring-1 ring-primary/20">
-													<EntityAvatarContent
-														avatarUrl={resolveMemberAvatarUrl(m)}
-													>
-														{isBot ? (
-															<Bot className="size-3" />
-														) : (
-															getInitials(memberName(m))
-														)}
-													</EntityAvatarContent>
-												</div>
-												<span className="flex-1 truncate text-left">
-													{memberName(m)}
-												</span>
-											</SelectItem>
-										);
-									})}
-								</SelectContent>
-							</Select>
-							<Button
-								size="sm"
-								disabled={!selectedMemberId || addMutation.isPending}
-								onClick={() =>
-									selectedMemberId && addMutation.mutate(selectedMemberId)
-								}
-							>
-								<Plus className="size-4 mr-1.5" />
-								{t("environments.detail.access.grantAccess")}
-							</Button>
-						</div>
-					)}
-
-					{addErrorMessage && (
-						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-							{addErrorMessage}
-						</p>
-					)}
-
-					{grants.length === 0 ? (
-						<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
-							<Lock className="size-8 text-muted-foreground/40" />
-							<p className="text-sm text-muted-foreground">
-								{t("environments.detail.access.empty")}
-							</p>
-						</div>
-					) : (
-						<div className="space-y-2">
-							{grants.map((g) => {
-								const member = memberById.get(g.member_id);
-								const display = member ? memberName(member) : g.member_id;
-								const isBot = member?.member_type === "agent";
-								const avatarUrl = member
-									? resolveMemberAvatarUrl(member)
-									: undefined;
-								return (
-									<div
-										key={g.id}
-										className="flex items-center gap-3 rounded-xl border border-border/50 bg-card px-4 py-3 transition-colors hover:bg-muted/30"
-									>
-										<Avatar className="size-9 shrink-0">
-											{avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
-											<AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
-												{isBot ? (
-													<Bot className="size-4" />
-												) : (
-													getInitials(display)
-												)}
-											</AvatarFallback>
-										</Avatar>
-										<div className="min-w-0 flex-1">
-											<p className="text-sm font-medium truncate">{display}</p>
-											{member && (
-												<p className="text-xs text-muted-foreground truncate">
-													@{member.username}
-												</p>
-											)}
-										</div>
-										{canWrite && (
-											<Button
-												variant="ghost"
-												size="icon"
-												className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
-												onClick={() => removeMutation.mutate(g.member_id)}
-												disabled={removeMutation.isPending}
-											>
-												<Trash2 className="size-3.5" />
-											</Button>
-										)}
-									</div>
-								);
-							})}
-						</div>
-					)}
-				</div>
-			)}
-		</div>
-	);
-}
-
 function PortForwardsTab({
 	projectId,
 	environment,
 	canWrite,
-	hasAccess,
 }: {
 	projectId: string;
 	environment: Environment;
 	canWrite: boolean;
-	hasAccess: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
 	const { data: config } = useQuery(environmentConfigQueryOptions());
 	const { data: forwards = [] } = useQuery({
 		...environmentPortForwardsQueryOptions(projectId, environment.id),
-		// Same RequireEnvironmentAccess gate as FoldersTab's own query —
-		// see that one's doc comment.
-		enabled: hasAccess,
 	});
 	const [addOpen, setAddOpen] = useState(false);
 	const [restartOpen, setRestartOpen] = useState(false);
@@ -984,17 +720,6 @@ function PortForwardsTab({
 			});
 		},
 	});
-
-	if (!hasAccess) {
-		return (
-			<NoPermissionState
-				title={t("environments.detail.portForwards.noPermission.title")}
-				description={t(
-					"environments.detail.portForwards.noPermission.description",
-				)}
-			/>
-		);
-	}
 
 	return (
 		<div className="space-y-4">
@@ -1171,11 +896,6 @@ const TABS = [
 		labelKey: "environments.detail.tabs.portForwards",
 		icon: Network,
 	},
-	{
-		id: "access",
-		labelKey: "environments.detail.tabs.access",
-		icon: Lock,
-	},
 ] as const satisfies {
 	id: Tab;
 	labelKey: string;
@@ -1191,7 +911,7 @@ export function EnvironmentDetailView({
 }) {
 	const { t } = useTranslation("projects");
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canWrite = hasProjectPermission("environments.write");
+	const canWrite = hasProjectPermission("environments:write");
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
@@ -1282,17 +1002,6 @@ export function EnvironmentDetailView({
 		(environment.status === "stopped" ||
 			environment.status === "suspended" ||
 			environment.status === "error");
-	// Whether this caller may actually use environment right now (browse
-	// folders, manage port forwards, connect) — always true when it's open;
-	// only true for a restricted one if they hold an EnvironmentAccessGrant.
-	// Independent of canWrite: someone who can reconfigure a restricted
-	// environment isn't automatically allowed to use it (see
-	// environmentdom.Environment.AccessMode's doc comment) — the Access tab
-	// below is what still always works regardless, since granting access is
-	// itself a configuration action.
-	const hasAccess =
-		environment.access_mode !== "restricted" || environment.access_granted;
-
 	// Start and Stop are independent controls (Start in the header, Stop in
 	// the dropdown menu) with the same failure modes — mainly a race against
 	// another in-flight start/stop/restart — so each gets its own message
@@ -1446,19 +1155,10 @@ export function EnvironmentDetailView({
 						environmentId={environmentId}
 						environmentStatus={environment.status}
 						canWrite={canWrite}
-						hasAccess={hasAccess}
 					/>
 				)}
 				{activeTab === "portForwards" && (
 					<PortForwardsTab
-						projectId={projectId}
-						environment={environment}
-						canWrite={canWrite}
-						hasAccess={hasAccess}
-					/>
-				)}
-				{activeTab === "access" && (
-					<AccessTab
 						projectId={projectId}
 						environment={environment}
 						canWrite={canWrite}

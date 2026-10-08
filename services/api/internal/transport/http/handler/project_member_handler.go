@@ -9,6 +9,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -64,16 +65,17 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "exactly one of user_id or agent_id is required"))
 		return
 	}
-	if req.ProjectRoleID == uuid.Nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "project_role_id is required"))
+	if len(req.RoleIDs) == 0 {
+		presenter.Error(w, r, apierr.New(apierr.CodeRoleRequired, "role_ids is required"))
 		return
 	}
 
 	m, err := h.svc.AddMember(r.Context(), id, projectdom.AddMemberInput{
-		UserID:        req.UserID,
-		AgentID:       req.AgentID,
-		ProjectRoleID: req.ProjectRoleID,
-		Description:   req.Description,
+		UserID:      req.UserID,
+		AgentID:     req.AgentID,
+		RoleIDs:     req.RoleIDs,
+		Description: req.Description,
+		CreatedBy:   attachmentCreator(r),
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -82,10 +84,10 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 	presenter.Created(w, r, h.toProjectMemberResponse(r.Context(), m))
 }
 
-// UpdateMemberRole handles PATCH /projects/:projectId/members/:memberId.
-// Accepts project_role_id and/or description; either may be omitted to
-// leave it unchanged, but at least one must be present.
-func (h *ProjectHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
+// UpdateMember handles PATCH /projects/:projectId/members/:memberId. It edits
+// the member's description; roles are replaced through
+// PUT /projects/:projectId/members/:memberId/roles.
+func (h *ProjectHandler) UpdateMember(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -97,31 +99,19 @@ func (h *ProjectHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var req dto.UpdateProjectMemberRoleRequest
+	var req dto.UpdateProjectMemberRequest
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
-	if req.ProjectRoleID == nil && req.Description == nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "at least one of project_role_id or description is required"))
+	if req.Description == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "description is required"))
 		return
 	}
 
-	var m *projectdom.ProjectMember
-	if req.ProjectRoleID != nil {
-		m, err = h.svc.UpdateMemberRoleByMemberID(r.Context(), projectID, memberID, projectdom.UpdateMemberRoleInput{
-			ProjectRoleID: *req.ProjectRoleID,
-		})
-		if err != nil {
-			presenter.Error(w, r, err)
-			return
-		}
-	}
-	if req.Description != nil {
-		m, err = h.svc.UpdateMemberDescription(r.Context(), projectID, memberID, *req.Description)
-		if err != nil {
-			presenter.Error(w, r, err)
-			return
-		}
+	m, err := h.svc.UpdateMemberDescription(r.Context(), projectID, memberID, *req.Description)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
 	}
 	presenter.OK(w, r, h.toProjectMemberResponse(r.Context(), m))
 }
@@ -146,7 +136,8 @@ func (h *ProjectHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetMyProjectPermissions handles GET /projects/:projectId/members/me/permissions.
-// It returns the permission map of the authenticated user's project role.
+// It returns {"actions": [...]}: the caller's effective IAM actions in the
+// project (see iam.Authorizer.EffectiveActions).
 // Any authenticated project member can call this endpoint regardless of which
 // permissions their role grants — the lookup is always scoped to themselves.
 func (h *ProjectHandler) GetMyProjectPermissions(w http.ResponseWriter, r *http.Request) {
@@ -168,19 +159,28 @@ func (h *ProjectHandler) GetMyProjectPermissions(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Check if request is from an agent and use agent ID if available
-	var agentID *uuid.UUID
+	// The caller's effective IAM actions in the project — every registered
+	// action allowed on the project or possibly on something inside it —
+	// from the engine that enforces them. An agent-key request naming an
+	// agent is judged as that agent.
+	principal := iam.User(userID.String())
 	if claims.AgentID != nil {
 		if parsedAgentID, parseErr := uuid.Parse(*claims.AgentID); parseErr == nil {
-			agentID = &parsedAgentID
+			principal = iam.Agent(parsedAgentID.String())
 		}
 	}
-
-	perms, err := h.svc.GetMyProjectPermissions(r.Context(), projectID, userID, agentID)
+	if h.authorizer == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "authorization not configured"))
+		return
+	}
+	actions, err := h.authorizer.EffectiveActions(r.Context(), principal, projectID.String())
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
+	if actions == nil {
+		actions = []string{}
+	}
 
-	presenter.OK(w, r, map[string]any{"permissions": perms})
+	presenter.OK(w, r, map[string]any{"actions": actions})
 }

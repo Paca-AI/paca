@@ -16,32 +16,6 @@ type Service interface {
 	EnvVarService
 	ConversationService
 	ChatSessionService
-	AgentAccessGrantService
-}
-
-// AgentAccessGrantService manages per-member access grants on a restricted
-// agent — see Agent.AccessMode's doc comment. Deliberately separate from
-// AgentService: these gate *usage* (chatting with the agent), never the
-// agent entity's own configuration, which stays governed purely by
-// agents.write regardless of access_mode.
-type AgentAccessGrantService interface {
-	// HasAgentUsageAccess reports whether memberID may use (chat with)
-	// agentID — always true when the agent is AccessModeOpen; when
-	// AccessModeRestricted, true only if memberID holds an explicit
-	// AgentAccessGrant. Verifies agentID is visible in projectID first (same
-	// as GetAgent), so a caller can't probe an agent outside their project.
-	HasAgentUsageAccess(ctx context.Context, projectID, agentID, memberID uuid.UUID) (bool, error)
-	ListAgentAccessGrants(ctx context.Context, projectID, agentID uuid.UUID) ([]*AgentAccessGrant, error)
-	// AddAgentAccessGrant returns ErrAgentAccessGrantExists if memberID
-	// already has a grant. grantedBy is the acting user, recorded for audit
-	// purposes only.
-	AddAgentAccessGrant(ctx context.Context, projectID, agentID, memberID uuid.UUID, grantedBy *uuid.UUID) (*AgentAccessGrant, error)
-	RemoveAgentAccessGrant(ctx context.Context, projectID, agentID, memberID uuid.UUID) error
-	// ListGrantedAgentIDsForMember returns every restricted agent memberID
-	// currently holds a grant for — used to decorate ListAgents/
-	// ListGlobalAgents with each row's "am I granted" state in one call
-	// instead of an N+1 HasAgentUsageAccess check per agent.
-	ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // AgentService defines agent CRUD use cases.
@@ -90,12 +64,6 @@ type AgentService interface {
 	GetGlobalAgent(ctx context.Context, agentID uuid.UUID) (*Agent, error)
 	CreateGlobalAgent(ctx context.Context, in CreateGlobalAgentInput) (*Agent, error)
 	UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in UpdateAgentInput) (*Agent, error)
-	// SetGlobalAgentRole binds a global agent to the global role that decides
-	// what it may do, or unbinds it when roleID is nil. It is the only way an
-	// agent's role changes — CreateGlobalAgent/UpdateGlobalAgent don't carry
-	// one — because binding a role is a privilege of its own
-	// (global_roles.assign), so it lives behind a route that requires it.
-	SetGlobalAgentRole(ctx context.Context, agentID uuid.UUID, roleID *uuid.UUID) (*Agent, error)
 	// DeleteGlobalAgent soft-deletes the agent and every project_members row
 	// referencing it, across every project it was invited into.
 	DeleteGlobalAgent(ctx context.Context, agentID uuid.UUID) error
@@ -268,7 +236,7 @@ type ChatSessionService interface {
 	// see OnBusyQueue's doc comment for what each does when agentID is
 	// already at ParallelismLimit running conversations.
 	StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID, contextItems []ContextItemRef, onBusy string) (*AgentChatSession, *AgentConversation, error)
-	SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string, contextItems []ContextItemRef, onBusy string) (*AgentConversation, error)
+	SendChatMessage(ctx context.Context, projectID, agentID, sessionID, memberID uuid.UUID, message string, contextItems []ContextItemRef, onBusy string) (*AgentConversation, error)
 	ListChatMessages(ctx context.Context, sessionID, memberID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
 
 	// -- Global chat sessions (chatting with a global agent from the home
@@ -329,15 +297,17 @@ type CreateAgentInput struct {
 	// default of 1, above the cap -> the cap) — see Agent.ParallelismLimit's
 	// doc comment.
 	ParallelismLimit int
-	ProjectRoleID    uuid.UUID
-	CreatedBy        *uuid.UUID
+	// RoleIDs are the roles the agent holds in the project (at least one),
+	// attached together with its membership.
+	RoleIDs   []uuid.UUID
+	CreatedBy *uuid.UUID
 }
 
 // CreateGlobalAgentInput carries fields required to create a global agent.
-// Mirrors CreateAgentInput minus ProjectRoleID (nothing to assign at
+// Mirrors CreateAgentInput minus RoleIDs (nothing to assign at
 // creation time — a global agent gets a project role only later, when
 // invited into a project). A new global agent has no global role either: it
-// is bound afterwards with SetGlobalAgentRole.
+// gets the default role and is given others through PUT /admin/agents/{agentId}/roles.
 type CreateGlobalAgentInput struct {
 	Name              string
 	Handle            string
@@ -404,10 +374,6 @@ type UpdateAgentInput struct {
 	// see agentsvc.Service.UpdateAgent. Ignored by UpdateGlobalAgent, same
 	// as DefaultEnvironmentID.
 	DefaultFolderID *uuid.UUID
-	// AccessMode: nil means unchanged, same convention as every other
-	// pointer field here. Must be AccessModeOpen or AccessModeRestricted
-	// when set (ErrAgentAccessModeInvalid otherwise).
-	AccessMode *string
 }
 
 // AddMCPServerInput carries fields to add an MCP server.

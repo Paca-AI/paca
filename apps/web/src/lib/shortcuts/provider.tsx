@@ -38,7 +38,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
 	const canViewSprints =
 		!!projectId &&
-		(hasPermission("sprints.read") || hasProjectPermission("sprints.read"));
+		(hasPermission("sprints:read") || hasProjectPermission("sprints:read"));
 
 	const { data: sprints = [] } = useQuery({
 		...sprintsQueryOptions(projectId ?? ""),

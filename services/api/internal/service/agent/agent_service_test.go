@@ -14,10 +14,9 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
-	projectdom "github.com/Paca-AI/api/internal/domain/project"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	roledom "github.com/Paca-AI/api/internal/domain/role"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 )
 
 // ---------------------------------------------------------------------------
@@ -90,11 +89,6 @@ type mockAgentRepo struct {
 	createMCPServer                      func(ctx context.Context, server *agentdom.AgentMCPServer) error
 	updateMCPServer                      func(ctx context.Context, server *agentdom.AgentMCPServer) error
 	deleteMCPServer                      func(ctx context.Context, id uuid.UUID) error
-	listAgentAccessGrants                func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error)
-	addAgentAccessGrant                  func(ctx context.Context, g *agentdom.AgentAccessGrant) error
-	removeAgentAccessGrant               func(ctx context.Context, agentID, memberID uuid.UUID) error
-	hasAgentAccessGrant                  func(ctx context.Context, agentID, memberID uuid.UUID) (bool, error)
-	listGrantedAgentIDsForMember         func(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
 	listSkills                           func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentSkill, error)
 	findSkillByID                        func(ctx context.Context, id uuid.UUID) (*agentdom.AgentSkill, error)
 	createSkill                          func(ctx context.Context, skill *agentdom.AgentSkill) error
@@ -154,7 +148,7 @@ func (m *mockAgentRepo) FindAgentByID(ctx context.Context, id uuid.UUID) (*agent
 	// unconfigured find shouldn't fail a test that never meant to exercise
 	// "agent not found" in the first place. Tests that do care configure
 	// findAgentByID explicitly (see the many that already do).
-	return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeOpen}, nil
+	return &agentdom.Agent{ID: id}, nil
 }
 
 func (m *mockAgentRepo) FindVisibleAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
@@ -189,9 +183,13 @@ func (m *mockAgentRepo) CreateAgent(ctx context.Context, agent *agentdom.Agent) 
 	return nil
 }
 
-func (m *mockAgentRepo) CreateAgentWithMembership(ctx context.Context, agent *agentdom.Agent, memberID, projectID, projectRoleID uuid.UUID) error {
+func (m *mockAgentRepo) CreateAgentWithMembership(ctx context.Context, agent *agentdom.Agent, memberID, projectID uuid.UUID, roleIDs []uuid.UUID, _ *uuid.UUID) error {
 	if m.createAgentWithMembership != nil {
-		return m.createAgentWithMembership(ctx, agent, memberID, projectID, projectRoleID)
+		var first uuid.UUID
+		if len(roleIDs) > 0 {
+			first = roleIDs[0]
+		}
+		return m.createAgentWithMembership(ctx, agent, memberID, projectID, first)
 	}
 	return nil
 }
@@ -320,41 +318,6 @@ func (m *mockAgentRepo) DeleteMCPServer(ctx context.Context, id uuid.UUID) error
 		return m.deleteMCPServer(ctx, id)
 	}
 	return nil
-}
-
-func (m *mockAgentRepo) ListAgentAccessGrants(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error) {
-	if m.listAgentAccessGrants != nil {
-		return m.listAgentAccessGrants(ctx, agentID)
-	}
-	return nil, nil
-}
-
-func (m *mockAgentRepo) AddAgentAccessGrant(ctx context.Context, g *agentdom.AgentAccessGrant) error {
-	if m.addAgentAccessGrant != nil {
-		return m.addAgentAccessGrant(ctx, g)
-	}
-	return nil
-}
-
-func (m *mockAgentRepo) RemoveAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) error {
-	if m.removeAgentAccessGrant != nil {
-		return m.removeAgentAccessGrant(ctx, agentID, memberID)
-	}
-	return nil
-}
-
-func (m *mockAgentRepo) HasAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) (bool, error) {
-	if m.hasAgentAccessGrant != nil {
-		return m.hasAgentAccessGrant(ctx, agentID, memberID)
-	}
-	return false, nil
-}
-
-func (m *mockAgentRepo) ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
-	if m.listGrantedAgentIDsForMember != nil {
-		return m.listGrantedAgentIDsForMember(ctx, memberID)
-	}
-	return nil, nil
 }
 
 func (m *mockAgentRepo) ListSkills(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentSkill, error) {
@@ -616,7 +579,6 @@ var _ agentdom.Repository = (*mockAgentRepo)(nil)
 type mockProjectRepo struct {
 	invalidateMembersCacheCalled bool
 	invalidatedProjectIDs        []uuid.UUID
-	findRoleByID                 func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
 }
 
 func (m *mockProjectRepo) InvalidateMembersCache(_ context.Context, projectID uuid.UUID) error {
@@ -625,29 +587,12 @@ func (m *mockProjectRepo) InvalidateMembersCache(_ context.Context, projectID uu
 	return nil
 }
 
-// FindRoleByID defaults to "not found" (rather than a role that happens to
-// validate) so that CreateAgent tests exercising unrelated failure paths
-// don't silently start depending on this mock's default role — tests whose
-// requests reach this check must configure findRoleByID explicitly, the same
-// convention mockAgentRepo.findChatSessionByID already uses above.
-func (m *mockProjectRepo) FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
-	if m.findRoleByID != nil {
-		return m.findRoleByID(ctx, id)
-	}
-	return nil, projectdom.ErrRoleNotFound
-}
-
 var _ projectMemberWriter = (*mockProjectRepo)(nil)
 
-// projectRepoWithRole returns a mockProjectRepo whose FindRoleByID accepts
-// any role ID as belonging to projectID — the common case for CreateAgent
-// tests that aren't themselves exercising the role-ownership check.
-func projectRepoWithRole(projectID uuid.UUID) *mockProjectRepo {
-	return &mockProjectRepo{
-		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
-			return &projectdom.ProjectRole{ID: id, ProjectID: &projectID}, nil
-		},
-	}
+// projectRepoWithRole returns a mockProjectRepo; the roles themselves are
+// validated by the repository transaction, which the agent repo mock stands in for.
+func projectRepoWithRole(_ uuid.UUID) *mockProjectRepo {
+	return &mockProjectRepo{}
 }
 
 type mockPluginRepo struct {
@@ -670,36 +615,6 @@ func (m *mockPluginRepo) FindByCapability(ctx context.Context, capability string
 }
 
 var _ pluginFinder = (*mockPluginRepo)(nil)
-
-// mockGlobalRoleFinder is the globalRoleFinder test double for
-// CreateGlobalAgent/UpdateGlobalAgent's global_role_id existence check
-// (GHSA-xxc8-ggm7-vmxp). Unlike mockProjectRepo.FindRoleByID, tests that
-// don't wire this at all (leaving Service.globalRoleSvc nil) exercise the
-// "unwired — skip validation" branch instead, so there's no need for every
-// existing CreateGlobalAgent/UpdateGlobalAgent test to configure one.
-type mockGlobalRoleFinder struct {
-	findByID    func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
-	findDefault func(ctx context.Context) (*globalroledom.GlobalRole, error)
-}
-
-func (m *mockGlobalRoleFinder) FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
-	if m.findByID != nil {
-		return m.findByID(ctx, id)
-	}
-	return nil, globalroledom.ErrNotFound
-}
-
-// FindDefault reports no default unless a test configures one, so a test that
-// wires this double only for the role-existence check creates agents without a
-// role, as before.
-func (m *mockGlobalRoleFinder) FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error) {
-	if m.findDefault != nil {
-		return m.findDefault(ctx)
-	}
-	return nil, globalroledom.ErrNoDefault
-}
-
-var _ globalRoleFinder = (*mockGlobalRoleFinder)(nil)
 
 func TestGetAgent_Success(t *testing.T) {
 	projectID := uuid.New()
@@ -864,13 +779,13 @@ func TestCreateAgent_Success(t *testing.T) {
 	svc := New(repo, projRepo, nil, pluginRepo)
 
 	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
-		Name:          "New Agent",
-		Handle:        "new-agent",
-		LLMProvider:   "openai",
-		LLMModel:      "gpt-4",
-		LLMAPIKey:     "sk-test",
-		ProjectRoleID: projectRoleID,
-		CreatedBy:     &userID,
+		Name:        "New Agent",
+		Handle:      "new-agent",
+		LLMProvider: "openai",
+		LLMModel:    "gpt-4",
+		LLMAPIKey:   "sk-test",
+		RoleIDs:     []uuid.UUID{projectRoleID},
+		CreatedBy:   &userID,
 	})
 
 	assert.NoError(t, err)
@@ -881,78 +796,52 @@ func TestCreateAgent_Success(t *testing.T) {
 	assert.True(t, projRepo.invalidateMembersCacheCalled)
 }
 
-// TestCreateAgent_RejectsRoleFromDifferentProject and
-// TestCreateAgent_RejectsGlobalTemplateRole guard against
-// GHSA-xxc8-ggm7-vmxp: CreateAgent grants project_role_id's permissions to
-// the new agent's membership, so — like AddMember/UpdateMemberRole* — it
-// must reject a role that doesn't concretely belong to the target project,
-// regardless of what permissions the caller was authorized with at the HTTP
-// layer.
-func TestCreateAgent_RejectsRoleFromDifferentProject(t *testing.T) {
+// GHSA-xxc8-ggm7-vmxp: CreateAgent grants role_ids to the new agent's
+// membership, so a role that cannot be attached in the target project (another
+// project's role, an unknown id, a project role used platform-wide) must fail
+// the whole create. The repository transaction decides (roledom.ErrNotAttachable)
+// and the service reports it; nothing is stored.
+func TestCreateAgent_RoleNotAttachableFailsTheCreate(t *testing.T) {
 	projectID := uuid.New()
-	otherProjectID := uuid.New()
-	foreignRoleID := uuid.New()
-
 	repo := &mockAgentRepo{
 		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
 			return nil, agentdom.ErrAgentNotFound
 		},
 		createAgentWithMembership: func(context.Context, *agentdom.Agent, uuid.UUID, uuid.UUID, uuid.UUID) error {
-			t.Fatal("createAgentWithMembership must not be called for a role belonging to a different project")
-			return nil
+			return roledom.ErrNotAttachable
 		},
 	}
-	projRepo := &mockProjectRepo{
-		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
-			return &projectdom.ProjectRole{ID: id, ProjectID: &otherProjectID}, nil
-		},
-	}
+	projRepo := &mockProjectRepo{}
 	svc := New(repo, projRepo, nil, &mockPluginRepo{})
 
 	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
-		Name:          "Escalation Agent",
-		Handle:        "escalation-agent",
-		LLMProvider:   "openai",
-		LLMModel:      "gpt-4",
-		LLMAPIKey:     "sk-test",
-		ProjectRoleID: foreignRoleID,
+		Name: "Escalation Agent", Handle: "escalation-agent",
+		LLMProvider: "openai", LLMModel: "gpt-4", LLMAPIKey: "sk-test",
+		RoleIDs: []uuid.UUID{uuid.New()},
 	})
 
-	assert.ErrorIs(t, err, projectdom.ErrRoleNotFound)
+	assert.ErrorIs(t, err, roledom.ErrNotAttachable)
+	assert.False(t, projRepo.invalidateMembersCacheCalled)
 }
 
-func TestCreateAgent_RejectsGlobalTemplateRole(t *testing.T) {
-	projectID := uuid.New()
-	templateRoleID := uuid.New()
-
+func TestCreateAgent_RequiresRoles(t *testing.T) {
 	repo := &mockAgentRepo{
 		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
 			return nil, agentdom.ErrAgentNotFound
 		},
 		createAgentWithMembership: func(context.Context, *agentdom.Agent, uuid.UUID, uuid.UUID, uuid.UUID) error {
-			t.Fatal("createAgentWithMembership must not be called for a global template role")
+			t.Fatal("an agent must not be created without roles")
 			return nil
 		},
 	}
-	projRepo := &mockProjectRepo{
-		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
-			// ProjectID == nil mirrors a global template role such as
-			// PROJECT_OWNER, per the advisory's PoC.
-			return &projectdom.ProjectRole{ID: id, ProjectID: nil}, nil
-		},
-	}
-	svc := New(repo, projRepo, nil, &mockPluginRepo{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
-		Name:          "Escalation Agent",
-		Handle:        "escalation-agent",
-		LLMProvider:   "openai",
-		LLMModel:      "gpt-4",
-		LLMAPIKey:     "sk-test",
-		ProjectRoleID: templateRoleID,
+	_, err := svc.CreateAgent(context.Background(), uuid.New(), agentdom.CreateAgentInput{
+		Name: "No Role Agent", Handle: "no-role-agent",
+		LLMProvider: "openai", LLMModel: "gpt-4", LLMAPIKey: "sk-test",
 	})
 
-	assert.ErrorIs(t, err, projectdom.ErrRoleNotFound)
+	assert.ErrorIs(t, err, roledom.ErrRoleRequired)
 }
 
 func TestCreateAgent_EmptyHandle(t *testing.T) {
@@ -965,9 +854,9 @@ func TestCreateAgent_EmptyHandle(t *testing.T) {
 	svc := New(repo, projRepo, nil, pluginRepo)
 
 	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
-		Name:          "New Agent",
-		Handle:        "",
-		ProjectRoleID: projectRoleID,
+		Name:    "New Agent",
+		Handle:  "",
+		RoleIDs: []uuid.UUID{projectRoleID},
 	})
 
 	assert.Error(t, err)
@@ -984,9 +873,9 @@ func TestCreateAgent_EmptyName(t *testing.T) {
 	svc := New(repo, projRepo, nil, pluginRepo)
 
 	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
-		Name:          "",
-		Handle:        "new-agent",
-		ProjectRoleID: projectRoleID,
+		Name:    "",
+		Handle:  "new-agent",
+		RoleIDs: []uuid.UUID{projectRoleID},
 	})
 
 	assert.Error(t, err)
@@ -1012,9 +901,9 @@ func TestCreateAgent_HandleTaken(t *testing.T) {
 	svc := New(repo, projRepo, nil, pluginRepo)
 
 	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
-		Name:          "New Agent",
-		Handle:        "new-agent",
-		ProjectRoleID: projectRoleID,
+		Name:    "New Agent",
+		Handle:  "new-agent",
+		RoleIDs: []uuid.UUID{projectRoleID},
 	})
 
 	assert.Error(t, err)
@@ -1247,97 +1136,16 @@ func TestCreateGlobalAgent_Success(t *testing.T) {
 	assert.Equal(t, "Global Bot", result.Name)
 	assert.Equal(t, agentdom.AgentScopeGlobal, result.AgentScope)
 	assert.Equal(t, uuid.Nil, result.ProjectID)
-	// Without a default-role lookup wired, a new global agent holds no global
-	// role; a different one is bound afterwards with SetGlobalAgentRole,
-	// behind global_roles.assign.
-	assert.Nil(t, result.GlobalRoleID)
+	// The service attaches no role itself: the repository gives the agent the
+	// default role in the same transaction that inserts it.
+	assert.Empty(t, result.Roles)
 	// The agent handed to the repo must carry the same scope, not just the
 	// returned value — CreateGlobalAgent must never fall back to
 	// CreateAgentWithMembership's project-scoped insert path.
 	if assert.NotNil(t, created) {
 		assert.Equal(t, agentdom.AgentScopeGlobal, created.AgentScope)
 		assert.Equal(t, uuid.Nil, created.ProjectID)
-		assert.Nil(t, created.GlobalRoleID)
 	}
-}
-
-// A new global agent starts with the default global role, the same one a new
-// user gets, so it is never left with no permissions by accident. Choosing a
-// different role is a separate request (SetGlobalAgentRole).
-func TestCreateGlobalAgent_StartsWithTheDefaultRole(t *testing.T) {
-	defaultRole := &globalroledom.GlobalRole{ID: uuid.New(), Name: "MEMBER", IsDefault: true}
-	var created *agentdom.Agent
-	repo := &mockAgentRepo{
-		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
-			return nil, agentdom.ErrAgentNotFound
-		},
-		createGlobalAgent: func(_ context.Context, a *agentdom.Agent) error {
-			created = a
-			return nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithGlobalRoleService(
-		&mockGlobalRoleFinder{
-			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) { return defaultRole, nil },
-		},
-	)
-
-	result, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
-		Name: "Global Bot", Handle: "global-bot", LLMProvider: "openai", LLMModel: "gpt-4", LLMAPIKey: "sk-test",
-	})
-
-	assert.NoError(t, err)
-	if assert.NotNil(t, result.GlobalRoleID) {
-		assert.Equal(t, defaultRole.ID, *result.GlobalRoleID)
-	}
-	// What was stored is what came back: the role is part of the insert, not a
-	// later, separate write that could be skipped.
-	if assert.NotNil(t, created) && assert.NotNil(t, created.GlobalRoleID) {
-		assert.Equal(t, defaultRole.ID, *created.GlobalRoleID)
-	}
-}
-
-func TestCreateGlobalAgent_NoDefaultRoleMeansNoRole(t *testing.T) {
-	repo := &mockAgentRepo{
-		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
-			return nil, agentdom.ErrAgentNotFound
-		},
-		createGlobalAgent: func(_ context.Context, _ *agentdom.Agent) error { return nil },
-	}
-	// No default is set: a valid state for an agent (it just has no global
-	// permissions), unlike a user, which cannot exist without a role.
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithGlobalRoleService(&mockGlobalRoleFinder{})
-
-	result, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
-		Name: "Global Bot", Handle: "global-bot", LLMProvider: "openai", LLMModel: "gpt-4", LLMAPIKey: "sk-test",
-	})
-
-	assert.NoError(t, err)
-	assert.Nil(t, result.GlobalRoleID)
-}
-
-func TestCreateGlobalAgent_DefaultRoleLookupFailureFailsTheCreate(t *testing.T) {
-	lookupErr := errors.New("db down")
-	repo := &mockAgentRepo{
-		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
-			return nil, agentdom.ErrAgentNotFound
-		},
-		createGlobalAgent: func(_ context.Context, _ *agentdom.Agent) error {
-			t.Fatal("the agent must not be stored when its default role could not be resolved")
-			return nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithGlobalRoleService(
-		&mockGlobalRoleFinder{
-			findDefault: func(context.Context) (*globalroledom.GlobalRole, error) { return nil, lookupErr },
-		},
-	)
-
-	_, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
-		Name: "Global Bot", Handle: "global-bot", LLMProvider: "openai", LLMModel: "gpt-4", LLMAPIKey: "sk-test",
-	})
-
-	assert.ErrorIs(t, err, lookupErr)
 }
 
 func TestCreateGlobalAgent_HandleTaken(t *testing.T) {
@@ -1359,126 +1167,14 @@ func TestCreateGlobalAgent_HandleTaken(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrAgentHandleTaken)
 }
 
-// SetGlobalAgentRole is the only path that changes a global agent's role. The
-// existence half of GHSA-xxc8-ggm7-vmxp's global-agent fix lives here: a
-// global_role_id that doesn't name a real global role must never reach the
-// repository. (Who may bind a role at all is the router's global_roles.assign
-// gate on the route that calls this.)
-
-func TestSetGlobalAgentRole_BindsExistingRole(t *testing.T) {
-	agentID := uuid.New()
-	roleID := uuid.New()
-	var saved *agentdom.Agent
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal}, nil
-		},
-		updateAgent: func(_ context.Context, a *agentdom.Agent) error {
-			saved = a
-			return nil
-		},
-	}
-	checkedID := uuid.Nil
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
-		WithGlobalRoleService(&mockGlobalRoleFinder{
-			findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
-				checkedID = id
-				return &globalroledom.GlobalRole{ID: id, Name: "BOT_MANAGER"}, nil
-			},
-		})
-
-	result, err := svc.SetGlobalAgentRole(context.Background(), agentID, &roleID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, roleID, checkedID)
-	if assert.NotNil(t, result.GlobalRoleID) {
-		assert.Equal(t, roleID, *result.GlobalRoleID)
-	}
-	if assert.NotNil(t, saved) && assert.NotNil(t, saved.GlobalRoleID) {
-		assert.Equal(t, roleID, *saved.GlobalRoleID)
-	}
-}
-
-func TestSetGlobalAgentRole_RejectsUnknownRole(t *testing.T) {
-	roleID := uuid.New()
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal}, nil
-		},
-		updateAgent: func(context.Context, *agentdom.Agent) error {
-			t.Fatal("UpdateAgent must not be called for an unknown global_role_id")
-			return nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
-		WithGlobalRoleService(&mockGlobalRoleFinder{})
-
-	_, err := svc.SetGlobalAgentRole(context.Background(), uuid.New(), &roleID)
-
-	assert.ErrorIs(t, err, globalroledom.ErrNotFound)
-}
-
-// Unbinding removes a grant rather than adding one, so — unlike binding — it
-// needs no existence lookup.
-func TestSetGlobalAgentRole_UnbindingSkipsLookup(t *testing.T) {
-	existingRole := uuid.New()
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal, GlobalRoleID: &existingRole}, nil
-		},
-		updateAgent: func(_ context.Context, a *agentdom.Agent) error {
-			assert.Nil(t, a.GlobalRoleID)
-			return nil
-		},
-	}
-	lookupCalled := false
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).
-		WithGlobalRoleService(&mockGlobalRoleFinder{
-			findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
-				lookupCalled = true
-				return &globalroledom.GlobalRole{ID: id}, nil
-			},
-		})
-
-	result, err := svc.SetGlobalAgentRole(context.Background(), uuid.New(), nil)
-
-	assert.NoError(t, err)
-	assert.Nil(t, result.GlobalRoleID)
-	assert.False(t, lookupCalled, "unbinding a role must not look one up")
-}
-
-func TestSetGlobalAgentRole_RejectsProjectScopedAgent(t *testing.T) {
-	roleID := uuid.New()
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, ProjectID: uuid.New(), AgentScope: agentdom.AgentScopeProject}, nil
-		},
-		updateAgent: func(context.Context, *agentdom.Agent) error {
-			t.Fatal("a project-scoped agent must never be bound to a global role")
-			return nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, err := svc.SetGlobalAgentRole(context.Background(), uuid.New(), &roleID)
-
-	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
-}
-
-// An ordinary update must leave a bound role exactly as it was: the role is
-// not among UpdateAgentInput's fields, so nothing in an update can change it.
-func TestUpdateGlobalAgent_LeavesGlobalRoleAlone(t *testing.T) {
-	existingRole := uuid.New()
+// An ordinary update must leave the agent's roles exactly as they were: the
+// roles are not among UpdateAgentInput's fields.
+func TestUpdateGlobalAgent_LeavesRolesAlone(t *testing.T) {
+	roles := []roledom.Summary{{ID: uuid.New(), Name: "MEMBER"}}
 	renamed := "Renamed Bot"
 	repo := &mockAgentRepo{
 		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal, GlobalRoleID: &existingRole, Name: "Bot"}, nil
-		},
-		updateAgent: func(_ context.Context, a *agentdom.Agent) error {
-			if assert.NotNil(t, a.GlobalRoleID) {
-				assert.Equal(t, existingRole, *a.GlobalRoleID)
-			}
-			return nil
+			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal, Roles: roles, Name: "Bot"}, nil
 		},
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
@@ -1487,9 +1183,7 @@ func TestUpdateGlobalAgent_LeavesGlobalRoleAlone(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, renamed, result.Name)
-	if assert.NotNil(t, result.GlobalRoleID) {
-		assert.Equal(t, existingRole, *result.GlobalRoleID)
-	}
+	assert.Equal(t, roles, result.Roles)
 }
 
 func TestGetGlobalAgent_RejectsProjectScopedAgent(t *testing.T) {
@@ -1593,36 +1287,6 @@ func TestStartGlobalChatSession_Success(t *testing.T) {
 			assert.Equal(t, actorUserID, *createdConv.ActorUserID)
 		}
 	}
-}
-
-// TestStartGlobalChatSession_RestrictedAgent_Rejected pins
-// requireGlobalAgentOpen's enforcement on the global chat surface: a global
-// agent set to AccessModeRestricted has no project context for a per-member
-// grant lookup, so it must fail closed for every caller rather than being
-// silently reachable — global chat has no project-scoped
-// hasAgentUsageAccess gate of its own to fall back on.
-func TestStartGlobalChatSession_RestrictedAgent_Rejected(t *testing.T) {
-	agentID := uuid.New()
-	actorUserID := uuid.New()
-
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		createChatSession: func(_ context.Context, _ *agentdom.AgentChatSession) error {
-			t.Fatal("createChatSession must not be called for a restricted global agent")
-			return nil
-		},
-		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
-			t.Fatal("createConversation must not be called for a restricted global agent")
-			return nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, _, err := svc.StartGlobalChatSession(context.Background(), agentID, actorUserID, "hello", nil, "")
-
-	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
 }
 
 func TestListMCPServers_Success(t *testing.T) {
@@ -1880,79 +1544,6 @@ func TestGetConversation_WrongProject(t *testing.T) {
 	_, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
 
 	assert.Error(t, err)
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
-}
-
-// TestGetConversation_RestrictedAgent_GrantedMember_Allowed and
-// TestGetConversation_RestrictedAgent_NonGrantedMember_Rejected cover
-// authorizeConversationAccess's unconditional hasAgentUsageAccess check for
-// the ordinary human-caller path (GetConversation, StartChatSession,
-// ListChatSessions, SendChatMessage all share this same check) — a
-// project-shared conversation with a restricted agent must still stay
-// hidden from a member holding no explicit grant, even though the "no
-// bypass" policy is really aimed at *starting* new usage; reading an
-// existing project-shared conversation is usage too.
-func TestGetConversation_RestrictedAgent_GrantedMember_Allowed(t *testing.T) {
-	projectID := uuid.New()
-	agentID := uuid.New()
-	conversationID := uuid.New()
-	memberID := uuid.New()
-	conversation := &agentdom.AgentConversation{
-		ID:        conversationID,
-		AgentID:   agentID,
-		ProjectID: projectID,
-		Audience:  agentdom.AudienceProjectShared,
-		Status:    "running",
-	}
-
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
-			return conversation, nil
-		},
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		hasAgentAccessGrant: func(_ context.Context, _, mID uuid.UUID) (bool, error) {
-			return mID == memberID, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	result, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, conversationID, result.ID)
-}
-
-func TestGetConversation_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
-	projectID := uuid.New()
-	agentID := uuid.New()
-	conversationID := uuid.New()
-	memberID := uuid.New()
-	conversation := &agentdom.AgentConversation{
-		ID:        conversationID,
-		AgentID:   agentID,
-		ProjectID: projectID,
-		Audience:  agentdom.AudienceProjectShared,
-		Status:    "running",
-	}
-
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
-			return conversation, nil
-		},
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		hasAgentAccessGrant: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
-			return false, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
-
-	assert.Error(t, err, "a project-shared conversation with a restricted agent must stay hidden from a non-granted member")
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
@@ -2271,52 +1862,6 @@ func TestGetConversationForAgent_CrossConversation_Deleted_Rejected(t *testing.T
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
-// TestGetConversationForAgent_RestrictedAgent_SystemTriggeredCurrent_SharedAudience_Allowed
-// is the regression case for a bug in hasAgentUsageAccess found while
-// tracing the MCP server's read_conversation tool (backed by this method)
-// end to end: current has no ChatSessionID (a task-assigned or
-// automation-triggered run — TriggerTaskAssigned/TriggerDirectMessage never
-// check access grants, since there's no human actor to check one against),
-// so authorizeAgentConversationRead falls through to
-// authorizeConversationAccess(ctx, target, uuid.Nil) — a pre-existing
-// sentinel meaning "no specific member, shared audience only", unrelated to
-// access grants. Before the fix, hasAgentUsageAccess's new unconditional
-// check treated that same uuid.Nil as "member not found" and rejected the
-// read outright, so setting an agent restricted silently broke its own
-// task-assigned/automation runs from reading their own project-shared
-// history — even though nothing about "restrict which humans may use this
-// agent" was meant to affect the agent's own system-triggered runs.
-// hasAgentAccessGrant is stubbed to always deny, proving the read succeeds
-// via the nil-actor short-circuit rather than by coincidentally matching a
-// grant.
-func TestGetConversationForAgent_RestrictedAgent_SystemTriggeredCurrent_SharedAudience_Allowed(t *testing.T) {
-	agentID := uuid.New()
-	projectID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: nil}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		hasAgentAccessGrant: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
-			return false, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, targetID, result.ID)
-}
-
 // TestGetConversationForAgent_Project_OwnerPrivate_SameMember_Allowed and
 // TestGetConversationForAgent_Project_OwnerPrivate_DifferentMember_Rejected
 // are the project-scoped regression cases: a project-scoped agent can hold
@@ -2418,7 +1963,7 @@ func TestGetConversationForAgent_Project_DifferentProject_Rejected(t *testing.T)
 //
 // GetConversationForAgent additionally requires the calling agent to hold
 // conversations.read (globally, or in the target conversation's own project)
-// once an authz.Authorizer is wired via WithAuthorizer — the sole
+// once an IAM authorizer is wired via WithAuthorizer — the sole
 // enforcement point for read_conversation (the MCP server lists that tool
 // unconditionally, see apps/mcp/src/server.ts) — for any conversation
 // *other* than the one the agent is currently running as part of. Every
@@ -2432,31 +1977,47 @@ func TestGetConversationForAgent_Project_DifferentProject_Rejected(t *testing.T)
 // optional), while a genuinely different (cross-conversation) target does
 // require the grant.
 
-// fakeAgentPermissionStore is a minimal authz.AgentPermissionStore double —
-// only the two agent-permission lookups GetConversationForAgent's check
-// actually calls are wired; the plain user-facing methods are unused here.
+// fakeAgentPermissionStore is a minimal iam.Store double for agents: its
+// actions are served the way migration 000064 shapes roles
+// — a global grant as the action on the platform roots, a project grant as
+// the action on project/<P>/* attached in that project.
 type fakeAgentPermissionStore struct {
-	agentGlobalPerms  map[uuid.UUID][]authz.Permission
-	agentProjectPerms map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
+	agentGlobalPerms  map[uuid.UUID][]iam.Action
+	agentProjectPerms map[uuid.UUID]map[uuid.UUID][]iam.Action // project_id -> agent_id -> permissions
 }
 
-func (f *fakeAgentPermissionStore) ListGlobalPermissions(_ context.Context, _ uuid.UUID) ([]authz.Permission, error) {
-	return nil, nil
-}
+var testPlatformRoots = []string{"user", "user/*", "role", "role/*", "plugin", "plugin/*", "settings", "sso", "agent", "agent/*", "project"}
 
-func (f *fakeAgentPermissionStore) ListProjectPermissions(_ context.Context, _, _ uuid.UUID) ([]authz.Permission, error) {
-	return nil, nil
-}
-
-func (f *fakeAgentPermissionStore) ListAgentGlobalPermissions(_ context.Context, agentID uuid.UUID) ([]authz.Permission, error) {
-	return f.agentGlobalPerms[agentID], nil
-}
-
-func (f *fakeAgentPermissionStore) ListAgentProjectPermissions(_ context.Context, agentID, projectID uuid.UUID) ([]authz.Permission, error) {
-	if projMap, ok := f.agentProjectPerms[projectID]; ok {
-		return projMap[agentID], nil
+func (f *fakeAgentPermissionStore) ListGrants(_ context.Context, p iam.Principal) ([]iam.Grant, error) {
+	if p.Type != "agent" {
+		return nil, nil
 	}
-	return nil, nil
+	agentID := uuid.MustParse(p.ID)
+	actions := func(perms []iam.Action) []string {
+		out := make([]string, len(perms))
+		for i, perm := range perms {
+			out[i] = string(perm)
+		}
+		return out
+	}
+	var grants []iam.Grant
+	if perms := f.agentGlobalPerms[agentID]; len(perms) > 0 {
+		grants = append(grants, iam.Grant{RoleID: "global", Policy: &iam.Policy{Statements: []iam.Statement{
+			{Effect: iam.EffectAllow, Actions: actions(perms), Resources: testPlatformRoots},
+		}}})
+	}
+	for projectID, byAgent := range f.agentProjectPerms {
+		if perms := byAgent[agentID]; len(perms) > 0 {
+			grants = append(grants, iam.Grant{RoleID: "project", ProjectID: projectID.String(), Policy: &iam.Policy{Statements: []iam.Statement{
+				{Effect: iam.EffectAllow, Actions: actions(perms), Resources: []string{"project/" + projectID.String() + "/*"}},
+			}}})
+		}
+	}
+	return grants, nil
+}
+
+func newTestIAMAuthorizer(store iam.Store) *iam.Authorizer {
+	return iam.NewAuthorizer(store, iam.NewRegistry(), iam.NewAttributeSchema())
 }
 
 // TestGetConversationForAgent_SelfRead_AllowedWithoutConversationsRead locks
@@ -2475,7 +2036,7 @@ func TestGetConversationForAgent_SelfRead_AllowedWithoutConversationsRead(t *tes
 			return conversation, nil
 		},
 	}
-	authorizer := authz.NewAuthorizer(&fakeAgentPermissionStore{})
+	authorizer := newTestIAMAuthorizer(&fakeAgentPermissionStore{})
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
@@ -2503,9 +2064,9 @@ func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_Glo
 		},
 	}
 	store := &fakeAgentPermissionStore{
-		agentGlobalPerms: map[uuid.UUID][]authz.Permission{agentID: {authz.PermissionConversationsRead}},
+		agentGlobalPerms: map[uuid.UUID][]iam.Action{agentID: {iam.ActionConversationsRead}},
 	}
-	authorizer := authz.NewAuthorizer(store)
+	authorizer := newTestIAMAuthorizer(store)
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
@@ -2532,11 +2093,11 @@ func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_Pro
 		},
 	}
 	store := &fakeAgentPermissionStore{
-		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
-			projectID: {agentID: {authz.PermissionConversationsRead}},
+		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
+			projectID: {agentID: {iam.ActionConversationsRead}},
 		},
 	}
-	authorizer := authz.NewAuthorizer(store)
+	authorizer := newTestIAMAuthorizer(store)
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
@@ -2561,7 +2122,7 @@ func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_NoG
 			return current, nil
 		},
 	}
-	authorizer := authz.NewAuthorizer(&fakeAgentPermissionStore{})
+	authorizer := newTestIAMAuthorizer(&fakeAgentPermissionStore{})
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
@@ -2588,11 +2149,11 @@ func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_Wro
 	store := &fakeAgentPermissionStore{
 		// conversations.read granted in a *different* project than the one the
 		// conversation actually belongs to — must not transfer.
-		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
-			grantedProjectID: {agentID: {authz.PermissionConversationsRead}},
+		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
+			grantedProjectID: {agentID: {iam.ActionConversationsRead}},
 		},
 	}
-	authorizer := authz.NewAuthorizer(store)
+	authorizer := newTestIAMAuthorizer(store)
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
@@ -2621,9 +2182,25 @@ func TestSendChatMessage_WrongMember(t *testing.T) {
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, otherMemberID, "Hello", nil, "")
+	_, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, otherMemberID, "Hello", nil, "")
 
 	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrChatSessionNotFound)
+}
+
+// The route is authorized on project/<P>/agent/<URL agent>; a session of a
+// different agent (even the caller's own, in the same project) is not found.
+func TestSendChatMessage_SessionOfAnotherAgent_NotFound(t *testing.T) {
+	projectID, sessionAgent, urlAgent, sessionID, memberID := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	session := &agentdom.AgentChatSession{ID: sessionID, AgentID: sessionAgent, ProjectID: projectID, MemberID: memberID}
+	repo := &mockAgentRepo{
+		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
+			return session, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.SendChatMessage(context.Background(), projectID, urlAgent, sessionID, memberID, "Hello", nil, "")
 	assert.ErrorIs(t, err, agentdom.ErrChatSessionNotFound)
 }
 
@@ -3157,43 +2734,6 @@ func TestSendGlobalConversationMessage_ACPResumeBlockedAtCapacity(t *testing.T) 
 	assert.False(t, claimCalled, "must not claim/dispatch before the capacity check runs")
 }
 
-// TestSendGlobalConversationMessage_RestrictedAgent_Rejected closes a gap
-// pullfrog found in requireGlobalAgentOpen's original placement: gating only
-// Start/List/SendGlobalChatMessage left an existing global conversation's
-// resume path (the ACP branch here) able to keep a since-restricted agent
-// executing indefinitely, contradicting requireGlobalAgentOpen's own
-// "fails every global-chat caller closed, full stop" contract.
-func TestSendGlobalConversationMessage_RestrictedAgent_Rejected(t *testing.T) {
-	conversationID := uuid.New()
-	actorUserID := uuid.New()
-	conversation := &agentdom.AgentConversation{
-		ID:          conversationID,
-		ActorUserID: &actorUserID,
-		TriggerType: "chat_message",
-		Status:      "finished",
-	}
-
-	claimCalled := false
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AgentType: agentdom.AgentTypeACP, AccessMode: agentdom.AccessModeRestricted, ParallelismLimit: 1}, nil
-		},
-		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
-			return conversation, nil
-		},
-		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
-			claimCalled = true
-			return true, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "keep going", actorUserID, nil, "")
-
-	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
-	assert.False(t, claimCalled, "a restricted agent's existing global conversation must not be resumed")
-}
-
 func TestStopConversation_Success(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := uuid.New()
@@ -3671,34 +3211,6 @@ func TestTriggerDescriptionWrite_WrongProject_ReturnsNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
 }
 
-// TestTriggerDescriptionWrite_RestrictedAgent_NonGrantedMember_Rejected is
-// TriggerDescriptionWrite's mirror of the sibling
-// Test{TriggerTaskAssigned,TriggerDirectMessage,TriggerCommentMention}_RestrictedAgent_NonGrantedMember_Rejected
-// tests — pullfrog's follow-up review noted this fourth
-// authorizeConversationTrigger path was the only one still missing its deny
-// side.
-func TestTriggerDescriptionWrite_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
-	projectID := uuid.New()
-	agentID := uuid.New()
-	taskID := uuid.New()
-	memberID := uuid.New()
-
-	repo := &mockAgentRepo{
-		findVisibleAgentInProject: func(_ context.Context, id, _ uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
-			t.Fatal("createConversation must not be called for a restricted agent with no grant")
-			return nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, err := svc.TriggerDescriptionWrite(context.Background(), projectID, agentID, taskID, memberID)
-
-	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
-}
-
 func TestSendChatMessage_Success(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()
@@ -3732,7 +3244,7 @@ func TestSendChatMessage_Success(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello", nil, "")
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Hello", nil, "")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resultConv)
@@ -3790,7 +3302,7 @@ func TestSendChatMessage_ResumesPausedConversation(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Continuing…", nil, "")
 
 	assert.NoError(t, err)
 	assert.False(t, createCalled, "resuming a paused conversation must not create a new one")
@@ -3854,7 +3366,7 @@ func TestSendChatMessage_ACPResumesTerminalConversation(t *testing.T) {
 			pluginRepo := &mockPluginRepo{}
 			svc := New(repo, projRepo, nil, pluginRepo)
 
-			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
+			resultConv, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Continuing…", nil, "")
 
 			assert.NoError(t, err)
 			assert.False(t, createCalled, "resuming a terminal ACP conversation must not create a new one")
@@ -3905,7 +3417,7 @@ func TestSendChatMessage_ACPResumeRaceLoses(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
+	_, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Continuing…", nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -3969,7 +3481,7 @@ func TestSendChatMessage_LLMTerminalCreatesNewConversation(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello again", nil, "")
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Hello again", nil, "")
 
 	assert.NoError(t, err)
 	assert.True(t, createCalled, "a terminal LLM conversation must create a new conversation")
@@ -4038,7 +3550,7 @@ func TestSendChatMessage_EnvironmentBackedLLMResumesTerminalConversation(t *test
 			pluginRepo := &mockPluginRepo{}
 			svc := New(repo, projRepo, nil, pluginRepo)
 
-			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
+			resultConv, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Continuing…", nil, "")
 
 			assert.NoError(t, err)
 			assert.False(t, createCalled, "resuming a terminal environment-backed conversation must not create a new one")
@@ -4088,7 +3600,7 @@ func TestSendChatMessage_ResumeRaceLoses(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil, "")
+	_, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Continuing…", nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -4125,7 +3637,7 @@ func TestSendChatMessage_BusyWhenQueued(t *testing.T) {
 
 	// A conversation that hasn't been dequeued yet must not let a second
 	// message create a duplicate conversation/sandbox for the same session.
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?", nil, "")
+	_, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Are you there?", nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -4160,7 +3672,7 @@ func TestSendChatMessage_BusyWhenRunning(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?", nil, "")
+	_, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Are you there?", nil, "")
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -4186,7 +3698,7 @@ func TestSendChatMessage_WrongProject(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello", nil, "")
+	_, err := svc.SendChatMessage(context.Background(), projectID, agentID, sessionID, memberID, "Hello", nil, "")
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrChatSessionNotFound)
@@ -4332,91 +3844,6 @@ func TestTriggerCommentMention_Success(t *testing.T) {
 	assert.Equal(t, "comment_mention", result.TriggerType)
 }
 
-// TestTriggerTaskAssigned_RestrictedAgent_NonGrantedMember_Rejected,
-// TestTriggerDirectMessage_RestrictedAgent_NonGrantedMember_Rejected, and
-// TestTriggerCommentMention_RestrictedAgent_NonGrantedMember_Rejected pin
-// authorizeConversationTrigger's deny path for the three human-actor
-// trigger routes, mirroring TestGetConversation_RestrictedAgent_
-// NonGrantedMember_Rejected's pattern. Without these, the three _Success
-// tests above (all exercising the mock's default AccessModeOpen agent)
-// would pass identically even if authorizeConversationTrigger were deleted
-// outright — for a security boundary, the deny side is the part that
-// actually matters.
-func TestTriggerTaskAssigned_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
-	projectID := uuid.New()
-	agentID := uuid.New()
-	taskID := uuid.New()
-	memberID := uuid.New()
-
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
-			t.Fatal("createConversation must not be called for a restricted agent with no grant")
-			return nil
-		},
-	}
-	projRepo := &mockProjectRepo{}
-	pluginRepo := &mockPluginRepo{}
-	svc := New(repo, projRepo, nil, pluginRepo)
-
-	_, err := svc.TriggerTaskAssigned(context.Background(), projectID, agentID, taskID, &memberID, "")
-
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
-}
-
-func TestTriggerDirectMessage_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
-	projectID := uuid.New()
-	agentID := uuid.New()
-	memberID := uuid.New()
-
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
-			t.Fatal("createConversation must not be called for a restricted agent with no grant")
-			return nil
-		},
-	}
-	projRepo := &mockProjectRepo{}
-	pluginRepo := &mockPluginRepo{}
-	svc := New(repo, projRepo, nil, pluginRepo)
-
-	_, err := svc.TriggerDirectMessage(context.Background(), projectID, agentID, &memberID, "do the thing")
-
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
-}
-
-func TestTriggerCommentMention_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
-	projectID := uuid.New()
-	agentID := uuid.New()
-	taskID := uuid.New()
-	commentID := uuid.New()
-	memberID := uuid.New()
-
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
-			t.Fatal("createConversation must not be called for a restricted agent with no grant")
-			return nil
-		},
-	}
-	projRepo := &mockProjectRepo{}
-	pluginRepo := &mockPluginRepo{}
-	svc := New(repo, projRepo, nil, pluginRepo)
-
-	_, err := svc.TriggerCommentMention(context.Background(), projectID, agentID, taskID, commentID, memberID, "test comment")
-
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
-}
-
 func TestCreateAgent_ACPInvalidAgentType(t *testing.T) {
 	projectID := uuid.New()
 
@@ -4490,12 +3917,12 @@ func TestCreateAgent_ACPCustomProviderSuccess(t *testing.T) {
 	svc := New(repo, projectRepoWithRole(projectID), nil, &mockPluginRepo{})
 
 	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
-		Name:          "Custom ACP Agent",
-		Handle:        "custom-acp-agent",
-		AgentType:     agentdom.AgentTypeACP,
-		ACPProvider:   agentdom.ACPProviderCustom,
-		ACPCommand:    []string{"npx", "-y", "my-acp-server"},
-		ProjectRoleID: projectRoleID,
+		Name:        "Custom ACP Agent",
+		Handle:      "custom-acp-agent",
+		AgentType:   agentdom.AgentTypeACP,
+		ACPProvider: agentdom.ACPProviderCustom,
+		ACPCommand:  []string{"npx", "-y", "my-acp-server"},
+		RoleIDs:     []uuid.UUID{projectRoleID},
 	})
 
 	assert.NoError(t, err)
@@ -4523,11 +3950,11 @@ func TestCreateAgent_ACPGooseProviderSuccess(t *testing.T) {
 	// own provider registry doesn't know about goose, so this can't be
 	// resolved the same way claude-code/codex/gemini-cli are).
 	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
-		Name:          "Goose Agent",
-		Handle:        "goose-agent",
-		AgentType:     agentdom.AgentTypeACP,
-		ACPProvider:   agentdom.ACPProviderGoose,
-		ProjectRoleID: projectRoleID,
+		Name:        "Goose Agent",
+		Handle:      "goose-agent",
+		AgentType:   agentdom.AgentTypeACP,
+		ACPProvider: agentdom.ACPProviderGoose,
+		RoleIDs:     []uuid.UUID{projectRoleID},
 	})
 
 	assert.NoError(t, err)
@@ -4555,7 +3982,7 @@ func TestCreateAgent_ACPIgnoresSystemPromptAndGitCommitterFields(t *testing.T) {
 		Handle:            "acp-agent",
 		AgentType:         agentdom.AgentTypeACP,
 		ACPProvider:       agentdom.ACPProviderClaudeCode,
-		ProjectRoleID:     projectRoleID,
+		RoleIDs:           []uuid.UUID{projectRoleID},
 		SystemPrompt:      "you are a helpful assistant",
 		GitCommitterName:  "someone",
 		GitCommitterEmail: "someone@example.com",
@@ -5135,6 +4562,7 @@ func TestRemoveGlobalAvatar_ClearsKeysAndDeletesObjects(t *testing.T) {
 type fakeEnvironmentService struct {
 	getEnvironment func(ctx context.Context, projectID, environmentID uuid.UUID) (*environmentdom.Environment, error)
 	verifyCLIAuth  func(ctx context.Context, projectID, environmentID uuid.UUID, cliProvider string) (bool, error)
+	resolveWorkdir func(ctx context.Context, projectID uuid.UUID, environmentID, folderID *uuid.UUID) (*environmentdom.Environment, *environmentdom.EnvironmentFolder, error)
 }
 
 func (f *fakeEnvironmentService) ListEnvironments(context.Context, uuid.UUID) ([]*environmentdom.Environment, error) {
@@ -5176,7 +4604,10 @@ func (f *fakeEnvironmentService) Heartbeat(context.Context, uuid.UUID, uuid.UUID
 	return nil
 }
 
-func (f *fakeEnvironmentService) ResolveConversationWorkdir(context.Context, uuid.UUID, *uuid.UUID, *uuid.UUID) (*environmentdom.Environment, *environmentdom.EnvironmentFolder, error) {
+func (f *fakeEnvironmentService) ResolveConversationWorkdir(ctx context.Context, projectID uuid.UUID, environmentID, folderID *uuid.UUID) (*environmentdom.Environment, *environmentdom.EnvironmentFolder, error) {
+	if f.resolveWorkdir != nil {
+		return f.resolveWorkdir(ctx, projectID, environmentID, folderID)
+	}
 	return nil, nil, nil
 }
 
@@ -5231,26 +4662,6 @@ func (f *fakeEnvironmentService) DeletePortForward(context.Context, uuid.UUID, u
 	return nil
 }
 
-func (f *fakeEnvironmentService) HasEnvironmentUsageAccess(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (bool, error) {
-	return true, nil
-}
-
-func (f *fakeEnvironmentService) ListEnvironmentAccessGrants(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentAccessGrant, error) {
-	return nil, nil
-}
-
-func (f *fakeEnvironmentService) AddEnvironmentAccessGrant(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, *uuid.UUID) (*environmentdom.EnvironmentAccessGrant, error) {
-	return &environmentdom.EnvironmentAccessGrant{ID: uuid.New()}, nil
-}
-
-func (f *fakeEnvironmentService) RemoveEnvironmentAccessGrant(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
-	return nil
-}
-
-func (f *fakeEnvironmentService) ListGrantedEnvironmentIDsForMember(context.Context, uuid.UUID) ([]uuid.UUID, error) {
-	return nil, nil
-}
-
 var _ environmentdom.Service = (*fakeEnvironmentService)(nil)
 
 func TestCreateAgent_ProviderCLI_Success(t *testing.T) {
@@ -5285,7 +4696,7 @@ func TestCreateAgent_ProviderCLI_Success(t *testing.T) {
 		AgentType:            agentdom.AgentTypeProviderCLI,
 		CLIProvider:          agentdom.CLIProviderClaudeCode,
 		CLIModel:             "sonnet",
-		ProjectRoleID:        projectRoleID,
+		RoleIDs:              []uuid.UUID{projectRoleID},
 		DefaultEnvironmentID: &envID,
 	})
 
@@ -5768,7 +5179,7 @@ func TestSendChatMessage_RejectsInvalidOnBusy(t *testing.T) {
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	_, err := svc.SendChatMessage(context.Background(), uuid.New(), uuid.New(), uuid.New(), "hi", nil, "explode")
+	_, err := svc.SendChatMessage(context.Background(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), "hi", nil, "explode")
 
 	assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
 }
@@ -5813,55 +5224,6 @@ func TestSendGlobalChatMessage_RejectsInvalidOnBusy(t *testing.T) {
 	_, err := svc.SendGlobalChatMessage(context.Background(), uuid.New(), uuid.New(), "hi", nil, "explode")
 
 	assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
-}
-
-// TestSendGlobalChatMessage_RestrictedAgent_Rejected and
-// TestListGlobalChatSessions_RestrictedAgent_Rejected are
-// requireGlobalAgentOpen's other two call sites — see
-// TestStartGlobalChatSession_RestrictedAgent_Rejected's doc comment for why
-// this needs covering on each entry point rather than just once.
-func TestSendGlobalChatMessage_RestrictedAgent_Rejected(t *testing.T) {
-	sessionID := uuid.New()
-	agentID := uuid.New()
-	actorUserID := uuid.New()
-	session := &agentdom.AgentChatSession{ID: sessionID, AgentID: agentID, ActorUserID: &actorUserID}
-
-	repo := &mockAgentRepo{
-		findChatSessionByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error) {
-			return session, nil
-		},
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		findLatestConversationBySession: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
-			t.Fatal("must reject before resolving the latest conversation")
-			return nil, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, err := svc.SendGlobalChatMessage(context.Background(), sessionID, actorUserID, "hi", nil, "")
-
-	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
-}
-
-func TestListGlobalChatSessions_RestrictedAgent_Rejected(t *testing.T) {
-	agentID := uuid.New()
-
-	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
-			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
-		},
-		listGlobalChatSessions: func(_ context.Context, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {
-			t.Fatal("must reject before listing sessions")
-			return nil, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, err := svc.ListGlobalChatSessions(context.Background(), agentID, uuid.New())
-
-	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
 }
 
 func TestSendConversationMessage_RejectsInvalidOnBusy(t *testing.T) {

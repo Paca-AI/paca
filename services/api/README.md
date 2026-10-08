@@ -53,14 +53,14 @@ services/api/
             token/
                 jwt_manager.go     # sign/verify JWT, key rotation strategy
             authz/
-                policy.go          # authorization policy abstraction
+                iam/               # IAM policy engine: actions, resources, conditions, evaluator, list scoping
             storage/               # S3-compatible file storage (RustFS / AWS S3)
             secret/                # encryption helpers (AES-GCM)
             plugin/                # WASM plugin runtime (wazero)
         domain/
             user/
             auth/
-            globalrole/
+            role/              # IAM roles and role attachments
             project/
             task/
             sprint/
@@ -77,7 +77,7 @@ services/api/
         service/
             auth/
             user/
-            globalrole/
+            role/
             project/
             task/
             sprint/
@@ -95,14 +95,14 @@ services/api/
                     router.go      # Chi router wiring and route registration
                 middleware/
                     authn.go       # JWT authentication middleware
-                    authz.go       # role/permission authorization middleware
+                    authz.go       # IAM action gates (RequireAction, resource resolvers)
                     validate.go    # request body binding helper
                     must_change_password.go
                 handler/
                     health_handler.go
                     auth_handler.go
                     user_handler.go
-                    global_role_handler.go
+                    role_handler.go
                     project_handler.go
                     task_handler.go
                     sprint_handler.go
@@ -141,15 +141,15 @@ services/api/
 - Authentication: access token and refresh token flow.
 - JWT manager in `internal/platform/token` owns signing and verification.
 - Middleware (`authn.go`) validates token, expiration, and required claims.
-- Authorization is policy-based in `internal/platform/authz`.
-- Middleware (`authz.go`) enforces role/permission checks per route.
+- Authorization is IAM-style and lives in `internal/platform/authz/iam`: roles are JSON policies (Allow/Deny statements over `domain:verb` actions and path-style resources, default deny). See [Authorization architecture](../../docs/architecture/authorization.md).
+- Each route declares its action and resource through a gate in `internal/transport/http/router/guards.go`; handlers do not check permissions.
 - Services can perform additional domain-level authorization checks.
 
 Recommended claims include:
 
 - `sub` (subject/user id)
 - `exp`, `iat`, `nbf`
-- `role` and/or `permissions`
+- `role` (a display value only; it never grants anything, authorization comes from attached role policies)
 - `jti` (token id) for revocation support
 - `fid` (family ID) linking all tokens from the same login session
 - `mcp` (`must_change_password`) flag — when true, all endpoints except `PATCH /users/me/password` are blocked with `403 AUTH_PASSWORD_CHANGE_REQUIRED`

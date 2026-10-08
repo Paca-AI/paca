@@ -2,6 +2,7 @@ package projectsvc
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -56,6 +57,10 @@ func memberPayload(m *projectdom.ProjectMember) map[string]any {
 		"member_id":   m.ID.String(),
 		"name":        name,
 		"member_type": m.MemberType,
-		"role_name":   m.RoleName,
+		// role_name keeps the single string the activity feed has always
+		// shown (the names of the member's roles, comma-joined); role_names
+		// lists them.
+		"role_name":  strings.Join(m.RoleNames(), ", "),
+		"role_names": m.RoleNames(),
 	}
 }

@@ -5,30 +5,30 @@ import {
 	type RoleOptionListProps,
 	RolesQueryBoundary,
 } from "@/components/admin/global-roles/role-option-list";
-import { activePermissions } from "@/components/admin/global-roles/utils";
-import { type GlobalRole, globalRolesQueryOptions } from "@/lib/admin-api";
+import { isFullAccessRole } from "@/components/admin/global-roles/utils";
+import { isProjectTemplate } from "@/lib/policy";
+import { platformRolesQueryOptions, type Role } from "@/lib/role-api";
 
-/** A role holding the `*` wildcard can do everything. */
-export function isFullAccessRole(role: {
-	permissions: Record<string, unknown>;
-}): boolean {
-	return activePermissions(role.permissions).includes("*");
-}
+export { isFullAccessRole };
 
-type RolePickerProps = Omit<
-	RoleOptionListProps<GlobalRole>,
-	"roles" | "badgeClass"
->;
+type RolePickerProps = Omit<RoleOptionListProps<Role>, "roles" | "badgeClass">;
 
 /**
  * Lists the global roles to choose from (see RoleOptionList). Loads them
- * itself, which needs `global_roles.read`.
+ * itself, which needs `roles:read`.
  */
 export function RolePicker(props: RolePickerProps) {
-	const query = useQuery(globalRolesQueryOptions);
+	const query = useQuery(platformRolesQueryOptions);
 	return (
 		<RolesQueryBoundary query={query}>
-			{(roles) => <RoleOptionList roles={roles} {...props} />}
+			{(roles) => (
+				// A project template (project/*) only works attached per project;
+				// given platform-wide it would reach every project.
+				<RoleOptionList
+					roles={roles.filter((r) => !isProjectTemplate(r.policy))}
+					{...props}
+				/>
+			)}
 		</RolesQueryBoundary>
 	);
 }

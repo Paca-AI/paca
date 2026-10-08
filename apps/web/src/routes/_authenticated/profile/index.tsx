@@ -223,7 +223,7 @@ function ProfilePage() {
 							</CardDescription>
 							<div className="flex items-center gap-2 mt-2">
 								<Badge variant="secondary" className="text-xs">
-									{user.role}
+									{user.roles.map((r) => r.name).join(", ")}
 								</Badge>
 								<span className="flex items-center gap-1 text-xs text-muted-foreground">
 									<CalendarDays className="size-3" />

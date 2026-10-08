@@ -193,7 +193,7 @@ test.describe("Single sign-on (SSO)", () => {
 				username,
 				roleName: `${PREFIX}ROLE_${label}_${RUN_ID}`,
 				// projects.read lets the account reach the home page.
-				permissions: { "projects.read": true, ...permissions },
+				permissions: { "projects:read": true, ...permissions },
 			});
 			await signIn(page, username, RESTRICTED_PASSWORD);
 			await page.goto(SETTINGS_URL);
@@ -205,7 +205,7 @@ test.describe("Single sign-on (SSO)", () => {
 			playwright,
 		}) => {
 			await signInWithPermissions(page, request, playwright, "BRAND", {
-				"settings.write": true,
+				"settings:write": true,
 			});
 			await expect(
 				page.getByRole("heading", { name: "Logo & Favicon" }),
@@ -221,7 +221,7 @@ test.describe("Single sign-on (SSO)", () => {
 			playwright,
 		}) => {
 			await signInWithPermissions(page, request, playwright, "SSOADMIN", {
-				"settings.sso.write": true,
+				"settings.sso:write": true,
 			});
 			await expect(
 				page.getByRole("heading", { name: "Single sign-on (SSO)" }),

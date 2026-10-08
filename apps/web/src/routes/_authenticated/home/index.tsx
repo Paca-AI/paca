@@ -22,6 +22,7 @@ import {
 import { type ComponentType, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AssignedTasksList } from "@/components/home/assigned-tasks-list";
+import { LegacyPluginsBanner } from "@/components/home/LegacyPluginsBanner";
 import { UpdateBanner } from "@/components/home/UpdateBanner";
 import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import { Badge } from "@/components/ui/badge";
@@ -464,7 +465,7 @@ function HomePage() {
 	const { hasPermission } = usePermissions();
 	const [createOpen, setCreateOpen] = useState(false);
 
-	const canCreate = hasPermission("projects.create");
+	const canCreate = hasPermission("projects:create");
 
 	const projects = useMemo(
 		() => projectsData?.pages.flatMap((p) => p.items) ?? [],
@@ -488,6 +489,7 @@ function HomePage() {
 	return (
 		<div className="flex flex-col">
 			<UpdateBanner />
+			<LegacyPluginsBanner />
 			{/* Hero banner */}
 			<div className="relative overflow-hidden border-b border-border/50">
 				<div

@@ -14,6 +14,7 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -25,12 +26,20 @@ type DocumentHandler struct {
 	activitySvc     docdom.ActivityService
 	avatarSvc       attachmentdom.AvatarService
 	notificationSvc notificationdom.Service
+	listScoper      ListScoper
 }
 
 // NewDocumentHandler returns a DocumentHandler wired to the doc service and
 // activity service.
 func NewDocumentHandler(svc docdom.Service, activitySvc docdom.ActivityService) *DocumentHandler {
 	return &DocumentHandler{svc: svc, activitySvc: activitySvc}
+}
+
+// WithDocListScoper limits document lists and search to the documents the
+// caller may read, inside the query (see scopedContext).
+func (h *DocumentHandler) WithDocListScoper(s ListScoper) *DocumentHandler {
+	h.listScoper = s
+	return h
 }
 
 // WithDocAvatarService configures avatar URL resolution for activity
@@ -214,7 +223,12 @@ func (h *DocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Request) 
 		cursor = &raw
 	}
 
-	docs, hasMore, err := h.svc.ListDocuments(r.Context(), projectID, folderID, search, cursor, limit)
+	ctx, err := scopedContext(r, h.listScoper, iam.ActionDocsRead, projectID, "doc")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	docs, hasMore, err := h.svc.ListDocuments(ctx, projectID, folderID, search, cursor, limit)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -254,7 +268,12 @@ func (h *DocumentHandler) SearchDocuments(w http.ResponseWriter, r *http.Request
 		}
 		limit = n
 	}
-	hits, err := h.svc.SearchDocuments(r.Context(), projectID, q, limit)
+	ctx, err := scopedContext(r, h.listScoper, iam.ActionDocsRead, projectID, "doc")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	hits, err := h.svc.SearchDocuments(ctx, projectID, q, limit)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

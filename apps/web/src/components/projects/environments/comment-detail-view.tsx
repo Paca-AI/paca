@@ -66,11 +66,11 @@ export function CommentDetailView({
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canResolve = hasProjectPermission("annotations.resolve");
-	const canReply = hasProjectPermission("annotations.write");
+	const canResolve = hasProjectPermission("annotations:resolve");
+	const canReply = hasProjectPermission("annotations:write");
 	const canCreateTask =
-		hasProjectPermission("annotations.write") &&
-		hasProjectPermission("tasks.write");
+		hasProjectPermission("annotations:write") &&
+		hasProjectPermission("tasks:write");
 
 	const annotationKey = annotationQueryOptions(
 		projectId,

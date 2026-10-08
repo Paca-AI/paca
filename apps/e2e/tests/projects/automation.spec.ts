@@ -11,7 +11,7 @@
 // apps/web): the per-card delete button and the builder's rename (pencil)
 // button. They are located structurally instead of by name.
 
-import { ensureLoginForm } from '../helpers/e2e-api';
+import { allowPolicy, ensureLoginForm, grantedActions } from '../helpers/e2e-api';
 import {
 	type APIRequestContext,
 	expect,
@@ -208,7 +208,7 @@ async function listStatusNames(
 
 /**
  * Creates a non-admin user, clears their forced first-login password change,
- * and adds them to `projectId` with a role granting exactly `permissions`.
+ * and adds them to `projectId` with a role granting exactly `permissions` (IAM actions such as "tasks:read").
  */
 async function createLimitedMember(
 	request: APIRequestContext,
@@ -252,8 +252,10 @@ async function createLimitedMember(
 		`${BASE_URL}/api/v1/projects/${projectId}/roles`,
 		{
 			data: {
-				role_name: `E2E Automation Role ${RUN_ID}_${memberCounter}`,
-				permissions,
+				name: `E2E Automation Role ${RUN_ID}_${memberCounter}`,
+				description: '',
+				// projects:read lets the member open the project at all.
+				policy: allowPolicy(['projects:read', ...grantedActions(permissions)], { projectId }),
 			},
 		},
 	);
@@ -262,7 +264,7 @@ async function createLimitedMember(
 
 	const memberResp = await request.post(
 		`${BASE_URL}/api/v1/projects/${projectId}/members`,
-		{ data: { user_id: userId, project_role_id: roleId } },
+		{ data: { user_id: userId, role_ids: [roleId] } },
 	);
 	expect(memberResp.ok()).toBeTruthy();
 
@@ -414,7 +416,7 @@ test.describe("Workflow automation", () => {
 			request,
 		}) => {
 			const member = await createLimitedMember(request, projectId, {
-				"workflows.read": true,
+				"workflows:read": true,
 			});
 			await signIn(page, member.username, member.password);
 			await openAutomationList(page, projectId);
@@ -435,7 +437,7 @@ test.describe("Workflow automation", () => {
 			const name = `${TEST_PROJECT_PREFIX}READONLY_${RUN_ID}`;
 			await createAutomation(request, projectId, { name });
 			const member = await createLimitedMember(request, projectId, {
-				"workflows.read": true,
+				"workflows:read": true,
 			});
 			await signIn(page, member.username, member.password);
 			await openAutomationList(page, projectId);
@@ -451,7 +453,7 @@ test.describe("Workflow automation", () => {
 			request,
 		}) => {
 			const member = await createLimitedMember(request, projectId, {
-				"tasks.read": true,
+				"tasks:read": true,
 			});
 			await signIn(page, member.username, member.password);
 			await openAutomationList(page, projectId);
@@ -777,7 +779,7 @@ test.describe("Workflow automation", () => {
 			const name = `${TEST_PROJECT_PREFIX}LOCKED_${RUN_ID}`;
 			const automationId = await createAutomation(request, projectId, { name });
 			const member = await createLimitedMember(request, projectId, {
-				"workflows.read": true,
+				"workflows:read": true,
 			});
 			await signIn(page, member.username, member.password);
 			await openBuilder(page, projectId, automationId, name);
@@ -894,7 +896,7 @@ test.describe("Workflow automation", () => {
 			request,
 		}) => {
 			const member = await createLimitedMember(request, projectId, {
-				"workflows.read": true,
+				"workflows:read": true,
 			});
 			await signIn(page, member.username, member.password);
 			await openBuilder(page, projectId, automationId, automationName);

@@ -28,6 +28,10 @@
 				"notFound": "Este plugin ya no está disponible en el mercado de plugins.",
 				"nameTaken": "Ya hay un plugin instalado con este nombre.",
 				"generic": "Ocurrió un error. Inténtalo de nuevo."
+			},
+			"legacyPermissions": {
+				"badge": "Usa permisos antiguos",
+				"description": "Este plugin todavía usa el modelo de permisos antiguo requirePermissions. Sigue funcionando, pero no se puede reinstalar ni actualizar hasta que su autor publique una versión que use requireActions."
 			}
 		}
 	},

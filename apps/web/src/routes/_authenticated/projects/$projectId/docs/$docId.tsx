@@ -35,7 +35,7 @@ function DocEditorPage() {
 	const { t } = useTranslation("projects");
 	const { projectId, docId } = Route.useParams();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canWrite = hasProjectPermission("docs.write");
+	const canWrite = hasProjectPermission("docs:write");
 	const qc = useQueryClient();
 
 	const {

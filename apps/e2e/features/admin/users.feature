@@ -5,13 +5,15 @@ Feature: User management
   Sensitive actions should clearly communicate their impact before they are
   confirmed.
 
-  A role is its own permission (global_roles.assign), separate from managing
-  users (users.write): creating or editing a user never carries one. Creating a
+  A role is its own permission (roles:assign), separate from managing
+  users (users:write): creating or editing a user never carries one. Creating a
   user is a short wizard - 1 Details, 2 Role, 3 Password. The first step's button
   creates the account, which starts with the default global role; the role step
   is a separate request that changes it, and the one-time password comes last.
   Someone who may not assign roles gets 1 Details, 2 Password. A role is changed
-  later from the role button in the users table.
+  later from the "Change role" button next to the role badges in the users table.
+  A user can hold several roles (a searchable multi-select, not a single choice); what they may do is everything the
+  roles allow, minus anything a role denies.
 
   @authenticated
   Rule: Viewing the users list
@@ -27,7 +29,7 @@ Feature: User management
       And the users summary should show the total number of users in the system
 
     Scenario: Users table displays expected columns and current admin
-      Then the users table should have columns "Username", "Full Name", "Role", and "Created"
+      Then the users table should have columns "User", "Role", and "Created"
       And the current signed-in administrator should appear in the users table
       And the administrator row should show the role "SUPER_ADMIN"
 
@@ -73,7 +75,7 @@ Feature: User management
       And the role step should list "ADMIN"
       And the role step should list "SUPER_ADMIN"
       And the role step should list "USER"
-      And "USER" should be selected and marked as both the current role and the default
+      And "USER" should be checked and marked as both the current role and the default
       And the user "BDD_ROLE_STEP" should exist with the role "USER"
       And the dialog should not offer "Back" or "Cancel"
       And the dialog should not show the temporary password yet
@@ -120,7 +122,7 @@ Feature: User management
       And the user fills the username with "BDD_ADMIN_USER"
       And the user fills the full name with "BDD Admin User"
       And the user clicks "Create user"
-      And the user selects the role "ADMIN" on the role step
+      And the user checks the role "ADMIN" and unchecks "USER" on the role step
       And the user clicks "Assign role"
       Then the "User created" dialog should appear on step 3 of 3
       And the dialog should show the role "ADMIN"
@@ -179,26 +181,26 @@ Feature: User management
       When the user clicks the role of "ROLE_USER"
       Then the "Change role" dialog should open
       And the dialog should say to choose a role for "ROLE_USER"
-      And the dialog should list the available roles with the current role "USER" selected and marked as current
-      And "Assign role" should be disabled until a different role is chosen
+      And the dialog should list the available roles with the current role "USER" checked and marked as current
+      And "Assign role" should be disabled until the set of roles changes
 
     Scenario: Assigning another role updates the user
       When the user clicks the role of "ROLE_USER"
-      And the user chooses the role "ADMIN"
+      And the user checks the role "ADMIN" and unchecks "USER"
       And the user clicks "Assign role"
       Then the dialog should close
       And the user row should show the role "ADMIN"
 
     Scenario: A full-access role is flagged before it is assigned
       When the user clicks the role of "ROLE_USER"
-      And the user chooses the role "SUPER_ADMIN"
+      And the user checks the role "SUPER_ADMIN"
       Then the dialog should warn that the role has full access
       When the user clicks "Cancel"
       Then the user row should show the role "USER"
 
     Scenario: Changing your own role warns that access can be lost
       When the user clicks the role of the signed-in administrator
-      And the user chooses the role "USER"
+      And the user unchecks the role "SUPER_ADMIN"
       Then the dialog should warn that this is their own account and access to the page can be lost
       When the user clicks "Cancel"
       Then the administrator row should show the role "SUPER_ADMIN"
@@ -206,10 +208,10 @@ Feature: User management
   Rule: Roles are a separate permission from managing users
 
     Scenario: Writing users without assigning roles gives a two-step wizard and a plain role label
-      Given the user has the "users.read" and "users.write" global permissions
-      And the user does not have the "global_roles.assign" global permission
+      Given the user has the "users:read" and "users:write" global permissions
+      And the user does not have the "roles:assign" global permission
       When the user navigates to the users page
-      Then the roles in the users table should be plain text rather than buttons
+      Then the users table should show role badges without a "Change role" button
       When the user clicks the "New User" button
       Then the "Create User" dialog should open on step 1 of 2
       And the dialog should offer "Create user" rather than "Continue"
@@ -219,13 +221,13 @@ Feature: User management
       And the dialog should show the role "USER"
 
     Scenario: Assigning roles without writing users offers the role button but no user editing
-      Given the user has the "users.read", "global_roles.read" and "global_roles.assign" global permissions
-      And the user does not have the "users.write" global permission
+      Given the user has the "users:read", "roles:read" and "roles:assign" global permissions
+      And the user does not have the "users:write" global permission
       And a user named "TARGET_USER" exists
       When the user navigates to the users page
       Then the "New User" button, the edit actions and the reset password actions should not be visible
-      When the user changes the role of "TARGET_USER" to "ADMIN"
-      Then the user row should show the role "ADMIN"
+      When the user changes the role of "TARGET_USER" to a role that grants no more than the assigner holds
+      Then the user row should show that role
 
   @authenticated
   Rule: Resetting a password

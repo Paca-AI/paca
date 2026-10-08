@@ -313,6 +313,20 @@ func (r *DocumentRepository) ListDocuments(ctx context.Context, projectID uuid.U
 		args = append(args, folderID.String())
 		query += fmt.Sprintf(" AND folder_id = $%d", len(args))
 	}
+	// The caller's IAM scope narrows the query itself, ahead of the cursor
+	// and LIMIT, so every page is a full page of allowed documents.
+	sink := &argList{args: args}
+	clause, none, err := scopeSQL(ctx, "doc", docScopeColumns, sink)
+	if err != nil {
+		return nil, false, err
+	}
+	if none {
+		return []*docdom.Document{}, false, nil
+	}
+	if clause != "" {
+		query += " AND " + clause
+	}
+	args = sink.args
 	if search != nil {
 		if q := strings.TrimSpace(*search); q != "" {
 			args = append(args, "%"+escapeLikePattern(q)+"%")
@@ -358,14 +372,27 @@ func (r *DocumentRepository) ListDocuments(ctx context.Context, projectID uuid.U
 // like "type":"paragraph" never match.
 func (r *DocumentRepository) SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]*docdom.Document, error) {
 	pattern := "%" + escapeLikePattern(strings.TrimSpace(query)) + "%"
+	sink := &argList{args: []any{projectID.String(), pattern}}
+	clause, none, err := scopeSQL(ctx, "doc", docScopeColumns, sink)
+	if err != nil {
+		return nil, err
+	}
+	if none {
+		return []*docdom.Document{}, nil
+	}
+	scopeAnd := ""
+	if clause != "" {
+		scopeAnd = " AND " + clause
+	}
+	limitP := sink.addArg(limit)
 	var records []documentRecord
-	err := r.db.SelectContext(ctx, &records, `SELECT `+documentCols+` FROM documents
+	err = r.db.SelectContext(ctx, &records, `SELECT `+documentCols+` FROM documents
 		WHERE project_id = $1 AND deleted_at IS NULL
 		  AND (title ILIKE $2 OR EXISTS (
 		        SELECT 1 FROM jsonb_path_query(COALESCE(content, 'null'::jsonb), 'lax $.**.text') AS t
-		        WHERE jsonb_typeof(t) = 'string' AND (t #>> '{}') ILIKE $2))
+		        WHERE jsonb_typeof(t) = 'string' AND (t #>> '{}') ILIKE $2))`+scopeAnd+`
 		ORDER BY updated_at DESC, id ASC
-		LIMIT $3`, projectID.String(), pattern, limit)
+		LIMIT `+limitP, sink.args...)
 	if err != nil {
 		return nil, err
 	}

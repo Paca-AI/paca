@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
 	pluginrt "github.com/Paca-AI/api/internal/platform/plugin"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
@@ -109,12 +108,11 @@ func newPluginRuntimeE2EEnv(t *testing.T, limits pluginrt.ResourceLimits) *plugi
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	runtime := pluginrt.NewRuntime(store, pluginrt.HostServices{DB: db.DB, Log: log}, limits, log)
 
-	authzStore := pgRepo.NewAuthzPermissionStore(db)
+	authorizer := pgRepo.NewIAMAuthorizer(db)
 	pluginRepo := pgRepo.NewPluginRepository(db)
 	pluginService := pluginsvc.New(pluginRepo)
 
 	tm := jwttoken.New(e2eJWTSecret, e2eAccessTTL, e2eRefreshTTL)
-	authorizer := authz.NewAuthorizer(authzStore)
 
 	// WithRouteAuth wires the handler's own auth dependencies, used by
 	// ProxyRequest's per-route middleware policy (e.g. a plugin route
@@ -125,7 +123,7 @@ func newPluginRuntimeE2EEnv(t *testing.T, limits pluginrt.ResourceLimits) *plugi
 
 	engine := router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authorizer,
+		IAM:          authorizer,
 		Health:       handler.NewHealthHandler(),
 		Plugin:       pluginHandler,
 		Log:          log,
@@ -151,7 +149,7 @@ func (p *pluginRuntimeE2EEnv) issueAdminToken(t *testing.T) string {
 	t.Helper()
 	seedUser(t, p.env, "plugin-rt-admin", "Admin1234!", "Plugin Runtime Admin")
 	// See pluginE2EEnv.issueAdminToken: the account must really hold ADMIN.
-	assignGlobalRolesByName(t, p.env, "plugin-rt-admin", "ADMIN")
+	assignPlatformRole(t, p.env, "plugin-rt-admin", "ADMIN")
 	admin, err := p.env.userRepo.FindByUsername(p.env.ctx, "plugin-rt-admin")
 	if err != nil {
 		t.Fatalf("find admin user: %v", err)

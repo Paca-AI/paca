@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
+import { roleErrorKey } from "@/components/roles/role-errors";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -13,16 +13,15 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
-	deleteProjectRole,
-	type ProjectRole,
+	deleteRole,
 	projectRolesQueryOptions,
-} from "@/lib/project-api";
+	type Role,
+} from "@/lib/role-api";
 
 interface DeleteProjectRoleDialogProps {
 	projectId: string;
-	role: ProjectRole;
+	role: Role;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }
@@ -34,11 +33,12 @@ export function DeleteProjectRoleDialog({
 	onOpenChange,
 }: DeleteProjectRoleDialogProps) {
 	const { t } = useTranslation("projects");
+	const { t: tr } = useTranslation("roles");
 	const queryClient = useQueryClient();
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
-		mutationFn: () => deleteProjectRole(projectId, role.id),
+		mutationFn: () => deleteRole(role.id, projectId),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: projectRolesQueryOptions(projectId).queryKey,
@@ -46,24 +46,7 @@ export function DeleteProjectRoleDialog({
 			onOpenChange(false);
 		},
 		onError: (err: unknown) => {
-			const code = getApiErrorCode(err);
-			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.ProjectRoleNotFound]: t(
-					"roles.deleteDialog.errors.notFound",
-				),
-				[ApiErrorCode.ProjectRoleHasMembers]: t(
-					"roles.deleteDialog.errors.hasMembers",
-				),
-				[ApiErrorCode.Forbidden]: t("roles.deleteDialog.errors.forbidden"),
-				[ApiErrorCode.InternalError]: t(
-					"roles.deleteDialog.errors.internalError",
-				),
-			};
-			const fallback =
-				err instanceof Error
-					? err.message
-					: t("roles.deleteDialog.errors.generic");
-			setError((code && messages[code]) ?? fallback);
+			setError(tr(`errors.${roleErrorKey(err)}` as never));
 		},
 	});
 
@@ -84,7 +67,7 @@ export function DeleteProjectRoleDialog({
 					<DialogDescription className="mt-1">
 						{t("roles.deleteDialog.confirmTextPrefix")}{" "}
 						<span className="font-mono font-semibold text-foreground">
-							{role.role_name}
+							{role.name}
 						</span>
 						{t("roles.deleteDialog.confirmTextSuffix")}
 					</DialogDescription>

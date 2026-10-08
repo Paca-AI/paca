@@ -69,7 +69,7 @@ function ProjectActivityPage() {
 	const { projectId } = Route.useParams();
 	const { hasProjectPermission, isLoading: isPermissionsLoading } =
 		useProjectPermissions(projectId);
-	const canRead = hasProjectPermission("project.activities.read");
+	const canRead = hasProjectPermission("project.activities:read");
 	const [filters, setFilters] = useState<Filters>({});
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));

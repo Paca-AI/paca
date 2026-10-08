@@ -23,22 +23,14 @@ vi.mock("./api-client", () => ({
 }));
 
 import {
-	assignUserGlobalRole,
-	createGlobalRole,
 	createUser,
-	deleteGlobalRole,
 	deleteUser,
-	type GlobalRole,
-	getGlobalRoles,
 	getMyGlobalPermissions,
 	getUsers,
 	getUsersByCursor,
-	globalRolesQueryOptions,
 	myPermissionsQueryOptions,
 	resetUserPassword,
-	setDefaultGlobalRole,
 	type User,
-	updateGlobalRole,
 	updateUser,
 	usersInfiniteQueryOptions,
 	usersQueryOptions,
@@ -49,111 +41,23 @@ describe("admin-api", () => {
 		vi.clearAllMocks();
 	});
 
-	it("unwraps global roles from response", async () => {
-		const roles: GlobalRole[] = [
-			{
-				id: "r1",
-				name: "Admin",
-				permissions: { "users.manage": true },
-				is_default: false,
-				created_at: "2026-03-29T00:00:00.000Z",
-				updated_at: "2026-03-29T00:00:00.000Z",
-			},
-		];
-		mockGet.mockResolvedValue({
-			data: { data: roles, error_code: null, message: "ok" },
-		});
-
-		await expect(getGlobalRoles()).resolves.toEqual(roles);
-		expect(mockGet).toHaveBeenCalledWith("/admin/global-roles");
-	});
-
-	it("puts to set-default to make a role the default, and unwraps the role", async () => {
-		const role: GlobalRole = {
-			id: "r9",
-			name: "Member",
-			permissions: {},
-			is_default: true,
-			created_at: "2026-03-29T00:00:00.000Z",
-			updated_at: "2026-03-29T00:02:00.000Z",
-		};
-		mockPut.mockResolvedValue({
-			data: { data: role, error_code: null, message: "ok" },
-		});
-
-		await expect(setDefaultGlobalRole("r9")).resolves.toEqual(role);
-		expect(mockPut).toHaveBeenCalledWith("/admin/global-roles/r9/set-default");
-	});
-
-	it("posts payload to create role and unwraps response", async () => {
-		const payload = {
-			name: "Editor",
-			permissions: { "projects.read": true },
-		};
-		const created: GlobalRole = {
-			id: "r2",
-			name: "Editor",
-			permissions: payload.permissions,
-			is_default: false,
-			created_at: "2026-03-29T00:00:00.000Z",
-			updated_at: "2026-03-29T00:00:00.000Z",
-		};
-		mockPost.mockResolvedValue({
-			data: { data: created, error_code: null, message: "ok" },
-		});
-
-		await expect(createGlobalRole(payload)).resolves.toEqual(created);
-		expect(mockPost).toHaveBeenCalledWith("/admin/global-roles", payload);
-	});
-
-	it("patches role by id and unwraps response", async () => {
-		const payload = {
-			name: "Support",
-			permissions: { "tickets.read": true },
-		};
-		const updated: GlobalRole = {
-			id: "r3",
-			name: "Support",
-			permissions: payload.permissions,
-			is_default: false,
-			created_at: "2026-03-29T00:00:00.000Z",
-			updated_at: "2026-03-29T00:01:00.000Z",
-		};
-		mockPatch.mockResolvedValue({
-			data: { data: updated, error_code: null, message: "ok" },
-		});
-
-		await expect(updateGlobalRole("r3", payload)).resolves.toEqual(updated);
-		expect(mockPatch).toHaveBeenCalledWith("/admin/global-roles/r3", payload);
-	});
-
-	it("deletes role by id", async () => {
-		mockDelete.mockResolvedValue({});
-
-		await expect(deleteGlobalRole("r4")).resolves.toBeUndefined();
-		expect(mockDelete).toHaveBeenCalledWith("/admin/global-roles/r4");
-	});
-
 	it("unwraps global permissions list from response", async () => {
 		mockGet.mockResolvedValue({
 			data: {
-				data: { permissions: ["users.read", "projects.*"] },
+				data: { actions: ["users:read", "projects:*"] },
 				error_code: null,
 				message: "ok",
 			},
 		});
 
 		await expect(getMyGlobalPermissions()).resolves.toEqual([
-			"users.read",
-			"projects.*",
+			"users:read",
+			"projects:*",
 		]);
 		expect(mockGet).toHaveBeenCalledWith("/users/me/global-permissions");
 	});
 
 	it("exposes query option contracts", () => {
-		expect(globalRolesQueryOptions.queryKey).toEqual(["admin", "global-roles"]);
-		expect(typeof globalRolesQueryOptions.queryFn).toBe("function");
-
 		expect(myPermissionsQueryOptions.queryKey).toEqual([
 			"auth",
 			"me",
@@ -171,7 +75,7 @@ describe("admin-api", () => {
 		id: "u1",
 		username: "alice",
 		full_name: "Alice Smith",
-		role: "Admin",
+		roles: [{ id: "r1", name: "Admin" }],
 		must_change_password: false,
 		created_at: "2026-01-01T00:00:00.000Z",
 	};
@@ -285,16 +189,6 @@ describe("admin-api", () => {
 
 		await expect(createUser(payload)).resolves.toEqual(mockUser);
 		expect(mockPost).toHaveBeenCalledWith("/admin/users", payload);
-	});
-
-	it("assigns a user's global role through its own endpoint", async () => {
-		mockPut.mockResolvedValue({ data: { data: {}, error_code: null } });
-
-		await assignUserGlobalRole("u1", "role-admin");
-
-		expect(mockPut).toHaveBeenCalledWith("/admin/users/u1/global-roles", {
-			role_ids: ["role-admin"],
-		});
 	});
 
 	it("patches user by id and unwraps response", async () => {
