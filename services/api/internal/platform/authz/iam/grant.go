@@ -109,16 +109,6 @@ func patternCovers(callerPattern, candidatePattern string) bool {
 		// Check prefix match (all segments before trailing *)
 		callerPrefix := callerSegs[:len(callerSegs)-1]
 
-		// If candidate also has trailing *, it must not be longer than caller
-		// "project/P/*" does NOT cover "project/P/*/*" because the latter
-		// can match resources at depth+1 that the former cannot
-		// But "project/P/*/*" can cover "project/P/*" (it's more restrictive)
-		if candidateTrailing && len(candidateSegs) < len(callerSegs) {
-			// Candidate has fewer segments: "project/P/*" when caller is "project/P/*/*"
-			// This is valid - caller covers it
-			// Fall through to prefix check
-		}
-
 		// Candidate must match the prefix
 		for i := 0; i < len(callerPrefix); i++ {
 			if i >= len(candidateSegs) {
