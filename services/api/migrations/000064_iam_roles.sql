@@ -226,8 +226,17 @@ CREATE FUNCTION pg_temp.legacy_actions(perms jsonb) RETURNS jsonb LANGUAGE sql I
         -- expanded actions the wildcard's own action does not already match
         SELECT e.act FROM expanded e
         WHERE NOT pg_temp.iam_action_match(pg_temp.legacy_key_to_action(e.wildcard), e.act)
+    ), filtered AS (
+        -- Filter out non-existent :read actions for project.settings
+        -- These legacy permissions were checked via tasks:read in the old system
+        SELECT act FROM acts
+        WHERE act NOT IN (
+            'project.settings.custom_fields:read',
+            'project.settings.task_statuses:read',
+            'project.settings.task_types:read'
+        )
     )
-    SELECT COALESCE(jsonb_agg(act ORDER BY act), '[]'::jsonb) FROM (SELECT DISTINCT act FROM acts) d
+    SELECT COALESCE(jsonb_agg(act ORDER BY act), '[]'::jsonb) FROM (SELECT DISTINCT act FROM filtered) d
 $$;
 
 -- <<< iam-migration-helpers
