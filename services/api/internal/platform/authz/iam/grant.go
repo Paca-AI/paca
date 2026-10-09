@@ -94,49 +94,91 @@ func patternCovers(callerPattern, candidatePattern string) bool {
 	callerSegs := strings.Split(callerPattern, "/")
 	candidateSegs := strings.Split(candidatePattern, "/")
 
-	// Check each segment for coverage
-	for i := 0; i < len(candidateSegs); i++ {
-		if i >= len(callerSegs) {
-			// Candidate has more segments, caller must end with trailing "*"
-			return false
+	// If caller ends with trailing "*", check if candidate is within that scope
+	callerTrailing := len(callerSegs) > 0 && callerSegs[len(callerSegs)-1] == "*"
+	candidateTrailing := len(candidateSegs) > 0 && candidateSegs[len(candidateSegs)-1] == "*"
+
+	if callerTrailing {
+		// Caller "project/P/*" covers:
+		// - "project/P" (trailing * matches zero segments)
+		// - "project/P/*" (trailing * matches zero or more)
+		// - "project/P/task/123" (trailing * matches remaining)
+		// But does NOT cover:
+		// - "project/Q/*" (different prefix)
+
+		// Check prefix match (all segments before trailing *)
+		callerPrefix := callerSegs[:len(callerSegs)-1]
+
+		// If candidate also has trailing *, it must not be longer than caller
+		// "project/P/*" does NOT cover "project/P/*/*" because the latter
+		// can match resources at depth+1 that the former cannot
+		// But "project/P/*/*" can cover "project/P/*" (it's more restrictive)
+		if candidateTrailing && len(candidateSegs) < len(callerSegs) {
+			// Candidate has fewer segments: "project/P/*" when caller is "project/P/*/*"
+			// This is valid - caller covers it
+			// Fall through to prefix check
 		}
 
+		// Candidate must match the prefix
+		for i := 0; i < len(callerPrefix); i++ {
+			if i >= len(candidateSegs) {
+				return false // candidate shorter than caller prefix
+			}
+
+			candidateSeg := candidateSegs[i]
+			if candidateSeg == "*" && i == len(candidateSegs)-1 && candidateTrailing {
+				// This is the candidate's trailing *, at position before caller's trailing *
+				// e.g., caller "project/P/*/*", candidate "project/P/*"
+				// The candidate can match "project/P" which caller cannot (requires 2 more segments)
+				return false
+			}
+
+			if callerPrefix[i] == "*" {
+				// Mid-path wildcard in caller
+				if candidateSeg != "*" {
+					// Caller has mid-path *, candidate has specific segment - OK
+					continue
+				}
+			} else if candidateSeg == "*" {
+				// Candidate has wildcard where caller has specific segment
+				// Mid-path * in candidate not covered by specific segment
+				return false
+			} else if callerPrefix[i] != candidateSeg {
+				return false // different segments
+			}
+		}
+
+		// If candidate has trailing * and same length as caller, that's OK
+		// If candidate is longer (more segments), check if it's all covered
+		if candidateTrailing && len(candidateSegs) == len(callerSegs) {
+			return true // Same pattern
+		}
+
+		// For non-trailing candidate or shorter candidate, prefix match is enough
+		return true
+	}
+
+	// Caller does not have trailing *, must be exact match
+	if len(candidateSegs) != len(callerSegs) {
+		return false
+	}
+
+	for i := 0; i < len(candidateSegs); i++ {
 		cand := candidateSegs[i]
 		call := callerSegs[i]
 
-		// If candidate has trailing "*", it matches zero or more segments
-		if cand == "*" && i == len(candidateSegs)-1 {
-			// Caller must have trailing "*" at same or earlier position
-			if call == "*" && i == len(callerSegs)-1 {
-				return true // both end with "*" at same position
-			}
-			// Caller has more specific segments after this position - not covered
-			return false
-		}
-
-		// If caller has trailing "*" and we're at the end, it covers everything after
-		if call == "*" && i == len(callerSegs)-1 {
-			return true
-		}
-
-		// Mid-path wildcards: both must be wildcards or exact matches
 		if cand == "*" {
+			// Candidate has wildcard (mid-path or trailing)
 			if call != "*" {
-				return false // candidate's wildcard not covered by specific segment
+				// Caller has specific segment, candidate wildcard not covered
+				return false
 			}
 		} else if call == "*" {
-			// Caller's wildcard covers candidate's specific segment
+			// Caller wildcard covers candidate's specific segment
 			continue
 		} else if cand != call {
 			return false // different specific segments
 		}
-	}
-
-	// Candidate pattern exhausted, caller must not have extra segments
-	// (unless caller ends with trailing "*")
-	if len(callerSegs) > len(candidateSegs) {
-		// Caller has more segments - only OK if last is trailing "*" we already checked
-		return false
 	}
 
 	return true
