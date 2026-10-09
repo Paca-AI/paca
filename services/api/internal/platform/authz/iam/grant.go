@@ -72,12 +72,74 @@ func pairCovered(grants []Grant, action, resource string) bool {
 		}
 		for _, s := range g.Policy.Statements {
 			if s.Effect == EffectAllow && len(s.Conditions) == 0 &&
-				anyMatch(s.Actions, action, MatchAction) && anyMatch(s.Resources, resource, MatchResource) {
+				anyMatch(s.Actions, action, MatchAction) && anyMatch(s.Resources, resource, patternCovers) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// patternCovers reports whether every resource matching candidatePattern also
+// matches callerPattern (language inclusion). This is stricter than MatchResource,
+// which only checks if the candidate pattern string itself matches.
+func patternCovers(callerPattern, candidatePattern string) bool {
+	if callerPattern == "*" {
+		return true // caller's wildcard covers everything
+	}
+	if candidatePattern == "*" {
+		return callerPattern == "*" // only "*" covers "*"
+	}
+
+	callerSegs := strings.Split(callerPattern, "/")
+	candidateSegs := strings.Split(candidatePattern, "/")
+
+	// Check each segment for coverage
+	for i := 0; i < len(candidateSegs); i++ {
+		if i >= len(callerSegs) {
+			// Candidate has more segments, caller must end with trailing "*"
+			return false
+		}
+
+		cand := candidateSegs[i]
+		call := callerSegs[i]
+
+		// If candidate has trailing "*", it matches zero or more segments
+		if cand == "*" && i == len(candidateSegs)-1 {
+			// Caller must have trailing "*" at same or earlier position
+			if call == "*" && i == len(callerSegs)-1 {
+				return true // both end with "*" at same position
+			}
+			// Caller has more specific segments after this position - not covered
+			return false
+		}
+
+		// If caller has trailing "*" and we're at the end, it covers everything after
+		if call == "*" && i == len(callerSegs)-1 {
+			return true
+		}
+
+		// Mid-path wildcards: both must be wildcards or exact matches
+		if cand == "*" {
+			if call != "*" {
+				return false // candidate's wildcard not covered by specific segment
+			}
+		} else if call == "*" {
+			// Caller's wildcard covers candidate's specific segment
+			continue
+		} else if cand != call {
+			return false // different specific segments
+		}
+	}
+
+	// Candidate pattern exhausted, caller must not have extra segments
+	// (unless caller ends with trailing "*")
+	if len(callerSegs) > len(candidateSegs) {
+		// Caller has more segments - only OK if last is trailing "*" we already checked
+		return false
+	}
+
+	return true
 }
 
 func pairDenied(grants []Grant, action, resource string) bool {

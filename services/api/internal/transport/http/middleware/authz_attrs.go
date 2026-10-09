@@ -68,8 +68,10 @@ func RequireRequestAttrsFromRequest(a *iam.Authorizer, action iam.Action, res Re
 				return
 			}
 			var body map[string]json.RawMessage
-			if json.Unmarshal(buf, &body) != nil {
-				body = nil // not a JSON object: the handler's 400, no attributes set
+			dec := json.NewDecoder(bytes.NewReader(buf))
+			dec.DisallowUnknownFields()
+			if dec.Decode(&body) != nil || dec.More() {
+				body = nil // not a JSON object or has trailing bytes: the handler's 400, no attributes set
 			}
 			attrs, err := extract(r, body)
 			if err != nil {

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 
@@ -40,8 +41,9 @@ func RequireViewIDs(a *iam.Authorizer, action iam.Action, projectParam string) f
 			var body struct {
 				ViewIDs []uuid.UUID `json:"view_ids"`
 			}
-			if json.Unmarshal(buf, &body) != nil {
-				next.ServeHTTP(w, r) // not the shape the handler binds: its 400
+			dec := json.NewDecoder(bytes.NewReader(buf))
+			if dec.Decode(&body) != nil || dec.More() {
+				next.ServeHTTP(w, r) // not the shape the handler binds or has trailing bytes: its 400
 				return
 			}
 			if a == nil {

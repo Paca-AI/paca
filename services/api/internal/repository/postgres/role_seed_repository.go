@@ -102,7 +102,7 @@ func (r *RoleSeedRepository) upsertSystemRole(ctx context.Context, def SeedRole)
 		// can create a separate role with a different name.
 		res, err := tx.ExecContext(ctx, `
 			UPDATE roles SET policy = $2::jsonb, description = $3, is_system = TRUE, updated_at = NOW()
-			WHERE id = $1::uuid AND (policy::text != $2 OR description != $3 OR NOT is_system)`,
+			WHERE id = $1::uuid AND (policy IS DISTINCT FROM $2::jsonb OR description != $3 OR NOT is_system)`,
 			cur.ID, string(def.Policy), def.Description)
 		if err != nil {
 			return fmt.Errorf("role seed: update %s: %w", def.Name, err)
