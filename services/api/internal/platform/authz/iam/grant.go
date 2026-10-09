@@ -133,17 +133,18 @@ func patternCovers(callerPattern, candidatePattern string) bool {
 				return false
 			}
 
-			if callerPrefix[i] == "*" {
+			switch {
+			case callerPrefix[i] == "*":
 				// Mid-path wildcard in caller
 				if candidateSeg != "*" {
 					// Caller has mid-path *, candidate has specific segment - OK
 					continue
 				}
-			} else if candidateSeg == "*" {
+			case candidateSeg == "*":
 				// Candidate has wildcard where caller has specific segment
 				// Mid-path * in candidate not covered by specific segment
 				return false
-			} else if callerPrefix[i] != candidateSeg {
+			case callerPrefix[i] != candidateSeg:
 				return false // different segments
 			}
 		}
@@ -167,16 +168,17 @@ func patternCovers(callerPattern, candidatePattern string) bool {
 		cand := candidateSegs[i]
 		call := callerSegs[i]
 
-		if cand == "*" {
+		switch {
+		case cand == "*":
 			// Candidate has wildcard (mid-path or trailing)
 			if call != "*" {
 				// Caller has specific segment, candidate wildcard not covered
 				return false
 			}
-		} else if call == "*" {
+		case call == "*":
 			// Caller wildcard covers candidate's specific segment
 			continue
-		} else if cand != call {
+		case cand != call:
 			return false // different specific segments
 		}
 	}
