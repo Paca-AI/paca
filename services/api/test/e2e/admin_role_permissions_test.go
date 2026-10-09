@@ -183,6 +183,7 @@ func TestUserRoleAssignmentIsItsOwnPrivilege(t *testing.T) {
 		editorName   = "user-editor"
 		assignerName = "role-assigner"
 		victimName   = "victim"
+		keeperName   = "keeper"
 		password     = "supersecret"
 	)
 	editorRoleID := createPlatformRole(t, env, "USER_EDITOR", "users:read", "users:write")
@@ -191,8 +192,10 @@ func TestUserRoleAssignmentIsItsOwnPrivilege(t *testing.T) {
 	seedUser(t, env, editorName, password, "Editor")
 	seedUser(t, env, assignerName, password, "Assigner")
 	seedUser(t, env, victimName, password, "Victim")
+	seedUser(t, env, keeperName, password, "Keeper")
 	assignPlatformRole(t, env, editorName, "USER_EDITOR")
 	assignPlatformRole(t, env, assignerName, "ROLE_ASSIGNER")
+	assignPlatformRole(t, env, keeperName, "SUPER_ADMIN")
 
 	victim, err := env.userRepo.FindByUsername(env.ctx, victimName)
 	if err != nil {

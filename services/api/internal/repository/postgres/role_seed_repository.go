@@ -96,12 +96,14 @@ func (r *RoleSeedRepository) upsertSystemRole(ctx context.Context, def SeedRole)
 		if perr != nil {
 			return fmt.Errorf("role seed: find %s: bad id: %w", def.Name, perr)
 		}
-		// An existing role keeps the policy and description it has: an
-		// administrator may have edited it, and a release must not undo that.
-		// It is only marked as a system role (not deletable).
+		// Reconcile the existing role: update its policy, description, and system
+		// flag to match what the release ships. System roles are security-critical
+		// and must match exactly; if an administrator needs a custom policy, they
+		// can create a separate role with a different name.
 		res, err := tx.ExecContext(ctx, `
-			UPDATE roles SET is_system = TRUE, updated_at = NOW()
-			WHERE id = $1::uuid AND NOT is_system`, cur.ID)
+			UPDATE roles SET policy = $2::jsonb, description = $3, is_system = TRUE, updated_at = NOW()
+			WHERE id = $1::uuid AND (policy::text != $2 OR description != $3 OR NOT is_system)`,
+			cur.ID, string(def.Policy), def.Description)
 		if err != nil {
 			return fmt.Errorf("role seed: update %s: %w", def.Name, err)
 		}
