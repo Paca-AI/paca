@@ -274,7 +274,7 @@ test.describe("Sidebar Navigation - Mobile Behavior", () => {
 	const signInAsAdminMobile = async (page: Page) => {
 		// Set mobile viewport (iPhone 8 size)
 		await page.setViewportSize({ width: 375, height: 667 });
-		await page.goto("http://localhost/");
+		await page.goto("/");
 		await ensureLoginForm(page);
 		await page.getByRole("textbox", { name: "Username" }).fill("admin");
 		await page
@@ -353,7 +353,7 @@ test.describe("Sidebar Navigation - Mobile Behavior", () => {
 			await page.setViewportSize(viewport);
 			// Wait for layout to stabilize after viewport change
 			await page.waitForTimeout(100);
-			await page.goto("http://localhost/");
+			await page.goto("/");
 
 			// Check if we need to sign in or if we're already authenticated
 			const usernameField = page.getByRole("textbox", { name: "Username" });
@@ -597,7 +597,7 @@ test.describe("Sidebar Navigation - Administration visibility by permission", ()
 		// Admin permissions are absent; the role only lets the user create projects.
 		await authRequest(request);
 		const username = await createMember(request, playwright, {
-			"projects.create": true,
+			"projects:create": true,
 		});
 
 		await signInAsMemberAndOpenSidebar(page, username);
@@ -622,7 +622,7 @@ test.describe("Sidebar Navigation - Administration visibility by permission", ()
 	}) => {
 		await authRequest(request);
 		const username = await createMember(request, playwright, {
-			"users.read": true,
+			"users:read": true,
 		});
 
 		await signInAsMemberAndOpenSidebar(page, username);

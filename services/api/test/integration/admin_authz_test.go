@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"bytes"
-	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,8 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
@@ -22,56 +20,10 @@ import (
 )
 
 type integrationPermissionStore struct {
-	globalPerms []authz.Permission
+	globalPerms []iam.Action
 }
 
-func (s *integrationPermissionStore) ListGlobalPermissions(context.Context, uuid.UUID) ([]authz.Permission, error) {
-	return append([]authz.Permission(nil), s.globalPerms...), nil
-}
-
-func (s *integrationPermissionStore) ListProjectPermissions(context.Context, uuid.UUID, uuid.UUID) ([]authz.Permission, error) {
-	return nil, nil
-}
-
-type fakeGlobalRoleService struct{}
-
-func (s *fakeGlobalRoleService) List(context.Context) ([]*globalroledom.GlobalRole, error) {
-	return []*globalroledom.GlobalRole{{
-		ID:          uuid.New(),
-		Name:        "TEST",
-		Permissions: map[string]any{"global_roles.read": true},
-	}}, nil
-}
-
-func (s *fakeGlobalRoleService) Create(context.Context, globalroledom.CreateInput) (*globalroledom.GlobalRole, error) {
-	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "CREATED", Permissions: map[string]any{}}, nil
-}
-
-func (s *fakeGlobalRoleService) Update(context.Context, uuid.UUID, globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
-	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "UPDATED", Permissions: map[string]any{}}, nil
-}
-
-func (s *fakeGlobalRoleService) Delete(context.Context, uuid.UUID) error {
-	return nil
-}
-
-func (s *fakeGlobalRoleService) ReplaceUserRoles(context.Context, uuid.UUID, []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
-	return []*globalroledom.GlobalRole{}, nil
-}
-
-func (s *fakeGlobalRoleService) FindByID(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) {
-	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "TEST", Permissions: map[string]any{}}, nil
-}
-
-func (s *fakeGlobalRoleService) SetDefault(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) {
-	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "TEST", Permissions: map[string]any{}, IsDefault: true}, nil
-}
-
-func (s *fakeGlobalRoleService) FindDefault(context.Context) (*globalroledom.GlobalRole, error) {
-	return nil, globalroledom.ErrNoDefault
-}
-
-func buildAdminTestRouter(perms []authz.Permission) http.Handler {
+func buildAdminTestRouter(perms []iam.Action) http.Handler {
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	store := &fakeRefreshStore{}
 	userRepo := newFakeUserRepo()
@@ -81,11 +33,10 @@ func buildAdminTestRouter(perms []authz.Permission) http.Handler {
 
 	return router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(&integrationPermissionStore{globalPerms: perms}),
+		IAM:          newIAM(&integrationPermissionStore{globalPerms: perms}),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),
-		GlobalRole:   handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
 		Log:          log,
 	})
 }
@@ -100,12 +51,12 @@ func issueIntegrationAccessToken(t *testing.T) string {
 	return tok
 }
 
-func TestIntegrationAdminRoute_ListGlobalRoles_RequiresReadPermission(t *testing.T) {
-	r := buildAdminTestRouter([]authz.Permission{authz.PermissionGlobalRolesRead})
+func TestIntegrationAdminRoute_ListUsers_RequiresReadPermission(t *testing.T) {
+	r := buildAdminTestRouter([]iam.Action{iam.ActionUsersRead})
 	tok := issueIntegrationAccessToken(t)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/admin/global-roles", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/admin/users", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	r.ServeHTTP(w, req)
 
@@ -114,38 +65,19 @@ func TestIntegrationAdminRoute_ListGlobalRoles_RequiresReadPermission(t *testing
 	}
 }
 
-func TestIntegrationAdminRoute_CreateGlobalRole_RequiresWritePermission(t *testing.T) {
-	r := buildAdminTestRouter([]authz.Permission{authz.PermissionGlobalRolesRead})
+func TestIntegrationAdminRoute_CreateUser_RequiresWritePermission(t *testing.T) {
+	r := buildAdminTestRouter([]iam.Action{iam.ActionUsersRead})
 	tok := issueIntegrationAccessToken(t)
 
 	w := httptest.NewRecorder()
-	body := bytes.NewBufferString(`{"name":"SECURITY","permissions":{"global_roles.read":true}}`)
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/global-roles", body)
+	body := bytes.NewBufferString(`{"username":"carol","password":"secret12","full_name":"Carol"}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/users", body)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 without write permission, got %d (%s)", w.Code, w.Body.String())
-	}
-	if code := decodeErrorCode(t, w); code != "FORBIDDEN" {
-		t.Fatalf("expected error_code FORBIDDEN, got %q", code)
-	}
-}
-
-func TestIntegrationAdminRoute_AssignGlobalRoles_RequiresAssignPermission(t *testing.T) {
-	r := buildAdminTestRouter([]authz.Permission{authz.PermissionGlobalRolesWrite})
-	tok := issueIntegrationAccessToken(t)
-
-	w := httptest.NewRecorder()
-	body := bytes.NewBufferString(`{"role_ids":[]}`)
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/v1/admin/users/"+uuid.NewString()+"/global-roles", body)
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 without assign permission, got %d (%s)", w.Code, w.Body.String())
 	}
 	if code := decodeErrorCode(t, w); code != "FORBIDDEN" {
 		t.Fatalf("expected error_code FORBIDDEN, got %q", code)

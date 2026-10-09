@@ -2,17 +2,17 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/admin-api", async () => {
+vi.mock("@/lib/role-api", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/lib/admin-api")>("@/lib/admin-api");
-	return { ...actual, setDefaultGlobalRole: vi.fn() };
+		await vi.importActual<typeof import("@/lib/role-api")>("@/lib/role-api");
+	return { ...actual, setDefaultRole: vi.fn() };
 });
 
-import { globalRolesQueryOptions, setDefaultGlobalRole } from "@/lib/admin-api";
+import { platformRolesQueryOptions, setDefaultRole } from "@/lib/role-api";
 import { makeRole, renderWithQueries } from "@/test/render-with-queries";
 import { SetDefaultRoleDialog } from "./SetDefaultRoleDialog";
 
-const ADMIN = makeRole("role-admin", "ADMIN", { "users.read": true });
+const ADMIN = makeRole("role-admin", "ADMIN", { "users:read": true });
 const ROOT = makeRole("role-root", "SUPER_ADMIN", { "*": true });
 
 function renderDialog(role = ADMIN, onOpenChange = vi.fn()) {
@@ -27,7 +27,7 @@ const button = (name: RegExp | string) => screen.getByRole("button", { name });
 
 beforeEach(() => {
 	vi.resetAllMocks();
-	vi.mocked(setDefaultGlobalRole).mockResolvedValue(ADMIN);
+	vi.mocked(setDefaultRole).mockResolvedValue(ADMIN);
 });
 
 describe("SetDefaultRoleDialog", () => {
@@ -56,9 +56,9 @@ describe("SetDefaultRoleDialog", () => {
 		await userEvent.click(button("Set as default"));
 
 		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-		expect(setDefaultGlobalRole).toHaveBeenCalledWith("role-admin");
+		expect(setDefaultRole).toHaveBeenCalledWith("role-admin");
 		expect(invalidate).toHaveBeenCalledWith({
-			queryKey: globalRolesQueryOptions.queryKey,
+			queryKey: platformRolesQueryOptions.queryKey,
 		});
 	});
 
@@ -68,11 +68,11 @@ describe("SetDefaultRoleDialog", () => {
 		await userEvent.click(button("Cancel"));
 
 		expect(onOpenChange).toHaveBeenCalledWith(false);
-		expect(setDefaultGlobalRole).not.toHaveBeenCalled();
+		expect(setDefaultRole).not.toHaveBeenCalled();
 	});
 
 	it("shows 'Saving…' and locks the button while the request is in flight", async () => {
-		vi.mocked(setDefaultGlobalRole).mockReturnValue(new Promise(() => {}));
+		vi.mocked(setDefaultRole).mockReturnValue(new Promise(() => {}));
 		renderDialog();
 
 		await userEvent.click(button("Set as default"));
@@ -83,11 +83,11 @@ describe("SetDefaultRoleDialog", () => {
 	});
 
 	it.each([
-		["GLOBAL_ROLE_NOT_FOUND", "This role no longer exists."],
-		["FORBIDDEN", "You don't have permission to change the default role."],
-		["INTERNAL_ERROR", "Something went wrong. Please try again."],
+		["ROLE_NOT_FOUND", "This role no longer exists."],
+		["FORBIDDEN", "You don't have permission to do this."],
+		["INTERNAL_ERROR", "Something went wrong on the server. Try again."],
 	])("explains a %s failure and stays open", async (code, message) => {
-		vi.mocked(setDefaultGlobalRole).mockRejectedValue({
+		vi.mocked(setDefaultRole).mockRejectedValue({
 			response: { data: { error_code: code } },
 		});
 		const { onOpenChange } = renderDialog();

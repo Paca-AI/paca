@@ -102,7 +102,6 @@
 			"configure": "Cấu hình",
 			"delete": "Xóa",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "Trực tuyến",
 			"acpStatusDisconnected": "Ngoại tuyến",
 			"deleteDialog": {
@@ -173,7 +172,6 @@
 				"skills": "Skill",
 				"envVars": "Môi trường",
 				"globalRole": "Vai trò toàn cục",
-				"access": "Access",
 				"activity": "Hoạt động"
 			},
 			"globalRole": {
@@ -348,15 +346,6 @@
 					"description": "Được đóng gói cùng Paca và có sẵn cho mọi agent. Không thể chỉnh sửa."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"activity": {
 				"commented": "đã bình luận",
 				"sourceType": {
@@ -398,8 +387,6 @@
 			"connect": "Kết nối",
 			"conversationEnded": "Cuộc trò chuyện này đã kết thúc.",
 			"textOnlyMessage": "Chỉ hỗ trợ tin nhắn văn bản.",
-			"agentAccessRestricted": "Agent này bị giới hạn quyền truy cập. Hãy nhờ quản trị viên dự án cấp quyền truy cập trước khi bạn có thể trò chuyện với agent này.",
-			"environmentAccessRestricted": "Môi trường của cuộc trò chuyện này bị giới hạn quyền truy cập. Hãy nhờ quản trị viên dự án cấp quyền truy cập trước khi bạn có thể trò chuyện với agent này.",
 			"chatNoPermission": "Bạn không có quyền gửi tin nhắn trong cuộc trò chuyện này.",
 			"failed": "Cuộc trò chuyện thất bại",
 			"noOutput": "Agent không tạo ra kết quả nào.",
@@ -496,7 +483,6 @@
 			"subtitle": "Sandbox có tên, hoạt động lâu dài mà agent của bạn có thể gắn vào giữa các cuộc hội thoại",
 			"newEnvironment": "Môi trường mới",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "Chưa có môi trường nào",
 				"description": "Tạo một môi trường tĩnh để giữ tệp và tiến trình nền hoạt động xuyên suốt các cuộc hội thoại, thay vì tạo sandbox dùng một lần mỗi lần.",
@@ -539,8 +525,7 @@
 			"tabs": {
 				"overview": "Tổng quan",
 				"folders": "Thư mục",
-				"portForwards": "Chuyển tiếp cổng",
-				"access": "Access"
+				"portForwards": "Chuyển tiếp cổng"
 			},
 			"busy": "Environment này đang khởi động, dừng hoặc khởi động lại. Vui lòng thử lại sau giây lát.",
 			"actionFailed": "Thao tác không thành công. Vui lòng thử lại.",
@@ -656,15 +641,6 @@
 					"restartFailed": "Khởi động lại environment thất bại. Vui lòng thử lại."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"sshKeys": {
 				"connectHint": "Thay <bastion-host> bằng địa chỉ bastion SSH đã cấu hình trên triển khai này.",
 				"connectUnavailable": "Truy cập SSH chưa được cấu hình trên triển khai này.",
@@ -763,7 +739,6 @@
 			"deleteRole": "Xóa vai trò",
 			"errors": {
 				"notFound": "Vai trò này không còn tồn tại.",
-				"hasMembers": "Không thể xóa vai trò này vì vẫn còn được gán cho một hoặc nhiều thành viên.",
 				"forbidden": "Bạn không có quyền xóa vai trò này.",
 				"internalError": "Đã xảy ra lỗi. Vui lòng thử lại.",
 				"generic": "Đã xảy ra lỗi."
@@ -777,23 +752,18 @@
 			"roleNameLabel": "Tên vai trò",
 			"roleNamePlaceholder": "vd: PROJECT_REVIEWER",
 			"permissionsLabel": "Quyền hạn",
-			"fullAccessBadge": "Toàn quyền truy cập",
 			"fullAccessDescription": "Vai trò này tự động bao gồm mọi quyền, kể cả những quyền được thêm trong tương lai. Thay đổi bất kỳ công tắc nào bên dưới sẽ chuyển nó thành một tập quyền cố định theo hiện tại.",
 			"enabledCount_one": "{{count}} đã bật",
 			"enabledCount_other": "{{count}} đã bật",
 			"cancel": "Hủy",
 			"saveChanges": "Lưu thay đổi",
-			"createRole": "Tạo vai trò",
-			"errors": {
-				"nameTaken": "Đã tồn tại một vai trò với tên này.",
-				"nameInvalid": "Tên vai trò phải dùng chữ in hoa, số và dấu gạch dưới.",
-				"notFound": "Vai trò này không còn tồn tại. Có thể vai trò đã bị xóa.",
-				"forbidden": "Bạn không có quyền thực hiện thao tác này.",
-				"internalError": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
-				"generic": "Đã xảy ra lỗi."
-			}
+			"createRole": "Tạo vai trò"
 		},
 		"permissions": {
+			"projectsRead": {
+				"label": "Xem dự án",
+				"description": "Mở dự án và xem thông tin cơ bản"
+			},
 			"projectsWrite": {
 				"label": "Sửa dự án",
 				"description": "Cập nhật tên, mô tả và cài đặt dự án"
@@ -808,7 +778,7 @@
 			},
 			"membersWrite": {
 				"label": "Quản lý thành viên",
-				"description": "Thêm, xóa và gán lại thành viên dự án"
+				"description": "Thêm và xóa thành viên dự án (đổi vai trò của họ cần quyền Gán vai trò)"
 			},
 			"rolesRead": {
 				"label": "Xem vai trò",
@@ -817,6 +787,10 @@
 			"rolesWrite": {
 				"label": "Quản lý vai trò",
 				"description": "Tạo, sửa và xóa vai trò dự án"
+			},
+			"rolesAssign": {
+				"label": "Gán vai trò",
+				"description": "Gán cho thành viên và agent bất kỳ vai trò nào của dự án này, hoặc gỡ vai trò"
 			},
 			"settingsTaskTypesWrite": {
 				"label": "Manage Task Types",
@@ -973,7 +947,6 @@
 			"title": "Vai trò dự án",
 			"description": "Quản lý vai trò và quyền hạn cho thành viên của dự án này.",
 			"newRole": "Vai trò mới",
-			"noPermissionsAssigned": "Chưa gán quyền hạn nào",
 			"editRole": "Chỉnh sửa vai trò",
 			"deleteRole": "Xóa vai trò",
 			"rolesDefined_one": "vai trò đã định nghĩa",
@@ -986,14 +959,15 @@
 			},
 			"table": {
 				"name": "Tên",
-				"permissions": "Quyền hạn",
+				"description": "Mô tả",
 				"created": "Ngày tạo"
 			},
-			"systemRolesNote": "Vai trò hệ thống là mẫu dùng chung và không thể chỉnh sửa hoặc xóa.",
+			"systemRolesNote": "Vai trò dùng chung từ không gian làm việc chỉ có thể thay đổi trong cài đặt vai trò của không gian làm việc.",
 			"noPermission": {
 				"title": "You don't have permission to view roles",
 				"description": "Ask a project admin to grant you the project.roles.read permission."
-			}
+			},
+			"noDescription": "Không có mô tả"
 		},
 		"taskStatuses": {
 			"title": "Trạng thái nhiệm vụ",
@@ -1278,12 +1252,12 @@
 			"noUsersAvailable": "Không có người dùng nào để thêm.",
 			"loadingMore": "Đang tải…",
 			"roleLabel": "Vai trò",
-			"rolePlaceholder": "Chọn một vai trò…",
 			"cancel": "Hủy",
 			"addMember": "Thêm thành viên",
 			"errors": {
 				"addFailed": "Thêm thành viên thất bại. Vui lòng thử lại.",
 				"alreadyAdded": "Người dùng hoặc agent này đã là thành viên của dự án.",
+				"roleForbidden": "Bạn không có quyền gán một trong các vai trò này.",
 				"roleNotFound": "Vai trò đó không còn tồn tại. Vui lòng chọn vai trò khác."
 			},
 			"modeUser": "Người dùng",
@@ -1295,12 +1269,15 @@
 			"changeRole": "Đổi vai trò",
 			"errors": {
 				"memberNotFound": "Thành viên này không còn thuộc dự án nữa.",
+				"roleForbidden": "Bạn không có quyền gán hoặc gỡ một trong các vai trò này.",
 				"roleNotFound": "Vai trò đó không còn tồn tại.",
 				"changeFailed": "Đổi vai trò thất bại."
 			}
 		},
 		"memberRow": {
-			"removeMember": "Xóa thành viên"
+			"removeMember": "Xóa thành viên",
+			"agentBadge": "Tác nhân",
+			"actions": "Thao tác với thành viên"
 		},
 		"removeDialog": {
 			"title": "Xóa thành viên",

@@ -3,18 +3,19 @@ package e2e_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 )
 
-// defaultRoleNames lists the names of the global roles that carry is_default,
-// as GET /admin/global-roles reports them.
+// defaultRoleNames lists the names of the platform roles that carry is_default,
+// as GET /admin/roles reports them.
 func defaultRoleNames(t *testing.T, env *e2eEnv, client *http.Client) []string {
 	t.Helper()
-	status, out := doJSON(t, env, client, http.MethodGet, "/api/v1/admin/global-roles", nil)
+	status, out := doJSON(t, env, client, http.MethodGet, "/api/v1/admin/roles", nil)
 	if status != http.StatusOK {
-		t.Fatalf("list global roles: want 200, got %d", status)
+		t.Fatalf("list roles: want 200, got %d", status)
 	}
 	items, _ := out.Data.([]any)
 	var names []string
@@ -28,11 +29,18 @@ func defaultRoleNames(t *testing.T, env *e2eEnv, client *http.Client) []string {
 	return names
 }
 
-// createGlobalRoleViaAPI creates a role through the API and returns its id.
-func createGlobalRoleViaAPI(t *testing.T, env *e2eEnv, client *http.Client, name string) string {
+// createPlatformRoleViaAPI creates a platform role through the API and returns
+// its id.
+func createPlatformRoleViaAPI(t *testing.T, env *e2eEnv, client *http.Client, name string) string {
 	t.Helper()
-	status, out := doJSON(t, env, client, http.MethodPost, "/api/v1/admin/global-roles", map[string]any{
-		"name": name, "permissions": map[string]any{"users.read": true},
+	status, out := doJSON(t, env, client, http.MethodPost, "/api/v1/admin/roles", map[string]any{
+		"name": name,
+		"policy": map[string]any{
+			"version": "2026-10-01",
+			"statements": []any{map[string]any{
+				"effect": "Allow", "actions": []string{"users:read"}, "resources": []string{"user/*"},
+			}},
+		},
 	})
 	if status != http.StatusCreated {
 		t.Fatalf("create role %q: want 201, got %d (%s)", name, status, out.ErrorCode)
@@ -42,8 +50,8 @@ func createGlobalRoleViaAPI(t *testing.T, env *e2eEnv, client *http.Client, name
 }
 
 // createUserAsAdmin creates a user through POST /admin/users. It returns the
-// HTTP status, the role the account started with (on success) and the API
-// error code (on failure).
+// HTTP status, the names of the roles the account started with (on success)
+// and the API error code (on failure).
 func createUserAsAdmin(t *testing.T, env *e2eEnv, client *http.Client, username string) (int, string, string) {
 	t.Helper()
 	status, out := doJSON(t, env, client, http.MethodPost, "/api/v1/admin/users", map[string]any{
@@ -52,14 +60,20 @@ func createUserAsAdmin(t *testing.T, env *e2eEnv, client *http.Client, username 
 	if status != http.StatusCreated {
 		return status, "", out.ErrorCode
 	}
-	role, _ := assertDataMap(t, out)["role"].(string)
-	return status, role, ""
+	return status, strings.Join(roleNames(assertDataMap(t, out)), ","), ""
 }
 
-// TestDefaultGlobalRole covers the default global role end to end on a real
-// database: a fresh install starts with USER as the default, the default can
-// be moved, new users follow it, and the default cannot be deleted.
-func TestDefaultGlobalRole(t *testing.T) {
+// holderRoles returns the names of the platform roles the user named username
+// holds.
+func holderRoles(t *testing.T, env *e2eEnv, username string) string {
+	t.Helper()
+	return roleNameOf(t, env, username)
+}
+
+// TestDefaultRole covers the default role end to end on a real database: a
+// fresh install starts with USER as the default, the default can be moved, new
+// users follow it, and the default cannot be deleted.
+func TestDefaultRole(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 
@@ -68,7 +82,7 @@ func TestDefaultGlobalRole(t *testing.T) {
 		password = "supersecret"
 	)
 	seedUser(t, env, rootName, password, "Root")
-	assignGlobalRolesByName(t, env, rootName, "SUPER_ADMIN")
+	assignPlatformRole(t, env, rootName, "SUPER_ADMIN")
 	client := newLoggedInClient(t, env, rootName, password)
 
 	t.Run("a_fresh_install_has_USER_as_its_only_default", func(t *testing.T) {
@@ -88,7 +102,7 @@ func TestDefaultGlobalRole(t *testing.T) {
 		}
 	})
 
-	memberID := createGlobalRoleViaAPI(t, env, client, "MEMBER")
+	memberID := createPlatformRoleViaAPI(t, env, client, "MEMBER")
 
 	t.Run("a_new_role_is_not_the_default", func(t *testing.T) {
 		if names := defaultRoleNames(t, env, client); len(names) != 1 || names[0] != "USER" {
@@ -97,7 +111,7 @@ func TestDefaultGlobalRole(t *testing.T) {
 	})
 
 	t.Run("setting_the_default_moves_it_and_new_users_follow", func(t *testing.T) {
-		status, out := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/global-roles/"+memberID+"/set-default", nil)
+		status, out := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/roles/"+memberID+"/default", nil)
 		if status != http.StatusOK {
 			t.Fatalf("set default: want 200, got %d (%s)", status, out.ErrorCode)
 		}
@@ -122,7 +136,7 @@ func TestDefaultGlobalRole(t *testing.T) {
 	})
 
 	t.Run("setting_the_same_default_again_is_harmless", func(t *testing.T) {
-		if status, _ := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/global-roles/"+memberID+"/set-default", nil); status != http.StatusOK {
+		if status, _ := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/roles/"+memberID+"/default", nil); status != http.StatusOK {
 			t.Fatalf("want 200, got %d", status)
 		}
 		if names := defaultRoleNames(t, env, client); len(names) != 1 || names[0] != "MEMBER" {
@@ -131,21 +145,19 @@ func TestDefaultGlobalRole(t *testing.T) {
 	})
 
 	t.Run("the_default_role_cannot_be_deleted", func(t *testing.T) {
-		// newbie-two holds MEMBER too, but the more specific reason wins: the
-		// person has to make another role the default first either way.
-		status, out := doJSON(t, env, client, http.MethodDelete, "/api/v1/admin/global-roles/"+memberID, nil)
-		if status != http.StatusConflict || out.ErrorCode != "GLOBAL_ROLE_IS_DEFAULT" {
-			t.Fatalf("delete default: want 409 GLOBAL_ROLE_IS_DEFAULT, got %d %q", status, out.ErrorCode)
+		status, out := doJSON(t, env, client, http.MethodDelete, "/api/v1/admin/roles/"+memberID, nil)
+		if status != http.StatusConflict || out.ErrorCode != "ROLE_IS_DEFAULT" {
+			t.Fatalf("delete default: want 409 ROLE_IS_DEFAULT, got %d %q", status, out.ErrorCode)
 		}
-		if _, err := env.roleRepo.FindByID(env.ctx, uuid.MustParse(memberID)); err != nil {
-			t.Fatalf("the default role must still exist after a refused delete: %v", err)
+		if !platformRoleExists(t, env, "MEMBER") {
+			t.Fatal("the default role must still exist after a refused delete")
 		}
 	})
 
 	t.Run("an_unknown_role_cannot_be_made_the_default", func(t *testing.T) {
-		status, out := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/global-roles/"+uuid.NewString()+"/set-default", nil)
-		if status != http.StatusNotFound || out.ErrorCode != "GLOBAL_ROLE_NOT_FOUND" {
-			t.Fatalf("want 404 GLOBAL_ROLE_NOT_FOUND, got %d %q", status, out.ErrorCode)
+		status, out := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/roles/"+uuid.NewString()+"/default", nil)
+		if status != http.StatusNotFound || out.ErrorCode != "ROLE_NOT_FOUND" {
+			t.Fatalf("want 404 ROLE_NOT_FOUND, got %d %q", status, out.ErrorCode)
 		}
 		if names := defaultRoleNames(t, env, client); len(names) != 1 || names[0] != "MEMBER" {
 			t.Fatalf("a failed set-default changed the default: %v", names)
@@ -159,16 +171,13 @@ func TestDefaultGlobalRole(t *testing.T) {
 		if status != http.StatusCreated {
 			t.Fatalf("create global agent: want 201, got %d (%s)", status, out.ErrorCode)
 		}
-		if got, _ := assertDataMap(t, out)["global_role_id"].(string); got != memberID {
-			t.Errorf("new agent's global_role_id = %q, want the default MEMBER (%s)", got, memberID)
+		if got := roleNames(assertDataMap(t, out)); len(got) != 1 || got[0] != "MEMBER" {
+			t.Errorf("new agent's roles = %v, want the default [MEMBER]", got)
 		}
 	})
 
-	t.Run("the_agent_role_can_be_changed_afterwards_on_its_own_route", func(t *testing.T) {
-		userRole, err := env.roleRepo.FindByName(env.ctx, "USER")
-		if err != nil {
-			t.Fatalf("find USER: %v", err)
-		}
+	t.Run("the_agent_roles_can_be_changed_afterwards_on_their_own_route", func(t *testing.T) {
+		userRoleID := platformRoleID(t, env, "USER")
 		_, out := doJSON(t, env, client, http.MethodGet, "/api/v1/admin/agents", nil)
 		items, _ := assertDataMap(t, out)["items"].([]any)
 		var agentID string
@@ -181,35 +190,34 @@ func TestDefaultGlobalRole(t *testing.T) {
 			t.Fatal("could not find the agent that was just created")
 		}
 
-		status, out := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/agents/"+agentID+"/global-role",
-			map[string]any{"global_role_id": userRole.ID.String()})
+		status, out := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/agents/"+agentID+"/roles",
+			map[string]any{"role_ids": []string{userRoleID.String()}})
 		if status != http.StatusOK {
 			t.Fatalf("assign role: want 200, got %d (%s)", status, out.ErrorCode)
 		}
-		if got, _ := assertDataMap(t, out)["global_role_id"].(string); got != userRole.ID.String() {
-			t.Errorf("global_role_id = %q, want %s", got, userRole.ID)
+		roles, _ := out.Data.([]any)
+		if len(roles) != 1 {
+			t.Fatalf("agent roles = %v, want exactly [USER]", out.Data)
+		}
+		if m, _ := roles[0].(map[string]any); m["id"] != userRoleID.String() {
+			t.Errorf("agent role = %v, want %s", m["id"], userRoleID)
 		}
 	})
 
-	t.Run("the_former_default_is_only_protected_while_someone_holds_it", func(t *testing.T) {
-		// USER stopped being the default when MEMBER became it, so the default
-		// rule no longer applies. newbie-one still holds it, so the delete is
-		// refused for that reason instead.
-		userRole, err := env.roleRepo.FindByName(env.ctx, "USER")
-		if err != nil {
-			t.Fatalf("find USER: %v", err)
-		}
-		status, out := doJSON(t, env, client, http.MethodDelete, "/api/v1/admin/global-roles/"+userRole.ID.String(), nil)
-		if status != http.StatusConflict || out.ErrorCode != "GLOBAL_ROLE_HAS_ASSIGNED_USERS" {
-			t.Fatalf("want 409 GLOBAL_ROLE_HAS_ASSIGNED_USERS, got %d %q", status, out.ErrorCode)
+	t.Run("system_roles_cannot_be_deleted_even_when_no_longer_the_default", func(t *testing.T) {
+		userRoleID := platformRoleID(t, env, "USER")
+		status, out := doJSON(t, env, client, http.MethodDelete, "/api/v1/admin/roles/"+userRoleID.String(), nil)
+		if status != http.StatusConflict || out.ErrorCode != "ROLE_IS_SYSTEM" {
+			t.Fatalf("want 409 ROLE_IS_SYSTEM, got %d %q", status, out.ErrorCode)
 		}
 	})
 }
 
 // TestDeletingTheOldDefaultRoleDoesNotBreakCreatingUsers is the regression test
 // for the bug that started this: new accounts were given the role *named*
-// USER, so once USER had been deleted (allowed when nobody held it) creating a
-// user failed. The role is now whichever one is the default.
+// USER, so once USER had been deleted creating a user failed. The role is now
+// whichever one is the default, and a deleted former default takes its holders'
+// attachments with it.
 func TestDeletingTheOldDefaultRoleDoesNotBreakCreatingUsers(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
@@ -219,70 +227,88 @@ func TestDeletingTheOldDefaultRoleDoesNotBreakCreatingUsers(t *testing.T) {
 		password = "supersecret"
 	)
 	seedUser(t, env, rootName, password, "Root")
-	assignGlobalRolesByName(t, env, rootName, "SUPER_ADMIN")
+	assignPlatformRole(t, env, rootName, "SUPER_ADMIN")
 	client := newLoggedInClient(t, env, rootName, password)
 
-	userRole, err := env.roleRepo.FindByName(env.ctx, "USER")
-	if err != nil {
-		t.Fatalf("find USER: %v", err)
-	}
-
-	// While USER is the default it cannot go, even though nobody holds it.
-	status, out := doJSON(t, env, client, http.MethodDelete, "/api/v1/admin/global-roles/"+userRole.ID.String(), nil)
-	if status != http.StatusConflict || out.ErrorCode != "GLOBAL_ROLE_IS_DEFAULT" {
-		t.Fatalf("delete the default: want 409 GLOBAL_ROLE_IS_DEFAULT, got %d %q", status, out.ErrorCode)
-	}
-
-	// Make another role the default, then USER can be deleted.
-	memberID := createGlobalRoleViaAPI(t, env, client, "MEMBER")
-	if status, _ := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/global-roles/"+memberID+"/set-default", nil); status != http.StatusOK {
+	firstID := createPlatformRoleViaAPI(t, env, client, "FIRST")
+	secondID := createPlatformRoleViaAPI(t, env, client, "SECOND")
+	if status, _ := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/roles/"+firstID+"/default", nil); status != http.StatusOK {
 		t.Fatalf("set default: want 200, got %d", status)
 	}
-	if status, out := doJSON(t, env, client, http.MethodDelete, "/api/v1/admin/global-roles/"+userRole.ID.String(), nil); status != http.StatusOK {
-		t.Fatalf("delete the former default: want 200, got %d (%s)", status, out.ErrorCode)
+
+	// While FIRST is the default it cannot go, even though nobody holds it.
+	status, out := doJSON(t, env, client, http.MethodDelete, "/api/v1/admin/roles/"+firstID, nil)
+	if status != http.StatusConflict || out.ErrorCode != "ROLE_IS_DEFAULT" {
+		t.Fatalf("delete the default: want 409 ROLE_IS_DEFAULT, got %d %q", status, out.ErrorCode)
 	}
 
-	// The scenario that used to fail: no USER role exists any more.
-	status, role, code := createUserAsAdmin(t, env, client, "after-user-deleted")
-	if status != http.StatusCreated {
-		t.Fatalf("create user without a USER role: want 201, got %d (%s)", status, code)
+	// An account created now holds FIRST.
+	if status, role, code := createUserAsAdmin(t, env, client, "holds-first"); status != http.StatusCreated || role != "FIRST" {
+		t.Fatalf("create user: want 201 with role FIRST, got %d %q (%s)", status, role, code)
 	}
-	if role != "MEMBER" {
-		t.Errorf("new user's role = %q, want the default MEMBER", role)
+
+	// Make another role the default, then FIRST can be deleted, whoever holds it.
+	if status, _ := doJSON(t, env, client, http.MethodPut, "/api/v1/admin/roles/"+secondID+"/default", nil); status != http.StatusOK {
+		t.Fatalf("set default: want 200, got %d", status)
+	}
+	if status, out := doJSON(t, env, client, http.MethodDelete, "/api/v1/admin/roles/"+firstID, nil); status != http.StatusNoContent {
+		t.Fatalf("delete the former default: want 204, got %d (%s)", status, out.ErrorCode)
+	}
+	if got := holderRoles(t, env, "holds-first"); got != "" {
+		t.Errorf("the holder of the deleted role still has %q", got)
+	}
+
+	// The scenario that used to fail: the role named USER is no longer what
+	// new accounts get.
+	status2, role, code := createUserAsAdmin(t, env, client, "after-first-deleted")
+	if status2 != http.StatusCreated {
+		t.Fatalf("create user after the delete: want 201, got %d (%s)", status2, code)
+	}
+	if role != "SECOND" {
+		t.Errorf("new user's role = %q, want the default SECOND", role)
 	}
 }
 
 // Setting the default changes what every new account and agent starts with, so
-// it is role-definition work (global_roles.write) — assigning roles to
-// accounts (global_roles.assign) is not enough.
+// it is role-definition work (roles:write) — assigning roles to accounts
+// (roles:assign) is not enough.
 func TestSettingTheDefaultRoleNeedsRoleWrite(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 
 	const password = "supersecret"
-	assigner := createRoleWithPermissions(t, env, "ASSIGNER", map[string]any{"global_roles.assign": true, "global_roles.read": true})
-	writer := createRoleWithPermissions(t, env, "ROLE_WRITER", map[string]any{"global_roles.write": true, "global_roles.read": true})
+	createPlatformRole(t, env, "ASSIGNER", "roles:assign", "roles:read")
+	// Making a role the default hands it to every new account, so the writer
+	// must hold what the target grants.
+	createPlatformRole(t, env, "ROLE_WRITER", "roles:write", "roles:read", "users:read")
 	seedUser(t, env, "assigner", password, "Assigner")
-	assignGlobalRolesByName(t, env, "assigner", assigner.Name)
+	assignPlatformRole(t, env, "assigner", "ASSIGNER")
 	seedUser(t, env, "role-writer", password, "Role Writer")
-	assignGlobalRolesByName(t, env, "role-writer", writer.Name)
-	target := createRoleWithPermissions(t, env, "TARGET", map[string]any{"users.read": true})
-	path := "/api/v1/admin/global-roles/" + target.ID.String() + "/set-default"
+	assignPlatformRole(t, env, "role-writer", "ROLE_WRITER")
+	targetID := createPlatformRole(t, env, "TARGET", "users:read")
+	path := "/api/v1/admin/roles/" + targetID.String() + "/default"
+	defaultName := func() string {
+		var name string
+		if err := env.db.Get(&name, `SELECT name FROM roles WHERE is_default`); err != nil {
+			t.Fatalf("read the default role: %v", err)
+		}
+		return name
+	}
 
 	assignerClient := newLoggedInClient(t, env, "assigner", password)
 	if status, _ := doJSON(t, env, assignerClient, http.MethodPut, path, nil); status != http.StatusForbidden {
-		t.Errorf("global_roles.assign alone: want 403, got %d", status)
+		t.Errorf("roles:assign alone: want 403, got %d", status)
 	}
-	if def, err := env.roleRepo.FindDefault(env.ctx); err != nil || def.Name != "USER" {
-		t.Fatalf("a refused request must not change the default; got %+v (%v)", def, err)
+	if got := defaultName(); got != "USER" {
+		t.Fatalf("a refused request must not change the default; got %q", got)
 	}
 
 	writerClient := newLoggedInClient(t, env, "role-writer", password)
 	if status, out := doJSON(t, env, writerClient, http.MethodPut, path, nil); status != http.StatusOK {
-		t.Fatalf("global_roles.write: want 200, got %d (%s)", status, out.ErrorCode)
+		t.Fatalf("roles:write: want 200, got %d (%s)", status, out.ErrorCode)
 	}
-	if def, err := env.roleRepo.FindDefault(env.ctx); err != nil || def.ID != target.ID {
-		t.Fatalf("expected TARGET to be the default, got %+v (%v)", def, err)
+	if got := defaultName(); got != "TARGET" {
+		t.Fatalf("expected TARGET to be the default, got %q", got)
 	}
 }
 
@@ -297,7 +323,7 @@ func TestDefaultTaskStatusAndTypeCannotBeDeleted(t *testing.T) {
 		password = "supersecret"
 	)
 	seedUser(t, env, rootName, password, "Root")
-	assignGlobalRolesByName(t, env, rootName, "SUPER_ADMIN")
+	assignPlatformRole(t, env, rootName, "SUPER_ADMIN")
 	client := newLoggedInClient(t, env, rootName, password)
 
 	status, out := doJSON(t, env, client, http.MethodPost, "/api/v1/projects", map[string]any{

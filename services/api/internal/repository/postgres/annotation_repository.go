@@ -90,12 +90,20 @@ func NewAnnotationRepository(db *sqlx.DB) *AnnotationRepository {
 // ListForPage returns every annotation on pagePath within portForwardID,
 // oldest first.
 func (r *AnnotationRepository) ListForPage(ctx context.Context, portForwardID uuid.UUID, pagePath string) ([]*annotationdom.PageAnnotation, error) {
+	sink := &argList{args: []any{portForwardID.String(), pagePath}}
+	scopeAnd, none, err := annotationScopeAnd(ctx, sink)
+	if err != nil {
+		return nil, fmt.Errorf("annotation repo: list for page: %w", err)
+	}
+	if none {
+		return []*annotationdom.PageAnnotation{}, nil
+	}
 	var recs []pageAnnotationRecord
-	err := r.db.SelectContext(ctx, &recs, `
+	err = r.db.SelectContext(ctx, &recs, `
 		SELECT `+pageAnnotationCols+` FROM page_annotations pa
 		LEFT JOIN users u ON u.id = pa.created_by
-		WHERE pa.port_forward_id = $1 AND pa.page_path = $2 AND pa.deleted_at IS NULL
-		ORDER BY pa.created_at ASC`, portForwardID.String(), pagePath)
+		WHERE pa.port_forward_id = $1 AND pa.page_path = $2 AND pa.deleted_at IS NULL`+scopeAnd+`
+		ORDER BY pa.created_at ASC`, sink.args...)
 	if err != nil {
 		return nil, fmt.Errorf("annotation repo: list for page: %w", err)
 	}
@@ -105,16 +113,37 @@ func (r *AnnotationRepository) ListForPage(ctx context.Context, portForwardID uu
 // ListForPortForward returns every annotation across every page portForwardID
 // serves, newest first.
 func (r *AnnotationRepository) ListForPortForward(ctx context.Context, portForwardID uuid.UUID) ([]*annotationdom.PageAnnotation, error) {
+	sink := &argList{args: []any{portForwardID.String()}}
+	scopeAnd, none, err := annotationScopeAnd(ctx, sink)
+	if err != nil {
+		return nil, fmt.Errorf("annotation repo: list for port forward: %w", err)
+	}
+	if none {
+		return []*annotationdom.PageAnnotation{}, nil
+	}
 	var recs []pageAnnotationRecord
-	err := r.db.SelectContext(ctx, &recs, `
+	err = r.db.SelectContext(ctx, &recs, `
 		SELECT `+pageAnnotationCols+` FROM page_annotations pa
 		LEFT JOIN users u ON u.id = pa.created_by
-		WHERE pa.port_forward_id = $1 AND pa.deleted_at IS NULL
-		ORDER BY pa.created_at DESC`, portForwardID.String())
+		WHERE pa.port_forward_id = $1 AND pa.deleted_at IS NULL`+scopeAnd+`
+		ORDER BY pa.created_at DESC`, sink.args...)
 	if err != nil {
 		return nil, fmt.Errorf("annotation repo: list for port forward: %w", err)
 	}
 	return r.hydrateAll(ctx, recs)
+}
+
+// annotationScopeAnd renders the caller's annotation scope (see iam.WithScope)
+// as an " AND ..." suffix over the page_annotations alias pa, appending its
+// bind arguments to sink. none means the scope allows nothing, so the caller
+// returns an empty result without querying. It is applied inside the list
+// query, before the keyset cursor and LIMIT, never to a fetched page.
+func annotationScopeAnd(ctx context.Context, sink argSink) (clause string, none bool, err error) {
+	c, none, err := scopeSQL(ctx, "annotation", annotationScopeColumns, sink)
+	if err != nil || none || c == "" {
+		return "", none, err
+	}
+	return " AND " + c, false, nil
 }
 
 // FindVisibleInProject returns annotationID if it belongs to projectID,
@@ -150,7 +179,16 @@ func (r *AnnotationRepository) SearchInProject(ctx context.Context, projectID uu
 	query := `SELECT ` + pageAnnotationCols + ` FROM page_annotations pa
 		LEFT JOIN users u ON u.id = pa.created_by
 		WHERE pa.project_id = $1 AND pa.deleted_at IS NULL`
-	args := []any{projectID.String()}
+	sink := &argList{args: []any{projectID.String()}}
+	scopeAnd, none, err := annotationScopeAnd(ctx, sink)
+	if err != nil {
+		return nil, false, fmt.Errorf("annotation repo: search in project: %w", err)
+	}
+	if none {
+		return []*annotationdom.PageAnnotation{}, false, nil
+	}
+	query += scopeAnd
+	args := sink.args
 
 	if filter.EnvironmentID != nil {
 		args = append(args, filter.EnvironmentID.String())

@@ -13,6 +13,7 @@ import (
 	annotationdom "github.com/Paca-AI/api/internal/domain/annotation"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -26,12 +27,20 @@ type AnnotationHandler struct {
 	svc        annotationdom.Service
 	avatarSvc  attachmentdom.AvatarService
 	memberRepo projectdom.MemberRepository
+	listScoper ListScoper
 }
 
 // NewAnnotationHandler returns an AnnotationHandler wired to the
 // annotation service.
 func NewAnnotationHandler(svc annotationdom.Service) *AnnotationHandler {
 	return &AnnotationHandler{svc: svc}
+}
+
+// WithAnnotationListScoper limits annotation lists and search to the
+// annotations the caller may read, inside the query (see scopedContext).
+func (h *AnnotationHandler) WithAnnotationListScoper(s ListScoper) *AnnotationHandler {
+	h.listScoper = s
+	return h
 }
 
 // WithMemberRepo attaches the project member repository used to resolve the
@@ -150,11 +159,16 @@ func (h *AnnotationHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scopeCtx, err := scopedContext(r, h.listScoper, iam.ActionAnnotationsRead, projectID, "annotation")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	var annotations []*annotationdom.PageAnnotation
 	if pagePath := r.URL.Query().Get("page_path"); pagePath != "" {
-		annotations, err = h.svc.ListForPage(r.Context(), projectID, environmentID, portForwardID, pagePath)
+		annotations, err = h.svc.ListForPage(scopeCtx, projectID, environmentID, portForwardID, pagePath)
 	} else {
-		annotations, err = h.svc.ListForPortForward(r.Context(), projectID, environmentID, portForwardID)
+		annotations, err = h.svc.ListForPortForward(scopeCtx, projectID, environmentID, portForwardID)
 	}
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -230,7 +244,14 @@ func (h *AnnotationHandler) SearchInProject(w http.ResponseWriter, r *http.Reque
 		filter.Cursor = &raw
 	}
 
-	annotations, hasMore, err := h.svc.SearchInProject(r.Context(), projectID, filter)
+	// The page and its cursor are computed over the annotations the caller may
+	// read: the repository applies the scope inside the query.
+	scopeCtx, err := scopedContext(r, h.listScoper, iam.ActionAnnotationsRead, projectID, "annotation")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	annotations, hasMore, err := h.svc.SearchInProject(scopeCtx, projectID, filter)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

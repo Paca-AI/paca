@@ -37,7 +37,7 @@ describe("buildRegistryMap", () => {
 						{
 							point: "project.settings.tab",
 							component: "SettingsTab",
-							requiredPermission: "projects.write",
+							requiredPermission: "projects:write",
 						},
 					],
 				},
@@ -48,7 +48,7 @@ describe("buildRegistryMap", () => {
 		const regs = registry.get("project.settings.tab");
 
 		expect(regs).toHaveLength(1);
-		expect(regs?.[0].requiredPermission).toBe("projects.write");
+		expect(regs?.[0].requiredPermission).toBe("projects:write");
 	});
 
 	it("leaves requiredPermission undefined when the manifest omits it", () => {

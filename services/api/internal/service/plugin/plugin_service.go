@@ -3,6 +3,7 @@ package pluginsvc
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,10 +12,19 @@ import (
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 )
 
+// ActionRegistry is the part of the IAM action registry the service keeps in
+// step with the installed plugins: each plugin's declared actions are known
+// while it is installed, so role policies can name them.
+type ActionRegistry interface {
+	SetPluginActions(owner string, actions []string) error
+	RemovePluginActions(owner string)
+}
+
 // Service implements plugindom.Service.
 type Service struct {
 	repo        plugindom.Repository
 	hostVersion string
+	actions     ActionRegistry
 }
 
 // New creates a Service wired to the given repository.
@@ -29,6 +39,34 @@ func New(repo plugindom.Repository) *Service {
 func (s *Service) WithHostVersion(v string) *Service {
 	s.hostVersion = v
 	return s
+}
+
+// WithActionRegistry keeps reg in step with install, update and delete (and
+// SyncActions). Left unset, plugin actions are not registered.
+func (s *Service) WithActionRegistry(reg ActionRegistry) *Service {
+	s.actions = reg
+	return s
+}
+
+// SyncActions registers the actions of every installed plugin. Call it once at
+// startup, before roles are validated against the registry. A plugin whose
+// actions are refused (a clash) is reported, and the others are still
+// registered.
+func (s *Service) SyncActions(ctx context.Context) error {
+	if s.actions == nil {
+		return nil
+	}
+	plugins, err := s.repo.List(ctx)
+	if err != nil {
+		return err
+	}
+	var firstErr error
+	for _, p := range plugins {
+		if err := s.actions.SetPluginActions(p.ID.String(), p.Manifest.Actions()); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("plugin %s: %w", p.Name, err)
+		}
+	}
+	return firstErr
 }
 
 // ListPlugins returns all installed plugins.
@@ -78,7 +116,15 @@ func (s *Service) InstallPlugin(ctx context.Context, input plugindom.InstallInpu
 		InstalledAt: now,
 		UpdatedAt:   now,
 	}
+	if s.actions != nil {
+		if err := s.actions.SetPluginActions(p.ID.String(), input.Manifest.Actions()); err != nil {
+			return nil, apierr.New(apierr.CodeBadRequest, "invalid plugin manifest: "+err.Error())
+		}
+	}
 	if err := s.repo.Create(ctx, p); err != nil {
+		if s.actions != nil {
+			s.actions.RemovePluginActions(p.ID.String())
+		}
 		return nil, err
 	}
 	return p, nil
@@ -100,6 +146,11 @@ func (s *Service) UpdatePlugin(ctx context.Context, id uuid.UUID, input plugindo
 		if err := s.CheckHostCompatibility(*input.Manifest); err != nil {
 			return nil, err
 		}
+		if s.actions != nil {
+			if err := s.actions.SetPluginActions(p.ID.String(), input.Manifest.Actions()); err != nil {
+				return nil, apierr.New(apierr.CodeBadRequest, "invalid plugin manifest: "+err.Error())
+			}
+		}
 		p.Manifest = *input.Manifest
 	}
 	if input.Enabled != nil {
@@ -107,6 +158,12 @@ func (s *Service) UpdatePlugin(ctx context.Context, id uuid.UUID, input plugindo
 	}
 	p.UpdatedAt = time.Now()
 	if err := s.repo.Update(ctx, p); err != nil {
+		if s.actions != nil && input.Manifest != nil {
+			// Put back what the stored plugin declares.
+			if stored, ferr := s.repo.FindByID(ctx, id); ferr == nil {
+				_ = s.actions.SetPluginActions(id.String(), stored.Manifest.Actions())
+			}
+		}
 		return nil, err
 	}
 	return p, nil
@@ -114,7 +171,13 @@ func (s *Service) UpdatePlugin(ctx context.Context, id uuid.UUID, input plugindo
 
 // DeletePlugin removes a plugin from the registry.
 func (s *Service) DeletePlugin(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	if s.actions != nil {
+		s.actions.RemovePluginActions(id.String())
+	}
+	return nil
 }
 
 // UpdateExtensionSetting upserts a system-wide extension-point setting.

@@ -16,11 +16,10 @@ import (
 
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	settingsdom "github.com/Paca-AI/api/internal/domain/settings"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 )
@@ -41,7 +40,7 @@ func (m *mockAuthSvc) Logout(context.Context, string) error { return nil }
 type mockUserSvc struct{}
 
 func (m *mockUserSvc) GetByID(context.Context, uuid.UUID) (*userdom.User, error) {
-	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
+	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice"}, nil
 }
 func (m *mockUserSvc) List(context.Context, int, int, userdom.ListFilter) ([]*userdom.User, int64, error) {
 	return []*userdom.User{}, 0, nil
@@ -56,16 +55,16 @@ func (m *mockUserSvc) CountUsersMustChangePassword(context.Context) (int64, erro
 	return 0, nil
 }
 func (m *mockUserSvc) ListGlobalPermissions(context.Context, uuid.UUID) ([]string, error) {
-	return []string{string(authz.PermissionUsersRead)}, nil
+	return []string{string(iam.ActionUsersRead)}, nil
 }
 func (m *mockUserSvc) Create(context.Context, userdom.CreateInput) (*userdom.User, error) {
-	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
+	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice"}, nil
 }
 func (m *mockUserSvc) UpdateProfile(context.Context, uuid.UUID, userdom.UpdateProfileInput) (*userdom.User, error) {
-	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice Updated", Role: userdom.RoleUser}, nil
+	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice Updated"}, nil
 }
 func (m *mockUserSvc) AdminUpdate(context.Context, uuid.UUID, userdom.AdminUpdateInput) (*userdom.User, error) {
-	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice Updated", Role: userdom.RoleUser}, nil
+	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice Updated"}, nil
 }
 func (m *mockUserSvc) ResetPassword(context.Context, uuid.UUID, string) error            { return nil }
 func (m *mockUserSvc) ChangeMyPassword(context.Context, uuid.UUID, string, string) error { return nil }
@@ -78,35 +77,10 @@ func (m *mockUserSvc) InitiateAvatarUpload(context.Context, uuid.UUID, string, s
 	return &attachmentdom.UploadSession{}, nil
 }
 func (m *mockUserSvc) CompleteAvatarUpload(context.Context, uuid.UUID, uuid.UUID) (*userdom.User, error) {
-	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
+	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice"}, nil
 }
 func (m *mockUserSvc) RemoveAvatar(context.Context, uuid.UUID) (*userdom.User, error) {
-	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
-}
-
-type mockGlobalRoleSvc struct{}
-
-func (m *mockGlobalRoleSvc) List(context.Context) ([]*globalroledom.GlobalRole, error) {
-	return []*globalroledom.GlobalRole{{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}}, nil
-}
-func (m *mockGlobalRoleSvc) Create(context.Context, globalroledom.CreateInput) (*globalroledom.GlobalRole, error) {
-	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}, nil
-}
-func (m *mockGlobalRoleSvc) Update(context.Context, uuid.UUID, globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
-	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}, nil
-}
-func (m *mockGlobalRoleSvc) Delete(context.Context, uuid.UUID) error { return nil }
-func (m *mockGlobalRoleSvc) ReplaceUserRoles(context.Context, uuid.UUID, []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
-	return []*globalroledom.GlobalRole{}, nil
-}
-func (m *mockGlobalRoleSvc) FindByID(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) {
-	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}, nil
-}
-func (m *mockGlobalRoleSvc) SetDefault(context.Context, uuid.UUID) (*globalroledom.GlobalRole, error) {
-	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}, IsDefault: true}, nil
-}
-func (m *mockGlobalRoleSvc) FindDefault(context.Context) (*globalroledom.GlobalRole, error) {
-	return nil, globalroledom.ErrNoDefault
+	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice"}, nil
 }
 
 // stubProjectSvc is a minimal projectdom.Service with no projects, just
@@ -150,39 +124,17 @@ func (s *stubProjectSvc) CountDistinctAgentsByProjects(context.Context, []uuid.U
 func (s *stubProjectSvc) AddMember(context.Context, uuid.UUID, projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
 	return nil, nil
 }
-func (s *stubProjectSvc) UpdateMemberRole(context.Context, uuid.UUID, uuid.UUID, projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-	return nil, nil
-}
 func (s *stubProjectSvc) RemoveMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
-func (s *stubProjectSvc) UpdateMemberRoleByMemberID(context.Context, uuid.UUID, uuid.UUID, projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-	return nil, nil
-}
 func (s *stubProjectSvc) UpdateMemberDescription(context.Context, uuid.UUID, uuid.UUID, string) (*projectdom.ProjectMember, error) {
 	return nil, nil
 }
 func (s *stubProjectSvc) RemoveMemberByMemberID(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }
-func (s *stubProjectSvc) GetMyProjectPermissions(context.Context, uuid.UUID, uuid.UUID, *uuid.UUID) (map[string]any, error) {
-	return nil, nil
-}
-func (s *stubProjectSvc) AddAgentMember(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) error {
+func (s *stubProjectSvc) AddAgentMember(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, []uuid.UUID, *uuid.UUID) error {
 	return nil
 }
 func (s *stubProjectSvc) RemoveAgentMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
-func (s *stubProjectSvc) ListRoles(context.Context, uuid.UUID) ([]*projectdom.ProjectRole, error) {
-	return nil, nil
-}
-func (s *stubProjectSvc) CreateRole(context.Context, uuid.UUID, projectdom.CreateRoleInput) (*projectdom.ProjectRole, error) {
-	return nil, nil
-}
-func (s *stubProjectSvc) UpdateRole(context.Context, uuid.UUID, uuid.UUID, projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error) {
-	return nil, nil
-}
-func (s *stubProjectSvc) DeleteRole(context.Context, uuid.UUID, uuid.UUID) error { return nil }
-func (s *stubProjectSvc) FindRoleByID(context.Context, uuid.UUID) (*projectdom.ProjectRole, error) {
-	return nil, projectdom.ErrRoleNotFound
-}
 
 // fakeSettingsSvc is a minimal settingsdom.Service — enough to exercise
 // routing/permission checks for the /admin/settings endpoints without a
@@ -205,39 +157,64 @@ func (f *fakeSettingsSvc) UpdateSettings(context.Context, *string, *string, *str
 	return &settingsdom.WorkspaceSettings{}, nil
 }
 
-type allowAllPermissionStore struct{}
+// The router tests describe callers as a platform role holding these
+// actions and a project role holding those, served to the IAM engine shaped
+// the way migration 000064 writes roles: actionAll as "*" on "*", every other
+// platform action on the platform roots, and a project role's actions on
+// every project ("project/*/*" — a stand-in for "the caller's role in
+// whichever project is asked about").
+const actionAll iam.Action = "*"
 
-func (s *allowAllPermissionStore) ListGlobalPermissions(context.Context, uuid.UUID) ([]authz.Permission, error) {
-	return []authz.Permission{authz.PermissionAll}, nil
+var testPlatformRoots = []string{"user", "user/*", "role", "role/*", "plugin", "plugin/*", "settings", "sso", "agent", "agent/*", "project"}
+
+func roleGrants(global, project []iam.Action) []iam.Grant {
+	var sts []iam.Statement
+	add := func(perms []iam.Action, resources []string) {
+		var actions []string
+		for _, p := range perms {
+			if p == actionAll {
+				sts = append(sts, iam.Statement{Effect: iam.EffectAllow, Actions: []string{"*"}, Resources: []string{"*"}})
+				continue
+			}
+			actions = append(actions, string(p))
+		}
+		if len(actions) > 0 {
+			sts = append(sts, iam.Statement{Effect: iam.EffectAllow, Actions: actions, Resources: resources})
+		}
+	}
+	add(global, testPlatformRoots)
+	add(project, []string{"project/*/*"})
+	if len(sts) == 0 {
+		return nil
+	}
+	return []iam.Grant{{RoleID: "legacy", Policy: &iam.Policy{Statements: sts}}}
 }
 
-func (s *allowAllPermissionStore) ListProjectPermissions(context.Context, uuid.UUID, uuid.UUID) ([]authz.Permission, error) {
-	return []authz.Permission{authz.PermissionAll}, nil
+type allowAllPermissionStore struct{}
+
+func (s *allowAllPermissionStore) ListGrants(context.Context, iam.Principal) ([]iam.Grant, error) {
+	return roleGrants([]iam.Action{actionAll}, nil), nil
 }
 
 type staticPermissionStore struct {
-	globalPerms []authz.Permission
+	globalPerms []iam.Action
 }
 
-func (s *staticPermissionStore) ListGlobalPermissions(context.Context, uuid.UUID) ([]authz.Permission, error) {
-	return s.globalPerms, nil
-}
-
-func (s *staticPermissionStore) ListProjectPermissions(context.Context, uuid.UUID, uuid.UUID) ([]authz.Permission, error) {
-	return nil, nil
+func (s *staticPermissionStore) ListGrants(context.Context, iam.Principal) ([]iam.Grant, error) {
+	return roleGrants(s.globalPerms, nil), nil
 }
 
 func newTestRouter(t *testing.T) http.Handler {
 	return newTestRouterWithStore(t, &allowAllPermissionStore{})
 }
 
-func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) http.Handler {
+func newTestRouterWithStore(t *testing.T, store iam.Store) http.Handler {
 	t.Helper()
 
-	authorizer := authz.NewAuthorizer(store)
+	authorizer := newTestIAM(store)
 	deps := Deps{
 		TokenManager: jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour),
-		Authorizer:   authorizer,
+		IAM:          authorizer,
 		Health:       handler.NewHealthHandler(),
 		Auth: handler.NewAuthHandler(&mockAuthSvc{}, handler.CookieConfig{
 			Secure:            false,
@@ -245,11 +222,10 @@ func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) http.Hand
 			RefreshTTL:        24 * time.Hour,
 			RefreshSessionTTL: 12 * time.Hour,
 		}),
-		User:       handler.NewUserHandler(&mockUserSvc{}),
-		GlobalRole: handler.NewGlobalRoleHandler(&mockGlobalRoleSvc{}),
-		Project:    handler.NewProjectHandler(&stubProjectSvc{}, authorizer),
-		Settings:   handler.NewSettingsHandler(&fakeSettingsSvc{}),
-		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		User:     handler.NewUserHandler(&mockUserSvc{}),
+		Project:  handler.NewProjectHandler(&stubProjectSvc{}, authorizer),
+		Settings: handler.NewSettingsHandler(&fakeSettingsSvc{}),
+		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	return New(deps)
@@ -295,7 +271,7 @@ func TestNew_CORSPreflight(t *testing.T) {
 func TestNew_CORSAllowList(t *testing.T) {
 	deps := Deps{
 		TokenManager:       jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour),
-		Authorizer:         authz.NewAuthorizer(&allowAllPermissionStore{}),
+		IAM:                newTestIAM(&allowAllPermissionStore{}),
 		Health:             handler.NewHealthHandler(),
 		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
 		CORSAllowedOrigins: []string{"https://paca.example.com"},
@@ -378,7 +354,7 @@ func TestAdminRoute_CreateUser_RequiresAuth(t *testing.T) {
 }
 
 func TestAdminRoute_CreateUser_WithPermission(t *testing.T) {
-	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionUsersWrite}})
+	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []iam.Action{iam.ActionUsersWrite}})
 	tok := issueAccessTokenForRouterTests(t)
 
 	body := bytes.NewBufferString(`{"username":"alice","password":"secret12","full_name":"Alice"}`)
@@ -393,38 +369,8 @@ func TestAdminRoute_CreateUser_WithPermission(t *testing.T) {
 	}
 }
 
-func TestAdminRoute_ListGlobalRoles_RequiresReadPermission(t *testing.T) {
-	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionGlobalRolesRead}})
-	tok := issueAccessTokenForRouterTests(t)
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/admin/global-roles", nil)
-	req.Header.Set("Authorization", "Bearer "+tok)
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
-	}
-}
-
-func TestAdminRoute_CreateGlobalRole_RequiresWritePermission(t *testing.T) {
-	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionGlobalRolesRead}})
-	tok := issueAccessTokenForRouterTests(t)
-
-	body := bytes.NewBufferString(`{"name":"SECURITY","permissions":{"global_roles.read":true}}`)
-	w := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/global-roles", body)
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 without write permission, got %d (%s)", w.Code, w.Body.String())
-	}
-}
-
 func TestAdminRoute_UpdateSettings_RequiresWritePermission(t *testing.T) {
-	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionUsersRead}})
+	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []iam.Action{iam.ActionUsersRead}})
 	tok := issueAccessTokenForRouterTests(t)
 
 	body := bytes.NewBufferString(`{"brand_name":"Acme"}`)
@@ -440,7 +386,7 @@ func TestAdminRoute_UpdateSettings_RequiresWritePermission(t *testing.T) {
 }
 
 func TestAdminRoute_UpdateSettings_WithWritePermission(t *testing.T) {
-	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionSettingsWrite}})
+	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []iam.Action{iam.ActionSettingsWrite}})
 	tok := issueAccessTokenForRouterTests(t)
 
 	body := bytes.NewBufferString(`{"brand_name":"Acme"}`)
@@ -452,22 +398,6 @@ func TestAdminRoute_UpdateSettings_WithWritePermission(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with settings.write permission, got %d (%s)", w.Code, w.Body.String())
-	}
-}
-
-func TestAdminRoute_AssignGlobalRoles_RequiresAssignPermission(t *testing.T) {
-	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionGlobalRolesWrite}})
-	tok := issueAccessTokenForRouterTests(t)
-
-	body := bytes.NewBufferString(`{"role_ids":[]}`)
-	w := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/v1/admin/users/"+uuid.NewString()+"/global-roles", body)
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 without assign permission, got %d (%s)", w.Code, w.Body.String())
 	}
 }
 
@@ -522,7 +452,7 @@ func TestProjectsRoute_GetByID_StillParsesProjectID(t *testing.T) {
 func TestNew_AuthRateLimit(t *testing.T) {
 	deps := Deps{
 		TokenManager: jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour),
-		Authorizer:   authz.NewAuthorizer(&allowAllPermissionStore{}),
+		IAM:          newTestIAM(&allowAllPermissionStore{}),
 		Health:       handler.NewHealthHandler(),
 		Auth: handler.NewAuthHandler(&mockAuthSvc{}, handler.CookieConfig{
 			AccessTTL: 15 * time.Minute, RefreshTTL: 24 * time.Hour, RefreshSessionTTL: 12 * time.Hour,

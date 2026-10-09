@@ -1,9 +1,5 @@
 import { Edit2, Lock, Star, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-	activePermissions,
-	permissionBadgeClass,
-} from "@/components/admin/global-roles/utils";
 import { DisabledDeleteButton } from "@/components/shared/disabled-delete-button";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,15 +10,15 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import type { GlobalRole } from "@/lib/admin-api";
+import type { Role } from "@/lib/role-api";
 
 interface GlobalRolesTableProps {
-	roles: GlobalRole[];
+	roles: Role[];
 	canWrite: boolean;
-	onEdit: (role: GlobalRole) => void;
-	onDelete: (role: GlobalRole) => void;
+	onEdit: (role: Role) => void;
+	onDelete: (role: Role) => void;
 	/** Opens the confirmation for making `role` the default. */
-	onSetDefault: (role: GlobalRole) => void;
+	onSetDefault: (role: Role) => void;
 }
 
 export function GlobalRolesTable({
@@ -43,7 +39,7 @@ export function GlobalRolesTable({
 							{t("globalRoles.table.columnName")}
 						</TableHead>
 						<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-							{t("globalRoles.table.columnPermissions")}
+							{t("globalRoles.table.columnDescription")}
 						</TableHead>
 						<TableHead className="w-32 px-5 text-xs font-semibold uppercase tracking-wide">
 							{t("globalRoles.table.columnDefault")}
@@ -55,33 +51,33 @@ export function GlobalRolesTable({
 				</TableHeader>
 				<TableBody>
 					{roles.map((role) => {
-						const active = activePermissions(role.permissions);
 						return (
 							<TableRow key={role.id} className="group">
 								<TableCell className="px-5">
 									<div className="flex items-center gap-2">
-										<Lock className="size-3.5 shrink-0 text-muted-foreground/40" />
+										{role.is_system ? (
+											<Lock
+												className="size-3.5 shrink-0 text-muted-foreground/40"
+												aria-label={t("globalRoles.table.builtIn")}
+											/>
+										) : null}
 										<span className="font-mono text-sm font-medium">
 											{role.name}
 										</span>
 									</div>
 								</TableCell>
-								<TableCell className="px-5">
-									{active.length === 0 ? (
-										<span className="text-xs italic text-muted-foreground/60">
-											{t("globalRoles.table.noPermissionsAssigned")}
+								<TableCell className="max-w-0 px-5">
+									{role.description ? (
+										<span
+											className="block truncate text-sm text-muted-foreground"
+											title={role.description}
+										>
+											{role.description}
 										</span>
 									) : (
-										<div className="flex flex-wrap gap-1">
-											{active.map((permission) => (
-												<span
-													key={permission}
-													className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium leading-none ${permissionBadgeClass(permission)}`}
-												>
-													{permission}
-												</span>
-											))}
-										</div>
+										<span className="text-xs italic text-muted-foreground/60">
+											{t("globalRoles.table.noDescription")}
+										</span>
 									)}
 								</TableCell>
 								<TableCell className="px-5">
@@ -106,15 +102,17 @@ export function GlobalRolesTable({
 													<Star className="size-3.5" />
 												</Button>
 											) : null}
-											<Button
-												variant="ghost"
-												size="icon-sm"
-												onClick={() => onEdit(role)}
-												title={t("globalRoles.table.editAction")}
-											>
-												<Edit2 className="size-3.5" />
-											</Button>
-											{role.is_default ? (
+											{
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													onClick={() => onEdit(role)}
+													title={t("globalRoles.table.editAction")}
+												>
+													<Edit2 className="size-3.5" />
+												</Button>
+											}
+											{role.is_system ? null : role.is_default ? (
 												// New users and agents start with the default role, so it can't go.
 												<DisabledDeleteButton
 													label={t("globalRoles.table.deleteAction")}

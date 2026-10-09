@@ -1,0 +1,17 @@
+{
+  "version": "2026-10-01",
+  "statements": [
+    {
+      "sid": "ReadProject",
+      "effect": "Allow",
+      "actions": ["projects:read"],
+      "resources": ["project/PROJECT_ID"]
+    },
+    {
+      "sid": "FullAccess",
+      "effect": "Allow",
+      "actions": ["*"],
+      "resources": ["project/PROJECT_ID/*"]
+    }
+  ]
+}

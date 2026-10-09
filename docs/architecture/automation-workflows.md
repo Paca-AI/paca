@@ -239,7 +239,7 @@ at a time, matching how the status-rule handoffs actually work.
 ## API
 
 All endpoints are under `/api/v1/projects/:projectId/workflows`. Read routes
-require `workflows.read`; everything else requires `workflows.write`. Node,
+require `workflows:read`; everything else requires `workflows:write`. Node,
 edge, status-rule, and status-transition mutations are allowed in `draft` and
 `active`; once a workflow is `archived` they're rejected with 409
 `WORKFLOW_ARCHIVED`.
@@ -270,21 +270,19 @@ DELETE /workflows/:workflowId/edges/:edgeId                              remove 
 
 ## Permissions
 
-Two new permission keys, following the same `<domain>.read` / `<domain>.write`
-convention as the rest of the project permission model:
+Two IAM actions (see [authorization](authorization.md)):
 
-- `workflows.read` — view workflows and their graphs.
-- `workflows.write` — create/edit/activate/archive/delete workflows and their
+- `workflows:read`: view workflows and their graphs.
+- `workflows:write`: create/edit/activate/archive/delete workflows and their
   nodes, edges, status rules, and status transitions.
 
-Granted by default to: `PROJECT_OWNER` / `PROJECT_MANAGER` (via
-`workflows.*`), `PROJECT_MEMBER` (both keys), `PROJECT_VIEWER` (read only) —
-see `authz.DefaultProjectRoles()`. The per-project roles actually seeded on
-project creation (`Admin`/`Editor`/`Viewer`, in `projectsvc.CreateProject`)
-carry the same grants. The tail of `000018_add_automation_workflows.sql`
-backfills these two keys onto every `project_roles` row already using one of
-these role names, so projects created before this feature shipped don't need
-manual reconfiguration.
+They are checked on the project (`project/<id>`) or on one automation
+(`project/<id>/workflow/<automationId>`), so a role can grant them project-wide
+or for specific workflows, and a `Deny` on one workflow hides it from lists.
+The shipped project roles carry them: `Admin` (everything), `Editor`
+(both actions) and `Viewer` (read only); see
+`internal/bootstrap/defaultroles`. Projects that existed before the IAM
+migration (`000064_iam_roles.sql`) kept the grants their old project roles had.
 
 ## AI agent integration
 
@@ -293,7 +291,7 @@ existing Paca MCP server (`apps/mcp/src/tools/workflow-tools.ts`) — the same
 mechanism used for every other Paca resource (tasks, sprints, docs, etc.),
 not a special-cased sandbox tool or a separate server. The MCP server lists
 these tools unconditionally, the same as every other tool; enforcement of
-the calling agent's own `workflows.read` / `workflows.write` project
+the calling agent's own `workflows:read` / `workflows:write` project
 permissions happens on the API side of each call, which returns 403 (surfaced
 to the agent as a "Permission denied" tool error) when the grant is missing —
 there is no separate per-agent capability flag.

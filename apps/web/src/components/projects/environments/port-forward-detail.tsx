@@ -73,7 +73,7 @@ export function PortForwardDetailView({
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canWrite = hasProjectPermission("environments.write");
+	const canWrite = hasProjectPermission("environments:write");
 
 	const { data: environment } = useQuery(
 		environmentQueryOptions(projectId, environmentId),

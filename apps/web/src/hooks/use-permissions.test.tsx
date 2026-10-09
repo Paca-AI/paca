@@ -1,12 +1,9 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockUseQuery, mockCheckPermission, mockCheckAnyPermission } =
-	vi.hoisted(() => ({
-		mockUseQuery: vi.fn(),
-		mockCheckPermission: vi.fn(),
-		mockCheckAnyPermission: vi.fn(),
-	}));
+const { mockUseQuery } = vi.hoisted(() => ({
+	mockUseQuery: vi.fn(),
+}));
 
 vi.mock("@tanstack/react-query", async () => {
 	const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
@@ -19,11 +16,6 @@ vi.mock("@tanstack/react-query", async () => {
 	};
 });
 
-vi.mock("@/lib/permissions", () => ({
-	hasPermission: mockCheckPermission,
-	hasAnyPermission: mockCheckAnyPermission,
-}));
-
 import { usePermissions } from "./use-permissions";
 
 describe("usePermissions", () => {
@@ -33,13 +25,13 @@ describe("usePermissions", () => {
 
 	it("returns query data and loading state", () => {
 		mockUseQuery.mockReturnValue({
-			data: ["users.read"],
+			data: ["users:read"],
 			isLoading: true,
 		});
 
 		const { result } = renderHook(() => usePermissions());
 
-		expect(result.current.permissions).toEqual(["users.read"]);
+		expect(result.current.permissions).toEqual(["users:read"]);
 		expect(result.current.isLoading).toBe(true);
 	});
 
@@ -55,40 +47,29 @@ describe("usePermissions", () => {
 		expect(result.current.isLoading).toBe(false);
 	});
 
-	it("delegates hasPermission checks to permissions helper", () => {
+	it("answers hasPermission from the granted actions, wildcards included", () => {
 		mockUseQuery.mockReturnValue({
-			data: ["projects.*"],
+			data: ["projects:*"],
 			isLoading: false,
 		});
-		mockCheckPermission.mockReturnValue(true);
 
 		const { result } = renderHook(() => usePermissions());
-		const canManage = result.current.hasPermission("projects.manage");
 
-		expect(canManage).toBe(true);
-		expect(mockCheckPermission).toHaveBeenCalledWith(
-			["projects.*"],
-			"projects.manage",
-		);
+		expect(result.current.hasPermission("projects:create")).toBe(true);
+		expect(result.current.hasPermission("users:read")).toBe(false);
 	});
 
-	it("delegates hasAnyPermission checks to permissions helper", () => {
+	it("answers hasAnyPermission from the granted actions", () => {
 		mockUseQuery.mockReturnValue({
-			data: ["projects.create"],
+			data: ["projects:create"],
 			isLoading: false,
 		});
-		mockCheckAnyPermission.mockReturnValue(true);
 
 		const { result } = renderHook(() => usePermissions());
-		const canAny = result.current.hasAnyPermission([
-			"projects.create",
-			"projects.delete",
-		]);
 
-		expect(canAny).toBe(true);
-		expect(mockCheckAnyPermission).toHaveBeenCalledWith(
-			["projects.create"],
-			["projects.create", "projects.delete"],
-		);
+		expect(
+			result.current.hasAnyPermission(["projects:create", "projects:delete"]),
+		).toBe(true);
+		expect(result.current.hasAnyPermission(["projects:delete"])).toBe(false);
 	});
 });

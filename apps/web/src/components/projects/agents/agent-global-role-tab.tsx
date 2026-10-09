@@ -9,11 +9,12 @@ import {
 	RolePicker,
 } from "@/components/admin/global-roles/role-picker";
 import { InlineNotice } from "@/components/shared/inline-notice";
+import { RoleBadgeList, toRoleBadgeData } from "@/components/shared/role-badge";
 import { Button } from "@/components/ui/button";
 import { useCanAssignGlobalRole } from "@/hooks/use-can-assign-global-role";
 import { usePermissions } from "@/hooks/use-permissions";
-import { type GlobalRole, globalRolesQueryOptions } from "@/lib/admin-api";
 import { type Agent, globalAgentQueryOptions } from "@/lib/agent-api";
+import { platformRolesQueryOptions, type Role } from "@/lib/role-api";
 import { useSetAgentGlobalRole } from "./use-set-agent-global-role";
 
 /** How many of the role's permissions to list before folding the rest into "+N". */
@@ -25,14 +26,14 @@ type Mode = "view" | "choose" | "confirm-remove";
  * A global agent's global role: what it may do outside any project (from the
  * home and admin chat). Assigning or removing it is its own privilege, so it
  * lives on a tab of its own rather than in the create or edit forms, and
- * needs `global_roles.assign` on top of `agents.write`.
+ * needs `roles:assign` on top of `agents:write`.
  */
 export function AgentGlobalRoleTab({
 	agent,
 	canWrite,
 }: {
 	agent: Agent;
-	/** Whether the viewer may write this agent (`agents.write`). */
+	/** Whether the viewer may write this agent (`agents:write`). */
 	canWrite: boolean;
 }) {
 	const { t } = useTranslation("projects");
@@ -41,20 +42,26 @@ export function AgentGlobalRoleTab({
 	const canAssignRole = useCanAssignGlobalRole();
 	const canChange = canWrite && canAssignRole;
 
-	// The agent only carries the role's id; its name and permissions come from
-	// the roles list, which needs global_roles.read.
-	const { data: roles } = useQuery({
-		...globalRolesQueryOptions,
-		enabled: hasPermission("global_roles.read"),
+	// The agent only carries its roles' ids and names; what they grant comes
+	// from the roles list, which needs roles:read.
+	const { data: allRoles } = useQuery({
+		...platformRolesQueryOptions,
+		enabled: hasPermission("roles:read"),
 	});
-	const role = roles?.find((r) => r.id === agent.global_role_id) ?? null;
+	const heldIds = (agent.roles ?? []).map((r) => r.id);
+	const heldRoles = (allRoles ?? []).filter((r) => heldIds.includes(r.id));
 
 	const [mode, setMode] = useState<Mode>("view");
-	const [selected, setSelected] = useState<GlobalRole | null>(null);
+	const [selected, setSelected] = useState<{
+		ids: string[];
+		roles: Role[];
+	} | null>(null);
 
-	const { setRole, isPending, error, clearError } = useSetAgentGlobalRole({
-		onChanged: (updated) => {
-			qc.setQueryData(globalAgentQueryOptions(agent.id).queryKey, updated);
+	const { setRoles, isPending, error, clearError } = useSetAgentGlobalRole({
+		onChanged: () => {
+			void qc.invalidateQueries({
+				queryKey: globalAgentQueryOptions(agent.id).queryKey,
+			});
 			void qc.invalidateQueries({ queryKey: ["global-agents"] });
 			backToView();
 		},
@@ -66,10 +73,19 @@ export function AgentGlobalRoleTab({
 		clearError();
 	};
 
-	// Picking the role it already has changes nothing.
+	// Picking the roles it already has changes nothing.
 	const change =
-		selected && selected.id !== agent.global_role_id ? selected : null;
-	const hasRole = !!agent.global_role_id;
+		selected &&
+		!(
+			selected.ids.length === heldIds.length &&
+			selected.ids.every((id) => heldIds.includes(id))
+		)
+			? selected
+			: null;
+	const addsFullAccess = !!change?.roles.some(
+		(r) => !heldIds.includes(r.id) && isFullAccessRole(r),
+	);
+	const hasRole = heldIds.length > 0;
 
 	return (
 		<div className="max-w-2xl space-y-4">
@@ -94,13 +110,21 @@ export function AgentGlobalRoleTab({
 					</div>
 					<div className="flex min-w-0 flex-1 flex-col gap-1.5">
 						{hasRole ? (
-							role ? (
-								<>
-									<span className="font-mono text-sm font-semibold">
-										{role.name}
-									</span>
-									<PermissionSummary role={role} limit={SUMMARY_LIMIT} />
-								</>
+							heldRoles.length > 0 ? (
+								heldRoles.map((role) => (
+									<div key={role.id} className="flex flex-col gap-1.5">
+										<RoleBadgeList
+											roles={[toRoleBadgeData(role)]}
+											className="[&_[data-kind]]:text-sm"
+										/>
+										{role.description ? (
+											<p className="text-xs text-muted-foreground">
+												{role.description}
+											</p>
+										) : null}
+										<PermissionSummary role={role} limit={SUMMARY_LIMIT} />
+									</div>
+								))
 							) : (
 								<p className="text-sm text-muted-foreground">
 									{t("agents.detail.globalRole.unknownRole")}
@@ -123,15 +147,15 @@ export function AgentGlobalRoleTab({
 					<div className="flex flex-col gap-3 border-t pt-4">
 						<RolePicker
 							label={t("agents.detail.globalRole.title")}
-							value={selected?.id ?? null}
-							onChange={(next) => {
-								setSelected(next);
+							values={selected?.ids ?? heldIds}
+							onChange={(ids, roles) => {
+								setSelected({ ids, roles });
 								clearError();
 							}}
-							currentRoleId={agent.global_role_id}
+							currentRoleIds={heldIds}
 							disabled={isPending}
 						/>
-						{change && isFullAccessRole(change) ? (
+						{addsFullAccess ? (
 							<InlineNotice tone="warning">
 								{t("agents.detail.globalRole.fullAccessWarning")}
 							</InlineNotice>
@@ -146,7 +170,7 @@ export function AgentGlobalRoleTab({
 								{t("agents.detail.globalRole.cancel")}
 							</Button>
 							<Button
-								onClick={() => change && setRole(agent.id, change)}
+								onClick={() => change && setRoles(agent.id, change.ids)}
 								disabled={!change || isPending}
 							>
 								{isPending
@@ -171,7 +195,7 @@ export function AgentGlobalRoleTab({
 							</Button>
 							<Button
 								variant="destructive"
-								onClick={() => setRole(agent.id, null)}
+								onClick={() => setRoles(agent.id, [])}
 								disabled={isPending}
 							>
 								{isPending

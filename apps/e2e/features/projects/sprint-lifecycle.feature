@@ -4,7 +4,7 @@ Feature: Sprint lifecycle management
   completed.  A sprint is quick-created in the planned state with a
   system-generated name ("Sprint N", where N is the number of existing
   sprints plus one) and no dates — no creation dialog is shown.  Users with
-  the "Manage Sprints" (sprints.write) project permission start a planned
+  the "Manage Sprints" (sprints:write) project permission start a planned
   sprint from a "Start sprint" button, found in the sprint's column header on
   the product backlog Table view and in the header of the sprint's own page.
   Either opens a "Start sprint" modal where they confirm or edit the name,

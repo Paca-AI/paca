@@ -1,23 +1,35 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCreateProjectRole, mockUpdateProjectRole } = vi.hoisted(() => ({
-	mockCreateProjectRole: vi.fn(),
-	mockUpdateProjectRole: vi.fn(),
+const { mockCreateRole, mockUpdateRole, mockValidate } = vi.hoisted(() => ({
+	mockCreateRole: vi.fn(),
+	mockUpdateRole: vi.fn(),
+	mockValidate: vi.fn(),
 }));
 
-vi.mock("@/lib/project-api", () => ({
-	createProjectRole: mockCreateProjectRole,
-	updateProjectRole: mockUpdateProjectRole,
+vi.mock("@/lib/role-api", () => ({
+	createRole: mockCreateRole,
+	updateRole: mockUpdateRole,
+	validatePolicy: mockValidate,
+	simulatePolicy: vi.fn(),
+	knownActionsQueryOptions: () => ({
+		queryKey: ["roles", "actions"],
+		queryFn: async () => [],
+	}),
+	attributeSchemaQueryOptions: () => ({
+		queryKey: ["roles", "attribute-schema"],
+		queryFn: async () => [],
+	}),
 	projectRolesQueryOptions: (projectId: string) => ({
 		queryKey: ["projects", projectId, "roles"],
 	}),
 }));
 
-import type { ProjectRole } from "@/lib/project-api";
+import { actionsToPolicy, type Policy } from "@/lib/policy";
+import type { Role } from "@/lib/role-api";
 import { ProjectRoleFormDialog } from "./ProjectRoleFormDialog";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -39,11 +51,15 @@ function Wrapper({ children }: { children: ReactNode }) {
 	);
 }
 
-const existingRole: ProjectRole = {
+const existingRole: Role = {
 	id: "r1",
 	project_id: "p1",
-	role_name: "DEVELOPER",
-	permissions: { "tasks.*": true },
+	name: "DEVELOPER",
+	description: "keeps tasks moving",
+	policy: actionsToPolicy(["tasks:*"], "project", "p1"),
+	is_system: false,
+	is_default: false,
+	attachment_count: 1,
 	created_at: "2026-01-01T00:00:00.000Z",
 	updated_at: "2026-01-01T00:00:00.000Z",
 };
@@ -57,7 +73,7 @@ function renderCreate(onOpenChange = vi.fn()) {
 	return { onOpenChange };
 }
 
-function renderEdit(role: ProjectRole = existingRole, onOpenChange = vi.fn()) {
+function renderEdit(role: Role = existingRole, onOpenChange = vi.fn()) {
 	render(
 		<Wrapper>
 			<ProjectRoleFormDialog
@@ -71,11 +87,22 @@ function renderEdit(role: ProjectRole = existingRole, onOpenChange = vi.fn()) {
 	return { onOpenChange };
 }
 
+const submit = (name: RegExp) => screen.getByRole("button", { name });
+const policySent = (mock: typeof mockCreateRole, callIndex = 0): Policy =>
+	(
+		mock.mock.calls[callIndex][
+			callIndex === 0 && mock === mockUpdateRole ? 1 : 0
+		] as {
+			policy: Policy;
+		}
+	).policy;
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("ProjectRoleFormDialog", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockValidate.mockResolvedValue({ valid: true, issues: [] });
 	});
 
 	// ── Create mode ────────────────────────────────────────────────────────────
@@ -88,319 +115,304 @@ describe("ProjectRoleFormDialog", () => {
 
 		it("renders an empty role name input", () => {
 			renderCreate();
-			const input = screen.getByLabelText(/role name/i);
-			expect(input).toHaveValue("");
+			expect(screen.getByLabelText(/role name/i)).toHaveValue("");
 		});
 
-		it("disables the submit button when the name is empty", () => {
+		it("asks for a name when submitted without one, and sends nothing", async () => {
 			renderCreate();
+			await userEvent.click(submit(/create role/i));
+
 			expect(
-				screen.getByRole("button", { name: /create role/i }),
-			).toBeDisabled();
+				await screen.findByText(/role name of up to 100/i),
+			).toBeInTheDocument();
+			expect(mockCreateRole).not.toHaveBeenCalled();
 		});
 
-		it("enables the submit button once a name is typed", async () => {
-			renderCreate();
-			await userEvent.type(screen.getByLabelText(/role name/i), "REVIEWER");
-			expect(
-				screen.getByRole("button", { name: /create role/i }),
-			).toBeEnabled();
-		});
-
-		it("calls createProjectRole with the role name on submit", async () => {
-			mockCreateProjectRole.mockResolvedValue(existingRole);
-			renderCreate();
-
-			await userEvent.type(screen.getByLabelText(/role name/i), "REVIEWER");
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
-			);
-
-			await waitFor(() => {
-				expect(mockCreateProjectRole).toHaveBeenCalledWith(
-					"p1",
-					expect.objectContaining({ role_name: "REVIEWER" }),
-				);
-			});
-		});
-
-		it("calls onOpenChange(false) after successful creation", async () => {
-			mockCreateProjectRole.mockResolvedValue(existingRole);
+		it("creates the role inside the project with the policy document", async () => {
+			mockCreateRole.mockResolvedValue(existingRole);
 			const { onOpenChange } = renderCreate();
 
 			await userEvent.type(screen.getByLabelText(/role name/i), "REVIEWER");
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
+			await userEvent.click(submit(/create role/i));
+
+			await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+			expect(mockCreateRole).toHaveBeenCalledWith(
+				expect.objectContaining({ name: "REVIEWER" }),
+				"p1",
 			);
-
-			await waitFor(() => {
-				expect(onOpenChange).toHaveBeenCalledWith(false);
-			});
-		});
-
-		it("does not call updateProjectRole in create mode", async () => {
-			mockCreateProjectRole.mockResolvedValue(existingRole);
-			renderCreate();
-
-			await userEvent.type(screen.getByLabelText(/role name/i), "REVIEWER");
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
-			);
-
-			await waitFor(() => {
-				expect(mockCreateProjectRole).toHaveBeenCalled();
-			});
-			expect(mockUpdateProjectRole).not.toHaveBeenCalled();
+			expect(mockUpdateRole).not.toHaveBeenCalled();
 		});
 	});
 
 	// ── Edit mode ──────────────────────────────────────────────────────────────
 
 	describe("edit mode", () => {
-		it("shows 'Edit Role' as the title", () => {
+		it("shows 'Edit Role' and pre-fills the name", () => {
 			renderEdit();
 			expect(screen.getByText("Edit Role")).toBeInTheDocument();
-		});
-
-		it("pre-fills the role name input with the existing role name", () => {
-			renderEdit();
 			expect(screen.getByLabelText(/role name/i)).toHaveValue("DEVELOPER");
+			expect(submit(/save changes/i)).toBeInTheDocument();
 		});
 
-		it("submit button says 'Save changes'", () => {
-			renderEdit();
-			expect(
-				screen.getByRole("button", { name: /save changes/i }),
-			).toBeInTheDocument();
-		});
-
-		it("calls updateProjectRole with the project id, role id, and updated name", async () => {
-			mockUpdateProjectRole.mockResolvedValue({
-				...existingRole,
-				role_name: "LEAD",
-			});
+		it("replaces the role by id inside the project, keeping the description", async () => {
+			mockUpdateRole.mockResolvedValue(existingRole);
 			renderEdit();
 
 			const input = screen.getByLabelText(/role name/i);
 			await userEvent.clear(input);
 			await userEvent.type(input, "LEAD");
-			await userEvent.click(
-				screen.getByRole("button", { name: /save changes/i }),
-			);
+			await userEvent.click(submit(/save changes/i));
 
-			await waitFor(() => {
-				expect(mockUpdateProjectRole).toHaveBeenCalledWith(
-					"p1",
+			await waitFor(() =>
+				expect(mockUpdateRole).toHaveBeenCalledWith(
 					"r1",
-					expect.objectContaining({ role_name: "LEAD" }),
-				);
-			});
+					expect.objectContaining({
+						name: "LEAD",
+						description: "keeps tasks moving",
+					}),
+					"p1",
+				),
+			);
+			expect(mockCreateRole).not.toHaveBeenCalled();
 		});
 
-		it("calls onOpenChange(false) after successful update", async () => {
-			mockUpdateProjectRole.mockResolvedValue(existingRole);
+		it("closes after a successful update", async () => {
+			mockUpdateRole.mockResolvedValue(existingRole);
 			const { onOpenChange } = renderEdit();
 
-			await userEvent.click(
-				screen.getByRole("button", { name: /save changes/i }),
-			);
+			await userEvent.click(submit(/save changes/i));
 
-			await waitFor(() => {
-				expect(onOpenChange).toHaveBeenCalledWith(false);
-			});
+			await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+		});
+	});
+
+	// ── Description ────────────────────────────────────────────────────────────
+
+	describe("description", () => {
+		it("starts empty on create and is sent trimmed", async () => {
+			mockCreateRole.mockResolvedValue(existingRole);
+			renderCreate();
+			const box = screen.getByLabelText(/^description/i);
+			expect(box).toHaveValue("");
+
+			await userEvent.type(screen.getByLabelText(/role name/i), "REVIEWER");
+			await userEvent.type(box, "  reads everything  ");
+			await userEvent.click(submit(/create role/i));
+
+			await waitFor(() =>
+				expect(mockCreateRole).toHaveBeenCalledWith(
+					expect.objectContaining({
+						name: "REVIEWER",
+						description: "reads everything",
+					}),
+					"p1",
+				),
+			);
 		});
 
-		it("does not call createProjectRole in edit mode", async () => {
-			mockUpdateProjectRole.mockResolvedValue(existingRole);
+		it("is pre-filled on edit and can be changed or cleared", async () => {
+			mockUpdateRole.mockResolvedValue(existingRole);
 			renderEdit();
+			const box = screen.getByLabelText(/^description/i);
+			expect(box).toHaveValue("keeps tasks moving");
+
+			await userEvent.clear(box);
+			await userEvent.click(submit(/save changes/i));
+
+			await waitFor(() =>
+				expect(mockUpdateRole).toHaveBeenCalledWith(
+					"r1",
+					expect.objectContaining({ description: "" }),
+					"p1",
+				),
+			);
+		});
+	});
+
+	// ── Simple view: search and groups ─────────────────────────────────────────
+
+	describe("permission list", () => {
+		it("filters permissions by label, description or key and recovers from no match", async () => {
+			renderCreate();
+			const search = screen.getByRole("searchbox", {
+				name: /search permissions/i,
+			});
+			expect(screen.getByRole("switch", { name: "View Tasks" })).toBeVisible();
+
+			await userEvent.type(search, "tasks:read");
+			expect(screen.getByRole("switch", { name: "View Tasks" })).toBeVisible();
+			expect(
+				screen.queryByRole("switch", { name: "Edit Tasks" }),
+			).not.toBeInTheDocument();
+
+			await userEvent.clear(search);
+			await userEvent.type(search, "zzzz-nothing");
+			expect(screen.queryAllByRole("switch")).toHaveLength(0);
+			expect(screen.getByText(/no permissions match/i)).toBeInTheDocument();
 
 			await userEvent.click(
-				screen.getByRole("button", { name: /save changes/i }),
+				screen.getByRole("button", { name: /clear search/i }),
 			);
+			expect(screen.getByRole("switch", { name: "View Tasks" })).toBeVisible();
+		});
 
-			await waitFor(() => {
-				expect(mockUpdateProjectRole).toHaveBeenCalled();
-			});
-			expect(mockCreateProjectRole).not.toHaveBeenCalled();
+		it("selects and clears a whole group and shows its count", async () => {
+			renderCreate();
+			const all = screen.getByRole("button", { name: /select all in tasks/i });
+			await userEvent.click(all);
+
+			const switches = screen
+				.getAllByRole("switch")
+				.filter((el) => el.getAttribute("aria-checked") === "true");
+			expect(switches.length).toBeGreaterThan(1);
+			expect(
+				screen.getByText(`${switches.length} enabled`, { exact: true }),
+			).toBeInTheDocument();
+
+			await userEvent.click(
+				screen.getByRole("button", { name: /clear all in tasks/i }),
+			);
+			expect(
+				screen
+					.getAllByRole("switch")
+					.every((el) => el.getAttribute("aria-checked") === "false"),
+			).toBe(true);
 		});
 	});
 
 	// ── Error handling ─────────────────────────────────────────────────────────
 
 	describe("error handling", () => {
-		it("shows an inline field error when role name is already taken", async () => {
-			mockCreateProjectRole.mockRejectedValue({
-				response: { data: { error_code: "PROJECT_ROLE_NAME_TAKEN" } },
+		const failWith = (code: string) =>
+			mockCreateRole.mockRejectedValue({
+				response: { data: { error_code: code } },
 			});
+		const fillAndSubmit = async (name = "DEVELOPER") => {
+			await userEvent.type(screen.getByLabelText(/role name/i), name);
+			await userEvent.click(submit(/create role/i));
+		};
+
+		it("shows an inline field error when the role name is already taken", async () => {
+			failWith("ROLE_NAME_TAKEN");
 			renderCreate();
+			await fillAndSubmit();
 
-			await userEvent.type(screen.getByLabelText(/role name/i), "DEVELOPER");
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
-			);
-
-			await waitFor(() => {
-				expect(
-					screen.getByText(/role with this name already exists/i),
-				).toBeInTheDocument();
-			});
+			expect(
+				await screen.findByText(/role with this name already exists/i),
+			).toBeInTheDocument();
 		});
 
-		it("shows an inline field error when role name is invalid", async () => {
-			mockCreateProjectRole.mockRejectedValue({
-				response: { data: { error_code: "PROJECT_ROLE_NAME_INVALID" } },
-			});
+		it("shows an inline field error when the role name is invalid", async () => {
+			failWith("ROLE_NAME_INVALID");
 			renderCreate();
+			await fillAndSubmit("x");
 
-			await userEvent.type(screen.getByLabelText(/role name/i), "bad-name!!");
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
-			);
-
-			await waitFor(() => {
-				expect(
-					screen.getByText(/uppercase letters, numbers, and underscores/i),
-				).toBeInTheDocument();
-			});
+			expect(
+				await screen.findByText(/role name of up to 100/i),
+			).toBeInTheDocument();
 		});
 
-		it("shows a general error for forbidden action", async () => {
-			mockCreateProjectRole.mockRejectedValue({
-				response: { data: { error_code: "FORBIDDEN" } },
-			});
+		it.each([
+			["FORBIDDEN", /don't have permission/i],
+			["INTERNAL_ERROR", /something went wrong on the server/i],
+			["ROLE_POLICY_INVALID", /policy has problems/i],
+			["ROLE_LAST_FULL_ACCESS", /nobody with full access/i],
+		])("shows a general error for %s", async (code, message) => {
+			failWith(code);
 			renderCreate();
+			await fillAndSubmit("NEW_ROLE");
 
-			await userEvent.type(screen.getByLabelText(/role name/i), "NEW_ROLE");
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
-			);
-
-			await waitFor(() => {
-				expect(screen.getByText(/don't have permission/i)).toBeInTheDocument();
-			});
+			expect(await screen.findByRole("alert")).toHaveTextContent(message);
 		});
 
-		it("shows a general error for internal server errors", async () => {
-			mockCreateProjectRole.mockRejectedValue({
-				response: { data: { error_code: "INTERNAL_ERROR" } },
-			});
+		it("clears the name error when the user types again", async () => {
+			failWith("ROLE_NAME_TAKEN");
 			renderCreate();
-
-			await userEvent.type(screen.getByLabelText(/role name/i), "NEW_ROLE");
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
-			);
-
-			await waitFor(() => {
-				expect(
-					screen.getByText(/something went wrong on the server/i),
-				).toBeInTheDocument();
-			});
-		});
-
-		it("clears the name error when the user starts typing again after a validation error", async () => {
-			mockCreateProjectRole.mockRejectedValue({
-				response: { data: { error_code: "PROJECT_ROLE_NAME_TAKEN" } },
-			});
-			renderCreate();
-
-			await userEvent.type(screen.getByLabelText(/role name/i), "DEVELOPER");
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
-			);
-
-			await waitFor(() => {
-				expect(
-					screen.getByText(/role with this name already exists/i),
-				).toBeInTheDocument();
-			});
+			await fillAndSubmit();
+			await screen.findByText(/role with this name already exists/i);
 
 			await userEvent.type(screen.getByLabelText(/role name/i), "X");
+
 			expect(
 				screen.queryByText(/role with this name already exists/i),
 			).not.toBeInTheDocument();
 		});
 
-		it("does not call onOpenChange(false) when creation fails", async () => {
-			mockCreateProjectRole.mockRejectedValue(new Error("Server down"));
+		it("stays open when creation fails", async () => {
+			mockCreateRole.mockRejectedValue(new Error("Server down"));
 			const { onOpenChange } = renderCreate();
+			await fillAndSubmit("NEW_ROLE");
 
-			await userEvent.type(screen.getByLabelText(/role name/i), "NEW_ROLE");
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
+			expect(await screen.findByRole("alert")).toHaveTextContent(
+				/something went wrong/i,
 			);
-
-			await waitFor(() => {
-				expect(screen.getByText("Server down")).toBeInTheDocument();
-			});
 			expect(onOpenChange).not.toHaveBeenCalledWith(false);
 		});
 	});
 
-	// ── Permissions ────────────────────────────────────────────────────────────
+	// ── Simple view: permissions ───────────────────────────────────────────────
 
 	describe("permissions", () => {
-		it("renders permission toggles for all known permission groups", () => {
+		it("renders toggles for every permission group", () => {
 			renderCreate();
-			// Each group label should be visible
-			expect(screen.getByText("Project")).toBeInTheDocument();
-			expect(screen.getByText("Members")).toBeInTheDocument();
-			expect(screen.getByText("Settings")).toBeInTheDocument();
-			expect(screen.getByText("Tasks")).toBeInTheDocument();
-			expect(screen.getByText("Sprints")).toBeInTheDocument();
-			expect(screen.getByText("Views")).toBeInTheDocument();
-			expect(screen.getByText("Documents")).toBeInTheDocument();
-			expect(screen.getByText("Annotations")).toBeInTheDocument();
+			for (const group of [
+				"Project",
+				"Members",
+				"Settings",
+				"Tasks",
+				"Sprints",
+				"Views",
+				"Documents",
+				"Annotations",
+			]) {
+				expect(screen.getByText(group)).toBeInTheDocument();
+			}
 		});
 
-		it("pre-selects permissions from the existing role and sends them in the update payload", async () => {
-			// existingRole has "tasks.*": true; both task permissions should be normalised
-			// back to the wildcard and forwarded to the API on save.
-			mockUpdateProjectRole.mockResolvedValue(existingRole);
+		it("pre-selects what the role grants and writes it back as a policy", async () => {
+			mockUpdateRole.mockResolvedValue(existingRole);
 			renderEdit();
+			expect(screen.getByRole("switch", { name: "View Tasks" })).toBeChecked();
 
-			await userEvent.click(
-				screen.getByRole("button", { name: /save changes/i }),
+			await userEvent.click(submit(/save changes/i));
+
+			await waitFor(() => expect(mockUpdateRole).toHaveBeenCalled());
+			expect(policySent(mockUpdateRole)).toEqual(
+				actionsToPolicy(["tasks:*"], "project", "p1"),
 			);
-
-			await waitFor(() => {
-				const payload = mockUpdateProjectRole.mock.calls[0][2] as {
-					permissions: Record<string, boolean>;
-				};
-				// normalizePermissionsToWildcards should compress tasks.read + tasks.write → tasks.*
-				expect(payload.permissions?.["tasks.*"]).toBe(true);
-			});
 		});
 
-		it("sends an empty permissions object when no permissions are toggled", async () => {
-			mockCreateProjectRole.mockResolvedValue(existingRole);
+		it("sends a policy with no statements when nothing is toggled", async () => {
+			mockCreateRole.mockResolvedValue(existingRole);
 			renderCreate();
 
 			await userEvent.type(screen.getByLabelText(/role name/i), "VIEWER");
-			// no toggles changed — all permissions off by default
-			await userEvent.click(
-				screen.getByRole("button", { name: /create role/i }),
-			);
+			await userEvent.click(submit(/create role/i));
 
-			await waitFor(() => {
-				const payload = mockCreateProjectRole.mock.calls[0][1] as {
-					permissions: Record<string, boolean>;
-				};
-				expect(Object.keys(payload.permissions ?? {})).toHaveLength(0);
-			});
+			await waitFor(() => expect(mockCreateRole).toHaveBeenCalled());
+			expect(policySent(mockCreateRole).statements).toEqual([]);
 		});
 
-		// A project's seeded "Admin" role is stored as the bare wildcard
-		// {"*": true} (see 000056_set_admin_role_wildcard_permission.sql).
-		// Without isFullAccess tracking this separately from the per-checkbox
-		// state expandWildcardPermissions derives for display, saving this
-		// role untouched would silently re-derive it as today's enumerated
-		// wildcards via normalizePermissionsToWildcards, undoing 000056's
-		// future-proofing.
-		const fullAccessRole: ProjectRole = {
+		it("collapses a fully checked domain into its wildcard", async () => {
+			mockCreateRole.mockResolvedValue(existingRole);
+			renderCreate();
+			await userEvent.type(screen.getByLabelText(/role name/i), "WORKER");
+			await userEvent.click(screen.getByRole("switch", { name: "View Tasks" }));
+			await userEvent.click(screen.getByRole("switch", { name: "Edit Tasks" }));
+			await userEvent.click(submit(/create role/i));
+
+			await waitFor(() => expect(mockCreateRole).toHaveBeenCalled());
+			expect(policySent(mockCreateRole).statements[0].actions).toEqual([
+				"tasks:*",
+			]);
+		});
+
+		// A role stored as the bare wildcard is saved as the wildcard again unless
+		// it is touched, so a permission added later is still covered.
+		const fullAccessRole: Role = {
 			...existingRole,
-			role_name: "Admin",
-			permissions: { "*": true },
+			name: "Admin",
+			policy: actionsToPolicy(["*"], "project", "p1"),
 		};
 
 		it("shows a full-access badge and explanation for a role stored as the bare wildcard", () => {
@@ -412,44 +424,194 @@ describe("ProjectRoleFormDialog", () => {
 			).toBeInTheDocument();
 		});
 
-		it("saves an untouched full-access role as the bare wildcard, not enumerated permissions", async () => {
-			mockUpdateProjectRole.mockResolvedValue(fullAccessRole);
+		it("saves an untouched full-access role as the bare wildcard", async () => {
+			mockUpdateRole.mockResolvedValue(fullAccessRole);
 			renderEdit(fullAccessRole);
 
-			await userEvent.click(
-				screen.getByRole("button", { name: /save changes/i }),
-			);
+			await userEvent.click(submit(/save changes/i));
 
-			await waitFor(() => {
-				const payload = mockUpdateProjectRole.mock.calls[0][2] as {
-					permissions: Record<string, boolean>;
-				};
-				expect(payload.permissions).toEqual({ "*": true });
-			});
+			await waitFor(() => expect(mockUpdateRole).toHaveBeenCalled());
+			expect(policySent(mockUpdateRole).statements[0].actions).toEqual(["*"]);
 		});
 
-		it("exits full-access mode and saves the narrowed enumerated set once any permission is toggled", async () => {
-			mockUpdateProjectRole.mockResolvedValue(fullAccessRole);
+		it("leaves full access and saves the narrowed set once any switch is toggled", async () => {
+			mockUpdateRole.mockResolvedValue(fullAccessRole);
 			renderEdit(fullAccessRole);
 
-			// Every switch reads as checked under the wildcard; toggling any one
-			// of them off is the "an owner narrows a delegated Admin" scenario
-			// 000056's guard is meant to allow.
-			const switches = screen.getAllByRole("switch");
-			await userEvent.click(switches[0]);
-
+			await userEvent.click(screen.getAllByRole("switch")[0]);
 			expect(screen.queryByText("Full access")).not.toBeInTheDocument();
+			await userEvent.click(submit(/save changes/i));
 
-			await userEvent.click(
-				screen.getByRole("button", { name: /save changes/i }),
+			await waitFor(() => expect(mockUpdateRole).toHaveBeenCalled());
+			expect(policySent(mockUpdateRole).statements[0].actions).not.toContain(
+				"*",
+			);
+		});
+	});
+
+	// ── Advanced view: the policy as JSON ──────────────────────────────────────
+
+	describe("advanced (JSON) view", () => {
+		const jsonBox = () =>
+			screen.getByRole("textbox", { name: /policy \(json\)/i });
+		const setJson = (value: string) => {
+			fireEvent.change(jsonBox(), { target: { value } });
+		};
+		const goAdvanced = () =>
+			userEvent.click(screen.getByRole("tab", { name: /advanced/i }));
+
+		it("shows the checked permissions as a policy document", async () => {
+			renderEdit();
+			await goAdvanced();
+
+			expect(JSON.parse((jsonBox() as HTMLTextAreaElement).value)).toEqual(
+				actionsToPolicy(["tasks:*"], "project", "p1"),
+			);
+		});
+
+		it("saves the JSON as edited, not what the switches say", async () => {
+			mockUpdateRole.mockResolvedValue(existingRole);
+			renderEdit();
+			await goAdvanced();
+			const edited: Policy = {
+				version: "2026-10-01",
+				statements: [
+					{
+						effect: "Allow",
+						actions: ["tasks:read"],
+						resources: ["project/*"],
+					},
+					{
+						effect: "Deny",
+						actions: ["tasks:write"],
+						resources: ["project/*"],
+						conditions: { StringEquals: { "task.sprint_id": "s6" } },
+					},
+				],
+			};
+			setJson(JSON.stringify(edited));
+			await waitFor(() => expect(submit(/save changes/i)).toBeEnabled());
+			await userEvent.click(submit(/save changes/i));
+
+			await waitFor(() => expect(mockUpdateRole).toHaveBeenCalled());
+			expect(policySent(mockUpdateRole)).toEqual(edited);
+		});
+
+		it("opens a role it cannot show as switches in the JSON view, with a notice", () => {
+			renderEdit({
+				...existingRole,
+				policy: {
+					statements: [
+						{
+							effect: "Allow",
+							actions: ["tasks:read"],
+							resources: ["project/*"],
+						},
+						{
+							effect: "Deny",
+							actions: ["tasks:write"],
+							resources: ["project/*"],
+						},
+					],
+				},
+			});
+
+			expect(
+				screen.getByText(/can only be edited as JSON/i),
+			).toBeInTheDocument();
+			expect(jsonBox()).toBeInTheDocument();
+			expect(screen.getByRole("tab", { name: /advanced/i })).toHaveAttribute(
+				"aria-selected",
+				"true",
+			);
+		});
+
+		it("does not drop statements the switches cannot express when switching back", async () => {
+			mockUpdateRole.mockResolvedValue(existingRole);
+			renderEdit();
+			await goAdvanced();
+			const edited: Policy = {
+				statements: [
+					{
+						effect: "Allow",
+						actions: ["tasks:read"],
+						resources: ["project/p1/task/*"],
+					},
+				],
+			};
+			setJson(JSON.stringify(edited));
+
+			await userEvent.click(screen.getByRole("tab", { name: /simple/i }));
+
+			expect(
+				screen.getByText(/can only be edited as JSON/i),
+			).toBeInTheDocument();
+			expect(jsonBox()).toBeInTheDocument();
+			await waitFor(() => expect(submit(/save changes/i)).toBeEnabled());
+			await userEvent.click(submit(/save changes/i));
+			await waitFor(() => expect(mockUpdateRole).toHaveBeenCalled());
+			expect(policySent(mockUpdateRole)).toEqual(edited);
+		});
+
+		it("switches back to the switches when the JSON is something they can show", async () => {
+			renderEdit();
+			await goAdvanced();
+			setJson(JSON.stringify(actionsToPolicy(["docs:read"], "project", "p1")));
+
+			await userEvent.click(screen.getByRole("tab", { name: /simple/i }));
+
+			expect(
+				screen.getByRole("switch", { name: "View Documents" }),
+			).toBeChecked();
+			expect(
+				screen.getByRole("switch", { name: "View Tasks" }),
+			).not.toBeChecked();
+		});
+
+		it("refuses to save JSON that does not parse", async () => {
+			renderEdit();
+			await goAdvanced();
+			setJson("{ not json");
+
+			expect(await screen.findByRole("alert")).toHaveTextContent(/not valid/i);
+			expect(submit(/save changes/i)).toBeDisabled();
+		});
+
+		it("lists the problems the server finds, by path, and blocks saving", async () => {
+			mockValidate.mockResolvedValue({
+				valid: false,
+				issues: [
+					{
+						path: "statements[0].actions[0]",
+						message: 'unknown action "nope:read"',
+					},
+				],
+			});
+			renderEdit();
+			await goAdvanced();
+			setJson(
+				JSON.stringify({
+					statements: [
+						{ effect: "Allow", actions: ["nope:read"], resources: ["*"] },
+					],
+				}),
 			);
 
-			await waitFor(() => {
-				const payload = mockUpdateProjectRole.mock.calls[0][2] as {
-					permissions: Record<string, boolean>;
-				};
-				expect(payload.permissions?.["*"]).toBeUndefined();
-			});
+			expect(
+				await screen.findByText("statements[0].actions[0]"),
+			).toBeInTheDocument();
+			expect(screen.getByText(/unknown action/)).toBeInTheDocument();
+			expect(submit(/save changes/i)).toBeDisabled();
+		});
+
+		it("validates inside the project", async () => {
+			renderEdit();
+			await goAdvanced();
+			setJson(JSON.stringify(actionsToPolicy(["tasks:read"], "project", "p1")));
+
+			await waitFor(() =>
+				expect(mockValidate).toHaveBeenCalledWith(expect.anything(), "p1"),
+			);
 		});
 	});
 });

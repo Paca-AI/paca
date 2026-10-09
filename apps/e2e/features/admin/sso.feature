@@ -2,8 +2,8 @@
 Feature: Single sign-on (SSO) with OpenID Connect
   The "Single sign-on (SSO)" section of Admin > Settings (route
   /admin/settings) lets an administrator register OpenID Connect identity
-  providers. It is gated by its own global permission, "settings.sso.write",
-  separate from the branding permission "settings.write". Each enabled
+  providers. It is gated by its own global permission, "settings.sso:write",
+  separate from the branding permission "settings:write". Each enabled
   provider adds a "Continue with <name>" button to the sign-in page. A
   first-time user is given a new account with the default role (when the
   provider creates accounts automatically), and a returning user signs back
@@ -17,16 +17,16 @@ Feature: Single sign-on (SSO) with OpenID Connect
   run registers its own issuer path and slug, so providers from parallel
   runs never collide, and removes its providers and accounts afterwards.
 
-  Rule: Access is gated by the settings.sso.write permission
+  Rule: Access is gated by the settings.sso:write permission
 
-    Scenario: A user with only settings.write does not see the SSO section
-      Given a user exists whose global role grants "settings.write" but not "settings.sso.write"
+    Scenario: A user with only settings:write does not see the SSO section
+      Given a user exists whose global role grants "settings:write" but not "settings.sso:write"
       When that user signs in and navigates to the Settings page
       Then the "Logo & Favicon" branding section should be displayed
       And the "Single sign-on (SSO)" section should not be displayed
 
-    Scenario: A user with only settings.sso.write sees the SSO section but not branding
-      Given a user exists whose global role grants "settings.sso.write" but not "settings.write"
+    Scenario: A user with only settings.sso:write sees the SSO section but not branding
+      Given a user exists whose global role grants "settings.sso:write" but not "settings:write"
       When that user signs in and navigates to the Settings page
       Then the "Single sign-on (SSO)" section should be displayed
       And the "Logo & Favicon" branding section should not be displayed

@@ -108,21 +108,21 @@ Feature: Agent conversations
       Given the user already has a stored authenticated session
       And a project named "E2E_CONV_PERM_PROJECT" exists
 
-    Scenario: A member without conversations.read sees the no-permission state instead of the list
-      Given a project member who does not have the "conversations.read" permission
+    Scenario: A member without conversations:read sees the no-permission state instead of the list
+      Given a project member who does not have the "conversations:read" permission
       When that member navigates to the Conversations page for "E2E_CONV_PERM_PROJECT"
       Then the conversations list should display "You don't have permission to view conversations"
 
-    Scenario: A member with only conversations.read can browse the list but not manage it
-      Given a project member who has the "conversations.read" permission only
+    Scenario: A member with only conversations:read can browse the list but not manage it
+      Given a project member who has the "conversations:read" permission only
       And the conversations list contains a project-shared conversation titled "E2E_CONV_PERM_SHARED"
       When that member navigates to the Conversations page for "E2E_CONV_PERM_PROJECT"
       Then the conversations list should show an item titled "E2E_CONV_PERM_SHARED"
       And the "New conversation" button should not be visible
       And no "More actions" menu should be offered on the item
 
-    Scenario: A member with only conversations.read cannot use the composer
-      Given a project member who has the "conversations.read" permission only
+    Scenario: A member with only conversations:read cannot use the composer
+      Given a project member who has the "conversations:read" permission only
       When that member navigates to the Conversations page for "E2E_CONV_PERM_PROJECT"
       Then no message composer should be offered
 

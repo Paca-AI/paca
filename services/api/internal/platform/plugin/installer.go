@@ -56,7 +56,8 @@ func NewInstaller(backendDir, frontendDir, mcpDir, skillsDir string, httpClient 
 // It returns the parsed plugin manifest used for DB registration.
 //
 // checkManifest is called with the downloaded manifest immediately after it
-// is parsed and validated, before any of the plugin's live on-disk artifacts
+// is parsed and validated (PluginManifest.Validate runs first, then
+// checkManifest), before any of the plugin's live on-disk artifacts
 // are touched (the backend/frontend/migrations/mcp/skills copy steps below
 // overwrite or os.RemoveAll the existing installed directories in place, with
 // no staging — so a compatibility check run after those steps would be too
@@ -120,6 +121,13 @@ func (i *Installer) Install(ctx context.Context, item MarketplacePlugin, checkMa
 	}
 	if manifest.ID != item.Name {
 		return plugindom.PluginManifest{}, fmt.Errorf("manifest id %q does not match catalog name %q", manifest.ID, item.Name)
+	}
+	// Validate before checkManifest and before anything on disk is touched:
+	// a manifest the registry would reject (e.g. the retired
+	// requirePermissions middleware) must not overwrite a live plugin's
+	// artifacts or reach its migrations/runtime load.
+	if err := manifest.Validate(); err != nil {
+		return plugindom.PluginManifest{}, fmt.Errorf("invalid plugin manifest: %w", err)
 	}
 	if checkManifest != nil {
 		if err := checkManifest(manifest); err != nil {

@@ -111,7 +111,7 @@ test.describe("Settings page permission gating", () => {
 			roleName: `${PREFIX}ROLE_${label}_${RUN_ID}`,
 			// A role must grant something; projects.read is irrelevant to Settings
 			// and lets the account reach the home page after signing in.
-			permissions: { "projects.read": true, ...permissions },
+			permissions: { "projects:read": true, ...permissions },
 		});
 		return username;
 	}
@@ -147,7 +147,7 @@ test.describe("Settings page permission gating", () => {
 			request,
 			playwright,
 			"SETTINGSWRITER",
-			{ "settings.write": true },
+			{ "settings:write": true },
 		);
 
 		await signIn(page, username, RESTRICTED_PASSWORD);

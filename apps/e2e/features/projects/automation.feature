@@ -14,12 +14,12 @@ Feature: Workflow automation
   separate Activate/Archive/Deactivate button set, and no read-only
   "archived" state; an inactive automation's graph stays fully editable.
   The builder has two tabs: "Graph" (the node canvas plus, for
-  workflows.write holders, an "Add Trigger" / "Add Condition" / "Add
+  workflows:write holders, an "Add Trigger" / "Add Condition" / "Add
   Action" node palette) and "Run history" (a list of past runs, or an
   empty state). All write actions (create, delete, node/edge editing,
-  rename, activate/deactivate) are gated by the workflows.write project
+  rename, activate/deactivate) are gated by the workflows:write project
   permission; viewing the list and builder at all is gated by
-  workflows.read.
+  workflows:read.
 
   @authenticated
   Rule: Automation list page — loading, empty state, and dependency map
@@ -42,24 +42,24 @@ Feature: Workflow automation
       When the user navigates to the Automation page for "E2E_AUTOMATION_PROJECT"
       Then the Automation page should display an empty state with a "Create your first automation" action
 
-    Scenario: The "New Automation" button is visible with workflows.write permission
-      Given the user has the "workflows.write" project permission in "E2E_AUTOMATION_PROJECT"
+    Scenario: The "New Automation" button is visible with workflows:write permission
+      Given the user has the "workflows:write" project permission in "E2E_AUTOMATION_PROJECT"
       When the user navigates to the Automation page for "E2E_AUTOMATION_PROJECT"
       Then the "New Automation" button should be visible
 
-    Scenario: The "New Automation" button is hidden without workflows.write permission
-      Given the user does not have the "workflows.write" project permission in "E2E_AUTOMATION_PROJECT"
+    Scenario: The "New Automation" button is hidden without workflows:write permission
+      Given the user does not have the "workflows:write" project permission in "E2E_AUTOMATION_PROJECT"
       When the user navigates to the Automation page for "E2E_AUTOMATION_PROJECT"
       Then the "New Automation" button should not be visible
 
-    Scenario: The delete button on a card is hidden without workflows.write permission
-      Given the user does not have the "workflows.write" project permission in "E2E_AUTOMATION_PROJECT"
+    Scenario: The delete button on a card is hidden without workflows:write permission
+      Given the user does not have the "workflows:write" project permission in "E2E_AUTOMATION_PROJECT"
       And "E2E_AUTOMATION_PROJECT" has an inactive automation named "E2E_AUTOMATION_READONLY"
       When the user navigates to the Automation page for "E2E_AUTOMATION_PROJECT"
       Then the card for "E2E_AUTOMATION_READONLY" should not show a delete button
 
-    Scenario: A project member without workflows.read permission sees the no-permission state instead of the grid
-      Given the user does not have the "workflows.read" project permission in "E2E_AUTOMATION_PROJECT"
+    Scenario: A project member without workflows:read permission sees the no-permission state instead of the grid
+      Given the user does not have the "workflows:read" project permission in "E2E_AUTOMATION_PROJECT"
       When the user navigates to the Automation page for "E2E_AUTOMATION_PROJECT"
       Then the Automation page should display the "You don't have permission to view automations" message
 
@@ -110,7 +110,7 @@ Feature: Workflow automation
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_AUTOMATION_CRUD_PROJECT" exists
-      And the user has the "workflows.write" project permission in "E2E_AUTOMATION_CRUD_PROJECT"
+      And the user has the "workflows:write" project permission in "E2E_AUTOMATION_CRUD_PROJECT"
       And the user has navigated to the Automation page for "E2E_AUTOMATION_CRUD_PROJECT"
 
     Scenario: The create dialog requires a name before it can be submitted
@@ -158,7 +158,7 @@ Feature: Workflow automation
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_AUTOMATION_TOGGLE_PROJECT" exists
-      And the user has the "workflows.write" project permission in "E2E_AUTOMATION_TOGGLE_PROJECT"
+      And the user has the "workflows:write" project permission in "E2E_AUTOMATION_TOGGLE_PROJECT"
 
     Scenario: An inactive automation shows the toggle switched off
       Given "E2E_AUTOMATION_TOGGLE_PROJECT" has an inactive automation named "E2E_AUTOMATION_OFF"
@@ -185,8 +185,8 @@ Feature: Workflow automation
       And the user confirms the rename
       Then the automation builder header should display "E2E_AUTOMATION_NEW_NAME"
 
-    Scenario: The rename icon and the toggle are disabled without workflows.write permission
-      Given the user does not have the "workflows.write" project permission in "E2E_AUTOMATION_TOGGLE_PROJECT"
+    Scenario: The rename icon and the toggle are disabled without workflows:write permission
+      Given the user does not have the "workflows:write" project permission in "E2E_AUTOMATION_TOGGLE_PROJECT"
       And "E2E_AUTOMATION_TOGGLE_PROJECT" has an inactive automation named "E2E_AUTOMATION_LOCKED"
       When the user opens the automation builder for "E2E_AUTOMATION_LOCKED"
       Then the rename (pencil) icon next to the automation name should not be visible
@@ -198,7 +198,7 @@ Feature: Workflow automation
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_AUTOMATION_GRAPH_PROJECT" exists
-      And the user has the "workflows.write" project permission in "E2E_AUTOMATION_GRAPH_PROJECT"
+      And the user has the "workflows:write" project permission in "E2E_AUTOMATION_GRAPH_PROJECT"
       And "E2E_AUTOMATION_GRAPH_PROJECT" has an inactive automation named "E2E_AUTOMATION_GRAPH"
       And the user has opened the automation builder for "E2E_AUTOMATION_GRAPH"
 
@@ -225,8 +225,8 @@ Feature: Workflow automation
       When the user confirms the removal
       Then the node should no longer appear on the canvas
 
-    Scenario: The node palette is hidden for a project member without workflows.write permission
-      Given the user does not have the "workflows.write" project permission in "E2E_AUTOMATION_GRAPH_PROJECT"
+    Scenario: The node palette is hidden for a project member without workflows:write permission
+      Given the user does not have the "workflows:write" project permission in "E2E_AUTOMATION_GRAPH_PROJECT"
       When the user opens the automation builder for "E2E_AUTOMATION_GRAPH"
       Then the node palette should be hidden
 

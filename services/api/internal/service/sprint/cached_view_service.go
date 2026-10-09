@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/cache"
 )
 
@@ -69,7 +70,9 @@ func (c *CachedViewService) ListViews(ctx context.Context, projectID, sprintID u
 // ListProjectViews returns all views for a project filtered by viewCtx,
 // reading from cache when available and populating it on a miss.
 func (c *CachedViewService) ListProjectViews(ctx context.Context, projectID uuid.UUID, viewCtx sprintdom.ViewContext) ([]*sprintdom.SprintView, error) {
-	if c.ttl == 0 {
+	// A scoped list is specific to its caller: never read or fill the shared
+	// per-project entry with it.
+	if c.ttl == 0 || iam.Restricted(ctx, "view") {
 		return c.svc.ListProjectViews(ctx, projectID, viewCtx)
 	}
 	key := projectViewsKey(projectID, viewCtx)

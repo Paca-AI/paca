@@ -69,7 +69,7 @@ var _ settingsdom.Service = (*fakeSettingsSvc)(nil)
 // under the public /v1 routes) and the admin write endpoints behind
 // injectAuthClaimsMiddleware (reused from attachment_handler_test.go) only
 // when authed is true — mirroring how router.go always gates them with
-// httpmw.Authn + RequirePermissions(settings.write), never reachable
+// httpmw.Authn + RequireActions(settings:write), never reachable
 // unauthenticated in the real app.
 func newSettingsRouter(svc settingsdom.Service, authed bool) chi.Router {
 	h := handler.NewSettingsHandler(svc)

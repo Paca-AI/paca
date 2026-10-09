@@ -63,7 +63,7 @@ tabs):
 
 Project-scoped targets are only active when inside a project and are
 permission-filtered with the same rules the sidebar already applies
-(`ANON_HIDDEN_SEGMENTS`, `sprints.read`) — see `runGotoAction` in
+(`ANON_HIDDEN_SEGMENTS`, `sprints:read`) — see `runGotoAction` in
 `lib/shortcuts/provider.tsx`.
 
 ### Interaction page — views (backlog, sprint, timeline)

@@ -25,8 +25,7 @@
 			"description": "Bạn vẫn có thể tạo người dùng mới bằng nút phía trên."
 		},
 		"table": {
-			"columnUsername": "Tên đăng nhập",
-			"columnFullName": "Họ và tên",
+			"columnUser": "Người dùng",
 			"columnRole": "Vai trò",
 			"columnCreated": "Ngày tạo",
 			"pwdResetBadge": "đặt lại mật khẩu",
@@ -35,7 +34,9 @@
 			"resetPasswordAction": "Đặt lại mật khẩu",
 			"editAction": "Chỉnh sửa người dùng",
 			"changeRoleAction": "Đổi vai trò",
-			"deleteAction": "Xóa người dùng"
+			"deleteAction": "Xóa người dùng",
+			"pwdResetHint": "Người dùng này phải đặt mật khẩu mới ở lần đăng nhập tiếp theo",
+			"columnActions": "Thao tác"
 		},
 		"formDialog": {
 			"createdTitle": "Đã tạo người dùng",
@@ -170,14 +171,16 @@
 		},
 		"table": {
 			"columnName": "Tên",
-			"columnPermissions": "Quyền hạn",
+			"columnDescription": "Mô tả",
 			"columnDefault": "Mặc định",
 			"noPermissionsAssigned": "Chưa gán quyền hạn nào",
 			"default": "Mặc định",
 			"setDefaultAction": "Đặt làm vai trò mặc định",
 			"editAction": "Chỉnh sửa vai trò",
 			"deleteAction": "Xóa vai trò",
-			"deleteDefaultDisabled": "Không thể xóa vai trò mặc định. Hãy đặt một vai trò khác làm mặc định trước."
+			"deleteDefaultDisabled": "Không thể xóa vai trò mặc định. Hãy đặt một vai trò khác làm mặc định trước.",
+			"builtIn": "Vai trò tích hợp sẵn",
+			"noDescription": "Không có mô tả"
 		},
 		"formDialog": {
 			"editTitle": "Chỉnh sửa vai trò",
@@ -192,16 +195,7 @@
 			"cancel": "Hủy",
 			"saving": "Đang lưu…",
 			"saveChanges": "Lưu thay đổi",
-			"createRole": "Tạo vai trò",
-			"errors": {
-				"roleNameRequired": "Vui lòng nhập tên vai trò.",
-				"nameTaken": "Đã tồn tại một vai trò với tên này.",
-				"nameInvalid": "Tên vai trò chỉ được chứa chữ in hoa, số và dấu gạch dưới.",
-				"roleNotFound": "Vai trò này không còn tồn tại. Có thể vai trò đã bị xóa.",
-				"forbidden": "Bạn không có quyền thực hiện thao tác này.",
-				"internalError": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
-				"generic": "Đã xảy ra lỗi."
-			}
+			"createRole": "Tạo vai trò"
 		},
 		"deleteDialog": {
 			"title": "Xóa vai trò",
@@ -213,7 +207,6 @@
 			"confirmButton": "Xóa vai trò",
 			"errors": {
 				"roleNotFound": "Vai trò này không còn tồn tại.",
-				"hasUsersWarning": "Không thể xóa vai trò này vì vẫn còn được gán cho một hoặc nhiều người dùng.",
 				"isDefault": "Không thể xóa vai trò mặc định. Hãy đặt một vai trò khác làm mặc định trước.",
 				"forbidden": "Bạn không có quyền xóa vai trò này.",
 				"internalError": "Đã xảy ra lỗi. Vui lòng thử lại.",
@@ -284,11 +277,28 @@
 			"settingsSsoWrite": {
 				"label": "Quản lý nhà cung cấp SSO",
 				"description": "Cấu hình các nhà cung cấp danh tính dùng để đăng nhập. Quyền này cho phép đăng nhập với tư cách người dùng khác, nên hãy coi nó như quyền quản trị toàn phần."
+			},
+			"agentsRead": {
+				"label": "Xem tác nhân",
+				"description": "Xem các tác nhân AI cấp không gian làm việc"
+			},
+			"agentsWrite": {
+				"label": "Quản lý tác nhân",
+				"description": "Tạo, sửa và xóa các tác nhân AI cấp không gian làm việc"
+			},
+			"pluginsRead": {
+				"label": "Xem plugin",
+				"description": "Xem các plugin đã cài đặt"
+			},
+			"pluginsWrite": {
+				"label": "Quản lý plugin",
+				"description": "Cài đặt, cập nhật, bật và gỡ plugin"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "Vai trò toàn cục",
 			"users": "Người dùng",
+			"agents": "Tác nhân AI",
 			"projects": "Dự án",
 			"plugins": "Plugin",
 			"settings": "Cài đặt"

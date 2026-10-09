@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
@@ -17,7 +18,7 @@ func TestUserFromEntity(t *testing.T) {
 		ID:        id,
 		Username:  "alice",
 		FullName:  "Alice",
-		Role:      userdom.RoleUser,
+		Roles:     []roledom.Summary{{ID: uuid.New(), Name: "USER"}},
 		CreatedAt: now,
 	}
 
@@ -25,7 +26,7 @@ func TestUserFromEntity(t *testing.T) {
 	if resp.ID != id {
 		t.Fatalf("expected id %s, got %s", id, resp.ID)
 	}
-	if resp.Username != "alice" || resp.FullName != "Alice" || resp.Role != userdom.RoleUser {
+	if resp.Username != "alice" || resp.FullName != "Alice" || len(resp.Roles) != 1 || resp.Roles[0].Name != "USER" {
 		t.Fatalf("unexpected mapped response: %+v", resp)
 	}
 	if !resp.CreatedAt.Equal(now) {

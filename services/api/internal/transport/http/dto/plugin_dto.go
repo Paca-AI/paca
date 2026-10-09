@@ -21,8 +21,12 @@ type PluginResponse struct {
 	Manifest          plugindom.PluginManifest         `json:"manifest"`
 	ExtensionSettings []PluginExtensionSettingResponse `json:"extension_settings,omitempty"`
 	Enabled           bool                             `json:"enabled"`
-	InstalledAt       time.Time                        `json:"installed_at"`
-	UpdatedAt         time.Time                        `json:"updated_at"`
+	// LegacyPermissions is set when the installed package still uses the
+	// retired requirePermissions middleware (see
+	// plugindom.ManifestJSONUsesRequirePermissions); the UI warns about it.
+	LegacyPermissions bool      `json:"legacy_permissions,omitempty"`
+	InstalledAt       time.Time `json:"installed_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // PluginResponseFromEntity maps a domain Plugin to its DTO.

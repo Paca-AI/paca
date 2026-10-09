@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { isFullAccessRole } from "@/components/admin/global-roles/role-picker";
+import { roleErrorKey } from "@/components/roles/role-errors";
 import { InlineNotice } from "@/components/shared/inline-notice";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,14 +17,13 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import {
-	type GlobalRole,
-	globalRolesQueryOptions,
-	setDefaultGlobalRole,
-} from "@/lib/admin-api";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+	platformRolesQueryOptions,
+	type Role,
+	setDefaultRole,
+} from "@/lib/role-api";
 
 interface SetDefaultRoleDialogProps {
-	role: GlobalRole;
+	role: Role;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }
@@ -39,31 +39,20 @@ export function SetDefaultRoleDialog({
 	onOpenChange,
 }: SetDefaultRoleDialogProps) {
 	const { t } = useTranslation("admin");
+	const { t: tr } = useTranslation("roles");
 	const queryClient = useQueryClient();
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
-		mutationFn: () => setDefaultGlobalRole(role.id),
+		mutationFn: () => setDefaultRole(role.id),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
-				queryKey: globalRolesQueryOptions.queryKey,
+				queryKey: platformRolesQueryOptions.queryKey,
 			});
 			onOpenChange(false);
 		},
 		onError: (err: unknown) => {
-			const code = getApiErrorCode(err);
-			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.GlobalRoleNotFound]: t(
-					"globalRoles.defaultDialog.errors.roleNotFound",
-				),
-				[ApiErrorCode.Forbidden]: t(
-					"globalRoles.defaultDialog.errors.forbidden",
-				),
-			};
-			setError(
-				(code && messages[code]) ??
-					t("globalRoles.defaultDialog.errors.generic"),
-			);
+			setError(tr(`errors.${roleErrorKey(err)}` as never));
 		},
 	});
 

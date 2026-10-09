@@ -2,68 +2,49 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { GlobalRole } from "@/lib/admin-api";
-import {
-	type Agent,
-	clearGlobalAgentRole,
-	setGlobalAgentRole,
-} from "@/lib/agent-api";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import { roleErrorKey } from "@/components/roles/role-errors";
+import { type Role, replaceAgentRoles } from "@/lib/role-api";
 
 interface UseSetAgentGlobalRoleOptions {
-	/** Called with the agent as the server returns it, once its role is changed. */
-	onChanged?: (agent: Agent) => void;
+	/** Called with the roles the agent holds once they are changed. */
+	onChanged?: (roles: Role[]) => void;
 }
 
 /**
- * The one request behind every "give this global agent a role, or take it
- * away" surface: the agent's Global role tab and the last step of the create
- * wizard. It owns the failure message so both word it the same way, the
- * counterpart of useAssignUserRole for users.
+ * The one request behind every "give this global agent roles, or take them
+ * away" surface: the agent's Roles tab and the last step of the create wizard.
+ * It owns the failure message so both word it the same way, the counterpart of
+ * useAssignUserRole for users.
  *
- * `role` is the role to bind, or `null` to unbind the agent from its role.
+ * `roleIds` is the complete set of roles the agent should hold; an empty set
+ * leaves it with no permissions at all.
  */
 export function useSetAgentGlobalRole({
 	onChanged,
 }: UseSetAgentGlobalRoleOptions = {}) {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation("roles");
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
 		mutationFn: ({
 			agentId,
-			role,
+			roleIds,
 		}: {
 			agentId: string;
-			role: GlobalRole | null;
-		}) =>
-			role
-				? setGlobalAgentRole(agentId, role.id)
-				: clearGlobalAgentRole(agentId),
-		onSuccess: (agent) => {
+			roleIds: string[];
+		}) => replaceAgentRoles(agentId, roleIds),
+		onSuccess: (roles) => {
 			setError(null);
-			onChanged?.(agent);
+			onChanged?.(roles);
 		},
 		onError: (err: unknown) => {
-			const code = getApiErrorCode(err);
-			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.GlobalRoleNotFound]: t(
-					"agents.detail.globalRole.errors.roleNotFound",
-				),
-				[ApiErrorCode.Forbidden]: t(
-					"agents.detail.globalRole.errors.forbidden",
-				),
-			};
-			setError(
-				(code && messages[code]) ??
-					t("agents.detail.globalRole.errors.generic"),
-			);
+			setError(t(`errors.${roleErrorKey(err)}` as never));
 		},
 	});
 
 	return {
-		setRole: (agentId: string, role: GlobalRole | null) =>
-			mutation.mutate({ agentId, role }),
+		setRoles: (agentId: string, roleIds: string[]) =>
+			mutation.mutate({ agentId, roleIds }),
 		isPending: mutation.isPending,
 		error,
 		clearError: () => setError(null),

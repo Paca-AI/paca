@@ -3,6 +3,7 @@
 
 import { ensureLoginForm } from '../helpers/e2e-api';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
+import { openRoleSelect, roleOptionIn } from '../helpers/role-select';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
 const USERNAME = process.env.E2E_USERNAME ?? 'admin';
@@ -20,8 +21,9 @@ const TEST_PROJECT_PREFIXES = [
   'E2E_DELETE_',
 ];
 
+// Each permission in the role form is a switch named by its label.
 function permSwitch(page: Page, label: string) {
-  return page.getByText(label, { exact: true }).locator('xpath=../following-sibling::*[@role="switch"]');
+  return page.getByRole('switch', { name: label, exact: true });
 }
 
 async function cleanupTestProjects(request: APIRequestContext): Promise<void> {
@@ -511,8 +513,10 @@ test.describe('Project Management', () => {
       // The dialog should contain a user search field
       await expect(page.getByRole('textbox', { name: 'Search by name or username…' })).toBeVisible();
 
-      // The dialog should contain a role picker
-      await expect(page.getByRole('combobox')).toBeVisible();
+      // The dialog should contain a role picker: a searchable multi-select, as a member can hold several roles
+      const addDialog = page.getByRole('dialog', { name: 'Add member' });
+      const roles = await openRoleSelect(page, addDialog, 'Role');
+      await expect(roleOptionIn(roles, 'Viewer')).toBeVisible();
     });
 
     test('"Add member" button in the dialog is disabled when no user is selected', async ({ page }) => {
@@ -585,9 +589,10 @@ test.describe('Project Management', () => {
       await navigateToProjectSettings(page, BASE_PROJECT_NAME);
       await page.getByRole('button', { name: 'Roles' }).click();
 
-      // The project roles table should have columns "Name", "Permissions", and "Created"
+      // The project roles table should have columns "Name", "Description", and "Created"
       await expect(page.getByRole('columnheader', { name: 'Name' })).toBeVisible();
-      await expect(page.getByRole('columnheader', { name: 'Permissions' })).toBeVisible();
+      await expect(page.getByRole('columnheader', { name: 'Description' })).toBeVisible();
+      await expect(page.getByRole('columnheader', { name: 'Permissions' })).toHaveCount(0);
       await expect(page.getByRole('columnheader', { name: 'Created' })).toBeVisible();
     });
 
@@ -607,10 +612,15 @@ test.describe('Project Management', () => {
       await navigateToProjectSettings(page, BASE_PROJECT_NAME);
       await page.getByRole('button', { name: 'Roles' }).click();
 
-      // Each role row should have Edit role and Delete role buttons
-      const adminRow = page.getByRole('row', { name: /Admin/ }).first();
+      // The project's own roles have Edit role and Delete role buttons
+      const editorRow = page.getByRole('row', { name: /Editor/ }).first();
+      await expect(editorRow.getByRole('button', { name: 'Edit role' })).toBeVisible();
+      await expect(editorRow.getByRole('button', { name: 'Delete role' })).toBeVisible();
+
+      // ...the built-in Admin role can be edited but not deleted
+      const adminRow = page.getByRole('row', { name: /^Admin/ }).first();
       await expect(adminRow.getByRole('button', { name: 'Edit role' })).toBeVisible();
-      await expect(adminRow.getByRole('button', { name: 'Delete role' })).toBeVisible();
+      await expect(adminRow.getByRole('button', { name: 'Delete role' })).toHaveCount(0);
     });
   });
 
@@ -635,7 +645,7 @@ test.describe('Project Management', () => {
       await expect(page.getByText('Define a new project role and configure which permissions it grants to members.')).toBeVisible();
     });
 
-    test('Role Name field is empty and Create role button is disabled by default', async ({ page }) => {
+    test('Role Name field is empty and submitting without a name is answered inline', async ({ page }) => {
       await signInAndGoToHomePage(page);
       await navigateToProjectSettings(page, BASE_PROJECT_NAME);
       await page.getByRole('button', { name: 'Roles' }).click();
@@ -645,11 +655,13 @@ test.describe('Project Management', () => {
       // The "Role Name" field should be empty
       await expect(page.getByRole('textbox', { name: 'Role Name' })).toHaveValue('');
 
-      // The "Create role" button should be disabled
-      await expect(page.getByRole('button', { name: 'Create role' })).toBeDisabled();
+      // Submitting an empty name is refused with a message, and the dialog stays open
+      await page.getByRole('button', { name: 'Create role' }).click();
+      await expect(page.getByText('Enter a role name of up to 100 characters.')).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'New Role' })).toBeVisible();
     });
 
-    test('Permission form shows five groups: Project, Members, Roles, Tasks, Sprints', async ({ page }) => {
+    test('Permission form shows the groups Project, Members, Settings, Tasks, Sprints', async ({ page }) => {
       await signInAndGoToHomePage(page);
       await navigateToProjectSettings(page, BASE_PROJECT_NAME);
       await page.getByRole('button', { name: 'Roles' }).click();
@@ -658,12 +670,10 @@ test.describe('Project Management', () => {
 
       const dialog = page.getByRole('dialog', { name: 'New Role' });
 
-      // The permission section should display all five groups
-      await expect(dialog.getByText('Project').first()).toBeVisible();
-      await expect(dialog.getByText('Members').first()).toBeVisible();
-      await expect(dialog.getByText('Roles').first()).toBeVisible();
-      await expect(dialog.getByText('Tasks').first()).toBeVisible();
-      await expect(dialog.getByText('Sprints').first()).toBeVisible();
+      // The permission section should display the groups (role permissions sit under Settings)
+      for (const group of ['Project', 'Members', 'Settings', 'Tasks', 'Sprints']) {
+        await expect(dialog.locator('span', { hasText: new RegExp(`^${group}$`) }).first()).toBeVisible();
+      }
     });
 
     test('Each project permission shows expected label and description', async ({ page }) => {
@@ -677,7 +687,7 @@ test.describe('Project Management', () => {
       await expect(page.getByText('Update project name, description, and settings')).toBeVisible();
       await expect(page.getByText('Permanently delete this project')).toBeVisible();
       await expect(page.getByText('List and view project members')).toBeVisible();
-      await expect(page.getByText('Add, remove, and reassign project members')).toBeVisible();
+      await expect(page.getByText('Add and remove project members (changing their roles needs Assign Roles)')).toBeVisible();
       await expect(page.getByText('List and view project role definitions')).toBeVisible();
       await expect(page.getByText('Create, edit, and delete project roles')).toBeVisible();
       await expect(page.getByText('Browse and read tasks in the project')).toBeVisible();
@@ -738,8 +748,8 @@ test.describe('Project Management', () => {
       await expect(page.getByRole('dialog', { name: 'New Role' })).not.toBeVisible();
       await expect(page.getByRole('table').getByText(roleName, { exact: true })).toBeVisible();
 
-      // Role should show zero active permissions
-      await expect(page.getByRole('row', { name: new RegExp(roleName) }).getByText('No permissions assigned')).toBeVisible();
+      // A role created without a description shows the placeholder
+      await expect(page.getByRole('row', { name: new RegExp(roleName) }).getByText('No description')).toBeVisible();
     });
 
     test('Cancelling the dialog discards changes', async ({ page }) => {
@@ -790,6 +800,8 @@ test.describe('Project Management', () => {
 
       await page.getByRole('button', { name: 'New role' }).click();
       await page.getByRole('textbox', { name: 'Role Name' }).fill(roleName);
+      // The Project area offers three switches: view, edit and delete.
+      await permSwitch(page, 'View Project').click();
       await permSwitch(page, 'Edit Project').click();
       await permSwitch(page, 'Delete Project').click();
       await page.getByRole('button', { name: 'Create role' }).click();
@@ -798,7 +810,7 @@ test.describe('Project Management', () => {
 
       // Granting every offered permission of an area is stored (and listed) as the area wildcard
       const roleRow = page.getByRole('row', { name: new RegExp(roleName) });
-      await expect(roleRow.getByText('projects.*', { exact: true })).toBeVisible();
+      await expect(roleRow.getByText('projects:*', { exact: true })).toBeVisible();
     });
 
     test('Toggling a permission on then off leaves it disabled', async ({ page }) => {

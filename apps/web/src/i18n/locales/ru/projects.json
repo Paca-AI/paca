@@ -102,7 +102,6 @@
 			"configure": "Настроить",
 			"delete": "Удалить",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "В сети",
 			"acpStatusDisconnected": "Не в сети",
 			"deleteDialog": {
@@ -173,7 +172,6 @@
 				"skills": "Навыки",
 				"envVars": "Окружение",
 				"globalRole": "Глобальная роль",
-				"access": "Access",
 				"activity": "Активность"
 			},
 			"globalRole": {
@@ -354,15 +352,6 @@
 					"description": "Входят в состав Paca и доступны всем агентам. Их нельзя изменить."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"activity": {
 				"commented": "оставил комментарий",
 				"sourceType": {
@@ -404,8 +393,6 @@
 			"connect": "Подключиться",
 			"conversationEnded": "Этот диалог завершён.",
 			"textOnlyMessage": "Поддерживаются только текстовые сообщения.",
-			"agentAccessRestricted": "Этот агент имеет ограниченный доступ. Попросите администратора проекта предоставить вам доступ, прежде чем вы сможете общаться с ним.",
-			"environmentAccessRestricted": "Окружение этого диалога имеет ограниченный доступ. Попросите администратора проекта предоставить вам доступ, прежде чем вы сможете общаться с этим агентом.",
 			"chatNoPermission": "У вас нет разрешения отправлять сообщения в этом диалоге.",
 			"failed": "Диалог завершился с ошибкой",
 			"noOutput": "Агент не выдал результат.",
@@ -506,7 +493,6 @@
 			"subtitle": "Именованные, долгоживущие песочницы, к которым ваши агенты могут подключаться между разговорами",
 			"newEnvironment": "Новое окружение",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "Пока нет окружений",
 				"description": "Создайте статическое окружение, чтобы файлы и фоновые процессы сохранялись между разговорами, вместо одноразовой песочницы каждый раз.",
@@ -549,8 +535,7 @@
 			"tabs": {
 				"overview": "Обзор",
 				"folders": "Папки",
-				"portForwards": "Проброс портов",
-				"access": "Access"
+				"portForwards": "Проброс портов"
 			},
 			"busy": "Это окружение уже запускается, останавливается или перезапускается. Повторите попытку через некоторое время.",
 			"actionFailed": "Не удалось выполнить действие. Попробуйте ещё раз.",
@@ -666,15 +651,6 @@
 					"restartFailed": "Не удалось перезапустить окружение. Попробуйте ещё раз."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"sshKeys": {
 				"connectHint": "Замените <bastion-host> адресом SSH-бастиона, настроенным в этом развёртывании.",
 				"connectUnavailable": "SSH-доступ ещё не настроен в этом развёртывании.",
@@ -773,7 +749,6 @@
 			"deleteRole": "Удалить роль",
 			"errors": {
 				"notFound": "Эта роль больше не существует.",
-				"hasMembers": "Эту роль нельзя удалить, потому что она всё ещё назначена одному или нескольким участникам.",
 				"forbidden": "У вас нет прав на удаление этой роли.",
 				"internalError": "Что-то пошло не так. Попробуйте ещё раз.",
 				"generic": "Что-то пошло не так."
@@ -787,7 +762,6 @@
 			"roleNameLabel": "Название роли",
 			"roleNamePlaceholder": "например, PROJECT_REVIEWER",
 			"permissionsLabel": "Разрешения",
-			"fullAccessBadge": "Полный доступ",
 			"fullAccessDescription": "Эта роль автоматически включает все разрешения, в том числе те, что будут добавлены в будущем. Изменение любого переключателя ниже преобразует её в фиксированный набор текущих разрешений.",
 			"enabledCount_one": "{{count}} включено",
 			"enabledCount_few": "{{count}} включено",
@@ -795,17 +769,13 @@
 			"enabledCount_other": "{{count}} включено",
 			"cancel": "Отмена",
 			"saveChanges": "Сохранить изменения",
-			"createRole": "Создать роль",
-			"errors": {
-				"nameTaken": "Роль с таким названием уже существует.",
-				"nameInvalid": "Название роли должно содержать заглавные буквы, цифры и подчёркивания.",
-				"notFound": "Эта роль больше не существует. Возможно, она уже удалена.",
-				"forbidden": "У вас нет прав на это действие.",
-				"internalError": "На сервере что-то пошло не так. Попробуйте ещё раз.",
-				"generic": "Что-то пошло не так."
-			}
+			"createRole": "Создать роль"
 		},
 		"permissions": {
+			"projectsRead": {
+				"label": "Просмотр проекта",
+				"description": "Открывать проект и видеть основные сведения"
+			},
 			"projectsWrite": {
 				"label": "Редактировать проект",
 				"description": "Обновлять название, описание и настройки проекта"
@@ -820,7 +790,7 @@
 			},
 			"membersWrite": {
 				"label": "Управлять участниками",
-				"description": "Добавлять, удалять и переназначать участников проекта"
+				"description": "Добавлять и удалять участников проекта (для смены их ролей нужно право «Назначение ролей»)"
 			},
 			"rolesRead": {
 				"label": "Просматривать роли",
@@ -829,6 +799,10 @@
 			"rolesWrite": {
 				"label": "Управлять ролями",
 				"description": "Создавать, редактировать и удалять роли проекта"
+			},
+			"rolesAssign": {
+				"label": "Назначение ролей",
+				"description": "Назначать участникам и агентам любые роли этого проекта или снимать их"
 			},
 			"settingsTaskTypesWrite": {
 				"label": "Manage Task Types",
@@ -985,7 +959,6 @@
 			"title": "Роли проекта",
 			"description": "Управляйте ролями и разрешениями участников этого проекта.",
 			"newRole": "Новая роль",
-			"noPermissionsAssigned": "Разрешения не назначены",
 			"editRole": "Редактировать роль",
 			"deleteRole": "Удалить роль",
 			"rolesDefined_one": "роль создана",
@@ -1000,14 +973,15 @@
 			},
 			"table": {
 				"name": "Название",
-				"permissions": "Разрешения",
+				"description": "Описание",
 				"created": "Создана"
 			},
-			"systemRolesNote": "Системные роли являются общими шаблонами, их нельзя редактировать или удалять.",
+			"systemRolesNote": "Общие роли рабочего пространства можно изменить только в настройках ролей рабочего пространства.",
 			"noPermission": {
 				"title": "You don't have permission to view roles",
 				"description": "Ask a project admin to grant you the project.roles.read permission."
-			}
+			},
+			"noDescription": "Нет описания"
 		},
 		"taskStatuses": {
 			"title": "Статусы задач",
@@ -1294,12 +1268,12 @@
 			"noUsersAvailable": "Нет пользователей, которых можно добавить.",
 			"loadingMore": "Загрузка…",
 			"roleLabel": "Роль",
-			"rolePlaceholder": "Выберите роль…",
 			"cancel": "Отмена",
 			"addMember": "Добавить участника",
 			"errors": {
 				"addFailed": "Не удалось добавить участника. Попробуйте ещё раз.",
 				"alreadyAdded": "Этот пользователь или агент уже является участником проекта.",
+				"roleForbidden": "У вас нет прав назначить одну из этих ролей.",
 				"roleNotFound": "Этой роли больше не существует. Выберите другую роль."
 			},
 			"modeUser": "Пользователь",
@@ -1311,12 +1285,15 @@
 			"changeRole": "Изменить роль",
 			"errors": {
 				"memberNotFound": "Этот участник больше не состоит в проекте.",
+				"roleForbidden": "У вас нет прав назначить или снять одну из этих ролей.",
 				"roleNotFound": "Этой роли больше не существует.",
 				"changeFailed": "Не удалось изменить роль."
 			}
 		},
 		"memberRow": {
-			"removeMember": "Удалить участника"
+			"removeMember": "Удалить участника",
+			"agentBadge": "Агент",
+			"actions": "Действия с участником"
 		},
 		"removeDialog": {
 			"title": "Удалить участника",

@@ -13,8 +13,8 @@ export const Route = createFileRoute("/_authenticated/admin/settings/")({
 			.fetchQuery(myPermissionsQueryOptions)
 			.catch(() => [] as string[]);
 
-		const canBrand = hasPermission(permissions, "settings.write");
-		const canSso = hasPermission(permissions, "settings.sso.write");
+		const canBrand = hasPermission(permissions, "settings:write");
+		const canSso = hasPermission(permissions, "settings.sso:write");
 		if (!canBrand && !canSso) {
 			throw redirect({ to: "/home" });
 		}

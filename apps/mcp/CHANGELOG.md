@@ -9,6 +9,9 @@ The package version follows the main Paca repository release and is published on
 ### Added
 - **`search_docs` and `search_tasks`** — keyword search across document titles + body text and task titles/`#number`/descriptions, returning compact results with excerpts so agents can find context without walking `list_docs` / paging `list_tasks`. Backed by a new `GET /projects/{id}/docs/search` endpoint and a `search_content=true` option on the task list endpoint. Matching is literal and case-insensitive (not fuzzy/semantic) and is per text run, so a phrase split across differently-formatted runs may not match.
 
+### Changed
+- **IAM-style roles** — the project role and member tools follow the new roles API. `create_project_role` / `update_project_role` take a `policy` document (Allow/Deny statements with `domain:verb` actions and path-style resources) instead of a `permissions` list; `add_project_member` and `update_project_member_role` take `roleIds` (a member can hold several roles, and updating replaces the set); `get_my_project_permissions` returns the caller's IAM actions.
+
 ### Removed
 - **Permission-based tool filtering** — the server no longer fetches the caller's permissions at startup or hides tools it predicts would fail. Every tool is listed unconditionally; the Paca API enforces permissions on each call and a disallowed call now surfaces as a normal "Permission denied: ..." tool error instead of the tool being missing from the list. This also fixes an unpinned caller (no `PACA_PROJECT_ID`) seeing few or no tools when their permission fetch returned little or nothing.
 

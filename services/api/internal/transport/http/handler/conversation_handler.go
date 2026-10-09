@@ -14,6 +14,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -70,6 +71,14 @@ func parseCreatedBeforeBound(raw string) (*time.Time, bool) {
 type ConversationHandler struct {
 	svc        agentdom.Service
 	memberRepo projectdom.MemberRepository
+	listScoper ListScoper
+}
+
+// WithConversationListScoper limits the project's conversation list to the
+// conversations the caller may read, inside the query (see scopedContext).
+func (h *ConversationHandler) WithConversationListScoper(s ListScoper) *ConversationHandler {
+	h.listScoper = s
+	return h
 }
 
 // NewConversationHandler returns a ConversationHandler wired to the agent service.
@@ -216,7 +225,12 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 	filter.ProjectID = &projectID
 	filter.ViewerMemberID = &memberID
 
-	convs, hasMore, err := h.svc.ListConversations(r.Context(), filter, pageSize)
+	ctx, err := scopedContext(r, h.listScoper, iam.ActionConversationsRead, projectID, "conversation")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	convs, hasMore, err := h.svc.ListConversations(ctx, filter, pageSize)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

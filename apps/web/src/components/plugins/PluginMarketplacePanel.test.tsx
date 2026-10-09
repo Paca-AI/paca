@@ -198,4 +198,53 @@ describe("PluginMarketplacePanel", () => {
 			expect(screen.queryByText(errorText)).not.toBeInTheDocument();
 		});
 	});
+
+	describe("legacy permissions warning", () => {
+		const installed = (legacy: boolean) => ({
+			id: "pl-1",
+			name: "com.paca.example",
+			version: "0.1.0",
+			manifest: {
+				id: "com.paca.example",
+				displayName: "Example",
+				version: "0.1.0",
+			},
+			enabled: true,
+			legacy_permissions: legacy,
+			installed_at: "2026-01-01T00:00:00.000Z",
+			updated_at: "2026-01-01T00:00:00.000Z",
+		});
+
+		it("warns on an installed plugin that still uses requirePermissions", async () => {
+			mockListPlugins.mockResolvedValue([installed(true)]);
+			renderPanel();
+
+			await screen.findByText("Plugin SDK Hello World");
+			expect(
+				await screen.findByText("Uses old permissions"),
+			).toBeInTheDocument();
+			expect(screen.getByRole("alert")).toHaveTextContent(/requireActions/);
+		});
+
+		it("shows no warning for an installed plugin that uses requireActions", async () => {
+			mockListPlugins.mockResolvedValue([installed(false)]);
+			renderPanel();
+
+			await screen.findByText("Plugin SDK Hello World");
+			await screen.findByText("Installed");
+			expect(
+				screen.queryByText("Uses old permissions"),
+			).not.toBeInTheDocument();
+			expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+		});
+
+		it("shows no warning for a plugin that is not installed", async () => {
+			renderPanel();
+
+			await screen.findByText("Plugin SDK Hello World");
+			expect(
+				screen.queryByText("Uses old permissions"),
+			).not.toBeInTheDocument();
+		});
+	});
 });

@@ -15,18 +15,18 @@ function TimelinePage() {
 	const { projectId } = Route.useParams();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 
-	const canCreate = hasProjectPermission("tasks.write");
-	const canEdit = hasProjectPermission("tasks.write");
+	const canCreate = hasProjectPermission("tasks:write");
+	const canEdit = hasProjectPermission("tasks:write");
 	// views.* was split out from sprints.write as its own permission (see
 	// authz.PermissionViewsWrite's doc comment) — projects.write governs
 	// only the project entity itself (name/description), an unrelated
 	// permission that happened to be reused here.
-	const canManageViews = hasProjectPermission("views.write");
+	const canManageViews = hasProjectPermission("views:write");
 	// New/Start Sprint is a sprint-entity action, not a task one — sprints.write,
 	// not tasks.write (see authz.PermissionSprintsWrite). Unused on this
 	// "timeline" context today (that button only renders in "backlog"), kept
 	// for interface consistency with InteractionLayoutProps.
-	const canManageSprints = hasProjectPermission("sprints.write");
+	const canManageSprints = hasProjectPermission("sprints:write");
 
 	return (
 		<InteractionLayout

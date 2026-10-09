@@ -14,19 +14,27 @@ const member = {
 	id: "m1",
 	project_id: "p1",
 	user_id: "u1",
-	project_role_id: "r1",
+	roles: [{ id: "r1", name: "Developer" }],
 	username: "alice",
 	full_name: "Alice Smith",
-	role_name: "Developer",
 	joined_at: "2024-01-01T00:00:00Z",
 };
 
 const role = {
 	id: "r1",
 	project_id: "p1",
-	role_name: "Developer",
+	name: "Developer",
 	description: "Dev role",
-	permissions: { "tasks.write": true },
+	policy: {
+		version: "2026-10-01",
+		statements: [
+			{
+				effect: "Allow",
+				actions: ["tasks:write"],
+				resources: ["project/p1/*"],
+			},
+		],
+	},
 	is_system: false,
 	created_at: "2024-01-01T00:00:00Z",
 	updated_at: "2024-01-01T00:00:00Z",
@@ -36,11 +44,12 @@ function makeClient(overrides: Record<string, any> = {}) {
 	return {
 		listProjectMembers: vi.fn().mockResolvedValue([member]),
 		addProjectMember: vi.fn().mockResolvedValue(member),
-		getMyProjectPermissions: vi.fn().mockResolvedValue({ "tasks.read": true }),
-		updateProjectMemberRole: vi.fn().mockResolvedValue(member),
+		getMyProjectPermissions: vi.fn().mockResolvedValue(["tasks:read"]),
+		updateProjectMemberRole: vi.fn().mockResolvedValue([role]),
 		removeProjectMember: vi.fn().mockResolvedValue(undefined),
 		listProjectRoles: vi.fn().mockResolvedValue([role]),
 		createProjectRole: vi.fn().mockResolvedValue(role),
+		getProjectRole: vi.fn().mockResolvedValue(role),
 		updateProjectRole: vi.fn().mockResolvedValue(role),
 		deleteProjectRole: vi.fn().mockResolvedValue(undefined),
 		...overrides,
@@ -113,19 +122,19 @@ describe("handleProjectMemberTool – add_project_member", () => {
 		const client = makeClient();
 		await handleProjectMemberTool(
 			"add_project_member",
-			{ projectId: "p1", userId: "u1", roleId: "r1" },
+			{ projectId: "p1", userId: "u1", roleIds: ["r1"] },
 			client,
 		);
 		expect(client.addProjectMember).toHaveBeenCalledWith("p1", {
 			user_id: "u1",
-			project_role_id: "r1",
+			role_ids: ["r1"],
 		});
 	});
 
 	it("includes 'added successfully' in response", async () => {
 		const result = await handleProjectMemberTool(
 			"add_project_member",
-			{ projectId: "p1", userId: "u1", roleId: "r1" },
+			{ projectId: "p1", userId: "u1", roleIds: ["r1"] },
 			makeClient(),
 		);
 		expect(result.content[0].text).toContain("added successfully");
@@ -147,14 +156,14 @@ describe("handleProjectMemberTool – get_my_project_permissions", () => {
 		expect(client.getMyProjectPermissions).toHaveBeenCalledWith("p1");
 	});
 
-	it("returns JSON-serialized permissions", async () => {
+	it("returns JSON-serialized actions", async () => {
 		const result = await handleProjectMemberTool(
 			"get_my_project_permissions",
 			{ projectId: "p1" },
 			makeClient(),
 		);
-		expect(result.content[0].text).toContain("tasks.read");
-		expect(result.content[0].text).toContain("My Permissions:");
+		expect(result.content[0].text).toContain("tasks:read");
+		expect(result.content[0].text).toContain("My Actions:");
 	});
 });
 
@@ -167,18 +176,18 @@ describe("handleProjectMemberTool – update_project_member_role", () => {
 		const client = makeClient();
 		await handleProjectMemberTool(
 			"update_project_member_role",
-			{ projectId: "p1", userId: "u1", roleId: "r2" },
+			{ projectId: "p1", userId: "u1", roleIds: ["r2"] },
 			client,
 		);
 		expect(client.updateProjectMemberRole).toHaveBeenCalledWith("p1", "u1", {
-			project_role_id: "r2",
+			role_ids: ["r2"],
 		});
 	});
 
 	it("includes 'updated successfully' in response", async () => {
 		const result = await handleProjectMemberTool(
 			"update_project_member_role",
-			{ projectId: "p1", userId: "u1", roleId: "r2" },
+			{ projectId: "p1", userId: "u1", roleIds: ["r2"] },
 			makeClient(),
 		);
 		expect(result.content[0].text).toContain("updated successfully");
@@ -242,31 +251,47 @@ describe("handleProjectMemberTool – list_project_roles", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleProjectMemberTool – create_project_role", () => {
-	it("calls client.createProjectRole with mapped permissions object", async () => {
+	const policy = {
+		statements: [
+			{
+				effect: "Allow",
+				actions: ["tasks:write", "tasks:read"],
+				resources: ["project/p1/*"],
+			},
+		],
+	};
+
+	it("calls client.createProjectRole with the policy document", async () => {
 		const client = makeClient();
 		await handleProjectMemberTool(
 			"create_project_role",
-			{
-				projectId: "p1",
-				name: "Dev",
-				permissions: ["tasks.write", "tasks.read"],
-			},
+			{ projectId: "p1", name: "Dev", policy },
 			client,
 		);
 		expect(client.createProjectRole).toHaveBeenCalledWith("p1", {
-			role_name: "Dev",
+			name: "Dev",
 			description: undefined,
-			permissions: { "tasks.write": true, "tasks.read": true },
+			policy: { version: "2026-10-01", ...policy },
 		});
 	});
 
 	it("includes 'created successfully' in response", async () => {
 		const result = await handleProjectMemberTool(
 			"create_project_role",
-			{ projectId: "p1", name: "Dev", permissions: ["tasks.write"] },
+			{ projectId: "p1", name: "Dev", policy },
 			makeClient(),
 		);
 		expect(result.content[0].text).toContain("created successfully");
+	});
+
+	it("rejects a legacy permission list", async () => {
+		await expect(
+			handleProjectMemberTool(
+				"create_project_role",
+				{ projectId: "p1", name: "Dev", permissions: ["tasks.write"] },
+				makeClient(),
+			),
+		).rejects.toThrow();
 	});
 });
 
@@ -275,40 +300,42 @@ describe("handleProjectMemberTool – create_project_role", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleProjectMemberTool – update_project_role", () => {
-	it("calls client.updateProjectRole with roleId and mapped permissions", async () => {
+	it("calls client.updateProjectRole with the new name and policy", async () => {
 		const client = makeClient();
+		const policy = {
+			statements: [
+				{ effect: "Allow", actions: ["tasks:*"], resources: ["project/p1/*"] },
+			],
+		};
 		await handleProjectMemberTool(
 			"update_project_role",
-			{
-				projectId: "p1",
-				roleId: "r1",
-				name: "Senior Dev",
-				permissions: ["tasks.*"],
-			},
+			{ projectId: "p1", roleId: "r1", name: "Senior Dev", policy },
 			client,
 		);
 		expect(client.updateProjectRole).toHaveBeenCalledWith("p1", "r1", {
-			role_name: "Senior Dev",
-			description: undefined,
-			permissions: { "tasks.*": true },
+			name: "Senior Dev",
+			description: "Dev role",
+			policy: { version: "2026-10-01", ...policy },
 		});
 	});
 
-	it("passes undefined permissions when not provided", async () => {
+	it("keeps the current name, description and policy when omitted", async () => {
 		const client = makeClient();
 		await handleProjectMemberTool(
 			"update_project_role",
 			{ projectId: "p1", roleId: "r1" },
 			client,
 		);
+		expect(client.getProjectRole).toHaveBeenCalledWith("p1", "r1");
 		expect(client.updateProjectRole).toHaveBeenCalledWith("p1", "r1", {
-			role_name: undefined,
-			description: undefined,
-			permissions: undefined,
+			name: role.name,
+			description: role.description,
+			policy: role.policy,
 		});
 	});
 });
 
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // delete_project_role
 // ---------------------------------------------------------------------------

@@ -19,9 +19,10 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/jev"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -43,17 +44,9 @@ type mockProjectSvc struct {
 	listMembers             func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
 	countDistinctAgents     func(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
 	addMember               func(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error)
-	updateMember            func(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error)
 	removeMember            func(ctx context.Context, projectID, userID uuid.UUID) error
-	updateMemberByMemberID  func(ctx context.Context, projectID, memberID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error)
 	updateMemberDescription func(ctx context.Context, projectID, memberID uuid.UUID, description string) (*projectdom.ProjectMember, error)
 	removeMemberByMemberID  func(ctx context.Context, projectID, memberID uuid.UUID) error
-	listRoles               func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error)
-	createRole              func(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error)
-	updateRole              func(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error)
-	deleteRole              func(ctx context.Context, projectID, roleID uuid.UUID) error
-	findRoleByID            func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
-	getMyProjectPermissions func(ctx context.Context, projectID, userID uuid.UUID, agentID *uuid.UUID) (map[string]any, error)
 }
 
 func (m *mockProjectSvc) List(ctx context.Context, page, pageSize int) ([]*projectdom.Project, int64, error) {
@@ -136,13 +129,6 @@ func (m *mockProjectSvc) AddMember(ctx context.Context, projectID uuid.UUID, in 
 	return nil, errors.New("mock: addMember not configured")
 }
 
-func (m *mockProjectSvc) UpdateMemberRole(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-	if m.updateMember != nil {
-		return m.updateMember(ctx, projectID, userID, in)
-	}
-	return nil, errors.New("mock: updateMember not configured")
-}
-
 func (m *mockProjectSvc) RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error {
 	if m.removeMember != nil {
 		return m.removeMember(ctx, projectID, userID)
@@ -150,56 +136,10 @@ func (m *mockProjectSvc) RemoveMember(ctx context.Context, projectID, userID uui
 	return nil
 }
 
-func (m *mockProjectSvc) ListRoles(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error) {
-	if m.listRoles != nil {
-		return m.listRoles(ctx, projectID)
-	}
-	return []*projectdom.ProjectRole{}, nil
-}
-
-func (m *mockProjectSvc) CreateRole(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error) {
-	if m.createRole != nil {
-		return m.createRole(ctx, projectID, in)
-	}
-	return nil, errors.New("mock: createRole not configured")
-}
-
-func (m *mockProjectSvc) UpdateRole(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error) {
-	if m.updateRole != nil {
-		return m.updateRole(ctx, projectID, roleID, in)
-	}
-	return nil, projectdom.ErrRoleNotFound
-}
-
-func (m *mockProjectSvc) DeleteRole(ctx context.Context, projectID, roleID uuid.UUID) error {
-	if m.deleteRole != nil {
-		return m.deleteRole(ctx, projectID, roleID)
-	}
+func (m *mockProjectSvc) AddAgentMember(_ context.Context, _, _, _ uuid.UUID, _ []uuid.UUID, _ *uuid.UUID) error {
 	return nil
 }
-
-func (m *mockProjectSvc) FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
-	if m.findRoleByID != nil {
-		return m.findRoleByID(ctx, id)
-	}
-	return nil, projectdom.ErrRoleNotFound
-}
-
-func (m *mockProjectSvc) GetMyProjectPermissions(ctx context.Context, projectID, userID uuid.UUID, agentID *uuid.UUID) (map[string]any, error) {
-	if m.getMyProjectPermissions != nil {
-		return m.getMyProjectPermissions(ctx, projectID, userID, agentID)
-	}
-	return nil, nil
-}
-
-func (m *mockProjectSvc) AddAgentMember(_ context.Context, _, _, _, _ uuid.UUID) error { return nil }
-func (m *mockProjectSvc) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error    { return nil }
-func (m *mockProjectSvc) UpdateMemberRoleByMemberID(_ context.Context, projectID, memberID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-	if m.updateMemberByMemberID != nil {
-		return m.updateMemberByMemberID(context.Background(), projectID, memberID, in)
-	}
-	return nil, projectdom.ErrNotFound
-}
+func (m *mockProjectSvc) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error { return nil }
 func (m *mockProjectSvc) UpdateMemberDescription(_ context.Context, projectID, memberID uuid.UUID, description string) (*projectdom.ProjectMember, error) {
 	if m.updateMemberDescription != nil {
 		return m.updateMemberDescription(context.Background(), projectID, memberID, description)
@@ -240,12 +180,13 @@ func adminClaimsMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-// adminAuthorizer returns a real Authorizer whose store answers as an admin's
-// role row would for these tests: it stores a global projects.read. That —
+// adminAuthorizer returns a real IAM Authorizer whose store answers as an
+// admin's platform role would for these tests: projects.read on the
+// platform roots (incl. the project collection "project"). That —
 // not the "ADMIN" name on the synthetic claims above — is what makes
 // ListProjects/GetWorkspaceStats return every project.
-func adminAuthorizer() *authz.Authorizer {
-	return authz.NewAuthorizer(&fakeGlobalPermStore{globalPerms: []authz.Permission{authz.PermissionProjectsRead}})
+func adminAuthorizer() *iam.Authorizer {
+	return iam.NewAuthorizer(&fakeGlobalPermStore{globalPerms: []iam.Action{iam.ActionProjectsRead}}, iam.NewRegistry(), iam.NewAttributeSchema())
 }
 
 func newProjectRouter(svc projectdom.Service) chi.Router {
@@ -266,13 +207,8 @@ func newProjectRouter(svc projectdom.Service) chi.Router {
 	// Project member routes
 	r.Get("/projects/{projectId}/members", h.ListMembers)
 	r.Post("/projects/{projectId}/members", h.AddMember)
-	r.Patch("/projects/{projectId}/members/{memberId}", h.UpdateMemberRole)
+	r.Patch("/projects/{projectId}/members/{memberId}", h.UpdateMember)
 	r.Delete("/projects/{projectId}/members/{memberId}", h.RemoveMember)
-	// Project role routes
-	r.Get("/projects/{projectId}/roles", h.ListRoles)
-	r.Post("/projects/{projectId}/roles", h.CreateRole)
-	r.Patch("/projects/{projectId}/roles/{roleId}", h.UpdateRole)
-	r.Delete("/projects/{projectId}/roles/{roleId}", h.DeleteRole)
 	// Jev config test route — encryptor is nil here (matches an instance
 	// with no ENCRYPTION_KEY configured; jev.ClientForProject treats stored
 	// keys as plaintext in that case, see its doc comment).
@@ -741,218 +677,6 @@ func TestDeleteProject_NotFound(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Project Role
-// ---------------------------------------------------------------------------
-
-func TestListRoles_Success(t *testing.T) {
-	projID := uuid.New()
-	roleID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		listRoles: func(_ context.Context, _ uuid.UUID) ([]*projectdom.ProjectRole, error) {
-			return []*projectdom.ProjectRole{
-				{ID: roleID, ProjectID: &projID, RoleName: "viewer"},
-			}, nil
-		},
-	})
-
-	w := do(t, r, http.MethodGet, fmt.Sprintf("/projects/%s/roles", projID), nil)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestListRoles_BadProjectID(t *testing.T) {
-	r := newProjectRouter(&mockProjectSvc{})
-
-	w := do(t, r, http.MethodGet, "/projects/not-a-uuid/roles", nil)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-}
-
-func TestListRoles_ProjectNotFound(t *testing.T) {
-	projID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		listRoles: func(_ context.Context, _ uuid.UUID) ([]*projectdom.ProjectRole, error) {
-			return nil, projectdom.ErrNotFound
-		},
-	})
-
-	w := do(t, r, http.MethodGet, fmt.Sprintf("/projects/%s/roles", projID), nil)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", w.Code)
-	}
-}
-
-func TestCreateRole_Success(t *testing.T) {
-	projID := uuid.New()
-	roleID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		createRole: func(_ context.Context, pid uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error) {
-			return &projectdom.ProjectRole{ID: roleID, ProjectID: &pid, RoleName: in.RoleName}, nil
-		},
-	})
-
-	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/roles", projID),
-		jsonBody(t, map[string]any{"role_name": "viewer", "permissions": map[string]any{}}))
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestCreateRole_MissingRoleName(t *testing.T) {
-	projID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{})
-
-	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/roles", projID),
-		jsonBody(t, map[string]any{"permissions": map[string]any{}}))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-}
-
-func TestCreateRole_ProjectNotFound(t *testing.T) {
-	projID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		createRole: func(_ context.Context, _ uuid.UUID, _ projectdom.CreateRoleInput) (*projectdom.ProjectRole, error) {
-			return nil, projectdom.ErrNotFound
-		},
-	})
-
-	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/roles", projID),
-		jsonBody(t, map[string]any{"role_name": "viewer"}))
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", w.Code)
-	}
-}
-
-func TestCreateRole_RoleNameTaken(t *testing.T) {
-	projID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		createRole: func(_ context.Context, _ uuid.UUID, _ projectdom.CreateRoleInput) (*projectdom.ProjectRole, error) {
-			return nil, projectdom.ErrRoleNameTaken
-		},
-	})
-
-	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/roles", projID),
-		jsonBody(t, map[string]any{"role_name": "viewer"}))
-	if w.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", w.Code)
-	}
-	if code := errorCode(t, w); code != "PROJECT_ROLE_NAME_TAKEN" {
-		t.Fatalf("unexpected error_code: %s", code)
-	}
-}
-
-func TestUpdateRole_Success(t *testing.T) {
-	projID := uuid.New()
-	roleID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		updateRole: func(_ context.Context, pid, rid uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error) {
-			return &projectdom.ProjectRole{ID: rid, ProjectID: &pid, RoleName: in.RoleName}, nil
-		},
-	})
-
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/roles/%s", projID, roleID),
-		jsonBody(t, map[string]any{"role_name": "editor", "permissions": map[string]any{}}))
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestUpdateRole_BadProjectID(t *testing.T) {
-	roleID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{})
-
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/not-a-uuid/roles/%s", roleID),
-		jsonBody(t, map[string]any{"role_name": "editor"}))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-}
-
-func TestUpdateRole_BadRoleID(t *testing.T) {
-	projID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{})
-
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/roles/not-a-uuid", projID),
-		jsonBody(t, map[string]any{"role_name": "editor"}))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-}
-
-func TestUpdateRole_RoleNotFound(t *testing.T) {
-	projID := uuid.New()
-	roleID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		updateRole: func(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error) {
-			return nil, projectdom.ErrRoleNotFound
-		},
-	})
-
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/roles/%s", projID, roleID),
-		jsonBody(t, map[string]any{"role_name": "editor"}))
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", w.Code)
-	}
-	if code := errorCode(t, w); code != "PROJECT_ROLE_NOT_FOUND" {
-		t.Fatalf("unexpected error_code: %s", code)
-	}
-}
-
-func TestDeleteRole_Success(t *testing.T) {
-	projID := uuid.New()
-	roleID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		deleteRole: func(_ context.Context, _, _ uuid.UUID) error { return nil },
-	})
-
-	w := do(t, r, http.MethodDelete, fmt.Sprintf("/projects/%s/roles/%s", projID, roleID), nil)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-}
-
-func TestDeleteRole_BadProjectID(t *testing.T) {
-	roleID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{})
-
-	w := do(t, r, http.MethodDelete, fmt.Sprintf("/projects/not-a-uuid/roles/%s", roleID), nil)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-}
-
-func TestDeleteRole_BadRoleID(t *testing.T) {
-	projID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{})
-
-	w := do(t, r, http.MethodDelete, fmt.Sprintf("/projects/%s/roles/not-a-uuid", projID), nil)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-}
-
-func TestDeleteRole_RoleHasMembers(t *testing.T) {
-	projID := uuid.New()
-	roleID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		deleteRole: func(_ context.Context, _, _ uuid.UUID) error {
-			return projectdom.ErrRoleHasMembers
-		},
-	})
-
-	w := do(t, r, http.MethodDelete, fmt.Sprintf("/projects/%s/roles/%s", projID, roleID), nil)
-	if w.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", w.Code)
-	}
-	if code := errorCode(t, w); code != "PROJECT_ROLE_HAS_MEMBERS" {
-		t.Fatalf("unexpected error_code: %s", code)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Project Members
 // ---------------------------------------------------------------------------
 
@@ -970,6 +694,48 @@ func TestListMembers_Success(t *testing.T) {
 	w := do(t, r, http.MethodGet, fmt.Sprintf("/projects/%s/members", projID), nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// A member shows the roles it holds in the project as a list of {id, name};
+// the single legacy project_role_id/role_name fields are gone.
+func TestListMembers_ShowsRolesAsAList(t *testing.T) {
+	projID, roleID := uuid.New(), uuid.New()
+	r := newProjectRouter(&mockProjectSvc{
+		listMembers: func(context.Context, uuid.UUID) ([]*projectdom.ProjectMember, error) {
+			return []*projectdom.ProjectMember{
+				{ID: uuid.New(), ProjectID: projID, UserID: uuid.New(), Roles: []roledom.Summary{{ID: roleID, Name: "Editor"}}},
+				{ID: uuid.New(), ProjectID: projID, UserID: uuid.New()},
+			}, nil
+		},
+	})
+
+	w := do(t, r, http.MethodGet, fmt.Sprintf("/projects/%s/members", projID), nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Data) != 2 {
+		t.Fatalf("members = %v", resp.Data)
+	}
+	for _, m := range resp.Data {
+		for _, legacy := range []string{"project_role_id", "role_name"} {
+			if _, ok := m[legacy]; ok {
+				t.Errorf("legacy field %q still in the response", legacy)
+			}
+		}
+	}
+	first, _ := resp.Data[0]["roles"].([]any)
+	if len(first) != 1 || first[0].(map[string]any)["name"] != "Editor" || first[0].(map[string]any)["id"] != roleID.String() {
+		t.Errorf("roles = %v", resp.Data[0]["roles"])
+	}
+	if empty, ok := resp.Data[1]["roles"].([]any); !ok || len(empty) != 0 {
+		t.Errorf("a member without roles must show an empty list, got %v", resp.Data[1]["roles"])
 	}
 }
 
@@ -1004,16 +770,16 @@ func TestAddMember_Success(t *testing.T) {
 	r := newProjectRouter(&mockProjectSvc{
 		addMember: func(_ context.Context, pid uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
 			return &projectdom.ProjectMember{
-				ID:            memberID,
-				ProjectID:     pid,
-				UserID:        in.UserID,
-				ProjectRoleID: in.ProjectRoleID,
+				ID:        memberID,
+				ProjectID: pid,
+				UserID:    in.UserID,
+				Roles:     []roledom.Summary{{ID: in.RoleIDs[0], Name: "Viewer"}},
 			}, nil
 		},
 	})
 
 	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/members", projID),
-		jsonBody(t, map[string]any{"user_id": userID, "project_role_id": roleID}))
+		jsonBody(t, map[string]any{"user_id": userID, "role_ids": []uuid.UUID{roleID}}))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
@@ -1039,7 +805,7 @@ func TestAddMember_ProjectNotFound(t *testing.T) {
 	})
 
 	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/members", projID),
-		jsonBody(t, map[string]any{"user_id": uuid.New(), "project_role_id": uuid.New()}))
+		jsonBody(t, map[string]any{"user_id": uuid.New(), "role_ids": []uuid.UUID{uuid.New()}}))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
@@ -1054,7 +820,7 @@ func TestAddMember_MemberAlreadyAdded(t *testing.T) {
 	})
 
 	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/members", projID),
-		jsonBody(t, map[string]any{"user_id": uuid.New(), "project_role_id": uuid.New()}))
+		jsonBody(t, map[string]any{"user_id": uuid.New(), "role_ids": []uuid.UUID{uuid.New()}}))
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d", w.Code)
 	}
@@ -1063,92 +829,69 @@ func TestAddMember_MemberAlreadyAdded(t *testing.T) {
 	}
 }
 
-func TestUpdateMemberRole_Success(t *testing.T) {
+func TestUpdateMember_Description_Success(t *testing.T) {
 	projID := uuid.New()
 	memberID := uuid.New()
-	roleID := uuid.New()
 	r := newProjectRouter(&mockProjectSvc{
-		updateMemberByMemberID: func(_ context.Context, pid, mid uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-			if pid != projID {
-				t.Fatalf("expected project id %s, got %s", projID, pid)
+		updateMemberDescription: func(_ context.Context, pid, mid uuid.UUID, description string) (*projectdom.ProjectMember, error) {
+			if pid != projID || mid != memberID || description != "frontend lead" {
+				t.Fatalf("unexpected call %s %s %q", pid, mid, description)
 			}
-			if mid != memberID {
-				t.Fatalf("expected member id %s, got %s", memberID, mid)
-			}
-			if in.ProjectRoleID != roleID {
-				t.Fatalf("expected role id %s, got %s", roleID, in.ProjectRoleID)
-			}
-			return &projectdom.ProjectMember{
-				ID:            mid,
-				ProjectID:     pid,
-				ProjectRoleID: in.ProjectRoleID,
-			}, nil
+			return &projectdom.ProjectMember{ID: mid, ProjectID: pid, Description: description}, nil
 		},
 	})
 
 	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/%s", projID, memberID),
-		jsonBody(t, map[string]any{"project_role_id": roleID}))
+		jsonBody(t, map[string]any{"description": "frontend lead"}))
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-func TestUpdateMemberRole_BadProjectID(t *testing.T) {
+// The old project_role_id field is gone: a body carrying only it changes
+// nothing and is rejected.
+func TestUpdateMember_RoleFieldIsNotAccepted(t *testing.T) {
+	projID := uuid.New()
 	memberID := uuid.New()
 	r := newProjectRouter(&mockProjectSvc{})
 
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/not-a-uuid/members/%s", memberID),
-		jsonBody(t, map[string]any{"project_role_id": uuid.New()}))
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/%s", projID, memberID),
+		jsonBody(t, map[string]any{"role_ids": []uuid.UUID{uuid.New()}}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateMember_BadProjectID(t *testing.T) {
+	r := newProjectRouter(&mockProjectSvc{})
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/not-a-uuid/members/%s", uuid.New()),
+		jsonBody(t, map[string]any{"description": "x"}))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
 
-func TestUpdateMemberRole_BadUserID(t *testing.T) {
-	projID := uuid.New()
+func TestUpdateMember_BadMemberID(t *testing.T) {
 	r := newProjectRouter(&mockProjectSvc{})
-
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/not-a-uuid", projID),
-		jsonBody(t, map[string]any{"project_role_id": uuid.New()}))
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/not-a-uuid", uuid.New()),
+		jsonBody(t, map[string]any{"description": "x"}))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
 
-func TestUpdateMemberRole_MemberNotFound(t *testing.T) {
-	projID := uuid.New()
-	memberID := uuid.New()
+func TestUpdateMember_MemberNotFound(t *testing.T) {
 	r := newProjectRouter(&mockProjectSvc{
-		updateMemberByMemberID: func(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+		updateMemberDescription: func(context.Context, uuid.UUID, uuid.UUID, string) (*projectdom.ProjectMember, error) {
 			return nil, projectdom.ErrMemberNotFound
 		},
 	})
-
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/%s", projID, memberID),
-		jsonBody(t, map[string]any{"project_role_id": uuid.New()}))
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/%s", uuid.New(), uuid.New()),
+		jsonBody(t, map[string]any{"description": "x"}))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
 	if code := errorCode(t, w); code != "PROJECT_MEMBER_NOT_FOUND" {
-		t.Fatalf("unexpected error_code: %s", code)
-	}
-}
-
-func TestUpdateMemberRole_RoleNotFound(t *testing.T) {
-	projID := uuid.New()
-	memberID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{
-		updateMemberByMemberID: func(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-			return nil, projectdom.ErrRoleNotFound
-		},
-	})
-
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/%s", projID, memberID),
-		jsonBody(t, map[string]any{"project_role_id": uuid.New()}))
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", w.Code)
-	}
-	if code := errorCode(t, w); code != "PROJECT_ROLE_NOT_FOUND" {
 		t.Fatalf("unexpected error_code: %s", code)
 	}
 }
@@ -1209,32 +952,23 @@ func TestAddMember_MissingUserID_Returns400(t *testing.T) {
 	r := newProjectRouter(&mockProjectSvc{})
 
 	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/members", projID),
-		jsonBody(t, map[string]any{"project_role_id": uuid.New()}))
+		jsonBody(t, map[string]any{"role_ids": []uuid.UUID{uuid.New()}}))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing user_id, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-func TestAddMember_MissingProjectRoleID_Returns400(t *testing.T) {
+func TestAddMember_MissingRoleIDs_Returns400(t *testing.T) {
 	projID := uuid.New()
 	r := newProjectRouter(&mockProjectSvc{})
 
 	w := do(t, r, http.MethodPost, fmt.Sprintf("/projects/%s/members", projID),
 		jsonBody(t, map[string]any{"user_id": uuid.New()}))
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing project_role_id, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 400 for missing role_ids, got %d: %s", w.Code, w.Body.String())
 	}
-}
-
-func TestUpdateMemberRole_MissingProjectRoleID_Returns400(t *testing.T) {
-	projID := uuid.New()
-	memberID := uuid.New()
-	r := newProjectRouter(&mockProjectSvc{})
-
-	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/%s", projID, memberID),
-		jsonBody(t, map[string]any{}))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing project_role_id, got %d: %s", w.Code, w.Body.String())
+	if code := errorCode(t, w); code != "ROLE_REQUIRED" {
+		t.Fatalf("unexpected error_code: %s", code)
 	}
 }
 

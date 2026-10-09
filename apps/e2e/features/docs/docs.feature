@@ -11,7 +11,7 @@ Feature: Documentation
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_DOCS_FOLDERS" exists
-      And the user is a member of the project with "docs.write" permission
+      And the user is a member of the project with "docs:write" permission
       And the user has navigated to the Docs page of "E2E_DOCS_FOLDERS"
 
     Scenario: Create a new folder
@@ -36,7 +36,7 @@ Feature: Documentation
       Then the folder named "To Delete" should no longer appear in the folder list
 
     Scenario: Member without write permission cannot create a folder
-      Given the user is a member of the project with only "docs.read" permission
+      Given the user is a member of the project with only "docs:read" permission
       Then the "Add" button in the Documentation section should not be visible
 
   @authenticated
@@ -45,7 +45,7 @@ Feature: Documentation
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_DOCS_LIFECYCLE" exists
-      And the user is a member of the project with "docs.write" permission
+      And the user is a member of the project with "docs:write" permission
       And the user has navigated to the Docs page of "E2E_DOCS_LIFECYCLE"
 
     Scenario: Create a document at the project root
@@ -80,7 +80,7 @@ Feature: Documentation
 
     Scenario: Member without write permission can view but not edit a document
       Given a document named "Read-Only Doc" exists in the project
-      And the user is a member of the project with only "docs.read" permission
+      And the user is a member of the project with only "docs:read" permission
       When the user opens the document "Read-Only Doc"
       Then the document editor should be in read-only mode
 
@@ -90,7 +90,7 @@ Feature: Documentation
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_DOCS_EDITOR" exists
-      And the user is a member of the project with "docs.write" permission
+      And the user is a member of the project with "docs:write" permission
       And the user has navigated to the Docs page of "E2E_DOCS_EDITOR"
       And a document named "E2E_EDITOR_DOC" exists in the project
 
@@ -123,7 +123,7 @@ Feature: Documentation
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_DOCS_HISTORY" exists
-      And the user is a member of the project with "docs.write" permission
+      And the user is a member of the project with "docs:write" permission
       And a document named "E2E_HISTORY_DOC" whose content was updated from "Initial" to "Updated" exists in the project
       And the user has navigated to the document "E2E_HISTORY_DOC" in "E2E_DOCS_HISTORY"
 
@@ -147,7 +147,7 @@ Feature: Documentation
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_DOCS_COMMENTS" exists
-      And the user is a member of the project with "docs.write" permission
+      And the user is a member of the project with "docs:write" permission
       And a document named "E2E_COMMENT_DOC" exists in the project
       And the user has navigated to the document "E2E_COMMENT_DOC" in "E2E_DOCS_COMMENTS"
 

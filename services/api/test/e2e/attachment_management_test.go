@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 )
 
 // ---------------------------------------------------------------------------
@@ -22,22 +20,8 @@ func seedAttachmentUser(t *testing.T, env *e2eEnv, username, password string) {
 	t.Helper()
 	seedUser(t, env, username, password, "Attachment Member")
 	roleName := "ATTACH_MEMBER_" + uuid.NewString()
-	if err := env.roleRepo.Create(env.ctx, &globalroledom.GlobalRole{
-		ID:   uuid.New(),
-		Name: roleName,
-		Permissions: map[string]any{
-			"projects.create": true,
-			"projects.read":   true,
-			"projects.write":  true,
-			"tasks.read":      true,
-			"tasks.write":     true,
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}); err != nil {
-		t.Fatalf("create attachment-member role: %v", err)
-	}
-	assignGlobalRolesByName(t, env, username, roleName)
+	createPlatformRole(t, env, roleName, "projects:create", "projects:read", "projects:write")
+	assignPlatformRole(t, env, username, roleName)
 }
 
 func attachmentUserLogin(t *testing.T, env *e2eEnv, username, password string) (*http.Client, string) {

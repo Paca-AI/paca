@@ -31,18 +31,20 @@ type MemberRepository interface {
 	// FindMemberByID returns the active member record for the given
 	// project_members.id.  Used to resolve an assignee member ID to a user ID.
 	FindMemberByID(ctx context.Context, memberID uuid.UUID) (*ProjectMember, error)
-	AddMember(ctx context.Context, m *ProjectMember) error
-	UpdateMemberRole(ctx context.Context, projectID, userID, roleID uuid.UUID) error
+	// AddMember inserts a project_members row (or restores a soft-deleted
+	// one) and attaches roleIDs to the member inside the project, in one
+	// transaction. roledom.ErrNotAttachable when a role does not exist or
+	// cannot be attached in the project.
+	AddMember(ctx context.Context, m *ProjectMember, roleIDs []uuid.UUID, createdBy *uuid.UUID) error
 	RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error
-	// UpdateMemberRoleByMemberID changes the role of a member by their membership record ID.
-	UpdateMemberRoleByMemberID(ctx context.Context, memberID, roleID uuid.UUID) error
 	// UpdateMemberDescription changes a member's Jev-facing description by
 	// their membership record ID — see ProjectMember.Description.
 	UpdateMemberDescription(ctx context.Context, memberID uuid.UUID, description string) error
 	// RemoveMemberByMemberID removes a member by their membership record ID.
 	RemoveMemberByMemberID(ctx context.Context, memberID uuid.UUID) error
-	// AddAgentMember inserts an agent as a project member with the given role.
-	AddAgentMember(ctx context.Context, memberID, projectID, agentID, roleID uuid.UUID) error
+	// AddAgentMember inserts an agent as a project member and attaches
+	// roleIDs to it inside the project, in one transaction.
+	AddAgentMember(ctx context.Context, memberID, projectID, agentID uuid.UUID, roleIDs []uuid.UUID, createdBy *uuid.UUID) error
 	// RemoveAgentMember soft-deletes the agent's membership record.
 	RemoveAgentMember(ctx context.Context, projectID, agentID uuid.UUID) error
 }

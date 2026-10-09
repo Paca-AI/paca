@@ -25,8 +25,7 @@
 			"description": "Aún puedes crear nuevos usuarios con el botón de arriba."
 		},
 		"table": {
-			"columnUsername": "Nombre de usuario",
-			"columnFullName": "Nombre completo",
+			"columnUser": "Usuario",
 			"columnRole": "Rol",
 			"columnCreated": "Creado",
 			"pwdResetBadge": "restablecer contraseña",
@@ -35,7 +34,9 @@
 			"resetPasswordAction": "Restablecer contraseña",
 			"editAction": "Editar usuario",
 			"changeRoleAction": "Cambiar rol",
-			"deleteAction": "Eliminar usuario"
+			"deleteAction": "Eliminar usuario",
+			"pwdResetHint": "Este usuario debe establecer una nueva contraseña en su próximo inicio de sesión",
+			"columnActions": "Acciones"
 		},
 		"formDialog": {
 			"createdTitle": "Usuario creado",
@@ -170,14 +171,16 @@
 		},
 		"table": {
 			"columnName": "Nombre",
-			"columnPermissions": "Permisos",
+			"columnDescription": "Descripción",
 			"columnDefault": "Predeterminado",
 			"noPermissionsAssigned": "Sin permisos asignados",
 			"default": "Predeterminado",
 			"setDefaultAction": "Establecer como rol predeterminado",
 			"editAction": "Editar rol",
 			"deleteAction": "Eliminar rol",
-			"deleteDefaultDisabled": "El rol predeterminado no se puede eliminar. Primero establece otro rol como predeterminado."
+			"deleteDefaultDisabled": "El rol predeterminado no se puede eliminar. Primero establece otro rol como predeterminado.",
+			"builtIn": "Rol integrado",
+			"noDescription": "Sin descripción"
 		},
 		"formDialog": {
 			"editTitle": "Editar rol",
@@ -192,16 +195,7 @@
 			"cancel": "Cancelar",
 			"saving": "Guardando…",
 			"saveChanges": "Guardar cambios",
-			"createRole": "Crear rol",
-			"errors": {
-				"roleNameRequired": "El nombre del rol es obligatorio.",
-				"nameTaken": "Ya existe un rol con este nombre.",
-				"nameInvalid": "El nombre del rol solo puede contener letras mayúsculas, números y guiones bajos.",
-				"roleNotFound": "Este rol ya no existe. Puede que ya haya sido eliminado.",
-				"forbidden": "No tienes permiso para realizar esta acción.",
-				"internalError": "Algo salió mal en el servidor. Inténtalo de nuevo.",
-				"generic": "Algo salió mal."
-			}
+			"createRole": "Crear rol"
 		},
 		"deleteDialog": {
 			"title": "Eliminar rol",
@@ -213,7 +207,6 @@
 			"confirmButton": "Eliminar rol",
 			"errors": {
 				"roleNotFound": "Este rol ya no existe.",
-				"hasUsersWarning": "Este rol no se puede eliminar porque todavía está asignado a uno o más usuarios.",
 				"isDefault": "El rol predeterminado no se puede eliminar. Primero establece otro rol como predeterminado.",
 				"forbidden": "No tienes permiso para eliminar este rol.",
 				"internalError": "Algo salió mal. Inténtalo de nuevo.",
@@ -284,11 +277,28 @@
 			"settingsSsoWrite": {
 				"label": "Gestionar proveedores SSO",
 				"description": "Configurar los proveedores de identidad con los que los usuarios inician sesión. Permite iniciar sesión como otros usuarios, así que trátalo como acceso total de administrador."
+			},
+			"agentsRead": {
+				"label": "Ver agentes",
+				"description": "Ver los agentes de IA del espacio de trabajo"
+			},
+			"agentsWrite": {
+				"label": "Gestionar agentes",
+				"description": "Crear, editar y eliminar los agentes de IA del espacio de trabajo"
+			},
+			"pluginsRead": {
+				"label": "Ver plugins",
+				"description": "Ver los plugins instalados"
+			},
+			"pluginsWrite": {
+				"label": "Gestionar plugins",
+				"description": "Instalar, actualizar, activar y eliminar plugins"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "Roles globales",
 			"users": "Usuarios",
+			"agents": "Agentes de IA",
 			"projects": "Proyectos",
 			"plugins": "Plugins",
 			"settings": "Configuración"

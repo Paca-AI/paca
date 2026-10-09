@@ -1,0 +1,26 @@
+{
+  "version": "2026-10-01",
+  "statements": [
+    {
+      "sid": "Workspace",
+      "effect": "Allow",
+      "actions": [
+        "agents:*",
+        "plugins:*",
+        "projects:*",
+        "roles:read",
+        "settings:write",
+        "users:*"
+      ],
+      "resources": [
+        "user", "user/*",
+        "role", "role/*",
+        "plugin", "plugin/*",
+        "settings",
+        "sso",
+        "agent", "agent/*",
+        "project"
+      ]
+    }
+  ]
+}

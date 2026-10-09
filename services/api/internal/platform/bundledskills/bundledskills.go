@@ -187,6 +187,7 @@ If the request clearly matches one of these, let the user know — they'll get a
 | Test or verify a task | ` + "`" + `/paca-test #<number>` + "`" + ` |
 | Write or update documentation | ` + "`" + `/paca-doc #<number>` + "`" + ` |
 | Automate a process — auto-assignment, status chaining, task dependencies | ` + "`" + `/paca-workflow <goal>` + "`" + ` |
+| Draft a role policy — read-only role, limit someone to a sprint, restrict an agent or environment (drafts JSON only, never saves a role) | ` + "`" + `/paca-role-policy <what the role should allow>` + "`" + ` |
 
 If it's a simple or mixed request (e.g. "create a task for X", "what's in the sprint", "mark #7 done"), just handle it directly below.
 
@@ -288,6 +289,7 @@ This is your default operating procedure for every conversation — it always ap
 | Test or verify a task | ` + "`" + `load_skill(name: "paca-test")` + "`" + ` |
 | Write or update documentation | ` + "`" + `load_skill(name: "paca-doc")` + "`" + ` |
 | Automate a process — auto-assignment, status chaining, task dependencies | ` + "`" + `load_skill(name: "paca-workflow")` + "`" + ` |
+| Draft a role policy — read-only role, limit someone to a sprint, restrict an agent or environment (drafts JSON only, never saves a role) | ` + "`" + `load_skill(name: "paca-role-policy")` + "`" + ` |
 
 A user can also force one of these directly by typing ` + "`" + `/<skill-name>` + "`" + ` (e.g. ` + "`" + `/paca-do #42` + "`" + `) in a chat message or comment — treat that the same as picking the matching row above: call ` + "`" + `load_skill` + "`" + ` for that name and follow it.
 
@@ -1074,6 +1076,10 @@ If the user has plugins enabled on their Paca instance that contribute their own
 | ` + "`" + `PACA_API_URL` + "`" + ` | No (default: ` + "`" + `http://localhost:8080` + "`" + `) | Your Paca instance URL |
 `,
 		CLIOnly: true,
+	},
+	{
+		Name:    "paca-role-policy",
+		Content: rolePolicySkillContent,
 	},
 	{
 		Name: "paca-sprint",

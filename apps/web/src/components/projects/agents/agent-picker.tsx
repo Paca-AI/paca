@@ -85,18 +85,8 @@ export function useAgentPicker(
 		...agentsQueryOptions(projectId),
 		enabled: options?.enabled ?? true,
 	});
-	// A restricted agent the caller has no grant for is visible on the
-	// Agents page (so people know it exists and who to ask) but not
-	// selectable here — starting a chat with it would just fail with
-	// AGENT_ACCESS_RESTRICTED, so it's left off the composer's own list
-	// instead of offering a choice guaranteed to error.
-	const realAgents = useMemo(
-		() =>
-			allAgents.filter(
-				(a) => a.access_mode !== "restricted" || a.access_granted,
-			),
-		[allAgents],
-	);
+	// The server only lists agents the caller may use, so every one is a choice.
+	const realAgents = allAgents;
 	// "Auto" is prepended as a synthetic first option — only when Jev is
 	// configured AND there's at least one real agent to resolve it to
 	// (otherwise it'd be a dead end: picking it just 404s at send time).
@@ -177,7 +167,7 @@ export function useGlobalAgentPicker(options?: {
 	}, [realAgents, agentId, jevEnabled]);
 
 	const disabled = options?.disabled;
-	const canCreate = hasPermission("agents.write");
+	const canCreate = hasPermission("agents:write");
 	const pickerState = useMemo<AgentPickerState>(
 		() => ({
 			agents,
@@ -317,17 +307,8 @@ export function useEnvironmentPicker(
 			...environmentsQueryOptions(projectId),
 			enabled: queryEnabled,
 		});
-	// Same reasoning as useAgentPicker's own filter: a restricted
-	// environment the caller has no grant for would just fail to attach
-	// with ENVIRONMENT_ACCESS_RESTRICTED, so it's left off this list
-	// rather than offered as a choice guaranteed to error.
-	const environments = useMemo(
-		() =>
-			allEnvironments.filter(
-				(e) => e.access_mode !== "restricted" || e.access_granted,
-			),
-		[allEnvironments],
-	);
+	// The server only lists environments the caller may use.
+	const environments = allEnvironments;
 	// Fetched only to read default_environment_id — this agent is typically
 	// already warm in the agent picker's own cache once chosen, so this is
 	// usually an instant cache hit rather than a new request.

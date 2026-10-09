@@ -88,8 +88,8 @@ func addProjectMemberWithAutomationPerms(t *testing.T, env *e2eEnv, ownerClient 
 	if err != nil {
 		t.Fatalf("find user %q: %v", username, err)
 	}
-	roleID := createProjectRoleWithPermsViaAPI(t, env, ownerClient, ownerToken, projectID, "editor-"+uuid.NewString(),
-		map[string]any{"projects.read": true, "tasks.read": true, "tasks.write": true, "workflows.read": true, "workflows.write": true})
+	roleID := createProjectRoleViaAPI(t, env, ownerClient, ownerToken, projectID, "editor-"+uuid.NewString(),
+		"projects:read", "tasks:read", "tasks:write", "workflows:read", "workflows:write")
 	addMemberViaAPI(t, env, ownerClient, ownerToken, projectID, user.ID.String(), roleID)
 
 	members := listProjectMembersViaAPI(t, env, ownerClient, ownerToken, projectID)

@@ -113,80 +113,224 @@ export async function createProject(
 	return body.data.id as string;
 }
 
+export interface ApiRole {
+	id: string;
+	name: string;
+	description?: string;
+	project_id: string | null;
+	is_system?: boolean;
+	is_default?: boolean;
+}
+
+/**
+ * The id of the role called `roleName` that belongs to `projectId`. Every
+ * project starts with the roles Admin, Editor and Viewer, owned by the
+ * project (the project's role list can also show platform roles, which are not
+ * what this means).
+ */
+export async function projectRoleIdByName(
+	request: APIRequestContext,
+	projectId: string,
+	roleName: string,
+): Promise<string> {
+	const response = await request.get(`${API_URL}/projects/${projectId}/roles`);
+	expect(response.ok()).toBeTruthy();
+	const roles: ApiRole[] = (await response.json()).data ?? [];
+	const role = roles.find(
+		(r) => r.project_id === projectId && r.name === roleName,
+	);
+	expect(role, `project role ${roleName} exists`).toBeTruthy();
+	return role?.id ?? "";
+}
+
+/** The id of a project's built-in Admin role (the one its creator holds). */
 export async function firstProjectRoleId(
 	request: APIRequestContext,
 	projectId: string,
 ): Promise<string> {
-	const response = await request.get(`${API_URL}/projects/${projectId}/roles`);
-	expect(response.ok()).toBeTruthy();
-	const body = await response.json();
-	const roles: Array<{ id: string }> = body.data ?? [];
-	expect(roles.length).toBeGreaterThan(0);
-	return roles[0].id;
+	return projectRoleIdByName(request, projectId, "Admin");
 }
 
 // ─── Users / roles ───────────────────────────────────────────────────────────
 
-/**
- * Sets a user's global role by name. The API assigns roles by id, on their own
- * endpoint (`global_roles.assign`) — creating or editing a user never carries
- * one — so this looks the id up first.
- */
-export async function assignGlobalRole(
-	request: APIRequestContext,
-	userId: string,
-	roleName: string,
-): Promise<void> {
-	const list = await request.get(`${API_URL}/admin/global-roles`);
-	expect(list.ok()).toBeTruthy();
-	const roles: Array<{ id: string; name: string }> =
-		(await list.json()).data ?? [];
-	const role = roles.find((r) => r.name === roleName);
-	expect(role, `global role ${roleName} exists`).toBeTruthy();
-
-	const assigned = await request.put(
-		`${API_URL}/admin/users/${userId}/global-roles`,
-		{
-			data: { role_ids: [role?.id] },
-		},
-	);
-	expect(assigned.ok()).toBeTruthy();
+export interface PolicyStatement {
+	/** Optional label, shown when a request is simulated. */
+	sid?: string;
+	effect: "Allow" | "Deny";
+	actions: string[];
+	resources: string[];
+	conditions?: Record<string, Record<string, unknown>>;
 }
 
-/** The id of the global role called `roleName` (built-ins: SUPER_ADMIN, ADMIN, USER). */
+export interface RolePolicy {
+	version: string;
+	statements: PolicyStatement[];
+}
+
+export const POLICY_VERSION = "2026-10-01";
+
+/** The resources the role editor's simple view writes for a workspace role. */
+const PLATFORM_RESOURCES = [
+	"user",
+	"user/*",
+	"role",
+	"role/*",
+	"plugin",
+	"plugin/*",
+	"settings",
+	"sso",
+	"agent",
+	"agent/*",
+	"project",
+];
+
+/**
+ * The policy a role gets from the editor's simple view when exactly `actions`
+ * are switched on: one Allow statement over the workspace resources (or, for a
+ * project role, over everything in that project). `*` is full access.
+ */
+export function allowPolicy(
+	actions: string[],
+	scope: { projectId?: string } = {},
+): RolePolicy {
+	if (actions.length === 0) {
+		return { version: POLICY_VERSION, statements: [] };
+	}
+	// A project role may only name resources inside its own project:
+	// "project/<projectId>/*" is what the role editor writes for it.
+	const resources = scope.projectId
+		? [`project/${scope.projectId}/*`]
+		: actions.includes("*")
+			? ["*"]
+			: PLATFORM_RESOURCES;
+	return {
+		version: POLICY_VERSION,
+		statements: [{ effect: "Allow", actions, resources }],
+	};
+}
+
+/** The actions switched on in a `{ action: boolean }` map. */
+export function grantedActions(permissions: Record<string, boolean>): string[] {
+	return Object.keys(permissions).filter((key) => permissions[key]);
+}
+
+export async function createGlobalRole(
+	request: APIRequestContext,
+	name: string,
+	policy: RolePolicy,
+): Promise<ApiRole> {
+	const response = await request.post(`${API_URL}/admin/roles`, {
+		data: { name, description: "", policy },
+	});
+	expect(response.ok()).toBeTruthy();
+	return (await response.json()).data as ApiRole;
+}
+
+export async function createProjectRole(
+	request: APIRequestContext,
+	projectId: string,
+	name: string,
+	policy: RolePolicy,
+	description = "",
+): Promise<ApiRole> {
+	const response = await request.post(
+		`${API_URL}/projects/${projectId}/roles`,
+		{ data: { name, description, policy } },
+	);
+	expect(response.ok()).toBeTruthy();
+	return (await response.json()).data as ApiRole;
+}
+
+/** The id of the workspace role called `roleName` (built-ins: SUPER_ADMIN, ADMIN, USER). */
 export async function globalRoleIdByName(
 	request: APIRequestContext,
 	roleName: string,
 ): Promise<string> {
-	const list = await request.get(`${API_URL}/admin/global-roles`);
+	const list = await request.get(`${API_URL}/admin/roles`);
 	expect(list.ok()).toBeTruthy();
-	const roles: Array<{ id: string; name: string }> =
-		(await list.json()).data ?? [];
+	const roles: ApiRole[] = (await list.json()).data ?? [];
 	const role = roles.find((r) => r.name === roleName);
 	expect(role, `global role ${roleName} exists`).toBeTruthy();
 	return role?.id ?? "";
 }
 
 /**
- * Binds a global agent to a global role by name, on the role's own endpoint
- * (`agents.write` + `global_roles.assign`): creating an agent never carries one.
+ * Sets the workspace roles a user holds, by name. A user holds any number of
+ * roles; this replaces the whole set (`roles:assign`), so the user ends up with
+ * exactly these.
+ */
+export async function assignGlobalRoles(
+	request: APIRequestContext,
+	userId: string,
+	roleNames: string[],
+): Promise<void> {
+	const roleIds = await Promise.all(
+		roleNames.map((name) => globalRoleIdByName(request, name)),
+	);
+	const assigned = await request.put(`${API_URL}/admin/users/${userId}/roles`, {
+		data: { role_ids: roleIds },
+	});
+	expect(assigned.ok()).toBeTruthy();
+}
+
+/** Sets a user's one workspace role by name. */
+export async function assignGlobalRole(
+	request: APIRequestContext,
+	userId: string,
+	roleName: string,
+): Promise<void> {
+	await assignGlobalRoles(request, userId, [roleName]);
+}
+
+/**
+ * Sets the workspace roles a global agent holds, by name, on the agent's own
+ * endpoint (`agents:write` + `roles:assign`): creating an agent never carries
+ * any, it starts with the default role.
  */
 export async function bindGlobalAgentRole(
 	request: APIRequestContext,
 	agentId: string,
 	roleName: string,
 ): Promise<void> {
-	const bound = await request.put(
-		`${API_URL}/admin/agents/${agentId}/global-role`,
-		{ data: { global_role_id: await globalRoleIdByName(request, roleName) } },
-	);
+	const bound = await request.put(`${API_URL}/admin/agents/${agentId}/roles`, {
+		data: { role_ids: [await globalRoleIdByName(request, roleName)] },
+	});
 	expect(bound.ok()).toBeTruthy();
 }
 
-async function createUserWithPassword(
+/** Replaces the roles a project member holds in that project. */
+export async function replaceMemberRoles(
+	request: APIRequestContext,
+	projectId: string,
+	memberId: string,
+	roleIds: string[],
+): Promise<void> {
+	const response = await request.put(
+		`${API_URL}/projects/${projectId}/members/${memberId}/roles`,
+		{ data: { role_ids: roleIds } },
+	);
+	expect(response.ok()).toBeTruthy();
+}
+
+/** Adds a user to a project with the given roles; returns the member id. */
+export async function addProjectMember(
+	request: APIRequestContext,
+	projectId: string,
+	userId: string,
+	roleIds: string[],
+): Promise<string> {
+	const response = await request.post(
+		`${API_URL}/projects/${projectId}/members`,
+		{ data: { user_id: userId, role_ids: roleIds } },
+	);
+	expect(response.ok()).toBeTruthy();
+	return (await response.json()).data.id as string;
+}
+
+export async function createUserWithPassword(
 	request: APIRequestContext,
 	playwright: Playwright,
-	user: { username: string; fullName: string; role?: string },
+	user: { username: string; fullName: string; roles?: string[] },
 ): Promise<string> {
 	const created = await request.post(`${API_URL}/admin/users`, {
 		data: {
@@ -197,8 +341,8 @@ async function createUserWithPassword(
 	});
 	expect(created.ok()).toBeTruthy();
 	const userId = (await created.json()).data.id as string;
-	if (user.role && user.role !== "USER") {
-		await assignGlobalRole(request, userId, user.role);
+	if (user.roles && user.roles.length > 0) {
+		await assignGlobalRoles(request, userId, user.roles);
 	}
 
 	// A freshly created account must change its temporary password before
@@ -248,18 +392,21 @@ export async function cleanupGlobalRolesByPrefix(
 	prefix: string,
 ): Promise<void> {
 	await authRequest(request);
-	const response = await request.get(`${API_URL}/admin/global-roles`);
+	const response = await request.get(`${API_URL}/admin/roles`);
 	if (!response.ok()) return;
 	const roles: Array<{ id: string; name: string }> =
 		(await response.json()).data ?? [];
 	await Promise.all(
 		roles
 			.filter((r) => r.name.startsWith(prefix))
-			.map((r) => request.delete(`${API_URL}/admin/global-roles/${r.id}`)),
+			.map((r) => request.delete(`${API_URL}/admin/roles/${r.id}`)),
 	);
 }
 
-/** Creates a user whose only global role grants exactly `permissions`. */
+/**
+ * Creates a user whose only workspace role grants exactly `permissions`, a map
+ * of IAM actions ("users:read", "roles:*") to true.
+ */
 export async function createUserWithGlobalPermissions(
 	request: APIRequestContext,
 	playwright: Playwright,
@@ -269,18 +416,24 @@ export async function createUserWithGlobalPermissions(
 		permissions: Record<string, boolean>;
 	},
 ): Promise<void> {
-	const role = await request.post(`${API_URL}/admin/global-roles`, {
-		data: { name: opts.roleName, permissions: opts.permissions },
-	});
-	expect(role.ok()).toBeTruthy();
+	await createGlobalRole(
+		request,
+		opts.roleName,
+		allowPolicy(grantedActions(opts.permissions)),
+	);
 	await createUserWithPassword(request, playwright, {
 		username: opts.username,
 		fullName: opts.username,
-		role: opts.roleName,
+		roles: [opts.roleName],
 	});
 }
 
-/** Creates a user who is a member of `projectId` with exactly `permissions`. */
+/**
+ * Creates a user who is a member of `projectId` whose only role there grants
+ * `permissions`, a map of IAM actions ("tasks:read", "agents:*") to true, plus
+ * projects:read so the member can open the project. Returns the user, member
+ * and role ids.
+ */
 export async function createUserWithProjectPermissions(
 	request: APIRequestContext,
 	playwright: Playwright,
@@ -290,22 +443,89 @@ export async function createUserWithProjectPermissions(
 		roleName: string;
 		permissions: Record<string, boolean>;
 	},
-): Promise<void> {
+): Promise<{ userId: string; memberId: string; roleId: string }> {
 	const userId = await createUserWithPassword(request, playwright, {
 		username: opts.username,
 		fullName: opts.username,
 	});
-	const role = await request.post(
-		`${API_URL}/projects/${opts.projectId}/roles`,
-		{ data: { role_name: opts.roleName, permissions: opts.permissions } },
+	const role = await createProjectRole(
+		request,
+		opts.projectId,
+		opts.roleName,
+		// Opening the project needs projects:read on it, which only a role can
+		// give (the built-in project roles all include it); keep it so that a
+		// role "granting exactly" the permissions under test still lets the
+		// member in.
+		allowPolicy(
+			[...new Set(["projects:read", ...grantedActions(opts.permissions)])],
+			{ projectId: opts.projectId },
+		),
 	);
-	expect(role.ok()).toBeTruthy();
-	const roleId = (await role.json()).data.id as string;
-	const member = await request.post(
-		`${API_URL}/projects/${opts.projectId}/members`,
-		{ data: { user_id: userId, project_role_id: roleId } },
+	const memberId = await addProjectMember(request, opts.projectId, userId, [
+		role.id,
+	]);
+	return { userId, memberId, roleId: role.id };
+}
+
+/**
+ * A policy that denies `actions` on one agent or environment of a project.
+ * Restricting a resource is nothing special: it is an ordinary role with a
+ * Deny statement, and Deny always wins over whatever other roles allow. The
+ * trailing `/*` also covers what hangs off the resource (chat sessions, SSH
+ * keys, port forwards).
+ */
+export function denyResourcePolicy(
+	projectId: string,
+	kind: "agent" | "environment",
+	resourceId: string,
+	actions: string[],
+): RolePolicy {
+	return {
+		version: POLICY_VERSION,
+		statements: [
+			{
+				effect: "Deny",
+				actions,
+				resources: [`project/${projectId}/${kind}/${resourceId}/*`],
+			},
+		],
+	};
+}
+
+/**
+ * Restricts an agent or environment for one member: creates a project role
+ * that denies `actions` on it and adds that role to the member's roles
+ * (`keepRoleIds` are the roles they hold already, which a role replacement
+ * would otherwise drop).
+ */
+export async function denyResourceToMember(
+	request: APIRequestContext,
+	opts: {
+		projectId: string;
+		memberId: string;
+		keepRoleIds: string[];
+		roleName: string;
+		kind: "agent" | "environment";
+		resourceId: string;
+		actions: string[];
+	},
+): Promise<ApiRole> {
+	const role = await createProjectRole(
+		request,
+		opts.projectId,
+		opts.roleName,
+		denyResourcePolicy(
+			opts.projectId,
+			opts.kind,
+			opts.resourceId,
+			opts.actions,
+		),
 	);
-	expect(member.ok()).toBeTruthy();
+	await replaceMemberRoles(request, opts.projectId, opts.memberId, [
+		...opts.keepRoleIds,
+		role.id,
+	]);
+	return role;
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
@@ -354,7 +574,7 @@ export async function createProjectAgent(
 			data: {
 				name,
 				handle: handleFor(name),
-				project_role_id: await firstProjectRoleId(request, projectId),
+				role_ids: [await firstProjectRoleId(request, projectId)],
 				...agentTypeFields(kind, opts),
 			},
 		},
@@ -376,10 +596,12 @@ export async function createGlobalAgent(
 	return { id: agent.id, name, handle: agent.handle };
 }
 
-export async function listGlobalAgents(
-	request: APIRequestContext,
-): Promise<
-	Array<{ id: string; name: string; global_role_id?: string | null }>
+export async function listGlobalAgents(request: APIRequestContext): Promise<
+	Array<{
+		id: string;
+		name: string;
+		roles?: Array<{ id: string; name: string }>;
+	}>
 > {
 	const response = await request.get(`${API_URL}/admin/agents`);
 	expect(response.ok()).toBeTruthy();

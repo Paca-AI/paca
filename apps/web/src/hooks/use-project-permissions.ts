@@ -1,35 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
-
-import { hasPermission } from "@/lib/permissions";
-import { myProjectPermissionsQueryOptions } from "@/lib/project-api";
+import { useEffectiveActions } from "@/hooks/use-effective-actions";
 
 /**
- * Returns a `hasProjectPermission` checker scoped to the current user's role
- * within a specific project. Supports wildcard notation (e.g. `sprints.*`).
- *
- * Permissions are fetched from GET /projects/:projectId/members/me/permissions,
- * a lightweight endpoint that returns only the caller's own permission map
- * without requiring access to the full members or roles lists.
+ * Returns a `hasProjectPermission` checker scoped to the current user's roles
+ * within a specific project. Takes an IAM action ("tasks:write") and supports
+ * the wildcards a role may hold ("tasks:*", "*"). A thin wrapper over
+ * `useEffectiveActions(projectId)`, kept so call sites do not change.
  */
 export function useProjectPermissions(projectId: string) {
-	const { data: permissionsMap = {}, isLoading } = useQuery({
-		...myProjectPermissionsQueryOptions(projectId),
-		enabled: !!projectId,
-	});
+	const { has, isLoading } = useEffectiveActions(projectId);
 
-	// Convert the {perm: boolean} map to the string[] form expected by the
-	// shared hasPermission helper.
-	const projectPermissions = Object.entries(permissionsMap)
-		.filter(([, v]) => v === true)
-		.map(([k]) => k);
-
-	const hasProjectPermission = (permission: string): boolean =>
-		hasPermission(projectPermissions, permission);
-
-	// Callers gate a `noPermission` (vs. loading) render decision on this —
-	// while the permissions request is in flight, `permissionsMap` defaults
-	// to `{}` same as a confirmed "denied", so without `isLoading` a caller
-	// can't tell "not yet known" from "known and denied" and flashes
-	// NoPermissionState before the real result comes back.
-	return { hasProjectPermission, isLoading };
+	// Callers gate a `noPermission` (vs. loading) render decision on `isLoading`:
+	// while the request is in flight `has` is false like a confirmed denial.
+	return { hasProjectPermission: has, isLoading };
 }

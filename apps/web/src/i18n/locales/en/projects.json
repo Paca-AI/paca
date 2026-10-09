@@ -102,7 +102,6 @@
 			"configure": "Configure",
 			"delete": "Delete",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "Online",
 			"acpStatusDisconnected": "Offline",
 			"deleteDialog": {
@@ -173,7 +172,6 @@
 				"skills": "Skills",
 				"envVars": "Environment",
 				"globalRole": "Global role",
-				"access": "Access",
 				"activity": "Activity"
 			},
 			"globalRole": {
@@ -348,15 +346,6 @@
 					"description": "Bundled with Paca and available to every agent. These can't be edited."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"activity": {
 				"commented": "commented",
 				"sourceType": {
@@ -398,8 +387,6 @@
 			"connect": "Connect",
 			"conversationEnded": "This conversation has ended.",
 			"textOnlyMessage": "Only text messages are supported.",
-			"agentAccessRestricted": "This agent is restricted. Ask a project admin to grant you access before you can chat with it.",
-			"environmentAccessRestricted": "This conversation's environment is restricted. Ask a project admin to grant you access before you can chat with this agent.",
 			"chatNoPermission": "You don't have permission to send messages in this conversation.",
 			"failed": "Conversation failed",
 			"noOutput": "The agent did not produce any output.",
@@ -496,7 +483,6 @@
 			"subtitle": "Named, long-lived sandboxes your agents can attach to across conversations",
 			"newEnvironment": "New Environment",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"noPermission": {
 				"title": "You don't have permission to view environments",
 				"description": "Ask a project admin to grant you the environments.read permission."
@@ -539,8 +525,7 @@
 			"tabs": {
 				"overview": "Overview",
 				"folders": "Folders",
-				"portForwards": "Port forwards",
-				"access": "Access"
+				"portForwards": "Port forwards"
 			},
 			"busy": "This environment is already starting, stopping, or restarting. Try again in a moment.",
 			"actionFailed": "That didn't work. Please try again.",
@@ -656,15 +641,6 @@
 					"restartFailed": "Failed to restart environment. Please try again."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"sshKeys": {
 				"connectHint": "Replace <bastion-host> with this deployment's configured SSH bastion address.",
 				"connectUnavailable": "SSH access isn't configured on this deployment yet.",
@@ -763,7 +739,6 @@
 			"deleteRole": "Delete role",
 			"errors": {
 				"notFound": "This role no longer exists.",
-				"hasMembers": "This role cannot be deleted because it is still assigned to one or more members.",
 				"forbidden": "You don't have permission to delete this role.",
 				"internalError": "Something went wrong. Please try again.",
 				"generic": "Something went wrong."
@@ -777,23 +752,18 @@
 			"roleNameLabel": "Role Name",
 			"roleNamePlaceholder": "e.g. PROJECT_REVIEWER",
 			"permissionsLabel": "Permissions",
-			"fullAccessBadge": "Full access",
 			"fullAccessDescription": "This role automatically includes every permission, including ones added in the future. Changing any toggle below converts it to today's fixed set.",
 			"enabledCount_one": "{{count}} enabled",
 			"enabledCount_other": "{{count}} enabled",
 			"cancel": "Cancel",
 			"saveChanges": "Save changes",
-			"createRole": "Create role",
-			"errors": {
-				"nameTaken": "A role with this name already exists.",
-				"nameInvalid": "Role name must use uppercase letters, numbers, and underscores.",
-				"notFound": "This role no longer exists. It may have already been deleted.",
-				"forbidden": "You don't have permission to perform this action.",
-				"internalError": "Something went wrong on the server. Please try again.",
-				"generic": "Something went wrong."
-			}
+			"createRole": "Create role"
 		},
 		"permissions": {
+			"projectsRead": {
+				"label": "View Project",
+				"description": "Open the project and see its basic details"
+			},
 			"projectsWrite": {
 				"label": "Edit Project",
 				"description": "Update project name, description, and settings"
@@ -808,7 +778,7 @@
 			},
 			"membersWrite": {
 				"label": "Manage Members",
-				"description": "Add, remove, and reassign project members"
+				"description": "Add and remove project members (changing their roles needs Assign Roles)"
 			},
 			"rolesRead": {
 				"label": "View Roles",
@@ -817,6 +787,10 @@
 			"rolesWrite": {
 				"label": "Manage Roles",
 				"description": "Create, edit, and delete project roles"
+			},
+			"rolesAssign": {
+				"label": "Assign Roles",
+				"description": "Give members and agents any role in this project, or take roles away"
 			},
 			"settingsTaskTypesWrite": {
 				"label": "Manage Task Types",
@@ -973,7 +947,6 @@
 			"title": "Project Roles",
 			"description": "Manage roles and permissions for members of this project.",
 			"newRole": "New role",
-			"noPermissionsAssigned": "No permissions assigned",
 			"noPermission": {
 				"title": "You don't have permission to view roles",
 				"description": "Ask a project admin to grant you the project.roles.read permission."
@@ -990,10 +963,11 @@
 			},
 			"table": {
 				"name": "Name",
-				"permissions": "Permissions",
+				"description": "Description",
 				"created": "Created"
 			},
-			"systemRolesNote": "System roles are shared templates and cannot be edited or deleted."
+			"systemRolesNote": "Roles shared from the workspace can only be changed in the workspace's role settings.",
+			"noDescription": "No description"
 		},
 		"taskStatuses": {
 			"title": "Task Statuses",
@@ -1286,12 +1260,12 @@
 			"noUsersAvailable": "No users available to add.",
 			"loadingMore": "Loading…",
 			"roleLabel": "Role",
-			"rolePlaceholder": "Select a role…",
 			"cancel": "Cancel",
 			"addMember": "Add member",
 			"errors": {
 				"addFailed": "Failed to add member. Please try again.",
 				"alreadyAdded": "This user or agent is already a member of the project.",
+				"roleForbidden": "You don't have permission to assign one of these roles.",
 				"roleNotFound": "That role no longer exists. Please choose another role."
 			}
 		},
@@ -1299,12 +1273,15 @@
 			"changeRole": "Change role",
 			"errors": {
 				"memberNotFound": "This member is no longer part of the project.",
+				"roleForbidden": "You don't have permission to assign or remove one of these roles.",
 				"roleNotFound": "That role no longer exists.",
 				"changeFailed": "Failed to change role."
 			}
 		},
 		"memberRow": {
-			"removeMember": "Remove member"
+			"removeMember": "Remove member",
+			"agentBadge": "Agent",
+			"actions": "Member actions"
 		},
 		"descriptionChip": {
 			"edit": "Edit description",

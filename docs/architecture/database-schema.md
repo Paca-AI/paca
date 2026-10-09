@@ -21,25 +21,67 @@ Interactive diagram: [https://dbdiagram.io/d/Paca-69c212ae78c6c4bc7a4fc190](http
 | `000031_add_global_agents.sql` | Adds "global" agents — an agent with no owning project (`agents.project_id` nullable, `agent_scope` discriminator, `global_role_id`) that is instead attached to zero or more projects via ordinary `project_members` rows, the same mechanism used to add a human member. Adds `actor_user_id` to `agent_chat_sessions` and `agent_conversations` for chat sessions/conversations started from the home page or admin pages, outside any project. See the comment above the `agents` table below. |
 | `000059_add_default_global_role.sql` | Adds `global_roles.is_default` (one default at a time, enforced by the partial unique index `uq_global_roles_one_default`) and marks `USER` the default where none is set. The API used to hardcode the role *named* `USER` for every new account; the default is data now, changed with `PUT /admin/global-roles/:roleId/set-default`. |
 | `000061_unify_activities.sql` | Creates the single `activities` table for every entity in a project (task, doc, sprint, view, automation, environment, member) with an `origin` column, copies all `task_activities` and `doc_activities` rows into it under their original IDs, then drops both old tables. |
+| `000064_iam_roles.sql` | IAM authorization. Creates `roles` (a JSON `policy` per role; platform roles have `project_id` NULL, project-owned roles carry their project) and `role_attachments` (role to user/agent, platform-wide or scoped to one project), then converts the legacy model in one transaction and self-checks it before commit: `global_roles` and `project_roles` become roles, `users.role_id`, `agents.global_role_id` and `project_members.project_role_id` become attachments, while restricted agents/environments (`access_mode = 'restricted'`) are deliberately **not** converted and become open until an admin adds `Deny` roles. The legacy tables are **not** dropped here. See [authorization](authorization.md) and the [release notes](../releases/2026-10-iam-authorization.md). |
+| `000065_plugin_manifest_actions.sql` | Rewrites every installed plugin manifest: `requirePermissions` route middleware becomes `requireActions`, and `customPermissions[].key` / `requiredPermission` become IAM actions (`time_logging.manage_all` becomes `time_logging:manage_all`). |
+| `000066_relax_legacy_role_columns.sql` | Makes `users.role_id` and `project_members.project_role_id` nullable: new accounts and members get their roles from `role_attachments` only. |
+| `000067_project_role_resources.sql` | Rewrites the policies of project-owned roles so every resource lies inside the owning project (`project/*` becomes `project/<id>`, `*` becomes `project/<id>/*`, outside resources are dropped). |
+| `000068_add_roles_assign.sql` | Changing a member's roles now needs only `roles:assign`. Adds `roles:assign` to every `Allow` statement that grants `project.members:write` (or `project.members:*`) on resources that reach role resources, so existing roles keep that ability. Idempotent; updates `roles.updated_at` only for changed roles. |
 
 *(Migrations between `000008` and `000017`/`000022`/`000031` that touch other subsystems — tasks, sprints, docs, notifications, etc. — are omitted here; see `services/api/migrations/` for the full, authoritative list.)*
 
 ## Schema (DBML)
 
 ```dbml
+// --- IAM ROLES (000064) ---
+// A role is a JSON policy document. A user, agent or project member holds any
+// number of roles through role_attachments. This replaces global_roles /
+// project_roles below, which are legacy: still present after 000064 (their data
+// was converted) but no longer read for authorization.
+Table roles {
+  id uuid [primary key]
+  name text [not null, note: 'Unique among platform roles (project_id NULL) and unique per project.']
+  description text [not null, default: '']
+  policy jsonb [not null, note: 'IAM policy document: {version, statements[{sid, effect, actions, resources, conditions}]}']
+  project_id uuid [null, ref: > projects.id, note: 'Owner project; NULL = platform role. ON DELETE CASCADE.']
+  is_system boolean [not null, default: false, note: 'Managed by Paca (SUPER_ADMIN, ADMIN, USER, each project Admin): editable but not deletable.']
+  is_default boolean [not null, default: false, note: 'The role new users and global agents start with. At most one row (partial unique index uq_roles_single_default).']
+  legacy_kind text [null, note: "Migration provenance: global | global_agent | project"]
+  legacy_id uuid [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table role_attachments {
+  id uuid [primary key]
+  role_id uuid [not null, ref: > roles.id, note: 'ON DELETE CASCADE']
+  principal_type text [not null, note: 'user | agent']
+  principal_id uuid [not null]
+  project_id uuid [null, ref: > projects.id, note: 'NULL = platform-wide; otherwise the role applies only inside this project.']
+  created_by uuid [null, ref: > users.id]
+  created_at timestamp [not null]
+
+  indexes {
+    (role_id, principal_type, principal_id) [unique, note: 'Partial: WHERE project_id IS NULL (uq_role_attachments_platform)']
+    (role_id, principal_type, principal_id, project_id) [unique, note: 'Partial: WHERE project_id IS NOT NULL (uq_role_attachments_project)']
+    (principal_type, principal_id)
+    (project_id)
+  }
+}
+
 // --- USER & GLOBAL ROLE MANAGEMENT ---
 Table users {
   id uuid [primary key]
   username varchar [unique, not null]
   password_hash varchar [not null]
   full_name varchar
-  role_id uuid [ref: > global_roles.id, not null]
+  role_id uuid [null, ref: > global_roles.id, note: 'LEGACY. Nullable since 000066 and not used for authorization: a user\'s roles are role_attachments rows.']
   must_change_password boolean [not null, default: false]
   created_at timestamp
   updated_at timestamp
   deleted_at timestamp [null]
 }
 
+// LEGACY since 000064: converted into roles; no longer read for authorization.
 Table global_roles {
   id uuid [primary key]
   name varchar [unique, not null]
@@ -61,6 +103,7 @@ Table projects {
   created_at timestamp
 }
 
+// LEGACY since 000064: converted into roles; no longer read for authorization.
 Table project_roles {
   id uuid [primary key]
   project_id uuid [ref: > projects.id]
@@ -72,7 +115,7 @@ Table project_members {
   id uuid [primary key]
   project_id uuid [ref: > projects.id]
   user_id uuid [null, ref: > users.id, note: 'null for agent members']
-  project_role_id uuid [ref: > project_roles.id]
+  project_role_id uuid [null, ref: > project_roles.id, note: 'LEGACY. Nullable since 000066 and not used for authorization: a member\'s roles are role_attachments scoped to the project.']
   member_type varchar [not null, default: 'human', note: 'human | agent']
   agent_id uuid [null, ref: > agents.id, note: 'null for human members']
   created_at timestamp [not null]
@@ -372,7 +415,8 @@ Table api_keys {
 //                          assignment, @mention, project chat) — nothing
 //                          else keys off agents.project_id, only the
 //                          project_members row.
-// global_role_id mirrors users.role_id: it governs what a global agent may
+// global_role_id (LEGACY since 000064; a global agent's roles are now
+// role_attachments rows with principal_type = 'agent') mirrored users.role_id: it governed what a global agent may
 // do at global scope (i.e. via project-management-shaped tools called from
 // the home/admin chat, with no project context of its own). A project-scoped
 // agent never has a global_role_id — see ck_agents_scope.
@@ -382,7 +426,7 @@ Table agents {
   agent_scope varchar [not null, default: 'project', note: '''project | global. ck_agents_scope enforces:
     project -> project_id NOT NULL AND global_role_id NULL
     global  -> project_id NULL''']
-  global_role_id uuid [null, ref: > global_roles.id, note: 'Only ever set for a global-scope agent. ON DELETE RESTRICT, mirrors fk_users_role_id.']
+  global_role_id uuid [null, ref: > global_roles.id, note: 'LEGACY since 000064, unused for authorization (see role_attachments). Only ever set for a global-scope agent. ON DELETE RESTRICT.']
   name varchar [not null]
   handle varchar [not null, note: '@mention handle. Unique per project for a project-scoped agent; unique workspace-wide for a global agent (see indexes below).']
   avatar_url varchar [null]

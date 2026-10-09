@@ -124,7 +124,7 @@ describe("PacaAPIExtendedClient", () => {
 			fetchMock.mockResolvedValue(okEnvelope({ id: "m2" }));
 			const result = await client.addProjectMember("p1", {
 				user_id: "u1",
-				role_id: "r1",
+				role_ids: ["r1"],
 			});
 			expect(fetchMock.mock.calls[0][0]).toContain("/members");
 			expect(fetchMock.mock.calls[0][1].method).toBe("POST");
@@ -133,30 +133,28 @@ describe("PacaAPIExtendedClient", () => {
 	});
 
 	describe("getMyProjectPermissions", () => {
-		it("returns permissions from response", async () => {
+		it("returns actions from response", async () => {
 			const client = new PacaAPIExtendedClient(CONFIG);
-			fetchMock.mockResolvedValue(
-				okEnvelope({ permissions: { "tasks.write": true } }),
-			);
+			fetchMock.mockResolvedValue(okEnvelope({ actions: ["tasks:write"] }));
 			const result = await client.getMyProjectPermissions("p1");
-			expect(result).toEqual({ "tasks.write": true });
+			expect(result).toEqual(["tasks:write"]);
 		});
 
-		it("returns empty object when permissions key is missing", async () => {
+		it("returns an empty list when actions is missing", async () => {
 			const client = new PacaAPIExtendedClient(CONFIG);
 			fetchMock.mockResolvedValue(okEnvelope({}));
 			const result = await client.getMyProjectPermissions("p1");
-			expect(result).toEqual({});
+			expect(result).toEqual([]);
 		});
 	});
 
 	describe("updateProjectMemberRole", () => {
-		it("calls PATCH /api/v1/projects/:id/members/:userId", async () => {
+		it("calls PUT /api/v1/projects/:id/members/:memberId/roles", async () => {
 			const client = new PacaAPIExtendedClient(CONFIG);
-			fetchMock.mockResolvedValue(okEnvelope({ id: "m1" }));
-			await client.updateProjectMemberRole("p1", "u1", { role_id: "r2" });
-			expect(fetchMock.mock.calls[0][0]).toContain("/members/u1");
-			expect(fetchMock.mock.calls[0][1].method).toBe("PATCH");
+			fetchMock.mockResolvedValue(okEnvelope([{ id: "r2" }]));
+			await client.updateProjectMemberRole("p1", "m1", { role_ids: ["r2"] });
+			expect(fetchMock.mock.calls[0][0]).toContain("/members/m1/roles");
+			expect(fetchMock.mock.calls[0][1].method).toBe("PUT");
 		});
 	});
 
@@ -195,18 +193,25 @@ describe("PacaAPIExtendedClient", () => {
 		it("calls POST /api/v1/projects/:id/roles", async () => {
 			const client = new PacaAPIExtendedClient(CONFIG);
 			fetchMock.mockResolvedValue(okEnvelope({ id: "r2" }));
-			await client.createProjectRole("p1", { name: "Dev", permissions: [] });
+			await client.createProjectRole("p1", {
+				name: "Dev",
+				policy: { statements: [] },
+			});
 			expect(fetchMock.mock.calls[0][1].method).toBe("POST");
 		});
 	});
 
 	describe("updateProjectRole", () => {
-		it("calls PATCH /api/v1/projects/:id/roles/:roleId", async () => {
+		it("calls PUT /api/v1/projects/:id/roles/:roleId", async () => {
 			const client = new PacaAPIExtendedClient(CONFIG);
 			fetchMock.mockResolvedValue(okEnvelope({ id: "r1" }));
-			await client.updateProjectRole("p1", "r1", { name: "Lead" });
+			await client.updateProjectRole("p1", "r1", {
+				name: "Lead",
+				description: "",
+				policy: { statements: [] },
+			});
 			expect(fetchMock.mock.calls[0][0]).toContain("/roles/r1");
-			expect(fetchMock.mock.calls[0][1].method).toBe("PATCH");
+			expect(fetchMock.mock.calls[0][1].method).toBe("PUT");
 		});
 	});
 

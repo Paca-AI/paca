@@ -14,6 +14,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 )
 
 // -------------------------------------------------------------------------
@@ -24,7 +25,6 @@ type agentRecord struct {
 	ID                 string  `db:"id"`
 	ProjectID          *string `db:"project_id"` // NULL for global-scope agents
 	AgentScope         string  `db:"agent_scope"`
-	GlobalRoleID       *string `db:"global_role_id"`
 	Name               string  `db:"name"`
 	Handle             string  `db:"handle"`
 	Description        string  `db:"description"`
@@ -62,20 +62,11 @@ type agentRecord struct {
 	// DefaultEnvironmentID is also set (enforced by the service layer, not
 	// a DB constraint).
 	DefaultFolderID *string    `db:"default_folder_id"`
-	AccessMode      string     `db:"access_mode"`
 	CreatedBy       *string    `db:"created_by"`
 	CreatedAt       time.Time  `db:"created_at"`
 	UpdatedAt       time.Time  `db:"updated_at"`
 	DeletedAt       *time.Time `db:"deleted_at"`
 	MemberID        *string    `db:"member_id"` // populated when joining with project_members
-}
-
-type agentAccessGrantRecord struct {
-	ID        string    `db:"id"`
-	AgentID   string    `db:"agent_id"`
-	MemberID  string    `db:"member_id"`
-	GrantedBy *string   `db:"granted_by"`
-	CreatedAt time.Time `db:"created_at"`
 }
 
 type agentMCPServerRecord struct {
@@ -185,10 +176,10 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 	return &AgentRepository{db: db}
 }
 
-const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_key, a.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
+const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.name, a.handle, a.avatar_key, a.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes, a.parallelism_limit,
-	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.default_folder_id, a.access_mode, a.created_by, a.created_at, a.updated_at, a.deleted_at,
+	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.default_folder_id, a.created_by, a.created_at, a.updated_at, a.deleted_at,
 	a.cli_provider, a.cli_model, a.cli_auth_mode, a.cli_api_key_secret, a.cli_login_verified_at, COALESCE(a.description, '') AS description`
 
 // agentSelectCols is used with a JOIN/LEFT JOIN against project_members
@@ -254,14 +245,25 @@ func (r *AgentRepository) ListAgents(ctx context.Context, projectID uuid.UUID, s
 		FROM agents a
 		JOIN project_members pm ON pm.agent_id = a.id AND pm.deleted_at IS NULL AND pm.project_id = $1
 		WHERE a.deleted_at IS NULL`
-	args := []any{projectID.String()}
+	sink := &argList{args: []any{projectID.String()}}
 	if scope != "" {
-		query += " AND a.agent_scope = $2"
-		args = append(args, string(scope))
+		query += " AND a.agent_scope = " + sink.addArg(string(scope))
+	}
+	// The caller's IAM scope narrows the query itself, so an agent the caller
+	// may not read never leaves the database.
+	clause, none, err := scopeSQL(ctx, "agent", agentScopeColumns, sink)
+	if err != nil {
+		return nil, err
+	}
+	if none {
+		return []*agentdom.Agent{}, nil
+	}
+	if clause != "" {
+		query += " AND " + clause
 	}
 
 	var rows []agentRecord
-	err := r.db.SelectContext(ctx, &rows, query, args...)
+	err = r.db.SelectContext(ctx, &rows, query, sink.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +299,43 @@ func (r *AgentRepository) ListGlobalAgents(ctx context.Context) ([]*agentdom.Age
 		}
 		result = append(result, a)
 	}
+	if err := r.loadGlobalAgentRoles(ctx, result); err != nil {
+		return nil, err
+	}
 	return result, nil
+}
+
+// loadGlobalAgentRoles fills Roles on global agents: the platform roles
+// attached to each, sorted by name.
+func (r *AgentRepository) loadGlobalAgentRoles(ctx context.Context, agents []*agentdom.Agent) error {
+	if len(agents) == 0 {
+		return nil
+	}
+	ids := make([]string, len(agents))
+	byID := make(map[string]*agentdom.Agent, len(agents))
+	for i, a := range agents {
+		ids[i] = a.ID.String()
+		byID[a.ID.String()] = a
+		a.Roles = []roledom.Summary{}
+	}
+	var rows []struct {
+		AgentID string `db:"agent_id"`
+		ID      string `db:"id"`
+		Name    string `db:"name"`
+	}
+	if err := r.db.SelectContext(ctx, &rows, `
+		SELECT ra.principal_id::text AS agent_id, ro.id::text AS id, ro.name
+		FROM role_attachments ra JOIN roles ro ON ro.id = ra.role_id
+		WHERE ra.principal_type = 'agent' AND ra.project_id IS NULL AND ra.principal_id = ANY($1::uuid[])
+		ORDER BY ro.name, ro.id`, ids); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if a := byID[row.AgentID]; a != nil {
+			a.Roles = append(a.Roles, roledom.Summary{ID: mustParseUUID(row.ID), Name: row.Name})
+		}
+	}
+	return nil
 }
 
 // FindAgentByID returns a single agent with its MCP servers and skills.
@@ -340,6 +378,11 @@ func (r *AgentRepository) FindAgentByID(ctx context.Context, id uuid.UUID) (*age
 	agent.MCPServers = mcpServers
 	agent.Skills = skills
 	agent.EnvVars = envVars
+	if agent.AgentScope == agentdom.AgentScopeGlobal {
+		if err := r.loadGlobalAgentRoles(ctx, []*agentdom.Agent{agent}); err != nil {
+			return nil, err
+		}
+	}
 	return agent, nil
 }
 
@@ -446,17 +489,17 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  acp_provider=$8, acp_command=$9,
 			  system_prompt=$10,
 			  max_iterations=$11, timeout_minutes=$12,
-			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15, global_role_id=$16,
-			  default_environment_id=$17, default_folder_id=$18, updated_at=$19,
-			  cli_provider=$20, cli_model=$21, cli_auth_mode=$22, parallelism_limit=$23, access_mode=$24, description=$25
-			WHERE id=$26`,
+			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15,
+			  default_environment_id=$16, default_folder_id=$17, updated_at=$18,
+			  cli_provider=$19, cli_model=$20, cli_auth_mode=$21, parallelism_limit=$22, description=$23
+			WHERE id=$24`,
 			a.Name, a.Handle, a.AvatarKey, a.AvatarThumbKey, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
-			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled, rec.GlobalRoleID,
+			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled,
 			rec.DefaultEnvironmentID, rec.DefaultFolderID, time.Now(),
-			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ParallelismLimit, rec.AccessMode, a.Description, a.ID.String(),
+			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ParallelismLimit, a.Description, a.ID.String(),
 		)
 		if err != nil {
 			return err
@@ -541,9 +584,11 @@ func (r *AgentRepository) SetAgentMemberID(_ context.Context, _, _ uuid.UUID) er
 	return nil
 }
 
-// CreateAgentWithMembership atomically inserts the agent and its project_members
-// row within a single database transaction.
-func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agentdom.Agent, memberID, projectID, roleID uuid.UUID) error {
+// CreateAgentWithMembership atomically inserts the agent, its project_members
+// row and the project-scoped attachments of roleIDs within a single database
+// transaction. roledom.ErrNotAttachable when a role does not exist or cannot
+// be attached in the project.
+func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agentdom.Agent, memberID, projectID uuid.UUID, roleIDs []uuid.UUID, createdBy *uuid.UUID) error {
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
 		rec, err := agentToRecord(a)
 		if err != nil {
@@ -568,10 +613,14 @@ func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agen
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `
-			INSERT INTO project_members (id, project_id, agent_id, project_role_id, member_type, user_id, created_at, deleted_at)
-			VALUES ($1, $2, $3, $4, 'agent', NULL, NOW(), NULL)`,
-			memberID.String(), projectID.String(), a.ID.String(), roleID.String(),
+			INSERT INTO project_members (id, project_id, agent_id, member_type, user_id, created_at, deleted_at)
+			VALUES ($1, $2, $3, 'agent', NULL, NOW(), NULL)`,
+			memberID.String(), projectID.String(), a.ID.String(),
 		)
+		if err != nil {
+			return err
+		}
+		_, err = attachRolesTx(ctx, tx, roledom.PrincipalAgent, a.ID, &projectID, roleIDs, createdBy)
 		return err
 	})
 }
@@ -585,9 +634,16 @@ func (r *AgentRepository) SoftDeleteAgentWithMembership(ctx context.Context, pro
 			return err
 		}
 		// Soft-delete the membership row; 0 rows affected is fine for orphaned agents.
-		_, err := tx.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `
 			UPDATE project_members SET deleted_at=$1
-			WHERE project_id=$2 AND agent_id=$3 AND member_type='agent'`, now, projectID.String(), agentID.String())
+			WHERE project_id=$2 AND agent_id=$3 AND member_type='agent'`, now, projectID.String(), agentID.String()); err != nil {
+			return err
+		}
+		// The agent's roles in the project go with it.
+		_, err := tx.ExecContext(ctx, `
+			DELETE FROM role_attachments
+			WHERE principal_type = 'agent' AND principal_id = $1::uuid AND project_id = $2::uuid`,
+			agentID.String(), projectID.String())
 		return err
 	})
 }
@@ -613,28 +669,43 @@ func (r *AgentRepository) FindGlobalAgentByHandle(ctx context.Context, handle st
 // CreateGlobalAgent inserts a new global-scope agent (project_id NULL, no
 // project_members row — unlike CreateAgentWithMembership, a global agent
 // starts with zero project invitations; it's attached to a project later,
-// on demand, via the same "add a member" flow used for humans).
+// on demand, via the same "add a member" flow used for humans) and, in the
+// same transaction, attaches the default role to it platform-wide. With no
+// default role set the agent starts with no role, which is a valid state (it
+// just has no platform permissions).
 func (r *AgentRepository) CreateGlobalAgent(ctx context.Context, a *agentdom.Agent) error {
 	rec, err := agentToRecord(a)
 	if err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO agents (id, project_id, agent_scope, global_role_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
-		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
-		  max_iterations, timeout_minutes, parallelism_limit,
-		  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at,
-		  cli_auth_mode, description)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
-		rec.ID, rec.ProjectID, rec.AgentScope, rec.GlobalRoleID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
-		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
-		rec.ACPProvider, rec.ACPCommand,
-		rec.SystemPrompt,
-		rec.MaxIterations, rec.TimeoutMinutes, rec.ParallelismLimit,
-		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
-		rec.CLIAuthMode, rec.Description,
-	)
-	return err
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO agents (id, project_id, agent_scope, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
+			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
+			  max_iterations, timeout_minutes, parallelism_limit,
+			  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at,
+			  cli_auth_mode, description)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+			rec.ID, rec.ProjectID, rec.AgentScope, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
+			rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
+			rec.ACPProvider, rec.ACPCommand,
+			rec.SystemPrompt,
+			rec.MaxIterations, rec.TimeoutMinutes, rec.ParallelismLimit,
+			rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+			rec.CLIAuthMode, rec.Description,
+		); err != nil {
+			return err
+		}
+		if _, err := attachDefaultRoleTx(ctx, tx, roledom.PrincipalAgent, a.ID, false); err != nil {
+			return err
+		}
+		roles, err := summariesTx(ctx, tx, roledom.PrincipalAgent, a.ID, nil)
+		if err != nil {
+			return err
+		}
+		a.Roles = roles
+		return nil
+	})
 }
 
 // SoftDeleteGlobalAgentCascade soft-deletes the agent row and every active
@@ -648,9 +719,14 @@ func (r *AgentRepository) SoftDeleteGlobalAgentCascade(ctx context.Context, agen
 		if _, err := tx.ExecContext(ctx, `UPDATE agents SET deleted_at=$1 WHERE id=$2 AND agent_scope='global'`, now, agentID.String()); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `
 			UPDATE project_members SET deleted_at=$1
-			WHERE agent_id=$2 AND member_type='agent' AND deleted_at IS NULL`, now, agentID.String())
+			WHERE agent_id=$2 AND member_type='agent' AND deleted_at IS NULL`, now, agentID.String()); err != nil {
+			return err
+		}
+		// Every role the agent held, platform-wide and in each project.
+		_, err := tx.ExecContext(ctx, `
+			DELETE FROM role_attachments WHERE principal_type = 'agent' AND principal_id = $1::uuid`, agentID.String())
 		return err
 	})
 }
@@ -670,19 +746,6 @@ func (r *AgentRepository) ListInvitedProjectIDs(ctx context.Context, agentID uui
 		result = append(result, mustParseUUID(id))
 	}
 	return result, nil
-}
-
-// CountAgentsWithGlobalRole returns the number of non-deleted global agents
-// whose global_role_id points to the given role — used by
-// globalrolesvc.Service.Delete to block deleting a role still assigned to
-// an agent, the same guard already applied for users.
-func (r *AgentRepository) CountAgentsWithGlobalRole(ctx context.Context, roleID uuid.UUID) (int64, error) {
-	var count int64
-	if err := r.db.GetContext(ctx, &count,
-		`SELECT COUNT(*) FROM agents WHERE global_role_id = $1 AND deleted_at IS NULL`, roleID.String()); err != nil {
-		return 0, fmt.Errorf("agent repo: count agents with global role: %w", err)
-	}
-	return count, nil
 }
 
 // -------------------------------------------------------------------------
@@ -755,95 +818,6 @@ func (r *AgentRepository) UpdateMCPServer(ctx context.Context, s *agentdom.Agent
 func (r *AgentRepository) DeleteMCPServer(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM agent_mcp_servers WHERE id = $1`, id.String())
 	return err
-}
-
-// -------------------------------------------------------------------------
-// Access grants
-// -------------------------------------------------------------------------
-
-const agentAccessGrantCols = `id, agent_id, member_id, granted_by, created_at`
-
-// ListAgentAccessGrants returns every member explicitly granted access to
-// this agent, regardless of its current access_mode (so the grant list
-// survives toggling back and forth between open/restricted).
-func (r *AgentRepository) ListAgentAccessGrants(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error) {
-	var recs []agentAccessGrantRecord
-	if err := r.db.SelectContext(ctx, &recs, `SELECT `+agentAccessGrantCols+` FROM agent_access_grants WHERE agent_id = $1 ORDER BY created_at`, agentID.String()); err != nil {
-		return nil, err
-	}
-	result := make([]*agentdom.AgentAccessGrant, 0, len(recs))
-	for _, rec := range recs {
-		result = append(result, agentAccessGrantFromRecord(rec))
-	}
-	return result, nil
-}
-
-// AddAgentAccessGrant inserts a new grant. Returns
-// agentdom.ErrAgentAccessGrantExists if memberID already has one (backed by
-// uq_agent_access_grants_agent_member).
-func (r *AgentRepository) AddAgentAccessGrant(ctx context.Context, g *agentdom.AgentAccessGrant) error {
-	var grantedBy *string
-	if g.GrantedBy != nil {
-		s := g.GrantedBy.String()
-		grantedBy = &s
-	}
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO agent_access_grants (id, agent_id, member_id, granted_by, created_at)
-		VALUES ($1,$2,$3,$4,$5)`,
-		g.ID.String(), g.AgentID.String(), g.MemberID.String(), grantedBy, g.CreatedAt,
-	)
-	if err != nil {
-		if isUniqueViolation(err) {
-			return agentdom.ErrAgentAccessGrantExists
-		}
-		return err
-	}
-	return nil
-}
-
-// RemoveAgentAccessGrant deletes a grant. A no-op (nil error) if none
-// existed — mirrors DeleteMCPServer's plain-DELETE idempotency.
-func (r *AgentRepository) RemoveAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM agent_access_grants WHERE agent_id = $1 AND member_id = $2`, agentID.String(), memberID.String())
-	return err
-}
-
-// HasAgentAccessGrant reports whether memberID currently has an explicit
-// grant for agentID — the check Service.HasAgentUsageAccess falls back to
-// once it's confirmed the agent is actually restricted.
-func (r *AgentRepository) HasAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) (bool, error) {
-	var exists bool
-	err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM agent_access_grants WHERE agent_id = $1 AND member_id = $2)`, agentID.String(), memberID.String())
-	return exists, err
-}
-
-// ListGrantedAgentIDsForMember returns every agent ID memberID currently
-// holds a grant for — used to decorate ListAgents/ListGlobalAgents with each
-// row's AccessGranted state in one query instead of an N+1 check per agent.
-func (r *AgentRepository) ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
-	var ids []string
-	if err := r.db.SelectContext(ctx, &ids, `SELECT agent_id FROM agent_access_grants WHERE member_id = $1`, memberID.String()); err != nil {
-		return nil, err
-	}
-	result := make([]uuid.UUID, 0, len(ids))
-	for _, id := range ids {
-		result = append(result, mustParseUUID(id))
-	}
-	return result, nil
-}
-
-func agentAccessGrantFromRecord(rec agentAccessGrantRecord) *agentdom.AgentAccessGrant {
-	g := &agentdom.AgentAccessGrant{
-		ID:        mustParseUUID(rec.ID),
-		AgentID:   mustParseUUID(rec.AgentID),
-		MemberID:  mustParseUUID(rec.MemberID),
-		CreatedAt: rec.CreatedAt,
-	}
-	if rec.GrantedBy != nil {
-		id := mustParseUUID(*rec.GrantedBy)
-		g.GrantedBy = &id
-	}
-	return g
 }
 
 // -------------------------------------------------------------------------
@@ -1059,6 +1033,18 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 		p := b.placeholder()
 		b.args = append(b.args, in.ProjectID.String())
 		b.whereClauses = append(b.whereClauses, "project_id = "+p)
+		// The caller's IAM scope narrows the query itself, ahead of the cursor
+		// and LIMIT. (Global chat has no project and no scope.)
+		clause, none, err := scopeSQL(ctx, "conversation", conversationScopeColumns, b)
+		if err != nil {
+			return nil, false, err
+		}
+		if none {
+			return []*agentdom.AgentConversation{}, false, nil
+		}
+		if clause != "" {
+			b.whereClauses = append(b.whereClauses, clause)
+		}
 	} else if in.GlobalOnly {
 		b.whereClauses = append(b.whereClauses, "project_id IS NULL")
 	}
@@ -1078,17 +1064,6 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 		b.whereClauses = append(b.whereClauses, fmt.Sprintf(
 			"(audience = '%s' OR EXISTS (SELECT 1 FROM agent_chat_sessions cs WHERE cs.id = agent_conversations.chat_session_id AND cs.member_id = %s))",
 			agentdom.AudienceProjectShared, p))
-		// Restricted agents: this project-wide listing must not leak a
-		// restricted agent's conversations to a member who isn't granted
-		// access to it — otherwise Service.authorizeConversationAccess's
-		// per-conversation gate (enforced on GetConversation and everything
-		// that funnels through it) could be bypassed just by browsing the
-		// list instead of opening one conversation at a time. Reuses the
-		// same ViewerMemberID placeholder p bound just above.
-		b.whereClauses = append(b.whereClauses, fmt.Sprintf(
-			"NOT EXISTS (SELECT 1 FROM agents ag WHERE ag.id = agent_conversations.agent_id AND ag.access_mode = 'restricted' "+
-				"AND NOT EXISTS (SELECT 1 FROM agent_access_grants g WHERE g.agent_id = ag.id AND g.member_id = %s))",
-			p))
 	}
 	if in.TaskID != nil {
 		p := b.placeholder()
@@ -1803,7 +1778,6 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		GitCommitterName:   row.GitCommitterName,
 		GitCommitterEmail:  row.GitCommitterEmail,
 		DockerEnabled:      row.DockerEnabled,
-		AccessMode:         row.AccessMode,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
 		DeletedAt:          row.DeletedAt,
@@ -1828,10 +1802,6 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 	if row.MemberID != nil {
 		mid := mustParseUUID(*row.MemberID)
 		a.MemberID = &mid
-	}
-	if row.GlobalRoleID != nil {
-		rid := mustParseUUID(*row.GlobalRoleID)
-		a.GlobalRoleID = &rid
 	}
 	if row.DefaultEnvironmentID != nil {
 		eid := mustParseUUID(*row.DefaultEnvironmentID)
@@ -1900,17 +1870,12 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 		GitCommitterName:   a.GitCommitterName,
 		GitCommitterEmail:  a.GitCommitterEmail,
 		DockerEnabled:      a.DockerEnabled,
-		AccessMode:         a.AccessMode,
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 	}
 	if a.CreatedBy != nil {
 		s := a.CreatedBy.String()
 		rec.CreatedBy = &s
-	}
-	if a.GlobalRoleID != nil {
-		s := a.GlobalRoleID.String()
-		rec.GlobalRoleID = &s
 	}
 	if a.DefaultEnvironmentID != nil {
 		s := a.DefaultEnvironmentID.String()

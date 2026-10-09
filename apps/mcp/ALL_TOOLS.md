@@ -41,8 +41,8 @@ This document lists all MCP tools implemented for the Paca API server.
 ### 5. Project Members (5 tools)
 - `list_project_members` - List all members of a project
 - `add_project_member` - Add a member to a project
-- `get_my_project_permissions` - Get the current user's permissions in a project
-- `update_project_member_role` - Update a project member's role
+- `get_my_project_permissions` - Get the IAM actions the current user may perform in a project
+- `update_project_member_role` - Replace the set of roles a project member holds
 - `remove_project_member` - Remove a member from a project
 
 ### 6. Project Roles (4 tools)
@@ -162,13 +162,13 @@ This document lists all MCP tools implemented for the Paca API server.
 - GET /api/v1/projects/:projectId/members
 - POST /api/v1/projects/:projectId/members
 - GET /api/v1/projects/:projectId/members/me/permissions
-- PATCH /api/v1/projects/:projectId/members/:userId
+- PUT /api/v1/projects/:projectId/members/:memberId/roles
 - DELETE /api/v1/projects/:projectId/members/:userId
 
 ### Project Roles
 - GET /api/v1/projects/:projectId/roles
 - POST /api/v1/projects/:projectId/roles
-- PATCH /api/v1/projects/:projectId/roles/:roleId
+- PUT /api/v1/projects/:projectId/roles/:roleId
 - DELETE /api/v1/projects/:projectId/roles/:roleId
 
 ### Task Types
@@ -289,7 +289,7 @@ create_project({
 add_project_member({
   projectId: "project-id",
   userId: "user-id",
-  roleId: "role-id"
+  roleIds: ["role-id"]
 })
 
 // 3. Create a task type

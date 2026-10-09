@@ -8,10 +8,10 @@ import { GlobalRolesTable } from "./GlobalRolesTable";
 const USER = makeRole(
 	"role-user",
 	"USER",
-	{ "tasks.read": true },
+	{ "tasks:read": true },
 	{ isDefault: true },
 );
-const ADMIN = makeRole("role-admin", "ADMIN", { "users.read": true });
+const ADMIN = makeRole("role-admin", "ADMIN", { "users:read": true });
 
 function renderTable(props: { canWrite?: boolean } = {}) {
 	const handlers = {
@@ -34,6 +34,29 @@ const rowOf = (name: string) =>
 	within(screen.getByText(name, { exact: true }).closest("tr") as HTMLElement);
 
 describe("GlobalRolesTable", () => {
+	it("shows the description instead of the permissions", () => {
+		render(
+			<GlobalRolesTable
+				roles={[{ ...USER, description: "Everyday access" }, ADMIN]}
+				canWrite
+				onEdit={vi.fn()}
+				onDelete={vi.fn()}
+				onSetDefault={vi.fn()}
+			/>,
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Description" }),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("columnheader", { name: "Permissions" }),
+		).not.toBeInTheDocument();
+		const described = rowOf("USER").getByText("Everyday access");
+		expect(described).toHaveAttribute("title", "Everyday access");
+		expect(rowOf("ADMIN").getByText("No description")).toBeInTheDocument();
+		expect(screen.queryByText("tasks:read")).not.toBeInTheDocument();
+	});
+
 	it("has a Default column instead of the created date", () => {
 		renderTable();
 

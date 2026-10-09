@@ -5,9 +5,10 @@ import {
 	activePermissions,
 	permissionBadgeClass,
 } from "@/components/admin/global-roles/utils";
+import type { Policy } from "@/lib/policy";
 
 interface PermissionSummaryProps {
-	role: { permissions: Record<string, unknown> };
+	role: { policy: Policy };
 	/** Show this many permissions, then fold the rest into "+N". Omit to show all. */
 	limit?: number;
 	/** Colors a permission's badge. Global permissions by default. */
@@ -25,7 +26,7 @@ export function PermissionSummary({
 	badgeClass = permissionBadgeClass,
 }: PermissionSummaryProps) {
 	const { t } = useTranslation("admin");
-	const permissions = activePermissions(role.permissions);
+	const permissions = activePermissions(role.policy);
 
 	if (permissions.includes("*")) {
 		return (

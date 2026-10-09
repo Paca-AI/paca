@@ -102,7 +102,6 @@
 			"configure": "구성",
 			"delete": "삭제",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "온라인",
 			"acpStatusDisconnected": "오프라인",
 			"deleteDialog": {
@@ -173,7 +172,6 @@
 				"skills": "스킬",
 				"envVars": "환경 변수",
 				"globalRole": "전역 역할",
-				"access": "Access",
 				"activity": "활동"
 			},
 			"globalRole": {
@@ -348,15 +346,6 @@
 					"description": "Paca에 포함되어 모든 에이전트에서 사용할 수 있습니다. 편집할 수 없습니다."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"activity": {
 				"commented": "댓글을 남겼습니다",
 				"sourceType": {
@@ -398,8 +387,6 @@
 			"connect": "연결",
 			"conversationEnded": "이 대화가 종료되었습니다.",
 			"textOnlyMessage": "텍스트 메시지만 지원됩니다.",
-			"agentAccessRestricted": "이 에이전트는 액세스가 제한되어 있습니다. 채팅하려면 프로젝트 관리자에게 액세스 권한을 요청하세요.",
-			"environmentAccessRestricted": "이 대화의 환경은 액세스가 제한되어 있습니다. 이 에이전트와 채팅하려면 프로젝트 관리자에게 액세스 권한을 요청하세요.",
 			"chatNoPermission": "이 대화에서 메시지를 보낼 권한이 없습니다.",
 			"failed": "대화가 실패했습니다",
 			"noOutput": "에이전트가 출력을 생성하지 않았습니다.",
@@ -496,7 +483,6 @@
 			"subtitle": "여러 대화에 걸쳐 에이전트가 연결할 수 있는 이름이 지정된 장기 실행 샌드박스",
 			"newEnvironment": "새 환경",
 			"restricted": "Restricted",
-			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "아직 환경이 없습니다",
 				"description": "매번 새로 만드는 일회용 샌드박스 대신, 대화 간에 파일과 백그라운드 프로세스를 유지하는 정적 환경을 만드세요.",
@@ -539,8 +525,7 @@
 			"tabs": {
 				"overview": "개요",
 				"folders": "폴더",
-				"portForwards": "포트 포워드",
-				"access": "Access"
+				"portForwards": "포트 포워드"
 			},
 			"busy": "이 환경은 이미 시작, 중지 또는 재시작 중입니다. 잠시 후 다시 시도해 주세요.",
 			"actionFailed": "작업에 실패했습니다. 다시 시도해 주세요.",
@@ -656,15 +641,6 @@
 					"restartFailed": "환경 재시작에 실패했습니다. 다시 시도해 주세요."
 				}
 			},
-			"access": {
-				"restrictLabel": "Restrict access",
-				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
-				"pickMember": "Select a member…",
-				"grantAccess": "Grant access",
-				"alreadyGranted": "This member already has access.",
-				"grantFailed": "Failed to grant access. Please try again.",
-				"empty": "No members have been granted access yet."
-			},
 			"sshKeys": {
 				"connectHint": "<bastion-host>를 이 배포에 구성된 SSH 배스천 주소로 바꾸세요.",
 				"connectUnavailable": "이 배포에는 아직 SSH 액세스가 구성되지 않았습니다.",
@@ -763,7 +739,6 @@
 			"deleteRole": "역할 삭제",
 			"errors": {
 				"notFound": "이 역할은 더 이상 존재하지 않습니다.",
-				"hasMembers": "하나 이상의 멤버에게 할당되어 있어 이 역할을 삭제할 수 없습니다.",
 				"forbidden": "이 역할을 삭제할 권한이 없습니다.",
 				"internalError": "문제가 발생했습니다. 다시 시도해 주세요.",
 				"generic": "문제가 발생했습니다."
@@ -777,23 +752,18 @@
 			"roleNameLabel": "역할 이름",
 			"roleNamePlaceholder": "예: PROJECT_REVIEWER",
 			"permissionsLabel": "권한",
-			"fullAccessBadge": "전체 액세스",
 			"fullAccessDescription": "이 역할에는 향후 추가되는 권한을 포함하여 모든 권한이 자동으로 포함됩니다. 아래에서 하나라도 전환하면 현재 권한의 고정 세트로 변환됩니다.",
 			"enabledCount_one": "{{count}}개 활성화됨",
 			"enabledCount_other": "{{count}}개 활성화됨",
 			"cancel": "취소",
 			"saveChanges": "변경사항 저장",
-			"createRole": "역할 생성",
-			"errors": {
-				"nameTaken": "이미 존재하는 역할 이름입니다.",
-				"nameInvalid": "역할 이름은 대문자, 숫자, 밑줄만 사용해야 합니다.",
-				"notFound": "이 역할은 더 이상 존재하지 않습니다. 이미 삭제되었을 수 있습니다.",
-				"forbidden": "이 작업을 수행할 권한이 없습니다.",
-				"internalError": "서버에서 문제가 발생했습니다. 다시 시도해 주세요.",
-				"generic": "문제가 발생했습니다."
-			}
+			"createRole": "역할 생성"
 		},
 		"permissions": {
+			"projectsRead": {
+				"label": "프로젝트 보기",
+				"description": "프로젝트를 열고 기본 정보를 확인합니다"
+			},
 			"projectsWrite": {
 				"label": "프로젝트 수정",
 				"description": "프로젝트 이름, 설명, 설정 업데이트"
@@ -808,7 +778,7 @@
 			},
 			"membersWrite": {
 				"label": "멤버 관리",
-				"description": "프로젝트 멤버 추가, 제거, 재배정"
+				"description": "프로젝트 멤버 추가 및 제거 (역할 변경에는 역할 할당 권한이 필요합니다)"
 			},
 			"rolesRead": {
 				"label": "역할 보기",
@@ -817,6 +787,10 @@
 			"rolesWrite": {
 				"label": "역할 관리",
 				"description": "프로젝트 역할 생성, 수정, 삭제"
+			},
+			"rolesAssign": {
+				"label": "역할 할당",
+				"description": "이 프로젝트의 멤버와 에이전트에게 어떤 역할이든 부여하거나 회수합니다"
 			},
 			"settingsTaskTypesWrite": {
 				"label": "Manage Task Types",
@@ -973,7 +947,6 @@
 			"title": "프로젝트 역할",
 			"description": "이 프로젝트 멤버의 역할과 권한을 관리하세요.",
 			"newRole": "새 역할",
-			"noPermissionsAssigned": "할당된 권한 없음",
 			"editRole": "역할 수정",
 			"deleteRole": "역할 삭제",
 			"rolesDefined_one": "역할 정의됨",
@@ -986,14 +959,15 @@
 			},
 			"table": {
 				"name": "이름",
-				"permissions": "권한",
+				"description": "설명",
 				"created": "생성일"
 			},
-			"systemRolesNote": "시스템 역할은 공유 템플릿이며 수정하거나 삭제할 수 없습니다.",
+			"systemRolesNote": "워크스페이스에서 공유된 역할은 워크스페이스의 역할 설정에서만 변경할 수 있습니다.",
 			"noPermission": {
 				"title": "You don't have permission to view roles",
 				"description": "Ask a project admin to grant you the project.roles.read permission."
-			}
+			},
+			"noDescription": "설명 없음"
 		},
 		"taskStatuses": {
 			"title": "작업 상태",
@@ -1278,12 +1252,12 @@
 			"noUsersAvailable": "추가할 수 있는 사용자가 없습니다.",
 			"loadingMore": "불러오는 중…",
 			"roleLabel": "역할",
-			"rolePlaceholder": "역할을 선택하세요…",
 			"cancel": "취소",
 			"addMember": "멤버 추가",
 			"errors": {
 				"addFailed": "멤버 추가에 실패했습니다. 다시 시도해 주세요.",
 				"alreadyAdded": "이 사용자 또는 에이전트는 이미 프로젝트의 멤버입니다.",
+				"roleForbidden": "이 역할 중 일부를 할당할 권한이 없습니다.",
 				"roleNotFound": "해당 역할이 더 이상 존재하지 않습니다. 다른 역할을 선택해 주세요."
 			},
 			"modeUser": "사용자",
@@ -1295,12 +1269,15 @@
 			"changeRole": "역할 변경",
 			"errors": {
 				"memberNotFound": "이 멤버는 더 이상 프로젝트에 속해 있지 않습니다.",
+				"roleForbidden": "이 역할 중 일부를 할당하거나 제거할 권한이 없습니다.",
 				"roleNotFound": "해당 역할이 더 이상 존재하지 않습니다.",
 				"changeFailed": "역할 변경에 실패했습니다."
 			}
 		},
 		"memberRow": {
-			"removeMember": "멤버 제거"
+			"removeMember": "멤버 제거",
+			"agentBadge": "에이전트",
+			"actions": "멤버 작업"
 		},
 		"removeDialog": {
 			"title": "멤버 제거",

@@ -26,7 +26,7 @@ Every agent before `000031` was a **project agent**: owned by exactly one projec
   - Chats with any user directly from the home page and admin pages, with no project context (`agent_chat_sessions`/`agent_conversations` rows where `project_id IS NULL` and `actor_user_id` identifies the human instead of a `project_members` row).
   - Is **invited into a project** exactly the way a human is added as a member: `POST /projects/:id/members` with `agent_id` instead of `user_id`, creating an ordinary `project_members` row. Once invited, it behaves identically to a project agent inside that project — task assignment, `@mention`, project chat, project-role permissions all work unmodified, because none of that logic was ever keyed on `agents.project_id`, only on the `project_members` row existing.
   - Can be invited into **many projects at once** — `uq_pm_project_agent` (`000008`) was already scoped per `(project_id, agent_id)`, not per `agent_id` alone, so this needed no schema change. Each project it's in gets independent conversations; a single conversation is always scoped to one project (or to none, for the global chat).
-  - Has its own admin-scope permission set via `global_role_id` (nullable FK to `global_roles`, mirroring `users.role_id`) — what it may do when acting with no project context, e.g. from the home/admin chat.
+  - Has its own platform-level roles — platform-wide `role_attachments` rows (`principal_type = 'agent'`, `project_id` NULL), set with `PUT /admin/agents/:agentId/roles` — deciding what it may do when acting with no project context, e.g. from the home/admin chat. (Before `000064` this was `agents.global_role_id`, an FK to `global_roles`; that column is now unused and kept only until a later migration drops it. Inside a project the agent is judged by the roles attached to its membership there.)
 
 `ck_agents_scope` enforces the two shapes stay mutually exclusive:
 
@@ -38,7 +38,7 @@ OR
 
 A global chat session or conversation has no `project_members` row to identify the human by (there may be none — the agent might not be invited into any project yet), so `agent_chat_sessions` and `agent_conversations` each gain an `actor_user_id UUID REFERENCES users(id)` column that stands in for `member_id`/`triggered_by_member_id` in that case. Both tables enforce "exactly one of the project-scoped shape or the global-actor shape" via a CHECK constraint (`ck_agent_chat_sessions_actor`, `ck_agent_conversations_actor`) — see the table definitions below.
 
-**Scope note:** global agents can chat, and — once invited into a project — do project work the same as any project agent. They cannot create or manage user accounts or global roles; no MCP tool exposes that capability to any agent, project or global (a deliberate safety boundary, not a schema limitation).
+**Scope note:** global agents can chat, and — once invited into a project — do project work the same as any project agent. They cannot create or manage user accounts or platform roles; no MCP tool exposes that capability to any agent, project or global (a deliberate safety boundary, not a schema limitation).
 
 ---
 
@@ -51,7 +51,7 @@ Table agents {
   id uuid [primary key]
   project_id uuid [null, ref: > projects.id, note: 'NULL for a global-scope agent (agent_scope = global). The existing ON DELETE CASCADE FK is never triggered by a NULL value, so deleting a project still cleans up only its own project agents.']
   agent_scope varchar [not null, default: 'project', note: 'project | global. See ck_agents_scope.']
-  global_role_id uuid [null, ref: > global_roles.id, note: 'Only ever set for a global-scope agent. ON DELETE RESTRICT, mirrors fk_users_role_id.']
+  global_role_id uuid [null, ref: > global_roles.id, note: 'LEGACY since 000064, unused for authorization (global agent roles are role_attachments rows). Only ever set for a global-scope agent. ON DELETE RESTRICT.']
   name varchar [not null, note: 'Display name shown in the project member list / agent picker']
   handle varchar [not null, note: '@mention handle. Unique per project for a project agent; unique workspace-wide for a global agent.']
   avatar_url varchar [null]

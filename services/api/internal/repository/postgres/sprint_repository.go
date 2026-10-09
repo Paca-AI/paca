@@ -46,8 +46,20 @@ const sprintSelectCols = `id, project_id, name, start_date, end_date, goal, stat
 
 // ListSprints returns all sprints for a project ordered by creation time.
 func (r *SprintRepository) ListSprints(ctx context.Context, projectID uuid.UUID) ([]*sprintdom.Sprint, error) {
+	sink := &argList{args: []any{projectID.String()}}
+	clause, none, err := scopeSQL(ctx, "sprint", sprintScopeColumns, sink)
+	if err != nil {
+		return nil, fmt.Errorf("sprint repo: list: %w", err)
+	}
+	if none {
+		return []*sprintdom.Sprint{}, nil
+	}
+	scopeAnd := ""
+	if clause != "" {
+		scopeAnd = " AND " + clause
+	}
 	var records []sprintRecord
-	if err := r.db.SelectContext(ctx, &records, `SELECT `+sprintSelectCols+` FROM sprints WHERE project_id = $1 ORDER BY created_at ASC`, projectID.String()); err != nil {
+	if err := r.db.SelectContext(ctx, &records, `SELECT `+sprintSelectCols+` FROM sprints WHERE project_id = $1`+scopeAnd+` ORDER BY created_at ASC`, sink.args...); err != nil {
 		return nil, fmt.Errorf("sprint repo: list: %w", err)
 	}
 	out := make([]*sprintdom.Sprint, 0, len(records))

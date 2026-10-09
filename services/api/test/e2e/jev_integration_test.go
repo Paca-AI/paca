@@ -299,8 +299,8 @@ func TestE2EJev_ConfigRequiresProjectWritePermission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find user: %v", err)
 	}
-	roleID := createProjectRoleWithPermsViaAPI(t, env, ownerClient, ownerToken, projID, "reader-"+uuid.NewString(),
-		map[string]any{"projects.read": true, "tasks.read": true})
+	roleID := createProjectRoleViaAPI(t, env, ownerClient, ownerToken, projID, "reader-"+uuid.NewString(),
+		"projects:read", "tasks:read")
 	addMemberViaAPI(t, env, ownerClient, ownerToken, projID, user.ID.String(), roleID)
 	readerClient, readerToken := taskMemberLogin(t, env, username, "jevreader-password1")
 

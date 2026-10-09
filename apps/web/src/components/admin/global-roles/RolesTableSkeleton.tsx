@@ -16,9 +16,8 @@ export function RolesTableSkeleton() {
 					className="flex items-center gap-4 border-b px-4 py-4 last:border-0"
 				>
 					<Skeleton className="h-5 w-36 rounded-md" />
-					<div className="flex flex-1 gap-1.5">
-						<Skeleton className="h-5 w-28 rounded-full" />
-						<Skeleton className="h-5 w-24 rounded-full" />
+					<div className="flex-1">
+						<Skeleton className="h-4 w-3/5 max-w-72" />
 					</div>
 					<Skeleton className="h-4 w-20" />
 					<div className="flex gap-1.5">

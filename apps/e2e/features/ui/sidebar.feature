@@ -89,7 +89,7 @@ Feature: Sidebar navigation
       And the "What's New" navigation item should not be visible
 
     Scenario: A user with a single admin permission only sees the matching item
-      Given a user whose global role only grants "users.read"
+      Given a user whose global role only grants "users:read"
       And the user is signed in
       When the user views the sidebar
       Then the "Administration" section label should be visible

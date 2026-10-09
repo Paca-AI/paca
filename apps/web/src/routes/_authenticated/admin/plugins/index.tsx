@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_authenticated/admin/plugins/")({
 		// important" proxy once it got its own dedicated permission — see
 		// authz.PermissionPluginsRead's doc comment on the Go side. This
 		// gate was never updated when that happened.
-		if (!hasPermission(permissions, "plugins.write")) {
+		if (!hasPermission(permissions, "plugins:write")) {
 			throw redirect({ to: "/home" });
 		}
 	},

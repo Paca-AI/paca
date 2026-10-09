@@ -98,12 +98,11 @@ function SettingsPage() {
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 
 	const canDelete =
-		hasPermission("projects.delete") || hasProjectPermission("projects.delete");
+		hasPermission("projects:delete") || hasProjectPermission("projects:delete");
 	const canEditProject =
-		hasPermission("projects.write") || hasProjectPermission("projects.write");
+		hasPermission("projects:write") || hasProjectPermission("projects:write");
 	const canManageRoles =
-		hasPermission("project.roles.write") ||
-		hasProjectPermission("project.roles.write");
+		hasPermission("roles:write") || hasProjectPermission("roles:write");
 	// Each schema area has its own write permission, independent of
 	// tasks.write (which only governs editing a task's own content) — see
 	// authz.PermissionProjectSettingsTaskTypesWrite's doc comment on the Go
@@ -112,20 +111,20 @@ function SettingsPage() {
 	// on all three even without the dedicated grant — the backend correctly
 	// rejected the request, but the button shouldn't have been shown at all.
 	const canManageTaskTypes =
-		hasPermission("project.settings.task_types.write") ||
-		hasProjectPermission("project.settings.task_types.write");
+		hasPermission("project.settings.task_types:write") ||
+		hasProjectPermission("project.settings.task_types:write");
 	const canManageTaskStatuses =
-		hasPermission("project.settings.task_statuses.write") ||
-		hasProjectPermission("project.settings.task_statuses.write");
+		hasPermission("project.settings.task_statuses:write") ||
+		hasProjectPermission("project.settings.task_statuses:write");
 	const canManageCustomFields =
-		hasPermission("project.settings.custom_fields.write") ||
-		hasProjectPermission("project.settings.custom_fields.write");
+		hasPermission("project.settings.custom_fields:write") ||
+		hasProjectPermission("project.settings.custom_fields:write");
 
 	// Exporting hands over the whole project in one file, so it has its own
 	// permission (project.export) rather than riding on tasks.read — see
 	// authz.PermissionProjectExport's doc comment on the Go side.
 	const canExport =
-		hasPermission("project.export") || hasProjectPermission("project.export");
+		hasPermission("project:export") || hasProjectPermission("project:export");
 
 	const { getRegistrations } = usePluginRegistry();
 	// A tab's own requiredPermission no longer hides it from this list —

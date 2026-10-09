@@ -8,6 +8,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -19,10 +20,17 @@ type SprintHandler struct {
 	viewSvc       sprintdom.ViewService
 	taskTypeSvc   taskTypeLister
 	taskStatusSvc taskStatusLister
+	listScoper    ListScoper
 }
 
 // SprintHandlerOption customizes optional sprint-handler dependencies.
 type SprintHandlerOption func(*SprintHandler)
+
+// WithSprintListScoper limits the project's sprint list to the sprints the
+// caller may read, inside the query (see scopedContext).
+func WithSprintListScoper(s ListScoper) SprintHandlerOption {
+	return func(h *SprintHandler) { h.listScoper = s }
+}
 
 // WithSprintDefaultTaskTypes enables sprint default-view seeding with explicit task-type filters.
 func WithSprintDefaultTaskTypes(taskTypeSvc taskTypeLister) SprintHandlerOption {
@@ -56,7 +64,12 @@ func (h *SprintHandler) ListSprints(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	sprints, err := h.svc.ListSprints(r.Context(), projectID)
+	ctx, err := scopedContext(r, h.listScoper, iam.ActionSprintsRead, projectID, "sprint")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	sprints, err := h.svc.ListSprints(ctx, projectID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

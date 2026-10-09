@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
+import { roleErrorKey } from "@/components/roles/role-errors";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -14,14 +14,13 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import {
-	deleteGlobalRole,
-	type GlobalRole,
-	globalRolesQueryOptions,
-} from "@/lib/admin-api";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+	deleteRole,
+	platformRolesQueryOptions,
+	type Role,
+} from "@/lib/role-api";
 
 interface DeleteRoleDialogProps {
-	role: GlobalRole;
+	role: Role;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }
@@ -32,41 +31,20 @@ export function DeleteRoleDialog({
 	onOpenChange,
 }: DeleteRoleDialogProps) {
 	const { t } = useTranslation("admin");
+	const { t: tr } = useTranslation("roles");
 	const queryClient = useQueryClient();
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
-		mutationFn: () => deleteGlobalRole(role.id),
+		mutationFn: () => deleteRole(role.id),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
-				queryKey: globalRolesQueryOptions.queryKey,
+				queryKey: platformRolesQueryOptions.queryKey,
 			});
 			onOpenChange(false);
 		},
 		onError: (err: unknown) => {
-			const code = getApiErrorCode(err);
-			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.GlobalRoleNotFound]: t(
-					"globalRoles.deleteDialog.errors.roleNotFound",
-				),
-				[ApiErrorCode.GlobalRoleHasUsers]: t(
-					"globalRoles.deleteDialog.errors.hasUsersWarning",
-				),
-				[ApiErrorCode.GlobalRoleIsDefault]: t(
-					"globalRoles.deleteDialog.errors.isDefault",
-				),
-				[ApiErrorCode.Forbidden]: t(
-					"globalRoles.deleteDialog.errors.forbidden",
-				),
-				[ApiErrorCode.InternalError]: t(
-					"globalRoles.deleteDialog.errors.internalError",
-				),
-			};
-			const fallback =
-				err instanceof Error
-					? err.message
-					: t("globalRoles.deleteDialog.errors.generic");
-			setError((code && messages[code]) ?? fallback);
+			setError(tr(`errors.${roleErrorKey(err)}` as never));
 		},
 	});
 

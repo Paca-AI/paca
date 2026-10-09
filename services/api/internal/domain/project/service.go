@@ -32,7 +32,6 @@ type UpdateProjectInput struct {
 type Service interface {
 	ProjectService
 	MemberService
-	RoleService
 }
 
 // ProjectService defines project CRUD use cases.

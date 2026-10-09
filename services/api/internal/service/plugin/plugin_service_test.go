@@ -13,6 +13,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
 )
 
@@ -638,5 +639,92 @@ func TestListExtensionSettingsForPlugins_PluginsWithNoSettings(t *testing.T) {
 	}
 	if len(grouped[p2.ID]) != 0 {
 		t.Errorf("expected 0 settings for p2, got %d", len(grouped[p2.ID]))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Declared actions are known to the IAM registry while a plugin is installed
+// ---------------------------------------------------------------------------
+
+func timeLoggingManifest(extra ...string) plugindom.PluginManifest {
+	m := plugindom.PluginManifest{ID: "com.paca.time-logging"}
+	for _, k := range append([]string{"time_logging:manage_all"}, extra...) {
+		m.CustomPermissions = append(m.CustomPermissions, plugindom.CustomPermission{Key: k, Label: k})
+	}
+	return m
+}
+
+func TestPluginActions_FollowInstallUpdateAndDelete(t *testing.T) {
+	ctx := context.Background()
+	reg := iam.NewRegistry()
+	repo := newFakePluginRepo()
+	svc := pluginsvc.New(repo).WithActionRegistry(reg)
+
+	p, err := svc.InstallPlugin(ctx, plugindom.InstallInput{Name: "com.paca.time-logging", Version: "1.0.0", Manifest: timeLoggingManifest(), Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reg.HasAction("time_logging:manage_all") || !reg.HasAction("time_logging:*") {
+		t.Fatal("an installed plugin's actions must be registered")
+	}
+
+	m := timeLoggingManifest("time_logging:approve")
+	if _, err := svc.UpdatePlugin(ctx, p.ID, plugindom.UpdateInput{Manifest: &m}); err != nil {
+		t.Fatal(err)
+	}
+	if !reg.HasAction("time_logging:approve") {
+		t.Fatal("an updated manifest's new action must be registered")
+	}
+	m = timeLoggingManifest()
+	if _, err := svc.UpdatePlugin(ctx, p.ID, plugindom.UpdateInput{Manifest: &m}); err != nil {
+		t.Fatal(err)
+	}
+	if reg.HasAction("time_logging:approve") {
+		t.Fatal("an action the manifest no longer declares must be dropped")
+	}
+
+	if err := svc.DeletePlugin(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if reg.HasAction("time_logging:manage_all") || reg.HasAction("time_logging:*") {
+		t.Fatal("a deleted plugin's actions must be gone")
+	}
+}
+
+func TestPluginActions_ClashRefusesInstall(t *testing.T) {
+	ctx := context.Background()
+	reg := iam.NewRegistry()
+	svc := pluginsvc.New(newFakePluginRepo()).WithActionRegistry(reg)
+	if _, err := svc.InstallPlugin(ctx, plugindom.InstallInput{Name: "com.paca.time-logging", Version: "1", Manifest: timeLoggingManifest(), Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	// A different plugin id whose namespace is the same cannot take the action over.
+	other := timeLoggingManifest()
+	other.ID = "org.example.time-logging"
+	_, err := svc.InstallPlugin(ctx, plugindom.InstallInput{Name: "org.example.time-logging", Version: "1", Manifest: other, Enabled: true})
+	var apiErr *apierr.Error
+	if !errors.As(err, &apiErr) || apiErr.Code != apierr.CodeBadRequest {
+		t.Fatalf("want a 400 for a clashing action, got %v", err)
+	}
+	if plugins, _ := svc.ListPlugins(ctx); len(plugins) != 1 {
+		t.Fatalf("the refused plugin must not be stored; %d plugins", len(plugins))
+	}
+}
+
+func TestPluginActions_SyncAtStartup(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakePluginRepo()
+	if _, err := pluginsvc.New(repo).InstallPlugin(ctx, plugindom.InstallInput{Name: "com.paca.time-logging", Version: "1", Manifest: timeLoggingManifest(), Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	reg := iam.NewRegistry()
+	if reg.HasAction("time_logging:manage_all") {
+		t.Fatal("precondition")
+	}
+	if err := pluginsvc.New(repo).WithActionRegistry(reg).SyncActions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !reg.HasAction("time_logging:manage_all") {
+		t.Fatal("installed plugins' actions must be registered at startup")
 	}
 }

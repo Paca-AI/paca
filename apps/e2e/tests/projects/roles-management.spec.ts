@@ -6,9 +6,9 @@
 // limited user through the admin API (createUserWithProjectPermissions), and
 // sign in as that user in the browser.
 //
-// A11y note: the permission switches in the role form have no accessible name
-// of their own (the label lives in a sibling <span>), so they are located by
-// finding the row that contains the permission's label and taking its switch.
+// A role is an IAM policy. The role form edits it either as a switch per
+// permission (Simple, each switch named by its label) or as the policy JSON
+// (Advanced); a role holds actions such as "tasks:read" or "tasks:*".
 
 import {
 	type APIRequestContext,
@@ -18,11 +18,13 @@ import {
 	test,
 } from "@playwright/test";
 import {
+	allowPolicy,
 	API_URL,
 	BASE_URL,
 	cleanupProjectsByPrefix,
 	cleanupUsersByPrefix,
 	createProject,
+	createProjectRole,
 	createUserWithProjectPermissions,
 	newRunId,
 	RESTRICTED_PASSWORD,
@@ -42,9 +44,16 @@ function uniqueName(label: string): string {
 
 interface ApiRole {
 	id: string;
-	role_name: string;
+	name: string;
+	description: string;
 	project_id: string | null;
-	permissions: Record<string, boolean>;
+	policy: {
+		statements: Array<{
+			effect: string;
+			actions: string[];
+			resources: string[];
+		}>;
+	};
 }
 
 async function authAndCleanup(request: APIRequestContext): Promise<void> {
@@ -62,29 +71,36 @@ async function listRoles(
 	return (await response.json()).data ?? [];
 }
 
+/** Creates a project role that allows exactly `actions`, as the Simple view would. */
 async function createRole(
 	request: APIRequestContext,
 	projectId: string,
 	roleName: string,
-	permissions: Record<string, boolean>,
+	actions: string[],
+	description = "",
 ): Promise<void> {
-	const response = await request.post(
-		`${API_URL}/projects/${projectId}/roles`,
-		{ data: { role_name: roleName, permissions } },
+	await createProjectRole(
+		request,
+		projectId,
+		roleName,
+		allowPolicy(actions, { projectId }),
+		description,
 	);
-	expect(response.ok()).toBeTruthy();
 }
 
-async function storedPermissions(
+/** The actions the project's role called `roleName` allows, as stored. */
+async function storedActions(
 	request: APIRequestContext,
 	projectId: string,
 	roleName: string,
-): Promise<Record<string, boolean>> {
+): Promise<string[]> {
 	const role = (await listRoles(request, projectId)).find(
-		(r) => r.role_name === roleName,
+		(r) => r.name === roleName && r.project_id === projectId,
 	);
 	expect(role, `role ${roleName} should exist`).toBeTruthy();
-	return role?.permissions ?? {};
+	return (role?.policy.statements ?? [])
+		.filter((statement) => statement.effect === "Allow")
+		.flatMap((statement) => statement.actions);
 }
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
@@ -121,15 +137,8 @@ async function expectRoleNotListed(
 	await expect(roleCell(page, roleName)).toHaveCount(0);
 }
 
-function permissionBadge(row: Locator, permission: string): Locator {
-	return row.getByText(permission, { exact: true });
-}
-
 function permissionSwitch(dialog: Locator, label: string): Locator {
-	return dialog
-		.locator("div.justify-between")
-		.filter({ has: dialog.page().getByText(label, { exact: true }) })
-		.getByRole("switch");
+	return dialog.getByRole("switch", { name: label, exact: true });
 }
 
 async function turnOn(dialog: Locator, ...labels: string[]): Promise<void> {
@@ -202,49 +211,65 @@ test.describe("Roles list", () => {
 			table.getByRole("columnheader", { name: "Name" }),
 		).toBeVisible();
 		await expect(
-			table.getByRole("columnheader", { name: "Permissions" }),
+			table.getByRole("columnheader", { name: "Description" }),
 		).toBeVisible();
 		await expect(
 			table.getByRole("columnheader", { name: "Created" }),
 		).toBeVisible();
+		await expect(
+			table.getByRole("columnheader", { name: "Permissions" }),
+		).toHaveCount(0);
 		await expectRoleListed(page, "Admin");
 		await expectRoleListed(page, "Editor");
 		await expectRoleListed(page, "Viewer");
 	});
 
-	test("The seeded Admin role shows the wildcard grant", async ({ page }) => {
+	test("The seeded Admin role is a full-access role", async ({
+		page,
+		request,
+	}) => {
 		await openRolesSection(page, projectId);
+		await expectRoleListed(page, "Admin");
 
-		await expect(permissionBadge(roleRow(page, "Admin"), "*")).toBeVisible();
+		const admin = (await listRoles(request, projectId)).find(
+			(r) => r.name === "Admin",
+		);
+		expect(
+			admin?.policy.statements.flatMap((statement) => statement.actions),
+		).toContain("*");
 	});
 
-	test("A role with no permissions shows a placeholder", async ({
+	test("A role without a description shows a placeholder", async ({
 		page,
 		request,
 	}) => {
 		const roleName = uniqueName("EMPTY");
-		await createRole(request, projectId, roleName, {});
+		await createRole(request, projectId, roleName, []);
 		await openRolesSection(page, projectId);
 
 		await expect(
-			roleRow(page, roleName).getByText("No permissions assigned"),
+			roleRow(page, roleName).getByText("No description"),
 		).toBeVisible();
 	});
 
-	test("The permission badges of a role list its granted permissions", async ({
+	test("The description of a role is listed instead of its permissions", async ({
 		page,
 		request,
 	}) => {
-		const roleName = uniqueName("BADGES");
-		await createRole(request, projectId, roleName, {
-			"tasks.read": true,
-			"docs.read": true,
-		});
+		const roleName = uniqueName("DESCRIBED");
+		await createRole(
+			request,
+			projectId,
+			roleName,
+			["tasks:read", "docs:read"],
+			"Reads tasks and documents",
+		);
 		await openRolesSection(page, projectId);
 
 		const row = roleRow(page, roleName);
-		await expect(permissionBadge(row, "tasks.read")).toBeVisible();
-		await expect(permissionBadge(row, "docs.read")).toBeVisible();
+		await expect(row.getByText("Reads tasks and documents")).toBeVisible();
+		await expect(row.getByText("No description")).toHaveCount(0);
+		await expect(row.getByText("tasks:read", { exact: true })).toHaveCount(0);
 	});
 });
 
@@ -270,20 +295,27 @@ test.describe("Creating a role", () => {
 		await expect(
 			dialog.getByRole("textbox", { name: "Role Name" }),
 		).toHaveValue("");
+		// Submitting is never blocked up front: an empty name is answered inline.
+		await dialog.getByRole("button", { name: "Create role" }).click();
 		await expect(
-			dialog.getByRole("button", { name: "Create role" }),
-		).toBeDisabled();
+			dialog.getByText("Enter a role name of up to 100 characters."),
+		).toBeVisible();
+		await expect(dialog).toBeVisible();
 	});
 
-	test("The Create role button is enabled once a name is entered", async ({
+	test("The New role form starts in the Simple view with every switch off", async ({
 		page,
 	}) => {
 		const dialog = await openCreateDialog(page);
 
-		await dialog
-			.getByRole("textbox", { name: "Role Name" })
-			.fill(uniqueName("NEW"));
-
+		await expect(page.getByRole("tab", { name: "Simple" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+		await expect(
+			page.getByRole("tab", { name: "Advanced (JSON)" }),
+		).toHaveAttribute("aria-selected", "false");
+		await expect(dialog.getByRole("switch", { checked: true })).toHaveCount(0);
 		await expect(
 			dialog.getByRole("button", { name: "Create role" }),
 		).toBeEnabled();
@@ -301,6 +333,7 @@ test.describe("Creating a role", () => {
 
 	test("Creating a role with individual permissions adds it to the list", async ({
 		page,
+		request,
 	}) => {
 		const roleName = uniqueName("READER");
 		const dialog = await openCreateDialog(page);
@@ -311,13 +344,59 @@ test.describe("Creating a role", () => {
 
 		await expect(dialog).not.toBeVisible();
 		await expectRoleListed(page, roleName);
-		const row = roleRow(page, roleName);
-		await expect(permissionBadge(row, "tasks.read")).toBeVisible();
-		await expect(permissionBadge(row, "docs.read")).toBeVisible();
+		expect(
+			(await storedActions(request, projectId, roleName)).sort(),
+		).toEqual(["docs:read", "tasks:read"]);
+	});
+
+	test("A role is created with a description that the list shows", async ({
+		page,
+		request,
+	}) => {
+		const roleName = uniqueName("DESCRIBED");
+		const description = "Can read tasks, nothing else";
+		const dialog = await openCreateDialog(page);
+		await dialog.getByRole("textbox", { name: "Role Name" }).fill(roleName);
+		await dialog.getByRole("textbox", { name: "Description" }).fill(description);
+		await turnOn(dialog, "View Tasks");
+
+		await dialog.getByRole("button", { name: "Create role" }).click();
+
+		await expect(dialog).not.toBeVisible();
+		await expect(roleRow(page, roleName).getByText(description)).toBeVisible();
+		const stored = (await listRoles(request, projectId)).find(
+			(r) => r.name === roleName,
+		);
+		expect(stored?.description).toBe(description);
+	});
+
+	test("The permission list can be searched and a group switched on at once", async ({
+		page,
+	}) => {
+		const dialog = await openCreateDialog(page);
+
+		await dialog.getByRole("searchbox", { name: "Search permissions" }).fill(
+			"View Tasks",
+		);
+		await expect(permissionSwitch(dialog, "View Tasks")).toBeVisible();
+		await expect(permissionSwitch(dialog, "Edit Tasks")).toHaveCount(0);
+
+		await dialog.getByRole("searchbox", { name: "Search permissions" }).fill(
+			"no such permission",
+		);
+		await expect(dialog.getByRole("switch")).toHaveCount(0);
+		await dialog.getByRole("button", { name: "Clear search" }).click();
+
+		await dialog.getByRole("button", { name: "Select all in Tasks" }).click();
+		await expect(permissionSwitch(dialog, "View Tasks")).toBeChecked();
+		await expect(permissionSwitch(dialog, "Edit Tasks")).toBeChecked();
+		await dialog.getByRole("button", { name: "Clear all in Tasks" }).click();
+		await expect(permissionSwitch(dialog, "View Tasks")).not.toBeChecked();
 	});
 
 	test("Enabling every permission of an area is stored as the area wildcard", async ({
 		page,
+		request,
 	}) => {
 		const roleName = uniqueName("TASKS");
 		const dialog = await openCreateDialog(page);
@@ -327,9 +406,101 @@ test.describe("Creating a role", () => {
 		await dialog.getByRole("button", { name: "Create role" }).click();
 
 		await expect(dialog).not.toBeVisible();
-		await expect(
-			permissionBadge(roleRow(page, roleName), "tasks.*"),
-		).toBeVisible();
+		await expectRoleListed(page, roleName);
+		expect(await storedActions(request, projectId, roleName)).toEqual([
+			"tasks:*",
+		]);
+	});
+
+	test("A role can be written as a policy in the Advanced view, Deny included", async ({
+		page,
+		request,
+	}) => {
+		const roleName = uniqueName("POLICY");
+		const dialog = await openCreateDialog(page);
+		await dialog.getByRole("textbox", { name: "Role Name" }).fill(roleName);
+		await page.getByRole("tab", { name: "Advanced (JSON)" }).click();
+		await dialog.getByRole("textbox", { name: "Policy (JSON)" }).fill(
+			JSON.stringify({
+				version: "2026-10-01",
+				statements: [
+					{
+						effect: "Allow",
+						actions: ["tasks:read", "tasks:write"],
+						resources: [`project/${projectId}/*`],
+					},
+					{
+						effect: "Deny",
+						actions: ["tasks:write"],
+						resources: [`project/${projectId}/*`],
+					},
+				],
+			}),
+		);
+
+		// The server checks the policy as it is typed; Create waits for that.
+		await dialog.getByRole("button", { name: "Create role" }).click();
+
+		await expect(dialog).not.toBeVisible();
+		// The Deny is kept in the policy next to the Allow.
+		await expectRoleListed(page, roleName);
+		const stored = (await listRoles(request, projectId)).find(
+			(r) => r.name === roleName,
+		);
+		expect(stored?.policy.statements.map((st) => st.effect)).toEqual([
+			"Allow",
+			"Deny",
+		]);
+	});
+
+	test("A project role cannot name resources outside its project", async ({
+		request,
+	}) => {
+		const rejected = await request.post(
+			`${API_URL}/projects/${projectId}/roles`,
+			{
+				data: {
+					name: uniqueName("OUTSIDE"),
+					description: "",
+					policy: {
+						version: "2026-10-01",
+						statements: [
+							{
+								effect: "Allow",
+								actions: ["tasks:read"],
+								resources: ["project/*"],
+							},
+						],
+					},
+				},
+			},
+		);
+		expect(rejected.status()).toBe(422);
+		const body = JSON.stringify(await rejected.json());
+		expect(body).toContain("ROLE_POLICY_INVALID");
+		expect(body).toContain("statements[0].resources[0]");
+
+		// A workspace role may name specific projects.
+		const workspaceName = uniqueName("WS");
+		const created = await request.post(`${API_URL}/admin/roles`, {
+			data: {
+				name: workspaceName,
+				description: "",
+				policy: {
+					version: "2026-10-01",
+					statements: [
+						{
+							effect: "Allow",
+							actions: ["tasks:read"],
+							resources: [`project/${projectId}/*`],
+						},
+					],
+				},
+			},
+		});
+		expect(created.status()).toBe(201);
+		const role = (await created.json()).data as { id: string };
+		await request.delete(`${API_URL}/admin/roles/${role.id}`);
 	});
 
 	test("A role name that already exists is rejected", async ({ page }) => {
@@ -366,7 +537,7 @@ test.describe("Editing a role", () => {
 		await authAndCleanup(request);
 		projectId = await createProject(request, uniqueName("EDIT"));
 		roleName = uniqueName("EDITABLE");
-		await createRole(request, projectId, roleName, { "tasks.read": true });
+		await createRole(request, projectId, roleName, ["tasks:read"]);
 		await signIn(page);
 		await openRolesSection(page, projectId);
 	});
@@ -390,6 +561,7 @@ test.describe("Editing a role", () => {
 
 	test("Renaming a role and adding a permission updates the list", async ({
 		page,
+		request,
 	}) => {
 		const renamed = uniqueName("RENAMED");
 		const dialog = await openEditDialog(page, roleName);
@@ -401,13 +573,44 @@ test.describe("Editing a role", () => {
 		await expect(dialog).not.toBeVisible();
 		await expectRoleListed(page, renamed);
 		await expectRoleNotListed(page, roleName);
-		const row = roleRow(page, renamed);
-		await expect(permissionBadge(row, "tasks.read")).toBeVisible();
-		await expect(permissionBadge(row, "docs.read")).toBeVisible();
+		expect(
+			(await storedActions(request, projectId, renamed)).sort(),
+		).toEqual(["docs:read", "tasks:read"]);
+	});
+
+	test("The description can be edited and cleared", async ({
+		page,
+		request,
+	}) => {
+		let dialog = await openEditDialog(page, roleName);
+		const box = dialog.getByRole("textbox", { name: "Description" });
+		await expect(box).toHaveValue("");
+		await box.fill("Edited description");
+		await dialog.getByRole("button", { name: "Save changes" }).click();
+		await expect(dialog).not.toBeVisible();
+		await expect(
+			roleRow(page, roleName).getByText("Edited description"),
+		).toBeVisible();
+
+		dialog = await openEditDialog(page, roleName);
+		await expect(
+			dialog.getByRole("textbox", { name: "Description" }),
+		).toHaveValue("Edited description");
+		await dialog.getByRole("textbox", { name: "Description" }).fill("");
+		await dialog.getByRole("button", { name: "Save changes" }).click();
+		await expect(dialog).not.toBeVisible();
+		await expect(
+			roleRow(page, roleName).getByText("No description"),
+		).toBeVisible();
+		const stored = (await listRoles(request, projectId)).find(
+			(r) => r.name === roleName,
+		);
+		expect(stored?.description).toBe("");
 	});
 
 	test("Turning a permission off removes it from the role", async ({
 		page,
+		request,
 	}) => {
 		const dialog = await openEditDialog(page, roleName);
 		await turnOff(dialog, "View Tasks");
@@ -415,9 +618,7 @@ test.describe("Editing a role", () => {
 		await dialog.getByRole("button", { name: "Save changes" }).click();
 
 		await expect(dialog).not.toBeVisible();
-		await expect(
-			roleRow(page, roleName).getByText("No permissions assigned"),
-		).toBeVisible();
+		expect(await storedActions(request, projectId, roleName)).toEqual([]);
 	});
 
 	test("Cancelling the edit form leaves the role unchanged", async ({
@@ -445,7 +646,7 @@ test.describe("Full access roles", () => {
 		await authAndCleanup(request);
 		projectId = await createProject(request, uniqueName("FULL"));
 		fullRoleName = uniqueName("EVERYTHING");
-		await createRole(request, projectId, fullRoleName, { "*": true });
+		await createRole(request, projectId, fullRoleName, ["*"]);
 		await signIn(page);
 		await openRolesSection(page, projectId);
 	});
@@ -464,19 +665,31 @@ test.describe("Full access roles", () => {
 		).toBeVisible();
 		await expect(
 			dialog.getByText(
-				/This role automatically includes every permission, including ones added in the future/,
+				/This role includes every permission, including ones added in the future/,
 			),
 		).toBeVisible();
 		await expect(dialog.getByRole("switch").first()).toBeChecked();
 		await expect(dialog.getByRole("switch", { checked: false })).toHaveCount(0);
 	});
 
-	test("The seeded Admin role is a Full access role", async ({ page }) => {
-		const dialog = await openEditDialog(page, "Admin");
+	test("The built-in Admin role is full access and can be edited but not deleted", async ({
+		page,
+		request,
+	}) => {
+		const adminRow = roleRow(page, "Admin");
 
+		const admin = (await listRoles(request, projectId)).find(
+			(r) => r.name === "Admin",
+		);
+		expect(
+			admin?.policy.statements.flatMap((statement) => statement.actions),
+		).toContain("*");
 		await expect(
-			dialog.getByText("Full access", { exact: true }),
+			adminRow.getByRole("button", { name: "Edit role" }),
 		).toBeVisible();
+		await expect(
+			adminRow.getByRole("button", { name: "Delete role" }),
+		).toHaveCount(0);
 	});
 
 	test("A role with an enumerated permission set does not show the Full access badge", async ({
@@ -484,7 +697,7 @@ test.describe("Full access roles", () => {
 		request,
 	}) => {
 		const partial = uniqueName("PARTIAL");
-		await createRole(request, projectId, partial, { "tasks.read": true });
+		await createRole(request, projectId, partial, ["tasks:read"]);
 		await openRolesSection(page, projectId);
 
 		const dialog = await openEditDialog(page, partial);
@@ -512,10 +725,10 @@ test.describe("Full access roles", () => {
 		await expect(
 			roleRow(page, fullRoleName).getByText("*", { exact: true }),
 		).toHaveCount(0);
-		const stored = await storedPermissions(request, projectId, fullRoleName);
-		expect(stored["*"]).toBeUndefined();
-		expect(stored["project.roles.write"]).toBeUndefined();
-		expect(stored["project.roles.read"]).toBe(true);
+		const stored = await storedActions(request, projectId, fullRoleName);
+		expect(stored).not.toContain("*");
+		expect(stored).not.toContain("roles:write");
+		expect(stored).toContain("roles:read");
 	});
 
 	test("Saving an untouched Full access role keeps the wildcard", async ({
@@ -527,9 +740,9 @@ test.describe("Full access roles", () => {
 		await dialog.getByRole("button", { name: "Save changes" }).click();
 
 		await expect(dialog).not.toBeVisible();
-		expect(await storedPermissions(request, projectId, fullRoleName)).toEqual({
-			"*": true,
-		});
+		expect(await storedActions(request, projectId, fullRoleName)).toEqual([
+			"*",
+		]);
 	});
 });
 
@@ -543,7 +756,7 @@ test.describe("Deleting a role", () => {
 		await authAndCleanup(request);
 		projectId = await createProject(request, uniqueName("DELETE"));
 		roleName = uniqueName("DISPOSABLE");
-		await createRole(request, projectId, roleName, { "tasks.read": true });
+		await createRole(request, projectId, roleName, ["tasks:read"]);
 		await signIn(page);
 		await openRolesSection(page, projectId);
 	});
@@ -575,7 +788,7 @@ test.describe("Deleting a role", () => {
 		await expect(dialog).not.toBeVisible();
 		await expectRoleNotListed(page, roleName);
 		const roles = await listRoles(request, projectId);
-		expect(roles.some((r) => r.role_name === roleName)).toBe(false);
+		expect(roles.some((r) => r.name === roleName)).toBe(false);
 	});
 
 	test("Cancelling the deletion keeps the role", async ({ page }) => {
@@ -587,31 +800,46 @@ test.describe("Deleting a role", () => {
 		await expectRoleListed(page, roleName);
 	});
 
-	test("A role that is still assigned to a member cannot be deleted", async ({
+	test("Deleting a role that is assigned to a member takes it away from them", async ({
 		page,
 		request,
 		playwright,
 	}) => {
 		const inUse = uniqueName("IN_USE");
-		await createUserWithProjectPermissions(request, playwright, {
-			projectId,
-			username: uniqueName("ASSIGNED"),
-			roleName: inUse,
-			permissions: { "tasks.read": true },
-		});
+		const username = uniqueName("ASSIGNED");
+		const { memberId } = await createUserWithProjectPermissions(
+			request,
+			playwright,
+			{
+				projectId,
+				username,
+				roleName: inUse,
+				permissions: { "tasks:read": true },
+			},
+		);
 		await openRolesSection(page, projectId);
 
 		const dialog = await openDeleteDialog(page, inUse);
-		await dialog.getByRole("button", { name: "Delete role" }).click();
-
 		await expect(
 			dialog.getByText(
-				"This role cannot be deleted because it is still assigned to one or more members.",
+				/Any members currently assigned this role will lose their access/,
 			),
 		).toBeVisible();
-		await dialog.getByRole("button", { name: "Cancel" }).click();
+		await dialog.getByRole("button", { name: "Delete role" }).click();
+
 		await expect(dialog).not.toBeVisible();
-		await expectRoleListed(page, inUse);
+		await expectRoleNotListed(page, inUse);
+		// The member stays; the role is simply no longer one of theirs.
+		const response = await request.get(
+			`${API_URL}/projects/${projectId}/members`,
+		);
+		expect(response.ok()).toBeTruthy();
+		const body = (await response.json()).data;
+		const members: Array<{ id: string; roles: Array<{ name: string }> }> =
+			body.items ?? body;
+		const member = members.find((m) => m.id === memberId);
+		expect(member, "the member is still in the project").toBeTruthy();
+		expect(member?.roles.map((r) => r.name)).not.toContain(inUse);
 	});
 });
 
@@ -645,12 +873,12 @@ test.describe("Access to role management is permission gated", () => {
 		await signIn(page, username, RESTRICTED_PASSWORD);
 	}
 
-	test("A member without project.roles.read sees the no-permission state", async ({
+	test("A member without roles:read sees the no-permission state", async ({
 		page,
 		request,
 		playwright,
 	}) => {
-		await signInAsMember(page, request, playwright, { "tasks.read": true });
+		await signInAsMember(page, request, playwright, { "tasks:read": true });
 
 		await openRolesSection(page, projectId);
 
@@ -660,13 +888,13 @@ test.describe("Access to role management is permission gated", () => {
 		await expect(rolesTable(page)).toHaveCount(0);
 	});
 
-	test("A member with only project.roles.read can view roles but not change them", async ({
+	test("A member with only roles:read can view roles but not change them", async ({
 		page,
 		request,
 		playwright,
 	}) => {
 		await signInAsMember(page, request, playwright, {
-			"project.roles.read": true,
+			"roles:read": true,
 		});
 
 		await openRolesSection(page, projectId);
@@ -675,34 +903,43 @@ test.describe("Access to role management is permission gated", () => {
 		await expectRoleListed(page, "Editor");
 		await expectRoleListed(page, "Viewer");
 		await expect(page.getByRole("button", { name: "New role" })).toHaveCount(0);
-		const adminRow = roleRow(page, "Admin");
+		const editorRow = roleRow(page, "Editor");
 		await expect(
-			adminRow.getByRole("button", { name: "Edit role" }),
+			editorRow.getByRole("button", { name: "Edit role" }),
 		).toHaveCount(0);
 		await expect(
-			adminRow.getByRole("button", { name: "Delete role" }),
+			editorRow.getByRole("button", { name: "Delete role" }),
 		).toHaveCount(0);
 	});
 
-	test("A member with project.roles.write can create, edit and delete roles", async ({
+	test("A member with roles:write can create, edit and delete roles", async ({
 		page,
 		request,
 		playwright,
 	}) => {
 		await signInAsMember(page, request, playwright, {
-			"project.roles.read": true,
-			"project.roles.write": true,
+			"roles:read": true,
+			"roles:write": true,
 		});
 
 		await openRolesSection(page, projectId);
 
 		await expect(page.getByRole("button", { name: "New role" })).toBeVisible();
+		// The project's own roles can be changed...
+		const editorRow = roleRow(page, "Editor");
+		await expect(
+			editorRow.getByRole("button", { name: "Edit role" }),
+		).toBeVisible();
+		await expect(
+			editorRow.getByRole("button", { name: "Delete role" }),
+		).toBeVisible();
+		// ...the built-in Admin role can be edited too, but never deleted.
 		const adminRow = roleRow(page, "Admin");
 		await expect(
 			adminRow.getByRole("button", { name: "Edit role" }),
 		).toBeVisible();
 		await expect(
 			adminRow.getByRole("button", { name: "Delete role" }),
-		).toBeVisible();
+		).toHaveCount(0);
 	});
 });

@@ -2,74 +2,15 @@ import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+import type { RoleSummary } from "./role-api";
 
-export interface GlobalRole {
-	id: string;
-	name: string;
-	permissions: Record<string, boolean>;
-	/** The role a new user and a new global agent start with. Exactly one role
-	 *  is the default, and it can't be deleted. */
-	is_default: boolean;
-	created_at: string;
-	updated_at: string;
-}
-
-export async function getGlobalRoles(): Promise<GlobalRole[]> {
-	const { data } = await apiClient.instance.get<SuccessEnvelope<GlobalRole[]>>(
-		"/admin/global-roles",
-	);
-	return data.data;
-}
-
-export async function createGlobalRole(payload: {
-	name: string;
-	permissions: Record<string, boolean>;
-}): Promise<GlobalRole> {
-	const { data } = await apiClient.instance.post<SuccessEnvelope<GlobalRole>>(
-		"/admin/global-roles",
-		payload,
-	);
-	return data.data;
-}
-
-export async function updateGlobalRole(
-	roleId: string,
-	payload: { name: string; permissions: Record<string, boolean> },
-): Promise<GlobalRole> {
-	const { data } = await apiClient.instance.patch<SuccessEnvelope<GlobalRole>>(
-		`/admin/global-roles/${roleId}`,
-		payload,
-	);
-	return data.data;
-}
-
-export async function deleteGlobalRole(roleId: string): Promise<void> {
-	await apiClient.instance.delete(`/admin/global-roles/${roleId}`);
-}
-
-/** Makes a role the one new users and global agents start with, replacing the
- *  previous default (requires `global_roles.write`). Accounts that already have
- *  a role keep it. */
-export async function setDefaultGlobalRole(
-	roleId: string,
-): Promise<GlobalRole> {
-	const { data } = await apiClient.instance.put<SuccessEnvelope<GlobalRole>>(
-		`/admin/global-roles/${roleId}/set-default`,
-	);
-	return data.data;
-}
-
+/** The IAM actions the caller holds at platform level. */
 export async function getMyGlobalPermissions(): Promise<string[]> {
 	const { data } = await apiClient.instance.get<
-		SuccessEnvelope<{ permissions: string[] }>
+		SuccessEnvelope<{ actions: string[] }>
 	>("/users/me/global-permissions");
-	return data.data.permissions;
+	return data.data.actions;
 }
-
-export const globalRolesQueryOptions = queryOptions({
-	queryKey: ["admin", "global-roles"],
-	queryFn: getGlobalRoles,
-});
 
 export const myPermissionsQueryOptions = queryOptions({
 	queryKey: ["auth", "me", "permissions"],
@@ -87,7 +28,8 @@ export interface User {
 	username: string;
 	full_name: string;
 	email?: string | null;
-	role: string;
+	/** The platform roles the user holds, sorted by name. */
+	roles: RoleSummary[];
 	must_change_password: boolean;
 	avatar_url?: string | null;
 	avatar_thumb_url?: string | null;
@@ -152,8 +94,8 @@ export async function getUsersByCursor(
 }
 
 /** Creates a user with the default USER role. To give them another role, call
- *  {@link assignUserGlobalRole} afterwards — assigning a role needs
- *  `global_roles.assign`, so the server no longer accepts `role` here. */
+ *  {@link replaceUserRoles} afterwards — assigning a role needs
+ *  `roles:assign`, so the server no longer accepts `role` here. */
 export async function createUser(payload: {
 	username: string;
 	password: string;
@@ -168,7 +110,7 @@ export async function createUser(payload: {
 }
 
 /** Edits a user's profile. The role is not part of it: change that with
- *  {@link assignUserGlobalRole}. */
+ *  {@link replaceUserRoles}. */
 export async function updateUser(
 	userId: string,
 	payload: { full_name?: string; email?: string },
@@ -178,17 +120,6 @@ export async function updateUser(
 		payload,
 	);
 	return data.data;
-}
-
-/** Sets a user's global role (requires `global_roles.assign`). A user holds
- *  exactly one global role, so this replaces whatever they had. */
-export async function assignUserGlobalRole(
-	userId: string,
-	roleId: string,
-): Promise<void> {
-	await apiClient.instance.put(`/admin/users/${userId}/global-roles`, {
-		role_ids: [roleId],
-	});
 }
 
 export async function deleteUser(userId: string): Promise<void> {

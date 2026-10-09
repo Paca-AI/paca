@@ -12,12 +12,12 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Paca-AI/api/internal/bootstrap/defaultroles"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
-	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/secret"
 	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 )
@@ -109,6 +109,33 @@ type Service struct {
 	avatarSvc attachmentdom.AvatarService
 	encryptor *secret.Encryptor
 	activity  activitysvc.Recorder
+	// roles is told which roles' attachments changed (see roleGrantsChanged).
+	roles RoleInvalidator
+}
+
+// RoleInvalidator drops cached role policies; *iam.Authorizer implements it.
+type RoleInvalidator interface {
+	Invalidate(roleIDs ...string)
+}
+
+// WithRoleInvalidator wires in the policy cache invalidation called after
+// role attachments change (a member or agent added to a project).
+func (s *Service) WithRoleInvalidator(inv RoleInvalidator) *Service {
+	s.roles = inv
+	return s
+}
+
+// roleGrantsChanged tells the policy cache which roles gained an attachment.
+// Called after the transaction that wrote the attachments has committed.
+func (s *Service) roleGrantsChanged(roleIDs []uuid.UUID) {
+	if s.roles == nil || len(roleIDs) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(roleIDs))
+	for _, id := range roleIDs {
+		ids = append(ids, id.String())
+	}
+	s.roles.Invalidate(ids...)
 }
 
 // New returns a configured project service.
@@ -219,9 +246,11 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*projectdom.Projec
 	return s.repo.FindByID(ctx, id)
 }
 
-// Create defines and persists a new project, bootstraps the three default
-// project-scoped roles (admin, editor, viewer), and adds the creator as the
-// project admin.
+// Create defines and persists a new project. In the same transaction the
+// project gets its default roles (the embedded templates Admin, Editor,
+// Member and Viewer, instantiated as roles owned by the project, with the
+// project's id in their policies) and the creator becomes a member holding
+// the Admin role inside the project.
 func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -248,115 +277,14 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 		CreatedAt:    now,
 	}
 
-	if err := s.repo.Create(ctx, p); err != nil {
+	setup := projectdom.ProjectSetup{Creator: in.CreatedBy, CreatorRole: defaultroles.ProjectAdmin}
+	for _, r := range defaultroles.Instantiate(p.ID) {
+		setup.Roles = append(setup.Roles, projectdom.SetupRole{
+			Name: r.Name, Description: r.Description, Policy: r.Policy, System: r.System,
+		})
+	}
+	if err := s.repo.Create(ctx, p, setup); err != nil {
 		return nil, err
-	}
-
-	// Bootstrap the three default project-scoped roles.
-	defaultRoles := []*projectdom.ProjectRole{
-		{
-			ID:        uuid.New(),
-			ProjectID: &p.ID,
-			RoleName:  "Admin",
-			// Bare wildcard rather than an enumerated list of *All wildcards:
-			// Admin is meant to always have every project permission,
-			// including ones added after this project was created (like the
-			// project.settings.* split in 000054) without needing a matching
-			// migration each time. See 000056_set_admin_role_wildcard_permission.sql
-			// for the backfill onto existing projects' Admin rows.
-			Permissions: map[string]any{
-				string(authz.PermissionAll): true,
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		{
-			ID:        uuid.New(),
-			ProjectID: &p.ID,
-			RoleName:  "Editor",
-			// PermissionProjectsRead is omitted here and on Viewer below —
-			// AuthzPermissionStore.ListProjectPermissions grants it to any
-			// active project member unconditionally now, so listing it per
-			// role would be redundant (see that method's doc comment).
-			//
-			// The three ProjectSettings*Write grants are deliberately absent:
-			// redefining task types/statuses/custom fields is an Admin-level
-			// (project schema) action, not a content-editing one — same
-			// split tasks.write already draws between editing a task and
-			// reconfiguring what statuses/types exist. Editor can still see
-			// them (no dedicated read permission exists for the schema —
-			// TasksRead below already covers viewing it, same as it covers
-			// viewing the tasks that reference it).
-			Permissions: map[string]any{
-				string(authz.PermissionProjectMembersRead):  true,
-				string(authz.PermissionProjectRolesRead):    true,
-				string(authz.PermissionTasksRead):           true,
-				string(authz.PermissionTasksWrite):          true,
-				string(authz.PermissionSprintsRead):         true,
-				string(authz.PermissionSprintsWrite):        true,
-				string(authz.PermissionViewsRead):           true,
-				string(authz.PermissionViewsWrite):          true,
-				string(authz.PermissionDocsRead):            true,
-				string(authz.PermissionDocsWrite):           true,
-				string(authz.PermissionAgentsRead):          true,
-				string(authz.PermissionAgentsWrite):         true,
-				string(authz.PermissionConversationsRead):   true,
-				string(authz.PermissionConversationsWrite):  true,
-				string(authz.PermissionWorkflowsRead):       true,
-				string(authz.PermissionWorkflowsWrite):      true,
-				string(authz.PermissionEnvironmentsRead):    true,
-				string(authz.PermissionEnvironmentsWrite):   true,
-				string(authz.PermissionEnvironmentsConnect): true,
-				string(authz.PermissionAnnotationsRead):     true,
-				string(authz.PermissionAnnotationsWrite):    true,
-				string(authz.PermissionAnnotationsResolve):  true,
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		{
-			ID:        uuid.New(),
-			ProjectID: &p.ID,
-			RoleName:  "Viewer",
-			Permissions: map[string]any{
-				string(authz.PermissionProjectMembersRead): true,
-				string(authz.PermissionProjectRolesRead):   true,
-				string(authz.PermissionTasksRead):          true,
-				string(authz.PermissionSprintsRead):        true,
-				string(authz.PermissionViewsRead):          true,
-				string(authz.PermissionDocsRead):           true,
-				string(authz.PermissionAgentsRead):         true,
-				string(authz.PermissionConversationsRead):  true,
-				string(authz.PermissionWorkflowsRead):      true,
-				string(authz.PermissionEnvironmentsRead):   true,
-				string(authz.PermissionAnnotationsRead):    true,
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
-
-	var adminRoleID uuid.UUID
-	for _, r := range defaultRoles {
-		if err := s.repo.CreateRole(ctx, r); err != nil {
-			return nil, err
-		}
-		if r.RoleName == "Admin" {
-			adminRoleID = r.ID
-		}
-	}
-
-	// Add the creator as a project admin.
-	if in.CreatedBy != nil {
-		m := &projectdom.ProjectMember{
-			ID:            uuid.New(),
-			ProjectID:     p.ID,
-			UserID:        *in.CreatedBy,
-			ProjectRoleID: adminRoleID,
-		}
-		if err := s.repo.AddMember(ctx, m); err != nil {
-			return nil, err
-		}
 	}
 
 	// Bootstrap default task types and statuses.

@@ -36,38 +36,27 @@ func newCacheStore(t *testing.T) *cache.Store {
 	return cache.NewStore(client, "paca:")
 }
 
-const (
-	projectTTL = 5 * time.Minute
-	configTTL  = 10 * time.Minute
-)
+const projectTTL = 5 * time.Minute
 
 // ---------------------------------------------------------------------------
 // Stub project service
 // ---------------------------------------------------------------------------
 
 type stubProjectSvc struct {
-	list                    func(ctx context.Context, page, pageSize int) ([]*projectdom.Project, int64, error)
-	listAccessible          func(ctx context.Context, userID uuid.UUID, page, pageSize int) ([]*projectdom.Project, int64, error)
-	getByID                 func(ctx context.Context, id uuid.UUID) (*projectdom.Project, error)
-	isProjectPublic         func(ctx context.Context, id uuid.UUID) (bool, error)
-	create                  func(ctx context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error)
-	update                  func(ctx context.Context, id uuid.UUID, in projectdom.UpdateProjectInput) (*projectdom.Project, error)
-	delete                  func(ctx context.Context, id uuid.UUID) error
-	listMembers             func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
-	addMember               func(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error)
-	updateMemberRole        func(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error)
-	removeMember            func(ctx context.Context, projectID, userID uuid.UUID) error
-	getMyProjectPermissions func(ctx context.Context, projectID, userID uuid.UUID, agentID *uuid.UUID) (map[string]any, error)
-	listRoles               func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error)
-	createRole              func(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error)
-	updateRole              func(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error)
-	deleteRole              func(ctx context.Context, projectID, roleID uuid.UUID) error
-	findRoleByID            func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
-	updateJevConfig         func(ctx context.Context, projectID uuid.UUID, apiKey, baseURL, model *string) (*projectdom.Project, error)
+	list            func(ctx context.Context, page, pageSize int) ([]*projectdom.Project, int64, error)
+	listAccessible  func(ctx context.Context, userID uuid.UUID, page, pageSize int) ([]*projectdom.Project, int64, error)
+	getByID         func(ctx context.Context, id uuid.UUID) (*projectdom.Project, error)
+	isProjectPublic func(ctx context.Context, id uuid.UUID) (bool, error)
+	create          func(ctx context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error)
+	update          func(ctx context.Context, id uuid.UUID, in projectdom.UpdateProjectInput) (*projectdom.Project, error)
+	delete          func(ctx context.Context, id uuid.UUID) error
+	listMembers     func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
+	addMember       func(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error)
+	removeMember    func(ctx context.Context, projectID, userID uuid.UUID) error
+	updateJevConfig func(ctx context.Context, projectID uuid.UUID, apiKey, baseURL, model *string) (*projectdom.Project, error)
 
 	getByIDCalls         int
 	listMembersCalls     int
-	listRolesCalls       int
 	updateJevConfigCalls int
 }
 
@@ -150,13 +139,6 @@ func (s *stubProjectSvc) AddMember(ctx context.Context, projectID uuid.UUID, in 
 	return &projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: in.UserID}, nil
 }
 
-func (s *stubProjectSvc) UpdateMemberRole(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-	if s.updateMemberRole != nil {
-		return s.updateMemberRole(ctx, projectID, userID, in)
-	}
-	return &projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: userID}, nil
-}
-
 func (s *stubProjectSvc) RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error {
 	if s.removeMember != nil {
 		return s.removeMember(ctx, projectID, userID)
@@ -164,54 +146,10 @@ func (s *stubProjectSvc) RemoveMember(ctx context.Context, projectID, userID uui
 	return nil
 }
 
-func (s *stubProjectSvc) GetMyProjectPermissions(ctx context.Context, projectID, userID uuid.UUID, agentID *uuid.UUID) (map[string]any, error) {
-	if s.getMyProjectPermissions != nil {
-		return s.getMyProjectPermissions(ctx, projectID, userID, agentID)
-	}
-	return nil, nil
-}
-
-func (s *stubProjectSvc) ListRoles(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error) {
-	s.listRolesCalls++
-	if s.listRoles != nil {
-		return s.listRoles(ctx, projectID)
-	}
-	return []*projectdom.ProjectRole{{ID: uuid.New()}}, nil
-}
-
-func (s *stubProjectSvc) CreateRole(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error) {
-	if s.createRole != nil {
-		return s.createRole(ctx, projectID, in)
-	}
-	return &projectdom.ProjectRole{ID: uuid.New()}, nil
-}
-
-func (s *stubProjectSvc) UpdateRole(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error) {
-	if s.updateRole != nil {
-		return s.updateRole(ctx, projectID, roleID, in)
-	}
-	return &projectdom.ProjectRole{ID: roleID}, nil
-}
-
-func (s *stubProjectSvc) DeleteRole(ctx context.Context, projectID, roleID uuid.UUID) error {
-	if s.deleteRole != nil {
-		return s.deleteRole(ctx, projectID, roleID)
-	}
+func (s *stubProjectSvc) AddAgentMember(_ context.Context, _, _, _ uuid.UUID, _ []uuid.UUID, _ *uuid.UUID) error {
 	return nil
 }
-
-func (s *stubProjectSvc) FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
-	if s.findRoleByID != nil {
-		return s.findRoleByID(ctx, id)
-	}
-	return nil, projectdom.ErrRoleNotFound
-}
-
-func (s *stubProjectSvc) AddAgentMember(_ context.Context, _, _, _, _ uuid.UUID) error { return nil }
-func (s *stubProjectSvc) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error    { return nil }
-func (s *stubProjectSvc) UpdateMemberRoleByMemberID(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-	return nil, errors.New("not implemented in stub")
-}
+func (s *stubProjectSvc) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error { return nil }
 func (s *stubProjectSvc) UpdateMemberDescription(_ context.Context, _, _ uuid.UUID, _ string) (*projectdom.ProjectMember, error) {
 	return nil, errors.New("not implemented in stub")
 }
@@ -237,7 +175,7 @@ func TestCachedProject_GetByID_CacheMissPopulatesCache(t *testing.T) {
 	ctx := context.Background()
 	projectID := uuid.New()
 	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, discardLogger())
 
 	// First call: cache miss.
 	p, err := svc.GetByID(ctx, projectID)
@@ -267,7 +205,7 @@ func TestCachedProject_GetByID_CacheMissPopulatesCache(t *testing.T) {
 func TestCachedProject_GetByID_ZeroTTLBypassesCache(t *testing.T) {
 	ctx := context.Background()
 	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), 0, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), 0, discardLogger())
 
 	for i := 0; i < 3; i++ {
 		if _, err := svc.GetByID(ctx, uuid.New()); err != nil {
@@ -283,7 +221,7 @@ func TestCachedProject_Update_InvalidatesGetByID(t *testing.T) {
 	ctx := context.Background()
 	projectID := uuid.New()
 	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, discardLogger())
 
 	// Populate cache.
 	if _, err := svc.GetByID(ctx, projectID); err != nil {
@@ -314,7 +252,7 @@ func TestCachedProject_UpdateJevConfig_InvalidatesGetByID(t *testing.T) {
 	ctx := context.Background()
 	projectID := uuid.New()
 	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, discardLogger())
 
 	// Populate cache.
 	if _, err := svc.GetByID(ctx, projectID); err != nil {
@@ -340,7 +278,7 @@ func TestCachedProject_Delete_InvalidatesAllProjectKeys(t *testing.T) {
 	ctx := context.Background()
 	projectID := uuid.New()
 	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, discardLogger())
 
 	// Populate caches.
 	if _, err := svc.GetByID(ctx, projectID); err != nil {
@@ -349,11 +287,8 @@ func TestCachedProject_Delete_InvalidatesAllProjectKeys(t *testing.T) {
 	if _, err := svc.ListMembers(ctx, projectID); err != nil {
 		t.Fatalf("ListMembers: %v", err)
 	}
-	if _, err := svc.ListRoles(ctx, projectID); err != nil {
-		t.Fatalf("ListRoles: %v", err)
-	}
 
-	// Delete should evict all three.
+	// Delete should evict both.
 	if err := svc.Delete(ctx, projectID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
@@ -365,18 +300,12 @@ func TestCachedProject_Delete_InvalidatesAllProjectKeys(t *testing.T) {
 	if _, err := svc.ListMembers(ctx, projectID); err != nil {
 		t.Fatalf("ListMembers after Delete: %v", err)
 	}
-	if _, err := svc.ListRoles(ctx, projectID); err != nil {
-		t.Fatalf("ListRoles after Delete: %v", err)
-	}
 
 	if stub.getByIDCalls != 2 {
 		t.Fatalf("GetByID: expected 2 stub calls, got %d", stub.getByIDCalls)
 	}
 	if stub.listMembersCalls != 2 {
 		t.Fatalf("ListMembers: expected 2 stub calls, got %d", stub.listMembersCalls)
-	}
-	if stub.listRolesCalls != 2 {
-		t.Fatalf("ListRoles: expected 2 stub calls, got %d", stub.listRolesCalls)
 	}
 }
 
@@ -388,7 +317,7 @@ func TestCachedProject_ListMembers_CacheHit(t *testing.T) {
 	ctx := context.Background()
 	projectID := uuid.New()
 	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, discardLogger())
 
 	if _, err := svc.ListMembers(ctx, projectID); err != nil {
 		t.Fatalf("ListMembers (miss): %v", err)
@@ -405,12 +334,12 @@ func TestCachedProject_AddMember_InvalidatesMembersList(t *testing.T) {
 	ctx := context.Background()
 	projectID := uuid.New()
 	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, discardLogger())
 
 	if _, err := svc.ListMembers(ctx, projectID); err != nil {
 		t.Fatalf("ListMembers: %v", err)
 	}
-	if _, err := svc.AddMember(ctx, projectID, projectdom.AddMemberInput{UserID: uuid.New(), ProjectRoleID: uuid.New()}); err != nil {
+	if _, err := svc.AddMember(ctx, projectID, projectdom.AddMemberInput{UserID: uuid.New(), RoleIDs: []uuid.UUID{uuid.New()}}); err != nil {
 		t.Fatalf("AddMember: %v", err)
 	}
 	if _, err := svc.ListMembers(ctx, projectID); err != nil {
@@ -425,7 +354,7 @@ func TestCachedProject_RemoveMember_InvalidatesMembersList(t *testing.T) {
 	ctx := context.Background()
 	projectID := uuid.New()
 	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, discardLogger())
 
 	if _, err := svc.ListMembers(ctx, projectID); err != nil {
 		t.Fatalf("ListMembers: %v", err)
@@ -442,67 +371,6 @@ func TestCachedProject_RemoveMember_InvalidatesMembersList(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ListRoles
-// ---------------------------------------------------------------------------
-
-func TestCachedProject_ListRoles_CacheHit(t *testing.T) {
-	ctx := context.Background()
-	projectID := uuid.New()
-	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
-
-	if _, err := svc.ListRoles(ctx, projectID); err != nil {
-		t.Fatalf("ListRoles (miss): %v", err)
-	}
-	if _, err := svc.ListRoles(ctx, projectID); err != nil {
-		t.Fatalf("ListRoles (hit): %v", err)
-	}
-	if stub.listRolesCalls != 1 {
-		t.Fatalf("expected 1 stub call, got %d", stub.listRolesCalls)
-	}
-}
-
-func TestCachedProject_CreateRole_InvalidatesRolesList(t *testing.T) {
-	ctx := context.Background()
-	projectID := uuid.New()
-	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
-
-	if _, err := svc.ListRoles(ctx, projectID); err != nil {
-		t.Fatalf("ListRoles: %v", err)
-	}
-	if _, err := svc.CreateRole(ctx, projectID, projectdom.CreateRoleInput{RoleName: "DEV"}); err != nil {
-		t.Fatalf("CreateRole: %v", err)
-	}
-	if _, err := svc.ListRoles(ctx, projectID); err != nil {
-		t.Fatalf("ListRoles after CreateRole: %v", err)
-	}
-	if stub.listRolesCalls != 2 {
-		t.Fatalf("expected 2 stub calls, got %d", stub.listRolesCalls)
-	}
-}
-
-func TestCachedProject_DeleteRole_InvalidatesRolesList(t *testing.T) {
-	ctx := context.Background()
-	projectID := uuid.New()
-	stub := &stubProjectSvc{}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
-
-	if _, err := svc.ListRoles(ctx, projectID); err != nil {
-		t.Fatalf("ListRoles: %v", err)
-	}
-	if err := svc.DeleteRole(ctx, projectID, uuid.New()); err != nil {
-		t.Fatalf("DeleteRole: %v", err)
-	}
-	if _, err := svc.ListRoles(ctx, projectID); err != nil {
-		t.Fatalf("ListRoles after DeleteRole: %v", err)
-	}
-	if stub.listRolesCalls != 2 {
-		t.Fatalf("expected 2 stub calls, got %d", stub.listRolesCalls)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Pass-through methods are delegated unchanged
 // ---------------------------------------------------------------------------
 
@@ -515,7 +383,7 @@ func TestCachedProject_List_Passthrough(t *testing.T) {
 			return nil, 0, nil
 		},
 	}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, discardLogger())
 	if _, _, err := svc.List(ctx, 1, 20); err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -530,7 +398,7 @@ func TestCachedProject_GetByID_ServiceErrorPropagated(t *testing.T) {
 	stub := &stubProjectSvc{
 		getByID: func(_ context.Context, _ uuid.UUID) (*projectdom.Project, error) { return nil, sentinel },
 	}
-	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	svc := projectsvc.NewCachedService(stub, newCacheStore(t), projectTTL, discardLogger())
 
 	_, err := svc.GetByID(ctx, uuid.New())
 	if !errors.Is(err, sentinel) {
@@ -544,7 +412,7 @@ func TestCachedProject_GetByID_ServiceErrorPropagated(t *testing.T) {
 // difference between "the assertion matched" and "it didn't": a double that
 // does implement the method reaches its own copy and would pass either way.
 func TestCachedProject_UpdateJevConfig_IsWiredByName(t *testing.T) {
-	notWired := projectsvc.NewCachedService(nil, newCacheStore(t), projectTTL, configTTL, discardLogger())
+	notWired := projectsvc.NewCachedService(nil, newCacheStore(t), projectTTL, discardLogger())
 	if _, err := notWired.UpdateJevConfig(context.Background(), uuid.New(), nil, nil, nil); !errors.Is(err, projectsvc.ErrJevConfigUnsupported) {
 		t.Errorf("expected ErrJevConfigUnsupported against an unwired service, got %v", err)
 	}

@@ -33,8 +33,8 @@ export const Route = createFileRoute("/_authenticated/admin/agents/")({
 			.catch(() => [] as string[]);
 
 		const canAccess =
-			hasPermission(permissions, "agents.read") ||
-			hasPermission(permissions, "agents.write");
+			hasPermission(permissions, "agents:read") ||
+			hasPermission(permissions, "agents:write");
 
 		if (!canAccess) {
 			throw redirect({ to: "/home" });
@@ -63,8 +63,8 @@ function GlobalAgentsPage() {
 	const search = Route.useSearch();
 	const navigate = Route.useNavigate();
 	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
-	const canWrite = hasPermission("agents.write");
-	const canRead = hasPermission("agents.read");
+	const canWrite = hasPermission("agents:write");
+	const canRead = hasPermission("agents:read");
 
 	const {
 		data: agents = [],

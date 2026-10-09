@@ -58,7 +58,6 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useCanAssignGlobalRole } from "@/hooks/use-can-assign-global-role";
-import type { GlobalRole } from "@/lib/admin-api";
 import {
 	type ACPProvider,
 	type AcpBridgeToken,
@@ -78,6 +77,7 @@ import {
 } from "@/lib/agent-api";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { environmentsQueryOptions } from "@/lib/environment-api";
+import type { Role } from "@/lib/role-api";
 import { splitShellCommand } from "@/lib/shell-command";
 import { cn } from "@/lib/utils";
 import { AcpBridgeSetup, CommandBox } from "./acp-bridge-setup";
@@ -197,13 +197,13 @@ export function CreateAgentDialog({
 	const [description, setDescription] = useState("");
 	const [presetId, setPresetId] = useState("");
 	// The project role of a project agent, chosen in step 3.
-	const [roleId, setRoleId] = useState("");
-	// The global role picked in a global agent's step 3: a role, `null` for "no
-	// role", or `undefined` while nothing is picked (the agent keeps the role it
-	// was created with).
-	const [pickedRole, setPickedRole] = useState<GlobalRole | null | undefined>(
-		undefined,
-	);
+	const [roleIds, setRoleIds] = useState<string[]>([]);
+	// The workspace roles picked in a global agent's step 3 (none picked is a
+	// valid choice: no role), or `undefined` while nothing is touched (the agent
+	// keeps the roles it was created with).
+	const [picked, setPicked] = useState<
+		{ ids: string[]; roles: Role[] } | undefined
+	>(undefined);
 	const [agentType, setAgentType] = useState<AgentType>("llm");
 	const [providerSelect, setProviderSelect] = useState("anthropic");
 	const [customProvider, setCustomProvider] = useState("");
@@ -249,8 +249,8 @@ export function CreateAgentDialog({
 		setHandle("");
 		setDescription("");
 		setPresetId("");
-		setRoleId("");
-		setPickedRole(undefined);
+		setRoleIds([]);
+		setPicked(undefined);
 		setCreated(null);
 		createMutation.reset();
 		clearRoleError();
@@ -408,7 +408,7 @@ export function CreateAgentDialog({
 						handle: handle.trim(),
 						description: description.trim(),
 						agent_type: agentType,
-						project_role_id: roleId,
+						role_ids: roleIds,
 						...typeFields,
 					})
 				: await createGlobalAgent({
@@ -457,9 +457,9 @@ export function CreateAgentDialog({
 		},
 	});
 
-	// The role step's request, made once the agent exists: another role, or none.
+	// The role step's request, made once the agent exists: other roles, or none.
 	const {
-		setRole,
+		setRoles,
 		isPending: roleIsPending,
 		error: roleError,
 		clearError: clearRoleError,
@@ -470,15 +470,18 @@ export function CreateAgentDialog({
 	});
 
 	// What the role step shows as chosen, and what pressing its button would do.
-	const currentRoleId = created?.agent.global_role_id ?? null;
-	const chosenRoleId =
-		pickedRole === undefined ? currentRoleId : (pickedRole?.id ?? null);
+	const currentRoleIds = (created?.agent.roles ?? []).map((r) => r.id);
+	const chosenRoleIds = picked?.ids ?? currentRoleIds;
 	const roleChange =
-		chosenRoleId === currentRoleId
+		chosenRoleIds.length === currentRoleIds.length &&
+		chosenRoleIds.every((id) => currentRoleIds.includes(id))
 			? null
-			: chosenRoleId === null
+			: chosenRoleIds.length === 0
 				? "remove"
 				: "assign";
+	const addsFullAccess = !!picked?.roles.some(
+		(r) => !currentRoleIds.includes(r.id) && isFullAccessRole(r),
+	);
 
 	// Lets the user confirm their terminal login actually worked before
 	// finishing agent creation — the environment-scoped sibling of
@@ -519,7 +522,7 @@ export function CreateAgentDialog({
 						(acpProvider !== "custom" || acpCommandParts.length > 0)
 					);
 	// A project agent must have a project role, which is part of its create request.
-	const roleStepValid = !projectId || !!roleId;
+	const roleStepValid = !projectId || roleIds.length > 0;
 	const canSubmit = !!(
 		step1Valid &&
 		step2Valid &&
@@ -535,7 +538,7 @@ export function CreateAgentDialog({
 			finish(created);
 			return;
 		}
-		setRole(created.agent.id, pickedRole ?? null);
+		setRoles(created.agent.id, chosenRoleIds);
 	};
 
 	// Shown on the step whose button creates the agent. The fields these
@@ -1336,8 +1339,8 @@ export function CreateAgentDialog({
 									<ProjectRolePicker
 										projectId={projectId}
 										label={t("agents.createDialog.projectRoleLabel")}
-										value={roleId || null}
-										onChange={(role) => setRoleId(role.id)}
+										values={roleIds}
+										onChange={(ids) => setRoleIds(ids)}
 										disabled={createMutation.isPending}
 									/>
 								</div>
@@ -1350,25 +1353,15 @@ export function CreateAgentDialog({
 								</p>
 								<RolePicker
 									label={t("agents.detail.globalRole.title")}
-									value={chosenRoleId}
-									onChange={(role) => {
-										setPickedRole(role);
+									values={chosenRoleIds}
+									onChange={(ids, roles) => {
+										setPicked({ ids, roles });
 										clearRoleError();
 									}}
-									none={{
-										label: t("agents.detail.globalRole.none"),
-										hint: t("agents.detail.globalRole.noneHint"),
-										onSelect: () => {
-											setPickedRole(null);
-											clearRoleError();
-										},
-									}}
-									currentRoleId={currentRoleId}
+									currentRoleIds={currentRoleIds}
 									disabled={roleIsPending}
 								/>
-								{roleChange === "assign" &&
-								pickedRole &&
-								isFullAccessRole(pickedRole) ? (
+								{roleChange === "assign" && addsFullAccess ? (
 									<InlineNotice tone="warning">
 										{t("agents.detail.globalRole.fullAccessWarning")}
 									</InlineNotice>

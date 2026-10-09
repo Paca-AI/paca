@@ -4,11 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
-
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 )
 
 // createTaskViaAPI is a helper to create a task via the API
@@ -391,19 +388,8 @@ func TestE2ETaskLinkManagement_Authorization(t *testing.T) {
 	readonlyUsername := "readonly-user-" + uuid.NewString()
 	seedUser(t, env, readonlyUsername, "readonlypass", "Read Only User")
 	readonlyRoleName := "READONLY_" + uuid.NewString()
-	if err := env.roleRepo.Create(env.ctx, &globalroledom.GlobalRole{
-		ID:   uuid.New(),
-		Name: readonlyRoleName,
-		Permissions: map[string]any{
-			"projects.read": true,
-			"tasks.read":    true,
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}); err != nil {
-		t.Fatalf("create readonly role: %v", err)
-	}
-	assignGlobalRolesByName(t, env, readonlyUsername, readonlyRoleName)
+	createPlatformRole(t, env, readonlyRoleName, "projects:read")
+	assignPlatformRole(t, env, readonlyUsername, readonlyRoleName)
 
 	writeClient, writeToken := taskMemberLogin(t, env, writeUser, "tasklinkwrite1")
 	seedTaskMemberUser(t, env, readUser, "tasklinkread1")

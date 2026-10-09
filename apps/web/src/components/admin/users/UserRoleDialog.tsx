@@ -18,7 +18,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import type { GlobalRole, User } from "@/lib/admin-api";
+import type { User } from "@/lib/admin-api";
+import type { Role } from "@/lib/role-api";
 
 interface UserRoleDialogProps {
 	user: User;
@@ -30,7 +31,7 @@ interface UserRoleDialogProps {
 
 /**
  * Changes a user's global role. It is a dialog of its own, apart from editing
- * the profile, because it is a different privilege (`global_roles.assign`) and
+ * the profile, because it is a different privilege (`roles:assign`) and
  * a different kind of decision: it changes what the person may do.
  */
 export function UserRoleDialog({
@@ -40,7 +41,12 @@ export function UserRoleDialog({
 	onOpenChange,
 }: UserRoleDialogProps) {
 	const { t } = useTranslation("admin");
-	const [selected, setSelected] = useState<GlobalRole | null>(null);
+	// null until the person touches the list: it then shows the roles held.
+	const [selected, setSelected] = useState<{
+		ids: string[];
+		roles: Role[];
+	} | null>(null);
+	const currentIds = user.roles.map((r) => r.id);
 
 	const handleOpenChange = (next: boolean) => {
 		if (!next) {
@@ -56,8 +62,15 @@ export function UserRoleDialog({
 		onAssigned: () => handleOpenChange(false),
 	});
 
-	// Picking the role they already hold changes nothing.
-	const change = selected && selected.name !== user.role ? selected : null;
+	// Picking the roles they already hold changes nothing.
+	const sameSet = (a: string[], b: string[]) =>
+		a.length === b.length && a.every((x) => b.includes(x));
+	const change =
+		selected && !sameSet(selected.ids, currentIds) ? selected : null;
+	// A role being added that grants everything deserves a second look.
+	const addsFullAccess = !!change?.roles.some(
+		(r) => !currentIds.includes(r.id) && isFullAccessRole(r),
+	);
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
@@ -79,15 +92,15 @@ export function UserRoleDialog({
 				<div className="flex flex-col gap-3 py-1">
 					<RolePicker
 						label={t("users.roleDialog.title")}
-						value={selected?.id ?? null}
-						onChange={(role) => {
-							setSelected(role);
+						values={selected?.ids ?? currentIds}
+						onChange={(ids, roles) => {
+							setSelected({ ids, roles });
 							clearError();
 						}}
-						currentRoleName={user.role}
+						currentRoleIds={currentIds}
 						disabled={isPending}
 					/>
-					{change && isFullAccessRole(change) ? (
+					{addsFullAccess ? (
 						<InlineNotice tone="warning">
 							{t("users.roleDialog.fullAccessWarning")}
 						</InlineNotice>
@@ -105,7 +118,7 @@ export function UserRoleDialog({
 						{t("users.formDialog.cancel")}
 					</DialogClose>
 					<Button
-						onClick={() => change && assign(change)}
+						onClick={() => change && assign(change.ids)}
 						disabled={!change || isPending}
 					>
 						{isPending

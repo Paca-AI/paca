@@ -7,8 +7,14 @@ Feature: Global roles management
   One global role is the default: the role every new user and every new
   global agent starts with, marked in the table's "Default" column. It is data
   rather than a name the API hardcodes, so it can be moved to another role
-  (needs global_roles.write) and, like the default task status and task type,
+  (needs roles:write) and, like the default task status and task type,
   the role that holds it cannot be deleted.
+
+  A role is an IAM policy document: Allow and Deny statements over actions and
+  resources. The role form edits it either as a switch per permission (Simple)
+  or as the policy JSON (Advanced), and a user, team member or agent can hold
+  several roles. The built-in roles SUPER_ADMIN, ADMIN and USER can be edited like any other
+  role but not deleted.
 
   @authenticated
   Rule: Viewing the roles list
@@ -23,7 +29,7 @@ Feature: Global roles management
       And the statistics bar should show the total permission grants across all roles
 
     Scenario: Roles table displays expected columns and rows
-      Then the roles table should have columns "Name", "Permissions", and "Default"
+      Then the roles table should have columns "Name", "Description", and "Default", and no "Permissions" column
       And each default role should appear as a row in the table
 
     Scenario: "New Role" button is displayed for users with write permission
@@ -58,10 +64,12 @@ Feature: Global roles management
       And the role "SECURITY_MANAGER" should appear in the roles table
       And the statistics bar should reflect the updated role count
 
-    Scenario: Submitting without a name is blocked
+    Scenario: Submitting without a name is answered inline
       When the user clicks the "New Role" button
       And the user leaves the role name empty
-      Then the "Create role" submit button should be disabled
+      And the user clicks "Create role"
+      Then the dialog should stay open
+      And the message "Enter a role name of up to 100 characters." should be shown
 
     Scenario: Cancelling the dialog discards changes
       When the user clicks the "New Role" button
@@ -74,7 +82,18 @@ Feature: Global roles management
       And the user fills the role name with "EMPTY_PERMISSIONS_ROLE"
       And the user clicks "Create role"
       Then the role "EMPTY_PERMISSIONS_ROLE" should appear in the roles table
-      And the role should show zero active permissions
+      And the role should show the "No description" placeholder
+      And the role should be stored with no permissions
+
+    Scenario: Creating a role with a description shows it in the table
+      When the user clicks the "New Role" button
+      And the user fills the role name with "DESCRIBED_ROLE"
+      And the user fills the description with "Reads users and nothing else"
+      And the user enables the "Read Users" permission
+      And the user clicks "Create role"
+      Then the role "DESCRIBED_ROLE" should appear in the roles table
+      And the role "DESCRIBED_ROLE" should show the description "Reads users and nothing else"
+      And editing the role should pre-fill the description
 
     Scenario: Enabling all permissions in a domain group collapses to a wildcard
       When the user clicks the "New Role" button
@@ -85,7 +104,7 @@ Feature: Global roles management
       And the user clicks "Create role"
       Then the dialog should close
       And the role "GLOBAL_ROLES_WILDCARD_ROLE" should appear in the roles table
-      And the role should show 1 active permission representing "global_roles.*"
+      And the role should be stored with 1 permission representing "roles:*"
 
     Scenario: Enabling all users permissions collapses to users wildcard
       When the user clicks the "New Role" button
@@ -96,7 +115,7 @@ Feature: Global roles management
       And the user clicks "Create role"
       Then the dialog should close
       And the role "USERS_WILDCARD_ROLE" should appear in the roles table
-      And the role should show 1 active permission representing "users.*"
+      And the role should be stored with 1 permission representing "users:*"
 
     Scenario: Enabling all projects permissions collapses to projects wildcard
       When the user clicks the "New Role" button
@@ -105,14 +124,10 @@ Feature: Global roles management
       And the user enables the "Create Projects" permission
       And the user enables the "Write Projects" permission
       And the user enables the "Delete Projects" permission
-      And the user enables the "Read Project Members" permission
-      And the user enables the "Write Project Members" permission
-      And the user enables the "Read Project Roles" permission
-      And the user enables the "Write Project Roles" permission
       And the user clicks "Create role"
       Then the dialog should close
       And the role "PROJECTS_WILDCARD_ROLE" should appear in the roles table
-      And the role should show 1 active permission representing "projects.*"
+      And the role should be stored with 1 permission representing "projects:*"
 
     Scenario: Enabling all permissions across all groups collapses each domain independently
       When the user clicks the "New Role" button
@@ -127,14 +142,10 @@ Feature: Global roles management
       And the user enables the "Create Projects" permission
       And the user enables the "Write Projects" permission
       And the user enables the "Delete Projects" permission
-      And the user enables the "Read Project Members" permission
-      And the user enables the "Write Project Members" permission
-      And the user enables the "Read Project Roles" permission
-      And the user enables the "Write Project Roles" permission
       And the user clicks "Create role"
       Then the dialog should close
       And the role "SUPER_ROLE" should appear in the roles table
-      And the role should show 3 active permissions representing "global_roles.*", "users.*", and "projects.*"
+      And the role should be stored with 3 permissions representing "roles:*", "users:*", and "projects:*"
 
     Scenario: Creating a role with permissions from multiple groups
       When the user clicks the "New Role" button
@@ -144,7 +155,7 @@ Feature: Global roles management
       And the user clicks "Create role"
       Then the dialog should close
       And the role "MIXED_ROLE" should appear in the roles table
-      And the role should show 2 active permissions
+      And the role should be stored with 2 permissions
 
     Scenario: Toggling a permission on then off leaves it disabled
       When the user clicks the "New Role" button
@@ -168,7 +179,7 @@ Feature: Global roles management
 
     Scenario: Each group in the Projects domain is labelled correctly
       When the user clicks the "New Role" button
-      Then the "Projects" group should contain "Read All Projects", "Create Projects", "Write Projects", "Delete Projects", "Read Project Members", "Write Project Members", "Read Project Roles", and "Write Project Roles" permissions
+      Then the "Projects" group should contain "Read All Projects", "Create Projects", "Write Projects", and "Delete Projects" permissions
 
     Scenario: Each permission switch shows a label and description
       When the user clicks the "New Role" button
@@ -182,10 +193,6 @@ Feature: Global roles management
       And the "Create Projects" permission should show description "Create new projects"
       And the "Write Projects" permission should show description "Update project details"
       And the "Delete Projects" permission should show description "Permanently delete projects"
-      And the "Read Project Members" permission should show description "View members of any project"
-      And the "Write Project Members" permission should show description "Add, remove, and update members in any project"
-      And the "Read Project Roles" permission should show description "View roles defined in any project"
-      And the "Write Project Roles" permission should show description "Create and update roles in any project"
 
     Scenario: All permission switches are off by default in the create dialog
       When the user clicks the "New Role" button
@@ -199,10 +206,6 @@ Feature: Global roles management
       And the "Create Projects" permission switch should be off
       And the "Write Projects" permission switch should be off
       And the "Delete Projects" permission switch should be off
-      And the "Read Project Members" permission switch should be off
-      And the "Write Project Members" permission switch should be off
-      And the "Read Project Roles" permission switch should be off
-      And the "Write Project Roles" permission switch should be off
 
     Scenario: Enabling a permission updates the switch to on
       When the user clicks the "New Role" button
@@ -210,13 +213,13 @@ Feature: Global roles management
       Then the "Assign Global Roles" permission switch should be on
       And all other permission switches should remain off
 
-    Scenario: Permissions count in the table matches granted permissions
+    Scenario: The stored role matches the granted permissions
       When the user clicks the "New Role" button
       And the user fills the role name with "COUNT_CHECK_ROLE"
       And the user enables the "Read Global Roles" permission
       And the user enables the "Delete Users" permission
       And the user clicks "Create role"
-      Then the role "COUNT_CHECK_ROLE" should show 2 active permissions
+      Then the role "COUNT_CHECK_ROLE" should be stored with 2 permissions
       And the statistics bar should reflect the added permission grants
 
     Scenario: Closing and reopening the dialog resets permission state
@@ -267,7 +270,7 @@ Feature: Global roles management
       And the user enables the "Read Users" permission
       And the user clicks "Save changes"
       Then the dialog should close
-      And the role "EDITABLE_ROLE" should show 3 active permissions
+      And the role "EDITABLE_ROLE" should be stored with 3 permissions
 
     Scenario: Completing a domain group during edit collapses it to a wildcard
       Given a custom role named "EDITABLE_ROLE" exists with "Read Global Roles" and "Write Global Roles" permissions
@@ -276,7 +279,7 @@ Feature: Global roles management
       And the user enables the "Assign Global Roles" permission
       And the user clicks "Save changes"
       Then the dialog should close
-      And the role "EDITABLE_ROLE" should show 1 active permission representing "global_roles.*"
+      And the role "EDITABLE_ROLE" should be stored with 1 permission representing "roles:*"
 
     Scenario: Removing all permissions from an existing role
       Given a custom role named "EDITABLE_ROLE" exists with "Read Global Roles" and "Read Users" permissions
@@ -286,7 +289,7 @@ Feature: Global roles management
       And the user disables the "Read Users" permission
       And the user clicks "Save changes"
       Then the dialog should close
-      And the role "EDITABLE_ROLE" should show zero active permissions
+      And the role "EDITABLE_ROLE" should be stored with no permissions
 
     Scenario: Edit dialog pre-populates the correct permission switches
       Given a custom role named "EDITABLE_ROLE" exists with "Assign Global Roles" and "Delete Users" permissions
@@ -341,10 +344,14 @@ Feature: Global roles management
 
     Scenario: The role new accounts start with is marked and cannot be deleted
       Then exactly one role should be marked "Default" in the roles table
-      And the "USER" row should carry the "Default" mark
-      And the "USER" row should offer "Edit role" but not "Set as default role"
-      And the "USER" row should show "Delete role" disabled with the reason "The default role can't be deleted. Make another role the default first."
-      And the API should refuse to delete the default role with the code "GLOBAL_ROLE_IS_DEFAULT"
+      And the "USER" row should carry the "Default" mark and the "Built-in role" lock
+      And the "USER" row should offer "Edit role" but neither "Delete role" nor "Set as default role"
+      And the API should refuse to delete the default role with the code "ROLE_IS_SYSTEM" or "ROLE_IS_DEFAULT"
+
+    Scenario: Built-in roles can be edited but not deleted
+      Then the "SUPER_ADMIN", "ADMIN" and "USER" rows should carry the "Built-in role" lock
+      And they should offer "Edit role" but not "Delete role"
+      And the API should refuse to delete them with the code "ROLE_IS_SYSTEM"
 
     Scenario: Making another role the default asks first, then moves the mark
       Given a custom role named "PROMOTED_ROLE" exists
@@ -354,7 +361,7 @@ Feature: Global roles management
       When the user confirms with "Set as default"
       Then the "PROMOTED_ROLE" row should carry the "Default" mark instead of the "USER" row
       And the "PROMOTED_ROLE" row should show "Delete role" disabled
-      And the "USER" row should show "Delete role" enabled
+      And the "USER" row should offer "Set as default role" again
 
     Scenario: Cancelling the confirmation changes nothing
       Given a custom role named "NOT_PROMOTED_ROLE" exists
@@ -370,16 +377,57 @@ Feature: Global roles management
       Then the dialog should warn that the role grants every permission
 
   @authenticated
+  Rule: Editing a role as a policy
+
+    Background:
+      Given the user already has a stored authenticated admin session
+      And the user is on the global roles page
+
+    Scenario: The Simple view is the default and the Advanced view shows the policy as JSON
+      When the user clicks the "New Role" button
+      Then the "Simple" mode should be selected
+      When the user enables the "Read Users" permission
+      And the user switches to "Advanced (JSON)"
+      Then the "Policy (JSON)" field should hold one Allow statement for "users:read"
+      When the user switches back to "Simple"
+      Then the "Read Users" permission switch should be on
+
+    Scenario: Creating a role from a JSON policy
+      When the user clicks the "New Role" button
+      And the user fills the role name with "JSON_ROLE"
+      And the user switches to "Advanced (JSON)"
+      And the user enters a policy allowing "users:read" and "roles:read"
+      And the user clicks "Create role"
+      Then the role "JSON_ROLE" should show the permissions "users:read" and "roles:read"
+
+    Scenario: A policy that is not valid JSON cannot be saved
+      When the user clicks the "New Role" button
+      And the user switches to "Advanced (JSON)"
+      And the user enters "{ \"statements\": ["
+      Then the editor should say that the JSON is not valid
+      And the "Create role" button should be disabled
+
+    Scenario: A role with a Deny statement opens as JSON only and keeps its Deny on save
+      Given a custom role named "DENY_ROLE" allows "users:*" and denies "users:delete"
+      When the user opens the edit dialog of "DENY_ROLE"
+      Then the dialog should say the role uses advanced features and can only be edited as JSON
+      And the dialog should explain that it has several statements
+      When the user tries to switch to "Simple"
+      Then the JSON view should stay
+      When the user clicks "Save changes"
+      Then the stored policy should still contain the Deny statement
+
+  @authenticated
   Rule: Permission-based access control
 
     Scenario: Read-only admin sees the table but no modification controls
-      Given the user already has a stored session with only "global_roles.read" permission
+      Given the user already has a stored session with only "roles:read" permission
       And the user navigates to the global roles page
       Then the roles table should be visible
       And the "New Role" button should not be visible
       And no edit or delete buttons should be visible on any role row
 
-    Scenario: User without global_roles.read is redirected
+    Scenario: User without roles:read is redirected
       Given the user already has a stored session without any global roles permission
       When the user navigates to the global roles page
       Then the user should be redirected to the home page

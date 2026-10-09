@@ -1,0 +1,34 @@
+{
+  "version": "2026-10-01",
+  "statements": [
+    {
+      "sid": "ReadProject",
+      "effect": "Allow",
+      "actions": ["projects:read"],
+      "resources": ["project/PROJECT_ID"]
+    },
+    {
+      "sid": "Work",
+      "effect": "Allow",
+      "actions": [
+        "agents:read", "agents:write",
+        "annotations:read", "annotations:resolve", "annotations:write",
+        "conversations:read", "conversations:write",
+        "docs:read", "docs:write",
+        "environments:connect", "environments:read", "environments:write",
+        "project.members:read",
+        "sprints:read", "sprints:write",
+        "tasks:read", "tasks:write",
+        "views:read", "views:write",
+        "workflows:read", "workflows:write"
+      ],
+      "resources": ["project/PROJECT_ID/*"]
+    },
+    {
+      "sid": "ReadRoles",
+      "effect": "Allow",
+      "actions": ["roles:read"],
+      "resources": ["project/PROJECT_ID/role/*"]
+    }
+  ]
+}

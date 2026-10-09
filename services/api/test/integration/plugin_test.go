@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
@@ -206,9 +206,9 @@ func newPluginTestEnv(t *testing.T, adminPerms bool) *pluginTestEnv {
 
 	// Seed a user so we can generate a valid JWT.
 	userID := uuid.New()
-	perms := []authz.Permission{authz.PermissionProjectsRead}
+	perms := []iam.Action{iam.ActionProjectsRead}
 	if adminPerms {
-		perms = append(perms, authz.PermissionPluginsRead, authz.PermissionPluginsWrite)
+		perms = append(perms, iam.ActionPluginsRead, iam.ActionPluginsWrite)
 	}
 	permStore := &integrationPermissionStore{globalPerms: perms}
 
@@ -216,11 +216,10 @@ func newPluginTestEnv(t *testing.T, adminPerms bool) *pluginTestEnv {
 
 	r := router.New(router.Deps{
 		TokenManager: tm,
-		Authorizer:   authz.NewAuthorizer(permStore),
+		IAM:          newIAM(permStore),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),
-		GlobalRole:   handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
 		Plugin:       pluginHandler,
 		Log:          log,
 	})

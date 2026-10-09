@@ -10,21 +10,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
 )
 
 // scopedStore grants fixed permission sets: global (a global role) and project
-// (the caller's role in whichever project is asked about).
-type scopedStore struct{ global, project []authz.Permission }
+// (the caller's role in whichever project is asked about), served to the IAM
+// engine as migration 000064 would translate them (see roleGrants).
+type scopedStore struct{ global, project []iam.Action }
 
-func (s *scopedStore) ListGlobalPermissions(context.Context, uuid.UUID) ([]authz.Permission, error) {
-	return s.global, nil
-}
-
-func (s *scopedStore) ListProjectPermissions(context.Context, uuid.UUID, uuid.UUID) ([]authz.Permission, error) {
-	return s.project, nil
+func (s *scopedStore) ListGrants(context.Context, iam.Principal) ([]iam.Grant, error) {
+	return roleGrants(s.global, s.project), nil
 }
 
 // visibilityFake reports every project as public or private.
@@ -49,7 +46,7 @@ type gateCase struct {
 func runGate(t *testing.T, tc gateCase, build func(g guards) func(http.Handler) http.Handler) int {
 	t.Helper()
 	g := newGuards(Deps{
-		Authorizer:           authz.NewAuthorizer(&tc.store),
+		IAM:                  newTestIAM(&tc.store),
 		ProjectVisibilitySvc: visibilityFake{public: tc.publicProject},
 	})
 	tokens := jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour)
@@ -80,14 +77,14 @@ func runGateCases(t *testing.T, cases []gateCase, build func(g guards) func(http
 
 // Global reads global grants only, and requires ALL the permissions it is given.
 func TestGuards_Global(t *testing.T) {
-	both := []authz.Permission{authz.PermissionUsersWrite, authz.PermissionGlobalRolesAssign}
+	both := []iam.Action{iam.ActionUsersWrite, iam.ActionRolesAssign}
 	runGateCases(t, []gateCase{
 		{name: "holds every permission", store: scopedStore{global: both}, authenticated: true, want: http.StatusNoContent},
 		{name: "one of two is not enough", store: scopedStore{global: both[:1]}, authenticated: true, want: http.StatusForbidden},
 		{name: "project grants do not count", store: scopedStore{project: both}, authenticated: true, want: http.StatusForbidden},
 		{name: "anonymous", store: scopedStore{global: both}, want: http.StatusUnauthorized},
 	}, func(g guards) func(http.Handler) http.Handler {
-		return g.Global(authz.PermissionUsersWrite, authz.PermissionGlobalRolesAssign)
+		return g.Global(iam.ActionUsersWrite, iam.ActionRolesAssign)
 	})
 }
 
@@ -95,14 +92,14 @@ func TestGuards_Global(t *testing.T) {
 // global role reaches in only through the "*" wildcard (GHSA-hjcj-373w-vq8m).
 func TestGuards_Project(t *testing.T) {
 	runGateCases(t, []gateCase{
-		{name: "project role grants it", store: scopedStore{project: []authz.Permission{authz.PermissionSprintsWrite}}, authenticated: true, want: http.StatusNoContent},
-		{name: "a named global permission does not reach into a project", store: scopedStore{global: []authz.Permission{authz.PermissionSprintsWrite}}, authenticated: true, want: http.StatusForbidden},
-		{name: "the global wildcard does", store: scopedStore{global: []authz.Permission{authz.PermissionAll}}, authenticated: true, want: http.StatusNoContent},
+		{name: "project role grants it", store: scopedStore{project: []iam.Action{iam.ActionSprintsWrite}}, authenticated: true, want: http.StatusNoContent},
+		{name: "a named global permission does not reach into a project", store: scopedStore{global: []iam.Action{iam.ActionSprintsWrite}}, authenticated: true, want: http.StatusForbidden},
+		{name: "the global wildcard does", store: scopedStore{global: []iam.Action{actionAll}}, authenticated: true, want: http.StatusNoContent},
 		{name: "no grants", authenticated: true, want: http.StatusForbidden},
 		{name: "anonymous", want: http.StatusUnauthorized},
 		{name: "anonymous on a public project still needs to log in", publicProject: true, want: http.StatusUnauthorized},
 	}, func(g guards) func(http.Handler) http.Handler {
-		return g.Project(authz.PermissionSprintsWrite)
+		return g.Project(iam.ActionSprintsWrite)
 	})
 }
 
@@ -113,10 +110,10 @@ func TestGuards_ProjectOrPublic(t *testing.T) {
 	runGateCases(t, []gateCase{
 		{name: "anonymous, public project", publicProject: true, want: http.StatusNoContent},
 		{name: "anonymous, private project", want: http.StatusUnauthorized},
-		{name: "global projects.read", store: scopedStore{global: []authz.Permission{authz.PermissionProjectsRead}}, authenticated: true, want: http.StatusNoContent},
-		{name: "project role grants it", store: scopedStore{project: []authz.Permission{authz.PermissionSprintsRead}}, authenticated: true, want: http.StatusNoContent},
+		{name: "global projects.read", store: scopedStore{global: []iam.Action{iam.ActionProjectsRead}}, authenticated: true, want: http.StatusNoContent},
+		{name: "project role grants it", store: scopedStore{project: []iam.Action{iam.ActionSprintsRead}}, authenticated: true, want: http.StatusNoContent},
 		{name: "logged in with nothing is refused even on a public project", authenticated: true, publicProject: true, want: http.StatusForbidden},
 	}, func(g guards) func(http.Handler) http.Handler {
-		return g.ProjectOrPublic(authz.PermissionSprintsRead)
+		return g.ProjectOrPublic(iam.ActionSprintsRead)
 	})
 }

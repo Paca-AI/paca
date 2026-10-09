@@ -8,33 +8,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 )
 
 func seedTaskMemberUser(t *testing.T, env *e2eEnv, username, password string) {
 	t.Helper()
 	seedUser(t, env, username, password, "Task Member")
 	roleName := "TASK_MEMBER_" + uuid.NewString()
-	if err := env.roleRepo.Create(env.ctx, &globalroledom.GlobalRole{
-		ID:   uuid.New(),
-		Name: roleName,
-		Permissions: map[string]any{
-			"projects.create": true,
-			"projects.read":   true,
-			"projects.write":  true,
-			"projects.delete": true,
-			"tasks.read":      true,
-			"tasks.write":     true,
-			"sprints.read":    true,
-			"sprints.write":   true,
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}); err != nil {
-		t.Fatalf("create task-member role: %v", err)
-	}
-	assignGlobalRolesByName(t, env, username, roleName)
+	createPlatformRole(t, env, roleName, "projects:create", "projects:read", "projects:write", "projects:delete")
+	assignPlatformRole(t, env, username, roleName)
 }
 
 func taskMemberLogin(t *testing.T, env *e2eEnv, username, password string) (*http.Client, string) {

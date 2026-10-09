@@ -489,7 +489,7 @@ test.describe("Conversations permissions in a project", () => {
 	}) => {
 		const projectId = await seedProject(request, "PERM_NONE");
 		const username = await createMember(request, playwright, projectId, {
-			"tasks.read": true,
+			"tasks:read": true,
 		});
 		await signIn(page, username, RESTRICTED_PASSWORD);
 
@@ -507,7 +507,7 @@ test.describe("Conversations permissions in a project", () => {
 	}) => {
 		const projectId = await seedProject(request, "PERM_READ");
 		const username = await createMember(request, playwright, projectId, {
-			"conversations.read": true,
+			"conversations:read": true,
 		});
 		await signIn(page, username, RESTRICTED_PASSWORD);
 		await overrideJson(page, projectListUrl(projectId), (data) => ({
@@ -540,7 +540,7 @@ test.describe("Conversations permissions in a project", () => {
 	}) => {
 		const projectId = await seedProject(request, "PERM_COMPOSER");
 		const username = await createMember(request, playwright, projectId, {
-			"conversations.read": true,
+			"conversations:read": true,
 		});
 		await signIn(page, username, RESTRICTED_PASSWORD);
 

@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	activitysvc "github.com/Paca-AI/api/internal/service/activity"
@@ -64,13 +64,12 @@ func buildCachedTaskRouter(t *testing.T, taskRepo *fakeTaskRepo, store *projectP
 
 	r := router.New(router.Deps{
 		TokenManager:         tm,
-		Authorizer:           authz.NewAuthorizer(store),
+		IAM:                  newIAM(store),
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
 		User:                 handler.NewUserHandler(userService),
-		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
-		Project:              handler.NewProjectHandler(projectService, authz.NewAuthorizer(store)),
+		Project:              handler.NewProjectHandler(projectService, newIAM(store)),
 		Task:                 handler.NewTaskHandler(cachedTaskSvc, viewService, activityService),
 		Log:                  log,
 	})
@@ -92,10 +91,10 @@ func TestCacheIntegration_TaskTypes_HitAndInvalidation(t *testing.T) {
 	taskRepo := newFakeTaskRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
+		projectPerms: map[uuid.UUID][]iam.Action{
 			projectID: {
-				authz.PermissionTasksRead,
-				authz.PermissionProjectSettingsTaskTypesWrite,
+				iam.ActionTasksRead,
+				iam.ActionProjectSettingsTaskTypesWrite,
 			},
 		},
 	}
@@ -155,10 +154,10 @@ func TestCacheIntegration_TaskStatuses_HitAndInvalidation(t *testing.T) {
 	taskRepo := newFakeTaskRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
+		projectPerms: map[uuid.UUID][]iam.Action{
 			projectID: {
-				authz.PermissionTasksRead,
-				authz.PermissionProjectSettingsTaskStatusesWrite,
+				iam.ActionTasksRead,
+				iam.ActionProjectSettingsTaskStatusesWrite,
 			},
 		},
 	}
@@ -208,9 +207,9 @@ func TestCacheIntegration_PerProject_CacheIsolation(t *testing.T) {
 	projectA := uuid.New()
 	projectB := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectA: {authz.PermissionTasksRead, authz.PermissionProjectSettingsTaskTypesWrite},
-			projectB: {authz.PermissionTasksRead, authz.PermissionProjectSettingsTaskTypesWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectA: {iam.ActionTasksRead, iam.ActionProjectSettingsTaskTypesWrite},
+			projectB: {iam.ActionTasksRead, iam.ActionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r, _ := buildCachedTaskRouter(t, taskRepo, store)

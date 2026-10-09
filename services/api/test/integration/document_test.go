@@ -17,7 +17,7 @@ import (
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
@@ -315,13 +315,12 @@ func buildDocTestRouter(docRepo *fakeDocRepoIT, store *projectPermStore) http.Ha
 
 	return router.New(router.Deps{
 		TokenManager:         tm,
-		Authorizer:           authz.NewAuthorizer(store),
+		IAM:                  newIAM(store),
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
 		User:                 handler.NewUserHandler(userService),
-		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
-		Project:              handler.NewProjectHandler(projectService, authz.NewAuthorizer(store)),
+		Project:              handler.NewProjectHandler(projectService, newIAM(store)),
 		Task:                 handler.NewTaskHandler(taskService, viewService, activityService),
 		Sprint:               handler.NewSprintHandler(sprintService, viewService),
 		View:                 handler.NewViewHandler(viewService),
@@ -378,8 +377,8 @@ func TestIntegrationDocFolders_CRUD(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -429,8 +428,8 @@ func TestIntegrationDocFolders_InvalidNameReturns400(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -450,8 +449,8 @@ func TestIntegrationDocFolders_DeleteNotFoundReturns404(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -471,8 +470,8 @@ func TestIntegrationDocFolders_NoPermissionReturns403(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead}, // read-only, no write
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead}, // read-only, no write
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -493,8 +492,8 @@ func TestIntegrationDocuments_CRUD(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -551,8 +550,8 @@ func TestIntegrationDocuments_GetNotFoundReturns404(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -572,8 +571,8 @@ func TestIntegrationDocuments_EmptyTitleCreatesUntitled(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -601,8 +600,8 @@ func TestIntegrationDocuments_UpdateWithEmptyTitleReturns400(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -628,8 +627,8 @@ func TestIntegrationDocuments_FilterByFolder(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -675,8 +674,8 @@ func TestIntegrationDocuments_Snapshots(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -747,8 +746,8 @@ func TestIntegrationDocuments_SnapshotNotFoundReturns404(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -781,8 +780,8 @@ func TestIntegrationDocuments_Comments_CRUD(t *testing.T) {
 	projectID := uuid.New()
 	userID := uuid.NewString()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -839,8 +838,8 @@ func TestIntegrationDocuments_AddEmptyCommentReturns400(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -872,8 +871,8 @@ func TestIntegrationDocuments_AddStringCommentReturns400(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -920,8 +919,8 @@ func TestIntegrationDocuments_ForbiddenReturns403(t *testing.T) {
 	docRepo := newFakeDocRepoIT()
 	projectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionDocsRead}, // read-only
+		projectPerms: map[uuid.UUID][]iam.Action{
+			projectID: {iam.ActionDocsRead}, // read-only
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)
@@ -947,12 +946,12 @@ func TestIntegrationDocuments_CrossProjectAccessReturns404(t *testing.T) {
 	victimProjectID := uuid.New()
 	attackerProjectID := uuid.New()
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
+		projectPerms: map[uuid.UUID][]iam.Action{
 			// The attacker legitimately holds docs.read/docs.write in their
 			// own project — that alone must not grant access to another
 			// project's documents by UUID.
-			victimProjectID:   {authz.PermissionDocsRead, authz.PermissionDocsWrite},
-			attackerProjectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+			victimProjectID:   {iam.ActionDocsRead, iam.ActionDocsWrite},
+			attackerProjectID: {iam.ActionDocsRead, iam.ActionDocsWrite},
 		},
 	}
 	r := buildDocTestRouter(docRepo, store)

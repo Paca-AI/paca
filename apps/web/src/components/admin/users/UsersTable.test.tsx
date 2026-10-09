@@ -9,7 +9,7 @@ const baseUser: User = {
 	id: "u1",
 	username: "alice",
 	full_name: "Alice Smith",
-	role: "Admin",
+	roles: [{ id: "r-admin", name: "Admin" }],
 	must_change_password: false,
 	created_at: "2026-01-15T00:00:00.000Z",
 };
@@ -18,7 +18,7 @@ const anotherUser: User = {
 	id: "u2",
 	username: "bob",
 	full_name: "Bob Jones",
-	role: "User",
+	roles: [{ id: "r-user", name: "User" }],
 	must_change_password: true,
 	created_at: "2026-02-20T00:00:00.000Z",
 };
@@ -98,11 +98,46 @@ describe("UsersTable", () => {
 		expect(screen.getByText("pwd reset")).toBeInTheDocument();
 	});
 
-	it("shows em dash when full_name is empty", () => {
+	it("shows the username as the name, and an em dash, when full_name and email are empty", () => {
 		const userNoName: User = { ...baseUser, full_name: "" };
 		renderTable([userNoName]);
 
+		expect(screen.getByText("alice")).toBeInTheDocument();
 		expect(screen.getByText("—")).toBeInTheDocument();
+	});
+
+	it("shows the email under the username when there is no full name", () => {
+		renderTable([{ ...baseUser, full_name: "", email: "alice@example.com" }]);
+
+		expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+	});
+
+	it("shows initials in the avatar", () => {
+		renderTable([baseUser]);
+
+		expect(screen.getByText("AS")).toBeInTheDocument();
+	});
+
+	it("folds roles beyond the second into a +N that lists them all", async () => {
+		renderTable([
+			{
+				...baseUser,
+				roles: ["A", "B", "C", "D"].map((n) => ({ id: `r-${n}`, name: n })),
+			},
+		]);
+
+		expect(screen.queryByText("C")).not.toBeInTheDocument();
+		await userEvent.click(
+			screen.getByRole("button", { name: /Show more roles/ }),
+		);
+		expect(await screen.findByText("All roles (4)")).toBeInTheDocument();
+		expect(screen.getByText("D")).toBeInTheDocument();
+	});
+
+	it("tells a user who must change their password apart by an indicator", () => {
+		renderTable([anotherUser]);
+
+		expect(screen.getByTitle(/must set a new password/)).toBeInTheDocument();
 	});
 
 	it("hides action column when neither canWrite nor canDelete is set", () => {
@@ -194,12 +229,14 @@ describe("UsersTable", () => {
 			expect(screen.queryByTitle("Change role")).not.toBeInTheDocument();
 		});
 
-		it("makes the role a button that opens the change-role flow for that user", async () => {
+		it("adds a change-role button that opens the change-role flow for that user", async () => {
 			const { onChangeRole } = renderTable([baseUser, anotherUser], {
 				canAssignRole: true,
 			});
 
-			await userEvent.click(screen.getByRole("button", { name: "User" }));
+			await userEvent.click(
+				screen.getAllByRole("button", { name: "Change role" })[1],
+			);
 
 			expect(onChangeRole).toHaveBeenCalledTimes(1);
 			expect(onChangeRole).toHaveBeenCalledWith(anotherUser);
@@ -208,7 +245,9 @@ describe("UsersTable", () => {
 		it("offers the role button without users.write, since the two permissions are independent", () => {
 			renderTable([baseUser], { canWrite: false, canAssignRole: true });
 
-			expect(screen.getByRole("button", { name: "Admin" })).toBeInTheDocument();
+			expect(
+				screen.getByRole("button", { name: "Change role" }),
+			).toBeInTheDocument();
 			expect(screen.queryByTitle("Edit user")).not.toBeInTheDocument();
 		});
 
@@ -217,7 +256,7 @@ describe("UsersTable", () => {
 
 			expect(screen.getByTitle("Edit user")).toBeInTheDocument();
 			expect(
-				screen.queryByRole("button", { name: "Admin" }),
+				screen.queryByRole("button", { name: "Change role" }),
 			).not.toBeInTheDocument();
 		});
 	});

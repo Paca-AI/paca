@@ -776,7 +776,7 @@ export function CustomFieldsSettings({
 	// the field definitions is implied by tasks.read, same as viewing the
 	// tasks whose values reference them (see authz.
 	// PermissionProjectSettingsTaskTypesWrite's doc comment on the Go side).
-	const canRead = hasProjectPermission("tasks.read");
+	const canRead = hasProjectPermission("tasks:read");
 	const {
 		data: fields = [],
 		isLoading: isDataLoading,

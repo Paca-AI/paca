@@ -1,0 +1,19 @@
+{
+  "version": "2026-10-01",
+  "statements": [
+    {
+      "sid": "ReadUsers",
+      "effect": "Allow",
+      "actions": ["users:read"],
+      "resources": [
+        "user", "user/*",
+        "role", "role/*",
+        "plugin", "plugin/*",
+        "settings",
+        "sso",
+        "agent", "agent/*",
+        "project"
+      ]
+    }
+  ]
+}

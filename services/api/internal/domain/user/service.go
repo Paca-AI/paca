@@ -10,11 +10,10 @@ import (
 )
 
 // CreateInput carries the data needed to create a new user. A new account
-// always starts with the default global role (the one marked as the default,
-// see globalroledom.Service.SetDefault): assigning any other global role is a
-// separate action (global_roles.assign) done through the global-role
-// assignment route, so creation deliberately has no role to set.
-// MustChangePassword defaults to false when omitted.
+// always starts with the default role (the platform role marked as the
+// default): assigning any other role is a separate action (roles:assign) done
+// through PUT /admin/users/{id}/roles, so creation deliberately has no role to
+// set. MustChangePassword defaults to false when omitted.
 type CreateInput struct {
 	Username string
 	Password string
@@ -28,14 +27,14 @@ type CreateInput struct {
 // their own account.
 type UpdateProfileInput struct {
 	FullName string
-	// Email is left unchanged when empty, matching FullName/Role's
+	// Email is left unchanged when empty, matching FullName's
 	// "empty means no change" convention elsewhere in this input.
 	Email string
 }
 
 // AdminUpdateInput carries the profile fields an admin may change on any user
-// account. A user's global role is not among them: changing it is a separate
-// action (global_roles.assign), done through the global-role assignment route.
+// account. A user's roles are not among them: changing them is a separate
+// action (roles:assign), done through PUT /admin/users/{id}/roles.
 type AdminUpdateInput struct {
 	FullName string
 	// Email is left unchanged when empty, matching FullName's
@@ -61,7 +60,7 @@ type Service interface {
 	Create(ctx context.Context, in CreateInput) (*User, error)
 	// UpdateProfile lets a user update their own profile.
 	UpdateProfile(ctx context.Context, id uuid.UUID, in UpdateProfileInput) (*User, error)
-	// AdminUpdate lets an admin update any user's profile, including their role.
+	// AdminUpdate lets an admin update any user's profile (not their roles).
 	AdminUpdate(ctx context.Context, id uuid.UUID, in AdminUpdateInput) (*User, error)
 	// ResetPassword replaces a user's password hash with the hash of newPassword.
 	// It also sets MustChangePassword = true so the user is forced to change their

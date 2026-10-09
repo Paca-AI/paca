@@ -10,9 +10,9 @@ import (
 )
 
 // CreateUserRequest is the body for POST /admin/users.
-// Only users with the users.write permission can create accounts. A new
-// account always gets the default USER role; assign another with
-// PUT /admin/users/:userId/global-roles.
+// Only users with the users:write permission can create accounts. A new
+// account always gets the default role; assign others with
+// PUT /admin/users/:userId/roles.
 type CreateUserRequest struct {
 	Username string `json:"username"  binding:"required"`
 	Password string `json:"password"  binding:"required,min=8"`
@@ -21,11 +21,6 @@ type CreateUserRequest struct {
 	// plugin's welcome/invite email) — not for login. When set, a
 	// user.created event carrying it is published for plugins to act on.
 	Email string `json:"email" binding:"omitempty"`
-	// Role is no longer accepted here — assigning a role needs
-	// global_roles.assign, so it has its own route. The field exists only so
-	// a request that still sends one is rejected with a clear 400 instead of
-	// having it silently ignored.
-	Role string `json:"role" binding:"omitempty"`
 }
 
 // UpdateProfileRequest is the body for PATCH /users/me (self-service update).
@@ -36,12 +31,9 @@ type UpdateProfileRequest struct {
 }
 
 // AdminUpdateUserRequest is the body for PATCH /admin/users/:userId. It edits
-// the profile only; change a user's role with
-// PUT /admin/users/:userId/global-roles.
+// the profile only; change a user's roles with PUT /admin/users/:userId/roles.
 type AdminUpdateUserRequest struct {
 	FullName string `json:"full_name" binding:"omitempty"`
-	// Role is no longer accepted here — see CreateUserRequest.Role.
-	Role string `json:"role" binding:"omitempty"`
 	// Email is left unchanged when omitted/empty.
 	Email string `json:"email" binding:"omitempty"`
 }
@@ -59,12 +51,13 @@ type ChangeMyPasswordRequest struct {
 
 // UserResponse is the public representation of a user (no password hash).
 type UserResponse struct {
-	ID                 uuid.UUID `json:"id"`
-	Username           string    `json:"username"`
-	FullName           string    `json:"full_name"`
-	Email              *string   `json:"email,omitempty"`
-	Role               string    `json:"role"`
-	MustChangePassword bool      `json:"must_change_password"`
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+	FullName string    `json:"full_name"`
+	Email    *string   `json:"email,omitempty"`
+	// Roles are the platform roles attached to the user, sorted by name.
+	Roles              []RoleSummaryResponse `json:"roles"`
+	MustChangePassword bool                  `json:"must_change_password"`
 	// AvatarURL/AvatarThumbURL are presigned GET URLs, populated by the
 	// handler (not this mapper) via attachmentdom.AvatarService — nil when
 	// no avatar has been uploaded.
@@ -100,7 +93,7 @@ func UserFromEntity(u *userdom.User) UserResponse {
 		Username:           u.Username,
 		FullName:           u.FullName,
 		Email:              u.Email,
-		Role:               u.Role,
+		Roles:              RoleSummariesFromEntities(u.Roles),
 		MustChangePassword: u.MustChangePassword,
 		CreatedAt:          u.CreatedAt,
 	}

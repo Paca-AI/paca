@@ -16,7 +16,8 @@ import (
 	"github.com/google/uuid"
 
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	roledom "github.com/Paca-AI/api/internal/domain/role"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
@@ -32,14 +33,12 @@ type fakeProjectRepo struct {
 	mu sync.RWMutex
 
 	projects map[uuid.UUID]*projectdom.Project
-	roles    map[uuid.UUID]*projectdom.ProjectRole
 	members  map[string]*projectdom.ProjectMember
 }
 
 func newFakeProjectRepo() *fakeProjectRepo {
 	return &fakeProjectRepo{
 		projects: make(map[uuid.UUID]*projectdom.Project),
-		roles:    make(map[uuid.UUID]*projectdom.ProjectRole),
 		members:  make(map[string]*projectdom.ProjectMember),
 	}
 }
@@ -57,24 +56,6 @@ func cloneProject(in *projectdom.Project) *projectdom.Project {
 		out.Settings = make(map[string]any, len(in.Settings))
 		for k, v := range in.Settings {
 			out.Settings[k] = v
-		}
-	}
-	return &out
-}
-
-func cloneRole(in *projectdom.ProjectRole) *projectdom.ProjectRole {
-	if in == nil {
-		return nil
-	}
-	out := *in
-	if in.ProjectID != nil {
-		pid := *in.ProjectID
-		out.ProjectID = &pid
-	}
-	if in.Permissions != nil {
-		out.Permissions = make(map[string]any, len(in.Permissions))
-		for k, v := range in.Permissions {
-			out.Permissions[k] = v
 		}
 	}
 	return &out
@@ -142,7 +123,7 @@ func (r *fakeProjectRepo) FindByID(_ context.Context, id uuid.UUID) (*projectdom
 	return cloneProject(p), nil
 }
 
-func (r *fakeProjectRepo) Create(_ context.Context, p *projectdom.Project) error {
+func (r *fakeProjectRepo) Create(_ context.Context, p *projectdom.Project, setup projectdom.ProjectSetup) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -152,6 +133,13 @@ func (r *fakeProjectRepo) Create(_ context.Context, p *projectdom.Project) error
 		}
 	}
 	r.projects[p.ID] = cloneProject(p)
+	if setup.Creator != nil {
+		roles := make([]roledom.Summary, 0, 1)
+		roles = append(roles, roledom.Summary{ID: uuid.New(), Name: setup.CreatorRole})
+		r.members[memberKey(p.ID, *setup.Creator)] = &projectdom.ProjectMember{
+			ID: uuid.New(), ProjectID: p.ID, UserID: *setup.Creator, Roles: roles,
+		}
+	}
 	return nil
 }
 
@@ -193,101 +181,12 @@ func (r *fakeProjectRepo) Delete(_ context.Context, id uuid.UUID) error {
 		return projectdom.ErrNotFound
 	}
 	delete(r.projects, id)
-	for roleID, role := range r.roles {
-		if role.ProjectID != nil && *role.ProjectID == id {
-			delete(r.roles, roleID)
-		}
-	}
 	for key, m := range r.members {
 		if m.ProjectID == id {
 			delete(r.members, key)
 		}
 	}
 	return nil
-}
-
-func (r *fakeProjectRepo) ListRoles(_ context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	out := make([]*projectdom.ProjectRole, 0)
-	for _, role := range r.roles {
-		if role.ProjectID != nil && *role.ProjectID == projectID {
-			out = append(out, cloneRole(role))
-		}
-	}
-	return out, nil
-}
-
-func (r *fakeProjectRepo) FindRoleByID(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	role, ok := r.roles[id]
-	if !ok {
-		return nil, projectdom.ErrRoleNotFound
-	}
-	return cloneRole(role), nil
-}
-
-func (r *fakeProjectRepo) FindRoleByName(_ context.Context, projectID uuid.UUID, name string) (*projectdom.ProjectRole, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	for _, role := range r.roles {
-		if role.ProjectID != nil && *role.ProjectID == projectID && role.RoleName == name {
-			return cloneRole(role), nil
-		}
-	}
-	return nil, projectdom.ErrRoleNotFound
-}
-
-func (r *fakeProjectRepo) CreateRole(_ context.Context, role *projectdom.ProjectRole) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	for _, existing := range r.roles {
-		if existing.ProjectID != nil && role.ProjectID != nil && *existing.ProjectID == *role.ProjectID && existing.RoleName == role.RoleName {
-			return projectdom.ErrRoleNameTaken
-		}
-	}
-	r.roles[role.ID] = cloneRole(role)
-	return nil
-}
-
-func (r *fakeProjectRepo) UpdateRole(_ context.Context, role *projectdom.ProjectRole) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if _, ok := r.roles[role.ID]; !ok {
-		return projectdom.ErrRoleNotFound
-	}
-	r.roles[role.ID] = cloneRole(role)
-	return nil
-}
-
-func (r *fakeProjectRepo) DeleteRole(_ context.Context, id uuid.UUID) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if _, ok := r.roles[id]; !ok {
-		return projectdom.ErrRoleNotFound
-	}
-	delete(r.roles, id)
-	return nil
-}
-
-func (r *fakeProjectRepo) CountMembersWithRole(_ context.Context, roleID uuid.UUID) (int64, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	var count int64
-	for _, m := range r.members {
-		if m.ProjectRoleID == roleID {
-			count++
-		}
-	}
-	return count, nil
 }
 
 func (r *fakeProjectRepo) ListMembers(_ context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error) {
@@ -367,7 +266,7 @@ func (r *fakeProjectRepo) FindMemberByID(_ context.Context, id uuid.UUID) (*proj
 	return nil, projectdom.ErrMemberNotFound
 }
 
-func (r *fakeProjectRepo) AddMember(_ context.Context, m *projectdom.ProjectMember) error {
+func (r *fakeProjectRepo) AddMember(_ context.Context, m *projectdom.ProjectMember, roleIDs []uuid.UUID, _ *uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -375,7 +274,12 @@ func (r *fakeProjectRepo) AddMember(_ context.Context, m *projectdom.ProjectMemb
 	if _, ok := r.members[k]; ok {
 		return projectdom.ErrMemberAlreadyAdded
 	}
-	r.members[k] = cloneMember(m)
+	stored := cloneMember(m)
+	stored.Roles = nil
+	for _, id := range roleIDs {
+		stored.Roles = append(stored.Roles, roledom.Summary{ID: id, Name: "role"})
+	}
+	r.members[k] = stored
 	return nil
 }
 
@@ -391,33 +295,10 @@ func (r *fakeProjectRepo) RemoveMember(_ context.Context, projectID, userID uuid
 	return nil
 }
 
-func (r *fakeProjectRepo) UpdateMemberRole(_ context.Context, projectID, userID, roleID uuid.UUID) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	k := memberKey(projectID, userID)
-	m, ok := r.members[k]
-	if !ok {
-		return projectdom.ErrMemberNotFound
-	}
-	m.ProjectRoleID = roleID
-	r.members[k] = cloneMember(m)
+func (r *fakeProjectRepo) AddAgentMember(_ context.Context, _, _, _ uuid.UUID, _ []uuid.UUID, _ *uuid.UUID) error {
 	return nil
 }
-
-func (r *fakeProjectRepo) AddAgentMember(_ context.Context, _, _, _, _ uuid.UUID) error { return nil }
-func (r *fakeProjectRepo) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error    { return nil }
-func (r *fakeProjectRepo) UpdateMemberRoleByMemberID(_ context.Context, memberID, roleID uuid.UUID) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, m := range r.members {
-		if m.ID == memberID {
-			m.ProjectRoleID = roleID
-			return nil
-		}
-	}
-	return projectdom.ErrMemberNotFound
-}
+func (r *fakeProjectRepo) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error { return nil }
 func (r *fakeProjectRepo) UpdateMemberDescription(_ context.Context, memberID uuid.UUID, description string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -442,41 +323,11 @@ func (r *fakeProjectRepo) RemoveMemberByMemberID(_ context.Context, memberID uui
 }
 
 type projectPermStore struct {
-	globalPerms      []authz.Permission
-	projectPerms     map[uuid.UUID][]authz.Permission
-	userPerms        map[uuid.UUID]map[uuid.UUID][]authz.Permission // user_id -> project_id -> permissions
-	agentPerms       map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
-	agentGlobalPerms map[uuid.UUID][]authz.Permission               // agent_id -> permissions (via its own global role)
-}
-
-func (s *projectPermStore) ListGlobalPermissions(context.Context, uuid.UUID) ([]authz.Permission, error) {
-	return append([]authz.Permission(nil), s.globalPerms...), nil
-}
-
-func (s *projectPermStore) ListProjectPermissions(_ context.Context, userID uuid.UUID, projectID uuid.UUID) ([]authz.Permission, error) {
-	if userMap, ok := s.userPerms[userID]; ok {
-		if perms, ok := userMap[projectID]; ok {
-			return append([]authz.Permission(nil), perms...), nil
-		}
-	}
-	if s.projectPerms != nil {
-		perms := s.projectPerms[projectID]
-		return append([]authz.Permission(nil), perms...), nil
-	}
-	return nil, nil
-}
-
-// ListAgentProjectPermissions mirrors the real store: an agent that is not a
-// member of the project simply has no permissions there.
-func (s *projectPermStore) ListAgentProjectPermissions(_ context.Context, agentID, projectID uuid.UUID) ([]authz.Permission, error) {
-	if projMap, ok := s.agentPerms[projectID]; ok {
-		return append([]authz.Permission(nil), projMap[agentID]...), nil
-	}
-	return nil, nil
-}
-
-func (s *projectPermStore) ListAgentGlobalPermissions(_ context.Context, agentID uuid.UUID) ([]authz.Permission, error) {
-	return append([]authz.Permission(nil), s.agentGlobalPerms[agentID]...), nil
+	globalPerms      []iam.Action
+	projectPerms     map[uuid.UUID][]iam.Action
+	userPerms        map[uuid.UUID]map[uuid.UUID][]iam.Action // user_id -> project_id -> permissions
+	agentPerms       map[uuid.UUID]map[uuid.UUID][]iam.Action // project_id -> agent_id -> permissions
+	agentGlobalPerms map[uuid.UUID][]iam.Action               // agent_id -> permissions (via its own global role)
 }
 
 func buildProjectTestRouter(repo *fakeProjectRepo, store *projectPermStore) http.Handler {
@@ -495,13 +346,13 @@ func buildProjectTestRouterWithTaskRepo(repo *fakeProjectRepo, store *projectPer
 
 	return router.New(router.Deps{
 		TokenManager:         tm,
-		Authorizer:           authz.NewAuthorizer(store),
+		IAM:                  newIAM(store),
+		RolePolicies:         emptyRolePolicies{},
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
 		User:                 handler.NewUserHandler(userService),
-		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
-		Project:              handler.NewProjectHandler(projectService, authz.NewAuthorizer(store)),
+		Project:              handler.NewProjectHandler(projectService, newIAM(store)),
 		Task:                 handler.NewTaskHandler(tasksvc.New(taskRepo), sprintsvc.NewViewService(newFakeViewRepoIT(), newFakeSprintRepoIT(), taskRepo, nil), tasksvc.NewActivityService(activitysvc.New(newFakeTaskActivityRepo(), &fakeActivityMemberRepo{}, nil), taskRepo, &fakeActivityMemberRepo{})),
 		Log:                  log,
 	}), taskRepo
@@ -554,21 +405,6 @@ func projectIDFromCreate(t *testing.T, w *httptest.ResponseRecorder) string {
 	return id
 }
 
-func roleIDFromCreate(t *testing.T, w *httptest.ResponseRecorder) string {
-	t.Helper()
-	var env struct {
-		Data map[string]any `json:"data"`
-	}
-	if err := json.NewDecoder(w.Body).Decode(&env); err != nil {
-		t.Fatalf("decode create role response: %v", err)
-	}
-	id, _ := env.Data["id"].(string)
-	if id == "" {
-		t.Fatal("missing role id")
-	}
-	return id
-}
-
 func memberIDFromCreate(t *testing.T, w *httptest.ResponseRecorder) string {
 	t.Helper()
 	var env struct {
@@ -587,13 +423,13 @@ func memberIDFromCreate(t *testing.T, w *httptest.ResponseRecorder) string {
 func TestIntegrationProjectManagement_AdminCRUD(t *testing.T) {
 	repo := newFakeProjectRepo()
 	store := &projectPermStore{
-		globalPerms: []authz.Permission{
-			authz.PermissionProjectsRead,
-			authz.PermissionProjectsWrite,
-			authz.PermissionProjectsCreate,
-			authz.PermissionProjectsDelete,
+		globalPerms: []iam.Action{
+			iam.ActionProjectsRead,
+			iam.ActionProjectsWrite,
+			iam.ActionProjectsCreate,
+			iam.ActionProjectsDelete,
 		},
-		projectPerms: map[uuid.UUID][]authz.Permission{},
+		projectPerms: map[uuid.UUID][]iam.Action{},
 	}
 	r := buildProjectTestRouter(repo, store)
 	tok := issueProjectToken(t, uuid.NewString())
@@ -617,7 +453,7 @@ func TestIntegrationProjectManagement_AdminCRUD(t *testing.T) {
 	// this test passed those calls via the *global* projects.write/delete set
 	// above leaking into the project-scoped check instead — i.e. it was
 	// inadvertently asserting the vulnerability, not real project membership.
-	store.projectPerms[uuid.MustParse(projectID)] = []authz.Permission{authz.PermissionAll}
+	store.projectPerms[uuid.MustParse(projectID)] = []iam.Action{actionAll}
 
 	listW := serve(r, authedJSONReq(t.Context(), http.MethodGet, "/api/v1/projects", tok, nil))
 	if listW.Code != http.StatusOK {
@@ -653,7 +489,7 @@ func TestIntegrationProjectManagement_AdminCRUD(t *testing.T) {
 
 func TestIntegrationProjectManagement_AuthzGuards(t *testing.T) {
 	repo := newFakeProjectRepo()
-	store := &projectPermStore{globalPerms: []authz.Permission{authz.PermissionProjectsRead}}
+	store := &projectPermStore{globalPerms: []iam.Action{iam.ActionProjectsRead}}
 	r := buildProjectTestRouter(repo, store)
 	tok := issueProjectToken(t, uuid.NewString())
 
@@ -671,49 +507,32 @@ func TestIntegrationProjectManagement_AuthzGuards(t *testing.T) {
 	}
 }
 
-func TestIntegrationProjectRolesAndMembers_Flow(t *testing.T) {
+func TestIntegrationProjectMembers_Flow(t *testing.T) {
 	repo := newFakeProjectRepo()
 	projectID := uuid.New()
 	repo.projects[projectID] = &projectdom.Project{ID: projectID, Name: "Proj", CreatedAt: time.Now()}
 
 	store := &projectPermStore{
-		projectPerms: map[uuid.UUID][]authz.Permission{
+		projectPerms: map[uuid.UUID][]iam.Action{
 			projectID: {
-				authz.PermissionProjectRolesRead,
-				authz.PermissionProjectRolesWrite,
-				authz.PermissionProjectMembersRead,
-				authz.PermissionProjectMembersWrite,
+				iam.ActionProjectMembersRead,
+				iam.ActionProjectMembersWrite,
+				iam.ActionRolesAssign, // role_ids on add-member are gated on roles:assign
 			},
 		},
 	}
 	r := buildProjectTestRouter(repo, store)
 	tok := issueProjectToken(t, uuid.NewString())
 
-	createRoleURL := fmt.Sprintf("/api/v1/projects/%s/roles", projectID)
-	createRoleW := serve(r, authedJSONReq(t.Context(), http.MethodPost, createRoleURL, tok, map[string]any{
-		"role_name":   "developer",
-		"permissions": map[string]any{"tasks.read": true},
-	}))
-	if createRoleW.Code != http.StatusCreated {
-		t.Fatalf("create role: expected 201, got %d (%s)", createRoleW.Code, createRoleW.Body.String())
-	}
-	roleID := roleIDFromCreate(t, createRoleW)
-
-	dupRoleW := serve(r, authedJSONReq(t.Context(), http.MethodPost, createRoleURL, tok, map[string]any{
-		"role_name": "developer",
-	}))
-	if dupRoleW.Code != http.StatusConflict {
-		t.Fatalf("duplicate role: expected 409, got %d (%s)", dupRoleW.Code, dupRoleW.Body.String())
-	}
-	if code := decodeErrorCode(t, dupRoleW); code != "PROJECT_ROLE_NAME_TAKEN" {
-		t.Fatalf("expected PROJECT_ROLE_NAME_TAKEN, got %q", code)
-	}
+	// The roles API itself is covered by role_api_iam_test.go; this flow only
+	// needs a role id to hand to the member.
+	roleID := uuid.NewString()
 
 	memberUserID := uuid.New()
 	membersURL := fmt.Sprintf("/api/v1/projects/%s/members", projectID)
 	addMemberW := serve(r, authedJSONReq(t.Context(), http.MethodPost, membersURL, tok, map[string]any{
-		"user_id":         memberUserID,
-		"project_role_id": roleID,
+		"user_id":  memberUserID,
+		"role_ids": []string{roleID},
 	}))
 	if addMemberW.Code != http.StatusCreated {
 		t.Fatalf("add member: expected 201, got %d (%s)", addMemberW.Code, addMemberW.Body.String())
@@ -721,8 +540,8 @@ func TestIntegrationProjectRolesAndMembers_Flow(t *testing.T) {
 	memberID := memberIDFromCreate(t, addMemberW)
 
 	dupMemberW := serve(r, authedJSONReq(t.Context(), http.MethodPost, membersURL, tok, map[string]any{
-		"user_id":         memberUserID,
-		"project_role_id": roleID,
+		"user_id":  memberUserID,
+		"role_ids": []string{roleID},
 	}))
 	if dupMemberW.Code != http.StatusConflict {
 		t.Fatalf("duplicate member: expected 409, got %d (%s)", dupMemberW.Code, dupMemberW.Body.String())
@@ -731,50 +550,27 @@ func TestIntegrationProjectRolesAndMembers_Flow(t *testing.T) {
 		t.Fatalf("expected PROJECT_MEMBER_ALREADY_ADDED, got %q", code)
 	}
 
-	updatedRoleW := serve(r, authedJSONReq(t.Context(), http.MethodPost, createRoleURL, tok, map[string]any{
-		"role_name": "qa",
-	}))
-	if updatedRoleW.Code != http.StatusCreated {
-		t.Fatalf("create second role: expected 201, got %d (%s)", updatedRoleW.Code, updatedRoleW.Body.String())
-	}
-	updatedRoleID := roleIDFromCreate(t, updatedRoleW)
-
+	// Editing a member changes its description only; roles are replaced through
+	// PUT .../members/{id}/roles.
 	updateMemberURL := fmt.Sprintf("/api/v1/projects/%s/members/%s", projectID, memberID)
 	updateMemberW := serve(r, authedJSONReq(t.Context(), http.MethodPatch, updateMemberURL, tok, map[string]any{
-		"project_role_id": updatedRoleID,
+		"description": "backend",
 	}))
 	if updateMemberW.Code != http.StatusOK {
-		t.Fatalf("update member role: expected 200, got %d (%s)", updateMemberW.Code, updateMemberW.Body.String())
+		t.Fatalf("update member: expected 200, got %d (%s)", updateMemberW.Code, updateMemberW.Body.String())
 	}
-
 	var updateMemberEnv struct {
 		Data map[string]any `json:"data"`
 	}
 	if err := json.NewDecoder(updateMemberW.Body).Decode(&updateMemberEnv); err != nil {
 		t.Fatalf("decode update member response: %v", err)
 	}
-	if got, _ := updateMemberEnv.Data["project_role_id"].(string); got != updatedRoleID {
-		t.Fatalf("expected updated role id %q, got %q", updatedRoleID, got)
+	if got, _ := updateMemberEnv.Data["description"].(string); got != "backend" {
+		t.Fatalf("expected description %q, got %q", "backend", got)
 	}
-
-	missingMemberW := serve(r, authedJSONReq(t.Context(), http.MethodPatch,
-		fmt.Sprintf("/api/v1/projects/%s/members/%s", projectID, uuid.New()), tok, map[string]any{
-			"project_role_id": updatedRoleID,
-		}))
-	if missingMemberW.Code != http.StatusNotFound {
-		t.Fatalf("update missing member: expected 404, got %d (%s)", missingMemberW.Code, missingMemberW.Body.String())
-	}
-	if code := decodeErrorCode(t, missingMemberW); code != "PROJECT_MEMBER_NOT_FOUND" {
-		t.Fatalf("expected PROJECT_MEMBER_NOT_FOUND, got %q", code)
-	}
-
-	deleteRoleURL := fmt.Sprintf("/api/v1/projects/%s/roles/%s", projectID, updatedRoleID)
-	deleteRoleWhileAssignedW := serve(r, authedJSONReq(t.Context(), http.MethodDelete, deleteRoleURL, tok, nil))
-	if deleteRoleWhileAssignedW.Code != http.StatusConflict {
-		t.Fatalf("delete role in use: expected 409, got %d (%s)", deleteRoleWhileAssignedW.Code, deleteRoleWhileAssignedW.Body.String())
-	}
-	if code := decodeErrorCode(t, deleteRoleWhileAssignedW); code != "PROJECT_ROLE_HAS_MEMBERS" {
-		t.Fatalf("expected PROJECT_ROLE_HAS_MEMBERS, got %q", code)
+	roles, _ := updateMemberEnv.Data["roles"].([]any)
+	if len(roles) != 1 {
+		t.Fatalf("expected the member's roles list, got %v", updateMemberEnv.Data["roles"])
 	}
 
 	removeMemberURL := fmt.Sprintf("/api/v1/projects/%s/members/%s", projectID, memberID)
@@ -790,21 +586,16 @@ func TestIntegrationProjectRolesAndMembers_Flow(t *testing.T) {
 	if code := decodeErrorCode(t, removeMissingW); code != "PROJECT_MEMBER_NOT_FOUND" {
 		t.Fatalf("expected PROJECT_MEMBER_NOT_FOUND, got %q", code)
 	}
-
-	deleteRoleW := serve(r, authedJSONReq(t.Context(), http.MethodDelete, deleteRoleURL, tok, nil))
-	if deleteRoleW.Code != http.StatusOK {
-		t.Fatalf("delete role: expected 200, got %d (%s)", deleteRoleW.Code, deleteRoleW.Body.String())
-	}
 }
 
 func TestIntegrationProjectCreation_DefaultTaskRecords(t *testing.T) {
 	repo := newFakeProjectRepo()
 	taskRepo := newFakeTaskRepoIT()
 	store := &projectPermStore{
-		globalPerms: []authz.Permission{
-			authz.PermissionProjectsRead,
-			authz.PermissionProjectsWrite,
-			authz.PermissionProjectsCreate,
+		globalPerms: []iam.Action{
+			iam.ActionProjectsRead,
+			iam.ActionProjectsWrite,
+			iam.ActionProjectsCreate,
 		},
 	}
 	r, _ := buildProjectTestRouterWithTaskRepo(repo, store, taskRepo)
@@ -916,20 +707,17 @@ func TestIntegrationGetMyProjectPermissions_Success(t *testing.T) {
 	userID := uuid.New()
 
 	repo.projects[projectID] = &projectdom.Project{ID: projectID, Name: "Perms Project"}
-	repo.roles[roleID] = &projectdom.ProjectRole{
-		ID:          roleID,
-		ProjectID:   &projectID,
-		RoleName:    "editor",
-		Permissions: map[string]any{"tasks.read": true, "tasks.write": true, "sprints.read": true},
-	}
 	repo.members[memberKey(projectID, userID)] = &projectdom.ProjectMember{
-		ID:            uuid.New(),
-		ProjectID:     projectID,
-		UserID:        userID,
-		ProjectRoleID: roleID,
+		ID:        uuid.New(),
+		ProjectID: projectID,
+		UserID:    userID,
+		Roles:     []roledom.Summary{{ID: roleID, Name: "editor"}},
 	}
 
-	store := &projectPermStore{}
+	// The caller's role in the project, as migration 000064 attaches it.
+	store := &projectPermStore{userPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
+		userID: {projectID: {iam.ActionTasksRead, iam.ActionTasksWrite, iam.ActionSprintsRead}},
+	}}
 	r := buildProjectTestRouter(repo, store)
 	tok := issueProjectToken(t, userID.String())
 
@@ -940,19 +728,44 @@ func TestIntegrationGetMyProjectPermissions_Success(t *testing.T) {
 	}
 
 	var env struct {
-		Data map[string]any `json:"data"`
+		Data struct {
+			Actions []string `json:"actions"`
+		} `json:"data"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&env); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	perms, ok := env.Data["permissions"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected permissions map, got %T: %v", env.Data["permissions"], env.Data["permissions"])
+	got := map[string]bool{}
+	for _, a := range env.Data.Actions {
+		got[a] = true
 	}
-	for _, key := range []string{"tasks.read", "tasks.write", "sprints.read"} {
-		if v, _ := perms[key].(bool); !v {
-			t.Errorf("expected %q=true, got %v", key, perms[key])
+	for _, want := range []iam.Action{iam.ActionTasksRead, iam.ActionTasksWrite, iam.ActionSprintsRead} {
+		if !got[string(want)] {
+			t.Errorf("expected %q in actions, got %v", want, env.Data.Actions)
 		}
+	}
+	if got[string(iam.ActionDocsRead)] || got["tasks.read"] {
+		t.Errorf("unexpected entries in %v", env.Data.Actions)
+	}
+}
+
+// A caller with no grant in the project (not a member, or no such project)
+// simply has no actions there: 200 with an empty list, revealing nothing.
+func assertNoProjectActions(t *testing.T, w *httptest.ResponseRecorder) {
+	t.Helper()
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var env struct {
+		Data struct {
+			Actions []string `json:"actions"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&env); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if env.Data.Actions == nil || len(env.Data.Actions) != 0 {
+		t.Fatalf("expected an empty actions list, got %v", env.Data.Actions)
 	}
 }
 
@@ -966,13 +779,7 @@ func TestIntegrationGetMyProjectPermissions_NotMember(t *testing.T) {
 	tok := issueProjectToken(t, uuid.NewString())
 
 	url := fmt.Sprintf("/api/v1/projects/%s/members/me/permissions", projectID)
-	w := serve(r, authedJSONReq(t.Context(), http.MethodGet, url, tok, nil))
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d (%s)", w.Code, w.Body.String())
-	}
-	if code := decodeErrorCode(t, w); code != "PROJECT_MEMBER_NOT_FOUND" {
-		t.Fatalf("expected PROJECT_MEMBER_NOT_FOUND, got %q", code)
-	}
+	assertNoProjectActions(t, serve(r, authedJSONReq(t.Context(), http.MethodGet, url, tok, nil)))
 }
 
 func TestIntegrationGetMyProjectPermissions_Unauthenticated(t *testing.T) {
@@ -1010,14 +817,7 @@ func TestIntegrationGetMyProjectPermissions_ProjectNotFound(t *testing.T) {
 	tok := issueProjectToken(t, uuid.NewString())
 
 	url := fmt.Sprintf("/api/v1/projects/%s/members/me/permissions", uuid.NewString())
-	w := serve(r, authedJSONReq(t.Context(), http.MethodGet, url, tok, nil))
-	// User is not a member of a non-existent project → ErrMemberNotFound → 404.
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d (%s)", w.Code, w.Body.String())
-	}
-	if code := decodeErrorCode(t, w); code != "PROJECT_MEMBER_NOT_FOUND" {
-		t.Fatalf("expected PROJECT_MEMBER_NOT_FOUND, got %q", code)
-	}
+	assertNoProjectActions(t, serve(r, authedJSONReq(t.Context(), http.MethodGet, url, tok, nil)))
 }
 
 // ---------------------------------------------------------------------------
@@ -1027,9 +827,9 @@ func TestIntegrationGetMyProjectPermissions_ProjectNotFound(t *testing.T) {
 func TestIntegrationProject_IsPublicField(t *testing.T) {
 	repo := newFakeProjectRepo()
 	store := &projectPermStore{
-		globalPerms: []authz.Permission{
-			authz.PermissionProjectsRead,
-			authz.PermissionProjectsCreate,
+		globalPerms: []iam.Action{
+			iam.ActionProjectsRead,
+			iam.ActionProjectsCreate,
 		},
 	}
 	r := buildProjectTestRouter(repo, store)
@@ -1106,4 +906,16 @@ func TestIntegrationProject_AnonymousAccess_PrivateProject_Returns401(t *testing
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d (%s)", w.Code, w.Body.String())
 	}
+}
+
+// emptyRolePolicies is the role lookup behind the set-default guard: every role
+// it is asked about exists and grants nothing, so any caller may hand it out.
+type emptyRolePolicies struct{}
+
+func (emptyRolePolicies) RolePolicies(_ context.Context, ids []uuid.UUID) (map[uuid.UUID][]byte, error) {
+	out := make(map[uuid.UUID][]byte, len(ids))
+	for _, id := range ids {
+		out[id] = []byte(`{"version":"2026-10-01","statements":[]}`)
+	}
+	return out, nil
 }

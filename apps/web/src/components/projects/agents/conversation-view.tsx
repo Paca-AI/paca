@@ -253,7 +253,7 @@ export function ConversationView({
 	// only) gets a read-only view here instead of controls that would just
 	// 403.
 	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
-	const canControl = !projectId || hasProjectPermission("conversations.write");
+	const canControl = !projectId || hasProjectPermission("conversations:write");
 	const canReply = canControl && canReplyToConversation(conversation, isACP);
 	const { dialog: agentBusyDialog, send: sendWithBusyPrompt } =
 		useAgentBusyPrompt();

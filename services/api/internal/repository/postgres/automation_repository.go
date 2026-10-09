@@ -424,7 +424,18 @@ func (r *AutomationRepository) ListAutomations(ctx context.Context, projectID uu
 	q := `
 		SELECT id, project_id, name, description, status, created_by, created_at, updated_at, deleted_at
 		FROM automations WHERE project_id = $1 AND deleted_at IS NULL`
-	args := []interface{}{projectID.String()}
+	sink := &argList{args: []any{projectID.String()}}
+	clause, none, err := scopeSQL(ctx, "workflow", workflowScopeColumns, sink)
+	if err != nil {
+		return nil, false, err
+	}
+	if none {
+		return []*automationdom.Automation{}, false, nil
+	}
+	if clause != "" {
+		q += " AND " + clause
+	}
+	args := sink.args
 	if status != nil {
 		args = append(args, string(*status))
 		q += fmt.Sprintf(` AND status = $%d`, len(args))

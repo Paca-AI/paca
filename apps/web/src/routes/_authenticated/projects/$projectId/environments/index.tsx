@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Lock, Plus, Server } from "lucide-react";
+import { Plus, Server } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -38,8 +38,8 @@ function EnvironmentsPage() {
 	const navigate = Route.useNavigate();
 	const { hasProjectPermission, isLoading: isPermissionsLoading } =
 		useProjectPermissions(projectId);
-	const canWrite = hasProjectPermission("environments.write");
-	const canRead = hasProjectPermission("environments.read");
+	const canWrite = hasProjectPermission("environments:write");
+	const canRead = hasProjectPermission("environments:read");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	const {
@@ -162,17 +162,6 @@ function EnvironmentsPage() {
 										</div>
 									</div>
 									<div className="flex items-center gap-1.5 shrink-0">
-										{env.access_mode === "restricted" &&
-											!env.access_granted && (
-												<Badge
-													variant="outline"
-													className="text-xs font-medium gap-1"
-													title={t("environments.page.restrictedTooltip")}
-												>
-													<Lock className="size-3" />
-													{t("environments.page.restricted")}
-												</Badge>
-											)}
 										<Badge variant="secondary" className="text-xs font-medium">
 											{env.backend}
 										</Badge>

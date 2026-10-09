@@ -2,6 +2,7 @@ import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+import type { RoleSummary } from "./role-api";
 
 // ── Shapes ────────────────────────────────────────────────────────────────────
 
@@ -60,10 +61,10 @@ export interface ProjectMember {
 	id: string;
 	project_id: string;
 	user_id: string;
-	project_role_id: string;
+	/** The roles the member holds inside the project, sorted by name. */
+	roles: RoleSummary[];
 	username: string;
 	full_name: string;
-	role_name: string;
 	member_type?: string; // "human" | "agent"
 	agent_id?: string;
 	agent_name?: string;
@@ -80,15 +81,6 @@ export interface ProjectMember {
 	// An agent member's Jev-facing description comes from the Agent itself
 	// (Agent.description) instead.
 	description: string;
-}
-
-export interface ProjectRole {
-	id: string;
-	project_id?: string;
-	role_name: string;
-	permissions: Record<string, unknown>;
-	created_at: string;
-	updated_at: string;
 }
 
 // ── Project CRUD ──────────────────────────────────────────────────────────────
@@ -195,8 +187,8 @@ export async function listProjectMembers(
 export async function addProjectMember(
 	projectId: string,
 	payload:
-		| { user_id: string; project_role_id: string; description?: string }
-		| { agent_id: string; project_role_id: string },
+		| { user_id: string; role_ids: string[]; description?: string }
+		| { agent_id: string; role_ids: string[] },
 ): Promise<ProjectMember> {
 	const { data } = await apiClient.instance.post<
 		SuccessEnvelope<ProjectMember>
@@ -207,8 +199,7 @@ export async function addProjectMember(
 export async function updateProjectMemberRole(
 	projectId: string,
 	memberId: string,
-	// At least one of the two must be set.
-	payload: { project_role_id?: string; description?: string },
+	payload: { description: string },
 ): Promise<ProjectMember> {
 	const { data } = await apiClient.instance.patch<
 		SuccessEnvelope<ProjectMember>
@@ -225,52 +216,11 @@ export async function removeProjectMember(
 
 export async function getMyProjectPermissions(
 	projectId: string,
-): Promise<Record<string, boolean>> {
+): Promise<string[]> {
 	const { data } = await apiClient.instance.get<
-		SuccessEnvelope<{ permissions: Record<string, boolean> }>
+		SuccessEnvelope<{ actions: string[] }>
 	>(`/projects/${projectId}/members/me/permissions`);
-	return data.data.permissions;
-}
-
-// ── Roles ─────────────────────────────────────────────────────────────────────
-
-export async function listProjectRoles(
-	projectId: string,
-): Promise<ProjectRole[]> {
-	const { data } = await apiClient.instance.get<SuccessEnvelope<ProjectRole[]>>(
-		`/projects/${projectId}/roles`,
-	);
-	return data.data;
-}
-
-export async function createProjectRole(
-	projectId: string,
-	payload: { role_name: string; permissions?: Record<string, unknown> },
-): Promise<ProjectRole> {
-	const { data } = await apiClient.instance.post<SuccessEnvelope<ProjectRole>>(
-		`/projects/${projectId}/roles`,
-		payload,
-	);
-	return data.data;
-}
-
-export async function updateProjectRole(
-	projectId: string,
-	roleId: string,
-	payload: { role_name: string; permissions?: Record<string, unknown> },
-): Promise<ProjectRole> {
-	const { data } = await apiClient.instance.patch<SuccessEnvelope<ProjectRole>>(
-		`/projects/${projectId}/roles/${roleId}`,
-		payload,
-	);
-	return data.data;
-}
-
-export async function deleteProjectRole(
-	projectId: string,
-	roleId: string,
-): Promise<void> {
-	await apiClient.instance.delete(`/projects/${projectId}/roles/${roleId}`);
+	return data.data.actions;
 }
 
 // ── Task Types ────────────────────────────────────────────────────────────────
@@ -643,12 +593,6 @@ export const myProjectPermissionsQueryOptions = (projectId: string) =>
 		queryFn: () => getMyProjectPermissions(projectId),
 		staleTime: 2 * 60 * 1000,
 		retry: false,
-	});
-
-export const projectRolesQueryOptions = (projectId: string) =>
-	queryOptions({
-		queryKey: ["projects", projectId, "roles"],
-		queryFn: () => listProjectRoles(projectId),
 	});
 
 export const taskTypesQueryOptions = (projectId: string) =>

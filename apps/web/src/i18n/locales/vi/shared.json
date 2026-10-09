@@ -166,6 +166,34 @@
 				"prefixInvalid": "Tiền tố phải gồm 1–10 chữ in hoa/chữ số (vd: PACA).",
 				"generic": "Đã xảy ra lỗi. Vui lòng thử lại."
 			}
+		},
+		"legacyPluginsBanner": {
+			"title_one": "Một plugin cần được cập nhật",
+			"title_other": "Các plugin cần được cập nhật",
+			"description_one": "{{names}} vẫn dùng mô hình quyền cũ requirePermissions. Plugin vẫn hoạt động, nhưng không thể cài lại hoặc nâng cấp cho đến khi tác giả phát hành phiên bản dùng requireActions.",
+			"description_other": "{{names}} vẫn dùng mô hình quyền cũ requirePermissions. Các plugin vẫn hoạt động, nhưng không thể cài lại hoặc nâng cấp cho đến khi tác giả phát hành phiên bản dùng requireActions.",
+			"manage": "Quản lý plugin",
+			"dismiss": "Đóng"
 		}
+	},
+	"roleBadge": {
+		"fullAccess": "Toàn quyền",
+		"builtIn": "Có sẵn",
+		"default": "Mặc định",
+		"current": "Hiện tại",
+		"noDescription": "Không có mô tả",
+		"noRoles": "Không có vai trò",
+		"showMore": "Xem thêm vai trò (+{{count}})",
+		"allRoles": "Tất cả vai trò ({{count}})"
+	},
+	"roleSelect": {
+		"searchLabel": "Tìm vai trò",
+		"searchPlaceholder": "Tìm vai trò…",
+		"clearSearch": "Xóa tìm kiếm",
+		"noMatch": "Không có vai trò nào khớp với “{{query}}”",
+		"selectedCount": "Đã chọn: {{count}}",
+		"minOne": "Cần ít nhất một vai trò.",
+		"clear": "Xóa",
+		"placeholder": "Chọn vai trò"
 	}
 }

@@ -25,8 +25,7 @@
 			"description": "您仍可以使用上方的按钮创建新用户。"
 		},
 		"table": {
-			"columnUsername": "用户名",
-			"columnFullName": "姓名",
+			"columnUser": "用户",
 			"columnRole": "角色",
 			"columnCreated": "创建时间",
 			"pwdResetBadge": "密码已重置",
@@ -35,7 +34,9 @@
 			"resetPasswordAction": "重置密码",
 			"editAction": "编辑用户",
 			"changeRoleAction": "更改角色",
-			"deleteAction": "删除用户"
+			"deleteAction": "删除用户",
+			"pwdResetHint": "该用户必须在下次登录时设置新密码",
+			"columnActions": "操作"
 		},
 		"formDialog": {
 			"createdTitle": "用户已创建",
@@ -170,14 +171,16 @@
 		},
 		"table": {
 			"columnName": "名称",
-			"columnPermissions": "权限",
+			"columnDescription": "描述",
 			"columnDefault": "默认",
 			"noPermissionsAssigned": "未分配权限",
 			"default": "默认",
 			"setDefaultAction": "设为默认角色",
 			"editAction": "编辑角色",
 			"deleteAction": "删除角色",
-			"deleteDefaultDisabled": "无法删除默认角色。请先将其他角色设为默认。"
+			"deleteDefaultDisabled": "无法删除默认角色。请先将其他角色设为默认。",
+			"builtIn": "内置角色",
+			"noDescription": "无描述"
 		},
 		"formDialog": {
 			"editTitle": "编辑角色",
@@ -192,16 +195,7 @@
 			"cancel": "取消",
 			"saving": "正在保存…",
 			"saveChanges": "保存更改",
-			"createRole": "创建角色",
-			"errors": {
-				"roleNameRequired": "角色名称不能为空。",
-				"nameTaken": "已存在同名角色。",
-				"nameInvalid": "角色名称只能包含大写字母、数字和下划线。",
-				"roleNotFound": "该角色已不存在，可能已被删除。",
-				"forbidden": "您没有权限执行此操作。",
-				"internalError": "服务器出现错误，请重试。",
-				"generic": "出现错误。"
-			}
+			"createRole": "创建角色"
 		},
 		"deleteDialog": {
 			"title": "删除角色",
@@ -213,7 +207,6 @@
 			"confirmButton": "删除角色",
 			"errors": {
 				"roleNotFound": "该角色已不存在。",
-				"hasUsersWarning": "该角色仍被分配给一个或多个用户，无法删除。",
 				"isDefault": "无法删除默认角色。请先将其他角色设为默认。",
 				"forbidden": "您没有权限删除该角色。",
 				"internalError": "出现错误，请重试。",
@@ -284,11 +277,28 @@
 			"settingsSsoWrite": {
 				"label": "管理 SSO 提供商",
 				"description": "配置用户登录所用的身份提供商。该权限可用于以其他用户身份登录，请视同完整管理员权限。"
+			},
+			"agentsRead": {
+				"label": "查看智能体",
+				"description": "查看工作区级别的 AI 智能体"
+			},
+			"agentsWrite": {
+				"label": "管理智能体",
+				"description": "创建、编辑和删除工作区级别的 AI 智能体"
+			},
+			"pluginsRead": {
+				"label": "查看插件",
+				"description": "查看已安装的插件"
+			},
+			"pluginsWrite": {
+				"label": "管理插件",
+				"description": "安装、更新、启用和移除插件"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "全局角色",
 			"users": "用户",
+			"agents": "AI 智能体",
 			"projects": "项目",
 			"plugins": "插件",
 			"settings": "设置"

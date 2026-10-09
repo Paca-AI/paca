@@ -3,6 +3,7 @@ import axios from "axios";
 
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+import type { RoleSummary } from "./role-api";
 
 /** Shape of the authenticated user returned by GET /users/me. */
 export interface User {
@@ -10,7 +11,8 @@ export interface User {
 	username: string;
 	full_name: string;
 	email?: string | null;
-	role: string;
+	/** Platform roles attached to the user, sorted by name. */
+	roles: RoleSummary[];
 	must_change_password: boolean;
 	avatar_url?: string | null;
 	avatar_thumb_url?: string | null;

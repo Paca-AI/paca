@@ -25,8 +25,7 @@
 			"description": "Você ainda pode criar novos usuários usando o botão acima."
 		},
 		"table": {
-			"columnUsername": "Usuário",
-			"columnFullName": "Nome Completo",
+			"columnUser": "Usuário",
 			"columnRole": "Função",
 			"columnCreated": "Criado em",
 			"pwdResetBadge": "senha redefinida",
@@ -35,7 +34,9 @@
 			"resetPasswordAction": "Redefinir senha",
 			"editAction": "Editar usuário",
 			"changeRoleAction": "Alterar função",
-			"deleteAction": "Excluir usuário"
+			"deleteAction": "Excluir usuário",
+			"pwdResetHint": "Este usuário precisa definir uma nova senha no próximo login",
+			"columnActions": "Ações"
 		},
 		"formDialog": {
 			"createdTitle": "Usuário criado",
@@ -170,14 +171,16 @@
 		},
 		"table": {
 			"columnName": "Nome",
-			"columnPermissions": "Permissões",
+			"columnDescription": "Descrição",
 			"columnDefault": "Padrão",
 			"noPermissionsAssigned": "Nenhuma permissão atribuída",
 			"default": "Padrão",
 			"setDefaultAction": "Definir como função padrão",
 			"editAction": "Editar função",
 			"deleteAction": "Excluir função",
-			"deleteDefaultDisabled": "A função padrão não pode ser excluída. Defina primeiro outra função como padrão."
+			"deleteDefaultDisabled": "A função padrão não pode ser excluída. Defina primeiro outra função como padrão.",
+			"builtIn": "Papel integrado",
+			"noDescription": "Sem descrição"
 		},
 		"formDialog": {
 			"editTitle": "Editar Função",
@@ -192,16 +195,7 @@
 			"cancel": "Cancelar",
 			"saving": "Salvando…",
 			"saveChanges": "Salvar alterações",
-			"createRole": "Criar função",
-			"errors": {
-				"roleNameRequired": "O nome da função é obrigatório.",
-				"nameTaken": "Já existe uma função com este nome.",
-				"nameInvalid": "O nome da função deve conter apenas letras maiúsculas, números e sublinhados.",
-				"roleNotFound": "Esta função não existe mais. Ela pode já ter sido excluída.",
-				"forbidden": "Você não tem permissão para executar esta ação.",
-				"internalError": "Algo deu errado no servidor. Tente novamente.",
-				"generic": "Algo deu errado."
-			}
+			"createRole": "Criar função"
 		},
 		"deleteDialog": {
 			"title": "Excluir função",
@@ -213,7 +207,6 @@
 			"confirmButton": "Excluir função",
 			"errors": {
 				"roleNotFound": "Esta função não existe mais.",
-				"hasUsersWarning": "Esta função não pode ser excluída porque ainda está atribuída a um ou mais usuários.",
 				"isDefault": "A função padrão não pode ser excluída. Defina primeiro outra função como padrão.",
 				"forbidden": "Você não tem permissão para excluir esta função.",
 				"internalError": "Algo deu errado. Tente novamente.",
@@ -284,11 +277,28 @@
 			"settingsSsoWrite": {
 				"label": "Gerenciar provedores SSO",
 				"description": "Configurar os provedores de identidade usados para login. Permite entrar como outros usuários, então trate como acesso total de administrador."
+			},
+			"agentsRead": {
+				"label": "Ver agentes",
+				"description": "Ver os agentes de IA do espaço de trabalho"
+			},
+			"agentsWrite": {
+				"label": "Gerenciar agentes",
+				"description": "Criar, editar e excluir os agentes de IA do espaço de trabalho"
+			},
+			"pluginsRead": {
+				"label": "Ver plugins",
+				"description": "Ver os plugins instalados"
+			},
+			"pluginsWrite": {
+				"label": "Gerenciar plugins",
+				"description": "Instalar, atualizar, ativar e remover plugins"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "Funções Globais",
 			"users": "Usuários",
+			"agents": "Agentes de IA",
 			"projects": "Projetos",
 			"plugins": "Plugins",
 			"settings": "Configurações"

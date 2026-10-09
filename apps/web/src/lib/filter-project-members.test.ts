@@ -7,23 +7,26 @@ const m = (over: Partial<ProjectMember>): ProjectMember => ({
 	id: over.username ?? "x",
 	project_id: "p",
 	user_id: over.username ?? "x",
-	project_role_id: "r",
 	username: "u",
 	full_name: "",
-	role_name: "Member",
+	roles: [{ id: "r", name: "Member" }],
 	description: "",
 	...over,
 });
 
 const members = [
-	m({ username: "alice", full_name: "Alice Smith", role_name: "Admin" }),
+	m({
+		username: "alice",
+		full_name: "Alice Smith",
+		roles: [{ id: "a", name: "Admin" }],
+	}),
 	m({ username: "bob", full_name: "Bob Jones" }),
 	m({
 		username: "bot-1",
 		member_type: "agent",
 		agent_name: "Reviewer",
 		agent_handle: "rev",
-		role_name: "Agent",
+		roles: [{ id: "g", name: "Agent" }],
 	}),
 ];
 

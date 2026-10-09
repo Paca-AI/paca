@@ -2,9 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Edit2, Key, Lock, Plus, Shield, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { activePermissions } from "@/components/admin/global-roles/utils";
 import { DeleteProjectRoleDialog } from "@/components/projects/roles/DeleteProjectRoleDialog";
 import { ProjectRoleFormDialog } from "@/components/projects/roles/ProjectRoleFormDialog";
-import { projectPermissionBadgeClass } from "@/components/projects/roles/utils";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,15 +19,7 @@ import {
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { isForbiddenError } from "@/lib/api-error";
 import { formatDate as formatDateLocale } from "@/lib/format-date";
-import { dedupeGrantedPermissions } from "@/lib/permissions";
-import { type ProjectRole, projectRolesQueryOptions } from "@/lib/project-api";
-
-function activePermissions(perms: Record<string, unknown>): string[] {
-	const active = Object.entries(perms)
-		.filter(([, v]) => Boolean(v))
-		.map(([k]) => k);
-	return dedupeGrantedPermissions(active);
-}
+import { projectRolesQueryOptions, type Role } from "@/lib/role-api";
 
 function formatDate(iso: string) {
 	return formatDateLocale(iso, {
@@ -53,9 +45,8 @@ function RolesTableSkeleton() {
 					className="flex items-center gap-4 border-b px-5 py-4 last:border-0"
 				>
 					<Skeleton className="h-5 w-36 rounded-md" />
-					<div className="flex flex-1 gap-1.5">
-						<Skeleton className="h-5 w-28 rounded-full" />
-						<Skeleton className="h-5 w-24 rounded-full" />
+					<div className="flex-1">
+						<Skeleton className="h-4 w-3/5 max-w-72" />
 					</div>
 					<Skeleton className="h-4 w-20" />
 					<div className="flex gap-1.5">
@@ -69,10 +60,10 @@ function RolesTableSkeleton() {
 }
 
 interface RoleRowProps {
-	role: ProjectRole;
+	role: Role;
 	canManageRoles: boolean;
-	onEdit: (role: ProjectRole) => void;
-	onDelete: (role: ProjectRole) => void;
+	onEdit: (role: Role) => void;
+	onDelete: (role: Role) => void;
 }
 
 function RoleTableRow({
@@ -82,42 +73,40 @@ function RoleTableRow({
 	onDelete,
 }: RoleRowProps) {
 	const { t } = useTranslation("projects");
-	const isSystem = !role.project_id;
-	const active = activePermissions(role.permissions);
+	// A workspace role shown here is shared: it is edited with the workspace's
+	// roles. The project's own roles, built-in ones included, can be edited; a
+	// built-in role cannot be deleted.
+	const shared = !role.project_id;
 
 	return (
 		<TableRow className="group">
 			<TableCell className="px-5">
 				<div className="flex items-center gap-2">
-					<Lock className="size-3.5 shrink-0 text-muted-foreground/40" />
-					<span className="font-mono text-sm font-medium">
-						{role.role_name}
-					</span>
+					{shared || role.is_system ? (
+						<Lock className="size-3.5 shrink-0 text-muted-foreground/40" />
+					) : null}
+					<span className="font-mono text-sm font-medium">{role.name}</span>
 				</div>
 			</TableCell>
-			<TableCell className="px-5">
-				{active.length === 0 ? (
-					<span className="text-xs italic text-muted-foreground/60">
-						{t("settings.roles.noPermissionsAssigned")}
+			<TableCell className="max-w-0 px-5">
+				{role.description ? (
+					<span
+						className="block truncate text-sm text-muted-foreground"
+						title={role.description}
+					>
+						{role.description}
 					</span>
 				) : (
-					<div className="flex flex-wrap gap-1">
-						{active.map((permission) => (
-							<span
-								key={permission}
-								className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium leading-none ${projectPermissionBadgeClass(permission)}`}
-							>
-								{permission}
-							</span>
-						))}
-					</div>
+					<span className="text-xs italic text-muted-foreground/60">
+						{t("settings.roles.noDescription")}
+					</span>
 				)}
 			</TableCell>
 			<TableCell className="px-5 text-sm text-muted-foreground">
 				{formatDate(role.created_at)}
 			</TableCell>
 			<TableCell className="px-5">
-				{!isSystem && canManageRoles ? (
+				{!shared && canManageRoles ? (
 					<div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
 						<Button
 							variant="ghost"
@@ -127,15 +116,17 @@ function RoleTableRow({
 						>
 							<Edit2 className="size-3.5" />
 						</Button>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							className="text-destructive hover:text-destructive hover:bg-destructive/10"
-							onClick={() => onDelete(role)}
-							title={t("settings.roles.deleteRole")}
-						>
-							<Trash2 className="size-3.5" />
-						</Button>
+						{role.is_system ? null : (
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								className="text-destructive hover:text-destructive hover:bg-destructive/10"
+								onClick={() => onDelete(role)}
+								title={t("settings.roles.deleteRole")}
+							>
+								<Trash2 className="size-3.5" />
+							</Button>
+						)}
 					</div>
 				) : null}
 			</TableCell>
@@ -153,7 +144,7 @@ export function RolesSettings({
 	const { t } = useTranslation("projects");
 	const { hasProjectPermission, isLoading: isPermissionsLoading } =
 		useProjectPermissions(projectId);
-	const canReadRoles = hasProjectPermission("project.roles.read");
+	const canReadRoles = hasProjectPermission("roles:read");
 	const {
 		data: roles,
 		isLoading: isDataLoading,
@@ -173,8 +164,8 @@ export function RolesSettings({
 		(!canReadRoles || (isError && isForbiddenError(error)));
 
 	const [createOpen, setCreateOpen] = useState(false);
-	const [editRole, setEditRole] = useState<ProjectRole | null>(null);
-	const [deleteRole, setDeleteRole] = useState<ProjectRole | null>(null);
+	const [editRole, setEditRole] = useState<Role | null>(null);
+	const [deleteRole, setDeleteRole] = useState<Role | null>(null);
 
 	const systemRoles = roles?.filter((r) => !r.project_id) ?? [];
 
@@ -221,7 +212,7 @@ export function RolesSettings({
 						<span className="text-sm">
 							<span className="font-semibold tabular-nums">
 								{roles.reduce(
-									(sum, r) => sum + activePermissions(r.permissions).length,
+									(sum, r) => sum + activePermissions(r.policy).length,
 									0,
 								)}
 							</span>
@@ -275,7 +266,7 @@ export function RolesSettings({
 									{t("settings.roles.table.name")}
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									{t("settings.roles.table.permissions")}
+									{t("settings.roles.table.description")}
 								</TableHead>
 								<TableHead className="w-32 px-5 text-xs font-semibold uppercase tracking-wide">
 									{t("settings.roles.table.created")}

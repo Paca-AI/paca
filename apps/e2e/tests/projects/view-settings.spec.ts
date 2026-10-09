@@ -158,9 +158,10 @@ async function findRoleId(
 		Array.isArray(body.data) ? body.data : (body.data?.items ?? [])
 	) as Array<{
 		id: string;
-		role_name: string;
+		name: string;
+		project_id: string | null;
 	}>;
-	const role = roles.find((r) => r.role_name === roleName);
+	const role = roles.find((r) => r.name === roleName && r.project_id === projectId);
 	expect(role, `project role "${roleName}" should exist`).toBeTruthy();
 	return (role as { id: string }).id;
 }
@@ -207,7 +208,7 @@ async function createViewerMember(
 	const addResp = await request.post(
 		`${BASE_URL}/api/v1/projects/${projectId}/members`,
 		{
-			data: { user_id: userId, project_role_id: roleId },
+			data: { user_id: userId, role_ids: [roleId] },
 		},
 	);
 	expect(addResp.ok()).toBeTruthy();

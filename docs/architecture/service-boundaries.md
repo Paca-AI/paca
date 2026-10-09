@@ -45,7 +45,7 @@ Responsible for the core application backend.
 Concerns:
 
 - business workflows (tasks, sprints, boards, members, documents, custom fields);
-- authentication and authorization (JWT, API keys, role-based permissions);
+- authentication and authorization (JWT, API keys, IAM-style role policies evaluated per route and per resource; see [authorization](authorization.md));
 - persistence coordination with PostgreSQL and Valkey;
 - S3-compatible file attachment handling (RustFS or AWS S3);
 - WASM plugin runtime (wazero) — loads backend plugins, registers routes, mediates host function calls;

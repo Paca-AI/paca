@@ -20,39 +20,24 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
-	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 	"github.com/Paca-AI/api/internal/events"
-	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/secret"
 	activitysvc "github.com/Paca-AI/api/internal/service/activity"
 )
 
 // projectMemberWriter is the minimal interface this service needs to bust the
-// member list cache after an agent is added or removed, and to validate the
-// project_role_id a caller supplies to CreateAgent actually belongs to the
-// target project (see CreateAgent's FindRoleByID check — GHSA-xxc8-ggm7-vmxp).
+// member list cache after an agent is added or removed.
 type projectMemberWriter interface {
 	InvalidateMembersCache(ctx context.Context, projectID uuid.UUID) error
-	FindRoleByID(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
 }
 
 // pluginFinder is the minimal interface to find VCS plugins.
 type pluginFinder interface {
 	FindByCapability(ctx context.Context, capability string) ([]*plugindom.Plugin, error)
-}
-
-// globalRoleFinder validates a caller-supplied global_role_id before it's
-// bound to a global agent — see SetGlobalAgentRole's FindByID check. Global
-// roles have no project-ownership dimension the way project roles do;
-// existence is the whole check.
-type globalRoleFinder interface {
-	FindByID(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
-	// FindDefault is the role a new global agent starts with, the same one a
-	// new user starts with.
-	FindDefault(ctx context.Context) (*globalroledom.GlobalRole, error)
 }
 
 // defaultParallelismLimit/parallelismLimitCap clamp Agent.ParallelismLimit
@@ -91,18 +76,7 @@ type Service struct {
 	// failing closed, since every existing GetConversationForAgent test
 	// constructs a bare Service with no authorizer. Production wiring
 	// (bootstrap/app.go) always configures one via WithAuthorizer.
-	authorizer *authz.Authorizer
-	// globalRoleSvc backs SetGlobalAgentRole's validation
-	// that a caller-supplied global_role_id actually names an existing
-	// global role (GHSA-xxc8-ggm7-vmxp's same root cause, applied to global
-	// agents). Nil is a valid, supported configuration (same convention as
-	// environmentSvc/authorizer above): the check is skipped rather than
-	// failing closed. Production wiring (bootstrap/app.go) always configures
-	// one via WithGlobalRoleService — the real security boundary here is the
-	// router-level global_roles.assign gate on the route that reaches
-	// SetGlobalAgentRole, not this existence check, so skipping it when
-	// unwired is safe.
-	globalRoleSvc globalRoleFinder
+	authorizer ConversationReadAuthorizer
 }
 
 // New returns a configured agent service.
@@ -129,17 +103,17 @@ func (s *Service) WithEnvironmentService(svc environmentdom.Service) *Service {
 	return s
 }
 
-// WithGlobalRoleService wires in the global role lookup used to validate
-// global_role_id — see the globalRoleSvc field's doc comment.
-func (s *Service) WithGlobalRoleService(svc globalRoleFinder) *Service {
-	s.globalRoleSvc = svc
-	return s
-}
+// ConversationReadAuthorizer is the IAM check GetConversationForAgent needs;
+// satisfied by *iam.Authorizer.
+type ConversationReadAuthorizer = iam.Checker
 
-// WithAuthorizer wires in the permission authorizer — see the authorizer
-// field's doc comment for what it's used for.
-func (s *Service) WithAuthorizer(a *authz.Authorizer) *Service {
-	s.authorizer = a
+// WithAuthorizer wires in the IAM authorizer — see the authorizer field's
+// doc comment for what it's used for. A nil *iam.Authorizer leaves the
+// check unconfigured (skipped), never a typed nil.
+func (s *Service) WithAuthorizer(a *iam.Authorizer) *Service {
+	if a != nil {
+		s.authorizer = a
+	}
 	return s
 }
 
@@ -392,23 +366,18 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		return nil, err
 	}
 
-	// CreateAgent grants membership at whatever role in.ProjectRoleID names,
-	// so — like AddMember/UpdateMemberRole* — that role must actually belong
-	// to this project before it's bound to the new agent. Without this a
-	// caller could name any role ID at all, including one scoped to a
-	// different project or a global template role such as PROJECT_OWNER
-	// (ProjectID == nil), and inherit its permissions (GHSA-xxc8-ggm7-vmxp).
-	role, err := s.projRepo.FindRoleByID(ctx, in.ProjectRoleID)
-	if err != nil {
-		return nil, err
-	}
-	if role.ProjectID == nil || *role.ProjectID != projectID {
-		return nil, projectdom.ErrRoleNotFound
+	// CreateAgent grants membership holding in.RoleIDs. That every role exists
+	// and may be attached in this project is checked in the repository
+	// transaction (roledom.ErrNotAttachable: a role of another project or an
+	// unknown id never gets attached, GHSA-xxc8-ggm7-vmxp); who may hand which
+	// roles out is decided by the roles:assign gate on the route.
+	if len(in.RoleIDs) == 0 {
+		return nil, roledom.ErrRoleRequired
 	}
 
 	// Atomically create the agent and its project membership in one transaction.
 	memberID := uuid.New()
-	if err := s.repo.CreateAgentWithMembership(ctx, a, memberID, projectID, in.ProjectRoleID); err != nil {
+	if err := s.repo.CreateAgentWithMembership(ctx, a, memberID, projectID, in.RoleIDs, in.CreatedBy); err != nil {
 		return nil, fmt.Errorf("create agent with membership: %w", err)
 	}
 	a.MemberID = &memberID
@@ -563,12 +532,6 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		}
 		a.ParallelismLimit = v
 	}
-	if in.AccessMode != nil {
-		if *in.AccessMode != agentdom.AccessModeOpen && *in.AccessMode != agentdom.AccessModeRestricted {
-			return nil, agentdom.ErrAgentAccessModeInvalid
-		}
-		a.AccessMode = *in.AccessMode
-	}
 	if in.DefaultEnvironmentID != nil {
 		envID, err := s.validateDefaultEnvironment(ctx, projectID, *in.DefaultEnvironmentID, a.AgentScope)
 		if err != nil {
@@ -691,7 +654,7 @@ func (s *Service) GetGlobalAgent(ctx context.Context, agentID uuid.UUID) (*agent
 // CreateAgent, no project_members row is created — the agent starts out
 // invited into zero projects. It starts with the default global role (the
 // same one a new user gets), like a new user does; a different role, or none,
-// is a separate action (SetGlobalAgentRole), so creation carries no role.
+// is a separate action (PUT /admin/agents/{agentId}/roles), so creation carries no role.
 func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
 	handle := strings.TrimSpace(in.Handle)
 	if handle == "" {
@@ -790,51 +753,15 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 		return nil, err
 	}
 
-	if s.globalRoleSvc != nil {
-		role, err := s.globalRoleSvc.FindDefault(ctx)
-		switch {
-		case err == nil:
-			a.GlobalRoleID = &role.ID
-		case errors.Is(err, globalroledom.ErrNoDefault):
-			// No default is set: the agent starts with no global role, which
-			// is a valid state (it just has no global permissions).
-		default:
-			return nil, fmt.Errorf("create global agent: default role: %w", err)
-		}
-	}
-
+	// The repository attaches the default role in the same transaction.
 	if err := s.repo.CreateGlobalAgent(ctx, a); err != nil {
 		return nil, fmt.Errorf("create global agent: %w", err)
 	}
 	return a, nil
 }
 
-// SetGlobalAgentRole binds a global agent to the global role that decides what
-// it may do, or unbinds it when roleID is nil. A role must name an existing
-// global role before it is bound (GHSA-xxc8-ggm7-vmxp); unbinding needs no
-// lookup. Whether the caller may assign roles at all is not decided here: the
-// only route that reaches this declares global_roles.assign in the router.
-func (s *Service) SetGlobalAgentRole(ctx context.Context, agentID uuid.UUID, roleID *uuid.UUID) (*agentdom.Agent, error) {
-	a, err := s.GetGlobalAgent(ctx, agentID)
-	if err != nil {
-		return nil, err
-	}
-	if roleID != nil && s.globalRoleSvc != nil {
-		if _, err := s.globalRoleSvc.FindByID(ctx, *roleID); err != nil {
-			return nil, err
-		}
-	}
-
-	a.GlobalRoleID = roleID
-	a.UpdatedAt = time.Now()
-	if err := s.repo.UpdateAgent(ctx, a); err != nil {
-		return nil, err
-	}
-	return a, nil
-}
-
 // UpdateGlobalAgent patches mutable fields of an existing global agent. Its
-// global role is not among them — see SetGlobalAgentRole.
+// roles are not among them — they change through PUT /admin/agents/{agentId}/roles.
 func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
 	a, err := s.GetGlobalAgent(ctx, agentID)
 	if err != nil {
@@ -936,12 +863,6 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 			v = parallelismLimitCap
 		}
 		a.ParallelismLimit = v
-	}
-	if in.AccessMode != nil {
-		if *in.AccessMode != agentdom.AccessModeOpen && *in.AccessMode != agentdom.AccessModeRestricted {
-			return nil, agentdom.ErrAgentAccessModeInvalid
-		}
-		a.AccessMode = *in.AccessMode
 	}
 	if err := validateParallelismLimit(a); err != nil {
 		return nil, err
@@ -1273,98 +1194,6 @@ func (s *Service) requireGooseManagedAgent(ctx context.Context, agentID uuid.UUI
 		return agentdom.ErrNotSupportedForACPAgent
 	}
 	return nil
-}
-
-// -------------------------------------------------------------------------
-// Access grants — see agentdom.AgentAccessGrantService's doc comment.
-// -------------------------------------------------------------------------
-
-// HasAgentUsageAccess reports whether memberID may use agentID — see
-// agentdom.AgentAccessGrantService.HasAgentUsageAccess.
-func (s *Service) HasAgentUsageAccess(ctx context.Context, projectID, agentID, memberID uuid.UUID) (bool, error) {
-	agent, err := s.repo.FindVisibleAgentInProject(ctx, projectID, agentID)
-	if err != nil {
-		return false, err
-	}
-	return s.hasAgentUsageAccess(ctx, agent, memberID)
-}
-
-// hasAgentUsageAccess is the internal check reused wherever the caller
-// already has the *Agent in hand (avoids a redundant lookup) —
-// authorizeConversationAccess and the chat-session methods below both go
-// through this rather than the public HasAgentUsageAccess.
-//
-// memberID == uuid.Nil means there is no human actor to check a grant
-// against — treated as access-not-applicable rather than access-denied.
-// Two distinct kinds of caller reach here with a nil memberID:
-// authorizeAgentConversationRead's system-triggered branch
-// (current.ChatSessionID == nil, read via GetConversationForAgent — the
-// backend path behind the MCP server's read_conversation tool), passing it
-// through to authorizeConversationAccess as a sentinel for "no specific
-// member, shared audience only" — a rule that predates access grants and
-// still needs to hold; and authorizeConversationTrigger, when called from
-// TriggerTaskAssigned's automation-workflow branch or TriggerDirectMessage
-// ("there's no human actor behind an automation firing" — see those
-// functions' own doc comments) — the automation's own author already
-// needed permission to configure a rule against this agent, so a
-// restricted agent shouldn't block every unattended run against it. Every
-// human-facing caller (GetConversation via ConversationHandler.
-// resolveMemberID, StartChatSession, ListChatSessions, SendChatMessage,
-// and the always-resolved-actor triggers TriggerCommentMention/
-// TriggerDescriptionWrite) resolves memberID from a real project_members
-// row first and errors out before calling this far, so this can never be
-// used to bypass a grant on a human's behalf.
-func (s *Service) hasAgentUsageAccess(ctx context.Context, agent *agentdom.Agent, memberID uuid.UUID) (bool, error) {
-	if agent.AccessMode != agentdom.AccessModeRestricted || memberID == uuid.Nil {
-		return true, nil
-	}
-	return s.repo.HasAgentAccessGrant(ctx, agent.ID, memberID)
-}
-
-// ListAgentAccessGrants returns every member explicitly granted access to a
-// restricted agent (regardless of its current access_mode — see the
-// repository method's doc comment).
-func (s *Service) ListAgentAccessGrants(ctx context.Context, projectID, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error) {
-	agent, err := s.repo.FindVisibleAgentInProject(ctx, projectID, agentID)
-	if err != nil {
-		return nil, err
-	}
-	return s.repo.ListAgentAccessGrants(ctx, agent.ID)
-}
-
-// AddAgentAccessGrant grants memberID access to a restricted agent.
-func (s *Service) AddAgentAccessGrant(ctx context.Context, projectID, agentID, memberID uuid.UUID, grantedBy *uuid.UUID) (*agentdom.AgentAccessGrant, error) {
-	agent, err := s.repo.FindVisibleAgentInProject(ctx, projectID, agentID)
-	if err != nil {
-		return nil, err
-	}
-	g := &agentdom.AgentAccessGrant{
-		ID:        uuid.New(),
-		AgentID:   agent.ID,
-		MemberID:  memberID,
-		GrantedBy: grantedBy,
-		CreatedAt: time.Now(),
-	}
-	if err := s.repo.AddAgentAccessGrant(ctx, g); err != nil {
-		return nil, err
-	}
-	return g, nil
-}
-
-// RemoveAgentAccessGrant revokes memberID's access to a restricted agent. A
-// no-op if memberID had no grant.
-func (s *Service) RemoveAgentAccessGrant(ctx context.Context, projectID, agentID, memberID uuid.UUID) error {
-	agent, err := s.repo.FindVisibleAgentInProject(ctx, projectID, agentID)
-	if err != nil {
-		return err
-	}
-	return s.repo.RemoveAgentAccessGrant(ctx, agent.ID, memberID)
-}
-
-// ListGrantedAgentIDsForMember returns every restricted agent memberID
-// currently holds a grant for.
-func (s *Service) ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
-	return s.repo.ListGrantedAgentIDsForMember(ctx, memberID)
 }
 
 // -------------------------------------------------------------------------
@@ -1725,12 +1554,9 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 	// the conversation it's currently running as part of — it already has
 	// this data as that conversation's own active participant, so gating it
 	// on a permission grant adds no protection while breaking the common
-	// case of a global-scope agent with no global role (conversations.read
-	// is backfilled onto project_roles, not global_roles — see
-	// 000051_add_conversation_permissions.sql — and a global agent's own
-	// global role is optional, commonly left unset). Also short-circuits
-	// the common case (no other conversation was attached) without a
-	// second lookup.
+	// case of a global-scope agent holding no platform role at all. Also
+	// short-circuits the common case (no other conversation was attached)
+	// without a second lookup.
 	if target.ID == currentConversationID {
 		// DeletedAt deliberately NOT checked here: a user can delete the
 		// conversation this very agent is mid-turn on (auto-stop-then-delete
@@ -1780,7 +1606,12 @@ func (s *Service) authorizeConversationsReadForConversation(ctx context.Context,
 	if s.authorizer == nil {
 		return nil
 	}
-	globalOK, err := s.authorizer.HasGlobalPermissionsForAgent(ctx, callerAgentID, authz.PermissionConversationsRead)
+	// Platform level: conversations:read on the calling agent's own platform
+	// resource (agent/<id>) — what a migrated global-agent role holding
+	// conversations.read covers (named platform permissions live on the
+	// platform roots, agent/* among them).
+	caller := iam.Agent(callerAgentID.String())
+	globalOK, err := iam.AllowedAll(ctx, s.authorizer, caller, "agent/"+callerAgentID.String(), iam.ActionConversationsRead)
 	if err != nil {
 		return fmt.Errorf("authz: check agent global conversations.read: %w", err)
 	}
@@ -1788,7 +1619,7 @@ func (s *Service) authorizeConversationsReadForConversation(ctx context.Context,
 		return nil
 	}
 	if conv.ProjectID != uuid.Nil {
-		projectOK, err := s.authorizer.HasPermissionsForAgent(ctx, callerAgentID, conv.ProjectID, authz.PermissionConversationsRead)
+		projectOK, err := iam.AllowedAll(ctx, s.authorizer, caller, iam.ProjectResource(conv.ProjectID.String()), iam.ActionConversationsRead)
 		if err != nil {
 			return fmt.Errorf("authz: check agent project conversations.read: %w", err)
 		}
@@ -1843,43 +1674,13 @@ func (s *Service) authorizeAgentConversationRead(ctx context.Context, current, t
 // project-scoped owner-private conversation is not owned by memberID.
 // project-shared conversations are readable by any project member, whose
 // membership is already enforced by the router's project-scope middleware.
-//
-// Also fails closed when c's agent is restricted and memberID holds no
-// grant for it — checked unconditionally, before the audience check below,
-// since a project-shared conversation (task_assigned, automation) is
-// exactly the kind of conversation a restricted agent's non-owner audience
-// needs covering too. Without this, the per-conversation gate
-// StartChatSession/ListChatSessions apply when *starting* a conversation
-// with a restricted agent would be trivially bypassed by reading an
-// already-existing one through GetConversation instead (or, transitively,
-// StopConversation/PauseConversation/Heartbeat/SendConversationMessage,
-// which all resolve their conversation through GetConversation or this
-// method directly). Deliberately reuses ErrConversationNotFound rather than
-// the more specific ErrAgentAccessRestricted, matching this function's own
-// existing fail-closed style for the owner-private case below — this path
-// is reached for an *existing* conversation a caller is trying to read
-// indirectly, not a direct "can I use this agent" query, so it shouldn't
-// reveal anything StartChatSession's own ErrAgentAccessRestricted doesn't
-// already say more directly. A memberID of uuid.Nil (the no-chat-session
-// branch in authorizeAgentConversationRead, where there's no human context
-// to check a grant against) passes the hasAgentUsageAccess call above
-// unconditionally — nil is an intentional bypass there, by design, not a
-// failure (see that function's own doc comment). What actually protects an
-// owner-private conversation from a nil caller is the session-ownership
-// comparison below: session.MemberID is always a real project_members.id,
-// which uuid.Nil can never equal, so it still fails closed there if such a
-// caller ever reached one.
+// A memberID of uuid.Nil (the no-chat-session branch in
+// authorizeAgentConversationRead, where there is no human context) only
+// reaches project-shared conversations: what protects an owner-private
+// conversation from a nil caller is the session-ownership comparison below,
+// since session.MemberID is always a real project_members.id, which
+// uuid.Nil can never equal.
 func (s *Service) authorizeConversationAccess(ctx context.Context, c *agentdom.AgentConversation, memberID uuid.UUID) error {
-	agent, err := s.repo.FindAgentByID(ctx, c.AgentID)
-	if err != nil {
-		return err
-	}
-	if ok, err := s.hasAgentUsageAccess(ctx, agent, memberID); err != nil {
-		return err
-	} else if !ok {
-		return agentdom.ErrConversationNotFound
-	}
-
 	if c.Audience != agentdom.AudienceOwnerPrivate {
 		return nil
 	}
@@ -2303,16 +2104,6 @@ func (s *Service) SendGlobalConversationMessage(ctx context.Context, conversatio
 	if err != nil {
 		return err
 	}
-	// Closes a gap requireGlobalAgentOpen's placement on
-	// Start/List/SendGlobalChatMessage alone left open: without this, a
-	// conversation created before the agent was restricted could keep being
-	// sent into indefinitely, contradicting requireGlobalAgentOpen's own
-	// "fails every global-chat caller closed, full stop" contract above.
-	// Covers both dispatch branches below with one check since agent is
-	// already fetched for the AgentType decision either way.
-	if err := requireAgentOpen(agent); err != nil {
-		return err
-	}
 	if agent.AgentType == agentdom.AgentTypeACP {
 		return s.sendACPGlobalConversationMessage(ctx, c, message, actorUserID, contextItems, onBusy)
 	}
@@ -2387,14 +2178,8 @@ func (s *Service) sendACPGlobalConversationMessage(ctx context.Context, c *agent
 
 // ListChatSessions returns all chat sessions for the given agent and member.
 func (s *Service) ListChatSessions(ctx context.Context, projectID, agentID, memberID uuid.UUID) ([]*agentdom.AgentChatSession, error) {
-	agent, err := s.GetAgent(ctx, projectID, agentID)
-	if err != nil {
+	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
 		return nil, err
-	}
-	if ok, err := s.hasAgentUsageAccess(ctx, agent, memberID); err != nil {
-		return nil, err
-	} else if !ok {
-		return nil, agentdom.ErrAgentAccessRestricted
 	}
 	return s.repo.ListChatSessions(ctx, agentID, memberID)
 }
@@ -2409,14 +2194,8 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 	if err := validateOnBusy(onBusy); err != nil {
 		return nil, nil, err
 	}
-	agent, err := s.GetAgent(ctx, projectID, agentID)
-	if err != nil {
+	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
 		return nil, nil, err
-	}
-	if ok, err := s.hasAgentUsageAccess(ctx, agent, memberID); err != nil {
-		return nil, nil, err
-	} else if !ok {
-		return nil, nil, agentdom.ErrAgentAccessRestricted
 	}
 
 	// Resolved before the capacity check below (which needs it to also
@@ -2428,26 +2207,6 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 	if err != nil {
 		return nil, nil, err
 	}
-	// A conversation attached to a static environment gives the agent live
-	// shell-equivalent access inside it — an alternate access path into a
-	// restricted environment just as real as the browser terminal, SSH, or
-	// a port forward (see environmentdom.Environment.AccessMode's doc
-	// comment). resolveConversationEnvironment's other four call sites
-	// (task-assigned/description-write/automation/comment-mention
-	// triggers) enforce the same pair of checks via the shared
-	// authorizeConversationTrigger helper instead of this inline copy —
-	// kept separate here rather than refactored onto that helper too, to
-	// avoid reordering this already-tested path's agent-access check
-	// (above, before resolution) relative to this environment-access
-	// check (after resolution).
-	if envID != nil && s.environmentSvc != nil {
-		if ok, err := s.environmentSvc.HasEnvironmentUsageAccess(ctx, projectID, *envID, memberID); err != nil {
-			return nil, nil, err
-		} else if !ok {
-			return nil, nil, environmentdom.ErrEnvironmentAccessRestricted
-		}
-	}
-
 	// Starting a session always creates a brand new conversation (there is
 	// no existing one yet to be "busy"), so the capacity check applies
 	// unconditionally here — decided once, before anything is persisted, so
@@ -2614,7 +2373,7 @@ func (s *Service) resolveWorkdirForConversation(ctx context.Context, projectID u
 // is nothing left to attach to." Only an ordinary (non-environment) LLM
 // conversation going terminal still falls through to a brand-new
 // conversation_id below — its ephemeral sandbox really is gone for good.
-func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string, contextItems []agentdom.ContextItemRef, onBusy string) (*agentdom.AgentConversation, error) {
+func (s *Service) SendChatMessage(ctx context.Context, projectID, agentID, sessionID, memberID uuid.UUID, message string, contextItems []agentdom.ContextItemRef, onBusy string) (*agentdom.AgentConversation, error) {
 	if err := validateOnBusy(onBusy); err != nil {
 		return nil, err
 	}
@@ -2622,7 +2381,10 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 	if err != nil {
 		return nil, err
 	}
-	if session.ProjectID != projectID {
+	// The route is authorized on project/<P>/agent/<agentID> from the URL,
+	// so the session must belong to exactly that project and agent — never
+	// let a caller reach agent A's session through an agent B they may use.
+	if session.ProjectID != projectID || session.AgentID != agentID {
 		return nil, agentdom.ErrChatSessionNotFound
 	}
 	// A chat session is owner-private: only its owning member may post to it
@@ -2631,16 +2393,6 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 	if session.MemberID != memberID {
 		return nil, agentdom.ErrChatSessionNotFound
 	}
-	sessionAgent, err := s.repo.FindAgentByID(ctx, session.AgentID)
-	if err != nil {
-		return nil, err
-	}
-	if ok, err := s.hasAgentUsageAccess(ctx, sessionAgent, memberID); err != nil {
-		return nil, err
-	} else if !ok {
-		return nil, agentdom.ErrAgentAccessRestricted
-	}
-
 	latest, err := s.repo.FindLatestConversationByChatSession(ctx, sessionID)
 	if err != nil {
 		return nil, err
@@ -2795,39 +2547,18 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 // keyed by actor_user_id instead of a project's memberID.
 // -------------------------------------------------------------------------
 
-// requireGlobalAgentOpen fails closed with ErrAgentAccessRestricted when
-// agentID is currently restricted. Global chat has no project context, so
-// there is no project_members.id to resolve and check an AgentAccessGrant
-// against the way the project-scoped hasAgentUsageAccess check can —
-// restricted therefore fails every global-chat caller closed, full stop,
-// rather than inventing new cross-project grant semantics. If a project
-// member granted access to a restricted global agent should still be able
-// to reach it via global (non-project) chat specifically, that needs a
-// real design decision and probably its own grant surface — not assumed
-// here.
-func (s *Service) requireGlobalAgentOpen(ctx context.Context, agentID uuid.UUID) error {
-	agent, err := s.repo.FindAgentByID(ctx, agentID)
-	if err != nil {
-		return err
-	}
-	return requireAgentOpen(agent)
-}
-
-// requireAgentOpen is requireGlobalAgentOpen's agent-in-hand sibling, for
-// callers that already fetched the Agent for another reason (e.g.
-// SendGlobalConversationMessage, which needs it for the AgentType dispatch
-// decision regardless) and shouldn't pay for a second FindAgentByID call.
-func requireAgentOpen(agent *agentdom.Agent) error {
-	if agent.AccessMode == agentdom.AccessModeRestricted {
-		return agentdom.ErrAgentAccessRestricted
-	}
-	return nil
+// requireGlobalAgent fails with the agent lookup's error (ErrAgentNotFound)
+// when agentID doesn't exist. Global chat has no project context, so there
+// is no project-scoped lookup to lean on.
+func (s *Service) requireGlobalAgent(ctx context.Context, agentID uuid.UUID) error {
+	_, err := s.repo.FindAgentByID(ctx, agentID)
+	return err
 }
 
 // ListGlobalChatSessions returns all global chat sessions for the given
 // agent and human actor.
 func (s *Service) ListGlobalChatSessions(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*agentdom.AgentChatSession, error) {
-	if err := s.requireGlobalAgentOpen(ctx, agentID); err != nil {
+	if err := s.requireGlobalAgent(ctx, agentID); err != nil {
 		return nil, err
 	}
 	return s.repo.ListGlobalChatSessions(ctx, agentID, actorUserID)
@@ -2836,15 +2567,14 @@ func (s *Service) ListGlobalChatSessions(ctx context.Context, agentID, actorUser
 // StartGlobalChatSession creates a new global chat session and publishes
 // the initial message trigger.
 func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef, onBusy string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
-	// validateOnBusy runs before requireGlobalAgentOpen: a malformed onBusy
-	// value is a client-input error that shouldn't depend on (or reveal
-	// anything about) the target agent's access_mode — see
-	// TestStartGlobalChatSession_RejectsInvalidOnBusy, which asserts this
-	// rejects before the agent is ever looked up.
+	// validateOnBusy runs before requireGlobalAgent: a malformed onBusy
+	// value is a client-input error that shouldn't depend on the target
+	// agent — see TestStartGlobalChatSession_RejectsInvalidOnBusy, which
+	// asserts this rejects before the agent is ever looked up.
 	if err := validateOnBusy(onBusy); err != nil {
 		return nil, nil, err
 	}
-	if err := s.requireGlobalAgentOpen(ctx, agentID); err != nil {
+	if err := s.requireGlobalAgent(ctx, agentID); err != nil {
 		return nil, nil, err
 	}
 	// See StartChatSession's identical check for why this runs unconditionally
@@ -2899,7 +2629,7 @@ func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUse
 	if session.ProjectID != uuid.Nil || session.ActorUserID == nil || *session.ActorUserID != actorUserID {
 		return nil, agentdom.ErrChatSessionNotFound
 	}
-	if err := s.requireGlobalAgentOpen(ctx, session.AgentID); err != nil {
+	if err := s.requireGlobalAgent(ctx, session.AgentID); err != nil {
 		return nil, err
 	}
 
@@ -3075,38 +2805,6 @@ func (s *Service) createGlobalConversation(ctx context.Context, agentID, actorUs
 	return conv, nil
 }
 
-// authorizeConversationTrigger checks that memberID may use both agent and
-// (when resolved) the environment a new conversation is about to attach
-// to — the same pair of checks StartChatSession performs inline, extracted
-// here so every other trigger path (task assignment, direct automation
-// message, comment mention, description write) enforces both restricted-
-// access grants too, not just the human-initiated chat path.
-//
-// memberID == uuid.Nil means there is no human actor behind this trigger
-// (an unattended automation firing with no resolved actor) — both checks
-// already treat that as "not applicable, assume allowed" rather than
-// denied: hasAgentUsageAccess has always done this (see its own doc
-// comment), and the environment check mirrors it here for the same
-// reason — the automation's own author already needed permission to
-// configure a rule against this agent/environment in the first place, so
-// a restricted default environment shouldn't silently break every
-// unattended run against it.
-func (s *Service) authorizeConversationTrigger(ctx context.Context, projectID uuid.UUID, agent *agentdom.Agent, envID *uuid.UUID, memberID uuid.UUID) error {
-	if ok, err := s.hasAgentUsageAccess(ctx, agent, memberID); err != nil {
-		return err
-	} else if !ok {
-		return agentdom.ErrAgentAccessRestricted
-	}
-	if envID != nil && s.environmentSvc != nil && memberID != uuid.Nil {
-		if ok, err := s.environmentSvc.HasEnvironmentUsageAccess(ctx, projectID, *envID, memberID); err != nil {
-			return err
-		} else if !ok {
-			return environmentdom.ErrEnvironmentAccessRestricted
-		}
-	}
-	return nil
-}
-
 // gatherRepoPlugins returns all installed plugins with the "repository" capability.
 func (s *Service) gatherRepoPlugins(ctx context.Context) []*plugindom.Plugin {
 	if s.pluginRepo == nil {
@@ -3143,8 +2841,7 @@ func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, t
 	// resolved agentID from a project-scoped member row before calling
 	// here, same trust boundary resolveConversationEnvironment below
 	// already relies on for this same agentID.
-	agent, err := s.repo.FindAgentByID(ctx, agentID)
-	if err != nil {
+	if _, err := s.repo.FindAgentByID(ctx, agentID); err != nil {
 		return nil, err
 	}
 
@@ -3164,14 +2861,6 @@ func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, t
 	if err != nil {
 		return nil, err
 	}
-	memberID := uuid.Nil
-	if triggeredByMemberID != nil {
-		memberID = *triggeredByMemberID
-	}
-	if err := s.authorizeConversationTrigger(ctx, projectID, agent, envID, memberID); err != nil {
-		return nil, err
-	}
-
 	conv, err := s.createConversation(ctx, projectID, agentID, triggeredByMemberID, agentdom.AgentConversation{
 		TriggerType:         "task_assigned",
 		TaskID:              &taskID,
@@ -3212,8 +2901,7 @@ func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, t
 func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID uuid.UUID, triggeredByMemberID *uuid.UUID, message string) (*agentdom.AgentConversation, error) {
 	// FindAgentByID, not GetAgent/FindVisibleAgentInProject — see the same
 	// note on TriggerTaskAssigned above.
-	agent, err := s.repo.FindAgentByID(ctx, agentID)
-	if err != nil {
+	if _, err := s.repo.FindAgentByID(ctx, agentID); err != nil {
 		return nil, err
 	}
 
@@ -3233,14 +2921,6 @@ func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID u
 	if err != nil {
 		return nil, err
 	}
-	memberID := uuid.Nil
-	if triggeredByMemberID != nil {
-		memberID = *triggeredByMemberID
-	}
-	if err := s.authorizeConversationTrigger(ctx, projectID, agent, envID, memberID); err != nil {
-		return nil, err
-	}
-
 	conv, err := s.createConversation(ctx, projectID, agentID, triggeredByMemberID, agentdom.AgentConversation{
 		TriggerType:         "automation_message",
 		RepoPluginID:        repoPluginID,
@@ -3275,8 +2955,7 @@ func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID u
 func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID, taskID, commentID, triggeredByMemberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
 	// FindAgentByID, not GetAgent/FindVisibleAgentInProject — see the same
 	// note on TriggerTaskAssigned above.
-	agent, err := s.repo.FindAgentByID(ctx, agentID)
-	if err != nil {
+	if _, err := s.repo.FindAgentByID(ctx, agentID); err != nil {
 		return nil, err
 	}
 
@@ -3296,10 +2975,6 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 	if err != nil {
 		return nil, err
 	}
-	if err := s.authorizeConversationTrigger(ctx, projectID, agent, envID, triggeredByMemberID); err != nil {
-		return nil, err
-	}
-
 	conv, err := s.createConversation(ctx, projectID, agentID, &triggeredByMemberID, agentdom.AgentConversation{
 		TriggerType:         "comment_mention",
 		TaskID:              &taskID,
@@ -3335,8 +3010,7 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 // belongs to projectID; the caller is responsible for verifying taskID
 // belongs to projectID (this service has no task-repository dependency).
 func (s *Service) TriggerDescriptionWrite(ctx context.Context, projectID, agentID, taskID, triggeredByMemberID uuid.UUID) (*agentdom.AgentConversation, error) {
-	agent, err := s.GetAgent(ctx, projectID, agentID)
-	if err != nil {
+	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
 		return nil, err
 	}
 
@@ -3356,10 +3030,6 @@ func (s *Service) TriggerDescriptionWrite(ctx context.Context, projectID, agentI
 	if err != nil {
 		return nil, err
 	}
-	if err := s.authorizeConversationTrigger(ctx, projectID, agent, envID, triggeredByMemberID); err != nil {
-		return nil, err
-	}
-
 	conv, err := s.createConversation(ctx, projectID, agentID, &triggeredByMemberID, agentdom.AgentConversation{
 		TriggerType:         "description_write",
 		TaskID:              &taskID,
