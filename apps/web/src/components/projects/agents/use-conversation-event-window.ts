@@ -151,11 +151,63 @@ export function useConversationEventWindow({
 
 	const loaded =
 		events.length === 0 ? 0 : (events.at(-1)?.event_index ?? -1) + 1;
-	const serverKnown = Math.max(
-		data?.pages.at(-1)?.total ?? 0,
-		(tailIndex ?? -1) + 1,
-		loaded,
-	);
+
+	// Count user-visible messages in the unseen events rather than raw events.
+	// A single user message + agent turn produces dozens of raw events
+	// (tool_call, agent_message_chunk, agent_thought_chunk, turn_end, etc.)
+	// but renders as only two bubbles (one user, one assistant). Showing the
+	// raw event count as "X new messages" is wildly misleading.
+	// Uses `loaded` (the tail of what the reader already sees, including
+	// frozen extras) as the base so only genuinely unseen events are counted.
+	const newBelowCount = useMemo(() => {
+		const newEvents = liveEvents.filter((e) => e.event_index >= loaded);
+		if (newEvents.length === 0) return 0;
+
+		// Check if the visible events ended mid-assistant-turn (no turn_end
+		// after the last user_message). If so, agent events continuing that
+		// turn aren't a "new" message — they're the same one. Scans `events`
+		// (pages plus any frozen tail), not just the live buffer — the open
+		// turn usually ended inside the paged portion.
+		let seenMidTurn = false;
+		for (let i = events.length - 1; i >= 0; i--) {
+			const t = events[i].event_type;
+			if (t === "turn_end") break;
+			if (
+				t === "agent_message_chunk" ||
+				t === "agent_thought_chunk" ||
+				t === "tool_call" ||
+				t === "ACPToolCallEvent" ||
+				t === "ActionEvent" ||
+				t === "MessageEvent"
+			) {
+				seenMidTurn = true;
+				break;
+			}
+		}
+
+		let count = 0;
+		let inAgentTurn = seenMidTurn;
+		for (const ev of newEvents) {
+			const t = ev.event_type;
+			if (t === "user_message") {
+				count++;
+				inAgentTurn = false;
+			} else if (
+				!inAgentTurn &&
+				(t === "agent_message_chunk" ||
+					t === "agent_thought_chunk" ||
+					t === "tool_call" ||
+					t === "MessageEvent" ||
+					t === "ActionEvent" ||
+					t === "ACPToolCallEvent")
+			) {
+				count++;
+				inAgentTurn = true;
+			}
+			if (t === "turn_end") inAgentTurn = false;
+		}
+		return count;
+	}, [events, liveEvents, loaded]);
 
 	return {
 		events,
@@ -165,7 +217,7 @@ export function useConversationEventWindow({
 		loadOlder: () => {
 			void fetchPreviousPage();
 		},
-		newBelow: following ? 0 : Math.max(0, serverKnown - loaded),
+		newBelow: following ? 0 : newBelowCount,
 		following,
 		setFollowing,
 		jumpToLatest: () => setFollowing(true),
