@@ -388,6 +388,7 @@
 			"conversationEnded": "Esta conversa foi encerrada.",
 			"textOnlyMessage": "Apenas mensagens de texto são suportadas.",
 			"chatNoPermission": "Você não tem permissão para enviar mensagens nesta conversa.",
+			"cliProviderNeedsEnvironment": "Este agente usa um provedor CLI e precisa de um ambiente padrão, mas não tem um utilizável. Peça a um administrador do projeto que defina um ambiente padrão para o agente.",
 			"failed": "A conversa falhou",
 			"noOutput": "O agente não produziu nenhuma saída.",
 			"loadingOlder": "Carregando…",

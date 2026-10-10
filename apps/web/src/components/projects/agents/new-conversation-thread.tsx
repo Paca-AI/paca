@@ -18,6 +18,7 @@ import {
 	startChatSession,
 	startGlobalChatSession,
 } from "@/lib/agent-api";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { useAgentBusyPrompt } from "./agent-busy-dialog";
 import {
@@ -176,6 +177,13 @@ export function NewConversationThread({
 			const key = chatSessionAccessDeniedKey(err);
 			if (key) {
 				setSendError(t(key));
+				return;
+			}
+			// Any other error the API explained: show its message instead of
+			// dropping it as an unhandled rejection the person never sees.
+			const apiMessage = getApiErrorMessage(err);
+			if (apiMessage) {
+				setSendError(apiMessage);
 				return;
 			}
 			throw err;

@@ -44,7 +44,7 @@ import {
 	stopConversation,
 	stopGlobalConversation,
 } from "@/lib/agent-api";
-import { isForbiddenError } from "@/lib/api-error";
+import { getApiErrorMessage, isForbiddenError } from "@/lib/api-error";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { cn } from "@/lib/utils";
 import { useAgentBusyPrompt } from "./agent-busy-dialog";
@@ -358,6 +358,13 @@ export function ConversationView({
 			const key = chatSessionAccessDeniedKey(err);
 			if (key) {
 				setSendError(t(key));
+				return;
+			}
+			// Any other error the API explained: show its message instead of
+			// dropping it as an unhandled rejection the person never sees.
+			const apiMessage = getApiErrorMessage(err);
+			if (apiMessage) {
+				setSendError(apiMessage);
 				return;
 			}
 			throw err;

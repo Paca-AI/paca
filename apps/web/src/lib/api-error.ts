@@ -136,6 +136,10 @@ export const ApiErrorCode = {
 	// agent-detail.tsx's OverviewTab.
 	AgentDefaultEnvironmentInvalid: "AGENT_DEFAULT_ENVIRONMENT_INVALID",
 	AgentDefaultFolderInvalid: "AGENT_DEFAULT_FOLDER_INVALID",
+	// A provider_cli agent has no usable default environment, so a chat turn
+	// can't start: see conversation-to-thread-messages.ts.
+	AgentDefaultEnvironmentRequiredForCLIProvider:
+		"AGENT_DEFAULT_ENVIRONMENT_REQUIRED_FOR_CLI_PROVIDER",
 	// Sent from AddSkill when the skill name collides with one of Paca's own
 	// internal scaffolding names, or is malformed ("."/".."/contains a path
 	// separator) — see agent-detail.tsx's AddSkillDialog.

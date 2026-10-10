@@ -388,6 +388,7 @@
 			"conversationEnded": "이 대화가 종료되었습니다.",
 			"textOnlyMessage": "텍스트 메시지만 지원됩니다.",
 			"chatNoPermission": "이 대화에서 메시지를 보낼 권한이 없습니다.",
+			"cliProviderNeedsEnvironment": "이 에이전트는 CLI 제공자를 사용하며 기본 환경이 필요하지만 사용할 수 있는 환경이 없습니다. 프로젝트 관리자에게 에이전트의 기본 환경을 설정해 달라고 요청하세요.",
 			"failed": "대화가 실패했습니다",
 			"noOutput": "에이전트가 출력을 생성하지 않았습니다.",
 			"loadingOlder": "불러오는 중…",
