@@ -6,6 +6,7 @@ import type {
 import {
 	ApiErrorCode,
 	getApiErrorCode,
+	getApiErrorMessage,
 	isForbiddenError,
 } from "@/lib/api-error";
 import { parseContextItems } from "@/lib/context-items";
@@ -42,10 +43,10 @@ type ChatSessionAccessDeniedKey =
 // becomes an unhandled promise rejection rather than a rendered message, so
 // re-throwing is reserved for cases the caller still wants propagated.
 // Returns null for anything it doesn't classify, so the caller falls back to
-// the API's own message, or re-throws the original error unchanged rather than misreporting a network failure or
-// busy-dialog cancellation as a permission problem. Stays i18n-free like
-// the rest of this file — callers own translating the returned key, this
-// only classifies.
+// chatSessionApiErrorMessage, or re-throws the original error unchanged
+// rather than misreporting a network failure or busy-dialog cancellation as
+// a permission problem. Stays i18n-free like the rest of this file — callers
+// own translating the returned key, this only classifies.
 export function chatSessionAccessDeniedKey(
 	err: unknown,
 ): ChatSessionAccessDeniedKey | null {
@@ -59,6 +60,15 @@ export function chatSessionAccessDeniedKey(
 		return "agents.conversationView.cliProviderNeedsEnvironment";
 	}
 	return null;
+}
+
+// The API's own message for a rejected chat request (4xx only: a 5xx message
+// can carry server internals and is not meant for the person). Null when
+// there is none, so the caller re-throws.
+export function chatSessionApiErrorMessage(err: unknown): string | null {
+	const status = (err as { response?: { status?: number } })?.response?.status;
+	if (typeof status !== "number" || status < 400 || status >= 500) return null;
+	return getApiErrorMessage(err);
 }
 
 // Extract plain text from a content block array [{type:"text", text:"..."}] or a bare string.

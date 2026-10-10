@@ -292,7 +292,6 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		SSO:                  ssoHandler,
 		User:                 handler.NewUserHandler(userService),
 		Role:                 handler.NewRoleHandler(roleService),
-		RolePolicies:         roleRepo,
 		RoleAttachments:      httpmw.NewRoleServiceAttachments(roleService),
 		Project: handler.NewProjectHandler(projectService, authorizer,
 			// Same Jev wiring as bootstrap/app.go (nil encryptor: keys are

@@ -18,7 +18,6 @@ import {
 	startChatSession,
 	startGlobalChatSession,
 } from "@/lib/agent-api";
-import { getApiErrorMessage } from "@/lib/api-error";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { useAgentBusyPrompt } from "./agent-busy-dialog";
 import {
@@ -35,6 +34,7 @@ import {
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	chatSessionAccessDeniedKey,
+	chatSessionApiErrorMessage,
 	extractTextOnlyContent,
 } from "./conversation-to-thread-messages";
 
@@ -179,9 +179,9 @@ export function NewConversationThread({
 				setSendError(t(key));
 				return;
 			}
-			// Any other error the API explained: show its message instead of
-			// dropping it as an unhandled rejection the person never sees.
-			const apiMessage = getApiErrorMessage(err);
+			// Any other client error the API explained: show its message instead
+			// of dropping it as an unhandled rejection the person never sees.
+			const apiMessage = chatSessionApiErrorMessage(err);
 			if (apiMessage) {
 				setSendError(apiMessage);
 				return;

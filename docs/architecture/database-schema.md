@@ -41,7 +41,7 @@ Table roles {
   id uuid [primary key]
   name text [not null, note: 'Unique among platform roles (project_id NULL) and unique per project.']
   description text [not null, default: '']
-  policy jsonb [not null, note: 'IAM policy document: {version, statements[{sid, effect, actions, resources, conditions}]}']
+  policy jsonb [not null, note: 'IAM policy document: {version, statements[{sid, effect, actions, resources, conditions}]}. Saving needs only roles:write (not bounded by the author\'s own grants); a project-owned role\'s resources must all lie inside project_id.']
   project_id uuid [null, ref: > projects.id, note: 'Owner project; NULL = platform role. ON DELETE CASCADE.']
   is_system boolean [not null, default: false, note: 'Managed by Paca (SUPER_ADMIN, ADMIN, USER, each project Admin): editable but not deletable.']
   is_default boolean [not null, default: false, note: 'The role new users and global agents start with. At most one row (partial unique index uq_roles_single_default).']
@@ -349,7 +349,7 @@ Table plugins {
   id uuid [primary key]
   name text [unique, not null, note: 'reverse-DNS id, e.g. "com.paca.checklist"']
   version text [not null, default: '0.0.0', note: 'semver, e.g. "1.0.0"']
-  manifest jsonb [not null, default: '{}', note: 'Full plugin.json contents (routes, extension points, event subscriptions, etc.)']
+  manifest jsonb [not null, default: '{}', note: 'Full plugin.json contents (routes, extension points, event subscriptions, etc.). customPermissions[].scope is project, global or both; nav items\' and extension points\' requiredPermission must be <domain>:<verb> (validated at install/update, no schema change).']
   enabled boolean [not null, default: true]
   installed_at timestamp
   updated_at timestamp

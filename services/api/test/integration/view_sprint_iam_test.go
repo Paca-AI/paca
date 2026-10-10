@@ -41,7 +41,6 @@ func newViewAPIEnv(t *testing.T) *roleAPIEnv {
 		IAM:                  authz,
 		ProjectVisibilitySvc: publicProjects{},
 		Role:                 handler.NewRoleHandler(roleSvc),
-		RolePolicies:         roleRepo,
 		RoleAttachments:      httpmw.NewRoleServiceAttachments(roleSvc),
 		View:                 handler.NewViewHandler(viewSvc).WithViewListScoper(authz),
 		Health:               handler.NewHealthHandler(),

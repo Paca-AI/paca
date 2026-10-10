@@ -24,7 +24,9 @@ export interface ExtensionPointProps {
  * `<ExtensionPoint>` renders all plugin components registered for the given
  * `point` in the order dictated by the registry (plugin default, then user
  * preference overrides applied by the preference layer). A registration with
- * a `requiredPermission` is only rendered for callers who hold it.
+ * a `requiredPermission` is only rendered for callers who hold it: pass
+ * `projectId` in `componentProps` when rendered inside a project, so the
+ * project's own permissions are checked instead of the workspace-wide ones.
  *
  * Each component is individually wrapped in an ErrorBoundary so a single
  * failing plugin cannot affect siblings or the host application.

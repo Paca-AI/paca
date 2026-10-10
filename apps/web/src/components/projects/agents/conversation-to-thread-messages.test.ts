@@ -6,6 +6,7 @@ import type {
 import {
 	canReplyToConversation,
 	chatSessionAccessDeniedKey,
+	chatSessionApiErrorMessage,
 	eventsToThreadMessages,
 	hasEnvironmentReadyEvent,
 	isEnvironmentReady,
@@ -1404,5 +1405,21 @@ describe("chatSessionAccessDeniedKey", () => {
 		expect(chatSessionAccessDeniedKey(apiError(500, "INTERNAL_ERROR"))).toBe(
 			null,
 		);
+	});
+});
+
+describe("chatSessionApiErrorMessage", () => {
+	const withStatus = (status: number, error?: string) => ({
+		response: { status, data: { error } },
+	});
+	it("returns the API's message for a client error", () => {
+		expect(chatSessionApiErrorMessage(withStatus(400, "bad agent"))).toBe(
+			"bad agent",
+		);
+	});
+	it("ignores server errors, network failures and missing messages", () => {
+		expect(chatSessionApiErrorMessage(withStatus(500, "db down"))).toBeNull();
+		expect(chatSessionApiErrorMessage(new Error("Network Error"))).toBeNull();
+		expect(chatSessionApiErrorMessage(withStatus(400))).toBeNull();
 	});
 });

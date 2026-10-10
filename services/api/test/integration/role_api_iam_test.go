@@ -59,7 +59,6 @@ func newRoleAPIEnv(t *testing.T) *roleAPIEnv {
 		ProjectVisibilitySvc: publicProjects{},
 		Health:               handler.NewHealthHandler(),
 		Role:                 handler.NewRoleHandler(svc),
-		RolePolicies:         roleRepo,
 		RoleAttachments:      httpmw.NewRoleServiceAttachments(svc),
 		Log:                  slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})

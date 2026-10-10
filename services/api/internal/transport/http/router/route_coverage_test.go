@@ -63,7 +63,6 @@ func coverageDeps(iamAuth *iam.Authorizer) Deps {
 		Auth:                 handler.NewAuthHandler(nil, handler.CookieConfig{}),
 		User:                 handler.NewUserHandler(nil),
 		Role:                 handler.NewRoleHandler(nil),
-		RolePolicies:         noRolePolicies{},
 		RoleAttachments:      noRoleAttachments{},
 		Project:              handler.NewProjectHandler(nil, iamAuth),
 		Task:                 handler.NewTaskHandler(nil, nil, nil),
@@ -295,16 +294,6 @@ var roleRoutes = map[string]string{
 	"DELETE /api/v1/projects/{projectId}/roles/{roleId}": resProjectRole,
 }
 
-// escalationGuards pins exactly which routes carry which escalation guard
-// (middleware that checks the caller's own grants against what is being
-// granted). Making a role the default is the only place that bounds a caller
-// by what they hold; saving a role's policy needs only roles:write on the role
-// (see the role routes), and assigning a role is not bounded either (see
-// assignGates).
-var escalationGuards = map[string][]string{
-	"PUT /api/v1/admin/roles/{roleId}/default": {resGrantableRole},
-}
-
 // assignGates pins exactly which routes carry the role-assignment gate
 // (roles:assign on the resource of each role added or removed) and in which
 // scope. Every route that changes who holds a role must be listed.
@@ -335,22 +324,11 @@ func (noRoleAttachments) MemberRoleIDs(context.Context, uuid.UUID, uuid.UUID) ([
 	return nil, nil
 }
 
-// noRolePolicies is a role lookup that knows no roles.
-type noRolePolicies struct{}
-
-func (noRolePolicies) RolePolicies(context.Context, []uuid.UUID) (map[uuid.UUID][]byte, error) {
-	return map[uuid.UUID][]byte{}, nil
-}
-
 // isAttrsGate reports whether resource names a request-attribute gate, which
 // sits after the route's action gate and authorizes the body's attributes.
 func isAttrsGate(resource string) bool {
 	return resource == resTaskAttrs || resource == resDocAttrs || resource == resTaskPositionItems ||
 		resource == resViewAttrs || resource == resViewReorderItems
-}
-
-func isEscalationGuard(resource string) bool {
-	return resource == resGrantableRole
 }
 
 func isAssignGate(resource string) bool {
@@ -413,7 +391,7 @@ func TestRouteCoverage_IAMResources(t *testing.T) {
 		seen[rt.key()] = true
 		var child []string
 		for _, g := range rt.gates {
-			if g.resource != resProject && g.resource != resPlatform && !isEscalationGuard(g.resource) && !isAssignGate(g.resource) && !isAttrsGate(g.resource) {
+			if g.resource != resProject && g.resource != resPlatform && !isAssignGate(g.resource) && !isAttrsGate(g.resource) {
 				child = append(child, g.resource)
 			}
 		}
@@ -487,30 +465,6 @@ func TestRouteCoverage_Behaviour(t *testing.T) {
 		}
 		if rec := call(rt, true); rec.Code != http.StatusNoContent {
 			t.Errorf("%s: \"*\" holder got %d %q, want 204", rt.key(), rec.Code, errorCodeOf(rec))
-		}
-	}
-}
-
-func TestRouteCoverage_EscalationGuards(t *testing.T) {
-	seen := map[string]bool{}
-	for _, rt := range walkGates(t, coverageDeps(newTestIAM(&iamUserStore{}))) {
-		var got []string
-		for _, g := range rt.gates {
-			if isEscalationGuard(g.resource) {
-				got = append(got, g.resource)
-			}
-		}
-		want, ok := escalationGuards[rt.key()]
-		if ok {
-			seen[rt.key()] = true
-		}
-		if strings.Join(got, "|") != strings.Join(want, "|") {
-			t.Errorf("%s: escalation guards %v, want %v", rt.key(), got, want)
-		}
-	}
-	for k := range escalationGuards {
-		if !seen[k] {
-			t.Errorf("escalationGuards lists %q, which is not a registered route", k)
 		}
 	}
 }

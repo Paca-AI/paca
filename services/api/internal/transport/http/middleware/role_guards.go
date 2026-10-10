@@ -2,79 +2,14 @@ package middleware
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/Paca-AI/api/internal/apierr"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
-
-// PolicyGranter decides whether a principal may grant a policy (put it into a
-// role or hand a role carrying it to someone). *iam.Authorizer implements it.
-type PolicyGranter interface {
-	CanGrant(ctx context.Context, p iam.Principal, policy *iam.Policy) (bool, error)
-}
-
-// RolePolicyLookup returns the stored policy documents of the roles that
-// exist among ids (unknown ids are simply absent from the result).
-type RolePolicyLookup interface {
-	RolePolicies(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]byte, error)
-}
-
-var errNotGrantable = apierr.New(apierr.CodeForbidden, "you cannot grant permissions you do not hold yourself")
-
-// RequireGrantableRoleInPath is the escalation guard of a route that acts on
-// the one role named by the roleParam URL parameter (making a role the
-// default hands it to every future account). An id that names no role passes
-// through for the handler's 404.
-func RequireGrantableRoleInPath(lookup RolePolicyLookup, g PolicyGranter, roleParam string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			p, err := IAMPrincipalFrom(r)
-			if err != nil {
-				presenter.Error(w, r, err)
-				return
-			}
-			id, err := uuid.Parse(chi.URLParam(r, roleParam))
-			if err != nil {
-				presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid role id"))
-				return
-			}
-			if lookup == nil || g == nil {
-				presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "authorization not configured"))
-				return
-			}
-			policies, err := lookup.RolePolicies(r.Context(), []uuid.UUID{id})
-			if err != nil {
-				presenter.Error(w, r, err)
-				return
-			}
-			if raw, found := policies[id]; found {
-				policy, perr := iam.ParsePolicy(raw)
-				if perr != nil {
-					presenter.Error(w, r, apierr.New(apierr.CodeForbidden, "a role's policy cannot be evaluated"))
-					return
-				}
-				ok, err := g.CanGrant(r.Context(), p, policy)
-				if err != nil {
-					presenter.Error(w, r, err)
-					return
-				}
-				if !ok {
-					presenter.Error(w, r, errNotGrantable)
-					return
-				}
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
 
 // RequireActionsForSimulatedPrincipal gates what-if simulation with a named
 // principal: simulating the given policy alone is open to any authenticated

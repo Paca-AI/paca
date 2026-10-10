@@ -34,8 +34,6 @@ type guards struct {
 	visibility httpmw.ProjectVisibilityChecker
 	agentEnvs  httpmw.AgentEnvironmentLookup
 	sessionEnv httpmw.SessionEnvironmentLookup
-	// rolePolicies backs the escalation guard of making a role the default.
-	rolePolicies httpmw.RolePolicyLookup
 	// roleAttachments backs the assignment gates (which roles a request adds
 	// and removes).
 	roleAttachments httpmw.RoleAttachmentLookup
@@ -48,7 +46,7 @@ type guards struct {
 func newGuards(deps Deps) guards {
 	return guards{
 		iam: deps.IAM, visibility: deps.ProjectVisibilitySvc, agentEnvs: deps.AgentEnvironments,
-		sessionEnv: deps.SessionEnvironments, rolePolicies: deps.RolePolicies, roleAttachments: deps.RoleAttachments, members: deps.MemberPrincipals, taskNumbers: deps.TaskNumbers,
+		sessionEnv: deps.SessionEnvironments, roleAttachments: deps.RoleAttachments, members: deps.MemberPrincipals, taskNumbers: deps.TaskNumbers,
 	}
 }
 
@@ -105,10 +103,6 @@ const (
 	resProjectRole           = "project/{projectId}/role/{roleId}"
 	resUser                  = "user/{userId}"
 	resGlobalAgent           = "agent/{agentId}"
-
-	// resGrantableRole names the escalation guard of set-default (it
-	// authorizes against the caller's own grants, not a resource).
-	resGrantableRole = "escalation guard: the role in the URL must be grantable by the caller"
 
 	// resAssignRoles / resAssignProjectRoles name the assignment gates: roles:assign
 	// is authorized on the resource of each role the request adds or removes.
@@ -326,12 +320,6 @@ func (g guards) AssignMemberRoles() func(http.Handler) http.Handler {
 // role_ids. A request without role_ids assigns nothing and needs nothing.
 func (g guards) AssignNewProjectPrincipalRoles() func(http.Handler) http.Handler {
 	return markGate(resAssignProjectRoles, httpmw.RequireAssignRoles(g.iam, httpmw.NewProjectPrincipalTarget("projectId")))
-}
-
-// GrantableRoleInPath is the escalation guard of making the role in the URL
-// the default (it is handed to every future account).
-func (g guards) GrantableRoleInPath() func(http.Handler) http.Handler {
-	return markGate(resGrantableRole, httpmw.RequireGrantableRoleInPath(g.rolePolicies, g.iam, "roleId"))
 }
 
 // SimulateWithPrincipal admits any authenticated caller to a what-if

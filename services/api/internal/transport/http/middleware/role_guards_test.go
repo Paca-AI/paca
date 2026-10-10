@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"context"
-	"errors"
 	"net/http"
 	"testing"
 
@@ -10,26 +8,6 @@ import (
 
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 )
-
-type fakeRolePolicies struct {
-	policies map[uuid.UUID][]byte
-	err      error
-	called   int
-}
-
-func (f *fakeRolePolicies) RolePolicies(_ context.Context, ids []uuid.UUID) (map[uuid.UUID][]byte, error) {
-	f.called++
-	if f.err != nil {
-		return nil, f.err
-	}
-	out := map[uuid.UUID][]byte{}
-	for _, id := range ids {
-		if p, ok := f.policies[id]; ok {
-			out[id] = p
-		}
-	}
-	return out, nil
-}
 
 func policyBody(statement string) string {
 	return `{"name":"R","description":"","policy":{"version":"2026-10-01","statements":[` + statement + `]}}`
@@ -67,42 +45,6 @@ func TestRequireActionsForSimulatedPrincipal(t *testing.T) {
 			}
 			if tc.want == http.StatusNoContent && seen != tc.body {
 				t.Fatalf("body must be restored: %q != %q", seen, tc.body)
-			}
-		})
-	}
-}
-
-func TestRequireGrantableRoleInPath(t *testing.T) {
-	userID := uuid.New()
-	user := iam.Principal{Type: "user", ID: userID.String()}
-	big, broken := uuid.New(), uuid.New()
-	lookup := &fakeRolePolicies{policies: map[uuid.UUID][]byte{
-		big:    []byte(`{"statements":[` + allowJSON(`"users:write"`, `"user/*"`) + `]}`),
-		broken: []byte(`{"statements":[{"effect":"Maybe"}]}`),
-	}}
-	star := []iam.Grant{platformGrant([]string{"*"}, []string{"*"})}
-	small := []iam.Grant{platformGrant([]string{"tasks:*"}, []string{"*"})}
-	cases := []struct {
-		name   string
-		grants []iam.Grant
-		path   string
-		lookup RolePolicyLookup
-		want   int
-	}{
-		{"holder passes", star, "/roles/" + big.String(), lookup, http.StatusNoContent},
-		{"caller without the power is refused", small, "/roles/" + big.String(), lookup, http.StatusForbidden},
-		{"unparsable role is refused", star, "/roles/" + broken.String(), lookup, http.StatusForbidden},
-		{"unknown role passes (404 from the handler)", small, "/roles/" + uuid.NewString(), lookup, http.StatusNoContent},
-		{"bad id is a 400", star, "/roles/nope", lookup, http.StatusBadRequest},
-		{"lookup failure is 500", star, "/roles/" + big.String(), &fakeRolePolicies{err: errors.New("db")}, http.StatusInternalServerError},
-		{"no lookup fails closed", star, "/roles/" + big.String(), nil, http.StatusInternalServerError},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			store := &fakeIAMStore{grants: map[iam.Principal][]iam.Grant{user: tc.grants}}
-			rec, _ := serveChat(t, "/roles/{roleId}", tc.path, "", asCaller(userID, uuid.Nil), RequireGrantableRoleInPath(tc.lookup, newFakeIAM(store), "roleId"))
-			if rec.Code != tc.want {
-				t.Fatalf("status = %d (%s), want %d", rec.Code, rec.Body.String(), tc.want)
 			}
 		})
 	}
