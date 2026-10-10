@@ -512,7 +512,6 @@ func New(cfg *config.Config) (*App, error) {
 		SSO:                  handler.NewSSOHandler(ssoService, authHandler, cfg.Server.PublicURL),
 		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
 		Role:                 handler.NewRoleHandler(roleService),
-		RolePolicies:         roleRepo,
 		RoleAttachments:      httpmw.NewRoleServiceAttachments(roleService),
 		ProjectVisibilitySvc: projectService,
 		ProjectActivity:      handler.NewProjectActivityHandler(activityLog, attachmentService),

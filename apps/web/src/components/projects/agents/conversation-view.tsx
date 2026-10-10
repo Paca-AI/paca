@@ -52,6 +52,7 @@ import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	canReplyToConversation,
 	chatSessionAccessDeniedKey,
+	chatSessionApiErrorMessage,
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 	isEnvironmentReady,
@@ -358,6 +359,13 @@ export function ConversationView({
 			const key = chatSessionAccessDeniedKey(err);
 			if (key) {
 				setSendError(t(key));
+				return;
+			}
+			// Any other client error the API explained: show its message instead
+			// of dropping it as an unhandled rejection the person never sees.
+			const apiMessage = chatSessionApiErrorMessage(err);
+			if (apiMessage) {
+				setSendError(apiMessage);
 				return;
 			}
 			throw err;

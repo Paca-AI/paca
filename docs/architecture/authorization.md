@@ -121,13 +121,13 @@ Attachments are managed as *replace-sets* (`PUT .../roles` with `role_ids`), see
 
 ### System roles
 
-`internal/bootstrap/defaultroles` embeds the shipped policies. Platform roles `SUPER_ADMIN` (`*` on `*`), `ADMIN` and `USER` are `is_system`. Startup seeding creates any of them that is missing but **never overwrites** an existing role's policy or description, so edits made by an administrator persist across restarts and upgrades. System roles **can be edited** by anyone allowed to write roles (the escalation guard still applies) but **cannot be deleted** (`409 ROLE_IS_SYSTEM`). Reconciliation is by name, so the roles migration 000064 converted keep their ids and holders. Project templates (`Admin`, `Editor`, `Viewer`) are instantiated into every new project as project-owned roles (`PROJECT_ID` replaced by the real id); the project `Admin` is `is_system`.
+`internal/bootstrap/defaultroles` embeds the shipped policies. Platform roles `SUPER_ADMIN` (`*` on `*`), `ADMIN` and `USER` are `is_system`. Startup seeding creates any of them that is missing but **never overwrites** an existing role's policy or description, so edits made by an administrator persist across restarts and upgrades. System roles **can be edited** by anyone allowed to write roles but **cannot be deleted** (`409 ROLE_IS_SYSTEM`). Reconciliation is by name, so the roles migration 000064 converted keep their ids and holders. Project templates (`Admin`, `Editor`, `Viewer`) are instantiated into every new project as project-owned roles (`PROJECT_ID` replaced by the real id); the project `Admin` is `is_system`.
 
 `ADMIN` runs the workspace (`users:*`, `projects:*`, `agents:*`, `plugins:*`, `settings:write`) and can read roles (`roles:read`); it does not hold `roles:write` or `roles:assign`.
 
-### Root-equivalent actions and escalation guards
+### Root-equivalent actions
 
-Two different questions are asked of a caller who works with roles. *Saving* a role (create, edit, make it the default) puts a policy into the system, so the caller must hold what that policy grants. *Attaching* an existing role to someone is a `PassRole`-style operation with its own gate (below) that does **not** ask what the role contains.
+Neither saving a role (create, edit, make it the default) nor attaching one asks the caller to hold what the role grants. *Saving* needs `roles:write` on the role's scope; *attaching* is a `PassRole`-style operation with its own gate (below). Both are therefore powerful actions, listed here.
 
 Some actions let their holder give themselves everything, so holding one is holding `*`:
 
@@ -136,10 +136,8 @@ Some actions let their holder give themselves everything, so holding one is hold
 - `settings.sso:write`: configure an SSO provider that links accounts by email and sign in as anyone (see [SSO](../guides/sso-oidc.md));
 - `users:write`: can reset any user's password (`PATCH /admin/users/{userId}/password`), a `SUPER_ADMIN`'s included, and sign in as them.
 
-Only `SUPER_ADMIN` is seeded with them (`ADMIN` holds `users:*`, so it can take over accounts: grant it accordingly). Beyond that the engine enforces **no privilege escalation when defining roles**: a caller can only save a role (or make it the default) granting what they hold themselves.
+Only `SUPER_ADMIN` is seeded with them (`ADMIN` holds `users:*`, so it can take over accounts: grant it accordingly). The engine does **not** bound a role author by their own grants: there are no escalation guards on `POST/PUT /admin/roles`, the project role routes or `PUT /admin/roles/{roleId}/default` (the former `GrantablePolicy` / `GrantableRoleInPath` middleware and `iam.CanGrant` / `GrantsCover` were removed). The only content check is that a project's own role names resources inside that project (`422 ROLE_POLICY_INVALID`). Treat `roles:write` and `roles:assign` as root.
 
-- `iam.GrantsCover` / `Authorizer.CanGrant`: for every `Allow` action/resource pair in the candidate policy, the caller must hold an *unconditional* `Allow` covering it and no `Deny` of theirs (conditional or not) may overlap it. `Deny` statements in the candidate are always grantable (they only narrow).
-- The guards run in the router after the action gate: `GrantablePolicy` on `POST/PUT` of a role (platform and project) and `GrantableRoleInPath` on `PUT /admin/roles/{roleId}/default`. A failure is `403 FORBIDDEN`; a stored policy that cannot be parsed cannot be vouched for and is refused. There is **no** such guard on assigning roles: the `roles:assign` gate below replaces it.
 - **Last full access.** A change (updating or deleting a role, replacing attachments) that would leave no platform-wide attachment of an unconditional `*` on `*` Allow is refused with `409 ROLE_LAST_FULL_ACCESS`. A workspace that had no such holder to begin with is not blocked.
 
 ### Assigning roles (`roles:assign`)
@@ -162,7 +160,7 @@ Assignment follows `iam:PassRole`. A caller holding `roles:assign` may assign **
 
 ### Plugin actions
 
-A plugin declares its actions in `customPermissions[].key` of its manifest. Each key is an IAM action `<namespace>:<verb>` where the namespace is the last dot-segment of the plugin id with `-` replaced by `_` (`com.paca.time-logging` gives `time_logging:manage_all`); it cannot redeclare a built-in action or another plugin's. The registry holds a plugin's actions while it is installed (`Registry.SetPluginActions`); role policies may name them and the role editor lists them. A plugin's own action is checked on `project/<projectId>/plugin/<pluginId>` inside a project, so a role can grant it in one project, and on `plugin/<pluginId>` outside any project. Route middleware is `requireActions`; `requirePermissions` is rejected. See [backend plugin system](../plugins/backend-plugin-system.md#route-middleware-policy).
+A plugin declares its actions in `customPermissions[].key` of its manifest. Each key is an IAM action `<namespace>:<verb>` where the namespace is the last dot-segment of the plugin id with `-` replaced by `_` (`com.paca.time-logging` gives `time_logging:manage_all`); it cannot redeclare a built-in action or another plugin's. The registry holds a plugin's actions while it is installed (`Registry.SetPluginActions`); role policies may name them and the role editor lists them. A plugin's own action is checked on `project/<projectId>/plugin/<pluginId>` inside a project, so a role can grant it in one project, and on `plugin/<pluginId>` outside any project; the workspace-wide effective actions (`Authorizer.EffectiveActions` with no project) include them too, evaluated on `plugin/<pluginId>` (`Registry.PluginOwner` finds the owner), so a `*` holder sees them. `customPermissions[].scope` is `project`, `global` or `both` (listed in the project and the global role editor). Route middleware is `requireActions`; `requirePermissions` is rejected. See [backend plugin system](../plugins/backend-plugin-system.md#route-middleware-policy).
 
 **Agents.** A request made with the agent API key that names an agent is judged by that agent's own attachments, never by the shared bot user behind the key (seeded `SUPER_ADMIN`), which would give every agent full privilege. The same holds for plugin `permission_check` and `db_query`/`db_exec` (GHSA-g6mx-8g92-w9v5).
 
@@ -193,7 +191,6 @@ r.With(require.Environment(iam.ActionEnvironmentsConnect)).Post("/ssh-keys", h.A
 | `TaskCreate`, `TaskChange`, `DocCreate`, `DocChange` | the attributes a request body sets (sprint, status, type, assignees, folder), old and new |
 | `ViewCreate`, `ViewReorderItems` | a new view's sprint (the `sprint_id` query parameter; none for backlog and timeline), and every view id in a reorder body |
 | `TaskPositionItems` | `tasks:write` on each task named in the items of a bulk task-position update |
-| `GrantablePolicy`, `GrantableRoleInPath` | the escalation guards of role create/update and set-default, against the caller's own grants |
 | `AssignUserRoles`, `AssignGlobalAgentRoles` | `roles:assign` on `role/{roleId}` for each role the request adds or removes |
 | `AssignMemberRoles`, `AssignNewProjectPrincipalRoles` | `roles:assign` on `project/{projectId}/role/{roleId}` for each role the request adds or removes |
 
@@ -242,13 +239,13 @@ Choosing roles for an account or agent is a separate request made once it exists
 4. Do not check permissions in the handler.
 5. If it is open to any authenticated user or public by design, add it to `openRouteGroups` in `router/authorization_test.go` with the reason. Otherwise `TestEveryRouteIsGuarded` and the route coverage test fail.
 6. Add the row to `docs/api/http-design.md` (and `docs/api/roles-and-policies.md` for role endpoints).
-7. If the operation can hand out or raise authority (a role, a membership, a credential), ask what its action lets the holder reach. One that can mint root is root-equivalent: keep it off every built-in role except `SUPER_ADMIN`, and make sure an escalation guard (for policies) or a resource-scoped gate such as `roles:assign` (for existing roles) covers any role or policy it accepts.
+7. If the operation can hand out or raise authority (a role, a membership, a credential), ask what its action lets the holder reach. One that can mint root is root-equivalent: keep it off every built-in role except `SUPER_ADMIN`, and make sure it is only given to trusted roles; a resource-scoped gate such as `roles:assign` can limit which existing roles it reaches.
 
 ## Safety nets
 
 - `router/route_coverage_test.go` walks the route table: every route that is not reviewed as open must declare a gate, and reports the resource it authorizes. `router/authorization_test.go` (`TestEveryRouteIsGuarded`) calls every route as an authenticated caller with no roles (must get 403) and as an anonymous caller (must get 401).
 - `router/guards_test.go` and `guards_iam_test.go` pin what each gate means.
-- `internal/platform/authz/iam` tests cover wildcard matching, Deny precedence, project-scope intersection, each operator, malformed policies failing closed, list-scope compilation versus `Evaluate`, `GrantsCover`, and named regressions (GHSA-hjcj-373w-vq8m, GHSA-g6mx-8g92-w9v5).
+- `internal/platform/authz/iam` tests cover wildcard matching, Deny precedence, project-scope intersection, each operator, malformed policies failing closed, list-scope compilation versus `Evaluate`, and named regressions (GHSA-hjcj-373w-vq8m, GHSA-g6mx-8g92-w9v5).
 - `internal/bootstrap/defaultroles` tests keep every shipped policy valid and pin what each platform role and project template may do.
 - `test/integration/iam_migration_test.go` replays the legacy-to-IAM migration against fixtures with every old role shape and compares allow/deny per principal.
 - The e2e suites run against a real database: a user whose roles lack an action is refused everywhere that action is needed.

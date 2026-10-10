@@ -175,7 +175,6 @@ func allRoutes(t *testing.T, authorizer *iam.Authorizer, visibility privateProje
 		Auth:                 handler.NewAuthHandler(nil, handler.CookieConfig{}),
 		User:                 handler.NewUserHandler(nil),
 		Role:                 handler.NewRoleHandler(nil),
-		RolePolicies:         noRolePolicies{},
 		RoleAttachments:      noRoleAttachments{},
 		Project:              handler.NewProjectHandler(nil, authorizer),
 		Task:                 handler.NewTaskHandler(nil, nil, nil),

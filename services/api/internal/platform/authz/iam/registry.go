@@ -17,11 +17,13 @@ type Registry struct {
 	// plugins holds the actions each plugin declares, keyed by plugin id, so a
 	// plugin's set can be replaced or removed as a whole.
 	plugins map[string][]string
+	// owners maps each plugin action back to the plugin that declares it.
+	owners map[string]string
 }
 
 // NewRegistry returns a registry seeded with BuiltinActions.
 func NewRegistry() *Registry {
-	r := &Registry{actions: map[string]struct{}{}, domains: map[string]struct{}{}, plugins: map[string][]string{}}
+	r := &Registry{actions: map[string]struct{}{}, domains: map[string]struct{}{}, plugins: map[string][]string{}, owners: map[string]string{}}
 	for _, a := range BuiltinActions() {
 		if err := r.Register(string(a)); err != nil {
 			panic(err) // builtin list is static; a bad entry is a programming error
@@ -94,6 +96,7 @@ func (r *Registry) SetPluginActions(owner string, actions []string) error {
 	r.plugins[owner] = append([]string(nil), actions...)
 	for _, a := range actions {
 		r.actions[a] = struct{}{}
+		r.owners[a] = owner
 	}
 	r.recomputeDomainsLocked()
 	return nil
@@ -107,9 +110,18 @@ func (r *Registry) RemovePluginActions(owner string) {
 	r.recomputeDomainsLocked()
 }
 
+// PluginOwner returns the id of the plugin that declares action, or "" for a
+// built-in or unknown action.
+func (r *Registry) PluginOwner(action string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.owners[action]
+}
+
 func (r *Registry) dropPluginLocked(owner string) {
 	for _, a := range r.plugins[owner] {
 		delete(r.actions, a)
+		delete(r.owners, a)
 	}
 	delete(r.plugins, owner)
 }

@@ -1753,7 +1753,7 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `USER_NOT_FOUND` | 404 | User with the given ID does not exist. |
 | `USER_USERNAME_TAKEN` | 409 | Username already in use. |
 | `USER_INVALID_CURRENT_PASSWORD` | 422 | Supplied `current_password` does not match the stored hash. |
-| `FORBIDDEN` | 403 | Caller lacks the required action, or the escalation guard refused a role or policy that grants more than the caller holds. |
+| `FORBIDDEN` | 403 | Caller lacks the required action (or the `roles:assign` resource of a role the request adds or removes). |
 | `ROLE_NOT_FOUND` | 404 | Role with the given ID does not exist in the addressed scope. |
 | `ROLE_NAME_TAKEN` | 409 | A role with that name already exists in the same scope (platform, or the project). |
 | `ROLE_NAME_INVALID` | 400 | Role name is empty or over 100 characters. |

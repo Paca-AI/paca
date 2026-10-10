@@ -388,6 +388,7 @@
 			"conversationEnded": "Cette conversation est terminée.",
 			"textOnlyMessage": "Seuls les messages texte sont pris en charge.",
 			"chatNoPermission": "Vous n'avez pas la permission d'envoyer des messages dans cette conversation.",
+			"cliProviderNeedsEnvironment": "Cet agent utilise un fournisseur CLI et a besoin d'un environnement par défaut, mais il n'en a pas d'utilisable. Demandez à un administrateur du projet de définir un environnement par défaut pour l'agent.",
 			"failed": "La conversation a échoué",
 			"noOutput": "L'agent n'a produit aucun résultat.",
 			"loadingOlder": "Chargement…",

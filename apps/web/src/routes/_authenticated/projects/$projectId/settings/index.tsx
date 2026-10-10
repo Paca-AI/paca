@@ -126,19 +126,23 @@ function SettingsPage() {
 	const canExport =
 		hasPermission("project:export") || hasProjectPermission("project:export");
 
+	const canReadRoles =
+		canManageRoles ||
+		hasPermission("roles:read") ||
+		hasProjectPermission("roles:read");
+
 	const { getRegistrations } = usePluginRegistry();
-	// A tab's own requiredPermission no longer hides it from this list —
-	// matching how the built-in tabs above (task-types, custom-fields, etc.)
-	// are always shown and instead render NoPermissionState internally when
-	// the viewer lacks the relevant permission. See the plugin-tab render
-	// branch below for the equivalent check.
+	// A plugin tab is only listed for members who hold its requiredPermission.
 	const pluginTabs = getRegistrations("project.settings.tab").filter(
-		(r) => !r.hidden,
+		(r) =>
+			!r.hidden &&
+			(!r.requiredPermission || hasProjectPermission(r.requiredPermission)),
 	);
 
 	const visibleNavItems = NAV_ITEMS.filter((i) => {
 		if (i.id === "danger") return canDelete;
 		if (i.id === "export") return canExport;
+		if (i.id === "roles") return canReadRoles;
 		return true;
 	});
 

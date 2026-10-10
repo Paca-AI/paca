@@ -22,6 +22,37 @@ export const PLATFORM_RESOURCES = [
  *  "project/*" covers the project and everything in it. */
 export const PROJECT_RESOURCES = ["project/*"] as const;
 
+/** The platform roots a built-in workspace action is checked on, by domain
+ *  (mirrors the server's iam.PlatformRootFor). */
+const PLATFORM_ROOTS: Record<string, readonly string[]> = {
+	users: ["user", "user/*"],
+	roles: ["role", "role/*"],
+	plugins: ["plugin", "plugin/*"],
+	settings: ["settings"],
+	"settings.sso": ["sso"],
+	agents: ["agent", "agent/*"],
+	projects: ["project"],
+};
+
+/** Where a workspace-wide check of one action lands: its platform root, or
+ *  for a plugin's own action (no root) the plugin resources. */
+function platformRootsOf(action: string): readonly string[] {
+	const i = action.indexOf(":");
+	const domain = i === -1 ? action : action.slice(0, i);
+	return PLATFORM_ROOTS[domain] ?? ["plugin/*"];
+}
+
+/** The resources a set of platform actions is checked on, in the canonical
+ *  PLATFORM_RESOURCES order. */
+function platformResourcesOf(actions: readonly string[]): string[] {
+	const roots = new Set(actions.flatMap((a) => platformRootsOf(a)));
+	const canonical: readonly string[] = PLATFORM_RESOURCES;
+	return [
+		...canonical.filter((r) => roots.has(r)),
+		...[...roots].filter((r) => !canonical.includes(r)),
+	];
+}
+
 function resourcesFor(
 	scope: RoleScope,
 	actions: readonly string[],
@@ -31,7 +62,7 @@ function resourcesFor(
 		// Full access to everything, including resources outside the roots.
 		return actions.length === 1 && actions[0] === "*"
 			? ["*"]
-			: [...PLATFORM_RESOURCES];
+			: platformResourcesOf(actions);
 	}
 	// A project's own role only ever names its own project, which the API
 	// enforces. Without a project (a template) it is "project/*".
@@ -49,15 +80,24 @@ export function actionsToPolicy(
 		return { version: POLICY_VERSION, statements: [] };
 	}
 	const list = unique.includes("*") ? ["*"] : unique;
+	// A platform action applies only where it is checked, so actions sharing
+	// the same resources share one statement and the rest get their own.
+	const groups = new Map<string, string[]>();
+	if (scope === "platform" && list[0] !== "*") {
+		for (const a of list) {
+			const key = platformResourcesOf([a]).join("\n");
+			groups.set(key, [...(groups.get(key) ?? []), a]);
+		}
+	} else {
+		groups.set("", list);
+	}
 	return {
 		version: POLICY_VERSION,
-		statements: [
-			{
-				effect: "Allow",
-				actions: list,
-				resources: resourcesFor(scope, list, projectId),
-			},
-		],
+		statements: [...groups.values()].map((acts) => ({
+			effect: "Allow" as const,
+			actions: acts,
+			resources: resourcesFor(scope, acts, projectId),
+		})),
 	};
 }
 
@@ -95,7 +135,12 @@ function resourcesAreCanonical(
 	projectId?: string,
 ): boolean {
 	if (scope === "platform") {
-		return sameSet(resources, resourcesFor(scope, actions));
+		// The resources the actions are checked on, or the full set of roots
+		// the checkboxes used to write for every platform action.
+		return (
+			sameSet(resources, resourcesFor(scope, actions)) ||
+			sameSet(resources, PLATFORM_RESOURCES)
+		);
 	}
 	if (resources.length === 0) return false;
 	const seg = projectId ? escapeRe(projectId) : "[^/]+";

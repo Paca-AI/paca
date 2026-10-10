@@ -388,6 +388,7 @@
 			"conversationEnded": "この会話は終了しました。",
 			"textOnlyMessage": "テキストメッセージのみサポートされています。",
 			"chatNoPermission": "この会話でメッセージを送信する権限がありません。",
+			"cliProviderNeedsEnvironment": "このエージェントは CLI プロバイダーを使用しており、既定の環境が必要ですが、利用可能なものがありません。プロジェクト管理者にエージェントの既定の環境を設定するよう依頼してください。",
 			"failed": "会話が失敗しました",
 			"noOutput": "エージェントは出力を生成しませんでした。",
 			"loadingOlder": "読み込み中…",

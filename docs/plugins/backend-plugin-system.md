@@ -236,9 +236,14 @@ an IAM action of the form `<namespace>:<verb>`, where the namespace is the last
 segment of the plugin id with `-` replaced by `_` (`com.paca.time-logging` →
 `time_logging:manage_all`). Declared actions are known to the host while the
 plugin is installed: role policies may name them, the role editor lists them,
-and `requireActions`/`paca.permission_check` can check them. Two plugins cannot
-declare the same action. A nav item's or registration's `requiredPermission` is
-an action too, built-in or the plugin's own.
+and `requireActions`/`paca.permission_check` can check them. `scope` decides which role editor lists the permission: `project` (default), `global`, or `both` for an action checked inside a project and across projects (plugins that used `both` must be reinstalled to pick up the manifest). Two plugins cannot
+declare the same action. A nav item's or extension point's `requiredPermission` is
+an action too, built-in or the plugin's own, and must have the form
+`<domain>:<verb>`: a malformed value (such as `settings.write`) would lock the
+page for every user, so install/update rejects it. The web app hides nav items,
+settings tabs, extension points, slots and view types the caller lacks
+`requiredPermission` for (inside a project, the project's effective actions
+decide); the backend still enforces every route.
 
 The legacy `requirePermissions` middleware (dotted permission keys) is no
 longer supported: installing or updating a manifest that declares it fails

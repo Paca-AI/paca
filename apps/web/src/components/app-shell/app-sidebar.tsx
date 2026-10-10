@@ -1006,11 +1006,28 @@ const PROJECT_NAV_ITEMS = [
 	{ segment: "settings", icon: Settings, labelKey: "nav.settings" },
 ] as const;
 
-// Unlike the rest of the project nav, the activity log is hidden from members
-// who can't read it: by default only owners/managers/admins can, so showing
-// it to everyone would mostly lead to a no-permission page.
-const PERMISSION_GATED_SEGMENTS: Partial<Record<string, string>> = {
-	activity: "project.activities:read",
+// A project nav entry is only listed for members who can open its page: it
+// needs the read permission below (any one of them, for the entries that list
+// several). Entries not listed here are open to every project member.
+const PERMISSION_GATED_SEGMENTS: Partial<Record<string, readonly string[]>> = {
+	agents: ["agents:read"],
+	environments: ["environments:read"],
+	conversations: ["conversations:read"],
+	automation: ["workflows:read"],
+	team: ["project.members:read"],
+	activity: ["project.activities:read"],
+	// Settings is a set of tabs, each with its own permission: list it when
+	// the member can use at least one of them.
+	settings: [
+		"projects:write",
+		"projects:delete",
+		"roles:read",
+		"roles:write",
+		"project.settings.task_types:write",
+		"project.settings.task_statuses:write",
+		"project.settings.custom_fields:write",
+		"project:export",
+	],
 };
 
 function ProjectNav() {
@@ -1055,6 +1072,18 @@ function ProjectNavItems({
 	const { t } = useTranslation("appShell");
 	const location = useRouterState({ select: (s) => s.location.pathname });
 	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const { hasPermission } = usePermissions();
+	const { getRegistrations } = usePluginRegistry();
+	const canOpen = (action: string) =>
+		hasPermission(action) || hasProjectPermission(action);
+	// A plugin's own settings tab counts as something to open in Settings.
+	const hasVisiblePluginSettingsTab = getRegistrations(
+		"project.settings.tab",
+	).some(
+		(r) =>
+			!r.hidden &&
+			(!r.requiredPermission || hasProjectPermission(r.requiredPermission)),
+	);
 
 	const [collapsed, setCollapsed] = useState(() => {
 		try {
@@ -1104,7 +1133,10 @@ function ProjectNavItems({
 							if (isAnonymous && ANON_HIDDEN_SEGMENTS.has(item.segment))
 								return false;
 							const required = PERMISSION_GATED_SEGMENTS[item.segment];
-							return !required || hasProjectPermission(required);
+							if (!required) return true;
+							if (item.segment === "settings" && hasVisiblePluginSettingsTab)
+								return true;
+							return required.some(canOpen);
 						}).map(({ segment, icon: Icon, labelKey }) => {
 							const href = segment
 								? `/projects/${projectId}/${segment}`
@@ -1148,14 +1180,14 @@ function PluginProjectPages({ projectId }: { projectId: string }) {
 	const { t } = useTranslation("appShell");
 	const { getNavItems } = usePluginRegistry();
 	const location = useRouterState({ select: (s) => s.location.pathname });
-	// A nav item's own requiredPermission no longer hides it from the
-	// sidebar — matching how the built-in project nav (Team, Environments,
-	// etc. in PROJECT_NAV_ITEMS below) is always shown to any project
-	// member regardless of their specific permissions. The page it routes
-	// to renders a no-permission state instead (see ProjectPluginPage),
-	// consistent with how project settings tabs already behave (e.g.
-	// TaskTypesSettings).
-	const navItems = getNavItems("project");
+	// A nav item is only listed for members who hold its requiredPermission,
+	// like the built-in project nav. (Opening the URL directly still shows a
+	// no-permission state, see ProjectPluginPage.)
+	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const navItems = getNavItems("project").filter(
+		(item) =>
+			!item.requiredPermission || hasProjectPermission(item.requiredPermission),
+	);
 	if (navItems.length === 0) return null;
 
 	return (
@@ -1196,9 +1228,8 @@ function PluginProjectPages({ projectId }: { projectId: string }) {
  * cross-project time-tracking summary), routed to
  * /admin/plugins/:pluginId/:slug. Rendered inline in the existing
  * "Administration" SidebarMenu, so no extra group wrapper here. `navItems`
- * is unfiltered by permission (see AppSidebar's `adminPluginNavItems`) — a
- * caller who lacks an item's `requiredPermission` still sees the link, and
- * gets a no-permission state on the page itself. */
+ * is already filtered by permission (see AppSidebar's `adminPluginNavItems`),
+ * so a caller who lacks an item's `requiredPermission` never sees the link. */
 function PluginAdminPages({ navItems }: { navItems: PluginNavRegistration[] }) {
 	return (
 		<>
@@ -1703,20 +1734,15 @@ export function AppSidebar() {
 
 	const canCreateProject = hasPermission("projects:create");
 
-	// A plugin admin nav item's own declared `requiredPermission` no longer
-	// hides it from the sidebar — the page it routes to renders a
-	// no-permission state instead (see AdminPluginPage), matching how core
-	// admin pages (Users, Global Roles) already behave: reachable by anyone
-	// who can already see the Administration section, with the page itself
-	// enforcing the finer-grained check.
-	const adminPluginNavItems = getNavItems("admin");
+	// A plugin admin nav item is only listed for callers who hold its
+	// declared `requiredPermission` (the same fallback as AdminPluginPage:
+	// plugins:write when it declares none).
+	const adminPluginNavItems = getNavItems("admin").filter((item) =>
+		hasPermission(item.requiredPermission ?? "plugins:write"),
+	);
 
-	// Deliberately does NOT include `adminPluginNavItems.length > 0`: unlike
-	// before, an item's permission can no longer be satisfied just by
-	// hiding it, so a plugin with an admin page must not be able to
-	// single-handedly reveal the "Administration" heading to a user with
-	// zero admin permissions of any kind — that would surface an entire
-	// nav section to people who have no reason to ever open it.
+	// Only shown to someone who can see Administration for another reason: a
+	// plugin with an admin page must not reveal the heading by itself.
 	const showAdminSection =
 		canAccessGlobalRoles ||
 		canAccessUsers ||
@@ -1724,13 +1750,15 @@ export function AppSidebar() {
 		canAccessPlugins ||
 		canAccessSettings;
 	// Plugin-contributed admin pages get their own sidebar section, separate
-	// from core workspace administration — the "Plugins" management link
-	// itself (canAccessPlugins) stays in Administration. Gated on
-	// showAdminSection for the same reason as above: only shown to someone
-	// who can already see Administration for another reason.
+	// from core workspace administration.
 	const showPluginsSection = showAdminSection && adminPluginNavItems.length > 0;
 	const isProjectContext = !!projectId;
 	const isAnonymous = !user;
+	// The docs tree is only listed for members who can read docs (anonymous
+	// visitors of a public project always can).
+	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
+	const canReadDocs =
+		hasPermission("docs:read") || hasProjectPermission("docs:read");
 
 	return (
 		<Sidebar collapsible="icon">
@@ -1787,7 +1815,9 @@ export function AppSidebar() {
 							isAnonymous={isAnonymous}
 						/>
 						<SidebarSeparator />
-						<DocsSidebarSection projectId={projectId} />
+						{(canReadDocs || isAnonymous) && (
+							<DocsSidebarSection projectId={projectId} />
+						)}
 						<SidebarSeparator />
 						<ExtensionPoint
 							point="sidebar.project.section"

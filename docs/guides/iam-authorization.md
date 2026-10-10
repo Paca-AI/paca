@@ -214,7 +214,7 @@ A project's Roles page lists the project's own roles plus the workspace roles al
 
 ## Built-in roles
 
-Paca ships these roles. Startup creates any that is missing and **never overwrites** an existing role's policy or description, so your edits survive restarts and upgrades. Built-in roles are **editable** by anyone allowed to write roles (the escalation guard still applies) but **cannot be deleted** (`409 ROLE_IS_SYSTEM`).
+Paca ships these roles. Startup creates any that is missing and **never overwrites** an existing role's policy or description, so your edits survive restarts and upgrades. Built-in roles are **editable** by anyone allowed to write roles but **cannot be deleted** (`409 ROLE_IS_SYSTEM`).
 
 | Role | Kind | Policy |
 |---|---|---|
@@ -231,7 +231,7 @@ Exactly one platform role is the **default**; it cannot be deleted and cannot be
 
 ## Guard rails
 
-- **No privilege escalation when defining roles.** You can only save a role, or make it the default, granting what you hold yourself: for every `Allow` in the candidate policy you need an *unconditional* `Allow` covering it, with no `Deny` of yours overlapping it. `Deny` statements are always grantable. Violations are `403 FORBIDDEN`.
+- **Defining roles needs only `roles:write`.** You can save a role, or make it the default, without holding what it grants (the same trust model as assigning below), so `roles:write` is root-equivalent. A project's own role must name only that project (`422 ROLE_POLICY_INVALID` otherwise).
 - **Assigning works like `iam:PassRole`.** To attach or detach a role you need `roles:assign` on the resource of that role (`role/<roleId>` platform-wide, `project/<projectId>/role/<roleId>` inside a project). You do **not** need to hold what the role grants, so a project `Admin` can give a member any role inside the project, and `roles:assign` on `*` is root-equivalent. Scope it with resources: see [Roles and policies](roles-and-policies.md#let-people-assign-roles-rolesassign).
 - **Last full access.** A change that would leave no platform-wide unconditional `*` on `*` attachment is refused with `409 ROLE_LAST_FULL_ACCESS` ("This would leave nobody with full access."). A workspace that never had such a holder is not blocked.
 - **Default role.** Exactly one, undeletable, never a template.
@@ -308,7 +308,7 @@ Upgrading from the old flat-permission model is a breaking release with one-way 
 |---|---|
 | `422 ROLE_NOT_ATTACHABLE` ("role is not attachable") | You tried to attach a project template (all resources `project/*`) platform-wide or make it the default, or attach a project-owned role outside its project. Attach it per project, or write a workspace role that names specific projects. |
 | `422 ROLE_POLICY_INVALID` ("policy is not valid") | See the `issues` list; each has a `path`. Typical: `unknown action` (typo, or the plugin that defines it is not installed), `invalid resource ...: empty segment` or `unknown root`, a condition key that fits none of the statement's resources, an unknown operator, unknown fields. On a project's Roles page, `statements[i].resources[j]` means the resource is outside the project. |
-| `403` when saving or attaching a role | Escalation guard: the role grants something you do not hold unconditionally, or one of your own `Deny`s overlaps it. |
+| `403` when saving or attaching a role | You lack `roles:write` (saving) or `roles:assign` on the role's resource (attaching). What the role grants is not checked. |
 | `409 ROLE_LAST_FULL_ACCESS` | The change would remove the last platform-wide `*` on `*`. Attach another full-access role first. |
 | `409 ROLE_IS_SYSTEM` / `ROLE_IS_DEFAULT` | Built-in roles and the default role cannot be deleted. Make another role the default first. |
 | `400 ROLE_REQUIRED` | A project member or project agent needs at least one role. |

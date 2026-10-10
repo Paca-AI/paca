@@ -739,10 +739,10 @@ test.describe("A policy is validated when a role is saved", () => {
 	});
 });
 
-// ─── Escalation guard ────────────────────────────────────────────────────────
+// ─── Saving roles needs only roles:write on the role's scope ────────────────
 
-test.describe("No privilege escalation when defining roles", () => {
-	test("A workspace role can only be saved when its author holds what it grants", async ({
+test.describe("Saving a role needs only roles:write in its scope", () => {
+	test("A workspace role author is not bounded by what they hold themselves", async ({
 		request,
 		playwright,
 	}) => {
@@ -765,101 +765,65 @@ test.describe("No privilege escalation when defining roles", () => {
 			const create = (label: string, policy: RolePolicy) =>
 				postGlobalRole(api, name(label), policy);
 
-			// What they hold themselves: fine.
-			const held = await create(
-				"HELD",
-				policyOf(allow(["users:read"], ["user", "user/*"])),
-			);
-			expect(held.status()).toBe(201);
-
-			// What they do not hold: refused, whether it is one action or everything.
+			// What they hold themselves, and what they do not: both are fine.
 			for (const [label, policy] of [
+				["HELD", policyOf(allow(["users:read"], ["user", "user/*"]))],
 				["MORE_ACTIONS", policyOf(allow(["users:write"], ["user", "user/*"]))],
-				["EVERYTHING", policyOf(allow(["*"], ["*"]))],
-				[
-					"ROOT_EQUIVALENT",
-					policyOf(allow(["roles:assign"], ["role", "role/*"])),
-				],
 				["MORE_RESOURCES", policyOf(allow(["users:read"], ["*"]))],
+				["DENY_ONLY", policyOf(deny(["users:write"], ["*"]))],
 			] as const) {
-				const refused = await create(label, policy);
-				expect(refused.status(), label).toBe(403);
-				expect(await errorCode(refused), label).toBe("FORBIDDEN");
+				const created = await create(label, policy);
+				expect(created.status(), label).toBe(201);
 			}
 
-			// A Deny can always be granted: it only takes access away.
-			const denyOnly = await create(
-				"DENY_ONLY",
-				policyOf(deny(["users:write", "settings:write"], ["*"])),
-			);
-			expect(denyOnly.status()).toBe(201);
-
-			// Updating is guarded the same way as creating.
-			const roleId = (await dataOf<RoleRecord>(held)).id;
-			const update = (policy: RolePolicy) =>
-				api.put(`${API_URL}/admin/roles/${roleId}`, {
-					data: { name: name("HELD"), description: "", policy },
-				});
-			expect(
-				(
-					await update(policyOf(allow(["users:write"], ["user", "user/*"])))
-				).status(),
-			).toBe(403);
-			expect(
-				(
-					await update(policyOf(allow(["users:read"], ["user", "user/*"])))
-				).status(),
-			).toBe(200);
-		});
-	});
-
-	test("A Deny of the author overlapping the grant makes it ungrantable", async ({
-		request,
-		playwright,
-	}) => {
-		const author = name("DENYING_AUTHOR");
-		const blocked = "00000000-0000-4000-8000-0000000000aa";
-		const authorRole = await createGlobalRole(
-			request,
-			name("DENYING_AUTHOR_ROLE"),
-			policyOf(
-				allow(["roles:read", "roles:write"], ["role", "role/*"]),
-				allow(["users:read"], ["user", "user/*"]),
-				deny(["users:read"], [`user/${blocked}`]),
-			),
-		);
-		await createUserWithPassword(request, playwright, {
-			username: author,
-			fullName: author,
-			roles: [authorRole.name],
-		});
-
-		await asUser(playwright, author, async (api) => {
-			// user/* covers the denied user, so the author does not really hold it.
-			const overlapping = await postGlobalRole(
-				api,
-				name("OVERLAPPING"),
+			// Updating works the same way as creating.
+			const held = await create(
+				"UPDATED",
 				policyOf(allow(["users:read"], ["user", "user/*"])),
 			);
-			expect(overlapping.status()).toBe(403);
-			// A resource their Deny does not touch is theirs to grant.
-			const disjoint = await postGlobalRole(
-				api,
-				name("DISJOINT"),
-				policyOf(
-					allow(["users:read"], ["user/00000000-0000-4000-8000-0000000000bb"]),
-				),
-			);
-			expect(disjoint.status()).toBe(201);
+			const roleId = (await dataOf<RoleRecord>(held)).id;
+			const update = await api.put(`${API_URL}/admin/roles/${roleId}`, {
+				data: {
+					name: name("UPDATED"),
+					description: "",
+					policy: policyOf(allow(["users:write"], ["user", "user/*"])),
+				},
+			});
+			expect(update.status()).toBe(200);
 		});
 	});
 
-	test("Inside a project the same guard applies to project roles", async ({
+	test("Without roles:write on the role, saving a role is refused", async ({
 		request,
 		playwright,
 	}) => {
-		const projectId = await createProject(request, name("GUARD"));
-		const sprintId = "00000000-0000-4000-8000-0000000000cc";
+		const reader = name("ROLE_READER");
+		const readerRole = await createGlobalRole(
+			request,
+			name("ROLE_READER_ROLE"),
+			policyOf(allow(["roles:read"], ["role", "role/*"])),
+		);
+		await createUserWithPassword(request, playwright, {
+			username: reader,
+			fullName: reader,
+			roles: [readerRole.name],
+		});
+
+		await asUser(playwright, reader, async (api) => {
+			const refused = await postGlobalRole(
+				api,
+				name("NOT_ALLOWED"),
+				policyOf(allow(["roles:read"], ["role", "role/*"])),
+			);
+			expect(refused.status()).toBe(403);
+		});
+	});
+
+	test("Inside a project, project roles need only roles:write on the project's roles", async ({
+		request,
+		playwright,
+	}) => {
+		const projectId = await createProject(request, name("ROLE_SAVE"));
 		const manager = await createMember(
 			request,
 			playwright,
@@ -875,9 +839,6 @@ test.describe("No privilege escalation when defining roles", () => {
 						[`project/${projectId}`, `project/${projectId}/role/*`],
 					),
 					allow(["tasks:read"], [`project/${projectId}/*`]),
-					allow(["docs:read"], [`project/${projectId}/doc/*`], {
-						StringEquals: { "doc.folder_id": sprintId },
-					}),
 				),
 			],
 		);
@@ -886,16 +847,12 @@ test.describe("No privilege escalation when defining roles", () => {
 			const create = (label: string, policy: RolePolicy) =>
 				postProjectRole(api, projectId, name(label), policy);
 
-			expect(
-				(
-					await create(
-						"OK_READ",
-						policyOf(allow(["tasks:read"], [`project/${projectId}/*`])),
-					)
-				).status(),
-			).toBe(201);
-			// Not held: tasks:write, or reading everything instead of tasks only.
+			// Anything inside the project is theirs to define, held or not.
 			for (const [label, policy] of [
+				[
+					"OK_READ",
+					policyOf(allow(["tasks:read"], [`project/${projectId}/*`])),
+				],
 				[
 					"NO_WRITE",
 					policyOf(allow(["tasks:write"], [`project/${projectId}/*`])),
@@ -904,49 +861,21 @@ test.describe("No privilege escalation when defining roles", () => {
 					"NO_AGENTS",
 					policyOf(allow(["agents:read"], [`project/${projectId}/*`])),
 				],
+				[
+					"DENY_OK",
+					policyOf(deny(["tasks:write"], [`project/${projectId}/*`])),
+				],
 			] as const) {
-				expect((await create(label, policy)).status(), label).toBe(403);
+				expect((await create(label, policy)).status(), label).toBe(201);
 			}
-			// A conditional Allow of their own does not cover an unconditional grant.
-			expect(
-				(
-					await create(
-						"CONDITIONAL",
-						policyOf(allow(["docs:read"], [`project/${projectId}/doc/*`])),
-					)
-				).status(),
-			).toBe(403);
-			// A Deny is always fine.
-			expect(
-				(
-					await create(
-						"DENY_OK",
-						policyOf(deny(["tasks:write"], [`project/${projectId}/*`])),
-					)
-				).status(),
-			).toBe(201);
-		});
 
-		// The project Admin holds everything in the project, so anything within it goes.
-		const admin = await listProjectRoles(request, projectId);
-		const adminRoleId = admin.find((r) => r.name === "Admin")?.id ?? "";
-		const root = await createMember(
-			request,
-			playwright,
-			projectId,
-			name("ROOT_MANAGER"),
-			[adminRoleId],
-		);
-		await asUser(playwright, root.username, async (api) => {
-			const response = await postProjectRole(
-				api,
-				projectId,
-				name("ADMIN_MADE"),
-				policyOf(
-					allow(["tasks:write", "agents:write"], [`project/${projectId}/*`]),
-				),
+			// Resources outside the project are still rejected.
+			const outside = await create(
+				"OUTSIDE",
+				policyOf(allow(["tasks:read"], ["project/*"])),
 			);
-			expect(response.status()).toBe(201);
+			expect(outside.status()).toBe(422);
+			expect(await errorCode(outside)).toBe("ROLE_POLICY_INVALID");
 		});
 	});
 });

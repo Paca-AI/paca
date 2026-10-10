@@ -51,13 +51,13 @@ Request body for create and update (`name` is trimmed, 1 to 100 characters; `des
 | Method | Path | Auth | Function |
 |---|---|---|---|
 | `GET` | `/admin/roles` | `roles:read` | List platform roles (`project_id` null). |
-| `POST` | `/admin/roles` | `roles:write` + escalation guard | Create a platform role. `201` with the role. |
+| `POST` | `/admin/roles` | `roles:write` | Create a platform role. `201` with the role. |
 | `GET` | `/admin/roles/:roleId` | `roles:read` on the role | Get a role. |
-| `PUT` | `/admin/roles/:roleId` | `roles:write` on the role + escalation guard | Replace name, description and policy. |
+| `PUT` | `/admin/roles/:roleId` | `roles:write` on the role | Replace name, description and policy. |
 | `DELETE` | `/admin/roles/:roleId` | `roles:write` on the role | Delete a role; its attachments are removed with it. `204`. |
-| `PUT` | `/admin/roles/:roleId/default` | `roles:write` on the role + the role must be grantable by the caller | Make the role the default for new accounts. Returns the role. |
+| `PUT` | `/admin/roles/:roleId/default` | `roles:write` on the role | Make the role the default for new accounts. Returns the role. |
 
-`roles:write` is root-equivalent. The **escalation guard** refuses (`403 FORBIDDEN`) a policy that grants anything the caller does not hold unconditionally themselves, or that any `Deny` of the caller overlaps; `Deny` statements are always allowed. Updating or deleting a role cannot remove the last platform-wide full-access (`*` on `*`) assignment.
+`roles:write` is root-equivalent. Saving a role (create, update, make it the default) needs **only** `roles:write` on the role's scope: what the policy grants is not compared with what the caller holds, so there is no escalation guard on these routes. Updating or deleting a role cannot remove the last platform-wide full-access (`*` on `*`) assignment.
 
 ## Project roles
 
@@ -66,9 +66,9 @@ Roles owned by a project, attachable only inside it.
 | Method | Path | Auth | Function |
 |---|---|---|---|
 | `GET` | `/projects/:projectId/roles` | `roles:read` on `project/:projectId/role/*` | List the project's own roles **and** the platform roles already attached to someone inside that project (not every platform role). |
-| `POST` | `/projects/:projectId/roles` | `roles:write` on `project/:projectId/role/*` + escalation guard | Create a role owned by the project. `201`. |
+| `POST` | `/projects/:projectId/roles` | `roles:write` on `project/:projectId/role/*` | Create a role owned by the project. `201`. |
 | `GET` | `/projects/:projectId/roles/:roleId` | `roles:read` on the role | Get a project role. |
-| `PUT` | `/projects/:projectId/roles/:roleId` | `roles:write` on the role + escalation guard | Replace a project role. |
+| `PUT` | `/projects/:projectId/roles/:roleId` | `roles:write` on the role | Replace a project role. Every resource of the policy must lie inside the project, else `422 ROLE_POLICY_INVALID`. |
 | `DELETE` | `/projects/:projectId/roles/:roleId` | `roles:write` on the role | Delete a project role. `204`. |
 
 Request and response bodies are the same as for platform roles. A role id that belongs to another project answers `404 ROLE_NOT_FOUND`.
@@ -193,5 +193,5 @@ Inside a project an action is listed when it is allowed on the project, or *poss
 | `ROLE_NOT_ATTACHABLE` | 422 | A role id is unknown or cannot be attached in this scope, including a project-role template (all resources have a wildcard project segment) attached platform-wide or made the default. |
 | `ROLE_NO_DEFAULT` | 409 | No role is the default, so a new account has none to start with. |
 | `ROLE_REQUIRED` | 400 | Adding a project member or agent needs at least one `role_ids` entry. |
-| `FORBIDDEN` | 403 | Missing action; the escalation guard refused a policy (saving a role, setting the default); or `roles:assign` is not allowed on the resource of a role the request adds or removes. |
+| `FORBIDDEN` | 403 | Missing action, or `roles:assign` is not allowed on the resource of a role the request adds or removes. |
 | `USER_NOT_FOUND`, `AGENT_NOT_FOUND`, `PROJECT_NOT_FOUND`, `PROJECT_MEMBER_NOT_FOUND` | 404 | The addressed principal or project does not exist. |

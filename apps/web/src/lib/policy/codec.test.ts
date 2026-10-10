@@ -9,15 +9,45 @@ import {
 import type { Policy, RoleScope } from "./types";
 
 describe("actionsToPolicy", () => {
-	it("writes one Allow statement on the platform roots", () => {
+	it("writes each platform action on the roots it is checked on", () => {
 		const p = actionsToPolicy(["users:read", "roles:*"], "platform");
 		expect(p.statements).toEqual([
 			{
 				effect: "Allow",
-				actions: ["users:read", "roles:*"],
-				resources: [...PLATFORM_RESOURCES],
+				actions: ["users:read"],
+				resources: ["user", "user/*"],
+			},
+			{
+				effect: "Allow",
+				actions: ["roles:*"],
+				resources: ["role", "role/*"],
 			},
 		]);
+	});
+	it("puts a plugin action on the plugin resources only", () => {
+		const p = actionsToPolicy(["dashboard:view"], "platform");
+		expect(p.statements).toEqual([
+			{ effect: "Allow", actions: ["dashboard:view"], resources: ["plugin/*"] },
+		]);
+		expect(policyToActions(p, "platform")).toEqual({
+			ok: true,
+			actions: ["dashboard:view"],
+		});
+	});
+	it("still reads a platform policy written on every root", () => {
+		const legacy: Policy = {
+			statements: [
+				{
+					effect: "Allow",
+					actions: ["users:read", "dashboard:view"],
+					resources: [...PLATFORM_RESOURCES],
+				},
+			],
+		};
+		expect(policyToActions(legacy, "platform")).toEqual({
+			ok: true,
+			actions: ["users:read", "dashboard:view"],
+		});
 	});
 	it("writes project/* for a project role", () => {
 		const p = actionsToPolicy(["tasks:read"], "project");

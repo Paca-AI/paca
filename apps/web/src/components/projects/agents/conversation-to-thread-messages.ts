@@ -3,7 +3,12 @@ import type {
 	AgentConversation,
 	AgentConversationEvent,
 } from "@/lib/agent-api";
-import { isForbiddenError } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	getApiErrorMessage,
+	isForbiddenError,
+} from "@/lib/api-error";
 import { parseContextItems } from "@/lib/context-items";
 
 // Our chat runtimes (conversation-view.tsx / ai-chat-float.tsx / the
@@ -23,7 +28,9 @@ export function extractTextOnlyContent(message: AppendMessage): string | null {
 // react-i18next's `t()` — its typed key argument rejects a widened `string`
 // (see the "Type 'string' is not assignable to type ..." error this
 // produces if loosened).
-type ChatSessionAccessDeniedKey = "agents.conversationView.chatNoPermission";
+type ChatSessionAccessDeniedKey =
+	| "agents.conversationView.chatNoPermission"
+	| "agents.conversationView.cliProviderNeedsEnvironment";
 
 // Classifies a failed chat-session dispatch (startChatSession/sendChatMessage
 // and their sibling calls in new-conversation-thread.tsx,
@@ -35,18 +42,33 @@ type ChatSessionAccessDeniedKey = "agents.conversationView.chatNoPermission";
 // throwing and letting assistant-ui catch it: a thrown error from onNew
 // becomes an unhandled promise rejection rather than a rendered message, so
 // re-throwing is reserved for cases the caller still wants propagated.
-// Returns null for anything that isn't a 403, so the caller re-throws the
-// original error unchanged rather than misreporting a network failure or
-// busy-dialog cancellation as a permission problem. Stays i18n-free like
-// the rest of this file — callers own translating the returned key, this
-// only classifies.
+// Returns null for anything it doesn't classify, so the caller falls back to
+// chatSessionApiErrorMessage, or re-throws the original error unchanged
+// rather than misreporting a network failure or busy-dialog cancellation as
+// a permission problem. Stays i18n-free like the rest of this file — callers
+// own translating the returned key, this only classifies.
 export function chatSessionAccessDeniedKey(
 	err: unknown,
 ): ChatSessionAccessDeniedKey | null {
 	if (isForbiddenError(err)) {
 		return "agents.conversationView.chatNoPermission";
 	}
+	if (
+		getApiErrorCode(err) ===
+		ApiErrorCode.AgentDefaultEnvironmentRequiredForCLIProvider
+	) {
+		return "agents.conversationView.cliProviderNeedsEnvironment";
+	}
 	return null;
+}
+
+// The API's own message for a rejected chat request (4xx only: a 5xx message
+// can carry server internals and is not meant for the person). Null when
+// there is none, so the caller re-throws.
+export function chatSessionApiErrorMessage(err: unknown): string | null {
+	const status = (err as { response?: { status?: number } })?.response?.status;
+	if (typeof status !== "number" || status < 400 || status >= 500) return null;
+	return getApiErrorMessage(err);
 }
 
 // Extract plain text from a content block array [{type:"text", text:"..."}] or a bare string.

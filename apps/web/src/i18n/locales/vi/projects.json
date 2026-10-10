@@ -388,6 +388,7 @@
 			"conversationEnded": "Cuộc trò chuyện này đã kết thúc.",
 			"textOnlyMessage": "Chỉ hỗ trợ tin nhắn văn bản.",
 			"chatNoPermission": "Bạn không có quyền gửi tin nhắn trong cuộc trò chuyện này.",
+			"cliProviderNeedsEnvironment": "Tác tử này dùng nhà cung cấp CLI và cần một môi trường mặc định, nhưng hiện chưa có môi trường nào dùng được. Hãy nhờ quản trị viên dự án đặt môi trường mặc định cho tác tử.",
 			"failed": "Cuộc trò chuyện thất bại",
 			"noOutput": "Agent không tạo ra kết quả nào.",
 			"loadingOlder": "Đang tải…",

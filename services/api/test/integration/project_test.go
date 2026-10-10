@@ -347,7 +347,6 @@ func buildProjectTestRouterWithTaskRepo(repo *fakeProjectRepo, store *projectPer
 	return router.New(router.Deps{
 		TokenManager:         tm,
 		IAM:                  newIAM(store),
-		RolePolicies:         emptyRolePolicies{},
 		ProjectVisibilitySvc: projectService,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
@@ -906,16 +905,4 @@ func TestIntegrationProject_AnonymousAccess_PrivateProject_Returns401(t *testing
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d (%s)", w.Code, w.Body.String())
 	}
-}
-
-// emptyRolePolicies is the role lookup behind the set-default guard: every role
-// it is asked about exists and grants nothing, so any caller may hand it out.
-type emptyRolePolicies struct{}
-
-func (emptyRolePolicies) RolePolicies(_ context.Context, ids []uuid.UUID) (map[uuid.UUID][]byte, error) {
-	out := make(map[uuid.UUID][]byte, len(ids))
-	for _, id := range ids {
-		out[id] = []byte(`{"version":"2026-10-01","statements":[]}`)
-	}
-	return out, nil
 }

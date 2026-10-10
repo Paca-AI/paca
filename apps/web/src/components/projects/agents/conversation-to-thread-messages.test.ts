@@ -5,6 +5,8 @@ import type {
 } from "@/lib/agent-api";
 import {
 	canReplyToConversation,
+	chatSessionAccessDeniedKey,
+	chatSessionApiErrorMessage,
 	eventsToThreadMessages,
 	hasEnvironmentReadyEvent,
 	isEnvironmentReady,
@@ -1382,5 +1384,42 @@ describe("canReplyToConversation", () => {
 		});
 
 		expect(canReplyToConversation(c, false)).toBe(true);
+	});
+});
+
+describe("chatSessionAccessDeniedKey", () => {
+	const apiError = (status: number, error_code: string) => ({
+		response: { status, data: { error_code } },
+	});
+	it("maps a CLI-provider agent without a default environment", () => {
+		expect(
+			chatSessionAccessDeniedKey(
+				apiError(400, "AGENT_DEFAULT_ENVIRONMENT_REQUIRED_FOR_CLI_PROVIDER"),
+			),
+		).toBe("agents.conversationView.cliProviderNeedsEnvironment");
+	});
+	it("maps a plain 403 and leaves other errors unclassified", () => {
+		expect(chatSessionAccessDeniedKey(apiError(403, "FORBIDDEN"))).toBe(
+			"agents.conversationView.chatNoPermission",
+		);
+		expect(chatSessionAccessDeniedKey(apiError(500, "INTERNAL_ERROR"))).toBe(
+			null,
+		);
+	});
+});
+
+describe("chatSessionApiErrorMessage", () => {
+	const withStatus = (status: number, error?: string) => ({
+		response: { status, data: { error } },
+	});
+	it("returns the API's message for a client error", () => {
+		expect(chatSessionApiErrorMessage(withStatus(400, "bad agent"))).toBe(
+			"bad agent",
+		);
+	});
+	it("ignores server errors, network failures and missing messages", () => {
+		expect(chatSessionApiErrorMessage(withStatus(500, "db down"))).toBeNull();
+		expect(chatSessionApiErrorMessage(new Error("Network Error"))).toBeNull();
+		expect(chatSessionApiErrorMessage(withStatus(400))).toBeNull();
 	});
 });

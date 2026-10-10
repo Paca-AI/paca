@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { ExtensionPointId } from "@/lib/plugin-api";
 import { usePluginRegistry } from "@/lib/plugins/registry";
+import { usePluginAccess } from "./access";
 import { RemoteComponent } from "./loader";
 
 // ── ExtensionPoint ────────────────────────────────────────────────────────────
@@ -22,7 +23,10 @@ export interface ExtensionPointProps {
 /**
  * `<ExtensionPoint>` renders all plugin components registered for the given
  * `point` in the order dictated by the registry (plugin default, then user
- * preference overrides applied by the preference layer).
+ * preference overrides applied by the preference layer). A registration with
+ * a `requiredPermission` is only rendered for callers who hold it: pass
+ * `projectId` in `componentProps` when rendered inside a project, so the
+ * project's own permissions are checked instead of the workspace-wide ones.
  *
  * Each component is individually wrapped in an ErrorBoundary so a single
  * failing plugin cannot affect siblings or the host application.
@@ -33,7 +37,8 @@ export function ExtensionPoint({
 	loadingFallback,
 }: ExtensionPointProps) {
 	const { getRegistrations } = usePluginRegistry();
-	const registrations = getRegistrations(point);
+	const canAccess = usePluginAccess(componentProps?.projectId);
+	const registrations = getRegistrations(point).filter(canAccess);
 
 	if (registrations.length === 0) return null;
 
@@ -74,7 +79,10 @@ export function PluginSlot({
 	loadingFallback,
 }: PluginSlotProps) {
 	const { getRegistrations } = usePluginRegistry();
-	const [first] = getRegistrations(point).filter((r) => !r.hidden);
+	const canAccess = usePluginAccess(componentProps?.projectId);
+	const [first] = getRegistrations(point).filter(
+		(r) => !r.hidden && canAccess(r),
+	);
 
 	if (!first) return null;
 

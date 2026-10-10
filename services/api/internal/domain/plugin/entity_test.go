@@ -371,3 +371,16 @@ func TestManifestJSONUsesRequirePermissions(t *testing.T) {
 		}
 	}
 }
+
+func TestValidate_RejectsMalformedRequiredPermission(t *testing.T) {
+	m := PluginManifest{ID: "com.paca.smtp", Frontend: &FrontendManifest{
+		NavItems: []NavItem{{Scope: "admin", Slug: "smtp", RequiredPermission: "settings.write"}},
+	}}
+	if err := m.Validate(); err == nil {
+		t.Fatal("want error for requiredPermission without a domain:verb form")
+	}
+	m.Frontend.NavItems[0].RequiredPermission = "settings:write"
+	if err := m.Validate(); err != nil {
+		t.Fatalf("settings:write should be valid: %v", err)
+	}
+}

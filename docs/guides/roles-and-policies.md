@@ -161,7 +161,7 @@ The dialog tells you why ("It has a Deny statement.", and so on) and nothing is 
 
 `roles:assign` works like AWS IAM `iam:PassRole`. The **resource** of the statement says *which roles* the holder may attach or detach, and nothing else about the role is checked: you do not need to hold the permissions the role grants. Every role a request adds or removes must be allowed; roles that stay as they are need no permission. The project `Admin` role (`*` on `project/<id>/*`) can therefore assign any role inside its project. Because the grant can hand out anything it names, `roles:assign` on `*` is root-equivalent: scope it.
 
-What you *can* not do is save a role (create or edit it, or make it the default) granting something you do not already hold; that is the "no privilege escalation" guard. You also cannot remove the last platform-wide full-access (`*` on `*`) assignment: the change fails with *This would leave nobody with full access.*
+Saving a role (create, edit, or make it the default) needs only `roles:write`; like assigning, it does not check that you hold what the role grants, so `roles:write` is root-equivalent: give it only to people you would trust with full access. A project's own role must name only that project (else `422 ROLE_POLICY_INVALID`). You cannot remove the last platform-wide full-access (`*` on `*`) assignment: the change fails with *This would leave nobody with full access.*
 
 New users and new global agents get the **default role**. Administration, Global Roles, "Set as default role" changes which role it is; the default role cannot be deleted.
 
@@ -487,7 +487,8 @@ In the Advanced editor, **Simulate** asks "would this request be allowed?" for a
 | `condition key ... applies to "task" resources, which this statement's resources do not cover` | Put the condition in a statement whose `resources` include `project/<id>/task/*` (or a broader `project/<id>/*`). |
 | `422 ROLE_POLICY_INVALID` at `statements[i].resources[j]` on a project's Roles page | A project role may only name `project/<its own id>` or `project/<its own id>/...`. Create a workspace role to reach other projects. |
 | `422 ROLE_NOT_ATTACHABLE` | The role's resources all have a wildcard project segment (`project/*`). Attach it per project, or name specific projects. |
-| `403` saving a role | You cannot grant what you do not hold, and none of your own Deny statements may overlap it. |
+| `403` saving a role | You lack `roles:write` on the role's scope (platform roles, or the project's roles). What the role grants is not checked. |
+| `422 ROLE_POLICY_INVALID` saving a project role | The policy names a resource outside the project. |
 | `403` assigning (or removing) a role | You need `roles:assign` on that role's resource (`role/<id>`, or `project/<projectId>/role/<id>` inside a project) for every role the request adds or removes. Adding a project member additionally needs `project.members:write`, and creating a project agent `agents:write`. |
 | `409 ROLE_LAST_FULL_ACCESS` | The change would remove the last platform-wide full-access assignment. Attach another full-access role first. |
 | A member sees an empty project | They have no role attached in that project, or only Deny roles. |
