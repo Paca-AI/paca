@@ -1081,7 +1081,8 @@ function ProjectNavItems({
 		"project.settings.tab",
 	).some(
 		(r) =>
-			!r.hidden && (!r.requiredPermission || canOpen(r.requiredPermission)),
+			!r.hidden &&
+			(!r.requiredPermission || hasProjectPermission(r.requiredPermission)),
 	);
 
 	const [collapsed, setCollapsed] = useState(() => {

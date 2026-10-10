@@ -46,11 +46,11 @@ function platformRootsOf(action: string): readonly string[] {
  *  PLATFORM_RESOURCES order. */
 function platformResourcesOf(actions: readonly string[]): string[] {
 	const roots = new Set(actions.flatMap((a) => platformRootsOf(a)));
-	return PLATFORM_RESOURCES.filter((r) => roots.has(r)).concat(
-		[...roots].filter(
-			(r) => !(PLATFORM_RESOURCES as readonly string[]).includes(r),
-		),
-	);
+	const canonical: readonly string[] = PLATFORM_RESOURCES;
+	return [
+		...canonical.filter((r) => roots.has(r)),
+		...[...roots].filter((r) => !canonical.includes(r)),
+	];
 }
 
 function resourcesFor(

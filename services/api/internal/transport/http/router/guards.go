@@ -106,11 +106,9 @@ const (
 	resUser                  = "user/{userId}"
 	resGlobalAgent           = "agent/{agentId}"
 
-	// resGrantablePolicy / resGrantableRole name the escalation guards of role
-	// create/update and set-default (they authorize against the caller's own
-	// grants, not a resource).
-	resGrantablePolicy = "escalation guard: the policy in the body must be grantable by the caller"
-	resGrantableRole   = "escalation guard: the role in the URL must be grantable by the caller"
+	// resGrantableRole names the escalation guard of set-default (it
+	// authorizes against the caller's own grants, not a resource).
+	resGrantableRole = "escalation guard: the role in the URL must be grantable by the caller"
 
 	// resAssignRoles / resAssignProjectRoles name the assignment gates: roles:assign
 	// is authorized on the resource of each role the request adds or removes.
@@ -301,13 +299,6 @@ func (g guards) ProjectRole(actions ...iam.Action) func(http.Handler) http.Handl
 // AssignGlobalAgentRoles gate.
 func (g guards) GlobalAgentRoles(actions ...iam.Action) func(http.Handler) http.Handler {
 	return g.PlatformEntity("agent", "agentId", resGlobalAgent, actions...)
-}
-
-// GrantablePolicy is the escalation guard of role create/update: the policy
-// in the body must be one the caller could grant themselves. Declare it after
-// the route's action gate.
-func (g guards) GrantablePolicy() func(http.Handler) http.Handler {
-	return markGate(resGrantablePolicy, httpmw.RequireGrantablePolicy(g.iam))
 }
 
 // AssignUserRoles is the assignment gate of PUT /admin/users/{userId}/roles:

@@ -215,7 +215,7 @@ func TestRolesAPI_EndToEnd(t *testing.T) {
 		}
 	})
 
-	t.Run("project admin cannot escalate", func(t *testing.T) {
+	t.Run("project admin cannot name resources outside the project", func(t *testing.T) {
 		for name, policy := range map[string]map[string]any{
 			"users:write":         policyJSON(allowStmt(`"users:write"`, `"user/*"`)),
 			"another project":     policyJSON(allowStmt(`"tasks:read"`, `"project/`+qj+`/task/*"`)),
@@ -224,9 +224,14 @@ func TestRolesAPI_EndToEnd(t *testing.T) {
 			"roles:write on role": policyJSON(allowStmt(`"roles:write"`, `"role/*"`)),
 		} {
 			res := e.call(admin, http.MethodPost, projectRoles, map[string]any{"name": "Evil " + name, "policy": policy})
-			if res.code != http.StatusForbidden || res.errorCode() != "FORBIDDEN" {
-				t.Errorf("%s: %d %s, want 403", name, res.code, res.body)
+			if res.code != http.StatusUnprocessableEntity || res.errorCode() != "ROLE_POLICY_INVALID" {
+				t.Errorf("%s: %d %s, want 422 ROLE_POLICY_INVALID", name, res.code, res.body)
 			}
+		}
+		// Inside their own project the role needs only roles:write on it: the
+		// policy is not bounded by what the author holds themselves.
+		if res := e.call(admin, http.MethodPost, projectRoles, map[string]any{"name": "Inside", "policy": policyJSON(allowStmt(`"tasks:write"`, `"project/`+pj+`/*"`))}); res.code != http.StatusCreated {
+			t.Errorf("a policy inside the project: %d %s", res.code, res.body)
 		}
 		var n int
 		if err := e.db.Get(&n, `SELECT COUNT(*) FROM roles WHERE name LIKE 'Evil %'`); err != nil || n != 0 {

@@ -184,12 +184,6 @@ func pairDenied(grants []Grant, action, resource string) bool {
 		if g.ProjectID != "" && !inProject(g.ProjectID, resource) && !mayReachProject(resource) {
 			continue
 		}
-		// A Deny in a project role that the caller can itself rewrite (it
-		// holds roles:write on every role of that project) is no barrier
-		// the caller could not lift anyway, so it does not stop it granting.
-		if g.ProjectID != "" && pairCovered(grants, "roles:write", "project/"+g.ProjectID+"/role/*") {
-			continue
-		}
 		for _, s := range g.Policy.Statements {
 			if s.Effect != EffectDeny {
 				continue

@@ -297,15 +297,12 @@ var roleRoutes = map[string]string{
 
 // escalationGuards pins exactly which routes carry which escalation guard
 // (middleware that checks the caller's own grants against what is being
-// granted). Saving a role's policy and making a role the default are the only
-// places that bound a caller by what they hold; assigning a role is not (see
+// granted). Making a role the default is the only place that bounds a caller
+// by what they hold; saving a role's policy needs only roles:write on the role
+// (see the role routes), and assigning a role is not bounded either (see
 // assignGates).
 var escalationGuards = map[string][]string{
-	"POST /api/v1/admin/roles":                        {resGrantablePolicy},
-	"PUT /api/v1/admin/roles/{roleId}":                {resGrantablePolicy},
-	"PUT /api/v1/admin/roles/{roleId}/default":        {resGrantableRole},
-	"POST /api/v1/projects/{projectId}/roles/":        {resGrantablePolicy},
-	"PUT /api/v1/projects/{projectId}/roles/{roleId}": {resGrantablePolicy},
+	"PUT /api/v1/admin/roles/{roleId}/default": {resGrantableRole},
 }
 
 // assignGates pins exactly which routes carry the role-assignment gate
@@ -353,7 +350,7 @@ func isAttrsGate(resource string) bool {
 }
 
 func isEscalationGuard(resource string) bool {
-	return resource == resGrantablePolicy || resource == resGrantableRole
+	return resource == resGrantableRole
 }
 
 func isAssignGate(resource string) bool {

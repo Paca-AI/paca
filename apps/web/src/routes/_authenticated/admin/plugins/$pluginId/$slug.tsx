@@ -30,11 +30,11 @@ export const Route = createFileRoute(
  * counterpart to `ProjectPluginPage`. Used for cross-project plugin
  * dashboards (e.g. a "total logged time across all projects" summary).
  *
- * The nav item itself is always shown once the Administration section is
- * reachable at all (see AppSidebar's `showAdminSection`/`adminPluginNavItems`
- * — a plugin's own `requiredPermission` no longer hides the link). A caller
- * who lacks the permission still reaches this route and gets a
- * no-permission state instead of the plugin's actual page content.
+ * The sidebar only lists the nav item for callers who hold its
+ * `requiredPermission` (see AppSidebar's `adminPluginNavItems`, which falls
+ * back to `plugins:write` like this route does). A caller who opens the URL
+ * directly without it gets a no-permission state instead of the plugin's
+ * page content.
  */
 function AdminPluginPage() {
 	const { t } = useTranslation("errors");

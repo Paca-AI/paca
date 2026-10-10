@@ -220,9 +220,9 @@ func New(deps Deps) http.Handler {
 				// request adds or removes; what the assigner holds is not asked.
 				if deps.Role != nil {
 					r.With(require.Global(iam.ActionRolesRead)).Get("/roles", deps.Role.List)
-					r.With(require.Global(iam.ActionRolesWrite), require.GrantablePolicy()).Post("/roles", deps.Role.Create)
+					r.With(require.Global(iam.ActionRolesWrite)).Post("/roles", deps.Role.Create)
 					r.With(require.PlatformEntity("role", "roleId", resRole, iam.ActionRolesRead)).Get("/roles/{roleId}", deps.Role.Get)
-					r.With(require.PlatformEntity("role", "roleId", resRole, iam.ActionRolesWrite), require.GrantablePolicy()).Put("/roles/{roleId}", deps.Role.Update)
+					r.With(require.PlatformEntity("role", "roleId", resRole, iam.ActionRolesWrite)).Put("/roles/{roleId}", deps.Role.Update)
 					r.With(require.PlatformEntity("role", "roleId", resRole, iam.ActionRolesWrite)).Delete("/roles/{roleId}", deps.Role.Delete)
 					r.With(require.PlatformEntity("role", "roleId", resRole, iam.ActionRolesWrite), require.GrantableRoleInPath()).Put("/roles/{roleId}/default", deps.Role.SetDefault)
 
@@ -483,7 +483,7 @@ func New(deps Deps) http.Handler {
 				if deps.Role != nil {
 					r.Route("/roles", func(r chi.Router) {
 						r.With(require.ProjectRoleCollection(iam.ActionRolesRead)).Get("/", deps.Role.List)
-						r.With(require.ProjectRoleCollection(iam.ActionRolesWrite), require.GrantablePolicy()).Post("/", deps.Role.Create)
+						r.With(require.ProjectRoleCollection(iam.ActionRolesWrite)).Post("/", deps.Role.Create)
 						r.With(require.Project(iam.ActionRolesRead)).Get("/actions", deps.Role.Actions)
 						r.With(require.Project(iam.ActionRolesRead)).Get("/attribute-schema", deps.Role.AttributeSchema)
 						r.With(require.Project(iam.ActionRolesRead)).Post("/validate", deps.Role.Validate)
@@ -493,7 +493,7 @@ func New(deps Deps) http.Handler {
 						// can be simulated with project roles:read alone.
 						r.With(require.Project(iam.ActionRolesRead), require.SimulateWithPrincipal()).Post("/simulate", deps.Role.Simulate)
 						r.With(require.ProjectRole(iam.ActionRolesRead)).Get("/{roleId}", deps.Role.Get)
-						r.With(require.ProjectRole(iam.ActionRolesWrite), require.GrantablePolicy()).Put("/{roleId}", deps.Role.Update)
+						r.With(require.ProjectRole(iam.ActionRolesWrite)).Put("/{roleId}", deps.Role.Update)
 						r.With(require.ProjectRole(iam.ActionRolesWrite)).Delete("/{roleId}", deps.Role.Delete)
 					})
 				}

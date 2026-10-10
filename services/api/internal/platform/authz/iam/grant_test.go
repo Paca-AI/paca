@@ -149,16 +149,10 @@ func TestGrantsCover(t *testing.T) {
 			candidate(allowStmt([]string{"tasks:read"}, []string{"project/*/task/*"}, nil)), false},
 		{"project-scoped deny blocks inside its project",
 			[]Grant{
-				grantOf("", allowStmt([]string{"tasks:*"}, []string{"*"}, nil)),
-				grantOf("P", denyStmt([]string{"tasks:write"}, []string{"project/P/task/*"}, nil)),
-			},
-			candidate(allowStmt([]string{"tasks:write"}, []string{"project/P/task/*"}, nil)), false},
-		{"project-scoped deny the caller can rewrite does not block",
-			[]Grant{
 				grantOf("", allowStmt([]string{"*"}, []string{"*"}, nil)),
 				grantOf("P", denyStmt([]string{"tasks:write"}, []string{"project/P/task/*"}, nil)),
 			},
-			candidate(allowStmt([]string{"tasks:write"}, []string{"project/P/task/*"}, nil)), true},
+			candidate(allowStmt([]string{"tasks:write"}, []string{"project/P/task/*"}, nil)), false},
 		{"project-scoped deny does not apply in another project",
 			[]Grant{
 				grantOf("", allowStmt([]string{"*"}, []string{"*"}, nil)),
@@ -167,7 +161,7 @@ func TestGrantsCover(t *testing.T) {
 			candidate(allowStmt([]string{"tasks:write"}, []string{"project/Q/task/*"}, nil)), true},
 		{"project-scoped deny blocks a pattern that could reach its project",
 			[]Grant{
-				grantOf("", allowStmt([]string{"tasks:*"}, []string{"*"}, nil)),
+				grantOf("", allowStmt([]string{"*"}, []string{"*"}, nil)),
 				grantOf("P", denyStmt([]string{"tasks:write"}, []string{"*"}, nil)),
 			},
 			candidate(allowStmt([]string{"tasks:write"}, []string{"project/*/task/*"}, nil)), false},

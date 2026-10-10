@@ -24,12 +24,11 @@ export const Route = createFileRoute(
  * to `<ExtensionPoint point="project.page">` — instead of embedding a
  * fragment inside a host page, the plugin owns the entire route.
  *
- * The nav item itself is always shown in the sidebar regardless of the
- * caller's permissions (see PluginProjectPages in app-sidebar.tsx) — a
- * caller who lacks the item's `requiredPermission` still reaches this
- * route, and gets a no-permission state here instead of the plugin's
- * actual page content, matching how core project pages behave (e.g.
- * TaskTypesSettings) rather than being redirected away or hidden.
+ * The sidebar only lists the nav item for callers who hold its
+ * `requiredPermission` (see PluginProjectPages in app-sidebar.tsx). A caller
+ * who opens the URL directly without it gets a no-permission state here
+ * instead of the plugin's page content; the plugin's backend enforces the
+ * same permission on its routes.
  */
 function ProjectPluginPage() {
 	const { t } = useTranslation("errors");
