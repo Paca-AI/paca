@@ -282,7 +282,8 @@ func (a *Authorizer) ListScopes(ctx context.Context, p Principal, action string,
 
 // EffectiveActions returns the registered actions the principal may perform
 // on project/<projectID>, or, when projectID is "", the platform actions
-// (those with a PlatformRootFor) on their platform root resource.
+// (those with a PlatformRootFor) on their platform root resource and each
+// plugin's own actions on plugin/<pluginID>.
 func (a *Authorizer) EffectiveActions(ctx context.Context, p Principal, projectID string) ([]string, error) {
 	if !p.valid() {
 		return nil, nil
@@ -296,7 +297,14 @@ func (a *Authorizer) EffectiveActions(ctx context.Context, p Principal, projectI
 		resource := "project/" + projectID
 		if projectID == "" {
 			if resource = PlatformRootFor(action); resource == "" {
-				continue
+				// A plugin's own action has no platform root; a global check
+				// of it targets the plugin's resource (as requireActions and
+				// permission_check do), so a "*" holder is not left out.
+				owner := a.reg.PluginOwner(action)
+				if owner == "" {
+					continue
+				}
+				resource = "plugin/" + owner
 			}
 		}
 		r, err := a.evaluate(ctx, grants, p, action, resource, nil)

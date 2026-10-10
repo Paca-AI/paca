@@ -38,10 +38,11 @@ function ProjectPluginPage() {
 	const navItem = getNavItems("project").find(
 		(item) => item.pluginId === pluginId && item.slug === slug,
 	);
-	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const { hasProjectPermission, isLoading: permissionsLoading } =
+		useProjectPermissions(projectId);
 	const baseProps = usePluginBaseProps(navItem?.registration, projectId);
 
-	if (isLoading) return null;
+	if (isLoading || permissionsLoading) return null;
 	if (!navItem) {
 		throw notFound();
 	}

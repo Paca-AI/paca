@@ -83,7 +83,8 @@ type CustomPermission struct {
 	// Description explains what the permission grants.
 	Description string `json:"description,omitempty"`
 	// Scope determines which role editor the permission appears in:
-	// "project" (per-project roles) or "global" (global roles). Defaults to
+	// "project" (per-project roles), "global" (global roles) or "both" (an
+	// action checked inside a project and across projects). Defaults to
 	// "project" when omitted.
 	Scope string `json:"scope,omitempty"`
 }
@@ -151,11 +152,14 @@ func (m PluginManifest) Validate() error {
 			return fmt.Errorf("customPermissions: key %q is declared twice", perm.Key)
 		}
 		seen[perm.Key] = true
-		if perm.Scope != "" && perm.Scope != "project" && perm.Scope != "global" {
+		if perm.Scope != "" && perm.Scope != "project" && perm.Scope != "global" && perm.Scope != "both" {
 			return fmt.Errorf("customPermissions: key %q has invalid scope %q", perm.Key, perm.Scope)
 		}
 	}
 	if err := m.validateRouteMiddlewares(); err != nil {
+		return err
+	}
+	if err := m.validateRequiredPermissions(); err != nil {
 		return err
 	}
 	if m.Skills != nil {
@@ -178,6 +182,33 @@ func (m PluginManifest) Actions() []string {
 		out = append(out, p.Key)
 	}
 	return out
+}
+
+// validateRequiredPermissions rejects a nav item or extension point whose
+// requiredPermission is not an action of the form "<domain>:<verb>" (a
+// malformed one, such as "settings.write", is never granted to anyone, so the
+// page would be locked for every user, "*" holders included).
+func (m PluginManifest) validateRequiredPermissions() error {
+	if m.Frontend == nil {
+		return nil
+	}
+	check := func(what, perm string) error {
+		if perm != "" && !actionPattern.MatchString(perm) {
+			return fmt.Errorf("%s: requiredPermission %q must have the form <domain>:<verb>", what, perm)
+		}
+		return nil
+	}
+	for _, n := range m.Frontend.NavItems {
+		if err := check("navItems "+n.Slug, n.RequiredPermission); err != nil {
+			return err
+		}
+	}
+	for _, e := range m.Frontend.ExtensionPoints {
+		if err := check("extensionPoints "+e.Component, e.RequiredPermission); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // validateRouteMiddlewares rejects the legacy requirePermissions middleware

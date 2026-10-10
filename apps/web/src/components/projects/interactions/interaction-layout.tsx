@@ -83,6 +83,7 @@ import {
 	viewsByContextQueryOptions,
 } from "@/lib/interaction-api";
 import type { PluginRegistration } from "@/lib/plugin-api";
+import { usePluginAccess } from "@/lib/plugins/access";
 import { RemoteComponent } from "@/lib/plugins/loader";
 import { usePluginBaseProps } from "@/lib/plugins/plugin-props";
 import { usePluginRegistry } from "@/lib/plugins/registry";
@@ -519,8 +520,9 @@ export function InteractionLayout({
 
 	// Plugin view registrations (for the "Add view" popover layout options)
 	const { getRegistrations } = usePluginRegistry();
+	const canAccessPlugin = usePluginAccess(projectId);
 	const pluginViewRegistrations = getRegistrations("view").filter(
-		(r) => !r.hidden,
+		(r) => !r.hidden && canAccessPlugin(r),
 	);
 
 	// If the active view is a plugin view, resolve its registration from config

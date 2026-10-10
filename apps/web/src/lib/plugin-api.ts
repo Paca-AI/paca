@@ -69,8 +69,9 @@ export interface PluginCustomPermission {
 	key: string;
 	label: string;
 	description?: string;
-	/** Which role editor this permission appears in. Defaults to "project". */
-	scope?: "project" | "global";
+	/** Which role editor this permission appears in; "both" lists it in the
+	 *  project and the global one. Defaults to "project". */
+	scope?: "project" | "global" | "both";
 }
 
 export interface Plugin {
@@ -330,7 +331,8 @@ export function collectPluginCustomPermissions(
 	for (const plugin of plugins) {
 		if (!plugin.enabled) continue;
 		for (const perm of plugin.manifest.customPermissions ?? []) {
-			if ((perm.scope ?? "project") !== scope) continue;
+			const declared = perm.scope ?? "project";
+			if (declared !== scope && declared !== "both") continue;
 			result.push({
 				...perm,
 				pluginId: plugin.manifest.id,

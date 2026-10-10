@@ -107,6 +107,21 @@ func (r *Registry) RemovePluginActions(owner string) {
 	r.recomputeDomainsLocked()
 }
 
+// PluginOwner returns the id of the plugin that declares action, or "" for a
+// built-in or unknown action.
+func (r *Registry) PluginOwner(action string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for owner, as := range r.plugins {
+		for _, a := range as {
+			if a == action {
+				return owner
+			}
+		}
+	}
+	return ""
+}
+
 func (r *Registry) dropPluginLocked(owner string) {
 	for _, a := range r.plugins[owner] {
 		delete(r.actions, a)

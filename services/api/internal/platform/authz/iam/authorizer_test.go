@@ -453,6 +453,21 @@ func TestEffectiveActions(t *testing.T) {
 	if len(wantPlat) == 0 || !reflect.DeepEqual(got, wantPlat) {
 		t.Fatalf("platform: got %v want %v", got, wantPlat)
 	}
+	// a plugin's own action is global-effective on plugin/<id>
+	a6, _ := newTestAuthorizer([]Grant{{RoleID: "r", Policy: pol(allow("*", "*", nil))}})
+	if err := a6.Registry().SetPluginActions("pl1", []string{"time_logging:view_all"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = a6.EffectiveActions(context.Background(), u1, "")
+	if !slices.Contains(got, "time_logging:view_all") {
+		t.Fatalf("plugin action missing at platform level: %v", got)
+	}
+	a7, _ := newTestAuthorizer([]Grant{{RoleID: "r", Policy: pol(allow("users:read", "user/*", nil))}})
+	_ = a7.Registry().SetPluginActions("pl1", []string{"time_logging:view_all"})
+	got, _ = a7.EffectiveActions(context.Background(), u1, "")
+	if slices.Contains(got, "time_logging:view_all") {
+		t.Fatalf("ungranted plugin action leaked: %v", got)
+	}
 	// named global role on a platform root
 	a4, _ := newTestAuthorizer([]Grant{{RoleID: "r", Policy: pol(allow("users:read", "user/*", nil))}})
 	got, _ = a4.EffectiveActions(context.Background(), u1, "")
