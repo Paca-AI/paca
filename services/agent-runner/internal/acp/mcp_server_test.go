@@ -5,6 +5,44 @@ import (
 	"testing"
 )
 
+func TestGooseHTTPServerWireShape(t *testing.T) {
+	for _, headers := range [][]HTTPHeader{
+		{},
+		{{Name: "User-Agent", Value: "Paca/agent-runner (+https://github.com/Paca-AI/paca)"}},
+	} {
+		ext, ok := mcpServerToGooseExtension(MCPServerConfig{
+			Type: McpServerHTTP, Name: "parallel-search", URL: "https://search.parallel.ai/mcp", Headers: &headers,
+		})
+		if !ok {
+			t.Fatal("HTTP server was dropped")
+		}
+		raw, err := json.Marshal(ext)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded struct {
+			Type   string `json:"type"`
+			Server struct {
+				Type    string       `json:"type"`
+				Name    string       `json:"name"`
+				URL     string       `json:"url"`
+				Headers []HTTPHeader `json:"headers"`
+			} `json:"server"`
+		}
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if decoded.Type != "mcp" || decoded.Server.Type != "http" || decoded.Server.Name != "parallel-search" || decoded.Server.URL != "https://search.parallel.ai/mcp" || decoded.Server.Headers == nil || len(decoded.Server.Headers) != len(headers) {
+			t.Fatalf("invalid Goose HTTP extension: %s", raw)
+		}
+		for i, h := range headers {
+			if decoded.Server.Headers[i] != h {
+				t.Fatalf("HTTP header changed on the wire: %s", raw)
+			}
+		}
+	}
+}
+
 // TestMCPServerConfigWireShape pins the wire format confirmed against ACP's
 // real schema.json — an earlier version of this struct (no "type"
 // discriminator, Env as a JSON object instead of an array) produced a
