@@ -449,5 +449,49 @@ describe("BoardView", () => {
 				vi.useRealTimers();
 			}
 		});
+
+		it("restores column scrollTop after a refetch clamps it to 0 (PE-7)", async () => {
+			const onLoadMore = vi.fn();
+			const { rerender, container } = render(
+				<ColumnScrollArea
+					pagination={{
+						hasMore: false,
+						isLoadingMore: false,
+						onLoadMore,
+					}}
+				>
+					<div data-testid="tall" style={{ height: 2000 }} />
+				</ColumnScrollArea>,
+			);
+
+			const scroller = container.firstElementChild as HTMLDivElement;
+			Object.defineProperty(scroller, "clientHeight", {
+				configurable: true,
+				value: 400,
+			});
+			Object.defineProperty(scroller, "scrollHeight", {
+				configurable: true,
+				value: 2000,
+			});
+			// jsdom's scrollTop is writable; seed a mid-column scroll position.
+			scroller.scrollTop = 800;
+			fireEvent.scroll(scroller);
+
+			// Simulate the post-create refetch clamp that PE-7 guards against.
+			scroller.scrollTop = 0;
+			rerender(
+				<ColumnScrollArea
+					pagination={{
+						hasMore: false,
+						isLoadingMore: false,
+						onLoadMore,
+					}}
+				>
+					<div data-testid="tall" style={{ height: 2000 }} />
+				</ColumnScrollArea>,
+			);
+
+			await waitFor(() => expect(scroller.scrollTop).toBe(800));
+		});
 	});
 });

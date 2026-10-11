@@ -1,7 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode, UIEvent } from "react";
+import {
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -129,6 +135,28 @@ export function ColumnScrollArea({
 	// column unmounts before it fires — otherwise it would still call
 	// onLoadMore() for a column that's no longer visible.
 	const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Last user/programmatic scrollTop. Creating a card invalidates task
+	// queries and can remount/shrink the column list; the browser then clamps
+	// scrollTop to 0. We restore the saved offset after layout so Timeline /
+	// Board columns keep their place (PE-7).
+	const savedScrollTopRef = useRef(0);
+	const loadMoreOnScroll = createLoadMoreScrollHandler(pagination);
+
+	const handleScroll = (e: UIEvent<HTMLDivElement>) => {
+		savedScrollTopRef.current = e.currentTarget.scrollTop;
+		loadMoreOnScroll(e);
+	};
+
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const saved = savedScrollTopRef.current;
+		if (saved <= 0) return;
+		// Only correct unexpected resets (typically to 0 after a refetch).
+		if (el.scrollTop >= saved - 1) return;
+		const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+		el.scrollTop = Math.min(saved, maxScroll);
+	});
 
 	useEffect(() => {
 		return () => {
@@ -178,7 +206,7 @@ export function ColumnScrollArea({
 		<div
 			ref={scrollRef}
 			className="min-h-0 flex-1 overflow-y-auto pb-2"
-			onScroll={createLoadMoreScrollHandler(pagination)}
+			onScroll={handleScroll}
 		>
 			{children}
 		</div>
