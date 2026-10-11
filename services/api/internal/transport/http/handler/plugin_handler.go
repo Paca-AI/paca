@@ -840,7 +840,7 @@ func (h *PluginHandler) applyPluginRouteMiddlewares(w http.ResponseWriter, r *ht
 			}
 		case "requirepermissions":
 			// Fail closed on a manifest stored before requireActions
-			// (Validate rejects it at install; migration 000065 converts
+			// (Validate rejects it at install; migration 000064 converts
 			// stored manifests).
 			presenter.Error(w, r, apierr.New(apierr.CodeInternalError, plugindom.ErrRequirePermissionsUnsupported.Error()))
 			return r, false
