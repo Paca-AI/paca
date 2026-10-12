@@ -1130,10 +1130,12 @@ func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []ac
 			})
 		case "http":
 			servers = append(servers, acp.MCPServerConfig{
-				Type:    acp.McpServerHTTP,
-				Name:    s.ServerName,
-				URL:     s.URL,
-				Headers: &[]acp.HTTPHeader{},
+				Type: acp.McpServerHTTP,
+				Name: s.ServerName,
+				URL:  s.URL,
+				// Identify Paca's remote MCP requests, including discovery
+				// and tool calls made by Goose's HTTP transport.
+				Headers: &[]acp.HTTPHeader{{Name: "User-Agent", Value: "Paca/agent-runner (+https://github.com/Paca-AI/paca)"}},
 			})
 		case "sse":
 			servers = append(servers, acp.MCPServerConfig{

@@ -175,22 +175,14 @@ type GooseExtension struct {
 	EnvKeys []string           `json:"envKeys,omitempty"`
 }
 
-// UntaggedMcpServer is the MCP server shape used inside a GooseExtension's
-// "mcp" variant — deliberately a separate type from MCPServerConfig:
-// confirmed empirically (a probe container, not guessed) that this
-// specific field deserializes as an UNTAGGED enum, discriminated
-// structurally by which fields are present (Command for stdio, URL for
-// http) — unlike MCPServerConfig's internally-tagged Type field, which
-// this endpoint rejects outright ("data did not match any variant of
-// untagged enum McpServer") if present here at all. Args and Env must be
-// present (even empty, via the pointer trick — see MCPServerConfig's
-// identical doc comment) for a stdio entry to structurally match; omitting
-// either produced the same "no variant matched" error in the probe.
-// Goose's own SSE variant is unsupported ("SSE is unsupported, migrate to
-// streamable_http" — a hard session/new error, not a soft skip) and has no
-// representation here; callers must not construct one for an "sse"
-// transport MCPServerConfig.
+// UntaggedMcpServer is the MCP server shape inside a GooseExtension.
+// Goose 1.50.1's ACP v1 schema leaves only the stdio variant untagged:
+// HTTP requires type="http", name, url and a headers array. Sending an
+// HTTP entry without its discriminator fails session/new before discovery.
+// Stdio retains required args/env arrays and omits type. Goose does not
+// support legacy SSE here; callers skip it rather than construct a server.
 type UntaggedMcpServer struct {
+	Type    McpServerType  `json:"type,omitempty"`
 	Name    string         `json:"name"`
 	Command string         `json:"command,omitempty"`
 	Args    *[]string      `json:"args,omitempty"`

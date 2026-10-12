@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
@@ -8,6 +9,55 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/acp"
 	"github.com/Paca-AI/agent-runner/internal/agent"
 )
+
+func TestBuildMCPServers_HTTPResearchIsOptIn(t *testing.T) {
+	e := &Executor{opts: Options{PacaAPIKey: "key", PacaAPIURL: "http://api"}}
+	trigger := agent.Trigger{ConversationID: uuid.New(), AgentID: uuid.New()}
+	cfg := agent.Config{ID: uuid.New(), AgentType: agent.AgentTypeLLM}
+	if servers := e.buildMCPServers(trigger, cfg); len(servers) != 1 || servers[0].Name != "paca" {
+		t.Fatalf("unconfigured agent should have only Paca: %+v", servers)
+	}
+
+	cfg.MCPServers = []agent.MCPServer{
+		{ServerName: "existing", Transport: "stdio", Command: "npx", Args: []string{"existing-mcp"}, Env: map[string]string{"KEEP": "value"}, IsEnabled: true},
+		{ServerName: "parallel-search", Transport: "http", URL: "https://search.parallel.ai/mcp", IsEnabled: true},
+		{ServerName: "disabled", Transport: "http", URL: "https://example.com/mcp", IsEnabled: false},
+	}
+	servers := e.buildMCPServers(trigger, cfg)
+	if len(servers) != 3 || servers[0].Name != "existing" || servers[1].Name != "parallel-search" || servers[2].Name != "paca" {
+		t.Fatalf("configured server order/filtering changed: %+v", servers)
+	}
+	if servers[0].Command != "npx" || servers[0].Args == nil || (*servers[0].Args)[0] != "existing-mcp" {
+		t.Fatalf("existing stdio command changed: %+v", servers[0])
+	}
+	if value, ok := envValue(servers[0].Env, "KEEP"); !ok || value != "value" {
+		t.Fatal("existing stdio environment changed")
+	}
+	// Assert the serialized caller arguments, not only the in-memory header.
+	wire, err := json.Marshal(servers[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var remote struct {
+		Type    string           `json:"type"`
+		URL     string           `json:"url"`
+		Headers []acp.HTTPHeader `json:"headers"`
+	}
+	if err := json.Unmarshal(wire, &remote); err != nil {
+		t.Fatal(err)
+	}
+	if remote.Type != "http" || remote.URL != "https://search.parallel.ai/mcp" || len(remote.Headers) != 1 || remote.Headers[0].Name != "User-Agent" || remote.Headers[0].Value != "Paca/agent-runner (+https://github.com/Paca-AI/paca)" {
+		t.Fatalf("incorrect HTTP MCP caller configuration: %s", wire)
+	}
+	cfg.MCPServers[1].IsEnabled = false
+	if servers := e.buildMCPServers(trigger, cfg); len(servers) != 2 || servers[1].Name != "paca" {
+		t.Fatalf("disabled research server still loaded: %+v", servers)
+	}
+	cfg.AgentType = agent.AgentTypeProviderCLI
+	if servers := e.buildMCPServers(trigger, cfg); servers != nil {
+		t.Fatalf("provider CLI must retain its separate configuration path: %+v", servers)
+	}
+}
 
 func findPacaServer(t *testing.T, servers []acp.MCPServerConfig) acp.MCPServerConfig {
 	t.Helper()

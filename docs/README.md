@@ -11,6 +11,7 @@ This directory is the main documentation home for Paca.
 - [architecture/interaction-views.md](architecture/interaction-views.md): how sprint, backlog, and timeline views share one model and one task-list API.
 - [architecture/authorization.md](architecture/authorization.md): the IAM-style policy model (statements, actions, resources, conditions, role attachments), route gates, list scoping, and how to add a route safely.
 - [guides/getting-started.md](guides/getting-started.md): what a new contributor should read first.
+- [guides/parallel-search-mcp.md](guides/parallel-search-mcp.md): opt-in web search and page fetching for Paca-managed LLM agents.
 - [guides/mcp-server-setup.md](guides/mcp-server-setup.md): setup guide for integrating AI agents (Claude, custom agents) with Paca via MCP server.
 - [guides/local-development.md](guides/local-development.md): local development intent and future setup direction.
 - [guides/design-system.md](guides/design-system.md): visual language, component patterns, and interaction conventions for the web UI.

@@ -424,6 +424,7 @@ func mcpServerToGooseExtension(s MCPServerConfig) (ext GooseExtension, ok bool) 
 		return GooseExtension{
 			Type: "mcp",
 			Server: &UntaggedMcpServer{
+				Type:    McpServerHTTP,
 				Name:    s.Name,
 				URL:     s.URL,
 				Headers: s.Headers,
