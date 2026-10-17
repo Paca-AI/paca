@@ -223,9 +223,8 @@ function normalizeMalformedLinks(value: any): any {
 					typeof part === "object" &&
 					part.type === "text" &&
 					typeof part.text === "string" &&
-					part.styles !== null &&
-					typeof part.styles === "object" &&
-					!Array.isArray(part.styles),
+					(part.styles == null ||
+						(typeof part.styles === "object" && !Array.isArray(part.styles))),
 			))
 	) {
 		return node;
