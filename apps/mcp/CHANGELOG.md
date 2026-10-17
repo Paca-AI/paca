@@ -7,6 +7,7 @@ The package version follows the main Paca repository release and is published on
 ## [Unreleased]
 
 ### Fixed
+- Preserve legacy link URLs when inline text omits `styles` or sets it to `null`; malformed content still degrades safely to text.
 - Malformed BlockNote links in comments degrade to recoverable plain text instead of breaking MCP task and activity reads ([#589](https://github.com/Paca-AI/paca/issues/589)).
 
 ### Added

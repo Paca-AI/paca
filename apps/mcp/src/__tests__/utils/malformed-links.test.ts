@@ -68,11 +68,11 @@ describe("blocknoteToMarkdown with malformed links (#589)", () => {
 			"",
 		],
 		[
-			"text without styles",
+			"text with invalid styles",
 			{
 				type: "link",
 				href: "https://example.com",
-				content: [{ type: "text", text: "retained" }],
+				content: [{ type: "text", text: "retained", styles: "bold" }],
 			},
 			"retained",
 		],
@@ -94,6 +94,28 @@ describe("blocknoteToMarkdown with malformed links (#589)", () => {
 		expect(result).toContain("after");
 		expect(result).not.toContain("](");
 		if (label) expect(result).toContain(label);
+		expect(input).toEqual(before);
+	});
+
+	it.each([
+		undefined,
+		null,
+	])("preserves a legacy link with %s styles", (styles) => {
+		const part =
+			styles === undefined
+				? { type: "text", text: "legacy label" }
+				: { type: "text", text: "legacy label", styles };
+		const input = [
+			paragraph([
+				text("Before "),
+				{ type: "link", href: "https://example.com", content: [part] },
+				text(" after"),
+			]),
+		];
+		const before = structuredClone(input);
+		expect(blocknoteToMarkdown(input)).toContain(
+			"Before [legacy label](https://example.com) after",
+		);
 		expect(input).toEqual(before);
 	});
 
