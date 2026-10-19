@@ -46,12 +46,14 @@ type Service interface {
 	// only here — it's never persisted or retrievable again afterward.
 	GenerateWebhookToken(ctx context.Context, projectID, automationID, nodeID uuid.UUID, actor WebhookTokenActor) (*WebhookToken, string, error)
 	// HandleWebhookTrigger verifies rawToken against nodeID's active webhook
-	// token and, if valid, dispatches a graph-walk run against the node's
+	// token and, if valid and delivery passes the node's optional
+	// github_events filter, dispatches a graph-walk run against the node's
 	// configured target task. Every failure path (unknown node, wrong
 	// type, inactive automation, wrong/missing token) returns
 	// ErrWebhookTokenInvalid or ErrNotFound so an unauthenticated caller
-	// can't distinguish "no such webhook" from "wrong token".
-	HandleWebhookTrigger(ctx context.Context, nodeID uuid.UUID, rawToken string) error
+	// can't distinguish "no such webhook" from "wrong token"; a delivery
+	// filtered out is not a failure and returns nil with nothing enqueued.
+	HandleWebhookTrigger(ctx context.Context, nodeID uuid.UUID, rawToken string, delivery WebhookDelivery) error
 }
 
 // WebhookTokenActor identifies who requested a webhook token generation, for

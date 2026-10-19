@@ -839,3 +839,104 @@ func TestValidateNoSelfParent_DynamicTarget_Skipped(t *testing.T) {
 		t.Fatalf("expected a children-targeted update_task to be skipped by the static check, got %v", err)
 	}
 }
+
+// --- github_events delivery filter ------------------------------------------
+
+// The filter is what keeps a GitHub webhook from firing the graph once per CI
+// job: without it every delivery runs the automation, and a single push fans
+// out into dozens of runs (one per check_run state per job).
+func TestMatchesGithubEvents(t *testing.T) {
+	cases := []struct {
+		name     string
+		patterns []string
+		delivery automationdom.WebhookDelivery
+		want     bool
+	}{
+		{
+			name:     "no filter accepts every delivery",
+			patterns: nil,
+			delivery: automationdom.WebhookDelivery{Event: "check_run", Body: []byte(`{"action":"completed"}`)},
+			want:     true,
+		},
+		{
+			name:     "event alone matches any action",
+			patterns: []string{"pull_request"},
+			delivery: automationdom.WebhookDelivery{Event: "pull_request", Body: []byte(`{"action":"labeled"}`)},
+			want:     true,
+		},
+		{
+			name:     "event:action matches only that action",
+			patterns: []string{"pull_request:opened"},
+			delivery: automationdom.WebhookDelivery{Event: "pull_request", Body: []byte(`{"action":"opened"}`)},
+			want:     true,
+		},
+		{
+			name:     "event:action rejects a different action",
+			patterns: []string{"pull_request:opened"},
+			delivery: automationdom.WebhookDelivery{Event: "pull_request", Body: []byte(`{"action":"labeled"}`)},
+			want:     false,
+		},
+		{
+			name:     "event:action rejects a different event",
+			patterns: []string{"pull_request:opened"},
+			delivery: automationdom.WebhookDelivery{Event: "check_run", Body: []byte(`{"action":"opened"}`)},
+			want:     false,
+		},
+		{
+			name:     "any matching entry is enough",
+			patterns: []string{"push", "pull_request:opened", "pull_request:synchronize"},
+			delivery: automationdom.WebhookDelivery{Event: "pull_request", Body: []byte(`{"action":"synchronize"}`)},
+			want:     true,
+		},
+		{
+			name:     "unparseable body matches an event-only entry",
+			patterns: []string{"push"},
+			delivery: automationdom.WebhookDelivery{Event: "push", Body: []byte(`not json`)},
+			want:     true,
+		},
+		{
+			name:     "unparseable body cannot match event:action",
+			patterns: []string{"push:created"},
+			delivery: automationdom.WebhookDelivery{Event: "push", Body: []byte(`not json`)},
+			want:     false,
+		},
+		{
+			name:     "missing X-GitHub-Event matches nothing",
+			patterns: []string{"pull_request"},
+			delivery: automationdom.WebhookDelivery{Body: []byte(`{"action":"opened"}`)},
+			want:     false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchesGithubEvents(tc.patterns, tc.delivery); got != tc.want {
+				t.Fatalf("matchesGithubEvents(%v, %+v) = %v, want %v", tc.patterns, tc.delivery, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateTriggerConfig_GithubEvents(t *testing.T) {
+	svc := &Service{}
+	withEvents := func(events ...string) json.RawMessage {
+		raw, err := json.Marshal(automationdom.TriggerConfig{GithubEvents: events})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		return raw
+	}
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerAPITrigger,
+		withEvents("pull_request:opened", "pull_request:synchronize", "push"), true); err != nil {
+		t.Fatalf("expected valid github_events to pass validation, got %v", err)
+	}
+	for _, entry := range []string{"", ":opened", "pull_request:", "pull_request:opened:extra"} {
+		if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerAPITrigger,
+			withEvents(entry), true); err == nil {
+			t.Fatalf("expected github_events entry %q to be rejected", entry)
+		}
+	}
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerTaskCreated,
+		withEvents("push"), true); err == nil {
+		t.Fatal("expected github_events to be rejected on a trigger type that consumes no webhook")
+	}
+}

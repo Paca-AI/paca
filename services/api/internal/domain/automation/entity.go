@@ -418,6 +418,28 @@ type TriggerConfig struct {
 	// for this one sprint. Nil means "any sprint in the project" — the same
 	// optional-narrowing shape as StatusID above.
 	SprintID *uuid.UUID `json:"sprint_id,omitempty"`
+	// GithubEvents narrows TriggerAPITrigger to webhook deliveries GitHub
+	// actually sent for one of these events. Each entry is "event" or
+	// "event:action", matched against the X-GitHub-Event header and the
+	// JSON body's "action" field ("pull_request:opened"). Empty means
+	// every delivery fires — the behaviour of every api_trigger that
+	// predates this field.
+	//
+	// A delivery matching no entry is discarded: still 202, no run, no
+	// stream entry, so the sender has nothing to retry and cannot probe the
+	// filter through the response. GitHub emits one delivery per CI job per
+	// state, so without this a single push can fire dozens of runs.
+	GithubEvents []string `json:"github_events,omitempty"`
+}
+
+// WebhookDelivery is the part of an external webhook POST that delivery
+// filtering reads. Both fields are optional: a non-GitHub sender may set
+// neither, in which case a non-empty GithubEvents filter never matches.
+type WebhookDelivery struct {
+	// Event is the X-GitHub-Event header value.
+	Event string
+	// Body is the raw request body; only "action" is read from it.
+	Body []byte
 }
 
 // TaskTargetKind selects which task a condition leaf or action operates on,

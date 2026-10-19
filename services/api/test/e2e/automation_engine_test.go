@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
@@ -280,6 +281,25 @@ func postWebhookExpect(t *testing.T, env *e2eEnv, nodeID, webhookToken string, w
 		fmt.Sprintf("%s/api/v1/webhooks/automations/%s", env.base, nodeID), nil)
 	if webhookToken != "" {
 		req.Header.Set("X-Webhook-Token", webhookToken)
+	}
+	resp := mustDo(t, http.DefaultClient, req)
+	defer func() { _ = resp.Body.Close() }()
+	assertStatus(t, resp, wantStatus)
+}
+
+// postWebhookEventExpect POSTs to the public webhook receiver with a GitHub
+// delivery's identity — the X-GitHub-Event header and the JSON body whose
+// "action" the api_trigger's github_events filter matches on.
+func postWebhookEventExpect(t *testing.T, env *e2eEnv, nodeID, webhookToken, githubEvent, body string, wantStatus int) {
+	t.Helper()
+	req := mustRequest(env.ctx, t, http.MethodPost,
+		fmt.Sprintf("%s/api/v1/webhooks/automations/%s", env.base, nodeID), bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	if webhookToken != "" {
+		req.Header.Set("X-Webhook-Token", webhookToken)
+	}
+	if githubEvent != "" {
+		req.Header.Set("X-GitHub-Event", githubEvent)
 	}
 	resp := mustDo(t, http.DefaultClient, req)
 	defer func() { _ = resp.Body.Close() }()
@@ -874,6 +894,57 @@ func TestE2EAutomation_WebhookTriggerTokenLifecycle(t *testing.T) {
 	newToken := generateWebhookTokenViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID)
 	postWebhookExpect(t, env, triggerID, rawToken, http.StatusUnauthorized)
 	postWebhookExpect(t, env, triggerID, newToken, http.StatusAccepted)
+}
+
+// TestE2EAutomation_WebhookGithubEventsFilter is the regression guard for a
+// webhook that fires the graph once per delivery: an api_trigger with
+// github_events must accept and drop deliveries it did not ask for, without
+// creating a run, and still fire on the ones it did.
+func TestE2EAutomation_WebhookGithubEventsFilter(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	startAutomationConsumer(t, env)
+
+	ownerUsername := "automation-filter-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, "automationfilterowner1")
+	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationfilterowner1")
+	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
+
+	memberID := addProjectMemberWithAutomationPerms(t, env, ownerClient, ownerToken, projID,
+		"automation-filter-assignee-"+uuid.NewString(), "automationfilterassignee1")
+
+	task := createTaskViaAPIWithBody(t, env, ownerClient, ownerToken, projID, map[string]any{"title": "Filter Target Task"})
+	taskID, _ := task["id"].(string)
+
+	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Filtered Webhook Automation")
+	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"trigger", "api_trigger", map[string]any{
+			"target_task_id": taskID,
+			"github_events":  []string{"pull_request:opened", "pull_request:synchronize"},
+		})
+	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
+	triggerID, _ := trigger["id"].(string)
+	actionID, _ := action["id"].(string)
+	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
+	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+	rawToken := generateWebhookTokenViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID)
+
+	// A CI job event is exactly what the filter exists to discard.
+	postWebhookEventExpect(t, env, triggerID, rawToken, "check_run", `{"action":"completed"}`, http.StatusAccepted)
+	// Same event as a wanted entry, different action.
+	postWebhookEventExpect(t, env, triggerID, rawToken, "pull_request", `{"action":"labeled"}`, http.StatusAccepted)
+	time.Sleep(3 * time.Second)
+	if runs := listAutomationRunsViaAPI(t, env, ownerClient, ownerToken, projID, automationID); len(runs) != 0 {
+		t.Fatalf("expected no runs for filtered deliveries, got %d", len(runs))
+	}
+	if data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, taskID); len(data["assignee_ids"].([]any)) != 0 {
+		t.Fatal("expected a filtered delivery to leave the task untouched")
+	}
+
+	// A wanted event still fires.
+	postWebhookEventExpect(t, env, triggerID, rawToken, "pull_request", `{"action":"opened"}`, http.StatusAccepted)
+	waitForAutomationAssignee(t, env, ownerClient, ownerToken, projID, taskID, memberID, 20*time.Second)
 }
 
 // ---------------------------------------------------------------------------

@@ -590,13 +590,39 @@ func (s *Service) GenerateWebhookToken(ctx context.Context, projectID, automatio
 	return created, rawToken, nil
 }
 
+// matchesGithubEvents reports whether delivery satisfies patterns. No
+// patterns means "every delivery" — the behaviour of every api_trigger that
+// predates the filter. An entry is "event" or "event:action", matched
+// against the X-GitHub-Event header and the body's "action" field; a sender
+// that sets neither matches only an absent filter. Malformed bodies are not
+// an error here: an unparseable body simply has no action to match.
+func matchesGithubEvents(patterns []string, delivery automationdom.WebhookDelivery) bool {
+	if len(patterns) == 0 {
+		return true
+	}
+	var body struct {
+		Action string `json:"action"`
+	}
+	_ = json.Unmarshal(delivery.Body, &body)
+	for _, pattern := range patterns {
+		event, action, hasAction := strings.Cut(pattern, ":")
+		if event != delivery.Event {
+			continue
+		}
+		if !hasAction || action == body.Action {
+			return true
+		}
+	}
+	return false
+}
+
 // HandleWebhookTrigger verifies rawToken against nodeID's active webhook
 // token and, if valid, dispatches an async graph-walk run against the
 // node's configured target task. Every failure path deliberately returns
 // the same class of error (ErrNotFound or ErrWebhookTokenInvalid)
 // regardless of which specific thing was wrong — an unauthenticated caller
 // can't use this to probe whether a webhook exists, or is just misconfigured.
-func (s *Service) HandleWebhookTrigger(ctx context.Context, nodeID uuid.UUID, rawToken string) error {
+func (s *Service) HandleWebhookTrigger(ctx context.Context, nodeID uuid.UUID, rawToken string, delivery automationdom.WebhookDelivery) error {
 	node, err := s.repo.FindNodeByID(ctx, nodeID)
 	if err != nil {
 		return err
@@ -627,6 +653,13 @@ func (s *Service) HandleWebhookTrigger(ctx context.Context, nodeID uuid.UUID, ra
 
 	// Best-effort — a failure to record usage shouldn't block the trigger.
 	_ = s.repo.RecordWebhookTokenUsed(ctx, tok.ID, time.Now())
+
+	// Filtered deliveries are accepted and dropped: 202 with no run, so the
+	// sender sees a normal acceptance and does not retry a delivery this
+	// automation never wanted.
+	if !matchesGithubEvents(cfg.GithubEvents, delivery) {
+		return nil
+	}
 
 	// task_id is optional — TargetTaskID may be unset (validateTaskReachability
 	// guarantees that's only possible when this node has no downstream nodes
@@ -794,7 +827,19 @@ func (s *Service) validateTriggerConfig(ctx context.Context, projectID uuid.UUID
 		// TargetTaskID is optional — see the predecessor_done branch above.
 	}
 	// api_trigger has no fields of its own beyond the shared TargetTaskID
-	// (optional, see above).
+	// (optional, see above), plus the optional GithubEvents filter, which no
+	// other trigger type can use — nothing else consumes a webhook delivery.
+	if len(cfg.GithubEvents) > 0 {
+		if t != automationdom.TriggerAPITrigger {
+			return fmt.Errorf("%w: github_events is only valid on api_trigger", automationdom.ErrNodeConfigInvalid)
+		}
+		for _, entry := range cfg.GithubEvents {
+			event, action, hasAction := strings.Cut(entry, ":")
+			if event == "" || strings.Contains(action, ":") || (hasAction && action == "") {
+				return fmt.Errorf("%w: invalid github_events entry %q, want \"event\" or \"event:action\"", automationdom.ErrNodeConfigInvalid, entry)
+			}
+		}
+	}
 	// Shared across every trigger type that carries a TargetTaskID
 	// (predecessor_done, cron, api_trigger): whatever task is set must
 	// belong to the same project.

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"io"
 	"net/http"
 	"strings"
 
@@ -558,7 +559,15 @@ func (h *AutomationHandler) ReceiveWebhook(w http.ResponseWriter, r *http.Reques
 		presenter.Error(w, r, automationdom.ErrWebhookTokenInvalid)
 		return
 	}
-	if err := h.svc.HandleWebhookTrigger(r.Context(), nodeID, token); err != nil {
+	// Bounded read: only the body's "action" is ever inspected (delivery
+	// filtering), and this endpoint is reachable by anyone holding the URL.
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "unreadable webhook body"))
+		return
+	}
+	delivery := automationdom.WebhookDelivery{Event: r.Header.Get("X-GitHub-Event"), Body: body}
+	if err := h.svc.HandleWebhookTrigger(r.Context(), nodeID, token, delivery); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
