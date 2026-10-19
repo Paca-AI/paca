@@ -1189,7 +1189,15 @@ function TriggerConfigForm({
 					<SaveButton
 						saving={saving}
 						onClick={() =>
-							onSave({ target_task_id: targetTaskId.trim() || undefined })
+							onSave({
+								// The PATCH replaces the node's whole config, so
+								// carry fields this form does not edit — github_events
+								// is API-only today and would otherwise be wiped by
+								// the next builder save, restoring the runaway-run
+								// behaviour that filter exists to stop.
+								...config,
+								target_task_id: targetTaskId.trim() || undefined,
+							})
 						}
 					/>
 				)}

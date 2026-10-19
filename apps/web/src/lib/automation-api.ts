@@ -210,6 +210,12 @@ export interface TriggerConfig {
 	/** Narrows any of the four sprint_* trigger types to firing only for
 	 * this one sprint. Omitted means "any sprint in the project". */
 	sprint_id?: string;
+	/** api_trigger only: deliveries to accept, each "event" or
+	 * "event:action" matched against X-GitHub-Event and the body's action
+	 * ("pull_request:opened"). Omitted means every delivery fires. Not
+	 * editable in the builder yet — the api_trigger form preserves whatever
+	 * is stored rather than overwriting it. */
+	github_events?: string[];
 }
 
 export type ConditionOperator =
