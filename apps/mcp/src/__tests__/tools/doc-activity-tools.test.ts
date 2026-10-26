@@ -64,11 +64,12 @@ describe("getDocActivityTools", () => {
 		expect(names).toContain("delete_doc_comment");
 	});
 
-	it("warns in add_doc_comment's description that mentions don't notify", () => {
+	it("describes in add_doc_comment's description that mentions start agents and notify people", () => {
 		const tool = getDocActivityTools().find(
 			(t) => t.name === "add_doc_comment",
 		);
-		expect(tool?.description).toContain("does not send a notification");
+		expect(tool?.description).toContain("is started");
+		expect(tool?.description).toContain("in-app notification");
 	});
 });
 
