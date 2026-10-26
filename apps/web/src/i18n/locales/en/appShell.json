@@ -75,8 +75,13 @@
 		"unmuteSound": "Unmute notification sound",
 		"text": {
 			"assigned": "{{actor}} assigned you to task #{{taskNumber}} — {{taskTitle}}",
-			"mentioned": "{{actor}} mentioned you in #{{taskNumber}} — {{taskTitle}}"
-		}
+			"mentioned": "{{actor}} mentioned you in #{{taskNumber}} — {{taskTitle}}",
+			"question": "{{actor}} asked you a question in {{title}}",
+			"mentionedInDoc": "{{actor}} mentioned you in document {{title}}"
+		},
+		"untitledConversation": "Untitled conversation",
+		"globalChat": "Global chat",
+		"untitledDocument": "Untitled document"
 	},
 	"userMenu": {
 		"signIn": "Sign in",

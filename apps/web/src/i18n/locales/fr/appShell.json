@@ -75,8 +75,13 @@
 		"unmuteSound": "Activer le son des notifications",
 		"text": {
 			"assigned": "{{actor}} vous a assigné à la tâche #{{taskNumber}} — {{taskTitle}}",
-			"mentioned": "{{actor}} vous a mentionné dans #{{taskNumber}} — {{taskTitle}}"
-		}
+			"mentioned": "{{actor}} vous a mentionné dans #{{taskNumber}} — {{taskTitle}}",
+			"question": "{{actor}} vous a posé une question dans {{title}}",
+			"mentionedInDoc": "{{actor}} vous a mentionné dans le document {{title}}"
+		},
+		"untitledConversation": "Conversation sans titre",
+		"globalChat": "Chat global",
+		"untitledDocument": "Document sans titre"
 	},
 	"userMenu": {
 		"signIn": "Se connecter",

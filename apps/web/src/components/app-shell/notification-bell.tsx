@@ -9,6 +9,7 @@ import {
 	AtSign,
 	Bell,
 	Loader2,
+	MessageCircleQuestion,
 	UserPlus,
 	Volume2,
 	VolumeX,
@@ -39,11 +40,23 @@ import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 import { timeAgo } from "@/lib/time-ago";
 
 function notificationText(n: Notification, t: TFunction<"appShell">): string {
+	if (n.type === "question") {
+		return t("notifications.text.question", {
+			actor: n.actor_full_name,
+			title: n.conversation_title || t("notifications.untitledConversation"),
+		});
+	}
 	if (n.type === "assigned") {
 		return t("notifications.text.assigned", {
 			actor: n.actor_full_name,
 			taskNumber: n.task_number,
 			taskTitle: n.task_title,
+		});
+	}
+	if (n.document_id) {
+		return t("notifications.text.mentionedInDoc", {
+			actor: n.actor_full_name,
+			title: n.document_title || t("notifications.untitledDocument"),
 		});
 	}
 	return t("notifications.text.mentioned", {
@@ -97,7 +110,29 @@ export function NotificationBell() {
 	const handleNotificationClick = useCallback(
 		(n: Notification) => {
 			if (!n.read_at) markRead(n.id);
-			if (n.task_id) {
+			if (n.type === "question" && n.conversation_id) {
+				if (n.project_id) {
+					navigate({
+						to: "/projects/$projectId/conversations/$conversationId",
+						params: {
+							projectId: n.project_id,
+							conversationId: n.conversation_id,
+						},
+					});
+				} else {
+					navigate({
+						to: "/conversations/$conversationId",
+						params: { conversationId: n.conversation_id },
+					});
+				}
+			} else if (!n.project_id) {
+				return;
+			} else if (n.document_id) {
+				navigate({
+					to: "/projects/$projectId/docs/$docId",
+					params: { projectId: n.project_id, docId: n.document_id },
+				});
+			} else if (n.task_id) {
 				navigate({
 					to: "/projects/$projectId/tasks/$taskId",
 					params: { projectId: n.project_id, taskId: n.task_id },
@@ -197,7 +232,13 @@ export function NotificationBell() {
 																: "bg-secondary text-secondary-foreground"
 														}
 													>
-														{n.type === "assigned" ? <UserPlus /> : <AtSign />}
+														{n.type === "assigned" ? (
+															<UserPlus />
+														) : n.type === "question" ? (
+															<MessageCircleQuestion />
+														) : (
+															<AtSign />
+														)}
 													</AvatarBadge>
 												}
 											/>
@@ -208,7 +249,8 @@ export function NotificationBell() {
 													{notificationText(n, t)}
 												</p>
 												<p className="mt-0.5 truncate text-xs text-muted-foreground">
-													{n.project_name} · {timeAgo(n.created_at, tCommon)}
+													{n.project_name || t("notifications.globalChat")} ·{" "}
+													{timeAgo(n.created_at, tCommon)}
 												</p>
 											</div>
 											{!n.read_at && (

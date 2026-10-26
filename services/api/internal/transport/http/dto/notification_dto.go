@@ -28,14 +28,24 @@ type NotificationResponse struct {
 	TaskID                *uuid.UUID `json:"task_id"`
 	TaskTitle             string     `json:"task_title"`
 	TaskNumber            int        `json:"task_number"`
-	ProjectID             uuid.UUID  `json:"project_id"`
-	ProjectName           string     `json:"project_name"`
-	ReadAt                *time.Time `json:"read_at"`
-	CreatedAt             time.Time  `json:"created_at"`
+	// ProjectID is nil for a question asked in a global-chat conversation.
+	ProjectID         *uuid.UUID `json:"project_id"`
+	ProjectName       string     `json:"project_name"`
+	DocumentID        *uuid.UUID `json:"document_id"`
+	DocumentTitle     string     `json:"document_title"`
+	ConversationID    *uuid.UUID `json:"conversation_id"`
+	ConversationTitle string     `json:"conversation_title"`
+	ReadAt            *time.Time `json:"read_at"`
+	CreatedAt         time.Time  `json:"created_at"`
 }
 
 // NotificationFromEntity converts a domain Notification to a response DTO.
 func NotificationFromEntity(n *notificationdom.Notification) NotificationResponse {
+	var projectID *uuid.UUID
+	if n.ProjectID != uuid.Nil {
+		id := n.ProjectID
+		projectID = &id
+	}
 	return NotificationResponse{
 		ID:                    n.ID,
 		Type:                  string(n.Type),
@@ -49,8 +59,12 @@ func NotificationFromEntity(n *notificationdom.Notification) NotificationRespons
 		TaskID:                n.TaskID,
 		TaskTitle:             n.TaskTitle,
 		TaskNumber:            n.TaskNumber,
-		ProjectID:             n.ProjectID,
+		ProjectID:             projectID,
 		ProjectName:           n.ProjectName,
+		DocumentID:            n.DocumentID,
+		DocumentTitle:         n.DocumentTitle,
+		ConversationID:        n.ConversationID,
+		ConversationTitle:     n.ConversationTitle,
 		ReadAt:                n.ReadAt,
 		CreatedAt:             n.CreatedAt,
 	}

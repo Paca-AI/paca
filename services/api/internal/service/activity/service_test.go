@@ -244,3 +244,50 @@ func TestListForEntity_NewestFirstAcrossPagesAndRejectsBadCursor(t *testing.T) {
 		t.Fatalf("bad cursor err = %v", err)
 	}
 }
+
+// membersWithList adds ListAllMembers so mention linking has someone to link.
+type membersWithList struct {
+	membersByUser
+	list []*projectdom.ProjectMember
+}
+
+func (m membersWithList) ListAllMembers(context.Context, uuid.UUID) ([]*projectdom.ProjectMember, error) {
+	return m.list, nil
+}
+
+func TestAddComment_LinksPlainTextMentions(t *testing.T) {
+	agentID, userID, memberID := uuid.New(), uuid.New(), uuid.New()
+	svc := activitysvc.New(activitysvc.NewMemoryRepository(), membersWithList{list: []*projectdom.ProjectMember{
+		{ID: memberID, AccountID: agentID, MemberType: "agent", AgentID: &agentID, Username: "claude4", FullName: "Claude Agent 4"},
+		{ID: uuid.New(), AccountID: userID, UserID: userID, MemberType: "human", Username: "admin", FullName: "Admin"},
+	}}, nil)
+	text := `@Claude Agent 4 (id: ` + memberID.String() + `) hi @admin. mail a@admin.com @nobody`
+	raw, _ := json.Marshal([]any{map[string]any{"type": "paragraph", "content": []any{map[string]any{"type": "text", "text": text, "styles": map[string]any{}}}}})
+
+	a, _, err := svc.AddComment(context.Background(), testKind, activitysvc.CommentInput{
+		ProjectID: uuid.New(), EntityID: uuid.New(), ActorID: uuid.New(), Content: raw,
+	})
+	if err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	var blocks []struct {
+		Content []struct {
+			Type  string         `json:"type"`
+			Text  string         `json:"text"`
+			Props map[string]any `json:"props"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(a.Content, &blocks); err != nil {
+		t.Fatal(err)
+	}
+	c := blocks[0].Content
+	if len(c) != 4 || c[0].Type != "teamMention" || c[0].Props["id"] != agentID.String() || c[0].Props["name"] != "Claude Agent 4" {
+		t.Fatalf("agent mention not linked by agent id: %+v", c)
+	}
+	if c[1].Text != " hi " || c[2].Type != "teamMention" || c[2].Props["id"] != userID.String() {
+		t.Fatalf("user mention not linked: %+v", c)
+	}
+	if c[3].Text != ". mail a@admin.com @nobody" {
+		t.Fatalf("unknown/e-mail text altered: %q", c[3].Text)
+	}
+}

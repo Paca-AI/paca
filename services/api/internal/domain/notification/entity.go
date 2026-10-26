@@ -19,6 +19,9 @@ const (
 	NotificationTypeAssigned NotificationType = "assigned"
 	// NotificationTypeMentioned is sent when a user is @mentioned in a comment.
 	NotificationTypeMentioned NotificationType = "mentioned"
+	// NotificationTypeQuestion is sent when an agent asks the owner of its
+	// conversation a question (the ask_user_question tool).
+	NotificationTypeQuestion NotificationType = "question"
 )
 
 // Notification is a single notification entry.
@@ -55,7 +58,17 @@ type Notification struct {
 	// TaskTitle and TaskNumber are denormalised from the task record.
 	TaskTitle  string
 	TaskNumber int
-	// ProjectID is the project the task belongs to.
+	// DocumentID and DocumentTitle identify the document a mention in a
+	// document comment is about; DocumentTitle is denormalised.
+	DocumentID    *uuid.UUID
+	DocumentTitle string
+	// ConversationID and ConversationTitle identify the agent conversation a
+	// question notification is about; ConversationTitle is denormalised and
+	// may be empty (the conversation is not titled yet).
+	ConversationID    *uuid.UUID
+	ConversationTitle string
+	// ProjectID is the project the task or conversation belongs to;
+	// uuid.Nil for a global-chat conversation.
 	ProjectID uuid.UUID
 	// ProjectName is denormalised from the project record.
 	ProjectName string
@@ -103,6 +116,13 @@ type Service interface {
 	// NotifyMentioned creates notifications for all @mentioned users found in
 	// commentText who are members of the project.
 	NotifyMentioned(ctx context.Context, in NotifyMentionedInput) error
+	// NotifyQuestion creates a notification for the owner of an agent
+	// conversation, telling them the agent asked them a question.
+	NotifyQuestion(ctx context.Context, in NotifyQuestionInput) error
+	// NotifyDocCommentMentioned creates an in-app notification for a person
+	// @mentioned in a document comment. Does nothing for a self-mention or
+	// when the mentioned user is not a member of the project.
+	NotifyDocCommentMentioned(ctx context.Context, in NotifyDocCommentMentionedInput) error
 	// NotifyDocMentioned publishes a plugin event (no in-app row — see the
 	// implementation's doc comment) for a user newly @mentioned in a
 	// document's content. Does nothing if mentionedUserID == actorID.
@@ -132,6 +152,29 @@ type NotifyAssignedInput struct {
 	// ActorID is the account id of whoever made the assignment.
 	// Used to resolve the actor to a member and to skip self-assignment.
 	ActorID uuid.UUID
+}
+
+// NotifyDocCommentMentionedInput carries data for a document-comment mention.
+type NotifyDocCommentMentionedInput struct {
+	DocumentID uuid.UUID
+	ProjectID  uuid.UUID
+	// ActorMemberID is the project_members.id of the commenter.
+	ActorMemberID uuid.UUID
+	// ActorID is the account id of the commenter (to skip self-mentions).
+	ActorID uuid.UUID
+	// MentionedUserID is the mentioned person's account id.
+	MentionedUserID uuid.UUID
+}
+
+// NotifyQuestionInput carries data for a question notification.
+type NotifyQuestionInput struct {
+	ConversationID uuid.UUID
+	// ProjectID is uuid.Nil for a global-chat conversation.
+	ProjectID uuid.UUID
+	// AgentID is the asking agent (its account id).
+	AgentID uuid.UUID
+	// RecipientAccountID is the conversation's owner.
+	RecipientAccountID uuid.UUID
 }
 
 // NotifyMentionedInput carries data for a mention notification.

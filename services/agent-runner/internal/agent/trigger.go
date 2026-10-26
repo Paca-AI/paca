@@ -37,9 +37,11 @@ type Trigger struct {
 	ConversationID uuid.UUID
 	// ProjectID is the zero value (uuid.Nil) for a global-chat trigger — see
 	// agentdom.AgentConversation's own doc comment on the same convention.
-	ProjectID     uuid.UUID
-	AgentID       uuid.UUID
-	TaskID        *uuid.UUID
+	ProjectID uuid.UUID
+	AgentID   uuid.UUID
+	TaskID    *uuid.UUID
+	// DocumentID is set for a comment_mention on a document (TaskID is nil).
+	DocumentID    *uuid.UUID
 	CommentID     *uuid.UUID
 	ChatSessionID *uuid.UUID
 	Message       string

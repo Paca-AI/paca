@@ -3044,6 +3044,19 @@ func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID u
 // message is the plain-text content of the comment so the agent's initial prompt
 // is populated without requiring a separate MCP call.
 func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID, taskID, commentID, triggeredByMemberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
+	return s.triggerCommentMention(ctx, projectID, agentID, &taskID, nil, commentID, triggeredByMemberID, message)
+}
+
+// TriggerDocCommentMention is TriggerCommentMention for a comment on a
+// document: the conversation has no task, and the trigger carries the
+// document id instead so the agent knows where to look and reply.
+func (s *Service) TriggerDocCommentMention(ctx context.Context, projectID, agentID, documentID, commentID, triggeredByMemberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
+	return s.triggerCommentMention(ctx, projectID, agentID, nil, &documentID, commentID, triggeredByMemberID, message)
+}
+
+// triggerCommentMention backs both comment-mention triggers; exactly one of
+// taskID/documentID is set.
+func (s *Service) triggerCommentMention(ctx context.Context, projectID, agentID uuid.UUID, taskID, documentID *uuid.UUID, commentID, triggeredByMemberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
 	// FindAgentByID, not GetAgent/FindVisibleAgentInProject — see the same
 	// note on TriggerTaskAssigned above.
 	if _, err := s.repo.FindAgentByID(ctx, agentID); err != nil {
@@ -3068,7 +3081,7 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 	}
 	conv, err := s.createConversation(ctx, projectID, agentID, &triggeredByMemberID, agentdom.AgentConversation{
 		TriggerType:         "comment_mention",
-		TaskID:              &taskID,
+		TaskID:              taskID,
 		CommentID:           &commentID,
 		RepoPluginID:        repoPluginID,
 		EnvironmentID:       envID,
@@ -3081,12 +3094,17 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 		"conversation_id": conv.ID.String(),
 		"project_id":      projectID.String(),
 		"agent_id":        agentID.String(),
-		"task_id":         taskID.String(),
 		"comment_id":      commentID.String(),
 		"actor_member_id": triggeredByMemberID.String(),
 		"trigger_type":    "comment_mention",
 		"message":         message,
 		"repo_plugin_ids": strings.Join(repoPluginIDs, ","),
+	}
+	if taskID != nil {
+		payload["task_id"] = taskID.String()
+	}
+	if documentID != nil {
+		payload["document_id"] = documentID.String()
 	}
 	if envID != nil {
 		payload["environment_id"] = envID.String()

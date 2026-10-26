@@ -195,5 +195,10 @@
 		"minOne": "ロールは1つ以上必要です。",
 		"clear": "クリア",
 		"placeholder": "ロールを選択"
+	},
+	"askQuestion": {
+		"otherPlaceholder": "または自分の回答を入力…",
+		"submit": "回答を送信",
+		"answered": "回答しました: {{answer}}"
 	}
 }

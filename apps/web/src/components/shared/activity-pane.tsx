@@ -35,6 +35,7 @@ import {
 	readStoredActivityWidth,
 	storeActivityWidth,
 } from "@/components/shared/activity-pane-width";
+import { AskQuestionCard } from "@/components/shared/ask-question-card";
 import {
 	blocksToText,
 	CommentDisplay,
@@ -53,6 +54,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActorAvatar } from "@/hooks/use-actor-avatar";
+import { extractAskQuestion } from "@/lib/ask-question";
+import { searchMentionableMembers } from "@/lib/mention-api";
 import { timeAgo } from "@/lib/time-ago";
 import { cn } from "@/lib/utils";
 
@@ -192,6 +195,25 @@ export function ActivityPane<T extends ActivityEntry>({
 		[data],
 	);
 
+	// An agent's multiple-choice comment counts as answered once anyone else
+	// has commented after it.
+	const answeredAskIds = useMemo(() => {
+		const answered = new Set<string>();
+		sorted.forEach((entry, i) => {
+			if (entry.activity_type !== "comment") return;
+			if (!extractAskQuestion(getCommentBlocks(entry.content))) return;
+			const replied = sorted
+				.slice(i + 1)
+				.some(
+					(later) =>
+						later.activity_type === "comment" &&
+						later.actor_id !== entry.actor_id,
+				);
+			if (replied) answered.add(entry.id);
+		});
+		return answered;
+	}, [sorted, getCommentBlocks]);
+
 	const hasNonCommentActivity = useMemo(
 		() => sorted.some((entry) => entry.activity_type !== "comment"),
 		[sorted],
@@ -256,6 +278,40 @@ export function ActivityPane<T extends ActivityEntry>({
 			qc.invalidateQueries({ queryKey });
 		},
 	});
+
+	// Posts the chosen answer as a reply that @-mentions the asking agent, so
+	// the comment-mention trigger wakes it up with the answer.
+	const answerAsk = async (entry: T, answer: string) => {
+		if (!addComment) return;
+		const members = await searchMentionableMembers(
+			projectId,
+			entry.actor_username,
+		).catch(() => []);
+		const agent = members.find((m) => m.username === entry.actor_username);
+		const content: unknown[] = [];
+		if (agent) {
+			content.push(
+				{
+					type: "teamMention",
+					props: { id: agent.id, name: agent.name, avatar: "" },
+				},
+				{ type: "text", text: " ", styles: {} },
+			);
+		}
+		content.push({ type: "text", text: answer, styles: {} });
+		await addMutation.mutateAsync([
+			{
+				type: "paragraph",
+				props: {
+					textColor: "default",
+					backgroundColor: "default",
+					textAlignment: "left",
+				},
+				content,
+				children: [],
+			},
+		]);
+	};
 
 	const updateMutation = useMutation({
 		mutationFn: ({
@@ -447,6 +503,8 @@ export function ActivityPane<T extends ActivityEntry>({
 							queryKey={queryKey}
 							currentUserId={currentUserId}
 							editingCommentId={editingCommentId}
+							askAnswered={answeredAskIds.has(entry.id)}
+							onAnswerAsk={addComment ? answerAsk : undefined}
 							onStartEdit={(commentId) => {
 								setEditingCommentId(commentId);
 								editorRef.current?.focus();
@@ -537,6 +595,8 @@ interface ActivityItemInnerProps<T extends ActivityEntry> {
 	currentUserId?: string;
 	editingCommentId: string | null;
 	onStartEdit: (commentId: string) => void;
+	askAnswered: boolean;
+	onAnswerAsk?: (entry: T, answer: string) => Promise<void>;
 }
 
 function ActivityItemInner<T extends ActivityEntry>({
@@ -553,11 +613,15 @@ function ActivityItemInner<T extends ActivityEntry>({
 	currentUserId,
 	editingCommentId,
 	onStartEdit,
+	askAnswered,
+	onAnswerAsk,
 }: ActivityItemInnerProps<T>) {
 	const { t } = useTranslation("shared");
 	const { t: tCommon } = useTranslation("common");
 	const qc = useQueryClient();
-	const commentBlocks = getCommentBlocks(entry.content);
+	const rawCommentBlocks = getCommentBlocks(entry.content);
+	const askComment = extractAskQuestion(rawCommentBlocks);
+	const commentBlocks = askComment ? askComment.rest : rawCommentBlocks;
 	const [diffOpen, setDiffOpen] = useState(false);
 	const [revertPending, setRevertPending] = useState(false);
 	const [revertError, setRevertError] = useState<string | null>(null);
@@ -664,9 +728,19 @@ function ActivityItemInner<T extends ActivityEntry>({
 								<CommentDisplay blocks={commentBlocks} />
 							</div>
 						) : (
-							<p className="text-sm text-foreground leading-relaxed">
-								{blocksToText(commentBlocks ?? [])}
-							</p>
+							!askComment && (
+								<p className="text-sm text-foreground leading-relaxed">
+									{blocksToText(commentBlocks ?? [])}
+								</p>
+							)
+						)}
+						{askComment && (
+							<AskQuestionCard
+								ask={askComment.ask}
+								className="mt-2"
+								disabled={askAnswered || !onAnswerAsk}
+								onAnswer={(answer) => onAnswerAsk?.(entry, answer)}
+							/>
 						)}
 					</div>
 				) : (

@@ -66,6 +66,7 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 		// such link (e.g. project-global chat, or an automation message with
 		// no task); an older bridge simply ignores these keys.
 		"task_id":         uuidPtrOrEmpty(trigger.TaskID),
+		"document_id":     uuidPtrOrEmpty(trigger.DocumentID),
 		"comment_id":      uuidPtrOrEmpty(trigger.CommentID),
 		"chat_session_id": uuidPtrOrEmpty(trigger.ChatSessionID),
 	})

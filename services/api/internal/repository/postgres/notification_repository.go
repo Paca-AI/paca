@@ -20,7 +20,9 @@ type notificationReadRow struct {
 	ActorMemberID      *string    `db:"actor_member_id"`
 	Type               string     `db:"type"`
 	TaskID             *string    `db:"task_id"`
-	ProjectID          string     `db:"project_id"`
+	ProjectID          *string    `db:"project_id"`
+	ConversationID     *string    `db:"conversation_id"`
+	DocumentID         *string    `db:"document_id"`
 	ReadAt             *time.Time `db:"read_at"`
 	CreatedAt          time.Time  `db:"created_at"`
 
@@ -40,7 +42,9 @@ type notificationReadRow struct {
 	ActorAgentCLIProvider *string `db:"actor_agent_cli_provider"`
 	TaskTitle             *string `db:"task_title"`
 	TaskNumber            *int    `db:"task_number"`
-	ProjectName           string  `db:"project_name"`
+	ProjectName           *string `db:"project_name"`
+	ConversationTitle     *string `db:"conversation_title"`
+	DocumentTitle         *string `db:"document_title"`
 }
 
 // --- Repository struct -------------------------------------------------------
@@ -59,7 +63,7 @@ func NewNotificationRepository(db *sqlx.DB) *NotificationRepository {
 
 const notificationReadCols = `
 	n.id, n.recipient_account_id, n.actor_member_id, n.type,
-	n.task_id, n.project_id, n.read_at, n.created_at,
+	n.task_id, n.project_id, n.conversation_id, n.document_id, n.read_at, n.created_at,
 	aac.name AS actor_full_name,
 	COALESCE(u.username, ag.handle) AS actor_username,
 	aac.avatar_key AS actor_avatar_key,
@@ -70,17 +74,37 @@ const notificationReadCols = `
 	ag.acp_provider AS actor_agent_acp_provider,
 	ag.cli_provider AS actor_agent_cli_provider,
 	t.title AS task_title, t.task_number,
-	p.name AS project_name`
+	p.name AS project_name,
+	c.title AS conversation_title,
+	d.title AS document_title`
 
 func notificationFromRow(r notificationReadRow) *notificationdom.Notification {
 	n := &notificationdom.Notification{
 		ID:                 uuid.MustParse(r.ID),
 		RecipientAccountID: uuid.MustParse(r.RecipientAccountID),
 		Type:               notificationdom.NotificationType(r.Type),
-		ProjectID:          uuid.MustParse(r.ProjectID),
-		ProjectName:        r.ProjectName,
 		ReadAt:             r.ReadAt,
 		CreatedAt:          r.CreatedAt,
+	}
+	if r.ProjectID != nil {
+		n.ProjectID = uuid.MustParse(*r.ProjectID)
+	}
+	if r.ProjectName != nil {
+		n.ProjectName = *r.ProjectName
+	}
+	if r.ConversationID != nil {
+		id := uuid.MustParse(*r.ConversationID)
+		n.ConversationID = &id
+	}
+	if r.DocumentID != nil {
+		id := uuid.MustParse(*r.DocumentID)
+		n.DocumentID = &id
+	}
+	if r.DocumentTitle != nil {
+		n.DocumentTitle = *r.DocumentTitle
+	}
+	if r.ConversationTitle != nil {
+		n.ConversationTitle = *r.ConversationTitle
 	}
 	if r.ActorMemberID != nil {
 		id := uuid.MustParse(*r.ActorMemberID)
@@ -126,11 +150,26 @@ func (r *NotificationRepository) Create(ctx context.Context, n *notificationdom.
 		s := n.TaskID.String()
 		taskID = &s
 	}
+	var conversationID *string
+	if n.ConversationID != nil {
+		s := n.ConversationID.String()
+		conversationID = &s
+	}
+	var documentID *string
+	if n.DocumentID != nil {
+		s := n.DocumentID.String()
+		documentID = &s
+	}
+	var projectID *string
+	if n.ProjectID != uuid.Nil {
+		s := n.ProjectID.String()
+		projectID = &s
+	}
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO notifications (id, recipient_account_id, actor_member_id, type, task_id, project_id, read_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		INSERT INTO notifications (id, recipient_account_id, actor_member_id, type, task_id, project_id, conversation_id, document_id, read_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		n.ID.String(), n.RecipientAccountID.String(), actorMemberID,
-		string(n.Type), taskID, n.ProjectID.String(), n.ReadAt, n.CreatedAt,
+		string(n.Type), taskID, projectID, conversationID, documentID, n.ReadAt, n.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("notification repo: create: %w", err)
@@ -172,7 +211,9 @@ func (r *NotificationRepository) ListForUser(ctx context.Context, userID uuid.UU
 		LEFT JOIN users u ON u.id = pm.account_id
 		LEFT JOIN agents ag ON ag.id = pm.account_id
 		LEFT JOIN tasks t ON t.id = n.task_id AND t.deleted_at IS NULL
-		JOIN projects p ON p.id = n.project_id
+		LEFT JOIN agent_conversations c ON c.id = n.conversation_id
+		LEFT JOIN documents d ON d.id = n.document_id AND d.deleted_at IS NULL
+		LEFT JOIN projects p ON p.id = n.project_id
 		WHERE n.recipient_account_id = $1` + whereCursor + `
 		ORDER BY n.created_at DESC, n.id DESC
 		LIMIT ` + limitPlaceholder

@@ -162,6 +162,9 @@ func (s *ActivitySvc) AddComment(ctx context.Context, in taskdom.AddCommentInput
 	if err != nil {
 		return nil, err
 	}
+	// Mentions linked from plain text by the activity service are only in
+	// the stored content, not in the caller's input.
+	in.Content = a.Content
 	s.handleMentions(ctx, in, a.ID, member)
 	return toTaskActivity(a), nil
 }

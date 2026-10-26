@@ -194,6 +194,19 @@ function extractFileEditorDiff(
 	return null;
 }
 
+// ACP tool_call/tool_call_update carry the tool's input as `rawInput` (any
+// JSON value, often absent on the initial tool_call and filled in by a later
+// update). Rendered as pretty JSON, or verbatim when already a string, so the
+// tool card can show exactly what was run.
+function formatRawInput(rawInput: unknown): string | null {
+	if (rawInput === undefined || rawInput === null) return null;
+	if (typeof rawInput === "string")
+		return rawInput.length > 0 ? rawInput : null;
+	if (typeof rawInput === "object" && Object.keys(rawInput).length === 0)
+		return null;
+	return JSON.stringify(rawInput, null, 2);
+}
+
 type MutableToolCallPart = {
 	type: "tool-call";
 	toolCallId: string;
@@ -493,7 +506,7 @@ export function eventsToThreadMessages(
 				type: "tool-call",
 				toolCallId: nextToolCallId(current, toolCallId),
 				toolName,
-				argsText: "",
+				argsText: formatRawInput(p.rawInput) ?? "",
 			};
 			current.parts.push(part);
 			const queue = current.openToolCalls.get(toolCallId);
@@ -529,7 +542,9 @@ export function eventsToThreadMessages(
 			// leaves it in place, so a call that gets more than one update
 			// before finishing still accumulates them all onto the same part.
 			const openPart = openQueue?.[0];
+			const argsText = formatRawInput(p.rawInput);
 			if (openPart) {
+				if (argsText) openPart.argsText = argsText;
 				if (resultText) openPart.result = resultText;
 				if (status === "failed") openPart.isError = true;
 				if (diffs) openPart.artifact = { diffs };
@@ -546,7 +561,7 @@ export function eventsToThreadMessages(
 					type: "tool-call",
 					toolCallId: nextToolCallId(current, rawId),
 					toolName: "tool",
-					argsText: "",
+					argsText: argsText ?? "",
 					result: resultText,
 					...(status === "failed" ? { isError: true } : {}),
 					...(diffs ? { artifact: { diffs } } : {}),

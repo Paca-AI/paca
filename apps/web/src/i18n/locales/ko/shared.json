@@ -195,5 +195,10 @@
 		"minOne": "역할이 하나 이상 필요합니다.",
 		"clear": "지우기",
 		"placeholder": "역할 선택"
+	},
+	"askQuestion": {
+		"otherPlaceholder": "또는 직접 답변을 입력하세요…",
+		"submit": "답변 보내기",
+		"answered": "답변함: {{answer}}"
 	}
 }

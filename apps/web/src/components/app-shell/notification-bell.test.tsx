@@ -58,6 +58,10 @@ function makeNotification(overrides: Partial<Notification> = {}): Notification {
 		task_number: 42,
 		project_id: "proj-a",
 		project_name: "Project Alpha",
+		document_id: null,
+		document_title: "",
+		conversation_id: null,
+		conversation_title: "",
 		read_at: null,
 		created_at: "2026-01-01T00:00:00Z",
 		...overrides,
@@ -87,6 +91,78 @@ beforeEach(() => {
 });
 
 describe("NotificationBell", () => {
+	it("opens the document for a mention in a document comment", async () => {
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [
+				makeNotification({
+					type: "mentioned",
+					actor_full_name: "Claude Agent",
+					task_id: null,
+					document_id: "doc-1",
+					document_title: "Release Notes",
+				}),
+			],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 1,
+		});
+
+		await renderAndOpen();
+
+		await userEvent.click(
+			await screen.findByText(/mentioned you in document Release Notes/),
+		);
+		expect(mocks.navigateMock).toHaveBeenLastCalledWith({
+			to: "/projects/$projectId/docs/$docId",
+			params: { projectId: "proj-a", docId: "doc-1" },
+		});
+	});
+
+	it("opens the conversation for a question notification, global or project", async () => {
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [
+				makeNotification({
+					id: "n-global",
+					type: "question",
+					actor_full_name: "Claude Agent",
+					task_id: null,
+					project_id: null,
+					project_name: "",
+					conversation_id: "conv-g",
+					conversation_title: "Plan the release",
+				}),
+				makeNotification({
+					id: "n-project",
+					type: "question",
+					actor_full_name: "Claude Agent",
+					task_id: null,
+					conversation_id: "conv-p",
+				}),
+			],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 2,
+		});
+
+		await renderAndOpen();
+
+		await userEvent.click(
+			await screen.findByText(/asked you a question in Plan the release/),
+		);
+		expect(mocks.navigateMock).toHaveBeenLastCalledWith({
+			to: "/conversations/$conversationId",
+			params: { conversationId: "conv-g" },
+		});
+
+		await userEvent.click(
+			screen.getByText(/asked you a question in Untitled conversation/),
+		);
+		expect(mocks.navigateMock).toHaveBeenLastCalledWith({
+			to: "/projects/$projectId/conversations/$conversationId",
+			params: { projectId: "proj-a", conversationId: "conv-p" },
+		});
+	});
+
 	it("renders an actor's initials and the assigned/mentioned badge icon", async () => {
 		mocks.listNotificationsMock.mockResolvedValue({
 			items: [

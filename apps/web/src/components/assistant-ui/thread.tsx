@@ -64,6 +64,10 @@ import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button
 import { Button } from "@/components/ui/button";
 import { getAnnotation } from "@/lib/annotation-api";
 import { matchAnnotationLinkOnly } from "@/lib/annotation-link";
+import {
+	isAskQuestionTool,
+	parseAskQuestionFromCall,
+} from "@/lib/ask-question";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { parseContextItems } from "@/lib/context-items";
@@ -479,6 +483,27 @@ const MessageError: FC = () => {
 	);
 };
 
+const baseGroupBy = groupPartByType({
+	reasoning: ["group-chainOfThought", "group-reasoning"],
+	"tool-call": ["group-chainOfThought", "group-tool"],
+	"standalone-tool-call": [],
+});
+
+// An ask_user_question call is a prompt for the user, not background work:
+// it stays outside the collapsible tool group so its answer buttons are
+// visible without expanding anything. Module-level so the function identity
+// is stable across renders.
+const groupBy: typeof baseGroupBy = (part, context) => {
+	if (
+		part.type === "tool-call" &&
+		isAskQuestionTool(part.toolName) &&
+		parseAskQuestionFromCall(part.argsText, part.result) !== null
+	) {
+		return [];
+	}
+	return baseGroupBy(part, context);
+};
+
 const AssistantMessage: FC = () => {
 	const { t } = useTranslation("projects");
 	const {
@@ -515,13 +540,7 @@ const AssistantMessage: FC = () => {
 				// [contain-intrinsic-size:auto_24px] fixes issue #4104, don't change without checking for regressions
 				className="text-foreground px-2 leading-relaxed wrap-break-word [contain-intrinsic-size:auto_24px] [content-visibility:auto]"
 			>
-				<MessagePrimitive.GroupedParts
-					groupBy={groupPartByType({
-						reasoning: ["group-chainOfThought", "group-reasoning"],
-						"tool-call": ["group-chainOfThought", "group-tool"],
-						"standalone-tool-call": [],
-					})}
-				>
+				<MessagePrimitive.GroupedParts groupBy={groupBy}>
 					{({ part, children }) => {
 						switch (part.type) {
 							case "group-chainOfThought":

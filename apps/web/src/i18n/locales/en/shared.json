@@ -195,5 +195,10 @@
 		"minOne": "At least one role is required.",
 		"clear": "Clear",
 		"placeholder": "Select roles"
+	},
+	"askQuestion": {
+		"otherPlaceholder": "Or type your own answer…",
+		"submit": "Send answer",
+		"answered": "You answered: {{answer}}"
 	}
 }

@@ -132,6 +132,7 @@ func (s *Service) AddComment(ctx context.Context, k CommentKind, in CommentInput
 	if err != nil {
 		return nil, nil, err
 	}
+	in.Content = s.linkMentions(ctx, in.ProjectID, in.Content)
 	now := time.Now()
 	entityID := in.EntityID
 	a := &activitydom.Activity{
@@ -162,7 +163,7 @@ func (s *Service) UpdateComment(ctx context.Context, k CommentKind, id, projectI
 	if err != nil {
 		return nil, err
 	}
-	a.Content = content
+	a.Content = s.linkMentions(ctx, projectID, content)
 	a.UpdatedAt = time.Now()
 	if err := s.repo.UpdateContent(ctx, a.ID, a.Content, a.UpdatedAt); err != nil {
 		return nil, err
