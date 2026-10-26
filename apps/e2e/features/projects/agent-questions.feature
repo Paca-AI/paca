@@ -12,8 +12,9 @@ Feature: Agent questions and mentions
   opens the document.
 
   The e2e stack has no LLM credentials, so the agent side is simulated: the
-  question comments are posted over the API and the chat transcript is
-  supplied through a mocked events response.
+  question comments are posted over the API (as the admin, so the answer's
+  reply mentions the admin) and the chat transcript is supplied through a
+  mocked events response.
 
   @authenticated
   Rule: Mentions written as plain text become mention badges
@@ -35,9 +36,10 @@ Feature: Agent questions and mentions
       When a document comment "Thanks @admin" is posted over the API
       Then the stored comment should contain a mention of the admin
 
-    Scenario: Code blocks and e-mail addresses are left alone
-      When a task comment containing "ops@admin.example" and a code block "@admin" is posted
-      Then neither is converted to a mention
+    Scenario: E-mail addresses, inline code and code blocks are left alone
+      When a task comment containing "ops@admin.example", inline code "@admin" and a code block "@admin" is posted
+      Then none of them is converted to a mention
+      And the e-mail address should stay in the stored text
 
   @authenticated
   Rule: A person mentioned in a document comment is notified
@@ -52,33 +54,56 @@ Feature: Agent questions and mentions
   @authenticated
   Rule: A question in a comment is shown as a card
 
+    The card is the same on a task and on a document (the document's
+    "Comments & activity" panel), so every scenario runs for both targets.
+
     Background:
       Given the admin is signed in
-      And a comment carrying a "paca-ask" question with options "Test 1", "Test 2", "Test 3" exists
+      And a project named "E2E_AQ_..." exists with a task and a document
 
-    Scenario: A task comment shows the question and its options, not the raw payload
-      When the user opens the task
+    Scenario Outline: The comment shows the question and its options, not the raw payload
+      Given a <target> comment carrying a "paca-ask" question with options "Test 1", "Test 2", "Test 3" is posted over the API
+      When the user opens the <target>
       Then the question and the three options should be visible
       And the raw JSON payload should not be shown
 
-    Scenario: Picking an option posts a reply that mentions the asker
-      When the user opens the task and clicks "Test 1"
-      Then "You answered: Test 1" should be shown
-      And a reply comment "Test 1" with a mention of the asker should be stored
+      Examples:
+        | target   |
+        | task     |
+        | document |
 
-    Scenario: The same card works on a document
-      When the user opens the document's "Comments & activity" panel and clicks "Test 2"
+    Scenario Outline: Picking an option posts a reply that mentions the asker
+      Given a <target> comment carrying a "paca-ask" question with options "Test 1", "Test 2" is posted over the API
+      When the user opens the <target> and clicks "Test 2"
       Then "You answered: Test 2" should be shown
       And a reply comment "Test 2" with a mention of the asker should be stored
 
-    Scenario: A multi-select question collects several options
-      Given the question allows several answers
-      When the user picks "Test 1" and "Test 3" and clicks "Send answer"
-      Then the reply should read "Test 1, Test 3"
+      Examples:
+        | target   |
+        | task     |
+        | document |
 
-    Scenario: The user can type their own answer
-      When the user types "Something else" and clicks "Send answer"
-      Then the reply should read "Something else"
+    Scenario Outline: A multi-select question collects several options
+      Given a <target> comment carrying a question that allows several answers is posted over the API
+      When the user opens the <target>, picks "Test 1" and "Test 3" and clicks "Send answer"
+      Then "You answered: Test 1, Test 3" should be shown
+      And a reply comment "Test 1, Test 3" should be stored
+
+      Examples:
+        | target   |
+        | task     |
+        | document |
+
+    Scenario Outline: The user can type their own answer
+      Given a <target> comment carrying a "paca-ask" question is posted over the API
+      When the user opens the <target>, types "Something else" and clicks "Send answer"
+      Then "You answered: Something else" should be shown
+      And a reply comment "Something else" should be stored
+
+      Examples:
+        | target   |
+        | task     |
+        | document |
 
   @authenticated
   Rule: A question in a chat conversation is shown as a card
