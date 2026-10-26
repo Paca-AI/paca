@@ -58,7 +58,9 @@ export function getTaskActivityTools(): Tool[] {
 		},
 		{
 			name: "add_task_comment",
-			description: "Add a comment to a task",
+			description:
+				"Add a comment to a task. To notify someone — or start an agent — @-mention them by username (e.g. '@alice'); the mention is resolved to a real mention for project members. " +
+				"'@Name (id: <uuid>)' as returned when reading comments works too. Names that match no project member stay plain text and notify nobody.",
 			inputSchema: {
 				type: "object",
 				properties: {

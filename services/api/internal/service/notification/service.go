@@ -252,6 +252,35 @@ func (s *Svc) NotifyAssigned(ctx context.Context, in notificationdom.NotifyAssig
 	return nil
 }
 
+// NotifyQuestion tells the owner of an agent conversation that the agent asked
+// them a question. The actor is the agent's project membership when the
+// conversation belongs to a project (a global chat has no project, so no
+// actor member). Best-effort realtime publish, like the other notifications.
+func (s *Svc) NotifyQuestion(ctx context.Context, in notificationdom.NotifyQuestionInput) error {
+	if in.RecipientAccountID == uuid.Nil || in.RecipientAccountID == in.AgentID {
+		return nil
+	}
+	conversationID := in.ConversationID
+	n := &notificationdom.Notification{
+		ID:                 uuid.New(),
+		RecipientAccountID: in.RecipientAccountID,
+		Type:               notificationdom.NotificationTypeQuestion,
+		ConversationID:     &conversationID,
+		ProjectID:          in.ProjectID,
+		CreatedAt:          time.Now(),
+	}
+	if in.ProjectID != uuid.Nil {
+		if agentMember, err := s.memberRepo.FindMember(ctx, in.ProjectID, in.AgentID); err == nil {
+			n.ActorMemberID = &agentMember.ID
+		}
+	}
+	if err := s.repo.Create(ctx, n); err != nil {
+		return err
+	}
+	s.publishCreated(ctx, n, in.RecipientAccountID)
+	return nil
+}
+
 // NotifyMentioned parses @mentions from commentText and creates a notification
 // for each project member found, excluding the actor themselves.
 // When MentionedUserID is provided in input, it is used directly instead of parsing.
@@ -428,6 +457,7 @@ func (s *Svc) publishCreated(ctx context.Context, n *notificationdom.Notificatio
 		"actor_member_id":      n.ActorMemberID,
 		"type":                 string(n.Type),
 		"task_id":              n.TaskID,
+		"conversation_id":      n.ConversationID,
 		"project_id":           n.ProjectID,
 		"created_at":           n.CreatedAt,
 	}

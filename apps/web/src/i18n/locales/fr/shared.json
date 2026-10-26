@@ -195,5 +195,10 @@
 		"minOne": "Au moins un rôle est requis.",
 		"clear": "Effacer",
 		"placeholder": "Sélectionner des rôles"
+	},
+	"askQuestion": {
+		"otherPlaceholder": "Ou saisissez votre propre réponse…",
+		"submit": "Envoyer la réponse",
+		"answered": "Vous avez répondu : {{answer}}"
 	}
 }

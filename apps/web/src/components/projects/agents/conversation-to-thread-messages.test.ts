@@ -271,6 +271,7 @@ function agentThoughtChunk(text: string): AgentConversationEvent {
 function acpToolCall(opts: {
 	toolCallId: string;
 	title: string;
+	rawInput?: unknown;
 }): AgentConversationEvent {
 	return {
 		id: `evt-${nextIndex}`,
@@ -281,6 +282,7 @@ function acpToolCall(opts: {
 		payload: {
 			toolCallId: opts.toolCallId,
 			title: opts.title,
+			...(opts.rawInput !== undefined ? { rawInput: opts.rawInput } : {}),
 			sessionUpdate: "tool_call",
 		},
 		created_at: "2026-01-01T00:00:08.000Z",
@@ -984,6 +986,25 @@ describe("eventsToThreadMessages", () => {
 				result: "file1.txt\nfile2.txt",
 			});
 			expect(parts[0]).not.toHaveProperty("isError");
+		});
+
+		it("exposes the tool call's rawInput as argsText", () => {
+			const messages = eventsToThreadMessages(
+				[
+					acpToolCall({
+						toolCallId: "tc-raw",
+						title: "Terminal",
+						rawInput: { command: "ls -la" },
+					}),
+				],
+				false,
+			);
+			const parts = messages[0].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			expect(JSON.parse(parts[0].argsText as string)).toEqual({
+				command: "ls -la",
+			});
 		});
 
 		it("marks a tool_call_update with status=failed as an error", () => {

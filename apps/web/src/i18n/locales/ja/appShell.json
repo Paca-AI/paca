@@ -75,8 +75,11 @@
 		"unmuteSound": "通知音のミュートを解除",
 		"text": {
 			"assigned": "{{actor}}さんがあなたをタスク #{{taskNumber}} — {{taskTitle}} に割り当てました",
-			"mentioned": "{{actor}}さんが #{{taskNumber}} — {{taskTitle}} であなたにメンションしました"
-		}
+			"mentioned": "{{actor}}さんが #{{taskNumber}} — {{taskTitle}} であなたにメンションしました",
+			"question": "{{actor}} が {{title}} で質問しました"
+		},
+		"untitledConversation": "無題の会話",
+		"globalChat": "グローバルチャット"
 	},
 	"userMenu": {
 		"signIn": "サインイン",

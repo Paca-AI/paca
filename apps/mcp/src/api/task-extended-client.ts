@@ -7,7 +7,12 @@ import type {
 	TaskLink,
 	UpdateCommentInput,
 } from "../types/index.js";
-import { formatApiRequestError, markdownToBlocknote } from "../utils/index.js";
+import {
+	formatApiRequestError,
+	linkTeamMentions,
+	type MentionableMember,
+	markdownToBlocknote,
+} from "../utils/index.js";
 import { type Page, type PageOptions, toPage, withPaging } from "./paginate.js";
 
 /**
@@ -107,13 +112,43 @@ export class PacaAPITaskExtendedClient {
 
 	// ==================== Task Comments ====================
 
+	/**
+	 * Turns `@username` / `@Name (id: ...)` text into real mention chips for
+	 * project members. Best-effort: on any failure the comment is posted with
+	 * the text as written rather than blocked.
+	 */
+	private async linkMentions(projectId: string, blocks: any[]): Promise<any[]> {
+		if (!JSON.stringify(blocks).includes("@")) return blocks;
+		try {
+			const members: MentionableMember[] = [];
+			let cursor: string | undefined;
+			// Bounded: a project has no fixed upper bound on members.
+			for (let i = 0; i < 10; i++) {
+				const page = toPage<MentionableMember>(
+					await this.get(
+						withPaging(`/api/v1/projects/${projectId}/members`, {
+							cursor,
+							pageSize: 100,
+						}),
+					),
+				);
+				members.push(...page.items);
+				if (!page.nextCursor) break;
+				cursor = page.nextCursor;
+			}
+			return linkTeamMentions(blocks, members);
+		} catch {
+			return blocks;
+		}
+	}
+
 	async addTaskComment(
 		projectId: string,
 		taskId: string,
 		input: CreateCommentInput,
 	): Promise<TaskActivity> {
 		const contentBlocks = input.content
-			? markdownToBlocknote(input.content)
+			? await this.linkMentions(projectId, markdownToBlocknote(input.content))
 			: null;
 
 		const body: any = {
@@ -133,7 +168,7 @@ export class PacaAPITaskExtendedClient {
 		input: UpdateCommentInput,
 	): Promise<TaskActivity> {
 		const contentBlocks = input.content
-			? markdownToBlocknote(input.content)
+			? await this.linkMentions(projectId, markdownToBlocknote(input.content))
 			: null;
 
 		const body: any = {

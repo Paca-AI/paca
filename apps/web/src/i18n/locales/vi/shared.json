@@ -195,5 +195,10 @@
 		"minOne": "Cần ít nhất một vai trò.",
 		"clear": "Xóa",
 		"placeholder": "Chọn vai trò"
+	},
+	"askQuestion": {
+		"otherPlaceholder": "Hoặc nhập câu trả lời của bạn…",
+		"submit": "Gửi câu trả lời",
+		"answered": "Bạn đã trả lời: {{answer}}"
 	}
 }

@@ -75,8 +75,11 @@
 		"unmuteSound": "Включить звук уведомлений",
 		"text": {
 			"assigned": "{{actor}} назначил(а) вам задачу #{{taskNumber}} — {{taskTitle}}",
-			"mentioned": "{{actor}} упомянул(а) вас в #{{taskNumber}} — {{taskTitle}}"
-		}
+			"mentioned": "{{actor}} упомянул(а) вас в #{{taskNumber}} — {{taskTitle}}",
+			"question": "{{actor}} задал(а) вам вопрос в «{{title}}»"
+		},
+		"untitledConversation": "Беседа без названия",
+		"globalChat": "Общий чат"
 	},
 	"userMenu": {
 		"signIn": "Войти",

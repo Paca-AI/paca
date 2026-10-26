@@ -30,6 +30,10 @@ func (m *mockNotificationSvc) NotifyAssigned(_ context.Context, _ notificationdo
 	return nil
 }
 
+func (m *mockNotificationSvc) NotifyQuestion(_ context.Context, _ notificationdom.NotifyQuestionInput) error {
+	return nil
+}
+
 func (m *mockNotificationSvc) NotifyMentioned(_ context.Context, _ notificationdom.NotifyMentionedInput) error {
 	return nil
 }

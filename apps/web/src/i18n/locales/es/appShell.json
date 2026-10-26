@@ -75,8 +75,11 @@
 		"unmuteSound": "Activar sonido de notificaciones",
 		"text": {
 			"assigned": "{{actor}} te asignó la tarea #{{taskNumber}} — {{taskTitle}}",
-			"mentioned": "{{actor}} te mencionó en #{{taskNumber}} — {{taskTitle}}"
-		}
+			"mentioned": "{{actor}} te mencionó en #{{taskNumber}} — {{taskTitle}}",
+			"question": "{{actor}} te hizo una pregunta en {{title}}"
+		},
+		"untitledConversation": "Conversación sin título",
+		"globalChat": "Chat global"
 	},
 	"userMenu": {
 		"signIn": "Iniciar sesión",

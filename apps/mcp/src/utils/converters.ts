@@ -290,3 +290,108 @@ export function markdownToBlocknote(markdown: string): any[] {
 	const e = getEditor();
 	return (e as any)._exportManager.tryParseMarkdownToBlocks(markdown);
 }
+
+/** The fields of a project member needed to turn an `@mention` into a chip. */
+export interface MentionableMember {
+	id: string;
+	user_id?: string | null;
+	agent_id?: string | null;
+	member_type?: string | null;
+	username: string;
+	full_name: string;
+}
+
+// `@Full Name (id: <uuid>)` is how teamMention chips read back (see
+// convertMentionsToText), so agents copy it verbatim; `@username` is the
+// short form. Preceded by start/whitespace/opening punctuation so e-mail
+// addresses are left alone.
+const MENTION_PATTERN =
+	/(?<![\w@])@(?:[^@\n()]{1,80}?\s*\(id:\s*([0-9a-fA-F-]{36})\)|([\w.-]+))/g;
+
+function findMember(
+	members: MentionableMember[],
+	id: string | undefined,
+	username: string | undefined,
+): MentionableMember | undefined {
+	if (id) {
+		const lower = id.toLowerCase();
+		return members.find((m) =>
+			[m.id, m.user_id, m.agent_id].some((v) => v?.toLowerCase() === lower),
+		);
+	}
+	const lower = username?.replace(/[.]+$/, "").toLowerCase();
+	return members.find((m) => m.username.toLowerCase() === lower);
+}
+
+/** The id the web UI embeds in a teamMention: the agent id for agent members
+ *  (the API resolves it to start the agent), the user id otherwise. */
+function mentionId(member: MentionableMember): string {
+	return member.member_type === "agent"
+		? (member.agent_id ?? member.user_id ?? member.id)
+		: (member.user_id ?? member.id);
+}
+
+function linkInlineContent(
+	content: any[],
+	members: MentionableMember[],
+): any[] {
+	const out: any[] = [];
+	for (const node of content) {
+		if (
+			node?.type !== "text" ||
+			typeof node.text !== "string" ||
+			node.styles?.code
+		) {
+			out.push(node);
+			continue;
+		}
+		let last = 0;
+		const text: string = node.text;
+		for (const match of text.matchAll(MENTION_PATTERN)) {
+			const member = findMember(members, match[1], match[2]);
+			if (!member) continue;
+			const start = match.index ?? 0;
+			// A trailing '.' on a bare @username is sentence punctuation.
+			const matched =
+				match[2] && match[2].endsWith(".")
+					? match[0].replace(/\.+$/, "")
+					: match[0];
+			if (start > last) {
+				out.push({ ...node, text: text.slice(last, start) });
+			}
+			out.push({
+				type: "teamMention",
+				props: { id: mentionId(member), name: member.full_name, avatar: "" },
+			});
+			last = start + matched.length;
+		}
+		if (last === 0) {
+			out.push(node);
+		} else if (last < text.length) {
+			out.push({ ...node, text: text.slice(last) });
+		}
+	}
+	return out;
+}
+
+/**
+ * Replaces `@username` / `@Name (id: <uuid>)` text in BlockNote blocks with
+ * structured teamMention chips for known project members, so the API
+ * notifies the person or starts the agent. Unknown names stay plain text.
+ */
+export function linkTeamMentions(
+	blocks: any[],
+	members: MentionableMember[],
+): any[] {
+	return blocks.map((block) => {
+		if (!block || block.type === "codeBlock") return block;
+		const next = { ...block };
+		if (Array.isArray(block.content)) {
+			next.content = linkInlineContent(block.content, members);
+		}
+		if (Array.isArray(block.children)) {
+			next.children = linkTeamMentions(block.children, members);
+		}
+		return next;
+	});
+}

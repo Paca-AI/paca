@@ -14,6 +14,7 @@ import {
 	getAnnotationTools,
 	handleAnnotationTool,
 } from "./annotation-tools.js";
+import { ASK_TOOL_NAMES, getAskTools, handleAskTool } from "./ask-tools.js";
 import {
 	getAttachmentTools,
 	handleAttachmentTool,
@@ -92,6 +93,7 @@ export function getAllTools(): Tool[] {
 		...getGitTools(),
 		...getConversationTools(),
 		...getAnnotationTools(),
+		...getAskTools(),
 	];
 }
 
@@ -305,6 +307,16 @@ export async function handleToolCall(
 		// Page annotation ("comment") tools
 		if (name === "list_annotations" || name === "get_annotation") {
 			return handleAnnotationTool(name, args, clients.annotationClient);
+		}
+
+		// Ask-the-user (multiple-choice question) tool
+		if ((ASK_TOOL_NAMES as readonly string[]).includes(name)) {
+			return handleAskTool(
+				name,
+				args,
+				clients.taskExtendedClient,
+				clients.docClient,
+			);
 		}
 
 		throw new Error(`Unknown tool: ${name}`);

@@ -199,5 +199,10 @@
 		"minOne": "Требуется хотя бы одна роль.",
 		"clear": "Очистить",
 		"placeholder": "Выберите роли"
+	},
+	"askQuestion": {
+		"otherPlaceholder": "Или введите свой ответ…",
+		"submit": "Отправить ответ",
+		"answered": "Вы ответили: {{answer}}"
 	}
 }

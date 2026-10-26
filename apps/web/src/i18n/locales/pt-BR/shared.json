@@ -195,5 +195,10 @@
 		"minOne": "É necessária pelo menos uma função.",
 		"clear": "Limpar",
 		"placeholder": "Selecionar funções"
+	},
+	"askQuestion": {
+		"otherPlaceholder": "Ou digite sua própria resposta…",
+		"submit": "Enviar resposta",
+		"answered": "Você respondeu: {{answer}}"
 	}
 }

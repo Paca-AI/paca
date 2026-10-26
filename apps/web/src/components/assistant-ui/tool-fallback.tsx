@@ -6,6 +6,8 @@ import {
 	type ToolCallMessagePartComponent,
 	type ToolCallMessagePartProps,
 	type ToolCallMessagePartStatus,
+	useAui,
+	useAuiState,
 	useScrollLock,
 	useToolCallElapsed,
 } from "@assistant-ui/react";
@@ -19,6 +21,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AskQuestionCard } from "@/components/shared/ask-question-card";
 import {
 	DiffCollapsedRow,
 	DiffLineRow,
@@ -29,8 +32,13 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+	isAskQuestionTool,
+	parseAskQuestionFromCall,
+} from "@/lib/ask-question";
 import { collapseUnchangedContext, computeLineDiff } from "@/lib/diff-utils";
 import { cn } from "@/lib/utils";
+import { getToolCommand, summarizeToolArgs } from "./tool-args";
 
 const ANIMATION_DURATION = 200;
 
@@ -148,12 +156,15 @@ function ToolFallbackDuration({
 
 function ToolFallbackTrigger({
 	toolName,
+	argsSummary,
 	status,
 	isError,
 	className,
 	...props
 }: React.ComponentProps<typeof CollapsibleTrigger> & {
 	toolName: string;
+	/** One-line description of the tool's input (e.g. the Bash command). */
+	argsSummary?: string;
 	status?: ToolCallMessagePartStatus;
 	isError?: boolean;
 }) {
@@ -210,6 +221,15 @@ function ToolFallbackTrigger({
 					</span>
 				)}
 			</span>
+			{argsSummary && (
+				<code
+					data-slot="tool-fallback-trigger-args"
+					title={argsSummary}
+					className="aui-tool-fallback-trigger-args bg-muted/60 text-foreground/80 min-w-0 truncate rounded px-1.5 py-0.5 font-mono text-xs"
+				>
+					{argsSummary}
+				</code>
+			)}
 			<ToolFallbackDuration />
 			<ChevronDownIcon
 				data-slot="tool-fallback-trigger-chevron"
@@ -267,6 +287,8 @@ function ToolFallbackArgs({
 	argsText?: string;
 }) {
 	if (!argsText) return null;
+	// A shell command reads best verbatim (real newlines, no JSON escaping).
+	const command = getToolCommand(argsText);
 
 	return (
 		<div
@@ -275,7 +297,7 @@ function ToolFallbackArgs({
 			{...props}
 		>
 			<pre className="aui-tool-fallback-args-value bg-muted/50 text-foreground/90 rounded-md p-2.5 text-xs whitespace-pre-wrap">
-				{argsText}
+				{command ? `$ ${command}` : argsText}
 			</pre>
 		</div>
 	);
@@ -708,6 +730,39 @@ function ToolFallbackApproval({
 	);
 }
 
+// Chat-side rendering of the `ask_user_question` MCP tool: the question
+// arrives as the tool call's input, and picking an answer sends it as the
+// user's next message in the thread.
+function ToolFallbackAskQuestion({
+	argsText,
+	result,
+}: {
+	argsText?: string;
+	result?: unknown;
+}) {
+	const aui = useAui();
+	const isLast = useAuiState((s) => s.message.isLast);
+	const isRunning = useAuiState((s) => s.thread.isRunning);
+	const ask = parseAskQuestionFromCall(argsText, result);
+	if (!ask) return null;
+
+	return (
+		<AskQuestionCard
+			ask={ask}
+			// Only the latest question can be answered: an older one has
+			// already been followed by more conversation, and while the agent
+			// is still mid-turn a reply would just be queued behind it.
+			disabled={!isLast || isRunning}
+			onAnswer={(answer) =>
+				aui.thread().append({
+					role: "user",
+					content: [{ type: "text", text: answer }],
+				})
+			}
+		/>
+	);
+}
+
 const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 	toolCallId,
 	toolName,
@@ -726,6 +781,15 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 		status?.type === "incomplete" && status.reason === "cancelled";
 	const isRequiresAction = status?.type === "requires-action";
 	const diffs = getToolDiffs(artifact);
+	const isAskQuestion =
+		isAskQuestionTool(toolName) &&
+		parseAskQuestionFromCall(argsText, result) !== null;
+	const rawSummary = isAskQuestion ? undefined : summarizeToolArgs(argsText);
+	// Some agents already title the call with its command — don't repeat it.
+	const argsSummary =
+		rawSummary && !toolName.includes(rawSummary.replace(/…$/, ""))
+			? rawSummary
+			: undefined;
 
 	const [open, setOpenState] = useState(
 		() => isRequiresAction || openToolCallIds.has(toolCallId),
@@ -748,10 +812,19 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 		if (isRequiresAction) setOpen(true);
 	}
 
+	if (isAskQuestion) {
+		return (
+			<div data-slot="tool-fallback-ask" className="w-full py-1.5">
+				<ToolFallbackAskQuestion argsText={argsText} result={result} />
+			</div>
+		);
+	}
+
 	return (
 		<ToolFallbackRoot open={open} onOpenChange={setOpen}>
 			<ToolFallbackTrigger
 				toolName={toolName}
+				argsSummary={argsSummary}
 				status={status}
 				isError={isError}
 			/>

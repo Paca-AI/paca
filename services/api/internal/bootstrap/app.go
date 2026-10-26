@@ -74,6 +74,7 @@ type App struct {
 	taskAutofillConsumer   *worker.TaskAutofillConsumer
 	taskAutoAssignConsumer *worker.TaskAutoAssignConsumer
 	agentQueueConsumer     *worker.AgentQueueConsumer
+	questionConsumer       *worker.QuestionNotificationConsumer
 	dueDateScheduler       *worker.DueDateScheduler
 	cronScheduler          *worker.CronScheduler
 	waitScheduler          *worker.WaitScheduler
@@ -463,6 +464,11 @@ func New(cfg *config.Config) (*App, error) {
 	// status — see worker.AgentQueueConsumer's doc comment.
 	agentQueueConsumer := worker.NewAgentQueueConsumer(redisClient, agentRepo, agentService, log)
 
+	// Notifies a conversation's owner when its agent asks them a question
+	// (the ask_user_question MCP tool) — detected from the conversation event
+	// stream, so no agent-facing API is involved.
+	questionConsumer := worker.NewQuestionNotificationConsumer(redisClient, agentRepo, projectRepo, notificationService, log)
+
 	// Forward every recorded activity (task created/updated/deleted, comments,
 	// links, etc.) to subscribed plugins. ActivitySvc appends to the
 	// StreamPluginEvents Valkey stream; this consumer reads it back and
@@ -595,7 +601,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
 }
 
 // platformActionsReader lists a user's or agent's effective platform-level
@@ -638,6 +644,7 @@ func (a *App) Run() error {
 	a.taskAutofillConsumer.Start(context.Background())
 	a.taskAutoAssignConsumer.Start(context.Background())
 	a.agentQueueConsumer.Start(context.Background())
+	a.questionConsumer.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
 	a.waitScheduler.Start(context.Background())
@@ -659,6 +666,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.taskAutofillConsumer.Stop()
 	a.taskAutoAssignConsumer.Stop()
 	a.agentQueueConsumer.Stop()
+	a.questionConsumer.Stop()
 	a.dueDateScheduler.Stop()
 	a.cronScheduler.Stop()
 	a.waitScheduler.Stop()
