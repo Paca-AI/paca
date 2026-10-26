@@ -76,10 +76,12 @@
 		"text": {
 			"assigned": "{{actor}} 将任务 #{{taskNumber}} — {{taskTitle}} 分配给了您",
 			"mentioned": "{{actor}} 在 #{{taskNumber}} — {{taskTitle}} 中提到了您",
-			"question": "{{actor}} 在 {{title}} 中向你提问"
+			"question": "{{actor}} 在 {{title}} 中向你提问",
+			"mentionedInDoc": "{{actor}} 在文档 {{title}} 中提到了你"
 		},
 		"untitledConversation": "未命名对话",
-		"globalChat": "全局聊天"
+		"globalChat": "全局聊天",
+		"untitledDocument": "未命名文档"
 	},
 	"userMenu": {
 		"signIn": "登录",

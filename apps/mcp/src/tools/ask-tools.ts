@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type {
+	PacaAPIConversationClient,
 	PacaAPIDocClient,
 	PacaAPITaskExtendedClient,
 } from "../api/index.js";
@@ -71,7 +72,7 @@ export function getAskTools(): Tool[] {
 					mention: {
 						type: "string",
 						description:
-							"Username of the person to ask (e.g. 'alice', without '@'; see list_project_members). Only used with taskId/docId: they are @-mentioned in the comment so they get notified. Strongly recommended there, otherwise nobody is told a question is waiting.",
+							"Username of the person to ask (e.g. 'alice', without '@'). Only used with taskId/docId: they are @-mentioned in the comment so they get notified. Optional — when omitted, the person who started this conversation is mentioned. You do not need list_project_members for this.",
 					},
 					projectId: {
 						type: "string",
@@ -95,6 +96,25 @@ export function getAskTools(): Tool[] {
 	];
 }
 
+/**
+ * The mention for whoever started the conversation this server runs in, so a
+ * question on a task/document reaches them even when the agent does not know
+ * their username (and may not be allowed to list project members). Written in
+ * the `@Name (id: <member id>)` form the API resolves to a real mention.
+ * Best-effort: undefined when there is no such person or the lookup fails.
+ */
+async function conversationOwnerMention(
+	conversationClient?: PacaAPIConversationClient,
+): Promise<string | undefined> {
+	try {
+		const conversation = await conversationClient?.getCurrentConversation();
+		const memberId = conversation?.triggered_by_member_id;
+		return memberId ? `owner (id: ${memberId})` : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 export const ASK_TOOL_NAMES = ["ask_user_question"] as const;
 
 export async function handleAskTool(
@@ -102,6 +122,7 @@ export async function handleAskTool(
 	args: unknown,
 	taskClient: PacaAPITaskExtendedClient,
 	docClient: PacaAPIDocClient,
+	conversationClient?: PacaAPIConversationClient,
 ): Promise<any> {
 	if (toolName !== "ask_user_question") {
 		throw new Error(`Unknown ask tool: ${toolName}`);
@@ -129,7 +150,9 @@ export async function handleAskTool(
 			null,
 			2,
 		);
-		const mention = input.mention?.trim().replace(/^@/, "");
+		const mention =
+			input.mention?.trim().replace(/^@/, "") ||
+			(await conversationOwnerMention(conversationClient));
 		const block = `\`\`\`paca-ask\n${payload}\n\`\`\``;
 		const content = mention ? `@${mention}\n\n${block}` : block;
 		if (input.taskId) {

@@ -39,7 +39,7 @@ const COMMENT_ID_DESC =
 	"The technical UUID of the comment (e.g., '550e8400-e29b-41d4-a716-446655440000'). Use list_doc_activities to find comment IDs.";
 
 const MENTION_NOTE =
-	"NOTE: writing '@username' in the content does not send a notification for document comments (unlike add_task_comment) — the recipient will only see it if they happen to open this document. If this document is linked to a task, prefer add_task_comment there when you need to reliably reach someone.";
+	"NOTE: @-mentioning an agent (e.g. '@helper') in a document comment starts that agent, but mentioning a person does not send a notification (unlike add_task_comment) — they will only see it if they happen to open this document. If this document is linked to a task, prefer add_task_comment there when you need to reliably reach a person.";
 
 /**
  * Returns all document comment and activity related MCP tools.

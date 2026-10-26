@@ -110,6 +110,9 @@ func buildInitialMessage(trigger agent.Trigger) string {
 	if trigger.TaskID != nil {
 		fmt.Fprintf(&b, "Task ID: %s\n", trigger.TaskID)
 	}
+	if trigger.DocumentID != nil {
+		fmt.Fprintf(&b, "Document ID: %s\n", trigger.DocumentID)
+	}
 	if trigger.CommentID != nil {
 		fmt.Fprintf(&b, "Comment ID: %s\n", trigger.CommentID)
 	}

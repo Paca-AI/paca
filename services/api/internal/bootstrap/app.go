@@ -263,7 +263,7 @@ func New(cfg *config.Config) (*App, error) {
 	activityConsumer := worker.NewActivityConsumer(redisClient, pgRepo.NewActivityRepository(db), projectRepo, log)
 	environmentConsumer := worker.NewEnvironmentCommandConsumer(redisClient, environmentService, log)
 	docService := docsvc.New(docRepo, projectRepo)
-	docActivityService := docsvc.NewActivityService(activityLog, docRepo)
+	docActivityService := docsvc.NewActivityService(activityLog, docRepo).WithAgentTrigger(triggerGate, projectRepo).WithNotificationService(notificationService)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log)
 	taskAutofillConsumer := worker.NewTaskAutofillConsumer(redisClient, taskService, taskRepo, projectService, activityService, encryptor, log)

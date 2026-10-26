@@ -76,10 +76,12 @@
 		"text": {
 			"assigned": "{{actor}}さんがあなたをタスク #{{taskNumber}} — {{taskTitle}} に割り当てました",
 			"mentioned": "{{actor}}さんが #{{taskNumber}} — {{taskTitle}} であなたにメンションしました",
-			"question": "{{actor}} が {{title}} で質問しました"
+			"question": "{{actor}} が {{title}} で質問しました",
+			"mentionedInDoc": "{{actor}} がドキュメント {{title}} であなたをメンションしました"
 		},
 		"untitledConversation": "無題の会話",
-		"globalChat": "グローバルチャット"
+		"globalChat": "グローバルチャット",
+		"untitledDocument": "無題のドキュメント"
 	},
 	"userMenu": {
 		"signIn": "サインイン",

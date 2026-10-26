@@ -1422,3 +1422,39 @@ func TestNotifyQuestion_ProjectChat_ResolvesAgentActor(t *testing.T) {
 		t.Fatalf("expected agent member as actor: %+v", items)
 	}
 }
+
+func TestNotifyDocCommentMentioned(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	svc := New(repo, members, nil)
+
+	projectID, docID := uuid.New(), uuid.New()
+	actorAccount, actorMember := uuid.New(), uuid.New()
+	mentioned := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: mentioned, Username: "admin"})
+
+	in := notificationdom.NotifyDocCommentMentionedInput{
+		DocumentID: docID, ProjectID: projectID, ActorMemberID: actorMember, ActorID: actorAccount, MentionedUserID: mentioned,
+	}
+	if err := svc.NotifyDocCommentMentioned(ctx, in); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	items, _, _ := repo.ListForUser(ctx, mentioned, 10, nil)
+	if len(items) != 1 || items[0].DocumentID == nil || *items[0].DocumentID != docID || items[0].TaskID != nil ||
+		items[0].Type != notificationdom.NotificationTypeMentioned {
+		t.Fatalf("expected one doc mention notification, got %+v", items)
+	}
+
+	// Self-mention and non-members are skipped.
+	in.MentionedUserID = actorAccount
+	_ = svc.NotifyDocCommentMentioned(ctx, in)
+	in.ActorID, in.MentionedUserID = uuid.New(), uuid.New()
+	_ = svc.NotifyDocCommentMentioned(ctx, in)
+	if got, _, _ := repo.ListForUser(ctx, actorAccount, 10, nil); len(got) != 0 {
+		t.Fatalf("self-mention must not notify, got %d", len(got))
+	}
+	if got, _, _ := repo.ListForUser(ctx, in.MentionedUserID, 10, nil); len(got) != 0 {
+		t.Fatalf("non-member must not be notified, got %d", len(got))
+	}
+}

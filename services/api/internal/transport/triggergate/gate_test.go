@@ -32,6 +32,10 @@ func (r *recorder) TriggerCommentMention(context.Context, uuid.UUID, uuid.UUID, 
 	return r.rec("comment")
 }
 
+func (r *recorder) TriggerDocCommentMention(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, string) (*agentdom.AgentConversation, error) {
+	return r.rec("doc comment")
+}
+
 func (r *recorder) TriggerDescriptionWrite(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) (*agentdom.AgentConversation, error) {
 	return r.rec("description")
 }
@@ -134,6 +138,10 @@ func TestGate(t *testing.T) {
 		}},
 		{"comment mention", false, func(g *Gate, m uuid.UUID) error {
 			_, err := g.TriggerCommentMention(context.Background(), project, agent, uuid.New(), uuid.New(), m, "hi")
+			return err
+		}},
+		{"doc comment mention", false, func(g *Gate, m uuid.UUID) error {
+			_, err := g.TriggerDocCommentMention(context.Background(), project, agent, uuid.New(), uuid.New(), m, "hi")
 			return err
 		}},
 		{"description write", false, func(g *Gate, m uuid.UUID) error {

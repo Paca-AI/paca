@@ -251,7 +251,7 @@ git_push({ projectId: "project-id", repoId: "repository-id" })
 ```
 
 ### Ask the user (1 tool)
-- `ask_user_question` - Ask a multiple-choice question; in chat the choice returns as the user's next message, with `projectId` + `taskId`/`docId` it is posted as a comment and the answer returns as a reply comment mentioning the agent
+- `ask_user_question` - Ask a multiple-choice question; in chat the choice returns as the user's next message, with `projectId` + `taskId`/`docId` it is posted as a task or document comment and the answer returns as a reply comment mentioning the agent
 
 ## Notes
 

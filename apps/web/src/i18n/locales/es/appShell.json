@@ -76,10 +76,12 @@
 		"text": {
 			"assigned": "{{actor}} te asignó la tarea #{{taskNumber}} — {{taskTitle}}",
 			"mentioned": "{{actor}} te mencionó en #{{taskNumber}} — {{taskTitle}}",
-			"question": "{{actor}} te hizo una pregunta en {{title}}"
+			"question": "{{actor}} te hizo una pregunta en {{title}}",
+			"mentionedInDoc": "{{actor}} te mencionó en el documento {{title}}"
 		},
 		"untitledConversation": "Conversación sin título",
-		"globalChat": "Chat global"
+		"globalChat": "Chat global",
+		"untitledDocument": "Documento sin título"
 	},
 	"userMenu": {
 		"signIn": "Iniciar sesión",

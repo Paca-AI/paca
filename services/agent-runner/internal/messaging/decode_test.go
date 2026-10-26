@@ -156,3 +156,22 @@ func TestDecodeTrigger_EmptyRepoPluginIDsStaysNil(t *testing.T) {
 		t.Errorf("RepoPluginIDs = %v, want nil", trigger.RepoPluginIDs)
 	}
 }
+
+// A comment mention on a document carries document_id and no task_id.
+func TestDecodeTrigger_DocCommentMention(t *testing.T) {
+	docID := uuid.New()
+	trigger, err := decodeTrigger(map[string]interface{}{
+		"conversation_id": uuid.New().String(),
+		"project_id":      uuid.New().String(),
+		"agent_id":        uuid.New().String(),
+		"document_id":     docID.String(),
+		"comment_id":      uuid.New().String(),
+		"trigger_type":    "comment_mention",
+	})
+	if err != nil {
+		t.Fatalf("decodeTrigger: %v", err)
+	}
+	if trigger.TaskID != nil || trigger.DocumentID == nil || *trigger.DocumentID != docID {
+		t.Errorf("TaskID = %v, DocumentID = %v, want nil / %s", trigger.TaskID, trigger.DocumentID, docID)
+	}
+}

@@ -95,7 +95,7 @@ func (c *QuestionNotificationConsumer) run() {
 	defer close(c.doneCh)
 	c.log.Info("question notification consumer: started", "stream", events.StreamAgentEvents)
 
-	c.read("0", 0) // redeliver anything left unacked by a previous run
+	_ = c.read("0", 0) // redeliver anything left unacked by a previous run; errors are logged in read
 
 	for {
 		select {

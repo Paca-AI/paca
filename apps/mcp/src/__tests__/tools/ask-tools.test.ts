@@ -24,7 +24,6 @@ describe("ask_user_question", () => {
 		expect(res.content[0].text).toMatch(/next message/);
 		expect(res.content[0].text).toMatch(/```paca-ask\n.*"Which\?"/);
 		expect(task.addTaskComment).not.toHaveBeenCalled();
-		expect(doc.addDocumentComment).not.toHaveBeenCalled();
 	});
 
 	it("posts a task comment carrying the question payload", async () => {
@@ -53,6 +52,58 @@ describe("ask_user_question", () => {
 		});
 	});
 
+	it("mentions the conversation's owner when no mention is given", async () => {
+		const { task, doc } = makeClients();
+		const conversations = {
+			getCurrentConversation: vi
+				.fn()
+				.mockResolvedValue({ triggered_by_member_id: "m-1" }),
+		} as any;
+		await handleAskTool(
+			"ask_user_question",
+			{ question: "Q?", options: ["A"], projectId: "p1", docId: "d1" },
+			task,
+			doc,
+			conversations,
+		);
+		expect(doc.addDocumentComment.mock.calls[0][2]).toMatch(
+			/^@owner \(id: m-1\)\n\n```paca-ask\n/,
+		);
+	});
+
+	it("still posts when the conversation lookup fails", async () => {
+		const { task, doc } = makeClients();
+		const conversations = {
+			getCurrentConversation: vi.fn().mockRejectedValue(new Error("nope")),
+		} as any;
+		await handleAskTool(
+			"ask_user_question",
+			{ question: "Q?", options: ["A"], projectId: "p1", taskId: "t1" },
+			task,
+			doc,
+			conversations,
+		);
+		expect(task.addTaskComment.mock.calls[0][2].content).toMatch(
+			/^```paca-ask\n/,
+		);
+	});
+
+	it("posts a doc comment for docId", async () => {
+		const { task, doc } = makeClients();
+		await handleAskTool(
+			"ask_user_question",
+			{ question: "Which?", options: ["A"], projectId: "p1", docId: "d1" },
+			task,
+			doc,
+		);
+		expect(doc.addDocumentComment).toHaveBeenCalledWith(
+			"p1",
+			"d1",
+			expect.stringContaining("paca-ask-question"),
+		);
+		expect(task.addTaskComment).not.toHaveBeenCalled();
+	});
+
 	it("prepends an @mention when asked", async () => {
 		const { task, doc } = makeClients();
 		await handleAskTool(
@@ -72,21 +123,6 @@ describe("ask_user_question", () => {
 		);
 	});
 
-	it("posts a doc comment for docId", async () => {
-		const { task, doc } = makeClients();
-		await handleAskTool(
-			"ask_user_question",
-			{ question: "Which?", options: ["A"], projectId: "p1", docId: "d1" },
-			task,
-			doc,
-		);
-		expect(doc.addDocumentComment).toHaveBeenCalledWith(
-			"p1",
-			"d1",
-			expect.stringContaining("paca-ask-question"),
-		);
-	});
-
 	it("requires projectId with taskId", async () => {
 		const { task, doc } = makeClients();
 		await expect(
@@ -94,7 +130,6 @@ describe("ask_user_question", () => {
 				"ask_user_question",
 				{ question: "Q?", options: ["A"], taskId: "t1" },
 				task,
-				doc,
 			),
 		).rejects.toThrow(/projectId/);
 	});

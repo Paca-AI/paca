@@ -116,6 +116,13 @@ export class PacaAPIConversationClient {
 		};
 	}
 
+	/** The conversation this MCP server is running as part of, or null when it
+	 *  is not running inside one (no PACA_CONVERSATION_ID). */
+	async getCurrentConversation(): Promise<AgentConversation | null> {
+		if (!this.config.conversationId) return null;
+		return this.getConversation(this.config.conversationId);
+	}
+
 	async getConversation(conversationId: string): Promise<AgentConversation> {
 		return this.get(`/api/v1/agents/me/conversations/${conversationId}`);
 	}

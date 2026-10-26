@@ -364,6 +364,37 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 	return nil
 }
 
+// NotifyDocCommentMentioned creates an in-app notification for a person
+// @mentioned in a document comment, and publishes the same
+// notification.doc_mentioned plugin event a mention in a document's content
+// does. The mentioned id comes from client-supplied BlockNote content, so
+// project membership is re-verified first (see NotifyDocMentioned).
+func (s *Svc) NotifyDocCommentMentioned(ctx context.Context, in notificationdom.NotifyDocCommentMentionedInput) error {
+	if in.MentionedUserID == in.ActorID {
+		return nil
+	}
+	if _, err := s.memberRepo.FindMember(ctx, in.ProjectID, in.MentionedUserID); err != nil {
+		return nil // not a member of this project; nothing to notify
+	}
+	docID := in.DocumentID
+	actorMemberID := in.ActorMemberID
+	n := &notificationdom.Notification{
+		ID:                 uuid.New(),
+		RecipientAccountID: in.MentionedUserID,
+		ActorMemberID:      &actorMemberID,
+		Type:               notificationdom.NotificationTypeMentioned,
+		DocumentID:         &docID,
+		ProjectID:          in.ProjectID,
+		CreatedAt:          time.Now(),
+	}
+	if err := s.repo.Create(ctx, n); err != nil {
+		return err
+	}
+	s.publishCreated(ctx, n, in.MentionedUserID)
+	s.publishNotificationEvent(ctx, events.TopicNotificationDocMentioned, in.MentionedUserID, s.resolveUserName(ctx, in.ActorID), s.docURL(in.ProjectID, docID), s.docTitle(ctx, docID))
+	return nil
+}
+
 // NotifyDocMentioned publishes a notification.doc_mentioned plugin event for
 // a user newly @mentioned in a document's content. Unlike
 // NotifyAssigned/NotifyMentioned, this does not create an in-app
@@ -458,6 +489,7 @@ func (s *Svc) publishCreated(ctx context.Context, n *notificationdom.Notificatio
 		"type":                 string(n.Type),
 		"task_id":              n.TaskID,
 		"conversation_id":      n.ConversationID,
+		"document_id":          n.DocumentID,
 		"project_id":           n.ProjectID,
 		"created_at":           n.CreatedAt,
 	}

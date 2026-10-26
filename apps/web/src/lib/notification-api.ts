@@ -28,6 +28,9 @@ export interface Notification {
 	// Null for a question asked in a global-chat conversation.
 	project_id: string | null;
 	project_name: string;
+	// Set only for a mention in a document comment.
+	document_id: string | null;
+	document_title: string;
 	// Set only for "question" notifications.
 	conversation_id: string | null;
 	conversation_title: string;

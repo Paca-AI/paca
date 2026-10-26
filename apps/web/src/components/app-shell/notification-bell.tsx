@@ -53,6 +53,12 @@ function notificationText(n: Notification, t: TFunction<"appShell">): string {
 			taskTitle: n.task_title,
 		});
 	}
+	if (n.document_id) {
+		return t("notifications.text.mentionedInDoc", {
+			actor: n.actor_full_name,
+			title: n.document_title || t("notifications.untitledDocument"),
+		});
+	}
 	return t("notifications.text.mentioned", {
 		actor: n.actor_full_name,
 		taskNumber: n.task_number,
@@ -121,6 +127,11 @@ export function NotificationBell() {
 				}
 			} else if (!n.project_id) {
 				return;
+			} else if (n.document_id) {
+				navigate({
+					to: "/projects/$projectId/docs/$docId",
+					params: { projectId: n.project_id, docId: n.document_id },
+				});
 			} else if (n.task_id) {
 				navigate({
 					to: "/projects/$projectId/tasks/$taskId",

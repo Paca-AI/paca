@@ -31,6 +31,8 @@ type NotificationResponse struct {
 	// ProjectID is nil for a question asked in a global-chat conversation.
 	ProjectID         *uuid.UUID `json:"project_id"`
 	ProjectName       string     `json:"project_name"`
+	DocumentID        *uuid.UUID `json:"document_id"`
+	DocumentTitle     string     `json:"document_title"`
 	ConversationID    *uuid.UUID `json:"conversation_id"`
 	ConversationTitle string     `json:"conversation_title"`
 	ReadAt            *time.Time `json:"read_at"`
@@ -59,6 +61,8 @@ func NotificationFromEntity(n *notificationdom.Notification) NotificationRespons
 		TaskNumber:            n.TaskNumber,
 		ProjectID:             projectID,
 		ProjectName:           n.ProjectName,
+		DocumentID:            n.DocumentID,
+		DocumentTitle:         n.DocumentTitle,
 		ConversationID:        n.ConversationID,
 		ConversationTitle:     n.ConversationTitle,
 		ReadAt:                n.ReadAt,

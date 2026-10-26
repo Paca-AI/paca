@@ -34,6 +34,7 @@ type Triggers interface {
 	TriggerTaskAssigned(ctx context.Context, projectID, agentID, taskID uuid.UUID, triggeredByMemberID *uuid.UUID, note string) (*agentdom.AgentConversation, error)
 	TriggerDirectMessage(ctx context.Context, projectID, agentID uuid.UUID, triggeredByMemberID *uuid.UUID, message string) (*agentdom.AgentConversation, error)
 	TriggerCommentMention(ctx context.Context, projectID, agentID, taskID, commentID, triggeredByMemberID uuid.UUID, message string) (*agentdom.AgentConversation, error)
+	TriggerDocCommentMention(ctx context.Context, projectID, agentID, documentID, commentID, triggeredByMemberID uuid.UUID, message string) (*agentdom.AgentConversation, error)
 	TriggerDescriptionWrite(ctx context.Context, projectID, agentID, taskID, triggeredByMemberID uuid.UUID) (*agentdom.AgentConversation, error)
 }
 
@@ -153,6 +154,14 @@ func (g *Gate) TriggerCommentMention(ctx context.Context, projectID, agentID, ta
 		return nil, err
 	}
 	return g.next.TriggerCommentMention(ctx, projectID, agentID, taskID, commentID, by, message)
+}
+
+// TriggerDocCommentMention implements Triggers.
+func (g *Gate) TriggerDocCommentMention(ctx context.Context, projectID, agentID, documentID, commentID, by uuid.UUID, message string) (*agentdom.AgentConversation, error) {
+	if err := g.allow(ctx, projectID, agentID, by); err != nil {
+		return nil, err
+	}
+	return g.next.TriggerDocCommentMention(ctx, projectID, agentID, documentID, commentID, by, message)
 }
 
 // TriggerDescriptionWrite implements Triggers.
