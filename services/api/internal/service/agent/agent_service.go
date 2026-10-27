@@ -1638,9 +1638,6 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 	if err != nil {
 		return nil, err
 	}
-	if target.AgentID != callerAgentID {
-		return nil, agentdom.ErrConversationNotFound
-	}
 	// Always allowed, regardless of conversations.read: an agent may read
 	// the conversation it's currently running as part of — it already has
 	// this data as that conversation's own active participant, so gating it
@@ -1649,6 +1646,9 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 	// short-circuits the common case (no other conversation was attached)
 	// without a second lookup.
 	if target.ID == currentConversationID {
+		if target.AgentID != callerAgentID {
+			return nil, agentdom.ErrConversationNotFound
+		}
 		// DeletedAt deliberately NOT checked here: a user can delete the
 		// conversation this very agent is mid-turn on (auto-stop-then-delete
 		// soft-deletes immediately; agent-runner's own teardown is
@@ -1668,6 +1668,11 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 		return nil, err
 	}
 
+	// The target may belong to a different agent (e.g. a planner reading the
+	// conversation of an agent it delegated a task to): that is allowed when
+	// the caller holds conversations.read (checked above) and the target is
+	// visible in the caller's current conversation context below.
+	//
 	// Anything else must be authorized against whichever human is driving
 	// currentConversationID, not against callerAgentID alone — see
 	// authorizeAgentConversationRead.

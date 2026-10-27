@@ -166,8 +166,12 @@ type ConversationService interface {
 	//     project-scoped ones. See the implementation's doc comment for
 	//     the exact rule.
 	// Any conversation outside that boundary is not reachable via this
-	// path (ErrConversationNotFound), including a different agent's, or
-	// the same agent's conversation with an unrelated human.
+	// path (ErrConversationNotFound), including the same agent's
+	// conversation with an unrelated human. A different agent's
+	// conversation (e.g. one a planner delegated a task to) IS reachable
+	// when the caller holds conversations.read and the target passes the
+	// same visibility rule; only the current-conversation shortcut
+	// requires the target to belong to the caller itself.
 	GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	// StopConversation interrupts (if running) and permanently tears down the
