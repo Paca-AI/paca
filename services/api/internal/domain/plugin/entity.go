@@ -354,7 +354,27 @@ type SkillsManifest struct {
 	// Declared explicitly because the static file server does not support
 	// directory listing.
 	Names []string `json:"names"`
+	// Routes optionally tells the core `paca` router skill when to send the
+	// user to one of this plugin's skills. Each route becomes one row in the
+	// router's "Route to a specialized skill" table, but only while the
+	// plugin is installed and enabled — so the router never mentions a skill
+	// that is not there.
+	Routes []SkillRoute `json:"routes,omitempty"`
 }
+
+// SkillRoute is one router-table row contributed by a plugin skill.
+type SkillRoute struct {
+	// Skill is the name of one of the plugin's own skills (must be in Names).
+	Skill string `json:"skill"`
+	// When completes the sentence "If the user wants to…": a short, single-line
+	// description of the request this skill handles.
+	When string `json:"when"`
+}
+
+// maxSkillRouteWhenLen bounds SkillRoute.When: it lands in a table row of a
+// core skill, so it must stay short and cannot carry a paragraph of
+// instructions.
+const maxSkillRouteWhenLen = 200
 
 // validate checks that the skills manifest is well-formed: a base URL and at
 // least one uniquely-named skill, each name following the AgentSkills naming
@@ -393,6 +413,26 @@ func (m SkillsManifest) validate() error {
 			return fmt.Errorf("skills: duplicate name %q", name)
 		}
 		seen[name] = true
+	}
+	routed := make(map[string]bool, len(m.Routes))
+	for _, r := range m.Routes {
+		if !seen[r.Skill] {
+			return fmt.Errorf("skills: route references %q, which is not in names", r.Skill)
+		}
+		if routed[r.Skill] {
+			return fmt.Errorf("skills: duplicate route for %q", r.Skill)
+		}
+		routed[r.Skill] = true
+		when := strings.TrimSpace(r.When)
+		if when == "" {
+			return fmt.Errorf("skills: route for %q needs a non-empty \"when\"", r.Skill)
+		}
+		if len([]rune(when)) > maxSkillRouteWhenLen {
+			return fmt.Errorf("skills: route \"when\" for %q is longer than %d characters", r.Skill, maxSkillRouteWhenLen)
+		}
+		if strings.ContainsAny(when, "\r\n|`") {
+			return fmt.Errorf("skills: route \"when\" for %q must be a single line without '|' or backticks", r.Skill)
+		}
 	}
 	return nil
 }

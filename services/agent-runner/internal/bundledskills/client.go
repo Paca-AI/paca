@@ -30,35 +30,55 @@ type skillsEnvelope struct {
 	} `json:"data"`
 }
 
-// Client fetches and caches the bundled agent-flavor skill set for the
-// lifetime of the process — the content is static per deployed API
-// version, so there's no reason to re-fetch on every conversation. A
-// failed fetch is not cached, so a transient failure (e.g. racing an API
-// restart) is retried on the next conversation instead of permanently
-// leaving every subsequent one without this scaffolding.
+// cacheTTL bounds how long a fetched skill set is reused. The set is not
+// static for the life of the process: it includes skills (and `paca` router
+// rows) contributed by plugins, which can be installed, enabled or disabled at
+// any time, and that must take effect on a following conversation. A short TTL
+// keeps that promise without an API call per conversation.
+const cacheTTL = 30 * time.Second
+
+// Client fetches the agent-flavor skill set — Paca's bundled skills plus those
+// of enabled plugins — and caches it for cacheTTL. A failed fetch is never
+// cached as a result: it is retried on the next call, and if an earlier fetch
+// succeeded the last good set is served meanwhile, so a transient failure
+// (e.g. racing an API restart) neither leaves a conversation without this
+// scaffolding nor pins an empty result.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+	now        func() time.Time
 
-	mu    sync.Mutex
-	cache []agent.Skill
+	mu        sync.Mutex
+	cache     []agent.Skill
+	fetchedAt time.Time
 }
 
 // NewClient returns a Client that fetches from baseURL — services/api's
 // PACA_API_URL (e.g. "http://api:8080", no trailing /api/v1).
 func NewClient(baseURL string) *Client {
-	return &Client{baseURL: baseURL, httpClient: &http.Client{Timeout: 10 * time.Second}}
+	return &Client{baseURL: baseURL, httpClient: &http.Client{Timeout: 10 * time.Second}, now: time.Now}
 }
 
-// Load returns the bundled agent-flavor skill set, each marked IsEnabled so
+// Load returns the agent-flavor skill set, each marked IsEnabled so
 // executor.buildInitialMessage includes it unconditionally.
 func (c *Client) Load(ctx context.Context) ([]agent.Skill, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.cache != nil {
+	if c.cache != nil && c.now().Sub(c.fetchedAt) < cacheTTL {
 		return c.cache, nil
 	}
+	skills, err := c.fetch(ctx)
+	if err != nil {
+		if c.cache != nil {
+			return c.cache, nil // stale beats nothing
+		}
+		return nil, err
+	}
+	c.cache, c.fetchedAt = skills, c.now()
+	return skills, nil
+}
 
+func (c *Client) fetch(ctx context.Context) ([]agent.Skill, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/skills?target=agent", nil)
 	if err != nil {
 		return nil, fmt.Errorf("bundledskills: build request: %w", err)
@@ -85,6 +105,5 @@ func (c *Client) Load(ctx context.Context) ([]agent.Skill, error) {
 			IsEnabled:    true,
 		})
 	}
-	c.cache = skills
 	return skills, nil
 }

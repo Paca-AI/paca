@@ -241,6 +241,53 @@ func TestPluginManifestValidate_Skills(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "valid route",
+			skills: &SkillsManifest{
+				BaseURL: "/plugins-skills/com.paca.example",
+				Names:   []string{"paca-pr-review"},
+				Routes:  []SkillRoute{{Skill: "paca-pr-review", When: "Review a pull request"}},
+			},
+		},
+		{
+			name: "route for a skill not in names",
+			skills: &SkillsManifest{
+				BaseURL: "/plugins-skills/com.paca.example",
+				Names:   []string{"paca-pr-review"},
+				Routes:  []SkillRoute{{Skill: "paca-other", When: "x"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "route with empty when",
+			skills: &SkillsManifest{
+				BaseURL: "/plugins-skills/com.paca.example",
+				Names:   []string{"paca-pr-review"},
+				Routes:  []SkillRoute{{Skill: "paca-pr-review", When: "  "}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "route with multi-line when",
+			skills: &SkillsManifest{
+				BaseURL: "/plugins-skills/com.paca.example",
+				Names:   []string{"paca-pr-review"},
+				Routes:  []SkillRoute{{Skill: "paca-pr-review", When: "a\nb"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "duplicate route",
+			skills: &SkillsManifest{
+				BaseURL: "/plugins-skills/com.paca.example",
+				Names:   []string{"paca-pr-review"},
+				Routes: []SkillRoute{
+					{Skill: "paca-pr-review", When: "a"},
+					{Skill: "paca-pr-review", When: "b"},
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name: "reserved trigger name",
 			skills: &SkillsManifest{
 				BaseURL: "/plugins-skills/com.paca.example",

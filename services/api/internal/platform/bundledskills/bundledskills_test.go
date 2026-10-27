@@ -331,3 +331,55 @@ func TestList_PacaFeatureSkills(t *testing.T) {
 		t.Error("paca-workflow should no longer be reserved")
 	}
 }
+
+func pacaRouter(t *testing.T, skills []Skill) string {
+	t.Helper()
+	for _, s := range skills {
+		if s.Name == "paca" {
+			return s.Content
+		}
+	}
+	t.Fatal("paca router skill not found")
+	return ""
+}
+
+// TestRouter_NoPluginRoutesLeavesNoTrace guards that, with no plugin routes,
+// the router mentions no plugin skill and no marker leaks into the content.
+func TestRouter_NoPluginRoutesLeavesNoTrace(t *testing.T) {
+	for _, target := range []string{TargetCLI, TargetAgent} {
+		c := pacaRouter(t, List(target))
+		if strings.Contains(c, "paca:plugin-routes") {
+			t.Errorf("%s: routes marker leaked into the router", target)
+		}
+	}
+}
+
+// TestRouter_PluginRoutesJoinTheTable guards that plugin routes become rows of
+// the same table (directly after the last bundled row), in each flavor's
+// routing syntax, and are flattened so they cannot break the table.
+func TestRouter_PluginRoutesJoinTheTable(t *testing.T) {
+	routes := []Route{
+		{Skill: "paca-bdd-scenarios", When: "Write Given/When/Then scenarios"},
+		{Skill: "paca-x", When: "Odd | text with `ticks`\nand a newline"},
+	}
+	cli := pacaRouter(t, ListWithRoutes(TargetCLI, routes))
+	for _, want := range []string{
+		"| Write Given/When/Then scenarios | `/paca-bdd-scenarios` |\n",
+		"| Odd / text with 'ticks' and a newline | `/paca-x` |\n",
+	} {
+		if !strings.Contains(cli, want) {
+			t.Errorf("cli router missing row %q", want)
+		}
+	}
+	// Directly after the last bundled row: no blank line that would end the table.
+	if !strings.Contains(cli, "`/paca-role-policy <what the role should allow>` |\n| Write Given") {
+		t.Error("plugin rows are not contiguous with the router table")
+	}
+	agent := pacaRouter(t, ListWithRoutes(TargetAgent, routes))
+	if !strings.Contains(agent, "| Write Given/When/Then scenarios | `load_skill(name: \"paca-bdd-scenarios\")` |\n") {
+		t.Error("agent router missing load_skill row")
+	}
+	if strings.Contains(pacaRouter(t, List(TargetCLI)), "paca-bdd-scenarios") {
+		t.Error("List must not mention plugin skills")
+	}
+}

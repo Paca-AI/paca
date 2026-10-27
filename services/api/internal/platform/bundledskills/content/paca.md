@@ -31,6 +31,7 @@ If the request clearly matches one of these, let the user know — they'll get a
 | Set up or clean up task types, statuses, custom fields and views | `/paca-board` |
 | See who can do what, or add / change / remove project members | `/paca-team` |
 | Draft a role policy — read-only role, limit someone to a sprint, restrict an agent or environment (drafts JSON only, never saves a role) | `/paca-role-policy <what the role should allow>` |
+<!-- paca:plugin-routes -->
 
 If it's a simple or mixed request (e.g. "create a task for X", "what's in the sprint", "mark #7 done"), just handle it directly below.
 

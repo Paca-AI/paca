@@ -34,6 +34,7 @@ This is your default operating procedure for every conversation — it always ap
 | Set up or clean up task types, statuses, custom fields and views | `load_skill(name: "paca-board")` |
 | See who can do what, or add / change / remove project members | `load_skill(name: "paca-team")` |
 | Draft a role policy — read-only role, limit someone to a sprint, restrict an agent or environment (drafts JSON only, never saves a role) | `load_skill(name: "paca-role-policy")` |
+<!-- paca:plugin-routes -->
 
 A user can also force one of these directly by typing `/<skill-name>` (e.g. `/paca-do #42`) in a chat message or comment — treat that the same as picking the matching row above: call `load_skill` for that name and follow it.
 

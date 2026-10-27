@@ -12,8 +12,8 @@ import (
 )
 
 // SkillsHandler serves Paca's Agent Skills: its own bundled skills (see the
-// bundledskills package for why those are compiled into the binary) plus,
-// for the "cli" flavor only, skills contributed by enabled plugins.
+// bundledskills package for why those are compiled into the binary) plus
+// skills contributed by enabled plugins.
 type SkillsHandler struct {
 	pluginSvc pluginrt.Lister
 	skillsDir string
@@ -35,27 +35,27 @@ func NewSkillsHandler(pluginSvc pluginrt.Lister, skillsDir string) *SkillsHandle
 //     scripts/install-paca-skills.sh in place of fetching from GitHub, so
 //     installed content always matches the exact version this instance is
 //     running.
-//   - GET /api/v1/skills?target=agent → "agent" flavor: Paca's bundled
-//     skills only, deliberately excluding plugin skills. Consumed by
-//     services/ai-agent's builder.load_default_skills(), which caches the
-//     response for the life of the worker process — mixing plugin skills
-//     into that cache would leave a disabled/uninstalled plugin's skill
-//     stuck there until the process restarts, breaking the "install/enable/
-//     disable takes effect on the next conversation" guarantee documented
-//     in docs/plugins/skills-plugin-system.md. Every conversation already
-//     gets live, uncached plugin skills through a separate path
-//     (agent_repository.list_enabled_plugin_skills +
-//     builder.load_plugin_skills), so nothing is missing for the "agent"
-//     flavor by leaving plugin skills out of it here.
+//   - GET /api/v1/skills?target=agent → "agent" flavor: the same set in the
+//     in-product form. Consumed by services/agent-runner, which re-fetches
+//     it on a short TTL (not for the life of the process) precisely so that
+//     installing, enabling or disabling a plugin takes effect on a following
+//     conversation.
+//
+// In both flavors, routes a plugin declares (SkillsManifest.Routes) are added
+// to the `paca` router skill's table only for plugin skills served in the
+// same response, so the router never mentions a skill that is not there.
 func (h *SkillsHandler) ListSkills(w http.ResponseWriter, r *http.Request) {
 	target := r.URL.Query().Get("target")
 	skills := bundledskills.List(target)
 
-	if target != bundledskills.TargetAgent {
-		pluginSkills, err := pluginrt.ListSkills(r.Context(), h.pluginSvc, h.skillsDir)
-		if err != nil {
-			slog.Error("skills: failed to list plugin-contributed skills", "error", err)
-		} else if len(pluginSkills) > 0 {
+	pluginSkills, routes, err := pluginrt.ListSkillsAndRoutes(r.Context(), h.pluginSvc, h.skillsDir)
+	if err != nil {
+		slog.Error("skills: failed to list plugin-contributed skills", "error", err)
+	} else {
+		// Plugin routes become rows of the `paca` router's table, so the
+		// router mentions exactly the plugin skills served here.
+		skills = bundledskills.ListWithRoutes(target, routes)
+		if len(pluginSkills) > 0 {
 			skills = append(skills, pluginSkills...)
 			sort.Slice(skills, func(i, j int) bool { return skills[i].Name < skills[j].Name })
 		}

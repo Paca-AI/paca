@@ -34,7 +34,10 @@
 // Adding a skill is: write content/<name>.md, add one line to catalog.go.
 package bundledskills
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Target selects which bundled skill flavor List returns.
 const (
@@ -57,21 +60,41 @@ type Skill struct {
 	Content string `json:"content"`
 }
 
+// Route is one extra row for the `paca` router skill's "Route to a
+// specialized skill" table, contributed by an installed plugin's skill.
+type Route struct {
+	// Skill is the plugin skill's name.
+	Skill string
+	// When completes "If the user wants to…".
+	When string
+}
+
+// routesMarker marks, in a skill's Markdown, the line directly after the
+// router table where plugin routes are inserted. It is always removed, so a
+// router served with no plugin routes is unchanged.
+const routesMarker = "<!-- paca:plugin-routes -->\n"
+
 // List returns every bundled skill for the given flavor
 // (TargetCLI/TargetAgent), sorted by name. Unrecognized or empty target
 // values fall back to TargetCLI, matching the API's pre-existing default
 // (GET /api/v1/skills with no query param at all).
-func List(target string) []Skill {
+func List(target string) []Skill { return ListWithRoutes(target, nil) }
+
+// ListWithRoutes is List with plugin routes added to the router table. Callers
+// pass only routes for skills that are actually being served alongside, so the
+// router never points at a skill that is missing.
+func ListWithRoutes(target string, routes []Route) []Skill {
+	rows := routeRows(target, routes)
 	result := make([]Skill, 0, len(skillEntries))
 	for _, e := range skillEntries {
 		if target == TargetAgent {
 			if e.CLIOnly {
 				continue
 			}
-			result = append(result, Skill{Name: e.Name, Path: e.agentPath(), Content: e.agentContent()})
+			result = append(result, Skill{Name: e.Name, Path: e.agentPath(), Content: applyRoutes(e.agentContent(), rows)})
 			continue
 		}
-		result = append(result, Skill{Name: e.Name, Path: e.Name + "/SKILL.md", Content: e.cliContent})
+		result = append(result, Skill{Name: e.Name, Path: e.Name + "/SKILL.md", Content: applyRoutes(e.cliContent, rows)})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result
@@ -92,4 +115,28 @@ func IsBuiltinName(name string) bool {
 		}
 	}
 	return false
+}
+
+// routeRows renders routes as router-table rows in the flavor's own routing
+// syntax (slash commands for cli, load_skill for agent). Text is flattened to
+// one line and stripped of characters that would break the table.
+func routeRows(target string, routes []Route) string {
+	var b strings.Builder
+	for _, r := range routes {
+		when := strings.Join(strings.Fields(strings.NewReplacer("|", "/", "`", "'").Replace(r.When)), " ")
+		if when == "" || r.Skill == "" {
+			continue
+		}
+		cmd := "`/" + r.Skill + "`"
+		if target == TargetAgent {
+			cmd = "`load_skill(name: \"" + r.Skill + "\")`"
+		}
+		b.WriteString("| " + when + " | " + cmd + " |\n")
+	}
+	return b.String()
+}
+
+// applyRoutes replaces the routes marker in content with rows (possibly empty).
+func applyRoutes(content, rows string) string {
+	return strings.Replace(content, routesMarker, rows, 1)
 }

@@ -183,3 +183,32 @@ func TestListSkills_NoSkillsDirOrService(t *testing.T) {
 		t.Fatalf("expected (nil, nil) for empty skillsDir, got (%+v, %v)", skills, err)
 	}
 }
+
+func TestListSkillsAndRoutes_OnlyRoutesForReturnedSkills(t *testing.T) {
+	dir := t.TempDir()
+	writeSkillFile(t, dir, "com.paca.example", "paca-a", "---\nname: paca-a\n---\nbody")
+	// paca-b is declared and routed but its SKILL.md is missing.
+	manifest := plugindom.PluginManifest{Skills: &plugindom.SkillsManifest{
+		BaseURL: "/plugins-skills/com.paca.example",
+		Names:   []string{"paca-a", "paca-b"},
+		Routes: []plugindom.SkillRoute{
+			{Skill: "paca-a", When: "Do A"},
+			{Skill: "paca-b", When: "Do B"},
+		},
+	}}
+	svc := &fakePluginLister{plugins: []*plugindom.Plugin{
+		{Name: "com.paca.example", Enabled: true, Manifest: manifest},
+		{Name: "com.paca.off", Enabled: false, Manifest: manifest},
+	}}
+
+	skills, routes, err := ListSkillsAndRoutes(context.Background(), svc, dir)
+	if err != nil {
+		t.Fatalf("ListSkillsAndRoutes: %v", err)
+	}
+	if len(skills) != 1 || skills[0].Name != "paca-a" {
+		t.Fatalf("unexpected skills: %+v", skills)
+	}
+	if len(routes) != 1 || routes[0].Skill != "paca-a" || routes[0].When != "Do A" {
+		t.Fatalf("expected only paca-a's route, got %+v", routes)
+	}
+}

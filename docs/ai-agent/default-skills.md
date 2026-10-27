@@ -61,3 +61,7 @@ The skill set follows [mattpocock/skills](https://github.com/mattpocock/skills/t
 `paca-automation` **replaces `paca-workflow`**, which described the removed workflow-node tools (`get_workflow` / `create_workflow`); the MCP server now exposes `get/create/update/delete_automation`. Machines that ran the installer earlier keep a stale `paca-workflow` directory until they remove it (`rm -rf ~/.claude/skills/paca-workflow`).
 
 `TestList_EngineeringPractices` and `TestList_PacaFeatureSkills` guard all of this.
+
+## Plugin skills in the `paca` router
+
+`GET /api/v1/skills` (both flavors) also serves skills from enabled plugins and adds each plugin's declared `routes` as rows of the `paca` router's "Route to a specialized skill" table, via a marker line in `content/paca.md` / `content/paca.agent.md` (`bundledskills.ListWithRoutes`). With no plugin routes the marker disappears and the router is unchanged, so the router never names a plugin skill that is not installed. See [skills-plugin-system.md](../plugins/skills-plugin-system.md) for the manifest field.

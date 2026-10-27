@@ -73,6 +73,19 @@ Add a `skills` section to your `plugin.json`:
 - `names` lists the skill directory names available under `baseUrl` — declared explicitly because the static file server does not support directory listing. Each name must exist as `{baseUrl}/{name}/SKILL.md` in your artifact and follow the AgentSkills naming convention (lowercase alphanumeric segments joined by single hyphens, e.g. `paca-pr-review`).
 - **All skill names must start with `paca-`** — this is the naming convention every skill in the Paca ecosystem follows (the bundled defaults are `paca-do`, `paca-doc`, etc.), so a plugin's contributed skills read as clearly Paca-related wherever they surface — in `<available_skills>`, and as slash commands once installed via `install-paca-skills.sh`. This is a separate convention from MCP tool naming (which prefixes with your own plugin name, e.g. `checklist_`, `bdd_` — see [mcp-plugin-system.md](mcp-plugin-system.md#tool-naming)) since tools need to avoid colliding with *other plugins*, while skills all share one `paca-` namespace by design.
 - Names may not start with `paca-trigger-` — that prefix is reserved for Paca's own fixed per-conversation scaffolding skills.
+- `routes` (optional) tells the core `paca` router skill when to send the user to one of your skills. Each entry has a `skill` (one of your `names`) and a `when` that completes "If the user wants to…":
+
+  ```json
+  "skills": {
+    "baseUrl": "/plugins-skills/com.example.my-plugin",
+    "names": ["paca-pr-review"],
+    "routes": [
+      { "skill": "paca-pr-review", "when": "Review a pull request against a task's acceptance criteria" }
+    ]
+  }
+  ```
+
+  Each route becomes one row in the router's "Route to a specialized skill" table (`/paca-pr-review` for CLI installs), directly after the bundled rows. Rows appear only while the plugin is installed and enabled and its skill is actually served, so the router never mentions a skill that is not there. `when` must be a single line of at most 200 characters, without `|` or backticks; a route for a skill not in `names`, an empty `when`, or two routes for one skill are rejected at install time. The row is written in each flavor's own routing syntax — a slash command for CLI installs (`GET /api/v1/skills`), `load_skill(name: "…")` for the in-product agent (`?target=agent`). `services/agent-runner` re-fetches that set every 30 seconds rather than once per process, so installing, enabling or disabling a plugin shows up in the router on a following conversation.
 
 ## Publishing a skills bundle
 
