@@ -14,11 +14,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/sync/singleflight"
 	"log/slog"
 	"net/http"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/Paca-AI/agent-runner/internal/agent"
 )
