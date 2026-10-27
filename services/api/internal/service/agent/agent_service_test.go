@@ -2222,6 +2222,54 @@ func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_NoG
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
+func TestGetConversationForAgent_DifferentAgent_RequiresConversationsRead_ProjectGrant_Allowed(t *testing.T) {
+	callerID, ownerID := uuid.New(), uuid.New()
+	projectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: ownerID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: callerID, ProjectID: projectID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	store := &fakeAgentPermissionStore{
+		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
+			projectID: {callerID: {iam.ActionConversationsRead}},
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(newTestIAMAuthorizer(store))
+
+	result, err := svc.GetConversationForAgent(context.Background(), targetID, callerID, currentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, targetID, result.ID)
+}
+
+func TestGetConversationForAgent_DifferentAgent_RequiresConversationsRead_NoGrant_Rejected(t *testing.T) {
+	callerID, ownerID := uuid.New(), uuid.New()
+	projectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: ownerID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: callerID, ProjectID: projectID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(newTestIAMAuthorizer(&fakeAgentPermissionStore{}))
+
+	_, err := svc.GetConversationForAgent(context.Background(), targetID, callerID, currentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
 func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_WrongProjectGrant_Rejected(t *testing.T) {
 	agentID := uuid.New()
 	conversationProjectID := uuid.New()
