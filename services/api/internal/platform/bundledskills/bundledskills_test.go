@@ -269,3 +269,130 @@ func TestRolePolicySkill_ExamplesValidate(t *testing.T) {
 		}
 	}
 }
+
+// TestList_EngineeringPractices guards the engineering-practice guidance
+// (adapted from mattpocock/skills) folded into the existing skills, in both
+// flavors.
+func TestList_EngineeringPractices(t *testing.T) {
+	want := map[string][]string{
+		"paca-do":        {"failing test", "ranked, falsifiable hypotheses", "regression test"},
+		"paca-breakdown": {"tracer bullets", "expand → migrate in batches → contract"},
+		"paca-clarify":   {"recommended answer", "glossary", "standalone brief"},
+		"paca-test":      {"exact reproduction"},
+	}
+	for _, target := range []string{TargetCLI, TargetAgent} {
+		for _, s := range List(target) {
+			for _, phrase := range want[s.Name] {
+				if !strings.Contains(s.Content, phrase) {
+					t.Errorf("%s/%s: missing guidance %q", target, s.Name, phrase)
+				}
+			}
+		}
+	}
+}
+
+// TestList_PacaFeatureSkills guards the skills built on Paca's own features:
+// present in both flavors, routed to by the paca skill, reserved as builtin
+// names, and the retired paca-workflow no longer shipped.
+func TestList_PacaFeatureSkills(t *testing.T) {
+	names := []string{"paca-automation", "paca-review", "paca-triage", "paca-retro", "paca-feedback", "paca-board", "paca-team"}
+	for _, target := range []string{TargetCLI, TargetAgent} {
+		byName := map[string]Skill{}
+		for _, s := range List(target) {
+			byName[s.Name] = s
+		}
+		if _, ok := byName["paca-workflow"]; ok {
+			t.Errorf("%s: retired skill paca-workflow is still shipped", target)
+		}
+		for _, n := range names {
+			s, ok := byName[n]
+			if !ok {
+				t.Errorf("%s: missing skill %q", target, n)
+				continue
+			}
+			if !strings.Contains(s.Content, "description: ") {
+				t.Errorf("%s/%s: missing description", target, n)
+			}
+			route := "/" + n
+			if target == TargetAgent {
+				route = `load_skill(name: "` + n + `")`
+			}
+			if !strings.Contains(byName["paca"].Content, route) {
+				t.Errorf("%s: paca router does not route to %s", target, n)
+			}
+		}
+	}
+	for _, n := range names {
+		if !IsBuiltinName(n) {
+			t.Errorf("%s should be a reserved builtin name", n)
+		}
+	}
+	if IsBuiltinName("paca-workflow") {
+		t.Error("paca-workflow should no longer be reserved")
+	}
+}
+
+func pacaRouter(t *testing.T, skills []Skill) string {
+	t.Helper()
+	for _, s := range skills {
+		if s.Name == "paca" {
+			return s.Content
+		}
+	}
+	t.Fatal("paca router skill not found")
+	return ""
+}
+
+// TestRouter_NoPluginRoutesLeavesNoTrace guards that, with no plugin routes,
+// the router mentions no plugin skill and no marker leaks into the content.
+func TestRouter_NoPluginRoutesLeavesNoTrace(t *testing.T) {
+	for _, target := range []string{TargetCLI, TargetAgent} {
+		c := pacaRouter(t, List(target))
+		if strings.Contains(c, "paca:plugin-routes") {
+			t.Errorf("%s: routes marker leaked into the router", target)
+		}
+	}
+}
+
+// TestRouter_PluginRoutesJoinTheTable guards that plugin routes become rows of
+// the same table (directly after the last bundled row), in each flavor's
+// routing syntax, and are flattened so they cannot break the table.
+func TestRouter_PluginRoutesJoinTheTable(t *testing.T) {
+	routes := []Route{
+		{Skill: "paca-bdd-scenarios", When: "Write Given/When/Then scenarios"},
+		{Skill: "paca-x", When: "Odd | text with `ticks`\nand a newline"},
+	}
+	cli := pacaRouter(t, ListWithRoutes(TargetCLI, routes))
+	for _, want := range []string{
+		"| Write Given/When/Then scenarios | `/paca-bdd-scenarios` |\n",
+		"| Odd / text with 'ticks' and a newline | `/paca-x` |\n",
+	} {
+		if !strings.Contains(cli, want) {
+			t.Errorf("cli router missing row %q", want)
+		}
+	}
+	// Directly after the last bundled row: no blank line that would end the table.
+	if !strings.Contains(cli, "`/paca-role-policy <what the role should allow>` |\n| Write Given") {
+		t.Error("plugin rows are not contiguous with the router table")
+	}
+	agent := pacaRouter(t, ListWithRoutes(TargetAgent, routes))
+	if !strings.Contains(agent, "| Write Given/When/Then scenarios | `load_skill(name: \"paca-bdd-scenarios\")` |\n") {
+		t.Error("agent router missing load_skill row")
+	}
+	if strings.Contains(pacaRouter(t, List(TargetCLI)), "paca-bdd-scenarios") {
+		t.Error("List must not mention plugin skills")
+	}
+}
+
+// TestList_AgentFlavorHasNoCLIOnlyText guards deriveAgentContent: if a content
+// file's compatibility line or fallback block drifts, the replace silently
+// no-ops and the agent flavor would ship CLI-only instructions.
+func TestList_AgentFlavorHasNoCLIOnlyText(t *testing.T) {
+	for _, s := range List(TargetAgent) {
+		for _, banned := range []string{compatibilityLine, "## If Paca MCP is not connected"} {
+			if strings.Contains(s.Content, banned) {
+				t.Errorf("agent/%s: contains CLI-only text %q", s.Name, banned)
+			}
+		}
+	}
+}

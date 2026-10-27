@@ -124,9 +124,9 @@ export interface AgentSkill {
 }
 
 // SystemSkill is a Paca-provided skill from GET /skills: either one of Paca's
-// bundled skills or one contributed by an enabled plugin (the default "cli"
-// flavor — ?target=agent would omit plugin skills). Neither is an agent-owned
-// agent_skills row. Read-only — it isn't an agent-owned record, so it has no id/toggle.
+// bundled skills or one contributed by an enabled plugin (both flavors,
+// "cli" by default and ?target=agent, serve plugin skills). Neither is an
+// agent-owned agent_skills row. Read-only — it isn't an agent-owned record, so it has no id/toggle.
 export interface SystemSkill {
 	name: string;
 	path: string;

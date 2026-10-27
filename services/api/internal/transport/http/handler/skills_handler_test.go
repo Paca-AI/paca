@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
@@ -90,37 +91,56 @@ func TestSkillsHandler_ListSkills_MergesPluginSkillsIntoCLIFlavor(t *testing.T) 
 	}
 }
 
-func TestSkillsHandler_ListSkills_AgentFlavorExcludesPluginSkills(t *testing.T) {
+func TestSkillsHandler_ListSkills_RoutesFollowServedPluginSkills(t *testing.T) {
 	dir := t.TempDir()
-	writeSkillFile(t, dir, "com.paca.dashboard", "paca-dashboard-builder", "content")
+	writeSkillFile(t, dir, "com.paca.bdd", "paca-bdd-scenarios", "content")
 
-	svc := &fakePluginLister{plugins: []*plugindom.Plugin{
-		{
-			Name:    "com.paca.dashboard",
-			Enabled: true,
+	manifest := func(enabled bool) *plugindom.Plugin {
+		return &plugindom.Plugin{
+			Name:    "com.paca.bdd",
+			Enabled: enabled,
 			Manifest: plugindom.PluginManifest{
 				Skills: &plugindom.SkillsManifest{
-					BaseURL: "/plugins-skills/com.paca.dashboard",
-					Names:   []string{"paca-dashboard-builder"},
+					BaseURL: "/plugins-skills/com.paca.bdd",
+					Names:   []string{"paca-bdd-scenarios"},
+					Routes:  []plugindom.SkillRoute{{Skill: "paca-bdd-scenarios", When: "Write Given/When/Then scenarios"}},
 				},
 			},
-		},
-	}}
-	h := handler.NewSkillsHandler(svc, dir)
-
-	w := httptest.NewRecorder()
-	h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills?target=agent", nil))
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
 	}
-	skills := decodeSkills(t, w)
-	bundledCount := len(bundledskills.List(bundledskills.TargetAgent))
-	if len(skills) != bundledCount {
-		t.Fatalf("expected agent flavor to stay bundled-only (%d skills), got %d", bundledCount, len(skills))
+	routerOf := func(t *testing.T, enabled bool, query string) (string, []dto.SkillResponse) {
+		t.Helper()
+		h := handler.NewSkillsHandler(&fakePluginLister{plugins: []*plugindom.Plugin{manifest(enabled)}}, dir)
+		w := httptest.NewRecorder()
+		h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills"+query, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		skills := decodeSkills(t, w)
+		for _, s := range skills {
+			if s.Name == "paca" {
+				return s.Content, skills
+			}
+		}
+		t.Fatal("paca router skill missing")
+		return "", nil
 	}
-	if hasSkillNamed(skills, "paca-dashboard-builder") {
-		t.Error("expected agent flavor to exclude plugin-contributed skills, but found paca-dashboard-builder")
+
+	for _, tc := range []struct{ query, row string }{
+		{"", "| Write Given/When/Then scenarios | `/paca-bdd-scenarios` |"},
+		{"?target=agent", "| Write Given/When/Then scenarios | `load_skill(name: \"paca-bdd-scenarios\")` |"},
+	} {
+		content, skills := routerOf(t, true, tc.query)
+		if !strings.Contains(content, tc.row) {
+			t.Errorf("%q: router missing plugin row %q", tc.query, tc.row)
+		}
+		if !hasSkillNamed(skills, "paca-bdd-scenarios") {
+			t.Errorf("%q: plugin skill itself not served", tc.query)
+		}
+		content, skills = routerOf(t, false, tc.query)
+		if strings.Contains(content, "paca-bdd-scenarios") || hasSkillNamed(skills, "paca-bdd-scenarios") {
+			t.Errorf("%q: disabled plugin must leave no trace in the router or the list", tc.query)
+		}
 	}
 }
 

@@ -211,6 +211,34 @@ Writes or updates a document in Paca Docs. Reads existing docs first to match to
 /paca-doc ABC-17 update                ← update an existing doc
 ```
 
+### `/paca-review <task>`
+
+Reviews the pull request linked to a task on two axes — **Spec** (acceptance criteria met?) and **Standards** (project conventions, correctness, security) — using the diff, review threads and CI results, then submits a review with a verdict. It never merges unless you ask it to.
+
+### `/paca-triage`
+
+Sorts new tasks: sets the task type, checks for duplicates and existing work, reproduces bugs, and moves each to *ready for agent*, *ready for human*, *needs info* or *decline* with a written triage note.
+
+### `/paca-retro`
+
+Sprint retrospective from the record (planned vs. delivered, slipped work, estimate accuracy, human–agent collaboration). Saves a retro doc, turns agreed improvements into tasks and can complete the sprint after confirmation.
+
+### `/paca-feedback`
+
+Turns open page comments (annotations from the browser extension, with console errors and failed requests attached) into well-formed tasks, linking duplicates.
+
+### `/paca-board`
+
+Audits and sets up how the project models work: task types, statuses, custom fields and views. Proposes the smallest setup that fits, then applies it after confirmation.
+
+### `/paca-team`
+
+Shows who can do what (members, roles, effective permissions), audits access, and adds, re-roles or removes members after confirmation.
+
+### `/paca-automation <goal>`
+
+Designs and builds an automation — Trigger → Condition → Action graphs (status changes, due dates, cron, hand-off to an AI agent, API calls). Builds as a draft, verifies the graph, and activates only after confirmation. Replaces the former `/paca-workflow`.
+
 ### `/paca-role-policy <what the role should allow>`
 
 Drafts the JSON policy of a Paca role: read-only roles, limiting someone to one sprint, restricting an agent or environment, access to specific projects. It asks a few clarifying questions and replies with one JSON policy, a plain-language summary and caveats. It **only drafts**: it never creates, updates, attaches or deletes a role. Paste the result into the role editor's Advanced (JSON) view (see [Roles and policies](roles-and-policies.md)).

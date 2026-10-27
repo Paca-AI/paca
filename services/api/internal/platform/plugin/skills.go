@@ -42,17 +42,31 @@ type Lister interface {
 // collision through would silently shadow a bundled skill both in the API
 // response and in whatever scripts/install-paca-skills.sh writes to disk.
 func ListSkills(ctx context.Context, svc Lister, skillsDir string) ([]bundledskills.Skill, error) {
+	skills, _, err := ListSkillsAndRoutes(ctx, svc, skillsDir)
+	return skills, err
+}
+
+// ListSkillsAndRoutes is ListSkills plus the router-table rows the same
+// plugins declare (SkillsManifest.Routes). A route is returned only when its
+// skill was actually returned too, so the `paca` router never points at a
+// skill that is disabled, unreadable or filtered out.
+func ListSkillsAndRoutes(ctx context.Context, svc Lister, skillsDir string) ([]bundledskills.Skill, []bundledskills.Route, error) {
 	if skillsDir == "" || svc == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	plugins, err := svc.ListPlugins(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var result []bundledskills.Skill
+	var routes []bundledskills.Route
 	for _, p := range plugins {
 		if !p.Enabled || p.Manifest.Skills == nil {
 			continue
+		}
+		whenBySkill := make(map[string]string, len(p.Manifest.Skills.Routes))
+		for _, r := range p.Manifest.Skills.Routes {
+			whenBySkill[r.Skill] = r.When
 		}
 		for _, name := range p.Manifest.Skills.Names {
 			if bundledskills.IsBuiltinName(name) {
@@ -70,7 +84,10 @@ func ListSkills(ctx context.Context, svc Lister, skillsDir string) ([]bundledski
 				Path:    p.Name + "/" + name + "/SKILL.md",
 				Content: string(content),
 			})
+			if when, ok := whenBySkill[name]; ok {
+				routes = append(routes, bundledskills.Route{Skill: name, When: when})
+			}
 		}
 	}
-	return result, nil
+	return result, routes, nil
 }
