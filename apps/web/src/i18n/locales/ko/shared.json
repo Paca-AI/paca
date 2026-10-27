@@ -200,5 +200,9 @@
 		"otherPlaceholder": "또는 직접 답변을 입력하세요…",
 		"submit": "답변 보내기",
 		"answered": "답변함: {{answer}}"
+	},
+	"paneResize": {
+		"sidebar": "사이드바 크기 조절",
+		"taskColumn": "작업 열 크기 조절"
 	}
 }

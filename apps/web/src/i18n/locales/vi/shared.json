@@ -200,5 +200,9 @@
 		"otherPlaceholder": "Hoặc nhập câu trả lời của bạn…",
 		"submit": "Gửi câu trả lời",
 		"answered": "Bạn đã trả lời: {{answer}}"
+	},
+	"paneResize": {
+		"sidebar": "Thay đổi kích thước thanh bên",
+		"taskColumn": "Thay đổi kích thước cột công việc"
 	}
 }
