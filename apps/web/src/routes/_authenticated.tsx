@@ -6,7 +6,7 @@ import {
 	redirect,
 	useRouterState,
 } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect } from "react";
+import { type CSSProperties, lazy, Suspense, useEffect } from "react";
 
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
@@ -20,6 +20,7 @@ import { onTokenRefreshed } from "@/lib/api-client";
 import { isPasswordChangeRequired } from "@/lib/api-error";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import { playNotificationSound } from "@/lib/notification-sound";
+import { SIDEBAR_PANE, usePaneWidth } from "@/lib/pane-width";
 import { PluginRegistryProvider } from "@/lib/plugins/registry";
 import { ShortcutProvider } from "@/lib/shortcuts/provider";
 import {
@@ -27,6 +28,7 @@ import {
 	disconnectSocket,
 	getSocket,
 } from "@/lib/socket-client";
+import { cn } from "@/lib/utils";
 
 // Lazy: pulls in @assistant-ui/react and the agent/conversation stack, which
 // is otherwise dead weight on every authenticated page (dashboard, admin,
@@ -85,6 +87,7 @@ function AuthenticatedLayout() {
 	const queryClient = useQueryClient();
 	const { data: user } = useQuery(currentUserQueryOptions);
 	const pathname = useRouterState({ select: (s) => s.location.pathname });
+	const sidebarPane = usePaneWidth(SIDEBAR_PANE);
 	// Global agent chat is available everywhere except inside a project
 	// (project pages already mount their own project-scoped AIChatFloat, see
 	// routes/_authenticated/projects/$projectId.tsx) or on the global
@@ -138,7 +141,17 @@ function AuthenticatedLayout() {
 	return (
 		<PluginRegistryProvider>
 			<ShortcutProvider>
-				<SidebarProvider className="h-svh">
+				<SidebarProvider
+					className={cn(
+						"h-svh",
+						// Follow the pointer 1:1 while dragging the sidebar edge.
+						sidebarPane.dragging &&
+							"[&_[data-slot=sidebar-container]]:transition-none [&_[data-slot=sidebar-gap]]:transition-none",
+					)}
+					style={
+						{ "--sidebar-width": `${sidebarPane.width}px` } as CSSProperties
+					}
+				>
 					<AppSidebar />
 					<SidebarInset className="min-w-0 overflow-hidden">
 						<header className="flex h-12 shrink-0 items-center gap-2 bg-background border-b border-border/40 px-4 sticky top-0 z-10">

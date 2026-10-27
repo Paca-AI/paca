@@ -200,5 +200,9 @@
 		"otherPlaceholder": "O escribe tu propia respuesta…",
 		"submit": "Enviar respuesta",
 		"answered": "Respondiste: {{answer}}"
+	},
+	"paneResize": {
+		"sidebar": "Cambiar el tamaño de la barra lateral",
+		"taskColumn": "Cambiar el tamaño de la columna de tareas"
 	}
 }

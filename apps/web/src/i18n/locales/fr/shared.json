@@ -200,5 +200,9 @@
 		"otherPlaceholder": "Ou saisissez votre propre réponse…",
 		"submit": "Envoyer la réponse",
 		"answered": "Vous avez répondu : {{answer}}"
+	},
+	"paneResize": {
+		"sidebar": "Redimensionner la barre latérale",
+		"taskColumn": "Redimensionner la colonne des tâches"
 	}
 }

@@ -57,6 +57,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
+import { PaneResizeHandle } from "@/components/shared/pane-resize-handle";
 import { Badge } from "@/components/ui/badge";
 import {
 	DropdownMenu,
@@ -104,6 +105,7 @@ import {
 	updateFolder,
 } from "@/lib/doc-api";
 import { sprintsInfiniteQueryOptions, updateTask } from "@/lib/interaction-api";
+import { SIDEBAR_PANE, usePaneWidth } from "@/lib/pane-width";
 import type { PluginNavRegistration } from "@/lib/plugin-api";
 import { ExtensionPoint } from "@/lib/plugins/extension-point";
 import { resolvePluginIcon } from "@/lib/plugins/icon-resolver";
@@ -1781,6 +1783,9 @@ function ThemeSwitcher() {
 // ── App Sidebar ────────────────────────────────────────────────────────────────
 export function AppSidebar() {
 	const { t } = useTranslation("appShell");
+	const { t: tShared } = useTranslation("shared");
+	const { state: sidebarState, isMobile } = useSidebar();
+	const sidebarPane = usePaneWidth(SIDEBAR_PANE);
 	const { hasPermission } = usePermissions();
 	const { resolvedMode } = useThemeMode();
 	const { projectId } = useParams({ strict: false });
@@ -2019,6 +2024,15 @@ export function AppSidebar() {
 			</SidebarFooter>
 
 			<SidebarRail />
+			{!isMobile && sidebarState === "expanded" && (
+				<PaneResizeHandle
+					config={SIDEBAR_PANE}
+					pane={sidebarPane}
+					label={tShared("paneResize.sidebar")}
+					edge="right"
+					testId="sidebar-resize-handle"
+				/>
+			)}
 		</Sidebar>
 	);
 }

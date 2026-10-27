@@ -200,5 +200,9 @@
 		"otherPlaceholder": "または自分の回答を入力…",
 		"submit": "回答を送信",
 		"answered": "回答しました: {{answer}}"
+	},
+	"paneResize": {
+		"sidebar": "サイドバーのサイズを変更",
+		"taskColumn": "タスク列のサイズを変更"
 	}
 }

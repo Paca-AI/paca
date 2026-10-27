@@ -2,7 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { CalendarDays, ChevronRight, Loader2 } from "lucide-react";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
+import { PaneResizeHandle } from "@/components/shared/pane-resize-handle";
 import {
 	type ChildTaskFilters,
 	childTasksInfiniteQueryOptions,
@@ -10,6 +10,7 @@ import {
 	type Task,
 	type ViewConfig,
 } from "@/lib/interaction-api";
+import { ROADMAP_TASK_PANE, usePaneWidth } from "@/lib/pane-width";
 import type {
 	CustomFieldDefinition,
 	ProjectMember,
@@ -32,7 +33,6 @@ import {
 } from "./view-utils";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
-const LEFT_COL_W = 280; // px — sticky task-name column
 const PX_PER_DAY = 28; // chart pixels per calendar day
 const MS_PER_DAY = 86_400_000;
 const PAD_DAYS = 7; // extra days buffered on each side of the date range
@@ -127,6 +127,9 @@ export function RoadmapView({
 	pagination,
 }: RoadmapViewProps) {
 	const { t } = useTranslation("projects");
+	const { t: tShared } = useTranslation("shared");
+	const taskPane = usePaneWidth(ROADMAP_TASK_PANE);
+	const leftColW = taskPane.width;
 	const subtaskMode = resolveSubtaskMode(viewConfig);
 	const expansion = useSubtaskExpansion(
 		projectId ?? "",
@@ -398,7 +401,7 @@ export function RoadmapView({
 						"border-r border-border/20 bg-background px-4 py-2.5",
 						"group-hover:bg-muted/30 transition-colors duration-100",
 					)}
-					style={{ width: LEFT_COL_W, paddingLeft: 16 + depth * 16 }}
+					style={{ width: leftColW, paddingLeft: 16 + depth * 16 }}
 				>
 					{nestable &&
 						(count > 0 ? (
@@ -511,7 +514,7 @@ export function RoadmapView({
 							filters={childFilters ?? {}}
 							isExpanded={expansion.isExpanded}
 							renderRow={renderRowBody}
-							leftColWidth={LEFT_COL_W}
+							leftColWidth={leftColW}
 						/>
 					)}
 			</Fragment>
@@ -553,7 +556,7 @@ export function RoadmapView({
 				 * Single scrollable container. minWidth triggers horizontal scroll.
 				 * Left column cells are sticky left-0; header row is sticky top-0.
 				 */}
-				<div style={{ minWidth: LEFT_COL_W + chartWidth }}>
+				<div style={{ minWidth: leftColW + chartWidth }}>
 					{/* ── Sticky timeline header ───────────────────────────── */}
 					<div
 						className={cn(
@@ -567,12 +570,20 @@ export function RoadmapView({
 								"sticky left-0 z-30 flex shrink-0 items-center gap-1.5",
 								"border-r border-border/25 bg-background/95 px-4",
 							)}
-							style={{ width: LEFT_COL_W }}
+							style={{ width: leftColW }}
 						>
 							<CalendarDays className="size-3 text-muted-foreground/45" />
 							<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
 								{t("layout.roadmap.taskColumnLabel")}
 							</span>
+							<PaneResizeHandle
+								config={ROADMAP_TASK_PANE}
+								pane={taskPane}
+								label={tShared("paneResize.taskColumn")}
+								edge="right"
+								showGrip
+								testId="roadmap-task-column-resize-handle"
+							/>
 						</div>
 
 						{/* Month labels */}
