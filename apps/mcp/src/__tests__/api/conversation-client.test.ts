@@ -118,9 +118,10 @@ describe("PacaAPIConversationClient", () => {
 
 	// ---------------------------------------------------------------------------
 	// Agent self-service conversation reads — GET /agents/me/conversations/:id.
-	// No projectId: this path authorizes by the conversation's own agent_id
-	// matching the caller (see agentdom.Service.GetConversationForAgent), not
-	// by project or human membership, so it works identically for a
+	// No projectId: this path authorizes by the caller's conversations.read
+	// grant and its current conversation's visibility (see
+	// agentdom.Service.GetConversationForAgent), not by project or human
+	// membership, so it works identically for a
 	// project-scoped or global conversation.
 	// ---------------------------------------------------------------------------
 
