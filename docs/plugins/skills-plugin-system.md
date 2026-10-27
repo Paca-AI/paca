@@ -1,14 +1,16 @@
 # Agent Skills Plugin System
 
-> **Known gap as of `services/agent-runner`**: everything below describes the
-> intended design, which `services/ai-agent` (now fully removed from the
-> repository) implemented.
-> `services/agent-runner` has no equivalent step at all — it never queries
-> enabled plugins or fetches plugin-contributed skill content, for `llm`-type
-> agents. See [default-skills.md](../ai-agent/default-skills.md)'s own gap
-> notice, which covers the same underlying loss (no default-skill or
-> plugin-skill merge on `agent-runner`, only an agent's own `agent_skills`
-> rows get injected). Porting this is open follow-up work, not yet scheduled.
+> **How plugin skills reach agents today**: `services/api` reads each enabled
+> plugin's skills from the local skills store and serves them from
+> `GET /api/v1/skills` (CLI installs) and `GET /api/v1/skills?target=agent`
+> (`services/agent-runner`, which re-fetches every 30 seconds and writes them
+> to the conversation's sandbox next to the bundled defaults and the agent's
+> own skills). The sections below marked *historical* describe the earlier
+> `services/ai-agent` design (HTTP fetch of `baseUrl`, per-conversation); the
+> end result — install/enable/disable takes effect on a following
+> conversation — is preserved. See [default-skills.md](../ai-agent/default-skills.md)
+> for the remaining gaps (no per-trigger-type skills, no keyword-triggered
+> selection).
 
 ## Overview
 
@@ -16,7 +18,7 @@ Paca agents are *meant* to support **plugin-contributed Agent Skills**. Each ins
 
 From the model's perspective, plugin skills are meant to appear alongside the agent's own configured skills and Paca's bundled defaults — no visible distinction beyond the name.
 
-## Architecture (as implemented by `services/ai-agent`; not currently true for `agent-runner`)
+## Architecture (historical — as implemented by `services/ai-agent`)
 
 Unlike [MCP tools](mcp-plugin-system.md), which are loaded by a separate Node.js process (`apps/mcp`) that dynamically imports executable code, plugin skills are meant to be inert markdown text, consumed directly by the agent execution service — no code execution, no separate loader process.
 
@@ -30,7 +32,7 @@ services/api Installer
     └── extract to {SkillsDir}/{pluginId}/{skillName}/SKILL.md
             served statically at /plugins-skills/{pluginId}/{skillName}/SKILL.md
 
-Conversation start (services/ai-agent, historically — no agent-runner equivalent)
+Conversation start (services/ai-agent, historically; agent-runner now gets the same result via GET /api/v1/skills?target=agent)
     │
     ├── SELECT name, manifest FROM plugins WHERE enabled = true
     │       │
@@ -120,7 +122,7 @@ The installer extracts this tarball to `{PLUGINS_SKILLS_DIR}/{pluginId}/` and th
 
 ## Precedence (as designed)
 
-When a skill name collides across sources, precedence is meant to be: **agent-configured skills > plugin skills > bundled defaults**. A user's own skill for their agent always wins; a plugin skill only fills in where the agent hasn't defined one; Paca's bundled defaults are the fallback. Paca's reserved `paca-trigger-*` scaffolding skills (see [default-skills.md](../ai-agent/default-skills.md)) are meant to sit outside this precedence entirely — no skill from any source may use that name prefix. The name-prefix rejection itself is still enforced today, at plugin-install validation time in `services/api` (Go) — it just no longer has a runtime consumer on the `agent-runner` side to matter for, since nothing merges plugin skills into a conversation there.
+When a skill name collides across sources, precedence is meant to be: **agent-configured skills > plugin skills > bundled defaults**. A user's own skill for their agent always wins; a plugin skill only fills in where the agent hasn't defined one; Paca's bundled defaults are the fallback. Paca's reserved `paca-trigger-*` scaffolding skills (see [default-skills.md](../ai-agent/default-skills.md)) are meant to sit outside this precedence entirely — no skill from any source may use that name prefix. The name-prefix rejection is enforced at plugin-install validation time in `services/api` (Go). On `agent-runner` the bundled and plugin skills arrive as one list ahead of the agent's own skills, so the by-name precedence above is not enforced there beyond the API's own rejection of plugin names that collide with bundled ones.
 
 ## Loading Behaviour (historical — `services/ai-agent`, not currently reproduced)
 
@@ -131,7 +133,7 @@ When a skill name collides across sources, precedence is meant to be: **agent-co
 
 ## Security Considerations
 
-- A plugin manifest is admin-installed but still treated as untrusted input for URL resolution purposes — the SSRF guard existed because a malicious or misconfigured `baseUrl` could otherwise have made the fetching service reach an internal service (e.g. a cloud metadata endpoint) and inject the response into every conversation as skill content. Relevant again once plugin-skill loading is ported to `agent-runner`.
+- A plugin manifest is admin-installed but still treated as untrusted input for URL resolution purposes — the SSRF guard existed because a malicious or misconfigured `baseUrl` could otherwise have made the fetching service reach an internal service (e.g. a cloud metadata endpoint) and inject the response into every conversation as skill content. On the current path `services/api` reads skill files from its own local store rather than fetching `baseUrl`, so this guard is not needed there.
 - Skill content itself is **not sandboxed** — it becomes part of the model's context exactly like any other skill. Only install plugins from trusted sources.
 
 ## Comparison with the MCP Plugin System
@@ -139,7 +141,7 @@ When a skill name collides across sources, precedence is meant to be: **agent-co
 | Aspect | MCP (`mcp.remoteEntryUrl`) | Skills (`skills.baseUrl`) |
 |---|---|---|
 | Content | Executable ESM module | Static markdown (`SKILL.md`) |
-| Loader | Separate Node.js process (`apps/mcp`), per conversation | Historically an in-process Python fetch (`services/ai-agent`), per conversation — no `agent-runner` equivalent exists yet (see gap notice at the top of this document) |
+| Loader | Separate Node.js process (`apps/mcp`), per conversation | `services/api` serves the files from its local skills store; `agent-runner` re-fetches the set every 30 seconds (historically an in-process Python fetch in `services/ai-agent`, per conversation) |
 | Manifest shape | Single URL | Base URL + explicit list of names |
 | Consumed via | `import(url)` | Plain HTTP `GET` |
 | Failure isolation | Whole plugin's tools unavailable | Per-skill — other skills from the same plugin still load |

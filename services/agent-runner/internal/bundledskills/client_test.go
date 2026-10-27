@@ -116,4 +116,12 @@ func TestClient_Load_RefetchesAfterTTLAndServesStaleOnFailure(t *testing.T) {
 	if err != nil || stale[0].SkillContent != "v2" {
 		t.Fatalf("failed refresh = %+v, %v; want the last good set (v2)", stale, err)
 	}
+
+	// The failed attempt restarts the TTL: further Loads within it must not
+	// hit the (still failing) API again.
+	before := requests
+	now = now.Add(cacheTTL / 2)
+	if _, err := c.Load(context.Background()); err != nil || requests != before {
+		t.Fatalf("within TTL after a failed refresh: err=%v requests=%d (was %d), want no new fetch", err, requests, before)
+	}
 }

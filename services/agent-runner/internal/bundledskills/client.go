@@ -70,7 +70,11 @@ func (c *Client) Load(ctx context.Context) ([]agent.Skill, error) {
 	skills, err := c.fetch(ctx)
 	if err != nil {
 		if c.cache != nil {
-			return c.cache, nil // stale beats nothing
+			// Stale beats nothing. Restart the TTL so a sustained outage costs
+			// one attempt per cacheTTL, not one (mutex-holding, up to the HTTP
+			// timeout) attempt on every conversation.
+			c.fetchedAt = c.now()
+			return c.cache, nil
 		}
 		return nil, err
 	}
