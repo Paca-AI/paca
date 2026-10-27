@@ -424,6 +424,13 @@ Run `/paca-setup` inside a Claude Code session for a guided interactive walkthro
 | `/paca-do <task>` | Execute a task, update its status, and keep docs current |
 | `/paca-test <task>` | Derive test cases, run them, and record results as a comment |
 | `/paca-doc <task-or-topic>` | Write or update documentation in Paca Docs |
+| `/paca-review <task>` | Review a task's pull request on spec and standards axes, read CI, submit a verdict |
+| `/paca-triage` | Triage unsorted tasks: type, duplicates, ready / needs info / decline |
+| `/paca-retro` | Sprint retrospective from the record, with improvements turned into tasks |
+| `/paca-feedback` | Turn page comments from the browser extension into tasks |
+| `/paca-board` | Audit and set up task types, statuses, custom fields and views |
+| `/paca-team` | See who can do what; add, re-role or remove project members |
+| `/paca-automation <goal>` | Design and build event-driven automations (trigger → condition → action) |
 | `/paca-setup` | Interactive MCP connection wizard |
 
 For full setup options and command reference, see [docs/guides/install-skills.md](docs/guides/install-skills.md).

@@ -269,3 +269,65 @@ func TestRolePolicySkill_ExamplesValidate(t *testing.T) {
 		}
 	}
 }
+
+// TestList_EngineeringPractices guards the engineering-practice guidance
+// (adapted from mattpocock/skills) folded into the existing skills, in both
+// flavors.
+func TestList_EngineeringPractices(t *testing.T) {
+	want := map[string][]string{
+		"paca-do":        {"failing test", "ranked, falsifiable hypotheses", "regression test"},
+		"paca-breakdown": {"tracer bullets", "expand → migrate in batches → contract"},
+		"paca-clarify":   {"recommended answer", "glossary", "standalone brief"},
+		"paca-test":      {"exact reproduction"},
+	}
+	for _, target := range []string{TargetCLI, TargetAgent} {
+		for _, s := range List(target) {
+			for _, phrase := range want[s.Name] {
+				if !strings.Contains(s.Content, phrase) {
+					t.Errorf("%s/%s: missing guidance %q", target, s.Name, phrase)
+				}
+			}
+		}
+	}
+}
+
+// TestList_PacaFeatureSkills guards the skills built on Paca's own features:
+// present in both flavors, routed to by the paca skill, reserved as builtin
+// names, and the retired paca-workflow no longer shipped.
+func TestList_PacaFeatureSkills(t *testing.T) {
+	names := []string{"paca-automation", "paca-review", "paca-triage", "paca-retro", "paca-feedback", "paca-board", "paca-team"}
+	for _, target := range []string{TargetCLI, TargetAgent} {
+		byName := map[string]Skill{}
+		for _, s := range List(target) {
+			byName[s.Name] = s
+		}
+		if _, ok := byName["paca-workflow"]; ok {
+			t.Errorf("%s: retired skill paca-workflow is still shipped", target)
+		}
+		for _, n := range names {
+			s, ok := byName[n]
+			if !ok {
+				t.Errorf("%s: missing skill %q", target, n)
+				continue
+			}
+			if !strings.Contains(s.Content, "description: ") {
+				t.Errorf("%s/%s: missing description", target, n)
+			}
+			route := "/" + n
+			if target == TargetAgent {
+				route = `load_skill(name: "` + n + `")`
+			}
+			if !strings.Contains(byName["paca"].Content, route) {
+				t.Errorf("%s: paca router does not route to %s", target, n)
+			}
+		}
+	}
+	for _, n := range names {
+		if !IsBuiltinName(n) {
+			t.Errorf("%s should be a reserved builtin name", n)
+		}
+	}
+	if IsBuiltinName("paca-workflow") {
+		t.Error("paca-workflow should no longer be reserved")
+	}
+}

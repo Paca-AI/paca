@@ -64,7 +64,7 @@ _Goal: a working, self-hostable core that a small team can actually use._
 ### Agent Skills
 - ✅ `/paca` Agent Skills for Claude Code, Gemini CLI, Cursor, and AGENTS.md-reading tools — served live from the running instance's own API, always in sync with the installed version
 - ✅ One-command install script that detects and installs to every supported client on the machine
-- ✅ Full command set: `/paca`, `/paca-epic`, `/paca-clarify`, `/paca-breakdown`, `/paca-sprint`, `/paca-estimate`, `/paca-prioritize`, `/paca-do`, `/paca-test`, `/paca-doc`, `/paca-setup`
+- ✅ Full command set: `/paca`, `/paca-epic`, `/paca-clarify`, `/paca-breakdown`, `/paca-sprint`, `/paca-estimate`, `/paca-prioritize`, `/paca-do`, `/paca-test`, `/paca-doc`, `/paca-review`, `/paca-triage`, `/paca-retro`, `/paca-feedback`, `/paca-board`, `/paca-team`, `/paca-automation` (replaces `/paca-workflow`), `/paca-setup`
 - ✅ Plugin-contributed skills installed alongside core skills
 
 ---
