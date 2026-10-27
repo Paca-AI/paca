@@ -39,7 +39,7 @@ const cacheTTL = 30 * time.Second
 
 // Client fetches the agent-flavor skill set — Paca's bundled skills plus those
 // of enabled plugins — and caches it for cacheTTL. A failed fetch is never
-// cached as a result: it is retried on the next call, and if an earlier fetch
+// cached as a result: it is retried after the TTL elapses, and if an earlier fetch
 // succeeded the last good set is served meanwhile, so a transient failure
 // (e.g. racing an API restart) neither leaves a conversation without this
 // scaffolding nor pins an empty result.
