@@ -64,6 +64,10 @@ func ListSkillsAndRoutes(ctx context.Context, svc Lister, skillsDir string) ([]b
 		if !p.Enabled || p.Manifest.Skills == nil {
 			continue
 		}
+		whenBySkill := make(map[string]string, len(p.Manifest.Skills.Routes))
+		for _, r := range p.Manifest.Skills.Routes {
+			whenBySkill[r.Skill] = r.When
+		}
 		for _, name := range p.Manifest.Skills.Names {
 			if bundledskills.IsBuiltinName(name) {
 				slog.Warn("skills: plugin skill name collides with a bundled skill, skipping",
@@ -80,10 +84,8 @@ func ListSkillsAndRoutes(ctx context.Context, svc Lister, skillsDir string) ([]b
 				Path:    p.Name + "/" + name + "/SKILL.md",
 				Content: string(content),
 			})
-			for _, r := range p.Manifest.Skills.Routes {
-				if r.Skill == name {
-					routes = append(routes, bundledskills.Route{Skill: name, When: r.When})
-				}
+			if when, ok := whenBySkill[name]; ok {
+				routes = append(routes, bundledskills.Route{Skill: name, When: when})
 			}
 		}
 	}

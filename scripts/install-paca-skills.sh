@@ -588,6 +588,12 @@ if ! fetch_with_status "${PACA_API_URL%/}/api/v1/skills" "${skills_json}" "${PAC
   exit 1
 fi
 
+# paca-workflow was renamed paca-automation; remove the retired skill's
+# folder so a stale copy doesn't keep documenting tools that no longer exist.
+for retired_dir in "${CLAUDE_DIR}" "${OPENCODE_DIR}" "${GOOSE_DIR}" "${GEMINI_DIR}" "${GEMINI_PLUGIN_SKILLS_DIR}"; do
+  [[ -f "${retired_dir}/paca-workflow/SKILL.md" ]] && rm -rf "${retired_dir}/paca-workflow"
+done
+
 bundled_count=0
 while IFS= read -r skill_obj; do
   name="$(jq -r '.name' <<<"${skill_obj}")"

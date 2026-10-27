@@ -14,6 +14,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/sync/singleflight"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -51,6 +53,9 @@ type Client struct {
 	mu        sync.Mutex
 	cache     []agent.Skill
 	fetchedAt time.Time
+	// group collapses concurrent refreshes into one request, so conversations
+	// starting at TTL expiry neither pile up behind a lock nor each fetch.
+	group singleflight.Group
 }
 
 // NewClient returns a Client that fetches from baseURL — services/api's
@@ -60,19 +65,49 @@ func NewClient(baseURL string) *Client {
 }
 
 // Load returns the agent-flavor skill set, each marked IsEnabled so
-// executor.buildInitialMessage includes it unconditionally.
+// executor.buildInitialMessage includes it unconditionally. The returned slice
+// is a copy; callers may modify it freely.
 func (c *Client) Load(ctx context.Context) ([]agent.Skill, error) {
+	if skills, ok := c.fresh(); ok {
+		return skills, nil
+	}
+	// The fetch runs detached from any single caller's ctx so one cancelled
+	// conversation cannot fail the refresh for the others; each caller still
+	// stops waiting when its own ctx is done.
+	ch := c.group.DoChan("skills", func() (any, error) {
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.httpClient.Timeout)
+		defer cancel()
+		return c.refresh(fetchCtx)
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-ch:
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		return cloneSkills(res.Val.([]agent.Skill)), nil
+	}
+}
+
+func (c *Client) fresh() ([]agent.Skill, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.cache != nil && c.now().Sub(c.fetchedAt) < cacheTTL {
-		return c.cache, nil
+		return cloneSkills(c.cache), true
 	}
+	return nil, false
+}
+
+func (c *Client) refresh(ctx context.Context) ([]agent.Skill, error) {
 	skills, err := c.fetch(ctx)
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err != nil {
 		if c.cache != nil {
 			// Stale beats nothing. Restart the TTL so a sustained outage costs
-			// one attempt per cacheTTL, not one (mutex-holding, up to the HTTP
-			// timeout) attempt on every conversation.
+			// one attempt per cacheTTL, not one on every conversation.
+			slog.Warn("bundledskills: refresh failed, serving stale skill set", "error", err)
 			c.fetchedAt = c.now()
 			return c.cache, nil
 		}
@@ -81,6 +116,8 @@ func (c *Client) Load(ctx context.Context) ([]agent.Skill, error) {
 	c.cache, c.fetchedAt = skills, c.now()
 	return skills, nil
 }
+
+func cloneSkills(in []agent.Skill) []agent.Skill { return append([]agent.Skill(nil), in...) }
 
 func (c *Client) fetch(ctx context.Context) ([]agent.Skill, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/skills?target=agent", nil)

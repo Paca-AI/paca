@@ -383,3 +383,16 @@ func TestRouter_PluginRoutesJoinTheTable(t *testing.T) {
 		t.Error("List must not mention plugin skills")
 	}
 }
+
+// TestList_AgentFlavorHasNoCLIOnlyText guards deriveAgentContent: if a content
+// file's compatibility line or fallback block drifts, the replace silently
+// no-ops and the agent flavor would ship CLI-only instructions.
+func TestList_AgentFlavorHasNoCLIOnlyText(t *testing.T) {
+	for _, s := range List(TargetAgent) {
+		for _, banned := range []string{compatibilityLine, "## If Paca MCP is not connected"} {
+			if strings.Contains(s.Content, banned) {
+				t.Errorf("agent/%s: contains CLI-only text %q", s.Name, banned)
+			}
+		}
+	}
+}

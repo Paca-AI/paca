@@ -120,6 +120,8 @@ func IsBuiltinName(name string) bool {
 // routeRows renders routes as router-table rows in the flavor's own routing
 // syntax (slash commands for cli, load_skill for agent). Text is flattened to
 // one line and stripped of characters that would break the table.
+// SkillsManifest.validate already rejects such text at install time; this
+// repeats it as defense in depth for manifests stored before that check.
 func routeRows(target string, routes []Route) string {
 	var b strings.Builder
 	for _, r := range routes {
