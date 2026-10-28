@@ -37,7 +37,7 @@ var (
 var (
 	ErrFolderNotFound    = errors.New("environment folder not found")
 	ErrFolderPathTaken   = errors.New("a folder with this path already exists in this environment")
-	ErrFolderPathInvalid = errors.New("folder path must be an absolute path")
+	ErrFolderPathInvalid = errors.New("folder path must be inside the environment's workspace (/home/paca/workspaces)")
 )
 
 // SSH key errors
