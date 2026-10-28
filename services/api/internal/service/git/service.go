@@ -35,6 +35,8 @@ type ProviderAPI interface {
 	DeleteIdentity(ctx context.Context, req gitprovider.DeleteIdentityRequest) error
 	BeginAccessGrant(ctx context.Context, req gitprovider.BeginAccessRequest) (gitprovider.SetupStep, error)
 	CompleteAccessGrant(ctx context.Context, req gitprovider.CompleteAccessRequest) (gitprovider.AccessGrant, error)
+	EnsureWebhook(ctx context.Context, req gitprovider.EnsureWebhookRequest) (gitprovider.WebhookRef, error)
+	RemoveWebhook(ctx context.Context, req gitprovider.RemoveWebhookRequest) error
 }
 
 // Providers finds the plugin that implements the Git provider SPI for a platform.
@@ -93,6 +95,9 @@ type LinkInput struct {
 	ProviderID string
 	Host       string
 	PathOrURL  string
+	// IdentityID names the connection to link through. Empty: any connection the
+	// project can use is tried, and the provider reports which one sees it.
+	IdentityID *uuid.UUID
 	ActorID    *uuid.UUID
 }
 
@@ -102,49 +107,7 @@ func (s *Service) LinkRepository(ctx context.Context, in LinkInput) (*gitdom.Rep
 	if strings.TrimSpace(in.PathOrURL) == "" {
 		return nil, fmt.Errorf("git: repository is required")
 	}
-	prov, err := s.providers.Provider(ctx, in.ProviderID)
-	if err != nil {
-		return nil, err
-	}
-	// Candidates: the host's shared identity plus agent-owned identities, so a
-	// repository only an agent's own app was installed on can still be linked.
-	all, err := s.store.ListSharedIdentities(ctx, in.ProviderID)
-	if err != nil {
-		return nil, err
-	}
-	var cands []gitprovider.IdentityRef
-	for _, id := range all {
-		if in.Host == "" || strings.EqualFold(id.Host, in.Host) {
-			cands = append(cands, identityRef(id))
-		}
-	}
-	if len(cands) == 0 {
-		return nil, gitdom.ErrNoIdentity
-	}
-	res, err := prov.ResolveRepository(ctx, gitprovider.ResolveRepoRequest{Host: in.Host, PathOrURL: in.PathOrURL, Candidates: cands})
-	if err != nil {
-		// On a platform where a user grants an identity access per account (a
-		// GitHub App is installed on an account), "not found" usually means the
-		// grant is missing: say so, so the caller can offer it.
-		if gitprovider.IsCode(err, gitprovider.CodeNotFound) || gitprovider.IsCode(err, gitprovider.CodeForbidden) {
-			if info, derr := s.providers.Describe(ctx, in.ProviderID); derr == nil && info.Capabilities.AccessGrants {
-				return nil, gitdom.ErrAccessNotGranted
-			}
-		}
-		return nil, err
-	}
-	// The plugin chooses which candidate saw the repository; it must be one we offered.
-	offered := false
-	for _, c := range cands {
-		if c.ID == res.Identity.ID {
-			offered = true
-			break
-		}
-	}
-	if !offered {
-		return nil, fmt.Errorf("git: provider resolved the repository with an identity that was not offered")
-	}
-	ident, err := s.store.FindIdentityByProviderRef(ctx, in.ProviderID, res.Identity.ID)
+	ident, res, err := s.resolveThroughConnections(ctx, in.ProjectID, in.ProviderID, in.Host, in.PathOrURL, in.IdentityID)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +120,109 @@ func (s *Service) LinkRepository(ctx context.Context, in LinkInput) (*gitdom.Rep
 	if err := s.store.CreateRepository(ctx, r); err != nil {
 		return nil, err
 	}
+	// A connection whose platform needs a webhook per repository (a token) gets
+	// one registered now. Failing to is not failing to link: the repository is
+	// listed with the URL to register by hand, and RegisterWebhook retries.
+	s.registerWebhook(ctx, r, ident)
 	return r, nil
+}
+
+// resolveThroughConnections asks the provider which of the connections a project
+// can use (or just the chosen one) sees a repository, and returns that
+// connection's row with what the provider resolved.
+func (s *Service) resolveThroughConnections(ctx context.Context, projectID uuid.UUID, providerID, host, pathOrURL string, identityID *uuid.UUID) (*gitdom.Identity, gitprovider.ResolvedRepository, error) {
+	prov, err := s.providers.Provider(ctx, providerID)
+	if err != nil {
+		return nil, gitprovider.ResolvedRepository{}, err
+	}
+	// Candidates: the workspace's connections plus the project's own, or just
+	// the one the caller chose.
+	all, err := s.store.ListProjectIdentities(ctx, projectID)
+	if err != nil {
+		return nil, gitprovider.ResolvedRepository{}, err
+	}
+	var cands []gitprovider.IdentityRef
+	var offered []*gitdom.Identity // parallel to cands
+	for _, id := range all {
+		if id.ProviderID != providerID || (host != "" && !strings.EqualFold(id.Host, host)) {
+			continue
+		}
+		if identityID != nil && id.ID != *identityID {
+			continue
+		}
+		cands = append(cands, identityRef(id))
+		offered = append(offered, id)
+	}
+	if len(cands) == 0 {
+		return nil, gitprovider.ResolvedRepository{}, gitdom.ErrNoIdentity
+	}
+	res, err := prov.ResolveRepository(ctx, gitprovider.ResolveRepoRequest{Host: host, PathOrURL: pathOrURL, Candidates: cands})
+	if err != nil {
+		// On a platform where a user grants an identity access per account (a
+		// GitHub App is installed on an account), "not found" usually means the
+		// grant is missing: say so, so the caller can offer it.
+		if gitprovider.IsCode(err, gitprovider.CodeNotFound) || gitprovider.IsCode(err, gitprovider.CodeForbidden) {
+			if info, derr := s.providers.Describe(ctx, providerID); derr == nil && info.Capabilities.AccessGrants {
+				return nil, gitprovider.ResolvedRepository{}, gitdom.ErrAccessNotGranted
+			}
+			// No grant to offer: the connections simply do not reach it (a project
+			// token of another project, say). Say so instead of "refused".
+			return nil, gitprovider.ResolvedRepository{}, gitdom.ErrNotVisible
+		}
+		return nil, gitprovider.ResolvedRepository{}, err
+	}
+	// The plugin chooses which candidate saw the repository; it must be one we
+	// offered, and the row is the offered one (not a lookup by the provider's id).
+	for i, c := range cands {
+		if c.ID == res.Identity.ID {
+			return offered[i], res, nil
+		}
+	}
+	return nil, gitprovider.ResolvedRepository{}, fmt.Errorf("git: provider resolved the repository with an identity that was not offered")
+}
+
+// ReconnectInput points a linked repository at a connection again.
+type ReconnectInput struct {
+	ProjectID    uuid.UUID
+	RepositoryID uuid.UUID
+	// IdentityID names the connection to use; empty: any the project can use.
+	IdentityID *uuid.UUID
+}
+
+// ReconnectRepository rebinds a linked repository to a connection, for one
+// whose own was deleted (it has no credential until then). The connection must
+// see the repository, as when linking; the repository keeps its tasks, branches
+// and change requests.
+func (s *Service) ReconnectRepository(ctx context.Context, in ReconnectInput) (*gitdom.Repository, error) {
+	repo, err := s.store.FindRepository(ctx, in.RepositoryID)
+	if err != nil {
+		return nil, err
+	}
+	if repo.ProjectID != in.ProjectID {
+		return nil, gitdom.ErrNotFound
+	}
+	ident, res, err := s.resolveThroughConnections(ctx, in.ProjectID, repo.ProviderID, repo.Host, repo.FullPath, in.IdentityID)
+	if err != nil {
+		return nil, err
+	}
+	// The same repository: a platform path can be re-pointed, not swapped.
+	if !strings.EqualFold(res.Repository.Ref.FullPath, repo.FullPath) {
+		return nil, gitdom.ErrNotFound
+	}
+	// A repository that still has a connection may be re-pointed at another: the
+	// webhook registered through the old one must not be left behind to deliver
+	// every event a second time. (A repository whose connection was deleted has
+	// none left to remove: deleting the connection removed it.)
+	if repo.IdentityID != nil && *repo.IdentityID != ident.ID {
+		s.unregisterWebhook(ctx, repo)
+	}
+	if err := s.store.SetRepositoryIdentity(ctx, repo.ID, ident.ID, res.Repository.Ref.ProviderRef); err != nil {
+		return nil, err
+	}
+	repo.IdentityID, repo.ProviderRef, repo.WebhookRef = &ident.ID, res.Repository.Ref.ProviderRef, nil
+	s.registerWebhook(ctx, repo, ident)
+	repo.IdentityHandle = ident.Handle
+	return repo, nil
 }
 
 // Delivery is one raw webhook request as received by the public endpoint.
@@ -364,8 +429,7 @@ type MintInput struct {
 }
 
 // MintCredential returns a credential for the repository. The identity is the
-// agent's own when it has one, else the repository's, else the host's shared
-// one. Credentials are cached in memory for at most thirty seconds.
+// agent's own when it has one, else the connection the repository was linked through. Credentials are cached in memory for at most thirty seconds.
 func (s *Service) MintCredential(ctx context.Context, in MintInput) (gitprovider.Credential, error) {
 	repo, err := s.store.FindRepository(ctx, in.RepositoryID)
 	if err != nil {
@@ -417,11 +481,9 @@ func (s *Service) pickIdentity(ctx context.Context, repo *gitdom.Repository, age
 			return nil, err
 		}
 	}
-	id, err := s.store.FindSharedIdentity(ctx, repo.ProviderID, repo.Host)
-	if errors.Is(err, gitdom.ErrNotFound) {
-		return nil, gitdom.ErrNoIdentity
-	}
-	return id, err
+	// The connection the repository was linked through is gone (deleted): there
+	// is no other one to fall back on, since credentials are per connection.
+	return nil, gitdom.ErrNoIdentity
 }
 
 func (s *Service) cached(k credKey) (gitprovider.Credential, bool) {
@@ -462,15 +524,50 @@ func (s *Service) audit(ctx context.Context, repo *gitdom.Repository, agent *uui
 	_ = s.store.AppendActionLog(ctx, e)
 }
 
-// ListRepositories returns the repositories a project has linked.
+// ListRepositories returns the repositories a project has linked. A repository
+// that needs a webhook nobody registered carries the URL to register.
 func (s *Service) ListRepositories(ctx context.Context, projectID uuid.UUID) ([]*gitdom.Repository, error) {
-	return s.store.ListProjectRepositories(ctx, projectID)
+	repos, err := s.store.ListProjectRepositories(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	// Asked once per connection: finding out costs a call to the provider.
+	needs := map[uuid.UUID]webhookNeed{}
+	for _, r := range repos {
+		if hasWebhook(r) || r.IdentityID == nil {
+			continue
+		}
+		n, ok := needs[*r.IdentityID]
+		if !ok {
+			if ident, err := s.store.FindIdentity(ctx, *r.IdentityID); err == nil {
+				if n.need, _ = s.needsRepoWebhook(ctx, ident); n.need {
+					n.url = s.webhookURL(ctx, ident)
+				}
+			}
+			needs[*r.IdentityID] = n
+		}
+		r.WebhookURL = n.url
+	}
+	return repos, nil
 }
 
-// UnlinkRepository removes a project's link to a repository. Only the link
-// goes: the platform-side repository, its webhook and the identity stay.
+// UnlinkRepository removes a project's link to a repository. The repository
+// and the connection stay on the platform; a webhook Paca registered for the
+// repository is removed unless another project still links it through the same
+// connection.
 func (s *Service) UnlinkRepository(ctx context.Context, projectID, repositoryID uuid.UUID) error {
-	return s.store.DeleteRepository(ctx, projectID, repositoryID)
+	repo, err := s.store.FindRepository(ctx, repositoryID)
+	if err != nil {
+		return err
+	}
+	if repo.ProjectID != projectID {
+		return gitdom.ErrNotFound
+	}
+	if err := s.store.DeleteRepository(ctx, projectID, repositoryID); err != nil {
+		return err
+	}
+	s.unregisterWebhook(ctx, repo)
+	return nil
 }
 
 // WithPublicURL sets the instance's public base URL, which webhook endpoints

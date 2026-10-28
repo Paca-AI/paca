@@ -78,6 +78,20 @@ const (
 	WebhookRepo  WebhookScope = "repo"  // per repository
 )
 
+// KindProfile is what one identity kind implies on a provider that supports
+// several (GitHub: an App is ephemeral with an app-level webhook and needs an
+// installation per account; a personal access token is static with a webhook per
+// repository). The provider-wide fields of [Capabilities] describe the default
+// kind; Kinds refines them per kind.
+type KindProfile struct {
+	Kind            IdentityKind    `json:"kind"`
+	CredentialModel CredentialModel `json:"credential_model"`
+	WebhookScope    WebhookScope    `json:"webhook_scope"`
+	// AccessGrants is true when identities of this kind must be granted access
+	// to each account or organization (see [Capabilities.AccessGrants]).
+	AccessGrants bool `json:"access_grants"`
+}
+
 // StatusKind is how a run's state is shown on the platform.
 type StatusKind string
 
@@ -187,8 +201,14 @@ type Capabilities struct {
 	StatusKind      StatusKind      `json:"status_kind"`
 	Triggers        []TriggerKind   `json:"triggers"`
 	// MultipleIdentities is true when more than one identity per host can be
-	// created (needed for per-agent identities).
+	// created (needed for per-agent identities, and for several connections of
+	// a workspace or project).
 	MultipleIdentities bool `json:"multiple_identities"`
+	// Kinds refines CredentialModel, WebhookScope and AccessGrants per identity
+	// kind, and lists the kinds a user can choose between when setting one up
+	// (core then sends Params["kind"]). Empty: there is one way to connect, and
+	// every kind in IdentityKinds uses the provider-wide values.
+	Kinds []KindProfile `json:"kinds,omitempty"`
 
 	// Optional operations (each backed by an optional interface).
 	ResolveThreads    bool `json:"resolve_threads"`
@@ -222,6 +242,17 @@ type Capabilities struct {
 	// CIConfigGlobs are repository paths agents must not modify (CI
 	// configuration), e.g. ".github/workflows/**", ".gitlab-ci.yml".
 	CIConfigGlobs []string `json:"ci_config_globs,omitempty"`
+}
+
+// Profile returns the profile of an identity kind: its entry in Kinds, or the
+// provider-wide values when it has none.
+func (c Capabilities) Profile(kind IdentityKind) KindProfile {
+	for _, k := range c.Kinds {
+		if k.Kind == kind {
+			return k
+		}
+	}
+	return KindProfile{Kind: kind, CredentialModel: c.CredentialModel, WebhookScope: c.WebhookScope, AccessGrants: c.AccessGrants}
 }
 
 // SupportsTrigger reports whether the provider declared trigger k.

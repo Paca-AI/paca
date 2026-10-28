@@ -1,5 +1,4 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,13 +7,15 @@ import {
 	beginAgentGitAccess,
 	completeGitAccess,
 	completeGitSetup,
+	completeProjectGitSetup,
 	followGitStep,
 	forgetGitFlow,
-	GIT_ADMIN_PATH,
+	GIT_FALLBACK_PATH,
 	type GitAccessCompletion,
 	type GitSetupCompletion,
 	gitErrorKey,
-	gitIdentitiesKey,
+	gitQueriesKey,
+	projectGitSettingsPath,
 	readGitFlow,
 	rememberGitFlow,
 	returnPathOf,
@@ -49,7 +50,8 @@ export function parseCallback(search: string): {
 
 /**
  * Completes whichever flow started this round trip: a project's access grant
- * (installing the App on a repository owner's account) or an identity setup.
+ * (installing the App on a repository owner's account), a project's own
+ * connection, or a workspace connection or agent identity.
  * The browser's note of the flow only routes the call; the API checks the
  * state, its owner and its project itself.
  */
@@ -58,16 +60,22 @@ function complete(search: string): Promise<Outcome> {
 	if (existing) return existing;
 	const { state, params } = parseCallback(search);
 	const hint = readGitFlow(state);
-	const p: Promise<Outcome> =
-		hint.kind === "access"
-			? completeGitAccess(hint.projectId, state, params).then((result) => ({
-					flow: "access" as const,
-					result,
-				}))
-			: completeGitSetup(state, params).then((result) => ({
-					flow: "identity" as const,
-					result,
-				}));
+	const identity = (call: Promise<GitSetupCompletion>) =>
+		call.then((result) => ({ flow: "identity" as const, result }));
+	let p: Promise<Outcome>;
+	switch (hint.kind) {
+		case "access":
+			p = completeGitAccess(hint.projectId, state, params).then((result) => ({
+				flow: "access" as const,
+				result,
+			}));
+			break;
+		case "project-identity":
+			p = identity(completeProjectGitSetup(hint.projectId, state, params));
+			break;
+		default:
+			p = identity(completeGitSetup(state, params));
+	}
 	inflight.set(search, p);
 	return p;
 }
@@ -86,6 +94,12 @@ export function GitSetupCallback({ search }: { search: string }) {
 	const { t } = useTranslation("admin");
 	const queryClient = useQueryClient();
 	const [errorKey, setErrorKey] = useState<string | null>(null);
+	// Where "back" goes when something fails: the project the flow started from.
+	const hint = readGitFlow(parseCallback(search).state);
+	const backTo =
+		hint.kind === "identity"
+			? GIT_FALLBACK_PATH
+			: projectGitSettingsPath(hint.projectId);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -101,7 +115,7 @@ export function GitSetupCallback({ search }: { search: string }) {
 					window.location.replace(returnPathOf(out.result.return_url));
 					return;
 				}
-				void queryClient.invalidateQueries({ queryKey: gitIdentitiesKey });
+				void queryClient.invalidateQueries({ queryKey: gitQueriesKey });
 				if (out.result.next) {
 					if (!followGitStep(out.result.next)) setErrorKey("generic");
 					return;
@@ -153,7 +167,7 @@ export function GitSetupCallback({ search }: { search: string }) {
 					<p className="text-sm text-muted-foreground">
 						{t(`git.errors.${errorKey}` as never)}
 					</p>
-					<Button render={<Link to={GIT_ADMIN_PATH} />}>
+					<Button onClick={() => window.location.assign(backTo)}>
 						{t("git.callback.back")}
 					</Button>
 				</div>

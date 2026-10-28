@@ -51,6 +51,19 @@ const LINKED = {
 	created_at: "2026-10-01T00:00:00Z",
 };
 
+const CONNECTION = {
+	id: "00000000-0000-4000-8000-0000000000c1",
+	provider_id: PROVIDER.id,
+	host: "git.example.test",
+	kind: "app",
+	scope: "shared",
+	project_id: null,
+	handle: "paca-bot",
+	display_name: "Paca",
+	expires_at: null,
+	created_at: "2026-10-01T00:00:00Z",
+};
+
 const ok = (data: unknown) => ({
 	status: 200,
 	contentType: "application/json",
@@ -65,9 +78,16 @@ const ok = (data: unknown) => ({
 async function stubGit(
 	page: Page,
 	projectId: string,
-	opts: { providers: unknown[]; linkRequests?: unknown[] },
+	opts: {
+		providers: unknown[];
+		connections?: unknown[];
+		linkRequests?: unknown[];
+	},
 ) {
 	let repositories: unknown[] = [];
+	await page.route(`**/api/v1/projects/${projectId}/git/connections`, (route) =>
+		route.fulfill(ok(opts.connections ?? [])),
+	);
 	await page.route(`**/api/v1/projects/${projectId}/git/providers`, (route) =>
 		route.fulfill(ok(opts.providers)),
 	);
@@ -122,16 +142,17 @@ test.describe("Project Git settings", () => {
 			await expect(
 				page.getByText("No Git provider is installed", { exact: false }),
 			).toBeVisible();
-			await expect(
-				page.getByRole("link", { name: "Open Git integration" }),
-			).toBeVisible();
 			await expect(page.getByRole("button", { name: "Link" })).toHaveCount(0);
 		});
 
 		test("An administrator links a repository", async ({ page }) => {
 			const linkRequests: unknown[] = [];
 			await signIn(page);
-			await stubGit(page, projectId, { providers: [PROVIDER], linkRequests });
+			await stubGit(page, projectId, {
+				providers: [PROVIDER],
+				connections: [CONNECTION],
+				linkRequests,
+			});
 			await openGitSettings(page, projectId);
 
 			await page.getByLabel("Repository").fill("acme/web");
@@ -180,7 +201,7 @@ test.describe("Project Git settings", () => {
 			await signIn(page, member.username, RESTRICTED_PASSWORD);
 		}
 
-		test("A writer without git.identities:manage is told to ask an administrator", async ({
+		test("A writer is told to ask for a connection when there is none", async ({
 			page,
 			request,
 			playwright,
@@ -193,26 +214,26 @@ test.describe("Project Git settings", () => {
 			await openGitSettings(page, projectId);
 
 			await expect(
-				page.getByText("manage Git identities", { exact: false }),
+				page.getByText("Ask someone who can manage Git connections", {
+					exact: false,
+				}),
 			).toBeVisible();
-			await expect(page.getByLabel("Repository")).toHaveCount(0);
 			await expect(page.getByRole("button", { name: "Link" })).toHaveCount(0);
 		});
 
-		test("A writer with git.identities:manage gets the form", async ({
+		test("A writer gets the form once a connection is available", async ({
 			page,
 			request,
 			playwright,
 		}) => {
-			await signInAsMember(
-				page,
-				request,
-				playwright,
-				"MANAGER",
-				["git:read", "git:write"],
-				["git.identities:manage"],
-			);
-			await stubGit(page, projectId, { providers: [PROVIDER] });
+			await signInAsMember(page, request, playwright, "MANAGER", [
+				"git:read",
+				"git:write",
+			]);
+			await stubGit(page, projectId, {
+				providers: [PROVIDER],
+				connections: [CONNECTION],
+			});
 			await openGitSettings(page, projectId);
 
 			await expect(page.getByLabel("Repository")).toBeVisible();

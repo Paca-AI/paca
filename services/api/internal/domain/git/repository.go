@@ -2,6 +2,7 @@ package gitdom
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,8 +14,10 @@ type Store interface {
 	CreateIdentity(ctx context.Context, id *Identity) error
 	FindIdentity(ctx context.Context, id uuid.UUID) (*Identity, error)
 	FindIdentityByProviderRef(ctx context.Context, providerID, providerIdentityID string) (*Identity, error)
-	FindSharedIdentity(ctx context.Context, providerID, host string) (*Identity, error)
 	ListSharedIdentities(ctx context.Context, providerID string) ([]*Identity, error)
+	// ListProjectIdentities returns the connections a project can use: every
+	// workspace connection plus the ones created for this project only.
+	ListProjectIdentities(ctx context.Context, projectID uuid.UUID) ([]*Identity, error)
 	SetAgentIdentity(ctx context.Context, agentID uuid.UUID, providerID string, identityID uuid.UUID) error
 	FindAgentIdentity(ctx context.Context, agentID uuid.UUID, providerID string) (*Identity, error)
 	DeleteIdentity(ctx context.Context, id uuid.UUID) error
@@ -45,6 +48,19 @@ type Store interface {
 	FindRepository(ctx context.Context, id uuid.UUID) (*Repository, error)
 	ListProjectRepositories(ctx context.Context, projectID uuid.UUID) ([]*Repository, error)
 	DeleteRepository(ctx context.Context, projectID, id uuid.UUID) error
+	// ListIdentityRepositories returns every repository (of any project) linked
+	// through the connection.
+	ListIdentityRepositories(ctx context.Context, identityID uuid.UUID) ([]*Repository, error)
+	// SetRepositoryWebhook records (or, with an empty ref, clears) the webhook
+	// registered on the platform for a repository.
+	SetRepositoryWebhook(ctx context.Context, id uuid.UUID, ref json.RawMessage) error
+	// SetRepositoryIdentity rebinds a repository to a connection (after its own
+	// was deleted), with the provider-private reference that connection resolved,
+	// and clears the webhook registered through the old one.
+	SetRepositoryIdentity(ctx context.Context, id, identityID uuid.UUID, providerRef json.RawMessage) error
+	// CountRepositories reports how many linked repositories (in every project)
+	// use each connection.
+	CountRepositories(ctx context.Context, identityIDs []uuid.UUID) (map[uuid.UUID]int, error)
 	// FindLinkedRepositories returns every project's link to a repository
 	// (case-insensitive path); it is the fan-out for an incoming event.
 	FindLinkedRepositories(ctx context.Context, providerID, host, fullPath string) ([]*Repository, error)

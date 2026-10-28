@@ -31,9 +31,9 @@ Related: [overview.md](overview.md), [environment-management.md](environment-man
 | # | Principle |
 |---|---|
 | 1 | **Platform-neutral core.** A core "Git integration" domain owns repositories, change requests, events, triggers, routing, runs, policy and audit. Provider plugins only adapt one platform to the SPI (§4). |
-| 2 | **One shared identity per provider host.** For each platform host an instance uses (`github.com`, `gitlab.acme.com`, …) there is one *shared identity* — a GitHub App, a GitLab bot user, a Bitbucket access token — available to every project. A project participates by **linking repositories**. |
+| 2 | **Connections: any number per host, owned by the workspace or by one project.** A *connection* is the credential Paca reaches a platform host with (`github.com`, `gitlab.acme.com`, …): a GitHub App, a GitLab bot user, an access token. A workspace connection is available to every project; a project connection only to its own. A project can have several, from different organizations or platforms, and participates by **linking repositories** through them. |
 | 3 | **Linked repositories are the event boundary.** For every repository a project links, Paca receives the change-request, branch, comment, review and check events through the provider and routes them to that project. Events for unlinked repositories are ignored. |
-| 4 | **Agents without their own identity act through the shared identity.** Attribution to the specific agent is carried by a footer and a core-side comment index (§7.3). |
+| 4 | **Agents without their own identity act through the connection their repository was linked with.** Attribution to the specific agent is carried by a footer and a core-side comment index (§7.3). |
 | 5 | **An agent may have its own identity** (own bot name, avatar and handle), created from the agent's page. |
 | 6 | **Triggers behave like bot products:** mention, label, review request or assignment where the platform allows it, plus opt-in rules (auto-review new change requests; address review feedback and fix CI on the agent's own). Which are available is declared by provider *capabilities* (§4.3), never assumed. |
 | 7 | **Git and platform actions are core MCP tools with neutral names** (`change_request_*`, `review_*`, `workspace_*`, …). The same prompt works on any platform; a provider never contributes agent tools. Policy is enforced in core, once. |
@@ -184,11 +184,16 @@ Declared in `Describe()`. Core's UI, tools and router read them instead of hard-
 
 ## 5. Identity and credentials
 
-### 5.1 Shared identity (one per provider host)
+### 5.1 Connections (workspace or project)
 
-* Created once by someone holding `git.identities:manage` (a workspace-level action), through the provider's setup flow: GitHub's manifest flow plus the callback page; for a platform with static tokens, a token form. Core stores a neutral `git_identities` row (`provider_id`, `host`, `kind`, `handle`, `display_name`, `scope = shared`); the provider keeps the secret material in its own encrypted tables.
-* **Repository → identity resolution.** When a user links a repository, core asks the provider (`ResolveRepository`) which of the host's identities can see it (GitHub: the installation covering the owner) and stores that `identity_id` and the provider-private reference on the `git_repositories` row. Candidates are the host's shared identity and agent-owned identities, so a repository only an agent's own app was installed on can still be linked.
-* A project's Git tab has no identity chooser: "connected" means an identity exists for the host and the repository resolves.
+* A connection is a neutral `git_identities` row (`provider_id`, `host`, `kind`, `handle`, `display_name`, `scope`, `project_id`); the provider keeps the secret material in its own encrypted tables. `scope` is `shared` (a **workspace connection**: every project may use it), `project` (only `project_id`) or `agent` (§5.2). There may be any number of `shared` and `project` connections per provider host: two GitHub Apps for two organizations, or an App and an access token.
+* **Kinds.** A provider offers one or more kinds (`app`, `bot_user`, `token`) and says in `capabilities.kinds` what each implies: the credential model, where webhooks are delivered and whether the connection must be granted access per account (§5.4). GitHub offers an **App** (manifest flow, ephemeral installation tokens, one App-level webhook) and a **personal access token** (token form, static credential, a webhook per repository, commit statuses instead of check runs). Platforms without apps (GitLab, Gitea, Bitbucket) offer tokens. A provider lists `capabilities.kinds` only when setup offers a choice (GitHub); the choice is sent as `params.kind`. A provider with one way to connect (GitLab) lists none and the UI shows no picker.
+* **Who creates them.** There is no Git page under Administration. A connection is added from a project's **Settings → Git → Connections**, where the user chooses *This project only* (needs `git:write` and the project action `git.connections:manage`) or *All projects* (needs the workspace action `git.identities:manage`).
+* **Repository → connection resolution.** The connections a project can use are the workspace's plus its own. When a user links a repository, core offers all of them (or just the one the user chose, `identity_id`) to the provider (`ResolveRepository`), which says which can see it (GitHub App: the installation covering the owner; token: the repository is readable). Core stores that `identity_id` and the provider-private reference on the `git_repositories` row. Credentials are always minted through the connection the repository was linked with: there is **no fallback to another connection** of the host, and removing a connection leaves its repositories linked but without a credential until they are reconnected (`POST …/repositories/{id}/reconnect`, which re-resolves the repository through a connection the project can use and re-registers its webhook; tasks, branches and change requests are kept). The delete dialog lists the project's repositories that use the connection and counts the ones in other projects (`repository_count` on each listed connection), and a repository without a connection is shown with a **Reconnect** action.
+* **A workspace connection is visible to every project.** Anyone with `git:write` in any project can link, and then read and write through, every repository a workspace connection can see (a GitHub App installed on an organization exposes all of that organization's repositories). Linking no longer needs `git.identities:manage`; whoever holds it decides what is shared by choosing the scope when adding the connection. Use *This project only* for access that must not reach other projects.
+* **Choosing among several.** Core does not pick between connections that can all see a repository: with no `identity_id`, the provider's `ResolveRepository` answers with the first candidate that can. The UI picker sends `identity_id` when several can serve the platform. Only access grants (which act on one connection) answer `GIT_IDENTITY_REQUIRED` when several exist and none was chosen.
+* **Cleanup.** Removing a connection (or deleting its project, for a project's own) asks the provider to drop its credentials and first removes the repository webhooks registered through it, since a webhook cannot be removed without the connection's credential.
+* **Repository webhooks.** For a kind whose webhook scope is `repo` (a token), core asks the provider to register a webhook on the repository when it is linked (`EnsureWebhook`, pointing at the connection's own endpoint) and to remove it when the last project link through that connection goes. The webhook secret is always generated by the provider (the setup form asks for the token only). If the provider cannot register the hook (the token lacks the right: Maintainer on GitLab, Webhooks on GitHub), the link still succeeds and the repository carries a notice saying so; `POST …/repositories/{id}/webhook` retries once the token has been replaced by one with the right.
 
 ### 5.2 Agent identity (optional, per agent)
 
@@ -221,7 +226,7 @@ A provider declares `access_grants` and implements `BeginAccessGrant` / `Complet
 
 * Linking a repository the identity cannot see answers `GIT_ACCESS_NOT_GRANTED` (only for providers that declare the capability). The project's Git tab then offers "Install on `<owner>`", the platform's page opens, and the platform returns to `/git/setup/callback`.
 * The state is stored against the user and the project that started it (`git_access_sessions`) and only that user can complete it, once.
-* A grant targets one identity: the host's shared identity from a project's Git tab, or an agent's own identity from the agent's Git tab. Right after an agent's own identity is created the install step opens automatically, because that identity serves one project.
+* A grant targets one connection: one the project can use, chosen when the project has several App connections for the host, or an agent's own identity from the agent's Git tab. Connections of a kind that needs no grant (tokens) never see the offer. Right after an agent's own identity is created the install step opens automatically, because that identity serves one project.
 
 ---
 
@@ -382,7 +387,7 @@ A run's status is not a tool: core alone writes it.
 
 ## 10. HTTP API and permissions
 
-All authorization is declared on the routes (router gates); handlers and services contain no permission checks. Actions: `git:read`, `git:write`, `git:approve`, `git:merge` (project); `git.identities:manage` (workspace, with its own `git_identity/*` resource root).
+All authorization is declared on the routes (router gates); handlers and services contain no permission checks. Actions: `git:read`, `git:write`, `git:approve`, `git:merge`, `git.connections:manage` (project); `git.identities:manage` (workspace, with its own `git_identity/*` resource root).
 
 **Identities and providers**
 
@@ -390,12 +395,14 @@ All authorization is declared on the routes (router gates); handlers and service
 |---|---|
 | `GET /git/providers` | `git.identities:manage` |
 | `GET /projects/{id}/git/providers` | `git:read` |
-| `GET /git/identities`, `POST /git/identities/setup`, `POST /git/identities/setup/complete`, `DELETE /git/identities/{id}` | `git.identities:manage` |
+| `GET /git/identities`, `POST /git/identities/setup`, `POST /git/identities/setup/complete`, `DELETE /git/identities/{id}` (workspace connections) | `git.identities:manage` |
+| `GET /projects/{id}/git/connections` (the workspace's and the project's own) | `git:read` |
+| `POST /projects/{id}/git/connections/setup`, `…/setup/complete`, `DELETE …/connections/{id}` (the project's own) | `git:write` **and** `git.connections:manage` |
 | `GET /projects/{id}/agents/{agentId}/git/identity` | `agents:read` on the agent |
 | `POST …/identity/setup`, `DELETE …/identity` | `agents:write` on the agent and `git.identities:manage` |
 | `POST …/identity/access/begin` | `agents:write` on the agent and `git:write` |
 | `POST /projects/{id}/git/access/begin`, `…/complete` | `git:write` |
-| `POST /projects/{id}/git/repositories` (link) | `git:write` **and** `git.identities:manage`: the shared identity's installations are instance-wide, so linking is held by those who manage the identity, not by every project writer |
+| `POST /projects/{id}/git/repositories` (link), `POST …/repositories/{id}/webhook`, `POST …/repositories/{id}/reconnect` | `git:write`: the connections linking goes through were made available to the project by whoever holds `git.identities:manage` (workspace) or `git.connections:manage` (project) |
 
 **Repositories and agent operations** (`/projects/{id}/git/repositories…`)
 
@@ -438,11 +445,10 @@ The verdict of a review comes from the route (`reviews` accepts `comment` and `r
 
 Each Git screen explains itself when nothing is set up: an empty state says what to do and gives the button for it, and the text to type in a comment has a copy button.
 
-* **Admin → Git** (`/admin/git`, for `git.identities:manage`): per provider host, a card that is either *Not connected* (what connecting does, how long it takes, a **Set up** button) or *Connected* (the bot's `@handle` to mention, a note that every identity-less project and agent shares it, **Remove**). With no provider installed it links to the plugin page. `/git/setup/callback` completes a leg of an identity setup or an access grant from the raw query string, exactly once per URL, and then continues or returns to the sanitized same-origin return URL.
-* **Project → Settings → Git** (`git:read`; changes need `git:write`): **Repositories** (link by path or URL, which also needs `git.identities:manage` — the form is open while there are none — unlink, install the identity on the owner when needed; each repository shows the bot's `@handle` to mention); **Automation**: the default responder agent (with a warning when none is set), the minimum repository permission to start an agent and a pause switch, held back until a repository is linked; and **Using it**, with the mention, `agent:<handle>` and label forms.
+* **Project → Settings → Git** (`git:read`; changes need `git:write`): **Connections** (the workspace's and the project's own, each with its kind, whether it serves *All projects* or *This project*, the bot's `@handle` and any expiry; **Add** opens a dialog that asks the kind where the provider offers several, who may use it, and the kind's own fields; **Remove** is offered for what the user may manage; with none, an empty state says what to do or whom to ask). `/git/setup/callback` completes a leg of a connection setup or an access grant from the raw query string, exactly once per URL, and then continues or returns to the sanitized same-origin return URL; the browser notes which flow started a round trip (workspace connection, project connection, access grant) so the callback calls the right route. **Repositories** (link by path or URL; a connection picker appears when several can serve the platform; unlink; install the App on the owner when needed; each repository shows the bot's `@handle` to mention, and a notice with a retry when a token connection's webhook could not be registered); **Automation**: the default responder agent (with a warning when none is set), the minimum repository permission to start an agent and a pause switch, held back until a repository is linked; and **Using it**, with the mention, `agent:<handle>` and label forms.
 * **Agent → Git** (project agents): **Identity**, per provider, whether the agent uses the shared bot or its own (with its `@handle`), what an own identity gives, **Create identity** (with the administrator hint when the user cannot), **Remove**, and a collapsed **Install on another account or organization**; then **Git triggers** grouped as *Respond to requests* (mention, label, review request, assignment), *Follow up on its own pull requests* (feedback, CI failure) and *Act on its own* (auto review, with target-branch and author filters). Triggers no installed provider can deliver stay visible, switched off, and say so. A closing note states that the agent's Git access follows its project role.
 * **Task detail:** **Branches** and **Pull requests** sections, shown once the project has a linked repository. Pull requests show state, repository, head → base, author, a link, and the CI state of open ones (passing, failing, running, with check counts and failing names in a tooltip). Branches show the repository and a copy-checkout-command button. Both can be linked by name or pasted link and unlinked; a new branch can be created on the platform when the provider supports it and the user has `git:write`, or created locally with a command. A CR or branch is also linked automatically when its branch or title names the task key.
-* **Roles:** the project role editor lists `git:read`, `git:write`, `git:approve` and `git:merge`; the workspace role editor lists `git.identities:manage`.
+* **Roles:** the project role editor lists `git:read`, `git:write`, `git:approve`, `git:merge` and `git.connections:manage`; the workspace role editor lists `git.identities:manage`.
 
 ---
 
@@ -490,9 +496,9 @@ Signature verification happens inside the provider's `VerifyAndParseWebhook`; co
 **Core** (`services/api`, migration `000073`):
 
 ```sql
-git_identities        (id, provider_id, host, provider_identity_id, kind, scope CHECK ('shared','agent'), handle, display_name,
-                       provider_ref JSONB, expires_at, created_by, created_at, updated_at)
-  -- one shared identity per (provider_id, host)
+git_identities        (id, provider_id, host, provider_identity_id, kind, scope CHECK ('shared','project','agent'), project_id, handle,
+                       display_name, provider_ref JSONB, expires_at, created_by, created_at, updated_at)
+  -- project_id is set exactly for scope 'project'; any number of connections per (provider_id, host)
 git_agent_identities  (agent_id, provider_id → identity_id, PRIMARY KEY (agent_id, provider_id))
 git_repositories      (id, project_id, provider_id, host, external_id, full_path, default_branch, clone_url, identity_id,
                        provider_ref JSONB, webhook_ref JSONB, created_by, created_at, updated_at)
@@ -516,20 +522,20 @@ git_action_log        (id, project_id, repository_id, conversation_id, actor_acc
 
 A run's conversation is an automation-message conversation; its first message is the event prompt.
 
-**Provider plugin** keeps only platform-private tables. The GitHub plugin has `github_apps` (App id, slug, encrypted private key, client secret and webhook secret), `github_app_installations` and `github_manifest_sessions`.
+**Provider plugin** keeps only platform-private tables. The GitHub plugin has `github_apps` (App id, slug, encrypted private key, client secret and webhook secret), `github_app_installations`, `github_tokens` (login, encrypted token and webhook secret) and `github_manifest_sessions`.
 
 ---
 
 ## 14. GitHub provider
 
-`paca-plugin-github` implements the SPI with GitHub Apps only.
+`paca-plugin-github` implements the SPI with GitHub Apps and personal access tokens.
 
 | Area | Behaviour |
 |---|---|
-| Identity | A GitHub App created through the manifest flow, one per instance and optionally one per agent. The App's key material is stored encrypted. A *public* App can be installed on other accounts; a private one only on the owner's account. |
+| Identity | **App:** a GitHub App created through the manifest flow, any number per workspace or project and optionally one per agent. **Token:** a personal access token and a webhook secret pasted into a form (a project's token from the previous release is migrated into a project connection, see the plugin README); the token is validated with `GET /user` and its expiry (when GitHub reports one) is kept. A token acts as its owner, so a dedicated machine user is recommended.  The App's key material is stored encrypted. A *public* App can be installed on other accounts; a private one only on the owner's account. |
 | Access | Installed per repository owner when a repository is linked (and right after an agent's App is created). Installations are discovered lazily from GitHub; a revoked token is refreshed; an installation GitHub no longer has is forgotten and replaced on reinstall. A repository resolves only if a credential can actually be minted for it. |
-| Credentials | Installation tokens narrowed to one repository and to `contents: read` or `write`. They last an hour; a requested lifetime is reported as the expiry. |
-| Webhooks | One App-level webhook per identity. Comments, reviews, review comments, pull requests (with their page URL), issues, labels, check runs and pushes are normalized. A review request or assignment is reported only when it names the App's own bot (`<slug>[bot]`); requests and assignments for people or teams are dropped. Label events are reported for every label and core decides which name an agent. The App's own mentions (`@slug` or `@slug[bot]`) are decided in the provider. |
+| Credentials | **App:** installation tokens narrowed to one repository and to `contents: read` or `write`. They last an hour; a requested lifetime is reported as the expiry. |
+| Webhooks | **Token:** a webhook registered on each linked repository (idempotent, signed with the user's secret), removed when the last link goes; check runs are replaced by commit statuses. **App:** one App-level webhook per identity. Comments, reviews, review comments, pull requests (with their page URL), issues, labels, check runs and pushes are normalized. A review request or assignment is reported only when it names the App's own bot (`<slug>[bot]`); requests and assignments for people or teams are dropped. Label events are reported for every label and core decides which name an agent. The App's own mentions (`@slug` or `@slug[bot]`) are decided in the provider. |
 | Status | A check run named `Paca / <agent>`, created on the head commit and updated in place. |
 | Reviews | Batch review (pending review submitted once, with inline comments). |
 | Reviewer and assignee | The triggers fire when GitHub delivers a request or assignment naming the App's bot. GitHub's reviewer and assignee pickers list people and teams, so for an ordinary App a mention or the `paca` label is the dependable way to ask. |
@@ -541,9 +547,10 @@ A run's conversation is an automation-message conversation; its first message is
 ## 15. Limitations
 
 * Static-credential platforms have a larger blast radius than ephemeral ones: a token cannot be narrowed per call. Server-side API calls, separate read and write tokens, and expiring tokens limit it.
-* The shared identity is only as narrow as its repository selection on the platform: any user who can link repositories (`git:write` on the project **and** the workspace-level `git.identities:manage`) can point agents at any repository the identity can see. Projects share the instance's installations; they are not isolated from each other.
+* A workspace connection is only as narrow as its repository selection on the platform: any user who can link repositories (`git:write` on the project) can point agents at any repository a workspace connection can see. A project that must not reach those repositories needs its own connection and the workspace connection kept narrow; workspace connections are shared by every project and do not isolate them from each other.
+* A token connection acts as a person and cannot be narrowed per call or per repository; prefer a machine user with access to just the repositories needed.
 * The footer on posted comments is advisory (a person can edit it out); the comment index is the source of truth for thread ownership.
-* Platforms that register webhooks per repository need a permission the identity may not have; the manual path is to paste the URL and secret.
+* Platforms that register webhooks per repository need a permission the identity may not have (the Maintainer role on GitLab); without it the webhook is not registered, events do not reach Paca, and the fix is a token with the right.
 * Events are coalesced by the router's ten-second claim age and the one-run-per-subject rule rather than by a timer.
 * GitHub's review-comment webhooks carry no thread id, so feedback routing uses CR ownership rather than thread ownership.
 * Auto-review filters cover target branches and authors; there is no path filter.

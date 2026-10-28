@@ -25,12 +25,12 @@
 		},
 		"git": {
 			"title": "Repository Git",
-			"description": "Các repository mà agent của dự án này có thể làm việc, thông qua danh tính Git dùng chung của workspace.",
+			"description": "Các kho mà agent của dự án này có thể làm việc, truy cập qua các kết nối bên dưới.",
 			"empty": {
 				"title": "Chưa liên kết kho mã nào",
 				"description": "Liên kết một kho mã để tác nhân của dự án đọc mã, mở pull request và phản hồi các lượt nhắc.",
 				"readOnly": "Bạn cần quyền ghi Git trong dự án này để liên kết kho mã.",
-				"linkNeedsAdmin": "Liên kết kho mã cũng cần quyền của không gian làm việc để quản lý danh tính Git. Hãy nhờ quản trị viên."
+				"noConnection": "Hãy thêm một kết nối trước, sau đó liên kết kho thông qua kết nối đó."
 			},
 			"noProviders": "Chưa cài nhà cung cấp Git nào. Hãy nhờ quản trị viên cài đặt.",
 			"link": {
@@ -41,7 +41,10 @@
 				"open": "Liên kết kho mã",
 				"cancel": "Hủy",
 				"help": "Dán URL kho mã hoặc nhập chủ sở hữu/tên.",
-				"connectAction": "Mở tích hợp Git"
+				"noConnection": "Hãy thêm kết nối {{provider}} ở trên trước khi liên kết kho.",
+				"connection": "Kết nối",
+				"anyConnection": "Bất kỳ kết nối nào thấy được kho",
+				"connectionHelp": "Hãy chọn một kết nối khi có nhiều kết nối cùng thấy kho, ví dụ hai tổ chức."
 			},
 			"unlink": {
 				"button": "Hủy liên kết",
@@ -50,11 +53,13 @@
 			},
 			"resumed": "Chào mừng trở lại. Hãy liên kết {{repository}} ngay.",
 			"access": {
-				"title": "Danh tính dùng chung không thấy repository này",
-				"description": "Danh tính {{provider}} chỉ thấy repository của các tài khoản mà nó được cài đặt. Hãy cài đặt trên {{owner}} (bạn sẽ đến nền tảng rồi quay lại đây), sau đó liên kết lại.",
-				"descriptionNoOwner": "Danh tính {{provider}} chỉ thấy repository của các tài khoản mà nó được cài đặt. Hãy chọn nơi cài đặt (bạn sẽ đến nền tảng rồi quay lại đây), sau đó liên kết lại.",
+				"title": "Kết nối này không thấy được kho này",
+				"description": "Ứng dụng {{provider}} chỉ thấy các kho của tài khoản mà nó được cài đặt. Hãy cài vào {{owner}} (bạn sẽ sang nền tảng rồi quay lại đây), sau đó liên kết lại.",
+				"descriptionNoOwner": "Ứng dụng {{provider}} chỉ thấy các kho của tài khoản mà nó được cài đặt. Hãy chọn nơi cài đặt (bạn sẽ sang nền tảng rồi quay lại đây), sau đó liên kết lại.",
 				"button": "Cài đặt trên {{owner}}",
-				"buttonNoOwner": "Chọn nơi cài đặt"
+				"buttonNoOwner": "Chọn nơi cài đặt",
+				"connection": "Kết nối cần cài đặt",
+				"choose": "Chọn một kết nối"
 			},
 			"errors": {
 				"generic": "Đã xảy ra lỗi. Vui lòng thử lại.",
@@ -64,9 +69,11 @@
 				"providerUnavailable": "Plugin nhà cung cấp Git không khả dụng.",
 				"providerRejected": "Nền tảng đã từ chối yêu cầu.",
 				"notFound": "Không tìm thấy.",
-				"accessNotGranted": "Danh tính dùng chung không thấy repository này.",
-				"noIdentity": "Chưa có danh tính Git dùng chung cho nền tảng này. Quản trị viên workspace thiết lập tại Quản trị → Git.",
-				"alreadyLinked": "Repository này đã được liên kết với dự án."
+				"accessNotGranted": "Kết nối không thấy được kho này.",
+				"noIdentity": "Chưa có kết nối nào cho nền tảng này. Hãy thêm một kết nối trong mục Kết nối.",
+				"alreadyLinked": "Repository này đã được liên kết với dự án.",
+				"identityRequired": "Có nhiều kết nối thấy được kho này. Hãy chọn kết nối muốn dùng.",
+				"notVisible": "Không kết nối nào của dự án thấy được kho này. Hãy thêm một kết nối có quyền truy cập kho (trên GitLab là token của dự án hoặc nhóm đó), rồi thử lại."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -148,6 +155,35 @@
 					"description": "Thêm nhãn \"paca\" vào issue hoặc pull request."
 				},
 				"automatic": "Tác nhân cũng có thể tự khởi động, ví dụ để theo dõi pull request của mình hoặc đánh giá mọi pull request mới. Bật trong thẻ Git của từng tác nhân."
+			},
+			"connections": {
+				"title": "Kết nối",
+				"description": "Các GitHub App và access token mà Paca dùng để truy cập kho của bạn. Một dự án có thể có nhiều kết nối từ các tổ chức khác nhau; mỗi kết nối hoặc được mọi dự án dùng chung, hoặc chỉ giới hạn ở dự án này.",
+				"add": "Thêm {{provider}}",
+				"empty": {
+					"title": "Chưa có kết nối",
+					"description": "Thêm một kết nối để Paca truy cập được kho của bạn. Dùng một ứng dụng, hoặc dán access token nếu nền tảng của bạn không có ứng dụng.",
+					"noPermission": "Hãy nhờ người có quyền quản lý kết nối Git thêm một kết nối."
+				},
+				"scope": {
+					"shared": "Tất cả dự án",
+					"project": "Dự án này"
+				},
+				"expires": "Hết hạn {{date}}",
+				"expired": "Đã hết hạn",
+				"remove": "Gỡ"
+			},
+			"webhook": {
+				"title": "Sự kiện từ kho này chưa đến được Paca",
+				"description": "Paca đăng ký webhook trên từng kho qua kết nối này nhưng không thành công: token có thể thiếu quyền quản lý webhook (vai trò Maintainer trên GitLab, quyền Webhooks trên GitHub). Hãy cấp quyền đó cho token (trên GitLab, tạo token mới với vai trò Maintainer và thêm làm kết nối), rồi thử lại.",
+				"retry": "Thử lại",
+				"failed": "Vẫn chưa đăng ký được webhook."
+			},
+			"reconnect": {
+				"title": "Kho này không có kết nối",
+				"description": "Kết nối của kho đã bị xóa nên không thể dùng được. Hãy kết nối lại qua một kết nối thấy được kho này.",
+				"noConnection": "Kết nối của kho đã bị xóa. Hãy thêm một kết nối thấy được kho này trước, rồi kết nối lại.",
+				"button": "Kết nối lại"
 			}
 		}
 	},
@@ -1104,6 +1140,10 @@
 			"gitMerge": {
 				"label": "Hợp nhất yêu cầu thay đổi",
 				"description": "Hợp nhất pull request và merge request vào nhánh đích. Bảo vệ nhánh trên nền tảng vẫn được áp dụng."
+			},
+			"gitConnectionsManage": {
+				"label": "Quản lý kết nối Git",
+				"description": "Thêm và gỡ các GitHub App và access token chỉ dự án này dùng. Liên kết kho vẫn cần quyền ghi Git."
 			}
 		},
 		"permissionGroups": {

@@ -475,6 +475,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeGitAlreadyLinked
 	case errors.Is(err, gitdom.ErrIdentityExists):
 		return http.StatusConflict, apierr.CodeGitIdentityExists
+	case errors.Is(err, gitdom.ErrIdentityRequired):
+		return http.StatusConflict, apierr.CodeGitIdentityRequired
 	case errors.Is(err, gitdom.ErrSetupExpired):
 		return http.StatusBadRequest, apierr.CodeGitSetupInvalid
 	case errors.Is(err, gitdom.ErrPublicURLRequired):
@@ -485,6 +487,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeGitNoIdentity
 	case errors.Is(err, gitdom.ErrAccessNotGranted):
 		return http.StatusConflict, apierr.CodeGitAccessNotGranted
+	case errors.Is(err, gitdom.ErrNotVisible):
+		return http.StatusConflict, apierr.CodeGitRepositoryNotVisible
 	case errors.Is(err, gitdom.ErrProviderUnavailable):
 		return http.StatusServiceUnavailable, apierr.CodeGitProviderUnavailable
 	case errors.Is(err, gitdom.ErrInvalidSignature):
@@ -783,7 +787,7 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusGone
 	case apierr.CodeGitNotFound:
 		return http.StatusNotFound
-	case apierr.CodeGitAlreadyLinked, apierr.CodeGitNoIdentity, apierr.CodeGitIdentityExists, apierr.CodeGitAccessNotGranted:
+	case apierr.CodeGitAlreadyLinked, apierr.CodeGitNoIdentity, apierr.CodeGitIdentityExists, apierr.CodeGitAccessNotGranted, apierr.CodeGitRepositoryNotVisible:
 		return http.StatusConflict
 	case apierr.CodeGitSetupInvalid:
 		return http.StatusBadRequest

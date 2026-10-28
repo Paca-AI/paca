@@ -55,7 +55,7 @@ Form `domain:verb`. Wildcards: `*` (every action) and `domain:*` (every action o
 - annotations: `annotations:read` `annotations:write` `annotations:resolve`
 - agents: `agents:read` `agents:write` `conversations:read` `conversations:write`
 - environments: `environments:read` `environments:write` `environments:connect` (connect = interactive shell / SSH key, separate from configuring)
-- git: `git:read` `git:write` `git:approve` `git:merge` (linked repositories; read = list, read changes/issues/CI and read-only credentials; write = link/unlink, comment, review, open change requests and credentials that can push; approve and merge are separate so a role can review without satisfying a required review or landing code), `git.identities:manage` (workspace-level: create/delete the bot identities on Git platforms)
+- git: `git:read` `git:write` `git:approve` `git:merge` (linked repositories; read = list, read changes/issues/CI and read-only credentials; write = link/unlink, comment, review, open change requests and credentials that can push; approve and merge are separate so a role can review without satisfying a required review or landing code), `git.connections:manage` (project-level: create/delete the Git connections — GitHub Apps, access tokens — that only this project can use), `git.identities:manage` (workspace-level: create/delete the connections every project can use)
 - workspace: `settings:write` `settings.sso:write` `plugins:read` `plugins:write`
 
 Plugins can add actions named `<plugin namespace>:<verb>` (checked on `project/<id>/plugin/<pluginId>` inside a project). Only use one if the user names it or a live list shows it.

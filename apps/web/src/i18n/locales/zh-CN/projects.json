@@ -25,12 +25,12 @@
 		},
 		"git": {
 			"title": "Git 仓库",
-			"description": "此项目的智能体可通过工作区共享的 Git 身份操作的仓库。",
+			"description": "此项目的智能体可通过下方连接访问并处理的仓库。",
 			"empty": {
 				"title": "尚未关联仓库",
 				"description": "关联仓库后，本项目的智能体即可读取代码、创建拉取请求并回复提及。",
 				"readOnly": "需要本项目的 Git 写入权限才能关联仓库。",
-				"linkNeedsAdmin": "关联仓库还需要管理 Git 身份的工作区权限。请联系管理员。"
+				"noConnection": "请先添加连接，然后通过它关联仓库。"
 			},
 			"noProviders": "尚未安装 Git 提供方。请联系管理员安装。",
 			"link": {
@@ -41,7 +41,10 @@
 				"open": "关联仓库",
 				"cancel": "取消",
 				"help": "粘贴仓库 URL，或输入 所有者/名称。",
-				"connectAction": "打开 Git 集成"
+				"noConnection": "关联仓库之前，请先在上方添加 {{provider}} 连接。",
+				"connection": "连接",
+				"anyConnection": "任何能看到该仓库的连接",
+				"connectionHelp": "当多个连接（例如两个组织）都能看到该仓库时，请选择其中一个。"
 			},
 			"unlink": {
 				"button": "取消关联",
@@ -50,11 +53,13 @@
 			},
 			"resumed": "欢迎回来。现在关联 {{repository}}。",
 			"access": {
-				"title": "共享身份无法访问此仓库",
-				"description": "{{provider}} 身份只能访问其已安装账户下的仓库。请将其安装到 {{owner}}（你将前往平台并返回此处），然后重新关联。",
-				"descriptionNoOwner": "{{provider}} 身份只能访问其已安装账户下的仓库。请选择安装位置（你将前往平台并返回此处），然后重新关联。",
+				"title": "此连接看不到该仓库",
+				"description": "{{provider}} 应用只能看到其所安装账号下的仓库。请将其安装到 {{owner}}（您会前往平台并返回此处），然后重新关联。",
+				"descriptionNoOwner": "{{provider}} 应用只能看到其所安装账号下的仓库。请选择安装位置（您会前往平台并返回此处），然后重新关联。",
 				"button": "安装到 {{owner}}",
-				"buttonNoOwner": "选择安装位置"
+				"buttonNoOwner": "选择安装位置",
+				"connection": "要安装的连接",
+				"choose": "选择一个连接"
 			},
 			"errors": {
 				"generic": "出了点问题，请重试。",
@@ -64,9 +69,11 @@
 				"providerUnavailable": "Git 提供方插件不可用。",
 				"providerRejected": "平台拒绝了该请求。",
 				"notFound": "未找到。",
-				"accessNotGranted": "共享身份无法访问此仓库。",
-				"noIdentity": "此平台尚未设置共享 Git 身份。工作区管理员可在“管理 → Git”中设置。",
-				"alreadyLinked": "此仓库已关联到该项目。"
+				"accessNotGranted": "该连接看不到此仓库。",
+				"noIdentity": "此平台暂无可用连接。请在“连接”中添加一个。",
+				"alreadyLinked": "此仓库已关联到该项目。",
+				"identityRequired": "有多个连接都能看到该仓库，请选择要使用的连接。",
+				"notVisible": "此项目的所有连接都看不到该仓库。请添加一个有权访问它的连接（GitLab 上为该项目或其群组的令牌），然后重试。"
 			},
 			"triggerKinds": {
 				"mention": {
@@ -148,6 +155,35 @@
 					"description": "为 issue 或拉取请求添加“paca”标签。"
 				},
 				"automatic": "智能体也可以自行启动，例如跟进自己的拉取请求或评审每个新拉取请求。可在各智能体的 Git 标签页中开启。"
+			},
+			"connections": {
+				"title": "连接",
+				"description": "Paca 用来访问您仓库的 GitHub 应用和访问令牌。一个项目可以拥有来自不同组织的多个连接；每个连接要么由所有项目共享，要么仅限此项目使用。",
+				"add": "添加 {{provider}}",
+				"empty": {
+					"title": "尚无连接",
+					"description": "添加一个连接，让 Paca 能够访问您的仓库。可使用应用；如果您的平台没有应用，也可粘贴访问令牌。",
+					"noPermission": "请让有权管理 Git 连接的人添加一个。"
+				},
+				"scope": {
+					"shared": "所有项目",
+					"project": "此项目"
+				},
+				"expires": "{{date}} 到期",
+				"expired": "已过期",
+				"remove": "移除"
+			},
+			"webhook": {
+				"title": "此仓库的事件尚未到达 Paca",
+				"description": "Paca 通过此连接在每个仓库上注册 Webhook，但未能成功：令牌可能缺少管理 Webhook 的权限（GitLab 需要 Maintainer 角色，GitHub 需要 Webhooks 权限）。请为令牌授予该权限（在 GitLab 上，创建具有 Maintainer 角色的新令牌并将其添加为连接），然后重试。",
+				"retry": "重试",
+				"failed": "仍无法注册 Webhook。"
+			},
+			"reconnect": {
+				"title": "此仓库没有连接",
+				"description": "它的连接已被删除，因此无法使用。请通过能看到它的连接重新连接。",
+				"noConnection": "它的连接已被删除。请先添加一个能看到它的连接，然后重新连接。",
+				"button": "重新连接"
 			}
 		}
 	},
@@ -1104,6 +1140,10 @@
 			"gitMerge": {
 				"label": "合并变更请求",
 				"description": "将拉取请求和合并请求合并到目标分支。平台上的分支保护仍然有效。"
+			},
+			"gitConnectionsManage": {
+				"label": "管理 Git 连接",
+				"description": "添加和移除仅此项目使用的 GitHub 应用和访问令牌。关联仓库仍需要 Git 写入权限。"
 			}
 		},
 		"permissionGroups": {

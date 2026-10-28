@@ -25,12 +25,12 @@
 		},
 		"git": {
 			"title": "Repositórios Git",
-			"description": "Repositórios em que os agentes deste projeto podem trabalhar, pela identidade Git compartilhada do workspace.",
+			"description": "Repositórios em que os agentes deste projeto podem trabalhar, por meio das conexões abaixo.",
 			"empty": {
 				"title": "Nenhum repositório vinculado",
 				"description": "Vincule um repositório para que os agentes deste projeto leiam o código, abram pull requests e respondam a menções.",
 				"readOnly": "Você precisa de acesso de escrita do Git neste projeto para vincular repositórios.",
-				"linkNeedsAdmin": "Vincular um repositório também exige a permissão do workspace para gerenciar identidades Git. Peça a um administrador."
+				"noConnection": "Adicione primeiro uma conexão e depois vincule repositórios por meio dela."
 			},
 			"noProviders": "Nenhum provedor Git instalado. Peça a um administrador que instale um.",
 			"link": {
@@ -41,7 +41,10 @@
 				"open": "Vincular um repositório",
 				"cancel": "Cancelar",
 				"help": "Cole a URL do repositório ou digite proprietário/nome.",
-				"connectAction": "Abrir a integração com Git"
+				"noConnection": "Adicione uma conexão do {{provider}} acima antes de vincular um repositório.",
+				"connection": "Conexão",
+				"anyConnection": "Qualquer conexão que consiga vê-lo",
+				"connectionHelp": "Escolha uma quando várias conexões enxergarem o repositório, por exemplo duas organizações."
 			},
 			"unlink": {
 				"button": "Desvincular",
@@ -50,11 +53,13 @@
 			},
 			"resumed": "Bem-vindo de volta. Vincule {{repository}} agora.",
 			"access": {
-				"title": "A identidade compartilhada não enxerga este repositório",
-				"description": "A identidade do {{provider}} só enxerga repositórios das contas em que está instalada. Instale-a em {{owner}} (você irá à plataforma e voltará aqui) e vincule novamente.",
-				"descriptionNoOwner": "A identidade do {{provider}} só enxerga repositórios das contas em que está instalada. Escolha onde instalá-la (você irá à plataforma e voltará aqui) e vincule novamente.",
+				"title": "Esta conexão não enxerga este repositório",
+				"description": "O aplicativo do {{provider}} só enxerga repositórios das contas em que está instalado. Instale-o em {{owner}} (você irá à plataforma e voltará aqui) e vincule novamente.",
+				"descriptionNoOwner": "O aplicativo do {{provider}} só enxerga repositórios das contas em que está instalado. Escolha onde instalá-lo (você irá à plataforma e voltará aqui) e vincule novamente.",
 				"button": "Instalar em {{owner}}",
-				"buttonNoOwner": "Escolher onde instalar"
+				"buttonNoOwner": "Escolher onde instalar",
+				"connection": "Conexão a instalar",
+				"choose": "Escolha uma conexão"
 			},
 			"errors": {
 				"generic": "Algo deu errado. Tente novamente.",
@@ -64,9 +69,11 @@
 				"providerUnavailable": "O plugin do provedor Git está indisponível.",
 				"providerRejected": "A plataforma recusou a solicitação.",
 				"notFound": "Não encontrado.",
-				"accessNotGranted": "A identidade compartilhada não enxerga este repositório.",
-				"noIdentity": "Ainda não há uma identidade Git compartilhada para esta plataforma. Um administrador do workspace a configura em Administração → Git.",
-				"alreadyLinked": "Este repositório já está vinculado ao projeto."
+				"accessNotGranted": "A conexão não enxerga este repositório.",
+				"noIdentity": "Ainda não há nenhuma conexão disponível para esta plataforma. Adicione uma em Conexões.",
+				"alreadyLinked": "Este repositório já está vinculado ao projeto.",
+				"identityRequired": "Várias conexões enxergam este repositório. Escolha qual usar.",
+				"notVisible": "Nenhuma das conexões do projeto enxerga este repositório. Adicione uma conexão com acesso a ele (no GitLab, um token desse projeto ou do grupo dele) e tente novamente."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -148,6 +155,35 @@
 					"description": "Adicione o rótulo \"paca\" a um issue ou pull request."
 				},
 				"automatic": "Os agentes também podem iniciar sozinhos, por exemplo para acompanhar seus pull requests ou revisar cada novo. Ative isso na aba Git de cada agente."
+			},
+			"connections": {
+				"title": "Conexões",
+				"description": "Os aplicativos do GitHub e tokens de acesso que o Paca usa para alcançar seus repositórios. Um projeto pode ter vários, de organizações diferentes; cada um é compartilhado por todos os projetos ou limitado a este.",
+				"add": "Adicionar {{provider}}",
+				"empty": {
+					"title": "Nenhuma conexão ainda",
+					"description": "Adicione uma conexão para que o Paca alcance seus repositórios. Use um aplicativo ou cole um token de acesso se sua plataforma não tiver aplicativos.",
+					"noPermission": "Peça a alguém que possa gerenciar conexões Git para adicionar uma."
+				},
+				"scope": {
+					"shared": "Todos os projetos",
+					"project": "Este projeto"
+				},
+				"expires": "Expira em {{date}}",
+				"expired": "Expirado",
+				"remove": "Remover"
+			},
+			"webhook": {
+				"title": "Os eventos deste repositório não estão chegando ao Paca",
+				"description": "O Paca registra um webhook em cada repositório por meio desta conexão e não conseguiu: o token provavelmente não tem permissão para gerenciar webhooks (a função Maintainer no GitLab, a permissão Webhooks no GitHub). Dê essa permissão ao token (no GitLab, crie um novo token com a função Maintainer e adicione-o como conexão) e tente novamente.",
+				"retry": "Tentar novamente",
+				"failed": "Ainda não foi possível registrar o webhook."
+			},
+			"reconnect": {
+				"title": "Este repositório não tem conexão",
+				"description": "A conexão dele foi excluída, então nada pode usá-lo. Reconecte-o por uma conexão que consiga vê-lo.",
+				"noConnection": "A conexão dele foi excluída. Adicione primeiro uma conexão que consiga vê-lo e depois reconecte.",
+				"button": "Reconectar"
 			}
 		}
 	},
@@ -1104,6 +1140,10 @@
 			"gitMerge": {
 				"label": "Mesclar solicitações de mudança",
 				"description": "Mesclar pull requests e merge requests na branch de destino. A proteção de branch da plataforma continua valendo."
+			},
+			"gitConnectionsManage": {
+				"label": "Gerenciar conexões Git",
+				"description": "Adicionar e remover os aplicativos do GitHub e tokens de acesso usados apenas por este projeto. Vincular repositórios ainda exige acesso de escrita ao Git."
 			}
 		},
 		"permissionGroups": {

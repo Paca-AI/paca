@@ -90,10 +90,16 @@ func TestBeginIdentitySetup_Refusals(t *testing.T) {
 		t.Error("an agent identity needs an agent")
 	}
 
-	st.addIdentity("bot", "app-1") // a shared identity exists on git.example
-	if _, err := svc.BeginIdentitySetup(ctx, shared(actor)); !errors.Is(err, gitdom.ErrIdentityExists) {
-		t.Errorf("second shared identity: %v", err)
+	st.addIdentity("bot", "app-1") // a shared identity exists on git.example; more may be added
+	if _, err := svc.BeginIdentitySetup(ctx, shared(actor)); err != nil {
+		t.Errorf("second shared connection on the host: %v", err)
 	}
+	in = shared(actor)
+	in.Scope = gitdom.ScopeProject
+	if _, err := svc.BeginIdentitySetup(ctx, in); err == nil {
+		t.Error("a project connection needs a project")
+	}
+	st.endpoints = map[string]*gitdom.WebhookEndpoint{}
 	agent := uuid.New()
 	st.agentIDs[agent] = &gitdom.Identity{}
 	in = shared(actor)
@@ -145,7 +151,7 @@ func TestCompleteIdentitySetup_SharedTwoLegs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, err := svc.CompleteIdentitySetup(ctx, actor, "state-1", map[string]string{"code": "c"})
+	first, err := svc.CompleteIdentitySetup(ctx, actor, nil, "state-1", map[string]string{"code": "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +167,7 @@ func TestCompleteIdentitySetup_SharedTwoLegs(t *testing.T) {
 		}
 	}
 
-	second, err := svc.CompleteIdentitySetup(ctx, actor, "state-1", map[string]string{"installation_id": "1"})
+	second, err := svc.CompleteIdentitySetup(ctx, actor, nil, "state-1", map[string]string{"installation_id": "1"})
 	if err != nil || second.Next != nil || second.Identity.ID != first.Identity.ID || second.ReturnURL != testPublic+"/settings" {
 		t.Fatalf("leg 2 = %+v %v", second, err)
 	}
@@ -171,7 +177,7 @@ func TestCompleteIdentitySetup_SharedTwoLegs(t *testing.T) {
 	if st.sessions["state-1"].CompletedAt == nil {
 		t.Error("session should be marked finished")
 	}
-	if _, err := svc.CompleteIdentitySetup(ctx, actor, "state-1", map[string]string{"installation_id": "1"}); !errors.Is(err, gitdom.ErrSetupExpired) {
+	if _, err := svc.CompleteIdentitySetup(ctx, actor, nil, "state-1", map[string]string{"installation_id": "1"}); !errors.Is(err, gitdom.ErrSetupExpired) {
 		t.Errorf("a finished state is reusable: %v", err)
 	}
 }
@@ -194,7 +200,7 @@ func TestCompleteIdentitySetup_AgentIdentityIsMapped(t *testing.T) {
 	if got.AgentID != agent.String() || got.AgentName != "Dev" || got.Scope != gitprovider.SetupAgent {
 		t.Errorf("request = %+v", got)
 	}
-	res, err := svc.CompleteIdentitySetup(ctx, actor, "agent-state", map[string]string{"installation_id": "1"})
+	res, err := svc.CompleteIdentitySetup(ctx, actor, nil, "agent-state", map[string]string{"installation_id": "1"})
 	if err != nil || res.Identity.Scope != gitdom.ScopeAgent {
 		t.Fatalf("%+v %v", res, err)
 	}
@@ -213,14 +219,14 @@ func TestCompleteIdentitySetup_Guards(t *testing.T) {
 	actor := uuid.New()
 	_, _ = svc.BeginIdentitySetup(ctx, shared(actor))
 
-	if _, err := svc.CompleteIdentitySetup(ctx, uuid.New(), "state-1", map[string]string{"code": "c"}); !errors.Is(err, gitdom.ErrSetupExpired) {
+	if _, err := svc.CompleteIdentitySetup(ctx, uuid.New(), nil, "state-1", map[string]string{"code": "c"}); !errors.Is(err, gitdom.ErrSetupExpired) {
 		t.Errorf("another user: %v", err)
 	}
-	if _, err := svc.CompleteIdentitySetup(ctx, actor, "nope", nil); !errors.Is(err, gitdom.ErrSetupExpired) {
+	if _, err := svc.CompleteIdentitySetup(ctx, actor, nil, "nope", nil); !errors.Is(err, gitdom.ErrSetupExpired) {
 		t.Errorf("unknown state: %v", err)
 	}
 	st.sessions["state-1"].ExpiresAt = time.Now().Add(-time.Second)
-	if _, err := svc.CompleteIdentitySetup(ctx, actor, "state-1", map[string]string{"code": "c"}); !errors.Is(err, gitdom.ErrSetupExpired) {
+	if _, err := svc.CompleteIdentitySetup(ctx, actor, nil, "state-1", map[string]string{"code": "c"}); !errors.Is(err, gitdom.ErrSetupExpired) {
 		t.Errorf("expired: %v", err)
 	}
 	if len(st.byID) != 0 {
@@ -231,7 +237,7 @@ func TestCompleteIdentitySetup_Guards(t *testing.T) {
 	pr.complete = func(gitprovider.CompleteSetupRequest) (gitprovider.Identity, error) {
 		return gitprovider.Identity{}, &gitprovider.Error{Code: gitprovider.CodeForbidden}
 	}
-	if _, err := svc.CompleteIdentitySetup(ctx, actor, "state-1", nil); !gitprovider.IsCode(err, gitprovider.CodeForbidden) {
+	if _, err := svc.CompleteIdentitySetup(ctx, actor, nil, "state-1", nil); !gitprovider.IsCode(err, gitprovider.CodeForbidden) {
 		t.Errorf("provider refusal: %v", err)
 	}
 	if st.sessions["state-1"].CompletedAt != nil {

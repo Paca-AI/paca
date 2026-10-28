@@ -18,14 +18,23 @@ import { Switch } from "@/components/ui/switch";
 import {
 	type BeginGitSetupPayload,
 	beginGitSetup,
+	beginProjectGitSetup,
 	completeGitSetup,
+	completeProjectGitSetup,
+	connectionKindsOf,
 	followGitStep,
-	GIT_ADMIN_PATH,
+	type GitConnectionKind,
 	type GitProvider,
 	type GitSetupStep,
 	gitErrorKey,
-	gitIdentitiesKey,
+	gitQueriesKey,
+	projectGitSettingsPath,
+	rememberGitFlow,
 } from "@/lib/git-api";
+import { ChoiceCard } from "./git-ui";
+
+/** Who may use a connection: one project, or every project. */
+type Visibility = "project" | "workspace";
 
 interface GitSetupDialogProps {
 	provider: GitProvider;
@@ -33,10 +42,21 @@ interface GitSetupDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	/**
-	 * Starts the setup; defaults to the workspace's shared identity. An agent's
-	 * own identity passes its own endpoint.
+	 * Starts an agent's own identity; takes the agent's endpoint. Leave it out
+	 * and pass `project` to add a connection from a project's settings.
 	 */
 	begin?: (payload: BeginGitSetupPayload) => Promise<GitSetupStep>;
+	/**
+	 * Adds a connection from a project's settings. The user chooses whether it
+	 * serves this project only or every project, among what they may do.
+	 */
+	project?: {
+		id: string;
+		/** git.connections:manage on the project. */
+		canProject: boolean;
+		/** git.identities:manage, the workspace-level action. */
+		canWorkspace: boolean;
+	};
 	/** Where the browser returns when setup is finished (a same-origin path). */
 	returnPath?: string;
 	/** Query cache entry to refresh when a token form finishes in place. */
@@ -44,24 +64,32 @@ interface GitSetupDialogProps {
 }
 
 /**
- * Starts creating the shared bot identity for one provider host. The
- * provider decides what happens next: a redirect or a form post sends the
- * browser to the platform (which returns to /git/setup/callback), a token
- * form is answered right here. The optional name and organization are passed
- * through as provider parameters; a provider that has no use for them ignores
- * them.
+ * Starts creating a connection to one provider host. The provider decides what
+ * happens next: a redirect or a form post sends the browser to the platform
+ * (which returns to /git/setup/callback), a token form is answered right here.
+ * The optional name and organization are passed through as provider parameters;
+ * a provider that has no use for them ignores them.
  */
 export function GitSetupDialog({
 	provider,
-	host,
+	host: defaultHost,
 	open,
 	onOpenChange,
-	begin = beginGitSetup,
-	returnPath = GIT_ADMIN_PATH,
-	invalidateKey = gitIdentitiesKey,
+	begin,
+	project,
+	returnPath = "/home",
+	invalidateKey = gitQueriesKey,
 }: GitSetupDialogProps) {
 	const { t } = useTranslation("admin");
 	const queryClient = useQueryClient();
+	const kinds = connectionKindsOf(provider);
+	const [kind, setKind] = useState<GitConnectionKind>(kinds[0]);
+	const [host, setHost] = useState(defaultHost);
+	const [visibility, setVisibility] = useState<Visibility>(
+		project && !project.canProject && project.canWorkspace
+			? "workspace"
+			: "project",
+	);
 	const [name, setName] = useState("");
 	const [org, setOrg] = useState("");
 	const [isPublic, setIsPublic] = useState(false);
@@ -69,18 +97,31 @@ export function GitSetupDialog({
 	const [tokenStep, setTokenStep] = useState<GitSetupStep | null>(null);
 	const [tokenValues, setTokenValues] = useState<Record<string, string>>({});
 
+	const forProject = project && visibility === "project" ? project : null;
+	const target = forProject
+		? { kind: "project-identity" as const, projectId: forProject.id }
+		: { kind: "identity" as const };
+	const back = forProject ? projectGitSettingsPath(forProject.id) : returnPath;
+
 	const start = useMutation({
 		mutationFn: () => {
 			const params: Record<string, string> = {};
-			if (name.trim()) params.name = name.trim();
-			if (org.trim()) params.owner_org = org.trim();
-			if (isPublic) params.public = "true";
-			return begin({
+			if (kinds.length > 1) params.kind = kind;
+			if (kind === "app") {
+				if (name.trim()) params.name = name.trim();
+				if (org.trim()) params.owner_org = org.trim();
+				if (isPublic) params.public = "true";
+			}
+			const payload = {
 				provider_id: provider.id,
-				host,
-				return_url: `${window.location.origin}${returnPath}`,
+				host: host.trim() || defaultHost,
+				return_url: `${window.location.origin}${back}`,
 				params,
-			});
+			};
+			if (begin) return begin(payload);
+			return forProject
+				? beginProjectGitSetup(forProject.id, payload)
+				: beginGitSetup(payload);
 		},
 		onSuccess: (step) => {
 			if (step.kind === "token_form") {
@@ -92,6 +133,7 @@ export function GitSetupDialog({
 				onOpenChange(false);
 				return;
 			}
+			rememberGitFlow(step.state, target);
 			// Leaves the page; the platform returns to /git/setup/callback.
 			if (!followGitStep(step)) setError(t("git.errors.generic"));
 		},
@@ -101,7 +143,12 @@ export function GitSetupDialog({
 	});
 
 	const submitToken = useMutation({
-		mutationFn: () => completeGitSetup(tokenStep?.state ?? "", tokenValues),
+		mutationFn: () => {
+			const state = tokenStep?.state ?? "";
+			return forProject
+				? completeProjectGitSetup(forProject.id, state, tokenValues)
+				: completeGitSetup(state, tokenValues);
+		},
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: invalidateKey });
 			onOpenChange(false);
@@ -112,10 +159,19 @@ export function GitSetupDialog({
 	});
 
 	const busy = start.isPending || submitToken.isPending;
+	const canStart = !project || project.canProject || project.canWorkspace;
 	const title = t("git.setup.dialogTitle", {
 		provider: provider.display_name,
 		host,
 	});
+	const description =
+		tokenStep?.prompt ??
+		(kind === "app"
+			? t("git.setup.dialogDescription", {
+					host,
+					changeRequests: provider.terms.change_request_plural.toLowerCase(),
+				})
+			: t("git.setup.tokenDescription", { host }));
 
 	return (
 		<Dialog
@@ -131,7 +187,7 @@ export function GitSetupDialog({
 		>
 			<DialogContent className="sm:max-w-md">
 				<form
-					className="flex flex-col gap-4"
+					className="flex min-w-0 flex-col gap-4"
 					onSubmit={(e) => {
 						e.preventDefault();
 						setError(null);
@@ -144,13 +200,8 @@ export function GitSetupDialog({
 							<GitBranch className="size-4 text-primary" />
 						</div>
 						<DialogTitle>{title}</DialogTitle>
-						<DialogDescription className="mt-1">
-							{tokenStep?.prompt ??
-								t("git.setup.dialogDescription", {
-									host,
-									changeRequests:
-										provider.terms.change_request_plural.toLowerCase(),
-								})}
+						<DialogDescription className="mt-1 wrap-anywhere">
+							{description}
 						</DialogDescription>
 					</DialogHeader>
 
@@ -175,45 +226,122 @@ export function GitSetupDialog({
 						))
 					) : (
 						<>
-							<div className="flex flex-col gap-1.5">
-								<Label htmlFor="git-setup-name">{t("git.setup.name")}</Label>
-								<Input
-									id="git-setup-name"
-									value={name}
-									maxLength={34}
-									placeholder="Paca"
-									onChange={(e) => setName(e.target.value)}
-								/>
-								<p className="text-xs text-muted-foreground">
-									{t("git.setup.nameHelp")}
-								</p>
-							</div>
-							<div className="flex flex-col gap-1.5">
-								<Label htmlFor="git-setup-org">{t("git.setup.org")}</Label>
-								<Input
-									id="git-setup-org"
-									value={org}
-									onChange={(e) => setOrg(e.target.value)}
-								/>
-								<p className="text-xs text-muted-foreground">
-									{t("git.setup.orgHelp")}
-								</p>
-							</div>
-							<div className="flex items-start gap-3">
-								<Switch
-									id="git-setup-public"
-									checked={isPublic}
-									onCheckedChange={setIsPublic}
-								/>
-								<div className="flex flex-col gap-1">
-									<Label htmlFor="git-setup-public">
-										{t("git.setup.public")}
-									</Label>
+							{provider.self_hosted_hosts ? (
+								<div className="flex flex-col gap-1.5">
+									<Label htmlFor="git-setup-host">{t("git.setup.host")}</Label>
+									<Input
+										id="git-setup-host"
+										value={host}
+										autoComplete="off"
+										onChange={(e) => setHost(e.target.value)}
+									/>
 									<p className="text-xs text-muted-foreground">
-										{t("git.setup.publicHelp")}
+										{t("git.setup.hostHelp")}
 									</p>
 								</div>
-							</div>
+							) : null}
+
+							{kinds.length > 1 ? (
+								<fieldset className="flex flex-col gap-2">
+									<legend className="mb-1 text-sm font-medium">
+										{t("git.setup.kind.label")}
+									</legend>
+									{kinds.map((k) => (
+										<ChoiceCard
+											key={k}
+											name="git-setup-kind"
+											value={k}
+											checked={kind === k}
+											onSelect={() => setKind(k)}
+											title={t(`git.setup.kind.${k}.title` as never)}
+											description={t(`git.setup.kind.${k}.help` as never, {
+												provider: provider.display_name,
+											})}
+										/>
+									))}
+								</fieldset>
+							) : null}
+
+							{project ? (
+								<fieldset className="flex flex-col gap-2">
+									<legend className="mb-1 text-sm font-medium">
+										{t("git.setup.scope.label")}
+									</legend>
+									<ChoiceCard
+										name="git-setup-scope"
+										value="project"
+										checked={visibility === "project"}
+										disabled={!project.canProject}
+										onSelect={() => setVisibility("project")}
+										title={t("git.setup.scope.project.title")}
+										description={t("git.setup.scope.project.help")}
+									/>
+									<ChoiceCard
+										name="git-setup-scope"
+										value="workspace"
+										checked={visibility === "workspace"}
+										disabled={!project.canWorkspace}
+										onSelect={() => setVisibility("workspace")}
+										title={t("git.setup.scope.workspace.title")}
+										description={
+											project.canWorkspace
+												? t("git.setup.scope.workspace.help")
+												: t("git.setup.scope.workspace.noPermission")
+										}
+									/>
+									{!canStart ? (
+										<p className="text-xs text-destructive">
+											{t("git.setup.scope.none")}
+										</p>
+									) : null}
+								</fieldset>
+							) : null}
+
+							{kind === "app" ? (
+								<>
+									<div className="flex flex-col gap-1.5">
+										<Label htmlFor="git-setup-name">
+											{t("git.setup.name")}
+										</Label>
+										<Input
+											id="git-setup-name"
+											value={name}
+											maxLength={34}
+											placeholder="Paca"
+											onChange={(e) => setName(e.target.value)}
+										/>
+										<p className="text-xs text-muted-foreground">
+											{t("git.setup.nameHelp")}
+										</p>
+									</div>
+									<div className="flex flex-col gap-1.5">
+										<Label htmlFor="git-setup-org">{t("git.setup.org")}</Label>
+										<Input
+											id="git-setup-org"
+											value={org}
+											onChange={(e) => setOrg(e.target.value)}
+										/>
+										<p className="text-xs text-muted-foreground">
+											{t("git.setup.orgHelp")}
+										</p>
+									</div>
+									<div className="flex items-start gap-3">
+										<Switch
+											id="git-setup-public"
+											checked={isPublic}
+											onCheckedChange={setIsPublic}
+										/>
+										<div className="flex flex-col gap-1">
+											<Label htmlFor="git-setup-public">
+												{t("git.setup.public")}
+											</Label>
+											<p className="text-xs text-muted-foreground">
+												{t("git.setup.publicHelp")}
+											</p>
+										</div>
+									</div>
+								</>
+							) : null}
 						</>
 					)}
 
@@ -235,11 +363,13 @@ export function GitSetupDialog({
 						>
 							{t("git.cancel")}
 						</DialogClose>
-						<Button type="submit" disabled={busy}>
+						<Button type="submit" disabled={busy || !canStart}>
 							{busy ? <Loader2 className="size-4 animate-spin" /> : null}
 							{tokenStep
 								? t("git.setup.submitToken")
-								: t("git.setup.start", { host })}
+								: kind === "app"
+									? t("git.setup.start", { host })
+									: t("git.setup.next")}
 						</Button>
 					</DialogFooter>
 				</form>

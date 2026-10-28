@@ -26,7 +26,6 @@ import { Route as AuthenticatedAdminSettingsIndexRouteImport } from './routes/_a
 import { Route as AuthenticatedAdminServiceAccountsIndexRouteImport } from './routes/_authenticated/admin/service-accounts/index'
 import { Route as AuthenticatedAdminPluginsIndexRouteImport } from './routes/_authenticated/admin/plugins/index'
 import { Route as AuthenticatedAdminGlobalRolesIndexRouteImport } from './routes/_authenticated/admin/global-roles/index'
-import { Route as AuthenticatedAdminGitIndexRouteImport } from './routes/_authenticated/admin/git/index'
 import { Route as AuthenticatedAdminChangelogIndexRouteImport } from './routes/_authenticated/admin/changelog/index'
 import { Route as AuthenticatedAdminAgentsIndexRouteImport } from './routes/_authenticated/admin/agents/index'
 import { Route as AuthenticatedProjectsProjectIdConversationsRouteImport } from './routes/_authenticated/projects/$projectId/conversations'
@@ -152,12 +151,6 @@ const AuthenticatedAdminGlobalRolesIndexRoute =
   AuthenticatedAdminGlobalRolesIndexRouteImport.update({
     id: '/admin/global-roles/',
     path: '/admin/global-roles/',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedAdminGitIndexRoute =
-  AuthenticatedAdminGitIndexRouteImport.update({
-    id: '/admin/git/',
-    path: '/admin/git/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedAdminChangelogIndexRoute =
@@ -367,7 +360,6 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsRouteWithChildren
   '/admin/agents/': typeof AuthenticatedAdminAgentsIndexRoute
   '/admin/changelog/': typeof AuthenticatedAdminChangelogIndexRoute
-  '/admin/git/': typeof AuthenticatedAdminGitIndexRoute
   '/admin/global-roles/': typeof AuthenticatedAdminGlobalRolesIndexRoute
   '/admin/plugins/': typeof AuthenticatedAdminPluginsIndexRoute
   '/admin/service-accounts/': typeof AuthenticatedAdminServiceAccountsIndexRoute
@@ -413,7 +405,6 @@ export interface FileRoutesByTo {
   '/plugin-pages/$pluginId/$slug': typeof AuthenticatedPluginPagesPluginIdSlugRoute
   '/admin/agents': typeof AuthenticatedAdminAgentsIndexRoute
   '/admin/changelog': typeof AuthenticatedAdminChangelogIndexRoute
-  '/admin/git': typeof AuthenticatedAdminGitIndexRoute
   '/admin/global-roles': typeof AuthenticatedAdminGlobalRolesIndexRoute
   '/admin/plugins': typeof AuthenticatedAdminPluginsIndexRoute
   '/admin/service-accounts': typeof AuthenticatedAdminServiceAccountsIndexRoute
@@ -464,7 +455,6 @@ export interface FileRoutesById {
   '/_authenticated/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsRouteWithChildren
   '/_authenticated/admin/agents/': typeof AuthenticatedAdminAgentsIndexRoute
   '/_authenticated/admin/changelog/': typeof AuthenticatedAdminChangelogIndexRoute
-  '/_authenticated/admin/git/': typeof AuthenticatedAdminGitIndexRoute
   '/_authenticated/admin/global-roles/': typeof AuthenticatedAdminGlobalRolesIndexRoute
   '/_authenticated/admin/plugins/': typeof AuthenticatedAdminPluginsIndexRoute
   '/_authenticated/admin/service-accounts/': typeof AuthenticatedAdminServiceAccountsIndexRoute
@@ -515,7 +505,6 @@ export interface FileRouteTypes {
     | '/projects/$projectId/conversations'
     | '/admin/agents/'
     | '/admin/changelog/'
-    | '/admin/git/'
     | '/admin/global-roles/'
     | '/admin/plugins/'
     | '/admin/service-accounts/'
@@ -561,7 +550,6 @@ export interface FileRouteTypes {
     | '/plugin-pages/$pluginId/$slug'
     | '/admin/agents'
     | '/admin/changelog'
-    | '/admin/git'
     | '/admin/global-roles'
     | '/admin/plugins'
     | '/admin/service-accounts'
@@ -611,7 +599,6 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$projectId/conversations'
     | '/_authenticated/admin/agents/'
     | '/_authenticated/admin/changelog/'
-    | '/_authenticated/admin/git/'
     | '/_authenticated/admin/global-roles/'
     | '/_authenticated/admin/plugins/'
     | '/_authenticated/admin/service-accounts/'
@@ -771,13 +758,6 @@ declare module '@tanstack/react-router' {
       path: '/admin/global-roles'
       fullPath: '/admin/global-roles/'
       preLoaderRoute: typeof AuthenticatedAdminGlobalRolesIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/admin/git/': {
-      id: '/_authenticated/admin/git/'
-      path: '/admin/git'
-      fullPath: '/admin/git/'
-      preLoaderRoute: typeof AuthenticatedAdminGitIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/changelog/': {
@@ -1116,7 +1096,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPluginPagesPluginIdSlugRoute: typeof AuthenticatedPluginPagesPluginIdSlugRoute
   AuthenticatedAdminAgentsIndexRoute: typeof AuthenticatedAdminAgentsIndexRoute
   AuthenticatedAdminChangelogIndexRoute: typeof AuthenticatedAdminChangelogIndexRoute
-  AuthenticatedAdminGitIndexRoute: typeof AuthenticatedAdminGitIndexRoute
   AuthenticatedAdminGlobalRolesIndexRoute: typeof AuthenticatedAdminGlobalRolesIndexRoute
   AuthenticatedAdminPluginsIndexRoute: typeof AuthenticatedAdminPluginsIndexRoute
   AuthenticatedAdminServiceAccountsIndexRoute: typeof AuthenticatedAdminServiceAccountsIndexRoute
@@ -1139,7 +1118,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedPluginPagesPluginIdSlugRoute,
   AuthenticatedAdminAgentsIndexRoute: AuthenticatedAdminAgentsIndexRoute,
   AuthenticatedAdminChangelogIndexRoute: AuthenticatedAdminChangelogIndexRoute,
-  AuthenticatedAdminGitIndexRoute: AuthenticatedAdminGitIndexRoute,
   AuthenticatedAdminGlobalRolesIndexRoute:
     AuthenticatedAdminGlobalRolesIndexRoute,
   AuthenticatedAdminPluginsIndexRoute: AuthenticatedAdminPluginsIndexRoute,

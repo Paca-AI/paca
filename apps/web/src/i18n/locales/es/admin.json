@@ -303,8 +303,8 @@
 				"description": "Crear, editar y eliminar cuentas de servicio y emitir o revocar sus claves de API"
 			},
 			"gitIdentitiesManage": {
-				"label": "Gestionar identidades Git",
-				"description": "Configurar y eliminar las identidades de GitHub (u otra plataforma Git) que usan los agentes, en todo el espacio de trabajo"
+				"label": "Gestionar conexiones Git del espacio de trabajo",
+				"description": "Añadir y quitar las aplicaciones de GitHub y los tokens de acceso que pueden usar todos los proyectos del espacio de trabajo"
 			}
 		},
 		"permissionGroups": {
@@ -635,17 +635,8 @@
 		}
 	},
 	"git": {
-		"title": "Git",
-		"description": "Identidades de bot que permiten a los agentes clonar, enviar cambios y abrir pull requests o merge requests en tus plataformas Git. Cada host tiene una identidad compartida; los agentes también pueden tener la suya desde su configuración.",
-		"noProviders": {
-			"title": "No hay ningún proveedor de Git instalado",
-			"description": "Instala un plugin de proveedor de Git, como GitHub Integration, para configurar una identidad de bot.",
-			"action": "Gestionar plugins"
-		},
 		"cancel": "Cancelar",
-		"identity": {},
 		"setup": {
-			"button": "Configurar",
 			"dialogTitle": "Configurar {{provider}} en {{host}}",
 			"dialogDescription": "Paca creará en {{host}} una identidad de bot que los agentes usarán para clonar, enviar cambios y trabajar en {{changeRequests}}. Se te enviará a {{host}} para aprobarla y luego volverás aquí.",
 			"name": "Nombre de la app (opcional)",
@@ -655,13 +646,50 @@
 			"start": "Continuar a {{host}}",
 			"submitToken": "Guardar",
 			"public": "Permitir instalar en otras cuentas (app pública)",
-			"publicHelp": "Necesario cuando los proyectos usan repositorios de distintos usuarios u organizaciones. Una app privada solo se puede instalar en la cuenta que la posee."
+			"publicHelp": "Necesario cuando los proyectos usan repositorios de distintos usuarios u organizaciones. Una app privada solo se puede instalar en la cuenta que la posee.",
+			"next": "Siguiente",
+			"tokenDescription": "Paca se conecta a {{host}} con un token de acceso que usted crea allí. En el siguiente paso lo pega.",
+			"host": "Host",
+			"hostHelp": "La dirección de su instancia, por ejemplo gitlab.example.com.",
+			"kind": {
+				"label": "Conectar con",
+				"app": {
+					"title": "Aplicación",
+					"help": "Paca crea una aplicación en {{provider}} por usted. El acceso se limita a los repositorios donde la instale."
+				},
+				"bot_user": {
+					"title": "Token de acceso",
+					"help": "Pegue un token de acceso de proyecto o de grupo. Paca actúa como su usuario bot."
+				},
+				"token": {
+					"title": "Token de acceso",
+					"help": "Pegue un token de acceso personal. Actúa como su propietario, así que use un usuario de máquina dedicado."
+				}
+			},
+			"scope": {
+				"label": "Disponible para",
+				"project": {
+					"title": "Solo este proyecto",
+					"help": "Solo este proyecto puede vincular repositorios mediante esta conexión."
+				},
+				"workspace": {
+					"title": "Todos los proyectos",
+					"help": "Todos los proyectos del espacio de trabajo pueden vincular repositorios mediante esta conexión.",
+					"noPermission": "Requiere el permiso del espacio de trabajo para gestionar conexiones Git."
+				},
+				"none": "No tiene permiso para añadir conexiones aquí."
+			}
 		},
 		"delete": {
 			"button": "Quitar",
-			"title": "¿Quitar esta identidad?",
-			"description": "Los agentes dejarán de actuar como {{name}} en {{host}} y usarán otras identidades. Los repositorios ya vinculados siguen vinculados. La app no se elimina en la plataforma; quítala allí si ya no la necesitas.",
-			"confirm": "Quitar identidad"
+			"title": "¿Quitar esta conexión?",
+			"description": "Los repositorios vinculados mediante {{name}} en {{host}} dejan de funcionar hasta que los reconecte mediante otra conexión. La aplicación o el token no se elimina en la plataforma; quítelo allí si ya no lo necesita.",
+			"confirm": "Quitar conexión",
+			"usage": {
+				"title": "Repositorios que la usan ({{count}}):",
+				"others": "Y {{count}} más en otros proyectos.",
+				"consequence": "Siguen vinculados pero sin credencial, así que los agentes no pueden usarlos. Después, reconecte cada uno a otra conexión."
+			}
 		},
 		"callback": {
 			"working": "Finalizando la configuración…",
@@ -679,23 +707,6 @@
 			"notFound": "No encontrado."
 		},
 		"copy": "Copiar",
-		"copied": "Copiado",
-		"status": {
-			"connected": "Conectado",
-			"notConnected": "No conectado"
-		},
-		"platforms": {
-			"title": "Plataformas Git",
-			"description": "Cada plataforma necesita una identidad de bot compartida."
-		},
-		"connect": {
-			"title": "Conectar {{provider}}",
-			"description": "Paca crea una cuenta de bot en {{host}} que los agentes usan para leer código, subir ramas, abrir pull requests y comentar.",
-			"time": "Tarda alrededor de un minuto. Lo apruebas en la plataforma y vuelves aquí."
-		},
-		"connected": {
-			"sharedNote": "Compartida por todos los proyectos y agentes que no tienen identidad propia.",
-			"mention": "Menciónalo en los comentarios:"
-		}
+		"copied": "Copiado"
 	}
 }

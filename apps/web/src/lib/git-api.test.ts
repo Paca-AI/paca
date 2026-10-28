@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	followGitStep,
 	forgetGitFlow,
-	GIT_ADMIN_PATH,
+	GIT_FALLBACK_PATH,
 	gitErrorKey,
 	readGitFlow,
 	rememberGitFlow,
@@ -29,7 +29,7 @@ describe("returnPathOf", () => {
 			null,
 			undefined,
 		]) {
-			expect(returnPathOf(bad, ORIGIN)).toBe(GIT_ADMIN_PATH);
+			expect(returnPathOf(bad, ORIGIN)).toBe(GIT_FALLBACK_PATH);
 		}
 	});
 });

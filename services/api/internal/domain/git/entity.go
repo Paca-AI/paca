@@ -17,8 +17,9 @@ type IdentityScope string
 
 // Identity scopes.
 const (
-	ScopeShared IdentityScope = "shared" // the host-wide shared identity
-	ScopeAgent  IdentityScope = "agent"  // one agent's own identity
+	ScopeShared  IdentityScope = "shared"  // a workspace connection: every project may use it
+	ScopeProject IdentityScope = "project" // a connection only one project may use
+	ScopeAgent   IdentityScope = "agent"   // one agent's own identity
 )
 
 // Identity is a bot identity on a platform host. Secrets stay with the provider
@@ -30,13 +31,17 @@ type Identity struct {
 	ProviderIdentityID string // IdentityRef.ID
 	Kind               string // app | bot_user | token
 	Scope              IdentityScope
-	Handle             string // what users @mention
+	ProjectID          *uuid.UUID // set for ScopeProject
+	Handle             string     // what users @mention
 	DisplayName        string
 	ProviderRef        json.RawMessage // IdentityRef.ProviderRef, opaque
 	ExpiresAt          *time.Time
-	CreatedBy          *uuid.UUID
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// RepositoryCount is how many linked repositories, in every project, use the
+	// connection. Read for listings only; it is not stored.
+	RepositoryCount int
+	CreatedBy       *uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // Repository is a repository linked to a project.
@@ -55,9 +60,13 @@ type Repository struct {
 	// IdentityHandle is what users @mention to reach the bot that serves this
 	// repository. Read for listings only; it is not stored on the repository.
 	IdentityHandle string
-	CreatedBy      *uuid.UUID
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// WebhookURL is where the platform must deliver events for this repository
+	// when the connection needs a webhook per repository and none could be
+	// registered automatically. Read for listings only; it is not stored.
+	WebhookURL string
+	CreatedBy  *uuid.UUID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // WebhookEndpoint is where a platform delivers events for one identity.
@@ -137,6 +146,7 @@ type SetupSession struct {
 	Host        string
 	Scope       IdentityScope
 	AgentID     *uuid.UUID // set for ScopeAgent
+	ProjectID   *uuid.UUID // set for ScopeProject
 	EndpointKey string     // the webhook endpoint the new identity will own
 	ReturnURL   string
 	CreatedBy   uuid.UUID

@@ -37,8 +37,12 @@ type GitService interface {
 	ListIdentities(ctx context.Context) ([]*gitdom.Identity, error)
 	ListAgentIdentities(ctx context.Context, agentID uuid.UUID) ([]*gitdom.Identity, error)
 	BeginIdentitySetup(ctx context.Context, in gitsvc.SetupInput) (*gitprovider.SetupStep, error)
-	CompleteIdentitySetup(ctx context.Context, actorID uuid.UUID, state string, params map[string]string) (*gitsvc.SetupCompletion, error)
+	CompleteIdentitySetup(ctx context.Context, actorID uuid.UUID, projectID *uuid.UUID, state string, params map[string]string) (*gitsvc.SetupCompletion, error)
 	DeleteIdentity(ctx context.Context, id uuid.UUID) error
+	ReconnectRepository(ctx context.Context, in gitsvc.ReconnectInput) (*gitdom.Repository, error)
+	RegisterWebhook(ctx context.Context, projectID, repositoryID uuid.UUID) (*gitdom.Repository, error)
+	ListConnections(ctx context.Context, projectID uuid.UUID) ([]*gitdom.Identity, error)
+	DeleteProjectConnection(ctx context.Context, projectID, id uuid.UUID) error
 	RemoveAgentIdentity(ctx context.Context, agentID uuid.UUID, providerID string) error
 
 	BeginAccessGrant(ctx context.Context, in gitsvc.AccessInput) (*gitprovider.SetupStep, error)
@@ -150,7 +154,7 @@ func (h *GitHandler) LinkRepository(w http.ResponseWriter, r *http.Request) {
 	}
 	repo, err := h.svc.LinkRepository(r.Context(), gitsvc.LinkInput{
 		ProjectID: projectID, ProviderID: strings.TrimSpace(req.ProviderID), Host: strings.TrimSpace(req.Host),
-		PathOrURL: strings.TrimSpace(req.PathOrURL), ActorID: &actor,
+		PathOrURL: strings.TrimSpace(req.PathOrURL), IdentityID: req.IdentityID, ActorID: &actor,
 	})
 	if err != nil {
 		h.fail(w, r, err)
@@ -174,6 +178,48 @@ func (h *GitHandler) UnlinkRepository(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	presenter.NoContent(w)
+}
+
+// ReconnectRepository handles POST /projects/:projectId/git/repositories/:repositoryId/reconnect:
+// point a repository whose connection was deleted at another connection.
+func (h *GitHandler) ReconnectRepository(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := gitProjectID(w, r)
+	if !ok {
+		return
+	}
+	repoID, ok := gitRepositoryID(w, r)
+	if !ok {
+		return
+	}
+	var req dto.ReconnectGitRepositoryRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+	repo, err := h.svc.ReconnectRepository(r.Context(), gitsvc.ReconnectInput{ProjectID: projectID, RepositoryID: repoID, IdentityID: req.IdentityID})
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.GitRepositoryFromEntity(repo))
+}
+
+// RegisterWebhook handles POST /projects/:projectId/git/repositories/:repositoryId/webhook:
+// try again to register the repository's webhook on the platform.
+func (h *GitHandler) RegisterWebhook(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := gitProjectID(w, r)
+	if !ok {
+		return
+	}
+	repoID, ok := gitRepositoryID(w, r)
+	if !ok {
+		return
+	}
+	repo, err := h.svc.RegisterWebhook(r.Context(), projectID, repoID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.GitRepositoryFromEntity(repo))
 }
 
 // ReadCredential handles POST .../repositories/:repositoryId/credential/read.
@@ -315,7 +361,7 @@ func (h *GitHandler) DeleteIdentity(w http.ResponseWriter, r *http.Request) {
 	presenter.NoContent(w)
 }
 
-// BeginSetup handles POST /git/identities/setup: a shared identity for a host.
+// BeginSetup handles POST /git/identities/setup: a connection every project can use.
 func (h *GitHandler) BeginSetup(w http.ResponseWriter, r *http.Request) {
 	actor, ok := requireAccountID(w, r)
 	if !ok {
@@ -360,8 +406,73 @@ func (h *GitHandler) begin(w http.ResponseWriter, r *http.Request, in gitsvc.Set
 	presenter.Created(w, r, dto.GitSetupStepFromProvider(step))
 }
 
+// ListConnections handles GET /projects/:projectId/git/connections: the
+// workspace's connections and the project's own.
+func (h *GitHandler) ListConnections(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := gitProjectID(w, r)
+	if !ok {
+		return
+	}
+	ids, err := h.svc.ListConnections(r.Context(), projectID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	presenter.OK(w, r, identitiesResponse(ids))
+}
+
+// BeginProjectSetup handles POST /projects/:projectId/git/connections/setup: a
+// connection only this project can use.
+func (h *GitHandler) BeginProjectSetup(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := gitProjectID(w, r)
+	if !ok {
+		return
+	}
+	actor, ok := requireAccountID(w, r)
+	if !ok {
+		return
+	}
+	var req dto.BeginGitSetupRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+	h.begin(w, r, gitsvc.SetupInput{ProviderID: strings.TrimSpace(req.ProviderID), Host: strings.TrimSpace(req.Host), Scope: gitdom.ScopeProject,
+		ProjectID: &projectID, ActorID: actor, ReturnURL: strings.TrimSpace(req.ReturnURL), Params: req.Params})
+}
+
+// CompleteProjectSetup handles POST /projects/:projectId/git/connections/setup/complete.
+func (h *GitHandler) CompleteProjectSetup(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := gitProjectID(w, r)
+	if !ok {
+		return
+	}
+	h.completeSetup(w, r, &projectID)
+}
+
+// DeleteProjectConnection handles DELETE /projects/:projectId/git/connections/:identityId.
+func (h *GitHandler) DeleteProjectConnection(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := gitProjectID(w, r)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "identityId"))
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid connection ID"))
+		return
+	}
+	if err := h.svc.DeleteProjectConnection(r.Context(), projectID, id); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	presenter.NoContent(w)
+}
+
 // CompleteSetup handles POST /git/identities/setup/complete.
 func (h *GitHandler) CompleteSetup(w http.ResponseWriter, r *http.Request) {
+	h.completeSetup(w, r, nil)
+}
+
+func (h *GitHandler) completeSetup(w http.ResponseWriter, r *http.Request, projectID *uuid.UUID) {
 	actor, ok := requireAccountID(w, r)
 	if !ok {
 		return
@@ -374,7 +485,7 @@ func (h *GitHandler) CompleteSetup(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "state is required"))
 		return
 	}
-	res, err := h.svc.CompleteIdentitySetup(r.Context(), actor, strings.TrimSpace(req.State), req.Params)
+	res, err := h.svc.CompleteIdentitySetup(r.Context(), actor, projectID, strings.TrimSpace(req.State), req.Params)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -465,7 +576,7 @@ func (h *GitHandler) BeginAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	step, err := h.svc.BeginAccessGrant(r.Context(), gitsvc.AccessInput{
 		ProjectID: projectID, ProviderID: strings.TrimSpace(req.ProviderID), Host: strings.TrimSpace(req.Host),
-		Owner: strings.TrimSpace(req.Owner), ActorID: actor, ReturnURL: strings.TrimSpace(req.ReturnURL),
+		Owner: strings.TrimSpace(req.Owner), IdentityID: req.IdentityID, ActorID: actor, ReturnURL: strings.TrimSpace(req.ReturnURL),
 	})
 	if err != nil {
 		h.fail(w, r, err)

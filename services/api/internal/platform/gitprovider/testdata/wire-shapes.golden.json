@@ -125,6 +125,14 @@
       "identity_kinds": [
         "string"
       ],
+      "kinds": [
+        {
+          "access_grants": "bool",
+          "credential_model": "string",
+          "kind": "string",
+          "webhook_scope": "string"
+        }
+      ],
       "labels": "bool",
       "merge": "bool",
       "multiple_identities": "bool",
@@ -603,6 +611,14 @@
         "identity_deletion": "bool",
         "identity_kinds": [
           "string"
+        ],
+        "kinds": [
+          {
+            "access_grants": "bool",
+            "credential_model": "string",
+            "kind": "string",
+            "webhook_scope": "string"
+          }
         ],
         "labels": "bool",
         "merge": "bool",

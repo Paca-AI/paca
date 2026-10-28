@@ -205,6 +205,12 @@ export const PROJECT_KNOWN_PERMISSIONS = [
 		descriptionKey: "roles.permissions.gitMerge.description",
 		domain: "git",
 	},
+	{
+		key: "git.connections:manage",
+		labelKey: "roles.permissions.gitConnectionsManage.label",
+		descriptionKey: "roles.permissions.gitConnectionsManage.description",
+		domain: "git",
+	},
 	// conversations
 	{
 		key: "conversations:read",

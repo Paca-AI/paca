@@ -496,6 +496,12 @@ func New(cfg *config.Config) (*App, error) {
 		WithPublicURL(cfg.Server.PublicURL).
 		WithAgentNamer(gitAgentLookup{repo: agentRepo}).
 		WithAgentDirectory(gitAgentDirectory{repo: agentRepo})
+	// A deleted project takes its own Git connections with it.
+	projectServiceBase.WithDeleteHook(func(ctx context.Context, id uuid.UUID) {
+		if err := gitService.PurgeProjectConnections(ctx, id); err != nil {
+			log.Warn("git: purging a deleted project's connections", "project_id", id, "error", err)
+		}
+	})
 	// Routes webhook events to agent runs and keeps run status current.
 	gitRouter := gitsvc.NewRouter(gitService, gitAgentDirectory{repo: agentRepo}, gitRunStarter{agents: agentService}, gitsvc.RouterOptions{}, log)
 	gitHandler := handler.NewGitHandler(gitService).WithAgentLookup(gitAgentLookup{repo: agentRepo}).WithOps(gitService)

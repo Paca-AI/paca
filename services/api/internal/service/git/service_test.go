@@ -65,11 +65,14 @@ func (f *fakeStore) FindIdentity(_ context.Context, id uuid.UUID) (*gitdom.Ident
 	}
 	return nil, gitdom.ErrNotFound
 }
-func (f *fakeStore) FindSharedIdentity(context.Context, string, string) (*gitdom.Identity, error) {
-	if len(f.shared) == 0 {
-		return nil, gitdom.ErrNotFound
+func (f *fakeStore) ListProjectIdentities(_ context.Context, project uuid.UUID) ([]*gitdom.Identity, error) {
+	out := append([]*gitdom.Identity(nil), f.shared...)
+	for _, i := range f.byID {
+		if i.Scope == gitdom.ScopeProject && i.ProjectID != nil && *i.ProjectID == project {
+			out = append(out, i)
+		}
 	}
-	return f.shared[0], nil
+	return out, nil
 }
 func (f *fakeStore) FindAgentIdentity(_ context.Context, a uuid.UUID, _ string) (*gitdom.Identity, error) {
 	if i, ok := f.agentIDs[a]; ok {
@@ -78,13 +81,6 @@ func (f *fakeStore) FindAgentIdentity(_ context.Context, a uuid.UUID, _ string) 
 	return nil, gitdom.ErrNotFound
 }
 func (f *fakeStore) CreateIdentity(_ context.Context, i *gitdom.Identity) error {
-	if i.Scope == gitdom.ScopeShared {
-		for _, e := range f.shared {
-			if e.ProviderID == i.ProviderID && e.Host == i.Host {
-				return gitdom.ErrIdentityExists
-			}
-		}
-	}
 	i.ID = uuid.New()
 	if i.Scope == gitdom.ScopeShared {
 		f.shared = append(f.shared, i)
@@ -201,6 +197,67 @@ func (f *fakeStore) FindRepository(_ context.Context, id uuid.UUID) (*gitdom.Rep
 	}
 	return nil, gitdom.ErrNotFound
 }
+func (f *fakeStore) DeleteRepository(_ context.Context, project, id uuid.UUID) error {
+	r, ok := f.repos[id]
+	if !ok || r.ProjectID != project {
+		return gitdom.ErrNotFound
+	}
+	delete(f.repos, id)
+	return nil
+}
+func (f *fakeStore) ListIdentityRepositories(_ context.Context, id uuid.UUID) ([]*gitdom.Repository, error) {
+	var out []*gitdom.Repository
+	for _, r := range f.repos {
+		if r.IdentityID != nil && *r.IdentityID == id {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+func (f *fakeStore) ListProjectRepositories(_ context.Context, project uuid.UUID) ([]*gitdom.Repository, error) {
+	var out []*gitdom.Repository
+	for _, r := range f.repos {
+		if r.ProjectID == project {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+func (f *fakeStore) SetRepositoryIdentity(_ context.Context, id, identity uuid.UUID, ref json.RawMessage) error {
+	r, ok := f.repos[id]
+	if !ok {
+		return gitdom.ErrNotFound
+	}
+	r.IdentityID, r.ProviderRef, r.WebhookRef = &identity, ref, nil
+	return nil
+}
+func (f *fakeStore) CountRepositories(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]int, error) {
+	out := map[uuid.UUID]int{}
+	for _, r := range f.repos {
+		for _, id := range ids {
+			if r.IdentityID != nil && *r.IdentityID == id {
+				out[id]++
+			}
+		}
+	}
+	return out, nil
+}
+func (f *fakeStore) SetRepositoryWebhook(_ context.Context, id uuid.UUID, ref json.RawMessage) error {
+	r, ok := f.repos[id]
+	if !ok {
+		return gitdom.ErrNotFound
+	}
+	r.WebhookRef = ref
+	return nil
+}
+func (f *fakeStore) FindWebhookEndpointForIdentity(_ context.Context, id uuid.UUID) (*gitdom.WebhookEndpoint, error) {
+	for _, e := range f.endpoints {
+		if e.IdentityID != nil && *e.IdentityID == id {
+			return e, nil
+		}
+	}
+	return nil, gitdom.ErrNotFound
+}
 func (f *fakeStore) FindLinkedRepositories(_ context.Context, _, _, path string) ([]*gitdom.Repository, error) {
 	var out []*gitdom.Repository
 	for _, r := range f.repos {
@@ -258,6 +315,23 @@ type fakeProv struct {
 	mintEr         error
 	exp            time.Time
 	lastMint       gitprovider.MintRequest
+
+	ensured   []gitprovider.EnsureWebhookRequest
+	ensureErr error
+	removed   []gitprovider.RemoveWebhookRequest
+	describes int
+}
+
+func (p *fakeProv) EnsureWebhook(_ context.Context, r gitprovider.EnsureWebhookRequest) (gitprovider.WebhookRef, error) {
+	if p.ensureErr != nil {
+		return gitprovider.WebhookRef{}, p.ensureErr
+	}
+	p.ensured = append(p.ensured, r)
+	return gitprovider.WebhookRef{ID: "hook-1"}, nil
+}
+func (p *fakeProv) RemoveWebhook(_ context.Context, r gitprovider.RemoveWebhookRequest) error {
+	p.removed = append(p.removed, r)
+	return nil
 }
 
 func (p *fakeProv) BeginIdentitySetup(_ context.Context, r gitprovider.BeginSetupRequest) (gitprovider.SetupStep, error) {
@@ -302,6 +376,7 @@ func (f fakeProviders) Describe(context.Context, string) (gitprovider.Info, erro
 		return gitprovider.Info{}, f.err
 	}
 	if fp, ok := f.p.(*fakeProv); ok {
+		fp.describes++
 		return fp.info, nil
 	}
 	if fp, ok := f.p.(interface{ providerInfo() gitprovider.Info }); ok {
@@ -368,8 +443,14 @@ func TestLinkRepository_ProviderErrorsPropagate(t *testing.T) {
 		return gitprovider.ResolvedRepository{}, &gitprovider.Error{Code: gitprovider.CodeNotFound}
 	}
 	_, err := svc.LinkRepository(context.Background(), LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "x/y"})
-	if !gitprovider.IsCode(err, gitprovider.CodeNotFound) {
-		t.Fatalf("got %v", err)
+	if !errors.Is(err, gitdom.ErrNotVisible) {
+		t.Fatalf("a repository no connection sees (and no grant to offer): got %v", err)
+	}
+	pr.resolve = func(gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+		return gitprovider.ResolvedRepository{}, &gitprovider.Error{Code: gitprovider.CodeRateLimited}
+	}
+	if _, err := svc.LinkRepository(context.Background(), LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "x/y"}); !gitprovider.IsCode(err, gitprovider.CodeRateLimited) {
+		t.Fatalf("other provider errors still propagate: got %v", err)
 	}
 	down := New(st, fakeProviders{err: gitdom.ErrProviderUnavailable})
 	if _, err := down.LinkRepository(context.Background(), LinkInput{ProviderID: "p", PathOrURL: "x/y"}); !errors.Is(err, gitdom.ErrProviderUnavailable) {
@@ -546,16 +627,13 @@ func TestMintCredential_IdentityChoice(t *testing.T) {
 	if pr.lastMint.Target.Identity.ID != "shared-app" {
 		t.Fatalf("fallback: %+v", pr.lastMint.Target.Identity)
 	}
-	// A repository whose identity is gone falls back to the host's shared identity.
+	// A repository whose connection is gone has no credential: another
+	// connection of the host is not its own, so there is no fallback.
 	repo.IdentityID = nil
 	pr.mints = 0
 	svc2 := New(st, fakeProviders{p: pr})
-	if _, err := svc2.MintCredential(ctx, MintInput{RepositoryID: repo.ID, Access: gitprovider.AccessRead}); err != nil || pr.lastMint.Target.Identity.ID != "shared-app" {
-		t.Fatalf("shared fallback: %v %+v", err, pr.lastMint.Target.Identity)
-	}
-	st.shared, st.byRef = nil, map[string]*gitdom.Identity{}
-	if _, err := svc2.MintCredential(ctx, MintInput{RepositoryID: repo.ID, Access: gitprovider.AccessWrite}); !errors.Is(err, gitdom.ErrNoIdentity) {
-		t.Fatalf("no identity: %v", err)
+	if _, err := svc2.MintCredential(ctx, MintInput{RepositoryID: repo.ID, Access: gitprovider.AccessRead}); !errors.Is(err, gitdom.ErrNoIdentity) || pr.mints != 0 {
+		t.Fatalf("no fallback to another connection: %v mints=%d", err, pr.mints)
 	}
 }
 
