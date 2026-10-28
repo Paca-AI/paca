@@ -99,10 +99,11 @@ export function FolderCreateDialog({
 	});
 
 	const trimmedPath = path.trim();
-	const isValidPath = trimmedPath.startsWith("/");
+	const isValidPath = trimmedPath.startsWith(ENVIRONMENT_HOME_ROOT);
 
-	// isValidPath already blocks a relative path, so
-	// EnvironmentFolderPathInvalid mainly guards a stale check;
+	// isValidPath is the same root check the server now enforces (folders
+	// outside the mounted workspace vanish on the next Pod recreation and
+	// break every later attach), so EnvironmentFolderPathInvalid is rare;
 	// EnvironmentFolderPathTaken is the genuinely common case — the same
 	// path added twice.
 	const addErrorMessage = addMutation.isError

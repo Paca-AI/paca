@@ -1600,3 +1600,44 @@ func TestRestartEnvironment_SurvivesCallerContextCancellation(t *testing.T) {
 	require.NotNil(t, gotBackendRef, "the fresh backend_ref must still be persisted despite the caller's ctx cancellation")
 	assert.Equal(t, "container-new", *gotBackendRef)
 }
+
+// TestAddFolder_PathMustBeUnderWorkspaceRoot pins the guard against folder
+// paths outside the mounted workspace volume: mkdir happily creates them in
+// the container's writable layer, they disappear on the next Pod
+// recreation, and every later attach then fails with ACP "session/new:
+// Invalid params: invalid directory path".
+func TestAddFolder_PathMustBeUnderWorkspaceRoot(t *testing.T) {
+	env := &environmentdom.Environment{ID: uuid.New(), Status: environmentdom.StatusRunning}
+	repo := &mockRepo{
+		findVisibleEnvironmentInProject: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return env, nil
+		},
+	}
+	svc := New(repo, "", "")
+
+	cases := []struct {
+		name, path, want string
+		wantErr          bool
+	}{
+		{"root", environmentHomeRoot, environmentHomeRoot, false},
+		{"subfolder", environmentHomeRoot + "/api", environmentHomeRoot + "/api", false},
+		{"subfolder with trailing slash", environmentHomeRoot + "/api/", environmentHomeRoot + "/api", false},
+		{"outside the volume", "/home/paca-dev/workspaces", "", true},
+		{"sibling with the root as prefix", "/home/paca/workspaces-other", "", true},
+		{"traversal out of the root", environmentHomeRoot + "/../../etc", "", true},
+		{"relative", "workspaces/api", "", true},
+		{"empty", "", "", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			folder, err := svc.AddFolder(context.Background(), uuid.New(), env.ID, environmentdom.AddFolderInput{Path: tc.path})
+			if tc.wantErr {
+				assert.ErrorIs(t, err, environmentdom.ErrFolderPathInvalid)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, folder.Path)
+		})
+	}
+}
