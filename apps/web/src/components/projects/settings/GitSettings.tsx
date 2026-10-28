@@ -659,7 +659,9 @@ function RepositoryDescription({
 	return (
 		<div className="mt-1 flex flex-wrap items-start gap-2 text-xs">
 			{current ? (
-				<p className="whitespace-pre-line text-muted-foreground">{current}</p>
+				<p className="min-w-0 whitespace-pre-line break-words text-muted-foreground">
+					{current}
+				</p>
 			) : canWrite ? null : (
 				<p className="italic text-muted-foreground">
 					{t("project.git.repositories.noDescription")}
