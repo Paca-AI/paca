@@ -44,7 +44,10 @@
 				"noConnection": "Add a {{provider}} connection above before linking a repository.",
 				"connection": "Connection",
 				"anyConnection": "Any connection that can see it",
-				"connectionHelp": "Choose one when several connections can see the repository, for example two organizations."
+				"connectionHelp": "Choose one when several connections can see the repository, for example two organizations.",
+				"description": "Description (optional)",
+				"descriptionPlaceholder": "e.g. Web client of the product",
+				"descriptionHelp": "Tells agents what this repository is for, so they pick the right one. Up to 1000 characters."
 			},
 			"unlink": {
 				"button": "Unlink",
@@ -73,7 +76,8 @@
 				"noIdentity": "No connection is available for this platform yet. Add one under Connections.",
 				"alreadyLinked": "This repository is already linked to the project.",
 				"identityRequired": "Several connections can see this repository. Choose which one to use.",
-				"notVisible": "None of the project's connections can see this repository. Add a connection that has access to it (on GitLab, a token of that project or its group), then try again."
+				"notVisible": "None of the project's connections can see this repository. Add a connection that has access to it (on GitLab, a token of that project or its group), then try again.",
+				"descriptionTooLong": "The description is too long (1000 characters at most)."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -108,7 +112,13 @@
 			"repositories": {
 				"title": "Repositories",
 				"description": "Agents in this project can work on these repositories.",
-				"mention": "Mention in comments:"
+				"mention": "Mention in comments:",
+				"noDescription": "No description",
+				"addDescription": "Add a description",
+				"editDescription": "Edit description",
+				"saveDescription": "Save description",
+				"cancelDescription": "Cancel",
+				"descriptionLabel": "Repository description"
 			},
 			"automation": {
 				"title": "Automation",

@@ -44,7 +44,10 @@
 				"noConnection": "저장소를 연결하기 전에 위에서 {{provider}} 연결을 추가하세요.",
 				"connection": "연결",
 				"anyConnection": "저장소를 볼 수 있는 아무 연결",
-				"connectionHelp": "여러 연결이 저장소를 볼 수 있을 때(예: 두 조직) 하나를 선택하세요."
+				"connectionHelp": "여러 연결이 저장소를 볼 수 있을 때(예: 두 조직) 하나를 선택하세요.",
+				"description": "설명(선택)",
+				"descriptionPlaceholder": "예: 제품의 웹 클라이언트",
+				"descriptionHelp": "에이전트가 올바른 저장소를 고를 수 있도록 이 저장소의 용도를 알려 줍니다. 최대 1000자."
 			},
 			"unlink": {
 				"button": "연결 해제",
@@ -73,7 +76,8 @@
 				"noIdentity": "이 플랫폼에 사용할 수 있는 연결이 아직 없습니다. 연결 섹션에서 추가하세요.",
 				"alreadyLinked": "이 저장소는 이미 프로젝트에 연결되어 있습니다.",
 				"identityRequired": "여러 연결이 이 저장소를 볼 수 있습니다. 사용할 연결을 선택하세요.",
-				"notVisible": "이 프로젝트의 어떤 연결도 이 저장소를 볼 수 없습니다. 이 저장소에 접근할 수 있는 연결을 추가한 뒤(GitLab은 해당 프로젝트 또는 그룹의 토큰) 다시 시도하세요."
+				"notVisible": "이 프로젝트의 어떤 연결도 이 저장소를 볼 수 없습니다. 이 저장소에 접근할 수 있는 연결을 추가한 뒤(GitLab은 해당 프로젝트 또는 그룹의 토큰) 다시 시도하세요.",
+				"descriptionTooLong": "설명이 너무 깁니다(최대 1000자)."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -108,7 +112,13 @@
 			"repositories": {
 				"title": "저장소",
 				"description": "이 프로젝트의 에이전트는 이 저장소에서 작업할 수 있습니다.",
-				"mention": "댓글에서 멘션:"
+				"mention": "댓글에서 멘션:",
+				"noDescription": "설명 없음",
+				"addDescription": "설명 추가",
+				"editDescription": "설명 편집",
+				"saveDescription": "저장",
+				"cancelDescription": "취소",
+				"descriptionLabel": "저장소 설명"
 			},
 			"automation": {
 				"title": "자동화",
