@@ -42,3 +42,23 @@ var (
 	// provider lets a user grant it access to the owner's account.
 	ErrAccessNotGranted = errors.New("git: the identity has no access to this repository's owner")
 )
+
+// DetailedError is a sentinel above plus the provider's own explanation of why
+// (already redacted and capped). errors.Is and errors.As still see the
+// sentinel, so a status/code mapping is unchanged; Error() is the sentinel's
+// text. The explanation is untrusted text a client may show, never interpret.
+type DetailedError struct {
+	Err    error
+	Detail string
+}
+
+func (e *DetailedError) Error() string { return e.Err.Error() }
+func (e *DetailedError) Unwrap() error { return e.Err }
+
+// WithDetail returns err carrying detail, or err itself when there is none.
+func WithDetail(err error, detail string) error {
+	if detail == "" {
+		return err
+	}
+	return &DetailedError{Err: err, Detail: detail}
+}

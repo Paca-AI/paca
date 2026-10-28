@@ -99,6 +99,16 @@ func providerError(err error) error {
 	return apierr.New(apierr.CodeInternalError, "git provider error")
 }
 
+// withProviderMessage attaches the provider's message (redacted, capped) as
+// details.provider_message, for a client to show under the fixed text. The
+// code and text are unchanged, and nothing is attached when it said nothing.
+func withProviderMessage(e *apierr.Error, err error) *apierr.Error {
+	if msg := gitsvc.ProviderMessage(err); msg != "" {
+		e.Details = map[string]string{"provider_message": msg}
+	}
+	return e
+}
+
 // providerDetail is a provider's explanation, capped, for the cases where the
 // caller can act on it.
 func providerDetail(pe *gitprovider.Error) string {
@@ -114,6 +124,22 @@ func providerDetail(pe *gitprovider.Error) string {
 
 func (h *GitHandler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	presenter.Error(w, r, providerError(err))
+}
+
+// failWithProviderMessage is fail for the settings page. Unlike the agent-facing
+// operations (which keep provider text out of transcripts), a person
+// configuring a connection needs to know why the platform refused, so its
+// message rides along as details.provider_message.
+func (h *GitHandler) failWithProviderMessage(w http.ResponseWriter, r *http.Request, err error) {
+	apiErr := providerError(err)
+	var pe *gitprovider.Error
+	if errors.As(err, &pe) && (pe.Code == gitprovider.CodeNotFound || pe.Code == gitprovider.CodeForbidden || pe.Code == gitprovider.CodeConflict) {
+		var ae *apierr.Error
+		if errors.As(apiErr, &ae) {
+			apiErr = withProviderMessage(ae, err)
+		}
+	}
+	presenter.Error(w, r, apiErr)
 }
 
 // ListRepositories handles GET /projects/:projectId/git/repositories.
@@ -216,7 +242,7 @@ func (h *GitHandler) RegisterWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	repo, err := h.svc.RegisterWebhook(r.Context(), projectID, repoID)
 	if err != nil {
-		h.fail(w, r, err)
+		h.failWithProviderMessage(w, r, err)
 		return
 	}
 	presenter.OK(w, r, dto.GitRepositoryFromEntity(repo))
