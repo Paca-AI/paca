@@ -255,3 +255,59 @@ func TestRepoWebhook_ListShowsTheURLWhenRegistrationFailed(t *testing.T) {
 		t.Fatalf("retry: %+v %v", r, err)
 	}
 }
+
+func TestBeginAccessGrant_ExplicitConnectionMustBeOfTheRequestedProvider(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr := setupSvc(t)
+	pr.info = gitprovider.Info{ID: "p", Hosts: []string{"git.example"}, Capabilities: gitprovider.Capabilities{AccessGrants: true}}
+	project := uuid.New()
+	other := st.addIdentity("elsewhere", "other-app")
+	other.ProviderID = "another-provider"
+	_, err := svc.BeginAccessGrant(ctx, AccessInput{ProjectID: project, ProviderID: "p", IdentityID: &other.ID, ActorID: uuid.New()})
+	if !errors.Is(err, gitdom.ErrNoIdentity) {
+		t.Fatalf("a connection of another provider: %v", err)
+	}
+	otherHost := st.addIdentity("remote", "remote-app")
+	otherHost.Host = "git.other.example"
+	_, err = svc.BeginAccessGrant(ctx, AccessInput{ProjectID: project, ProviderID: "p", Host: "git.example", IdentityID: &otherHost.ID, ActorID: uuid.New()})
+	if !errors.Is(err, gitdom.ErrNoIdentity) {
+		t.Fatalf("a connection of another host: %v", err)
+	}
+}
+
+// Two connections may report the same provider id; linking binds the repository
+// to the connection that was offered and chosen, never to a lookup by that id.
+func TestLinkRepository_BindsTheChosenRowWhenProviderIDsCollide(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr := setup(t)
+	project := uuid.New()
+	st.addIdentity("first", "same-ref")
+	second := st.addProjectConnection(project, "second", "same-ref")
+	st.byRef["same-ref"] = st.shared[0] // a lookup by ref would find the first
+	pr.resolve = func(r gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+		return gitprovider.ResolvedRepository{
+			Repository: gitprovider.Repository{Ref: gitprovider.RepoRef{Host: "git.example", FullPath: "acme/web"}},
+			Identity:   gitprovider.IdentityRef{ID: "same-ref"},
+		}, nil
+	}
+	r, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "acme/web", IdentityID: &second.ID})
+	if err != nil || r.IdentityID == nil || *r.IdentityID != second.ID {
+		t.Fatalf("linked = %+v %v, want the chosen connection %v", r, err, second.ID)
+	}
+}
+
+func TestFinishIdentity_NeverMergesAnotherConnection(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr := setupSvc(t)
+	twoLegProvider(pr)
+	actor, project := uuid.New(), uuid.New()
+	st.addProjectConnection(uuid.New(), "someone-elses", "app-9") // same provider id, another project
+	in := shared(actor)
+	in.Scope, in.ProjectID = gitdom.ScopeProject, &project
+	if _, err := svc.BeginIdentitySetup(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CompleteIdentitySetup(ctx, actor, &project, "state-1", map[string]string{"code": "c"}); err == nil {
+		t.Fatal("a provider id that already names another project's connection must not be reused")
+	}
+}

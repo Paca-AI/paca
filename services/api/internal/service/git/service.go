@@ -118,6 +118,7 @@ func (s *Service) LinkRepository(ctx context.Context, in LinkInput) (*gitdom.Rep
 		return nil, err
 	}
 	var cands []gitprovider.IdentityRef
+	var offered []*gitdom.Identity // parallel to cands
 	for _, id := range all {
 		if id.ProviderID != in.ProviderID || (in.Host != "" && !strings.EqualFold(id.Host, in.Host)) {
 			continue
@@ -126,6 +127,7 @@ func (s *Service) LinkRepository(ctx context.Context, in LinkInput) (*gitdom.Rep
 			continue
 		}
 		cands = append(cands, identityRef(id))
+		offered = append(offered, id)
 	}
 	if len(cands) == 0 {
 		return nil, gitdom.ErrNoIdentity
@@ -142,20 +144,17 @@ func (s *Service) LinkRepository(ctx context.Context, in LinkInput) (*gitdom.Rep
 		}
 		return nil, err
 	}
-	// The plugin chooses which candidate saw the repository; it must be one we offered.
-	offered := false
-	for _, c := range cands {
+	// The plugin chooses which candidate saw the repository; it must be one we
+	// offered, and the row is the offered one (not a lookup by the provider's id).
+	var ident *gitdom.Identity
+	for i, c := range cands {
 		if c.ID == res.Identity.ID {
-			offered = true
+			ident = offered[i]
 			break
 		}
 	}
-	if !offered {
+	if ident == nil {
 		return nil, fmt.Errorf("git: provider resolved the repository with an identity that was not offered")
-	}
-	ident, err := s.store.FindIdentityByProviderRef(ctx, in.ProviderID, res.Identity.ID)
-	if err != nil {
-		return nil, err
 	}
 	ref := res.Repository.Ref
 	r := &gitdom.Repository{

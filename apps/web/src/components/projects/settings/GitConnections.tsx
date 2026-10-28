@@ -18,6 +18,7 @@ import {
 	type GitProvider,
 	gitConnectionsKey,
 	gitConnectionsQueryOptions,
+	projectGitSettingsPath,
 } from "@/lib/git-api";
 
 interface GitConnectionsProps {
@@ -113,6 +114,7 @@ export function GitConnections({ projectId, providers }: GitConnectionsProps) {
 					host={adding.hosts[0] ?? ""}
 					open
 					project={{ id: projectId, canProject, canWorkspace }}
+					returnPath={projectGitSettingsPath(projectId)}
 					onOpenChange={(open) => {
 						if (!open) setAdding(null);
 					}}

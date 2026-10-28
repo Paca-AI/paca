@@ -61,6 +61,10 @@ func (s *Service) BeginAccessGrant(ctx context.Context, in AccessInput) (*gitpro
 		ident, err = s.store.FindAgentIdentity(ctx, *in.AgentID, in.ProviderID)
 	case in.IdentityID != nil:
 		ident, err = s.visibleIdentity(ctx, in.ProjectID, *in.IdentityID)
+		// An explicit connection must be of the platform asked for, as the default path guarantees.
+		if err == nil && (ident.ProviderID != in.ProviderID || (strings.TrimSpace(in.Host) != "" && !strings.EqualFold(ident.Host, host))) {
+			err = gitdom.ErrNotFound
+		}
 	default:
 		ident, err = s.onlyConnection(ctx, in.ProjectID, in.ProviderID, host)
 	}

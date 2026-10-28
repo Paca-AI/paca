@@ -207,6 +207,12 @@ func sameProject(a, b *uuid.UUID) bool {
 // provider reports the same identity on every leg.
 func (s *Service) finishIdentity(ctx context.Context, sess *gitdom.SetupSession, ident gitprovider.Identity, actorID uuid.UUID) (*SetupCompletion, error) {
 	stored, err := s.store.FindIdentityByProviderRef(ctx, sess.ProviderID, ident.Ref.ID)
+	if err == nil && (stored.Scope != sess.Scope || !sameProject(stored.ProjectID, sess.ProjectID)) {
+		// IdentityRef.ID is unique per connection, so a match belongs to this
+		// setup. One that is not (another scope or project) means the provider
+		// reused an id: never merge two connections into one.
+		return nil, errors.New("git: the provider reported an identity that belongs to another connection")
+	}
 	if errors.Is(err, gitdom.ErrNotFound) {
 		host := ident.Host
 		if host == "" {
@@ -351,7 +357,8 @@ func (s *Service) ListAgentIdentities(ctx context.Context, agentID uuid.UUID) ([
 
 // DeleteIdentity forgets an identity: the provider drops its credentials, then
 // the record (and with it the webhook endpoint) goes. Repositories that used it
-// stay linked, falling back to the host's shared identity. An unavailable
+// lose their credential: they stay linked but cannot be used until they are
+// linked again through another connection. An unavailable
 // provider plugin does not block cleanup.
 func (s *Service) DeleteIdentity(ctx context.Context, id uuid.UUID) error {
 	ident, err := s.store.FindIdentity(ctx, id)
