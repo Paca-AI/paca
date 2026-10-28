@@ -1008,12 +1008,12 @@ func TestPrompt_CancelledSendsSessionCancel(t *testing.T) {
 }
 
 // A session/cancel lands asynchronously as far as goose is concerned: it
-// answers 202 and unwinds the run on its own, which took ~2s even with a
-// tool call in flight (measured against goose 1.50.1). A message the user
-// types immediately after pressing Stop can therefore still arrive while the
-// previous run is unwinding, so Prompt cancels and sends that message once
-// more instead of failing the turn it was just given.
-func TestPrompt_RetriesOnceAfterActiveRunRejection(t *testing.T) {
+// answers 202 and unwinds the run on its own, which took 1.8-3.8s with a tool
+// call in flight (measured against goose 1.50.1). A message the user types
+// immediately after pressing Stop can therefore still arrive while the
+// previous run is unwinding, so Prompt cancels and re-sends that message
+// instead of failing the turn it was just given.
+func TestPrompt_RetriesAfterActiveRunRejection(t *testing.T) {
 	const sessionID = "s"
 	srv := newACPMockServer(t)
 	srv.onInitialize = initializeOK
@@ -1069,6 +1069,60 @@ func TestPrompt_RetriesOnceAfterActiveRunRejection(t *testing.T) {
 	}
 	if cancels != 1 {
 		t.Errorf("session/cancel sent %d times, want 1 before the retry", cancels)
+	}
+}
+
+// The retry budget is bounded, and a run that never clears must still fail
+// this turn with goose's own error rather than waiting forever: three
+// attempts (initial + maxRunActiveRetries), a cancel before each retry and
+// one more as Prompt gives up — a turn must never leave its run active.
+func TestPrompt_GivesUpAfterTheRetryBudget(t *testing.T) {
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	var mu sync.Mutex
+	prompts, cancels := 0, 0
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		mu.Lock()
+		defer mu.Unlock()
+		switch req.Method {
+		case "session/cancel":
+			cancels++
+		case "session/prompt":
+			prompts++
+			s.enqueueSession(sessionID, fmt.Sprintf(
+				`{"jsonrpc":"2.0","id":%d,"error":{"code":-32602,"message":"Invalid params","data":"session already has active run %s; use _goose/unstable/session/steer"}}`,
+				req.ID, "`run_58072af2-5693-44d0-b5f4-b2420dd531ad`"))
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	oldDelay := runActiveRetryDelay
+	runActiveRetryDelay = 10 * time.Millisecond
+	defer func() { runActiveRetryDelay = oldDelay }()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	if _, _, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("second message")}, 0, nil); err == nil {
+		t.Fatal("Prompt: want goose's active-run error once the retry budget is spent, got nil")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if want := maxRunActiveRetries + 1; prompts != want {
+		t.Errorf("session/prompt sent %d times, want %d (initial + %d retries)", prompts, want, maxRunActiveRetries)
+	}
+	if want := maxRunActiveRetries + 1; cancels != want {
+		t.Errorf("session/cancel sent %d times, want %d (one before each retry, one on giving up)", cancels, want)
 	}
 }
 

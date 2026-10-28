@@ -465,7 +465,8 @@ func mcpServerToGooseExtension(s MCPServerConfig) (ext GooseExtension, ok bool) 
 // message in the same chat used to end that conversation failed. A run that
 // is still unwinding when this turn's prompt is sent (the cancel above is
 // fire-and-forget, and a tool call in flight can hold the run briefly) is
-// handled by one cancel-and-retry of that prompt.
+// handled by cancelling and re-sending that prompt a bounded number of
+// times — see runActiveRetryDelay.
 func (c *Client) Prompt(
 	ctx context.Context,
 	sessionID string,
@@ -501,8 +502,10 @@ func (c *Client) Prompt(
 		// The previous turn's run was still active when this prompt landed.
 		// Cancel it, give goose a moment to clear it, then send this turn's
 		// message again — the alternative is failing the user's message for
-		// a run nobody is waiting on any more.
-		if attempt > 0 || !isRunActiveError(err) || c.cancelRun(sessionID) != nil {
+		// a run nobody is waiting on any more. A rejected prompt costs
+		// nothing (goose answers -32602 immediately, no model call), so the
+		// budget is spent on waiting, not on retries.
+		if attempt >= maxRunActiveRetries || !isRunActiveError(err) || c.cancelRun(sessionID) != nil {
 			return "", nil, err
 		}
 		select {
@@ -514,10 +517,16 @@ func (c *Client) Prompt(
 }
 
 // runActiveRetryDelay is how long Prompt waits, after cancelling a run that
-// was still active when its prompt landed, before sending that prompt again.
-// Measured against goose 1.50.1: a cancelled run (tool call in flight
-// included) stopped accepting-blocking a session in under two seconds.
+// was still active when its prompt landed, before sending that prompt again;
+// maxRunActiveRetries is how many such waits a single turn may spend.
+// Measured against goose 1.50.1 with a `sleep 60` tool call in flight:
+// session/cancel cleared the run such that the next prompt was accepted
+// 1.8–3.8s later (the probe polled every 2s, so that is the interval, not an
+// upper bound), hence two retries rather than one — a single 2s wait still
+// loses the message for a run on the slow side of that range.
 var runActiveRetryDelay = 2 * time.Second
+
+const maxRunActiveRetries = 2
 
 // cancelTimeout bounds cancelRun's own request — the caller's context is
 // usually already cancelled on the paths that reach it.
