@@ -364,6 +364,17 @@ func (s *Service) trackChangeRequest(ctx context.Context, repo *gitdom.Repositor
 		if ev.Action == "merged" {
 			now := s.now().UTC()
 			cr.MergedAt = &now
+		} else if cr.State == "" {
+			// An edit, a push or a ready-for-review does not change the
+			// lifecycle: keep the cached state (a request never seen is open).
+			cr.State = "open"
+			cur, err := s.store.FindChangeRequest(ctx, repo.ID, sub.Number)
+			switch {
+			case err == nil:
+				cr.State, cr.MergedAt = cur.State, cur.MergedAt
+			case !errors.Is(err, gitdom.ErrNotFound):
+				return err
+			}
 		}
 	case gitprovider.EventReview:
 		// A review says nothing about the request's lifecycle or draft state:
@@ -410,14 +421,18 @@ func (s *Service) saveChangeRequest(ctx context.Context, repo *gitdom.Repository
 	return saved, nil
 }
 
+// crState is the lifecycle state an event sets, or "" when the event leaves
+// it unchanged (edited, synchronized, ready, ...).
 func crState(ev *gitprovider.Event) string {
 	switch ev.Action {
+	case "opened", "created", "reopened":
+		return "open"
 	case "closed":
 		return "closed"
 	case "merged":
 		return "merged"
 	}
-	return "open"
+	return ""
 }
 
 // MintInput asks for a credential to use on a linked repository.
