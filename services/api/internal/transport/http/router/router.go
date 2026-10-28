@@ -506,6 +506,7 @@ func New(deps Deps) http.Handler {
 							// routes above: mounting this router at "/{repositoryId}" would
 							// replace a Delete registered on the same pattern.
 							r.With(write).Delete("/", deps.Git.UnlinkRepository)
+							r.With(write).Patch("/", deps.Git.UpdateRepository)
 							r.With(read).Get("/change-requests/{number}", deps.Git.GetChangeRequest)
 							r.With(read).Get("/change-requests/{number}/files", deps.Git.ListChangedFiles)
 							r.With(read).Get("/change-requests/{number}/diff", deps.Git.GetDiff)

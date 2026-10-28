@@ -48,6 +48,9 @@ type Store interface {
 	FindRepository(ctx context.Context, id uuid.UUID) (*Repository, error)
 	ListProjectRepositories(ctx context.Context, projectID uuid.UUID) ([]*Repository, error)
 	DeleteRepository(ctx context.Context, projectID, id uuid.UUID) error
+	// SetRepositoryDescription replaces a repository's description; ErrNotFound
+	// when it is not linked to the project.
+	SetRepositoryDescription(ctx context.Context, projectID, id uuid.UUID, description string) error
 	// ListIdentityRepositories returns every repository (of any project) linked
 	// through the connection.
 	ListIdentityRepositories(ctx context.Context, identityID uuid.UUID) ([]*Repository, error)

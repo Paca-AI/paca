@@ -21,16 +21,18 @@ import (
 )
 
 type fakeGitSvc struct {
-	checkErr  error // answered by CheckWebhookEndpoint
-	link      gitsvc.LinkInput
-	repos     []*gitdom.Repository
-	err       error
-	unlinked  [2]uuid.UUID
-	reconnect gitsvc.ReconnectInput
-	mint      gitsvc.MintInput
-	cred      gitprovider.Credential
-	key       string
-	delivery  gitsvc.Delivery
+	checkErr    error // answered by CheckWebhookEndpoint
+	link        gitsvc.LinkInput
+	repos       []*gitdom.Repository
+	err         error
+	unlinked    [2]uuid.UUID
+	updated     [2]uuid.UUID
+	updatedDesc string
+	reconnect   gitsvc.ReconnectInput
+	mint        gitsvc.MintInput
+	cred        gitprovider.Credential
+	key         string
+	delivery    gitsvc.Delivery
 
 	providers  []gitprovider.Info
 	identities []*gitdom.Identity
@@ -130,6 +132,13 @@ func (f *fakeGitSvc) UnlinkRepository(_ context.Context, p, r uuid.UUID) error {
 	f.unlinked = [2]uuid.UUID{p, r}
 	return f.err
 }
+func (f *fakeGitSvc) UpdateRepository(_ context.Context, p, r uuid.UUID, d string) (*gitdom.Repository, error) {
+	f.updated, f.updatedDesc = [2]uuid.UUID{p, r}, d
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &gitdom.Repository{ID: r, ProjectID: p, FullPath: "a/b", Description: d}, nil
+}
 func (f *fakeGitSvc) MintCredential(_ context.Context, in gitsvc.MintInput) (gitprovider.Credential, error) {
 	f.mint = in
 	return f.cred, f.err
@@ -171,6 +180,7 @@ func serveGit(t *testing.T, f *fakeGitSvc, method, target, body string, actor *u
 	r.Get("/projects/{projectId}/git/repositories", h.ListRepositories)
 	r.Post("/projects/{projectId}/git/repositories", h.LinkRepository)
 	r.Delete("/projects/{projectId}/git/repositories/{repositoryId}", h.UnlinkRepository)
+	r.Patch("/projects/{projectId}/git/repositories/{repositoryId}", h.UpdateRepository)
 	r.Post("/projects/{projectId}/git/repositories/{repositoryId}/credential/read", h.ReadCredential)
 	r.Post("/projects/{projectId}/git/repositories/{repositoryId}/credential/write", h.WriteCredential)
 	r.Post("/git/webhooks/{endpointKey}", h.ReceiveWebhook)
@@ -220,6 +230,23 @@ func TestGitHandler_LinkListUnlink(t *testing.T) {
 		t.Fatalf("unlink: %d %v", rec.Code, f.unlinked)
 	}
 	if rec := serveGit(t, f, "DELETE", "/projects/"+project.String()+"/git/repositories/nope", "", &actor); rec.Code != 400 {
+		t.Fatalf("bad id: %d", rec.Code)
+	}
+}
+
+func TestGitHandler_UpdateRepositoryDescription(t *testing.T) {
+	actor, project, repo := uuid.New(), uuid.New(), uuid.New()
+	f := &fakeGitSvc{}
+	target := "/projects/" + project.String() + "/git/repositories/" + repo.String()
+	rec := serveGit(t, f, "PATCH", target, `{"description":"Web client"}`, &actor)
+	if rec.Code != 200 || f.updated != [2]uuid.UUID{project, repo} || f.updatedDesc != "Web client" || !strings.Contains(rec.Body.String(), `"description":"Web client"`) {
+		t.Fatalf("update: %d %v %q %s", rec.Code, f.updated, f.updatedDesc, rec.Body)
+	}
+	f.err = gitdom.ErrDescriptionTooLong
+	if rec := serveGit(t, f, "PATCH", target, `{"description":"x"}`, &actor); rec.Code != 400 || !strings.Contains(rec.Body.String(), "GIT_DESCRIPTION_TOO_LONG") {
+		t.Fatalf("too long: %d %s", rec.Code, rec.Body)
+	}
+	if rec := serveGit(t, f, "PATCH", "/projects/"+project.String()+"/git/repositories/nope", `{}`, &actor); rec.Code != 400 {
 		t.Fatalf("bad id: %d", rec.Code)
 	}
 }

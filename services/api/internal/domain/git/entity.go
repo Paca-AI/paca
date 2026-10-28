@@ -54,9 +54,12 @@ type Repository struct {
 	FullPath      string
 	DefaultBranch string
 	CloneURL      string // https, never credentials
-	IdentityID    *uuid.UUID
-	ProviderRef   json.RawMessage // RepoRef.ProviderRef, opaque
-	WebhookRef    json.RawMessage
+	// Description tells people and agents what the repository is for, so the
+	// right one is picked in a project with several. User-written, untrusted.
+	Description string
+	IdentityID  *uuid.UUID
+	ProviderRef json.RawMessage // RepoRef.ProviderRef, opaque
+	WebhookRef  json.RawMessage
 	// IdentityHandle is what users @mention to reach the bot that serves this
 	// repository. Read for listings only; it is not stored on the repository.
 	IdentityHandle string
