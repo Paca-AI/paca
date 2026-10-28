@@ -311,3 +311,41 @@ func TestFinishIdentity_NeverMergesAnotherConnection(t *testing.T) {
 		t.Fatal("a provider id that already names another project's connection must not be reused")
 	}
 }
+
+func TestFinishIdentity_NeverMergesAcrossHostsOrAgents(t *testing.T) {
+	ctx := context.Background()
+	actor := uuid.New()
+
+	// Same scope and project, another host.
+	svc, st, pr := setupSvc(t)
+	twoLegProvider(pr)
+	existing := st.addIdentity("bot", "app-9")
+	existing.Host = "git.other.example"
+	if _, err := svc.BeginIdentitySetup(ctx, shared(actor)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CompleteIdentitySetup(ctx, actor, nil, "state-1", map[string]string{"code": "c"}); !errors.Is(err, errIdentityCollision) {
+		t.Fatalf("another host's connection with the same id: %v", err)
+	}
+
+	// Another agent's identity with the same id: the second agent must not be
+	// mapped onto the first one's credential.
+	svc, st, pr = setupSvc(t)
+	twoLegProvider(pr)
+	first, second := uuid.New(), uuid.New()
+	own := st.addIdentity("bot", "app-9")
+	own.Scope = gitdom.ScopeAgent
+	st.shared = nil
+	st.agentIDs[first] = own
+	in := shared(actor)
+	in.Scope, in.AgentID, in.AgentName = gitdom.ScopeAgent, &second, "Second"
+	if _, err := svc.BeginIdentitySetup(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CompleteIdentitySetup(ctx, actor, nil, "state-1", map[string]string{"code": "c"}); !errors.Is(err, errIdentityCollision) {
+		t.Fatalf("another agent's identity with the same id: %v", err)
+	}
+	if _, mapped := st.agentIDs[second]; mapped {
+		t.Fatal("the second agent must not be mapped onto the first agent's identity")
+	}
+}

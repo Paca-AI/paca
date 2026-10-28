@@ -202,16 +202,43 @@ func sameProject(a, b *uuid.UUID) bool {
 	return *a == *b
 }
 
+var errIdentityCollision = errors.New("git: the provider reported an identity that belongs to another connection")
+
+// sameConnection reports (as an error when not) whether a stored identity is the
+// one this setup session is creating: same scope, project and host, and for an
+// agent the identity already mapped to that agent.
+func (s *Service) sameConnection(ctx context.Context, stored *gitdom.Identity, sess *gitdom.SetupSession, ident gitprovider.Identity) error {
+	host := ident.Host
+	if host == "" {
+		host = sess.Host
+	}
+	if stored.Scope != sess.Scope || !sameProject(stored.ProjectID, sess.ProjectID) || !strings.EqualFold(stored.Host, host) {
+		return errIdentityCollision
+	}
+	if sess.Scope == gitdom.ScopeAgent && sess.AgentID != nil {
+		mapped, err := s.store.FindAgentIdentity(ctx, *sess.AgentID, sess.ProviderID)
+		if errors.Is(err, gitdom.ErrNotFound) || (err == nil && mapped.ID != stored.ID) {
+			return errIdentityCollision
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // finishIdentity records the identity the provider reports, binds the pending
 // webhook endpoint to it and, for an agent, maps it. It is idempotent: the
 // provider reports the same identity on every leg.
 func (s *Service) finishIdentity(ctx context.Context, sess *gitdom.SetupSession, ident gitprovider.Identity, actorID uuid.UUID) (*SetupCompletion, error) {
 	stored, err := s.store.FindIdentityByProviderRef(ctx, sess.ProviderID, ident.Ref.ID)
-	if err == nil && (stored.Scope != sess.Scope || !sameProject(stored.ProjectID, sess.ProjectID)) {
+	if err == nil {
 		// IdentityRef.ID is unique per connection, so a match belongs to this
-		// setup. One that is not (another scope or project) means the provider
-		// reused an id: never merge two connections into one.
-		return nil, errors.New("git: the provider reported an identity that belongs to another connection")
+		// setup. One that does not (another scope, project, host or agent) means
+		// the provider reused an id: never merge two connections into one.
+		if cerr := s.sameConnection(ctx, stored, sess, ident); cerr != nil {
+			return nil, cerr
+		}
 	}
 	if errors.Is(err, gitdom.ErrNotFound) {
 		host := ident.Host
