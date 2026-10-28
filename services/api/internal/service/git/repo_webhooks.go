@@ -115,8 +115,8 @@ func (s *Service) RegisterWebhook(ctx context.Context, projectID, repositoryID u
 	return repo, nil
 }
 
-// unregisterWebhook removes the webhook of a repository that was just unlinked,
-// unless another project still links it through the same connection (they share
+// unregisterWebhook removes the webhook of a repository that was just unlinked
+// (or is about to be rebound to another connection), unless another project still links it through the same connection (they share
 // one webhook). Best effort: a webhook that stays only sends events nobody
 // routes.
 func (s *Service) unregisterWebhook(ctx context.Context, r *gitdom.Repository) {
@@ -128,7 +128,7 @@ func (s *Service) unregisterWebhook(ctx context.Context, r *gitdom.Repository) {
 		return
 	}
 	for _, o := range others {
-		if o.IdentityID != nil && *o.IdentityID == *r.IdentityID {
+		if o.ID != r.ID && o.IdentityID != nil && *o.IdentityID == *r.IdentityID {
 			return
 		}
 	}

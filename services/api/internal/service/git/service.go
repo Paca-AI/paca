@@ -209,6 +209,13 @@ func (s *Service) ReconnectRepository(ctx context.Context, in ReconnectInput) (*
 	if !strings.EqualFold(res.Repository.Ref.FullPath, repo.FullPath) {
 		return nil, gitdom.ErrNotFound
 	}
+	// A repository that still has a connection may be re-pointed at another: the
+	// webhook registered through the old one must not be left behind to deliver
+	// every event a second time. (A repository whose connection was deleted has
+	// none left to remove: deleting the connection removed it.)
+	if repo.IdentityID != nil && *repo.IdentityID != ident.ID {
+		s.unregisterWebhook(ctx, repo)
+	}
 	if err := s.store.SetRepositoryIdentity(ctx, repo.ID, ident.ID, res.Repository.Ref.ProviderRef); err != nil {
 		return nil, err
 	}

@@ -497,3 +497,51 @@ func TestListConnections_CountsTheRepositoriesUsingEach(t *testing.T) {
 		t.Fatalf("counts = %v, want 2 and 0 (every project's repositories count)", count)
 	}
 }
+
+// Re-pointing a repository that still has a connection must not leave the old
+// connection's webhook behind.
+func TestReconnectRepository_RemovesThePreviousConnectionsWebhook(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr := setup(t)
+	svc.WithPublicURL("https://paca.example.com")
+	pr.info = gitprovider.Info{ID: "p", Capabilities: gitprovider.Capabilities{
+		IdentityKinds: []gitprovider.IdentityKind{gitprovider.IdentityToken}, WebhookScope: gitprovider.WebhookRepo, WebhookManagement: true,
+	}}
+	project := uuid.New()
+	a := st.addProjectConnection(project, "a", "tok-a")
+	a.Kind = "token"
+	b := st.addProjectConnection(project, "b", "tok-b")
+	b.Kind = "token"
+	st.endpoints["ka"] = &gitdom.WebhookEndpoint{Key: "ka", ProviderID: "p", IdentityID: &a.ID}
+	st.endpoints["kb"] = &gitdom.WebhookEndpoint{Key: "kb", ProviderID: "p", IdentityID: &b.ID}
+	pr.resolve = func(r gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+		return gitprovider.ResolvedRepository{
+			Repository: gitprovider.Repository{Ref: gitprovider.RepoRef{Host: "git.example", FullPath: "acme/web"}},
+			Identity:   gitprovider.IdentityRef{ID: r.Candidates[0].ID},
+		}, nil
+	}
+	repo, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "acme/web", IdentityID: &a.ID})
+	if err != nil || !hasWebhook(repo) {
+		t.Fatalf("link: %+v %v", repo, err)
+	}
+
+	// The same connection again: nothing to remove.
+	if _, err := svc.ReconnectRepository(ctx, ReconnectInput{ProjectID: project, RepositoryID: repo.ID, IdentityID: &a.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if len(pr.removed) != 0 {
+		t.Fatalf("the same connection keeps its webhook: %+v", pr.removed)
+	}
+
+	// Another connection: the first one's webhook goes, the new one's is registered.
+	got, err := svc.ReconnectRepository(ctx, ReconnectInput{ProjectID: project, RepositoryID: repo.ID, IdentityID: &b.ID})
+	if err != nil || got.IdentityID == nil || *got.IdentityID != b.ID {
+		t.Fatalf("reconnect: %+v %v", got, err)
+	}
+	if len(pr.removed) != 1 || pr.removed[0].Target.Identity.ID != "tok-a" {
+		t.Fatalf("the old connection's webhook should be removed through the old connection: %+v", pr.removed)
+	}
+	if len(pr.ensured) < 2 || pr.ensured[len(pr.ensured)-1].URL != "https://paca.example.com"+WebhookPathPrefix+"kb" || !hasWebhook(got) {
+		t.Fatalf("the new connection's webhook should be registered: %+v", pr.ensured)
+	}
+}
