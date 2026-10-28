@@ -6,6 +6,11 @@
 -- tokens, installation ids beyond the opaque provider_ref) lives in the
 -- provider plugin's own schema, never here.
 
+-- NOTE: connections (project scope, several per host) were folded into this
+-- still-unreleased migration. A database that already applied the earlier
+-- version of 000073 must be reset: the IF NOT EXISTS guards leave its old
+-- unique index and CHECK constraints in place.
+
 -- A connection to a platform host: the credential (a GitHub App, an access token)
 -- Paca reaches it with. 'shared' ones serve every project, 'project' ones only
 -- project_id, 'agent' ones one agent; any number per host. The secret behind it

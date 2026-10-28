@@ -205,6 +205,15 @@ func (f *fakeStore) DeleteRepository(_ context.Context, project, id uuid.UUID) e
 	delete(f.repos, id)
 	return nil
 }
+func (f *fakeStore) ListIdentityRepositories(_ context.Context, id uuid.UUID) ([]*gitdom.Repository, error) {
+	var out []*gitdom.Repository
+	for _, r := range f.repos {
+		if r.IdentityID != nil && *r.IdentityID == id {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
 func (f *fakeStore) ListProjectRepositories(_ context.Context, project uuid.UUID) ([]*gitdom.Repository, error) {
 	var out []*gitdom.Repository
 	for _, r := range f.repos {
@@ -291,6 +300,7 @@ type fakeProv struct {
 	ensured   []gitprovider.EnsureWebhookRequest
 	ensureErr error
 	removed   []gitprovider.RemoveWebhookRequest
+	describes int
 }
 
 func (p *fakeProv) EnsureWebhook(_ context.Context, r gitprovider.EnsureWebhookRequest) (gitprovider.WebhookRef, error) {
@@ -347,6 +357,7 @@ func (f fakeProviders) Describe(context.Context, string) (gitprovider.Info, erro
 		return gitprovider.Info{}, f.err
 	}
 	if fp, ok := f.p.(*fakeProv); ok {
+		fp.describes++
 		return fp.info, nil
 	}
 	if fp, ok := f.p.(interface{ providerInfo() gitprovider.Info }); ok {

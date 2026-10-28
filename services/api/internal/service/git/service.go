@@ -478,17 +478,22 @@ func (s *Service) ListRepositories(ctx context.Context, projectID uuid.UUID) ([]
 	if err != nil {
 		return nil, err
 	}
+	// Asked once per connection: finding out costs a call to the provider.
+	needs := map[uuid.UUID]webhookNeed{}
 	for _, r := range repos {
 		if hasWebhook(r) || r.IdentityID == nil {
 			continue
 		}
-		ident, err := s.store.FindIdentity(ctx, *r.IdentityID)
-		if err != nil {
-			continue
+		n, ok := needs[*r.IdentityID]
+		if !ok {
+			if ident, err := s.store.FindIdentity(ctx, *r.IdentityID); err == nil {
+				if n.need, _ = s.needsRepoWebhook(ctx, ident); n.need {
+					n.url = s.webhookURL(ctx, ident)
+				}
+			}
+			needs[*r.IdentityID] = n
 		}
-		if need, _ := s.needsRepoWebhook(ctx, ident); need {
-			r.WebhookURL = s.webhookURL(ctx, ident)
-		}
+		r.WebhookURL = n.url
 	}
 	return repos, nil
 }

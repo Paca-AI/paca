@@ -45,39 +45,52 @@ func (s *Service) webhookURL(ctx context.Context, ident *gitdom.Identity) string
 	return s.publicURL + WebhookPathPrefix + ep.Key
 }
 
-// registerWebhook registers the repository's webhook when its connection needs
-// one and the provider can manage it. It reports whether a webhook is in place.
-func (s *Service) registerWebhook(ctx context.Context, r *gitdom.Repository, ident *gitdom.Identity) bool {
+// ensureWebhook registers the repository's webhook with the provider and
+// records it. It returns nil when the connection needs none (nothing to do) or
+// when one is in place, and an error saying why not otherwise.
+func (s *Service) ensureWebhook(ctx context.Context, r *gitdom.Repository, ident *gitdom.Identity) error {
 	need, info := s.needsRepoWebhook(ctx, ident)
-	if !need || !info.Capabilities.WebhookManagement {
-		return false
+	if !need {
+		return nil
+	}
+	if !info.Capabilities.WebhookManagement {
+		return gitdom.ErrUnsupported
 	}
 	url := s.webhookURL(ctx, ident)
 	if url == "" {
-		return false
+		return &gitprovider.Error{Code: gitprovider.CodeUnsupported, Message: "this instance has no public URL, so the platform cannot reach it"}
 	}
 	prov, err := s.providers.Provider(ctx, r.ProviderID)
 	if err != nil {
-		return false
+		return err
 	}
 	ref, err := prov.EnsureWebhook(ctx, gitprovider.EnsureWebhookRequest{
 		Target: gitprovider.Target{Identity: identityRef(ident), Repo: repoRef(r)}, URL: url,
 	})
 	s.audit(ctx, r, nil, "webhook.register", "", err)
 	if err != nil {
-		return false
+		return err
 	}
 	raw, err := json.Marshal(ref)
-	if err != nil || s.store.SetRepositoryWebhook(ctx, r.ID, raw) != nil {
-		return false
+	if err != nil {
+		return err
+	}
+	if err := s.store.SetRepositoryWebhook(ctx, r.ID, raw); err != nil {
+		return err
 	}
 	r.WebhookRef = raw
-	return true
+	return nil
+}
+
+// registerWebhook is ensureWebhook for linking: failing is not failing to link,
+// the repository is listed with the URL to register by hand.
+func (s *Service) registerWebhook(ctx context.Context, r *gitdom.Repository, ident *gitdom.Identity) {
+	_ = s.ensureWebhook(ctx, r, ident)
 }
 
 // RegisterWebhook retries registering a linked repository's webhook, for when
 // the first attempt failed (a token without the right to manage webhooks) and
-// the user has since fixed it. It reports whether a webhook is now in place.
+// the user has since fixed it. The error says why it still cannot be.
 func (s *Service) RegisterWebhook(ctx context.Context, projectID, repositoryID uuid.UUID) (*gitdom.Repository, error) {
 	repo, err := s.store.FindRepository(ctx, repositoryID)
 	if err != nil {
@@ -93,12 +106,11 @@ func (s *Service) RegisterWebhook(ctx context.Context, projectID, repositoryID u
 	if err != nil {
 		return nil, gitdom.ErrNoIdentity
 	}
-	need, info := s.needsRepoWebhook(ctx, ident)
-	if !need || !info.Capabilities.WebhookManagement {
+	if need, _ := s.needsRepoWebhook(ctx, ident); !need {
 		return nil, gitdom.ErrUnsupported
 	}
-	if !s.registerWebhook(ctx, repo, ident) {
-		return nil, &gitprovider.Error{Code: gitprovider.CodeForbidden, Message: "the webhook could not be registered"}
+	if err := s.ensureWebhook(ctx, repo, ident); err != nil {
+		return nil, err
 	}
 	return repo, nil
 }
@@ -136,4 +148,34 @@ func (s *Service) unregisterWebhook(ctx context.Context, r *gitdom.Repository) {
 		Target: gitprovider.Target{Identity: identityRef(ident), Repo: repoRef(r)}, Webhook: ref,
 	})
 	s.audit(ctx, r, nil, "webhook.remove", "", err)
+}
+
+// removeConnectionWebhooks removes the webhooks registered through a connection
+// that is about to be forgotten: afterwards nothing could, as removing one takes
+// the connection's credential. Best effort.
+func (s *Service) removeConnectionWebhooks(ctx context.Context, ident *gitdom.Identity) {
+	repos, err := s.store.ListIdentityRepositories(ctx, ident.ID)
+	if err != nil {
+		return
+	}
+	prov, err := s.providers.Provider(ctx, ident.ProviderID)
+	if err != nil {
+		return
+	}
+	for _, r := range repos {
+		var ref gitprovider.WebhookRef
+		if !hasWebhook(r) || json.Unmarshal(r.WebhookRef, &ref) != nil || ref.ID == "" {
+			continue
+		}
+		err := prov.RemoveWebhook(ctx, gitprovider.RemoveWebhookRequest{
+			Target: gitprovider.Target{Identity: identityRef(ident), Repo: repoRef(r)}, Webhook: ref,
+		})
+		s.audit(ctx, r, nil, "webhook.remove", "", err)
+	}
+}
+
+// webhookNeed is what ListRepositories learns once per connection.
+type webhookNeed struct {
+	need bool
+	url  string
 }

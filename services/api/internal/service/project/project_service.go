@@ -114,6 +114,9 @@ type Service struct {
 	activity        activitysvc.Recorder
 	// roles is told which roles' attachments changed (see roleGrantsChanged).
 	roles RoleInvalidator
+	// onDelete runs after a project is deleted, to release what other services
+	// hold for it (Git connections). Best effort: the project is gone either way.
+	onDelete func(ctx context.Context, id uuid.UUID)
 }
 
 // RoleInvalidator drops cached role policies; *iam.Authorizer implements it.
@@ -125,6 +128,12 @@ type RoleInvalidator interface {
 // role attachments change (a member or agent added to a project).
 func (s *Service) WithRoleInvalidator(inv RoleInvalidator) *Service {
 	s.roles = inv
+	return s
+}
+
+// WithDeleteHook sets a callback run after a project is deleted.
+func (s *Service) WithDeleteHook(fn func(ctx context.Context, id uuid.UUID)) *Service {
+	s.onDelete = fn
 	return s
 }
 
@@ -422,6 +431,9 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
+	}
+	if s.onDelete != nil {
+		s.onDelete(ctx, id)
 	}
 	// Every member's sockets in the project must leave its rooms.
 	s.accessRevoked()

@@ -48,6 +48,9 @@ type Store interface {
 	FindRepository(ctx context.Context, id uuid.UUID) (*Repository, error)
 	ListProjectRepositories(ctx context.Context, projectID uuid.UUID) ([]*Repository, error)
 	DeleteRepository(ctx context.Context, projectID, id uuid.UUID) error
+	// ListIdentityRepositories returns every repository (of any project) linked
+	// through the connection.
+	ListIdentityRepositories(ctx context.Context, identityID uuid.UUID) ([]*Repository, error)
 	// SetRepositoryWebhook records (or, with an empty ref, clears) the webhook
 	// registered on the platform for a repository.
 	SetRepositoryWebhook(ctx context.Context, id uuid.UUID, ref json.RawMessage) error

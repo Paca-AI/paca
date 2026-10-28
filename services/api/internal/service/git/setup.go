@@ -347,6 +347,26 @@ func (s *Service) DeleteProjectConnection(ctx context.Context, projectID, id uui
 	return s.DeleteIdentity(ctx, id)
 }
 
+// PurgeProjectConnections forgets the connections that belong to a project that
+// is being deleted, so their credentials and repository webhooks do not outlive
+// it. Every connection is tried; the first error is returned.
+func (s *Service) PurgeProjectConnections(ctx context.Context, projectID uuid.UUID) error {
+	ids, err := s.store.ListProjectIdentities(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	var first error
+	for _, id := range ids {
+		if id.Scope != gitdom.ScopeProject || id.ProjectID == nil || *id.ProjectID != projectID {
+			continue
+		}
+		if err := s.DeleteIdentity(ctx, id.ID); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
 // visibleIdentity returns the connection with the given id when the project can use it.
 func (s *Service) visibleIdentity(ctx context.Context, projectID, id uuid.UUID) (*gitdom.Identity, error) {
 	ident, err := s.store.FindIdentity(ctx, id)
@@ -392,6 +412,7 @@ func (s *Service) DeleteIdentity(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
+	s.removeConnectionWebhooks(ctx, ident)
 	prov, err := s.providers.Provider(ctx, ident.ProviderID)
 	switch {
 	case err == nil:

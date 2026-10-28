@@ -404,6 +404,11 @@ func (s *GitRepository) DeleteRepository(ctx context.Context, projectID, id uuid
 	return nil
 }
 
+// ListIdentityRepositories lists the repositories linked through a connection.
+func (s *GitRepository) ListIdentityRepositories(ctx context.Context, identityID uuid.UUID) ([]*gitdom.Repository, error) {
+	return s.selectRepos(ctx, `identity_id = $1 ORDER BY created_at`, identityID.String())
+}
+
 // SetRepositoryWebhook records the webhook registered for a repository.
 func (s *GitRepository) SetRepositoryWebhook(ctx context.Context, id uuid.UUID, ref json.RawMessage) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE git_repositories SET webhook_ref = $2::jsonb, updated_at = NOW() WHERE id = $1`,

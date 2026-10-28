@@ -349,3 +349,93 @@ func TestFinishIdentity_NeverMergesAcrossHostsOrAgents(t *testing.T) {
 		t.Fatal("the second agent must not be mapped onto the first agent's identity")
 	}
 }
+
+func tokenWebhookSetup(t *testing.T) (*Service, *fakeStore, *fakeProv, *gitdom.Identity) {
+	t.Helper()
+	svc, st, pr := setup(t)
+	svc.WithPublicURL("https://paca.example.com")
+	pr.info = gitprovider.Info{ID: "p", Capabilities: gitprovider.Capabilities{
+		IdentityKinds: []gitprovider.IdentityKind{gitprovider.IdentityToken}, WebhookScope: gitprovider.WebhookRepo, WebhookManagement: true,
+	}}
+	tok := st.addIdentity("pat", "tok")
+	tok.Kind = "token"
+	st.endpoints["key1"] = &gitdom.WebhookEndpoint{Key: "key1", ProviderID: "p", IdentityID: &tok.ID}
+	pr.resolve = func(gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+		return gitprovider.ResolvedRepository{
+			Repository: gitprovider.Repository{Ref: gitprovider.RepoRef{Host: "git.example", FullPath: "acme/web"}},
+			Identity:   gitprovider.IdentityRef{ID: "tok"},
+		}, nil
+	}
+	return svc, st, pr, tok
+}
+
+func TestListRepositories_AsksTheProviderOncePerConnection(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr, tok := tokenWebhookSetup(t)
+	pr.ensureErr = &gitprovider.Error{Code: gitprovider.CodeForbidden}
+	project := uuid.New()
+	for _, path := range []string{"acme/a", "acme/b", "acme/c"} {
+		st.repos[uuid.New()] = &gitdom.Repository{ID: uuid.New(), ProjectID: project, ProviderID: "p", Host: "git.example", FullPath: path, IdentityID: &tok.ID}
+	}
+	pr.describes = 0
+	if _, err := svc.ListRepositories(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	if pr.describes != 1 {
+		t.Fatalf("describe calls = %d, want 1 for three repositories of one connection", pr.describes)
+	}
+}
+
+func TestRegisterWebhook_SaysWhyItCannotBeRegistered(t *testing.T) {
+	ctx := context.Background()
+	svc, _, pr, _ := tokenWebhookSetup(t)
+	svc.WithPublicURL("")
+	project := uuid.New()
+	r, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "acme/web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RegisterWebhook(ctx, project, r.ID); !gitprovider.IsCode(err, gitprovider.CodeUnsupported) {
+		t.Fatalf("no public URL: %v", err)
+	}
+	svc.WithPublicURL("https://paca.example.com")
+	pr.ensureErr = &gitprovider.Error{Code: gitprovider.CodeTransient}
+	if _, err := svc.RegisterWebhook(ctx, project, r.ID); !gitprovider.IsCode(err, gitprovider.CodeTransient) {
+		t.Fatalf("a provider outage must not read as a permissions problem: %v", err)
+	}
+}
+
+func TestDeleteIdentity_RemovesItsRepositoryWebhooks(t *testing.T) {
+	ctx := context.Background()
+	svc, _, pr, tok := tokenWebhookSetup(t)
+	if _, err := svc.LinkRepository(ctx, LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "acme/web"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteIdentity(ctx, tok.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(pr.removed) != 1 {
+		t.Fatalf("webhooks removed = %d, want 1", len(pr.removed))
+	}
+}
+
+func TestPurgeProjectConnections_OnlyTheProjectsOwn(t *testing.T) {
+	ctx := context.Background()
+	svc, st, _ := setup(t)
+	project := uuid.New()
+	workspace := st.addIdentity("workspace", "ws")
+	own := st.addProjectConnection(project, "own", "own-ref")
+	other := st.addProjectConnection(uuid.New(), "other", "other-ref")
+	if err := svc.PurgeProjectConnections(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st.byID[own.ID]; ok {
+		t.Fatal("the project's own connection should be gone")
+	}
+	if _, ok := st.byID[workspace.ID]; !ok {
+		t.Fatal("a workspace connection is not the project's to purge")
+	}
+	if _, ok := st.byID[other.ID]; !ok {
+		t.Fatal("another project's connection must stay")
+	}
+}
