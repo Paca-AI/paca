@@ -515,9 +515,11 @@ func (m *Manager) recreateEnvironmentIfMissingEnv(ctx context.Context, backendRe
 // container's own OS env, which is fixed at ContainerCreate time, so a
 // container created (or last recreated) while one conversation's trigger
 // fields were in scope has no way to pick up a later conversation whose
-// trigger fields differ. Unlike GOOSE_PROVIDER/GOOSE_MODEL/the LLM API key
-// (frozen forever to whichever agent's conversation first attached — see
-// recreateEnvironmentIfMissingEnv's doc comment), ensureEnvironmentInfraEnv
+// trigger fields differ. Unlike GOOSE_PROVIDER (frozen forever to whichever
+// agent's conversation first attached — see
+// recreateEnvironmentIfMissingEnv's doc comment; GOOSE_MODEL, OPENAI_HOST
+// and the model key var DO follow a same-provider agent, see
+// infraEnvKeysFor), ensureEnvironmentInfraEnv
 // keeps all of these in sync on every StartEnvironment call instead of
 // baking them in once and never again — for any of these four that means a
 // recreate each time a conversation's trigger fields differ from what the
@@ -552,20 +554,27 @@ var pacaInfraEnvKeys = []string{
 	"GOOSE_PATH_ROOT",
 }
 
-// infraEnvKeysFor is pacaInfraEnvKeys plus GOOSE_MODEL when cfg targets the
-// same GOOSE_PROVIDER the container already has baked in. GOOSE_PROVIDER
-// stays frozen to whichever agent attached first (see
-// recreateEnvironmentIfMissingEnv), but the model is per-agent config the
-// user edits after the fact (e.g. a provider_cli agent's cli_model) — left
-// frozen too, an edit never reaches a static environment, so a bad model
-// can't be fixed and a wrong one silently keeps working. Gated on a
-// matching provider because a model id from a different provider's agent
-// is meaningless to the provider the container is frozen to.
+// infraEnvKeysFor is pacaInfraEnvKeys plus the LLM keys that follow the
+// attaching agent: GOOSE_MODEL, OPENAI_HOST and the agent's own model key
+// var (cfg.LLMKeyEnvVar). GOOSE_PROVIDER stays frozen to whichever agent
+// attached first (see recreateEnvironmentIfMissingEnv), and these three are
+// gated on a matching provider because a model id or base URL from a
+// different provider's agent is meaningless to the provider the container
+// is frozen to. Under that gate they must be reconciled, not frozen: the
+// model is per-agent config a user edits after the fact, the base URL
+// follows the provider, and a rotated or replaced API key otherwise never
+// reaches the container — which is exactly how a static environment ends up
+// failing every attach with "Authentication required" against a credential
+// the agent row no longer holds.
 func infraEnvKeysFor(cfg sandbox.EnvironmentConfig, existing map[string]string) []string {
 	if cfg.Env["GOOSE_PROVIDER"] == "" || cfg.Env["GOOSE_PROVIDER"] != existing["GOOSE_PROVIDER"] {
 		return pacaInfraEnvKeys
 	}
-	return append(append([]string(nil), pacaInfraEnvKeys...), "GOOSE_MODEL")
+	keys := append(append([]string(nil), pacaInfraEnvKeys...), "GOOSE_MODEL", "OPENAI_HOST")
+	if cfg.LLMKeyEnvVar != "" {
+		keys = append(keys, cfg.LLMKeyEnvVar)
+	}
+	return keys
 }
 
 // ensureEnvironmentInfraEnv keeps pacaInfraEnvKeys in sync with this

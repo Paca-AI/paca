@@ -823,3 +823,103 @@ func deploymentEnvMap(t *testing.T, m *Manager, name string) map[string]string {
 	}
 	return out
 }
+
+// envMapOf reads backendRef's Deployment container env into a map.
+func envMapOf(t *testing.T, m *Manager, name string) map[string]string {
+	t.Helper()
+	got, err := m.clientset.AppsV1().Deployments(m.namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	out := map[string]string{}
+	for _, ev := range got.Spec.Template.Spec.Containers[0].Env {
+		out[ev.Name] = ev.Value
+	}
+	return out
+}
+
+// TestEnsureEnvironmentInfraEnv_RefreshesSameProviderLLMKeys pins the fix
+// for a static environment that fails every attach with "Authentication
+// required": the Pod keeps whatever model, key and base URL it was created
+// with while the agent row has moved on, so the next start must reconcile
+// all three — a rotated key is the case that actually breaks the turn.
+func TestEnsureEnvironmentInfraEnv_RefreshesSameProviderLLMKeys(t *testing.T) {
+	const name = "paca-env-env5"
+	existing := []corev1.EnvVar{
+		{Name: "GOOSE_PROVIDER", Value: "openai"},
+		{Name: "GOOSE_MODEL", Value: "old-model"},
+		{Name: "OPENAI_API_KEY", Value: "sk-revoked"},
+		{Name: "OPENAI_HOST", Value: "https://gateway.example"},
+		{Name: "GITHUB_TOKEN", Value: "gh-keep"},
+	}
+	m := managerWithDeployment("paca", deploymentFixtureWithEnv(name, existing))
+
+	cfg := sandbox.EnvironmentConfig{
+		Env: map[string]string{
+			"GOOSE_PROVIDER": "openai",
+			"GOOSE_MODEL":    "new-model",
+			"OPENAI_API_KEY": "sk-fresh",
+			"OPENAI_HOST":    "https://ollama.com",
+			"PACA_API_KEY":   "paca-key",
+			"GITHUB_TOKEN":   "gh-keep",
+		},
+		LLMKeyEnvVar: "OPENAI_API_KEY",
+	}
+	if err := m.ensureEnvironmentInfraEnv(context.Background(), name, cfg); err != nil {
+		t.Fatalf("ensureEnvironmentInfraEnv: %v", err)
+	}
+
+	got := envMapOf(t, m, name)
+	for k, want := range cfg.Env {
+		if got[k] != want {
+			t.Errorf("deployment env[%q] = %q, want %q", k, got[k], want)
+		}
+	}
+	if got["GITHUB_TOKEN"] != "gh-keep" {
+		t.Errorf("deployment env[GITHUB_TOKEN] = %q, want the user env var left alone", got["GITHUB_TOKEN"])
+	}
+}
+
+// TestEnsureEnvironmentInfraEnv_LeavesLLMKeysWhenProviderDiffers is the
+// other half of the gate: a model id, key var and base URL belonging to a
+// different provider than the one the Pod is frozen to are meaningless
+// there, so they must not be applied — only the PACA_* keys reconcile.
+func TestEnsureEnvironmentInfraEnv_LeavesLLMKeysWhenProviderDiffers(t *testing.T) {
+	const name = "paca-env-env6"
+	existing := []corev1.EnvVar{
+		{Name: "GOOSE_PROVIDER", Value: "openai"},
+		{Name: "GOOSE_MODEL", Value: "frozen-model"},
+		{Name: "OPENAI_API_KEY", Value: "sk-frozen"},
+		{Name: "OPENAI_HOST", Value: "https://ollama.com"},
+	}
+	m := managerWithDeployment("paca", deploymentFixtureWithEnv(name, existing))
+
+	cfg := sandbox.EnvironmentConfig{
+		Env: map[string]string{
+			"GOOSE_PROVIDER":    "anthropic",
+			"GOOSE_MODEL":       "claude-sonnet-5",
+			"ANTHROPIC_API_KEY": "sk-ant",
+			"PACA_API_KEY":      "paca-key",
+		},
+		LLMKeyEnvVar: "ANTHROPIC_API_KEY",
+	}
+	if err := m.ensureEnvironmentInfraEnv(context.Background(), name, cfg); err != nil {
+		t.Fatalf("ensureEnvironmentInfraEnv: %v", err)
+	}
+
+	got := envMapOf(t, m, name)
+	for k, want := range map[string]string{
+		"GOOSE_PROVIDER": "openai",
+		"GOOSE_MODEL":    "frozen-model",
+		"OPENAI_API_KEY": "sk-frozen",
+		"OPENAI_HOST":    "https://ollama.com",
+		"PACA_API_KEY":   "paca-key",
+	} {
+		if got[k] != want {
+			t.Errorf("deployment env[%q] = %q, want %q", k, got[k], want)
+		}
+	}
+	if _, ok := got["ANTHROPIC_API_KEY"]; ok {
+		t.Errorf("deployment env[ANTHROPIC_API_KEY] = %q, want it absent (another provider's key var)", got["ANTHROPIC_API_KEY"])
+	}
+}
