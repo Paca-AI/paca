@@ -20,6 +20,7 @@ import {
 	type GitProvider,
 	type GitRepository,
 	getApiErrorCodeSafe,
+	gitConnectionsKey,
 	gitConnectionsQueryOptions,
 	gitErrorKey,
 	gitProjectProvidersQueryOptions,
@@ -29,6 +30,7 @@ import {
 	gitSettingsQueryOptions,
 	kindNeedsAccessGrant,
 	linkGitRepository,
+	reconnectGitRepository,
 	registerGitWebhook,
 	rememberGitFlow,
 	repoOwnerOf,
@@ -484,6 +486,18 @@ function Repositories({
 									) : null}
 								</p>
 							</div>
+							{!r.identity_id ? (
+								<ReconnectNotice
+									projectId={projectId}
+									repository={r}
+									canWrite={canWrite}
+									options={connections.filter(
+										(c) =>
+											c.provider_id === r.provider_id &&
+											c.host.toLowerCase() === r.host.toLowerCase(),
+									)}
+								/>
+							) : null}
 							{r.webhook_url ? (
 								<WebhookNotice
 									projectId={projectId}
@@ -530,6 +544,93 @@ function Repositories({
 			)}
 			{form}
 		</Section>
+	);
+}
+
+/**
+ * A repository whose connection was deleted: it stays linked but has no
+ * credential, so nothing can use it. Offers to point it at another connection
+ * that can see it, the project's only one at once or the user's choice among
+ * several.
+ */
+function ReconnectNotice({
+	projectId,
+	repository,
+	canWrite,
+	options,
+}: {
+	projectId: string;
+	repository: GitRepository;
+	canWrite: boolean;
+	options: GitIdentity[];
+}) {
+	const { t } = useTranslation("projects");
+	const queryClient = useQueryClient();
+	const [choice, setChoice] = useState("");
+	const [errorKey, setErrorKey] = useState<string | null>(null);
+	const chosen = options.some((c) => c.id === choice) ? choice : "";
+	const reconnect = useMutation({
+		mutationFn: () =>
+			reconnectGitRepository(projectId, repository.id, chosen || undefined),
+		onSuccess: () => {
+			setErrorKey(null);
+			void queryClient.invalidateQueries({
+				queryKey: gitRepositoriesKey(projectId),
+			});
+			void queryClient.invalidateQueries({
+				queryKey: gitConnectionsKey(projectId),
+			});
+		},
+		onError: (err: unknown) => setErrorKey(gitErrorKey(err)),
+	});
+	return (
+		<div
+			role="status"
+			className="flex basis-full flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-3 text-sm"
+		>
+			<p className="font-medium">{t("project.git.reconnect.title")}</p>
+			<p className="text-muted-foreground">
+				{options.length === 0
+					? t("project.git.reconnect.noConnection")
+					: t("project.git.reconnect.description")}
+			</p>
+			{canWrite && options.length > 1 ? (
+				<select
+					aria-label={t("project.git.link.connection")}
+					className="h-9 max-w-xs rounded-md border border-input bg-background px-3 text-sm"
+					value={chosen}
+					onChange={(e) => setChoice(e.target.value)}
+				>
+					<option value="">{t("project.git.link.anyConnection")}</option>
+					{options.map((c) => (
+						<option key={c.id} value={c.id}>
+							{c.display_name || c.handle}
+						</option>
+					))}
+				</select>
+			) : null}
+			{errorKey ? (
+				<p role="alert" className="text-destructive">
+					{t(`project.git.errors.${errorKey}` as never)}
+				</p>
+			) : null}
+			{canWrite && options.length > 0 ? (
+				<div>
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						disabled={reconnect.isPending}
+						onClick={() => reconnect.mutate()}
+					>
+						{reconnect.isPending ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : null}
+						{t("project.git.reconnect.button")}
+					</Button>
+				</div>
+			) : null}
+		</div>
 	);
 }
 

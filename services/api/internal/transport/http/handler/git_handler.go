@@ -39,6 +39,7 @@ type GitService interface {
 	BeginIdentitySetup(ctx context.Context, in gitsvc.SetupInput) (*gitprovider.SetupStep, error)
 	CompleteIdentitySetup(ctx context.Context, actorID uuid.UUID, projectID *uuid.UUID, state string, params map[string]string) (*gitsvc.SetupCompletion, error)
 	DeleteIdentity(ctx context.Context, id uuid.UUID) error
+	ReconnectRepository(ctx context.Context, in gitsvc.ReconnectInput) (*gitdom.Repository, error)
 	RegisterWebhook(ctx context.Context, projectID, repositoryID uuid.UUID) (*gitdom.Repository, error)
 	ListConnections(ctx context.Context, projectID uuid.UUID) ([]*gitdom.Identity, error)
 	DeleteProjectConnection(ctx context.Context, projectID, id uuid.UUID) error
@@ -177,6 +178,29 @@ func (h *GitHandler) UnlinkRepository(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	presenter.NoContent(w)
+}
+
+// ReconnectRepository handles POST /projects/:projectId/git/repositories/:repositoryId/reconnect:
+// point a repository whose connection was deleted at another connection.
+func (h *GitHandler) ReconnectRepository(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := gitProjectID(w, r)
+	if !ok {
+		return
+	}
+	repoID, ok := gitRepositoryID(w, r)
+	if !ok {
+		return
+	}
+	var req dto.ReconnectGitRepositoryRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+	repo, err := h.svc.ReconnectRepository(r.Context(), gitsvc.ReconnectInput{ProjectID: projectID, RepositoryID: repoID, IdentityID: req.IdentityID})
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.GitRepositoryFromEntity(repo))
 }
 
 // RegisterWebhook handles POST /projects/:projectId/git/repositories/:repositoryId/webhook:

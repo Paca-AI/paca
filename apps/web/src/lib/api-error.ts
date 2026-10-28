@@ -41,6 +41,7 @@ export const ApiErrorCode = {
 	GitIdentityExists: "GIT_IDENTITY_EXISTS",
 	GitIdentityRequired: "GIT_IDENTITY_REQUIRED",
 	GitAccessNotGranted: "GIT_ACCESS_NOT_GRANTED",
+	GitRepositoryNotVisible: "GIT_REPOSITORY_NOT_VISIBLE",
 	GitNoIdentity: "GIT_NO_IDENTITY",
 	GitSetupInvalid: "GIT_SETUP_INVALID",
 	GitPublicURLRequired: "GIT_PUBLIC_URL_REQUIRED",

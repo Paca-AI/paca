@@ -136,6 +136,45 @@ describe("GitConnections", () => {
 		);
 	});
 
+	it("warns which repositories lose their credential before removing a connection", async () => {
+		const user = userEvent.setup();
+		connections = [{ ...shared, repository_count: 3 }, own];
+		h.get.mockImplementation(async (url: string) => {
+			if (url.endsWith("/git/connections"))
+				return { data: { data: connections } };
+			if (url.endsWith("/git/repositories"))
+				return {
+					data: {
+						data: [
+							{ id: "r1", full_path: "acme/web", identity_id: "w1" },
+							{ id: "r2", full_path: "acme/api", identity_id: "p-1" },
+						],
+					},
+				};
+			throw new Error(`unexpected GET ${url}`);
+		});
+		renderConnections();
+		const row = (await screen.findByText("Paca")).closest("li");
+		if (!row) throw new Error("row not found");
+		await user.click(within(row).getByRole("button", { name: "Remove" }));
+		const note = await screen.findByRole("note");
+		expect(note).toHaveTextContent("Repositories that use it (3):");
+		expect(note).toHaveTextContent("acme/web");
+		expect(note).not.toHaveTextContent("acme/api"); // another connection's
+		expect(note).toHaveTextContent("Plus 2 in other projects.");
+		expect(note).toHaveTextContent(/Reconnect each one/);
+	});
+
+	it("shows no warning for a connection nothing uses", async () => {
+		const user = userEvent.setup();
+		renderConnections();
+		const row = (await screen.findByText("CI bot")).closest("li");
+		if (!row) throw new Error("row not found");
+		await user.click(within(row).getByRole("button", { name: "Remove" }));
+		await screen.findByRole("button", { name: "Remove connection" });
+		expect(screen.queryByRole("note")).toBeNull();
+	});
+
 	it("removes a shared connection through the workspace route", async () => {
 		const user = userEvent.setup();
 		h.del.mockResolvedValue({});

@@ -25,6 +25,11 @@ interface DeleteGitIdentityDialogProps {
 	onOpenChange: (open: boolean) => void;
 	/** Removes the identity; defaults to the workspace-level removal. */
 	remove?: () => Promise<void>;
+	/**
+	 * Repositories that use the connection: this project's by name, and how many
+	 * more (in other projects) there are. They stay linked but stop working.
+	 */
+	usage?: { names: string[]; others: number };
 	/** Query cache entry to refresh afterwards. */
 	invalidateKey?: readonly unknown[];
 }
@@ -34,6 +39,7 @@ export function DeleteGitIdentityDialog({
 	open,
 	onOpenChange,
 	remove,
+	usage,
 	invalidateKey = gitQueriesKey,
 }: DeleteGitIdentityDialogProps) {
 	const { t } = useTranslation("admin");
@@ -72,6 +78,36 @@ export function DeleteGitIdentityDialog({
 						})}
 					</DialogDescription>
 				</DialogHeader>
+
+				{usage && usage.names.length + usage.others > 0 ? (
+					<div
+						role="note"
+						className="flex flex-col gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2.5 text-sm"
+					>
+						<p className="font-medium">
+							{t("git.delete.usage.title", {
+								count: usage.names.length + usage.others,
+							})}
+						</p>
+						{usage.names.length > 0 ? (
+							<ul className="list-inside list-disc text-muted-foreground">
+								{usage.names.map((n) => (
+									<li key={n} className="break-all">
+										{n}
+									</li>
+								))}
+							</ul>
+						) : null}
+						{usage.others > 0 ? (
+							<p className="text-muted-foreground">
+								{t("git.delete.usage.others", { count: usage.others })}
+							</p>
+						) : null}
+						<p className="text-muted-foreground">
+							{t("git.delete.usage.consequence")}
+						</p>
+					</div>
+				) : null}
 
 				{error ? (
 					<div

@@ -683,8 +683,13 @@
 		"delete": {
 			"button": "Retirer",
 			"title": "Supprimer cette connexion ?",
-			"description": "Les dépôts liés via {{name}} sur {{host}} cessent de fonctionner tant que vous ne les liez pas à nouveau via une autre connexion. L'application ou le jeton n'est pas supprimé sur la plateforme ; supprimez-le là-bas si vous n'en avez plus besoin.",
-			"confirm": "Supprimer la connexion"
+			"description": "Les dépôts liés via {{name}} sur {{host}} cessent de fonctionner tant que vous ne les reconnectez pas via une autre connexion. L'application ou le jeton n'est pas supprimé sur la plateforme ; supprimez-le là-bas si vous n'en avez plus besoin.",
+			"confirm": "Supprimer la connexion",
+			"usage": {
+				"title": "Dépôts qui l'utilisent ({{count}}) :",
+				"others": "Plus {{count}} dans d'autres projets.",
+				"consequence": "Ils restent liés mais n'ont plus d'identifiants : les agents ne peuvent pas les utiliser. Reconnectez ensuite chacun à une autre connexion."
+			}
 		},
 		"callback": {
 			"working": "Finalisation de la configuration…",

@@ -174,12 +174,13 @@ func TestLinkRepository_NotFoundOnAGrantPlatformAsksForAccess(t *testing.T) {
 	if _, err := svc.LinkRepository(ctx, LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "acme/web"}); !gitprovider.IsCode(err, gitprovider.CodeTransient) {
 		t.Errorf("transient: %v", err)
 	}
-	// A platform without per-owner grants has nothing to offer.
+	// A platform without per-owner grants has nothing to offer: the connections
+	// simply do not reach the repository.
 	pr.info.Capabilities.AccessGrants = false
 	pr.resolve = func(gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
 		return gitprovider.ResolvedRepository{}, &gitprovider.Error{Code: gitprovider.CodeNotFound}
 	}
-	if _, err := svc.LinkRepository(ctx, LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "acme/web"}); !gitprovider.IsCode(err, gitprovider.CodeNotFound) {
+	if _, err := svc.LinkRepository(ctx, LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "acme/web"}); !errors.Is(err, gitdom.ErrNotVisible) {
 		t.Errorf("no grants: %v", err)
 	}
 }

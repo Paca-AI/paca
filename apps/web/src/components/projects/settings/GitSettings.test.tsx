@@ -239,6 +239,69 @@ describe("GitSettings", () => {
 		);
 	});
 
+	it("offers to reconnect a repository whose connection was deleted", async () => {
+		const user = userEvent.setup();
+		repos = [{ ...repo, identity_id: null }];
+		h.post.mockImplementation(async () => {
+			repos = [repo];
+			return { data: { data: repo } };
+		});
+		renderPanel();
+		expect(
+			await screen.findByText("This repository has no connection"),
+		).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Reconnect" }));
+		await waitFor(() =>
+			expect(h.post).toHaveBeenCalledWith(
+				`/projects/${PROJECT}/git/repositories/r1/reconnect`,
+				{},
+			),
+		);
+		await waitFor(() =>
+			expect(
+				screen.queryByText("This repository has no connection"),
+			).toBeNull(),
+		);
+	});
+
+	it("explains when no connection can see the repository", async () => {
+		const user = userEvent.setup();
+		repos = [{ ...repo, identity_id: null }];
+		h.post.mockImplementation(() => apiFail("GIT_REPOSITORY_NOT_VISIBLE"));
+		renderPanel();
+		await user.click(await screen.findByRole("button", { name: "Reconnect" }));
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			/None of the project's connections can see this repository/,
+		);
+	});
+
+	it("lets the user choose the connection to reconnect through, and asks to add one when there is none", async () => {
+		const user = userEvent.setup();
+		repos = [{ ...repo, identity_id: null }];
+		connections = [
+			connection,
+			{ ...connection, id: "i2", display_name: "Second org", handle: "second" },
+		];
+		h.post.mockResolvedValue({ data: { data: repo } });
+		const { unmount } = renderPanel();
+		await user.selectOptions(await screen.findByLabelText("Connection"), "i2");
+		await user.click(screen.getByRole("button", { name: "Reconnect" }));
+		await waitFor(() =>
+			expect(h.post).toHaveBeenCalledWith(
+				`/projects/${PROJECT}/git/repositories/r1/reconnect`,
+				{ identity_id: "i2" },
+			),
+		);
+		unmount();
+
+		connections = [];
+		renderPanel();
+		expect(
+			await screen.findByText(/Add a connection that can see it first/i),
+		).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Reconnect" })).toBeNull();
+	});
+
 	it("says when Paca could not register a webhook, and retries", async () => {
 		const user = userEvent.setup();
 		repos = [

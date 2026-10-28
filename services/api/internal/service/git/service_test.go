@@ -223,6 +223,25 @@ func (f *fakeStore) ListProjectRepositories(_ context.Context, project uuid.UUID
 	}
 	return out, nil
 }
+func (f *fakeStore) SetRepositoryIdentity(_ context.Context, id, identity uuid.UUID, ref json.RawMessage) error {
+	r, ok := f.repos[id]
+	if !ok {
+		return gitdom.ErrNotFound
+	}
+	r.IdentityID, r.ProviderRef, r.WebhookRef = &identity, ref, nil
+	return nil
+}
+func (f *fakeStore) CountRepositories(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]int, error) {
+	out := map[uuid.UUID]int{}
+	for _, r := range f.repos {
+		for _, id := range ids {
+			if r.IdentityID != nil && *r.IdentityID == id {
+				out[id]++
+			}
+		}
+	}
+	return out, nil
+}
 func (f *fakeStore) SetRepositoryWebhook(_ context.Context, id uuid.UUID, ref json.RawMessage) error {
 	r, ok := f.repos[id]
 	if !ok {
@@ -424,8 +443,14 @@ func TestLinkRepository_ProviderErrorsPropagate(t *testing.T) {
 		return gitprovider.ResolvedRepository{}, &gitprovider.Error{Code: gitprovider.CodeNotFound}
 	}
 	_, err := svc.LinkRepository(context.Background(), LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "x/y"})
-	if !gitprovider.IsCode(err, gitprovider.CodeNotFound) {
-		t.Fatalf("got %v", err)
+	if !errors.Is(err, gitdom.ErrNotVisible) {
+		t.Fatalf("a repository no connection sees (and no grant to offer): got %v", err)
+	}
+	pr.resolve = func(gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+		return gitprovider.ResolvedRepository{}, &gitprovider.Error{Code: gitprovider.CodeRateLimited}
+	}
+	if _, err := svc.LinkRepository(context.Background(), LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "x/y"}); !gitprovider.IsCode(err, gitprovider.CodeRateLimited) {
+		t.Fatalf("other provider errors still propagate: got %v", err)
 	}
 	down := New(st, fakeProviders{err: gitdom.ErrProviderUnavailable})
 	if _, err := down.LinkRepository(context.Background(), LinkInput{ProviderID: "p", PathOrURL: "x/y"}); !errors.Is(err, gitdom.ErrProviderUnavailable) {

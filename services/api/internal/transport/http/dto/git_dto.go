@@ -21,6 +21,12 @@ type LinkGitRepositoryRequest struct {
 	IdentityID *uuid.UUID `json:"identity_id"`
 }
 
+// ReconnectGitRepositoryRequest is the body for POST …/repositories/:id/reconnect.
+type ReconnectGitRepositoryRequest struct {
+	// IdentityID is the connection to use; empty lets Paca try every connection the project can use.
+	IdentityID *uuid.UUID `json:"identity_id"`
+}
+
 // GitRepositoryResponse is a repository linked to a project. It never carries
 // credentials or the provider's opaque references.
 type GitRepositoryResponse struct {
@@ -76,13 +82,15 @@ type GitIdentityResponse struct {
 	Handle      string     `json:"handle"`
 	DisplayName string     `json:"display_name"`
 	ExpiresAt   *time.Time `json:"expires_at"`
-	CreatedAt   time.Time  `json:"created_at"`
+	// RepositoryCount is how many linked repositories, in every project, use it.
+	RepositoryCount int       `json:"repository_count"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // GitIdentityFromEntity maps an identity to its response.
 func GitIdentityFromEntity(i *gitdom.Identity) GitIdentityResponse {
 	return GitIdentityResponse{ID: i.ID, ProviderID: i.ProviderID, Host: i.Host, Kind: i.Kind, Scope: string(i.Scope), ProjectID: i.ProjectID,
-		Handle: i.Handle, DisplayName: i.DisplayName, ExpiresAt: i.ExpiresAt, CreatedAt: i.CreatedAt}
+		Handle: i.Handle, DisplayName: i.DisplayName, ExpiresAt: i.ExpiresAt, RepositoryCount: i.RepositoryCount, CreatedAt: i.CreatedAt}
 }
 
 // BeginGitSetupRequest is the body for starting identity setup. The provider

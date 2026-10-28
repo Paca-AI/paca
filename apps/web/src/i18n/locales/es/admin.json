@@ -683,8 +683,13 @@
 		"delete": {
 			"button": "Quitar",
 			"title": "¿Quitar esta conexión?",
-			"description": "Los repositorios vinculados mediante {{name}} en {{host}} dejan de funcionar hasta que los vincule de nuevo mediante otra conexión. La aplicación o el token no se elimina en la plataforma; quítelo allí si ya no lo necesita.",
-			"confirm": "Quitar conexión"
+			"description": "Los repositorios vinculados mediante {{name}} en {{host}} dejan de funcionar hasta que los reconecte mediante otra conexión. La aplicación o el token no se elimina en la plataforma; quítelo allí si ya no lo necesita.",
+			"confirm": "Quitar conexión",
+			"usage": {
+				"title": "Repositorios que la usan ({{count}}):",
+				"others": "Y {{count}} más en otros proyectos.",
+				"consequence": "Siguen vinculados pero sin credencial, así que los agentes no pueden usarlos. Después, reconecte cada uno a otra conexión."
+			}
 		},
 		"callback": {
 			"working": "Finalizando la configuración…",

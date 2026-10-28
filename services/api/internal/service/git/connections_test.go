@@ -439,3 +439,61 @@ func TestPurgeProjectConnections_OnlyTheProjectsOwn(t *testing.T) {
 		t.Fatal("another project's connection must stay")
 	}
 }
+
+func TestReconnectRepository_RebindsARepositoryWhoseConnectionWasDeleted(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr := setup(t)
+	project := uuid.New()
+	old := st.addProjectConnection(project, "old", "old-app")
+	pr.resolve = func(r gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+		return gitprovider.ResolvedRepository{
+			Repository: gitprovider.Repository{Ref: gitprovider.RepoRef{Host: "git.example", FullPath: "acme/web"}},
+			Identity:   gitprovider.IdentityRef{ID: r.Candidates[0].ID},
+		}, nil
+	}
+	repo, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "acme/web"})
+	if err != nil || *repo.IdentityID != old.ID {
+		t.Fatalf("link: %+v %v", repo, err)
+	}
+	// The connection is deleted: the database clears the repository's link.
+	if err := svc.DeleteProjectConnection(ctx, project, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	st.repos[repo.ID].IdentityID = nil
+
+	// Another project's repository is not this project's to rebind.
+	if _, err := svc.ReconnectRepository(ctx, ReconnectInput{ProjectID: uuid.New(), RepositoryID: repo.ID}); !errors.Is(err, gitdom.ErrNotFound) {
+		t.Fatalf("other project: %v", err)
+	}
+	// With no connection left there is nothing to rebind to.
+	if _, err := svc.ReconnectRepository(ctx, ReconnectInput{ProjectID: project, RepositoryID: repo.ID}); !errors.Is(err, gitdom.ErrNoIdentity) {
+		t.Fatalf("no connection: %v", err)
+	}
+	fresh := st.addProjectConnection(project, "fresh", "fresh-app")
+	got, err := svc.ReconnectRepository(ctx, ReconnectInput{ProjectID: project, RepositoryID: repo.ID})
+	if err != nil || got.IdentityID == nil || *got.IdentityID != fresh.ID || st.repos[repo.ID].IdentityID == nil || *st.repos[repo.ID].IdentityID != fresh.ID {
+		t.Fatalf("reconnect: %+v %v", got, err)
+	}
+}
+
+func TestListConnections_CountsTheRepositoriesUsingEach(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr := setup(t)
+	pr.info = gitprovider.Info{ID: "p"}
+	project := uuid.New()
+	used := st.addProjectConnection(project, "used", "used-app")
+	unused := st.addProjectConnection(project, "unused", "unused-app")
+	st.repos[uuid.New()] = &gitdom.Repository{ProjectID: project, IdentityID: &used.ID, FullPath: "a/b"}
+	st.repos[uuid.New()] = &gitdom.Repository{ProjectID: uuid.New(), IdentityID: &used.ID, FullPath: "c/d"}
+	got, err := svc.ListConnections(ctx, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := map[uuid.UUID]int{}
+	for _, c := range got {
+		count[c.ID] = c.RepositoryCount
+	}
+	if count[used.ID] != 2 || count[unused.ID] != 0 {
+		t.Fatalf("counts = %v, want 2 and 0 (every project's repositories count)", count)
+	}
+}

@@ -54,6 +54,13 @@ type Store interface {
 	// SetRepositoryWebhook records (or, with an empty ref, clears) the webhook
 	// registered on the platform for a repository.
 	SetRepositoryWebhook(ctx context.Context, id uuid.UUID, ref json.RawMessage) error
+	// SetRepositoryIdentity rebinds a repository to a connection (after its own
+	// was deleted), with the provider-private reference that connection resolved,
+	// and clears the webhook registered through the old one.
+	SetRepositoryIdentity(ctx context.Context, id, identityID uuid.UUID, providerRef json.RawMessage) error
+	// CountRepositories reports how many linked repositories (in every project)
+	// use each connection.
+	CountRepositories(ctx context.Context, identityIDs []uuid.UUID) (map[uuid.UUID]int, error)
 	// FindLinkedRepositories returns every project's link to a repository
 	// (case-insensitive path); it is the fan-out for an incoming event.
 	FindLinkedRepositories(ctx context.Context, providerID, host, fullPath string) ([]*Repository, error)

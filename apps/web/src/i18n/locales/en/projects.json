@@ -72,7 +72,8 @@
 				"accessNotGranted": "The connection can't see this repository.",
 				"noIdentity": "No connection is available for this platform yet. Add one under Connections.",
 				"alreadyLinked": "This repository is already linked to the project.",
-				"identityRequired": "Several connections can see this repository. Choose which one to use."
+				"identityRequired": "Several connections can see this repository. Choose which one to use.",
+				"notVisible": "None of the project's connections can see this repository. Add a connection that has access to it (on GitLab, a token of that project or its group), then try again."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -177,6 +178,12 @@
 				"description": "Paca registers a webhook on each repository through this connection and couldn't: the token probably lacks the permission to manage webhooks (the Maintainer role on GitLab, the Webhooks permission on GitHub). Give the token that permission (on GitLab, create a new token with the Maintainer role and add it as a connection), then try again.",
 				"retry": "Try again",
 				"failed": "Still couldn't register the webhook."
+			},
+			"reconnect": {
+				"title": "This repository has no connection",
+				"description": "Its connection was deleted, so nothing can use it. Reconnect it through a connection that can see it.",
+				"noConnection": "Its connection was deleted. Add a connection that can see it first, then reconnect it.",
+				"button": "Reconnect"
 			}
 		}
 	},

@@ -72,7 +72,8 @@
 				"accessNotGranted": "该连接看不到此仓库。",
 				"noIdentity": "此平台暂无可用连接。请在“连接”中添加一个。",
 				"alreadyLinked": "此仓库已关联到该项目。",
-				"identityRequired": "有多个连接都能看到该仓库，请选择要使用的连接。"
+				"identityRequired": "有多个连接都能看到该仓库，请选择要使用的连接。",
+				"notVisible": "此项目的所有连接都看不到该仓库。请添加一个有权访问它的连接（GitLab 上为该项目或其群组的令牌），然后重试。"
 			},
 			"triggerKinds": {
 				"mention": {
@@ -177,6 +178,12 @@
 				"description": "Paca 通过此连接在每个仓库上注册 Webhook，但未能成功：令牌可能缺少管理 Webhook 的权限（GitLab 需要 Maintainer 角色，GitHub 需要 Webhooks 权限）。请为令牌授予该权限（在 GitLab 上，创建具有 Maintainer 角色的新令牌并将其添加为连接），然后重试。",
 				"retry": "重试",
 				"failed": "仍无法注册 Webhook。"
+			},
+			"reconnect": {
+				"title": "此仓库没有连接",
+				"description": "它的连接已被删除，因此无法使用。请通过能看到它的连接重新连接。",
+				"noConnection": "它的连接已被删除。请先添加一个能看到它的连接，然后重新连接。",
+				"button": "重新连接"
 			}
 		}
 	},

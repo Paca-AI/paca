@@ -490,6 +490,7 @@ func New(deps Deps) http.Handler {
 						// own. git:write is therefore enough.
 						r.With(require.Project(iam.ActionGitWrite)).Post("/", deps.Git.LinkRepository)
 						r.With(require.Project(iam.ActionGitWrite)).Post("/{repositoryId}/webhook", deps.Git.RegisterWebhook)
+						r.With(require.Project(iam.ActionGitWrite)).Post("/{repositoryId}/reconnect", deps.Git.ReconnectRepository)
 						r.With(require.Project(iam.ActionGitRead)).Post("/{repositoryId}/credential/read", deps.Git.ReadCredential)
 						r.With(require.Project(iam.ActionGitWrite)).Post("/{repositoryId}/credential/write", deps.Git.WriteCredential)
 

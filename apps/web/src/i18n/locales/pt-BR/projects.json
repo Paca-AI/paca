@@ -72,7 +72,8 @@
 				"accessNotGranted": "A conexão não enxerga este repositório.",
 				"noIdentity": "Ainda não há nenhuma conexão disponível para esta plataforma. Adicione uma em Conexões.",
 				"alreadyLinked": "Este repositório já está vinculado ao projeto.",
-				"identityRequired": "Várias conexões enxergam este repositório. Escolha qual usar."
+				"identityRequired": "Várias conexões enxergam este repositório. Escolha qual usar.",
+				"notVisible": "Nenhuma das conexões do projeto enxerga este repositório. Adicione uma conexão com acesso a ele (no GitLab, um token desse projeto ou do grupo dele) e tente novamente."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -177,6 +178,12 @@
 				"description": "O Paca registra um webhook em cada repositório por meio desta conexão e não conseguiu: o token provavelmente não tem permissão para gerenciar webhooks (a função Maintainer no GitLab, a permissão Webhooks no GitHub). Dê essa permissão ao token (no GitLab, crie um novo token com a função Maintainer e adicione-o como conexão) e tente novamente.",
 				"retry": "Tentar novamente",
 				"failed": "Ainda não foi possível registrar o webhook."
+			},
+			"reconnect": {
+				"title": "Este repositório não tem conexão",
+				"description": "A conexão dele foi excluída, então nada pode usá-lo. Reconecte-o por uma conexão que consiga vê-lo.",
+				"noConnection": "A conexão dele foi excluída. Adicione primeiro uma conexão que consiga vê-lo e depois reconecte.",
+				"button": "Reconectar"
 			}
 		}
 	},

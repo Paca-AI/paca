@@ -36,9 +36,12 @@ type Identity struct {
 	DisplayName        string
 	ProviderRef        json.RawMessage // IdentityRef.ProviderRef, opaque
 	ExpiresAt          *time.Time
-	CreatedBy          *uuid.UUID
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// RepositoryCount is how many linked repositories, in every project, use the
+	// connection. Read for listings only; it is not stored.
+	RepositoryCount int
+	CreatedBy       *uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // Repository is a repository linked to a project.

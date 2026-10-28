@@ -21,15 +21,16 @@ import (
 )
 
 type fakeGitSvc struct {
-	checkErr error // answered by CheckWebhookEndpoint
-	link     gitsvc.LinkInput
-	repos    []*gitdom.Repository
-	err      error
-	unlinked [2]uuid.UUID
-	mint     gitsvc.MintInput
-	cred     gitprovider.Credential
-	key      string
-	delivery gitsvc.Delivery
+	checkErr  error // answered by CheckWebhookEndpoint
+	link      gitsvc.LinkInput
+	repos     []*gitdom.Repository
+	err       error
+	unlinked  [2]uuid.UUID
+	reconnect gitsvc.ReconnectInput
+	mint      gitsvc.MintInput
+	cred      gitprovider.Credential
+	key       string
+	delivery  gitsvc.Delivery
 
 	providers  []gitprovider.Info
 	identities []*gitdom.Identity
@@ -80,6 +81,13 @@ func (f *fakeGitSvc) CompleteIdentitySetup(_ context.Context, actor uuid.UUID, _
 func (f *fakeGitSvc) DeleteIdentity(_ context.Context, id uuid.UUID) error {
 	f.deletedID = id
 	return f.err
+}
+func (f *fakeGitSvc) ReconnectRepository(_ context.Context, in gitsvc.ReconnectInput) (*gitdom.Repository, error) {
+	f.reconnect = in
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &gitdom.Repository{ID: in.RepositoryID, ProjectID: in.ProjectID, ProviderID: "p", Host: "h", FullPath: "a/b", IdentityID: in.IdentityID}, nil
 }
 func (f *fakeGitSvc) RegisterWebhook(_ context.Context, p, r uuid.UUID) (*gitdom.Repository, error) {
 	if f.err != nil {
@@ -159,6 +167,7 @@ func serveGit(t *testing.T, f *fakeGitSvc, method, target, body string, actor *u
 	r.Post("/projects/{projectId}/git/connections/setup/complete", h.CompleteProjectSetup)
 	r.Delete("/projects/{projectId}/git/connections/{identityId}", h.DeleteProjectConnection)
 	r.Post("/projects/{projectId}/git/repositories/{repositoryId}/webhook", h.RegisterWebhook)
+	r.Post("/projects/{projectId}/git/repositories/{repositoryId}/reconnect", h.ReconnectRepository)
 	r.Get("/projects/{projectId}/git/repositories", h.ListRepositories)
 	r.Post("/projects/{projectId}/git/repositories", h.LinkRepository)
 	r.Delete("/projects/{projectId}/git/repositories/{repositoryId}", h.UnlinkRepository)
@@ -224,6 +233,7 @@ func TestGitHandler_ErrorMapping(t *testing.T) {
 	}{
 		{gitdom.ErrAlreadyLinked, 409, "GIT_ALREADY_LINKED"},
 		{gitdom.ErrNoIdentity, 409, "GIT_NO_IDENTITY"},
+		{gitdom.ErrNotVisible, 409, "GIT_REPOSITORY_NOT_VISIBLE"},
 		{gitdom.ErrNotFound, 404, "GIT_NOT_FOUND"},
 		{gitdom.ErrProviderUnavailable, 503, "GIT_PROVIDER_UNAVAILABLE"},
 		{&gitprovider.Error{Code: gitprovider.CodeNotFound, Message: "secret detail"}, 404, "GIT_NOT_FOUND"},
@@ -584,5 +594,21 @@ func TestGitHandler_ProjectConnections(t *testing.T) {
 	f.err = nil
 	if rec := serveGit(t, f, "POST", "/projects/"+project.String()+"/git/repositories/"+uuid.NewString()+"/webhook", "", &actor); rec.Code != 200 {
 		t.Fatalf("register webhook: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestGitHandler_ReconnectRepository(t *testing.T) {
+	actor, project, repo, conn := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	f := &fakeGitSvc{}
+	url := "/projects/" + project.String() + "/git/repositories/" + repo.String() + "/reconnect"
+	if rec := serveGit(t, f, "POST", url, `{"identity_id":"`+conn.String()+`"}`, &actor); rec.Code != 200 {
+		t.Fatalf("reconnect: %d %s", rec.Code, rec.Body)
+	}
+	if f.reconnect.ProjectID != project || f.reconnect.RepositoryID != repo || f.reconnect.IdentityID == nil || *f.reconnect.IdentityID != conn {
+		t.Fatalf("input = %+v", f.reconnect)
+	}
+	f.err = gitdom.ErrIdentityRequired
+	if rec := serveGit(t, f, "POST", url, `{}`, &actor); rec.Code != 409 || errCode(rec) != "GIT_IDENTITY_REQUIRED" {
+		t.Fatalf("several connections: %d %s", rec.Code, errCode(rec))
 	}
 }

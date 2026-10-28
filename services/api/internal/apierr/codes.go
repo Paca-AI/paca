@@ -394,6 +394,8 @@ const (
 	CodeGitNoIdentity Code = "GIT_NO_IDENTITY"
 	// CodeGitProviderUnavailable indicates the provider plugin is not installed, enabled or answering.
 	CodeGitProviderUnavailable Code = "GIT_PROVIDER_UNAVAILABLE"
+	// CodeGitRepositoryNotVisible indicates none of the connections offered can see the repository.
+	CodeGitRepositoryNotVisible Code = "GIT_REPOSITORY_NOT_VISIBLE"
 	// CodeGitAccessNotGranted indicates the identity cannot see the repository because it has not been
 	// granted access to the repository's owner (for example the GitHub App is not installed there).
 	CodeGitAccessNotGranted Code = "GIT_ACCESS_NOT_GRANTED"

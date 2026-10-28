@@ -314,10 +314,19 @@ func (s *Service) ListConnections(ctx context.Context, projectID uuid.UUID) ([]*
 		return nil, err
 	}
 	out := ids[:0:0]
+	var all []uuid.UUID
 	for _, id := range ids {
 		if enabled[id.ProviderID] {
 			out = append(out, id)
+			all = append(all, id.ID)
 		}
+	}
+	counts, err := s.store.CountRepositories(ctx, all)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range out {
+		id.RepositoryCount = counts[id.ID]
 	}
 	return out, nil
 }

@@ -35,6 +35,9 @@ var (
 	ErrPublicURLRequired = errors.New("git: PUBLIC_URL is not configured")
 	// ErrInvalidReturnURL means the return URL is not on this instance.
 	ErrInvalidReturnURL = errors.New("git: return_url must be on this instance")
+	// ErrNotVisible means none of the connections offered can see the repository
+	// (on a platform where access needs no grant: its tokens do not reach it).
+	ErrNotVisible = errors.New("git: none of the connections can see this repository")
 	// ErrAccessNotGranted means the identity cannot see the repository, and the
 	// provider lets a user grant it access to the owner's account.
 	ErrAccessNotGranted = errors.New("git: the identity has no access to this repository's owner")

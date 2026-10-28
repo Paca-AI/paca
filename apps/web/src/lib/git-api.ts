@@ -46,6 +46,8 @@ export interface GitIdentity {
 	handle: string;
 	display_name: string;
 	expires_at: string | null;
+	/** How many linked repositories, in every project, use this connection. */
+	repository_count?: number;
 	created_at: string;
 }
 
@@ -269,6 +271,24 @@ export async function unlinkGitRepository(
 	await apiClient.instance.delete(
 		`${projectGit(projectId)}/repositories/${repositoryId}`,
 	);
+}
+
+/**
+ * Points a repository whose connection was deleted at a connection again. It
+ * must see the repository; empty `identityId` lets Paca try every connection
+ * the project can use.
+ */
+export async function reconnectGitRepository(
+	projectId: string,
+	repositoryId: string,
+	identityId?: string,
+): Promise<GitRepository> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<GitRepository>
+	>(`${projectGit(projectId)}/repositories/${repositoryId}/reconnect`, {
+		...(identityId ? { identity_id: identityId } : {}),
+	});
+	return data.data;
 }
 
 /** Retries registering a linked repository's webhook on the platform. */
@@ -798,6 +818,7 @@ const SETUP_ERROR_KEYS: Partial<Record<ApiErrorCode, string>> = {
 	GIT_PROVIDER_REJECTED: "providerRejected",
 	GIT_NOT_FOUND: "notFound",
 	GIT_ACCESS_NOT_GRANTED: "accessNotGranted",
+	GIT_REPOSITORY_NOT_VISIBLE: "notVisible",
 	GIT_NO_IDENTITY: "noIdentity",
 	GIT_ALREADY_LINKED: "alreadyLinked",
 	GIT_IDENTITY_REQUIRED: "identityRequired",

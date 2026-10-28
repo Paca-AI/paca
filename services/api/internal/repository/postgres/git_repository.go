@@ -422,6 +422,45 @@ func (s *GitRepository) SetRepositoryWebhook(ctx context.Context, id uuid.UUID, 
 	return nil
 }
 
+// SetRepositoryIdentity rebinds a repository to a connection and forgets the
+// webhook registered through the previous one.
+func (s *GitRepository) SetRepositoryIdentity(ctx context.Context, id, identityID uuid.UUID, providerRef json.RawMessage) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE git_repositories SET identity_id = $2, provider_ref = $3::jsonb, webhook_ref = '{}'::jsonb, updated_at = NOW() WHERE id = $1`,
+		id.String(), identityID.String(), string(jsonOrEmpty(providerRef)))
+	if err != nil {
+		return fmt.Errorf("git repo: set repository identity: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return gitdom.ErrNotFound
+	}
+	return nil
+}
+
+// CountRepositories counts the linked repositories of each connection.
+func (s *GitRepository) CountRepositories(ctx context.Context, identityIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	out := make(map[uuid.UUID]int, len(identityIDs))
+	if len(identityIDs) == 0 {
+		return out, nil
+	}
+	ids := make([]string, len(identityIDs))
+	for i, id := range identityIDs {
+		ids[i] = id.String()
+	}
+	var rows []struct {
+		ID string `db:"identity_id"`
+		N  int    `db:"n"`
+	}
+	if err := s.db.SelectContext(ctx, &rows, `SELECT identity_id, COUNT(*) AS n FROM git_repositories WHERE identity_id = ANY($1::uuid[]) GROUP BY identity_id`, ids); err != nil {
+		return nil, fmt.Errorf("git repo: count repositories: %w", err)
+	}
+	for _, r := range rows {
+		if id, err := uuid.Parse(r.ID); err == nil {
+			out[id] = r.N
+		}
+	}
+	return out, nil
+}
+
 // FindLinkedRepositories returns every project's link to a repository.
 func (s *GitRepository) FindLinkedRepositories(ctx context.Context, providerID, host, fullPath string) ([]*gitdom.Repository, error) {
 	return s.selectRepos(ctx, `provider_id = $1 AND host = $2 AND lower(full_path) = lower($3) ORDER BY created_at`, providerID, host, fullPath)

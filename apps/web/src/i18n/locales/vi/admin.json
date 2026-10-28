@@ -683,8 +683,13 @@
 		"delete": {
 			"button": "Gỡ bỏ",
 			"title": "Gỡ kết nối này?",
-			"description": "Các kho đã liên kết qua {{name}} trên {{host}} sẽ ngừng hoạt động cho đến khi bạn liên kết lại qua một kết nối khác. Bản thân ứng dụng hoặc token không bị xóa trên nền tảng; hãy xóa ở đó nếu bạn không cần nữa.",
-			"confirm": "Gỡ kết nối"
+			"description": "Các kho đã liên kết qua {{name}} trên {{host}} sẽ ngừng hoạt động cho đến khi bạn kết nối lại qua một kết nối khác. Bản thân ứng dụng hoặc token không bị xóa trên nền tảng; hãy xóa ở đó nếu bạn không cần nữa.",
+			"confirm": "Gỡ kết nối",
+			"usage": {
+				"title": "Các kho đang dùng ({{count}}):",
+				"others": "Cùng {{count}} kho ở các dự án khác.",
+				"consequence": "Chúng vẫn được liên kết nhưng không còn thông tin xác thực nên agent không dùng được. Sau đó hãy kết nối lại từng kho với một kết nối khác."
+			}
 		},
 		"callback": {
 			"working": "Đang hoàn tất thiết lập…",

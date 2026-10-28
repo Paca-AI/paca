@@ -72,7 +72,8 @@
 				"accessNotGranted": "La connexion ne voit pas ce dépôt.",
 				"noIdentity": "Aucune connexion n'est encore disponible pour cette plateforme. Ajoutez-en une dans Connexions.",
 				"alreadyLinked": "Ce dépôt est déjà lié au projet.",
-				"identityRequired": "Plusieurs connexions voient ce dépôt. Choisissez celle à utiliser."
+				"identityRequired": "Plusieurs connexions voient ce dépôt. Choisissez celle à utiliser.",
+				"notVisible": "Aucune des connexions du projet ne voit ce dépôt. Ajoutez une connexion qui y a accès (sur GitLab, un jeton de ce projet ou de son groupe), puis réessayez."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -177,6 +178,12 @@
 				"description": "Paca enregistre un webhook sur chaque dépôt via cette connexion et n'y est pas parvenu : le jeton n'a probablement pas l'autorisation de gérer les webhooks (le rôle Maintainer sur GitLab, l'autorisation Webhooks sur GitHub). Donnez cette autorisation au jeton (sur GitLab, créez un nouveau jeton avec le rôle Maintainer et ajoutez-le comme connexion), puis réessayez.",
 				"retry": "Réessayer",
 				"failed": "Impossible d'enregistrer le webhook pour le moment."
+			},
+			"reconnect": {
+				"title": "Ce dépôt n'a pas de connexion",
+				"description": "Sa connexion a été supprimée, donc rien ne peut l'utiliser. Reconnectez-le via une connexion qui peut le voir.",
+				"noConnection": "Sa connexion a été supprimée. Ajoutez d'abord une connexion qui peut le voir, puis reconnectez-le.",
+				"button": "Reconnecter"
 			}
 		}
 	},

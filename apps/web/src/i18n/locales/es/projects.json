@@ -72,7 +72,8 @@
 				"accessNotGranted": "La conexión no puede ver este repositorio.",
 				"noIdentity": "Todavía no hay ninguna conexión disponible para esta plataforma. Añada una en Conexiones.",
 				"alreadyLinked": "Este repositorio ya está vinculado al proyecto.",
-				"identityRequired": "Varias conexiones pueden ver este repositorio. Elija cuál usar."
+				"identityRequired": "Varias conexiones pueden ver este repositorio. Elija cuál usar.",
+				"notVisible": "Ninguna de las conexiones del proyecto puede ver este repositorio. Añada una conexión con acceso a él (en GitLab, un token de ese proyecto o de su grupo) y vuelva a intentarlo."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -177,6 +178,12 @@
 				"description": "Paca registra un webhook en cada repositorio mediante esta conexión y no pudo: el token probablemente carece del permiso para gestionar webhooks (el rol Maintainer en GitLab, el permiso Webhooks en GitHub). Dé ese permiso al token (en GitLab, cree un token nuevo con el rol Maintainer y añádalo como conexión) y vuelva a intentarlo.",
 				"retry": "Reintentar",
 				"failed": "Todavía no se pudo registrar el webhook."
+			},
+			"reconnect": {
+				"title": "Este repositorio no tiene conexión",
+				"description": "Su conexión se eliminó, así que nada puede usarlo. Reconéctelo mediante una conexión que pueda verlo.",
+				"noConnection": "Su conexión se eliminó. Añada primero una conexión que pueda verlo y luego reconéctelo.",
+				"button": "Reconectar"
 			}
 		}
 	},

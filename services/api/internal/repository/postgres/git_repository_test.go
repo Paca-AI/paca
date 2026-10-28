@@ -769,3 +769,51 @@ func TestGitStore_ListedRepositoriesCarryTheirBotsHandle(t *testing.T) {
 		}
 	}
 }
+
+func TestGitStore_DeletingAConnectionLeavesItsRepositoriesToBeRebound(t *testing.T) {
+	s, fx := newGitFx(t)
+	ctx := t.Context()
+	project := fx.project()
+	a, b := sharedIdentity("github.com"), sharedIdentity("github.com")
+	b.ProviderIdentityID = "app-b"
+	for _, i := range []*gitdom.Identity{a, b} {
+		if err := s.CreateIdentity(ctx, i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r1 := linkRepo(t, s, project, "acme/web", &a.ID)
+	linkRepo(t, s, fx.project(), "acme/web", &a.ID) // another project, same connection
+	if err := s.SetRepositoryWebhook(ctx, r1.ID, json.RawMessage(`{"id":"5"}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	counts, err := s.CountRepositories(ctx, []uuid.UUID{a.ID, b.ID})
+	if err != nil || counts[a.ID] != 2 || counts[b.ID] != 0 {
+		t.Fatalf("counts = %v %v", counts, err)
+	}
+	if empty, err := s.CountRepositories(ctx, nil); err != nil || len(empty) != 0 {
+		t.Fatalf("no ids: %v %v", empty, err)
+	}
+
+	if err := s.DeleteIdentity(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.FindRepository(ctx, r1.ID)
+	if err != nil || got.IdentityID != nil {
+		t.Fatalf("the repository stays, without a connection: %+v %v", got, err)
+	}
+
+	if err := s.SetRepositoryIdentity(ctx, r1.ID, b.ID, json.RawMessage(`{"installation":9}`)); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.FindRepository(ctx, r1.ID)
+	if got.IdentityID == nil || *got.IdentityID != b.ID || string(got.ProviderRef) != `{"installation": 9}` && string(got.ProviderRef) != `{"installation":9}` {
+		t.Fatalf("rebound: %+v", got)
+	}
+	if string(got.WebhookRef) != `{}` {
+		t.Fatalf("the webhook of the old connection must be forgotten: %s", got.WebhookRef)
+	}
+	if err := s.SetRepositoryIdentity(ctx, uuid.New(), b.ID, nil); !errors.Is(err, gitdom.ErrNotFound) {
+		t.Fatalf("unknown repository: %v", err)
+	}
+}

@@ -683,8 +683,13 @@
 		"delete": {
 			"button": "Remove",
 			"title": "Remove this connection?",
-			"description": "Repositories linked through {{name}} on {{host}} stop working until you link them again through another connection. The app or token itself is not deleted on the platform; remove it there if you no longer need it.",
-			"confirm": "Remove connection"
+			"description": "Repositories linked through {{name}} on {{host}} stop working until you reconnect them through another connection. The app or token itself is not deleted on the platform; remove it there if you no longer need it.",
+			"confirm": "Remove connection",
+			"usage": {
+				"title": "Repositories that use it ({{count}}):",
+				"others": "Plus {{count}} in other projects.",
+				"consequence": "They stay linked but have no credential, so agents can't use them. Reconnect each one to another connection afterwards."
+			}
 		},
 		"callback": {
 			"working": "Finishing setup…",

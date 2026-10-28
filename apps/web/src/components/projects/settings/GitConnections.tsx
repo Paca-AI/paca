@@ -16,8 +16,10 @@ import {
 	deleteProjectGitConnection,
 	type GitIdentity,
 	type GitProvider,
-	gitConnectionsKey,
+	type GitRepository,
 	gitConnectionsQueryOptions,
+	gitQueriesKey,
+	gitRepositoriesQueryOptions,
 	projectGitSettingsPath,
 } from "@/lib/git-api";
 
@@ -44,6 +46,7 @@ export function GitConnections({ projectId, providers }: GitConnectionsProps) {
 	const canAdd = canProject || canWorkspace;
 
 	const connections = useQuery(gitConnectionsQueryOptions(projectId));
+	const repositories = useQuery(gitRepositoriesQueryOptions(projectId));
 	const [adding, setAdding] = useState<GitProvider | null>(null);
 	const [removing, setRemoving] = useState<GitIdentity | null>(null);
 
@@ -129,7 +132,8 @@ export function GitConnections({ projectId, providers }: GitConnectionsProps) {
 							? deleteGitIdentity(removing.id)
 							: deleteProjectGitConnection(projectId, removing.id)
 					}
-					invalidateKey={gitConnectionsKey(projectId)}
+					usage={usageOf(removing, repositories.data ?? [])}
+					invalidateKey={gitQueriesKey}
 					onOpenChange={(open) => {
 						if (!open) setRemoving(null);
 					}}
@@ -137,6 +141,24 @@ export function GitConnections({ projectId, providers }: GitConnectionsProps) {
 			) : null}
 		</Section>
 	);
+}
+
+/**
+ * What deleting a connection would leave without a credential: this project's
+ * repositories by name, and a count of the ones in other projects (a shared
+ * connection serves every project).
+ */
+function usageOf(
+	connection: GitIdentity,
+	repositories: GitRepository[],
+): { names: string[]; others: number } {
+	const names = repositories
+		.filter((r) => r.identity_id === connection.id)
+		.map((r) => r.full_path);
+	return {
+		names,
+		others: Math.max(0, (connection.repository_count ?? 0) - names.length),
+	};
 }
 
 function ConnectionRow({
