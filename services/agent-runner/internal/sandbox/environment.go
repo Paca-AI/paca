@@ -35,6 +35,17 @@ type EnvironmentConfig struct {
 	// (services/api, tests, ...) to know what that default is.
 	Image string
 	Env   map[string]string
+	// LLMKeyEnvVar names the env var holding this agent's model API key
+	// (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY) — the one LLM env key whose
+	// *name* varies by provider, so a backend cannot infer it from Env
+	// alone. Reconciled on every StartEnvironment together with
+	// GOOSE_MODEL/OPENAI_HOST whenever Env targets the provider the
+	// container already has baked in (see docker/k8s
+	// ensureEnvironmentInfraEnv): a rotated key or an edited model never
+	// reaching the container is what leaves every later attach failing
+	// with "Authentication required". Empty for a provider_cli agent,
+	// which has no model key of its own.
+	LLMKeyEnvVar string
 
 	CPULimit, MemoryLimit string
 	// DiskLimitGB is enforced natively via the backing PersistentVolumeClaim
@@ -163,11 +174,13 @@ type EnvironmentBackend interface {
 	// WaitForReady's auth header) and Env: neither backend can live-patch
 	// an already-configured container/Pod's env on every start without
 	// disrupting whatever the environment's own process tree is doing, so
-	// Env is instead backfilled at most once — only when the container/Pod
-	// doesn't already have it (checked via GOOSE_PROVIDER's presence; see
+	// Env's GOOSE_PROVIDER is backfilled at most once — only when the
+	// container/Pod doesn't already have it (see
 	// docker.Manager.recreateEnvironmentIfMissingEnv /
-	// k8s.Manager.ensureEnvironmentEnv) — never diffed or re-applied on
-	// every call.
+	// k8s.Manager.ensureEnvironmentEnv); the keys that legitimately change
+	// between attaches (PACA_*, GOOSE_MODEL with LLMKeyEnvVar/OPENAI_HOST
+	// for a same-provider agent) are reconciled on every call instead, see
+	// both backends' ensureEnvironmentInfraEnv.
 	StartEnvironment(ctx context.Context, backendRef string, cfg EnvironmentConfig) (*EnvironmentHandle, error)
 	// StopEnvironment stops backendRef's container/Pod without deleting it
 	// or its volume — unlike Backend.Stop, this is not a teardown.

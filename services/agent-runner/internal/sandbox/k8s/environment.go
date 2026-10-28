@@ -558,9 +558,11 @@ func (m *Manager) patchDeploymentContainers(ctx context.Context, name string, co
 
 // pacaInfraEnvKeys — see docker/environment.go's own copy of this exact
 // list and its doc comment for why these specifically need to stay in sync
-// with this process's own current config on every StartEnvironment call,
-// unlike GOOSE_PROVIDER/GOOSE_MODEL/the LLM API key (frozen forever to
-// whichever agent's conversation first attached this environment).
+// with this process's own current config on every StartEnvironment call.
+// GOOSE_PROVIDER stays frozen forever to whichever agent's conversation
+// first attached this environment; GOOSE_MODEL, OPENAI_HOST and the model
+// key var follow the attaching agent whenever its provider matches (see
+// infraEnvKeysFor), so an edited model or a rotated key still lands.
 // PACA_API_KEY/PACA_API_URL/PACA_GATEWAY_URL are deployment-level;
 // PACA_WORKDIR/PACA_REPO_PLUGIN_IDS are conversation-
 // scoped (track trigger.Workdir/RepoPluginIDs) but need the
@@ -578,20 +580,27 @@ var pacaInfraEnvKeys = []string{
 	"GOOSE_PATH_ROOT",
 }
 
-// infraEnvKeysFor is pacaInfraEnvKeys plus GOOSE_MODEL when cfg targets the
-// same GOOSE_PROVIDER the container already has baked in. GOOSE_PROVIDER
-// stays frozen to whichever agent attached first (see
-// ensureEnvironmentEnv), but the model is per-agent config the
-// user edits after the fact (e.g. a provider_cli agent's cli_model) — left
-// frozen too, an edit never reaches a static environment, so a bad model
-// can't be fixed and a wrong one silently keeps working. Gated on a
-// matching provider because a model id from a different provider's agent
-// is meaningless to the provider the container is frozen to.
+// infraEnvKeysFor is pacaInfraEnvKeys plus the LLM keys that follow the
+// attaching agent: GOOSE_MODEL, OPENAI_HOST and the agent's own model key
+// var (cfg.LLMKeyEnvVar). GOOSE_PROVIDER stays frozen to whichever agent
+// attached first (see ensureEnvironmentEnv), and these three are gated on
+// a matching provider because a model id or base URL from a different
+// provider's agent is meaningless to the provider the container is frozen
+// to. Under that gate they must be reconciled, not frozen: the model is
+// per-agent config a user edits after the fact, the base URL follows the
+// provider, and a rotated or replaced API key otherwise never reaches the
+// container — which is exactly how a static environment ends up failing
+// every attach with "Authentication required" against a credential the
+// agent row no longer holds.
 func infraEnvKeysFor(cfg sandbox.EnvironmentConfig, existing map[string]string) []string {
 	if cfg.Env["GOOSE_PROVIDER"] == "" || cfg.Env["GOOSE_PROVIDER"] != existing["GOOSE_PROVIDER"] {
 		return pacaInfraEnvKeys
 	}
-	return append(append([]string(nil), pacaInfraEnvKeys...), "GOOSE_MODEL")
+	keys := append(append([]string(nil), pacaInfraEnvKeys...), "GOOSE_MODEL", "OPENAI_HOST")
+	if cfg.LLMKeyEnvVar != "" {
+		keys = append(keys, cfg.LLMKeyEnvVar)
+	}
+	return keys
 }
 
 // ensureEnvironmentInfraEnv keeps pacaInfraEnvKeys in sync with cfg.Env on

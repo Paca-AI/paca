@@ -792,10 +792,17 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	// "running" DB status if the container died externally. Both backend
 	// implementations tolerate this (idempotent start) — see
 	// docs/ai-agent/environment-management.md's "Conversation attach path".
+	// The model key's env var NAME varies by provider, so a backend cannot
+	// infer it from Env alone — see EnvironmentConfig.LLMKeyEnvVar.
+	keyEnvVar := ""
+	if cfg.AgentType != agent.AgentTypeProviderCLI {
+		_, keyEnvVar = resolveProviderEnv(cfg.LLMProvider)
+	}
 	handle, err := e.sandboxMgr.StartEnvironment(ctx, *env.BackendRef, sandbox.EnvironmentConfig{
 		EnvironmentID:   environmentID.String(),
 		Image:           image,
 		Env:             containerEnv,
+		LLMKeyEnvVar:    keyEnvVar,
 		CPULimit:        env.CPULimit,
 		MemoryLimit:     env.MemoryLimit,
 		DiskLimitGB:     env.DiskLimitGB,
