@@ -68,6 +68,7 @@
 				"publicUrlRequired": "インスタンスの公開 URL（PUBLIC_URL）が設定されていません。",
 				"providerUnavailable": "Git プロバイダープラグインを利用できません。",
 				"providerRejected": "プラットフォームがリクエストを拒否しました。",
+				"providerDetail": "プラットフォームからの詳細: {{message}}",
 				"notFound": "見つかりません。",
 				"accessNotGranted": "この接続はこのリポジトリを参照できません。",
 				"noIdentity": "このプラットフォームで使える接続がまだありません。「接続」で追加してください。",

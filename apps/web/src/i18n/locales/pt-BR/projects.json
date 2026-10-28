@@ -68,6 +68,7 @@
 				"publicUrlRequired": "A URL pública da instância (PUBLIC_URL) não está configurada.",
 				"providerUnavailable": "O plugin do provedor Git está indisponível.",
 				"providerRejected": "A plataforma recusou a solicitação.",
+				"providerDetail": "Detalhes da plataforma: {{message}}",
 				"notFound": "Não encontrado.",
 				"accessNotGranted": "A conexão não enxerga este repositório.",
 				"noIdentity": "Ainda não há nenhuma conexão disponível para esta plataforma. Adicione uma em Conexões.",

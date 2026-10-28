@@ -68,6 +68,7 @@
 				"publicUrlRequired": "URL công khai của hệ thống (PUBLIC_URL) chưa được cấu hình.",
 				"providerUnavailable": "Plugin nhà cung cấp Git không khả dụng.",
 				"providerRejected": "Nền tảng đã từ chối yêu cầu.",
+				"providerDetail": "Chi tiết từ nền tảng: {{message}}",
 				"notFound": "Không tìm thấy.",
 				"accessNotGranted": "Kết nối không thấy được kho này.",
 				"noIdentity": "Chưa có kết nối nào cho nền tảng này. Hãy thêm một kết nối trong mục Kết nối.",

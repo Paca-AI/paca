@@ -107,9 +107,12 @@ const agents = [
 	{ id: "a2", name: "Reviewer", handle: "reviewer" },
 ];
 
-function apiFail(code: string) {
+function apiFail(code: string, details?: Record<string, string>) {
 	return Promise.reject({
-		response: { status: 409, data: { error_code: code } },
+		response: {
+			status: 409,
+			data: { error_code: code, error_details: details },
+		},
 	});
 }
 
@@ -272,6 +275,54 @@ describe("GitSettings", () => {
 		await user.click(await screen.findByRole("button", { name: "Reconnect" }));
 		expect(await screen.findByRole("alert")).toHaveTextContent(
 			/None of the project's connections can see this repository/,
+		);
+	});
+
+	it("shows what the platform said under the generic message, as plain text", async () => {
+		const user = userEvent.setup();
+		repos = [{ ...repo, identity_id: null }];
+		const said = "The token covers only acme/ui. <b>Add</b> one for acme/api.";
+		h.post.mockImplementation(() =>
+			apiFail("GIT_REPOSITORY_NOT_VISIBLE", { provider_message: said }),
+		);
+		renderPanel();
+		await user.click(await screen.findByRole("button", { name: "Reconnect" }));
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent(/None of the project's connections/);
+		expect(alert).toHaveTextContent(`Details from the platform: ${said}`);
+		expect(alert.querySelector("b")).toBeNull();
+	});
+
+	it("shows why the webhook still could not be registered", async () => {
+		const user = userEvent.setup();
+		repos = [
+			{
+				...repo,
+				webhook_url: "https://paca.example.com/api/v1/git/webhooks/k",
+			},
+		];
+		h.post.mockImplementation(() =>
+			apiFail("GIT_PROVIDER_REJECTED", {
+				provider_message: "Needs the Maintainer role",
+			}),
+		);
+		renderPanel();
+		await user.click(await screen.findByRole("button", { name: "Try again" }));
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("Still couldn't register the webhook.");
+		expect(alert).toHaveTextContent(
+			"Details from the platform: Needs the Maintainer role",
+		);
+	});
+
+	it("shows no details line when the platform said nothing", async () => {
+		const user = userEvent.setup();
+		repos = [{ ...repo, identity_id: null }];
+		h.post.mockImplementation(() => apiFail("GIT_REPOSITORY_NOT_VISIBLE"));
+		renderPanel();
+		await user.click(await screen.findByRole("button", { name: "Reconnect" }));
+		expect(await screen.findByRole("alert")).not.toHaveTextContent(
+			/Details from the platform/,
 		);
 	});
 

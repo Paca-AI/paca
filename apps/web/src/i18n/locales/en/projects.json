@@ -68,6 +68,7 @@
 				"publicUrlRequired": "The instance's public URL (PUBLIC_URL) is not configured.",
 				"providerUnavailable": "The Git provider plugin is unavailable.",
 				"providerRejected": "The platform refused the request.",
+				"providerDetail": "Details from the platform: {{message}}",
 				"notFound": "Not found.",
 				"accessNotGranted": "The connection can't see this repository.",
 				"noIdentity": "No connection is available for this platform yet. Add one under Connections.",

@@ -68,6 +68,7 @@
 				"publicUrlRequired": "实例的公开 URL（PUBLIC_URL）未配置。",
 				"providerUnavailable": "Git 提供方插件不可用。",
 				"providerRejected": "平台拒绝了该请求。",
+				"providerDetail": "来自平台的详细信息：{{message}}",
 				"notFound": "未找到。",
 				"accessNotGranted": "该连接看不到此仓库。",
 				"noIdentity": "此平台暂无可用连接。请在“连接”中添加一个。",

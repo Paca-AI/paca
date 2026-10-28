@@ -24,6 +24,7 @@ import {
 	gitConnectionsQueryOptions,
 	gitErrorKey,
 	gitProjectProvidersQueryOptions,
+	gitProviderMessage,
 	gitRepositoriesKey,
 	gitRepositoriesQueryOptions,
 	gitSettingsKey,
@@ -160,6 +161,7 @@ function Repositories({
 	const [providerId, setProviderId] = useState("");
 	const [identityId, setIdentityId] = useState("");
 	const [errorKey, setErrorKey] = useState<string | null>(null);
+	const [errorDetail, setErrorDetail] = useState<string | null>(null);
 	const [needsAccess, setNeedsAccess] = useState(false);
 	const [resumed, setResumed] = useState<string | null>(null);
 	const [confirming, setConfirming] = useState<string | null>(null);
@@ -202,6 +204,7 @@ function Repositories({
 		onSuccess: () => {
 			setInput("");
 			setErrorKey(null);
+			setErrorDetail(null);
 			setNeedsAccess(false);
 			setResumed(null);
 			setFormOpen(false);
@@ -214,10 +217,12 @@ function Repositories({
 			if (getApiErrorCodeSafe(err) === "GIT_ACCESS_NOT_GRANTED") {
 				setNeedsAccess(true);
 				setErrorKey(null);
+				setErrorDetail(null);
 				return;
 			}
 			setNeedsAccess(false);
 			setErrorKey(gitErrorKey(err));
+			setErrorDetail(gitProviderMessage(err));
 		},
 	});
 
@@ -397,9 +402,12 @@ function Repositories({
 			) : null}
 
 			{errorKey ? (
-				<p role="alert" className="text-sm text-destructive">
-					{t(`project.git.errors.${errorKey}` as never)}
-				</p>
+				<div role="alert" className="flex flex-col gap-1 text-sm">
+					<p className="text-destructive">
+						{t(`project.git.errors.${errorKey}` as never)}
+					</p>
+					<ProviderDetail message={errorDetail} />
+				</div>
 			) : null}
 
 			<div className="flex gap-2">
@@ -568,12 +576,14 @@ function ReconnectNotice({
 	const queryClient = useQueryClient();
 	const [choice, setChoice] = useState("");
 	const [errorKey, setErrorKey] = useState<string | null>(null);
+	const [errorDetail, setErrorDetail] = useState<string | null>(null);
 	const chosen = options.some((c) => c.id === choice) ? choice : "";
 	const reconnect = useMutation({
 		mutationFn: () =>
 			reconnectGitRepository(projectId, repository.id, chosen || undefined),
 		onSuccess: () => {
 			setErrorKey(null);
+			setErrorDetail(null);
 			void queryClient.invalidateQueries({
 				queryKey: gitRepositoriesKey(projectId),
 			});
@@ -581,7 +591,10 @@ function ReconnectNotice({
 				queryKey: gitConnectionsKey(projectId),
 			});
 		},
-		onError: (err: unknown) => setErrorKey(gitErrorKey(err)),
+		onError: (err: unknown) => {
+			setErrorKey(gitErrorKey(err));
+			setErrorDetail(gitProviderMessage(err));
+		},
 	});
 	return (
 		<div
@@ -610,9 +623,12 @@ function ReconnectNotice({
 				</select>
 			) : null}
 			{errorKey ? (
-				<p role="alert" className="text-destructive">
-					{t(`project.git.errors.${errorKey}` as never)}
-				</p>
+				<div role="alert" className="flex flex-col gap-1">
+					<p className="text-destructive">
+						{t(`project.git.errors.${errorKey}` as never)}
+					</p>
+					<ProviderDetail message={errorDetail} />
+				</div>
 			) : null}
 			{canWrite && options.length > 0 ? (
 				<div>
@@ -635,6 +651,20 @@ function ReconnectNotice({
 }
 
 /**
+ * What the platform itself said about a failure, under the generic message.
+ * Untrusted free text from a plugin: rendered as plain text only.
+ */
+function ProviderDetail({ message }: { message: string | null }) {
+	const { t } = useTranslation("projects");
+	if (!message) return null;
+	return (
+		<p className="break-words text-xs text-muted-foreground">
+			{t("project.git.errors.providerDetail", { message })}
+		</p>
+	);
+}
+
+/**
  * A repository whose platform has not been told where to send events: nothing
  * reaches Paca from it until a webhook exists. Paca registers it itself when
  * the connection may; otherwise this says what is missing and offers a retry
@@ -652,15 +682,20 @@ function WebhookNotice({
 	const { t } = useTranslation("projects");
 	const queryClient = useQueryClient();
 	const [failed, setFailed] = useState(false);
+	const [detail, setDetail] = useState<string | null>(null);
 	const retry = useMutation({
 		mutationFn: () => registerGitWebhook(projectId, repository.id),
 		onSuccess: () => {
 			setFailed(false);
+			setDetail(null);
 			void queryClient.invalidateQueries({
 				queryKey: gitRepositoriesKey(projectId),
 			});
 		},
-		onError: () => setFailed(true),
+		onError: (err: unknown) => {
+			setFailed(true);
+			setDetail(gitProviderMessage(err));
+		},
 	});
 	return (
 		<div
@@ -672,9 +707,10 @@ function WebhookNotice({
 				{t("project.git.webhook.description")}
 			</p>
 			{failed ? (
-				<p role="alert" className="text-destructive">
-					{t("project.git.webhook.failed")}
-				</p>
+				<div role="alert" className="flex flex-col gap-1">
+					<p className="text-destructive">{t("project.git.webhook.failed")}</p>
+					<ProviderDetail message={detail} />
+				</div>
 			) : null}
 			{canWrite ? (
 				<div>

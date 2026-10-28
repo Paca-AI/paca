@@ -4,6 +4,7 @@ import {
 	forgetGitFlow,
 	GIT_FALLBACK_PATH,
 	gitErrorKey,
+	gitProviderMessage,
 	readGitFlow,
 	rememberGitFlow,
 	repoOwnerOf,
@@ -158,5 +159,27 @@ describe("git flow hints", () => {
 			});
 		expect(readGitFlow("x")).toEqual({ kind: "identity" });
 		spy.mockRestore();
+	});
+});
+
+describe("gitProviderMessage", () => {
+	const withMsg = (m: unknown) => ({
+		response: { data: { error_details: { provider_message: m } } },
+	});
+	it("returns the trimmed message, capped", () => {
+		expect(gitProviderMessage(withMsg("  covers only acme/ui "))).toBe(
+			"covers only acme/ui",
+		);
+		expect(gitProviderMessage(withMsg("x".repeat(900)))?.length).toBe(501);
+	});
+	it("is null when there is none", () => {
+		expect(gitProviderMessage(withMsg("  "))).toBeNull();
+		expect(gitProviderMessage(withMsg(42))).toBeNull();
+		expect(
+			gitProviderMessage({
+				response: { data: { error_code: "GIT_PROVIDER_REJECTED" } },
+			}),
+		).toBeNull();
+		expect(gitProviderMessage(new Error("boom"))).toBeNull();
 	});
 });

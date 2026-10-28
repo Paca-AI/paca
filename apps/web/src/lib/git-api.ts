@@ -836,3 +836,25 @@ export function gitErrorKey(err: unknown): string {
 	const code = getApiErrorCode(err);
 	return (code && SETUP_ERROR_KEYS[code]) || "generic";
 }
+
+const MAX_PROVIDER_MESSAGE = 500;
+
+/**
+ * What the platform itself said about a failed Git call (the API's
+ * `error_details.provider_message`), for showing under the generic message.
+ * It is untrusted free text: render it as text only, never as HTML. Null when
+ * the platform said nothing.
+ */
+export function gitProviderMessage(err: unknown): string | null {
+	const msg = (
+		err as {
+			response?: { data?: { error_details?: { provider_message?: unknown } } };
+		}
+	)?.response?.data?.error_details?.provider_message;
+	if (typeof msg !== "string") return null;
+	const text = msg.trim();
+	if (!text) return null;
+	return text.length > MAX_PROVIDER_MESSAGE
+		? `${text.slice(0, MAX_PROVIDER_MESSAGE)}…`
+		: text;
+}
