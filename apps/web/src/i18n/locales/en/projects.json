@@ -25,12 +25,12 @@
 		},
 		"git": {
 			"title": "Git repositories",
-			"description": "Repositories this project's agents can work on, through the workspace's shared Git identity.",
+			"description": "Repositories this project's agents can work on, reached through the connections below.",
 			"empty": {
 				"title": "No repositories linked",
 				"description": "Link a repository so this project's agents can read its code, open pull requests and respond to mentions.",
 				"readOnly": "You need Git write access on this project to link repositories.",
-				"linkNeedsAdmin": "Linking a repository also needs the workspace permission to manage Git identities. Ask an administrator."
+				"noConnection": "Add a connection first, then link repositories through it."
 			},
 			"noProviders": "No Git provider is installed. Ask an administrator to install one.",
 			"link": {
@@ -41,7 +41,10 @@
 				"open": "Link a repository",
 				"cancel": "Cancel",
 				"help": "Paste the repository URL or type owner/name.",
-				"connectAction": "Open Git integration"
+				"noConnection": "Add a {{provider}} connection above before linking a repository.",
+				"connection": "Connection",
+				"anyConnection": "Any connection that can see it",
+				"connectionHelp": "Choose one when several connections can see the repository, for example two organizations."
 			},
 			"unlink": {
 				"button": "Unlink",
@@ -50,11 +53,13 @@
 			},
 			"resumed": "Welcome back. Link {{repository}} now.",
 			"access": {
-				"title": "The shared identity can't see this repository",
-				"description": "The {{provider}} identity can only see repositories of accounts it is installed on. Install it on {{owner}} (you'll go to the platform and come back here), then link again.",
-				"descriptionNoOwner": "The {{provider}} identity can only see repositories of accounts it is installed on. Choose where to install it (you'll go to the platform and come back here), then link again.",
+				"title": "This connection can't see this repository",
+				"description": "The {{provider}} app can only see repositories of accounts it is installed on. Install it on {{owner}} (you'll go to the platform and come back here), then link again.",
+				"descriptionNoOwner": "The {{provider}} app can only see repositories of accounts it is installed on. Choose where to install it (you'll go to the platform and come back here), then link again.",
 				"button": "Install on {{owner}}",
-				"buttonNoOwner": "Choose where to install"
+				"buttonNoOwner": "Choose where to install",
+				"connection": "Connection to install",
+				"choose": "Choose a connection"
 			},
 			"errors": {
 				"generic": "Something went wrong. Please try again.",
@@ -64,9 +69,10 @@
 				"providerUnavailable": "The Git provider plugin is unavailable.",
 				"providerRejected": "The platform refused the request.",
 				"notFound": "Not found.",
-				"accessNotGranted": "The shared identity can't see this repository.",
-				"noIdentity": "No shared Git identity is set up for this platform yet. A workspace administrator sets it up under Administration → Git.",
-				"alreadyLinked": "This repository is already linked to the project."
+				"accessNotGranted": "The connection can't see this repository.",
+				"noIdentity": "No connection is available for this platform yet. Add one under Connections.",
+				"alreadyLinked": "This repository is already linked to the project.",
+				"identityRequired": "Several connections can see this repository. Choose which one to use."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -148,6 +154,29 @@
 					"description": "Add the \"paca\" label to an issue or pull request."
 				},
 				"automatic": "Agents can also start on their own, for example to follow up on their pull requests or review every new one. Turn these on in each agent's Git tab."
+			},
+			"connections": {
+				"title": "Connections",
+				"description": "The GitHub Apps and access tokens Paca uses to reach your repositories. A project can have several, from different organizations; each is either shared by every project or limited to this one.",
+				"add": "Add {{provider}}",
+				"empty": {
+					"title": "No connection yet",
+					"description": "Add a connection so Paca can reach your repositories. Use an app, or paste an access token if your platform has no apps.",
+					"noPermission": "Ask someone who can manage Git connections to add one."
+				},
+				"scope": {
+					"shared": "All projects",
+					"project": "This project"
+				},
+				"expires": "Expires {{date}}",
+				"expired": "Expired",
+				"remove": "Remove"
+			},
+			"webhook": {
+				"title": "Events from this repository aren't reaching Paca",
+				"description": "Paca registers a webhook on each repository through this connection and couldn't: the token probably lacks the permission to manage webhooks (the Maintainer role on GitLab, the Webhooks permission on GitHub). Give the token that permission (on GitLab, create a new token with the Maintainer role and add it as a connection), then try again.",
+				"retry": "Try again",
+				"failed": "Still couldn't register the webhook."
 			}
 		}
 	},
@@ -1104,6 +1133,10 @@
 			"gitMerge": {
 				"label": "Merge change requests",
 				"description": "Merge pull requests and merge requests into their target branch. Branch protection on the platform still applies."
+			},
+			"gitConnectionsManage": {
+				"label": "Manage Git connections",
+				"description": "Add and remove the GitHub Apps and access tokens that only this project uses. Linking repositories still needs Git write access."
 			}
 		},
 		"permissionGroups": {

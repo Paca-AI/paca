@@ -461,6 +461,16 @@ func New(deps Deps) http.Handler {
 				// declares exactly the action it needs).
 				if deps.Git != nil {
 					r.With(require.Project(iam.ActionGitRead)).Get("/git/providers", deps.Git.ListProviders)
+					// Connections: the credentials (GitHub Apps, access tokens) the
+					// project links repositories through. Listing shows the workspace's
+					// and the project's own. Creating or deleting a project's own
+					// needs git:write and the project-level git.connections:manage;
+					// workspace-wide ones are managed under /git/identities with the
+					// workspace-level git.identities:manage.
+					r.With(require.Project(iam.ActionGitRead)).Get("/git/connections", deps.Git.ListConnections)
+					r.With(require.Project(iam.ActionGitWrite), require.Project(iam.ActionGitConnectionsManage)).Post("/git/connections/setup", deps.Git.BeginProjectSetup)
+					r.With(require.Project(iam.ActionGitWrite), require.Project(iam.ActionGitConnectionsManage)).Post("/git/connections/setup/complete", deps.Git.CompleteProjectSetup)
+					r.With(require.Project(iam.ActionGitWrite), require.Project(iam.ActionGitConnectionsManage)).Delete("/git/connections/{identityId}", deps.Git.DeleteProjectConnection)
 					// Granting the shared identity access to the owner of a
 					// repository this project wants to link (GitHub: installing
 					// the App there). The platform decides who may grant; here it
@@ -474,11 +484,12 @@ func New(deps Deps) http.Handler {
 					r.With(require.Project(iam.ActionGitRead)).Get("/git/runs", deps.Git.ListProjectRuns)
 					r.Route("/git/repositories", func(r chi.Router) {
 						r.With(require.Project(iam.ActionGitRead)).Get("/", deps.Git.ListRepositories)
-						// Linking makes a repository the shared identity can see usable by
-						// this project, so it also needs the workspace-level action that
-						// governs the identity itself; git:write alone must not reach
-						// repositories another project's installation exposed.
-						r.With(require.Project(iam.ActionGitWrite), require.Global(iam.ActionGitIdentitiesManage)).Post("/", deps.Git.LinkRepository)
+						// Linking goes through a connection the project can use: a
+						// workspace-wide one was made available to every project by
+						// whoever holds git.identities:manage, a project's own is its
+						// own. git:write is therefore enough.
+						r.With(require.Project(iam.ActionGitWrite)).Post("/", deps.Git.LinkRepository)
+						r.With(require.Project(iam.ActionGitWrite)).Post("/{repositoryId}/webhook", deps.Git.RegisterWebhook)
 						r.With(require.Project(iam.ActionGitRead)).Post("/{repositoryId}/credential/read", deps.Git.ReadCredential)
 						r.With(require.Project(iam.ActionGitWrite)).Post("/{repositoryId}/credential/write", deps.Git.WriteCredential)
 

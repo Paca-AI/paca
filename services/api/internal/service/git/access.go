@@ -19,6 +19,9 @@ type AccessInput struct {
 	ProviderID string
 	Host       string // empty: the provider's first default host
 	Owner      string // the account or organization, when known
+	// IdentityID names the connection to grant access to. Empty: the project's
+	// only connection for the provider and host.
+	IdentityID *uuid.UUID
 	// AgentID, when set, grants the agent's own identity instead of the host's
 	// shared one (the agent must have one).
 	AgentID   *uuid.UUID
@@ -53,10 +56,13 @@ func (s *Service) BeginAccessGrant(ctx context.Context, in AccessInput) (*gitpro
 		host = info.Hosts[0]
 	}
 	var ident *gitdom.Identity
-	if in.AgentID != nil {
+	switch {
+	case in.AgentID != nil:
 		ident, err = s.store.FindAgentIdentity(ctx, *in.AgentID, in.ProviderID)
-	} else {
-		ident, err = s.store.FindSharedIdentity(ctx, in.ProviderID, host)
+	case in.IdentityID != nil:
+		ident, err = s.visibleIdentity(ctx, in.ProjectID, *in.IdentityID)
+	default:
+		ident, err = s.onlyConnection(ctx, in.ProjectID, in.ProviderID, host)
 	}
 	if errors.Is(err, gitdom.ErrNotFound) {
 		return nil, gitdom.ErrNoIdentity
@@ -119,4 +125,26 @@ func (s *Service) CompleteAccessGrant(ctx context.Context, actorID, projectID uu
 	// Credentials minted before the grant could not see the new owner; they are
 	// per repository, so nothing cached needs dropping.
 	return &AccessCompletion{Owner: grant.Owner, ReturnURL: sess.ReturnURL}, nil
+}
+
+// onlyConnection returns the one connection of a provider host the project can
+// use, ErrIdentityRequired when there are several and ErrNotFound when none.
+func (s *Service) onlyConnection(ctx context.Context, projectID uuid.UUID, providerID, host string) (*gitdom.Identity, error) {
+	all, err := s.store.ListProjectIdentities(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	var found []*gitdom.Identity
+	for _, id := range all {
+		if id.ProviderID == providerID && strings.EqualFold(id.Host, host) {
+			found = append(found, id)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return nil, gitdom.ErrNotFound
+	case 1:
+		return found[0], nil
+	}
+	return nil, gitdom.ErrIdentityRequired
 }

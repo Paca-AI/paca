@@ -303,8 +303,8 @@
 				"description": "Tạo, sửa, xóa tài khoản dịch vụ và cấp hoặc thu hồi khóa API"
 			},
 			"gitIdentitiesManage": {
-				"label": "Quản lý danh tính Git",
-				"description": "Thiết lập và gỡ các danh tính GitHub (hoặc nền tảng Git khác) mà tác nhân sử dụng, trên toàn bộ không gian làm việc"
+				"label": "Quản lý kết nối Git của không gian làm việc",
+				"description": "Thêm và gỡ các GitHub App và access token mà mọi dự án trong không gian làm việc đều có thể dùng"
 			}
 		},
 		"permissionGroups": {
@@ -635,17 +635,8 @@
 		}
 	},
 	"git": {
-		"title": "Git",
-		"description": "Danh tính bot cho phép các agent clone, push và mở pull request hoặc merge request trên các nền tảng Git của bạn. Mỗi host có một danh tính dùng chung; agent cũng có thể có danh tính riêng trong phần cài đặt của mình.",
-		"noProviders": {
-			"title": "Chưa cài nhà cung cấp Git nào",
-			"description": "Hãy cài một plugin nhà cung cấp Git, chẳng hạn GitHub Integration, để thiết lập danh tính bot.",
-			"action": "Quản lý plugin"
-		},
 		"cancel": "Hủy",
-		"identity": {},
 		"setup": {
-			"button": "Thiết lập",
 			"dialogTitle": "Thiết lập {{provider}} trên {{host}}",
 			"dialogDescription": "Paca sẽ tạo trên {{host}} một danh tính bot để các agent dùng khi clone, push và làm việc với {{changeRequests}}. Bạn sẽ được chuyển đến {{host}} để phê duyệt, rồi quay lại đây.",
 			"name": "Tên ứng dụng (tùy chọn)",
@@ -655,13 +646,45 @@
 			"start": "Tiếp tục đến {{host}}",
 			"submitToken": "Lưu",
 			"public": "Cho phép cài đặt trên tài khoản khác (ứng dụng công khai)",
-			"publicHelp": "Cần khi các dự án dùng repository của những người dùng hoặc tổ chức khác nhau. Ứng dụng riêng tư chỉ cài được trên tài khoản sở hữu nó."
+			"publicHelp": "Cần khi các dự án dùng repository của những người dùng hoặc tổ chức khác nhau. Ứng dụng riêng tư chỉ cài được trên tài khoản sở hữu nó.",
+			"next": "Tiếp theo",
+			"tokenDescription": "Paca kết nối tới {{host}} bằng một access token mà bạn tạo ở đó. Ở bước tiếp theo, bạn dán token vào.",
+			"host": "Máy chủ",
+			"hostHelp": "Địa chỉ của hệ thống của bạn, ví dụ gitlab.example.com.",
+			"kind": {
+				"label": "Kết nối bằng",
+				"app": {
+					"title": "Ứng dụng (App)",
+					"help": "Paca tạo một ứng dụng trên {{provider}} cho bạn. Quyền truy cập chỉ giới hạn ở các kho bạn cài ứng dụng vào."
+				},
+				"bot_user": {
+					"title": "Access token",
+					"help": "Dán access token của dự án hoặc nhóm. Paca hoạt động với tư cách người dùng bot của token đó."
+				},
+				"token": {
+					"title": "Access token",
+					"help": "Dán personal access token. Token hoạt động với tư cách chủ sở hữu, vì vậy hãy dùng một tài khoản máy riêng."
+				}
+			},
+			"scope": {
+				"label": "Phạm vi sử dụng",
+				"project": {
+					"title": "Chỉ dự án này",
+					"help": "Chỉ dự án này có thể liên kết kho thông qua kết nối này."
+				},
+				"workspace": {
+					"title": "Tất cả dự án",
+					"help": "Mọi dự án trong không gian làm việc đều có thể liên kết kho thông qua kết nối này.",
+					"noPermission": "Cần quyền quản lý kết nối Git ở cấp không gian làm việc."
+				},
+				"none": "Bạn không có quyền thêm kết nối tại đây."
+			}
 		},
 		"delete": {
 			"button": "Gỡ bỏ",
-			"title": "Gỡ bỏ danh tính này?",
-			"description": "Các agent sẽ không còn hoạt động với tư cách {{name}} trên {{host}} và sẽ chuyển sang danh tính khác. Các repository đã liên kết vẫn được giữ nguyên. Ứng dụng trên nền tảng không bị xóa; hãy xóa ở đó nếu bạn không cần nữa.",
-			"confirm": "Gỡ bỏ danh tính"
+			"title": "Gỡ kết nối này?",
+			"description": "Các kho đã liên kết qua {{name}} trên {{host}} sẽ ngừng hoạt động cho đến khi bạn liên kết lại qua một kết nối khác. Bản thân ứng dụng hoặc token không bị xóa trên nền tảng; hãy xóa ở đó nếu bạn không cần nữa.",
+			"confirm": "Gỡ kết nối"
 		},
 		"callback": {
 			"working": "Đang hoàn tất thiết lập…",
@@ -679,23 +702,6 @@
 			"notFound": "Không tìm thấy."
 		},
 		"copy": "Sao chép",
-		"copied": "Đã sao chép",
-		"status": {
-			"connected": "Đã kết nối",
-			"notConnected": "Chưa kết nối"
-		},
-		"platforms": {
-			"title": "Nền tảng Git",
-			"description": "Mỗi nền tảng cần một danh tính bot dùng chung."
-		},
-		"connect": {
-			"title": "Kết nối {{provider}}",
-			"description": "Paca tạo một tài khoản bot trên {{host}} để các tác nhân đọc mã, đẩy nhánh, mở pull request và bình luận.",
-			"time": "Mất khoảng một phút. Bạn phê duyệt trên nền tảng rồi quay lại đây."
-		},
-		"connected": {
-			"sharedNote": "Dùng chung cho mọi dự án và tác nhân chưa có danh tính riêng.",
-			"mention": "Nhắc trong bình luận:"
-		}
+		"copied": "Đã sao chép"
 	}
 }

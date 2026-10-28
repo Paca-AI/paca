@@ -6,8 +6,10 @@
 -- tokens, installation ids beyond the opaque provider_ref) lives in the
 -- provider plugin's own schema, never here.
 
--- A bot identity on a platform host: the shared one for the host, or one agent's
--- own. The secret behind it stays with the provider plugin.
+-- A connection to a platform host: the credential (a GitHub App, an access token)
+-- Paca reaches it with. 'shared' ones serve every project, 'project' ones only
+-- project_id, 'agent' ones one agent; any number per host. The secret behind it
+-- stays with the provider plugin.
 CREATE TABLE IF NOT EXISTS git_identities (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     provider_id  TEXT        NOT NULL,            -- plugin id, e.g. com.paca.github
@@ -16,19 +18,19 @@ CREATE TABLE IF NOT EXISTS git_identities (
     -- it is everything the provider needs handed back on every call.
     provider_identity_id TEXT NOT NULL,
     kind         TEXT        NOT NULL CHECK (kind IN ('app', 'bot_user', 'token')),
-    scope        TEXT        NOT NULL CHECK (scope IN ('shared', 'agent')),
+    scope        TEXT        NOT NULL CHECK (scope IN ('shared', 'project', 'agent')),
+    project_id   UUID        REFERENCES projects (id) ON DELETE CASCADE,
     handle       TEXT        NOT NULL DEFAULT '', -- what users @mention
     display_name TEXT        NOT NULL DEFAULT '',
     provider_ref JSONB       NOT NULL DEFAULT '{}'::jsonb,
     expires_at   TIMESTAMPTZ,                     -- credential expiry, when the platform has one
     created_by   UUID,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK ((scope = 'project') = (project_id IS NOT NULL))
 );
 
--- One shared identity per provider host.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_git_identities_shared_host
-    ON git_identities (provider_id, host) WHERE scope = 'shared';
+CREATE INDEX IF NOT EXISTS idx_git_identities_project ON git_identities (project_id) WHERE project_id IS NOT NULL;
 
 -- An agent's own identity, at most one per provider.
 CREATE TABLE IF NOT EXISTS git_agent_identities (
@@ -163,15 +165,16 @@ CREATE TABLE IF NOT EXISTS git_setup_sessions (
     state        TEXT        PRIMARY KEY,
     provider_id  TEXT        NOT NULL,
     host         TEXT        NOT NULL,
-    scope        TEXT        NOT NULL CHECK (scope IN ('shared', 'agent')),
+    scope        TEXT        NOT NULL CHECK (scope IN ('shared', 'project', 'agent')),
     agent_id     UUID        REFERENCES agents (id) ON DELETE CASCADE,
+    project_id   UUID        REFERENCES projects (id) ON DELETE CASCADE,
     endpoint_key TEXT        NOT NULL REFERENCES git_webhook_endpoints (key) ON DELETE CASCADE,
     return_url   TEXT        NOT NULL DEFAULT '',
     created_by   UUID        NOT NULL,
     expires_at   TIMESTAMPTZ NOT NULL,
     completed_at TIMESTAMPTZ,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK ((scope = 'agent') = (agent_id IS NOT NULL))
+    CHECK ((scope = 'agent') = (agent_id IS NOT NULL) AND (scope = 'project') = (project_id IS NOT NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_git_setup_sessions_expires_at ON git_setup_sessions (expires_at);

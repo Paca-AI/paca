@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { GitBranch, Link2, Loader2, Lock, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,29 +9,33 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { usePermissions } from "@/hooks/use-permissions";
 import { listAgents } from "@/lib/agent-api";
 import {
 	beginGitAccess,
 	followGitStep,
 	GIT_PERMISSIONS,
+	type GitIdentity,
 	type GitPermission,
 	type GitProjectSettings,
 	type GitProvider,
 	type GitRepository,
 	getApiErrorCodeSafe,
+	gitConnectionsQueryOptions,
 	gitErrorKey,
 	gitProjectProvidersQueryOptions,
 	gitRepositoriesKey,
 	gitRepositoriesQueryOptions,
 	gitSettingsKey,
 	gitSettingsQueryOptions,
+	kindNeedsAccessGrant,
 	linkGitRepository,
+	registerGitWebhook,
 	rememberGitFlow,
 	repoOwnerOf,
 	unlinkGitRepository,
 	updateGitSettings,
 } from "@/lib/git-api";
+import { GitConnections } from "./GitConnections";
 
 interface GitSettingsProps {
 	projectId: string;
@@ -79,6 +82,7 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 	const { t } = useTranslation("projects");
 	const providers = useQuery(gitProjectProvidersQueryOptions(projectId));
 	const repos = useQuery(gitRepositoriesQueryOptions(projectId));
+	const connections = useQuery(gitConnectionsQueryOptions(projectId));
 	const settings = useQuery(gitSettingsQueryOptions(projectId));
 	const agents = useQuery({
 		queryKey: ["git", "projects", projectId, "responder-candidates"] as const,
@@ -106,10 +110,13 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 				</p>
 			</div>
 
+			<GitConnections projectId={projectId} providers={list} />
+
 			<Repositories
 				projectId={projectId}
 				canWrite={canWrite}
 				providers={list}
+				connections={connections.data ?? []}
 				linked={linked}
 			/>
 
@@ -134,20 +141,22 @@ function Repositories({
 	projectId,
 	canWrite,
 	providers,
+	connections,
 	linked,
 }: {
 	projectId: string;
 	canWrite: boolean;
 	providers: GitProvider[];
+	connections: GitIdentity[];
 	linked: GitRepository[];
 }) {
 	const { t } = useTranslation("projects");
-	const { hasPermission } = usePermissions();
-	// Linking also needs the workspace-level action that governs the identity.
-	const canLink = canWrite && hasPermission("git.identities:manage");
+	// Linking goes through a connection the project can use, so git:write is enough.
+	const canLink = canWrite;
 	const queryClient = useQueryClient();
 	const [input, setInput] = useState("");
 	const [providerId, setProviderId] = useState("");
+	const [identityId, setIdentityId] = useState("");
 	const [errorKey, setErrorKey] = useState<string | null>(null);
 	const [needsAccess, setNeedsAccess] = useState(false);
 	const [resumed, setResumed] = useState<string | null>(null);
@@ -156,6 +165,19 @@ function Repositories({
 
 	const provider: GitProvider | undefined =
 		providers.find((p) => p.id === providerId) ?? providers[0];
+	// The connections this platform can be reached with, and the ones that need
+	// to be installed on each owner's account before they can see a repository.
+	const options = connections.filter((c) => c.provider_id === provider?.id);
+	const grantable = provider
+		? options.filter((c) => kindNeedsAccessGrant(provider, c.kind))
+		: [];
+	const chosen = options.some((c) => c.id === identityId) ? identityId : "";
+	const accessTarget =
+		chosen && grantable.some((c) => c.id === chosen)
+			? chosen
+			: grantable.length === 1
+				? grantable[0].id
+				: "";
 
 	// Back from the platform: restore what the user was linking.
 	useEffect(() => {
@@ -173,6 +195,7 @@ function Repositories({
 			linkGitRepository(projectId, {
 				provider_id: provider?.id ?? "",
 				path_or_url: input.trim(),
+				...(chosen ? { identity_id: chosen } : {}),
 			}),
 		onSuccess: () => {
 			setInput("");
@@ -201,6 +224,7 @@ function Repositories({
 			beginGitAccess(projectId, {
 				provider_id: provider?.id ?? "",
 				owner: repoOwnerOf(input),
+				...(accessTarget ? { identity_id: accessTarget } : {}),
 				return_url: `${window.location.origin}/projects/${projectId}/settings#git`,
 			}),
 		onSuccess: (step) => {
@@ -228,7 +252,10 @@ function Repositories({
 
 	const owner = repoOwnerOf(input);
 	const showForm =
-		canLink && providers.length > 0 && (formOpen || linked.length === 0);
+		canLink &&
+		providers.length > 0 &&
+		connections.length > 0 &&
+		(formOpen || linked.length === 0);
 
 	const form = showForm ? (
 		<form
@@ -257,6 +284,36 @@ function Repositories({
 							</option>
 						))}
 					</select>
+				</div>
+			) : null}
+			{options.length === 0 ? (
+				<p role="status" className="text-sm text-muted-foreground">
+					{t("project.git.link.noConnection", {
+						provider: provider?.display_name ?? "",
+					})}
+				</p>
+			) : options.length > 1 ? (
+				<div className="flex flex-col gap-1.5">
+					<Label htmlFor="git-link-connection">
+						{t("project.git.link.connection")}
+					</Label>
+					<select
+						id="git-link-connection"
+						className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+						value={chosen}
+						onChange={(e) => setIdentityId(e.target.value)}
+					>
+						<option value="">{t("project.git.link.anyConnection")}</option>
+						{options.map((c) => (
+							<option key={c.id} value={c.id}>
+								{c.display_name || c.handle} ({c.host},{" "}
+								{t(`project.git.connections.scope.${c.scope}` as never)})
+							</option>
+						))}
+					</select>
+					<p className="text-xs text-muted-foreground">
+						{t("project.git.link.connectionHelp")}
+					</p>
 				</div>
 			) : null}
 			<div className="flex flex-col gap-1.5">
@@ -297,11 +354,33 @@ function Repositories({
 									provider: provider?.display_name ?? "",
 								})}
 					</p>
+					{grantable.length > 1 && !chosen ? (
+						<div className="flex flex-col gap-1.5">
+							<Label htmlFor="git-access-connection">
+								{t("project.git.access.connection")}
+							</Label>
+							<select
+								id="git-access-connection"
+								className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+								value={accessTarget}
+								onChange={(e) => setIdentityId(e.target.value)}
+							>
+								<option value="" disabled>
+									{t("project.git.access.choose")}
+								</option>
+								{grantable.map((c) => (
+									<option key={c.id} value={c.id}>
+										{c.display_name || c.handle}
+									</option>
+								))}
+							</select>
+						</div>
+					) : null}
 					<div>
 						<Button
 							type="button"
 							size="sm"
-							disabled={grant.isPending}
+							disabled={grant.isPending || !accessTarget}
 							onClick={() => grant.mutate()}
 						>
 							{grant.isPending ? (
@@ -376,23 +455,13 @@ function Repositories({
 					description={
 						providers.length === 0
 							? t("project.git.noProviders")
-							: canLink
-								? t("project.git.empty.description")
-								: canWrite
-									? t("project.git.empty.linkNeedsAdmin")
+							: connections.length === 0
+								? t("project.git.empty.noConnection")
+								: canLink
+									? t("project.git.empty.description")
 									: t("project.git.empty.readOnly")
 					}
-				>
-					{providers.length === 0 ? (
-						<Button
-							render={<Link to="/admin/git" />}
-							size="sm"
-							variant="outline"
-						>
-							{t("project.git.link.connectAction")}
-						</Button>
-					) : null}
-				</EmptyState>
+				/>
 			) : (
 				<ul className="flex flex-col divide-y divide-border/60 rounded-xl border border-border/60">
 					{linked.map((r) => (
@@ -415,6 +484,13 @@ function Repositories({
 									) : null}
 								</p>
 							</div>
+							{r.webhook_url ? (
+								<WebhookNotice
+									projectId={projectId}
+									repository={r}
+									canWrite={canWrite}
+								/>
+							) : null}
 							{canWrite ? (
 								confirming === r.id ? (
 									<div className="flex gap-2">
@@ -454,6 +530,68 @@ function Repositories({
 			)}
 			{form}
 		</Section>
+	);
+}
+
+/**
+ * A repository whose platform has not been told where to send events: nothing
+ * reaches Paca from it until a webhook exists. Paca registers it itself when
+ * the connection may; otherwise this says what is missing and offers a retry
+ * for when the token has since been given the right.
+ */
+function WebhookNotice({
+	projectId,
+	repository,
+	canWrite,
+}: {
+	projectId: string;
+	repository: GitRepository;
+	canWrite: boolean;
+}) {
+	const { t } = useTranslation("projects");
+	const queryClient = useQueryClient();
+	const [failed, setFailed] = useState(false);
+	const retry = useMutation({
+		mutationFn: () => registerGitWebhook(projectId, repository.id),
+		onSuccess: () => {
+			setFailed(false);
+			void queryClient.invalidateQueries({
+				queryKey: gitRepositoriesKey(projectId),
+			});
+		},
+		onError: () => setFailed(true),
+	});
+	return (
+		<div
+			role="status"
+			className="flex basis-full flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-3 text-sm"
+		>
+			<p className="font-medium">{t("project.git.webhook.title")}</p>
+			<p className="text-muted-foreground">
+				{t("project.git.webhook.description")}
+			</p>
+			{failed ? (
+				<p role="alert" className="text-destructive">
+					{t("project.git.webhook.failed")}
+				</p>
+			) : null}
+			{canWrite ? (
+				<div>
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						disabled={retry.isPending}
+						onClick={() => retry.mutate()}
+					>
+						{retry.isPending ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : null}
+						{t("project.git.webhook.retry")}
+					</Button>
+				</div>
+			) : null}
+		</div>
 	);
 }
 

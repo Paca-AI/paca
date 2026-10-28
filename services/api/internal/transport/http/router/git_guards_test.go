@@ -64,30 +64,6 @@ func TestGuardsIAM_GitIdentitiesManage(t *testing.T) {
 	}, manage)
 }
 
-// Linking a repository needs the project's git:write and the workspace-level
-// git.identities:manage; neither alone is enough.
-func TestGuardsIAM_LinkRepositoryNeedsWriteAndIdentitiesManage(t *testing.T) {
-	project := uuid.NewString()
-	res := "project/" + project + "/*"
-	gate := func(g guards) func(http.Handler) http.Handler {
-		return func(next http.Handler) http.Handler {
-			return g.Project(iam.ActionGitWrite)(g.Global(iam.ActionGitIdentitiesManage)(next))
-		}
-	}
-	runIAMGateCases(t, project, []iamGateCase{
-		{name: "git:write + identities:manage", authenticated: true, want: http.StatusNoContent,
-			grants: []iam.Grant{
-				projectRole(project, allow([]string{"git:write"}, res)),
-				platformRole(allow([]string{"git.identities:manage"}, "git_identity/*")),
-			}},
-		{name: "git:write only", authenticated: true, want: http.StatusForbidden,
-			grants: []iam.Grant{projectRole(project, allow([]string{"git:write"}, res))}},
-		{name: "identities:manage only", authenticated: true, want: http.StatusForbidden,
-			grants: []iam.Grant{platformRole(allow([]string{"git.identities:manage"}, "git_identity/*"))}},
-		{name: "anonymous", want: http.StatusUnauthorized},
-	}, gate)
-}
-
 // Installing an agent's own identity on another account needs both the agent
 // (agents:write) and the project's git:write; neither alone is enough.
 func TestGuardsIAM_AgentAccessGrantNeedsAgentAndGit(t *testing.T) {
@@ -157,4 +133,31 @@ func TestGuardsIAM_TaskGitLinking(t *testing.T) {
 		{name: "create branch: git:read is not enough", authenticated: true, want: http.StatusForbidden,
 			grants: []iam.Grant{projectRole(project, allow([]string{"tasks:write", "git:read"}, res))}},
 	}, both(iam.ActionTasksWrite, iam.ActionGitWrite))
+}
+
+// A project's own connection needs the project's git:write and the
+// project-level git.connections:manage; neither alone is enough, and the
+// workspace-level git.identities:manage does not stand in for it.
+func TestGuardsIAM_ProjectConnectionNeedsWriteAndConnectionsManage(t *testing.T) {
+	project := uuid.NewString()
+	res := "project/" + project + "/*"
+	gate := func(g guards) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return g.Project(iam.ActionGitWrite)(g.Project(iam.ActionGitConnectionsManage)(next))
+		}
+	}
+	runIAMGateCases(t, project, []iamGateCase{
+		{name: "git:write + connections:manage", authenticated: true, want: http.StatusNoContent,
+			grants: []iam.Grant{projectRole(project, allow([]string{"git:write", "git.connections:manage"}, res))}},
+		{name: "git:write only", authenticated: true, want: http.StatusForbidden,
+			grants: []iam.Grant{projectRole(project, allow([]string{"git:write"}, res))}},
+		{name: "connections:manage only", authenticated: true, want: http.StatusForbidden,
+			grants: []iam.Grant{projectRole(project, allow([]string{"git.connections:manage"}, res))}},
+		{name: "workspace identities:manage is not enough", authenticated: true, want: http.StatusForbidden,
+			grants: []iam.Grant{
+				projectRole(project, allow([]string{"git:write"}, res)),
+				platformRole(allow([]string{"git.identities:manage"}, "git_identity/*")),
+			}},
+		{name: "anonymous", want: http.StatusUnauthorized},
+	}, gate)
 }

@@ -475,6 +475,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeGitAlreadyLinked
 	case errors.Is(err, gitdom.ErrIdentityExists):
 		return http.StatusConflict, apierr.CodeGitIdentityExists
+	case errors.Is(err, gitdom.ErrIdentityRequired):
+		return http.StatusConflict, apierr.CodeGitIdentityRequired
 	case errors.Is(err, gitdom.ErrSetupExpired):
 		return http.StatusBadRequest, apierr.CodeGitSetupInvalid
 	case errors.Is(err, gitdom.ErrPublicURLRequired):

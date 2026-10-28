@@ -25,12 +25,12 @@
 		},
 		"git": {
 			"title": "Dépôts Git",
-			"description": "Dépôts sur lesquels les agents de ce projet peuvent travailler, via l'identité Git partagée de l'espace de travail.",
+			"description": "Dépôts sur lesquels les agents de ce projet peuvent travailler, via les connexions ci-dessous.",
 			"empty": {
 				"title": "Aucun dépôt lié",
 				"description": "Liez un dépôt pour que les agents de ce projet puissent lire son code, ouvrir des pull requests et répondre aux mentions.",
 				"readOnly": "Vous avez besoin de l'accès en écriture Git sur ce projet pour lier des dépôts.",
-				"linkNeedsAdmin": "Lier un dépôt nécessite aussi l'autorisation d'espace de travail pour gérer les identités Git. Demandez à un administrateur."
+				"noConnection": "Ajoutez d'abord une connexion, puis liez des dépôts via celle-ci."
 			},
 			"noProviders": "Aucun fournisseur Git n'est installé. Demandez à un administrateur d'en installer un.",
 			"link": {
@@ -41,7 +41,10 @@
 				"open": "Lier un dépôt",
 				"cancel": "Annuler",
 				"help": "Collez l'URL du dépôt ou saisissez propriétaire/nom.",
-				"connectAction": "Ouvrir l'intégration Git"
+				"noConnection": "Ajoutez d'abord une connexion {{provider}} ci-dessus avant de lier un dépôt.",
+				"connection": "Connexion",
+				"anyConnection": "Toute connexion qui peut le voir",
+				"connectionHelp": "Choisissez-en une lorsque plusieurs connexions voient le dépôt, par exemple deux organisations."
 			},
 			"unlink": {
 				"button": "Délier",
@@ -50,11 +53,13 @@
 			},
 			"resumed": "Bon retour. Liez {{repository}} maintenant.",
 			"access": {
-				"title": "L'identité partagée ne voit pas ce dépôt",
-				"description": "L'identité {{provider}} ne voit que les dépôts des comptes sur lesquels elle est installée. Installez-la sur {{owner}} (vous irez sur la plateforme puis reviendrez ici), puis liez à nouveau.",
-				"descriptionNoOwner": "L'identité {{provider}} ne voit que les dépôts des comptes sur lesquels elle est installée. Choisissez où l'installer (vous irez sur la plateforme puis reviendrez ici), puis liez à nouveau.",
+				"title": "Cette connexion ne voit pas ce dépôt",
+				"description": "L'application {{provider}} ne voit que les dépôts des comptes sur lesquels elle est installée. Installez-la sur {{owner}} (vous irez sur la plateforme puis reviendrez ici), puis liez à nouveau.",
+				"descriptionNoOwner": "L'application {{provider}} ne voit que les dépôts des comptes sur lesquels elle est installée. Choisissez où l'installer (vous irez sur la plateforme puis reviendrez ici), puis liez à nouveau.",
 				"button": "Installer sur {{owner}}",
-				"buttonNoOwner": "Choisir où installer"
+				"buttonNoOwner": "Choisir où installer",
+				"connection": "Connexion à installer",
+				"choose": "Choisir une connexion"
 			},
 			"errors": {
 				"generic": "Une erreur s'est produite. Veuillez réessayer.",
@@ -64,9 +69,10 @@
 				"providerUnavailable": "Le plugin du fournisseur Git est indisponible.",
 				"providerRejected": "La plateforme a refusé la demande.",
 				"notFound": "Introuvable.",
-				"accessNotGranted": "L'identité partagée ne voit pas ce dépôt.",
-				"noIdentity": "Aucune identité Git partagée n'est configurée pour cette plateforme. Un administrateur de l'espace de travail la configure dans Administration → Git.",
-				"alreadyLinked": "Ce dépôt est déjà lié au projet."
+				"accessNotGranted": "La connexion ne voit pas ce dépôt.",
+				"noIdentity": "Aucune connexion n'est encore disponible pour cette plateforme. Ajoutez-en une dans Connexions.",
+				"alreadyLinked": "Ce dépôt est déjà lié au projet.",
+				"identityRequired": "Plusieurs connexions voient ce dépôt. Choisissez celle à utiliser."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -148,6 +154,29 @@
 					"description": "Ajoutez le label « paca » à une issue ou une pull request."
 				},
 				"automatic": "Les agents peuvent aussi démarrer seuls, par exemple pour suivre leurs pull requests ou relire chaque nouvelle. Activez cela dans l'onglet Git de chaque agent."
+			},
+			"connections": {
+				"title": "Connexions",
+				"description": "Les applications GitHub et jetons d'accès que Paca utilise pour atteindre vos dépôts. Un projet peut en avoir plusieurs, issus d'organisations différentes ; chacun est soit partagé par tous les projets, soit limité à celui-ci.",
+				"add": "Ajouter {{provider}}",
+				"empty": {
+					"title": "Aucune connexion pour l'instant",
+					"description": "Ajoutez une connexion pour que Paca puisse atteindre vos dépôts. Utilisez une application, ou collez un jeton d'accès si votre plateforme n'en propose pas.",
+					"noPermission": "Demandez à une personne pouvant gérer les connexions Git d'en ajouter une."
+				},
+				"scope": {
+					"shared": "Tous les projets",
+					"project": "Ce projet"
+				},
+				"expires": "Expire le {{date}}",
+				"expired": "Expiré",
+				"remove": "Supprimer"
+			},
+			"webhook": {
+				"title": "Les événements de ce dépôt n'arrivent pas jusqu'à Paca",
+				"description": "Paca enregistre un webhook sur chaque dépôt via cette connexion et n'y est pas parvenu : le jeton n'a probablement pas l'autorisation de gérer les webhooks (le rôle Maintainer sur GitLab, l'autorisation Webhooks sur GitHub). Donnez cette autorisation au jeton (sur GitLab, créez un nouveau jeton avec le rôle Maintainer et ajoutez-le comme connexion), puis réessayez.",
+				"retry": "Réessayer",
+				"failed": "Impossible d'enregistrer le webhook pour le moment."
 			}
 		}
 	},
@@ -1104,6 +1133,10 @@
 			"gitMerge": {
 				"label": "Fusionner les demandes de modification",
 				"description": "Fusionner les pull requests et merge requests dans leur branche cible. La protection de branche de la plateforme s'applique toujours."
+			},
+			"gitConnectionsManage": {
+				"label": "Gérer les connexions Git",
+				"description": "Ajouter et supprimer les applications GitHub et jetons d'accès utilisés uniquement par ce projet. Lier des dépôts nécessite toujours l'accès en écriture Git."
 			}
 		},
 		"permissionGroups": {

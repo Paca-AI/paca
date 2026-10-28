@@ -3,17 +3,24 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockComplete, mockCompleteAccess, mockFollow, mockBeginAgentAccess } =
-	vi.hoisted(() => ({
-		mockBeginAgentAccess: vi.fn(),
-		mockComplete: vi.fn(),
-		mockCompleteAccess: vi.fn(),
-		mockFollow: vi.fn(),
-	}));
+const {
+	mockComplete,
+	mockCompleteProject,
+	mockCompleteAccess,
+	mockFollow,
+	mockBeginAgentAccess,
+} = vi.hoisted(() => ({
+	mockBeginAgentAccess: vi.fn(),
+	mockComplete: vi.fn(),
+	mockCompleteProject: vi.fn(),
+	mockCompleteAccess: vi.fn(),
+	mockFollow: vi.fn(),
+}));
 
 vi.mock("@/lib/git-api", async (orig) => ({
 	...(await orig<typeof import("@/lib/git-api")>()),
 	completeGitSetup: mockComplete,
+	completeProjectGitSetup: mockCompleteProject,
 	completeGitAccess: mockCompleteAccess,
 	beginAgentGitAccess: mockBeginAgentAccess,
 	followGitStep: mockFollow,
@@ -144,9 +151,51 @@ describe("GitSetupCallback", () => {
 		expect(await screen.findByRole("alert")).toHaveTextContent(
 			/invalid, expired or already used/i,
 		);
-		expect(
-			screen.getByRole("link", { name: /back to git settings/i }),
-		).toHaveAttribute("href", "/admin/git");
+		const assign = vi.fn();
+		const original = window.location;
+		Object.defineProperty(window, "location", {
+			configurable: true,
+			value: { ...original, assign },
+		});
+		try {
+			screen.getByRole("button", { name: /back to git settings/i }).click();
+			expect(assign).toHaveBeenCalledWith("/home");
+		} finally {
+			Object.defineProperty(window, "location", {
+				configurable: true,
+				value: original,
+			});
+		}
+	});
+
+	it("completes a project's own connection through the project route and goes back there on failure", async () => {
+		rememberGitFlow("st-proj", { kind: "project-identity", projectId: "p9" });
+		mockCompleteProject.mockRejectedValue({
+			response: { data: { error_code: "GIT_SETUP_INVALID" } },
+		});
+		renderCallback(uniq("?code=c&state=st-proj"));
+		expect(await screen.findByRole("alert")).toBeInTheDocument();
+		expect(mockCompleteProject).toHaveBeenCalledWith("p9", "st-proj", {
+			code: "c",
+			t: expect.any(String),
+		});
+		expect(mockComplete).not.toHaveBeenCalled();
+
+		const assign = vi.fn();
+		const original = window.location;
+		Object.defineProperty(window, "location", {
+			configurable: true,
+			value: { ...original, assign },
+		});
+		try {
+			screen.getByRole("button", { name: /back to git settings/i }).click();
+			expect(assign).toHaveBeenCalledWith("/projects/p9/settings#git");
+		} finally {
+			Object.defineProperty(window, "location", {
+				configurable: true,
+				value: original,
+			});
+		}
 	});
 
 	it("does not call the API without a state", async () => {

@@ -278,7 +278,7 @@ test.describe("Git integration permissions", () => {
 	});
 
 	test.describe("Linking a repository", () => {
-		test("git:write alone cannot link a repository", async ({
+		test("git:write alone passes the link gate", async ({
 			request,
 			playwright,
 		}) => {
@@ -290,14 +290,14 @@ test.describe("Git integration permissions", () => {
 				["git:read", "git:write"],
 			);
 			await asUser(playwright, writer.username, async (api) => {
-				expect(
-					(
-						await api.post(gitUrl(projectId, "/repositories"), {
-							data: LINK_BODY,
-						})
-					).status(),
-				).toBe(403);
-				// Everything else git:write covers is still open to the writer.
+				const response = await api.post(gitUrl(projectId, "/repositories"), {
+					data: LINK_BODY,
+				});
+				// No provider is installed, so linking fails, but not for permissions:
+				// the connections it would go through were made available by whoever
+				// holds git.identities:manage, or by the project itself.
+				expect(refused(response), `status ${response.status()}`).toBe(false);
+				expect(response.ok()).toBe(false);
 				expect(
 					refused(
 						await api.put(gitUrl(projectId, "/settings"), {
@@ -305,6 +305,21 @@ test.describe("Git integration permissions", () => {
 						}),
 					),
 				).toBe(false);
+			});
+		});
+
+		test("git:read cannot link a repository", async ({ request, playwright }) => {
+			const reader = await memberWith(request, playwright, projectId, "READER", [
+				"git:read",
+			]);
+			await asUser(playwright, reader.username, async (api) => {
+				expect(
+					(
+						await api.post(gitUrl(projectId, "/repositories"), {
+							data: LINK_BODY,
+						})
+					).status(),
+				).toBe(403);
 			});
 		});
 
@@ -325,7 +340,40 @@ test.describe("Git integration permissions", () => {
 			});
 		});
 
-		test("git:write together with git.identities:manage passes the gate", async ({
+		test("a project's own connection needs git:write and git.connections:manage", async ({
+			request,
+			playwright,
+		}) => {
+			const setup = (api: APIRequestContext) =>
+				api.post(gitUrl(projectId, "/connections/setup"), {
+					data: { provider_id: "com.paca.github" },
+				});
+			const writer = await memberWith(request, playwright, projectId, "CONN_W", [
+				"git:read",
+				"git:write",
+			]);
+			const connector = await memberWith(request, playwright, projectId, "CONN_M", [
+				"git:read",
+				"git:write",
+				"git.connections:manage",
+			]);
+			const onlyManage = await memberWith(request, playwright, projectId, "CONN_O", [
+				"git:read",
+				"git.connections:manage",
+			]);
+			await asUser(playwright, writer.username, async (api) => {
+				expect((await setup(api)).status()).toBe(403);
+			});
+			await asUser(playwright, onlyManage.username, async (api) => {
+				expect((await setup(api)).status()).toBe(403);
+			});
+			await asUser(playwright, connector.username, async (api) => {
+				// No provider is installed, so it fails, but not for permissions.
+				expect(refused(await setup(api))).toBe(false);
+			});
+		});
+
+		test("the workspace action does not stand in for the project one", async ({
 			request,
 			playwright,
 		}) => {
@@ -335,12 +383,13 @@ test.describe("Git integration permissions", () => {
 			]);
 			await grantIdentitiesManage(request, both.userId, "BOTH");
 			await asUser(playwright, both.username, async (api) => {
-				const response = await api.post(gitUrl(projectId, "/repositories"), {
-					data: LINK_BODY,
-				});
-				// No provider is installed, so linking fails, but not for permissions.
-				expect(refused(response), `status ${response.status()}`).toBe(false);
-				expect(response.ok()).toBe(false);
+				expect(
+					(
+						await api.post(gitUrl(projectId, "/connections/setup"), {
+							data: { provider_id: "com.paca.github" },
+						})
+					).status(),
+				).toBe(403);
 			});
 		});
 	});

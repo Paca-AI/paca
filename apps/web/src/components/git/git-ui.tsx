@@ -115,3 +115,55 @@ export function EmptyState({
 		</div>
 	);
 }
+
+/**
+ * One option of a small, mutually exclusive choice, drawn as a bordered card
+ * around a native radio so keyboards and screen readers work as usual.
+ */
+export function ChoiceCard({
+	name,
+	value,
+	checked,
+	disabled,
+	onSelect,
+	title,
+	description,
+}: {
+	name: string;
+	value: string;
+	checked: boolean;
+	disabled?: boolean;
+	onSelect: (value: string) => void;
+	title: string;
+	description?: string;
+}) {
+	return (
+		<label
+			className={cn(
+				"flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors has-focus-visible:outline-2 has-focus-visible:outline-ring",
+				checked
+					? "border-primary bg-primary/5"
+					: "border-border/60 hover:bg-muted/40",
+				disabled && "cursor-not-allowed opacity-60 hover:bg-transparent",
+			)}
+		>
+			<input
+				type="radio"
+				name={name}
+				value={value}
+				checked={checked}
+				disabled={disabled}
+				className="mt-1 accent-primary"
+				onChange={() => onSelect(value)}
+			/>
+			<span className="min-w-0">
+				<span className="block text-sm font-medium">{title}</span>
+				{description ? (
+					<span className="mt-0.5 block text-xs text-muted-foreground">
+						{description}
+					</span>
+				) : null}
+			</span>
+		</label>
+	);
+}

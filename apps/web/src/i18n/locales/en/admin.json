@@ -320,8 +320,8 @@
 				"description": "Create, edit and delete service accounts and mint or revoke their API keys"
 			},
 			"gitIdentitiesManage": {
-				"label": "Manage Git identities",
-				"description": "Set up and remove the GitHub (or other Git platform) identities that agents use, for the whole workspace"
+				"label": "Manage workspace Git connections",
+				"description": "Add and remove the GitHub Apps and access tokens that every project in the workspace can use"
 			}
 		},
 		"permissionGroups": {
@@ -635,17 +635,8 @@
 		}
 	},
 	"git": {
-		"title": "Git",
-		"description": "Bot identities that let agents clone, push and open pull requests or merge requests on your Git platforms. Each host has one shared identity; agents can also get their own from their settings.",
-		"noProviders": {
-			"title": "No Git provider installed",
-			"description": "Install a Git provider plugin, such as GitHub Integration, to set up a bot identity.",
-			"action": "Manage plugins"
-		},
 		"cancel": "Cancel",
-		"identity": {},
 		"setup": {
-			"button": "Set up",
 			"dialogTitle": "Set up {{provider}} on {{host}}",
 			"dialogDescription": "Paca will create a bot identity on {{host}} that agents use to clone, push and work on {{changeRequests}}. You will be sent to {{host}} to approve it, then brought back here.",
 			"name": "App name (optional)",
@@ -655,13 +646,45 @@
 			"start": "Continue to {{host}}",
 			"submitToken": "Save",
 			"public": "Allow installing on other accounts (public app)",
-			"publicHelp": "Needed when projects use repositories of different users or organizations. A private app can only be installed on the account that owns it."
+			"publicHelp": "Needed when projects use repositories of different users or organizations. A private app can only be installed on the account that owns it.",
+			"next": "Next",
+			"tokenDescription": "Paca connects to {{host}} with an access token that you create there. On the next step you paste it.",
+			"host": "Host",
+			"hostHelp": "The address of your instance, for example gitlab.example.com.",
+			"kind": {
+				"label": "Connect with",
+				"app": {
+					"title": "App",
+					"help": "Paca creates an app on {{provider}} for you. Access is limited to the repositories you install it on."
+				},
+				"bot_user": {
+					"title": "Access token",
+					"help": "Paste a project or group access token. Paca acts as its bot user."
+				},
+				"token": {
+					"title": "Access token",
+					"help": "Paste a personal access token. It acts as its owner, so use a dedicated machine user."
+				}
+			},
+			"scope": {
+				"label": "Available to",
+				"project": {
+					"title": "This project only",
+					"help": "Only this project can link repositories through it."
+				},
+				"workspace": {
+					"title": "All projects",
+					"help": "Every project in the workspace can link repositories through it.",
+					"noPermission": "Needs the workspace permission to manage Git connections."
+				},
+				"none": "You don't have permission to add connections here."
+			}
 		},
 		"delete": {
 			"button": "Remove",
-			"title": "Remove this identity?",
-			"description": "Agents will stop acting as {{name}} on {{host}} and fall back to other identities. Repositories already linked stay linked. The app itself is not deleted on the platform; remove it there if you no longer need it.",
-			"confirm": "Remove identity"
+			"title": "Remove this connection?",
+			"description": "Repositories linked through {{name}} on {{host}} stop working until you link them again through another connection. The app or token itself is not deleted on the platform; remove it there if you no longer need it.",
+			"confirm": "Remove connection"
 		},
 		"callback": {
 			"working": "Finishing setup…",
@@ -679,23 +702,6 @@
 			"notFound": "Not found."
 		},
 		"copy": "Copy",
-		"copied": "Copied",
-		"status": {
-			"connected": "Connected",
-			"notConnected": "Not connected"
-		},
-		"platforms": {
-			"title": "Git platforms",
-			"description": "Each platform needs one shared bot identity."
-		},
-		"connect": {
-			"title": "Connect {{provider}}",
-			"description": "Paca creates a bot account on {{host}} that agents use to read code, push branches, open pull requests and comment.",
-			"time": "Takes about a minute. You approve it on the platform, then come back here."
-		},
-		"connected": {
-			"sharedNote": "Shared by every project and agent that has no identity of its own.",
-			"mention": "Mention it in comments:"
-		}
+		"copied": "Copied"
 	}
 }

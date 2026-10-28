@@ -397,8 +397,10 @@ const (
 	// CodeGitAccessNotGranted indicates the identity cannot see the repository because it has not been
 	// granted access to the repository's owner (for example the GitHub App is not installed there).
 	CodeGitAccessNotGranted Code = "GIT_ACCESS_NOT_GRANTED"
-	// CodeGitIdentityExists indicates the host already has a shared identity, or the agent already has its own.
+	// CodeGitIdentityExists indicates the agent already has its own identity for the provider.
 	CodeGitIdentityExists Code = "GIT_IDENTITY_EXISTS"
+	// CodeGitIdentityRequired indicates several connections could serve the request and the caller must choose one.
+	CodeGitIdentityRequired Code = "GIT_IDENTITY_REQUIRED"
 	// CodeGitSetupInvalid indicates the identity-setup state is unknown, expired, already used or someone else's.
 	CodeGitSetupInvalid Code = "GIT_SETUP_INVALID"
 	// CodeGitPublicURLRequired indicates PUBLIC_URL is not configured, so webhook and redirect URLs cannot be built.

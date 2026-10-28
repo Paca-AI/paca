@@ -1,11 +1,13 @@
 @iam @git
 Feature: Who may use the Git integration
   Git access is four project actions (git:read, git:write, git:approve,
-  git:merge) and one workspace action (git.identities:manage) for the bot
-  identities. Every route is gated in the router. Linking a repository needs
-  both git:write on the project and git.identities:manage, because the shared
-  identity's installations are instance-wide. The webhook intake is public: the
-  Git platform calls it and the provider plugin verifies the signature.
+  git:merge), one project action for a project's own connections
+  (git.connections:manage) and one workspace action (git.identities:manage) for
+  the connections every project can use. Every route is gated in the router.
+  Linking a repository needs git:write: the connections it goes through were
+  made available to the project by whoever holds git.identities:manage, or by
+  the project itself. The webhook intake is public: the Git platform calls it
+  and the provider plugin verifies the signature.
 
   Rule: Reading and writing a project's Git integration
 
@@ -34,18 +36,25 @@ Feature: Who may use the Git integration
       Given the user already has a stored authenticated admin session
       And a project
 
-    Scenario: git:write alone cannot link a repository
+    Scenario: git:write alone passes the link gate
       Given a member whose project role grants "git:write"
+      Then linking a repository is not refused for permissions
+
+    Scenario: git:read cannot link a repository
+      Given a member whose project role grants only "git:read"
       Then linking a repository answers 403
-      But saving the project's Git settings is not refused
 
     Scenario: git.identities:manage alone cannot link a repository
       Given a user with the workspace action "git.identities:manage" and no role on the project
       Then linking a repository answers 403
 
-    Scenario: git:write together with git.identities:manage passes the gate
+    Scenario: A project's own connection needs git:write and git.connections:manage
+      Given members with only "git:write", only "git.connections:manage", and both
+      Then adding a project connection answers 403 for the first two and is not refused for the third
+
+    Scenario: The workspace action does not stand in for the project one
       Given a member with "git:write" on the project and "git.identities:manage" in the workspace
-      Then linking a repository is not refused for permissions
+      Then adding a project connection answers 403
 
   Rule: Approving and merging are their own actions
 

@@ -235,7 +235,7 @@ describe("AgentGitTab", () => {
 		renderTab();
 		await user.click(await screen.findByRole("button", { name: "Install" }));
 		expect(await screen.findByRole("alert")).toHaveTextContent(
-			/No shared Git identity|identity/i,
+			/No connection is available/i,
 		);
 		expect(h.follow).not.toHaveBeenCalled();
 	});
@@ -250,7 +250,7 @@ describe("AgentGitTab", () => {
 		await user.click(await screen.findByRole("button", { name: "Remove" }));
 		expect(h.del).not.toHaveBeenCalled();
 		await user.click(
-			await screen.findByRole("button", { name: "Remove identity" }),
+			await screen.findByRole("button", { name: "Remove connection" }),
 		);
 		await waitFor(() =>
 			expect(h.del).toHaveBeenCalledWith(

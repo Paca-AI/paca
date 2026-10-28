@@ -31,10 +31,20 @@ type SetupInput struct {
 	Host       string // empty: the provider's first default host
 	Scope      gitdom.IdentityScope
 	AgentID    *uuid.UUID // required for ScopeAgent
+	ProjectID  *uuid.UUID // required for ScopeProject
 	AgentName  string
 	ActorID    uuid.UUID
 	ReturnURL  string // where the browser lands when setup is finished; must be on this instance
 	Params     map[string]string
+}
+
+// providerScope is the scope a provider is told about. A project connection is
+// a Paca visibility rule; to the platform it is as shared as a workspace one.
+func providerScope(s gitdom.IdentityScope) gitprovider.SetupScope {
+	if s == gitdom.ScopeAgent {
+		return gitprovider.SetupAgent
+	}
+	return gitprovider.SetupShared
 }
 
 func randomKey(n int) (string, error) {
@@ -66,8 +76,13 @@ func (s *Service) BeginIdentitySetup(ctx context.Context, in SetupInput) (*gitpr
 	if in.ReturnURL != "" && !sameOrigin(s.publicURL, in.ReturnURL) {
 		return nil, gitdom.ErrInvalidReturnURL
 	}
-	if in.Scope != gitdom.ScopeShared && in.Scope != gitdom.ScopeAgent {
-		return nil, errors.New("git: scope must be shared or agent")
+	switch in.Scope {
+	case gitdom.ScopeShared, gitdom.ScopeAgent, gitdom.ScopeProject:
+	default:
+		return nil, errors.New("git: scope must be shared, project or agent")
+	}
+	if in.Scope == gitdom.ScopeProject && in.ProjectID == nil {
+		return nil, errors.New("git: a project is required for a project connection")
 	}
 	if in.Scope == gitdom.ScopeAgent && in.AgentID == nil {
 		return nil, errors.New("git: an agent is required for an agent identity")
@@ -85,14 +100,9 @@ func (s *Service) BeginIdentitySetup(ctx context.Context, in SetupInput) (*gitpr
 		host = info.Hosts[0]
 	}
 
-	switch in.Scope {
-	case gitdom.ScopeShared:
-		if _, err := s.store.FindSharedIdentity(ctx, in.ProviderID, host); err == nil {
-			return nil, gitdom.ErrIdentityExists
-		} else if !errors.Is(err, gitdom.ErrNotFound) {
-			return nil, err
-		}
-	case gitdom.ScopeAgent:
+	// Workspace and project connections may be several per host (two Apps, an
+	// App and a token); an agent has at most one identity per provider.
+	if in.Scope == gitdom.ScopeAgent {
 		if _, err := s.store.FindAgentIdentity(ctx, *in.AgentID, in.ProviderID); err == nil {
 			return nil, gitdom.ErrIdentityExists
 		} else if !errors.Is(err, gitdom.ErrNotFound) {
@@ -108,7 +118,7 @@ func (s *Service) BeginIdentitySetup(ctx context.Context, in SetupInput) (*gitpr
 		return nil, err
 	}
 	req := gitprovider.BeginSetupRequest{
-		Scope: gitprovider.SetupScope(in.Scope), Host: host, AgentName: in.AgentName,
+		Scope: providerScope(in.Scope), Host: host, AgentName: in.AgentName,
 		ReturnURL: in.ReturnURL, CallbackURL: s.publicURL + SetupCallbackPath,
 		WebhookURL: s.publicURL + WebhookPathPrefix + key, Params: in.Params,
 	}
@@ -121,7 +131,7 @@ func (s *Service) BeginIdentitySetup(ctx context.Context, in SetupInput) (*gitpr
 		return nil, err
 	}
 	sess := &gitdom.SetupSession{
-		State: step.State, ProviderID: in.ProviderID, Host: host, Scope: in.Scope, AgentID: in.AgentID,
+		State: step.State, ProviderID: in.ProviderID, Host: host, Scope: in.Scope, AgentID: in.AgentID, ProjectID: in.ProjectID,
 		EndpointKey: key, ReturnURL: in.ReturnURL, CreatedBy: in.ActorID, ExpiresAt: s.now().Add(setupSessionTTL),
 	}
 	if step.Kind == gitprovider.StepDone {
@@ -156,7 +166,12 @@ type SetupCompletion struct {
 // CompleteIdentitySetup finishes one leg with the parameters the platform (or
 // the user's pasted token) supplied. Only the user who began the flow can
 // complete it, and a finished or expired state is useless.
-func (s *Service) CompleteIdentitySetup(ctx context.Context, actorID uuid.UUID, state string, params map[string]string) (*SetupCompletion, error) {
+//
+// projectID is the project the route was reached through, nil for the workspace
+// route; the session must have been started for the same place, so a flow begun
+// as a workspace connection cannot be finished through a project's gate or the
+// other way round.
+func (s *Service) CompleteIdentitySetup(ctx context.Context, actorID uuid.UUID, projectID *uuid.UUID, state string, params map[string]string) (*SetupCompletion, error) {
 	sess, err := s.store.FindSetupSession(ctx, state)
 	if err != nil {
 		if errors.Is(err, gitdom.ErrNotFound) {
@@ -164,7 +179,7 @@ func (s *Service) CompleteIdentitySetup(ctx context.Context, actorID uuid.UUID, 
 		}
 		return nil, err
 	}
-	if sess.CreatedBy != actorID || sess.CompletedAt != nil || !s.now().Before(sess.ExpiresAt) {
+	if sess.CreatedBy != actorID || sess.CompletedAt != nil || !s.now().Before(sess.ExpiresAt) || !sameProject(sess.ProjectID, projectID) {
 		return nil, gitdom.ErrSetupExpired
 	}
 	prov, err := s.providers.Provider(ctx, sess.ProviderID)
@@ -172,12 +187,19 @@ func (s *Service) CompleteIdentitySetup(ctx context.Context, actorID uuid.UUID, 
 		return nil, err
 	}
 	ident, err := prov.CompleteIdentitySetup(ctx, gitprovider.CompleteSetupRequest{
-		Scope: gitprovider.SetupScope(sess.Scope), Host: sess.Host, State: state, Params: params,
+		Scope: providerScope(sess.Scope), Host: sess.Host, State: state, Params: params,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return s.finishIdentity(ctx, sess, ident, actorID)
+}
+
+func sameProject(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // finishIdentity records the identity the provider reports, binds the pending
@@ -191,7 +213,7 @@ func (s *Service) finishIdentity(ctx context.Context, sess *gitdom.SetupSession,
 			host = sess.Host
 		}
 		stored = &gitdom.Identity{
-			ProviderID: sess.ProviderID, Host: host, ProviderIdentityID: ident.Ref.ID, Kind: string(ident.Kind), Scope: sess.Scope,
+			ProviderID: sess.ProviderID, Host: host, ProviderIdentityID: ident.Ref.ID, Kind: string(ident.Kind), Scope: sess.Scope, ProjectID: sess.ProjectID,
 			Handle: ident.Ref.Handle, DisplayName: ident.DisplayName, ProviderRef: ident.Ref.ProviderRef, CreatedBy: &actorID,
 		}
 		if !ident.ExpiresAt.IsZero() {
@@ -245,6 +267,66 @@ func (s *Service) ListIdentities(ctx context.Context) ([]*gitdom.Identity, error
 		out = append(out, ids...)
 	}
 	return out, nil
+}
+
+// ListConnections returns the connections a project can use: the workspace's
+// and its own, of every enabled provider.
+func (s *Service) ListConnections(ctx context.Context, projectID uuid.UUID) ([]*gitdom.Identity, error) {
+	ids, err := s.store.ListProjectIdentities(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	enabled, err := s.enabledProviders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := ids[:0:0]
+	for _, id := range ids {
+		if enabled[id.ProviderID] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) enabledProviders(ctx context.Context) (map[string]bool, error) {
+	infos, err := s.providers.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]bool, len(infos))
+	for _, i := range infos {
+		m[i.ID] = true
+	}
+	return m, nil
+}
+
+// DeleteProjectConnection forgets a connection that belongs to one project. A
+// workspace connection is not the project's to delete: it answers not found.
+func (s *Service) DeleteProjectConnection(ctx context.Context, projectID, id uuid.UUID) error {
+	ident, err := s.store.FindIdentity(ctx, id)
+	if err != nil {
+		return err
+	}
+	if ident.Scope != gitdom.ScopeProject || ident.ProjectID == nil || *ident.ProjectID != projectID {
+		return gitdom.ErrNotFound
+	}
+	return s.DeleteIdentity(ctx, id)
+}
+
+// visibleIdentity returns the connection with the given id when the project can use it.
+func (s *Service) visibleIdentity(ctx context.Context, projectID, id uuid.UUID) (*gitdom.Identity, error) {
+	ident, err := s.store.FindIdentity(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case ident.Scope == gitdom.ScopeShared:
+	case ident.Scope == gitdom.ScopeProject && ident.ProjectID != nil && *ident.ProjectID == projectID:
+	default:
+		return nil, gitdom.ErrNotFound // another project's, or an agent's
+	}
+	return ident, nil
 }
 
 // ListAgentIdentities returns the agent's own identity for each provider that has one.

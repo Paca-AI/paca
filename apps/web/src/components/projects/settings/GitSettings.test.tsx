@@ -27,10 +27,19 @@ vi.mock("@tanstack/react-router", async () => {
 
 // The query options inside git-api call its own helpers, which a module mock
 // cannot replace, so the HTTP client is mocked instead.
-const perms = vi.hoisted(() => ({ manage: true }));
+const perms = vi.hoisted(() => ({ workspace: true, project: true }));
 vi.mock("@/hooks/use-permissions", () => ({
 	usePermissions: () => ({
-		hasPermission: (a: string) => a !== "git.identities:manage" || perms.manage,
+		hasPermission: (a: string) =>
+			a === "git.identities:manage" ? perms.workspace : false,
+	}),
+}));
+vi.mock("@/hooks/use-effective-actions", () => ({
+	useEffectiveActions: () => ({
+		has: (a: string) =>
+			a === "git.connections:manage" || a === "git:write"
+				? perms.project
+				: false,
 	}),
 }));
 vi.mock("@/lib/api-client", () => ({
@@ -56,7 +65,27 @@ const github = {
 		change_request_plural: "Pull requests",
 		repository: "Repository",
 	},
-	capabilities: { multiple_identities: true },
+	capabilities: {
+		multiple_identities: true,
+		access_grants: true,
+		identity_kinds: ["app", "token"],
+		kinds: [
+			{ kind: "app", access_grants: true },
+			{ kind: "token", access_grants: false },
+		],
+	},
+};
+const connection = {
+	id: "i1",
+	provider_id: "com.paca.github",
+	host: "github.com",
+	kind: "app",
+	scope: "shared",
+	project_id: null,
+	handle: "paca-bot",
+	display_name: "Paca",
+	expires_at: null,
+	created_at: "2026-01-01T00:00:00Z",
 };
 const repo = {
 	id: "r1",
@@ -71,6 +100,7 @@ const repo = {
 
 let providers: unknown[] = [github];
 let repos: unknown[] = [];
+let connections: unknown[] = [connection];
 let settings: Record<string, unknown> = {};
 const agents = [
 	{ id: "a1", name: "Dev", handle: "dev" },
@@ -100,6 +130,9 @@ describe("GitSettings", () => {
 		window.sessionStorage.clear();
 		providers = [github];
 		repos = [];
+		connections = [connection];
+		perms.workspace = true;
+		perms.project = true;
 		settings = {
 			default_responder_agent_id: null,
 			paused: false,
@@ -112,6 +145,8 @@ describe("GitSettings", () => {
 		h.get.mockImplementation(async (url: string) => {
 			if (url.endsWith("/git/providers")) return { data: { data: providers } };
 			if (url.endsWith("/git/repositories")) return { data: { data: repos } };
+			if (url.endsWith("/git/connections"))
+				return { data: { data: connections } };
 			if (url.endsWith("/git/settings")) return { data: { data: settings } };
 			if (url.endsWith("/agents"))
 				return {
@@ -121,19 +156,116 @@ describe("GitSettings", () => {
 		});
 	});
 
-	it("hides the link form without the workspace permission to manage Git identities", async () => {
-		perms.manage = false;
-		try {
-			renderPanel();
-			expect(
-				await screen.findByText(/manage Git identities/i),
-			).toBeInTheDocument();
-			expect(
-				screen.queryByRole("button", { name: "Link" }),
-			).not.toBeInTheDocument();
-		} finally {
-			perms.manage = true;
-		}
+	it("asks for a connection before repositories can be linked", async () => {
+		connections = [];
+		renderPanel();
+		expect(
+			await screen.findByText(
+				"Add a connection first, then link repositories through it.",
+			),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Link" }),
+		).not.toBeInTheDocument();
+		// Whoever may add one is offered the way to do it.
+		expect(
+			screen.getAllByRole("button", { name: "Add GitHub" }).length,
+		).toBeGreaterThan(0);
+	});
+
+	it("tells someone who cannot add connections to ask for one", async () => {
+		connections = [];
+		perms.workspace = false;
+		perms.project = false;
+		renderPanel();
+		expect(
+			await screen.findByText(/Ask someone who can manage Git connections/i),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Add GitHub" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("lists the project's connections, shared and its own", async () => {
+		connections = [
+			connection,
+			{
+				...connection,
+				id: "i2",
+				kind: "token",
+				scope: "project",
+				project_id: PROJECT,
+				handle: "ci-bot",
+				display_name: "CI bot",
+			},
+		];
+		renderPanel();
+		expect(await screen.findByText("Paca")).toBeInTheDocument();
+		expect(screen.getByText("CI bot")).toBeInTheDocument();
+		expect(screen.getByText("All projects")).toBeInTheDocument();
+		expect(screen.getByText("This project")).toBeInTheDocument();
+	});
+
+	it("lets the user choose among several connections when linking", async () => {
+		const user = userEvent.setup();
+		connections = [
+			connection,
+			{
+				...connection,
+				id: "i2",
+				scope: "project",
+				project_id: PROJECT,
+				handle: "second",
+				display_name: "Second org",
+			},
+		];
+		h.post.mockImplementation(async () => {
+			repos = [repo];
+			return { data: { data: repo } };
+		});
+		renderPanel();
+		await user.selectOptions(await screen.findByLabelText("Connection"), "i2");
+		await user.type(screen.getByLabelText("Repository"), "acme/web");
+		await user.click(screen.getByRole("button", { name: "Link" }));
+		await waitFor(() =>
+			expect(h.post).toHaveBeenCalledWith(
+				`/projects/${PROJECT}/git/repositories`,
+				{
+					provider_id: "com.paca.github",
+					path_or_url: "acme/web",
+					identity_id: "i2",
+				},
+			),
+		);
+	});
+
+	it("says when Paca could not register a webhook, and retries", async () => {
+		const user = userEvent.setup();
+		repos = [
+			{
+				...repo,
+				webhook_url: "https://paca.example.com/api/v1/git/webhooks/k",
+			},
+		];
+		h.post.mockImplementation(async () => {
+			repos = [repo];
+			return { data: { data: repo } };
+		});
+		renderPanel();
+		expect(
+			await screen.findByText(/aren't reaching Paca/i),
+		).toBeInTheDocument();
+		// Paca creates the webhook itself: nothing to copy and paste by hand.
+		expect(screen.queryByText(/paca\.example\.com/)).toBeNull();
+		await user.click(screen.getByRole("button", { name: "Try again" }));
+		await waitFor(() =>
+			expect(h.post).toHaveBeenCalledWith(
+				`/projects/${PROJECT}/git/repositories/r1/webhook`,
+			),
+		);
+		await waitFor(() =>
+			expect(screen.queryByText(/aren't reaching Paca/i)).toBeNull(),
+		);
 	});
 
 	it("lists linked repositories", async () => {
@@ -200,6 +332,7 @@ describe("GitSettings", () => {
 			{
 				provider_id: "com.paca.github",
 				owner: "other-org",
+				identity_id: "i1",
 				return_url: `${window.location.origin}/projects/${PROJECT}/settings#git`,
 			},
 		);
@@ -245,7 +378,7 @@ describe("GitSettings", () => {
 	it("explains the other ways linking can fail", async () => {
 		const user = userEvent.setup();
 		for (const [code, text] of [
-			["GIT_NO_IDENTITY", /No shared Git identity/i],
+			["GIT_NO_IDENTITY", /No connection is available/i],
 			["GIT_ALREADY_LINKED", /already linked/i],
 			["GIT_PROVIDER_UNAVAILABLE", /plugin is unavailable/i],
 		] as const) {
@@ -304,14 +437,6 @@ describe("GitSettings", () => {
 		expect(screen.getByLabelText("Repository")).toBeInTheDocument();
 		expect(screen.queryByText("Get started")).toBeNull();
 		expect(screen.queryByText("Using it")).toBeNull();
-	});
-
-	it("offers the platform page when no provider is installed", async () => {
-		providers = [];
-		renderPanel();
-		expect(
-			await screen.findByRole("link", { name: "Open Git integration" }),
-		).toBeInTheDocument();
 	});
 
 	it("shows the bot to mention and how to use it once a repository is linked", async () => {

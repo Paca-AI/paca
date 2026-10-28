@@ -2,8 +2,9 @@
 Feature: A project's Git settings
   The Git tab of a project's settings links repositories and sets the
   automation. Reading it needs git:read. Linking a repository needs git:write
-  on the project and the workspace-level git.identities:manage; a writer
-  without it is told who to ask instead of being shown a form that would fail.
+  and a connection the project can use; a writer with no connection available
+  is told to ask someone who can manage Git connections instead of being shown
+  a form that would fail.
   The e2e stack has no Git provider plugin, so the provider endpoints are
   stubbed in the browser.
 
@@ -17,10 +18,9 @@ Feature: A project's Git settings
       Given the platform lists no Git provider
       When the user opens the project's Git settings
       Then the page says no Git provider is installed
-      And it offers a button to open the Git integration
 
     Scenario: An administrator links a repository
-      Given the platform lists a Git provider and the project has no repository
+      Given the platform lists a Git provider and a connection, and the project has no repository
       When the user opens the project's Git settings
       Then the "Repository" field and the "Link" button are shown
       When the user types "acme/web" and clicks "Link"
@@ -34,14 +34,14 @@ Feature: A project's Git settings
       And a project
       And the platform lists a Git provider and the project has no repository
 
-    Scenario: A writer without git.identities:manage is told to ask an administrator
-      Given a member with "git:read" and "git:write" and no workspace role
+    Scenario: A writer is told to ask for a connection when there is none
+      Given a member with "git:read" and "git:write" and no connection is available
       When the member opens the project's Git settings
-      Then the page explains that linking also needs the workspace permission to manage Git identities
+      Then the page asks them to find someone who can manage Git connections
       And there is no "Link" button
 
-    Scenario: A writer with git.identities:manage gets the form
-      Given a member with "git:read" and "git:write" and the workspace action "git.identities:manage"
+    Scenario: A writer gets the form once a connection is available
+      Given a member with "git:read" and "git:write" and a connection is available
       When the member opens the project's Git settings
       Then the "Repository" field and the "Link" button are shown
 

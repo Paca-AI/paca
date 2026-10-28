@@ -32,6 +32,7 @@ type gitIdentityRecord struct {
 	ProviderIdentityID string          `db:"provider_identity_id"`
 	Kind               string          `db:"kind"`
 	Scope              string          `db:"scope"`
+	ProjectID          *string         `db:"project_id"`
 	Handle             string          `db:"handle"`
 	DisplayName        string          `db:"display_name"`
 	ProviderRef        json.RawMessage `db:"provider_ref"`
@@ -41,7 +42,7 @@ type gitIdentityRecord struct {
 	UpdatedAt          time.Time       `db:"updated_at"`
 }
 
-const gitIdentityCols = `id, provider_id, host, provider_identity_id, kind, scope, handle, display_name, provider_ref, expires_at, created_by, created_at, updated_at`
+const gitIdentityCols = `id, provider_id, host, provider_identity_id, kind, scope, project_id, handle, display_name, provider_ref, expires_at, created_by, created_at, updated_at`
 
 func (r gitIdentityRecord) domain() (*gitdom.Identity, error) {
 	id, err := uuid.Parse(r.ID)
@@ -50,7 +51,7 @@ func (r gitIdentityRecord) domain() (*gitdom.Identity, error) {
 	}
 	return &gitdom.Identity{
 		ID: id, ProviderID: r.ProviderID, Host: r.Host, ProviderIdentityID: r.ProviderIdentityID,
-		Kind: r.Kind, Scope: gitdom.IdentityScope(r.Scope), Handle: r.Handle, DisplayName: r.DisplayName,
+		Kind: r.Kind, Scope: gitdom.IdentityScope(r.Scope), ProjectID: parseOptUUID(r.ProjectID), Handle: r.Handle, DisplayName: r.DisplayName,
 		ProviderRef: r.ProviderRef, ExpiresAt: r.ExpiresAt, CreatedBy: parseOptUUID(r.CreatedBy),
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}, nil
@@ -119,8 +120,7 @@ func jsonOrEmpty(raw json.RawMessage) json.RawMessage {
 
 // ── identities ───────────────────────────────────────────────────────────────
 
-// CreateIdentity inserts a new identity. A second shared identity for the same
-// provider and host is ErrIdentityExists.
+// CreateIdentity inserts a new identity.
 func (s *GitRepository) CreateIdentity(ctx context.Context, i *gitdom.Identity) error {
 	var rec struct {
 		ID        string    `db:"id"`
@@ -128,10 +128,10 @@ func (s *GitRepository) CreateIdentity(ctx context.Context, i *gitdom.Identity) 
 		UpdatedAt time.Time `db:"updated_at"`
 	}
 	err := s.db.GetContext(ctx, &rec, `
-		INSERT INTO git_identities (provider_id, host, provider_identity_id, kind, scope, handle, display_name, provider_ref, expires_at, created_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::uuid)
+		INSERT INTO git_identities (provider_id, host, provider_identity_id, kind, scope, project_id, handle, display_name, provider_ref, expires_at, created_by)
+		VALUES ($1,$2,$3,$4,$5,$6::uuid,$7,$8,$9::jsonb,$10,$11::uuid)
 		RETURNING id, created_at, updated_at`,
-		i.ProviderID, i.Host, i.ProviderIdentityID, i.Kind, string(i.Scope), i.Handle, i.DisplayName,
+		i.ProviderID, i.Host, i.ProviderIdentityID, i.Kind, string(i.Scope), optUUIDArg(i.ProjectID), i.Handle, i.DisplayName,
 		string(jsonOrEmpty(i.ProviderRef)), i.ExpiresAt, optUUIDArg(i.CreatedBy))
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -169,16 +169,31 @@ func (s *GitRepository) FindIdentityByProviderRef(ctx context.Context, providerI
 	return s.getIdentity(ctx, `provider_id = $1 AND provider_identity_id = $2`, providerID, providerIdentityID)
 }
 
-// FindSharedIdentity returns the shared identity for a provider host.
-func (s *GitRepository) FindSharedIdentity(ctx context.Context, providerID, host string) (*gitdom.Identity, error) {
-	return s.getIdentity(ctx, `provider_id = $1 AND host = $2 AND scope = 'shared'`, providerID, host)
-}
-
 // ListSharedIdentities lists a provider's shared identities (every host).
 func (s *GitRepository) ListSharedIdentities(ctx context.Context, providerID string) ([]*gitdom.Identity, error) {
 	var recs []gitIdentityRecord
-	if err := s.db.SelectContext(ctx, &recs, `SELECT `+gitIdentityCols+` FROM git_identities WHERE provider_id = $1 AND scope = 'shared' ORDER BY host`, providerID); err != nil {
+	if err := s.db.SelectContext(ctx, &recs, `SELECT `+gitIdentityCols+` FROM git_identities WHERE provider_id = $1 AND scope = 'shared' ORDER BY host, created_at`, providerID); err != nil {
 		return nil, fmt.Errorf("git repo: list identities: %w", err)
+	}
+	out := make([]*gitdom.Identity, 0, len(recs))
+	for _, r := range recs {
+		d, err := r.domain()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// ListProjectIdentities lists the connections a project can use: the
+// workspace's and its own.
+func (s *GitRepository) ListProjectIdentities(ctx context.Context, projectID uuid.UUID) ([]*gitdom.Identity, error) {
+	var recs []gitIdentityRecord
+	if err := s.db.SelectContext(ctx, &recs, `SELECT `+gitIdentityCols+` FROM git_identities
+		WHERE scope = 'shared' OR (scope = 'project' AND project_id = $1)
+		ORDER BY provider_id, host, created_at`, projectID.String()); err != nil {
+		return nil, fmt.Errorf("git repo: list project identities: %w", err)
 	}
 	out := make([]*gitdom.Identity, 0, len(recs))
 	for _, r := range recs {
@@ -207,7 +222,7 @@ func (s *GitRepository) SetAgentIdentity(ctx context.Context, agentID uuid.UUID,
 func (s *GitRepository) FindAgentIdentity(ctx context.Context, agentID uuid.UUID, providerID string) (*gitdom.Identity, error) {
 	var rec gitIdentityRecord
 	err := s.db.GetContext(ctx, &rec, `
-		SELECT i.id, i.provider_id, i.host, i.provider_identity_id, i.kind, i.scope, i.handle, i.display_name,
+		SELECT i.id, i.provider_id, i.host, i.provider_identity_id, i.kind, i.scope, i.project_id, i.handle, i.display_name,
 		       i.provider_ref, i.expires_at, i.created_by, i.created_at, i.updated_at
 		FROM git_agent_identities a JOIN git_identities i ON i.id = a.identity_id
 		WHERE a.agent_id = $1 AND a.provider_id = $2`, agentID.String(), providerID)
@@ -382,6 +397,19 @@ func (s *GitRepository) DeleteRepository(ctx context.Context, projectID, id uuid
 	res, err := s.db.ExecContext(ctx, `DELETE FROM git_repositories WHERE id = $1 AND project_id = $2`, id.String(), projectID.String())
 	if err != nil {
 		return fmt.Errorf("git repo: delete repository: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return gitdom.ErrNotFound
+	}
+	return nil
+}
+
+// SetRepositoryWebhook records the webhook registered for a repository.
+func (s *GitRepository) SetRepositoryWebhook(ctx context.Context, id uuid.UUID, ref json.RawMessage) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE git_repositories SET webhook_ref = $2::jsonb, updated_at = NOW() WHERE id = $1`,
+		id.String(), string(jsonOrEmpty(ref)))
+	if err != nil {
+		return fmt.Errorf("git repo: set repository webhook: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return gitdom.ErrNotFound
@@ -569,6 +597,7 @@ type gitSetupRecord struct {
 	Host        string     `db:"host"`
 	Scope       string     `db:"scope"`
 	AgentID     *string    `db:"agent_id"`
+	ProjectID   *string    `db:"project_id"`
 	EndpointKey string     `db:"endpoint_key"`
 	ReturnURL   string     `db:"return_url"`
 	CreatedBy   string     `db:"created_by"`
@@ -580,9 +609,9 @@ type gitSetupRecord struct {
 // CreateSetupSession records a started setup flow.
 func (s *GitRepository) CreateSetupSession(ctx context.Context, x *gitdom.SetupSession) error {
 	err := s.db.GetContext(ctx, &x.CreatedAt, `
-		INSERT INTO git_setup_sessions (state, provider_id, host, scope, agent_id, endpoint_key, return_url, created_by, expires_at)
-		VALUES ($1,$2,$3,$4,$5::uuid,$6,$7,$8,$9) RETURNING created_at`,
-		x.State, x.ProviderID, x.Host, string(x.Scope), optUUIDArg(x.AgentID), x.EndpointKey, x.ReturnURL, x.CreatedBy.String(), x.ExpiresAt)
+		INSERT INTO git_setup_sessions (state, provider_id, host, scope, agent_id, project_id, endpoint_key, return_url, created_by, expires_at)
+		VALUES ($1,$2,$3,$4,$5::uuid,$6::uuid,$7,$8,$9,$10) RETURNING created_at`,
+		x.State, x.ProviderID, x.Host, string(x.Scope), optUUIDArg(x.AgentID), optUUIDArg(x.ProjectID), x.EndpointKey, x.ReturnURL, x.CreatedBy.String(), x.ExpiresAt)
 	if err != nil {
 		return fmt.Errorf("git repo: create setup session: %w", err)
 	}
@@ -593,7 +622,7 @@ func (s *GitRepository) CreateSetupSession(ctx context.Context, x *gitdom.SetupS
 func (s *GitRepository) FindSetupSession(ctx context.Context, state string) (*gitdom.SetupSession, error) {
 	var r gitSetupRecord
 	if err := s.db.GetContext(ctx, &r, `
-		SELECT state, provider_id, host, scope, agent_id, endpoint_key, return_url, created_by, expires_at, completed_at, created_at
+		SELECT state, provider_id, host, scope, agent_id, project_id, endpoint_key, return_url, created_by, expires_at, completed_at, created_at
 		FROM git_setup_sessions WHERE state = $1`, state); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, gitdom.ErrNotFound
@@ -605,7 +634,7 @@ func (s *GitRepository) FindSetupSession(ctx context.Context, state string) (*gi
 		return nil, fmt.Errorf("git repo: setup session created_by: %w", err)
 	}
 	return &gitdom.SetupSession{
-		State: r.State, ProviderID: r.ProviderID, Host: r.Host, Scope: gitdom.IdentityScope(r.Scope), AgentID: parseOptUUID(r.AgentID),
+		State: r.State, ProviderID: r.ProviderID, Host: r.Host, Scope: gitdom.IdentityScope(r.Scope), AgentID: parseOptUUID(r.AgentID), ProjectID: parseOptUUID(r.ProjectID),
 		EndpointKey: r.EndpointKey, ReturnURL: r.ReturnURL, CreatedBy: created, ExpiresAt: r.ExpiresAt, CompletedAt: r.CompletedAt, CreatedAt: r.CreatedAt,
 	}, nil
 }

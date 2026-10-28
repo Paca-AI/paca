@@ -303,8 +303,8 @@
 				"description": "创建、编辑、删除服务账号，并签发或吊销其 API 密钥"
 			},
 			"gitIdentitiesManage": {
-				"label": "管理 Git 身份",
-				"description": "在整个工作区范围内设置和移除智能体使用的 GitHub(或其他 Git 平台)身份"
+				"label": "管理工作区 Git 连接",
+				"description": "添加和移除工作区内所有项目都可使用的 GitHub 应用和访问令牌"
 			}
 		},
 		"permissionGroups": {
@@ -635,17 +635,8 @@
 		}
 	},
 	"git": {
-		"title": "Git",
-		"description": "让智能体能够在你的 Git 平台上克隆、推送并创建拉取请求/合并请求的机器人身份。每个主机有一个共享身份；智能体也可以在自己的设置中拥有专属身份。",
-		"noProviders": {
-			"title": "尚未安装 Git 提供方",
-			"description": "请安装 Git 提供方插件（例如 GitHub Integration）以设置机器人身份。",
-			"action": "管理插件"
-		},
 		"cancel": "取消",
-		"identity": {},
 		"setup": {
-			"button": "设置",
 			"dialogTitle": "在 {{host}} 上设置 {{provider}}",
 			"dialogDescription": "Paca 将在 {{host}} 上创建一个机器人身份，供智能体用于克隆、推送以及处理{{changeRequests}}。你将被带到 {{host}} 进行批准，然后返回此处。",
 			"name": "应用名称（可选）",
@@ -655,13 +646,45 @@
 			"start": "继续前往 {{host}}",
 			"submitToken": "保存",
 			"public": "允许安装到其他账户（公开应用）",
-			"publicHelp": "当各项目使用不同用户或组织的仓库时需要开启。私有应用只能安装在拥有它的账户上。"
+			"publicHelp": "当各项目使用不同用户或组织的仓库时需要开启。私有应用只能安装在拥有它的账户上。",
+			"next": "下一步",
+			"tokenDescription": "Paca 使用您在 {{host}} 上创建的访问令牌进行连接。下一步中粘贴该令牌。",
+			"host": "主机",
+			"hostHelp": "您的实例地址，例如 gitlab.example.com。",
+			"kind": {
+				"label": "连接方式",
+				"app": {
+					"title": "应用",
+					"help": "Paca 会在 {{provider}} 上为您创建应用。访问范围仅限于您安装该应用的仓库。"
+				},
+				"bot_user": {
+					"title": "访问令牌",
+					"help": "粘贴项目或群组访问令牌。Paca 将以其机器人用户的身份操作。"
+				},
+				"token": {
+					"title": "访问令牌",
+					"help": "粘贴个人访问令牌。它以其所有者的身份操作，因此请使用专用的机器账号。"
+				}
+			},
+			"scope": {
+				"label": "可用范围",
+				"project": {
+					"title": "仅此项目",
+					"help": "只有此项目可以通过它关联仓库。"
+				},
+				"workspace": {
+					"title": "所有项目",
+					"help": "工作区中的所有项目都可以通过它关联仓库。",
+					"noPermission": "需要管理 Git 连接的工作区权限。"
+				},
+				"none": "您没有在此添加连接的权限。"
+			}
 		},
 		"delete": {
 			"button": "移除",
-			"title": "移除此身份？",
-			"description": "智能体将不再以 {{name}} 的身份在 {{host}} 上操作，并会改用其他身份。已关联的仓库保持关联。平台上的应用本身不会被删除；如不再需要，请在平台上自行删除。",
-			"confirm": "移除身份"
+			"title": "移除此连接？",
+			"description": "通过 {{host}} 上的 {{name}} 关联的仓库将停止工作，直到您通过其他连接重新关联。应用或令牌本身不会在平台上被删除；如不再需要，请在平台上自行移除。",
+			"confirm": "移除连接"
 		},
 		"callback": {
 			"working": "正在完成设置…",
@@ -679,23 +702,6 @@
 			"notFound": "未找到。"
 		},
 		"copy": "复制",
-		"copied": "已复制",
-		"status": {
-			"connected": "已连接",
-			"notConnected": "未连接"
-		},
-		"platforms": {
-			"title": "Git 平台",
-			"description": "每个平台需要一个共享的机器人身份。"
-		},
-		"connect": {
-			"title": "连接 {{provider}}",
-			"description": "Paca 会在 {{host}} 上创建一个机器人账号，智能体用它读取代码、推送分支、创建拉取请求并发表评论。",
-			"time": "大约需要一分钟。你在平台上批准后会回到这里。"
-		},
-		"connected": {
-			"sharedNote": "由所有没有独立身份的项目和智能体共用。",
-			"mention": "在评论中提及："
-		}
+		"copied": "已复制"
 	}
 }

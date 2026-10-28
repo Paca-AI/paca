@@ -73,11 +73,24 @@ func (f *fakeGitSvc) BeginIdentitySetup(_ context.Context, in gitsvc.SetupInput)
 	f.setupIn = in
 	return f.step, f.err
 }
-func (f *fakeGitSvc) CompleteIdentitySetup(_ context.Context, actor uuid.UUID, st string, p map[string]string) (*gitsvc.SetupCompletion, error) {
+func (f *fakeGitSvc) CompleteIdentitySetup(_ context.Context, actor uuid.UUID, _ *uuid.UUID, st string, p map[string]string) (*gitsvc.SetupCompletion, error) {
 	f.completeBy, f.completeSt, f.completeP = actor, st, p
 	return f.completion, f.err
 }
 func (f *fakeGitSvc) DeleteIdentity(_ context.Context, id uuid.UUID) error {
+	f.deletedID = id
+	return f.err
+}
+func (f *fakeGitSvc) RegisterWebhook(_ context.Context, p, r uuid.UUID) (*gitdom.Repository, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &gitdom.Repository{ID: r, ProjectID: p, ProviderID: "p", Host: "h", FullPath: "a/b"}, nil
+}
+func (f *fakeGitSvc) ListConnections(context.Context, uuid.UUID) ([]*gitdom.Identity, error) {
+	return f.identities, f.err
+}
+func (f *fakeGitSvc) DeleteProjectConnection(_ context.Context, _, id uuid.UUID) error {
 	f.deletedID = id
 	return f.err
 }
@@ -141,6 +154,11 @@ func serveGit(t *testing.T, f *fakeGitSvc, method, target, body string, actor *u
 	r.Post("/projects/{projectId}/agents/{agentId}/git/identity/access/begin", h.BeginAgentAccess)
 	r.Post("/projects/{projectId}/git/access/begin", h.BeginAccess)
 	r.Post("/projects/{projectId}/git/access/complete", h.CompleteAccess)
+	r.Get("/projects/{projectId}/git/connections", h.ListConnections)
+	r.Post("/projects/{projectId}/git/connections/setup", h.BeginProjectSetup)
+	r.Post("/projects/{projectId}/git/connections/setup/complete", h.CompleteProjectSetup)
+	r.Delete("/projects/{projectId}/git/connections/{identityId}", h.DeleteProjectConnection)
+	r.Post("/projects/{projectId}/git/repositories/{repositoryId}/webhook", h.RegisterWebhook)
 	r.Get("/projects/{projectId}/git/repositories", h.ListRepositories)
 	r.Post("/projects/{projectId}/git/repositories", h.LinkRepository)
 	r.Delete("/projects/{projectId}/git/repositories/{repositoryId}", h.UnlinkRepository)
@@ -530,4 +548,41 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	n, err := c.r.Read(p)
 	c.n += n
 	return n, err
+}
+
+func TestGitHandler_ProjectConnections(t *testing.T) {
+	actor, project := uuid.New(), uuid.New()
+	base := "/projects/" + project.String() + "/git/connections"
+	f := &fakeGitSvc{step: &gitprovider.SetupStep{Kind: gitprovider.StepTokenForm, State: "st"},
+		identities: []*gitdom.Identity{{ID: uuid.New(), Handle: "bot", Scope: gitdom.ScopeProject, ProjectID: &project, ProviderRef: json.RawMessage(`{"k":"v"}`)}}}
+
+	rec := serveGit(t, f, "GET", base, "", &actor)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"scope":"project"`) || strings.Contains(rec.Body.String(), `"k":"v"`) {
+		t.Fatalf("list: %d %s", rec.Code, rec.Body)
+	}
+
+	rec = serveGit(t, f, "POST", base+"/setup", `{"provider_id":"p","host":"github.com","params":{"kind":"token"}}`, &actor)
+	if rec.Code != 201 {
+		t.Fatalf("begin: %d %s", rec.Code, rec.Body)
+	}
+	if f.setupIn.Scope != gitdom.ScopeProject || f.setupIn.ProjectID == nil || *f.setupIn.ProjectID != project || f.setupIn.Params["kind"] != "token" {
+		t.Fatalf("setup input = %+v", f.setupIn)
+	}
+
+	f.completion = &gitsvc.SetupCompletion{Identity: f.identities[0]}
+	if rec := serveGit(t, f, "POST", base+"/setup/complete", `{"state":"st"}`, &actor); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"done":true`) {
+		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
+	}
+
+	if rec := serveGit(t, f, "DELETE", base+"/"+f.identities[0].ID.String(), "", &actor); rec.Code != 204 || f.deletedID != f.identities[0].ID {
+		t.Fatalf("delete: %d", rec.Code)
+	}
+	f.err = gitdom.ErrNotFound
+	if rec := serveGit(t, f, "DELETE", base+"/"+uuid.NewString(), "", &actor); rec.Code != 404 {
+		t.Fatalf("a connection that is not the project's: %d", rec.Code)
+	}
+	f.err = nil
+	if rec := serveGit(t, f, "POST", "/projects/"+project.String()+"/git/repositories/"+uuid.NewString()+"/webhook", "", &actor); rec.Code != 200 {
+		t.Fatalf("register webhook: %d %s", rec.Code, rec.Body)
+	}
 }

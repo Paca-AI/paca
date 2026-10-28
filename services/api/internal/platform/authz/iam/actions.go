@@ -90,6 +90,11 @@ const (
 	// ActionGitMerge gates merging a change request; off in every default role.
 	ActionGitMerge Action = "git:merge"
 
+	// ActionGitConnectionsManage gates creating and deleting the connections
+	// (GitHub Apps, access tokens) that belong to one project. Workspace
+	// connections are governed by ActionGitIdentitiesManage instead.
+	ActionGitConnectionsManage Action = "git.connections:manage"
+
 	// ActionGitIdentitiesManage gates the instance's bot identities on Git
 	// platforms: creating them (which creates an app/bot on the platform),
 	// listing and deleting them. It is a workspace-level privilege: an
@@ -114,7 +119,7 @@ func BuiltinActions() []Action {
 		ActionWorkflowsRead, ActionWorkflowsWrite,
 		ActionAnnotationsRead, ActionAnnotationsWrite, ActionAnnotationsResolve,
 		ActionSettingsWrite, ActionSettingsSSOWrite, ActionPluginsRead, ActionPluginsWrite,
-		ActionGitRead, ActionGitWrite, ActionGitApprove, ActionGitMerge, ActionGitIdentitiesManage,
+		ActionGitRead, ActionGitWrite, ActionGitApprove, ActionGitMerge, ActionGitConnectionsManage, ActionGitIdentitiesManage,
 	}
 }
 

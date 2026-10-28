@@ -303,8 +303,8 @@
 				"description": "서비스 계정을 만들고 편집·삭제하며 API 키를 발급·폐기"
 			},
 			"gitIdentitiesManage": {
-				"label": "Git ID 관리",
-				"description": "에이전트가 사용하는 GitHub(또는 다른 Git 플랫폼) ID를 워크스페이스 전체에서 설정하고 삭제합니다"
+				"label": "워크스페이스 Git 연결 관리",
+				"description": "워크스페이스의 모든 프로젝트가 사용할 수 있는 GitHub 앱과 액세스 토큰을 추가하고 제거합니다"
 			}
 		},
 		"permissionGroups": {
@@ -635,17 +635,8 @@
 		}
 	},
 	"git": {
-		"title": "Git",
-		"description": "에이전트가 Git 플랫폼에서 클론, 푸시, 풀 리퀘스트/머지 리퀘스트 생성을 할 수 있게 해 주는 봇 ID입니다. 호스트마다 공유 ID가 하나 있으며, 에이전트는 자체 설정에서 전용 ID를 가질 수도 있습니다.",
-		"noProviders": {
-			"title": "설치된 Git 공급자가 없습니다",
-			"description": "GitHub Integration 같은 Git 공급자 플러그인을 설치하여 봇 ID를 설정하세요.",
-			"action": "플러그인 관리"
-		},
 		"cancel": "취소",
-		"identity": {},
 		"setup": {
-			"button": "설정",
 			"dialogTitle": "{{host}}에서 {{provider}} 설정",
 			"dialogDescription": "Paca가 {{host}}에 에이전트가 클론, 푸시, {{changeRequests}} 작업에 사용할 봇 ID를 만듭니다. 승인을 위해 {{host}}로 이동한 뒤 이곳으로 돌아옵니다.",
 			"name": "앱 이름(선택)",
@@ -655,13 +646,45 @@
 			"start": "{{host}}(으)로 계속",
 			"submitToken": "저장",
 			"public": "다른 계정에 설치 허용(공개 앱)",
-			"publicHelp": "프로젝트마다 서로 다른 사용자나 조직의 저장소를 사용할 때 필요합니다. 비공개 앱은 소유한 계정에만 설치할 수 있습니다."
+			"publicHelp": "프로젝트마다 서로 다른 사용자나 조직의 저장소를 사용할 때 필요합니다. 비공개 앱은 소유한 계정에만 설치할 수 있습니다.",
+			"next": "다음",
+			"tokenDescription": "Paca는 {{host}}에서 직접 만든 액세스 토큰으로 연결합니다. 다음 단계에서 토큰을 붙여넣으세요.",
+			"host": "호스트",
+			"hostHelp": "인스턴스 주소입니다. 예: gitlab.example.com",
+			"kind": {
+				"label": "연결 방식",
+				"app": {
+					"title": "앱",
+					"help": "Paca가 {{provider}}에 앱을 대신 만듭니다. 앱을 설치한 저장소로만 접근이 제한됩니다."
+				},
+				"bot_user": {
+					"title": "액세스 토큰",
+					"help": "프로젝트 또는 그룹 액세스 토큰을 붙여넣으세요. Paca는 해당 봇 사용자로 동작합니다."
+				},
+				"token": {
+					"title": "액세스 토큰",
+					"help": "개인 액세스 토큰을 붙여넣으세요. 토큰 소유자로 동작하므로 전용 머신 사용자를 사용하세요."
+				}
+			},
+			"scope": {
+				"label": "사용 범위",
+				"project": {
+					"title": "이 프로젝트만",
+					"help": "이 프로젝트만 이 연결로 저장소를 연결할 수 있습니다."
+				},
+				"workspace": {
+					"title": "모든 프로젝트",
+					"help": "워크스페이스의 모든 프로젝트가 이 연결로 저장소를 연결할 수 있습니다.",
+					"noPermission": "Git 연결을 관리하는 워크스페이스 권한이 필요합니다."
+				},
+				"none": "여기에 연결을 추가할 권한이 없습니다."
+			}
 		},
 		"delete": {
 			"button": "제거",
-			"title": "이 ID를 제거할까요?",
-			"description": "에이전트는 더 이상 {{host}}에서 {{name}}(으)로 활동하지 않고 다른 ID로 전환됩니다. 이미 연결된 저장소는 그대로 유지됩니다. 플랫폼의 앱 자체는 삭제되지 않으므로 필요 없다면 그곳에서 삭제하세요.",
-			"confirm": "ID 제거"
+			"title": "이 연결을 제거할까요?",
+			"description": "{{host}}의 {{name}}을(를) 통해 연결된 저장소는 다른 연결로 다시 연결하기 전까지 동작하지 않습니다. 앱이나 토큰 자체는 플랫폼에서 삭제되지 않으므로, 더 이상 필요 없다면 플랫폼에서 직접 제거하세요.",
+			"confirm": "연결 제거"
 		},
 		"callback": {
 			"working": "설정을 마무리하는 중…",
@@ -679,23 +702,6 @@
 			"notFound": "찾을 수 없습니다."
 		},
 		"copy": "복사",
-		"copied": "복사됨",
-		"status": {
-			"connected": "연결됨",
-			"notConnected": "연결 안 됨"
-		},
-		"platforms": {
-			"title": "Git 플랫폼",
-			"description": "각 플랫폼에는 공유 봇 ID가 하나 필요합니다."
-		},
-		"connect": {
-			"title": "{{provider}} 연결",
-			"description": "Paca가 {{host}}에 봇 계정을 만들고, 에이전트는 이 계정으로 코드를 읽고 브랜치를 푸시하고 풀 리퀘스트를 열고 댓글을 남깁니다.",
-			"time": "약 1분이 걸립니다. 플랫폼에서 승인한 뒤 이곳으로 돌아옵니다."
-		},
-		"connected": {
-			"sharedNote": "자체 ID가 없는 모든 프로젝트와 에이전트가 공유합니다.",
-			"mention": "댓글에서 멘션:"
-		}
+		"copied": "복사됨"
 	}
 }

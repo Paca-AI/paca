@@ -22,36 +22,42 @@ func sharedIdentity(host string) *gitdom.Identity {
 		Scope: gitdom.ScopeShared, Handle: "paca-bot", DisplayName: "Paca", ProviderRef: json.RawMessage(`{"installation":7}`)}
 }
 
-func TestGitStore_OneSharedIdentityPerProviderHost(t *testing.T) {
-	s, _ := newGitFx(t)
+func TestGitStore_SeveralConnectionsPerProviderHost(t *testing.T) {
+	s, fx := newGitFx(t)
 	ctx := t.Context()
 	a := sharedIdentity("github.com")
 	if err := s.CreateIdentity(ctx, a); err != nil || a.ID == uuid.Nil {
 		t.Fatalf("create: %v id=%v", err, a.ID)
 	}
-	if err := s.CreateIdentity(ctx, sharedIdentity("github.com")); !errors.Is(err, gitdom.ErrIdentityExists) {
-		t.Fatalf("second shared identity on a host: got %v, want ErrIdentityExists", err)
-	}
-	// Another host, or an agent-scoped identity on the same host, is fine.
-	if err := s.CreateIdentity(ctx, sharedIdentity("ghe.acme.com")); err != nil {
-		t.Fatalf("other host: %v", err)
+	// A second workspace connection on the same host (another App, or a token).
+	b := sharedIdentity("github.com")
+	b.ProviderIdentityID = "app-b"
+	if err := s.CreateIdentity(ctx, b); err != nil {
+		t.Fatalf("second shared connection on a host: %v", err)
 	}
 	agentOwn := sharedIdentity("github.com")
 	agentOwn.Scope, agentOwn.ProviderIdentityID = gitdom.ScopeAgent, "app-2"
 	if err := s.CreateIdentity(ctx, agentOwn); err != nil {
 		t.Fatalf("agent identity on the same host: %v", err)
 	}
-
-	got, err := s.FindSharedIdentity(ctx, "com.paca.github", "github.com")
-	if err != nil || got.ID != a.ID || string(got.ProviderRef) == "" {
-		t.Fatalf("find shared: %+v %v", got, err)
-	}
-	if _, err := s.FindSharedIdentity(ctx, "com.paca.github", "nope.example"); !errors.Is(err, gitdom.ErrNotFound) {
-		t.Fatalf("missing: %v", err)
-	}
 	list, _ := s.ListSharedIdentities(ctx, "com.paca.github")
 	if len(list) != 2 {
 		t.Fatalf("shared identities = %d, want 2 (the agent one is not shared)", len(list))
+	}
+
+	project := fx.project()
+	mine := sharedIdentity("github.com")
+	mine.Scope, mine.ProviderIdentityID, mine.ProjectID = gitdom.ScopeProject, "project-app", &project
+	if err := s.CreateIdentity(ctx, mine); err != nil {
+		t.Fatalf("project connection: %v", err)
+	}
+	visible, err := s.ListProjectIdentities(ctx, project)
+	if err != nil || len(visible) != 3 {
+		t.Fatalf("a project sees the workspace's two and its own: %d %v", len(visible), err)
+	}
+	other, err := s.ListProjectIdentities(ctx, fx.project())
+	if err != nil || len(other) != 2 {
+		t.Fatalf("another project sees only the workspace's: %d %v", len(other), err)
 	}
 	byRef, err := s.FindIdentityByProviderRef(ctx, "com.paca.github", "app-2")
 	if err != nil || byRef.ID != agentOwn.ID {

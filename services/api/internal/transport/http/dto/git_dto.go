@@ -16,6 +16,9 @@ type LinkGitRepositoryRequest struct {
 	Host       string `json:"host"`
 	// PathOrURL is "owner/name", a group path, or a repository URL.
 	PathOrURL string `json:"path_or_url"`
+	// IdentityID is the connection to link through; empty lets Paca try every
+	// connection the project can use.
+	IdentityID *uuid.UUID `json:"identity_id"`
 }
 
 // GitRepositoryResponse is a repository linked to a project. It never carries
@@ -29,14 +32,18 @@ type GitRepositoryResponse struct {
 	CloneURL      string     `json:"clone_url"`
 	IdentityID    *uuid.UUID `json:"identity_id"`
 	// IdentityHandle is what to @mention to reach the bot serving the repository.
-	IdentityHandle string    `json:"identity_handle"`
-	CreatedAt      time.Time `json:"created_at"`
+	IdentityHandle string `json:"identity_handle"`
+	// WebhookURL is set when the platform must be told by hand where to deliver
+	// events for this repository (a token connection whose webhook could not be
+	// registered automatically).
+	WebhookURL string    `json:"webhook_url,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // GitRepositoryFromEntity maps a linked repository to its response.
 func GitRepositoryFromEntity(r *gitdom.Repository) GitRepositoryResponse {
 	return GitRepositoryResponse{ID: r.ID, ProviderID: r.ProviderID, Host: r.Host, FullPath: r.FullPath,
-		DefaultBranch: r.DefaultBranch, CloneURL: r.CloneURL, IdentityID: r.IdentityID, IdentityHandle: r.IdentityHandle, CreatedAt: r.CreatedAt}
+		DefaultBranch: r.DefaultBranch, CloneURL: r.CloneURL, IdentityID: r.IdentityID, IdentityHandle: r.IdentityHandle, WebhookURL: r.WebhookURL, CreatedAt: r.CreatedAt}
 }
 
 // GitCredentialResponse is a short-lived credential for ONE git operation. It
@@ -58,11 +65,14 @@ type GitWebhookResponse struct {
 // GitIdentityResponse is a bot identity on a Git platform. Secrets and the
 // provider's opaque reference stay out of it.
 type GitIdentityResponse struct {
-	ID          uuid.UUID  `json:"id"`
-	ProviderID  string     `json:"provider_id"`
-	Host        string     `json:"host"`
-	Kind        string     `json:"kind"`
-	Scope       string     `json:"scope"`
+	ID         uuid.UUID `json:"id"`
+	ProviderID string    `json:"provider_id"`
+	Host       string    `json:"host"`
+	Kind       string    `json:"kind"`
+	// Scope is shared (every project may use it), project or agent.
+	Scope string `json:"scope"`
+	// ProjectID is the one project a project-scoped connection belongs to.
+	ProjectID   *uuid.UUID `json:"project_id"`
 	Handle      string     `json:"handle"`
 	DisplayName string     `json:"display_name"`
 	ExpiresAt   *time.Time `json:"expires_at"`
@@ -71,7 +81,7 @@ type GitIdentityResponse struct {
 
 // GitIdentityFromEntity maps an identity to its response.
 func GitIdentityFromEntity(i *gitdom.Identity) GitIdentityResponse {
-	return GitIdentityResponse{ID: i.ID, ProviderID: i.ProviderID, Host: i.Host, Kind: i.Kind, Scope: string(i.Scope),
+	return GitIdentityResponse{ID: i.ID, ProviderID: i.ProviderID, Host: i.Host, Kind: i.Kind, Scope: string(i.Scope), ProjectID: i.ProjectID,
 		Handle: i.Handle, DisplayName: i.DisplayName, ExpiresAt: i.ExpiresAt, CreatedAt: i.CreatedAt}
 }
 
@@ -139,6 +149,8 @@ type BeginGitAccessRequest struct {
 	// Owner is the account or organization of the repository being linked, when known.
 	Owner     string `json:"owner"`
 	ReturnURL string `json:"return_url"`
+	// IdentityID is the connection to grant; empty when the project has only one for the provider.
+	IdentityID *uuid.UUID `json:"identity_id"`
 }
 
 // CompleteGitAccessRequest is the body for POST /projects/:projectId/git/access/complete.

@@ -16,7 +16,7 @@ import {
 	deleteGitIdentity,
 	type GitIdentity,
 	gitErrorKey,
-	gitIdentitiesKey,
+	gitQueriesKey,
 } from "@/lib/git-api";
 
 interface DeleteGitIdentityDialogProps {
@@ -34,7 +34,7 @@ export function DeleteGitIdentityDialog({
 	open,
 	onOpenChange,
 	remove,
-	invalidateKey = gitIdentitiesKey,
+	invalidateKey = gitQueriesKey,
 }: DeleteGitIdentityDialogProps) {
 	const { t } = useTranslation("admin");
 	const queryClient = useQueryClient();
