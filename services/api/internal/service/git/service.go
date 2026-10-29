@@ -34,6 +34,7 @@ type ProviderAPI interface {
 	BeginIdentitySetup(ctx context.Context, req gitprovider.BeginSetupRequest) (gitprovider.SetupStep, error)
 	CompleteIdentitySetup(ctx context.Context, req gitprovider.CompleteSetupRequest) (gitprovider.Identity, error)
 	DeleteIdentity(ctx context.Context, req gitprovider.DeleteIdentityRequest) error
+	DescribeIdentity(ctx context.Context, req gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error)
 	BeginAccessGrant(ctx context.Context, req gitprovider.BeginAccessRequest) (gitprovider.SetupStep, error)
 	CompleteAccessGrant(ctx context.Context, req gitprovider.CompleteAccessRequest) (gitprovider.AccessGrant, error)
 	EnsureWebhook(ctx context.Context, req gitprovider.EnsureWebhookRequest) (gitprovider.WebhookRef, error)

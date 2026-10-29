@@ -861,3 +861,32 @@ func TestGitStore_DeletingAConnectionLeavesItsRepositoriesToBeRebound(t *testing
 		t.Fatalf("unknown repository: %v", err)
 	}
 }
+
+func TestGitStore_UpdateIdentityProfile(t *testing.T) {
+	s, _ := newGitFx(t)
+	ctx := t.Context()
+	exp := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Microsecond)
+	i := sharedIdentity("gitlab.com")
+	i.Handle, i.DisplayName = "", "GitLab connection"
+	if err := s.CreateIdentity(ctx, i); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateIdentityProfile(ctx, i.ID, "paca-bot", "Paca Bot", &exp); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, err := s.FindIdentity(ctx, i.ID)
+	if err != nil || got.Handle != "paca-bot" || got.DisplayName != "Paca Bot" || got.ExpiresAt == nil || !got.ExpiresAt.Equal(exp) {
+		t.Fatalf("after update: %+v %v", got, err)
+	}
+	// An empty name and no expiry keep what is stored.
+	if err := s.UpdateIdentityProfile(ctx, i.ID, "renamed", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.FindIdentity(ctx, i.ID)
+	if got.Handle != "renamed" || got.DisplayName != "Paca Bot" || got.ExpiresAt == nil || !got.ExpiresAt.Equal(exp) {
+		t.Errorf("empty values overwrote: %+v", got)
+	}
+	if err := s.UpdateIdentityProfile(ctx, uuid.New(), "x", "", nil); !errors.Is(err, gitdom.ErrNotFound) {
+		t.Errorf("unknown identity: %v", err)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -299,6 +300,7 @@ func (s *Service) ListIdentities(ctx context.Context) ([]*gitdom.Identity, error
 		}
 		out = append(out, ids...)
 	}
+	s.describeNameless(ctx, out)
 	return out, nil
 }
 
@@ -321,6 +323,7 @@ func (s *Service) ListConnections(ctx context.Context, projectID uuid.UUID) ([]*
 			all = append(all, id.ID)
 		}
 	}
+	s.describeNameless(ctx, out)
 	counts, err := s.store.CountRepositories(ctx, all)
 	if err != nil {
 		return nil, err
@@ -329,6 +332,68 @@ func (s *Service) ListConnections(ctx context.Context, projectID uuid.UUID) ([]*
 		id.RepositoryCount = counts[id.ID]
 	}
 	return out, nil
+}
+
+// describeTimeout bounds one describe_identity call: listings must not hang on
+// a slow platform.
+const describeTimeout = 5 * time.Second
+
+// describeNameless asks the provider who each identity without a handle is,
+// and stores the answer. Identities made by a plugin's data migration start
+// that way (the migration cannot call the platform), so they could be neither
+// named in Settings nor matched by an @mention. The call happens at most once
+// per identity: after it the stored handle is no longer empty. It is best
+// effort: any failure is logged and the caller carries on with the old values.
+func (s *Service) describeNameless(ctx context.Context, ids []*gitdom.Identity) {
+	canDescribe := map[string]bool{} // provider id → declares identity_description
+	for _, id := range ids {
+		if id.Handle != "" {
+			continue
+		}
+		ok, seen := canDescribe[id.ProviderID]
+		if !seen {
+			info, err := s.providers.Describe(ctx, id.ProviderID)
+			ok = err == nil && info.Capabilities.IdentityDescription
+			canDescribe[id.ProviderID] = ok
+		}
+		if ok {
+			s.describeIdentity(ctx, id)
+		}
+	}
+}
+
+func (s *Service) describeIdentity(ctx context.Context, id *gitdom.Identity) {
+	prov, err := s.providers.Provider(ctx, id.ProviderID)
+	if err != nil {
+		return
+	}
+	cctx, cancel := context.WithTimeout(ctx, describeTimeout)
+	defer cancel()
+	got, err := prov.DescribeIdentity(cctx, gitprovider.DescribeIdentityRequest{Identity: identityRef(id)})
+	if err != nil {
+		// The error is the provider's own message, never a credential.
+		slog.Warn("git: describe identity failed", "provider", id.ProviderID, "identity", id.ID, "err", err)
+		return
+	}
+	// An answer for another identity, or without a handle, must not be stored.
+	if got.Ref.ID != id.ProviderIdentityID || got.Ref.Handle == "" {
+		return
+	}
+	var exp *time.Time
+	if !got.ExpiresAt.IsZero() {
+		exp = &got.ExpiresAt
+	}
+	if err := s.store.UpdateIdentityProfile(ctx, id.ID, got.Ref.Handle, got.DisplayName, exp); err != nil {
+		slog.Warn("git: save described identity failed", "provider", id.ProviderID, "identity", id.ID, "err", err)
+		return
+	}
+	id.Handle = got.Ref.Handle
+	if got.DisplayName != "" {
+		id.DisplayName = got.DisplayName
+	}
+	if exp != nil {
+		id.ExpiresAt = exp
+	}
 }
 
 func (s *Service) enabledProviders(ctx context.Context) (map[string]bool, error) {
