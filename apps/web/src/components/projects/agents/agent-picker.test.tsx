@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Environment } from "@/lib/environment-api";
 import {
 	AgentPickerContext,
@@ -147,5 +148,34 @@ describe("AgentPickerInline", () => {
 			</AgentPickerContext.Provider>,
 		);
 		expect(screen.getByText("Auto")).toBeInTheDocument();
+	});
+
+	it("keeps distinct name endings visible and full names accessible when selecting an agent", async () => {
+		const user = userEvent.setup();
+		const onAgentChange = vi.fn();
+		const names = ["backend-refactor-agent-v2", "backend-refactor-agent-v3"];
+		renderWithQueryClient(
+			<AgentPickerContext.Provider
+				value={{
+					...agentPickerState,
+					agents: names.map((name, i) => ({ id: `agent-${i + 1}`, name })),
+					agentId: "agent-1",
+					onAgentChange,
+				}}
+			>
+				<AgentPickerInline />
+			</AgentPickerContext.Provider>,
+		);
+
+		const trigger = screen.getByRole("button", { name: names[0] });
+		expect(within(trigger).getByTitle(names[0])).toBeInTheDocument();
+		expect(within(trigger).getByText("agent-v2")).toBeVisible();
+		await user.click(trigger);
+
+		const option = screen.getByRole("button", { name: names[1] });
+		expect(within(option).getByTitle(names[1])).toBeInTheDocument();
+		expect(within(option).getByText("agent-v3")).toBeVisible();
+		await user.click(option);
+		expect(onAgentChange).toHaveBeenCalledWith("agent-2");
 	});
 });

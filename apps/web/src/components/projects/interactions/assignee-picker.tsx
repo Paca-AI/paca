@@ -2,6 +2,7 @@ import { Check, Sparkles, User } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
+import { MiddleTruncate } from "@/components/shared/middle-truncate";
 import {
 	Popover,
 	PopoverContent,
@@ -126,16 +127,15 @@ export function AssigneePicker({
 	const trigger = showNames ? (
 		<span className="flex min-w-0 items-center gap-2">
 			{avatarStack}
-			<span
+			<MiddleTruncate
 				className={cn(
-					"truncate text-sm",
+					"text-sm",
 					names
 						? "font-medium text-foreground"
 						: "italic text-muted-foreground/50",
 				)}
-			>
-				{names || t("taskDetail.common.unassigned")}
-			</span>
+				text={names || t("taskDetail.common.unassigned")}
+			/>
 		</span>
 	) : (
 		avatarStack
@@ -225,9 +225,10 @@ export function AssigneePicker({
 								content: (
 									<>
 										<EntityAvatar {...memberAvatar(m)} size="xs" />
-										<span className="flex-1 text-left truncate">
-											{memberName(m)}
-										</span>
+										<MiddleTruncate
+											className="flex-1 text-left"
+											text={memberName(m)}
+										/>
 									</>
 								),
 							};

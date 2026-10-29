@@ -18,6 +18,7 @@ import {
 } from "@/components/projects/environments/environment-folder-select";
 import { FolderCreateDialog } from "@/components/projects/environments/folder-create-dialog";
 import { SearchableList } from "@/components/projects/interactions/task-detail/property-field/searchable-list";
+import { MiddleTruncate } from "@/components/shared/middle-truncate";
 import { RemoteSelect } from "@/components/shared/remote-select";
 import { Button } from "@/components/ui/button";
 import {
@@ -318,9 +319,10 @@ function AgentPickerPopover({ picker }: { picker: AgentPickerState }) {
 				disabled={disabled}
 				className="flex h-7 items-center gap-1 rounded-full border-none bg-transparent pl-2.5 pr-1.5 text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-100"
 			>
-				<span className="max-w-40 truncate">
-					{triggerLabel ?? t("aiChat.selectAgentPlaceholder")}
-				</span>
+				<MiddleTruncate
+					className="max-w-40"
+					text={triggerLabel ?? t("aiChat.selectAgentPlaceholder")}
+				/>
 				<ChevronDown className="size-3.5 shrink-0 opacity-60" />
 			</PopoverTrigger>
 			<PopoverContent
@@ -338,7 +340,7 @@ function AgentPickerPopover({ picker }: { picker: AgentPickerState }) {
 							setOpen(false);
 						},
 						content: (
-							<span className="flex-1 truncate text-left">{a.name}</span>
+							<MiddleTruncate className="flex-1 text-left" text={a.name} />
 						),
 					}))}
 				/>
