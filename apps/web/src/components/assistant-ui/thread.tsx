@@ -37,7 +37,9 @@ import {
 	type PropsWithChildren,
 	type ReactNode,
 	useContext,
+	useEffect,
 	useMemo,
+	useRef,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { UserMessageAttachments } from "@/components/assistant-ui/attachment";
@@ -69,6 +71,11 @@ import {
 	parseAskQuestionFromCall,
 } from "@/lib/ask-question";
 import { copyToClipboard } from "@/lib/clipboard";
+import {
+	composerDraftKey,
+	loadComposerDraft,
+	saveComposerDraft,
+} from "@/lib/composer-draft";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { parseContextItems } from "@/lib/context-items";
 import { excerptOf } from "@/lib/mention-api";
@@ -364,8 +371,41 @@ function handleComposerPaste(
 		});
 }
 
+/**
+ * Keeps whatever is typed in the composer until it is sent, so a reload the
+ * app cannot avoid — an expired session bouncing through the login/SSO flow
+ * and back to the same URL — restores the message instead of throwing away
+ * work that was never submitted (see lib/composer-draft.ts for the storage).
+ * Attached context chips are not restored: that store is memory-only.
+ */
+function useComposerDraft(aui: ReturnType<typeof useAui>, text: string) {
+	// Fixed at mount: a composer that outlives an SPA navigation (the project
+	// float, a reused conversation view) keeps writing to the page it was
+	// mounted on, rather than copying its live text onto every page it passes.
+	const key = useRef(composerDraftKey(window.location.pathname)).current;
+	// Restoring must happen before the first persist, or an empty first render
+	// deletes the very draft it is meant to bring back.
+	const restored = useRef(false);
+
+	useEffect(() => {
+		if (!restored.current) {
+			restored.current = true;
+			const saved = loadComposerDraft(key);
+			if (saved && !text) {
+				aui.composer().setText(saved);
+				return;
+			}
+		}
+		saveComposerDraft(key, text);
+	}, [aui, key, text]);
+}
+
 const Composer: FC = () => {
 	const { t } = useTranslation("projects");
+	useComposerDraft(
+		useAui(),
+		useAuiState((s: AssistantState) => s.composer.text),
+	);
 	return (
 		<ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
 			{/* No AttachmentDropzone/ComposerAttachments here — onNew only
