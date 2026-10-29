@@ -801,7 +801,10 @@ func reconcileRunningConversationsOnStartup(
 			continue // reached a real terminal status concurrently — leave it
 		}
 		reaped++
-		if err := publisher.PublishRealtime(ctx, conv.ProjectID.UUID, conv.ID, "agent.conversation.failed", nil, nil); err != nil {
+		projectID, ownerAccountID, err := convRepo.GetConversationRealtimeContext(ctx, conv.ID)
+		if err != nil {
+			log.Warn("agent-runner: failed to resolve realtime context for orphaned conversation", "conversation_id", conv.ID, "error", err)
+		} else if err := publisher.PublishRealtime(ctx, projectID, conv.ID, "agent.conversation.failed", nil, ownerAccountID); err != nil {
 			log.Warn("agent-runner: failed to publish realtime status for orphaned conversation", "conversation_id", conv.ID, "error", err)
 		}
 		if err := publisher.PublishConversationStatus(ctx, conv.ID, "failed"); err != nil {
