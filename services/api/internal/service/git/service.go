@@ -202,12 +202,15 @@ func (s *Service) resolveThroughConnections(ctx context.Context, projectID uuid.
 		// GitHub App is installed on an account), "not found" usually means the
 		// grant is missing: say so, so the caller can offer it.
 		if gitprovider.IsCode(err, gitprovider.CodeNotFound) || gitprovider.IsCode(err, gitprovider.CodeForbidden) {
+			// The provider's own message (which token covers what) rides along as
+			// a detail; the sentinel, and so the error code, is unchanged.
+			detail := ProviderMessage(err)
 			if info, derr := s.providers.Describe(ctx, providerID); derr == nil && info.Capabilities.AccessGrants {
-				return nil, gitprovider.ResolvedRepository{}, gitdom.ErrAccessNotGranted
+				return nil, gitprovider.ResolvedRepository{}, gitdom.WithDetail(gitdom.ErrAccessNotGranted, detail)
 			}
 			// No grant to offer: the connections simply do not reach it (a project
 			// token of another project, say). Say so instead of "refused".
-			return nil, gitprovider.ResolvedRepository{}, gitdom.ErrNotVisible
+			return nil, gitprovider.ResolvedRepository{}, gitdom.WithDetail(gitdom.ErrNotVisible, detail)
 		}
 		return nil, gitprovider.ResolvedRepository{}, err
 	}
@@ -632,6 +635,10 @@ func (s *Service) ListRepositories(ctx context.Context, projectID uuid.UUID) ([]
 	if err != nil {
 		return nil, err
 	}
+	attempts, err := s.store.WebhookAttempts(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
 	// Asked once per connection: finding out costs a call to the provider.
 	needs := map[uuid.UUID]webhookNeed{}
 	for _, r := range repos {
@@ -648,6 +655,7 @@ func (s *Service) ListRepositories(ctx context.Context, projectID uuid.UUID) ([]
 			needs[*r.IdentityID] = n
 		}
 		r.WebhookURL = n.url
+		r.WebhookAttempted = attempts[r.ID]
 	}
 	return repos, nil
 }

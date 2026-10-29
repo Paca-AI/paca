@@ -71,6 +71,7 @@
 				"publicUrlRequired": "The instance's public URL (PUBLIC_URL) is not configured.",
 				"providerUnavailable": "The Git provider plugin is unavailable.",
 				"providerRejected": "The platform refused the request.",
+				"providerDetail": "Details from the platform: {{message}}",
 				"notFound": "Not found.",
 				"accessNotGranted": "The connection can't see this repository.",
 				"noIdentity": "No connection is available for this platform yet. Add one under Connections.",
@@ -185,8 +186,11 @@
 			},
 			"webhook": {
 				"title": "Events from this repository aren't reaching Paca",
-				"description": "Paca registers a webhook on each repository through this connection and couldn't: the token probably lacks the permission to manage webhooks (the Maintainer role on GitLab, the Webhooks permission on GitHub). Give the token that permission (on GitLab, create a new token with the Maintainer role and add it as a connection), then try again.",
+				"description": "Paca couldn't register a webhook on this repository through this connection.",
+				"permissionHint": "The most common cause is a token without the permission to manage webhooks (the Maintainer role on GitLab, the Webhooks permission on GitHub). Give the token that permission (on GitLab, create a new token with the Maintainer role and add it as a connection), then try again.",
 				"retry": "Try again",
+				"descriptionNotTried": "Paca hasn't registered a webhook on this repository yet (for example, it was carried over from an earlier version of the plugin). Register it to start receiving events.",
+				"register": "Register webhook",
 				"failed": "Still couldn't register the webhook."
 			},
 			"reconnect": {

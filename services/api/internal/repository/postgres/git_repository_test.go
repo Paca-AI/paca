@@ -770,6 +770,31 @@ func TestGitStore_ListedRepositoriesCarryTheirBotsHandle(t *testing.T) {
 	}
 }
 
+func TestGitStore_WebhookAttemptsComeFromTheAuditLog(t *testing.T) {
+	s, fx := newGitFx(t)
+	ctx := t.Context()
+	project := fx.project()
+	tried := linkRepo(t, s, project, "acme/tried", nil)
+	failed := linkRepo(t, s, project, "acme/failed", nil)
+	never := linkRepo(t, s, project, "acme/never", nil)
+	for _, e := range []*gitdom.ActionLogEntry{
+		{ProjectID: &project, RepositoryID: &tried.ID, Tool: "webhook.register", OK: true},
+		{ProjectID: &project, RepositoryID: &failed.ID, Tool: "webhook.register", OK: false, Detail: ": forbidden"},
+		{ProjectID: &project, RepositoryID: &never.ID, Tool: "git.push", OK: true},
+	} {
+		if err := s.AppendActionLog(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.WebhookAttempts(ctx, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got[tried.ID] || !got[failed.ID] || got[never.ID] || len(got) != 2 {
+		t.Fatalf("attempts = %v", got)
+	}
+}
+
 func TestGitStore_RepositoryDescription(t *testing.T) {
 	s, fx := newGitFx(t)
 	ctx := t.Context()

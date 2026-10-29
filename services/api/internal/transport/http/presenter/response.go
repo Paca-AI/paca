@@ -118,6 +118,12 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		details = map[string]string{"fields": strings.Join(fieldErr.Fields, ",")}
 	}
 
+	// A provider's explanation of a git failure (see gitdom.DetailedError).
+	var detailed *gitdom.DetailedError
+	if details == nil && errors.As(err, &detailed) && detailed.Detail != "" {
+		details = map[string]string{"provider_message": detailed.Detail}
+	}
+
 	httpx.WriteJSON(w, status, envelope{
 		Success:      false,
 		ErrorCode:    string(code),

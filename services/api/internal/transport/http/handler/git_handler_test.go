@@ -263,8 +263,8 @@ func TestGitHandler_ErrorMapping(t *testing.T) {
 		{gitdom.ErrNotVisible, 409, "GIT_REPOSITORY_NOT_VISIBLE"},
 		{gitdom.ErrNotFound, 404, "GIT_NOT_FOUND"},
 		{gitdom.ErrProviderUnavailable, 503, "GIT_PROVIDER_UNAVAILABLE"},
-		{&gitprovider.Error{Code: gitprovider.CodeNotFound, Message: "secret detail"}, 404, "GIT_NOT_FOUND"},
-		{&gitprovider.Error{Code: gitprovider.CodeForbidden, Message: "secret detail"}, 422, "GIT_PROVIDER_REJECTED"},
+		{&gitprovider.Error{Code: gitprovider.CodeNotFound}, 404, "GIT_NOT_FOUND"},
+		{&gitprovider.Error{Code: gitprovider.CodeForbidden}, 422, "GIT_PROVIDER_REJECTED"},
 		{&gitprovider.Error{Code: gitprovider.CodeRateLimited}, 429, "TOO_MANY_REQUESTS"},
 		{&gitprovider.Error{Code: gitprovider.CodeTransient}, 503, "GIT_PROVIDER_UNAVAILABLE"},
 		{&gitprovider.Error{Code: gitprovider.CodeInternal, Message: "secret detail"}, 500, "INTERNAL_ERROR"},
@@ -637,5 +637,56 @@ func TestGitHandler_ReconnectRepository(t *testing.T) {
 	f.err = gitdom.ErrIdentityRequired
 	if rec := serveGit(t, f, "POST", url, `{}`, &actor); rec.Code != 409 || errCode(rec) != "GIT_IDENTITY_REQUIRED" {
 		t.Fatalf("several connections: %d %s", rec.Code, errCode(rec))
+	}
+}
+
+func TestGitHandler_ProviderMessageIsSurfacedAsDetails(t *testing.T) {
+	actor, project := uuid.New(), uuid.New().String()
+	post := func(err error) *httptest.ResponseRecorder {
+		return serveGit(t, &fakeGitSvc{err: err}, "POST", "/projects/"+project+"/git/repositories/"+uuid.New().String()+"/webhook", "", &actor)
+	}
+	details := func(rec *httptest.ResponseRecorder) map[string]string {
+		var env struct {
+			ErrorDetails map[string]string `json:"error_details"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+			t.Fatal(err)
+		}
+		return env.ErrorDetails
+	}
+
+	// A webhook the platform refused: same code, plus what the platform said.
+	rec := post(&gitprovider.Error{Code: gitprovider.CodeForbidden, Message: "the token needs the Maintainer role"})
+	if rec.Code != 422 || errCode(rec) != "GIT_PROVIDER_REJECTED" || details(rec)["provider_message"] != "the token needs the Maintainer role" {
+		t.Fatalf("forbidden: %d %s", rec.Code, rec.Body)
+	}
+	// A repository no connection sees: wrapped sentinel keeps its code.
+	rec = post(gitdom.WithDetail(gitdom.ErrNotVisible, "The connected project token covers only acme/ui."))
+	if rec.Code != 409 || errCode(rec) != "GIT_REPOSITORY_NOT_VISIBLE" || details(rec)["provider_message"] != "The connected project token covers only acme/ui." {
+		t.Fatalf("not visible: %d %s", rec.Code, rec.Body)
+	}
+	// Secrets in the message are masked, an overlong one is capped.
+	rec = post(&gitprovider.Error{Code: gitprovider.CodeForbidden, Message: "bad token ghp_" + strings.Repeat("a", 30) + " " + strings.Repeat("x", 900)})
+	msg := details(rec)["provider_message"]
+	if strings.Contains(msg, "ghp_") || len([]rune(msg)) > 501 {
+		t.Fatalf("not redacted or capped: %q", msg)
+	}
+	// Webhook failures where the fixed text would be wrong carry the platform's reason too.
+	for _, pe := range []*gitprovider.Error{
+		{Code: gitprovider.CodeValidation, Message: "Invalid url given"},
+		{Code: gitprovider.CodeUnsupported, Message: "this instance has no public URL, so the platform cannot reach it"},
+	} {
+		if rec := post(pe); details(rec)["provider_message"] != pe.Message {
+			t.Fatalf("%s: %d %s", pe.Code, rec.Code, rec.Body)
+		}
+	}
+	// No message, no details; internal errors still leak nothing.
+	for _, err := range []error{&gitprovider.Error{Code: gitprovider.CodeForbidden}, gitdom.ErrNotVisible, gitdom.WithDetail(gitdom.ErrNotVisible, "")} {
+		if rec := post(err); strings.Contains(rec.Body.String(), "error_details") {
+			t.Fatalf("details without a message: %s", rec.Body)
+		}
+	}
+	if rec := post(&gitprovider.Error{Code: gitprovider.CodeInternal, Message: "secret detail"}); strings.Contains(rec.Body.String(), "secret detail") {
+		t.Fatalf("internal leaked: %s", rec.Body)
 	}
 }

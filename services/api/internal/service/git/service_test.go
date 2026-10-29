@@ -305,6 +305,16 @@ func (f *fakeStore) AppendActionLog(_ context.Context, e *gitdom.ActionLogEntry)
 	return nil
 }
 
+func (f *fakeStore) WebhookAttempts(_ context.Context, project uuid.UUID) (map[uuid.UUID]bool, error) {
+	out := map[uuid.UUID]bool{}
+	for _, e := range f.log {
+		if e.Tool == "webhook.register" && e.RepositoryID != nil && e.ProjectID != nil && *e.ProjectID == project {
+			out[*e.RepositoryID] = true
+		}
+	}
+	return out, nil
+}
+
 func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
 
 type fakeProv struct {
@@ -886,6 +896,47 @@ func TestWebhookKeysThatCannotBeOursAreNotFound(t *testing.T) {
 	}
 	if err := svc.CheckWebhookEndpoint(ctx, "ready"); err != nil {
 		t.Errorf("a real key: %v", err)
+	}
+}
+
+func TestLinkRepository_ProviderMessageRidesAlongNotVisible(t *testing.T) {
+	svc, st, pr := setup(t)
+	st.addIdentity("bot", "a")
+	const msg = "The connected project token covers only acme/ui. Add a connection for acme/api."
+	for _, code := range []gitprovider.ErrorCode{gitprovider.CodeNotFound, gitprovider.CodeForbidden} {
+		pr.resolve = func(gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+			return gitprovider.ResolvedRepository{}, &gitprovider.Error{Code: code, Message: msg}
+		}
+		_, err := svc.LinkRepository(context.Background(), LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "acme/api"})
+		var de *gitdom.DetailedError
+		if !errors.Is(err, gitdom.ErrNotVisible) || !errors.As(err, &de) || de.Detail != msg {
+			t.Fatalf("%s: got %v (%+v)", code, err, de)
+		}
+		if err.Error() != gitdom.ErrNotVisible.Error() {
+			t.Fatalf("text must stay the sentinel's: %q", err.Error())
+		}
+	}
+	// No message from the provider: the bare sentinel, as before.
+	pr.resolve = func(gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+		return gitprovider.ResolvedRepository{}, &gitprovider.Error{Code: gitprovider.CodeNotFound}
+	}
+	_, err := svc.LinkRepository(context.Background(), LinkInput{ProjectID: uuid.New(), ProviderID: "p", PathOrURL: "acme/api"})
+	if err != gitdom.ErrNotVisible {
+		t.Fatalf("got %#v", err)
+	}
+}
+
+func TestProviderMessage(t *testing.T) {
+	if ProviderMessage(errors.New("plain")) != "" || ProviderMessage(nil) != "" {
+		t.Fatal("only provider failures carry a message")
+	}
+	got := ProviderMessage(&gitprovider.Error{Message: " a\nb\x00 ghp_" + strings.Repeat("z", 30) + " "})
+	if got != "a b ***" {
+		t.Fatalf("got %q", got)
+	}
+	long := ProviderMessage(&gitprovider.Error{Message: strings.Repeat("é", 700)})
+	if r := []rune(long); len(r) != 501 || r[500] != '…' {
+		t.Fatalf("cap: %d", len(r))
 	}
 }
 

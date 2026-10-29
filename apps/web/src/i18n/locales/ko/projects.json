@@ -71,6 +71,7 @@
 				"publicUrlRequired": "인스턴스의 공개 URL(PUBLIC_URL)이 설정되지 않았습니다.",
 				"providerUnavailable": "Git 공급자 플러그인을 사용할 수 없습니다.",
 				"providerRejected": "플랫폼이 요청을 거부했습니다.",
+				"providerDetail": "플랫폼에서 보낸 상세 정보: {{message}}",
 				"notFound": "찾을 수 없습니다.",
 				"accessNotGranted": "이 연결은 이 저장소를 볼 수 없습니다.",
 				"noIdentity": "이 플랫폼에 사용할 수 있는 연결이 아직 없습니다. 연결 섹션에서 추가하세요.",
@@ -185,8 +186,11 @@
 			},
 			"webhook": {
 				"title": "이 저장소의 이벤트가 Paca에 도달하지 않습니다",
-				"description": "Paca는 이 연결로 저장소마다 웹훅을 등록하는데 실패했습니다. 토큰에 웹훅을 관리할 권한이 없을 가능성이 큽니다(GitLab은 Maintainer 역할, GitHub는 Webhooks 권한). 토큰에 해당 권한을 부여한 뒤(GitLab은 Maintainer 역할의 새 토큰을 만들어 연결로 추가) 다시 시도하세요.",
+				"description": "Paca가 이 연결로 이 저장소에 웹훅을 등록하지 못했습니다.",
+				"permissionHint": "가장 흔한 원인은 토큰에 웹훅을 관리할 권한이 없는 경우입니다(GitLab은 Maintainer 역할, GitHub는 Webhooks 권한). 토큰에 해당 권한을 부여한 뒤(GitLab은 Maintainer 역할의 새 토큰을 만들어 연결로 추가) 다시 시도하세요.",
 				"retry": "다시 시도",
+				"descriptionNotTried": "Paca가 아직 이 저장소에 웹훅을 등록하지 않았습니다(예: 이전 버전의 플러그인에서 가져온 저장소). 등록하면 이벤트를 받기 시작합니다.",
+				"register": "웹훅 등록",
 				"failed": "웹훅을 아직 등록하지 못했습니다."
 			},
 			"reconnect": {

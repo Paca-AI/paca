@@ -71,6 +71,7 @@
 				"publicUrlRequired": "URL công khai của hệ thống (PUBLIC_URL) chưa được cấu hình.",
 				"providerUnavailable": "Plugin nhà cung cấp Git không khả dụng.",
 				"providerRejected": "Nền tảng đã từ chối yêu cầu.",
+				"providerDetail": "Chi tiết từ nền tảng: {{message}}",
 				"notFound": "Không tìm thấy.",
 				"accessNotGranted": "Kết nối không thấy được kho này.",
 				"noIdentity": "Chưa có kết nối nào cho nền tảng này. Hãy thêm một kết nối trong mục Kết nối.",
@@ -185,8 +186,11 @@
 			},
 			"webhook": {
 				"title": "Sự kiện từ kho này chưa đến được Paca",
-				"description": "Paca đăng ký webhook trên từng kho qua kết nối này nhưng không thành công: token có thể thiếu quyền quản lý webhook (vai trò Maintainer trên GitLab, quyền Webhooks trên GitHub). Hãy cấp quyền đó cho token (trên GitLab, tạo token mới với vai trò Maintainer và thêm làm kết nối), rồi thử lại.",
+				"description": "Paca không thể đăng ký webhook trên kho này qua kết nối này.",
+				"permissionHint": "Nguyên nhân thường gặp nhất là token thiếu quyền quản lý webhook (vai trò Maintainer trên GitLab, quyền Webhooks trên GitHub). Hãy cấp quyền đó cho token (trên GitLab, tạo token mới với vai trò Maintainer và thêm làm kết nối), rồi thử lại.",
 				"retry": "Thử lại",
+				"descriptionNotTried": "Paca chưa đăng ký webhook trên kho này (ví dụ: kho được chuyển từ phiên bản plugin trước đó). Hãy đăng ký để bắt đầu nhận sự kiện.",
+				"register": "Đăng ký webhook",
 				"failed": "Vẫn chưa đăng ký được webhook."
 			},
 			"reconnect": {

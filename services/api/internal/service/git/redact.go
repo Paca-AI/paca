@@ -1,10 +1,15 @@
 package gitsvc
 
 import (
+	"errors"
 	"regexp"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
+
+	"github.com/Paca-AI/api/internal/platform/gitprovider"
 )
 
 // secretPatterns match credentials that commonly leak into CI logs. Masking is
@@ -60,4 +65,32 @@ func (s *Service) allowRerun(repo uuid.UUID) bool {
 	}
 	s.reruns[repo] = append(kept, now)
 	return true
+}
+
+// maxProviderMessage caps a provider's explanation shown to a user.
+const maxProviderMessage = 500
+
+// ProviderMessage is the message of a provider failure in err, safe to show a
+// user: credentials masked, whitespace trimmed, control characters dropped and
+// capped at maxProviderMessage characters. Empty when err is not a provider
+// failure or the provider said nothing.
+func ProviderMessage(err error) string {
+	var pe *gitprovider.Error
+	if !errors.As(err, &pe) {
+		return ""
+	}
+	msg := strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return ' '
+		}
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(RedactSecrets(pe.Message), ""))
+	msg = strings.TrimSpace(msg)
+	if r := []rune(msg); len(r) > maxProviderMessage {
+		msg = string(r[:maxProviderMessage]) + "…"
+	}
+	return msg
 }

@@ -115,9 +115,12 @@ const agents = [
 	{ id: "a2", name: "Reviewer", handle: "reviewer" },
 ];
 
-function apiFail(code: string) {
+function apiFail(code: string, details?: Record<string, string>) {
 	return Promise.reject({
-		response: { status: 409, data: { error_code: code } },
+		response: {
+			status: 409,
+			data: { error_code: code, error_details: details },
+		},
 	});
 }
 
@@ -280,6 +283,120 @@ describe("GitSettings", () => {
 		await user.click(await screen.findByRole("button", { name: "Reconnect" }));
 		expect(await screen.findByRole("alert")).toHaveTextContent(
 			/None of the project's connections can see this repository/,
+		);
+	});
+
+	it("shows what the platform said under the generic message, as plain text", async () => {
+		const user = userEvent.setup();
+		repos = [{ ...repo, identity_id: null }];
+		const said = "The token covers only acme/ui. <b>Add</b> one for acme/api.";
+		h.post.mockImplementation(() =>
+			apiFail("GIT_REPOSITORY_NOT_VISIBLE", { provider_message: said }),
+		);
+		renderPanel();
+		await user.click(await screen.findByRole("button", { name: "Reconnect" }));
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent(/None of the project's connections/);
+		expect(alert).toHaveTextContent(`Details from the platform: ${said}`);
+		expect(alert.querySelector("b")).toBeNull();
+	});
+
+	it("shows why the webhook still could not be registered", async () => {
+		const user = userEvent.setup();
+		repos = [
+			{
+				...repo,
+				webhook_url: "https://paca.example.com/api/v1/git/webhooks/k",
+			},
+		];
+		h.post.mockImplementation(() =>
+			apiFail("GIT_PROVIDER_REJECTED", {
+				provider_message: "Needs the Maintainer role",
+			}),
+		);
+		renderPanel();
+		await user.click(await screen.findByRole("button", { name: "Try again" }));
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("Still couldn't register the webhook.");
+		expect(alert).toHaveTextContent(
+			"Details from the platform: Needs the Maintainer role",
+		);
+		// The platform's reason replaces the guess about permissions.
+		expect(screen.queryByText(/most common cause/i)).toBeNull();
+	});
+
+	it("invites registering a webhook that Paca never attempted, without guessing at a cause", async () => {
+		const user = userEvent.setup();
+		repos = [
+			{
+				...repo,
+				webhook_url: "https://paca.example.com/api/v1/git/webhooks/k",
+				webhook_attempted: false,
+			},
+		];
+		h.post.mockImplementation(() => apiFail("GIT_PROVIDER_REJECTED"));
+		renderPanel();
+		expect(
+			await screen.findByText(
+				/hasn't registered a webhook on this repository yet/i,
+			),
+		).toBeInTheDocument();
+		expect(screen.queryByText(/couldn't register a webhook/i)).toBeNull();
+		expect(screen.queryByText(/most common cause/i)).toBeNull();
+		expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+		await user.click(screen.getByRole("button", { name: "Register webhook" }));
+		// Once it has been tried and refused, it reads as a failure.
+		await screen.findByRole("alert");
+		expect(screen.getByText(/most common cause/i)).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Try again" }),
+		).toBeInTheDocument();
+	});
+
+	it("keeps the usual wording for a webhook that was attempted and failed", async () => {
+		repos = [
+			{
+				...repo,
+				webhook_url: "https://paca.example.com/api/v1/git/webhooks/k",
+				webhook_attempted: true,
+			},
+		];
+		renderPanel();
+		expect(
+			await screen.findByText(
+				/couldn't register a webhook on this repository/i,
+			),
+		).toBeInTheDocument();
+		expect(screen.getByText(/most common cause/i)).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Try again" }),
+		).toBeInTheDocument();
+	});
+
+	it("keeps the permission hint before a try and when the platform said nothing", async () => {
+		const user = userEvent.setup();
+		repos = [
+			{
+				...repo,
+				webhook_url: "https://paca.example.com/api/v1/git/webhooks/k",
+			},
+		];
+		h.post.mockImplementation(() => apiFail("GIT_PROVIDER_REJECTED"));
+		renderPanel();
+		expect(await screen.findByText(/most common cause/i)).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Try again" }));
+		await screen.findByRole("alert");
+		expect(screen.getByText(/most common cause/i)).toBeInTheDocument();
+	});
+
+	it("shows no details line when the platform said nothing", async () => {
+		const user = userEvent.setup();
+		repos = [{ ...repo, identity_id: null }];
+		h.post.mockImplementation(() => apiFail("GIT_REPOSITORY_NOT_VISIBLE"));
+		renderPanel();
+		await user.click(await screen.findByRole("button", { name: "Reconnect" }));
+		expect(await screen.findByRole("alert")).not.toHaveTextContent(
+			/Details from the platform/,
 		);
 	});
 
