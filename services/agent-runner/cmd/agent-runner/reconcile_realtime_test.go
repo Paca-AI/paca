@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Paca-AI/agent-runner/internal/messaging"
-	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
-	"github.com/Paca-AI/agent-runner/internal/sandbox"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/Paca-AI/agent-runner/internal/messaging"
+	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
+	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
 
 type emptySandbox struct{ sandbox.Backend }
