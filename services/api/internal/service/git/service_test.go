@@ -770,11 +770,51 @@ func TestHandleWebhook_AReviewNeverRewindsALifecycleState(t *testing.T) {
 	if got := fs.crs[len(fs.crs)-1]; got.State != "merged" || got.MergedAt == nil {
 		t.Fatalf("merged event: %+v", got)
 	}
-	// And a reopening or a push clears it.
-	pr.events = []gitprovider.Event{prEvent("o1", "synchronized", "feat/x", "Add")}
+	// And a reopening clears it.
+	pr.events = []gitprovider.Event{prEvent("o1", "reopened", "feat/x", "Add")}
 	_, _ = svc.HandleWebhook(ctx, "k", Delivery{Method: "POST"})
 	if got := fs.crs[len(fs.crs)-1]; got.State != "open" || got.MergedAt != nil {
 		t.Fatalf("an update of an open request: %+v", got)
+	}
+}
+
+func TestHandleWebhook_EditsAndPushesKeepTheCachedState(t *testing.T) {
+	ctx := context.Background()
+	merged := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	cases := []struct {
+		name, cached, action, want string
+		mergedAt                   bool
+	}{
+		{"edited after merged", "merged", "edited", "merged", true},
+		{"synchronized after closed", "closed", "synchronized", "closed", false},
+		{"reopened after closed", "closed", "reopened", "open", false},
+		{"reopened after merged", "merged", "reopened", "open", false},
+		{"edited on a request never seen", "", "edited", "open", false},
+		{"synchronized on an open request", "open", "synchronized", "open", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fs, pr := newFakeStore(), &fakeProv{}
+			ts := &trackStore{fakeStore: fs}
+			svc := New(ts, fakeProviders{p: pr})
+			ident := fs.addIdentity("bot", "a")
+			fs.endpoints["k"] = &gitdom.WebhookEndpoint{Key: "k", ProviderID: "p", IdentityID: &ident.ID}
+			linked(fs, uuid.New(), "acme/web")
+			if c.cached != "" {
+				ts.cur = &gitdom.ChangeRequest{Number: "7", State: c.cached}
+				if c.cached == "merged" {
+					ts.cur.MergedAt = &merged
+				}
+			}
+			pr.events = []gitprovider.Event{prEvent("e1", c.action, "feat/x", "Add")}
+			if _, err := svc.HandleWebhook(ctx, "k", Delivery{Method: "POST"}); err != nil {
+				t.Fatal(err)
+			}
+			got := fs.crs[len(fs.crs)-1]
+			if got.State != c.want || (got.MergedAt != nil) != c.mergedAt {
+				t.Fatalf("state %q mergedAt %v, want %q (merged_at set: %v)", got.State, got.MergedAt, c.want, c.mergedAt)
+			}
+		})
 	}
 }
 
