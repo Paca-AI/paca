@@ -381,7 +381,7 @@ func upperSegmentBefore(text string, end int) bool {
 		return false
 	}
 	for i := start; i < end; i++ {
-		if c := text[i]; !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') {
+		if c := text[i]; (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
 			return false
 		}
 	}
