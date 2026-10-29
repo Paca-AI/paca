@@ -35,6 +35,7 @@ func TestLiveConversationIDsIncludesOnlyNonFailedSandboxJobs(t *testing.T) {
 	clientset := fake.NewClientset(
 		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "live", Namespace: "paca-sandbox", Labels: map[string]string{labelManaged: managedValue, labelConvID: "conversation-live"}}},
 		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "failed", Namespace: "paca-sandbox", Labels: map[string]string{labelManaged: managedValue, labelConvID: "conversation-failed"}}, Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}}}},
+		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "completed", Namespace: "paca-sandbox", Labels: map[string]string{labelManaged: managedValue, labelConvID: "conversation-completed"}}, Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}}},
 		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "environment", Namespace: "paca-sandbox", Labels: map[string]string{labelManaged: managedValue, "paca.ai/environment": "paca-env-id"}}},
 	)
 	mgr := &Manager{clientset: clientset, namespace: "paca-sandbox"}

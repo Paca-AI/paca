@@ -437,7 +437,7 @@ func (m *Manager) LiveConversationIDs(ctx context.Context) (map[string]struct{},
 	live := make(map[string]struct{}, len(jobs.Items))
 	for _, job := range jobs.Items {
 		convID := job.Labels[labelConvID]
-		if convID == "" || jobFailed(&job) {
+		if convID == "" || jobTerminal(&job) {
 			continue
 		}
 		live[convID] = struct{}{}
@@ -445,12 +445,12 @@ func (m *Manager) LiveConversationIDs(ctx context.Context) (map[string]struct{},
 	return live, nil
 }
 
-// jobFailed reports whether Kubernetes has declared the Job failed —
-// BackoffLimit 0 means the first Pod failure is terminal, and the Job (with
-// its failed Pod) then sits there until its TTL removes it.
-func jobFailed(job *batchv1.Job) bool {
+// jobTerminal reports whether Kubernetes has declared the Job complete or
+// failed — neither outcome can still own an active agent turn, and
+// jobTTLSecondsAfterFinished may keep the object around for five more minutes.
+func jobTerminal(job *batchv1.Job) bool {
 	for _, cond := range job.Status.Conditions {
-		if cond.Type == batchv1.JobFailed && cond.Status == corev1.ConditionTrue {
+		if (cond.Type == batchv1.JobFailed || cond.Type == batchv1.JobComplete) && cond.Status == corev1.ConditionTrue {
 			return true
 		}
 	}
