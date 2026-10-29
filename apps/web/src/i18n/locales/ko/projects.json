@@ -179,6 +179,8 @@
 				"description": "Paca가 이 연결로 이 저장소에 웹훅을 등록하지 못했습니다.",
 				"permissionHint": "가장 흔한 원인은 토큰에 웹훅을 관리할 권한이 없는 경우입니다(GitLab은 Maintainer 역할, GitHub는 Webhooks 권한). 토큰에 해당 권한을 부여한 뒤(GitLab은 Maintainer 역할의 새 토큰을 만들어 연결로 추가) 다시 시도하세요.",
 				"retry": "다시 시도",
+				"descriptionNotTried": "Paca가 아직 이 저장소에 웹훅을 등록하지 않았습니다(예: 이전 버전의 플러그인에서 가져온 저장소). 등록하면 이벤트를 받기 시작합니다.",
+				"register": "웹훅 등록",
 				"failed": "웹훅을 아직 등록하지 못했습니다."
 			},
 			"reconnect": {

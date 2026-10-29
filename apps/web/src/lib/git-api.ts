@@ -220,6 +220,12 @@ export interface GitRepository {
 	 * could be registered automatically.
 	 */
 	webhook_url?: string;
+	/**
+	 * False when Paca never tried to register this repository's webhook (for
+	 * example it was carried over from an earlier version of a provider plugin),
+	 * as opposed to having tried and failed.
+	 */
+	webhook_attempted?: boolean;
 	created_at: string;
 }
 

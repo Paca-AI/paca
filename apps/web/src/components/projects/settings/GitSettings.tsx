@@ -683,6 +683,9 @@ function WebhookNotice({
 	const queryClient = useQueryClient();
 	const [failed, setFailed] = useState(false);
 	const [detail, setDetail] = useState<string | null>(null);
+	// Nobody has tried yet (a repository carried over from an earlier plugin
+	// version): nothing failed, so there is no cause to guess at.
+	const neverTried = repository.webhook_attempted === false && !failed;
 	const retry = useMutation({
 		mutationFn: () => registerGitWebhook(projectId, repository.id),
 		onSuccess: () => {
@@ -704,10 +707,14 @@ function WebhookNotice({
 		>
 			<p className="font-medium">{t("project.git.webhook.title")}</p>
 			<p className="text-muted-foreground">
-				{t("project.git.webhook.description")}
+				{t(
+					neverTried
+						? "project.git.webhook.descriptionNotTried"
+						: "project.git.webhook.description",
+				)}
 			</p>
 			{/* The usual cause, until the platform has said otherwise. */}
-			{failed && detail ? null : (
+			{neverTried || (failed && detail) ? null : (
 				<p className="text-muted-foreground">
 					{t("project.git.webhook.permissionHint")}
 				</p>
@@ -730,7 +737,11 @@ function WebhookNotice({
 						{retry.isPending ? (
 							<Loader2 className="size-4 animate-spin" />
 						) : null}
-						{t("project.git.webhook.retry")}
+						{t(
+							neverTried
+								? "project.git.webhook.register"
+								: "project.git.webhook.retry",
+						)}
 					</Button>
 				</div>
 			) : null}

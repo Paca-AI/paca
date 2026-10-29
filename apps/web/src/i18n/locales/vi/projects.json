@@ -179,6 +179,8 @@
 				"description": "Paca không thể đăng ký webhook trên kho này qua kết nối này.",
 				"permissionHint": "Nguyên nhân thường gặp nhất là token thiếu quyền quản lý webhook (vai trò Maintainer trên GitLab, quyền Webhooks trên GitHub). Hãy cấp quyền đó cho token (trên GitLab, tạo token mới với vai trò Maintainer và thêm làm kết nối), rồi thử lại.",
 				"retry": "Thử lại",
+				"descriptionNotTried": "Paca chưa đăng ký webhook trên kho này (ví dụ: kho được chuyển từ phiên bản plugin trước đó). Hãy đăng ký để bắt đầu nhận sự kiện.",
+				"register": "Đăng ký webhook",
 				"failed": "Vẫn chưa đăng ký được webhook."
 			},
 			"reconnect": {

@@ -179,6 +179,8 @@
 				"description": "O Paca não conseguiu registrar um webhook neste repositório por meio desta conexão.",
 				"permissionHint": "A causa mais comum é um token sem permissão para gerenciar webhooks (a função Maintainer no GitLab, a permissão Webhooks no GitHub). Dê essa permissão ao token (no GitLab, crie um novo token com a função Maintainer e adicione-o como conexão) e tente novamente.",
 				"retry": "Tentar novamente",
+				"descriptionNotTried": "O Paca ainda não registrou um webhook neste repositório (por exemplo, ele veio de uma versão anterior do plugin). Registre-o para começar a receber eventos.",
+				"register": "Registrar webhook",
 				"failed": "Ainda não foi possível registrar o webhook."
 			},
 			"reconnect": {

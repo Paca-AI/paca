@@ -317,6 +317,54 @@ describe("GitSettings", () => {
 		expect(screen.queryByText(/most common cause/i)).toBeNull();
 	});
 
+	it("invites registering a webhook that Paca never attempted, without guessing at a cause", async () => {
+		const user = userEvent.setup();
+		repos = [
+			{
+				...repo,
+				webhook_url: "https://paca.example.com/api/v1/git/webhooks/k",
+				webhook_attempted: false,
+			},
+		];
+		h.post.mockImplementation(() => apiFail("GIT_PROVIDER_REJECTED"));
+		renderPanel();
+		expect(
+			await screen.findByText(
+				/hasn't registered a webhook on this repository yet/i,
+			),
+		).toBeInTheDocument();
+		expect(screen.queryByText(/couldn't register a webhook/i)).toBeNull();
+		expect(screen.queryByText(/most common cause/i)).toBeNull();
+		expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+		await user.click(screen.getByRole("button", { name: "Register webhook" }));
+		// Once it has been tried and refused, it reads as a failure.
+		await screen.findByRole("alert");
+		expect(screen.getByText(/most common cause/i)).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Try again" }),
+		).toBeInTheDocument();
+	});
+
+	it("keeps the usual wording for a webhook that was attempted and failed", async () => {
+		repos = [
+			{
+				...repo,
+				webhook_url: "https://paca.example.com/api/v1/git/webhooks/k",
+				webhook_attempted: true,
+			},
+		];
+		renderPanel();
+		expect(
+			await screen.findByText(
+				/couldn't register a webhook on this repository/i,
+			),
+		).toBeInTheDocument();
+		expect(screen.getByText(/most common cause/i)).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Try again" }),
+		).toBeInTheDocument();
+	});
+
 	it("keeps the permission hint before a try and when the platform said nothing", async () => {
 		const user = userEvent.setup();
 		repos = [

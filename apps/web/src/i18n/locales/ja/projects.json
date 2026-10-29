@@ -179,6 +179,8 @@
 				"description": "Paca はこの接続を通じてこのリポジトリに Webhook を登録できませんでした。",
 				"permissionHint": "最も多い原因は、トークンに Webhook を管理する権限がないことです（GitLab は Maintainer ロール、GitHub は Webhooks 権限）。トークンにその権限を付与して（GitLab では Maintainer ロールの新しいトークンを作成し、接続として追加）、再試行してください。",
 				"retry": "再試行",
+				"descriptionNotTried": "Paca はまだこのリポジトリに Webhook を登録していません(たとえば、以前のバージョンのプラグインから引き継がれたリポジトリです)。登録すると、イベントの受信が始まります。",
+				"register": "Webhook を登録",
 				"failed": "Webhook をまだ登録できませんでした。"
 			},
 			"reconnect": {

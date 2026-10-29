@@ -179,6 +179,8 @@
 				"description": "Paca 未能通过此连接在此仓库上注册 Webhook。",
 				"permissionHint": "最常见的原因是令牌缺少管理 Webhook 的权限（GitLab 需要 Maintainer 角色，GitHub 需要 Webhooks 权限）。请为令牌授予该权限（在 GitLab 上，创建具有 Maintainer 角色的新令牌并将其添加为连接），然后重试。",
 				"retry": "重试",
+				"descriptionNotTried": "Paca 尚未在此仓库上注册 Webhook(例如,它是从旧版本的插件迁移而来)。注册后即可开始接收事件。",
+				"register": "注册 Webhook",
 				"failed": "仍无法注册 Webhook。"
 			},
 			"reconnect": {
