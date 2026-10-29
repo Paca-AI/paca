@@ -42,6 +42,44 @@ func (r *ConversationRepository) UpdateStatus(ctx context.Context, id uuid.UUID,
 	return nil
 }
 
+// RunningConversation is one agent_conversations row still marked "running",
+// with just the fields agent-runner's startup reconciliation needs to decide
+// whether the row is a leftover from a previous process or a turn some live
+// replica is actually running — see ListRunningConversations.
+type RunningConversation struct {
+	ID uuid.UUID `db:"id"`
+	// AgentID/AgentType come from the owning agent; AgentType gates the
+	// check (only llm-type turns get a per-conversation sandbox at all —
+	// acp and provider_cli turns run inside a daemon or a static
+	// environment).
+	AgentID     uuid.UUID     `db:"agent_id"`
+	AgentType   string        `db:"agent_type"`
+	ProjectID   uuid.NullUUID `db:"project_id"`
+	Environment uuid.NullUUID `db:"environment_id"`
+	UpdatedAt   time.Time     `db:"updated_at"`
+}
+
+// ListRunningConversations returns every conversation currently marked
+// "running", across agents and projects — the input to agent-runner's
+// startup reconciliation (see cmd/agent-runner's
+// reconcileRunningConversationsOnStartup). Unfiltered on purpose: which of
+// these are genuinely orphaned is a decision the caller makes against the
+// sandbox backend's own live set, not something this query can know.
+func (r *ConversationRepository) ListRunningConversations(ctx context.Context) ([]RunningConversation, error) {
+	var rows []RunningConversation
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT c.id, c.agent_id, a.agent_type, c.project_id, c.environment_id, c.updated_at
+		FROM agent_conversations c
+		JOIN agents a ON a.id = c.agent_id
+		WHERE c.status = 'running' AND c.deleted_at IS NULL
+		ORDER BY c.updated_at
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list running conversations: %w", err)
+	}
+	return rows, nil
+}
+
 // FailIfNotTerminal mirrors fail_if_not_terminal: atomically marks a
 // conversation failed unless it already reached a terminal status.
 // Race-safe against a legitimate terminal status landing concurrently —

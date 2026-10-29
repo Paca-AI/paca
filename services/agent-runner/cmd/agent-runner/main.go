@@ -24,6 +24,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Paca-AI/agent-runner/internal/acpbridge"
+	"github.com/Paca-AI/agent-runner/internal/agent"
 	"github.com/Paca-AI/agent-runner/internal/bundledskills"
 	"github.com/Paca-AI/agent-runner/internal/chatsandbox"
 	"github.com/Paca-AI/agent-runner/internal/config"
@@ -192,6 +193,7 @@ func run(log *slog.Logger) error {
 	// Backgrounded, not awaited — see reconcileEnvironmentsOnStartup's own
 	// doc comment for why blocking here used to be a crash-loop risk.
 	go reconcileEnvironmentsOnStartup(ctx, envRepo, encryptor, acpServer, settings.MCPDevSourceDir, log)
+	go reconcileRunningConversationsOnStartup(ctx, convRepo, sandboxBackend, publisher, log)
 	go reapIdleChatSandboxes(ctx, h, chatSandboxes, inFlight, settings.ChatSandboxIdleTimeout, log)
 	go reapIdleProviderCLIClients(ctx, h, providerCLIEnvClients, inFlight, settings.ChatSandboxIdleTimeout, log)
 	go reapIdleEnvironments(ctx, envRepo, sandboxBackend, log)
@@ -721,4 +723,125 @@ func reconcileOneEnvironment(
 	} else if !won {
 		log.Info("agent-runner: environment status changed concurrently during startup reconciliation, leaving it as-is", "environment_id", env.ID)
 	}
+}
+
+// reconcileConversationGrace is how long a "running" row must have gone
+// untouched before startup reconciliation may treat it as orphaned. A
+// dispatch marks the row "running" a moment before its sandbox exists
+// (handler.Handle's UpdateStatus runs before Executor.Run creates the
+// container/Job), so a sibling replica mid-dispatch during a rolling update
+// must not be mistaken for a leftover. Seconds in practice, and far below
+// the shortest agents.timeout_minutes (30) a real turn can run for.
+const reconcileConversationGrace = 5 * time.Minute
+
+// orphanedConversationMessage is what a reconciled row's error_message says.
+// Named rather than inlined so the "why" stays legible in the UI, which shows
+// this column verbatim.
+const orphanedConversationMessage = "agent-runner restarted while this turn was running and no sandbox survived it; the turn was lost"
+
+// reconcileRunningConversationsOnStartup is reconcileEnvironmentsOnStartup's
+// counterpart for conversations, and closes the one gap that used to freeze
+// an agent's whole queue: a conversation's row is written "running" by the
+// process executing its turn, so a process that dies mid-turn (a node roll,
+// an eviction, an OOM kill, a deploy) leaves the row saying "running" with
+// nothing running. Nothing else could ever notice: services/api's
+// checkParallelismCapacity counts exactly those rows, so three of them at
+// agents.parallelism_limit=3 parked every later trigger in
+// agent_pending_triggers, and that queue only advances on a *terminal* status
+// event — which an orphaned row never publishes. The agent then looks
+// permanently "queued" while a healthy runner sits idle.
+//
+// Only conversations this fleet has no live sandbox for are failed, decided
+// in shouldReapRunningConversation; the fail itself is
+// ConversationRepository.FailIfNotTerminal (already race-safe against a
+// concurrent legitimate terminal status) followed by the same status
+// publication handler.publishTerminalStatus does for a real failure, which is
+// what lets services/api advance the paused parallelism queue.
+//
+// Backgrounded like its environment counterpart, and for the same reason: a
+// slow DB/backend call here must never keep the HTTP server or the trigger
+// consumer from starting.
+func reconcileRunningConversationsOnStartup(
+	ctx context.Context,
+	convRepo *postgres.ConversationRepository,
+	backend sandbox.Backend,
+	publisher *messaging.Publisher,
+	log *slog.Logger,
+) {
+	convs, err := convRepo.ListRunningConversations(ctx)
+	if err != nil {
+		log.Warn("agent-runner: failed to list running conversations for startup reconciliation", "error", err)
+		return
+	}
+	if len(convs) == 0 {
+		return
+	}
+	live, err := backend.LiveConversationIDs(ctx)
+	if err != nil {
+		// Nothing can be reaped on a view that failed: failing a row whose
+		// sandbox merely could not be listed would kill a live turn owned by
+		// a sibling replica during a rolling update. Leaving every row alone
+		// is the safe half of this trade — the next restart retries.
+		log.Warn("agent-runner: failed to list live sandboxes, skipping running-conversation reconciliation", "error", err)
+		return
+	}
+
+	now := time.Now()
+	reaped := 0
+	for _, conv := range convs {
+		if !shouldReapRunningConversation(conv, live, now) {
+			continue
+		}
+		failed, err := convRepo.FailIfNotTerminal(ctx, conv.ID, orphanedConversationMessage)
+		if err != nil {
+			log.Warn("agent-runner: failed to mark orphaned conversation failed", "conversation_id", conv.ID, "error", err)
+			continue
+		}
+		if !failed {
+			continue // reached a real terminal status concurrently — leave it
+		}
+		reaped++
+		if err := publisher.PublishRealtime(ctx, conv.ProjectID.UUID, conv.ID, "agent.conversation.failed", nil, nil); err != nil {
+			log.Warn("agent-runner: failed to publish realtime status for orphaned conversation", "conversation_id", conv.ID, "error", err)
+		}
+		if err := publisher.PublishConversationStatus(ctx, conv.ID, "failed"); err != nil {
+			log.Warn("agent-runner: failed to publish conversation status for orphaned conversation", "conversation_id", conv.ID, "error", err)
+		}
+		log.Info("agent-runner: failed an orphaned running conversation left by a previous process",
+			"conversation_id", conv.ID, "agent_id", conv.AgentID, "untouched_since", conv.UpdatedAt)
+	}
+	if reaped > 0 {
+		log.Info("agent-runner: startup reconciliation cleared orphaned running conversations", "count", reaped)
+	}
+}
+
+// shouldReapRunningConversation decides whether conv is a leftover rather than
+// a turn someone is running right now — a pure function of the row, the
+// backend's live set and the clock so every branch is unit-tested
+// (main_test.go) without a database or a sandbox backend.
+//
+// Three reasons to leave a row alone, in the order they cost the least to
+// check:
+//   - not an llm-type agent: an acp turn runs in the operator's own daemon and
+//     a provider_cli turn inside a static environment, so neither owns a
+//     per-conversation sandbox this set could ever contain — reaping them on
+//     "no sandbox listed" would kill live turns.
+//   - environment-backed: the turn is running in that environment's Pod, whose
+//     lifecycle reconcileEnvironmentsOnStartup owns, not this pass.
+//   - within reconcileConversationGrace: a dispatch that has just marked the
+//     row "running" may not have its sandbox visible yet.
+//
+// Everything else that is absent from live is an orphan, whatever killed the
+// process that owned it.
+func shouldReapRunningConversation(conv postgres.RunningConversation, live map[string]struct{}, now time.Time) bool {
+	if conv.AgentType != agent.AgentTypeLLM {
+		return false
+	}
+	if conv.Environment.Valid {
+		return false
+	}
+	if _, ok := live[conv.ID.String()]; ok {
+		return false
+	}
+	return now.Sub(conv.UpdatedAt) > reconcileConversationGrace
 }

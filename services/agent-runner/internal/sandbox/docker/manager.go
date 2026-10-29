@@ -511,6 +511,28 @@ func (m *Manager) Stop(ctx context.Context, h *sandbox.Handle) error {
 	return nil
 }
 
+// LiveConversationIDs lists the conversation IDs whose sandbox container on
+// this Docker host is still running — All: false limits the query to running
+// containers, and static environments never carry labelConvID (they carry
+// paca.environment_id instead), so they cannot appear here.
+func (m *Manager) LiveConversationIDs(ctx context.Context) (map[string]struct{}, error) {
+	list, err := m.docker.ContainerList(ctx, client.ContainerListOptions{
+		Filters: client.Filters{}.Add("label", labelManaged+"=true"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("sandbox/docker: list sandbox containers: %w", err)
+	}
+	live := make(map[string]struct{}, len(list.Items))
+	for _, c := range list.Items {
+		convID := c.Labels[labelConvID]
+		if convID == "" {
+			continue
+		}
+		live[convID] = struct{}{}
+	}
+	return live, nil
+}
+
 // CopyToContainer uploads tarContent (a tar archive stream) into containerID
 // at destPath — a thin, domain-agnostic wrapper around the Docker
 // archive-copy API (PUT /containers/{id}/archive). Used by the executor

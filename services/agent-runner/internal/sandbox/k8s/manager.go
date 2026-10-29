@@ -421,6 +421,42 @@ func (m *Manager) Stop(ctx context.Context, h *sandbox.Handle) error {
 	return m.deleteJob(ctx, h.ContainerID)
 }
 
+// LiveConversationIDs lists the conversation IDs whose sandbox Job in this
+// namespace is still alive — the Job exists (its TTL controller deletes a
+// finished one after jobTTLSecondsAfterFinished) and has not reached the
+// JobFailed condition (BackoffLimit is 0, so a Pod that dies takes the Job
+// there immediately). Environment Deployments are a different kind and are
+// deliberately not listed: they carry environmentLabel, never labelConvID.
+func (m *Manager) LiveConversationIDs(ctx context.Context) (map[string]struct{}, error) {
+	jobs, err := m.clientset.BatchV1().Jobs(m.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelManaged + "=" + managedValue,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("sandbox/k8s: list sandbox jobs in %s: %w", m.namespace, err)
+	}
+	live := make(map[string]struct{}, len(jobs.Items))
+	for _, job := range jobs.Items {
+		convID := job.Labels[labelConvID]
+		if convID == "" || jobFailed(&job) {
+			continue
+		}
+		live[convID] = struct{}{}
+	}
+	return live, nil
+}
+
+// jobFailed reports whether Kubernetes has declared the Job failed —
+// BackoffLimit 0 means the first Pod failure is terminal, and the Job (with
+// its failed Pod) then sits there until its TTL removes it.
+func jobFailed(job *batchv1.Job) bool {
+	for _, cond := range job.Status.Conditions {
+		if cond.Type == batchv1.JobFailed && cond.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
 // deleteJob issues the actual Job deletion Stop and Start's own cleanup
 // path both need — Foreground propagation so the Pod is gone (not merely
 // scheduled for deletion) by the time this returns, mirroring how
