@@ -644,6 +644,15 @@ func TestGitHandler_ProviderMessageIsSurfacedAsDetails(t *testing.T) {
 	if strings.Contains(msg, "ghp_") || len([]rune(msg)) > 501 {
 		t.Fatalf("not redacted or capped: %q", msg)
 	}
+	// Webhook failures where the fixed text would be wrong carry the platform's reason too.
+	for _, pe := range []*gitprovider.Error{
+		{Code: gitprovider.CodeValidation, Message: "Invalid url given"},
+		{Code: gitprovider.CodeUnsupported, Message: "this instance has no public URL, so the platform cannot reach it"},
+	} {
+		if rec := post(pe); details(rec)["provider_message"] != pe.Message {
+			t.Fatalf("%s: %d %s", pe.Code, rec.Code, rec.Body)
+		}
+	}
 	// No message, no details; internal errors still leak nothing.
 	for _, err := range []error{&gitprovider.Error{Code: gitprovider.CodeForbidden}, gitdom.ErrNotVisible, gitdom.WithDetail(gitdom.ErrNotVisible, "")} {
 		if rec := post(err); strings.Contains(rec.Body.String(), "error_details") {

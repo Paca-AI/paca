@@ -133,7 +133,10 @@ func (h *GitHandler) fail(w http.ResponseWriter, r *http.Request, err error) {
 func (h *GitHandler) failWithProviderMessage(w http.ResponseWriter, r *http.Request, err error) {
 	apiErr := providerError(err)
 	var pe *gitprovider.Error
-	if errors.As(err, &pe) && (pe.Code == gitprovider.CodeNotFound || pe.Code == gitprovider.CodeForbidden || pe.Code == gitprovider.CodeConflict) {
+	// Every provider code carries its message (a validation or unsupported
+	// answer is exactly where the fixed text is wrong), except internal ones,
+	// which stay opaque.
+	if !errors.As(err, &pe) || pe.Code != gitprovider.CodeInternal {
 		var ae *apierr.Error
 		if errors.As(apiErr, &ae) {
 			apiErr = withProviderMessage(ae, err)
