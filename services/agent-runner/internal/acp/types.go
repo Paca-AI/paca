@@ -41,15 +41,32 @@ import (
 
 // ─── JSON-RPC 2.0 envelope ─────────────────────────────────────────────────
 
-// rpcRequest is what the client sends. Every call in this package is a
-// request (never a bare notification) — goose serve responds to each with
-// an SSE stream containing zero or more notifications followed by exactly
-// one terminal response frame carrying the matching id.
+// rpcRequest is what the client sends for every call it expects an answer
+// to: goose serve responds to each with an SSE stream containing zero or
+// more notifications followed by exactly one terminal response frame
+// carrying the matching id.
 type rpcRequest struct {
 	JSONRPC string `json:"jsonrpc"`
 	ID      int64  `json:"id"`
 	Method  string `json:"method"`
 	Params  any    `json:"params,omitempty"`
+}
+
+// rpcNotification is what the client sends for the one call that is a
+// notification rather than a request — session/cancel (see Client.cancelRun).
+// Carrying no id is the point: goose's ACP transport answers a notification
+// with a bare 202 and nothing else, and its own handler (on_cancel) is
+// registered for the notification form, not for a request.
+type rpcNotification struct {
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	Params  any    `json:"params,omitempty"`
+}
+
+// cancelParams is session/cancel's payload — the same shape
+// apps/acp-bridge's acpclient.Cancel sends.
+type cancelParams struct {
+	SessionID string `json:"sessionId"`
 }
 
 // rpcFrame is one `data:` line from the SSE response body, decoded loosely

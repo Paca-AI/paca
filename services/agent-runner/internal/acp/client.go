@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // Event is what Prompt hands back to its callback for every session/update
@@ -452,13 +454,19 @@ func mcpServerToGooseExtension(s MCPServerConfig) (ext GooseExtension, ok bool) 
 //
 // ctx cancellation (e.g. from a user-initiated "stop") stops Prompt from
 // waiting any further; callers should treat ctx.Err() coming back through
-// the returned error as a clean stop, not a failure. Note this only ends
-// *this call's* wait — the underlying session/prompt request already sent
-// to goose isn't itself cancelled (this transport has no session/cancel
-// call), so a late response or trailing notifications for this same
-// request may still arrive on the session stream and are silently ignored
-// by the next Prompt call's own wait (see awaitResponse's tolerance for
-// non-matching frames).
+// the returned error as a clean stop, not a failure.
+//
+// Every exit that did not receive this turn's terminal response cancels the
+// run (session/cancel — see cancelRun) rather than leaving it running:
+// goose keeps executing a prompt after this call stops waiting for it, and a
+// session whose abandoned run is still active rejects its *next*
+// session/prompt with -32602 "session already has active run `<id>`; use
+// _goose/unstable/session/steer" — which is how a Stop followed by a new
+// message in the same chat used to end that conversation failed. A run that
+// is still unwinding when this turn's prompt is sent (the cancel above is
+// fire-and-forget, and a tool call in flight can hold the run briefly) is
+// handled by cancelling and re-sending that prompt a bounded number of
+// times — see runActiveRetryDelay.
 func (c *Client) Prompt(
 	ctx context.Context,
 	sessionID string,
@@ -472,14 +480,95 @@ func (c *Client) Prompt(
 	if c.sessionStream == nil {
 		return "", nil, errors.New("acp: Prompt called before NewSession/LoadSession")
 	}
-
-	id := c.nextID.Add(1)
-	if err := c.post(ctx, id, "session/prompt", promptParams{SessionID: sessionID, Prompt: prompt}, sessionID); err != nil {
-		return "", nil, fmt.Errorf("acp: session/prompt: %w", err)
-	}
-
-	toolCalls := 0
 	stream := c.sessionStream
+
+	answered := false
+	defer func() {
+		if !answered {
+			_ = c.cancelRun(sessionID)
+		}
+	}()
+
+	for attempt := 0; ; attempt++ {
+		id := c.nextID.Add(1)
+		if postErr := c.post(ctx, id, "session/prompt", promptParams{SessionID: sessionID, Prompt: prompt}, sessionID); postErr != nil {
+			return "", nil, fmt.Errorf("acp: session/prompt: %w", postErr)
+		}
+		stopReason, usage, err = c.awaitTurn(ctx, stream, id, maxToolCalls, onEvent)
+		if err == nil {
+			answered = true
+			return stopReason, usage, nil
+		}
+		// The previous turn's run was still active when this prompt landed.
+		// Cancel it, give goose a moment to clear it, then send this turn's
+		// message again — the alternative is failing the user's message for
+		// a run nobody is waiting on any more. A rejected prompt costs
+		// nothing (goose answers -32602 immediately, no model call), so the
+		// budget is spent on waiting, not on retries.
+		if attempt >= maxRunActiveRetries || !isRunActiveError(err) || c.cancelRun(sessionID) != nil {
+			return "", nil, err
+		}
+		select {
+		case <-time.After(runActiveRetryDelay):
+		case <-ctx.Done():
+			return "", nil, ctx.Err()
+		}
+	}
+}
+
+// runActiveRetryDelay is how long Prompt waits, after cancelling a run that
+// was still active when its prompt landed, before sending that prompt again;
+// maxRunActiveRetries is how many such waits a single turn may spend.
+// Measured against goose 1.50.1 with a `sleep 60` tool call in flight:
+// session/cancel cleared the run such that the next prompt was accepted
+// 1.8–3.8s later (the probe polled every 2s, so that is the interval, not an
+// upper bound), hence two retries rather than one — a single 2s wait still
+// loses the message for a run on the slow side of that range.
+var runActiveRetryDelay = 2 * time.Second
+
+const maxRunActiveRetries = 2
+
+// cancelTimeout bounds cancelRun's own request — the caller's context is
+// usually already cancelled on the paths that reach it.
+const cancelTimeout = 5 * time.Second
+
+// cancelRun asks goose to stop sessionID's in-flight run over
+// session/cancel, the same call apps/acp-bridge's Runner.Interrupt makes.
+// goose answers 202 immediately and unwinds the run on its own, ending it
+// with stopReason "cancelled"; cancelling a session with no active run is a
+// no-op there. Errors are only transport-level and, on every caller here,
+// not actionable — the sandbox teardown that follows a stop drops the
+// connection anyway.
+func (c *Client) cancelRun(sessionID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), cancelTimeout)
+	defer cancel()
+	if err := c.notify(ctx, "session/cancel", cancelParams{SessionID: sessionID}, sessionID); err != nil {
+		return fmt.Errorf("acp: session/cancel: %w", err)
+	}
+	return nil
+}
+
+// isRunActiveError reports whether err is goose's -32602 for a
+// session/prompt sent while the same session still has a run active.
+func isRunActiveError(err error) bool {
+	var rpcErr *rpcError
+	return errors.As(err, &rpcErr) && rpcErr.Code == -32602 &&
+		strings.Contains(rpcErr.Error(), "session already has active run")
+}
+
+// awaitTurn reads stream until id's terminal response arrives, forwarding
+// every session/update notification along the way to onEvent and enforcing
+// maxToolCalls — see Prompt's doc comments for both. Returns the turn's
+// stopReason and usage on success, or the reason it stopped waiting
+// (ctx.Err(), a goose error frame, or a dead stream).
+func (c *Client) awaitTurn(
+	ctx context.Context,
+	stream *frameStream,
+	id int64,
+	maxToolCalls int,
+	onEvent func(Event),
+) (stopReason string, usage *Usage, err error) {
+	toolCalls := 0
 	for {
 		// Checked at the top of every iteration, not only when a channel
 		// receive itself fails — mirrors the previous single-stream
@@ -543,14 +632,31 @@ func (c *Client) Prompt(
 // post sends one JSON-RPC request over POST and confirms goose accepted it
 // — the actual response arrives asynchronously on the relevant stream
 // (connection-scoped for session/new, session-scoped for everything else),
-// never in this call's own HTTP response body. Accept is application/json
-// only (not text/event-stream) since a POST's own response is now always a
-// bare status with no body worth negotiating a format for.
+// never in this call's own HTTP response body.
 func (c *Client) post(ctx context.Context, id int64, method string, params any, sessionID string) error {
 	body, err := json.Marshal(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params})
 	if err != nil {
 		return fmt.Errorf("encoding request: %w", err)
 	}
+	return c.send(ctx, body, sessionID)
+}
+
+// notify sends one JSON-RPC notification — the same POST endpoint, an
+// envelope with no id, so goose never answers it (202 and nothing else).
+// session/cancel is the only one this Client sends.
+func (c *Client) notify(ctx context.Context, method string, params any, sessionID string) error {
+	body, err := json.Marshal(rpcNotification{JSONRPC: "2.0", Method: method, Params: params})
+	if err != nil {
+		return fmt.Errorf("encoding notification: %w", err)
+	}
+	return c.send(ctx, body, sessionID)
+}
+
+// send POSTs one already-encoded JSON-RPC message and confirms goose
+// accepted it. Accept is application/json only (not text/event-stream) since
+// a POST's own response is now always a bare status with no body worth
+// negotiating a format for.
+func (c *Client) send(ctx context.Context, body []byte, sessionID string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/acp", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("building request: %w", err)

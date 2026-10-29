@@ -44,7 +44,10 @@
 				"noConnection": "Ajoutez d'abord une connexion {{provider}} ci-dessus avant de lier un dépôt.",
 				"connection": "Connexion",
 				"anyConnection": "Toute connexion qui peut le voir",
-				"connectionHelp": "Choisissez-en une lorsque plusieurs connexions voient le dépôt, par exemple deux organisations."
+				"connectionHelp": "Choisissez-en une lorsque plusieurs connexions voient le dépôt, par exemple deux organisations.",
+				"description": "Description (facultative)",
+				"descriptionPlaceholder": "p. ex. Client web du produit",
+				"descriptionHelp": "Indique aux agents à quoi sert ce dépôt, pour qu'ils choisissent le bon. 1000 caractères maximum."
 			},
 			"unlink": {
 				"button": "Délier",
@@ -74,7 +77,8 @@
 				"noIdentity": "Aucune connexion n'est encore disponible pour cette plateforme. Ajoutez-en une dans Connexions.",
 				"alreadyLinked": "Ce dépôt est déjà lié au projet.",
 				"identityRequired": "Plusieurs connexions voient ce dépôt. Choisissez celle à utiliser.",
-				"notVisible": "Aucune des connexions du projet ne voit ce dépôt. Ajoutez une connexion qui y a accès (sur GitLab, un jeton de ce projet ou de son groupe), puis réessayez."
+				"notVisible": "Aucune des connexions du projet ne voit ce dépôt. Ajoutez une connexion qui y a accès (sur GitLab, un jeton de ce projet ou de son groupe), puis réessayez.",
+				"descriptionTooLong": "La description est trop longue (1000 caractères maximum)."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -109,7 +113,13 @@
 			"repositories": {
 				"title": "Dépôts",
 				"description": "Les agents de ce projet peuvent travailler sur ces dépôts.",
-				"mention": "Mentionner dans les commentaires :"
+				"mention": "Mentionner dans les commentaires :",
+				"noDescription": "Aucune description",
+				"addDescription": "Ajouter une description",
+				"editDescription": "Modifier la description",
+				"saveDescription": "Enregistrer",
+				"cancelDescription": "Annuler",
+				"descriptionLabel": "Description du dépôt"
 			},
 			"automation": {
 				"title": "Automatisation",

@@ -211,6 +211,8 @@ export interface GitRepository {
 	full_path: string;
 	default_branch: string;
 	clone_url: string;
+	/** What the repository is for (at most 1000 characters); empty when unset. */
+	description: string;
 	identity_id: string | null;
 	/** What to @mention to reach the bot serving the repository; empty when unknown. */
 	identity_handle: string;
@@ -262,11 +264,23 @@ export async function linkGitRepository(
 		path_or_url: string;
 		/** The connection to link through; empty: any the project can use. */
 		identity_id?: string;
+		description?: string;
 	},
 ): Promise<GitRepository> {
 	const { data } = await apiClient.instance.post<
 		SuccessEnvelope<GitRepository>
 	>(`${projectGit(projectId)}/repositories`, payload);
+	return data.data;
+}
+
+export async function updateGitRepository(
+	projectId: string,
+	repositoryId: string,
+	payload: { description: string },
+): Promise<GitRepository> {
+	const { data } = await apiClient.instance.patch<
+		SuccessEnvelope<GitRepository>
+	>(`${projectGit(projectId)}/repositories/${repositoryId}`, payload);
 	return data.data;
 }
 
@@ -828,6 +842,7 @@ const SETUP_ERROR_KEYS: Partial<Record<ApiErrorCode, string>> = {
 	GIT_NO_IDENTITY: "noIdentity",
 	GIT_ALREADY_LINKED: "alreadyLinked",
 	GIT_IDENTITY_REQUIRED: "identityRequired",
+	GIT_DESCRIPTION_TOO_LONG: "descriptionTooLong",
 };
 
 /** The API's error code for a failed call, as a plain string (null when absent). */

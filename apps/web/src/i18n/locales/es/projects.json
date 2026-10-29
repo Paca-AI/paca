@@ -44,7 +44,10 @@
 				"noConnection": "Añada primero una conexión de {{provider}} arriba antes de vincular un repositorio.",
 				"connection": "Conexión",
 				"anyConnection": "Cualquier conexión que pueda verlo",
-				"connectionHelp": "Elija una cuando varias conexiones puedan ver el repositorio, por ejemplo dos organizaciones."
+				"connectionHelp": "Elija una cuando varias conexiones puedan ver el repositorio, por ejemplo dos organizaciones.",
+				"description": "Descripción (opcional)",
+				"descriptionPlaceholder": "p. ej. Cliente web del producto",
+				"descriptionHelp": "Indica a los agentes para qué sirve este repositorio, para que elijan el correcto. Hasta 1000 caracteres."
 			},
 			"unlink": {
 				"button": "Desvincular",
@@ -74,7 +77,8 @@
 				"noIdentity": "Todavía no hay ninguna conexión disponible para esta plataforma. Añada una en Conexiones.",
 				"alreadyLinked": "Este repositorio ya está vinculado al proyecto.",
 				"identityRequired": "Varias conexiones pueden ver este repositorio. Elija cuál usar.",
-				"notVisible": "Ninguna de las conexiones del proyecto puede ver este repositorio. Añada una conexión con acceso a él (en GitLab, un token de ese proyecto o de su grupo) y vuelva a intentarlo."
+				"notVisible": "Ninguna de las conexiones del proyecto puede ver este repositorio. Añada una conexión con acceso a él (en GitLab, un token de ese proyecto o de su grupo) y vuelva a intentarlo.",
+				"descriptionTooLong": "La descripción es demasiado larga (máximo 1000 caracteres)."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -109,7 +113,13 @@
 			"repositories": {
 				"title": "Repositorios",
 				"description": "Los agentes de este proyecto pueden trabajar en estos repositorios.",
-				"mention": "Mencionar en comentarios:"
+				"mention": "Mencionar en comentarios:",
+				"noDescription": "Sin descripción",
+				"addDescription": "Añadir una descripción",
+				"editDescription": "Editar descripción",
+				"saveDescription": "Guardar",
+				"cancelDescription": "Cancelar",
+				"descriptionLabel": "Descripción del repositorio"
 			},
 			"automation": {
 				"title": "Automatización",

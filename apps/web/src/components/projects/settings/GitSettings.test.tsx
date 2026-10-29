@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
 	post: vi.fn(),
 	del: vi.fn(),
 	put: vi.fn(),
+	patch: vi.fn(),
 	follow: vi.fn(),
 }));
 
@@ -44,7 +45,13 @@ vi.mock("@/hooks/use-effective-actions", () => ({
 }));
 vi.mock("@/lib/api-client", () => ({
 	apiClient: {
-		instance: { get: h.get, post: h.post, delete: h.del, put: h.put },
+		instance: {
+			get: h.get,
+			post: h.post,
+			delete: h.del,
+			put: h.put,
+			patch: h.patch,
+		},
 	},
 }));
 vi.mock("@/lib/git-api", async (orig) => ({
@@ -94,6 +101,7 @@ const repo = {
 	full_path: "acme/web",
 	default_branch: "main",
 	clone_url: "https://github.com/acme/web.git",
+	description: "",
 	identity_id: "i1",
 	created_at: "2026-01-01T00:00:00Z",
 };
@@ -553,6 +561,73 @@ describe("GitSettings", () => {
 		expect(
 			window.sessionStorage.getItem(`paca.git.pendingLink.${PROJECT}`),
 		).toBeNull(); // shown once
+	});
+
+	it("sends the description typed when linking", async () => {
+		const user = userEvent.setup();
+		h.post.mockImplementation(async () => ({ data: { data: repo } }));
+		renderPanel();
+		await user.type(await screen.findByLabelText("Repository"), "acme/web");
+		await user.type(
+			screen.getByLabelText("Description (optional)"),
+			"  Web client ",
+		);
+		await user.click(screen.getByRole("button", { name: "Link" }));
+		await waitFor(() =>
+			expect(h.post).toHaveBeenCalledWith(
+				`/projects/${PROJECT}/git/repositories`,
+				{
+					provider_id: "com.paca.github",
+					path_or_url: "acme/web",
+					description: "Web client",
+				},
+			),
+		);
+	});
+
+	it("edits a repository's description in place", async () => {
+		const user = userEvent.setup();
+		repos = [{ ...repo, description: "Web client" }];
+		h.patch.mockImplementation(async (_url: string, body: unknown) => {
+			repos = [{ ...repo, ...(body as object) }];
+			return { data: { data: repos[0] } };
+		});
+		renderPanel();
+		expect(await screen.findByText("Web client")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Edit description" }));
+		const field = screen.getByLabelText("Repository description");
+		await user.clear(field);
+		await user.type(field, "Customer API");
+		await user.click(screen.getByRole("button", { name: "Save description" }));
+		await waitFor(() =>
+			expect(h.patch).toHaveBeenCalledWith(
+				`/projects/${PROJECT}/git/repositories/r1`,
+				{ description: "Customer API" },
+			),
+		);
+		expect(await screen.findByText("Customer API")).toBeInTheDocument();
+	});
+
+	it("explains a description that is too long", async () => {
+		const user = userEvent.setup();
+		repos = [repo];
+		h.patch.mockImplementationOnce(() => apiFail("GIT_DESCRIPTION_TOO_LONG"));
+		renderPanel();
+		await user.click(
+			await screen.findByRole("button", { name: "Add a description" }),
+		);
+		await user.type(screen.getByLabelText("Repository description"), "x");
+		await user.click(screen.getByRole("button", { name: "Save description" }));
+		expect(await screen.findByRole("alert")).toHaveTextContent(/too long/i);
+	});
+
+	it("does not offer to edit the description without git:write", async () => {
+		repos = [{ ...repo, description: "Web client" }];
+		renderPanel(false);
+		expect(await screen.findByText("Web client")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Edit description" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("explains the other ways linking can fail", async () => {

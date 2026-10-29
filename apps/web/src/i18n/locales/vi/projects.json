@@ -44,7 +44,10 @@
 				"noConnection": "Hãy thêm kết nối {{provider}} ở trên trước khi liên kết kho.",
 				"connection": "Kết nối",
 				"anyConnection": "Bất kỳ kết nối nào thấy được kho",
-				"connectionHelp": "Hãy chọn một kết nối khi có nhiều kết nối cùng thấy kho, ví dụ hai tổ chức."
+				"connectionHelp": "Hãy chọn một kết nối khi có nhiều kết nối cùng thấy kho, ví dụ hai tổ chức.",
+				"description": "Mô tả (không bắt buộc)",
+				"descriptionPlaceholder": "ví dụ: Ứng dụng web của sản phẩm",
+				"descriptionHelp": "Cho các tác nhân biết kho mã này dùng để làm gì để chọn đúng kho. Tối đa 1000 ký tự."
 			},
 			"unlink": {
 				"button": "Hủy liên kết",
@@ -74,7 +77,8 @@
 				"noIdentity": "Chưa có kết nối nào cho nền tảng này. Hãy thêm một kết nối trong mục Kết nối.",
 				"alreadyLinked": "Repository này đã được liên kết với dự án.",
 				"identityRequired": "Có nhiều kết nối thấy được kho này. Hãy chọn kết nối muốn dùng.",
-				"notVisible": "Không kết nối nào của dự án thấy được kho này. Hãy thêm một kết nối có quyền truy cập kho (trên GitLab là token của dự án hoặc nhóm đó), rồi thử lại."
+				"notVisible": "Không kết nối nào của dự án thấy được kho này. Hãy thêm một kết nối có quyền truy cập kho (trên GitLab là token của dự án hoặc nhóm đó), rồi thử lại.",
+				"descriptionTooLong": "Mô tả quá dài (tối đa 1000 ký tự)."
 			},
 			"triggerKinds": {
 				"mention": {
@@ -109,7 +113,13 @@
 			"repositories": {
 				"title": "Kho mã",
 				"description": "Tác nhân của dự án này có thể làm việc trên các kho mã sau.",
-				"mention": "Nhắc trong bình luận:"
+				"mention": "Nhắc trong bình luận:",
+				"noDescription": "Chưa có mô tả",
+				"addDescription": "Thêm mô tả",
+				"editDescription": "Sửa mô tả",
+				"saveDescription": "Lưu",
+				"cancelDescription": "Hủy",
+				"descriptionLabel": "Mô tả kho mã"
 			},
 			"automation": {
 				"title": "Tự động hóa",

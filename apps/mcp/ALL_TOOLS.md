@@ -100,7 +100,7 @@ This document lists all MCP tools implemented for the Paca API server.
 
 ### 14. Git (27 tools)
 Available when a Git provider is installed. Credentials are minted per command from the core Git API and never stored.
-- `list_repositories` - List the repositories linked to a project
+- `list_repositories` - List the repositories linked to a project, with their descriptions (used to pick the right one)
 - `clone_repository` - Clone a linked repository into the workspace
 - `push_branch` - Push a branch of a linked repository
 - `workspace_inspect` - Survey the working directory and the checkouts in it

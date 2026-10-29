@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { listAgents } from "@/lib/agent-api";
 import {
 	beginGitAccess,
@@ -36,6 +37,7 @@ import {
 	rememberGitFlow,
 	repoOwnerOf,
 	unlinkGitRepository,
+	updateGitRepository,
 	updateGitSettings,
 } from "@/lib/git-api";
 import { GitConnections } from "./GitConnections";
@@ -158,6 +160,7 @@ function Repositories({
 	const canLink = canWrite;
 	const queryClient = useQueryClient();
 	const [input, setInput] = useState("");
+	const [description, setDescription] = useState("");
 	const [providerId, setProviderId] = useState("");
 	const [identityId, setIdentityId] = useState("");
 	const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -200,9 +203,11 @@ function Repositories({
 				provider_id: provider?.id ?? "",
 				path_or_url: input.trim(),
 				...(chosen ? { identity_id: chosen } : {}),
+				...(description.trim() ? { description: description.trim() } : {}),
 			}),
 		onSuccess: () => {
 			setInput("");
+			setDescription("");
 			setErrorKey(null);
 			setErrorDetail(null);
 			setNeedsAccess(false);
@@ -336,6 +341,23 @@ function Repositories({
 				/>
 				<p className="text-xs text-muted-foreground">
 					{t("project.git.link.help")}
+				</p>
+			</div>
+
+			<div className="flex flex-col gap-1.5">
+				<Label htmlFor="git-link-description">
+					{t("project.git.link.description")}
+				</Label>
+				<Textarea
+					id="git-link-description"
+					value={description}
+					rows={2}
+					maxLength={1000}
+					placeholder={t("project.git.link.descriptionPlaceholder")}
+					onChange={(e) => setDescription(e.target.value)}
+				/>
+				<p className="text-xs text-muted-foreground">
+					{t("project.git.link.descriptionHelp")}
 				</p>
 			</div>
 
@@ -493,6 +515,11 @@ function Repositories({
 										</span>
 									) : null}
 								</p>
+								<RepositoryDescription
+									projectId={projectId}
+									repository={r}
+									canWrite={canWrite}
+								/>
 							</div>
 							{!r.identity_id ? (
 								<ReconnectNotice
@@ -552,6 +579,119 @@ function Repositories({
 			)}
 			{form}
 		</Section>
+	);
+}
+
+/**
+ * What a repository is for, shown under its name; with git:write it can be
+ * edited in place. Agents read it to pick the right repository.
+ */
+function RepositoryDescription({
+	projectId,
+	repository,
+	canWrite,
+}: {
+	projectId: string;
+	repository: GitRepository;
+	canWrite: boolean;
+}) {
+	const { t } = useTranslation("projects");
+	const queryClient = useQueryClient();
+	const [editing, setEditing] = useState(false);
+	const [value, setValue] = useState("");
+	const [errorKey, setErrorKey] = useState<string | null>(null);
+	const current = repository.description ?? "";
+
+	const save = useMutation({
+		mutationFn: () =>
+			updateGitRepository(projectId, repository.id, {
+				description: value.trim(),
+			}),
+		onSuccess: () => {
+			setEditing(false);
+			setErrorKey(null);
+			void queryClient.invalidateQueries({
+				queryKey: gitRepositoriesKey(projectId),
+			});
+		},
+		onError: (err: unknown) => setErrorKey(gitErrorKey(err)),
+	});
+
+	if (editing) {
+		return (
+			<form
+				className="mt-2 flex flex-col gap-2"
+				onSubmit={(e) => {
+					e.preventDefault();
+					setErrorKey(null);
+					save.mutate();
+				}}
+			>
+				<Textarea
+					value={value}
+					rows={2}
+					maxLength={1000}
+					autoFocus
+					aria-label={t("project.git.repositories.descriptionLabel")}
+					placeholder={t("project.git.link.descriptionPlaceholder")}
+					onChange={(e) => setValue(e.target.value)}
+				/>
+				{errorKey ? (
+					<p role="alert" className="text-sm text-destructive">
+						{t(`project.git.errors.${errorKey}` as never)}
+					</p>
+				) : null}
+				<div className="flex gap-2">
+					<Button type="submit" size="sm" disabled={save.isPending}>
+						{save.isPending ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : null}
+						{t("project.git.repositories.saveDescription")}
+					</Button>
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						onClick={() => {
+							setEditing(false);
+							setErrorKey(null);
+						}}
+					>
+						{t("project.git.repositories.cancelDescription")}
+					</Button>
+				</div>
+			</form>
+		);
+	}
+
+	return (
+		<div className="mt-1 flex flex-wrap items-start gap-2 text-xs">
+			{current ? (
+				<p className="min-w-0 whitespace-pre-line break-words text-muted-foreground">
+					{current}
+				</p>
+			) : canWrite ? null : (
+				<p className="italic text-muted-foreground">
+					{t("project.git.repositories.noDescription")}
+				</p>
+			)}
+			{canWrite ? (
+				<Button
+					type="button"
+					size="sm"
+					variant="link"
+					className="h-auto p-0 text-xs"
+					onClick={() => {
+						setValue(current);
+						setEditing(true);
+					}}
+				>
+					{current
+						? t("project.git.repositories.editDescription")
+						: t("project.git.repositories.addDescription")}
+				</Button>
+			) : null}
+		</div>
 	);
 }
 

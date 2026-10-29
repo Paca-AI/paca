@@ -44,7 +44,10 @@
 				"noConnection": "リポジトリをリンクする前に、上で {{provider}} の接続を追加してください。",
 				"connection": "接続",
 				"anyConnection": "リポジトリを参照できる任意の接続",
-				"connectionHelp": "複数の接続（たとえば 2 つの組織）がリポジトリを参照できる場合は、1 つ選択してください。"
+				"connectionHelp": "複数の接続（たとえば 2 つの組織）がリポジトリを参照できる場合は、1 つ選択してください。",
+				"description": "説明（任意）",
+				"descriptionPlaceholder": "例: プロダクトの Web クライアント",
+				"descriptionHelp": "このリポジトリの用途をエージェントに伝え、適切なリポジトリを選べるようにします。1000 文字まで。"
 			},
 			"unlink": {
 				"button": "リンク解除",
@@ -74,7 +77,8 @@
 				"noIdentity": "このプラットフォームで使える接続がまだありません。「接続」で追加してください。",
 				"alreadyLinked": "このリポジトリはすでにプロジェクトにリンクされています。",
 				"identityRequired": "複数の接続がこのリポジトリを参照できます。使用する接続を選んでください。",
-				"notVisible": "このプロジェクトのどの接続もこのリポジトリを参照できません。アクセス権のある接続を追加してください（GitLab ではそのプロジェクトまたはグループのトークン）。その後もう一度お試しください。"
+				"notVisible": "このプロジェクトのどの接続もこのリポジトリを参照できません。アクセス権のある接続を追加してください（GitLab ではそのプロジェクトまたはグループのトークン）。その後もう一度お試しください。",
+				"descriptionTooLong": "説明が長すぎます（最大 1000 文字）。"
 			},
 			"triggerKinds": {
 				"mention": {
@@ -109,7 +113,13 @@
 			"repositories": {
 				"title": "リポジトリ",
 				"description": "このプロジェクトのエージェントは、これらのリポジトリで作業できます。",
-				"mention": "コメントでメンション:"
+				"mention": "コメントでメンション:",
+				"noDescription": "説明なし",
+				"addDescription": "説明を追加",
+				"editDescription": "説明を編集",
+				"saveDescription": "保存",
+				"cancelDescription": "キャンセル",
+				"descriptionLabel": "リポジトリの説明"
 			},
 			"automation": {
 				"title": "自動化",

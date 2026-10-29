@@ -51,6 +51,9 @@ type Store interface {
 	// WebhookAttempts returns the project's repositories for which a webhook
 	// registration was ever attempted (successfully or not), from the audit log.
 	WebhookAttempts(ctx context.Context, projectID uuid.UUID) (map[uuid.UUID]bool, error)
+	// SetRepositoryDescription replaces a repository's description; ErrNotFound
+	// when it is not linked to the project.
+	SetRepositoryDescription(ctx context.Context, projectID, id uuid.UUID, description string) error
 	// ListIdentityRepositories returns every repository (of any project) linked
 	// through the connection.
 	ListIdentityRepositories(ctx context.Context, identityID uuid.UUID) ([]*Repository, error)

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -99,6 +100,41 @@ type LinkInput struct {
 	// project can use is tried, and the provider reports which one sees it.
 	IdentityID *uuid.UUID
 	ActorID    *uuid.UUID
+	// Description says what the repository is for (optional, at most
+	// MaxDescriptionRunes characters).
+	Description string
+}
+
+// MaxDescriptionRunes caps a repository description.
+const MaxDescriptionRunes = 1000
+
+// normalizeDescription trims a description and rejects one that is too long.
+func normalizeDescription(d string) (string, error) {
+	d = strings.TrimSpace(d)
+	if utf8.RuneCountInString(d) > MaxDescriptionRunes {
+		return "", fmt.Errorf("%w: at most %d characters", gitdom.ErrDescriptionTooLong, MaxDescriptionRunes)
+	}
+	return d, nil
+}
+
+// UpdateRepository changes the description of a repository linked to the project.
+func (s *Service) UpdateRepository(ctx context.Context, projectID, repositoryID uuid.UUID, description string) (*gitdom.Repository, error) {
+	description, err := normalizeDescription(description)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := s.store.FindRepository(ctx, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	if repo.ProjectID != projectID {
+		return nil, gitdom.ErrNotFound
+	}
+	if err := s.store.SetRepositoryDescription(ctx, projectID, repositoryID, description); err != nil {
+		return nil, err
+	}
+	repo.Description = description
+	return repo, nil
 }
 
 // LinkRepository resolves a user-supplied path or URL through the provider,
@@ -106,6 +142,10 @@ type LinkInput struct {
 func (s *Service) LinkRepository(ctx context.Context, in LinkInput) (*gitdom.Repository, error) {
 	if strings.TrimSpace(in.PathOrURL) == "" {
 		return nil, fmt.Errorf("git: repository is required")
+	}
+	description, err := normalizeDescription(in.Description)
+	if err != nil {
+		return nil, err
 	}
 	ident, res, err := s.resolveThroughConnections(ctx, in.ProjectID, in.ProviderID, in.Host, in.PathOrURL, in.IdentityID)
 	if err != nil {
@@ -115,7 +155,7 @@ func (s *Service) LinkRepository(ctx context.Context, in LinkInput) (*gitdom.Rep
 	r := &gitdom.Repository{
 		ProjectID: in.ProjectID, ProviderID: in.ProviderID, Host: ref.Host, ExternalID: ref.ExternalID,
 		FullPath: ref.FullPath, DefaultBranch: ref.DefaultBranch, CloneURL: ref.CloneURL,
-		IdentityID: &ident.ID, ProviderRef: ref.ProviderRef, CreatedBy: in.ActorID,
+		Description: description, IdentityID: &ident.ID, ProviderRef: ref.ProviderRef, CreatedBy: in.ActorID,
 	}
 	if err := s.store.CreateRepository(ctx, r); err != nil {
 		return nil, err
@@ -348,6 +388,53 @@ func (s *Service) HandleWebhook(ctx context.Context, endpointKey string, d Deliv
 
 var taskRefRE = regexp.MustCompile(`(?i)\b([a-z][a-z0-9]{0,9})-(\d{1,7})\b`)
 
+// taskRef is a task key (project prefix and number) found in free text.
+type taskRef struct {
+	key    string
+	number int
+}
+
+// findTaskRefs extracts PREFIX-N task references from text. A match directly
+// preceded by "-" is dropped when the segment before that dash is an
+// all-uppercase token (TRIM-UI-200: UI-200 is the tail of a longer key, not a
+// task). Lowercase or mixed segments keep the match, so fix-PACA-12-login and
+// feature-PACA-12 still link. Trade-off: an uppercase prefix followed by "-"
+// and another key (e.g. HOTFIX-PACA-12) is always ignored. RE2 has no
+// lookbehind, so the preceding text is checked here.
+func findTaskRefs(text string) []taskRef {
+	var refs []taskRef
+	for _, m := range taskRefRE.FindAllStringSubmatchIndex(text, -1) {
+		if m[0] > 0 && text[m[0]-1] == '-' && upperSegmentBefore(text, m[0]-1) {
+			continue
+		}
+		n, _ := strconv.Atoi(text[m[4]:m[5]])
+		refs = append(refs, taskRef{key: text[m[2]:m[3]], number: n})
+	}
+	return refs
+}
+
+// upperSegmentBefore reports whether the alphanumeric run ending just before
+// index end matches [A-Z][A-Z0-9]*.
+func upperSegmentBefore(text string, end int) bool {
+	start := end
+	for start > 0 && isASCIIAlnum(text[start-1]) {
+		start--
+	}
+	if start == end || text[start] < 'A' || text[start] > 'Z' {
+		return false
+	}
+	for i := start; i < end; i++ {
+		if c := text[i]; (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func isASCIIAlnum(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
 // trackChangeRequest keeps the change-request cache current from webhook events.
 func (s *Service) trackChangeRequest(ctx context.Context, repo *gitdom.Repository, ev *gitprovider.Event) error {
 	if ev.Kind != gitprovider.EventChangeRequest && ev.Kind != gitprovider.EventReview {
@@ -367,6 +454,17 @@ func (s *Service) trackChangeRequest(ctx context.Context, repo *gitdom.Repositor
 		if ev.Action == "merged" {
 			now := s.now().UTC()
 			cr.MergedAt = &now
+		} else if cr.State == "" {
+			// An edit, a push or a ready-for-review does not change the
+			// lifecycle: keep the cached state (a request never seen is open).
+			cr.State = "open"
+			cur, err := s.store.FindChangeRequest(ctx, repo.ID, sub.Number)
+			switch {
+			case err == nil:
+				cr.State, cr.MergedAt = cur.State, cur.MergedAt
+			case !errors.Is(err, gitdom.ErrNotFound):
+				return err
+			}
 		}
 	case gitprovider.EventReview:
 		// A review says nothing about the request's lifecycle or draft state:
@@ -391,9 +489,8 @@ func (s *Service) saveChangeRequest(ctx context.Context, repo *gitdom.Repository
 		return nil, err
 	}
 	seen := map[uuid.UUID]bool{}
-	for _, m := range taskRefRE.FindAllStringSubmatch(cr.HeadRef+" "+cr.Title, -1) {
-		n, _ := strconv.Atoi(m[2])
-		task, found, err := s.store.FindTaskByRef(ctx, repo.ProjectID, m[1], n)
+	for _, ref := range findTaskRefs(cr.HeadRef + " " + cr.Title) {
+		task, found, err := s.store.FindTaskByRef(ctx, repo.ProjectID, ref.key, ref.number)
 		if err != nil {
 			return nil, err
 		}
@@ -413,14 +510,18 @@ func (s *Service) saveChangeRequest(ctx context.Context, repo *gitdom.Repository
 	return saved, nil
 }
 
+// crState is the lifecycle state an event sets, or "" when the event leaves
+// it unchanged (edited, synchronized, ready, ...).
 func crState(ev *gitprovider.Event) string {
 	switch ev.Action {
+	case "opened", "created", "reopened":
+		return "open"
 	case "closed":
 		return "closed"
 	case "merged":
 		return "merged"
 	}
-	return "open"
+	return ""
 }
 
 // MintInput asks for a credential to use on a linked repository.

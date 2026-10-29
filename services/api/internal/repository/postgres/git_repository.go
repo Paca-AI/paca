@@ -66,6 +66,7 @@ type gitRepositoryRecord struct {
 	FullPath      string          `db:"full_path"`
 	DefaultBranch string          `db:"default_branch"`
 	CloneURL      string          `db:"clone_url"`
+	Description   string          `db:"description"`
 	IdentityID    *string         `db:"identity_id"`
 	ProviderRef   json.RawMessage `db:"provider_ref"`
 	WebhookRef    json.RawMessage `db:"webhook_ref"`
@@ -74,7 +75,7 @@ type gitRepositoryRecord struct {
 	UpdatedAt     time.Time       `db:"updated_at"`
 }
 
-const gitRepositoryCols = `id, project_id, provider_id, host, external_id, full_path, default_branch, clone_url, identity_id, provider_ref, webhook_ref, created_by, created_at, updated_at`
+const gitRepositoryCols = `id, project_id, provider_id, host, external_id, full_path, default_branch, clone_url, description, identity_id, provider_ref, webhook_ref, created_by, created_at, updated_at`
 
 func (r gitRepositoryRecord) domain() (*gitdom.Repository, error) {
 	id, err := uuid.Parse(r.ID)
@@ -87,7 +88,7 @@ func (r gitRepositoryRecord) domain() (*gitdom.Repository, error) {
 	}
 	return &gitdom.Repository{
 		ID: id, ProjectID: pid, ProviderID: r.ProviderID, Host: r.Host, ExternalID: r.ExternalID,
-		FullPath: r.FullPath, DefaultBranch: r.DefaultBranch, CloneURL: r.CloneURL,
+		FullPath: r.FullPath, DefaultBranch: r.DefaultBranch, CloneURL: r.CloneURL, Description: r.Description,
 		IdentityID: parseOptUUID(r.IdentityID), ProviderRef: r.ProviderRef, WebhookRef: r.WebhookRef,
 		CreatedBy: parseOptUUID(r.CreatedBy), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}, nil
@@ -319,10 +320,10 @@ func (s *GitRepository) CreateRepository(ctx context.Context, r *gitdom.Reposito
 		UpdatedAt time.Time `db:"updated_at"`
 	}
 	err := s.db.GetContext(ctx, &rec, `
-		INSERT INTO git_repositories (project_id, provider_id, host, external_id, full_path, default_branch, clone_url, identity_id, provider_ref, webhook_ref, created_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8::uuid,$9::jsonb,$10::jsonb,$11::uuid)
+		INSERT INTO git_repositories (project_id, provider_id, host, external_id, full_path, default_branch, clone_url, description, identity_id, provider_ref, webhook_ref, created_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::uuid,$10::jsonb,$11::jsonb,$12::uuid)
 		RETURNING id, created_at, updated_at`,
-		r.ProjectID.String(), r.ProviderID, r.Host, r.ExternalID, r.FullPath, r.DefaultBranch, r.CloneURL,
+		r.ProjectID.String(), r.ProviderID, r.Host, r.ExternalID, r.FullPath, r.DefaultBranch, r.CloneURL, r.Description,
 		optUUIDArg(r.IdentityID), string(jsonOrEmpty(r.ProviderRef)), string(jsonOrEmpty(r.WebhookRef)), optUUIDArg(r.CreatedBy))
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -426,6 +427,20 @@ func (s *GitRepository) DeleteRepository(ctx context.Context, projectID, id uuid
 // ListIdentityRepositories lists the repositories linked through a connection.
 func (s *GitRepository) ListIdentityRepositories(ctx context.Context, identityID uuid.UUID) ([]*gitdom.Repository, error) {
 	return s.selectRepos(ctx, `identity_id = $1 ORDER BY created_at`, identityID.String())
+}
+
+// SetRepositoryDescription updates the free-text description of a project's
+// repository.
+func (s *GitRepository) SetRepositoryDescription(ctx context.Context, projectID, id uuid.UUID, description string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE git_repositories SET description = $3, updated_at = NOW() WHERE id = $1 AND project_id = $2`,
+		id.String(), projectID.String(), description)
+	if err != nil {
+		return fmt.Errorf("git repo: set repository description: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return gitdom.ErrNotFound
+	}
+	return nil
 }
 
 // SetRepositoryWebhook records the webhook registered for a repository.

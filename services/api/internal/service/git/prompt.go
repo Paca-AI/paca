@@ -109,6 +109,11 @@ func buildPrompt(in promptInput) string {
 	fmt.Fprintf(&b, "## External event: %s\n\n", triggerTitle(in.Trigger))
 	fmt.Fprintf(&b, "You (%s) were started by activity on a Git repository linked to this project.\n\n", in.AgentName)
 	fmt.Fprintf(&b, "- Repository: `%s` on %s (repoId `%s`, projectId `%s`)\n", repo.FullPath, repo.Host, repo.ID, in.ProjectID)
+	if d := strings.TrimSpace(repo.Description); d != "" {
+		b.WriteString("- Repository description (written by project members):\n")
+		b.WriteString(fenceText("repository description", d))
+		b.WriteString("\n")
+	}
 	if number != "" {
 		fmt.Fprintf(&b, "- %s: #%s", label, number)
 		if ev.Subject.Draft {

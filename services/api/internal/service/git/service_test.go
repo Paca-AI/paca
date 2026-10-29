@@ -205,6 +205,14 @@ func (f *fakeStore) DeleteRepository(_ context.Context, project, id uuid.UUID) e
 	delete(f.repos, id)
 	return nil
 }
+func (f *fakeStore) SetRepositoryDescription(_ context.Context, project, id uuid.UUID, d string) error {
+	r, ok := f.repos[id]
+	if !ok || r.ProjectID != project {
+		return gitdom.ErrNotFound
+	}
+	r.Description = d
+	return nil
+}
 func (f *fakeStore) ListIdentityRepositories(_ context.Context, id uuid.UUID) ([]*gitdom.Repository, error) {
 	var out []*gitdom.Repository
 	for _, r := range f.repos {
@@ -434,6 +442,53 @@ func TestLinkRepository(t *testing.T) {
 	}
 	if _, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "  "}); err == nil {
 		t.Fatal("empty path must be rejected")
+	}
+}
+
+func TestLinkRepository_Description(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr := setup(t)
+	st.addIdentity("paca-bot", "app-1")
+	pr.resolve = func(r gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+		return gitprovider.ResolvedRepository{
+			Repository: gitprovider.Repository{Ref: gitprovider.RepoRef{Host: "git.example", FullPath: "acme/web"}},
+			Identity:   gitprovider.IdentityRef{ID: "app-1"},
+		}, nil
+	}
+	project := uuid.New()
+	long := strings.Repeat("é", MaxDescriptionRunes+1)
+	if _, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "acme/web", Description: long}); !errors.Is(err, gitdom.ErrDescriptionTooLong) {
+		t.Fatalf("too long: %v", err)
+	}
+	r, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "acme/web", Description: "  Web client  "})
+	if err != nil || r.Description != "Web client" {
+		t.Fatalf("link = %+v %v", r, err)
+	}
+}
+
+func TestUpdateRepository(t *testing.T) {
+	ctx := context.Background()
+	svc, st, _ := setup(t)
+	project := uuid.New()
+	repo := &gitdom.Repository{ProjectID: project, FullPath: "acme/web"}
+	if err := st.CreateRepository(ctx, repo); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.UpdateRepository(ctx, project, repo.ID, "  API  ")
+	if err != nil || got.Description != "API" || st.repos[repo.ID].Description != "API" {
+		t.Fatalf("update = %+v %v", got, err)
+	}
+	if _, err := svc.UpdateRepository(ctx, project, repo.ID, strings.Repeat("x", MaxDescriptionRunes)); err != nil {
+		t.Fatalf("the limit itself is allowed: %v", err)
+	}
+	if _, err := svc.UpdateRepository(ctx, project, repo.ID, strings.Repeat("x", MaxDescriptionRunes+1)); !errors.Is(err, gitdom.ErrDescriptionTooLong) {
+		t.Fatalf("too long: %v", err)
+	}
+	if _, err := svc.UpdateRepository(ctx, uuid.New(), repo.ID, "x"); !errors.Is(err, gitdom.ErrNotFound) {
+		t.Fatalf("another project's repository: %v", err)
+	}
+	if _, err := svc.UpdateRepository(ctx, project, uuid.New(), "x"); !errors.Is(err, gitdom.ErrNotFound) {
+		t.Fatalf("unknown repository: %v", err)
 	}
 }
 
@@ -725,11 +780,51 @@ func TestHandleWebhook_AReviewNeverRewindsALifecycleState(t *testing.T) {
 	if got := fs.crs[len(fs.crs)-1]; got.State != "merged" || got.MergedAt == nil {
 		t.Fatalf("merged event: %+v", got)
 	}
-	// And a reopening or a push clears it.
-	pr.events = []gitprovider.Event{prEvent("o1", "synchronized", "feat/x", "Add")}
+	// And a reopening clears it.
+	pr.events = []gitprovider.Event{prEvent("o1", "reopened", "feat/x", "Add")}
 	_, _ = svc.HandleWebhook(ctx, "k", Delivery{Method: "POST"})
 	if got := fs.crs[len(fs.crs)-1]; got.State != "open" || got.MergedAt != nil {
 		t.Fatalf("an update of an open request: %+v", got)
+	}
+}
+
+func TestHandleWebhook_EditsAndPushesKeepTheCachedState(t *testing.T) {
+	ctx := context.Background()
+	merged := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	cases := []struct {
+		name, cached, action, want string
+		mergedAt                   bool
+	}{
+		{"edited after merged", "merged", "edited", "merged", true},
+		{"synchronized after closed", "closed", "synchronized", "closed", false},
+		{"reopened after closed", "closed", "reopened", "open", false},
+		{"reopened after merged", "merged", "reopened", "open", false},
+		{"edited on a request never seen", "", "edited", "open", false},
+		{"synchronized on an open request", "open", "synchronized", "open", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fs, pr := newFakeStore(), &fakeProv{}
+			ts := &trackStore{fakeStore: fs}
+			svc := New(ts, fakeProviders{p: pr})
+			ident := fs.addIdentity("bot", "a")
+			fs.endpoints["k"] = &gitdom.WebhookEndpoint{Key: "k", ProviderID: "p", IdentityID: &ident.ID}
+			linked(fs, uuid.New(), "acme/web")
+			if c.cached != "" {
+				ts.cur = &gitdom.ChangeRequest{Number: "7", State: c.cached}
+				if c.cached == "merged" {
+					ts.cur.MergedAt = &merged
+				}
+			}
+			pr.events = []gitprovider.Event{prEvent("e1", c.action, "feat/x", "Add")}
+			if _, err := svc.HandleWebhook(ctx, "k", Delivery{Method: "POST"}); err != nil {
+				t.Fatal(err)
+			}
+			got := fs.crs[len(fs.crs)-1]
+			if got.State != c.want || (got.MergedAt != nil) != c.mergedAt {
+				t.Fatalf("state %q mergedAt %v, want %q (merged_at set: %v)", got.State, got.MergedAt, c.want, c.mergedAt)
+			}
+		})
 	}
 }
 
@@ -842,5 +937,32 @@ func TestProviderMessage(t *testing.T) {
 	long := ProviderMessage(&gitprovider.Error{Message: strings.Repeat("é", 700)})
 	if r := []rune(long); len(r) != 501 || r[500] != '…' {
 		t.Fatalf("cap: %d", len(r))
+	}
+}
+
+func TestFindTaskRefs(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []taskRef
+	}{
+		{"feat/PACA-12-login", []taskRef{{"PACA", 12}}},
+		{"Fix PACA-12", []taskRef{{"PACA", 12}}},
+		{"paca/PACA-1", []taskRef{{"PACA", 1}}},
+		{"fix-PACA-12-login", []taskRef{{"PACA", 12}}},
+		{"feat-paca-12", []taskRef{{"paca", 12}}},
+		{"TRIM-UI-200", nil},
+		{"fix TRIM-UI-200 and PACA-7", []taskRef{{"PACA", 7}}},
+	}
+	for _, c := range cases {
+		got := findTaskRefs(c.in)
+		if len(got) != len(c.want) {
+			t.Errorf("findTaskRefs(%q) = %v, want %v", c.in, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("findTaskRefs(%q) = %v, want %v", c.in, got, c.want)
+			}
+		}
 	}
 }

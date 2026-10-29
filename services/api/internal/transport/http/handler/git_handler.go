@@ -29,6 +29,7 @@ type GitService interface {
 	LinkRepository(ctx context.Context, in gitsvc.LinkInput) (*gitdom.Repository, error)
 	ListRepositories(ctx context.Context, projectID uuid.UUID) ([]*gitdom.Repository, error)
 	UnlinkRepository(ctx context.Context, projectID, repositoryID uuid.UUID) error
+	UpdateRepository(ctx context.Context, projectID, repositoryID uuid.UUID, description string) (*gitdom.Repository, error)
 	MintCredential(ctx context.Context, in gitsvc.MintInput) (gitprovider.Credential, error)
 	CheckWebhookEndpoint(ctx context.Context, key string) error
 	HandleWebhook(ctx context.Context, endpointKey string, d gitsvc.Delivery) (*gitsvc.WebhookResult, error)
@@ -184,12 +185,35 @@ func (h *GitHandler) LinkRepository(w http.ResponseWriter, r *http.Request) {
 	repo, err := h.svc.LinkRepository(r.Context(), gitsvc.LinkInput{
 		ProjectID: projectID, ProviderID: strings.TrimSpace(req.ProviderID), Host: strings.TrimSpace(req.Host),
 		PathOrURL: strings.TrimSpace(req.PathOrURL), IdentityID: req.IdentityID, ActorID: &actor,
+		Description: req.Description,
 	})
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
 	presenter.Created(w, r, dto.GitRepositoryFromEntity(repo))
+}
+
+// UpdateRepository handles PATCH /projects/:projectId/git/repositories/:repositoryId.
+func (h *GitHandler) UpdateRepository(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := gitProjectID(w, r)
+	if !ok {
+		return
+	}
+	repoID, ok := gitRepositoryID(w, r)
+	if !ok {
+		return
+	}
+	var req dto.UpdateGitRepositoryRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+	repo, err := h.svc.UpdateRepository(r.Context(), projectID, repoID, req.Description)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.GitRepositoryFromEntity(repo))
 }
 
 // UnlinkRepository handles DELETE /projects/:projectId/git/repositories/:repositoryId.
