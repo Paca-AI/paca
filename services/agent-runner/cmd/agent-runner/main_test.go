@@ -4,9 +4,40 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/Paca-AI/agent-runner/internal/agent"
+	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
+
+func TestShouldReapRunningConversation(t *testing.T) {
+	now := time.Now()
+	old := now.Add(-reconcileConversationGrace - time.Second)
+	fresh := now.Add(-time.Second)
+	id := uuid.New()
+	base := postgres.RunningConversation{ID: id, AgentType: agent.AgentTypeLLM, UpdatedAt: old}
+
+	for name, tc := range map[string]struct {
+		conv postgres.RunningConversation
+		live map[string]struct{}
+		want bool
+	}{
+		"orphaned llm sandbox":  {conv: base, live: map[string]struct{}{}, want: true},
+		"live sandbox":          {conv: base, live: map[string]struct{}{id.String(): {}}, want: false},
+		"recent dispatch grace": {conv: postgres.RunningConversation{ID: id, AgentType: agent.AgentTypeLLM, UpdatedAt: fresh}, live: map[string]struct{}{}, want: false},
+		"static environment":    {conv: postgres.RunningConversation{ID: id, AgentType: agent.AgentTypeLLM, Environment: uuid.NullUUID{UUID: uuid.New(), Valid: true}, UpdatedAt: old}, live: map[string]struct{}{}, want: false},
+		"ACP agent":             {conv: postgres.RunningConversation{ID: id, AgentType: "acp", UpdatedAt: old}, live: map[string]struct{}{}, want: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := shouldReapRunningConversation(tc.conv, tc.live, now); got != tc.want {
+				t.Errorf("shouldReapRunningConversation() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 // TestClassifyReconcileResult_NilErrorMeansClaimRunning covers
 // reconcileOneEnvironment's success path: StartEnvironmentByID returning

@@ -157,6 +157,20 @@ type Backend interface {
 	// Exec runs cmd inside containerID and returns its combined
 	// stdout+stderr and exit code.
 	Exec(ctx context.Context, containerID string, cmd []string) (output string, exitCode int, err error)
+	// LiveConversationIDs reports the conversation IDs this backend
+	// currently has a live sandbox for (container/Job still running, not
+	// exited or failed). Static environments are not conversations and are
+	// deliberately absent — see EnvironmentBackend for those.
+	//
+	// Exists for exactly one caller: cmd/agent-runner's startup
+	// reconciliation of "running" conversations (see
+	// reconcileRunningConversationsOnStartup). Every other way a sandbox
+	// goes away is owned by the process that made it (Stop on every exit
+	// path); a process that was killed mid-turn leaves its rows saying
+	// "running" with nothing left behind, and only an out-of-band view of
+	// the backend can tell that apart from a conversation a sibling
+	// replica is genuinely still running.
+	LiveConversationIDs(ctx context.Context) (map[string]struct{}, error)
 }
 
 // Handle is what Start returns and Stop consumes for one conversation's
