@@ -888,3 +888,30 @@ func TestWebhookKeysThatCannotBeOursAreNotFound(t *testing.T) {
 		t.Errorf("a real key: %v", err)
 	}
 }
+
+func TestFindTaskRefs(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []taskRef
+	}{
+		{"feat/PACA-12-login", []taskRef{{"PACA", 12}}},
+		{"Fix PACA-12", []taskRef{{"PACA", 12}}},
+		{"paca/PACA-1", []taskRef{{"PACA", 1}}},
+		{"fix-PACA-12-login", []taskRef{{"PACA", 12}}},
+		{"feat-paca-12", []taskRef{{"paca", 12}}},
+		{"TRIM-UI-200", nil},
+		{"fix TRIM-UI-200 and PACA-7", []taskRef{{"PACA", 7}}},
+	}
+	for _, c := range cases {
+		got := findTaskRefs(c.in)
+		if len(got) != len(c.want) {
+			t.Errorf("findTaskRefs(%q) = %v, want %v", c.in, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("findTaskRefs(%q) = %v, want %v", c.in, got, c.want)
+			}
+		}
+	}
+}

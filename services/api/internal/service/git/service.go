@@ -385,6 +385,53 @@ func (s *Service) HandleWebhook(ctx context.Context, endpointKey string, d Deliv
 
 var taskRefRE = regexp.MustCompile(`(?i)\b([a-z][a-z0-9]{0,9})-(\d{1,7})\b`)
 
+// taskRef is a task key (project prefix and number) found in free text.
+type taskRef struct {
+	key    string
+	number int
+}
+
+// findTaskRefs extracts PREFIX-N task references from text. A match directly
+// preceded by "-" is dropped when the segment before that dash is an
+// all-uppercase token (TRIM-UI-200: UI-200 is the tail of a longer key, not a
+// task). Lowercase or mixed segments keep the match, so fix-PACA-12-login and
+// feature-PACA-12 still link. Trade-off: an uppercase prefix followed by "-"
+// and another key (e.g. HOTFIX-PACA-12) is always ignored. RE2 has no
+// lookbehind, so the preceding text is checked here.
+func findTaskRefs(text string) []taskRef {
+	var refs []taskRef
+	for _, m := range taskRefRE.FindAllStringSubmatchIndex(text, -1) {
+		if m[0] > 0 && text[m[0]-1] == '-' && upperSegmentBefore(text, m[0]-1) {
+			continue
+		}
+		n, _ := strconv.Atoi(text[m[4]:m[5]])
+		refs = append(refs, taskRef{key: text[m[2]:m[3]], number: n})
+	}
+	return refs
+}
+
+// upperSegmentBefore reports whether the alphanumeric run ending just before
+// index end matches [A-Z][A-Z0-9]*.
+func upperSegmentBefore(text string, end int) bool {
+	start := end
+	for start > 0 && isASCIIAlnum(text[start-1]) {
+		start--
+	}
+	if start == end || text[start] < 'A' || text[start] > 'Z' {
+		return false
+	}
+	for i := start; i < end; i++ {
+		if c := text[i]; (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func isASCIIAlnum(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
 // trackChangeRequest keeps the change-request cache current from webhook events.
 func (s *Service) trackChangeRequest(ctx context.Context, repo *gitdom.Repository, ev *gitprovider.Event) error {
 	if ev.Kind != gitprovider.EventChangeRequest && ev.Kind != gitprovider.EventReview {
@@ -439,9 +486,8 @@ func (s *Service) saveChangeRequest(ctx context.Context, repo *gitdom.Repository
 		return nil, err
 	}
 	seen := map[uuid.UUID]bool{}
-	for _, m := range taskRefRE.FindAllStringSubmatch(cr.HeadRef+" "+cr.Title, -1) {
-		n, _ := strconv.Atoi(m[2])
-		task, found, err := s.store.FindTaskByRef(ctx, repo.ProjectID, m[1], n)
+	for _, ref := range findTaskRefs(cr.HeadRef + " " + cr.Title) {
+		task, found, err := s.store.FindTaskByRef(ctx, repo.ProjectID, ref.key, ref.number)
 		if err != nil {
 			return nil, err
 		}
