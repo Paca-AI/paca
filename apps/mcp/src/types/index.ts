@@ -993,6 +993,8 @@ export interface GitRepository {
 	full_path: string;
 	default_branch: string;
 	clone_url: string;
+	/** What the repository is for, written by project members; may be empty. */
+	description?: string;
 }
 
 /**

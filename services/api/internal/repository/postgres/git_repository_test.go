@@ -770,6 +770,25 @@ func TestGitStore_ListedRepositoriesCarryTheirBotsHandle(t *testing.T) {
 	}
 }
 
+func TestGitStore_RepositoryDescription(t *testing.T) {
+	s, fx := newGitFx(t)
+	ctx := t.Context()
+	project := fx.project()
+	r := linkRepo(t, s, project, "acme/web", nil)
+	if got, err := s.FindRepository(ctx, r.ID); err != nil || got.Description != "" {
+		t.Fatalf("default description = %+v %v", got, err)
+	}
+	if err := s.SetRepositoryDescription(ctx, project, r.ID, "Web client"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.FindRepository(ctx, r.ID); err != nil || got.Description != "Web client" {
+		t.Fatalf("description = %+v %v", got, err)
+	}
+	if err := s.SetRepositoryDescription(ctx, fx.project(), r.ID, "x"); !errors.Is(err, gitdom.ErrNotFound) {
+		t.Fatalf("another project: %v", err)
+	}
+}
+
 func TestGitStore_DeletingAConnectionLeavesItsRepositoriesToBeRebound(t *testing.T) {
 	s, fx := newGitFx(t)
 	ctx := t.Context()

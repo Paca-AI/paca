@@ -407,6 +407,8 @@ const (
 	CodeGitSetupInvalid Code = "GIT_SETUP_INVALID"
 	// CodeGitPublicURLRequired indicates PUBLIC_URL is not configured, so webhook and redirect URLs cannot be built.
 	CodeGitPublicURLRequired Code = "GIT_PUBLIC_URL_REQUIRED"
+	// CodeGitDescriptionTooLong indicates a repository description is longer than allowed.
+	CodeGitDescriptionTooLong Code = "GIT_DESCRIPTION_TOO_LONG"
 	// CodeGitProviderRejected indicates the platform refused the request (the identity lacks access, a conflict).
 	CodeGitProviderRejected Code = "GIT_PROVIDER_REJECTED"
 

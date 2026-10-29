@@ -23,6 +23,8 @@ var (
 	ErrRunActive = errors.New("git: the agent already has an unfinished run on this subject")
 	// ErrIdentityExists means the agent already has its own identity for the provider.
 	ErrIdentityExists = errors.New("git: an identity already exists")
+	// ErrDescriptionTooLong means a repository description exceeds the allowed length.
+	ErrDescriptionTooLong = errors.New("git: repository description is too long")
 	// ErrIdentityRequired means several connections could serve the request and the caller must pick one.
 	ErrIdentityRequired = errors.New("git: several connections are available; choose one")
 )

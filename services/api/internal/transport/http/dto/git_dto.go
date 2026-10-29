@@ -19,6 +19,13 @@ type LinkGitRepositoryRequest struct {
 	// IdentityID is the connection to link through; empty lets Paca try every
 	// connection the project can use.
 	IdentityID *uuid.UUID `json:"identity_id"`
+	// Description says what the repository is for (optional, at most 1000 characters).
+	Description string `json:"description"`
+}
+
+// UpdateGitRepositoryRequest is the body for PATCH …/repositories/:id.
+type UpdateGitRepositoryRequest struct {
+	Description string `json:"description"`
 }
 
 // ReconnectGitRepositoryRequest is the body for POST …/repositories/:id/reconnect.
@@ -36,6 +43,7 @@ type GitRepositoryResponse struct {
 	FullPath      string     `json:"full_path"`
 	DefaultBranch string     `json:"default_branch"`
 	CloneURL      string     `json:"clone_url"`
+	Description   string     `json:"description"`
 	IdentityID    *uuid.UUID `json:"identity_id"`
 	// IdentityHandle is what to @mention to reach the bot serving the repository.
 	IdentityHandle string `json:"identity_handle"`
@@ -49,7 +57,7 @@ type GitRepositoryResponse struct {
 // GitRepositoryFromEntity maps a linked repository to its response.
 func GitRepositoryFromEntity(r *gitdom.Repository) GitRepositoryResponse {
 	return GitRepositoryResponse{ID: r.ID, ProviderID: r.ProviderID, Host: r.Host, FullPath: r.FullPath,
-		DefaultBranch: r.DefaultBranch, CloneURL: r.CloneURL, IdentityID: r.IdentityID, IdentityHandle: r.IdentityHandle, WebhookURL: r.WebhookURL, CreatedAt: r.CreatedAt}
+		DefaultBranch: r.DefaultBranch, CloneURL: r.CloneURL, Description: r.Description, IdentityID: r.IdentityID, IdentityHandle: r.IdentityHandle, WebhookURL: r.WebhookURL, CreatedAt: r.CreatedAt}
 }
 
 // GitCredentialResponse is a short-lived credential for ONE git operation. It

@@ -205,6 +205,14 @@ func (f *fakeStore) DeleteRepository(_ context.Context, project, id uuid.UUID) e
 	delete(f.repos, id)
 	return nil
 }
+func (f *fakeStore) SetRepositoryDescription(_ context.Context, project, id uuid.UUID, d string) error {
+	r, ok := f.repos[id]
+	if !ok || r.ProjectID != project {
+		return gitdom.ErrNotFound
+	}
+	r.Description = d
+	return nil
+}
 func (f *fakeStore) ListIdentityRepositories(_ context.Context, id uuid.UUID) ([]*gitdom.Repository, error) {
 	var out []*gitdom.Repository
 	for _, r := range f.repos {
@@ -424,6 +432,53 @@ func TestLinkRepository(t *testing.T) {
 	}
 	if _, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "  "}); err == nil {
 		t.Fatal("empty path must be rejected")
+	}
+}
+
+func TestLinkRepository_Description(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr := setup(t)
+	st.addIdentity("paca-bot", "app-1")
+	pr.resolve = func(r gitprovider.ResolveRepoRequest) (gitprovider.ResolvedRepository, error) {
+		return gitprovider.ResolvedRepository{
+			Repository: gitprovider.Repository{Ref: gitprovider.RepoRef{Host: "git.example", FullPath: "acme/web"}},
+			Identity:   gitprovider.IdentityRef{ID: "app-1"},
+		}, nil
+	}
+	project := uuid.New()
+	long := strings.Repeat("é", MaxDescriptionRunes+1)
+	if _, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "acme/web", Description: long}); !errors.Is(err, gitdom.ErrDescriptionTooLong) {
+		t.Fatalf("too long: %v", err)
+	}
+	r, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "acme/web", Description: "  Web client  "})
+	if err != nil || r.Description != "Web client" {
+		t.Fatalf("link = %+v %v", r, err)
+	}
+}
+
+func TestUpdateRepository(t *testing.T) {
+	ctx := context.Background()
+	svc, st, _ := setup(t)
+	project := uuid.New()
+	repo := &gitdom.Repository{ProjectID: project, FullPath: "acme/web"}
+	if err := st.CreateRepository(ctx, repo); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.UpdateRepository(ctx, project, repo.ID, "  API  ")
+	if err != nil || got.Description != "API" || st.repos[repo.ID].Description != "API" {
+		t.Fatalf("update = %+v %v", got, err)
+	}
+	if _, err := svc.UpdateRepository(ctx, project, repo.ID, strings.Repeat("x", MaxDescriptionRunes)); err != nil {
+		t.Fatalf("the limit itself is allowed: %v", err)
+	}
+	if _, err := svc.UpdateRepository(ctx, project, repo.ID, strings.Repeat("x", MaxDescriptionRunes+1)); !errors.Is(err, gitdom.ErrDescriptionTooLong) {
+		t.Fatalf("too long: %v", err)
+	}
+	if _, err := svc.UpdateRepository(ctx, uuid.New(), repo.ID, "x"); !errors.Is(err, gitdom.ErrNotFound) {
+		t.Fatalf("another project's repository: %v", err)
+	}
+	if _, err := svc.UpdateRepository(ctx, project, uuid.New(), "x"); !errors.Is(err, gitdom.ErrNotFound) {
+		t.Fatalf("unknown repository: %v", err)
 	}
 }
 

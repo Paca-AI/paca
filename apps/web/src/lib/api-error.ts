@@ -47,6 +47,7 @@ export const ApiErrorCode = {
 	GitPublicURLRequired: "GIT_PUBLIC_URL_REQUIRED",
 	GitProviderUnavailable: "GIT_PROVIDER_UNAVAILABLE",
 	GitProviderRejected: "GIT_PROVIDER_REJECTED",
+	GitDescriptionTooLong: "GIT_DESCRIPTION_TOO_LONG",
 
 	// User domain errors.
 	UserNotFound: "USER_NOT_FOUND",

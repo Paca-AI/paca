@@ -473,6 +473,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeGitNotFound
 	case errors.Is(err, gitdom.ErrAlreadyLinked):
 		return http.StatusConflict, apierr.CodeGitAlreadyLinked
+	case errors.Is(err, gitdom.ErrDescriptionTooLong):
+		return http.StatusBadRequest, apierr.CodeGitDescriptionTooLong
 	case errors.Is(err, gitdom.ErrIdentityExists):
 		return http.StatusConflict, apierr.CodeGitIdentityExists
 	case errors.Is(err, gitdom.ErrIdentityRequired):

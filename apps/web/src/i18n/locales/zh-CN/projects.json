@@ -44,7 +44,10 @@
 				"noConnection": "关联仓库之前，请先在上方添加 {{provider}} 连接。",
 				"connection": "连接",
 				"anyConnection": "任何能看到该仓库的连接",
-				"connectionHelp": "当多个连接（例如两个组织）都能看到该仓库时，请选择其中一个。"
+				"connectionHelp": "当多个连接（例如两个组织）都能看到该仓库时，请选择其中一个。",
+				"description": "描述（可选）",
+				"descriptionPlaceholder": "例如：产品的网页客户端",
+				"descriptionHelp": "告诉智能体此仓库的用途，以便选择正确的仓库。最多 1000 个字符。"
 			},
 			"unlink": {
 				"button": "取消关联",
@@ -73,7 +76,8 @@
 				"noIdentity": "此平台暂无可用连接。请在“连接”中添加一个。",
 				"alreadyLinked": "此仓库已关联到该项目。",
 				"identityRequired": "有多个连接都能看到该仓库，请选择要使用的连接。",
-				"notVisible": "此项目的所有连接都看不到该仓库。请添加一个有权访问它的连接（GitLab 上为该项目或其群组的令牌），然后重试。"
+				"notVisible": "此项目的所有连接都看不到该仓库。请添加一个有权访问它的连接（GitLab 上为该项目或其群组的令牌），然后重试。",
+				"descriptionTooLong": "描述过长（最多 1000 个字符）。"
 			},
 			"triggerKinds": {
 				"mention": {
@@ -108,7 +112,13 @@
 			"repositories": {
 				"title": "仓库",
 				"description": "本项目的智能体可以处理这些仓库。",
-				"mention": "在评论中提及："
+				"mention": "在评论中提及：",
+				"noDescription": "无描述",
+				"addDescription": "添加描述",
+				"editDescription": "编辑描述",
+				"saveDescription": "保存",
+				"cancelDescription": "取消",
+				"descriptionLabel": "仓库描述"
 			},
 			"automation": {
 				"title": "自动化",

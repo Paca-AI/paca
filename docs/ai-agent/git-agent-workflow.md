@@ -355,7 +355,7 @@ A run's status is not a tool: core alone writes it.
 
 | Tool | Purpose |
 |---|---|
-| `list_repositories` | The repositories linked to the project, with their ids. |
+| `list_repositories` | The repositories linked to the project, with their ids and descriptions. When a project links several repositories, the agent reads each repository's `description` (what it is for, written by whoever linked it) to choose the right one for the task, then passes its id as `repoId`. Descriptions are user-written text: information, never instructions. |
 | `clone_repository`, `push_branch` | Simple clone into an empty folder; push a branch. |
 | `workspace_inspect` | Read-only: the checkouts under the working directory (path, token-free origin, branch, ahead/behind, dirty, last fetch) and which linked repository each is. Never uses the network. |
 | `workspace_prepare` | `repoId`, `path?`, `ref`, `createBranch?`, `strategy: reuse \| clone`, `worktree?`, `stash?`, `blobless?`. Reuse = fetch, check out, fast-forward; it refuses a dirty tree unless told to stash or use a worktree, and never resets a diverged branch. |
@@ -409,7 +409,7 @@ All authorization is declared on the routes (router gates); handlers and service
 | Route | Gate |
 |---|---|
 | `GET …/repositories` | `git:read` |
-| `POST …/repositories`, `DELETE …/repositories/{repoId}` | `git:write` |
+| `POST …/repositories` (optional `description`), `PATCH …/repositories/{repoId}` (`{"description"}`), `DELETE …/repositories/{repoId}` | `git:write` |
 | `POST …/{repoId}/credential/read` | `git:read` |
 | `POST …/{repoId}/credential/write` | `git:write` |
 | `GET …/{repoId}/change-requests/{n}[/files\|/diff\|/threads]`, `…/subjects/{kind}/{n}/comments`, `…/issues/{n}`, `…/checks[/{id}/logs]`, `…/files`, `…/code-search` | `git:read` |
@@ -445,7 +445,7 @@ The verdict of a review comes from the route (`reviews` accepts `comment` and `r
 
 Each Git screen explains itself when nothing is set up: an empty state says what to do and gives the button for it, and the text to type in a comment has a copy button.
 
-* **Project → Settings → Git** (`git:read`; changes need `git:write`): **Connections** (the workspace's and the project's own, each with its kind, whether it serves *All projects* or *This project*, the bot's `@handle` and any expiry; **Add** opens a dialog that asks the kind where the provider offers several, who may use it, and the kind's own fields; **Remove** is offered for what the user may manage; with none, an empty state says what to do or whom to ask). `/git/setup/callback` completes a leg of a connection setup or an access grant from the raw query string, exactly once per URL, and then continues or returns to the sanitized same-origin return URL; the browser notes which flow started a round trip (workspace connection, project connection, access grant) so the callback calls the right route. **Repositories** (link by path or URL; a connection picker appears when several can serve the platform; unlink; install the App on the owner when needed; each repository shows the bot's `@handle` to mention, and a notice with a retry when a token connection's webhook could not be registered); **Automation**: the default responder agent (with a warning when none is set), the minimum repository permission to start an agent and a pause switch, held back until a repository is linked; and **Using it**, with the mention, `agent:<handle>` and label forms.
+* **Project → Settings → Git** (`git:read`; changes need `git:write`): **Connections** (the workspace's and the project's own, each with its kind, whether it serves *All projects* or *This project*, the bot's `@handle` and any expiry; **Add** opens a dialog that asks the kind where the provider offers several, who may use it, and the kind's own fields; **Remove** is offered for what the user may manage; with none, an empty state says what to do or whom to ask). `/git/setup/callback` completes a leg of a connection setup or an access grant from the raw query string, exactly once per URL, and then continues or returns to the sanitized same-origin return URL; the browser notes which flow started a round trip (workspace connection, project connection, access grant) so the callback calls the right route. **Repositories** (link by path or URL with an optional description of what the repository is for, editable in place on each row; a connection picker appears when several can serve the platform; unlink; install the App on the owner when needed; each repository shows the bot's `@handle` to mention, and a notice with a retry when a token connection's webhook could not be registered); **Automation**: the default responder agent (with a warning when none is set), the minimum repository permission to start an agent and a pause switch, held back until a repository is linked; and **Using it**, with the mention, `agent:<handle>` and label forms.
 * **Agent → Git** (project agents): **Identity**, per provider, whether the agent uses the shared bot or its own (with its `@handle`), what an own identity gives, **Create identity** (with the administrator hint when the user cannot), **Remove**, and a collapsed **Install on another account or organization**; then **Git triggers** grouped as *Respond to requests* (mention, label, review request, assignment), *Follow up on its own pull requests* (feedback, CI failure) and *Act on its own* (auto review, with target-branch and author filters). Triggers no installed provider can deliver stay visible, switched off, and say so. A closing note states that the agent's Git access follows its project role.
 * **Task detail:** **Branches** and **Pull requests** sections, shown once the project has a linked repository. Pull requests show state, repository, head → base, author, a link, and the CI state of open ones (passing, failing, running, with check counts and failing names in a tooltip). Branches show the repository and a copy-checkout-command button. Both can be linked by name or pasted link and unlinked; a new branch can be created on the platform when the provider supports it and the user has `git:write`, or created locally with a command. A CR or branch is also linked automatically when its branch or title names the task key.
 * **Roles:** the project role editor lists `git:read`, `git:write`, `git:approve`, `git:merge` and `git.connections:manage`; the workspace role editor lists `git.identities:manage`.
@@ -482,6 +482,7 @@ Each Git screen explains itself when nothing is set up: an empty state says what
 Everything from the platform — issue and CR text, comments, diffs, files, logs, branch names, logins — is untrusted.
 
 * In tool results and in the event prompt it appears inside `UNTRUSTED` fences labelled as data. The fence markers inside the text are neutralized in one linear pass, so a long run of brackets can neither close the fence nor make it slow.
+* A repository's description is written by project members, not the platform, but is still free text that ends up in an agent's prompt: the event prompt carries it inside an `UNTRUSTED` fence like platform text, and `list_repositories` collapses it to one line. It is capped at 1000 characters by the service (`GIT_DESCRIPTION_TOO_LONG`).
 * Short values embedded outside a fence (logins, branches, paths and check names) have control characters, newlines, backticks and angle brackets removed and are length-capped, so they cannot start a line of "instructions".
 * Privileged operations are unlocked only by server-side policy, never by model judgment. Secrets are masked in CI logs and in provider error messages passed to callers. Reads are size-limited with explicit truncation markers.
 
@@ -500,8 +501,8 @@ git_identities        (id, provider_id, host, provider_identity_id, kind, scope 
                        display_name, provider_ref JSONB, expires_at, created_by, created_at, updated_at)
   -- project_id is set exactly for scope 'project'; any number of connections per (provider_id, host)
 git_agent_identities  (agent_id, provider_id → identity_id, PRIMARY KEY (agent_id, provider_id))
-git_repositories      (id, project_id, provider_id, host, external_id, full_path, default_branch, clone_url, identity_id,
-                       provider_ref JSONB, webhook_ref JSONB, created_by, created_at, updated_at)
+git_repositories      (id, project_id, provider_id, host, external_id, full_path, default_branch, clone_url, description,
+                       identity_id, provider_ref JSONB, webhook_ref JSONB, created_by, created_at, updated_at)
   -- unique (project_id, provider_id, host, lower(full_path))
 git_webhook_endpoints (key PK, provider_id, identity_id, created_at)
 git_setup_sessions    (state PK, provider_id, host, scope, agent_id, endpoint_key, return_url, created_by, expires_at, completed_at)

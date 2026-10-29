@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -99,6 +100,41 @@ type LinkInput struct {
 	// project can use is tried, and the provider reports which one sees it.
 	IdentityID *uuid.UUID
 	ActorID    *uuid.UUID
+	// Description says what the repository is for (optional, at most
+	// MaxDescriptionRunes characters).
+	Description string
+}
+
+// MaxDescriptionRunes caps a repository description.
+const MaxDescriptionRunes = 1000
+
+// normalizeDescription trims a description and rejects one that is too long.
+func normalizeDescription(d string) (string, error) {
+	d = strings.TrimSpace(d)
+	if utf8.RuneCountInString(d) > MaxDescriptionRunes {
+		return "", fmt.Errorf("%w: at most %d characters", gitdom.ErrDescriptionTooLong, MaxDescriptionRunes)
+	}
+	return d, nil
+}
+
+// UpdateRepository changes the description of a repository linked to the project.
+func (s *Service) UpdateRepository(ctx context.Context, projectID, repositoryID uuid.UUID, description string) (*gitdom.Repository, error) {
+	description, err := normalizeDescription(description)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := s.store.FindRepository(ctx, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	if repo.ProjectID != projectID {
+		return nil, gitdom.ErrNotFound
+	}
+	if err := s.store.SetRepositoryDescription(ctx, projectID, repositoryID, description); err != nil {
+		return nil, err
+	}
+	repo.Description = description
+	return repo, nil
 }
 
 // LinkRepository resolves a user-supplied path or URL through the provider,
@@ -106,6 +142,10 @@ type LinkInput struct {
 func (s *Service) LinkRepository(ctx context.Context, in LinkInput) (*gitdom.Repository, error) {
 	if strings.TrimSpace(in.PathOrURL) == "" {
 		return nil, fmt.Errorf("git: repository is required")
+	}
+	description, err := normalizeDescription(in.Description)
+	if err != nil {
+		return nil, err
 	}
 	ident, res, err := s.resolveThroughConnections(ctx, in.ProjectID, in.ProviderID, in.Host, in.PathOrURL, in.IdentityID)
 	if err != nil {
@@ -115,7 +155,7 @@ func (s *Service) LinkRepository(ctx context.Context, in LinkInput) (*gitdom.Rep
 	r := &gitdom.Repository{
 		ProjectID: in.ProjectID, ProviderID: in.ProviderID, Host: ref.Host, ExternalID: ref.ExternalID,
 		FullPath: ref.FullPath, DefaultBranch: ref.DefaultBranch, CloneURL: ref.CloneURL,
-		IdentityID: &ident.ID, ProviderRef: ref.ProviderRef, CreatedBy: in.ActorID,
+		Description: description, IdentityID: &ident.ID, ProviderRef: ref.ProviderRef, CreatedBy: in.ActorID,
 	}
 	if err := s.store.CreateRepository(ctx, r); err != nil {
 		return nil, err
