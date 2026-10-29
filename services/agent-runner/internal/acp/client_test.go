@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -939,6 +940,231 @@ func TestPrompt_CancelledMidBacklogReturnsPromptly(t *testing.T) {
 	if elapsed > 2*time.Second {
 		t.Errorf("Prompt took %s to return after cancelling 20ms in — wants roughly one onEvent call's worth of delay, not the whole %d-frame backlog (%s worth at 20ms/frame)",
 			elapsed, backlogSize, time.Duration(backlogSize)*20*time.Millisecond)
+	}
+}
+
+// Regression guard for a Stop followed by a new message in the same chat
+// ending that conversation `failed` with "session already has active run
+// `<id>`; use _goose/unstable/session/steer". goose keeps executing a prompt
+// after Prompt stops waiting for it, so a stop that only abandons the call
+// leaves the run active — and that run rejects the session's *next*
+// session/prompt with -32602 (reproduced live against goose 1.50.1, where
+// session/cancel cleared the run again in ~2s). Prompt therefore cancels on
+// every exit that did not receive the turn's terminal response, as a
+// notification: no id, which is the only form goose's on_cancel handles.
+func TestPrompt_CancelledSendsSessionCancel(t *testing.T) {
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	var mu sync.Mutex
+	var cancels []rpcRequest
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		switch req.Method {
+		case "session/cancel":
+			mu.Lock()
+			cancels = append(cancels, req)
+			mu.Unlock()
+		case "session/prompt":
+			// A run that never ends on its own, as far as this client can
+			// see: no terminal response is ever enqueued.
+			s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call_fake_1","title":"Developer: Shell"}}}`)
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+	if _, _, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("hello")}, 0, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Prompt err = %v, want context.Canceled", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(cancels) != 1 {
+		t.Fatalf("session/cancel sent %d times, want exactly 1 (an abandoned run left active rejects the session's next prompt)", len(cancels))
+	}
+	if cancels[0].ID != 0 {
+		t.Errorf("session/cancel carried id %d, want none — goose only handles the notification form", cancels[0].ID)
+	}
+	params, _ := json.Marshal(cancels[0].Params)
+	if !strings.Contains(string(params), sessionID) {
+		t.Errorf("session/cancel params = %s, want the cancelled sessionId", params)
+	}
+}
+
+// A session/cancel lands asynchronously as far as goose is concerned: it
+// answers 202 and unwinds the run on its own, which took 1.8-3.8s with a tool
+// call in flight (measured against goose 1.50.1). A message the user types
+// immediately after pressing Stop can therefore still arrive while the
+// previous run is unwinding, so Prompt cancels and re-sends that message
+// instead of failing the turn it was just given.
+func TestPrompt_RetriesAfterActiveRunRejection(t *testing.T) {
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	var mu sync.Mutex
+	prompts, cancels := 0, 0
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		mu.Lock()
+		defer mu.Unlock()
+		switch req.Method {
+		case "session/cancel":
+			cancels++
+		case "session/prompt":
+			prompts++
+			if prompts == 1 {
+				// Captured verbatim from goose 1.50.1.
+				s.enqueueSession(sessionID, fmt.Sprintf(
+					`{"jsonrpc":"2.0","id":%d,"error":{"code":-32602,"message":"Invalid params","data":"session already has active run %s; use _goose/unstable/session/steer"}}`,
+					req.ID, "`run_58072af2-5693-44d0-b5f4-b2420dd531ad`"))
+				return
+			}
+			s.enqueueSession(sessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"stopReason":"end_turn"}}`, req.ID))
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	oldDelay := runActiveRetryDelay
+	runActiveRetryDelay = 10 * time.Millisecond
+	defer func() { runActiveRetryDelay = oldDelay }()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	stopReason, _, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("second message")}, 0, nil)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	if stopReason != "end_turn" {
+		t.Errorf("stopReason = %q, want end_turn", stopReason)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if prompts != 2 {
+		t.Errorf("session/prompt sent %d times, want 2 (one rejected by the active run, one retry)", prompts)
+	}
+	if cancels != 1 {
+		t.Errorf("session/cancel sent %d times, want 1 before the retry", cancels)
+	}
+}
+
+// The retry budget is bounded, and a run that never clears must still fail
+// this turn with goose's own error rather than waiting forever: three
+// attempts (initial + maxRunActiveRetries), a cancel before each retry and
+// one more as Prompt gives up — a turn must never leave its run active.
+func TestPrompt_GivesUpAfterTheRetryBudget(t *testing.T) {
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	var mu sync.Mutex
+	prompts, cancels := 0, 0
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		mu.Lock()
+		defer mu.Unlock()
+		switch req.Method {
+		case "session/cancel":
+			cancels++
+		case "session/prompt":
+			prompts++
+			s.enqueueSession(sessionID, fmt.Sprintf(
+				`{"jsonrpc":"2.0","id":%d,"error":{"code":-32602,"message":"Invalid params","data":"session already has active run %s; use _goose/unstable/session/steer"}}`,
+				req.ID, "`run_58072af2-5693-44d0-b5f4-b2420dd531ad`"))
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	oldDelay := runActiveRetryDelay
+	runActiveRetryDelay = 10 * time.Millisecond
+	defer func() { runActiveRetryDelay = oldDelay }()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	if _, _, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("second message")}, 0, nil); err == nil {
+		t.Fatal("Prompt: want goose's active-run error once the retry budget is spent, got nil")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if want := maxRunActiveRetries + 1; prompts != want {
+		t.Errorf("session/prompt sent %d times, want %d (initial + %d retries)", prompts, want, maxRunActiveRetries)
+	}
+	if want := maxRunActiveRetries + 1; cancels != want {
+		t.Errorf("session/cancel sent %d times, want %d (one before each retry, one on giving up)", cancels, want)
+	}
+}
+
+// The inverse, and the reason the cancel above hangs off a flag rather than
+// being unconditional: a turn that ends normally must not cancel anything —
+// on a chat conversation the next turn reuses this same session.
+func TestPrompt_SuccessSendsNoSessionCancel(t *testing.T) {
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	var mu sync.Mutex
+	cancels := 0
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		mu.Lock()
+		defer mu.Unlock()
+		switch req.Method {
+		case "session/cancel":
+			cancels++
+		case "session/prompt":
+			s.enqueueSession(sessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"stopReason":"end_turn"}}`, req.ID))
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if stopReason, _, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("hi")}, 0, nil); err != nil || stopReason != "end_turn" {
+		t.Fatalf("Prompt = %q, %v; want end_turn, nil", stopReason, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if cancels != 0 {
+		t.Errorf("session/cancel sent %d times after a normal turn, want none", cancels)
 	}
 }
 
