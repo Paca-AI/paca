@@ -247,6 +247,9 @@ func TestRepoWebhook_ListShowsTheURLWhenRegistrationFailed(t *testing.T) {
 	if err != nil || len(repos) != 1 || repos[0].WebhookURL != "https://paca.example.com"+WebhookPathPrefix+"key1" {
 		t.Fatalf("listing = %+v %v", repos, err)
 	}
+	if !repos[0].WebhookAttempted {
+		t.Fatal("registering failed at link time: the attempt must be reported")
+	}
 	if _, err := svc.RegisterWebhook(ctx, project, repos[0].ID); !gitprovider.IsCode(err, gitprovider.CodeForbidden) {
 		t.Fatalf("retry while still refused: %v", err)
 	}
@@ -383,6 +386,33 @@ func TestListRepositories_AsksTheProviderOncePerConnection(t *testing.T) {
 	}
 	if pr.describes != 1 {
 		t.Fatalf("describe calls = %d, want 1 for three repositories of one connection", pr.describes)
+	}
+}
+
+// A repository carried over from a plugin's own storage never had a webhook
+// registered by Paca: the listing says nobody tried, unlike for one that failed.
+func TestListRepositories_TellsAWebhookNeverAttemptedFromOneThatFailed(t *testing.T) {
+	ctx := context.Background()
+	svc, st, pr, tok := tokenWebhookSetup(t)
+	pr.ensureErr = &gitprovider.Error{Code: gitprovider.CodeForbidden}
+	project := uuid.New()
+	carried := &gitdom.Repository{ID: uuid.New(), ProjectID: project, ProviderID: "p", Host: "git.example", FullPath: "acme/carried", IdentityID: &tok.ID}
+	st.repos[carried.ID] = carried
+	linked, err := svc.LinkRepository(ctx, LinkInput{ProjectID: project, ProviderID: "p", PathOrURL: "acme/web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repos, err := svc.ListRepositories(ctx, project)
+	if err != nil || len(repos) != 2 {
+		t.Fatalf("listing = %+v %v", repos, err)
+	}
+	for _, r := range repos {
+		if r.WebhookURL == "" {
+			t.Fatalf("%s should still need a webhook", r.FullPath)
+		}
+		if want := r.ID == linked.ID; r.WebhookAttempted != want {
+			t.Errorf("%s: WebhookAttempted = %v, want %v", r.FullPath, r.WebhookAttempted, want)
+		}
 	}
 }
 

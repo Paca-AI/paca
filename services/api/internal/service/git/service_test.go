@@ -297,6 +297,16 @@ func (f *fakeStore) AppendActionLog(_ context.Context, e *gitdom.ActionLogEntry)
 	return nil
 }
 
+func (f *fakeStore) WebhookAttempts(_ context.Context, project uuid.UUID) (map[uuid.UUID]bool, error) {
+	out := map[uuid.UUID]bool{}
+	for _, e := range f.log {
+		if e.Tool == "webhook.register" && e.RepositoryID != nil && e.ProjectID != nil && *e.ProjectID == project {
+			out[*e.RepositoryID] = true
+		}
+	}
+	return out, nil
+}
+
 func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
 
 type fakeProv struct {

@@ -392,6 +392,25 @@ func (s *GitRepository) ListProjectRepositories(ctx context.Context, projectID u
 	return repos, nil
 }
 
+// WebhookAttempts returns the project's repositories for which registering a
+// webhook was ever attempted, read from the audit log.
+func (s *GitRepository) WebhookAttempts(ctx context.Context, projectID uuid.UUID) (map[uuid.UUID]bool, error) {
+	var ids []string
+	if err := s.db.SelectContext(ctx, &ids, `SELECT DISTINCT repository_id FROM git_action_log
+		WHERE project_id = $1 AND tool = 'webhook.register' AND repository_id IS NOT NULL`, projectID.String()); err != nil {
+		return nil, fmt.Errorf("git repo: list webhook attempts: %w", err)
+	}
+	out := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		u, err := uuid.Parse(id)
+		if err != nil {
+			return nil, fmt.Errorf("git repo: list webhook attempts: bad id: %w", err)
+		}
+		out[u] = true
+	}
+	return out, nil
+}
+
 // DeleteRepository unlinks a repository from its project.
 func (s *GitRepository) DeleteRepository(ctx context.Context, projectID, id uuid.UUID) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM git_repositories WHERE id = $1 AND project_id = $2`, id.String(), projectID.String())

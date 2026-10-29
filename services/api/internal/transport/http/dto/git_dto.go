@@ -42,14 +42,17 @@ type GitRepositoryResponse struct {
 	// WebhookURL is set when the platform must be told by hand where to deliver
 	// events for this repository (a token connection whose webhook could not be
 	// registered automatically).
-	WebhookURL string    `json:"webhook_url,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	WebhookURL string `json:"webhook_url,omitempty"`
+	// WebhookAttempted is false when Paca never tried to register the webhook
+	// (a repository carried over from an earlier plugin version).
+	WebhookAttempted bool      `json:"webhook_attempted"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // GitRepositoryFromEntity maps a linked repository to its response.
 func GitRepositoryFromEntity(r *gitdom.Repository) GitRepositoryResponse {
 	return GitRepositoryResponse{ID: r.ID, ProviderID: r.ProviderID, Host: r.Host, FullPath: r.FullPath,
-		DefaultBranch: r.DefaultBranch, CloneURL: r.CloneURL, IdentityID: r.IdentityID, IdentityHandle: r.IdentityHandle, WebhookURL: r.WebhookURL, CreatedAt: r.CreatedAt}
+		DefaultBranch: r.DefaultBranch, CloneURL: r.CloneURL, IdentityID: r.IdentityID, IdentityHandle: r.IdentityHandle, WebhookURL: r.WebhookURL, WebhookAttempted: r.WebhookAttempted, CreatedAt: r.CreatedAt}
 }
 
 // GitCredentialResponse is a short-lived credential for ONE git operation. It

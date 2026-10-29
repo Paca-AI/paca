@@ -64,9 +64,13 @@ type Repository struct {
 	// when the connection needs a webhook per repository and none could be
 	// registered automatically. Read for listings only; it is not stored.
 	WebhookURL string
-	CreatedBy  *uuid.UUID
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// WebhookAttempted tells whether Paca ever tried to register a webhook for
+	// this repository (a repository carried over from a plugin's own storage
+	// has not). Read for listings only; it is not stored on the repository.
+	WebhookAttempted bool
+	CreatedBy        *uuid.UUID
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // WebhookEndpoint is where a platform delivers events for one identity.

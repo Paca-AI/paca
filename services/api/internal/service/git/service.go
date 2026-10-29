@@ -534,6 +534,10 @@ func (s *Service) ListRepositories(ctx context.Context, projectID uuid.UUID) ([]
 	if err != nil {
 		return nil, err
 	}
+	attempts, err := s.store.WebhookAttempts(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
 	// Asked once per connection: finding out costs a call to the provider.
 	needs := map[uuid.UUID]webhookNeed{}
 	for _, r := range repos {
@@ -550,6 +554,7 @@ func (s *Service) ListRepositories(ctx context.Context, projectID uuid.UUID) ([]
 			needs[*r.IdentityID] = n
 		}
 		r.WebhookURL = n.url
+		r.WebhookAttempted = attempts[r.ID]
 	}
 	return repos, nil
 }
