@@ -23,6 +23,9 @@ type Store interface {
 	DeleteIdentity(ctx context.Context, id uuid.UUID) error
 	// UpdateIdentityProfile fills in who an identity is on the platform. An
 	// empty displayName and a nil expiresAt leave the stored values as they are.
+	// It only touches an identity that has no handle yet, so a handle set in
+	// the meantime (a reconnect) is never overwritten; an identity that is gone
+	// or already named is a silent no-op.
 	UpdateIdentityProfile(ctx context.Context, id uuid.UUID, handle, displayName string, expiresAt *time.Time) error
 	// DeleteAgentIdentity removes an agent's mapping (not the identity itself).
 	DeleteAgentIdentity(ctx context.Context, agentID uuid.UUID, providerID string) error

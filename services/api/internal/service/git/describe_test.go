@@ -101,3 +101,35 @@ func TestDescribeNameless_IgnoresUnusableAnswers(t *testing.T) {
 		})
 	}
 }
+
+func TestDescribeNameless_BacksOffAfterFailure(t *testing.T) {
+	svc, st, pr := describingSetup(t, true)
+	now := time.Now()
+	svc.now = func() time.Time { return now }
+	id := st.addIdentity("", "tok-1")
+	fail := true
+	pr.describe = func(r gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error) {
+		if fail {
+			return gitprovider.Identity{}, errors.New("revoked")
+		}
+		return gitprovider.Identity{Ref: gitprovider.IdentityRef{ID: r.Identity.ID, Handle: "bot"}}, nil
+	}
+	list := func() { _, _ = svc.ListIdentities(context.Background()) }
+
+	list()
+	list()
+	if len(pr.describeLog) != 1 {
+		t.Fatalf("calls within the backoff = %d, want 1", len(pr.describeLog))
+	}
+	now = now.Add(describeBackoff + time.Second)
+	list()
+	if len(pr.describeLog) != 2 {
+		t.Fatalf("calls after the backoff = %d, want 2", len(pr.describeLog))
+	}
+	fail = false
+	now = now.Add(describeBackoff + time.Second)
+	list()
+	if id.Handle != "bot" || len(svc.describeFailed) != 0 {
+		t.Errorf("success: handle=%q failures=%v", id.Handle, svc.describeFailed)
+	}
+}

@@ -64,11 +64,13 @@ type Service struct {
 	cache  map[credKey]cachedCred
 	reruns map[uuid.UUID][]time.Time // check re-runs per repository, last hour
 	ci     map[ciKey]cachedCI        // CI summaries of change-request heads
+
+	describeFailed map[uuid.UUID]time.Time // identity → last failed describe, see describeBackoff
 }
 
 // New returns a Service.
 func New(store gitdom.Store, providers Providers) *Service {
-	return &Service{store: store, providers: providers, now: time.Now, cache: map[credKey]cachedCred{}, reruns: map[uuid.UUID][]time.Time{}}
+	return &Service{store: store, providers: providers, now: time.Now, cache: map[credKey]cachedCred{}, reruns: map[uuid.UUID][]time.Time{}, describeFailed: map[uuid.UUID]time.Time{}}
 }
 
 type credKey struct {

@@ -338,6 +338,11 @@ func (s *Service) ListConnections(ctx context.Context, projectID uuid.UUID) ([]*
 // a slow platform.
 const describeTimeout = 5 * time.Second
 
+// describeBackoff is how long after a failed describe the same identity is not
+// asked again (a revoked token or a platform outage would otherwise slow every
+// listing). It is kept in memory only, so a restart retries.
+const describeBackoff = 15 * time.Minute
+
 // describeNameless asks the provider who each identity without a handle is,
 // and stores the answer. Identities made by a plugin's data migration start
 // that way (the migration cannot call the platform), so they could be neither
@@ -363,6 +368,12 @@ func (s *Service) describeNameless(ctx context.Context, ids []*gitdom.Identity) 
 }
 
 func (s *Service) describeIdentity(ctx context.Context, id *gitdom.Identity) {
+	s.mu.Lock()
+	failedAt, failed := s.describeFailed[id.ID]
+	s.mu.Unlock()
+	if failed && s.now().Sub(failedAt) < describeBackoff {
+		return
+	}
 	prov, err := s.providers.Provider(ctx, id.ProviderID)
 	if err != nil {
 		return
@@ -373,8 +384,14 @@ func (s *Service) describeIdentity(ctx context.Context, id *gitdom.Identity) {
 	if err != nil {
 		// The error is the provider's own message, never a credential.
 		slog.Warn("git: describe identity failed", "provider", id.ProviderID, "identity", id.ID, "err", err)
+		s.mu.Lock()
+		s.describeFailed[id.ID] = s.now()
+		s.mu.Unlock()
 		return
 	}
+	s.mu.Lock()
+	delete(s.describeFailed, id.ID)
+	s.mu.Unlock()
 	// An answer for another identity, or without a handle, must not be stored.
 	if got.Ref.ID != id.ProviderIdentityID || got.Ref.Handle == "" {
 		return
