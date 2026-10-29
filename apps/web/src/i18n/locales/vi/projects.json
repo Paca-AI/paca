@@ -176,7 +176,8 @@
 			},
 			"webhook": {
 				"title": "Sự kiện từ kho này chưa đến được Paca",
-				"description": "Paca đăng ký webhook trên từng kho qua kết nối này nhưng không thành công: token có thể thiếu quyền quản lý webhook (vai trò Maintainer trên GitLab, quyền Webhooks trên GitHub). Hãy cấp quyền đó cho token (trên GitLab, tạo token mới với vai trò Maintainer và thêm làm kết nối), rồi thử lại.",
+				"description": "Paca không thể đăng ký webhook trên kho này qua kết nối này.",
+				"permissionHint": "Nguyên nhân thường gặp nhất là token thiếu quyền quản lý webhook (vai trò Maintainer trên GitLab, quyền Webhooks trên GitHub). Hãy cấp quyền đó cho token (trên GitLab, tạo token mới với vai trò Maintainer và thêm làm kết nối), rồi thử lại.",
 				"retry": "Thử lại",
 				"failed": "Vẫn chưa đăng ký được webhook."
 			},

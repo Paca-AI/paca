@@ -176,7 +176,8 @@
 			},
 			"webhook": {
 				"title": "Les événements de ce dépôt n'arrivent pas jusqu'à Paca",
-				"description": "Paca enregistre un webhook sur chaque dépôt via cette connexion et n'y est pas parvenu : le jeton n'a probablement pas l'autorisation de gérer les webhooks (le rôle Maintainer sur GitLab, l'autorisation Webhooks sur GitHub). Donnez cette autorisation au jeton (sur GitLab, créez un nouveau jeton avec le rôle Maintainer et ajoutez-le comme connexion), puis réessayez.",
+				"description": "Paca n'a pas pu enregistrer de webhook sur ce dépôt via cette connexion.",
+				"permissionHint": "La cause la plus fréquente est un jeton sans l'autorisation de gérer les webhooks (le rôle Maintainer sur GitLab, l'autorisation Webhooks sur GitHub). Donnez cette autorisation au jeton (sur GitLab, créez un nouveau jeton avec le rôle Maintainer et ajoutez-le comme connexion), puis réessayez.",
 				"retry": "Réessayer",
 				"failed": "Impossible d'enregistrer le webhook pour le moment."
 			},

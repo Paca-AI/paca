@@ -176,7 +176,8 @@
 			},
 			"webhook": {
 				"title": "Events from this repository aren't reaching Paca",
-				"description": "Paca registers a webhook on each repository through this connection and couldn't: the token probably lacks the permission to manage webhooks (the Maintainer role on GitLab, the Webhooks permission on GitHub). Give the token that permission (on GitLab, create a new token with the Maintainer role and add it as a connection), then try again.",
+				"description": "Paca couldn't register a webhook on this repository through this connection.",
+				"permissionHint": "The most common cause is a token without the permission to manage webhooks (the Maintainer role on GitLab, the Webhooks permission on GitHub). Give the token that permission (on GitLab, create a new token with the Maintainer role and add it as a connection), then try again.",
 				"retry": "Try again",
 				"failed": "Still couldn't register the webhook."
 			},

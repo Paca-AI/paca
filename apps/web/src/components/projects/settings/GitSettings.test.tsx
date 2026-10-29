@@ -313,6 +313,24 @@ describe("GitSettings", () => {
 		expect(alert).toHaveTextContent(
 			"Details from the platform: Needs the Maintainer role",
 		);
+		// The platform's reason replaces the guess about permissions.
+		expect(screen.queryByText(/most common cause/i)).toBeNull();
+	});
+
+	it("keeps the permission hint before a try and when the platform said nothing", async () => {
+		const user = userEvent.setup();
+		repos = [
+			{
+				...repo,
+				webhook_url: "https://paca.example.com/api/v1/git/webhooks/k",
+			},
+		];
+		h.post.mockImplementation(() => apiFail("GIT_PROVIDER_REJECTED"));
+		renderPanel();
+		expect(await screen.findByText(/most common cause/i)).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Try again" }));
+		await screen.findByRole("alert");
+		expect(screen.getByText(/most common cause/i)).toBeInTheDocument();
 	});
 
 	it("shows no details line when the platform said nothing", async () => {

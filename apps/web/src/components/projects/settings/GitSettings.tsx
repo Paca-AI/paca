@@ -706,6 +706,12 @@ function WebhookNotice({
 			<p className="text-muted-foreground">
 				{t("project.git.webhook.description")}
 			</p>
+			{/* The usual cause, until the platform has said otherwise. */}
+			{failed && detail ? null : (
+				<p className="text-muted-foreground">
+					{t("project.git.webhook.permissionHint")}
+				</p>
+			)}
 			{failed ? (
 				<div role="alert" className="flex flex-col gap-1">
 					<p className="text-destructive">{t("project.git.webhook.failed")}</p>

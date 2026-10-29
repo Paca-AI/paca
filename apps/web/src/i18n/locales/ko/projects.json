@@ -176,7 +176,8 @@
 			},
 			"webhook": {
 				"title": "이 저장소의 이벤트가 Paca에 도달하지 않습니다",
-				"description": "Paca는 이 연결로 저장소마다 웹훅을 등록하는데 실패했습니다. 토큰에 웹훅을 관리할 권한이 없을 가능성이 큽니다(GitLab은 Maintainer 역할, GitHub는 Webhooks 권한). 토큰에 해당 권한을 부여한 뒤(GitLab은 Maintainer 역할의 새 토큰을 만들어 연결로 추가) 다시 시도하세요.",
+				"description": "Paca가 이 연결로 이 저장소에 웹훅을 등록하지 못했습니다.",
+				"permissionHint": "가장 흔한 원인은 토큰에 웹훅을 관리할 권한이 없는 경우입니다(GitLab은 Maintainer 역할, GitHub는 Webhooks 권한). 토큰에 해당 권한을 부여한 뒤(GitLab은 Maintainer 역할의 새 토큰을 만들어 연결로 추가) 다시 시도하세요.",
 				"retry": "다시 시도",
 				"failed": "웹훅을 아직 등록하지 못했습니다."
 			},
