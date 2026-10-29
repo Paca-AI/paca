@@ -122,6 +122,7 @@
       "hidden_markers": "bool",
       "idempotent_writes": "bool",
       "identity_deletion": "bool",
+      "identity_description": "bool",
       "identity_kinds": [
         "string"
       ],
@@ -377,6 +378,13 @@
         "provider_ref": "bytes"
       }
     },
+    "DescribeIdentityRequest": {
+      "identity": {
+        "handle": "string",
+        "id": "string",
+        "provider_ref": "bytes"
+      }
+    },
     "Diff": {
       "text": "string",
       "truncated": "bool"
@@ -609,6 +617,7 @@
         "hidden_markers": "bool",
         "idempotent_writes": "bool",
         "identity_deletion": "bool",
+        "identity_description": "bool",
         "identity_kinds": [
           "string"
         ],

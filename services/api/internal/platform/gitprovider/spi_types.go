@@ -82,7 +82,9 @@ const (
 // several (GitHub: an App is ephemeral with an app-level webhook and needs an
 // installation per account; a personal access token is static with a webhook per
 // repository). The provider-wide fields of [Capabilities] describe the default
-// kind; Kinds refines them per kind.
+// kind; Kinds refines them per kind. A kind listed here is also one a user can
+// choose when setting up a connection, even if its profile matches the
+// provider-wide values.
 type KindProfile struct {
 	Kind            IdentityKind    `json:"kind"`
 	CredentialModel CredentialModel `json:"credential_model"`
@@ -222,6 +224,11 @@ type Capabilities struct {
 	Reactions         bool `json:"reactions"`
 	WebhookManagement bool `json:"webhook_management"`
 	IdentityDeletion  bool `json:"identity_deletion"`
+	// IdentityDescription is true when the provider can say who an existing
+	// identity is (handle, display name, expiry) without a setup flow. Core
+	// uses it to fill in identities it holds without a handle, such as those
+	// created by a plugin's data migration.
+	IdentityDescription bool `json:"identity_description"`
 	// Branches is true when branches can be looked up and created through the
 	// provider (core uses it to link and create a task's branch).
 	Branches bool `json:"branches"`
@@ -245,7 +252,8 @@ type Capabilities struct {
 }
 
 // Profile returns the profile of an identity kind: its entry in Kinds, or the
-// provider-wide values when it has none.
+// provider-wide values when it has none. The fallback is intentional: a kind in
+// IdentityKinds need not be listed in Kinds unless it differs or is user-selectable.
 func (c Capabilities) Profile(kind IdentityKind) KindProfile {
 	for _, k := range c.Kinds {
 		if k.Kind == kind {
@@ -372,6 +380,13 @@ type AccessGrant struct {
 
 // DeleteIdentityRequest asks the provider to forget an identity.
 type DeleteIdentityRequest struct {
+	Identity IdentityRef `json:"identity"`
+}
+
+// DescribeIdentityRequest asks who an existing identity is (capability
+// IdentityDescription). Identity.Handle may be empty: that is the case the
+// operation exists for.
+type DescribeIdentityRequest struct {
 	Identity IdentityRef `json:"identity"`
 }
 
