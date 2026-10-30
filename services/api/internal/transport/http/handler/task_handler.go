@@ -692,7 +692,106 @@ func (h *TaskHandler) parseTaskFilter(r *http.Request, projectID uuid.UUID) (tas
 		}
 		filter.Tags = tags
 	}
+	if by := strings.TrimSpace(r.URL.Query().Get("group_by")); by != "" {
+		group, err := h.parseTaskGroup(r, projectID, by)
+		if err != nil {
+			return filter, err
+		}
+		filter.Group = group
+	}
 	return filter, nil
+}
+
+// parseTaskGroup builds the TaskGroup a listing is narrowed to from
+// group_by=<dimension> and group_key=<group>. A custom field's type is
+// resolved from its definition; a key that names no custom field is a bad
+// request.
+func (h *TaskHandler) parseTaskGroup(r *http.Request, projectID uuid.UUID, by string) (*taskdom.TaskGroup, error) {
+	key := r.URL.Query().Get("group_key")
+	if key == "" {
+		return nil, apierr.New(apierr.CodeBadRequest, "group_key is required with group_by")
+	}
+	group := &taskdom.TaskGroup{By: by, Key: key}
+	fieldType, err := h.groupFieldType(r.Context(), projectID, by)
+	if err != nil {
+		return nil, err
+	}
+	group.FieldType = fieldType
+	return group, nil
+}
+
+// groupFieldType returns the custom field type behind a group_by / column_by
+// value, or "" when it names a built-in dimension.
+func (h *TaskHandler) groupFieldType(ctx context.Context, projectID uuid.UUID, by string) (string, error) {
+	switch by {
+	case taskdom.GroupByStatus, taskdom.GroupBySprint, taskdom.GroupByAssignee,
+		taskdom.GroupByReporter, taskdom.GroupByType, taskdom.GroupByImportance, taskdom.GroupByTags:
+		return "", nil
+	}
+	cfs, err := h.svc.ListCustomFieldDefinitions(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	for _, cf := range cfs {
+		if cf.FieldKey == by {
+			return string(cf.FieldType), nil
+		}
+	}
+	return "", apierr.New(apierr.CodeBadRequest, "unknown group_by")
+}
+
+// ListTaskColumns handles GET /projects/:projectId/tasks/columns?column_by=<dim>.
+// It lists the columns of a group-by dimension whose columns come from the
+// data: tags, assignees, reporters and the values of a free-valued custom
+// field. It accepts the same filters as ListTasks (so a view's own filters
+// narrow the columns); each column is then listed with ListTasks'
+// group_by=<dim>&group_key=<key>, plus the "no value" column every dimension
+// has. Dimensions with a fixed set of columns (status, sprint, type,
+// importance) are a bad request: the client already holds those.
+func (h *TaskHandler) ListTaskColumns(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	by := strings.TrimSpace(r.URL.Query().Get("column_by"))
+	if by == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "column_by is required"))
+		return
+	}
+	switch by {
+	case taskdom.GroupByStatus, taskdom.GroupBySprint, taskdom.GroupByType, taskdom.GroupByImportance:
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "column_by has a fixed set of columns"))
+		return
+	}
+	if _, err := h.groupFieldType(r.Context(), projectID, by); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	filter, err := h.parseTaskFilter(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	scopeCtx, err := scopedContext(r, h.listScoper, iam.ActionTasksRead, projectID, "task")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	columns, err := h.svc.ListGroupColumns(scopeCtx, projectID, filter, by)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	truncated := len(columns) > taskdom.MaxGroupColumns
+	if truncated {
+		columns = columns[:taskdom.MaxGroupColumns]
+	}
+	out := make([]map[string]any, len(columns))
+	for i, c := range columns {
+		out[i] = map[string]any{"key": c.Key, "label": c.Label, "count": c.Count}
+	}
+	presenter.OK(w, r, map[string]any{"columns": out, "truncated": truncated})
 }
 
 // ListTasks handles GET /projects/:projectId/tasks.
@@ -712,6 +811,8 @@ func (h *TaskHandler) parseTaskFilter(r *http.Request, projectID uuid.UUID) (tas
 //   - story_points_min=<int>, story_points_max=<int>
 //   - importance_ranges=<json> (array of {"min":int,"max":int}, OR'd together)
 //   - tags=<tag,tag,...> (matches tasks with ANY of these tags)
+//   - group_by=<dimension>&group_key=<key> (only the tasks in one group of a
+//     group-by dimension; see taskdom.TaskGroup for the keys)
 //   - include=assignees,reporter (embed the people behind assignee_ids /
 //     reporter_id in each task as "assignees" / "reporter")
 func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {

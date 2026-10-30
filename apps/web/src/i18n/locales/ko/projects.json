@@ -2201,6 +2201,7 @@
 			"deleteView": "뷰 삭제",
 			"searchTasksPlaceholder": "작업 검색…",
 			"pluginNotAvailable": "플러그인을 사용할 수 없습니다",
+			"columnsTruncated": "처음 {{max}}개 열만 표시됩니다. 일부 작업은 어느 열에도 표시되지 않습니다. 필터로 보기를 좁혀 나머지를 확인하세요.",
 			"viewErrors": {
 				"isLastView": "마지막 뷰는 삭제할 수 없습니다.",
 				"deleteFailed": "뷰를 삭제하지 못했습니다. 다시 시도해 주세요.",
@@ -2404,7 +2405,8 @@
 			"assignee": "담당자",
 			"importance": "중요도",
 			"type": "유형",
-			"reporter": "보고자"
+			"reporter": "보고자",
+			"tags": "태그"
 		},
 		"sortBy": {
 			"manual": "수동",

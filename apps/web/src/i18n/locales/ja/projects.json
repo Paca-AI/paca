@@ -2201,6 +2201,7 @@
 			"deleteView": "ビューを削除",
 			"searchTasksPlaceholder": "タスクを検索…",
 			"pluginNotAvailable": "プラグインを利用できません",
+			"columnsTruncated": "最初の{{max}}列のみ表示されています。一部のタスクはどの列にも表示されません。フィルターで絞り込むと残りを確認できます。",
 			"viewErrors": {
 				"isLastView": "最後のビューは削除できません。",
 				"deleteFailed": "ビューの削除に失敗しました。もう一度お試しください。",
@@ -2404,7 +2405,8 @@
 			"assignee": "担当者",
 			"importance": "重要度",
 			"type": "タイプ",
-			"reporter": "報告者"
+			"reporter": "報告者",
+			"tags": "タグ"
 		},
 		"sortBy": {
 			"manual": "手動",

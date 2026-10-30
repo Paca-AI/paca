@@ -123,6 +123,16 @@ type TaskRepository interface {
 	// fields — must only ever suggest tags the project has already used,
 	// never invent new ones.
 	ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error)
+	// ListGroupColumns returns the groups (columns) that exist for a group-by
+	// dimension among the tasks filter matches: one per tag, per assignee, per
+	// reporter, or per distinct value of a free-valued custom field (number,
+	// text, date, …), ordered for display. It does not include the "no value"
+	// group — that always exists and is selected with a GroupKey* sentinel.
+	// It returns at most MaxGroupColumns+1 columns; the extra one means there
+	// are more than MaxGroupColumns. Note a tag or value literally equal to a
+	// GroupKey* sentinel can't be told apart from "no value" when selected.
+	// by and fieldType are as in TaskGroup.
+	ListGroupColumns(ctx context.Context, projectID uuid.UUID, filter TaskFilter, by, fieldType string) ([]GroupColumn, error)
 }
 
 // TaskSort carries resolved sort configuration for ListTasks.
@@ -185,6 +195,102 @@ type TaskFilter struct {
 	ImportanceRanges []IntRange
 	// Tags filters tasks that have ANY of these tag values (exact match).
 	Tags []string
+	// Group, when set, narrows the listing to a single group (column) of a
+	// "group by" dimension — see TaskGroup. It is ANDed with every other
+	// predicate, so a view's filters and one of its columns compose.
+	Group *TaskGroup
+}
+
+// Group dimensions a listing can be narrowed by (TaskGroup.By). Any other
+// value is the key of a custom field.
+const (
+	GroupByStatus     = "status"
+	GroupBySprint     = "sprint"
+	GroupByAssignee   = "assignee"
+	GroupByReporter   = "reporter"
+	GroupByType       = "type"
+	GroupByImportance = "importance"
+	GroupByTags       = "tags"
+)
+
+// Sentinel group keys for "the tasks that have no value". Each dimension
+// recognises only its own: GroupKeyBacklog for sprint, GroupKeyUnassigned for
+// assignee and GroupKeyNone for the rest (importance has no sentinel — its
+// "None" level is bucket "0"). A tag or custom field value that is literally
+// one of these strings can't be told apart from the sentinel.
+const (
+	GroupKeyNone       = "__none"
+	GroupKeyBacklog    = "__backlog"
+	GroupKeyUnassigned = "__unassigned"
+)
+
+// IsGroupKeyNone reports whether key is the sentinel for "no value" in the
+// group-by dimension by.
+func IsGroupKeyNone(by, key string) bool {
+	switch by {
+	case GroupBySprint:
+		return key == GroupKeyBacklog
+	case GroupByAssignee:
+		return key == GroupKeyUnassigned
+	case GroupByImportance:
+		return false
+	}
+	return key == GroupKeyNone
+}
+
+// TaskGroup identifies one group of a group-by dimension.
+//   - status / sprint / assignee / reporter / type: Key is the entity id
+//   - importance: Key is the bucket index "0".."4" (None, Low, Medium, High,
+//     Critical — see ImportanceBucketRange)
+//   - tags: Key is a tag value
+//   - a custom field key: Key is the stored value (a select option, "true" /
+//     "false", or the raw number / text / date)
+//
+// Key may instead be the dimension's GroupKey* sentinel (see IsGroupKeyNone) to
+// select the tasks with no value for it.
+type TaskGroup struct {
+	By  string
+	Key string
+	// FieldType is the custom field's type when By names a custom field. It is
+	// resolved server-side from CustomFieldDefinition, never taken from the
+	// client, because it decides how the stored value is compared.
+	FieldType string
+}
+
+// MaxGroupColumns is how many columns a group-by dimension lists. A repository's
+// ListGroupColumns returns up to one more than this, so the transport layer can
+// tell the list was cut short.
+const MaxGroupColumns = 100
+
+// GroupColumn is one group (column) of a group-by dimension, as listed for a
+// view that has to show a column per value found in the data.
+type GroupColumn struct {
+	Key   string
+	Label string
+	// Count is the number of tasks in the group among those the listing's
+	// filter matches.
+	Count int64
+}
+
+// ImportanceBucketRange returns the inclusive importance range of a bucket
+// index (0 None, 1 Low, 2 Medium, 3 High, 4 Critical). ok is false for an
+// index that names no bucket. It mirrors the buckets the web app shows.
+func ImportanceBucketRange(bucket int) (r IntRange, ok bool) {
+	switch bucket {
+	case 0:
+		return IntRange{Min: 0, Max: 0}, true
+	case 1:
+		return IntRange{Min: 1, Max: 19}, true
+	case 2:
+		return IntRange{Min: 20, Max: 49}, true
+	case 3:
+		return IntRange{Min: 50, Max: 99}, true
+	case 4:
+		// Postgres' INTEGER max: the bound is bound straight into a SQL
+		// integer comparison.
+		return IntRange{Min: 100, Max: 2147483647}, true
+	}
+	return IntRange{}, false
 }
 
 // IntRange is an inclusive [Min, Max] integer range.

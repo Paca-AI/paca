@@ -42,6 +42,9 @@ export interface ListViewProps {
 	taskTypes: TaskType[];
 	members?: ProjectMember[];
 	reporters?: ProjectMember[];
+	/** The columns the API lists for a column_by whose columns come from the
+	 *  data — see ViewContext.dynamicColumns. */
+	dynamicColumns?: { key: string; label: string }[];
 	customFields?: CustomFieldDefinition[];
 	epics?: Task[];
 	/** Load-more state for the epic picker, shared by every group/row/card. */
@@ -105,6 +108,7 @@ export function ListView({
 	taskTypes,
 	members = [],
 	reporters,
+	dynamicColumns,
 	customFields = [],
 	epics = [],
 	epicsPagination,
@@ -166,8 +170,24 @@ export function ListView({
 		!viewConfig?.column_by || viewConfig.column_by === "status";
 
 	const viewCtx = useMemo(
-		() => ({ statuses, taskTypes, members, reporters, customFields, sprints }),
-		[statuses, taskTypes, members, reporters, customFields, sprints],
+		() => ({
+			statuses,
+			taskTypes,
+			members,
+			reporters,
+			customFields,
+			sprints,
+			dynamicColumns,
+		}),
+		[
+			statuses,
+			taskTypes,
+			members,
+			reporters,
+			customFields,
+			sprints,
+			dynamicColumns,
+		],
 	);
 
 	const groupDefs = useMemo(

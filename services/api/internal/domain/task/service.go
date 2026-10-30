@@ -123,6 +123,9 @@ type TaskService interface {
 	// ListDistinctTags returns every distinct tag value used anywhere in the
 	// project, sorted alphabetically — see Repository.ListDistinctTags.
 	ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error)
+	// ListGroupColumns returns the columns of a group-by dimension — see
+	// Repository.ListGroupColumns.
+	ListGroupColumns(ctx context.Context, projectID uuid.UUID, filter TaskFilter, by string) ([]GroupColumn, error)
 	// GetTask returns the task identified by id, verifying it belongs to projectID.
 	GetTask(ctx context.Context, projectID, id uuid.UUID) (*Task, error)
 	GetTaskByNumber(ctx context.Context, projectID uuid.UUID, taskNumber int64) (*Task, error)

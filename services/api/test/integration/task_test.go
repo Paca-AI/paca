@@ -4142,3 +4142,7 @@ func taskListItemIDs(t *testing.T, body []byte) []string {
 	}
 	return ids
 }
+
+func (r *fakeTaskRepo) ListGroupColumns(_ context.Context, _ uuid.UUID, _ taskdom.TaskFilter, _, _ string) ([]taskdom.GroupColumn, error) {
+	return nil, nil
+}

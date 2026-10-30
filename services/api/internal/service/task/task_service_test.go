@@ -2808,3 +2808,7 @@ func TestUpdateTask_CustomFieldsMergeByKey(t *testing.T) {
 		t.Errorf("custom_fields = %v, want %v", updated.CustomFields, want)
 	}
 }
+
+func (r *fakeTaskRepo) ListGroupColumns(_ context.Context, _ uuid.UUID, _ taskdom.TaskFilter, _, _ string) ([]taskdom.GroupColumn, error) {
+	return nil, nil
+}

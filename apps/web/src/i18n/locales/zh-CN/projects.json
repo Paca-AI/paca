@@ -2201,6 +2201,7 @@
 			"deleteView": "删除视图",
 			"searchTasksPlaceholder": "搜索任务…",
 			"pluginNotAvailable": "插件不可用",
+			"columnsTruncated": "仅显示前 {{max}} 列；部分任务不在任何列中。请使用筛选器缩小视图范围以查看其余任务。",
 			"viewErrors": {
 				"isLastView": "这是最后一个视图，无法删除。",
 				"deleteFailed": "删除视图失败，请重试。",
@@ -2404,7 +2405,8 @@
 			"assignee": "负责人",
 			"importance": "重要程度",
 			"type": "类型",
-			"reporter": "报告人"
+			"reporter": "报告人",
+			"tags": "标签"
 		},
 		"sortBy": {
 			"manual": "手动",

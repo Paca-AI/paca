@@ -68,12 +68,13 @@ import {
 	layoutToViewType,
 	listAllTasks,
 	listSprints,
+	listTaskColumns,
+	MAX_COLUMNS,
 	reorderViewsByContext,
 	resolveFilterConfig,
 	resolveTaskTypeFilter,
 	sprintsInfiniteQueryOptions,
 	type Task,
-	type TaskListResult,
 	taskQueryOptions,
 	updateMyViewConfig,
 	updateSprint,
@@ -115,6 +116,7 @@ import {
 	getDefaultInitialPageSize,
 	getDefaultPageSize,
 	getTaskColumnKeys,
+	hasApiColumns,
 	keepPreviousDataOnPageSizeChangeOnly,
 	peopleFromTasks,
 	resolveSelectedTask,
@@ -254,50 +256,27 @@ interface InteractionLayoutProps {
 }
 
 /**
- * Translates a column key + column_by field into API filter options.
- * Returns null when the column cannot be filtered server-side.
+ * Translates a column key + column_by field into the API options that list
+ * that column's tasks: the server filters by group, so every column_by is
+ * paginated per column.
  */
 function buildColumnFilter(
 	colKey: string,
 	columnBy: string,
 	baseOpts: ListTasksOptions,
-): ListTasksOptions | null {
-	switch (columnBy) {
-		case "status": {
-			if (colKey === "__none") return null; // no-status not filterable server-side
-			return { ...baseOpts, statusIds: [colKey], statusId: undefined };
-		}
-		case "sprint": {
-			if (colKey === "__backlog") {
-				return { ...baseOpts, sprintId: null, sprintIds: undefined };
-			}
-			return { ...baseOpts, sprintId: colKey, sprintIds: undefined };
-		}
-		case "assignee": {
-			if (colKey === "__unassigned") {
-				return {
-					...baseOpts,
-					assigneeNull: true,
-					assigneeIds: undefined,
-					assigneeId: undefined,
-				};
-			}
-			return {
-				...baseOpts,
-				assigneeIds: [colKey],
-				assigneeNull: false,
-				assigneeId: undefined,
-			};
-		}
-		case "type": {
-			if (colKey === "__none") {
-				return { ...baseOpts, taskTypeNull: true, taskTypeIds: undefined };
-			}
-			return { ...baseOpts, taskTypeIds: [colKey], taskTypeNull: false };
-		}
-		default:
-			return null;
+): ListTasksOptions {
+	const group = { groupBy: columnBy, groupKey: colKey };
+	if (columnBy === "sprint") {
+		// The column picks the sprint, so the view's own sprint scope must not
+		// narrow it.
+		return {
+			...baseOpts,
+			sprintId: undefined,
+			sprintIds: undefined,
+			...group,
+		};
 	}
+	return { ...baseOpts, ...group };
 }
 
 /** Sets `?taskId=` on the current URL without triggering a route navigation. */
@@ -788,22 +767,6 @@ export function InteractionLayout({
 	);
 
 	// ── Per-column pagination ─────────────────────────────────────────────────
-	const isColumnBySupported =
-		columnBy === "status" || columnBy === "sprint" || columnBy === "type";
-
-	const fetchColumnDefs = useMemo(() => {
-		if (!isColumnBySupported) return [];
-		return getColumnGroupDefs(columnBy, viewCtx, t);
-	}, [isColumnBySupported, columnBy, viewCtx, t]);
-
-	// Guard: do not start column queries until views have finished loading.
-	// Without this, queries fire before effectiveViewId is available, fetching
-	// tasks without view_id and briefly rendering them in created_at order.
-	const colQueriesEnabled =
-		fetchColumnDefs.length > 0 &&
-		!viewsQuery.isLoading &&
-		activeView?.layout !== "Roadmap";
-
 	// Initial page size: configured view setting wins; otherwise falls back to
 	// the active layout's default (see PAGE_SIZE_DEFAULTS in view-utils.ts).
 	// "Load more" batches use the separate configuredPageSize below.
@@ -857,6 +820,80 @@ export function InteractionLayout({
 		],
 	);
 
+	// Some column_bys have columns that come from the data (tags, assignees,
+	// reporters, free-valued custom fields): the API lists them, narrowed by the
+	// view's filters, instead of the client guessing from the tasks it loaded.
+	// The Roadmap isn't paginated per column and keeps grouping what it loads.
+	const needsApiColumns =
+		hasApiColumns(columnBy, customFields) && activeView?.layout !== "Roadmap";
+	const columnsFilterOpts = useMemo(() => {
+		const {
+			pageSize: _pageSize,
+			sumField: _sumField,
+			sortBy: _sortBy,
+			viewId: _viewId,
+			...filters
+		} = colBaseOpts;
+		return filters;
+	}, [colBaseOpts]);
+	const apiColumnsQuery = useQuery({
+		queryKey: [
+			"projects",
+			projectId,
+			"tasks",
+			"columns",
+			columnBy,
+			columnsFilterOpts,
+		],
+		queryFn: () => listTaskColumns(projectId, columnBy, columnsFilterOpts),
+		enabled: needsApiColumns && !viewsQuery.isLoading,
+		staleTime: 15_000,
+	});
+	// A failed request must not leave the view loading forever: it falls back to
+	// grouping the tasks it can load.
+	const apiColumnsPending =
+		needsApiColumns &&
+		apiColumnsQuery.data === undefined &&
+		!apiColumnsQuery.isError;
+	const dynamicColumns = useMemo(
+		() =>
+			needsApiColumns
+				? apiColumnsQuery.data?.columns.map(({ key, label }) => ({
+						key,
+						label,
+					}))
+				: undefined,
+		[needsApiColumns, apiColumnsQuery.data],
+	);
+	const columnsTruncated = needsApiColumns && !!apiColumnsQuery.data?.truncated;
+	const columnsCtx: ViewContext = useMemo(
+		() => ({ ...viewCtx, dynamicColumns }),
+		[viewCtx, dynamicColumns],
+	);
+
+	const fetchColumnDefs = useMemo(() => {
+		if (activeView?.layout === "Roadmap") return [];
+		// Columns not listed (still loading, or the request failed): there is no
+		// per-column query to run.
+		if (needsApiColumns && !dynamicColumns) return [];
+		return getColumnGroupDefs(columnBy, columnsCtx, t);
+	}, [
+		activeView?.layout,
+		needsApiColumns,
+		dynamicColumns,
+		columnBy,
+		columnsCtx,
+		t,
+	]);
+
+	// Guard: do not start column queries until views have finished loading.
+	// Without this, queries fire before effectiveViewId is available, fetching
+	// tasks without view_id and briefly rendering them in created_at order.
+	const colQueriesEnabled =
+		fetchColumnDefs.length > 0 &&
+		!viewsQuery.isLoading &&
+		activeView?.layout !== "Roadmap";
+
 	// Filters carried onto the children listed under an expanded parent row:
 	// the view's own filters and sort, minus what scopes the top level.
 	const childFilters = useMemo((): ChildTaskFilters => {
@@ -908,18 +945,6 @@ export function InteractionLayout({
 						...colBaseOpts,
 						pageSize: effectivePageSize,
 					});
-					if (!colOpts) {
-						return {
-							queryKey: ["noop", col.key] as const,
-							queryFn: () =>
-								Promise.resolve({
-									items: [] as Task[],
-									page_size: 0,
-									next_cursor: null,
-								} as TaskListResult),
-							enabled: false,
-						};
-					}
 					// pageSize is deliberately excluded from the queryKey: "load
 					// more" (handleLoadMoreColumn) grows colExpandedPageSizes purely
 					// so that a *future* refetch (a websocket-triggered invalidation,
@@ -1013,7 +1038,7 @@ export function InteractionLayout({
 	const fallbackQueryOpts = allTasksQueryOptions(projectId, fallbackOpts);
 	const fallbackQuery = useQuery({
 		...fallbackQueryOpts,
-		enabled: !colQueriesEnabled && !viewsQuery.isLoading,
+		enabled: !colQueriesEnabled && !viewsQuery.isLoading && !apiColumnsPending,
 		// See the matching comment on the column queries above: "load more"
 		// grows pageSize (and thus the queryKey), so keep showing the smaller
 		// page's data while the larger one fetches instead of dropping to
@@ -1131,7 +1156,6 @@ export function InteractionLayout({
 				pageSize: configuredPageSize ?? getDefaultPageSize(activeView?.layout),
 				cursor,
 			});
-			if (!colOpts) return;
 			colLoadingMoreRef.current[colKey] = true;
 			setColLoadingMore((prev) => ({ ...prev, [colKey]: true }));
 			try {
@@ -1340,6 +1364,7 @@ export function InteractionLayout({
 	// are excluded via fetchStatus, since they'll never fetch).
 	const tasksLoading =
 		viewsQuery.isLoading ||
+		apiColumnsPending ||
 		(colQueriesEnabled
 			? columnQueries.some(
 					(q) => q.data === undefined && q.fetchStatus !== "idle",
@@ -2110,6 +2135,12 @@ export function InteractionLayout({
 				</div>
 			</div>
 
+			{columnsTruncated && (
+				<p className="shrink-0 border-b border-border/25 bg-muted/40 px-8 py-2 text-xs text-muted-foreground">
+					{t("layout.shell.columnsTruncated", { max: MAX_COLUMNS })}
+				</p>
+			)}
+
 			{viewActionError && (
 				<p className="shrink-0 border-b border-border/25 bg-destructive/10 px-8 py-2 text-xs text-destructive">
 					{viewActionError}
@@ -2156,6 +2187,7 @@ export function InteractionLayout({
 						taskTypes={creatableTaskTypes}
 						members={members}
 						reporters={reporters}
+						dynamicColumns={dynamicColumns}
 						customFields={customFields}
 						sprints={sprints}
 						sprintsPagination={sprintsPagination}
@@ -2219,6 +2251,7 @@ export function InteractionLayout({
 						taskTypes={creatableTaskTypes}
 						members={members}
 						reporters={reporters}
+						dynamicColumns={dynamicColumns}
 						customFields={customFields}
 						epics={displayEpics}
 						epicsPagination={epicsPagination}

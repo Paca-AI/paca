@@ -37,6 +37,31 @@ export interface ViewContext {
 	reporters?: ProjectMember[];
 	customFields: CustomFieldDefinition[];
 	sprints?: Sprint[];
+	/**
+	 * The columns the API lists for a column_by whose columns come from the data
+	 * (assignee, reporter, tags, free-valued custom fields — see
+	 * listTaskColumns). When set they replace the columns the client would
+	 * otherwise derive from the tasks it happens to have loaded.
+	 */
+	dynamicColumns?: { key: string; label: string }[];
+}
+
+/** Whether a column_by's columns are listed by the API (listTaskColumns)
+ *  instead of coming from project metadata the client already holds. */
+export function hasApiColumns(
+	columnBy: string | undefined,
+	customFields: CustomFieldDefinition[],
+): boolean {
+	if (!columnBy) return false;
+	if (columnBy === "assignee" || columnBy === "reporter" || columnBy === "tags")
+		return true;
+	const cf = customFields.find((f) => f.field_key === columnBy);
+	return (
+		cf !== undefined &&
+		cf.field_type !== "select" &&
+		cf.field_type !== "multi_select" &&
+		cf.field_type !== "boolean"
+	);
 }
 
 /** The distinct assignees and reporters among `tasks`, sorted by name, taken
@@ -124,11 +149,13 @@ export function getColumnGroupDefs(
 
 	if (columnBy === "assignee") {
 		return [
-			...ctx.members.map((m) => ({
-				key: m.id,
-				label: m.full_name || m.username,
-				fieldValue: m.id,
-			})),
+			...(ctx.dynamicColumns
+				? ctx.dynamicColumns.map((c) => ({ ...c, fieldValue: c.key }))
+				: ctx.members.map((m) => ({
+						key: m.id,
+						label: m.full_name || m.username,
+						fieldValue: m.id,
+					}))),
 			{
 				key: "__unassigned",
 				label: t("viewUtils.groups.unassigned"),
@@ -139,15 +166,19 @@ export function getColumnGroupDefs(
 
 	if (columnBy === "reporter") {
 		return [
-			...[...(ctx.reporters ?? ctx.members)]
-				.sort((a, b) =>
-					(a.full_name || a.username).localeCompare(b.full_name || b.username),
-				)
-				.map((m) => ({
-					key: m.id,
-					label: m.full_name || m.username,
-					fieldValue: m.id,
-				})),
+			...(ctx.dynamicColumns
+				? ctx.dynamicColumns.map((c) => ({ ...c, fieldValue: c.key }))
+				: [...(ctx.reporters ?? ctx.members)]
+						.sort((a, b) =>
+							(a.full_name || a.username).localeCompare(
+								b.full_name || b.username,
+							),
+						)
+						.map((m) => ({
+							key: m.id,
+							label: m.full_name || m.username,
+							fieldValue: m.id,
+						}))),
 			{
 				key: "__none",
 				label: t("viewUtils.groups.noReporter"),
@@ -178,6 +209,15 @@ export function getColumnGroupDefs(
 		];
 	}
 
+	if (columnBy === "tags") {
+		// Not listed yet: groups are built from the loaded task values.
+		if (!ctx.dynamicColumns) return [];
+		return [
+			...ctx.dynamicColumns.map((c) => ({ ...c, fieldValue: c.key })),
+			{ key: "__none", label: t("viewUtils.groups.none"), fieldValue: null },
+		];
+	}
+
 	// Custom field
 	const cf = ctx.customFields.find((f) => f.field_key === columnBy);
 	if (cf) {
@@ -198,11 +238,52 @@ export function getColumnGroupDefs(
 				{ key: "false", label: t("viewUtils.groups.no"), fieldValue: false },
 			];
 		}
-		// number / text / date → dynamic groups from task values (built at render time)
+		// number / text / date → one column per value the API lists
+		if (ctx.dynamicColumns) {
+			return [
+				...ctx.dynamicColumns.map((c) => ({ ...c, fieldValue: c.key })),
+				{ key: "__none", label: t("viewUtils.groups.none"), fieldValue: null },
+			];
+		}
+		// Not listed yet: groups are built from the loaded task values.
 		return [];
 	}
 
 	return [];
+}
+
+/**
+ * Builds group definitions from the values present on `tasks`, for column_by
+ * fields with no preset groups (tags, number/text/date custom fields). A
+ * trailing "None" group is always included.
+ */
+export function buildDynamicGroupDefs(
+	tasks: Task[],
+	columnBy: string | undefined,
+	ctx: ViewContext,
+	t: TFunction<"projects">,
+): ColumnGroupDef[] {
+	const seen = new Set<string>();
+	const defs: ColumnGroupDef[] = [];
+	for (const task of tasks) {
+		for (const k of getTaskColumnKeys(task, columnBy, ctx)) {
+			if (seen.has(k)) continue;
+			seen.add(k);
+			defs.push({
+				key: k,
+				label: k === "__none" ? t("board.common.none") : k,
+				fieldValue: k,
+			});
+		}
+	}
+	if (!seen.has("__none")) {
+		defs.push({
+			key: "__none",
+			label: t("board.common.none"),
+			fieldValue: null,
+		});
+	}
+	return defs;
 }
 
 /**
@@ -242,7 +323,10 @@ export function getTaskColumnKeys(
 		return [task.sprint_id ?? "__backlog"];
 	}
 	if (columnBy === "assignee") {
-		return [task.assignee_ids?.[0] ?? "__unassigned"];
+		// A task with several assignees is in each of their columns.
+		return task.assignee_ids && task.assignee_ids.length > 0
+			? task.assignee_ids
+			: ["__unassigned"];
 	}
 	if (columnBy === "reporter") {
 		return [task.reporter_id ?? "__none"];
@@ -254,10 +338,17 @@ export function getTaskColumnKeys(
 	if (columnBy === "type") {
 		return [task.task_type_id ?? "__none"];
 	}
+	if (columnBy === "tags") {
+		// A task with several tags appears in each tag's group.
+		const tags = (task.tags ?? []).filter((tag) => tag !== "");
+		return tags.length > 0 ? tags : ["__none"];
+	}
 
 	const cf = ctx.customFields.find((f) => f.field_key === columnBy);
 	if (cf) {
 		const val = task.custom_fields[cf.field_key];
+		// An unset checkbox is unchecked: it is in the "No" column.
+		if (cf.field_type === "boolean" && !val) return ["false"];
 		if (cf.field_type === "multi_select") {
 			if (Array.isArray(val) && val.length > 0) {
 				return val.map(String);
@@ -290,7 +381,12 @@ export function getSwimlaneDefs(
 	if (!swimlanes || swimlanes === "none") {
 		return [{ key: "__all", label: "", fieldValue: null }];
 	}
-	const defs = getColumnGroupDefs(swimlanes, ctx, t);
+	// dynamicColumns belong to the view's column_by, not to its swimlanes.
+	const defs = getColumnGroupDefs(
+		swimlanes,
+		{ ...ctx, dynamicColumns: undefined },
+		t,
+	);
 	// Show Critical (highest bucket) first, None last
 	if (swimlanes === "importance") return [...defs].reverse();
 	return defs;
@@ -315,6 +411,7 @@ export const BUILTIN_COLUMN_BY = [
 	{ key: "importance", labelKey: "viewUtils.columnBy.importance" },
 	{ key: "type", labelKey: "viewUtils.columnBy.type" },
 	{ key: "reporter", labelKey: "viewUtils.columnBy.reporter" },
+	{ key: "tags", labelKey: "viewUtils.columnBy.tags" },
 ] as const satisfies { key: string; labelKey: string }[];
 
 export const BUILTIN_SORT_BY = [

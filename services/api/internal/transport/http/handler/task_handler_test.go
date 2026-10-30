@@ -37,6 +37,7 @@ type fakeTaskSvc struct {
 	lastFilter            taskdom.TaskFilter
 	customFields          []*taskdom.CustomFieldDefinition
 	lastAssignedMemberIDs []uuid.UUID
+	lastColumnsBy         string
 }
 
 func newFakeTaskSvc() *fakeTaskSvc {
@@ -521,6 +522,7 @@ func buildTaskHandlerRouterWithActivity(svc *fakeTaskSvc, actSvc *fakeActivitySv
 		r.Delete("/task-types/{typeId}", h.DeleteTaskType)
 		r.Get("/tasks", h.ListTasks)
 		r.Get("/tasks/count", h.CountTasks)
+		r.Get("/tasks/columns", h.ListTaskColumns)
 		r.Post("/tasks", h.CreateTask)
 		r.Get("/tasks/by-number/{taskNumber}", h.GetTaskByNumber)
 		r.Get("/tasks/{taskId}", h.GetTask)
@@ -1985,5 +1987,86 @@ func TestTaskHandler_CreateTask_ReporterFromOtherProjectReturns400(t *testing.T)
 		map[string]any{"title": "T", "reporter_id": uuid.New().String()})
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func (f *fakeTaskSvc) ListGroupColumns(_ context.Context, _ uuid.UUID, filter taskdom.TaskFilter, by string) ([]taskdom.GroupColumn, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastColumnsBy, f.lastFilter = by, filter
+	if by == "assignee" {
+		// One more than the cap: the list was cut short.
+		cols := make([]taskdom.GroupColumn, taskdom.MaxGroupColumns+1)
+		for i := range cols {
+			cols[i] = taskdom.GroupColumn{Key: fmt.Sprint(i), Label: fmt.Sprint(i)}
+		}
+		return cols, nil
+	}
+	return []taskdom.GroupColumn{{Key: "a", Label: "a", Count: 2}}, nil
+}
+
+func TestTaskHandler_ListTasks_ParsesGroup(t *testing.T) {
+	svc := newFakeTaskSvc()
+	svc.customFields = []*taskdom.CustomFieldDefinition{{FieldKey: "size", FieldType: "select"}}
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	w := doTaskRequest(r, http.MethodGet, fmt.Sprintf("/projects/%s/tasks?group_by=size&group_key=S", projectID), nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if g := svc.lastFilter.Group; g == nil || g.By != "size" || g.Key != "S" || g.FieldType != "select" {
+		t.Fatalf("group = %+v; want size/S with the field's type resolved server-side", g)
+	}
+
+	for _, q := range []string{"group_by=tags", "group_by=nope&group_key=x"} {
+		w := doTaskRequest(r, http.MethodGet, fmt.Sprintf("/projects/%s/tasks?%s", projectID, q), nil)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d: %s", q, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestTaskHandler_ListTaskColumns(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	w := doTaskRequest(r, http.MethodGet, fmt.Sprintf("/projects/%s/tasks/columns?column_by=tags&search=x", projectID), nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"key":"a"`) || !strings.Contains(w.Body.String(), `"count":2`) {
+		t.Fatalf("unexpected body %s", w.Body.String())
+	}
+	if svc.lastColumnsBy != "tags" || svc.lastFilter.Search == nil || *svc.lastFilter.Search != "x" {
+		t.Fatalf("by=%q filter=%+v; want tags narrowed by the search", svc.lastColumnsBy, svc.lastFilter)
+	}
+
+	for _, q := range []string{"", "column_by=status", "column_by=importance", "column_by=nope"} {
+		w := doTaskRequest(r, http.MethodGet, fmt.Sprintf("/projects/%s/tasks/columns?%s", projectID, q), nil)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%q: expected 400, got %d: %s", q, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestTaskHandler_ListTaskColumns_CustomFieldAndTruncation(t *testing.T) {
+	svc := newFakeTaskSvc()
+	svc.customFields = []*taskdom.CustomFieldDefinition{{FieldKey: "pts", FieldType: "number"}}
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	w := doTaskRequest(r, http.MethodGet, fmt.Sprintf("/projects/%s/tasks/columns?column_by=pts", projectID), nil)
+	if w.Code != http.StatusOK || svc.lastColumnsBy != "pts" || !strings.Contains(w.Body.String(), `"truncated":false`) {
+		t.Fatalf("custom field: code %d by=%q body %s", w.Code, svc.lastColumnsBy, w.Body.String())
+	}
+
+	w = doTaskRequest(r, http.MethodGet, fmt.Sprintf("/projects/%s/tasks/columns?column_by=assignee", projectID), nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"truncated":true`) {
+		t.Fatalf("expected truncated list, got %d: %s", w.Code, w.Body.String())
+	}
+	if n := strings.Count(w.Body.String(), `"key"`); n != taskdom.MaxGroupColumns {
+		t.Errorf("returned %d columns, want %d", n, taskdom.MaxGroupColumns)
 	}
 }

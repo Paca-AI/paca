@@ -761,3 +761,7 @@ func TestCompleteSprint_MoveToSprintWrongProject_ReturnsNotFound(t *testing.T) {
 		t.Error("source sprint must not be completed when the destination sprint check fails")
 	}
 }
+
+func (r *fakeTaskRepo) ListGroupColumns(_ context.Context, _ uuid.UUID, _ taskdom.TaskFilter, _, _ string) ([]taskdom.GroupColumn, error) {
+	return nil, nil
+}

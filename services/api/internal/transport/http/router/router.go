@@ -708,6 +708,7 @@ func New(deps Deps) http.Handler {
 				r.Route("/tasks", func(r chi.Router) {
 					r.With(require.Project(iam.ActionTasksRead)).Get("/", deps.Task.ListTasks)
 					r.With(require.Project(iam.ActionTasksRead)).Get("/count", deps.Task.CountTasks)
+					r.With(require.Project(iam.ActionTasksRead)).Get("/columns", deps.Task.ListTaskColumns)
 					r.With(require.Project(iam.ActionTasksWrite), require.TaskCreate()).Post("/", deps.Task.CreateTask)
 					r.With(require.TaskByNumber(iam.ActionTasksRead)).Get("/by-number/{taskNumber}", deps.Task.GetTaskByNumber)
 					r.With(require.ProjectEntity("task", "taskId", resTask, iam.ActionTasksRead)).Get("/{taskId}", deps.Task.GetTask)
