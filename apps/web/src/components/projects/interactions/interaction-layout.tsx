@@ -854,8 +854,12 @@ export function InteractionLayout({
 		enabled: needsApiColumns && !viewsQuery.isLoading,
 		staleTime: 15_000,
 	});
+	// A failed request must not leave the view loading forever: it falls back to
+	// grouping the tasks it can load.
 	const apiColumnsPending =
-		needsApiColumns && apiColumnsQuery.data === undefined;
+		needsApiColumns &&
+		apiColumnsQuery.data === undefined &&
+		!apiColumnsQuery.isError;
 	const dynamicColumns = useMemo(
 		() =>
 			needsApiColumns
@@ -869,9 +873,19 @@ export function InteractionLayout({
 	);
 
 	const fetchColumnDefs = useMemo(() => {
-		if (activeView?.layout === "Roadmap" || apiColumnsPending) return [];
+		if (activeView?.layout === "Roadmap") return [];
+		// Columns not listed (still loading, or the request failed): there is no
+		// per-column query to run.
+		if (needsApiColumns && !dynamicColumns) return [];
 		return getColumnGroupDefs(columnBy, columnsCtx, t);
-	}, [activeView?.layout, apiColumnsPending, columnBy, columnsCtx, t]);
+	}, [
+		activeView?.layout,
+		needsApiColumns,
+		dynamicColumns,
+		columnBy,
+		columnsCtx,
+		t,
+	]);
 
 	const colQueriesEnabled =
 		fetchColumnDefs.length > 0 &&

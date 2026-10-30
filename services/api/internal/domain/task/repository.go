@@ -210,17 +210,29 @@ const (
 	GroupByTags       = "tags"
 )
 
-// Sentinel group keys for "the tasks that have no value". Which one a client
-// sends depends on the dimension's wording; all of them mean the same thing.
+// Sentinel group keys for "the tasks that have no value". Each dimension
+// recognises only its own: GroupKeyBacklog for sprint, GroupKeyUnassigned for
+// assignee and GroupKeyNone for the rest (importance has no sentinel — its
+// "None" level is bucket "0"). A tag or custom field value that is literally
+// one of these strings can't be told apart from the sentinel.
 const (
 	GroupKeyNone       = "__none"
 	GroupKeyBacklog    = "__backlog"
 	GroupKeyUnassigned = "__unassigned"
 )
 
-// IsGroupKeyNone reports whether key selects the tasks without a value.
-func IsGroupKeyNone(key string) bool {
-	return key == GroupKeyNone || key == GroupKeyBacklog || key == GroupKeyUnassigned
+// IsGroupKeyNone reports whether key is the sentinel for "no value" in the
+// group-by dimension by.
+func IsGroupKeyNone(by, key string) bool {
+	switch by {
+	case GroupBySprint:
+		return key == GroupKeyBacklog
+	case GroupByAssignee:
+		return key == GroupKeyUnassigned
+	case GroupByImportance:
+		return false
+	}
+	return key == GroupKeyNone
 }
 
 // TaskGroup identifies one group of a group-by dimension.
@@ -231,8 +243,8 @@ func IsGroupKeyNone(key string) bool {
 //   - a custom field key: Key is the stored value (a select option, "true" /
 //     "false", or the raw number / text / date)
 //
-// Key may instead be one of the GroupKey* sentinels to select the tasks with
-// no value for the dimension.
+// Key may instead be the dimension's GroupKey* sentinel (see IsGroupKeyNone) to
+// select the tasks with no value for it.
 type TaskGroup struct {
 	By  string
 	Key string

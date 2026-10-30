@@ -210,11 +210,10 @@ export function getColumnGroupDefs(
 	}
 
 	if (columnBy === "tags") {
+		// Not listed yet: groups are built from the loaded task values.
+		if (!ctx.dynamicColumns) return [];
 		return [
-			...(ctx.dynamicColumns ?? []).map((c) => ({
-				...c,
-				fieldValue: c.key,
-			})),
+			...ctx.dynamicColumns.map((c) => ({ ...c, fieldValue: c.key })),
 			{ key: "__none", label: t("viewUtils.groups.none"), fieldValue: null },
 		];
 	}
@@ -382,7 +381,12 @@ export function getSwimlaneDefs(
 	if (!swimlanes || swimlanes === "none") {
 		return [{ key: "__all", label: "", fieldValue: null }];
 	}
-	const defs = getColumnGroupDefs(swimlanes, ctx, t);
+	// dynamicColumns belong to the view's column_by, not to its swimlanes.
+	const defs = getColumnGroupDefs(
+		swimlanes,
+		{ ...ctx, dynamicColumns: undefined },
+		t,
+	);
 	// Show Critical (highest bucket) first, None last
 	if (swimlanes === "importance") return [...defs].reverse();
 	return defs;

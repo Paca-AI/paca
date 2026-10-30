@@ -642,7 +642,7 @@ func applyTaskGroup(b *queryBuilder, g *taskdom.TaskGroup) {
 	if g == nil {
 		return
 	}
-	none := taskdom.IsGroupKeyNone(g.Key)
+	none := taskdom.IsGroupKeyNone(g.By, g.Key)
 	never := func() { b.whereClauses = append(b.whereClauses, "FALSE") }
 	// entity narrows by a nullable uuid column.
 	entity := func(col string) {

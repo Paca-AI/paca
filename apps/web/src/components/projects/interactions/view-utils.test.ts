@@ -13,6 +13,7 @@ import type {
 import {
 	buildDynamicGroupDefs,
 	getColumnGroupDefs,
+	getSwimlaneDefs,
 	getTaskColumnKeys,
 	hasApiColumns,
 	isAutoAssignPending,
@@ -260,6 +261,23 @@ describe("API-listed columns", () => {
 			"Mia",
 			"viewUtils.groups.unassigned",
 		]);
+	});
+
+	it("has no tags columns until the API has listed them", () => {
+		expect(getColumnGroupDefs("tags", ctx, t)).toEqual([]);
+	});
+
+	it("builds swimlanes without the view's API-listed columns", () => {
+		const defs = getSwimlaneDefs(
+			"assignee",
+			{
+				...ctx,
+				members: [{ id: "m1", username: "mia", full_name: "Mia" } as never],
+				dynamicColumns: [{ key: "some-tag", label: "some-tag" }],
+			},
+			t,
+		);
+		expect(defs.map((d) => d.key)).toEqual(["m1", "__unassigned"]);
 	});
 
 	it("knows which column_bys the API lists the columns of", () => {
