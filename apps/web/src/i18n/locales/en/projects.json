@@ -2404,7 +2404,8 @@
 			"assignee": "Assignee",
 			"importance": "Importance",
 			"type": "Type",
-			"reporter": "Reporter"
+			"reporter": "Reporter",
+			"tags": "Tags"
 		},
 		"sortBy": {
 			"manual": "Manual",

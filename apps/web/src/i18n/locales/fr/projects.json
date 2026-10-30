@@ -2404,7 +2404,8 @@
 			"assignee": "Assigné",
 			"importance": "Importance",
 			"type": "Type",
-			"reporter": "Rapporteur"
+			"reporter": "Rapporteur",
+			"tags": "Étiquettes"
 		},
 		"sortBy": {
 			"manual": "Manuel",

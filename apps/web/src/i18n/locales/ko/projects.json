@@ -2404,7 +2404,8 @@
 			"assignee": "담당자",
 			"importance": "중요도",
 			"type": "유형",
-			"reporter": "보고자"
+			"reporter": "보고자",
+			"tags": "태그"
 		},
 		"sortBy": {
 			"manual": "수동",

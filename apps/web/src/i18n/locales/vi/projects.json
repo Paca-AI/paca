@@ -2404,7 +2404,8 @@
 			"assignee": "Người được giao",
 			"importance": "Mức độ quan trọng",
 			"type": "Loại",
-			"reporter": "Người báo cáo"
+			"reporter": "Người báo cáo",
+			"tags": "Thẻ"
 		},
 		"sortBy": {
 			"manual": "Thủ công",

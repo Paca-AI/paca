@@ -2404,7 +2404,8 @@
 			"assignee": "Asignado",
 			"importance": "Importancia",
 			"type": "Tipo",
-			"reporter": "Reportero"
+			"reporter": "Reportero",
+			"tags": "Etiquetas"
 		},
 		"sortBy": {
 			"manual": "Manual",

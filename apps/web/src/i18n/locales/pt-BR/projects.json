@@ -2404,7 +2404,8 @@
 			"assignee": "Responsável",
 			"importance": "Importância",
 			"type": "Tipo",
-			"reporter": "Relator"
+			"reporter": "Relator",
+			"tags": "Tags"
 		},
 		"sortBy": {
 			"manual": "Manual",

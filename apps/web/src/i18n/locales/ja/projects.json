@@ -2404,7 +2404,8 @@
 			"assignee": "担当者",
 			"importance": "重要度",
 			"type": "タイプ",
-			"reporter": "報告者"
+			"reporter": "報告者",
+			"tags": "タグ"
 		},
 		"sortBy": {
 			"manual": "手動",

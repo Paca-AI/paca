@@ -254,6 +254,11 @@ export function getTaskColumnKeys(
 	if (columnBy === "type") {
 		return [task.task_type_id ?? "__none"];
 	}
+	if (columnBy === "tags") {
+		// A task with several tags appears in each tag's group.
+		const tags = (task.tags ?? []).filter((tag) => tag !== "");
+		return tags.length > 0 ? tags : ["__none"];
+	}
 
 	const cf = ctx.customFields.find((f) => f.field_key === columnBy);
 	if (cf) {
@@ -315,6 +320,7 @@ export const BUILTIN_COLUMN_BY = [
 	{ key: "importance", labelKey: "viewUtils.columnBy.importance" },
 	{ key: "type", labelKey: "viewUtils.columnBy.type" },
 	{ key: "reporter", labelKey: "viewUtils.columnBy.reporter" },
+	{ key: "tags", labelKey: "viewUtils.columnBy.tags" },
 ] as const satisfies { key: string; labelKey: string }[];
 
 export const BUILTIN_SORT_BY = [

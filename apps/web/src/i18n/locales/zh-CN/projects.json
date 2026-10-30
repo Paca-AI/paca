@@ -2404,7 +2404,8 @@
 			"assignee": "负责人",
 			"importance": "重要程度",
 			"type": "类型",
-			"reporter": "报告人"
+			"reporter": "报告人",
+			"tags": "标签"
 		},
 		"sortBy": {
 			"manual": "手动",

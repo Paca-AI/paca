@@ -2424,7 +2424,8 @@
 			"assignee": "Исполнитель",
 			"importance": "Важность",
 			"type": "Тип",
-			"reporter": "Автор"
+			"reporter": "Автор",
+			"tags": "Теги"
 		},
 		"sortBy": {
 			"manual": "Вручную",
