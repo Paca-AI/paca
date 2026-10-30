@@ -140,7 +140,9 @@ test.describe("Project Git settings", () => {
 
 			await expect(page.getByText("No repositories linked")).toBeVisible();
 			await expect(
-				page.getByText("No Git provider is installed", { exact: false }),
+				page
+					.getByLabel("Repositories")
+					.getByText("No Git provider is installed", { exact: false }),
 			).toBeVisible();
 			await expect(page.getByRole("button", { name: "Link" })).toHaveCount(0);
 		});
@@ -246,7 +248,10 @@ test.describe("Project Git settings", () => {
 			playwright,
 		}) => {
 			await signInAsMember(page, request, playwright, "READER", ["git:read"]);
-			await stubGit(page, projectId, { providers: [PROVIDER] });
+			await stubGit(page, projectId, {
+				providers: [PROVIDER],
+				connections: [CONNECTION],
+			});
 			await openGitSettings(page, projectId);
 
 			await expect(

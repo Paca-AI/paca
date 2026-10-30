@@ -142,7 +142,7 @@ test.describe("Git permissions in the role editor", () => {
 		).toEqual(["git:read", "git:write"]);
 	});
 
-	test("A workspace role offers Manage Git identities", async ({
+	test("A workspace role offers Manage workspace Git connections", async ({
 		page,
 		request,
 	}) => {
@@ -150,11 +150,13 @@ test.describe("Git permissions in the role editor", () => {
 		await page.getByRole("button", { name: "New Role" }).click();
 		const dialog = page.getByRole("dialog", { name: "Create Role" });
 		await expect(dialog).toBeVisible();
-		await expect(switchOf(dialog, "Manage Git identities")).not.toBeChecked();
+		await expect(
+			switchOf(dialog, "Manage workspace Git connections"),
+		).not.toBeChecked();
 
 		const roleName = unique("WS");
 		await nameBox(dialog).fill(roleName);
-		await switchOf(dialog, "Manage Git identities").click();
+		await switchOf(dialog, "Manage workspace Git connections").click();
 		await dialog.getByRole("button", { name: "Create role" }).click();
 		await expect(dialog).not.toBeVisible();
 

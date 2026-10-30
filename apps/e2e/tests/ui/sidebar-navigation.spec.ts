@@ -64,7 +64,9 @@ test.describe("Sidebar Navigation", () => {
 			await expect(page.getByText("Global Roles")).toBeVisible();
 
 			// Click the sidebar trigger button to collapse the sidebar
-			await page.getByLabel("Toggle Sidebar").click();
+			// The resize handle overlays the rail while expanded, so a pointer click
+			// never reaches it; dispatch the click on the rail itself.
+			await page.getByLabel("Toggle Sidebar").dispatchEvent("click");
 
 			// Click the sidebar trigger button again to expand the sidebar
 			await page.getByLabel("Toggle Sidebar").click();
@@ -491,7 +493,8 @@ test.describe("Sidebar Navigation - Desktop collapse and rail", () => {
 	test("Clicking the sidebar rail collapses and expands the sidebar", async ({
 		page,
 	}) => {
-		await sidebarRail(page).click();
+		// The resize handle overlays the rail while expanded; see above.
+		await sidebarRail(page).dispatchEvent("click");
 		await expect(desktopSidebar(page)).toHaveAttribute(
 			"data-state",
 			"collapsed",

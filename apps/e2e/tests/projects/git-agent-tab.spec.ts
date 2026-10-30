@@ -240,7 +240,7 @@ test.describe("Agent Git tab", () => {
 			await page.getByRole("button", { name: "Remove" }).click();
 			const dialog = page.getByRole("dialog");
 			await expect(dialog).toBeVisible();
-			await dialog.getByRole("button", { name: "Remove identity" }).click();
+			await dialog.getByRole("button", { name: "Remove connection" }).click();
 			await expect
 				.poll(() =>
 					stub.calls.some(
