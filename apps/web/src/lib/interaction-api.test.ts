@@ -368,7 +368,7 @@ describe("interaction-api", () => {
 
 		it("lists a dimension's columns with the view's filters but no paging or group", async () => {
 			mockGet.mockResolvedValueOnce(
-				ok({ columns: [{ key: "a", label: "a", count: 2 }] }),
+				ok({ columns: [{ key: "a", label: "a", count: 2 }], truncated: true }),
 			);
 			const cols = await listTaskColumns(PROJECT_ID, "tags", {
 				pageSize: 5,
@@ -376,7 +376,10 @@ describe("interaction-api", () => {
 				groupBy: "tags",
 				groupKey: "a",
 			});
-			expect(cols).toEqual([{ key: "a", label: "a", count: 2 }]);
+			expect(cols).toEqual({
+				columns: [{ key: "a", label: "a", count: 2 }],
+				truncated: true,
+			});
 			const [url, config] = mockGet.mock.calls[0];
 			expect(url).toBe(`/projects/${PROJECT_ID}/tasks/columns`);
 			expect(config.params).toEqual({ search: "x", column_by: "tags" });

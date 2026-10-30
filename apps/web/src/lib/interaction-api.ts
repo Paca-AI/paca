@@ -609,6 +609,15 @@ export interface ListTasksOptions {
 	groupKey?: string;
 }
 
+/** How many columns the API lists at most (see `truncated`). */
+export const MAX_COLUMNS = 100;
+
+/** The columns of a group-by dimension; `truncated` when more exist than listed. */
+export interface TaskColumnList {
+	columns: TaskColumn[];
+	truncated: boolean;
+}
+
 /** A column of a group-by dimension whose columns come from the data. */
 export interface TaskColumn {
 	key: string;
@@ -713,7 +722,7 @@ export async function listTaskColumns(
 	projectId: string,
 	columnBy: string,
 	opts: ListTasksOptions = {},
-): Promise<TaskColumn[]> {
+): Promise<TaskColumnList> {
 	const {
 		page_size: _p,
 		cursor: _c,
@@ -723,11 +732,11 @@ export async function listTaskColumns(
 		...filters
 	} = buildTaskQueryParams({ ...opts, groupBy: undefined });
 	const { data } = await apiClient.instance.get<
-		SuccessEnvelope<{ columns: TaskColumn[] }>
+		SuccessEnvelope<TaskColumnList>
 	>(`/projects/${projectId}/tasks/columns`, {
 		params: { ...filters, column_by: columnBy },
 	});
-	return data.data.columns;
+	return data.data;
 }
 
 export async function listAllTasks(

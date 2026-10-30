@@ -2201,6 +2201,7 @@
 			"deleteView": "Xóa chế độ xem",
 			"searchTasksPlaceholder": "Tìm kiếm nhiệm vụ…",
 			"pluginNotAvailable": "Plugin không khả dụng",
+			"columnsTruncated": "Chỉ hiển thị {{max}} cột đầu tiên; một số tác vụ không nằm trong cột nào. Hãy thu hẹp chế độ xem bằng bộ lọc để xem phần còn lại.",
 			"viewErrors": {
 				"isLastView": "Đây là chế độ xem cuối cùng và không thể xóa.",
 				"deleteFailed": "Không thể xóa chế độ xem. Vui lòng thử lại.",

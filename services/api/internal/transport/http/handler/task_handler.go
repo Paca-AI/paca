@@ -783,11 +783,15 @@ func (h *TaskHandler) ListTaskColumns(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
+	truncated := len(columns) > taskdom.MaxGroupColumns
+	if truncated {
+		columns = columns[:taskdom.MaxGroupColumns]
+	}
 	out := make([]map[string]any, len(columns))
 	for i, c := range columns {
 		out[i] = map[string]any{"key": c.Key, "label": c.Label, "count": c.Count}
 	}
-	presenter.OK(w, r, map[string]any{"columns": out})
+	presenter.OK(w, r, map[string]any{"columns": out, "truncated": truncated})
 }
 
 // ListTasks handles GET /projects/:projectId/tasks.

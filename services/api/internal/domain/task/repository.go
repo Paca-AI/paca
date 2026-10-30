@@ -128,6 +128,9 @@ type TaskRepository interface {
 	// reporter, or per distinct value of a free-valued custom field (number,
 	// text, date, …), ordered for display. It does not include the "no value"
 	// group — that always exists and is selected with a GroupKey* sentinel.
+	// It returns at most MaxGroupColumns+1 columns; the extra one means there
+	// are more than MaxGroupColumns. Note a tag or value literally equal to a
+	// GroupKey* sentinel can't be told apart from "no value" when selected.
 	// by and fieldType are as in TaskGroup.
 	ListGroupColumns(ctx context.Context, projectID uuid.UUID, filter TaskFilter, by, fieldType string) ([]GroupColumn, error)
 }
@@ -253,6 +256,11 @@ type TaskGroup struct {
 	// client, because it decides how the stored value is compared.
 	FieldType string
 }
+
+// MaxGroupColumns is how many columns a group-by dimension lists. A repository's
+// ListGroupColumns returns up to one more than this, so the transport layer can
+// tell the list was cut short.
+const MaxGroupColumns = 100
 
 // GroupColumn is one group (column) of a group-by dimension, as listed for a
 // view that has to show a column per value found in the data.

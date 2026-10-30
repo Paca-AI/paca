@@ -703,7 +703,12 @@ func applyTaskGroup(b *queryBuilder, g *taskdom.TaskGroup) {
 		b.args = append(b.args, g.Key)
 		b.whereClauses = append(b.whereClauses, "tags @> to_jsonb("+p+"::text)")
 	default:
-		// A custom field.
+		// A custom field. A number key that isn't one selects nothing; checked
+		// before binding so no parameter is left unused.
+		if _, err := strconv.ParseFloat(g.Key, 64); g.FieldType == "number" && !none && err != nil {
+			never()
+			return
+		}
 		keyP := b.placeholder()
 		b.args = append(b.args, g.By)
 		if none {
@@ -713,6 +718,9 @@ func applyTaskGroup(b *queryBuilder, g *taskdom.TaskGroup) {
 		valP := b.placeholder()
 		b.args = append(b.args, g.Key)
 		switch g.FieldType {
+		case "number":
+			// Compared as numbers so 1 and 1.0 are one group.
+			b.whereClauses = append(b.whereClauses, "(jsonb_typeof(custom_fields->"+keyP+"::text) = 'number' AND (custom_fields->>"+keyP+")::numeric = "+valP+"::numeric)")
 		case "multi_select":
 			b.whereClauses = append(b.whereClauses, "custom_fields->"+keyP+" @> to_jsonb("+valP+"::text)")
 		case "boolean":
@@ -727,9 +735,6 @@ func applyTaskGroup(b *queryBuilder, g *taskdom.TaskGroup) {
 		}
 	}
 }
-
-// maxGroupColumns bounds how many columns ListGroupColumns returns.
-const maxGroupColumns = 100
 
 // ListGroupColumns returns the groups of a group-by dimension that hold at
 // least one task among those filter matches — see
@@ -783,18 +788,21 @@ func (r *TaskRepository) ListGroupColumns(ctx context.Context, projectID uuid.UU
 		// A free-valued custom field: one column per distinct stored value.
 		keyP := b.placeholder()
 		b.args = append(b.args, by)
-		order := "v ASC"
-		numeric := ""
 		if fieldType == "number" {
-			numeric = " AND jsonb_typeof(t.custom_fields->" + keyP + ") = 'number'"
-			order = "v::numeric ASC"
+			// Grouped as numbers so 1 and 1.0 are one column.
+			query = with + `SELECT trim_scale(n)::text AS key, trim_scale(n)::text AS label, COUNT(*) AS count
+				FROM t, LATERAL (SELECT (t.custom_fields->>` + keyP + `)::numeric AS n) x
+				WHERE jsonb_typeof(t.custom_fields->` + keyP + `) = 'number'
+				GROUP BY n ORDER BY n ASC`
+		} else {
+			query = with + `SELECT v AS key, v AS label, COUNT(*) AS count
+				FROM t, LATERAL (SELECT t.custom_fields->>` + keyP + ` AS v) x
+				WHERE v IS NOT NULL AND v <> ''
+				GROUP BY v ORDER BY v ASC`
 		}
-		query = with + `SELECT v AS key, v AS label, COUNT(*) AS count
-			FROM t, LATERAL (SELECT t.custom_fields->>` + keyP + ` AS v) x
-			WHERE v IS NOT NULL AND v <> ''` + numeric + `
-			GROUP BY v ORDER BY ` + order
 	}
-	query += fmt.Sprintf(" LIMIT %d", maxGroupColumns)
+	// One more than the cap, so the caller can tell the list was cut short.
+	query += fmt.Sprintf(" LIMIT %d", taskdom.MaxGroupColumns+1)
 
 	var rows []struct {
 		Key   string `db:"key"`

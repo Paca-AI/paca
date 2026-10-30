@@ -3,13 +3,13 @@ package tasksvc
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/Paca-AI/api/internal/apierr"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
 	activitysvc "github.com/Paca-AI/api/internal/service/activity"
@@ -402,7 +402,7 @@ func (s *Service) ListGroupColumns(ctx context.Context, projectID uuid.UUID, fil
 	switch by {
 	case taskdom.GroupByTags, taskdom.GroupByAssignee, taskdom.GroupByReporter:
 	case taskdom.GroupByStatus, taskdom.GroupBySprint, taskdom.GroupByType, taskdom.GroupByImportance:
-		return nil, fmt.Errorf("task service: %q has a fixed set of columns", by)
+		return nil, apierr.New(apierr.CodeBadRequest, "column_by has a fixed set of columns")
 	default:
 		cfs, err := s.repo.ListCustomFieldDefinitions(ctx, projectID)
 		if err != nil {

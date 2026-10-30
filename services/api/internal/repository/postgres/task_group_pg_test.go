@@ -116,6 +116,8 @@ func TestTaskGroupFilter(t *testing.T) {
 		{"boolean yes", taskdom.TaskGroup{By: "done", Key: "true", FieldType: "boolean"}, []int{2}},
 		{"boolean no includes unset", taskdom.TaskGroup{By: "done", Key: "false", FieldType: "boolean"}, []int{1, 3, 4}},
 		{"number", taskdom.TaskGroup{By: "pts", Key: "10", FieldType: "number"}, []int{3}},
+		{"number written with a scale", taskdom.TaskGroup{By: "pts", Key: "10.0", FieldType: "number"}, []int{3}},
+		{"number malformed", taskdom.TaskGroup{By: "pts", Key: "ten", FieldType: "number"}, []int{}},
 		{"number unset", taskdom.TaskGroup{By: "pts", Key: "__none", FieldType: "number"}, []int{1, 4}},
 	}
 	for _, c := range cases {

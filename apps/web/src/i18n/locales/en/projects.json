@@ -2201,6 +2201,7 @@
 			"deleteView": "Delete view",
 			"searchTasksPlaceholder": "Search tasks…",
 			"pluginNotAvailable": "Plugin not available",
+			"columnsTruncated": "Only the first {{max}} columns are shown; some tasks are not in any column. Narrow the view with a filter to see the rest.",
 			"viewErrors": {
 				"isLastView": "This is the last view and can't be deleted.",
 				"deleteFailed": "Failed to delete the view. Please try again.",

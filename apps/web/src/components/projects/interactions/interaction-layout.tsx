@@ -69,12 +69,12 @@ import {
 	listAllTasks,
 	listSprints,
 	listTaskColumns,
+	MAX_COLUMNS,
 	reorderViewsByContext,
 	resolveFilterConfig,
 	resolveTaskTypeFilter,
 	sprintsInfiniteQueryOptions,
 	type Task,
-	type TaskListResult,
 	taskQueryOptions,
 	updateMyViewConfig,
 	updateSprint,
@@ -258,14 +258,13 @@ interface InteractionLayoutProps {
 /**
  * Translates a column key + column_by field into the API options that list
  * that column's tasks: the server filters by group, so every column_by is
- * paginated per column. Always returns options; the null return is kept for
- * callers that skip a column the API cannot list.
+ * paginated per column.
  */
 function buildColumnFilter(
 	colKey: string,
 	columnBy: string,
 	baseOpts: ListTasksOptions,
-): ListTasksOptions | null {
+): ListTasksOptions {
 	const group = { groupBy: columnBy, groupKey: colKey };
 	if (columnBy === "sprint") {
 		// The column picks the sprint, so the view's own sprint scope must not
@@ -768,10 +767,6 @@ export function InteractionLayout({
 	);
 
 	// ── Per-column pagination ─────────────────────────────────────────────────
-	// Guard: do not start column queries until views have finished loading.
-	// Without this, queries fire before effectiveViewId is available, fetching
-	// tasks without view_id and briefly rendering them in created_at order.
-
 	// Initial page size: configured view setting wins; otherwise falls back to
 	// the active layout's default (see PAGE_SIZE_DEFAULTS in view-utils.ts).
 	// "Load more" batches use the separate configuredPageSize below.
@@ -863,10 +858,14 @@ export function InteractionLayout({
 	const dynamicColumns = useMemo(
 		() =>
 			needsApiColumns
-				? apiColumnsQuery.data?.map(({ key, label }) => ({ key, label }))
+				? apiColumnsQuery.data?.columns.map(({ key, label }) => ({
+						key,
+						label,
+					}))
 				: undefined,
 		[needsApiColumns, apiColumnsQuery.data],
 	);
+	const columnsTruncated = needsApiColumns && !!apiColumnsQuery.data?.truncated;
 	const columnsCtx: ViewContext = useMemo(
 		() => ({ ...viewCtx, dynamicColumns }),
 		[viewCtx, dynamicColumns],
@@ -887,6 +886,9 @@ export function InteractionLayout({
 		t,
 	]);
 
+	// Guard: do not start column queries until views have finished loading.
+	// Without this, queries fire before effectiveViewId is available, fetching
+	// tasks without view_id and briefly rendering them in created_at order.
 	const colQueriesEnabled =
 		fetchColumnDefs.length > 0 &&
 		!viewsQuery.isLoading &&
@@ -943,18 +945,6 @@ export function InteractionLayout({
 						...colBaseOpts,
 						pageSize: effectivePageSize,
 					});
-					if (!colOpts) {
-						return {
-							queryKey: ["noop", col.key] as const,
-							queryFn: () =>
-								Promise.resolve({
-									items: [] as Task[],
-									page_size: 0,
-									next_cursor: null,
-								} as TaskListResult),
-							enabled: false,
-						};
-					}
 					// pageSize is deliberately excluded from the queryKey: "load
 					// more" (handleLoadMoreColumn) grows colExpandedPageSizes purely
 					// so that a *future* refetch (a websocket-triggered invalidation,
@@ -1166,7 +1156,6 @@ export function InteractionLayout({
 				pageSize: configuredPageSize ?? getDefaultPageSize(activeView?.layout),
 				cursor,
 			});
-			if (!colOpts) return;
 			colLoadingMoreRef.current[colKey] = true;
 			setColLoadingMore((prev) => ({ ...prev, [colKey]: true }));
 			try {
@@ -2145,6 +2134,12 @@ export function InteractionLayout({
 					)}
 				</div>
 			</div>
+
+			{columnsTruncated && (
+				<p className="shrink-0 border-b border-border/25 bg-muted/40 px-8 py-2 text-xs text-muted-foreground">
+					{t("layout.shell.columnsTruncated", { max: MAX_COLUMNS })}
+				</p>
+			)}
 
 			{viewActionError && (
 				<p className="shrink-0 border-b border-border/25 bg-destructive/10 px-8 py-2 text-xs text-destructive">

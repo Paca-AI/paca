@@ -2201,6 +2201,7 @@
 			"deleteView": "Supprimer la vue",
 			"searchTasksPlaceholder": "Rechercher des tâches…",
 			"pluginNotAvailable": "Plugin non disponible",
+			"columnsTruncated": "Seules les {{max}} premières colonnes sont affichées ; certaines tâches ne figurent dans aucune colonne. Affinez la vue avec un filtre pour voir le reste.",
 			"viewErrors": {
 				"isLastView": "Il s'agit de la dernière vue, elle ne peut pas être supprimée.",
 				"deleteFailed": "Échec de la suppression de la vue. Veuillez réessayer.",

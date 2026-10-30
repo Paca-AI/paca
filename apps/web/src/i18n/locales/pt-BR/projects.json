@@ -2201,6 +2201,7 @@
 			"deleteView": "Excluir visão",
 			"searchTasksPlaceholder": "Buscar tarefas…",
 			"pluginNotAvailable": "Plugin não disponível",
+			"columnsTruncated": "Somente as primeiras {{max}} colunas são exibidas; algumas tarefas não estão em nenhuma coluna. Restrinja a visualização com um filtro para ver o restante.",
 			"viewErrors": {
 				"isLastView": "Esta é a última visualização e não pode ser excluída.",
 				"deleteFailed": "Falha ao excluir a visualização. Tente novamente.",
