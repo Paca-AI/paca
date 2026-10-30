@@ -7,7 +7,7 @@
 # specific version is requested, backfills any .env variables introduced
 # since the install was created, then pulls and restarts the stack.
 #
-# Service scaling from install time (external Postgres, external S3, an
+# Service scaling from install time (external Postgres, external Redis/Valkey, S3, an
 # externally hosted web app, a disabled Agent Runner) is detected from .env
 # and re-applied automatically — no need to re-pass the same --scale flags on
 # every upgrade. See "Extra arguments" below for scaling that isn't one of
@@ -640,6 +640,18 @@ if [[ -n "$(get_env_var .env DATABASE_URL)" ]]; then
     SCALE_OPTS+=(--scale postgres=0)
     info "Using an external database (DATABASE_URL is set) — skipping the postgres service."
 fi
+
+# Cache: the saved connection URL is the source of truth, as in install.sh.
+# Accept both bare and quoted blank dotenv values as the bundled default.
+# Don't let a shell-only override disagree with the persisted scaling choice.
+unset REDIS_URL
+case "$(get_env_var .env REDIS_URL)" in
+    ""|"''"|'""') ;;
+    *)
+        SCALE_OPTS+=(--scale valkey=0)
+        info "Using external Redis/Valkey (REDIS_URL is set) — skipping the valkey service."
+        ;;
+esac
 
 # Storage: S3, or keeping the existing MinIO container instead (see "Storage
 # backend migration" above), both mean the bundled RustFS container must

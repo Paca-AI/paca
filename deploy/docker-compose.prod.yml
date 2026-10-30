@@ -79,6 +79,10 @@
 # Set STORAGE_PROVIDER=s3 with real AWS credentials and add --scale rustfs=0:
 #   docker compose --env-file .env up -d --scale rustfs=0
 #
+# ── External Redis / Valkey ───────────────────────────────────────────────────
+# Set REDIS_URL to your external connection string and suppress bundled Valkey:
+#   docker compose --env-file .env up -d --scale valkey=0
+#
 # ── Skip AI agent ─────────────────────────────────────────────────────────────
 #   docker compose --env-file .env up -d --scale agent-runner=0
 #
@@ -292,6 +296,7 @@ services:
         required: false
       valkey:
         condition: service_healthy
+        required: false  # skipped when REDIS_URL is set and --scale valkey=0
       rustfs:
         condition: service_healthy
         required: false
@@ -328,6 +333,7 @@ services:
     depends_on:
       valkey:
         condition: service_healthy
+        required: false
       api:
         condition: service_healthy
 
@@ -453,6 +459,7 @@ services:
         required: false
       valkey:
         condition: service_healthy
+        required: false
       api:
         condition: service_healthy
 
