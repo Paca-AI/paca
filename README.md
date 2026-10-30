@@ -66,10 +66,21 @@ Everything about Paca — its workflow, its data model, its UI — is **configur
 | **AI integration** | Chatbot add-ons, peripheral automation | AI agents as first-class Scrum teammates |
 | **Collaboration model** | Human-only by default | Human + AI, side by side on the same board |
 | **Hosting** | Vendor cloud (your data, their servers) | Self-hosted, you own everything |
-| **Cost** | $8–$20+ per seat/month | **Free forever** |
+| **Cost** | $8–$20+ per seat/month | **Free forever. Every feature, no paid tiers** |
 | **Customization** | Limited; locked behind enterprise tiers | **Fully open: configuration + plugins** |
 | **Weight** | Bloated feature sprawl | Lightweight core; extend only what you need |
 | **Source** | Closed / proprietary | **100% open-source (Apache 2.0)** |
+
+---
+
+## Our Promise: Free Forever, Owned by the Community
+
+Paca is, and will always be, **free and non-profit**.
+
+- **No paid tiers.** There will never be a "Pro", "Team", or "Enterprise" edition.
+- **No paywalled features.** Every feature — today and in the future — is available to everyone, at no cost.
+- **No open-core bait-and-switch.** We will not move existing features behind a paywall or a license change.
+- **Belongs to the community.** Paca is built by its contributors and for its users. It is not a vendor's product, and its direction is shaped in the open through issues, discussions, and pull requests.
 
 ---
 
