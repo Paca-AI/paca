@@ -489,6 +489,18 @@ But Paca is built from conviction: human-AI collaboration in a real Scrum team s
 
 ---
 
+## Contributors
+
+Thanks to everyone who has helped build Paca. 💛
+
+<a href="https://github.com/Paca-AI/paca/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Paca-AI/paca" alt="Paca contributors" />
+</a>
+
+Want to see your face here? Read [CONTRIBUTING.md](CONTRIBUTING.md) and open a pull request.
+
+---
+
 ## License
 
 Distributed under the **Apache License 2.0**. See [LICENSE](LICENSE) for details.
