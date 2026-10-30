@@ -1,7 +1,7 @@
 // spec: features/ui/sidebar.feature
 // seed: tests/seed.spec.ts
 
-import { ensureLoginForm } from '../helpers/e2e-api';
+import { ensureLoginForm } from "../helpers/e2e-api";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
 	authRequest,
@@ -64,12 +64,10 @@ test.describe("Sidebar Navigation", () => {
 			await expect(page.getByText("Global Roles")).toBeVisible();
 
 			// Click the sidebar trigger button to collapse the sidebar
-			// The resize handle overlays the rail while expanded, so a pointer click
-			// never reaches it; dispatch the click on the rail itself.
-			await page.getByLabel("Toggle Sidebar").dispatchEvent("click");
+			await sidebarTrigger(page).click();
 
 			// Click the sidebar trigger button again to expand the sidebar
-			await page.getByLabel("Toggle Sidebar").click();
+			await sidebarTrigger(page).click();
 
 			// Verify the sidebar is in expanded state and navigation items show labels alongside icons when expanded
 			await expect(page.getByText("Home")).toBeVisible();
@@ -493,8 +491,9 @@ test.describe("Sidebar Navigation - Desktop collapse and rail", () => {
 	test("Clicking the sidebar rail collapses and expands the sidebar", async ({
 		page,
 	}) => {
-		// The resize handle overlays the rail while expanded; see above.
-		await sidebarRail(page).dispatchEvent("click");
+		// The resize handle overlays the rail while expanded, so only the trigger
+		// collapses it; the rail is clickable once the handle is gone.
+		await sidebarTrigger(page).click();
 		await expect(desktopSidebar(page)).toHaveAttribute(
 			"data-state",
 			"collapsed",
