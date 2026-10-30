@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -627,6 +628,10 @@ func applyTaskFilter(b *queryBuilder, filter taskdom.TaskFilter) {
 	applyTaskGroup(b, filter.Group)
 }
 
+// decimalKeyRe is the decimal grammar customFieldNumericExpr accepts, so a
+// number group key is bound only when Postgres' numeric cast will take it.
+var decimalKeyRe = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
+
 // customFieldUnsetSQL is true when the custom field bound at keyP holds no
 // value: absent, JSON null, an empty string or an empty array.
 func customFieldUnsetSQL(keyP string) string {
@@ -705,7 +710,7 @@ func applyTaskGroup(b *queryBuilder, g *taskdom.TaskGroup) {
 	default:
 		// A custom field. A number key that isn't one selects nothing; checked
 		// before binding so no parameter is left unused.
-		if _, err := strconv.ParseFloat(g.Key, 64); g.FieldType == "number" && !none && err != nil {
+		if g.FieldType == "number" && !none && !decimalKeyRe.MatchString(g.Key) {
 			never()
 			return
 		}
@@ -720,7 +725,7 @@ func applyTaskGroup(b *queryBuilder, g *taskdom.TaskGroup) {
 		switch g.FieldType {
 		case "number":
 			// Compared as numbers so 1 and 1.0 are one group.
-			b.whereClauses = append(b.whereClauses, "(jsonb_typeof(custom_fields->"+keyP+"::text) = 'number' AND (custom_fields->>"+keyP+")::numeric = "+valP+"::numeric)")
+			b.whereClauses = append(b.whereClauses, customFieldNumericExpr(keyP)+" = "+valP+"::numeric")
 		case "multi_select":
 			b.whereClauses = append(b.whereClauses, "custom_fields->"+keyP+" @> to_jsonb("+valP+"::text)")
 		case "boolean":
@@ -791,8 +796,8 @@ func (r *TaskRepository) ListGroupColumns(ctx context.Context, projectID uuid.UU
 		if fieldType == "number" {
 			// Grouped as numbers so 1 and 1.0 are one column.
 			query = with + `SELECT trim_scale(n)::text AS key, trim_scale(n)::text AS label, COUNT(*) AS count
-				FROM t, LATERAL (SELECT (t.custom_fields->>` + keyP + `)::numeric AS n) x
-				WHERE jsonb_typeof(t.custom_fields->` + keyP + `) = 'number'
+				FROM t, LATERAL (SELECT ` + customFieldNumericExpr(keyP) + ` AS n) x
+				WHERE n IS NOT NULL
 				GROUP BY n ORDER BY n ASC`
 		} else {
 			query = with + `SELECT v AS key, v AS label, COUNT(*) AS count
