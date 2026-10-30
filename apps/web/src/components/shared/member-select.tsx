@@ -2,6 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { SearchableList } from "@/components/projects/interactions/task-detail/property-field/searchable-list";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
+import { MiddleTruncate } from "@/components/shared/middle-truncate";
 import {
 	Popover,
 	PopoverContent,
@@ -55,14 +56,13 @@ export function MemberSelect({
 					className,
 				)}
 			>
-				<span
-					className={cn(
-						"min-w-0 flex-1 truncate",
-						!selected && "text-muted-foreground",
-					)}
-				>
-					{selected ? memberName(selected) : placeholder}
-				</span>
+				{selected ? (
+					<MiddleTruncate className="flex-1" text={memberName(selected)} />
+				) : (
+					<span className="min-w-0 flex-1 truncate text-muted-foreground">
+						{placeholder}
+					</span>
+				)}
 				<ChevronDown className="pointer-events-none size-4 shrink-0 text-muted-foreground" />
 			</PopoverTrigger>
 			<PopoverContent
@@ -82,9 +82,10 @@ export function MemberSelect({
 						content: (
 							<>
 								<EntityAvatar {...memberAvatar(m)} size="xs" />
-								<span className="flex-1 truncate text-left">
-									{memberName(m)}
-								</span>
+								<MiddleTruncate
+									className="flex-1 text-left"
+									text={memberName(m)}
+								/>
 							</>
 						),
 					}))}
