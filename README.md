@@ -13,6 +13,12 @@
   <a href="https://artifacthub.io/packages/helm/paca/paca"><img src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/paca" alt="Artifact Hub" /></a>
 </p>
 
+<p align="center">
+  <a href="https://trendshift.io/repositories/51675?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-51675" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/51675/daily?language=Go" alt="Paca-AI%2Fpaca | Trendshift" width="250" height="55"/></a>
+  &nbsp;&nbsp;
+  <a href="https://trendshift.io/repositories/51675?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-51675" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/51675/daily" alt="Paca-AI%2Fpaca | Trendshift" width="250" height="55"/></a>
+</p>
+
 <p align="center"><sub>✨ Sponsored by</sub></p>
 
 <p align="center">
