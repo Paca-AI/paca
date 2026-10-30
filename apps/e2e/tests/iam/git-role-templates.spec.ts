@@ -249,13 +249,13 @@ test.describe("Git actions in roles", () => {
 					}),
 				),
 			).toBe(true);
-			expect(
-				(
-					await api.post(gitUrl(projectId, "/repositories"), {
-						data: { provider_id: "x", path_or_url: "a/b" },
-					})
-				).status(),
-			).toBe(403);
+			// Editor holds git:write, so linking passes the permission gate; the
+			// e2e stack has no provider plugin, so it then fails as unavailable.
+			const link = await api.post(gitUrl(projectId, "/repositories"), {
+				data: { provider_id: "x", path_or_url: "a/b" },
+			});
+			expect(link.status()).toBe(503);
+			expect(await errorCode(link)).toBe("GIT_PROVIDER_UNAVAILABLE");
 		});
 	});
 });

@@ -49,6 +49,19 @@ const LINKED = {
 	created_at: "2026-10-01T00:00:00Z",
 };
 
+const CONNECTION = {
+	id: "00000000-0000-4000-8000-0000000000c1",
+	provider_id: PROVIDER.id,
+	host: "git.example.test",
+	kind: "app",
+	scope: "shared",
+	project_id: null,
+	handle: "paca-bot",
+	display_name: "Paca",
+	expires_at: null,
+	created_at: "2026-10-01T00:00:00Z",
+};
+
 const ok = (data: unknown) => ({
 	status: 200,
 	contentType: "application/json",
@@ -70,6 +83,9 @@ interface Stub {
 async function stubGit(page: Page, projectId: string, stub: Stub) {
 	await page.route(`**/api/v1/projects/${projectId}/git/providers`, (route) =>
 		route.fulfill(ok([PROVIDER])),
+	);
+	await page.route(`**/api/v1/projects/${projectId}/git/connections`, (route) =>
+		route.fulfill(ok([CONNECTION])),
 	);
 	await page.route(
 		`**/api/v1/projects/${projectId}/git/repositories`,
@@ -173,7 +189,7 @@ test.describe("Project Git automation", () => {
 
 		const errors: Array<[number, string, RegExp]> = [
 			[409, "GIT_ALREADY_LINKED", /already linked to the project/i],
-			[409, "GIT_NO_IDENTITY", /No shared Git identity is set up/i],
+			[409, "GIT_NO_IDENTITY", /No connection is available for this platform/i],
 			[503, "GIT_PROVIDER_UNAVAILABLE", /provider plugin is unavailable/i],
 			[404, "GIT_NOT_FOUND", /Not found/i],
 		];

@@ -2,7 +2,7 @@
 Feature: Git permissions in the role editor
   The role dialog offers a switch for each Git action: "View Git", "Manage Git",
   "Approve change requests" and "Merge change requests" on a project role, and
-  "Manage Git identities" on a workspace role. Switching them on writes the
+  "Manage workspace Git connections" on a workspace role. Switching them on writes the
   actions the router gates on, on the resources they are checked on.
 
   Background:
@@ -26,9 +26,9 @@ Feature: Git permissions in the role editor
     When "View Git" and "Manage Git" are switched on
     Then the role holds both actions
 
-  Scenario: A workspace role offers Manage Git identities
+  Scenario: A workspace role offers Manage workspace Git connections
     When the user opens the Create Role dialog under Global Roles
-    Then the switch "Manage Git identities" is off
+    Then the switch "Manage workspace Git connections" is off
     When it is switched on and the role is created
     Then the stored role allows "git.identities:*" (the domain's only action) on "git_identity/*"
 
