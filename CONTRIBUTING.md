@@ -16,22 +16,51 @@ Thanks for contributing to Paca.
 - `plugins` — local plugin store (WASM + frontend bundles).
 - `scripts` — install and plugin management scripts.
 
+## Our Promise to Contributors
+
+Paca is free and non-profit, and it belongs to the community. There will never be paid tiers or paywalled features: every feature is free for everyone, and contributions will not be relicensed into a closed or commercial edition. See [Our Promise](README.md#our-promise-free-forever-owned-by-the-community) in the README.
+
 ## Development Setup
 
-See [docs/guides/local-development.md](docs/guides/local-development.md) for a complete walkthrough of the local dev environment.
+The only prerequisite is [Docker](https://docs.docker.com/get-docker/) with the Compose plugin. `deploy/docker-compose.dev.yml` sets up the entire development environment — PostgreSQL, Valkey, RustFS, the API, web app, realtime service, agent-runner, MCP server, and the gateway. You do not need to install Go or Bun, or run anything else by hand.
 
-**Quick start:**
+From the repository root:
 
 ```bash
-# Start infrastructure
-docker compose -f deploy/docker-compose.dev.yml up -d postgres valkey
-
-# Run the API
-cd services/api && make run
-
-# Run the web app
-cd apps/web && bun install && bun run dev
+docker compose -f deploy/docker-compose.dev.yml up -d
 ```
+
+Then open <http://localhost:3000> and log in with `admin` / `adminpassword`. Every service watches your local source files and reloads automatically, so edits show up without rebuilding.
+
+To stop the stack:
+
+```bash
+docker compose -f deploy/docker-compose.dev.yml down
+```
+
+Add `-v` to also remove the data volumes.
+
+Running individual services on the host is optional, for IDE debugging or faster feedback. See [docs/guides/local-development.md](docs/guides/local-development.md) for that, plus migrations and default dev credentials.
+
+## Plugin Development
+
+If you are building a plugin, read the [plugin developer guide](docs/plugins/developer-guide.md) first. To try a plugin against your dev stack, use the install script, which builds the plugin and installs it through the API:
+
+```bash
+./scripts/install-local-plugin.sh <path-to-plugin> \
+  --api-url http://localhost:3000 \
+  --api-key <your-api-key>
+```
+
+- `<path-to-plugin>` is a directory containing a `plugin.json`.
+- `--api-url` must point at the dev gateway (`http://localhost:3000`). The script's default is `http://localhost`, which is the production port.
+- The API key can also be set with the `API_KEY` environment variable.
+- Backend plugins build with TinyGo by default. Pass `--go-toolchain go` only if your plugin needs a standard-library feature TinyGo lacks (for example `html/template`).
+- Use `--skip-build` or `--skip-install` to run only half of the process.
+
+To remove a plugin, run `./scripts/remove-plugin.sh <plugin-id> --api-key <your-api-key>`.
+
+See [scripts/README.md](scripts/README.md) for all options. You can also install published plugins from **Settings → Plugins → Marketplace** in the UI.
 
 ## Contribution Guidelines
 
