@@ -663,3 +663,7 @@ func TestCachedTask_SumTaskField_DelegatesToUnderlying(t *testing.T) {
 		t.Errorf("expected underlying SumTaskField called once, got %d", calls)
 	}
 }
+
+func (s *stubTaskSvc) ListGroupColumns(_ context.Context, _ uuid.UUID, _ taskdom.TaskFilter, _ string) ([]taskdom.GroupColumn, error) {
+	return nil, nil
+}

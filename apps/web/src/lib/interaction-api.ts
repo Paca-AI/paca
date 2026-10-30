@@ -600,6 +600,21 @@ export interface ListTasksOptions {
 	importanceRanges?: { min: number; max: number }[];
 	/** Matches tasks with ANY of these tag values. */
 	tags?: string[];
+	/** Narrows the list to one group (column) of a group-by dimension: `groupBy`
+	 *  is the column_by value (status, sprint, assignee, reporter, type,
+	 *  importance, tags or a custom field key) and `groupKey` the column's key —
+	 *  an entity id, importance bucket, tag, custom field value, or one of the
+	 *  "no value" sentinels (`__none`, `__backlog`, `__unassigned`). */
+	groupBy?: string;
+	groupKey?: string;
+}
+
+/** A column of a group-by dimension whose columns come from the data. */
+export interface TaskColumn {
+	key: string;
+	label: string;
+	/** Tasks in the column among those the request's filters match. */
+	count: number;
 }
 
 /** The people (assignees, reporter) the task list embeds in each task. Every
@@ -683,7 +698,36 @@ function buildTaskQueryParams(opts: ListTasksOptions = {}) {
 		params.importance_ranges = JSON.stringify(opts.importanceRanges);
 	}
 	if (opts.tags && opts.tags.length > 0) params.tags = opts.tags.join(",");
+	if (opts.groupBy && opts.groupKey !== undefined) {
+		params.group_by = opts.groupBy;
+		params.group_key = opts.groupKey;
+	}
 	return params;
+}
+
+/** The columns of a group-by dimension whose columns come from the data (tags,
+ *  assignees, reporters, free-valued custom fields), narrowed by the same
+ *  filters as the task list. The "no value" column always exists and is not
+ *  included. */
+export async function listTaskColumns(
+	projectId: string,
+	columnBy: string,
+	opts: ListTasksOptions = {},
+): Promise<TaskColumn[]> {
+	const {
+		page_size: _p,
+		cursor: _c,
+		include: _i,
+		group_by: _gb,
+		group_key: _gk,
+		...filters
+	} = buildTaskQueryParams({ ...opts, groupBy: undefined });
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ columns: TaskColumn[] }>
+	>(`/projects/${projectId}/tasks/columns`, {
+		params: { ...filters, column_by: columnBy },
+	});
+	return data.data.columns;
 }
 
 export async function listAllTasks(

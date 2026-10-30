@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -623,6 +624,191 @@ func applyTaskFilter(b *queryBuilder, filter taskdom.TaskFilter) {
 	}
 
 	applyCustomFieldFilters(b, filter.CustomFieldFilters)
+	applyTaskGroup(b, filter.Group)
+}
+
+// customFieldUnsetSQL is true when the custom field bound at keyP holds no
+// value: absent, JSON null, an empty string or an empty array.
+func customFieldUnsetSQL(keyP string) string {
+	f := "custom_fields->" + keyP
+	return "(" + f + " IS NULL OR " + f + " = 'null'::jsonb OR " + f + " = '\"\"'::jsonb OR " + f + " = '[]'::jsonb)"
+}
+
+// applyTaskGroup narrows the query to one group (column) of a group-by
+// dimension. A group whose key matches nothing the dimension can hold (a
+// malformed id, an unknown importance bucket) selects no tasks rather than
+// failing, so a stale column key in a client can't break a listing.
+func applyTaskGroup(b *queryBuilder, g *taskdom.TaskGroup) {
+	if g == nil {
+		return
+	}
+	none := taskdom.IsGroupKeyNone(g.Key)
+	never := func() { b.whereClauses = append(b.whereClauses, "FALSE") }
+	// entity narrows by a nullable uuid column.
+	entity := func(col string) {
+		if none {
+			b.whereClauses = append(b.whereClauses, col+" IS NULL")
+			return
+		}
+		id, err := uuid.Parse(g.Key)
+		if err != nil {
+			never()
+			return
+		}
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, col+" = "+p)
+		b.args = append(b.args, id.String())
+	}
+
+	switch g.By {
+	case taskdom.GroupByStatus:
+		entity("status_id")
+	case taskdom.GroupBySprint:
+		entity("sprint_id")
+	case taskdom.GroupByType:
+		entity("task_type_id")
+	case taskdom.GroupByReporter:
+		entity("reporter_id")
+	case taskdom.GroupByAssignee:
+		if none {
+			b.whereClauses = append(b.whereClauses, "NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.id)")
+			return
+		}
+		id, err := uuid.Parse(g.Key)
+		if err != nil {
+			never()
+			return
+		}
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, "EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.id AND ta.member_id = "+p+")")
+		b.args = append(b.args, id.String())
+	case taskdom.GroupByImportance:
+		bucket, err := strconv.Atoi(g.Key)
+		rg, ok := taskdom.ImportanceBucketRange(bucket)
+		if err != nil || !ok {
+			never()
+			return
+		}
+		minP := b.placeholder()
+		b.args = append(b.args, rg.Min)
+		maxP := b.placeholder()
+		b.args = append(b.args, rg.Max)
+		b.whereClauses = append(b.whereClauses, "(importance BETWEEN "+minP+" AND "+maxP+")")
+	case taskdom.GroupByTags:
+		if none {
+			b.whereClauses = append(b.whereClauses, "jsonb_array_length(tags) = 0")
+			return
+		}
+		p := b.placeholder()
+		b.args = append(b.args, g.Key)
+		b.whereClauses = append(b.whereClauses, "tags @> to_jsonb("+p+"::text)")
+	default:
+		// A custom field.
+		keyP := b.placeholder()
+		b.args = append(b.args, g.By)
+		if none {
+			b.whereClauses = append(b.whereClauses, customFieldUnsetSQL(keyP))
+			return
+		}
+		valP := b.placeholder()
+		b.args = append(b.args, g.Key)
+		switch g.FieldType {
+		case "multi_select":
+			b.whereClauses = append(b.whereClauses, "custom_fields->"+keyP+" @> to_jsonb("+valP+"::text)")
+		case "boolean":
+			if g.Key == "false" {
+				// An unset checkbox is unchecked: it belongs to the "No" group.
+				b.whereClauses = append(b.whereClauses, "((custom_fields->>"+keyP+") = "+valP+" OR "+customFieldUnsetSQL(keyP)+")")
+			} else {
+				b.whereClauses = append(b.whereClauses, "(custom_fields->>"+keyP+") = "+valP)
+			}
+		default:
+			b.whereClauses = append(b.whereClauses, "(custom_fields->>"+keyP+") = "+valP)
+		}
+	}
+}
+
+// maxGroupColumns bounds how many columns ListGroupColumns returns.
+const maxGroupColumns = 100
+
+// ListGroupColumns returns the groups of a group-by dimension that hold at
+// least one task among those filter matches — see
+// taskdom.Repository.ListGroupColumns.
+func (r *TaskRepository) ListGroupColumns(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter, by, fieldType string) ([]taskdom.GroupColumn, error) {
+	// The columns are those of every group, so the listing's own group (the
+	// one column being fetched) must not narrow them.
+	filter.Group = nil
+
+	b := newQueryBuilder()
+	pidP := b.placeholder()
+	b.args = append(b.args, projectID.String())
+	baseWhere := "project_id = " + pidP + " AND deleted_at IS NULL"
+	applyTaskFilter(b, filter)
+	if none, err := applyTaskScope(ctx, b); err != nil {
+		return nil, err
+	} else if none {
+		return []taskdom.GroupColumn{}, nil
+	}
+	whereSQL := baseWhere
+	if len(b.whereClauses) > 0 {
+		whereSQL += " AND " + strings.Join(b.whereClauses, " AND ")
+	}
+	// The matching tasks are selected first, in their own scope, so the
+	// joins below can't make the filter's unqualified column names ambiguous.
+	with := `WITH t AS (SELECT id, reporter_id, custom_fields, tags FROM tasks WHERE ` + whereSQL + `) `
+
+	var query string
+	switch by {
+	case taskdom.GroupByTags:
+		query = with + `SELECT tag AS key, tag AS label, COUNT(*) AS count
+			FROM t, LATERAL jsonb_array_elements_text(t.tags) AS tag
+			WHERE tag <> ''
+			GROUP BY tag ORDER BY tag ASC`
+	case taskdom.GroupByAssignee:
+		query = with + `SELECT pm.id AS key, ac.name AS label, COUNT(*) AS count
+			FROM t
+			JOIN task_assignees ta ON ta.task_id = t.id
+			JOIN project_members pm ON pm.id = ta.member_id
+			JOIN accounts ac ON ac.id = pm.account_id
+			GROUP BY pm.id, ac.name ORDER BY lower(ac.name) ASC, pm.id ASC`
+	case taskdom.GroupByReporter:
+		query = with + `SELECT pm.id AS key, ac.name AS label, COUNT(*) AS count
+			FROM t
+			JOIN project_members pm ON pm.id = t.reporter_id
+			JOIN accounts ac ON ac.id = pm.account_id
+			GROUP BY pm.id, ac.name ORDER BY lower(ac.name) ASC, pm.id ASC`
+	case taskdom.GroupByStatus, taskdom.GroupBySprint, taskdom.GroupByType, taskdom.GroupByImportance:
+		return nil, fmt.Errorf("task repo: list group columns: %q has a fixed set of columns", by)
+	default:
+		// A free-valued custom field: one column per distinct stored value.
+		keyP := b.placeholder()
+		b.args = append(b.args, by)
+		order := "v ASC"
+		numeric := ""
+		if fieldType == "number" {
+			numeric = " AND jsonb_typeof(t.custom_fields->" + keyP + ") = 'number'"
+			order = "v::numeric ASC"
+		}
+		query = with + `SELECT v AS key, v AS label, COUNT(*) AS count
+			FROM t, LATERAL (SELECT t.custom_fields->>` + keyP + ` AS v) x
+			WHERE v IS NOT NULL AND v <> ''` + numeric + `
+			GROUP BY v ORDER BY ` + order
+	}
+	query += fmt.Sprintf(" LIMIT %d", maxGroupColumns)
+
+	var rows []struct {
+		Key   string `db:"key"`
+		Label string `db:"label"`
+		Count int64  `db:"count"`
+	}
+	if err := r.db.SelectContext(ctx, &rows, query, b.args...); err != nil {
+		return nil, fmt.Errorf("task repo: list group columns: %w", err)
+	}
+	out := make([]taskdom.GroupColumn, len(rows))
+	for i, row := range rows {
+		out[i] = taskdom.GroupColumn{Key: row.Key, Label: row.Label, Count: row.Count}
+	}
+	return out, nil
 }
 
 // applyCustomFieldFilters adds WHERE predicates for TaskFilter.CustomFieldFilters,

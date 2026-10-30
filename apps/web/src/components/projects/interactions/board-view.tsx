@@ -49,6 +49,9 @@ interface BoardViewProps {
 	taskTypes: TaskType[];
 	members?: ProjectMember[];
 	reporters?: ProjectMember[];
+	/** The columns the API lists for a column_by whose columns come from the
+	 *  data — see ViewContext.dynamicColumns. */
+	dynamicColumns?: { key: string; label: string }[];
 	customFields?: CustomFieldDefinition[];
 	sprints?: Sprint[];
 	/** Load-more state for the sprint groups when columns are by sprint. */
@@ -204,6 +207,7 @@ export function BoardView({
 	taskTypes,
 	members = [],
 	reporters,
+	dynamicColumns,
 	customFields = [],
 	sprints = [],
 	sprintsPagination,
@@ -286,8 +290,24 @@ export function BoardView({
 			: DEFAULT_VISIBLE_FIELDS;
 
 	const viewCtx = useMemo(
-		() => ({ statuses, taskTypes, members, reporters, customFields, sprints }),
-		[statuses, taskTypes, members, reporters, customFields, sprints],
+		() => ({
+			statuses,
+			taskTypes,
+			members,
+			reporters,
+			customFields,
+			sprints,
+			dynamicColumns,
+		}),
+		[
+			statuses,
+			taskTypes,
+			members,
+			reporters,
+			customFields,
+			sprints,
+			dynamicColumns,
+		],
 	);
 
 	// Static column definitions (all possible values)

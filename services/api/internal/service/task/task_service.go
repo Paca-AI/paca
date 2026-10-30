@@ -3,6 +3,7 @@ package tasksvc
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"strings"
 	"time"
@@ -389,6 +390,37 @@ func (s *Service) SumTaskField(ctx context.Context, projectID uuid.UUID, filter 
 // project — see taskdom.Repository.ListDistinctTags.
 func (s *Service) ListDistinctTags(ctx context.Context, projectID uuid.UUID) ([]string, error) {
 	return s.repo.ListDistinctTags(ctx, projectID)
+}
+
+// ListGroupColumns returns the columns of a group-by dimension — see
+// taskdom.Repository.ListGroupColumns. by is one of the taskdom.GroupBy*
+// dimensions with data-derived columns (tags, assignee, reporter) or the key of
+// a custom field; a custom field's type is resolved here, not taken from the
+// caller.
+func (s *Service) ListGroupColumns(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter, by string) ([]taskdom.GroupColumn, error) {
+	fieldType := ""
+	switch by {
+	case taskdom.GroupByTags, taskdom.GroupByAssignee, taskdom.GroupByReporter:
+	case taskdom.GroupByStatus, taskdom.GroupBySprint, taskdom.GroupByType, taskdom.GroupByImportance:
+		return nil, fmt.Errorf("task service: %q has a fixed set of columns", by)
+	default:
+		cfs, err := s.repo.ListCustomFieldDefinitions(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		found := false
+		for _, cf := range cfs {
+			if cf.FieldKey == by {
+				fieldType = string(cf.FieldType)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, taskdom.ErrCustomFieldNotFound
+		}
+	}
+	return s.repo.ListGroupColumns(ctx, projectID, filter, by, fieldType)
 }
 
 // ListAssignedTasks returns open tasks assigned to any of memberIDs, across

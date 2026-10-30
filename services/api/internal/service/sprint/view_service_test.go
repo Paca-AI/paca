@@ -1646,3 +1646,7 @@ func TestViewService_BulkMoveTasks_WrongProject_ReturnsNotFound(t *testing.T) {
 		t.Errorf("no task position should have been persisted, found %d", len(repo.positions))
 	}
 }
+
+func (permissiveTaskRepo) ListGroupColumns(_ context.Context, _ uuid.UUID, _ taskdom.TaskFilter, _, _ string) ([]taskdom.GroupColumn, error) {
+	return nil, nil
+}

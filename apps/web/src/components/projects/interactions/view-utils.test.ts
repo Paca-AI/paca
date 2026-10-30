@@ -11,6 +11,10 @@ import type {
 	TaskListResult,
 } from "@/lib/interaction-api";
 import {
+	buildDynamicGroupDefs,
+	getColumnGroupDefs,
+	getTaskColumnKeys,
+	hasApiColumns,
 	isAutoAssignPending,
 	keepPreviousDataOnPageSizeChangeOnly,
 	resolveSelectedTask,
@@ -208,5 +212,86 @@ describe("isAutoAssignPending", () => {
 		expect(
 			isAutoAssignPending({ assignment_mode: "manual", assignee_ids: [] }),
 		).toBe(false);
+	});
+});
+
+describe("grouping by tags", () => {
+	const ctx = { statuses: [], taskTypes: [], members: [], customFields: [] };
+	const t = ((k: string) => k) as never;
+
+	it("puts a multi-tag task in every tag group and untagged tasks in __none", () => {
+		expect(
+			getTaskColumnKeys(makeTask({ tags: ["a", "b"] }), "tags", ctx),
+		).toEqual(["a", "b"]);
+		expect(getTaskColumnKeys(makeTask({ tags: [] }), "tags", ctx)).toEqual([
+			"__none",
+		]);
+		expect(getTaskColumnKeys(makeTask(), "tags", ctx)).toEqual(["__none"]);
+	});
+
+	it("builds dynamic groups from loaded tags plus a trailing None group", () => {
+		const defs = buildDynamicGroupDefs(
+			[makeTask({ tags: ["a", "b"] }), makeTask({ id: "t2", tags: ["b"] })],
+			"tags",
+			ctx,
+			t,
+		);
+		expect(defs.map((d) => d.key)).toEqual(["a", "b", "__none"]);
+	});
+});
+
+describe("API-listed columns", () => {
+	const t = ((k: string) => k) as never;
+	const ctx = { statuses: [], taskTypes: [], members: [], customFields: [] };
+
+	it("uses the columns the API listed, plus a None column", () => {
+		const defs = getColumnGroupDefs(
+			"tags",
+			{ ...ctx, dynamicColumns: [{ key: "a", label: "a" }] },
+			t,
+		);
+		expect(defs.map((d) => d.key)).toEqual(["a", "__none"]);
+		const people = getColumnGroupDefs(
+			"assignee",
+			{ ...ctx, dynamicColumns: [{ key: "m1", label: "Mia" }] },
+			t,
+		);
+		expect(people.map((d) => d.label)).toEqual([
+			"Mia",
+			"viewUtils.groups.unassigned",
+		]);
+	});
+
+	it("knows which column_bys the API lists the columns of", () => {
+		expect(hasApiColumns("tags", [])).toBe(true);
+		expect(hasApiColumns("assignee", [])).toBe(true);
+		expect(hasApiColumns("reporter", [])).toBe(true);
+		expect(hasApiColumns("status", [])).toBe(false);
+		expect(hasApiColumns("importance", [])).toBe(false);
+	});
+
+	it("puts a multi-assignee task in every assignee's column", () => {
+		expect(
+			getTaskColumnKeys(
+				makeTask({ assignee_ids: ["a", "b"] }),
+				"assignee",
+				ctx,
+			),
+		).toEqual(["a", "b"]);
+		expect(getTaskColumnKeys(makeTask(), "assignee", ctx)).toEqual([
+			"__unassigned",
+		]);
+	});
+
+	it("treats an unset checkbox as No", () => {
+		const cf = [
+			{ field_key: "done", field_type: "boolean", options: [] },
+		] as never;
+		expect(
+			getTaskColumnKeys(makeTask({ custom_fields: {} }), "done", {
+				...ctx,
+				customFields: cf,
+			}),
+		).toEqual(["false"]);
 	});
 });

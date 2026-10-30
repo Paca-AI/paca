@@ -28,6 +28,7 @@ import {
 	listSprints,
 	listSprintTasks,
 	listSubtasks,
+	listTaskColumns,
 	SUBTASKS_PAGE_SIZE,
 	subtasksInfiniteQueryOptions,
 	type Task,
@@ -353,6 +354,32 @@ describe("interaction-api", () => {
 					[],
 				),
 			).toBeUndefined();
+		});
+	});
+
+	describe("column grouping", () => {
+		it("sends the group as group_by / group_key", async () => {
+			mockGet.mockResolvedValueOnce(ok({ items: [] }));
+			await listAllTasks(PROJECT_ID, { groupBy: "tags", groupKey: "__none" });
+			const [, config] = mockGet.mock.calls[0];
+			expect(config.params?.group_by).toBe("tags");
+			expect(config.params?.group_key).toBe("__none");
+		});
+
+		it("lists a dimension's columns with the view's filters but no paging or group", async () => {
+			mockGet.mockResolvedValueOnce(
+				ok({ columns: [{ key: "a", label: "a", count: 2 }] }),
+			);
+			const cols = await listTaskColumns(PROJECT_ID, "tags", {
+				pageSize: 5,
+				search: "x",
+				groupBy: "tags",
+				groupKey: "a",
+			});
+			expect(cols).toEqual([{ key: "a", label: "a", count: 2 }]);
+			const [url, config] = mockGet.mock.calls[0];
+			expect(url).toBe(`/projects/${PROJECT_ID}/tasks/columns`);
+			expect(config.params).toEqual({ search: "x", column_by: "tags" });
 		});
 	});
 

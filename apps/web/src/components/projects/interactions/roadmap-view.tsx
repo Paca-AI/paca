@@ -26,6 +26,7 @@ import {
 import {
 	applyStatusFilterToColumnDefs,
 	buildColumnDropUpdate,
+	buildDynamicGroupDefs,
 	type ColumnGroupDef,
 	getColumnGroupDefs,
 	getTaskColumnKeys,
@@ -204,23 +205,26 @@ export function RoadmapView({
 
 	// Drop targets must respect the view's status filter (as Board/List do),
 	// otherwise a drop could move a task into a status the view hides.
-	const groupDefs = useMemo(
-		() =>
-			applyStatusFilterToColumnDefs(
-				getColumnGroupDefs(columnBy, viewCtx, t),
-				isStatusGrouping,
-				viewConfig?.filters?.statuses,
-				statuses,
-			),
-		[
-			columnBy,
-			viewCtx,
-			t,
+	const groupDefs = useMemo(() => {
+		const presetDefs = getColumnGroupDefs(columnBy, viewCtx, t);
+		return applyStatusFilterToColumnDefs(
+			// Fields without preset groups (e.g. tags) group by the loaded values.
+			presetDefs.length > 0
+				? presetDefs
+				: buildDynamicGroupDefs(tasks, columnBy, viewCtx, t),
 			isStatusGrouping,
 			viewConfig?.filters?.statuses,
 			statuses,
-		],
-	);
+		);
+	}, [
+		tasks,
+		columnBy,
+		viewCtx,
+		t,
+		isStatusGrouping,
+		viewConfig?.filters?.statuses,
+		statuses,
+	]);
 
 	const defaultStatusId = useMemo(
 		() =>
