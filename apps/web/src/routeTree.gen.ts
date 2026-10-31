@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SetPasswordRouteImport } from './routes/set-password'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
@@ -64,6 +65,11 @@ import { Route as AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortFor
 const SetPasswordRoute = SetPasswordRouteImport.update({
   id: '/set-password',
   path: '/set-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangePasswordRoute = ChangePasswordRouteImport.update({
@@ -374,6 +380,7 @@ const AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdPortForwardsPortFor
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/change-password': typeof ChangePasswordRoute
+  '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
   '/account': typeof AuthenticatedAccountRouteRouteWithChildren
   '/conversations': typeof AuthenticatedConversationsRouteWithChildren
@@ -426,6 +433,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/change-password': typeof ChangePasswordRoute
+  '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
   '/login/mfa': typeof LoginMfaRoute
   '/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
@@ -476,6 +484,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/change-password': typeof ChangePasswordRoute
+  '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
   '/_authenticated/account': typeof AuthenticatedAccountRouteRouteWithChildren
   '/_authenticated/conversations': typeof AuthenticatedConversationsRouteWithChildren
@@ -530,6 +539,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/change-password'
+    | '/profile'
     | '/set-password'
     | '/account'
     | '/conversations'
@@ -582,6 +592,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/change-password'
+    | '/profile'
     | '/set-password'
     | '/login/mfa'
     | '/account/api-keys'
@@ -631,6 +642,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/change-password'
+    | '/profile'
     | '/set-password'
     | '/_authenticated/account'
     | '/_authenticated/conversations'
@@ -685,6 +697,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   ChangePasswordRoute: typeof ChangePasswordRoute
+  ProfileRoute: typeof ProfileRoute
   SetPasswordRoute: typeof SetPasswordRoute
   LoginMfaRoute: typeof LoginMfaRoute
 }
@@ -696,6 +709,13 @@ declare module '@tanstack/react-router' {
       path: '/set-password'
       fullPath: '/set-password'
       preLoaderRoute: typeof SetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/change-password': {
@@ -1237,6 +1257,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   ChangePasswordRoute: ChangePasswordRoute,
+  ProfileRoute: ProfileRoute,
   SetPasswordRoute: SetPasswordRoute,
   LoginMfaRoute: LoginMfaRoute,
 }

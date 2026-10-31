@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Paca-AI/api/internal/apierr"
@@ -39,15 +40,32 @@ func RateLimit(limit int, window time.Duration, onLimited http.Handler) func(htt
 	}
 }
 
+// trustedProxyHops is the number of reverse proxies in front of the API.
+var trustedProxyHops atomic.Int32
+
+func init() { trustedProxyHops.Store(1) }
+
+// SetTrustedProxyHops configures how ClientIP reads X-Forwarded-For; see
+// config.Server.TrustedProxyHops.
+func SetTrustedProxyHops(n int) { trustedProxyHops.Store(int32(n)) } //nolint:gosec // small config value.
+
 // ClientIP returns the address of the client behind the reverse proxy: the
-// rightmost X-Forwarded-For entry — the one the proxy nearest to the API
-// appended from its own connection, so a client cannot choose it — else the
-// connection's remote address.
+// X-Forwarded-For entry the outermost trusted proxy appended from its own
+// connection, so a client cannot choose it — else the connection's remote
+// address.
 func ClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
-			return ip
+	if hops := int(trustedProxyHops.Load()); hops > 0 {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			// Entries further left than our own proxies were supplied by the
+			// client, so only the hops-th from the right is trustworthy. A
+			// shorter chain than expected means a proxy was bypassed: fall
+			// through to the socket peer rather than believe the header.
+			if len(parts) >= hops {
+				if ip := strings.TrimSpace(parts[len(parts)-hops]); ip != "" {
+					return ip
+				}
+			}
 		}
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {

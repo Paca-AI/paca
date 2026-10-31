@@ -121,10 +121,12 @@ func (s *Service) fail(ctx context.Context, userID uuid.UUID) error {
 		return err
 	}
 	// The attempt that trips the lock is told so, with the wait.
-	if enr, err := s.store.GetEnrollment(ctx, userID); err == nil {
-		if lerr := s.locked(enr); lerr != nil {
-			return lerr
-		}
+	enr, err := s.store.GetEnrollment(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if lerr := s.locked(enr); lerr != nil {
+		return lerr
 	}
 	return mfadom.ErrInvalidCode
 }
@@ -242,15 +244,18 @@ func (s *Service) Confirm(ctx context.Context, u *userdom.User, code string) ([]
 	if err != nil {
 		return nil, fmt.Errorf("mfa: decrypt secret: %w", err)
 	}
-	step, ok := totp.Verify(secretB32, code, s.now())
-	if !ok {
+	if _, ok := totp.Verify(secretB32, code, s.now()); !ok {
 		return nil, s.fail(ctx, u.ID)
 	}
 	plain, hashes, err := newRecoveryCodes()
 	if err != nil {
 		return nil, err
 	}
-	enr.Enabled, enr.RecoveryCodes, enr.LastUsedStep = true, hashes, step
+	// The confirming code is deliberately not marked used: the next thing a
+	// freshly enrolled user does is sign in, and the code on their device is
+	// usually still the one they just typed. Rejecting that as a replay would
+	// count a failure against a brand-new enrollment.
+	enr.Enabled, enr.RecoveryCodes = true, hashes
 	if err := s.store.SaveEnrollment(ctx, enr); err != nil {
 		return nil, err
 	}
@@ -337,11 +342,16 @@ func (s *Service) SetPolicy(ctx context.Context, p *mfadom.Policy, updatedBy *uu
 	return s.store.SavePolicy(ctx, p, updatedBy)
 }
 
-// SetUserCIDRs validates and saves a per-account allow-list.
-func (s *Service) SetUserCIDRs(ctx context.Context, userID uuid.UUID, cidrs []string) error {
+// SetUserCIDRs validates and saves a per-account allow-list. An admin editing
+// their own list must keep the address they are saving from on it, so a typo
+// can't lock them out of password login.
+func (s *Service) SetUserCIDRs(ctx context.Context, userID uuid.UUID, cidrs []string, actor uuid.UUID, clientIP string) error {
 	norm, err := NormalizeCIDRs(cidrs)
 	if err != nil {
 		return err
+	}
+	if actor == userID && len(norm) > 0 && !ipAllowed(clientIP, norm) {
+		return mfadom.ErrSelfLockout
 	}
 	return s.store.SetUserCIDRs(ctx, userID, norm)
 }

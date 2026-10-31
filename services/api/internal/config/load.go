@@ -55,6 +55,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: COOKIE_SECURE: %w", err)
 	}
 
+	proxyHops, err := strconv.Atoi(env("TRUSTED_PROXY_HOPS", "1"))
+	if err != nil || proxyHops < 0 {
+		return nil, fmt.Errorf("config: TRUSTED_PROXY_HOPS must be a non-negative integer, got %q", env("TRUSTED_PROXY_HOPS", "1"))
+	}
+
 	authRateLimit, err := strconv.Atoi(env("AUTH_RATE_LIMIT_PER_MINUTE", "20"))
 	if err != nil || authRateLimit < 0 {
 		return nil, fmt.Errorf("config: AUTH_RATE_LIMIT_PER_MINUTE must be a non-negative integer, got %q", env("AUTH_RATE_LIMIT_PER_MINUTE", "20"))
@@ -177,6 +182,7 @@ func Load() (*Config, error) {
 			PublicURL:          env("PUBLIC_URL", ""),
 			CORSAllowedOrigins: parseCORSOrigins(env("CORS_ORIGINS", "*")),
 			AuthRateLimit:      authRateLimit,
+			TrustedProxyHops:   proxyHops,
 		},
 		Database: DatabaseConfig{
 			DSN: dsn,

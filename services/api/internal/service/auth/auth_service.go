@@ -116,6 +116,7 @@ func (s *Service) Login(ctx context.Context, in domainauth.LoginInput) (*domaina
 	u, err := s.users.FindByUsername(ctx, in.Username)
 	if err != nil {
 		if errors.Is(err, userdom.ErrNotFound) {
+			domainauth.BurnPasswordCheck(in.Password)
 			return nil, s.failLogin(ctx, key)
 		}
 		return nil, err
@@ -124,17 +125,12 @@ func (s *Service) Login(ctx context.Context, in domainauth.LoginInput) (*domaina
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(in.Password)); err != nil {
 		return nil, s.failLogin(ctx, key)
 	}
-	if s.throttle != nil {
-		if rerr := s.throttle.Reset(ctx, key); rerr != nil {
-			slog.Warn("login throttle reset failed", "error", rerr)
-		}
-	}
-
 	// Only after the password is right, so these distinct errors can't be
 	// used to probe which usernames exist or how they're protected.
 	if s.gate != nil {
 		if err := s.gate.CheckLogin(ctx, u, in.OTP, in.ClientIP); err != nil {
 			if errors.Is(err, mfadom.ErrRequired) {
+				s.resetThrottle(ctx, key)
 				// Password is right, a code is owed. Rather than make the
 				// client keep the password around for a retry, hand back a
 				// short-lived challenge that only CompleteMFALogin accepts.
@@ -148,7 +144,20 @@ func (s *Service) Login(ctx context.Context, in domainauth.LoginInput) (*domaina
 		}
 	}
 
+	s.resetThrottle(ctx, key)
 	return s.IssueSession(u, in.RememberMe)
+}
+
+// resetThrottle forgets earlier wrong passwords once the password is right and
+// the login is not blocked by the IP gate, so a blocked address holding the
+// password can't keep clearing the counter.
+func (s *Service) resetThrottle(ctx context.Context, key string) {
+	if s.throttle == nil {
+		return
+	}
+	if err := s.throttle.Reset(ctx, key); err != nil {
+		slog.Warn("login throttle reset failed", "error", err)
+	}
 }
 
 // CompleteMFALogin finishes a login that stopped at an MFA challenge.
@@ -173,6 +182,13 @@ func (s *Service) CompleteMFALogin(ctx context.Context, challenge, code, clientI
 	}
 	if err := s.gate.CheckLogin(ctx, u, code, clientIP); err != nil {
 		return nil, err
+	}
+	// Single use, spent only on success so a typo doesn't force the password
+	// again (the account lockout caps guesses).
+	if first, err := s.refreshStore.RecordFirstUse(ctx, claims.ID, mfaChallengeTTL); err != nil {
+		return nil, err
+	} else if first != nil {
+		return nil, domainauth.ErrTokenInvalid
 	}
 	return s.IssueSession(u, claims.RememberMe)
 }

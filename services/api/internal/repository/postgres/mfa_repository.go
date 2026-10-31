@@ -86,7 +86,8 @@ func (r *MFARepository) DeleteEnrollment(ctx context.Context, userID uuid.UUID) 
 func (r *MFARepository) AdvanceStep(ctx context.Context, userID uuid.UUID, step int64) (bool, error) {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE user_mfa SET last_used_step = $2, updated_at = now()
-		WHERE user_id = $1 AND last_used_step < $2`, userID.String(), step)
+		WHERE user_id = $1 AND last_used_step < $2
+		  AND (locked_until IS NULL OR locked_until <= now())`, userID.String(), step)
 	if err != nil {
 		return false, fmt.Errorf("mfa repo: advance step: %w", err)
 	}
@@ -98,7 +99,8 @@ func (r *MFARepository) AdvanceStep(ctx context.Context, userID uuid.UUID, step 
 func (r *MFARepository) ConsumeRecoveryCode(ctx context.Context, userID uuid.UUID, hash string) (bool, error) {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE user_mfa SET recovery_codes = recovery_codes - $2::text, updated_at = now()
-		WHERE user_id = $1 AND recovery_codes ? $2::text`, userID.String(), hash)
+		WHERE user_id = $1 AND recovery_codes ? $2::text
+		  AND (locked_until IS NULL OR locked_until <= now())`, userID.String(), hash)
 	if err != nil {
 		return false, fmt.Errorf("mfa repo: consume recovery code: %w", err)
 	}

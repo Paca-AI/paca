@@ -251,6 +251,7 @@ services:
       # Requests per minute per client IP on each login/password/SSO endpoint
       # (refresh gets 3x). 0 disables.
       AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required — set it in your .env file}
       # Object storage. Defaults to RustFS. Set STORAGE_PROVIDER=s3 for AWS S3.

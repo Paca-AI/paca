@@ -433,3 +433,31 @@ func TestBeginReusesRecentPendingSecret(t *testing.T) {
 		t.Fatal("stale pending secret should be replaced")
 	}
 }
+
+func TestConfirmingCodeStillSignsInAndCountsNoFailure(t *testing.T) {
+	svc, st, _ := newSvc(t)
+	u := admin()
+	sec, _ := enrol(t, svc, u)
+	code, _ := totp.Code(sec, svc.now())
+	if err := svc.CheckLogin(context.Background(), u, code, "1.1.1.1"); err != nil {
+		t.Fatalf("code used to confirm must still sign in: %v", err)
+	}
+	if st.fails[u.ID] != 0 {
+		t.Fatal("no failure may be recorded")
+	}
+}
+
+func TestSetUserCIDRsRefusesSelfLockout(t *testing.T) {
+	svc, _, _ := newSvc(t)
+	ctx := context.Background()
+	me, other := uuid.New(), uuid.New()
+	if err := svc.SetUserCIDRs(ctx, me, []string{"10.0.0.0/8"}, me, "8.8.8.8"); !errors.Is(err, mfadom.ErrSelfLockout) {
+		t.Fatalf("own list excluding own IP: got %v", err)
+	}
+	if err := svc.SetUserCIDRs(ctx, other, []string{"10.0.0.0/8"}, me, "8.8.8.8"); err != nil {
+		t.Fatalf("someone else's list: %v", err)
+	}
+	if err := svc.SetUserCIDRs(ctx, me, nil, me, "8.8.8.8"); err != nil {
+		t.Fatalf("clearing own list: %v", err)
+	}
+}

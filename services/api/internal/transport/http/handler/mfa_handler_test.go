@@ -33,7 +33,7 @@ func (f *fakeMFASvc) Confirm(context.Context, *userdom.User, string) ([]string, 
 	f.confirmed = true
 	return []string{"aaaaa-bbbbb"}, nil
 }
-func (f *fakeMFASvc) SetUserCIDRs(_ context.Context, _ uuid.UUID, c []string) error {
+func (f *fakeMFASvc) SetUserCIDRs(_ context.Context, _ uuid.UUID, c []string, _ uuid.UUID, _ string) error {
 	f.cidrs = c
 	return nil
 }

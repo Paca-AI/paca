@@ -61,6 +61,19 @@ type UserCreator interface {
 	Create(ctx context.Context, in userdom.CreateInput) (*userdom.User, error)
 }
 
+// IPChecker enforces the login IP allow-lists on a user the identity provider
+// has already vouched for. Nil means SSO sign-in is not IP-restricted.
+type IPChecker interface {
+	CheckIP(ctx context.Context, u *userdom.User, clientIP string) error
+}
+
+// WithIPCheck applies the IP allow-lists to SSO sign-in, so they cannot be
+// sidestepped by signing in through the identity provider.
+func (s *Service) WithIPCheck(c IPChecker) *Service {
+	s.ipCheck = c
+	return s
+}
+
 // Service implements provider management and SSO sign-in.
 type Service struct {
 	repo       ssodom.Repository
@@ -68,6 +81,7 @@ type Service struct {
 	users      userdom.Repository
 	creator    UserCreator
 	sessions   SessionIssuer
+	ipCheck    IPChecker
 	encryptor  *secret.Encryptor
 	httpClient *http.Client
 	log        *slog.Logger
@@ -374,7 +388,7 @@ func (s *Service) BeginLogin(ctx context.Context, slug, baseURL string, remember
 // state against this browser, exchanges the code, verifies the ID token,
 // resolves the Paca account and starts a session. It returns the session and
 // the in-app path to land on.
-func (s *Service) CompleteLogin(ctx context.Context, slug, baseURL, code, state, binding string) (*domainauth.TokenPair, string, error) {
+func (s *Service) CompleteLogin(ctx context.Context, slug, baseURL, code, state, binding, clientIP string) (*domainauth.TokenPair, string, error) {
 	if state == "" || binding == "" {
 		return nil, "", ssodom.ErrStateInvalid
 	}
@@ -433,6 +447,11 @@ func (s *Service) CompleteLogin(ctx context.Context, slug, baseURL, code, state,
 	u, err := s.ResolveUser(ctx, p, c)
 	if err != nil {
 		return nil, "", err
+	}
+	if s.ipCheck != nil {
+		if err := s.ipCheck.CheckIP(ctx, u, clientIP); err != nil {
+			return nil, "", err
+		}
 	}
 	pair, err := s.sessions.IssueSession(u, attempt.RememberMe)
 	if err != nil {

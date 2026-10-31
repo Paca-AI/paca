@@ -264,7 +264,7 @@ func New(cfg *config.Config) (*App, error) {
 	// pointer's provenance obvious at every read site.
 	projectServiceBase = projectServiceBase.WithEncryptor(encryptor)
 	ssoService := ssosvc.New(pgRepo.NewSSORepository(db), redisRepo.NewSSOStateStore(redisClient, 10*time.Minute),
-		userRepo, userService, authService, log).WithEncryptor(encryptor)
+		userRepo, userService, authService, log).WithEncryptor(encryptor).WithIPCheck(mfaService)
 	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(triggerGate)
@@ -609,6 +609,7 @@ func New(cfg *config.Config) (*App, error) {
 		AuthRateLimit:      cfg.Server.AuthRateLimit,
 	}
 
+	httpmw.SetTrustedProxyHops(cfg.Server.TrustedProxyHops)
 	engine := router.New(deps)
 
 	srv := &http.Server{

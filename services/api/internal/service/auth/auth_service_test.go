@@ -947,3 +947,33 @@ func TestLogin_SuccessClearsFailures(t *testing.T) {
 		t.Fatal("failures not cleared")
 	}
 }
+
+func TestCompleteMFALogin_ChallengeIsSingleUse(t *testing.T) {
+	u := &userdom.User{ID: uuid.New(), Username: "alice", Roles: userRoles("ADMIN"), PasswordHash: hashedPassword(t, "secret123")}
+	repo := &stubUserRepo{
+		findByUsername: func(context.Context, string) (*userdom.User, error) { return u, nil },
+		findByID:       func(context.Context, uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	seen := map[string]bool{}
+	store := &stubRefreshStore{recordFirstUse: func(_ context.Context, jti string, _ time.Duration) (*time.Time, error) {
+		if seen[jti] {
+			now := time.Now()
+			return &now, nil
+		}
+		seen[jti] = true
+		return nil, nil
+	}}
+	svc := newAuthSvc(repo, store).WithLoginGate(otpGate{})
+	ctx := context.Background()
+
+	step1, err := svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "secret123"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CompleteMFALogin(ctx, step1.MFAChallenge, "123456", "1.1.1.1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CompleteMFALogin(ctx, step1.MFAChallenge, "123456", "1.1.1.1"); !errors.Is(err, domainauth.ErrTokenInvalid) {
+		t.Fatalf("reused challenge: got %v", err)
+	}
+}

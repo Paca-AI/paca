@@ -32,7 +32,7 @@ type MFAService interface {
 	GetPolicy(ctx context.Context) (*mfadom.Policy, error)
 	SetPolicy(ctx context.Context, p *mfadom.Policy, updatedBy *uuid.UUID, clientIP string) error
 	GetUserCIDRs(ctx context.Context, userID uuid.UUID) ([]string, error)
-	SetUserCIDRs(ctx context.Context, userID uuid.UUID, cidrs []string) error
+	SetUserCIDRs(ctx context.Context, userID uuid.UUID, cidrs []string, actor uuid.UUID, clientIP string) error
 }
 
 // MFAHandler serves TOTP enrollment, the pre-login enrollment path for
@@ -156,7 +156,10 @@ func (h *MFAHandler) passwordUser(r *http.Request, username, password string) (*
 	ctx := r.Context()
 	key := domainauth.NormalizeLoginKey(username)
 	if h.throttle != nil {
-		if wait, err := h.throttle.Check(ctx, key); err == nil && wait > 0 {
+		wait, err := h.throttle.Check(ctx, key)
+		if err != nil {
+			slog.Warn("login throttle unavailable", "error", err)
+		} else if wait > 0 {
 			return nil, &mfadom.LockedError{RetryAfter: wait}
 		}
 	}
@@ -169,6 +172,9 @@ func (h *MFAHandler) passwordUser(r *http.Request, username, password string) (*
 	}
 	if err != nil && !errors.Is(err, userdom.ErrNotFound) {
 		return nil, err
+	}
+	if err != nil {
+		domainauth.BurnPasswordCheck(password)
 	}
 	if h.throttle != nil {
 		if wait, ferr := h.throttle.Fail(ctx, key); ferr == nil && wait > 0 {
@@ -326,7 +332,7 @@ func (h *MFAHandler) PutUserCIDRs(w http.ResponseWriter, r *http.Request) {
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
-	if err := h.svc.SetUserCIDRs(r.Context(), id, req.AllowedCIDRs); err != nil {
+	if err := h.svc.SetUserCIDRs(r.Context(), id, req.AllowedCIDRs, actorID(r), middleware.ClientIP(r)); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"golang.org/x/crypto/bcrypt"
 	"strings"
 	"time"
 )
@@ -51,6 +52,15 @@ type LoginThrottle interface {
 // NormalizeLoginKey is the throttle key for a typed username.
 func NormalizeLoginKey(username string) string {
 	return strings.ToLower(strings.TrimSpace(username))
+}
+
+// dummyHash lets a lookup miss cost the same bcrypt work as a wrong password,
+// so response time doesn't tell which usernames exist.
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("paca-dummy-password"), bcrypt.DefaultCost)
+
+// BurnPasswordCheck spends one bcrypt comparison against a throwaway hash.
+func BurnPasswordCheck(password string) {
+	_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 }
 
 // LoginInput is everything a password login carries.
