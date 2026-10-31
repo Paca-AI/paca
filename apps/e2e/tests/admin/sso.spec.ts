@@ -25,6 +25,8 @@ const PREFIX = "E2E_SSO_";
 const RUN_ID = newRunId();
 const run = RUN_ID.toLowerCase();
 const SETTINGS_URL = `${BASE_URL}/admin/settings`;
+// Settings opens on Workspace branding; SSO is its own section.
+const SSO_SETTINGS_URL = `${SETTINGS_URL}?section=sso`;
 
 // Accounts the provider creates are named after preferred_username, which
 // the API lowercases.
@@ -240,7 +242,7 @@ test.describe("Single sign-on (SSO)", () => {
 
 		test("An administrator adds a provider", async ({ page }) => {
 			await signIn(page);
-			await page.goto(SETTINGS_URL);
+			await page.goto(SSO_SETTINGS_URL);
 			await page.getByRole("button", { name: "Add provider" }).click();
 
 			const dialog = page.getByRole("dialog", { name: "Add SSO provider" });
@@ -325,7 +327,7 @@ test.describe("Single sign-on (SSO)", () => {
 			browser,
 		}) => {
 			await signIn(page);
-			await page.goto(SETTINGS_URL);
+			await page.goto(SSO_SETTINGS_URL);
 			await page
 				.getByRole("button", { name: `Delete ${PROVIDER_NAME}` })
 				.click();
