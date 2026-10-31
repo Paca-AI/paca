@@ -13,7 +13,7 @@
 import {
 	type APIRequestContext,
 	expect,
-	type Playwright,
+	type PlaywrightWorkerArgs,
 	test,
 } from "@playwright/test";
 import {
@@ -91,7 +91,7 @@ interface Scene {
 /** A project, a member with one project role made of `statements`, and their joined socket. */
 async function scene(
 	request: APIRequestContext,
-	playwright: Playwright,
+	playwright: PlaywrightWorkerArgs["playwright"],
 	label: string,
 	statementsFor: (projectId: string) => ReturnType<typeof allow>[],
 ): Promise<Scene> {

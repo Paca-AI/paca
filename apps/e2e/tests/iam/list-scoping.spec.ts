@@ -7,7 +7,12 @@
 // one sprint's tasks, and that the workspace home (open-task count, "assigned
 // to me") only counts and lists the tasks the member may read.
 
-import { type APIRequestContext, expect, test } from "@playwright/test";
+import {
+	type APIRequestContext,
+	type APIResponse,
+	expect,
+	test,
+} from "@playwright/test";
 import {
 	API_URL,
 	authRequest,
@@ -70,7 +75,7 @@ async function assignedToMe(api: APIRequestContext): Promise<string[]> {
 	const titles: string[] = [];
 	let cursor: string | null = null;
 	for (let i = 0; i < 20; i++) {
-		const response = await api.get(
+		const response: APIResponse = await api.get(
 			`${API_URL}/users/me/tasks?page_size=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
 		);
 		expect(response.status()).toBe(200);

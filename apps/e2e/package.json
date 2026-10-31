@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^25.5.0",
     "socket.io-client": "^4.8.3"
   }
