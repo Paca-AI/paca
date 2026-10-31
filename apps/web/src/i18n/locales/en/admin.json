@@ -518,7 +518,7 @@
 			},
 			"mfa": {
 				"title": "Require two-step verification",
-				"description": "People with a protected role must set up an authenticator app before they can sign in.",
+				"description": "People with a protected role must set up an authenticator app before they can sign in with a password. SSO sign-ins rely on your identity provider's own multi-factor settings.",
 				"rolloutNote": "People who haven't set it up yet are guided through setup the next time they sign in."
 			},
 			"ip": {

@@ -518,7 +518,7 @@
 			},
 			"mfa": {
 				"title": "Exiger la validation en deux étapes",
-				"description": "Les personnes ayant un rôle protégé doivent configurer une application d'authentification avant de pouvoir se connecter.",
+				"description": "Les personnes ayant un rôle protégé doivent configurer une application d'authentification avant de pouvoir se connecter par mot de passe. Les connexions SSO dépendent des paramètres multifacteur de votre fournisseur d'identité.",
 				"rolloutNote": "Celles qui ne l'ont pas encore configurée seront guidées lors de leur prochaine connexion."
 			},
 			"ip": {

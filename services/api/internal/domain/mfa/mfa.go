@@ -27,6 +27,10 @@ var (
 	ErrSetupRequired = errors.New("mfa: enrollment required by policy")
 	// ErrIPNotAllowed means the login came from outside an allow-list.
 	ErrIPNotAllowed = errors.New("mfa: login not allowed from this address")
+	// ErrSetupNotRequired means password-only enrollment was asked for an
+	// account that policy does not oblige to use MFA. Such an account enrolls
+	// from a signed-in session instead.
+	ErrSetupNotRequired = errors.New("mfa: enrollment is not required for this account")
 	// ErrInvalidCIDR means an allow-list entry is not an IP or CIDR.
 	ErrInvalidCIDR = errors.New("mfa: invalid ip or cidr")
 	// ErrAlreadyEnabled means enrollment was started on an enrolled account.
@@ -52,8 +56,8 @@ type Enrollment struct {
 	UpdatedAt    time.Time
 }
 
-// AllRoles, as the sole entry of Policy.PrivilegedRoles, applies the policy
-// to every account whatever its roles.
+// AllRoles is the sole entry of Policy.PrivilegedRoles that applies the
+// policy to every account, whatever its roles.
 const AllRoles = "*"
 
 // Policy is the instance-wide login policy. The zero value restricts no one.

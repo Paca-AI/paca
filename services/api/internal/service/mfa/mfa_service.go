@@ -115,6 +115,27 @@ func (s *Service) verifySecondFactor(ctx context.Context, enr *mfadom.Enrollment
 	return nil
 }
 
+// SetupRequired reports whether policy obliges u to use MFA but u has not
+// enrolled: the one case in which enrollment may be started from a password
+// alone, because the account cannot sign in to do it any other way.
+func (s *Service) SetupRequired(ctx context.Context, u *userdom.User) (bool, error) {
+	policy, err := s.store.GetPolicy(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !policy.RequireMFA || !hasAny(u.RoleNames(), policy.PrivilegedRoles) {
+		return false, nil
+	}
+	enr, err := s.store.GetEnrollment(ctx, u.ID)
+	if errors.Is(err, mfadom.ErrNotFound) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !enr.Enabled, nil
+}
+
 // Begin starts (or restarts, while still pending) enrollment, returning the
 // shared secret and the otpauth:// URI to render as a QR code.
 func (s *Service) Begin(ctx context.Context, u *userdom.User) (secretB32, uri string, err error) {
@@ -326,13 +347,21 @@ func hashRecovery(code string) string {
 
 // newRecoveryCodes returns the plaintext codes (xxxxx-xxxxx) and their hashes.
 func newRecoveryCodes() (plain, hashes []string, err error) {
+	// Bytes at or above this are discarded: 256 is not a multiple of the
+	// alphabet size, so taking them modulo it would favour the first letters.
+	const unbiasedLimit = 256 - 256%len(recoveryAlphabet)
 	for i := 0; i < recoveryCodeCount; i++ {
-		buf := make([]byte, 10)
-		if _, err := rand.Read(buf); err != nil {
-			return nil, nil, fmt.Errorf("mfa: recovery code: %w", err)
-		}
-		for j := range buf {
-			buf[j] = recoveryAlphabet[int(buf[j])%len(recoveryAlphabet)]
+		buf := make([]byte, 0, 10)
+		for len(buf) < 10 {
+			chunk := make([]byte, 16)
+			if _, err := rand.Read(chunk); err != nil {
+				return nil, nil, fmt.Errorf("mfa: recovery code: %w", err)
+			}
+			for _, b := range chunk {
+				if int(b) < unbiasedLimit && len(buf) < 10 {
+					buf = append(buf, recoveryAlphabet[int(b)%len(recoveryAlphabet)])
+				}
+			}
 		}
 		code := string(buf[:5]) + "-" + string(buf[5:])
 		plain = append(plain, code)

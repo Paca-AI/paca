@@ -16,10 +16,14 @@ import (
 
 type fakeMFASvc struct {
 	MFAService
+	notRequired      bool
 	begun, confirmed bool
 	cidrs            []string
 }
 
+func (f *fakeMFASvc) SetupRequired(context.Context, *userdom.User) (bool, error) {
+	return !f.notRequired, nil
+}
 func (f *fakeMFASvc) Begin(context.Context, *userdom.User) (string, string, error) {
 	f.begun = true
 	return "SECRET", "otpauth://totp/x", nil
@@ -55,7 +59,7 @@ func newMFAHandler(t *testing.T) (*MFAHandler, *fakeMFASvc) {
 }
 
 func post(h http.HandlerFunc, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	h(rec, req)
@@ -87,5 +91,20 @@ func TestMFASetupConfirm_NeedsCodeAndPassword(t *testing.T) {
 	rec := post(h.SetupConfirm, `{"username":"root","password":"secret123","code":"123456"}`)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "aaaaa-bbbbb") {
 		t.Fatalf("confirm: status %d body %s", rec.Code, rec.Body)
+	}
+}
+
+func TestMFASetup_RefusedWhenPolicyDoesNotRequireIt(t *testing.T) {
+	h, svc := newMFAHandler(t)
+	svc.notRequired = true
+
+	for name, fn := range map[string]http.HandlerFunc{"begin": h.SetupBegin, "confirm": h.SetupConfirm} {
+		rec := post(fn, `{"username":"root","password":"secret123","code":"123456"}`)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s: status %d, want 403 for an account policy does not oblige", name, rec.Code)
+		}
+	}
+	if svc.begun || svc.confirmed {
+		t.Error("password alone must not establish a second factor on an account that need not use one")
 	}
 }

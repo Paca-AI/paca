@@ -518,7 +518,7 @@
 			},
 			"mfa": {
 				"title": "Exigir verificação em duas etapas",
-				"description": "Quem tem uma função protegida precisa configurar um app autenticador antes de entrar.",
+				"description": "Quem tem uma função protegida precisa configurar um app autenticador antes de entrar com senha. Os logins por SSO dependem das configurações multifator do seu provedor de identidade.",
 				"rolloutNote": "Quem ainda não configurou será guiado na configuração no próximo login."
 			},
 			"ip": {

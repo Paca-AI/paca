@@ -518,7 +518,7 @@
 			},
 			"mfa": {
 				"title": "Exigir verificación en dos pasos",
-				"description": "Quienes tengan un rol protegido deben configurar una aplicación de autenticación antes de iniciar sesión.",
+				"description": "Quienes tengan un rol protegido deben configurar una aplicación de autenticación antes de iniciar sesión con contraseña. Los inicios de sesión por SSO dependen de la verificación multifactor de tu proveedor de identidad.",
 				"rolloutNote": "Quienes aún no la hayan configurado serán guiados en el proceso la próxima vez que inicien sesión."
 			},
 			"ip": {

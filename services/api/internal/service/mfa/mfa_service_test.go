@@ -258,3 +258,56 @@ func TestBeginRefusedWithoutEncryptionKey(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestSetupRequired(t *testing.T) {
+	svc, st, clock := newSvc(t)
+	ctx := context.Background()
+	u := admin()
+	check := func(want bool, msg string) {
+		t.Helper()
+		if got, err := svc.SetupRequired(ctx, u); err != nil || got != want {
+			t.Fatalf("%s: got %v, %v; want %v", msg, got, err, want)
+		}
+	}
+
+	check(false, "policy off")
+	st.policy = mfadom.Policy{PrivilegedRoles: []string{"ADMIN"}, RequireMFA: true}
+	check(true, "privileged and unenrolled")
+
+	st.policy.PrivilegedRoles = []string{"OTHER"}
+	check(false, "role not covered")
+	st.policy.PrivilegedRoles = []string{"ADMIN"}
+
+	_, uri, err := svc.Begin(ctx, u)
+	if err != nil || uri == "" {
+		t.Fatal(err)
+	}
+	check(true, "pending enrollment still counts as unenrolled")
+
+	enr, _ := st.GetEnrollment(ctx, u.ID)
+	sec, _ := svc.enc.Decrypt(enr.SecretEnc)
+	code, _ := totp.Code(sec, *clock)
+	if _, err := svc.Confirm(ctx, u, code); err != nil {
+		t.Fatal(err)
+	}
+	check(false, "already enrolled")
+}
+
+func TestRecoveryCodesUseOnlyTheAlphabetAndAreUnique(t *testing.T) {
+	plain, hashes, err := newRecoveryCodes()
+	if err != nil || len(plain) != recoveryCodeCount || len(hashes) != recoveryCodeCount {
+		t.Fatalf("got %d/%d codes, %v", len(plain), len(hashes), err)
+	}
+	seen := map[string]bool{}
+	for _, c := range plain {
+		if len(c) != 11 || c[5] != '-' || seen[c] {
+			t.Fatalf("bad or repeated code %q", c)
+		}
+		seen[c] = true
+		for _, r := range strings.ReplaceAll(c, "-", "") {
+			if !strings.ContainsRune(recoveryAlphabet, r) {
+				t.Fatalf("%q has %q outside the alphabet", c, r)
+			}
+		}
+	}
+}

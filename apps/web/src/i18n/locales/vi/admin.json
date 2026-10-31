@@ -518,7 +518,7 @@
 			},
 			"mfa": {
 				"title": "Bắt buộc xác minh hai bước",
-				"description": "Người có vai trò được bảo vệ phải thiết lập ứng dụng xác thực trước khi đăng nhập.",
+				"description": "Người có vai trò được bảo vệ phải thiết lập ứng dụng xác thực trước khi đăng nhập bằng mật khẩu. Đăng nhập SSO phụ thuộc vào cài đặt đa yếu tố của nhà cung cấp danh tính của bạn.",
 				"rolloutNote": "Người chưa thiết lập sẽ được hướng dẫn thiết lập vào lần đăng nhập tiếp theo."
 			},
 			"ip": {
