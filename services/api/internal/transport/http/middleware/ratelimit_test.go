@@ -52,3 +52,23 @@ func TestClientIP(t *testing.T) {
 		t.Fatalf("XFF: got %q, want rightmost entry", got)
 	}
 }
+
+func TestClientIP_TrustedProxyHops(t *testing.T) {
+	t.Cleanup(func() { SetTrustedProxyHops(1) })
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	r.RemoteAddr = "10.0.0.5:1234"
+	r.Header.Set("X-Forwarded-For", "6.6.6.6, 203.0.113.9, 172.16.0.1")
+
+	SetTrustedProxyHops(0)
+	if got := ClientIP(r); got != "10.0.0.5" {
+		t.Fatalf("0 hops must ignore the header: got %q", got)
+	}
+	SetTrustedProxyHops(2)
+	if got := ClientIP(r); got != "203.0.113.9" {
+		t.Fatalf("2 hops: got %q", got)
+	}
+	SetTrustedProxyHops(5)
+	if got := ClientIP(r); got != "10.0.0.5" {
+		t.Fatalf("chain shorter than hops must fall back to the peer: got %q", got)
+	}
+}

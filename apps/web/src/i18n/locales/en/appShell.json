@@ -84,7 +84,7 @@
 	},
 	"userMenu": {
 		"signIn": "Sign in",
-		"myProfile": "My Profile",
+		"myProfile": "Account",
 		"apiKeys": "API Keys",
 		"logOut": "Log out",
 		"loggingOut": "Logging out…"

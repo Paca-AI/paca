@@ -45,16 +45,33 @@ export async function setPasswordWithToken(
 	});
 }
 
+/**
+ * Resolves to `null` once signed in (the session cookies are set). Resolves
+ * to a challenge token instead when the password was right but the account
+ * has two-step verification: no session exists yet, and the token goes to
+ * `verifyMfaLogin` together with a code.
+ */
 export async function login(
 	username: string,
 	password: string,
 	rememberMe: boolean,
-): Promise<void> {
-	await apiClient.instance.post("/auth/login", {
+): Promise<string | null> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<{ mfa_required?: boolean; mfa_challenge?: string }>
+	>("/auth/login", {
 		username,
 		password,
 		remember_me: rememberMe,
 	});
+	return data?.data?.mfa_required ? (data.data.mfa_challenge ?? null) : null;
+}
+
+/** Second step of a sign-in that answered with an MFA challenge. */
+export async function verifyMfaLogin(
+	challenge: string,
+	code: string,
+): Promise<void> {
+	await apiClient.instance.post("/auth/mfa/verify", { challenge, code });
 }
 
 export async function logout(): Promise<void> {

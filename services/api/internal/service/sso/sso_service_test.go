@@ -365,7 +365,7 @@ func TestLoginFlow_ProvisionsThenSignsBackIn(t *testing.T) {
 			t.Fatalf("BeginLogin: %v", err)
 		}
 		state := idp.authorize(t, authURL)
-		pair, redirect, err := svc.CompleteLogin(ctx, "corp", "https://paca.example", "good-code", state, binding)
+		pair, redirect, err := svc.CompleteLogin(ctx, "corp", "https://paca.example", "good-code", state, binding, "203.0.113.9")
 		if err != nil {
 			t.Fatalf("round %d CompleteLogin: %v", round, err)
 		}
@@ -394,11 +394,11 @@ func TestCompleteLogin_RejectsWrongBrowserAndReplay(t *testing.T) {
 	}
 	state := idp.authorize(t, authURL)
 
-	if _, _, err := svc.CompleteLogin(ctx, "corp", "https://paca.example", "good-code", state, "other-browser"); !errors.Is(err, ssodom.ErrStateInvalid) {
+	if _, _, err := svc.CompleteLogin(ctx, "corp", "https://paca.example", "good-code", state, "other-browser", "203.0.113.9"); !errors.Is(err, ssodom.ErrStateInvalid) {
 		t.Fatalf("wrong binding: err = %v, want ErrStateInvalid", err)
 	}
 	// The failed attempt consumed the state: the real browser can't reuse it.
-	if _, _, err := svc.CompleteLogin(ctx, "corp", "https://paca.example", "good-code", state, binding); !errors.Is(err, ssodom.ErrStateInvalid) {
+	if _, _, err := svc.CompleteLogin(ctx, "corp", "https://paca.example", "good-code", state, binding, "203.0.113.9"); !errors.Is(err, ssodom.ErrStateInvalid) {
 		t.Fatalf("replay: err = %v, want ErrStateInvalid", err)
 	}
 }
@@ -411,7 +411,7 @@ func TestCompleteLogin_BadCodeFails(t *testing.T) {
 
 	authURL, binding, _ := svc.BeginLogin(ctx, "corp", "https://paca.example", false, "")
 	state := idp.authorize(t, authURL)
-	if _, _, err := svc.CompleteLogin(ctx, "corp", "https://paca.example", "bad-code", state, binding); !errors.Is(err, ssodom.ErrExchangeFailed) {
+	if _, _, err := svc.CompleteLogin(ctx, "corp", "https://paca.example", "bad-code", state, binding, "203.0.113.9"); !errors.Is(err, ssodom.ErrExchangeFailed) {
 		t.Fatalf("err = %v, want ErrExchangeFailed", err)
 	}
 }

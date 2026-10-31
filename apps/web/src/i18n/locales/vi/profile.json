@@ -1,7 +1,7 @@
 {
 	"page": {
-		"title": "Hồ sơ của tôi",
-		"subtitle": "Xem và cập nhật thông tin tài khoản của bạn."
+		"title": "Tài khoản",
+		"subtitle": "Quản lý hồ sơ, bảo mật đăng nhập và quyền truy cập."
 	},
 	"fields": {
 		"fullName": "Họ và tên",
@@ -116,6 +116,68 @@
 			"nameTooLong": "Tên phải có tối đa 100 ký tự.",
 			"createFailed": "Tạo khóa thất bại. Vui lòng thử lại.",
 			"copyFailed": "Sao chép thất bại. Vui lòng sao chép khóa thủ công."
+		}
+	},
+	"nav": {
+		"profile": "Hồ sơ",
+		"security": "Bảo mật",
+		"apiKeys": "Khóa API",
+		"preferences": "Thông báo"
+	},
+	"preferences": {
+		"title": "Thông báo",
+		"subtitle": "Chọn cách bạn muốn nhận thông báo."
+	},
+	"security": {
+		"title": "Bảo mật",
+		"subtitle": "Bảo vệ tài khoản và kiểm soát cách bạn đăng nhập.",
+		"mfa": {
+			"title": "Xác minh hai bước",
+			"description": "Yêu cầu mã từ ứng dụng xác thực, ngoài mật khẩu, khi bạn đăng nhập.",
+			"on": "Bật",
+			"off": "Tắt",
+			"enable": "Thiết lập xác minh hai bước",
+			"recoveryLeft": "Mã khôi phục còn lại: {{count}}",
+			"recoveryLow": "Bạn sắp hết mã khôi phục. Hãy tạo mã mới trước khi mất quyền truy cập.",
+			"codeOrRecovery": "Mã xác thực hoặc mã khôi phục",
+			"codes": {
+				"copy": "Sao chép",
+				"copied": "Đã sao chép",
+				"download": "Tải xuống"
+			},
+			"errors": {
+				"generic": "Đã xảy ra lỗi. Vui lòng thử lại.",
+				"invalidCode": "Mã không hợp lệ hoặc đã được dùng.",
+				"unavailable": "Xác minh hai bước không khả dụng: máy chủ chưa được cấu hình khóa mã hóa. Hãy liên hệ quản trị viên.",
+				"load": "Không thể tải trạng thái xác minh hai bước."
+			},
+			"setup": {
+				"title": "Thiết lập xác minh hai bước",
+				"description": "Dùng ứng dụng xác thực như 1Password, Google Authenticator hoặc Authy.",
+				"scan": "Quét mã QR này bằng ứng dụng xác thực của bạn.",
+				"orEnterKey": "Không quét được? Hãy nhập khóa này.",
+				"copyKey": "Sao chép khóa thiết lập",
+				"qrLabel": "Mã QR để thiết lập xác minh hai bước",
+				"codeLabel": "Nhập mã 6 chữ số từ ứng dụng",
+				"verify": "Xác minh và bật",
+				"codesTitle": "Lưu mã khôi phục của bạn",
+				"codesDescription": "Mỗi mã chỉ dùng được một lần nếu bạn mất quyền truy cập vào ứng dụng xác thực.",
+				"codesWarning": "Các mã này chỉ hiển thị lúc này. Hãy lưu ở nơi an toàn trước khi đóng.",
+				"saved": "Tôi đã lưu"
+			},
+			"disable": {
+				"button": "Tắt",
+				"title": "Tắt xác minh hai bước",
+				"description": "Tài khoản của bạn sẽ chỉ được bảo vệ bằng mật khẩu. Nhập mã hiện tại để xác nhận.",
+				"confirm": "Tắt"
+			},
+			"regenerate": {
+				"button": "Mã khôi phục mới",
+				"title": "Tạo mã khôi phục mới",
+				"description": "Thao tác này thay thế toàn bộ mã khôi phục hiện có. Nhập mã hiện tại để xác nhận.",
+				"confirm": "Tạo",
+				"doneTitle": "Mã khôi phục mới của bạn"
+			}
 		}
 	}
 }

@@ -38,6 +38,7 @@ import (
 	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
 	exportsvc "github.com/Paca-AI/api/internal/service/export"
 	gitsvc "github.com/Paca-AI/api/internal/service/git"
+	mfasvc "github.com/Paca-AI/api/internal/service/mfa"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
@@ -247,6 +248,15 @@ func New(cfg *config.Config) (*App, error) {
 		// Surface it once at startup.
 		log.Warn("ENCRYPTION_KEY not set: agent LLM API keys, plugin secrets, and project Jev API keys will be stored in plaintext, not encrypted")
 	}
+	// IP allow-lists and TOTP second factor, checked after the password. With
+	// no enrollments, CIDRs or policy configured (the default) it is a no-op.
+	// TOTP enrollment needs the encryptor; without it only the allow-lists work.
+	mfaService := mfasvc.New(pgRepo.NewMFARepository(db), encryptor, "Paca")
+	authService.WithLoginGate(mfaService)
+	// Wrong-password lockout per username: 10 failures within 15 minutes lock
+	// that name for 15 minutes. Held in Redis, so it covers every API instance.
+	loginThrottle := redisRepo.NewLoginThrottle(redisClient, 10, 15*time.Minute, 15*time.Minute)
+	authService.WithLoginThrottle(loginThrottle)
 	// Reassigned (unlike agentService/environmentService above) because
 	// projectServiceBase is a local var read again below when wiring
 	// ProjectHandler's Jev-config option — WithEncryptor mutates in place,
@@ -254,7 +264,7 @@ func New(cfg *config.Config) (*App, error) {
 	// pointer's provenance obvious at every read site.
 	projectServiceBase = projectServiceBase.WithEncryptor(encryptor)
 	ssoService := ssosvc.New(pgRepo.NewSSORepository(db), redisRepo.NewSSOStateStore(redisClient, 10*time.Minute),
-		userRepo, userService, authService, log).WithEncryptor(encryptor)
+		userRepo, userService, authService, log).WithEncryptor(encryptor).WithIPCheck(mfaService)
 	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(triggerGate)
@@ -537,6 +547,7 @@ func New(cfg *config.Config) (*App, error) {
 		Version:             handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                authHandler,
 		SSO:                 handler.NewSSOHandler(ssoService, authHandler, cfg.Server.PublicURL),
+		MFA:                 handler.NewMFAHandler(mfaService, userRepo).WithLoginThrottle(loginThrottle),
 		User:                handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
 		Role:                handler.NewRoleHandler(roleService),
 		RoleAttachments:     httpmw.NewRoleServiceAttachments(roleService),
@@ -598,6 +609,7 @@ func New(cfg *config.Config) (*App, error) {
 		AuthRateLimit:      cfg.Server.AuthRateLimit,
 	}
 
+	httpmw.SetTrustedProxyHops(cfg.Server.TrustedProxyHops)
 	engine := router.New(deps)
 
 	srv := &http.Server{

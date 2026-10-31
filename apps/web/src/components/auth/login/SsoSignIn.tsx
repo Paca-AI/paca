@@ -16,6 +16,7 @@ const SSO_ERROR_CODES = [
 	"email_not_allowed",
 	"no_account",
 	"account_exists",
+	"ip_not_allowed",
 	"rate_limited",
 ] as const;
 

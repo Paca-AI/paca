@@ -7,6 +7,7 @@ import { DeleteUserDialog } from "@/components/admin/users/DeleteUserDialog";
 import { ResetPasswordDialog } from "@/components/admin/users/ResetPasswordDialog";
 import { UserFormDialog } from "@/components/admin/users/UserFormDialog";
 import { UserRoleDialog } from "@/components/admin/users/UserRoleDialog";
+import { UserSecurityDialog } from "@/components/admin/users/UserSecurityDialog";
 import { UsersFilters } from "@/components/admin/users/UsersFilters";
 import { UsersHeader } from "@/components/admin/users/UsersHeader";
 import {
@@ -98,6 +99,7 @@ function UsersManagementPage() {
 	const [editUser, setEditUser] = useState<User | null>(null);
 	const [deleteUser, setDeleteUser] = useState<User | null>(null);
 	const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
+	const [securityUser, setSecurityUser] = useState<User | null>(null);
 	const [roleUser, setRoleUser] = useState<User | null>(null);
 
 	const users = pagedUsers?.items ?? [];
@@ -203,6 +205,8 @@ function UsersManagementPage() {
 						onEdit={setEditUser}
 						onDelete={setDeleteUser}
 						onResetPassword={setResetPasswordUser}
+						canSecurity={!!hasPermission("settings.security:write")}
+						onSecurity={setSecurityUser}
 						onChangeRole={setRoleUser}
 					/>
 					<Pagination
@@ -244,6 +248,13 @@ function UsersManagementPage() {
 					onOpenChange={(open) => {
 						if (!open) setDeleteUser(null);
 					}}
+				/>
+			) : null}
+
+			{securityUser ? (
+				<UserSecurityDialog
+					user={securityUser}
+					onClose={() => setSecurityUser(null)}
 				/>
 			) : null}
 

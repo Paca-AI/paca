@@ -13,6 +13,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
 	ssodom "github.com/Paca-AI/api/internal/domain/sso"
 	ssosvc "github.com/Paca-AI/api/internal/service/sso"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
@@ -39,7 +40,7 @@ type SSOService interface {
 	UpdateProvider(ctx context.Context, id uuid.UUID, in ssodom.ProviderInput) (*ssodom.Provider, error)
 	DeleteProvider(ctx context.Context, id uuid.UUID) error
 	BeginLogin(ctx context.Context, slug, baseURL string, rememberMe bool, redirect string) (authURL, binding string, err error)
-	CompleteLogin(ctx context.Context, slug, baseURL, code, state, binding string) (*domainauth.TokenPair, string, error)
+	CompleteLogin(ctx context.Context, slug, baseURL, code, state, binding, clientIP string) (*domainauth.TokenPair, string, error)
 }
 
 // SSOHandler serves SSO sign-in (public) and provider management (admin).
@@ -124,7 +125,7 @@ func (h *SSOHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pair, redirect, err := h.svc.CompleteLogin(r.Context(), chi.URLParam(r, "slug"), h.baseURL(r),
-		q.Get("code"), q.Get("state"), binding)
+		q.Get("code"), q.Get("state"), binding, middleware.ClientIP(r))
 	if err != nil {
 		h.failRedirect(w, r, err)
 		return
@@ -156,6 +157,8 @@ func (h *SSOHandler) failRedirect(w http.ResponseWriter, r *http.Request, err er
 		code = "no_account"
 	case errors.Is(err, ssodom.ErrAccountExists):
 		code = "account_exists"
+	case errors.Is(err, mfadom.ErrIPNotAllowed):
+		code = "ip_not_allowed"
 	default:
 		slog.Error("sso sign-in failed", "error", err, "request_id", httpx.RequestIDFromContext(r.Context()))
 	}

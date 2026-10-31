@@ -25,7 +25,7 @@ func TestPlatformRootForMatchesWebCodec(t *testing.T) {
 	for _, m := range entry.FindAllSubmatch(block[1], -1) {
 		web[string(m[1])] = regexp.MustCompile(`"([^"]*)"`).FindAllString(string(m[2]), -1)
 	}
-	domains := []string{"users", "roles", "plugins", "settings", "settings.sso", "agents", "projects", "git.identities"}
+	domains := []string{"users", "roles", "plugins", "settings", "settings.sso", "settings.security", "agents", "projects", "git.identities"}
 	for _, d := range domains {
 		root := PlatformRootFor(d + ":x")
 		if root == "" {

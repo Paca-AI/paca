@@ -130,6 +130,12 @@ export const KNOWN_PERMISSIONS = [
 		descriptionKey: "globalRoles.permissions.settingsSsoWrite.description",
 		domain: "settings",
 	},
+	{
+		key: "settings.security:write",
+		labelKey: "globalRoles.permissions.settingsSecurityWrite.label",
+		descriptionKey: "globalRoles.permissions.settingsSecurityWrite.description",
+		domain: "settings",
+	},
 ] as const satisfies KnownPermission[];
 
 export interface PermissionGroup {

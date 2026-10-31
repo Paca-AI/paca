@@ -90,6 +90,9 @@ export class ApiClient {
 				const url: string = originalRequest.url ?? "";
 				const isAuthEndpoint =
 					url.includes("/auth/login") ||
+					// Second-step and pre-login MFA calls answer 401 for a wrong code or
+					// password: that is the real result, with no session to refresh.
+					url.includes("/auth/mfa/") ||
 					url.includes("/auth/register") ||
 					url.includes("/auth/refresh");
 

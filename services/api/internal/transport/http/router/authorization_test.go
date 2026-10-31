@@ -49,6 +49,7 @@ var openRouteGroups = []struct {
 			"any live session may end itself",
 		routes: []string{
 			"POST /api/v1/auth/login",
+			"POST /api/v1/auth/mfa/verify",
 			"POST /api/v1/auth/refresh",
 			"POST /api/v1/auth/annotation-refresh",
 			"POST /api/v1/auth/password/set",

@@ -108,6 +108,26 @@ describe("ApiClient", () => {
 		expect(mockInstance.request).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		"/auth/mfa/verify",
+		"/auth/mfa/setup",
+		"/auth/mfa/setup/confirm",
+	])("passes a wrong-code 401 from %s through without refreshing", async (url) => {
+		const mockInstance = createAxiosInstanceMock();
+		vi.mocked(axios.create).mockReturnValue(mockInstance as never);
+
+		new ApiClient();
+		const onResponseError = getResponseErrorHandler(mockInstance);
+		const error = {
+			config: { url },
+			response: { status: 401, data: { error_code: "AUTH_MFA_INVALID_CODE" } },
+		};
+
+		await expect(onResponseError(error)).rejects.toBe(error);
+		expect(mockInstance.post).not.toHaveBeenCalled();
+		expect(mockInstance.request).not.toHaveBeenCalled();
+	});
+
 	it("refreshes and retries a 401 request once", async () => {
 		const mockInstance = createAxiosInstanceMock();
 		vi.mocked(axios.create).mockReturnValue(mockInstance as never);

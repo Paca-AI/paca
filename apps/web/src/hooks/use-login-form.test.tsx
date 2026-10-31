@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiErrorCode } from "@/lib/api-error";
 import { login } from "@/lib/auth-api";
+import { loadPendingMfa } from "@/lib/mfa-challenge";
 import { useLoginForm } from "./use-login-form";
 
 type SubmitPayload = {
@@ -73,7 +74,7 @@ describe("useLoginForm", () => {
 	});
 
 	it("submits login and redirects on success", async () => {
-		vi.mocked(login).mockResolvedValue(undefined);
+		vi.mocked(login).mockResolvedValue(null);
 		mocks.invalidateQueriesMock.mockResolvedValue(undefined);
 		mocks.navigateMock.mockResolvedValue(undefined);
 
@@ -100,7 +101,7 @@ describe("useLoginForm", () => {
 	});
 
 	it("opens the redirect target instead of home when one was given", async () => {
-		vi.mocked(login).mockResolvedValue(undefined);
+		vi.mocked(login).mockResolvedValue(null);
 		mocks.invalidateQueriesMock.mockResolvedValue(undefined);
 		const assign = vi.fn();
 		const original = window.location;
@@ -169,5 +170,49 @@ describe("useLoginForm", () => {
 		expect(result.current.serverError).toBe(
 			"Something went wrong. Please try again.",
 		);
+	});
+
+	it("moves to the code page, keeping the challenge, when a second factor is owed", async () => {
+		vi.mocked(login).mockResolvedValue("challenge-token");
+		mocks.navigateMock.mockResolvedValue(undefined);
+
+		const { result } = renderHook(() => useLoginForm("/projects/1"));
+		await act(async () => {
+			await mocks.capturedOnSubmit?.({
+				value: {
+					username: "alice",
+					password: "password123",
+					rememberMe: false,
+				},
+			});
+		});
+
+		expect(mocks.navigateMock).toHaveBeenCalledWith({ to: "/login/mfa" });
+		expect(loadPendingMfa()).toEqual({
+			challenge: "challenge-token",
+			redirectTo: "/projects/1",
+		});
+		// No session yet, so nothing signed in and no error either.
+		expect(mocks.invalidateQueriesMock).not.toHaveBeenCalled();
+		expect(result.current.serverError).toBeNull();
+	});
+
+	it("offers in-place setup when policy requires MFA the account lacks", async () => {
+		vi.mocked(login).mockRejectedValue(new Error("setup"));
+		mocks.getApiErrorCodeMock.mockReturnValue(ApiErrorCode.MfaSetupRequired);
+
+		const { result } = renderHook(() => useLoginForm());
+		await act(async () => {
+			await mocks.capturedOnSubmit?.({
+				value: { username: "alice", password: "password123", rememberMe: true },
+			});
+		});
+
+		expect(result.current.mfaSetup).toEqual({
+			username: "alice",
+			password: "password123",
+			rememberMe: true,
+		});
+		expect(result.current.serverError).toBeNull();
 	});
 });

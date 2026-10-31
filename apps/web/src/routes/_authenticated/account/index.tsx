@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { CalendarDays, User } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChangePasswordCard } from "@/components/profile/ChangePasswordCard";
 import { AvatarUpload } from "@/components/shared/avatar-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,10 +24,9 @@ import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import type { User as UserType } from "@/lib/auth-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import { formatDate } from "@/lib/format-date";
-import { ExtensionPoint } from "@/lib/plugins/extension-point";
 import { userAvatar } from "@/lib/provider-logos";
 
-export const Route = createFileRoute("/_authenticated/profile/")({
+export const Route = createFileRoute("/_authenticated/account/")({
 	component: ProfilePage,
 });
 
@@ -78,16 +76,7 @@ function ProfilePage() {
 
 	if (!user) {
 		return (
-			<div className="flex flex-col gap-6 p-6 max-w-2xl w-full mx-auto">
-				{/* Header skeleton */}
-				<div>
-					<div className="flex items-center gap-2">
-						<Skeleton className="size-5 rounded" />
-						<Skeleton className="h-5 w-24" />
-					</div>
-					<Skeleton className="mt-1.5 h-3.5 w-64" />
-				</div>
-				<Separator />
+			<div className="flex flex-col gap-6">
 				{/* Profile card skeleton */}
 				<Card>
 					<CardHeader>
@@ -120,30 +109,6 @@ function ProfilePage() {
 						<Skeleton className="h-8 w-24 rounded-md" />
 					</CardFooter>
 				</Card>
-				{/* Change password card skeleton */}
-				<Card>
-					<CardHeader>
-						<Skeleton className="h-5 w-36" />
-						<Skeleton className="h-3.5 w-64 mt-1" />
-					</CardHeader>
-					<CardContent className="space-y-3">
-						<div className="flex flex-col gap-1.5">
-							<Skeleton className="h-3.5 w-28" />
-							<Skeleton className="h-9 w-full rounded-md" />
-						</div>
-						<div className="flex flex-col gap-1.5">
-							<Skeleton className="h-3.5 w-32" />
-							<Skeleton className="h-9 w-full rounded-md" />
-						</div>
-						<div className="flex flex-col gap-1.5">
-							<Skeleton className="h-3.5 w-36" />
-							<Skeleton className="h-9 w-full rounded-md" />
-						</div>
-					</CardContent>
-					<CardFooter className="border-t pt-4">
-						<Skeleton className="h-8 w-32 rounded-md" />
-					</CardFooter>
-				</Card>
 			</div>
 		);
 	}
@@ -166,20 +131,7 @@ function ProfilePage() {
 	};
 
 	return (
-		<div className="flex flex-col gap-6 p-6 max-w-2xl w-full mx-auto">
-			{/* Page header */}
-			<div>
-				<div className="flex items-center gap-2">
-					<User className="size-5 text-primary" />
-					<h1 className="text-xl font-semibold">{t("page.title")}</h1>
-				</div>
-				<p className="mt-1 text-sm text-muted-foreground">
-					{t("page.subtitle")}
-				</p>
-			</div>
-
-			<Separator />
-
+		<div className="flex flex-col gap-6">
 			{/* Profile card */}
 			<Card>
 				<CardHeader>
@@ -326,16 +278,6 @@ function ProfilePage() {
 					)}
 				</CardFooter>
 			</Card>
-
-			{/* Change Password card */}
-			<ChangePasswordCard mustChange={user.must_change_password} />
-
-			{/* Plugin-contributed personal settings (e.g. a plugin's
-			    per-event notification preferences) */}
-			<ExtensionPoint
-				point="user.settings.tab"
-				componentProps={{ userId: user.id }}
-			/>
 		</div>
 	);
 }

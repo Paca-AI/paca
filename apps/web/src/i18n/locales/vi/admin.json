@@ -36,7 +36,8 @@
 			"changeRoleAction": "Đổi vai trò",
 			"deleteAction": "Xóa người dùng",
 			"pwdResetHint": "Người dùng này phải đặt mật khẩu mới ở lần đăng nhập tiếp theo",
-			"columnActions": "Thao tác"
+			"columnActions": "Thao tác",
+			"securityAction": "Bảo mật"
 		},
 		"formDialog": {
 			"createdTitle": "Đã tạo người dùng",
@@ -142,6 +143,24 @@
 			"title": "Không có người dùng phù hợp",
 			"description": "Hãy thử từ khóa hoặc bộ lọc vai trò khác.",
 			"clear": "Xóa bộ lọc"
+		},
+		"security": {
+			"title": "Bảo vệ đăng nhập của {{name}}",
+			"description": "Kiểm soát nơi người này được đăng nhập và xóa xác minh hai bước của họ.",
+			"ip": {
+				"label": "Địa chỉ IP được phép",
+				"hint": "Mỗi dòng một địa chỉ IP hoặc dải CIDR. Để trống để cho phép mọi địa chỉ. Áp dụng cho đăng nhập bằng mật khẩu."
+			},
+			"mfa": {
+				"title": "Xác minh hai bước",
+				"description": "Nếu họ mất cả thiết bị lẫn mã khôi phục, hãy xóa để họ thiết lập lại.",
+				"reset": "Đặt lại xác minh hai bước",
+				"confirmReset": "Có, đặt lại",
+				"resetDone": "Đã đặt lại xác minh hai bước. Họ có thể thiết lập lại vào lần đăng nhập tiếp theo.",
+				"resetFailed": "Không thể đặt lại xác minh hai bước."
+			},
+			"cancel": "Hủy",
+			"save": "Lưu"
 		}
 	},
 	"globalRoles": {
@@ -305,6 +324,10 @@
 			"gitIdentitiesManage": {
 				"label": "Quản lý kết nối Git của không gian làm việc",
 				"description": "Thêm và gỡ các GitHub App và access token mà mọi dự án trong không gian làm việc đều có thể dùng"
+			},
+			"settingsSecurityWrite": {
+				"label": "Quản lý bảo mật đăng nhập",
+				"description": "Đặt ai phải dùng xác minh hai bước và địa chỉ IP nào được phép đăng nhập, đồng thời đặt lại xác minh hai bước của người khác. Gỡ bảo vệ này khỏi một tài khoản tương đương với chiếm quyền tài khoản đó, vì vậy hãy coi nó như quyền quản trị viên đầy đủ."
 			}
 		},
 		"permissionGroups": {
@@ -478,6 +501,38 @@
 				"saveFailed": "Không thể lưu nhà cung cấp. Vui lòng thử lại.",
 				"loadFailed": "Không thể tải danh sách nhà cung cấp SSO.",
 				"deleteFailed": "Không thể xóa nhà cung cấp. Vui lòng thử lại."
+			}
+		},
+		"nav": {
+			"workspace": "Không gian làm việc",
+			"signIn": "Đăng nhập",
+			"branding": "Thương hiệu",
+			"sso": "Đăng nhập một lần (SSO)",
+			"security": "Bảo mật đăng nhập"
+		},
+		"security": {
+			"roles": {
+				"title": "Vai trò được bảo vệ",
+				"description": "Các quy tắc bên dưới áp dụng cho người có bất kỳ vai trò nào bạn chọn. Bật Tất cả vai trò để áp dụng cho mọi người, kể cả các vai trò tạo sau này.",
+				"all": "Tất cả vai trò"
+			},
+			"mfa": {
+				"title": "Bắt buộc xác minh hai bước",
+				"description": "Người có vai trò được bảo vệ phải thiết lập ứng dụng xác thực trước khi đăng nhập bằng mật khẩu. Đăng nhập SSO phụ thuộc vào cài đặt đa yếu tố của nhà cung cấp danh tính của bạn.",
+				"rolloutNote": "Người chưa thiết lập sẽ được hướng dẫn thiết lập vào lần đăng nhập tiếp theo."
+			},
+			"ip": {
+				"title": "Địa chỉ IP được phép",
+				"description": "Giới hạn đăng nhập bằng mật khẩu của các vai trò được bảo vệ ở những địa chỉ này. Để trống để cho phép mọi địa chỉ.",
+				"hint": "Mỗi dòng một địa chỉ IP hoặc dải CIDR, ví dụ 203.0.113.0/24. Hỗ trợ IPv4 và IPv6.",
+				"lockoutWarning": "Hãy đảm bảo địa chỉ của chính bạn nằm trong danh sách, nếu không bạn có thể bị khóa. Đăng nhập SSO không bị ảnh hưởng."
+			},
+			"noRoles": "Chưa có vai trò nào được bảo vệ nên các quy tắc này hiện không áp dụng cho ai.",
+			"errors": {
+				"invalidCidr": "Một trong các mục không phải địa chỉ IP hoặc dải CIDR hợp lệ.",
+				"selfLockout": "Địa chỉ IP của chính bạn phải có trong danh sách, nếu không bạn sẽ tự khóa mình. Hãy thêm vào và lưu lại.",
+				"saveFailed": "Lưu thất bại. Vui lòng thử lại.",
+				"loadFailed": "Không thể tải cài đặt bảo mật đăng nhập."
 			}
 		}
 	},

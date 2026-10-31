@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Paca-AI/api/internal/apierr"
@@ -20,6 +21,7 @@ import (
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	gitdom "github.com/Paca-AI/api/internal/domain/git"
+	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	pluginom "github.com/Paca-AI/api/internal/domain/plugin"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
@@ -109,6 +111,12 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 
 	var details map[string]string
 	var issues []apierr.Issue
+	var locked *mfadom.LockedError
+	if errors.As(err, &locked) {
+		secs := int(locked.RetryAfter.Seconds()) + 1
+		details = map[string]string{"retry_after_seconds": strconv.Itoa(secs)}
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+	}
 	if apiErr != nil {
 		details = apiErr.Details
 		issues = apiErr.Issues
@@ -146,6 +154,28 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 	switch {
 	case errors.Is(err, domainauth.ErrInvalidCredentials):
 		return http.StatusUnauthorized, apierr.CodeInvalidCredentials
+	case errors.Is(err, mfadom.ErrRequired):
+		return http.StatusUnauthorized, apierr.CodeMFARequired
+	case errors.Is(err, mfadom.ErrInvalidCode):
+		return http.StatusUnauthorized, apierr.CodeMFAInvalidCode
+	case errors.Is(err, mfadom.ErrLocked):
+		return http.StatusTooManyRequests, apierr.CodeTooManyRequests
+	case errors.Is(err, mfadom.ErrSelfLockout):
+		return http.StatusBadRequest, apierr.CodeSelfLockout
+	case errors.Is(err, mfadom.ErrSetupRequired):
+		return http.StatusForbidden, apierr.CodeMFASetupRequired
+	case errors.Is(err, mfadom.ErrSetupNotRequired):
+		return http.StatusForbidden, apierr.CodeForbidden
+	case errors.Is(err, mfadom.ErrIPNotAllowed):
+		return http.StatusForbidden, apierr.CodeIPNotAllowed
+	case errors.Is(err, mfadom.ErrAlreadyEnabled):
+		return http.StatusConflict, apierr.CodeMFAAlreadyEnabled
+	case errors.Is(err, mfadom.ErrNotEnabled):
+		return http.StatusConflict, apierr.CodeMFANotEnabled
+	case errors.Is(err, mfadom.ErrUnavailable):
+		return http.StatusServiceUnavailable, apierr.CodeMFAUnavailable
+	case errors.Is(err, mfadom.ErrInvalidCIDR):
+		return http.StatusBadRequest, apierr.CodeInvalidCIDR
 	case errors.Is(err, domainauth.ErrTokenInvalid):
 		return http.StatusUnauthorized, apierr.CodeTokenInvalid
 	case errors.Is(err, domainauth.ErrSessionInvalidated):

@@ -84,7 +84,7 @@
 	},
 	"userMenu": {
 		"signIn": "Войти",
-		"myProfile": "Мой профиль",
+		"myProfile": "Аккаунт",
 		"apiKeys": "API-ключи",
 		"logOut": "Выйти",
 		"loggingOut": "Выход…"

@@ -1479,7 +1479,7 @@ function MatchModeSelector({
 // WebhookTokenSection generates/regenerates an api_trigger node's webhook
 // secret. The raw token is shown exactly once (right after generation) and
 // never fetched back afterward — mirrors the "show once" pattern used for
-// user API keys (apps/web/src/routes/_authenticated/profile/api-keys.tsx).
+// user API keys (apps/web/src/routes/_authenticated/account/api-keys.tsx).
 function WebhookTokenSection({
 	projectId,
 	automationId,

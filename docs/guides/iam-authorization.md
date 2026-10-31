@@ -136,6 +136,7 @@ A few consequences worth knowing:
 | | `environments:connect` | Open an interactive shell or manage SSH keys on an environment. |
 | `settings` | `settings:write` | Change workspace settings. |
 | `settings.sso` | `settings.sso:write` | Configure SSO providers. **Root-equivalent.** |
+| `settings.security` | `settings.security:write` | Set the login policy (MFA requirement, IP allow-lists) and reset an account's MFA or allow-list. **Root-equivalent.** Checked on `sso`. |
 | `plugins` | `plugins:read`, `plugins:write` | View / install and manage plugins. |
 | _plugin namespace_ | `<namespace>:<verb>` | Declared by an installed plugin, for example `time_logging:manage_all`. The namespace is the last segment of the plugin id with `-` replaced by `_`. Listed while the plugin is installed. |
 

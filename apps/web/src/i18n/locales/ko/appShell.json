@@ -84,7 +84,7 @@
 	},
 	"userMenu": {
 		"signIn": "로그인",
-		"myProfile": "내 프로필",
+		"myProfile": "계정",
 		"apiKeys": "API 키",
 		"logOut": "로그아웃",
 		"loggingOut": "로그아웃 중…"

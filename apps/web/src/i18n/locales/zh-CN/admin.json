@@ -36,7 +36,8 @@
 			"changeRoleAction": "更改角色",
 			"deleteAction": "删除用户",
 			"pwdResetHint": "该用户必须在下次登录时设置新密码",
-			"columnActions": "操作"
+			"columnActions": "操作",
+			"securityAction": "安全"
 		},
 		"formDialog": {
 			"createdTitle": "用户已创建",
@@ -142,6 +143,24 @@
 			"title": "没有匹配的用户",
 			"description": "请尝试其他搜索词或角色筛选。",
 			"clear": "清除筛选"
+		},
+		"security": {
+			"title": "{{name}} 的登录保护",
+			"description": "控制此人可以从哪里登录，并清除其两步验证。",
+			"ip": {
+				"label": "允许的 IP 地址",
+				"hint": "每行一个 IP 地址或 CIDR 范围。留空则允许任何地址。适用于密码登录。"
+			},
+			"mfa": {
+				"title": "两步验证",
+				"description": "如果对方同时丢失了设备和恢复码，请清除它以便其重新设置。",
+				"reset": "重置两步验证",
+				"confirmReset": "是，重置",
+				"resetDone": "两步验证已重置。对方可在下次登录时重新设置。",
+				"resetFailed": "无法重置两步验证。"
+			},
+			"cancel": "取消",
+			"save": "保存"
 		}
 	},
 	"globalRoles": {
@@ -305,6 +324,10 @@
 			"gitIdentitiesManage": {
 				"label": "管理工作区 Git 连接",
 				"description": "添加和移除工作区内所有项目都可使用的 GitHub 应用和访问令牌"
+			},
+			"settingsSecurityWrite": {
+				"label": "管理登录安全",
+				"description": "设置谁必须使用两步验证、允许从哪些 IP 地址登录，并重置他人的两步验证。为账户移除这项保护等同于接管该账户，因此请将其视为完整的管理员权限。"
 			}
 		},
 		"permissionGroups": {
@@ -478,6 +501,38 @@
 				"saveFailed": "保存提供商失败，请重试。",
 				"loadFailed": "加载 SSO 提供商失败。",
 				"deleteFailed": "删除提供商失败，请重试。"
+			}
+		},
+		"nav": {
+			"workspace": "工作区",
+			"signIn": "登录",
+			"branding": "品牌",
+			"sso": "单点登录",
+			"security": "登录安全"
+		},
+		"security": {
+			"roles": {
+				"title": "受保护的角色",
+				"description": "以下规则适用于拥有所选角色之一的人。开启“所有角色”可覆盖所有人，包括之后创建的角色。",
+				"all": "所有角色"
+			},
+			"mfa": {
+				"title": "要求两步验证",
+				"description": "拥有受保护角色的人必须先设置验证器应用，才能使用密码登录。SSO 登录则依赖身份提供商自身的多重身份验证设置。",
+				"rolloutNote": "尚未设置的人会在下次登录时被引导完成设置。"
+			},
+			"ip": {
+				"title": "允许的 IP 地址",
+				"description": "将受保护角色的密码登录限制在这些地址。留空则允许任何地址。",
+				"hint": "每行一个 IP 地址或 CIDR 范围，例如 203.0.113.0/24。支持 IPv4 和 IPv6。",
+				"lockoutWarning": "请确保包含你自己的地址，否则你可能无法登录。SSO 登录不受影响。"
+			},
+			"noRoles": "目前还没有受保护的角色，因此这些规则暂不适用于任何人。",
+			"errors": {
+				"invalidCidr": "其中一项不是有效的 IP 地址或 CIDR 范围。",
+				"selfLockout": "列表中必须包含您自己的 IP 地址，否则您会把自己锁在外面。请添加后再保存。",
+				"saveFailed": "保存失败，请重试。",
+				"loadFailed": "无法加载登录安全设置。"
 			}
 		}
 	},

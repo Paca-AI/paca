@@ -93,12 +93,44 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pair, err := h.svc.Login(r.Context(), req.Username, req.Password, req.RememberMe)
+	pair, err := h.svc.Login(r.Context(), domainauth.LoginInput{
+		Username:   req.Username,
+		Password:   req.Password,
+		OTP:        req.OTP,
+		RememberMe: req.RememberMe,
+		ClientIP:   middleware.ClientIP(r),
+	})
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
 
+	if pair.MFAChallenge != "" {
+		// Password accepted, second factor owed: no cookies yet.
+		presenter.OK(w, r, map[string]any{
+			"message":       "mfa required",
+			"mfa_required":  true,
+			"mfa_challenge": pair.MFAChallenge,
+		})
+		return
+	}
+
+	h.setTokenCookies(w, r, pair, pair.RefreshTTL)
+	presenter.OK(w, r, map[string]any{"message": "logged in"})
+}
+
+// VerifyMFA handles POST /auth/mfa/verify, the second step of a login that
+// answered mfa_required. On success it sets the same cookies Login does.
+func (h *AuthHandler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
+	var req dto.MFAVerifyRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+	pair, err := h.svc.CompleteMFALogin(r.Context(), req.Challenge, req.Code, middleware.ClientIP(r))
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	h.setTokenCookies(w, r, pair, pair.RefreshTTL)
 	presenter.OK(w, r, map[string]any{"message": "logged in"})
 }

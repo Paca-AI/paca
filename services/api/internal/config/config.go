@@ -83,6 +83,13 @@ type ServerConfig struct {
 	// SSO login/callback); token refresh gets 3x that. 0 disables the
 	// limits. Configure via AUTH_RATE_LIMIT_PER_MINUTE (default 20).
 	AuthRateLimit int
+	// TrustedProxyHops is how many reverse proxies sit in front of the API
+	// and append to X-Forwarded-For; the client address is read that many
+	// entries from the right. 0 ignores the header and uses the socket peer
+	// (API exposed directly). It feeds the IP allow-lists and rate limits, so
+	// an exposed API with a non-zero value lets callers spoof their address.
+	// Configure via TRUSTED_PROXY_HOPS (default 1).
+	TrustedProxyHops int
 }
 
 // AdminConfig holds the default administrator credentials seeded on first startup.

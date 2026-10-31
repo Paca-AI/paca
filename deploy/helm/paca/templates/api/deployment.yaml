@@ -60,6 +60,8 @@ spec:
               value: {{ .Values.api.cookieSecure | quote }}
             - name: AUTH_RATE_LIMIT_PER_MINUTE
               value: {{ .Values.api.authRateLimitPerMinute | quote }}
+            - name: TRUSTED_PROXY_HOPS
+              value: {{ .Values.api.trustedProxyHops | quote }}
             - name: ADMIN_USERNAME
               value: {{ .Values.api.admin.username | quote }}
             - name: ADMIN_PASSWORD

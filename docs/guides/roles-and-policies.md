@@ -70,10 +70,11 @@ Unknown fields are rejected.
 | `environments` | `read` `write` `connect` | Environments; `connect` is an interactive shell/SSH key |
 | `settings` | `write` | Workspace settings |
 | `settings.sso` | `write` | SSO providers |
+| `settings.security` | `write` | Login policy: MFA, IP allow-lists |
 | `plugins` | `read` `write` | Plugins |
 | _plugin namespace_ | defined by each plugin | See [Plugin actions](#plugin-actions) |
 
-`roles:write`, `roles:assign`, `settings.sso:write` and `users:write` are **root-equivalent**: whoever holds one can give themselves everything. Grant them only to people you would trust as `SUPER_ADMIN`. The exception is `roles:assign` when you scope it with resources to specific roles: see [Let people assign roles](#let-people-assign-roles-rolesassign). The live list is always `GET /roles/actions`, which is also what the JSON editor autocompletes.
+`roles:write`, `roles:assign`, `settings.sso:write`, `settings.security:write` and `users:write` are **root-equivalent**: whoever holds one can give themselves everything. Grant them only to people you would trust as `SUPER_ADMIN`. The exception is `roles:assign` when you scope it with resources to specific roles: see [Let people assign roles](#let-people-assign-roles-rolesassign). The live list is always `GET /roles/actions`, which is also what the JSON editor autocompletes.
 
 ### Resources
 

@@ -59,6 +59,19 @@ func (m *Manager) IssueAnnotationRefreshWithTTL(sub, username, role, familyID st
 	return m.sign(sub, username, role, familyID, ttl, "refresh", rememberMe, false, domainauth.ScopeAnnotation)
 }
 
+// MFAChallengeKind marks the short-lived token Login hands out once the
+// password checked out but a second factor is still owed. It is neither an
+// "access" nor a "refresh" token, so every place that authenticates a request
+// or rotates a session rejects it; its only use is POST /auth/mfa/verify.
+const MFAChallengeKind = "mfa_challenge"
+
+// IssueMFAChallenge creates a signed challenge token for sub that expires
+// after ttl. rememberMe carries the user's choice through to the session the
+// second step will create.
+func (m *Manager) IssueMFAChallenge(sub, username string, rememberMe bool, ttl time.Duration) (string, error) {
+	return m.sign(sub, username, "", "", ttl, MFAChallengeKind, rememberMe, false, "")
+}
+
 func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, kind string, rememberMe bool, mustChangePassword bool, scope string) (string, error) {
 	now := time.Now()
 	claims := domainauth.Claims{

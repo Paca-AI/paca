@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
 	ChevronsUpDown,
-	Key,
 	Keyboard,
 	Languages,
 	LogOut,
@@ -120,15 +119,9 @@ export function UserMenu() {
 							</DropdownMenuLabel>
 						</DropdownMenuGroup>
 						<DropdownMenuSeparator />
-						<DropdownMenuItem onClick={() => void navigate({ to: "/profile" })}>
+						<DropdownMenuItem onClick={() => void navigate({ to: "/account" })}>
 							<User className="size-4" />
 							{t("userMenu.myProfile")}
-						</DropdownMenuItem>
-						<DropdownMenuItem
-							onClick={() => void navigate({ to: "/profile/api-keys" })}
-						>
-							<Key className="size-4" />
-							{t("userMenu.apiKeys")}
 						</DropdownMenuItem>
 						<DropdownMenuItem onClick={() => openShortcutHelp(true)}>
 							<Keyboard className="size-4" />
