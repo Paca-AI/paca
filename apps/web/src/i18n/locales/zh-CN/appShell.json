@@ -84,7 +84,7 @@
 	},
 	"userMenu": {
 		"signIn": "登录",
-		"myProfile": "个人资料",
+		"myProfile": "账户",
 		"apiKeys": "API 密钥",
 		"logOut": "退出登录",
 		"loggingOut": "正在退出登录…"

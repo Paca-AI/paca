@@ -1,7 +1,7 @@
 {
 	"page": {
-		"title": "내 프로필",
-		"subtitle": "계정 정보를 확인하고 수정하세요."
+		"title": "계정",
+		"subtitle": "프로필, 로그인 보안 및 액세스를 관리합니다."
 	},
 	"fields": {
 		"fullName": "전체 이름",
@@ -116,6 +116,68 @@
 			"nameTooLong": "이름은 100자 이하여야 합니다.",
 			"createFailed": "키 생성에 실패했습니다. 다시 시도해 주세요.",
 			"copyFailed": "복사에 실패했습니다. 키를 직접 복사해 주세요."
+		}
+	},
+	"nav": {
+		"profile": "프로필",
+		"security": "보안",
+		"apiKeys": "API 키",
+		"preferences": "알림"
+	},
+	"preferences": {
+		"title": "알림",
+		"subtitle": "알림을 받는 방식을 선택하세요."
+	},
+	"security": {
+		"title": "보안",
+		"subtitle": "계정을 보호하고 로그인 방식을 관리합니다.",
+		"mfa": {
+			"title": "2단계 인증",
+			"description": "로그인할 때 비밀번호와 함께 인증 앱의 코드를 요구합니다.",
+			"on": "켜짐",
+			"off": "꺼짐",
+			"enable": "2단계 인증 설정",
+			"recoveryLeft": "남은 복구 코드: {{count}}",
+			"recoveryLow": "복구 코드가 얼마 남지 않았습니다. 액세스를 잃기 전에 새 코드를 생성하세요.",
+			"codeOrRecovery": "인증 코드 또는 복구 코드",
+			"codes": {
+				"copy": "복사",
+				"copied": "복사됨",
+				"download": "다운로드"
+			},
+			"errors": {
+				"generic": "문제가 발생했습니다. 다시 시도하세요.",
+				"invalidCode": "코드가 올바르지 않거나 이미 사용되었습니다.",
+				"unavailable": "2단계 인증을 사용할 수 없습니다. 서버에 암호화 키가 설정되어 있지 않습니다. 관리자에게 문의하세요.",
+				"load": "2단계 인증 상태를 불러올 수 없습니다."
+			},
+			"setup": {
+				"title": "2단계 인증 설정",
+				"description": "1Password, Google Authenticator, Authy 같은 인증 앱을 사용하세요.",
+				"scan": "인증 앱으로 이 QR 코드를 스캔하세요.",
+				"orEnterKey": "스캔할 수 없나요? 이 키를 대신 입력하세요.",
+				"copyKey": "설정 키 복사",
+				"qrLabel": "2단계 인증 설정용 QR 코드",
+				"codeLabel": "앱에 표시된 6자리 코드를 입력하세요",
+				"verify": "확인 후 켜기",
+				"codesTitle": "복구 코드를 저장하세요",
+				"codesDescription": "인증 앱에 접근할 수 없게 되면 각 코드를 한 번씩 사용할 수 있습니다.",
+				"codesWarning": "이 코드는 지금만 표시됩니다. 닫기 전에 안전한 곳에 보관하세요.",
+				"saved": "저장했습니다"
+			},
+			"disable": {
+				"button": "끄기",
+				"title": "2단계 인증 끄기",
+				"description": "계정이 비밀번호만으로 보호됩니다. 확인하려면 현재 코드를 입력하세요.",
+				"confirm": "끄기"
+			},
+			"regenerate": {
+				"button": "새 복구 코드",
+				"title": "새 복구 코드 생성",
+				"description": "기존 복구 코드가 모두 교체됩니다. 확인하려면 현재 코드를 입력하세요.",
+				"confirm": "생성",
+				"doneTitle": "새 복구 코드"
+			}
 		}
 	}
 }

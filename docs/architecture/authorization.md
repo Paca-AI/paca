@@ -60,6 +60,7 @@ Built-in actions:
 | `environments` | `read`, `write`, `connect` |
 | `settings` | `write` |
 | `settings.sso` | `write` |
+| `settings.security` | `write` |
 | `plugins` | `read`, `write` |
 
 ### Resources
@@ -133,6 +134,7 @@ Some actions let their holder give themselves everything, so holding one is hold
 
 - `roles:write`: define or edit any role, and choose the default (new accounts start with it);
 - `roles:assign`: attach or detach roles, their own account included. It works like AWS IAM `iam:PassRole`: the *resource* of the statement says which roles the holder may hand out, so on `*` (or `role/*`) it is root-equivalent, while scoped to one role id it is not (see [Assigning roles](#assigning-roles-rolesassign));
+- `settings.security:write`: set the login policy or reset an account's MFA / IP allow-list, which removes the protection on that account (checked on `sso`);
 - `settings.sso:write`: configure an SSO provider that links accounts by email and sign in as anyone (see [SSO](../guides/sso-oidc.md));
 - `users:write`: can reset any user's password (`PATCH /admin/users/{userId}/password`), a `SUPER_ADMIN`'s included, and sign in as them.
 
@@ -296,7 +298,7 @@ Why the model looks the way it does. These are the decisions that are easy to un
 
 **Restricted access became ordinary roles.** The old `access_mode` flag and grant tables are not modelled anywhere in the new API: there are no restriction endpoints or special code paths. Restricting an agent or environment is a `Deny` role, optionally with a `NotIn principal.id` condition for "everyone except these". During design a migration that generated "Access to X" and "Restrict X" roles was planned; it was dropped during execution, so **restricted resources are not migrated** and an administrator recreates them. The release notes call this out.
 
-**Guard rails against escalation.** Because roles are data, the dangerous things are editing a role and attaching one. A caller can only save a role, or make it the default, granting what they hold themselves (an unconditional `Allow` with no overlapping `Deny`). Attaching is PassRole-style: `roles:assign`, scoped by resource to the roles the holder may hand out. Some actions are root-equivalent (`roles:write`, `roles:assign`, `settings.sso:write`, `users:write`), so only `SUPER_ADMIN` is seeded with them. The last unconditional full-access attachment cannot be removed. Privileged operations (changing a user's roles, making a role the default) get their own routes rather than an optional field on a weaker route.
+**Guard rails against escalation.** Because roles are data, the dangerous things are editing a role and attaching one. A caller can only save a role, or make it the default, granting what they hold themselves (an unconditional `Allow` with no overlapping `Deny`). Attaching is PassRole-style: `roles:assign`, scoped by resource to the roles the holder may hand out. Some actions are root-equivalent (`roles:write`, `roles:assign`, `settings.sso:write`, `settings.security:write`, `users:write`), so only `SUPER_ADMIN` is seeded with them. The last unconditional full-access attachment cannot be removed. Privileged operations (changing a user's roles, making a role the default) get their own routes rather than an optional field on a weaker route.
 
 **Migration safety.** Migration 000064 runs in one transaction and, before committing, recomputes every user's and agent's access with the legacy rules and with the new policies, at platform scope and in each project they belong to; any difference aborts and rolls everything back. Legacy tables and columns are left in place (not read, not written) so the data can be inspected. Soft-deleted members get no attachment. A project role keeps `projects:read` because membership used to imply it; global-role actions are placed on platform roots only, never `project/*`, matching how they always behaved inside projects.
 

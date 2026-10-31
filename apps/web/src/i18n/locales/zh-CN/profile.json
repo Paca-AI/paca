@@ -1,7 +1,7 @@
 {
 	"page": {
-		"title": "个人资料",
-		"subtitle": "查看并更新您的账户信息。"
+		"title": "账户",
+		"subtitle": "管理你的个人资料、登录安全和访问权限。"
 	},
 	"fields": {
 		"fullName": "姓名",
@@ -116,6 +116,68 @@
 			"nameTooLong": "名称长度不能超过 100 个字符。",
 			"createFailed": "创建密钥失败，请重试。",
 			"copyFailed": "复制失败，请手动复制密钥。"
+		}
+	},
+	"nav": {
+		"profile": "个人资料",
+		"security": "安全",
+		"apiKeys": "API 密钥",
+		"preferences": "通知"
+	},
+	"preferences": {
+		"title": "通知",
+		"subtitle": "选择接收通知的方式。"
+	},
+	"security": {
+		"title": "安全",
+		"subtitle": "保护你的账户并控制登录方式。",
+		"mfa": {
+			"title": "两步验证",
+			"description": "登录时，除密码外还需要验证器应用生成的验证码。",
+			"on": "已开启",
+			"off": "未开启",
+			"enable": "设置两步验证",
+			"recoveryLeft": "剩余恢复码：{{count}}",
+			"recoveryLow": "恢复码所剩不多。请在失去访问权限前生成新的恢复码。",
+			"codeOrRecovery": "验证码或恢复码",
+			"codes": {
+				"copy": "复制",
+				"copied": "已复制",
+				"download": "下载"
+			},
+			"errors": {
+				"generic": "出了点问题，请重试。",
+				"invalidCode": "验证码无效或已被使用。",
+				"unavailable": "两步验证不可用：服务器未配置加密密钥。请联系管理员。",
+				"load": "无法加载两步验证状态。"
+			},
+			"setup": {
+				"title": "设置两步验证",
+				"description": "使用 1Password、Google Authenticator 或 Authy 等验证器应用。",
+				"scan": "用验证器应用扫描此二维码。",
+				"orEnterKey": "无法扫描？请改为输入此密钥。",
+				"copyKey": "复制设置密钥",
+				"qrLabel": "两步验证设置二维码",
+				"codeLabel": "输入应用中的 6 位验证码",
+				"verify": "验证并开启",
+				"codesTitle": "保存你的恢复码",
+				"codesDescription": "如果你无法使用验证器应用，每个恢复码可使用一次。",
+				"codesWarning": "这些恢复码只会显示这一次。关闭前请妥善保存。",
+				"saved": "我已保存"
+			},
+			"disable": {
+				"button": "关闭",
+				"title": "关闭两步验证",
+				"description": "你的账户将只受密码保护。请输入当前验证码以确认。",
+				"confirm": "关闭"
+			},
+			"regenerate": {
+				"button": "新的恢复码",
+				"title": "生成新的恢复码",
+				"description": "这将替换你现有的所有恢复码。请输入当前验证码以确认。",
+				"confirm": "生成",
+				"doneTitle": "你的新恢复码"
+			}
 		}
 	}
 }

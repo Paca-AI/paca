@@ -36,7 +36,8 @@
 			"changeRoleAction": "역할 변경",
 			"deleteAction": "사용자 삭제",
 			"pwdResetHint": "이 사용자는 다음 로그인 시 새 비밀번호를 설정해야 합니다",
-			"columnActions": "작업"
+			"columnActions": "작업",
+			"securityAction": "보안"
 		},
 		"formDialog": {
 			"createdTitle": "사용자가 생성되었습니다",
@@ -142,6 +143,24 @@
 			"title": "일치하는 사용자가 없습니다",
 			"description": "다른 검색어나 역할 필터를 시도해 보세요.",
 			"clear": "필터 지우기"
+		},
+		"security": {
+			"title": "{{name}}의 로그인 보호",
+			"description": "이 사용자가 로그인할 수 있는 위치를 제어하고 2단계 인증을 해제합니다.",
+			"ip": {
+				"label": "허용된 IP 주소",
+				"hint": "한 줄에 IP 주소 또는 CIDR 범위 하나. 비워 두면 모든 주소를 허용합니다. 비밀번호 로그인에 적용됩니다."
+			},
+			"mfa": {
+				"title": "2단계 인증",
+				"description": "기기와 복구 코드를 모두 잃어버린 경우, 다시 설정할 수 있도록 해제하세요.",
+				"reset": "2단계 인증 초기화",
+				"confirmReset": "예, 초기화",
+				"resetDone": "2단계 인증이 초기화되었습니다. 다음 로그인 때 다시 설정할 수 있습니다.",
+				"resetFailed": "2단계 인증을 초기화하지 못했습니다."
+			},
+			"cancel": "취소",
+			"save": "저장"
 		}
 	},
 	"globalRoles": {
@@ -305,6 +324,10 @@
 			"gitIdentitiesManage": {
 				"label": "워크스페이스 Git 연결 관리",
 				"description": "워크스페이스의 모든 프로젝트가 사용할 수 있는 GitHub 앱과 액세스 토큰을 추가하고 제거합니다"
+			},
+			"settingsSecurityWrite": {
+				"label": "로그인 보안 관리",
+				"description": "2단계 인증을 사용해야 하는 대상과 로그인을 허용할 IP 주소를 설정하고, 다른 사람의 2단계 인증을 초기화합니다. 계정에서 이 보호를 제거하는 것은 계정을 탈취하는 것과 같으므로 전체 관리자 권한처럼 취급하세요."
 			}
 		},
 		"permissionGroups": {
@@ -478,6 +501,37 @@
 				"saveFailed": "공급자를 저장하지 못했습니다. 다시 시도하세요.",
 				"loadFailed": "SSO 공급자를 불러오지 못했습니다.",
 				"deleteFailed": "공급자를 삭제하지 못했습니다. 다시 시도하세요."
+			}
+		},
+		"nav": {
+			"workspace": "워크스페이스",
+			"signIn": "로그인",
+			"branding": "브랜딩",
+			"sso": "싱글 사인온",
+			"security": "로그인 보안"
+		},
+		"security": {
+			"roles": {
+				"title": "보호 대상 역할",
+				"description": "아래 규칙은 선택한 역할 중 하나를 가진 사람에게 적용됩니다. '모든 역할'을 켜면 나중에 만들어지는 역할을 포함해 모두에게 적용됩니다.",
+				"all": "모든 역할"
+			},
+			"mfa": {
+				"title": "2단계 인증 필수",
+				"description": "보호 대상 역할을 가진 사람은 로그인하기 전에 인증 앱을 설정해야 합니다.",
+				"rolloutNote": "아직 설정하지 않은 사람은 다음 로그인 때 설정 안내를 받습니다."
+			},
+			"ip": {
+				"title": "허용된 IP 주소",
+				"description": "보호 대상 역할의 비밀번호 로그인을 이 주소로 제한합니다. 비워 두면 모든 주소를 허용합니다.",
+				"hint": "한 줄에 IP 주소 또는 CIDR 범위 하나 (예: 203.0.113.0/24). IPv4와 IPv6을 지원합니다.",
+				"lockoutWarning": "본인의 주소를 반드시 포함하세요. 그렇지 않으면 접근할 수 없게 될 수 있습니다. SSO 로그인에는 영향이 없습니다."
+			},
+			"noRoles": "보호 대상 역할이 아직 없어 이 규칙은 현재 아무에게도 적용되지 않습니다.",
+			"errors": {
+				"invalidCidr": "항목 중 하나가 올바른 IP 주소 또는 CIDR 범위가 아닙니다.",
+				"saveFailed": "저장하지 못했습니다. 다시 시도하세요.",
+				"loadFailed": "로그인 보안 설정을 불러올 수 없습니다."
 			}
 		}
 	},

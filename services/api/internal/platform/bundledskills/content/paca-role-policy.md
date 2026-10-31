@@ -56,11 +56,11 @@ Form `domain:verb`. Wildcards: `*` (every action) and `domain:*` (every action o
 - agents: `agents:read` `agents:write` `conversations:read` `conversations:write`
 - environments: `environments:read` `environments:write` `environments:connect` (connect = interactive shell / SSH key, separate from configuring)
 - git: `git:read` `git:write` `git:approve` `git:merge` (linked repositories; read = list, read changes/issues/CI and read-only credentials; write = link/unlink, comment, review, open change requests and credentials that can push; approve and merge are separate so a role can review without satisfying a required review or landing code), `git.connections:manage` (project-level: create/delete the Git connections — GitHub Apps, access tokens — that only this project can use), `git.identities:manage` (workspace-level: create/delete the connections every project can use)
-- workspace: `settings:write` `settings.sso:write` `plugins:read` `plugins:write`
+- workspace: `settings:write` `settings.sso:write` `settings.security:write` `plugins:read` `plugins:write`
 
 Plugins can add actions named `<plugin namespace>:<verb>` (checked on `project/<id>/plugin/<pluginId>` inside a project). Only use one if the user names it or a live list shows it.
 
-**Root-equivalent actions** (whoever holds one can give themselves everything): `roles:write`, `roles:assign`, `settings.sso:write`, `users:write` (includes resetting any password). Never add them unasked; if requested, warn that they equal full admin. `roles:assign` works like AWS IAM `iam:PassRole`: its RESOURCES say WHICH roles the holder may attach to people or agents (`role/<id>` workspace role platform-wide, `project/<projectId>/role/<id>` for an attachment inside one project, `role/*` / `project/<id>/role/*` for all of them). Granted on `*` it is root-equivalent, so always scope it to the roles it should hand out; the assigner does NOT need to hold the permissions of those roles.
+**Root-equivalent actions** (whoever holds one can give themselves everything): `roles:write`, `roles:assign`, `settings.sso:write`, `settings.security:write`, `users:write` (includes resetting any password). Never add them unasked; if requested, warn that they equal full admin. `roles:assign` works like AWS IAM `iam:PassRole`: its RESOURCES say WHICH roles the holder may attach to people or agents (`role/<id>` workspace role platform-wide, `project/<projectId>/role/<id>` for an attachment inside one project, `role/*` / `project/<id>/role/*` for all of them). Granted on `*` it is root-equivalent, so always scope it to the roles it should hand out; the assigner does NOT need to hold the permissions of those roles.
 
 ## Resources
 

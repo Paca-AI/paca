@@ -84,7 +84,7 @@
 	},
 	"userMenu": {
 		"signIn": "Đăng nhập",
-		"myProfile": "Hồ sơ của tôi",
+		"myProfile": "Tài khoản",
 		"apiKeys": "Khóa API",
 		"logOut": "Đăng xuất",
 		"loggingOut": "Đang đăng xuất…"

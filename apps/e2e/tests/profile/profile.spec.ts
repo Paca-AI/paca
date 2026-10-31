@@ -38,8 +38,8 @@ function uniqueUser(label: string): TestUser {
 
 async function openProfile(page: Page, username: string): Promise<void> {
 	await signIn(page, username, RESTRICTED_PASSWORD);
-	await page.goto(`${BASE_URL}/profile`);
-	await expect(page.getByRole("heading", { name: "My Profile" })).toBeVisible();
+	await page.goto(`${BASE_URL}/account`);
+	await expect(page.getByRole("heading", { name: "Account settings" })).toBeVisible();
 }
 
 // The label and its value share a parent <div>, so the parent stands in for
@@ -158,7 +158,7 @@ test.describe("Editing the profile", () => {
 
 		await page.reload();
 		await expect(
-			page.getByRole("heading", { name: "My Profile" }),
+			page.getByRole("heading", { name: "Account settings" }),
 		).toBeVisible();
 		await expect(field(page, "Full name")).toContainText(newName);
 		await expect(field(page, "Email")).toContainText(newEmail);
@@ -178,7 +178,7 @@ test.describe("Editing the profile", () => {
 
 		await page.reload();
 		await expect(
-			page.getByRole("heading", { name: "My Profile" }),
+			page.getByRole("heading", { name: "Account settings" }),
 		).toBeVisible();
 		await expect(field(page, "Full name")).toContainText(user.fullName);
 		await expect(page.getByText("Should Not Be Saved")).toHaveCount(0);

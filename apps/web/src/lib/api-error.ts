@@ -11,6 +11,15 @@ export const ApiErrorCode = {
 	Unauthenticated: "AUTH_UNAUTHENTICATED",
 	TooManyRequests: "TOO_MANY_REQUESTS",
 
+	// Second factor / login restriction errors.
+	MfaRequired: "AUTH_MFA_REQUIRED",
+	MfaInvalidCode: "AUTH_MFA_INVALID_CODE",
+	MfaSetupRequired: "AUTH_MFA_SETUP_REQUIRED",
+	IpNotAllowed: "AUTH_IP_NOT_ALLOWED",
+	MfaAlreadyEnabled: "MFA_ALREADY_ENABLED",
+	MfaUnavailable: "MFA_UNAVAILABLE",
+	InvalidCidr: "INVALID_CIDR",
+
 	// Password / session gate errors.
 	PasswordChangeRequired: "AUTH_PASSWORD_CHANGE_REQUIRED",
 

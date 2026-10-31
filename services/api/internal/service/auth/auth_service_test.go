@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
 	roledom "github.com/Paca-AI/api/internal/domain/role"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
@@ -118,7 +119,7 @@ func TestLogin_Success(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, &stubRefreshStore{})
 
-	pair, err := svc.Login(context.Background(), "alice", "secret123", true)
+	pair, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "alice", Password: "secret123", RememberMe: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -129,7 +130,7 @@ func TestLogin_Success(t *testing.T) {
 
 func TestLogin_UserNotFound(t *testing.T) {
 	svc := newAuthSvc(&stubUserRepo{}, &stubRefreshStore{})
-	_, err := svc.Login(context.Background(), "ghost", "pass1234", true)
+	_, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "ghost", Password: "pass1234", RememberMe: true})
 	if !errors.Is(err, domainauth.ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -146,7 +147,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, &stubRefreshStore{})
 
-	_, err := svc.Login(context.Background(), "alice", "wrongpass", true)
+	_, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "alice", Password: "wrongpass", RememberMe: true})
 	if !errors.Is(err, domainauth.ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -164,7 +165,7 @@ func TestLogin_IssuesAnnotationPair(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
 
-	pair, err := svc.Login(context.Background(), "alice", "secret123", true)
+	pair, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "alice", Password: "secret123", RememberMe: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -208,7 +209,7 @@ func TestLogin_RepoError(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return nil, repoErr },
 	}, &stubRefreshStore{})
 
-	_, err := svc.Login(context.Background(), "alice", "pass1234", true)
+	_, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "alice", Password: "pass1234", RememberMe: true})
 	if !errors.Is(err, repoErr) {
 		t.Fatalf("expected repo error, got %v", err)
 	}
@@ -649,7 +650,7 @@ func TestLogin_RememberMe_True_UsesLongTTL(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
 
-	pair, err := svc.Login(context.Background(), "alice", "secret123", true)
+	pair, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "alice", Password: "secret123", RememberMe: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -682,7 +683,7 @@ func TestLogin_RememberMe_False_UsesSessionTTL(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
 
-	pair, err := svc.Login(context.Background(), "alice", "secret123", false)
+	pair, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "alice", Password: "secret123", RememberMe: false})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -781,4 +782,86 @@ func userRoles(names ...string) []roledom.Summary {
 		out = append(out, roledom.Summary{ID: uuid.New(), Name: n})
 	}
 	return out
+}
+
+type stubGate struct{ err error }
+
+func (g stubGate) CheckLogin(context.Context, *userdom.User, string, string) error { return g.err }
+
+func TestLogin_GateRejectsAfterCorrectPassword(t *testing.T) {
+	u := &userdom.User{ID: uuid.New(), Username: "alice", Roles: userRoles("ADMIN"), PasswordHash: hashedPassword(t, "secret123")}
+	repo := &stubUserRepo{findByUsername: func(context.Context, string) (*userdom.User, error) { return u, nil }}
+	gateErr := errors.New("gate: nope")
+
+	svc := newAuthSvc(repo, &stubRefreshStore{}).WithLoginGate(stubGate{err: gateErr})
+	if _, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "alice", Password: "secret123"}); !errors.Is(err, gateErr) {
+		t.Fatalf("want gate error, got %v", err)
+	}
+	// A wrong password must never reach the gate: its errors would reveal
+	// how the account is protected to someone who doesn't know the password.
+	if _, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "alice", Password: "wrongpass"}); !errors.Is(err, domainauth.ErrInvalidCredentials) {
+		t.Fatalf("want ErrInvalidCredentials, got %v", err)
+	}
+	svc = newAuthSvc(repo, &stubRefreshStore{}).WithLoginGate(stubGate{})
+	if _, err := svc.Login(context.Background(), domainauth.LoginInput{Username: "alice", Password: "secret123"}); err != nil {
+		t.Fatalf("passing gate: %v", err)
+	}
+}
+
+type otpGate struct{}
+
+func (otpGate) CheckLogin(_ context.Context, _ *userdom.User, otp, _ string) error {
+	switch otp {
+	case "":
+		return mfadom.ErrRequired
+	case "123456":
+		return nil
+	}
+	return mfadom.ErrInvalidCode
+}
+
+func TestLogin_MFAChallengeThenComplete(t *testing.T) {
+	u := &userdom.User{ID: uuid.New(), Username: "alice", Roles: userRoles("ADMIN"), PasswordHash: hashedPassword(t, "secret123")}
+	repo := &stubUserRepo{
+		findByUsername: func(context.Context, string) (*userdom.User, error) { return u, nil },
+		findByID:       func(context.Context, uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := newAuthSvc(repo, &stubRefreshStore{}).WithLoginGate(otpGate{})
+	ctx := context.Background()
+
+	step1, err := svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "secret123", RememberMe: true})
+	if err != nil || step1.MFAChallenge == "" || step1.AccessToken != "" || step1.RefreshToken != "" {
+		t.Fatalf("step 1 must yield only a challenge: %+v, %v", step1, err)
+	}
+
+	if _, err := svc.CompleteMFALogin(ctx, step1.MFAChallenge, "000000", "1.1.1.1"); !errors.Is(err, mfadom.ErrInvalidCode) {
+		t.Fatalf("wrong code: got %v", err)
+	}
+	pair, err := svc.CompleteMFALogin(ctx, step1.MFAChallenge, "123456", "1.1.1.1")
+	if err != nil || pair.AccessToken == "" || pair.RefreshTTL != 7*24*time.Hour {
+		t.Fatalf("right code must start a persistent session: %+v, %v", pair, err)
+	}
+}
+
+func TestCompleteMFALogin_RejectsOtherTokens(t *testing.T) {
+	u := &userdom.User{ID: uuid.New(), Username: "alice", Roles: userRoles("USER"), PasswordHash: hashedPassword(t, "secret123")}
+	repo := &stubUserRepo{
+		findByUsername: func(context.Context, string) (*userdom.User, error) { return u, nil },
+		findByID:       func(context.Context, uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := newAuthSvc(repo, &stubRefreshStore{}).WithLoginGate(otpGate{})
+	ctx := context.Background()
+
+	// A real session token must not stand in for a challenge.
+	sess, _ := svc.IssueSession(u, false)
+	for _, tok := range []string{sess.AccessToken, sess.RefreshToken, "garbage"} {
+		if _, err := svc.CompleteMFALogin(ctx, tok, "123456", "1.1.1.1"); !errors.Is(err, domainauth.ErrTokenInvalid) {
+			t.Fatalf("token %.12s…: got %v, want ErrTokenInvalid", tok, err)
+		}
+	}
+	// And a challenge must not authenticate as a session or refresh.
+	step1, _ := svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "secret123"})
+	if _, err := svc.Refresh(ctx, step1.MFAChallenge); err == nil {
+		t.Fatal("a challenge token was accepted as a refresh token")
+	}
 }

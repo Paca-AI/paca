@@ -57,12 +57,14 @@ type Deps struct {
 	SessionEnvironments httpmw.SessionEnvironmentLookup
 	Environment         *handler.EnvironmentHandler
 	// Git serves the linked-repository, credential and webhook endpoints; optional.
-	Git             *handler.GitHandler
-	Annotation      *handler.AnnotationHandler
-	Conversation    *handler.ConversationHandler
-	Automation      *handler.AutomationHandler
-	Settings        *handler.SettingsHandler
-	SSO             *handler.SSOHandler
+	Git          *handler.GitHandler
+	Annotation   *handler.AnnotationHandler
+	Conversation *handler.ConversationHandler
+	Automation   *handler.AutomationHandler
+	Settings     *handler.SettingsHandler
+	SSO          *handler.SSOHandler
+	// MFA serves TOTP enrollment and the admin login-security endpoints; optional.
+	MFA             *handler.MFAHandler
 	ProjectActivity *handler.ProjectActivityHandler
 	ProjectExport   *handler.ProjectExportHandler
 	Log             *slog.Logger
@@ -133,9 +135,16 @@ func New(deps Deps) http.Handler {
 			}
 			r.Route("/auth", func(r chi.Router) {
 				r.With(authLimit(deps.AuthRateLimit)).Post("/login", deps.Auth.Login)
+				r.With(authLimit(deps.AuthRateLimit)).Post("/mfa/verify", deps.Auth.VerifyMFA)
 				r.With(authLimit(3*deps.AuthRateLimit)).Post("/refresh", deps.Auth.Refresh)
 				r.With(authLimit(3*deps.AuthRateLimit)).Post("/annotation-refresh", deps.Auth.AnnotationRefresh)
 				r.With(httpmw.Authn(deps.TokenManager)).Post("/logout", deps.Auth.Logout)
+				if deps.MFA != nil {
+					// Enrollment for an account that policy requires to use MFA
+					// but that cannot sign in until it has; password-authenticated.
+					r.With(authLimit(deps.AuthRateLimit)).Post("/mfa/setup", deps.MFA.SetupBegin)
+					r.With(authLimit(deps.AuthRateLimit)).Post("/mfa/setup/confirm", deps.MFA.SetupConfirm)
+				}
 				// Public — the link a password-set-token email points to;
 				// the token itself (not a session) proves the caller's right
 				// to act on the account.
@@ -166,6 +175,16 @@ func New(deps Deps) http.Handler {
 					r.Get("/me", deps.User.GetMe)
 					r.Patch("/me", deps.User.UpdateMe)
 					r.Get("/me/global-permissions", deps.User.GetMyGlobalPermissions)
+					if deps.MFA != nil {
+						r.Group(func(r chi.Router) {
+							r.Use(httpmw.RequireJWTAuth())
+							r.Get("/me/mfa", deps.MFA.Status)
+							r.Post("/me/mfa/enroll", deps.MFA.Begin)
+							r.Post("/me/mfa/confirm", deps.MFA.Confirm)
+							r.Post("/me/mfa/disable", deps.MFA.Disable)
+							r.Post("/me/mfa/recovery-codes", deps.MFA.RegenerateRecoveryCodes)
+						})
+					}
 					r.Post("/me/avatar/initiate-upload", deps.User.InitiateAvatarUpload)
 					r.Post("/me/avatar/complete-upload", deps.User.CompleteAvatarUpload)
 					r.Delete("/me/avatar", deps.User.DeleteAvatar)
@@ -318,6 +337,18 @@ func New(deps Deps) http.Handler {
 					r.With(write).Post("/settings/favicon/avatar/initiate-upload", deps.Settings.InitiateFaviconUpload)
 					r.With(write).Post("/settings/favicon/avatar/complete-upload", deps.Settings.CompleteFaviconUpload)
 					r.With(write).Delete("/settings/favicon/avatar", deps.Settings.DeleteFavicon)
+				}
+
+				// Login security: MFA requirement, IP allow-lists, and resetting
+				// an account's MFA. Root-equivalent — see
+				// iam.ActionSettingsSecurityWrite.
+				if deps.MFA != nil {
+					sec := require.Global(iam.ActionSettingsSecurityWrite)
+					r.With(sec).Get("/auth-security", deps.MFA.GetPolicy)
+					r.With(sec).Put("/auth-security", deps.MFA.PutPolicy)
+					r.With(sec).Get("/users/{userId}/allowed-cidrs", deps.MFA.GetUserCIDRs)
+					r.With(sec).Put("/users/{userId}/allowed-cidrs", deps.MFA.PutUserCIDRs)
+					r.With(sec).Delete("/users/{userId}/mfa", deps.MFA.ResetUserMFA)
 				}
 
 				// SSO / OIDC identity providers. A separate permission from

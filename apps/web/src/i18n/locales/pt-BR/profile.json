@@ -1,7 +1,7 @@
 {
 	"page": {
-		"title": "Meu Perfil",
-		"subtitle": "Visualize e atualize as informações da sua conta."
+		"title": "Conta",
+		"subtitle": "Gerencie seu perfil, a segurança de login e o acesso."
 	},
 	"fields": {
 		"fullName": "Nome completo",
@@ -116,6 +116,68 @@
 			"nameTooLong": "O nome deve ter no máximo 100 caracteres.",
 			"createFailed": "Falha ao criar a chave. Tente novamente.",
 			"copyFailed": "Falha ao copiar. Copie a chave manualmente."
+		}
+	},
+	"nav": {
+		"profile": "Perfil",
+		"security": "Segurança",
+		"apiKeys": "Chaves de API",
+		"preferences": "Notificações"
+	},
+	"preferences": {
+		"title": "Notificações",
+		"subtitle": "Escolha como quer ser notificado."
+	},
+	"security": {
+		"title": "Segurança",
+		"subtitle": "Proteja sua conta e controle como você entra.",
+		"mfa": {
+			"title": "Verificação em duas etapas",
+			"description": "Pede um código de um app autenticador, além da sua senha, ao entrar.",
+			"on": "Ativada",
+			"off": "Desativada",
+			"enable": "Configurar a verificação em duas etapas",
+			"recoveryLeft": "Códigos de recuperação restantes: {{count}}",
+			"recoveryLow": "Restam poucos códigos de recuperação. Gere novos antes de perder o acesso.",
+			"codeOrRecovery": "Código de autenticação ou código de recuperação",
+			"codes": {
+				"copy": "Copiar",
+				"copied": "Copiado",
+				"download": "Baixar"
+			},
+			"errors": {
+				"generic": "Algo deu errado. Tente novamente.",
+				"invalidCode": "Esse código é inválido ou já foi usado.",
+				"unavailable": "A verificação em duas etapas não está disponível: o servidor não tem uma chave de criptografia configurada. Fale com seu administrador.",
+				"load": "Não foi possível carregar o status da verificação em duas etapas."
+			},
+			"setup": {
+				"title": "Configurar a verificação em duas etapas",
+				"description": "Use um app autenticador como 1Password, Google Authenticator ou Authy.",
+				"scan": "Escaneie este QR code com seu app autenticador.",
+				"orEnterKey": "Não consegue escanear? Digite esta chave.",
+				"copyKey": "Copiar chave de configuração",
+				"qrLabel": "QR code para configurar a verificação em duas etapas",
+				"codeLabel": "Digite o código de 6 dígitos do app",
+				"verify": "Verificar e ativar",
+				"codesTitle": "Guarde seus códigos de recuperação",
+				"codesDescription": "Cada código funciona uma vez se você perder o acesso ao seu app autenticador.",
+				"codesWarning": "Estes códigos são exibidos só agora. Guarde-os em um lugar seguro antes de fechar.",
+				"saved": "Já guardei"
+			},
+			"disable": {
+				"button": "Desativar",
+				"title": "Desativar a verificação em duas etapas",
+				"description": "Sua conta ficará protegida apenas pela senha. Digite um código atual para confirmar.",
+				"confirm": "Desativar"
+			},
+			"regenerate": {
+				"button": "Novos códigos de recuperação",
+				"title": "Gerar novos códigos de recuperação",
+				"description": "Isso substitui todos os seus códigos de recuperação atuais. Digite um código atual para confirmar.",
+				"confirm": "Gerar",
+				"doneTitle": "Seus novos códigos de recuperação"
+			}
 		}
 	}
 }

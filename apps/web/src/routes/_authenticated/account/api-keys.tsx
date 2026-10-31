@@ -46,7 +46,7 @@ import {
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatDate as formatDateLocale } from "@/lib/format-date";
 
-export const Route = createFileRoute("/_authenticated/profile/api-keys")({
+export const Route = createFileRoute("/_authenticated/account/api-keys")({
 	component: APIKeysPage,
 });
 
@@ -151,12 +151,10 @@ function APIKeysPage() {
 	}
 
 	return (
-		<div className="max-w-3xl mx-auto flex flex-col gap-6 p-4 md:p-6">
+		<div className="flex flex-col gap-6">
 			<div>
-				<h1 className="text-2xl font-semibold tracking-tight">
-					{t("apiKeys.title")}
-				</h1>
-				<p className="text-sm text-muted-foreground mt-1">
+				<h2 className="text-lg font-semibold">{t("apiKeys.title")}</h2>
+				<p className="text-sm text-muted-foreground mt-0.5">
 					{t("apiKeys.subtitle")}
 				</p>
 			</div>

@@ -31,6 +31,7 @@ const PLATFORM_ROOTS: Record<string, readonly string[]> = {
 	plugins: ["plugin", "plugin/*"],
 	settings: ["settings"],
 	"settings.sso": ["sso"],
+	"settings.security": ["sso"],
 	agents: ["agent", "agent/*"],
 	projects: ["project"],
 	"git.identities": ["git_identity/*"],

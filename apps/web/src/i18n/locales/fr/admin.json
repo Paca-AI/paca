@@ -36,7 +36,8 @@
 			"changeRoleAction": "Changer le rôle",
 			"deleteAction": "Supprimer l'utilisateur",
 			"pwdResetHint": "Cet utilisateur doit définir un nouveau mot de passe à sa prochaine connexion",
-			"columnActions": "Actions"
+			"columnActions": "Actions",
+			"securityAction": "Sécurité"
 		},
 		"formDialog": {
 			"createdTitle": "Utilisateur créé",
@@ -142,6 +143,24 @@
 			"title": "Aucun utilisateur ne correspond",
 			"description": "Essayez une autre recherche ou un autre filtre de rôle.",
 			"clear": "Effacer les filtres"
+		},
+		"security": {
+			"title": "Protections de connexion de {{name}}",
+			"description": "Contrôlez d'où cette personne peut se connecter et réinitialisez sa validation en deux étapes.",
+			"ip": {
+				"label": "Adresses IP autorisées",
+				"hint": "Une adresse IP ou plage CIDR par ligne. Laissez vide pour autoriser toute adresse. S'applique à la connexion par mot de passe."
+			},
+			"mfa": {
+				"title": "Validation en deux étapes",
+				"description": "Si la personne a perdu son appareil et ses codes de récupération, supprimez-la pour qu'elle puisse la reconfigurer.",
+				"reset": "Réinitialiser la validation en deux étapes",
+				"confirmReset": "Oui, réinitialiser",
+				"resetDone": "La validation en deux étapes a été réinitialisée. La personne pourra la reconfigurer à sa prochaine connexion.",
+				"resetFailed": "Impossible de réinitialiser la validation en deux étapes."
+			},
+			"cancel": "Annuler",
+			"save": "Enregistrer"
 		}
 	},
 	"globalRoles": {
@@ -305,6 +324,10 @@
 			"gitIdentitiesManage": {
 				"label": "Gérer les connexions Git de l'espace de travail",
 				"description": "Ajouter et supprimer les applications GitHub et les jetons d'accès que tous les projets de l'espace de travail peuvent utiliser"
+			},
+			"settingsSecurityWrite": {
+				"label": "Gérer la sécurité de connexion",
+				"description": "Définit qui doit utiliser la validation en deux étapes et quelles adresses IP peuvent se connecter, et réinitialise la validation en deux étapes d'une autre personne. Retirer cette protection d'un compte revient à en prendre le contrôle : traitez-le comme un accès administrateur complet."
 			}
 		},
 		"permissionGroups": {
@@ -478,6 +501,37 @@
 				"saveFailed": "Échec de l'enregistrement du fournisseur. Veuillez réessayer.",
 				"loadFailed": "Impossible de charger les fournisseurs SSO.",
 				"deleteFailed": "Échec de la suppression du fournisseur. Veuillez réessayer."
+			}
+		},
+		"nav": {
+			"workspace": "Espace de travail",
+			"signIn": "Connexion",
+			"branding": "Identité visuelle",
+			"sso": "Authentification unique",
+			"security": "Sécurité de connexion"
+		},
+		"security": {
+			"roles": {
+				"title": "Rôles protégés",
+				"description": "Les règles ci-dessous s'appliquent aux personnes ayant l'un des rôles choisis. Activez Tous les rôles pour couvrir tout le monde, y compris les rôles créés plus tard.",
+				"all": "Tous les rôles"
+			},
+			"mfa": {
+				"title": "Exiger la validation en deux étapes",
+				"description": "Les personnes ayant un rôle protégé doivent configurer une application d'authentification avant de pouvoir se connecter.",
+				"rolloutNote": "Celles qui ne l'ont pas encore configurée seront guidées lors de leur prochaine connexion."
+			},
+			"ip": {
+				"title": "Adresses IP autorisées",
+				"description": "Limite la connexion par mot de passe des rôles protégés à ces adresses. Laissez vide pour autoriser toute adresse.",
+				"hint": "Une adresse IP ou plage CIDR par ligne, par exemple 203.0.113.0/24. IPv4 et IPv6 sont pris en charge.",
+				"lockoutWarning": "Vérifiez que votre propre adresse est incluse, sinon vous risquez de perdre l'accès. La connexion SSO n'est pas concernée."
+			},
+			"noRoles": "Aucun rôle n'est encore protégé : ces règles ne s'appliquent donc à personne.",
+			"errors": {
+				"invalidCidr": "L'une des entrées n'est pas une adresse IP ou une plage CIDR valide.",
+				"saveFailed": "Échec de l'enregistrement. Veuillez réessayer.",
+				"loadFailed": "Impossible de charger les paramètres de sécurité de connexion."
 			}
 		}
 	},

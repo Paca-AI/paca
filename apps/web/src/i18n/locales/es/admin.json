@@ -36,7 +36,8 @@
 			"changeRoleAction": "Cambiar rol",
 			"deleteAction": "Eliminar usuario",
 			"pwdResetHint": "Este usuario debe establecer una nueva contraseña en su próximo inicio de sesión",
-			"columnActions": "Acciones"
+			"columnActions": "Acciones",
+			"securityAction": "Seguridad"
 		},
 		"formDialog": {
 			"createdTitle": "Usuario creado",
@@ -142,6 +143,24 @@
 			"title": "Ningún usuario coincide",
 			"description": "Prueba con otra búsqueda o filtro de rol.",
 			"clear": "Borrar filtros"
+		},
+		"security": {
+			"title": "Protecciones de inicio de sesión de {{name}}",
+			"description": "Controla desde dónde puede iniciar sesión esta persona y borra su verificación en dos pasos.",
+			"ip": {
+				"label": "Direcciones IP permitidas",
+				"hint": "Una dirección IP o rango CIDR por línea. Déjalo vacío para permitir cualquiera. Se aplica al inicio de sesión con contraseña."
+			},
+			"mfa": {
+				"title": "Verificación en dos pasos",
+				"description": "Si perdió el dispositivo y los códigos de recuperación, bórrala para que pueda configurarla de nuevo.",
+				"reset": "Restablecer la verificación en dos pasos",
+				"confirmReset": "Sí, restablecer",
+				"resetDone": "La verificación en dos pasos se restableció. Podrá configurarla de nuevo en su próximo inicio de sesión.",
+				"resetFailed": "No se pudo restablecer la verificación en dos pasos."
+			},
+			"cancel": "Cancelar",
+			"save": "Guardar"
 		}
 	},
 	"globalRoles": {
@@ -305,6 +324,10 @@
 			"gitIdentitiesManage": {
 				"label": "Gestionar conexiones Git del espacio de trabajo",
 				"description": "Añadir y quitar las aplicaciones de GitHub y los tokens de acceso que pueden usar todos los proyectos del espacio de trabajo"
+			},
+			"settingsSecurityWrite": {
+				"label": "Gestionar la seguridad de acceso",
+				"description": "Define quién debe usar la verificación en dos pasos y desde qué direcciones IP se puede iniciar sesión, y restablece la verificación en dos pasos de otra persona. Quitar esa protección a una cuenta equivale a tomar el control de ella, así que trátalo como acceso de administrador total."
 			}
 		},
 		"permissionGroups": {
@@ -478,6 +501,37 @@
 				"saveFailed": "No se pudo guardar el proveedor. Inténtalo de nuevo.",
 				"loadFailed": "No se pudieron cargar los proveedores SSO.",
 				"deleteFailed": "No se pudo eliminar el proveedor. Inténtalo de nuevo."
+			}
+		},
+		"nav": {
+			"workspace": "Espacio de trabajo",
+			"signIn": "Inicio de sesión",
+			"branding": "Marca",
+			"sso": "Inicio de sesión único",
+			"security": "Seguridad de acceso"
+		},
+		"security": {
+			"roles": {
+				"title": "Roles protegidos",
+				"description": "Las reglas siguientes se aplican a quienes tengan alguno de los roles que elijas. Activa Todos los roles para cubrir a todos, incluidos los roles que se creen después.",
+				"all": "Todos los roles"
+			},
+			"mfa": {
+				"title": "Exigir verificación en dos pasos",
+				"description": "Quienes tengan un rol protegido deben configurar una aplicación de autenticación antes de iniciar sesión.",
+				"rolloutNote": "Quienes aún no la hayan configurado serán guiados en el proceso la próxima vez que inicien sesión."
+			},
+			"ip": {
+				"title": "Direcciones IP permitidas",
+				"description": "Limita el inicio de sesión con contraseña de los roles protegidos a estas direcciones. Déjalo vacío para permitir cualquiera.",
+				"hint": "Una dirección IP o rango CIDR por línea, por ejemplo 203.0.113.0/24. Se admiten IPv4 e IPv6.",
+				"lockoutWarning": "Asegúrate de incluir tu propia dirección o podrías quedarte sin acceso. El inicio de sesión por SSO no se ve afectado."
+			},
+			"noRoles": "Aún no hay ningún rol protegido, así que estas reglas no se aplican a nadie.",
+			"errors": {
+				"invalidCidr": "Una de las entradas no es una dirección IP ni un rango CIDR válido.",
+				"saveFailed": "No se pudo guardar. Inténtalo de nuevo.",
+				"loadFailed": "No se pudo cargar la configuración de seguridad de acceso."
 			}
 		}
 	},

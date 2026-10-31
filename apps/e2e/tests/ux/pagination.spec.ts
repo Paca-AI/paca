@@ -243,7 +243,7 @@ test.describe("Table pagination", () => {
 		// The suite's admin session is loaded; sign in as the key owner instead.
 		await page.context().clearCookies();
 		await signIn(page, KEY_USER, RESTRICTED_PASSWORD);
-		await page.goto(`${BASE_URL}/profile/api-keys`);
+		await page.goto(`${BASE_URL}/account/api-keys`);
 		await expectTablePaging(page, 25);
 	});
 

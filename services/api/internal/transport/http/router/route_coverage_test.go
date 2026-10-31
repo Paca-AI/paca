@@ -84,6 +84,7 @@ func coverageDeps(iamAuth *iam.Authorizer) Deps {
 		Automation:          handler.NewAutomationHandler(nil),
 		Settings:            handler.NewSettingsHandler(nil),
 		SSO:                 handler.NewSSOHandler(nil, nil, ""),
+		MFA:                 handler.NewMFAHandler(nil, nil),
 		Log:                 log,
 	}
 }
@@ -134,6 +135,22 @@ var ssoOpenRoutes = []string{
 	"GET /api/v1/auth/sso/{slug}/callback",
 }
 
+// mfaOpenRoutes extends openRouteGroups with the MFA routes registered only
+// when Deps.MFA is set (coverageDeps sets it; the admin login-security routes
+// carry a gate and so are covered there).
+var mfaOpenRoutes = []string{
+	// Pre-login enrollment: the account's password is the credential, since
+	// policy can require MFA before the account is able to sign in.
+	"POST /api/v1/auth/mfa/setup",
+	"POST /api/v1/auth/mfa/setup/confirm",
+	// Self-service on the caller's own account, like the other /users/me routes.
+	"GET /api/v1/users/me/mfa",
+	"POST /api/v1/users/me/mfa/enroll",
+	"POST /api/v1/users/me/mfa/confirm",
+	"POST /api/v1/users/me/mfa/disable",
+	"POST /api/v1/users/me/mfa/recovery-codes",
+}
+
 // gatesOf returns the guards gates among a route's middlewares.
 func gatesOf(mws []func(http.Handler) http.Handler) []gateHandler {
 	stub := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
@@ -178,6 +195,9 @@ func openRoutes() map[string]bool {
 		}
 	}
 	for _, r := range ssoOpenRoutes {
+		open[r] = true
+	}
+	for _, r := range mfaOpenRoutes {
 		open[r] = true
 	}
 	return open

@@ -17,6 +17,26 @@ const (
 	// CodeUnauthenticated represents an unauthenticated request.
 	CodeUnauthenticated Code = "AUTH_UNAUTHENTICATED"
 
+	// CodeMFARequired means the account has MFA enabled and the login carried
+	// no second factor; retry with "otp" set.
+	CodeMFARequired Code = "AUTH_MFA_REQUIRED"
+	// CodeMFAInvalidCode means the TOTP or recovery code was wrong or reused.
+	CodeMFAInvalidCode Code = "AUTH_MFA_INVALID_CODE"
+	// CodeMFASetupRequired means policy requires MFA for this account and it
+	// has not enrolled; it must enroll before it can sign in.
+	CodeMFASetupRequired Code = "AUTH_MFA_SETUP_REQUIRED"
+	// CodeIPNotAllowed means the login came from outside an IP allow-list.
+	CodeIPNotAllowed Code = "AUTH_IP_NOT_ALLOWED"
+	// CodeMFAAlreadyEnabled means enrollment was started on an enrolled account.
+	CodeMFAAlreadyEnabled Code = "MFA_ALREADY_ENABLED"
+	// CodeMFANotEnabled means the operation needs MFA to be enabled.
+	CodeMFANotEnabled Code = "MFA_NOT_ENABLED"
+	// CodeMFAUnavailable means the server cannot store TOTP secrets
+	// (ENCRYPTION_KEY unset).
+	CodeMFAUnavailable Code = "MFA_UNAVAILABLE"
+	// CodeInvalidCIDR means an allow-list entry is not an IP or CIDR.
+	CodeInvalidCIDR Code = "INVALID_CIDR"
+
 	// CodeServiceAccountNotFound represents a service account that was not found.
 	CodeServiceAccountNotFound Code = "SERVICE_ACCOUNT_NOT_FOUND"
 	// CodeServiceAccountNameInvalid indicates a service account name is empty or too long.

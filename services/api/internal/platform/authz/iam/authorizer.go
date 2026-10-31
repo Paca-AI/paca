@@ -358,7 +358,7 @@ func PlatformRootFor(action string) string {
 		return "plugin/*"
 	case "settings":
 		return "settings"
-	case "settings.sso":
+	case "settings.sso", "settings.security":
 		return "sso"
 	case "agents":
 		return "agent/*"

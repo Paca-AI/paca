@@ -10,10 +10,16 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
+
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 )
+
+// mfaChallengeTTL is how long a user has, after entering the right password,
+// to supply the second factor before starting over.
+const mfaChallengeTTL = 5 * time.Minute
 
 // gracePeriod is the window in which a reused refresh token is treated as a
 // concurrent/retry request rather than a stolen token.  The family is NOT
@@ -31,8 +37,15 @@ type RefreshTokenStore interface {
 	IsFamilyRevoked(ctx context.Context, familyID string) (bool, error)
 }
 
+// LoginGate vets a login whose password already checked out: IP allow-lists
+// and the second factor. Nil means password alone is enough.
+type LoginGate interface {
+	CheckLogin(ctx context.Context, u *userdom.User, otp, clientIP string) error
+}
+
 // Service is the concrete implementation of domain/auth.Service.
 type Service struct {
+	gate              LoginGate
 	users             userdom.Repository
 	tokens            *jwttoken.Manager
 	refreshStore      RefreshTokenStore
@@ -51,12 +64,18 @@ func New(users userdom.Repository, tokens *jwttoken.Manager, refreshStore Refres
 	}
 }
 
+// WithLoginGate installs the IP allow-list / MFA check run after the password.
+func (s *Service) WithLoginGate(g LoginGate) *Service {
+	s.gate = g
+	return s
+}
+
 // Login validates credentials and returns a fresh token pair.
-// When rememberMe is true, the refresh token uses the long-lived TTL
+// When RememberMe is true, the refresh token uses the long-lived TTL
 // (JWT_REFRESH_TTL); when false, the shorter session TTL is used
 // (JWT_REFRESH_SESSION_TTL, default 24 h).
-func (s *Service) Login(ctx context.Context, username, password string, rememberMe bool) (*domainauth.TokenPair, error) {
-	u, err := s.users.FindByUsername(ctx, username)
+func (s *Service) Login(ctx context.Context, in domainauth.LoginInput) (*domainauth.TokenPair, error) {
+	u, err := s.users.FindByUsername(ctx, in.Username)
 	if err != nil {
 		if errors.Is(err, userdom.ErrNotFound) {
 			return nil, domainauth.ErrInvalidCredentials
@@ -64,11 +83,55 @@ func (s *Service) Login(ctx context.Context, username, password string, remember
 		return nil, err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(in.Password)); err != nil {
 		return nil, domainauth.ErrInvalidCredentials
 	}
 
-	return s.IssueSession(u, rememberMe)
+	// Only after the password is right, so these distinct errors can't be
+	// used to probe which usernames exist or how they're protected.
+	if s.gate != nil {
+		if err := s.gate.CheckLogin(ctx, u, in.OTP, in.ClientIP); err != nil {
+			if errors.Is(err, mfadom.ErrRequired) {
+				// Password is right, a code is owed. Rather than make the
+				// client keep the password around for a retry, hand back a
+				// short-lived challenge that only CompleteMFALogin accepts.
+				challenge, ierr := s.tokens.IssueMFAChallenge(u.ID.String(), u.Username, in.RememberMe, mfaChallengeTTL)
+				if ierr != nil {
+					return nil, ierr
+				}
+				return &domainauth.TokenPair{MFAChallenge: challenge}, nil
+			}
+			return nil, err
+		}
+	}
+
+	return s.IssueSession(u, in.RememberMe)
+}
+
+// CompleteMFALogin finishes a login that stopped at an MFA challenge.
+func (s *Service) CompleteMFALogin(ctx context.Context, challenge, code, clientIP string) (*domainauth.TokenPair, error) {
+	claims, err := s.tokens.Verify(challenge)
+	if err != nil || claims.Kind != jwttoken.MFAChallengeKind {
+		return nil, domainauth.ErrTokenInvalid
+	}
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return nil, domainauth.ErrTokenInvalid
+	}
+	u, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, userdom.ErrNotFound) {
+			return nil, domainauth.ErrTokenInvalid
+		}
+		return nil, err
+	}
+	if s.gate == nil {
+		return nil, domainauth.ErrTokenInvalid
+	}
+	if err := s.gate.CheckLogin(ctx, u, code, clientIP); err != nil {
+		return nil, err
+	}
+	return s.IssueSession(u, claims.RememberMe)
 }
 
 // IssueSession starts a new session for an already-authenticated user: a

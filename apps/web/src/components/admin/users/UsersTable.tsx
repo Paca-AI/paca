@@ -1,4 +1,4 @@
-import { Edit2, KeyRound, Trash2 } from "lucide-react";
+import { Edit2, KeyRound, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import {
@@ -48,6 +48,9 @@ interface UsersTableProps {
 	onDelete: (user: User) => void;
 	onResetPassword: (user: User) => void;
 	onChangeRole: (user: User) => void;
+	/** Whether the viewer may manage sign-in protections (`settings.security:write`). */
+	canSecurity?: boolean;
+	onSecurity?: (user: User) => void;
 }
 
 const HEAD = "px-4 text-xs font-semibold uppercase tracking-wide sm:px-5";
@@ -62,13 +65,15 @@ export function UsersTable({
 	onEdit,
 	onDelete,
 	onResetPassword,
+	canSecurity = false,
+	onSecurity,
 	onChangeRole,
 }: UsersTableProps) {
 	const { t } = useTranslation("admin");
 	// The actions column exists if either action it can hold is available —
 	// mirrors each button's own gate below, so the column never shows empty
 	// and never hides a button that should be there.
-	const hasActionsColumn = canWrite || canDelete;
+	const hasActionsColumn = canWrite || canDelete || canSecurity;
 
 	return (
 		<div className="overflow-x-auto rounded-xl border">
@@ -165,6 +170,17 @@ export function UsersTable({
 													aria-label={t("users.table.resetPasswordAction")}
 												>
 													<KeyRound className="size-3.5" />
+												</Button>
+											) : null}
+											{canSecurity && onSecurity ? (
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													onClick={() => onSecurity(user)}
+													title={t("users.table.securityAction")}
+													aria-label={t("users.table.securityAction")}
+												>
+													<ShieldCheck className="size-3.5" />
 												</Button>
 											) : null}
 											{canWrite ? (

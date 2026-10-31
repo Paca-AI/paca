@@ -36,7 +36,8 @@
 			"changeRoleAction": "Alterar função",
 			"deleteAction": "Excluir usuário",
 			"pwdResetHint": "Este usuário precisa definir uma nova senha no próximo login",
-			"columnActions": "Ações"
+			"columnActions": "Ações",
+			"securityAction": "Segurança"
 		},
 		"formDialog": {
 			"createdTitle": "Usuário criado",
@@ -142,6 +143,24 @@
 			"title": "Nenhum usuário encontrado",
 			"description": "Tente outra pesquisa ou filtro de função.",
 			"clear": "Limpar filtros"
+		},
+		"security": {
+			"title": "Proteções de login de {{name}}",
+			"description": "Controle de onde esta pessoa pode entrar e limpe a verificação em duas etapas dela.",
+			"ip": {
+				"label": "Endereços IP permitidos",
+				"hint": "Um endereço IP ou intervalo CIDR por linha. Deixe vazio para permitir qualquer endereço. Vale para o login com senha."
+			},
+			"mfa": {
+				"title": "Verificação em duas etapas",
+				"description": "Se a pessoa perdeu o dispositivo e os códigos de recuperação, limpe-a para que possa configurá-la de novo.",
+				"reset": "Redefinir verificação em duas etapas",
+				"confirmReset": "Sim, redefinir",
+				"resetDone": "A verificação em duas etapas foi redefinida. A pessoa poderá configurá-la de novo no próximo login.",
+				"resetFailed": "Não foi possível redefinir a verificação em duas etapas."
+			},
+			"cancel": "Cancelar",
+			"save": "Salvar"
 		}
 	},
 	"globalRoles": {
@@ -305,6 +324,10 @@
 			"gitIdentitiesManage": {
 				"label": "Gerenciar conexões Git do espaço de trabalho",
 				"description": "Adicionar e remover os aplicativos do GitHub e tokens de acesso que todos os projetos do espaço de trabalho podem usar"
+			},
+			"settingsSecurityWrite": {
+				"label": "Gerenciar a segurança de login",
+				"description": "Define quem deve usar a verificação em duas etapas e de quais endereços IP é possível entrar, e redefine a verificação em duas etapas de outra pessoa. Remover essa proteção de uma conta equivale a assumir o controle dela, então trate como acesso total de administrador."
 			}
 		},
 		"permissionGroups": {
@@ -478,6 +501,37 @@
 				"saveFailed": "Falha ao salvar o provedor. Tente novamente.",
 				"loadFailed": "Falha ao carregar os provedores SSO.",
 				"deleteFailed": "Falha ao excluir o provedor. Tente novamente."
+			}
+		},
+		"nav": {
+			"workspace": "Espaço de trabalho",
+			"signIn": "Login",
+			"branding": "Identidade visual",
+			"sso": "Login único",
+			"security": "Segurança de login"
+		},
+		"security": {
+			"roles": {
+				"title": "Funções protegidas",
+				"description": "As regras abaixo valem para quem tem qualquer uma das funções escolhidas. Ative Todas as funções para cobrir todos, inclusive funções criadas depois.",
+				"all": "Todas as funções"
+			},
+			"mfa": {
+				"title": "Exigir verificação em duas etapas",
+				"description": "Quem tem uma função protegida precisa configurar um app autenticador antes de entrar.",
+				"rolloutNote": "Quem ainda não configurou será guiado na configuração no próximo login."
+			},
+			"ip": {
+				"title": "Endereços IP permitidos",
+				"description": "Limita o login com senha das funções protegidas a estes endereços. Deixe vazio para permitir qualquer endereço.",
+				"hint": "Um endereço IP ou intervalo CIDR por linha, por exemplo 203.0.113.0/24. IPv4 e IPv6 são aceitos.",
+				"lockoutWarning": "Inclua o seu próprio endereço ou você pode ficar sem acesso. O login por SSO não é afetado."
+			},
+			"noRoles": "Nenhuma função está protegida ainda, então estas regras não se aplicam a ninguém.",
+			"errors": {
+				"invalidCidr": "Uma das entradas não é um endereço IP nem um intervalo CIDR válido.",
+				"saveFailed": "Falha ao salvar. Tente novamente.",
+				"loadFailed": "Não foi possível carregar as configurações de segurança de login."
 			}
 		}
 	},

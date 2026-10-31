@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,9 +38,12 @@ type mockAuthSvc struct {
 	logout            func(ctx context.Context, familyID string) error
 }
 
-func (m *mockAuthSvc) Login(ctx context.Context, username, pass string, rememberMe bool) (*domainauth.TokenPair, error) {
+func (m *mockAuthSvc) CompleteMFALogin(context.Context, string, string, string) (*domainauth.TokenPair, error) {
+	return nil, errors.New("mock: not configured")
+}
+func (m *mockAuthSvc) Login(ctx context.Context, in domainauth.LoginInput) (*domainauth.TokenPair, error) {
 	if m.login != nil {
-		return m.login(ctx, username, pass, rememberMe)
+		return m.login(ctx, in.Username, in.Password, in.RememberMe)
 	}
 	return nil, errors.New("mock: login not configured")
 }
@@ -164,6 +168,28 @@ func TestHealth_OK(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Login
 // ---------------------------------------------------------------------------
+
+func TestLogin_MFAChallengeSetsNoCookies(t *testing.T) {
+	svc := &mockAuthSvc{
+		login: func(_ context.Context, _, _ string, _ bool) (*domainauth.TokenPair, error) {
+			return &domainauth.TokenPair{MFAChallenge: "chal"}, nil
+		},
+	}
+	r := chi.NewRouter()
+	r.Post("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
+
+	w := do(t, r, http.MethodPost, "/auth/login",
+		jsonBody(t, map[string]string{"username": "alice", "password": "secret12"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(w.Result().Cookies()) != 0 {
+		t.Errorf("no session may exist before the second factor: %v", w.Result().Cookies())
+	}
+	if body := w.Body.String(); !strings.Contains(body, `"mfa_required":true`) || !strings.Contains(body, `"mfa_challenge":"chal"`) {
+		t.Errorf("body should announce the challenge: %s", body)
+	}
+}
 
 func TestLogin_Success(t *testing.T) {
 	svc := &mockAuthSvc{

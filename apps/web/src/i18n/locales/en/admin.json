@@ -53,7 +53,8 @@
 			"changeRoleAction": "Change role",
 			"deleteAction": "Delete user",
 			"pwdResetHint": "This user must set a new password at next sign-in",
-			"columnActions": "Actions"
+			"columnActions": "Actions",
+			"securityAction": "Security"
 		},
 		"formDialog": {
 			"createdTitle": "User created",
@@ -159,6 +160,24 @@
 			"title": "No users match",
 			"description": "Try a different search or role filter.",
 			"clear": "Clear filters"
+		},
+		"security": {
+			"title": "Sign-in protections for {{name}}",
+			"description": "Control where this person may sign in from and clear their two-step verification.",
+			"ip": {
+				"label": "Allowed IP addresses",
+				"hint": "One IP address or CIDR range per line. Leave empty to allow any address. Applies to password sign-in."
+			},
+			"mfa": {
+				"title": "Two-step verification",
+				"description": "If they lost both their device and recovery codes, clear it so they can set it up again.",
+				"reset": "Reset two-step verification",
+				"confirmReset": "Yes, reset",
+				"resetDone": "Two-step verification was reset. They can set it up again at their next sign-in.",
+				"resetFailed": "Couldn't reset two-step verification."
+			},
+			"cancel": "Cancel",
+			"save": "Save"
 		}
 	},
 	"globalRoles": {
@@ -322,6 +341,10 @@
 			"gitIdentitiesManage": {
 				"label": "Manage workspace Git connections",
 				"description": "Add and remove the GitHub Apps and access tokens that every project in the workspace can use"
+			},
+			"settingsSecurityWrite": {
+				"label": "Manage Login Security",
+				"description": "Set who must use two-step verification and which IP addresses may sign in, and reset another person's two-step verification. Removing that protection from an account amounts to taking it over, so treat it like full admin access."
 			}
 		},
 		"permissionGroups": {
@@ -478,6 +501,37 @@
 				"saveFailed": "Failed to save the provider. Please try again.",
 				"loadFailed": "Failed to load SSO providers.",
 				"deleteFailed": "Failed to delete the provider. Please try again."
+			}
+		},
+		"nav": {
+			"workspace": "Workspace",
+			"signIn": "Sign-in",
+			"branding": "Branding",
+			"sso": "Single sign-on",
+			"security": "Login security"
+		},
+		"security": {
+			"roles": {
+				"title": "Protected roles",
+				"description": "The rules below apply to people who hold any of the roles you choose. Turn on All roles to cover everyone, including roles created later.",
+				"all": "All roles"
+			},
+			"mfa": {
+				"title": "Require two-step verification",
+				"description": "People with a protected role must set up an authenticator app before they can sign in.",
+				"rolloutNote": "People who haven't set it up yet are guided through setup the next time they sign in."
+			},
+			"ip": {
+				"title": "Allowed IP addresses",
+				"description": "Limit password sign-in for protected roles to these addresses. Leave empty to allow any address.",
+				"hint": "One IP address or CIDR range per line, for example 203.0.113.0/24. IPv4 and IPv6 are supported.",
+				"lockoutWarning": "Make sure your own address is included, or you could lock yourself out. SSO sign-in is not affected."
+			},
+			"noRoles": "No role is protected yet, so these rules currently apply to nobody.",
+			"errors": {
+				"invalidCidr": "One of the entries is not a valid IP address or CIDR range.",
+				"saveFailed": "Failed to save. Please try again.",
+				"loadFailed": "Couldn't load the login security settings."
 			}
 		}
 	},

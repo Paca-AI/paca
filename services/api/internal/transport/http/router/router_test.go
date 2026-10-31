@@ -26,7 +26,10 @@ import (
 
 type mockAuthSvc struct{}
 
-func (m *mockAuthSvc) Login(context.Context, string, string, bool) (*domainauth.TokenPair, error) {
+func (m *mockAuthSvc) CompleteMFALogin(context.Context, string, string, string) (*domainauth.TokenPair, error) {
+	return nil, nil
+}
+func (m *mockAuthSvc) Login(context.Context, domainauth.LoginInput) (*domainauth.TokenPair, error) {
 	return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: 24 * time.Hour}, nil
 }
 func (m *mockAuthSvc) Refresh(context.Context, string) (*domainauth.TokenPair, error) {

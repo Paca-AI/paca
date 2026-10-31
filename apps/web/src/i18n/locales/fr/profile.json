@@ -1,7 +1,7 @@
 {
 	"page": {
-		"title": "Mon profil",
-		"subtitle": "Consultez et mettez à jour les informations de votre compte."
+		"title": "Compte",
+		"subtitle": "Gérez votre profil, la sécurité de connexion et vos accès."
 	},
 	"fields": {
 		"fullName": "Nom complet",
@@ -116,6 +116,68 @@
 			"nameTooLong": "Le nom doit comporter 100 caractères ou moins.",
 			"createFailed": "Échec de la création de la clé. Veuillez réessayer.",
 			"copyFailed": "Échec de la copie. Veuillez copier la clé manuellement."
+		}
+	},
+	"nav": {
+		"profile": "Profil",
+		"security": "Sécurité",
+		"apiKeys": "Clés d'API",
+		"preferences": "Notifications"
+	},
+	"preferences": {
+		"title": "Notifications",
+		"subtitle": "Choisissez comment être informé."
+	},
+	"security": {
+		"title": "Sécurité",
+		"subtitle": "Protégez votre compte et contrôlez la façon dont vous vous connectez.",
+		"mfa": {
+			"title": "Validation en deux étapes",
+			"description": "Demande un code d'une application d'authentification, en plus de votre mot de passe, à la connexion.",
+			"on": "Activée",
+			"off": "Désactivée",
+			"enable": "Configurer la validation en deux étapes",
+			"recoveryLeft": "Codes de récupération restants : {{count}}",
+			"recoveryLow": "Il vous reste peu de codes de récupération. Générez-en de nouveaux avant de perdre l'accès.",
+			"codeOrRecovery": "Code d'authentification ou code de récupération",
+			"codes": {
+				"copy": "Copier",
+				"copied": "Copié",
+				"download": "Télécharger"
+			},
+			"errors": {
+				"generic": "Une erreur s'est produite. Veuillez réessayer.",
+				"invalidCode": "Ce code est invalide ou a déjà été utilisé.",
+				"unavailable": "La validation en deux étapes n'est pas disponible : le serveur n'a pas de clé de chiffrement configurée. Contactez votre administrateur.",
+				"load": "Impossible de charger l'état de la validation en deux étapes."
+			},
+			"setup": {
+				"title": "Configurer la validation en deux étapes",
+				"description": "Utilisez une application d'authentification comme 1Password, Google Authenticator ou Authy.",
+				"scan": "Scannez ce code QR avec votre application d'authentification.",
+				"orEnterKey": "Impossible de scanner ? Saisissez plutôt cette clé.",
+				"copyKey": "Copier la clé de configuration",
+				"qrLabel": "Code QR de configuration de la validation en deux étapes",
+				"codeLabel": "Saisissez le code à 6 chiffres de l'application",
+				"verify": "Vérifier et activer",
+				"codesTitle": "Enregistrez vos codes de récupération",
+				"codesDescription": "Chaque code ne fonctionne qu'une fois si vous perdez l'accès à votre application d'authentification.",
+				"codesWarning": "Ces codes ne sont affichés qu'une seule fois. Conservez-les en lieu sûr avant de fermer.",
+				"saved": "Je les ai enregistrés"
+			},
+			"disable": {
+				"button": "Désactiver",
+				"title": "Désactiver la validation en deux étapes",
+				"description": "Votre compte ne sera plus protégé que par votre mot de passe. Saisissez un code actuel pour confirmer.",
+				"confirm": "Désactiver"
+			},
+			"regenerate": {
+				"button": "Nouveaux codes de récupération",
+				"title": "Générer de nouveaux codes de récupération",
+				"description": "Cela remplace tous vos codes de récupération actuels. Saisissez un code actuel pour confirmer.",
+				"confirm": "Générer",
+				"doneTitle": "Vos nouveaux codes de récupération"
+			}
 		}
 	}
 }

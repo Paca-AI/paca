@@ -9,6 +9,12 @@ import {
 import type { Policy, RoleScope } from "./types";
 
 describe("actionsToPolicy", () => {
+	it("checks login security on the sso root, like SSO providers", () => {
+		const p = actionsToPolicy(["settings.security:write"], "platform");
+		expect(p.statements).toHaveLength(1);
+		expect(p.statements[0].resources).toEqual(["sso"]);
+	});
+
 	it("writes each platform action on the roots it is checked on", () => {
 		const p = actionsToPolicy(["users:read", "roles:*"], "platform");
 		expect(p.statements).toEqual([

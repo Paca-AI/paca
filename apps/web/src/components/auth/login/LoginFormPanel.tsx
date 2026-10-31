@@ -12,6 +12,7 @@ import { validatePassword, validateUsername } from "@/lib/auth-validation";
 import { cn } from "@/lib/utils";
 
 import { FieldError } from "./FieldError";
+import { MfaLoginSetup } from "./MfaLoginSetup";
 import { SsoErrorNotice, SsoSignInButtons } from "./SsoSignIn";
 
 export function LoginFormPanel({
@@ -23,12 +24,26 @@ export function LoginFormPanel({
 } = {}) {
 	const { t } = useTranslation("auth");
 	const { t: tCommon } = useTranslation("common");
-	const { form, serverError } = useLoginForm(redirectTo);
+	const { form, serverError, mfaSetup, finishMfaSetup } =
+		useLoginForm(redirectTo);
 	const [showPassword, setShowPassword] = useState(false);
 	const branding = useBranding();
 	const logoUrl = branding?.logo_thumb_url ?? branding?.logo_url;
 	const logoSrc = logoUrl ?? "/paca-logo.svg";
 	const brandName = branding?.brand_name;
+
+	if (mfaSetup) {
+		return (
+			<div className="relative flex flex-col justify-center px-8 py-10 sm:px-10">
+				<MfaLoginSetup
+					username={mfaSetup.username}
+					password={mfaSetup.password}
+					onDone={finishMfaSetup}
+					onCancel={() => window.location.reload()}
+				/>
+			</div>
+		);
+	}
 
 	return (
 		<div className="relative flex flex-col justify-center px-8 py-10 sm:px-10">

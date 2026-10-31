@@ -1,7 +1,7 @@
 {
 	"page": {
-		"title": "My Profile",
-		"subtitle": "View and update your account information."
+		"title": "Account",
+		"subtitle": "Manage your profile, sign-in security and access."
 	},
 	"fields": {
 		"fullName": "Full name",
@@ -116,6 +116,68 @@
 			"nameTooLong": "Name must be 100 characters or fewer.",
 			"createFailed": "Failed to create key. Please try again.",
 			"copyFailed": "Copy failed. Please copy the key manually."
+		}
+	},
+	"nav": {
+		"profile": "Profile",
+		"security": "Security",
+		"apiKeys": "API keys",
+		"preferences": "Notifications"
+	},
+	"preferences": {
+		"title": "Notifications",
+		"subtitle": "Choose how you want to be notified."
+	},
+	"security": {
+		"title": "Security",
+		"subtitle": "Protect your account and control how you sign in.",
+		"mfa": {
+			"title": "Two-step verification",
+			"description": "Ask for a code from an authenticator app, in addition to your password, when you sign in.",
+			"on": "On",
+			"off": "Off",
+			"enable": "Set up two-step verification",
+			"recoveryLeft": "Recovery codes remaining: {{count}}",
+			"recoveryLow": "You are running low on recovery codes. Generate new ones before you lose access.",
+			"codeOrRecovery": "Authentication code or recovery code",
+			"codes": {
+				"copy": "Copy",
+				"copied": "Copied",
+				"download": "Download"
+			},
+			"errors": {
+				"generic": "Something went wrong. Please try again.",
+				"invalidCode": "That code is invalid or was already used.",
+				"unavailable": "Two-step verification isn't available: the server has no encryption key configured. Ask your administrator.",
+				"load": "Couldn't load your two-step verification status."
+			},
+			"setup": {
+				"title": "Set up two-step verification",
+				"description": "Use an authenticator app such as 1Password, Google Authenticator or Authy.",
+				"scan": "Scan this QR code with your authenticator app.",
+				"orEnterKey": "Can't scan? Enter this key instead.",
+				"copyKey": "Copy setup key",
+				"qrLabel": "QR code for two-step verification setup",
+				"codeLabel": "Enter the 6-digit code from the app",
+				"verify": "Verify and turn on",
+				"codesTitle": "Save your recovery codes",
+				"codesDescription": "Each code works once if you lose access to your authenticator app.",
+				"codesWarning": "These codes are shown only now. Store them somewhere safe before closing.",
+				"saved": "I've saved them"
+			},
+			"disable": {
+				"button": "Turn off",
+				"title": "Turn off two-step verification",
+				"description": "Your account will be protected by your password alone. Enter a current code to confirm.",
+				"confirm": "Turn off"
+			},
+			"regenerate": {
+				"button": "New recovery codes",
+				"title": "Generate new recovery codes",
+				"description": "This replaces all your existing recovery codes. Enter a current code to confirm.",
+				"confirm": "Generate",
+				"doneTitle": "Your new recovery codes"
+			}
 		}
 	}
 }

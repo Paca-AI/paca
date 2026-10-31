@@ -28,14 +28,38 @@ type TokenPair struct {
 
 	AnnotationAccessToken  string
 	AnnotationRefreshToken string
+
+	// MFAChallenge, when set, means the password was right but a second
+	// factor is still owed: no session exists and every other field is empty.
+	// Hand it to CompleteMFALogin with a code to get the real pair.
+	MFAChallenge string
+}
+
+// LoginInput is everything a password login carries.
+type LoginInput struct {
+	Username string
+	Password string
+	// OTP is the second factor: a TOTP code or a recovery code. Empty on the
+	// first attempt; required once the account has MFA enabled.
+	OTP        string
+	RememberMe bool
+	// ClientIP is the caller's address, checked against IP allow-lists.
+	ClientIP string
 }
 
 // Service defines the authentication contract.
 type Service interface {
-	// Login validates credentials and returns a fresh token pair.
-	// rememberMe=false issues a short-lived session (see JWT_REFRESH_SESSION_TTL);
-	// rememberMe=true issues a long-lived persistent session (JWT_REFRESH_TTL).
-	Login(ctx context.Context, username, password string, rememberMe bool) (*TokenPair, error)
+	// Login validates credentials — password, then IP allow-list and second
+	// factor where they apply — and returns a fresh token pair.
+	// RememberMe=false issues a short-lived session (see JWT_REFRESH_SESSION_TTL);
+	// RememberMe=true issues a long-lived persistent session (JWT_REFRESH_TTL).
+	// mfadom.ErrRequired asks the caller to retry with LoginInput.OTP set.
+	Login(ctx context.Context, in LoginInput) (*TokenPair, error)
+	// CompleteMFALogin is the second step of a login that returned a
+	// TokenPair with MFAChallenge set: it checks the challenge and the TOTP
+	// or recovery code (and the IP allow-lists again) and, if they hold,
+	// starts the session Login would have.
+	CompleteMFALogin(ctx context.Context, challenge, code, clientIP string) (*TokenPair, error)
 	// Refresh validates a full-scope refresh token and issues a rotated
 	// full-scope token pair, plus a freshly reissued (not rotated —
 	// see the implementation's own doc comment) ScopeAnnotation pair

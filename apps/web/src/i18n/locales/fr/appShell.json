@@ -84,7 +84,7 @@
 	},
 	"userMenu": {
 		"signIn": "Se connecter",
-		"myProfile": "Mon profil",
+		"myProfile": "Compte",
 		"apiKeys": "Clés API",
 		"logOut": "Se déconnecter",
 		"loggingOut": "Déconnexion en cours…"
