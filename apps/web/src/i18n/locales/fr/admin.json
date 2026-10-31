@@ -530,6 +530,7 @@
 			"noRoles": "Aucun rôle n'est encore protégé : ces règles ne s'appliquent donc à personne.",
 			"errors": {
 				"invalidCidr": "L'une des entrées n'est pas une adresse IP ou une plage CIDR valide.",
+				"selfLockout": "Votre propre adresse IP doit figurer dans la liste, sinon vous vous verrouilleriez. Ajoutez-la et enregistrez à nouveau.",
 				"saveFailed": "Échec de l'enregistrement. Veuillez réessayer.",
 				"loadFailed": "Impossible de charger les paramètres de sécurité de connexion."
 			}

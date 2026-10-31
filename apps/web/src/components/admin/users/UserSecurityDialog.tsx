@@ -66,9 +66,17 @@ export function UserSecurityDialog({
 		},
 		onError: (err) =>
 			setError(
-				getApiErrorCode(err) === ApiErrorCode.InvalidCidr
-					? t("settings.security.errors.invalidCidr")
-					: t("settings.security.errors.saveFailed"),
+				(
+					{
+						[ApiErrorCode.InvalidCidr]: t(
+							"settings.security.errors.invalidCidr",
+						),
+						[ApiErrorCode.SelfLockout]: t(
+							"settings.security.errors.selfLockout",
+						),
+					} as Record<string, string>
+				)[getApiErrorCode(err) ?? ""] ??
+					t("settings.security.errors.saveFailed"),
 			),
 	});
 	const reset = useMutation({

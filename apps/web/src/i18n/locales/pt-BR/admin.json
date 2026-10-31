@@ -530,6 +530,7 @@
 			"noRoles": "Nenhuma função está protegida ainda, então estas regras não se aplicam a ninguém.",
 			"errors": {
 				"invalidCidr": "Uma das entradas não é um endereço IP nem um intervalo CIDR válido.",
+				"selfLockout": "Seu próprio endereço IP precisa estar na lista, senão você ficaria bloqueado. Adicione-o e salve novamente.",
 				"saveFailed": "Falha ao salvar. Tente novamente.",
 				"loadFailed": "Não foi possível carregar as configurações de segurança de login."
 			}

@@ -15,7 +15,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	tooManyAttemptsMessage,
+} from "@/lib/api-error";
 import { disableMfa, regenerateRecoveryCodes } from "@/lib/mfa-api";
 
 import { RecoveryCodes } from "./RecoveryCodes";
@@ -32,6 +36,7 @@ export function MfaCodeDialog({
 	onClose: () => void;
 }) {
 	const { t } = useTranslation("profile");
+	const { t: tAuth, i18n } = useTranslation("auth");
 	const queryClient = useQueryClient();
 	const [code, setCode] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -62,7 +67,9 @@ export function MfaCodeDialog({
 			setError(
 				getApiErrorCode(err) === ApiErrorCode.MfaInvalidCode
 					? t("security.mfa.errors.invalidCode")
-					: t("security.mfa.errors.generic"),
+					: getApiErrorCode(err) === ApiErrorCode.TooManyRequests
+						? tooManyAttemptsMessage(err, tAuth, i18n.language)
+						: t("security.mfa.errors.generic"),
 			),
 	});
 

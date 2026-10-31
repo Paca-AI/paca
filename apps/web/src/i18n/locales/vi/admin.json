@@ -530,6 +530,7 @@
 			"noRoles": "Chưa có vai trò nào được bảo vệ nên các quy tắc này hiện không áp dụng cho ai.",
 			"errors": {
 				"invalidCidr": "Một trong các mục không phải địa chỉ IP hoặc dải CIDR hợp lệ.",
+				"selfLockout": "Địa chỉ IP của chính bạn phải có trong danh sách, nếu không bạn sẽ tự khóa mình. Hãy thêm vào và lưu lại.",
 				"saveFailed": "Lưu thất bại. Vui lòng thử lại.",
 				"loadFailed": "Không thể tải cài đặt bảo mật đăng nhập."
 			}

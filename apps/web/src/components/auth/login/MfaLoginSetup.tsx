@@ -9,7 +9,11 @@ import { InlineNotice } from "@/components/shared/inline-notice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	tooManyAttemptsMessage,
+} from "@/lib/api-error";
 import {
 	beginLoginMfaSetup,
 	confirmLoginMfaSetup,
@@ -30,7 +34,7 @@ export function MfaLoginSetup({
 	onDone: () => void;
 	onCancel: () => void;
 }) {
-	const { t } = useTranslation("auth");
+	const { t, i18n } = useTranslation("auth");
 	const { t: tProfile } = useTranslation("profile");
 	const [enrollment, setEnrollment] = useState<MfaEnrollment | null>(null);
 	const [code, setCode] = useState("");
@@ -54,7 +58,9 @@ export function MfaLoginSetup({
 			setError(
 				getApiErrorCode(err) === ApiErrorCode.MfaInvalidCode
 					? t("login.errors.mfaInvalidCode")
-					: t("login.errors.genericError"),
+					: getApiErrorCode(err) === ApiErrorCode.TooManyRequests
+						? tooManyAttemptsMessage(err, t, i18n.language)
+						: t("login.errors.genericError"),
 			),
 	});
 

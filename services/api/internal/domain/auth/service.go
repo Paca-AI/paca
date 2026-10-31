@@ -2,9 +2,10 @@ package auth
 
 import (
 	"context"
-	"golang.org/x/crypto/bcrypt"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // TokenPair holds an access token and a companion refresh token.

@@ -530,6 +530,7 @@
 			"noRoles": "No role is protected yet, so these rules currently apply to nobody.",
 			"errors": {
 				"invalidCidr": "One of the entries is not a valid IP address or CIDR range.",
+				"selfLockout": "Your own IP address must be on the list, otherwise you would lock yourself out. Add it and save again.",
 				"saveFailed": "Failed to save. Please try again.",
 				"loadFailed": "Couldn't load the login security settings."
 			}

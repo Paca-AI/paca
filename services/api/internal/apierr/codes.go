@@ -36,6 +36,8 @@ const (
 	CodeMFAUnavailable Code = "MFA_UNAVAILABLE"
 	// CodeInvalidCIDR means an allow-list entry is not an IP or CIDR.
 	CodeInvalidCIDR Code = "INVALID_CIDR"
+	// CodeSelfLockout means the saved allow-list would exclude the admin saving it.
+	CodeSelfLockout Code = "SELF_LOCKOUT"
 
 	// CodeServiceAccountNotFound represents a service account that was not found.
 	CodeServiceAccountNotFound Code = "SERVICE_ACCOUNT_NOT_FOUND"

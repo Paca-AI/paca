@@ -161,7 +161,7 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 	case errors.Is(err, mfadom.ErrLocked):
 		return http.StatusTooManyRequests, apierr.CodeTooManyRequests
 	case errors.Is(err, mfadom.ErrSelfLockout):
-		return http.StatusBadRequest, apierr.CodeBadRequest
+		return http.StatusBadRequest, apierr.CodeSelfLockout
 	case errors.Is(err, mfadom.ErrSetupRequired):
 		return http.StatusForbidden, apierr.CodeMFASetupRequired
 	case errors.Is(err, mfadom.ErrSetupNotRequired):

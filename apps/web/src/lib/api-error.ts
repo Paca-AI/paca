@@ -21,6 +21,7 @@ export const ApiErrorCode = {
 	MfaAlreadyEnabled: "MFA_ALREADY_ENABLED",
 	MfaUnavailable: "MFA_UNAVAILABLE",
 	InvalidCidr: "INVALID_CIDR",
+	SelfLockout: "SELF_LOCKOUT",
 
 	// Password / session gate errors.
 	PasswordChangeRequired: "AUTH_PASSWORD_CHANGE_REQUIRED",
