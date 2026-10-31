@@ -155,8 +155,9 @@ func (h *MFAHandler) RegenerateRecoveryCodes(w http.ResponseWriter, r *http.Requ
 func (h *MFAHandler) passwordUser(r *http.Request, username, password string) (*userdom.User, error) {
 	ctx := r.Context()
 	key := domainauth.NormalizeLoginKey(username)
+	ip := middleware.ClientIP(r)
 	if h.throttle != nil {
-		wait, err := h.throttle.Check(ctx, key)
+		wait, err := h.throttle.Check(ctx, key, ip)
 		if err != nil {
 			slog.Warn("login throttle unavailable", "error", err)
 		} else if wait > 0 {
@@ -166,7 +167,7 @@ func (h *MFAHandler) passwordUser(r *http.Request, username, password string) (*
 	u, err := h.users.FindByUsername(ctx, username)
 	if err == nil && bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) == nil {
 		if h.throttle != nil {
-			_ = h.throttle.Reset(ctx, key)
+			_ = h.throttle.Reset(ctx, key, ip)
 		}
 		return u, nil
 	}
@@ -177,7 +178,7 @@ func (h *MFAHandler) passwordUser(r *http.Request, username, password string) (*
 		domainauth.BurnPasswordCheck(password)
 	}
 	if h.throttle != nil {
-		if wait, ferr := h.throttle.Fail(ctx, key); ferr == nil && wait > 0 {
+		if wait, ferr := h.throttle.Fail(ctx, key, ip); ferr == nil && wait > 0 {
 			return nil, &mfadom.LockedError{RetryAfter: wait}
 		}
 	}

@@ -38,16 +38,25 @@ type TokenPair struct {
 	MFAChallenge string
 }
 
-// LoginThrottle limits wrong-password attempts per username. Keys are
-// normalised by NormalizeLoginKey.
+// LoginThrottle limits wrong-password attempts. Keys are normalised by
+// NormalizeLoginKey.
+//
+// A lockout must not be a lever for locking someone else out, so it is scoped
+// two ways. Failures from one client address lock that (key, ip) pair only,
+// leaving the real user's own address untouched. Failures from many addresses
+// add up per key, which stops a distributed guesser; that second lock applies
+// only to addresses that have never completed a sign-in for the key, so the
+// account owner's usual locations keep working while it is in force.
 type LoginThrottle interface {
-	// Check returns how long key stays locked, or 0.
-	Check(ctx context.Context, key string) (time.Duration, error)
+	// Check returns how long key is locked for the client at ip, or 0.
+	Check(ctx context.Context, key, ip string) (time.Duration, error)
 	// Fail records a wrong password; a non-zero result is the lockout this
-	// failure started.
-	Fail(ctx context.Context, key string) (time.Duration, error)
-	// Reset clears the failure count after a correct password.
-	Reset(ctx context.Context, key string) error
+	// failure started for ip.
+	Fail(ctx context.Context, key, ip string) (time.Duration, error)
+	// Reset clears the pair's failure count after a correct password.
+	Reset(ctx context.Context, key, ip string) error
+	// Trust remembers ip as a place key has fully signed in from.
+	Trust(ctx context.Context, key, ip string) error
 }
 
 // NormalizeLoginKey is the throttle key for a typed username.

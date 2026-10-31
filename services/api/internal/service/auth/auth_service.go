@@ -81,11 +81,11 @@ func (s *Service) WithLoginThrottle(t domainauth.LoginThrottle) *Service {
 // failLogin counts a wrong username/password. When this failure trips the
 // lockout the caller is told so, with the wait; otherwise it is the usual
 // ErrInvalidCredentials. A throttle outage never blocks sign-in.
-func (s *Service) failLogin(ctx context.Context, key string) error {
+func (s *Service) failLogin(ctx context.Context, key, ip string) error {
 	if s.throttle == nil {
 		return domainauth.ErrInvalidCredentials
 	}
-	wait, err := s.throttle.Fail(ctx, key)
+	wait, err := s.throttle.Fail(ctx, key, ip)
 	if err != nil {
 		slog.Warn("login throttle unavailable", "error", err)
 		return domainauth.ErrInvalidCredentials
@@ -105,7 +105,7 @@ func (s *Service) Login(ctx context.Context, in domainauth.LoginInput) (*domaina
 	if s.throttle != nil {
 		// Checked before touching the user table or bcrypt, and for names
 		// that don't exist too, so a lockout reveals nothing about accounts.
-		wait, terr := s.throttle.Check(ctx, key)
+		wait, terr := s.throttle.Check(ctx, key, in.ClientIP)
 		if terr != nil {
 			slog.Warn("login throttle unavailable", "error", terr)
 		} else if wait > 0 {
@@ -117,20 +117,20 @@ func (s *Service) Login(ctx context.Context, in domainauth.LoginInput) (*domaina
 	if err != nil {
 		if errors.Is(err, userdom.ErrNotFound) {
 			domainauth.BurnPasswordCheck(in.Password)
-			return nil, s.failLogin(ctx, key)
+			return nil, s.failLogin(ctx, key, in.ClientIP)
 		}
 		return nil, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(in.Password)); err != nil {
-		return nil, s.failLogin(ctx, key)
+		return nil, s.failLogin(ctx, key, in.ClientIP)
 	}
 	// Only after the password is right, so these distinct errors can't be
 	// used to probe which usernames exist or how they're protected.
 	if s.gate != nil {
 		if err := s.gate.CheckLogin(ctx, u, in.OTP, in.ClientIP); err != nil {
 			if errors.Is(err, mfadom.ErrRequired) {
-				s.resetThrottle(ctx, key)
+				s.resetThrottle(ctx, key, in.ClientIP)
 				// Password is right, a code is owed. Rather than make the
 				// client keep the password around for a retry, hand back a
 				// short-lived challenge that only CompleteMFALogin accepts.
@@ -144,19 +144,32 @@ func (s *Service) Login(ctx context.Context, in domainauth.LoginInput) (*domaina
 		}
 	}
 
-	s.resetThrottle(ctx, key)
+	s.resetThrottle(ctx, key, in.ClientIP)
+	s.trustClient(ctx, key, in.ClientIP)
 	return s.IssueSession(u, in.RememberMe)
 }
 
 // resetThrottle forgets earlier wrong passwords once the password is right and
 // the login is not blocked by the IP gate, so a blocked address holding the
 // password can't keep clearing the counter.
-func (s *Service) resetThrottle(ctx context.Context, key string) {
+func (s *Service) resetThrottle(ctx context.Context, key, ip string) {
 	if s.throttle == nil {
 		return
 	}
-	if err := s.throttle.Reset(ctx, key); err != nil {
+	if err := s.throttle.Reset(ctx, key, ip); err != nil {
 		slog.Warn("login throttle reset failed", "error", err)
+	}
+}
+
+// trustClient remembers an address a login has fully completed from, so it
+// keeps working while a distributed guessing attack has the username locked
+// for unfamiliar addresses. Only called once every factor has passed.
+func (s *Service) trustClient(ctx context.Context, key, ip string) {
+	if s.throttle == nil {
+		return
+	}
+	if err := s.throttle.Trust(ctx, key, ip); err != nil {
+		slog.Warn("login throttle trust failed", "error", err)
 	}
 }
 
@@ -190,6 +203,7 @@ func (s *Service) CompleteMFALogin(ctx context.Context, challenge, code, clientI
 	} else if first != nil {
 		return nil, domainauth.ErrTokenInvalid
 	}
+	s.trustClient(ctx, domainauth.NormalizeLoginKey(u.Username), clientIP)
 	return s.IssueSession(u, claims.RememberMe)
 }
 

@@ -876,13 +876,15 @@ type memThrottle struct {
 func newMemThrottle(max int) *memThrottle {
 	return &memThrottle{max: max, fails: map[string]int{}, locked: map[string]bool{}}
 }
-func (m *memThrottle) Check(_ context.Context, k string) (time.Duration, error) {
+func (m *memThrottle) Check(_ context.Context, k, ip string) (time.Duration, error) {
+	k = k + "|" + ip
 	if m.locked[k] {
 		return 10 * time.Minute, nil
 	}
 	return 0, nil
 }
-func (m *memThrottle) Fail(_ context.Context, k string) (time.Duration, error) {
+func (m *memThrottle) Fail(_ context.Context, k, ip string) (time.Duration, error) {
+	k = k + "|" + ip
 	m.fails[k]++
 	if m.fails[k] >= m.max {
 		m.locked[k], m.fails[k] = true, 0
@@ -890,7 +892,11 @@ func (m *memThrottle) Fail(_ context.Context, k string) (time.Duration, error) {
 	}
 	return 0, nil
 }
-func (m *memThrottle) Reset(_ context.Context, k string) error { m.fails[k] = 0; return nil }
+func (m *memThrottle) Reset(_ context.Context, k, ip string) error {
+	m.fails[k+"|"+ip] = 0
+	return nil
+}
+func (m *memThrottle) Trust(context.Context, string, string) error { return nil }
 
 func TestLogin_LocksAfterRepeatedWrongPasswords(t *testing.T) {
 	u := &userdom.User{ID: uuid.New(), Username: "alice", Roles: userRoles("USER"), PasswordHash: hashedPassword(t, "correct12")}
@@ -975,5 +981,25 @@ func TestCompleteMFALogin_ChallengeIsSingleUse(t *testing.T) {
 	}
 	if _, err := svc.CompleteMFALogin(ctx, step1.MFAChallenge, "123456", "1.1.1.1"); !errors.Is(err, domainauth.ErrTokenInvalid) {
 		t.Fatalf("reused challenge: got %v", err)
+	}
+}
+
+func TestLogin_LockoutIsPerClientAddress(t *testing.T) {
+	u := &userdom.User{ID: uuid.New(), Username: "alice", Roles: userRoles("USER"), PasswordHash: hashedPassword(t, "correct12")}
+	svc := newAuthSvc(&stubUserRepo{
+		findByUsername: func(context.Context, string) (*userdom.User, error) { return u, nil },
+	}, &stubRefreshStore{}).WithLoginThrottle(newMemThrottle(2))
+	ctx := context.Background()
+
+	// An attacker at one address burns through the cap.
+	bad := domainauth.LoginInput{Username: "alice", Password: "wrongpass", ClientIP: "198.51.100.1"}
+	_, _ = svc.Login(ctx, bad)
+	_, _ = svc.Login(ctx, bad)
+	if _, err := svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "correct12", ClientIP: "198.51.100.1"}); !errors.Is(err, mfadom.ErrLocked) {
+		t.Fatalf("attacker's own address must be locked: %v", err)
+	}
+	// The real user, elsewhere, is not affected.
+	if _, err := svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "correct12", ClientIP: "203.0.113.7"}); err != nil {
+		t.Fatalf("another address must still sign in: %v", err)
 	}
 }
