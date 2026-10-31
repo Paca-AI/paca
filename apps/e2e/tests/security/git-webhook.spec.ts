@@ -13,7 +13,10 @@ test.describe("Git webhook intake", () => {
 		playwright,
 	}) => {
 		await anonymous(playwright, async (api) => {
-			const deliveries = [
+			const deliveries: Array<{
+				data: unknown;
+				headers?: Record<string, string>;
+			}> = [
 				{ data: { zen: "Keep it logically awesome." } },
 				{ data: "" },
 				{ data: "not json at all", headers: { "content-type": "text/plain" } },

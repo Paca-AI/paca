@@ -16,7 +16,7 @@
 import {
 	type APIRequestContext,
 	expect,
-	type Playwright,
+	type PlaywrightWorkerArgs,
 	test,
 } from "@playwright/test";
 import {
@@ -83,7 +83,7 @@ const res = (projectId: string) => `project/${projectId}`;
 /** A project member holding a project role made of `statements`. */
 async function memberWith(
 	request: APIRequestContext,
-	playwright: Playwright,
+	playwright: PlaywrightWorkerArgs["playwright"],
 	projectId: string,
 	label: string,
 	...statements: ReturnType<typeof allow>[]
