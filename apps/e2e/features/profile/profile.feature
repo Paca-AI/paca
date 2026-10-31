@@ -17,8 +17,8 @@ Feature: My Profile
       And the user has navigated to the My Profile page
 
     Scenario: The profile page shows the account header and details
-      Then the page should display the "My Profile" heading
-      And the page should display the subtitle "View and update your account information."
+      Then the page should display the "Account" heading
+      And the page should display the subtitle "Manage your profile, sign-in security and access."
       And the header card should display the full name "E2E Profile View"
       And the header card should display the username "@E2E_PROFILE_VIEW"
       And the header card should display the role badge "USER"

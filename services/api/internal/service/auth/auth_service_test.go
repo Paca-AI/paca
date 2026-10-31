@@ -945,11 +945,16 @@ func TestLogin_SuccessClearsFailures(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, &stubRefreshStore{}).WithLoginThrottle(th)
 	ctx := context.Background()
-	_, _ = svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "bad"})
-	if _, err := svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "correct12"}); err != nil {
+	const ip = "203.0.113.7"
+	_, _ = svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "bad", ClientIP: ip})
+	// The failure must really have been recorded, or the check below is moot.
+	if th.fails["alice|"+ip] != 1 {
+		t.Fatalf("failure not recorded: %v", th.fails)
+	}
+	if _, err := svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "correct12", ClientIP: ip}); err != nil {
 		t.Fatal(err)
 	}
-	if th.fails["alice"] != 0 {
+	if th.fails["alice|"+ip] != 0 {
 		t.Fatal("failures not cleared")
 	}
 }

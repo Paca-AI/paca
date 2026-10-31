@@ -39,7 +39,9 @@ function uniqueUser(label: string): TestUser {
 async function openProfile(page: Page, username: string): Promise<void> {
 	await signIn(page, username, RESTRICTED_PASSWORD);
 	await page.goto(`${BASE_URL}/account`);
-	await expect(page.getByRole("heading", { name: "Account settings" })).toBeVisible();
+	await expect(
+		page.getByRole("heading", { name: "Account", exact: true }),
+	).toBeVisible();
 }
 
 // The label and its value share a parent <div>, so the parent stands in for
@@ -69,7 +71,7 @@ test.describe("Viewing the profile", () => {
 		page,
 	}) => {
 		await expect(
-			page.getByText("View and update your account information."),
+			page.getByText("Manage your profile, sign-in security and access."),
 		).toBeVisible();
 		// Display name and @username each appear in the header card and (for the
 		// name / username fields) again in the details list below it.
@@ -158,7 +160,7 @@ test.describe("Editing the profile", () => {
 
 		await page.reload();
 		await expect(
-			page.getByRole("heading", { name: "Account settings" }),
+			page.getByRole("heading", { name: "Account", exact: true }),
 		).toBeVisible();
 		await expect(field(page, "Full name")).toContainText(newName);
 		await expect(field(page, "Email")).toContainText(newEmail);
@@ -178,7 +180,7 @@ test.describe("Editing the profile", () => {
 
 		await page.reload();
 		await expect(
-			page.getByRole("heading", { name: "Account settings" }),
+			page.getByRole("heading", { name: "Account", exact: true }),
 		).toBeVisible();
 		await expect(field(page, "Full name")).toContainText(user.fullName);
 		await expect(page.getByText("Should Not Be Saved")).toHaveCount(0);
