@@ -308,10 +308,17 @@ test.describe("Git integration permissions", () => {
 			});
 		});
 
-		test("git:read cannot link a repository", async ({ request, playwright }) => {
-			const reader = await memberWith(request, playwright, projectId, "READER", [
-				"git:read",
-			]);
+		test("git:read cannot link a repository", async ({
+			request,
+			playwright,
+		}) => {
+			const reader = await memberWith(
+				request,
+				playwright,
+				projectId,
+				"LINKREADER",
+				["git:read"],
+			);
 			await asUser(playwright, reader.username, async (api) => {
 				expect(
 					(
@@ -348,19 +355,27 @@ test.describe("Git integration permissions", () => {
 				api.post(gitUrl(projectId, "/connections/setup"), {
 					data: { provider_id: "com.paca.github" },
 				});
-			const writer = await memberWith(request, playwright, projectId, "CONN_W", [
-				"git:read",
-				"git:write",
-			]);
-			const connector = await memberWith(request, playwright, projectId, "CONN_M", [
-				"git:read",
-				"git:write",
-				"git.connections:manage",
-			]);
-			const onlyManage = await memberWith(request, playwright, projectId, "CONN_O", [
-				"git:read",
-				"git.connections:manage",
-			]);
+			const writer = await memberWith(
+				request,
+				playwright,
+				projectId,
+				"CONN_W",
+				["git:read", "git:write"],
+			);
+			const connector = await memberWith(
+				request,
+				playwright,
+				projectId,
+				"CONN_M",
+				["git:read", "git:write", "git.connections:manage"],
+			);
+			const onlyManage = await memberWith(
+				request,
+				playwright,
+				projectId,
+				"CONN_O",
+				["git:read", "git.connections:manage"],
+			);
 			await asUser(playwright, writer.username, async (api) => {
 				expect((await setup(api)).status()).toBe(403);
 			});
