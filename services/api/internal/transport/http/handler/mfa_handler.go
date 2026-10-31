@@ -39,8 +39,16 @@ type MFAService interface {
 // accounts that policy forces onto MFA, and the admin login-security
 // endpoints. Route gates (not this handler) decide who may call what.
 type MFAHandler struct {
-	svc   MFAService
-	users userdom.Repository
+	svc      MFAService
+	users    userdom.Repository
+	throttle domainauth.LoginThrottle
+}
+
+// WithLoginThrottle shares the sign-in wrong-password limiter with the
+// password-only enrollment endpoints, so they can't be used to guess around it.
+func (h *MFAHandler) WithLoginThrottle(t domainauth.LoginThrottle) *MFAHandler {
+	h.throttle = t
+	return h
 }
 
 // NewMFAHandler returns an MFAHandler.
@@ -145,17 +153,29 @@ func (h *MFAHandler) RegenerateRecoveryCodes(w http.ResponseWriter, r *http.Requ
 // passwordUser authenticates a pre-login request by username and password.
 // Any failure is the same ErrInvalidCredentials login uses.
 func (h *MFAHandler) passwordUser(r *http.Request, username, password string) (*userdom.User, error) {
-	u, err := h.users.FindByUsername(r.Context(), username)
-	if err != nil {
-		if errors.Is(err, userdom.ErrNotFound) {
-			return nil, domainauth.ErrInvalidCredentials
+	ctx := r.Context()
+	key := domainauth.NormalizeLoginKey(username)
+	if h.throttle != nil {
+		if wait, err := h.throttle.Check(ctx, key); err == nil && wait > 0 {
+			return nil, &mfadom.LockedError{RetryAfter: wait}
 		}
+	}
+	u, err := h.users.FindByUsername(ctx, username)
+	if err == nil && bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) == nil {
+		if h.throttle != nil {
+			_ = h.throttle.Reset(ctx, key)
+		}
+		return u, nil
+	}
+	if err != nil && !errors.Is(err, userdom.ErrNotFound) {
 		return nil, err
 	}
-	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) != nil {
-		return nil, domainauth.ErrInvalidCredentials
+	if h.throttle != nil {
+		if wait, ferr := h.throttle.Fail(ctx, key); ferr == nil && wait > 0 {
+			return nil, &mfadom.LockedError{RetryAfter: wait}
+		}
 	}
-	return u, nil
+	return nil, domainauth.ErrInvalidCredentials
 }
 
 // requireSetup refuses password-only enrollment unless policy obliges the

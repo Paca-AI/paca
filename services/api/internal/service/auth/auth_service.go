@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,6 +47,7 @@ type LoginGate interface {
 // Service is the concrete implementation of domain/auth.Service.
 type Service struct {
 	gate              LoginGate
+	throttle          domainauth.LoginThrottle
 	users             userdom.Repository
 	tokens            *jwttoken.Manager
 	refreshStore      RefreshTokenStore
@@ -70,21 +72,62 @@ func (s *Service) WithLoginGate(g LoginGate) *Service {
 	return s
 }
 
+// WithLoginThrottle installs the per-username wrong-password limiter.
+func (s *Service) WithLoginThrottle(t domainauth.LoginThrottle) *Service {
+	s.throttle = t
+	return s
+}
+
+// failLogin counts a wrong username/password. When this failure trips the
+// lockout the caller is told so, with the wait; otherwise it is the usual
+// ErrInvalidCredentials. A throttle outage never blocks sign-in.
+func (s *Service) failLogin(ctx context.Context, key string) error {
+	if s.throttle == nil {
+		return domainauth.ErrInvalidCredentials
+	}
+	wait, err := s.throttle.Fail(ctx, key)
+	if err != nil {
+		slog.Warn("login throttle unavailable", "error", err)
+		return domainauth.ErrInvalidCredentials
+	}
+	if wait > 0 {
+		return &mfadom.LockedError{RetryAfter: wait}
+	}
+	return domainauth.ErrInvalidCredentials
+}
+
 // Login validates credentials and returns a fresh token pair.
 // When RememberMe is true, the refresh token uses the long-lived TTL
 // (JWT_REFRESH_TTL); when false, the shorter session TTL is used
 // (JWT_REFRESH_SESSION_TTL, default 24 h).
 func (s *Service) Login(ctx context.Context, in domainauth.LoginInput) (*domainauth.TokenPair, error) {
+	key := domainauth.NormalizeLoginKey(in.Username)
+	if s.throttle != nil {
+		// Checked before touching the user table or bcrypt, and for names
+		// that don't exist too, so a lockout reveals nothing about accounts.
+		wait, terr := s.throttle.Check(ctx, key)
+		if terr != nil {
+			slog.Warn("login throttle unavailable", "error", terr)
+		} else if wait > 0 {
+			return nil, &mfadom.LockedError{RetryAfter: wait}
+		}
+	}
+
 	u, err := s.users.FindByUsername(ctx, in.Username)
 	if err != nil {
 		if errors.Is(err, userdom.ErrNotFound) {
-			return nil, domainauth.ErrInvalidCredentials
+			return nil, s.failLogin(ctx, key)
 		}
 		return nil, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(in.Password)); err != nil {
-		return nil, domainauth.ErrInvalidCredentials
+		return nil, s.failLogin(ctx, key)
+	}
+	if s.throttle != nil {
+		if rerr := s.throttle.Reset(ctx, key); rerr != nil {
+			slog.Warn("login throttle reset failed", "error", rerr)
+		}
 	}
 
 	// Only after the password is right, so these distinct errors can't be

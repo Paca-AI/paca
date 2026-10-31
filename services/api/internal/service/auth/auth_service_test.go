@@ -865,3 +865,85 @@ func TestCompleteMFALogin_RejectsOtherTokens(t *testing.T) {
 		t.Fatal("a challenge token was accepted as a refresh token")
 	}
 }
+
+// memThrottle is an in-memory LoginThrottle: lock after max failures.
+type memThrottle struct {
+	max    int
+	fails  map[string]int
+	locked map[string]bool
+}
+
+func newMemThrottle(max int) *memThrottle {
+	return &memThrottle{max: max, fails: map[string]int{}, locked: map[string]bool{}}
+}
+func (m *memThrottle) Check(_ context.Context, k string) (time.Duration, error) {
+	if m.locked[k] {
+		return 10 * time.Minute, nil
+	}
+	return 0, nil
+}
+func (m *memThrottle) Fail(_ context.Context, k string) (time.Duration, error) {
+	m.fails[k]++
+	if m.fails[k] >= m.max {
+		m.locked[k], m.fails[k] = true, 0
+		return 15 * time.Minute, nil
+	}
+	return 0, nil
+}
+func (m *memThrottle) Reset(_ context.Context, k string) error { m.fails[k] = 0; return nil }
+
+func TestLogin_LocksAfterRepeatedWrongPasswords(t *testing.T) {
+	u := &userdom.User{ID: uuid.New(), Username: "alice", Roles: userRoles("USER"), PasswordHash: hashedPassword(t, "correct12")}
+	svc := newAuthSvc(&stubUserRepo{
+		findByUsername: func(_ context.Context, name string) (*userdom.User, error) {
+			if name != "alice" {
+				return nil, userdom.ErrNotFound
+			}
+			return u, nil
+		},
+	}, &stubRefreshStore{}).WithLoginThrottle(newMemThrottle(3))
+	ctx := context.Background()
+	bad := domainauth.LoginInput{Username: "Alice ", Password: "wrongpass"}
+
+	for i := 0; i < 2; i++ {
+		if _, err := svc.Login(ctx, bad); !errors.Is(err, domainauth.ErrInvalidCredentials) {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+	}
+	// The third failure trips the lock and reports the wait.
+	_, err := svc.Login(ctx, bad)
+	var le *mfadom.LockedError
+	if !errors.Is(err, mfadom.ErrLocked) || !errors.As(err, &le) || le.RetryAfter <= 0 {
+		t.Fatalf("expected lockout with wait, got %v", err)
+	}
+	// Even the right password is refused while locked.
+	_, err = svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "correct12"})
+	if !errors.Is(err, mfadom.ErrLocked) {
+		t.Fatalf("locked account signed in: %v", err)
+	}
+}
+
+func TestLogin_LockoutAppliesToUnknownNamesToo(t *testing.T) {
+	svc := newAuthSvc(&stubUserRepo{}, &stubRefreshStore{}).WithLoginThrottle(newMemThrottle(2))
+	in := domainauth.LoginInput{Username: "ghost", Password: "whatever1"}
+	_, _ = svc.Login(context.Background(), in)
+	if _, err := svc.Login(context.Background(), in); !errors.Is(err, mfadom.ErrLocked) {
+		t.Fatalf("unknown names must lock like real ones: %v", err)
+	}
+}
+
+func TestLogin_SuccessClearsFailures(t *testing.T) {
+	u := &userdom.User{ID: uuid.New(), Username: "alice", Roles: userRoles("USER"), PasswordHash: hashedPassword(t, "correct12")}
+	th := newMemThrottle(3)
+	svc := newAuthSvc(&stubUserRepo{
+		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
+	}, &stubRefreshStore{}).WithLoginThrottle(th)
+	ctx := context.Background()
+	_, _ = svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "bad"})
+	if _, err := svc.Login(ctx, domainauth.LoginInput{Username: "alice", Password: "correct12"}); err != nil {
+		t.Fatal(err)
+	}
+	if th.fails["alice"] != 0 {
+		t.Fatal("failures not cleared")
+	}
+}

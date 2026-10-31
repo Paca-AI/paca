@@ -39,7 +39,7 @@ var (
 	ErrNotEnabled = errors.New("mfa: not enabled")
 	// ErrLocked means too many wrong codes were entered for the account; no
 	// second factor is accepted again until the lockout expires.
-	ErrLocked = errors.New("mfa: too many failed attempts")
+	ErrLocked = errors.New("too many failed attempts")
 	// ErrSelfLockout means a policy change would block the admin making it.
 	ErrSelfLockout = errors.New("mfa: policy would block the current address")
 	// ErrUnavailable means the server has no ENCRYPTION_KEY, so TOTP

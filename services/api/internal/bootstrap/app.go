@@ -253,6 +253,10 @@ func New(cfg *config.Config) (*App, error) {
 	// TOTP enrollment needs the encryptor; without it only the allow-lists work.
 	mfaService := mfasvc.New(pgRepo.NewMFARepository(db), encryptor, "Paca")
 	authService.WithLoginGate(mfaService)
+	// Wrong-password lockout per username: 10 failures within 15 minutes lock
+	// that name for 15 minutes. Held in Redis, so it covers every API instance.
+	loginThrottle := redisRepo.NewLoginThrottle(redisClient, 10, 15*time.Minute, 15*time.Minute)
+	authService.WithLoginThrottle(loginThrottle)
 	// Reassigned (unlike agentService/environmentService above) because
 	// projectServiceBase is a local var read again below when wiring
 	// ProjectHandler's Jev-config option — WithEncryptor mutates in place,
@@ -543,7 +547,7 @@ func New(cfg *config.Config) (*App, error) {
 		Version:             handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                authHandler,
 		SSO:                 handler.NewSSOHandler(ssoService, authHandler, cfg.Server.PublicURL),
-		MFA:                 handler.NewMFAHandler(mfaService, userRepo),
+		MFA:                 handler.NewMFAHandler(mfaService, userRepo).WithLoginThrottle(loginThrottle),
 		User:                handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
 		Role:                handler.NewRoleHandler(roleService),
 		RoleAttachments:     httpmw.NewRoleServiceAttachments(roleService),

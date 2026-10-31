@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -33,6 +34,23 @@ type TokenPair struct {
 	// factor is still owed: no session exists and every other field is empty.
 	// Hand it to CompleteMFALogin with a code to get the real pair.
 	MFAChallenge string
+}
+
+// LoginThrottle limits wrong-password attempts per username. Keys are
+// normalised by NormalizeLoginKey.
+type LoginThrottle interface {
+	// Check returns how long key stays locked, or 0.
+	Check(ctx context.Context, key string) (time.Duration, error)
+	// Fail records a wrong password; a non-zero result is the lockout this
+	// failure started.
+	Fail(ctx context.Context, key string) (time.Duration, error)
+	// Reset clears the failure count after a correct password.
+	Reset(ctx context.Context, key string) error
+}
+
+// NormalizeLoginKey is the throttle key for a typed username.
+func NormalizeLoginKey(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
 }
 
 // LoginInput is everything a password login carries.
