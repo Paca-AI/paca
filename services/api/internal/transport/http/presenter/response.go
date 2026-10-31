@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Paca-AI/api/internal/apierr"
@@ -110,6 +111,12 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 
 	var details map[string]string
 	var issues []apierr.Issue
+	var locked *mfadom.LockedError
+	if errors.As(err, &locked) {
+		secs := int(locked.RetryAfter.Seconds()) + 1
+		details = map[string]string{"retry_after_seconds": strconv.Itoa(secs)}
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+	}
 	if apiErr != nil {
 		details = apiErr.Details
 		issues = apiErr.Issues
@@ -151,6 +158,10 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusUnauthorized, apierr.CodeMFARequired
 	case errors.Is(err, mfadom.ErrInvalidCode):
 		return http.StatusUnauthorized, apierr.CodeMFAInvalidCode
+	case errors.Is(err, mfadom.ErrLocked):
+		return http.StatusTooManyRequests, apierr.CodeTooManyRequests
+	case errors.Is(err, mfadom.ErrSelfLockout):
+		return http.StatusBadRequest, apierr.CodeBadRequest
 	case errors.Is(err, mfadom.ErrSetupRequired):
 		return http.StatusForbidden, apierr.CodeMFASetupRequired
 	case errors.Is(err, mfadom.ErrSetupNotRequired):

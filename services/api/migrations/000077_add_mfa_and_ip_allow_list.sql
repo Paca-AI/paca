@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS user_mfa (
     enabled        BOOLEAN NOT NULL DEFAULT FALSE,
     recovery_codes JSONB NOT NULL DEFAULT '[]',
     last_used_step BIGINT NOT NULL DEFAULT 0,
+    failed_attempts INT NOT NULL DEFAULT 0,
+    locked_until   TIMESTAMPTZ,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );

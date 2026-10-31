@@ -17,13 +17,15 @@ import (
 )
 
 type memStore struct {
+	fails  map[uuid.UUID]int
+	clock  func() time.Time
 	enr    map[uuid.UUID]*mfadom.Enrollment
 	cidrs  map[uuid.UUID][]string
 	policy mfadom.Policy
 }
 
 func newMemStore() *memStore {
-	return &memStore{enr: map[uuid.UUID]*mfadom.Enrollment{}, cidrs: map[uuid.UUID][]string{}}
+	return &memStore{fails: map[uuid.UUID]int{}, enr: map[uuid.UUID]*mfadom.Enrollment{}, cidrs: map[uuid.UUID][]string{}}
 }
 
 func (m *memStore) GetEnrollment(_ context.Context, id uuid.UUID) (*mfadom.Enrollment, error) {
@@ -61,6 +63,26 @@ func (m *memStore) ConsumeRecoveryCode(_ context.Context, id uuid.UUID, h string
 	}
 	return false, nil
 }
+func (m *memStore) ReplaceRecoveryCodes(_ context.Context, id uuid.UUID, h []string) error {
+	m.enr[id].RecoveryCodes = h
+	return nil
+}
+func (m *memStore) RegisterFailure(_ context.Context, id uuid.UUID, max int, d time.Duration) error {
+	m.fails[id]++
+	if m.fails[id] >= max {
+		m.fails[id] = 0
+		t := m.clock().Add(d)
+		m.enr[id].LockedUntil = &t
+	}
+	return nil
+}
+func (m *memStore) ClearFailures(_ context.Context, id uuid.UUID) error {
+	m.fails[id] = 0
+	if e := m.enr[id]; e != nil {
+		e.LockedUntil = nil
+	}
+	return nil
+}
 func (m *memStore) GetUserCIDRs(_ context.Context, id uuid.UUID) ([]string, error) {
 	return m.cidrs[id], nil
 }
@@ -87,6 +109,7 @@ func newSvc(t *testing.T) (*Service, *memStore, *time.Time) {
 	svc := New(st, enc, "Paca")
 	clock := time.Unix(1700000000, 0)
 	svc.now = func() time.Time { return clock }
+	st.clock = svc.now
 	return svc, st, &clock
 }
 
@@ -175,7 +198,7 @@ func TestCheckLogin_AllRolesAppliesToEveryone(t *testing.T) {
 	}
 	// Saving collapses the wildcard so it can't be stored alongside names.
 	p := &mfadom.Policy{PrivilegedRoles: []string{"ADMIN", mfadom.AllRoles}}
-	if err := svc.SetPolicy(context.Background(), p, nil); err != nil || len(st.policy.PrivilegedRoles) != 1 {
+	if err := svc.SetPolicy(context.Background(), p, nil, "1.1.1.1"); err != nil || len(st.policy.PrivilegedRoles) != 1 {
 		t.Fatalf("SetPolicy: %v %v", err, st.policy.PrivilegedRoles)
 	}
 }
@@ -241,6 +264,9 @@ func TestNormalizeCIDRs(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"10.0.0.1/32", "2001:db8::/32", "::1/128"}
+	if m, err := NormalizeCIDRs([]string{"10.1.2.3/8"}); err != nil || m[0] != "10.0.0.0/8" {
+		t.Fatalf("host bits not masked: %v %v", m, err)
+	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -309,5 +335,101 @@ func TestRecoveryCodesUseOnlyTheAlphabetAndAreUnique(t *testing.T) {
 				t.Fatalf("%q has %q outside the alphabet", c, r)
 			}
 		}
+	}
+}
+
+func TestWrongCodesLockTheAccount(t *testing.T) {
+	svc, st, clock := newSvc(t)
+	ctx := context.Background()
+	u := admin()
+	sec, _ := enrol(t, svc, u)
+	*clock = clock.Add(time.Minute)
+
+	for i := 0; i < maxFailedAttempts; i++ {
+		err := svc.CheckLogin(ctx, u, "000000", "1.2.3.4")
+		if i < maxFailedAttempts-1 && !errors.Is(err, mfadom.ErrInvalidCode) {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+		if i == maxFailedAttempts-1 && !errors.Is(err, mfadom.ErrLocked) {
+			t.Fatalf("the attempt that trips the lock should say so: %v", err)
+		}
+	}
+	good, _ := totp.Code(sec, svc.now())
+	err := svc.CheckLogin(ctx, u, good, "1.2.3.4")
+	var le *mfadom.LockedError
+	if !errors.Is(err, mfadom.ErrLocked) || !errors.As(err, &le) || le.RetryAfter <= 0 || le.RetryAfter > lockoutDuration {
+		t.Fatalf("locked account accepted a valid code or lacks a wait: %v", err)
+	}
+	*clock = clock.Add(lockoutDuration + time.Second)
+	good, _ = totp.Code(sec, svc.now())
+	if err := svc.CheckLogin(ctx, u, good, "1.2.3.4"); err != nil {
+		t.Fatalf("after lockout: %v", err)
+	}
+	if st.fails[u.ID] != 0 || st.enr[u.ID].LockedUntil != nil {
+		t.Fatal("success should clear failures")
+	}
+}
+
+func TestConfirmLocksAfterRepeatedWrongCodes(t *testing.T) {
+	svc, _, _ := newSvc(t)
+	ctx := context.Background()
+	u := admin()
+	if _, _, err := svc.Begin(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < maxFailedAttempts; i++ {
+		_, _ = svc.Confirm(ctx, u, "000000")
+	}
+	if _, err := svc.Confirm(ctx, u, "000000"); !errors.Is(err, mfadom.ErrLocked) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestCheckIPAppliesAllowLists(t *testing.T) {
+	svc, st, _ := newSvc(t)
+	u := admin()
+	st.policy = mfadom.Policy{PrivilegedRoles: []string{"ADMIN"}, IPAllowList: []string{"10.0.0.0/8"}}
+	if err := svc.CheckIP(context.Background(), u, "8.8.8.8"); !errors.Is(err, mfadom.ErrIPNotAllowed) {
+		t.Fatalf("got %v", err)
+	}
+	if err := svc.CheckIP(context.Background(), u, "10.1.1.1"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetPolicyRefusesSelfLockout(t *testing.T) {
+	svc, st, _ := newSvc(t)
+	ctx := context.Background()
+	p := &mfadom.Policy{PrivilegedRoles: []string{"*"}, IPAllowList: []string{"10.0.0.0/8"}}
+	if err := svc.SetPolicy(ctx, p, nil, "8.8.8.8"); !errors.Is(err, mfadom.ErrSelfLockout) {
+		t.Fatalf("got %v", err)
+	}
+	if err := svc.SetPolicy(ctx, p, nil, "10.2.3.4"); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.policy.IPAllowList) != 1 {
+		t.Fatal("policy not saved")
+	}
+	if err := svc.SetPolicy(ctx, &mfadom.Policy{PrivilegedRoles: []string{"*"}}, nil, "8.8.8.8"); err != nil {
+		t.Fatalf("clearing the list must always be allowed: %v", err)
+	}
+}
+
+func TestBeginReusesRecentPendingSecret(t *testing.T) {
+	svc, st, clock := newSvc(t)
+	ctx := context.Background()
+	u := admin()
+	a, _, err := svc.Begin(ctx, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.enr[u.ID].UpdatedAt = *clock
+	b, _, err := svc.Begin(ctx, u)
+	if err != nil || a != b {
+		t.Fatalf("pending secret replaced: %v", err)
+	}
+	*clock = clock.Add(pendingReuseWindow + time.Second)
+	if c, _, _ := svc.Begin(ctx, u); c == a {
+		t.Fatal("stale pending secret should be replaced")
 	}
 }

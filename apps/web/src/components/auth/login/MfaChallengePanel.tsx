@@ -7,7 +7,11 @@ import { useTranslation } from "react-i18next";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	tooManyAttemptsMessage,
+} from "@/lib/api-error";
 import { verifyMfaLogin } from "@/lib/auth-api";
 import { clearPendingMfa, type PendingMfa } from "@/lib/mfa-challenge";
 import { cn } from "@/lib/utils";
@@ -15,7 +19,7 @@ import { cn } from "@/lib/utils";
 /** Second step of signing in: the password was accepted, now the code from
  * the authenticator app (or a recovery code). */
 export function MfaChallengePanel({ pending }: { pending: PendingMfa }) {
-	const { t } = useTranslation("auth");
+	const { t, i18n } = useTranslation("auth");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const [code, setCode] = useState("");
@@ -52,7 +56,7 @@ export function MfaChallengePanel({ pending }: { pending: PendingMfa }) {
 					: errCode === ApiErrorCode.IpNotAllowed
 						? t("login.errors.ipNotAllowed")
 						: errCode === ApiErrorCode.TooManyRequests
-							? t("login.errors.tooManyAttempts")
+							? tooManyAttemptsMessage(err, t, i18n.language)
 							: t("login.errors.genericError"),
 			);
 			setBusy(false);

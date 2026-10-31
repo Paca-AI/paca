@@ -23,19 +23,20 @@ type MFARepository struct {
 func NewMFARepository(db *sqlx.DB) *MFARepository { return &MFARepository{db: db} }
 
 type mfaRow struct {
-	UserID       string    `db:"user_id"`
-	SecretEnc    string    `db:"secret_enc"`
-	Enabled      bool      `db:"enabled"`
-	Recovery     []byte    `db:"recovery_codes"`
-	LastUsedStep int64     `db:"last_used_step"`
-	UpdatedAt    time.Time `db:"updated_at"`
+	UserID       string     `db:"user_id"`
+	SecretEnc    string     `db:"secret_enc"`
+	Enabled      bool       `db:"enabled"`
+	Recovery     []byte     `db:"recovery_codes"`
+	LastUsedStep int64      `db:"last_used_step"`
+	LockedUntil  *time.Time `db:"locked_until"`
+	UpdatedAt    time.Time  `db:"updated_at"`
 }
 
 // GetEnrollment returns the user's enrollment or mfadom.ErrNotFound.
 func (r *MFARepository) GetEnrollment(ctx context.Context, userID uuid.UUID) (*mfadom.Enrollment, error) {
 	var row mfaRow
 	err := r.db.GetContext(ctx, &row, `
-		SELECT user_id, secret_enc, enabled, recovery_codes, last_used_step, updated_at
+		SELECT user_id, secret_enc, enabled, recovery_codes, last_used_step, locked_until, updated_at
 		FROM user_mfa WHERE user_id = $1`, userID.String())
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, mfadom.ErrNotFound
@@ -49,7 +50,7 @@ func (r *MFARepository) GetEnrollment(ctx context.Context, userID uuid.UUID) (*m
 	}
 	return &mfadom.Enrollment{
 		UserID: userID, SecretEnc: row.SecretEnc, Enabled: row.Enabled,
-		RecoveryCodes: codes, LastUsedStep: row.LastUsedStep, UpdatedAt: row.UpdatedAt,
+		RecoveryCodes: codes, LastUsedStep: row.LastUsedStep, LockedUntil: row.LockedUntil, UpdatedAt: row.UpdatedAt,
 	}, nil
 }
 
@@ -103,6 +104,43 @@ func (r *MFARepository) ConsumeRecoveryCode(ctx context.Context, userID uuid.UUI
 	}
 	n, _ := res.RowsAffected()
 	return n == 1, nil
+}
+
+// ReplaceRecoveryCodes swaps only the recovery-code hashes.
+func (r *MFARepository) ReplaceRecoveryCodes(ctx context.Context, userID uuid.UUID, hashes []string) error {
+	enc, err := encodeStrings(hashes)
+	if err != nil {
+		return err
+	}
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE user_mfa SET recovery_codes = $2::jsonb, updated_at = now() WHERE user_id = $1`,
+		userID.String(), enc); err != nil {
+		return fmt.Errorf("mfa repo: replace recovery codes: %w", err)
+	}
+	return nil
+}
+
+// RegisterFailure atomically counts a wrong code and locks at maxAttempts.
+func (r *MFARepository) RegisterFailure(ctx context.Context, userID uuid.UUID, maxAttempts int, lockout time.Duration) error {
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE user_mfa SET
+			locked_until = CASE WHEN failed_attempts + 1 >= $2
+				THEN now() + make_interval(secs => $3) ELSE locked_until END,
+			failed_attempts = CASE WHEN failed_attempts + 1 >= $2 THEN 0 ELSE failed_attempts + 1 END
+		WHERE user_id = $1`, userID.String(), maxAttempts, lockout.Seconds()); err != nil {
+		return fmt.Errorf("mfa repo: register failure: %w", err)
+	}
+	return nil
+}
+
+// ClearFailures resets the failure counter and lockout.
+func (r *MFARepository) ClearFailures(ctx context.Context, userID uuid.UUID) error {
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE user_mfa SET failed_attempts = 0, locked_until = NULL
+		WHERE user_id = $1 AND (failed_attempts <> 0 OR locked_until IS NOT NULL)`, userID.String()); err != nil {
+		return fmt.Errorf("mfa repo: clear failures: %w", err)
+	}
+	return nil
 }
 
 // GetUserCIDRs returns the account's allow-list (empty when unrestricted).

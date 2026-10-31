@@ -24,12 +24,14 @@ func RateLimit(limit int, window time.Duration, onLimited http.Handler) func(htt
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ok, retryAfter := l.allow(ClientIP(r), time.Now())
 			if !ok {
-				w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())+1))
+				secs := strconv.Itoa(int(retryAfter.Seconds()) + 1)
+				w.Header().Set("Retry-After", secs)
 				if onLimited != nil {
 					onLimited.ServeHTTP(w, r)
 					return
 				}
-				presenter.Error(w, r, apierr.New(apierr.CodeTooManyRequests, "too many requests"))
+				presenter.Error(w, r, apierr.NewWithDetails(apierr.CodeTooManyRequests, "too many requests",
+					map[string]string{"retry_after_seconds": secs}))
 				return
 			}
 			next.ServeHTTP(w, r)

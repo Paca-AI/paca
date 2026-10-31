@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -58,6 +59,30 @@ func TestMFARepository_PG(t *testing.T) {
 	}
 	if got, _ = repo.GetEnrollment(ctx, uid); !slices.Equal(got.RecoveryCodes, []string{"h1", "h3"}) {
 		t.Fatalf("remaining codes: %v", got.RecoveryCodes)
+	}
+
+	// Lockout: the 3rd consecutive failure locks, success clears.
+	for i := 0; i < 3; i++ {
+		if err := repo.RegisterFailure(ctx, uid, 3, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, _ = repo.GetEnrollment(ctx, uid); got.LockedUntil == nil || !got.LockedUntil.After(time.Now()) {
+		t.Fatalf("expected lockout: %+v", got)
+	}
+	if err := repo.ClearFailures(ctx, uid); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = repo.GetEnrollment(ctx, uid); got.LockedUntil != nil {
+		t.Fatalf("lockout not cleared: %+v", got)
+	}
+
+	// ReplaceRecoveryCodes leaves the replay step alone.
+	if err := repo.ReplaceRecoveryCodes(ctx, uid, []string{"n1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = repo.GetEnrollment(ctx, uid); !slices.Equal(got.RecoveryCodes, []string{"n1"}) || got.LastUsedStep != 6 {
+		t.Fatalf("replace codes: %+v", got)
 	}
 
 	// Per-user CIDRs: default empty.

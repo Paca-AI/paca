@@ -25,6 +25,14 @@ import (
 
 const (
 	recoveryCodeCount = 8
+	// maxFailedAttempts consecutive wrong codes lock the account's second
+	// factor for lockoutDuration. A challenge token is only a bearer of the
+	// password check, so the cap has to live on the account, not the token.
+	maxFailedAttempts = 5
+	lockoutDuration   = 15 * time.Minute
+	// pendingReuseWindow is how long an unconfirmed secret is handed out
+	// again by Begin instead of being replaced.
+	pendingReuseWindow = 10 * time.Minute
 	// recoveryAlphabet omits look-alike characters (0/o, 1/l/i).
 	recoveryAlphabet = "abcdefghjkmnpqrstuvwxyz23456789"
 )
@@ -55,15 +63,8 @@ func (s *Service) CheckLogin(ctx context.Context, u *userdom.User, otp, clientIP
 	}
 	privileged := hasAny(u.RoleNames(), policy.PrivilegedRoles)
 
-	userCIDRs, err := s.store.GetUserCIDRs(ctx, u.ID)
-	if err != nil {
+	if err := s.checkIP(ctx, u, policy, privileged, clientIP); err != nil {
 		return err
-	}
-	if len(userCIDRs) > 0 && !ipAllowed(clientIP, userCIDRs) {
-		return mfadom.ErrIPNotAllowed
-	}
-	if privileged && len(policy.IPAllowList) > 0 && !ipAllowed(clientIP, policy.IPAllowList) {
-		return mfadom.ErrIPNotAllowed
 	}
 
 	enr, err := s.store.GetEnrollment(ctx, u.ID)
@@ -82,9 +83,58 @@ func (s *Service) CheckLogin(ctx context.Context, u *userdom.User, otp, clientIP
 	return nil
 }
 
+// CheckIP enforces only the IP allow-lists. The password-only enrollment path
+// runs it so that path is no looser than a login.
+func (s *Service) CheckIP(ctx context.Context, u *userdom.User, clientIP string) error {
+	policy, err := s.store.GetPolicy(ctx)
+	if err != nil {
+		return err
+	}
+	return s.checkIP(ctx, u, policy, hasAny(u.RoleNames(), policy.PrivilegedRoles), clientIP)
+}
+
+func (s *Service) checkIP(ctx context.Context, u *userdom.User, policy *mfadom.Policy, privileged bool, clientIP string) error {
+	userCIDRs, err := s.store.GetUserCIDRs(ctx, u.ID)
+	if err != nil {
+		return err
+	}
+	if len(userCIDRs) > 0 && !ipAllowed(clientIP, userCIDRs) {
+		return mfadom.ErrIPNotAllowed
+	}
+	if privileged && len(policy.IPAllowList) > 0 && !ipAllowed(clientIP, policy.IPAllowList) {
+		return mfadom.ErrIPNotAllowed
+	}
+	return nil
+}
+
+// locked reports whether the enrollment is inside a lockout.
+func (s *Service) locked(enr *mfadom.Enrollment) error {
+	if enr.LockedUntil != nil && s.now().Before(*enr.LockedUntil) {
+		return &mfadom.LockedError{RetryAfter: enr.LockedUntil.Sub(s.now())}
+	}
+	return nil
+}
+
+// fail counts a wrong code against the account and returns ErrInvalidCode.
+func (s *Service) fail(ctx context.Context, userID uuid.UUID) error {
+	if err := s.store.RegisterFailure(ctx, userID, maxFailedAttempts, lockoutDuration); err != nil {
+		return err
+	}
+	// The attempt that trips the lock is told so, with the wait.
+	if enr, err := s.store.GetEnrollment(ctx, userID); err == nil {
+		if lerr := s.locked(enr); lerr != nil {
+			return lerr
+		}
+	}
+	return mfadom.ErrInvalidCode
+}
+
 func (s *Service) verifySecondFactor(ctx context.Context, enr *mfadom.Enrollment, code string) error {
 	if s.enc == nil {
 		return mfadom.ErrUnavailable
+	}
+	if err := s.locked(enr); err != nil {
+		return err
 	}
 	clean := strings.ReplaceAll(strings.TrimSpace(code), " ", "")
 	if len(clean) == totp.Digits && isDigits(clean) {
@@ -94,25 +144,25 @@ func (s *Service) verifySecondFactor(ctx context.Context, enr *mfadom.Enrollment
 		}
 		step, ok := totp.Verify(secretB32, clean, s.now())
 		if !ok {
-			return mfadom.ErrInvalidCode
+			return s.fail(ctx, enr.UserID)
 		}
 		fresh, err := s.store.AdvanceStep(ctx, enr.UserID, step)
 		if err != nil {
 			return err
 		}
 		if !fresh {
-			return mfadom.ErrInvalidCode // replay
+			return s.fail(ctx, enr.UserID) // replay
 		}
-		return nil
+		return s.store.ClearFailures(ctx, enr.UserID)
 	}
 	used, err := s.store.ConsumeRecoveryCode(ctx, enr.UserID, hashRecovery(clean))
 	if err != nil {
 		return err
 	}
 	if !used {
-		return mfadom.ErrInvalidCode
+		return s.fail(ctx, enr.UserID)
 	}
-	return nil
+	return s.store.ClearFailures(ctx, enr.UserID)
 }
 
 // SetupRequired reports whether policy obliges u to use MFA but u has not
@@ -142,10 +192,21 @@ func (s *Service) Begin(ctx context.Context, u *userdom.User) (secretB32, uri st
 	if s.enc == nil {
 		return "", "", mfadom.ErrUnavailable
 	}
-	if enr, gerr := s.store.GetEnrollment(ctx, u.ID); gerr == nil && enr.Enabled {
-		return "", "", mfadom.ErrAlreadyEnabled
-	} else if gerr != nil && !errors.Is(gerr, mfadom.ErrNotFound) {
+	enr, gerr := s.store.GetEnrollment(ctx, u.ID)
+	if gerr != nil && !errors.Is(gerr, mfadom.ErrNotFound) {
 		return "", "", gerr
+	}
+	if gerr == nil {
+		if enr.Enabled {
+			return "", "", mfadom.ErrAlreadyEnabled
+		}
+		// A recent pending secret is handed out again, so two open tabs
+		// don't keep invalidating each other's QR code.
+		if s.now().Sub(enr.UpdatedAt) < pendingReuseWindow {
+			if sec, derr := s.enc.Decrypt(enr.SecretEnc); derr == nil {
+				return sec, totp.ProvisioningURI(s.issuer, u.Username, sec), nil
+			}
+		}
 	}
 	secretB32, err = totp.GenerateSecret()
 	if err != nil {
@@ -174,13 +235,16 @@ func (s *Service) Confirm(ctx context.Context, u *userdom.User, code string) ([]
 	if enr.Enabled {
 		return nil, mfadom.ErrAlreadyEnabled
 	}
+	if err := s.locked(enr); err != nil {
+		return nil, err
+	}
 	secretB32, err := s.enc.Decrypt(enr.SecretEnc)
 	if err != nil {
 		return nil, fmt.Errorf("mfa: decrypt secret: %w", err)
 	}
 	step, ok := totp.Verify(secretB32, code, s.now())
 	if !ok {
-		return nil, mfadom.ErrInvalidCode
+		return nil, s.fail(ctx, u.ID)
 	}
 	plain, hashes, err := newRecoveryCodes()
 	if err != nil {
@@ -188,6 +252,9 @@ func (s *Service) Confirm(ctx context.Context, u *userdom.User, code string) ([]
 	}
 	enr.Enabled, enr.RecoveryCodes, enr.LastUsedStep = true, hashes, step
 	if err := s.store.SaveEnrollment(ctx, enr); err != nil {
+		return nil, err
+	}
+	if err := s.store.ClearFailures(ctx, u.ID); err != nil {
 		return nil, err
 	}
 	return plain, nil
@@ -207,12 +274,9 @@ func (s *Service) RegenerateRecoveryCodes(ctx context.Context, u *userdom.User, 
 	if err != nil {
 		return nil, err
 	}
-	// Re-read: verifySecondFactor may have advanced the step or used a code.
-	if enr, err = s.store.GetEnrollment(ctx, u.ID); err != nil {
-		return nil, err
-	}
-	enr.RecoveryCodes = hashes
-	if err := s.store.SaveEnrollment(ctx, enr); err != nil {
+	// Only the codes are written, so a concurrent login's step or consumed
+	// code is not rolled back.
+	if err := s.store.ReplaceRecoveryCodes(ctx, u.ID, hashes); err != nil {
 		return nil, err
 	}
 	return plain, nil
@@ -254,10 +318,17 @@ func (s *Service) GetPolicy(ctx context.Context) (*mfadom.Policy, error) {
 }
 
 // SetPolicy validates and saves the instance policy.
-func (s *Service) SetPolicy(ctx context.Context, p *mfadom.Policy, updatedBy *uuid.UUID) error {
+//
+// A non-empty instance IP list must contain clientIP, the address of the
+// admin saving it, so a typo can't lock the instance's privileged users (the
+// admin included) out of password login.
+func (s *Service) SetPolicy(ctx context.Context, p *mfadom.Policy, updatedBy *uuid.UUID, clientIP string) error {
 	cidrs, err := NormalizeCIDRs(p.IPAllowList)
 	if err != nil {
 		return err
+	}
+	if len(cidrs) > 0 && !ipAllowed(clientIP, cidrs) {
+		return mfadom.ErrSelfLockout
 	}
 	p.IPAllowList = cidrs
 	if slices.Contains(p.PrivilegedRoles, mfadom.AllRoles) {
@@ -295,8 +366,16 @@ func NormalizeCIDRs(in []string) ([]string, error) {
 				return nil, fmt.Errorf("%w: %q", mfadom.ErrInvalidCIDR, raw)
 			}
 			raw = netip.PrefixFrom(addr.Unmap(), addr.Unmap().BitLen()).String()
-		} else if _, err := netip.ParsePrefix(raw); err != nil {
-			return nil, fmt.Errorf("%w: %q", mfadom.ErrInvalidCIDR, raw)
+		} else {
+			pfx, err := netip.ParsePrefix(raw)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %q", mfadom.ErrInvalidCIDR, raw)
+			}
+			// Canonical form: host bits cleared, IPv4-mapped IPv6 unmapped.
+			if pfx.Addr().Is4In6() && pfx.Bits() >= 96 {
+				pfx = netip.PrefixFrom(pfx.Addr().Unmap(), pfx.Bits()-96)
+			}
+			raw = pfx.Masked().String()
 		}
 		out = append(out, raw)
 	}

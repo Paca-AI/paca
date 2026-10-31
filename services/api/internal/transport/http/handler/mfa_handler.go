@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +22,7 @@ import (
 // MFAService is what MFAHandler needs from the MFA service.
 type MFAService interface {
 	SetupRequired(ctx context.Context, u *userdom.User) (bool, error)
+	CheckIP(ctx context.Context, u *userdom.User, clientIP string) error
 	Begin(ctx context.Context, u *userdom.User) (secret, uri string, err error)
 	Confirm(ctx context.Context, u *userdom.User, code string) ([]string, error)
 	Disable(ctx context.Context, u *userdom.User, code string) error
@@ -28,7 +30,7 @@ type MFAService interface {
 	Status(ctx context.Context, u *userdom.User) (bool, int, error)
 	Reset(ctx context.Context, userID uuid.UUID) error
 	GetPolicy(ctx context.Context) (*mfadom.Policy, error)
-	SetPolicy(ctx context.Context, p *mfadom.Policy, updatedBy *uuid.UUID) error
+	SetPolicy(ctx context.Context, p *mfadom.Policy, updatedBy *uuid.UUID, clientIP string) error
 	GetUserCIDRs(ctx context.Context, userID uuid.UUID) ([]string, error)
 	SetUserCIDRs(ctx context.Context, userID uuid.UUID, cidrs []string) error
 }
@@ -161,6 +163,10 @@ func (h *MFAHandler) passwordUser(r *http.Request, username, password string) (*
 // signed-in session, so a password alone can never establish a second factor
 // on an account that could otherwise have kept one off.
 func (h *MFAHandler) requireSetup(w http.ResponseWriter, r *http.Request, u *userdom.User) bool {
+	if err := h.svc.CheckIP(r.Context(), u, middleware.ClientIP(r)); err != nil {
+		presenter.Error(w, r, err)
+		return false
+	}
 	required, err := h.svc.SetupRequired(r.Context(), u)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -245,10 +251,11 @@ func (h *MFAHandler) PutPolicy(w http.ResponseWriter, r *http.Request) {
 	if id, ok := middleware.ActorIDFromContext(r.Context()); ok {
 		by = &id
 	}
-	if err := h.svc.SetPolicy(r.Context(), p, by); err != nil {
+	if err := h.svc.SetPolicy(r.Context(), p, by, middleware.ClientIP(r)); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
+	slog.Info("auth security policy updated", "actor", by, "require_mfa", p.RequireMFA, "roles", p.PrivilegedRoles, "ip_entries", len(p.IPAllowList))
 	presenter.OK(w, r, policyResponse(p))
 }
 
@@ -303,6 +310,7 @@ func (h *MFAHandler) PutUserCIDRs(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
+	slog.Info("user allowed CIDRs updated", "actor", actorID(r), "user", id, "entries", len(req.AllowedCIDRs))
 	h.GetUserCIDRs(w, r)
 }
 
@@ -316,5 +324,12 @@ func (h *MFAHandler) ResetUserMFA(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
+	slog.Info("user MFA reset by admin", "actor", actorID(r), "user", id)
 	presenter.NoContent(w)
+}
+
+// actorID returns the acting account for audit logs, or the zero UUID.
+func actorID(r *http.Request) uuid.UUID {
+	id, _ := middleware.ActorIDFromContext(r.Context())
+	return id
 }

@@ -37,10 +37,23 @@ var (
 	ErrAlreadyEnabled = errors.New("mfa: already enabled")
 	// ErrNotEnabled means the operation needs an enabled enrollment.
 	ErrNotEnabled = errors.New("mfa: not enabled")
+	// ErrLocked means too many wrong codes were entered for the account; no
+	// second factor is accepted again until the lockout expires.
+	ErrLocked = errors.New("mfa: too many failed attempts")
+	// ErrSelfLockout means a policy change would block the admin making it.
+	ErrSelfLockout = errors.New("mfa: policy would block the current address")
 	// ErrUnavailable means the server has no ENCRYPTION_KEY, so TOTP
 	// secrets cannot be stored.
 	ErrUnavailable = errors.New("mfa: unavailable (ENCRYPTION_KEY not configured)")
 )
+
+// LockedError is ErrLocked plus how long the lockout has left.
+type LockedError struct{ RetryAfter time.Duration }
+
+func (e *LockedError) Error() string { return ErrLocked.Error() }
+
+// Is makes errors.Is(err, ErrLocked) true.
+func (e *LockedError) Is(target error) bool { return target == ErrLocked }
 
 // Enrollment is a user's TOTP enrollment. Enabled=false is pending: the
 // secret was issued but no valid code has confirmed it yet.
@@ -53,7 +66,9 @@ type Enrollment struct {
 	RecoveryCodes []string
 	// LastUsedStep is the newest TOTP time step already accepted.
 	LastUsedStep int64
-	UpdatedAt    time.Time
+	// LockedUntil, when in the future, rejects every second-factor attempt.
+	LockedUntil *time.Time
+	UpdatedAt   time.Time
 }
 
 // AllRoles is the sole entry of Policy.PrivilegedRoles that applies the
@@ -84,6 +99,16 @@ type Store interface {
 	// ConsumeRecoveryCode atomically removes one recovery-code hash,
 	// returning false when it was not present.
 	ConsumeRecoveryCode(ctx context.Context, userID uuid.UUID, hash string) (bool, error)
+
+	// ReplaceRecoveryCodes swaps only the recovery-code hashes, leaving the
+	// replay step and lockout state untouched so it can't undo a concurrent
+	// login.
+	ReplaceRecoveryCodes(ctx context.Context, userID uuid.UUID, hashes []string) error
+	// RegisterFailure counts a wrong code; the maxAttempts-th consecutive
+	// failure locks the account for lockout and resets the counter.
+	RegisterFailure(ctx context.Context, userID uuid.UUID, maxAttempts int, lockout time.Duration) error
+	// ClearFailures resets the failure counter and any lockout.
+	ClearFailures(ctx context.Context, userID uuid.UUID) error
 
 	GetUserCIDRs(ctx context.Context, userID uuid.UUID) ([]string, error)
 	SetUserCIDRs(ctx context.Context, userID uuid.UUID, cidrs []string) error

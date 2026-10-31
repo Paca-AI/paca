@@ -4,14 +4,20 @@ import { useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	tooManyAttemptsMessage,
+} from "@/lib/api-error";
 import { login } from "@/lib/auth-api";
 import { savePendingMfa } from "@/lib/mfa-challenge";
 
 function loginErrorMessage(
-	code: ApiErrorCode | null,
+	err: unknown,
 	t: TFunction<"auth">,
+	locale: string,
 ): string {
+	const code = getApiErrorCode(err);
 	if (code === ApiErrorCode.InvalidCredentials) {
 		return t("login.errors.invalidCredentials");
 	}
@@ -22,7 +28,7 @@ function loginErrorMessage(
 		return t("login.errors.ipNotAllowed");
 	}
 	if (code === ApiErrorCode.TooManyRequests) {
-		return t("login.errors.tooManyAttempts");
+		return tooManyAttemptsMessage(err, t, locale);
 	}
 	return t("login.errors.genericError");
 }
@@ -32,7 +38,7 @@ function loginErrorMessage(
  * after signing in instead of the home page.
  */
 export function useLoginForm(redirectTo?: string) {
-	const { t } = useTranslation("auth");
+	const { t, i18n } = useTranslation("auth");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const [serverError, setServerError] = useState<string | null>(null);
@@ -89,7 +95,7 @@ export function useLoginForm(redirectTo?: string) {
 					});
 					return;
 				}
-				setServerError(loginErrorMessage(code, t));
+				setServerError(loginErrorMessage(err, t, i18n.language));
 			}
 		},
 	});
@@ -106,7 +112,7 @@ export function useLoginForm(redirectTo?: string) {
 			try {
 				await signIn(username, password, rememberMe);
 			} catch (err: unknown) {
-				setServerError(loginErrorMessage(getApiErrorCode(err), t));
+				setServerError(loginErrorMessage(err, t, i18n.language));
 			}
 		},
 	};

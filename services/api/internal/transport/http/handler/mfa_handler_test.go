@@ -24,6 +24,7 @@ type fakeMFASvc struct {
 func (f *fakeMFASvc) SetupRequired(context.Context, *userdom.User) (bool, error) {
 	return !f.notRequired, nil
 }
+func (f *fakeMFASvc) CheckIP(context.Context, *userdom.User, string) error { return nil }
 func (f *fakeMFASvc) Begin(context.Context, *userdom.User) (string, string, error) {
 	f.begun = true
 	return "SECRET", "otpauth://totp/x", nil
