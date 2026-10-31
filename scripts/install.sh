@@ -64,6 +64,11 @@
 #                                  container; leave unset for bundled Postgres.
 #     POSTGRES_PASSWORD            Bundled Postgres only (default: auto-generated)
 #
+#   Cache / event streams
+#     REDIS_URL                    Setting this selects external Redis/Valkey
+#                                  and suppresses the bundled Valkey container.
+#                                  Unset/empty uses bundled Valkey.
+#
 #   Database backups (bundled Postgres only; skipped for external DB)
 #     BACKUP_ENABLED               true/false                          (default: true)
 #     BACKUP_DIR                   (default: ./backups)
@@ -571,6 +576,43 @@ else
     fi
 fi
 
+# ── Cache / event streams ─────────────────────────────────────────────────────
+
+heading "Cache / event streams"
+
+CACHE_DEFAULT_IDX=1
+[[ -n "${REDIS_URL:-}" ]] && CACHE_DEFAULT_IDX=2
+CACHE_CHOICE=""
+ask_choice CACHE_CHOICE "How should Paca connect to Redis/Valkey?" "$CACHE_DEFAULT_IDX" \
+    "Bundled Valkey container (recommended)" \
+    "External / managed Redis or Valkey (bring your own)"
+
+REDIS_URL_OVERRIDE=""
+if [[ "$CACHE_CHOICE" == *"External"* ]]; then
+    if [[ -n "${REDIS_URL:-}" ]]; then
+        REDIS_URL_OVERRIDE="$REDIS_URL"
+    else
+        ask_secret REDIS_URL_OVERRIDE "Redis/Valkey connection URL (redis:// or rediss://)"
+    fi
+    if [[ ! "$REDIS_URL_OVERRIDE" =~ ^rediss?://[^[:space:]]+$ ]]; then
+        die "External Redis/Valkey requires a non-empty redis:// or rediss:// REDIS_URL."
+    fi
+    info "External Redis/Valkey will be used."
+else
+    info "A bundled Valkey container will be started."
+fi
+# The saved .env is authoritative, including when the user keeps an existing
+# one. An exported installer input must not override that file in Compose.
+unset REDIS_URL
+
+# Single-quoted dotenv values preserve literal '$' in credentials. Escape
+# embedded single quotes using Compose's dotenv syntax, without evaluating it.
+REDIS_URL_ENV=""
+if [[ -n "$REDIS_URL_OVERRIDE" ]]; then
+    REDIS_URL_ESCAPED_QUOTE="\\'"
+    REDIS_URL_ENV="'${REDIS_URL_OVERRIDE//\'/$REDIS_URL_ESCAPED_QUOTE}'"
+fi
+
 # ── Object storage ────────────────────────────────────────────────────────────
 
 heading "Object storage"
@@ -855,7 +897,7 @@ BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS}
 
 # ── Cache (Valkey) ────────────────────────────────────────────────────────────
 # Leave blank to use the bundled Valkey container.
-REDIS_URL=
+REDIS_URL=${REDIS_URL_ENV}
 
 # ── Object storage ────────────────────────────────────────────────────────────
 STORAGE_PROVIDER=${STORAGE_PROVIDER}
@@ -899,6 +941,14 @@ EOF
     info ".env written."
 fi
 
+# Read the effective file after the keep-existing-.env decision, not the
+# installer's tentative choice. Empty quoted values also mean bundled Valkey.
+SCALE_VALKEY=""
+case "$(get_env_var .env REDIS_URL)" in
+    ""|"''"|'""') ;;
+    *) SCALE_VALKEY="--scale valkey=0" ;;
+esac
+
 # ── Confirm and start ─────────────────────────────────────────────────────────
 
 heading "Summary"
@@ -909,6 +959,7 @@ echo -e "  ${BOLD}Version     ${RESET}${PACA_VERSION}"
 echo -e "  ${BOLD}Public URL  ${RESET}${PUBLIC_URL}"
 echo -e "  ${BOLD}HTTPS       ${RESET}$( [[ "$USE_HTTPS" == "yes" ]] && echo "Enabled (${SITE_ADDRESS})" || echo "Disabled (plain HTTP)" )"
 echo -e "  ${BOLD}Database    ${RESET}$( [[ -n "$SCALE_POSTGRES" ]] && echo "External PostgreSQL" || echo "Bundled PostgreSQL container" )"
+echo -e "  ${BOLD}Cache       ${RESET}$( [[ -n "$SCALE_VALKEY" ]] && echo "External Redis/Valkey" || echo "Bundled Valkey container" )"
 echo -e "  ${BOLD}Backups     ${RESET}$( [[ -n "$SCALE_DB_BACKUP" ]] && echo "Disabled" || echo "'${BACKUP_CRON}' UTC → ${BACKUP_DIR} (kept ${BACKUP_RETENTION_DAYS}d)" )"
 echo -e "  ${BOLD}Storage     ${RESET}$( [[ "$STORAGE_PROVIDER" == "s3" ]] && echo "AWS S3 (${STORAGE_BUCKET})" || echo "Self-hosted RustFS" )"
 echo -e "  ${BOLD}Web app     ${RESET}$( [[ -n "$SCALE_WEB" ]] && echo "External / CDN (container skipped)" || echo "Bundled container" )"
@@ -924,7 +975,7 @@ if [[ "$START" != "yes" ]]; then
     warn "Installation files are ready. Start Paca manually with:"
     echo ""
     bold "  cd $(pwd)"
-    bold "  ${COMPOSE_CMD} --env-file .env up -d ${SCALE_POSTGRES} ${SCALE_DB_BACKUP} ${SCALE_RUSTFS} ${SCALE_WEB} ${SCALE_AGENT_RUNNER} --pull always"
+    bold "  ${COMPOSE_CMD} --env-file .env up -d ${SCALE_POSTGRES} ${SCALE_VALKEY} ${SCALE_DB_BACKUP} ${SCALE_RUSTFS} ${SCALE_WEB} ${SCALE_AGENT_RUNNER} --pull always"
     echo ""
     exit 0
 fi
@@ -964,6 +1015,8 @@ SCALE_OPTS=()
 # intentional word-splitting as the compose invocation below.
 # shellcheck disable=SC2206
 [[ -n "$SCALE_POSTGRES"  ]] && SCALE_OPTS+=($SCALE_POSTGRES)
+# shellcheck disable=SC2206
+[[ -n "$SCALE_VALKEY"    ]] && SCALE_OPTS+=($SCALE_VALKEY)
 # shellcheck disable=SC2206
 [[ -n "$SCALE_DB_BACKUP" ]] && SCALE_OPTS+=($SCALE_DB_BACKUP)
 # shellcheck disable=SC2206

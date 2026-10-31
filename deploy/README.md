@@ -42,6 +42,8 @@ The installer supports:
 |---|---|
 | Bundled PostgreSQL | Starts a postgres container (default) |
 | External PostgreSQL | Supply a `DATABASE_URL`; postgres container is suppressed |
+| Bundled Valkey | Starts a Valkey container for cache and event streams (default) |
+| External Redis/Valkey | Supply a `REDIS_URL`; valkey container is suppressed |
 | Self-hosted RustFS | Starts a RustFS container for S3-compatible file storage (default) |
 | AWS S3 | Supply AWS credentials; RustFS container is suppressed |
 | HTTPS | Enabled by default — Let's Encrypt for a real domain, Caddy's local CA otherwise; can be disabled for plain HTTP |
@@ -83,6 +85,7 @@ prefixed `PACA_` are installer-only choices with no direct `.env` equivalent.
 | `ENCRYPTION_KEY` | 64-char lowercase hex; **must match** the original if reconnecting to an existing DB | auto-generated |
 | `DATABASE_URL` | Setting this selects external/managed PostgreSQL and suppresses the bundled container. Recommended managed option: [Neon](https://neon.com) (free tier available) | unset → bundled PostgreSQL |
 | `POSTGRES_PASSWORD` | Bundled PostgreSQL only | auto-generated |
+| `REDIS_URL` | External Redis/Valkey connection URL (`redis://` or `rediss://`); suppresses bundled Valkey | unset/empty → bundled Valkey |
 | `BACKUP_ENABLED` | `true`/`false` (bundled PostgreSQL only) | `true` |
 | `BACKUP_DIR` | Host directory for backup dumps | `./backups` |
 | `BACKUP_CRON` | 5-field cron, UTC | `0 2 * * *` |
@@ -262,6 +265,30 @@ docker compose --env-file .env up -d --scale postgres=0
 > **💡 Looking for a managed PostgreSQL?** [Neon](https://neon.com) is a serverless Postgres platform with a generous free tier, instant branching, and autoscaling — a great fit for Paca. Create a database, copy the connection string, and set it as `DATABASE_URL` in `.env`.
 
 
+**With external Redis/Valkey** (suppress the bundled container):
+
+```bash
+# Fresh install: records the connection and skips the bundled container.
+PACA_YES=1 REDIS_URL='rediss://user:password@cache.example.com:6380/0' bash install.sh
+
+# Manual setup: set REDIS_URL in .env, then start with:
+docker compose --env-file .env up -d --scale valkey=0
+```
+
+The connection must be reachable from the API, realtime, and agent-runner
+containers; `localhost` inside a container is not the Docker host. Use a
+Redis-compatible service that supports Paca's cache, pub/sub, and streams
+operations. Percent-encode reserved characters in credentials. The installer
+single-quotes the dotenv value to preserve literal `$` characters and does not
+print the connection URL. Keep that quoting when editing `.env` manually.
+
+An unset/empty `REDIS_URL` keeps bundled Valkey. The saved `.env` is the source of
+truth for Valkey scaling when re-running the installer or upgrading; to change
+an existing installation, edit that file rather than exporting a temporary
+`REDIS_URL` override to either script. The installer does not migrate existing
+cache or stream data between servers; use the external service's migration
+procedure if existing queued work must be preserved.
+
 **With AWS S3** (suppress RustFS):
 
 ```bash
@@ -305,7 +332,8 @@ PACA_VERSION=v1.2.3 bash upgrade.sh
 ```
 
 Common `--scale` choices from install time are detected and re-applied automatically —
-external PostgreSQL (`DATABASE_URL` set), AWS S3 (`STORAGE_PROVIDER=s3`), an externally
+external PostgreSQL (`DATABASE_URL` set), external Redis/Valkey (`REDIS_URL` set),
+AWS S3 (`STORAGE_PROVIDER=s3`), an externally
 hosted web app, and a disabled AI agent all stay scaled to 0 without you passing
 anything. (Installs from before this was tracked get a one-time best-effort guess for
 the web app / AI agent, based on whether a container for that service currently exists,

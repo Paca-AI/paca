@@ -6,6 +6,7 @@ on:
       - "scripts/install.sh"
       - "scripts/upgrade.sh"
       - "scripts/install-paca-skills.sh"
+      - "scripts/tests/test_external_valkey.py"
       - "docs/guides/install-skills.md"
       - "deploy/docker-compose.prod.yml"
       - "deploy/caddy/Caddyfile"
@@ -20,6 +21,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  external-valkey:
+    name: External Redis/Valkey install and upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: Check connection preservation and service scaling
+        run: python3 scripts/tests/test_external_valkey.py
+
   # ---------------------------------------------------------------------------
   # 1. Lint — shellcheck (preinstalled on the runner image), fast feedback
   # ---------------------------------------------------------------------------
