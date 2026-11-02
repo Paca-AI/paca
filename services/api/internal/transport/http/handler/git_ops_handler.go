@@ -29,6 +29,7 @@ type GitOps interface {
 	ListThreads(ctx context.Context, sc gitsvc.Scope, number, cursor string) (gitprovider.ThreadPage, error)
 	ListComments(ctx context.Context, sc gitsvc.Scope, kind gitprovider.SubjectKind, number, cursor string) (gitprovider.CommentPage, error)
 	GetIssue(ctx context.Context, sc gitsvc.Scope, number string) (gitprovider.Issue, error)
+	ListIssues(ctx context.Context, sc gitsvc.Scope, state, cursor string) (gitprovider.IssuePage, error)
 	GetChecks(ctx context.Context, sc gitsvc.Scope, ref, changeRequest string) ([]gitprovider.Check, error)
 	GetCheckLogs(ctx context.Context, sc gitsvc.Scope, checkID string, tailBytes int) (gitprovider.Logs, error)
 	GetFile(ctx context.Context, sc gitsvc.Scope, ref, path string, maxBytes int) (gitprovider.File, error)
@@ -158,6 +159,17 @@ func (h *GitHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := h.ops.ListComments(r.Context(), sc, kind, chi.URLParam(r, "number"), r.URL.Query().Get("cursor"))
+	h.respond(w, r, out, err)
+}
+
+// ListIssues handles GET …/issues?state=…&cursor=….
+func (h *GitHandler) ListIssues(w http.ResponseWriter, r *http.Request) {
+	sc, ok := h.scope(w, r)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	out, err := h.ops.ListIssues(r.Context(), sc, q.Get("state"), q.Get("cursor"))
 	h.respond(w, r, out, err)
 }
 

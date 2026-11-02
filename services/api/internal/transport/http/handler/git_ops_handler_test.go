@@ -113,6 +113,7 @@ func serveOps(t *testing.T, f *fakeOps, method, target, body string, actor *uuid
 	h := NewGitHandler(&fakeGitSvc{}).WithAgentLookup(agentLookup).WithOps(f)
 	r := chi.NewRouter()
 	base := "/projects/{projectId}/git/repositories/{repositoryId}"
+	r.Get(base+"/issues", h.ListIssues)
 	r.Get(base+"/change-requests/{number}", h.GetChangeRequest)
 	r.Post(base+"/change-requests/{number}/reviews", h.SubmitReview)
 	r.Post(base+"/change-requests/{number}/approvals", h.ApproveChangeRequest)
@@ -141,6 +142,28 @@ func serveOps(t *testing.T, f *fakeOps, method, target, body string, actor *uuid
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
+}
+
+func (f *fakeOps) ListIssues(_ context.Context, sc gitsvc.Scope, state, cursor string) (gitprovider.IssuePage, error) {
+	f.scope, f.body, f.number = sc, state, cursor
+	return gitprovider.IssuePage{Items: []gitprovider.Issue{{Number: "7"}}, NextCursor: "next"}, f.err
+}
+
+func TestGitOpsHandler_ListIssues(t *testing.T) {
+	agent, project, repo := uuid.New(), uuid.New(), uuid.New()
+	base := fmt.Sprintf("/projects/%s/git/repositories/%s/issues", project, repo)
+	f := &fakeOps{}
+	rec := serveOps(t, f, "GET", base+"?state=closed&cursor=a%2Bb", "", &agent, nil)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"next_cursor":"next"`) || f.scope.ProjectID != project || f.scope.RepositoryID != repo || f.scope.AgentID != agent || f.body != "closed" || f.number != "a+b" {
+		t.Fatalf("%d %s scope=%+v", rec.Code, rec.Body, f.scope)
+	}
+	if rec := serveOps(t, &fakeOps{}, "GET", base, "", nil, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous: %d", rec.Code)
+	}
+	f.err = gitdom.ErrUnsupported
+	if rec := serveOps(t, f, "GET", base, "", &agent, nil); rec.Code < 400 {
+		t.Fatalf("unsupported: %d", rec.Code)
+	}
 }
 
 func TestGitOpsHandler_ScopeComesFromTheRouteAndTheAuthenticatedAccount(t *testing.T) {

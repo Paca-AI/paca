@@ -114,6 +114,24 @@ describe("PacaAPIClient – request headers", () => {
 // ---------------------------------------------------------------------------
 
 describe("PacaAPIClient – SuccessEnvelope unwrapping", () => {
+	it("issue_list preserves cursors through the real API client", async () => {
+		const fetchMock = mockFetchOk({ items: [], next_cursor: "next" });
+		vi.stubGlobal("fetch", fetchMock);
+		const { handleGitTool } = await import("../../tools/git-tools.js");
+		const res = await handleGitTool(
+			"issue_list",
+			{ projectId: "p", repoId: "r", state: "all", cursor: "a+b&x" },
+			makeClient(),
+		);
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			"http://api.test/api/v1/projects/p/git/repositories/r/issues?state=all&cursor=a%2Bb%26x",
+		);
+		expect(JSON.parse(res.content[0].text)).toEqual({
+			items: [],
+			next_cursor: "next",
+		});
+	});
+
 	it("extracts .data from a SuccessEnvelope response", async () => {
 		const project = { id: "proj-1", name: "Test Project" };
 		vi.stubGlobal("fetch", mockFetchOk(project));

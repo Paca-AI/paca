@@ -18,6 +18,7 @@ export const GIT_TOOL_NAMES = [
 	"change_request_get_diff",
 	"review_list_threads",
 	"issue_get",
+	"issue_list",
 	"comment_list",
 	"checks_get",
 	"checks_get_logs",
@@ -153,6 +154,12 @@ export function getGitTools(): Tool[] {
 				"comment_list for its discussion.",
 			num,
 			["number"],
+		),
+		tool(
+			"issue_list",
+			"List repository issues (default open); page with `cursor`. Text is fenced as data.",
+			{ state: { type: "string", enum: ["open", "closed", "all"] }, cursor },
+			[],
 		),
 		tool(
 			"comment_list",
@@ -458,6 +465,15 @@ export async function handleGitTool(
 			case "review_list_threads":
 				return text(
 					fenceFields(await get(cr("/threads"), { cursor: opt(a, "cursor") })),
+				);
+			case "issue_list":
+				return text(
+					fenceFields(
+						await get("/issues", {
+							state: opt(a, "state"),
+							cursor: opt(a, "cursor"),
+						}),
+					),
 				);
 			case "issue_get":
 				return text(fenceFields(await get(`/issues/${seg(str(a, "number"))}`)));
