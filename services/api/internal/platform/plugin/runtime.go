@@ -77,6 +77,11 @@ type HostServices struct {
 	Config map[string]string
 	// HTTPClient is used by the paca.http_request host function.
 	HTTPClient *http.Client
+	// FetchPrivateHosts lists the hostnames paca.fetch may reach on a private
+	// address when a plugin's manifest names them explicitly. Nil means none.
+	// HTTPClient's dialer must be built from the same set, or the dial refuses
+	// what the check here accepted.
+	FetchPrivateHosts *netguard.PrivateHosts
 	// AllowedOutboundDomains is the allowlist for paca.http_request outbound
 	// calls.  When empty, all outbound HTTP is blocked.
 	AllowedOutboundDomains []string
@@ -2205,7 +2210,7 @@ func (r *Runtime) registerFetchFunction(b wazero.HostModuleBuilder, p plugindom.
 			}
 
 			// Validate the target domain against the plugin's allowlist.
-			if !isAllowedFetchDomain(ctx, req.URL, p.Manifest.Backend.AllowedOutboundDomains) {
+			if !isAllowedFetchDomain(ctx, req.URL, p.Manifest.Backend.AllowedOutboundDomains, r.services.FetchPrivateHosts) {
 				writeErr("fetch: domain not permitted by plugin manifest")
 				return
 			}
@@ -2215,6 +2220,7 @@ func (r *Runtime) registerFetchFunction(b wazero.HostModuleBuilder, p plugindom.
 			if httpClient == nil {
 				httpClient = &http.Client{Timeout: 30 * time.Second}
 			}
+			httpClient = withPrivateHostRedirectGuard(httpClient, p.Manifest.Backend.AllowedOutboundDomains, r.services.FetchPrivateHosts)
 
 			var bodyReader io.Reader
 			if req.Body != "" {
@@ -2286,7 +2292,11 @@ func (r *Runtime) registerFetchFunction(b wazero.HostModuleBuilder, p plugindom.
 // entry allows any HTTPS host (used by plugins like webhook integrations that
 // must call user-supplied URLs); the scheme, hostname, and private/internal IP
 // checks below still apply in that case.
-func isAllowedFetchDomain(ctx context.Context, rawURL string, allowed []string) bool {
+//
+// A host in privateHosts may also resolve to a private network address, but
+// only if the manifest names it: "*" accepts arbitrary, often user-supplied
+// URLs, so it must not open a door to the operator's internal hosts.
+func isAllowedFetchDomain(ctx context.Context, rawURL string, allowed []string, privateHosts *netguard.PrivateHosts) bool {
 	if len(allowed) == 0 {
 		return false
 	}
@@ -2304,30 +2314,77 @@ func isAllowedFetchDomain(ctx context.Context, rawURL string, allowed []string) 
 		return false
 	}
 
-	hostAllowed := false
-	for _, a := range allowed {
-		a = strings.TrimSpace(a)
-		if a == "*" || strings.EqualFold(host, a) {
-			hostAllowed = true
-			break
-		}
-	}
-	if !hostAllowed {
+	namedInManifest := manifestNamesHost(allowed, host)
+	if !namedInManifest && !manifestAllowsAnyHost(allowed) {
 		return false
 	}
+	if !namedInManifest {
+		privateHosts = nil
+	}
 
-	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	ips, err := fetchLookupIPAddr(ctx, host)
 	if err != nil {
 		return false
 	}
 
 	for _, ipAddr := range ips {
-		if netguard.IsPrivateOrInternalIP(ipAddr.IP) {
+		if privateHosts.Blocks(host, ipAddr.IP) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// fetchLookupIPAddr is a seam for tests, which need hostnames that resolve to
+// private addresses.
+var fetchLookupIPAddr = net.DefaultResolver.LookupIPAddr
+
+func manifestNamesHost(allowed []string, host string) bool {
+	for _, a := range allowed {
+		if strings.EqualFold(host, strings.TrimSpace(a)) {
+			return true
+		}
+	}
+	return false
+}
+
+func manifestAllowsAnyHost(allowed []string) bool {
+	for _, a := range allowed {
+		if strings.TrimSpace(a) == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+// withPrivateHostRedirectGuard returns a client that applies the conditions of
+// the private host exception to redirects as well. isAllowedFetchDomain only
+// sees the first URL and the dialer only knows the operator's list, not which
+// plugin is calling, so without this a public host could redirect any plugin to
+// a listed internal host, or downgrade a listed host to plain http.
+//
+// With no private hosts configured the client is returned unchanged.
+func withPrivateHostRedirectGuard(client *http.Client, allowed []string, privateHosts *netguard.PrivateHosts) *http.Client {
+	if privateHosts.Empty() {
+		return client
+	}
+	guarded := *client
+	guarded.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		host := req.URL.Hostname()
+		if privateHosts.Contains(host) && (!strings.EqualFold(req.URL.Scheme, "https") || !manifestNamesHost(allowed, host)) {
+			return fmt.Errorf("redirect to %q not permitted", host)
+		}
+		if client.CheckRedirect != nil {
+			return client.CheckRedirect(req, via)
+		}
+		// http.Client's default policy, which setting CheckRedirect replaces.
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &guarded
 }
 
 func normalizeFetchMethod(raw string) (string, bool) {

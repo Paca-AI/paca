@@ -271,6 +271,10 @@ api:
   # installed plugins won't survive a Pod restart or be visible to the
   # gateway, so plugin installation isn't usable in that mode.
   plugins:
+    # Comma-separated exact hostnames paca.fetch may reach on a private address,
+    # e.g. a self-hosted GitLab inside the cluster's network. Empty blocks all
+    # private addresses. See docs/plugins/backend-plugin-system.md.
+    fetchPrivateHosts: ""
     persistence:
       enabled: true
       accessMode: ReadWriteMany

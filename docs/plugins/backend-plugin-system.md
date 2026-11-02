@@ -347,6 +347,29 @@ plugins:
     - https://cdn.example.com
 ```
 
+## Outbound Requests
+
+`paca.fetch` only reaches hosts in `backend.allowedOutboundDomains`. Matching is exact and case-insensitive; the literal entry `"*"` allows any host. Whatever the manifest says, the URL must be `https` and the host must not resolve to a private or internal address. The check runs before the request, and again at dial time on the address actually connected to, so a DNS answer that changes in between (rebinding) is still refused.
+
+### Hosts on a private network
+
+A self-hosted service on the same LAN or VPN as Paca, such as a GitLab at `gitlab.internal` → `10.0.0.5`, is blocked by that rule. An operator can open it with `PLUGIN_FETCH_PRIVATE_HOSTS` on the API service, a comma-separated list of hostnames. It is empty by default.
+
+```bash
+PLUGIN_FETCH_PRIVATE_HOSTS=gitlab.internal,git.corp.example
+```
+
+A request to a private address then needs all of the following:
+
+- The hostname is in `PLUGIN_FETCH_PRIVATE_HOSTS`. Entries are exact names: IP literals, wildcards, URLs and `host:port` values are ignored, with a warning in the API log at startup.
+- The plugin's manifest names the host in `allowedOutboundDomains`. `"*"` does not count, because plugins that use it call user-supplied URLs.
+- The URL is `https`, and the certificate is trusted by the API container. For an internal CA, mount a bundle holding the system roots and your CA into the `api` service and set `SSL_CERT_FILE` to its path, in a Compose override or the Helm chart's pod spec.
+- The address is in `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` or `fc00::/7`.
+
+The same conditions apply to redirects, and the connection stays pinned to the checked address. Everything else stays blocked even for a listed host: loopback, link-local (including `169.254.169.254` and other cloud metadata endpoints), the CGNAT range `100.64.0.0/10`, and IPv6 transition addresses, whatever IPv4 address they carry.
+
+> **Security:** listing a host lets the plugins that name it reach that internal service, and the API sends them its responses. List only hosts those plugins are meant to talk to, keep the list short, and treat a change to it like a firewall change. The list also trusts whoever controls the DNS records of those names: they can point a listed name at any other private address, so use names from DNS you control. Tailscale addresses sit in the CGNAT range and are not reachable this way.
+
 ## Security Considerations
 
 - WASM modules have **no filesystem access** (wazero's WASI filesystem is not mounted).

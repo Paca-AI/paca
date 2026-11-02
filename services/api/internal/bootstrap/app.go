@@ -400,6 +400,14 @@ func New(cfg *config.Config) (*App, error) {
 	// embedded in the user.created event payload every subscriber receives.
 	passwordSetTokenIssuer := pluginrt.PasswordSetTokenIssuerFunc(userService.IssuePasswordSetToken)
 
+	fetchPrivateHosts, rejectedHosts := netguard.NewPrivateHosts(cfg.Plugins.FetchPrivateHosts)
+	for _, entry := range rejectedHosts {
+		log.Warn("PLUGIN_FETCH_PRIVATE_HOSTS: ignoring entry, only exact hostnames are accepted", "entry", entry)
+	}
+	if !fetchPrivateHosts.Empty() {
+		log.Warn("paca.fetch may reach private network addresses for these hosts", "hosts", fetchPrivateHosts.Names())
+	}
+
 	pluginRuntime := pluginrt.NewRuntime(pluginStore, pluginrt.HostServices{
 		DB:        sqlDB,
 		Log:       log,
@@ -413,8 +421,10 @@ func New(cfg *config.Config) (*App, error) {
 		// already use netguard for their own clients; this one (paca.fetch,
 		// used by every installed plugin's outbound calls) was the one
 		// netguard's own package doc says it was built for but never got
-		// wired up.
-		HTTPClient:             netguard.NewSafeHTTPClient(30 * time.Second),
+		// wired up. PLUGIN_FETCH_PRIVATE_HOSTS relaxes the IP rule for the
+		// listed hosts only, for this client only; the pin stays.
+		HTTPClient:             netguard.NewSafeHTTPClientWithPrivateHosts(30*time.Second, fetchPrivateHosts),
+		FetchPrivateHosts:      fetchPrivateHosts,
 		Authorizer:             authorizer,
 		Cache:                  cacheStore,
 		SettingsReader:         settingsReader,
