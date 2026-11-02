@@ -48,6 +48,7 @@ const UNTRUSTED_KEYS = new Set([
 	"text",
 	"snippet",
 	"content",
+	"labels",
 ]);
 
 /**
@@ -74,13 +75,13 @@ export function neutralize(text: string): string {
 /** Fences every untrusted text field in a result, recursively. */
 export function fenceFields(value: unknown, label = "text"): unknown {
 	if (Array.isArray(value)) return value.map((v) => fenceFields(v, label));
+	if (typeof value === "string" && value !== "" && UNTRUSTED_KEYS.has(label)) {
+		return fence(value, label);
+	}
 	if (value && typeof value === "object") {
 		const out: Record<string, unknown> = {};
 		for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-			out[k] =
-				typeof v === "string" && UNTRUSTED_KEYS.has(k) && v !== ""
-					? fence(v, k)
-					: fenceFields(v, k);
+			out[k] = fenceFields(v, k);
 		}
 		return out;
 	}
