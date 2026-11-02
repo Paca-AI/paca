@@ -334,8 +334,9 @@ func (s *Service) ListConnections(ctx context.Context, projectID uuid.UUID) ([]*
 	return out, nil
 }
 
-// describeTimeout bounds one describe_identity call: listings must not hang on
-// a slow platform.
+// describeTimeout bounds all the describe_identity calls of one listing, however
+// many identities it has to name: listings must not hang on a slow platform.
+// Whatever it leaves unnamed is asked on the next listing.
 const describeTimeout = 5 * time.Second
 
 // describeBackoff is how long after a failed describe the same identity is not
@@ -350,40 +351,45 @@ const describeBackoff = 15 * time.Minute
 // per identity: after it the stored handle is no longer empty. It is best
 // effort: any failure is logged and the caller carries on with the old values.
 func (s *Service) describeNameless(ctx context.Context, ids []*gitdom.Identity) {
+	budget, cancel := context.WithTimeout(ctx, describeTimeout)
+	defer cancel()
 	canDescribe := map[string]bool{} // provider id → declares identity_description
 	for _, id := range ids {
 		if id.Handle != "" {
 			continue
 		}
+		if budget.Err() != nil {
+			return // not a failure of this identity, so no backoff either
+		}
 		ok, seen := canDescribe[id.ProviderID]
 		if !seen {
-			info, err := s.providers.Describe(ctx, id.ProviderID)
+			info, err := s.providers.Describe(budget, id.ProviderID)
 			ok = err == nil && info.Capabilities.IdentityDescription
 			canDescribe[id.ProviderID] = ok
 		}
 		if ok {
-			s.describeIdentity(ctx, id)
+			s.describeIdentity(ctx, budget, id)
 		}
 	}
 }
 
-func (s *Service) describeIdentity(ctx context.Context, id *gitdom.Identity) {
+// describeIdentity asks within budget but saves with ctx, so an answer that
+// arrives just in time is not lost.
+func (s *Service) describeIdentity(ctx, budget context.Context, id *gitdom.Identity) {
 	s.mu.Lock()
 	failedAt, failed := s.describeFailed[id.ID]
 	s.mu.Unlock()
 	if failed && s.now().Sub(failedAt) < describeBackoff {
 		return
 	}
-	prov, err := s.providers.Provider(ctx, id.ProviderID)
+	prov, err := s.providers.Provider(budget, id.ProviderID)
 	if err != nil {
 		return
 	}
-	cctx, cancel := context.WithTimeout(ctx, describeTimeout)
-	defer cancel()
-	got, err := prov.DescribeIdentity(cctx, gitprovider.DescribeIdentityRequest{Identity: identityRef(id)})
+	got, err := prov.DescribeIdentity(budget, gitprovider.DescribeIdentityRequest{Identity: identityRef(id)})
 	if err != nil {
-		// The error is the provider's own message, never a credential.
-		slog.Warn("git: describe identity failed", "provider", id.ProviderID, "identity", id.ID, "err", err)
+		// The text comes from the plugin, so it is masked like any provider message.
+		slog.Warn("git: describe identity failed", "provider", id.ProviderID, "identity", id.ID, "err", RedactSecrets(err.Error()))
 		s.mu.Lock()
 		s.describeFailed[id.ID] = s.now()
 		s.mu.Unlock()

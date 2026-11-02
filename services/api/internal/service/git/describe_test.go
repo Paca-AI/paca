@@ -66,6 +66,24 @@ func TestDescribeNameless_ProviderErrorKeepsRequestOK(t *testing.T) {
 	}
 }
 
+func TestDescribeNameless_StopsWhenTheBudgetRunsOut(t *testing.T) {
+	svc, st, pr := describingSetup(t, true)
+	st.addIdentity("", "tok-1")
+	st.addIdentity("", "tok-2")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pr.describe = func(gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error) {
+		cancel() // the budget is gone once the first call returns
+		return gitprovider.Identity{}, errors.New("timed out")
+	}
+	if _, err := svc.ListIdentities(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(pr.describeLog) != 1 || len(svc.describeFailed) != 1 {
+		t.Fatalf("calls=%d backoffs=%d, want 1 of each", len(pr.describeLog), len(svc.describeFailed))
+	}
+}
+
 func TestDescribeNameless_SkipsWhenNotNeeded(t *testing.T) {
 	t.Run("handle present", func(t *testing.T) {
 		svc, st, pr := describingSetup(t, true)
