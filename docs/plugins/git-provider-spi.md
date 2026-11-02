@@ -29,6 +29,8 @@ func main() { plugin.Run(&myPlugin{}) }
 
 **Required** (every platform has them): `Describe`, `BeginIdentitySetup`, `CompleteIdentitySetup`, `ListRepositories`, `ResolveRepository`, `VerifyAndParseWebhook`, `MintCredential`, `GetActorPermission`, `GetBranchProtection`, `GetChangeRequest`, `ListChangedFiles`, `GetDiff`, `ListThreads`, `ListComments`, `GetIssue`, `GetChecks`, `GetCheckLogs`, `OpenChangeRequest`, `UpdateChangeRequest`, `Comment`, `ReplyThread`, `SubmitReview`, `SetStatus`.
 
+`ListRepositories` feeds the repository picker in the project's link form. Core calls it with the connection the user chose (`Identity`), the text typed in the search box (`Query`, a case-insensitive substring of the name is enough) and the `Cursor` your last page returned; it asks for 30 items (`PageSize`), and `NextCursor` empty means the last page. Return only what the identity can read, and keep it cheap: it runs on every pause in typing. A platform that cannot list at all may answer `unsupported`: core does not treat that as a failure, the form just goes back to asking for a path or URL.
+
 **Optional** — implement the Go interface *and* set the capability flag, or neither:
 
 | Interface | Capability |

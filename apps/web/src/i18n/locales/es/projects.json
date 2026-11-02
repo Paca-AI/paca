@@ -49,6 +49,17 @@
 				"descriptionPlaceholder": "p. ej. Cliente web del producto",
 				"descriptionHelp": "Indica a los agentes para qué sirve este repositorio, para que elijan el correcto. Hasta 1000 caracteres."
 			},
+			"picker": {
+				"browse": "Explorar repositorios",
+				"hide": "Ocultar lista",
+				"search": "Buscar repositorios",
+				"unsupported": "Esta conexión no puede listar repositorios. Escribe la ruta o la URL arriba.",
+				"error": "No se pudo cargar la lista. Aún puedes escribir la ruta o la URL arriba.",
+				"empty": "No se encontraron repositorios.",
+				"loadMore": "Cargar más",
+				"linked": "Vinculado",
+				"private": "Privado"
+			},
 			"unlink": {
 				"button": "Desvincular",
 				"confirm": "Confirmar",

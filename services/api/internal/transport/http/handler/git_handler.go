@@ -43,6 +43,7 @@ type GitService interface {
 	ReconnectRepository(ctx context.Context, in gitsvc.ReconnectInput) (*gitdom.Repository, error)
 	RegisterWebhook(ctx context.Context, projectID, repositoryID uuid.UUID) (*gitdom.Repository, error)
 	ListConnections(ctx context.Context, projectID uuid.UUID) ([]*gitdom.Identity, error)
+	ListAvailableRepositories(ctx context.Context, projectID, identityID uuid.UUID, query, cursor string) (*gitsvc.AvailableRepositories, error)
 	DeleteProjectConnection(ctx context.Context, projectID, id uuid.UUID) error
 	RemoveAgentIdentity(ctx context.Context, agentID uuid.UUID, providerID string) error
 
@@ -472,6 +473,28 @@ func (h *GitHandler) ListConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	presenter.OK(w, r, identitiesResponse(ids))
+}
+
+// ListAvailableRepositories handles GET /projects/:projectId/git/connections/:identityId/repositories:
+// the repositories a connection sees on the platform, for the link form's
+// picker. ?q= filters by name and ?cursor= continues a previous page.
+func (h *GitHandler) ListAvailableRepositories(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := gitProjectID(w, r)
+	if !ok {
+		return
+	}
+	identityID, err := uuid.Parse(chi.URLParam(r, "identityId"))
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid connection ID"))
+		return
+	}
+	q := r.URL.Query()
+	page, err := h.svc.ListAvailableRepositories(r.Context(), projectID, identityID, strings.TrimSpace(q.Get("q")), q.Get("cursor"))
+	if err != nil {
+		h.failWithProviderMessage(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.AvailableGitRepositoriesFromPage(page.Items, page.NextCursor, page.Supported))
 }
 
 // BeginProjectSetup handles POST /projects/:projectId/git/connections/setup: a

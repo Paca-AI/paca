@@ -49,6 +49,17 @@
 				"descriptionPlaceholder": "例如：产品的网页客户端",
 				"descriptionHelp": "告诉智能体此仓库的用途，以便选择正确的仓库。最多 1000 个字符。"
 			},
+			"picker": {
+				"browse": "浏览仓库",
+				"hide": "隐藏列表",
+				"search": "搜索仓库",
+				"unsupported": "此连接无法列出仓库。请在上方输入路径或 URL。",
+				"error": "无法加载列表。您仍可在上方输入路径或 URL。",
+				"empty": "未找到仓库。",
+				"loadMore": "加载更多",
+				"linked": "已关联",
+				"private": "私有"
+			},
 			"unlink": {
 				"button": "取消关联",
 				"confirm": "确认取消",

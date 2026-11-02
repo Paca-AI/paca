@@ -17,6 +17,7 @@ import (
 	"github.com/Paca-AI/api/internal/platform/gitprovider"
 	gitsvc "github.com/Paca-AI/api/internal/service/git"
 
+	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 )
 
@@ -45,6 +46,12 @@ type fakeGitSvc struct {
 	deletedID  uuid.UUID
 	removed    [2]string
 	agentIDs   uuid.UUID
+
+	avail     *gitsvc.AvailableRepositories
+	availArgs struct {
+		project, identity uuid.UUID
+		query, cursor     string
+	}
 
 	accessIn  gitsvc.AccessInput
 	accessRes *gitsvc.AccessCompletion
@@ -99,6 +106,10 @@ func (f *fakeGitSvc) RegisterWebhook(_ context.Context, p, r uuid.UUID) (*gitdom
 }
 func (f *fakeGitSvc) ListConnections(context.Context, uuid.UUID) ([]*gitdom.Identity, error) {
 	return f.identities, f.err
+}
+func (f *fakeGitSvc) ListAvailableRepositories(_ context.Context, project, identity uuid.UUID, q, c string) (*gitsvc.AvailableRepositories, error) {
+	f.availArgs.project, f.availArgs.identity, f.availArgs.query, f.availArgs.cursor = project, identity, q, c
+	return f.avail, f.err
 }
 func (f *fakeGitSvc) DeleteProjectConnection(_ context.Context, _, id uuid.UUID) error {
 	f.deletedID = id
@@ -172,6 +183,7 @@ func serveGit(t *testing.T, f *fakeGitSvc, method, target, body string, actor *u
 	r.Post("/projects/{projectId}/git/access/begin", h.BeginAccess)
 	r.Post("/projects/{projectId}/git/access/complete", h.CompleteAccess)
 	r.Get("/projects/{projectId}/git/connections", h.ListConnections)
+	r.Get("/projects/{projectId}/git/connections/{identityId}/repositories", h.ListAvailableRepositories)
 	r.Post("/projects/{projectId}/git/connections/setup", h.BeginProjectSetup)
 	r.Post("/projects/{projectId}/git/connections/setup/complete", h.CompleteProjectSetup)
 	r.Delete("/projects/{projectId}/git/connections/{identityId}", h.DeleteProjectConnection)
@@ -688,5 +700,72 @@ func TestGitHandler_ProviderMessageIsSurfacedAsDetails(t *testing.T) {
 	}
 	if rec := post(&gitprovider.Error{Code: gitprovider.CodeInternal, Message: "secret detail"}); strings.Contains(rec.Body.String(), "secret detail") {
 		t.Fatalf("internal leaked: %s", rec.Body)
+	}
+}
+
+func TestGitHandler_ListAvailableRepositories(t *testing.T) {
+	project, ident := uuid.New(), uuid.New()
+	f := &fakeGitSvc{avail: &gitsvc.AvailableRepositories{
+		Supported:  true,
+		NextCursor: "c2",
+		Items: []gitprovider.Repository{
+			{Ref: gitprovider.RepoRef{Host: "git.example", FullPath: "acme/web", DefaultBranch: "main", ProviderRef: json.RawMessage(`{"secret":1}`)}, Private: true, Description: "site"},
+		},
+	}}
+	rec := serveGit(t, f, "GET", "/projects/"+project.String()+"/git/connections/"+ident.String()+"/repositories?q=%20web%20&cursor=c1", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d %s", rec.Code, rec.Body)
+	}
+	if f.availArgs.project != project || f.availArgs.identity != ident || f.availArgs.query != "web" || f.availArgs.cursor != "c1" {
+		t.Fatalf("service args = %+v", f.availArgs)
+	}
+	if strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("the provider's opaque reference leaked: %s", rec.Body)
+	}
+	var env struct {
+		Data dto.AvailableGitRepositoriesResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	d := env.Data
+	if !d.Supported || d.NextCursor != "c2" || len(d.Items) != 1 || d.Items[0].FullPath != "acme/web" || !d.Items[0].Private || d.Items[0].DefaultBranch != "main" {
+		t.Fatalf("response = %+v", d)
+	}
+}
+
+func TestGitHandler_ListAvailableRepositories_Unsupported(t *testing.T) {
+	f := &fakeGitSvc{avail: &gitsvc.AvailableRepositories{Items: []gitprovider.Repository{}}}
+	rec := serveGit(t, f, "GET", "/projects/"+uuid.NewString()+"/git/connections/"+uuid.NewString()+"/repositories", "", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"supported":false`) || !strings.Contains(rec.Body.String(), `"items":[]`) {
+		t.Fatalf("unsupported must be a quiet 200: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestGitHandler_ListAvailableRepositories_Errors(t *testing.T) {
+	url := func(project, ident string) string {
+		return "/projects/" + project + "/git/connections/" + ident + "/repositories"
+	}
+	// Another project's connection: the service says not found.
+	f := &fakeGitSvc{err: gitdom.ErrNotFound}
+	if rec := serveGit(t, f, "GET", url(uuid.NewString(), uuid.NewString()), "", nil); rec.Code != 404 || errCode(rec) != "GIT_NOT_FOUND" {
+		t.Fatalf("not found: %d %s", rec.Code, rec.Body)
+	}
+	// Malformed ids.
+	if rec := serveGit(t, &fakeGitSvc{}, "GET", url(uuid.NewString(), "nope"), "", nil); rec.Code != 400 {
+		t.Fatalf("bad connection id: %d", rec.Code)
+	}
+	if rec := serveGit(t, &fakeGitSvc{}, "GET", url("nope", uuid.NewString()), "", nil); rec.Code != 400 {
+		t.Fatalf("bad project id: %d", rec.Code)
+	}
+	// A refusal carries the platform's reason for the UI.
+	f = &fakeGitSvc{err: &gitprovider.Error{Code: gitprovider.CodeForbidden, Message: "the token needs read_api"}}
+	rec := serveGit(t, f, "GET", url(uuid.NewString(), uuid.NewString()), "", nil)
+	var env struct {
+		ErrorDetails map[string]string `json:"error_details"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &env)
+	if rec.Code != 422 || errCode(rec) != "GIT_PROVIDER_REJECTED" || env.ErrorDetails["provider_message"] != "the token needs read_api" {
+		t.Fatalf("forbidden: %d %s", rec.Code, rec.Body)
 	}
 }

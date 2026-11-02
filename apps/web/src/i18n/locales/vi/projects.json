@@ -49,6 +49,17 @@
 				"descriptionPlaceholder": "ví dụ: Ứng dụng web của sản phẩm",
 				"descriptionHelp": "Cho các tác nhân biết kho mã này dùng để làm gì để chọn đúng kho. Tối đa 1000 ký tự."
 			},
+			"picker": {
+				"browse": "Duyệt kho mã",
+				"hide": "Ẩn danh sách",
+				"search": "Tìm kho mã",
+				"unsupported": "Kết nối này không thể liệt kê kho mã. Hãy nhập đường dẫn hoặc URL ở trên.",
+				"error": "Không tải được danh sách. Bạn vẫn có thể nhập đường dẫn hoặc URL ở trên.",
+				"empty": "Không tìm thấy kho mã.",
+				"loadMore": "Tải thêm",
+				"linked": "Đã liên kết",
+				"private": "Riêng tư"
+			},
 			"unlink": {
 				"button": "Hủy liên kết",
 				"confirm": "Xác nhận hủy",

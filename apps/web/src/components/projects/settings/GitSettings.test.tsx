@@ -110,6 +110,12 @@ let providers: unknown[] = [github];
 let repos: unknown[] = [];
 let connections: unknown[] = [connection];
 let settings: Record<string, unknown> = {};
+let available: (
+	url: string,
+	params?: Record<string, string>,
+) => Promise<unknown> | unknown = () => ({
+	data: { data: { items: [], supported: true } },
+});
 const agents = [
 	{ id: "a1", name: "Dev", handle: "dev" },
 	{ id: "a2", name: "Reviewer", handle: "reviewer" },
@@ -144,6 +150,7 @@ describe("GitSettings", () => {
 		connections = [connection];
 		perms.workspace = true;
 		perms.project = true;
+		available = () => ({ data: { data: { items: [], supported: true } } });
 		settings = {
 			default_responder_agent_id: null,
 			paused: false,
@@ -153,18 +160,23 @@ describe("GitSettings", () => {
 			data: { data: body },
 		}));
 		h.follow.mockReturnValue(true);
-		h.get.mockImplementation(async (url: string) => {
-			if (url.endsWith("/git/providers")) return { data: { data: providers } };
-			if (url.endsWith("/git/repositories")) return { data: { data: repos } };
-			if (url.endsWith("/git/connections"))
-				return { data: { data: connections } };
-			if (url.endsWith("/git/settings")) return { data: { data: settings } };
-			if (url.endsWith("/agents"))
-				return {
-					data: { data: { items: agents, page_size: 50, next_cursor: null } },
-				};
-			throw new Error(`unexpected GET ${url}`);
-		});
+		h.get.mockImplementation(
+			async (url: string, params?: { params?: Record<string, string> }) => {
+				if (url.endsWith("/git/providers"))
+					return { data: { data: providers } };
+				if (url.endsWith("/git/repositories")) return { data: { data: repos } };
+				if (url.includes("/git/connections/") && url.endsWith("/repositories"))
+					return available(url, params?.params);
+				if (url.endsWith("/git/connections"))
+					return { data: { data: connections } };
+				if (url.endsWith("/git/settings")) return { data: { data: settings } };
+				if (url.endsWith("/agents"))
+					return {
+						data: { data: { items: agents, page_size: 50, next_cursor: null } },
+					};
+				throw new Error(`unexpected GET ${url}`);
+			},
+		);
 	});
 
 	it("asks for a connection before repositories can be linked", async () => {
@@ -759,5 +771,177 @@ describe("GitSettings", () => {
 		expect(
 			screen.getByRole("switch", { name: /pause automation/i }),
 		).toHaveAttribute("aria-disabled", "true");
+	});
+
+	describe("repository picker", () => {
+		const page = (
+			items: { full_path: string; private?: boolean; description?: string }[],
+			next_cursor?: string,
+		) => ({
+			data: {
+				data: {
+					items: items.map((i) => ({
+						host: "github.com",
+						default_branch: "main",
+						private: false,
+						description: "",
+						...i,
+					})),
+					next_cursor,
+					supported: true,
+				},
+			},
+		});
+
+		it("lists what the connection sees and fills the field with the pick", async () => {
+			const user = userEvent.setup();
+			available = () =>
+				page([
+					{ full_path: "acme/web", private: true },
+					{ full_path: "acme/api" },
+				]);
+			renderPanel();
+			await user.click(
+				await screen.findByRole("button", { name: "Browse repositories" }),
+			);
+			await user.click(
+				await screen.findByRole("button", { name: /acme\/api/ }),
+			);
+			expect(screen.getByLabelText("Repository")).toHaveValue("acme/api");
+			expect(h.get).toHaveBeenCalledWith(
+				`/projects/${PROJECT}/git/connections/i1/repositories`,
+				{ params: {} },
+			);
+			// The picked repository links through the normal path.
+			h.post.mockImplementation(async () => ({ data: { data: repo } }));
+			await user.click(screen.getByRole("button", { name: "Link" }));
+			expect(h.post).toHaveBeenCalledWith(
+				`/projects/${PROJECT}/git/repositories`,
+				{ provider_id: "com.paca.github", path_or_url: "acme/api" },
+			);
+		});
+
+		it("searches (debounced) and passes the query to the connection", async () => {
+			const user = userEvent.setup();
+			available = (_url, params) =>
+				params?.q === "ui"
+					? page([{ full_path: "acme/ui" }])
+					: page([{ full_path: "acme/web" }]);
+			renderPanel();
+			await user.click(
+				await screen.findByRole("button", { name: "Browse repositories" }),
+			);
+			await screen.findByText("acme/web");
+			await user.type(screen.getByLabelText("Search repositories"), "ui");
+			expect(await screen.findByText("acme/ui")).toBeInTheDocument();
+			expect(screen.queryByText("acme/web")).not.toBeInTheDocument();
+			// One request for the final text, not one per keystroke.
+			const queries = h.get.mock.calls
+				.filter(([u]) => String(u).includes("/connections/"))
+				.map(([, o]) => (o as { params: Record<string, string> }).params.q);
+			expect(queries).toEqual([undefined, "ui"]);
+		});
+
+		it("loads more pages with the cursor", async () => {
+			const user = userEvent.setup();
+			available = (_url, params) =>
+				params?.cursor === "c2"
+					? page([{ full_path: "acme/second" }])
+					: page([{ full_path: "acme/first" }], "c2");
+			renderPanel();
+			await user.click(
+				await screen.findByRole("button", { name: "Browse repositories" }),
+			);
+			await screen.findByText("acme/first");
+			await user.click(screen.getByRole("button", { name: "Load more" }));
+			expect(await screen.findByText("acme/second")).toBeInTheDocument();
+			expect(screen.getByText("acme/first")).toBeInTheDocument();
+			expect(
+				screen.queryByRole("button", { name: "Load more" }),
+			).not.toBeInTheDocument();
+		});
+
+		it("marks repositories already linked and does not offer them", async () => {
+			const user = userEvent.setup();
+			repos = [repo];
+			available = () =>
+				page([{ full_path: "acme/web" }, { full_path: "acme/api" }]);
+			renderPanel();
+			await user.click(
+				await screen.findByRole("button", { name: "Link a repository" }),
+			);
+			await user.click(
+				await screen.findByRole("button", { name: "Browse repositories" }),
+			);
+			const linkedItem = (await screen.findByText("Linked")).closest("button");
+			expect(linkedItem).toHaveTextContent("acme/web");
+			expect(linkedItem).toBeDisabled();
+		});
+
+		it("falls back to typing when the provider cannot list", async () => {
+			const user = userEvent.setup();
+			available = () => ({
+				data: { data: { items: [], supported: false } },
+			});
+			renderPanel();
+			await user.click(
+				await screen.findByRole("button", { name: "Browse repositories" }),
+			);
+			expect(
+				await screen.findByText(/can't list repositories/i),
+			).toBeInTheDocument();
+			expect(
+				screen.queryByLabelText("Search repositories"),
+			).not.toBeInTheDocument();
+			await user.type(screen.getByLabelText("Repository"), "acme/web");
+			expect(screen.getByRole("button", { name: "Link" })).toBeEnabled();
+		});
+
+		it("shows the platform's reason on error and keeps the form usable", async () => {
+			const user = userEvent.setup();
+			available = () =>
+				Promise.reject({
+					response: {
+						status: 422,
+						data: {
+							error_code: "GIT_PROVIDER_REJECTED",
+							error_details: { provider_message: "the token needs read_api" },
+						},
+					},
+				});
+			renderPanel();
+			await user.click(
+				await screen.findByRole("button", { name: "Browse repositories" }),
+			);
+			expect(
+				await screen.findByText(/Couldn't load the list/),
+			).toBeInTheDocument();
+			expect(screen.getByText("the token needs read_api")).toBeInTheDocument();
+			await user.type(screen.getByLabelText("Repository"), "acme/web");
+			expect(screen.getByRole("button", { name: "Link" })).toBeEnabled();
+		});
+
+		it("needs a connection to browse when several can see it", async () => {
+			connections = [
+				connection,
+				{ ...connection, id: "i2", handle: "other", display_name: "Other" },
+			];
+			available = () => page([{ full_path: "acme/web" }]);
+			const user = userEvent.setup();
+			renderPanel();
+			await screen.findByLabelText("Repository");
+			expect(
+				screen.queryByRole("button", { name: "Browse repositories" }),
+			).not.toBeInTheDocument();
+			await user.selectOptions(screen.getByLabelText("Connection"), "i2");
+			await user.click(
+				screen.getByRole("button", { name: "Browse repositories" }),
+			);
+			await screen.findByText("acme/web");
+			expect(h.get).toHaveBeenCalledWith(
+				`/projects/${PROJECT}/git/connections/i2/repositories`,
+				{ params: {} },
+			);
+		});
 	});
 });

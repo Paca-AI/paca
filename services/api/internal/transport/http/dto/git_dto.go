@@ -383,3 +383,32 @@ func GitTaskFromEntity(g *gitdom.TaskGit) GitTaskResponse {
 	}
 	return out
 }
+
+// AvailableGitRepositoryResponse is a repository a connection can see on the
+// platform (not necessarily linked).
+type AvailableGitRepositoryResponse struct {
+	FullPath      string `json:"full_path"`
+	Host          string `json:"host"`
+	DefaultBranch string `json:"default_branch"`
+	Private       bool   `json:"private"`
+	Description   string `json:"description"`
+}
+
+// AvailableGitRepositoriesResponse is one page of the picker's list.
+type AvailableGitRepositoriesResponse struct {
+	Items      []AvailableGitRepositoryResponse `json:"items"`
+	NextCursor string                           `json:"next_cursor,omitempty"`
+	// Supported is false when the provider cannot list repositories; the UI then
+	// asks for a path or URL.
+	Supported bool `json:"supported"`
+}
+
+// AvailableGitRepositoriesFromPage maps a provider page to its response.
+func AvailableGitRepositoriesFromPage(items []gitprovider.Repository, nextCursor string, supported bool) AvailableGitRepositoriesResponse {
+	out := AvailableGitRepositoriesResponse{Items: make([]AvailableGitRepositoryResponse, 0, len(items)), NextCursor: nextCursor, Supported: supported}
+	for _, it := range items {
+		out.Items = append(out.Items, AvailableGitRepositoryResponse{FullPath: it.Ref.FullPath, Host: it.Ref.Host,
+			DefaultBranch: it.Ref.DefaultBranch, Private: it.Private, Description: it.Description})
+	}
+	return out
+}
