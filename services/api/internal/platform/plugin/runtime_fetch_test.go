@@ -98,7 +98,10 @@ func TestIsAllowedFetchDomain_PrivateHosts(t *testing.T) {
 		{"empty set, private", "https://gitlab.internal/api", manifest, privateHosts(t), false},
 		{"empty list, public host", "https://gitlab.com/api", manifest, nil, true},
 		{"empty list, wildcard still reaches public", "https://gitlab.com/api", []string{"*"}, nil, true},
-		{"wildcard does not change for listed public host", "https://gitlab.com/api", []string{"*"}, listed, true},
+		// Resolving public now proves nothing for a listed host: the dial may
+		// rebind, or reuse a pooled connection another plugin opened.
+		{"wildcard refused for a listed host even when it resolves public", "https://gitlab.com/api", []string{"*"}, listed, false},
+		{"wildcard reaches a public host that is not listed", "https://gitlab.com/api", []string{"*"}, privateHosts(t, "gitlab.internal"), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -273,5 +276,26 @@ func TestPrivateHostRedirectGuard_IDNThroughRealTransport(t *testing.T) {
 				t.Fatalf("wildcard plugin reached the listed private host via %q (dialed %v)", location, dialed)
 			}
 		})
+	}
+}
+
+// TestManifestPrivateHosts pins what paca.fetch tells the dialer per request:
+// the hosts the manifest names, in their dialed form, and nothing for "*".
+func TestManifestPrivateHosts(t *testing.T) {
+	cases := []struct {
+		manifest []string
+		want     bool
+	}{
+		{[]string{"*"}, false},
+		{[]string{"public.example"}, false},
+		{[]string{"10.0.0.5"}, false},
+		{[]string{"*", "gitlab.internal"}, true},
+		{[]string{" GitLab.Internal "}, true},
+		{[]string{"ｇｉｔｌａｂ.internal"}, true},
+	}
+	for _, c := range cases {
+		if got := manifestPrivateHosts(c.manifest).Contains("gitlab.internal"); got != c.want {
+			t.Errorf("manifest %q: allows gitlab.internal = %v, want %v", c.manifest, got, c.want)
+		}
 	}
 }

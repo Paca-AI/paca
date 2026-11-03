@@ -2296,7 +2296,10 @@ func (r *Runtime) registerFetchFunction(b wazero.HostModuleBuilder, p plugindom.
 				return
 			}
 
-			httpReq, err := http.NewRequestWithContext(ctx, method, req.URL, bodyReader)
+			// The dialer is shared by all plugins; this tells it which private
+			// hosts this plugin's manifest names, so "*" never unlocks them.
+			dialCtx := netguard.WithAllowedPrivateHosts(ctx, manifestPrivateHosts(p.Manifest.Backend.AllowedOutboundDomains))
+			httpReq, err := http.NewRequestWithContext(dialCtx, method, req.URL, bodyReader)
 			if err != nil {
 				writeErr("fetch: build request: " + err.Error())
 				return
@@ -2424,6 +2427,12 @@ func isAllowedFetchDomain(ctx context.Context, rawURL string, allowed []string, 
 		return false
 	}
 	if !namedInManifest {
+		// A listed host is refused whatever it resolves to now: a later dial
+		// could see a private address (rebinding), and a pooled connection
+		// opened for a plugin that names the host is reused without dialing.
+		if privateHosts.Contains(host) {
+			return false
+		}
 		privateHosts = nil
 	}
 
@@ -2458,6 +2467,19 @@ func manifestNamesHost(allowed []string, host string) bool {
 	return false
 }
 
+// manifestPrivateHosts returns the hosts the manifest names, canonicalized, as
+// the set the dialer checks per request. "*" and IP literals name no host.
+func manifestPrivateHosts(allowed []string) *netguard.PrivateHosts {
+	names := make([]string, 0, len(allowed))
+	for _, a := range allowed {
+		if name, err := netguard.CanonicalHost(strings.TrimSpace(a)); err == nil {
+			names = append(names, name)
+		}
+	}
+	hosts, _ := netguard.NewPrivateHosts(names)
+	return hosts
+}
+
 func manifestAllowsAnyHost(allowed []string) bool {
 	for _, a := range allowed {
 		if strings.TrimSpace(a) == "*" {
@@ -2469,9 +2491,9 @@ func manifestAllowsAnyHost(allowed []string) bool {
 
 // withPrivateHostRedirectGuard returns a client that applies the conditions of
 // the private host exception to redirects as well. isAllowedFetchDomain only
-// sees the first URL and the dialer only knows the operator's list, not which
-// plugin is calling, so without this a public host could redirect any plugin to
-// a listed internal host, or downgrade a listed host to plain http.
+// sees the first URL, so without this a public host could downgrade a listed
+// host to plain http. The dialer already refuses a listed host the manifest
+// does not name; checking it here too fails earlier, with a clearer error.
 //
 // With no private hosts configured the client is returned unchanged.
 func withPrivateHostRedirectGuard(client *http.Client, allowed []string, privateHosts *netguard.PrivateHosts) *http.Client {
