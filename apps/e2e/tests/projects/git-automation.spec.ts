@@ -121,6 +121,9 @@ const open = async (page: Page, projectId: string) => {
 };
 
 /** Automation lives on its own tab; the page opens on Repositories. */
+const repositoriesPanel = (page: Page) =>
+	page.getByRole("tabpanel", { name: /^Repositories/ });
+
 const openAutomation = (page: Page) =>
 	page.getByRole("tab", { name: /^Automation/ }).click();
 
@@ -165,9 +168,9 @@ test.describe("Project Git automation", () => {
 			});
 			await open(page, projectId);
 
-			await expect(page.getByText("acme/web", { exact: true })).toBeVisible();
-			await expect(page.getByText("main", { exact: true })).toBeVisible();
-			await expect(page.getByText("@paca-bot").first()).toBeVisible();
+			await expect(repositoriesPanel(page).getByText("acme/web", { exact: true })).toBeVisible();
+			await expect(repositoriesPanel(page).getByText("main", { exact: true })).toBeVisible();
+			await expect(repositoriesPanel(page).getByText("@paca-bot").first()).toBeVisible();
 			await expect(page.getByRole("tab", { name: /^Using it/ })).toBeVisible();
 		});
 
@@ -182,7 +185,7 @@ test.describe("Project Git automation", () => {
 				page.getByRole("button", { name: "Confirm unlink" }),
 			).toBeVisible();
 			await page.getByRole("button", { name: "Cancel" }).click();
-			await expect(page.getByText("acme/web", { exact: true })).toBeVisible();
+			await expect(repositoriesPanel(page).getByText("acme/web", { exact: true })).toBeVisible();
 			expect(stub.deleted).toEqual([]);
 
 			await page.getByRole("button", { name: "Unlink" }).click();

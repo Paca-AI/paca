@@ -719,6 +719,62 @@ describe("GitSettings", () => {
 		expect(screen.getByRole("tab", { name: /^Using it/ })).toBeInTheDocument();
 	});
 
+	it("stays on Connections when the first connection is added", async () => {
+		connections = [];
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		render(
+			<QueryClientProvider client={client}>
+				<GitSettings projectId={PROJECT} canWrite />
+			</QueryClientProvider>,
+		);
+		expect(
+			await screen.findByRole("tab", { name: /^Connections/, selected: true }),
+		).toBeInTheDocument();
+		connections = [connection];
+		await act(() => client.invalidateQueries());
+		await waitFor(() =>
+			expect(
+				screen.getByRole("tab", { name: /^Connections\s*1/ }),
+			).toBeVisible(),
+		);
+		expect(
+			screen.getByRole("tab", { name: /^Connections/, selected: true }),
+		).toBeInTheDocument();
+	});
+
+	it("keeps a half-typed repository when switching tabs", async () => {
+		const user = userEvent.setup();
+		renderPanel();
+		await user.type(await screen.findByLabelText("Repository"), "acme/we");
+		await openTab(/^Automation/);
+		await openTab(/^Repositories/);
+		expect(screen.getByLabelText("Repository")).toHaveValue("acme/we");
+	});
+
+	it("moves between tabs with the arrow, Home and End keys", async () => {
+		const user = userEvent.setup();
+		repos = [repo];
+		renderPanel();
+		const repositories = await screen.findByRole("tab", {
+			name: /^Repositories/,
+		});
+		repositories.focus();
+		await user.keyboard("{End}");
+		expect(
+			screen.getByRole("tab", { name: /^Using it/, selected: true }),
+		).toHaveFocus();
+		await user.keyboard("{Home}");
+		expect(
+			screen.getByRole("tab", { name: /^Connections/, selected: true }),
+		).toHaveFocus();
+		await user.keyboard("{ArrowLeft}");
+		expect(
+			screen.getByRole("tab", { name: /^Using it/, selected: true }),
+		).toHaveFocus();
+	});
+
 	it("falls back to a tab that exists when the open one disappears", async () => {
 		repos = [repo];
 		const client = new QueryClient({

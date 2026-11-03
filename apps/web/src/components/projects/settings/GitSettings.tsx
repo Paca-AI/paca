@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GitBranch, Link2, Loader2, Lock, Plus, Trash2 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyChip, EmptyState, Section } from "@/components/git/git-ui";
 import { Badge } from "@/components/ui/badge";
@@ -96,8 +96,11 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 		queryFn: () => listAgents(projectId),
 	});
 	const [tab, setTab] = useState<GitTab | null>(null);
+	// Where the page opened, fixed on the first render with data so that adding
+	// the first connection does not move the user off the tab they are on.
+	const opened = useRef<GitTab | null>(null);
 
-	if (providers.isLoading || repos.isLoading) {
+	if (providers.isLoading || repos.isLoading || connections.isLoading) {
 		return <Skeleton className="h-60 w-full" />;
 	}
 	const linked: GitRepository[] = repos.data ?? [];
@@ -125,15 +128,15 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 	];
 	// Open on the step the project is stuck at: a connection first, then a
 	// repository; once both exist the repositories are what people come back to.
+	opened.current ??= connectionCount === 0 ? "connections" : "repositories";
 	// A remembered tab that has since gone (the last repository was unlinked
 	// while "Using it" was open) falls back too, so a panel is always showing.
-	const fallback: GitTab =
-		connectionCount === 0 && !connections.isLoading
-			? "connections"
-			: "repositories";
-	const current: GitTab = tabs.some((x) => x.id === tab)
+	const has = (id: GitTab | null) => tabs.some((x) => x.id === id);
+	const current: GitTab = has(tab)
 		? (tab as GitTab)
-		: fallback;
+		: has(opened.current)
+			? opened.current
+			: "repositories";
 
 	return (
 		<div className="flex max-w-3xl flex-col gap-6">
@@ -150,7 +153,7 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 			<div
 				role="tablist"
 				aria-label={t("project.git.title")}
-				className="flex gap-1 border-b"
+				className="flex gap-1 overflow-x-auto border-b"
 				onKeyDown={(e) => {
 					const i = tabs.findIndex((x) => x.id === current);
 					const next =
@@ -158,7 +161,11 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 							? tabs[(i + 1) % tabs.length]
 							: e.key === "ArrowLeft"
 								? tabs[(i - 1 + tabs.length) % tabs.length]
-								: null;
+								: e.key === "Home"
+									? tabs[0]
+									: e.key === "End"
+										? tabs[tabs.length - 1]
+										: null;
 					if (!next) return;
 					e.preventDefault();
 					setTab(next.id);
@@ -176,7 +183,7 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 						tabIndex={current === x.id ? 0 : -1}
 						onClick={() => setTab(x.id)}
 						className={cn(
-							"-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+							"-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							current === x.id
 								? "border-primary text-foreground"
 								: "border-transparent text-muted-foreground hover:text-foreground",
