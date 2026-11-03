@@ -364,7 +364,7 @@ PLUGIN_FETCH_PRIVATE_HOSTS=gitlab.internal,git.corp.example
 A request to a private address then needs all of the following:
 
 - The hostname is in `PLUGIN_FETCH_PRIVATE_HOSTS`. Entries are exact ASCII names: IP literals, wildcards, URLs, `host:port` values, names with a leading or trailing dot and non-ASCII names are ignored, with a warning in the API log at startup. Write an internationalized name in its punycode form (`xn--...`).
-- The plugin's manifest names the host in `allowedOutboundDomains`. `"*"` does not count, because plugins that use it call user-supplied URLs.
+- The plugin's manifest names the host in `allowedOutboundDomains`. `"*"` does not count, because plugins that use it call user-supplied URLs. This is checked at dial time as well, so a DNS answer that changes after the first check does not open a listed host to a `"*"` plugin.
 - The URL is `https`, and the certificate is trusted by the API container. For an internal CA, mount a bundle holding the system roots and your CA into the `api` service and set `SSL_CERT_FILE` to its path, in a Compose override or the Helm chart's pod spec.
 - The address is in `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` or `fc00::/7`.
 

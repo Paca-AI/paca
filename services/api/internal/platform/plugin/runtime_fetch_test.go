@@ -275,3 +275,24 @@ func TestPrivateHostRedirectGuard_IDNThroughRealTransport(t *testing.T) {
 		})
 	}
 }
+
+// TestManifestPrivateHosts pins what paca.fetch tells the dialer per request:
+// the hosts the manifest names, in their dialed form, and nothing for "*".
+func TestManifestPrivateHosts(t *testing.T) {
+	cases := []struct {
+		manifest []string
+		want     bool
+	}{
+		{[]string{"*"}, false},
+		{[]string{"public.example"}, false},
+		{[]string{"10.0.0.5"}, false},
+		{[]string{"*", "gitlab.internal"}, true},
+		{[]string{" GitLab.Internal "}, true},
+		{[]string{"ｇｉｔｌａｂ.internal"}, true},
+	}
+	for _, c := range cases {
+		if got := manifestPrivateHosts(c.manifest).Contains("gitlab.internal"); got != c.want {
+			t.Errorf("manifest %q: allows gitlab.internal = %v, want %v", c.manifest, got, c.want)
+		}
+	}
+}

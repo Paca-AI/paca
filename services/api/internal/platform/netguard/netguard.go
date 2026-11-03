@@ -134,7 +134,8 @@ func SafeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 
 // guardedDialer is the implementation behind every dial in this package.
 // hosts is nil for all callers except the plugin fetch client (see
-// NewSafeHTTPClientWithPrivateHosts).
+// NewSafeHTTPClientWithPrivateHosts), and even there a host gets the exception
+// only if the dial's context also allows it (WithAllowedPrivateHosts).
 type guardedDialer struct {
 	hosts  *PrivateHosts
 	lookup func(ctx context.Context, host string) ([]net.IPAddr, error)
@@ -158,9 +159,14 @@ func (d guardedDialer) dialContext(ctx context.Context, network, addr string) (n
 		return nil, fmt.Errorf("safe dial: resolve %q: %w", host, err)
 	}
 
+	hosts := d.hosts
+	if allowed, _ := ctx.Value(allowedPrivateHostsKey{}).(*PrivateHosts); !allowed.Contains(host) {
+		hosts = nil
+	}
+
 	var lastErr error
 	for _, ipAddr := range ips {
-		if d.hosts.Blocks(host, ipAddr.IP) {
+		if hosts.Blocks(host, ipAddr.IP) {
 			lastErr = fmt.Errorf("safe dial: %q resolves to private/internal IP address: %s", host, ipAddr.IP.String())
 			continue
 		}
@@ -196,10 +202,24 @@ func NewSafeHTTPClient(timeout time.Duration) *http.Client {
 // A nil or empty hosts behaves exactly like NewSafeHTTPClient. Only the
 // paca.fetch client should use this: the exception is an operator opt-in for
 // plugin traffic, not a general relaxation of the guard.
+//
+// The exception further requires the request's context to name the host via
+// WithAllowedPrivateHosts. One client serves every plugin, so this is how a
+// dial learns which plugin it is for; a request without it gets no exception.
 func NewSafeHTTPClientWithPrivateHosts(timeout time.Duration, hosts *PrivateHosts) *http.Client {
 	transport := NewSafeHTTPTransport()
 	transport.DialContext = newGuardedDialer(hosts).dialContext
 	return &http.Client{Timeout: timeout, Transport: transport}
+}
+
+type allowedPrivateHostsKey struct{}
+
+// WithAllowedPrivateHosts returns a copy of ctx in which a dial by the client
+// of NewSafeHTTPClientWithPrivateHosts may use the exception for the hosts in
+// allowed, if the operator's set lists them too. net/http dials with the
+// request's context, redirects included, so the decision follows the request.
+func WithAllowedPrivateHosts(ctx context.Context, allowed *PrivateHosts) context.Context {
+	return context.WithValue(ctx, allowedPrivateHostsKey{}, allowed)
 }
 
 // PrivateHosts is an operator-managed set of exact hostnames that may resolve

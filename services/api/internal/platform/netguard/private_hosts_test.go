@@ -181,7 +181,7 @@ func recordingDialer(hosts *PrivateHosts, answers ...[]string) (guardedDialer, *
 func TestGuardedDial_ListedHostPinsValidatedPrivateIP(t *testing.T) {
 	d, dialed := recordingDialer(mustPrivateHosts(t, "gitlab.internal"), []string{"10.0.0.5"})
 
-	conn, err := d.dialContext(context.Background(), "tcp", "gitlab.internal:443")
+	conn, err := d.dialContext(allowCtx(t, "gitlab.internal"), "tcp", "gitlab.internal:443")
 	if err != nil {
 		t.Fatalf("expected dial to succeed, got: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestGuardedDial_ListedHostPinsValidatedPrivateIP(t *testing.T) {
 func TestGuardedDial_UnlistedHostStaysBlocked(t *testing.T) {
 	d, dialed := recordingDialer(mustPrivateHosts(t, "gitlab.internal"), []string{"10.0.0.5"})
 
-	_, err := d.dialContext(context.Background(), "tcp", "other.internal:443")
+	_, err := d.dialContext(allowCtx(t, "gitlab.internal", "other.internal"), "tcp", "other.internal:443")
 	if err == nil || !strings.Contains(err.Error(), "private/internal IP") {
 		t.Fatalf("expected private/internal IP error, got: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestGuardedDial_UnlistedHostStaysBlocked(t *testing.T) {
 func TestGuardedDial_ListedHostSkipsForbiddenAnswers(t *testing.T) {
 	d, dialed := recordingDialer(mustPrivateHosts(t, "gitlab.internal"), []string{"127.0.0.1", "169.254.169.254", "10.0.0.5"})
 
-	conn, err := d.dialContext(context.Background(), "tcp", "gitlab.internal:443")
+	conn, err := d.dialContext(allowCtx(t, "gitlab.internal"), "tcp", "gitlab.internal:443")
 	if err != nil {
 		t.Fatalf("expected dial to reach the private answer, got: %v", err)
 	}
@@ -225,13 +225,13 @@ func TestGuardedDial_RebindingOfListedHost(t *testing.T) {
 		t.Run(rebound, func(t *testing.T) {
 			d, dialed := recordingDialer(mustPrivateHosts(t, "gitlab.internal"), []string{"10.0.0.5"}, []string{rebound})
 
-			conn, err := d.dialContext(context.Background(), "tcp", "gitlab.internal:443")
+			conn, err := d.dialContext(allowCtx(t, "gitlab.internal"), "tcp", "gitlab.internal:443")
 			if err != nil {
 				t.Fatalf("first dial: %v", err)
 			}
 			_ = conn.Close()
 
-			_, err = d.dialContext(context.Background(), "tcp", "gitlab.internal:443")
+			_, err = d.dialContext(allowCtx(t, "gitlab.internal"), "tcp", "gitlab.internal:443")
 			if err == nil || !strings.Contains(err.Error(), "private/internal IP") {
 				t.Fatalf("expected the rebound answer to be refused, got: %v", err)
 			}
@@ -239,6 +239,62 @@ func TestGuardedDial_RebindingOfListedHost(t *testing.T) {
 				t.Errorf("dialed %v, want only %v", *dialed, want)
 			}
 		})
+	}
+}
+
+// allowCtx is the context paca.fetch builds for a plugin whose manifest names
+// the given hosts.
+func allowCtx(t *testing.T, names ...string) context.Context {
+	t.Helper()
+	return WithAllowedPrivateHosts(context.Background(), mustPrivateHosts(t, names...))
+}
+
+// TestGuardedDial_RequiresPerRequestAllowance covers a "*" plugin whose
+// pre-check saw a public answer while the dial resolves to a private one: the
+// operator lists the host, but the request does not name it, so it is refused.
+func TestGuardedDial_RequiresPerRequestAllowance(t *testing.T) {
+	cases := []struct {
+		name string
+		ctx  context.Context
+		want bool
+	}{
+		{"no allowance in context", context.Background(), false},
+		{"wildcard plugin, nothing named", allowCtx(t), false},
+		{"other host named", allowCtx(t, "other.internal"), false},
+		{"host named", allowCtx(t, "gitlab.internal"), true},
+		{"host named, other case", allowCtx(t, "GitLab.Internal"), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d, dialed := recordingDialer(mustPrivateHosts(t, "gitlab.internal"), []string{"10.0.0.5"})
+
+			conn, err := d.dialContext(c.ctx, "tcp", "gitlab.internal:443")
+			if c.want {
+				if err != nil {
+					t.Fatalf("expected dial to succeed, got: %v", err)
+				}
+				_ = conn.Close()
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "private/internal IP") {
+				t.Fatalf("expected private/internal IP error, got: %v", err)
+			}
+			if len(*dialed) != 0 {
+				t.Errorf("should not have dialed, got %v", *dialed)
+			}
+		})
+	}
+}
+
+// TestGuardedDial_AllowanceDoesNotWidenOperatorSet: a request can only narrow
+// the operator's list, never add to it.
+func TestGuardedDial_AllowanceDoesNotWidenOperatorSet(t *testing.T) {
+	for _, hosts := range []*PrivateHosts{nil, mustPrivateHosts(t, "gitlab.internal")} {
+		d, dialed := recordingDialer(hosts, []string{"10.0.0.5"})
+		_, err := d.dialContext(allowCtx(t, "other.internal"), "tcp", "other.internal:443")
+		if err == nil || len(*dialed) != 0 {
+			t.Fatalf("operator set %v: expected refusal without dialing, got err %v, dialed %v", hosts.Names(), err, *dialed)
+		}
 	}
 }
 
