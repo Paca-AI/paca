@@ -33,6 +33,7 @@ func main() { plugin.Run(&myPlugin{}) }
 
 | Interface | Capability |
 |---|---|
+| `IssueLister` | `issue_list` |
 | `ThreadResolver` | `resolve_threads` |
 | `FileReader`, `CodeSearcher` | `file_read`, `code_search` |
 | `LabelManager`, `ReviewerRequester`, `AssigneeSetter` | `labels`, `reviewer_requests`, `assignees` |

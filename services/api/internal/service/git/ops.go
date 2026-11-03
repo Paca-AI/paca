@@ -330,6 +330,33 @@ func (s *Service) ListComments(ctx context.Context, sc Scope, kind gitprovider.S
 	})
 }
 
+// ListIssues pages repository issues when the provider supports it.
+func (s *Service) ListIssues(ctx context.Context, sc Scope, state, cursor string) (gitprovider.IssuePage, error) {
+	switch state {
+	case "", "open", "closed", "all":
+	default:
+		return gitprovider.IssuePage{}, fmt.Errorf("%w: state must be open, closed or all", gitdom.ErrInvalidInput)
+	}
+	t, err := s.resolve(ctx, sc)
+	if err != nil {
+		return gitprovider.IssuePage{}, err
+	}
+	if err := s.need(ctx, t.repo.ProviderID, func(c gitprovider.Capabilities) bool { return c.IssueList }); err != nil {
+		return gitprovider.IssuePage{}, err
+	}
+	lister, ok := t.api.(interface {
+		ListIssues(context.Context, gitprovider.ListIssuesRequest) (gitprovider.IssuePage, error)
+	})
+	if !ok {
+		return gitprovider.IssuePage{}, gitdom.ErrUnsupported
+	}
+	page, err := run(s, ctx, sc, t, "issue.list", "", func() (gitprovider.IssuePage, error) {
+		return lister.ListIssues(ctx, gitprovider.ListIssuesRequest{Target: t.target, State: state, Cursor: cursor})
+	})
+	page.Items = nonNil(page.Items)
+	return page, err
+}
+
 // GetIssue reads one issue.
 func (s *Service) GetIssue(ctx context.Context, sc Scope, number string) (gitprovider.Issue, error) {
 	t, err := s.resolve(ctx, sc)

@@ -614,6 +614,40 @@ func TestRouteCoverage_RoleHelpersAreAuthenticatedOnly(t *testing.T) {
 	}
 }
 
+func TestRouteCoverage_IssueListRequiresGitRead(t *testing.T) {
+	token := issueAccessTokenForRouterTests(t)
+	pid := uuid.NewString()
+	key := "GET /api/v1/projects/{projectId}/git/repositories/{repositoryId}/issues"
+	call := func(grants []iam.Grant, authenticated bool) int {
+		for _, rt := range walkGates(t, coverageDeps(newTestIAM(&iamUserStore{grants: grants}))) {
+			if rt.key() != key {
+				continue
+			}
+			req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/projects/"+pid+"/git/repositories/"+uuid.NewString()+"/issues", nil)
+			if authenticated {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+			rec := httptest.NewRecorder()
+			rt.handler.ServeHTTP(rec, req)
+			return rec.Code
+		}
+		t.Fatal("issue list route not registered")
+		return 0
+	}
+	if got := call(nil, false); got != http.StatusUnauthorized {
+		t.Fatalf("anonymous: %d", got)
+	}
+	if got := call(nil, true); got != http.StatusForbidden {
+		t.Fatalf("no permission: %d", got)
+	}
+	if got := call([]iam.Grant{projectRole(pid, allow([]string{"git:read"}, "project/"+pid+"/*"))}, true); got != http.StatusNoContent {
+		t.Fatalf("git:read: %d", got)
+	}
+	if got := call([]iam.Grant{projectRole(pid, allow([]string{"git:write"}, "project/"+pid+"/*"))}, true); got != http.StatusForbidden {
+		t.Fatalf("git:write only: %d", got)
+	}
+}
+
 // The project mirror of the role editor helpers: each is gated on
 // roles:read on project/{projectId} (pinned individually), and the simulation
 // additionally goes through the principal guard (not a marked gate, so it is

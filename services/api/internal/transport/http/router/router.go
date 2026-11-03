@@ -552,6 +552,7 @@ func New(deps Deps) http.Handler {
 							r.With(read).Get("/change-requests/{number}/diff", deps.Git.GetDiff)
 							r.With(read).Get("/change-requests/{number}/threads", deps.Git.ListThreads)
 							r.With(read).Get("/subjects/{kind}/{number}/comments", deps.Git.ListComments)
+							r.With(read).Get("/issues", deps.Git.ListIssues)
 							r.With(read).Get("/issues/{number}", deps.Git.GetIssue)
 							r.With(read).Get("/checks", deps.Git.GetChecks)
 							r.With(read).Get("/checks/{checkId}/logs", deps.Git.GetCheckLogs)

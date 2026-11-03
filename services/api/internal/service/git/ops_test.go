@@ -38,6 +38,7 @@ type opsFake struct {
 	calls []string
 	last  any
 
+	page     *gitprovider.IssuePage
 	cr       gitprovider.ChangeRequest
 	files    gitprovider.ChangedFilePage
 	threads  gitprovider.ThreadPage
@@ -200,6 +201,89 @@ func newOpsFx(t *testing.T) *opsFx {
 	svc.WithAgentNamer(namer{agent: "Reviewer"})
 	return &opsFx{svc: svc, st: st, pr: pr, repo: repo, agent: agent,
 		sc: Scope{ProjectID: project, RepositoryID: repo.ID, AgentID: agent, ConversationID: &conv}}
+}
+
+func (o *opsFake) ListIssues(_ context.Context, r gitprovider.ListIssuesRequest) (gitprovider.IssuePage, error) {
+	o.rec("ListIssues", r)
+	if o.page != nil {
+		return *o.page, o.err
+	}
+	return gitprovider.IssuePage{Items: []gitprovider.Issue{{Number: "7"}}, NextCursor: "next"}, o.err
+}
+
+func TestOps_ListIssues(t *testing.T) {
+	fx := newOpsFx(t)
+	fx.pr.info.Capabilities.IssueList = true
+	ctx := context.Background()
+	page, err := fx.svc.ListIssues(ctx, fx.sc, "closed", "a+b")
+	if err != nil || len(page.Items) != 1 || page.Items[0].Number != "7" || page.NextCursor != "next" {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	req := fx.pr.last.(gitprovider.ListIssuesRequest)
+	if req.State != "closed" || req.Cursor != "a+b" || req.Target.Identity.ID != "app-1" || req.Target.Repo.FullPath != "acme/web" {
+		t.Fatalf("req=%+v", req)
+	}
+	if len(fx.st.log) != 1 || fx.st.log[0].Tool != "issue.list" || !fx.st.log[0].OK {
+		t.Fatalf("log=%+v", fx.st.log)
+	}
+	fx.pr.err = &gitprovider.Error{Code: gitprovider.CodeForbidden}
+	if _, err := fx.svc.ListIssues(ctx, fx.sc, "", ""); !gitprovider.IsCode(err, gitprovider.CodeForbidden) {
+		t.Fatalf("err=%v", err)
+	}
+	if len(fx.st.log) != 2 || fx.st.log[1].OK {
+		t.Fatalf("log=%+v", fx.st.log)
+	}
+}
+
+func TestOps_ListIssuesPreservesPageAndEmptyDefault(t *testing.T) {
+	fx := newOpsFx(t)
+	fx.pr.info.Capabilities.IssueList = true
+	fx.pr.page = &gitprovider.IssuePage{NextCursor: "later"}
+	page, err := fx.svc.ListIssues(context.Background(), fx.sc, "", "opaque+cursor")
+	if err != nil || page.Items == nil || len(page.Items) != 0 || page.NextCursor != "later" {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	req := fx.pr.last.(gitprovider.ListIssuesRequest)
+	if req.State != "" || req.Cursor != "opaque+cursor" {
+		t.Fatalf("req=%+v", req)
+	}
+}
+
+type noIssueLister struct {
+	*fakeProv
+	OpsAPI
+}
+
+func (p noIssueLister) providerInfo() gitprovider.Info { return p.info }
+
+func TestOps_ListIssuesRequiresImplementedLister(t *testing.T) {
+	fx := newOpsFx(t)
+	fx.pr.info.Capabilities.IssueList = true
+	fx.svc.providers = fakeProviders{p: noIssueLister{fakeProv: fx.pr.fakeProv, OpsAPI: fx.pr}}
+	_, err := fx.svc.ListIssues(context.Background(), fx.sc, "all", "")
+	if !errors.Is(err, gitdom.ErrUnsupported) || len(fx.pr.calls) != 0 {
+		t.Fatalf("err=%v calls=%v", err, fx.pr.calls)
+	}
+}
+
+func TestOps_ListIssuesRefusesInvalidStateUnsupportedAndForeignRepo(t *testing.T) {
+	fx := newOpsFx(t)
+	ctx := context.Background()
+	if _, err := fx.svc.ListIssues(ctx, fx.sc, "merged", ""); !errors.Is(err, gitdom.ErrInvalidInput) {
+		t.Fatalf("state: %v", err)
+	}
+	if _, err := fx.svc.ListIssues(ctx, fx.sc, "", ""); !errors.Is(err, gitdom.ErrUnsupported) {
+		t.Fatalf("unsupported: %v", err)
+	}
+	fx.pr.info.Capabilities.IssueList = true
+	other := fx.sc
+	other.ProjectID = uuid.New()
+	if _, err := fx.svc.ListIssues(ctx, other, "all", ""); !errors.Is(err, gitdom.ErrNotFound) {
+		t.Fatalf("foreign: %v", err)
+	}
+	if len(fx.pr.calls) != 0 || len(fx.st.log) != 0 {
+		t.Fatalf("called provider or audited: %v %v", fx.pr.calls, fx.st.log)
+	}
 }
 
 func TestOps_RepositoryOfAnotherProjectIsNotFoundAndNothingIsCalled(t *testing.T) {

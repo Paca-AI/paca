@@ -333,7 +333,7 @@ Core-owned (`apps/mcp`), neutral, calling core API routes that resolve the repos
 | `change_request_get_context` | One call: metadata, head and base, draft state, changed files (first page), review threads with their resolved state, latest checks, and whether the calling agent opened it. |
 | `change_request_get_diff` | Unified diff, whole or for one file, size-capped. |
 | `review_list_threads` | Threads with every comment, path and line, resolved or outdated. |
-| `issue_get`, `comment_list` | An issue; the comments of an issue or CR. |
+| `issue_list`, `issue_get`, `comment_list` | Page repository issues; an issue; the comments of an issue or CR. |
 | `checks_get`, `checks_get_logs` | Neutral check list `{name, state, required, url}` for a ref or a CR's head; the tail of a failing log. |
 | `repo_get_file`, `repo_search_code` | Read a file at a ref, or search code, without a checkout. |
 

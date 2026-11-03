@@ -29,7 +29,7 @@ func WireTypes() map[string]reflect.Type {
 		"ChangedFile": t(ChangedFile{}), "ChangedFilePage": t(ChangedFilePage{}), "DiffRequest": t(DiffRequest{}), "Diff": t(Diff{}),
 		"Comment": t(Comment{}), "Thread": t(Thread{}), "ThreadPage": t(ThreadPage{}),
 		"ListCommentsRequest": t(ListCommentsRequest{}), "CommentPage": t(CommentPage{}),
-		"IssueRequest": t(IssueRequest{}), "Issue": t(Issue{}),
+		"IssueRequest": t(IssueRequest{}), "Issue": t(Issue{}), "ListIssuesRequest": t(ListIssuesRequest{}), "IssuePage": t(IssuePage{}),
 		"Check": t(Check{}), "ChecksRequest": t(ChecksRequest{}), "CheckLogsRequest": t(CheckLogsRequest{}), "Logs": t(Logs{}),
 		"FileRequest": t(FileRequest{}), "File": t(File{}), "CodeSearchRequest": t(CodeSearchRequest{}), "CodeHit": t(CodeHit{}), "CodeHits": t(CodeHits{}),
 		"OpenCRRequest": t(OpenCRRequest{}), "UpdateCRRequest": t(UpdateCRRequest{}),
