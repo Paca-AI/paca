@@ -12,7 +12,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
+
+	"golang.org/x/net/idna"
 )
 
 // IsPrivateOrInternalIP reports whether ip is a loopback, link-local,
@@ -125,26 +129,42 @@ func embeddedIPv4s(ip net.IP) []net.IP {
 // than re-resolving inside the dialer) so the address actually connected to
 // is the same one just validated.
 func SafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return newGuardedDialer(nil).dialContext(ctx, network, addr)
+}
+
+// guardedDialer is the implementation behind every dial in this package.
+// hosts is nil for all callers except the plugin fetch client (see
+// NewSafeHTTPClientWithPrivateHosts).
+type guardedDialer struct {
+	hosts  *PrivateHosts
+	lookup func(ctx context.Context, host string) ([]net.IPAddr, error)
+	dial   func(ctx context.Context, network, addr string) (net.Conn, error)
+}
+
+func newGuardedDialer(hosts *PrivateHosts) guardedDialer {
+	resolver := &net.Resolver{}
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	return guardedDialer{hosts: hosts, lookup: resolver.LookupIPAddr, dial: dialer.DialContext}
+}
+
+func (d guardedDialer) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("safe dial: invalid address %q: %w", addr, err)
 	}
 
-	resolver := &net.Resolver{}
-	ips, err := resolver.LookupIPAddr(ctx, host)
+	ips, err := d.lookup(ctx, host)
 	if err != nil {
 		return nil, fmt.Errorf("safe dial: resolve %q: %w", host, err)
 	}
 
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-
 	var lastErr error
 	for _, ipAddr := range ips {
-		if IsPrivateOrInternalIP(ipAddr.IP) {
+		if d.hosts.Blocks(host, ipAddr.IP) {
 			lastErr = fmt.Errorf("safe dial: %q resolves to private/internal IP address: %s", host, ipAddr.IP.String())
 			continue
 		}
-		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ipAddr.IP.String(), port))
+		conn, dialErr := d.dial(ctx, network, net.JoinHostPort(ipAddr.IP.String(), port))
 		if dialErr == nil {
 			return conn, nil
 		}
@@ -169,4 +189,125 @@ func NewSafeHTTPTransport() *http.Transport {
 // wanting a ready-to-use SSRF-safe client with a fixed timeout.
 func NewSafeHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: NewSafeHTTPTransport()}
+}
+
+// NewSafeHTTPClientWithPrivateHosts is NewSafeHTTPClient with the exception
+// described on PrivateHosts. The dial stays pinned to the IP it just checked.
+// A nil or empty hosts behaves exactly like NewSafeHTTPClient. Only the
+// paca.fetch client should use this: the exception is an operator opt-in for
+// plugin traffic, not a general relaxation of the guard.
+func NewSafeHTTPClientWithPrivateHosts(timeout time.Duration, hosts *PrivateHosts) *http.Client {
+	transport := NewSafeHTTPTransport()
+	transport.DialContext = newGuardedDialer(hosts).dialContext
+	return &http.Client{Timeout: timeout, Transport: transport}
+}
+
+// PrivateHosts is an operator-managed set of exact hostnames that may resolve
+// to private network addresses. Only RFC 1918 and unique local (fc00::/7)
+// addresses become reachable, and only for these names. Everything else
+// IsPrivateOrInternalIP flags stays blocked even for a listed host: loopback,
+// link-local, CGNAT (cloud metadata lives there too), unspecified, multicast,
+// and IPv6 transition literals, whatever IPv4 address they carry.
+//
+// A nil *PrivateHosts is valid and is the empty set.
+type PrivateHosts struct {
+	names map[string]struct{}
+}
+
+// NewPrivateHosts builds the set from raw entries and returns those it refused:
+// IP literals, wildcards, and anything else that isn't a bare hostname, such as
+// a URL or a host:port. Refusing them keeps the exception tied to a name the
+// operator chose rather than to an address range. Matching is case-insensitive.
+//
+// Entries must already be in the ASCII form CanonicalHost produces, so names
+// with a leading or trailing dot and non-ASCII names are refused too, rather
+// than rewritten: an internationalized name has to be listed in punycode. The
+// set then holds exactly the names that are matched, and Names logs them as
+// the dialer will see them.
+func NewPrivateHosts(entries []string) (*PrivateHosts, []string) {
+	names := make(map[string]struct{}, len(entries))
+	var rejected []string
+	for _, entry := range entries {
+		name := strings.ToLower(strings.TrimSpace(entry))
+		if name == "" {
+			continue
+		}
+		if net.ParseIP(name) != nil || strings.ContainsAny(name, "*/:[] \t") ||
+			strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") || !isASCII(name) {
+			rejected = append(rejected, entry)
+			continue
+		}
+		names[name] = struct{}{}
+	}
+	return &PrivateHosts{names: names}, rejected
+}
+
+// CanonicalHost returns host in the form net/http dials it, lowercased. Like
+// the transport, it passes a non-ASCII name through the IDNA lookup profile, so
+// "ｇｉｔｌａｂ.internal" (fullwidth letters) or "git\u00adlab.internal" (soft
+// hyphen) both become "gitlab.internal". Any hostname compared against
+// PrivateHosts or a plugin manifest must go through it first: a raw comparison
+// would see a different name from the one that is dialed. An error means the
+// name has no ASCII form, and callers must refuse it.
+func CanonicalHost(host string) (string, error) {
+	if !isASCII(host) {
+		ascii, err := idna.Lookup.ToASCII(host)
+		if err != nil {
+			return "", fmt.Errorf("netguard: invalid hostname %q: %w", host, err)
+		}
+		host = ascii
+	}
+	return strings.ToLower(host), nil
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+// Empty reports whether the set has no hostnames.
+func (p *PrivateHosts) Empty() bool {
+	return p == nil || len(p.names) == 0
+}
+
+// Names returns the hostnames in the set, sorted.
+func (p *PrivateHosts) Names() []string {
+	if p.Empty() {
+		return nil
+	}
+	names := make([]string, 0, len(p.names))
+	for name := range p.names {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// Contains reports whether host, after CanonicalHost, is in the set. A host
+// with no canonical form is never contained.
+func (p *PrivateHosts) Contains(host string) bool {
+	if p.Empty() {
+		return false
+	}
+	name, err := CanonicalHost(host)
+	if err != nil {
+		return false
+	}
+	_, ok := p.names[name]
+	return ok
+}
+
+// Blocks reports whether connecting to ip for host must be refused:
+// IsPrivateOrInternalIP, minus the exception this set grants. net.IP.IsPrivate
+// covers exactly the ranges the exception is for, and it is false for IPv6
+// transition literals, so an embedded address never qualifies.
+func (p *PrivateHosts) Blocks(host string, ip net.IP) bool {
+	if !IsPrivateOrInternalIP(ip) {
+		return false
+	}
+	return !p.Contains(host) || !ip.IsPrivate()
 }

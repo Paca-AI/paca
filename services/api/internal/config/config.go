@@ -201,6 +201,11 @@ type PluginsConfig struct {
 	// metadata and artifacts.
 	MarketplaceTimeout time.Duration
 
+	// FetchPrivateHosts lists exact hostnames that paca.fetch may reach on a
+	// private network address, for plugins whose manifest names them
+	// (PLUGIN_FETCH_PRIVATE_HOSTS). Empty by default.
+	FetchPrivateHosts []string
+
 	// Limits holds resource limits enforced on plugin WASM execution.
 	Limits PluginLimitsConfig
 }

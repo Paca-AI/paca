@@ -123,6 +123,8 @@ spec:
               value: /plugins-mcp
             - name: PLUGINS_SKILLS_DIR
               value: /plugins-skills
+            - name: PLUGIN_FETCH_PRIVATE_HOSTS
+              value: {{ .Values.api.plugins.fetchPrivateHosts | quote }}
             {{- if .Values.agentRunner.enabled }}
             - name: AI_AGENT_URL
               value: "http://{{ include "paca.fullname" . }}-agent-runner:8080"

@@ -449,7 +449,8 @@ type BackendManifest struct {
 	// contact via paca.fetch. Matching is exact, case-insensitive hostname match,
 	// except for the literal entry "*" which permits any HTTPS host (still
 	// subject to the private/internal IP block). Requests to unlisted domains
-	// are rejected.
+	// are rejected. A host in PLUGIN_FETCH_PRIVATE_HOSTS may resolve to a private
+	// address only if it is listed here by name; "*" does not count.
 	AllowedOutboundDomains []string `json:"allowedOutboundDomains,omitempty"`
 	// AllowedConfigKeys is the list of host config keys the plugin may read via
 	// paca.config_get. Keys not listed here are not exposed to the plugin.

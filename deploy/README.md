@@ -315,6 +315,10 @@ Flags can be combined:
 docker compose --env-file .env up -d --scale postgres=0 --scale rustfs=0
 ```
 
+### Self-hosted services on a private network
+
+Plugins can't reach private addresses by default. To connect one to a service on your LAN or VPN, such as a self-hosted GitLab, set `PLUGIN_FETCH_PRIVATE_HOSTS` in `.env` to a comma-separated list of exact hostnames and add the same host to the plugin's `allowedOutboundDomains`. On Helm, set `api.plugins.fetchPrivateHosts`. The service must use `https` with a certificate the API container trusts. Loopback and link-local addresses, including cloud metadata endpoints, stay blocked. Read the requirements and security notes in [`docs/plugins/backend-plugin-system.md`](../docs/plugins/backend-plugin-system.md#hosts-on-a-private-network) first.
+
 ### Upgrading to a new version
 
 **Recommended: upgrade script.** From the directory where your `docker-compose.yml` and
