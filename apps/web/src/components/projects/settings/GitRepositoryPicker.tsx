@@ -143,6 +143,7 @@ export function GitRepositoryPicker({
 					<Input
 						value={search}
 						className="pl-8"
+						maxLength={200}
 						aria-label={t("project.git.picker.search")}
 						placeholder={t("project.git.picker.search")}
 						autoComplete="off"

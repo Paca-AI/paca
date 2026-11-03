@@ -871,3 +871,39 @@ func TestRouteCoverage_ViewAttrGates(t *testing.T) {
 		}
 	}
 }
+
+// The repository picker lists what a credential can see on the platform, so it
+// needs git:write like linking does; git:read alone must not reach it.
+func TestRouteCoverage_RepositoryPickerRequiresGitWrite(t *testing.T) {
+	token := issueAccessTokenForRouterTests(t)
+	pid := uuid.NewString()
+	key := "GET /api/v1/projects/{projectId}/git/connections/{identityId}/repositories"
+	call := func(grants []iam.Grant, authenticated bool) int {
+		for _, rt := range walkGates(t, coverageDeps(newTestIAM(&iamUserStore{grants: grants}))) {
+			if rt.key() != key {
+				continue
+			}
+			req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/projects/"+pid+"/git/connections/"+uuid.NewString()+"/repositories", nil)
+			if authenticated {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+			rec := httptest.NewRecorder()
+			rt.handler.ServeHTTP(rec, req)
+			return rec.Code
+		}
+		t.Fatal("repository picker route not registered")
+		return 0
+	}
+	if got := call(nil, false); got != http.StatusUnauthorized {
+		t.Fatalf("anonymous: %d", got)
+	}
+	if got := call(nil, true); got != http.StatusForbidden {
+		t.Fatalf("no permission: %d", got)
+	}
+	if got := call([]iam.Grant{projectRole(pid, allow([]string{"git:read"}, "project/"+pid+"/*"))}, true); got != http.StatusForbidden {
+		t.Fatalf("git:read only: %d", got)
+	}
+	if got := call([]iam.Grant{projectRole(pid, allow([]string{"git:write"}, "project/"+pid+"/*"))}, true); got != http.StatusNoContent {
+		t.Fatalf("git:write: %d", got)
+	}
+}

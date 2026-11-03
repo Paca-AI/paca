@@ -758,6 +758,16 @@ func TestGitHandler_ListAvailableRepositories_Errors(t *testing.T) {
 	if rec := serveGit(t, &fakeGitSvc{}, "GET", url("nope", uuid.NewString()), "", nil); rec.Code != 400 {
 		t.Fatalf("bad project id: %d", rec.Code)
 	}
+	// Oversized search or cursor is refused before reaching the platform.
+	for _, qs := range []string{"q=" + strings.Repeat("a", 201), "cursor=" + strings.Repeat("a", 1025)} {
+		f = &fakeGitSvc{}
+		if rec := serveGit(t, f, "GET", url(uuid.NewString(), uuid.NewString())+"?"+qs, "", nil); rec.Code != 400 || errCode(rec) != "BAD_REQUEST" {
+			t.Fatalf("%.12s: %d %s", qs, rec.Code, rec.Body)
+		}
+	}
+	if rec := serveGit(t, &fakeGitSvc{avail: &gitsvc.AvailableRepositories{}}, "GET", url(uuid.NewString(), uuid.NewString())+"?q="+strings.Repeat("a", 200), "", nil); rec.Code != 200 {
+		t.Fatalf("200-char search: %d", rec.Code)
+	}
 	// A refusal carries the platform's reason for the UI.
 	f = &fakeGitSvc{err: &gitprovider.Error{Code: gitprovider.CodeForbidden, Message: "the token needs read_api"}}
 	rec := serveGit(t, f, "GET", url(uuid.NewString(), uuid.NewString()), "", nil)

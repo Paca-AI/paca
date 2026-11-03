@@ -475,6 +475,12 @@ func (h *GitHandler) ListConnections(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, identitiesResponse(ids))
 }
 
+// Upper bounds on the picker's inputs, which are forwarded to the platform.
+const (
+	maxRepositorySearchLen = 200
+	maxRepositoryCursorLen = 1024
+)
+
 // ListAvailableRepositories handles GET /projects/:projectId/git/connections/:identityId/repositories:
 // the repositories a connection sees on the platform, for the link form's
 // picker. ?q= filters by name and ?cursor= continues a previous page.
@@ -489,7 +495,12 @@ func (h *GitHandler) ListAvailableRepositories(w http.ResponseWriter, r *http.Re
 		return
 	}
 	q := r.URL.Query()
-	page, err := h.svc.ListAvailableRepositories(r.Context(), projectID, identityID, strings.TrimSpace(q.Get("q")), q.Get("cursor"))
+	query := strings.TrimSpace(q.Get("q"))
+	if len(query) > maxRepositorySearchLen || len(q.Get("cursor")) > maxRepositoryCursorLen {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "search or cursor is too long"))
+		return
+	}
+	page, err := h.svc.ListAvailableRepositories(r.Context(), projectID, identityID, query, q.Get("cursor"))
 	if err != nil {
 		h.failWithProviderMessage(w, r, err)
 		return
