@@ -176,7 +176,7 @@ Declared in `Describe()`. Core's UI, tools and router read them instead of hard-
 | `webhook_scope` | `app`, `group`, `repo` | Whether core asks the provider to `EnsureWebhook` per linked repository. |
 | `triggers` | subset of `mention, label, review_request, assignment, ci_failure, own_cr_feedback, auto_review` | Which trigger switches are offered on an agent. |
 | `status_kind` | `check_run`, `commit_status`, `comment` | How run status is shown. |
-| `branches`, `resolve_threads`, `file_read`, `code_search`, `labels`, `reviewer_requests`, `assignees`, `merge`, `rerun_checks`, `reactions`, `webhook_management`, `identity_deletion`, `access_grants` | bool | The matching optional operation exists; tools and screens that need it appear only then. |
+| `branches`, `resolve_threads`, `file_read`, `code_search`, `labels`, `reviewer_requests`, `assignees`, `merge`, `rerun_checks`, `reactions`, `webhook_management`, `identity_deletion`, `identity_description`, `access_grants` | bool | The matching optional operation exists; tools and screens that need it appear only then. |
 | `batch_review`, `idempotent_writes`, `hidden_markers`, `fork_change_requests`, `draft_change_requests`, `nested_paths` | bool | Behaviour of required operations. |
 | `ci_config_globs` | paths | Files agents must not modify (§12.3). |
 

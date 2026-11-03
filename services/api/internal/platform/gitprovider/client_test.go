@@ -142,3 +142,23 @@ func TestClient_AccessGrantOperations(t *testing.T) {
 		t.Errorf("a provider without grants answers unsupported: %v", err)
 	}
 }
+
+func TestClient_DescribeIdentity(t *testing.T) {
+	d := &fakeDoer{status: 200, resp: `{"ok":true,"result":{"ref":{"id":"i1","handle":"bot"},"display_name":"Bot"}}`}
+	c := NewClient(d, "com.paca.gitlab")
+	id, err := c.DescribeIdentity(context.Background(), DescribeIdentityRequest{Identity: IdentityRef{ID: "i1"}})
+	if err != nil || id.Ref.ID != "i1" || id.Ref.Handle != "bot" || id.DisplayName != "Bot" {
+		t.Fatalf("describe: %+v %v", id, err)
+	}
+	if d.gotURL != "com.paca.gitlab POST /_git/describe_identity" {
+		t.Errorf("called %q", d.gotURL)
+	}
+	var sent DescribeIdentityRequest
+	if json.Unmarshal(d.gotReq, &sent) != nil || sent.Identity.ID != "i1" {
+		t.Errorf("request body %s", d.gotReq)
+	}
+	d.status, d.resp = 404, `{"ok":false,"error":{"code":"not_found","message":"gone"}}`
+	if _, err := c.DescribeIdentity(context.Background(), DescribeIdentityRequest{}); !IsCode(err, CodeNotFound) {
+		t.Errorf("unknown identity is not_found: %v", err)
+	}
+}

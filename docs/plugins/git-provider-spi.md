@@ -42,6 +42,7 @@ func main() { plugin.Run(&myPlugin{}) }
 | `Merger`, `CheckRerunner`, `Reactor` | `merge`, `rerun_checks`, `reactions` |
 | `WebhookManager` | `webhook_management` (repo/group-scoped webhooks) |
 | `IdentityDeleter` | `identity_deletion` |
+| `IdentityDescriber` (`DescribeIdentity`) | `identity_description` (see below) |
 | `BranchManager` (`GetBranch`, `CreateBranch`) | `branches` |
 | `AccessGranter` | `access_grants` (see below) |
 
@@ -76,6 +77,16 @@ The SDK ships a conformance suite (`plugin-sdk-go/gitprovider/conformance`) and 
 ## 6. What you do not implement
 
 Trigger configuration, routing, actor policy, run lifecycle, debounce, comment/thread ownership, status comments, audit, MCP tools, workspace protocol, credential-helper plumbing, task linking and every screen except your identity setup component. If you find yourself writing one of those, the SPI is missing something — raise it.
+
+## Identity description (optional)
+
+`DescribeIdentity(ctx, DescribeIdentityRequest{Identity})` says who an existing identity is, without a setup flow. It exists for identities core holds with no handle: a plugin's data migration (for example from an older plugin version or a community plugin) creates `git_identities` rows without calling the platform, so it cannot know the token's user. Such a row would stay nameless in Settings → Git and `@mentions` would not match it.
+
+* **When core calls it**: while listing connections (a project's Settings → Git) or the workspace's shared identities, for each identity whose stored handle is empty and whose provider declares `identity_description`. Once per identity, because the answer is stored; an identity that already has a handle is never described.
+* **What you return**: an `Identity` whose `Ref.ID` equals the request's, with `Ref.Handle` set (the login users `@mention`), `DisplayName`, and `ExpiresAt` for credentials that expire. `Next` is ignored. Unknown identity: `not_found`; credentials the platform no longer accepts: `forbidden`.
+* **What core stores**: the handle, and the display name and expiry when non-empty. An answer with another `Ref.ID` or an empty handle is discarded.
+* **Failure**: best effort. Core bounds all the calls of one listing to 5 s in total (not per call), logs the error without secrets and serves the listing with the old values. After a failure, or an answer it cannot use (another `Ref.ID`, empty handle), core does not ask about that identity again for 15 minutes (in memory, reset on restart), then retries. A request the client cancels is not counted as a failure.
+* **For migrations**: leave `handle` empty (and a generic `display_name`) in the SQL and implement `DescribeIdentity` by calling the platform's "current user" endpoint with the stored credential.
 
 ## Access grants (optional)
 
