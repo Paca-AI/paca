@@ -861,3 +861,46 @@ func TestGitStore_DeletingAConnectionLeavesItsRepositoriesToBeRebound(t *testing
 		t.Fatalf("unknown repository: %v", err)
 	}
 }
+
+func TestGitStore_UpdateIdentityProfile(t *testing.T) {
+	s, _ := newGitFx(t)
+	ctx := t.Context()
+	exp := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Microsecond)
+	i := sharedIdentity("gitlab.com")
+	i.Handle, i.DisplayName = "", "GitLab connection"
+	if err := s.CreateIdentity(ctx, i); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateIdentityProfile(ctx, i.ID, "paca-bot", "Paca Bot", &exp); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, err := s.FindIdentity(ctx, i.ID)
+	if err != nil || got.Handle != "paca-bot" || got.DisplayName != "Paca Bot" || got.ExpiresAt == nil || !got.ExpiresAt.Equal(exp) {
+		t.Fatalf("after update: %+v %v", got, err)
+	}
+	// A row that already has a handle is left unchanged.
+	if err := s.UpdateIdentityProfile(ctx, i.ID, "renamed", "Other", nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.FindIdentity(ctx, i.ID)
+	if got.Handle != "paca-bot" || got.DisplayName != "Paca Bot" || got.ExpiresAt == nil || !got.ExpiresAt.Equal(exp) {
+		t.Errorf("a named identity was overwritten: %+v", got)
+	}
+	// An empty name and no expiry keep what is stored.
+	j := sharedIdentity("gitlab.com")
+	j.ProviderIdentityID, j.Handle, j.DisplayName = "tok-2", "", "GitLab connection"
+	if err := s.CreateIdentity(ctx, j); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateIdentityProfile(ctx, j.ID, "bot2", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.FindIdentity(ctx, j.ID)
+	if got.Handle != "bot2" || got.DisplayName != "GitLab connection" || got.ExpiresAt != nil {
+		t.Errorf("empty values overwrote: %+v", got)
+	}
+	// An unknown identity is a no-op.
+	if err := s.UpdateIdentityProfile(ctx, uuid.New(), "x", "", nil); err != nil {
+		t.Errorf("unknown identity: %v", err)
+	}
+}

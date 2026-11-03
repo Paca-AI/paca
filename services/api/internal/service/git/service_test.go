@@ -34,6 +34,8 @@ type fakeStore struct {
 	sessions map[string]*gitdom.SetupSession
 	access   map[string]*gitdom.AccessSession
 	bound    map[string]uuid.UUID
+
+	profileUpdates int
 }
 
 func newFakeStore() *fakeStore {
@@ -98,6 +100,21 @@ func (f *fakeStore) DeleteAgentIdentity(_ context.Context, a uuid.UUID, _ string
 		return gitdom.ErrNotFound
 	}
 	delete(f.agentIDs, a)
+	return nil
+}
+func (f *fakeStore) UpdateIdentityProfile(_ context.Context, id uuid.UUID, handle, name string, exp *time.Time) error {
+	i, ok := f.byID[id]
+	if !ok {
+		return gitdom.ErrNotFound
+	}
+	f.profileUpdates++
+	i.Handle = handle
+	if name != "" {
+		i.DisplayName = name
+	}
+	if exp != nil {
+		i.ExpiresAt = exp
+	}
 	return nil
 }
 func (f *fakeStore) DeleteIdentity(_ context.Context, id uuid.UUID) error {
@@ -338,6 +355,29 @@ type fakeProv struct {
 	ensureErr error
 	removed   []gitprovider.RemoveWebhookRequest
 	describes int
+
+	describe    func(gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error)
+	describeLog []gitprovider.DescribeIdentityRequest
+	describeCtx func(context.Context, gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error)
+
+	list     func(gitprovider.ListReposRequest) (gitprovider.RepositoryPage, error)
+	listReqs []gitprovider.ListReposRequest
+}
+
+func (p *fakeProv) DescribeIdentity(ctx context.Context, r gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error) {
+	p.describeLog = append(p.describeLog, r)
+	if p.describeCtx != nil {
+		return p.describeCtx(ctx, r)
+	}
+	return p.describe(r)
+}
+
+func (p *fakeProv) ListRepositories(_ context.Context, r gitprovider.ListReposRequest) (gitprovider.RepositoryPage, error) {
+	p.listReqs = append(p.listReqs, r)
+	if p.list == nil {
+		return gitprovider.RepositoryPage{}, nil
+	}
+	return p.list(r)
 }
 
 func (p *fakeProv) EnsureWebhook(_ context.Context, r gitprovider.EnsureWebhookRequest) (gitprovider.WebhookRef, error) {

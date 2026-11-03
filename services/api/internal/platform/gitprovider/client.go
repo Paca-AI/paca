@@ -124,6 +124,11 @@ func (c *Client) RemoveWebhook(ctx context.Context, req RemoveWebhookRequest) er
 	return err
 }
 
+// DescribeIdentity says who an existing identity is (capability identity_description).
+func (c *Client) DescribeIdentity(ctx context.Context, req DescribeIdentityRequest) (Identity, error) {
+	return call[DescribeIdentityRequest, Identity](ctx, c, "describe_identity", req)
+}
+
 // DeleteIdentity asks the provider to forget an identity remotely.
 func (c *Client) DeleteIdentity(ctx context.Context, req DeleteIdentityRequest) error {
 	_, err := call[DeleteIdentityRequest, Empty](ctx, c, "delete_identity", req)

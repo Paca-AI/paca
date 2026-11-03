@@ -149,6 +149,24 @@ func (s *GitRepository) CreateIdentity(ctx context.Context, i *gitdom.Identity) 
 	return nil
 }
 
+// UpdateIdentityProfile stores the handle, and when given the display name and
+// expiry, the platform reported for an identity. The handle = ” guard keeps a
+// handle set meanwhile (a reconnect) from being overwritten; zero rows
+// (deleted or already named) is not an error.
+func (s *GitRepository) UpdateIdentityProfile(ctx context.Context, id uuid.UUID, handle, displayName string, expiresAt *time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE git_identities
+		SET handle = $2,
+		    display_name = CASE WHEN $3 <> '' THEN $3 ELSE display_name END,
+		    expires_at = COALESCE($4, expires_at),
+		    updated_at = NOW()
+		WHERE id = $1 AND handle = ''`, id.String(), handle, displayName, expiresAt)
+	if err != nil {
+		return fmt.Errorf("git repo: update identity profile: %w", err)
+	}
+	return nil
+}
+
 func (s *GitRepository) getIdentity(ctx context.Context, where string, args ...any) (*gitdom.Identity, error) {
 	var rec gitIdentityRecord
 	if err := s.db.GetContext(ctx, &rec, `SELECT `+gitIdentityCols+` FROM git_identities WHERE `+where, args...); err != nil {

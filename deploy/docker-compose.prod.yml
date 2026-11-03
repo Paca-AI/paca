@@ -288,6 +288,7 @@ services:
       PLUGINS_FRONTEND_DIR: /plugins-frontend
       PLUGINS_MCP_DIR: /plugins-mcp
       PLUGINS_SKILLS_DIR: /plugins-skills
+      PLUGIN_FETCH_PRIVATE_HOSTS: ${PLUGIN_FETCH_PRIVATE_HOSTS:-}
       # Where the API calls into agent-runner's internal-only routes
       # (/agent-bridge/status, /agent-bridge/disconnect, /llm/models). The
       # env var keeps its historical AI_AGENT_* name (the Go

@@ -225,6 +225,11 @@ type Capabilities struct {
 	Reactions         bool `json:"reactions"`
 	WebhookManagement bool `json:"webhook_management"`
 	IdentityDeletion  bool `json:"identity_deletion"`
+	// IdentityDescription is true when the provider can say who an existing
+	// identity is (handle, display name, expiry) without a setup flow. Core
+	// uses it to fill in identities it holds without a handle, such as those
+	// created by a plugin's data migration.
+	IdentityDescription bool `json:"identity_description"`
 	// Branches is true when branches can be looked up and created through the
 	// provider (core uses it to link and create a task's branch).
 	Branches bool `json:"branches"`
@@ -376,6 +381,13 @@ type AccessGrant struct {
 
 // DeleteIdentityRequest asks the provider to forget an identity.
 type DeleteIdentityRequest struct {
+	Identity IdentityRef `json:"identity"`
+}
+
+// DescribeIdentityRequest asks who an existing identity is (capability
+// IdentityDescription). Identity.Handle may be empty: that is the case the
+// operation exists for.
+type DescribeIdentityRequest struct {
 	Identity IdentityRef `json:"identity"`
 }
 
