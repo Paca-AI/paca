@@ -338,6 +338,17 @@ type fakeProv struct {
 	ensureErr error
 	removed   []gitprovider.RemoveWebhookRequest
 	describes int
+
+	list     func(gitprovider.ListReposRequest) (gitprovider.RepositoryPage, error)
+	listReqs []gitprovider.ListReposRequest
+}
+
+func (p *fakeProv) ListRepositories(_ context.Context, r gitprovider.ListReposRequest) (gitprovider.RepositoryPage, error) {
+	p.listReqs = append(p.listReqs, r)
+	if p.list == nil {
+		return gitprovider.RepositoryPage{}, nil
+	}
+	return p.list(r)
 }
 
 func (p *fakeProv) EnsureWebhook(_ context.Context, r gitprovider.EnsureWebhookRequest) (gitprovider.WebhookRef, error) {

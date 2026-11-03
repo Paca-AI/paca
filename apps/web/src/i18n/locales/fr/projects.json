@@ -49,6 +49,17 @@
 				"descriptionPlaceholder": "p. ex. Client web du produit",
 				"descriptionHelp": "Indique aux agents à quoi sert ce dépôt, pour qu'ils choisissent le bon. 1000 caractères maximum."
 			},
+			"picker": {
+				"browse": "Parcourir les dépôts",
+				"hide": "Masquer la liste",
+				"search": "Rechercher des dépôts",
+				"unsupported": "Cette connexion ne peut pas lister les dépôts. Saisissez le chemin ou l'URL ci-dessus.",
+				"error": "Impossible de charger la liste. Vous pouvez toujours saisir le chemin ou l'URL ci-dessus.",
+				"empty": "Aucun dépôt trouvé.",
+				"loadMore": "Charger plus",
+				"linked": "Lié",
+				"private": "Privé"
+			},
 			"unlink": {
 				"button": "Délier",
 				"confirm": "Confirmer",

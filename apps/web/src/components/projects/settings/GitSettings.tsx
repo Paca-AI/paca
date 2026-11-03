@@ -41,6 +41,7 @@ import {
 	updateGitSettings,
 } from "@/lib/git-api";
 import { GitConnections } from "./GitConnections";
+import { GitRepositoryPicker, linkedKey } from "./GitRepositoryPicker";
 
 interface GitSettingsProps {
 	projectId: string;
@@ -169,6 +170,7 @@ function Repositories({
 	const [resumed, setResumed] = useState<string | null>(null);
 	const [confirming, setConfirming] = useState<string | null>(null);
 	const [formOpen, setFormOpen] = useState(false);
+	const [browsing, setBrowsing] = useState(false);
 
 	const provider: GitProvider | undefined =
 		providers.find((p) => p.id === providerId) ?? providers[0];
@@ -179,6 +181,10 @@ function Repositories({
 		? options.filter((c) => kindNeedsAccessGrant(provider, c.kind))
 		: [];
 	const chosen = options.some((c) => c.id === identityId) ? identityId : "";
+	// The connection whose repositories can be browsed: the chosen one, or the
+	// only one there is. With several and none chosen there is no list to show.
+	const browseTarget = chosen || (options.length === 1 ? options[0].id : "");
+	const linkedKeys = new Set(linked.map((r) => linkedKey(r.host, r.full_path)));
 	const accessTarget =
 		chosen && grantable.some((c) => c.id === chosen)
 			? chosen
@@ -342,6 +348,35 @@ function Repositories({
 				<p className="text-xs text-muted-foreground">
 					{t("project.git.link.help")}
 				</p>
+				{browseTarget ? (
+					<>
+						<div>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								aria-expanded={browsing}
+								onClick={() => setBrowsing((v) => !v)}
+							>
+								{browsing
+									? t("project.git.picker.hide")
+									: t("project.git.picker.browse")}
+							</Button>
+						</div>
+						{browsing ? (
+							<GitRepositoryPicker
+								key={browseTarget}
+								projectId={projectId}
+								identityId={browseTarget}
+								linked={linkedKeys}
+								onPick={(fullPath) => {
+									setInput(fullPath);
+									setBrowsing(false);
+								}}
+							/>
+						) : null}
+					</>
+				) : null}
 			</div>
 
 			<div className="flex flex-col gap-1.5">
