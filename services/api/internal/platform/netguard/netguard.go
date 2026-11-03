@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"golang.org/x/net/idna"
 )
 
 // IsPrivateOrInternalIP reports whether ip is a loopback, link-local,
@@ -216,6 +218,12 @@ type PrivateHosts struct {
 // IP literals, wildcards, and anything else that isn't a bare hostname, such as
 // a URL or a host:port. Refusing them keeps the exception tied to a name the
 // operator chose rather than to an address range. Matching is case-insensitive.
+//
+// Entries must already be in the ASCII form CanonicalHost produces, so names
+// with a leading or trailing dot and non-ASCII names are refused too, rather
+// than rewritten: an internationalized name has to be listed in punycode. The
+// set then holds exactly the names that are matched, and Names logs them as
+// the dialer will see them.
 func NewPrivateHosts(entries []string) (*PrivateHosts, []string) {
 	names := make(map[string]struct{}, len(entries))
 	var rejected []string
@@ -224,13 +232,41 @@ func NewPrivateHosts(entries []string) (*PrivateHosts, []string) {
 		if name == "" {
 			continue
 		}
-		if net.ParseIP(name) != nil || strings.ContainsAny(name, "*/:[] \t") {
+		if net.ParseIP(name) != nil || strings.ContainsAny(name, "*/:[] \t") ||
+			strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") || !isASCII(name) {
 			rejected = append(rejected, entry)
 			continue
 		}
 		names[name] = struct{}{}
 	}
 	return &PrivateHosts{names: names}, rejected
+}
+
+// CanonicalHost returns host in the form net/http dials it, lowercased. Like
+// the transport, it passes a non-ASCII name through the IDNA lookup profile, so
+// "ｇｉｔｌａｂ.internal" (fullwidth letters) or "git\u00adlab.internal" (soft
+// hyphen) both become "gitlab.internal". Any hostname compared against
+// PrivateHosts or a plugin manifest must go through it first: a raw comparison
+// would see a different name from the one that is dialed. An error means the
+// name has no ASCII form, and callers must refuse it.
+func CanonicalHost(host string) (string, error) {
+	if !isASCII(host) {
+		ascii, err := idna.Lookup.ToASCII(host)
+		if err != nil {
+			return "", fmt.Errorf("netguard: invalid hostname %q: %w", host, err)
+		}
+		host = ascii
+	}
+	return strings.ToLower(host), nil
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 // Empty reports whether the set has no hostnames.
@@ -251,12 +287,17 @@ func (p *PrivateHosts) Names() []string {
 	return names
 }
 
-// Contains reports whether host is in the set.
+// Contains reports whether host, after CanonicalHost, is in the set. A host
+// with no canonical form is never contained.
 func (p *PrivateHosts) Contains(host string) bool {
 	if p.Empty() {
 		return false
 	}
-	_, ok := p.names[strings.ToLower(host)]
+	name, err := CanonicalHost(host)
+	if err != nil {
+		return false
+	}
+	_, ok := p.names[name]
 	return ok
 }
 

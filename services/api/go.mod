@@ -27,6 +27,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/go-webauthn/webauthn v0.18.2
 	golang.org/x/image v0.44.0
+	golang.org/x/net v0.58.0
 	golang.org/x/oauth2 v0.37.0
 	k8s.io/apimachinery v0.36.3
 )

@@ -402,7 +402,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	fetchPrivateHosts, rejectedHosts := netguard.NewPrivateHosts(cfg.Plugins.FetchPrivateHosts)
 	for _, entry := range rejectedHosts {
-		log.Warn("PLUGIN_FETCH_PRIVATE_HOSTS: ignoring entry, only exact hostnames are accepted", "entry", entry)
+		log.Warn("PLUGIN_FETCH_PRIVATE_HOSTS: ignoring entry, only exact ASCII hostnames are accepted (punycode for international names, no leading or trailing dot)", "entry", entry)
 	}
 	if !fetchPrivateHosts.Empty() {
 		log.Warn("paca.fetch may reach private network addresses for these hosts", "hosts", fetchPrivateHosts.Names())

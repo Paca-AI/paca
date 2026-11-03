@@ -2309,8 +2309,9 @@ func isAllowedFetchDomain(ctx context.Context, rawURL string, allowed []string, 
 		return false
 	}
 
-	host := parsed.Hostname() // strips port
-	if host == "" {
+	// Compare and resolve the name the transport will dial, not the raw one.
+	host, err := netguard.CanonicalHost(parsed.Hostname()) // Hostname strips the port
+	if err != nil || host == "" {
 		return false
 	}
 
@@ -2340,9 +2341,13 @@ func isAllowedFetchDomain(ctx context.Context, rawURL string, allowed []string, 
 // private addresses.
 var fetchLookupIPAddr = net.DefaultResolver.LookupIPAddr
 
+// manifestNamesHost reports whether allowed names host. host must already be
+// canonical (netguard.CanonicalHost); manifest entries are canonicalized here,
+// and an entry with no canonical form names nothing.
 func manifestNamesHost(allowed []string, host string) bool {
 	for _, a := range allowed {
-		if strings.EqualFold(host, strings.TrimSpace(a)) {
+		entry, err := netguard.CanonicalHost(strings.TrimSpace(a))
+		if err == nil && entry == host {
 			return true
 		}
 	}
@@ -2371,7 +2376,12 @@ func withPrivateHostRedirectGuard(client *http.Client, allowed []string, private
 	}
 	guarded := *client
 	guarded.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		host := req.URL.Hostname()
+		// The transport dials the IDNA form of the name, so the check must too,
+		// or "ｇｉｔｌａｂ.internal" would slip past a listed "gitlab.internal".
+		host, err := netguard.CanonicalHost(req.URL.Hostname())
+		if err != nil {
+			return fmt.Errorf("redirect to %q not permitted: %w", req.URL.Hostname(), err)
+		}
 		if privateHosts.Contains(host) && (!strings.EqualFold(req.URL.Scheme, "https") || !manifestNamesHost(allowed, host)) {
 			return fmt.Errorf("redirect to %q not permitted", host)
 		}

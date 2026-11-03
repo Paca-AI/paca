@@ -23,13 +23,15 @@ func TestNewPrivateHosts(t *testing.T) {
 		" GitLab.Internal ", "", "git.corp.example",
 		"10.0.0.5", "fd00::1", "[fd00::1]", "*.corp.example", "*",
 		"https://gitlab.internal", "gitlab.internal:443", "a b",
+		"gitlab.internal.", ".corp.example", "ｇｉｔｌａｂ.internal", "bücher.example", "xn--bcher-kva.example",
 	})
 
-	wantNames := []string{"git.corp.example", "gitlab.internal"}
+	wantNames := []string{"git.corp.example", "gitlab.internal", "xn--bcher-kva.example"}
 	if got := hosts.Names(); !reflect.DeepEqual(got, wantNames) {
 		t.Errorf("Names() = %v, want %v", got, wantNames)
 	}
-	wantRejected := []string{"10.0.0.5", "fd00::1", "[fd00::1]", "*.corp.example", "*", "https://gitlab.internal", "gitlab.internal:443", "a b"}
+	wantRejected := []string{"10.0.0.5", "fd00::1", "[fd00::1]", "*.corp.example", "*", "https://gitlab.internal", "gitlab.internal:443", "a b",
+		"gitlab.internal.", ".corp.example", "ｇｉｔｌａｂ.internal", "bücher.example"}
 	if !reflect.DeepEqual(rejected, wantRejected) {
 		t.Errorf("rejected = %v, want %v", rejected, wantRejected)
 	}
@@ -38,6 +40,41 @@ func TestNewPrivateHosts(t *testing.T) {
 	}
 	if hosts.Contains("sub.gitlab.internal") || hosts.Contains("internal") {
 		t.Error("Contains should match the exact name only")
+	}
+}
+
+func TestCanonicalHost(t *testing.T) {
+	cases := []struct {
+		in, want string
+		wantErr  bool
+	}{
+		{"gitlab.internal", "gitlab.internal", false},
+		{"GitLab.Internal", "gitlab.internal", false},
+		{"ｇｉｔｌａｂ.internal", "gitlab.internal", false},
+		{"git\u00adlab.internal", "gitlab.internal", false},
+		{"bücher.example", "xn--bcher-kva.example", false},
+		{"gitlab.internal.", "gitlab.internal.", false},
+		{"a\u200d.internal", "", true},
+	}
+	for _, c := range cases {
+		got, err := CanonicalHost(c.in)
+		if (err != nil) != c.wantErr || got != c.want {
+			t.Errorf("CanonicalHost(%q) = %q, %v; want %q, error %v", c.in, got, err, c.want, c.wantErr)
+		}
+	}
+}
+
+func TestPrivateHostsContains_IDN(t *testing.T) {
+	hosts := mustPrivateHosts(t, "gitlab.internal")
+	for _, host := range []string{"ｇｉｔｌａｂ.internal", "git\u00adlab.internal", "GITLAB.internal"} {
+		if !hosts.Contains(host) {
+			t.Errorf("Contains(%q) = false, want true: it dials as gitlab.internal", host)
+		}
+	}
+	for _, host := range []string{"gitlab.internal.", "a\u200d.internal"} {
+		if hosts.Contains(host) {
+			t.Errorf("Contains(%q) = true, want false", host)
+		}
 	}
 }
 

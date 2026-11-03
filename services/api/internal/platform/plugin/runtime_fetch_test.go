@@ -2,10 +2,12 @@ package plugin
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -50,6 +52,11 @@ func TestIsAllowedFetchDomain_PrivateHosts(t *testing.T) {
 		"cgnat.internal":   {"100.100.100.200"},
 		"other.internal":   {"192.168.1.5"},
 		"gitlab.com":       {"172.65.251.78"},
+		// A resolver that answers for the raw IDN spelling with a public
+		// address must not let the check pass while the transport dials
+		// "gitlab.internal".
+		"ｇｉｔｌａｂ.internal":       {"203.0.113.5"},
+		"git\u00adlab.internal": {"203.0.113.5"},
 	})
 
 	listed := privateHosts(t, "gitlab.internal", "gitlab6.internal", "mixed.internal", "loop.internal", "meta.internal", "embedded.example", "cgnat.internal", "gitlab.com")
@@ -79,6 +86,13 @@ func TestIsAllowedFetchDomain_PrivateHosts(t *testing.T) {
 		{"listed, resolves to cgnat", "https://cgnat.internal/api", manifest, listed, false},
 		{"listed, one answer is loopback", "https://mixed.internal/api", manifest, listed, false},
 		{"ip literal", "https://10.0.0.5/api", []string{"10.0.0.5"}, listed, false},
+
+		{"idn, fullwidth form of listed host, named in manifest", "https://ｇｉｔｌａｂ.internal/api", manifest, listed, true},
+		{"idn, manifest entry in fullwidth form", "https://gitlab.internal/api", []string{"ｇｉｔｌａｂ.internal"}, listed, true},
+		{"idn, fullwidth form of listed host under wildcard", "https://ｇｉｔｌａｂ.internal/api", []string{"*"}, listed, false},
+		{"idn, soft hyphen form of listed host under wildcard", "https://git\u00adlab.internal/api", []string{"*"}, listed, false},
+		{"idn, soft hyphen form, not in manifest", "https://git\u00adlab.internal/api", []string{"gitlab.com"}, listed, false},
+		{"idn, no ascii form", "https://a\u200d.internal/api", []string{"*"}, listed, false},
 
 		{"empty list, private", "https://gitlab.internal/api", manifest, nil, false},
 		{"empty set, private", "https://gitlab.internal/api", manifest, privateHosts(t), false},
@@ -136,6 +150,16 @@ func TestPrivateHostRedirectGuard(t *testing.T) {
 		{"listed host under wildcard", "https://gitlab.internal/next", []string{"*"}, true},
 		{"listed host, downgrade to http", "http://gitlab.internal/next", []string{"public.example", "gitlab.internal"}, true},
 		{"unlisted host keeps existing behaviour", "https://elsewhere.example/next", []string{"public.example"}, false},
+
+		// The transport dials the IDNA form of the Location host, so these
+		// spellings of "gitlab.internal" must be judged as that name.
+		{"idn fullwidth, https, wildcard", "https://ｇｉｔｌａｂ.internal/next", []string{"*"}, true},
+		{"idn fullwidth, http, wildcard", "http://ｇｉｔｌａｂ.internal/next", []string{"*"}, true},
+		{"idn soft hyphen, https, wildcard", "https://git\u00adlab.internal/next", []string{"*"}, true},
+		{"idn soft hyphen, http, wildcard", "http://git\u00adlab.internal/next", []string{"*"}, true},
+		{"idn fullwidth, http, named in manifest", "http://ｇｉｔｌａｂ.internal/next", []string{"public.example", "gitlab.internal"}, true},
+		{"idn fullwidth, https, named in manifest", "https://ｇｉｔｌａｂ.internal/next", []string{"public.example", "gitlab.internal"}, false},
+		{"idn with no ascii form", "https://a\u200d.internal/next", []string{"*"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -181,5 +205,73 @@ func TestPrivateHostRedirectGuard_NoHostsLeavesClientUntouched(t *testing.T) {
 	}
 	if got := withPrivateHostRedirectGuard(client, nil, privateHosts(t)); got != client {
 		t.Error("empty set should return the same client")
+	}
+}
+
+// TestPrivateHostRedirectGuard_IDNThroughRealTransport runs the redirect through
+// net/http's own transport, which maps the Location host with IDNA before
+// dialing. The stub dialer applies the guard's Blocks decision to the name it
+// receives, with the listed host resolving to 10.0.0.5, so a guard that judged
+// the raw spelling would let a wildcard plugin read the internal server.
+func TestPrivateHostRedirectGuard_IDNThroughRealTransport(t *testing.T) {
+	internalTLS := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "internal-secret")
+	}))
+	defer internalTLS.Close()
+	internalPlain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "internal-secret")
+	}))
+	defer internalPlain.Close()
+
+	listed := privateHosts(t, "gitlab.internal")
+	for _, location := range []string{
+		"https://ｇｉｔｌａｂ.internal/secret",
+		"http://ｇｉｔｌａｂ.internal/secret",
+		"https://git\u00adlab.internal/secret",
+		"http://git\u00adlab.internal/secret",
+		"https://gitlab.internal/secret",
+		"https://GitLab.Internal/secret",
+		"https://gitlab.internal./secret",
+	} {
+		t.Run(location, func(t *testing.T) {
+			public := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, location, http.StatusFound)
+			}))
+			defer public.Close()
+
+			client := netguard.NewSafeHTTPClientWithPrivateHosts(0, listed)
+			transport := client.Transport.(*http.Transport)
+			transport.Proxy = nil
+			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // test servers use self-signed certificates
+			var dialed []string
+			transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				host, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				dialed = append(dialed, host)
+				target := public.Listener.Addr().String()
+				if host != "public.example" {
+					if listed.Blocks(host, net.ParseIP("10.0.0.5")) {
+						return nil, errors.New("blocked by stub dialer")
+					}
+					target = internalTLS.Listener.Addr().String()
+					if port == "80" {
+						target = internalPlain.Listener.Addr().String()
+					}
+				}
+				return (&net.Dialer{}).DialContext(ctx, network, target)
+			}
+
+			resp, err := fetchStart(t, withPrivateHostRedirectGuard(client, []string{"*"}, listed))
+			if err != nil {
+				return
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, _ := io.ReadAll(resp.Body)
+			if strings.Contains(string(body), "internal-secret") {
+				t.Fatalf("wildcard plugin reached the listed private host via %q (dialed %v)", location, dialed)
+			}
+		})
 	}
 }
