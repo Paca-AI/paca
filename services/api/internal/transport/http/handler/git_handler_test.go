@@ -758,8 +758,8 @@ func TestGitHandler_ListAvailableRepositories_Errors(t *testing.T) {
 	if rec := serveGit(t, &fakeGitSvc{}, "GET", url("nope", uuid.NewString()), "", nil); rec.Code != 400 {
 		t.Fatalf("bad project id: %d", rec.Code)
 	}
-	// Oversized search or cursor is refused before reaching the platform.
-	for _, qs := range []string{"q=" + strings.Repeat("a", 201), "cursor=" + strings.Repeat("a", 1025)} {
+	// Oversized search is refused before reaching the platform.
+	for _, qs := range []string{"q=" + strings.Repeat("a", 201)} {
 		f = &fakeGitSvc{}
 		if rec := serveGit(t, f, "GET", url(uuid.NewString(), uuid.NewString())+"?"+qs, "", nil); rec.Code != 400 || errCode(rec) != "BAD_REQUEST" {
 			t.Fatalf("%.12s: %d %s", qs, rec.Code, rec.Body)
@@ -767,6 +767,10 @@ func TestGitHandler_ListAvailableRepositories_Errors(t *testing.T) {
 	}
 	if rec := serveGit(t, &fakeGitSvc{avail: &gitsvc.AvailableRepositories{}}, "GET", url(uuid.NewString(), uuid.NewString())+"?q="+strings.Repeat("a", 200), "", nil); rec.Code != 200 {
 		t.Fatalf("200-char search: %d", rec.Code)
+	}
+	// The cursor is opaque and provider-issued: a long one passes through.
+	if rec := serveGit(t, &fakeGitSvc{avail: &gitsvc.AvailableRepositories{}}, "GET", url(uuid.NewString(), uuid.NewString())+"?cursor="+strings.Repeat("a", 5000), "", nil); rec.Code != 200 {
+		t.Fatalf("long cursor: %d", rec.Code)
 	}
 	// 200 two-byte characters ("è") are still 200 characters.
 	if rec := serveGit(t, &fakeGitSvc{avail: &gitsvc.AvailableRepositories{}}, "GET", url(uuid.NewString(), uuid.NewString())+"?q="+strings.Repeat("%C3%A8", 200), "", nil); rec.Code != 200 {
