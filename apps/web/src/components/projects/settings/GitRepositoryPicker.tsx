@@ -60,6 +60,18 @@ export function GitRepositoryPicker({
 		list.data?.pages.flatMap((p) => p.items) ?? [];
 	const unsupported = list.data ? !list.data.pages[0]?.supported : false;
 
+	// A failed "Load more" keeps the pages already loaded; the error is shown
+	// next to the button instead of replacing the list.
+	const detail = list.isError ? gitProviderMessage(list.error) : undefined;
+	const errorAlert = (
+		<div role="alert" className="flex flex-col gap-1 text-sm">
+			<p className="text-destructive">{t("project.git.picker.error")}</p>
+			{detail ? (
+				<p className="text-xs text-muted-foreground">{detail}</p>
+			) : null}
+		</div>
+	);
+
 	let body: React.ReactNode;
 	if (list.isPending) {
 		body = (
@@ -68,16 +80,8 @@ export function GitRepositoryPicker({
 				<Skeleton className="h-8 w-full" />
 			</div>
 		);
-	} else if (list.isError) {
-		const detail = gitProviderMessage(list.error);
-		body = (
-			<div role="alert" className="flex flex-col gap-1 text-sm">
-				<p className="text-destructive">{t("project.git.picker.error")}</p>
-				{detail ? (
-					<p className="text-xs text-muted-foreground">{detail}</p>
-				) : null}
-			</div>
-		);
+	} else if (list.isError && !list.data) {
+		body = errorAlert;
 	} else if (unsupported) {
 		body = (
 			<p role="status" className="text-sm text-muted-foreground">
@@ -155,6 +159,7 @@ export function GitRepositoryPicker({
 				</div>
 			)}
 			{body}
+			{list.isError && list.data ? errorAlert : null}
 			{list.hasNextPage ? (
 				<div>
 					<Button

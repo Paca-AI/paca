@@ -861,6 +861,34 @@ describe("GitSettings", () => {
 			).not.toBeInTheDocument();
 		});
 
+		it("keeps the loaded list when loading more fails", async () => {
+			const user = userEvent.setup();
+			available = (_url, params) =>
+				params?.cursor === "c2"
+					? Promise.reject({
+							response: {
+								status: 422,
+								data: {
+									error_code: "GIT_PROVIDER_REJECTED",
+									error_details: { provider_message: "rate limited" },
+								},
+							},
+						})
+					: page([{ full_path: "acme/first" }], "c2");
+			renderPanel();
+			await user.click(
+				await screen.findByRole("button", { name: "Browse repositories" }),
+			);
+			await screen.findByText("acme/first");
+			await user.click(screen.getByRole("button", { name: "Load more" }));
+			expect(
+				await screen.findByText(/Couldn't load the list/),
+			).toBeInTheDocument();
+			expect(screen.getByText("rate limited")).toBeInTheDocument();
+			expect(screen.getByText("acme/first")).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Load more" })).toBeEnabled();
+		});
+
 		it("marks repositories already linked and does not offer them", async () => {
 			const user = userEvent.setup();
 			repos = [repo];
