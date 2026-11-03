@@ -768,6 +768,10 @@ func TestGitHandler_ListAvailableRepositories_Errors(t *testing.T) {
 	if rec := serveGit(t, &fakeGitSvc{avail: &gitsvc.AvailableRepositories{}}, "GET", url(uuid.NewString(), uuid.NewString())+"?q="+strings.Repeat("a", 200), "", nil); rec.Code != 200 {
 		t.Fatalf("200-char search: %d", rec.Code)
 	}
+	// 200 two-byte characters ("è") are still 200 characters.
+	if rec := serveGit(t, &fakeGitSvc{avail: &gitsvc.AvailableRepositories{}}, "GET", url(uuid.NewString(), uuid.NewString())+"?q="+strings.Repeat("%C3%A8", 200), "", nil); rec.Code != 200 {
+		t.Fatalf("200 multibyte chars: %d", rec.Code)
+	}
 	// A refusal carries the platform's reason for the UI.
 	f = &fakeGitSvc{err: &gitprovider.Error{Code: gitprovider.CodeForbidden, Message: "the token needs read_api"}}
 	rec := serveGit(t, f, "GET", url(uuid.NewString(), uuid.NewString()), "", nil)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -496,7 +497,8 @@ func (h *GitHandler) ListAvailableRepositories(w http.ResponseWriter, r *http.Re
 	}
 	q := r.URL.Query()
 	query := strings.TrimSpace(q.Get("q"))
-	if len(query) > maxRepositorySearchLen || len(q.Get("cursor")) > maxRepositoryCursorLen {
+	// Characters, not bytes: the web input caps the search at 200 characters.
+	if utf8.RuneCountInString(query) > maxRepositorySearchLen || len(q.Get("cursor")) > maxRepositoryCursorLen {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "search or cursor is too long"))
 		return
 	}
