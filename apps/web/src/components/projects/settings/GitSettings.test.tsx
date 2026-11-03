@@ -141,6 +141,10 @@ function renderPanel(canWrite = true) {
 	);
 }
 
+async function openTab(name: RegExp) {
+	await userEvent.click(await screen.findByRole("tab", { name }));
+}
+
 describe("GitSettings", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
@@ -703,21 +707,23 @@ describe("GitSettings", () => {
 		).toBeInTheDocument();
 		expect(screen.getByLabelText("Repository")).toBeInTheDocument();
 		expect(screen.queryByText("Get started")).toBeNull();
-		expect(screen.queryByText("Using it")).toBeNull();
+		expect(screen.queryByRole("tab", { name: /^Using it/ })).toBeNull();
 	});
 
 	it("shows the bot to mention and how to use it once a repository is linked", async () => {
 		repos = [{ ...repo, identity_handle: "paca-bot" }];
 		settings = { ...settings, default_responder_agent_id: "a1" };
 		renderPanel();
+		await openTab(/^Using it/);
 		expect((await screen.findAllByText("@paca-bot")).length).toBeGreaterThan(0);
-		expect(screen.getByText("Using it")).toBeInTheDocument();
+		expect(screen.getByRole("tab", { name: /^Using it/ })).toBeInTheDocument();
 	});
 
 	it("saves a changed responder, access bar and pause switch", async () => {
 		const user = userEvent.setup();
 		repos = [repo];
 		renderPanel();
+		await openTab(/^Automation/);
 		const responder = await screen.findByLabelText(/default responder/i);
 		await screen.findByRole("option", { name: "Reviewer" });
 		const save = screen.getByRole("button", { name: /^save$/i });
@@ -749,6 +755,7 @@ describe("GitSettings", () => {
 		const user = userEvent.setup();
 		repos = [repo];
 		renderPanel();
+		await openTab(/^Automation/);
 		await screen.findByRole("option", { name: "Dev" });
 		await user.selectOptions(screen.getByLabelText(/default responder/i), "a1");
 		await user.click(screen.getByRole("button", { name: /^save$/i }));
@@ -766,6 +773,7 @@ describe("GitSettings", () => {
 	it("shows the automation but cannot change it without git:write", async () => {
 		repos = [repo];
 		renderPanel(false);
+		await openTab(/^Automation/);
 		expect(await screen.findByLabelText(/default responder/i)).toBeDisabled();
 		expect(screen.getByLabelText(/minimum access/i)).toBeDisabled();
 		expect(

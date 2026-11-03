@@ -2014,7 +2014,10 @@ export function AppSidebar() {
 				<UserMenu />
 			</SidebarFooter>
 
-			<SidebarRail />
+			{/* One gesture per edge: while open the edge only resizes (collapse
+			   with the header toggle); the click-to-toggle rail exists only
+			   while collapsed, to bring the sidebar back. */}
+			{sidebarState === "collapsed" && <SidebarRail />}
 			{!isMobile && sidebarState === "expanded" && (
 				<PaneResizeHandle
 					config={SIDEBAR_PANE}

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GitBranch, Link2, Loader2, Lock, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyChip, EmptyState, Section } from "@/components/git/git-ui";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,7 @@ import {
 	updateGitRepository,
 	updateGitSettings,
 } from "@/lib/git-api";
+import { cn } from "@/lib/utils";
 import { GitConnections } from "./GitConnections";
 import { GitRepositoryPicker, linkedKey } from "./GitRepositoryPicker";
 
@@ -94,6 +95,7 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 		queryKey: ["git", "projects", projectId, "responder-candidates"] as const,
 		queryFn: () => listAgents(projectId),
 	});
+	const [tab, setTab] = useState<GitTab | null>(null);
 
 	if (providers.isLoading || repos.isLoading) {
 		return <Skeleton className="h-60 w-full" />;
@@ -104,8 +106,33 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 	const handle = linked.find((r) => r.identity_handle)?.identity_handle ?? "";
 	const bot = handle ? `@${handle}` : "@bot";
 
+	const connectionCount = connections.data?.length ?? 0;
+	// Open on the step the project is stuck at: a connection first, then a
+	// repository; once both exist the repositories are what people come back to.
+	const current: GitTab =
+		tab ??
+		(connectionCount === 0 && !connections.isLoading
+			? "connections"
+			: "repositories");
+	const tabs: { id: GitTab; label: string; count?: number }[] = [
+		{
+			id: "connections",
+			label: t("project.git.connections.title"),
+			count: connectionCount,
+		},
+		{
+			id: "repositories",
+			label: t("project.git.repositories.title"),
+			count: linked.length,
+		},
+		{ id: "automation", label: t("project.git.automation.title") },
+		...(linked.length > 0
+			? [{ id: "usage" as const, label: t("project.git.usage.title") }]
+			: []),
+	];
+
 	return (
-		<div className="flex max-w-3xl flex-col gap-8">
+		<div className="flex max-w-3xl flex-col gap-6">
 			<div>
 				<h2 className="flex items-center gap-2 text-lg font-semibold">
 					<GitBranch className="size-4 text-primary" />
@@ -116,27 +143,102 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 				</p>
 			</div>
 
-			<GitConnections projectId={projectId} providers={list} />
+			<div
+				role="tablist"
+				aria-label={t("project.git.title")}
+				className="flex gap-1 border-b"
+				onKeyDown={(e) => {
+					const i = tabs.findIndex((x) => x.id === current);
+					const next =
+						e.key === "ArrowRight"
+							? tabs[(i + 1) % tabs.length]
+							: e.key === "ArrowLeft"
+								? tabs[(i - 1 + tabs.length) % tabs.length]
+								: null;
+					if (!next) return;
+					e.preventDefault();
+					setTab(next.id);
+					document.getElementById(`git-tab-${next.id}`)?.focus();
+				}}
+			>
+				{tabs.map((x) => (
+					<button
+						key={x.id}
+						type="button"
+						role="tab"
+						id={`git-tab-${x.id}`}
+						aria-selected={current === x.id}
+						aria-controls={`git-panel-${x.id}`}
+						tabIndex={current === x.id ? 0 : -1}
+						onClick={() => setTab(x.id)}
+						className={cn(
+							"-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+							current === x.id
+								? "border-primary text-foreground"
+								: "border-transparent text-muted-foreground hover:text-foreground",
+						)}
+					>
+						{x.label}
+						{x.count !== undefined ? (
+							<span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">
+								{x.count}
+							</span>
+						) : null}
+					</button>
+				))}
+			</div>
 
-			<Repositories
-				projectId={projectId}
-				canWrite={canWrite}
-				providers={list}
-				connections={connections.data ?? []}
-				linked={linked}
-			/>
-
-			<Automation
-				projectId={projectId}
-				canWrite={canWrite}
-				locked={linked.length === 0}
-				settings={settings.data}
-				agentList={agentList}
-			/>
-
+			{/* Panels stay mounted so a half-typed repository or an unsaved
+			   automation change survives a trip to another tab. */}
+			<TabPanel id="connections" current={current}>
+				<GitConnections projectId={projectId} providers={list} />
+			</TabPanel>
+			<TabPanel id="repositories" current={current}>
+				<Repositories
+					projectId={projectId}
+					canWrite={canWrite}
+					providers={list}
+					connections={connections.data ?? []}
+					linked={linked}
+				/>
+			</TabPanel>
+			<TabPanel id="automation" current={current}>
+				<Automation
+					projectId={projectId}
+					canWrite={canWrite}
+					locked={linked.length === 0}
+					settings={settings.data}
+					agentList={agentList}
+				/>
+			</TabPanel>
 			{linked.length > 0 ? (
-				<HowToUse bot={bot} agentHandle={agentList[0]?.handle ?? "agent"} />
+				<TabPanel id="usage" current={current}>
+					<HowToUse bot={bot} agentHandle={agentList[0]?.handle ?? "agent"} />
+				</TabPanel>
 			) : null}
+		</div>
+	);
+}
+
+type GitTab = "connections" | "repositories" | "automation" | "usage";
+
+function TabPanel({
+	id,
+	current,
+	children,
+}: {
+	id: GitTab;
+	current: GitTab;
+	children: ReactNode;
+}) {
+	return (
+		<div
+			role="tabpanel"
+			id={`git-panel-${id}`}
+			aria-labelledby={`git-tab-${id}`}
+			hidden={current !== id}
+		>
+			{children}
 		</div>
 	);
 }
