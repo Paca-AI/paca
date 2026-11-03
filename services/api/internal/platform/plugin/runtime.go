@@ -833,7 +833,20 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 				m.Memory().WriteUint32Le(uint32(stack[7]), uint32(errPtrLen[1]))
 				return
 			}
-			resultPtrLen := writeJSONResult(m, result)
+			resultPtrLen, size, werr := writeJSONResultChecked(m, result)
+			if werr != nil {
+				// Report through errPtr/errLen: a zero-length result with no
+				// error would be indistinguishable from a zero-row success.
+				errPtrLen, _ := writeToMemory(m, []byte(responseTooLargeMessage("db_query", size)))
+				if errPtrLen == nil {
+					errPtrLen = []uint64{0, 0}
+				}
+				m.Memory().WriteUint32Le(uint32(stack[4]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[5]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[6]), uint32(errPtrLen[0]))
+				m.Memory().WriteUint32Le(uint32(stack[7]), uint32(errPtrLen[1]))
+				return
+			}
 			m.Memory().WriteUint32Le(uint32(stack[4]), uint32(resultPtrLen[0]))
 			m.Memory().WriteUint32Le(uint32(stack[5]), uint32(resultPtrLen[1]))
 			m.Memory().WriteUint32Le(uint32(stack[6]), 0)
@@ -1762,7 +1775,15 @@ func (r *Runtime) registerSettingsFunction(b wazero.HostModuleBuilder, _ plugind
 				writeBack(writeJSONResult(m, map[string]string{"error": "settings_get: " + err.Error()}))
 				return
 			}
-			writeBack(writeJSONResult(m, snap))
+			ptrLen, size, werr := writeJSONResultChecked(m, snap)
+			if werr != nil {
+				writeBack(writeJSONResult(m, map[string]string{
+					"error": responseTooLargeMessage("settings_get", size),
+					"code":  errCodeResponseTooLarge,
+				}))
+				return
+			}
+			writeBack(ptrLen)
 		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64}, nil).
 		Export("settings_get")
 }
@@ -2166,6 +2187,7 @@ func isAllowedConfigKey(key string, backend *plugindom.BackendManifest) bool {
 // registerFetchFunction registers the paca.fetch host function that allows
 // plugins to make outbound HTTP requests to domains listed in their manifest.
 func (r *Runtime) registerFetchFunction(b wazero.HostModuleBuilder, p plugindom.Plugin) {
+	chunks := newFetchChunkStore()
 	// paca.fetch(reqPtr, reqLen, resPtrPtr, resLenPtr)
 	//   reqPtr/reqLen   – JSON-encoded fetchHostRequest in WASM memory
 	//   resPtrPtr       – pointer to uint32 that receives response JSON ptr
@@ -2198,9 +2220,50 @@ func (r *Runtime) registerFetchFunction(b wazero.HostModuleBuilder, p plugindom.
 				URL     string            `json:"url"`
 				Headers map[string]string `json:"headers"`
 				Body    string            `json:"body"`
+				// Chunked opts in to receiving a body_handle instead of a
+				// response_too_large error when the response does not fit.
+				Chunked bool `json:"chunked"`
+				// BodyHandle/Offset/Limit read a parked body (see
+				// fetch_chunks.go); URL and Method are unused then.
+				BodyHandle string `json:"body_handle"`
+				Offset     int    `json:"offset"`
+				Limit      int    `json:"limit"`
 			}
 			if err := json.Unmarshal(reqBytes, &req); err != nil {
 				writeErr("fetch: decode request: " + err.Error())
+				return
+			}
+
+			if req.BodyHandle != "" {
+				chunk, total, done, cerr := chunks.read(req.BodyHandle, req.Offset, req.Limit)
+				if cerr != nil {
+					writeErr(cerr.Error())
+					return
+				}
+				type chunkResp struct {
+					Chunk []byte `json:"chunk"` // base64 on the wire
+					Size  int    `json:"body_size"`
+					Done  bool   `json:"done"`
+				}
+				ptrLen, size, werr := writeJSONResultChecked(m, chunkResp{Chunk: chunk, Size: total, Done: done})
+				if werr != nil {
+					// The chunk did not fit; the handle is still parked, so the
+					// guest can retry with a smaller limit.
+					type tooLargeResp struct {
+						Status int    `json:"status"`
+						Error  string `json:"error"`
+						Code   string `json:"code"`
+					}
+					writeBack(writeJSONResult(m, tooLargeResp{
+						Error: responseTooLargeMessage("fetch", size),
+						Code:  errCodeResponseTooLarge,
+					}))
+					return
+				}
+				if done {
+					chunks.release(req.BodyHandle)
+				}
+				writeBack(ptrLen)
 				return
 			}
 
@@ -2271,11 +2334,46 @@ func (r *Runtime) registerFetchFunction(b wazero.HostModuleBuilder, p plugindom.
 					hdrs[k] = vv[0]
 				}
 			}
-			writeBack(writeJSONResult(m, successResp{
+			ptrLen, size, werr := writeJSONResultChecked(m, successResp{
 				Status:  resp.StatusCode,
 				Body:    string(respBody),
 				Headers: hdrs,
-			}))
+			})
+			if werr != nil && req.Chunked {
+				// Park the body host-side and hand back a handle; the guest
+				// pulls it in arena-sized pieces.
+				type chunkedResp struct {
+					Status     int               `json:"status"`
+					Headers    map[string]string `json:"headers"`
+					BodyHandle string            `json:"body_handle"`
+					BodySize   int               `json:"body_size"`
+				}
+				handle := chunks.put(respBody)
+				meta, _, merr := writeJSONResultChecked(m, chunkedResp{
+					Status: resp.StatusCode, Headers: hdrs, BodyHandle: handle, BodySize: len(respBody),
+				})
+				if merr == nil {
+					writeBack(meta)
+					return
+				}
+				chunks.release(handle) // even the metadata did not fit
+			}
+			if werr != nil {
+				// The envelope (JSON-escaped body + headers) did not fit in the
+				// plugin's arena. Deliver a small error envelope so the guest
+				// sees why, rather than an empty response.
+				type tooLargeResp struct {
+					Status int    `json:"status"`
+					Error  string `json:"error"`
+					Code   string `json:"code"`
+				}
+				writeBack(writeJSONResult(m, tooLargeResp{
+					Error: responseTooLargeMessage("fetch", size),
+					Code:  errCodeResponseTooLarge,
+				}))
+				return
+			}
+			writeBack(ptrLen)
 		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64},
 			nil).
 		Export("fetch")
@@ -2404,14 +2502,42 @@ func readString(m api.Module, ptr, length uint64) (string, error) {
 	return string(b), err
 }
 
-// writeJSONResult marshals v to JSON and writes it into WASM memory, returning
-// the [ptr, len] pair expected by host function return conventions.
-func writeJSONResult(m api.Module, v any) []uint64 {
+// errCodeResponseTooLarge is the machine-readable "code" a host function sets
+// when its result could not be delivered because it does not fit in the
+// plugin's fixed host-allocation arena. plugin-sdk-go maps it to
+// ErrResponseTooLarge instead of reporting an empty response (which reads
+// like a network failure).
+const errCodeResponseTooLarge = "response_too_large"
+
+// responseTooLargeMessage is the actionable text for a result of size bytes
+// that the plugin's allocator refused. The arena size is the plugin's own
+// business, so the message names the payload rather than a limit.
+func responseTooLargeMessage(op string, size int) string {
+	return fmt.Sprintf("%s: response of %d bytes does not fit in the plugin's host response buffer; request less data (e.g. a smaller page size)", op, size)
+}
+
+// writeJSONResultChecked marshals v to JSON and writes it into WASM memory.
+// Unlike writeJSONResult it reports an allocation failure, along with the
+// payload size, so a caller that has an error channel can tell the guest why
+// nothing was delivered.
+func writeJSONResultChecked(m api.Module, v any) (ptrLen []uint64, size int, err error) {
 	data, err := json.Marshal(v)
 	if err != nil {
-		return writeErrorResult(m, err)
+		return nil, 0, err
 	}
-	ptrLen, err := writeToMemory(m, data)
+	ptrLen, err = writeToMemory(m, data)
+	if err != nil {
+		return nil, len(data), err
+	}
+	return ptrLen, len(data), nil
+}
+
+// writeJSONResult marshals v to JSON and writes it into WASM memory, returning
+// the [ptr, len] pair expected by host function return conventions. An
+// allocation failure yields {0,0}; callers that can report an error to the
+// guest should use writeJSONResultChecked instead.
+func writeJSONResult(m api.Module, v any) []uint64 {
+	ptrLen, _, err := writeJSONResultChecked(m, v)
 	if err != nil {
 		return []uint64{0, 0}
 	}

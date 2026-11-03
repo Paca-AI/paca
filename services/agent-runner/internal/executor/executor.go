@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path"
 	"strings"
 	"time"
 
@@ -1001,25 +1002,57 @@ func (e *Executor) syncProviderCLIConfig(ctx context.Context, backendRef string,
 	if err != nil {
 		return fmt.Errorf("build cli config sync files: %w", err)
 	}
-	entries := make([]fileEntry, 0, len(files))
-	for _, f := range files {
-		entries = append(entries, fileEntry{RelPath: f.RelPath, Content: f.Content})
-	}
-	// adapter.HomeDirName() (e.g. ".claude") is excluded from the tar's
-	// auto-generated directory entries — the image makes it a symlink onto
-	// the persistent volume, and a literal directory header at that exact
-	// path conflicts with the symlink already there (see buildFileTar's own
-	// doc comment on this).
-	tarBuf, err := buildFileTar(entries, map[string]bool{adapter.HomeDirName(): true})
+	entries, persistedDirs := persistedCLIEntries(adapter, files)
+	// The files are written at their real location on the persistent volume
+	// and extracted from "/", never through ~/<HomeDirName> (an absolute
+	// symlink onto that volume): newer Docker daemons resolve an absolute
+	// symlink met while extracting against the extraction directory instead
+	// of the container root, so extracting under /home/goose put the config in
+	// /home/goose/home/paca/workspaces/... where the CLI never read it, and
+	// an agent silently lost its MCP servers (the Paca one included). The
+	// persisted directories already exist (cliHomeBootstrapScript made them),
+	// so they are excluded from the tar's generated directory entries.
+	tarBuf, err := buildFileTar(entries, persistedDirs)
 	if err != nil {
 		return fmt.Errorf("build cli config tar: %w", err)
 	}
 	if tarBuf != nil {
-		if err := e.sandboxMgr.CopyToEnvironment(ctx, backendRef, sandboxWorkdir, tarBuf); err != nil {
+		if err := e.sandboxMgr.CopyToEnvironment(ctx, backendRef, "/", tarBuf); err != nil {
 			return fmt.Errorf("write cli config to environment: %w", err)
 		}
 	}
 	return nil
+}
+
+// persistedCLIEntries maps an adapter's $HOME-relative files (".claude/...")
+// onto the tar-relative path of the directory ~/<HomeDirName> points at
+// (HomeRoot/<Name()> without its leading slash), so they can be extracted from
+// "/" without going through the symlink. It also returns the set of existing
+// ancestors of that directory, to keep out of the tar's directory entries.
+// Paths outside HomeDirName (none today) are left $HOME-relative.
+func persistedCLIEntries(adapter providercli.Adapter, files []providercli.FileEntry) ([]fileEntry, map[string]bool) {
+	home := adapter.HomeDirName()
+	persisted := strings.TrimPrefix(path.Join(providercli.HomeRoot, adapter.Name()), "/")
+	entries := make([]fileEntry, 0, len(files))
+	for _, f := range files {
+		rel := f.RelPath
+		switch {
+		case rel == home:
+			rel = persisted
+		case strings.HasPrefix(rel, home+"/"):
+			rel = persisted + strings.TrimPrefix(rel, home)
+		default:
+			rel = strings.TrimPrefix(path.Join(sandboxWorkdir, rel), "/")
+		}
+		entries = append(entries, fileEntry{RelPath: rel, Content: f.Content})
+	}
+	exclude := map[string]bool{}
+	for _, base := range []string{persisted, strings.TrimPrefix(sandboxWorkdir, "/")} {
+		for dir := base; dir != "." && dir != "" && dir != "/"; dir = path.Dir(dir) {
+			exclude[dir] = true
+		}
+	}
+	return entries, exclude
 }
 
 // attachEnvironmentSession gives an environment-backed conversation goose's
