@@ -1,7 +1,7 @@
 @projects @git
 Feature: Linking, unlinking and automating Git in a project's settings
   With a linked repository the Git tab shows each repository with the bot to
-  mention, lets a writer unlink it, and unlocks the Automation section: the
+  mention, lets a writer unlink it, and unlocks the Automation tab: the
   default responder, the minimum repository permission, and a pause switch,
   saved to the project's real settings. Link errors from the platform are
   explained in words. The provider and repository endpoints are stubbed in the
@@ -17,7 +17,7 @@ Feature: Linking, unlinking and automating Git in a project's settings
     Scenario: A linked repository shows its branch and the bot to mention
       Given the project has "acme/web" linked, served by "paca-bot"
       Then the repository is listed with its default branch "main" and "@paca-bot"
-      And the "Using it" section shows the mention to type
+      And the "Using it" tab shows the mention to type
 
     Scenario: Unlinking asks for confirmation
       Given the project has "acme/web" linked
@@ -48,7 +48,7 @@ Feature: Linking, unlinking and automating Git in a project's settings
 
     Scenario: Automation is locked until a repository is linked
       Given the project has no repository
-      Then the Automation section says to link a repository first
+      Then the Automation tab says to link a repository first
       And its fields are disabled and there is no Save button
 
     Scenario: A missing default responder is warned about

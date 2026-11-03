@@ -137,11 +137,13 @@ test.describe("Project Git settings", () => {
 			await signIn(page);
 			await stubGit(page, projectId, { providers: [] });
 			await openGitSettings(page, projectId);
+			// With no connection the page opens on Connections.
+			await page.getByRole("tab", { name: /^Repositories/ }).click();
 
 			await expect(page.getByText("No repositories linked")).toBeVisible();
 			await expect(
 				page
-					.getByLabel("Repositories")
+					.getByRole("tabpanel", { name: /^Repositories/ })
 					.getByText("No Git provider is installed", { exact: false }),
 			).toBeVisible();
 			await expect(page.getByRole("button", { name: "Link" })).toHaveCount(0);

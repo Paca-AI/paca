@@ -107,13 +107,6 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 	const bot = handle ? `@${handle}` : "@bot";
 
 	const connectionCount = connections.data?.length ?? 0;
-	// Open on the step the project is stuck at: a connection first, then a
-	// repository; once both exist the repositories are what people come back to.
-	const current: GitTab =
-		tab ??
-		(connectionCount === 0 && !connections.isLoading
-			? "connections"
-			: "repositories");
 	const tabs: { id: GitTab; label: string; count?: number }[] = [
 		{
 			id: "connections",
@@ -130,6 +123,17 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 			? [{ id: "usage" as const, label: t("project.git.usage.title") }]
 			: []),
 	];
+	// Open on the step the project is stuck at: a connection first, then a
+	// repository; once both exist the repositories are what people come back to.
+	// A remembered tab that has since gone (the last repository was unlinked
+	// while "Using it" was open) falls back too, so a panel is always showing.
+	const fallback: GitTab =
+		connectionCount === 0 && !connections.isLoading
+			? "connections"
+			: "repositories";
+	const current: GitTab = tabs.some((x) => x.id === tab)
+		? (tab as GitTab)
+		: fallback;
 
 	return (
 		<div className="flex max-w-3xl flex-col gap-6">

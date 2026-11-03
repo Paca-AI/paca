@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -717,6 +717,25 @@ describe("GitSettings", () => {
 		await openTab(/^Using it/);
 		expect((await screen.findAllByText("@paca-bot")).length).toBeGreaterThan(0);
 		expect(screen.getByRole("tab", { name: /^Using it/ })).toBeInTheDocument();
+	});
+
+	it("falls back to a tab that exists when the open one disappears", async () => {
+		repos = [repo];
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		render(
+			<QueryClientProvider client={client}>
+				<GitSettings projectId={PROJECT} canWrite />
+			</QueryClientProvider>,
+		);
+		await openTab(/^Using it/);
+		repos = [];
+		await act(() => client.invalidateQueries());
+		await waitFor(() =>
+			expect(screen.queryByRole("tab", { name: /^Using it/ })).toBeNull(),
+		);
+		expect(screen.getByRole("tab", { selected: true })).toBeInTheDocument();
 	});
 
 	it("saves a changed responder, access bar and pause switch", async () => {
