@@ -1,8 +1,11 @@
 package gitsvc
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,21 +69,73 @@ func TestDescribeNameless_ProviderErrorKeepsRequestOK(t *testing.T) {
 	}
 }
 
-func TestDescribeNameless_StopsWhenTheBudgetRunsOut(t *testing.T) {
+func TestDescribeNameless_CallerCancelDoesNotBackOff(t *testing.T) {
 	svc, st, pr := describingSetup(t, true)
 	st.addIdentity("", "tok-1")
 	st.addIdentity("", "tok-2")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	pr.describe = func(gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error) {
-		cancel() // the budget is gone once the first call returns
-		return gitprovider.Identity{}, errors.New("timed out")
+		cancel() // the client closes the request during the first call
+		return gitprovider.Identity{}, errors.New("context canceled")
 	}
 	if _, err := svc.ListIdentities(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if len(pr.describeLog) != 1 || len(svc.describeFailed) != 1 {
-		t.Fatalf("calls=%d backoffs=%d, want 1 of each", len(pr.describeLog), len(svc.describeFailed))
+	if len(pr.describeLog) != 1 || len(svc.describeFailed) != 0 {
+		t.Fatalf("calls=%d backoffs=%d, want 1 call and no backoff", len(pr.describeLog), len(svc.describeFailed))
+	}
+}
+
+// One 5 s budget covers the whole listing: with a timeout per call, three
+// identities that never answer would each be asked.
+func TestDescribeNameless_BudgetIsSharedAcrossIdentities(t *testing.T) {
+	old := describeTimeout
+	describeTimeout = 50 * time.Millisecond
+	defer func() { describeTimeout = old }()
+	svc, st, pr := describingSetup(t, true)
+	for _, tok := range []string{"tok-1", "tok-2", "tok-3"} {
+		st.addIdentity("", tok)
+	}
+	pr.describeCtx = func(ctx context.Context, _ gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error) {
+		<-ctx.Done() // a platform that never answers
+		return gitprovider.Identity{}, ctx.Err()
+	}
+	start := time.Now()
+	if _, err := svc.ListIdentities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(pr.describeLog) != 1 {
+		t.Fatalf("calls = %d, want 1: the budget ran out in the first", len(pr.describeLog))
+	}
+	if el := time.Since(start); el > 5*time.Second {
+		t.Errorf("listing took %v", el)
+	}
+	// The call that ran out of budget is paused, the ones never asked are not.
+	if len(svc.describeFailed) != 1 {
+		t.Errorf("backoffs = %d, want 1", len(svc.describeFailed))
+	}
+}
+
+func TestDescribeNameless_LogMasksSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
+	svc, st, pr := describingSetup(t, true)
+	st.addIdentity("", "tok-1")
+	pr.describe = func(gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error) {
+		return gitprovider.Identity{}, errors.New("401 for glpat-abcdefghij1234567890")
+	}
+	if _, err := svc.ListIdentities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "describe identity failed") {
+		t.Fatalf("no log line: %q", out)
+	}
+	if strings.Contains(out, "glpat-abcdefghij1234567890") {
+		t.Errorf("token leaked in the log: %q", out)
 	}
 }
 
@@ -115,6 +170,13 @@ func TestDescribeNameless_IgnoresUnusableAnswers(t *testing.T) {
 			}
 			if id.Handle != "" || id.DisplayName != "" || st.profileUpdates != 0 {
 				t.Errorf("stored an unusable answer: %+v saves=%d", id, st.profileUpdates)
+			}
+			// It counts as a failure: the next listing does not ask again.
+			if len(pr.describeLog) != 1 || len(svc.describeFailed) != 1 {
+				t.Fatalf("calls=%d backoffs=%d, want 1 of each", len(pr.describeLog), len(svc.describeFailed))
+			}
+			if _, err := svc.ListIdentities(context.Background()); err != nil || len(pr.describeLog) != 1 {
+				t.Errorf("asked again within the backoff: err=%v calls=%d", err, len(pr.describeLog))
 			}
 		})
 	}

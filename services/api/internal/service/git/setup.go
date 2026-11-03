@@ -337,7 +337,7 @@ func (s *Service) ListConnections(ctx context.Context, projectID uuid.UUID) ([]*
 // describeTimeout bounds all the describe_identity calls of one listing, however
 // many identities it has to name: listings must not hang on a slow platform.
 // Whatever it leaves unnamed is asked on the next listing.
-const describeTimeout = 5 * time.Second
+var describeTimeout = 5 * time.Second // a variable only so tests can shorten it
 
 // describeBackoff is how long after a failed describe the same identity is not
 // asked again (a revoked token or a platform outage would otherwise slow every
@@ -388,20 +388,24 @@ func (s *Service) describeIdentity(ctx, budget context.Context, id *gitdom.Ident
 	}
 	got, err := prov.DescribeIdentity(budget, gitprovider.DescribeIdentityRequest{Identity: identityRef(id)})
 	if err != nil {
+		if ctx.Err() != nil {
+			return // the caller gave up (client closed the request): the provider is not at fault
+		}
 		// The text comes from the plugin, so it is masked like any provider message.
 		slog.Warn("git: describe identity failed", "provider", id.ProviderID, "identity", id.ID, "err", RedactSecrets(err.Error()))
-		s.mu.Lock()
-		s.describeFailed[id.ID] = s.now()
-		s.mu.Unlock()
+		s.backOffDescribe(id.ID)
+		return
+	}
+	// An answer for another identity, or without a handle, is as useless as an
+	// error: it is not stored and the identity is not asked again right away.
+	if got.Ref.ID != id.ProviderIdentityID || got.Ref.Handle == "" {
+		slog.Warn("git: describe identity gave an unusable answer", "provider", id.ProviderID, "identity", id.ID)
+		s.backOffDescribe(id.ID)
 		return
 	}
 	s.mu.Lock()
 	delete(s.describeFailed, id.ID)
 	s.mu.Unlock()
-	// An answer for another identity, or without a handle, must not be stored.
-	if got.Ref.ID != id.ProviderIdentityID || got.Ref.Handle == "" {
-		return
-	}
 	var exp *time.Time
 	if !got.ExpiresAt.IsZero() {
 		exp = &got.ExpiresAt
@@ -417,6 +421,12 @@ func (s *Service) describeIdentity(ctx, budget context.Context, id *gitdom.Ident
 	if exp != nil {
 		id.ExpiresAt = exp
 	}
+}
+
+func (s *Service) backOffDescribe(id uuid.UUID) {
+	s.mu.Lock()
+	s.describeFailed[id] = s.now()
+	s.mu.Unlock()
 }
 
 func (s *Service) enabledProviders(ctx context.Context) (map[string]bool, error) {

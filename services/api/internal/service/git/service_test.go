@@ -358,10 +358,14 @@ type fakeProv struct {
 
 	describe    func(gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error)
 	describeLog []gitprovider.DescribeIdentityRequest
+	describeCtx func(context.Context, gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error)
 }
 
-func (p *fakeProv) DescribeIdentity(_ context.Context, r gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error) {
+func (p *fakeProv) DescribeIdentity(ctx context.Context, r gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error) {
 	p.describeLog = append(p.describeLog, r)
+	if p.describeCtx != nil {
+		return p.describeCtx(ctx, r)
+	}
 	return p.describe(r)
 }
 
