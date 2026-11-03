@@ -120,6 +120,13 @@ const open = async (page: Page, projectId: string) => {
 	await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 };
 
+/** Automation lives on its own tab; the page opens on Repositories. */
+const repositoriesPanel = (page: Page) =>
+	page.getByRole("tabpanel", { name: /^Repositories/ });
+
+const openAutomation = (page: Page) =>
+	page.getByRole("tab", { name: /^Automation/ }).click();
+
 test.describe("Project Git automation", () => {
 	let projectId: string;
 	let agentName: string;
@@ -161,10 +168,10 @@ test.describe("Project Git automation", () => {
 			});
 			await open(page, projectId);
 
-			await expect(page.getByText("acme/web", { exact: true })).toBeVisible();
-			await expect(page.getByText("main", { exact: true })).toBeVisible();
-			await expect(page.getByText("@paca-bot").first()).toBeVisible();
-			await expect(page.getByText("Using it")).toBeVisible();
+			await expect(repositoriesPanel(page).getByText("acme/web", { exact: true })).toBeVisible();
+			await expect(repositoriesPanel(page).getByText("main", { exact: true })).toBeVisible();
+			await expect(repositoriesPanel(page).getByText("@paca-bot").first()).toBeVisible();
+			await expect(page.getByRole("tab", { name: /^Using it/ })).toBeVisible();
 		});
 
 		test("Unlinking asks for confirmation", async ({ page }) => {
@@ -178,7 +185,7 @@ test.describe("Project Git automation", () => {
 				page.getByRole("button", { name: "Confirm unlink" }),
 			).toBeVisible();
 			await page.getByRole("button", { name: "Cancel" }).click();
-			await expect(page.getByText("acme/web", { exact: true })).toBeVisible();
+			await expect(repositoriesPanel(page).getByText("acme/web", { exact: true })).toBeVisible();
 			expect(stub.deleted).toEqual([]);
 
 			await page.getByRole("button", { name: "Unlink" }).click();
@@ -239,6 +246,7 @@ test.describe("Project Git automation", () => {
 			await signIn(page);
 			await stubGit(page, projectId, { repositories: [], deleted: [] });
 			await open(page, projectId);
+			await openAutomation(page);
 
 			await expect(page.getByText("Link a repository first.")).toBeVisible();
 			await expect(page.getByLabel("Default responder")).toBeDisabled();
@@ -249,6 +257,7 @@ test.describe("Project Git automation", () => {
 			await signIn(page);
 			await stubGit(page, projectId, { repositories: [LINKED], deleted: [] });
 			await open(page, projectId);
+			await openAutomation(page);
 
 			await expect(
 				page.getByText("mentions that name no agent are ignored"),
@@ -262,6 +271,7 @@ test.describe("Project Git automation", () => {
 			await signIn(page);
 			await stubGit(page, projectId, { repositories: [LINKED], deleted: [] });
 			await open(page, projectId);
+			await openAutomation(page);
 
 			await page
 				.getByLabel("Default responder")
@@ -283,6 +293,7 @@ test.describe("Project Git automation", () => {
 			await signIn(page);
 			await stubGit(page, projectId, { repositories: [LINKED], deleted: [] });
 			await open(page, projectId);
+			await openAutomation(page);
 
 			await page.getByText("Advanced", { exact: true }).click();
 			await page
@@ -299,6 +310,7 @@ test.describe("Project Git automation", () => {
 			});
 
 			await page.reload();
+			await openAutomation(page);
 			await page.getByText("Advanced", { exact: true }).click();
 			await expect(
 				page.getByLabel("Minimum access to start an agent"),
@@ -312,6 +324,7 @@ test.describe("Project Git automation", () => {
 			await signIn(page);
 			await stubGit(page, projectId, { repositories: [LINKED], deleted: [] });
 			await open(page, projectId);
+			await openAutomation(page);
 
 			const save = page.getByRole("button", { name: "Save" });
 			await expect(save).toBeDisabled();
@@ -339,6 +352,7 @@ test.describe("Project Git automation", () => {
 			await signIn(page, reader.username, RESTRICTED_PASSWORD);
 			await stubGit(page, projectId, { repositories: [LINKED], deleted: [] });
 			await open(page, projectId);
+			await openAutomation(page);
 
 			await expect(page.getByLabel("Default responder")).toBeDisabled();
 			await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -139,6 +139,10 @@ function renderPanel(canWrite = true) {
 			<GitSettings projectId={PROJECT} canWrite={canWrite} />
 		</QueryClientProvider>,
 	);
+}
+
+async function openTab(name: RegExp) {
+	await userEvent.click(await screen.findByRole("tab", { name }));
 }
 
 describe("GitSettings", () => {
@@ -703,21 +707,98 @@ describe("GitSettings", () => {
 		).toBeInTheDocument();
 		expect(screen.getByLabelText("Repository")).toBeInTheDocument();
 		expect(screen.queryByText("Get started")).toBeNull();
-		expect(screen.queryByText("Using it")).toBeNull();
+		expect(screen.queryByRole("tab", { name: /^Using it/ })).toBeNull();
 	});
 
 	it("shows the bot to mention and how to use it once a repository is linked", async () => {
 		repos = [{ ...repo, identity_handle: "paca-bot" }];
 		settings = { ...settings, default_responder_agent_id: "a1" };
 		renderPanel();
+		await openTab(/^Using it/);
 		expect((await screen.findAllByText("@paca-bot")).length).toBeGreaterThan(0);
-		expect(screen.getByText("Using it")).toBeInTheDocument();
+		expect(screen.getByRole("tab", { name: /^Using it/ })).toBeInTheDocument();
+	});
+
+	it("stays on Connections when the first connection is added", async () => {
+		connections = [];
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		render(
+			<QueryClientProvider client={client}>
+				<GitSettings projectId={PROJECT} canWrite />
+			</QueryClientProvider>,
+		);
+		expect(
+			await screen.findByRole("tab", { name: /^Connections/, selected: true }),
+		).toBeInTheDocument();
+		connections = [connection];
+		await act(() => client.invalidateQueries());
+		await waitFor(() =>
+			expect(
+				screen.getByRole("tab", { name: /^Connections\s*1/ }),
+			).toBeVisible(),
+		);
+		expect(
+			screen.getByRole("tab", { name: /^Connections/, selected: true }),
+		).toBeInTheDocument();
+	});
+
+	it("keeps a half-typed repository when switching tabs", async () => {
+		const user = userEvent.setup();
+		renderPanel();
+		await user.type(await screen.findByLabelText("Repository"), "acme/we");
+		await openTab(/^Automation/);
+		await openTab(/^Repositories/);
+		expect(screen.getByLabelText("Repository")).toHaveValue("acme/we");
+	});
+
+	it("moves between tabs with the arrow, Home and End keys", async () => {
+		const user = userEvent.setup();
+		repos = [repo];
+		renderPanel();
+		const repositories = await screen.findByRole("tab", {
+			name: /^Repositories/,
+		});
+		repositories.focus();
+		await user.keyboard("{End}");
+		expect(
+			screen.getByRole("tab", { name: /^Using it/, selected: true }),
+		).toHaveFocus();
+		await user.keyboard("{Home}");
+		expect(
+			screen.getByRole("tab", { name: /^Connections/, selected: true }),
+		).toHaveFocus();
+		await user.keyboard("{ArrowLeft}");
+		expect(
+			screen.getByRole("tab", { name: /^Using it/, selected: true }),
+		).toHaveFocus();
+	});
+
+	it("falls back to a tab that exists when the open one disappears", async () => {
+		repos = [repo];
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		render(
+			<QueryClientProvider client={client}>
+				<GitSettings projectId={PROJECT} canWrite />
+			</QueryClientProvider>,
+		);
+		await openTab(/^Using it/);
+		repos = [];
+		await act(() => client.invalidateQueries());
+		await waitFor(() =>
+			expect(screen.queryByRole("tab", { name: /^Using it/ })).toBeNull(),
+		);
+		expect(screen.getByRole("tab", { selected: true })).toBeInTheDocument();
 	});
 
 	it("saves a changed responder, access bar and pause switch", async () => {
 		const user = userEvent.setup();
 		repos = [repo];
 		renderPanel();
+		await openTab(/^Automation/);
 		const responder = await screen.findByLabelText(/default responder/i);
 		await screen.findByRole("option", { name: "Reviewer" });
 		const save = screen.getByRole("button", { name: /^save$/i });
@@ -749,6 +830,7 @@ describe("GitSettings", () => {
 		const user = userEvent.setup();
 		repos = [repo];
 		renderPanel();
+		await openTab(/^Automation/);
 		await screen.findByRole("option", { name: "Dev" });
 		await user.selectOptions(screen.getByLabelText(/default responder/i), "a1");
 		await user.click(screen.getByRole("button", { name: /^save$/i }));
@@ -766,6 +848,7 @@ describe("GitSettings", () => {
 	it("shows the automation but cannot change it without git:write", async () => {
 		repos = [repo];
 		renderPanel(false);
+		await openTab(/^Automation/);
 		expect(await screen.findByLabelText(/default responder/i)).toBeDisabled();
 		expect(screen.getByLabelText(/minimum access/i)).toBeDisabled();
 		expect(
