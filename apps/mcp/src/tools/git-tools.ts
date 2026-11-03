@@ -18,6 +18,7 @@ export const GIT_TOOL_NAMES = [
 	"change_request_get_diff",
 	"review_list_threads",
 	"issue_get",
+	"issue_list",
 	"comment_list",
 	"checks_get",
 	"checks_get_logs",
@@ -47,6 +48,7 @@ const UNTRUSTED_KEYS = new Set([
 	"text",
 	"snippet",
 	"content",
+	"labels",
 ]);
 
 /**
@@ -73,13 +75,13 @@ export function neutralize(text: string): string {
 /** Fences every untrusted text field in a result, recursively. */
 export function fenceFields(value: unknown, label = "text"): unknown {
 	if (Array.isArray(value)) return value.map((v) => fenceFields(v, label));
+	if (typeof value === "string" && value !== "" && UNTRUSTED_KEYS.has(label)) {
+		return fence(value, label);
+	}
 	if (value && typeof value === "object") {
 		const out: Record<string, unknown> = {};
 		for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-			out[k] =
-				typeof v === "string" && UNTRUSTED_KEYS.has(k) && v !== ""
-					? fence(v, k)
-					: fenceFields(v, k);
+			out[k] = fenceFields(v, k);
 		}
 		return out;
 	}
@@ -153,6 +155,12 @@ export function getGitTools(): Tool[] {
 				"comment_list for its discussion.",
 			num,
 			["number"],
+		),
+		tool(
+			"issue_list",
+			"List repository issues (default open); page with `cursor`. Text is fenced as data.",
+			{ state: { type: "string", enum: ["open", "closed", "all"] }, cursor },
+			[],
 		),
 		tool(
 			"comment_list",
@@ -458,6 +466,15 @@ export async function handleGitTool(
 			case "review_list_threads":
 				return text(
 					fenceFields(await get(cr("/threads"), { cursor: opt(a, "cursor") })),
+				);
+			case "issue_list":
+				return text(
+					fenceFields(
+						await get("/issues", {
+							state: opt(a, "state"),
+							cursor: opt(a, "cursor"),
+						}),
+					),
 				);
 			case "issue_get":
 				return text(fenceFields(await get(`/issues/${seg(str(a, "number"))}`)));

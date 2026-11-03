@@ -213,6 +213,7 @@ type Capabilities struct {
 	Kinds []KindProfile `json:"kinds,omitempty"`
 
 	// Optional operations (each backed by an optional interface).
+	IssueList         bool `json:"issue_list,omitempty"`
 	ResolveThreads    bool `json:"resolve_threads"`
 	FileRead          bool `json:"file_read"`
 	CodeSearch        bool `json:"code_search"`
@@ -711,6 +712,21 @@ type CommentPage struct {
 type IssueRequest struct {
 	Target Target `json:"target"`
 	Number string `json:"number"`
+}
+
+// ListIssuesRequest pages repository issues. State is open, closed or all;
+// providers treat an empty state as open and reject other values as validation
+// errors. Cursor is an opaque continuation token from the preceding page.
+type ListIssuesRequest struct {
+	Target Target `json:"target"`
+	State  string `json:"state,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
+}
+
+// IssuePage is one page of issues.
+type IssuePage struct {
+	Items      []Issue `json:"items"`
+	NextCursor string  `json:"next_cursor,omitempty"`
 }
 
 // Issue is an issue.

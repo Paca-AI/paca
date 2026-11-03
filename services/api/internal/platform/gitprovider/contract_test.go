@@ -61,6 +61,22 @@ func shapeOfSeen(t reflect.Type, seen map[reflect.Type]bool) any {
 	return t.Kind().String()
 }
 
+func TestIssueListWireContract(t *testing.T) {
+	for _, name := range []string{"ListIssuesRequest", "IssuePage"} {
+		if _, ok := WireTypes()[name]; !ok {
+			t.Errorf("missing wire type %s", name)
+		}
+	}
+	b, err := json.Marshal(Capabilities{})
+	if err != nil || strings.Contains(string(b), `"issue_list"`) {
+		t.Fatalf("optional capability: %s %v", b, err)
+	}
+	b, err = json.Marshal(Capabilities{IssueList: true})
+	if err != nil || !strings.Contains(string(b), `"issue_list":true`) {
+		t.Fatalf("enabled capability: %s %v", b, err)
+	}
+}
+
 func TestWireShapesMatchTheSDKContract(t *testing.T) {
 	want, err := os.ReadFile(filepath.Join("testdata", "wire-shapes.golden.json"))
 	if err != nil {

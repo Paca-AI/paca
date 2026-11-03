@@ -359,6 +359,9 @@ type fakeProv struct {
 	describe    func(gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error)
 	describeLog []gitprovider.DescribeIdentityRequest
 	describeCtx func(context.Context, gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error)
+
+	list     func(gitprovider.ListReposRequest) (gitprovider.RepositoryPage, error)
+	listReqs []gitprovider.ListReposRequest
 }
 
 func (p *fakeProv) DescribeIdentity(ctx context.Context, r gitprovider.DescribeIdentityRequest) (gitprovider.Identity, error) {
@@ -367,6 +370,14 @@ func (p *fakeProv) DescribeIdentity(ctx context.Context, r gitprovider.DescribeI
 		return p.describeCtx(ctx, r)
 	}
 	return p.describe(r)
+}
+
+func (p *fakeProv) ListRepositories(_ context.Context, r gitprovider.ListReposRequest) (gitprovider.RepositoryPage, error) {
+	p.listReqs = append(p.listReqs, r)
+	if p.list == nil {
+		return gitprovider.RepositoryPage{}, nil
+	}
+	return p.list(r)
 }
 
 func (p *fakeProv) EnsureWebhook(_ context.Context, r gitprovider.EnsureWebhookRequest) (gitprovider.WebhookRef, error) {

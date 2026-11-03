@@ -30,6 +30,11 @@ func (c *Client) ListComments(ctx context.Context, req ListCommentsRequest) (Com
 	return call[ListCommentsRequest, CommentPage](ctx, c, "list_comments", req)
 }
 
+// ListIssues pages repository issues (capability issue_list).
+func (c *Client) ListIssues(ctx context.Context, req ListIssuesRequest) (IssuePage, error) {
+	return call[ListIssuesRequest, IssuePage](ctx, c, "list_issues", req)
+}
+
 // GetIssue reads one issue.
 func (c *Client) GetIssue(ctx context.Context, req IssueRequest) (Issue, error) {
 	return call[IssueRequest, Issue](ctx, c, "get_issue", req)

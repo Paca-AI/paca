@@ -39,6 +39,7 @@ type ProviderAPI interface {
 	CompleteAccessGrant(ctx context.Context, req gitprovider.CompleteAccessRequest) (gitprovider.AccessGrant, error)
 	EnsureWebhook(ctx context.Context, req gitprovider.EnsureWebhookRequest) (gitprovider.WebhookRef, error)
 	RemoveWebhook(ctx context.Context, req gitprovider.RemoveWebhookRequest) error
+	ListRepositories(ctx context.Context, req gitprovider.ListReposRequest) (gitprovider.RepositoryPage, error)
 }
 
 // Providers finds the plugin that implements the Git provider SPI for a platform.

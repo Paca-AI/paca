@@ -273,6 +273,38 @@ export async function linkGitRepository(
 	return data.data;
 }
 
+/** A repository a connection can see on the platform (not necessarily linked). */
+export interface AvailableGitRepository {
+	full_path: string;
+	host: string;
+	default_branch: string;
+	private: boolean;
+	description: string;
+}
+
+export interface AvailableGitRepositories {
+	items: AvailableGitRepository[];
+	next_cursor?: string;
+	/** False when the provider cannot list repositories: ask for a path or URL. */
+	supported: boolean;
+}
+
+export async function listAvailableGitRepositories(
+	projectId: string,
+	identityId: string,
+	params: { q?: string; cursor?: string },
+): Promise<AvailableGitRepositories> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<AvailableGitRepositories>
+	>(`${projectGit(projectId)}/connections/${identityId}/repositories`, {
+		params: {
+			...(params.q ? { q: params.q } : {}),
+			...(params.cursor ? { cursor: params.cursor } : {}),
+		},
+	});
+	return data.data;
+}
+
 export async function updateGitRepository(
 	projectId: string,
 	repositoryId: string,

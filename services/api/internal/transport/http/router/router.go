@@ -511,6 +511,10 @@ func New(deps Deps) http.Handler {
 					r.With(require.Project(iam.ActionGitWrite), require.Project(iam.ActionGitConnectionsManage)).Post("/git/connections/setup", deps.Git.BeginProjectSetup)
 					r.With(require.Project(iam.ActionGitWrite), require.Project(iam.ActionGitConnectionsManage)).Post("/git/connections/setup/complete", deps.Git.CompleteProjectSetup)
 					r.With(require.Project(iam.ActionGitWrite), require.Project(iam.ActionGitConnectionsManage)).Delete("/git/connections/{identityId}", deps.Git.DeleteProjectConnection)
+					// The repositories a connection sees on the platform, for the
+					// link form's picker. It asks the platform with the connection's
+					// credential, so it is as gated as linking: git:write.
+					r.With(require.Project(iam.ActionGitWrite)).Get("/git/connections/{identityId}/repositories", deps.Git.ListAvailableRepositories)
 					// Granting the shared identity access to the owner of a
 					// repository this project wants to link (GitHub: installing
 					// the App there). The platform decides who may grant; here it
@@ -552,6 +556,7 @@ func New(deps Deps) http.Handler {
 							r.With(read).Get("/change-requests/{number}/diff", deps.Git.GetDiff)
 							r.With(read).Get("/change-requests/{number}/threads", deps.Git.ListThreads)
 							r.With(read).Get("/subjects/{kind}/{number}/comments", deps.Git.ListComments)
+							r.With(read).Get("/issues", deps.Git.ListIssues)
 							r.With(read).Get("/issues/{number}", deps.Git.GetIssue)
 							r.With(read).Get("/checks", deps.Git.GetChecks)
 							r.With(read).Get("/checks/{checkId}/logs", deps.Git.GetCheckLogs)

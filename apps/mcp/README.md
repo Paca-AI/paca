@@ -361,7 +361,7 @@ The MCP server provides **81 tools** across **16 categories** for comprehensive 
 - `change_request_get_context` - Pull/merge request with files, review threads and CI in one call
 - `change_request_get_diff` - Unified diff, whole or per file
 - `review_list_threads` - Review threads with comments and resolved state
-- `issue_get` / `comment_list` - Read an issue and the comments on an issue or pull request
+- `issue_list` / `issue_get` / `comment_list` - List issues, read an issue, and read comments on an issue or pull request
 - `checks_get` / `checks_get_logs` - CI results and the tail of a failing log
 - `repo_get_file` / `repo_search_code` - Read a file or search code without a clone
 - `change_request_open` / `change_request_update` - Open or edit a pull/merge request
