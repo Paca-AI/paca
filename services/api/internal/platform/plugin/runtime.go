@@ -842,7 +842,7 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 			if werr != nil {
 				// Report through errPtr/errLen: a zero-length result with no
 				// error would be indistinguishable from a zero-row success.
-				errPtrLen, _ := writeToMemory(m, []byte(responseTooLargeMessage("db_query", size)))
+				errPtrLen, _ := writeToMemory(m, []byte(responseTooLargeMessage("db_query", size, remedyLessData)))
 				if errPtrLen == nil {
 					errPtrLen = []uint64{0, 0}
 				}
@@ -1783,7 +1783,7 @@ func (r *Runtime) registerSettingsFunction(b wazero.HostModuleBuilder, _ plugind
 			ptrLen, size, werr := writeJSONResultChecked(m, snap)
 			if werr != nil {
 				writeBack(writeJSONResult(m, map[string]string{
-					"error": responseTooLargeMessage("settings_get", size),
+					"error": responseTooLargeMessage("settings_get", size, remedyLessData),
 					"code":  errCodeResponseTooLarge,
 				}))
 				return
@@ -2260,7 +2260,7 @@ func (r *Runtime) registerFetchFunction(b wazero.HostModuleBuilder, p plugindom.
 						Code   string `json:"code"`
 					}
 					writeBack(writeJSONResult(m, tooLargeResp{
-						Error: responseTooLargeMessage("fetch", size),
+						Error: responseTooLargeMessage("fetch", size, remedySmallerChunk),
 						Code:  errCodeResponseTooLarge,
 					}))
 					return
@@ -2373,8 +2373,14 @@ func (r *Runtime) registerFetchFunction(b wazero.HostModuleBuilder, p plugindom.
 					Error  string `json:"error"`
 					Code   string `json:"code"`
 				}
+				// An SDK that opted in already has the escape hatch, so only the
+				// one that did not is pointed at it.
+				remedy := remedyChunked
+				if req.Chunked {
+					remedy = remedyHeaders
+				}
 				writeBack(writeJSONResult(m, tooLargeResp{
-					Error: responseTooLargeMessage("fetch", size),
+					Error: responseTooLargeMessage("fetch", size, remedy),
 					Code:  errCodeResponseTooLarge,
 				}))
 				return
@@ -2576,11 +2582,28 @@ func readString(m api.Module, ptr, length uint64) (string, error) {
 // like a network failure).
 const errCodeResponseTooLarge = "response_too_large"
 
+// Remedies appended to a response-too-large message: what the caller can do
+// differently depends on the operation, so each call site names its own.
+const (
+	// remedyLessData fits calls whose result the plugin can shrink by asking
+	// for less (a smaller page, a narrower query).
+	remedyLessData = "request less data (e.g. a smaller page size)"
+	// remedyChunked fits paca.fetch, where the plugin cannot shrink a
+	// third-party response but can read it in pieces.
+	remedyChunked = `repeat the request with "chunked": true to read the body in pieces`
+	// remedySmallerChunk fits a body_handle read that asked for too much.
+	remedySmallerChunk = "read it again with a smaller limit"
+	// remedyHeaders fits a chunked fetch whose status and headers alone do not
+	// fit, which no chunk size can fix.
+	remedyHeaders = "the response headers alone are too large to deliver"
+)
+
 // responseTooLargeMessage is the actionable text for a result of size bytes
 // that the plugin's allocator refused. The arena size is the plugin's own
-// business, so the message names the payload rather than a limit.
-func responseTooLargeMessage(op string, size int) string {
-	return fmt.Sprintf("%s: response of %d bytes does not fit in the plugin's host response buffer; request less data (e.g. a smaller page size)", op, size)
+// business, so the message names the payload rather than a limit; remedy says
+// what the caller can do about it (one of the remedy constants above).
+func responseTooLargeMessage(op string, size int, remedy string) string {
+	return fmt.Sprintf("%s: response of %d bytes does not fit in the plugin's host response buffer; %s", op, size, remedy)
 }
 
 // writeJSONResultChecked marshals v to JSON and writes it into WASM memory.

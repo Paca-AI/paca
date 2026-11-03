@@ -193,6 +193,9 @@ func TestFetch_ResponseArenaBoundary(t *testing.T) {
 	if resLen == 0 {
 		t.Fatal("oversized envelope produced an empty response; want a response_too_large error")
 	}
+	if !strings.Contains(env.Error, `"chunked": true`) || strings.Contains(env.Error, "smaller page size") {
+		t.Fatalf("a fetch error must point at chunked reads, not at a smaller page: %q", env.Error)
+	}
 	if env.Code != errCodeResponseTooLarge || !strings.Contains(env.Error, "does not fit") {
 		t.Fatalf("oversized envelope: code=%q error=%q", env.Code, env.Error)
 	}
@@ -319,6 +322,9 @@ func TestFetch_Chunk_OversizedLimitIsRetryable(t *testing.T) {
 	if resLen == 0 || env.Code != errCodeResponseTooLarge {
 		t.Fatalf("oversized chunk: resLen=%d code=%q", resLen, env.Code)
 	}
+	if !strings.Contains(env.Error, "smaller limit") {
+		t.Fatalf("a chunk error must tell the caller to ask for less: %q", env.Error)
+	}
 	if got := fetchAllChunks(t, inst, meta.BodyHandle, bodySize, 16*1024); got != patternBody(bodySize) {
 		t.Fatal("body differs after retry with a smaller limit")
 	}
@@ -351,5 +357,25 @@ func TestFetchChunkStore(t *testing.T) {
 	now = now.Add(fetchChunkTTL + time.Second)
 	if _, _, _, err := s.read(c, 0, 1); err == nil {
 		t.Error("expired handle should error")
+	}
+}
+
+// The hint depends on what the caller can change: a page size for a query, a
+// chunked read for a fetch, a smaller limit for a chunk.
+func TestResponseTooLargeMessage_NamesTheRemedyForEachOperation(t *testing.T) {
+	cases := map[string]struct{ got, want, notWant string }{
+		"db_query":     {responseTooLargeMessage("db_query", 10, remedyLessData), "smaller page size", `"chunked"`},
+		"settings_get": {responseTooLargeMessage("settings_get", 10, remedyLessData), "smaller page size", `"chunked"`},
+		"fetch":        {responseTooLargeMessage("fetch", 10, remedyChunked), `"chunked": true`, "smaller page size"},
+		"fetch chunk":  {responseTooLargeMessage("fetch", 10, remedySmallerChunk), "smaller limit", "smaller page size"},
+		"fetch header": {responseTooLargeMessage("fetch", 10, remedyHeaders), "headers alone", "smaller page size"},
+	}
+	for name, c := range cases {
+		if !strings.Contains(c.got, "does not fit") || !strings.Contains(c.got, "10 bytes") {
+			t.Errorf("%s: %q", name, c.got)
+		}
+		if !strings.Contains(c.got, c.want) || strings.Contains(c.got, c.notWant) {
+			t.Errorf("%s: want %q and not %q in %q", name, c.want, c.notWant, c.got)
+		}
 	}
 }
