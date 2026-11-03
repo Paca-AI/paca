@@ -259,14 +259,14 @@ func Load() (*Config, error) {
 // whitespace and dropping empty entries.
 func parseCommaList(v string) []string {
 	parts := strings.Split(v, ",")
-	origins := make([]string, 0, len(parts))
+	items := make([]string, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if p != "" {
-			origins = append(origins, p)
+			items = append(items, p)
 		}
 	}
-	return origins
+	return items
 }
 
 // env returns the environment variable value or a fallback default.
