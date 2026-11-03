@@ -98,7 +98,10 @@ func TestIsAllowedFetchDomain_PrivateHosts(t *testing.T) {
 		{"empty set, private", "https://gitlab.internal/api", manifest, privateHosts(t), false},
 		{"empty list, public host", "https://gitlab.com/api", manifest, nil, true},
 		{"empty list, wildcard still reaches public", "https://gitlab.com/api", []string{"*"}, nil, true},
-		{"wildcard does not change for listed public host", "https://gitlab.com/api", []string{"*"}, listed, true},
+		// Resolving public now proves nothing for a listed host: the dial may
+		// rebind, or reuse a pooled connection another plugin opened.
+		{"wildcard refused for a listed host even when it resolves public", "https://gitlab.com/api", []string{"*"}, listed, false},
+		{"wildcard reaches a public host that is not listed", "https://gitlab.com/api", []string{"*"}, privateHosts(t, "gitlab.internal"), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

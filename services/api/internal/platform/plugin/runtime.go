@@ -2427,6 +2427,12 @@ func isAllowedFetchDomain(ctx context.Context, rawURL string, allowed []string, 
 		return false
 	}
 	if !namedInManifest {
+		// A listed host is refused whatever it resolves to now: a later dial
+		// could see a private address (rebinding), and a pooled connection
+		// opened for a plugin that names the host is reused without dialing.
+		if privateHosts.Contains(host) {
+			return false
+		}
 		privateHosts = nil
 	}
 
