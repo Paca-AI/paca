@@ -97,7 +97,7 @@ function writePending(projectId: string, input: string, providerId: string) {
 
 /**
  * The project's Git settings, in the order a user does things: link
- * repositories (the form is open while there are none), pick the agent that
+ * repositories (a dialog opens from the empty state or the header), pick the agent that
  * answers, then, folded away, the rarely changed limits and the words to type
  * on the platform. Nothing but the next step is in front of the user.
  */

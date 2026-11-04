@@ -180,7 +180,12 @@ function RepositoryList({
 						type="button"
 						variant="outline"
 						size="sm"
-						onClick={() => void list.fetchNextPage()}
+						disabled={list.isFetchingNextPage || list.isRefetching}
+						onClick={() =>
+							void (list.isFetchNextPageError
+								? list.fetchNextPage()
+								: list.refetch())
+						}
 					>
 						{t("common.retry", { ns: "common" })}
 					</Button>

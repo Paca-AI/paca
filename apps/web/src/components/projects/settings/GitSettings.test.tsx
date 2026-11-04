@@ -996,7 +996,11 @@ describe("GitSettings", () => {
 			).toBeInTheDocument();
 			expect(screen.getByText("rate limited")).toBeInTheDocument();
 			expect(screen.getByText("acme/first")).toBeInTheDocument();
-			expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+			const retry = screen.getByRole("button", { name: "Retry" });
+			expect(retry).toBeEnabled();
+			const before = h.get.mock.calls.length;
+			await user.click(retry);
+			await waitFor(() => expect(h.get.mock.calls.length).toBe(before + 1));
 		});
 
 		it("marks repositories already linked and does not offer them", async () => {

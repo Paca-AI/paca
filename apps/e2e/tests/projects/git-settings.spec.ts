@@ -159,8 +159,9 @@ test.describe("Project Git settings", () => {
 			});
 			await openGitSettings(page, projectId);
 
+			await page.getByRole("button", { name: "Link a repository" }).click();
 			await page.getByLabel("Repository").fill("acme/web");
-			await page.getByRole("button", { name: "Link" }).click();
+			await page.getByRole("button", { name: "Link", exact: true }).click();
 
 			await expect(page.getByText("acme/web", { exact: true })).toBeVisible();
 			expect(linkRequests).toEqual([
@@ -225,7 +226,7 @@ test.describe("Project Git settings", () => {
 			await expect(page.getByRole("button", { name: "Link" })).toHaveCount(0);
 		});
 
-		test("A writer gets the form once a connection is available", async ({
+		test("A writer gets the link dialog once a connection is available", async ({
 			page,
 			request,
 			playwright,
@@ -240,8 +241,11 @@ test.describe("Project Git settings", () => {
 			});
 			await openGitSettings(page, projectId);
 
+			await page.getByRole("button", { name: "Link a repository" }).click();
 			await expect(page.getByLabel("Repository")).toBeVisible();
-			await expect(page.getByRole("button", { name: "Link" })).toBeVisible();
+			await expect(
+				page.getByRole("button", { name: "Link", exact: true }),
+			).toBeVisible();
 		});
 
 		test("A reader is told they need write access", async ({
