@@ -2523,7 +2523,8 @@
 				"taskEvents": "任务事件",
 				"sprintEvents": "冲刺事件",
 				"scheduleWebhook": "定时计划和 Webhook"
-			}
+			},
+			"git": "Git"
 		},
 		"nodeKind": {
 			"trigger": "触发器",
@@ -2722,7 +2723,9 @@
 				"cronSchedule": "运行时间：{{expression}}",
 				"webhookReady": "已配置 Webhook",
 				"callApiSummary": "{{method}} {{host}}",
-				"jevNoulTrue": "是"
+				"jevNoulTrue": "是",
+				"pluginField": "{{field}}:{{value}}",
+				"waitMinutes": "等待 {{minutes}} 分钟"
 			},
 			"jev": {
 				"answerTypeLabel": "回答类型",
@@ -2748,7 +2751,8 @@
 				"confidenceThresholdLabel": "置信度阈值",
 				"trueThresholdLabel": "“真”阈值",
 				"thresholdHint": "低于此值时，工作流将走 Else 分支，而不采信该答案。"
-			}
+			},
+			"noConfigNeeded": "此节点无需配置——自动化执行到该节点时会立即生效。"
 		},
 		"runHistory": {
 			"title": "运行历史",

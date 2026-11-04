@@ -2523,7 +2523,8 @@
 				"taskEvents": "タスクイベント",
 				"sprintEvents": "スプリントイベント",
 				"scheduleWebhook": "スケジュールとWebhook"
-			}
+			},
+			"git": "Git"
 		},
 		"nodeKind": {
 			"trigger": "トリガー",
@@ -2722,7 +2723,9 @@
 				"cronSchedule": "{{expression}} に実行",
 				"webhookReady": "Webhook設定済み",
 				"callApiSummary": "{{method}} {{host}}",
-				"jevNoulTrue": "はい"
+				"jevNoulTrue": "はい",
+				"pluginField": "{{field}}: {{value}}",
+				"waitMinutes": "{{minutes}}分待機"
 			},
 			"jev": {
 				"answerTypeLabel": "回答タイプ",
@@ -2748,7 +2751,8 @@
 				"confidenceThresholdLabel": "信頼度のしきい値",
 				"trueThresholdLabel": "「真」のしきい値",
 				"thresholdHint": "これを下回ると、ワークフローは回答を信頼せずElse分岐に従います。"
-			}
+			},
+			"noConfigNeeded": "このノードに設定は不要です。オートメーションがここに到達すると自動的に実行されます。"
 		},
 		"runHistory": {
 			"title": "実行履歴",

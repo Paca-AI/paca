@@ -43,9 +43,17 @@ export function AutomationNodePalette({
 	const jevEnabled = useJevEnabled(projectId);
 	if (!canEdit) return null;
 
-	const pluginTriggers = pluginTypes?.triggers ?? [];
-	const pluginConditions = pluginTypes?.conditions ?? [];
-	const pluginActions = pluginTypes?.actions ?? [];
+	// Core-owned Git node types arrive in the same lists as plugin ones
+	// (their type is "git.*") — they get their own section, not "Plugins".
+	const isGit = (n: PluginNodeType) => n.type.startsWith("git.");
+	const gitTriggers = (pluginTypes?.triggers ?? []).filter(isGit);
+	const gitConditions = (pluginTypes?.conditions ?? []).filter(isGit);
+	const gitActions = (pluginTypes?.actions ?? []).filter(isGit);
+	const pluginTriggers = (pluginTypes?.triggers ?? []).filter((n) => !isGit(n));
+	const pluginConditions = (pluginTypes?.conditions ?? []).filter(
+		(n) => !isGit(n),
+	);
+	const pluginActions = (pluginTypes?.actions ?? []).filter((n) => !isGit(n));
 
 	return (
 		<div className="flex flex-wrap items-center gap-2 py-2">
@@ -72,6 +80,13 @@ export function AutomationNodePalette({
 							))}
 						</DropdownMenuGroup>
 					))}
+					{gitTriggers.length > 0 && (
+						<PluginTypeGroup
+							items={gitTriggers}
+							onSelect={onAddTrigger}
+							labelKey="git"
+						/>
+					)}
 					{pluginTriggers.length > 0 && (
 						<PluginTypeGroup items={pluginTriggers} onSelect={onAddTrigger} />
 					)}
@@ -111,6 +126,13 @@ export function AutomationNodePalette({
 							</DropdownMenuItem>
 						)}
 					</DropdownMenuGroup>
+					{gitConditions.length > 0 && (
+						<PluginTypeGroup
+							items={gitConditions}
+							onSelect={onAddCondition}
+							labelKey="git"
+						/>
+					)}
 					{pluginConditions.length > 0 && (
 						<PluginTypeGroup
 							items={pluginConditions}
@@ -142,6 +164,13 @@ export function AutomationNodePalette({
 							</DropdownMenuItem>
 						))}
 					</DropdownMenuGroup>
+					{gitActions.length > 0 && (
+						<PluginTypeGroup
+							items={gitActions}
+							onSelect={onAddAction}
+							labelKey="git"
+						/>
+					)}
 					{pluginActions.length > 0 && (
 						<PluginTypeGroup items={pluginActions} onSelect={onAddAction} />
 					)}
@@ -151,23 +180,29 @@ export function AutomationNodePalette({
 	);
 }
 
-// Shared "Plugins" section appended below the built-ins in each dropdown.
+// Shared "Plugins" / "Git" section appended below the built-ins in each dropdown.
 function PluginTypeGroup({
 	items,
 	onSelect,
+	labelKey = "plugins",
 }: {
 	items: PluginNodeType[];
 	onSelect: (type: string) => void;
+	labelKey?: "plugins" | "git";
 }) {
 	const { t } = useTranslation("projects");
 	return (
 		<>
 			<DropdownMenuSeparator />
 			<DropdownMenuGroup>
-				<DropdownMenuLabel>{t("automation.palette.plugins")}</DropdownMenuLabel>
+				<DropdownMenuLabel>
+					{t(`automation.palette.${labelKey}`)}
+				</DropdownMenuLabel>
 				{items.map((item) => (
 					<DropdownMenuItem key={item.type} onClick={() => onSelect(item.type)}>
-						{item.label}
+						{labelKey === "git"
+							? item.label.replace(/^Git:\s*/, "")
+							: item.label}
 					</DropdownMenuItem>
 				))}
 			</DropdownMenuGroup>

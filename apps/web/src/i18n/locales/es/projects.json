@@ -2523,7 +2523,8 @@
 				"taskEvents": "Eventos de tareas",
 				"sprintEvents": "Eventos de sprints",
 				"scheduleWebhook": "Programación y webhook"
-			}
+			},
+			"git": "Git"
 		},
 		"nodeKind": {
 			"trigger": "Disparador",
@@ -2722,7 +2723,9 @@
 				"cronSchedule": "Se ejecuta {{expression}}",
 				"webhookReady": "Webhook configurado",
 				"callApiSummary": "{{method}} {{host}}",
-				"jevNoulTrue": "Sí"
+				"jevNoulTrue": "Sí",
+				"pluginField": "{{field}}: {{value}}",
+				"waitMinutes": "Esperar {{minutes}} min"
 			},
 			"jev": {
 				"answerTypeLabel": "Tipo de respuesta",
@@ -2748,7 +2751,8 @@
 				"confidenceThresholdLabel": "Umbral de confianza",
 				"trueThresholdLabel": "Umbral de “verdadero”",
 				"thresholdHint": "Por debajo de esto, el flujo de trabajo sigue la rama Else en lugar de confiar en la respuesta."
-			}
+			},
+			"noConfigNeeded": "Este nodo no necesita configuración: hace su trabajo en cuanto la automatización llega a él."
 		},
 		"runHistory": {
 			"title": "Historial de ejecuciones",

@@ -2523,7 +2523,8 @@
 				"taskEvents": "Task events",
 				"sprintEvents": "Sprint events",
 				"scheduleWebhook": "Schedule & webhook"
-			}
+			},
+			"git": "Git"
 		},
 		"nodeKind": {
 			"trigger": "Trigger",
@@ -2750,8 +2751,11 @@
 				"branchFallback": "Branch {{n}}",
 				"cronSchedule": "Runs {{expression}}",
 				"webhookReady": "Webhook configured",
-				"callApiSummary": "{{method}} {{host}}"
-			}
+				"callApiSummary": "{{method}} {{host}}",
+				"pluginField": "{{field}}: {{value}}",
+				"waitMinutes": "Wait {{minutes}}m"
+			},
+			"noConfigNeeded": "This node needs no configuration — it does its job as soon as the automation reaches it."
 		},
 		"runHistory": {
 			"title": "Run history",

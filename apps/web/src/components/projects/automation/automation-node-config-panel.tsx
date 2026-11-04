@@ -374,6 +374,8 @@ export function AutomationNodeConfigPanel({
 						onSave={onSave}
 						saving={saving}
 					/>
+				) : pluginConfigSchema ? (
+					<NodeNoConfigNotice />
 				) : (
 					<GenericConfigForm
 						config={node.config}
@@ -428,6 +430,8 @@ export function AutomationNodeConfigPanel({
 					onSave={onSave}
 					saving={saving}
 				/>
+			) : pluginConfigSchema ? (
+				<NodeNoConfigNotice />
 			) : (
 				<GenericConfigForm
 					config={node.config}
@@ -754,6 +758,19 @@ function PluginTriggerNoConfigNotice() {
 	return (
 		<p className="text-xs text-muted-foreground">
 			{t("automation.nodeConfig.trigger.noConfigNeeded")}
+		</p>
+	);
+}
+
+// A plugin/Git condition or action that declares a configSchema with no
+// fields (Close/Reopen Pull Request, ...) has nothing to configure — say so
+// instead of offering the raw JSON editor, which is only for nodes that
+// declare no schema at all.
+function NodeNoConfigNotice() {
+	const { t } = useTranslation("projects");
+	return (
+		<p className="text-xs text-muted-foreground">
+			{t("automation.nodeConfig.noConfigNeeded")}
 		</p>
 	);
 }

@@ -2523,7 +2523,8 @@
 				"taskEvents": "Eventos de tarefas",
 				"sprintEvents": "Eventos de sprints",
 				"scheduleWebhook": "Agendamento e webhook"
-			}
+			},
+			"git": "Git"
 		},
 		"nodeKind": {
 			"trigger": "Gatilho",
@@ -2722,7 +2723,9 @@
 				"cronSchedule": "Executa {{expression}}",
 				"webhookReady": "Webhook configurado",
 				"callApiSummary": "{{method}} {{host}}",
-				"jevNoulTrue": "Sim"
+				"jevNoulTrue": "Sim",
+				"pluginField": "{{field}}: {{value}}",
+				"waitMinutes": "Aguardar {{minutes}} min"
 			},
 			"jev": {
 				"answerTypeLabel": "Tipo de resposta",
@@ -2748,7 +2751,8 @@
 				"confidenceThresholdLabel": "Limite de confiança",
 				"trueThresholdLabel": "Limite de “verdadeiro”",
 				"thresholdHint": "Abaixo disso, o fluxo de trabalho segue o ramo Else em vez de confiar na resposta."
-			}
+			},
+			"noConfigNeeded": "Este nó não precisa de configuração: ele faz seu trabalho assim que a automação chega a ele."
 		},
 		"runHistory": {
 			"title": "Histórico de execuções",
