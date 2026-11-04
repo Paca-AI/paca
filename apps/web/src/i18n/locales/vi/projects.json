@@ -47,18 +47,19 @@
 				"connectionHelp": "Hãy chọn một kết nối khi có nhiều kết nối cùng thấy kho, ví dụ hai tổ chức.",
 				"description": "Mô tả (không bắt buộc)",
 				"descriptionPlaceholder": "ví dụ: Ứng dụng web của sản phẩm",
-				"descriptionHelp": "Cho các tác nhân biết kho mã này dùng để làm gì để chọn đúng kho. Tối đa 1000 ký tự."
+				"descriptionHelp": "Cho các tác nhân biết kho mã này dùng để làm gì để chọn đúng kho. Tối đa 1000 ký tự.",
+				"title": "Liên kết kho mã",
+				"dialogDescription": "Chọn nền tảng và kho mã mà các tác nhân của dự án này sẽ làm việc cùng."
 			},
 			"picker": {
 				"browse": "Duyệt kho mã",
-				"hide": "Ẩn danh sách",
-				"search": "Tìm kho mã",
-				"unsupported": "Kết nối này không thể liệt kê kho mã. Hãy nhập đường dẫn hoặc URL ở trên.",
-				"error": "Không tải được danh sách. Bạn vẫn có thể nhập đường dẫn hoặc URL ở trên.",
+				"unsupported": "Kết nối này không liệt kê được kho mã. Hãy đóng cửa sổ này và nhập đường dẫn hoặc URL.",
+				"error": "Không tải được danh sách. Hãy đóng cửa sổ này và nhập đường dẫn hoặc URL.",
 				"empty": "Không tìm thấy kho mã.",
-				"loadMore": "Tải thêm",
 				"linked": "Đã liên kết",
-				"private": "Riêng tư"
+				"private": "Riêng tư",
+				"title": "Duyệt kho mã",
+				"description": "Cuộn qua mọi kho mà kết nối này nhìn thấy, rồi chọn một kho để điền vào ô kho mã."
 			},
 			"unlink": {
 				"button": "Hủy liên kết",

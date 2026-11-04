@@ -9,8 +9,10 @@ const {
 	mockCompleteAccess,
 	mockFollow,
 	mockBeginAgentAccess,
+	mockBeginAccess,
 } = vi.hoisted(() => ({
 	mockBeginAgentAccess: vi.fn(),
+	mockBeginAccess: vi.fn(),
 	mockComplete: vi.fn(),
 	mockCompleteProject: vi.fn(),
 	mockCompleteAccess: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock("@/lib/git-api", async (orig) => ({
 	completeProjectGitSetup: mockCompleteProject,
 	completeGitAccess: mockCompleteAccess,
 	beginAgentGitAccess: mockBeginAgentAccess,
+	beginGitAccess: mockBeginAccess,
 	followGitStep: mockFollow,
 }));
 vi.mock("@tanstack/react-router", () => ({
@@ -86,6 +89,7 @@ describe("GitSetupCallback", () => {
 		mockComplete.mockReset();
 		mockFollow.mockReset();
 		mockBeginAgentAccess.mockReset();
+		mockBeginAccess.mockReset();
 		mockFollow.mockReturnValue(true);
 	});
 
@@ -328,6 +332,50 @@ describe("GitSetupCallback", () => {
 			renderCallback(uniq("?code=c&state=sh1"));
 			await waitFor(() => expect(mockComplete).toHaveBeenCalled());
 			expect(mockBeginAgentAccess).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("a project's own App", () => {
+		const projectApp = (kind: string) =>
+			completion({
+				identity: {
+					id: "i3",
+					scope: "project",
+					kind,
+					host: "github.com",
+					provider_id: "com.paca.github",
+				},
+				return_url: "https://paca.example.com/projects/p1/settings#git",
+			});
+
+		it("goes straight on to installing it once it is created", async () => {
+			rememberGitFlow("pj1", { kind: "project-identity", projectId: "p1" });
+			mockCompleteProject.mockResolvedValue(projectApp("app"));
+			mockBeginAccess.mockResolvedValue({
+				kind: "redirect",
+				url: "https://github.com/apps/x/installations/new",
+				state: "acc2",
+			});
+			renderCallback(uniq("?code=c&state=pj1"));
+			await waitFor(() => expect(mockFollow).toHaveBeenCalled());
+			expect(mockBeginAccess).toHaveBeenCalledWith("p1", {
+				provider_id: "com.paca.github",
+				host: "github.com",
+				owner: "",
+				return_url: "https://paca.example.com/projects/p1/settings#git",
+				identity_id: "i3",
+			});
+			expect(window.sessionStorage.getItem("paca.git.flow.acc2")).toContain(
+				"access",
+			);
+		});
+
+		it("has nothing to install for a token", async () => {
+			rememberGitFlow("pj2", { kind: "project-identity", projectId: "p1" });
+			mockCompleteProject.mockResolvedValue(projectApp("token"));
+			renderCallback(uniq("?code=c&state=pj2"));
+			await waitFor(() => expect(mockCompleteProject).toHaveBeenCalled());
+			expect(mockBeginAccess).not.toHaveBeenCalled();
 		});
 	});
 });

@@ -47,18 +47,19 @@
 				"connectionHelp": "Choose one when several connections can see the repository, for example two organizations.",
 				"description": "Description (optional)",
 				"descriptionPlaceholder": "e.g. Web client of the product",
-				"descriptionHelp": "Tells agents what this repository is for, so they pick the right one. Up to 1000 characters."
+				"descriptionHelp": "Tells agents what this repository is for, so they pick the right one. Up to 1000 characters.",
+				"title": "Link a repository",
+				"dialogDescription": "Pick the platform and repository this project's agents should work with."
 			},
 			"picker": {
 				"browse": "Browse repositories",
-				"hide": "Hide list",
-				"search": "Search repositories",
-				"unsupported": "This connection can't list repositories. Type the path or URL above.",
-				"error": "Couldn't load the list. You can still type the path or URL above.",
+				"unsupported": "This connection can't list repositories. Close this window and type the path or URL instead.",
+				"error": "Couldn't load the list. Close this window and type the path or URL instead.",
 				"empty": "No repositories found.",
-				"loadMore": "Load more",
 				"linked": "Linked",
-				"private": "Private"
+				"private": "Private",
+				"title": "Browse repositories",
+				"description": "Scroll through everything this connection can see, then pick one to fill in the repository."
 			},
 			"unlink": {
 				"button": "Unlink",

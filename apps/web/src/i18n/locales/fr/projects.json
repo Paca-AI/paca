@@ -47,18 +47,19 @@
 				"connectionHelp": "Choisissez-en une lorsque plusieurs connexions voient le dépôt, par exemple deux organisations.",
 				"description": "Description (facultative)",
 				"descriptionPlaceholder": "p. ex. Client web du produit",
-				"descriptionHelp": "Indique aux agents à quoi sert ce dépôt, pour qu'ils choisissent le bon. 1000 caractères maximum."
+				"descriptionHelp": "Indique aux agents à quoi sert ce dépôt, pour qu'ils choisissent le bon. 1000 caractères maximum.",
+				"title": "Lier un dépôt",
+				"dialogDescription": "Choisissez la plateforme et le dépôt avec lesquels les agents de ce projet travailleront."
 			},
 			"picker": {
 				"browse": "Parcourir les dépôts",
-				"hide": "Masquer la liste",
-				"search": "Rechercher des dépôts",
-				"unsupported": "Cette connexion ne peut pas lister les dépôts. Saisissez le chemin ou l'URL ci-dessus.",
-				"error": "Impossible de charger la liste. Vous pouvez toujours saisir le chemin ou l'URL ci-dessus.",
+				"unsupported": "Cette connexion ne peut pas lister les dépôts. Fermez cette fenêtre et saisissez le chemin ou l'URL.",
+				"error": "Impossible de charger la liste. Fermez cette fenêtre et saisissez le chemin ou l'URL.",
 				"empty": "Aucun dépôt trouvé.",
-				"loadMore": "Charger plus",
 				"linked": "Lié",
-				"private": "Privé"
+				"private": "Privé",
+				"title": "Parcourir les dépôts",
+				"description": "Parcourez tout ce que cette connexion voit, puis choisissez un dépôt pour remplir le champ."
 			},
 			"unlink": {
 				"button": "Délier",
