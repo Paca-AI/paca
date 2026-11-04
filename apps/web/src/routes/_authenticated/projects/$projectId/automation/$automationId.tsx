@@ -50,6 +50,10 @@ import {
 	updateAutomation,
 	updateAutomationNode,
 } from "@/lib/automation-api";
+import {
+	pluginConfigRows,
+	pluginMatchLabel,
+} from "@/lib/automation-plugin-config";
 import { useMemberDirectory } from "@/lib/member-directory";
 import {
 	customFieldsQueryOptions,
@@ -267,66 +271,39 @@ function AutomationBuilderPage() {
 		return false;
 	}
 
-	// The configured values of a plugin/Git node, read through its
-	// configSchema, as {title, value} rows — undefined for a node that
-	// declares no config fields (built-ins, or a trigger like "PR created").
-	function pluginConfigRows(
-		node: AutomationNode,
-	): { title: string; value: string; isEnum: boolean }[] | undefined {
-		const props = configSchemaForType(node.kind, node.type)?.properties;
-		if (!props || Object.keys(props).length === 0) return undefined;
-		const config = (node.config ?? {}) as Record<string, unknown>;
-		const rows: { title: string; value: string; isEnum: boolean }[] = [];
-		for (const [key, prop] of Object.entries(props)) {
-			const raw = config[key] ?? prop.default;
-			if (raw === undefined || raw === null || raw === "") continue;
-			const value = String(raw).replace(/\s+/g, " ").trim();
-			rows.push({
-				title: prop.title ?? key,
-				value: prop.enum
-					? value.charAt(0).toUpperCase() + value.slice(1)
-					: value,
-				isEnum: !!prop.enum,
-			});
-		}
-		return rows;
-	}
-
 	function describePluginNode(node: AutomationNode): string | undefined {
 		// A condition's configured values show on its match output instead
-		// (pluginMatchLabel), not repeated in the body.
+		// (conditionMatchLabel), not repeated in the body.
 		if (node.kind === "condition") return undefined;
-		const rows = pluginConfigRows(node);
+		const rows = pluginConfigRows(
+			configSchemaForType(node.kind, node.type),
+			node.config,
+		);
 		if (!rows) return undefined;
 		if (rows.length === 0) {
 			return t("automation.nodeConfig.description.notConfigured");
 		}
-		return rows
-			.map((r) =>
-				t("automation.nodeConfig.description.pluginField", {
-					field: r.title,
-					value: r.value,
-				}),
-			)
-			.join("\n");
+		return rows.map(pluginFieldText).join("\n");
+	}
+
+	function pluginFieldText(r: { title: string; value: string }): string {
+		return t("automation.nodeConfig.description.pluginField", {
+			field: r.title,
+			value: r.value,
+		});
 	}
 
 	// The label on a plugin condition's single "match" output — the expected
 	// value itself ("Merged") rather than a generic "Matched", so the graph
-	// reads without opening the node. Undefined falls back to "Matched".
-	function pluginMatchLabel(node: AutomationNode): string | undefined {
-		const rows = pluginConfigRows(node);
-		if (!rows || rows.length === 0) return undefined;
-		return rows
-			.map((r) =>
-				rows.length === 1 && r.isEnum
-					? r.value
-					: t("automation.nodeConfig.description.pluginField", {
-							field: r.title,
-							value: r.value,
-						}),
-			)
-			.join(", ");
+	// reads without opening the node. Schema defaults are not filled in, so an
+	// unconfigured condition falls back to "Matched".
+	function conditionMatchLabel(node: AutomationNode): string | undefined {
+		return pluginMatchLabel(
+			pluginConfigRows(configSchemaForType(node.kind, node.type), node.config, {
+				useDefaults: false,
+			}),
+			pluginFieldText,
+		);
 	}
 
 	function describeNode(node: AutomationNode): string | undefined {
@@ -756,7 +733,7 @@ function AutomationBuilderPage() {
 						edges={graph.edges}
 						nodeLabel={(n) => labelForType(n.kind, n.type)}
 						nodeDescription={describeNode}
-						conditionMatchLabel={pluginMatchLabel}
+						conditionMatchLabel={conditionMatchLabel}
 						canEdit={canManage}
 						selectedNodeId={selectedNodeId}
 						onSelectNode={setSelectedNodeId}

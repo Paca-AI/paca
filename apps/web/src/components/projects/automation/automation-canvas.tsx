@@ -260,7 +260,10 @@ function ConditionBranchRows({
 					key={b.handle}
 					className="relative flex items-center gap-2 border-b border-border/20 px-3 py-1.5"
 				>
-					<span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+					<span
+						className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
+						title={b.label || undefined}
+					>
 						{b.label ||
 							t("automation.nodeConfig.description.branchFallback", {
 								n: i + 1,
