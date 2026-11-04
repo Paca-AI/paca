@@ -568,14 +568,22 @@ func isIssueBody(ev *gitprovider.Event) bool {
 // posts (an agent's comment, or git.comment_pr). Through a personal access
 // token or OAuth identity such a comment comes back from the platform with a
 // human author, so the footer is what tells it apart from a person's.
+//
+// The footer is always the trailing block, so only text that ends with it
+// counts: a person's reply that quotes a Paca comment keeps its own footer
+// mid-text and still triggers.
 func postedByPaca(text string) bool {
+	text = strings.TrimSpace(text)
+	if !strings.HasSuffix(text, "</sub>") {
+		return false
+	}
 	i := strings.LastIndex(text, "<sub>Posted by ")
-	if i < 0 {
+	if i < 0 || strings.Contains(text[i:], "\n") {
 		return false
 	}
 	tail := text[i:]
-	return strings.Contains(tail, "via Paca</sub>") || strings.Contains(tail, "via [Paca](") ||
-		strings.Contains(tail, "a Paca automation</sub>")
+	return strings.HasSuffix(tail, "via Paca</sub>") || strings.Contains(tail, "via [Paca](") ||
+		strings.HasSuffix(tail, "a Paca automation</sub>")
 }
 
 // emitEventTriggers feeds the triggers that come straight from a webhook event

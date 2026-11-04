@@ -236,6 +236,7 @@ func TestAutomation_EventTriggersReachTheTasksOfTheRequest(t *testing.T) {
 		{"bot comment never triggers", gitprovider.Event{Kind: gitprovider.EventComment, Action: "created", Actor: bot}, ""},
 		{"automation comment from a user identity", gitprovider.Event{Kind: gitprovider.EventComment, Action: "created", Actor: human, Text: "done\n\n---\n<sub>Posted by a Paca automation</sub>"}, ""},
 		{"agent comment from a user identity", gitprovider.Event{Kind: gitprovider.EventComment, Action: "created", Actor: human, Text: "ok\n\n---\n<sub>Posted by **Dev** via Paca</sub>"}, ""},
+		{"reply quoting a Paca comment", gitprovider.Event{Kind: gitprovider.EventComment, Action: "created", Actor: human, Text: "> ok\n> <sub>Posted by **Dev** via Paca</sub>\n\nthanks, but please redo"}, TriggerPRCommented},
 		{"edited comment", gitprovider.Event{Kind: gitprovider.EventComment, Action: "edited", Actor: human}, ""},
 		{"check", gitprovider.Event{Kind: gitprovider.EventCheck, Actor: bot, Check: &gitprovider.CheckInfo{Name: "ci/test", Conclusion: "failure"}}, TriggerPRCICompleted},
 		{"Paca's own status", gitprovider.Event{Kind: gitprovider.EventCheck, Actor: bot, Check: &gitprovider.CheckInfo{Name: runStatusPrefix + "run", Conclusion: "failure"}}, ""},

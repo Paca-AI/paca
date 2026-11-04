@@ -105,9 +105,9 @@ jobs:
         # near-zero headroom under the previous 60s budget — enough to tip
         # into a hard timeout on a slower/contended CI runner with no
         # underlying test hang (reproduces green locally every time).
-        # 120s matches the budget acp-bridge-pr-ci.yml already uses for the
-        # same class of race-detector run.
-        run: go test -race -timeout 120s -coverprofile=coverage.out $(go list ./... | grep -v '/test/e2e')
+        # The suite has since grown past 90s locally under -race, so the
+        # budget is 300s: a slow runner no longer trips a hard timeout.
+        run: go test -race -timeout 300s -coverprofile=coverage.out $(go list ./... | grep -v '/test/e2e')
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v6
