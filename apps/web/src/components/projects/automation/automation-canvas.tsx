@@ -41,6 +41,7 @@ interface BaseNodeData extends Record<string, unknown> {
 	node: AutomationNode;
 	label: string;
 	description?: string;
+	matchLabel?: string;
 	canEdit: boolean;
 	selected: boolean;
 	onSelect: () => void;
@@ -72,8 +73,16 @@ const KIND_STYLES: Record<
 };
 
 function NodeShell({ data }: NodeProps<Node<BaseNodeData>>) {
-	const { node, label, description, canEdit, selected, onSelect, onDelete } =
-		data;
+	const {
+		node,
+		label,
+		description,
+		matchLabel,
+		canEdit,
+		selected,
+		onSelect,
+		onDelete,
+	} = data;
 	const style = KIND_STYLES[node.kind];
 	const Icon = style.icon;
 
@@ -146,7 +155,7 @@ function NodeShell({ data }: NodeProps<Node<BaseNodeData>>) {
 				</button>
 			)}
 			{node.kind === "condition" ? (
-				<ConditionBranchRows node={node} />
+				<ConditionBranchRows node={node} matchLabel={matchLabel} />
 			) : (
 				<Handle
 					type="source"
@@ -208,7 +217,13 @@ function branchesForNode(
 	}
 }
 
-function ConditionBranchRows({ node }: { node: AutomationNode }) {
+function ConditionBranchRows({
+	node,
+	matchLabel,
+}: {
+	node: AutomationNode;
+	matchLabel?: string;
+}) {
 	const { t } = useTranslation("projects");
 	const branches = branchesForNode(node).map((b) =>
 		b.label !== undefined
@@ -218,7 +233,8 @@ function ConditionBranchRows({ node }: { node: AutomationNode }) {
 					label:
 						node.type === JEV_CONDITION_NODE_TYPE
 							? t("automation.nodeConfig.description.jevNoulTrue")
-							: t("automation.nodeConfig.description.pluginConditionMatched"),
+							: (matchLabel ??
+								t("automation.nodeConfig.description.pluginConditionMatched")),
 				},
 	);
 	const updateNodeInternals = useUpdateNodeInternals();
@@ -244,7 +260,10 @@ function ConditionBranchRows({ node }: { node: AutomationNode }) {
 					key={b.handle}
 					className="relative flex items-center gap-2 border-b border-border/20 px-3 py-1.5"
 				>
-					<span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+					<span
+						className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
+						title={b.label || undefined}
+					>
 						{b.label ||
 							t("automation.nodeConfig.description.branchFallback", {
 								n: i + 1,
@@ -280,6 +299,7 @@ interface AutomationCanvasProps {
 	edges: AutomationEdge[];
 	nodeLabel: (node: AutomationNode) => string;
 	nodeDescription?: (node: AutomationNode) => string | undefined;
+	conditionMatchLabel?: (node: AutomationNode) => string | undefined;
 	canEdit: boolean;
 	selectedNodeId: string | null;
 	onSelectNode: (nodeId: string) => void;
@@ -300,6 +320,7 @@ export function AutomationCanvas({
 	edges,
 	nodeLabel,
 	nodeDescription,
+	conditionMatchLabel,
 	canEdit,
 	selectedNodeId,
 	onSelectNode,
@@ -325,6 +346,7 @@ export function AutomationCanvas({
 					node: n,
 					label: nodeLabel(n),
 					description: nodeDescription?.(n),
+					matchLabel: conditionMatchLabel?.(n),
 					canEdit,
 					selected: n.id === selectedNodeId,
 					onSelect: () => onSelectNode(n.id),
@@ -335,6 +357,7 @@ export function AutomationCanvas({
 			nodes,
 			nodeLabel,
 			nodeDescription,
+			conditionMatchLabel,
 			canEdit,
 			selectedNodeId,
 			onSelectNode,

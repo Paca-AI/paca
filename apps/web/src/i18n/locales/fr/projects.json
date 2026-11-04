@@ -2523,7 +2523,8 @@
 				"taskEvents": "Événements de tâches",
 				"sprintEvents": "Événements de sprints",
 				"scheduleWebhook": "Planification et webhook"
-			}
+			},
+			"git": "Git"
 		},
 		"nodeKind": {
 			"trigger": "Déclencheur",
@@ -2722,7 +2723,9 @@
 				"cronSchedule": "S'exécute {{expression}}",
 				"webhookReady": "Webhook configuré",
 				"callApiSummary": "{{method}} {{host}}",
-				"jevNoulTrue": "Oui"
+				"jevNoulTrue": "Oui",
+				"pluginField": "{{field}} : {{value}}",
+				"waitMinutes": "Attendre {{minutes}} min"
 			},
 			"jev": {
 				"answerTypeLabel": "Type de réponse",
@@ -2748,7 +2751,8 @@
 				"confidenceThresholdLabel": "Seuil de confiance",
 				"trueThresholdLabel": "Seuil « vrai »",
 				"thresholdHint": "En dessous de ce seuil, le workflow suit la branche Sinon au lieu de faire confiance à la réponse."
-			}
+			},
+			"noConfigNeeded": "Ce nœud ne nécessite aucune configuration : il s'exécute dès que l'automatisation l'atteint."
 		},
 		"runHistory": {
 			"title": "Historique des exécutions",

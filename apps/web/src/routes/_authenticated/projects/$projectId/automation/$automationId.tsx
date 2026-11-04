@@ -50,6 +50,10 @@ import {
 	updateAutomation,
 	updateAutomationNode,
 } from "@/lib/automation-api";
+import {
+	pluginConfigRows,
+	pluginMatchLabel,
+} from "@/lib/automation-plugin-config";
 import { useMemberDirectory } from "@/lib/member-directory";
 import {
 	customFieldsQueryOptions,
@@ -267,7 +271,44 @@ function AutomationBuilderPage() {
 		return false;
 	}
 
+	function describePluginNode(node: AutomationNode): string | undefined {
+		// A condition's configured values show on its match output instead
+		// (conditionMatchLabel), not repeated in the body.
+		if (node.kind === "condition") return undefined;
+		const rows = pluginConfigRows(
+			configSchemaForType(node.kind, node.type),
+			node.config,
+		);
+		if (!rows) return undefined;
+		if (rows.length === 0) {
+			return t("automation.nodeConfig.description.notConfigured");
+		}
+		return rows.map(pluginFieldText).join("\n");
+	}
+
+	function pluginFieldText(r: { title: string; value: string }): string {
+		return t("automation.nodeConfig.description.pluginField", {
+			field: r.title,
+			value: r.value,
+		});
+	}
+
+	// The label on a plugin condition's single "match" output — the expected
+	// value itself ("Merged") rather than a generic "Matched", so the graph
+	// reads without opening the node. Schema defaults are not filled in, so an
+	// unconfigured condition falls back to "Matched".
+	function conditionMatchLabel(node: AutomationNode): string | undefined {
+		return pluginMatchLabel(
+			pluginConfigRows(configSchemaForType(node.kind, node.type), node.config, {
+				useDefaults: false,
+			}),
+			pluginFieldText,
+		);
+	}
+
 	function describeNode(node: AutomationNode): string | undefined {
+		const pluginSummary = describePluginNode(node);
+		if (pluginSummary !== undefined) return pluginSummary;
 		if (node.kind === "trigger") {
 			const cfg = node.config as TriggerConfig;
 			switch (node.type) {
@@ -410,6 +451,12 @@ function AutomationBuilderPage() {
 						host,
 					});
 				}
+				case "wait":
+					return cfg.wait_minutes && cfg.wait_minutes > 0
+						? t("automation.nodeConfig.description.waitMinutes", {
+								minutes: cfg.wait_minutes,
+							})
+						: t("automation.nodeConfig.description.notConfigured");
 				default:
 					return undefined;
 			}
@@ -686,6 +733,7 @@ function AutomationBuilderPage() {
 						edges={graph.edges}
 						nodeLabel={(n) => labelForType(n.kind, n.type)}
 						nodeDescription={describeNode}
+						conditionMatchLabel={conditionMatchLabel}
 						canEdit={canManage}
 						selectedNodeId={selectedNodeId}
 						onSelectNode={setSelectedNodeId}

@@ -2543,7 +2543,8 @@
 				"taskEvents": "События задач",
 				"sprintEvents": "События спринтов",
 				"scheduleWebhook": "Расписание и webhook"
-			}
+			},
+			"git": "Git"
 		},
 		"nodeKind": {
 			"trigger": "Триггер",
@@ -2742,7 +2743,9 @@
 				"cronSchedule": "Выполняется {{expression}}",
 				"webhookReady": "Webhook настроен",
 				"callApiSummary": "{{method}} {{host}}",
-				"jevNoulTrue": "Да"
+				"jevNoulTrue": "Да",
+				"pluginField": "{{field}}: {{value}}",
+				"waitMinutes": "Ждать {{minutes}} мин"
 			},
 			"jev": {
 				"answerTypeLabel": "Тип ответа",
@@ -2768,7 +2771,8 @@
 				"confidenceThresholdLabel": "Порог уверенности",
 				"trueThresholdLabel": "Порог «истина»",
 				"thresholdHint": "Ниже этого значения рабочий процесс идёт по ветке Else, а не доверяет ответу."
-			}
+			},
+			"noConfigNeeded": "Этому узлу не нужна настройка: он выполняется сразу, как только до него доходит автоматизация."
 		},
 		"runHistory": {
 			"title": "История запусков",

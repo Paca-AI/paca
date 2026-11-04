@@ -2523,7 +2523,8 @@
 				"taskEvents": "태스크 이벤트",
 				"sprintEvents": "스프린트 이벤트",
 				"scheduleWebhook": "일정 및 웹훅"
-			}
+			},
+			"git": "Git"
 		},
 		"nodeKind": {
 			"trigger": "트리거",
@@ -2722,7 +2723,9 @@
 				"cronSchedule": "{{expression}} 에 실행",
 				"webhookReady": "웹훅 설정됨",
 				"callApiSummary": "{{method}} {{host}}",
-				"jevNoulTrue": "예"
+				"jevNoulTrue": "예",
+				"pluginField": "{{field}}: {{value}}",
+				"waitMinutes": "{{minutes}}분 대기"
 			},
 			"jev": {
 				"answerTypeLabel": "답변 유형",
@@ -2748,7 +2751,8 @@
 				"confidenceThresholdLabel": "신뢰도 임계값",
 				"trueThresholdLabel": "\"참\" 임계값",
 				"thresholdHint": "이 값보다 낮으면 워크플로가 답변을 신뢰하는 대신 Else 분기를 따릅니다."
-			}
+			},
+			"noConfigNeeded": "이 노드는 설정이 필요 없습니다. 자동화가 이 노드에 도달하면 바로 실행됩니다."
 		},
 		"runHistory": {
 			"title": "실행 기록",
