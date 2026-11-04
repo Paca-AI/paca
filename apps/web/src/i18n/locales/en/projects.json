@@ -724,6 +724,19 @@
 				"noContextResults": "No results found",
 				"contextSearchMinChars": "Type at least 2 characters to search"
 			}
+		},
+		"acpModelEffort": {
+			"modelLabel": "Model",
+			"modelPlaceholder": "e.g. claude-sonnet-4-5",
+			"modelHint": "Optional model name to run with, sent to the provider exactly as typed. Leave empty to use the provider's default.",
+			"effortLabel": "Reasoning effort",
+			"effortDefault": "Provider default",
+			"effort_low": "Low",
+			"effort_medium": "Medium",
+			"effort_high": "High",
+			"effort_xhigh": "Extra high",
+			"effort_max": "Max",
+			"effortHint": "Optional. Applied only if the provider supports the chosen level."
 		}
 	},
 	"environments": {

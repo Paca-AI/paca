@@ -198,6 +198,8 @@ export interface Agent {
 	llm_base_url: string;
 	acp_provider?: ACPProvider | null;
 	acp_command?: string[];
+	acp_model?: string;
+	acp_effort?: string;
 	has_acp_bridge_token: boolean;
 	has_mcp_api_key: boolean;
 	// cli_provider/cli_model/cli_auth_mode/has_cli_api_key/
@@ -392,6 +394,8 @@ export async function createAgent(
 		llm_base_url?: string;
 		acp_provider?: ACPProvider;
 		acp_command?: string[];
+		acp_model?: string;
+		acp_effort?: string;
 		cli_provider?: CLIProvider;
 		cli_model?: string;
 		cli_auth_mode?: CLIAuthMode;
@@ -426,6 +430,8 @@ export async function updateAgent(
 		llm_base_url?: string | null;
 		acp_provider?: ACPProvider;
 		acp_command?: string[];
+		acp_model?: string;
+		acp_effort?: string;
 		cli_provider?: CLIProvider;
 		cli_model?: string;
 		cli_auth_mode?: CLIAuthMode;
@@ -482,6 +488,8 @@ export interface CreateGlobalAgentPayload {
 	llm_base_url?: string;
 	acp_provider?: ACPProvider;
 	acp_command?: string[];
+	acp_model?: string;
+	acp_effort?: string;
 	system_prompt?: string;
 	git_committer_name?: string;
 	git_committer_email?: string;
@@ -519,6 +527,8 @@ export interface UpdateGlobalAgentPayload {
 	llm_base_url?: string | null;
 	acp_provider?: ACPProvider;
 	acp_command?: string[];
+	acp_model?: string;
+	acp_effort?: string;
 	system_prompt?: string;
 	git_committer_name?: string;
 	git_committer_email?: string;

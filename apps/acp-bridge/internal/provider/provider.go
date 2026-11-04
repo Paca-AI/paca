@@ -77,6 +77,19 @@ func ResolveCommand(acpProvider string, explicit []string) ([]string, error) {
 	return explicit, nil
 }
 
+// ModelEnv returns the KEY=VALUE environment entries that make acpProvider's
+// agent run model, or nil if the provider has no such mechanism. The Claude
+// adapter only accepts models from its own list through ACP, but the Claude
+// CLI underneath takes any model name from ANTHROPIC_MODEL — which is what a
+// custom ANTHROPIC_BASE_URL endpoint needs — and it outranks the model in the
+// user's ~/.claude/settings.json.
+func ModelEnv(acpProvider, model string) []string {
+	if acpProvider == "claude-code" && model != "" {
+		return []string{"ANTHROPIC_MODEL=" + model}
+	}
+	return nil
+}
+
 // PermissionMode returns the session mode id that suppresses interactive
 // permission prompts for acpProvider, or "" if none is known — callers
 // should treat "" as "don't bother calling session/set_mode" rather than an

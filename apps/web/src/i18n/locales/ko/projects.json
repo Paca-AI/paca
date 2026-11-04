@@ -724,6 +724,19 @@
 				"noContextResults": "결과를 찾을 수 없습니다",
 				"contextSearchMinChars": "검색하려면 2자 이상 입력하세요"
 			}
+		},
+		"acpModelEffort": {
+			"modelLabel": "모델",
+			"modelPlaceholder": "예: claude-sonnet-4-5",
+			"modelHint": "실행에 사용할 모델 이름(선택 사항)이며, 입력한 그대로 공급자에게 전달됩니다. 비워 두면 공급자의 기본값을 사용합니다.",
+			"effortLabel": "추론 강도",
+			"effortDefault": "공급자 기본값",
+			"effort_low": "낮음",
+			"effort_medium": "보통",
+			"effort_high": "높음",
+			"effort_xhigh": "매우 높음",
+			"effort_max": "최대",
+			"effortHint": "선택 사항. 공급자가 선택한 수준을 지원하는 경우에만 적용됩니다."
 		}
 	},
 	"environments": {

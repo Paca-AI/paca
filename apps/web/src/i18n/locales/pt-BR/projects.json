@@ -724,6 +724,19 @@
 				"noContextResults": "Nenhum resultado encontrado",
 				"contextSearchMinChars": "Digite pelo menos 2 caracteres para buscar"
 			}
+		},
+		"acpModelEffort": {
+			"modelLabel": "Modelo",
+			"modelPlaceholder": "ex.: claude-sonnet-4-5",
+			"modelHint": "Nome de modelo opcional, enviado ao provedor exatamente como digitado. Deixe em branco para usar o padrão do provedor.",
+			"effortLabel": "Esforço de raciocínio",
+			"effortDefault": "Padrão do provedor",
+			"effort_low": "Baixo",
+			"effort_medium": "Médio",
+			"effort_high": "Alto",
+			"effort_xhigh": "Muito alto",
+			"effort_max": "Máximo",
+			"effortHint": "Opcional. Aplicado apenas se o provedor oferecer o nível escolhido."
 		}
 	},
 	"environments": {

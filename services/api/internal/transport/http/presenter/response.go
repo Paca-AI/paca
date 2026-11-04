@@ -458,6 +458,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentACPProviderInvalid
 	case errors.Is(err, agentdom.ErrACPCommandRequired):
 		return http.StatusBadRequest, apierr.CodeAgentACPCommandRequired
+	case errors.Is(err, agentdom.ErrACPModelInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentACPModelInvalid
 	case errors.Is(err, agentdom.ErrFieldNotSupportedForAgentType):
 		return http.StatusBadRequest, apierr.CodeAgentFieldNotSupportedForType
 	case errors.Is(err, agentdom.ErrMCPServerNotFound):
@@ -806,6 +808,7 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAgentTypeInvalid,
 		apierr.CodeAgentACPProviderInvalid,
 		apierr.CodeAgentACPCommandRequired,
+		apierr.CodeAgentACPModelInvalid,
 		apierr.CodeAgentFieldNotSupportedForType,
 		apierr.CodeAgentEnvVarKeyInvalid,
 		apierr.CodeAgentEnvVarKeyReserved,

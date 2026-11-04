@@ -97,6 +97,7 @@ import { agentAvatar } from "@/lib/provider-logos";
 import { splitShellCommand } from "@/lib/shell-command";
 import { AgentGitTab } from "./AgentGitTab";
 import { AcpBridgeSetup } from "./acp-bridge-setup";
+import { AcpModelEffortFields } from "./acp-model-effort-fields";
 import { AgentActivityTab } from "./agent-activity-tab";
 import { AgentGlobalRoleTab } from "./agent-global-role-tab";
 
@@ -227,6 +228,8 @@ function OverviewTab({
 	const [acpCommand, setAcpCommand] = useState(
 		(agent.acp_command ?? []).join(" "),
 	);
+	const [acpModel, setAcpModel] = useState(agent.acp_model ?? "");
+	const [acpEffort, setAcpEffort] = useState(agent.acp_effort ?? "");
 	const [cliProviderSelect, setCliProviderSelect] = useState<CLIProvider>(
 		agent.cli_provider ?? "claude-code",
 	);
@@ -279,7 +282,9 @@ function OverviewTab({
 		effectiveParallelismLimit !== agent.parallelism_limit ||
 		(isAcp
 			? acpProviderSelect !== (agent.acp_provider ?? "claude-code") ||
-				acpCommandParts.join(" ") !== (agent.acp_command ?? []).join(" ")
+				acpCommandParts.join(" ") !== (agent.acp_command ?? []).join(" ") ||
+				acpModel.trim() !== (agent.acp_model ?? "") ||
+				acpEffort !== (agent.acp_effort ?? "")
 			: isProviderCli
 				? cliProviderSelect !== (agent.cli_provider ?? "claude-code") ||
 					cliModel !== (agent.cli_model ?? "") ||
@@ -305,6 +310,8 @@ function OverviewTab({
 				...(isAcp
 					? {
 							acp_provider: acpProviderSelect,
+							acp_model: acpModel.trim(),
+							acp_effort: acpEffort,
 							...(acpProviderSelect === "custom"
 								? { acp_command: acpCommandParts }
 								: {}),
@@ -588,6 +595,16 @@ function OverviewTab({
 							</p>
 						</div>
 					)}
+					<div className="space-y-3 mt-3">
+						<AcpModelEffortFields
+							idPrefix="agent-detail"
+							model={acpModel}
+							effort={acpEffort}
+							onModelChange={setAcpModel}
+							onEffortChange={setAcpEffort}
+							disabled={!canWrite}
+						/>
+					</div>
 					<p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2 mt-3">
 						{t("agents.detail.overview.acpGuidanceBanner")}
 					</p>

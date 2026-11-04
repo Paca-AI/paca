@@ -60,6 +60,11 @@ type Agent struct {
 	// via a small local override in apps/acp-bridge's runner.py (the SDK's
 	// registry doesn't know about goose).
 	ACPCommand []string
+	// ACPModel/ACPEffort optionally pin the model and reasoning effort the
+	// ACP agent runs with; empty means the provider's own default. Only
+	// meaningful for acp-type agents.
+	ACPModel  string
+	ACPEffort string
 	// CLIProvider is one of claude-code | codex | cursor-agent | gemini-cli;
 	// nil unless AgentType == provider_cli. Unlike ACPProvider (which names
 	// the ACP client the *user's own machine* runs via apps/acp-bridge),

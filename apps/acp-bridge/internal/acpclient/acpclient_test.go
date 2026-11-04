@@ -448,3 +448,34 @@ func TestCloseUnblocksAPendingCall(t *testing.T) {
 		t.Fatal("Initialize did not unblock after Close")
 	}
 }
+
+func TestConfigOptionFor(t *testing.T) {
+	var info SessionInfo
+	raw := `[{"id":"model","category":"model"},{"id":"effort","category":"thought_level"}]`
+	if err := json.Unmarshal([]byte(raw), &info.ConfigOptions); err != nil {
+		t.Fatal(err)
+	}
+	if o, ok := info.ConfigOptionFor("model"); !ok || o.ID != "model" {
+		t.Fatalf("model option lookup wrong: %+v ok=%v", o, ok)
+	}
+	if o, ok := info.ConfigOptionFor("thought_level", "effort"); !ok || o.ID != "effort" {
+		t.Fatalf("effort option lookup wrong: %+v ok=%v", o, ok)
+	}
+	if _, ok := info.ConfigOptionFor("nope"); ok {
+		t.Fatal("unexpected option for unknown category")
+	}
+}
+
+func TestConfigOptionForPrefersCategoryOverIDFallback(t *testing.T) {
+	info := &SessionInfo{ConfigOptions: []ConfigOption{
+		{ID: "effort"},
+		{ID: "think", Category: "thought_level"},
+	}}
+	got, ok := info.ConfigOptionFor("thought_level", "effort")
+	if !ok || got.ID != "think" {
+		t.Fatalf("got %+v, %v; want the category match \"think\"", got, ok)
+	}
+	if got, ok := info.ConfigOptionFor("other", "effort"); !ok || got.ID != "effort" {
+		t.Fatalf("id fallback: got %+v, %v", got, ok)
+	}
+}

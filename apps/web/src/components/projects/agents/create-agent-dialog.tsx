@@ -86,6 +86,7 @@ import type { Role } from "@/lib/role-api";
 import { splitShellCommand } from "@/lib/shell-command";
 import { cn } from "@/lib/utils";
 import { AcpBridgeSetup, CommandBox } from "./acp-bridge-setup";
+import { AcpModelEffortFields } from "./acp-model-effort-fields";
 import { ProjectRolePicker } from "./project-role-picker";
 import { useSetAgentGlobalRole } from "./use-set-agent-global-role";
 
@@ -216,6 +217,8 @@ export function CreateAgentDialog({
 	);
 	const [acpProvider, setAcpProvider] = useState<ACPProvider>("claude-code");
 	const [acpCommand, setAcpCommand] = useState("");
+	const [acpModel, setAcpModel] = useState("");
+	const [acpEffort, setAcpEffort] = useState("");
 	const [cliProvider, setCliProvider] = useState<CLIProvider>("claude-code");
 	const [cliModel, setCliModel] = useState("");
 	const [copiedCliLoginCommand, setCopiedCliLoginCommand] = useState(false);
@@ -269,6 +272,8 @@ export function CreateAgentDialog({
 		setLlmBaseUrl(llmModels.anthropic?.base_url ?? "");
 		setAcpProvider("claude-code");
 		setAcpCommand("");
+		setAcpModel("");
+		setAcpEffort("");
 		setCliProvider("claude-code");
 		setCliModel("");
 		setCopiedCliLoginCommand(false);
@@ -402,6 +407,8 @@ export function CreateAgentDialog({
 							}
 						: {
 								acp_provider: acpProvider,
+								...(acpModel.trim() ? { acp_model: acpModel.trim() } : {}),
+								...(acpEffort ? { acp_effort: acpEffort } : {}),
 								...(acpProvider === "custom"
 									? { acp_command: acpCommandParts }
 									: {}),
@@ -865,6 +872,13 @@ export function CreateAgentDialog({
 										</p>
 									</div>
 								)}
+								<AcpModelEffortFields
+									idPrefix="create-agent"
+									model={acpModel}
+									effort={acpEffort}
+									onModelChange={setAcpModel}
+									onEffortChange={setAcpEffort}
+								/>
 								<p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
 									{t("agents.createDialog.acpGuidance")}
 								</p>

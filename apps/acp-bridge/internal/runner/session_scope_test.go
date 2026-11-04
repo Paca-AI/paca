@@ -280,3 +280,43 @@ func TestEvictIdleSkipsClaimedSession(t *testing.T) {
 		t.Fatal("convIndex not cleaned after eviction")
 	}
 }
+
+// TestStartTurnRefreshesModelAndEffortEveryTurn guards that an agent's edited
+// model/effort reach a conversation's retained state on later turns, so a
+// respawned session uses the latest values.
+func TestStartTurnRefreshesModelAndEffortEveryTurn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a real subprocess")
+	}
+	setFakeAgentEnv(t, "normal")
+
+	r, sent := newTestRunner(t)
+	r.mu.Lock()
+	r.conversations["task:T1"] = &conversationState{
+		chunks:      newChunkBuffer(),
+		acpProvider: "custom",
+		command:     []string{os.Args[0]},
+		model:       "old-model",
+		effort:      "low",
+	}
+	r.mu.Unlock()
+
+	r.StartTurn(context.Background(), map[string]any{
+		"conversation_id": "conv-1",
+		"project_id":      "proj-1",
+		"task_id":         "T1",
+		"message":         "hi",
+		"acp_model":       "new-model",
+		"acp_effort":      "high",
+	})
+	waitForStatus(t, sent, "finished")
+
+	r.mu.Lock()
+	state := r.conversations["task:T1"]
+	r.mu.Unlock()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.model != "new-model" || state.effort != "high" {
+		t.Fatalf("model/effort = %q/%q, want new-model/high", state.model, state.effort)
+	}
+}

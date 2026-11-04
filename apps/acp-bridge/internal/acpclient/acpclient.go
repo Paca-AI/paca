@@ -160,6 +160,53 @@ func (s *SessionModeState) Offers(modeID string) bool {
 	return false
 }
 
+// ConfigOption mirrors one entry of NewSessionResponse.configOptions (ACP
+// "session config options"): a setting such as the model or the reasoning
+// effort. Category is the spec's semantic tag ("model", "thought_level",
+// "mode", ...); ID is the agent-chosen key passed back to
+// session/set_config_option.
+type ConfigOption struct {
+	ID       string `json:"id"`
+	Category string `json:"category,omitempty"`
+}
+
+// SessionModelState mirrors NewSessionResponse.models (ACP's unstable
+// model-selection state, still the only model surface some agents expose).
+// Only its presence matters here: it means session/set_model is supported.
+type SessionModelState struct {
+	CurrentModelID string `json:"currentModelId"`
+}
+
+// SessionInfo is everything NewSessionInfo learns from session/new.
+type SessionInfo struct {
+	SessionID     string
+	Modes         *SessionModeState
+	Models        *SessionModelState
+	ConfigOptions []ConfigOption
+}
+
+// ConfigOptionFor returns the first config option whose category equals
+// category or whose id is one of ids, and whether one was found.
+func (i *SessionInfo) ConfigOptionFor(category string, ids ...string) (ConfigOption, bool) {
+	if i == nil {
+		return ConfigOption{}, false
+	}
+	// Category is the spec's semantic tag, so it outranks the id fallback.
+	for _, o := range i.ConfigOptions {
+		if o.Category == category {
+			return o, true
+		}
+	}
+	for _, o := range i.ConfigOptions {
+		for _, id := range ids {
+			if o.ID == id {
+				return o, true
+			}
+		}
+	}
+	return ConfigOption{}, false
+}
+
 // Client is one subprocess's ACP connection — one built-in coding CLI
 // spawned against one workspace, driving exactly one ACP session for the
 // subprocess's whole lifetime (a chat conversation's later turns reattach
@@ -211,20 +258,21 @@ func newClient(stdin io.WriteCloser, stdout io.Reader, wait func() error, kill f
 	return c
 }
 
-// Spawn starts command as a subprocess rooted at workspace and returns a
+// Spawn starts command as a subprocess rooted at workspace (with extraEnv
+// KEY=VALUE entries added to the inherited environment) and returns a
 // Client ready for Initialize. onUpdate is called synchronously on the
 // connection's single read goroutine for every session/update notification
 // received for the lifetime of the Client — it must not block for long (queue
 // work elsewhere if needed), since it holds up processing of the next line
 // on the wire (including, e.g., the response to whatever request is
 // currently in flight).
-func Spawn(command []string, workspace string, onUpdate func(Update), log *slog.Logger) (*Client, error) {
+func Spawn(command []string, workspace string, extraEnv []string, onUpdate func(Update), log *slog.Logger) (*Client, error) {
 	if len(command) == 0 {
 		return nil, fmt.Errorf("acpclient: empty command")
 	}
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Dir = workspace
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), extraEnv...) // later entries win
 	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()
@@ -278,25 +326,79 @@ func (c *Client) Initialize(ctx context.Context) error {
 // returns its id (used in every subsequent call) plus whatever session-mode
 // state the agent reported, if any.
 func (c *Client) NewSession(ctx context.Context, cwd string) (sessionID string, modes *SessionModeState, err error) {
+	info, err := c.NewSessionInfo(ctx, cwd)
+	if err != nil {
+		return "", nil, err
+	}
+	return info.SessionID, info.Modes, nil
+}
+
+// NewSessionInfo is NewSession plus the model and config-option state the
+// agent reported, for callers that want to apply a model/effort selection.
+func (c *Client) NewSessionInfo(ctx context.Context, cwd string) (*SessionInfo, error) {
 	params := map[string]any{
 		"cwd":        cwd,
 		"mcpServers": []any{},
 	}
 	raw, err := c.call(ctx, "session/new", params)
 	if err != nil {
-		return "", nil, fmt.Errorf("acpclient: session/new: %w", err)
+		return nil, fmt.Errorf("acpclient: session/new: %w", err)
 	}
 	var result struct {
-		SessionID string            `json:"sessionId"`
-		Modes     *SessionModeState `json:"modes,omitempty"`
+		SessionID     string             `json:"sessionId"`
+		Modes         *SessionModeState  `json:"modes,omitempty"`
+		Models        *SessionModelState `json:"models,omitempty"`
+		ConfigOptions []ConfigOption     `json:"configOptions,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return "", nil, fmt.Errorf("acpclient: session/new: decoding result: %w", err)
+		return nil, fmt.Errorf("acpclient: session/new: decoding result: %w", err)
 	}
 	if result.SessionID == "" {
-		return "", nil, fmt.Errorf("acpclient: session/new: empty sessionId in result")
+		return nil, fmt.Errorf("acpclient: session/new: empty sessionId in result")
 	}
-	return result.SessionID, result.Modes, nil
+	return &SessionInfo{
+		SessionID:     result.SessionID,
+		Modes:         result.Modes,
+		Models:        result.Models,
+		ConfigOptions: result.ConfigOptions,
+	}, nil
+}
+
+// SetConfigOption sets a session config option (e.g. model or reasoning
+// effort) to value. The agent validates value (and may resolve aliases
+// itself); callers should treat a failure as non-fatal.
+//
+// Returns the session's full, refreshed option list when the agent reports
+// one: changing one option can change another's choices (a model switch
+// changes which effort levels exist), so callers should re-read from it.
+func (c *Client) SetConfigOption(ctx context.Context, sessionID, configID, value string) ([]ConfigOption, error) {
+	raw, err := c.call(ctx, "session/set_config_option", map[string]any{
+		"sessionId": sessionID,
+		"configId":  configID,
+		"value":     value,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("acpclient: session/set_config_option: %w", err)
+	}
+	var result struct {
+		ConfigOptions []ConfigOption `json:"configOptions"`
+	}
+	_ = json.Unmarshal(raw, &result) // refreshed list is optional
+	return result.ConfigOptions, nil
+}
+
+// SetModel requests the session switch to modelID via the unstable
+// session/set_model method — the fallback for agents that report models but
+// no model config option. Best-effort, like SetMode.
+func (c *Client) SetModel(ctx context.Context, sessionID, modelID string) error {
+	_, err := c.call(ctx, "session/set_model", map[string]any{
+		"sessionId": sessionID,
+		"modelId":   modelID,
+	})
+	if err != nil {
+		return fmt.Errorf("acpclient: session/set_model: %w", err)
+	}
+	return nil
 }
 
 // SetMode requests the session switch to modeID (e.g. a permission-bypass
