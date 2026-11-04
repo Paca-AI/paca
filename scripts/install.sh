@@ -89,6 +89,7 @@
 #     PACA_HTTPS                   yes/no; ignored for localhost        (default: yes)
 #     GATEWAY_PORT                 Only used when serving plain HTTP    (default: 80)
 #     PUBLIC_URL                   Full public URL, no trailing slash   (default: derived from the above)
+#     GIT_WEBHOOK_PUBLIC_URL       Optional separate Git webhook origin  (default: PUBLIC_URL)
 #
 #   Web app
 #     PACA_WEB                     bundled/external                    (default: bundled)

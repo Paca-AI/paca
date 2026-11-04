@@ -45,7 +45,7 @@ them.
 | Key | Description | Default |
 |---|---|---|
 | `publicUrl` | Externally reachable base URL for this deployment (e.g. `https://paca.example.com`). Leave empty for a ClusterIP/NodePort-only deployment. | `""` |
-| `gitWebhookPublicUrl` | Origin Git providers deliver webhooks to when it must differ from `publicUrl` (e.g. `https://paca-hooks.example.com`), for a public edge that only serves the browser and setup paths. | `""` (use `publicUrl`) |
+| `gitWebhookPublicUrl` | Optional separate origin for Git webhooks (e.g. `https://paca-hooks.example.com`). Route it to the API separately; the bundled gateway and ingress serve only their configured host. | `""` (use `publicUrl`) |
 | `imagePullSecrets` | Image pull secrets applied to every Pod this chart creates | `[]` |
 
 ### Secrets
