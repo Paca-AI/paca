@@ -724,6 +724,19 @@
 				"noContextResults": "結果が見つかりません",
 				"contextSearchMinChars": "検索するには2文字以上入力してください"
 			}
+		},
+		"acpModelEffort": {
+			"modelLabel": "モデル",
+			"modelPlaceholder": "例: claude-sonnet-4-5",
+			"modelHint": "実行に使用するモデル名（任意）。入力したとおりにプロバイダーへ送信されます。空欄の場合はプロバイダーのデフォルトを使用します。",
+			"effortLabel": "推論の労力",
+			"effortDefault": "プロバイダーのデフォルト",
+			"effort_low": "低",
+			"effort_medium": "中",
+			"effort_high": "高",
+			"effort_xhigh": "非常に高",
+			"effort_max": "最大",
+			"effortHint": "任意。プロバイダーが選択したレベルに対応している場合のみ適用されます。"
 		}
 	},
 	"environments": {

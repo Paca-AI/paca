@@ -274,6 +274,8 @@ type CreateAgentInput struct {
 	LLMBaseURL  string
 	ACPProvider string
 	ACPCommand  []string
+	ACPModel    string
+	ACPEffort   string
 	// CLIProvider is one of claude-code | codex | cursor-agent | gemini-cli
 	// — required (and the fields below meaningful) only when AgentType is
 	// "provider_cli". See Agent.CLIProvider's doc comment.
@@ -328,6 +330,8 @@ type CreateGlobalAgentInput struct {
 	LLMBaseURL        string
 	ACPProvider       string
 	ACPCommand        []string
+	ACPModel          string
+	ACPEffort         string
 	SystemPrompt      string
 	MaxIterations     int
 	TimeoutMinutes    int
@@ -349,6 +353,8 @@ type UpdateAgentInput struct {
 	LLMBaseURL  *string
 	ACPProvider *string
 	ACPCommand  []string
+	ACPModel    *string
+	ACPEffort   *string
 	// CLIProvider/CLIModel/CLIAuthMode/CLIAPIKey mirror CreateAgentInput's
 	// fields — nil means "unchanged" (same convention as every other
 	// pointer field here); only meaningful for an existing provider_cli

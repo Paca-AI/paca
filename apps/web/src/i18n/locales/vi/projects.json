@@ -724,6 +724,19 @@
 				"noContextResults": "Không tìm thấy kết quả",
 				"contextSearchMinChars": "Nhập ít nhất 2 ký tự để tìm kiếm"
 			}
+		},
+		"acpModelEffort": {
+			"modelLabel": "Mô hình",
+			"modelPlaceholder": "vd: claude-sonnet-4-5",
+			"modelHint": "Tên mô hình tùy chọn, được gửi đến nhà cung cấp đúng như bạn nhập. Để trống để dùng mặc định của nhà cung cấp.",
+			"effortLabel": "Mức độ suy luận",
+			"effortDefault": "Mặc định của nhà cung cấp",
+			"effort_low": "Thấp",
+			"effort_medium": "Trung bình",
+			"effort_high": "Cao",
+			"effort_xhigh": "Rất cao",
+			"effort_max": "Tối đa",
+			"effortHint": "Tùy chọn. Chỉ áp dụng nếu nhà cung cấp hỗ trợ mức đã chọn."
 		}
 	},
 	"environments": {

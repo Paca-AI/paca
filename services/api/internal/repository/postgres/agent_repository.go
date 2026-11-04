@@ -38,6 +38,8 @@ type agentRecord struct {
 	LLMBaseURL         string  `db:"llm_base_url"`
 	ACPProvider        *string `db:"acp_provider"`
 	ACPCommand         []byte  `db:"acp_command"`
+	ACPModel           string  `db:"acp_model"`
+	ACPEffort          string  `db:"acp_effort"`
 	ACPBridgeTokenHash *string `db:"acp_bridge_token_hash"`
 	// HasMCPAPIKey is derived: the agent has an active person-generated key
 	// (an api_keys row named 'MCP key'); keys the agent-runner derives for the
@@ -187,7 +189,7 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 const agentSelectColsBase = `a.id, a.project_id,
 	CASE WHEN a.project_id IS NULL THEN 'global' ELSE 'project' END AS agent_scope,
 	ac.name, a.handle, ac.avatar_key, ac.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
-	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash,
+	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_model, a.acp_effort, a.acp_bridge_token_hash,
 	EXISTS (SELECT 1 FROM api_keys k WHERE k.account_id = a.id AND k.name = 'MCP key' AND k.revoked_at IS NULL) AS has_mcp_api_key,
 	a.system_prompt,
 	a.max_iterations, a.timeout_minutes, a.parallelism_limit,
@@ -583,8 +585,9 @@ func insertAgentTx(ctx context.Context, tx *sqlx.Tx, a *agentdom.Agent) error {
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes, parallelism_limit,
 		  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id,
-		  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+		  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at,
+		  acp_model, acp_effort)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
 		rec.ID, rec.ProjectID, rec.Handle, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
@@ -592,6 +595,7 @@ func insertAgentTx(ctx context.Context, tx *sqlx.Tx, a *agentdom.Agent) error {
 		rec.MaxIterations, rec.TimeoutMinutes, rec.ParallelismLimit,
 		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.DefaultFolderID,
 		rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, rec.CLIAPIKeySecret, rec.CLILoginVerifiedAt,
+		rec.ACPModel, rec.ACPEffort,
 	)
 	return err
 }
@@ -616,15 +620,17 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  max_iterations=$8, timeout_minutes=$9,
 			  git_committer_name=$10, git_committer_email=$11, docker_enabled=$12,
 			  default_environment_id=$13, default_folder_id=$14,
-			  cli_provider=$15, cli_model=$16, cli_auth_mode=$17, parallelism_limit=$18
-			WHERE id=$19`,
+			  cli_provider=$15, cli_model=$16, cli_auth_mode=$17, parallelism_limit=$18,
+			  acp_model=$19, acp_effort=$20
+			WHERE id=$21`,
 			a.Handle, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
 			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled,
 			rec.DefaultEnvironmentID, rec.DefaultFolderID,
-			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ParallelismLimit, a.ID.String(),
+			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ParallelismLimit,
+			rec.ACPModel, rec.ACPEffort, a.ID.String(),
 		)
 		if err != nil {
 			return err
@@ -1849,6 +1855,8 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 	if row.ACPBridgeTokenHash != nil {
 		a.ACPBridgeTokenHash = *row.ACPBridgeTokenHash
 	}
+	a.ACPModel = row.ACPModel
+	a.ACPEffort = row.ACPEffort
 	if len(row.ACPCommand) > 0 {
 		var cmd []string
 		if err := json.Unmarshal(row.ACPCommand, &cmd); err != nil {
@@ -1910,6 +1918,8 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 		LLMBaseURL:         a.LLMBaseURL,
 		ACPProvider:        a.ACPProvider,
 		ACPCommand:         cmdJSON,
+		ACPModel:           a.ACPModel,
+		ACPEffort:          a.ACPEffort,
 		CLIProvider:        a.CLIProvider,
 		CLIModel:           a.CLIModel,
 		CLIAuthMode:        cliAuthModeOrDefault(a.CLIAuthMode),

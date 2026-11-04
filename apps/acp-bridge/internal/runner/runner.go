@@ -56,6 +56,11 @@ type conversationState struct {
 	// goroutine.
 	acpProvider string
 	command     []string
+	// model/effort are the agent's optional model and reasoning-effort
+	// selections ("" = provider default), captured with the command and
+	// applied once after session/new.
+	model  string
+	effort string
 
 	mu          sync.Mutex
 	turnRunning bool
@@ -282,6 +287,8 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 		}
 		state.acpProvider = acpProvider
 		state.command = command
+		state.model, _ = msg["acp_model"].(string)
+		state.effort, _ = msg["acp_effort"].(string)
 	}
 
 	state.turnRunning = true
@@ -438,7 +445,7 @@ func (r *Runner) ensureSession(
 	// serves later turns of other conversations. Read the conversation in
 	// flight from state at each callback instead, so every event is
 	// attributed to the right Paca conversation thread.
-	client, err := acpclient.Spawn(state.command, r.workspace, func(u acpclient.Update) {
+	client, err := acpclient.Spawn(state.command, r.workspace, provider.ModelEnv(state.acpProvider, state.model), func(u acpclient.Update) {
 		cid, pid := state.currentIDs()
 		r.handleUpdate(state, cid, pid, u)
 	}, r.log)
@@ -451,11 +458,12 @@ func (r *Runner) ensureSession(
 		return nil, "", err
 	}
 
-	sessionID, modes, err := client.NewSession(ctx, r.workspace)
+	info, err := client.NewSessionInfo(ctx, r.workspace)
 	if err != nil {
 		_ = client.Close()
 		return nil, "", err
 	}
+	sessionID, modes := info.SessionID, info.Modes
 
 	if mode := provider.PermissionMode(state.acpProvider); mode != "" && modes.Offers(mode) {
 		if err := client.SetMode(ctx, sessionID, mode); err != nil {
@@ -464,11 +472,64 @@ func (r *Runner) ensureSession(
 		}
 	}
 
+	r.applyModelAndEffort(ctx, client, state, info, conversationID)
+
 	state.mu.Lock()
 	state.client = client
 	state.sessionID = sessionID
 	state.mu.Unlock()
 	return client, sessionID, nil
+}
+
+// applyModelAndEffort requests the agent's configured model and reasoning
+// effort on a freshly created session. The values are passed to the agent
+// exactly as the user entered them — the agent validates them (and resolves
+// aliases itself). Best-effort like the permission mode: a rejected value is
+// logged and skipped rather than failing the turn, so a stale or mistyped
+// selection degrades to the provider default.
+func (r *Runner) applyModelAndEffort(
+	ctx context.Context, client *acpclient.Client, state *conversationState,
+	info *acpclient.SessionInfo, conversationID string,
+) {
+	// Providers that take the model through their environment (see
+	// provider.ModelEnv) already have it from spawn time.
+	model := state.model
+	if model != "" && provider.ModelEnv(state.acpProvider, model) == nil {
+		var err error
+		if opt, ok := info.ConfigOptionFor("model", "model"); ok {
+			var refreshed []acpclient.ConfigOption
+			// A model change can add/remove the effort option (levels
+			// depend on the model), so re-read the options it returns.
+			if refreshed, err = client.SetConfigOption(ctx, info.SessionID, opt.ID, model); err == nil && len(refreshed) > 0 {
+				info.ConfigOptions = refreshed
+			}
+		} else if info.Models != nil {
+			err = client.SetModel(ctx, info.SessionID, model)
+		} else {
+			err = fmt.Errorf("session offers no model selection")
+		}
+		if err != nil {
+			r.log.Warn("runner: failed to set model; using provider default",
+				"conversation_id", conversationID, "model", model, "error", err)
+		} else {
+			r.log.Info("runner: model set", "conversation_id", conversationID, "model", model)
+		}
+	} else if model != "" {
+		r.log.Info("runner: model set via environment", "conversation_id", conversationID,
+			"model", model, "env", provider.ModelEnv(state.acpProvider, model))
+	}
+	if effort := state.effort; effort != "" {
+		opt, ok := info.ConfigOptionFor("thought_level", "effort", "reasoning_effort", "thought_level")
+		if !ok {
+			r.log.Warn("runner: session exposes no effort setting (the selected model may not support one); using provider default",
+				"conversation_id", conversationID, "effort", effort)
+		} else if _, err := client.SetConfigOption(ctx, info.SessionID, opt.ID, effort); err != nil {
+			r.log.Warn("runner: failed to set effort; using provider default",
+				"conversation_id", conversationID, "effort", effort, "error", err)
+		} else {
+			r.log.Info("runner: effort set", "conversation_id", conversationID, "effort", effort, "option", opt.ID)
+		}
+	}
 }
 
 func (r *Runner) finishTurn(state *conversationState) {

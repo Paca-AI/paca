@@ -724,6 +724,19 @@
 				"noContextResults": "未找到结果",
 				"contextSearchMinChars": "请输入至少2个字符进行搜索"
 			}
+		},
+		"acpModelEffort": {
+			"modelLabel": "模型",
+			"modelPlaceholder": "例如 claude-sonnet-4-5",
+			"modelHint": "可选的模型名称，将按输入内容原样发送给提供方。留空则使用提供方的默认值。",
+			"effortLabel": "推理强度",
+			"effortDefault": "提供方默认",
+			"effort_low": "低",
+			"effort_medium": "中",
+			"effort_high": "高",
+			"effort_xhigh": "超高",
+			"effort_max": "最大",
+			"effortHint": "可选。仅当提供方支持所选级别时才会应用。"
 		}
 	},
 	"environments": {

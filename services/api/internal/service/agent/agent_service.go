@@ -336,6 +336,8 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		provider := in.ACPProvider
 		a.ACPProvider = &provider
 		a.ACPCommand = in.ACPCommand
+		a.ACPModel = strings.TrimSpace(in.ACPModel)
+		a.ACPEffort = strings.TrimSpace(in.ACPEffort)
 	case agentdom.AgentTypeProviderCLI:
 		if !agentdom.ValidCLIProviders[in.CLIProvider] {
 			return nil, agentdom.ErrCLIProviderInvalid
@@ -541,6 +543,12 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		}
 		if in.ACPCommand != nil {
 			a.ACPCommand = in.ACPCommand
+		}
+		if in.ACPModel != nil {
+			a.ACPModel = strings.TrimSpace(*in.ACPModel)
+		}
+		if in.ACPEffort != nil {
+			a.ACPEffort = strings.TrimSpace(*in.ACPEffort)
 		}
 		if a.ACPProvider != nil && *a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
 			return nil, agentdom.ErrACPCommandRequired
@@ -795,6 +803,8 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 		provider := in.ACPProvider
 		a.ACPProvider = &provider
 		a.ACPCommand = in.ACPCommand
+		a.ACPModel = strings.TrimSpace(in.ACPModel)
+		a.ACPEffort = strings.TrimSpace(in.ACPEffort)
 	} else {
 		encryptedKey, err := s.encryptKey(in.LLMAPIKey)
 		if err != nil {
@@ -914,6 +924,12 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 		}
 		if in.ACPCommand != nil {
 			a.ACPCommand = in.ACPCommand
+		}
+		if in.ACPModel != nil {
+			a.ACPModel = strings.TrimSpace(*in.ACPModel)
+		}
+		if in.ACPEffort != nil {
+			a.ACPEffort = strings.TrimSpace(*in.ACPEffort)
 		}
 		if a.ACPProvider != nil && *a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
 			return nil, agentdom.ErrACPCommandRequired

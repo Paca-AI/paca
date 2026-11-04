@@ -104,3 +104,15 @@ func TestPermissionModeKnownAndUnknownProviders(t *testing.T) {
 		}
 	}
 }
+
+func TestModelEnv(t *testing.T) {
+	if got := ModelEnv("claude-code", "my-model"); len(got) != 1 || got[0] != "ANTHROPIC_MODEL=my-model" {
+		t.Errorf("claude-code ModelEnv = %v", got)
+	}
+	if got := ModelEnv("claude-code", ""); got != nil {
+		t.Errorf("empty model must add no env, got %v", got)
+	}
+	if got := ModelEnv("codex", "gpt-5"); got != nil {
+		t.Errorf("codex has no env mechanism, got %v", got)
+	}
+}

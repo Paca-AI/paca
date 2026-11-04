@@ -61,6 +61,8 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 		"trigger_type":    string(trigger.TriggerType),
 		"acp_provider":    cfg.ACPProvider,
 		"acp_command":     cfg.ACPCommand,
+		"acp_model":       cfg.ACPModel,
+		"acp_effort":      cfg.ACPEffort,
 		// Task/comment/chat linkage the bridge uses to group conversations
 		// into per-task (or per-chat) sessions. Empty when the trigger has no
 		// such link (e.g. project-global chat, or an automation message with

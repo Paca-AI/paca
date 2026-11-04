@@ -41,6 +41,8 @@ type AgentResponse struct {
 	LLMBaseURL        string   `json:"llm_base_url"`
 	ACPProvider       *string  `json:"acp_provider,omitempty"`
 	ACPCommand        []string `json:"acp_command,omitempty"`
+	ACPModel          string   `json:"acp_model,omitempty"`
+	ACPEffort         string   `json:"acp_effort,omitempty"`
 	HasACPBridgeToken bool     `json:"has_acp_bridge_token"`
 	HasMCPAPIKey      bool     `json:"has_mcp_api_key"`
 	// CLIProvider/CLIModel/CLIAuthMode/HasCLIAPIKey/CLILoginVerifiedAt are
@@ -96,6 +98,8 @@ type CreateAgentRequest struct {
 	LLMBaseURL  string   `json:"llm_base_url"`
 	ACPProvider string   `json:"acp_provider"`
 	ACPCommand  []string `json:"acp_command"`
+	ACPModel    string   `json:"acp_model"`
+	ACPEffort   string   `json:"acp_effort"`
 	// CLIProvider/CLIModel/CLIAuthMode/CLIAPIKey are required (and the
 	// fields above meaningless) when agent_type is "provider_cli" — see
 	// agentdom.Agent.CLIProvider's doc comment. CLIAuthMode defaults to
@@ -140,6 +144,8 @@ type UpdateAgentRequest struct {
 	LLMBaseURL  *string  `json:"llm_base_url"`
 	ACPProvider *string  `json:"acp_provider"`
 	ACPCommand  []string `json:"acp_command"`
+	ACPModel    *string  `json:"acp_model"`
+	ACPEffort   *string  `json:"acp_effort"`
 	// CLIProvider/CLIModel/CLIAuthMode/CLIAPIKey: nil means "unchanged",
 	// same convention as every other pointer field here — only meaningful
 	// for an existing provider_cli agent.
@@ -183,6 +189,8 @@ type CreateGlobalAgentRequest struct {
 	LLMBaseURL        string   `json:"llm_base_url"`
 	ACPProvider       string   `json:"acp_provider"`
 	ACPCommand        []string `json:"acp_command"`
+	ACPModel          string   `json:"acp_model"`
+	ACPEffort         string   `json:"acp_effort"`
 	SystemPrompt      string   `json:"system_prompt"`
 	MaxIterations     int      `json:"max_iterations"`
 	TimeoutMinutes    int      `json:"timeout_minutes"`
@@ -242,6 +250,8 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		LLMBaseURL:           a.LLMBaseURL,
 		ACPProvider:          a.ACPProvider,
 		ACPCommand:           a.ACPCommand,
+		ACPModel:             a.ACPModel,
+		ACPEffort:            a.ACPEffort,
 		HasACPBridgeToken:    a.HasACPBridgeToken,
 		HasMCPAPIKey:         a.HasMCPAPIKey,
 		CLIProvider:          a.CLIProvider,

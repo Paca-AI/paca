@@ -17,5 +17,7 @@ type ACPConfig struct {
 	ProjectID      *uuid.UUID
 	ACPProvider    string
 	ACPCommand     []string
+	ACPModel       string
+	ACPEffort      string
 	TimeoutMinutes int
 }

@@ -231,6 +231,8 @@ type acpAgentRecord struct {
 	ProjectID      *uuid.UUID      `db:"project_id"`
 	ACPProvider    *string         `db:"acp_provider"`
 	ACPCommand     json.RawMessage `db:"acp_command"`
+	ACPModel       string          `db:"acp_model"`
+	ACPEffort      string          `db:"acp_effort"`
 	TimeoutMinutes int             `db:"timeout_minutes"`
 }
 
@@ -245,7 +247,7 @@ type acpAgentRecord struct {
 func (r *AgentRepository) FindByBridgeTokenHash(ctx context.Context, tokenHash string) (*agent.ACPConfig, error) {
 	var rec acpAgentRecord
 	err := r.db.GetContext(ctx, &rec, `
-		SELECT a.id, a.project_id, a.acp_provider, a.acp_command, a.timeout_minutes
+		SELECT a.id, a.project_id, a.acp_provider, a.acp_command, a.acp_model, a.acp_effort, a.timeout_minutes
 		FROM agents a
 		JOIN accounts ac ON ac.id = a.id AND ac.deleted_at IS NULL
 		WHERE a.acp_bridge_token_hash = $1 AND a.agent_type = 'acp'
@@ -269,7 +271,7 @@ func (r *AgentRepository) FindByBridgeTokenHash(ctx context.Context, tokenHash s
 func (r *AgentRepository) FindACPByID(ctx context.Context, id uuid.UUID) (*agent.ACPConfig, error) {
 	var rec acpAgentRecord
 	err := r.db.GetContext(ctx, &rec, `
-		SELECT a.id, a.project_id, a.acp_provider, a.acp_command, a.timeout_minutes
+		SELECT a.id, a.project_id, a.acp_provider, a.acp_command, a.acp_model, a.acp_effort, a.timeout_minutes
 		FROM agents a
 		JOIN accounts ac ON ac.id = a.id AND ac.deleted_at IS NULL
 		WHERE a.id = $1 AND a.agent_type = 'acp'
@@ -292,6 +294,8 @@ func (rec acpAgentRecord) toACPConfig() (*agent.ACPConfig, error) {
 		ProjectID:      rec.ProjectID,
 		ACPProvider:    derefOr(rec.ACPProvider, ""),
 		ACPCommand:     acpCommand,
+		ACPModel:       rec.ACPModel,
+		ACPEffort:      rec.ACPEffort,
 		TimeoutMinutes: rec.TimeoutMinutes,
 	}, nil
 }

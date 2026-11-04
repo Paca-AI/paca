@@ -496,6 +496,8 @@ Table agents {
   llm_base_url varchar [null]
   acp_provider varchar [null, note: 'claude-code | codex | gemini-cli | goose | opencode | custom. Required when agent_type = acp (ck_agents_acp_requires_provider).']
   acp_command jsonb [not null, default: '[]', note: 'JSON array of the launch command + args. Only meaningful when acp_provider = custom.']
+  acp_model text [not null, default: '', note: 'Optional model id the bridge requests after session/new. Empty = provider default.']
+  acp_effort text [not null, default: '', note: 'Optional reasoning-effort value the bridge requests after session/new. Empty = provider default.']
   acp_bridge_token_hash varchar [null, note: 'SHA-256 hex digest of the current local-bridge auth token. The plaintext is shown once, never persisted.']
   system_prompt text [not null, default: '']
   max_iterations integer [not null, default: 50]
