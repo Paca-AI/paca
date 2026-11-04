@@ -99,7 +99,7 @@ prefixed `PACA_` are installer-only choices with no direct `.env` equivalent.
 | `PACA_HTTPS` | `yes`/`no`; ignored when `PACA_ADDRESS=localhost` | `yes` |
 | `GATEWAY_PORT` | Only used when serving plain HTTP | `80` |
 | `PUBLIC_URL` | Full public URL, no trailing slash | derived from the above |
-| `GIT_WEBHOOK_PUBLIC_URL` | Optional origin Git providers deliver webhooks to, when it must differ from `PUBLIC_URL` (a public edge that only forwards the browser and setup paths) | `PUBLIC_URL` |
+| `GIT_WEBHOOK_PUBLIC_URL` | Optional origin Git providers deliver webhooks to, when it must differ from `PUBLIC_URL` (a public edge that only forwards the browser and setup paths). Existing webhooks keep their current URL: re-register each connection after changing it | `PUBLIC_URL` |
 | `PASSKEY_RP_ID` | Optional WebAuthn relying-party ID for passkeys; override only to share passkeys across subdomains (use a parent domain of `PUBLIC_URL`'s host). Passkeys are off when `PUBLIC_URL` is unset, and changing this invalidates every registered passkey | host of `PUBLIC_URL` |
 | `PACA_WEB` | `bundled`/`external` | `bundled` |
 | `PACA_AGENT_RUNNER` | Include the Agent Runner service (`yes`/`no`) | `yes` |

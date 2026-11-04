@@ -881,6 +881,10 @@ SITE_ADDRESS=${SITE_ADDRESS}
 # ── Public URL ────────────────────────────────────────────────────────────────
 PUBLIC_URL=${PUBLIC_URL}
 
+# Origin Git providers deliver webhooks to, when it differs from PUBLIC_URL.
+# Empty uses PUBLIC_URL.
+GIT_WEBHOOK_PUBLIC_URL=${GIT_WEBHOOK_PUBLIC_URL:-}
+
 # ── Admin credentials ────────────────────────────────────────────────────────
 ADMIN_USERNAME=${ADMIN_USERNAME}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
