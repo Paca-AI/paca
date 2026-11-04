@@ -304,9 +304,11 @@ func (f *fakeStore) InsertInboxEvent(_ context.Context, e *gitdom.InboxEvent) (b
 }
 func (f *fakeStore) UpsertChangeRequest(_ context.Context, cr *gitdom.ChangeRequest) (*gitdom.ChangeRequest, error) {
 	cr.ID = uuid.New()
+	cr.PreviousState = ""
 	for _, old := range f.crs { // the same request keeps its id, as in the database
 		if old.RepositoryID == cr.RepositoryID && old.Number == cr.Number {
 			cr.ID = old.ID
+			cr.PreviousState = old.State
 		}
 	}
 	f.crs = append(f.crs, cr)
@@ -810,7 +812,11 @@ func (s *trackStore) UpsertChangeRequest(ctx context.Context, cr *gitdom.ChangeR
 	if s.upsertErr != nil {
 		return nil, s.upsertErr
 	}
-	return s.fakeStore.UpsertChangeRequest(ctx, cr)
+	saved, err := s.fakeStore.UpsertChangeRequest(ctx, cr)
+	if err == nil && s.cur != nil {
+		saved.PreviousState = s.cur.State
+	}
+	return saved, err
 }
 func (s *trackStore) DeleteInboxEvent(_ context.Context, id string, repo uuid.UUID) error {
 	s.deleted = append(s.deleted, id)

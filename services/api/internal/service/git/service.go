@@ -491,22 +491,13 @@ func (s *Service) trackChangeRequest(ctx context.Context, repo *gitdom.Repositor
 // saveChangeRequest caches a change request and links it to the task its
 // branch or title names ("feat/PACA-12-x").
 func (s *Service) saveChangeRequest(ctx context.Context, repo *gitdom.Repository, cr *gitdom.ChangeRequest) (*gitdom.ChangeRequest, error) {
-	// The state before this update tells a real transition (open -> merged)
-	// from a redelivery, for the git.pr_state_changed trigger.
-	previous := ""
-	if s.automation != nil || s.taskGitChanged != nil {
-		cur, err := s.store.FindChangeRequest(ctx, repo.ID, cr.Number)
-		switch {
-		case err == nil:
-			previous = cur.State
-		case !errors.Is(err, gitdom.ErrNotFound):
-			return nil, err
-		}
-	}
 	saved, err := s.store.UpsertChangeRequest(ctx, cr)
 	if err != nil {
 		return nil, err
 	}
+	// The state the upsert replaced tells a real transition (open -> merged)
+	// from a redelivery, for the git.pr_state_changed trigger.
+	previous := saved.PreviousState
 	seen := map[uuid.UUID]bool{}
 	for _, ref := range findTaskRefs(cr.HeadRef + " " + cr.Title) {
 		task, found, err := s.store.FindTaskByRef(ctx, repo.ProjectID, ref.key, ref.number)
@@ -526,9 +517,7 @@ func (s *Service) saveChangeRequest(ctx context.Context, repo *gitdom.Repository
 			}
 		}
 	}
-	if err := s.emitStateChange(ctx, repo, previous, saved); err != nil {
-		return nil, err
-	}
+	s.emitStateChange(ctx, repo, previous, saved)
 	return saved, nil
 }
 

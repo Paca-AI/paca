@@ -228,6 +228,9 @@ func TestGitStore_ChangeRequestsAndTaskLinks(t *testing.T) {
 	if err != nil || again.ID != cr.ID || again.Title != "v2" || again.State != "merged" || again.HeadSHA != "b2" {
 		t.Fatalf("an upsert must update in place: %+v %v", again, err)
 	}
+	if cr.PreviousState != "" || again.PreviousState != "open" {
+		t.Fatalf("an upsert must report the state it replaced: %q then %q", cr.PreviousState, again.PreviousState)
+	}
 
 	got, ok, err := s.FindTaskByRef(ctx, project, "paca", 12) // case-insensitive prefix
 	if err != nil || !ok || got != task {

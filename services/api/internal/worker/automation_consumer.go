@@ -614,6 +614,10 @@ const maxEventVarBytes = 4000
 
 // eventVarsFromPayload turns a plugin trigger event's scalar payload fields
 // into {{event.<field>}} placeholders. Nested values are left out.
+//
+// Values can come from untrusted text (a pull request or issue body), so they
+// are substituted verbatim and never interpreted: a node that forwards one to
+// an API call or an AI agent prompt passes on whatever its author wrote.
 func eventVarsFromPayload(raw string) map[string]string {
 	var fields map[string]any
 	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
@@ -633,7 +637,7 @@ func eventVarsFromPayload(raw string) map[string]string {
 			continue
 		}
 		if len(s) > maxEventVarBytes {
-			s = strings.ToValidUTF8(s[:maxEventVarBytes], "")
+			s = strings.ToValidUTF8(s[:maxEventVarBytes], "") // drops a rune cut in half
 		}
 		vars[k] = s
 	}

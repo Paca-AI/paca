@@ -124,7 +124,7 @@ func crFields(cr *gitdom.ChangeRequest) map[string]any {
 }
 
 // emitProject emits a trigger that belongs to no task (the payload has no
-// task_id), for every project linked to the repository.
+// task_id), for the project the repository is linked to.
 func (s *Service) emitProject(ctx context.Context, topic string, repo *gitdom.Repository, fields map[string]any) {
 	if s.automation == nil {
 		return
@@ -175,19 +175,23 @@ func (s *Service) linkBranch(ctx context.Context, repo *gitdom.Repository, task 
 // change request when its lifecycle state moved. previous is the cached state
 // before the update ("" when the request was never seen: it counts as open, so
 // a request first met already merged still fires).
-func (s *Service) emitStateChange(ctx context.Context, repo *gitdom.Repository, previous string, saved *gitdom.ChangeRequest) error {
+//
+// Best effort, like every emit: the request is already saved, so failing here
+// would only lose the trigger for good (a redelivery no longer sees a change).
+func (s *Service) emitStateChange(ctx context.Context, repo *gitdom.Repository, previous string, saved *gitdom.ChangeRequest) {
 	if (s.automation == nil && s.taskGitChanged == nil) || saved.State == "" {
-		return nil
+		return
 	}
 	if previous == "" {
 		previous = "open"
 	}
 	if previous == saved.State {
-		return nil
+		return
 	}
 	tasks, err := s.store.ListChangeRequestTasks(ctx, saved.ID)
 	if err != nil {
-		return err
+		slog.Warn("git: listing tasks of a change request", "error", err)
+		return
 	}
 	fields := crFields(saved)
 	fields["previous_state"] = previous
@@ -195,7 +199,6 @@ func (s *Service) emitStateChange(ctx context.Context, repo *gitdom.Repository, 
 		s.notifyTask(ctx, repo, t)
 		s.emitTask(ctx, TriggerPRStateChanged, repo, t, fields)
 	}
-	return nil
 }
 
 // schema builds a node's config schema: one entry per property, in the shape
@@ -321,6 +324,7 @@ func (s *Service) conditionMatches(ctx context.Context, n *automationNode) (bool
 		return false, fmt.Errorf("git automation: unknown condition %q", n.NodeType)
 	}
 	if err := json.Unmarshal(n.Config, &cfg); err != nil {
+		slog.Warn("git: unusable automation condition config", "node_type", n.NodeType, "error", err)
 		return false, nil // an unusable config never matches
 	}
 	cr, err := s.newestChangeRequest(ctx, n.ProjectID, n.Task.ID)
@@ -351,7 +355,8 @@ func (s *Service) conditionMatches(ctx context.Context, n *automationNode) (bool
 
 // RunAutomationAction performs a git.* action node and answers with
 // {"applied": bool, "error": string}. An action that finds nothing to do (the
-// request is already merged) is not applied and not an error.
+// request is already merged) is not applied and not an error. Labels and
+// reviewers are always sent: the platforms ignore ones already present.
 func (s *Service) RunAutomationAction(ctx context.Context, raw []byte) ([]byte, error) {
 	n, err := decodeAutomationNode(raw)
 	if err != nil {
@@ -559,16 +564,31 @@ func isIssueBody(ev *gitprovider.Event) bool {
 		(ev.Location == nil || ev.Location.CommentID == "")
 }
 
+// postedByPaca reports whether text carries the footer Paca appends to what it
+// posts (an agent's comment, or git.comment_pr). Through a personal access
+// token or OAuth identity such a comment comes back from the platform with a
+// human author, so the footer is what tells it apart from a person's.
+func postedByPaca(text string) bool {
+	i := strings.LastIndex(text, "<sub>Posted by ")
+	if i < 0 {
+		return false
+	}
+	tail := text[i:]
+	return strings.Contains(tail, "via Paca</sub>") || strings.Contains(tail, "via [Paca](") ||
+		strings.Contains(tail, "a Paca automation</sub>")
+}
+
 // emitEventTriggers feeds the triggers that come straight from a webhook event
 // (ready for review, a review, a comment, a finished check) to every task the
-// event's request is linked to. A comment or review by a bot never triggers:
-// an automation that comments would otherwise start itself again.
+// event's request is linked to. A comment or review by a bot, or one Paca
+// posted itself, never triggers: an automation that comments would otherwise
+// start itself again.
 func (s *Service) emitEventTriggers(ctx context.Context, repo *gitdom.Repository, ev *gitprovider.Event) {
 	if s.automation == nil && s.taskGitChanged == nil {
 		return
 	}
 	sub := ev.Subject
-	human := ev.Actor.Kind != gitprovider.ActorBot
+	human := ev.Actor.Kind != gitprovider.ActorBot && !postedByPaca(ev.Text)
 	if sub != nil && sub.Kind == gitprovider.SubjectIssue {
 		if isIssueBody(ev) && human {
 			title, _, _ := strings.Cut(strings.TrimSpace(ev.Text), "\n")

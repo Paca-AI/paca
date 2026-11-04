@@ -565,10 +565,18 @@ type gitCRRecord struct {
 	OpenedConv   *string    `db:"opened_conversation_id"`
 	CreatedAt    time.Time  `db:"created_at"`
 	UpdatedAt    time.Time  `db:"updated_at"`
+	PrevState    *string    `db:"previous_state"` // only selected by UpsertChangeRequest
 }
 
 const gitCRCols = `id, repository_id, number, title, state, draft, head_ref, head_sha, base_ref, author, html_url, merged_at,
 	opened_by_agent_id, opened_conversation_id, created_at, updated_at`
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
 
 func (r gitCRRecord) domain() *gitdom.ChangeRequest {
 	id, _ := uuid.Parse(r.ID)
@@ -576,7 +584,7 @@ func (r gitCRRecord) domain() *gitdom.ChangeRequest {
 	return &gitdom.ChangeRequest{ID: id, RepositoryID: rid, Number: r.Number, Title: r.Title, State: r.State, Draft: r.Draft,
 		HeadRef: r.HeadRef, HeadSHA: r.HeadSHA, BaseRef: r.BaseRef, Author: r.Author, URL: r.HTMLURL, MergedAt: r.MergedAt,
 		OpenedByAgentID: parseUUIDPtr(r.OpenedBy), OpenedConversationID: parseUUIDPtr(r.OpenedConv),
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, PreviousState: derefString(r.PrevState)}
 }
 
 // FindChangeRequest returns the cached change request.
@@ -596,7 +604,12 @@ func (s *GitRepository) FindChangeRequest(ctx context.Context, repositoryID uuid
 // that opened it is kept once known: a later webhook update never clears it.
 func (s *GitRepository) UpsertChangeRequest(ctx context.Context, cr *gitdom.ChangeRequest) (*gitdom.ChangeRequest, error) {
 	var rec gitCRRecord
+	// prev locks the existing row, so two deliveries for one request upsert in
+	// turn and each reports the state it replaced.
 	err := s.db.GetContext(ctx, &rec, `
+		WITH prev AS (
+			SELECT state FROM git_change_requests WHERE repository_id = $1 AND number = $2 FOR UPDATE
+		)
 		INSERT INTO git_change_requests (repository_id, number, title, state, draft, head_ref, head_sha, base_ref, author, html_url, merged_at,
 			opened_by_agent_id, opened_conversation_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
@@ -611,7 +624,7 @@ func (s *GitRepository) UpsertChangeRequest(ctx context.Context, cr *gitdom.Chan
 			opened_by_agent_id = COALESCE(EXCLUDED.opened_by_agent_id, git_change_requests.opened_by_agent_id),
 			opened_conversation_id = COALESCE(EXCLUDED.opened_conversation_id, git_change_requests.opened_conversation_id),
 			updated_at = NOW()
-		RETURNING `+gitCRCols,
+		RETURNING `+gitCRCols+`, (SELECT state FROM prev) AS previous_state`,
 		cr.RepositoryID.String(), cr.Number, cr.Title, cr.State, cr.Draft, cr.HeadRef, cr.HeadSHA, cr.BaseRef, cr.Author, cr.URL, cr.MergedAt,
 		uuidPtrString(cr.OpenedByAgentID), uuidPtrString(cr.OpenedConversationID))
 	if err != nil {
