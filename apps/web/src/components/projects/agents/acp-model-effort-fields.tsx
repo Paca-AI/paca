@@ -9,9 +9,11 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 
-// Reasoning-effort values the ACP adapters commonly offer. A value the
-// running session doesn't support is skipped by the bridge (provider default
-// is used), so listing the superset here is safe.
+// Reasoning-effort values the ACP adapters commonly offer. Effort values are
+// agent-defined, so this is not exhaustive: a stored value outside it (e.g.
+// set via the API) is appended to the list so it still displays, and a value
+// the running session doesn't support is skipped by the bridge (provider
+// default is used).
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 // Select can't hold "" as an item value, so the "provider default" choice
@@ -75,6 +77,10 @@ export function AcpModelEffortFields({
 								{t(`agents.acpModelEffort.effort_${level}`)}
 							</SelectItem>
 						))}
+						{effort &&
+							!(EFFORT_LEVELS as readonly string[]).includes(effort) && (
+								<SelectItem value={effort}>{effort}</SelectItem>
+							)}
 					</SelectContent>
 				</Select>
 				<p className="text-xs text-muted-foreground">
