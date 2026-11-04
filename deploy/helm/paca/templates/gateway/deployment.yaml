@@ -31,8 +31,10 @@ spec:
           ports:
             - containerPort: 80
               name: http
+            {{- if ne (include "paca.gatewaySiteAddress" .) ":80" }}
             - containerPort: 443
               name: https
+            {{- end }}
             - containerPort: 8080
               name: internal
           env:
