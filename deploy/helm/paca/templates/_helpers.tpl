@@ -194,10 +194,12 @@ simply fail at worst. Falls back to publicUrl's own host when set and no
 Ingress is used (a LoadBalancer Service exposing the gateway directly), or
 plain ":80" when neither is configured. gateway.autoHttps: false forces
 plain HTTP even without an Ingress, for TLS terminated by another external
-proxy (Istio VirtualService, Gateway API route, tunnel).
+proxy (Istio VirtualService, Gateway API route, tunnel); it is redundant
+(already plain HTTP) when ingress.enabled is true. Only a real boolean false
+counts, so a null/unset value keeps automatic HTTPS.
 */}}
 {{- define "paca.gatewaySiteAddress" -}}
-{{- if or .Values.ingress.enabled (and (hasKey .Values.gateway "autoHttps") (not .Values.gateway.autoHttps)) -}}
+{{- if or .Values.ingress.enabled (and (kindIs "bool" .Values.gateway.autoHttps) (not .Values.gateway.autoHttps)) -}}
 :80
 {{- else if .Values.publicUrl -}}
 {{- (urlParse .Values.publicUrl).host -}}
