@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	beginAgentGitAccess,
+	beginGitAccess,
 	completeGitAccess,
 	completeGitSetup,
 	completeProjectGitSetup,
@@ -13,6 +14,7 @@ import {
 	GIT_FALLBACK_PATH,
 	type GitAccessCompletion,
 	type GitSetupCompletion,
+	type GitSetupStep,
 	gitErrorKey,
 	gitQueriesKey,
 	projectGitSettingsPath,
@@ -103,6 +105,8 @@ export function GitSetupCallback({ search }: { search: string }) {
 
 	useEffect(() => {
 		let cancelled = false;
+		// Read before the note is forgotten below; the render's copy goes stale.
+		const flow = readGitFlow(parseCallback(search).state);
 		if (!parseCallback(search).state) {
 			setErrorKey("setupInvalid");
 			return;
@@ -122,24 +126,42 @@ export function GitSetupCallback({ search }: { search: string }) {
 				}
 				const back = () =>
 					window.location.replace(returnPathOf(out.result.return_url));
-				// An agent's App serves one project, so the user installs it now
-				// instead of having to remember to later. If that cannot start,
-				// the agent tab still offers the install.
-				const pending =
-					out.result.identity.scope === "agent" ? takeAgentInstall() : null;
-				if (!pending) {
+				// An App serves the project (or agent) it was created for, so the
+				// user installs it now instead of having to remember to later. If
+				// that cannot start, the repository form still offers the install.
+				const { identity, return_url } = out.result;
+				const agent = identity.scope === "agent" ? takeAgentInstall() : null;
+				let install: Promise<GitSetupStep> | null = null;
+				let installProject = "";
+				if (agent) {
+					installProject = agent.projectId;
+					install = beginAgentGitAccess(agent.projectId, agent.agentId, {
+						provider_id: identity.provider_id,
+						owner: "",
+						return_url,
+					});
+				} else if (
+					flow.kind === "project-identity" &&
+					identity.kind === "app"
+				) {
+					installProject = flow.projectId;
+					install = beginGitAccess(flow.projectId, {
+						provider_id: identity.provider_id,
+						host: identity.host,
+						owner: "",
+						return_url,
+						identity_id: identity.id,
+					});
+				}
+				if (!install) {
 					back();
 					return;
 				}
-				beginAgentGitAccess(pending.projectId, pending.agentId, {
-					provider_id: out.result.identity.provider_id,
-					owner: "",
-					return_url: out.result.return_url,
-				})
+				install
 					.then((step) => {
 						rememberGitFlow(step.state, {
 							kind: "access",
-							projectId: pending.projectId,
+							projectId: installProject,
 						});
 						if (!followGitStep(step)) back();
 					})

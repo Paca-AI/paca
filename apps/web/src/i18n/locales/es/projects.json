@@ -47,18 +47,19 @@
 				"connectionHelp": "Elija una cuando varias conexiones puedan ver el repositorio, por ejemplo dos organizaciones.",
 				"description": "Descripción (opcional)",
 				"descriptionPlaceholder": "p. ej. Cliente web del producto",
-				"descriptionHelp": "Indica a los agentes para qué sirve este repositorio, para que elijan el correcto. Hasta 1000 caracteres."
+				"descriptionHelp": "Indica a los agentes para qué sirve este repositorio, para que elijan el correcto. Hasta 1000 caracteres.",
+				"title": "Vincular un repositorio",
+				"dialogDescription": "Elige la plataforma y el repositorio con el que trabajarán los agentes de este proyecto."
 			},
 			"picker": {
 				"browse": "Explorar repositorios",
-				"hide": "Ocultar lista",
-				"search": "Buscar repositorios",
-				"unsupported": "Esta conexión no puede listar repositorios. Escribe la ruta o la URL arriba.",
-				"error": "No se pudo cargar la lista. Aún puedes escribir la ruta o la URL arriba.",
+				"unsupported": "Esta conexión no puede listar repositorios. Cierra esta ventana y escribe la ruta o la URL.",
+				"error": "No se pudo cargar la lista. Cierra esta ventana y escribe la ruta o la URL.",
 				"empty": "No se encontraron repositorios.",
-				"loadMore": "Cargar más",
 				"linked": "Vinculado",
-				"private": "Privado"
+				"private": "Privado",
+				"title": "Explorar repositorios",
+				"description": "Desplázate por todo lo que ve esta conexión y elige uno para completar el repositorio."
 			},
 			"unlink": {
 				"button": "Desvincular",

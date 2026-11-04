@@ -209,8 +209,9 @@ test.describe("Project Git automation", () => {
 					linkError: { status, code },
 				});
 				await open(page, projectId);
+				await page.getByRole("button", { name: "Link a repository" }).click();
 				await page.getByLabel("Repository").fill("acme/web");
-				await page.getByRole("button", { name: "Link" }).click();
+				await page.getByRole("button", { name: "Link", exact: true }).click();
 				await expect(page.getByRole("alert")).toContainText(text);
 			});
 		}
@@ -225,10 +226,11 @@ test.describe("Project Git automation", () => {
 				linkError: { status: 409, code: "GIT_ACCESS_NOT_GRANTED" },
 			});
 			await open(page, projectId);
+			await page.getByRole("button", { name: "Link a repository" }).click();
 			await page
 				.getByLabel("Repository")
 				.fill("git@git.example.test:other-org/lib.git");
-			await page.getByRole("button", { name: "Link" }).click();
+			await page.getByRole("button", { name: "Link", exact: true }).click();
 
 			await expect(page.getByRole("alert")).toContainText(
 				/can't see this repository/i,

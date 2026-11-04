@@ -100,7 +100,7 @@ jobs:
           bunx playwright install --with-deps "$engine"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build agent-server sandbox image
         if: ${{ inputs.build_agent_server }}
@@ -136,7 +136,7 @@ jobs:
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-report-${{ matrix.browser }}
           path: |

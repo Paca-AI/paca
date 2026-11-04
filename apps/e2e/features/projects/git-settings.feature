@@ -22,6 +22,7 @@ Feature: A project's Git settings
     Scenario: An administrator links a repository
       Given the platform lists a Git provider and a connection, and the project has no repository
       When the user opens the project's Git settings
+      And the user opens the "Link a repository" dialog
       Then the "Repository" field and the "Link" button are shown
       When the user types "acme/web" and clicks "Link"
       Then the request names the provider and the typed path
@@ -40,9 +41,10 @@ Feature: A project's Git settings
       Then the page asks them to find someone who can manage Git connections
       And there is no "Link" button
 
-    Scenario: A writer gets the form once a connection is available
+    Scenario: A writer gets the link dialog once a connection is available
       Given a member with "git:read" and "git:write" and a connection is available
       When the member opens the project's Git settings
+      And the member opens the "Link a repository" dialog
       Then the "Repository" field and the "Link" button are shown
 
     Scenario: A reader is told they need write access

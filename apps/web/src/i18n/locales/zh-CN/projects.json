@@ -47,18 +47,19 @@
 				"connectionHelp": "当多个连接（例如两个组织）都能看到该仓库时，请选择其中一个。",
 				"description": "描述（可选）",
 				"descriptionPlaceholder": "例如：产品的网页客户端",
-				"descriptionHelp": "告诉智能体此仓库的用途，以便选择正确的仓库。最多 1000 个字符。"
+				"descriptionHelp": "告诉智能体此仓库的用途，以便选择正确的仓库。最多 1000 个字符。",
+				"title": "关联仓库",
+				"dialogDescription": "选择此项目的智能体要使用的平台和仓库。"
 			},
 			"picker": {
 				"browse": "浏览仓库",
-				"hide": "隐藏列表",
-				"search": "搜索仓库",
-				"unsupported": "此连接无法列出仓库。请在上方输入路径或 URL。",
-				"error": "无法加载列表。您仍可在上方输入路径或 URL。",
+				"unsupported": "此连接无法列出仓库。请关闭此窗口，手动输入路径或 URL。",
+				"error": "无法加载列表。请关闭此窗口，手动输入路径或 URL。",
 				"empty": "未找到仓库。",
-				"loadMore": "加载更多",
 				"linked": "已关联",
-				"private": "私有"
+				"private": "私有",
+				"title": "浏览仓库",
+				"description": "滚动浏览此连接可见的全部仓库，然后选择一个填入仓库字段。"
 			},
 			"unlink": {
 				"button": "取消关联",

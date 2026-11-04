@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
 	get: vi.fn(),
@@ -141,6 +141,12 @@ function renderPanel(canWrite = true) {
 	);
 }
 
+async function openLink() {
+	await userEvent.click(
+		await screen.findByRole("button", { name: "Link a repository" }),
+	);
+}
+
 async function openTab(name: RegExp) {
 	await userEvent.click(await screen.findByRole("tab", { name }));
 }
@@ -251,6 +257,7 @@ describe("GitSettings", () => {
 			return { data: { data: repo } };
 		});
 		renderPanel();
+		await openLink();
 		await user.selectOptions(await screen.findByLabelText("Connection"), "i2");
 		await user.type(screen.getByLabelText("Repository"), "acme/web");
 		await user.click(screen.getByRole("button", { name: "Link" }));
@@ -486,6 +493,7 @@ describe("GitSettings", () => {
 			return { data: { data: repo } };
 		});
 		renderPanel();
+		await openLink();
 		await user.type(
 			await screen.findByLabelText("Repository"),
 			"https://github.com/acme/web",
@@ -517,6 +525,7 @@ describe("GitSettings", () => {
 			});
 		});
 		renderPanel();
+		await openLink();
 		await user.type(
 			await screen.findByLabelText("Repository"),
 			"git@github.com:other-org/lib.git",
@@ -559,6 +568,7 @@ describe("GitSettings", () => {
 		const user = userEvent.setup();
 		h.post.mockImplementation(() => apiFail("GIT_ACCESS_NOT_GRANTED"));
 		renderPanel();
+		await openLink();
 		await user.type(await screen.findByLabelText("Repository"), "web");
 		await user.click(screen.getByRole("button", { name: "Link" }));
 		expect(
@@ -583,6 +593,7 @@ describe("GitSettings", () => {
 		const user = userEvent.setup();
 		h.post.mockImplementation(async () => ({ data: { data: repo } }));
 		renderPanel();
+		await openLink();
 		await user.type(await screen.findByLabelText("Repository"), "acme/web");
 		await user.type(
 			screen.getByLabelText("Description (optional)"),
@@ -655,6 +666,7 @@ describe("GitSettings", () => {
 		] as const) {
 			h.post.mockImplementationOnce(() => apiFail(code));
 			const { unmount } = renderPanel();
+			await openLink();
 			await user.type(await screen.findByLabelText("Repository"), "acme/web");
 			await user.click(screen.getByRole("button", { name: "Link" }));
 			expect(await screen.findByRole("alert")).toHaveTextContent(text);
@@ -705,7 +717,9 @@ describe("GitSettings", () => {
 		expect(
 			await screen.findByText("No repositories linked"),
 		).toBeInTheDocument();
-		expect(screen.getByLabelText("Repository")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Link a repository" }),
+		).toBeInTheDocument();
 		expect(screen.queryByText("Get started")).toBeNull();
 		expect(screen.queryByRole("tab", { name: /^Using it/ })).toBeNull();
 	});
@@ -747,10 +761,14 @@ describe("GitSettings", () => {
 	it("keeps a half-typed repository when switching tabs", async () => {
 		const user = userEvent.setup();
 		renderPanel();
+		await openLink();
 		await user.type(await screen.findByLabelText("Repository"), "acme/we");
+		// The dialog is modal: closing it leaves the tabs reachable again.
+		await user.keyboard("{Escape}");
 		await openTab(/^Automation/);
 		await openTab(/^Repositories/);
-		expect(screen.getByLabelText("Repository")).toHaveValue("acme/we");
+		await openLink();
+		expect(await screen.findByLabelText("Repository")).toHaveValue("acme/we");
 	});
 
 	it("moves between tabs with the arrow, Home and End keys", async () => {
@@ -857,6 +875,31 @@ describe("GitSettings", () => {
 	});
 
 	describe("repository picker", () => {
+		/** Stubs the observer so a test can scroll the end of the list into view. */
+		function stubScrollEnd() {
+			const callbacks = new Set<(e: { isIntersecting: boolean }[]) => void>();
+			vi.stubGlobal(
+				"IntersectionObserver",
+				class {
+					cb: (e: { isIntersecting: boolean }[]) => void;
+					constructor(cb: (e: { isIntersecting: boolean }[]) => void) {
+						this.cb = cb;
+					}
+					observe() {
+						callbacks.add(this.cb);
+					}
+					disconnect() {
+						callbacks.delete(this.cb);
+					}
+				},
+			);
+			return () => {
+				for (const cb of callbacks) cb([{ isIntersecting: true }]);
+			};
+		}
+
+		afterEach(() => vi.unstubAllGlobals());
+
 		const page = (
 			items: { full_path: string; private?: boolean; description?: string }[],
 			next_cursor?: string,
@@ -884,6 +927,7 @@ describe("GitSettings", () => {
 					{ full_path: "acme/api" },
 				]);
 			renderPanel();
+			await openLink();
 			await user.click(
 				await screen.findByRole("button", { name: "Browse repositories" }),
 			);
@@ -904,48 +948,30 @@ describe("GitSettings", () => {
 			);
 		});
 
-		it("searches (debounced) and passes the query to the connection", async () => {
+		it("loads the next page with the cursor when the end of the list is reached", async () => {
 			const user = userEvent.setup();
-			available = (_url, params) =>
-				params?.q === "ui"
-					? page([{ full_path: "acme/ui" }])
-					: page([{ full_path: "acme/web" }]);
-			renderPanel();
-			await user.click(
-				await screen.findByRole("button", { name: "Browse repositories" }),
-			);
-			await screen.findByText("acme/web");
-			await user.type(screen.getByLabelText("Search repositories"), "ui");
-			expect(await screen.findByText("acme/ui")).toBeInTheDocument();
-			expect(screen.queryByText("acme/web")).not.toBeInTheDocument();
-			// One request for the final text, not one per keystroke.
-			const queries = h.get.mock.calls
-				.filter(([u]) => String(u).includes("/connections/"))
-				.map(([, o]) => (o as { params: Record<string, string> }).params.q);
-			expect(queries).toEqual([undefined, "ui"]);
-		});
-
-		it("loads more pages with the cursor", async () => {
-			const user = userEvent.setup();
+			const scrollToEnd = stubScrollEnd();
 			available = (_url, params) =>
 				params?.cursor === "c2"
 					? page([{ full_path: "acme/second" }])
 					: page([{ full_path: "acme/first" }], "c2");
 			renderPanel();
+			await openLink();
 			await user.click(
 				await screen.findByRole("button", { name: "Browse repositories" }),
 			);
 			await screen.findByText("acme/first");
-			await user.click(screen.getByRole("button", { name: "Load more" }));
-			expect(await screen.findByText("acme/second")).toBeInTheDocument();
-			expect(screen.getByText("acme/first")).toBeInTheDocument();
 			expect(
 				screen.queryByRole("button", { name: "Load more" }),
 			).not.toBeInTheDocument();
+			act(scrollToEnd);
+			expect(await screen.findByText("acme/second")).toBeInTheDocument();
+			expect(screen.getByText("acme/first")).toBeInTheDocument();
 		});
 
-		it("keeps the loaded list when loading more fails", async () => {
+		it("keeps the loaded list when the next page fails, and retries by hand", async () => {
 			const user = userEvent.setup();
+			const scrollToEnd = stubScrollEnd();
 			available = (_url, params) =>
 				params?.cursor === "c2"
 					? Promise.reject({
@@ -959,17 +985,22 @@ describe("GitSettings", () => {
 						})
 					: page([{ full_path: "acme/first" }], "c2");
 			renderPanel();
+			await openLink();
 			await user.click(
 				await screen.findByRole("button", { name: "Browse repositories" }),
 			);
 			await screen.findByText("acme/first");
-			await user.click(screen.getByRole("button", { name: "Load more" }));
+			act(scrollToEnd);
 			expect(
 				await screen.findByText(/Couldn't load the list/),
 			).toBeInTheDocument();
 			expect(screen.getByText("rate limited")).toBeInTheDocument();
 			expect(screen.getByText("acme/first")).toBeInTheDocument();
-			expect(screen.getByRole("button", { name: "Load more" })).toBeEnabled();
+			const retry = screen.getByRole("button", { name: "Retry" });
+			expect(retry).toBeEnabled();
+			const before = h.get.mock.calls.length;
+			await user.click(retry);
+			await waitFor(() => expect(h.get.mock.calls.length).toBe(before + 1));
 		});
 
 		it("marks repositories already linked and does not offer them", async () => {
@@ -995,16 +1026,17 @@ describe("GitSettings", () => {
 				data: { data: { items: [], supported: false } },
 			});
 			renderPanel();
+			await openLink();
 			await user.click(
 				await screen.findByRole("button", { name: "Browse repositories" }),
 			);
 			expect(
 				await screen.findByText(/can't list repositories/i),
 			).toBeInTheDocument();
-			expect(
-				screen.queryByLabelText("Search repositories"),
-			).not.toBeInTheDocument();
-			await user.type(screen.getByLabelText("Repository"), "acme/web");
+			// Nothing in the list takes focus, so close it with its own button.
+			const closers = screen.getAllByRole("button", { name: "Close" });
+			await user.click(closers[closers.length - 1]);
+			await user.type(await screen.findByLabelText("Repository"), "acme/web");
 			expect(screen.getByRole("button", { name: "Link" })).toBeEnabled();
 		});
 
@@ -1021,6 +1053,7 @@ describe("GitSettings", () => {
 					},
 				});
 			renderPanel();
+			await openLink();
 			await user.click(
 				await screen.findByRole("button", { name: "Browse repositories" }),
 			);
@@ -1028,7 +1061,8 @@ describe("GitSettings", () => {
 				await screen.findByText(/Couldn't load the list/),
 			).toBeInTheDocument();
 			expect(screen.getByText("the token needs read_api")).toBeInTheDocument();
-			await user.type(screen.getByLabelText("Repository"), "acme/web");
+			await user.keyboard("{Escape}");
+			await user.type(await screen.findByLabelText("Repository"), "acme/web");
 			expect(screen.getByRole("button", { name: "Link" })).toBeEnabled();
 		});
 
@@ -1040,6 +1074,7 @@ describe("GitSettings", () => {
 			available = () => page([{ full_path: "acme/web" }]);
 			const user = userEvent.setup();
 			renderPanel();
+			await openLink();
 			await screen.findByLabelText("Repository");
 			expect(
 				screen.queryByRole("button", { name: "Browse repositories" }),

@@ -1,10 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { GitBranch, Link2, Loader2, Lock, Plus, Trash2 } from "lucide-react";
+import {
+	GitBranch,
+	Link2,
+	Loader2,
+	Lock,
+	Plus,
+	Search,
+	Trash2,
+} from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyChip, EmptyState, Section } from "@/components/git/git-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,7 +58,7 @@ import {
 } from "@/lib/git-api";
 import { cn } from "@/lib/utils";
 import { GitConnections } from "./GitConnections";
-import { GitRepositoryPicker, linkedKey } from "./GitRepositoryPicker";
+import { GitRepositoryBrowserDialog, linkedKey } from "./GitRepositoryPicker";
 
 interface GitSettingsProps {
 	projectId: string;
@@ -81,7 +97,7 @@ function writePending(projectId: string, input: string, providerId: string) {
 
 /**
  * The project's Git settings, in the order a user does things: link
- * repositories (the form is open while there are none), pick the agent that
+ * repositories (a dialog opens from the empty state or the header), pick the agent that
  * answers, then, folded away, the rarely changed limits and the words to type
  * on the platform. Nothing but the next step is in front of the user.
  */
@@ -382,15 +398,18 @@ function Repositories({
 	});
 
 	const owner = repoOwnerOf(input);
-	const showForm =
-		canLink &&
-		providers.length > 0 &&
-		connections.length > 0 &&
-		(formOpen || linked.length === 0);
+	const canOpenForm = canLink && providers.length > 0 && connections.length > 0;
 
-	const form = showForm ? (
+	const closeForm = () => {
+		setFormOpen(false);
+		setBrowsing(false);
+		setNeedsAccess(false);
+		setErrorKey(null);
+	};
+
+	const form = (
 		<form
-			className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-4"
+			className="flex min-h-0 flex-col gap-4"
 			onSubmit={(e) => {
 				e.preventDefault();
 				setErrorKey(null);
@@ -462,33 +481,17 @@ function Repositories({
 					{t("project.git.link.help")}
 				</p>
 				{browseTarget ? (
-					<>
-						<div>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								aria-expanded={browsing}
-								onClick={() => setBrowsing((v) => !v)}
-							>
-								{browsing
-									? t("project.git.picker.hide")
-									: t("project.git.picker.browse")}
-							</Button>
-						</div>
-						{browsing ? (
-							<GitRepositoryPicker
-								key={browseTarget}
-								projectId={projectId}
-								identityId={browseTarget}
-								linked={linkedKeys}
-								onPick={(fullPath) => {
-									setInput(fullPath);
-									setBrowsing(false);
-								}}
-							/>
-						) : null}
-					</>
+					<div>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => setBrowsing(true)}
+						>
+							<Search className="size-4" />
+							{t("project.git.picker.browse")}
+						</Button>
+					</div>
 				) : null}
 			</div>
 
@@ -580,7 +583,10 @@ function Repositories({
 				</div>
 			) : null}
 
-			<div className="flex gap-2">
+			<DialogFooter>
+				<Button type="button" variant="outline" onClick={closeForm}>
+					{t("project.git.link.cancel")}
+				</Button>
 				<Button
 					type="submit"
 					disabled={link.isPending || !input.trim() || !provider}
@@ -592,21 +598,43 @@ function Repositories({
 					)}
 					{t("project.git.link.button")}
 				</Button>
-				{linked.length > 0 ? (
-					<Button
-						type="button"
-						variant="ghost"
-						onClick={() => {
-							setFormOpen(false);
-							setNeedsAccess(false);
-							setErrorKey(null);
-						}}
-					>
-						{t("project.git.link.cancel")}
-					</Button>
-				) : null}
-			</div>
+			</DialogFooter>
 		</form>
+	);
+
+	const dialog = canOpenForm ? (
+		<>
+			<Dialog
+				open={formOpen}
+				onOpenChange={(open) => {
+					if (!open) closeForm();
+				}}
+			>
+				<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+					<DialogHeader>
+						<DialogTitle>{t("project.git.link.title")}</DialogTitle>
+						<DialogDescription>
+							{t("project.git.link.dialogDescription")}
+						</DialogDescription>
+					</DialogHeader>
+					{form}
+				</DialogContent>
+			</Dialog>
+			{browseTarget ? (
+				<GitRepositoryBrowserDialog
+					key={browseTarget}
+					open={formOpen && browsing}
+					onOpenChange={setBrowsing}
+					projectId={projectId}
+					identityId={browseTarget}
+					linked={linkedKeys}
+					onPick={(fullPath) => {
+						setInput(fullPath);
+						setBrowsing(false);
+					}}
+				/>
+			) : null}
+		</>
 	) : null;
 
 	return (
@@ -615,7 +643,7 @@ function Repositories({
 			title={t("project.git.repositories.title")}
 			description={t("project.git.repositories.description")}
 			action={
-				canLink && providers.length > 0 && linked.length > 0 && !formOpen ? (
+				canOpenForm && linked.length > 0 ? (
 					<Button
 						type="button"
 						size="sm"
@@ -641,7 +669,14 @@ function Repositories({
 									? t("project.git.empty.description")
 									: t("project.git.empty.readOnly")
 					}
-				/>
+				>
+					{canOpenForm ? (
+						<Button type="button" onClick={() => setFormOpen(true)}>
+							<Plus className="size-4" />
+							{t("project.git.link.open")}
+						</Button>
+					) : null}
+				</EmptyState>
 			) : (
 				<ul className="flex flex-col divide-y divide-border/60 rounded-xl border border-border/60">
 					{linked.map((r) => (
@@ -725,7 +760,7 @@ function Repositories({
 					))}
 				</ul>
 			)}
-			{form}
+			{dialog}
 		</Section>
 	);
 }
