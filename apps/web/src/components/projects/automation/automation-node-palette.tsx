@@ -108,7 +108,7 @@ export function AutomationNodePalette({
 				/>
 				<DropdownMenuContent align="start" className="w-56">
 					<DropdownMenuGroup>
-						{pluginConditions.length > 0 && (
+						{gitConditions.length + pluginConditions.length > 0 && (
 							<DropdownMenuLabel>
 								{t("automation.palette.builtIn")}
 							</DropdownMenuLabel>
@@ -153,7 +153,7 @@ export function AutomationNodePalette({
 				/>
 				<DropdownMenuContent align="start" className="w-56">
 					<DropdownMenuGroup>
-						{pluginActions.length > 0 && (
+						{gitActions.length + pluginActions.length > 0 && (
 							<DropdownMenuLabel>
 								{t("automation.palette.builtIn")}
 							</DropdownMenuLabel>

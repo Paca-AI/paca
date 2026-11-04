@@ -475,9 +475,11 @@ function AutomationBuilderPage() {
 					});
 				}
 				case "wait":
-					return t("automation.nodeConfig.description.waitMinutes", {
-						minutes: cfg.wait_minutes ?? 0,
-					});
+					return cfg.wait_minutes && cfg.wait_minutes > 0
+						? t("automation.nodeConfig.description.waitMinutes", {
+								minutes: cfg.wait_minutes,
+							})
+						: t("automation.nodeConfig.description.notConfigured");
 				default:
 					return undefined;
 			}
