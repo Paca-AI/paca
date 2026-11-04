@@ -16,6 +16,7 @@ var (
 	ErrAgentTypeInvalid   = errors.New("agent_type must be one of: llm, acp, provider_cli")
 	ErrACPProviderInvalid = errors.New("acp_provider must be one of: claude-code, codex, gemini-cli, goose, opencode, custom")
 	ErrACPCommandRequired = errors.New("acp_command is required when acp_provider is custom")
+	ErrACPModelInvalid    = errors.New("acp_model and acp_effort must be at most 200 characters with no control characters")
 	// ErrFieldNotSupportedForAgentType is returned when a create/update
 	// request sets an LLM-only field (system_prompt, git_committer_name,
 	// git_committer_email) on an ACP or provider_cli agent. Those agents'

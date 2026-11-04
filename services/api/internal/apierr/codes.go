@@ -327,6 +327,8 @@ const (
 	CodeAgentFieldNotSupportedForType Code = "AGENT_FIELD_NOT_SUPPORTED_FOR_TYPE"
 	// CodeAgentACPCommandRequired indicates acp_command is required for the given acp_provider.
 	CodeAgentACPCommandRequired Code = "AGENT_ACP_COMMAND_REQUIRED"
+	// CodeAgentACPModelInvalid indicates acp_model or acp_effort is too long or has control characters.
+	CodeAgentACPModelInvalid Code = "AGENT_ACP_MODEL_INVALID"
 	// CodeAgentMCPServerNotFound indicates the requested MCP server does not exist.
 	CodeAgentMCPServerNotFound Code = "AGENT_MCP_SERVER_NOT_FOUND"
 	// CodeAgentSkillNotFound indicates the requested skill does not exist.

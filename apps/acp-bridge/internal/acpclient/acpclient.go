@@ -191,10 +191,13 @@ func (i *SessionInfo) ConfigOptionFor(category string, ids ...string) (ConfigOpt
 	if i == nil {
 		return ConfigOption{}, false
 	}
+	// Category is the spec's semantic tag, so it outranks the id fallback.
 	for _, o := range i.ConfigOptions {
 		if o.Category == category {
 			return o, true
 		}
+	}
+	for _, o := range i.ConfigOptions {
 		for _, id := range ids {
 			if o.ID == id {
 				return o, true

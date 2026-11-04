@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 
@@ -282,6 +283,23 @@ func (s *Service) GetAgent(ctx context.Context, projectID, agentID uuid.UUID) (*
 	return s.repo.FindVisibleAgentInProject(ctx, projectID, agentID)
 }
 
+// maxACPModelEffortLen caps acp_model / acp_effort; real model names and
+// effort levels are far shorter.
+const maxACPModelEffortLen = 200
+
+// normalizeACPModelEffort trims both values and rejects ones that are too long
+// or contain control characters (the model is passed to the bridge as an
+// environment variable, where a NUL would make the spawn fail).
+func normalizeACPModelEffort(model, effort string) (string, string, error) {
+	model, effort = strings.TrimSpace(model), strings.TrimSpace(effort)
+	for _, v := range []string{model, effort} {
+		if len(v) > maxACPModelEffortLen || strings.IndexFunc(v, unicode.IsControl) >= 0 {
+			return "", "", agentdom.ErrACPModelInvalid
+		}
+	}
+	return model, effort, nil
+}
+
 // CreateAgent validates input, creates the agent, and sets up project membership.
 func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error) {
 	handle := strings.TrimSpace(in.Handle)
@@ -336,8 +354,11 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		provider := in.ACPProvider
 		a.ACPProvider = &provider
 		a.ACPCommand = in.ACPCommand
-		a.ACPModel = strings.TrimSpace(in.ACPModel)
-		a.ACPEffort = strings.TrimSpace(in.ACPEffort)
+		model, effort, err := normalizeACPModelEffort(in.ACPModel, in.ACPEffort)
+		if err != nil {
+			return nil, err
+		}
+		a.ACPModel, a.ACPEffort = model, effort
 	case agentdom.AgentTypeProviderCLI:
 		if !agentdom.ValidCLIProviders[in.CLIProvider] {
 			return nil, agentdom.ErrCLIProviderInvalid
@@ -544,11 +565,18 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		if in.ACPCommand != nil {
 			a.ACPCommand = in.ACPCommand
 		}
-		if in.ACPModel != nil {
-			a.ACPModel = strings.TrimSpace(*in.ACPModel)
-		}
-		if in.ACPEffort != nil {
-			a.ACPEffort = strings.TrimSpace(*in.ACPEffort)
+		if in.ACPModel != nil || in.ACPEffort != nil {
+			model, effort := a.ACPModel, a.ACPEffort
+			if in.ACPModel != nil {
+				model = *in.ACPModel
+			}
+			if in.ACPEffort != nil {
+				effort = *in.ACPEffort
+			}
+			var err error
+			if a.ACPModel, a.ACPEffort, err = normalizeACPModelEffort(model, effort); err != nil {
+				return nil, err
+			}
 		}
 		if a.ACPProvider != nil && *a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
 			return nil, agentdom.ErrACPCommandRequired
@@ -803,8 +831,11 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 		provider := in.ACPProvider
 		a.ACPProvider = &provider
 		a.ACPCommand = in.ACPCommand
-		a.ACPModel = strings.TrimSpace(in.ACPModel)
-		a.ACPEffort = strings.TrimSpace(in.ACPEffort)
+		model, effort, err := normalizeACPModelEffort(in.ACPModel, in.ACPEffort)
+		if err != nil {
+			return nil, err
+		}
+		a.ACPModel, a.ACPEffort = model, effort
 	} else {
 		encryptedKey, err := s.encryptKey(in.LLMAPIKey)
 		if err != nil {
@@ -925,11 +956,18 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 		if in.ACPCommand != nil {
 			a.ACPCommand = in.ACPCommand
 		}
-		if in.ACPModel != nil {
-			a.ACPModel = strings.TrimSpace(*in.ACPModel)
-		}
-		if in.ACPEffort != nil {
-			a.ACPEffort = strings.TrimSpace(*in.ACPEffort)
+		if in.ACPModel != nil || in.ACPEffort != nil {
+			model, effort := a.ACPModel, a.ACPEffort
+			if in.ACPModel != nil {
+				model = *in.ACPModel
+			}
+			if in.ACPEffort != nil {
+				effort = *in.ACPEffort
+			}
+			var err error
+			if a.ACPModel, a.ACPEffort, err = normalizeACPModelEffort(model, effort); err != nil {
+				return nil, err
+			}
 		}
 		if a.ACPProvider != nil && *a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
 			return nil, agentdom.ErrACPCommandRequired

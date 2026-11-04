@@ -465,3 +465,17 @@ func TestConfigOptionFor(t *testing.T) {
 		t.Fatal("unexpected option for unknown category")
 	}
 }
+
+func TestConfigOptionForPrefersCategoryOverIDFallback(t *testing.T) {
+	info := &SessionInfo{ConfigOptions: []ConfigOption{
+		{ID: "effort"},
+		{ID: "think", Category: "thought_level"},
+	}}
+	got, ok := info.ConfigOptionFor("thought_level", "effort")
+	if !ok || got.ID != "think" {
+		t.Fatalf("got %+v, %v; want the category match \"think\"", got, ok)
+	}
+	if got, ok := info.ConfigOptionFor("other", "effort"); !ok || got.ID != "effort" {
+		t.Fatalf("id fallback: got %+v, %v", got, ok)
+	}
+}

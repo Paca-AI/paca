@@ -57,7 +57,9 @@ export function AcpModelEffortFields({
 				</p>
 			</div>
 			<div className="space-y-1.5">
-				<Label>{t("agents.acpModelEffort.effortLabel")}</Label>
+				<Label htmlFor={`${idPrefix}-acp-effort`}>
+					{t("agents.acpModelEffort.effortLabel")}
+				</Label>
 				<Select
 					value={effort || DEFAULT_EFFORT}
 					onValueChange={(v) =>
@@ -65,7 +67,7 @@ export function AcpModelEffortFields({
 					}
 					disabled={disabled}
 				>
-					<SelectTrigger>
+					<SelectTrigger id={`${idPrefix}-acp-effort`}>
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>

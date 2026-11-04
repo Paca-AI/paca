@@ -287,9 +287,12 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 		}
 		state.acpProvider = acpProvider
 		state.command = command
-		state.model, _ = msg["acp_model"].(string)
-		state.effort, _ = msg["acp_effort"].(string)
 	}
+	// Refreshed every turn (not just the first): they are only applied when a
+	// session is (re)spawned, but an idle-expired session respawns from the
+	// conversation's retained state and should see the agent's latest values.
+	state.model, _ = msg["acp_model"].(string)
+	state.effort, _ = msg["acp_effort"].(string)
 
 	state.turnRunning = true
 	state.currentConversationID = conversationID
@@ -494,7 +497,8 @@ func (r *Runner) applyModelAndEffort(
 	// Providers that take the model through their environment (see
 	// provider.ModelEnv) already have it from spawn time.
 	model := state.model
-	if model != "" && provider.ModelEnv(state.acpProvider, model) == nil {
+	modelEnv := provider.ModelEnv(state.acpProvider, model)
+	if model != "" && modelEnv == nil {
 		var err error
 		if opt, ok := info.ConfigOptionFor("model", "model"); ok {
 			var refreshed []acpclient.ConfigOption
@@ -516,10 +520,12 @@ func (r *Runner) applyModelAndEffort(
 		}
 	} else if model != "" {
 		r.log.Info("runner: model set via environment", "conversation_id", conversationID,
-			"model", model, "env", provider.ModelEnv(state.acpProvider, model))
+			"model", model, "env", modelEnv)
 	}
+	// If the model change above failed, effort is still applied to whatever
+	// model the session is on; an unsupported level is just logged below.
 	if effort := state.effort; effort != "" {
-		opt, ok := info.ConfigOptionFor("thought_level", "effort", "reasoning_effort", "thought_level")
+		opt, ok := info.ConfigOptionFor("thought_level", "effort", "reasoning_effort")
 		if !ok {
 			r.log.Warn("runner: session exposes no effort setting (the selected model may not support one); using provider default",
 				"conversation_id", conversationID, "effort", effort)
