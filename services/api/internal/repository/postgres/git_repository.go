@@ -620,22 +620,43 @@ func (s *GitRepository) UpsertChangeRequest(ctx context.Context, cr *gitdom.Chan
 	return rec.domain(), nil
 }
 
-// LinkTaskToChangeRequest records that a change request belongs to a task.
-func (s *GitRepository) LinkTaskToChangeRequest(ctx context.Context, taskID, changeRequestID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO git_task_links (task_id, change_request_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, taskID.String(), changeRequestID.String())
+// LinkTaskToChangeRequest records that a change request belongs to a task,
+// reporting whether the link is new.
+func (s *GitRepository) LinkTaskToChangeRequest(ctx context.Context, taskID, changeRequestID uuid.UUID) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `INSERT INTO git_task_links (task_id, change_request_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, taskID.String(), changeRequestID.String())
 	if err != nil {
-		return fmt.Errorf("git repo: link task: %w", err)
+		return false, fmt.Errorf("git repo: link task: %w", err)
 	}
-	return nil
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
-// LinkTaskBranch records that a branch belongs to a task.
-func (s *GitRepository) LinkTaskBranch(ctx context.Context, taskID, repositoryID uuid.UUID, branch string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO git_task_branches (task_id, repository_id, branch_name) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, taskID.String(), repositoryID.String(), branch)
+// LinkTaskBranch records that a branch belongs to a task, reporting whether
+// the link is new.
+func (s *GitRepository) LinkTaskBranch(ctx context.Context, taskID, repositoryID uuid.UUID, branch string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `INSERT INTO git_task_branches (task_id, repository_id, branch_name) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, taskID.String(), repositoryID.String(), branch)
 	if err != nil {
-		return fmt.Errorf("git repo: link task branch: %w", err)
+		return false, fmt.Errorf("git repo: link task branch: %w", err)
 	}
-	return nil
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// ListChangeRequestTasks returns the live tasks a change request is linked to.
+func (s *GitRepository) ListChangeRequestTasks(ctx context.Context, changeRequestID uuid.UUID) ([]uuid.UUID, error) {
+	var ids []string
+	if err := s.db.SelectContext(ctx, &ids, `
+		SELECT l.task_id FROM git_task_links l JOIN tasks t ON t.id = l.task_id
+		WHERE l.change_request_id = $1 AND t.deleted_at IS NULL`, changeRequestID.String()); err != nil {
+		return nil, fmt.Errorf("git repo: list change request tasks: %w", err)
+	}
+	out := make([]uuid.UUID, 0, len(ids))
+	for _, raw := range ids {
+		if id, err := uuid.Parse(raw); err == nil {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // FindTaskByRef resolves PREFIX-N within a project to a task.

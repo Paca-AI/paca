@@ -158,7 +158,8 @@ func TestAuthzFor_ActionsAndResourcesAreValid(t *testing.T) {
 		wantRes    string
 	}{
 		{"task entity", events.Event{Topic: "task.updated", EntityType: events.EntityTask, EntityID: &entity}, iam.ActionTasksRead, "project/%s/task/%s"},
-		{"task via TaskID", events.Event{Topic: "github.pr.merged", TaskID: &entity}, iam.ActionTasksRead, "project/%s/task/%s"},
+		{"task via TaskID", events.Event{Topic: "git.task.updated", TaskID: &entity}, iam.ActionTasksRead, "project/%s/task/%s"},
+		{"git.task.updated is task scoped", events.Event{Topic: "git.task.updated", TaskID: &entity}, iam.ActionTasksRead, "project/%s/task/%s"},
 		{"automation.applied is task scoped", events.Event{Topic: "automation.applied", TaskID: &entity}, iam.ActionTasksRead, "project/%s/task/%s"},
 		{"doc", events.Event{Topic: "doc.updated", EntityType: events.EntityDoc, EntityID: &entity}, iam.ActionDocsRead, "project/%s/doc/%s"},
 		{"doc folder has no IAM kind", events.Event{Topic: "doc.folder.created", EntityType: events.EntityDoc, EntityID: &entity}, iam.ActionDocsRead, "project/%s"},

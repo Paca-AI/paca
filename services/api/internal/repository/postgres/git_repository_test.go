@@ -241,10 +241,10 @@ func TestGitStore_ChangeRequestsAndTaskLinks(t *testing.T) {
 	}
 
 	for i := 0; i < 2; i++ { // idempotent
-		if err := s.LinkTaskToChangeRequest(ctx, task, cr.ID); err != nil {
+		if _, err := s.LinkTaskToChangeRequest(ctx, task, cr.ID); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.LinkTaskBranch(ctx, task, repo.ID, "feat/PACA-12-x"); err != nil {
+		if _, err := s.LinkTaskBranch(ctx, task, repo.ID, "feat/PACA-12-x"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -617,10 +617,10 @@ func TestGitStore_TaskGitIsScopedToTheTasksProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.LinkTaskToChangeRequest(ctx, task, cr.ID); err != nil {
+	if _, err := s.LinkTaskToChangeRequest(ctx, task, cr.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.LinkTaskBranch(ctx, task, repo.ID, "feat/x"); err != nil {
+	if _, err := s.LinkTaskBranch(ctx, task, repo.ID, "feat/x"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -649,8 +649,8 @@ func TestGitStore_TaskLinksCanBeRemoved(t *testing.T) {
 	pgExec(t, fx.db, `INSERT INTO tasks (id, project_id, task_number, title) VALUES ($1,$2,1,'t')`, task, project)
 	repo := linkRepo(t, s, project, "acme/web", nil)
 	cr, _ := s.UpsertChangeRequest(ctx, &gitdom.ChangeRequest{RepositoryID: repo.ID, Number: "4", State: "open"})
-	_ = s.LinkTaskToChangeRequest(ctx, task, cr.ID)
-	_ = s.LinkTaskBranch(ctx, task, repo.ID, "a/b")
+	_, _ = s.LinkTaskToChangeRequest(ctx, task, cr.ID)
+	_, _ = s.LinkTaskBranch(ctx, task, repo.ID, "a/b")
 
 	if ok, err := s.TaskInProject(ctx, project, task); err != nil || !ok {
 		t.Fatalf("own project: %v %v", ok, err)

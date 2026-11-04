@@ -58,8 +58,10 @@ type Service struct {
 	now       func() time.Time
 	publicURL string // the instance's externally reachable base URL, no trailing slash
 
-	namer AgentNamer // optional: names the acting agent in comment footers
-	dir   AgentDirectory
+	namer          AgentNamer                                             // optional: names the acting agent in comment footers
+	automation     AutomationEmitter                                      // optional: feeds the Git automation triggers
+	taskGitChanged func(ctx context.Context, projectID, taskID uuid.UUID) // optional: live refresh of a task's Git panel
+	dir            AgentDirectory
 
 	mu     sync.Mutex
 	cache  map[credKey]cachedCred
@@ -385,6 +387,7 @@ func (s *Service) HandleWebhook(ctx context.Context, endpointKey string, d Deliv
 				_ = s.store.DeleteInboxEvent(ctx, ev.ID, repo.ID)
 				return nil, err
 			}
+			s.emitEventTriggers(ctx, repo, ev)
 		}
 	}
 	return res, nil
@@ -488,6 +491,18 @@ func (s *Service) trackChangeRequest(ctx context.Context, repo *gitdom.Repositor
 // saveChangeRequest caches a change request and links it to the task its
 // branch or title names ("feat/PACA-12-x").
 func (s *Service) saveChangeRequest(ctx context.Context, repo *gitdom.Repository, cr *gitdom.ChangeRequest) (*gitdom.ChangeRequest, error) {
+	// The state before this update tells a real transition (open -> merged)
+	// from a redelivery, for the git.pr_state_changed trigger.
+	previous := ""
+	if s.automation != nil || s.taskGitChanged != nil {
+		cur, err := s.store.FindChangeRequest(ctx, repo.ID, cr.Number)
+		switch {
+		case err == nil:
+			previous = cur.State
+		case !errors.Is(err, gitdom.ErrNotFound):
+			return nil, err
+		}
+	}
 	saved, err := s.store.UpsertChangeRequest(ctx, cr)
 	if err != nil {
 		return nil, err
@@ -502,14 +517,17 @@ func (s *Service) saveChangeRequest(ctx context.Context, repo *gitdom.Repository
 			continue
 		}
 		seen[task] = true
-		if err := s.store.LinkTaskToChangeRequest(ctx, task, saved.ID); err != nil {
+		if err := s.linkChangeRequest(ctx, repo, task, saved); err != nil {
 			return nil, err
 		}
 		if cr.HeadRef != "" {
-			if err := s.store.LinkTaskBranch(ctx, task, repo.ID, cr.HeadRef); err != nil {
+			if err := s.linkBranch(ctx, repo, task, cr.HeadRef); err != nil {
 				return nil, err
 			}
 		}
+	}
+	if err := s.emitStateChange(ctx, repo, previous, saved); err != nil {
+		return nil, err
 	}
 	return saved, nil
 }

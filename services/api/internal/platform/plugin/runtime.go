@@ -652,6 +652,16 @@ func (r *Runtime) IsPluginAction(nodeType string) bool {
 	return ok && entry.kind == automationKindAction
 }
 
+// IsTasklessTrigger reports whether nodeType is a plugin-registered Trigger
+// whose manifest declares that its events carry no task. Satisfies
+// automationdom.PluginNodeResolver.
+func (r *Runtime) IsTasklessTrigger(nodeType string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	entry, ok := r.automationIndex[nodeType]
+	return ok && entry.kind == automationKindTrigger && entry.manifest.Taskless
+}
+
 // ResolveAutomationCondition returns the plugin name that owns nodeType, if
 // any plugin registered it as a Condition node — consulted by the automation
 // engine's condition leaf evaluator as a fallback after its built-in fields.

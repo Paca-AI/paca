@@ -285,6 +285,9 @@ type AutomationNodeManifest struct {
 	// per-instance refinement beyond "this topic fired" contributes a
 	// Condition node instead, placed right after the trigger in the graph.
 	EventTopic string `json:"eventTopic,omitempty"`
+	// Taskless marks a trigger whose events carry no task (only meaningful
+	// for Triggers): its runs may reach only nodes that work without one.
+	Taskless bool `json:"taskless,omitempty"`
 }
 
 // validate enforces that every declared node Type is namespaced under the

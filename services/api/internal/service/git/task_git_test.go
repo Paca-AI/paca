@@ -71,9 +71,9 @@ func (s *taskStore) ListTaskGit(context.Context, uuid.UUID, uuid.UUID) (*gitdom.
 func (s *taskStore) TaskInProject(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
 	return s.taskOK, nil
 }
-func (s *taskStore) LinkTaskToChangeRequest(_ context.Context, _, cr uuid.UUID) error {
+func (s *taskStore) LinkTaskToChangeRequest(_ context.Context, _, cr uuid.UUID) (bool, error) {
 	s.linkedCR = append(s.linkedCR, cr)
-	return nil
+	return true, nil
 }
 func (s *taskStore) UnlinkTaskFromChangeRequest(_ context.Context, _, cr uuid.UUID) error {
 	s.unlinkCR = append(s.unlinkCR, cr)

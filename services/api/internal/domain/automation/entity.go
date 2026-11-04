@@ -703,6 +703,8 @@ type CronCandidate struct {
 type WalkContext struct {
 	TaskID   *uuid.UUID `json:"task_id,omitempty"`
 	SprintID *uuid.UUID `json:"sprint_id,omitempty"`
+	// EventVars are the {{event.*}} placeholders of the event that started the run.
+	EventVars map[string]string `json:"event_vars,omitempty"`
 }
 
 // PendingAgentWait is one in-flight "graph walk is paused here" marker,

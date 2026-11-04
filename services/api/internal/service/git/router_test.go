@@ -743,3 +743,14 @@ func TestRouter_LosingTheRaceForASubjectWaitsInsteadOfFailing(t *testing.T) {
 		t.Fatalf("a deferred event is not finished: %s", st)
 	}
 }
+
+func TestRouter_AnOpenedIssueBodyAddressesTheResponderLikeAComment(t *testing.T) {
+	fx := newRouterFx(t)
+	ev := mention("@paca-bot please look", &gitprovider.EventSubject{Kind: gitprovider.SubjectIssue, Number: "5"})
+	ev.Location = nil // the issue's own text is no comment: it has no id
+	in := fx.feed(ev)
+	fx.tick()
+	if st, reason := fx.status(in); st != gitdom.InboxRouted {
+		t.Fatalf("%s %s", st, reason)
+	}
+}

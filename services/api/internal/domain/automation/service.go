@@ -115,6 +115,10 @@ type PluginNodeResolver interface {
 	IsPluginTrigger(nodeType string) bool
 	IsPluginCondition(nodeType string) bool
 	IsPluginAction(nodeType string) bool
+	// IsTasklessTrigger reports whether a plugin-contributed trigger type
+	// never carries a task (its manifest says so), so it is held to the same
+	// reachability rule as a built-in trigger with no target task.
+	IsTasklessTrigger(nodeType string) bool
 }
 
 // DependencyMapEntry is one predecessor-done relationship surfaced by

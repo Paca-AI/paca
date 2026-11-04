@@ -88,8 +88,12 @@ type Store interface {
 
 	// ── change requests and task links ──
 	UpsertChangeRequest(ctx context.Context, cr *ChangeRequest) (*ChangeRequest, error)
-	LinkTaskToChangeRequest(ctx context.Context, taskID, changeRequestID uuid.UUID) error
-	LinkTaskBranch(ctx context.Context, taskID, repositoryID uuid.UUID, branch string) error
+	// LinkTaskToChangeRequest and LinkTaskBranch report whether the link is new
+	// (false: it already existed), so a first link can be told apart from a repeat.
+	LinkTaskToChangeRequest(ctx context.Context, taskID, changeRequestID uuid.UUID) (created bool, err error)
+	LinkTaskBranch(ctx context.Context, taskID, repositoryID uuid.UUID, branch string) (created bool, err error)
+	// ListChangeRequestTasks returns the tasks a change request is linked to.
+	ListChangeRequestTasks(ctx context.Context, changeRequestID uuid.UUID) ([]uuid.UUID, error)
 	// ListTaskGit returns the change requests and branches linked to a task of the project.
 	ListTaskGit(ctx context.Context, projectID, taskID uuid.UUID) (*TaskGit, error)
 	// TaskInProject reports whether the task belongs to the project.
