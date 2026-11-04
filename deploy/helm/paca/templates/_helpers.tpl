@@ -197,7 +197,7 @@ plain HTTP even without an Ingress, for TLS terminated by another external
 proxy (Istio VirtualService, Gateway API route, tunnel).
 */}}
 {{- define "paca.gatewaySiteAddress" -}}
-{{- if or .Values.ingress.enabled (not .Values.gateway.autoHttps) -}}
+{{- if or .Values.ingress.enabled (and (hasKey .Values.gateway "autoHttps") (not .Values.gateway.autoHttps)) -}}
 :80
 {{- else if .Values.publicUrl -}}
 {{- (urlParse .Values.publicUrl).host -}}
