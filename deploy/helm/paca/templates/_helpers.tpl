@@ -192,10 +192,12 @@ since Caddy's automatic HTTPS needs ports 80+443 reachable directly from
 the internet (not true once an Ingress/LoadBalancer sits in front), would
 simply fail at worst. Falls back to publicUrl's own host when set and no
 Ingress is used (a LoadBalancer Service exposing the gateway directly), or
-plain ":80" when neither is configured.
+plain ":80" when neither is configured. gateway.autoHttps: false forces
+plain HTTP even without an Ingress, for TLS terminated by another external
+proxy (Istio VirtualService, Gateway API route, tunnel).
 */}}
 {{- define "paca.gatewaySiteAddress" -}}
-{{- if .Values.ingress.enabled -}}
+{{- if or .Values.ingress.enabled (not .Values.gateway.autoHttps) -}}
 :80
 {{- else if .Values.publicUrl -}}
 {{- (urlParse .Values.publicUrl).host -}}
