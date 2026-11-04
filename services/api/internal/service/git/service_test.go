@@ -18,18 +18,20 @@ import (
 type fakeStore struct {
 	gitdom.Store // unimplemented methods panic: the service must not call them
 
-	shared    []*gitdom.Identity
-	byRef     map[string]*gitdom.Identity
-	byID      map[uuid.UUID]*gitdom.Identity
-	agentIDs  map[uuid.UUID]*gitdom.Identity
-	endpoints map[string]*gitdom.WebhookEndpoint
-	repos     map[uuid.UUID]*gitdom.Repository
-	inbox     map[string]bool
-	crs       []*gitdom.ChangeRequest
-	tasks     map[string]uuid.UUID // "prefix-number" (lower)
-	taskLinks []uuid.UUID
-	branches  []string
-	log       []*gitdom.ActionLogEntry
+	shared     []*gitdom.Identity
+	byRef      map[string]*gitdom.Identity
+	byID       map[uuid.UUID]*gitdom.Identity
+	agentIDs   map[uuid.UUID]*gitdom.Identity
+	endpoints  map[string]*gitdom.WebhookEndpoint
+	repos      map[uuid.UUID]*gitdom.Repository
+	inbox      map[string]bool
+	crs        []*gitdom.ChangeRequest
+	tasks      map[string]uuid.UUID // "prefix-number" (lower)
+	taskLinks  []uuid.UUID
+	linkSeen   map[[2]uuid.UUID]bool
+	branchSeen map[string]bool
+	branches   []string
+	log        []*gitdom.ActionLogEntry
 
 	sessions map[string]*gitdom.SetupSession
 	access   map[string]*gitdom.AccessSession
@@ -302,6 +304,13 @@ func (f *fakeStore) InsertInboxEvent(_ context.Context, e *gitdom.InboxEvent) (b
 }
 func (f *fakeStore) UpsertChangeRequest(_ context.Context, cr *gitdom.ChangeRequest) (*gitdom.ChangeRequest, error) {
 	cr.ID = uuid.New()
+	cr.PreviousState = ""
+	for _, old := range f.crs { // the same request keeps its id, as in the database
+		if old.RepositoryID == cr.RepositoryID && old.Number == cr.Number {
+			cr.ID = old.ID
+			cr.PreviousState = old.State
+		}
+	}
 	f.crs = append(f.crs, cr)
 	return cr, nil
 }
@@ -309,13 +318,32 @@ func (f *fakeStore) FindTaskByRef(_ context.Context, _ uuid.UUID, prefix string,
 	id, ok := f.tasks[strings.ToLower(prefix)+"-"+itoa(n)]
 	return id, ok, nil
 }
-func (f *fakeStore) LinkTaskToChangeRequest(_ context.Context, task, _ uuid.UUID) error {
+func (f *fakeStore) LinkTaskToChangeRequest(_ context.Context, task, cr uuid.UUID) (bool, error) {
+	key := [2]uuid.UUID{task, cr}
+	if f.linkSeen[key] {
+		return false, nil
+	}
+	if f.linkSeen == nil {
+		f.linkSeen = map[[2]uuid.UUID]bool{}
+	}
+	f.linkSeen[key] = true
 	f.taskLinks = append(f.taskLinks, task)
-	return nil
+	return true, nil
 }
-func (f *fakeStore) LinkTaskBranch(_ context.Context, _, _ uuid.UUID, b string) error {
+func (f *fakeStore) LinkTaskBranch(_ context.Context, _, repo uuid.UUID, b string) (bool, error) {
+	key := repo.String() + "|" + b
+	if f.branchSeen[key] {
+		return false, nil
+	}
+	if f.branchSeen == nil {
+		f.branchSeen = map[string]bool{}
+	}
+	f.branchSeen[key] = true
 	f.branches = append(f.branches, b)
-	return nil
+	return true, nil
+}
+func (f *fakeStore) ListChangeRequestTasks(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return f.taskLinks, nil
 }
 func (f *fakeStore) AppendActionLog(_ context.Context, e *gitdom.ActionLogEntry) error {
 	f.log = append(f.log, e)
@@ -784,7 +812,11 @@ func (s *trackStore) UpsertChangeRequest(ctx context.Context, cr *gitdom.ChangeR
 	if s.upsertErr != nil {
 		return nil, s.upsertErr
 	}
-	return s.fakeStore.UpsertChangeRequest(ctx, cr)
+	saved, err := s.fakeStore.UpsertChangeRequest(ctx, cr)
+	if err == nil && s.cur != nil {
+		saved.PreviousState = s.cur.State
+	}
+	return saved, err
 }
 func (s *trackStore) DeleteInboxEvent(_ context.Context, id string, repo uuid.UUID) error {
 	s.deleted = append(s.deleted, id)

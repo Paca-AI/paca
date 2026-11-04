@@ -2610,3 +2610,18 @@ func TestRecordStep_NonFailedStepIsNotLogged(t *testing.T) {
 		t.Errorf("expected no log line for completed/skipped steps, got %q", buf.String())
 	}
 }
+
+func TestEventVarsFromPayload_FeedTemplateVars(t *testing.T) {
+	vars := eventVarsFromPayload(`{"number":9,"title":"Crash","draft":false,"nested":{"a":1},"none":null}`)
+	if vars["number"] != "9" || vars["title"] != "Crash" || vars["draft"] != "false" || len(vars) != 3 {
+		t.Fatalf("vars: %v", vars)
+	}
+	if eventVarsFromPayload(`not json`) != nil {
+		t.Fatal("garbage must give no vars")
+	}
+	w := &walker{consumer: &AutomationConsumer{}, automationName: "A", eventVars: vars}
+	got := w.templateVars(context.Background())
+	if got["event.title"] != "Crash" || got["event.number"] != "9" {
+		t.Fatalf("templateVars: %v", got)
+	}
+}

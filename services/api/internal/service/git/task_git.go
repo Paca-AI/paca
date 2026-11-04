@@ -235,7 +235,7 @@ func (s *Service) LinkTaskChangeRequest(ctx context.Context, ref TaskRef, reposi
 	if err != nil {
 		return err
 	}
-	return s.store.LinkTaskToChangeRequest(ctx, ref.TaskID, saved.ID)
+	return s.linkChangeRequest(ctx, t.repo, ref.TaskID, saved)
 }
 
 // UnlinkTaskChangeRequest removes a task's link to a pull/merge request.
@@ -281,7 +281,7 @@ func (s *Service) LinkTaskBranch(ctx context.Context, ref TaskRef, repositoryID 
 			return err
 		}
 	}
-	return s.store.LinkTaskBranch(ctx, ref.TaskID, repositoryID, branch)
+	return s.linkBranch(ctx, t.repo, ref.TaskID, branch)
 }
 
 // CreateTaskBranch creates a branch on the platform and links it to the task.
@@ -306,7 +306,7 @@ func (s *Service) CreateTaskBranch(ctx context.Context, ref TaskRef, repositoryI
 	if err != nil {
 		return info, err
 	}
-	return info, s.store.LinkTaskBranch(ctx, ref.TaskID, repositoryID, branch)
+	return info, s.linkBranch(ctx, t.repo, ref.TaskID, branch)
 }
 
 // UnlinkTaskBranch removes a task's link to a branch. The branch itself stays.

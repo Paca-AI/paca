@@ -227,7 +227,7 @@ func (s *Service) Activate(ctx context.Context, projectID, automationID uuid.UUI
 	if hasCycle(nodes, edges) {
 		return nil, automationdom.ErrEdgeCycle
 	}
-	if err := validateTaskReachability(nodes, edges); err != nil {
+	if err := s.validateTaskReachability(nodes, edges); err != nil {
 		return nil, err
 	}
 	if err := validateNoSelfParent(nodes, edges); err != nil {
@@ -343,7 +343,7 @@ func (s *Service) UpdateNode(ctx context.Context, projectID, automationID, nodeI
 					tentativeNodes[i] = existing
 				}
 			}
-			if err := validateTaskReachability(tentativeNodes, edges); err != nil {
+			if err := s.validateTaskReachability(tentativeNodes, edges); err != nil {
 				return nil, err
 			}
 			if err := validateNoSelfParent(tentativeNodes, edges); err != nil {
@@ -439,7 +439,7 @@ func (s *Service) AddEdge(ctx context.Context, projectID, automationID uuid.UUID
 	tentativeEdges := make([]*automationdom.Edge, len(edges), len(edges)+1)
 	copy(tentativeEdges, edges)
 	tentativeEdges = append(tentativeEdges, &automationdom.Edge{SourceNodeID: source.ID, TargetNodeID: target.ID})
-	if err := validateTaskReachability(nodes, tentativeEdges); err != nil {
+	if err := s.validateTaskReachability(nodes, tentativeEdges); err != nil {
 		return nil, err
 	}
 	if err := validateNoSelfParent(nodes, tentativeEdges); err != nil {
@@ -1314,7 +1314,7 @@ func retargetsAction(cfg *automationdom.ActionConfig) bool {
 // problem") so it catches the transitive case too: a task-less trigger
 // reaching a task-needing node through several hops, or through a node that
 // only became reachable because a different, unrelated edge was added.
-func validateTaskReachability(nodes []*automationdom.Node, edges []*automationdom.Edge) error {
+func (s *Service) validateTaskReachability(nodes []*automationdom.Node, edges []*automationdom.Edge) error {
 	nodesByID := make(map[uuid.UUID]*automationdom.Node, len(nodes))
 	for _, n := range nodes {
 		nodesByID[n.ID] = n
@@ -1331,7 +1331,9 @@ func validateTaskReachability(nodes []*automationdom.Node, edges []*automationdo
 		switch automationdom.TriggerType(n.Type) {
 		case automationdom.TriggerPredecessorDone, automationdom.TriggerCron, automationdom.TriggerAPITrigger:
 		default:
-			continue
+			if s.pluginResolver == nil || !s.pluginResolver.IsTasklessTrigger(n.Type) {
+				continue
+			}
 		}
 		var cfg automationdom.TriggerConfig
 		if err := json.Unmarshal(n.Config, &cfg); err != nil || cfg.TargetTaskID != nil {

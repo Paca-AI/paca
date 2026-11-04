@@ -309,12 +309,13 @@ func TestValidateConditionConfig_AcceptsValidBranches(t *testing.T) {
 // --- Plugin node resolver fallthrough ---------------------------------------
 
 type stubPluginResolver struct {
-	triggers, conditions, actions map[string]bool
+	triggers, conditions, actions, taskless map[string]bool
 }
 
 func (s *stubPluginResolver) IsPluginTrigger(t string) bool   { return s.triggers[t] }
 func (s *stubPluginResolver) IsPluginCondition(t string) bool { return s.conditions[t] }
 func (s *stubPluginResolver) IsPluginAction(t string) bool    { return s.actions[t] }
+func (s *stubPluginResolver) IsTasklessTrigger(t string) bool { return s.taskless[t] }
 
 func TestService_ValidateNodeTypeAndConfig_PluginActionFallthrough(t *testing.T) {
 	svc := &Service{}
@@ -509,7 +510,7 @@ func TestValidateTaskReachability_TaskLessTriggerToCallAPI_Allowed(t *testing.T)
 	action := newNode(automationdom.KindAction, string(automationdom.ActionCallAPI), "{}")
 	nodes := []*automationdom.Node{trigger, action}
 	edges := []*automationdom.Edge{newEdge(trigger.ID, action.ID)}
-	if err := validateTaskReachability(nodes, edges); err != nil {
+	if err := (&Service{}).validateTaskReachability(nodes, edges); err != nil {
 		t.Fatalf("expected a task-less cron trigger connected only to call_api to be valid, got %v", err)
 	}
 }
@@ -519,7 +520,7 @@ func TestValidateTaskReachability_TaskLessTriggerToTriggerAIAgent_Allowed(t *tes
 	action := newNode(automationdom.KindAction, string(automationdom.ActionTriggerAIAgent), "{}")
 	nodes := []*automationdom.Node{trigger, action}
 	edges := []*automationdom.Edge{newEdge(trigger.ID, action.ID)}
-	if err := validateTaskReachability(nodes, edges); err != nil {
+	if err := (&Service{}).validateTaskReachability(nodes, edges); err != nil {
 		t.Fatalf("expected a task-less api_trigger connected to trigger_ai_agent to be valid — it fires a direct message instead of assigning a task, got %v", err)
 	}
 }
@@ -529,7 +530,7 @@ func TestValidateTaskReachability_TaskLessTriggerToCondition_Rejected(t *testing
 	condition := newNode(automationdom.KindCondition, automationdom.ConditionNodeType, "{}")
 	nodes := []*automationdom.Node{trigger, condition}
 	edges := []*automationdom.Edge{newEdge(trigger.ID, condition.ID)}
-	if err := validateTaskReachability(nodes, edges); err == nil {
+	if err := (&Service{}).validateTaskReachability(nodes, edges); err == nil {
 		t.Fatal("expected a task-less predecessor_done trigger reaching a condition node to be rejected")
 	}
 }
@@ -539,7 +540,7 @@ func TestValidateTaskReachability_TaskLessTriggerToNonCallAPIAction_Rejected(t *
 	action := newNode(automationdom.KindAction, string(automationdom.ActionUpdateTask), "{}")
 	nodes := []*automationdom.Node{trigger, action}
 	edges := []*automationdom.Edge{newEdge(trigger.ID, action.ID)}
-	if err := validateTaskReachability(nodes, edges); err == nil {
+	if err := (&Service{}).validateTaskReachability(nodes, edges); err == nil {
 		t.Fatal("expected a task-less api_trigger reaching an update_task action to be rejected")
 	}
 }
@@ -550,7 +551,7 @@ func TestValidateTaskReachability_TransitiveThroughCallAPI_Rejected(t *testing.T
 	condition := newNode(automationdom.KindCondition, automationdom.ConditionNodeType, "{}")
 	nodes := []*automationdom.Node{trigger, callAPI, condition}
 	edges := []*automationdom.Edge{newEdge(trigger.ID, callAPI.ID), newEdge(callAPI.ID, condition.ID)}
-	if err := validateTaskReachability(nodes, edges); err == nil {
+	if err := (&Service{}).validateTaskReachability(nodes, edges); err == nil {
 		t.Fatal("expected the check to catch a condition reached transitively through call_api")
 	}
 }
@@ -560,13 +561,13 @@ func TestValidateTaskReachability_TriggerWithTargetTask_AllowsAnything(t *testin
 	condition := newNode(automationdom.KindCondition, automationdom.ConditionNodeType, "{}")
 	nodes := []*automationdom.Node{trigger, condition}
 	edges := []*automationdom.Edge{newEdge(trigger.ID, condition.ID)}
-	if err := validateTaskReachability(nodes, edges); err != nil {
+	if err := (&Service{}).validateTaskReachability(nodes, edges); err != nil {
 		t.Fatalf("expected a trigger with a target task to reach a condition node fine, got %v", err)
 	}
 }
 
 func TestValidateTaskReachability_EmptyGraph_NoError(t *testing.T) {
-	if err := validateTaskReachability(nil, nil); err != nil {
+	if err := (&Service{}).validateTaskReachability(nil, nil); err != nil {
 		t.Fatalf("expected an empty graph to be valid, got %v", err)
 	}
 }
@@ -837,5 +838,28 @@ func TestValidateNoSelfParent_DynamicTarget_Skipped(t *testing.T) {
 	edges := []*automationdom.Edge{newEdge(trigger.ID, update.ID)}
 	if err := validateNoSelfParent(nodes, edges); err != nil {
 		t.Fatalf("expected a children-targeted update_task to be skipped by the static check, got %v", err)
+	}
+}
+
+type tasklessResolver struct {
+	automationdom.PluginNodeResolver
+}
+
+func (tasklessResolver) IsTasklessTrigger(nodeType string) bool { return nodeType == "x.issue" }
+
+func TestValidateTaskReachability_PluginTasklessTrigger(t *testing.T) {
+	svc := &Service{pluginResolver: &stubPluginResolver{taskless: map[string]bool{"x.issue": true}}}
+	trigger := newNode(automationdom.KindTrigger, "x.issue", "{}")
+	agent := newNode(automationdom.KindAction, string(automationdom.ActionTriggerAIAgent), "{}")
+	if err := svc.validateTaskReachability([]*automationdom.Node{trigger, agent}, []*automationdom.Edge{newEdge(trigger.ID, agent.ID)}); err != nil {
+		t.Fatalf("an agent message needs no task: %v", err)
+	}
+	update := newNode(automationdom.KindAction, string(automationdom.ActionUpdateTask), "{}")
+	if err := svc.validateTaskReachability([]*automationdom.Node{trigger, update}, []*automationdom.Edge{newEdge(trigger.ID, update.ID)}); !errors.Is(err, automationdom.ErrEdgeRequiresTargetTask) {
+		t.Fatalf("a task-less plugin trigger must not reach a task node: %v", err)
+	}
+	other := newNode(automationdom.KindTrigger, "x.other", "{}")
+	if err := svc.validateTaskReachability([]*automationdom.Node{other, update}, []*automationdom.Edge{newEdge(other.ID, update.ID)}); err != nil {
+		t.Fatalf("a trigger not declared task-less is unrestricted: %v", err)
 	}
 }

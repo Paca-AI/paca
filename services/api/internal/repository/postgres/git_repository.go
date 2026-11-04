@@ -565,10 +565,18 @@ type gitCRRecord struct {
 	OpenedConv   *string    `db:"opened_conversation_id"`
 	CreatedAt    time.Time  `db:"created_at"`
 	UpdatedAt    time.Time  `db:"updated_at"`
+	PrevState    *string    `db:"previous_state"` // only selected by UpsertChangeRequest
 }
 
 const gitCRCols = `id, repository_id, number, title, state, draft, head_ref, head_sha, base_ref, author, html_url, merged_at,
 	opened_by_agent_id, opened_conversation_id, created_at, updated_at`
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
 
 func (r gitCRRecord) domain() *gitdom.ChangeRequest {
 	id, _ := uuid.Parse(r.ID)
@@ -576,7 +584,7 @@ func (r gitCRRecord) domain() *gitdom.ChangeRequest {
 	return &gitdom.ChangeRequest{ID: id, RepositoryID: rid, Number: r.Number, Title: r.Title, State: r.State, Draft: r.Draft,
 		HeadRef: r.HeadRef, HeadSHA: r.HeadSHA, BaseRef: r.BaseRef, Author: r.Author, URL: r.HTMLURL, MergedAt: r.MergedAt,
 		OpenedByAgentID: parseUUIDPtr(r.OpenedBy), OpenedConversationID: parseUUIDPtr(r.OpenedConv),
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, PreviousState: derefString(r.PrevState)}
 }
 
 // FindChangeRequest returns the cached change request.
@@ -596,7 +604,12 @@ func (s *GitRepository) FindChangeRequest(ctx context.Context, repositoryID uuid
 // that opened it is kept once known: a later webhook update never clears it.
 func (s *GitRepository) UpsertChangeRequest(ctx context.Context, cr *gitdom.ChangeRequest) (*gitdom.ChangeRequest, error) {
 	var rec gitCRRecord
+	// prev locks the existing row, so two deliveries for one request upsert in
+	// turn and each reports the state it replaced.
 	err := s.db.GetContext(ctx, &rec, `
+		WITH prev AS (
+			SELECT state FROM git_change_requests WHERE repository_id = $1 AND number = $2 FOR UPDATE
+		)
 		INSERT INTO git_change_requests (repository_id, number, title, state, draft, head_ref, head_sha, base_ref, author, html_url, merged_at,
 			opened_by_agent_id, opened_conversation_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
@@ -611,7 +624,7 @@ func (s *GitRepository) UpsertChangeRequest(ctx context.Context, cr *gitdom.Chan
 			opened_by_agent_id = COALESCE(EXCLUDED.opened_by_agent_id, git_change_requests.opened_by_agent_id),
 			opened_conversation_id = COALESCE(EXCLUDED.opened_conversation_id, git_change_requests.opened_conversation_id),
 			updated_at = NOW()
-		RETURNING `+gitCRCols,
+		RETURNING `+gitCRCols+`, (SELECT state FROM prev) AS previous_state`,
 		cr.RepositoryID.String(), cr.Number, cr.Title, cr.State, cr.Draft, cr.HeadRef, cr.HeadSHA, cr.BaseRef, cr.Author, cr.URL, cr.MergedAt,
 		uuidPtrString(cr.OpenedByAgentID), uuidPtrString(cr.OpenedConversationID))
 	if err != nil {
@@ -620,22 +633,43 @@ func (s *GitRepository) UpsertChangeRequest(ctx context.Context, cr *gitdom.Chan
 	return rec.domain(), nil
 }
 
-// LinkTaskToChangeRequest records that a change request belongs to a task.
-func (s *GitRepository) LinkTaskToChangeRequest(ctx context.Context, taskID, changeRequestID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO git_task_links (task_id, change_request_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, taskID.String(), changeRequestID.String())
+// LinkTaskToChangeRequest records that a change request belongs to a task,
+// reporting whether the link is new.
+func (s *GitRepository) LinkTaskToChangeRequest(ctx context.Context, taskID, changeRequestID uuid.UUID) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `INSERT INTO git_task_links (task_id, change_request_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, taskID.String(), changeRequestID.String())
 	if err != nil {
-		return fmt.Errorf("git repo: link task: %w", err)
+		return false, fmt.Errorf("git repo: link task: %w", err)
 	}
-	return nil
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
-// LinkTaskBranch records that a branch belongs to a task.
-func (s *GitRepository) LinkTaskBranch(ctx context.Context, taskID, repositoryID uuid.UUID, branch string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO git_task_branches (task_id, repository_id, branch_name) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, taskID.String(), repositoryID.String(), branch)
+// LinkTaskBranch records that a branch belongs to a task, reporting whether
+// the link is new.
+func (s *GitRepository) LinkTaskBranch(ctx context.Context, taskID, repositoryID uuid.UUID, branch string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `INSERT INTO git_task_branches (task_id, repository_id, branch_name) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, taskID.String(), repositoryID.String(), branch)
 	if err != nil {
-		return fmt.Errorf("git repo: link task branch: %w", err)
+		return false, fmt.Errorf("git repo: link task branch: %w", err)
 	}
-	return nil
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// ListChangeRequestTasks returns the live tasks a change request is linked to.
+func (s *GitRepository) ListChangeRequestTasks(ctx context.Context, changeRequestID uuid.UUID) ([]uuid.UUID, error) {
+	var ids []string
+	if err := s.db.SelectContext(ctx, &ids, `
+		SELECT l.task_id FROM git_task_links l JOIN tasks t ON t.id = l.task_id
+		WHERE l.change_request_id = $1 AND t.deleted_at IS NULL`, changeRequestID.String()); err != nil {
+		return nil, fmt.Errorf("git repo: list change request tasks: %w", err)
+	}
+	out := make([]uuid.UUID, 0, len(ids))
+	for _, raw := range ids {
+		if id, err := uuid.Parse(raw); err == nil {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // FindTaskByRef resolves PREFIX-N within a project to a task.

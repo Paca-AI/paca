@@ -474,8 +474,6 @@ func New(cfg *config.Config) (*App, error) {
 	// creation/update (rejecting unrecognized types), automationConsumer.
 	// WithPluginRuntime dispatches plugin condition/action nodes mid-walk via
 	// the same EvaluateCondition/RunAction WASM bridge HandleRequest uses.
-	automationService.WithPluginNodeResolver(pluginRuntime)
-	automationConsumer.WithPluginRuntime(pluginRuntime)
 	automationConsumer.WithJevProjectService(projectService, encryptor)
 	// trigger_ai_agent starts an agent conversation without ever touching the
 	// task's assignee: task-bound, it dispatches straight to
@@ -528,7 +526,18 @@ func New(cfg *config.Config) (*App, error) {
 	gitService := gitsvc.New(pgRepo.NewGitRepository(db), gitsvc.NewPluginProviders(pluginRepo, gitsvc.DoerFunc(pluginRuntime.CallInternal))).
 		WithPublicURL(cfg.Server.PublicURL).
 		WithAgentNamer(gitAgentLookup{repo: agentRepo}).
-		WithAgentDirectory(gitAgentDirectory{repo: agentRepo})
+		WithAgentDirectory(gitAgentDirectory{repo: agentRepo}).
+		WithAutomationEmitter(gitAutomationEmitter{pub: publisher}).
+		WithTaskGitNotifier(func(ctx context.Context, projectID, taskID uuid.UUID) {
+			events.PublishRealtime(ctx, publisher, events.Event{Topic: "git.task.updated", ProjectID: projectID, TaskID: &taskID,
+				Payload: map[string]any{"task_id": taskID.String()}})
+		})
+	// The Git automation nodes (pull request triggers, state condition, merge
+	// and comment actions) are core's, so they work the same on every Git
+	// platform; the automation engine reaches them next to the plugins' own.
+	automationNodes := gitsvc.NewAutomationRuntime(pluginRuntime, gitService)
+	automationService.WithPluginNodeResolver(automationNodes)
+	automationConsumer.WithPluginRuntime(automationNodes)
 	// A deleted project takes its own Git connections with it.
 	projectServiceBase.WithDeleteHook(func(ctx context.Context, id uuid.UUID) {
 		if err := gitService.PurgeProjectConnections(ctx, id); err != nil {
@@ -547,7 +556,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithAvatarService(attachmentService).
 		WithMemberRepo(projectRepo)
 	convHandler := handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo).WithConversationListScoper(authorizer)
-	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime).WithAutomationListScoper(authorizer)
+	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(automationNodes).WithAutomationListScoper(authorizer)
 
 	// --- Handlers -----------------------------------------------------------
 	cookieCfg := handler.CookieConfig{

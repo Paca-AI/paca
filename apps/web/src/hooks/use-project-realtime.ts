@@ -287,16 +287,16 @@ export function useProjectRealtime(projectId: string | undefined): void {
 				return;
 			}
 
-			// github.branch.linked / github.pr.linked — refresh the affected
-			// task's branch and PR lists using the task_id from the payload.
-			if (type.startsWith("github.")) {
+			// git.task.updated — a task's pull requests or branches changed;
+			// refresh its Git panel using the task_id from the payload.
+			if (type.startsWith("git.")) {
 				const taskId =
 					typeof event.payload.task_id === "string"
 						? event.payload.task_id
 						: null;
 				if (taskId) {
 					void queryClient.invalidateQueries({
-						queryKey: ["projects", currentProjectId, "tasks", taskId, "github"],
+						queryKey: ["git", "projects", currentProjectId, "tasks", taskId],
 					});
 				}
 				return;

@@ -608,6 +608,42 @@ type pluginTriggerEventPayload struct {
 	TaskID    string `json:"task_id"`
 }
 
+// maxEventVarBytes caps one {{event.*}} value, so a long issue body cannot
+// bloat a paused run's stored context.
+const maxEventVarBytes = 4000
+
+// eventVarsFromPayload turns a plugin trigger event's scalar payload fields
+// into {{event.<field>}} placeholders. Nested values are left out.
+//
+// Values can come from untrusted text (a pull request or issue body), so they
+// are substituted verbatim and never interpreted: a node that forwards one to
+// an API call or an AI agent prompt passes on whatever its author wrote.
+func eventVarsFromPayload(raw string) map[string]string {
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+		return nil
+	}
+	vars := make(map[string]string, len(fields))
+	for k, v := range fields {
+		var s string
+		switch t := v.(type) {
+		case string:
+			s = t
+		case float64:
+			s = strconv.FormatFloat(t, 'f', -1, 64)
+		case bool:
+			s = strconv.FormatBool(t)
+		default:
+			continue
+		}
+		if len(s) > maxEventVarBytes {
+			s = strings.ToValidUTF8(s[:maxEventVarBytes], "") // drops a rune cut in half
+		}
+		vars[k] = s
+	}
+	return vars
+}
+
 // handlePluginTriggerEvent matches a plugin-emitted event's topic against
 // every plugin-declared Trigger node type sharing that eventTopic
 // (Runtime.TriggersForTopic — the same lookup event_emit itself used to
@@ -665,6 +701,7 @@ func (c *AutomationConsumer) handlePluginTriggerEvent(msg redis.XMessage) {
 		}
 	}
 
+	eventVars := eventVarsFromPayload(raw)
 	for _, manifest := range manifests {
 		nodes, err := c.repo.ListEnabledTriggerNodesByType(ctx, projectID, automationdom.TriggerType(manifest.Type))
 		if err != nil {
@@ -672,7 +709,7 @@ func (c *AutomationConsumer) handlePluginTriggerEvent(msg redis.XMessage) {
 			continue
 		}
 		for _, node := range nodes {
-			if err := c.executeRun(ctx, projectID, node, task); err != nil {
+			if err := c.executeRunWithEvent(ctx, projectID, node, task, eventVars); err != nil {
 				c.log.Error("automation consumer: plugin trigger run failed", "node_id", node.ID, "err", err)
 			}
 		}
@@ -885,6 +922,12 @@ func (c *AutomationConsumer) allWatchedTasksDone(ctx context.Context, watchedTas
 // automation was archived/reverted-to-draft since the trigger was matched —
 // that's just a run that does nothing.
 func (c *AutomationConsumer) executeRun(ctx context.Context, projectID uuid.UUID, triggerNode *automationdom.Node, task *taskdom.Task) error {
+	return c.executeRunWithEvent(ctx, projectID, triggerNode, task, nil)
+}
+
+// executeRunWithEvent is executeRun for a run started by an event whose fields
+// the graph may use as {{event.*}} placeholders.
+func (c *AutomationConsumer) executeRunWithEvent(ctx context.Context, projectID uuid.UUID, triggerNode *automationdom.Node, task *taskdom.Task, eventVars map[string]string) error {
 	automation, err := c.repo.FindAutomationByNodeID(ctx, triggerNode.ID)
 	if err != nil {
 		return fmt.Errorf("find automation: %w", err)
@@ -892,7 +935,7 @@ func (c *AutomationConsumer) executeRun(ctx context.Context, projectID uuid.UUID
 	if automation.Status != automationdom.StatusActive {
 		return nil
 	}
-	return c.runGraphWalk(ctx, projectID, automation, triggerNode, task, nil)
+	return c.runGraphWalk(ctx, projectID, automation, triggerNode, task, nil, eventVars)
 }
 
 // executeRunForSprint is executeRun's Sprint-triggered counterpart, starting
@@ -906,7 +949,7 @@ func (c *AutomationConsumer) executeRunForSprint(ctx context.Context, projectID 
 	if automation.Status != automationdom.StatusActive {
 		return nil
 	}
-	return c.runGraphWalk(ctx, projectID, automation, triggerNode, nil, sprint)
+	return c.runGraphWalk(ctx, projectID, automation, triggerNode, nil, sprint, nil)
 }
 
 // runGraphWalk is executeRun/executeRunForSprint's shared core: creates an
@@ -915,7 +958,7 @@ func (c *AutomationConsumer) executeRunForSprint(ctx context.Context, projectID 
 // non-nil for any built-in trigger today, though nothing here assumes that
 // — a walk with both nil is simply one where every task/sprint-requiring
 // node fails its own step (see walk's defense-in-depth guard).
-func (c *AutomationConsumer) runGraphWalk(ctx context.Context, projectID uuid.UUID, automation *automationdom.Automation, triggerNode *automationdom.Node, task *taskdom.Task, sprint *sprintdom.Sprint) error {
+func (c *AutomationConsumer) runGraphWalk(ctx context.Context, projectID uuid.UUID, automation *automationdom.Automation, triggerNode *automationdom.Node, task *taskdom.Task, sprint *sprintdom.Sprint, eventVars map[string]string) error {
 	graph, err := c.repo.LoadGraph(ctx, automation.ID)
 	if err != nil {
 		return fmt.Errorf("load graph: %w", err)
@@ -944,6 +987,7 @@ func (c *AutomationConsumer) runGraphWalk(ctx context.Context, projectID uuid.UU
 		automationName: automation.Name,
 		task:           task,
 		sprint:         sprint,
+		eventVars:      eventVars,
 		nodesByID:      nodesByID,
 		outgoing:       outgoing,
 		runID:          run.ID,
@@ -1238,6 +1282,7 @@ func (c *AutomationConsumer) resumeWalkFrom(ctx context.Context, automation *aut
 		automationName: automation.Name,
 		task:           task,
 		sprint:         sprint,
+		eventVars:      walkCtx.EventVars,
 		nodesByID:      nodesByID,
 		outgoing:       outgoing,
 		runID:          runID,
@@ -1260,7 +1305,10 @@ type walker struct {
 	// executeRunForSprint) — nil for every ordinary Task-triggered walk.
 	// resolveSprint is what lets a sprint action/condition reachable from a
 	// Task-triggered walk still find a sprint to work with, via task.SprintID.
-	sprint    *sprintdom.Sprint
+	sprint *sprintdom.Sprint
+	// eventVars are the {{event.*}} placeholders of the triggering event (a
+	// plugin or Git event's payload fields); nil for every other trigger.
+	eventVars map[string]string
 	nodesByID map[uuid.UUID]*automationdom.Node
 	outgoing  map[uuid.UUID][]*automationdom.Edge
 	runID     uuid.UUID
@@ -1272,7 +1320,7 @@ type walker struct {
 // alongside a PendingAgentWait/PendingDelay — see resumeWalkFrom, which
 // reconstructs task/sprint from exactly this on resume.
 func (w *walker) walkContext() automationdom.WalkContext {
-	var walkCtx automationdom.WalkContext
+	walkCtx := automationdom.WalkContext{EventVars: w.eventVars}
 	if w.task != nil {
 		walkCtx.TaskID = &w.task.ID
 	}
@@ -1557,6 +1605,9 @@ func (w *walker) resolveSprint(ctx context.Context) (*sprintdom.Sprint, error) {
 // sprint").
 func (w *walker) templateVars(ctx context.Context) map[string]string {
 	vars := map[string]string{"automation.name": w.automationName}
+	for k, v := range w.eventVars {
+		vars["event."+k] = v
+	}
 	if w.task != nil {
 		vars["task.id"] = w.task.ID.String()
 		vars["task.title"] = w.task.Title

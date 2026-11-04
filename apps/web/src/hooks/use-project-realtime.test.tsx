@@ -184,7 +184,7 @@ describe("useProjectRealtime", () => {
 		});
 	});
 
-	it("invalidates task github query key on github.branch.linked events", () => {
+	it("invalidates the task Git query key on git.task.updated events", () => {
 		renderHook(() => useProjectRealtime("proj-abc"));
 
 		const [, listener] = mocks.socket.on.mock.calls[0] as [
@@ -193,16 +193,16 @@ describe("useProjectRealtime", () => {
 		];
 
 		listener({
-			type: "github.branch.linked",
-			payload: { task_id: "task-42", project_id: "proj-abc" },
+			type: "git.task.updated",
+			payload: { task_id: "task-42" },
 		});
 
 		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
-			queryKey: ["projects", "proj-abc", "tasks", "task-42", "github"],
+			queryKey: ["git", "projects", "proj-abc", "tasks", "task-42"],
 		});
 	});
 
-	it("invalidates task github query key on github.pr.linked events", () => {
+	it("does not invalidate when git.* event has no task_id", () => {
 		renderHook(() => useProjectRealtime("proj-abc"));
 
 		const [, listener] = mocks.socket.on.mock.calls[0] as [
@@ -210,25 +210,7 @@ describe("useProjectRealtime", () => {
 			(event: { type: string; payload: Record<string, unknown> }) => void,
 		];
 
-		listener({
-			type: "github.pr.linked",
-			payload: { task_id: "task-42", project_id: "proj-abc", pr_number: 7 },
-		});
-
-		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
-			queryKey: ["projects", "proj-abc", "tasks", "task-42", "github"],
-		});
-	});
-
-	it("does not invalidate when github.* event has no task_id", () => {
-		renderHook(() => useProjectRealtime("proj-abc"));
-
-		const [, listener] = mocks.socket.on.mock.calls[0] as [
-			string,
-			(event: { type: string; payload: Record<string, unknown> }) => void,
-		];
-
-		listener({ type: "github.branch.linked", payload: {} });
+		listener({ type: "git.task.updated", payload: {} });
 
 		expect(mocks.invalidateQueries).not.toHaveBeenCalled();
 	});

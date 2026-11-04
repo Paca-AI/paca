@@ -130,6 +130,10 @@ type ChangeRequest struct {
 	OpenedConversationID *uuid.UUID
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	// PreviousState is the state the row held before UpsertChangeRequest
+	// replaced it ("" when the request was new). Set by the upsert only, read
+	// under the same row lock, so concurrent updates see distinct transitions.
+	PreviousState string
 }
 
 // ActionLogEntry audits one Git action taken on behalf of an agent or user.

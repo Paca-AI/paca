@@ -181,6 +181,8 @@ export interface PluginNodeType {
 	label: string;
 	configSchema?: PluginNodeConfigSchema;
 	eventTopic?: string;
+	/** A trigger whose events carry no task (an opened issue). */
+	taskless?: boolean;
 }
 
 export interface PluginNodeTypes {

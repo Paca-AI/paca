@@ -78,9 +78,9 @@ export function agentChatRoomName(userId: string): string {
 export function eventNamespace(type: string): EventNamespace | undefined {
 	if (type.startsWith("task.")) return "tasks";
 	if (type.startsWith("doc.")) return "docs";
-	// github.branch.* and github.pr.* events are delivered to the tasks room
-	// because they are task-scoped and require the same tasks:read permission.
-	if (type.startsWith("github.")) return "tasks";
+	// git.task.* events (a task's pull requests or branches changed) are
+	// task-scoped and require the same tasks:read permission.
+	if (type.startsWith("git.")) return "tasks";
 	// The ACP bridge's connected/disconnected status carries no conversation
 	// content, only an agent id and a flag.
 	if (type === "agent.acp_bridge.status") return "tasks";

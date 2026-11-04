@@ -8,6 +8,8 @@ import (
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	gitdom "github.com/Paca-AI/api/internal/domain/git"
+	"github.com/Paca-AI/api/internal/events"
+	"github.com/Paca-AI/api/internal/platform/messaging"
 	gitsvc "github.com/Paca-AI/api/internal/service/git"
 )
 
@@ -95,4 +97,12 @@ func (s gitRunStarter) StartRun(ctx context.Context, projectID, agentID uuid.UUI
 		return uuid.Nil, err
 	}
 	return c.ID, nil
+}
+
+// gitAutomationEmitter queues Git events for the automation engine, on the
+// stream plugin-emitted trigger events use.
+type gitAutomationEmitter struct{ pub *messaging.Publisher }
+
+func (e gitAutomationEmitter) EmitAutomationEvent(ctx context.Context, topic string, payload map[string]any) error {
+	return e.pub.Append(ctx, events.StreamPluginTriggerEvents, topic, payload)
 }

@@ -102,7 +102,11 @@ func (s *Service) resolve(ctx context.Context, sc Scope) (*opTarget, error) {
 	if repo.ProjectID != sc.ProjectID {
 		return nil, gitdom.ErrNotFound
 	}
-	ident, err := s.pickIdentity(ctx, repo, &sc.AgentID)
+	var agent *uuid.UUID
+	if sc.AgentID != uuid.Nil { // an automation acts with no agent: the repository's own connection
+		agent = &sc.AgentID
+	}
+	ident, err := s.pickIdentity(ctx, repo, agent)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +142,10 @@ func run[T any](s *Service, ctx context.Context, sc Scope, t *opTarget, tool, su
 
 func (s *Service) auditOp(ctx context.Context, sc Scope, repo *gitdom.Repository, tool, subject string, err error) {
 	e := &gitdom.ActionLogEntry{ProjectID: &repo.ProjectID, RepositoryID: &repo.ID, ConversationID: sc.ConversationID,
-		ActorAccountID: &sc.AgentID, Tool: tool, Subject: subject, OK: err == nil}
+		Tool: tool, Subject: subject, OK: err == nil}
+	if sc.AgentID != uuid.Nil {
+		e.ActorAccountID = &sc.AgentID
+	}
 	if err != nil {
 		var pe *gitprovider.Error
 		if errors.As(err, &pe) {

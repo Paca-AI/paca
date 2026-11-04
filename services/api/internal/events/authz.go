@@ -71,7 +71,7 @@ func AuthzFor(e Event) (Authz, bool) {
 		// No conversation content; a project-wide read like the task boards
 		// it refreshes.
 		return Authz{string(iam.ActionTasksRead), project}, true
-	case strings.HasPrefix(t, "task."), strings.HasPrefix(t, "github."),
+	case strings.HasPrefix(t, "task."), strings.HasPrefix(t, "git."),
 		t == "workflow.assigned", t == "automation.applied":
 		return Authz{string(iam.ActionTasksRead), task()}, true
 	case strings.HasPrefix(t, "doc.folder."):
