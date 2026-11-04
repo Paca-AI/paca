@@ -423,6 +423,7 @@ func (s *Service) automationMerge(ctx context.Context, n *automationNode) (bool,
 		return false, nil
 	case gitprovider.CRClosed:
 		return false, errors.New("pull request is closed")
+	case gitprovider.CROpen:
 	}
 	if _, err := s.MergeChangeRequest(ctx, sc, cr.Number, cfg.MergeMethod, live.Head.SHA); err != nil {
 		return false, fmt.Errorf("merge pull request: %w", err)

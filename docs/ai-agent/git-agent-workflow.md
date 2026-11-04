@@ -115,6 +115,7 @@ Design points that keep the core neutral:
 
 * **"Was a bot addressed?" is decided by the provider** (`addressed[]`), because mention syntax differs per platform (`@slug[bot]`, `@bot-user`, `@{account_id}`). Core only sees *which identity* was addressed and *how*.
 * **`actor.permission` is optional.** When the provider does not vouch for it, core asks the provider (`GetActorPermission`) and remembers the answer for five minutes. It is never read from a payload field a user could influence.
+* **The opening text of an issue is a comment without a comment id.** Providers send an issue's own text as a `comment` / `created` event on the issue, like every later reply, but only a real comment has `location.comment_id`. Core treats a `created` comment on an issue with no `comment_id` as the issue being opened (the `git.issue_created` automation trigger, §6.4), so a provider must leave `comment_id` empty on that event and set it on every genuine comment.
 * Events the provider cannot map are dropped, not guessed.
 
 ---
@@ -281,6 +282,16 @@ A worker claims inbox events at least ten seconds old (`FOR UPDATE SKIP LOCKED`;
 * The agent must have the trigger switched on.
 * **One unfinished run per agent and subject.** An event received before the running run started is already covered (the run reads the whole thread). A later one waits and then starts its own run. A unique database index backs this up when two workers race.
 * An event that waits more than 30 minutes is dropped.
+
+### 6.4 Automation nodes
+
+The same events feed the project automation graph, for every provider alike. The nodes are core's, under the `git.` namespace (they replace the GitHub plugin's old `github.*` nodes; migration `000080` renames stored ones):
+
+* **Triggers**, emitted after the change-request cache is updated: `git.pr_linked`, `git.pr_state_changed` (only on a real transition), `git.branch_linked`, `git.pr_ready_for_review`, `git.pr_review_submitted`, `git.pr_comment_created`, `git.pr_ci_completed` and `git.issue_created`. A comment or review by a bot never triggers, and neither does Paca's own run status. Each task linked to the request gets its own run; `git.issue_created` has no task (it may reach `call_api`, `trigger_ai_agent` and `wait` nodes only).
+* **Conditions**, read from the task's newest linked request: `git.pr_state`, `git.pr_ci_status`, `git.pr_draft`, `git.pr_base_branch`, `git.has_pr`.
+* **Actions**, each idempotent: `git.merge_pr`, `git.comment_pr`, `git.close_pr`, `git.reopen_pr`, `git.mark_pr_ready`, `git.add_labels`, `git.request_reviewers`.
+
+The event's fields are available to the graph as `{{event.<field>}}` (for example `{{event.title}}` of an opened issue).
 
 ---
 

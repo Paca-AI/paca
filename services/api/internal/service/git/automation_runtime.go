@@ -42,29 +42,35 @@ func (r *AutomationRuntime) AutomationNodeTypes() (triggers, conditions, actions
 	return append(triggers, gt...), append(conditions, gc...), append(actions, ga...)
 }
 
-// gitNodes indexes the node types core owns by their type, per kind.
-var gitNodes = func() (n struct {
-	triggers, conditions, actions map[string]plugindom.AutomationNodeManifest
-}) { index := func(ms []plugindom.AutomationNodeManifest) map[string]plugindom.AutomationNodeManifest {
-	m := make(map[string]plugindom.AutomationNodeManifest, len(ms))
-	for _, node := range ms {
-		m[node.Type] = node
+// gitNodeSet indexes node manifests by their type.
+type gitNodeSet map[string]plugindom.AutomationNodeManifest
+
+func indexNodes(ms []plugindom.AutomationNodeManifest) gitNodeSet {
+	set := make(gitNodeSet, len(ms))
+	for _, m := range ms {
+		set[m.Type] = m
 	}
-	return m
-}; triggers, conditions, actions := AutomationNodeTypes(); n.triggers, n.conditions, n.actions = index(triggers), index(conditions), index(actions); return n }()
+	return set
+}
+
+// The node types core owns, per kind.
+var gitTriggers, gitConditions, gitActions = func() (gitNodeSet, gitNodeSet, gitNodeSet) {
+	triggers, conditions, actions := AutomationNodeTypes()
+	return indexNodes(triggers), indexNodes(conditions), indexNodes(actions)
+}()
 
 func isGitTrigger(t string) bool {
-	_, ok := gitNodes.triggers[t]
+	_, ok := gitTriggers[t]
 	return ok
 }
 
 func isGitCondition(t string) bool {
-	_, ok := gitNodes.conditions[t]
+	_, ok := gitConditions[t]
 	return ok
 }
 
 func isGitAction(t string) bool {
-	_, ok := gitNodes.actions[t]
+	_, ok := gitActions[t]
 	return ok
 }
 
@@ -85,7 +91,7 @@ func (r *AutomationRuntime) IsPluginAction(t string) bool {
 
 // IsTasklessTrigger reports whether a Git or plugin trigger carries no task.
 func (r *AutomationRuntime) IsTasklessTrigger(t string) bool {
-	if n, ok := gitNodes.triggers[t]; ok {
+	if n, ok := gitTriggers[t]; ok {
 		return n.Taskless
 	}
 	return r.plugins.IsTasklessTrigger(t)

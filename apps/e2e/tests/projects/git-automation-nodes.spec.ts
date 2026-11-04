@@ -270,6 +270,13 @@ test.describe("Git nodes in the automation graph", () => {
 			const wait = await node(request, automationId, "action", "wait", {
 				wait_minutes: 5,
 			});
+			const call = await node(request, automationId, "action", "call_api");
+			const agent = await node(
+				request,
+				automationId,
+				"action",
+				"trigger_ai_agent",
+			);
 			const update = await node(request, automationId, "action", "update_task");
 			const condition = await node(
 				request,
@@ -279,9 +286,13 @@ test.describe("Git nodes in the automation graph", () => {
 				{ expected_state: "merged" },
 			);
 
-			expect(
-				(await edge(request, automationId, issue, wait)).ok(),
-			).toBeTruthy();
+			// Nodes that work without a task are allowed: wait, call_api and an
+			// agent message.
+			for (const target of [wait, call, agent]) {
+				expect(
+					(await edge(request, automationId, issue, target)).ok(),
+				).toBeTruthy();
+			}
 			for (const target of [update, condition]) {
 				const refused = await edge(request, automationId, issue, target);
 				expect(refused.status()).toBe(400);
