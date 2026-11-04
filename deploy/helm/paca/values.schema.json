@@ -5,6 +5,7 @@
   "additionalProperties": true,
   "properties": {
     "publicUrl": { "type": "string" },
+    "gitWebhookPublicUrl": { "type": "string" },
     "imagePullSecrets": {
       "type": "array",
       "items": {

@@ -35,14 +35,15 @@ func (s *Service) needsRepoWebhook(ctx context.Context, ident *gitdom.Identity) 
 // webhookURL is the public URL the connection's deliveries go to; empty when
 // the connection has no endpoint or the instance has no public URL.
 func (s *Service) webhookURL(ctx context.Context, ident *gitdom.Identity) string {
-	if s.publicURL == "" {
+	origin := s.webhookOrigin()
+	if origin == "" {
 		return ""
 	}
 	ep, err := s.store.FindWebhookEndpointForIdentity(ctx, ident.ID)
 	if err != nil {
 		return ""
 	}
-	return s.publicURL + WebhookPathPrefix + ep.Key
+	return origin + WebhookPathPrefix + ep.Key
 }
 
 // ensureWebhook registers the repository's webhook with the provider and

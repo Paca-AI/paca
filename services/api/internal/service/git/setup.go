@@ -121,7 +121,7 @@ func (s *Service) BeginIdentitySetup(ctx context.Context, in SetupInput) (*gitpr
 	req := gitprovider.BeginSetupRequest{
 		Scope: providerScope(in.Scope), Host: host, AgentName: in.AgentName,
 		ReturnURL: in.ReturnURL, CallbackURL: s.publicURL + SetupCallbackPath,
-		WebhookURL: s.publicURL + WebhookPathPrefix + key, Params: in.Params,
+		WebhookURL: s.webhookOrigin() + WebhookPathPrefix + key, Params: in.Params,
 	}
 	if in.AgentID != nil {
 		req.AgentID = in.AgentID.String()

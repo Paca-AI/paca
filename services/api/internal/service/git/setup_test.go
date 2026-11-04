@@ -61,6 +61,37 @@ func TestBeginIdentitySetup_ReservesEndpointAndTellsTheProviderWhere(t *testing.
 	}
 }
 
+// A deployment whose public edge reaches only the browser and setup paths can
+// give deliveries their own origin; the browser keeps PUBLIC_URL.
+func TestBeginIdentitySetup_WebhookOriginCanDifferFromTheBrowserOrigin(t *testing.T) {
+	const hooks = "https://hooks.example.com"
+	svc, st, pr := setupSvc(t)
+	svc.WithWebhookBaseURL(hooks + "/")
+	var got gitprovider.BeginSetupRequest
+	inner := pr.begin
+	pr.begin = func(r gitprovider.BeginSetupRequest) (gitprovider.SetupStep, error) { got = r; return inner(r) }
+	ctx := context.Background()
+
+	if _, err := svc.BeginIdentitySetup(ctx, shared(uuid.New())); err != nil {
+		t.Fatal(err)
+	}
+	if got.CallbackURL != testPublic+"/git/setup/callback" {
+		t.Errorf("callback = %q, want the browser origin", got.CallbackURL)
+	}
+	if !strings.HasPrefix(got.WebhookURL, hooks+WebhookPathPrefix) {
+		t.Fatalf("webhook url = %q, want %q", got.WebhookURL, hooks+WebhookPathPrefix)
+	}
+	if st.endpoints[strings.TrimPrefix(got.WebhookURL, hooks+WebhookPathPrefix)] == nil {
+		t.Fatal("the reserved endpoint does not match the published url")
+	}
+	// The override must not widen which return URLs are accepted.
+	in := shared(uuid.New())
+	in.ReturnURL = hooks + "/settings"
+	if _, err := svc.BeginIdentitySetup(ctx, in); !errors.Is(err, gitdom.ErrInvalidReturnURL) {
+		t.Errorf("a return url on the webhook origin: %v", err)
+	}
+}
+
 func TestBeginIdentitySetup_Refusals(t *testing.T) {
 	ctx := context.Background()
 	actor := uuid.New()

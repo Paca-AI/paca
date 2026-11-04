@@ -15,6 +15,12 @@
 # sensible for that case.
 publicUrl: ""
 
+# gitWebhookPublicUrl is the origin Git providers deliver webhooks to, when that
+# must not be publicUrl (e.g. "https://paca-hooks.example.com"). Set it when the
+# public edge reaches only the browser and setup paths. Empty: publicUrl, which
+# is also where App setup callbacks, browser links and passkeys live.
+gitWebhookPublicUrl: ""
+
 imagePullSecrets: []
 
 # ---------------------------------------------------------------------------

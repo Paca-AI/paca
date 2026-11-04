@@ -115,6 +115,8 @@ spec:
                   key: ENCRYPTION_KEY
             - name: PUBLIC_URL
               value: {{ .Values.publicUrl | quote }}
+            - name: GIT_WEBHOOK_PUBLIC_URL
+              value: {{ .Values.gitWebhookPublicUrl | quote }}
             - name: PLUGINS_WASM_DIR
               value: /plugins
             - name: PLUGINS_FRONTEND_DIR
