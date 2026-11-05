@@ -2,6 +2,8 @@ package acpbridge
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +31,13 @@ type Dispatcher struct {
 	ConvRepo  *postgres.ConversationRepository
 	Publisher *messaging.Publisher
 	Log       Logger
+
+	// dispatchGen maps a conversation id to the generation of its latest
+	// dispatch (uuid.UUID -> uint64). Each watchdog only acts while its own
+	// dispatch is still the latest, so a watchdog armed by an earlier turn
+	// cannot fail a conversation the user has since resumed.
+	dispatchGen sync.Map
+	genCounter  atomic.Uint64
 }
 
 // DispatchTrigger hands trigger off to cfg's connected local ACP bridge.
@@ -87,7 +96,9 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 	if timeoutMinutes <= 0 {
 		timeoutMinutes = 1
 	}
-	go d.watchdog(trigger.ConversationID, trigger.ProjectID, time.Duration(timeoutMinutes)*time.Minute, trigger.ActorAccountID)
+	gen := d.genCounter.Add(1)
+	d.dispatchGen.Store(trigger.ConversationID, gen)
+	go d.watchdog(trigger.ConversationID, trigger.ProjectID, time.Duration(timeoutMinutes)*time.Minute, trigger.ActorAccountID, gen)
 	return nil
 }
 
@@ -111,16 +122,21 @@ func (d *Dispatcher) failOffline(ctx context.Context, trigger agent.Trigger) err
 // published while the daemon is mid-reconnect is silently dropped, leaving
 // the conversation stuck at "running" with nothing to ever move it forward.
 // This is the backstop: after timeout, fail the conversation if it hasn't
-// already reached a terminal status. Race-safe against a legitimate late
+// already reached a terminal status or been paused by the user. Race-safe against a legitimate late
 // turn_status via ConvRepo.FailIfNotTerminal's conditional UPDATE.
 //
 // Runs detached from the request that scheduled it (mirrors
 // asyncio.create_task, not tied to the caller's own context) — a long-lived
 // timer that must survive after DispatchTrigger itself has already
 // returned.
-func (d *Dispatcher) watchdog(conversationID, projectID uuid.UUID, timeout time.Duration, actorAccountID *uuid.UUID) {
+func (d *Dispatcher) watchdog(conversationID, projectID uuid.UUID, timeout time.Duration, actorAccountID *uuid.UUID, gen uint64) {
 	time.Sleep(timeout)
 	ctx := context.Background()
+	// A newer dispatch (the user resumed the conversation) owns the turn now
+	// and armed its own watchdog; leave it alone.
+	if !d.dispatchGen.CompareAndDelete(conversationID, gen) {
+		return
+	}
 	failed, err := d.ConvRepo.FailIfNotTerminal(ctx, conversationID, timeoutMessage)
 	if err != nil {
 		d.Log.Warn("acpbridge: watchdog failed to check/update conversation status",
