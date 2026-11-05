@@ -235,6 +235,13 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	conversationID, _ := msg["conversation_id"].(string)
 	projectID, _ := msg["project_id"].(string)
 	message, _ := msg["message"].(string)
+	// What the transcript shows as the user's turn: the text they actually
+	// typed, without the skill trigger and context sections folded into
+	// message. An older server omits it, so fall back to message.
+	displayMessage, _ := msg["display_message"].(string)
+	if strings.TrimSpace(displayMessage) == "" {
+		displayMessage = message
+	}
 	if conversationID == "" {
 		return
 	}
@@ -308,7 +315,7 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	state.pauseRequested = false
 	state.mu.Unlock()
 
-	go r.runTurn(turnCtx, state, conversationID, projectID, message)
+	go r.runTurn(turnCtx, state, conversationID, projectID, message, displayMessage)
 }
 
 // Interrupt handles a stop_turn/pause_turn message — both just interrupt
@@ -382,7 +389,7 @@ func (r *Runner) Interrupt(conversationID string, pause bool) {
 	}()
 }
 
-func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversationID, projectID, message string) {
+func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversationID, projectID, message, displayMessage string) {
 	defer r.finishTurn(state)
 
 	state.mu.Lock()
@@ -405,7 +412,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 		return
 	}
 
-	r.emitUserMessage(state, conversationID, projectID, message)
+	r.emitUserMessage(state, conversationID, projectID, displayMessage)
 
 	stopReason, usage, err := client.Prompt(ctx, sessionID, message)
 	// Whatever's still buffered when the turn ends — successfully,

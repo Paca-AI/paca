@@ -796,7 +796,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 
 	if (isAskQuestion) {
 		return (
-			<div data-slot="tool-fallback-ask" className="w-full py-1.5">
+			<div data-slot="tool-fallback-ask" className="w-full min-w-0 py-1.5">
 				<ToolFallbackAskQuestion argsText={argsText} result={result} />
 			</div>
 		);

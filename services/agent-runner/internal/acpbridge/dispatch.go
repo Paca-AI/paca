@@ -74,6 +74,9 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 		"conversation_id": trigger.ConversationID.String(),
 		"project_id":      projectIDOrEmpty(trigger.ProjectID),
 		"message":         BuildACPMessage(trigger, cfg.ACPProvider),
+		// The user's own text, shown in the transcript instead of the
+		// prompt-wrapped message above.
+		"display_message": trigger.Message,
 		"trigger_type":    string(trigger.TriggerType),
 		"acp_provider":    cfg.ACPProvider,
 		"acp_command":     cfg.ACPCommand,
