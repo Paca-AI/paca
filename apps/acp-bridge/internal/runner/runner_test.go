@@ -478,6 +478,88 @@ func TestEndToEndTurnEmitsEventsAndFinishes(t *testing.T) {
 	}
 }
 
+func userMessagePayload(t *testing.T, sent *capturedSends) (map[string]any, bool) {
+	t.Helper()
+	for _, m := range sent.all() {
+		if m["type"] == "event" && m["event_type"] == "user_message" {
+			var p map[string]any
+			if err := json.Unmarshal(m["payload"].(json.RawMessage), &p); err != nil {
+				t.Fatalf("bad user_message payload: %v", err)
+			}
+			return p, true
+		}
+	}
+	return nil, false
+}
+
+func runDisplayMessageTurn(t *testing.T, msg map[string]any) *capturedSends {
+	t.Helper()
+	setFakeAgentEnv(t, "normal")
+	r, sent := newTestRunner(t)
+	r.mu.Lock()
+	r.conversations["conv-1"] = &conversationState{
+		chunks:      newChunkBuffer(),
+		acpProvider: "custom",
+		command:     []string{os.Args[0]},
+	}
+	r.mu.Unlock()
+	msg["conversation_id"] = "conv-1"
+	msg["project_id"] = "proj-1"
+	r.StartTurn(context.Background(), msg)
+	waitForStatus(t, sent, "finished")
+	return sent
+}
+
+func TestUserMessageUsesDisplayMessageAndContextItems(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a real subprocess")
+	}
+	items := []any{map[string]any{"type": "task", "id": "t-1", "title": "A task"}}
+	sent := runDisplayMessageTurn(t, map[string]any{
+		"message":         "/paca wrapped prompt ## Current Project Context",
+		"display_message": "what I typed",
+		"context_items":   items,
+	})
+	p, ok := userMessagePayload(t, sent)
+	if !ok {
+		t.Fatal("no user_message event")
+	}
+	text := p["content"].(map[string]any)["text"]
+	if text != "what I typed" {
+		t.Fatalf("user_message text = %q, want the display message", text)
+	}
+	if !reflect.DeepEqual(p["context_items"], items) {
+		t.Fatalf("context_items = %v, want %v", p["context_items"], items)
+	}
+}
+
+func TestUserMessageFallsBackToMessageWhenDisplayMessageAbsent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a real subprocess")
+	}
+	sent := runDisplayMessageTurn(t, map[string]any{"message": "older server prompt"})
+	p, ok := userMessagePayload(t, sent)
+	if !ok {
+		t.Fatal("no user_message event")
+	}
+	if text := p["content"].(map[string]any)["text"]; text != "older server prompt" {
+		t.Fatalf("user_message text = %q, want the message", text)
+	}
+}
+
+func TestBlankDisplayMessageRecordsNoUserMessage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a real subprocess")
+	}
+	sent := runDisplayMessageTurn(t, map[string]any{
+		"message":         "/paca wrapped prompt for a bare task assignment",
+		"display_message": "",
+	})
+	if _, ok := userMessagePayload(t, sent); ok {
+		t.Fatal("a blank display_message must not record the prompt-wrapped message")
+	}
+}
+
 // TestEndToEndTurnEmitsTurnUsageWithTokensAndCost covers the full pipeline
 // this feature adds: a real subprocess reporting both a "usage_update"
 // session/update notification (cost) and a session/prompt result usage

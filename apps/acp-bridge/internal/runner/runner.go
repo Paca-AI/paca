@@ -237,11 +237,14 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	message, _ := msg["message"].(string)
 	// What the transcript shows as the user's turn: the text they actually
 	// typed, without the skill trigger and context sections folded into
-	// message. An older server omits it, so fall back to message.
-	displayMessage, _ := msg["display_message"].(string)
-	if strings.TrimSpace(displayMessage) == "" {
+	// message. An older server omits the key, so only then fall back to
+	// message; a present-but-blank value means no human said anything (a
+	// bare task assignment) and records no user_message at all.
+	displayMessage, ok := msg["display_message"].(string)
+	if !ok {
 		displayMessage = message
 	}
+	contextItems, _ := msg["context_items"].([]any)
 	if conversationID == "" {
 		return
 	}
@@ -315,7 +318,7 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	state.pauseRequested = false
 	state.mu.Unlock()
 
-	go r.runTurn(turnCtx, state, conversationID, projectID, message, displayMessage)
+	go r.runTurn(turnCtx, state, conversationID, projectID, message, displayMessage, contextItems)
 }
 
 // Interrupt handles a stop_turn/pause_turn message — both just interrupt
@@ -389,7 +392,7 @@ func (r *Runner) Interrupt(conversationID string, pause bool) {
 	}()
 }
 
-func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversationID, projectID, message, displayMessage string) {
+func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversationID, projectID, message, displayMessage string, contextItems []any) {
 	defer r.finishTurn(state)
 
 	state.mu.Lock()
@@ -412,7 +415,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 		return
 	}
 
-	r.emitUserMessage(state, conversationID, projectID, displayMessage)
+	r.emitUserMessage(state, conversationID, projectID, displayMessage, contextItems)
 
 	stopReason, usage, err := client.Prompt(ctx, sessionID, message)
 	// Whatever's still buffered when the turn ends — successfully,
@@ -777,14 +780,21 @@ func (r *Runner) flushChunks(state *conversationState, conversationID, projectID
 	}
 }
 
-func (r *Runner) emitUserMessage(state *conversationState, conversationID, projectID, message string) {
+func (r *Runner) emitUserMessage(state *conversationState, conversationID, projectID, message string, contextItems []any) {
 	text := strings.TrimSpace(message)
 	if text == "" {
 		return
 	}
-	payload, _ := json.Marshal(map[string]any{
+	fields := map[string]any{
 		"content": map[string]any{"type": "text", "text": text},
-	})
+	}
+	// Persisted beside the text, as the llm path does, so the transcript can
+	// render the attached-context badges the prompt-wrapped message no
+	// longer carries.
+	if len(contextItems) > 0 {
+		fields["context_items"] = contextItems
+	}
+	payload, _ := json.Marshal(fields)
 	r.emitEvent(state, conversationID, projectID, "user_message", "user", payload)
 }
 
