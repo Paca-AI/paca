@@ -34,9 +34,13 @@ Feature: Conversations with an ACP agent
       Then the conversation badge should read "Waiting for reply"
       And the "Stop generating" button should no longer be shown
 
-    Scenario: A full Stop stays Stopped when the bridge unwinds the turn
+    Scenario: A full Stop is recorded as Stopped and dispatches stop_turn to the bridge
       Given the user has a running chat conversation with the agent open
       When the conversation is stopped through the API (an ACP conversation has no header Stop button)
       Then the bridge should receive a "stop_turn" for that conversation
       And the conversation should be "stopped"
-      And the conversation should remain "stopped" (the bridge reports nothing)
+      And the conversation badge should read "Stopped"
+
+  # That the bridge itself reports nothing after a stop (and "paused" after a
+  # pause, including when a stop supersedes a pause) is covered by the
+  # acp-bridge runner tests, since the fake bridge here plays the daemon.

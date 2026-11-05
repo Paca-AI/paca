@@ -42,6 +42,7 @@ type BridgeMessage = Record<string, unknown> & { type: string };
 class FakeBridge {
 	private socket: WebSocket;
 	private received: BridgeMessage[] = [];
+	private pingTimer?: ReturnType<typeof setInterval>;
 
 	private constructor(socket: WebSocket) {
 		this.socket = socket;
@@ -64,6 +65,12 @@ class FakeBridge {
 		const bridge = new FakeBridge(socket);
 		socket.send(JSON.stringify({ type: "hello", agent_id: agentId, token }));
 		await bridge.next("hello_ack");
+		// The server drops a bridge whose presence key (45 s TTL) is not
+		// refreshed; the real daemon pings every 20 s.
+		bridge.pingTimer = setInterval(
+			() => socket.send(JSON.stringify({ type: "ping" })),
+			20_000,
+		);
 		return bridge;
 	}
 
@@ -100,6 +107,7 @@ class FakeBridge {
 	}
 
 	close(): void {
+		clearInterval(this.pingTimer);
 		this.socket.close();
 	}
 }
@@ -189,7 +197,7 @@ test.describe("Conversations with an ACP agent", () => {
 		).toHaveCount(0);
 	});
 
-	test("A full Stop stays Stopped when the bridge unwinds the turn", async ({
+	test("A full Stop is recorded as Stopped and dispatches stop_turn to the bridge", async ({
 		page,
 		request,
 	}) => {
@@ -208,11 +216,9 @@ test.describe("Conversations with an ACP agent", () => {
 		expect(stopResponse.ok()).toBeTruthy();
 
 		await bridge.next("stop_turn", id);
-		await expect(headerBadge(page)).toHaveText("Stopped");
-
-		// The real bridge reports nothing for a stop; give any stray status a
-		// moment to land and confirm it is still Stopped.
-		await page.waitForTimeout(1_500);
 		expect(await conversationStatus(request, projectId, id)).toBe("stopped");
+		// A stop has no realtime push on the ACP path, so the badge only
+		// catches up on the page's periodic reconcile.
+		await expect(headerBadge(page)).toHaveText("Stopped", { timeout: 15_000 });
 	});
 });

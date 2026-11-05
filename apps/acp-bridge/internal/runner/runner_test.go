@@ -665,3 +665,131 @@ func TestEndToEndInterruptDuringSessionSetupSuppressesTurnStatus(t *testing.T) {
 		}
 	}
 }
+
+func waitForTurnEnd(t *testing.T, state *conversationState) {
+	t.Helper()
+	deadline := time.Now().Add(testTimeout)
+	for {
+		state.mu.Lock()
+		running := state.turnRunning
+		state.mu.Unlock()
+		if !running {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the interrupted turn to finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestEndToEndPauseReportsPaused: unlike a stop, a pause_turn must report
+// "paused" once the agent honors session/cancel — the API writes no status for
+// a pause, so without this the conversation would stay "running" forever.
+func TestEndToEndPauseReportsPaused(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a real subprocess")
+	}
+	setFakeAgentEnv(t, "cancel")
+
+	r, sent := newTestRunner(t)
+	state := &conversationState{
+		chunks:      newChunkBuffer(),
+		acpProvider: "custom",
+		command:     []string{os.Args[0]},
+	}
+	r.mu.Lock()
+	r.conversations["conv-1"] = state
+	r.mu.Unlock()
+
+	r.StartTurn(context.Background(), map[string]any{
+		"conversation_id": "conv-1",
+		"project_id":      "proj-1",
+		"message":         "do something long-running",
+	})
+	waitForEventType(t, sent, "user_message")
+
+	r.Interrupt("conv-1", true)
+
+	msg := waitForStatus(t, sent, "paused")
+	if msg["conversation_id"] != "conv-1" {
+		t.Fatalf("paused status for %v, want conv-1", msg["conversation_id"])
+	}
+	waitForTurnEnd(t, state)
+}
+
+// TestEndToEndPauseDuringSessionSetupReportsPaused: the same, when the pause
+// lands while the subprocess is still spawning (Interrupt's client == nil
+// branch, which unwinds via context.Canceled).
+func TestEndToEndPauseDuringSessionSetupReportsPaused(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a real subprocess")
+	}
+	setFakeAgentEnv(t, "stall_init")
+
+	r, sent := newTestRunner(t)
+	state := &conversationState{
+		chunks:      newChunkBuffer(),
+		acpProvider: "custom",
+		command:     []string{os.Args[0]},
+	}
+	r.mu.Lock()
+	r.conversations["conv-1"] = state
+	r.mu.Unlock()
+
+	r.StartTurn(context.Background(), map[string]any{
+		"conversation_id": "conv-1",
+		"project_id":      "proj-1",
+		"message":         "hi",
+	})
+	deadline := time.Now().Add(testTimeout)
+	for {
+		state.mu.Lock()
+		spawning := state.turnRunning && state.client == nil
+		state.mu.Unlock()
+		if spawning {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the turn to be mid session-setup")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	r.Interrupt("conv-1", true)
+
+	waitForStatus(t, sent, "paused")
+	waitForTurnEnd(t, state)
+}
+
+// TestInterruptStopSupersedesPause: a stop_turn that follows a pause_turn on
+// the same turn clears the pending pause, so the turn reports nothing — the
+// API already wrote "stopped" and a "paused" would overwrite it.
+func TestInterruptStopSupersedesPause(t *testing.T) {
+	r, _ := newTestRunner(t)
+	state := &conversationState{
+		turnRunning: true,
+		turnCancel:  func() {},
+		turnDone:    make(chan struct{}),
+	}
+	r.mu.Lock()
+	r.conversations["conv-1"] = state
+	r.convIndex["conv-1"] = "conv-1"
+	r.mu.Unlock()
+
+	r.Interrupt("conv-1", true)
+	state.mu.Lock()
+	paused := state.pauseRequested
+	state.mu.Unlock()
+	if !paused {
+		t.Fatal("pause_turn did not mark the turn as pause-requested")
+	}
+
+	r.Interrupt("conv-1", false)
+	state.mu.Lock()
+	paused = state.pauseRequested
+	state.mu.Unlock()
+	if paused {
+		t.Fatal("stop_turn after pause_turn left the turn pause-requested; it would report paused over stopped")
+	}
+}
