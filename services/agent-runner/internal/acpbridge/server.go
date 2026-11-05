@@ -212,6 +212,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	release()
 	conn.SetReadLimit(bridgeMessageReadLimit)
 
+	// TODO: cover this raise with a post-auth frame above helloReadLimit
+	// (the e2e fake bridge currently sends only a small event payload).
+
 	sessionID, err := s.Registry.Register(r.Context(), agentID, cfg.ProjectID, wsConn{conn})
 	if err != nil {
 		s.Log.Error("acpbridge: failed to register bridge connection", "agent_id", agentID, "error", err)

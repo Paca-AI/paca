@@ -46,7 +46,8 @@ func TestHandleWSRejectsOversizedPreAuthFrame(t *testing.T) {
 	_ = conn.Write(ctx, websocket.MessageText, bytes.Repeat([]byte("a"), 2*helloReadLimit))
 	_, _, err := conn.Read(ctx)
 	// 1009 proves the frame was refused by the pre-auth limit; a malformed
-	// hello under the bridge-sized limit closes with 4400 instead.
+	// hello under the bridge-sized limit closes with 1007 instead, because
+	// wsjson.Read rejects the JSON before the handler's 4400 close runs.
 	if status := websocket.CloseStatus(err); status != websocket.StatusMessageTooBig {
 		t.Fatalf("close status = %d, want %d (err=%v)", status, websocket.StatusMessageTooBig, err)
 	}
