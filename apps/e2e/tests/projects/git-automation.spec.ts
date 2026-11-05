@@ -210,7 +210,7 @@ test.describe("Project Git automation", () => {
 				});
 				await open(page, projectId);
 				await page.getByRole("button", { name: "Link a repository" }).click();
-				await page.getByLabel("Repository").fill("acme/web");
+				await page.getByLabel("Repository", { exact: true }).fill("acme/web");
 				await page.getByRole("button", { name: "Link", exact: true }).click();
 				await expect(page.getByRole("alert")).toContainText(text);
 			});
@@ -228,7 +228,7 @@ test.describe("Project Git automation", () => {
 			await open(page, projectId);
 			await page.getByRole("button", { name: "Link a repository" }).click();
 			await page
-				.getByLabel("Repository")
+				.getByLabel("Repository", { exact: true })
 				.fill("git@git.example.test:other-org/lib.git");
 			await page.getByRole("button", { name: "Link", exact: true }).click();
 

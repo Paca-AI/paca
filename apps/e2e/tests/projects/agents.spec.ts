@@ -545,7 +545,7 @@ test.describe("Creating an ACP-type agent and setting up its local bridge", () =
 		await fillAgentName(dialog, `${PROJECT_PREFIX}CUSTOM_ACP`);
 		await continueToStep2(dialog);
 
-		await dialog.getByRole("combobox").click();
+		await dialog.getByRole("combobox").first().click();
 		await page.getByRole("option", { name: "Custom…" }).click();
 
 		const continueButton = dialog.getByRole("button", { name: "Continue" });
