@@ -115,7 +115,7 @@ func BuildACPMessage(trigger agent.Trigger, acpProvider string) string {
 		fmt.Fprintf(&b, "\n## Asking the user\n"+
 			"When you call `ask_user_question` on a task or document (with `taskId`/`docId`), "+
 			"always pass `mention` = `owner (id: %s)` so the person who started this work is "+
-			"notified. Omit `taskId`/`docId` when answering in a chat conversation.\n", trigger.ActorMemberID)
+			"notified. Omit `taskId`/`docId` when answering in a chat conversation.\n", trigger.ActorMemberID.String())
 	}
 
 	b.WriteString(agent.FormatAttachedContext(trigger.ContextItems))

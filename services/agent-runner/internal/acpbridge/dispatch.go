@@ -75,7 +75,9 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 		"project_id":      projectIDOrEmpty(trigger.ProjectID),
 		"message":         BuildACPMessage(trigger, cfg.ACPProvider),
 		// The user's own text, shown in the transcript instead of the
-		// prompt-wrapped message above.
+		// prompt-wrapped message above. Always send the key, even when empty:
+		// the bridge reads a missing key as "older server" and falls back to
+		// the wrapped message, so never add omitempty here.
 		"display_message": trigger.Message,
 		// Persisted with the user_message event so the transcript can render
 		// attached-context badges (the prompt-wrapped message still carries

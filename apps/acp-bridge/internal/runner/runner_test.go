@@ -560,6 +560,25 @@ func TestBlankDisplayMessageRecordsNoUserMessage(t *testing.T) {
 	}
 }
 
+func TestBlankDisplayMessageStillRecordsContextItems(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a real subprocess")
+	}
+	items := []any{map[string]any{"type": "task", "id": "t-1", "title": "A task"}}
+	sent := runDisplayMessageTurn(t, map[string]any{
+		"message":         "/paca wrapped prompt",
+		"display_message": "",
+		"context_items":   items,
+	})
+	p, ok := userMessagePayload(t, sent)
+	if !ok {
+		t.Fatal("no user_message event")
+	}
+	if !reflect.DeepEqual(p["context_items"], items) {
+		t.Fatalf("context_items = %v, want %v", p["context_items"], items)
+	}
+}
+
 // TestEndToEndTurnEmitsTurnUsageWithTokensAndCost covers the full pipeline
 // this feature adds: a real subprocess reporting both a "usage_update"
 // session/update notification (cost) and a session/prompt result usage

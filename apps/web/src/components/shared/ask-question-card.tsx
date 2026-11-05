@@ -51,7 +51,7 @@ export function AskQuestionCard({
 		<div
 			data-slot="ask-question-card"
 			className={cn(
-				"flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-md border border-border/50 bg-muted/30 p-3 text-sm",
+				"flex w-full min-w-0 max-w-full flex-col gap-2 rounded-md border border-border/50 bg-muted/30 p-3 text-sm",
 				className,
 			)}
 		>

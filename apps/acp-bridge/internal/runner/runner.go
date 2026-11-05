@@ -239,7 +239,8 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	// typed, without the skill trigger and context sections folded into
 	// message. An older server omits the key, so only then fall back to
 	// message; a present-but-blank value means no human said anything (a
-	// bare task assignment) and records no user_message at all.
+	// bare task assignment) and records no user_message unless context items
+	// were attached.
 	displayMessage, ok := msg["display_message"].(string)
 	if !ok {
 		displayMessage = message
@@ -782,7 +783,9 @@ func (r *Runner) flushChunks(state *conversationState, conversationID, projectID
 
 func (r *Runner) emitUserMessage(state *conversationState, conversationID, projectID, message string, contextItems []any) {
 	text := strings.TrimSpace(message)
-	if text == "" {
+	// Attached context alone is still worth recording (badges render without
+	// text); only skip when neither a human's words nor context exist.
+	if text == "" && len(contextItems) == 0 {
 		return
 	}
 	fields := map[string]any{
