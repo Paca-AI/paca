@@ -97,6 +97,8 @@ func TestLoad_Success(t *testing.T) {
 	t.Setenv("ENV", "test")
 	t.Setenv("PORT", "9090")
 	t.Setenv("COOKIE_SECURE", "true")
+	t.Setenv("PUBLIC_URL", "https://paca.example.com")
+	t.Setenv("GIT_WEBHOOK_PUBLIC_URL", "https://paca-hooks.example.com")
 	t.Setenv("JWT_SECRET", "secret")
 	t.Setenv("JWT_ACCESS_TTL", "10m")
 	t.Setenv("JWT_REFRESH_TTL", "48h")
@@ -130,6 +132,9 @@ func TestLoad_Success(t *testing.T) {
 	}
 	if cfg.JWT.RefreshSessionTTL != 12*time.Hour {
 		t.Fatalf("unexpected RefreshSessionTTL: %v", cfg.JWT.RefreshSessionTTL)
+	}
+	if cfg.Server.PublicURL != "https://paca.example.com" || cfg.Server.WebhookPublicURL != "https://paca-hooks.example.com" {
+		t.Fatalf("public urls: %q / %q", cfg.Server.PublicURL, cfg.Server.WebhookPublicURL)
 	}
 }
 

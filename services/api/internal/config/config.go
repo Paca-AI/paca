@@ -71,6 +71,10 @@ type ServerConfig struct {
 	Port         string
 	CookieSecure bool   // set Secure flag on auth cookies; enable when behind an SSL-terminating proxy
 	PublicURL    string // externally reachable base URL (for example, https://paca.example.com)
+	// WebhookPublicURL is the origin Git providers are told to deliver to.
+	// Empty: PublicURL. Set it when the public edge reaches only the browser
+	// and setup paths, so webhooks need their own host.
+	WebhookPublicURL string
 	// PasskeyRPID overrides the WebAuthn relying-party ID, which defaults to
 	// the host of PublicURL. Set it to a parent domain to share passkeys
 	// across subdomains. Changing it invalidates every registered passkey.

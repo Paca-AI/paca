@@ -53,10 +53,11 @@ type Providers interface {
 
 // Service is the Git integration use-case layer.
 type Service struct {
-	store     gitdom.Store
-	providers Providers
-	now       func() time.Time
-	publicURL string // the instance's externally reachable base URL, no trailing slash
+	store       gitdom.Store
+	providers   Providers
+	now         func() time.Time
+	publicURL   string // the instance's externally reachable base URL, no trailing slash
+	hookBaseURL string // where deliveries go when not publicURL; empty: publicURL
 
 	namer          AgentNamer                                             // optional: names the acting agent in comment footers
 	automation     AutomationEmitter                                      // optional: feeds the Git automation triggers
@@ -690,9 +691,28 @@ func (s *Service) UnlinkRepository(ctx context.Context, projectID, repositoryID 
 	return nil
 }
 
-// WithPublicURL sets the instance's public base URL, which webhook endpoints
-// and setup redirects are built from.
+// WithPublicURL sets the instance's public base URL, which setup redirects,
+// browser links and (unless WithWebhookBaseURL overrides it) webhook endpoints
+// are built from.
 func (s *Service) WithPublicURL(u string) *Service {
 	s.publicURL = strings.TrimRight(strings.TrimSpace(u), "/")
 	return s
+}
+
+// WithWebhookBaseURL sets the origin platform deliveries are sent to when it is
+// not the browser's. A public edge that reaches only the UI and setup paths
+// cannot serve the webhook path, and PUBLIC_URL cannot say otherwise without
+// moving the browser, the setup callback and the passkey origin with it.
+func (s *Service) WithWebhookBaseURL(u string) *Service {
+	s.hookBaseURL = strings.TrimRight(strings.TrimSpace(u), "/")
+	return s
+}
+
+// webhookOrigin is where providers are told to deliver: the webhook base URL
+// when one is configured, the public URL otherwise.
+func (s *Service) webhookOrigin() string {
+	if s.hookBaseURL != "" {
+		return s.hookBaseURL
+	}
+	return s.publicURL
 }

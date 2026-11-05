@@ -525,6 +525,7 @@ func New(cfg *config.Config) (*App, error) {
 	// through the runtime's internal route, never through the HTTP router.
 	gitService := gitsvc.New(pgRepo.NewGitRepository(db), gitsvc.NewPluginProviders(pluginRepo, gitsvc.DoerFunc(pluginRuntime.CallInternal))).
 		WithPublicURL(cfg.Server.PublicURL).
+		WithWebhookBaseURL(cfg.Server.WebhookPublicURL).
 		WithAgentNamer(gitAgentLookup{repo: agentRepo}).
 		WithAgentDirectory(gitAgentDirectory{repo: agentRepo}).
 		WithAutomationEmitter(gitAutomationEmitter{pub: publisher}).

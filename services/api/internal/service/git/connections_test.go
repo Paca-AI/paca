@@ -180,6 +180,7 @@ func TestRepoWebhook_RegisteredOnLinkAndRemovedWithTheLastLink(t *testing.T) {
 	ctx := context.Background()
 	svc, st, pr := setup(t)
 	svc.WithPublicURL("https://paca.example.com")
+	svc.WithWebhookBaseURL("https://hooks.example.com")
 	pr.info = gitprovider.Info{ID: "p", Capabilities: gitprovider.Capabilities{
 		IdentityKinds: []gitprovider.IdentityKind{gitprovider.IdentityApp, gitprovider.IdentityToken}, WebhookScope: gitprovider.WebhookApp, WebhookManagement: true,
 		Kinds: []gitprovider.KindProfile{{Kind: gitprovider.IdentityToken, CredentialModel: gitprovider.CredentialStatic, WebhookScope: gitprovider.WebhookRepo}},
@@ -198,7 +199,7 @@ func TestRepoWebhook_RegisteredOnLinkAndRemovedWithTheLastLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pr.ensured) != 1 || pr.ensured[0].URL != "https://paca.example.com"+WebhookPathPrefix+"key1" {
+	if len(pr.ensured) != 1 || pr.ensured[0].URL != "https://hooks.example.com"+WebhookPathPrefix+"key1" {
 		t.Fatalf("ensure webhook = %+v", pr.ensured)
 	}
 	if !hasWebhook(r1) {

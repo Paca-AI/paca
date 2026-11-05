@@ -89,6 +89,7 @@
 #     PACA_HTTPS                   yes/no; ignored for localhost        (default: yes)
 #     GATEWAY_PORT                 Only used when serving plain HTTP    (default: 80)
 #     PUBLIC_URL                   Full public URL, no trailing slash   (default: derived from the above)
+#     GIT_WEBHOOK_PUBLIC_URL       Optional separate Git webhook origin  (default: PUBLIC_URL)
 #
 #   Web app
 #     PACA_WEB                     bundled/external                    (default: bundled)
@@ -880,6 +881,10 @@ SITE_ADDRESS=${SITE_ADDRESS}
 
 # ── Public URL ────────────────────────────────────────────────────────────────
 PUBLIC_URL=${PUBLIC_URL}
+
+# Origin Git providers deliver webhooks to, when it differs from PUBLIC_URL.
+# Empty uses PUBLIC_URL.
+GIT_WEBHOOK_PUBLIC_URL=${GIT_WEBHOOK_PUBLIC_URL:-}
 
 # ── Admin credentials ────────────────────────────────────────────────────────
 ADMIN_USERNAME=${ADMIN_USERNAME}

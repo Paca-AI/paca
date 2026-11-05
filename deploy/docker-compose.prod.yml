@@ -284,6 +284,8 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       # Public base URL used by plugins for callback / webhook URLs.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # Origin Git providers deliver to, when it must differ from PUBLIC_URL.
+      GIT_WEBHOOK_PUBLIC_URL: ${GIT_WEBHOOK_PUBLIC_URL:-}
       PLUGINS_WASM_DIR: /plugins
       PLUGINS_FRONTEND_DIR: /plugins-frontend
       PLUGINS_MCP_DIR: /plugins-mcp
