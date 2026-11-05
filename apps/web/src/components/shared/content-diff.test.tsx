@@ -41,3 +41,36 @@ describe("ContentDiff link labels", () => {
 		expect(screen.getByText("删除这段说明")).toBeInTheDocument();
 	});
 });
+
+describe("ContentDiff table cells", () => {
+	it("shows an edited table row instead of reporting no differences", () => {
+		const documentWithTable = (text: string) => [
+			{
+				type: "table",
+				content: {
+					type: "tableContent",
+					rows: [
+						{
+							cells: [
+								{
+									type: "tableCell",
+									content: [{ type: "text", text, styles: {} }],
+								},
+							],
+						},
+					],
+				},
+			},
+		];
+		const { container } = render(
+			<ContentDiff
+				oldContent={documentWithTable("Pending review")}
+				newContent={documentWithTable("Review complete")}
+			/>,
+		);
+		expect(screen.getByText("Pending review")).toBeInTheDocument();
+		expect(screen.getByText("Review complete")).toBeInTheDocument();
+		expect(container.textContent).toContain("-");
+		expect(container.textContent).toContain("+");
+	});
+});
