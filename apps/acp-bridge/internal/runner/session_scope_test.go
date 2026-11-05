@@ -176,7 +176,7 @@ func TestInterruptResolvesSharedTaskSession(t *testing.T) {
 	waitForEventType(t, sent, "user_message")
 
 	// Interrupt by CONVERSATION id; the session is keyed by TASK.
-	r.Interrupt("conv-9")
+	r.Interrupt("conv-9", false)
 
 	// Cooperative cancel → no terminal turn_status (upstream contract). Give
 	// the turn a moment to unwind, then assert none was reported.

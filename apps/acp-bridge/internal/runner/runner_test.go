@@ -156,11 +156,11 @@ func TestStartTurnReportsFailureForUnresolvableCustomProvider(t *testing.T) {
 
 func TestInterruptIsANoOpForUnknownOrIdleConversation(t *testing.T) {
 	r, _ := newTestRunner(t)
-	r.Interrupt("does-not-exist")
-	r.Interrupt("")
+	r.Interrupt("does-not-exist", false)
+	r.Interrupt("", false)
 
 	r.conversations["conv-idle"] = &conversationState{chunks: newChunkBuffer()}
-	r.Interrupt("conv-idle") // turnRunning is false; must not panic or block
+	r.Interrupt("conv-idle", false) // turnRunning is false; must not panic or block
 }
 
 // TestHandleUpdateNeverBlocksOnAStalledSend is the core guarantee
@@ -573,7 +573,7 @@ func TestEndToEndInterruptSuppressesTurnStatus(t *testing.T) {
 	// sitting inside session/prompt) before interrupting it.
 	waitForEventType(t, sent, "user_message")
 
-	r.Interrupt("conv-1")
+	r.Interrupt("conv-1", false)
 
 	deadline := time.Now().Add(testTimeout)
 	for {
@@ -643,7 +643,7 @@ func TestEndToEndInterruptDuringSessionSetupSuppressesTurnStatus(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	r.Interrupt("conv-1")
+	r.Interrupt("conv-1", false)
 
 	deadline = time.Now().Add(testTimeout)
 	for {

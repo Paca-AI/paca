@@ -32,7 +32,7 @@ func (h *fakeHandler) StartTurn(_ context.Context, msg map[string]any) {
 	h.startTurns = append(h.startTurns, msg)
 }
 
-func (h *fakeHandler) Interrupt(conversationID string) {
+func (h *fakeHandler) Interrupt(conversationID string, _ bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.interrupts = append(h.interrupts, conversationID)
