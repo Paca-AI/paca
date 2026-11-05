@@ -56,7 +56,11 @@ type SendFunc func(ctx context.Context, msg map[string]any) error
 // an ACP turn) belongs on a goroutine each kicks off itself, not inline.
 type Handler interface {
 	StartTurn(ctx context.Context, msg map[string]any)
-	Interrupt(conversationID string)
+	// Interrupt cancels the in-flight turn. pause is true for pause_turn (the
+	// composer's stop button), where the server expects the bridge to report
+	// the resulting "paused" status; false for stop_turn, which the API has
+	// already recorded as "stopped".
+	Interrupt(conversationID string, pause bool)
 }
 
 // Client is the bridge daemon's connection to one Paca instance.
@@ -213,7 +217,7 @@ func (c *Client) handleMessage(ctx context.Context, msg map[string]any) {
 		c.handler.StartTurn(ctx, msg)
 	case "stop_turn", "pause_turn":
 		convID, _ := msg["conversation_id"].(string)
-		c.handler.Interrupt(convID)
+		c.handler.Interrupt(convID, msgType == "pause_turn")
 	case "pong":
 		// no-op
 	default:

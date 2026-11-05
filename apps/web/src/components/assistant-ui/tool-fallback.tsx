@@ -38,7 +38,7 @@ import {
 } from "@/lib/ask-question";
 import { collapseUnchangedContext, computeLineDiff } from "@/lib/diff-utils";
 import { cn } from "@/lib/utils";
-import { getToolCommand, summarizeToolArgs } from "./tool-args";
+import { getToolCommand } from "./tool-args";
 
 const ANIMATION_DURATION = 200;
 
@@ -156,15 +156,12 @@ function ToolFallbackDuration({
 
 function ToolFallbackTrigger({
 	toolName,
-	argsSummary,
 	status,
 	isError,
 	className,
 	...props
 }: React.ComponentProps<typeof CollapsibleTrigger> & {
 	toolName: string;
-	/** One-line description of the tool's input (e.g. the Bash command). */
-	argsSummary?: string;
 	status?: ToolCallMessagePartStatus;
 	isError?: boolean;
 }) {
@@ -221,15 +218,6 @@ function ToolFallbackTrigger({
 					</span>
 				)}
 			</span>
-			{argsSummary && (
-				<code
-					data-slot="tool-fallback-trigger-args"
-					title={argsSummary}
-					className="aui-tool-fallback-trigger-args bg-muted/60 text-foreground/80 min-w-0 truncate rounded px-1.5 py-0.5 font-mono text-xs"
-				>
-					{argsSummary}
-				</code>
-			)}
 			<ToolFallbackDuration />
 			<ChevronDownIcon
 				data-slot="tool-fallback-trigger-chevron"
@@ -784,12 +772,6 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 	const isAskQuestion =
 		isAskQuestionTool(toolName) &&
 		parseAskQuestionFromCall(argsText, result) !== null;
-	const rawSummary = isAskQuestion ? undefined : summarizeToolArgs(argsText);
-	// Some agents already title the call with its command — don't repeat it.
-	const argsSummary =
-		rawSummary && !toolName.includes(rawSummary.replace(/…$/, ""))
-			? rawSummary
-			: undefined;
 
 	const [open, setOpenState] = useState(
 		() => isRequiresAction || openToolCallIds.has(toolCallId),
@@ -824,7 +806,6 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 		<ToolFallbackRoot open={open} onOpenChange={setOpen}>
 			<ToolFallbackTrigger
 				toolName={toolName}
-				argsSummary={argsSummary}
 				status={status}
 				isError={isError}
 			/>

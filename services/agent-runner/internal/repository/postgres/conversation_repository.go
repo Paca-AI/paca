@@ -81,7 +81,8 @@ func (r *ConversationRepository) ListRunningConversations(ctx context.Context) (
 }
 
 // FailIfNotTerminal mirrors fail_if_not_terminal: atomically marks a
-// conversation failed unless it already reached a terminal status.
+// conversation failed unless it already reached a terminal status or was
+// paused (an idle conversation waiting for the user, not a stuck turn).
 // Race-safe against a legitimate terminal status landing concurrently —
 // see the Python docstring this mirrors for the watchdog use case this
 // exists for.
@@ -89,7 +90,7 @@ func (r *ConversationRepository) FailIfNotTerminal(ctx context.Context, id uuid.
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE agent_conversations
 		SET status = 'failed', error_message = $1, updated_at = now()
-		WHERE id = $2 AND status NOT IN ('finished', 'failed', 'stopped')
+		WHERE id = $2 AND status NOT IN ('finished', 'failed', 'stopped', 'paused')
 	`, errorMessage, id)
 	if err != nil {
 		return false, fmt.Errorf("postgres: fail-if-not-terminal conversation %s: %w", id, err)

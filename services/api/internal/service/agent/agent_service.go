@@ -2624,14 +2624,12 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, agentID, sessi
 				}
 				// Resume — same atomic-claim treatment as the paused case
 				// above, just starting from a terminal status instead of
-				// "paused". Two different reasons land on the same
-				// behavior: an ACP conversation never reaches "paused" at
-				// all (see the doc comment above), while an
-				// environment-backed LLM conversation can reach "paused"
-				// but still go terminal from there (an explicit Stop, or a
-				// genuine turn failure) — either way there's a live
-				// container to reattach to, not an ephemeral sandbox
-				// that's already gone.
+				// "paused". Both kinds of conversation can reach "paused" (an
+				// ACP bridge reports it when the user interrupts a turn) and
+				// still go terminal from there (an explicit Stop, or a genuine
+				// turn failure); either way there's a live bridge or container
+				// to reattach to, not an ephemeral sandbox that's already
+				// gone.
 				claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
 					latest.Status, targetStatus)
 				if err != nil {

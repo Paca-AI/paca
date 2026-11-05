@@ -69,6 +69,10 @@ type conversationState struct {
 	// lets Interrupt's grace-period timer stop waiting early instead of
 	// always sleeping the full interruptGracePeriod.
 	turnDone chan struct{}
+	// pauseRequested is set by a pause_turn Interrupt so the turn, once it
+	// unwinds, reports "paused" — nothing else writes that status for an ACP
+	// conversation. Reset at the start of every turn. Guarded by mu.
+	pauseRequested bool
 
 	// currentConversationID/currentProjectID identify the conversation whose
 	// turn is running right now. With per-task (or per-agent) session scope a
@@ -301,6 +305,7 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	turnCtx, cancel := context.WithCancel(context.Background())
 	state.turnCancel = cancel
 	state.turnDone = make(chan struct{})
+	state.pauseRequested = false
 	state.mu.Unlock()
 
 	go r.runTurn(turnCtx, state, conversationID, projectID, message)
@@ -310,7 +315,7 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 // whatever turn is in flight; there's no sandbox lifecycle to additionally
 // tear down (unlike the cloud path's full stop-vs-pause distinction). A
 // no-op for an unknown or already-idle conversation.
-func (r *Runner) Interrupt(conversationID string) {
+func (r *Runner) Interrupt(conversationID string, pause bool) {
 	if conversationID == "" {
 		return
 	}
@@ -331,6 +336,12 @@ func (r *Runner) Interrupt(conversationID string) {
 	sessionID := state.sessionID
 	cancel := state.turnCancel
 	done := state.turnDone
+	// Assign (not just set) so a stop_turn that follows a pause_turn on the
+	// same turn clears it: the API already wrote "stopped" and a "paused"
+	// report would overwrite it.
+	if running {
+		state.pauseRequested = pause
+	}
 	state.mu.Unlock()
 	if !running {
 		return
@@ -386,6 +397,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 			// same "no turn_status" treatment as an interrupt during
 			// client.Prompt below; Interrupt's own "still spawning" branch
 			// is exactly what cancelled ctx here.
+			r.reportPausedIfRequested(state, conversationID, projectID)
 			return
 		}
 		r.log.Error("runner: failed to start ACP session", "conversation_id", conversationID, "error", err)
@@ -406,7 +418,18 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 			// Interrupted before the agent ever answered (still spawning,
 			// or it didn't honor session/cancel within the grace period
 			// and got killed) — no turn_status for this case, matching the
-			// cooperative-cancel case just below.
+			// cooperative-cancel case just below — except for a pause.
+			r.reportPausedIfRequested(state, conversationID, projectID)
+			return
+		}
+		state.mu.Lock()
+		paused := state.pauseRequested
+		state.mu.Unlock()
+		if paused {
+			// The force-kill after the grace period closed the transport
+			// out from under Prompt, surfacing as a non-Canceled error;
+			// the user asked for a pause, so don't report that as failed.
+			r.reportStatus(state, conversationID, projectID, "paused", "")
 			return
 		}
 		r.log.Error("runner: conversation turn failed", "conversation_id", conversationID, "error", err)
@@ -422,10 +445,24 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 		// error, so it doesn't hit the context.Canceled case above. The
 		// old bridge reports no turn_status for an interrupted turn
 		// either; dispatching stop_turn/pause_turn is treated
-		// server-side as sufficient on its own.
+		// server-side as sufficient on its own — except for a pause, whose
+		// "paused" status only the bridge can report.
+		r.reportPausedIfRequested(state, conversationID, projectID)
 		return
 	}
 	r.reportStatus(state, conversationID, projectID, "finished", "")
+}
+
+// reportPausedIfRequested reports "paused" for a turn that unwound because of
+// a pause_turn. A stop_turn reports nothing: the API already wrote "stopped",
+// and a late "paused" would overwrite it.
+func (r *Runner) reportPausedIfRequested(state *conversationState, conversationID, projectID string) {
+	state.mu.Lock()
+	paused := state.pauseRequested
+	state.mu.Unlock()
+	if paused {
+		r.reportStatus(state, conversationID, projectID, "paused", "")
+	}
 }
 
 // ensureSession returns the conversation's ACP client and session id,

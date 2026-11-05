@@ -24,6 +24,7 @@ type fakeHandler struct {
 	mu         sync.Mutex
 	startTurns []map[string]any
 	interrupts []string
+	pauses     []bool
 }
 
 func (h *fakeHandler) StartTurn(_ context.Context, msg map[string]any) {
@@ -32,10 +33,17 @@ func (h *fakeHandler) StartTurn(_ context.Context, msg map[string]any) {
 	h.startTurns = append(h.startTurns, msg)
 }
 
-func (h *fakeHandler) Interrupt(conversationID string) {
+func (h *fakeHandler) Interrupt(conversationID string, pause bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.interrupts = append(h.interrupts, conversationID)
+	h.pauses = append(h.pauses, pause)
+}
+
+func (h *fakeHandler) interruptPauses() []bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]bool(nil), h.pauses...)
 }
 
 func (h *fakeHandler) startTurnCount() int {
@@ -174,6 +182,9 @@ func TestStopAndPauseTurnDispatchToInterrupt(t *testing.T) {
 		if id != "conv-1" {
 			t.Errorf("interrupted id = %q, want conv-1", id)
 		}
+	}
+	if got := handler.interruptPauses(); len(got) != 2 || got[0] || !got[1] {
+		t.Errorf("pause flags = %v, want [false true] (stop_turn, pause_turn)", got)
 	}
 }
 

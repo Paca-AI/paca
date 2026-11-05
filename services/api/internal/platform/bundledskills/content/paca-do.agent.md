@@ -37,14 +37,18 @@ Execute based on the task type:
 
 If you discover a blocker or a genuine sub-task that wasn't anticipated, create it in Paca with `create_task` (reference the parent in the description and add a `create_task_link` `blocks` link). Don't silently skip or work around it.
 
-### Code tasks with a linked repository — push and open a PR (MANDATORY)
+### Code tasks with a linked repository — push and open a PR (MANDATORY, part of "done")
 
 If this task involves code changes AND the project has a linked repository, completing the work means publishing it — changes left only in the sandbox are NOT done. Follow ALL steps:
 
 1. **Prepare the checkout first** (before editing):
    - `list_repositories` → note the `repoId`.
    - `workspace_inspect` — see what is already checked out; reuse it rather than cloning again.
-   - `workspace_prepare` (strategy "reuse" if a checkout exists, otherwise "clone" into an empty directory) on the default branch, then create a feature branch: `git checkout -b feat/<task-number>-<short-description>`.
+   - `workspace_prepare` (strategy "reuse" if a checkout exists, otherwise "clone" into an empty directory) on the default branch, then create the feature branch with `workspace_prepare`'s `createBranch` (or `git checkout -b`). The name MUST be exactly `<type>/<TASK-KEY>-<slug>`, e.g. `feat/PACA-12-fix-login-bug`:
+     - `<type>`: `feat` for features, `fix` for bugs, otherwise `chore`, `docs` or `refactor`.
+     - `<TASK-KEY>`: the project's task prefix in UPPERCASE, a hyphen, then the task number (the task's `task_id_prefix` + `number`, e.g. `PACA-12`). Never drop the prefix when the project has one — the key in the branch is how Paca links the branch and PR to the task. If the project's `task_id_prefix` is empty, use just the number (`feat/12-fix-login-bug`), never a leading hyphen like `feat/-12-…`.
+     - `<slug>`: the task title lowercased, runs of non-alphanumerics collapsed to single hyphens, trimmed, cut to at most 30 characters with no trailing hyphen.
+     - Use this exact format even if the user did not mention it. If you are asked to create the branch or PR later, follow it then too.
 
 2. **Make your changes** in the checkout, test-first for code (see above). Run the project's tests and linters and fix what you broke.
 
@@ -60,10 +64,13 @@ If this task involves code changes AND the project has a linked repository, comp
 
 6. **Report the PR URL** in the task comment (Step 4). Do not merge it yourself.
 
+Do NOT mark the task done, post the completion comment or finish your reply until the PR exists and you have its URL. If the work was already committed without these steps (e.g. on the wrong branch), rename/recreate the branch to the format above, then push and open the PR.
+
 If any step fails (push rejected, token error, etc.), report it in a task `add_task_comment` rather than silently moving on. When you need a human decision you cannot make yourself (which approach, a risky step), use `ask_user_question` instead of guessing.
 
 ## Step 4 — Update and close
 
+0. **Gate:** for a code task with a linked repository, confirm the PR is open and its URL is in hand. If not, go back and finish the publish steps above first.
 1. Call `add_task_comment` with a completion summary: what was done, what changed, any known caveats or follow-up needed.
 2. If any project documentation was affected (README, architecture doc, API reference), update the relevant Paca document with `write_doc`. Never write new docs as local files.
 3. Call `update_task` to set the status to done (or the next stage — e.g. "review" — if your workflow has one).
