@@ -207,11 +207,12 @@ test.describe("Git nodes in the automation graph", () => {
 			await page.getByRole("button", { name: "Add Trigger" }).click();
 			await expect(
 				page.getByRole("menuitem", {
-					name: "Git: Pull Request State Changed",
+					name: "Pull Request State Changed",
+					exact: true,
 				}),
 			).toBeVisible();
 			await expect(
-				page.getByRole("menuitem", { name: "Git: Issue Created" }),
+				page.getByRole("menuitem", { name: "Issue Created", exact: true }),
 			).toBeVisible();
 		});
 
@@ -228,7 +229,9 @@ test.describe("Git nodes in the automation graph", () => {
 			await expect(page.getByRole("heading", { name })).toBeVisible();
 
 			await page.getByRole("button", { name: "Add Trigger" }).click();
-			await page.getByRole("menuitem", { name: "Git: Issue Created" }).click();
+			await page
+				.getByRole("menuitem", { name: "Issue Created", exact: true })
+				.click();
 
 			await expect(
 				page.getByTitle("Git: Issue Created", { exact: true }),

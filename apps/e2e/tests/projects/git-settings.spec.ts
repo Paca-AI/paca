@@ -160,7 +160,7 @@ test.describe("Project Git settings", () => {
 			await openGitSettings(page, projectId);
 
 			await page.getByRole("button", { name: "Link a repository" }).click();
-			await page.getByLabel("Repository").fill("acme/web");
+			await page.getByLabel("Repository", { exact: true }).fill("acme/web");
 			await page.getByRole("button", { name: "Link", exact: true }).click();
 
 			await expect(page.getByText("acme/web", { exact: true })).toBeVisible();
@@ -242,7 +242,7 @@ test.describe("Project Git settings", () => {
 			await openGitSettings(page, projectId);
 
 			await page.getByRole("button", { name: "Link a repository" }).click();
-			await expect(page.getByLabel("Repository")).toBeVisible();
+			await expect(page.getByLabel("Repository", { exact: true })).toBeVisible();
 			await expect(
 				page.getByRole("button", { name: "Link", exact: true }),
 			).toBeVisible();
