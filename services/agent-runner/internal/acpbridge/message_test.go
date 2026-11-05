@@ -49,3 +49,28 @@ func TestBuildACPMessageNamesTheDocumentForADocCommentMention(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildACPMessageAddsMentionHintWhenActorKnown(t *testing.T) {
+	actor := uuid.New()
+	msg := BuildACPMessage(agent.Trigger{
+		Message:       "Do something",
+		TriggerType:   agent.TriggerChatMessage,
+		ActorMemberID: &actor,
+	}, "claude-code")
+	if !strings.Contains(msg, "## Asking the user") {
+		t.Fatalf("expected Asking the user section, got: %s", msg)
+	}
+	if want := "owner (id: " + actor.String() + ")"; !strings.Contains(msg, want) {
+		t.Fatalf("expected %q in message, got: %s", want, msg)
+	}
+}
+
+func TestBuildACPMessageOmitsMentionHintWithoutActor(t *testing.T) {
+	msg := BuildACPMessage(agent.Trigger{
+		Message:     "Do something",
+		TriggerType: agent.TriggerChatMessage,
+	}, "claude-code")
+	if strings.Contains(msg, "## Asking the user") {
+		t.Fatalf("unexpected Asking the user section: %s", msg)
+	}
+}

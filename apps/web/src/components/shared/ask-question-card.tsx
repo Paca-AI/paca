@@ -51,15 +51,17 @@ export function AskQuestionCard({
 		<div
 			data-slot="ask-question-card"
 			className={cn(
-				"flex flex-col gap-2 rounded-md border border-border/50 bg-muted/30 p-3 text-sm",
+				"flex w-full min-w-0 max-w-full flex-col gap-2 rounded-md border border-border/50 bg-muted/30 p-3 text-sm",
 				className,
 			)}
 		>
 			<p className="flex items-start gap-2 font-medium">
 				<MessageCircleQuestionIcon className="mt-0.5 size-4 shrink-0 text-primary" />
-				<span className="whitespace-pre-wrap">{ask.question}</span>
+				<span className="min-w-0 whitespace-pre-wrap break-words">
+					{ask.question}
+				</span>
 			</p>
-			<div className="flex flex-col gap-1.5">
+			<div className="flex min-w-0 flex-col gap-1.5">
 				{ask.options.map((option) => {
 					const isSelected = selected.includes(option.label);
 					return (
@@ -70,7 +72,7 @@ export function AskQuestionCard({
 							variant={isSelected ? "default" : "outline"}
 							disabled={locked}
 							aria-pressed={ask.multiSelect ? isSelected : undefined}
-							className="h-auto items-start justify-start gap-2 py-1.5 text-start whitespace-normal active:scale-[0.99]"
+							className="h-auto w-full min-w-0 items-start justify-start gap-2 py-1.5 text-start whitespace-normal active:scale-[0.99]"
 							onClick={() =>
 								ask.multiSelect
 									? toggle(option.label)
@@ -85,10 +87,10 @@ export function AskQuestionCard({
 									)}
 								/>
 							)}
-							<span className="flex flex-col">
-								<span>{option.label}</span>
+							<span className="flex min-w-0 flex-1 flex-col">
+								<span className="break-words">{option.label}</span>
 								{option.description && (
-									<span className="text-xs font-normal opacity-70">
+									<span className="text-xs font-normal break-words opacity-70">
 										{option.description}
 									</span>
 								)}
@@ -109,7 +111,7 @@ export function AskQuestionCard({
 					onChange={(e) => setOther(e.target.value)}
 					disabled={locked}
 					placeholder={t("askQuestion.otherPlaceholder")}
-					className="h-8 text-xs"
+					className="h-8 min-w-0 flex-1 text-xs"
 				/>
 				<Button
 					type="submit"
@@ -121,7 +123,7 @@ export function AskQuestionCard({
 				</Button>
 			</form>
 			{submitted !== null && (
-				<p className="text-muted-foreground text-xs">
+				<p className="text-muted-foreground text-xs break-words">
 					{t("askQuestion.answered", { answer: submitted })}
 				</p>
 			)}

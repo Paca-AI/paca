@@ -74,11 +74,20 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 		"conversation_id": trigger.ConversationID.String(),
 		"project_id":      projectIDOrEmpty(trigger.ProjectID),
 		"message":         BuildACPMessage(trigger, cfg.ACPProvider),
-		"trigger_type":    string(trigger.TriggerType),
-		"acp_provider":    cfg.ACPProvider,
-		"acp_command":     cfg.ACPCommand,
-		"acp_model":       cfg.ACPModel,
-		"acp_effort":      cfg.ACPEffort,
+		// The user's own text, shown in the transcript instead of the
+		// prompt-wrapped message above. Always send the key, even when empty:
+		// the bridge reads a missing key as "older server" and falls back to
+		// the wrapped message, so never add omitempty here.
+		"display_message": trigger.Message,
+		// Persisted with the user_message event so the transcript can render
+		// attached-context badges (the prompt-wrapped message still carries
+		// the "## Attached Context" section for the agent itself).
+		"context_items": trigger.ContextItems,
+		"trigger_type":  string(trigger.TriggerType),
+		"acp_provider":  cfg.ACPProvider,
+		"acp_command":   cfg.ACPCommand,
+		"acp_model":     cfg.ACPModel,
+		"acp_effort":    cfg.ACPEffort,
 		// Task/comment/chat linkage the bridge uses to group conversations
 		// into per-task (or per-chat) sessions. Empty when the trigger has no
 		// such link (e.g. project-global chat, or an automation message with

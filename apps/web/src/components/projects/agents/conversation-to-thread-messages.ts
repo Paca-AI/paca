@@ -440,19 +440,24 @@ export function eventsToThreadMessages(
 		// asked), so without this a chat conversation's own messages
 		// wouldn't render at all, only the agent's replies.
 		if (t === "user_message") {
-			const text = extractAcpBlockText(p.content);
-			if (!text) continue;
-			flushCurrent();
+			const text = extractAcpBlockText(p.content) ?? "";
 			// context_items (snake_case, as persisted by
 			// services/agent-runner's handler.go) round-trips back into the
 			// camelCase ContextItem[] shape here so thread.tsx's UserMessage
 			// can render a read-only badge row via metadata.custom.contextItems.
 			const contextItems = parseContextItems(p.context_items);
+			// A turn with attached context but no typed text still shows its
+			// badges (the bubble hides itself when empty); only a turn with
+			// neither is dropped.
+			if (!text && contextItems.length === 0) continue;
+			flushCurrent();
 			messages.push({
 				id: ev.id,
 				role: "user",
 				createdAt: new Date(ev.created_at),
-				content: [{ type: "text", text }],
+				// No part at all for a context-only turn: an empty text part still
+				// renders a <p>, which would defeat the bubble's empty:hidden.
+				content: text ? [{ type: "text", text }] : [],
 				...(contextItems.length > 0
 					? { metadata: { custom: { contextItems } } }
 					: {}),

@@ -1251,6 +1251,37 @@ describe("eventsToThreadMessages", () => {
 			]);
 		});
 
+		it("keeps a user_message with blank text when it carries context_items", () => {
+			const events: AgentConversationEvent[] = [
+				{
+					id: "evt-ctx-2",
+					conversation_id: "conv-1",
+					event_index: 0,
+					event_type: "user_message",
+					event_source: "user",
+					payload: {
+						content: { type: "text", text: "" },
+						context_items: [{ type: "doc", id: "doc-1", title: "Runbook" }],
+					},
+					created_at: "2026-01-01T00:00:00.000Z",
+				},
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(1);
+			expect(messages[0]?.metadata?.custom?.contextItems).toEqual([
+				{ type: "doc", id: "doc-1", title: "Runbook" },
+			]);
+			expect(messages[0]?.content).toEqual([]);
+		});
+
+		it("drops a user_message with blank text and no context_items", () => {
+			const events = [acpUserMessage("")];
+
+			expect(eventsToThreadMessages(events, false)).toHaveLength(0);
+		});
+
 		it("adds no metadata.custom when a user_message event carries no context_items", () => {
 			const events = [acpUserMessage("hi")];
 
