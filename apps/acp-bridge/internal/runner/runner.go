@@ -336,8 +336,11 @@ func (r *Runner) Interrupt(conversationID string, pause bool) {
 	sessionID := state.sessionID
 	cancel := state.turnCancel
 	done := state.turnDone
-	if running && pause {
-		state.pauseRequested = true
+	// Assign (not just set) so a stop_turn that follows a pause_turn on the
+	// same turn clears it: the API already wrote "stopped" and a "paused"
+	// report would overwrite it.
+	if running {
+		state.pauseRequested = pause
 	}
 	state.mu.Unlock()
 	if !running {

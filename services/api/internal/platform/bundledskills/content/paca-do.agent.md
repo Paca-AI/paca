@@ -46,7 +46,7 @@ If this task involves code changes AND the project has a linked repository, comp
    - `workspace_inspect` — see what is already checked out; reuse it rather than cloning again.
    - `workspace_prepare` (strategy "reuse" if a checkout exists, otherwise "clone" into an empty directory) on the default branch, then create the feature branch with `workspace_prepare`'s `createBranch` (or `git checkout -b`). The name MUST be exactly `<type>/<TASK-KEY>-<slug>`, e.g. `feat/PACA-12-fix-login-bug`:
      - `<type>`: `feat` for features, `fix` for bugs, otherwise `chore`, `docs` or `refactor`.
-     - `<TASK-KEY>`: the project's task prefix in UPPERCASE, a hyphen, then the task number (the task's `task_id_prefix` + `number`, e.g. `PACA-12`). Never drop the prefix or use only the number — the key in the branch is how Paca links the branch and PR to the task.
+     - `<TASK-KEY>`: the project's task prefix in UPPERCASE, a hyphen, then the task number (the task's `task_id_prefix` + `number`, e.g. `PACA-12`). Never drop the prefix when the project has one — the key in the branch is how Paca links the branch and PR to the task. If the project's `task_id_prefix` is empty, use just the number (`feat/12-fix-login-bug`), never a leading hyphen like `feat/-12-…`.
      - `<slug>`: the task title lowercased, runs of non-alphanumerics collapsed to single hyphens, trimmed, cut to at most 30 characters with no trailing hyphen.
      - Use this exact format even if the user did not mention it. If you are asked to create the branch or PR later, follow it then too.
 
