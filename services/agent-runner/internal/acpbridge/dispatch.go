@@ -35,7 +35,9 @@ type Dispatcher struct {
 	// dispatchGen maps a conversation id to the generation of its latest
 	// dispatch (uuid.UUID -> uint64). Each watchdog only acts while its own
 	// dispatch is still the latest, so a watchdog armed by an earlier turn
-	// cannot fail a conversation the user has since resumed.
+	// cannot fail a conversation the user has since resumed. In-memory, so it
+	// only covers dispatches made by this process: with several agent-runner
+	// replicas a resume handled by another replica is not seen here.
 	dispatchGen sync.Map
 	genCounter  atomic.Uint64
 }
@@ -62,6 +64,11 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 		return err
 	}
 
+	// Recorded before the publish so a watchdog from an earlier dispatch is
+	// already stale by the time the new turn can start.
+	gen := d.genCounter.Add(1)
+	d.dispatchGen.Store(trigger.ConversationID, gen)
+
 	dispatched, err := d.Registry.Dispatch(ctx, cfg.ID, map[string]any{
 		"type":            "start_turn",
 		"conversation_id": trigger.ConversationID.String(),
@@ -82,9 +89,11 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 		"chat_session_id": uuidPtrOrEmpty(trigger.ChatSessionID),
 	})
 	if err != nil {
+		d.dispatchGen.CompareAndDelete(trigger.ConversationID, gen)
 		return err
 	}
 	if !dispatched {
+		d.dispatchGen.CompareAndDelete(trigger.ConversationID, gen)
 		// Bridge disconnected between the IsOnline check above and here
 		// (e.g. the daemon crashed mid-dispatch) — fail the same way.
 		d.Log.Info("acpbridge: bridge went offline before dispatch; failing conversation",
@@ -96,8 +105,6 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 	if timeoutMinutes <= 0 {
 		timeoutMinutes = 1
 	}
-	gen := d.genCounter.Add(1)
-	d.dispatchGen.Store(trigger.ConversationID, gen)
 	go d.watchdog(trigger.ConversationID, trigger.ProjectID, time.Duration(timeoutMinutes)*time.Minute, trigger.ActorAccountID, gen)
 	return nil
 }
