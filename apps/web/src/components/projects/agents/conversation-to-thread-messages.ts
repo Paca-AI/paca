@@ -455,7 +455,9 @@ export function eventsToThreadMessages(
 				id: ev.id,
 				role: "user",
 				createdAt: new Date(ev.created_at),
-				content: [{ type: "text", text }],
+				// No part at all for a context-only turn: an empty text part still
+				// renders a <p>, which would defeat the bubble's empty:hidden.
+				content: text ? [{ type: "text", text }] : [],
 				...(contextItems.length > 0
 					? { metadata: { custom: { contextItems } } }
 					: {}),

@@ -1273,6 +1273,7 @@ describe("eventsToThreadMessages", () => {
 			expect(messages[0]?.metadata?.custom?.contextItems).toEqual([
 				{ type: "doc", id: "doc-1", title: "Runbook" },
 			]);
+			expect(messages[0]?.content).toEqual([]);
 		});
 
 		it("drops a user_message with blank text and no context_items", () => {
