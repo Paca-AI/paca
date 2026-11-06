@@ -834,7 +834,11 @@ func New(deps Deps) http.Handler {
 
 					// Documents — collection
 					r.With(require.Project(iam.ActionDocsRead)).Get("/", deps.Document.ListDocuments)
-					r.With(require.Project(iam.ActionDocsWrite), require.DocCreate()).Post("/", deps.Document.CreateDocument)
+					// Like an update (DocChange), a create is authorized on the document
+					// with the folder it goes into, not on the whole project, so a role
+					// limited to a folder can add documents there. Folder routes above
+					// stay project-gated.
+					r.With(require.DocCreate()).Post("/", deps.Document.CreateDocument)
 
 					// Documents — single item
 					r.Route("/{docId}", func(r chi.Router) {

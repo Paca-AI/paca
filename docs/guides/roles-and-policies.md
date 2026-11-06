@@ -380,6 +380,8 @@ The same pattern limits documents to a folder and its subfolders:
 
 (plus a `docs:read` on `project/PROJECT_ID`, as in the first statement above).
 
+To let the member add and edit documents in that folder, put `docs:write` in this statement too. A document is created in the folder its `folder_id` names, and only that folder is checked, so creating one elsewhere or at the root is refused. Unlike tasks and views, do not add `docs:write` to the project-level statement: on `project/PROJECT_ID` it also allows creating, renaming and deleting any folder.
+
 ### A workspace role that gives access to two projects
 
 Create a workspace role (Administration, Roles, or `POST /admin/roles`) that names two projects. It is not a template, so it can be attached platform-wide to a user or global agent, and it reaches exactly those two projects and nothing else:
