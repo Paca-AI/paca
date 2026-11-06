@@ -172,6 +172,7 @@ export function GlobalAIChatFloat() {
 					globalConversationQueryOptions(result.conversation.id).queryKey,
 					result.conversation,
 				);
+				optimistic.follow(result.conversation.id);
 				setConversationId(result.conversation.id);
 				void qc.invalidateQueries({
 					queryKey: ["global-chat", "conversations"],

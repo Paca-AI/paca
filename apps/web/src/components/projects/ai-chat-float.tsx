@@ -190,6 +190,7 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 					conversationQueryOptions(projectId, result.conversation.id).queryKey,
 					result.conversation,
 				);
+				optimistic.follow(result.conversation.id);
 				setConversationId(result.conversation.id);
 				void qc.invalidateQueries({
 					queryKey: ["projects", projectId, "conversations"],

@@ -32,6 +32,18 @@ describe("useOptimisticUserMessage", () => {
 		expect(result.current.events).toHaveLength(2);
 	});
 
+	it("matches the persisted echo of a whitespace-padded message", () => {
+		const { result, rerender } = renderHook(
+			({ events }) => useOptimisticUserMessage(events, "c1"),
+			{ initialProps: { events: [] as AgentConversationEvent[] } },
+		);
+		act(() => result.current.begin({ text: "  hello\n", contextItems: [] }));
+		expect(result.current.pending).toBe(true);
+		rerender({ events: [userEvent(0, "hello")] });
+		expect(result.current.pending).toBe(false);
+		expect(result.current.events).toHaveLength(1);
+	});
+
 	it("discards on a failed send", () => {
 		const { result } = renderHook(() => useOptimisticUserMessage([], "c1"));
 		act(() => result.current.begin({ text: "x", contextItems: [] }));

@@ -83,7 +83,8 @@ export function useOptimisticUserMessage(
 		({ text, contextItems }) => {
 			setPendingMessage({
 				conversationId,
-				text,
+				// The server persists the trimmed text; match and render that.
+				text: text.trim(),
 				contextItems,
 				baseIndex: events.at(-1)?.event_index ?? -1,
 				createdAt: new Date().toISOString(),
