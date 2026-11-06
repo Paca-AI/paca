@@ -103,6 +103,11 @@ describe("useOptimisticUserMessage", () => {
 		});
 		expect(result.current.pending).toBe(true);
 		rerender({ hold: false });
+		// A full TTL starts when the hold lifts, so the echo still has time.
+		act(() => {
+			vi.advanceTimersByTime(OPTIMISTIC_MESSAGE_TTL_MS - 1);
+		});
+		expect(result.current.pending).toBe(true);
 		act(() => {
 			vi.advanceTimersByTime(1);
 		});

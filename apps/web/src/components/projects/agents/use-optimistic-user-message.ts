@@ -85,9 +85,13 @@ export function useOptimisticUserMessage(
 	const startedAt = pendingMessage?.createdAt;
 	useEffect(() => {
 		if (!startedAt || holdTimeout) return;
-		const left =
-			OPTIMISTIC_MESSAGE_TTL_MS - (Date.now() - new Date(startedAt).getTime());
-		const timer = setTimeout(() => setPendingMessage(null), Math.max(0, left));
+		// Counted from when the hold lifts, not from the send: the echo is only
+		// persisted shortly after a queued conversation starts running, so a
+		// long queue wait must not leave the timer already expired.
+		const timer = setTimeout(
+			() => setPendingMessage(null),
+			OPTIMISTIC_MESSAGE_TTL_MS,
+		);
 		return () => clearTimeout(timer);
 	}, [startedAt, holdTimeout]);
 
