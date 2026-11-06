@@ -58,7 +58,7 @@ type Handler interface {
 	StartTurn(ctx context.Context, msg map[string]any)
 	// Interrupt cancels the in-flight turn. pause is true for pause_turn (the
 	// composer's stop button), where the server expects the bridge to report
-	// the resulting "paused" status; false for stop_turn, which the API has
+	// the resulting "finished" status; false for stop_turn, which the API has
 	// already recorded as "stopped".
 	Interrupt(conversationID string, pause bool)
 }

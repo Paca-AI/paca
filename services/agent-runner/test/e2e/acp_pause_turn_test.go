@@ -21,7 +21,7 @@ import (
 )
 
 // TestACPPauseTurn covers the composer's stop button for an ACP agent: the
-// control channel delivers pause_turn to the bridge, and the "paused" status
+// control channel delivers pause_turn to the bridge, and the "finished" status
 // the bridge reports back moves the conversation out of "running" and is
 // never overwritten by the dispatch watchdog's fail path.
 func TestACPPauseTurn(t *testing.T) {
@@ -113,26 +113,26 @@ func TestACPPauseTurn(t *testing.T) {
 		t.Fatalf("got %v, want pause_turn for %s", msg, convID)
 	}
 
-	// The bridge reports "paused" once the turn unwinds: the row leaves "running".
+	// The bridge reports "finished" once the turn unwinds: the row leaves "running".
 	if err := wsjson.Write(ctx, daemon, map[string]string{
-		"type": "turn_status", "conversation_id": convID.String(), "status": "paused",
+		"type": "turn_status", "conversation_id": convID.String(), "status": "finished",
 	}); err != nil {
 		t.Fatalf("send turn_status: %v", err)
 	}
-	if err := waitForStatus(ctx, env.db, convID, "paused"); err != nil {
+	if err := waitForStatus(ctx, env.db, convID, "finished"); err != nil {
 		t.Fatal(err)
 	}
 
-	// The dispatch watchdog must leave a paused conversation alone...
+	// The dispatch watchdog must leave a finished conversation alone...
 	failed, err := convRepo.FailIfNotTerminal(ctx, convID, "ACP turn timed out")
 	if err != nil {
 		t.Fatalf("FailIfNotTerminal: %v", err)
 	}
 	if failed {
-		t.Fatal("watchdog failed a paused conversation")
+		t.Fatal("watchdog failed a finished conversation")
 	}
-	if status, _ := conversationStatus(ctx, env.db, convID); status != "paused" {
-		t.Fatalf("status after watchdog = %q, want paused", status)
+	if status, _ := conversationStatus(ctx, env.db, convID); status != "finished" {
+		t.Fatalf("status after watchdog = %q, want finished", status)
 	}
 
 	// ...but still fails a turn that is genuinely stuck in "running".

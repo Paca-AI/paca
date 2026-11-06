@@ -189,9 +189,9 @@ test.describe("Conversations with an ACP agent", () => {
 		// reports that the turn actually unwound.
 		expect(await conversationStatus(request, projectId, id)).toBe("running");
 
-		bridge.reportTurnStatus(id, "paused");
+		bridge.reportTurnStatus(id, "finished");
 
-		await expect(headerBadge(page)).toHaveText("Waiting for reply");
+		await expect(headerBadge(page)).toHaveText("Finished");
 		await expect(
 			page.getByRole("button", { name: "Stop generating" }),
 		).toHaveCount(0);

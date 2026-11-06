@@ -70,8 +70,8 @@ type conversationState struct {
 	// always sleeping the full interruptGracePeriod.
 	turnDone chan struct{}
 	// pauseRequested is set by a pause_turn Interrupt so the turn, once it
-	// unwinds, reports "paused" — nothing else writes that status for an ACP
-	// conversation. Reset at the start of every turn. Guarded by mu.
+	// unwinds, reports "finished" — nothing else writes that status for an ACP
+	// conversation (ACP has no "paused"/waiting-for-reply state). Reset at the start of every turn. Guarded by mu.
 	pauseRequested bool
 
 	// currentConversationID/currentProjectID identify the conversation whose
@@ -348,7 +348,7 @@ func (r *Runner) Interrupt(conversationID string, pause bool) {
 	cancel := state.turnCancel
 	done := state.turnDone
 	// Assign (not just set) so a stop_turn that follows a pause_turn on the
-	// same turn clears it: the API already wrote "stopped" and a "paused"
+	// same turn clears it: the API already wrote "stopped" and a "finished"
 	// report would overwrite it.
 	if running {
 		state.pauseRequested = pause
@@ -408,7 +408,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 			// same "no turn_status" treatment as an interrupt during
 			// client.Prompt below; Interrupt's own "still spawning" branch
 			// is exactly what cancelled ctx here.
-			r.reportPausedIfRequested(state, conversationID, projectID)
+			r.reportFinishedIfRequested(state, conversationID, projectID)
 			return
 		}
 		r.log.Error("runner: failed to start ACP session", "conversation_id", conversationID, "error", err)
@@ -430,7 +430,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 			// or it didn't honor session/cancel within the grace period
 			// and got killed) — no turn_status for this case, matching the
 			// cooperative-cancel case just below — except for a pause.
-			r.reportPausedIfRequested(state, conversationID, projectID)
+			r.reportFinishedIfRequested(state, conversationID, projectID)
 			return
 		}
 		state.mu.Lock()
@@ -440,7 +440,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 			// The force-kill after the grace period closed the transport
 			// out from under Prompt, surfacing as a non-Canceled error;
 			// the user asked for a pause, so don't report that as failed.
-			r.reportStatus(state, conversationID, projectID, "paused", "")
+			r.reportStatus(state, conversationID, projectID, "finished", "")
 			return
 		}
 		r.log.Error("runner: conversation turn failed", "conversation_id", conversationID, "error", err)
@@ -458,21 +458,23 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 		// either; dispatching stop_turn/pause_turn is treated
 		// server-side as sufficient on its own — except for a pause, whose
 		// "paused" status only the bridge can report.
-		r.reportPausedIfRequested(state, conversationID, projectID)
+		r.reportFinishedIfRequested(state, conversationID, projectID)
 		return
 	}
 	r.reportStatus(state, conversationID, projectID, "finished", "")
 }
 
-// reportPausedIfRequested reports "paused" for a turn that unwound because of
-// a pause_turn. A stop_turn reports nothing: the API already wrote "stopped",
-// and a late "paused" would overwrite it.
-func (r *Runner) reportPausedIfRequested(state *conversationState, conversationID, projectID string) {
+// reportFinishedIfRequested reports "finished" for a turn that unwound because
+// of a pause_turn (the composer's stop button). An ACP conversation has no
+// "waiting for reply" state — only an ephemeral-sandbox agent does — so a
+// user-interrupted turn simply ends as finished. A stop_turn reports nothing:
+// the API already wrote "stopped", and a late "finished" would overwrite it.
+func (r *Runner) reportFinishedIfRequested(state *conversationState, conversationID, projectID string) {
 	state.mu.Lock()
 	paused := state.pauseRequested
 	state.mu.Unlock()
 	if paused {
-		r.reportStatus(state, conversationID, projectID, "paused", "")
+		r.reportStatus(state, conversationID, projectID, "finished", "")
 	}
 }
 
