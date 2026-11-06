@@ -59,6 +59,7 @@ import {
 } from "./conversation-to-thread-messages";
 import { LoadOlderEvents, TailFollowIndicator } from "./event-window-controls";
 import { useConversationEventWindow } from "./use-conversation-event-window";
+import { useOptimisticUserMessage } from "./use-optimistic-user-message";
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 
@@ -238,8 +239,17 @@ export function ConversationView({
 	// them at all; they're ready as soon as they're dispatched.
 	const environmentReady = isEnvironmentReady(isACP, events);
 
+	// Shows the sender's message and the "thinking" state immediately, rather
+	// than once the server has persisted the turn's user_message event.
+	const optimistic = useOptimisticUserMessage(
+		events,
+		conversationId,
+		conversation?.status === "queued",
+	);
 	const isRunning =
-		conversation?.status === "queued" || conversation?.status === "running";
+		optimistic.pending ||
+		conversation?.status === "queued" ||
+		conversation?.status === "running";
 	const isTerminal =
 		conversation?.status === "finished" ||
 		conversation?.status === "failed" ||
@@ -257,8 +267,8 @@ export function ConversationView({
 		useAgentBusyPrompt();
 
 	const messages = useMemo(
-		() => eventsToThreadMessages(events, isRunning),
-		[events, isRunning],
+		() => eventsToThreadMessages(optimistic.events, isRunning),
+		[optimistic.events, isRunning],
 	);
 
 	const invalidate = (id: string = conversationId) => {
@@ -290,6 +300,16 @@ export function ConversationView({
 		const contextItems = useContextInjectionStore.getState().items;
 
 		setSendError(null);
+		optimistic.begin({ text, contextItems });
+		// While the busy dialog is open the message hasn't been sent yet.
+		const busyHooks = {
+			onAsk: optimistic.discard,
+			onResume: () => optimistic.begin({ text, contextItems }),
+		};
+		// Sending is the reader asking to see the reply: without this a reader
+		// who had scrolled up keeps `following` off, and everything that
+		// arrives afterwards (their own message included) is withheld.
+		jumpToLatest();
 		try {
 			if (!conversation.chat_session_id) {
 				// A conversation of a non-chat trigger type (task_assigned,
@@ -300,21 +320,23 @@ export function ConversationView({
 				// prompt as the chat-session branch below: the server enforces
 				// the exact same parallelism/folder capacity check on this
 				// resume path (see services/api's resumeConversationMessage).
-				await sendWithBusyPrompt((onBusy) =>
-					projectId
-						? sendConversationMessage(
-								projectId,
-								conversation.id,
-								text,
-								contextItems,
-								onBusy,
-							)
-						: sendGlobalConversationMessage(
-								conversation.id,
-								text,
-								contextItems,
-								onBusy,
-							),
+				await sendWithBusyPrompt(
+					(onBusy) =>
+						projectId
+							? sendConversationMessage(
+									projectId,
+									conversation.id,
+									text,
+									contextItems,
+									onBusy,
+								)
+							: sendGlobalConversationMessage(
+									conversation.id,
+									text,
+									contextItems,
+									onBusy,
+								),
+					busyHooks,
 				);
 				useContextInjectionStore.getState().clear();
 				invalidate();
@@ -322,18 +344,20 @@ export function ConversationView({
 			}
 
 			const chatSessionId = conversation.chat_session_id;
-			const result = await sendWithBusyPrompt((onBusy) =>
-				projectId
-					? sendChatMessage(projectId, conversation.agent_id, chatSessionId, {
-							message: text,
-							contextItems,
-							on_busy: onBusy,
-						})
-					: sendGlobalChatMessage(chatSessionId, {
-							message: text,
-							contextItems,
-							on_busy: onBusy,
-						}),
+			const result = await sendWithBusyPrompt(
+				(onBusy) =>
+					projectId
+						? sendChatMessage(projectId, conversation.agent_id, chatSessionId, {
+								message: text,
+								contextItems,
+								on_busy: onBusy,
+							})
+						: sendGlobalChatMessage(chatSessionId, {
+								message: text,
+								contextItems,
+								on_busy: onBusy,
+							}),
+				busyHooks,
 			);
 			useContextInjectionStore.getState().clear();
 			// The previous conversation may have already ended (explicitly
@@ -349,10 +373,12 @@ export function ConversationView({
 					).queryKey,
 					result,
 				);
+				optimistic.follow(result.id);
 				setConversationId(result.id);
 			}
 			invalidate(result.id);
 		} catch (err) {
+			optimistic.discard();
 			const key = chatSessionAccessDeniedKey(err);
 			if (key) {
 				setSendError(t(key));

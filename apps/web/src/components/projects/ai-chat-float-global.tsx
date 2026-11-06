@@ -19,7 +19,6 @@ import { useGlobalAgentRealtime } from "@/hooks/use-global-agent-realtime";
 import {
 	type AgentConversation,
 	CONVERSATION_HEARTBEAT_INTERVAL_MS,
-	globalConversationEventsQueryOptions,
 	globalConversationQueryOptions,
 	heartbeatGlobalConversation,
 	pauseGlobalConversation,
@@ -39,6 +38,8 @@ import {
 	extractTextOnlyContent,
 	isEnvironmentReady,
 } from "./agents/conversation-to-thread-messages";
+import { useConversationEventWindow } from "./agents/use-conversation-event-window";
+import { useOptimisticUserMessage } from "./agents/use-optimistic-user-message";
 
 // Global sibling of ai-chat-float.tsx's AIChatFloat — same floating-panel UX,
 // but for chatting with a global agent from the home page / admin pages,
@@ -97,9 +98,12 @@ export function GlobalAIChatFloat() {
 		...globalConversationQueryOptions(conversationId ?? ""),
 		enabled: !!conversationId,
 	});
-	const { data: events = [] } = useQuery({
-		...globalConversationEventsQueryOptions(conversationId ?? ""),
-		enabled: !!conversationId,
+	// Live window (realtime events merged in), not the plain events query:
+	// persisted events only land in the live tail cache, so the plain query
+	// stayed stale until the next status change.
+	const { events } = useConversationEventWindow({
+		conversationId: conversationId ?? "",
+		ready: !!conversationId,
 	});
 	// GET /agents (chattableAgentsQueryOptions) rather than the admin-only
 	// GET /admin/agents/:id — any user chatting with a global agent may not
@@ -110,16 +114,26 @@ export function GlobalAIChatFloat() {
 	const isACP = agent?.agent_type === "acp";
 	const environmentReady = isEnvironmentReady(isACP, events);
 
+	const optimistic = useOptimisticUserMessage(
+		events,
+		conversationId,
+		conversation?.status === "queued",
+	);
 	const isRunning =
-		conversation?.status === "queued" || conversation?.status === "running";
+		optimistic.pending ||
+		conversation?.status === "queued" ||
+		conversation?.status === "running";
 	const isTerminal =
 		conversation?.status === "finished" ||
 		conversation?.status === "failed" ||
 		conversation?.status === "stopped";
 
 	const messages = useMemo(
-		() => (conversationId ? eventsToThreadMessages(events, isRunning) : []),
-		[events, isRunning, conversationId],
+		() =>
+			conversationId || optimistic.pending
+				? eventsToThreadMessages(optimistic.events, isRunning)
+				: [],
+		[optimistic.events, optimistic.pending, isRunning, conversationId],
 	);
 
 	const invalidate = (id: string | null = conversationId) => {
@@ -143,6 +157,7 @@ export function GlobalAIChatFloat() {
 		const contextItems = useContextInjectionStore.getState().items;
 
 		setIsSubmitting(true);
+		optimistic.begin({ text, contextItems });
 		try {
 			if (!conversationId) {
 				if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
@@ -161,6 +176,7 @@ export function GlobalAIChatFloat() {
 					globalConversationQueryOptions(result.conversation.id).queryKey,
 					result.conversation,
 				);
+				optimistic.follow(result.conversation.id);
 				setConversationId(result.conversation.id);
 				void qc.invalidateQueries({
 					queryKey: ["global-chat", "conversations"],
@@ -194,9 +210,13 @@ export function GlobalAIChatFloat() {
 					globalConversationQueryOptions(result.id).queryKey,
 					result,
 				);
+				optimistic.follow(result.id);
 				setConversationId(result.id);
 			}
 			invalidate(result.id);
+		} catch (err) {
+			optimistic.discard();
+			throw err;
 		} finally {
 			setIsSubmitting(false);
 		}

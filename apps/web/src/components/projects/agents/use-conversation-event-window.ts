@@ -11,6 +11,7 @@ import {
 	conversationEventsTailKey,
 	conversationEventsTailQueryOptions,
 	conversationEventWindowInfiniteOptions,
+	conversationEventWindowKey,
 } from "@/lib/agent-api";
 
 export type UseConversationEventWindow = {
@@ -124,6 +125,24 @@ export function useConversationEventWindow({
 			},
 		);
 	}, [queryClient, conversationId, lastPagedIndex]);
+
+	// A realtime message dropped between the paged events and the first live
+	// one leaves a hole that eventsToThreadMessages can't render across, and
+	// nothing else refetches while the conversation sits in one status. Heal
+	// it with one refetch per distinct hole (a hole that survives the refetch
+	// is just indexes the server filters out, and has the same key again).
+	const firstLiveIndex = liveEvents[0]?.event_index ?? -1;
+	const healedGapRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (!ready || lastPagedIndex < 0 || firstLiveIndex < 0) return;
+		if (firstLiveIndex <= lastPagedIndex + 1) return;
+		const key = `${conversationId}:${lastPagedIndex}:${firstLiveIndex}`;
+		if (healedGapRef.current === key) return;
+		healedGapRef.current = key;
+		void queryClient.invalidateQueries({
+			queryKey: conversationEventWindowKey(conversationId),
+		});
+	}, [queryClient, conversationId, ready, lastPagedIndex, firstLiveIndex]);
 
 	// Live events already merged in stay visible even after `following` flips
 	// off mid-turn — e.g. expanding a tall tool call's panel nudges the
