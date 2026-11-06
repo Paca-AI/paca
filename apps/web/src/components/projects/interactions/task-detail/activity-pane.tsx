@@ -16,6 +16,7 @@ import {
 	updateTask,
 } from "@/lib/interaction-api";
 import {
+	customFieldsQueryOptions,
 	projectMembersQueryOptions,
 	taskStatusesQueryOptions,
 	taskTypesQueryOptions,
@@ -24,6 +25,7 @@ import { describeTaskChange } from "./activity-item";
 
 type FieldChange = {
 	field: string;
+	field_key?: string;
 	old?: unknown;
 	new?: unknown;
 };
@@ -46,6 +48,7 @@ export function TaskActivityPane({
 	const { data: currentUser } = useQuery(currentUserQueryOptions);
 	const { data: statusesData } = useQuery(taskStatusesQueryOptions(projectId));
 	const { data: taskTypesData } = useQuery(taskTypesQueryOptions(projectId));
+	const { data: customFieldsData } = useQuery(customFieldsQueryOptions(projectId));
 
 	const myMemberId = useMemo(() => {
 		if (!currentUser || !membersData) return undefined;
@@ -244,6 +247,26 @@ export function TaskActivityPane({
 							);
 						}
 						break;
+					case "story_points":
+						payload.story_points =
+							typeof oldVal === "number" ? oldVal : null;
+						break;
+					default: {
+						const key =
+							ch.field_key ||
+							customFieldsData?.find(
+								(cf) =>
+									cf.display_name === ch.field ||
+									cf.field_key === ch.field,
+							)?.field_key;
+						if (key) {
+							if (!payload.custom_fields) {
+								payload.custom_fields = {};
+							}
+							payload.custom_fields[key] = oldVal ?? null;
+						}
+						break;
+					}
 				}
 			}
 
@@ -253,7 +276,7 @@ export function TaskActivityPane({
 				queryKey: ["projects", projectId, "tasks", taskId],
 			});
 		},
-		[projectId, taskId, statusesData, taskTypesData, qc],
+		[projectId, taskId, statusesData, taskTypesData, customFieldsData, qc],
 	);
 
 	const getDiffContent = useCallback(

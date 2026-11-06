@@ -88,9 +88,10 @@ type Activity struct {
 
 // FieldChange records a single before/after value for task.updated events.
 type FieldChange struct {
-	Field string `json:"field"`
-	Old   any    `json:"old"`
-	New   any    `json:"new"`
+	Field    string `json:"field"`
+	FieldKey string `json:"field_key,omitempty"`
+	Old      any    `json:"old"`
+	New      any    `json:"new"`
 }
 
 // Origin identifies what caused an activity, independently of the actor.

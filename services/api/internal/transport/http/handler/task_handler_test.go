@@ -285,6 +285,9 @@ func applyFakeTaskUpdate(t *taskdom.Task, in taskdom.UpdateTaskInput) {
 	if in.Description != nil {
 		t.Description = *in.Description
 	}
+	if in.CustomFields != nil {
+		t.CustomFields = *in.CustomFields
+	}
 }
 
 func (f *fakeTaskSvc) DeleteTask(_ context.Context, _, id uuid.UUID) error {
@@ -1283,6 +1286,146 @@ func TestTaskHandler_UpdateTask_AssignmentModeOnlyRecordsActivity(t *testing.T) 
 	}
 	if !found {
 		t.Fatal("expected a task.updated activity recording the assignment_mode change, found none — TaskAutoAssignConsumer would never be woken up for this task")
+	}
+}
+
+func TestTaskHandler_UpdateTask_CustomFields_RecordsActivities(t *testing.T) {
+	svc := newFakeTaskSvc()
+	actSvc := newFakeActivitySvc()
+	r := buildTaskHandlerRouterWithActivity(svc, actSvc)
+	projectID := uuid.New()
+	actorID := uuid.New()
+
+	// Set up custom field definitions in the fake task service
+	svc.customFields = []*taskdom.CustomFieldDefinition{
+		{
+			ID:          uuid.New(),
+			ProjectID:   projectID,
+			FieldKey:    "actual_dev_efforts",
+			DisplayName: "Actual Dev Efforts",
+			FieldType:   taskdom.FieldTypeNumber,
+		},
+		{
+			ID:          uuid.New(),
+			ProjectID:   projectID,
+			FieldKey:    "dev_completion_date",
+			DisplayName: "Development Completion Date",
+			FieldType:   taskdom.FieldTypeDate,
+		},
+		{
+			ID:          uuid.New(),
+			ProjectID:   projectID,
+			FieldKey:    "qa_by",
+			DisplayName: "QA by",
+			FieldType:   taskdom.FieldTypeText,
+		},
+		{
+			ID:          uuid.New(),
+			ProjectID:   projectID,
+			FieldKey:    "qa_start_date",
+			DisplayName: "QA Start Date",
+			FieldType:   taskdom.FieldTypeDate,
+		},
+		{
+			ID:          uuid.New(),
+			ProjectID:   projectID,
+			FieldKey:    "qa_end_date",
+			DisplayName: "QA End Date",
+			FieldType:   taskdom.FieldTypeDate,
+		},
+	}
+
+	createW := doTaskRequestWithActor(r, http.MethodPost,
+		fmt.Sprintf("/projects/%s/tasks", projectID),
+		map[string]any{
+			"title": "Task with custom fields",
+			"custom_fields": map[string]any{
+				"actual_dev_efforts": 2,
+			},
+		},
+		actorID,
+	)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create: got %d: %s", createW.Code, createW.Body.String())
+	}
+	taskID := decodeTaskID(t, createW.Body.Bytes())
+
+	// Explicitly populate task's initial CustomFields in the fake
+	svc.mu.Lock()
+	svc.tasks[uuid.MustParse(taskID)].CustomFields = map[string]any{
+		"actual_dev_efforts": float64(2),
+	}
+	svc.mu.Unlock()
+
+	patchW := doTaskRequestWithActor(r, http.MethodPatch,
+		fmt.Sprintf("/projects/%s/tasks/%s", projectID, taskID),
+		map[string]any{
+			"custom_fields": map[string]any{
+				"actual_dev_efforts":  float64(5),
+				"dev_completion_date": "2026-11-10",
+				"qa_by":               "Jane Doe",
+				"qa_start_date":       "2026-11-11",
+				"qa_end_date":         "2026-11-15",
+			},
+		},
+		actorID,
+	)
+	if patchW.Code != http.StatusOK {
+		t.Fatalf("patch: expected 200, got %d: %s", patchW.Code, patchW.Body.String())
+	}
+
+	activities, err := actSvc.ListActivities(context.Background(), projectID, uuid.MustParse(taskID))
+	if err != nil {
+		t.Fatalf("unexpected error listing activities: %v", err)
+	}
+
+	var changes []taskdom.FieldChange
+	for _, a := range activities {
+		if a.ActivityType == taskdom.ActivityTypeTaskUpdated {
+			var payload struct {
+				Changes []taskdom.FieldChange `json:"changes"`
+			}
+			if err := json.Unmarshal(a.Content, &payload); err == nil {
+				changes = append(changes, payload.Changes...)
+			}
+		}
+	}
+
+	if len(changes) == 0 {
+		t.Fatal("expected task.updated activity recording custom field changes, found none")
+	}
+
+	expectedFields := map[string]bool{
+		"Actual Dev Efforts":          false,
+		"Development Completion Date": false,
+		"QA by":                       false,
+		"QA Start Date":               false,
+		"QA End Date":                 false,
+	}
+
+	for _, ch := range changes {
+		if _, ok := expectedFields[ch.Field]; ok {
+			expectedFields[ch.Field] = true
+			if ch.Field == "Actual Dev Efforts" {
+				if ch.Old != float64(2) || ch.New != float64(5) {
+					t.Errorf("expected Actual Dev Efforts from 2 to 5, got old=%v, new=%v", ch.Old, ch.New)
+				}
+				if ch.FieldKey != "actual_dev_efforts" {
+					t.Errorf("expected FieldKey=actual_dev_efforts, got %q", ch.FieldKey)
+				}
+			}
+			if ch.Field == "QA by" {
+				if ch.Old != nil || ch.New != "Jane Doe" {
+					t.Errorf("expected QA by new='Jane Doe', got old=%v, new=%v", ch.Old, ch.New)
+				}
+			}
+		}
+	}
+
+	for field, found := range expectedFields {
+		if !found {
+			t.Errorf("expected change for custom field %q, but none recorded", field)
+		}
 	}
 }
 

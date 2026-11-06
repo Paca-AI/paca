@@ -5,6 +5,7 @@ import {
 	isBlocksContent,
 	textToBlocks,
 } from "@/components/shared/comment-blocknote";
+import { displayDate } from "./property-field/helpers";
 import { timeAgo } from "@/lib/time-ago";
 import { cn } from "@/lib/utils";
 import type { ActivityEntry } from "./types";
@@ -16,6 +17,7 @@ export type ActivityNameMaps = {
 
 type FieldChange = {
 	field: string;
+	field_key?: string;
 	old?: unknown;
 	new?: unknown;
 };
@@ -25,6 +27,13 @@ function label(value: unknown, t: TFunction<"projects">): string {
 		return t("taskDetail.activity.none");
 	if (Array.isArray(value))
 		return value.length > 0 ? value.join(", ") : t("taskDetail.activity.none");
+	if (
+		typeof value === "string" &&
+		/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?Z?)?$/.test(value)
+	) {
+		const formatted = displayDate(value);
+		if (formatted) return formatted;
+	}
 	return String(value);
 }
 
@@ -125,10 +134,30 @@ export function describeTaskChange(
 			return t("taskDetail.activity.updatedTags");
 		case "custom_fields":
 			return t("taskDetail.activity.updatedCustomFields");
-		default:
+		default: {
+			const fieldName = change.field.replace(/_/g, " ");
+			if (hasOld && hasNew) {
+				return t("taskDetail.activity.changedField", {
+					field: fieldName,
+					oldVal,
+					newVal,
+				});
+			}
+			if (hasNew) {
+				return t("taskDetail.activity.setField", {
+					field: fieldName,
+					newVal,
+				});
+			}
+			if (hasOld) {
+				return t("taskDetail.activity.clearedField", {
+					field: fieldName,
+				});
+			}
 			return t("taskDetail.activity.updatedField", {
-				field: change.field.replace(/_/g, " "),
+				field: fieldName,
 			});
+		}
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -725,7 +726,35 @@ func (c *TaskAutofillConsumer) buildAnswerUpdate(ctx context.Context, projectID 
 	}
 	if customDirty {
 		in.CustomFields = &customFields
-		changes = append(changes, taskdom.FieldChange{Field: "custom_fields"})
+		fieldDefs, _ := c.taskService.ListCustomFieldDefinitions(ctx, projectID)
+		displayNameMap := make(map[string]string, len(fieldDefs))
+		for _, fd := range fieldDefs {
+			displayNameMap[fd.FieldKey] = fd.DisplayName
+		}
+		var sortedKeys []string
+		for k := range customFields {
+			sortedKeys = append(sortedKeys, k)
+		}
+		sort.Strings(sortedKeys)
+		for _, fk := range sortedKeys {
+			nVal := customFields[fk]
+			var oldVal any
+			if task.CustomFields != nil {
+				oldVal = task.CustomFields[fk]
+			}
+			if !customFieldValuesEqual(oldVal, nVal) {
+				fieldName := fk
+				if dn := displayNameMap[fk]; dn != "" {
+					fieldName = dn
+				}
+				changes = append(changes, taskdom.FieldChange{
+					Field:    fieldName,
+					FieldKey: fk,
+					Old:      oldVal,
+					New:      nVal,
+				})
+			}
+		}
 		dirty = true
 	}
 

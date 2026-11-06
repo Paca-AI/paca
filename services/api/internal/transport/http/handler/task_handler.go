@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -1306,14 +1307,89 @@ func (h *TaskHandler) taskChangedFields(ctx context.Context, old *taskdom.Task, 
 	}
 
 	if req.CustomFields != nil {
-		oldJSON, oldErr := json.Marshal(old.CustomFields)
-		newJSON, newErr := json.Marshal(*req.CustomFields)
-		if oldErr != nil || newErr != nil || string(oldJSON) != string(newJSON) {
-			changes = append(changes, taskdom.FieldChange{Field: "custom_fields"})
+		cfs, _ := h.svc.ListCustomFieldDefinitions(ctx, old.ProjectID)
+		displayNameMap := make(map[string]string, len(cfs))
+		for _, cf := range cfs {
+			displayNameMap[cf.FieldKey] = cf.DisplayName
+		}
+
+		allKeys := make(map[string]struct{})
+		if old.CustomFields != nil {
+			for k := range old.CustomFields {
+				allKeys[k] = struct{}{}
+			}
+		}
+		for k := range *req.CustomFields {
+			allKeys[k] = struct{}{}
+		}
+
+		sortedKeys := make([]string, 0, len(allKeys))
+		for k := range allKeys {
+			sortedKeys = append(sortedKeys, k)
+		}
+		sort.Strings(sortedKeys)
+
+		for _, k := range sortedKeys {
+			var oldVal any
+			var hadOld bool
+			if old.CustomFields != nil {
+				oldVal, hadOld = old.CustomFields[k]
+			}
+			newVal, hadNew := (*req.CustomFields)[k]
+
+			if isCustomFieldEmpty(hadOld, oldVal) && isCustomFieldEmpty(hadNew, newVal) {
+				continue
+			}
+
+			if !customFieldValuesEqual(oldVal, newVal) {
+				fieldName := k
+				if dn, ok := displayNameMap[k]; ok && dn != "" {
+					fieldName = dn
+				}
+				var finalOld any
+				if hadOld && !isCustomFieldEmpty(hadOld, oldVal) {
+					finalOld = oldVal
+				}
+				var finalNew any
+				if hadNew && !isCustomFieldEmpty(hadNew, newVal) {
+					finalNew = newVal
+				}
+				changes = append(changes, taskdom.FieldChange{
+					Field:    fieldName,
+					FieldKey: k,
+					Old:      finalOld,
+					New:      finalNew,
+				})
+			}
 		}
 	}
 
 	return changes
+}
+
+// customFieldValuesEqual compares two custom-field values by their canonical JSON encoding.
+func customFieldValuesEqual(a, b any) bool {
+	aj, aErr := json.Marshal(a)
+	bj, bErr := json.Marshal(b)
+	if aErr != nil || bErr != nil {
+		return false
+	}
+	return bytes.Equal(aj, bj)
+}
+
+func isCustomFieldEmpty(had bool, val any) bool {
+	if !had || val == nil {
+		return true
+	}
+	switch v := val.(type) {
+	case string:
+		return strings.TrimSpace(v) == ""
+	case []any:
+		return len(v) == 0
+	case []string:
+		return len(v) == 0
+	}
+	return false
 }
 
 // resolveStatusName looks up a status by ID and returns its name, falling back
