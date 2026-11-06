@@ -26,9 +26,12 @@ func dialBridge(t *testing.T, ts *httptest.Server) *websocket.Conn {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http")+"/agent-bridge/ws", nil)
+	conn, dialResp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http")+"/agent-bridge/ws", nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
+	}
+	if dialResp != nil && dialResp.Body != nil {
+		_ = dialResp.Body.Close()
 	}
 	t.Cleanup(func() { _ = conn.CloseNow() })
 	return conn
@@ -64,7 +67,11 @@ func TestHandleWSRefusesWhenHandshakeBudgetIsExhausted(t *testing.T) {
 		}
 	})
 
-	resp, err := http.Get(ts.URL + "/agent-bridge/ws")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/agent-bridge/ws", nil)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
