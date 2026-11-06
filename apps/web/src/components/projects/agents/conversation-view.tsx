@@ -241,7 +241,11 @@ export function ConversationView({
 
 	// Shows the sender's message and the "thinking" state immediately, rather
 	// than once the server has persisted the turn's user_message event.
-	const optimistic = useOptimisticUserMessage(events, conversationId);
+	const optimistic = useOptimisticUserMessage(
+		events,
+		conversationId,
+		conversation?.status === "queued",
+	);
 	const isRunning =
 		optimistic.pending ||
 		conversation?.status === "queued" ||

@@ -114,7 +114,11 @@ export function GlobalAIChatFloat() {
 	const isACP = agent?.agent_type === "acp";
 	const environmentReady = isEnvironmentReady(isACP, events);
 
-	const optimistic = useOptimisticUserMessage(events, conversationId);
+	const optimistic = useOptimisticUserMessage(
+		events,
+		conversationId,
+		conversation?.status === "queued",
+	);
 	const isRunning =
 		optimistic.pending ||
 		conversation?.status === "queued" ||

@@ -44,6 +44,9 @@ export type UseOptimisticUserMessage = {
 export function useOptimisticUserMessage(
 	events: AgentConversationEvent[],
 	conversationId: string | null,
+	/** True while the echo is legitimately delayed (a queued conversation
+	 *  waiting for a slot): the safety-net timeout is held off meanwhile. */
+	holdTimeout = false,
 ): UseOptimisticUserMessage {
 	const [pendingMessage, setPendingMessage] = useState<PendingMessage | null>(
 		null,
@@ -81,12 +84,12 @@ export function useOptimisticUserMessage(
 	// and a permanent "thinking" state.
 	const startedAt = pendingMessage?.createdAt;
 	useEffect(() => {
-		if (!startedAt) return;
+		if (!startedAt || holdTimeout) return;
 		const left =
 			OPTIMISTIC_MESSAGE_TTL_MS - (Date.now() - new Date(startedAt).getTime());
 		const timer = setTimeout(() => setPendingMessage(null), Math.max(0, left));
 		return () => clearTimeout(timer);
-	}, [startedAt]);
+	}, [startedAt, holdTimeout]);
 
 	// A different conversation's overlay must not linger.
 	useEffect(() => {

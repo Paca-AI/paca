@@ -90,4 +90,22 @@ describe("useOptimisticUserMessage", () => {
 		rerender({ events: [userEvent(0, "a b")] });
 		expect(result.current.pending).toBe(false);
 	});
+
+	it("keeps the overlay past the TTL while the conversation is queued", () => {
+		vi.useFakeTimers();
+		const { result, rerender } = renderHook(
+			({ hold }) => useOptimisticUserMessage([], "c1", hold),
+			{ initialProps: { hold: true } },
+		);
+		act(() => result.current.begin({ text: "x", contextItems: [] }));
+		act(() => {
+			vi.advanceTimersByTime(OPTIMISTIC_MESSAGE_TTL_MS * 2);
+		});
+		expect(result.current.pending).toBe(true);
+		rerender({ hold: false });
+		act(() => {
+			vi.advanceTimersByTime(1);
+		});
+		expect(result.current.pending).toBe(false);
+	});
 });
