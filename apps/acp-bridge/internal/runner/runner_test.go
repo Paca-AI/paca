@@ -880,17 +880,17 @@ func TestInterruptStopSupersedesPause(t *testing.T) {
 
 	r.Interrupt("conv-1", true)
 	state.mu.Lock()
-	paused := state.pauseRequested
+	finishRequested := state.finishRequested
 	state.mu.Unlock()
-	if !paused {
-		t.Fatal("pause_turn did not mark the turn as pause-requested")
+	if !finishRequested {
+		t.Fatal("pause_turn did not mark the turn as finish-requested")
 	}
 
 	r.Interrupt("conv-1", false)
 	state.mu.Lock()
-	paused = state.pauseRequested
+	finishRequested = state.finishRequested
 	state.mu.Unlock()
-	if paused {
-		t.Fatal("stop_turn after pause_turn left the turn pause-requested; it would report finished over stopped")
+	if finishRequested {
+		t.Fatal("stop_turn after pause_turn left the turn finish-requested; it would report finished over stopped")
 	}
 }

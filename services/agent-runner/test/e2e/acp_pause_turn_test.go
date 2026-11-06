@@ -20,10 +20,11 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
 )
 
-// TestACPPauseTurn covers the composer's stop button for an ACP agent: the
-// control channel delivers pause_turn to the bridge, and the "finished" status
-// the bridge reports back moves the conversation out of "running" and is
-// never overwritten by the dispatch watchdog's fail path.
+// TestACPPauseTurn covers the composer's stop button for an ACP agent (the
+// pause_turn message, kept by that name on the wire): the control channel
+// delivers pause_turn to the bridge, and the "finished" status the bridge
+// reports back moves the conversation out of "running". The watchdog checks
+// guard that this terminal status is never overwritten by its fail path.
 func TestACPPauseTurn(t *testing.T) {
 	env := newE2EEnv(t)
 	ctx := context.Background()

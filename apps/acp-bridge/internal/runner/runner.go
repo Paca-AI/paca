@@ -69,10 +69,14 @@ type conversationState struct {
 	// lets Interrupt's grace-period timer stop waiting early instead of
 	// always sleeping the full interruptGracePeriod.
 	turnDone chan struct{}
-	// pauseRequested is set by a pause_turn Interrupt so the turn, once it
-	// unwinds, reports "finished" — nothing else writes that status for an ACP
-	// conversation (ACP has no "paused"/waiting-for-reply state). Reset at the start of every turn. Guarded by mu.
-	pauseRequested bool
+	// finishRequested is set by a pause_turn Interrupt (the composer's stop
+	// button) so the turn, once it unwinds, reports "finished" — nothing else
+	// writes that status for an ACP conversation, which has no
+	// "paused"/waiting-for-reply state. It is named for the status it causes
+	// while the wire message stays pause_turn. "finished" is terminal, so a
+	// stop_turn that follows must clear it or it would overwrite "stopped".
+	// Reset at the start of every turn. Guarded by mu.
+	finishRequested bool
 
 	// currentConversationID/currentProjectID identify the conversation whose
 	// turn is running right now. With per-task (or per-agent) session scope a
@@ -316,7 +320,7 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	turnCtx, cancel := context.WithCancel(context.Background())
 	state.turnCancel = cancel
 	state.turnDone = make(chan struct{})
-	state.pauseRequested = false
+	state.finishRequested = false
 	state.mu.Unlock()
 
 	go r.runTurn(turnCtx, state, conversationID, projectID, message, displayMessage, contextItems)
@@ -351,7 +355,7 @@ func (r *Runner) Interrupt(conversationID string, pause bool) {
 	// same turn clears it: the API already wrote "stopped" and a "finished"
 	// report would overwrite it.
 	if running {
-		state.pauseRequested = pause
+		state.finishRequested = pause
 	}
 	state.mu.Unlock()
 	if !running {
@@ -433,14 +437,10 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 			r.reportFinishedIfRequested(state, conversationID, projectID)
 			return
 		}
-		state.mu.Lock()
-		paused := state.pauseRequested
-		state.mu.Unlock()
-		if paused {
-			// The force-kill after the grace period closed the transport
-			// out from under Prompt, surfacing as a non-Canceled error;
-			// the user asked for a pause, so don't report that as failed.
-			r.reportStatus(state, conversationID, projectID, "finished", "")
+		// The force-kill after the grace period closed the transport out
+		// from under Prompt, surfacing as a non-Canceled error; the user
+		// asked to stop, so don't report that as failed.
+		if r.reportFinishedIfRequested(state, conversationID, projectID) {
 			return
 		}
 		r.log.Error("runner: conversation turn failed", "conversation_id", conversationID, "error", err)
@@ -469,13 +469,15 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 // "waiting for reply" state — only an ephemeral-sandbox agent does — so a
 // user-interrupted turn simply ends as finished. A stop_turn reports nothing:
 // the API already wrote "stopped", and a late "finished" would overwrite it.
-func (r *Runner) reportFinishedIfRequested(state *conversationState, conversationID, projectID string) {
+// It reports whether it sent the status.
+func (r *Runner) reportFinishedIfRequested(state *conversationState, conversationID, projectID string) bool {
 	state.mu.Lock()
-	paused := state.pauseRequested
+	requested := state.finishRequested
 	state.mu.Unlock()
-	if paused {
+	if requested {
 		r.reportStatus(state, conversationID, projectID, "finished", "")
 	}
+	return requested
 }
 
 // ensureSession returns the conversation's ACP client and session id,
