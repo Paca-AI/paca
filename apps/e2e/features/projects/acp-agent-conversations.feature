@@ -7,7 +7,8 @@ Feature: Conversations with an ACP agent
 
   The composer's stop button on a conversation calls the pause endpoint. The
   API writes no status for a pause, so the conversation only leaves
-  "Running" once the bridge reports "paused" after cancelling the turn. A
+  "Running" once the bridge reports "finished" after cancelling the turn (an
+  ACP conversation has no "Waiting for reply" state). A
   full Stop (the header button) is recorded by the API as "Stopped" on its
   own, and the bridge must not report anything that overwrites it.
 
@@ -30,8 +31,8 @@ Feature: Conversations with an ACP agent
       Given the user has a running chat conversation with the agent open
       When the user presses the "Stop generating" button
       Then the bridge should receive a "pause_turn" for that conversation
-      When the bridge reports the turn as "paused"
-      Then the conversation badge should read "Waiting for reply"
+      When the bridge reports the turn as "finished"
+      Then the conversation badge should read "Finished"
       And the "Stop generating" button should no longer be shown
 
     Scenario: A full Stop is recorded as Stopped and dispatches stop_turn to the bridge
@@ -41,6 +42,6 @@ Feature: Conversations with an ACP agent
       And the conversation should be "stopped"
       And the conversation badge should read "Stopped"
 
-  # That the bridge itself reports nothing after a stop (and "paused" after a
+  # That the bridge itself reports nothing after a stop (and "finished" after a
   # pause, including when a stop supersedes a pause) is covered by the
   # acp-bridge runner tests, since the fake bridge here plays the daemon.

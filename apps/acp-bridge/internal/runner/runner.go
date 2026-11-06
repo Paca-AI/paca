@@ -457,7 +457,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 		// old bridge reports no turn_status for an interrupted turn
 		// either; dispatching stop_turn/pause_turn is treated
 		// server-side as sufficient on its own — except for a pause, whose
-		// "paused" status only the bridge can report.
+		// "finished" status only the bridge can report.
 		r.reportFinishedIfRequested(state, conversationID, projectID)
 		return
 	}
