@@ -27,6 +27,19 @@ import (
 // _HELLO_TIMEOUT_SECONDS.
 const helloTimeout = 10 * time.Second
 
+// helloReadLimit bounds the pre-auth frame. A hello carries only an agent id
+// and a token, so a peer that has not authenticated yet must not be able to
+// allocate the full bridge budget. The limit is raised once the token checks
+// out, below in handleWS.
+const helloReadLimit = 1 << 10
+
+// maxPendingHellos caps concurrent unauthenticated handshakes. Excess
+// upgrades are refused up front instead of occupying the 10s hello window.
+const maxPendingHellos = 128
+
+// helloSlots is the process-wide budget of unauthenticated handshakes.
+var helloSlots = make(chan struct{}, maxPendingHellos)
+
 // bridgeMessageReadLimit overrides coder/websocket's 32KiB default (see
 // handleWS) — generous enough for a large tool-call payload (verbose
 // command output, a sizeable file diff) without leaving this per-connection
@@ -145,19 +158,28 @@ type helloFrame struct {
 // self-describing handshake that degrades gracefully across daemon/server
 // version skew, which headers rejected pre-accept wouldn't).
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	select {
+	case helloSlots <- struct{}{}:
+	default:
+		// Refuse before upgrading: a saturated service must not accept more
+		// sockets it cannot authenticate or bound.
+		http.Error(w, "too many pending bridge handshakes", http.StatusServiceUnavailable)
+		return
+	}
+	held := true
+	release := func() {
+		if held {
+			<-helloSlots
+			held = false
+		}
+	}
+	defer release()
+
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		return
 	}
-	// coder/websocket defaults to a 32KiB read limit — comfortably too
-	// small for a bridge daemon relaying a raw ACP event verbatim (a large
-	// command's output, or a sizeable file diff, both routinely exceed it),
-	// which surfaced as the daemon getting disconnected mid-conversation
-	// with "received close frame: status = StatusMessageTooBig". Bridge
-	// events are the only traffic this endpoint ever reads at any real
-	// size (hello/ping frames are tiny), so this is scoped to the whole
-	// connection rather than per-message.
-	conn.SetReadLimit(bridgeMessageReadLimit)
+	conn.SetReadLimit(helloReadLimit)
 
 	helloCtx, cancel := context.WithTimeout(r.Context(), helloTimeout)
 	var hello helloFrame
@@ -185,6 +207,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close(4401, "unauthorized")
 		return
 	}
+
+	// Authenticated: free the handshake budget and allow bridge-sized frames.
+	release()
+	conn.SetReadLimit(bridgeMessageReadLimit)
+
+	// TODO: cover this raise with a post-auth frame above helloReadLimit
+	// (the e2e fake bridge currently sends only a small event payload).
 
 	sessionID, err := s.Registry.Register(r.Context(), agentID, cfg.ProjectID, wsConn{conn})
 	if err != nil {

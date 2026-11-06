@@ -171,6 +171,8 @@ There is no REST equivalent to `services/ai-agent`'s `/conversations/:id/pause` 
 
 The three internal endpoints require `X-Internal-Token` matching `INTERNAL_API_KEY` — `services/api`'s `AI_AGENT_INTERNAL_KEY` must equal this value.
 
+`/agent-bridge/ws` authenticates after the upgrade, with the `hello` frame (agent id plus bridge token). Because that handshake is unauthenticated until the frame arrives, it is bounded: at most `maxPendingHellos` (128) handshakes in flight per agent-runner process — excess upgrades get `503` before the socket is accepted — the `hello` frame may not exceed 1 KiB, and a peer that sends no `hello` within 10 s is closed. The 10 MiB bridge frame limit applies only after the token checks out. Anyone exempting this path from an edge/browser authentication layer inherits that bound and must not remove it.
+
 ---
 
 ## Environment Variables
