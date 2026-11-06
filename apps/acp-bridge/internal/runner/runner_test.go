@@ -784,10 +784,10 @@ func waitForTurnEnd(t *testing.T, state *conversationState) {
 	}
 }
 
-// TestEndToEndPauseReportsPaused: unlike a stop, a pause_turn must report
-// "paused" once the agent honors session/cancel — the API writes no status for
+// TestEndToEndPauseReportsFinished: unlike a stop, a pause_turn must report
+// "finished" once the agent honors session/cancel — the API writes no status for
 // a pause, so without this the conversation would stay "running" forever.
-func TestEndToEndPauseReportsPaused(t *testing.T) {
+func TestEndToEndPauseReportsFinished(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns a real subprocess")
 	}
@@ -812,17 +812,17 @@ func TestEndToEndPauseReportsPaused(t *testing.T) {
 
 	r.Interrupt("conv-1", true)
 
-	msg := waitForStatus(t, sent, "paused")
+	msg := waitForStatus(t, sent, "finished")
 	if msg["conversation_id"] != "conv-1" {
-		t.Fatalf("paused status for %v, want conv-1", msg["conversation_id"])
+		t.Fatalf("finished status for %v, want conv-1", msg["conversation_id"])
 	}
 	waitForTurnEnd(t, state)
 }
 
-// TestEndToEndPauseDuringSessionSetupReportsPaused: the same, when the pause
+// TestEndToEndPauseDuringSessionSetupReportsFinished: the same, when the pause
 // lands while the subprocess is still spawning (Interrupt's client == nil
 // branch, which unwinds via context.Canceled).
-func TestEndToEndPauseDuringSessionSetupReportsPaused(t *testing.T) {
+func TestEndToEndPauseDuringSessionSetupReportsFinished(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns a real subprocess")
 	}
@@ -859,13 +859,13 @@ func TestEndToEndPauseDuringSessionSetupReportsPaused(t *testing.T) {
 
 	r.Interrupt("conv-1", true)
 
-	waitForStatus(t, sent, "paused")
+	waitForStatus(t, sent, "finished")
 	waitForTurnEnd(t, state)
 }
 
 // TestInterruptStopSupersedesPause: a stop_turn that follows a pause_turn on
 // the same turn clears the pending pause, so the turn reports nothing — the
-// API already wrote "stopped" and a "paused" would overwrite it.
+// API already wrote "stopped" and a "finished" would overwrite it.
 func TestInterruptStopSupersedesPause(t *testing.T) {
 	r, _ := newTestRunner(t)
 	state := &conversationState{
@@ -880,17 +880,17 @@ func TestInterruptStopSupersedesPause(t *testing.T) {
 
 	r.Interrupt("conv-1", true)
 	state.mu.Lock()
-	paused := state.pauseRequested
+	finishRequested := state.finishRequested
 	state.mu.Unlock()
-	if !paused {
-		t.Fatal("pause_turn did not mark the turn as pause-requested")
+	if !finishRequested {
+		t.Fatal("pause_turn did not mark the turn as finish-requested")
 	}
 
 	r.Interrupt("conv-1", false)
 	state.mu.Lock()
-	paused = state.pauseRequested
+	finishRequested = state.finishRequested
 	state.mu.Unlock()
-	if paused {
-		t.Fatal("stop_turn after pause_turn left the turn pause-requested; it would report paused over stopped")
+	if finishRequested {
+		t.Fatal("stop_turn after pause_turn left the turn finish-requested; it would report finished over stopped")
 	}
 }
