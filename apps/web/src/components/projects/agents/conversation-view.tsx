@@ -297,6 +297,11 @@ export function ConversationView({
 
 		setSendError(null);
 		optimistic.begin({ text, contextItems });
+		// While the busy dialog is open the message hasn't been sent yet.
+		const busyHooks = {
+			onAsk: optimistic.discard,
+			onResume: () => optimistic.begin({ text, contextItems }),
+		};
 		// Sending is the reader asking to see the reply: without this a reader
 		// who had scrolled up keeps `following` off, and everything that
 		// arrives afterwards (their own message included) is withheld.
@@ -311,21 +316,23 @@ export function ConversationView({
 				// prompt as the chat-session branch below: the server enforces
 				// the exact same parallelism/folder capacity check on this
 				// resume path (see services/api's resumeConversationMessage).
-				await sendWithBusyPrompt((onBusy) =>
-					projectId
-						? sendConversationMessage(
-								projectId,
-								conversation.id,
-								text,
-								contextItems,
-								onBusy,
-							)
-						: sendGlobalConversationMessage(
-								conversation.id,
-								text,
-								contextItems,
-								onBusy,
-							),
+				await sendWithBusyPrompt(
+					(onBusy) =>
+						projectId
+							? sendConversationMessage(
+									projectId,
+									conversation.id,
+									text,
+									contextItems,
+									onBusy,
+								)
+							: sendGlobalConversationMessage(
+									conversation.id,
+									text,
+									contextItems,
+									onBusy,
+								),
+					busyHooks,
 				);
 				useContextInjectionStore.getState().clear();
 				invalidate();
@@ -333,18 +340,20 @@ export function ConversationView({
 			}
 
 			const chatSessionId = conversation.chat_session_id;
-			const result = await sendWithBusyPrompt((onBusy) =>
-				projectId
-					? sendChatMessage(projectId, conversation.agent_id, chatSessionId, {
-							message: text,
-							contextItems,
-							on_busy: onBusy,
-						})
-					: sendGlobalChatMessage(chatSessionId, {
-							message: text,
-							contextItems,
-							on_busy: onBusy,
-						}),
+			const result = await sendWithBusyPrompt(
+				(onBusy) =>
+					projectId
+						? sendChatMessage(projectId, conversation.agent_id, chatSessionId, {
+								message: text,
+								contextItems,
+								on_busy: onBusy,
+							})
+						: sendGlobalChatMessage(chatSessionId, {
+								message: text,
+								contextItems,
+								on_busy: onBusy,
+							}),
+				busyHooks,
 			);
 			useContextInjectionStore.getState().clear();
 			// The previous conversation may have already ended (explicitly

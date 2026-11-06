@@ -43,7 +43,8 @@ type PendingPrompt = PromptInput & { resolve: Resolve };
  * (another conversation, from any agent, is already running in the same
  * environment folder — see services/api's checkFolderCapacity) does it show
  * a dialog asking whether to queue the message or send it anyway, then
- * retries `fn` with the chosen on_busy value. Cancelling rejects with a
+ * retries `fn` with the chosen on_busy value (`hooks.onAsk` / `onResume`
+ * fire around the dialog, e.g. to hide and restore an optimistic message). Cancelling rejects with a
  * plain Error so the caller's own onNew sees a normal failed send rather
  * than silently swallowing the message.
  *
@@ -69,12 +70,21 @@ export function useAgentBusyPrompt() {
 	);
 
 	const send = useCallback(
-		async <T,>(fn: (onBusy?: OnBusyDecision) => Promise<T>): Promise<T> => {
+		async <T,>(
+			fn: (onBusy?: OnBusyDecision) => Promise<T>,
+			hooks?: { onAsk?: () => void; onResume?: () => void },
+		): Promise<T> => {
 			try {
 				return await fn();
 			} catch (err) {
 				const code = getApiErrorCode(err);
 				let decision: OnBusyDecision | "cancel";
+				if (
+					code === ApiErrorCode.AgentParallelismLimitReached ||
+					code === ApiErrorCode.AgentEnvironmentFolderBusy
+				) {
+					hooks?.onAsk?.();
+				}
 				if (code === ApiErrorCode.AgentParallelismLimitReached) {
 					const details = getApiErrorDetails(err);
 					decision = await ask({
@@ -90,6 +100,7 @@ export function useAgentBusyPrompt() {
 				if (decision === "cancel") {
 					throw new Error(t("agents.busyDialog.cancelledError"));
 				}
+				hooks?.onResume?.();
 				return fn(decision);
 			}
 		},

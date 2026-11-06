@@ -1,7 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentConversationEvent } from "@/lib/agent-api";
-import { useOptimisticUserMessage } from "./use-optimistic-user-message";
+import {
+	OPTIMISTIC_MESSAGE_TTL_MS,
+	useOptimisticUserMessage,
+} from "./use-optimistic-user-message";
 
 const userEvent = (index: number, text: string): AgentConversationEvent => ({
 	id: `e${index}`,
@@ -14,6 +17,8 @@ const userEvent = (index: number, text: string): AgentConversationEvent => ({
 });
 
 describe("useOptimisticUserMessage", () => {
+	afterEach(() => vi.useRealTimers());
+
 	it("shows the message at once and drops it when the persisted event arrives", () => {
 		const old = [userEvent(0, "hi")];
 		const { result, rerender } = renderHook(
@@ -49,5 +54,40 @@ describe("useOptimisticUserMessage", () => {
 		act(() => result.current.begin({ text: "x", contextItems: [] }));
 		act(() => result.current.discard());
 		expect(result.current.events).toHaveLength(0);
+	});
+
+	it("drops the overlay after the TTL if no echo ever matches", () => {
+		vi.useFakeTimers();
+		const { result } = renderHook(() => useOptimisticUserMessage([], "c1"));
+		act(() => result.current.begin({ text: "x", contextItems: [] }));
+		expect(result.current.pending).toBe(true);
+		act(() => {
+			vi.advanceTimersByTime(OPTIMISTIC_MESSAGE_TTL_MS + 1);
+		});
+		expect(result.current.pending).toBe(false);
+		expect(result.current.events).toHaveLength(0);
+	});
+
+	it("re-scopes to the new conversation on follow and drops on a foreign one", () => {
+		const { result, rerender } = renderHook(
+			({ id }) => useOptimisticUserMessage([], id),
+			{ initialProps: { id: "c1" } },
+		);
+		act(() => result.current.begin({ text: "x", contextItems: [] }));
+		act(() => result.current.follow("c2"));
+		rerender({ id: "c2" });
+		expect(result.current.pending).toBe(true);
+		rerender({ id: "c3" });
+		expect(result.current.pending).toBe(false);
+	});
+
+	it("matches an echo whose inner whitespace differs", () => {
+		const { result, rerender } = renderHook(
+			({ events }) => useOptimisticUserMessage(events, "c1"),
+			{ initialProps: { events: [] as AgentConversationEvent[] } },
+		);
+		act(() => result.current.begin({ text: "a\n\nb", contextItems: [] }));
+		rerender({ events: [userEvent(0, "a b")] });
+		expect(result.current.pending).toBe(false);
 	});
 });

@@ -136,7 +136,7 @@ export function useConversationEventWindow({
 	useEffect(() => {
 		if (!ready || lastPagedIndex < 0 || firstLiveIndex < 0) return;
 		if (firstLiveIndex <= lastPagedIndex + 1) return;
-		const key = `${lastPagedIndex}:${firstLiveIndex}`;
+		const key = `${conversationId}:${lastPagedIndex}:${firstLiveIndex}`;
 		if (healedGapRef.current === key) return;
 		healedGapRef.current = key;
 		void queryClient.invalidateQueries({

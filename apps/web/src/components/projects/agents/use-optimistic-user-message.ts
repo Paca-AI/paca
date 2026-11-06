@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentConversationEvent } from "@/lib/agent-api";
 import { type ContextItem, toWireContextItems } from "@/lib/context-items";
+
+/** Longest the overlay may outlive a send whose echo never matches (the
+ *  server rewrote the text, or never persisted the turn). */
+export const OPTIMISTIC_MESSAGE_TTL_MS = 60_000;
+
+const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
 
 type PendingMessage = {
 	conversationId: string | null;
@@ -60,13 +66,27 @@ export function useOptimisticUserMessage(
 				typeof content === "object" && content !== null
 					? (content as Record<string, unknown>).text
 					: undefined;
-			return (typeof text === "string" ? text : "") === pending.text;
+			return (
+				normalize(typeof text === "string" ? text : "") ===
+				normalize(pending.text)
+			);
 		});
 	}, [events, pending]);
 
 	useEffect(() => {
 		if (persisted) setPendingMessage(null);
 	}, [persisted]);
+
+	// Safety net: without it a mismatched echo would leave a duplicate message
+	// and a permanent "thinking" state.
+	const startedAt = pendingMessage?.createdAt;
+	useEffect(() => {
+		if (!startedAt) return;
+		const left =
+			OPTIMISTIC_MESSAGE_TTL_MS - (Date.now() - new Date(startedAt).getTime());
+		const timer = setTimeout(() => setPendingMessage(null), Math.max(0, left));
+		return () => clearTimeout(timer);
+	}, [startedAt]);
 
 	// A different conversation's overlay must not linger.
 	useEffect(() => {
@@ -79,6 +99,10 @@ export function useOptimisticUserMessage(
 		);
 	}, [conversationId]);
 
+	// Read through a ref so `begin` keeps one identity across event updates.
+	const lastIndexRef = useRef(-1);
+	lastIndexRef.current = events.at(-1)?.event_index ?? -1;
+
 	const begin = useCallback<UseOptimisticUserMessage["begin"]>(
 		({ text, contextItems }) => {
 			setPendingMessage({
@@ -86,11 +110,11 @@ export function useOptimisticUserMessage(
 				// The server persists the trimmed text; match and render that.
 				text: text.trim(),
 				contextItems,
-				baseIndex: events.at(-1)?.event_index ?? -1,
+				baseIndex: lastIndexRef.current,
 				createdAt: new Date().toISOString(),
 			});
 		},
-		[conversationId, events],
+		[conversationId],
 	);
 
 	const discard = useCallback(() => setPendingMessage(null), []);
@@ -108,7 +132,8 @@ export function useOptimisticUserMessage(
 		const optimistic: AgentConversationEvent = {
 			id: "optimistic-user-message",
 			conversation_id: conversationId ?? "",
-			event_index: lastIndex + 1,
+			// Fractional so it can't collide with the real event that lands next.
+			event_index: lastIndex + 0.5,
 			event_type: "user_message",
 			event_source: "user",
 			payload: {
