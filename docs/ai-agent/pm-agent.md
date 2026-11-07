@@ -1,7 +1,8 @@
 # AI Agent — PM / Business Analyst Agent (design)
 
-> **Status:** proposed design, not implemented. Lands in two PRs (see
-> [Delivery](#delivery-two-prs)).
+> **Status:** implemented — the Analyst role, `task.status_category` and the
+> Refinement status ship in the IAM change; the `paca-analyst` bundled skill
+> ships with the agent change (see [Delivery](#delivery-two-prs)).
 
 ## Summary
 
