@@ -435,3 +435,20 @@ func TestPacaAnalyst_ToolReferenceNamesRealTools(t *testing.T) {
 		}
 	}
 }
+
+// A task in Refinement is a draft: the in-product agent's status table must
+// route it to the analyst skill, not to breakdown or implementation.
+func TestPacaAgentRouter_RoutesRefinementToAnalyst(t *testing.T) {
+	for _, s := range List(TargetAgent) {
+		if s.Name != "paca" {
+			continue
+		}
+		for _, line := range strings.Split(s.Content, "\n") {
+			if strings.HasPrefix(line, "| Refinement") && strings.Contains(line, `"paca-analyst"`) {
+				return
+			}
+		}
+		t.Fatal("paca agent router has no Refinement row loading paca-analyst")
+	}
+	t.Fatal("no paca skill in the agent flavor")
+}

@@ -48,6 +48,7 @@ Whenever your invocation is tied to a specific task (an assignment, a comment on
 | Task status | Load this skill |
 |---|---|
 | No acceptance criteria, or description is thin | `load_skill(name: "paca-clarify")` |
+| Refinement (a draft awaiting approval) | `load_skill(name: "paca-analyst")` — keep refining it; never move it out of Refinement |
 | Backlog / not yet sized or split | `load_skill(name: "paca-breakdown")` (if large) or `load_skill(name: "paca-estimate")` (if right-sized) |
 | To do / ready, sprint not yet planned | `load_skill(name: "paca-sprint")` |
 | In progress | `load_skill(name: "paca-do")` |
