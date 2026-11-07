@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Paca-AI/paca/apps/acp-bridge/internal/acpclient"
@@ -61,6 +62,13 @@ type conversationState struct {
 	// applied once after session/new.
 	model  string
 	effort string
+
+	// key is the session key (see Runner.sessionKeyFor) this state is stored
+	// under; set once at creation and used to persist/restore the ACP
+	// sessionId. loading is true while session/load replays history, so the
+	// replayed updates are dropped rather than re-forwarded as new events.
+	key     string
+	loading atomic.Bool
 
 	mu          sync.Mutex
 	turnRunning bool
@@ -155,6 +163,11 @@ type Config struct {
 	// IdleTimeout, when > 0, reclaims a session that has had no turn for at
 	// least this long. Zero disables eviction (upstream's behavior).
 	IdleTimeout time.Duration
+	// AgentID scopes persisted session ids to one Paca agent.
+	AgentID string
+	// StateDir is where session ids are persisted ("" = the OS user config
+	// dir). It is never inside the workspace.
+	StateDir string
 }
 
 func (c Config) scope() string {
@@ -183,6 +196,8 @@ type Runner struct {
 	// (which the bridge calls with a conversation_id) can find the session
 	// even when the map is keyed by task. Populated on every StartTurn.
 	convIndex map[string]string
+
+	sessions *sessionStore
 }
 
 // New builds a Runner rooted at workspace, using send to report events and
@@ -201,6 +216,7 @@ func New(workspace string, cfg Config, log *slog.Logger) func(bridge.SendFunc) b
 			idleTimeout:   cfg.IdleTimeout,
 			conversations: make(map[string]*conversationState),
 			convIndex:     make(map[string]string),
+			sessions:      newSessionStore(storePath(cfg.StateDir, workspace, cfg.AgentID)),
 		}
 		if r.idleTimeout > 0 {
 			go r.sweepIdle()
@@ -259,7 +275,7 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	r.mu.Lock()
 	state, exists := r.conversations[key]
 	if !exists {
-		state = &conversationState{chunks: newChunkBuffer()}
+		state = &conversationState{chunks: newChunkBuffer(), key: key}
 		r.conversations[key] = state
 	}
 	// Index this conversation to its session so Interrupt (called by
@@ -501,6 +517,9 @@ func (r *Runner) ensureSession(
 	// flight from state at each callback instead, so every event is
 	// attributed to the right Paca conversation thread.
 	client, err := acpclient.Spawn(state.command, r.workspace, provider.ModelEnv(state.acpProvider, state.model), func(u acpclient.Update) {
+		if state.loading.Load() {
+			return // history replay from session/load
+		}
 		cid, pid := state.currentIDs()
 		r.handleUpdate(state, cid, pid, u)
 	}, r.log)
@@ -513,11 +532,29 @@ func (r *Runner) ensureSession(
 		return nil, "", err
 	}
 
-	info, err := client.NewSessionInfo(ctx, r.workspace)
-	if err != nil {
-		_ = client.Close()
-		return nil, "", err
+	var info *acpclient.SessionInfo
+	if saved := r.sessions.get(state.acpProvider, state.key); saved != "" && client.SupportsLoadSession() {
+		state.loading.Store(true)
+		info, err = client.LoadSession(ctx, saved, r.workspace)
+		state.loading.Store(false)
+		if err != nil {
+			if ctx.Err() != nil {
+				_ = client.Close()
+				return nil, "", ctx.Err()
+			}
+			r.log.Warn("runner: session/load failed; starting a fresh session",
+				"conversation_id", conversationID, "session_id", saved, "error", err)
+			info = nil
+		}
 	}
+	if info == nil {
+		info, err = client.NewSessionInfo(ctx, r.workspace)
+		if err != nil {
+			_ = client.Close()
+			return nil, "", err
+		}
+	}
+	r.sessions.set(state.acpProvider, state.key, info.SessionID)
 	sessionID, modes := info.SessionID, info.Modes
 
 	if mode := provider.PermissionMode(state.acpProvider); mode != "" && modes.Offers(mode) {

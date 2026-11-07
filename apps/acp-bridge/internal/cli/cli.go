@@ -96,7 +96,7 @@ func Main(argv []string, version string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	cfg := runner.Config{Scope: *sessionScope, IdleTimeout: time.Duration(*idleMinutes) * time.Minute}
+	cfg := runner.Config{AgentID: *agentID, Scope: *sessionScope, IdleTimeout: time.Duration(*idleMinutes) * time.Minute}
 	log.Info("paca-acp-bridge starting", "version", version, "workspace", *workspace,
 		"session_scope", cfg.Scope, "session_idle_minutes", *idleMinutes)
 
