@@ -6,7 +6,8 @@
 -- Refinement: for every project with no refinement-category status yet, shift
 -- its statuses down one position and insert "Refinement" at the old first
 -- position. A project that already has one (any name) is left alone, and no
--- task changes status.
+-- task changes status. A project that already uses the name "Refinement" for
+-- a status of another category gets "Drafts" instead, so names stay distinct.
 --
 -- Analyst: inserted for every project that does not have a role of that name.
 -- The policy must match internal/bootstrap/defaultroles/policies/
@@ -30,7 +31,11 @@ WITH targets AS (
      WHERE ts.project_id = t.id
 )
 INSERT INTO task_statuses (project_id, name, color, position, category, is_default)
-SELECT t.id, 'Refinement', '#a855f7', t.first_position, 'refinement', false
+SELECT t.id,
+       CASE WHEN EXISTS (SELECT 1 FROM task_statuses n
+                          WHERE n.project_id = t.id AND lower(n.name) = 'refinement')
+            THEN 'Drafts' ELSE 'Refinement' END,
+       '#a855f7', t.first_position, 'refinement', false
   FROM targets t;
 
 INSERT INTO roles (name, description, policy, project_id, is_system)

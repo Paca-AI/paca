@@ -29,8 +29,8 @@ func TestRefinementAnalystMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	a, b := uuid.New(), uuid.New()
-	mustExec(t, db, `INSERT INTO projects (id, name) VALUES ($1, 'A'), ($2, 'B')`, a, b)
+	a, b, c := uuid.New(), uuid.New(), uuid.New()
+	mustExec(t, db, `INSERT INTO projects (id, name) VALUES ($1, 'A'), ($2, 'B'), ($3, 'C')`, a, b, c)
 	// A: the four statuses projects were created with before this change.
 	aBacklog := uuid.New()
 	mustExec(t, db, `INSERT INTO task_statuses (id, project_id, name, position, category, is_default) VALUES
@@ -41,6 +41,10 @@ func TestRefinementAnalystMigration(t *testing.T) {
 	// B: already has its own refinement-category status.
 	mustExec(t, db, `INSERT INTO task_statuses (project_id, name, position, category, is_default) VALUES
 		($1, 'Grooming', 3, 'refinement', false), ($1, 'Backlog', 5, 'backlog', true)`, b)
+
+	// C: already uses the name "Refinement" for a status of another category.
+	mustExec(t, db, `INSERT INTO task_statuses (project_id, name, position, category, is_default) VALUES
+		($1, 'Backlog', 1, 'backlog', true), ($1, 'refinement', 2, 'todo', false)`, c)
 
 	type status struct {
 		Name     string
@@ -86,6 +90,7 @@ func TestRefinementAnalystMigration(t *testing.T) {
 		{"Todo", 3, "todo", false}, {"In Progress", 4, "inprogress", false}, {"Done", 5, "done", false},
 	}
 	wantB := []status{{"Grooming", 3, "refinement", false}, {"Backlog", 5, "backlog", true}}
+	wantC := []status{{"Drafts", 1, "refinement", false}, {"Backlog", 2, "backlog", true}, {"refinement", 3, "todo", false}}
 
 	for run := 1; run <= 2; run++ {
 		if _, err := db.ExecContext(t.Context(), string(migrationSQL)); err != nil {
@@ -97,7 +102,10 @@ func TestRefinementAnalystMigration(t *testing.T) {
 		if got := statuses(b); !reflect.DeepEqual(got, wantB) {
 			t.Errorf("run %d: project B statuses = %v, want %v", run, got, wantB)
 		}
-		for _, p := range []uuid.UUID{a, b} {
+		if got := statuses(c); !reflect.DeepEqual(got, wantC) {
+			t.Errorf("run %d: project C statuses = %v, want %v", run, got, wantC)
+		}
+		for _, p := range []uuid.UUID{a, b, c} {
 			got := analystPolicies(p)
 			if len(got) != 1 {
 				t.Fatalf("run %d: project %s has %d Analyst roles, want 1", run, p, len(got))

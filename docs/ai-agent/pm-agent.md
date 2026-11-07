@@ -160,7 +160,8 @@ is authorized on the task it starts from, so a draft may link to any task.
 - **Existing projects:** migration `000081_add_refinement_status_and_analyst_role.sql`
   (up-only, `BEGIN; … COMMIT;`), for every project with no
   `refinement`-category status, shifts that project's status positions up by
-  one and inserts Refinement at the old lowest position; and inserts the
+  one and inserts Refinement at the old lowest position (named "Drafts" when
+  the project already has a status named "Refinement"); and inserts the
   Analyst role into `roles` for every project that lacks one
   (`WHERE NOT EXISTS`, unique on `(project_id, name)`). Idempotent; no task
   changes status and no existing role is changed.
