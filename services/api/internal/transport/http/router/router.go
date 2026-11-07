@@ -1092,7 +1092,7 @@ func New(deps Deps) http.Handler {
 								r.With(require.Environment(iam.ActionAnnotationsResolve), require.ProjectEntity("annotation", "annotationId", resAnnotation, iam.ActionAnnotationsResolve)).Patch("/{annotationId}/reopen", deps.Annotation.Reopen)
 								r.With(require.Environment(iam.ActionAnnotationsWrite), require.ProjectEntity("annotation", "annotationId", resAnnotation, iam.ActionAnnotationsWrite), httpmw.RequireJSONContentType()).
 									Post("/{annotationId}/comments", deps.Annotation.AddComment)
-								r.With(require.Environment(iam.ActionAnnotationsWrite), require.ProjectEntity("annotation", "annotationId", resAnnotation, iam.ActionAnnotationsWrite), require.Project(iam.ActionTasksWrite), httpmw.RequireJSONContentType()).
+								r.With(require.Environment(iam.ActionAnnotationsWrite), require.ProjectEntity("annotation", "annotationId", resAnnotation, iam.ActionAnnotationsWrite), require.Project(iam.ActionTasksWrite), require.TaskCreate(), httpmw.RequireJSONContentType()).
 									Post("/{annotationId}/create-task", deps.Annotation.CreateTask)
 							})
 						}
