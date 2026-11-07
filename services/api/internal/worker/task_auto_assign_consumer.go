@@ -42,6 +42,7 @@ const (
 // of processTask.
 type taskAutoAssignTaskService interface {
 	GetTask(ctx context.Context, projectID, id uuid.UUID) (*taskdom.Task, error)
+	GetTaskStatus(ctx context.Context, id uuid.UUID) (*taskdom.TaskStatus, error)
 	UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID, decide func(current *taskdom.Task) (taskdom.UpdateTaskInput, bool)) (*taskdom.Task, error)
 }
 
@@ -322,6 +323,18 @@ func (c *TaskAutoAssignConsumer) processTask(ctx context.Context, projectID, tas
 	}
 	if task.AssignmentMode != taskdom.AssignmentModeAuto || len(task.AssigneeIDs) > 0 {
 		return nil
+	}
+	// A draft (refinement-category status) is not approved work: assigning
+	// it could start an agent on it. It stays in auto mode, so the update
+	// that moves it out of Refinement assigns it.
+	if task.StatusID != nil {
+		status, err := c.taskService.GetTaskStatus(ctx, *task.StatusID)
+		if err != nil {
+			return fmt.Errorf("load task status: %w", err)
+		}
+		if status.Category == taskdom.StatusCategoryRefinement {
+			return nil
+		}
 	}
 
 	candidates, err := c.assigneeCandidates(ctx, projectID, settings.AutoAssignScope)

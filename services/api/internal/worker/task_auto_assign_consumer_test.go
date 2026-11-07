@@ -25,6 +25,15 @@ type fakeAutoAssignTaskService struct {
 	// is taken, i.e. after GetTask's earlier, now-stale read but before
 	// decide's fresh one.
 	beforeDecide func(task *taskdom.Task)
+	// statuses backs GetTaskStatus; a status not listed is not found.
+	statuses map[uuid.UUID]*taskdom.TaskStatus
+}
+
+func (f *fakeAutoAssignTaskService) GetTaskStatus(_ context.Context, id uuid.UUID) (*taskdom.TaskStatus, error) {
+	if st, ok := f.statuses[id]; ok {
+		return st, nil
+	}
+	return nil, taskdom.ErrStatusNotFound
 }
 
 func (f *fakeAutoAssignTaskService) GetTask(_ context.Context, _, _ uuid.UUID) (*taskdom.Task, error) {
@@ -380,5 +389,40 @@ func TestProcessTask_DoesNotOverwriteConcurrentHumanAssignment(t *testing.T) {
 	}
 	if len(rec.recorded) != 0 {
 		t.Fatalf("expected no activity recorded once the task is no longer eligible, got %+v", rec.recorded)
+	}
+}
+
+// A draft (a task in a refinement-category status) has not been approved, so
+// auto-assign leaves it alone: picking an agent would start work nobody has
+// signed off. The task stays in auto mode, so the update that approves it
+// (moving it out of Refinement) is what assigns it.
+func TestProcessTask_SkipsDraftsInRefinement(t *testing.T) {
+	var jevCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		jevCalls++
+		confidence := 0.9
+		_ = json.NewEncoder(w).Encode(jev.Response{Answers: map[string]jev.Answer{
+			"assignee": {Type: jev.TypeChoice, Choice: uuid.New().String(), Confidence: &confidence},
+		}})
+	}))
+	defer srv.Close()
+
+	statusID := uuid.New()
+	task := &taskdom.Task{ID: uuid.New(), AssignmentMode: taskdom.AssignmentModeAuto, StatusID: &statusID}
+	taskSvc := &fakeAutoAssignTaskService{task: task, statuses: map[uuid.UUID]*taskdom.TaskStatus{
+		statusID: {ID: statusID, Category: taskdom.StatusCategoryRefinement},
+	}}
+	members := &fakeMemberLister{members: []*projectdom.ProjectMember{{ID: uuid.New(), MemberType: "agent", AgentName: "Dev"}}}
+	project := &projectdom.Project{ID: uuid.New(), JevAPIKeySecret: "test-key", JevBaseURL: srv.URL}
+	c := newTestAutoAssignConsumer(taskSvc, members, &fakeProjectReader{project: project})
+
+	if err := c.processTask(context.Background(), uuid.New(), task.ID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if taskSvc.lastUpdate != nil {
+		t.Errorf("expected a draft to be left unassigned, got update %+v", taskSvc.lastUpdate)
+	}
+	if jevCalls != 0 {
+		t.Errorf("expected no Jev call for a draft, got %d", jevCalls)
 	}
 }
