@@ -1,0 +1,54 @@
+{
+  "version": "2026-10-01",
+  "statements": [
+    {
+      "sid": "ReadProject",
+      "effect": "Allow",
+      "actions": ["projects:read"],
+      "resources": ["project/PROJECT_ID"]
+    },
+    {
+      "sid": "Read",
+      "effect": "Allow",
+      "actions": [
+        "agents:read",
+        "annotations:read",
+        "conversations:read",
+        "docs:read",
+        "environments:read",
+        "git:read",
+        "project.members:read",
+        "sprints:read",
+        "tasks:read",
+        "views:read",
+        "workflows:read"
+      ],
+      "resources": ["project/PROJECT_ID/*"]
+    },
+    {
+      "sid": "Write",
+      "effect": "Allow",
+      "actions": ["conversations:write", "docs:write"],
+      "resources": ["project/PROJECT_ID/*"]
+    },
+    {
+      "sid": "CreateTasks",
+      "effect": "Allow",
+      "actions": ["tasks:write"],
+      "resources": ["project/PROJECT_ID"]
+    },
+    {
+      "sid": "RefineDrafts",
+      "effect": "Allow",
+      "actions": ["tasks:write"],
+      "resources": ["project/PROJECT_ID/task/*"],
+      "conditions": { "In": { "task.status_category": ["refinement"] } }
+    },
+    {
+      "sid": "ReadRoles",
+      "effect": "Allow",
+      "actions": ["roles:read"],
+      "resources": ["project/PROJECT_ID/role/*"]
+    }
+  ]
+}

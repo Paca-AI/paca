@@ -54,8 +54,8 @@ func allows(p *iam.Policy, action, resource string) bool {
 func TestEveryShippedPolicyParsesAndValidates(t *testing.T) {
 	platform := defaultroles.Platform()
 	templates := defaultroles.ProjectTemplates()
-	if len(platform) != 3 || len(templates) != 3 {
-		t.Fatalf("platform=%d templates=%d, want 3 and 3", len(platform), len(templates))
+	if len(platform) != 3 || len(templates) != 4 {
+		t.Fatalf("platform=%d templates=%d, want 3 and 4", len(platform), len(templates))
 	}
 	for _, r := range platform {
 		validate(t, r.Name, parse(t, r))
@@ -139,7 +139,7 @@ func TestPlatformRoles(t *testing.T) {
 }
 
 func TestProjectTemplates(t *testing.T) {
-	want := []string{"Admin", "Editor", "Viewer"}
+	want := []string{"Admin", "Analyst", "Editor", "Viewer"}
 	var got []string
 	for _, r := range defaultroles.ProjectTemplates() {
 		got = append(got, r.Name)
@@ -180,7 +180,7 @@ func TestProjectTemplates(t *testing.T) {
 func TestInstantiateReplacesEveryToken(t *testing.T) {
 	pid := uuid.New()
 	roles := defaultroles.Instantiate(pid)
-	if len(roles) != 3 {
+	if len(roles) != 4 {
 		t.Fatalf("got %d roles", len(roles))
 	}
 	for _, r := range roles {
@@ -254,6 +254,49 @@ func TestProjectTemplateBehaviour(t *testing.T) {
 			if got := allows(policies[name], pr.action, pr.resource); got != want {
 				t.Errorf("%s %s on %s = %v, want %v", name, pr.action, pr.resource, got, want)
 			}
+		}
+	}
+}
+
+// The Analyst role edits tasks only while they are in a refinement-category
+// status, and reads code without being able to push.
+func TestAnalystTemplateBehaviour(t *testing.T) {
+	pid := uuid.New()
+	project := "project/" + pid.String()
+	var grants []iam.Grant
+	for _, r := range defaultroles.Instantiate(pid) {
+		if r.Name == "Analyst" {
+			grants = []iam.Grant{{RoleID: "analyst", ProjectID: pid.String(), Policy: parse(t, r)}}
+		}
+	}
+	if grants == nil {
+		t.Fatal("no Analyst template")
+	}
+	cat := func(c string) map[string][]string { return map[string][]string{"task.status_category": {c}} }
+	cases := []struct {
+		name, action, resource string
+		attrs                  map[string][]string
+		want                   bool
+	}{
+		{"write refinement task", "tasks:write", project + "/task/t1", cat("refinement"), true},
+		{"write backlog task", "tasks:write", project + "/task/t1", cat("backlog"), false},
+		{"write task without category", "tasks:write", project + "/task/t1", nil, false},
+		{"task create gate", "tasks:write", project, nil, true},
+		{"read task", "tasks:read", project + "/task/t1", cat("done"), true},
+		{"write doc", "docs:write", project + "/doc/d", nil, true},
+		{"chat", "conversations:write", project + "/agent/a/conversation/c", nil, true},
+		{"git read", "git:read", project, nil, true},
+		{"git write", "git:write", project, nil, false},
+		{"git merge", "git:merge", project, nil, false},
+		{"sprints write", "sprints:write", project + "/sprint/s", nil, false},
+		{"statuses write", "project.settings.task_statuses:write", project, nil, false},
+		{"members write", "project.members:write", project, nil, false},
+		{"other project", "tasks:write", "project/" + uuid.NewString() + "/task/t1", cat("refinement"), false},
+	}
+	for _, c := range cases {
+		got := iam.Evaluate(grants, iam.Request{Action: c.action, Resource: c.resource, Attrs: c.attrs}).Allowed
+		if got != c.want {
+			t.Errorf("%s: %s on %s = %v, want %v", c.name, c.action, c.resource, got, c.want)
 		}
 	}
 }
