@@ -17,6 +17,7 @@ This is your default operating procedure for every conversation — it always ap
 
 | If the user wants to... | Load this skill |
 |---|---|
+| Gather requirements or triage a bug into draft tasks for a human to approve (reads code, never pushes) | `load_skill(name: "paca-analyst")` |
 | Turn requirements into a full epic with child stories | `load_skill(name: "paca-epic")` |
 | Clarify or improve a vague task or spec | `load_skill(name: "paca-clarify")` |
 | Break a task into smaller sub-tasks | `load_skill(name: "paca-breakdown")` |

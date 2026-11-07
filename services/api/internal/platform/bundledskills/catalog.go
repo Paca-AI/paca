@@ -42,6 +42,7 @@ func (e skillEntry) agentContent() string {
 // skillEntries is the bundled catalog. Order is irrelevant: List sorts.
 var skillEntries = loadEntries([]skillEntry{
 	{Name: "paca", AgentVariant: true, AgentPath: "paca.md"},
+	{Name: "paca-analyst"},
 	{Name: "paca-automation"},
 	{Name: "paca-board"},
 	{Name: "paca-breakdown"},
