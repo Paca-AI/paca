@@ -31,6 +31,7 @@ import {
 	buildColumnDropUpdate,
 	type ColumnGroupDef,
 	DEFAULT_VISIBLE_FIELDS,
+	defaultCreateStatusId,
 	type EpicsPagination,
 	getColumnGroupDefs,
 	getSwimlaneDefs,
@@ -661,9 +662,7 @@ export function BoardView({
 					}
 					const statusId = isStatusGrouping
 						? colDef.key
-						: (statuses.find((s) => s.category !== "done")?.id ??
-							statuses[0]?.id ??
-							"");
+						: defaultCreateStatusId(statuses);
 					onCreateTask(
 						statusId,
 						title,

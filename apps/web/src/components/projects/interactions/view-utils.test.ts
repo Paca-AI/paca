@@ -10,8 +10,10 @@ import type {
 	Task,
 	TaskListResult,
 } from "@/lib/interaction-api";
+import type { TaskStatus } from "@/lib/project-api";
 import {
 	buildDynamicGroupDefs,
+	defaultCreateStatusId,
 	getColumnGroupDefs,
 	getSwimlaneDefs,
 	getTaskColumnKeys,
@@ -311,5 +313,45 @@ describe("API-listed columns", () => {
 				customFields: cf,
 			}),
 		).toEqual(["false"]);
+	});
+});
+
+describe("defaultCreateStatusId", () => {
+	const status = (
+		id: string,
+		category: string,
+		position: number,
+		is_default = false,
+	) =>
+		({
+			id,
+			project_id: PROJECT_ID,
+			name: id,
+			color: "#000",
+			position,
+			category,
+			is_default,
+		}) as unknown as TaskStatus;
+
+	it("prefers the project's default status over an earlier open one", () => {
+		const statuses = [
+			status("refinement", "refinement", 1),
+			status("backlog", "backlog", 2, true),
+			status("done", "done", 5),
+		];
+		expect(defaultCreateStatusId(statuses)).toBe("backlog");
+	});
+
+	it("falls back to the first non-done status when none is default", () => {
+		expect(
+			defaultCreateStatusId([
+				status("done", "done", 1),
+				status("todo", "todo", 2),
+			]),
+		).toBe("todo");
+	});
+
+	it("returns an empty string for no statuses", () => {
+		expect(defaultCreateStatusId([])).toBe("");
 	});
 });
