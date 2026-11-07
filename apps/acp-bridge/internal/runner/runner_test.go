@@ -62,7 +62,7 @@ func (c *capturedSends) all() []map[string]any {
 func newTestRunner(t *testing.T) (*Runner, *capturedSends) {
 	t.Helper()
 	sent := newCapturedSends()
-	handler := New(t.TempDir(), Config{}, nil)(sent.send)
+	handler := New(t.TempDir(), Config{StateDir: t.TempDir()}, nil)(sent.send)
 	r, ok := handler.(*Runner)
 	if !ok {
 		t.Fatalf("New's handler is not *Runner (got %T)", handler)
@@ -361,6 +361,21 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// recordFakeMethod appends method to the file named by PACA_FAKE_AGENT_LOG
+// (if set) so tests can assert which session calls the runner made.
+func recordFakeMethod(method string) {
+	path := os.Getenv("PACA_FAKE_AGENT_LOG")
+	if path == "" {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(method + "\n")
+}
+
 func runFakeACPAgent(behavior string) {
 	in := bufio.NewScanner(os.Stdin)
 	in.Buffer(make([]byte, 64*1024), 1<<20)
@@ -382,9 +397,27 @@ func runFakeACPAgent(behavior string) {
 			if behavior == "stall_init" {
 				continue // never respond, simulating a slow npx cold start
 			}
-			write(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(msg.ID),
-				"result": map[string]any{"protocolVersion": 1}})
+			result := map[string]any{"protocolVersion": 1}
+			if behavior == "load" || behavior == "load_fail" {
+				result["agentCapabilities"] = map[string]any{"loadSession": true}
+			}
+			write(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(msg.ID), "result": result})
+		case "session/load":
+			recordFakeMethod(msg.Method)
+			if behavior == "load_fail" {
+				write(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(msg.ID),
+					"error": map[string]any{"code": -32602, "message": "unknown session"}})
+				continue
+			}
+			// History replay precedes the response, per the ACP spec.
+			write(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{
+				"sessionId": "sess-old",
+				"update": map[string]any{"sessionUpdate": "agent_message_chunk",
+					"content": map[string]any{"type": "text", "text": "REPLAYED"}},
+			}})
+			write(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(msg.ID), "result": map[string]any{}})
 		case "session/new":
+			recordFakeMethod(msg.Method)
 			write(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(msg.ID),
 				"result": map[string]any{"sessionId": "sess-1"}})
 		case "session/set_mode":

@@ -163,6 +163,11 @@ type Config struct {
 	// IdleTimeout, when > 0, reclaims a session that has had no turn for at
 	// least this long. Zero disables eviction (upstream's behavior).
 	IdleTimeout time.Duration
+	// AgentID scopes persisted session ids to one Paca agent.
+	AgentID string
+	// StateDir is where session ids are persisted ("" = the OS user config
+	// dir). It is never inside the workspace.
+	StateDir string
 }
 
 func (c Config) scope() string {
@@ -211,7 +216,7 @@ func New(workspace string, cfg Config, log *slog.Logger) func(bridge.SendFunc) b
 			idleTimeout:   cfg.IdleTimeout,
 			conversations: make(map[string]*conversationState),
 			convIndex:     make(map[string]string),
-			sessions:      newSessionStore(workspace),
+			sessions:      newSessionStore(storePath(cfg.StateDir, workspace, cfg.AgentID)),
 		}
 		if r.idleTimeout > 0 {
 			go r.sweepIdle()
