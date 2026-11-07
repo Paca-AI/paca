@@ -83,6 +83,20 @@ SELECT 'Analyst',
       "conditions": { "In": { "task.status_category": ["refinement"] } }
     },
     {
+      "sid": "LeaveDraftsUnassigned",
+      "effect": "Deny",
+      "actions": ["tasks:write"],
+      "resources": ["project/PROJECT_ID/task/*"],
+      "conditions": { "StringLike": { "task.assignee_id": ["*"] } }
+    },
+    {
+      "sid": "LeaveDraftsUnplanned",
+      "effect": "Deny",
+      "actions": ["tasks:write"],
+      "resources": ["project/PROJECT_ID/task/*"],
+      "conditions": { "StringLike": { "task.sprint_id": ["*"] } }
+    },
+    {
       "sid": "ReadRoles",
       "effect": "Allow",
       "actions": ["roles:read"],

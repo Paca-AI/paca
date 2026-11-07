@@ -20,9 +20,14 @@ func TestIAMAnalystRoleEndToEnd(t *testing.T) {
 	ref, ref2, backlog := uuid.New(), uuid.New(), uuid.New()
 	pgExec(t, db, `INSERT INTO task_statuses (id, project_id, name, category) VALUES
 		($1,$4,'Refinement','refinement'), ($2,$4,'Grooming','refinement'), ($3,$4,'Backlog','backlog')`, ref, ref2, backlog, p)
-	draft, ready, foreign := uuid.New(), uuid.New(), uuid.New()
+	draft, ready, foreign, assigned := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	pgExec(t, db, `INSERT INTO tasks (id, project_id, task_number, status_id, title) VALUES
-		($1,$3,1,$4,'draft'), ($2,$3,2,$5,'ready')`, draft, ready, p, ref, backlog)
+		($1,$3,1,$4,'draft'), ($2,$3,2,$5,'ready'), ($6,$3,3,$4,'assigned draft')`, draft, ready, p, ref, backlog, assigned)
+	sprint := uuid.New()
+	pgExec(t, db, `INSERT INTO sprints (id, project_id, name) VALUES ($1, $2, 'S1')`, sprint, p)
+	dev := fx.agent(&p, false)
+	devMember := fx.member(p, dev, false)
+	pgExec(t, db, `INSERT INTO task_assignees (task_id, member_id) VALUES ($1, $2)`, assigned, devMember)
 	qRef := uuid.New()
 	pgExec(t, db, `INSERT INTO task_statuses (id, project_id, name, category) VALUES ($1,$2,'Refinement','refinement')`, qRef, q)
 	pgExec(t, db, `INSERT INTO tasks (id, project_id, task_number, status_id, title) VALUES ($1,$2,1,$3,'other')`, foreign, q, qRef)
@@ -75,6 +80,24 @@ func TestIAMAnalystRoleEndToEnd(t *testing.T) {
 		}, true},
 		{"pull a Backlog task into Refinement", func() (iam.Result, error) {
 			return a.AuthorizeChange(ctx, pr, "tasks:write", task(ready), status(ref))
+		}, false},
+		{"create an assigned draft", func() (iam.Result, error) {
+			return a.AuthorizeCreate(ctx, pr, "tasks:write", project+"/task/*",
+				map[string][]string{"task.status_id": {ref.String()}, "task.assignee_id": {dev.String()}})
+		}, false},
+		{"create a draft in a sprint", func() (iam.Result, error) {
+			return a.AuthorizeCreate(ctx, pr, "tasks:write", project+"/task/*",
+				map[string][]string{"task.status_id": {ref.String()}, "task.sprint_id": {sprint.String()}})
+		}, false},
+		{"assign a draft", func() (iam.Result, error) {
+			return a.AuthorizeChange(ctx, pr, "tasks:write", task(draft), map[string][]string{"task.assignee_id": {dev.String()}})
+		}, false},
+		{"put a draft in a sprint", func() (iam.Result, error) {
+			return a.AuthorizeChange(ctx, pr, "tasks:write", task(draft), map[string][]string{"task.sprint_id": {sprint.String()}})
+		}, false},
+		{"edit a draft a human assigned", func() (iam.Result, error) { return a.Authorize(ctx, pr, "tasks:write", task(assigned)) }, false},
+		{"use another project's status", func() (iam.Result, error) {
+			return a.AuthorizeCreate(ctx, pr, "tasks:write", project+"/task/*", status(qRef))
 		}, false},
 		{"read any task", func() (iam.Result, error) { return a.Authorize(ctx, pr, "tasks:read", task(ready)) }, true},
 		{"read credential", func() (iam.Result, error) { return a.Authorize(ctx, pr, "git:read", project) }, true},

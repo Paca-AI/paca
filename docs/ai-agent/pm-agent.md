@@ -117,6 +117,18 @@ Allow:
   The project-level grant also passes the other project-level `tasks:write`
   gates (bulk positions, which re-checks each task; annotations).
 
+Deny, so a draft never reaches developer agents before a human approves it:
+
+- `tasks:write` on `project/PROJECT_ID/task/*` when the task has an assignee
+  (`{"StringLike": {"task.assignee_id": ["*"]}}`) or a sprint
+  (`{"StringLike": {"task.sprint_id": ["*"]}}`). The Analyst cannot create a
+  draft with either, set either on a draft, or edit a draft a human has
+  assigned or planned (that draft is now the human's).
+
+Auto-assign (`worker/task_auto_assign_consumer.go`) also skips tasks in a
+refinement-category status. A draft left in assignment mode "auto" is assigned
+by the update that moves it out of Refinement.
+
 Not granted: `git:write`, `git:merge`, `git:approve`, any `project.settings.*`,
 `project.members:write`, `sprints:write`.
 
@@ -130,6 +142,7 @@ conditioned `tasks:write` statement yields:
 | Edit / comment / link / attach on a task in Refinement | allowed |
 | Create a task in Backlog (or with no status → default Backlog) | 403 |
 | Move a task out of Refinement (approve) | 403 |
+| Create or edit a draft with an assignee or sprint | 403 |
 | Edit / comment on a task outside Refinement | 403 |
 | Clone / fetch a linked repo | allowed (read credential) |
 | Push | 403 (no `git:write`) |
