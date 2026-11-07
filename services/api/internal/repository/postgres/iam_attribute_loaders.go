@@ -16,7 +16,7 @@ import (
 // environment, conversation). Register them on an iam.Authorizer.
 func NewIAMAttributeLoaders(db *sqlx.DB) []iam.AttributeLoader {
 	return []iam.AttributeLoader{
-		&scalarLoader{db: db, kind: "task", table: "tasks", where: "deleted_at IS NULL", cols: map[string]string{
+		&taskLoader{scalarLoader{db: db, kind: "task", table: "tasks", where: "deleted_at IS NULL", cols: map[string]string{
 			"task.sprint_id": "sprint_id",
 			"task.status_id": "status_id",
 			// The category of the task's status (backlog, refinement, ...): status ids
@@ -31,7 +31,7 @@ func NewIAMAttributeLoaders(db *sqlx.DB) []iam.AttributeLoader {
 				FROM task_assignees ta JOIN project_members pm ON pm.id = ta.member_id
 				WHERE ta.task_id = $1::uuid AND pm.deleted_at IS NULL
 				  AND ($2::text = '' OR EXISTS (SELECT 1 FROM tasks t WHERE t.id = ta.task_id AND t.project_id::text = $2::text))`,
-		}},
+		}}},
 		// sprint_views has no deleted_at (views are hard-deleted). Backlog and
 		// timeline views are project-level: sprint_id is NULL, so view.sprint_id
 		// is absent for them.
@@ -196,6 +196,46 @@ func dedupStrings(in []string) []string {
 		out = append(out, v)
 	}
 	return out
+}
+
+// taskLoader is the scalarLoader for tasks plus iam.AttributeExpander: given a
+// new task.status_id it derives task.status_category, so a condition on the
+// category holds on creates and on the new state of an update (the request
+// body carries only the status id).
+type taskLoader struct{ scalarLoader }
+
+const taskStatusCategorySQL = `SELECT category FROM task_statuses WHERE id = $1::uuid AND project_id = $2::uuid`
+
+// Expand implements iam.AttributeExpander. A status in another project (or an
+// unknown or malformed id) denies; a null status leaves the category absent.
+func (l *taskLoader) Expand(ctx context.Context, _, projectID string, newAttrs map[string][]string) (map[string][]string, error) {
+	out := make(map[string][]string, len(newAttrs)+1)
+	for k, v := range newAttrs {
+		out[k] = v
+	}
+	statuses, ok := newAttrs["task.status_id"]
+	if !ok {
+		return out, nil
+	}
+	if len(statuses) == 0 || statuses[0] == "" {
+		out["task.status_id"], out["task.status_category"] = nil, nil
+		return out, nil
+	}
+	if _, err := uuid.Parse(statuses[0]); err != nil {
+		return nil, iam.ErrResourceNotInProject
+	}
+	if _, err := uuid.Parse(projectID); err != nil {
+		return nil, iam.ErrResourceNotInProject
+	}
+	var category []string
+	if err := l.db.SelectContext(ctx, &category, taskStatusCategorySQL, statuses[0], projectID); err != nil {
+		return nil, fmt.Errorf("iam loader task: expand: %w", err)
+	}
+	if len(category) == 0 {
+		return nil, iam.ErrResourceNotInProject // status missing or in another project
+	}
+	out["task.status_category"] = category[:1]
+	return out, nil
 }
 
 // docLoader is the scalarLoader for documents plus iam.AttributeExpander:
