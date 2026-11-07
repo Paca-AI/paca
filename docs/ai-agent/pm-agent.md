@@ -72,14 +72,20 @@ per project, so a seeded role cannot name "the Refinement status"; a category
 can.
 
 - **Registry:** add `task.status_category` (string, single-valued) to the
-  built-in attributes in `platform/authz/iam/attributes.go`, with its i18n label.
+  built-in attributes in `platform/authz/iam/attributes.go` (label key
+  `roles.attributes.task.status_category`, derived automatically; the web shows
+  the raw key, there is no locale file).
 - **Loader:** the task loader in `repository/postgres/iam_attribute_loaders.go`
-  loads it via `task_statuses.category` for the task's `status_id`, and gains an
-  `Expand` (the `iam.AttributeExpander` interface, precedent: `docLoader`) that
-  derives `task.status_category` from a requested `task.status_id`. This is what
-  makes the condition work on **create** (`AuthorizeCreate`) and on the **new
-  state** of an update (`AuthorizeChange`), where the request body carries only
-  `status_id`.
+  loads it via `task_statuses.category` for the task's `status_id`, and is
+  wrapped as `taskLoader{scalarLoader}` to gain an `Expand` (the
+  `iam.AttributeExpander` interface, precedent: `docLoader`). When a request
+  carries `task.status_id`, `Expand` sets `task.status_category` to that
+  status's category (status not in the project → `ErrResourceNotInProject`;
+  null status → category absent). This is what makes the condition work on
+  **create** (`AuthorizeCreate`) and on the **new state** of an update
+  (`AuthorizeChange`); without it the old category would be reused for the new
+  state. A create without `status_id` has no category and is denied (the
+  default status is applied later, in the task service).
 - **Scope SQL:** add the matching entry to `taskScopeColumns` in
   `repository/postgres/iam_scope.go`
   (`(SELECT category FROM task_statuses WHERE id = tasks.status_id)`), keeping
@@ -99,8 +105,17 @@ Allow:
 - `docs:write`
 - `conversations:read`, `conversations:write`, `agents:read`,
   `environments:read`
-- `tasks:write` **only** with condition
-  `{"In": {"task.status_category": ["refinement"]}}`
+- `tasks:write` in two statements, following the sprint-restricted recipe in
+  `docs/guides/roles-and-policies.md`:
+  - unconditioned on `project/PROJECT_ID` — the task-create collection gate
+    (`require.Project(iam.ActionTasksWrite)`) is project-level, where no
+    `task.*` attribute exists;
+  - conditioned on `project/PROJECT_ID/task/*` with
+    `{"In": {"task.status_category": ["refinement"]}}` — every per-task check,
+    including the create body check (`require.TaskCreate`).
+
+  The project-level grant also passes the other project-level `tasks:write`
+  gates (bulk positions, which re-checks each task; annotations).
 
 Not granted: `git:write`, `git:merge`, `git:approve`, any `project.settings.*`,
 `project.members:write`, `sprints:write`.
@@ -127,17 +142,20 @@ is authorized on the task it starts from, so a draft may link to any task.
 
 - **New projects:** `seedDefaultTaskStatuses`
   (`service/project/project_service.go`) adds a "Refinement" status, category
-  `refinement`, positioned before Backlog. Backlog stays the default status.
+  `refinement`, at position 1 before Backlog (others shift to 2–5; positions
+  stay positive). Backlog stays the default status.
 - **Existing projects:** migration `000081_add_refinement_status_and_analyst_role.sql`
-  inserts a Refinement status into every project that has no
-  `refinement`-category status (position before its lowest existing status) and
-  creates the Analyst role for every project. Additive and idempotent; no
-  existing task, status or role is changed.
+  (up-only, `BEGIN; … COMMIT;`), for every project with no
+  `refinement`-category status, shifts that project's status positions up by
+  one and inserts Refinement at the old lowest position; and inserts the
+  Analyst role into `roles` for every project that lacks one
+  (`WHERE NOT EXISTS`, unique on `(project_id, name)`). Idempotent; no task
+  changes status and no existing role is changed.
 
 ### Role-policy skill and docs
 
-- `paca-role-policy` content lists the new condition key (the bundled-skills test
-  checks it against the IAM registry).
+- `paca-role-policy` content lists the new condition key in its `## Conditions`
+  table (no test enforces condition keys; its JSON examples are validated).
 - `docs/guides/roles-and-policies.md` documents the Analyst role, the new
   attribute, and the optional Deny recipe below.
 
@@ -145,10 +163,14 @@ is authorized on the task it starts from, so a draft may link to any task.
 
 ### Preset
 
-The existing `ba` skill template becomes the PM / Business Analyst preset: its
-content points at `paca-analyst`, and creating an agent from it assigns the
-Analyst project role by default (instead of the role the creator would otherwise
-pick). The `po-assistant` template is left as is.
+Bundled skills reach every agent, so an agent becomes a PM / Business Analyst
+by **holding the Analyst role** (picked in the existing role selector of the
+create-agent dialog, which already requires `role_ids`) plus a description that
+says so (Jev Auto mode routes by description). No template-to-role coupling is
+added: skill templates are only served by `GET /agents/skill-templates`, which
+nothing in the web app consumes, and no code links a template to a role. The
+`ba` template's content is updated to defer to `paca-analyst` so the two do not
+drift; `po-assistant` is left as is.
 
 Supported agent types:
 
@@ -318,7 +340,7 @@ check result.
 **PR 2 — `feat(agent)`: PM / Business Analyst agent**
 
 - `paca-analyst` bundled skill, catalog entry, router row.
-- `ba` template update and default Analyst role on creation.
+- `ba` template content update.
 - This document (status → implemented), `default-skills.md`, `docs/README.md`
   index, `ROADMAP.md`.
 
@@ -338,6 +360,10 @@ check result.
 **PR 2**
 
 - Bundled-skill catalog tests (`TestList_PacaFeatureSkills` etc.) cover
-  `paca-analyst`; template test checks the `ba` preset assigns Analyst.
+  `paca-analyst`.
+
+Loader, scope and migration tests need Postgres: they read `PACA_TEST_PG_DSN`
+and skip when it is unset (CI's unit job does not set it; the `PACA_E2E=1`
+suite applies real migrations).
 - Optional Playwright e2e, if existing agent e2e patterns allow: chat with an
   analyst, a draft appears in Refinement, its approve attempt is refused.
