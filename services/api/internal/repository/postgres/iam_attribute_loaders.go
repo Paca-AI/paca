@@ -19,7 +19,10 @@ func NewIAMAttributeLoaders(db *sqlx.DB) []iam.AttributeLoader {
 		&scalarLoader{db: db, kind: "task", table: "tasks", where: "deleted_at IS NULL", cols: map[string]string{
 			"task.sprint_id": "sprint_id",
 			"task.status_id": "status_id",
-			"task.type_id":   "task_type_id",
+			// The category of the task's status (backlog, refinement, ...): status ids
+			// are per project, a category is not.
+			"task.status_category": "(SELECT category FROM task_statuses WHERE id = tasks.status_id)",
+			"task.type_id":         "task_type_id",
 		}, multi: map[string]string{
 			// Assignees are project_members rows; expose the member's
 			// account id so the value is comparable

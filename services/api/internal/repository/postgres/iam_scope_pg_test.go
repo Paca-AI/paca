@@ -636,3 +636,20 @@ func TestScopedListTaskPositions(t *testing.T) {
 		t.Fatal("unmapped attribute must be an error")
 	}
 }
+
+func TestScopedTaskListStatusCategory(t *testing.T) {
+	f := newScopeFx(t)
+	refStatus, backlogStatus := uuid.New(), uuid.New()
+	pgExec(t, f.db, `INSERT INTO task_statuses (id, project_id, name, category) VALUES ($1,$3,'Refinement','refinement'), ($2,$3,'Backlog','backlog')`, refStatus, backlogStatus, f.p)
+	draft, ready := uuid.New(), uuid.New()
+	pgExec(t, f.db, `INSERT INTO tasks (id, project_id, task_number, status_id, title) VALUES ($1,$3,1,$4,'draft'), ($2,$3,2,$5,'ready')`, draft, ready, f.p, refStatus, backlogStatus)
+	f.role(policyJSON("Allow", "tasks:read", "project/*/task/*", `{"In":{"task.status_category":["refinement"]}}`))
+
+	tasks, _, err := NewTaskRepository(f.db).ListTasks(f.ctx("tasks:read", "task"), f.p, taskdom.TaskFilter{}, 50, taskdom.TaskSort{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].ID != draft {
+		t.Fatalf("listed %d tasks, want only the refinement draft %s", len(tasks), draft)
+	}
+}

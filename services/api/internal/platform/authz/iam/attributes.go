@@ -45,6 +45,7 @@ func NewAttributeSchema() *AttributeSchema {
 		{"resource.id", "", false},
 		{"task.sprint_id", "task", false},
 		{"task.status_id", "task", false},
+		{"task.status_category", "task", false},
 		{"task.type_id", "task", false},
 		{"task.assignee_id", "task", true},
 		{"view.sprint_id", "view", false},
