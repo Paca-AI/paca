@@ -1,6 +1,8 @@
 package bundledskills
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -393,6 +395,43 @@ func TestList_AgentFlavorHasNoCLIOnlyText(t *testing.T) {
 			if strings.Contains(s.Content, banned) {
 				t.Errorf("agent/%s: contains CLI-only text %q", s.Name, banned)
 			}
+		}
+	}
+}
+
+// TestPacaAnalyst_ToolReferenceNamesRealTools guards the analyst skill's
+// tool reference against MCP tool names that do not exist: an agent told to
+// call a missing tool fails mid-conversation.
+func TestPacaAnalyst_ToolReferenceNamesRealTools(t *testing.T) {
+	dir := filepath.Join("..", "..", "..", "..", "..", "apps", "mcp", "src", "tools")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Skipf("MCP tool sources not available: %v", err)
+	}
+	registered := map[string]bool{}
+	nameRe := regexp.MustCompile(`name: "([a-z_]+)"`)
+	for _, e := range entries {
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range nameRe.FindAllStringSubmatch(string(b), -1) {
+			registered[m[1]] = true
+		}
+	}
+	var content string
+	for _, s := range List(TargetCLI) {
+		if s.Name == "paca-analyst" {
+			content = s.Content
+		}
+	}
+	_, ref, ok := strings.Cut(content, "## Tool reference")
+	if !ok {
+		t.Fatal("paca-analyst has no Tool reference section")
+	}
+	for _, m := range regexp.MustCompile("`([a-z_]+)`").FindAllStringSubmatch(ref, -1) {
+		if !registered[m[1]] {
+			t.Errorf("tool reference names %q, which is not a Paca MCP tool", m[1])
 		}
 	}
 }
