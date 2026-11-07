@@ -103,6 +103,7 @@ Attribute keys. A key tied to one resource kind only works in a statement whose 
 | `principal.id`, `principal.type` | any | caller's id; `user` or `agent` |
 | `resource.id` | any | id of the thing accessed |
 | `task.sprint_id`, `task.status_id`, `task.type_id` | task | the task's sprint, status, type |
+| `task.status_category` | task | the category of the task's status (`backlog`, `refinement`, `ready`, `todo`, `inprogress`, `done`); same in every project |
 | `task.assignee_id` | task | assignee ids (multi-valued) |
 | `view.sprint_id` | view | the sprint a view belongs to (absent for backlog and timeline views) |
 | `doc.folder_id` | doc | the document's folder |
