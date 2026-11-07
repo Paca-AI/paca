@@ -228,6 +228,9 @@ type Client struct {
 	writeMu sync.Mutex
 	nextID  atomic.Int64
 
+	// loadSession is set by Initialize from agentCapabilities.loadSession.
+	loadSession atomic.Bool
+
 	mu      sync.Mutex
 	pending map[int64]chan inMessage
 
@@ -315,11 +318,55 @@ func (c *Client) Initialize(ctx context.Context) error {
 			"terminal": false,
 		},
 	}
-	_, err := c.call(ctx, "initialize", params)
+	raw, err := c.call(ctx, "initialize", params)
 	if err != nil {
 		return fmt.Errorf("acpclient: initialize: %w", err)
 	}
+	var result struct {
+		AgentCapabilities struct {
+			LoadSession bool `json:"loadSession"`
+		} `json:"agentCapabilities"`
+	}
+	if json.Unmarshal(raw, &result) == nil {
+		c.loadSession.Store(result.AgentCapabilities.LoadSession)
+	}
 	return nil
+}
+
+// SupportsLoadSession reports whether the agent advertised the loadSession
+// capability during Initialize.
+func (c *Client) SupportsLoadSession() bool { return c.loadSession.Load() }
+
+// LoadSession resumes a previously created session (session/load) so the
+// agent restores its own conversation history. Per the ACP spec the agent
+// replays that history as session/update notifications before responding;
+// callers should discard updates delivered while this call is in flight.
+func (c *Client) LoadSession(ctx context.Context, sessionID, cwd string) (*SessionInfo, error) {
+	params := map[string]any{
+		"sessionId":  sessionID,
+		"cwd":        cwd,
+		"mcpServers": []any{},
+	}
+	raw, err := c.call(ctx, "session/load", params)
+	if err != nil {
+		return nil, fmt.Errorf("acpclient: session/load: %w", err)
+	}
+	var result struct {
+		Modes         *SessionModeState  `json:"modes,omitempty"`
+		Models        *SessionModelState `json:"models,omitempty"`
+		ConfigOptions []ConfigOption     `json:"configOptions,omitempty"`
+	}
+	if len(raw) > 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &result); err != nil {
+			return nil, fmt.Errorf("acpclient: session/load: decoding result: %w", err)
+		}
+	}
+	return &SessionInfo{
+		SessionID:     sessionID,
+		Modes:         result.Modes,
+		Models:        result.Models,
+		ConfigOptions: result.ConfigOptions,
+	}, nil
 }
 
 // NewSession opens a new ACP session rooted at cwd (must be absolute) and
