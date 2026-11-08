@@ -218,6 +218,7 @@ func New(workspace string, cfg Config, log *slog.Logger) func(bridge.SendFunc) b
 			convIndex:     make(map[string]string),
 			sessions:      newSessionStore(storePath(cfg.StateDir, workspace, cfg.AgentID)),
 		}
+		r.sessions.log = log
 		if r.idleTimeout > 0 {
 			go r.sweepIdle()
 		}

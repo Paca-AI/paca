@@ -1,10 +1,12 @@
 package runner
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSessionStorePersistsAcrossInstances(t *testing.T) {
@@ -109,5 +111,30 @@ func TestRespawnSkipsLoadWithoutCapability(t *testing.T) {
 	_, _, calls := resumeTurn(t, "normal")
 	if len(calls) != 1 || calls[0] != "session/new" {
 		t.Fatalf("calls = %v, want only session/new", calls)
+	}
+}
+
+func TestStorePathRejectsTraversalAgentID(t *testing.T) {
+	state, ws := t.TempDir(), t.TempDir()
+	for _, id := range []string{"..", ".", "../x", ""} {
+		p := storePath(state, ws, id)
+		if !strings.HasPrefix(p, state) || strings.Contains(p, "..") {
+			t.Fatalf("agent %q escaped: %q", id, p)
+		}
+	}
+}
+
+func TestSessionStorePrunesStaleEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sessions.json")
+	s := newSessionStore(path)
+	s.set("p", "old", "x")
+	s.mu.Lock()
+	s.ids[storeKey("p", "old")] = sessionEntry{ID: "x", Updated: time.Now().Add(-2 * sessionMaxAge)}
+	b, _ := json.Marshal(s.ids)
+	s.mu.Unlock()
+	_ = os.WriteFile(path, b, 0o600)
+	s.set("p", "new", "y")
+	if got := newSessionStore(path).get("p", "old"); got != "" {
+		t.Fatalf("stale entry kept: %q", got)
 	}
 }

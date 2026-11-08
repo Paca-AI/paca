@@ -4,10 +4,20 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
+
+// sessionMaxAge is how long an unused entry is kept before being pruned.
+const sessionMaxAge = 30 * 24 * time.Hour
+
+type sessionEntry struct {
+	ID      string    `json:"id"`
+	Updated time.Time `json:"updated"`
+}
 
 // sessionStore persists ACP session ids (keyed by session key + provider) to
 // disk so a respawned subprocess — after idle eviction, a forced kill or a
@@ -20,7 +30,8 @@ import (
 type sessionStore struct {
 	mu   sync.Mutex
 	path string // "" = in-memory only
-	ids  map[string]string
+	ids  map[string]sessionEntry
+	log  *slog.Logger // optional
 }
 
 // storePath returns <stateDir>/<hash(workspace)>/<agentID>/sessions.json. An
@@ -39,14 +50,15 @@ func storePath(stateDir, workspace, agentID string) string {
 		abs = workspace
 	}
 	sum := sha256.Sum256([]byte(abs))
-	if agentID == "" {
+	agentID = filepath.Base(agentID)
+	if agentID == "" || agentID == "." || agentID == ".." || agentID == string(filepath.Separator) {
 		agentID = "default"
 	}
-	return filepath.Join(stateDir, hex.EncodeToString(sum[:])[:16], filepath.Base(agentID), "sessions.json")
+	return filepath.Join(stateDir, hex.EncodeToString(sum[:])[:16], agentID, "sessions.json")
 }
 
 func newSessionStore(path string) *sessionStore {
-	s := &sessionStore{path: path, ids: map[string]string{}}
+	s := &sessionStore{path: path, ids: map[string]sessionEntry{}}
 	s.load()
 	return s
 }
@@ -55,12 +67,18 @@ func (s *sessionStore) load() {
 	if s.path == "" {
 		return
 	}
-	if b, err := os.ReadFile(s.path); err == nil {
-		var m map[string]string
-		if json.Unmarshal(b, &m) == nil {
-			s.ids = m
-		}
+	b, err := os.ReadFile(s.path)
+	if err != nil {
+		return
 	}
+	var m map[string]sessionEntry
+	if err := json.Unmarshal(b, &m); err != nil {
+		if s.log != nil {
+			s.log.Warn("runner: ignoring unreadable session store", "path", s.path, "error", err)
+		}
+		return
+	}
+	s.ids = m
 }
 
 func storeKey(provider, key string) string { return provider + "|" + key }
@@ -71,7 +89,7 @@ func (s *sessionStore) get(provider, key string) string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.ids[storeKey(provider, key)]
+	return s.ids[storeKey(provider, key)].ID
 }
 
 func (s *sessionStore) set(provider, key, id string) {
@@ -81,7 +99,7 @@ func (s *sessionStore) set(provider, key, id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k := storeKey(provider, key)
-	if s.ids[k] == id {
+	if cur, ok := s.ids[k]; ok && cur.ID == id && time.Since(cur.Updated) < time.Hour {
 		return
 	}
 	// Merge with whatever is on disk now so a concurrent writer's entries
@@ -90,7 +108,12 @@ func (s *sessionStore) set(provider, key, id string) {
 	if id == "" {
 		delete(s.ids, k)
 	} else {
-		s.ids[k] = id
+		s.ids[k] = sessionEntry{ID: id, Updated: time.Now()}
+	}
+	for kk, e := range s.ids {
+		if time.Since(e.Updated) > sessionMaxAge {
+			delete(s.ids, kk)
+		}
 	}
 	if s.path == "" {
 		return
@@ -102,8 +125,13 @@ func (s *sessionStore) set(provider, key, id string) {
 	if os.MkdirAll(filepath.Dir(s.path), 0o700) != nil {
 		return
 	}
-	tmp := s.path + ".tmp"
-	if os.WriteFile(tmp, b, 0o600) == nil {
-		_ = os.Rename(tmp, s.path)
+	f, err := os.CreateTemp(filepath.Dir(s.path), "sessions-*.tmp")
+	if err != nil {
+		return
+	}
+	tmp := f.Name()
+	_, werr := f.Write(b)
+	if cerr := f.Close(); werr != nil || cerr != nil || os.Rename(tmp, s.path) != nil {
+		_ = os.Remove(tmp)
 	}
 }
