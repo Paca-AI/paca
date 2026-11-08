@@ -152,16 +152,19 @@ export const TailFollowIndicator: FC<{
 	const isAtBottom = useThreadViewport((s) => s.isAtBottom);
 	const scrollToBottom = useThreadViewport((s) => s.scrollToBottom);
 
-	// Mirror the viewport into `following` only when the viewport changes
-	// (`following` must stay out of the deps, or this would undo a
-	// programmatic jumpToLatest() while the viewport is not yet at the bottom).
+	// Mirror the viewport into `following` only when the viewport changes.
+	// DO NOT add `following` to the deps: the effect would then re-run when
+	// jumpToLatest() flips it to true while the viewport is not yet at the
+	// bottom, and set it straight back to false, withholding the sender's
+	// message and the reply.
 	useEffect(() => {
 		setFollowing(isAtBottom);
 	}, [isAtBottom, setFollowing]);
 
 	// jumpToLatest() (the pill, or sending a message) also brings the viewport
 	// to the tail, so following and the viewport don't diverge. The first run
-	// is the mount, not a jump.
+	// is the mount, not a jump. The ref is seeded from the current count, so a
+	// remount of this component never replays an old jump.
 	const lastJumpRef = useRef(jumpCount);
 	useEffect(() => {
 		if (lastJumpRef.current === jumpCount) return;
