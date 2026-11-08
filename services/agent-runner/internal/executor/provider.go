@@ -104,6 +104,14 @@ var providerAPIKeyEnvVar = map[string]string{
 	// needs so Goose's own openai client resolves it to
 	// {base_url}/v1/chat/completions.
 	"fluxionai": "OPENAI_API_KEY",
+	// "runcrate" (runcrate.ai) is an AI cloud with an OpenAI-compatible
+	// inference API (/v1/chat/completions) for open-weight models. Like
+	// "fluxionai" above it is not a Goose-native provider, so it is keyed to
+	// OPENAI_API_KEY and aliased to "openai" below (gooseProviderID); its
+	// data/llm_models.json base_url ("https://api.runcrate.ai", no path) is
+	// what OPENAI_HOST needs so Goose's openai client resolves it to
+	// {base_url}/v1/chat/completions.
+	"runcrate": "OPENAI_API_KEY",
 }
 
 // gooseProviderID translates a Paca llm_provider value onto the provider id
@@ -141,6 +149,8 @@ var providerAPIKeyEnvVar = map[string]string{
 //     the deliberate "route through Goose's own openai client" case
 //     explained above providerAPIKeyEnvVar's "fluxionai" entry, not a
 //     same-vendor rename like the others in this list.
+//   - "runcrate" -> "openai": same "route through Goose's own openai
+//     client" case as "fluxionai" above.
 var gooseProviderID = map[string]string{
 	"gemini":       "google",
 	"deepseek":     "custom_deepseek",
@@ -151,6 +161,7 @@ var gooseProviderID = map[string]string{
 	"dashscope":    "alibaba",
 	"aiml":         "aimlapi",
 	"fluxionai":    "openai",
+	"runcrate":     "openai",
 }
 
 // resolveProviderEnv maps a Paca llm_provider value onto the Goose
