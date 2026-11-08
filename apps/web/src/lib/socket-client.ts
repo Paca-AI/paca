@@ -69,6 +69,10 @@ export function connectSocket(): Socket {
 	// "connect_error", and socket.io does NOT retry after it. That is how a
 	// tab left idle past its token's expiry ended up with a dead socket until
 	// a reload: refresh the session and reconnect ourselves.
+	socket.on("connect", () => {
+		recoveryAttempt = 0;
+	});
+
 	socket.on("connect_error", () => {
 		scheduleRecovery();
 	});
@@ -120,30 +124,37 @@ let recoveryAttempt = 0;
 
 function handleVisibilityChange(): void {
 	if (document.visibilityState !== "visible") return;
-	if (socket && !socket.connected) scheduleRecovery(0);
+	if (socket && !socket.connected) recoverNow();
 }
 
 /** Refresh the session, then reconnect, retrying with backoff. */
-function scheduleRecovery(
-	delay = Math.min(
+function scheduleRecovery(): void {
+	if (!socket || recoveryTimer !== undefined) return;
+	const delay = Math.min(
 		RECOVERY_BASE_DELAY_MS * 2 ** recoveryAttempt,
 		RECOVERY_MAX_DELAY_MS,
-	),
-): void {
-	if (!socket || recoveryTimer !== undefined) return;
+	);
 	recoveryAttempt++;
-	recoveryTimer = setTimeout(() => {
-		recoveryTimer = undefined;
-		void recover();
-	}, delay);
+	recoveryTimer = setTimeout(runRecovery, delay);
+}
+
+/** Attempt recovery immediately, preempting any pending backoff timer. The
+ *  attempt counter is untouched, so the backoff resumes where it left off if
+ *  this attempt fails too. */
+function recoverNow(): void {
+	if (!socket) return;
+	if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
+	recoveryTimer = setTimeout(runRecovery, 0);
+}
+
+function runRecovery(): void {
+	recoveryTimer = undefined;
+	void recover();
 }
 
 async function recover(): Promise<void> {
 	const current = socket;
-	if (!current || current.connected) {
-		recoveryAttempt = 0;
-		return;
-	}
+	if (!current || current.connected) return;
 	try {
 		await apiClient.refreshSession();
 	} catch {
@@ -153,13 +164,14 @@ async function recover(): Promise<void> {
 		return;
 	}
 	if (socket !== current) return;
-	recoveryAttempt = 0;
+	// recoveryAttempt is reset by the "connect" listener, not here: a refresh
+	// that works while the handshake keeps failing must keep backing off.
 	current.connect();
 }
 
 /** Reconnect a socket that is down; no-op while connected. */
 export function reconnectSocketIfDown(): void {
-	if (socket && !socket.connected) scheduleRecovery(0);
+	if (socket && !socket.connected) recoverNow();
 }
 
 /** Refresh the session, then reconnect so the handshake uses the new cookie. */

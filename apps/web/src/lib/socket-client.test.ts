@@ -39,6 +39,7 @@ import {
 	joinProject,
 	leaveProject,
 	onProjectNamespaces,
+	reconnectSocketIfDown,
 	rejoinProject,
 } from "./socket-client";
 
@@ -420,6 +421,66 @@ describe("socket-client", () => {
 
 				expect(refreshSession).toHaveBeenCalledTimes(1);
 				expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("keeps backing off while the handshake keeps failing", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				mockSocket.connect.mockClear();
+				const fail = handlerFor("connect_error");
+
+				fail(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+				expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+
+				fail(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_999);
+				expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+				await vi.advanceTimersByTimeAsync(1);
+				expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("resets the backoff once connected", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				mockSocket.connect.mockClear();
+
+				handlerFor("connect_error")(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+				handlerFor("connect")();
+				handlerFor("connect_error")(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+
+				expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("lets a forced recovery preempt a pending backoff timer", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				mockSocket.connect.mockClear();
+
+				handlerFor("connect_error")(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+				handlerFor("connect_error")(new Error("refused")); // 2s timer pending
+				reconnectSocketIfDown();
+				await vi.advanceTimersByTimeAsync(0);
+
+				expect(mockSocket.connect).toHaveBeenCalledTimes(2);
 			} finally {
 				vi.useRealTimers();
 			}
