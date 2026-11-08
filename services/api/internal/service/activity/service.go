@@ -154,6 +154,51 @@ func (s *Service) AddComment(ctx context.Context, k CommentKind, in CommentInput
 	return a, member, nil
 }
 
+// SystemCommentInput is a comment written by the platform itself (the
+// automation engine), with no human author.
+type SystemCommentInput struct {
+	ProjectID uuid.UUID
+	EntityID  uuid.UUID
+	Origin    events.Origin
+	Content   json.RawMessage
+}
+
+// AddSystemComment stores and publishes a comment that has no author. It
+// fans out the same added topic as a human comment, so open activity panes
+// and plugins see it, and tags the event with in.Origin so the automation
+// engine's self-trigger guard can skip it.
+func (s *Service) AddSystemComment(ctx context.Context, k CommentKind, in SystemCommentInput) (*activitydom.Activity, error) {
+	if !IsCommentContentValid(in.Content) {
+		return nil, k.ErrContentInvalid
+	}
+	now := time.Now()
+	entityID := in.EntityID
+	a := &activitydom.Activity{
+		ID:           uuid.New(),
+		ProjectID:    in.ProjectID,
+		EntityType:   string(k.EntityType),
+		EntityID:     &entityID,
+		Origin:       string(in.Origin),
+		ActivityType: activitydom.TypeComment,
+		Content:      in.Content,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := s.repo.Create(ctx, a); err != nil {
+		return nil, err
+	}
+	s.Record(ctx, Entry{
+		ProjectID:  a.ProjectID,
+		EntityType: k.EntityType,
+		EntityID:   a.EntityIDOrNil(),
+		Topic:      k.TopicAdded,
+		Payload:    EntityPayload(a, k.IDKey),
+		Origin:     in.Origin,
+		Plugins:    true,
+	})
+	return a, nil
+}
+
 // UpdateComment replaces a comment's content. Only its author may edit it.
 func (s *Service) UpdateComment(ctx context.Context, k CommentKind, id, projectID, actorID uuid.UUID, content json.RawMessage) (*activitydom.Activity, error) {
 	if !IsCommentContentValid(content) {

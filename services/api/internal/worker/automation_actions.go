@@ -28,6 +28,26 @@ type automationNotifier interface {
 	NotifyAutomation(ctx context.Context, in notificationdom.NotifyAutomationInput) error
 }
 
+// automationCommentWriter is implemented by the activity service to post a
+// comment with no human author. Discovered by type assertion so recorders
+// that only record activities keep working.
+type automationCommentWriter interface {
+	RecordSystemComment(ctx context.Context, in taskdom.RecordActivityInput) error
+}
+
+// automationUserSetRecorder records which fields a task's creator set
+// explicitly, so Jev autofill leaves them alone.
+type automationUserSetRecorder interface {
+	RecordUserSetFields(ctx context.Context, taskID uuid.UUID, fieldKeys []string) error
+}
+
+// WithUserSetRecorder lets create_task protect the fields it sets from
+// autofill, as the HTTP create path does.
+func (c *AutomationConsumer) WithUserSetRecorder(r automationUserSetRecorder) *AutomationConsumer {
+	c.userSetRec = r
+	return c
+}
+
 // WithNotifier enables the notify action.
 func (c *AutomationConsumer) WithNotifier(n automationNotifier) *AutomationConsumer {
 	c.notifier = n
@@ -49,13 +69,23 @@ func (c *AutomationConsumer) applyAddComment(ctx context.Context, projectID uuid
 	if text == "" {
 		return false, fmt.Errorf("add_comment: comment is empty after rendering")
 	}
-	if err := c.activityRec.RecordActivity(ctx, taskdom.RecordActivityInput{
+	in := taskdom.RecordActivityInput{
 		TaskID:       task.ID,
 		ProjectID:    projectID,
 		Origin:       taskdom.OriginAutomation,
 		ActivityType: taskdom.ActivityTypeComment,
 		Content:      plainTextBlocks(text),
-	}); err != nil {
+	}
+	// Prefer the comment path so the event fans out on the comment topic
+	// (realtime clients and plugins route on it); a recorder without it
+	// falls back to the generic activity entry.
+	var err error
+	if w, ok := c.activityRec.(automationCommentWriter); ok {
+		err = w.RecordSystemComment(ctx, in)
+	} else {
+		err = c.activityRec.RecordActivity(ctx, in)
+	}
+	if err != nil {
 		return false, fmt.Errorf("add_comment: %w", err)
 	}
 	c.recordAppliedActivity(ctx, projectID, task.ID, automationName, map[string]any{"comment": text})

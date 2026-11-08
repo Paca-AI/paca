@@ -193,6 +193,7 @@ type AutomationConsumer struct {
 	taskCreator    automationTaskCreator
 	linkCreator    automationLinkCreator
 	notifier       automationNotifier
+	userSetRec     automationUserSetRecorder
 	activityRec    automationActivityRecorder
 	pluginRuntime  automationPluginRuntime
 	memberRepo     automationMemberReader
@@ -2312,6 +2313,20 @@ func (c *AutomationConsumer) applyCreateTask(ctx context.Context, projectID uuid
 			Content:      content,
 		})
 	}
+	// Mirror the HTTP create path's side effects: fields the action set
+	// explicitly must not be overwritten by Jev autofill, and each assignee
+	// is announced so they are notified (and an agent assignee is started).
+	if c.userSetRec != nil {
+		if keys := createdUserSetKeys(fu); len(keys) > 0 {
+			if err := c.userSetRec.RecordUserSetFields(ctx, created.ID, keys); err != nil {
+				c.log.Warn("automation consumer: failed to record user-set fields", "task_id", created.ID, "err", err)
+			}
+		}
+	}
+	for _, memberID := range fu.AssigneeIDs {
+		extra := map[string]any{"automation_name": automationName}
+		_ = events.PublishAssignmentChanged(ctx, c.publisher, created.ID, projectID, memberID, nil, userdom.SystemActorUserID, extra)
+	}
 	c.recordAppliedActivity(ctx, projectID, parent.ID, automationName, map[string]any{"created_task_id": created.ID, "created_task_title": created.Title})
 	if cfg.Link != "" {
 		if _, err := c.linkTasks(ctx, projectID, created.ID, parent.ID, cfg.Link); err != nil {
@@ -2319,6 +2334,28 @@ func (c *AutomationConsumer) applyCreateTask(ctx context.Context, projectID uuid
 		}
 	}
 	return true, nil
+}
+
+// createdUserSetKeys lists the autofill-managed fields a create_task action
+// set explicitly. parent_task_id is always set (the new task's parent).
+func createdUserSetKeys(fu *automationdom.TaskFieldUpdate) []string {
+	keys := []string{"parent_task_id"}
+	if fu.Importance != nil {
+		keys = append(keys, "importance")
+	}
+	if fu.TaskTypeID != nil {
+		keys = append(keys, "task_type_id")
+	}
+	if fu.StoryPoints != nil {
+		keys = append(keys, "story_points")
+	}
+	if fu.Tags != nil {
+		keys = append(keys, "tags")
+	}
+	for k := range fu.CustomFields {
+		keys = append(keys, "custom:"+k)
+	}
+	return keys
 }
 
 // maxCallAPIResponseBody caps how much of an outbound call_api response body

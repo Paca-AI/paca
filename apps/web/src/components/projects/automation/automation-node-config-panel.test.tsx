@@ -171,6 +171,23 @@ describe("update_task field operations", () => {
 		);
 	});
 
+	it("keeps a stored description through a save", async () => {
+		const description = [
+			{
+				type: "paragraph",
+				content: [{ type: "text", text: "Steps", styles: {} }],
+			},
+		];
+		const onSave = renderAction("update_task", {
+			update: { description },
+		});
+		await userEvent.click(screen.getByRole("button", { name: /save/i }));
+		const saved = onSave.mock.calls[0][0] as {
+			update: Record<string, unknown>;
+		};
+		expect(saved.update.description).toEqual(description);
+	});
+
 	it("lets the operation of a row be switched to clear", async () => {
 		const onSave = renderAction("update_task", {
 			update: { due_date: "2026-01-01T00:00:00Z" },

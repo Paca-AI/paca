@@ -288,7 +288,7 @@ func New(cfg *config.Config) (*App, error) {
 	docService := docsvc.New(docRepo, projectRepo)
 	docActivityService := docsvc.NewActivityService(activityLog, docRepo).WithAgentTrigger(triggerGate, projectRepo).WithNotificationService(notificationService)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
-	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log).WithNotifier(notificationService)
+	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log).WithNotifier(notificationService).WithUserSetRecorder(taskRepo)
 	taskAutofillConsumer := worker.NewTaskAutofillConsumer(redisClient, taskService, taskRepo, projectService, activityService, encryptor, log)
 	taskAutoAssignConsumer := worker.NewTaskAutoAssignConsumer(redisClient, taskService, projectRepo, projectService, activityService, encryptor, log)
 	dueDateScheduler := worker.NewDueDateScheduler(redisClient, automationConsumer, log)

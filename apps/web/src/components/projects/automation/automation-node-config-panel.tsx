@@ -243,9 +243,7 @@ const OPERATORS_BY_FIELD: Record<ConditionField, ConditionOperator[]> = {
 };
 
 // UpdatableField enumerates every TaskFieldUpdate key with an editor in
-// this form — the same set the "add field" picker offers. description is
-// only offered by create_task (see CREATE_FIELD_ORDER); update_task leaves
-// it out. Ordered to match
+// this form — the same set the "add field" picker offers. Ordered to match
 // CONDITION_FIELDS above for a consistent field-picking experience across
 // conditions and actions.
 type UpdatableField = Exclude<
@@ -371,15 +369,15 @@ const FIELD_UPDATE_ORDER: UpdatableField[] = [
 	"parent_task_id",
 	"start_date",
 	"due_date",
+	"description",
 	"custom_fields",
 ];
 
 // create_task offers every update_task field except parent_task_id (the new
-// task's parent is always the target), plus a plain-text description.
-const CREATE_FIELD_ORDER: UpdatableField[] = [
-	...FIELD_UPDATE_ORDER.filter((k) => k !== "parent_task_id"),
-	"description",
-];
+// task's parent is always the target).
+const CREATE_FIELD_ORDER: UpdatableField[] = FIELD_UPDATE_ORDER.filter(
+	(k) => k !== "parent_task_id",
+);
 
 // The description is stored as BlockNote JSON (one paragraph block per line);
 // the editor here is plain text, so convert both ways.
