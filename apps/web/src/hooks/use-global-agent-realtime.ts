@@ -23,13 +23,21 @@ import {
 	applyRealtimeAgentEvent,
 	conversationEventWindowKey,
 } from "@/lib/agent-api";
-import { connectSocket, type RealtimeEvent } from "@/lib/socket-client";
+import {
+	connectSocket,
+	getSocket,
+	type RealtimeEvent,
+} from "@/lib/socket-client";
 
 export function useGlobalAgentRealtime(enabled = true): void {
 	const queryClient = useQueryClient();
 
 	useEffect(() => {
 		if (!enabled) return;
+		// Read before connectSocket(): it re-subscribes an existing socket
+		// (`active` becomes true), which would hide that it was down.
+		const existing = getSocket();
+		const mountedDown = !!existing && !existing.connected && !existing.active;
 		const socket = connectSocket();
 
 		function handleEvent(event: RealtimeEvent) {
@@ -51,9 +59,29 @@ export function useGlobalAgentRealtime(enabled = true): void {
 			}
 		}
 
+		// Events emitted while the socket was away are lost: after a *re*connect
+		// reconcile the conversations with the server.
+		// A socket that mounted down and connects for the first time (after a
+		// recovery) may have missed events too, so only a socket that connects
+		// right as we mount counts as the initial connection.
+		let hasConnected = socket.connected;
+		function handleConnect() {
+			if (hasConnected || mountedDown) {
+				void queryClient.invalidateQueries({
+					queryKey: ["conversation-event-window"],
+				});
+				void queryClient.invalidateQueries({
+					queryKey: ["global-chat", "conversations"],
+				});
+			}
+			hasConnected = true;
+		}
+
 		socket.on("event", handleEvent);
+		socket.on("connect", handleConnect);
 		return () => {
 			socket.off("event", handleEvent);
+			socket.off("connect", handleConnect);
 		};
 	}, [queryClient, enabled]);
 }

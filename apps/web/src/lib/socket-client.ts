@@ -65,6 +65,26 @@ export function connectSocket(): Socket {
 		}
 	});
 
+	// A handshake the server refuses (expired/missing cookie) arrives as
+	// "connect_error", and socket.io does NOT retry after it. That is how a
+	// tab left idle past its token's expiry ended up with a dead socket until
+	// a reload: refresh the session and reconnect ourselves.
+	socket.on("connect", () => {
+		recoveryAttempt = 0;
+	});
+
+	// Only when socket.io has given up (`active` false, i.e. the handshake was
+	// refused). For transient failures (server down, network blip) it keeps
+	// retrying by itself; recovering as well would duplicate those attempts and
+	// hit the refresh endpoint on every one of them.
+	socket.on("connect_error", () => {
+		if (socket && !socket.active) scheduleRecovery();
+	});
+
+	// A background tab may have slept through "reauth" and the expiry
+	// disconnect: check the connection as soon as the tab is visible again.
+	document.addEventListener("visibilitychange", handleVisibilityChange);
+
 	// The server asks for this shortly before the access token expires and
 	// disconnects at expiry. Refresh the session (shared with any refresh the
 	// HTTP client is already running) and reconnect on the new cookie; if the
@@ -85,6 +105,11 @@ export function connectSocket(): Socket {
 
 /** Disconnect and destroy the socket.  Call on logout. */
 export function disconnectSocket(): void {
+	document.removeEventListener("visibilitychange", handleVisibilityChange);
+	if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
+	recoveryTimer = undefined;
+	recoveryAttempt = 0;
+	recoveringSocket = null;
 	if (socket) {
 		socket.disconnect();
 		socket = null;
@@ -93,6 +118,82 @@ export function disconnectSocket(): void {
 	projectNamespaces.clear();
 	for (const timer of joinRetryTimers.values()) clearTimeout(timer);
 	joinRetryTimers.clear();
+}
+
+// ── Recovery of a socket that cannot reconnect by itself ─────────────────────
+
+const RECOVERY_BASE_DELAY_MS = 1_000;
+const RECOVERY_MAX_DELAY_MS = 30_000;
+let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+let recoveryAttempt = 0;
+/** The socket a refresh+connect attempt is currently running for. */
+let recoveringSocket: Socket | null = null;
+
+function handleVisibilityChange(): void {
+	if (document.visibilityState !== "visible") return;
+	if (isSocketDown()) recoverNow();
+}
+
+/** Not connected and not about to retry by itself. */
+function isSocketDown(): boolean {
+	return !!socket && !socket.connected && !socket.active;
+}
+
+/** Refresh the session, then reconnect, retrying with backoff. */
+function scheduleRecovery(): void {
+	if (!socket || recoveryTimer !== undefined) return;
+	const delay = Math.min(
+		RECOVERY_BASE_DELAY_MS * 2 ** recoveryAttempt,
+		RECOVERY_MAX_DELAY_MS,
+	);
+	recoveryAttempt++;
+	recoveryTimer = setTimeout(runRecovery, delay);
+}
+
+/** Attempt recovery immediately, preempting any pending backoff timer. The
+ *  attempt counter is untouched, so the backoff resumes where it left off if
+ *  this attempt fails too. */
+function recoverNow(): void {
+	if (!socket || recoveringSocket === socket) return;
+	if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
+	recoveryTimer = setTimeout(runRecovery, 0);
+}
+
+function runRecovery(): void {
+	recoveryTimer = undefined;
+	void recover();
+}
+
+async function recover(): Promise<void> {
+	const current = socket;
+	if (!current || current.connected) return;
+	recoveringSocket = current;
+	try {
+		await apiClient.refreshSession();
+	} catch (error) {
+		if (recoveringSocket === current) recoveringSocket = null;
+		// The session is really over: stop retrying. The HTTP client's own 401
+		// handling takes the user to login, and logout/login recreates the
+		// socket. Anything else (offline, 5xx) is retried with backoff.
+		if (!isAuthRejection(error)) scheduleRecovery();
+		return;
+	}
+	if (recoveringSocket === current) recoveringSocket = null;
+	if (socket !== current) return;
+	// recoveryAttempt is reset by the "connect" listener, not here: a refresh
+	// that works while the handshake keeps failing must keep backing off.
+	current.connect();
+}
+
+function isAuthRejection(error: unknown): boolean {
+	const status = (error as { response?: { status?: number } })?.response
+		?.status;
+	return status === 401 || status === 403;
+}
+
+/** Reconnect a socket that is down; no-op while connected or retrying. */
+export function reconnectSocketIfDown(): void {
+	if (isSocketDown()) recoverNow();
 }
 
 /** Refresh the session, then reconnect so the handshake uses the new cookie. */

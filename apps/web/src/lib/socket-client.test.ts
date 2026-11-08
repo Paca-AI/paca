@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 function createMockSocket() {
 	return {
 		connected: false,
+		active: false,
 		connect: vi.fn(),
 		disconnect: vi.fn(),
 		emit: vi.fn(),
@@ -39,6 +40,7 @@ import {
 	joinProject,
 	leaveProject,
 	onProjectNamespaces,
+	reconnectSocketIfDown,
 	rejoinProject,
 } from "./socket-client";
 
@@ -64,6 +66,7 @@ describe("socket-client", () => {
 		// Reset mock state before each test.
 		vi.clearAllMocks();
 		mockSocket.connected = false;
+		mockSocket.active = false;
 		mockSocket.timeout.mockReturnValue({ emit: mockSocket.emit });
 		// Ensure internal singleton is cleared between tests.
 		disconnectSocket();
@@ -404,6 +407,201 @@ describe("socket-client", () => {
 
 			expect(mockSocket.disconnect).not.toHaveBeenCalled();
 			expect(mockSocket.connect).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("recovery from a refused handshake", () => {
+		it("refreshes the session and reconnects after connect_error", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				mockSocket.connect.mockClear();
+
+				handlerFor("connect_error")(new Error("invalid or expired token"));
+				await vi.advanceTimersByTimeAsync(1_000);
+
+				expect(refreshSession).toHaveBeenCalledTimes(1);
+				expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("keeps backing off while the handshake keeps failing", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				mockSocket.connect.mockClear();
+				const fail = handlerFor("connect_error");
+
+				fail(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+				expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+
+				fail(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_999);
+				expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+				await vi.advanceTimersByTimeAsync(1);
+				expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("resets the backoff once connected", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				mockSocket.connect.mockClear();
+
+				handlerFor("connect_error")(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+				handlerFor("connect")();
+				handlerFor("connect_error")(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+
+				expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("leaves transient failures to socket.io while it is still retrying", async () => {
+			vi.useFakeTimers();
+			try {
+				connectSocket();
+				mockSocket.connect.mockClear();
+				mockSocket.active = true;
+
+				handlerFor("connect_error")(new Error("xhr poll error"));
+				await vi.advanceTimersByTimeAsync(60_000);
+
+				expect(refreshSession).not.toHaveBeenCalled();
+				expect(mockSocket.connect).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("stops retrying when the refresh is rejected (session over)", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockRejectedValue({ response: { status: 401 } });
+				connectSocket();
+				mockSocket.connect.mockClear();
+
+				handlerFor("connect_error")(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(120_000);
+
+				expect(refreshSession).toHaveBeenCalledTimes(1);
+				expect(mockSocket.connect).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("retries with backoff when the refresh fails for another reason", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockRejectedValue(new Error("Network Error"));
+				connectSocket();
+
+				handlerFor("connect_error")(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+				expect(refreshSession).toHaveBeenCalledTimes(1);
+				await vi.advanceTimersByTimeAsync(2_000);
+				expect(refreshSession).toHaveBeenCalledTimes(2);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("does not start a second recovery while one is refreshing", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockReturnValue(new Promise(() => {}));
+				connectSocket();
+
+				handlerFor("connect_error")(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+				reconnectSocketIfDown();
+				await vi.advanceTimersByTimeAsync(0);
+
+				expect(refreshSession).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("does not recover a socket that socket.io is still reconnecting", async () => {
+			vi.useFakeTimers();
+			try {
+				connectSocket();
+				mockSocket.active = true;
+				reconnectSocketIfDown();
+				await vi.advanceTimersByTimeAsync(0);
+				expect(refreshSession).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("recovers a down socket when the tab becomes visible", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				mockSocket.connect.mockClear();
+
+				document.dispatchEvent(new Event("visibilitychange"));
+				await vi.advanceTimersByTimeAsync(0);
+
+				expect(refreshSession).toHaveBeenCalledTimes(1);
+				expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("cleans up the timer and visibility listener on disconnect", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				handlerFor("connect_error")(new Error("refused"));
+				disconnectSocket();
+				mockSocket.connect.mockClear();
+
+				document.dispatchEvent(new Event("visibilitychange"));
+				await vi.advanceTimersByTimeAsync(60_000);
+
+				expect(refreshSession).not.toHaveBeenCalled();
+				expect(mockSocket.connect).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("lets a forced recovery preempt a pending backoff timer", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				mockSocket.connect.mockClear();
+
+				handlerFor("connect_error")(new Error("refused"));
+				await vi.advanceTimersByTimeAsync(1_000);
+				handlerFor("connect_error")(new Error("refused")); // 2s timer pending
+				reconnectSocketIfDown();
+				await vi.advanceTimersByTimeAsync(0);
+
+				expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 });
