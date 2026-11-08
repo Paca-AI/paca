@@ -143,17 +143,25 @@ export const LoadOlderEvents: FC<{
  */
 export const TailFollowIndicator: FC<{
 	newBelow: number;
-	following: boolean;
 	setFollowing: (following: boolean) => void;
 	jumpToLatest: () => void;
-}> = ({ newBelow, following, setFollowing, jumpToLatest }) => {
+}> = ({ newBelow, setFollowing, jumpToLatest }) => {
 	const { t } = useTranslation("projects");
 	const isAtBottom = useThreadViewport((s) => s.isAtBottom);
 	const scrollToBottom = useThreadViewport((s) => s.scrollToBottom);
 
+	// Mirror the viewport into `following` only when the viewport itself
+	// changes. Depending on `following` too made this effect undo any
+	// programmatic jumpToLatest() (sending a message) while the viewport was
+	// not yet at the bottom: following flipped true, the effect saw
+	// isAtBottom=false and flipped it straight back, so the sender's own
+	// message and the agent's reply were withheld until a reload.
+	const lastAtBottomRef = useRef<boolean | null>(null);
 	useEffect(() => {
-		if (isAtBottom !== following) setFollowing(isAtBottom);
-	}, [isAtBottom, following, setFollowing]);
+		if (lastAtBottomRef.current === isAtBottom) return;
+		lastAtBottomRef.current = isAtBottom;
+		setFollowing(isAtBottom);
+	}, [isAtBottom, setFollowing]);
 
 	const show = newBelow > 0 && !isAtBottom;
 	if (!show) return null;
