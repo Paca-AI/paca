@@ -71,6 +71,26 @@ export class FakeBridge {
 		);
 	}
 
+	/** Streams a conversation event (user_message, agent_message_chunk, ...). */
+	sendEvent(
+		conversationId: string,
+		projectId: string,
+		eventType: string,
+		eventSource: "user" | "agent" | "system",
+		text: string,
+	): void {
+		this.socket.send(
+			JSON.stringify({
+				type: "event",
+				conversation_id: conversationId,
+				project_id: projectId,
+				event_type: eventType,
+				event_source: eventSource,
+				payload: { content: { type: "text", text } },
+			}),
+		);
+	}
+
 	close(): void {
 		clearInterval(this.pingTimer);
 		this.socket.close();

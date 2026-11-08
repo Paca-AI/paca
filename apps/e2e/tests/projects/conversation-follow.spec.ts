@@ -93,12 +93,60 @@ test.describe("Following the tail of a conversation", () => {
 			"E2E_FOLLOW_HISTORY_0",
 		);
 		await bridge.next("start_turn", id);
+		bridge.sendEvent(
+			id,
+			projectId,
+			"user_message",
+			"user",
+			"E2E_FOLLOW_HISTORY_0",
+		);
+		bridge.sendEvent(
+			id,
+			projectId,
+			"agent_message_chunk",
+			"agent",
+			"E2E_FOLLOW_REPLY_0",
+		);
+		bridge.reportTurnStatus(id, "finished");
+		await expect
+			.poll(async () => {
+				const r = await request.get(
+					`${API_URL}/projects/${projectId}/conversations/${id}`,
+				);
+				return (await r.json()).data.status;
+			})
+			.not.toBe("running");
 		for (let i = 1; i < HISTORY_MESSAGES; i++) {
 			const response = await request.post(
 				`${API_URL}/projects/${projectId}/conversations/${id}/messages`,
-				{ data: { message: `E2E_FOLLOW_HISTORY_${i}`, on_busy: "force" } },
+				{ data: { message: `E2E_FOLLOW_HISTORY_${i}` } },
 			);
-			expect(response.ok()).toBeTruthy();
+			expect(response.ok(), await response.text()).toBeTruthy();
+			// Finish each turn so the next message is not rejected as busy.
+			await bridge.next("start_turn", id);
+			bridge.sendEvent(
+				id,
+				projectId,
+				"user_message",
+				"user",
+				`E2E_FOLLOW_HISTORY_${i}`,
+			);
+			bridge.sendEvent(
+				id,
+				projectId,
+				"agent_message_chunk",
+				"agent",
+				`E2E_FOLLOW_REPLY_${i}`,
+			);
+			bridge.reportTurnStatus(id, "finished");
+			await expect
+				.poll(async () => {
+					const r = await request.get(
+						`${API_URL}/projects/${projectId}/conversations/${id}`,
+					);
+					return (await r.json()).data.status;
+				})
+				.not.toBe("running");
 		}
 
 		await signIn(page);
@@ -117,11 +165,25 @@ test.describe("Following the tail of a conversation", () => {
 		await composerInput(page).fill(sent);
 		await page.getByRole("button", { name: "Send message" }).click();
 
+		// Play the agent: record the user's message and a reply, as the real
+		// daemon does once it receives start_turn.
+		await bridge.next("start_turn", id);
+		bridge.sendEvent(id, projectId, "user_message", "user", sent);
+		bridge.sendEvent(
+			id,
+			projectId,
+			"agent_message_chunk",
+			"agent",
+			`${sent}_REPLY`,
+		);
+		bridge.reportTurnStatus(id, "finished");
+
 		// The sender's message appears and the viewport follows it to the tail.
 		const sentMessage = page.getByText(sent).first();
 		await expect(sentMessage).toBeVisible();
 		await expect(sentMessage).toBeInViewport();
 		// No "N new messages" pill is left over.
+		await expect(page.getByText(`${sent}_REPLY`).first()).toBeVisible();
 		await expect(page.getByText(/^\d+ new messages?$/)).toHaveCount(0);
 	});
 });
