@@ -27,6 +27,7 @@ import {
 	connectSocket,
 	disconnectSocket,
 	getSocket,
+	reconnectSocketIfDown,
 } from "@/lib/socket-client";
 import { cn } from "@/lib/utils";
 
@@ -128,6 +129,10 @@ function AuthenticatedLayout() {
 			const current = getSocket();
 			if (current?.connected) {
 				current.disconnect().connect();
+			} else {
+				// A socket whose handshake was refused (expired cookie) never
+				// retries by itself; the cookie is fresh now.
+				reconnectSocketIfDown();
 			}
 		});
 

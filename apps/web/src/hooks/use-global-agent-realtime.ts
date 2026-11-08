@@ -51,9 +51,26 @@ export function useGlobalAgentRealtime(enabled = true): void {
 			}
 		}
 
+		// Events emitted while the socket was away are lost: after a *re*connect
+		// reconcile the conversations with the server.
+		let hasConnected = socket.connected;
+		function handleConnect() {
+			if (hasConnected) {
+				void queryClient.invalidateQueries({
+					queryKey: ["conversation-event-window"],
+				});
+				void queryClient.invalidateQueries({
+					queryKey: ["global-chat", "conversations"],
+				});
+			}
+			hasConnected = true;
+		}
+
 		socket.on("event", handleEvent);
+		socket.on("connect", handleConnect);
 		return () => {
 			socket.off("event", handleEvent);
+			socket.off("connect", handleConnect);
 		};
 	}, [queryClient, enabled]);
 }

@@ -65,6 +65,18 @@ export function connectSocket(): Socket {
 		}
 	});
 
+	// A handshake the server refuses (expired/missing cookie) arrives as
+	// "connect_error", and socket.io does NOT retry after it. That is how a
+	// tab left idle past its token's expiry ended up with a dead socket until
+	// a reload: refresh the session and reconnect ourselves.
+	socket.on("connect_error", () => {
+		scheduleRecovery();
+	});
+
+	// A background tab may have slept through "reauth" and the expiry
+	// disconnect: check the connection as soon as the tab is visible again.
+	document.addEventListener("visibilitychange", handleVisibilityChange);
+
 	// The server asks for this shortly before the access token expires and
 	// disconnects at expiry. Refresh the session (shared with any refresh the
 	// HTTP client is already running) and reconnect on the new cookie; if the
@@ -85,6 +97,10 @@ export function connectSocket(): Socket {
 
 /** Disconnect and destroy the socket.  Call on logout. */
 export function disconnectSocket(): void {
+	document.removeEventListener("visibilitychange", handleVisibilityChange);
+	if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
+	recoveryTimer = undefined;
+	recoveryAttempt = 0;
 	if (socket) {
 		socket.disconnect();
 		socket = null;
@@ -93,6 +109,57 @@ export function disconnectSocket(): void {
 	projectNamespaces.clear();
 	for (const timer of joinRetryTimers.values()) clearTimeout(timer);
 	joinRetryTimers.clear();
+}
+
+// ── Recovery of a socket that cannot reconnect by itself ─────────────────────
+
+const RECOVERY_BASE_DELAY_MS = 1_000;
+const RECOVERY_MAX_DELAY_MS = 30_000;
+let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+let recoveryAttempt = 0;
+
+function handleVisibilityChange(): void {
+	if (document.visibilityState !== "visible") return;
+	if (socket && !socket.connected) scheduleRecovery(0);
+}
+
+/** Refresh the session, then reconnect, retrying with backoff. */
+function scheduleRecovery(
+	delay = Math.min(
+		RECOVERY_BASE_DELAY_MS * 2 ** recoveryAttempt,
+		RECOVERY_MAX_DELAY_MS,
+	),
+): void {
+	if (!socket || recoveryTimer !== undefined) return;
+	recoveryAttempt++;
+	recoveryTimer = setTimeout(() => {
+		recoveryTimer = undefined;
+		void recover();
+	}, delay);
+}
+
+async function recover(): Promise<void> {
+	const current = socket;
+	if (!current || current.connected) {
+		recoveryAttempt = 0;
+		return;
+	}
+	try {
+		await apiClient.refreshSession();
+	} catch {
+		// Offline, or the session is really over (the HTTP client's own 401
+		// handling then redirects to login). Try again later.
+		scheduleRecovery();
+		return;
+	}
+	if (socket !== current) return;
+	recoveryAttempt = 0;
+	current.connect();
+}
+
+/** Reconnect a socket that is down; no-op while connected. */
+export function reconnectSocketIfDown(): void {
+	if (socket && !socket.connected) scheduleRecovery(0);
 }
 
 /** Refresh the session, then reconnect so the handshake uses the new cookie. */

@@ -391,6 +391,9 @@ export function useProjectRealtime(projectId: string | undefined): void {
 			if (refetchAfterRejoin) {
 				refetchAfterRejoin = false;
 				void queryClient.invalidateQueries({
+					queryKey: ["conversation-event-window"],
+				});
+				void queryClient.invalidateQueries({
 					queryKey: ["projects", currentProjectId],
 				});
 				void queryClient.invalidateQueries({

@@ -406,4 +406,23 @@ describe("socket-client", () => {
 			expect(mockSocket.connect).not.toHaveBeenCalled();
 		});
 	});
+
+	describe("recovery from a refused handshake", () => {
+		it("refreshes the session and reconnects after connect_error", async () => {
+			vi.useFakeTimers();
+			try {
+				refreshSession.mockResolvedValue(undefined);
+				connectSocket();
+				mockSocket.connect.mockClear();
+
+				handlerFor("connect_error")(new Error("invalid or expired token"));
+				await vi.advanceTimersByTimeAsync(1_000);
+
+				expect(refreshSession).toHaveBeenCalledTimes(1);
+				expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+	});
 });
