@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -327,5 +328,21 @@ func TestApplyCreateTask_DynamicAndLinkToParent(t *testing.T) {
 	}
 	if len(lc.created) != 1 || lc.created[0].TargetTaskID != parent.ID || lc.created[0].LinkType != taskdom.LinkTypeBlocks {
 		t.Fatalf("new task should block its parent: %+v", lc.created)
+	}
+}
+
+func TestRenderAgentMessage_EventNotice(t *testing.T) {
+	long := strings.Repeat("x", 5000)
+	for _, tmpl := range []string{"Look: {{event.title}}", "Look: {{ event.title }}"} {
+		got := renderAgentMessage(tmpl, map[string]string{"event.title": long})
+		if !strings.HasPrefix(got, "Note: text taken from an external event") {
+			t.Fatalf("%q: notice not prepended", tmpl)
+		}
+		if !strings.Contains(sanitizeAgentMessage(got), "untrusted") {
+			t.Fatalf("%q: notice lost after sanitizing", tmpl)
+		}
+	}
+	if got := renderAgentMessage("Look: {{task.title}}", map[string]string{"task.title": "t"}); got != "Look: t" {
+		t.Fatalf("unexpected notice for non-event template: %q", got)
 	}
 }
