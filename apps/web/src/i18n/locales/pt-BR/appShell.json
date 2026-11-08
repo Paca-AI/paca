@@ -76,7 +76,8 @@
 			"assigned": "{{actor}} atribuiu você à tarefa #{{taskNumber}} — {{taskTitle}}",
 			"mentioned": "{{actor}} mencionou você em #{{taskNumber}} — {{taskTitle}}",
 			"question": "{{actor}} fez uma pergunta a você em {{title}}",
-			"mentionedInDoc": "{{actor}} mencionou você no documento {{title}}"
+			"mentionedInDoc": "{{actor}} mencionou você no documento {{title}}",
+			"automation": "Automação: {{message}} (#{{taskNumber}} — {{taskTitle}})"
 		},
 		"untitledConversation": "Conversa sem título",
 		"globalChat": "Chat global",

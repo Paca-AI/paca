@@ -2522,9 +2522,15 @@
 			"triggerGroups": {
 				"taskEvents": "Sự kiện công việc",
 				"sprintEvents": "Sự kiện sprint",
-				"scheduleWebhook": "Lịch và webhook"
+				"scheduleWebhook": "Lịch và webhook",
+				"taskActivity": "Hoạt động & công việc con"
 			},
-			"git": "Git"
+			"git": "Git",
+			"actionGroups": {
+				"taskActions": "Công việc",
+				"flowActions": "Luồng & tích hợp",
+				"sprintActions": "Sprint"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Trình kích hoạt",
@@ -2548,7 +2554,12 @@
 			"sprint_created": "Sprint được tạo",
 			"sprint_started": "Sprint bắt đầu",
 			"sprint_completed": "Sprint hoàn thành",
-			"sprint_deleted": "Sprint bị xóa"
+			"sprint_deleted": "Sprint bị xóa",
+			"field_changed": "Trường thay đổi",
+			"comment_added": "Đã thêm bình luận",
+			"link_added": "Đã thêm liên kết",
+			"attachment_added": "Đã thêm tệp đính kèm",
+			"child_changed": "Công việc con thay đổi"
 		},
 		"actionTypes": {
 			"update_task": "Cập nhật công việc",
@@ -2556,7 +2567,11 @@
 			"call_api": "Gọi API",
 			"wait": "Chờ",
 			"update_sprint": "Cập nhật sprint",
-			"complete_sprint": "Hoàn thành sprint"
+			"complete_sprint": "Hoàn thành sprint",
+			"create_task": "Tạo công việc con",
+			"link_task": "Liên kết công việc",
+			"add_comment": "Thêm bình luận",
+			"notify": "Gửi thông báo"
 		},
 		"nodeConfig": {
 			"save": "Lưu",
@@ -2597,7 +2612,24 @@
 				"tokenShownOnceWarning": "Hãy sao chép token này ngay — nó sẽ không hiển thị lại nữa.",
 				"copy": "Sao chép",
 				"copied": "Đã sao chép",
-				"noTokenYet": "Chưa có token nào được tạo"
+				"noTokenYet": "Chưa có token nào được tạo",
+				"fieldLabel": "Trường theo dõi",
+				"fieldPlaceholder": "Chọn một trường…",
+				"fieldChangedHint": "Chạy khi trường này được chỉnh sửa trên một công việc.",
+				"childChangedHint": "Chạy trên công việc cha khi một công việc con được tạo hoặc đổi trạng thái. Thêm điều kiện về các công việc con để chỉ thực hiện khi, chẳng hạn, tất cả đã hoàn thành.",
+				"childStatusLabel": "Khi công việc con chuyển sang",
+				"changedFields": {
+					"sprint": "Sprint",
+					"due_date": "Hạn chót",
+					"start_date": "Ngày bắt đầu",
+					"title": "Tiêu đề",
+					"story_points": "Điểm story",
+					"reporter": "Người báo cáo",
+					"task_type": "Loại công việc",
+					"parent_task": "Công việc cha",
+					"description": "Mô tả",
+					"custom_fields": "Trường tùy chỉnh"
+				}
 			},
 			"condition": {
 				"branchesTitle": "Nhánh",
@@ -2632,8 +2664,14 @@
 					"sprint_status": "Trạng thái sprint",
 					"sprint_goal": "Mục tiêu sprint",
 					"sprint_start_date": "Ngày bắt đầu sprint",
-					"sprint_end_date": "Ngày kết thúc sprint"
-				}
+					"sprint_end_date": "Ngày kết thúc sprint",
+					"child_count": "Số công việc con"
+				},
+				"dateMode": {
+					"fixed": "Ngày cụ thể",
+					"relative": "Tương đối so với hôm nay"
+				},
+				"relativeHint": "Số ngày từ hôm nay: 0 = bây giờ, 3 = sau 3 ngày, -1 = hôm qua. Dùng \"trước\" với 0 để chỉ quá hạn."
 			},
 			"action": {
 				"memberLabel": "Người được giao",
@@ -2688,7 +2726,58 @@
 				"pluginConditionLabel": "Điều kiện plugin",
 				"pluginConditionHint": "Giao việc khớp của nhánh này cho một điều kiện do plugin cung cấp thay vì so sánh trường công việc.",
 				"selectPluginPlaceholder": "Chọn điều kiện plugin…",
-				"addCustomField": "Thêm trường tùy chỉnh…"
+				"addCustomField": "Thêm trường tùy chỉnh…",
+				"createTaskHint": "Tạo một công việc mới là con của công việc được chọn bên dưới. Thêm các trường bạn muốn: mỗi trường có thể là giá trị cố định hoặc sao chép từ công việc kích hoạt hay công việc cha của nó. Nếu công việc cha đã có công việc con với đúng tiêu đề này thì sẽ không tạo thêm.",
+				"createTitlePlaceholder": "{{task.title}} - Review",
+				"descriptionLabel": "Mô tả",
+				"ops": {
+					"set": "Đặt thành",
+					"replace": "Thay bằng",
+					"add": "Thêm",
+					"remove": "Xóa",
+					"clear": "Xóa trống",
+					"task": "Sao chép từ công việc này",
+					"parent": "Sao chép từ công việc cha",
+					"now": "Hôm nay"
+				},
+				"clearHint": "Làm trống trường này.",
+				"dynamicFieldLabel": "Sao chép trường",
+				"offsetDaysLabel": "Dịch chuyển (ngày)",
+				"offsetDaysHint": "Dương = muộn hơn, âm = sớm hơn.",
+				"dynamicHint": {
+					"task": "Được sao chép từ công việc đã kích hoạt tự động hóa khi chạy. Nếu không có giá trị, trường giữ nguyên.",
+					"parent": "Được sao chép từ công việc cha của công việc kích hoạt. Nếu không có cha hoặc giá trị, trường giữ nguyên.",
+					"now": "Ngày hôm nay khi chạy, dịch theo số ngày ở trên."
+				},
+				"addMember": "Thêm thành viên…",
+				"removeMember": "Xóa thành viên",
+				"commentHint": "Đăng một bình luận lên công việc, do tự động hóa viết.",
+				"commentTextLabel": "Bình luận",
+				"commentPlaceholder": "vd: Tất cả công việc con đã hoàn thành.",
+				"notifyHint": "Gửi thông báo trong ứng dụng về công việc đến những người dưới đây.",
+				"notifyRecipientsLabel": "Thông báo cho",
+				"notifyRecipients": {
+					"assignees": "Người được giao",
+					"reporter": "Người báo cáo",
+					"parent_assignees": "Người được giao của công việc cha"
+				},
+				"notifyMembersLabel": "Thông báo thêm cho",
+				"notifyMessageLabel": "Nội dung",
+				"notifyMessagePlaceholder": "vd: Sẵn sàng để xem xét.",
+				"linkHint": "Liên kết công việc với công việc khác. Chiều liên kết đọc từ phía công việc này.",
+				"linkTypeLabel": "Loại liên kết",
+				"linkTypes": {
+					"blocks": "Chặn",
+					"is_blocked_by": "Bị chặn bởi",
+					"relates_to": "Liên quan đến",
+					"duplicates": "Trùng với",
+					"is_duplicated_by": "Bị trùng bởi"
+				},
+				"linkToLabel": "Liên kết với",
+				"createLinkLabel": "Liên kết với công việc cha",
+				"createLinkNone": "Không liên kết",
+				"createLinkHint": "Có thể liên kết công việc mới với công việc cha, đọc từ phía công việc mới (vd: \"Chặn\" = công việc con chặn công việc cha).",
+				"opsLabel": "Cách áp dụng trường này"
 			},
 			"target": {
 				"label": "Áp dụng cho",
@@ -2696,6 +2785,7 @@
 					"self": "Công việc này",
 					"parent": "Công việc cha",
 					"children": "Công việc con",
+					"siblings": "Công việc cùng cấp (các công việc con khác của cha)",
 					"blocks": "Chặn",
 					"is_blocked_by": "Bị chặn bởi",
 					"relates_to": "Công việc liên quan",
@@ -2725,7 +2815,10 @@
 				"callApiSummary": "{{method}} {{host}}",
 				"jevNoulTrue": "Có",
 				"pluginField": "{{field}}: {{value}}",
-				"waitMinutes": "Chờ {{minutes}} phút"
+				"waitMinutes": "Chờ {{minutes}} phút",
+				"createTaskSummary": "Tạo: {{title}}",
+				"commentSummary": "Bình luận: {{text}}",
+				"notifySummary": "Thông báo: {{message}}"
 			},
 			"jev": {
 				"answerTypeLabel": "Loại câu trả lời",

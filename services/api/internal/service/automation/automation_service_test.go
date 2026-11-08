@@ -863,3 +863,57 @@ func TestValidateTaskReachability_PluginTasklessTrigger(t *testing.T) {
 		t.Fatalf("a trigger not declared task-less is unrestricted: %v", err)
 	}
 }
+
+func TestValidateActionConfig_NewActionsAndFieldModes(t *testing.T) {
+	svc := &Service{}
+	ok := func(a automationdom.ActionType, cfg string, strict bool) {
+		t.Helper()
+		if err := svc.validateActionConfig(context.TODO(), uuid.Nil, a, json.RawMessage(cfg), strict); err != nil {
+			t.Fatalf("%s %s: unexpected error %v", a, cfg, err)
+		}
+	}
+	bad := func(a automationdom.ActionType, cfg string, strict bool) {
+		t.Helper()
+		if err := svc.validateActionConfig(context.TODO(), uuid.Nil, a, json.RawMessage(cfg), strict); err == nil {
+			t.Fatalf("%s %s: expected an error", a, cfg)
+		}
+	}
+	ok(automationdom.ActionUpdateTask, `{"update":{"tags":["x"],"tags_mode":"add"}}`, true)
+	ok(automationdom.ActionUpdateTask, `{"update":{"clear":["due_date"]}}`, true)
+	ok(automationdom.ActionUpdateTask, `{"update":{"dynamic":{"due_date":{"source":"parent","offset_days":2}}}}`, true)
+	bad(automationdom.ActionUpdateTask, `{"update":{"tags_mode":"merge"}}`, false)
+	bad(automationdom.ActionUpdateTask, `{"update":{"clear":["title"]}}`, false)
+	bad(automationdom.ActionUpdateTask, `{"update":{"dynamic":{"title":{"source":"task"}}}}`, false)
+	bad(automationdom.ActionUpdateTask, `{"update":{"dynamic":{"importance":{"source":"now"}}}}`, false)
+	bad(automationdom.ActionUpdateTask, `{"update":{"dynamic":{"sprint_id":{"source":"task","offset_days":1}}}}`, false)
+
+	ok(automationdom.ActionAddComment, `{"comment":{"text":"hi"}}`, true)
+	bad(automationdom.ActionAddComment, `{"comment":{"text":" "}}`, true)
+	ok(automationdom.ActionAddComment, `{}`, false) // a draft may be incomplete
+
+	ok(automationdom.ActionNotify, `{"notify":{"recipients":["assignees"],"message":"m"}}`, true)
+	bad(automationdom.ActionNotify, `{"notify":{"recipients":["boss"],"message":"m"}}`, false)
+	bad(automationdom.ActionNotify, `{"notify":{"message":"m"}}`, true)
+	bad(automationdom.ActionNotify, `{"notify":{"recipients":["reporter"]}}`, true)
+
+	ok(automationdom.ActionLinkTask, `{"link":{"type":"blocks","to":{"kind":"parent"}}}`, true)
+	bad(automationdom.ActionLinkTask, `{"link":{"type":"loves","to":{"kind":"parent"}}}`, false)
+	bad(automationdom.ActionLinkTask, `{"link":{"type":"blocks","to":{"kind":"children"}}}`, false)
+	bad(automationdom.ActionLinkTask, `{"link":{"to":{"kind":"parent"}}}`, true)
+
+	ok(automationdom.ActionCreateTask, `{"create":{"title":"t","link":"relates_to"}}`, true)
+	bad(automationdom.ActionCreateTask, `{"create":{"title":"t","link":"x"}}`, false)
+}
+
+func TestValidateTriggerConfig_FieldChanged(t *testing.T) {
+	svc := &Service{}
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerFieldChanged, json.RawMessage(`{"field":"sprint"}`), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerFieldChanged, json.RawMessage(`{"field":"status"}`), false); err == nil {
+		t.Fatal("status is not a watchable field (it has its own trigger)")
+	}
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerFieldChanged, json.RawMessage(`{}`), true); err == nil {
+		t.Fatal("strict mode needs a field")
+	}
+}

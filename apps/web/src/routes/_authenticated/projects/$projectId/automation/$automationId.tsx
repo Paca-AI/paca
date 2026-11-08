@@ -316,6 +316,14 @@ function AutomationBuilderPage() {
 					return cfg.status_id
 						? statuses.find((s) => s.id === cfg.status_id)?.name
 						: t("automation.nodeConfig.trigger.anyStatus");
+				case "field_changed":
+					return cfg.field
+						? t(`automation.nodeConfig.trigger.changedFields.${cfg.field}`)
+						: t("automation.nodeConfig.description.notConfigured");
+				case "child_changed":
+					return cfg.status_id
+						? statuses.find((s) => s.id === cfg.status_id)?.name
+						: t("automation.nodeConfig.trigger.anyStatus");
 				case "tag_added":
 					return cfg.tag
 						? `#${cfg.tag}`
@@ -451,6 +459,28 @@ function AutomationBuilderPage() {
 						host,
 					});
 				}
+				case "add_comment":
+					return cfg.comment?.text
+						? t("automation.nodeConfig.description.commentSummary", {
+								text: cfg.comment.text,
+							})
+						: t("automation.nodeConfig.description.notConfigured");
+				case "notify":
+					return cfg.notify?.message
+						? t("automation.nodeConfig.description.notifySummary", {
+								message: cfg.notify.message,
+							})
+						: t("automation.nodeConfig.description.notConfigured");
+				case "link_task":
+					return cfg.link
+						? t(`automation.nodeConfig.action.linkTypes.${cfg.link.type}`)
+						: t("automation.nodeConfig.description.notConfigured");
+				case "create_task":
+					return cfg.create?.title
+						? t("automation.nodeConfig.description.createTaskSummary", {
+								title: cfg.create.title,
+							})
+						: t("automation.nodeConfig.description.notConfigured");
 				case "wait":
 					return cfg.wait_minutes && cfg.wait_minutes > 0
 						? t("automation.nodeConfig.description.waitMinutes", {

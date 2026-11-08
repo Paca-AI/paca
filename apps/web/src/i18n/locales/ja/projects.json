@@ -2522,9 +2522,15 @@
 			"triggerGroups": {
 				"taskEvents": "タスクイベント",
 				"sprintEvents": "スプリントイベント",
-				"scheduleWebhook": "スケジュールとWebhook"
+				"scheduleWebhook": "スケジュールとWebhook",
+				"taskActivity": "アクティビティとサブタスク"
 			},
-			"git": "Git"
+			"git": "Git",
+			"actionGroups": {
+				"taskActions": "タスク",
+				"flowActions": "フローと連携",
+				"sprintActions": "スプリント"
+			}
 		},
 		"nodeKind": {
 			"trigger": "トリガー",
@@ -2548,7 +2554,12 @@
 			"sprint_created": "スプリント作成",
 			"sprint_started": "スプリント開始",
 			"sprint_completed": "スプリント完了",
-			"sprint_deleted": "スプリント削除"
+			"sprint_deleted": "スプリント削除",
+			"field_changed": "フィールド変更",
+			"comment_added": "コメント追加",
+			"link_added": "リンク追加",
+			"attachment_added": "添付ファイル追加",
+			"child_changed": "サブタスク変更"
 		},
 		"actionTypes": {
 			"update_task": "タスクを更新",
@@ -2556,7 +2567,11 @@
 			"call_api": "APIを呼び出し",
 			"wait": "待機",
 			"update_sprint": "スプリントを更新",
-			"complete_sprint": "スプリントを完了"
+			"complete_sprint": "スプリントを完了",
+			"create_task": "サブタスクを作成",
+			"link_task": "タスクをリンク",
+			"add_comment": "コメントを追加",
+			"notify": "通知を送信"
 		},
 		"nodeConfig": {
 			"save": "保存",
@@ -2597,7 +2612,24 @@
 				"tokenShownOnceWarning": "このトークンを今すぐコピーしてください — 二度と表示されません。",
 				"copy": "コピー",
 				"copied": "コピーしました",
-				"noTokenYet": "トークンはまだ生成されていません"
+				"noTokenYet": "トークンはまだ生成されていません",
+				"fieldLabel": "監視するフィールド",
+				"fieldPlaceholder": "フィールドを選択…",
+				"fieldChangedHint": "タスクのこのフィールドが編集されたときに実行されます。",
+				"childChangedHint": "サブタスクが作成されたりステータスが変わったときに、親タスクに対して実行されます。サブタスクへの条件を追加すると、たとえば全て完了したときだけ動作させられます。",
+				"childStatusLabel": "サブタスクが次になったとき",
+				"changedFields": {
+					"sprint": "スプリント",
+					"due_date": "期限",
+					"start_date": "開始日",
+					"title": "タイトル",
+					"story_points": "ストーリーポイント",
+					"reporter": "報告者",
+					"task_type": "タスクタイプ",
+					"parent_task": "親タスク",
+					"description": "説明",
+					"custom_fields": "カスタムフィールド"
+				}
 			},
 			"condition": {
 				"branchesTitle": "分岐",
@@ -2632,8 +2664,14 @@
 					"sprint_status": "スプリントステータス",
 					"sprint_goal": "スプリントの目標",
 					"sprint_start_date": "スプリント開始日",
-					"sprint_end_date": "スプリント終了日"
-				}
+					"sprint_end_date": "スプリント終了日",
+					"child_count": "サブタスク数"
+				},
+				"dateMode": {
+					"fixed": "特定の日付",
+					"relative": "今日を基準"
+				},
+				"relativeHint": "今日からの日数：0 = 今、3 = 3日後、-1 = 昨日。「より前」と 0 の組み合わせで期限切れを表せます。"
 			},
 			"action": {
 				"memberLabel": "担当者",
@@ -2688,7 +2726,58 @@
 				"pluginConditionLabel": "プラグイン条件",
 				"pluginConditionHint": "タスクフィールドの比較の代わりに、このブランチの判定をプラグイン提供の条件に委任します。",
 				"selectPluginPlaceholder": "プラグイン条件を選択…",
-				"addCustomField": "カスタムフィールドを追加…"
+				"addCustomField": "カスタムフィールドを追加…",
+				"createTaskHint": "下で選択したタスクの子として新しいタスクを作成します。必要なフィールドを追加でき、それぞれ固定値、または起動したタスクやその親からのコピーにできます。親にまったく同じタイトルのサブタスクが既にある場合は作成されません。",
+				"createTitlePlaceholder": "{{task.title}} - レビュー",
+				"descriptionLabel": "説明",
+				"ops": {
+					"set": "設定",
+					"replace": "置き換え",
+					"add": "追加",
+					"remove": "削除",
+					"clear": "クリア",
+					"task": "このタスクからコピー",
+					"parent": "親タスクからコピー",
+					"now": "今日"
+				},
+				"clearHint": "このフィールドを空にします。",
+				"dynamicFieldLabel": "コピーするフィールド",
+				"offsetDaysLabel": "ずらす日数",
+				"offsetDaysHint": "正の数は後ろ、負の数は前にずらします。",
+				"dynamicHint": {
+					"task": "実行時に、自動化を起動したタスクからコピーします。値がなければ変更しません。",
+					"parent": "起動したタスクの親タスクからコピーします。親や値がなければ変更しません。",
+					"now": "実行時の今日の日付を、指定した日数だけずらします。"
+				},
+				"addMember": "メンバーを追加…",
+				"removeMember": "メンバーを削除",
+				"commentHint": "自動化によるコメントをタスクに投稿します。",
+				"commentTextLabel": "コメント",
+				"commentPlaceholder": "例：すべてのサブタスクが完了しました。",
+				"notifyHint": "以下の人にタスクに関するアプリ内通知を送ります。",
+				"notifyRecipientsLabel": "通知先",
+				"notifyRecipients": {
+					"assignees": "担当者",
+					"reporter": "報告者",
+					"parent_assignees": "親タスクの担当者"
+				},
+				"notifyMembersLabel": "追加の通知先",
+				"notifyMessageLabel": "メッセージ",
+				"notifyMessagePlaceholder": "例：レビューの準備ができました。",
+				"linkHint": "タスクを別のタスクにリンクします。向きはこのタスク側から読みます。",
+				"linkTypeLabel": "リンクの種類",
+				"linkTypes": {
+					"blocks": "ブロックする",
+					"is_blocked_by": "ブロックされている",
+					"relates_to": "関連する",
+					"duplicates": "重複している",
+					"is_duplicated_by": "重複されている"
+				},
+				"linkToLabel": "リンク先",
+				"createLinkLabel": "親タスクにリンク",
+				"createLinkNone": "リンクなし",
+				"createLinkHint": "必要に応じて新しいタスクを親タスクにリンクします（新タスク側から読みます。例：「ブロックする」＝サブタスクが親をブロック）。",
+				"opsLabel": "このフィールドの適用方法"
 			},
 			"target": {
 				"label": "適用先",
@@ -2696,6 +2785,7 @@
 					"self": "このタスク",
 					"parent": "親タスク",
 					"children": "子タスク",
+					"siblings": "兄弟タスク（親の他のサブタスク）",
 					"blocks": "ブロックしているタスク",
 					"is_blocked_by": "ブロックされているタスク",
 					"relates_to": "関連タスク",
@@ -2725,7 +2815,10 @@
 				"callApiSummary": "{{method}} {{host}}",
 				"jevNoulTrue": "はい",
 				"pluginField": "{{field}}: {{value}}",
-				"waitMinutes": "{{minutes}}分待機"
+				"waitMinutes": "{{minutes}}分待機",
+				"createTaskSummary": "作成: {{title}}",
+				"commentSummary": "コメント: {{text}}",
+				"notifySummary": "通知: {{message}}"
 			},
 			"jev": {
 				"answerTypeLabel": "回答タイプ",

@@ -13,6 +13,7 @@ import {
 	UserPlus,
 	Volume2,
 	VolumeX,
+	Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -44,6 +45,13 @@ function notificationText(n: Notification, t: TFunction<"appShell">): string {
 		return t("notifications.text.question", {
 			actor: n.actor_full_name,
 			title: n.conversation_title || t("notifications.untitledConversation"),
+		});
+	}
+	if (n.type === "automation") {
+		return t("notifications.text.automation", {
+			message: n.message,
+			taskNumber: n.task_number,
+			taskTitle: n.task_title,
 		});
 	}
 	if (n.type === "assigned") {
@@ -220,28 +228,37 @@ export function NotificationBell() {
 											onClick={() => handleNotificationClick(n)}
 											className={`w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors flex items-start gap-3 ${!n.read_at ? "bg-primary/5" : ""}`}
 										>
-											<EntityAvatar
-												{...notificationActorAvatar(n)}
-												className="mt-0.5 shrink-0"
-												badge={
-													<AvatarBadge
-														aria-hidden="true"
-														className={
-															n.type === "assigned"
-																? undefined
-																: "bg-secondary text-secondary-foreground"
-														}
-													>
-														{n.type === "assigned" ? (
-															<UserPlus />
-														) : n.type === "question" ? (
-															<MessageCircleQuestion />
-														) : (
-															<AtSign />
-														)}
-													</AvatarBadge>
-												}
-											/>
+											{n.type === "automation" ? (
+												<span
+													aria-hidden="true"
+													className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"
+												>
+													<Zap className="size-4" />
+												</span>
+											) : (
+												<EntityAvatar
+													{...notificationActorAvatar(n)}
+													className="mt-0.5 shrink-0"
+													badge={
+														<AvatarBadge
+															aria-hidden="true"
+															className={
+																n.type === "assigned"
+																	? undefined
+																	: "bg-secondary text-secondary-foreground"
+															}
+														>
+															{n.type === "assigned" ? (
+																<UserPlus />
+															) : n.type === "question" ? (
+																<MessageCircleQuestion />
+															) : (
+																<AtSign />
+															)}
+														</AvatarBadge>
+													}
+												/>
+											)}
 											<div className="min-w-0 flex-1">
 												<p
 													className={`text-sm leading-snug ${!n.read_at ? "font-medium" : ""}`}

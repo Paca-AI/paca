@@ -76,7 +76,8 @@
 			"assigned": "{{actor}} 将任务 #{{taskNumber}} — {{taskTitle}} 分配给了您",
 			"mentioned": "{{actor}} 在 #{{taskNumber}} — {{taskTitle}} 中提到了您",
 			"question": "{{actor}} 在 {{title}} 中向你提问",
-			"mentionedInDoc": "{{actor}} 在文档 {{title}} 中提到了你"
+			"mentionedInDoc": "{{actor}} 在文档 {{title}} 中提到了你",
+			"automation": "自动化：{{message}} (#{{taskNumber}} — {{taskTitle}})"
 		},
 		"untitledConversation": "未命名对话",
 		"globalChat": "全局聊天",

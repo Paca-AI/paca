@@ -76,7 +76,8 @@
 			"assigned": "{{actor}}님이 작업 #{{taskNumber}} — {{taskTitle}}에 회원님을 배정했습니다",
 			"mentioned": "{{actor}}님이 #{{taskNumber}} — {{taskTitle}}에서 회원님을 멘션했습니다",
 			"question": "{{actor}}님이 {{title}}에서 질문했습니다",
-			"mentionedInDoc": "{{actor}}님이 문서 {{title}}에서 회원님을 멘션했습니다"
+			"mentionedInDoc": "{{actor}}님이 문서 {{title}}에서 회원님을 멘션했습니다",
+			"automation": "자동화: {{message}} (#{{taskNumber}} — {{taskTitle}})"
 		},
 		"untitledConversation": "제목 없는 대화",
 		"globalChat": "글로벌 채팅",

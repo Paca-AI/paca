@@ -5,7 +5,11 @@ import type { SuccessEnvelope } from "./api-error";
 
 // ── Shapes ────────────────────────────────────────────────────────────────────
 
-export type NotificationType = "assigned" | "mentioned" | "question";
+export type NotificationType =
+	| "assigned"
+	| "mentioned"
+	| "question"
+	| "automation";
 
 export interface Notification {
 	id: string;
@@ -34,6 +38,8 @@ export interface Notification {
 	// Set only for "question" notifications.
 	conversation_id: string | null;
 	conversation_title: string;
+	// Text of an "automation" notification (sent by a notify action).
+	message: string;
 	read_at: string | null;
 	created_at: string;
 }

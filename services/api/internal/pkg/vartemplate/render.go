@@ -17,6 +17,15 @@ import (
 // task.title, sprint.name, automation.name).
 var placeholderPattern = regexp.MustCompile(`\{\{\s*([\w.]+)\s*\}\}`)
 
+// eventPlaceholderPattern matches a {{event.*}} placeholder, with the same
+// optional padding placeholderPattern allows.
+var eventPlaceholderPattern = regexp.MustCompile(`\{\{\s*event\.[\w.]+\s*\}\}`)
+
+// HasEventVars reports whether tmpl references any {{event.*}} placeholder.
+func HasEventVars(tmpl string) bool {
+	return eventPlaceholderPattern.MatchString(tmpl)
+}
+
 // Render replaces every {{key}} in tmpl with vars[key]. A placeholder whose
 // key isn't in vars is left verbatim (including its braces) rather than
 // blanked out — a template referencing {{task.sprint_name}} when there's no

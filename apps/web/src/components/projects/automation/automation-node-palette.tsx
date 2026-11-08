@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import {
-	ACTION_TYPES,
+	ACTION_TYPE_GROUPS,
 	CONDITION_NODE_TYPE,
 	JEV_CONDITION_NODE_TYPE,
 	type PluginNodeType,
@@ -161,10 +161,21 @@ export function AutomationNodePalette({
 								{t("automation.palette.builtIn")}
 							</DropdownMenuLabel>
 						)}
-						{ACTION_TYPES.map((type) => (
-							<DropdownMenuItem key={type} onClick={() => onAddAction(type)}>
-								{t(`automation.actionTypes.${type}`)}
-							</DropdownMenuItem>
+						{ACTION_TYPE_GROUPS.map((group, i) => (
+							<div key={group.labelKey}>
+								{i > 0 && <DropdownMenuSeparator />}
+								<DropdownMenuLabel>
+									{t(`automation.palette.actionGroups.${group.labelKey}`)}
+								</DropdownMenuLabel>
+								{group.types.map((type) => (
+									<DropdownMenuItem
+										key={type}
+										onClick={() => onAddAction(type)}
+									>
+										{t(`automation.actionTypes.${type}`)}
+									</DropdownMenuItem>
+								))}
+							</div>
 						))}
 					</DropdownMenuGroup>
 					{gitActions.length > 0 && (

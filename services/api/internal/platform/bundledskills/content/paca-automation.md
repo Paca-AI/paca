@@ -32,11 +32,15 @@ Automations act on real tasks and can notify or call external systems. **Design 
 | From outside Paca | Trigger `api_trigger` (the webhook secret can only be generated in the web UI — tell the user) |
 | Branch on status / type / priority / assignee / tags / custom field | Condition (`branches` with `handle`, an `else` fallback is shared) |
 | Judgment a field comparison cannot make | Condition `jev_condition` — only if Jev is configured on the project |
-| Change the task | Action `assign`, `set_status`, `set_priority`, `add_tag`, `set_custom_field` |
+| Change the task | Action `update_task` — set any field; `tags_mode` / `assignees_mode` = `add` / `remove` edit the list instead of replacing it; `clear: [...]` empties a field; `dynamic: {field: {source: task\|parent\|now, offset_days?}}` copies a value (or "today + N days") when it runs |
+| Comment, notify, link | Actions `add_comment` (`comment.text`), `notify` (`notify.recipients` = assignees / reporter / parent_assignees, `member_ids`, `message`), `link_task` (`link.type`, `link.to`) |
+| A comment, link, attachment or field edit (sprint, due date, …) happens | Triggers `comment_added`, `link_added`, `attachment_added`, `field_changed` (`field`) |
+| A subtask is created or changes status | Trigger `child_changed` — runs on the PARENT; add a condition with `child_count` or a leaf on target `children` |
 | Give work to an AI agent | Action `trigger_ai_agent` with the agent's `member_id` (and a `message` if there is no target task) |
+| Create a subtask | Action `create_task` with `create: {title, ...}` — a child of the target task (the walked task by default); `title` is a template such as `{{task.title}} - Review`; skipped if the parent already has a child with that exact title; the created task does not fire other automations |
 | Call a system | Action `call_api` (http(s) only) |
 
-Actions can retarget with `target` (`parent`, `children`, `blocks`, `is_blocked_by`, … or `other` with an id) — e.g. when the last child is done, `set_status` on the `parent`. A trigger with no `target_task_id` may only connect to `call_api` / `trigger_ai_agent`.
+Actions can retarget with `target` (`parent`, `children`, `siblings` — the parent's other children, `blocks`, `is_blocked_by`, … or `other` with an id) — e.g. when the last child is done, `set_status` on the `parent`. For "close the parent when all subtasks are done": trigger `child_changed` (it runs on the PARENT, and fires when a subtask is created or enters a status), condition with a leaf on target `children` (`status_id` equals Done, `match_mode: "all"`), then `update_task` on the walked task (`self`). This also works for a parent with a single subtask. Avoid the `status_changed` + `siblings` recipe for this: `siblings` is the parent's OTHER children, so with exactly one subtask it is empty, and a condition over an empty set is always false, so the parent would never close. Use `siblings` only when you specifically mean "the other subtasks". Automation writes never trigger other automations, so this does not chain up to a grandparent. A trigger with no `target_task_id` may only connect to `call_api` / `trigger_ai_agent`.
 
 ## Step 4 — Build as a draft
 

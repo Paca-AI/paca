@@ -76,7 +76,8 @@
 			"assigned": "{{actor}} назначил(а) вам задачу #{{taskNumber}} — {{taskTitle}}",
 			"mentioned": "{{actor}} упомянул(а) вас в #{{taskNumber}} — {{taskTitle}}",
 			"question": "{{actor}} задал(а) вам вопрос в «{{title}}»",
-			"mentionedInDoc": "{{actor}} упомянул(а) вас в документе «{{title}}»"
+			"mentionedInDoc": "{{actor}} упомянул(а) вас в документе «{{title}}»",
+			"automation": "Автоматизация: {{message}} (#{{taskNumber}} — {{taskTitle}})"
 		},
 		"untitledConversation": "Беседа без названия",
 		"globalChat": "Общий чат",

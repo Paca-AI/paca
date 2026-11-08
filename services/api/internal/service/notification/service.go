@@ -3,6 +3,7 @@ package notificationsvc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -249,6 +250,38 @@ func (s *Svc) NotifyAssigned(ctx context.Context, in notificationdom.NotifyAssig
 		actorName = actorMember.FullName
 	}
 	s.publishNotificationEvent(ctx, events.TopicNotificationAssigned, assigneeMember.AccountID, actorName, s.taskURL(in.ProjectID, taskID), s.taskTitle(ctx, taskID))
+	return nil
+}
+
+// NotifyAutomation sends an automation notification (free text about a task)
+// to one member. Agents and service accounts have no inbox, and a member that
+// no longer exists is skipped silently, like NotifyAssigned. There is no human
+// actor: the notification is attributed to the automation by its type.
+func (s *Svc) NotifyAutomation(ctx context.Context, in notificationdom.NotifyAutomationInput) error {
+	member, err := s.memberRepo.FindMemberByID(ctx, in.RecipientMemberID)
+	if errors.Is(err, projectdom.ErrMemberNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if member.MemberType == "agent" || member.MemberType == "service_account" {
+		return nil
+	}
+	taskID := in.TaskID
+	n := &notificationdom.Notification{
+		ID:                 uuid.New(),
+		RecipientAccountID: member.AccountID,
+		Type:               notificationdom.NotificationTypeAutomation,
+		TaskID:             &taskID,
+		ProjectID:          in.ProjectID,
+		Message:            in.Message,
+		CreatedAt:          time.Now(),
+	}
+	if err := s.repo.Create(ctx, n); err != nil {
+		return err
+	}
+	s.publishCreated(ctx, n, member.AccountID)
 	return nil
 }
 

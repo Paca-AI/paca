@@ -1062,7 +1062,19 @@ describe("GitSettings", () => {
 			).toBeInTheDocument();
 			expect(screen.getByText("the token needs read_api")).toBeInTheDocument();
 			await user.keyboard("{Escape}");
-			await user.type(await screen.findByLabelText("Repository"), "acme/web");
+			// Let the browse dialog finish closing before touching the form
+			// behind it; under CI load the exit transition can lag the keypress.
+			await waitFor(() =>
+				expect(
+					screen.queryByText(/Couldn't load the list/),
+				).not.toBeInTheDocument(),
+			);
+			await user.type(
+				await screen.findByLabelText("Repository", undefined, {
+					timeout: 5000,
+				}),
+				"acme/web",
+			);
 			expect(screen.getByRole("button", { name: "Link" })).toBeEnabled();
 		});
 

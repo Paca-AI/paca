@@ -22,6 +22,9 @@ const (
 	// NotificationTypeQuestion is sent when an agent asks the owner of its
 	// conversation a question (the ask_user_question tool).
 	NotificationTypeQuestion NotificationType = "question"
+	// NotificationTypeAutomation is sent by an automation's notify action. It
+	// carries a free-text Message and, usually, the task it is about.
+	NotificationTypeAutomation NotificationType = "automation"
 )
 
 // Notification is a single notification entry.
@@ -72,6 +75,9 @@ type Notification struct {
 	ProjectID uuid.UUID
 	// ProjectName is denormalised from the project record.
 	ProjectName string
+	// Message is the text of an automation notification (empty for every
+	// other type).
+	Message string
 	// ReadAt is nil when the notification has not yet been read.
 	ReadAt    *time.Time
 	CreatedAt time.Time
@@ -141,6 +147,17 @@ type Service interface {
 	MarkAsRead(ctx context.Context, id, userID uuid.UUID) error
 	// MarkAllAsRead marks all notifications for the user as read.
 	MarkAllAsRead(ctx context.Context, userID uuid.UUID) error
+}
+
+// NotifyAutomationInput carries data for an automation notification. It is
+// delivered by the concrete service (not part of Service, which has other
+// implementations), through the automation engine's notify action.
+type NotifyAutomationInput struct {
+	// RecipientMemberID is the project_members.id of the person to notify.
+	RecipientMemberID uuid.UUID
+	ProjectID         uuid.UUID
+	TaskID            uuid.UUID
+	Message           string
 }
 
 // NotifyAssignedInput carries data for an assignment notification.

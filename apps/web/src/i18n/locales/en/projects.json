@@ -2522,9 +2522,15 @@
 			"triggerGroups": {
 				"taskEvents": "Task events",
 				"sprintEvents": "Sprint events",
-				"scheduleWebhook": "Schedule & webhook"
+				"scheduleWebhook": "Schedule & webhook",
+				"taskActivity": "Activity & subtasks"
 			},
-			"git": "Git"
+			"git": "Git",
+			"actionGroups": {
+				"taskActions": "Task",
+				"flowActions": "Flow & integrations",
+				"sprintActions": "Sprint"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Trigger",
@@ -2548,7 +2554,12 @@
 			"sprint_created": "Sprint created",
 			"sprint_started": "Sprint started",
 			"sprint_completed": "Sprint completed",
-			"sprint_deleted": "Sprint deleted"
+			"sprint_deleted": "Sprint deleted",
+			"field_changed": "Field changed",
+			"comment_added": "Comment added",
+			"link_added": "Link added",
+			"attachment_added": "Attachment added",
+			"child_changed": "Subtask changed"
 		},
 		"actionTypes": {
 			"update_task": "Update task",
@@ -2556,7 +2567,11 @@
 			"call_api": "Call API",
 			"wait": "Wait",
 			"update_sprint": "Update sprint",
-			"complete_sprint": "Complete sprint"
+			"complete_sprint": "Complete sprint",
+			"create_task": "Create subtask",
+			"link_task": "Link task",
+			"add_comment": "Add comment",
+			"notify": "Send notification"
 		},
 		"conditionTypes": {
 			"jev_condition": "Jev Condition"
@@ -2600,7 +2615,24 @@
 				"tokenShownOnceWarning": "Copy this token now — it won't be shown again.",
 				"copy": "Copy",
 				"copied": "Copied",
-				"noTokenYet": "No token generated yet"
+				"noTokenYet": "No token generated yet",
+				"fieldLabel": "Watch field",
+				"fieldPlaceholder": "Choose a field…",
+				"fieldChangedHint": "Runs when this field is edited on a task.",
+				"childChangedHint": "Runs on the parent task when one of its subtasks is created or moves to another status. Add a condition on its subtasks to act only when, for example, all are done.",
+				"childStatusLabel": "When a subtask enters",
+				"changedFields": {
+					"sprint": "Sprint",
+					"due_date": "Due date",
+					"start_date": "Start date",
+					"title": "Title",
+					"story_points": "Story points",
+					"reporter": "Reporter",
+					"task_type": "Task type",
+					"parent_task": "Parent task",
+					"description": "Description",
+					"custom_fields": "Custom fields"
+				}
 			},
 			"condition": {
 				"branchesTitle": "Branches",
@@ -2635,8 +2667,14 @@
 					"sprint_status": "Sprint status",
 					"sprint_goal": "Sprint goal",
 					"sprint_start_date": "Sprint start date",
-					"sprint_end_date": "Sprint end date"
-				}
+					"sprint_end_date": "Sprint end date",
+					"child_count": "Subtask count"
+				},
+				"dateMode": {
+					"fixed": "Specific date",
+					"relative": "Relative to today"
+				},
+				"relativeHint": "Days from today: 0 = now, 3 = in 3 days, -1 = yesterday. Use \"before\" with 0 to mean overdue."
 			},
 			"jev": {
 				"answerTypeLabel": "Answer type",
@@ -2716,7 +2754,58 @@
 				"pluginConditionLabel": "Plugin condition",
 				"pluginConditionHint": "Delegates this branch's match to a plugin-contributed condition instead of comparing a task field.",
 				"selectPluginPlaceholder": "Select a plugin condition…",
-				"addCustomField": "Add custom field…"
+				"addCustomField": "Add custom field…",
+				"createTaskHint": "Creates a new task as a child of the task selected below. Add any fields you want it to have — each can be a fixed value or copied from the triggering task or its parent. If the parent already has a subtask with exactly this title, nothing is created.",
+				"createTitlePlaceholder": "{{task.title}} - Review",
+				"descriptionLabel": "Description",
+				"ops": {
+					"set": "Set to",
+					"replace": "Replace with",
+					"add": "Add",
+					"remove": "Remove",
+					"clear": "Clear",
+					"task": "Copy from this task",
+					"parent": "Copy from parent",
+					"now": "Today"
+				},
+				"clearHint": "Empties this field.",
+				"dynamicFieldLabel": "Copy this field",
+				"offsetDaysLabel": "Shift by (days)",
+				"offsetDaysHint": "Positive = later, negative = earlier.",
+				"dynamicHint": {
+					"task": "Copied from the task that triggered the automation when it runs. If that task has no value, this field is left unchanged.",
+					"parent": "Copied from the parent of the task that triggered the automation. If there is no parent or it has no value, this field is left unchanged.",
+					"now": "Today's date when the automation runs, shifted by the number of days above."
+				},
+				"addMember": "Add a member…",
+				"removeMember": "Remove member",
+				"commentHint": "Posts a comment on the task, written by the automation.",
+				"commentTextLabel": "Comment",
+				"commentPlaceholder": "e.g. All subtasks are done.",
+				"notifyHint": "Sends an in-app notification about the task to the people below.",
+				"notifyRecipientsLabel": "Notify",
+				"notifyRecipients": {
+					"assignees": "Assignees",
+					"reporter": "Reporter",
+					"parent_assignees": "Parent task's assignees"
+				},
+				"notifyMembersLabel": "Also notify",
+				"notifyMessageLabel": "Message",
+				"notifyMessagePlaceholder": "e.g. Ready for review.",
+				"linkHint": "Links the task to another task. Direction reads from this task's side.",
+				"linkTypeLabel": "Link type",
+				"linkTypes": {
+					"blocks": "Blocks",
+					"is_blocked_by": "Is blocked by",
+					"relates_to": "Relates to",
+					"duplicates": "Duplicates",
+					"is_duplicated_by": "Is duplicated by"
+				},
+				"linkToLabel": "Link to",
+				"createLinkLabel": "Link to parent",
+				"createLinkNone": "No link",
+				"createLinkHint": "Optionally link the new task to its parent, read from the new task's side (e.g. \"Blocks\" = the subtask blocks its parent).",
+				"opsLabel": "How to apply this field"
 			},
 			"target": {
 				"label": "Applies to",
@@ -2724,6 +2813,7 @@
 					"self": "This task",
 					"parent": "Parent task",
 					"children": "Children tasks",
+					"siblings": "Sibling tasks (other subtasks of the parent)",
 					"blocks": "Blocks",
 					"is_blocked_by": "Is blocked by",
 					"relates_to": "Related task",
@@ -2753,7 +2843,10 @@
 				"webhookReady": "Webhook configured",
 				"callApiSummary": "{{method}} {{host}}",
 				"pluginField": "{{field}}: {{value}}",
-				"waitMinutes": "Wait {{minutes}}m"
+				"waitMinutes": "Wait {{minutes}}m",
+				"createTaskSummary": "Create: {{title}}",
+				"commentSummary": "Comment: {{text}}",
+				"notifySummary": "Notify: {{message}}"
 			},
 			"noConfigNeeded": "This node needs no configuration — it does its job as soon as the automation reaches it."
 		},

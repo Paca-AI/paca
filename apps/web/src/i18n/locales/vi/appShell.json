@@ -76,7 +76,8 @@
 			"assigned": "{{actor}} đã giao cho bạn nhiệm vụ #{{taskNumber}} — {{taskTitle}}",
 			"mentioned": "{{actor}} đã nhắc đến bạn trong #{{taskNumber}} — {{taskTitle}}",
 			"question": "{{actor}} đã đặt câu hỏi cho bạn trong {{title}}",
-			"mentionedInDoc": "{{actor}} đã nhắc đến bạn trong tài liệu {{title}}"
+			"mentionedInDoc": "{{actor}} đã nhắc đến bạn trong tài liệu {{title}}",
+			"automation": "Tự động hóa: {{message}} (#{{taskNumber}} — {{taskTitle}})"
 		},
 		"untitledConversation": "Cuộc trò chuyện chưa đặt tên",
 		"globalChat": "Trò chuyện chung",

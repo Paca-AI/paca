@@ -49,7 +49,7 @@ func TestTriggerMatches_StatusChanged_AnyStatusWhenConfigEmpty(t *testing.T) {
 	statusID := uuid.New()
 	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerStatusChanged), Config: json.RawMessage(`{}`)}
 	task := &taskdom.Task{StatusID: &statusID}
-	if !c.triggerMatches(node, task, nil) {
+	if !c.triggerMatches(node, task, nil, nil) {
 		t.Fatal("expected status_changed trigger with no status_id filter to match any status")
 	}
 }
@@ -61,10 +61,10 @@ func TestTriggerMatches_StatusChanged_FiltersToConfiguredStatus(t *testing.T) {
 	cfg, _ := json.Marshal(automationdom.TriggerConfig{StatusID: &wantStatus})
 	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerStatusChanged), Config: cfg}
 
-	if !c.triggerMatches(node, &taskdom.Task{StatusID: &wantStatus}, nil) {
+	if !c.triggerMatches(node, &taskdom.Task{StatusID: &wantStatus}, nil, nil) {
 		t.Fatal("expected match when task's status equals the configured status")
 	}
-	if c.triggerMatches(node, &taskdom.Task{StatusID: &otherStatus}, nil) {
+	if c.triggerMatches(node, &taskdom.Task{StatusID: &otherStatus}, nil, nil) {
 		t.Fatal("expected no match when task's status differs from the configured status")
 	}
 }
@@ -74,10 +74,10 @@ func TestTriggerMatches_TagAdded_FiltersToConfiguredTag(t *testing.T) {
 	cfg, _ := json.Marshal(automationdom.TriggerConfig{Tag: "urgent"})
 	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerTagAdded), Config: cfg}
 
-	if !c.triggerMatches(node, &taskdom.Task{Tags: []string{"urgent", "bug"}}, []string{"urgent"}) {
+	if !c.triggerMatches(node, &taskdom.Task{Tags: []string{"urgent", "bug"}}, []string{"urgent"}, nil) {
 		t.Fatal("expected match when the configured tag was added")
 	}
-	if c.triggerMatches(node, &taskdom.Task{Tags: []string{"bug"}}, []string{"bug"}) {
+	if c.triggerMatches(node, &taskdom.Task{Tags: []string{"bug"}}, []string{"bug"}, nil) {
 		t.Fatal("expected no match when the configured tag is absent")
 	}
 }
@@ -90,10 +90,10 @@ func TestTriggerMatches_TagAdded_OnlyWhenThisUpdateAddedTheTag(t *testing.T) {
 	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerTagAdded), Config: cfg}
 	task := &taskdom.Task{Tags: []string{"spec-ok", "security-ok"}}
 
-	if c.triggerMatches(node, task, []string{"security-ok"}) {
+	if c.triggerMatches(node, task, []string{"security-ok"}, nil) {
 		t.Fatal("expected no match when an unrelated tag was added and the configured tag was already present")
 	}
-	if !c.triggerMatches(node, task, []string{"spec-ok"}) {
+	if !c.triggerMatches(node, task, []string{"spec-ok"}, nil) {
 		t.Fatal("expected a match when this update added the configured tag")
 	}
 }
@@ -103,10 +103,10 @@ func TestTriggerMatches_TagAdded_EmptyConfigNeedsAnAddition(t *testing.T) {
 	node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerTagAdded), Config: json.RawMessage(`{}`)}
 	task := &taskdom.Task{Tags: []string{"bug"}}
 
-	if c.triggerMatches(node, task, nil) {
+	if c.triggerMatches(node, task, nil, nil) {
 		t.Fatal("expected no match when the update only removed tags")
 	}
-	if !c.triggerMatches(node, task, []string{"bug"}) {
+	if !c.triggerMatches(node, task, []string{"bug"}, nil) {
 		t.Fatal("expected a match when the update added any tag")
 	}
 }
@@ -127,7 +127,7 @@ func TestTriggerMatches_UnconditionalTypesAlwaysMatch(t *testing.T) {
 	c := newTestConsumer(nil)
 	for _, tt := range []automationdom.TriggerType{automationdom.TriggerTaskCreated, automationdom.TriggerAssigneeChanged, automationdom.TriggerPriorityChanged} {
 		node := &automationdom.Node{Kind: automationdom.KindTrigger, Type: string(tt), Config: json.RawMessage(`{}`)}
-		if !c.triggerMatches(node, &taskdom.Task{}, nil) {
+		if !c.triggerMatches(node, &taskdom.Task{}, nil, nil) {
 			t.Errorf("expected trigger type %q to always match", tt)
 		}
 	}
@@ -139,7 +139,7 @@ func TestApplyUpdateTask_Assign_IdempotentWhenAlreadyAssigned(t *testing.T) {
 	memberID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: []uuid.UUID{memberID}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestApplyUpdateTask_Assign_AppliesWhenNotAssigned(t *testing.T) {
 	memberID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: nil}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1079,7 +1079,7 @@ func TestApplyUpdateTask_Status_IdempotentWhenAlreadySet(t *testing.T) {
 	statusID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), StatusID: &statusID}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{StatusID: &statusID}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{StatusID: &statusID}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1094,7 +1094,7 @@ func TestApplyUpdateTask_Status_AppliesWhenDifferent(t *testing.T) {
 	oldStatus, newStatus := uuid.New(), uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), StatusID: &oldStatus}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{StatusID: &newStatus}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{StatusID: &newStatus}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1138,7 +1138,7 @@ func TestApplyUpdateTask_CustomField_NumberVsStringIsDetectedAsChanged(t *testin
 	// Same value under fmt.Sprintf("%v", ...) ("5" == "5") but a genuine
 	// type change (number -> string) — must be detected as a real diff,
 	// not silently skipped as a no-op.
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task,
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task,
 		&automationdom.TaskFieldUpdate{CustomFields: map[string]any{"points": "5"}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1154,7 +1154,7 @@ func TestApplyUpdateTask_Priority_IdempotentWhenAlreadySet(t *testing.T) {
 	task := &taskdom.Task{ID: uuid.New(), Importance: 5}
 
 	importance := 5
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Importance: &importance}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{Importance: &importance}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1168,7 +1168,7 @@ func TestApplyUpdateTask_Tags_IdempotentWhenSameSet(t *testing.T) {
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Tags: []string{"urgent"}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Tags: []string{"urgent"}}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{Tags: []string{"urgent"}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1182,7 +1182,7 @@ func TestApplyUpdateTask_Tags_AppliesWhenDifferent(t *testing.T) {
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Tags: []string{"bug"}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Tags: []string{"bug", "urgent"}}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{Tags: []string{"bug", "urgent"}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1199,7 +1199,7 @@ func TestApplyUpdateTask_CustomField_IdempotentWhenValueAlreadyMatches(t *testin
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), CustomFields: map[string]any{"release_tag": "v2"}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1213,7 +1213,7 @@ func TestApplyUpdateTask_CustomField_AppliesWhenValueDiffers(t *testing.T) {
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), CustomFields: map[string]any{"release_tag": "v1"}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1232,7 +1232,7 @@ func TestApplyUpdateTask_DueDate_IdempotentWhenAlreadySet(t *testing.T) {
 	task := &taskdom.Task{ID: uuid.New(), DueDate: &due}
 
 	sameDue := due
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &sameDue}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{DueDate: &sameDue}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1248,7 +1248,7 @@ func TestApplyUpdateTask_DueDate_AppliesWhenDifferent(t *testing.T) {
 	newDue := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
 	task := &taskdom.Task{ID: uuid.New(), DueDate: &oldDue}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &newDue}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{DueDate: &newDue}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1281,7 +1281,7 @@ func TestApplyUpdateTask_Description_IdempotentWhenAlreadyMatches(t *testing.T) 
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Description: json.RawMessage(`{"text":"hello"}`)}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"hello"}`)}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"hello"}`)}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1295,7 +1295,7 @@ func TestApplyUpdateTask_Description_AppliesWhenDifferent(t *testing.T) {
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Description: json.RawMessage(`{"text":"old"}`)}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"new"}`)}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"new"}`)}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2492,7 +2492,7 @@ func TestApplyUpdateTask_TitleTemplateIsRendered(t *testing.T) {
 	task := &taskdom.Task{ID: uuid.New(), Title: "Old Title"}
 	vars := map[string]string{"task.id": "abc-123"}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Title: "Ticket {{task.id}}"}, "test-automation", vars)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{Title: "Ticket {{task.id}}"}, "test-automation", vars)
 	if err != nil || !applied {
 		t.Fatalf("expected applied=true, got %v, %v", applied, err)
 	}
@@ -2509,7 +2509,7 @@ func TestApplyUpdateTask_UnresolvedVariableLeftVerbatim(t *testing.T) {
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Title: "Old Title"}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Title: "{{unknown.field}}"}, "test-automation", nil)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, task, &automationdom.TaskFieldUpdate{Title: "{{unknown.field}}"}, "test-automation", nil)
 	if err != nil || !applied {
 		t.Fatalf("expected applied=true, got %v, %v", applied, err)
 	}

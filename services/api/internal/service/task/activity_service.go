@@ -131,6 +131,19 @@ func (s *ActivitySvc) RecordActivity(ctx context.Context, in taskdom.RecordActiv
 	return nil
 }
 
+// RecordSystemComment posts a comment with no human author (the automation
+// engine's add_comment). Unlike RecordActivity it is stored and published as
+// a normal comment, on the same topic a human comment uses.
+func (s *ActivitySvc) RecordSystemComment(ctx context.Context, in taskdom.RecordActivityInput) error {
+	_, err := s.act.AddSystemComment(ctx, taskComments, activitysvc.SystemCommentInput{
+		ProjectID: in.ProjectID,
+		EntityID:  in.TaskID,
+		Origin:    events.Origin(in.Origin),
+		Content:   in.Content,
+	})
+	return err
+}
+
 // ListActivities returns one page of a task's activities, newest first.
 func (s *ActivitySvc) ListActivities(ctx context.Context, projectID, taskID uuid.UUID, cursor *string, limit int) ([]*taskdom.Activity, *string, error) {
 	if err := s.taskInProject(ctx, projectID, taskID, taskdom.ErrTaskNotFound); err != nil {
