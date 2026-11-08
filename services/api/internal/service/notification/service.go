@@ -3,6 +3,7 @@ package notificationsvc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -258,8 +259,11 @@ func (s *Svc) NotifyAssigned(ctx context.Context, in notificationdom.NotifyAssig
 // actor: the notification is attributed to the automation by its type.
 func (s *Svc) NotifyAutomation(ctx context.Context, in notificationdom.NotifyAutomationInput) error {
 	member, err := s.memberRepo.FindMemberByID(ctx, in.RecipientMemberID)
-	if err != nil {
+	if errors.Is(err, projectdom.ErrMemberNotFound) {
 		return nil
+	}
+	if err != nil {
+		return err
 	}
 	if member.MemberType == "agent" || member.MemberType == "service_account" {
 		return nil

@@ -514,9 +514,7 @@ describe("handleViewTool – bulk_move_tasks", () => {
 			{ projectId: "p1", viewId: "v1", items: [{ taskId: "t1", position: 0 }] },
 			makeClient(),
 		);
-		expect(result.content[0].text).toContain(
-			"Moved 1 task position in view v1",
-		);
+		expect(result.content[0].text).toContain("Moved 1 task position in view v1");
 	});
 });
 
@@ -545,9 +543,7 @@ describe("handleViewTool – move_task", () => {
 			{ projectId: "p1", viewId: "v1", taskId: "t1", position: 3 },
 			makeClient(),
 		);
-		expect(result.content[0].text).toBe(
-			"Moved task t1 to position 3 in view v1",
-		);
+		expect(result.content[0].text).toBe("Moved task t1 to position 3 in view v1");
 	});
 });
 

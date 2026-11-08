@@ -140,6 +140,9 @@ func (c *AutomationConsumer) applyNotify(ctx context.Context, projectID uuid.UUI
 	if len(recipients) == 0 {
 		return false, nil
 	}
+	// One failing recipient must not stop the rest from being notified.
+	var errs []error
+	notified := 0
 	for _, id := range recipients {
 		if err := c.notifier.NotifyAutomation(ctx, notificationdom.NotifyAutomationInput{
 			RecipientMemberID: id,
@@ -147,8 +150,13 @@ func (c *AutomationConsumer) applyNotify(ctx context.Context, projectID uuid.UUI
 			TaskID:            task.ID,
 			Message:           message,
 		}); err != nil {
-			return false, fmt.Errorf("notify: %w", err)
+			errs = append(errs, err)
+			continue
 		}
+		notified++
+	}
+	if len(errs) > 0 {
+		return notified > 0, fmt.Errorf("notify: %w", errors.Join(errs...))
 	}
 	return true, nil
 }

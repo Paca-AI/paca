@@ -1,10 +1,10 @@
 import type {
 	Attachment,
 	BulkMoveTasksInput,
+	MoveTaskPositionInput,
 	CreateCustomFieldInput,
 	CreateViewInput,
 	CustomFieldDefinition,
-	MoveTaskPositionInput,
 	PacaConfig,
 	ReorderViewsInput,
 	SuccessEnvelope,
