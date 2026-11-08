@@ -211,9 +211,9 @@ export function ConversationView({
 		isLoadingOlder,
 		loadOlder,
 		newBelow,
-		following,
 		setFollowing,
 		jumpToLatest,
+		jumpCount,
 	} = useConversationEventWindow({
 		projectId,
 		conversationId,
@@ -640,9 +640,9 @@ export function ConversationView({
 								{sendError && <ConversationErrorBox message={sendError} />}
 								<TailFollowIndicator
 									newBelow={newBelow}
-									following={following}
 									setFollowing={setFollowing}
 									jumpToLatest={jumpToLatest}
+									jumpCount={jumpCount}
 								/>
 							</>
 						}
