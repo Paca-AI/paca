@@ -3,17 +3,24 @@ import { renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockSocket } = vi.hoisted(() => ({
+const { mockSocket, state } = vi.hoisted(() => ({
 	mockSocket: {
 		connected: false,
 		active: true,
 		on: vi.fn(),
 		off: vi.fn(),
 	},
+	state: { exists: true },
 }));
 
 vi.mock("@/lib/socket-client", () => ({
-	connectSocket: () => mockSocket,
+	getSocket: () => (state.exists ? mockSocket : null),
+	// Like the real one, re-subscribes an existing socket (active -> true).
+	connectSocket: () => {
+		mockSocket.active = true;
+		state.exists = true;
+		return mockSocket;
+	},
 }));
 
 import { useGlobalAgentRealtime } from "./use-global-agent-realtime";
@@ -39,6 +46,7 @@ describe("useGlobalAgentRealtime reconnect", () => {
 		vi.clearAllMocks();
 		mockSocket.connected = false;
 		mockSocket.active = true;
+		state.exists = true;
 	});
 
 	it("does not refetch on the initial connect", () => {
@@ -62,6 +70,7 @@ describe("useGlobalAgentRealtime reconnect", () => {
 	it("treats the first connect of a mounted-down socket as a reconnect", () => {
 		mockSocket.active = false;
 		const invalidate = setup();
+		expect(mockSocket.active).toBe(true); // connectSocket() re-subscribed it
 		handlerFor("connect")();
 		expect(invalidate).toHaveBeenCalledWith({
 			queryKey: ["conversation-event-window"],

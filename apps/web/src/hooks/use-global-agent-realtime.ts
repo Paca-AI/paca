@@ -23,13 +23,21 @@ import {
 	applyRealtimeAgentEvent,
 	conversationEventWindowKey,
 } from "@/lib/agent-api";
-import { connectSocket, type RealtimeEvent } from "@/lib/socket-client";
+import {
+	connectSocket,
+	getSocket,
+	type RealtimeEvent,
+} from "@/lib/socket-client";
 
 export function useGlobalAgentRealtime(enabled = true): void {
 	const queryClient = useQueryClient();
 
 	useEffect(() => {
 		if (!enabled) return;
+		// Read before connectSocket(): it re-subscribes an existing socket
+		// (`active` becomes true), which would hide that it was down.
+		const existing = getSocket();
+		const mountedDown = !!existing && !existing.connected && !existing.active;
 		const socket = connectSocket();
 
 		function handleEvent(event: RealtimeEvent) {
@@ -57,7 +65,6 @@ export function useGlobalAgentRealtime(enabled = true): void {
 		// recovery) may have missed events too, so only a socket that connects
 		// right as we mount counts as the initial connection.
 		let hasConnected = socket.connected;
-		const mountedDown = !socket.connected && !socket.active;
 		function handleConnect() {
 			if (hasConnected || mountedDown) {
 				void queryClient.invalidateQueries({
