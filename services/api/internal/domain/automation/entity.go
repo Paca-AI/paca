@@ -80,7 +80,23 @@ const (
 	TriggerAssigneeChanged TriggerType = "assignee_changed"
 	TriggerPriorityChanged TriggerType = "priority_changed"
 	TriggerTagAdded        TriggerType = "tag_added"
-	TriggerDueDateReached  TriggerType = "due_date_reached"
+	// TriggerFieldChanged fires when the field named by TriggerConfig.Field
+	// (sprint, due date, start date, title, story points, reporter, task
+	// type, parent, or a custom field) is updated on a task.
+	TriggerFieldChanged TriggerType = "field_changed"
+	// TriggerCommentAdded fires when a person (not an automation) comments
+	// on a task. TriggerLinkAdded and TriggerAttachmentAdded fire when a
+	// link / attachment is added to one.
+	TriggerCommentAdded    TriggerType = "comment_added"
+	TriggerLinkAdded       TriggerType = "link_added"
+	TriggerAttachmentAdded TriggerType = "attachment_added"
+	// TriggerChildChanged fires on a PARENT task when one of its subtasks is
+	// created or moves to another status (narrowed by TriggerConfig.StatusID
+	// to "moved into this status"). The walk's task is the parent, so
+	// "close the parent once all children are done" is condition(children
+	// all done) → update_task(self).
+	TriggerChildChanged   TriggerType = "child_changed"
+	TriggerDueDateReached TriggerType = "due_date_reached"
 	// TriggerPredecessorDone subsumes the old workflow canvas's dependency
 	// edges: it fires when ALL of its WatchedTaskIDs are (re-checked fresh,
 	// statelessly, every time — see TriggerConfig) currently in a status
@@ -117,6 +133,11 @@ var ValidBuiltinTriggerTypes = map[TriggerType]bool{
 	TriggerAssigneeChanged: true,
 	TriggerPriorityChanged: true,
 	TriggerTagAdded:        true,
+	TriggerFieldChanged:    true,
+	TriggerCommentAdded:    true,
+	TriggerLinkAdded:       true,
+	TriggerAttachmentAdded: true,
+	TriggerChildChanged:    true,
 	TriggerDueDateReached:  true,
 	TriggerPredecessorDone: true,
 	TriggerCron:            true,
@@ -204,13 +225,27 @@ const (
 	// since completing has the extra bulk-task-move side effect
 	// sprintsvc.CompleteSprint provides (ActionConfig.MoveToSprintID) that a
 	// plain status-field update wouldn't get.
-	ActionUpdateSprint   ActionType = "update_sprint"
+	ActionUpdateSprint ActionType = "update_sprint"
+	// ActionCreateTask creates a new task as a child of the resolved target
+	// task (the walk's task by default). ActionConfig.Create carries its
+	// fields; Title supports {{variable}} templates such as {{task.title}}.
+	ActionCreateTask ActionType = "create_task"
+	// ActionAddComment posts an automation-authored comment on the target
+	// task. ActionNotify sends an in-app notification to members.
+	// ActionLinkTask links the target task to another one.
+	ActionAddComment     ActionType = "add_comment"
+	ActionNotify         ActionType = "notify"
+	ActionLinkTask       ActionType = "link_task"
 	ActionCompleteSprint ActionType = "complete_sprint"
 )
 
 // ValidBuiltinActionTypes is the set of built-in action type values.
 var ValidBuiltinActionTypes = map[ActionType]bool{
 	ActionUpdateTask:     true,
+	ActionCreateTask:     true,
+	ActionAddComment:     true,
+	ActionNotify:         true,
+	ActionLinkTask:       true,
 	ActionTriggerAIAgent: true,
 	ActionCallAPI:        true,
 	ActionWait:           true,
@@ -414,10 +449,31 @@ type TriggerConfig struct {
 	// expression (minute hour day-of-month month day-of-week), parsed via
 	// robfig/cron's ParseStandard and evaluated in UTC.
 	CronExpression string `json:"cron_expression,omitempty"`
+	// Field configures TriggerFieldChanged: one of ValidChangedFields. A
+	// "custom_fields" change fires for any custom field (the recorded change
+	// does not say which one was edited).
+	Field string `json:"field,omitempty"`
 	// SprintID narrows any of the four TriggerSprint* types to firing only
 	// for this one sprint. Nil means "any sprint in the project" — the same
 	// optional-narrowing shape as StatusID above.
 	SprintID *uuid.UUID `json:"sprint_id,omitempty"`
+}
+
+// ValidChangedFields is the set of task fields TriggerFieldChanged can watch.
+// The values are the field names the task handler records in a task.updated
+// activity's changes (not the condition-field names), because that is what
+// the trigger matches against.
+var ValidChangedFields = map[string]bool{
+	"sprint":        true,
+	"due_date":      true,
+	"start_date":    true,
+	"title":         true,
+	"story_points":  true,
+	"reporter":      true,
+	"task_type":     true,
+	"parent_task":   true,
+	"description":   true,
+	"custom_fields": true,
 }
 
 // TaskTargetKind selects which task a condition leaf or action operates on,
@@ -431,6 +487,12 @@ const (
 	TaskTargetSelf     TaskTargetKind = "self"
 	TaskTargetParent   TaskTargetKind = "parent"
 	TaskTargetChildren TaskTargetKind = "children"
+	// TaskTargetSiblings resolves to the walk task's parent's children,
+	// excluding the walk task itself ("every OTHER subtask of my parent").
+	// A task with no parent has no siblings. Use with a leaf's MatchMode
+	// "all" for "all my siblings are done" checks; the walk's own task is
+	// evaluated separately (self), since its status is what just changed.
+	TaskTargetSiblings TaskTargetKind = "siblings"
 	// TaskTargetBlocks and the three link kinds below it mirror task_link's
 	// DisplayLinkType vocabulary exactly (see domain/task/entity.go's
 	// TaskLink) — blocks and duplicates are directional (hence the
@@ -451,6 +513,7 @@ var ValidTaskTargetKinds = map[TaskTargetKind]bool{
 	TaskTargetSelf:           true,
 	TaskTargetParent:         true,
 	TaskTargetChildren:       true,
+	TaskTargetSiblings:       true,
 	TaskTargetBlocks:         true,
 	TaskTargetIsBlockedBy:    true,
 	TaskTargetRelatesTo:      true,
@@ -465,7 +528,7 @@ var ValidTaskTargetKinds = map[TaskTargetKind]bool{
 // self, parent (at most one), and other (a single explicit choice).
 func (k TaskTargetKind) MultiValued() bool {
 	switch k {
-	case TaskTargetChildren, TaskTargetBlocks, TaskTargetIsBlockedBy, TaskTargetRelatesTo, TaskTargetDuplicates, TaskTargetIsDuplicatedBy:
+	case TaskTargetChildren, TaskTargetSiblings, TaskTargetBlocks, TaskTargetIsBlockedBy, TaskTargetRelatesTo, TaskTargetDuplicates, TaskTargetIsDuplicatedBy:
 		return true
 	default:
 		return false
@@ -498,6 +561,15 @@ type ActionConfig struct {
 	// once (see TaskFieldUpdate), replacing the old one-node-per-field
 	// actions (assign/set_status/set_priority/add_tag/set_custom_field).
 	Update *TaskFieldUpdate `json:"update,omitempty"`
+
+	// Create carries the new task's fields when Type is ActionCreateTask.
+	Create *TaskCreate `json:"create,omitempty"`
+
+	// Comment is add_comment's payload; Notify is notify's; Link is
+	// link_task's.
+	Comment *CommentAction `json:"comment,omitempty"`
+	Notify  *NotifyAction  `json:"notify,omitempty"`
+	Link    *LinkAction    `json:"link,omitempty"`
 
 	// call_api: the outbound request to make when the walk reaches this
 	// node. Headers/Body are stored and returned verbatim like every other
@@ -532,6 +604,131 @@ type ActionConfig struct {
 	// sprint's non-done tasks (nil = move to backlog) — mirrors
 	// sprintdom.CompleteSprintInput.MoveToSprintID.
 	MoveToSprintID *uuid.UUID `json:"move_to_sprint_id,omitempty"`
+}
+
+// DynamicSources are the tasks a DynamicValue can read from: the walk's own
+// (triggering) task, that task's parent, or the current time.
+const (
+	DynamicSourceTask   = "task"
+	DynamicSourceParent = "parent"
+	DynamicSourceNow    = "now"
+)
+
+// DynamicValue computes a field's value when the action runs, instead of
+// storing a fixed one: copy Field (default: the same field) from the Source
+// task, optionally shifted by OffsetDays for date fields ("due 3 days after
+// the parent's due date"; source "now" = today + offset). The empty result of
+// a dynamic value (the source field is unset) leaves the field untouched.
+type DynamicValue struct {
+	Source     string `json:"source"`
+	Field      string `json:"field,omitempty"`
+	OffsetDays *int   `json:"offset_days,omitempty"`
+}
+
+// DynamicFields are the task fields that can be set dynamically, and the
+// source fields each can read. Every source field maps onto the target field
+// by kind: member ids (assignee_ids, reporter_id), a sprint, a number, a
+// date, tags, status/type.
+var DynamicFields = map[string]bool{
+	"assignee_ids": true,
+	"reporter_id":  true,
+	"sprint_id":    true,
+	"importance":   true,
+	"story_points": true,
+	"start_date":   true,
+	"due_date":     true,
+	"tags":         true,
+	"task_type_id": true,
+	"status_id":    true,
+}
+
+// Set modes for the list fields (tags, assignees) of update_task.
+const (
+	ListModeSet    = "set"
+	ListModeAdd    = "add"
+	ListModeRemove = "remove"
+)
+
+// ClearableFields are the nullable/list task fields update_task can empty.
+var ClearableFields = map[string]bool{
+	"assignee_ids":   true,
+	"tags":           true,
+	"sprint_id":      true,
+	"story_points":   true,
+	"reporter_id":    true,
+	"start_date":     true,
+	"due_date":       true,
+	"parent_task_id": true,
+}
+
+// CommentAction is add_comment's payload: Text is a {{variable}} template,
+// posted as plain-text paragraphs (one per line).
+type CommentAction struct {
+	Text string `json:"text"`
+}
+
+// Notification recipient roles for NotifyAction.Recipients.
+const (
+	RecipientAssignees       = "assignees"
+	RecipientReporter        = "reporter"
+	RecipientParentAssignees = "parent_assignees"
+)
+
+// NotifyAction is notify's payload: an in-app notification to each resolved
+// recipient. Recipients are role names (RecipientAssignees, ...) of the
+// target task; MemberIDs add explicit project members. Message is a template.
+type NotifyAction struct {
+	Recipients []string    `json:"recipients,omitempty"`
+	MemberIDs  []uuid.UUID `json:"member_ids,omitempty"`
+	Message    string      `json:"message"`
+}
+
+// LinkAction is link_task's payload: link the target task to To (one task:
+// self, parent, or an explicit other task) with Type, which reads from the
+// target task's side — "blocks" means the target blocks To. One of
+// blocks / is_blocked_by / relates_to / duplicates / is_duplicated_by.
+type LinkAction struct {
+	Type string     `json:"type"`
+	To   TaskTarget `json:"to"`
+}
+
+// ValidLinkActionTypes are the LinkAction.Type values.
+var ValidLinkActionTypes = map[string]bool{
+	"blocks":           true,
+	"is_blocked_by":    true,
+	"relates_to":       true,
+	"duplicates":       true,
+	"is_duplicated_by": true,
+}
+
+// TaskCreate is the payload for ActionCreateTask. The created task is always
+// a child of the action's resolved target task, in the same project. It
+// carries every field a task can be created with — the same set as
+// TaskFieldUpdate minus ParentTaskID (fixed to the target) — and only Title is
+// required; any field left unset falls back to the task service's own defaults
+// (first status, default task type, no assignees, ...). Title is a {{variable}}
+// template (e.g. "{{task.title}} - Review"); Description is BlockNote JSON,
+// stored verbatim like update_task's.
+type TaskCreate struct {
+	Title        string          `json:"title"`
+	TaskTypeID   *uuid.UUID      `json:"task_type_id,omitempty"`
+	StatusID     *uuid.UUID      `json:"status_id,omitempty"`
+	SprintID     *uuid.UUID      `json:"sprint_id,omitempty"`
+	Description  json.RawMessage `json:"description,omitempty"`
+	Importance   *int            `json:"importance,omitempty"`
+	StoryPoints  *int            `json:"story_points,omitempty"`
+	AssigneeIDs  []uuid.UUID     `json:"assignee_ids,omitempty"`
+	ReporterID   *uuid.UUID      `json:"reporter_id,omitempty"`
+	CustomFields map[string]any  `json:"custom_fields,omitempty"`
+	StartDate    *time.Time      `json:"start_date,omitempty"`
+	DueDate      *time.Time      `json:"due_date,omitempty"`
+	Tags         []string        `json:"tags,omitempty"`
+	// Dynamic computes fields at run time (see DynamicValue); a key set here
+	// overrides the same field's fixed value above.
+	Dynamic map[string]DynamicValue `json:"dynamic,omitempty"`
+	// Link, when set, links the new task to its parent right after creating
+	// it (Type reads from the new task's side, like LinkAction.Type).
+	Link string `json:"link,omitempty"`
 }
 
 // SprintFieldUpdate is the sparse "which fields to set" payload for
@@ -570,6 +767,19 @@ type TaskFieldUpdate struct {
 	StartDate    *time.Time      `json:"start_date,omitempty"`
 	DueDate      *time.Time      `json:"due_date,omitempty"`
 	Tags         []string        `json:"tags,omitempty"`
+
+	// TagsMode / AssigneesMode say how Tags / AssigneeIDs apply: ListModeSet
+	// (the default, replace the whole list), ListModeAdd (keep the existing
+	// entries and add these) or ListModeRemove (remove these, keep the rest).
+	TagsMode      string `json:"tags_mode,omitempty"`
+	AssigneesMode string `json:"assignees_mode,omitempty"`
+	// Clear empties the named fields (see ClearableFields) — the only way to
+	// unassign, clear a due date or take a task out of a sprint, since an
+	// unset field above means "leave alone".
+	Clear []string `json:"clear,omitempty"`
+	// Dynamic computes fields at run time (see DynamicValue); a key set here
+	// overrides the same field's fixed value above.
+	Dynamic map[string]DynamicValue `json:"dynamic,omitempty"`
 }
 
 // ConditionConfig holds a Condition node's ordered branches. Marshaled into

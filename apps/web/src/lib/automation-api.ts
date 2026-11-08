@@ -13,6 +13,11 @@ export const TRIGGER_TYPES = [
 	"assignee_changed",
 	"priority_changed",
 	"tag_added",
+	"field_changed",
+	"comment_added",
+	"link_added",
+	"attachment_added",
+	"child_changed",
 	"due_date_reached",
 	"predecessor_done",
 	"cron",
@@ -36,7 +41,17 @@ export const TRIGGER_TYPE_GROUPS = [
 			"assignee_changed",
 			"priority_changed",
 			"tag_added",
+			"field_changed",
 			"due_date_reached",
+		],
+	},
+	{
+		labelKey: "taskActivity",
+		types: [
+			"child_changed",
+			"comment_added",
+			"link_added",
+			"attachment_added",
 			"predecessor_done",
 		],
 	},
@@ -60,6 +75,10 @@ export const TRIGGER_TYPE_GROUPS = [
 
 export const ACTION_TYPES = [
 	"update_task",
+	"create_task",
+	"link_task",
+	"add_comment",
+	"notify",
 	"trigger_ai_agent",
 	"call_api",
 	"wait",
@@ -67,6 +86,25 @@ export const ACTION_TYPES = [
 	"complete_sprint",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
+
+// Groups ACTION_TYPES for the "Add Action" picker, like TRIGGER_TYPE_GROUPS.
+export const ACTION_TYPE_GROUPS = [
+	{
+		labelKey: "taskActions",
+		types: ["update_task", "create_task", "link_task", "add_comment", "notify"],
+	},
+	{
+		labelKey: "flowActions",
+		types: ["trigger_ai_agent", "call_api", "wait"],
+	},
+	{
+		labelKey: "sprintActions",
+		types: ["update_sprint", "complete_sprint"],
+	},
+] as const satisfies readonly {
+	labelKey: string;
+	types: readonly ActionType[];
+}[];
 
 export const CONDITION_NODE_TYPE = "condition";
 
@@ -212,7 +250,25 @@ export interface TriggerConfig {
 	/** Narrows any of the four sprint_* trigger types to firing only for
 	 * this one sprint. Omitted means "any sprint in the project". */
 	sprint_id?: string;
+	/** field_changed: which field to watch (see CHANGED_FIELDS). */
+	field?: ChangedField;
 }
+
+/** The task fields a field_changed trigger can watch — the names the task
+ * activity records, not the condition-field names. */
+export const CHANGED_FIELDS = [
+	"sprint",
+	"due_date",
+	"start_date",
+	"title",
+	"story_points",
+	"reporter",
+	"task_type",
+	"parent_task",
+	"description",
+	"custom_fields",
+] as const;
+export type ChangedField = (typeof CHANGED_FIELDS)[number];
 
 export type ConditionOperator =
 	| "equals"
@@ -236,6 +292,8 @@ export type ConditionField =
 	| "reporter_id"
 	| "start_date"
 	| "due_date"
+	/** Number of subtasks the task has. */
+	| "child_count"
 	/** The five fields below evaluate against the walk's current sprint
 	 * (set directly by a sprint_* trigger, or resolved via a task's own
 	 * sprint_id) rather than the task — distinct from "sprint_id" above,
@@ -256,6 +314,7 @@ export type TaskTargetKind =
 	| "self"
 	| "parent"
 	| "children"
+	| "siblings"
 	| "blocks"
 	| "is_blocked_by"
 	| "relates_to"
@@ -267,6 +326,7 @@ export type TaskTargetKind =
  * several children, or block/relate to/duplicate several other tasks. */
 export const MULTI_VALUED_TARGET_KINDS: readonly TaskTargetKind[] = [
 	"children",
+	"siblings",
 	"blocks",
 	"is_blocked_by",
 	"relates_to",
@@ -367,6 +427,89 @@ export interface TaskFieldUpdate {
 	start_date?: string;
 	due_date?: string;
 	tags?: string[];
+	/** How tags / assignee_ids apply: "set" (replace the list, the default),
+	 * "add" (keep the existing entries and add these) or "remove". */
+	tags_mode?: ListMode;
+	assignees_mode?: ListMode;
+	/** Fields to empty (see CLEARABLE_FIELDS). */
+	clear?: string[];
+	/** Fields computed when the automation runs instead of a fixed value. */
+	dynamic?: Record<string, DynamicValue>;
+}
+
+export type ListMode = "set" | "add" | "remove";
+
+/** A value copied at run time: from the triggering task, its parent, or the
+ * current date (dates only), optionally shifted by offset_days. */
+export interface DynamicValue {
+	source: "task" | "parent" | "now";
+	/** Source field; omitted = the same field. */
+	field?: string;
+	offset_days?: number;
+}
+
+/** Fields update_task can clear. */
+export const CLEARABLE_FIELDS = [
+	"assignee_ids",
+	"tags",
+	"sprint_id",
+	"story_points",
+	"reporter_id",
+	"start_date",
+	"due_date",
+	"parent_task_id",
+] as const;
+
+/** Fields that can be set dynamically, with the source fields each can read
+ * (the first is the default: the same field). */
+export const DYNAMIC_FIELD_SOURCES: Record<string, readonly string[]> = {
+	assignee_ids: ["assignee_ids", "reporter_id"],
+	reporter_id: ["reporter_id", "assignee_ids"],
+	sprint_id: ["sprint_id"],
+	importance: ["importance"],
+	story_points: ["story_points"],
+	start_date: ["start_date", "due_date"],
+	due_date: ["due_date", "start_date"],
+	tags: ["tags"],
+	task_type_id: ["task_type_id"],
+	status_id: ["status_id"],
+};
+
+/** create_task's new-task fields: every TaskFieldUpdate field except
+ * parent_task_id (always the target task), with title required. */
+export type TaskCreate = Omit<
+	TaskFieldUpdate,
+	"title" | "parent_task_id" | "tags_mode" | "assignees_mode" | "clear"
+> & {
+	title: string;
+	/** Link the new task to its parent right after creating it; the type
+	 * reads from the new task's side (blocks, relates_to, ...). */
+	link?: LinkType;
+};
+
+export const LINK_TYPES = [
+	"blocks",
+	"is_blocked_by",
+	"relates_to",
+	"duplicates",
+	"is_duplicated_by",
+] as const;
+export type LinkType = (typeof LINK_TYPES)[number];
+
+export type NotifyRecipient = "assignees" | "reporter" | "parent_assignees";
+
+/** ActionConfig payloads of add_comment, notify and link_task. */
+export interface CommentAction {
+	text: string;
+}
+export interface NotifyAction {
+	recipients?: NotifyRecipient[];
+	member_ids?: string[];
+	message: string;
+}
+export interface LinkAction {
+	type: LinkType;
+	to: TaskTarget;
 }
 
 /** ActionUpdateSprint's config: every sprint-field change to apply, in one
@@ -403,6 +546,13 @@ export interface ActionConfig {
 	wait_minutes?: number;
 	/** update_sprint: every sprint-field change to apply. */
 	sprint_update?: SprintFieldUpdate;
+	/** create_task: the new child task of the target task. title is a
+	 * {{variable}} template, e.g. "{{task.title}} - Review". */
+	create?: TaskCreate;
+	/** add_comment / notify / link_task. */
+	comment?: CommentAction;
+	notify?: NotifyAction;
+	link?: LinkAction;
 	/** complete_sprint: where to move the sprint's non-done tasks (omitted =
 	 * backlog). */
 	move_to_sprint_id?: string;

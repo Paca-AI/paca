@@ -2522,9 +2522,15 @@
 			"triggerGroups": {
 				"taskEvents": "Eventos de tarefas",
 				"sprintEvents": "Eventos de sprints",
-				"scheduleWebhook": "Agendamento e webhook"
+				"scheduleWebhook": "Agendamento e webhook",
+				"taskActivity": "Atividade e subtarefas"
 			},
-			"git": "Git"
+			"git": "Git",
+			"actionGroups": {
+				"taskActions": "Tarefa",
+				"flowActions": "Fluxo e integrações",
+				"sprintActions": "Sprint"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Gatilho",
@@ -2548,7 +2554,12 @@
 			"sprint_created": "Sprint criado",
 			"sprint_started": "Sprint iniciado",
 			"sprint_completed": "Sprint concluído",
-			"sprint_deleted": "Sprint excluído"
+			"sprint_deleted": "Sprint excluído",
+			"field_changed": "Campo alterado",
+			"comment_added": "Comentário adicionado",
+			"link_added": "Link adicionado",
+			"attachment_added": "Anexo adicionado",
+			"child_changed": "Subtarefa alterada"
 		},
 		"actionTypes": {
 			"update_task": "Atualizar tarefa",
@@ -2556,7 +2567,11 @@
 			"call_api": "Chamar API",
 			"wait": "Aguardar",
 			"update_sprint": "Atualizar sprint",
-			"complete_sprint": "Concluir sprint"
+			"complete_sprint": "Concluir sprint",
+			"create_task": "Criar subtarefa",
+			"link_task": "Vincular tarefa",
+			"add_comment": "Adicionar comentário",
+			"notify": "Enviar notificação"
 		},
 		"nodeConfig": {
 			"save": "Salvar",
@@ -2597,7 +2612,24 @@
 				"tokenShownOnceWarning": "Copie este token agora — ele não será mostrado novamente.",
 				"copy": "Copiar",
 				"copied": "Copiado",
-				"noTokenYet": "Nenhum token gerado ainda"
+				"noTokenYet": "Nenhum token gerado ainda",
+				"fieldLabel": "Campo a observar",
+				"fieldPlaceholder": "Escolha um campo…",
+				"fieldChangedHint": "Executa quando este campo é editado em uma tarefa.",
+				"childChangedHint": "Executa na tarefa pai quando uma subtarefa é criada ou muda de status. Adicione uma condição sobre as subtarefas para agir só quando, por exemplo, todas estiverem concluídas.",
+				"childStatusLabel": "Quando uma subtarefa entra em",
+				"changedFields": {
+					"sprint": "Sprint",
+					"due_date": "Data de entrega",
+					"start_date": "Data de início",
+					"title": "Título",
+					"story_points": "Pontos de história",
+					"reporter": "Relator",
+					"task_type": "Tipo de tarefa",
+					"parent_task": "Tarefa pai",
+					"description": "Descrição",
+					"custom_fields": "Campos personalizados"
+				}
 			},
 			"condition": {
 				"branchesTitle": "Ramificações",
@@ -2632,8 +2664,14 @@
 					"sprint_status": "Status do sprint",
 					"sprint_goal": "Objetivo do sprint",
 					"sprint_start_date": "Data de início do sprint",
-					"sprint_end_date": "Data de término do sprint"
-				}
+					"sprint_end_date": "Data de término do sprint",
+					"child_count": "Número de subtarefas"
+				},
+				"dateMode": {
+					"fixed": "Data específica",
+					"relative": "Relativa a hoje"
+				},
+				"relativeHint": "Dias a partir de hoje: 0 = agora, 3 = em 3 dias, -1 = ontem. Use \"antes de\" com 0 para indicar atrasado."
 			},
 			"action": {
 				"memberLabel": "Responsável",
@@ -2688,7 +2726,58 @@
 				"pluginConditionLabel": "Condição de plugin",
 				"pluginConditionHint": "Delega a correspondência deste ramo a uma condição fornecida por um plugin em vez de comparar um campo da tarefa.",
 				"selectPluginPlaceholder": "Selecione uma condição de plugin…",
-				"addCustomField": "Adicionar campo personalizado…"
+				"addCustomField": "Adicionar campo personalizado…",
+				"createTaskHint": "Cria uma nova tarefa filha da tarefa selecionada abaixo. Adicione os campos que quiser: cada um pode ser fixo ou copiado da tarefa que disparou a automação ou do pai dela. Se o pai já tiver uma subtarefa com exatamente este título, nada é criado.",
+				"createTitlePlaceholder": "{{task.title}} - Revisão",
+				"descriptionLabel": "Descrição",
+				"ops": {
+					"set": "Definir como",
+					"replace": "Substituir por",
+					"add": "Adicionar",
+					"remove": "Remover",
+					"clear": "Limpar",
+					"task": "Copiar desta tarefa",
+					"parent": "Copiar da tarefa pai",
+					"now": "Hoje"
+				},
+				"clearHint": "Esvazia este campo.",
+				"dynamicFieldLabel": "Copiar este campo",
+				"offsetDaysLabel": "Deslocar em (dias)",
+				"offsetDaysHint": "Positivo = depois, negativo = antes.",
+				"dynamicHint": {
+					"task": "Copiado da tarefa que disparou a automação ao executar. Se ela não tiver valor, o campo não muda.",
+					"parent": "Copiado do pai da tarefa que disparou a automação. Sem pai ou sem valor, o campo não muda.",
+					"now": "A data de hoje ao executar a automação, deslocada pelos dias indicados."
+				},
+				"addMember": "Adicionar um membro…",
+				"removeMember": "Remover membro",
+				"commentHint": "Publica um comentário na tarefa, escrito pela automação.",
+				"commentTextLabel": "Comentário",
+				"commentPlaceholder": "ex.: Todas as subtarefas foram concluídas.",
+				"notifyHint": "Envia uma notificação no aplicativo sobre a tarefa às pessoas abaixo.",
+				"notifyRecipientsLabel": "Notificar",
+				"notifyRecipients": {
+					"assignees": "Responsáveis",
+					"reporter": "Relator",
+					"parent_assignees": "Responsáveis da tarefa pai"
+				},
+				"notifyMembersLabel": "Notificar também",
+				"notifyMessageLabel": "Mensagem",
+				"notifyMessagePlaceholder": "ex.: Pronto para revisão.",
+				"linkHint": "Vincula a tarefa a outra. A direção é lida a partir desta tarefa.",
+				"linkTypeLabel": "Tipo de vínculo",
+				"linkTypes": {
+					"blocks": "Bloqueia",
+					"is_blocked_by": "É bloqueada por",
+					"relates_to": "Relaciona-se com",
+					"duplicates": "Duplica",
+					"is_duplicated_by": "É duplicada por"
+				},
+				"linkToLabel": "Vincular a",
+				"createLinkLabel": "Vincular à tarefa pai",
+				"createLinkNone": "Sem vínculo",
+				"createLinkHint": "Opcionalmente vincula a nova tarefa ao pai, lido a partir da nova tarefa (ex.: \"Bloqueia\" = a subtarefa bloqueia o pai).",
+				"opsLabel": "Como aplicar este campo"
 			},
 			"target": {
 				"label": "Aplica-se a",
@@ -2696,6 +2785,7 @@
 					"self": "Esta tarefa",
 					"parent": "Tarefa pai",
 					"children": "Tarefas filhas",
+					"siblings": "Tarefas irmãs (outras subtarefas do pai)",
 					"blocks": "Bloqueia",
 					"is_blocked_by": "É bloqueada por",
 					"relates_to": "Tarefa relacionada",
@@ -2725,7 +2815,10 @@
 				"callApiSummary": "{{method}} {{host}}",
 				"jevNoulTrue": "Sim",
 				"pluginField": "{{field}}: {{value}}",
-				"waitMinutes": "Aguardar {{minutes}} min"
+				"waitMinutes": "Aguardar {{minutes}} min",
+				"createTaskSummary": "Criar: {{title}}",
+				"commentSummary": "Comentário: {{text}}",
+				"notifySummary": "Notificar: {{message}}"
 			},
 			"jev": {
 				"answerTypeLabel": "Tipo de resposta",

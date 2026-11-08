@@ -2522,9 +2522,15 @@
 			"triggerGroups": {
 				"taskEvents": "Événements de tâches",
 				"sprintEvents": "Événements de sprints",
-				"scheduleWebhook": "Planification et webhook"
+				"scheduleWebhook": "Planification et webhook",
+				"taskActivity": "Activité et sous-tâches"
 			},
-			"git": "Git"
+			"git": "Git",
+			"actionGroups": {
+				"taskActions": "Tâche",
+				"flowActions": "Flux et intégrations",
+				"sprintActions": "Sprint"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Déclencheur",
@@ -2548,7 +2554,12 @@
 			"sprint_created": "Sprint créé",
 			"sprint_started": "Sprint démarré",
 			"sprint_completed": "Sprint terminé",
-			"sprint_deleted": "Sprint supprimé"
+			"sprint_deleted": "Sprint supprimé",
+			"field_changed": "Champ modifié",
+			"comment_added": "Commentaire ajouté",
+			"link_added": "Lien ajouté",
+			"attachment_added": "Pièce jointe ajoutée",
+			"child_changed": "Sous-tâche modifiée"
 		},
 		"actionTypes": {
 			"update_task": "Mettre à jour la tâche",
@@ -2556,7 +2567,11 @@
 			"call_api": "Appeler l'API",
 			"wait": "Attendre",
 			"update_sprint": "Mettre à jour le sprint",
-			"complete_sprint": "Terminer le sprint"
+			"complete_sprint": "Terminer le sprint",
+			"create_task": "Créer une sous-tâche",
+			"link_task": "Lier la tâche",
+			"add_comment": "Ajouter un commentaire",
+			"notify": "Envoyer une notification"
 		},
 		"nodeConfig": {
 			"save": "Enregistrer",
@@ -2597,7 +2612,24 @@
 				"tokenShownOnceWarning": "Copiez ce jeton maintenant — il ne sera plus jamais affiché.",
 				"copy": "Copier",
 				"copied": "Copié",
-				"noTokenYet": "Aucun jeton généré pour l'instant"
+				"noTokenYet": "Aucun jeton généré pour l'instant",
+				"fieldLabel": "Champ à surveiller",
+				"fieldPlaceholder": "Choisir un champ…",
+				"fieldChangedHint": "S'exécute quand ce champ est modifié sur une tâche.",
+				"childChangedHint": "S'exécute sur la tâche parente quand une de ses sous-tâches est créée ou change de statut. Ajoutez une condition sur ses sous-tâches pour n'agir que lorsque, par exemple, toutes sont terminées.",
+				"childStatusLabel": "Quand une sous-tâche passe à",
+				"changedFields": {
+					"sprint": "Sprint",
+					"due_date": "Date d'échéance",
+					"start_date": "Date de début",
+					"title": "Titre",
+					"story_points": "Points d'effort",
+					"reporter": "Rapporteur",
+					"task_type": "Type de tâche",
+					"parent_task": "Tâche parente",
+					"description": "Description",
+					"custom_fields": "Champs personnalisés"
+				}
 			},
 			"condition": {
 				"branchesTitle": "Branches",
@@ -2632,8 +2664,14 @@
 					"sprint_status": "Statut du sprint",
 					"sprint_goal": "Objectif du sprint",
 					"sprint_start_date": "Date de début du sprint",
-					"sprint_end_date": "Date de fin du sprint"
-				}
+					"sprint_end_date": "Date de fin du sprint",
+					"child_count": "Nombre de sous-tâches"
+				},
+				"dateMode": {
+					"fixed": "Date précise",
+					"relative": "Relative à aujourd'hui"
+				},
+				"relativeHint": "Jours à partir d'aujourd'hui : 0 = maintenant, 3 = dans 3 jours, -1 = hier. Utilisez « avant » avec 0 pour « en retard »."
 			},
 			"action": {
 				"memberLabel": "Assigné",
@@ -2688,7 +2726,58 @@
 				"pluginConditionLabel": "Condition de plugin",
 				"pluginConditionHint": "Délègue la correspondance de cette branche à une condition fournie par un plugin plutôt qu'à une comparaison de champ de tâche.",
 				"selectPluginPlaceholder": "Sélectionner une condition de plugin…",
-				"addCustomField": "Ajouter un champ personnalisé…"
+				"addCustomField": "Ajouter un champ personnalisé…",
+				"createTaskHint": "Crée une nouvelle tâche enfant de la tâche sélectionnée ci-dessous. Ajoutez les champs souhaités : chacun peut être fixe ou copié depuis la tâche déclencheuse ou son parent. Si le parent a déjà une sous-tâche avec exactement ce titre, rien n'est créé.",
+				"createTitlePlaceholder": "{{task.title}} - Revue",
+				"descriptionLabel": "Description",
+				"ops": {
+					"set": "Définir à",
+					"replace": "Remplacer par",
+					"add": "Ajouter",
+					"remove": "Retirer",
+					"clear": "Vider",
+					"task": "Copier depuis cette tâche",
+					"parent": "Copier depuis la tâche parente",
+					"now": "Aujourd'hui"
+				},
+				"clearHint": "Vide ce champ.",
+				"dynamicFieldLabel": "Copier ce champ",
+				"offsetDaysLabel": "Décaler de (jours)",
+				"offsetDaysHint": "Positif = plus tard, négatif = plus tôt.",
+				"dynamicHint": {
+					"task": "Copié depuis la tâche qui a déclenché l'automatisation à l'exécution. Sans valeur, le champ reste inchangé.",
+					"parent": "Copié depuis le parent de la tâche déclencheuse. Sans parent ou sans valeur, le champ reste inchangé.",
+					"now": "La date du jour à l'exécution, décalée du nombre de jours indiqué."
+				},
+				"addMember": "Ajouter un membre…",
+				"removeMember": "Retirer le membre",
+				"commentHint": "Publie un commentaire sur la tâche, rédigé par l'automatisation.",
+				"commentTextLabel": "Commentaire",
+				"commentPlaceholder": "p. ex. Toutes les sous-tâches sont terminées.",
+				"notifyHint": "Envoie une notification dans l'application à propos de la tâche aux personnes ci-dessous.",
+				"notifyRecipientsLabel": "Notifier",
+				"notifyRecipients": {
+					"assignees": "Assignés",
+					"reporter": "Rapporteur",
+					"parent_assignees": "Assignés de la tâche parente"
+				},
+				"notifyMembersLabel": "Notifier aussi",
+				"notifyMessageLabel": "Message",
+				"notifyMessagePlaceholder": "p. ex. Prêt pour la relecture.",
+				"linkHint": "Lie la tâche à une autre. Le sens se lit depuis cette tâche.",
+				"linkTypeLabel": "Type de lien",
+				"linkTypes": {
+					"blocks": "Bloque",
+					"is_blocked_by": "Est bloquée par",
+					"relates_to": "Est liée à",
+					"duplicates": "Duplique",
+					"is_duplicated_by": "Est dupliquée par"
+				},
+				"linkToLabel": "Lier à",
+				"createLinkLabel": "Lier à la tâche parente",
+				"createLinkNone": "Aucun lien",
+				"createLinkHint": "Lie éventuellement la nouvelle tâche à son parent, lu depuis la nouvelle tâche (p. ex. « Bloque » = la sous-tâche bloque son parent).",
+				"opsLabel": "Comment appliquer ce champ"
 			},
 			"target": {
 				"label": "S'applique à",
@@ -2696,6 +2785,7 @@
 					"self": "Cette tâche",
 					"parent": "Tâche parente",
 					"children": "Tâches enfants",
+					"siblings": "Tâches sœurs (autres sous-tâches du parent)",
 					"blocks": "Bloque",
 					"is_blocked_by": "Est bloquée par",
 					"relates_to": "Tâche associée",
@@ -2725,7 +2815,10 @@
 				"callApiSummary": "{{method}} {{host}}",
 				"jevNoulTrue": "Oui",
 				"pluginField": "{{field}} : {{value}}",
-				"waitMinutes": "Attendre {{minutes}} min"
+				"waitMinutes": "Attendre {{minutes}} min",
+				"createTaskSummary": "Créer : {{title}}",
+				"commentSummary": "Commentaire : {{text}}",
+				"notifySummary": "Notifier : {{message}}"
 			},
 			"jev": {
 				"answerTypeLabel": "Type de réponse",

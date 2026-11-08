@@ -76,7 +76,8 @@
 			"assigned": "{{actor}}さんがあなたをタスク #{{taskNumber}} — {{taskTitle}} に割り当てました",
 			"mentioned": "{{actor}}さんが #{{taskNumber}} — {{taskTitle}} であなたにメンションしました",
 			"question": "{{actor}} が {{title}} で質問しました",
-			"mentionedInDoc": "{{actor}} がドキュメント {{title}} であなたをメンションしました"
+			"mentionedInDoc": "{{actor}} がドキュメント {{title}} であなたをメンションしました",
+			"automation": "自動化: {{message}} (#{{taskNumber}} — {{taskTitle}})"
 		},
 		"untitledConversation": "無題の会話",
 		"globalChat": "グローバルチャット",

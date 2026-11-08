@@ -786,6 +786,14 @@ func (s *Service) validateTriggerConfig(ctx context.Context, projectID uuid.UUID
 			}
 		}
 	}
+	if t == automationdom.TriggerFieldChanged {
+		if cfg.Field != "" && !automationdom.ValidChangedFields[cfg.Field] {
+			return fmt.Errorf("%w: field_changed cannot watch %q", automationdom.ErrNodeConfigInvalid, cfg.Field)
+		}
+		if strict && cfg.Field == "" {
+			return fmt.Errorf("%w: field_changed requires a field", automationdom.ErrNodeConfigInvalid)
+		}
+	}
 	if t == automationdom.TriggerCron {
 		if cfg.CronExpression != "" {
 			if _, err := cron.ParseStandard(cfg.CronExpression); err != nil {
@@ -918,6 +926,16 @@ func (s *Service) validateActionConfig(ctx context.Context, projectID uuid.UUID,
 	switch t {
 	case automationdom.ActionUpdateTask:
 		return s.validateTaskFieldUpdate(ctx, projectID, cfg.Update, strict)
+	case automationdom.ActionCreateTask:
+		return s.validateTaskCreate(ctx, projectID, cfg.Create, strict)
+	case automationdom.ActionAddComment:
+		if strict && (cfg.Comment == nil || strings.TrimSpace(cfg.Comment.Text) == "") {
+			return fmt.Errorf("%w: add_comment requires text", automationdom.ErrNodeConfigInvalid)
+		}
+	case automationdom.ActionNotify:
+		return s.validateNotify(ctx, projectID, cfg.Notify, strict)
+	case automationdom.ActionLinkTask:
+		return s.validateLinkAction(ctx, projectID, cfg.Link, strict)
 	case automationdom.ActionTriggerAIAgent:
 		if cfg.MemberID == nil {
 			if strict {
@@ -1014,6 +1032,17 @@ func (s *Service) validateTaskFieldUpdate(ctx context.Context, projectID uuid.UU
 	if strict && !taskFieldUpdateHasAnyField(upd) {
 		return fmt.Errorf("%w: update_task requires at least one field to update", automationdom.ErrNodeConfigInvalid)
 	}
+	if err := validateListModes(upd.TagsMode, upd.AssigneesMode); err != nil {
+		return err
+	}
+	for _, f := range upd.Clear {
+		if !automationdom.ClearableFields[f] {
+			return fmt.Errorf("%w: cannot clear field %q", automationdom.ErrNodeConfigInvalid, f)
+		}
+	}
+	if err := validateDynamic(upd.Dynamic); err != nil {
+		return err
+	}
 	if upd.StatusID != nil {
 		if err := s.assertStatusInProject(ctx, projectID, *upd.StatusID); err != nil {
 			return err
@@ -1041,6 +1070,41 @@ func (s *Service) validateTaskFieldUpdate(ctx context.Context, projectID uuid.UU
 	return nil
 }
 
+// validateTaskCreate validates ActionCreateTask's config: in strict mode a
+// non-blank title template is required; a referenced status or assignee must
+// belong to projectID. Task type existence is left to the task service when
+// the action runs (same precedent as update_task's task_type_id).
+func (s *Service) validateTaskCreate(ctx context.Context, projectID uuid.UUID, c *automationdom.TaskCreate, strict bool) error {
+	if c == nil {
+		if strict {
+			return fmt.Errorf("%w: create_task requires a title", automationdom.ErrNodeConfigInvalid)
+		}
+		return nil
+	}
+	if strict && strings.TrimSpace(c.Title) == "" {
+		return fmt.Errorf("%w: create_task requires a title", automationdom.ErrNodeConfigInvalid)
+	}
+	if c.StatusID != nil {
+		if err := s.assertStatusInProject(ctx, projectID, *c.StatusID); err != nil {
+			return err
+		}
+	}
+	for _, memberID := range c.AssigneeIDs {
+		if err := s.assertMemberInProject(ctx, projectID, memberID); err != nil {
+			return err
+		}
+	}
+	if c.ReporterID != nil {
+		if err := s.assertMemberInProject(ctx, projectID, *c.ReporterID); err != nil {
+			return err
+		}
+	}
+	if c.Link != "" && !automationdom.ValidLinkActionTypes[c.Link] {
+		return fmt.Errorf("%w: unknown link type %q", automationdom.ErrNodeConfigInvalid, c.Link)
+	}
+	return validateDynamic(c.Dynamic)
+}
+
 // taskFieldUpdateHasAnyField reports whether upd sets at least one field —
 // used only to reject a config-less update_task node in strict mode.
 func taskFieldUpdateHasAnyField(upd *automationdom.TaskFieldUpdate) bool {
@@ -1057,7 +1121,95 @@ func taskFieldUpdateHasAnyField(upd *automationdom.TaskFieldUpdate) bool {
 		len(upd.CustomFields) > 0 ||
 		upd.StartDate != nil ||
 		upd.DueDate != nil ||
-		len(upd.Tags) > 0
+		len(upd.Tags) > 0 ||
+		len(upd.Clear) > 0 ||
+		len(upd.Dynamic) > 0
+}
+
+func validateListModes(modes ...string) error {
+	for _, m := range modes {
+		switch m {
+		case "", automationdom.ListModeSet, automationdom.ListModeAdd, automationdom.ListModeRemove:
+		default:
+			return fmt.Errorf("%w: unknown list mode %q (use set, add or remove)", automationdom.ErrNodeConfigInvalid, m)
+		}
+	}
+	return nil
+}
+
+func validateDynamic(dyn map[string]automationdom.DynamicValue) error {
+	for key, dv := range dyn {
+		if !automationdom.DynamicFields[key] {
+			return fmt.Errorf("%w: %q cannot be set dynamically", automationdom.ErrNodeConfigInvalid, key)
+		}
+		switch dv.Source {
+		case automationdom.DynamicSourceTask, automationdom.DynamicSourceParent:
+		case automationdom.DynamicSourceNow:
+			if key != "start_date" && key != "due_date" {
+				return fmt.Errorf("%w: source \"now\" only applies to dates", automationdom.ErrNodeConfigInvalid)
+			}
+		default:
+			return fmt.Errorf("%w: dynamic %s has unknown source %q", automationdom.ErrNodeConfigInvalid, key, dv.Source)
+		}
+		if dv.OffsetDays != nil && key != "start_date" && key != "due_date" {
+			return fmt.Errorf("%w: offset_days only applies to dates", automationdom.ErrNodeConfigInvalid)
+		}
+	}
+	return nil
+}
+
+// validateNotify validates notify's config: a message, known recipient roles
+// and (when set) members of the project; strict mode also needs at least one
+// recipient.
+func (s *Service) validateNotify(ctx context.Context, projectID uuid.UUID, n *automationdom.NotifyAction, strict bool) error {
+	if n == nil {
+		if strict {
+			return fmt.Errorf("%w: notify requires a message and recipients", automationdom.ErrNodeConfigInvalid)
+		}
+		return nil
+	}
+	for _, r := range n.Recipients {
+		switch r {
+		case automationdom.RecipientAssignees, automationdom.RecipientReporter, automationdom.RecipientParentAssignees:
+		default:
+			return fmt.Errorf("%w: unknown notify recipient %q", automationdom.ErrNodeConfigInvalid, r)
+		}
+	}
+	for _, id := range n.MemberIDs {
+		if err := s.assertMemberInProject(ctx, projectID, id); err != nil {
+			return err
+		}
+	}
+	if strict {
+		if strings.TrimSpace(n.Message) == "" {
+			return fmt.Errorf("%w: notify requires a message", automationdom.ErrNodeConfigInvalid)
+		}
+		if len(n.Recipients) == 0 && len(n.MemberIDs) == 0 {
+			return fmt.Errorf("%w: notify requires at least one recipient", automationdom.ErrNodeConfigInvalid)
+		}
+	}
+	return nil
+}
+
+// validateLinkAction validates link_task's config: a known link type and a
+// single-task "to" target (self, parent or other).
+func (s *Service) validateLinkAction(ctx context.Context, projectID uuid.UUID, l *automationdom.LinkAction, strict bool) error {
+	if l == nil {
+		if strict {
+			return fmt.Errorf("%w: link_task requires a link type and a task to link to", automationdom.ErrNodeConfigInvalid)
+		}
+		return nil
+	}
+	if l.Type != "" && !automationdom.ValidLinkActionTypes[l.Type] {
+		return fmt.Errorf("%w: unknown link type %q", automationdom.ErrNodeConfigInvalid, l.Type)
+	}
+	if strict && l.Type == "" {
+		return fmt.Errorf("%w: link_task requires a link type", automationdom.ErrNodeConfigInvalid)
+	}
+	if l.To.Kind.MultiValued() {
+		return fmt.Errorf("%w: link_task must link to a single task", automationdom.ErrNodeConfigInvalid)
+	}
+	return s.validateTaskTarget(ctx, projectID, &l.To, strict)
 }
 
 var validCallAPIMethods = map[string]bool{

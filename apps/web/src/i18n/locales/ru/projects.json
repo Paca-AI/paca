@@ -2542,9 +2542,15 @@
 			"triggerGroups": {
 				"taskEvents": "События задач",
 				"sprintEvents": "События спринтов",
-				"scheduleWebhook": "Расписание и webhook"
+				"scheduleWebhook": "Расписание и webhook",
+				"taskActivity": "Активность и подзадачи"
 			},
-			"git": "Git"
+			"git": "Git",
+			"actionGroups": {
+				"taskActions": "Задача",
+				"flowActions": "Поток и интеграции",
+				"sprintActions": "Спринт"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Триггер",
@@ -2568,7 +2574,12 @@
 			"sprint_created": "Спринт создан",
 			"sprint_started": "Спринт начат",
 			"sprint_completed": "Спринт завершён",
-			"sprint_deleted": "Спринт удалён"
+			"sprint_deleted": "Спринт удалён",
+			"field_changed": "Поле изменено",
+			"comment_added": "Комментарий добавлен",
+			"link_added": "Связь добавлена",
+			"attachment_added": "Вложение добавлено",
+			"child_changed": "Подзадача изменена"
 		},
 		"actionTypes": {
 			"update_task": "Обновить задачу",
@@ -2576,7 +2587,11 @@
 			"call_api": "Вызвать API",
 			"wait": "Подождать",
 			"update_sprint": "Обновить спринт",
-			"complete_sprint": "Завершить спринт"
+			"complete_sprint": "Завершить спринт",
+			"create_task": "Создать подзадачу",
+			"link_task": "Связать задачу",
+			"add_comment": "Добавить комментарий",
+			"notify": "Отправить уведомление"
 		},
 		"nodeConfig": {
 			"save": "Сохранить",
@@ -2617,7 +2632,24 @@
 				"tokenShownOnceWarning": "Скопируйте этот токен сейчас — он больше не будет показан.",
 				"copy": "Копировать",
 				"copied": "Скопировано",
-				"noTokenYet": "Токен ещё не сгенерирован"
+				"noTokenYet": "Токен ещё не сгенерирован",
+				"fieldLabel": "Отслеживаемое поле",
+				"fieldPlaceholder": "Выберите поле…",
+				"fieldChangedHint": "Запускается при изменении этого поля у задачи.",
+				"childChangedHint": "Запускается для родительской задачи, когда подзадача создаётся или меняет статус. Добавьте условие по подзадачам, чтобы действовать, например, только когда все завершены.",
+				"childStatusLabel": "Когда подзадача переходит в",
+				"changedFields": {
+					"sprint": "Спринт",
+					"due_date": "Срок",
+					"start_date": "Дата начала",
+					"title": "Название",
+					"story_points": "Story points",
+					"reporter": "Автор",
+					"task_type": "Тип задачи",
+					"parent_task": "Родительская задача",
+					"description": "Описание",
+					"custom_fields": "Пользовательские поля"
+				}
 			},
 			"condition": {
 				"branchesTitle": "Ветви",
@@ -2652,8 +2684,14 @@
 					"sprint_status": "Статус спринта",
 					"sprint_goal": "Цель спринта",
 					"sprint_start_date": "Дата начала спринта",
-					"sprint_end_date": "Дата окончания спринта"
-				}
+					"sprint_end_date": "Дата окончания спринта",
+					"child_count": "Число подзадач"
+				},
+				"dateMode": {
+					"fixed": "Конкретная дата",
+					"relative": "Относительно сегодня"
+				},
+				"relativeHint": "Дни от сегодня: 0 = сейчас, 3 = через 3 дня, -1 = вчера. «Раньше» с 0 означает просрочено."
 			},
 			"action": {
 				"memberLabel": "Исполнитель",
@@ -2708,7 +2746,58 @@
 				"pluginConditionLabel": "Условие плагина",
 				"pluginConditionHint": "Передаёт проверку этой ветки условию из плагина вместо сравнения поля задачи.",
 				"selectPluginPlaceholder": "Выберите условие плагина…",
-				"addCustomField": "Добавить настраиваемое поле…"
+				"addCustomField": "Добавить настраиваемое поле…",
+				"createTaskHint": "Создаёт новую задачу, дочернюю к выбранной ниже. Добавьте нужные поля: каждое может быть фиксированным или скопированным из задачи-триггера либо её родителя. Если у родителя уже есть подзадача с точно таким названием, ничего не создаётся.",
+				"createTitlePlaceholder": "{{task.title}} - Проверка",
+				"descriptionLabel": "Описание",
+				"ops": {
+					"set": "Задать",
+					"replace": "Заменить на",
+					"add": "Добавить",
+					"remove": "Убрать",
+					"clear": "Очистить",
+					"task": "Копировать из этой задачи",
+					"parent": "Копировать из родителя",
+					"now": "Сегодня"
+				},
+				"clearHint": "Очищает это поле.",
+				"dynamicFieldLabel": "Копировать поле",
+				"offsetDaysLabel": "Сдвиг (дни)",
+				"offsetDaysHint": "Положительное — позже, отрицательное — раньше.",
+				"dynamicHint": {
+					"task": "Копируется из задачи, запустившей автоматизацию. Если значения нет, поле не меняется.",
+					"parent": "Копируется из родителя задачи-триггера. Если родителя или значения нет, поле не меняется.",
+					"now": "Сегодняшняя дата на момент запуска, со сдвигом на указанное число дней."
+				},
+				"addMember": "Добавить участника…",
+				"removeMember": "Убрать участника",
+				"commentHint": "Публикует комментарий к задаче от имени автоматизации.",
+				"commentTextLabel": "Комментарий",
+				"commentPlaceholder": "напр. Все подзадачи выполнены.",
+				"notifyHint": "Отправляет уведомление о задаче в приложении указанным людям.",
+				"notifyRecipientsLabel": "Уведомить",
+				"notifyRecipients": {
+					"assignees": "Исполнители",
+					"reporter": "Автор",
+					"parent_assignees": "Исполнители родительской задачи"
+				},
+				"notifyMembersLabel": "Также уведомить",
+				"notifyMessageLabel": "Сообщение",
+				"notifyMessagePlaceholder": "напр. Готово к проверке.",
+				"linkHint": "Связывает задачу с другой. Направление читается со стороны этой задачи.",
+				"linkTypeLabel": "Тип связи",
+				"linkTypes": {
+					"blocks": "Блокирует",
+					"is_blocked_by": "Заблокирована",
+					"relates_to": "Связана с",
+					"duplicates": "Дублирует",
+					"is_duplicated_by": "Дублируется"
+				},
+				"linkToLabel": "Связать с",
+				"createLinkLabel": "Связь с родителем",
+				"createLinkNone": "Без связи",
+				"createLinkHint": "При желании свяжите новую задачу с родителем (со стороны новой задачи, напр. «Блокирует» — подзадача блокирует родителя).",
+				"opsLabel": "Как применить поле"
 			},
 			"target": {
 				"label": "Применяется к",
@@ -2716,6 +2805,7 @@
 					"self": "Эта задача",
 					"parent": "Родительская задача",
 					"children": "Дочерние задачи",
+					"siblings": "Соседние задачи (другие подзадачи родителя)",
 					"blocks": "Блокирует",
 					"is_blocked_by": "Заблокирована задачей",
 					"relates_to": "Связанная задача",
@@ -2745,7 +2835,10 @@
 				"callApiSummary": "{{method}} {{host}}",
 				"jevNoulTrue": "Да",
 				"pluginField": "{{field}}: {{value}}",
-				"waitMinutes": "Ждать {{minutes}} мин"
+				"waitMinutes": "Ждать {{minutes}} мин",
+				"createTaskSummary": "Создать: {{title}}",
+				"commentSummary": "Комментарий: {{text}}",
+				"notifySummary": "Уведомить: {{message}}"
 			},
 			"jev": {
 				"answerTypeLabel": "Тип ответа",

@@ -2522,9 +2522,15 @@
 			"triggerGroups": {
 				"taskEvents": "任务事件",
 				"sprintEvents": "冲刺事件",
-				"scheduleWebhook": "定时计划和 Webhook"
+				"scheduleWebhook": "定时计划和 Webhook",
+				"taskActivity": "活动与子任务"
 			},
-			"git": "Git"
+			"git": "Git",
+			"actionGroups": {
+				"taskActions": "任务",
+				"flowActions": "流程与集成",
+				"sprintActions": "冲刺"
+			}
 		},
 		"nodeKind": {
 			"trigger": "触发器",
@@ -2548,7 +2554,12 @@
 			"sprint_created": "冲刺创建时",
 			"sprint_started": "冲刺开始时",
 			"sprint_completed": "冲刺完成时",
-			"sprint_deleted": "冲刺删除时"
+			"sprint_deleted": "冲刺删除时",
+			"field_changed": "字段已更改",
+			"comment_added": "已添加评论",
+			"link_added": "已添加链接",
+			"attachment_added": "已添加附件",
+			"child_changed": "子任务已变更"
 		},
 		"actionTypes": {
 			"update_task": "更新任务",
@@ -2556,7 +2567,11 @@
 			"call_api": "调用 API",
 			"wait": "等待",
 			"update_sprint": "更新冲刺",
-			"complete_sprint": "完成冲刺"
+			"complete_sprint": "完成冲刺",
+			"create_task": "创建子任务",
+			"link_task": "关联任务",
+			"add_comment": "添加评论",
+			"notify": "发送通知"
 		},
 		"nodeConfig": {
 			"save": "保存",
@@ -2597,7 +2612,24 @@
 				"tokenShownOnceWarning": "请立即复制此令牌 — 之后将不再显示。",
 				"copy": "复制",
 				"copied": "已复制",
-				"noTokenYet": "尚未生成令牌"
+				"noTokenYet": "尚未生成令牌",
+				"fieldLabel": "监视字段",
+				"fieldPlaceholder": "选择字段…",
+				"fieldChangedHint": "当任务的该字段被编辑时运行。",
+				"childChangedHint": "当子任务被创建或状态变化时，在其父任务上运行。可对子任务添加条件，例如仅在全部完成时执行。",
+				"childStatusLabel": "当子任务进入",
+				"changedFields": {
+					"sprint": "冲刺",
+					"due_date": "截止日期",
+					"start_date": "开始日期",
+					"title": "标题",
+					"story_points": "故事点",
+					"reporter": "报告人",
+					"task_type": "任务类型",
+					"parent_task": "父任务",
+					"description": "描述",
+					"custom_fields": "自定义字段"
+				}
 			},
 			"condition": {
 				"branchesTitle": "分支",
@@ -2632,8 +2664,14 @@
 					"sprint_status": "冲刺状态",
 					"sprint_goal": "冲刺目标",
 					"sprint_start_date": "冲刺开始日期",
-					"sprint_end_date": "冲刺结束日期"
-				}
+					"sprint_end_date": "冲刺结束日期",
+					"child_count": "子任务数量"
+				},
+				"dateMode": {
+					"fixed": "指定日期",
+					"relative": "相对于今天"
+				},
+				"relativeHint": "距今天的天数：0 = 现在，3 = 3 天后，-1 = 昨天。“早于”配合 0 表示已逾期。"
 			},
 			"action": {
 				"memberLabel": "负责人",
@@ -2688,7 +2726,58 @@
 				"pluginConditionLabel": "插件条件",
 				"pluginConditionHint": "将此分支的匹配委托给插件提供的条件，而不是比较任务字段。",
 				"selectPluginPlaceholder": "选择插件条件…",
-				"addCustomField": "添加自定义字段…"
+				"addCustomField": "添加自定义字段…",
+				"createTaskHint": "在下方所选任务下创建一个新的子任务。可添加任意字段，每个字段可以是固定值，也可以从触发任务或其父任务复制。如果父任务已有标题完全相同的子任务，则不会创建。",
+				"createTitlePlaceholder": "{{task.title}} - 评审",
+				"descriptionLabel": "描述",
+				"ops": {
+					"set": "设为",
+					"replace": "替换为",
+					"add": "添加",
+					"remove": "移除",
+					"clear": "清空",
+					"task": "从此任务复制",
+					"parent": "从父任务复制",
+					"now": "今天"
+				},
+				"clearHint": "清空此字段。",
+				"dynamicFieldLabel": "复制此字段",
+				"offsetDaysLabel": "偏移（天）",
+				"offsetDaysHint": "正数表示推迟，负数表示提前。",
+				"dynamicHint": {
+					"task": "运行时从触发自动化的任务复制。若其没有值，则该字段保持不变。",
+					"parent": "从触发任务的父任务复制。若无父任务或无值，则该字段保持不变。",
+					"now": "运行时的当天日期，按上面的天数偏移。"
+				},
+				"addMember": "添加成员…",
+				"removeMember": "移除成员",
+				"commentHint": "由自动化在任务上发表评论。",
+				"commentTextLabel": "评论",
+				"commentPlaceholder": "例如：所有子任务已完成。",
+				"notifyHint": "向下列人员发送关于该任务的应用内通知。",
+				"notifyRecipientsLabel": "通知对象",
+				"notifyRecipients": {
+					"assignees": "负责人",
+					"reporter": "报告人",
+					"parent_assignees": "父任务的负责人"
+				},
+				"notifyMembersLabel": "同时通知",
+				"notifyMessageLabel": "消息",
+				"notifyMessagePlaceholder": "例如：已可供审核。",
+				"linkHint": "将任务关联到另一个任务。方向以此任务为准。",
+				"linkTypeLabel": "链接类型",
+				"linkTypes": {
+					"blocks": "阻塞",
+					"is_blocked_by": "被阻塞于",
+					"relates_to": "相关于",
+					"duplicates": "重复",
+					"is_duplicated_by": "被重复于"
+				},
+				"linkToLabel": "关联到",
+				"createLinkLabel": "关联到父任务",
+				"createLinkNone": "不关联",
+				"createLinkHint": "可选地将新任务关联到其父任务，方向以新任务为准（例如“阻塞”＝子任务阻塞父任务）。",
+				"opsLabel": "此字段的应用方式"
 			},
 			"target": {
 				"label": "作用对象",
@@ -2696,6 +2785,7 @@
 					"self": "此任务",
 					"parent": "父任务",
 					"children": "子任务",
+					"siblings": "同级任务（父任务的其他子任务）",
 					"blocks": "阻塞的任务",
 					"is_blocked_by": "被阻塞的任务",
 					"relates_to": "相关任务",
@@ -2725,7 +2815,10 @@
 				"callApiSummary": "{{method}} {{host}}",
 				"jevNoulTrue": "是",
 				"pluginField": "{{field}}:{{value}}",
-				"waitMinutes": "等待 {{minutes}} 分钟"
+				"waitMinutes": "等待 {{minutes}} 分钟",
+				"createTaskSummary": "创建：{{title}}",
+				"commentSummary": "评论：{{text}}",
+				"notifySummary": "通知：{{message}}"
 			},
 			"jev": {
 				"answerTypeLabel": "回答类型",

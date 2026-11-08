@@ -35,8 +35,10 @@ type NotificationResponse struct {
 	DocumentTitle     string     `json:"document_title"`
 	ConversationID    *uuid.UUID `json:"conversation_id"`
 	ConversationTitle string     `json:"conversation_title"`
-	ReadAt            *time.Time `json:"read_at"`
-	CreatedAt         time.Time  `json:"created_at"`
+	// Message is the text of an automation notification; empty otherwise.
+	Message   string     `json:"message"`
+	ReadAt    *time.Time `json:"read_at"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // NotificationFromEntity converts a domain Notification to a response DTO.
@@ -65,6 +67,7 @@ func NotificationFromEntity(n *notificationdom.Notification) NotificationRespons
 		DocumentTitle:         n.DocumentTitle,
 		ConversationID:        n.ConversationID,
 		ConversationTitle:     n.ConversationTitle,
+		Message:               n.Message,
 		ReadAt:                n.ReadAt,
 		CreatedAt:             n.CreatedAt,
 	}

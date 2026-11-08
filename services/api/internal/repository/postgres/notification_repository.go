@@ -23,6 +23,7 @@ type notificationReadRow struct {
 	ProjectID          *string    `db:"project_id"`
 	ConversationID     *string    `db:"conversation_id"`
 	DocumentID         *string    `db:"document_id"`
+	Message            *string    `db:"message"`
 	ReadAt             *time.Time `db:"read_at"`
 	CreatedAt          time.Time  `db:"created_at"`
 
@@ -63,7 +64,7 @@ func NewNotificationRepository(db *sqlx.DB) *NotificationRepository {
 
 const notificationReadCols = `
 	n.id, n.recipient_account_id, n.actor_member_id, n.type,
-	n.task_id, n.project_id, n.conversation_id, n.document_id, n.read_at, n.created_at,
+	n.task_id, n.project_id, n.conversation_id, n.document_id, n.message, n.read_at, n.created_at,
 	aac.name AS actor_full_name,
 	COALESCE(u.username, ag.handle) AS actor_username,
 	aac.avatar_key AS actor_avatar_key,
@@ -102,6 +103,9 @@ func notificationFromRow(r notificationReadRow) *notificationdom.Notification {
 	}
 	if r.DocumentTitle != nil {
 		n.DocumentTitle = *r.DocumentTitle
+	}
+	if r.Message != nil {
+		n.Message = *r.Message
 	}
 	if r.ConversationTitle != nil {
 		n.ConversationTitle = *r.ConversationTitle
@@ -165,11 +169,15 @@ func (r *NotificationRepository) Create(ctx context.Context, n *notificationdom.
 		s := n.ProjectID.String()
 		projectID = &s
 	}
+	var message *string
+	if n.Message != "" {
+		message = &n.Message
+	}
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO notifications (id, recipient_account_id, actor_member_id, type, task_id, project_id, conversation_id, document_id, read_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		INSERT INTO notifications (id, recipient_account_id, actor_member_id, type, task_id, project_id, conversation_id, document_id, message, read_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		n.ID.String(), n.RecipientAccountID.String(), actorMemberID,
-		string(n.Type), taskID, projectID, conversationID, documentID, n.ReadAt, n.CreatedAt,
+		string(n.Type), taskID, projectID, conversationID, documentID, message, n.ReadAt, n.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("notification repo: create: %w", err)

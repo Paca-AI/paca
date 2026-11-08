@@ -348,3 +348,52 @@ func TestIsSprintField(t *testing.T) {
 		}
 	}
 }
+
+func TestParseTimeValue_RelativeAndAbsolute(t *testing.T) {
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	cases := map[string]time.Time{
+		"now":                  now,
+		"now+3d":               now.AddDate(0, 0, 3),
+		"now-1d":               now.AddDate(0, 0, -1),
+		"2026-01-02T00:00:00Z": time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+	}
+	for in, want := range cases {
+		got, err := ParseTimeValue(in, now)
+		if err != nil || !got.Equal(want) {
+			t.Fatalf("%q: got %v, %v; want %v", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "now+xd", "tomorrow", "now+3"} {
+		if _, err := ParseTimeValue(bad, now); err == nil {
+			t.Fatalf("%q should not parse", bad)
+		}
+	}
+}
+
+func TestCompareDueDate_OverdueWithNow(t *testing.T) {
+	past := time.Now().Add(-48 * time.Hour)
+	leaf := &ConditionLeaf{Field: FieldDueDate, Operator: OpLessThan, Value: "now"}
+	if !leaf.Evaluate(&taskdom.Task{DueDate: &past}, nil) {
+		t.Fatal("a past due date is before now")
+	}
+	soon := time.Now().Add(24 * time.Hour)
+	if leaf.Evaluate(&taskdom.Task{DueDate: &soon}, nil) {
+		t.Fatal("a future due date is not before now")
+	}
+}
+
+func TestCompareChildCountAndNumericStrings(t *testing.T) {
+	if !CompareChildCount(3, OpGreaterThan, float64(2)) || CompareChildCount(1, OpGreaterThan, float64(2)) {
+		t.Fatal("number comparison wrong")
+	}
+	if !CompareChildCount(0, OpEquals, "0") {
+		t.Fatal("a numeric string value must work (the web form stores text)")
+	}
+	leaf := &ConditionLeaf{Field: FieldChildCount, Operator: OpEquals, Value: 0}
+	if err := leaf.Validate(); err != nil {
+		t.Fatalf("child_count equals should validate: %v", err)
+	}
+	if err := (&ConditionLeaf{Field: FieldChildCount, Operator: OpContains}).Validate(); err == nil {
+		t.Fatal("contains is not valid for child_count")
+	}
+}

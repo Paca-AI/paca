@@ -2,6 +2,7 @@ package automationdom
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +47,10 @@ const (
 	FieldReporter    Field = "reporter_id"
 	FieldStartDate   Field = "start_date"
 	FieldDueDate     Field = "due_date"
+	// FieldChildCount is the number of subtasks the task has. It is computed
+	// by the worker (the leaf alone cannot see children), so Evaluate on it
+	// is always false — see the worker's evaluateChildCount.
+	FieldChildCount Field = "child_count"
 
 	// The five sprint-scoped fields below evaluate against the walk's
 	// current sprint (see the worker's walker.sprint/resolveSprint) rather
@@ -220,6 +225,7 @@ var validOperatorsByField = map[Field]map[Operator]bool{
 	FieldReporter:    {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
 	FieldStartDate:   {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true, OpIsEmpty: true, OpIsNotEmpty: true},
 	FieldDueDate:     {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldChildCount:  {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true},
 
 	FieldSprintName:      {OpEquals: true, OpNotEquals: true, OpContains: true, OpIsEmpty: true, OpIsNotEmpty: true},
 	FieldSprintStatus:    {OpEquals: true, OpNotEquals: true},
@@ -257,6 +263,12 @@ func (l *ConditionLeaf) Validate() error {
 	return nil
 }
 
+// CompareChildCount compares a subtask count against a condition value
+// (a JSON number, or the numeric string the UI stores).
+func CompareChildCount(count int, op Operator, value any) bool {
+	return compareInt(count, op, value)
+}
+
 func compareUUIDPtr(field *uuid.UUID, op Operator, value any) bool {
 	s := ""
 	if field != nil {
@@ -283,6 +295,13 @@ func compareInt(field int, op Operator, value any) bool {
 		target = v
 	case int:
 		target = float64(v)
+	case string:
+		// The web form stores a number input's value as text.
+		n, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return false
+		}
+		target = n
 	default:
 		return false
 	}
@@ -371,6 +390,25 @@ func toFloat(v any) (float64, bool) {
 	}
 }
 
+// ParseTimeValue parses a date condition value: an RFC 3339 timestamp, or a
+// value relative to now — "now", "now+3d", "now-1d" (whole days; "now" alone
+// is the current instant). Relative values let a condition say "due date is
+// before now" (overdue) or "due within 3 days" without a fixed date.
+func ParseTimeValue(s string, now time.Time) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "now" {
+		return now, nil
+	}
+	if rest, ok := strings.CutPrefix(s, "now"); ok && len(rest) > 2 && (rest[0] == '+' || rest[0] == '-') && rest[len(rest)-1] == 'd' {
+		days, err := strconv.Atoi(rest[:len(rest)-1])
+		if err != nil {
+			return time.Time{}, fmt.Errorf("automation: bad relative date %q", s)
+		}
+		return now.AddDate(0, 0, days), nil
+	}
+	return time.Parse(time.RFC3339, s)
+}
+
 // compareTimePtr compares field (nil = unset) against value, which must be
 // an RFC 3339 string (matching how dates travel over JSON everywhere else
 // in this API) — anything else fails every comparator except is_empty/
@@ -393,7 +431,7 @@ func compareTimePtr(field *time.Time, op Operator, value any) bool {
 	if !ok {
 		return false
 	}
-	target, err := time.Parse(time.RFC3339, s)
+	target, err := ParseTimeValue(s, time.Now())
 	if err != nil {
 		return false
 	}
