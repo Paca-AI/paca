@@ -213,6 +213,7 @@ export function ConversationView({
 		newBelow,
 		setFollowing,
 		jumpToLatest,
+		jumpCount,
 	} = useConversationEventWindow({
 		projectId,
 		conversationId,
@@ -641,6 +642,7 @@ export function ConversationView({
 									newBelow={newBelow}
 									setFollowing={setFollowing}
 									jumpToLatest={jumpToLatest}
+									jumpCount={jumpCount}
 								/>
 							</>
 						}

@@ -145,23 +145,29 @@ export const TailFollowIndicator: FC<{
 	newBelow: number;
 	setFollowing: (following: boolean) => void;
 	jumpToLatest: () => void;
-}> = ({ newBelow, setFollowing, jumpToLatest }) => {
+	/** Increments on every jumpToLatest(). */
+	jumpCount: number;
+}> = ({ newBelow, setFollowing, jumpToLatest, jumpCount }) => {
 	const { t } = useTranslation("projects");
 	const isAtBottom = useThreadViewport((s) => s.isAtBottom);
 	const scrollToBottom = useThreadViewport((s) => s.scrollToBottom);
 
-	// Mirror the viewport into `following` only when the viewport itself
-	// changes. Depending on `following` too made this effect undo any
-	// programmatic jumpToLatest() (sending a message) while the viewport was
-	// not yet at the bottom: following flipped true, the effect saw
-	// isAtBottom=false and flipped it straight back, so the sender's own
-	// message and the agent's reply were withheld until a reload.
-	const lastAtBottomRef = useRef<boolean | null>(null);
+	// Mirror the viewport into `following` only when the viewport changes
+	// (`following` must stay out of the deps, or this would undo a
+	// programmatic jumpToLatest() while the viewport is not yet at the bottom).
 	useEffect(() => {
-		if (lastAtBottomRef.current === isAtBottom) return;
-		lastAtBottomRef.current = isAtBottom;
 		setFollowing(isAtBottom);
 	}, [isAtBottom, setFollowing]);
+
+	// jumpToLatest() (the pill, or sending a message) also brings the viewport
+	// to the tail, so following and the viewport don't diverge. The first run
+	// is the mount, not a jump.
+	const lastJumpRef = useRef(jumpCount);
+	useEffect(() => {
+		if (lastJumpRef.current === jumpCount) return;
+		lastJumpRef.current = jumpCount;
+		scrollToBottom({ behavior: "auto" });
+	}, [jumpCount, scrollToBottom]);
 
 	const show = newBelow > 0 && !isAtBottom;
 	if (!show) return null;
@@ -175,10 +181,7 @@ export const TailFollowIndicator: FC<{
 				size="sm"
 				variant="secondary"
 				className="gap-1.5 rounded-full text-xs shadow-md"
-				onClick={() => {
-					jumpToLatest();
-					scrollToBottom({ behavior: "auto" });
-				}}
+				onClick={jumpToLatest}
 			>
 				<ArrowDown className="size-3" />
 				{t("agents.conversationView.newBelow", { count: newBelow })}

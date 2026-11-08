@@ -26,6 +26,8 @@ export type UseConversationEventWindow = {
 	following: boolean;
 	setFollowing: (following: boolean) => void;
 	jumpToLatest: () => void;
+	/** Increments on every jumpToLatest(), so the view can scroll to the tail. */
+	jumpCount: number;
 };
 
 /**
@@ -69,6 +71,7 @@ export function useConversationEventWindow({
 	// buffer in, so a reader looking at history doesn't have new content
 	// silently appended under them — see `events` below.
 	const [following, setFollowing] = useState(true);
+	const [jumpCount, setJumpCount] = useState(0);
 
 	const queryClient = useQueryClient();
 
@@ -234,6 +237,10 @@ export function useConversationEventWindow({
 		newBelow: following ? 0 : newBelowCount,
 		following,
 		setFollowing,
-		jumpToLatest: () => setFollowing(true),
+		jumpToLatest: () => {
+			setFollowing(true);
+			setJumpCount((n) => n + 1);
+		},
+		jumpCount,
 	};
 }
