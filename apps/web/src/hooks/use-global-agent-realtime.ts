@@ -53,9 +53,13 @@ export function useGlobalAgentRealtime(enabled = true): void {
 
 		// Events emitted while the socket was away are lost: after a *re*connect
 		// reconcile the conversations with the server.
+		// A socket that mounted down and connects for the first time (after a
+		// recovery) may have missed events too, so only a socket that connects
+		// right as we mount counts as the initial connection.
 		let hasConnected = socket.connected;
+		const mountedDown = !socket.connected && !socket.active;
 		function handleConnect() {
-			if (hasConnected) {
+			if (hasConnected || mountedDown) {
 				void queryClient.invalidateQueries({
 					queryKey: ["conversation-event-window"],
 				});
