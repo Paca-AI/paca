@@ -287,11 +287,6 @@ export function buildDynamicGroupDefs(
 }
 
 /**
- * Hides column defs whose status key is excluded by the active status filter.
- * Pass the full defs list; returns a filtered copy (or the same reference when
- * no filter applies so callers can avoid needless re-renders via useMemo).
- */
-/**
  * Status for a task created outside status grouping (quick-add in a swimlane
  * or a non-status column): the project's default status, else the first
  * status that isn't done.
@@ -305,6 +300,11 @@ export function defaultCreateStatusId(statuses: TaskStatus[]): string {
 	);
 }
 
+/**
+ * Hides column defs whose status key is excluded by the active status filter.
+ * Pass the full defs list; returns a filtered copy (or the same reference when
+ * no filter applies so callers can avoid needless re-renders via useMemo).
+ */
 export function applyStatusFilterToColumnDefs(
 	defs: ColumnGroupDef[],
 	isStatusGrouping: boolean,
