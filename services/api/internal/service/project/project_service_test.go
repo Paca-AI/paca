@@ -347,7 +347,7 @@ func TestCreate_SeedsWithCorrectTimestamps(t *testing.T) {
 }
 
 // TestCreate_InstantiatesRoleTemplatesForTheProject: a new project gets the
-// Admin, Editor, Member and Viewer roles with the project's real id in their
+// Admin, Analyst, Editor and Viewer roles with the project's real id in their
 // policies (no template token left), and the creator is set up as an Admin.
 func TestCreate_InstantiatesRoleTemplatesForTheProject(t *testing.T) {
 	ctx := context.Background()

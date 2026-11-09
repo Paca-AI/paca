@@ -122,7 +122,7 @@ Attachments are managed as *replace-sets* (`PUT .../roles` with `role_ids`), see
 
 ### System roles
 
-`internal/bootstrap/defaultroles` embeds the shipped policies. Platform roles `SUPER_ADMIN` (`*` on `*`), `ADMIN` and `USER` are `is_system`. Startup seeding creates any of them that is missing but **never overwrites** an existing role's policy or description, so edits made by an administrator persist across restarts and upgrades. System roles **can be edited** by anyone allowed to write roles but **cannot be deleted** (`409 ROLE_IS_SYSTEM`). Reconciliation is by name, so the roles migration 000064 converted keep their ids and holders. Project templates (`Admin`, `Editor`, `Viewer`) are instantiated into every new project as project-owned roles (`PROJECT_ID` replaced by the real id); the project `Admin` is `is_system`.
+`internal/bootstrap/defaultroles` embeds the shipped policies. Platform roles `SUPER_ADMIN` (`*` on `*`), `ADMIN` and `USER` are `is_system`. Startup seeding creates any of them that is missing but **never overwrites** an existing role's policy or description, so edits made by an administrator persist across restarts and upgrades. System roles **can be edited** by anyone allowed to write roles but **cannot be deleted** (`409 ROLE_IS_SYSTEM`). Reconciliation is by name, so the roles migration 000064 converted keep their ids and holders. Project templates (`Admin`, `Analyst`, `Editor`, `Viewer`) are instantiated into every new project as project-owned roles (`PROJECT_ID` replaced by the real id); the project `Admin` is `is_system`.
 
 `ADMIN` runs the workspace (`users:*`, `projects:*`, `agents:*`, `plugins:*`, `settings:write`) and can read roles (`roles:read`); it does not hold `roles:write` or `roles:assign`.
 

@@ -282,8 +282,8 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*projectdom.Projec
 }
 
 // Create defines and persists a new project. In the same transaction the
-// project gets its default roles (the embedded templates Admin, Editor,
-// Member and Viewer, instantiated as roles owned by the project, with the
+// project gets its default roles (the embedded templates Admin, Analyst,
+// Editor and Viewer, instantiated as roles owned by the project, with the
 // project's id in their policies) and the creator becomes a member holding
 // the Admin role inside the project.
 func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error) {
