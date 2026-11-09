@@ -444,6 +444,7 @@ Run `/paca-setup` inside a Claude Code session for a guided interactive walkthro
 | Command | What it does |
 |:--|:--|
 | `/paca <request>` | General task, doc, and sprint operations in plain English |
+| `/paca-analyst <idea or bug>` | Talk a request or bug through and draft tasks in Refinement for a human to approve |
 | `/paca-epic <requirements>` | Turn requirements into an epic with child stories and a spec doc |
 | `/paca-clarify <task-or-doc>` | Identify ambiguities, ask questions, and update the spec in Paca |
 | `/paca-breakdown <task>` | Decompose a task into independent, estimable sub-tasks |

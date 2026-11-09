@@ -184,8 +184,11 @@ create-agent dialog, which already requires `role_ids`) plus a description that
 says so (Jev Auto mode routes by description). No template-to-role coupling is
 added: skill templates are only served by `GET /agents/skill-templates`, which
 nothing in the web app consumes, and no code links a template to a role. The
-`ba` template's content is updated to defer to `paca-analyst` so the two do not
-drift; `po-assistant` is left as is.
+create-agent dialog's **Business Analyst** preset (`AGENT_PRESETS` in
+`apps/web/src/lib/agent-api.ts`, whose prompt is what new agents actually get)
+and the `ba` template both defer to `paca-analyst`, so the persona and the skill
+do not drift: drafts go in the refinement-category status, and an assigned task
+routes to `paca-analyst`. `po-assistant` is left as is.
 
 Supported agent types:
 
