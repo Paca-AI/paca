@@ -371,7 +371,9 @@ test.describe("Automation nodes — fields, subtasks, links, comments and notifi
 				.fill("Ready for review");
 			await expect(saveButton).toBeDisabled(); // a message alone is not enough
 
-			await page.getByRole("switch", { name: "Assignees" }).click();
+			await page
+				.getByRole("switch", { name: "Assignees", exact: true })
+				.click();
 			await expect(saveButton).toBeEnabled();
 			await save(page);
 
@@ -841,7 +843,9 @@ test.describe("Automation nodes — fields, subtasks, links, comments and notifi
 
 			await signIn(page);
 			await page.getByRole("button", { name: "Notifications" }).click();
-			await expect(page.getByText(/Automation: Ready for review/)).toBeVisible({
+			await expect(
+				page.getByText(/Automation: Ready for review/).first(),
+			).toBeVisible({
 				timeout: 20_000,
 			});
 		});

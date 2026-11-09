@@ -2761,8 +2761,11 @@ function ActionConfigForm({
 					{t("automation.nodeConfig.action.commentHint")}
 				</p>
 				<div className="space-y-1.5">
-					<Label>{t("automation.nodeConfig.action.commentTextLabel")}</Label>
+					<Label htmlFor="automation-comment-text">
+						{t("automation.nodeConfig.action.commentTextLabel")}
+					</Label>
 					<Textarea
+						id="automation-comment-text"
 						value={commentText}
 						onChange={(e) => setCommentText(e.target.value)}
 						placeholder={t("automation.nodeConfig.action.commentPlaceholder")}
@@ -2841,8 +2844,11 @@ function ActionConfigForm({
 					/>
 				</div>
 				<div className="space-y-1.5">
-					<Label>{t("automation.nodeConfig.action.notifyMessageLabel")}</Label>
+					<Label htmlFor="automation-notify-message">
+						{t("automation.nodeConfig.action.notifyMessageLabel")}
+					</Label>
 					<Textarea
+						id="automation-notify-message"
 						value={notifyMessage}
 						onChange={(e) => setNotifyMessage(e.target.value)}
 						placeholder={t(
