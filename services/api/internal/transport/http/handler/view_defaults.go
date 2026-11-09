@@ -23,7 +23,7 @@ func loadTaskTypes(ctx context.Context, taskSvc taskTypeLister, projectID uuid.U
 }
 
 // taskStatusLister is the minimal task-service surface needed to seed default
-// collapsed columns from the project's backlog statuses.
+// collapsed columns from the project's backlog and refinement statuses.
 type taskStatusLister interface {
 	ListTaskStatuses(ctx context.Context, projectID uuid.UUID) ([]*taskdom.TaskStatus, error)
 }
@@ -35,10 +35,10 @@ func loadTaskStatuses(ctx context.Context, taskSvc taskStatusLister, projectID u
 	return taskSvc.ListTaskStatuses(ctx, projectID)
 }
 
-func backlogStatusIDs(statuses []*taskdom.TaskStatus) []string {
+func notReadyStatusIDs(statuses []*taskdom.TaskStatus) []string {
 	ids := make([]string, 0, len(statuses))
 	for _, s := range statuses {
-		if s != nil && s.Category == taskdom.StatusCategoryBacklog {
+		if s != nil && (s.Category == taskdom.StatusCategoryBacklog || s.Category == taskdom.StatusCategoryRefinement) {
 			ids = append(ids, s.ID.String())
 		}
 	}
@@ -147,7 +147,7 @@ func defaultSprintViewInputs(projectID, sprintID uuid.UUID, _ []*taskdom.TaskTyp
 		ColumnBy: "status",
 		Filters:  newDefaultFilters(true, nil, sprintIDs),
 	}
-	if ids := backlogStatusIDs(statuses); len(ids) > 0 {
+	if ids := notReadyStatusIDs(statuses); len(ids) > 0 {
 		boardConfig.CollapsedColumns = ids
 	}
 	return []sprintdom.CreateViewInput{

@@ -667,7 +667,7 @@ func TestIntegrationProjectCreation_DefaultTaskRecords(t *testing.T) {
 	if err := json.NewDecoder(statusesW.Body).Decode(&statusesEnv); err != nil {
 		t.Fatalf("decode task statuses: %v", err)
 	}
-	const wantStatuses = 4
+	const wantStatuses = 5
 	if got := len(statusesEnv.Data.Items); got != wantStatuses {
 		t.Errorf("expected %d default task statuses, got %d", wantStatuses, got)
 	}
@@ -676,7 +676,7 @@ func TestIntegrationProjectCreation_DefaultTaskRecords(t *testing.T) {
 		name, _ := item["name"].(string)
 		gotStatusNames[name] = true
 	}
-	for _, name := range []string{"Backlog", "Todo", "In Progress", "Done"} {
+	for _, name := range []string{"Refinement", "Backlog", "Todo", "In Progress", "Done"} {
 		if !gotStatusNames[name] {
 			t.Errorf("missing default task status %q", name)
 		}

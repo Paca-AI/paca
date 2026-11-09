@@ -54,11 +54,11 @@ func TestIAMAttributeLoaders(t *testing.T) {
 			pgExec(t, db, `INSERT INTO task_assignees (task_id, member_id) VALUES ($1, $2)`, task, m)
 		}
 		l := loaders["task"]
-		got := loadSorted(t, l, task.String(), p.String(), "task.sprint_id", "task.status_id", "task.type_id", "task.assignee_id")
+		got := loadSorted(t, l, task.String(), p.String(), "task.sprint_id", "task.status_id", "task.status_category", "task.type_id", "task.assignee_id")
 		wantAssign := []string{u.String(), a.String()}
 		sort.Strings(wantAssign)
 		want := map[string][]string{
-			"task.sprint_id": {sprint.String()}, "task.status_id": {status.String()},
+			"task.sprint_id": {sprint.String()}, "task.status_id": {status.String()}, "task.status_category": {"todo"},
 			"task.type_id": {typ.String()}, "task.assignee_id": wantAssign,
 		}
 		if !reflect.DeepEqual(got, want) {

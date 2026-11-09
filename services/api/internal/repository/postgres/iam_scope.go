@@ -43,10 +43,11 @@ func (a *argList) addArg(v any) string {
 // them in one query, and the two must agree.
 var (
 	taskScopeColumns = scopeColumns{
-		"resource.id":    {scalar: "tasks.id"},
-		"task.sprint_id": {scalar: "tasks.sprint_id"},
-		"task.status_id": {scalar: "tasks.status_id"},
-		"task.type_id":   {scalar: "tasks.task_type_id"},
+		"resource.id":          {scalar: "tasks.id"},
+		"task.sprint_id":       {scalar: "tasks.sprint_id"},
+		"task.status_id":       {scalar: "tasks.status_id"},
+		"task.status_category": {scalar: "(SELECT category FROM task_statuses WHERE id = tasks.status_id)"},
+		"task.type_id":         {scalar: "tasks.task_type_id"},
 		// The member's account id, comparable with principal.id.
 		"task.assignee_id": {multi: `ARRAY(SELECT pm.account_id::text
 			FROM task_assignees ta JOIN project_members pm ON pm.id = ta.member_id

@@ -1091,8 +1091,8 @@ func TestE2EProjectCreation_DefaultTaskRecords(t *testing.T) {
 		decodeJSON(t, resp, &env2)
 		data := assertDataMap(t, env2)
 		items, _ := data["items"].([]any)
-		if len(items) != 4 {
-			t.Errorf("expected 4 default task statuses, got %d", len(items))
+		if len(items) != 5 {
+			t.Errorf("expected 5 default task statuses, got %d", len(items))
 		}
 		gotNames := map[string]bool{}
 		for _, item := range items {
@@ -1100,7 +1100,7 @@ func TestE2EProjectCreation_DefaultTaskRecords(t *testing.T) {
 			name, _ := m["name"].(string)
 			gotNames[name] = true
 		}
-		for _, name := range []string{"Backlog", "Todo", "In Progress", "Done"} {
+		for _, name := range []string{"Refinement", "Backlog", "Todo", "In Progress", "Done"} {
 			if !gotNames[name] {
 				t.Errorf("missing default task status %q", name)
 			}

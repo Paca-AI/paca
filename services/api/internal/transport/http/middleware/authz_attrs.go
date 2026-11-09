@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -23,8 +24,10 @@ const maxAttrPeekBody = 64 << 20
 // AttrExtractor returns the attribute values (keyed like "task.sprint_id") a
 // request body sets. A field absent from the body must be absent from the
 // result; a field explicitly set to null maps to a nil slice (attribute
-// cleared). It must not fail on a body it does not understand: the handler
-// answers that with its own 400.
+// cleared). Keys arrive folded as encoding/json matches them to struct fields
+// (jsonFoldKey), so look fields up by their lower-case snake_case name. It
+// must not fail on a body it does not understand: the handler answers that
+// with its own 400.
 type AttrExtractor func(ctx context.Context, body map[string]json.RawMessage) (map[string][]string, error)
 
 // RequireRequestAttrs authorizes the attribute values a request sets, on top of
@@ -68,10 +71,18 @@ func RequireRequestAttrsFromRequest(a *iam.Authorizer, action iam.Action, res Re
 				return
 			}
 			var body map[string]json.RawMessage
-			dec := json.NewDecoder(bytes.NewReader(buf))
-			dec.DisallowUnknownFields()
-			if dec.Decode(&body) != nil || dec.More() {
-				body = nil // not a JSON object or has trailing bytes: the handler's 400, no attributes set
+			switch err := decodeSingleJSON(bytes.NewReader(buf), &body); {
+			case errors.Is(err, errTrailingJSON):
+				// Fail closed: a handler that decodes only the first value
+				// would apply attributes this gate never saw.
+				presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+				return
+			case err != nil:
+				body = nil // not a JSON object: the handler's own 400, no attributes set
+			}
+			if body, err = foldBodyKeys(body); err != nil {
+				presenter.Error(w, r, err)
+				return
 			}
 			attrs, err := extract(r, body)
 			if err != nil {

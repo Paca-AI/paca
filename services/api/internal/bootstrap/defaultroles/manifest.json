@@ -36,6 +36,12 @@
       "policy": "policies/project_editor.json"
     },
     {
+      "name": "Analyst",
+      "kind": "project",
+      "description": "Create and refine draft tasks in Refinement; read code.",
+      "policy": "policies/project_analyst.json"
+    },
+    {
       "name": "Viewer",
       "kind": "project",
       "description": "Read-only access to the project.",

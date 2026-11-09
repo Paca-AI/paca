@@ -274,8 +274,8 @@ func TestCreate_SeedsDefaultTaskTypesAndStatuses(t *testing.T) {
 		}
 	}
 
-	// Verify 4 default task statuses are created.
-	const wantStatuses = 4
+	// Verify 5 default task statuses are created.
+	const wantStatuses = 5
 	if got := len(tb.statuses); got != wantStatuses {
 		t.Errorf("expected %d default task statuses, got %d", wantStatuses, got)
 	}
@@ -293,6 +293,7 @@ func TestCreate_SeedsDefaultTaskTypesAndStatuses(t *testing.T) {
 		statusNames[ts.Name] = ts.Category
 	}
 	expected := map[string]taskdom.StatusCategory{
+		"Refinement":  taskdom.StatusCategoryRefinement,
 		"Backlog":     taskdom.StatusCategoryBacklog,
 		"Todo":        taskdom.StatusCategoryTodo,
 		"In Progress": taskdom.StatusCategoryInProgress,
@@ -304,6 +305,19 @@ func TestCreate_SeedsDefaultTaskTypesAndStatuses(t *testing.T) {
 		} else if gotCat != wantCat {
 			t.Errorf("task status %q: expected category %q, got %q", name, wantCat, gotCat)
 		}
+	}
+	// Refinement comes first on the board; Backlog stays the default status.
+	var first *taskdom.TaskStatus
+	for _, ts := range tb.statuses {
+		if first == nil || ts.Position < first.Position {
+			first = ts
+		}
+		if ts.IsDefault && ts.Name != "Backlog" {
+			t.Errorf("default status = %q, want Backlog", ts.Name)
+		}
+	}
+	if first == nil || first.Name != "Refinement" {
+		t.Errorf("first status by position = %v, want Refinement", first)
 	}
 }
 
@@ -333,7 +347,7 @@ func TestCreate_SeedsWithCorrectTimestamps(t *testing.T) {
 }
 
 // TestCreate_InstantiatesRoleTemplatesForTheProject: a new project gets the
-// Admin, Editor, Member and Viewer roles with the project's real id in their
+// Admin, Analyst, Editor and Viewer roles with the project's real id in their
 // policies (no template token left), and the creator is set up as an Admin.
 func TestCreate_InstantiatesRoleTemplatesForTheProject(t *testing.T) {
 	ctx := context.Background()

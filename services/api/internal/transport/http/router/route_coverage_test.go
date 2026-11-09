@@ -794,7 +794,9 @@ func TestAnnotationRoutesNestedUnderPortForwardHonourPerAnnotationPolicy(t *test
 	project, env, blocked, other := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
 	acts := []string{"annotations:read", "annotations:write", "annotations:resolve", "tasks:write"}
 	grants := []iam.Grant{projectRole(project,
-		allow(acts, "project/"+project, "project/"+project+"/environment/"+env, "project/"+project+"/annotation/*"),
+		allow(acts, "project/"+project, "project/"+project+"/environment/"+env, "project/"+project+"/annotation/*",
+			// create-task also authorizes the task it would create
+			"project/"+project+"/task/*"),
 		deny(acts, "project/"+project+"/annotation/"+blocked),
 	)}
 	checked := 0
@@ -939,5 +941,40 @@ func TestRouteCoverage_RepositoryPickerRequiresGitWrite(t *testing.T) {
 	}
 	if got := call([]iam.Grant{projectRole(pid, allow([]string{"git:write"}, "project/"+pid+"/*"))}, true); got != http.StatusNoContent {
 		t.Fatalf("git:write: %d", got)
+	}
+}
+
+// Every route that creates or changes a task authorizes the sprint, status,
+// type and assignees its body names, so a role conditioned on them (the
+// Analyst's Refinement-only grant) cannot be side-stepped by another route.
+var taskAttrGateRoutes = map[string]bool{
+	"POST /api/v1/projects/{projectId}/tasks/":          true,
+	"PATCH /api/v1/projects/{projectId}/tasks/{taskId}": true,
+	"POST /api/v1/projects/{projectId}/environments/{environmentId}/port-forwards/{portForwardId}/annotations/{annotationId}/create-task": true,
+}
+
+func TestRouteCoverage_TaskAttrGates(t *testing.T) {
+	seen := map[string]bool{}
+	for _, rt := range walkGates(t, coverageDeps(newTestIAM(&iamUserStore{}))) {
+		n := 0
+		for _, g := range rt.gates {
+			if g.resource == resTaskAttrs {
+				n++
+			}
+		}
+		switch {
+		case taskAttrGateRoutes[rt.key()] && n != 1:
+			t.Errorf("%s: %d task attribute gates, want 1", rt.key(), n)
+		case !taskAttrGateRoutes[rt.key()] && n > 0:
+			t.Errorf("%s: unexpected task attribute gate", rt.key())
+		}
+		if taskAttrGateRoutes[rt.key()] {
+			seen[rt.key()] = true
+		}
+	}
+	for k := range taskAttrGateRoutes {
+		if !seen[k] {
+			t.Errorf("%q is not a registered route", k)
+		}
 	}
 }

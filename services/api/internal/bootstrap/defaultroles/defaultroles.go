@@ -6,7 +6,7 @@
 //   - platform roles (SUPER_ADMIN, ADMIN, USER) are system roles: the API
 //     seeds them at startup and keeps their stored policy equal to the shipped
 //     one;
-//   - project templates (Admin, Editor, Viewer) are instantiated once
+//   - project templates (Admin, Analyst, Editor, Viewer) are instantiated once
 //     per project as roles owned by that project.
 //
 // manifest.json lists the roles (name, description, kind, flags) and names

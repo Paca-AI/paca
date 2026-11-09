@@ -40,7 +40,7 @@ func WithSprintDefaultTaskTypes(taskTypeSvc taskTypeLister) SprintHandlerOption 
 	}
 }
 
-// WithSprintDefaultTaskStatuses enables sprint default-view seeding with backlog status collapsed columns.
+// WithSprintDefaultTaskStatuses enables sprint default-view seeding with backlog and refinement status columns collapsed.
 func WithSprintDefaultTaskStatuses(taskStatusSvc taskStatusLister) SprintHandlerOption {
 	return func(h *SprintHandler) {
 		h.taskStatusSvc = taskStatusSvc

@@ -24,6 +24,7 @@ import { getRowColConfig, TaskRow } from "./task-row";
 import {
 	buildColumnDropUpdate,
 	type ColumnGroupDef,
+	defaultCreateStatusId,
 	type EpicsPagination,
 	getTaskSwimlaneKey,
 	type TaskFieldUpdate,
@@ -190,10 +191,8 @@ export function ListGroup({
 		if (isStatusGrouping) {
 			return onCreateTask(groupDef.key as string, title, typeId);
 		}
-		const defaultStatus =
-			statuses.find((s) => s.category !== "done") ?? statuses[0];
 		return onCreateTask(
-			defaultStatus?.id ?? "",
+			defaultCreateStatusId(statuses),
 			title,
 			typeId,
 			extraCreateFields,

@@ -282,8 +282,8 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*projectdom.Projec
 }
 
 // Create defines and persists a new project. In the same transaction the
-// project gets its default roles (the embedded templates Admin, Editor,
-// Member and Viewer, instantiated as roles owned by the project, with the
+// project gets its default roles (the embedded templates Admin, Analyst,
+// Editor and Viewer, instantiated as roles owned by the project, with the
 // project's id in their policies) and the creator becomes a member holding
 // the Admin role inside the project.
 func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error) {
@@ -353,13 +353,16 @@ func (s *Service) seedDefaultTaskTypes(ctx context.Context, projectID uuid.UUID,
 	return nil
 }
 
-// seedDefaultTaskStatuses creates the four built-in task statuses for a new project.
+// seedDefaultTaskStatuses creates the five built-in task statuses for a new
+// project. Refinement comes first: it holds draft tasks (see
+// docs/ai-agent/pm-agent.md); Backlog stays the default status.
 func (s *Service) seedDefaultTaskStatuses(ctx context.Context, projectID uuid.UUID, now time.Time) error {
 	defaults := []*taskdom.TaskStatus{
-		{ID: uuid.New(), ProjectID: projectID, Name: "Backlog", Color: ptr("#64748b"), Position: 1, Category: taskdom.StatusCategoryBacklog, IsDefault: true, CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.New(), ProjectID: projectID, Name: "Todo", Color: ptr("#eab308"), Position: 2, Category: taskdom.StatusCategoryTodo, CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.New(), ProjectID: projectID, Name: "In Progress", Color: ptr("#3b82f6"), Position: 3, Category: taskdom.StatusCategoryInProgress, CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.New(), ProjectID: projectID, Name: "Done", Color: ptr("#22c55e"), Position: 4, Category: taskdom.StatusCategoryDone, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Refinement", Color: ptr("#a855f7"), Position: 1, Category: taskdom.StatusCategoryRefinement, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Backlog", Color: ptr("#64748b"), Position: 2, Category: taskdom.StatusCategoryBacklog, IsDefault: true, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Todo", Color: ptr("#eab308"), Position: 3, Category: taskdom.StatusCategoryTodo, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "In Progress", Color: ptr("#3b82f6"), Position: 4, Category: taskdom.StatusCategoryInProgress, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Done", Color: ptr("#22c55e"), Position: 5, Category: taskdom.StatusCategoryDone, CreatedAt: now, UpdatedAt: now},
 	}
 	for _, ts := range defaults {
 		if err := s.taskRepo.CreateTaskStatus(ctx, ts); err != nil {

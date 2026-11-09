@@ -116,7 +116,7 @@ func TestFlow_CreateProject_RolesCreatorAndAccess(t *testing.T) {
 			t.Errorf("%s: is_system = %v", r.Name, r.IsSystem)
 		}
 	}
-	if fmt.Sprint(names) != "[Admin Editor Viewer]" {
+	if fmt.Sprint(names) != "[Admin Analyst Editor Viewer]" {
 		t.Errorf("project roles = %v", names)
 	}
 

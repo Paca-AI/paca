@@ -376,8 +376,7 @@ func (h *AnnotationHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req dto.CreateTaskFromAnnotationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		presenter.Error(w, r, err)
+	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
 	reporterID, err := callerMemberID(r, h.memberRepo, projectID)

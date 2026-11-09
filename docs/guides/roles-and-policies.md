@@ -18,7 +18,7 @@ Paca controls who can do what with **roles**. A role is a JSON *policy*: a list 
 - **Role names mean nothing.** Only the policy counts. Edits apply on the next request.
 - **A project member with no role sees nothing** in the project.
 
-Built-in roles: platform roles `SUPER_ADMIN` (everything), `ADMIN` (runs users, projects, agents, plugins and settings; can read roles but not define or assign them) and `USER` (the default every new account starts with). Every new project gets the project roles `Admin`, `Editor` and `Viewer`. Built-in roles marked *system* can be edited like any other role (by anyone allowed to write roles) but cannot be deleted; Paca creates them if missing and never overwrites your edits on restart or upgrade. A project's Roles page lists the project's own roles plus the workspace roles already attached to someone inside that project.
+Built-in roles: platform roles `SUPER_ADMIN` (everything), `ADMIN` (runs users, projects, agents, plugins and settings; can read roles but not define or assign them) and `USER` (the default every new account starts with). Every new project gets the project roles `Admin`, `Editor`, `Analyst` and `Viewer`. `Analyst` is meant for PM / business-analyst agents: it reads the project and its code (`git:read`), writes docs and chats, and writes tasks only while they are in a refinement-category status and have no assignee or sprint, so it can draft work but cannot push code, hand a draft to anyone, or move it out of Refinement. Auto-assign skips drafts until they leave Refinement (see [PM / business analyst agent](../ai-agent/pm-agent.md)). Built-in roles marked *system* can be edited like any other role (by anyone allowed to write roles) but cannot be deleted; Paca creates them if missing and never overwrites your edits on restart or upgrade. A project's Roles page lists the project's own roles plus the workspace roles already attached to someone inside that project.
 
 ## Policy reference
 
@@ -124,6 +124,7 @@ Available keys (the live list is `GET /roles/attribute-schema`). A key tied to o
 | `principal.id`, `principal.type` | The caller's id; `user` or `agent` |
 | `resource.id` | The id of the thing being accessed |
 | `task.sprint_id`, `task.status_id`, `task.type_id` | Task's sprint, status and type |
+| `task.status_category` | Category of the task's status: `backlog`, `refinement`, `ready`, `todo`, `inprogress` or `done`. Unlike a status id it is the same in every project |
 | `task.assignee_id` | Ids of the task's assignees (users or agents) |
 | `view.sprint_id` | The sprint a view belongs to (absent for backlog and timeline views) |
 | `doc.folder_id` | The document's folder |
@@ -293,6 +294,30 @@ The agent disappears from their agent list and its chats (and configuration) are
 ```
 
 Use this form to recreate a formerly restricted agent: list the users and agents that had been granted access in `NotIn`, and attach the role to every member of the project (the old grant lists remain in the `agent_access_grants` and `environment_access_grants` tables until a later migration drops them). Environments work the same way, see [Deny production environments](#deny-production-environments).
+
+### Keep agents out of drafts
+
+The `Analyst` role cannot move a task out of Refinement, but agents with `Editor` can. To stop every agent except your analysts from touching draft tasks, attach this role to those agents. `ANALYST_AGENT_ID` is the account id of an analyst agent; list several to exempt more:
+
+```json
+{
+  "version": "2026-10-01",
+  "statements": [
+    {
+      "sid": "AgentsCannotLeaveRefinement",
+      "effect": "Deny",
+      "actions": ["tasks:write"],
+      "resources": ["project/PROJECT_ID/task/*"],
+      "conditions": {
+        "In": { "principal.type": ["agent"], "task.status_category": ["refinement"] },
+        "NotIn": { "principal.id": ["ANALYST_AGENT_ID"] }
+      }
+    }
+  ]
+}
+```
+
+Every condition in a statement must hold, and a change is checked against the task before and after it, so those agents can neither edit a draft nor approve it. Humans are unaffected.
 
 ### Deny production environments
 

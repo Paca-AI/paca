@@ -224,9 +224,10 @@ Paca ships these roles. Startup creates any that is missing and **never overwrit
 | `USER` | Platform, system, **default** | `users:read` on the platform roots. Every new user and new global agent starts with the default role. |
 | `Admin` | Project, system | `projects:read` on the project and `*` on `project/<id>/*`. |
 | `Editor` | Project | `projects:read` on the project; read/write on agents, annotations (including resolve), conversations, docs, environments (including connect), sprints, tasks, views and workflows, plus `project.members:read`, on `project/<id>/*`; `roles:read` on `project/<id>/role/*`. |
+| `Analyst` | Project | For PM / business-analyst agents. `projects:read` on the project; read on agents, annotations, conversations, docs, environments, `git:read`, `project.members:read`, sprints, tasks, views and workflows on `project/<id>/*`; write on conversations and docs; `tasks:write` on the project (to create tasks) and on `project/<id>/task/*` only while `task.status_category` is `refinement`; Deny `tasks:write` on any task with an assignee or a sprint; `roles:read` on `project/<id>/role/*`. It drafts tasks in Refinement but cannot move them out, assign them or plan them into a sprint. |
 | `Viewer` | Project | `projects:read` on the project; read on agents, annotations, conversations, docs, environments, sprints, tasks, views, workflows and `project.members:read` on `project/<id>/*`; `roles:read` on `project/<id>/role/*`. |
 
-Every new project gets its own `Admin`, `Editor` and `Viewer` (the real project id replaces the placeholder). The creator is attached as `Admin`.
+Every new project gets its own `Admin`, `Analyst`, `Editor` and `Viewer` (the real project id replaces the placeholder). The creator is attached as `Admin`.
 
 Exactly one platform role is the **default**; it cannot be deleted and cannot be a project template. Change it with Administration, Roles, "Set as default role" (`PUT /admin/roles/{roleId}/default`).
 
