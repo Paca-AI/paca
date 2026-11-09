@@ -32,7 +32,7 @@ import {
 	signIn,
 } from "../helpers/e2e-api";
 
-const PROJECT_PREFIX = "E2E_AUTOMATION_NODES_";
+const PROJECT_PREFIX = "E2E_ANODES_";
 const RUN_ID = newRunId();
 let projectCounter = 0;
 
