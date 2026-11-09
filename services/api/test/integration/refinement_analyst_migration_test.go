@@ -14,15 +14,15 @@ import (
 	"github.com/Paca-AI/api/migrations"
 )
 
-const refinementAnalystMigrationFile = "000081_add_refinement_status_and_analyst_role.sql"
+const refinementAnalystMigrationFile = "000082_add_refinement_status_and_analyst_role.sql"
 
-// Migration 000081 gives every existing project a Refinement status (unless it
+// Migration 000082 gives every existing project a Refinement status (unless it
 // already has a refinement-category one) and the Analyst role, and is safe to
 // run twice.
 func TestRefinementAnalystMigration(t *testing.T) {
 	db := newMigrationTestDB(t)
 	if err := database.RunMigrationsFS(db, migrationsBefore(t, refinementAnalystMigrationFile)); err != nil {
-		t.Fatalf("migrate to 000080: %v", err)
+		t.Fatalf("migrate to 000081: %v", err)
 	}
 	migrationSQL, err := fs.ReadFile(migrations.FS, refinementAnalystMigrationFile)
 	if err != nil {

@@ -157,7 +157,7 @@ is authorized on the task it starts from, so a draft may link to any task.
   (`service/project/project_service.go`) adds a "Refinement" status, category
   `refinement`, at position 1 before Backlog (others shift to 2–5; positions
   stay positive). Backlog stays the default status.
-- **Existing projects:** migration `000081_add_refinement_status_and_analyst_role.sql`
+- **Existing projects:** migration `000082_add_refinement_status_and_analyst_role.sql`
   (up-only, `BEGIN; … COMMIT;`), for every project with no
   `refinement`-category status, shifts that project's status positions up by
   one and inserts Refinement at the old lowest position (named "Drafts" when
@@ -348,7 +348,7 @@ check result.
 - `task.status_category` attribute: registry, loader + `Expand`, scope SQL.
 - Analyst role + policy in the default-roles manifest.
 - Refinement in `seedDefaultTaskStatuses`.
-- Migration `000081_…`.
+- Migration `000082_…`.
 - `paca-role-policy` skill and `docs/guides/roles-and-policies.md` updates.
 
 **PR 2 — `feat(agent)`: PM / Business Analyst agent**

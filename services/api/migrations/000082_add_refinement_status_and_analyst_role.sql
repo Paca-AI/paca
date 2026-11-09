@@ -1,4 +1,4 @@
--- 000081_add_refinement_status_and_analyst_role.sql
+-- 000082_add_refinement_status_and_analyst_role.sql
 -- Draft tasks (see docs/ai-agent/pm-agent.md) live in a refinement-category
 -- status, and the Analyst project role may only write tasks while they are in
 -- one. New projects get both at creation; this gives them to existing ones.
