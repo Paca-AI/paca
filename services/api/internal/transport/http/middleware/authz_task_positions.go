@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"bytes"
-	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -21,9 +21,11 @@ const maxItemsPeekBody = 8 << 20
 // project gate cannot do this: it never sees which tasks are touched, so a
 // Deny on one task, or a role limited to some tasks, would not apply. Any
 // task the caller is not allowed on refuses the whole request (nothing is
-// partially applied). A body it cannot read is left to the handler's own 400,
-// and a task id that does not exist in the project is denied, as for any
-// resource outside the project. Declare it after the route's action gate.
+// partially applied). A body it cannot read is left to the handler's own 400;
+// data after the body's JSON value is refused with a 400, since a handler
+// reading only the first value would act on tasks this gate never saw. A
+// task id that does not exist in the project is denied, as for any resource
+// outside the project. Declare it after the route's action gate.
 func RequireItemTasks(a *iam.Authorizer, action iam.Action, projectParam string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -47,9 +49,12 @@ func RequireItemTasks(a *iam.Authorizer, action iam.Action, projectParam string)
 					TaskID uuid.UUID `json:"task_id"`
 				} `json:"items"`
 			}
-			dec := json.NewDecoder(bytes.NewReader(buf))
-			if dec.Decode(&body) != nil || dec.More() {
-				next.ServeHTTP(w, r) // not the shape the handler binds or has trailing bytes: its 400
+			switch err := decodeSingleJSON(bytes.NewReader(buf), &body); {
+			case errors.Is(err, errTrailingJSON):
+				presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+				return
+			case err != nil:
+				next.ServeHTTP(w, r) // not the shape the handler binds: its 400
 				return
 			}
 			if a == nil {
