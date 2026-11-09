@@ -359,8 +359,8 @@ func TestE2EListPagination_Roles(t *testing.T) {
 			createProjectRoleViaAPI(t, env, client, token, projID, name, "tasks:read")
 		}
 		all := mustFetchPage(t, env, client, rolesPath, url.Values{"page_size": {"100"}})
-		if all.TotalCount < 6 || len(all.Items) != all.TotalCount {
-			t.Fatalf("project roles: %d items, total %d, want the shipped three plus three more", len(all.Items), all.TotalCount)
+		if all.TotalCount < 7 || len(all.Items) != all.TotalCount {
+			t.Fatalf("project roles: %d items, total %d, want the shipped four plus three more", len(all.Items), all.TotalCount)
 		}
 		got := walkCursor(t, env, client, rolesPath, nil, 2, all.TotalCount)
 		assertStrings(t, "project roles", stringField(got, "id"), stringField(all.Items, "id"))

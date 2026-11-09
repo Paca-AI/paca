@@ -298,7 +298,7 @@ test.describe("Workspace roles and project templates", () => {
 // ─── A new project's roles ───────────────────────────────────────────────────
 
 test.describe("A new project's own roles", () => {
-	test("A project starts with exactly Admin, Editor and Viewer, on its own resources", async ({
+	test("A project starts with exactly Admin, Analyst, Editor and Viewer, on its own resources", async ({
 		request,
 	}) => {
 		const projectId = await createProject(request, name("FRESH"));
@@ -306,6 +306,7 @@ test.describe("A new project's own roles", () => {
 
 		expect(roles.map((r) => r.name).sort()).toEqual([
 			"Admin",
+			"Analyst",
 			"Editor",
 			"Viewer",
 		]);
@@ -324,6 +325,7 @@ test.describe("A new project's own roles", () => {
 		const admin = roles.find((r) => r.name === "Admin");
 		expect(admin?.is_system).toBe(true);
 		expect(admin?.policy.statements.flatMap((s) => s.actions)).toContain("*");
+		expect(roles.find((r) => r.name === "Analyst")?.is_system).toBe(false);
 		expect(roles.find((r) => r.name === "Editor")?.is_system).toBe(false);
 		expect(roles.find((r) => r.name === "Viewer")?.is_system).toBe(false);
 	});

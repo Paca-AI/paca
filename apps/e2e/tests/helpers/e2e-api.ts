@@ -124,7 +124,7 @@ export interface ApiRole {
 
 /**
  * The id of the role called `roleName` that belongs to `projectId`. Every
- * project starts with the roles Admin, Editor and Viewer, owned by the
+ * project starts with the roles Admin, Analyst, Editor and Viewer, owned by the
  * project (the project's role list can also show platform roles, which are not
  * what this means).
  */
