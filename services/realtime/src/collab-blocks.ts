@@ -198,7 +198,7 @@ const MAX_ALIGN_CELLS = 4_000_000;
 // `reference` it corresponds to, found by aligning siblings on content: equal
 // blocks pair up (longest common subsequence), and what remains between two
 // anchors pairs positionally when both sides have equally many blocks left and
-// the types match (a modified block). Whatever
+// the types match, and otherwise by how alike their text is (a modified block). Whatever
 // stays unpaired gets a fresh id (an added block). Returns false when the
 // alignment would be too expensive.
 //
@@ -211,6 +211,71 @@ function resolveIds(reference: Blk[], target: Blk[]): boolean {
 		for (const b of walk(target)) b.id = `${NO_ID}ignored:${b.id}`;
 	}
 	return align(reference, target);
+}
+
+// textOf is what a block says, for judging whether two blocks are versions of
+// one another.
+function textOf(b: Blk): string {
+	if (Array.isArray(b.content)) {
+		return (b.content as { type?: string; text?: string; props?: unknown }[])
+			.map((c) =>
+				c.type === "text" ? (c.text ?? "") : JSON.stringify(c.props ?? c.type),
+			)
+			.join("");
+	}
+	return b.content === undefined || b.content === null
+		? JSON.stringify(b.props ?? {})
+		: String(b.content);
+}
+
+const SIMILAR = 0.5;
+
+// similarity is 0..1: how much of the shorter text is shared as a common
+// prefix and suffix (an edit in the middle, or text added / removed at an end).
+function similarity(a: Blk, b: Blk): number {
+	if (a.type !== b.type) return 0;
+	const x = textOf(a);
+	const y = textOf(b);
+	const shorter = Math.min(x.length, y.length);
+	if (shorter === 0) return 0;
+	let p = 0;
+	while (p < shorter && x[p] === y[p]) p++;
+	let q = 0;
+	while (q < shorter - p && x[x.length - 1 - q] === y[y.length - 1 - q]) q++;
+	return (p + q) / shorter;
+}
+
+// pairBySimilarity pairs blocks of two runs in order, maximising the total
+// similarity, and only pairs that are alike enough.
+function pairBySimilarity(pool: Blk[], todo: Blk[]): [number, number][] {
+	const n = pool.length;
+	const m = todo.length;
+	const sim = pool.map((r) => todo.map((t) => similarity(r, t)));
+	const best: number[][] = Array.from({ length: n + 1 }, () =>
+		new Array<number>(m + 1).fill(0),
+	);
+	const at = (i: number, j: number) => best[i]?.[j] ?? 0;
+	for (let i = n - 1; i >= 0; i--) {
+		for (let j = m - 1; j >= 0; j--) {
+			const s = sim[i]?.[j] ?? 0;
+			(best[i] as number[])[j] = Math.max(
+				at(i + 1, j),
+				at(i, j + 1),
+				s >= SIMILAR ? s + at(i + 1, j + 1) : 0,
+			);
+		}
+	}
+	const out: [number, number][] = [];
+	for (let i = 0, j = 0; i < n && j < m; ) {
+		const s = sim[i]?.[j] ?? 0;
+		if (s >= SIMILAR && at(i, j) === s + at(i + 1, j + 1)) {
+			out.push([i, j]);
+			i++;
+			j++;
+		} else if (at(i + 1, j) >= at(i, j + 1)) i++;
+		else j++;
+	}
+	return out;
 }
 
 function align(reference: Blk[], target: Blk[]): boolean {
@@ -258,17 +323,22 @@ function align(reference: Blk[], target: Blk[]): boolean {
 	let pi = 0;
 	let pj = 0;
 	for (const [ai, aj] of [...pairs, [n, m] as [number, number]]) {
-		let i = pi;
-		let j = pj;
-		// Pair only when both sides have the same number of blocks left: with
-		// a surplus on either side there is no telling which block was
-		// edited and which was inserted / removed, and a wrong pairing hands
-		// an edited block's id to an inserted one.
-		if (ai - i === aj - j) {
-			while (i < ai && j < aj) {
-				if (pool[i]?.type === todo[j]?.type) assign(pool[i], todo[j]);
-				i++;
-				j++;
+		const i = pi;
+		const j = pj;
+		// Equal counts: the blocks line up one to one (an edit in place).
+		// Unequal: something was inserted or removed as well, so pair only
+		// blocks whose text is alike, and let the rest be additions /
+		// removals. Pairing by position there would hand an edited block's
+		// id to an inserted one.
+		const gapPool = pool.slice(i, ai);
+		const gapTodo = todo.slice(j, aj);
+		if (gapPool.length === gapTodo.length) {
+			gapTodo.forEach((t, k) => {
+				if (gapPool[k]?.type === t.type) assign(gapPool[k], t);
+			});
+		} else {
+			for (const [x, y] of pairBySimilarity(gapPool, gapTodo)) {
+				assign(gapPool[x], gapTodo[y]);
 			}
 		}
 		if (ai < n) assign(pool[ai], todo[aj]);

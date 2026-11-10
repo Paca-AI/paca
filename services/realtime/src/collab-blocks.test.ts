@@ -199,4 +199,34 @@ describe("mergeExternalChange", () => {
 		expect(got).toContain("X new");
 		expect(got).toContain("bravo");
 	});
+
+	test("keeps a live edit when the stored content has no ids", () => {
+		const doc = room(base);
+		typeInto(doc, "b", "LIVE ");
+		const noIds = (bs: typeof base) => bs.map(({ id: _, ...b }) => b);
+		const next = [
+			para(undefined, "alpha"),
+			para(undefined, "agent"),
+			para(undefined, "charlie"),
+		];
+		const res = mergeExternalChange(doc, COLLAB_FRAGMENT, noIds(base), next);
+		expect(texts(doc)).toEqual(["alpha", "LIVE bravo", "charlie"]);
+		expect(res.conflicts).toBe(1);
+	});
+
+	test("keeps a live edit next to the editor's trailing empty paragraph", () => {
+		// BlockNote always keeps an empty block at the end of the document.
+		const withTrailing = [...base, para("t", "")];
+		const doc = room(withTrailing);
+		typeInto(doc, "c", "LIVE ");
+		const noIds = base.map(({ id: _, ...b }) => b);
+		const next = [
+			para(undefined, "alpha"),
+			para(undefined, "bravo"),
+			para(undefined, "agent"),
+		];
+		const res = mergeExternalChange(doc, COLLAB_FRAGMENT, noIds, next);
+		expect(texts(doc).slice(0, 3)).toEqual(["alpha", "bravo", "LIVE charlie"]);
+		expect(res.conflicts).toBe(1);
+	});
 });
