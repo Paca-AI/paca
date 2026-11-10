@@ -321,9 +321,11 @@ test.describe("Collaborative editing", () => {
 					expect(await plainText(page)).not.toContain(second);
 				}
 
-				// Ann's save, once it goes through, stores the merged document and
-				// not just her text.
+				// The held PATCH may carry her text from before the merge, and a
+				// remote-only change is never saved by a client, so make one more
+				// local edit: its save holds the whole merged document.
 				await releaseSaves();
+				await typeInBlock(a.page, 0, "!");
 				await expect
 					.poll(() => storedDoc(request, projectId, docId), {
 						timeout: 20_000,
@@ -350,15 +352,24 @@ test.describe("Collaborative editing", () => {
 				[first, second],
 			);
 			try {
+				// Ann is editing the first paragraph (save held back) when the agent
+				// puts a new paragraph in front of it.
+				const releaseSaves = await holdSaves(a.page);
+				await typeAtStart(a.page, "LIVE-");
+				await expect
+					.poll(() => plainText(b.page), { timeout: 15_000 })
+					.toContain(`LIVE-${first}`);
+
 				await agentSavesDoc(request, projectId, docId, [fresh, first, second]);
 				for (const { page } of [a, b]) {
 					await expect(editorOf(page)).toContainText(fresh, {
 						timeout: 15_000,
 					});
 					expect(await editorOf(page).getByText(fresh).count()).toBe(1);
-					expect(await editorOf(page).getByText(first).count()).toBe(1);
 					expect(await editorOf(page).getByText(second).count()).toBe(1);
+					expect(await plainText(page)).toContain(`LIVE-${first}`);
 				}
+				await releaseSaves();
 			} finally {
 				await a.context.close();
 				await b.context.close();

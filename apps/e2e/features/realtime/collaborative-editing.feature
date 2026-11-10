@@ -23,8 +23,10 @@ Feature: Collaborative editing
 
   Scenario: An agent adds a block next to a block that is being edited
     Given a doc with two paragraphs and two members editing it
+    And one member has typed into the first paragraph without it being saved yet
     When an agent saves the doc with a new paragraph in front, without block ids
     Then both editors show the new paragraph exactly once
+    And the first paragraph still holds what the member typed
 
   Scenario: A block edited live keeps the editor's version
     Given a doc with two paragraphs and two members editing it
