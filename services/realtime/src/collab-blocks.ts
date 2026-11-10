@@ -575,8 +575,10 @@ export function mergeExternalChange(
 				}
 				let at = 0;
 				for (let k = i - 1; k >= 0; k--) {
+					// A skipped duplicate's anchor is the room's copy of it.
+					const target = alias.get(siblings[k]?.id ?? "") ?? siblings[k]?.id;
 					const idx = containersOf(group).findIndex(
-						(c) => c.getAttribute("id") === siblings[k]?.id,
+						(c) => c.getAttribute("id") === target,
 					);
 					if (idx >= 0) {
 						at = idx + 1;

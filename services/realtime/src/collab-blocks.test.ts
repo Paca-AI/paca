@@ -383,4 +383,21 @@ describe("mergeExternalChange dedupe guard", () => {
 		// live edit on "ab".
 		expect(texts(doc)).toContain("abc");
 	});
+
+	test("an addition after a skipped duplicate lands after the room's copy", () => {
+		const old = noIds([para("a", "alpha")]);
+		// The room was seeded with TODO (and has an unrelated live block).
+		const doc = room([
+			para("s0", "alpha"),
+			para("s1", "TODO"),
+			para("s2", "tail"),
+		]);
+		const res = mergeExternalChange(doc, COLLAB_FRAGMENT, old, [
+			old[0] as never,
+			para(undefined, "TODO"),
+			para(undefined, "NEW"),
+		]);
+		expect(res.duplicates).toBe(1);
+		expect(texts(doc)).toEqual(["alpha", "TODO", "NEW", "tail"]);
+	});
 });
