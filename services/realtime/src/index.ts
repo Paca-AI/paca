@@ -40,6 +40,7 @@ const subscriber = createSubscriber(
 		resyncer.onIamChanged();
 		void collab.recheck();
 	},
+	(type, payload) => collab.handleContentEvent(type, payload),
 );
 
 // A missed iam.changed announcement must cost at most one interval, as it does

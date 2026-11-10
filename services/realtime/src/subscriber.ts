@@ -70,6 +70,9 @@ interface Routing {
 	decider: AccessDecider;
 	queue: KeyedQueue;
 	onIamChanged: () => void;
+	// A doc / task update announcement, for merging into live collaborative
+	// rooms (see CollabHub.handleContentEvent). Delivery to sockets is separate.
+	onContentChange?: (type: string, payload: Record<string, unknown>) => void;
 	// Types already reported as published without an authz descriptor.
 	warnedNoAuthz: Set<string>;
 }
@@ -83,11 +86,13 @@ export function createSubscriber(
 	logger: Logger,
 	decider: AccessDecider,
 	onIamChanged: () => void,
+	onContentChange?: (type: string, payload: Record<string, unknown>) => void,
 ): Redis {
 	const routing: Routing = {
 		decider,
 		queue: new KeyedQueue(),
 		onIamChanged,
+		onContentChange,
 		warnedNoAuthz: new Set(),
 	};
 	// A separate client is required because ioredis clients in subscriber mode
@@ -155,6 +160,11 @@ export function routeEvent(
 	if (!payload) {
 		logger.debug({ type }, "event has no payload — skipped");
 		return;
+	}
+
+	// A write to a doc / task description may need merging into a live room.
+	if (type === "doc.updated" || type === "task.updated") {
+		routing.onContentChange?.(type, payload);
 	}
 
 	// notification.* events are routed to a user-specific room.

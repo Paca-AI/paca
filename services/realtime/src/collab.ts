@@ -25,6 +25,14 @@
 // leaves, the room is dropped after a short grace period and the next editor
 // re-seeds it from the stored content.
 //
+// Writes by others: an agent / MCP / script saving through REST while editors
+// are connected is not in the room, and the editors' next save would overwrite
+// it. The API announces such writes (doc.updated / task.updated carry the
+// field's old and new content) and applyExternal merges them into the live
+// Y.Doc block by block (see collab-blocks.ts), broadcasting the result to every
+// editor. Writes by an account that is itself editing the room are its own
+// saves coming back and are ignored.
+//
 // Seeding: a fresh room has no content. The first joiner is told `seed: true`
 // and is the only one that writes the stored blocks into the Y.Doc, which
 // avoids two clients both inserting the initial content.
@@ -38,6 +46,7 @@ import {
 } from "y-protocols/awareness";
 import * as Y from "yjs";
 import type { AccessDecider, Viewer } from "./access.ts";
+import { type MergeResult, mergeExternalChange } from "./collab-blocks.ts";
 
 export type CollabKind = "doc" | "task";
 
@@ -108,6 +117,64 @@ export function parseRoomRef(raw: unknown): CollabRoomRef | undefined {
 		return undefined;
 	if (typeof id !== "string" || !UUID_RE.test(id)) return undefined;
 	return { projectId, kind, id };
+}
+
+export interface ContentChange {
+	ref: CollabRoomRef;
+	actorId?: string;
+	old: unknown[];
+	new: unknown[];
+}
+
+const CONTENT_EVENTS: Record<
+	string,
+	{ kind: CollabKind; idKey: string; field: string }
+> = {
+	"doc.updated": { kind: "doc", idKey: "document_id", field: "content" },
+	"task.updated": { kind: "task", idKey: "task_id", field: "description" },
+};
+
+// parseContentChange reads the old and new content out of a doc.updated /
+// task.updated payload: `content` is a JSON string `{"changes":[{field, old,
+// new}]}`. Undefined when the event is about something else.
+export function parseContentChange(
+	type: string,
+	payload: Record<string, unknown>,
+): ContentChange | undefined {
+	const spec = CONTENT_EVENTS[type];
+	if (!spec) return undefined;
+	const ref = parseRoomRef({
+		projectId: payload.project_id,
+		kind: spec.kind,
+		id: payload[spec.idKey],
+	});
+	if (!ref || typeof payload.content !== "string") return undefined;
+	let changes: unknown;
+	try {
+		changes = (JSON.parse(payload.content) as { changes?: unknown }).changes;
+	} catch {
+		return undefined;
+	}
+	if (!Array.isArray(changes)) return undefined;
+	const change = changes.find(
+		(c) =>
+			c &&
+			typeof c === "object" &&
+			(c as { field?: unknown }).field === spec.field,
+	) as { old?: unknown; new?: unknown } | undefined;
+	if (!change) return undefined;
+	const asBlocks = (v: unknown): unknown[] | undefined =>
+		v === null || v === undefined ? [] : Array.isArray(v) ? v : undefined;
+	const oldBlocks = asBlocks(change.old);
+	const newBlocks = asBlocks(change.new);
+	if (!oldBlocks || !newBlocks) return undefined;
+	return {
+		ref,
+		actorId:
+			typeof payload.actor_id === "string" ? payload.actor_id : undefined,
+		old: oldBlocks,
+		new: newBlocks,
+	};
 }
 
 export function roomName(ref: CollabRoomRef): string {
@@ -348,6 +415,63 @@ export class CollabHub {
 			room: ref,
 			update,
 		});
+	}
+
+	// handleContentEvent merges a doc.updated / task.updated announcement into the
+	// matching live room, if there is one. Never throws.
+	handleContentEvent(type: string, payload: Record<string, unknown>): void {
+		const change = parseContentChange(type, payload);
+		if (!change) return;
+		try {
+			this.applyExternal(change.ref, change.actorId, change.old, change.new);
+		} catch (err) {
+			this.onError(err, "apply external change");
+		}
+	}
+
+	// applyExternal merges a write that did not come through the room into its
+	// Y.Doc and relays the result to all members. A no-op when nobody has the
+	// resource open (the next editor seeds from the stored content), when the
+	// room is not seeded yet, or when the writer is one of the room's editors.
+	applyExternal(
+		ref: CollabRoomRef,
+		actorId: string | undefined,
+		oldContent: unknown[],
+		newContent: unknown[],
+	): MergeResult | undefined {
+		const room = this.rooms.get(roomName(ref));
+		if (!room?.seeded || room.members.size === 0) return undefined;
+		if (actorId) {
+			for (const m of room.members.values()) {
+				if (m.viewer.userId === actorId) return undefined;
+			}
+		}
+		const before = Y.encodeStateVector(room.doc);
+		const result = mergeExternalChange(
+			room.doc,
+			COLLAB_FRAGMENT,
+			oldContent,
+			newContent,
+		);
+		if (result.applied > 0) {
+			const update = Y.encodeStateAsUpdate(room.doc, before);
+			room.bytes += update.byteLength;
+			this.transport.broadcast(room.name, undefined, "collab:update", {
+				room: ref,
+				update,
+			});
+		}
+		if (result.conflicts > 0 || result.skipped) {
+			this.onError(
+				new Error(
+					result.skipped
+						? `external change not merged (${result.skipped})`
+						: `${result.conflicts} block(s) kept as edited live`,
+				),
+				"external change",
+			);
+		}
+		return result;
 	}
 
 	leave(socketId: string, rawRoom: unknown): void {

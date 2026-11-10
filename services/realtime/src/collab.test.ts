@@ -1,8 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { BlockNoteEditor } from "@blocknote/core";
+import { blocksToYDoc } from "@blocknote/core/yjs";
 import { Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
 import * as Y from "yjs";
 import type { AccessDecider } from "./access.ts";
-import { COLLAB_FRAGMENT, CollabHub, isEmpty, parseRoomRef } from "./collab.ts";
+import {
+	COLLAB_FRAGMENT,
+	CollabHub,
+	isEmpty,
+	parseContentChange,
+	parseRoomRef,
+} from "./collab.ts";
 
 const P = "11111111-1111-4111-8111-111111111111";
 const D = "22222222-2222-4222-8222-222222222222";
@@ -370,5 +378,99 @@ describe("CollabHub review fixes", () => {
 		expect(isEmpty(d)).toBe(true);
 		p.insert(0, [new Y.XmlText("hi")]);
 		expect(isEmpty(d)).toBe(false);
+	});
+});
+
+describe("external writes (agent / REST) into a live room", () => {
+	const ed = BlockNoteEditor.create();
+	const para = (id: string, text: string) => ({
+		id,
+		type: "paragraph",
+		content: text,
+		children: [],
+	});
+	const stored = [para("a", "alpha"), para("b", "bravo")];
+
+	// A room with two editors whose doc holds `stored`.
+	async function liveRoom(editors = ["u1", "u2"]) {
+		const t = setup();
+		const seedDoc = blocksToYDoc(ed, stored as never, COLLAB_FRAGMENT);
+		for (const [i, userId] of editors.entries()) {
+			await t.hub.join(`s${i + 1}`, { userId, rawToken: "t" }, ref);
+		}
+		t.hub.update("s1", ref, Y.encodeStateAsUpdate(seedDoc));
+		await tick();
+		t.sent.length = 0;
+		return t;
+	}
+	const event = (oldC: unknown[], newC: unknown[], actor = "agent") => ({
+		project_id: P,
+		document_id: D,
+		actor_id: actor,
+		activity_type: "doc.updated",
+		content: JSON.stringify({
+			changes: [{ field: "content", old: oldC, new: newC }],
+		}),
+	});
+
+	test("parseContentChange reads docs and task descriptions", () => {
+		const c = parseContentChange("doc.updated", event(stored, []));
+		expect(c?.ref).toEqual(ref);
+		expect(c?.old).toHaveLength(2);
+		const task = parseContentChange("task.updated", {
+			project_id: P,
+			task_id: D,
+			content: JSON.stringify({
+				changes: [{ field: "description", old: null, new: stored }],
+			}),
+		});
+		expect(task?.ref.kind).toBe("task");
+		expect(task?.old).toEqual([]);
+		expect(
+			parseContentChange("doc.updated", { ...event([], []), content: "{}" }),
+		).toBeUndefined();
+		expect(
+			parseContentChange("task.updated", {
+				project_id: P,
+				task_id: D,
+				content: JSON.stringify({ changes: [{ field: "title" }] }),
+			}),
+		).toBeUndefined();
+	});
+
+	test("merges an agent's write and broadcasts it to every editor", async () => {
+		const { hub, sent } = await liveRoom();
+		hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "bravo by agent")]),
+		);
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.event).toBe("collab:update");
+		expect(sent[0]?.except).toBeUndefined();
+	});
+
+	test("ignores the save of an editor in the room", async () => {
+		const { hub, sent } = await liveRoom();
+		hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "edited")], "u2"),
+		);
+		expect(sent).toHaveLength(0);
+	});
+
+	test("does nothing when nobody has the resource open", () => {
+		const { hub, sent } = setup();
+		hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "x")]),
+		);
+		expect(sent).toHaveLength(0);
+		expect(hub.roomCount).toBe(0);
+	});
+
+	test("an unchanged merge broadcasts nothing", async () => {
+		const { hub, sent } = await liveRoom();
+		hub.handleContentEvent("doc.updated", event(stored, stored));
+		expect(sent).toHaveLength(0);
 	});
 });
