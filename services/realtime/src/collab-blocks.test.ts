@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { BlockNoteEditor } from "@blocknote/core";
 import { blocksToYDoc, yDocToBlocks } from "@blocknote/core/yjs";
 import * as Y from "yjs";
 import { COLLAB_FRAGMENT } from "./collab.ts";
-import { mergeExternalChange } from "./collab-blocks.ts";
+import {
+	CUSTOM_BLOCKS,
+	CUSTOM_INLINES,
+	mergeExternalChange,
+} from "./collab-blocks.ts";
 
 const ed = BlockNoteEditor.create();
 const para = (
@@ -228,5 +233,66 @@ describe("mergeExternalChange", () => {
 		const res = mergeExternalChange(doc, COLLAB_FRAGMENT, noIds, next);
 		expect(texts(doc).slice(0, 3)).toEqual(["alpha", "bravo", "LIVE charlie"]);
 		expect(res.conflicts).toBe(1);
+	});
+
+	test("does not insert twice when the room was seeded after the write", () => {
+		const noIds = base.map(({ id: _, ...b }) => b);
+		const next = [
+			para(undefined, "alpha"),
+			para(undefined, "bravo"),
+			para(undefined, "charlie"),
+			para(undefined, "agent"),
+		];
+		// The room already holds the written content.
+		const doc = room(next.map((b, i) => ({ ...b, id: `s${i}` })));
+		const res = mergeExternalChange(doc, COLLAB_FRAGMENT, noIds, next);
+		expect(res.applied).toBe(0);
+		expect(texts(doc)).toEqual(["alpha", "bravo", "charlie", "agent"]);
+	});
+
+	test("does not duplicate an added block already present beside live edits", () => {
+		const noIds = base.map(({ id: _, ...b }) => b);
+		const next = [...noIds, para(undefined, "agent")];
+		const doc = room([...base, para("n", "agent")]);
+		typeInto(doc, "a", "LIVE ");
+		mergeExternalChange(doc, COLLAB_FRAGMENT, noIds, next);
+		expect(texts(doc).filter((t) => t === "agent")).toHaveLength(1);
+	});
+
+	test("an identical save changes nothing", () => {
+		const doc = room(base);
+		const res = mergeExternalChange(doc, COLLAB_FRAGMENT, base, base);
+		expect(res).toEqual({ applied: 0, conflicts: 0 });
+	});
+
+	test("short unrelated blocks are not taken for edits of each other", () => {
+		const doc = room([para("x", "A."), para("y", "keep")]);
+		mergeExternalChange(
+			doc,
+			COLLAB_FRAGMENT,
+			[para("x", "A."), para("y", "keep")],
+			[para(undefined, "B."), para(undefined, "keep")],
+		);
+		expect(texts(doc)).toEqual(["B.", "keep"]);
+	});
+});
+
+describe("schema parity with the web editor", () => {
+	test("custom blocks and inline contents match apps/web", () => {
+		const src = readFileSync(
+			new URL(
+				"../../../apps/web/src/components/shared/blocknote-schema.tsx",
+				import.meta.url,
+			),
+			"utf8",
+		);
+		const section = (name: string) => {
+			const m = src.match(new RegExp(`${name}: \\{([\\s\\S]*?)\\n\\t\\},`));
+			return [...(m?.[1] ?? "").matchAll(/^\t\t(\w+):/gm)].map((x) => x[1]);
+		};
+		expect(section("blockSpecs").sort()).toEqual([...CUSTOM_BLOCKS].sort());
+		expect(section("inlineContentSpecs").sort()).toEqual(
+			[...CUSTOM_INLINES].sort(),
+		);
 	});
 });

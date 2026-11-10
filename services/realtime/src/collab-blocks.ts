@@ -86,6 +86,18 @@ function stubInline(
 	) as never;
 }
 
+// One shared editor, used only for its schema-driven conversions. Every use is
+// synchronous and keeps no per-room state, so sharing it across rooms is safe.
+// It is never destroyed: it lives as long as the process.
+// Names of the custom blocks / inline contents above. A test compares them with
+// the web schema so the two cannot drift apart unnoticed.
+export const CUSTOM_BLOCKS = ["mermaid", "annotationCard"] as const;
+export const CUSTOM_INLINES = [
+	"teamMention",
+	"taskReference",
+	"docReference",
+] as const;
+
 let cachedEditor: BlockNoteEditor | undefined;
 
 function editor(): BlockNoteEditor {
@@ -165,6 +177,12 @@ function ownKey(b: Blk): string {
 	return JSON.stringify([b.type, b.props ?? {}, b.content ?? null]);
 }
 
+// shape is a block tree's content ignoring ids: two trees with equal shapes say
+// the same thing.
+function shape(blocks: Blk[]): string {
+	return JSON.stringify(blocks.map((b) => [ownKey(b), shape(b.children)]));
+}
+
 function* walk(blocks: Blk[]): Generator<Blk> {
 	for (const b of blocks) {
 		yield b;
@@ -192,7 +210,14 @@ function indexOf(blocks: Blk[]): Map<string, Node> {
 
 // ── Recovering ids ───────────────────────────────────────────────────────────
 
+// Total dynamic-programming cells one merge may fill, across every sibling level
+// of both alignments. Alignment runs synchronously on the event loop, so this
+// bounds the stall (and the memory) one write can cause.
 const MAX_ALIGN_CELLS = 4_000_000;
+
+interface Budget {
+	cells: number;
+}
 
 // resolveIds gives every id-less block of `target` the id of the block of
 // `reference` it corresponds to, found by aligning siblings on content: equal
@@ -204,13 +229,13 @@ const MAX_ALIGN_CELLS = 4_000_000;
 //
 // When none of target's ids occur in the reference, the ids are not
 // meaningful (a writer that invents its own) and are ignored altogether.
-function resolveIds(reference: Blk[], target: Blk[]): boolean {
+function resolveIds(reference: Blk[], target: Blk[], budget: Budget): boolean {
 	const refIds = new Set([...walk(reference)].map((b) => b.id));
 	const ids = [...walk(target)].filter(hasId);
 	if (ids.length > 0 && !ids.some((b) => refIds.has(b.id))) {
 		for (const b of walk(target)) b.id = `${NO_ID}ignored:${b.id}`;
 	}
-	return align(reference, target);
+	return align(reference, target, budget);
 }
 
 // textOf is what a block says, for judging whether two blocks are versions of
@@ -229,6 +254,7 @@ function textOf(b: Blk): string {
 }
 
 const SIMILAR = 0.5;
+const MIN_SIMILAR_LEN = 4;
 
 // similarity is 0..1: how much of the shorter text is shared as a common
 // prefix and suffix (an edit in the middle, or text added / removed at an end).
@@ -237,7 +263,8 @@ function similarity(a: Blk, b: Blk): number {
 	const x = textOf(a);
 	const y = textOf(b);
 	const shorter = Math.min(x.length, y.length);
-	if (shorter === 0) return 0;
+	// Too little text to tell an edit from an unrelated block ("A." vs "B.").
+	if (shorter < MIN_SIMILAR_LEN) return 0;
 	let p = 0;
 	while (p < shorter && x[p] === y[p]) p++;
 	let q = 0;
@@ -250,21 +277,20 @@ function similarity(a: Blk, b: Blk): number {
 function pairBySimilarity(pool: Blk[], todo: Blk[]): [number, number][] {
 	const n = pool.length;
 	const m = todo.length;
+	const w = m + 1;
 	const sim = pool.map((r) => todo.map((t) => similarity(r, t)));
-	const best: number[][] = Array.from({ length: n + 1 }, () =>
-		new Array<number>(m + 1).fill(0),
-	);
-	const at = (i: number, j: number) => best[i]?.[j] ?? 0;
+	const best = new Float64Array((n + 1) * w);
 	for (let i = n - 1; i >= 0; i--) {
 		for (let j = m - 1; j >= 0; j--) {
 			const s = sim[i]?.[j] ?? 0;
-			(best[i] as number[])[j] = Math.max(
-				at(i + 1, j),
-				at(i, j + 1),
-				s >= SIMILAR ? s + at(i + 1, j + 1) : 0,
+			best[i * w + j] = Math.max(
+				best[(i + 1) * w + j] ?? 0,
+				best[i * w + j + 1] ?? 0,
+				s >= SIMILAR ? s + (best[(i + 1) * w + j + 1] ?? 0) : 0,
 			);
 		}
 	}
+	const at = (i: number, j: number) => best[i * w + j] ?? 0;
 	const out: [number, number][] = [];
 	for (let i = 0, j = 0; i < n && j < m; ) {
 		const s = sim[i]?.[j] ?? 0;
@@ -278,7 +304,7 @@ function pairBySimilarity(pool: Blk[], todo: Blk[]): [number, number][] {
 	return out;
 }
 
-function align(reference: Blk[], target: Blk[]): boolean {
+function align(reference: Blk[], target: Blk[], budget: Budget): boolean {
 	const byId = new Map(reference.map((b) => [b.id, b]));
 	const claimed = new Set<string>();
 	// Targets that carry an id keep it: one the reference knows is a match, one
@@ -286,20 +312,20 @@ function align(reference: Blk[], target: Blk[]): boolean {
 	for (const t of target) if (hasId(t) && byId.has(t.id)) claimed.add(t.id);
 	const pool = reference.filter((r) => !claimed.has(r.id));
 	const todo = target.filter((t) => !hasId(t));
-	if (pool.length * todo.length > MAX_ALIGN_CELLS) return false;
+	budget.cells -= pool.length * todo.length;
+	if (budget.cells < 0) return false;
 
 	// LCS over the unclaimed blocks by content.
 	const n = pool.length;
 	const m = todo.length;
 	const rk = pool.map(ownKey);
 	const tk = todo.map(ownKey);
-	const lcs: number[][] = Array.from({ length: n + 1 }, () =>
-		new Array<number>(m + 1).fill(0),
-	);
-	const at = (i: number, j: number): number => lcs[i]?.[j] ?? 0;
+	const w = m + 1;
+	const lcs = new Uint32Array((n + 1) * w);
+	const at = (i: number, j: number): number => lcs[i * w + j] ?? 0;
 	for (let i = n - 1; i >= 0; i--) {
 		for (let j = m - 1; j >= 0; j--) {
-			(lcs[i] as number[])[j] =
+			lcs[i * w + j] =
 				rk[i] === tk[j]
 					? at(i + 1, j + 1) + 1
 					: Math.max(at(i + 1, j), at(i, j + 1));
@@ -350,7 +376,7 @@ function align(reference: Blk[], target: Blk[]): boolean {
 	const refById = new Map(reference.map((r) => [r.id, r]));
 	for (const t of target) {
 		const r = refById.get(t.id);
-		if (!align(r?.children ?? [], t.children)) return false;
+		if (!align(r?.children ?? [], t.children, budget)) return false;
 	}
 	return true;
 }
@@ -418,6 +444,10 @@ export function mergeExternalChange(
 	oldContent: unknown[],
 	newContent: unknown[],
 ): MergeResult {
+	// Nothing changed (a save of identical content): nothing to merge.
+	if (JSON.stringify(oldContent) === JSON.stringify(newContent)) {
+		return { applied: 0, conflicts: 0 };
+	}
 	let ours: Blk[];
 	let base: Blk[];
 	let theirs: Blk[];
@@ -428,7 +458,12 @@ export function mergeExternalChange(
 	} catch {
 		return { applied: 0, conflicts: 0, skipped: "unsupported" };
 	}
-	if (!resolveIds(ours, base) || !resolveIds(base, theirs)) {
+	// The room already says what the write says: it was seeded from the stored
+	// content after the write but before its announcement arrived. Merging now
+	// would insert the added blocks a second time.
+	if (shape(ours) === shape(theirs)) return { applied: 0, conflicts: 0 };
+	const budget: Budget = { cells: MAX_ALIGN_CELLS };
+	if (!resolveIds(ours, base, budget) || !resolveIds(base, theirs, budget)) {
 		return { applied: 0, conflicts: 0, skipped: "too_large" };
 	}
 
@@ -469,10 +504,12 @@ export function mergeExternalChange(
 			});
 		};
 
-		const groupFor = (parentId: string | null): Y.XmlElement => {
+		// undefined when the parent is gone from the room (deleted live): the
+		// block must not be hoisted somewhere else.
+		const groupFor = (parentId: string | null): Y.XmlElement | undefined => {
 			if (parentId === null) return rootGroup;
 			const parent = findContainer(rootGroup, parentId);
-			if (!parent) return rootGroup;
+			if (!parent) return undefined;
 			let sub = parent.el
 				.toArray()
 				.find((c): c is Y.XmlElement => isEl(c, "blockgroup"));
@@ -491,6 +528,25 @@ export function mergeExternalChange(
 		): boolean => {
 			try {
 				const group = groupFor(parentId);
+				if (!group) {
+					conflicts++;
+					return false;
+				}
+				// An equal block the write does not know of is already there
+				// (the room was seeded from content that included this write).
+				const mine =
+					parentId === null
+						? ours
+						: (ourIdx.get(parentId)?.block.children ?? []);
+				const key = shape([b]);
+				if (
+					mine.some(
+						(o) =>
+							!baseIdx.has(o.id) && !theirIdx.has(o.id) && shape([o]) === key,
+					)
+				) {
+					return false;
+				}
 				let at = 0;
 				for (let k = i - 1; k >= 0; k--) {
 					const idx = containersOf(group).findIndex(

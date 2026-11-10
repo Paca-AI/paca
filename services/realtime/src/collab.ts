@@ -254,6 +254,9 @@ export class CollabHub {
 		private readonly transport: CollabTransport,
 		private readonly onError: (err: unknown, ctx: string) => void = () => {},
 		private readonly seedDeadlineMs: number = SEED_DEADLINE_MS,
+		// Expected outcomes worth knowing about that are not failures: an
+		// external write left partly or wholly unmerged.
+		private readonly onNotice: (info: object, msg: string) => void = () => {},
 	) {}
 
 	get roomCount(): number {
@@ -474,15 +477,11 @@ export class CollabHub {
 			room = this.rooms.get(name);
 			if (!room?.seeded || room.members.size === 0) return undefined;
 		}
-		// The merge's size is only known afterwards, so bound it by the new
-		// content's JSON size: external writes obey the same room budget as
-		// editor updates.
-		const estimate = JSON.stringify(newContent).length;
-		if (room.bytes + estimate > MAX_ROOM_BYTES) {
-			this.onError(
-				new Error("room reached its size budget"),
-				"external change",
-			);
+		// The merge's size is only known afterwards, so the budget is checked
+		// before it and charged with the real update after it. One write can
+		// overshoot by its own size at most.
+		if (room.bytes >= MAX_ROOM_BYTES) {
+			this.onNotice({ room: name }, "external change not merged (too_large)");
 			return { applied: 0, conflicts: 0, skipped: "too_large" };
 		}
 		const before = Y.encodeStateVector(room.doc);
@@ -501,13 +500,11 @@ export class CollabHub {
 			});
 		}
 		if (result.conflicts > 0 || result.skipped) {
-			this.onError(
-				new Error(
-					result.skipped
-						? `external change not merged (${result.skipped})`
-						: `${result.conflicts} block(s) kept as edited live`,
-				),
-				"external change",
+			this.onNotice(
+				{ room: name, ...result },
+				result.skipped
+					? `external change not merged (${result.skipped})`
+					: "external change kept blocks as edited live",
 			);
 		}
 		return result;
