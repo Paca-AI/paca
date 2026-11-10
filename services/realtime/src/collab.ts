@@ -122,6 +122,9 @@ interface Room {
 	seeder: string | null;
 	seeded: boolean;
 	seedTimer?: ReturnType<typeof setTimeout>;
+	// Members already given the seed grant while the room stayed unseeded, so
+	// idle members are not cycled through forever.
+	seedTried: Set<string>;
 	destroyTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -373,6 +376,7 @@ export class CollabHub {
 			members: new Map(),
 			seeder: null,
 			seeded: false,
+			seedTried: new Set(),
 		};
 		this.rooms.set(name, room);
 		return room;
@@ -424,12 +428,14 @@ export class CollabHub {
 
 	private markSeeded(room: Room): void {
 		room.seeded = true;
+		room.seedTried.clear();
 		if (room.seedTimer) clearTimeout(room.seedTimer);
 		room.seedTimer = undefined;
 	}
 
 	private grantSeed(room: Room, socketId: string, notify: boolean): void {
 		room.seeder = socketId;
+		room.seedTried.add(socketId);
 		if (notify) this.transport.grantSeed(socketId, room.name);
 		if (room.seedTimer) clearTimeout(room.seedTimer);
 		room.seedTimer = setTimeout(() => {
@@ -441,9 +447,11 @@ export class CollabHub {
 	}
 
 	// reassignSeed moves an unfinished seed grant from `from` to another member,
-	// or frees it when nobody else is in the room.
+	// or frees it when nobody untried is left (a later joiner can still take it).
 	private reassignSeed(room: Room, from: string): void {
-		const next = [...room.members.keys()].find((id) => id !== from);
+		const next = [...room.members.keys()].find(
+			(id) => id !== from && !room.seedTried.has(id),
+		);
 		if (next) {
 			this.grantSeed(room, next, true);
 			return;

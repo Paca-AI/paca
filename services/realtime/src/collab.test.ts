@@ -170,6 +170,19 @@ describe("CollabHub hardening", () => {
 		hub.close();
 	});
 
+	test("the seed grant does not cycle between idle members forever", async () => {
+		const { hub, granted } = setup(() => true, 15);
+		await hub.join("a", viewer, ref);
+		await hub.join("b", viewer, ref);
+		await new Promise((r) => setTimeout(r, 120));
+		// a -> b once; then everyone has been tried and the timer stops.
+		expect(granted).toEqual(["b"]);
+		// A brand-new joiner can still take the free grant.
+		const c = await hub.join("c", viewer, ref);
+		expect(c.ok && c.seed).toBe(true);
+		hub.close();
+	});
+
 	test("one account cannot hold more than its share of rooms", async () => {
 		const { hub } = setup();
 		let last: unknown;

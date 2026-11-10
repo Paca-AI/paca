@@ -118,10 +118,16 @@ const DocEditorInner = forwardRef<DocEditorHandle, DocEditorInnerProps>(
 		// mount and the seed effect does not run again, so cancelling would
 		// leave the doc blank in development.
 		const mountedRef = useRef(false);
+		const seedUnsubRef = useRef<(() => void) | null>(null);
 		useEffect(() => {
 			mountedRef.current = true;
 			return () => {
 				mountedRef.current = false;
+				// StrictMode re-mounts synchronously, so only a real unmount is still
+				// unmounted by the time this runs: then drop the seed listener.
+				setTimeout(() => {
+					if (!mountedRef.current) seedUnsubRef.current?.();
+				}, 0);
 			};
 		}, []);
 
@@ -195,7 +201,7 @@ const DocEditorInner = forwardRef<DocEditorHandle, DocEditorInnerProps>(
 				if (displayBlocks.length > 0) {
 					// Runs now when this client was picked to seed, or later if
 					// the picked client left or stalled and the grant moves here.
-					collab.whenSeeder(() => {
+					seedUnsubRef.current = collab.whenSeeder(() => {
 						seedCollabDoc(
 							collab,
 							() => {
