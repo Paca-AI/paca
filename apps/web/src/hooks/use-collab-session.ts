@@ -32,7 +32,7 @@ export function useCollabSession(
 	id: string | undefined,
 	enabled: boolean,
 ): CollabState {
-	const { data: user } = useQuery(currentUserQueryOptions);
+	const { data: user, isPending } = useQuery(currentUserQueryOptions);
 	const userId = user?.id;
 	const userName = user?.full_name || user?.username;
 	const [joined, setJoined] = useState<CollabSession | null>(null);
@@ -66,6 +66,9 @@ export function useCollabSession(
 	);
 
 	if (!enabled || failed) return OFF;
+	// No current user: still loading, or not signed in. The latter can never
+	// join, so it must fall back to the plain editor instead of waiting forever.
+	if (!userId || !userName) return isPending ? CONNECTING : OFF;
 	if (!joined) return CONNECTING;
 	return { phase: "ready", session: joined, status };
 }

@@ -42,6 +42,12 @@ const subscriber = createSubscriber(
 	},
 );
 
+// A missed iam.changed announcement must cost at most one interval, as it does
+// for project rooms (see resync.ts): re-check collab editors periodically too.
+// The decider caches answers for 30 s, so each pass sees fresh decisions.
+const collabRecheck = setInterval(() => void collab.recheck(), 60_000);
+collabRecheck.unref();
+
 httpServer.listen(config.port, () => {
 	logger.info({ port: config.port }, "realtime service listening");
 });
@@ -57,6 +63,7 @@ function shutdown(signal: string): void {
 		httpServer.close(() => {
 			resyncer.stop();
 			expiry.stop();
+			clearInterval(collabRecheck);
 			collab.close();
 			subscriber.disconnect();
 			logger.info("shutdown complete");

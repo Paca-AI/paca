@@ -192,22 +192,26 @@ const DocEditorInner = forwardRef<DocEditorHandle, DocEditorInnerProps>(
 				lastSavedRef.current = normalizedStr;
 				dirtyRef.current = false;
 				readyRef.current = false;
-				if (collab.seed && displayBlocks.length > 0) {
-					seedCollabDoc(
-						collab,
-						() => {
-							// Writing the stored content is not a user edit.
-							seedingRef.current = true;
-							editor.replaceBlocks(
-								editor.document,
-								displayBlocks as Parameters<typeof editor.replaceBlocks>[1],
-							);
-							queueMicrotask(() => {
-								seedingRef.current = false;
-							});
-						},
-						{ isActive: () => mountedRef.current },
-					);
+				if (displayBlocks.length > 0) {
+					// Runs now when this client was picked to seed, or later if
+					// the picked client left or stalled and the grant moves here.
+					collab.whenSeeder(() => {
+						seedCollabDoc(
+							collab,
+							() => {
+								// Writing the stored content is not a user edit.
+								seedingRef.current = true;
+								editor.replaceBlocks(
+									editor.document,
+									displayBlocks as Parameters<typeof editor.replaceBlocks>[1],
+								);
+								queueMicrotask(() => {
+									seedingRef.current = false;
+								});
+							},
+							{ isActive: () => mountedRef.current },
+						);
+					});
 				}
 				queueMicrotask(() => {
 					readyRef.current = true;
@@ -268,7 +272,7 @@ const DocEditorInner = forwardRef<DocEditorHandle, DocEditorInnerProps>(
 
 		const handleChange = useCallback(
 			(_editor: unknown, ctx?: Parameters<typeof isRemoteOnlyChange>[0]) => {
-				if (!editable || !readyRef.current) return;
+				if (!editable || !readyRef.current || seedingRef.current) return;
 				// A peer's edit is saved by that peer, not by every open editor.
 				if (collab && isRemoteOnlyChange(ctx)) return;
 				dirtyRef.current = true;

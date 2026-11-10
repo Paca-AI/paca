@@ -77,6 +77,11 @@ const UUID_RE =
 export const MAX_UPDATE_BYTES = 5 * 1024 * 1024;
 export const MAX_ROOMS = 2_000;
 const DESTROY_GRACE_MS = 30_000;
+// One account may hold this many rooms open at once, so a single user with a
+// project-wide write grant cannot use up the global cap for everyone else.
+export const MAX_ROOMS_PER_USER = 10;
+// A seed grant that has not produced content by then moves to another member.
+const SEED_DEADLINE_MS = 10_000;
 
 export function parseRoomRef(raw: unknown): CollabRoomRef | undefined {
 	if (!raw || typeof raw !== "object") return undefined;
@@ -116,6 +121,7 @@ interface Room {
 	members: Map<string, Member>;
 	seeder: string | null;
 	seeded: boolean;
+	seedTimer?: ReturnType<typeof setTimeout>;
 	destroyTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -129,6 +135,8 @@ export interface CollabTransport {
 	): void;
 	// Tell one socket it was removed from the room.
 	revoke(socketId: string, room: string): void;
+	// Tell one socket it must now write the stored content into the room.
+	grantSeed(socketId: string, room: string): void;
 }
 
 export class CollabHub {
@@ -141,6 +149,7 @@ export class CollabHub {
 		private readonly decider: AccessDecider,
 		private readonly transport: CollabTransport,
 		private readonly onError: (err: unknown, ctx: string) => void = () => {},
+		private readonly seedDeadlineMs: number = SEED_DEADLINE_MS,
 	) {}
 
 	get roomCount(): number {
@@ -151,18 +160,29 @@ export class CollabHub {
 		socketId: string,
 		viewer: Viewer,
 		req: CollabJoinRequest,
-		// Called synchronously, before the state snapshot is taken, so the
-		// socket is already in the broadcast room for every later update and
-		// none can fall between the snapshot and the room join.
-		enter: (room: string) => void = () => {},
+		hooks: {
+			// Called synchronously, before the state snapshot is taken, so the
+			// socket is already in the broadcast room for every later update
+			// and none can fall between the snapshot and the room join.
+			enter?: (room: string) => void;
+			// False once the socket is gone: the access check below is async,
+			// and a member added for a dead socket would never be removed.
+			isAlive?: () => boolean;
+		} = {},
 	): Promise<CollabJoinResult> {
 		const ref = parseRoomRef(req);
 		if (!ref) return { ok: false, reason: "invalid" };
 		if (!(await this.canWrite(viewer, ref))) {
 			return { ok: false, reason: "forbidden" };
 		}
+		if (hooks.isAlive && !hooks.isAlive()) {
+			return { ok: false, reason: "unavailable" };
+		}
 		const name = roomName(ref);
 		let room = this.rooms.get(name);
+		if (this.roomsOf(viewer.userId, name) >= MAX_ROOMS_PER_USER) {
+			return { ok: false, reason: "full" };
+		}
 		if (!room) {
 			if (this.rooms.size >= MAX_ROOMS) return { ok: false, reason: "full" };
 			room = this.createRoom(ref, name);
@@ -177,7 +197,7 @@ export class CollabHub {
 			awarenessIds: room.members.get(socketId)?.awarenessIds ?? new Set(),
 		});
 
-		enter(name);
+		hooks.enter?.(name);
 		const clientSv = asBytes(req.stateVector);
 		let seed = false;
 		if (
@@ -187,7 +207,7 @@ export class CollabHub {
 			isEmpty(room.doc) &&
 			(!clientSv || clientSv.byteLength <= 1)
 		) {
-			room.seeder = socketId;
+			this.grantSeed(room, socketId, false);
 			seed = true;
 		} else if (room.seeder === socketId && !room.seeded) {
 			seed = true;
@@ -232,7 +252,8 @@ export class CollabHub {
 				this.onError(err, "apply update");
 				return;
 			}
-			if (!isEmpty(room.doc)) room.seeded = true;
+			// Only while unseeded: isEmpty serializes the whole document.
+			if (!room.seeded && !isEmpty(room.doc)) this.markSeeded(room);
 			this.transport.broadcast(name, socketId, "collab:update", {
 				room: ref,
 				update,
@@ -362,7 +383,10 @@ export class CollabHub {
 		if (!member) return;
 		room.members.delete(socketId);
 		if (notify) this.transport.revoke(socketId, room.name);
-		if (room.seeder === socketId && !room.seeded) room.seeder = null;
+		if (room.seeder === socketId && !room.seeded) {
+			// Do not strand the room unseeded: hand the grant to someone else.
+			this.reassignSeed(room, socketId);
+		}
 		const ids = [...member.awarenessIds].filter((id) =>
 			room.awareness.getStates().has(id),
 		);
@@ -384,7 +408,53 @@ export class CollabHub {
 		}
 	}
 
+	private roomsOf(userId: string, except: string): number {
+		let n = 0;
+		for (const [name, room] of this.rooms) {
+			if (name === except) continue;
+			for (const m of room.members.values()) {
+				if (m.viewer.userId === userId) {
+					n++;
+					break;
+				}
+			}
+		}
+		return n;
+	}
+
+	private markSeeded(room: Room): void {
+		room.seeded = true;
+		if (room.seedTimer) clearTimeout(room.seedTimer);
+		room.seedTimer = undefined;
+	}
+
+	private grantSeed(room: Room, socketId: string, notify: boolean): void {
+		room.seeder = socketId;
+		if (notify) this.transport.grantSeed(socketId, room.name);
+		if (room.seedTimer) clearTimeout(room.seedTimer);
+		room.seedTimer = setTimeout(() => {
+			room.seedTimer = undefined;
+			if (room.seeded || room.seeder === null) return;
+			this.reassignSeed(room, room.seeder);
+		}, this.seedDeadlineMs);
+		room.seedTimer.unref?.();
+	}
+
+	// reassignSeed moves an unfinished seed grant from `from` to another member,
+	// or frees it when nobody else is in the room.
+	private reassignSeed(room: Room, from: string): void {
+		const next = [...room.members.keys()].find((id) => id !== from);
+		if (next) {
+			this.grantSeed(room, next, true);
+			return;
+		}
+		room.seeder = null;
+		if (room.seedTimer) clearTimeout(room.seedTimer);
+		room.seedTimer = undefined;
+	}
+
 	private destroy(room: Room): void {
+		if (room.seedTimer) clearTimeout(room.seedTimer);
 		if (room.destroyTimer) clearTimeout(room.destroyTimer);
 		room.awareness.destroy();
 		room.doc.destroy();

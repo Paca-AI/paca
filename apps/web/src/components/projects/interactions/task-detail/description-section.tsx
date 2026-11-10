@@ -241,18 +241,22 @@ function DescriptionSectionInner({
 		if (!collab) {
 			editor.replaceBlocks(editor.document, blocks);
 		} else if (firstRun) {
-			if (collab.seed && displayBlocks.length > 0) {
-				seedCollabDoc(
-					collab,
-					() => {
-						seedingRef.current = true;
-						editor.replaceBlocks(editor.document, blocks);
-						queueMicrotask(() => {
-							seedingRef.current = false;
-						});
-					},
-					{ isActive: () => mountedRef.current },
-				);
+			if (displayBlocks.length > 0) {
+				// Runs now when this client was picked to seed, or later if the
+				// picked client left or stalled and the grant moves here.
+				collab.whenSeeder(() => {
+					seedCollabDoc(
+						collab,
+						() => {
+							seedingRef.current = true;
+							editor.replaceBlocks(editor.document, blocks);
+							queueMicrotask(() => {
+								seedingRef.current = false;
+							});
+						},
+						{ isActive: () => mountedRef.current },
+					);
+				});
 			}
 		} else {
 			editor.replaceBlocks(editor.document, blocks);
@@ -264,7 +268,7 @@ function DescriptionSectionInner({
 
 	const handleChange = useCallback(
 		(_editor: unknown, ctx?: Parameters<typeof isRemoteOnlyChange>[0]) => {
-			if (!canEdit || !readyRef.current) return;
+			if (!canEdit || !readyRef.current || seedingRef.current) return;
 			// A peer's edit is saved by that peer, not by every open editor.
 			if (collab && isRemoteOnlyChange(ctx)) return;
 			// Track dirty state so blur can save without re-reading document

@@ -103,6 +103,7 @@ export class CollabSession {
 	seed = false;
 
 	private readonly listeners = new Set<() => void>();
+	private readonly seedListeners = new Set<() => void>();
 	private destroyed = false;
 
 	private readonly socket: Socket;
@@ -118,8 +119,26 @@ export class CollabSession {
 		socket.on("collab:update", this.onRemoteUpdate);
 		socket.on("collab:awareness", this.onRemoteAwareness);
 		socket.on("collab:revoked", this.onRevoked);
+		socket.on("collab:seed", this.onSeedGranted);
 		socket.on("connect", this.onConnect);
 		socket.on("disconnect", this.onDisconnect);
+	}
+
+	/**
+	 * Calls `fn` when this client is (or becomes) the one that must write the
+	 * stored content into the room: at join, or later when the client that was
+	 * picked first left or stalled. Returns an unsubscribe.
+	 */
+	whenSeeder(fn: () => void): () => void {
+		if (this.seed) fn();
+		this.seedListeners.add(fn);
+		return () => this.seedListeners.delete(fn);
+	}
+
+	private grantSeed(): void {
+		if (this.seed) return;
+		this.seed = true;
+		for (const fn of [...this.seedListeners]) fn();
 	}
 
 	subscribe(fn: () => void): () => void {
@@ -133,25 +152,33 @@ export class CollabSession {
 		// The socket can drop while the join is in flight (e.g. the session
 		// refresh reconnects it), losing the ack: retry on the new connection
 		// instead of giving up and silently falling back to single-user mode.
+		// A join that merely times out is NOT retried: the realtime service is
+		// unreachable, and the editor must fall back to plain mode promptly.
 		for (
 			let attempt = 0;
 			attempt < JOIN_ATTEMPTS && !this.destroyed;
 			attempt++
 		) {
-			if (!this.socket.connected) await this.waitForConnect();
-			try {
-				res = await this.emitJoin();
-			} catch {
-				res = null;
+			if (!this.socket.connected) {
+				await this.waitForConnect();
+				if (!this.socket.connected) break;
 			}
-			if (res) break;
+			let outcome: JoinResult | null | "dropped";
+			try {
+				outcome = await this.emitJoin();
+			} catch {
+				outcome = null;
+			}
+			if (outcome === "dropped") continue;
+			res = outcome;
+			break;
 		}
 		if (this.destroyed) return false;
 		if (!res || !res.ok) {
 			this.setStatus(res ? "lost" : "offline");
 			return false;
 		}
-		this.seed = res.seed;
+		if (res.seed) this.grantSeed();
 		try {
 			this.applyJoin(res);
 		} catch {
@@ -168,12 +195,14 @@ export class CollabSession {
 		this.socket.off("collab:update", this.onRemoteUpdate);
 		this.socket.off("collab:awareness", this.onRemoteAwareness);
 		this.socket.off("collab:revoked", this.onRevoked);
+		this.socket.off("collab:seed", this.onSeedGranted);
 		this.socket.off("connect", this.onConnect);
 		this.socket.off("disconnect", this.onDisconnect);
 		this.awareness.setLocalState(null);
 		this.awareness.destroy();
 		this.doc.destroy();
 		this.listeners.clear();
+		this.seedListeners.clear();
 		if (this.socket.connected)
 			this.socket.emit("collab:leave", { room: this.ref });
 	}
@@ -192,11 +221,11 @@ export class CollabSession {
 		});
 	}
 
-	private emitJoin(): Promise<JoinResult | null> {
+	private emitJoin(): Promise<JoinResult | null | "dropped"> {
 		return new Promise((resolve) => {
 			// A disconnect loses the ack: stop waiting for it.
-			const onDrop = () => finish(null);
-			const finish = (res: JoinResult | null) => {
+			const onDrop = () => finish("dropped");
+			const finish = (res: JoinResult | null | "dropped") => {
 				this.socket.off("disconnect", onDrop);
 				resolve(res);
 			};
@@ -295,6 +324,12 @@ export class CollabSession {
 		this.setStatus("lost");
 	};
 
+	private readonly onSeedGranted = (msg: { room?: string }): void => {
+		if (typeof msg?.room !== "string" || !msg.room.endsWith(`:${this.ref.id}`))
+			return;
+		this.grantSeed();
+	};
+
 	private readonly onDisconnect = (): void => {
 		if (this.status === "ready") this.setStatus("offline");
 	};
@@ -310,10 +345,11 @@ export class CollabSession {
 			return;
 		void this.emitJoin().then((res) => {
 			if (this.destroyed) return;
-			if (res?.ok) {
+			if (res && res !== "dropped" && res.ok) {
+				if (res.seed) this.grantSeed();
 				this.applyJoin(res);
 				this.setStatus("ready");
-			} else if (res) {
+			} else if (res && res !== "dropped") {
 				this.setStatus("lost");
 			}
 		});
@@ -385,6 +421,22 @@ export function acquireCollabSession(
  * update (an empty placeholder block written by the editor does not count).
  * Returns a canceller for effect cleanup.
  */
+/**
+ * True while the shared doc holds no real content: nothing, or only the empty
+ * placeholder paragraph BlockNote may write (mirrors the server's isEmpty).
+ */
+export function isCollabDocEmpty(session: CollabSession): boolean {
+	if (session.fragment.length === 0) return true;
+	const xml = session.fragment.toString();
+	// Y.XmlFragment.toString() lower-cases tag names.
+	for (const m of xml.matchAll(/<([A-Za-z][\w-]*)/g)) {
+		const tag = (m[1] ?? "").toLowerCase();
+		if (tag !== "blockgroup" && tag !== "blockcontainer" && tag !== "paragraph")
+			return false;
+	}
+	return xml.replace(/<[^>]*>/g, "").trim() === "";
+}
+
 export function seedCollabDoc(
 	session: CollabSession,
 	write: () => void,
@@ -404,6 +456,9 @@ export function seedCollabDoc(
 	let tries = 0;
 	const attempt = () => {
 		if (cancelled || !isActive()) return;
+		// Someone else's content is already there (a peer got in first, or an
+		// earlier attempt landed): never replace it with the stored copy.
+		if (!isCollabDocEmpty(session)) return;
 		let wrote = false;
 		const onUpdate = (_u: Uint8Array, origin: unknown) => {
 			if (origin !== session) wrote = true;

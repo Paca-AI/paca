@@ -7,7 +7,8 @@ const P = "11111111-1111-4111-8111-111111111111";
 const D = "22222222-2222-4222-8222-222222222222";
 const ref = { projectId: P, kind: "doc" as const, id: D };
 
-function setup(allowed: () => boolean = () => true) {
+function setup(allowed: () => boolean = () => true, seedDeadlineMs = 10_000) {
+	const granted: string[] = [];
 	const sent: {
 		room: string;
 		except?: string;
@@ -18,12 +19,18 @@ function setup(allowed: () => boolean = () => true) {
 	const decider = {
 		can: async () => allowed(),
 	} as unknown as AccessDecider;
-	const hub = new CollabHub(decider, {
-		broadcast: (room, except, event, payload) =>
-			sent.push({ room, except, event, payload }),
-		revoke: (id) => revoked.push(id),
-	});
-	return { hub, sent, revoked };
+	const hub = new CollabHub(
+		decider,
+		{
+			broadcast: (room, except, event, payload) =>
+				sent.push({ room, except, event, payload }),
+			revoke: (id) => revoked.push(id),
+			grantSeed: (id) => granted.push(id),
+		},
+		undefined,
+		seedDeadlineMs,
+	);
+	return { hub, sent, revoked, granted };
 }
 
 const viewer = { userId: "u", rawToken: "t" };
@@ -130,6 +137,51 @@ describe("CollabHub placeholder content", () => {
 		hub.leave("a", ref);
 		const b = await hub.join("b", viewer, ref);
 		expect(b.ok && b.seed).toBe(true);
+	});
+});
+
+describe("CollabHub hardening", () => {
+	test("a join whose socket died during the access check leaves nothing behind", async () => {
+		const { hub } = setup();
+		const res = await hub.join("a", viewer, ref, { isAlive: () => false });
+		expect(res).toEqual({ ok: false, reason: "unavailable" });
+		expect(hub.roomCount).toBe(0);
+		// And it holds no seed grant: the next joiner can seed.
+		const b = await hub.join("b", viewer, ref);
+		expect(b.ok && b.seed).toBe(true);
+	});
+
+	test("the seed moves to another member when the seeder leaves", async () => {
+		const { hub, granted } = setup();
+		await hub.join("a", viewer, ref);
+		const b = await hub.join("b", viewer, ref);
+		expect(b.ok && b.seed).toBe(false);
+		hub.leaveAll("a");
+		expect(granted).toEqual(["b"]);
+		hub.close();
+	});
+
+	test("the seed moves on when the seeder never writes within the deadline", async () => {
+		const { hub, granted } = setup(() => true, 20);
+		await hub.join("a", viewer, ref);
+		await hub.join("b", viewer, ref);
+		await new Promise((r) => setTimeout(r, 60));
+		expect(granted).toContain("b");
+		hub.close();
+	});
+
+	test("one account cannot hold more than its share of rooms", async () => {
+		const { hub } = setup();
+		let last: unknown;
+		for (let i = 0; i < 12; i++) {
+			const id = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+			last = await hub.join("a", viewer, { ...ref, id });
+		}
+		expect(last).toEqual({ ok: false, reason: "full" });
+		// Another account is unaffected.
+		const other = await hub.join("o", { userId: "other", rawToken: "t" }, ref);
+		expect(other.ok).toBe(true);
+		hub.close();
 	});
 });
 

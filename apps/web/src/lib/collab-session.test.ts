@@ -1,7 +1,12 @@
 import type { Socket } from "socket.io-client";
 import { describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
-import { COLLAB_FRAGMENT, CollabSession, colorForUser } from "./collab-session";
+import {
+	COLLAB_FRAGMENT,
+	CollabSession,
+	colorForUser,
+	seedCollabDoc,
+} from "./collab-session";
 
 vi.mock("./socket-client", () => ({ connectSocket: vi.fn() }));
 
@@ -39,7 +44,7 @@ class FakeSocket {
 			emit: (
 				event: string,
 				payload: unknown,
-				cb: (e: null, r: unknown) => void,
+				cb: (e: Error | null, r: unknown) => void,
 			) => {
 				this.emitted.push({ event, payload });
 				cb(null, this.joinResult);
@@ -79,7 +84,7 @@ describe("CollabSession", () => {
 			emit: (
 				event: string,
 				payload: unknown,
-				cb: (e: null, r: unknown) => void,
+				cb: (e: Error | null, r: unknown) => void,
 			) => {
 				sock.emitted.push({ event, payload });
 				calls++;
@@ -92,6 +97,38 @@ describe("CollabSession", () => {
 		expect(await session.join()).toBe(true);
 		expect(calls).toBe(2);
 		expect(session.status).toBe("ready");
+	});
+
+	it("does not retry a join that merely timed out", async () => {
+		const sock = new FakeSocket();
+		let calls = 0;
+		sock.timeout = () => ({
+			emit: (
+				_event: string,
+				_payload: unknown,
+				cb: (e: Error | null, r: unknown) => void,
+			) => {
+				calls++;
+				cb(new Error("timeout"), undefined);
+			},
+		});
+		const { session } = make(sock);
+		expect(await session.join()).toBe(false);
+		expect(calls).toBe(1);
+		expect(session.status).toBe("offline");
+	});
+
+	it("becomes the seeder later when the server hands the grant over", async () => {
+		const sock = new FakeSocket();
+		(sock.joinResult as { seed: boolean }).seed = false;
+		const { session } = make(sock);
+		await session.join();
+		const seeded = vi.fn();
+		session.whenSeeder(seeded);
+		expect(seeded).not.toHaveBeenCalled();
+		sock.fromServer("collab:seed", { room: `collab:p:doc:${ref.id}` });
+		expect(seeded).toHaveBeenCalledTimes(1);
+		expect(session.seed).toBe(true);
 	});
 
 	it("reports lost when the server refuses the join", async () => {
@@ -143,6 +180,19 @@ describe("CollabSession", () => {
 		expect(session.status).toBe("offline");
 		sock.fromServer("collab:revoked", { room: `collab:p:doc:${ref.id}` });
 		expect(session.status).toBe("lost");
+	});
+});
+
+describe("seedCollabDoc", () => {
+	it("does not overwrite content that is already in the shared doc", async () => {
+		vi.useFakeTimers();
+		const { session } = make();
+		session.fragment.insert(0, [new Y.XmlText("peer typed this")]);
+		const write = vi.fn();
+		seedCollabDoc(session, write);
+		await vi.advanceTimersByTimeAsync(100);
+		expect(write).not.toHaveBeenCalled();
+		vi.useRealTimers();
 	});
 });
 

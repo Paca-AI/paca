@@ -141,8 +141,9 @@ existing Socket.IO connection (`src/collab.ts`):
 
 Server → client: `collab:update`, `collab:awareness`, `collab:revoked` (access lost).
 
-- **Authorization**: every update is checked against IAM through the shared `AccessDecider`; IAM changes re-check all members.
+- **Authorization**: every update is checked against IAM through the shared `AccessDecider`; IAM changes re-check all members, and a periodic pass (60 s) covers a missed announcement.
 - **Persistence**: none in this service. Clients still save block JSON through the REST API, so MCP, search and exports are unchanged. An empty room is dropped 30 s after its last editor leaves and re-seeded from the stored content.
-- **Seeding**: the first joiner of an empty room gets `seed: true` and is the only client that writes the stored content into the Y.Doc.
+- **Seeding**: the first joiner of an empty room gets `seed: true` and is the only client that writes the stored content into the Y.Doc. If that client leaves, or does not produce content within 10 s, the grant moves to another member (`collab:seed`). Clients never write the stored copy over content already in the room.
+- **Limits**: 5 MB per update, 2 000 rooms overall and 10 rooms per account.
 - **Scaling**: rooms live in one process memory; running several replicas needs sticky routing by resource (or a Socket.IO adapter plus shared doc state).
 - **Limits**: a write by REST (an agent or MCP) while editors have the room open is not merged into the live doc; the next save from an editor overwrites it. "Write with AI" on task descriptions is handled by applying that result once from the requesting client.

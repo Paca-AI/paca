@@ -179,6 +179,9 @@ export function createSocketServer(
 				const target = io.to(room);
 				(except ? target.except(except) : target).emit(event, payload);
 			},
+			grantSeed: (socketId, room) => {
+				io.to(socketId).emit("collab:seed", { room });
+			},
 			revoke: (socketId, room) => {
 				logger.info({ socketId, room }, "collab access revoked");
 				io.in(socketId).socketsLeave(room);
@@ -289,8 +292,11 @@ export function createSocketServer(
 				try {
 					// socket.join is synchronous with the in-memory adapter, and
 					// runs before the hub snapshots the room's state.
-					const res = await collab.join(socket.id, socket.data, req, (room) => {
-						void socket.join(room);
+					const res = await collab.join(socket.id, socket.data, req, {
+						enter: (room) => {
+							void socket.join(room);
+						},
+						isAlive: () => socket.connected,
 					});
 					ack(res);
 				} catch (err) {
