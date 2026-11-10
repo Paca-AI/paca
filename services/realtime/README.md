@@ -11,6 +11,7 @@ to the `paca.events` Valkey Pub/Sub channel published by `services/api`.
 - Place each socket in the namespace-scoped rooms of a project (`project:<projectId>:tasks`, `…:docs`, `…:conversations`, `…:views`, …) whose `<domain>:read` action the API lists among the account's effective actions. A room only says an account may *possibly* see that kind of event.
 - Deliver every event only to the sockets whose account the API confirms holds the event's action on the event's resource (see [Authorization](#authorization)).
 - Re-check on change: drop cached decisions and re-sync rooms when the API announces an IAM change, and end a socket when its access token expires.
+- Relay real-time collaborative editing (Yjs) for project docs and task descriptions (see [Collaborative editing](#collaborative-editing)).
 - Expose a `/healthz` endpoint for container health checks.
 
 ## Stack
@@ -124,3 +125,27 @@ Nothing is persisted: sessions live in memory for the life of the socket and the
 bun run lint    # biome check
 bun run check   # tsc --noEmit
 ```
+
+## Collaborative editing
+
+Project docs and task descriptions (the BlockNote editors in `apps/web`) are
+edited together through Yjs. The service keeps one in-memory `Y.Doc` per edited
+resource and relays updates and cursor awareness between its editors over the
+existing Socket.IO connection (`src/collab.ts`):
+
+| Event (client → server) | Meaning |
+|---|---|
+| `collab:join` `{projectId, kind: "doc"\|"task", id, stateVector}` (ack) | Join; requires `docs:write` / `tasks:write` on the resource. The ack carries the missing state and `seed` |
+| `collab:update` / `collab:awareness` `{room, update}` | Document / cursor updates, relayed to the other members |
+| `collab:leave` `{room}` | Leave |
+
+Server → client: `collab:update`, `collab:awareness`, `collab:revoked` (access lost), `collab:seed-cancel` (the seed grant moved on: stop writing), `collab:error` `{room, reason}` (an update was dropped: `unavailable`, `rate`, `too_large` or `backlog`; the client re-joins to resync).
+
+Limits: 5 MB per update, 64 MB of accepted updates per room, a per-socket message rate limit, 100 updates waiting on an access check per socket+room, 10 rooms per account. An access check that *fails* (API unreachable) never evicts an editor; only an explicit denial does.
+
+- **Authorization**: every update is checked against IAM through the shared `AccessDecider`; IAM changes re-check all members, and a periodic pass (60 s) covers a missed announcement.
+- **Persistence**: none in this service. Clients still save block JSON through the REST API, so MCP, search and exports are unchanged. An empty room is dropped 30 s after its last editor leaves and re-seeded from the stored content.
+- **Seeding**: the first joiner of an empty room gets `seed: true` and is the only client that writes the stored content into the Y.Doc. If that client leaves, or does not produce content within 10 s, the grant moves to another member (`collab:seed`). Clients never write the stored copy over content already in the room.
+- **Capacity**: 5 MB per update, 2 000 rooms overall and 10 rooms per account.
+- **Scaling**: rooms live in one process memory; running several replicas needs sticky routing by resource (or a Socket.IO adapter plus shared doc state).
+- **REST writes**: a write by REST (an agent or MCP) while editors have the room open is not merged into the live doc; the next save from an editor overwrites it. "Write with AI" on task descriptions is handled by applying that result once from the requesting client.

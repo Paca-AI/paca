@@ -1,0 +1,374 @@
+import { describe, expect, test } from "bun:test";
+import { Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
+import * as Y from "yjs";
+import type { AccessDecider } from "./access.ts";
+import { COLLAB_FRAGMENT, CollabHub, isEmpty, parseRoomRef } from "./collab.ts";
+
+const P = "11111111-1111-4111-8111-111111111111";
+const D = "22222222-2222-4222-8222-222222222222";
+const ref = { projectId: P, kind: "doc" as const, id: D };
+
+function setup(
+	allowed: () => boolean | Promise<boolean> = () => true,
+	seedDeadlineMs = 10_000,
+) {
+	const granted: string[] = [];
+	const cancelled: string[] = [];
+	const errors: { id: string; reason: string }[] = [];
+	const sent: {
+		room: string;
+		except?: string;
+		event: string;
+		payload: unknown;
+	}[] = [];
+	const revoked: string[] = [];
+	const decider = {
+		can: async () => allowed(),
+	} as unknown as AccessDecider;
+	const hub = new CollabHub(
+		decider,
+		{
+			broadcast: (room, except, event, payload) =>
+				sent.push({ room, except, event, payload }),
+			revoke: (id) => revoked.push(id),
+			grantSeed: (id) => granted.push(id),
+			cancelSeed: (id) => cancelled.push(id),
+			error: (id, _room, reason) => errors.push({ id, reason }),
+		},
+		undefined,
+		seedDeadlineMs,
+	);
+	return { hub, sent, revoked, granted, cancelled, errors };
+}
+
+const viewer = { userId: "u", rawToken: "t" };
+const tick = () => new Promise((r) => setTimeout(r, 5));
+
+function contentUpdate(): Uint8Array {
+	const d = new Y.Doc();
+	const el = new Y.XmlElement("blockContainer");
+	d.getXmlFragment(COLLAB_FRAGMENT).insert(0, [el]);
+	return Y.encodeStateAsUpdate(d);
+}
+
+describe("parseRoomRef", () => {
+	test("rejects bad ids and kinds", () => {
+		expect(parseRoomRef({ ...ref, id: "x/../y" })).toBeUndefined();
+		expect(parseRoomRef({ ...ref, kind: "sprint" })).toBeUndefined();
+		expect(parseRoomRef(ref)).toEqual(ref);
+	});
+});
+
+describe("CollabHub", () => {
+	test("forbidden without write access", async () => {
+		const { hub } = setup(() => false);
+		const res = await hub.join("a", viewer, ref);
+		expect(res).toEqual({ ok: false, reason: "forbidden" });
+		expect(hub.roomCount).toBe(0);
+	});
+
+	test("only the first joiner of an empty room seeds", async () => {
+		const { hub } = setup();
+		const a = await hub.join("a", viewer, ref);
+		const b = await hub.join("b", viewer, ref);
+		expect(a.ok && a.seed).toBe(true);
+		expect(b.ok && b.seed).toBe(false);
+	});
+
+	test("seed passes on when the seeder leaves before writing", async () => {
+		const { hub } = setup();
+		await hub.join("a", viewer, ref);
+		hub.leave("a", ref);
+		const b = await hub.join("b", viewer, ref);
+		expect(b.ok && b.seed).toBe(true);
+	});
+
+	test("updates are relayed to peers and served to later joiners", async () => {
+		const { hub, sent } = setup();
+		await hub.join("a", viewer, ref);
+		const u = contentUpdate();
+		hub.update("a", ref, u);
+		await tick();
+		expect(
+			sent.some((s) => s.event === "collab:update" && s.except === "a"),
+		).toBe(true);
+		const b = await hub.join("b", viewer, ref);
+		expect(b.ok && b.seed).toBe(false);
+		if (!b.ok) throw new Error("join failed");
+		const peer = new Y.Doc();
+		Y.applyUpdate(peer, b.update);
+		expect(peer.getXmlFragment(COLLAB_FRAGMENT).length).toBe(1);
+	});
+
+	test("an update after access is revoked evicts the member", async () => {
+		let ok = true;
+		const { hub, revoked, sent } = setup(() => ok);
+		await hub.join("a", viewer, ref);
+		ok = false;
+		hub.update("a", ref, contentUpdate());
+		await tick();
+		expect(revoked).toEqual(["a"]);
+		expect(sent.filter((s) => s.event === "collab:update")).toHaveLength(0);
+	});
+
+	test("recheck evicts members who lost access", async () => {
+		let ok = true;
+		const { hub, revoked } = setup(() => ok);
+		await hub.join("a", viewer, ref);
+		ok = false;
+		await hub.recheck();
+		expect(revoked).toEqual(["a"]);
+	});
+
+	test("oversized or malformed updates are ignored", async () => {
+		const { hub, sent } = setup();
+		await hub.join("a", viewer, ref);
+		hub.update("a", ref, "not bytes");
+		hub.update("a", ref, new Uint8Array([255, 255, 255]));
+		await tick();
+		expect(sent.filter((s) => s.event === "collab:update")).toHaveLength(0);
+		hub.close();
+	});
+});
+
+describe("CollabHub placeholder content", () => {
+	test("an empty placeholder paragraph does not stop the room being seeded", async () => {
+		const { hub } = setup();
+		await hub.join("a", viewer, ref);
+		// An editor mounted and wrote only BlockNote's empty placeholder block.
+		const d = new Y.Doc();
+		const container = new Y.XmlElement("blockContainer");
+		container.insert(0, [new Y.XmlElement("paragraph")]);
+		d.getXmlFragment(COLLAB_FRAGMENT).insert(0, [container]);
+		hub.update("a", ref, Y.encodeStateAsUpdate(d));
+		await tick();
+		hub.leave("a", ref);
+		const b = await hub.join("b", viewer, ref);
+		expect(b.ok && b.seed).toBe(true);
+	});
+});
+
+describe("CollabHub hardening", () => {
+	test("a join whose socket died during the access check leaves nothing behind", async () => {
+		const { hub } = setup();
+		const res = await hub.join("a", viewer, ref, { isAlive: () => false });
+		expect(res).toEqual({ ok: false, reason: "unavailable" });
+		expect(hub.roomCount).toBe(0);
+		// And it holds no seed grant: the next joiner can seed.
+		const b = await hub.join("b", viewer, ref);
+		expect(b.ok && b.seed).toBe(true);
+	});
+
+	test("the seed moves to another member when the seeder leaves", async () => {
+		const { hub, granted } = setup();
+		await hub.join("a", viewer, ref);
+		const b = await hub.join("b", viewer, ref);
+		expect(b.ok && b.seed).toBe(false);
+		hub.leaveAll("a");
+		expect(granted).toEqual(["b"]);
+		hub.close();
+	});
+
+	test("the seed moves on when the seeder never writes within the deadline", async () => {
+		const { hub, granted } = setup(() => true, 20);
+		await hub.join("a", viewer, ref);
+		await hub.join("b", viewer, ref);
+		await new Promise((r) => setTimeout(r, 60));
+		expect(granted).toContain("b");
+		hub.close();
+	});
+
+	test("the seed grant does not cycle between idle members forever", async () => {
+		const { hub, granted } = setup(() => true, 15);
+		await hub.join("a", viewer, ref);
+		await hub.join("b", viewer, ref);
+		await new Promise((r) => setTimeout(r, 120));
+		// a -> b once; then everyone has been tried and the timer stops.
+		expect(granted).toEqual(["b"]);
+		// A brand-new joiner can still take the free grant.
+		const c = await hub.join("c", viewer, ref);
+		expect(c.ok && c.seed).toBe(true);
+		hub.close();
+	});
+
+	test("one account cannot hold more than its share of rooms", async () => {
+		const { hub } = setup();
+		let last: unknown;
+		for (let i = 0; i < 12; i++) {
+			const id = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+			last = await hub.join("a", viewer, { ...ref, id });
+		}
+		expect(last).toEqual({ ok: false, reason: "full" });
+		// Another account is unaffected.
+		const other = await hub.join("o", { userId: "other", rawToken: "t" }, ref);
+		expect(other.ok).toBe(true);
+		hub.close();
+	});
+});
+
+describe("CollabHub reconnect", () => {
+	test("a reconnecting editor syncs what each side missed, both ways", async () => {
+		const { hub, sent } = setup();
+		const a = new Y.Doc();
+		const b = new Y.Doc();
+		const frag = (d: Y.Doc) => d.getXmlFragment(COLLAB_FRAGMENT);
+		const toRoom = (d: Y.Doc, id: string) =>
+			d.on("update", (u, origin) => {
+				if (origin !== "remote") hub.update(id, ref, u);
+			});
+
+		// Both join an empty room; A seeds.
+		const ja = await hub.join("a", viewer, ref);
+		const jb = await hub.join("b1", viewer, ref);
+		if (!ja.ok || !jb.ok) throw new Error("join failed");
+		toRoom(a, "a");
+		frag(a).insert(0, [new Y.XmlElement("one")]);
+		await tick();
+		// B's first socket is gone (reconnect), A keeps editing meanwhile.
+		hub.leaveAll("b1");
+		frag(a).insert(1, [new Y.XmlElement("two")]);
+		await tick();
+		// B edits offline, then rejoins on a new socket id.
+		frag(b).insert(0, [new Y.XmlElement("from-b")]);
+		const rejoin = await hub.join("b2", viewer, {
+			...ref,
+			stateVector: Y.encodeStateVector(b),
+		});
+		if (!rejoin.ok) throw new Error("rejoin failed");
+		expect(rejoin.seed).toBe(false);
+		Y.applyUpdate(b, rejoin.update, "remote");
+		const missing = Y.encodeStateAsUpdate(b, rejoin.stateVector);
+		sent.length = 0;
+		hub.update("b2", ref, missing);
+		await tick();
+
+		// A is told about B's edit, and B got A's.
+		const toA = sent.find(
+			(s) => s.event === "collab:update" && s.except === "b2",
+		);
+		expect(toA).toBeDefined();
+		Y.applyUpdate(a, (toA?.payload as { update: Uint8Array }).update, "remote");
+		expect(frag(a).length).toBe(3);
+		expect(frag(b).length).toBe(3);
+		hub.close();
+	});
+});
+
+describe("CollabHub review fixes", () => {
+	test("a failed access check does not evict editors or drop their place", async () => {
+		let fail = false;
+		const { hub, revoked, errors } = setup(async () => {
+			if (fail) throw new Error("api down");
+			return true;
+		});
+		await hub.join("a", viewer, ref);
+		fail = true;
+		await hub.recheck();
+		expect(revoked).toEqual([]);
+		hub.update("a", ref, contentUpdate());
+		await tick();
+		expect(revoked).toEqual([]);
+		expect(errors).toEqual([{ id: "a", reason: "unavailable" }]);
+		// Still a member once the API is back.
+		fail = false;
+		hub.update("a", ref, contentUpdate());
+		await tick();
+		expect(revoked).toEqual([]);
+		const j = await hub.join("b", viewer, ref);
+		expect(j.ok).toBe(true);
+		hub.close();
+	});
+
+	test("a join during an access outage is unavailable, not forbidden", async () => {
+		const { hub } = setup(async () => {
+			throw new Error("api down");
+		});
+		expect(await hub.join("a", viewer, ref)).toEqual({
+			ok: false,
+			reason: "unavailable",
+		});
+	});
+
+	test("the previous seeder is told to stop when the grant moves on", async () => {
+		const { hub, granted, cancelled } = setup(() => true, 20);
+		await hub.join("a", viewer, ref);
+		await hub.join("b", viewer, ref);
+		await new Promise((r) => setTimeout(r, 60));
+		expect(granted).toContain("b");
+		expect(cancelled).toEqual(["a"]);
+		hub.close();
+	});
+
+	test("a member cannot overwrite another member's awareness", async () => {
+		const { hub, sent } = setup();
+		await hub.join("a", viewer, ref);
+		await hub.join("b", viewer, ref);
+		const mk = (clientID: number, state: object | null) => {
+			const d = new Y.Doc();
+			d.clientID = clientID;
+			const aw = new Awareness(d);
+			aw.setLocalState(state);
+			return encodeAwarenessUpdate(aw, [clientID]);
+		};
+		hub.awarenessUpdate("a", ref, mk(111, { user: "a" }));
+		sent.length = 0;
+		hub.awarenessUpdate("b", ref, mk(111, null));
+		expect(sent).toHaveLength(0);
+		hub.awarenessUpdate("b", ref, mk(222, { user: "b" }));
+		expect(sent.filter((s) => s.event === "collab:awareness")).toHaveLength(1);
+		hub.close();
+	});
+
+	test("a room stops accepting updates past its size budget", async () => {
+		const { hub, errors } = setup();
+		await hub.join("a", viewer, ref);
+		const big = new Y.Doc();
+		big
+			.getXmlFragment(COLLAB_FRAGMENT)
+			.insert(0, [new Y.XmlText("x".repeat(4_000_000))]);
+		const u = Y.encodeStateAsUpdate(big);
+		for (let i = 0; i < 20; i++) hub.update("a", ref, u);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(errors.some((e) => e.reason === "too_large")).toBe(true);
+		hub.close();
+	});
+
+	test("a flood of messages from one socket is rate limited", async () => {
+		const { hub, errors } = setup();
+		await hub.join("a", viewer, ref);
+		for (let i = 0; i < 400; i++) hub.update("a", ref, new Uint8Array([0, 0]));
+		expect(errors.some((e) => e.reason === "rate")).toBe(true);
+		hub.close();
+	});
+
+	test("updates waiting on a stalled access check are capped", async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		let stall = false;
+		const { hub, errors } = setup(async () => {
+			if (stall) await gate;
+			return true;
+		});
+		await hub.join("a", viewer, ref);
+		stall = true;
+		for (let i = 0; i < 150; i++) hub.update("a", ref, new Uint8Array([0, 0]));
+		expect(errors.some((e) => e.reason === "backlog")).toBe(true);
+		release();
+		await tick();
+		hub.close();
+	});
+
+	test("isEmpty ignores placeholders but sees text and other blocks", () => {
+		const d = new Y.Doc();
+		const f = d.getXmlFragment(COLLAB_FRAGMENT);
+		const c = new Y.XmlElement("blockContainer");
+		const p = new Y.XmlElement("paragraph");
+		c.insert(0, [p]);
+		f.insert(0, [c]);
+		expect(isEmpty(d)).toBe(true);
+		p.insert(0, [new Y.XmlText("hi")]);
+		expect(isEmpty(d)).toBe(false);
+	});
+});

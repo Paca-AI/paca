@@ -63,6 +63,14 @@ import {
 	verifyTokenWithAPI,
 } from "./api-client.ts";
 import { extractTokenFromCookieHeader } from "./auth.ts";
+import {
+	CollabHub,
+	type CollabJoinRequest,
+	type CollabJoinResult,
+	MAX_UPDATE_BYTES,
+	parseRoomRef,
+	roomName,
+} from "./collab.ts";
 import type { Config } from "./config.ts";
 import { agentChatRoomName } from "./permissions.ts";
 import { createResyncer, type Resyncer } from "./resync.ts";
@@ -90,6 +98,7 @@ export interface SocketServer {
 	io: Server;
 	resyncer: Resyncer;
 	expiry: ExpiryWatcher;
+	collab: CollabHub;
 }
 
 export function createSocketServer(
@@ -112,6 +121,9 @@ export function createSocketServer(
 			origin: config.cors.origins,
 			credentials: true,
 		},
+		// Collaborative-editing updates (Yjs) travel as binary messages; the
+		// default 1 MB limit would drop the connection on a large first sync.
+		maxHttpBufferSize: MAX_UPDATE_BYTES + 64 * 1024,
 		connectionStateRecovery: {
 			maxDisconnectionDuration: 2 * 60 * 1000,
 		},
@@ -158,6 +170,32 @@ export function createSocketServer(
 	});
 
 	const expiry = new ExpiryWatcher();
+
+	// Collaborative editing relay (see collab.ts).
+	const collab = new CollabHub(
+		decider,
+		{
+			broadcast: (room, except, event, payload) => {
+				const target = io.to(room);
+				(except ? target.except(except) : target).emit(event, payload);
+			},
+			grantSeed: (socketId, room) => {
+				io.to(socketId).emit("collab:seed", { room });
+			},
+			cancelSeed: (socketId, room) => {
+				io.to(socketId).emit("collab:seed-cancel", { room });
+			},
+			error: (socketId, room, reason) => {
+				io.to(socketId).emit("collab:error", { room, reason });
+			},
+			revoke: (socketId, room) => {
+				logger.info({ socketId, room }, "collab access revoked");
+				io.in(socketId).socketsLeave(room);
+				io.to(socketId).emit("collab:revoked", { room });
+			},
+		},
+		(err, ctx) => logger.warn({ err, ctx }, "collab error"),
+	);
 
 	// ── Connection lifecycle ───────────────────────────────────────────────────
 
@@ -252,7 +290,44 @@ export function createSocketServer(
 			logger.debug({ userId, projectId }, "left project rooms");
 		});
 
+		// ── Collaborative editing ──────────────────────────────────────────
+		socket.on(
+			"collab:join",
+			async (req: CollabJoinRequest, ack?: (res: CollabJoinResult) => void) => {
+				if (typeof ack !== "function") return;
+				try {
+					// socket.join is synchronous with the in-memory adapter, and
+					// runs before the hub snapshots the room's state.
+					const res = await collab.join(socket.id, socket.data, req, {
+						enter: (room) => {
+							void socket.join(room);
+						},
+						isAlive: () => socket.connected,
+					});
+					ack(res);
+				} catch (err) {
+					logger.warn({ userId, err }, "collab join failed");
+					ack({ ok: false, reason: "unavailable" });
+				}
+			},
+		);
+		socket.on("collab:update", (msg: { room?: unknown; update?: unknown }) => {
+			collab.update(socket.id, msg?.room, msg?.update);
+		});
+		socket.on(
+			"collab:awareness",
+			(msg: { room?: unknown; update?: unknown }) => {
+				collab.awarenessUpdate(socket.id, msg?.room, msg?.update);
+			},
+		);
+		socket.on("collab:leave", (msg: { room?: unknown }) => {
+			collab.leave(socket.id, msg?.room);
+			const ref = parseRoomRef(msg?.room);
+			if (ref) void socket.leave(roomName(ref));
+		});
+
 		socket.on("disconnect", (reason) => {
+			collab.leaveAll(socket.id);
 			cancelExpiry();
 			logger.info(
 				{ userId, socketId: socket.id, reason },
@@ -265,5 +340,5 @@ export function createSocketServer(
 	resyncer.start();
 	expiry.start();
 
-	return { httpServer, io, resyncer, expiry };
+	return { httpServer, io, resyncer, expiry, collab };
 }

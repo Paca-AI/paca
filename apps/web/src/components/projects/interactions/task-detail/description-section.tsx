@@ -24,13 +24,19 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { useCollabSession } from "@/hooks/use-collab-session";
 import { useThemeMode } from "@/hooks/use-theme-mode";
 import { writeTaskDescriptionWithAI } from "@/lib/agent-api";
 import {
 	getAttachmentDownloadURL,
 	uploadAttachment,
 } from "@/lib/attachment-api";
-import { cleanBlocks, cn } from "@/lib/utils";
+import {
+	type CollabSession,
+	type CollabStatus,
+	seedCollabDoc,
+} from "@/lib/collab-session";
+import { cleanBlocks, cn, isRemoteOnlyChange } from "@/lib/utils";
 
 type UpdateFn = (payload: { description?: unknown[] | null }) => void;
 
@@ -45,13 +51,70 @@ interface DescriptionSectionProps {
 /** Custom URI scheme used to store attachment references in the markdown. */
 const ATTACHMENT_SCHEME = "attachment://";
 
-export function DescriptionSection({
+/**
+ * Task description. Editors join a real-time Yjs room for the task (see
+ * lib/collab-session.ts); when it cannot be joined this falls back to the
+ * plain, single-user editor.
+ */
+export function DescriptionSection(props: DescriptionSectionProps) {
+	const collab = useCollabSession(
+		"task",
+		props.projectId,
+		props.taskId,
+		(props.canEdit ?? true) && !!props.projectId && !!props.taskId,
+	);
+	if (collab.phase === "connecting") {
+		return (
+			<div className="min-h-24 rounded-xl border border-border/25 bg-card/50" />
+		);
+	}
+	return (
+		<DescriptionSectionInner
+			// The editor is built once with or without the Yjs binding.
+			key={collab.session ? "collab" : "plain"}
+			{...props}
+			collab={collab.session}
+			collabStatus={collab.phase === "ready" ? collab.status : null}
+		/>
+	);
+}
+
+function DescriptionSectionInner({
 	description,
-	canEdit = true,
+	canEdit: canEditProp = true,
 	projectId,
 	taskId,
 	onUpdate,
-}: DescriptionSectionProps) {
+	collab,
+	collabStatus,
+}: DescriptionSectionProps & {
+	collab: CollabSession | null;
+	collabStatus: CollabStatus | null;
+}) {
+	// A revoked session must stop accepting edits: they would never sync.
+	const canEdit = canEditProp && collabStatus !== "lost";
+	// Set when this user asked an agent to write the description: the agent's
+	// REST write is then applied once, by this client, into the shared doc.
+	const aiWriteRef = useRef(false);
+	// True while the stored content is being written into the shared doc.
+	const seedingRef = useRef(false);
+	// Whether the component is mounted. A ref flag rather than cancelling the
+	// seed in a cleanup: React StrictMode runs that cleanup once on mount and
+	// the seed effect does not run again, which would leave the description
+	// blank in development.
+	const mountedRef = useRef(false);
+	const seedUnsubRef = useRef<(() => void) | null>(null);
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+			// StrictMode re-mounts synchronously, so only a real unmount is still
+			// unmounted by the time this runs: then drop the seed listener.
+			setTimeout(() => {
+				if (!mountedRef.current) seedUnsubRef.current?.();
+			}, 0);
+		};
+	}, []);
 	const { t } = useTranslation("projects");
 	const { resolvedMode } = useThemeMode();
 	const qc = useQueryClient();
@@ -69,6 +132,7 @@ export function DescriptionSection({
 			return writeTaskDescriptionWithAI(projectId, taskId, selectedAgentId);
 		},
 		onSuccess: () => {
+			aiWriteRef.current = true;
 			// Mirrors the assign-to-agent / mention-agent flows: don't rely solely
 			// on the realtime websocket event to surface the new "started an AI
 			// session" activity — refresh immediately so it shows without a reload.
@@ -107,35 +171,46 @@ export function DescriptionSection({
 		taskIdRef.current = taskId;
 	}, [taskId]);
 
-	const editor = useCreateBlockNote({
-		schema: customSchema,
-		pasteHandler: createAnnotationPasteHandler(),
-		/**
-		 * Called by BlockNote when the user inserts an image / file / video / audio.
-		 * Uploads via the task attachment API and returns a stable custom URI.
-		 */
-		uploadFile: async (file: File) => {
-			const pId = projectIdRef.current;
-			const tId = taskIdRef.current;
-			if (!pId || !tId) throw new Error("No project/task context for upload");
-			const attachment = await uploadAttachment(pId, tId, file);
-			// Store as a stable custom URI; presigned URL is fetched on-demand.
-			return `${ATTACHMENT_SCHEME}${pId}/${tId}/${attachment.id}`;
-		},
+	const editor = useCreateBlockNote(
+		{
+			schema: customSchema,
+			...(collab && {
+				collaboration: {
+					fragment: collab.fragment,
+					provider: collab.provider,
+					user: collab.user,
+					showCursorLabels: "activity" as const,
+				},
+			}),
+			pasteHandler: createAnnotationPasteHandler(),
+			/**
+			 * Called by BlockNote when the user inserts an image / file / video / audio.
+			 * Uploads via the task attachment API and returns a stable custom URI.
+			 */
+			uploadFile: async (file: File) => {
+				const pId = projectIdRef.current;
+				const tId = taskIdRef.current;
+				if (!pId || !tId) throw new Error("No project/task context for upload");
+				const attachment = await uploadAttachment(pId, tId, file);
+				// Store as a stable custom URI; presigned URL is fetched on-demand.
+				return `${ATTACHMENT_SCHEME}${pId}/${tId}/${attachment.id}`;
+			},
 
-		/**
-		 * Called by BlockNote whenever it needs to display a file URL.
-		 * Converts our custom `attachment://` URI into a fresh presigned URL.
-		 */
-		resolveFileUrl: async (url: string) => {
-			if (!url.startsWith(ATTACHMENT_SCHEME)) return url;
-			// URI format: attachment://{projectId}/{taskId}/{attachmentId}
-			const path = url.slice(ATTACHMENT_SCHEME.length);
-			const [pId, tId, attachmentId] = path.split("/");
-			if (!pId || !tId || !attachmentId) return url;
-			return getAttachmentDownloadURL(pId, tId, attachmentId);
+			/**
+			 * Called by BlockNote whenever it needs to display a file URL.
+			 * Converts our custom `attachment://` URI into a fresh presigned URL.
+			 */
+			resolveFileUrl: async (url: string) => {
+				if (!url.startsWith(ATTACHMENT_SCHEME)) return url;
+				// URI format: attachment://{projectId}/{taskId}/{attachmentId}
+				const path = url.slice(ATTACHMENT_SCHEME.length);
+				const [pId, tId, attachmentId] = path.split("/");
+				if (!pId || !tId || !attachmentId) return url;
+				return getAttachmentDownloadURL(pId, tId, attachmentId);
+			},
 		},
-	});
+		[collab],
+	);
 
 	// Populate the editor from BlockNote JSON whenever description changes
 	// externally (initial load or server refetch that differs from what we saved).
@@ -153,24 +228,60 @@ export function DescriptionSection({
 			: null;
 		if (initializedRef.current && normalizedStr === lastSavedRef.current)
 			return;
+		if (collab && initializedRef.current && !aiWriteRef.current) {
+			// The shared Y.Doc is the source of truth while collaborating; a
+			// refetch caused by a peer's save must not be replayed into it by
+			// every open editor (concurrent replaceBlocks would duplicate).
+			return;
+		}
+		const firstRun = !initializedRef.current;
+		aiWriteRef.current = false;
 		initializedRef.current = true;
 		lastSavedRef.current = normalizedStr;
 		readyRef.current = false;
 
-		editor.replaceBlocks(
-			editor.document,
-			displayBlocks as Parameters<typeof editor.replaceBlocks>[1],
-		);
+		// Collaborating: only the client the room picked writes the stored
+		// content (once, into the empty room); later we only apply an AI write
+		// this user asked for.
+		const blocks = displayBlocks as Parameters<typeof editor.replaceBlocks>[1];
+		if (!collab) {
+			editor.replaceBlocks(editor.document, blocks);
+		} else if (firstRun) {
+			if (displayBlocks.length > 0) {
+				// Runs now when this client was picked to seed, or later if the
+				// picked client left or stalled and the grant moves here.
+				seedUnsubRef.current = collab.whenSeeder(() => {
+					seedCollabDoc(
+						collab,
+						() => {
+							seedingRef.current = true;
+							editor.replaceBlocks(editor.document, blocks);
+							queueMicrotask(() => {
+								seedingRef.current = false;
+							});
+						},
+						{ isActive: () => mountedRef.current },
+					);
+				});
+			}
+		} else {
+			editor.replaceBlocks(editor.document, blocks);
+		}
 		queueMicrotask(() => {
 			readyRef.current = true;
 		});
-	}, [description, editor]);
+	}, [description, editor, collab]);
 
-	const handleChange = useCallback(() => {
-		if (!canEdit || !readyRef.current) return;
-		// Track dirty state so blur can save without re-reading document
-		pendingRef.current = true;
-	}, [canEdit]);
+	const handleChange = useCallback(
+		(_editor: unknown, ctx?: Parameters<typeof isRemoteOnlyChange>[0]) => {
+			if (!canEdit || !readyRef.current || seedingRef.current) return;
+			// A peer's edit is saved by that peer, not by every open editor.
+			if (collab && isRemoteOnlyChange(ctx)) return;
+			// Track dirty state so blur can save without re-reading document
+			pendingRef.current = true;
+		},
+		[canEdit, collab],
+	);
 
 	const save = useCallback(() => {
 		if (!canEdit || !pendingRef.current) return;
