@@ -8,6 +8,7 @@ import {
 	COLLAB_FRAGMENT,
 	CollabHub,
 	isEmpty,
+	MAX_ROOM_BYTES,
 	parseContentChange,
 	parseRoomRef,
 } from "./collab.ts";
@@ -440,7 +441,7 @@ describe("external writes (agent / REST) into a live room", () => {
 
 	test("merges an agent's write and broadcasts it to every editor", async () => {
 		const { hub, sent } = await liveRoom();
-		hub.handleContentEvent(
+		await hub.handleContentEvent(
 			"doc.updated",
 			event(stored, [para("a", "alpha"), para("b", "bravo by agent")]),
 		);
@@ -451,16 +452,16 @@ describe("external writes (agent / REST) into a live room", () => {
 
 	test("ignores the save of an editor in the room", async () => {
 		const { hub, sent } = await liveRoom();
-		hub.handleContentEvent(
+		await hub.handleContentEvent(
 			"doc.updated",
 			event(stored, [para("a", "alpha"), para("b", "edited")], "u2"),
 		);
 		expect(sent).toHaveLength(0);
 	});
 
-	test("does nothing when nobody has the resource open", () => {
+	test("does nothing when nobody has the resource open", async () => {
 		const { hub, sent } = setup();
-		hub.handleContentEvent(
+		await hub.handleContentEvent(
 			"doc.updated",
 			event(stored, [para("a", "alpha"), para("b", "x")]),
 		);
@@ -470,7 +471,67 @@ describe("external writes (agent / REST) into a live room", () => {
 
 	test("an unchanged merge broadcasts nothing", async () => {
 		const { hub, sent } = await liveRoom();
-		hub.handleContentEvent("doc.updated", event(stored, stored));
+		await hub.handleContentEvent("doc.updated", event(stored, stored));
+		expect(sent).toHaveLength(0);
+	});
+
+	test("waits for editor updates still in their access check before merging", async () => {
+		let release: () => void = () => {};
+		let slow = false;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const t = setup(async () => {
+			if (slow) await gate;
+			return true;
+		});
+		const seedDoc = blocksToYDoc(ed, stored as never, COLLAB_FRAGMENT);
+		await t.hub.join("s1", { userId: "u1", rawToken: "t" }, ref);
+		t.hub.update("s1", ref, Y.encodeStateAsUpdate(seedDoc));
+		await tick();
+
+		// An editor types into "bravo"; its update is stuck on the access check.
+		const client = new Y.Doc();
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(seedDoc));
+		const before = Y.encodeStateVector(client);
+		const para1 = client
+			.getXmlFragment(COLLAB_FRAGMENT)
+			.toArray()[0] as Y.XmlElement;
+		const bravo = para1.toArray()[1] as Y.XmlElement;
+		((bravo.get(0) as Y.XmlElement).get(0) as Y.XmlText).insert(0, "LIVE ");
+		slow = true;
+		t.sent.length = 0;
+		t.hub.update("s1", ref, Y.encodeStateAsUpdate(client, before));
+
+		// Meanwhile the agent rewrites the same block.
+		const merged = t.hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "bravo by agent")]),
+		);
+		await tick();
+		expect(t.sent.some((m) => m.event === "collab:update")).toBe(false);
+		release();
+		await merged;
+		await tick();
+		// The editor's keystrokes were applied first; the merge saw them and
+		// left the block alone instead of deleting the node they target.
+		const room = (
+			t.hub as unknown as { rooms: Map<string, { doc: Y.Doc }> }
+		).rooms.get(`collab:${P}:doc:${D}`);
+		const text = room?.doc.getXmlFragment(COLLAB_FRAGMENT).toString() ?? "";
+		expect(text).toContain("LIVE bravo");
+		expect(text).not.toContain("by agent");
+	});
+
+	test("refuses an external write once the room's byte budget is spent", async () => {
+		const { hub, sent } = await liveRoom();
+		const rooms = (hub as unknown as { rooms: Map<string, { bytes: number }> })
+			.rooms;
+		for (const r of rooms.values()) r.bytes = MAX_ROOM_BYTES;
+		await hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "bravo by agent")]),
+		);
 		expect(sent).toHaveLength(0);
 	});
 });

@@ -177,4 +177,26 @@ describe("mergeExternalChange", () => {
 		mergeExternalChange(doc, COLLAB_FRAGMENT, [], next);
 		expect(texts(doc).join("|")).toContain("written by agent");
 	});
+
+	test("an inserted block next to an edited one is not mistaken for the edit", () => {
+		const two = [para("a", "alpha"), para("b", "bravo")];
+		const doc = room(two);
+		typeInto(doc, "a", "LIVE ");
+		// Ids stripped, as every web save does: X prepended and alpha edited.
+		const next = [
+			para(undefined, "X new"),
+			para(undefined, "alpha edited"),
+			para(undefined, "bravo"),
+		];
+		mergeExternalChange(
+			doc,
+			COLLAB_FRAGMENT,
+			two.map(({ id: _, ...b }) => b),
+			next,
+		);
+		const got = texts(doc);
+		expect(got).toContain("LIVE alpha");
+		expect(got).toContain("X new");
+		expect(got).toContain("bravo");
+	});
 });

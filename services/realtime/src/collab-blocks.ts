@@ -197,7 +197,8 @@ const MAX_ALIGN_CELLS = 4_000_000;
 // resolveIds gives every id-less block of `target` the id of the block of
 // `reference` it corresponds to, found by aligning siblings on content: equal
 // blocks pair up (longest common subsequence), and what remains between two
-// anchors pairs positionally when the types match (a modified block). Whatever
+// anchors pairs positionally when both sides have equally many blocks left and
+// the types match (a modified block). Whatever
 // stays unpaired gets a fresh id (an added block). Returns false when the
 // alignment would be too expensive.
 //
@@ -259,10 +260,16 @@ function align(reference: Blk[], target: Blk[]): boolean {
 	for (const [ai, aj] of [...pairs, [n, m] as [number, number]]) {
 		let i = pi;
 		let j = pj;
-		while (i < ai && j < aj) {
-			if (pool[i]?.type === todo[j]?.type) assign(pool[i], todo[j]);
-			i++;
-			j++;
+		// Pair only when both sides have the same number of blocks left: with
+		// a surplus on either side there is no telling which block was
+		// edited and which was inserted / removed, and a wrong pairing hands
+		// an edited block's id to an inserted one.
+		if (ai - i === aj - j) {
+			while (i < ai && j < aj) {
+				if (pool[i]?.type === todo[j]?.type) assign(pool[i], todo[j]);
+				i++;
+				j++;
+			}
 		}
 		if (ai < n) assign(pool[ai], todo[aj]);
 		pi = ai + 1;

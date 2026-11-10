@@ -246,6 +246,8 @@ export class CollabHub {
 	private readonly chains = new Map<string, Promise<void>>();
 	private readonly pending = new Map<string, number>();
 	private readonly buckets = new Map<string, Bucket>();
+	// Per room: external writes waiting to be merged, in arrival order.
+	private readonly externalChains = new Map<string, Promise<void>>();
 
 	constructor(
 		private readonly decider: AccessDecider,
@@ -419,32 +421,69 @@ export class CollabHub {
 
 	// handleContentEvent merges a doc.updated / task.updated announcement into the
 	// matching live room, if there is one. Never throws.
-	handleContentEvent(type: string, payload: Record<string, unknown>): void {
+	handleContentEvent(
+		type: string,
+		payload: Record<string, unknown>,
+	): Promise<void> {
 		const change = parseContentChange(type, payload);
-		if (!change) return;
-		try {
-			this.applyExternal(change.ref, change.actorId, change.old, change.new);
-		} catch (err) {
-			this.onError(err, "apply external change");
-		}
+		if (!change) return Promise.resolve();
+		// One chain per room, so two writes merge in the order they arrived.
+		const key = roomName(change.ref);
+		const prev = this.externalChains.get(key) ?? Promise.resolve();
+		const next = prev
+			.then(() =>
+				this.applyExternal(change.ref, change.actorId, change.old, change.new),
+			)
+			.then(() => {})
+			.catch((err) => this.onError(err, "apply external change"));
+		this.externalChains.set(key, next);
+		void next.then(() => {
+			if (this.externalChains.get(key) === next)
+				this.externalChains.delete(key);
+		});
+		return next;
 	}
 
 	// applyExternal merges a write that did not come through the room into its
 	// Y.Doc and relays the result to all members. A no-op when nobody has the
 	// resource open (the next editor seeds from the stored content), when the
 	// room is not seeded yet, or when the writer is one of the room's editors.
-	applyExternal(
+	async applyExternal(
 		ref: CollabRoomRef,
 		actorId: string | undefined,
 		oldContent: unknown[],
 		newContent: unknown[],
-	): MergeResult | undefined {
-		const room = this.rooms.get(roomName(ref));
+	): Promise<MergeResult | undefined> {
+		const name = roomName(ref);
+		let room = this.rooms.get(name);
 		if (!room?.seeded || room.members.size === 0) return undefined;
 		if (actorId) {
 			for (const m of room.members.values()) {
 				if (m.viewer.userId === actorId) return undefined;
 			}
+		}
+		// Editor updates already received but still waiting on their access
+		// check have not reached the Y.Doc yet. Merging first would replace a
+		// block that such an update is about to edit, and the update would land
+		// on a deleted node. Let them apply first so the merge sees them.
+		const waiting = [...room.members.keys()]
+			.map((id) => this.chains.get(`${id}\u0000${name}`))
+			.filter((p): p is Promise<void> => p !== undefined);
+		if (waiting.length) {
+			await Promise.all(waiting);
+			room = this.rooms.get(name);
+			if (!room?.seeded || room.members.size === 0) return undefined;
+		}
+		// The merge's size is only known afterwards, so bound it by the new
+		// content's JSON size: external writes obey the same room budget as
+		// editor updates.
+		const estimate = JSON.stringify(newContent).length;
+		if (room.bytes + estimate > MAX_ROOM_BYTES) {
+			this.onError(
+				new Error("room reached its size budget"),
+				"external change",
+			);
+			return { applied: 0, conflicts: 0, skipped: "too_large" };
 		}
 		const before = Y.encodeStateVector(room.doc);
 		const result = mergeExternalChange(
