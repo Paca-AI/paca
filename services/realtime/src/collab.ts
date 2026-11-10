@@ -499,12 +499,14 @@ export class CollabHub {
 				update,
 			});
 		}
-		if (result.conflicts > 0 || result.skipped) {
+		if (result.conflicts > 0 || result.skipped || result.duplicates) {
 			this.onNotice(
 				{ room: name, ...result },
 				result.skipped
 					? `external change not merged (${result.skipped})`
-					: "external change kept blocks as edited live",
+					: result.conflicts > 0
+						? "external change kept blocks as edited live"
+						: "external change blocks already present in the room",
 			);
 		}
 		return result;

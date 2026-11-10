@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "services/realtime/**"
+      # The merge stubs mirror this schema; a test compares them.
+      - "apps/web/src/components/shared/blocknote-schema.tsx"
       - ".github/workflows/realtime-pr-ci.yml"
   workflow_dispatch:
 
@@ -51,6 +53,9 @@ jobs:
 
       - name: Typecheck
         run: bun run check
+
+      - name: Test
+        run: bun test
 
       - name: Build Docker image
         run: docker build -t paca-realtime-ci .

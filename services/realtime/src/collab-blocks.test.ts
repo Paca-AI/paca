@@ -296,3 +296,91 @@ describe("schema parity with the web editor", () => {
 		);
 	});
 });
+
+describe("mergeExternalChange dedupe guard", () => {
+	const noIds = (bs: object[]) =>
+		bs.map((b) => {
+			const { id: _, ...rest } = b as Record<string, unknown>;
+			return rest;
+		});
+
+	test("keeps an added blank paragraph next to the editor's trailing one", () => {
+		const doc = room([...base, para("t", "")]);
+		const old = noIds(base);
+		const res = mergeExternalChange(doc, COLLAB_FRAGMENT, old, [
+			old[0] as never,
+			para(undefined, ""),
+			old[1] as never,
+			old[2] as never,
+		]);
+		expect(res.applied).toBe(1);
+		expect(texts(doc)).toEqual(["alpha", "", "bravo", "charlie", ""]);
+	});
+
+	test("inserts every one of several identical additions", () => {
+		const doc = room([para("a", "alpha")]);
+		const old = noIds([para("a", "alpha")]);
+		mergeExternalChange(doc, COLLAB_FRAGMENT, old, [
+			old[0] as never,
+			para(undefined, "TODO"),
+			para(undefined, "TODO"),
+		]);
+		expect(texts(doc)).toEqual(["alpha", "TODO", "TODO"]);
+	});
+
+	test("collapses each addition once when seeded after the write", () => {
+		const old = noIds([para("a", "alpha")]);
+		const next = [
+			old[0] as never,
+			para(undefined, "TODO"),
+			para(undefined, "TODO"),
+		];
+		// Same second block retyped live in the seed, so shapes differ overall.
+		const doc = room([
+			para("s0", "alpha"),
+			para("s1", "TODO"),
+			para("s2", "TODO"),
+			para("s3", "extra"),
+		]);
+		const res = mergeExternalChange(doc, COLLAB_FRAGMENT, old, next);
+		expect(texts(doc)).toEqual(["alpha", "TODO", "TODO", "extra"]);
+		expect(res.duplicates).toBe(2);
+	});
+
+	test("does not report conflicts for the children of a skipped duplicate", () => {
+		const old = noIds([para("a", "alpha")]);
+		const next = [
+			old[0] as never,
+			para(undefined, "parent", [para(undefined, "child")]),
+		];
+		const doc = room([
+			para("s0", "alpha"),
+			para("s1", "parent", [para("s2", "child")]),
+			para("s3", "extra"),
+		]);
+		const res = mergeExternalChange(doc, COLLAB_FRAGMENT, old, next);
+		expect(res.conflicts).toBe(0);
+		expect(res.duplicates).toBe(1);
+	});
+
+	test("a short block edited live is not paired with an unrelated addition", () => {
+		const anchor = para("k", "anchor text");
+		const doc = room([anchor, para("s", "ab")]);
+		typeInto(doc, "s", "LIVE ");
+		mergeExternalChange(
+			doc,
+			COLLAB_FRAGMENT,
+			noIds([anchor, para("s", "ab")]),
+			[
+				...noIds([anchor]),
+				para(undefined, "abc"),
+				para(undefined, "extra"),
+			] as never,
+		);
+		expect(texts(doc)).toContain("LIVE ab");
+		expect(texts(doc)).toContain("extra");
+		// "abc" is an addition, not a modified "ab": it is not swallowed by the
+		// live edit on "ab".
+		expect(texts(doc)).toContain("abc");
+	});
+});

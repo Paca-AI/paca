@@ -57,6 +57,9 @@ export interface MergeResult {
 	conflicts: number;
 	// Set when the change could not be merged at all.
 	skipped?: "unsupported" | "too_large" | "not_comparable";
+	// Added blocks not inserted because the room already carried them (it was
+	// seeded from content that included the write). Only set when above 0.
+	duplicates?: number;
 }
 
 // ── Schema ───────────────────────────────────────────────────────────────────
@@ -472,6 +475,10 @@ export function mergeExternalChange(
 	const ourIdx = indexOf(ours);
 	let applied = 0;
 	let conflicts = 0;
+	let duplicates = 0;
+	const consumed = new Set<string>();
+	// A deduplicated addition's id -> the room block that stands for it.
+	const alias = new Map<string, string>();
 
 	doc.transact(() => {
 		const rootGroup = groupOf(doc.getXmlFragment(fragmentName));
@@ -483,13 +490,19 @@ export function mergeExternalChange(
 			blocks.forEach((b, i) => {
 				const before = baseIdx.get(b.id);
 				if (!before) {
-					if (!ourIdx.has(b.id) && insertBlock(b, i, blocks, parentId)) {
-						applied++;
-						// The subtree came along with it.
-						for (const d of walk(b.children))
-							ourIdx.set(d.id, { block: d, parentId: b.id });
-						ourIdx.set(b.id, { block: b, parentId });
-						return;
+					if (!ourIdx.has(b.id)) {
+						const outcome = insertBlock(b, i, blocks, parentId);
+						if (outcome === "ok") {
+							applied++;
+							// The subtree came along with it.
+							for (const d of walk(b.children))
+								ourIdx.set(d.id, { block: d, parentId: b.id });
+							ourIdx.set(b.id, { block: b, parentId });
+							return;
+						}
+						// Already there, or its parent is gone: the children have
+						// nothing to attach to (or already came with the copy).
+						if (outcome !== "fail") return;
 					}
 				} else if (ownKey(before.block) !== ownKey(b)) {
 					const mine = ourIdx.get(b.id);
@@ -520,32 +533,45 @@ export function mergeExternalChange(
 			return sub;
 		};
 
+		// ok: inserted. duplicate: the room already carries this block. orphan:
+		// its parent is gone. fail: the Y nodes could not be built.
 		const insertBlock = (
 			b: Blk,
 			i: number,
 			siblings: Blk[],
 			parentId: string | null,
-		): boolean => {
+		): "ok" | "dup" | "skip" | "fail" => {
 			try {
 				const group = groupFor(parentId);
 				if (!group) {
 					conflicts++;
-					return false;
+					return "skip";
 				}
-				// An equal block the write does not know of is already there
-				// (the room was seeded from content that included this write).
+				// The room was seeded from content that already included this
+				// write: an equal block, unknown to the write, sits exactly where
+				// this one belongs (right after the previous sibling's block).
+				// Each room block answers for one addition at most.
 				const mine =
 					parentId === null
 						? ours
 						: (ourIdx.get(parentId)?.block.children ?? []);
+				const prev = i > 0 ? siblings[i - 1]?.id : undefined;
+				const prevId =
+					prev === undefined ? undefined : (alias.get(prev) ?? prev);
 				const key = shape([b]);
-				if (
-					mine.some(
-						(o) =>
-							!baseIdx.has(o.id) && !theirIdx.has(o.id) && shape([o]) === key,
-					)
-				) {
-					return false;
+				const dup = mine.findIndex(
+					(o, c) =>
+						!consumed.has(o.id) &&
+						!baseIdx.has(o.id) &&
+						!theirIdx.has(o.id) &&
+						shape([o]) === key &&
+						(i === 0 ? c === 0 : c > 0 && mine[c - 1]?.id === prevId),
+				);
+				if (dup >= 0) {
+					consumed.add(mine[dup]?.id ?? "");
+					alias.set(b.id, mine[dup]?.id ?? b.id);
+					duplicates++;
+					return "dup";
 				}
 				let at = 0;
 				for (let k = i - 1; k >= 0; k--) {
@@ -558,9 +584,9 @@ export function mergeExternalChange(
 					}
 				}
 				group.insert(at, [containerFor(b)]);
-				return true;
+				return "ok";
 			} catch {
-				return false;
+				return "fail";
 			}
 		};
 
@@ -616,5 +642,7 @@ export function mergeExternalChange(
 		}
 	}, "external");
 
-	return { applied, conflicts };
+	return duplicates > 0
+		? { applied, conflicts, duplicates }
+		: { applied, conflicts };
 }
