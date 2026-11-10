@@ -104,6 +104,7 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 - ✅ ACP agent support — connect Claude Code, Codex, Gemini CLI, or any custom Agent Client Protocol server as a Paca agent via a local bridge (`paca-acp-bridge`), streaming over an authenticated WebSocket using your own local auth and git/`gh` credentials
 - ✅ Global agents — agents not bound to a single project, managed from Admin → Agents
 - ✅ Agent-scoped MCP API keys and identity verification for programmatic agent authentication
+- ✅ PM / business analyst agent — discusses requirements in plain or technical terms, reads the code, and drafts tasks in Refinement that only a human can approve (`paca-analyst` skill + Analyst role)
 - ✅ Unified Conversations — direct, task-triggered, and automation-triggered agent conversations, with project-scoped and global views
 
 ### AI Agent Environments

@@ -126,6 +126,16 @@ General-purpose Paca operations in plain English. Routes to the right tool based
 /paca ABC-17 is blocked — add a comment: needs design review
 ```
 
+### `/paca-analyst <idea or bug>`
+
+Acts as the project's PM / business analyst: talks a feature request or bug through with you (plain or technical), reads the code, checks the board for overlapping work, and writes the result as **draft tasks in Refinement** for a human to approve. It never approves its own drafts, assigns them or puts them in a sprint, and never pushes code. Give the agent the project's **Analyst** role so those limits are enforced (see [PM / business analyst agent](../ai-agent/pm-agent.md)).
+
+```
+/paca-analyst users want to export the board as CSV
+/paca-analyst saving a task with a long title fails with a 500
+/paca-analyst continue #42
+```
+
 ### `/paca-epic <requirements>`
 
 Converts requirements into a structured epic: creates the parent task, breaks it into child stories, and writes a spec document — all in Paca.

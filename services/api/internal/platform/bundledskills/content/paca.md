@@ -14,6 +14,7 @@ If the request clearly matches one of these, let the user know — they'll get a
 
 | If the user wants to... | Suggest |
 |---|---|
+| Gather requirements or triage a bug into draft tasks for a human to approve (reads code, never pushes) | `/paca-analyst <idea or bug>` |
 | Turn requirements into a full epic with child stories | `/paca-epic <requirements>` |
 | Clarify or improve a vague task or spec | `/paca-clarify #<number>` |
 | Break a task into smaller sub-tasks | `/paca-breakdown #<number>` |
