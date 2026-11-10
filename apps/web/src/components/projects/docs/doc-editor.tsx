@@ -15,10 +15,16 @@ import { CustomSideMenu } from "@/components/shared/blocknote-custom-side-menu";
 import { customSchema } from "@/components/shared/blocknote-schema";
 import { normalizeBlockContent } from "@/components/shared/comment-blocknote";
 import { MentionSuggestionMenus } from "@/components/shared/mention-suggestion-menus";
+import { useCollabSession } from "@/hooks/use-collab-session";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { useThemeMode } from "@/hooks/use-theme-mode";
+import {
+	type CollabSession,
+	type CollabStatus,
+	seedCollabDoc,
+} from "@/lib/collab-session";
 import { getDocFileDownloadURL, uploadDocFile } from "@/lib/doc-api";
-import { cleanBlocks } from "@/lib/utils";
+import { cleanBlocks, isRemoteOnlyChange } from "@/lib/utils";
 
 /** Custom URI scheme used to store doc file references in the block content. */
 const DOC_FILE_SCHEME = "docfile://";
@@ -42,11 +48,62 @@ export interface DocEditorHandle {
 	save: () => void;
 }
 
+/**
+ * The doc editor. Editors join a real-time Yjs room for the doc (see
+ * lib/collab-session.ts) so several people can type at once; when the room
+ * cannot be joined it falls back to the plain, single-user editor.
+ */
 export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
-	function DocEditor(
-		{ content, editable = true, onDirtyChange, onSave, projectId, docId },
+	function DocEditor(props, ref) {
+		const collab = useCollabSession(
+			"doc",
+			props.projectId,
+			props.docId,
+			!!props.editable && !!props.projectId && !!props.docId,
+		);
+		if (collab.phase === "connecting") {
+			return (
+				<div
+					data-testid="blocknote-editor"
+					className="min-h-80 rounded-xl border border-border/25 bg-card/50"
+				/>
+			);
+		}
+		return (
+			<DocEditorInner
+				// Remount when switching between collaborative and plain mode: the
+				// BlockNote editor is built once with or without the Yjs binding.
+				key={collab.session ? "collab" : "plain"}
+				{...props}
+				ref={ref}
+				collab={collab.session}
+				collabStatus={collab.phase === "ready" ? collab.status : null}
+			/>
+		);
+	},
+);
+
+interface DocEditorInnerProps extends DocEditorProps {
+	collab: CollabSession | null;
+	collabStatus: CollabStatus | null;
+}
+
+const DocEditorInner = forwardRef<DocEditorHandle, DocEditorInnerProps>(
+	function DocEditorInner(
+		{
+			content,
+			editable: editableProp = true,
+			onDirtyChange,
+			onSave,
+			projectId,
+			docId,
+			collab,
+			collabStatus,
+		},
 		ref,
 	) {
+		// A revoked session must stop accepting edits: they would never sync.
+		const editable = editableProp && collabStatus !== "lost";
 		const { resolvedMode } = useThemeMode();
 
 		const lastSavedRef = useRef<string | null>(null);
@@ -54,6 +111,19 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
 		const localSaveRef = useRef(false);
 		const readyRef = useRef(false);
 		const dirtyRef = useRef(false);
+		// True while the stored content is being written into the shared doc.
+		const seedingRef = useRef(false);
+		// Whether the component is mounted. A ref flag rather than cancelling
+		// the seed in a cleanup: React StrictMode runs that cleanup once on
+		// mount and the seed effect does not run again, so cancelling would
+		// leave the doc blank in development.
+		const mountedRef = useRef(false);
+		useEffect(() => {
+			mountedRef.current = true;
+			return () => {
+				mountedRef.current = false;
+			};
+		}, []);
 
 		// Keep projectId / docId in refs so stable editor callbacks always
 		// reference the latest prop values without recreating the editor.
@@ -66,26 +136,38 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
 			docIdRef.current = docId;
 		}, [docId]);
 
-		const editor = useCreateBlockNote({
-			schema: customSchema,
-			pasteHandler: createAnnotationPasteHandler(),
-			uploadFile: async (file: File) => {
-				const pId = projectIdRef.current;
-				const dId = docIdRef.current;
-				if (!pId || !dId) throw new Error("No project/doc context for upload");
-				const uploaded = await uploadDocFile(pId, dId, file);
-				// Store as a stable custom URI; presigned URL is fetched on-demand.
-				return `${DOC_FILE_SCHEME}${pId}/${dId}/${uploaded.id}`;
+		const editor = useCreateBlockNote(
+			{
+				schema: customSchema,
+				...(collab && {
+					collaboration: {
+						fragment: collab.fragment,
+						provider: collab.provider,
+						user: collab.user,
+						showCursorLabels: "activity" as const,
+					},
+				}),
+				pasteHandler: createAnnotationPasteHandler(),
+				uploadFile: async (file: File) => {
+					const pId = projectIdRef.current;
+					const dId = docIdRef.current;
+					if (!pId || !dId)
+						throw new Error("No project/doc context for upload");
+					const uploaded = await uploadDocFile(pId, dId, file);
+					// Store as a stable custom URI; presigned URL is fetched on-demand.
+					return `${DOC_FILE_SCHEME}${pId}/${dId}/${uploaded.id}`;
+				},
+				resolveFileUrl: async (url: string) => {
+					if (!url.startsWith(DOC_FILE_SCHEME)) return url;
+					// URI format: docfile://{projectId}/{docId}/{fileId}
+					const path = url.slice(DOC_FILE_SCHEME.length);
+					const [pId, dId, fileId] = path.split("/");
+					if (!pId || !dId || !fileId) return url;
+					return getDocFileDownloadURL(pId, dId, fileId);
+				},
 			},
-			resolveFileUrl: async (url: string) => {
-				if (!url.startsWith(DOC_FILE_SCHEME)) return url;
-				// URI format: docfile://{projectId}/{docId}/{fileId}
-				const path = url.slice(DOC_FILE_SCHEME.length);
-				const [pId, dId, fileId] = path.split("/");
-				if (!pId || !dId || !fileId) return url;
-				return getDocFileDownloadURL(pId, dId, fileId);
-			},
-		});
+			[collab],
+		);
 
 		// Populate / re-populate editor from server content
 		useEffect(() => {
@@ -99,6 +181,39 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
 			const normalizedStr = cleanedNormalized
 				? JSON.stringify(cleanedNormalized)
 				: null;
+
+			if (collab) {
+				// The shared Y.Doc is the source of truth while collaborating:
+				// peers' saves must not overwrite it (they would fight over
+				// replaceBlocks). Only the client the room picked writes the
+				// stored content, once, into the empty room.
+				if (initializedRef.current) return;
+				initializedRef.current = true;
+				lastSavedRef.current = normalizedStr;
+				dirtyRef.current = false;
+				readyRef.current = false;
+				if (collab.seed && displayBlocks.length > 0) {
+					seedCollabDoc(
+						collab,
+						() => {
+							// Writing the stored content is not a user edit.
+							seedingRef.current = true;
+							editor.replaceBlocks(
+								editor.document,
+								displayBlocks as Parameters<typeof editor.replaceBlocks>[1],
+							);
+							queueMicrotask(() => {
+								seedingRef.current = false;
+							});
+						},
+						{ isActive: () => mountedRef.current },
+					);
+				}
+				queueMicrotask(() => {
+					readyRef.current = true;
+				});
+				return;
+			}
 
 			if (initializedRef.current && localSaveRef.current) {
 				localSaveRef.current = false;
@@ -121,7 +236,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
 			queueMicrotask(() => {
 				readyRef.current = true;
 			});
-		}, [content, editor]);
+		}, [content, editor, collab]);
 
 		const save = useCallback(() => {
 			if (!editable || !dirtyRef.current) return;
@@ -151,12 +266,17 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
 
 		const debouncedSave = useDebouncedCallback(save, 3000);
 
-		const handleChange = useCallback(() => {
-			if (!editable || !readyRef.current) return;
-			dirtyRef.current = true;
-			onDirtyChange?.(true);
-			debouncedSave();
-		}, [editable, debouncedSave, onDirtyChange]);
+		const handleChange = useCallback(
+			(_editor: unknown, ctx?: Parameters<typeof isRemoteOnlyChange>[0]) => {
+				if (!editable || !readyRef.current) return;
+				// A peer's edit is saved by that peer, not by every open editor.
+				if (collab && isRemoteOnlyChange(ctx)) return;
+				dirtyRef.current = true;
+				onDirtyChange?.(true);
+				debouncedSave();
+			},
+			[editable, collab, debouncedSave, onDirtyChange],
+		);
 
 		const handleKeyDown = useCallback(
 			(e: React.KeyboardEvent<HTMLDivElement>) => {

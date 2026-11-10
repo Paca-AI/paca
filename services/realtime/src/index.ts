@@ -26,7 +26,7 @@ logger.info("starting paca realtime service");
 
 const decider = new AccessDecider(config.apiUrl);
 
-const { httpServer, io, resyncer, expiry } = createSocketServer(
+const { httpServer, io, resyncer, expiry, collab } = createSocketServer(
 	config,
 	logger,
 	decider,
@@ -36,7 +36,10 @@ const subscriber = createSubscriber(
 	io,
 	logger,
 	decider,
-	() => resyncer.onIamChanged(),
+	() => {
+		resyncer.onIamChanged();
+		void collab.recheck();
+	},
 );
 
 httpServer.listen(config.port, () => {
@@ -54,6 +57,7 @@ function shutdown(signal: string): void {
 		httpServer.close(() => {
 			resyncer.stop();
 			expiry.stop();
+			collab.close();
 			subscriber.disconnect();
 			logger.info("shutdown complete");
 			process.exit(0);

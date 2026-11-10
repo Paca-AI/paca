@@ -24,3 +24,17 @@ export function cleanBlocks(
 	};
 	return strip(blocks);
 }
+
+/**
+ * True when a BlockNote onChange was caused only by a collaborator's edit
+ * arriving over Yjs. Those must not mark the local editor dirty: the peer who
+ * made the edit saves it.
+ */
+export function isRemoteOnlyChange(ctx?: {
+	getChanges?: () => { source: { type: string } }[];
+}): boolean {
+	const changes = ctx?.getChanges?.() ?? [];
+	return (
+		changes.length > 0 && changes.every((c) => c.source.type === "yjs-remote")
+	);
+}
