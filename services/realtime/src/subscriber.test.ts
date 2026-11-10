@@ -297,3 +297,19 @@ describe("routeEvent control and legacy paths", () => {
 		]);
 	});
 });
+
+describe("routeEvent content changes", () => {
+	it("hands doc.updated and task.updated to the collab merge, and nothing else", () => {
+		const seen: string[] = [];
+		const { io } = fakeIo({});
+		const r = routing(() => true);
+		const withHook = {
+			...r.routing,
+			onContentChange: (type: string) => seen.push(type),
+		};
+		for (const type of ["doc.updated", "task.updated", "task.created"]) {
+			routeEvent(io, { type, payload: { project_id: P } }, log, withHook);
+		}
+		expect(seen).toEqual(["doc.updated", "task.updated"]);
+	});
+});

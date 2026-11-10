@@ -195,6 +195,8 @@ export function createSocketServer(
 			},
 		},
 		(err, ctx) => logger.warn({ err, ctx }, "collab error"),
+		undefined,
+		(info, msg) => logger.info(info, msg),
 	);
 
 	// ── Connection lifecycle ───────────────────────────────────────────────────

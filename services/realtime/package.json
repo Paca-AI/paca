@@ -9,6 +9,7 @@
     "lint": "biome check ."
   },
   "dependencies": {
+    "@blocknote/core": "0.48.1",
     "ioredis": "^5.4.2",
     "lib0": "^0.2.120",
     "pino": "^9.7.0",
