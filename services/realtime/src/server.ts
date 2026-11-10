@@ -182,6 +182,12 @@ export function createSocketServer(
 			grantSeed: (socketId, room) => {
 				io.to(socketId).emit("collab:seed", { room });
 			},
+			cancelSeed: (socketId, room) => {
+				io.to(socketId).emit("collab:seed-cancel", { room });
+			},
+			error: (socketId, room, reason) => {
+				io.to(socketId).emit("collab:error", { room, reason });
+			},
 			revoke: (socketId, room) => {
 				logger.info({ socketId, room }, "collab access revoked");
 				io.in(socketId).socketsLeave(room);

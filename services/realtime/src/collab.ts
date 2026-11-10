@@ -29,6 +29,7 @@
 // and is the only one that writes the stored blocks into the Y.Doc, which
 // avoids two clients both inserting the initial content.
 
+import * as decoding from "lib0/decoding";
 import {
 	Awareness,
 	applyAwarenessUpdate,
@@ -63,6 +64,13 @@ export type CollabJoinResult =
 	  }
 	| { ok: false; reason: "invalid" | "forbidden" | "unavailable" | "full" };
 
+// Why the hub dropped a client's update. The client reacts by re-syncing.
+export type CollabErrorReason =
+	| "unavailable" // the access check could not be answered; try again
+	| "rate" // too many messages
+	| "too_large" // the room reached its size budget
+	| "backlog"; // too many updates still waiting on their access check
+
 // The fragment name BlockNote's collaboration option is pointed at.
 export const COLLAB_FRAGMENT = "document-store";
 
@@ -76,6 +84,15 @@ const UUID_RE =
 
 export const MAX_UPDATE_BYTES = 5 * 1024 * 1024;
 export const MAX_ROOMS = 2_000;
+// Total update bytes one room accepts over its lifetime. Y.Doc memory cannot be
+// bounded exactly, but the sum of applied updates is an upper-bound proxy that
+// stops an editor growing a room without limit.
+export const MAX_ROOM_BYTES = 64 * 1024 * 1024;
+// Updates from one socket+room that may wait on an access answer at once.
+export const MAX_PENDING_UPDATES = 100;
+// Per-socket message budget (updates + awareness): a burst, then a steady rate.
+export const RATE_BURST = 200;
+export const RATE_PER_SEC = 100;
 const DESTROY_GRACE_MS = 30_000;
 // One account may hold this many rooms open at once, so a single user with a
 // project-wide write grant cannot use up the global cap for everyone else.
@@ -113,6 +130,11 @@ interface Member {
 	awarenessIds: Set<number>;
 }
 
+interface Bucket {
+	tokens: number;
+	at: number;
+}
+
 interface Room {
 	ref: CollabRoomRef;
 	name: string;
@@ -125,6 +147,10 @@ interface Room {
 	// Members already given the seed grant while the room stayed unseeded, so
 	// idle members are not cycled through forever.
 	seedTried: Set<string>;
+	// Awareness client id -> the socket that announced it, so one member cannot
+	// overwrite or remove another member's cursor.
+	awarenessOwners: Map<number, string>;
+	bytes: number;
 	destroyTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -140,6 +166,10 @@ export interface CollabTransport {
 	revoke(socketId: string, room: string): void;
 	// Tell one socket it must now write the stored content into the room.
 	grantSeed(socketId: string, room: string): void;
+	// Tell one socket its seed grant moved to someone else: stop writing.
+	cancelSeed(socketId: string, room: string): void;
+	// Tell one socket an update of its was dropped; it should re-sync.
+	error(socketId: string, room: string, reason: CollabErrorReason): void;
 }
 
 export class CollabHub {
@@ -147,6 +177,8 @@ export class CollabHub {
 	// Per socket+room chain, so updates are applied in the order they arrived
 	// even though each one waits for an access answer.
 	private readonly chains = new Map<string, Promise<void>>();
+	private readonly pending = new Map<string, number>();
+	private readonly buckets = new Map<string, Bucket>();
 
 	constructor(
 		private readonly decider: AccessDecider,
@@ -175,9 +207,9 @@ export class CollabHub {
 	): Promise<CollabJoinResult> {
 		const ref = parseRoomRef(req);
 		if (!ref) return { ok: false, reason: "invalid" };
-		if (!(await this.canWrite(viewer, ref))) {
-			return { ok: false, reason: "forbidden" };
-		}
+		const allowed = await this.canWrite(viewer, ref);
+		if (allowed === undefined) return { ok: false, reason: "unavailable" };
+		if (!allowed) return { ok: false, reason: "forbidden" };
 		if (hooks.isAlive && !hooks.isAlive()) {
 			return { ok: false, reason: "unavailable" };
 		}
@@ -241,14 +273,31 @@ export class CollabHub {
 		const update = asBytes(rawUpdate);
 		if (!ref || !update) return;
 		const name = roomName(ref);
-		this.enqueue(socketId, name, async () => {
+		if (!this.takeToken(socketId)) {
+			this.transport.error(socketId, name, "rate");
+			return;
+		}
+		const accepted = this.enqueue(socketId, name, async () => {
 			const room = this.rooms.get(name);
 			const member = room?.members.get(socketId);
 			if (!room || !member) return;
-			if (!(await this.canWrite(member.viewer, ref))) {
+			const allowed = await this.canWrite(member.viewer, ref);
+			if (allowed === undefined) {
+				// Not a denial: keep the editor in the room, drop only this
+				// update, and let the client re-sync it.
+				this.transport.error(socketId, name, "unavailable");
+				return;
+			}
+			if (!allowed) {
 				this.evict(room, socketId);
 				return;
 			}
+			if (!room.members.has(socketId)) return;
+			if (room.bytes + update.byteLength > MAX_ROOM_BYTES) {
+				this.transport.error(socketId, name, "too_large");
+				return;
+			}
+			room.bytes += update.byteLength;
 			try {
 				Y.applyUpdate(room.doc, update, socketId);
 			} catch (err) {
@@ -262,6 +311,7 @@ export class CollabHub {
 				update,
 			});
 		});
+		if (!accepted) this.transport.error(socketId, name, "backlog");
 	}
 
 	awarenessUpdate(
@@ -276,23 +326,23 @@ export class CollabHub {
 		const room = this.rooms.get(name);
 		const member = room?.members.get(socketId);
 		if (!room || !member) return;
-		const onUpdate = (
-			change: { added: number[]; updated: number[]; removed: number[] },
-			origin: unknown,
-		) => {
-			if (origin !== socketId) return;
-			for (const id of [...change.added, ...change.updated]) {
-				member.awarenessIds.add(id);
-			}
-		};
-		room.awareness.on("update", onUpdate);
+		if (!this.takeToken(socketId)) return;
+		const ids = awarenessClientIds(update);
+		if (!ids) return;
+		// A socket may only speak for awareness ids it announced itself.
+		for (const id of ids) {
+			const owner = room.awarenessOwners.get(id);
+			if (owner !== undefined && owner !== socketId) return;
+		}
+		for (const id of ids) {
+			room.awarenessOwners.set(id, socketId);
+			member.awarenessIds.add(id);
+		}
 		try {
 			applyAwarenessUpdate(room.awareness, update, socketId);
 		} catch (err) {
 			this.onError(err, "apply awareness");
 			return;
-		} finally {
-			room.awareness.off("update", onUpdate);
 		}
 		this.transport.broadcast(name, socketId, "collab:awareness", {
 			room: ref,
@@ -309,6 +359,7 @@ export class CollabHub {
 
 	// leaveAll removes a socket from every room (disconnect).
 	leaveAll(socketId: string): void {
+		this.buckets.delete(socketId);
 		for (const room of [...this.rooms.values()]) {
 			if (room.members.has(socketId)) this.evict(room, socketId, false);
 		}
@@ -322,7 +373,9 @@ export class CollabHub {
 			for (const [socketId, member] of [...room.members]) {
 				jobs.push(
 					this.canWrite(member.viewer, room.ref).then((ok) => {
-						if (!ok) this.evict(room, socketId);
+						// undefined: the check failed, which proves nothing. The
+						// next pass (or the next update) asks again.
+						if (ok === false) this.evict(room, socketId);
 					}),
 				);
 			}
@@ -337,31 +390,60 @@ export class CollabHub {
 
 	// ── internals ──────────────────────────────────────────────────────────
 
-	private async canWrite(viewer: Viewer, ref: CollabRoomRef): Promise<boolean> {
+	// canWrite answers true / false, or undefined when the access check itself
+	// failed (API unreachable). Callers that grant access treat undefined as
+	// "no"; callers that would revoke it must not, or one API blip would evict
+	// every editor.
+	private async canWrite(
+		viewer: Viewer,
+		ref: CollabRoomRef,
+	): Promise<boolean | undefined> {
 		try {
 			return await this.decider.can(viewer, ref.projectId, {
 				action: ACTIONS[ref.kind].write,
 				resource: resourceOf(ref),
 			});
 		} catch (err) {
-			// Fail closed.
 			this.onError(err, "access check");
-			return false;
+			return undefined;
 		}
 	}
 
+	private takeToken(socketId: string): boolean {
+		const now = Date.now();
+		const b = this.buckets.get(socketId) ?? { tokens: RATE_BURST, at: now };
+		b.tokens = Math.min(
+			RATE_BURST,
+			b.tokens + ((now - b.at) / 1000) * RATE_PER_SEC,
+		);
+		b.at = now;
+		this.buckets.set(socketId, b);
+		if (b.tokens < 1) return false;
+		b.tokens -= 1;
+		return true;
+	}
+
+	// enqueue returns false when the socket already has too many updates
+	// waiting on their access check.
 	private enqueue(
 		socketId: string,
 		name: string,
 		job: () => Promise<void>,
-	): void {
+	): boolean {
 		const key = `${socketId}\u0000${name}`;
+		const waiting = this.pending.get(key) ?? 0;
+		if (waiting >= MAX_PENDING_UPDATES) return false;
+		this.pending.set(key, waiting + 1);
 		const prev = this.chains.get(key) ?? Promise.resolve();
 		const next = prev.then(job).catch((err) => this.onError(err, "update"));
 		this.chains.set(key, next);
 		void next.then(() => {
+			const left = (this.pending.get(key) ?? 1) - 1;
+			if (left <= 0) this.pending.delete(key);
+			else this.pending.set(key, left);
 			if (this.chains.get(key) === next) this.chains.delete(key);
 		});
+		return true;
 	}
 
 	private createRoom(ref: CollabRoomRef, name: string): Room {
@@ -377,6 +459,8 @@ export class CollabHub {
 			seeder: null,
 			seeded: false,
 			seedTried: new Set(),
+			awarenessOwners: new Map(),
+			bytes: 0,
 		};
 		this.rooms.set(name, room);
 		return room;
@@ -394,6 +478,11 @@ export class CollabHub {
 		const ids = [...member.awarenessIds].filter((id) =>
 			room.awareness.getStates().has(id),
 		);
+		for (const id of member.awarenessIds) {
+			if (room.awarenessOwners.get(id) === socketId) {
+				room.awarenessOwners.delete(id);
+			}
+		}
 		if (ids.length) {
 			removeAwarenessStates(room.awareness, ids, socketId);
 			this.transport.broadcast(room.name, socketId, "collab:awareness", {
@@ -453,6 +542,9 @@ export class CollabHub {
 			(id) => id !== from && !room.seedTried.has(id),
 		);
 		if (next) {
+			// The previous holder may only be slow: tell it to stop, or both
+			// would write the stored content and it would appear twice.
+			if (room.members.has(from)) this.transport.cancelSeed(from, room.name);
 			this.grantSeed(room, next, true);
 			return;
 		}
@@ -473,15 +565,47 @@ export class CollabHub {
 // placeholder paragraph into the shared doc as soon as an editor mounts; that
 // must not count as content, or the stored document would never be seeded and
 // every editor would show a blank page.
-// (Y.XmlFragment.toString() lower-cases tag names.)
 const PLACEHOLDER_TAGS = new Set(["blockgroup", "blockcontainer", "paragraph"]);
 
 export function isEmpty(doc: Y.Doc): boolean {
-	const fragment = doc.getXmlFragment(COLLAB_FRAGMENT);
-	if (fragment.length === 0) return true;
-	const xml = fragment.toString();
-	for (const m of xml.matchAll(/<([A-Za-z][\w-]*)/g)) {
-		if (!PLACEHOLDER_TAGS.has((m[1] ?? "").toLowerCase())) return false;
+	return !hasContent(doc.getXmlFragment(COLLAB_FRAGMENT));
+}
+
+type XmlNode = Y.XmlFragment | Y.XmlElement | Y.XmlText | Y.XmlHook;
+
+function hasContent(node: XmlNode): boolean {
+	if (node instanceof Y.XmlText) {
+		return node
+			.toDelta()
+			.some(
+				(op: { insert?: unknown }) =>
+					typeof op.insert !== "string" || op.insert.trim() !== "",
+			);
 	}
-	return xml.replace(/<[^>]*>/g, "").trim() === "";
+	if (node instanceof Y.XmlElement) {
+		if (!PLACEHOLDER_TAGS.has(node.nodeName.toLowerCase())) return true;
+	}
+	if (node instanceof Y.XmlFragment) {
+		return node.toArray().some((child) => hasContent(child as XmlNode));
+	}
+	return node instanceof Y.XmlHook;
+}
+
+// awarenessClientIds reads the client ids out of an awareness update without
+// applying it (y-protocols' wire format: count, then id/clock/state per entry).
+function awarenessClientIds(update: Uint8Array): number[] | undefined {
+	try {
+		const d = decoding.createDecoder(update);
+		const n = decoding.readVarUint(d);
+		if (n > 1_000) return undefined;
+		const ids: number[] = [];
+		for (let i = 0; i < n; i++) {
+			ids.push(decoding.readVarUint(d));
+			decoding.readVarUint(d);
+			decoding.readVarString(d);
+		}
+		return ids;
+	} catch {
+		return undefined;
+	}
 }

@@ -101,6 +101,8 @@ export class CollabSession {
 	status: CollabStatus = "connecting";
 	/** True when this client must write the stored content into the empty room. */
 	seed = false;
+	/** Set when the server moved the seed grant to another client: stop writing. */
+	seedRevoked = false;
 
 	private readonly listeners = new Set<() => void>();
 	private readonly seedListeners = new Set<() => void>();
@@ -120,6 +122,8 @@ export class CollabSession {
 		socket.on("collab:awareness", this.onRemoteAwareness);
 		socket.on("collab:revoked", this.onRevoked);
 		socket.on("collab:seed", this.onSeedGranted);
+		socket.on("collab:seed-cancel", this.onSeedCancelled);
+		socket.on("collab:error", this.onServerError);
 		socket.on("connect", this.onConnect);
 		socket.on("disconnect", this.onDisconnect);
 	}
@@ -136,6 +140,7 @@ export class CollabSession {
 	}
 
 	private grantSeed(): void {
+		this.seedRevoked = false;
 		if (this.seed) return;
 		this.seed = true;
 		for (const fn of [...this.seedListeners]) fn();
@@ -196,6 +201,8 @@ export class CollabSession {
 		this.socket.off("collab:awareness", this.onRemoteAwareness);
 		this.socket.off("collab:revoked", this.onRevoked);
 		this.socket.off("collab:seed", this.onSeedGranted);
+		this.socket.off("collab:seed-cancel", this.onSeedCancelled);
+		this.socket.off("collab:error", this.onServerError);
 		this.socket.off("connect", this.onConnect);
 		this.socket.off("disconnect", this.onDisconnect);
 		this.awareness.setLocalState(null);
@@ -330,6 +337,38 @@ export class CollabSession {
 		this.grantSeed();
 	};
 
+	private readonly onSeedCancelled = (msg: { room?: string }): void => {
+		if (typeof msg?.room !== "string" || !msg.room.endsWith(`:${this.ref.id}`))
+			return;
+		this.seed = false;
+		this.seedRevoked = true;
+	};
+
+	// The server dropped one of our updates (access check unavailable, rate or
+	// size limit, backlog). Re-join to exchange whatever either side missed,
+	// at most once at a time.
+	private resyncing = false;
+	private readonly onServerError = (msg: { room?: string }): void => {
+		if (typeof msg?.room !== "string" || !msg.room.endsWith(`:${this.ref.id}`))
+			return;
+		if (this.resyncing || this.destroyed || this.status !== "ready") return;
+		this.resyncing = true;
+		setTimeout(() => {
+			if (this.destroyed) {
+				this.resyncing = false;
+				return;
+			}
+			void this.emitJoin()
+				.then((res) => {
+					if (this.destroyed) return;
+					if (res && res !== "dropped" && res.ok) this.applyJoin(res);
+				})
+				.finally(() => {
+					this.resyncing = false;
+				});
+		}, 1_000);
+	};
+
 	private readonly onDisconnect = (): void => {
 		if (this.status === "ready") this.setStatus("offline");
 	};
@@ -426,15 +465,32 @@ export function acquireCollabSession(
  * placeholder paragraph BlockNote may write (mirrors the server's isEmpty).
  */
 export function isCollabDocEmpty(session: CollabSession): boolean {
-	if (session.fragment.length === 0) return true;
-	const xml = session.fragment.toString();
-	// Y.XmlFragment.toString() lower-cases tag names.
-	for (const m of xml.matchAll(/<([A-Za-z][\w-]*)/g)) {
-		const tag = (m[1] ?? "").toLowerCase();
-		if (tag !== "blockgroup" && tag !== "blockcontainer" && tag !== "paragraph")
-			return false;
+	return !hasContent(session.fragment);
+}
+
+const PLACEHOLDER_TAGS = new Set(["blockgroup", "blockcontainer", "paragraph"]);
+
+type XmlNode = Y.XmlFragment | Y.XmlElement | Y.XmlText | Y.XmlHook;
+
+function hasContent(node: XmlNode): boolean {
+	if (node instanceof Y.XmlText) {
+		return node
+			.toDelta()
+			.some(
+				(op: { insert?: unknown }) =>
+					typeof op.insert !== "string" || op.insert.trim() !== "",
+			);
 	}
-	return xml.replace(/<[^>]*>/g, "").trim() === "";
+	if (
+		node instanceof Y.XmlElement &&
+		!PLACEHOLDER_TAGS.has(node.nodeName.toLowerCase())
+	) {
+		return true;
+	}
+	if (node instanceof Y.XmlFragment) {
+		return node.toArray().some((child) => hasContent(child as XmlNode));
+	}
+	return node instanceof Y.XmlHook;
 }
 
 export function seedCollabDoc(
@@ -455,7 +511,7 @@ export function seedCollabDoc(
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let tries = 0;
 	const attempt = () => {
-		if (cancelled || !isActive()) return;
+		if (cancelled || !isActive() || session.seedRevoked) return;
 		// Someone else's content is already there (a peer got in first, or an
 		// earlier attempt landed): never replace it with the stored copy.
 		if (!isCollabDocEmpty(session)) return;

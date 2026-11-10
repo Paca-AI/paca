@@ -5,6 +5,7 @@ import {
 	COLLAB_FRAGMENT,
 	CollabSession,
 	colorForUser,
+	isCollabDocEmpty,
 	seedCollabDoc,
 } from "./collab-session";
 
@@ -193,6 +194,49 @@ describe("seedCollabDoc", () => {
 		await vi.advanceTimersByTimeAsync(100);
 		expect(write).not.toHaveBeenCalled();
 		vi.useRealTimers();
+	});
+});
+
+describe("seed hand-off and server errors", () => {
+	it("stops seeding after the server moves the grant to someone else", async () => {
+		vi.useFakeTimers();
+		const { sock, session } = make();
+		await session.join();
+		sock.fromServer("collab:seed-cancel", { room: `collab:p:doc:${ref.id}` });
+		expect(session.seed).toBe(false);
+		const write = vi.fn();
+		seedCollabDoc(session, write);
+		await vi.advanceTimersByTimeAsync(100);
+		expect(write).not.toHaveBeenCalled();
+		vi.useRealTimers();
+	});
+
+	it("re-joins to resync after the server drops an update", async () => {
+		vi.useFakeTimers();
+		const { sock, session } = make();
+		await session.join();
+		const joins = () =>
+			sock.emitted.filter((e) => e.event === "collab:join").length;
+		const before = joins();
+		sock.fromServer("collab:error", {
+			room: `collab:p:doc:${ref.id}`,
+			reason: "unavailable",
+		});
+		await vi.advanceTimersByTimeAsync(1_100);
+		expect(joins()).toBe(before + 1);
+		expect(session.status).toBe("ready");
+		vi.useRealTimers();
+	});
+
+	it("treats a doc holding only placeholder blocks as empty", () => {
+		const { session } = make();
+		const c = new Y.XmlElement("blockContainer");
+		const p = new Y.XmlElement("paragraph");
+		c.insert(0, [p]);
+		session.fragment.insert(0, [c]);
+		expect(isCollabDocEmpty(session)).toBe(true);
+		p.insert(0, [new Y.XmlText("hi")]);
+		expect(isCollabDocEmpty(session)).toBe(false);
 	});
 });
 

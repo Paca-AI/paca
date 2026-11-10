@@ -139,7 +139,9 @@ existing Socket.IO connection (`src/collab.ts`):
 | `collab:update` / `collab:awareness` `{room, update}` | Document / cursor updates, relayed to the other members |
 | `collab:leave` `{room}` | Leave |
 
-Server → client: `collab:update`, `collab:awareness`, `collab:revoked` (access lost).
+Server → client: `collab:update`, `collab:awareness`, `collab:revoked` (access lost), `collab:seed-cancel` (the seed grant moved on: stop writing), `collab:error` `{room, reason}` (an update was dropped: `unavailable`, `rate`, `too_large` or `backlog`; the client re-joins to resync).
+
+Limits: 5 MB per update, 64 MB of accepted updates per room, a per-socket message rate limit, 100 updates waiting on an access check per socket+room, 10 rooms per account. An access check that *fails* (API unreachable) never evicts an editor; only an explicit denial does.
 
 - **Authorization**: every update is checked against IAM through the shared `AccessDecider`; IAM changes re-check all members, and a periodic pass (60 s) covers a missed announcement.
 - **Persistence**: none in this service. Clients still save block JSON through the REST API, so MCP, search and exports are unchanged. An empty room is dropped 30 s after its last editor leaves and re-seeded from the stored content.
