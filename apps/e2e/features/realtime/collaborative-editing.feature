@@ -21,6 +21,12 @@ Feature: Collaborative editing
     And the first paragraph still holds what the member typed
     And the doc is saved with the member's text and the agent's text
 
+  Scenario: An agent's write with an editor's own account reaches that editor
+    Given a doc with two paragraphs and two members editing it
+    When an agent saves new text for the second paragraph with one editor's own account
+    Then both editors show the agent's text without a reload
+    And that editor's next save keeps the agent's text
+
   Scenario: An agent adds a block next to a block that is being edited
     Given a doc with two paragraphs and two members editing it
     And one member has typed into the first paragraph without it being saved yet

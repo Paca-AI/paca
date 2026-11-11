@@ -337,6 +337,52 @@ test.describe("Collaborative editing", () => {
 			}
 		});
 
+		test("reach the editor even when written with that editor's own account", async ({
+			browser,
+			request,
+			playwright,
+		}) => {
+			// An agent using Ann's API key writes as Ann while Ann has the doc
+			// open. It is not her editor's save (no X-Collab-Socket), so it must
+			// be merged into the room instead of being taken for her echo and
+			// overwritten by her next save.
+			const first = name("first");
+			const second = name("second");
+			const { projectId, docId, a, b } = await openDocAsBoth(
+				request,
+				playwright,
+				browser,
+				[first, second],
+			);
+			try {
+				const res = await a.context.request.patch(
+					`${API_URL}/projects/${projectId}/docs/${docId}`,
+					{ data: { content: [first, "by-anns-agent"].map(paragraph) } },
+				);
+				expect(res.ok(), await res.text()).toBeTruthy();
+
+				for (const { page } of [a, b]) {
+					await expect
+						.poll(() => plainText(page), { timeout: 15_000 })
+						.toContain("by-anns-agent");
+				}
+
+				// Her next save keeps the agent's text instead of reverting it.
+				await typeInBlock(a.page, 0, "!");
+				await expect
+					.poll(() => storedDoc(request, projectId, docId), {
+						timeout: 20_000,
+					})
+					.toContain(`${first}!`);
+				const stored = await storedDoc(request, projectId, docId);
+				expect(stored).toContain("by-anns-agent");
+				expect(stored).not.toContain(second);
+			} finally {
+				await a.context.close();
+				await b.context.close();
+			}
+		});
+
 		test("add a block without ids exactly once", async ({
 			browser,
 			request,

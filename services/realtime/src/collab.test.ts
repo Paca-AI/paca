@@ -455,8 +455,31 @@ describe("external writes (agent / REST) into a live room", () => {
 		await hub.handleContentEvent(
 			"doc.updated",
 			event(stored, [para("a", "alpha"), para("b", "edited")], "u2"),
+			{ collabSocket: "s2" },
 		);
 		expect(sent).toHaveLength(0);
+	});
+
+	test("merges a write by an editor's own account made outside the room (API key, MCP)", async () => {
+		// u2 is editing in the browser while an agent writes with u2's personal
+		// key: same account, but not the editor's save, so it must be merged.
+		const { hub, sent } = await liveRoom();
+		await hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "bravo by agent")], "u2"),
+		);
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.event).toBe("collab:update");
+	});
+
+	test("merges a write from a browser socket that is not editing this room", async () => {
+		const { hub, sent } = await liveRoom();
+		await hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "bravo elsewhere")], "u2"),
+			{ collabSocket: "s9" },
+		);
+		expect(sent).toHaveLength(1);
 	});
 
 	test("does nothing when nobody has the resource open", async () => {

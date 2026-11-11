@@ -31,6 +31,7 @@ import {
 	markJoined,
 	markLeft,
 } from "./change-heads";
+import { setCollabSocketProvider } from "./client-ops";
 import {
 	isSyncEnabled,
 	ProjectSync,
@@ -40,6 +41,11 @@ import {
 } from "./sync-engine";
 
 const REALTIME_URL = window.location.origin;
+
+// Mutations name the connected socket (X-Collab-Socket); see client-ops.ts.
+setCollabSocketProvider(() =>
+	socket?.connected ? (socket.id ?? undefined) : undefined,
+);
 
 const SOCKET_PATH = "/ws/socket.io";
 

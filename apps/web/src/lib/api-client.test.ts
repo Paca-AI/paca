@@ -15,6 +15,7 @@ vi.mock("axios", () => ({
 }));
 
 import { ApiClient } from "./api-client";
+import { setCollabSocketProvider } from "./client-ops";
 
 type ResponseErrorHandler = (error: {
 	config: { url?: string; _retry?: boolean };
@@ -236,6 +237,52 @@ describe("ApiClient", () => {
 		await expect(onResponseError(error)).rejects.toBe(error);
 		expect(mockInstance.post).not.toHaveBeenCalled();
 		expect(mockInstance.request).not.toHaveBeenCalled();
+	});
+});
+
+describe("ApiClient request stamping", () => {
+	type Config = {
+		method?: string;
+		headers: {
+			has: (k: string) => boolean;
+			set: (k: string, v: string) => void;
+			get: (k: string) => string | undefined;
+		};
+	};
+	const headers = () => {
+		const m = new Map<string, string>();
+		return {
+			has: (k: string) => m.has(k),
+			set: (k: string, v: string) => void m.set(k, v),
+			get: (k: string) => m.get(k),
+		};
+	};
+	function requestHandler() {
+		const mockInstance = createAxiosInstanceMock();
+		vi.mocked(axios.create).mockReturnValue(mockInstance as never);
+		new ApiClient();
+		return mockInstance.interceptors.request.use.mock.calls[0][0] as (
+			c: Config,
+		) => Config;
+	}
+
+	it("names the connected realtime socket on mutations only", () => {
+		setCollabSocketProvider(() => "sock-1");
+		const handle = requestHandler();
+		const patch = handle({ method: "patch", headers: headers() });
+		expect(patch.headers.get("X-Collab-Socket")).toBe("sock-1");
+		const get = handle({ method: "get", headers: headers() });
+		expect(get.headers.has("X-Collab-Socket")).toBe(false);
+		setCollabSocketProvider(null);
+	});
+
+	it("sends no socket header when the tab has no connected socket", () => {
+		setCollabSocketProvider(() => undefined);
+		const handle = requestHandler();
+		const post = handle({ method: "post", headers: headers() });
+		expect(post.headers.has("X-Collab-Socket")).toBe(false);
+		expect(post.headers.has("X-Client-Op-Id")).toBe(true);
+		setCollabSocketProvider(null);
 	});
 });
 

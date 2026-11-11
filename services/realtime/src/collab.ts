@@ -30,8 +30,11 @@
 // it. The API announces such writes (doc.updated / task.updated carry the
 // field's old and new content) and applyExternal merges them into the live
 // Y.Doc block by block (see collab-blocks.ts), broadcasting the result to every
-// editor. Writes by an account that is itself editing the room are its own
-// saves coming back and are ignored.
+// editor. A save by a browser editor of the room is its own content coming
+// back and is ignored: the browser names its realtime socket on the request
+// (X-Collab-Socket) and the API passes it on as the envelope's collab_socket.
+// The account is not enough: an agent writing with the editor's own API key
+// is someone else's write and is merged.
 //
 // Seeding: a fresh room has no content. The first joiner is told `seed: true`
 // and is the only one that writes the stored blocks into the Y.Doc, which
@@ -122,8 +125,16 @@ export function parseRoomRef(raw: unknown): CollabRoomRef | undefined {
 export interface ContentChange {
 	ref: CollabRoomRef;
 	actorId?: string;
+	// The socket of the browser editor that saved this content, when the write
+	// came from one (X-Collab-Socket). See applyExternal.
+	collabSocket?: string;
 	old: unknown[];
 	new: unknown[];
+}
+
+// What the realtime envelope says about a content write beyond its payload.
+export interface ContentChangeMeta {
+	collabSocket?: string;
 }
 
 const CONTENT_EVENTS: Record<
@@ -140,6 +151,7 @@ const CONTENT_EVENTS: Record<
 export function parseContentChange(
 	type: string,
 	payload: Record<string, unknown>,
+	meta: ContentChangeMeta = {},
 ): ContentChange | undefined {
 	const spec = CONTENT_EVENTS[type];
 	if (!spec) return undefined;
@@ -172,6 +184,7 @@ export function parseContentChange(
 		ref,
 		actorId:
 			typeof payload.actor_id === "string" ? payload.actor_id : undefined,
+		collabSocket: meta.collabSocket,
 		old: oldBlocks,
 		new: newBlocks,
 	};
@@ -448,15 +461,21 @@ export class CollabHub {
 	handleContentEvent(
 		type: string,
 		payload: Record<string, unknown>,
+		meta: ContentChangeMeta = {},
 	): Promise<void> {
-		const change = parseContentChange(type, payload);
+		const change = parseContentChange(type, payload, meta);
 		if (!change) return Promise.resolve();
 		// One chain per room, so two writes merge in the order they arrived.
 		const key = roomName(change.ref);
 		const prev = this.externalChains.get(key) ?? Promise.resolve();
 		const next = prev
 			.then(() =>
-				this.applyExternal(change.ref, change.actorId, change.old, change.new),
+				this.applyExternal(
+					change.ref,
+					change.collabSocket,
+					change.old,
+					change.new,
+				),
 			)
 			.then(() => {})
 			.catch((err) => this.onError(err, "apply external change"));
@@ -471,21 +490,22 @@ export class CollabHub {
 	// applyExternal merges a write that did not come through the room into its
 	// Y.Doc and relays the result to all members. A no-op when nobody has the
 	// resource open (the next editor seeds from the stored content), when the
-	// room is not seeded yet, or when the writer is one of the room's editors.
+	// room is not seeded yet, or when the write is the save of one of the
+	// room's editor sockets.
 	async applyExternal(
 		ref: CollabRoomRef,
-		actorId: string | undefined,
+		collabSocket: string | undefined,
 		oldContent: unknown[],
 		newContent: unknown[],
 	): Promise<MergeResult | undefined> {
 		const name = roomName(ref);
 		let room = this.rooms.get(name);
 		if (!room?.seeded || room.members.size === 0) return undefined;
-		if (actorId) {
-			for (const m of room.members.values()) {
-				if (m.viewer.userId === actorId) return undefined;
-			}
-		}
+		// An editor's own save comes back as this event: its content is already
+		// the room's, and merging it again could revive blocks deleted since.
+		// It is recognised by the socket that saved, not by the account: an
+		// agent writing with the same user's API key is someone else's write.
+		if (collabSocket && room.members.has(collabSocket)) return undefined;
 		// Editor updates already received but still waiting on their access
 		// check have not reached the Y.Doc yet. Merging first would replace a
 		// block that such an update is about to edit, and the update would land

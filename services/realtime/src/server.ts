@@ -69,6 +69,7 @@ import {
 	type CollabJoinRequest,
 	type CollabJoinResult,
 	type CollabTransport,
+	type ContentChangeMeta,
 	MAX_UPDATE_BYTES,
 	parseRoomRef,
 	roomName,
@@ -133,6 +134,7 @@ export interface CollabFacade {
 	handleContentEvent(
 		type: string,
 		payload: Record<string, unknown>,
+		meta?: ContentChangeMeta,
 	): Promise<void>;
 	close(): void;
 }

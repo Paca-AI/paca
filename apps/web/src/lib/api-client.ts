@@ -5,7 +5,13 @@ import axios, {
 } from "axios";
 import { ApiErrorCode } from "./api-error";
 import { observeChangeHead, projectIdOfUrl } from "./change-heads";
-import { CLIENT_OP_HEADER, newClientOp, rememberOwnOp } from "./client-ops";
+import {
+	CLIENT_OP_HEADER,
+	COLLAB_SOCKET_HEADER,
+	collabSocketId,
+	newClientOp,
+	rememberOwnOp,
+} from "./client-ops";
 
 const API_BASE_URL = window.location.origin;
 
@@ -68,6 +74,12 @@ export class ApiClient {
 						const id = newClientOp();
 						config.headers.set(CLIENT_OP_HEADER, id);
 						rememberOwnOp(id);
+					}
+					// Name this tab's realtime socket, so a live collaborative
+					// editor's own save is not merged back into its room.
+					const socketId = collabSocketId();
+					if (socketId && !config.headers.has(COLLAB_SOCKET_HEADER)) {
+						config.headers.set(COLLAB_SOCKET_HEADER, socketId);
 					}
 				}
 				return config;

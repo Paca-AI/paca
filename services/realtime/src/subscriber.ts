@@ -39,6 +39,7 @@ import Redis from "ioredis";
 import type { Logger } from "pino";
 import type { Server } from "socket.io";
 import { type AccessDecider, deliverToReaders, KeyedQueue } from "./access.ts";
+import type { ContentChangeMeta } from "./collab.ts";
 import {
 	agentChatRoomName,
 	eventNamespace,
@@ -62,6 +63,9 @@ interface RealtimeMessage {
 	seq?: unknown;
 	// The IAM epoch an iam.changed announcement produced (see iam-epoch.ts).
 	epoch?: unknown;
+	// The realtime socket of the browser editor whose request caused the event
+	// (X-Collab-Socket). Absent for writes by agents, MCP and scripts.
+	collab_socket?: unknown;
 }
 
 interface Authz {
@@ -76,7 +80,11 @@ interface Routing {
 	onIamChanged: (epoch?: number) => void;
 	// A doc / task update announcement, for merging into live collaborative
 	// rooms (see CollabHub.handleContentEvent). Delivery to sockets is separate.
-	onContentChange?: (type: string, payload: Record<string, unknown>) => void;
+	onContentChange?: (
+		type: string,
+		payload: Record<string, unknown>,
+		meta: ContentChangeMeta,
+	) => void;
 	// Types already reported as published without an authz descriptor.
 	warnedNoAuthz: Set<string>;
 	// A change with this project was appended to the change log (it carries a
@@ -93,7 +101,11 @@ export function createSubscriber(
 	logger: Logger,
 	decider: AccessDecider,
 	onIamChanged: (epoch?: number) => void,
-	onContentChange?: (type: string, payload: Record<string, unknown>) => void,
+	onContentChange?: (
+		type: string,
+		payload: Record<string, unknown>,
+		meta: ContentChangeMeta,
+	) => void,
 	onLogged?: (projectId: string) => void,
 ): Redis {
 	const routing: Routing = {
@@ -173,7 +185,13 @@ export function routeEvent(
 
 	// A write to a doc / task description may need merging into a live room.
 	if (type === "doc.updated" || type === "task.updated") {
-		routing.onContentChange?.(type, payload);
+		// The writer's socket comes from the envelope the API stamped, never
+		// from the payload, which carries what the event is about.
+		const meta: ContentChangeMeta =
+			typeof msg.collab_socket === "string" && msg.collab_socket
+				? { collabSocket: msg.collab_socket }
+				: {};
+		routing.onContentChange?.(type, payload, meta);
 	}
 
 	// notification.* events are routed to a user-specific room.
