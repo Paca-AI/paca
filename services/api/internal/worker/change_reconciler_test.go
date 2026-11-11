@@ -256,18 +256,22 @@ func TestChangeReconciler_ComparesRowVersionsWhenBothSidesHaveOne(t *testing.T) 
 		name      string
 		logged    messaging.Logged
 		rowVer    *int64
+		op        string
 		announced bool
 	}{
-		{"the log carried the row's version", messaging.Logged{AtMs: 1, Version: 3}, v(3), true},
-		{"the log carried a newer version", messaging.Logged{AtMs: 1, Version: 5}, v(3), true},
+		{"the log carried the row's version", messaging.Logged{AtMs: 1, Version: 3}, v(3), "update", true},
+		{"the log carried a newer version", messaging.Logged{AtMs: 1, Version: 5}, v(3), "update", true},
 		// A change landing right after an announcement of the same entity must
 		// not hide behind it, whatever the clocks say.
-		{"the row is newer than what was logged, a moment after it", messaging.Logged{AtMs: time.Now().UnixMilli(), Version: 2}, v(3), false},
-		{"the log has a delete", messaging.Logged{AtMs: 1, Version: messaging.DeletedVersion}, v(9), true},
-		{"never logged", messaging.Logged{}, v(1), false},
+		{"the row is newer than what was logged, a moment after it", messaging.Logged{AtMs: time.Now().UnixMilli(), Version: 2}, v(3), "update", false},
+		{"the log has a delete", messaging.Logged{AtMs: 1, Version: messaging.DeletedVersion}, v(9), "update", true},
+		{"never logged", messaging.Logged{}, v(1), "update", false},
+		// A hard delete records OLD's version, so the log's last state at that
+		// version is the row before the delete: it does not cover it.
+		{"a delete is not covered by the state before it", messaging.Logged{AtMs: 1, Version: 3}, v(3), "delete", false},
 	}
 	for _, c := range cases {
-		row := changeoutbox.Row{Version: c.rowVer, CreatedAt: time.Now()}
+		row := changeoutbox.Row{Version: c.rowVer, Op: c.op, CreatedAt: time.Now()}
 		if got := announced(row, c.logged); got != c.announced {
 			t.Errorf("%s: announced = %v, want %v", c.name, got, c.announced)
 		}

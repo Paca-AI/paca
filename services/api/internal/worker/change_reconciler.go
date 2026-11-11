@@ -212,13 +212,20 @@ func (c *ChangeReconciler) reconcile(ctx context.Context, rows []changeoutbox.Ro
 // announced reports whether the logged change of an entity covers the database
 // change in row. By row version when both sides have one: the log carried a state
 // at least as new as the row, with no clock involved. Otherwise by time: it was
-// logged after the change (within a small slack for clock difference).
+// logged after the change (within a small slack for clock difference). A delete
+// row is announced only by a logged delete.
 func announced(row changeoutbox.Row, l messaging.Logged) bool {
 	if l.AtMs == 0 && l.Version == 0 {
 		return false // never logged
 	}
 	if l.Version == messaging.DeletedVersion {
 		return true
+	}
+	// A hard delete does not bump the version (the trigger records OLD's), so
+	// a logged state at that version is the row before the delete, not the
+	// delete: only a logged delete covers it.
+	if row.Op == "delete" {
+		return false
 	}
 	if l.Version != messaging.UnknownVersion && row.Version != nil {
 		return l.Version >= *row.Version

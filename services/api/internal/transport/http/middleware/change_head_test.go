@@ -143,7 +143,7 @@ func TestChangeHead_ASlowReaderDoesNotHoldTheRequest(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	start := time.Now()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/p1/x", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/p1/x", nil))
 	if time.Since(start) > time.Second {
 		t.Fatalf("request took %v", time.Since(start))
 	}
