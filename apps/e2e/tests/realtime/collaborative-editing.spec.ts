@@ -97,18 +97,27 @@ const plainText = (page: Page) =>
 		return (copy.textContent ?? "").replace(/\s+/g, " ").trim();
 	});
 
+// Caret moves differ by platform: on macOS, Home / End do not move the caret
+// in a contenteditable (they scroll), and Ctrl+Home / Ctrl+End do not reach
+// the document's ends. The tests drive a browser on the host, so pick the
+// keys the host's users press.
+const IS_MAC = process.platform === "darwin";
+const KEY_DOC_START = IS_MAC ? "Meta+ArrowUp" : "Control+Home";
+const KEY_DOC_END = IS_MAC ? "Meta+ArrowDown" : "Control+End";
+const KEY_LINE_END = IS_MAC ? "Meta+ArrowRight" : "End";
+
 /** Types at the end of the editor's last paragraph. */
 async function typeAtEnd(page: Page, text: string) {
 	const editor = editorOf(page);
 	await editor.locator(".bn-block-content").last().click();
-	await page.keyboard.press("Control+End");
+	await page.keyboard.press(KEY_DOC_END);
 	await page.keyboard.type(text);
 }
 
 /** Types at the start of the editor's first paragraph. */
 async function typeAtStart(page: Page, text: string) {
 	await editorOf(page).locator(".bn-block-content").first().click();
-	await page.keyboard.press("Control+Home");
+	await page.keyboard.press(KEY_DOC_START);
 	await page.keyboard.type(text);
 }
 
@@ -135,7 +144,7 @@ async function holdSaves(page: Page) {
 /** Types at the end of the editor's n-th block (0-based). */
 async function typeInBlock(page: Page, n: number, text: string) {
 	await editorOf(page).locator(".bn-block-content").nth(n).click();
-	await page.keyboard.press("End");
+	await page.keyboard.press(KEY_LINE_END);
 	await page.keyboard.type(text);
 }
 
