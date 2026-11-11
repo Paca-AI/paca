@@ -67,6 +67,7 @@ type taskRecord struct {
 	UpdatedAt      time.Time        `db:"updated_at"`
 	DeletedAt      *time.Time       `db:"deleted_at"`
 	AssignmentMode string           `db:"assignment_mode"`
+	Version        int64            `db:"version"`
 }
 
 // taskCounterRecord mirrors the task_counters table used for atomic
@@ -98,6 +99,7 @@ type taskWithPositionRow struct {
 	UpdatedAt      time.Time        `db:"updated_at"`
 	DeletedAt      *time.Time       `db:"deleted_at"`
 	AssignmentMode string           `db:"assignment_mode"`
+	Version        int64            `db:"version"`
 	VTPPosition    *float64         `db:"vtp_position"`
 }
 
@@ -123,6 +125,7 @@ func (r *taskWithPositionRow) asTaskRecord() taskRecord {
 		UpdatedAt:      r.UpdatedAt,
 		DeletedAt:      r.DeletedAt,
 		AssignmentMode: r.AssignmentMode,
+		Version:        r.Version,
 	}
 }
 
@@ -471,7 +474,7 @@ func (r *TaskRepository) FindDefaultTaskStatus(ctx context.Context, projectID uu
 
 const taskCols = `id, project_id, task_number, task_type_id, status_id, sprint_id, parent_task_id,
 	title, description, importance, story_points, reporter_id,
-	custom_fields, start_date, due_date, tags, created_at, updated_at, deleted_at, assignment_mode`
+	custom_fields, start_date, due_date, tags, created_at, updated_at, deleted_at, assignment_mode, version`
 
 // applyTaskFilter adds WHERE predicates for all TaskFilter fields.
 // b is the shared queryBuilder; the base "project_id = $1 AND deleted_at IS NULL" clause is already set.
@@ -1638,6 +1641,7 @@ func (r *TaskRepository) CreateTask(ctx context.Context, t *taskdom.Task) error 
 		if err != nil {
 			return fmt.Errorf("task repo: create: %w", err)
 		}
+		t.Version = 1
 		if err := insertTaskAssignees(ctx, tx, t.ID, t.AssigneeIDs); err != nil {
 			return err
 		}
@@ -1718,15 +1722,13 @@ func (r *TaskRepository) UpdateTaskFields(ctx context.Context, t *taskdom.Task, 
 	args = append(args, t.ID.String())
 	query := "UPDATE tasks SET " + strings.Join(sets, ", ") + fmt.Sprintf(" WHERE id=$%d AND deleted_at IS NULL", len(args))
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
-		res, err := tx.ExecContext(ctx, query, args...)
+		// A save racing a soft-delete matches no live row.
+		err := tx.QueryRowxContext(ctx, query+" RETURNING version", args...).Scan(&t.Version)
+		if errors.Is(err, sql.ErrNoRows) {
+			return taskdom.ErrTaskNotFound
+		}
 		if err != nil {
 			return fmt.Errorf("task repo: update fields: %w", err)
-		}
-		// A save racing a soft-delete matches no live row.
-		if n, err := res.RowsAffected(); err != nil {
-			return fmt.Errorf("task repo: update fields: rows affected: %w", err)
-		} else if n == 0 {
-			return taskdom.ErrTaskNotFound
 		}
 		if syncAssignees {
 			return syncTaskAssignees(ctx, tx, t.ID, t.AssigneeIDs)
@@ -1753,20 +1755,23 @@ func updateTaskTx(ctx context.Context, tx *sqlx.Tx, t *taskdom.Task) error {
 	if err != nil {
 		return fmt.Errorf("task repo: marshal tags: %w", err)
 	}
-	_, err = tx.ExecContext(ctx, `
+	// RETURNING version: the database bumps it, and the caller's task must
+	// carry the new one (it becomes the snapshot realtime clients patch with).
+	err = tx.QueryRowxContext(ctx, `
 		UPDATE tasks SET
 		  task_type_id=$1, status_id=$2, sprint_id=$3, parent_task_id=$4,
 		  title=$5, description=$6, importance=$7, story_points=$8,
 		  reporter_id=$9, custom_fields=$10,
 		  start_date=$11, due_date=$12, tags=$13, updated_at=$14, assignment_mode=$15
-		WHERE id=$16`,
+		WHERE id=$16
+		RETURNING version`,
 		uuidPtrToStrPtr(t.TaskTypeID), uuidPtrToStrPtr(t.StatusID),
 		uuidPtrToStrPtr(t.SprintID), uuidPtrToStrPtr(t.ParentTaskID),
 		t.Title, t.Description, t.Importance, t.StoryPoints,
 		uuidPtrToStrPtr(t.ReporterID),
 		cf, t.StartDate, t.DueDate, tagsJSON, t.UpdatedAt,
 		assignmentModeOrDefault(t.AssignmentMode), t.ID.String(),
-	)
+	).Scan(&t.Version)
 	if err != nil {
 		return fmt.Errorf("task repo: update: %w", err)
 	}
@@ -2110,6 +2115,7 @@ func toTaskEntity(r *taskRecord) (*taskdom.Task, error) {
 		UpdatedAt:      r.UpdatedAt,
 		DeletedAt:      r.DeletedAt,
 		AssignmentMode: r.AssignmentMode,
+		Version:        r.Version,
 	}, nil
 }
 

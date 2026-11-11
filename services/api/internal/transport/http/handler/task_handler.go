@@ -1239,7 +1239,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			ActorID:      &actorID,
 			ActivityType: taskdom.ActivityTypeTaskCreated,
 			Content:      content,
-			Snapshot:     taskSnapshot(t),
+			Snapshot:     dto.TaskSnapshot(t),
 		})
 
 		// Enqueue one assignment event per assignee so the NotificationConsumer
@@ -1283,10 +1283,17 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	ifVersion, err := ifMatchVersion(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
 	// Fetch old state before mutating so we can record before/after values.
 	oldTask, _ := h.svc.GetTask(r.Context(), projectID, taskID)
 
 	t, err := h.svc.UpdateTask(r.Context(), projectID, taskID, taskdom.UpdateTaskInput{
+		IfVersion:      ifVersion,
 		TaskTypeID:     req.TaskTypeID.Ptr(),
 		StatusID:       req.StatusID.Ptr(),
 		SprintID:       req.SprintID.Ptr(),
@@ -1359,7 +1366,7 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 				ActorID:      &actorID,
 				ActivityType: taskdom.ActivityTypeTaskUpdated,
 				Content:      content,
-				Snapshot:     taskSnapshot(t),
+				Snapshot:     dto.TaskSnapshot(t),
 			})
 		}
 
@@ -1391,15 +1398,6 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	presenter.OK(w, r, dto.TaskFromEntity(t))
-}
-
-// taskSnapshot is the task as realtime clients patch it into their cache. The
-// description is left out: it can be large and collaborative editing owns it,
-// so a client keeps the one it has.
-func taskSnapshot(t *taskdom.Task) dto.TaskResponse {
-	resp := dto.TaskFromEntity(t)
-	resp.Description = nil
-	return resp
 }
 
 // taskChangedFields compares the old task snapshot against the patch request

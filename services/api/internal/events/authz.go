@@ -106,8 +106,8 @@ func AuthzFor(e Event) (Authz, bool) {
 	return Authz{}, false
 }
 
-// realtimeSink is the part of the publisher PublishRealtime needs.
-type realtimeSink interface {
+// RealtimeSink is the part of the publisher PublishRealtime needs.
+type RealtimeSink interface {
 	Publish(ctx context.Context, channel string, payload any) error
 }
 
@@ -116,7 +116,7 @@ type realtimeSink interface {
 // node drags, environment status changes). It builds the same envelope as
 // Fanout, so every realtime message carries its authorization the same way.
 // Errors are swallowed for the reason given on Fanout.
-func PublishRealtime(ctx context.Context, sink realtimeSink, e Event) {
+func PublishRealtime(ctx context.Context, sink RealtimeSink, e Event) {
 	if sink == nil {
 		return
 	}
@@ -127,7 +127,8 @@ func PublishRealtime(ctx context.Context, sink realtimeSink, e Event) {
 // then sends the legacy Pub/Sub message, stamped with the seq and epoch the
 // log gave it so a reader can tell the two apart and detect a gap. The log
 // comes first: a message that carries a seq must already be replayable.
-func publishRealtime(ctx context.Context, sink realtimeSink, e Event) {
+func publishRealtime(ctx context.Context, sink RealtimeSink, e Event) {
+	e = withContextClientOp(ctx, e)
 	msg := realtimeMessage(e)
 	if ref, ok := recordChange(ctx, sink, e); ok {
 		msg["seq"] = ref.Seq

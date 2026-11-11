@@ -539,7 +539,7 @@ func (s *Service) UpdateTask(ctx context.Context, projectID, id uuid.UUID, in ta
 	// on both fields together, so a save touching either must read and check
 	// them under the row lock — otherwise two concurrent saves each validate
 	// against the old value of the other's field and both write.
-	if in.ParentTaskID != nil || in.TaskTypeID != nil {
+	if in.ParentTaskID != nil || in.TaskTypeID != nil || in.IfVersion != nil {
 		return s.UpdateTaskAtomic(ctx, projectID, id, func(*taskdom.Task) (taskdom.UpdateTaskInput, bool) {
 			return in, true
 		})
@@ -582,6 +582,9 @@ func (s *Service) UpdateTaskAtomic(ctx context.Context, projectID, id uuid.UUID,
 		in, ok := decide(current)
 		if !ok {
 			return nil, nil
+		}
+		if in.IfVersion != nil && current.Version != *in.IfVersion {
+			return nil, taskdom.ErrVersionConflict
 		}
 		if _, err := s.applyTaskUpdate(ctx, current, in); err != nil {
 			return nil, err

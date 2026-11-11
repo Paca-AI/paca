@@ -56,7 +56,7 @@
 import { createServer } from "node:http";
 import type { Logger } from "pino";
 import { Server } from "socket.io";
-import type { AccessDecider } from "./access.ts";
+import type { AccessDecider, Viewer } from "./access.ts";
 import {
 	ApiRequestError,
 	fetchProjectPermissions,
@@ -68,10 +68,17 @@ import {
 	CollabHub,
 	type CollabJoinRequest,
 	type CollabJoinResult,
+	type CollabTransport,
 	MAX_UPDATE_BYTES,
 	parseRoomRef,
 	roomName,
 } from "./collab.ts";
+import {
+	type ClusterBus,
+	CollabCluster,
+	type CollabJoinHooks,
+	type LeaseStore,
+} from "./collab-cluster.ts";
 import type { Config } from "./config.ts";
 import { agentChatRoomName } from "./permissions.ts";
 import { createResyncer, type Resyncer } from "./resync.ts";
@@ -103,10 +110,38 @@ export interface SocketServer {
 	io: Server;
 	resyncer: Resyncer;
 	expiry: ExpiryWatcher;
-	collab: CollabHub;
+	collab: CollabFacade;
 	// sync is undefined when the protocol is off (no change log reader, or
 	// SYNC_ENABLED=false).
 	sync?: SyncHub;
+}
+
+// CollabFacade is what the server needs of collaborative editing: the hub itself
+// on one replica, or the cluster that routes to a room's owner.
+export interface CollabFacade {
+	join(
+		socketId: string,
+		viewer: Viewer,
+		req: CollabJoinRequest,
+		hooks?: CollabJoinHooks,
+	): Promise<CollabJoinResult>;
+	update(socketId: string, room: unknown, update: unknown): void;
+	awarenessUpdate(socketId: string, room: unknown, update: unknown): void;
+	leave(socketId: string, room: unknown): void;
+	leaveAll(socketId: string): void;
+	recheck(): Promise<void>;
+	handleContentEvent(
+		type: string,
+		payload: Record<string, unknown>,
+	): Promise<void>;
+	close(): void;
+}
+
+// CollabNet is what routing collaborative editing across replicas needs; absent,
+// the hub of this process is the authority of every room.
+export interface CollabNet {
+	leases: LeaseStore;
+	bus: ClusterBus;
 }
 
 export function createSocketServer(
@@ -114,6 +149,7 @@ export function createSocketServer(
 	logger: Logger,
 	decider: AccessDecider,
 	changeLog?: ChangeLogReader,
+	collabNet?: CollabNet,
 ): SocketServer {
 	const httpServer = createServer((req, res) => {
 		if (req.url === "/healthz" && req.method === "GET") {
@@ -181,33 +217,59 @@ export function createSocketServer(
 
 	const expiry = new ExpiryWatcher();
 
-	// Collaborative editing relay (see collab.ts).
-	const collab = new CollabHub(
-		decider,
-		{
-			broadcast: (room, except, event, payload) => {
-				const target = io.to(room);
-				(except ? target.except(except) : target).emit(event, payload);
-			},
-			grantSeed: (socketId, room) => {
-				io.to(socketId).emit("collab:seed", { room });
-			},
-			cancelSeed: (socketId, room) => {
-				io.to(socketId).emit("collab:seed-cancel", { room });
-			},
-			error: (socketId, room, reason) => {
-				io.to(socketId).emit("collab:error", { room, reason });
-			},
-			revoke: (socketId, room) => {
-				logger.info({ socketId, room }, "collab access revoked");
-				io.in(socketId).socketsLeave(room);
-				io.to(socketId).emit("collab:revoked", { room });
-			},
+	// Collaborative editing relay (see collab.ts), across replicas when a
+	// network is given (see collab-cluster.ts).
+	const newHub = (transport: CollabTransport) =>
+		new CollabHub(
+			decider,
+			transport,
+			(err, ctx) => logger.warn({ err, ctx }, "collab error"),
+			undefined,
+			(info, msg) => logger.info(info, msg),
+		);
+	const localTransport: CollabTransport = {
+		broadcast: (room, except, event, payload) => {
+			const target = io.to(room);
+			(except ? target.except(except) : target).emit(event, payload);
 		},
-		(err, ctx) => logger.warn({ err, ctx }, "collab error"),
-		undefined,
-		(info, msg) => logger.info(info, msg),
-	);
+		grantSeed: (socketId, room) => {
+			io.to(socketId).emit("collab:seed", { room });
+		},
+		cancelSeed: (socketId, room) => {
+			io.to(socketId).emit("collab:seed-cancel", { room });
+		},
+		error: (socketId, room, reason) => {
+			io.to(socketId).emit("collab:error", { room, reason });
+		},
+		revoke: (socketId, room) => {
+			logger.info({ socketId, room }, "collab access revoked");
+			io.in(socketId).socketsLeave(room);
+			io.to(socketId).emit("collab:revoked", { room });
+		},
+	};
+	const collab: CollabFacade = collabNet
+		? new CollabCluster({
+				replicaId: config.replicaId,
+				leases: collabNet.leases,
+				bus: collabNet.bus,
+				logger,
+				newHub,
+				local: {
+					has: (id) => io.sockets.sockets.has(id),
+					emit: (id, event, payload) => {
+						io.to(id).emit(event, payload);
+					},
+					emitToRoom: (room, except, event, payload) => {
+						const target = io.to(room);
+						(except ? target.except(except) : target).emit(event, payload);
+					},
+					leave: (id, room) => {
+						io.sockets.sockets.get(id)?.leave(room);
+					},
+					socketsIn: (room) => [...(io.sockets.adapter.rooms.get(room) ?? [])],
+				},
+			})
+		: newHub(localTransport);
 
 	// Resumable change delivery (see sync.ts).
 	const sync =

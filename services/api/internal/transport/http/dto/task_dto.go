@@ -399,6 +399,9 @@ type TaskResponse struct {
 	// AssignmentMode is "manual" or "auto" — see taskdom.Task.AssignmentMode's
 	// doc comment.
 	AssignmentMode string `json:"assignment_mode"`
+	// Version is the row version, bumped on every update: the same value in a
+	// realtime change tells a client whether its copy is older.
+	Version int64 `json:"version"`
 	// Assignees and Reporter are the people behind AssigneeIDs / ReporterID,
 	// present only when the list request asked for them with
 	// include=assignees,reporter. They carry identity (names, avatar, kind)
@@ -442,6 +445,7 @@ func TaskFromEntity(t *taskdom.Task) TaskResponse {
 		CreatedAt:        t.CreatedAt,
 		UpdatedAt:        t.UpdatedAt,
 		AssignmentMode:   t.AssignmentMode,
+		Version:          t.Version,
 		SubtaskCount:     t.SubtaskCount,
 		SubtaskDoneCount: t.SubtaskDoneCount,
 	}
@@ -667,5 +671,14 @@ func TaskLinkFromEntity(l *taskdom.TaskLink) TaskLinkResponse {
 			TaskTypeID: l.LinkedTask.TaskTypeID,
 		}
 	}
+	return resp
+}
+
+// TaskSnapshot is the task as realtime clients patch it into their cache: the
+// route response without the description, which can be large and which
+// collaborative editing owns, so a client keeps the one it has.
+func TaskSnapshot(t *taskdom.Task) TaskResponse {
+	resp := TaskFromEntity(t)
+	resp.Description = nil
 	return resp
 }

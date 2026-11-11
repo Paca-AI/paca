@@ -190,6 +190,15 @@ describe("SyncHub pump", () => {
 		expect(t.batches()).toEqual([]);
 	});
 
+	it("passes the client op id on, so the requesting client can skip its own echo", async () => {
+		const t = setup();
+		await t.hub.join("s1", P, {});
+		t.log.entries = [{ ...entry(1), clientOpId: "op-9" }];
+		t.hub.notify(P);
+		await settle();
+		expect(t.batches()[0]?.changes[0]).toMatchObject({ client_op_id: "op-9" });
+	});
+
 	it("sends a skip, not the change, for what the account may not see", async () => {
 		const t = setup({ allow: (r) => !r.endsWith("/t2") });
 		await t.hub.join("s1", P, {});

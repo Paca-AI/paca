@@ -1192,6 +1192,31 @@ func TestUpdateTask_OK(t *testing.T) {
 	}
 }
 
+// If-Match: an update that names the version it saw applies only while the task
+// is still at that version, checked on the locked read.
+func TestUpdateTask_IfVersionRefusesAStaleWrite(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeTaskRepo()
+	svc := tasksvc.New(repo)
+	task, _ := svc.CreateTask(ctx, taskdom.CreateTaskInput{ProjectID: uuid.New(), Title: "T"})
+	repo.tasks[task.ID].Version = 5
+
+	stale, fresh := int64(4), int64(5)
+	if _, err := svc.UpdateTask(ctx, task.ProjectID, task.ID, taskdom.UpdateTaskInput{Title: "stale", IfVersion: &stale}); !errors.Is(err, taskdom.ErrVersionConflict) {
+		t.Fatalf("a stale version must conflict, got %v", err)
+	}
+	if got, _ := svc.GetTask(ctx, task.ProjectID, task.ID); got.Title != "T" {
+		t.Errorf("a refused write must change nothing, title = %q", got.Title)
+	}
+	if updated, err := svc.UpdateTask(ctx, task.ProjectID, task.ID, taskdom.UpdateTaskInput{Title: "fresh", IfVersion: &fresh}); err != nil || updated.Title != "fresh" {
+		t.Fatalf("the current version must apply: %v %v", updated, err)
+	}
+	// No precondition: as it always was.
+	if _, err := svc.UpdateTask(ctx, task.ProjectID, task.ID, taskdom.UpdateTaskInput{Title: "anyway"}); err != nil {
+		t.Fatalf("a write without If-Match must apply: %v", err)
+	}
+}
+
 func TestUpdateTask_TitleUnchangedWhenEmpty(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeTaskRepo()

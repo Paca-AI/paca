@@ -74,6 +74,8 @@ export interface Task {
 	// properties-panel.tsx, which shows an "Auto" toggle instead of the
 	// member picker when this is "auto".
 	assignment_mode: "manual" | "auto";
+	/** Row version, bumped by the server on every update (see cache-patch.ts). */
+	version?: number;
 	/** The people behind assignee_ids / reporter_id. The list endpoints embed
 	 *  them (include=assignees,reporter); everywhere else they are absent. */
 	assignees?: ProjectMember[];

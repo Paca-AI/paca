@@ -77,6 +77,7 @@ type WireChange =
 			task_id?: string;
 			actor_id?: string;
 			origin?: string;
+			client_op_id?: string;
 	  };
 
 interface Sub {
@@ -105,6 +106,7 @@ function toWire(e: ChangeEntry): WireChange {
 		task_id: e.taskId,
 		actor_id: e.actorId,
 		origin: e.origin,
+		client_op_id: e.clientOpId,
 	};
 }
 

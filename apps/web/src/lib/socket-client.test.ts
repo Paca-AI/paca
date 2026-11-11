@@ -635,6 +635,21 @@ describe("socket-client", () => {
 			expect(seen[0]).toMatchObject({ resumed: false });
 		});
 
+		it("starts a first join from the head the page's data was read at", async () => {
+			const { observeChangeHead, clearChangeHeads } = await import(
+				"./change-heads"
+			);
+			clearChangeHeads();
+			observeChangeHead("p1", 4, 7);
+			connectSocket();
+			joinProject("p1");
+			expect(lastEmit("sync:join").data).toEqual({
+				projectId: "p1",
+				cursor: 4,
+				epoch: 7,
+			});
+		});
+
 		it("rejoins with the cursor it holds and reports a resumed join", () => {
 			connectSocket();
 			const seen: Array<{ resumed?: boolean }> = [];

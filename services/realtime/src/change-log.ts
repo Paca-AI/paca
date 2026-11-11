@@ -24,6 +24,9 @@ export interface ChangeEntry {
 	taskId?: string;
 	actorId?: string;
 	origin?: string;
+	// The id the requesting client stamped on its mutation (X-Client-Op-Id):
+	// that client skips the echo of its own change.
+	clientOpId?: string;
 	ts: string;
 	payload: Record<string, unknown>;
 	// entity is the entity after the change, when the API attached one (see
@@ -106,6 +109,7 @@ export function parseEntry(
 		taskId: f.task_id,
 		actorId: f.actor_id,
 		origin: f.origin,
+		clientOpId: f.client_op_id,
 		ts: f.ts ?? "",
 		payload: payload as Record<string, unknown>,
 		entity,

@@ -78,6 +78,7 @@ type App struct {
 	questionConsumer       *worker.QuestionNotificationConsumer
 	dueDateScheduler       *worker.DueDateScheduler
 	cronScheduler          *worker.CronScheduler
+	changeReconciler       *worker.ChangeReconciler
 	waitScheduler          *worker.WaitScheduler
 	gitRouter              *gitsvc.Router
 	stopGitRouter          context.CancelFunc
@@ -294,6 +295,7 @@ func New(cfg *config.Config) (*App, error) {
 	dueDateScheduler := worker.NewDueDateScheduler(redisClient, automationConsumer, log)
 	cronScheduler := worker.NewCronScheduler(redisClient, automationConsumer, log)
 	waitScheduler := worker.NewWaitScheduler(redisClient, automationConsumer, log)
+	changeReconciler := newChangeReconciler(db, publisher, taskRepo, sprintRepo, docRepo, log)
 
 	// Object storage — defaults to RustFS; switches to AWS S3 when STORAGE_PROVIDER=s3.
 	storageClient, err := storage.NewS3Client(context.Background(), storage.S3Config{
@@ -574,6 +576,7 @@ func New(cfg *config.Config) (*App, error) {
 		IAM:                 authorizer,
 		AgentEnvironments:   httpmw.AgentRepoLookups{Repo: agentRepo},
 		MemberPrincipals:    httpmw.MemberRepoLookup{Repo: projectRepo},
+		ChangeHeads:         publisher,
 		TaskNumbers:         taskRepo,
 		SessionEnvironments: httpmw.AgentRepoLookups{Repo: agentRepo},
 		Health:              handler.NewHealthHandler(),
@@ -653,7 +656,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, changeReconciler: changeReconciler, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
 }
 
 // platformActionsReader lists a user's or agent's effective platform-level
@@ -699,6 +702,9 @@ func (a *App) Run() error {
 	a.questionConsumer.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
+	if a.changeReconciler != nil {
+		a.changeReconciler.Start(context.Background())
+	}
 	a.waitScheduler.Start(context.Background())
 	gitCtx, stop := context.WithCancel(context.Background())
 	a.stopGitRouter = stop
@@ -721,6 +727,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.questionConsumer.Stop()
 	a.dueDateScheduler.Stop()
 	a.cronScheduler.Stop()
+	if a.changeReconciler != nil {
+		a.changeReconciler.Stop()
+	}
 	a.waitScheduler.Stop()
 	if a.stopGitRouter != nil {
 		a.stopGitRouter()

@@ -52,8 +52,11 @@ type Deps struct {
 	// gates (guards.ChatEnvironment / SessionEnvironment).
 	AgentEnvironments httpmw.AgentEnvironmentLookup
 	// MemberPrincipals resolves the assignees of a task request to principals.
-	TaskNumbers         httpmw.TaskNumberLookup
-	MemberPrincipals    httpmw.MemberPrincipalLookup
+	TaskNumbers      httpmw.TaskNumberLookup
+	MemberPrincipals httpmw.MemberPrincipalLookup
+	// ChangeHeads stamps project reads with the change-log head (X-Change-Seq),
+	// so a realtime client can start its feed where its data was read. Optional.
+	ChangeHeads         httpmw.ChangeHeadReader
 	SessionEnvironments httpmw.SessionEnvironmentLookup
 	Environment         *handler.EnvironmentHandler
 	// Git serves the linked-repository, credential and webhook endpoints; optional.
@@ -495,6 +498,7 @@ func New(deps Deps) http.Handler {
 			r.Route("/projects/{projectId}", func(r chi.Router) {
 				r.Use(httpmw.Authn(deps.TokenManager, deps.APIKeyAuth))
 				r.Use(httpmw.RequireFreshPassword())
+				r.Use(httpmw.ChangeHead(deps.ChangeHeads))
 
 				// Git: repositories linked through a provider plugin. A credential
 				// is minted per use (read and write are separate routes so each

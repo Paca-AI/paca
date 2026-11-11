@@ -107,6 +107,11 @@ type Event struct {
 	// to patch, such as a delete.
 	Snapshot any
 
+	// ClientOpID is the id the requesting client stamped on its mutation
+	// (ClientOpHeader). Left unset it is taken from the request context. It goes
+	// into the change log only.
+	ClientOpID string
+
 	// SkipPluginEvents suppresses the StreamPluginEvents append. Set it for
 	// events a plugin could not meaningfully act on — plugin dispatch is
 	// best-effort fan-out, and every event appended there costs every
@@ -217,6 +222,7 @@ type Sink interface {
 // FanoutTo is Fanout for a caller holding a Sink. The sink must be non-nil.
 func FanoutTo(ctx context.Context, publisher Sink, e Event) {
 	e = withContextActor(ctx, e)
+	e = withContextClientOp(ctx, e)
 
 	fields, ok := e.streamFields()
 	if !ok {

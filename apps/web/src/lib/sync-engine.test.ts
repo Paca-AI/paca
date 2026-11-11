@@ -24,6 +24,14 @@ const batch = (from: number, to: number, epoch = 7): SyncBatch => ({
 });
 
 describe("ProjectSync", () => {
+	it("starts a first join from the head its data was read at, and keeps a cursor it already has", () => {
+		const { sync } = setup();
+		sync.seed({ seq: 4, epoch: 7 });
+		expect(sync.joinRequest()).toEqual({ cursor: 4, epoch: 7 });
+		sync.seed({ seq: 99, epoch: 7 });
+		expect(sync.cursor).toBe(4);
+	});
+
 	it("starts at the head on a first join, which needs no refetch", () => {
 		const { sync, cb } = setup();
 		expect(sync.applyJoinAck({ epoch: 7, head: 10, mode: "live" })).toBe(false);

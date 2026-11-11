@@ -48,6 +48,7 @@ type SprintResponse struct {
 	Status    sprintdom.SprintStatus `json:"status"`
 	CreatedAt time.Time              `json:"created_at"`
 	UpdatedAt time.Time              `json:"updated_at"`
+	Version   int64                  `json:"version"`
 }
 
 // SprintFromEntity maps a domain Sprint to a SprintResponse DTO.
@@ -62,5 +63,6 @@ func SprintFromEntity(s *sprintdom.Sprint) SprintResponse {
 		Status:    s.Status,
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
+		Version:   s.Version,
 	}
 }

@@ -26,6 +26,12 @@
 import { io, type Socket } from "socket.io-client";
 import { apiClient } from "./api-client";
 import {
+	clearChangeHeads,
+	earliestChangeHead,
+	markJoined,
+	markLeft,
+} from "./change-heads";
+import {
 	isSyncEnabled,
 	ProjectSync,
 	type SyncBatch,
@@ -139,6 +145,7 @@ export function disconnectSocket(): void {
 	projectSubscriberCounts.clear();
 	projectNamespaces.clear();
 	syncStates.clear();
+	clearChangeHeads();
 	for (const timer of joinRetryTimers.values()) clearTimeout(timer);
 	joinRetryTimers.clear();
 }
@@ -270,6 +277,7 @@ export function leaveProject(projectId: string): void {
 		projectSubscriberCounts.delete(projectId);
 		projectNamespaces.delete(projectId);
 		syncStates.delete(projectId);
+		markLeft(projectId);
 		clearJoinRetry(projectId);
 		socket?.emit("leave", { projectId });
 		return;
@@ -406,6 +414,10 @@ function emitJoin(projectId: string, attempt = 1): void {
 function emitSyncJoin(projectId: string, attempt: number): void {
 	if (!socket) return;
 	const state = syncStateFor(projectId);
+	// A first join starts where the page's data was read, not at the head, so a
+	// change made between its first requests and this join is replayed.
+	const seen = earliestChangeHead(projectId);
+	if (seen) state.seed(seen);
 	socket
 		.timeout(JOIN_ACK_TIMEOUT_MS)
 		.emit(
@@ -413,6 +425,7 @@ function emitSyncJoin(projectId: string, attempt: number): void {
 			{ projectId, ...state.joinRequest() },
 			(err: Error | null, res?: SyncJoinResponse) => {
 				if (!err && res?.ok) {
+					markJoined(projectId);
 					const resumed = state.applyJoinAck(res);
 					recordNamespaces({
 						projectId,
@@ -532,5 +545,7 @@ export interface RealtimeEvent {
 		entityType?: string;
 		entityId?: string;
 		taskId?: string;
+		/** Set when this tab's own mutation caused the change (its echo). */
+		clientOpId?: string;
 	};
 }

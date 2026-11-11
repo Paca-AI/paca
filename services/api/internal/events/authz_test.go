@@ -17,6 +17,7 @@ import (
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	agentsvc "github.com/Paca-AI/api/internal/service/agent"
+	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
 )
@@ -103,12 +104,10 @@ func topicConstants(t *testing.T) []string {
 	return out
 }
 
-// TestEveryTopicIsClassified fails when a topic is added without deciding
-// what IAM must allow before a client sees it. The decision is either an
-// AuthzFor rule or an entry in notRealtimeTopics.
-func TestEveryTopicIsClassified(t *testing.T) {
-	project := uuid.New()
-	entity := uuid.New()
+// candidateTopics is every topic a client can be sent: the constants of
+// topics.go plus the topics the domain services own and record themselves.
+func candidateTopics(t *testing.T) []string {
+	t.Helper()
 	topics := topicConstants(t)
 	// Activity types owned by the domains reach realtime through the same
 	// fanout and share the prefix rules.
@@ -136,17 +135,35 @@ func TestEveryTopicIsClassified(t *testing.T) {
 		tasksvc.TopicTaskStatusesReordered,
 		tasksvc.TopicCustomFieldCreated, tasksvc.TopicCustomFieldUpdated,
 		tasksvc.TopicCustomFieldDeleted,
+		environmentsvc.TopicEnvironmentCreated, environmentsvc.TopicEnvironmentUpdated,
+		environmentsvc.TopicEnvironmentDeleted, environmentsvc.TopicEnvironmentStarted,
+		environmentsvc.TopicEnvironmentStopped, environmentsvc.TopicEnvironmentRestarted,
+		environmentsvc.TopicEnvironmentSSHKeyAdded, environmentsvc.TopicEnvironmentSSHKeyRemoved,
+		environmentsvc.TopicEnvironmentPortForwardAdded, environmentsvc.TopicEnvironmentPortForwardRemoved,
+		// Published outside the services above.
+		"git.task.updated", "agent.acp_bridge.status", "agent.session.started",
 	} {
 		if !slices.Contains(topics, a) {
 			topics = append(topics, a)
 		}
 	}
+	slices.Sort(topics)
+	return topics
+}
+
+// TestEveryTopicIsClassified fails when a topic is added without deciding
+// what IAM must allow before a client sees it. The decision is either an
+// AuthzFor rule or an entry in notRealtimeTopics.
+func TestEveryTopicIsClassified(t *testing.T) {
+	project := uuid.New()
+	entity := uuid.New()
+	topics := candidateTopics(t)
 
 	for _, topic := range topics {
 		if _, skipped := notRealtimeTopics[topic]; skipped {
 			continue
 		}
-		if _, ok := events.AuthzFor(events.Event{Topic: topic, ProjectID: project, EntityID: &entity}); !ok {
+		if _, ok := events.AuthzFor(events.Event{Topic: topic, ProjectID: project, EntityID: &entity, Payload: map[string]any{"conversation_id": entity.String()}}); !ok {
 			t.Errorf("%s has no AuthzFor rule and is not in notRealtimeTopics: decide what IAM must allow before a client sees it", topic)
 		}
 	}

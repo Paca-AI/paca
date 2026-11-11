@@ -97,3 +97,71 @@ func TestAppendChange_NilPublisher(t *testing.T) {
 		t.Error("a nil publisher must report an error")
 	}
 }
+
+func TestChangeHead_ReportsTheHeadAndNothingBeforeTheFirstChange(t *testing.T) {
+	client, cleanup := newTestRedisClient(t)
+	defer cleanup()
+	p := NewPublisher(client, testLogger())
+	ctx := context.Background()
+	if _, _, ok := p.ChangeHead(ctx, "p"); ok {
+		t.Fatal("a project with no change has no head")
+	}
+	_, _ = p.AppendChange(ctx, "p", map[string]any{"type": "t"})
+	ref, _ := p.AppendChange(ctx, "p", map[string]any{"type": "t"})
+	seq, epoch, ok := p.ChangeHead(ctx, "p")
+	if !ok || seq != 2 || epoch != ref.Epoch {
+		t.Fatalf("head = %d/%d ok=%v, want 2/%d", seq, epoch, ok, ref.Epoch)
+	}
+	var nilPub *Publisher
+	if _, _, ok := nilPub.ChangeHead(ctx, "p"); ok {
+		t.Error("a nil publisher has no head")
+	}
+}
+
+func TestAppendChange_RecordsWhenAndAtWhatVersionAnEntityWasLastLogged(t *testing.T) {
+	client, cleanup := newTestRedisClient(t)
+	defer cleanup()
+	p := NewPublisher(client, testLogger())
+	ctx := context.Background()
+
+	if _, err := p.AppendChange(ctx, "p", map[string]any{"type": "task.updated", MarkField: "task-1", MarkVersionField: int64(4)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.AppendChange(ctx, "p", map[string]any{"type": "task.updated", MarkField: "task-3"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.AppendChange(ctx, "p", map[string]any{"type": "task.deleted", MarkField: "task-4", MarkVersionField: DeletedVersion}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.AppendChange(ctx, "p", map[string]any{"type": "task.comment.added"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.LastLogged(ctx, "p", []string{"task-1", "task-2", "task-3", "task-4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["task-1"].AtMs == 0 || got["task-1"].Version != 4 {
+		t.Errorf("task-1 = %+v, want a time and version 4", got["task-1"])
+	}
+	if got["task-3"].Version != UnknownVersion {
+		t.Errorf("task-3 logged without a version must say so, got %+v", got["task-3"])
+	}
+	if got["task-4"].Version != DeletedVersion {
+		t.Errorf("task-4 = %+v, want the deleted version", got["task-4"])
+	}
+	if _, has := got["task-2"]; has {
+		t.Errorf("task-2 was never logged, got %v", got)
+	}
+	_, stream := ChangeLogKeys("p")
+	entries, _ := client.XRange(ctx, stream, "-", "+").Result()
+	for _, e := range entries {
+		for _, k := range []string{MarkField, MarkVersionField} {
+			if _, has := e.Values[k]; has {
+				t.Errorf("%s must not be stored in the entry: %v", k, e.Values)
+			}
+		}
+	}
+	if ttl := client.TTL(ctx, changeLogLastKey("p")).Val(); ttl <= 0 {
+		t.Errorf("the index must expire, ttl = %v", ttl)
+	}
+}

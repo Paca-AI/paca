@@ -195,6 +195,10 @@ type CreateTaskInput struct {
 // is stored as null), so concurrent edits of different custom fields can't
 // overwrite each other.
 type UpdateTaskInput struct {
+	// IfVersion, when set, makes the update apply only if the task is still at
+	// that version (HTTP If-Match): ErrVersionConflict otherwise. Checked under
+	// the row lock, so two saves of the same version cannot both win.
+	IfVersion    *int64
 	TaskTypeID   **uuid.UUID
 	StatusID     **uuid.UUID
 	SprintID     **uuid.UUID

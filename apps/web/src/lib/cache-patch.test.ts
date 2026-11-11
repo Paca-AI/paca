@@ -7,6 +7,7 @@ import {
 	isSprintListKey,
 	isTaskListKey,
 } from "./cache-patch";
+import { clearOwnOps, rememberOwnOp } from "./client-ops";
 import type { RealtimeEvent } from "./socket-client";
 
 const P = "p1";
@@ -426,5 +427,158 @@ describe("applyEnvironmentStatus", () => {
 		expect(applyEnvironmentStatus(qc, P, { environment_id: "e1" })).toBe(
 			"unhandled",
 		);
+	});
+});
+
+describe("the echo of this tab's own mutation", () => {
+	const withOp = (e: RealtimeEvent, op: string): RealtimeEvent => ({
+		...e,
+		change: {
+			...(e.change as NonNullable<RealtimeEvent["change"]>),
+			clientOpId: op,
+		},
+	});
+
+	it("still patches, but only marks the lists stale instead of refetching the active ones", () => {
+		clearOwnOps();
+		rememberOwnOp("mine");
+		qc.setQueryData(["projects", P, "tasks", T1], task());
+		const ev = withOp(
+			event("task.updated", { id: T1, title: "New" }, ["status"]),
+			"mine",
+		);
+		expect(applyTaskChange(qc, P, ev)).toBe("patched");
+		expect(
+			qc.getQueryData<{ title: string }>(["projects", P, "tasks", T1])?.title,
+		).toBe("New");
+		const listCalls = calls.filter((c) => c.refetchType !== undefined);
+		expect(listCalls.length).toBeGreaterThan(0);
+		expect(listCalls.every((c) => c.refetchType === "none")).toBe(true);
+	});
+
+	it("treats an id this tab did not send like anyone's change", () => {
+		clearOwnOps();
+		applyTaskChange(
+			qc,
+			P,
+			withOp(event("task.updated", { id: T1 }, ["status"]), "someone-else"),
+		);
+		expect(listsInvalidated()).toBe(true);
+	});
+
+	it("does the same for a sprint", () => {
+		clearOwnOps();
+		rememberOwnOp("mine");
+		qc.setQueryData(["projects", P, "sprints", "list", {}], { items: [] });
+		applySprintChange(
+			qc,
+			P,
+			withOp(
+				{
+					type: "sprint.created",
+					payload: {},
+					change: {
+						entityType: "sprint",
+						entityId: "s1",
+						entity: { id: "s1", name: "S" },
+					},
+				},
+				"mine",
+			),
+		);
+		expect(listsInvalidated()).toBe(false);
+		expect(calls.some((c) => c.refetchType === "none")).toBe(true);
+	});
+});
+
+describe("versions", () => {
+	it("ignores a snapshot that is not newer than the copy it would patch, and does no refetching for it", () => {
+		qc.setQueryData(
+			["projects", P, "tasks", T1],
+			task({ version: 5, title: "Mine" }),
+		);
+		qc.setQueryData(["projects", P, "tasks", { a: 1 }], {
+			items: [task({ version: 5, title: "Mine" })],
+		});
+		for (const version of [5, 4]) {
+			expect(
+				applyTaskChange(
+					qc,
+					P,
+					event("task.updated", { id: T1, title: "Old", version }, ["status"]),
+				),
+			).toBe("patched");
+		}
+		expect(
+			qc.getQueryData<{ title: string }>(["projects", P, "tasks", T1])?.title,
+		).toBe("Mine");
+		expect(calls).toEqual([]);
+	});
+
+	it("applies a newer snapshot, and one with no version on either side", () => {
+		qc.setQueryData(["projects", P, "tasks", T1], task({ version: 5 }));
+		applyTaskChange(
+			qc,
+			P,
+			event("task.updated", { id: T1, title: "Newer", version: 6 }, ["title"]),
+		);
+		expect(
+			qc.getQueryData<{ title: string; version: number }>([
+				"projects",
+				P,
+				"tasks",
+				T1,
+			]),
+		).toMatchObject({ title: "Newer", version: 6 });
+
+		const bare = new QueryClient();
+		bare.setQueryData(
+			["projects", P, "tasks", T2],
+			task({ id: T2, title: "a" }),
+		);
+		applyTaskChange(bare, P, {
+			type: "task.updated",
+			payload: {},
+			change: {
+				entityType: "task",
+				entityId: T2,
+				taskId: T2,
+				entity: { id: T2, title: "b" },
+			},
+		});
+		expect(
+			bare.getQueryData<{ title: string }>(["projects", P, "tasks", T2])?.title,
+		).toBe("b");
+	});
+
+	it("still refreshes when no copy is cached to compare with", () => {
+		applyTaskChange(
+			qc,
+			P,
+			event("task.updated", { id: T1, version: 1 }, ["status"]),
+		);
+		expect(listsInvalidated()).toBe(true);
+	});
+
+	it("applies the same rule to sprints", () => {
+		qc.setQueryData(["projects", P, "sprints", "s1"], {
+			id: "s1",
+			name: "New",
+			status: "planned",
+			version: 3,
+		});
+		applySprintChange(qc, P, {
+			type: "sprint.updated",
+			payload: {},
+			change: {
+				entityType: "sprint",
+				entityId: "s1",
+				entity: { id: "s1", name: "Old", status: "planned", version: 3 },
+			},
+		});
+		expect(
+			qc.getQueryData<{ name: string }>(["projects", P, "sprints", "s1"])?.name,
+		).toBe("New");
+		expect(calls).toEqual([]);
 	});
 });

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -48,20 +50,51 @@ func ChangeLogKeys(projectID string) (meta, stream string) {
 	return base + ":meta", base + ":stream"
 }
 
+// changeLogLastKey is a hash entity id -> the time (ms) the entity's last
+// whole-entity change was logged. The change reconciler reads it to tell a
+// database change that was announced from one whose announcement was lost.
+func changeLogLastKey(projectID string) string {
+	return "paca:changes:{" + projectID + "}:last"
+}
+
+// MarkField is the key of the field of an AppendChange map that names the
+// entity whose change this is, for the "last logged" index. It is read and
+// removed before the entry is stored.
+const MarkField = "_mark"
+
+// MarkVersionField carries, next to MarkField, the row version the logged state
+// of the entity has (its snapshot's version), or UnknownVersion when the change
+// carries none, or DeletedVersion for a delete (which any later row is covered
+// by). Read and removed like MarkField.
+const MarkVersionField = "_markver"
+
+// UnknownVersion marks a logged change whose row version is not known.
+const UnknownVersion int64 = -1
+
+// DeletedVersion marks the delete of an entity: nothing can follow it.
+const DeletedVersion int64 = math.MaxInt64
+
 // appendChangeScript allocates the next seq, appends the entry with it, trims
-// and refreshes the expiry. KEYS: meta, stream. ARGV: maxlen, ttl seconds,
-// now (ms, the epoch for a new counter), then the entry's field/value pairs.
+// and refreshes the expiry. KEYS: meta, stream, last. ARGV: maxlen, ttl
+// seconds, now (ms, the epoch for a new counter and the logged time), the id of
+// the entity to record as just logged ("" for none), the row version of the
+// logged state, then the entry's field/value pairs. The index holds
+// "<ms>:<version>" per entity.
 var appendChangeScript = redis.NewScript(`
-local meta, stream = KEYS[1], KEYS[2]
+local meta, stream, last = KEYS[1], KEYS[2], KEYS[3]
 if redis.call('HEXISTS', meta, 'epoch') == 0 then
   redis.call('HSET', meta, 'epoch', ARGV[3])
 end
 local seq = redis.call('HINCRBY', meta, 'seq', 1)
 local epoch = redis.call('HGET', meta, 'epoch')
 local args = {stream, 'MAXLEN', '~', ARGV[1], seq .. '-0', 'seq', seq, 'epoch', epoch}
-for i = 4, #ARGV do args[#args + 1] = ARGV[i] end
+for i = 6, #ARGV do args[#args + 1] = ARGV[i] end
 redis.call('XADD', unpack(args))
 redis.call('EXPIRE', stream, ARGV[2])
+if ARGV[4] ~= '' then
+  redis.call('HSET', last, ARGV[4], ARGV[3] .. ':' .. ARGV[5])
+  redis.call('EXPIRE', last, ARGV[2])
+end
 return {seq, epoch}
 `)
 
@@ -72,16 +105,26 @@ func (p *Publisher) AppendChange(ctx context.Context, projectID string, fields m
 		return ChangeRef{}, errors.New("messaging: publisher not initialized")
 	}
 	meta, stream := ChangeLogKeys(projectID)
-	argv := make([]any, 0, 3+2*len(fields))
+	mark, _ := fields[MarkField].(string)
+	markVer, ok := fields[MarkVersionField].(int64)
+	if !ok {
+		markVer = UnknownVersion
+	}
+	argv := make([]any, 0, 5+2*len(fields))
 	argv = append(argv,
 		ChangeLogMaxLen,
 		int64(ChangeLogTTL/time.Second),
 		time.Now().UnixMilli(),
+		mark,
+		markVer,
 	)
 	for k, v := range fields {
+		if k == MarkField || k == MarkVersionField {
+			continue
+		}
 		argv = append(argv, k, v)
 	}
-	res, err := appendChangeScript.Run(ctx, p.client, []string{meta, stream}, argv...).Slice()
+	res, err := appendChangeScript.Run(ctx, p.client, []string{meta, stream, changeLogLastKey(projectID)}, argv...).Slice()
 	if err != nil {
 		return ChangeRef{}, fmt.Errorf("messaging: append change to %q: %w", stream, err)
 	}
@@ -100,4 +143,65 @@ func (p *Publisher) AppendChange(ctx context.Context, projectID string, fields m
 		epoch = v
 	}
 	return ChangeRef{Seq: seq, Epoch: epoch}, nil
+}
+
+// ChangeHead returns the project's current change-log head: the last allocated
+// seq and the log's epoch. ok is false when the project has no log yet or the
+// read fails; callers treat that as "no head to report".
+func (p *Publisher) ChangeHead(ctx context.Context, projectID string) (seq, epoch int64, ok bool) {
+	if p == nil || p.client == nil {
+		return 0, 0, false
+	}
+	meta, _ := ChangeLogKeys(projectID)
+	vals, err := p.client.HMGet(ctx, meta, "seq", "epoch").Result()
+	if err != nil || len(vals) != 2 || vals[0] == nil || vals[1] == nil {
+		return 0, 0, false
+	}
+	seq, err1 := strconv.ParseInt(fmt.Sprint(vals[0]), 10, 64)
+	epoch, err2 := strconv.ParseInt(fmt.Sprint(vals[1]), 10, 64)
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return seq, epoch, true
+}
+
+// Logged says when an entity's last whole-entity change was logged and the row
+// version of the state it carried.
+type Logged struct {
+	AtMs    int64
+	Version int64 // UnknownVersion, DeletedVersion or a row version
+}
+
+// LastLogged returns, for each entity id, its last whole-entity change in the
+// project; an id never logged (or whose record expired) is absent.
+func (p *Publisher) LastLogged(ctx context.Context, projectID string, entityIDs []string) (map[string]Logged, error) {
+	out := make(map[string]Logged, len(entityIDs))
+	if len(entityIDs) == 0 {
+		return out, nil
+	}
+	if p == nil || p.client == nil {
+		return nil, errors.New("messaging: publisher not initialized")
+	}
+	vals, err := p.client.HMGet(ctx, changeLogLastKey(projectID), entityIDs...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("messaging: read last logged: %w", err)
+	}
+	for i, v := range vals {
+		if v == nil {
+			continue
+		}
+		at, ver, found := strings.Cut(fmt.Sprint(v), ":")
+		ms, err1 := strconv.ParseInt(at, 10, 64)
+		if err1 != nil {
+			continue
+		}
+		version := UnknownVersion
+		if found {
+			if n, err2 := strconv.ParseInt(ver, 10, 64); err2 == nil {
+				version = n
+			}
+		}
+		out[entityIDs[i]] = Logged{AtMs: ms, Version: version}
+	}
+	return out, nil
 }

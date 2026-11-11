@@ -12,6 +12,8 @@ import Redis from "ioredis";
 import pino from "pino";
 import { AccessDecider } from "./access.ts";
 import { ValkeyChangeLogReader } from "./change-log.ts";
+import { CollabCluster } from "./collab-cluster.ts";
+import { ValkeyBus, ValkeyLeases } from "./collab-valkey.ts";
 import { loadConfig } from "./config.ts";
 import { IamEpochWatcher } from "./iam-epoch.ts";
 import { createSocketServer } from "./server.ts";
@@ -28,7 +30,9 @@ const logger = pino({
 
 logger.info("starting paca realtime service");
 
-const decider = new AccessDecider(config.apiUrl);
+const decider = new AccessDecider(config.apiUrl, {
+	ttlMs: config.accessCacheTtlMs,
+});
 
 // A regular (non-subscriber) client, used only to read the change log.
 const commands = new Redis(config.valkey.url, { maxRetriesPerRequest: 2 });
@@ -36,12 +40,32 @@ commands.on("error", (err: unknown) => {
 	logger.error({ err }, "valkey command client error");
 });
 
+// Collaborative editing across replicas: a room has one owner, found through a
+// lease in Valkey (see collab-cluster.ts). Off, this process owns every room.
+const collabNet = config.collabCluster
+	? {
+			leases: new ValkeyLeases(commands),
+			bus: new ValkeyBus(
+				commands,
+				new Redis(config.valkey.url, { maxRetriesPerRequest: null }),
+			),
+		}
+	: undefined;
+
 const { httpServer, io, resyncer, expiry, collab, sync } = createSocketServer(
 	config,
 	logger,
 	decider,
 	new ValkeyChangeLogReader(commands),
+	collabNet,
 );
+if (collab instanceof CollabCluster) {
+	await collab.start();
+	logger.info(
+		{ replica: config.replicaId },
+		"collaborative editing is clustered",
+	);
+}
 // What an IAM change makes every open socket redo: drop decisions, re-sync
 // rooms, re-check collab editors.
 function onIamChanged(): void {

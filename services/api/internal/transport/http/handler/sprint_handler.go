@@ -180,7 +180,13 @@ func (h *SprintHandler) UpdateSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ifVersion, err := ifMatchVersion(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	s, err := h.svc.UpdateSprint(r.Context(), projectID, sprintID, sprintdom.UpdateSprintInput{
+		IfVersion: ifVersion,
 		Name:      req.Name,
 		StartDate: req.StartDate.Ptr(),
 		EndDate:   req.EndDate.Ptr(),

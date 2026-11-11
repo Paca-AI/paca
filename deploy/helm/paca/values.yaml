@@ -314,12 +314,10 @@ web:
 realtime:
   replicaCount: 1
   # Replicas above 1 are refused unless this is true. Live updates (the sync
-  # protocol, Pub/Sub and the change log) work across replicas, but
-  # collaborative editing keeps each document's Y.Doc in one process: two
-  # editors of the same document on different replicas would diverge. Set it
-  # only with the gateway pinning every connection of a user to one replica
-  # AND all editors of a resource sharing it, or with collaborative editing
-  # not in use. Socket.IO's polling transport also needs sticky sessions.
+  # protocol, Pub/Sub and the change log) and collaborative editing (one owner
+  # replica per document, found through Valkey) work across replicas. Socket.IO's
+  # polling transport, the client's fallback, still needs the gateway to keep
+  # one connection on one replica (sticky sessions); WebSocket does not.
   # See services/realtime/README.md, "Running more than one replica".
   allowMultipleReplicas: false
   image:

@@ -50,6 +50,9 @@ type CreateSprintInput struct {
 //   - non-nil outer pointer, inner pointer nil  → explicitly set to null (clear)
 //   - non-nil outer pointer, inner pointer non-nil  → set to the given value
 type UpdateSprintInput struct {
+	// IfVersion, when set, makes the update apply only if the sprint is still
+	// at that version (HTTP If-Match): ErrVersionConflict otherwise.
+	IfVersion *int64
 	Name      string
 	StartDate **time.Time
 	EndDate   **time.Time

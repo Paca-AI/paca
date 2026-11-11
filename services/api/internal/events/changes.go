@@ -67,11 +67,61 @@ func (e Event) changeFields() (map[string]any, bool) {
 			fields["entity"] = string(body)
 		}
 	}
+	if e.ClientOpID != "" {
+		fields["client_op_id"] = e.ClientOpID
+	}
+	if id := e.markedEntity(); id != "" {
+		fields[messaging.MarkField] = id
+		fields[messaging.MarkVersionField] = e.loggedVersion(fields)
+	}
 	fields["id"] = uuid.NewString()
 	fields["op"] = changeOp(e.Topic)
 	fields["ts"] = time.Now().UTC().Format(time.RFC3339Nano)
 	fields["authz"] = string(az)
 	return fields, true
+}
+
+// wholeEntityTopics are the topics that stand for the entity as a whole: the
+// state after one of them is the state of the entity. Logging one is what
+// tells the change reconciler a database change was announced; a comment or a
+// link is not, because it says nothing about the task row itself.
+var wholeEntityTopics = map[string]bool{
+	"task.created": true, "task.updated": true, "task.deleted": true,
+	"sprint.created": true, "sprint.updated": true, "sprint.completed": true, "sprint.deleted": true,
+	"doc.created": true, "doc.updated": true, "doc.deleted": true, "doc.moved": true,
+}
+
+// markedEntity is the id of the entity a whole-entity event is about, or "".
+func (e Event) markedEntity() string {
+	if !wholeEntityTopics[e.Topic] {
+		return ""
+	}
+	switch {
+	case e.TaskID != nil && *e.TaskID != uuid.Nil:
+		return e.TaskID.String()
+	case e.EntityID != nil && *e.EntityID != uuid.Nil:
+		return e.EntityID.String()
+	}
+	return ""
+}
+
+// loggedVersion is the row version the change's state has: that of its
+// snapshot, DeletedVersion for a delete (nothing follows it), else unknown.
+func (e Event) loggedVersion(fields map[string]any) int64 {
+	if strings.HasSuffix(e.Topic, ".deleted") {
+		return messaging.DeletedVersion
+	}
+	body, _ := fields["entity"].(string)
+	if body == "" {
+		return messaging.UnknownVersion
+	}
+	var v struct {
+		Version *int64 `json:"version"`
+	}
+	if json.Unmarshal([]byte(body), &v) != nil || v.Version == nil {
+		return messaging.UnknownVersion
+	}
+	return *v.Version
 }
 
 // recordChange appends e to its project's change log when the sink keeps one

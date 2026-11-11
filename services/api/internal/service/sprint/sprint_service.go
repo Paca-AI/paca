@@ -35,7 +35,7 @@ func New(repo sprintdom.SprintRepository, taskRepo taskdom.TaskRepository, publi
 func (s *Service) record(ctx context.Context, topic string, sp *sprintdom.Sprint) {
 	var snapshot any
 	if topic != events.TopicSprintDeleted {
-		snapshot = sprintSnapshot(sp)
+		snapshot = SprintSnapshot(sp)
 	}
 	s.activity.Record(ctx, activitysvc.Entry{
 		Snapshot:   snapshot,
@@ -52,11 +52,12 @@ func (s *Service) record(ctx context.Context, topic string, sp *sprintdom.Sprint
 	})
 }
 
-// sprintSnapshot is the sprint as realtime clients patch it into their cache:
+// SprintSnapshot is the sprint as realtime clients patch it into their cache:
 // the same JSON the sprint routes return (dto.SprintResponse), kept in step
 // with it by a test, since this package cannot import the transport layer.
-func sprintSnapshot(sp *sprintdom.Sprint) map[string]any {
+func SprintSnapshot(sp *sprintdom.Sprint) map[string]any {
 	m := map[string]any{
+		"version":    sp.Version,
 		"id":         sp.ID,
 		"project_id": sp.ProjectID,
 		"name":       sp.Name,
@@ -182,6 +183,9 @@ func (s *Service) UpdateSprint(ctx context.Context, projectID, id uuid.UUID, in 
 	sp, err := s.repo.UpdateSprintAtomic(ctx, id, func(sp *sprintdom.Sprint) error {
 		if sp.ProjectID != projectID {
 			return sprintdom.ErrSprintNotFound
+		}
+		if in.IfVersion != nil && sp.Version != *in.IfVersion {
+			return sprintdom.ErrVersionConflict
 		}
 		wasActive = sp.Status == sprintdom.SprintStatusActive
 

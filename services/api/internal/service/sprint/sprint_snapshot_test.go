@@ -21,7 +21,7 @@ func TestSprintSnapshot_MatchesTheRouteResponse(t *testing.T) {
 		"full": {
 			ID: uuid.New(), ProjectID: uuid.New(), Name: "S1", StartDate: &start,
 			EndDate: &start, Goal: &goal, Status: sprintdom.SprintStatusActive,
-			CreatedAt: start, UpdatedAt: start,
+			CreatedAt: start, UpdatedAt: start, Version: 4,
 		},
 		"bare": {
 			ID: uuid.New(), ProjectID: uuid.New(), Name: "S2",
@@ -30,7 +30,7 @@ func TestSprintSnapshot_MatchesTheRouteResponse(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var got, want map[string]any
-			a, _ := json.Marshal(sprintSnapshot(sp))
+			a, _ := json.Marshal(SprintSnapshot(sp))
 			b, _ := json.Marshal(dto.SprintFromEntity(sp))
 			if err := json.Unmarshal(a, &got); err != nil {
 				t.Fatal(err)

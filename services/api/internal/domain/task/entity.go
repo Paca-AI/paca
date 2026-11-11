@@ -220,6 +220,10 @@ type Task struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	DeletedAt    *time.Time
+	// Version is bumped by the database on every update of the row. A client
+	// compares it to tell a stale or repeated change from a newer one, and a
+	// writer names the version it saw with If-Match.
+	Version int64
 	// AssignmentMode is AssignmentModeManual (default) or AssignmentModeAuto.
 	// When "auto", worker.TaskAutofillConsumer resolves AssigneeIDs via Jev
 	// whenever it's empty — see that consumer's own doc comment. A human

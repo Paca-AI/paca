@@ -48,6 +48,13 @@ describe("parseEntry", () => {
 		).toBeUndefined();
 	});
 
+	it("carries the client op id of the request that caused the change", () => {
+		expect(
+			parseEntry(fields({ ...ok, client_op_id: "op-1" }), "p")?.clientOpId,
+		).toBe("op-1");
+		expect(parseEntry(fields(ok), "p")?.clientOpId).toBeUndefined();
+	});
+
 	it("rejects an entry it cannot deliver safely", () => {
 		expect(parseEntry(fields({ ...ok, seq: "x" }), "p")).toBeNull();
 		expect(parseEntry(fields({ ...ok, payload: "{" }), "p")).toBeNull();

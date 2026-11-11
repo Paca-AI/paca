@@ -17,7 +17,7 @@ const notifyTimeout = 2 * time.Second
 
 type iamChangeNotifier struct {
 	next PolicyInvalidator
-	sink realtimeSink
+	sink RealtimeSink
 }
 
 // NotifyIAMChanges wraps the authorizer's invalidator so that every committed
@@ -30,7 +30,7 @@ type iamChangeNotifier struct {
 // asked of the API sees the new policy. The announcement names the roles that
 // changed; it says nothing about who holds them, and subscribers must treat
 // it as "recheck everyone". A nil sink returns next unchanged.
-func NotifyIAMChanges(next PolicyInvalidator, sink realtimeSink) PolicyInvalidator {
+func NotifyIAMChanges(next PolicyInvalidator, sink RealtimeSink) PolicyInvalidator {
 	if sink == nil {
 		return next
 	}

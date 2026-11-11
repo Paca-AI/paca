@@ -15,6 +15,7 @@
 // "unhandled": the caller falls back to invalidating, as before.
 
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import { isOwnOp } from "./client-ops";
 import type { RealtimeEvent } from "./socket-client";
 
 export type PatchResult = "patched" | "unhandled";
@@ -103,6 +104,20 @@ function mergeTask(
 	return next;
 }
 
+// A snapshot older than, or as old as, the copy a cache holds changes nothing:
+// it is a repeat (a replay overlapping live delivery, the echo of the client's
+// own mutation whose response already wrote it) or arrived out of order.
+// Versions are the row version the database bumps on every update; a snapshot
+// or a copy without one is never called stale, so nothing is dropped by guess.
+export function isStaleSnapshot(
+	existing: Record<string, unknown>,
+	snapshot: Record<string, unknown>,
+): boolean {
+	const have = existing.version;
+	const got = snapshot.version;
+	return typeof have === "number" && typeof got === "number" && got <= have;
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
 	return !!v && typeof v === "object" && !Array.isArray(v);
 }
@@ -188,8 +203,15 @@ export function applyTaskChange(
 		predicate: (q: { queryKey: QueryKey }) =>
 			isTaskListKey(q.queryKey, projectId),
 	};
+	// The echo of this tab's own mutation: the mutation has refreshed what it
+	// shows, so the lists are only marked stale (a list opened later refetches)
+	// and the active ones are not fetched a second time.
+	const own = isOwnOp(change.clientOpId);
 	const refetchLists = () =>
-		void queryClient.invalidateQueries({ ...lists, refetchType: "active" });
+		void queryClient.invalidateQueries({
+			...lists,
+			refetchType: own ? "none" : "active",
+		});
 	if (event.type === "task.deleted") {
 		queryClient.removeQueries({ queryKey: detailKey, exact: true });
 		queryClient.setQueriesData(lists, (data: unknown) =>
@@ -213,12 +235,29 @@ export function applyTaskChange(
 	}
 
 	if (event.type === "task.updated") {
-		queryClient.setQueryData(detailKey, (old: unknown) =>
-			isRecord(old) ? mergeTask(old, entity) : old,
-		);
+		// Patch every cached copy that is older than the snapshot; remember
+		// whether any copy was there and whether any was news to it.
+		let seen = 0;
+		let applied = 0;
+		queryClient.setQueryData(detailKey, (old: unknown) => {
+			if (!isRecord(old)) return old;
+			seen++;
+			if (isStaleSnapshot(old, entity)) return old;
+			applied++;
+			return mergeTask(old, entity);
+		});
 		queryClient.setQueriesData(lists, (data: unknown) =>
-			mapRows(data, (t) => (t.id === taskId ? mergeTask(t, entity) : t)),
+			mapRows(data, (t) => {
+				if (t.id !== taskId) return t;
+				seen++;
+				if (isStaleSnapshot(t, entity)) return t;
+				applied++;
+				return mergeTask(t, entity);
+			}),
 		);
+		// Every copy already as new as this change: a repeat or a stale arrival.
+		// Whatever it would have refreshed was refreshed by the newer change.
+		if (seen > 0 && applied === 0) return "patched";
 		// An update adds an entry to the task's timeline; the rest of what hangs
 		// off it (links, attachments, subtasks) is unchanged, and a changed child
 		// is patched in the subtask lists above.
@@ -269,8 +308,12 @@ export function applySprintChange(
 		predicate: (q: { queryKey: QueryKey }) =>
 			isSprintListKey(q.queryKey, projectId),
 	};
+	const own = isOwnOp(change.clientOpId);
 	const refetchLists = () =>
-		void queryClient.invalidateQueries({ ...lists, refetchType: "active" });
+		void queryClient.invalidateQueries({
+			...lists,
+			refetchType: own ? "none" : "active",
+		});
 
 	if (event.type === "sprint.deleted") {
 		queryClient.removeQueries({ queryKey: detailKey, exact: true });
@@ -293,19 +336,29 @@ export function applySprintChange(
 	}
 
 	if (event.type === "sprint.updated" || event.type === "sprint.completed") {
-		queryClient.setQueryData(detailKey, (old: unknown) =>
-			isRecord(old) ? { ...old, ...entity } : old,
-		);
+		let seen = 0;
+		let applied = 0;
+		queryClient.setQueryData(detailKey, (old: unknown) => {
+			if (!isRecord(old)) return old;
+			seen++;
+			if (isStaleSnapshot(old, entity)) return old;
+			applied++;
+			return { ...old, ...entity };
+		});
 		let found = false;
 		let moved = false;
 		queryClient.setQueriesData(lists, (data: unknown) =>
 			mapRows(data, (r) => {
 				if (r.id !== sprintId) return r;
 				found = true;
+				seen++;
+				if (isStaleSnapshot(r, entity)) return r;
+				applied++;
 				if (SPRINT_LIST_FIELDS.some((f) => r[f] !== entity[f])) moved = true;
 				return { ...r, ...entity };
 			}),
 		);
+		if (seen > 0 && applied === 0) return "patched";
 		// A sprint in no cached list may belong in one; one whose filter fields
 		// changed may have to leave or move.
 		if (!found || moved) refetchLists();

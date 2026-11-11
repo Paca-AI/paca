@@ -619,6 +619,52 @@ async function secondBrowserAsAdmin(browser: Browser, projectId: string) {
 	return { context, page };
 }
 
+test.describe("the window before the first join", () => {
+	test("a change made after the page read its data and before its join was acknowledged is not missed", async ({
+		page,
+		request,
+		playwright,
+	}) => {
+		test.skip(FLAG !== "1", "about the sync protocol");
+		const a = await arrange(request, playwright);
+		// Hold the page's first sync:join back for a few seconds, as a slow
+		// network or a busy server would.
+		let held = false;
+		await page.routeWebSocket(/\/ws\/socket\.io/, (ws) => {
+			const server = ws.connectToServer();
+			ws.onMessage((message) => {
+				if (
+					!held &&
+					typeof message === "string" &&
+					message.includes('"sync:join"')
+				) {
+					held = true;
+					setTimeout(() => server.send(message), 4_000);
+					return;
+				}
+				server.send(message);
+			});
+			server.onMessage((message) => ws.send(message));
+		});
+
+		await signIn(page, a.username, RESTRICTED_PASSWORD);
+		await page.goto(`${BASE_URL}/projects/${a.projectId}/interactions/backlog`);
+		await expect(
+			page.getByRole("heading", { name: "Product Backlog" }),
+		).toBeVisible({ timeout: 15_000 });
+		await page.getByRole("button", { name: "Table", exact: true }).click();
+		await page.waitForLoadState("networkidle");
+		await expect.poll(() => held).toBe(true);
+
+		// The page has its data; its join is still on the way.
+		const title = name("in_the_window");
+		await createTask(request, a.projectId, title);
+		await expect(page.getByText(title).first()).toBeVisible({
+			timeout: 20_000,
+		});
+	});
+});
+
 test.describe("the connection", () => {
 	test("joins through sync:join and never through the plain join", async ({
 		page,

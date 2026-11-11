@@ -171,6 +171,12 @@ Playwright-BDD adapter is wired in.
 [realtime README](../../services/realtime/README.md#sync-protocol-resumable-change-feed))
 on a bare socket (`sync-protocol`, `sync-entities`, `sync-authorization`,
 `sync-resilience`) and in the browser with the feature flag on (`sync-ui`).
+`sync-gaps` covers row versions and `If-Match`, the client op id, the change
+head and the outbox (it repairs changes by writing to the e2e Postgres with
+`docker exec paca-e2e-postgres-1 psql`). `sync-replicas` starts a second
+realtime container (`paca-e2e-realtime-b`, published on port 3102, same network
+and Valkey) and checks collaborative editing across the two replicas, including
+killing one; it needs `docker` and removes the container when it finishes.
 Switches:
 
 - `E2E_SYNC=1` runs `live-updates-ui.spec.ts` with the web app on the sync

@@ -241,6 +241,8 @@ func withPrincipal(r *http.Request, p Principal, claims *domainauth.Claims) *htt
 		origin = events.OriginAgent
 	}
 	ctx = events.WithRequestActor(ctx, p.AccountID, origin)
+	// A browser stamps its mutations so it can skip the echo of its own change.
+	ctx = events.WithClientOp(ctx, r.Header.Get(events.ClientOpHeader))
 	return r.WithContext(ctx)
 }
 

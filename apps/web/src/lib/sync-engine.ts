@@ -32,6 +32,8 @@ export interface SyncChange {
 	entity_type?: string;
 	entity_id?: string;
 	task_id?: string;
+	/** The X-Client-Op-Id of the mutation that caused the change, if any. */
+	client_op_id?: string;
 }
 
 export interface SyncBatch {
@@ -75,6 +77,16 @@ export class ProjectSync {
 
 	constructor(cb: SyncCallbacks) {
 		this.cb = cb;
+	}
+
+	/**
+	 * Starts the feed from a head the client's data was read at, for a project
+	 * it has not joined yet (see change-heads.ts). No effect once it has a cursor.
+	 */
+	seed(head: { seq: number; epoch: number }): void {
+		if (this.cursor !== null) return;
+		this.cursor = head.seq;
+		this.epoch = head.epoch;
 	}
 
 	/** The join the client sends: where it is. */
@@ -129,6 +141,7 @@ export class ProjectSync {
 					entityType: change.entity_type,
 					entityId: change.entity_id,
 					taskId: change.task_id,
+					clientOpId: change.client_op_id,
 				},
 			});
 		}

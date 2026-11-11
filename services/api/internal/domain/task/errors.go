@@ -4,7 +4,10 @@ import "errors"
 
 // Sentinel domain errors for the task aggregate.
 var (
-	ErrTaskNotFound              = errors.New("task: not found")
+	ErrTaskNotFound = errors.New("task: not found")
+	// ErrVersionConflict means the task changed since the version the caller
+	// named in If-Match.
+	ErrVersionConflict           = errors.New("task: version conflict")
 	ErrTaskTitleInvalid          = errors.New("task: title is empty or invalid")
 	ErrEpicCannotHaveParent      = errors.New("task: epic tasks cannot have a parent task")
 	ErrTaskCannotBeOwnParent     = errors.New("task: a task cannot be its own parent")

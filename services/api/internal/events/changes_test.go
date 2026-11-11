@@ -158,3 +158,89 @@ func TestChangeLog_DropsAnOversizedSnapshot(t *testing.T) {
 		t.Error("a snapshot over MaxSnapshotBytes must be left out")
 	}
 }
+
+func TestChangeLog_CarriesTheClientOpOfTheRequest(t *testing.T) {
+	project, task := uuid.New(), uuid.New()
+	var order []string
+	sink := &logSink{order: &order}
+	ctx := events.WithClientOp(context.Background(), "op-123.abc_XYZ")
+	events.FanoutTo(ctx, sink, events.Event{
+		Topic: "task.updated", Payload: map[string]any{}, ProjectID: project,
+		EntityType: events.EntityTask, EntityID: &task,
+	})
+	events.PublishRealtime(ctx, sink, events.Event{
+		Topic: "view.reordered", Payload: map[string]any{}, ProjectID: project,
+		EntityType: events.EntityView,
+	})
+	for i, c := range sink.changes {
+		if c["client_op_id"] != "op-123.abc_XYZ" {
+			t.Errorf("change %d client_op_id = %v", i, c["client_op_id"])
+		}
+	}
+	if len(sink.changes) != 2 {
+		t.Fatalf("logged %d changes, want 2", len(sink.changes))
+	}
+}
+
+func TestClientOp_OnlySafeTokensAreKept(t *testing.T) {
+	for _, bad := range []string{"", "has space", "semi;colon", "new\nline", strings.Repeat("a", 65), "ünï"} {
+		if got := events.ClientOp(events.WithClientOp(context.Background(), bad)); got != "" {
+			t.Errorf("%q was kept as %q", bad, got)
+		}
+	}
+	if got := events.ClientOp(events.WithClientOp(context.Background(), "ok-1")); got != "ok-1" {
+		t.Errorf("a valid id was dropped: %q", got)
+	}
+	// An event without a client op, outside a request, carries none.
+	var order []string
+	sink := &logSink{order: &order}
+	events.FanoutTo(context.Background(), sink, events.Event{Topic: "task.created", Payload: map[string]any{}, ProjectID: uuid.New(), EntityType: events.EntityTask})
+	if _, has := sink.changes[0]["client_op_id"]; has {
+		t.Error("an event with no client op must not carry the field")
+	}
+}
+
+func TestChangeLog_MarksOnlyWholeEntityChanges(t *testing.T) {
+	project, task := uuid.New(), uuid.New()
+	var order []string
+	sink := &logSink{order: &order}
+	for _, topic := range []string{"task.updated", "task.comment.added", "task.link.added", "doc.updated", "sprint.completed"} {
+		events.FanoutTo(context.Background(), sink, events.Event{
+			Topic: topic, Payload: map[string]any{}, ProjectID: project,
+			EntityType: events.EntityTask, EntityID: &task, TaskID: &task,
+		})
+	}
+	want := map[string]bool{"task.updated": true, "doc.updated": true, "sprint.completed": true}
+	for _, c := range sink.changes {
+		topic := c["type"].(string)
+		_, marked := c[messaging.MarkField]
+		if marked != want[topic] {
+			t.Errorf("%s marked = %v, want %v", topic, marked, want[topic])
+		}
+	}
+}
+
+func TestChangeLog_MarksTheVersionOfTheSnapshot_AndADeleteAsFinal(t *testing.T) {
+	project, task := uuid.New(), uuid.New()
+	var order []string
+	sink := &logSink{order: &order}
+	events.FanoutTo(context.Background(), sink, events.Event{
+		Topic: "task.updated", Payload: map[string]any{}, ProjectID: project,
+		EntityType: events.EntityTask, EntityID: &task, TaskID: &task,
+		Snapshot: map[string]any{"id": task.String(), "version": 7},
+	})
+	events.FanoutTo(context.Background(), sink, events.Event{
+		Topic: "task.updated", Payload: map[string]any{}, ProjectID: project,
+		EntityType: events.EntityTask, EntityID: &task, TaskID: &task,
+	})
+	events.FanoutTo(context.Background(), sink, events.Event{
+		Topic: "task.deleted", Payload: map[string]any{}, ProjectID: project,
+		EntityType: events.EntityTask, EntityID: &task, TaskID: &task,
+	})
+	want := []int64{7, messaging.UnknownVersion, messaging.DeletedVersion}
+	for i, c := range sink.changes {
+		if got := c[messaging.MarkVersionField]; got != want[i] {
+			t.Errorf("change %d version = %v, want %d", i, got, want[i])
+		}
+	}
+}
