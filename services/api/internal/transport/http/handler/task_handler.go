@@ -1239,6 +1239,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			ActorID:      &actorID,
 			ActivityType: taskdom.ActivityTypeTaskCreated,
 			Content:      content,
+			Snapshot:     taskSnapshot(t),
 		})
 
 		// Enqueue one assignment event per assignee so the NotificationConsumer
@@ -1358,6 +1359,7 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 				ActorID:      &actorID,
 				ActivityType: taskdom.ActivityTypeTaskUpdated,
 				Content:      content,
+				Snapshot:     taskSnapshot(t),
 			})
 		}
 
@@ -1389,6 +1391,15 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	presenter.OK(w, r, dto.TaskFromEntity(t))
+}
+
+// taskSnapshot is the task as realtime clients patch it into their cache. The
+// description is left out: it can be large and collaborative editing owns it,
+// so a client keeps the one it has.
+func taskSnapshot(t *taskdom.Task) dto.TaskResponse {
+	resp := dto.TaskFromEntity(t)
+	resp.Description = nil
+	return resp
 }
 
 // taskChangedFields compares the old task snapshot against the patch request

@@ -313,3 +313,50 @@ describe("routeEvent content changes", () => {
 		expect(seen).toEqual(["doc.updated", "task.updated"]);
 	});
 });
+
+describe("routeEvent with a logged change (carries a seq)", () => {
+	it("nudges the sync hub and skips sockets that sync the project, others still get the event", async () => {
+		const syncing = socket("syncing");
+		(syncing.data as Viewer).syncProjects = new Set([P]);
+		const legacy = socket("legacy");
+		const { io } = fakeIo({ [`project:${P}:tasks`]: [syncing, legacy] });
+		const nudged: string[] = [];
+		const { routing: r } = routing(() => true);
+		routeEvent(
+			io,
+			{
+				type: "task.updated",
+				payload: { id: "t1" },
+				seq: 4,
+				authz: authzFor("tasks:read", `project/${P}/task/t1`),
+			},
+			log,
+			{ ...r, onLogged: (p: string) => nudged.push(p) },
+		);
+		await sleep(10);
+		expect(nudged).toEqual([P]);
+		expect(syncing.sent).toEqual([]);
+		expect(legacy.sent).toHaveLength(1);
+	});
+
+	it("still delivers an unlogged event (no seq) to a syncing socket", async () => {
+		const syncing = socket("syncing");
+		(syncing.data as Viewer).syncProjects = new Set([P]);
+		const { io } = fakeIo({ [`project:${P}:tasks`]: [syncing] });
+		const nudged: string[] = [];
+		const { routing: r } = routing(() => true);
+		routeEvent(
+			io,
+			{
+				type: "task.updated",
+				payload: { id: "t1" },
+				authz: authzFor("tasks:read", `project/${P}/task/t1`),
+			},
+			log,
+			{ ...r, onLogged: (p: string) => nudged.push(p) },
+		);
+		await sleep(10);
+		expect(nudged).toEqual([]);
+		expect(syncing.sent).toHaveLength(1);
+	});
+});

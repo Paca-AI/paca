@@ -9,6 +9,9 @@
 //   project:<projectId>:sprints      — sprint.* events
 //   project:<projectId>:views        — view.* events
 //   project:<projectId>:environments — environment.* events
+//   project:<projectId>:project      — project.updated (name, settings)
+//   project:<projectId>:members      — member.* events
+//   project:<projectId>:agents       — project_agent.* (agent configuration)
 //
 // Room membership is a prefilter, not the authorization: the server fetches
 // the account's effective project actions, which include an action allowed
@@ -26,7 +29,10 @@ export type EventNamespace =
 	| "workflows"
 	| "sprints"
 	| "views"
-	| "environments";
+	| "environments"
+	| "project"
+	| "members"
+	| "agents";
 
 // NAMESPACE_PERMISSIONS maps each namespace to the project permission required
 // to receive events in that namespace.
@@ -38,6 +44,9 @@ export const NAMESPACE_PERMISSIONS: Record<EventNamespace, string> = {
 	sprints: "sprints:read",
 	views: "views:read",
 	environments: "environments:read",
+	project: "projects:read",
+	members: "project.members:read",
+	agents: "agents:read",
 };
 
 // projectRoomName returns the Socket.IO room name for a project + namespace pair.
@@ -113,6 +122,20 @@ export function eventNamespace(type: string): EventNamespace | undefined {
 	// require environments:read, the same permission GET
 	// .../environments/:id is gated on.
 	if (type.startsWith("environment.")) return "environments";
+	// The task schema (types, statuses, custom fields) is read through
+	// tasks:read, like the GET routes that list it.
+	if (
+		type.startsWith("project.task_type.") ||
+		type.startsWith("project.task_status.") ||
+		type.startsWith("project.custom_field.")
+	) {
+		return "tasks";
+	}
+	if (type === "project.updated") return "project";
+	if (type.startsWith("member.")) return "members";
+	// project_agent.* is an agent's own configuration; agent.* (above) is
+	// conversation content.
+	if (type.startsWith("project_agent.")) return "agents";
 	return undefined;
 }
 

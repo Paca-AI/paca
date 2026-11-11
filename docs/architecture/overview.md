@@ -23,15 +23,16 @@ Paca is a single open-source monorepo with a small set of clearly separated runt
 - `apps/mcp` calls `services/api` over HTTP using an API key; plugin tools route to `/api/v1/plugins/{pluginId}/…`.
 - `apps/e2e` drives a real browser against the full running stack and validates cross-cutting flows that span multiple runtime surfaces.
 - `services/api` authorizes every request with IAM-style role policies (default deny, explicit `Deny` wins) evaluated per route and per resource; see [authorization](authorization.md).
-- `services/api` remains the system of record for product state and publishes real-time relevant domain events to a Valkey Stream.
-- `services/realtime` consumes Valkey Stream messages from `services/api` and fans out client-safe events to connected Socket.IO rooms and users.
+- `services/api` remains the system of record for product state. For every change it publishes a domain event on the `paca.events` Valkey Pub/Sub channel and appends it to a capped, per-project change log (a Valkey Stream with a gapless sequence number), after the activity and plugin streams.
+- `services/realtime` fans those events out to connected Socket.IO rooms and users after the API confirms the account may read each one. A client that joins with the sync protocol reads the change log from its own cursor, so it resumes after any absence without refetching; see [the realtime service](../../services/realtime/README.md#sync-protocol-resumable-change-feed).
+- `apps/web` applies a change to its React Query cache (patching the entity where the change carries it, otherwise refetching only what the change names) instead of reloading lists.
 - `services/agent-runner` reads agent trigger events from a Valkey Stream, spawns a Docker container per `llm`-type conversation and drives it over ACP, and publishes conversation events back to Valkey.
 
 ## Architectural Intent
 
 - Keep service boundaries explicit.
 - Keep state-changing business logic in `services/api`, not in the real-time edge service.
-- Use Valkey Streams to decouple event production from Socket.IO delivery.
+- Use Valkey (Pub/Sub for the immediate nudge, a per-project stream for replay) to decouple event production from Socket.IO delivery.
 - Avoid adding shared layers before reuse is proven.
 - Separate product-facing documentation from implementation-facing documentation.
 - Keep the repository easy to read in public from the root.

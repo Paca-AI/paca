@@ -196,7 +196,14 @@ published through `events.Fanout` to the Valkey stream `paca.activities` —
 the single stream every activity in a project goes to, whatever the entity.
 The `ActivityConsumer` worker reads that stream and writes each entry to the
 `activities` table. Fanout also publishes each event to the `paca.events`
-Pub/Sub channel for immediate fan-out via `services/realtime`.
+Pub/Sub channel for immediate fan-out via `services/realtime`, and appends it
+to the project's change log (`paca:changes:{<project>}:stream`), a capped
+stream with a gapless per-project sequence number that realtime clients resume
+from. The change log entry also carries the task as it is after a create or an
+update (`events.Event.Snapshot`, without its description), which the activity
+stream and the Pub/Sub message do not, so their payloads keep the shape
+existing consumers decode. See the
+[realtime service](../../services/realtime/README.md#sync-protocol-resumable-change-feed).
 
 > **Note:** Comment operations (add/update/delete) write directly to the
 > database, because the request returns the row. They are still appended to

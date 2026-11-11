@@ -1,215 +1,92 @@
 # AI Agent — Real-time Events
 
-This document describes the Socket.IO events emitted by `services/realtime` to web clients during AI agent conversation lifecycle.
+What `services/realtime` delivers to web clients while an agent conversation runs, and how `apps/web` consumes it. The delivery model itself (rooms, per-event authorization, the resumable change feed) is described in the [realtime service README](../../services/realtime/README.md); this page covers the agent-specific messages.
+
+All of them are Socket.IO `event` messages of the shape `{ "type": "<type>", "payload": { ... } }` published by `services/agent-runner` (and, for `agent.session.started`, `services/api`) on the `paca.events` Valkey Pub/Sub channel. They are **ephemeral**: they are not part of the project's change log, so a client that missed one (a dropped connection) learns the final state from the persisted conversation events and a refetch, not from replay. A conversation's history lives in `agent_conversation_events`, written by `agent-runner` directly.
 
 ---
 
-## Room Subscription Model
+## Routing and authorization
 
-Clients subscribe to project-scoped rooms to receive agent events:
+| Conversation | Delivered to |
+|---|---|
+| Project-shared | Sockets in the project's `conversations` room whose account holds `conversations:read` on `project/<p>/conversation/<id>`. `agent-runner` puts that descriptor in the message (`authz`), so the check is per conversation, not per room. |
+| Owner-private, or a global agent's chat | Only the owner's own `user:<id>:agent-chat` room (the payload carries `actor_account_id`). Never a project room. |
 
-```
-project:<projectId>
-```
-
-Clients already join this room when they open a project (no additional subscription needed for agent events).
-
-For conversation-level granularity (e.g., a monitoring panel), clients may also subscribe:
-
-```
-conversation:<conversationId>
-```
-
-This room receives only events for that specific conversation. Useful for the conversation monitoring view without noise from other agents in the same project.
+There is no per-conversation room: a client filters by `payload.conversation_id`.
 
 ---
 
 ## Events
 
-### `agent:conversation:started`
+### `agent.<event_type>` — a persisted conversation event
 
-Emitted when an agent conversation is initiated (trigger received and container is starting).
+One message for every event written to `agent_conversation_events`; `<event_type>` is the lower-cased ACP event type. This is the live stream of an agent's output and actions, relayed from the agent (an in-process Goose session for `llm`-type agents, a WebSocket-relayed local subprocess for `acp`-type agents — both speak the same [Agent Client Protocol](https://agentclientprotocol.com) vocabulary).
 
-**Room:** `project:<projectId>`
+**Payload**
 
-**Payload:**
 ```json
 {
   "conversation_id": "uuid",
-  "agent_id": "uuid",
-  "agent_name": "Dev Bot",
-  "agent_handle": "dev-bot",
-  "trigger_type": "task_assigned",
-  "task_id": "uuid",
-  "task_title": "Implement OAuth login",
-  "chat_session_id": null,
-  "started_at": "2026-05-19T10:00:00Z"
-}
-```
-
----
-
-### `agent:conversation:event`
-
-Emitted for each event produced during the conversation. This is the stream of agent "thoughts" and actions for the monitoring panel. `event_type`'s value space depends on the agent's `agent_type` — see the table below.
-
-**Room:** `project:<projectId>` and `conversation:<conversationId>`
-
-**Payload:**
-```json
-{
-  "conversation_id": "uuid",
+  "project_id": "uuid",
+  "id": "uuid",
   "event_index": 5,
-  "event_type": "CmdRunAction",
+  "event_type": "tool_call",
   "event_source": "agent",
-  "payload": {
-    "command": "grep -r 'OAuth' /workspace/repo/src --include='*.go'",
-    "thought": "Let me find existing OAuth references in the codebase."
-  },
-  "iteration": 3,
-  "timestamp": "2026-05-19T10:01:12Z"
+  "payload": { "...": "the event body" },
+  "created_at": "2026-05-19T10:01:12.123456789Z"
 }
 ```
 
-**`event_type` values for both `llm`-type agents** (via `services/agent-runner`, driving Goose over ACP — see [agent-runner-service.md](agent-runner-service.md)) **and `acp`-type agents** (via `apps/acp-bridge`'s local Go daemon — see that app's own README): both ultimately relay the same underlying [Agent Client Protocol](https://agentclientprotocol.com), just over different transports (an in-process Goose HTTP+SSE session vs. a WebSocket-relayed local subprocess), so they share one event vocabulary — `apps/acp-bridge` forwards raw ACP `session/update` notifications through essentially as-is, the same way `internal/handler` does for the Goose path:
+`actor_account_id` is present (and `project_id` may be absent) for an owner-private or global conversation.
 
-| Event Type | Source | Description |
+| `event_type` | Source | Description |
 |---|---|---|
 | `user_message` | user | The user's message that started this turn |
 | `agent_message_chunk` | agent | Streamed piece of the agent's reply text |
-| `agent_thought_chunk` | agent | Streamed piece of the agent's reasoning/thinking text |
+| `agent_thought_chunk` | agent | Streamed piece of the agent's reasoning text |
 | `tool_call` | agent | A new tool call the agent has started |
 | `tool_call_update` | agent | Status change for an existing tool call |
-| `turn_end` | system | The turn finished — payload carries the stop reason |
+| `turn_end` | system | The turn finished; the payload carries the stop reason |
 
-A conversation from before either migration (`services/ai-agent` → `services/agent-runner` for `llm`-type; `apps/acp-bridge`'s OpenHands SDK → Go rewrite for `acp`-type) can still have legacy OpenHands-shaped rows in its history — `MessageEvent`, `ActionEvent`, `ObservationEvent`, `ACPToolCallEvent`, `AgentErrorEvent`, `UserRejectObservation`. `apps/web`'s `conversation-to-thread-messages.ts` still renders those for backward compatibility, but no agent produces them anymore.
+A conversation from before the move to ACP can still have legacy OpenHands-shaped rows in its history (`MessageEvent`, `ActionEvent`, `ObservationEvent`, ...); `apps/web`'s `conversation-to-thread-messages.ts` still renders them, but no agent produces them any more.
 
----
+### `agent.conversation.<status>` — a status change
 
-### `agent:conversation:status`
+Sent when a conversation pauses or ends: `paused`, `finished`, `failed`, `stopped`. Payload: `conversation_id`, plus `project_id` or `actor_account_id` as above. No event row, so no `id` or `event_index`.
 
-Emitted when conversation status changes (paused, resumed, stopped, failed, finished).
-
-**Room:** `project:<projectId>` and `conversation:<conversationId>`
-
-**Payload:**
-```json
-{
-  "conversation_id": "uuid",
-  "agent_id": "uuid",
-  "status": "finished",
-  "iteration_count": 18,
-  "timestamp": "2026-05-19T10:08:45Z"
-}
-```
-
-**`status` values:**
-
-| Value | Description |
+| Status | Description |
 |---|---|
-| `running` | Conversation resumed after being paused |
-| `paused` | User paused the conversation |
-| `finished` | Agent completed the task successfully |
-| `stopped` | User forcefully stopped the conversation |
-| `failed` | Container error or unhandled exception |
-| `timed_out` | Conversation exceeded `timeout_minutes` |
-| `iteration_limit` | Agent hit `max_iterations` without finishing |
+| `paused` | The conversation is paused and can be resumed |
+| `finished` | The agent completed the turn successfully |
+| `stopped` | A user stopped it |
+| `failed` | A container or agent error, or the agent could not be started |
+
+### `agent.session.started`
+
+Sent by `services/api` when an agent begins a session on a task; it is also recorded as a task activity. The full message is checked as `conversations:read` on the conversation; a **payload-free copy** (`project_id`, `conversation_id` only) also goes to the project's `tasks` room so task boards refresh without learning the conversation's content.
+
+### `agent.acp_bridge.status`
+
+A local bridge (`apps/acp-bridge`) connected or disconnected. Payload: `agent_id`, `connected`. It carries no conversation content, so it goes to the `tasks` room as a project-wide read.
+
+### Related, not agent events
+
+Work an agent does arrives as ordinary `task.*`, `doc.*` and `git.task.updated` changes made with the agent as actor (so a pull request an agent opens shows up as `git.task.updated` on its task, and a comment it posts as `task.comment.added`). Those are in the change log like any other change.
 
 ---
 
-### `agent:conversation:pr_created`
+## Consuming them in the frontend
 
-Emitted when the agent successfully creates a pull request.
+`useProjectRealtime` and `useGlobalAgentRealtime` hand every `agent.*` message to `applyRealtimeAgentEvent` (`apps/web/src/lib/agent-api.ts`):
 
-**Room:** `project:<projectId>` and `conversation:<conversationId>`
-
-**Payload:**
-```json
-{
-  "conversation_id": "uuid",
-  "agent_id": "uuid",
-  "task_id": "uuid",
-  "pr_url": "https://github.com/org/repo/pull/42",
-  "pr_number": 42,
-  "branch_name": "agent/implement-oauth-login",
-  "title": "feat: implement OAuth login flow (PACA-42)",
-  "timestamp": "2026-05-19T10:09:00Z"
-}
-```
-
----
-
-### `agent:chat:reply`
-
-Emitted when an agent sends a reply in a direct chat session.
-
-**Room:** `project:<projectId>`
-
-> The client should also filter by `session_id` to match the active chat session.
-
-**Payload:**
-```json
-{
-  "session_id": "uuid",
-  "conversation_id": "uuid",
-  "agent_id": "uuid",
-  "message": "Here are the acceptance criteria for PACA-42:\n\n**Given** the user is on the login page...",
-  "timestamp": "2026-05-19T10:02:30Z"
-}
-```
-
----
-
-### `agent:task:commented`
-
-Emitted when an agent posts a reply comment on a task (e.g., after completing a `comment_mention` trigger).
-
-**Room:** `project:<projectId>`
-
-**Payload:**
-```json
-{
-  "task_id": "uuid",
-  "comment_id": "uuid",
-  "agent_id": "uuid",
-  "conversation_id": "uuid",
-  "timestamp": "2026-05-19T10:03:00Z"
-}
-```
-
-Clients should re-fetch the task comments upon receiving this event to display the agent's response.
-
----
-
-## Consuming Events in the Frontend
+- A message with an `id` and `event_index` is a persisted event: it is appended to the conversation's in-memory tail (`conversationEventsTailQueryOptions`), which `useConversationEventWindow` merges over the pages it fetched, so a streamed reply renders without an HTTP request per chunk. A message already applied (a reconnect can replay one) is ignored.
+- A message without them is a status notification: the conversation's event window and the project's conversation list are invalidated, which is the safety net for anything a dropped message missed. `agent.session.started` also refreshes task views.
 
 ```ts
-// Subscribe to agent events for the active project
-socket.on("agent:conversation:started", (data) => {
-  toast.info(`${data.agent_name} started working on "${data.task_title}"`);
-});
-
-socket.on("agent:conversation:event", (data) => {
-  if (data.conversation_id === activeConversationId) {
-    appendEventToMonitorPanel(data);
-  }
-});
-
-socket.on("agent:conversation:status", (data) => {
-  updateConversationStatus(data.conversation_id, data.status);
-  if (data.status === "finished") {
-    toast.success(`Agent finished the task`);
-  }
-});
-
-socket.on("agent:conversation:pr_created", (data) => {
-  linkPRToTask(data.task_id, data.pr_url);
-  toast.success(`PR created: ${data.pr_url}`);
-});
-
-socket.on("agent:chat:reply", (data) => {
-  if (data.session_id === activeChatSessionId) {
-    appendChatMessage({ role: "agent", content: data.message });
+socket.on("event", ({ type, payload }) => {
+  if (type.startsWith("agent.") && payload.conversation_id === activeConversationId) {
+    // append payload to the monitor panel, or refresh on a status message
   }
 });
 ```

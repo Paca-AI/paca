@@ -58,6 +58,10 @@ interface RealtimeMessage {
 	payload?: unknown;
 	data?: unknown;
 	authz?: unknown;
+	// Set by the API when the event was appended to the project's change log.
+	seq?: unknown;
+	// The IAM epoch an iam.changed announcement produced (see iam-epoch.ts).
+	epoch?: unknown;
 }
 
 interface Authz {
@@ -69,12 +73,15 @@ interface Authz {
 interface Routing {
 	decider: AccessDecider;
 	queue: KeyedQueue;
-	onIamChanged: () => void;
+	onIamChanged: (epoch?: number) => void;
 	// A doc / task update announcement, for merging into live collaborative
 	// rooms (see CollabHub.handleContentEvent). Delivery to sockets is separate.
 	onContentChange?: (type: string, payload: Record<string, unknown>) => void;
 	// Types already reported as published without an authz descriptor.
 	warnedNoAuthz: Set<string>;
+	// A change with this project was appended to the change log (it carries a
+	// seq): nudge the sync hub.
+	onLogged?: (projectId: string) => void;
 }
 
 // createSubscriber connects a dedicated ioredis client in subscriber mode,
@@ -85,14 +92,16 @@ export function createSubscriber(
 	io: Server,
 	logger: Logger,
 	decider: AccessDecider,
-	onIamChanged: () => void,
+	onIamChanged: (epoch?: number) => void,
 	onContentChange?: (type: string, payload: Record<string, unknown>) => void,
+	onLogged?: (projectId: string) => void,
 ): Redis {
 	const routing: Routing = {
 		decider,
 		queue: new KeyedQueue(),
 		onIamChanged,
 		onContentChange,
+		onLogged,
 		warnedNoAuthz: new Set(),
 	};
 	// A separate client is required because ioredis clients in subscriber mode
@@ -152,7 +161,7 @@ export function routeEvent(
 	// A control message: not an event, never delivered.
 	if (type === TOPIC_IAM_CHANGED) {
 		logger.debug("iam changed — dropping decisions, re-syncing sockets");
-		routing.onIamChanged();
+		routing.onIamChanged(typeof msg.epoch === "number" ? msg.epoch : undefined);
 		return;
 	}
 
@@ -212,7 +221,9 @@ export function routeEvent(
 		if (projectOfEvent && typeof conversation === "string" && conversation) {
 			announceSessionStarted(io, event.type, projectOfEvent, conversation);
 		}
-		routeAuthorized(io, event, authz, logger, routing);
+		const logged = typeof msg.seq === "number" && !!projectOfEvent;
+		if (logged && projectOfEvent) routing.onLogged?.(projectOfEvent);
+		routeAuthorized(io, event, authz, logger, routing, logged);
 		return;
 	}
 
@@ -285,6 +296,7 @@ function routeAuthorized(
 	authz: Authz,
 	logger: Logger,
 	{ decider, queue }: Routing,
+	logged = false,
 ): void {
 	const projectId = projectOfResource(authz.resource);
 	const ns = namespaceForAction(authz.action);
@@ -309,6 +321,7 @@ function routeAuthorized(
 					{ type: event.type, resource: authz.resource, userId, err },
 					"access check failed — event not delivered",
 				),
+			logged,
 		);
 	});
 }

@@ -254,10 +254,16 @@ test.describe("Joining a project", () => {
 			readAll(projectId, "tasks", "docs", "views"),
 		);
 		const { namespaces } = await connectAs(playwright, bob.username, projectId);
-		expect([...namespaces].sort()).toEqual(["docs", "tasks", "views"]);
+		// "project" (projects:read) comes with the way in; the rest follow the roles.
+		expect([...namespaces].sort()).toEqual([
+			"docs",
+			"project",
+			"tasks",
+			"views",
+		]);
 	});
 
-	test("gives a member who may only open the project no rooms at all", async ({
+	test("gives a member who may only open the project the project room and nothing else", async ({
 		request,
 		playwright,
 	}) => {
@@ -271,7 +277,7 @@ test.describe("Joining a project", () => {
 			allow(["projects:read"], [res(projectId)]),
 		);
 		const { namespaces } = await connectAs(playwright, bob.username, projectId);
-		expect(namespaces).toEqual([]);
+		expect(namespaces).toEqual(["project"]);
 	});
 
 	test("gives the admin every room", async ({ request }) => {
@@ -281,9 +287,12 @@ test.describe("Joining a project", () => {
 			await Probe.connect({ cookie: await cookieHeaderOf(request) }),
 		);
 		expect([...(await probe.join(projectId))].sort()).toEqual([
+			"agents",
 			"conversations",
 			"docs",
 			"environments",
+			"members",
+			"project",
 			"sprints",
 			"tasks",
 			"views",

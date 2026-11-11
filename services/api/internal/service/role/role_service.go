@@ -22,6 +22,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	accountdom "github.com/Paca-AI/api/internal/domain/account"
 	roledom "github.com/Paca-AI/api/internal/domain/role"
+	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 )
 
@@ -43,6 +44,19 @@ type MembersCache interface {
 	InvalidateMembersCache(ctx context.Context, projectID uuid.UUID) error
 }
 
+// realtimeSink is where a member's role change is announced to live clients.
+type realtimeSink interface {
+	Publish(ctx context.Context, channel string, payload any) error
+}
+
+// WithRealtime sets where member role changes are announced. Without a sink
+// nothing is announced; the affected member's own sockets still learn of the
+// change through iam.changed.
+func (s *Service) WithRealtime(sink realtimeSink) *Service {
+	s.realtime = sink
+	return s
+}
+
 // WithMembersCache wires in the member-list cache invalidation run after a
 // member's roles change or a project role is renamed or deleted. Roles shared
 // by many projects are not covered: their name shows up on the cached member
@@ -60,12 +74,13 @@ func (s *Service) membersChanged(ctx context.Context, projectID *uuid.UUID) {
 
 // Service is the role service.
 type Service struct {
-	members MembersCache
-	repo    roledom.Repository
-	inv     Invalidator
-	sim     Simulator
-	reg     *iam.Registry
-	schema  *iam.AttributeSchema
+	realtime realtimeSink
+	members  MembersCache
+	repo     roledom.Repository
+	inv      Invalidator
+	sim      Simulator
+	reg      *iam.Registry
+	schema   *iam.AttributeSchema
 }
 
 var _ roledom.Service = (*Service)(nil)
@@ -285,7 +300,35 @@ func (s *Service) ReplaceMemberRoles(ctx context.Context, projectID, memberID uu
 		return nil, err
 	}
 	s.membersChanged(ctx, &projectID)
+	s.announceMemberRoles(ctx, projectID, memberID, roles)
 	return roles, nil
+}
+
+// announceMemberRoles tells the project's live clients that a member's roles
+// changed, so an open team page shows them. Realtime-only, like the activity
+// log has no entry for it; checked as project.members:read (events.AuthzFor).
+func (s *Service) announceMemberRoles(ctx context.Context, projectID, memberID uuid.UUID, roles []*roledom.Role) {
+	if s.realtime == nil {
+		return
+	}
+	ids := make([]string, 0, len(roles))
+	names := make([]string, 0, len(roles))
+	for _, r := range roles {
+		ids = append(ids, r.ID.String())
+		names = append(names, r.Name)
+	}
+	events.PublishRealtime(ctx, s.realtime, events.Event{
+		Topic: "member.role_changed",
+		Payload: map[string]any{
+			"project_id": projectID.String(),
+			"member_id":  memberID.String(),
+			"role_ids":   ids,
+			"role_names": names,
+		},
+		ProjectID:  projectID,
+		EntityType: events.EntityMember,
+		EntityID:   &memberID,
+	})
 }
 
 func (s *Service) requireUser(ctx context.Context, id uuid.UUID) error {

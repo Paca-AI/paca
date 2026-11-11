@@ -123,7 +123,8 @@ apps/e2e/
 │   └── login.page.ts       # Page Object Model for the login page
 └── tests/
     ├── helpers/            # shared API seeding/cleanup and limited-user helpers
-    │                       # (realtime.ts: socket.io probe and token minting)
+    │                       # (realtime.ts: socket.io probe and token minting;
+    │                       # sync.ts: change helpers and feed assertions)
     ├── admin/              # users, global roles, agents, settings, plugins, changelog
     ├── auth/               # login flows, forced password change
     ├── docs/               # project documentation (folders, editor, history, comments)
@@ -133,7 +134,8 @@ apps/e2e/
     ├── projects/           # project management, tasks, sprints, views, roles,
     │                       # agents, automation, conversations, environments
     ├── realtime/           # live events: per-event authorization, access changes on
-    │                       # open sockets, token lifetime, the web app following them
+    │                       # open sockets, token lifetime, the web app following them,
+    │                       # and the resumable sync feed (sync-*.spec.ts)
     ├── security/           # injection / XSS payloads rejected at login
     ├── session/            # logout, back-button, session persistence
     ├── ui/                 # sidebar navigation, collapse, theme, user menu
@@ -156,12 +158,30 @@ Playwright-BDD adapter is wired in.
 | `iam/` | `evaluation`, `scoped-access`, `list-scoping`, `roles-assign`, `role-scope-rules`, `role-editor`, `role-badges-selector`, `plugin-legacy-warning`, `docs-guide-examples` |
 | `profile/` | `profile`, `api-keys` |
 | `projects/` | `agents`, `automation`, `conversations`, `custom-fields`, `environments`, `interaction-sidebar`, `interaction-views`, `management`, `roles`, `sprint-lifecycle`, `task-detail`, `task-statuses`, `task-types`, `timeline`, `view-settings`, `view-settings-fields` |
-| `realtime/` | `event-authorization`, `iam-changes`, `token-lifecycle`, `live-updates-ui` |
+| `realtime/` | `event-authorization`, `iam-changes`, `token-lifecycle`, `live-updates-ui`, `sync-protocol` |
 | `security/` | `login` |
 | `session/` | `management` |
 | `ui/` | `sidebar` |
 | `ux/` | `login` |
 | `validation/` | `form` |
+
+### Realtime sync specs
+
+`tests/realtime/sync-*.spec.ts` check the resumable change feed (see the
+[realtime README](../../services/realtime/README.md#sync-protocol-resumable-change-feed))
+on a bare socket (`sync-protocol`, `sync-entities`, `sync-authorization`,
+`sync-resilience`) and in the browser with the feature flag on (`sync-ui`).
+Switches:
+
+- `E2E_SYNC=1` runs `live-updates-ui.spec.ts` with the web app on the sync
+  protocol; `E2E_SYNC_OFF=1` runs `sync-ui.spec.ts` on the plain protocol, for
+  comparison.
+- The "log lost or trimmed" specs delete and trim keys with
+  `docker exec paca-e2e-valkey-1 valkey-cli` and skip themselves when that is
+  not available (a stack that is not the local e2e compose project).
+- In Chromium, `context.setOffline` does not close the page's socket, so the browser spec checks in-place delivery after going back online; a real reconnect with a cursor is checked on a bare socket in `sync-resilience`.
+- `sync-resilience` includes slow cases (a replay of 1 010 changes, a 70 second
+  token); run it on its own with `E2E_WORKERS=2` rather than with the whole suite.
 
 Scenarios that hit a known app limitation or need infrastructure the E2E stack
 lacks (a live LLM, a real sandbox terminal) are kept in the feature file and

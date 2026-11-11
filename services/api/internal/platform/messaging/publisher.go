@@ -95,5 +95,19 @@ func (p *Publisher) AppendFlat(ctx context.Context, stream string, fields map[st
 	return nil
 }
 
+// IncrCounter atomically increments an integer key and returns the new value.
+// It backs small shared counters, such as the IAM epoch services/realtime
+// polls to notice a change whose Pub/Sub announcement it missed.
+func (p *Publisher) IncrCounter(ctx context.Context, key string) (int64, error) {
+	if p == nil || p.client == nil {
+		return 0, errors.New("messaging: publisher not initialized")
+	}
+	n, err := p.client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, fmt.Errorf("messaging: incr %q: %w", key, err)
+	}
+	return n, nil
+}
+
 // Close is a no-op; the Valkey client lifecycle is managed by the owner.
 func (p *Publisher) Close() {}

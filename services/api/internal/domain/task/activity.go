@@ -185,4 +185,7 @@ type RecordActivityInput struct {
 	// activities.origin, and drives the automation engine's self-trigger
 	// guard.
 	Origin Origin
+	// Snapshot is the task after the change, sent to realtime clients so they
+	// can patch their cache (see events.Event.Snapshot). Nil for none.
+	Snapshot any
 }

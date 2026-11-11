@@ -429,6 +429,68 @@ func TestCreateFolder_OK(t *testing.T) {
 	}
 }
 
+type folderSink struct{ msgs []map[string]any }
+
+func (f *folderSink) Publish(_ context.Context, channel string, payload any) error {
+	if m, ok := payload.(map[string]any); ok && channel == "paca.events" {
+		f.msgs = append(f.msgs, m)
+	}
+	return nil
+}
+
+// A folder's creation, rename and deletion are announced to live clients (the
+// activity log has no entry for them), as docs:read on the project.
+func TestFolderChanges_AreAnnounced(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	sink := &folderSink{}
+	svc := docsvc.New(repo, nil).WithRealtime(sink)
+	projectID := uuid.New()
+
+	f, err := svc.CreateFolder(ctx, docdom.CreateFolderInput{ProjectID: projectID, Name: "A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateFolder(ctx, f.ID, docdom.UpdateFolderInput{ProjectID: projectID, Name: "B"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteFolder(ctx, f.ID, projectID); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"doc.folder.created", "doc.folder.updated", "doc.folder.deleted"}
+	if len(sink.msgs) != len(want) {
+		t.Fatalf("published %d messages, want %d", len(sink.msgs), len(want))
+	}
+	for i, topic := range want {
+		if sink.msgs[i]["type"] != topic {
+			t.Errorf("message %d type = %v, want %s", i, sink.msgs[i]["type"], topic)
+		}
+		payload := sink.msgs[i]["payload"].(map[string]any)
+		if payload["folder_id"] != f.ID.String() || payload["project_id"] != projectID.String() {
+			t.Errorf("message %d payload = %v", i, payload)
+		}
+	}
+	if payload := sink.msgs[1]["payload"].(map[string]any); payload["name"] != "B" {
+		t.Errorf("the update carries the new name, got %v", payload["name"])
+	}
+}
+
+func TestFolderChanges_FailedOnesAreNotAnnounced(t *testing.T) {
+	ctx := context.Background()
+	sink := &folderSink{}
+	svc := docsvc.New(newFakeDocRepo(), nil).WithRealtime(sink)
+	if _, err := svc.CreateFolder(ctx, docdom.CreateFolderInput{ProjectID: uuid.New(), Name: ""}); err == nil {
+		t.Fatal("an empty name must be refused")
+	}
+	if err := svc.DeleteFolder(ctx, uuid.New(), uuid.New()); err == nil {
+		t.Fatal("an unknown folder must be refused")
+	}
+	if len(sink.msgs) != 0 {
+		t.Errorf("announced %d messages for failed changes", len(sink.msgs))
+	}
+}
+
 func TestCreateFolder_EmptyName(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeDocRepo()

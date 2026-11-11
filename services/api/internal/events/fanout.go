@@ -99,6 +99,14 @@ type Event struct {
 	// entity the activity log records.
 	Authz *Authz
 
+	// Snapshot is the entity as it is after the event, for clients that patch
+	// their cache instead of refetching. It goes into the change log only
+	// (never the activity stream or plugin events, which keep their payloads),
+	// is never used to decide who may see the event (Authz is), and is dropped
+	// when larger than MaxSnapshotBytes. Leave nil when a client has nothing
+	// to patch, such as a delete.
+	Snapshot any
+
 	// SkipPluginEvents suppresses the StreamPluginEvents append. Set it for
 	// events a plugin could not meaningfully act on — plugin dispatch is
 	// best-effort fan-out, and every event appended there costs every
@@ -224,7 +232,7 @@ func FanoutTo(ctx context.Context, publisher Sink, e Event) {
 		appendFields(ctx, publisher, StreamPluginEvents, fields)
 	}
 
-	_ = publisher.Publish(ctx, ChannelRealtime, realtimeMessage(e))
+	publishRealtime(ctx, publisher, e)
 }
 
 // appendFields writes one stream entry, copying the map because AppendFlat

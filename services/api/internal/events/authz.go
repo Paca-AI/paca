@@ -74,6 +74,20 @@ func AuthzFor(e Event) (Authz, bool) {
 	case strings.HasPrefix(t, "task."), strings.HasPrefix(t, "git."),
 		t == "workflow.assigned", t == "automation.applied":
 		return Authz{string(iam.ActionTasksRead), task()}, true
+	case strings.HasPrefix(t, "project.task_type."), strings.HasPrefix(t, "project.task_status."),
+		strings.HasPrefix(t, "project.custom_field."):
+		// The task schema (types, statuses, custom fields) is read through
+		// tasks:read, see the GET routes under /task-types, /task-statuses and
+		// /custom-fields.
+		return Authz{string(iam.ActionTasksRead), project}, true
+	case t == "project.updated":
+		return Authz{string(iam.ActionProjectsRead), project}, true
+	case strings.HasPrefix(t, "member."):
+		return Authz{string(iam.ActionProjectMembersRead), project}, true
+	case strings.HasPrefix(t, "project_agent."):
+		// A project agent's own configuration (not its conversations, which
+		// are agent.*); GET /agents is gated on agents:read.
+		return Authz{string(iam.ActionAgentsRead), project}, true
 	case strings.HasPrefix(t, "doc.folder."):
 		return Authz{string(iam.ActionDocsRead), project}, true
 	case strings.HasPrefix(t, "doc."):
@@ -106,11 +120,25 @@ func PublishRealtime(ctx context.Context, sink realtimeSink, e Event) {
 	if sink == nil {
 		return
 	}
-	_ = sink.Publish(ctx, ChannelRealtime, realtimeMessage(e))
+	publishRealtime(ctx, sink, e)
+}
+
+// publishRealtime logs e in its project's change log when the sink keeps one,
+// then sends the legacy Pub/Sub message, stamped with the seq and epoch the
+// log gave it so a reader can tell the two apart and detect a gap. The log
+// comes first: a message that carries a seq must already be replayable.
+func publishRealtime(ctx context.Context, sink realtimeSink, e Event) {
+	msg := realtimeMessage(e)
+	if ref, ok := recordChange(ctx, sink, e); ok {
+		msg["seq"] = ref.Seq
+		msg["epoch"] = ref.Epoch
+	}
+	_ = sink.Publish(ctx, ChannelRealtime, msg)
 }
 
 // realtimeMessage is the ChannelRealtime envelope: "type" and "payload" as
-// they have always been, plus "authz" when the topic has one.
+// they have always been, plus "authz" when the topic has one (and "seq" and
+// "epoch" once publishRealtime has logged it).
 func realtimeMessage(e Event) map[string]any {
 	msg := map[string]any{
 		"type":    e.Topic,

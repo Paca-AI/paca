@@ -158,7 +158,8 @@ added.
 
 | Key | Description | Default |
 |---|---|---|
-| `realtime.replicaCount` | | `1` |
+| `realtime.replicaCount` | More than `1` is refused unless `realtime.allowMultipleReplicas` is set | `1` |
+| `realtime.allowMultipleReplicas` | Allow `replicaCount > 1`. Live updates and the sync feed work across replicas, but collaborative editing keeps each document in one replica's memory, so two editors of a document on different replicas would diverge. Set it only with a gateway that pins a connection to one replica and with collaborative editing out of use. See [the realtime README](../../../services/realtime/README.md#running-more-than-one-replica) | `false` |
 | `realtime.image.repository` / `.tag` / `.pullPolicy` | | `ghcr.io/paca-ai/paca-realtime` / `latest` / `IfNotPresent` |
 | `realtime.resources` | Requests/limits for the realtime Pod | see `values.yaml` |
 | `realtime.logLevel` | | `info` |

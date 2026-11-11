@@ -127,6 +127,7 @@ func (s *ActivitySvc) RecordActivity(ctx context.Context, in taskdom.RecordActiv
 		ActorID:    in.ActorID,
 		Origin:     activitysvc.OriginFor(ctx, events.Origin(in.Origin), in.ActorID),
 		Plugins:    true,
+		Snapshot:   in.Snapshot,
 	})
 	return nil
 }

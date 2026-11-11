@@ -12,6 +12,9 @@ export interface Config {
 		origins: string[];
 	};
 	logLevel: string;
+	// syncEnabled turns the resumable sync protocol (sync.ts) on. Off, a
+	// client's "sync:join" is refused and it falls back to the legacy events.
+	syncEnabled: boolean;
 }
 
 function requireEnv(name: string): string {
@@ -36,5 +39,6 @@ export function loadConfig(): Config {
 				.filter(Boolean),
 		},
 		logLevel: process.env.LOG_LEVEL ?? "info",
+		syncEnabled: (process.env.SYNC_ENABLED ?? "true") !== "false",
 	};
 }

@@ -121,7 +121,7 @@ func New(cfg *config.Config) (*App, error) {
 	// Role and attachment changes, and accounts losing their access, are
 	// announced to services/realtime so open sockets are re-checked at once.
 	iamNotifier := events.NotifyIAMChanges(authorizer, publisher)
-	roleService := rolesvc.New(roleRepo, iamNotifier, authorizer, authorizer.Registry(), authorizer.Schema())
+	roleService := rolesvc.New(roleRepo, iamNotifier, authorizer, authorizer.Registry(), authorizer.Schema()).WithRealtime(publisher)
 	projectRepo := pgRepo.NewProjectRepository(db)
 	taskRepo := pgRepo.NewTaskRepository(db)
 	// The activity log: one repository and one service behind every
@@ -285,7 +285,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithActivityRecorder(activityService)
 	activityConsumer := worker.NewActivityConsumer(redisClient, pgRepo.NewActivityRepository(db), projectRepo, log)
 	environmentConsumer := worker.NewEnvironmentCommandConsumer(redisClient, environmentService, log)
-	docService := docsvc.New(docRepo, projectRepo)
+	docService := docsvc.New(docRepo, projectRepo).WithRealtime(publisher)
 	docActivityService := docsvc.NewActivityService(activityLog, docRepo).WithAgentTrigger(triggerGate, projectRepo).WithNotificationService(notificationService)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log).WithNotifier(notificationService).WithUserSetRecorder(taskRepo)

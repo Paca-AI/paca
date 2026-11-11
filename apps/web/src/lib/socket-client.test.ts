@@ -604,4 +604,138 @@ describe("socket-client", () => {
 			}
 		});
 	});
+
+	describe("sync protocol (flag on)", () => {
+		beforeEach(() => window.localStorage.setItem("paca.realtime.sync", "1"));
+		afterEach(() => window.localStorage.removeItem("paca.realtime.sync"));
+
+		function lastEmit(name: string) {
+			const calls = mockSocket.emit.mock.calls.filter(([n]) => n === name);
+			const last = calls[calls.length - 1];
+			if (!last) throw new Error(`no ${name} emitted`);
+			return { data: last[1], ack: last[2] as Ack };
+		}
+
+		it("joins with sync:join and no cursor the first time, and records the namespaces", () => {
+			connectSocket();
+			const seen: unknown[] = [];
+			onProjectNamespaces((c) => seen.push(c));
+			joinProject("p1");
+			const { data, ack } = lastEmit("sync:join");
+			expect(data).toEqual({ projectId: "p1", cursor: null, epoch: null });
+			ack(null, {
+				ok: true,
+				projectId: "p1",
+				namespaces: ["tasks"],
+				epoch: 7,
+				head: 12,
+				mode: "live",
+			});
+			expect(getProjectNamespaces("p1")).toEqual(["tasks"]);
+			expect(seen[0]).toMatchObject({ resumed: false });
+		});
+
+		it("rejoins with the cursor it holds and reports a resumed join", () => {
+			connectSocket();
+			const seen: Array<{ resumed?: boolean }> = [];
+			onProjectNamespaces((c) => seen.push(c));
+			joinProject("p1");
+			lastEmit("sync:join").ack(null, {
+				ok: true,
+				projectId: "p1",
+				namespaces: ["tasks"],
+				epoch: 7,
+				head: 12,
+				mode: "live",
+			});
+			rejoinProject("p1");
+			const { data, ack } = lastEmit("sync:join");
+			expect(data).toEqual({ projectId: "p1", cursor: 12, epoch: 7 });
+			ack(null, {
+				ok: true,
+				projectId: "p1",
+				namespaces: ["tasks"],
+				epoch: 7,
+				head: 12,
+				mode: "live",
+			});
+			expect(seen[1]?.resumed).toBe(true);
+		});
+
+		it("delivers sync:changes of a joined project to onProjectChange, in order", async () => {
+			const { onProjectChange } = await import("./socket-client");
+			connectSocket();
+			const got: unknown[] = [];
+			onProjectChange((p, e) => got.push([p, e.type]));
+			joinProject("p1");
+			lastEmit("sync:join").ack(null, {
+				ok: true,
+				projectId: "p1",
+				namespaces: ["tasks"],
+				epoch: 7,
+				head: 0,
+				mode: "live",
+			});
+			handlerFor("sync:changes")({
+				projectId: "p1",
+				epoch: 7,
+				from: 0,
+				to: 1,
+				changes: [{ seq: 1, type: "task.created", payload: {} }],
+			});
+			expect(got).toEqual([["p1", "task.created"]]);
+		});
+
+		it("falls back to the plain join when the server does not serve sync", () => {
+			connectSocket();
+			joinProject("p1");
+			lastEmit("sync:join").ack(null, { ok: false, reason: "disabled" });
+			expect(lastEmit("join").data).toEqual({ projectId: "p1" });
+		});
+
+		it("keeps the cursor and retries sync:join when it is not answered, instead of dropping to the plain join", () => {
+			vi.useFakeTimers();
+			try {
+				mockSocket.connected = true;
+				connectSocket();
+				joinProject("p1");
+				lastEmit("sync:join").ack(null, {
+					ok: true,
+					projectId: "p1",
+					namespaces: ["tasks"],
+					epoch: 7,
+					head: 12,
+					mode: "live",
+				});
+				rejoinProject("p1");
+				lastEmit("sync:join").ack(new Error("timeout"));
+				expect(
+					mockSocket.emit.mock.calls.filter(([n]) => n === "join"),
+				).toHaveLength(0);
+
+				vi.advanceTimersByTime(5_000);
+				const retry = lastEmit("sync:join");
+				// The retry carries the cursor it had, so the server can replay.
+				expect(retry.data).toEqual({ projectId: "p1", cursor: 12, epoch: 7 });
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("uses the plain join once the retries are used up, and still keeps the cursor", () => {
+			vi.useFakeTimers();
+			try {
+				mockSocket.connected = true;
+				connectSocket();
+				joinProject("p1");
+				for (let i = 0; i < 3; i++) {
+					lastEmit("sync:join").ack(new Error("timeout"));
+					vi.advanceTimersByTime(5_000);
+				}
+				expect(lastEmit("join").data).toEqual({ projectId: "p1" });
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+	});
 });

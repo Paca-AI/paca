@@ -12,6 +12,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	roledom "github.com/Paca-AI/api/internal/domain/role"
+	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 )
 
@@ -522,6 +523,57 @@ func TestReplaceMemberRoles(t *testing.T) {
 	// A member of another project is not found through this project.
 	if _, err := f.svc.ReplaceMemberRoles(t.Context(), q, mUser, nil, nil); !errors.Is(err, roledom.ErrProjectNotFound) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+type recordingSink struct{ msgs []map[string]any }
+
+func (r *recordingSink) Publish(_ context.Context, channel string, payload any) error {
+	if m, ok := payload.(map[string]any); ok && channel == "paca.events" {
+		r.msgs = append(r.msgs, m)
+	}
+	return nil
+}
+
+// A member's role change is announced to the project's live clients, naming the
+// member and the roles it now holds; without a sink nothing happens.
+func TestReplaceMemberRoles_AnnouncesTheChange(t *testing.T) {
+	f := newFixture()
+	p, m, user := uuid.New(), uuid.New(), uuid.New()
+	f.repo.projects[p] = true
+	f.repo.members[m] = &roledom.Member{ID: m, ProjectID: p, AccountID: user}
+	own := f.repo.addRole(&roledom.Role{Name: "Own", ProjectID: &p})
+
+	if _, err := f.svc.ReplaceMemberRoles(t.Context(), p, m, []uuid.UUID{own.ID}, nil); err != nil {
+		t.Fatalf("without a sink: %v", err)
+	}
+
+	sink := &recordingSink{}
+	f.svc.WithRealtime(sink)
+	if _, err := f.svc.ReplaceMemberRoles(t.Context(), p, m, []uuid.UUID{own.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.msgs) != 1 {
+		t.Fatalf("published %d messages, want 1", len(sink.msgs))
+	}
+	msg := sink.msgs[0]
+	if msg["type"] != "member.role_changed" {
+		t.Errorf("type = %v", msg["type"])
+	}
+	payload := msg["payload"].(map[string]any)
+	if payload["member_id"] != m.String() || payload["project_id"] != p.String() {
+		t.Errorf("payload = %v", payload)
+	}
+	// The roles are those the repository reports as attached (the fake reports none).
+	if _, ok := payload["role_names"].([]string); !ok {
+		t.Errorf("role_names = %#v, want a list", payload["role_names"])
+	}
+	if _, ok := payload["role_ids"].([]string); !ok {
+		t.Errorf("role_ids = %#v, want a list", payload["role_ids"])
+	}
+	az := msg["authz"].(events.Authz)
+	if az.Action != "project.members:read" || az.Resource != "project/"+p.String() {
+		t.Errorf("authz = %+v", az)
 	}
 }
 

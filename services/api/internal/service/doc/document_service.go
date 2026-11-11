@@ -11,6 +11,7 @@ import (
 
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/events"
 )
 
 // memberLookup resolves an account to its project membership.
@@ -22,6 +23,44 @@ type memberLookup interface {
 type Service struct {
 	repo       docdom.Repository
 	memberRepo memberLookup
+	realtime   realtimeSink
+}
+
+// realtimeSink is where folder changes are announced to live clients.
+type realtimeSink interface {
+	Publish(ctx context.Context, channel string, payload any) error
+}
+
+// WithRealtime sets where folder changes are announced. Folder changes are
+// realtime-only: the activity log has no entry kind for them, but another
+// user's open doc tree must follow them. Without a sink nothing is announced.
+func (s *Service) WithRealtime(sink realtimeSink) *Service {
+	s.realtime = sink
+	return s
+}
+
+// announceFolder tells live clients a folder was created, renamed/moved or
+// deleted. The event is checked as docs:read on the project (events.AuthzFor).
+func (s *Service) announceFolder(ctx context.Context, topic string, f *docdom.DocFolder) {
+	if s.realtime == nil || f == nil {
+		return
+	}
+	payload := map[string]any{
+		"project_id": f.ProjectID.String(),
+		"folder_id":  f.ID.String(),
+		"name":       f.Name,
+	}
+	if f.ParentID != nil {
+		payload["parent_id"] = f.ParentID.String()
+	}
+	id := f.ID
+	events.PublishRealtime(ctx, s.realtime, events.Event{
+		Topic:      topic,
+		Payload:    payload,
+		ProjectID:  f.ProjectID,
+		EntityType: events.EntityDoc,
+		EntityID:   &id,
+	})
 }
 
 // New returns a configured document service.
@@ -46,6 +85,14 @@ func (s *Service) FolderPath(ctx context.Context, projectID, folderID uuid.UUID)
 
 // CreateFolder creates a new folder.
 func (s *Service) CreateFolder(ctx context.Context, in docdom.CreateFolderInput) (*docdom.DocFolder, error) {
+	f, err := s.createFolder(ctx, in)
+	if err == nil {
+		s.announceFolder(ctx, string(docdom.ActivityTypeFolderCreated), f)
+	}
+	return f, err
+}
+
+func (s *Service) createFolder(ctx context.Context, in docdom.CreateFolderInput) (*docdom.DocFolder, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" || strings.Contains(name, "/") {
 		return nil, docdom.ErrFolderNameInvalid
@@ -83,6 +130,14 @@ func (s *Service) CreateFolder(ctx context.Context, in docdom.CreateFolderInput)
 // the repository's locked read-modify-write so concurrent moves can't combine
 // into a parent cycle.
 func (s *Service) UpdateFolder(ctx context.Context, id uuid.UUID, in docdom.UpdateFolderInput) (*docdom.DocFolder, error) {
+	f, err := s.updateFolder(ctx, id, in)
+	if err == nil {
+		s.announceFolder(ctx, string(docdom.ActivityTypeFolderUpdated), f)
+	}
+	return f, err
+}
+
+func (s *Service) updateFolder(ctx context.Context, id uuid.UUID, in docdom.UpdateFolderInput) (*docdom.DocFolder, error) {
 	return s.repo.UpdateFolderAtomic(ctx, id, func(f *docdom.DocFolder, find func(uuid.UUID) (*docdom.DocFolder, error)) error {
 		if f.ProjectID != in.ProjectID {
 			return docdom.ErrFolderNotFound
@@ -142,7 +197,11 @@ func (s *Service) DeleteFolder(ctx context.Context, id uuid.UUID, projectID uuid
 	if f.ProjectID != projectID {
 		return docdom.ErrFolderNotFound
 	}
-	return s.repo.DeleteFolder(ctx, id)
+	if err := s.repo.DeleteFolder(ctx, id); err != nil {
+		return err
+	}
+	s.announceFolder(ctx, string(docdom.ActivityTypeFolderDeleted), f)
+	return nil
 }
 
 // --- Document Service -------------------------------------------------------

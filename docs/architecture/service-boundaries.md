@@ -60,9 +60,12 @@ Concerns:
 
 - Socket.IO namespaces, rooms, and client connection lifecycle;
 - authentication and authorization of socket connections using contracts from `services/api`;
-- consumption of Valkey Stream messages emitted by `services/api`;
+- consumption of the `paca.events` Pub/Sub channel and the API's per-project change log (a Valkey Stream), which gives a client an ordered feed it can resume from its last applied change;
+- per-event authorization: the API's IAM engine, not this service, decides whether an account may see an event, and an account with no access to a project gets no feed of it at all;
 - transformation of internal domain events into client-safe real-time payloads;
-- broadcast of updates for boards, tasks, comments, agent conversation events, and collaboration signals.
+- broadcast of updates for boards, tasks, comments, agent conversation events, and collaboration signals (Yjs relay for docs and task descriptions).
+
+It holds no business rules and no durable state: sessions and collaboration rooms live in memory, so more than one replica needs the collaboration routing described in its README.
 
 ## services/agent-runner
 
@@ -88,11 +91,13 @@ If a page needs to reflect state that can change from outside the current tab �
 
 The established pattern, followed throughout `apps/web`:
 
-1. `services/api` publishes a domain event to the `paca.events` Valkey Pub/Sub channel (`internal/platform/messaging.Publisher.Publish`) at the point a state transition is persisted — see `internal/events/topics.go` for the topic namespace convention (`<domain>.<verb>`, e.g. `sprint.updated`, `environment.status_changed`).
-2. `services/realtime` delivers the event to the sockets of a namespace-scoped Socket.IO room whose account the API confirms may read the event's resource, using the `authz` descriptor `events.AuthzFor` derives (`src/subscriber.ts`, `src/access.ts`; a new topic needs a rule in `AuthzFor`, which `TestEveryTopicIsClassified` enforces).
-3. `apps/web`'s `useProjectRealtime` hook (`src/hooks/use-project-realtime.ts`) listens on the shared project socket and invalidates the affected React Query cache keys — no bespoke socket listener per component.
+1. `services/api` publishes a domain event at the point a state transition is persisted, through `events.Fanout` (events that also belong in the activity log) or `events.PublishRealtime` (realtime only: a view reorder, an environment status change, a doc folder, a member's role change). Both put it on the `paca.events` Valkey Pub/Sub channel and append it to the project's change log with a `seq` — see `internal/events/topics.go` for the topic convention (`<domain>.<verb>`, e.g. `sprint.updated`, `environment.status_changed`). Where a client can patch its cache with it, the call attaches the entity as it is after the change (`events.Event.Snapshot`).
+2. `services/realtime` delivers the event to the sockets of a namespace-scoped Socket.IO room whose account the API confirms may read the event's resource, using the `authz` descriptor `events.AuthzFor` derives (`src/subscriber.ts`, `src/access.ts`). A client that joined with `sync:join` gets it from the change log instead, in order and resumable (`src/sync.ts`).
+3. `apps/web` handles it in one place: the ordered rule table `EVENT_RULES` in `src/lib/project-event-rules.ts`, driven by `useProjectRealtime` on the shared project socket — no bespoke socket listener per component. A rule patches the cache from the entity (`src/lib/cache-patch.ts`) or invalidates only the queries the event names.
 
-Adding a new event type touches all three layers; `environment.status_changed` (added alongside this convention note, replacing a 2-second `refetchInterval` that used to poll `GET .../environments/:id` while an environment was creating/starting/stopping) is a template to copy.
+Adding a new event type touches three tables, each owning one question, and each has a test that fails until the new type is placed in it: what IAM must allow (`events.AuthzFor`, enforced by `TestEveryTopicIsClassified`), which room that belongs to (`NAMESPACE_PERMISSIONS` / `eventNamespace` in `services/realtime/src/permissions.ts`), and what the web cache does (`EVENT_RULES`, pinned by `project-event-rules.test.ts`). `environment.status_changed` (replacing a 2-second `refetchInterval` that polled `GET .../environments/:id` while an environment was creating/starting/stopping) is a template to copy.
+
+When the event can carry the new state, prefer patching over invalidating: an invalidation refetches a list for every client for every change, a patch is free. Patch only what is the same for every viewer (a task, a sprint, an environment status), never what is personal to the actor (a view's `config`), and never what another mechanism owns (a task's description belongs to collaborative editing). Lists are filtered on the server, so a patched list is refetched only when the change could move the entity in or out of it.
 
 Narrow exceptions that are *not* polling-for-data and should stay as-is:
 

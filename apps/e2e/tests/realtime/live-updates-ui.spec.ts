@@ -40,7 +40,16 @@ async function cleanup(request: APIRequestContext) {
 	await cleanupUsersByPrefix(request, PREFIX);
 }
 
-test.beforeEach(async ({ request, context }) => {
+// E2E_SYNC=1 runs every spec of this file with the web app on the sync
+// protocol (apps/web/src/lib/sync-engine.ts), which is off by default.
+const SYNC = process.env.E2E_SYNC === "1";
+
+test.beforeEach(async ({ request, context, page }) => {
+	if (SYNC) {
+		await page.addInitScript(() => {
+			window.localStorage.setItem("paca.realtime.sync", "1");
+		});
+	}
 	await authRequest(request);
 	await cleanup(request);
 	await context.clearCookies();
@@ -320,10 +329,17 @@ test.describe("The page follows edits to the member's role", () => {
 
 /** Records the socket.io frames and websocket opens of a page. */
 function watchSocket(page: Page) {
-	const seen = { opened: 0, reauth: 0, refreshes: 0, frames: [] as string[] };
+	const seen = {
+		opened: 0,
+		reauth: 0,
+		refreshes: 0,
+		frames: [] as string[],
+		sent: [] as string[],
+	};
 	page.on("websocket", (ws) => {
 		if (!ws.url().includes("/ws/socket.io")) return;
 		seen.opened += 1;
+		ws.on("framesent", (frame) => seen.sent.push(String(frame.payload)));
 		ws.on("framereceived", (frame) => {
 			const text = String(frame.payload);
 			seen.frames.push(text);
@@ -356,6 +372,32 @@ test.describe("The session and the socket", () => {
 		await page.waitForTimeout(3_000);
 		expect(seen.opened).toBe(opened);
 		expect(seen.reauth).toBe(0);
+	});
+
+	test("joins through sync:join and receives the change as sync:changes, not as an event", async ({
+		page,
+		request,
+		playwright,
+	}) => {
+		test.skip(!SYNC, "runs with E2E_SYNC=1");
+		const a = await arrange(request, playwright);
+		const seen = watchSocket(page);
+		await signIn(page, a.username, RESTRICTED_PASSWORD);
+		await openBacklogTable(page, a.projectId);
+		await expect
+			.poll(() => seen.sent.some((f) => f.includes('"sync:join"')))
+			.toBe(true);
+		expect(seen.sent.some((f) => /"join",\{"projectId"/.test(f))).toBe(false);
+
+		const title = name("viasync");
+		const mark = seen.frames.length;
+		await createTask(request, a.projectId, title);
+		await expect(page.getByText(title).first()).toBeVisible({
+			timeout: 15_000,
+		});
+		const after = seen.frames.slice(mark).join("\n");
+		expect(after).toContain("sync:changes");
+		expect(after).not.toMatch(/\["event",\{"type":"task\.created"/);
 	});
 
 	test("answers the server's reauth by refreshing the session and reconnecting, and stays live", async ({

@@ -63,6 +63,7 @@ import {
 	verifyTokenWithAPI,
 } from "./api-client.ts";
 import { extractTokenFromCookieHeader } from "./auth.ts";
+import type { ChangeLogReader } from "./change-log.ts";
 import {
 	CollabHub,
 	type CollabJoinRequest,
@@ -75,6 +76,7 @@ import type { Config } from "./config.ts";
 import { agentChatRoomName } from "./permissions.ts";
 import { createResyncer, type Resyncer } from "./resync.ts";
 import { syncProjectRooms } from "./rooms.ts";
+import { SyncHub } from "./sync.ts";
 import { ExpiryWatcher } from "./token-expiry.ts";
 
 // Augment Socket.IO's socket data type.
@@ -90,6 +92,9 @@ declare module "socket.io" {
 		expiresAt?: number;
 		// projects are the projects this socket joined and not yet left.
 		projects: Set<string>;
+		// syncProjects are the projects whose changes this socket receives
+		// through the sync protocol (see sync.ts) instead of legacy events.
+		syncProjects: Set<string>;
 	}
 }
 
@@ -99,12 +104,16 @@ export interface SocketServer {
 	resyncer: Resyncer;
 	expiry: ExpiryWatcher;
 	collab: CollabHub;
+	// sync is undefined when the protocol is off (no change log reader, or
+	// SYNC_ENABLED=false).
+	sync?: SyncHub;
 }
 
 export function createSocketServer(
 	config: Config,
 	logger: Logger,
 	decider: AccessDecider,
+	changeLog?: ChangeLogReader,
 ): SocketServer {
 	const httpServer = createServer((req, res) => {
 		if (req.url === "/healthz" && req.method === "GET") {
@@ -161,6 +170,7 @@ export function createSocketServer(
 			socket.data.rawToken = token;
 			socket.data.expiresAt = authResult.expiresAt;
 			socket.data.projects = new Set();
+			socket.data.syncProjects = new Set();
 
 			next();
 		} catch (err) {
@@ -199,6 +209,31 @@ export function createSocketServer(
 		(info, msg) => logger.info(info, msg),
 	);
 
+	// Resumable change delivery (see sync.ts).
+	const sync =
+		config.syncEnabled && changeLog
+			? new SyncHub({
+					reader: changeLog,
+					decider,
+					logger,
+					socket: (id) => {
+						const s = io.sockets.sockets.get(id);
+						if (!s) return undefined;
+						return {
+							viewer: s.data,
+							inRoom: (room) => s.rooms.has(room),
+							inProject: (id) =>
+								[...s.rooms].some((r) => r.startsWith(`project:${id}:`)),
+							disconnect: () => void s.disconnect(true),
+						};
+					},
+					emit: (id, event, payload) => {
+						io.to(id).emit(event, payload);
+					},
+				})
+			: undefined;
+	sync?.start();
+
 	// ── Connection lifecycle ───────────────────────────────────────────────────
 
 	io.on("connection", (socket) => {
@@ -233,6 +268,48 @@ export function createSocketServer(
 		// is among them. The optional ack receives { projectId, namespaces } so
 		// the client can tell "not allowed" from "failed" (it is never called
 		// on failure).
+		// joinRooms places the socket in the project's namespace rooms: it
+		// fetches the account's effective project actions once and joins the
+		// rooms whose read action is among them. null when the account is not
+		// a member. Throws when the API cannot be reached; a 401 also
+		// disconnects the socket.
+		//
+		// socket.data.rawToken is captured once at connect time and reused for
+		// as long as the WebSocket stays up. Once the access token expires
+		// every join 401s and the socket would be left in zero rooms with no
+		// recovery. Disconnecting trips socket.io-client's reconnection, which
+		// re-runs the handshake against whatever access_token cookie the
+		// browser holds by then.
+		async function joinRooms(projectId: string): Promise<string[] | null> {
+			try {
+				const perms = await fetchProjectPermissions(
+					config.apiUrl,
+					socket.data.rawToken,
+					projectId,
+				);
+				if (perms === null) {
+					logger.debug(
+						{ userId, projectId },
+						"join rejected: not a project member",
+					);
+					return null;
+				}
+				const joined = syncProjectRooms(socket, projectId, perms);
+				socket.data.projects.add(projectId);
+				logger.debug({ userId, projectId, joined }, "joined project rooms");
+				return joined;
+			} catch (err) {
+				logger.warn({ userId, projectId, err }, "project join failed");
+				if (err instanceof ApiRequestError && err.status === 401) {
+					socket.disconnect(true);
+				}
+				throw err;
+			}
+		}
+
+		// Join namespace-scoped rooms for a project. The optional ack receives
+		// { projectId, namespaces } so the client can tell "not allowed" from
+		// "failed" (it is never called on failure).
 		socket.on(
 			"join",
 			async (
@@ -241,44 +318,66 @@ export function createSocketServer(
 			) => {
 				const projectId = data?.projectId;
 				if (!projectId || typeof projectId !== "string") return;
-
 				try {
-					const perms = await fetchProjectPermissions(
-						config.apiUrl,
-						socket.data.rawToken,
-						projectId,
-					);
+					const namespaces = await joinRooms(projectId);
+					if (typeof ack === "function") {
+						ack({ projectId, namespaces: namespaces ?? [] });
+					}
+				} catch {
+					// Logged in joinRooms; the client retries an unacked join.
+				}
+			},
+		);
 
-					if (perms === null) {
-						// User is not a member of this project — silently ignore.
-						logger.debug(
-							{ userId, projectId },
-							"join rejected: not a project member",
-						);
-						if (typeof ack === "function") ack({ projectId, namespaces: [] });
+		// sync:join is "join" plus the resumable change feed: the same rooms,
+		// then everything the project logged since the client's cursor (see
+		// sync.ts). { ok: false } makes the client fall back to "join".
+		socket.on(
+			"sync:join",
+			async (
+				data: { projectId?: unknown; cursor?: unknown; epoch?: unknown },
+				ack?: (res: unknown) => void,
+			) => {
+				if (typeof ack !== "function") return;
+				const projectId = data?.projectId;
+				if (!projectId || typeof projectId !== "string") return;
+				if (!sync) {
+					ack({ ok: false, reason: "disabled" });
+					return;
+				}
+				try {
+					const namespaces = await joinRooms(projectId);
+					// No rooms means no right to see anything of the project: a
+					// non-member, or a member whose roles hold nothing in it. They get
+					// no feed, not even the bare skips, which would still tell them how
+					// active somebody else's project is.
+					if (namespaces === null || namespaces.length === 0) {
+						sync.leave(socket.id, projectId);
+						socket.data.syncProjects.delete(projectId);
+						ack({
+							ok: true,
+							projectId,
+							namespaces: [],
+							epoch: 0,
+							head: 0,
+							mode: "live",
+						});
 						return;
 					}
-
-					const joinedNamespaces = syncProjectRooms(socket, projectId, perms);
-					socket.data.projects.add(projectId);
-					logger.debug(
-						{ userId, projectId, joinedNamespaces },
-						"joined project rooms",
-					);
-					if (typeof ack === "function") {
-						ack({ projectId, namespaces: joinedNamespaces });
-					}
+					// Marked before the join so no legacy event for the project
+					// slips through between the hub registering the socket and
+					// the mark.
+					socket.data.syncProjects.add(projectId);
+					const res = await sync.join(socket.id, projectId, {
+						cursor: data.cursor,
+						epoch: data.epoch,
+					});
+					ack({ ok: true, projectId, namespaces, ...res });
 				} catch (err) {
-					logger.warn({ userId, projectId, err }, "project join failed");
-					// socket.data.rawToken is captured once at connect time and reused
-					// for as long as the WebSocket stays up. Once the access token
-					// expires every join 401s and the socket would be left in zero
-					// rooms with no recovery. Disconnecting trips socket.io-client's
-					// reconnection, which re-runs the handshake against whatever
-					// access_token cookie the browser holds by then.
-					if (err instanceof ApiRequestError && err.status === 401) {
-						socket.disconnect(true);
-					}
+					socket.data.syncProjects.delete(projectId);
+					sync.leave(socket.id, projectId);
+					logger.warn({ userId, projectId, err }, "sync join failed");
+					ack({ ok: false, reason: "unavailable" });
 				}
 			},
 		);
@@ -289,6 +388,8 @@ export function createSocketServer(
 			if (!projectId || typeof projectId !== "string") return;
 			syncProjectRooms(socket, projectId, null);
 			socket.data.projects.delete(projectId);
+			socket.data.syncProjects.delete(projectId);
+			sync?.leave(socket.id, projectId);
 			logger.debug({ userId, projectId }, "left project rooms");
 		});
 
@@ -330,6 +431,7 @@ export function createSocketServer(
 
 		socket.on("disconnect", (reason) => {
 			collab.leaveAll(socket.id);
+			sync?.dropSocket(socket.id);
 			cancelExpiry();
 			logger.info(
 				{ userId, socketId: socket.id, reason },
@@ -342,5 +444,5 @@ export function createSocketServer(
 	resyncer.start();
 	expiry.start();
 
-	return { httpServer, io, resyncer, expiry, collab };
+	return { httpServer, io, resyncer, expiry, collab, sync };
 }

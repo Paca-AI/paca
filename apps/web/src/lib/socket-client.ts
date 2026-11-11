@@ -25,6 +25,13 @@
 
 import { io, type Socket } from "socket.io-client";
 import { apiClient } from "./api-client";
+import {
+	isSyncEnabled,
+	ProjectSync,
+	type SyncBatch,
+	type SyncHeartbeat,
+	type SyncJoinAck,
+} from "./sync-engine";
 
 const REALTIME_URL = window.location.origin;
 
@@ -100,6 +107,21 @@ export function connectSocket(): Socket {
 		recordNamespaces(msg);
 	});
 
+	// The resumable change feed (see sync-engine.ts); only a project that
+	// joined through "sync:join" has a ProjectSync to receive these.
+	socket.on("sync:changes", (batch: SyncBatch) => {
+		syncStates.get(batch?.projectId)?.handleBatch(batch);
+	});
+	socket.on(
+		"sync:reset",
+		(msg: { projectId: string; epoch: number; head: number }) => {
+			syncStates.get(msg?.projectId)?.handleReset(msg);
+		},
+	);
+	socket.on("sync:heartbeat", (beat: SyncHeartbeat) => {
+		syncStates.get(beat?.projectId)?.handleHeartbeat(beat);
+	});
+
 	return socket;
 }
 
@@ -116,6 +138,7 @@ export function disconnectSocket(): void {
 	}
 	projectSubscriberCounts.clear();
 	projectNamespaces.clear();
+	syncStates.clear();
 	for (const timer of joinRetryTimers.values()) clearTimeout(timer);
 	joinRetryTimers.clear();
 }
@@ -246,6 +269,7 @@ export function leaveProject(projectId: string): void {
 	if (count <= 1) {
 		projectSubscriberCounts.delete(projectId);
 		projectNamespaces.delete(projectId);
+		syncStates.delete(projectId);
 		clearJoinRetry(projectId);
 		socket?.emit("leave", { projectId });
 		return;
@@ -275,6 +299,10 @@ export interface NamespacesMessage {
 
 /** A change to the namespaces the socket is in for one project. */
 export interface NamespacesChange extends NamespacesMessage {
+	/** True when the join resumed the change feed from the client's cursor
+	 *  (sync protocol): nothing was missed while away, so the project's data
+	 *  needs no refetch. False or absent otherwise. */
+	resumed?: boolean;
 	/** Namespaces the socket was in before and no longer is: the account lost
 	 *  access to that kind of data, so what the client cached may be stale. */
 	removed: string[];
@@ -297,6 +325,58 @@ const projectNamespaces = new Map<string, string[]>();
 const joinRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const namespaceListeners = new Set<(change: NamespacesChange) => void>();
 
+// ── Sync protocol ────────────────────────────────────────────────────────────
+
+// One ProjectSync per project joined through "sync:join".
+const syncStates = new Map<string, ProjectSync>();
+const syncChangeListeners = new Set<
+	(projectId: string, event: RealtimeEvent) => void
+>();
+const syncResetListeners = new Set<(projectId: string) => void>();
+
+/** Listen for changes delivered by the sync protocol, in order. */
+export function onProjectChange(
+	listener: (projectId: string, event: RealtimeEvent) => void,
+): () => void {
+	syncChangeListeners.add(listener);
+	return () => {
+		syncChangeListeners.delete(listener);
+	};
+}
+
+/** Listen for a project whose missed changes cannot be replayed: refetch. */
+export function onProjectReset(
+	listener: (projectId: string) => void,
+): () => void {
+	syncResetListeners.add(listener);
+	return () => {
+		syncResetListeners.delete(listener);
+	};
+}
+
+function syncStateFor(projectId: string): ProjectSync {
+	let state = syncStates.get(projectId);
+	if (!state) {
+		state = new ProjectSync({
+			onChange: (event) => {
+				for (const l of syncChangeListeners) l(projectId, event);
+			},
+			onReset: () => {
+				for (const l of syncResetListeners) l(projectId);
+			},
+			requestResync: () => {
+				if (projectSubscriberCounts.has(projectId)) emitJoin(projectId);
+			},
+		});
+		syncStates.set(projectId, state);
+	}
+	return state;
+}
+
+type SyncJoinResponse =
+	| ({ ok: true; projectId: string; namespaces: string[] } & SyncJoinAck)
+	| { ok: false; reason?: string };
+
 function clearJoinRetry(projectId: string): void {
 	const timer = joinRetryTimers.get(projectId);
 	if (timer !== undefined) clearTimeout(timer);
@@ -306,6 +386,67 @@ function clearJoinRetry(projectId: string): void {
 function emitJoin(projectId: string, attempt = 1): void {
 	if (!socket) return;
 	clearJoinRetry(projectId);
+	if (isSyncEnabled()) {
+		emitSyncJoin(projectId, attempt);
+		return;
+	}
+	emitLegacyJoin(projectId, attempt);
+}
+
+// sync:join does what "join" does and also returns the change feed from the
+// client's cursor. Two kinds of failure are told apart:
+//
+//  - The server answered that it cannot serve the feed (disabled, an older
+//    server, an error): fall back to the plain join, which still works and is
+//    followed by a refetch on reconnect, as before.
+//  - No answer (the socket dropped or the server was unreachable): the cursor
+//    is kept and the join retried, so a client that was away resumes from where
+//    it was instead of losing what it missed. Only after the retries run out is
+//    the plain join used, with the cursor still kept for the next attempt.
+function emitSyncJoin(projectId: string, attempt: number): void {
+	if (!socket) return;
+	const state = syncStateFor(projectId);
+	socket
+		.timeout(JOIN_ACK_TIMEOUT_MS)
+		.emit(
+			"sync:join",
+			{ projectId, ...state.joinRequest() },
+			(err: Error | null, res?: SyncJoinResponse) => {
+				if (!err && res?.ok) {
+					const resumed = state.applyJoinAck(res);
+					recordNamespaces({
+						projectId,
+						namespaces: res.namespaces ?? [],
+						resumed,
+					});
+					return;
+				}
+				if (!err) {
+					// Refused: this server does not serve the feed.
+					syncStates.delete(projectId);
+					emitLegacyJoin(projectId, attempt);
+					return;
+				}
+				if (!projectSubscriberCounts.has(projectId)) return;
+				if (attempt >= JOIN_MAX_ATTEMPTS) {
+					emitLegacyJoin(projectId, 1);
+					return;
+				}
+				joinRetryTimers.set(
+					projectId,
+					setTimeout(() => {
+						joinRetryTimers.delete(projectId);
+						if (socket?.connected && projectSubscriberCounts.has(projectId)) {
+							emitJoin(projectId, attempt + 1);
+						}
+					}, JOIN_RETRY_DELAY_MS),
+				);
+			},
+		);
+}
+
+function emitLegacyJoin(projectId: string, attempt = 1): void {
+	if (!socket) return;
 	socket
 		.timeout(JOIN_ACK_TIMEOUT_MS)
 		.emit(
@@ -338,7 +479,11 @@ function emitJoin(projectId: string, attempt = 1): void {
 		);
 }
 
-function recordNamespaces({ projectId, namespaces }: NamespacesMessage): void {
+function recordNamespaces({
+	projectId,
+	namespaces,
+	resumed,
+}: NamespacesMessage & { resumed?: boolean }): void {
 	// Ignore a message for a project nobody on this client subscribes to (a
 	// late ack after leaveProject).
 	if (!projectSubscriberCounts.has(projectId)) return;
@@ -347,7 +492,7 @@ function recordNamespaces({ projectId, namespaces }: NamespacesMessage): void {
 	const removed = (before ?? []).filter((ns) => !namespaces.includes(ns));
 	const added = before ? namespaces.filter((ns) => !before.includes(ns)) : [];
 	for (const listener of namespaceListeners) {
-		listener({ projectId, namespaces, removed, added });
+		listener({ projectId, namespaces, removed, added, resumed });
 	}
 }
 
@@ -378,4 +523,14 @@ export function onProjectNamespaces(
 export interface RealtimeEvent {
 	type: string;
 	payload: Record<string, unknown>;
+	/** Present on events delivered by the sync protocol: what the change did
+	 *  and, when the server attached it, the entity after the change, so the
+	 *  cache can be patched instead of refetched (see cache-patch.ts). */
+	change?: {
+		op?: string;
+		entity?: Record<string, unknown>;
+		entityType?: string;
+		entityId?: string;
+		taskId?: string;
+	};
 }
