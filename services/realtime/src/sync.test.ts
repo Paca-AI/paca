@@ -165,6 +165,29 @@ describe("SyncHub pump", () => {
 		expect(t.batches()[1]).toMatchObject({ from: 3, to: 4 });
 	});
 
+	it("does not spin on a backlog when every delivery fails, and catches up once the check works", async () => {
+		const t = setup();
+		t.log.entries = [entry(1)];
+		await t.hub.join("s1", P, {});
+		for (let i = 2; i <= 450; i++) t.log.entries.push(entry(i));
+		let reads = 0;
+		const after = t.log.after.bind(t.log);
+		t.log.after = async (...args) => {
+			reads++;
+			return after(...args);
+		};
+		t.setFail(true);
+		t.hub.notify(P);
+		await settle();
+		expect(reads).toBeLessThanOrEqual(2);
+		expect(t.batches()).toEqual([]);
+		t.setFail(false);
+		t.hub.notify(P);
+		await settle();
+		const last = t.batches().at(-1) as Batch;
+		expect(last.to).toBe(450);
+	});
+
 	it("passes the entity snapshot on to the socket", async () => {
 		const t = setup();
 		await t.hub.join("s1", P, {});

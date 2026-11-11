@@ -22,8 +22,13 @@ export function observeChangeHead(
 	seq: number,
 	epoch: number,
 ): void {
-	if (joined.has(projectId) || earliest.has(projectId)) return;
+	if (joined.has(projectId)) return;
 	if (!Number.isSafeInteger(seq) || !Number.isSafeInteger(epoch)) return;
+	// Responses complete out of order, so the first to arrive is not the oldest
+	// read: keep the lowest head of the same log. A different epoch means the
+	// log was recreated, and the newer one is the one that counts.
+	const known = earliest.get(projectId);
+	if (known && known.epoch === epoch && known.seq <= seq) return;
 	earliest.set(projectId, { seq, epoch });
 }
 

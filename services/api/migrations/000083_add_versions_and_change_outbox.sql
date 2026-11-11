@@ -43,35 +43,43 @@ CREATE TABLE IF NOT EXISTS change_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_created_at ON change_outbox (created_at);
 
-CREATE OR REPLACE FUNCTION capture_change() RETURNS trigger AS $$
-DECLARE
-    row_json JSONB;
+-- Two functions rather than one generic one: reading the three columns directly
+-- keeps the row from being serialised (to_jsonb(NEW) would materialise a
+-- document's whole content, or a task's description, on every write).
+CREATE OR REPLACE FUNCTION capture_versioned_change() RETURNS trigger AS $$
 BEGIN
     IF TG_OP = 'DELETE' THEN
-        row_json := to_jsonb(OLD);
+        INSERT INTO change_outbox (project_id, entity_type, entity_id, op, version)
+        VALUES (OLD.project_id, TG_ARGV[0], OLD.id, 'delete', OLD.version);
     ELSE
-        row_json := to_jsonb(NEW);
+        INSERT INTO change_outbox (project_id, entity_type, entity_id, op, version)
+        VALUES (NEW.project_id, TG_ARGV[0], NEW.id, lower(TG_OP), NEW.version);
     END IF;
-    INSERT INTO change_outbox (project_id, entity_type, entity_id, op, version)
-    VALUES (
-        (row_json ->> 'project_id')::uuid,
-        TG_ARGV[0],
-        (row_json ->> 'id')::uuid,
-        lower(TG_OP),
-        (row_json ->> 'version')::bigint
-    );
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION capture_unversioned_change() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        INSERT INTO change_outbox (project_id, entity_type, entity_id, op, version)
+        VALUES (OLD.project_id, TG_ARGV[0], OLD.id, 'delete', NULL);
+    ELSE
+        INSERT INTO change_outbox (project_id, entity_type, entity_id, op, version)
+        VALUES (NEW.project_id, TG_ARGV[0], NEW.id, lower(TG_OP), NULL);
+    END IF;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS tasks_capture_change ON tasks;
 CREATE TRIGGER tasks_capture_change AFTER INSERT OR UPDATE OR DELETE ON tasks
-    FOR EACH ROW EXECUTE FUNCTION capture_change('task');
+    FOR EACH ROW EXECUTE FUNCTION capture_versioned_change('task');
 
 DROP TRIGGER IF EXISTS sprints_capture_change ON sprints;
 CREATE TRIGGER sprints_capture_change AFTER INSERT OR UPDATE OR DELETE ON sprints
-    FOR EACH ROW EXECUTE FUNCTION capture_change('sprint');
+    FOR EACH ROW EXECUTE FUNCTION capture_versioned_change('sprint');
 
 DROP TRIGGER IF EXISTS documents_capture_change ON documents;
 CREATE TRIGGER documents_capture_change AFTER INSERT OR UPDATE OR DELETE ON documents
-    FOR EACH ROW EXECUTE FUNCTION capture_change('doc');
+    FOR EACH ROW EXECUTE FUNCTION capture_unversioned_change('doc');

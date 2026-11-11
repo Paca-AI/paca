@@ -276,7 +276,9 @@ export function leaveProject(projectId: string): void {
 	if (count <= 1) {
 		projectSubscriberCounts.delete(projectId);
 		projectNamespaces.delete(projectId);
-		syncStates.delete(projectId);
+		// The sync state (epoch and cursor) is kept: coming back to the project
+		// joins with it, so what changed in between is replayed, or answered
+		// with a reset when it cannot be. It is dropped on disconnect/sign-out.
 		markLeft(projectId);
 		clearJoinRetry(projectId);
 		socket?.emit("leave", { projectId });
@@ -416,6 +418,7 @@ function emitSyncJoin(projectId: string, attempt: number): void {
 	const state = syncStateFor(projectId);
 	// A first join starts where the page's data was read, not at the head, so a
 	// change made between its first requests and this join is replayed.
+	const hadCursor = state.cursor !== null;
 	const seen = earliestChangeHead(projectId);
 	if (seen) state.seed(seen);
 	socket
@@ -435,8 +438,11 @@ function emitSyncJoin(projectId: string, attempt: number): void {
 					return;
 				}
 				if (!err) {
-					// Refused: this server does not serve the feed.
+					// Refused: this server does not serve the feed. A client that was
+					// following it has no way to replay what it missed any more, so
+					// it refetches, as after a reset.
 					syncStates.delete(projectId);
+					if (hadCursor) for (const l of syncResetListeners) l(projectId);
 					emitLegacyJoin(projectId, attempt);
 					return;
 				}

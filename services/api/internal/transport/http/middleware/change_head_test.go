@@ -31,7 +31,7 @@ func serve(reader httpmw.ChangeHeadReader, method string) *httptest.ResponseReco
 		r.HandleFunc("/x", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	})
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(method, "/projects/p1/x", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), method, "/projects/p1/x", nil))
 	return rec
 }
 
@@ -68,12 +68,12 @@ func TestChangeHead_IsNotRevealedToARefusedRequest(t *testing.T) {
 		r.Get("/implicit", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	})
 	denied := httptest.NewRecorder()
-	r.ServeHTTP(denied, httptest.NewRequest(http.MethodGet, "/projects/p1/denied", nil))
+	r.ServeHTTP(denied, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/p1/denied", nil))
 	if denied.Header().Get(httpmw.ChangeSeqHeader) != "" {
 		t.Error("a 403 must not carry the change head")
 	}
 	implicit := httptest.NewRecorder()
-	r.ServeHTTP(implicit, httptest.NewRequest(http.MethodGet, "/projects/p1/implicit", nil))
+	r.ServeHTTP(implicit, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/p1/implicit", nil))
 	if implicit.Header().Get(httpmw.ChangeSeqHeader) != "9" {
 		t.Errorf("an implicit 200 must carry it, headers = %v", implicit.Header())
 	}
@@ -113,11 +113,11 @@ func TestChangeHead_DoesNotBreakStreamingOrUpgrades(t *testing.T) {
 		})
 	})
 	rec := &flushHijackRecorder{ResponseRecorder: httptest.NewRecorder()}
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/p1/stream", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/p1/stream", nil))
 	if rec.Header().Get(httpmw.ChangeSeqHeader) != "3" || !rec.Flushed {
 		t.Errorf("a stream must carry the head and be flushed: %v flushed=%v", rec.Header(), rec.Flushed)
 	}
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/p1/ws", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/p1/ws", nil))
 	if !rec.hijacked {
 		t.Error("an upgrade must reach the underlying Hijacker")
 	}

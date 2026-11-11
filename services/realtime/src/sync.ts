@@ -291,7 +291,8 @@ export class SyncHub {
 			}
 			if (behind.length === 0) return;
 
-			const from = Math.min(...behind.map((s) => s.cursor));
+			const cursorsBefore = behind.map((s) => s.cursor);
+			const from = Math.min(...cursorsBefore);
 			const entries = await reader.after(projectId, from, PUMP_BATCH);
 			const first = entries[0];
 			if (!first) {
@@ -321,6 +322,11 @@ export class SyncHub {
 			);
 			const last = entries[entries.length - 1];
 			if (!last || entries.length < PUMP_BATCH || last.seq >= head.seq) return;
+			// Nobody moved (every delivery failed, for example an access check
+			// that could not be answered): stop here and let the next nudge or
+			// poll retry, instead of re-reading the same range without end while
+			// holding this project's queue.
+			if (behind.every((s, i) => s.cursor === cursorsBefore[i])) return;
 		}
 	}
 

@@ -13,10 +13,20 @@ const P = "9c18da4b-18b9-4d66-8d82-7a65202b91a4";
 describe("change heads", () => {
 	beforeEach(clearChangeHeads);
 
-	it("keeps the first head seen before the project is joined, not the latest", () => {
+	it("keeps the lowest head seen before the project is joined, whatever order responses arrive in", () => {
 		observeChangeHead("p", 5, 100);
 		observeChangeHead("p", 9, 100);
 		expect(earliestChangeHead("p")).toEqual({ seq: 5, epoch: 100 });
+		clearChangeHeads();
+		observeChangeHead("p", 9, 100);
+		observeChangeHead("p", 5, 100);
+		expect(earliestChangeHead("p")).toEqual({ seq: 5, epoch: 100 });
+	});
+
+	it("takes the newer log when the epoch changed", () => {
+		observeChangeHead("p", 50, 100);
+		observeChangeHead("p", 2, 200);
+		expect(earliestChangeHead("p")).toEqual({ seq: 2, epoch: 200 });
 	});
 
 	it("stops collecting once joined, and starts again after leaving", () => {
