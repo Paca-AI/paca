@@ -6,12 +6,18 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
 
 // Response headers carrying the project's change-log head at the time a read
 // began (see ChangeHead).
+// changeHeadTimeout bounds the head read: it sits in front of every project
+// read, so a slow Valkey must cost a request at most this, then go unstamped
+// (the client simply starts its feed at its join instead).
+const changeHeadTimeout = 50 * time.Millisecond
+
 const (
 	ChangeSeqHeader   = "X-Change-Seq"
 	ChangeEpochHeader = "X-Change-Epoch"
@@ -49,7 +55,9 @@ func ChangeHead(reader ChangeHeadReader) func(http.Handler) http.Handler {
 			// Read before the handler runs, but only reveal it on success: a
 			// refused request (not a member, no permission) must not learn how
 			// active somebody else's project is.
-			seq, epoch, ok := reader.ChangeHead(r.Context(), id)
+			hctx, cancel := context.WithTimeout(r.Context(), changeHeadTimeout)
+			seq, epoch, ok := reader.ChangeHead(hctx, id)
+			cancel()
 			if !ok {
 				next.ServeHTTP(w, r)
 				return

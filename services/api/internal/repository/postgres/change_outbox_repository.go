@@ -80,3 +80,13 @@ func (r *ChangeOutboxRepository) Claim(ctx context.Context, olderThan time.Time,
 	})
 	return handled, err
 }
+
+// Prune deletes rows older than olderThan, claimed or not.
+func (r *ChangeOutboxRepository) Prune(ctx context.Context, olderThan time.Time) (int64, error) {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM change_outbox WHERE created_at < $1`, olderThan)
+	if err != nil {
+		return 0, fmt.Errorf("change outbox: prune: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}

@@ -22,6 +22,14 @@ const (
 	// matters for an announcement that carries no row version to compare.
 	changeReconcilerSlack = 2 * time.Second
 
+	// changeReconcilerMaxAge bounds the outbox: a row this old is dropped
+	// unhandled. It is the change log's own retention (messaging.ChangeLogTTL):
+	// past it the log holds nothing to compare against, and a client that was
+	// away that long resets anyway. Without it a long Valkey outage would let
+	// the table grow with every write.
+	changeReconcilerMaxAge   = messaging.ChangeLogTTL
+	changeReconcilerPruneGap = time.Minute
+
 	changeReconcilerInterval = 5 * time.Second
 	changeReconcilerBatch    = 1000
 )
@@ -47,7 +55,7 @@ type ChangeLoader func(ctx context.Context, id uuid.UUID) (ChangeRepair, error)
 // ChangeReconciler closes the one gap of the realtime change feed that the
 // feed itself cannot: a change is announced just after its database commit, so
 // a process that dies in between commits a change nobody hears of. Triggers
-// record each change of tasks, sprints and documents in change_outbox inside the
+// record each change of tasks and sprints in change_outbox inside the
 // committing transaction (migration 000083); the reconciler looks at every row
 // once it is old enough that its announcement should be done, checks whether
 // the entity was announced since, and announces it (with its current state)
@@ -66,11 +74,13 @@ type ChangeReconciler struct {
 	loaders map[string]ChangeLoader
 	logger  *slog.Logger
 
-	interval time.Duration
-	grace    time.Duration
-	now      func() time.Time
-	stopCh   chan struct{}
-	doneCh   chan struct{}
+	interval  time.Duration
+	grace     time.Duration
+	maxAge    time.Duration
+	lastPrune time.Time
+	now       func() time.Time
+	stopCh    chan struct{}
+	doneCh    chan struct{}
 }
 
 // NewChangeReconciler returns a reconciler. loaders maps an outbox entity type
@@ -78,7 +88,7 @@ type ChangeReconciler struct {
 func NewChangeReconciler(outbox changeoutbox.Repository, log ChangeLogReader, sink events.RealtimeSink, loaders map[string]ChangeLoader, logger *slog.Logger) *ChangeReconciler {
 	return &ChangeReconciler{
 		outbox: outbox, log: log, sink: sink, loaders: loaders, logger: logger,
-		interval: changeReconcilerInterval, grace: changeReconcilerGrace, now: time.Now,
+		interval: changeReconcilerInterval, grace: changeReconcilerGrace, maxAge: changeReconcilerMaxAge, now: time.Now,
 		stopCh: make(chan struct{}), doneCh: make(chan struct{}),
 	}
 }
@@ -127,10 +137,30 @@ func (c *ChangeReconciler) run(ctx context.Context) {
 // Tick claims one batch of old enough rows and reconciles them. It returns how
 // many rows it handled.
 func (c *ChangeReconciler) Tick(ctx context.Context) (int, error) {
+	c.prune(ctx)
 	olderThan := c.now().Add(-c.grace)
 	return c.outbox.Claim(ctx, olderThan, changeReconcilerBatch, func(rows []changeoutbox.Row) error {
 		return c.reconcile(ctx, rows)
 	})
+}
+
+// prune drops rows older than maxAge, at most once a minute. It runs before
+// the claim so it still bounds the table while claiming fails every tick (the
+// change log unreachable).
+func (c *ChangeReconciler) prune(ctx context.Context) {
+	now := c.now()
+	if now.Sub(c.lastPrune) < changeReconcilerPruneGap {
+		return
+	}
+	c.lastPrune = now
+	n, err := c.outbox.Prune(ctx, now.Add(-c.maxAge))
+	if err != nil {
+		c.logger.Warn("change reconciler: prune failed", "err", err)
+		return
+	}
+	if n > 0 {
+		c.logger.Warn("change reconciler: dropped outbox rows that were never reconciled", "rows", n, "older_than", c.maxAge)
+	}
 }
 
 type entityKey struct {
@@ -140,7 +170,8 @@ type entityKey struct {
 }
 
 func (c *ChangeReconciler) reconcile(ctx context.Context, rows []changeoutbox.Row) error {
-	// One decision per entity: the newest row says what state it is in.
+	// One decision per entity: the newest row (highest id, the order Claim
+	// reads them in) says what state it is in.
 	latest := map[entityKey]changeoutbox.Row{}
 	order := make([]entityKey, 0, len(rows))
 	for _, r := range rows {
@@ -149,7 +180,7 @@ func (c *ChangeReconciler) reconcile(ctx context.Context, rows []changeoutbox.Ro
 		if !seen {
 			order = append(order, k)
 		}
-		if !seen || r.CreatedAt.After(prev.CreatedAt) || r.ID > prev.ID {
+		if !seen || r.ID > prev.ID {
 			latest[k] = r
 		}
 	}
@@ -231,9 +262,6 @@ func repairEvent(k entityKey, state ChangeRepair) events.Event {
 	case changeoutbox.EntitySprint:
 		e.Topic, e.EntityType = "sprint."+suffix, events.EntitySprint
 		payload["sprint_id"] = id.String()
-	default:
-		e.Topic, e.EntityType = "doc."+suffix, events.EntityDoc
-		payload["document_id"] = id.String()
 	}
 	return e
 }

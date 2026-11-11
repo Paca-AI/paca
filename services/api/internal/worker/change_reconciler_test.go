@@ -43,6 +43,18 @@ func (f *fakeOutbox) Claim(_ context.Context, olderThan time.Time, limit int, ha
 	return len(claimed), nil
 }
 
+func (f *fakeOutbox) Prune(_ context.Context, olderThan time.Time) (int64, error) {
+	left := f.rows[:0:0]
+	for _, r := range f.rows {
+		if !r.CreatedAt.Before(olderThan) {
+			left = append(left, r)
+		}
+	}
+	n := len(f.rows) - len(left)
+	f.rows = left
+	return int64(n), nil
+}
+
 type fakeLog struct {
 	last map[string]messaging.Logged
 	err  error
@@ -99,7 +111,7 @@ func newReconcilerFixture() *reconcilerFixture {
 		return f.state[id], nil
 	}
 	f.r = NewChangeReconciler(f.outbox, f.log, f.sink, map[string]ChangeLoader{
-		changeoutbox.EntityTask: load, changeoutbox.EntitySprint: load, changeoutbox.EntityDoc: load,
+		changeoutbox.EntityTask: load, changeoutbox.EntitySprint: load,
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	f.r.now = func() time.Time { return f.now }
 	return f
@@ -155,7 +167,7 @@ func TestChangeReconciler_AnnouncesADeletedEntityAsDeleted(t *testing.T) {
 	f := newReconcilerFixture()
 	project := uuid.New()
 	for kind, topic := range map[string]string{
-		changeoutbox.EntityTask: "task.deleted", changeoutbox.EntitySprint: "sprint.deleted", changeoutbox.EntityDoc: "doc.deleted",
+		changeoutbox.EntityTask: "task.deleted", changeoutbox.EntitySprint: "sprint.deleted",
 	} {
 		f.sink.msgs = nil
 		f.outbox.rows = nil
@@ -259,5 +271,20 @@ func TestChangeReconciler_ComparesRowVersionsWhenBothSidesHaveOne(t *testing.T) 
 		if got := announced(row, c.logged); got != c.announced {
 			t.Errorf("%s: announced = %v, want %v", c.name, got, c.announced)
 		}
+	}
+}
+
+func TestChangeReconciler_PrunesRowsOlderThanMaxAge(t *testing.T) {
+	f := newReconcilerFixture()
+	f.r.maxAge = time.Hour
+	project := uuid.New()
+	f.row(changeoutbox.EntityTask, project, uuid.New(), 2*time.Hour)
+	f.row(changeoutbox.EntityTask, project, uuid.New(), time.Minute)
+	f.log.err = errors.New("valkey down") // claiming fails every tick
+	if _, err := f.r.Tick(context.Background()); err == nil {
+		t.Fatal("expected the claim to fail")
+	}
+	if len(f.outbox.rows) != 1 {
+		t.Fatalf("rows left = %d, want 1: the old one pruned, the young one kept", len(f.outbox.rows))
 	}
 }

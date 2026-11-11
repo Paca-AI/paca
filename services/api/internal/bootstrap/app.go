@@ -295,7 +295,7 @@ func New(cfg *config.Config) (*App, error) {
 	dueDateScheduler := worker.NewDueDateScheduler(redisClient, automationConsumer, log)
 	cronScheduler := worker.NewCronScheduler(redisClient, automationConsumer, log)
 	waitScheduler := worker.NewWaitScheduler(redisClient, automationConsumer, log)
-	changeReconciler := newChangeReconciler(db, publisher, taskRepo, sprintRepo, docRepo, log)
+	changeReconciler := newChangeReconciler(db, publisher, taskRepo, sprintRepo, log)
 
 	// Object storage — defaults to RustFS; switches to AWS S3 when STORAGE_PROVIDER=s3.
 	storageClient, err := storage.NewS3Client(context.Background(), storage.S3Config{

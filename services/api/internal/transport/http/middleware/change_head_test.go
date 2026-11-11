@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -120,5 +121,33 @@ func TestChangeHead_DoesNotBreakStreamingOrUpgrades(t *testing.T) {
 	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/p1/ws", nil))
 	if !rec.hijacked {
 		t.Error("an upgrade must reach the underlying Hijacker")
+	}
+}
+
+type slowHead struct{}
+
+func (slowHead) ChangeHead(ctx context.Context, _ string) (int64, int64, bool) {
+	select {
+	case <-ctx.Done():
+		return 0, 0, false
+	case <-time.After(5 * time.Second):
+		return 1, 1, true
+	}
+}
+
+func TestChangeHead_ASlowReaderDoesNotHoldTheRequest(t *testing.T) {
+	r := chi.NewRouter()
+	r.Route("/projects/{projectId}", func(r chi.Router) {
+		r.Use(httpmw.ChangeHead(slowHead{}))
+		r.Get("/x", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	})
+	rec := httptest.NewRecorder()
+	start := time.Now()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/p1/x", nil))
+	if time.Since(start) > time.Second {
+		t.Fatalf("request took %v", time.Since(start))
+	}
+	if rec.Code != 200 || rec.Header().Get(httpmw.ChangeSeqHeader) != "" {
+		t.Fatalf("want 200 without head headers, got %d %v", rec.Code, rec.Header())
 	}
 }

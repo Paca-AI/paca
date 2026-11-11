@@ -68,6 +68,26 @@ describe("AccessDecider", () => {
 		]);
 	});
 
+	it("a cold-cache burst costs one request per account and a warm one costs none", async () => {
+		// 30 viewers each asked about the same 200 changes (a pump's batch).
+		const r = recorder(() => true);
+		const d = new AccessDecider("http://api", { check: r.check });
+		const burst = () =>
+			Promise.all(
+				Array.from({ length: 30 }, (_, u) =>
+					Promise.all(
+						Array.from({ length: 200 }, (_, i) =>
+							d.can(viewer(`u${u}`), "p", q(`t${i}`)),
+						),
+					),
+				),
+			);
+		await burst();
+		expect(r.calls.length).toBe(30);
+		await burst();
+		expect(r.calls.length).toBe(30);
+	});
+
 	it("splits a batch above the API's limit of 200", async () => {
 		const r = recorder(() => true);
 		const d = new AccessDecider("http://api", { check: r.check });

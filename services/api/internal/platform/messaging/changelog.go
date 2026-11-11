@@ -92,7 +92,18 @@ for i = 6, #ARGV do args[#args + 1] = ARGV[i] end
 redis.call('XADD', unpack(args))
 redis.call('EXPIRE', stream, ARGV[2])
 if ARGV[4] ~= '' then
-  redis.call('HSET', last, ARGV[4], ARGV[3] .. ':' .. ARGV[5])
+  -- Concurrent writers can log out of order: never let an older state
+  -- replace a newer one (a delete, math.MaxInt64, always wins).
+  local keep = false
+  local prev = redis.call('HGET', last, ARGV[4])
+  if prev then
+    local pv = tonumber(string.match(prev, ':(-?%d+)$'))
+    local nv = tonumber(ARGV[5])
+    if pv and nv and nv >= 0 and pv > nv then keep = true end
+  end
+  if not keep then
+    redis.call('HSET', last, ARGV[4], ARGV[3] .. ':' .. ARGV[5])
+  end
   redis.call('EXPIRE', last, ARGV[2])
 end
 return {seq, epoch}

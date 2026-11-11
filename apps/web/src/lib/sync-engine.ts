@@ -174,7 +174,12 @@ export class ProjectSync {
 	}
 }
 
-/** Whether this client asks the server for the sync protocol. Off by default. */
+/**
+ * Whether this client asks the server for the sync protocol. Off by default.
+ * `localStorage["paca.realtime.sync"]` ("1" / "0") overrides the build-time
+ * `VITE_REALTIME_SYNC` so one browser can opt in or out during the rollout;
+ * remove the override together with the flag.
+ */
 export function isSyncEnabled(): boolean {
 	try {
 		if (window.localStorage.getItem("paca.realtime.sync") === "1") return true;

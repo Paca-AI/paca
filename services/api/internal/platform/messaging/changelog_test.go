@@ -165,3 +165,36 @@ func TestAppendChange_RecordsWhenAndAtWhatVersionAnEntityWasLastLogged(t *testin
 		t.Errorf("the index must expire, ttl = %v", ttl)
 	}
 }
+
+func TestAppendChange_LastLoggedKeepsTheNewestVersion(t *testing.T) {
+	client, cleanup := newTestRedisClient(t)
+	defer cleanup()
+	p := NewPublisher(client, testLogger())
+	ctx := context.Background()
+	log := func(ver int64) {
+		t.Helper()
+		if _, err := p.AppendChange(ctx, "p1", map[string]any{
+			"type": "task.updated", MarkField: "t1", MarkVersionField: ver,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log(6)
+	log(5) // logged out of order by a concurrent writer
+	got, err := p.LastLogged(ctx, "p1", []string{"t1"})
+	if err != nil || got["t1"].Version != 6 {
+		t.Fatalf("after 6 then 5 = %+v (err %v), want version 6", got["t1"], err)
+	}
+	log(7)
+	log(UnknownVersion) // a change without a snapshot still refreshes the time
+	got, _ = p.LastLogged(ctx, "p1", []string{"t1"})
+	if got["t1"].Version != UnknownVersion {
+		t.Fatalf("an unknown version replaces a known one, got %+v", got["t1"])
+	}
+	log(DeletedVersion)
+	log(9)
+	got, _ = p.LastLogged(ctx, "p1", []string{"t1"})
+	if got["t1"].Version != DeletedVersion {
+		t.Fatalf("a delete must win, got %+v", got["t1"])
+	}
+}

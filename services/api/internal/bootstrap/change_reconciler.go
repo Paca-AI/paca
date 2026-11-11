@@ -9,7 +9,6 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/Paca-AI/api/internal/domain/changeoutbox"
-	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/messaging"
@@ -22,7 +21,7 @@ import (
 // newChangeReconciler wires the reconciler that announces database changes
 // whose realtime announcement was lost (see worker.ChangeReconciler). Without a
 // publisher (no Valkey) there is nothing to announce on, so it returns nil.
-func newChangeReconciler(db *sqlx.DB, publisher *messaging.Publisher, tasks *pgRepo.TaskRepository, sprints *pgRepo.SprintRepository, docs *pgRepo.DocumentRepository, log *slog.Logger) *worker.ChangeReconciler {
+func newChangeReconciler(db *sqlx.DB, publisher *messaging.Publisher, tasks *pgRepo.TaskRepository, sprints *pgRepo.SprintRepository, log *slog.Logger) *worker.ChangeReconciler {
 	if publisher == nil {
 		return nil
 	}
@@ -46,16 +45,6 @@ func newChangeReconciler(db *sqlx.DB, publisher *messaging.Publisher, tasks *pgR
 				return worker.ChangeRepair{}, err
 			}
 			return worker.ChangeRepair{Found: true, Snapshot: sprintsvc.SprintSnapshot(sp)}, nil
-		},
-		changeoutbox.EntityDoc: func(ctx context.Context, id uuid.UUID) (worker.ChangeRepair, error) {
-			// Only existence matters: a document's body is not attached to a change.
-			if _, err := docs.FindDocumentTitleByID(ctx, id); err != nil {
-				if errors.Is(err, docdom.ErrDocNotFound) {
-					return worker.ChangeRepair{}, nil
-				}
-				return worker.ChangeRepair{}, err
-			}
-			return worker.ChangeRepair{Found: true}, nil
 		},
 	}
 	return worker.NewChangeReconciler(pgRepo.NewChangeOutboxRepository(db), publisher, publisher, loaders, log)
