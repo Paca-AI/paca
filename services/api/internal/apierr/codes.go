@@ -138,6 +138,10 @@ const (
 	// CodeTaskStatusIsDefault indicates an attempt to delete the project's default task status.
 	CodeTaskStatusIsDefault Code = "TASK_STATUS_IS_DEFAULT"
 
+	// CodeVersionConflict means an If-Match precondition failed: the row was
+	// changed since the version the caller named (HTTP 412).
+	CodeVersionConflict Code = "VERSION_CONFLICT"
+
 	// CodeSprintNotFound indicates the requested sprint does not exist.
 	CodeSprintNotFound Code = "SPRINT_NOT_FOUND"
 	// CodeSprintNameInvalid indicates an empty or invalid sprint name.

@@ -57,6 +57,35 @@ export interface NamespacesChange {
 	at: number;
 }
 
+/** One change of a `sync:changes` batch (see services/realtime/src/sync.ts). */
+export interface SyncChange {
+	seq: number;
+	skip?: true;
+	type?: string;
+	op?: string;
+	payload?: Record<string, unknown>;
+	entity?: Record<string, unknown>;
+	entity_type?: string;
+	entity_id?: string;
+}
+
+export interface SyncBatch {
+	projectId: string;
+	epoch: number;
+	from: number;
+	to: number;
+	changes: SyncChange[];
+	at: number;
+}
+
+export interface SyncJoinAck {
+	ok: boolean;
+	namespaces: string[];
+	epoch: number;
+	head: number;
+	mode: "live" | "replay" | "reset";
+}
+
 export interface SocketAuth {
 	/** A Cookie header value, as a browser would send. */
 	cookie?: string;
@@ -75,6 +104,12 @@ export class Probe {
 	readonly reauths: number[] = [];
 	readonly disconnects: Array<{ reason: string; at: number }> = [];
 	readonly connectedAt = Date.now();
+	/** `sync:changes` batches, in arrival order. */
+	readonly batches: SyncBatch[] = [];
+	/** `sync:reset` messages. */
+	readonly resets: Array<{ epoch: number; head: number; at: number }> = [];
+	/** `sync:heartbeat` messages. */
+	readonly heartbeats: Array<{ epoch: number; head: number; at: number }> = [];
 
 	private constructor(readonly socket: Socket) {
 		socket.on("event", (e: Omit<ReceivedEvent, "at">) =>
@@ -85,6 +120,15 @@ export class Probe {
 		);
 		socket.on("permissions:changed", (m: Omit<NamespacesChange, "at">) =>
 			this.changes.push({ ...m, at: Date.now() }),
+		);
+		socket.on("sync:changes", (b: Omit<SyncBatch, "at">) =>
+			this.batches.push({ ...b, at: Date.now() }),
+		);
+		socket.on("sync:reset", (m: { epoch: number; head: number }) =>
+			this.resets.push({ ...m, at: Date.now() }),
+		);
+		socket.on("sync:heartbeat", (m: { epoch: number; head: number }) =>
+			this.heartbeats.push({ ...m, at: Date.now() }),
 		);
 		socket.on("reauth", () => this.reauths.push(Date.now()));
 		socket.on("disconnect", (reason: string) =>
@@ -138,6 +182,33 @@ export class Probe {
 							: resolve(ack.namespaces),
 				);
 		});
+	}
+
+	/** Emits "sync:join" and resolves with the server's answer. */
+	syncJoin(
+		projectId: string,
+		cursor: number | null = null,
+		epoch: number | null = null,
+		timeoutMs = 10_000,
+	): Promise<SyncJoinAck> {
+		return new Promise((resolve, reject) => {
+			this.socket
+				.timeout(timeoutMs)
+				.emit(
+					"sync:join",
+					{ projectId, cursor, epoch },
+					(err: Error | null, ack?: SyncJoinAck) =>
+						err || !ack ? reject(err ?? new Error("no ack")) : resolve(ack),
+				);
+		});
+	}
+
+	/** Every non-skipped change received so far, in order. */
+	syncedChanges(since = 0): SyncChange[] {
+		return this.batches
+			.filter((b) => b.at >= since)
+			.flatMap((b) => b.changes)
+			.filter((c) => !c.skip);
 	}
 
 	/** Emits "join" with an arbitrary payload and reports whether it was acked. */

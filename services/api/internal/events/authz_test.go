@@ -16,6 +16,10 @@ import (
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
+	agentsvc "github.com/Paca-AI/api/internal/service/agent"
+	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
+	projectsvc "github.com/Paca-AI/api/internal/service/project"
+	tasksvc "github.com/Paca-AI/api/internal/service/task"
 )
 
 // notRealtimeTopics are the topics in topics.go that never reach a project
@@ -100,12 +104,10 @@ func topicConstants(t *testing.T) []string {
 	return out
 }
 
-// TestEveryTopicIsClassified fails when a topic is added without deciding
-// what IAM must allow before a client sees it. The decision is either an
-// AuthzFor rule or an entry in notRealtimeTopics.
-func TestEveryTopicIsClassified(t *testing.T) {
-	project := uuid.New()
-	entity := uuid.New()
+// candidateTopics is every topic a client can be sent: the constants of
+// topics.go plus the topics the domain services own and record themselves.
+func candidateTopics(t *testing.T) []string {
+	t.Helper()
 	topics := topicConstants(t)
 	// Activity types owned by the domains reach realtime through the same
 	// fanout and share the prefix rules.
@@ -120,17 +122,48 @@ func TestEveryTopicIsClassified(t *testing.T) {
 		string(docdom.ActivityTypeFolderDeleted),
 		"sprint.created", "sprint.updated", "sprint.deleted", "sprint.completed",
 		"workflow.assigned",
+		// Topics owned by the services that record them.
+		projectsvc.TopicProjectUpdated, projectsvc.TopicMemberAdded,
+		projectsvc.TopicMemberRoleChanged, projectsvc.TopicMemberUpdated,
+		projectsvc.TopicMemberRemoved,
+		agentsvc.TopicProjectAgentCreated, agentsvc.TopicProjectAgentUpdated,
+		agentsvc.TopicProjectAgentDeleted,
+		tasksvc.TopicTaskTypeCreated, tasksvc.TopicTaskTypeUpdated,
+		tasksvc.TopicTaskTypeDeleted, tasksvc.TopicTaskTypeDefaultSet,
+		tasksvc.TopicTaskStatusCreated, tasksvc.TopicTaskStatusUpdated,
+		tasksvc.TopicTaskStatusDeleted, tasksvc.TopicTaskStatusDefaultSet,
+		tasksvc.TopicTaskStatusesReordered,
+		tasksvc.TopicCustomFieldCreated, tasksvc.TopicCustomFieldUpdated,
+		tasksvc.TopicCustomFieldDeleted,
+		environmentsvc.TopicEnvironmentCreated, environmentsvc.TopicEnvironmentUpdated,
+		environmentsvc.TopicEnvironmentDeleted, environmentsvc.TopicEnvironmentStarted,
+		environmentsvc.TopicEnvironmentStopped, environmentsvc.TopicEnvironmentRestarted,
+		environmentsvc.TopicEnvironmentSSHKeyAdded, environmentsvc.TopicEnvironmentSSHKeyRemoved,
+		environmentsvc.TopicEnvironmentPortForwardAdded, environmentsvc.TopicEnvironmentPortForwardRemoved,
+		// Published outside the services above.
+		"git.task.updated", "agent.acp_bridge.status", "agent.session.started",
 	} {
 		if !slices.Contains(topics, a) {
 			topics = append(topics, a)
 		}
 	}
+	slices.Sort(topics)
+	return topics
+}
+
+// TestEveryTopicIsClassified fails when a topic is added without deciding
+// what IAM must allow before a client sees it. The decision is either an
+// AuthzFor rule or an entry in notRealtimeTopics.
+func TestEveryTopicIsClassified(t *testing.T) {
+	project := uuid.New()
+	entity := uuid.New()
+	topics := candidateTopics(t)
 
 	for _, topic := range topics {
 		if _, skipped := notRealtimeTopics[topic]; skipped {
 			continue
 		}
-		if _, ok := events.AuthzFor(events.Event{Topic: topic, ProjectID: project, EntityID: &entity}); !ok {
+		if _, ok := events.AuthzFor(events.Event{Topic: topic, ProjectID: project, EntityID: &entity, Payload: map[string]any{"conversation_id": entity.String()}}); !ok {
 			t.Errorf("%s has no AuthzFor rule and is not in notRealtimeTopics: decide what IAM must allow before a client sees it", topic)
 		}
 	}
@@ -169,6 +202,11 @@ func TestAuthzFor_ActionsAndResourcesAreValid(t *testing.T) {
 		{"automation graph", events.Event{Topic: "automation.node.updated", EntityType: events.EntityAutomation, EntityID: &entity}, iam.ActionWorkflowsRead, "project/%s/workflow/%s"},
 		{"environment", events.Event{Topic: "environment.status_changed", EntityType: events.EntityEnvironment, EntityID: &entity}, iam.ActionEnvironmentsRead, "project/%s/environment/%s"},
 		{"agent session started is a conversation event", events.Event{Topic: "agent.session.started", EntityType: events.EntityTask, TaskID: &entity, Payload: map[string]any{"conversation_id": "c1"}}, iam.ActionConversationsRead, "project/%s/conversation/c1"},
+		{"task schema change is a tasks:read project event", events.Event{Topic: "project.task_status.reordered", EntityType: events.EntityProject, EntityID: &entity}, iam.ActionTasksRead, "project/%s"},
+		{"custom field change", events.Event{Topic: "project.custom_field.updated", EntityType: events.EntityProject}, iam.ActionTasksRead, "project/%s"},
+		{"project settings", events.Event{Topic: "project.updated", EntityType: events.EntityProject, EntityID: &entity}, iam.ActionProjectsRead, "project/%s"},
+		{"member", events.Event{Topic: "member.role_changed", EntityType: events.EntityMember, EntityID: &entity}, iam.ActionProjectMembersRead, "project/%s"},
+		{"project agent config", events.Event{Topic: "project_agent.updated", EntityType: events.EntityAgent, EntityID: &entity}, iam.ActionAgentsRead, "project/%s"},
 		{"entity of the wrong type falls back to project", events.Event{Topic: "task.updated", EntityType: events.EntityDoc, EntityID: &entity}, iam.ActionTasksRead, "project/%s"},
 	}
 	for _, c := range cases {
@@ -275,6 +313,34 @@ func TestNotifyIAMChanges_InvalidatesThenAnnounces(t *testing.T) {
 
 	if got := events.NotifyIAMChanges(inner, nil); got == nil {
 		t.Error("a nil sink must return the inner invalidator")
+	}
+}
+
+type epochSinkStub struct {
+	captureSink
+	n int64
+}
+
+func (e *epochSinkStub) IncrCounter(_ context.Context, key string) (int64, error) {
+	if key != events.IAMEpochKey {
+		panic("unexpected key " + key)
+	}
+	e.n++
+	return e.n, nil
+}
+
+func TestNotifyIAMChanges_StampsTheEpochWhenTheSinkKeepsOne(t *testing.T) {
+	sink := &epochSinkStub{}
+	n := events.NotifyIAMChanges(invalidatorFunc(func(...string) {}), sink)
+	n.Invalidate("r1")
+	n.Invalidate("r2")
+	if len(sink.realtime) != 2 {
+		t.Fatalf("published %d messages, want 2", len(sink.realtime))
+	}
+	for i, want := range []int64{1, 2} {
+		if got := sink.realtime[i].(map[string]any)["epoch"]; got != want {
+			t.Errorf("message %d epoch = %v, want %d", i, got, want)
+		}
 	}
 }
 

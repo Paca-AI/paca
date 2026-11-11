@@ -29,5 +29,8 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Reads services/api's generated event registry, which is not in this
+  // package's Docker build context: vitest runs it, the image build skips it.
+  "exclude": ["src/**/*.registry.test.ts"]
 }

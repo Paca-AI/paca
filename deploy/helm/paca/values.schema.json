@@ -223,6 +223,7 @@
       "additionalProperties": true,
       "properties": {
         "replicaCount": { "type": "integer", "minimum": 0 },
+        "allowMultipleReplicas": { "type": "boolean" },
         "image": { "$ref": "#/definitions/image" },
         "resources": { "$ref": "#/definitions/resources" },
         "logLevel": { "type": "string" },

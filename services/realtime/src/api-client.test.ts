@@ -6,6 +6,7 @@ import {
 	fetchProjectPermissions,
 } from "./api-client.ts";
 import {
+	eventNamespace,
 	hasAction,
 	NAMESPACE_PERMISSIONS,
 	namespaceForAction,
@@ -124,5 +125,18 @@ describe("namespace permissions", () => {
 	it("gives views their own room, matching the API's views:read", () => {
 		expect(namespaceForAction("views:read")).toBe("views");
 		expect(namespaceForAction("tasks:write")).toBeUndefined();
+	});
+
+	it("routes project settings, members and agent configuration to their own rooms", () => {
+		expect(namespaceForAction("projects:read")).toBe("project");
+		expect(namespaceForAction("project.members:read")).toBe("members");
+		expect(namespaceForAction("agents:read")).toBe("agents");
+		expect(eventNamespace("member.added")).toBe("members");
+		expect(eventNamespace("project.updated")).toBe("project");
+		expect(eventNamespace("project_agent.updated")).toBe("agents");
+		expect(eventNamespace("project.task_status.reordered")).toBe("tasks");
+		expect(eventNamespace("project.custom_field.created")).toBe("tasks");
+		// agent.* stays conversation content, not agent configuration.
+		expect(eventNamespace("agent.message")).toBe("conversations");
 	});
 });

@@ -17,7 +17,7 @@ const notifyTimeout = 2 * time.Second
 
 type iamChangeNotifier struct {
 	next PolicyInvalidator
-	sink realtimeSink
+	sink RealtimeSink
 }
 
 // NotifyIAMChanges wraps the authorizer's invalidator so that every committed
@@ -30,11 +30,16 @@ type iamChangeNotifier struct {
 // asked of the API sees the new policy. The announcement names the roles that
 // changed; it says nothing about who holds them, and subscribers must treat
 // it as "recheck everyone". A nil sink returns next unchanged.
-func NotifyIAMChanges(next PolicyInvalidator, sink realtimeSink) PolicyInvalidator {
+func NotifyIAMChanges(next PolicyInvalidator, sink RealtimeSink) PolicyInvalidator {
 	if sink == nil {
 		return next
 	}
 	return iamChangeNotifier{next: next, sink: sink}
+}
+
+// epochSink is the part of the publisher that keeps the IAM epoch.
+type epochSink interface {
+	IncrCounter(ctx context.Context, key string) (int64, error)
 }
 
 func (n iamChangeNotifier) Invalidate(roleIDs ...string) {
@@ -44,8 +49,16 @@ func (n iamChangeNotifier) Invalidate(roleIDs ...string) {
 	if roleIDs == nil {
 		roleIDs = []string{}
 	}
-	_ = n.sink.Publish(ctx, ChannelRealtime, map[string]any{
+	msg := map[string]any{
 		"type":    TopicIAMChanged,
 		"payload": map[string]any{"role_ids": roleIDs},
-	})
+	}
+	// The epoch goes up before the announcement, so a subscriber that sees the
+	// message sees the new value, and one that missed it still sees the value.
+	if es, ok := n.sink.(epochSink); ok {
+		if epoch, err := es.IncrCounter(ctx, IAMEpochKey); err == nil {
+			msg["epoch"] = epoch
+		}
+	}
+	_ = n.sink.Publish(ctx, ChannelRealtime, msg)
 }

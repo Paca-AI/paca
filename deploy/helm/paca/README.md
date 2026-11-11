@@ -158,7 +158,8 @@ added.
 
 | Key | Description | Default |
 |---|---|---|
-| `realtime.replicaCount` | | `1` |
+| `realtime.replicaCount` | More than `1` is refused unless `realtime.allowMultipleReplicas` is set | `1` |
+| `realtime.allowMultipleReplicas` | Allow `replicaCount > 1`. Live updates, the sync feed and collaborative editing work across replicas (a document has one owner replica, found through Valkey). Socket.IO's polling fallback needs sticky sessions at the gateway. See [the realtime README](../../../services/realtime/README.md#running-more-than-one-replica) | `false` |
 | `realtime.image.repository` / `.tag` / `.pullPolicy` | | `ghcr.io/paca-ai/paca-realtime` / `latest` / `IfNotPresent` |
 | `realtime.resources` | Requests/limits for the realtime Pod | see `values.yaml` |
 | `realtime.logLevel` | | `info` |

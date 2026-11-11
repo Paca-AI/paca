@@ -1,3 +1,6 @@
+{{- if and (gt (int .Values.realtime.replicaCount) 1) (not .Values.realtime.allowMultipleReplicas) }}
+{{- fail "realtime.replicaCount > 1 needs realtime.allowMultipleReplicas=true: Socket.IO's polling transport needs sticky sessions at the gateway; set it to acknowledge that (see services/realtime/README.md, \"Running more than one replica\")" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

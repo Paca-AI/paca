@@ -37,6 +37,8 @@ type Sprint struct {
 	Status    SprintStatus
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// Version is bumped by the database on every update of the row.
+	Version int64
 }
 
 // ViewContext identifies which interaction a project-level view belongs to.

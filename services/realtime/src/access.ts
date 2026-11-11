@@ -28,6 +28,10 @@ const SWEEP_THRESHOLD = 10_000;
 export interface Viewer {
 	userId: string;
 	rawToken: string;
+	// Projects this socket receives through the sync protocol (see sync.ts).
+	// For those, a logged event reaches the socket as a "sync:changes" batch,
+	// not as a legacy "event".
+	syncProjects?: Set<string>;
 }
 
 interface Entry {
@@ -167,9 +171,13 @@ export async function deliverToReaders(
 	query: AccessQuery,
 	event: { type: string; payload: Record<string, unknown> },
 	onError: (err: unknown, userId: string) => void,
+	// logged: the event is in the project's change log, so sockets that sync
+	// the project get it from there.
+	logged = false,
 ): Promise<void> {
 	await Promise.all(
 		sockets.map(async (s) => {
+			if (logged && s.data.syncProjects?.has(projectId)) return;
 			try {
 				if (await decider.can(s.data, projectId, query)) {
 					s.emit("event", event);

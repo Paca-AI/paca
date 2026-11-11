@@ -33,7 +33,12 @@ func New(repo sprintdom.SprintRepository, taskRepo taskdom.TaskRepository, publi
 // payload keeps the project_id/sprint_id realtime clients key on, plus the
 // name and status so a deleted sprint's entry still reads correctly.
 func (s *Service) record(ctx context.Context, topic string, sp *sprintdom.Sprint) {
+	var snapshot any
+	if topic != events.TopicSprintDeleted {
+		snapshot = SprintSnapshot(sp)
+	}
 	s.activity.Record(ctx, activitysvc.Entry{
+		Snapshot:   snapshot,
 		ProjectID:  sp.ProjectID,
 		EntityType: events.EntitySprint,
 		EntityID:   sp.ID,
@@ -45,6 +50,31 @@ func (s *Service) record(ctx context.Context, topic string, sp *sprintdom.Sprint
 			"status":     string(sp.Status),
 		},
 	})
+}
+
+// SprintSnapshot is the sprint as realtime clients patch it into their cache:
+// the same JSON the sprint routes return (dto.SprintResponse), kept in step
+// with it by a test, since this package cannot import the transport layer.
+func SprintSnapshot(sp *sprintdom.Sprint) map[string]any {
+	m := map[string]any{
+		"version":    sp.Version,
+		"id":         sp.ID,
+		"project_id": sp.ProjectID,
+		"name":       sp.Name,
+		"status":     sp.Status,
+		"created_at": sp.CreatedAt,
+		"updated_at": sp.UpdatedAt,
+	}
+	if sp.StartDate != nil {
+		m["start_date"] = sp.StartDate
+	}
+	if sp.EndDate != nil {
+		m["end_date"] = sp.EndDate
+	}
+	if sp.Goal != nil {
+		m["goal"] = sp.Goal
+	}
+	return m
 }
 
 // publishSprintActivity durably records a sprint reaching eventType on
@@ -153,6 +183,9 @@ func (s *Service) UpdateSprint(ctx context.Context, projectID, id uuid.UUID, in 
 	sp, err := s.repo.UpdateSprintAtomic(ctx, id, func(sp *sprintdom.Sprint) error {
 		if sp.ProjectID != projectID {
 			return sprintdom.ErrSprintNotFound
+		}
+		if in.IfVersion != nil && sp.Version != *in.IfVersion {
+			return sprintdom.ErrVersionConflict
 		}
 		wasActive = sp.Status == sprintdom.SprintStatusActive
 

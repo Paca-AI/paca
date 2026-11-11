@@ -3,8 +3,9 @@ import axios, {
 	type AxiosResponse,
 	type InternalAxiosRequestConfig,
 } from "axios";
-
 import { ApiErrorCode } from "./api-error";
+import { observeChangeHead, projectIdOfUrl } from "./change-heads";
+import { CLIENT_OP_HEADER, newClientOp, rememberOwnOp } from "./client-ops";
 
 const API_BASE_URL = window.location.origin;
 
@@ -57,12 +58,36 @@ export class ApiClient {
 		});
 
 		this.instance.interceptors.request.use(
-			(config: InternalAxiosRequestConfig) => config,
+			(config: InternalAxiosRequestConfig) => {
+				// Stamp every mutation so the change it causes can be recognised as
+				// this tab's own when it comes back through the realtime feed. A
+				// retried request keeps the id it was given.
+				const method = (config.method ?? "get").toLowerCase();
+				if (method !== "get" && method !== "head" && method !== "options") {
+					if (!config.headers.has(CLIENT_OP_HEADER)) {
+						const id = newClientOp();
+						config.headers.set(CLIENT_OP_HEADER, id);
+						rememberOwnOp(id);
+					}
+				}
+				return config;
+			},
 			(error) => Promise.reject(error),
 		);
 
 		this.instance.interceptors.response.use(
-			(response: AxiosResponse) => response,
+			(response: AxiosResponse) => {
+				// The change-log head the data was read at (see change-heads.ts).
+				const seq = response.headers?.["x-change-seq"];
+				const epoch = response.headers?.["x-change-epoch"];
+				if (seq !== undefined && epoch !== undefined) {
+					const projectId = projectIdOfUrl(response.config?.url);
+					if (projectId) {
+						observeChangeHead(projectId, Number(seq), Number(epoch));
+					}
+				}
+				return response;
+			},
 			async (error) => {
 				const originalRequest = error.config as InternalAxiosRequestConfig & {
 					_retry?: boolean;

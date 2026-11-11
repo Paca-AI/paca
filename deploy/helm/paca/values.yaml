@@ -313,6 +313,13 @@ web:
 # ---------------------------------------------------------------------------
 realtime:
   replicaCount: 1
+  # Replicas above 1 are refused unless this is true. Live updates (the sync
+  # protocol, Pub/Sub and the change log) and collaborative editing (one owner
+  # replica per document, found through Valkey) work across replicas. Socket.IO's
+  # polling transport, the client's fallback, still needs the gateway to keep
+  # one connection on one replica (sticky sessions); WebSocket does not.
+  # See services/realtime/README.md, "Running more than one replica".
+  allowMultipleReplicas: false
   image:
     repository: ghcr.io/paca-ai/paca-realtime
     tag: "latest"

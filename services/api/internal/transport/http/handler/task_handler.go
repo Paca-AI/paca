@@ -1239,6 +1239,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			ActorID:      &actorID,
 			ActivityType: taskdom.ActivityTypeTaskCreated,
 			Content:      content,
+			Snapshot:     dto.TaskSnapshot(t),
 		})
 
 		// Enqueue one assignment event per assignee so the NotificationConsumer
@@ -1282,10 +1283,17 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	ifVersion, err := ifMatchVersion(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
 	// Fetch old state before mutating so we can record before/after values.
 	oldTask, _ := h.svc.GetTask(r.Context(), projectID, taskID)
 
 	t, err := h.svc.UpdateTask(r.Context(), projectID, taskID, taskdom.UpdateTaskInput{
+		IfVersion:      ifVersion,
 		TaskTypeID:     req.TaskTypeID.Ptr(),
 		StatusID:       req.StatusID.Ptr(),
 		SprintID:       req.SprintID.Ptr(),
@@ -1358,6 +1366,7 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 				ActorID:      &actorID,
 				ActivityType: taskdom.ActivityTypeTaskUpdated,
 				Content:      content,
+				Snapshot:     dto.TaskSnapshot(t),
 			})
 		}
 

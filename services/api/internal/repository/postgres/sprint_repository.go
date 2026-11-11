@@ -27,6 +27,7 @@ type sprintRecord struct {
 	Status    string     `db:"status"`
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
+	Version   int64      `db:"version"`
 }
 
 // --- Repository struct -------------------------------------------------------
@@ -41,7 +42,7 @@ func NewSprintRepository(db *sqlx.DB) *SprintRepository {
 	return &SprintRepository{db: db}
 }
 
-const sprintSelectCols = `id, project_id, name, start_date, end_date, goal, status, created_at, updated_at`
+const sprintSelectCols = `id, project_id, name, start_date, end_date, goal, status, created_at, updated_at, version`
 
 // --- Methods ----------------------------------------------------------------
 
@@ -180,6 +181,7 @@ func (r *SprintRepository) CreateSprint(ctx context.Context, s *sprintdom.Sprint
 	if err != nil {
 		return fmt.Errorf("sprint repo: create: %w", err)
 	}
+	s.Version = 1
 	return nil
 }
 
@@ -199,11 +201,12 @@ func (r *SprintRepository) UpdateSprintAtomic(ctx context.Context, id uuid.UUID,
 		if err := decide(s); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if err := tx.QueryRowxContext(ctx, `
 			UPDATE sprints SET name = $1, start_date = $2, end_date = $3, goal = $4, status = $5, updated_at = $6
-			WHERE id = $7`,
+			WHERE id = $7
+			RETURNING version`,
 			s.Name, s.StartDate, s.EndDate, s.Goal, string(s.Status), s.UpdatedAt, s.ID.String(),
-		); err != nil {
+		).Scan(&s.Version); err != nil {
 			return fmt.Errorf("sprint repo: update: %w", err)
 		}
 		out = s
@@ -243,5 +246,6 @@ func toSprintEntity(r *sprintRecord) *sprintdom.Sprint {
 		Status:    sprintdom.SprintStatus(r.Status),
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
+		Version:   r.Version,
 	}
 }

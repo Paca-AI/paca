@@ -4,6 +4,12 @@ package events
 // fan-out to connected Socket.IO clients.
 const ChannelRealtime = "paca.events"
 
+// IAMEpochKey is the Valkey counter bumped on every announced IAM change (see
+// NotifyIAMChanges). services/realtime polls it, so an iam.changed message it
+// missed (a Pub/Sub gap) is noticed in seconds rather than at its next
+// periodic pass. It never expires and only ever grows.
+const IAMEpochKey = "paca:iam:epoch"
+
 // StreamAnalytics is the Valkey Stream key used for durable analytics and audit log events.
 const StreamAnalytics = "paca.analytics"
 

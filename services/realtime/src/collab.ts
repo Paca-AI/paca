@@ -185,7 +185,7 @@ function resourceOf(ref: CollabRoomRef): string {
 	return `project/${ref.projectId}/${ACTIONS[ref.kind].segment}/${ref.id}`;
 }
 
-function asBytes(v: unknown): Uint8Array | undefined {
+export function asBytes(v: unknown): Uint8Array | undefined {
 	return v instanceof Uint8Array && v.byteLength <= MAX_UPDATE_BYTES
 		? v
 		: undefined;
@@ -261,6 +261,27 @@ export class CollabHub {
 
 	get roomCount(): number {
 		return this.rooms.size;
+	}
+
+	// hasRoom: the hub holds this room (it is the room's authority).
+	hasRoom(name: string): boolean {
+		return this.rooms.has(name);
+	}
+
+	// releaseRoom destroys a room and its state without telling its members
+	// (the caller already has): used when the hub is no longer the room's
+	// authority.
+	releaseRoom(name: string): void {
+		const room = this.rooms.get(name);
+		if (!room) return;
+		this.destroy(room);
+		this.rooms.delete(name);
+	}
+
+	// roomNames lists the rooms the hub holds, for a cluster to keep their
+	// leases alive.
+	roomNames(): string[] {
+		return [...this.rooms.keys()];
 	}
 
 	async join(

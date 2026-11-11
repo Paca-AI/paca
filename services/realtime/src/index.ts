@@ -5,11 +5,17 @@
 //
 // The ioredis subscriber is a dedicated client locked into subscriber mode
 // (subscribe/psubscribe only), which ioredis requires. Nothing else talks to
-// Valkey: sessions live in memory and every decision comes from the API.
+// Valkey except a command client that reads the change log: sessions live in
+// memory and every decision comes from the API.
 
+import Redis from "ioredis";
 import pino from "pino";
 import { AccessDecider } from "./access.ts";
+import { ValkeyChangeLogReader } from "./change-log.ts";
+import { CollabCluster } from "./collab-cluster.ts";
+import { ValkeyBus, ValkeyLeases } from "./collab-valkey.ts";
 import { loadConfig } from "./config.ts";
+import { IamEpochWatcher } from "./iam-epoch.ts";
 import { createSocketServer } from "./server.ts";
 import { createSubscriber } from "./subscriber.ts";
 
@@ -24,23 +30,73 @@ const logger = pino({
 
 logger.info("starting paca realtime service");
 
-const decider = new AccessDecider(config.apiUrl);
+const decider = new AccessDecider(config.apiUrl, {
+	ttlMs: config.accessCacheTtlMs,
+});
 
-const { httpServer, io, resyncer, expiry, collab } = createSocketServer(
+// A regular (non-subscriber) client, used only to read the change log.
+const commands = new Redis(config.valkey.url, { maxRetriesPerRequest: 2 });
+commands.on("error", (err: unknown) => {
+	logger.error({ err }, "valkey command client error");
+});
+
+// Collaborative editing across replicas: a room has one owner, found through a
+// lease in Valkey (see collab-cluster.ts). Off, this process owns every room.
+const collabNet = config.collabCluster
+	? {
+			leases: new ValkeyLeases(commands),
+			bus: new ValkeyBus(
+				commands,
+				new Redis(config.valkey.url, { maxRetriesPerRequest: null }),
+			),
+		}
+	: undefined;
+
+const { httpServer, io, resyncer, expiry, collab, sync } = createSocketServer(
 	config,
 	logger,
 	decider,
+	new ValkeyChangeLogReader(commands),
+	collabNet,
 );
+if (collab instanceof CollabCluster) {
+	await collab.start();
+	logger.info(
+		{ replica: config.replicaId },
+		"collaborative editing is clustered",
+	);
+}
+// What an IAM change makes every open socket redo: drop decisions, re-sync
+// rooms, re-check collab editors.
+function onIamChanged(): void {
+	resyncer.onIamChanged();
+	void collab.recheck();
+}
+
+// A missed iam.changed announcement is noticed through the API's counter.
+const iamEpoch = new IamEpochWatcher({
+	read: async () => {
+		const v = await commands.get("paca:iam:epoch"); // events.IAMEpochKey
+		return v === null ? null : Number(v);
+	},
+	onChange: () => {
+		logger.warn("iam epoch moved without an announcement — re-syncing");
+		onIamChanged();
+	},
+});
+iamEpoch.start();
+
 const subscriber = createSubscriber(
 	config.valkey.url,
 	io,
 	logger,
 	decider,
-	() => {
-		resyncer.onIamChanged();
-		void collab.recheck();
+	(epoch) => {
+		iamEpoch.observe(epoch);
+		onIamChanged();
 	},
 	(type, payload) => void collab.handleContentEvent(type, payload),
+	(projectId) => sync?.notify(projectId),
 );
 
 // A missed iam.changed announcement must cost at most one interval, as it does
@@ -66,7 +122,10 @@ function shutdown(signal: string): void {
 			expiry.stop();
 			clearInterval(collabRecheck);
 			collab.close();
+			sync?.stop();
+			iamEpoch.stop();
 			subscriber.disconnect();
+			commands.disconnect();
 			logger.info("shutdown complete");
 			process.exit(0);
 		});

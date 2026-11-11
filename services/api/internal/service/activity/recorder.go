@@ -35,6 +35,10 @@ type Entry struct {
 	ActorID *uuid.UUID
 	Origin  events.Origin
 
+	// Snapshot is the entity after the change, for realtime clients to patch
+	// their cache with; see events.Event.Snapshot.
+	Snapshot any
+
 	// Plugins also delivers the entry to the plugin event stream. Only the
 	// task and doc events plugins subscribe to set it.
 	Plugins bool
@@ -84,6 +88,7 @@ func (r *FanoutRecorder) Record(ctx context.Context, e Entry) {
 		ActorID:          e.ActorID,
 		Origin:           e.Origin,
 		SkipPluginEvents: !e.Plugins,
+		Snapshot:         e.Snapshot,
 	}
 	if e.EntityID != uuid.Nil {
 		id := e.EntityID

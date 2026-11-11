@@ -17,12 +17,25 @@ const mocks = vi.hoisted(() => {
 		leaveProject: vi.fn(),
 		rejoinProject: vi.fn(),
 		onProjectNamespaces: vi.fn(),
+		onProjectChange: vi.fn((_listener: unknown) => () => {}),
+		onProjectReset: vi.fn((_listener: unknown) => () => {}),
 		unsubscribeNamespaces: vi.fn(),
 		invalidateQueries: vi.fn(),
 		resetQueries: vi.fn(),
 		setQueryData: vi.fn(),
+		setQueriesData: vi.fn(),
+		removeQueries: vi.fn(),
+		invalidateMemberDirectory: vi.fn(),
+		invalidateAgentDirectory: vi.fn(),
 	};
 });
+
+vi.mock("@/lib/member-directory", () => ({
+	invalidateMemberDirectory: mocks.invalidateMemberDirectory,
+}));
+vi.mock("@/lib/agent-directory", () => ({
+	invalidateAgentDirectory: mocks.invalidateAgentDirectory,
+}));
 
 vi.mock("@/lib/socket-client", () => ({
 	connectSocket: mocks.connectSocket,
@@ -30,6 +43,8 @@ vi.mock("@/lib/socket-client", () => ({
 	leaveProject: mocks.leaveProject,
 	rejoinProject: mocks.rejoinProject,
 	onProjectNamespaces: mocks.onProjectNamespaces,
+	onProjectChange: mocks.onProjectChange,
+	onProjectReset: mocks.onProjectReset,
 }));
 
 vi.mock("@tanstack/react-query", async () => {
@@ -42,6 +57,8 @@ vi.mock("@tanstack/react-query", async () => {
 			invalidateQueries: mocks.invalidateQueries,
 			resetQueries: mocks.resetQueries,
 			setQueryData: mocks.setQueryData,
+			setQueriesData: mocks.setQueriesData,
+			removeQueries: mocks.removeQueries,
 		}),
 	};
 });
@@ -226,6 +243,211 @@ describe("useProjectRealtime", () => {
 		listener({ type: "unknown.event", payload: {} });
 
 		expect(mocks.invalidateQueries).not.toHaveBeenCalled();
+	});
+
+	describe("comments, sprints and views", () => {
+		function send(
+			type: string,
+			payload: Record<string, unknown> = {},
+			change?: unknown,
+		) {
+			renderHook(() => useProjectRealtime("proj-abc"));
+			const [, listener] = mocks.socket.on.mock.calls[0] as [
+				string,
+				(event: unknown) => void,
+			];
+			listener({ type, payload, change });
+		}
+		const keys = () =>
+			mocks.invalidateQueries.mock.calls.map(
+				(c) => (c[0] as { queryKey?: unknown[] }).queryKey,
+			);
+
+		it("refreshes only the task's own queries on a task comment, not every task list", () => {
+			send("task.comment.added", { task_id: "t1" });
+			expect(keys()).not.toContainEqual(["projects", "proj-abc", "tasks"]);
+			const predicates = mocks.invalidateQueries.mock.calls
+				.map(
+					(c) =>
+						(c[0] as { predicate?: (q: { queryKey: unknown[] }) => boolean })
+							.predicate,
+				)
+				.filter(Boolean);
+			expect(
+				predicates.some((p) =>
+					p?.({
+						queryKey: ["projects", "proj-abc", "tasks", "t1", "activities"],
+					}),
+				),
+			).toBe(true);
+			expect(
+				predicates.some((p) =>
+					p?.({
+						queryKey: ["projects", "proj-abc", "tasks", "t2", "activities"],
+					}),
+				),
+			).toBe(false);
+		});
+
+		it("refreshes only that doc's timeline on a doc comment", () => {
+			send("doc.comment.added", { document_id: "d1" });
+			expect(keys()).toContainEqual([
+				"projects",
+				"proj-abc",
+				"docs",
+				"d1",
+				"activities",
+			]);
+			expect(keys()).not.toContainEqual(["projects", "proj-abc", "docs"]);
+		});
+
+		it("falls back to the broad refresh when a comment names no task", () => {
+			send("task.comment.added", {});
+			expect(keys()).toContainEqual(["projects", "proj-abc", "tasks"]);
+		});
+
+		it("patches a sprint change that carries the sprint, and moves tasks only when it completes", () => {
+			const change = (id = "s1") => ({
+				entityType: "sprint",
+				entityId: id,
+				entity: { id, name: "S", status: "active" },
+			});
+			send("sprint.updated", {}, change());
+			expect(mocks.setQueriesData).toHaveBeenCalled();
+			expect(keys()).not.toContainEqual(["projects", "proj-abc", "sprints"]);
+			expect(keys()).not.toContainEqual(["projects", "proj-abc", "tasks"]);
+		});
+
+		it("still refreshes everything for a sprint change with no snapshot", () => {
+			send("sprint.updated", {});
+			expect(keys()).toContainEqual(["projects", "proj-abc", "sprints"]);
+		});
+
+		it("refreshes only the moved view's positions on view.task_moved", () => {
+			send("view.task_moved", { view_id: "v1" });
+			expect(keys()).toContainEqual([
+				"projects",
+				"proj-abc",
+				"views",
+				"v1",
+				"task-positions",
+			]);
+			expect(keys()).not.toContainEqual(["projects", "proj-abc", "views"]);
+		});
+
+		it("refreshes only the view lists on view.reordered", () => {
+			send("view.reordered", { view_context: "backlog" });
+			const predicate = mocks.invalidateQueries.mock.calls
+				.map(
+					(c) =>
+						(c[0] as { predicate?: (q: { queryKey: unknown[] }) => boolean })
+							.predicate,
+				)
+				.find(Boolean);
+			expect(
+				predicate?.({
+					queryKey: ["projects", "proj-abc", "views", { context: "backlog" }],
+				}),
+			).toBe(true);
+			expect(
+				predicate?.({
+					queryKey: ["projects", "proj-abc", "views", "v1", "task-positions"],
+				}),
+			).toBe(false);
+		});
+	});
+
+	describe("project schema, settings, members and agents", () => {
+		function send(type: string, payload: Record<string, unknown> = {}) {
+			renderHook(() => useProjectRealtime("proj-abc"));
+			const [, listener] = mocks.socket.on.mock.calls[0] as [
+				string,
+				(event: { type: string; payload: Record<string, unknown> }) => void,
+			];
+			listener({ type, payload });
+		}
+		const keys = () =>
+			mocks.invalidateQueries.mock.calls.map(
+				(c) => (c[0] as { queryKey?: unknown[] }).queryKey,
+			);
+
+		it("refreshes the task statuses on project.task_status.*", () => {
+			send("project.task_status.updated");
+			expect(keys()).toContainEqual(["projects", "proj-abc", "task-statuses"]);
+			// A status edit can change what counts as done in subtask counts.
+			expect(keys()).toContainEqual(["projects", "proj-abc", "tasks"]);
+		});
+
+		it("does not refetch tasks for a reorder or a rename of a task type", () => {
+			send("project.task_status.reordered");
+			send("project.task_type.updated");
+			expect(keys()).not.toContainEqual(["projects", "proj-abc", "tasks"]);
+		});
+
+		it("refreshes only the custom fields when one is created", () => {
+			send("project.custom_field.created");
+			expect(keys()).toContainEqual(["projects", "proj-abc", "custom-fields"]);
+			expect(keys()).not.toContainEqual(["projects", "proj-abc", "tasks"]);
+		});
+
+		it("refreshes the task types on project.task_type.*", () => {
+			send("project.task_type.deleted");
+			expect(keys()).toContainEqual(["projects", "proj-abc", "task-types"]);
+		});
+
+		it("refreshes the project itself, not everything under it, on project.updated", () => {
+			send("project.updated");
+			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["projects", "proj-abc"],
+				exact: true,
+			});
+			expect(keys()).not.toContainEqual(["projects", "proj-abc", "tasks"]);
+		});
+
+		it("refreshes the member and agent lookups other clients' changes would leave stale", () => {
+			send("member.updated");
+			expect(mocks.invalidateMemberDirectory).toHaveBeenCalledWith("proj-abc");
+			mocks.invalidateMemberDirectory.mockClear();
+			send("project_agent.updated");
+			expect(mocks.invalidateAgentDirectory).toHaveBeenCalledWith("proj-abc");
+			expect(mocks.invalidateMemberDirectory).toHaveBeenCalledWith("proj-abc");
+		});
+
+		it("patches an environment's status from the event, refetching only the one being viewed", () => {
+			send("environment.status_changed", {
+				environment_id: "e1",
+				status: "running",
+			});
+			expect(mocks.setQueryData).toHaveBeenCalled();
+			expect(mocks.setQueriesData).toHaveBeenCalled();
+			expect(keys()).not.toContainEqual([
+				"projects",
+				"proj-abc",
+				"environments",
+			]);
+			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["projects", "proj-abc", "environments", "e1"],
+				exact: true,
+				refetchType: "active",
+			});
+		});
+
+		it("falls back to the broad refresh for an environment event with no id", () => {
+			send("environment.status_changed", { status: "running" });
+			expect(keys()).toContainEqual(["projects", "proj-abc", "environments"]);
+		});
+
+		it("refreshes members and roles on member.*", () => {
+			send("member.role_changed");
+			expect(keys()).toContainEqual(["projects", "proj-abc", "members"]);
+			expect(keys()).toContainEqual(["projects", "proj-abc", "roles"]);
+		});
+
+		it("refreshes agents and members on project_agent.*", () => {
+			send("project_agent.created");
+			expect(keys()).toContainEqual(["projects", "proj-abc", "agents"]);
+			expect(keys()).toContainEqual(["projects", "proj-abc", "members"]);
+		});
 	});
 
 	it("registers a connect listener on mount", () => {
@@ -577,6 +799,67 @@ describe("useProjectRealtime", () => {
 					arg.queryKey[0] === "projects" &&
 					arg.queryKey[1] === "proj-abc",
 			).length;
+
+		it("does not refetch when the rejoin resumed the change feed", () => {
+			mocks.socket.connected = true;
+			renderHook(() => useProjectRealtime("proj-abc"));
+			handlerFor("connect")();
+			mocks.invalidateQueries.mockClear();
+			const [listener] = mocks.onProjectNamespaces.mock.calls[0] as [
+				(c: unknown) => void,
+			];
+			listener({
+				projectId: "proj-abc",
+				namespaces: ["tasks"],
+				removed: [],
+				added: [],
+				resumed: true,
+			});
+			expect(projectRefetches()).toBe(0);
+		});
+
+		it("handles changes the sync feed delivers for this project only", () => {
+			renderHook(() => useProjectRealtime("proj-abc"));
+			const [feed] = mocks.onProjectChange.mock.calls[0] as [
+				(projectId: string, e: unknown) => void,
+			];
+			feed("other", { type: "task.created", payload: {} });
+			expect(mocks.invalidateQueries).not.toHaveBeenCalled();
+			feed("proj-abc", { type: "task.created", payload: {} });
+			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["projects", "proj-abc", "tasks"],
+			});
+		});
+
+		it("patches a task change that carries the task instead of invalidating the task prefix", () => {
+			renderHook(() => useProjectRealtime("proj-abc"));
+			const [feed] = mocks.onProjectChange.mock.calls[0] as [
+				(projectId: string, e: unknown) => void,
+			];
+			feed("proj-abc", {
+				type: "task.updated",
+				payload: { content: JSON.stringify({ changes: [{ field: "title" }] }) },
+				change: {
+					entityType: "task",
+					entityId: "t1",
+					taskId: "t1",
+					entity: { id: "t1", title: "New" },
+				},
+			});
+			expect(mocks.invalidateQueries).not.toHaveBeenCalledWith({
+				queryKey: ["projects", "proj-abc", "tasks"],
+			});
+			expect(mocks.setQueryData).toHaveBeenCalled();
+		});
+
+		it("refetches the project when the feed reports a reset", () => {
+			renderHook(() => useProjectRealtime("proj-abc"));
+			const [onReset] = mocks.onProjectReset.mock.calls[0] as [
+				(projectId: string) => void,
+			];
+			onReset("proj-abc");
+			expect(projectRefetches()).toBe(1);
+		});
 
 		it("rejoins and refetches the project only once the rejoin is acked", () => {
 			mocks.socket.connected = true;

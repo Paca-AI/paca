@@ -3,6 +3,7 @@ package sprintsvc_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -368,6 +369,22 @@ func TestUpdateSprint_ActivateSprint(t *testing.T) {
 	}
 	if updated.Status != sprintdom.SprintStatusActive {
 		t.Errorf("expected status active, got %q", updated.Status)
+	}
+}
+
+func TestUpdateSprint_IfVersionRefusesAStaleWrite(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeSprintRepo()
+	svc := sprintsvc.New(repo, newFakeTaskRepo(), nil)
+	sp, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{ProjectID: uuid.New(), Name: "S", Status: sprintdom.SprintStatusPlanned})
+	repo.sprints[sp.ID].Version = 3
+
+	stale, fresh := int64(2), int64(3)
+	if _, err := svc.UpdateSprint(ctx, sp.ProjectID, sp.ID, sprintdom.UpdateSprintInput{Name: "stale", IfVersion: &stale}); !errors.Is(err, sprintdom.ErrVersionConflict) {
+		t.Fatalf("a stale version must conflict, got %v", err)
+	}
+	if updated, err := svc.UpdateSprint(ctx, sp.ProjectID, sp.ID, sprintdom.UpdateSprintInput{Name: "fresh", IfVersion: &fresh}); err != nil || updated.Name != "fresh" {
+		t.Fatalf("the current version must apply: %v %v", updated, err)
 	}
 }
 

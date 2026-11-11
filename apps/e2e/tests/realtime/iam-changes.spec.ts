@@ -155,6 +155,9 @@ async function nextChange(probe: Probe, since: number, timeout = 10_000) {
 	>;
 }
 
+/** The "project" room (projects:read) comes with any way into the project; these specs are about the rest. */
+const withoutProject = (ns: string[]) => ns.filter((n) => n !== "project");
+
 /** Waits until the newest `permissions:changed` satisfies `ok`. */
 async function changeMatching(
 	probe: Probe,
@@ -165,7 +168,7 @@ async function changeMatching(
 		.poll(
 			() => {
 				const ns = probe.lastChange(since)?.namespaces;
-				return ns !== undefined && ok(ns);
+				return ns !== undefined && ok(withoutProject(ns));
 			},
 			{
 				timeout: 10_000,
@@ -173,7 +176,7 @@ async function changeMatching(
 			},
 		)
 		.toBe(true);
-	return probe.lastChange(since)?.namespaces as string[];
+	return withoutProject(probe.lastChange(since)?.namespaces as string[]);
 }
 
 async function expectDelivered(probe: Probe, taskId: string, since: number) {
@@ -505,7 +508,7 @@ test.describe("Changing which roles a member holds", () => {
 		playwright,
 	}) => {
 		const s = await scene(request, playwright, "platform", (p) => [open(p)]);
-		expect(s.bob.namespaces).toEqual([]);
+		expect(withoutProject(s.bob.namespaces)).toEqual([]);
 		const platformRole = await createGlobalRole(request, name("platform"), {
 			version: "2026-10-01",
 			statements: [allow(["tasks:read"], [`${res(s.projectId)}/*`])],
@@ -706,7 +709,7 @@ test.describe("Other sockets", () => {
 		await setPolicy(request, s, open(s.projectId));
 		await changeMatching(s.bob.probe, t, (ns) => ns.length === 0);
 		const note = await nextChange(carolSocket.probe, t);
-		expect(note.namespaces).toEqual(["tasks"]);
+		expect(withoutProject(note.namespaces)).toEqual(["tasks"]);
 
 		const since = Date.now();
 		await patchTask(request, s.projectId, task, name("x"));
