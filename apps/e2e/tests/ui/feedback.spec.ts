@@ -44,7 +44,8 @@ async function failAgentsLoader(page: Page, status: number) {
 			contentType: "application/json",
 			body: JSON.stringify({
 				success: false,
-				error: { code: "E2E_FORCED_ERROR", message: "forced e2e failure" },
+				error_code: "E2E_FORCED_ERROR",
+				error: "forced e2e failure",
 			}),
 		}),
 	);
@@ -138,7 +139,8 @@ test.describe("Feedback", () => {
 				contentType: "application/json",
 				body: JSON.stringify({
 					success: false,
-					error: { code: "E2E_FORCED_ERROR", message: "forced e2e failure" },
+					error_code: "E2E_FORCED_ERROR",
+					error: "forced e2e failure",
 				}),
 			}),
 		);
