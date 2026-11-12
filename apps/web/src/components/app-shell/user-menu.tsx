@@ -5,6 +5,7 @@ import {
 	Keyboard,
 	Languages,
 	LogOut,
+	MessageSquareWarning,
 	User,
 } from "lucide-react";
 import { useState } from "react";
@@ -31,7 +32,9 @@ import {
 } from "@/components/ui/sidebar";
 import { useLocale } from "@/hooks/use-locale";
 import { currentUserQueryOptions, logout } from "@/lib/auth-api";
+import { FEEDBACK_NEW_ISSUE_URL } from "@/lib/feedback";
 import { userAvatar } from "@/lib/provider-logos";
+import { brandingQueryOptions } from "@/lib/settings-api";
 import { useShortcutHelpStore } from "@/lib/shortcuts/help-dialog-store";
 
 export function UserMenu() {
@@ -40,6 +43,7 @@ export function UserMenu() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { data: user } = useQuery(currentUserQueryOptions);
+	const { data: branding } = useQuery(brandingQueryOptions);
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const { locale, set: setLocale } = useLocale();
 	const openShortcutHelp = useShortcutHelpStore((s) => s.setOpen);
@@ -127,6 +131,20 @@ export function UserMenu() {
 							<Keyboard className="size-4" />
 							{tShortcuts("dialog.menuLabel")}
 						</DropdownMenuItem>
+						{branding?.feedback_enabled !== false && (
+							<DropdownMenuItem
+								onClick={() =>
+									window.open(
+										FEEDBACK_NEW_ISSUE_URL,
+										"_blank",
+										"noopener,noreferrer",
+									)
+								}
+							>
+								<MessageSquareWarning className="size-4" />
+								{t("userMenu.sendFeedback")}
+							</DropdownMenuItem>
+						)}
 						<DropdownMenuSeparator />
 						<DropdownMenuSub>
 							<DropdownMenuSubTrigger>

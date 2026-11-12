@@ -446,7 +446,9 @@
 			"saved": "已保存",
 			"errors": {
 				"updateFailed": "保存失败，请重试。"
-			}
+			},
+			"feedbackLabel": "反馈",
+			"feedbackDescription": "在用户菜单中显示“发送反馈”，并在错误页面显示“报告此问题”，二者都会打开预填好的 GitHub issue。私有或自托管实例请关闭。"
 		},
 		"sso": {
 			"title": "单点登录 (SSO)",

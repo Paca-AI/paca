@@ -1,6 +1,7 @@
 import { Plus, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { ReportIssueButton } from "@/components/report-issue-button";
 import { Button } from "@/components/ui/button";
 
 interface EmptyUsersStateProps {
@@ -53,7 +54,7 @@ export function NoUsersMatchState({ onClear }: { onClear: () => void }) {
 	);
 }
 
-export function UsersErrorState() {
+export function UsersErrorState({ error }: { error?: unknown }) {
 	const { t } = useTranslation("admin");
 
 	return (
@@ -67,6 +68,7 @@ export function UsersErrorState() {
 					{t("users.errors.tryAgain")}
 				</p>
 			</div>
+			<ReportIssueButton error={error} />
 		</div>
 	);
 }

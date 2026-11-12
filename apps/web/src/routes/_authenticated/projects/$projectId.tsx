@@ -7,8 +7,8 @@ import {
 } from "@tanstack/react-router";
 import { AlertCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-
 import { AIChatFloat } from "@/components/projects/ai-chat-float";
+import { ReportIssueButton } from "@/components/report-issue-button";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useProjectRealtime } from "@/hooks/use-project-realtime";
 import { projectQueryOptions } from "@/lib/project-api";
@@ -28,7 +28,11 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 function ProjectLayout() {
 	const { t } = useTranslation("projects");
 	const { projectId } = Route.useParams();
-	const { data: project, isError } = useQuery(projectQueryOptions(projectId));
+	const {
+		data: project,
+		isError,
+		error,
+	} = useQuery(projectQueryOptions(projectId));
 
 	// Join realtime rooms for this project.  The hook subscribes on mount and
 	// leaves / cleans up on unmount (i.e. when navigating away from the project).
@@ -56,6 +60,7 @@ function ProjectLayout() {
 			<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-muted-foreground">
 				<AlertCircle className="size-8 opacity-40" />
 				<p className="text-sm">{t("project.notFound")}</p>
+				{isError && <ReportIssueButton error={error} />}
 			</div>
 		);
 	}

@@ -446,7 +446,9 @@
 			"saved": "Saved",
 			"errors": {
 				"updateFailed": "Failed to save. Please try again."
-			}
+			},
+			"feedbackLabel": "Feedback",
+			"feedbackDescription": "Show “Send feedback” in the user menu and “Report this issue” on error screens, which open a pre-filled GitHub issue. Turn off for private or self-hosted instances."
 		},
 		"sso": {
 			"title": "Single sign-on (SSO)",

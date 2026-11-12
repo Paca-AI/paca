@@ -88,6 +88,7 @@
 		"myProfile": "Compte",
 		"apiKeys": "Clés API",
 		"logOut": "Se déconnecter",
-		"loggingOut": "Déconnexion en cours…"
+		"loggingOut": "Déconnexion en cours…",
+		"sendFeedback": "Envoyer un retour"
 	}
 }

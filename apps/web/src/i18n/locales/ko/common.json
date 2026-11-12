@@ -5,7 +5,8 @@
 		"retry": "Retry",
 		"noPermissionToView": "You don't have permission to view this",
 		"loadMore": "더 보기",
-		"loadingMore": "불러오는 중…"
+		"loadingMore": "불러오는 중…",
+		"reportIssue": "이 문제 신고"
 	},
 	"dialog": {
 		"closeLabel": "닫기",

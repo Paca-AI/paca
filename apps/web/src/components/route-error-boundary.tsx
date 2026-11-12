@@ -1,5 +1,6 @@
 import { AlertTriangle, Lock, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ReportIssueButton } from "@/components/report-issue-button";
 import { Button } from "@/components/ui/button";
 import { getHttpStatus, isForbiddenError } from "@/lib/api-error";
 
@@ -72,15 +73,18 @@ export function RouteErrorComponent({ error }: { error: Error }) {
 			{/* Retrying a permission error hits the same 403 again — nothing on
 			    this page changed, so there's nothing for Retry to do. */}
 			{!isForbidden && (
-				<Button
-					variant="outline"
-					size="sm"
-					className="gap-1.5"
-					onClick={() => window.location.reload()}
-				>
-					<RefreshCw className="size-3.5" />
-					{t("common.retry", "Retry")}
-				</Button>
+				<div className="flex flex-wrap items-center justify-center gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						className="gap-1.5"
+						onClick={() => window.location.reload()}
+					>
+						<RefreshCw className="size-3.5" />
+						{t("common.retry", "Retry")}
+					</Button>
+					<ReportIssueButton error={error} />
+				</div>
 			)}
 		</div>
 	);

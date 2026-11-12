@@ -446,7 +446,9 @@
 			"saved": "저장됨",
 			"errors": {
 				"updateFailed": "저장에 실패했습니다. 다시 시도해 주세요."
-			}
+			},
+			"feedbackLabel": "피드백",
+			"feedbackDescription": "사용자 메뉴에 '피드백 보내기'를, 오류 화면에 '이 문제 신고'를 표시하며, 미리 채워진 GitHub 이슈가 열립니다. 비공개 또는 자체 호스팅 인스턴스에서는 끄세요."
 		},
 		"sso": {
 			"title": "싱글 사인온 (SSO)",

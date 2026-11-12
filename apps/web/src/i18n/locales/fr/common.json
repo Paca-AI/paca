@@ -5,7 +5,8 @@
 		"retry": "Retry",
 		"noPermissionToView": "You don't have permission to view this",
 		"loadMore": "Charger plus",
-		"loadingMore": "Chargement…"
+		"loadingMore": "Chargement…",
+		"reportIssue": "Signaler ce problème"
 	},
 	"dialog": {
 		"closeLabel": "Fermer",

@@ -6,6 +6,7 @@ import { AvatarUpload } from "@/components/shared/avatar-upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import type { AvatarResult } from "@/lib/avatar-api";
 import {
 	brandingQueryOptions,
@@ -42,6 +43,9 @@ export function BrandingSettings() {
 	const [colorDark, setColorDark] = useState<string | null>(
 		branding?.primary_color_dark ?? null,
 	);
+	const [feedbackEnabled, setFeedbackEnabled] = useState<boolean>(
+		branding?.feedback_enabled !== false,
+	);
 	const [generalError, setGeneralError] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
 
@@ -51,6 +55,7 @@ export function BrandingSettings() {
 				brand_name: brandName,
 				primary_color_light: colorLight,
 				primary_color_dark: colorDark,
+				feedback_enabled: feedbackEnabled,
 			}),
 		onSuccess: (updated) => {
 			setBrandingQueryData(queryClient, (old) =>
@@ -68,7 +73,8 @@ export function BrandingSettings() {
 	const isDirty =
 		brandName !== (branding?.brand_name ?? null) ||
 		colorLight !== (branding?.primary_color_light ?? null) ||
-		colorDark !== (branding?.primary_color_dark ?? null);
+		colorDark !== (branding?.primary_color_dark ?? null) ||
+		feedbackEnabled !== (branding?.feedback_enabled !== false);
 
 	// AvatarUpload's onChange delivers {avatar_url, avatar_thumb_url} — the
 	// generic shape the backend's logo/favicon endpoints deliberately mirror
@@ -207,6 +213,22 @@ export function BrandingSettings() {
 							</button>
 						);
 					})}
+				</div>
+
+				<div className="mt-6 flex items-start justify-between gap-4 border-t border-border/60 pt-4">
+					<div>
+						<Label htmlFor="feedback-enabled" className="text-sm font-medium">
+							{t("settings.general.feedbackLabel")}
+						</Label>
+						<p className="mt-0.5 text-sm text-muted-foreground">
+							{t("settings.general.feedbackDescription")}
+						</p>
+					</div>
+					<Switch
+						id="feedback-enabled"
+						checked={feedbackEnabled}
+						onCheckedChange={setFeedbackEnabled}
+					/>
 				</div>
 
 				{generalError ? (

@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ExternalLink, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { ReportIssueButton } from "@/components/report-issue-button";
 
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -196,7 +197,7 @@ function ReleaseCard({
 
 function ChangelogPage() {
 	const { t } = useTranslation("admin");
-	const { data, isLoading, isError } = useQuery(releasesQueryOptions());
+	const { data, isLoading, isError, error } = useQuery(releasesQueryOptions());
 
 	return (
 		<div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
@@ -221,8 +222,9 @@ function ChangelogPage() {
 					))}
 				</div>
 			) : isError ? (
-				<div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+				<div className="flex flex-col items-start gap-3 rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
 					{t("changelog.error")}
+					<ReportIssueButton error={error} />
 				</div>
 			) : !data || data.releases.length === 0 ? (
 				<div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">

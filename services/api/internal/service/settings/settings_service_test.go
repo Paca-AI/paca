@@ -246,7 +246,7 @@ func TestUpdateSettings_ValidHex_Persists(t *testing.T) {
 	light, dark := "#5a9e1c", "#9ed957"
 	updatedBy := uuid.New()
 
-	ws, err := svc.UpdateSettings(ctx, nil, &light, &dark, updatedBy)
+	ws, err := svc.UpdateSettings(ctx, nil, &light, &dark, nil, updatedBy)
 	if err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestUpdateSettings_InvalidHex_ReturnsErrInvalidColor(t *testing.T) {
 	svc := settingssvc.New(repo)
 	bad := "not-a-color"
 
-	_, err := svc.UpdateSettings(context.Background(), nil, &bad, nil, uuid.New())
+	_, err := svc.UpdateSettings(context.Background(), nil, &bad, nil, nil, uuid.New())
 	if !errors.Is(err, settingsdom.ErrInvalidColor) {
 		t.Fatalf("expected ErrInvalidColor, got %v", err)
 	}
@@ -290,7 +290,7 @@ func TestUpdateSettings_EmptyString_ClearsOverride(t *testing.T) {
 	svc := settingssvc.New(repo)
 	empty := ""
 
-	ws, err := svc.UpdateSettings(ctx, nil, &empty, nil, uuid.New())
+	ws, err := svc.UpdateSettings(ctx, nil, &empty, nil, nil, uuid.New())
 	if err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestUpdateSettings_BrandName_TrimsAndPersists(t *testing.T) {
 	svc := settingssvc.New(repo)
 	title := "  My Workspace  "
 
-	ws, err := svc.UpdateSettings(ctx, &title, nil, nil, uuid.New())
+	ws, err := svc.UpdateSettings(ctx, &title, nil, nil, nil, uuid.New())
 	if err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestUpdateSettings_BrandName_EmptyClearsOverride(t *testing.T) {
 	svc := settingssvc.New(repo)
 	empty := ""
 
-	ws, err := svc.UpdateSettings(ctx, &empty, nil, nil, uuid.New())
+	ws, err := svc.UpdateSettings(ctx, &empty, nil, nil, nil, uuid.New())
 	if err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestUpdateSettings_BrandName_TooLong_ReturnsErrBrandNameTooLong(t *testing.
 	svc := settingssvc.New(repo)
 	tooLong := strings.Repeat("a", 101)
 
-	_, err := svc.UpdateSettings(context.Background(), &tooLong, nil, nil, uuid.New())
+	_, err := svc.UpdateSettings(context.Background(), &tooLong, nil, nil, nil, uuid.New())
 	if !errors.Is(err, settingsdom.ErrBrandNameTooLong) {
 		t.Fatalf("expected ErrBrandNameTooLong, got %v", err)
 	}
@@ -381,7 +381,7 @@ func TestWithLock_SerializesConcurrentCallers(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			brandName, light := "My Workspace", "#5a9e1c"
-			if _, err := svc.UpdateSettings(ctx, &brandName, &light, nil, uuid.New()); err != nil {
+			if _, err := svc.UpdateSettings(ctx, &brandName, &light, nil, nil, uuid.New()); err != nil {
 				t.Errorf("round %d: UpdateSettings: %v", i, err)
 			}
 		}()
@@ -397,5 +397,36 @@ func TestWithLock_SerializesConcurrentCallers(t *testing.T) {
 		if ws.BrandName == nil {
 			t.Fatalf("round %d: brand name update was lost (BrandName nil after concurrent CompleteImageUpload)", i)
 		}
+	}
+}
+
+func TestUpdateSettings_FeedbackEnabled(t *testing.T) {
+	svc := settingssvc.New(newFakeSettingsRepo(&settingsdom.WorkspaceSettings{FeedbackEnabled: true}))
+	ctx := context.Background()
+	off, on := false, true
+
+	ws, err := svc.UpdateSettings(ctx, nil, nil, nil, &off, uuid.New())
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if ws.FeedbackEnabled {
+		t.Fatal("FeedbackEnabled = true after disabling")
+	}
+
+	// nil leaves the flag unchanged.
+	ws, err = svc.UpdateSettings(ctx, nil, nil, nil, nil, uuid.New())
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if ws.FeedbackEnabled {
+		t.Fatal("nil feedbackEnabled re-enabled the flag")
+	}
+
+	ws, err = svc.UpdateSettings(ctx, nil, nil, nil, &on, uuid.New())
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if !ws.FeedbackEnabled {
+		t.Fatal("FeedbackEnabled = false after enabling")
 	}
 }

@@ -446,7 +446,9 @@
 			"saved": "Guardado",
 			"errors": {
 				"updateFailed": "No se pudo guardar. Inténtalo de nuevo."
-			}
+			},
+			"feedbackLabel": "Comentarios",
+			"feedbackDescription": "Muestra «Enviar comentarios» en el menú de usuario y «Informar de este problema» en las pantallas de error, que abren una incidencia de GitHub rellenada previamente. Desactívalo en instancias privadas o autoalojadas."
 		},
 		"sso": {
 			"title": "Inicio de sesión único (SSO)",

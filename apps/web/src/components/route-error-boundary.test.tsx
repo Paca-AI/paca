@@ -110,3 +110,28 @@ describe("RouteErrorComponent wrapped in CatchBoundary", () => {
 		consoleError.mockRestore();
 	});
 });
+
+describe("RouteErrorComponent report issue", () => {
+	it("opens a pre-filled GitHub issue with the error details", async () => {
+		const open = vi.spyOn(window, "open").mockImplementation(() => null);
+		render(<RouteErrorComponent error={new Error("kaput")} />);
+
+		screen.getByRole("button", { name: /report this issue/i }).click();
+
+		expect(open).toHaveBeenCalledTimes(1);
+		const url = new URL(String(open.mock.calls[0][0]));
+		expect(url.searchParams.get("template")).toBe("bug_report.yml");
+		expect(url.searchParams.get("logs")).toContain("kaput");
+		open.mockRestore();
+	});
+
+	it("hides the report button for permission errors", () => {
+		const error = Object.assign(new Error("nope"), {
+			response: { status: 403, data: { error_code: "FORBIDDEN" } },
+		});
+		render(<RouteErrorComponent error={error as Error} />);
+		expect(
+			screen.queryByRole("button", { name: /report this issue/i }),
+		).not.toBeInTheDocument();
+	});
+});

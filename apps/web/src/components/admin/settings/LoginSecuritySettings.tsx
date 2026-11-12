@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ReportIssueButton } from "@/components/report-issue-button";
 
 import { InlineNotice } from "@/components/shared/inline-notice";
 import { Button } from "@/components/ui/button";
@@ -89,9 +90,12 @@ export function LoginSecuritySettings() {
 	}
 	if (policyQuery.isError) {
 		return (
-			<InlineNotice tone="error">
-				{t("settings.security.errors.loadFailed")}
-			</InlineNotice>
+			<div className="flex flex-col items-start gap-2">
+				<InlineNotice tone="error">
+					{t("settings.security.errors.loadFailed")}
+				</InlineNotice>
+				<ReportIssueButton error={policyQuery.error} />
+			</div>
 		);
 	}
 

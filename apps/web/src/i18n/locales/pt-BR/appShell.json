@@ -88,6 +88,7 @@
 		"myProfile": "Conta",
 		"apiKeys": "Chaves de API",
 		"logOut": "Sair",
-		"loggingOut": "Saindo…"
+		"loggingOut": "Saindo…",
+		"sendFeedback": "Enviar feedback"
 	}
 }

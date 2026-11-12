@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a problem in product behavior, documentation, or project structure
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. The more detail you give, the faster it can be fixed.
+        Tip: the **Report this issue** button on the app's error screens pre-fills this form with the error details for you.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A short, clear description of the problem.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the project is affected?
+      options:
+        - Frontend
+        - API
+        - AI Agent
+        - Deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we see the problem ourselves?
+      placeholder: |
+        1. Go to ...
+        2. Click on ...
+        3. See the error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Paca version, browser, OS, deployment method, and the page where it happened.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error details / logs
+      description: Error messages, stack traces, console output, or failed requests. Remove any secrets first.
+      render: text
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, recordings, links, or anything else that helps.

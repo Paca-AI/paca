@@ -82,6 +82,7 @@ function UsersManagementPage() {
 		isLoading: isDataLoading,
 		isFetching,
 		isError,
+		error,
 	} = useQuery({
 		...usersQueryOptions(page, pageSize, { search: search.trim(), role }),
 		enabled: canRead,
@@ -178,7 +179,7 @@ function UsersManagementPage() {
 			) : isLoading ? (
 				<UsersTableSkeleton />
 			) : isError ? (
-				<UsersErrorState />
+				<UsersErrorState error={error} />
 			) : users.length === 0 && isFiltering ? (
 				<NoUsersMatchState onClear={clearFilters} />
 			) : users.length === 0 ? (

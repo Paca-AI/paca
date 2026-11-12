@@ -3,12 +3,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AlertCircle, Check, ChevronRight, MessageSquare } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { DocActivityPane } from "@/components/projects/docs/doc-activity-pane";
 import {
 	DocEditor,
 	type DocEditorHandle,
 } from "@/components/projects/docs/doc-editor";
+import { ReportIssueButton } from "@/components/report-issue-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -133,6 +133,9 @@ function DocEditorPage() {
 					<p className="text-sm mt-1.5 text-muted-foreground/70">
 						{t("docs.editorPage.notFound.description")}
 					</p>
+					<div className="mt-3 flex justify-center">
+						<ReportIssueButton error={docError} />
+					</div>
 				</div>
 			</div>
 		);

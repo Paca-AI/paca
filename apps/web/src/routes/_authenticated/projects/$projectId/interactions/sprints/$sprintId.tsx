@@ -19,6 +19,7 @@ import { InteractionLayout } from "@/components/projects/interactions/interactio
 import { SprintFormModal } from "@/components/projects/interactions/sprint-form-modal";
 import { SprintStatusBadge } from "@/components/projects/interactions/sprint-status-badge";
 import { StartSprintModal } from "@/components/projects/interactions/start-sprint-modal";
+import { ReportIssueButton } from "@/components/report-issue-button";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
@@ -67,9 +68,11 @@ function SprintPage() {
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
-	const { data: sprint, isError } = useQuery(
-		sprintQueryOptions(projectId, sprintId),
-	);
+	const {
+		data: sprint,
+		isError,
+		error: sprintError,
+	} = useQuery(sprintQueryOptions(projectId, sprintId));
 	const { data: taskStatuses = [] } = useQuery(
 		taskStatusesQueryOptions(projectId),
 	);
@@ -225,6 +228,7 @@ function SprintPage() {
 			<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-muted-foreground">
 				<AlertCircle className="size-8 opacity-40" />
 				<p className="text-sm">{t("layout.sprintDetail.notFound")}</p>
+				{isError && <ReportIssueButton error={sprintError} />}
 			</div>
 		);
 	}

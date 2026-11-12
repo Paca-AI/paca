@@ -446,7 +446,9 @@
 			"saved": "Đã lưu",
 			"errors": {
 				"updateFailed": "Lưu thất bại. Vui lòng thử lại."
-			}
+			},
+			"feedbackLabel": "Phản hồi",
+			"feedbackDescription": "Hiển thị “Gửi phản hồi” trong menu người dùng và “Báo cáo sự cố này” trên màn hình lỗi, mở một issue GitHub đã điền sẵn. Hãy tắt với các phiên bản riêng tư hoặc tự lưu trữ."
 		},
 		"sso": {
 			"title": "Đăng nhập một lần (SSO)",

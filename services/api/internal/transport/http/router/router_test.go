@@ -161,7 +161,7 @@ func (f *fakeSettingsSvc) CompleteImageUpload(context.Context, settingsdom.Image
 func (f *fakeSettingsSvc) RemoveImage(context.Context, settingsdom.ImageSlot, uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
 	return &settingsdom.WorkspaceSettings{}, nil
 }
-func (f *fakeSettingsSvc) UpdateSettings(context.Context, *string, *string, *string, uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
+func (f *fakeSettingsSvc) UpdateSettings(context.Context, *string, *string, *string, *bool, uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
 	return &settingsdom.WorkspaceSettings{}, nil
 }
 
