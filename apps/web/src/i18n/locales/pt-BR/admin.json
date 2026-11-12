@@ -111,6 +111,7 @@
 			"errors": {
 				"userNotFound": "Este usuário não existe mais.",
 				"forbidden": "Você não tem permissão para redefinir a senha deste usuário.",
+				"passwordLoginDisabled": "O login com senha está desativado (somente SSO), então a senha deste usuário não pode ser redefinida. Ele entra com o login único.",
 				"internalError": "Algo deu errado. Tente novamente.",
 				"generic": "Algo deu errado."
 			}
@@ -535,10 +536,17 @@
 				"hint": "Um endereço IP ou intervalo CIDR por linha, por exemplo 203.0.113.0/24. IPv4 e IPv6 são aceitos.",
 				"lockoutWarning": "Inclua o seu próprio endereço ou você pode ficar sem acesso. O login por SSO não é afetado."
 			},
+			"ssoOnly": {
+				"title": "Login somente com SSO",
+				"description": "Desativa o login com senha para todas as contas, qualquer que seja a função, exceto o administrador padrão (a conta criada a partir de ADMIN_USERNAME). Os demais entram com o login único, e as senhas deles não podem ser definidas, redefinidas nem alteradas.",
+				"noProvider": "Ative primeiro um provedor de SSO.",
+				"adminNote": "A página de login mostra apenas os provedores de SSO. O administrador padrão entra pelo link \"Entrar como administrador\" (ou /?admin=1), por exemplo para desativar esta opção se o provedor de identidade estiver indisponível."
+			},
 			"noRoles": "Nenhuma função está protegida ainda, então estas regras não se aplicam a ninguém.",
 			"errors": {
 				"invalidCidr": "Uma das entradas não é um endereço IP nem um intervalo CIDR válido.",
 				"selfLockout": "Seu próprio endereço IP precisa estar na lista, senão você ficaria bloqueado. Adicione-o e salve novamente.",
+				"ssoOnlyNoProvider": "O login somente com SSO precisa de pelo menos um provedor de SSO ativado.",
 				"saveFailed": "Falha ao salvar. Tente novamente.",
 				"loadFailed": "Não foi possível carregar as configurações de segurança de login."
 			}

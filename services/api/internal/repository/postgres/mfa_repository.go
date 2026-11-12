@@ -177,8 +177,9 @@ func (r *MFARepository) GetPolicy(ctx context.Context) (*mfadom.Policy, error) {
 		Roles      []byte `db:"privileged_roles"`
 		RequireMFA bool   `db:"require_mfa"`
 		IPs        []byte `db:"ip_allow_list"`
+		SSOOnly    bool   `db:"sso_only"`
 	}
-	err := r.db.GetContext(ctx, &row, `SELECT privileged_roles, require_mfa, ip_allow_list FROM auth_security_settings WHERE id = TRUE`)
+	err := r.db.GetContext(ctx, &row, `SELECT privileged_roles, require_mfa, ip_allow_list, sso_only FROM auth_security_settings WHERE id = TRUE`)
 	if errors.Is(err, sql.ErrNoRows) {
 		return &mfadom.Policy{PrivilegedRoles: []string{mfadom.AllRoles}}, nil
 	}
@@ -193,7 +194,7 @@ func (r *MFARepository) GetPolicy(ctx context.Context) (*mfadom.Policy, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &mfadom.Policy{PrivilegedRoles: roles, RequireMFA: row.RequireMFA, IPAllowList: ips}, nil
+	return &mfadom.Policy{PrivilegedRoles: roles, RequireMFA: row.RequireMFA, IPAllowList: ips, SSOOnly: row.SSOOnly}, nil
 }
 
 // SavePolicy replaces the singleton instance policy.
@@ -213,8 +214,8 @@ func (r *MFARepository) SavePolicy(ctx context.Context, p *mfadom.Policy, update
 	}
 	_, err = r.db.ExecContext(ctx, `
 		UPDATE auth_security_settings
-		SET privileged_roles = $1::jsonb, require_mfa = $2, ip_allow_list = $3::jsonb, updated_at = now(), updated_by = $4
-		WHERE id = TRUE`, roles, p.RequireMFA, ips, by)
+		SET privileged_roles = $1::jsonb, require_mfa = $2, ip_allow_list = $3::jsonb, sso_only = $4, updated_at = now(), updated_by = $5
+		WHERE id = TRUE`, roles, p.RequireMFA, ips, p.SSOOnly, by)
 	if err != nil {
 		return fmt.Errorf("mfa repo: save policy: %w", err)
 	}

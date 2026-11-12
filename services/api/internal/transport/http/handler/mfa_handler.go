@@ -24,6 +24,7 @@ import (
 type MFAService interface {
 	SetupRequired(ctx context.Context, u *userdom.User) (bool, error)
 	CheckIP(ctx context.Context, u *userdom.User, clientIP string) error
+	CheckPasswordAllowed(ctx context.Context, u *userdom.User) error
 	Begin(ctx context.Context, u *userdom.User) (secret, uri string, err error)
 	Confirm(ctx context.Context, u *userdom.User, code string) ([]string, error)
 	Disable(ctx context.Context, u *userdom.User, code string) error
@@ -195,8 +196,13 @@ func (h *MFAHandler) passwordUser(r *http.Request, username, password string) (*
 // requireSetup refuses password-only enrollment unless policy obliges the
 // account to use MFA and it has not enrolled. Everyone else enrolls from a
 // signed-in session, so a password alone can never establish a second factor
-// on an account that could otherwise have kept one off.
+// on an account that could otherwise have kept one off. Like a login, it is
+// refused to an account SSO-only mode keeps off passwords.
 func (h *MFAHandler) requireSetup(w http.ResponseWriter, r *http.Request, u *userdom.User) bool {
+	if err := h.svc.CheckPasswordAllowed(r.Context(), u); err != nil {
+		presenter.Error(w, r, err)
+		return false
+	}
 	if err := h.svc.CheckIP(r.Context(), u, middleware.ClientIP(r)); err != nil {
 		presenter.Error(w, r, err)
 		return false
@@ -320,13 +326,24 @@ func (h *MFAHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, policyResponse(p))
 }
 
+// LoginOptions handles GET /auth/login-options: the part of the login policy
+// the login page needs before anyone signs in. Public.
+func (h *MFAHandler) LoginOptions(w http.ResponseWriter, r *http.Request) {
+	p, err := h.svc.GetPolicy(r.Context())
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.LoginOptionsResponse{SSOOnly: p.SSOOnly})
+}
+
 // PutPolicy handles PUT /admin/auth-security.
 func (h *MFAHandler) PutPolicy(w http.ResponseWriter, r *http.Request) {
 	var req dto.AuthSecurityPolicy
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
-	p := &mfadom.Policy{PrivilegedRoles: req.PrivilegedRoles, RequireMFA: req.RequireMFA, IPAllowList: req.IPAllowList}
+	p := &mfadom.Policy{PrivilegedRoles: req.PrivilegedRoles, RequireMFA: req.RequireMFA, IPAllowList: req.IPAllowList, SSOOnly: req.SSOOnly}
 	var by *uuid.UUID
 	if id, ok := middleware.ActorIDFromContext(r.Context()); ok {
 		by = &id
@@ -335,12 +352,12 @@ func (h *MFAHandler) PutPolicy(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	slog.Info("auth security policy updated", "actor", by, "require_mfa", p.RequireMFA, "roles", p.PrivilegedRoles, "ip_entries", len(p.IPAllowList))
+	slog.Info("auth security policy updated", "actor", by, "require_mfa", p.RequireMFA, "roles", p.PrivilegedRoles, "ip_entries", len(p.IPAllowList), "sso_only", p.SSOOnly)
 	presenter.OK(w, r, policyResponse(p))
 }
 
 func policyResponse(p *mfadom.Policy) dto.AuthSecurityPolicy {
-	out := dto.AuthSecurityPolicy{PrivilegedRoles: p.PrivilegedRoles, RequireMFA: p.RequireMFA, IPAllowList: p.IPAllowList}
+	out := dto.AuthSecurityPolicy{PrivilegedRoles: p.PrivilegedRoles, RequireMFA: p.RequireMFA, IPAllowList: p.IPAllowList, SSOOnly: p.SSOOnly}
 	if out.PrivilegedRoles == nil {
 		out.PrivilegedRoles = []string{}
 	}

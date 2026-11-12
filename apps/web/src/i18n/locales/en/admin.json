@@ -128,6 +128,7 @@
 			"errors": {
 				"userNotFound": "This user no longer exists.",
 				"forbidden": "You don't have permission to reset this user's password.",
+				"passwordLoginDisabled": "Password sign-in is turned off (SSO-only sign-in), so this user's password can't be reset. They sign in with single sign-on.",
 				"internalError": "Something went wrong. Please try again.",
 				"generic": "Something went wrong."
 			}
@@ -535,10 +536,17 @@
 				"hint": "One IP address or CIDR range per line, for example 203.0.113.0/24. IPv4 and IPv6 are supported.",
 				"lockoutWarning": "Make sure your own address is included, or you could lock yourself out. SSO sign-in is not affected."
 			},
+			"ssoOnly": {
+				"title": "SSO-only sign-in",
+				"description": "Turn off password sign-in for every account, whatever its role, except the default administrator (the account created from ADMIN_USERNAME). Everyone else signs in with single sign-on, and their passwords can't be set, reset or changed.",
+				"noProvider": "Enable an SSO provider first.",
+				"adminNote": "The login page shows only the SSO providers. The default administrator signs in through the \"Sign in as administrator\" link (or /?admin=1), for example to turn this off if the identity provider is unavailable."
+			},
 			"noRoles": "No role is protected yet, so these rules currently apply to nobody.",
 			"errors": {
 				"invalidCidr": "One of the entries is not a valid IP address or CIDR range.",
 				"selfLockout": "Your own IP address must be on the list, otherwise you would lock yourself out. Add it and save again.",
+				"ssoOnlyNoProvider": "SSO-only sign-in needs at least one enabled SSO provider.",
 				"saveFailed": "Failed to save. Please try again.",
 				"loadFailed": "Couldn't load the login security settings."
 			}

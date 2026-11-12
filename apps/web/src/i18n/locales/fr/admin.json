@@ -111,6 +111,7 @@
 			"errors": {
 				"userNotFound": "Cet utilisateur n'existe plus.",
 				"forbidden": "Vous n'avez pas la permission de réinitialiser le mot de passe de cet utilisateur.",
+				"passwordLoginDisabled": "La connexion par mot de passe est désactivée (connexion SSO uniquement) : le mot de passe de cet utilisateur ne peut donc pas être réinitialisé. Il se connecte avec l'authentification unique.",
 				"internalError": "Une erreur s'est produite. Veuillez réessayer.",
 				"generic": "Une erreur s'est produite."
 			}
@@ -535,10 +536,17 @@
 				"hint": "Une adresse IP ou plage CIDR par ligne, par exemple 203.0.113.0/24. IPv4 et IPv6 sont pris en charge.",
 				"lockoutWarning": "Vérifiez que votre propre adresse est incluse, sinon vous risquez de perdre l'accès. La connexion SSO n'est pas concernée."
 			},
+			"ssoOnly": {
+				"title": "Connexion SSO uniquement",
+				"description": "Désactive la connexion par mot de passe pour tous les comptes, quel que soit leur rôle, sauf l'administrateur par défaut (le compte créé à partir de ADMIN_USERNAME). Tous les autres se connectent avec l'authentification unique, et leur mot de passe ne peut être ni défini, ni réinitialisé, ni modifié.",
+				"noProvider": "Activez d'abord un fournisseur SSO.",
+				"adminNote": "La page de connexion n'affiche que les fournisseurs SSO. L'administrateur par défaut se connecte via le lien « Se connecter en tant qu'administrateur » (ou /?admin=1), par exemple pour désactiver ce réglage si le fournisseur d'identité est indisponible."
+			},
 			"noRoles": "Aucun rôle n'est encore protégé : ces règles ne s'appliquent donc à personne.",
 			"errors": {
 				"invalidCidr": "L'une des entrées n'est pas une adresse IP ou une plage CIDR valide.",
 				"selfLockout": "Votre propre adresse IP doit figurer dans la liste, sinon vous vous verrouilleriez. Ajoutez-la et enregistrez à nouveau.",
+				"ssoOnlyNoProvider": "La connexion SSO uniquement nécessite au moins un fournisseur SSO activé.",
 				"saveFailed": "Échec de l'enregistrement. Veuillez réessayer.",
 				"loadFailed": "Impossible de charger les paramètres de sécurité de connexion."
 			}

@@ -111,6 +111,7 @@
 			"errors": {
 				"userNotFound": "该用户已不存在。",
 				"forbidden": "您没有权限重置该用户的密码。",
+				"passwordLoginDisabled": "密码登录已关闭（仅限 SSO 登录），因此无法重置该用户的密码。该用户通过单点登录进行登录。",
 				"internalError": "出现错误，请重试。",
 				"generic": "出现错误。"
 			}
@@ -535,10 +536,17 @@
 				"hint": "每行一个 IP 地址或 CIDR 范围，例如 203.0.113.0/24。支持 IPv4 和 IPv6。",
 				"lockoutWarning": "请确保包含你自己的地址，否则你可能无法登录。SSO 登录不受影响。"
 			},
+			"ssoOnly": {
+				"title": "仅限 SSO 登录",
+				"description": "为所有账户（无论角色）关闭密码登录，默认管理员（根据 ADMIN_USERNAME 创建的账户）除外。其他人都通过单点登录进行登录，且无法设置、重置或修改密码。",
+				"noProvider": "请先启用一个 SSO 提供方。",
+				"adminNote": "登录页面只显示 SSO 提供方。默认管理员通过“以管理员身份登录”链接（或 /?admin=1）登录，例如在身份提供方不可用时关闭此设置。"
+			},
 			"noRoles": "目前还没有受保护的角色，因此这些规则暂不适用于任何人。",
 			"errors": {
 				"invalidCidr": "其中一项不是有效的 IP 地址或 CIDR 范围。",
 				"selfLockout": "列表中必须包含您自己的 IP 地址，否则您会把自己锁在外面。请添加后再保存。",
+				"ssoOnlyNoProvider": "仅限 SSO 登录需要至少一个已启用的 SSO 提供方。",
 				"saveFailed": "保存失败，请重试。",
 				"loadFailed": "无法加载登录安全设置。"
 			}

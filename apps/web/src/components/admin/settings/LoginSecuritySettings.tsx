@@ -16,6 +16,7 @@ import {
 	saveAuthSecurityPolicy,
 } from "@/lib/mfa-api";
 import { listRoles } from "@/lib/role-api";
+import { publicSsoProvidersQueryOptions } from "@/lib/sso-api";
 
 const ROLE_LIST_LIMIT = 100;
 /** Server-side marker for "every role" in the protected-roles list. */
@@ -29,7 +30,9 @@ function parseList(text: string): string[] {
 }
 
 /** Admin controls for who must use two-step verification and from where
- * password sign-in is allowed. Both apply to the chosen "protected roles". */
+ * password sign-in is allowed (both apply to the chosen "protected roles"),
+ * and for SSO-only mode, which turns password sign-in off for everyone but the
+ * default super admin. */
 export function LoginSecuritySettings() {
 	const { t } = useTranslation("admin");
 	const queryClient = useQueryClient();
@@ -38,11 +41,15 @@ export function LoginSecuritySettings() {
 		queryKey: ["admin", "roles", "names"],
 		queryFn: () => listRoles(undefined, { pageSize: ROLE_LIST_LIMIT }),
 	});
+	// The enabled providers, as the login page lists them: SSO-only mode needs
+	// at least one. Public, so it doesn't need the SSO settings permission.
+	const ssoProvidersQuery = useQuery(publicSsoProvidersQueryOptions);
 
 	const [requireMfa, setRequireMfa] = useState(false);
 	const [allRoles, setAllRoles] = useState(true);
 	const [roles, setRoles] = useState<string[]>([]);
 	const [ips, setIps] = useState("");
+	const [ssoOnly, setSsoOnly] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
 
@@ -54,6 +61,7 @@ export function LoginSecuritySettings() {
 		setAllRoles(all);
 		setRoles(all ? [] : p.privileged_roles);
 		setIps(p.ip_allow_list.join("\n"));
+		setSsoOnly(p.sso_only);
 	}, [policyQuery.data]);
 
 	const mutation = useMutation({
@@ -62,6 +70,7 @@ export function LoginSecuritySettings() {
 				require_mfa: requireMfa,
 				privileged_roles: allRoles ? [ALL_ROLES] : roles,
 				ip_allow_list: parseList(ips),
+				sso_only: ssoOnly,
 			}),
 		onSuccess: (policy) => {
 			queryClient.setQueryData(authSecurityPolicyQueryOptions.queryKey, policy);
@@ -78,6 +87,9 @@ export function LoginSecuritySettings() {
 						),
 						[ApiErrorCode.SelfLockout]: t(
 							"settings.security.errors.selfLockout",
+						),
+						[ApiErrorCode.SsoOnlyNoProvider]: t(
+							"settings.security.errors.ssoOnlyNoProvider",
 						),
 					} as Record<string, string>
 				)[getApiErrorCode(err) ?? ""] ??
@@ -114,7 +126,10 @@ export function LoginSecuritySettings() {
 	const dirty =
 		requireMfa !== policy.require_mfa ||
 		(allRoles ? [ALL_ROLES] : roles).join("\n") !== savedRoles.join("\n") ||
-		parseList(ips).join("\n") !== policy.ip_allow_list.join("\n");
+		parseList(ips).join("\n") !== policy.ip_allow_list.join("\n") ||
+		ssoOnly !== policy.sso_only;
+	// Turning the mode on needs an enabled provider; turning it off never does.
+	const noSsoProvider = ssoProvidersQuery.data?.length === 0;
 
 	function toggleRole(name: string, on: boolean) {
 		setRoles((cur) => (on ? [...cur, name] : cur.filter((r) => r !== name)));
@@ -122,6 +137,35 @@ export function LoginSecuritySettings() {
 
 	return (
 		<div className="flex flex-col gap-6">
+			<section className="rounded-xl border border-border/60 bg-card p-6">
+				<div className="flex items-start justify-between gap-4">
+					<div>
+						<h3 className="font-[Syne] text-base font-semibold">
+							{t("settings.security.ssoOnly.title")}
+						</h3>
+						<p className="mt-0.5 text-sm text-muted-foreground">
+							{t("settings.security.ssoOnly.description")}
+						</p>
+					</div>
+					<Switch
+						aria-label={t("settings.security.ssoOnly.title")}
+						checked={ssoOnly}
+						disabled={!ssoOnly && noSsoProvider}
+						onCheckedChange={setSsoOnly}
+					/>
+				</div>
+				{!ssoOnly && noSsoProvider ? (
+					<p className="mt-3 text-xs text-muted-foreground">
+						{t("settings.security.ssoOnly.noProvider")}
+					</p>
+				) : null}
+				{ssoOnly ? (
+					<InlineNotice tone="info" className="mt-4">
+						{t("settings.security.ssoOnly.adminNote")}
+					</InlineNotice>
+				) : null}
+			</section>
+
 			<section className="rounded-xl border border-border/60 bg-card p-6">
 				<h3 className="font-[Syne] text-base font-semibold">
 					{t("settings.security.roles.title")}

@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,28 +10,73 @@ import { Switch } from "@/components/ui/switch";
 import { useBranding } from "@/hooks/use-branding";
 import { useLoginForm } from "@/hooks/use-login-form";
 import { validatePassword, validateUsername } from "@/lib/auth-validation";
+import { loginOptionsQueryOptions } from "@/lib/mfa-api";
+import { publicSsoProvidersQueryOptions } from "@/lib/sso-api";
 import { cn } from "@/lib/utils";
 
 import { FieldError } from "./FieldError";
 import { MfaLoginSetup } from "./MfaLoginSetup";
 import { SsoErrorNotice, SsoSignInButtons } from "./SsoSignIn";
 
+/** The login page's own URL, keeping where to go after signing in. */
+function loginHref(redirectTo: string | undefined, admin: boolean): string {
+	const params = new URLSearchParams();
+	if (admin) params.set("admin", "1");
+	if (redirectTo) params.set("redirect", redirectTo);
+	const query = params.toString();
+	return query ? `/?${query}` : "/";
+}
+
+/**
+ * The sign-in form. When the instance is SSO-only, only the SSO providers are
+ * offered; the password form stays reachable for the default super admin
+ * through a "Sign in as administrator" link (`adminSignIn`, i.e. `/?admin=1`).
+ */
 export function LoginFormPanel({
 	ssoError,
 	redirectTo,
+	adminSignIn = false,
 }: {
 	ssoError?: string;
 	redirectTo?: string;
+	adminSignIn?: boolean;
 } = {}) {
 	const { t } = useTranslation("auth");
 	const { t: tCommon } = useTranslation("common");
 	const { form, serverError, mfaSetup, finishMfaSetup } =
 		useLoginForm(redirectTo);
 	const [showPassword, setShowPassword] = useState(false);
+	const { data: loginOptions } = useQuery(loginOptionsQueryOptions);
+	const ssoOnly = loginOptions?.sso_only === true;
+	const showPasswordForm = !ssoOnly || adminSignIn;
+	const { data: ssoProviders } = useQuery({
+		...publicSsoProvidersQueryOptions,
+		enabled: ssoOnly,
+	});
 	const branding = useBranding();
 	const logoUrl = branding?.logo_thumb_url ?? branding?.logo_url;
 	const logoSrc = logoUrl ?? "/paca-logo.svg";
 	const brandName = branding?.brand_name;
+
+	const rememberMeField = (
+		<form.Field name="rememberMe">
+			{(field) => (
+				<div className="flex items-center justify-between">
+					<Label
+						htmlFor={field.name}
+						className="cursor-pointer text-sm text-(--sea-ink-soft)"
+					>
+						{t("login.rememberMe")}
+					</Label>
+					<Switch
+						id={field.name}
+						checked={field.state.value}
+						onCheckedChange={field.handleChange}
+					/>
+				</div>
+			)}
+		</form.Field>
+	);
 
 	if (mfaSetup) {
 		return (
@@ -72,155 +118,179 @@ export function LoginFormPanel({
 
 				<SsoErrorNotice code={ssoError} />
 
-				<form
-					onSubmit={(event) => {
-						event.preventDefault();
-						event.stopPropagation();
-						form.handleSubmit();
-					}}
-					className="space-y-5"
-				>
-					<form.Field
-						name="username"
-						validators={{
-							onBlur: ({ value }) => validateUsername(value, tCommon),
-							onChange: ({ value }) => validateUsername(value, tCommon),
-						}}
+				{ssoOnly && adminSignIn ? (
+					<p className="mb-5 text-sm text-(--sea-ink-soft)">
+						{t("login.ssoOnly.adminHint")}
+					</p>
+				) : null}
+				{ssoOnly && !adminSignIn && ssoProviders?.length === 0 ? (
+					<div
+						role="alert"
+						className="mb-5 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300"
 					>
-						{(field) => (
-							<div className="space-y-1.5">
-								<Label
-									htmlFor={field.name}
-									className="text-xs font-semibold tracking-wide text-(--sea-ink) uppercase"
-								>
-									{t("login.usernameLabel")}
-								</Label>
-								<Input
-									id={field.name}
-									name={field.name}
-									type="text"
-									autoComplete="username"
-									placeholder={t("login.usernamePlaceholder")}
-									value={field.state.value}
-									onBlur={field.handleBlur}
-									onChange={(event) => {
-										field.handleChange(event.target.value);
-									}}
-									className="h-10"
-								/>
-								<FieldError
-									isTouched={field.state.meta.isTouched}
-									error={field.state.meta.errors[0]}
-								/>
-							</div>
-						)}
-					</form.Field>
+						<AlertCircle className="mt-px size-4 shrink-0" />
+						<span>{t("login.ssoOnly.noProviders")}</span>
+					</div>
+				) : null}
 
-					<form.Field
-						name="password"
-						validators={{
-							onBlur: ({ value }) => validatePassword(value, tCommon),
-							onChange: ({ value }) => validatePassword(value, tCommon),
+				{showPasswordForm ? (
+					<form
+						onSubmit={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+							form.handleSubmit();
 						}}
+						className="space-y-5"
 					>
-						{(field) => (
-							<div className="space-y-1.5">
-								<Label
-									htmlFor={field.name}
-									className="text-xs font-semibold tracking-wide text-(--sea-ink) uppercase"
-								>
-									{t("login.passwordLabel")}
-								</Label>
-								<div className="relative">
+						<form.Field
+							name="username"
+							validators={{
+								onBlur: ({ value }) => validateUsername(value, tCommon),
+								onChange: ({ value }) => validateUsername(value, tCommon),
+							}}
+						>
+							{(field) => (
+								<div className="space-y-1.5">
+									<Label
+										htmlFor={field.name}
+										className="text-xs font-semibold tracking-wide text-(--sea-ink) uppercase"
+									>
+										{t("login.usernameLabel")}
+									</Label>
 									<Input
 										id={field.name}
 										name={field.name}
-										type={showPassword ? "text" : "password"}
-										autoComplete="current-password"
-										placeholder="••••••••"
+										type="text"
+										autoComplete="username"
+										placeholder={t("login.usernamePlaceholder")}
 										value={field.state.value}
 										onBlur={field.handleBlur}
-										onChange={(event) => field.handleChange(event.target.value)}
-										className="h-10 pr-10"
+										onChange={(event) => {
+											field.handleChange(event.target.value);
+										}}
+										className="h-10"
 									/>
-									<button
-										type="button"
-										onClick={() => setShowPassword((current) => !current)}
-										className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-(--sea-ink-soft) transition-colors hover:text-(--sea-ink)"
-										aria-label={
-											showPassword
-												? t("login.hidePassword")
-												: t("login.showPassword")
-										}
-									>
-										{showPassword ? (
-											<EyeOff className="size-4" />
-										) : (
-											<Eye className="size-4" />
-										)}
-									</button>
+									<FieldError
+										isTouched={field.state.meta.isTouched}
+										error={field.state.meta.errors[0]}
+									/>
 								</div>
-								<FieldError
-									isTouched={field.state.meta.isTouched}
-									error={field.state.meta.errors[0]}
-								/>
-							</div>
-						)}
-					</form.Field>
+							)}
+						</form.Field>
 
-					{serverError && (
-						<div
-							role="alert"
-							className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-400"
+						<form.Field
+							name="password"
+							validators={{
+								onBlur: ({ value }) => validatePassword(value, tCommon),
+								onChange: ({ value }) => validatePassword(value, tCommon),
+							}}
 						>
-							<AlertCircle className="mt-px size-4 shrink-0" />
-							<span>{serverError}</span>
-						</div>
-					)}
+							{(field) => (
+								<div className="space-y-1.5">
+									<Label
+										htmlFor={field.name}
+										className="text-xs font-semibold tracking-wide text-(--sea-ink) uppercase"
+									>
+										{t("login.passwordLabel")}
+									</Label>
+									<div className="relative">
+										<Input
+											id={field.name}
+											name={field.name}
+											type={showPassword ? "text" : "password"}
+											autoComplete="current-password"
+											placeholder="••••••••"
+											value={field.state.value}
+											onBlur={field.handleBlur}
+											onChange={(event) =>
+												field.handleChange(event.target.value)
+											}
+											className="h-10 pr-10"
+										/>
+										<button
+											type="button"
+											onClick={() => setShowPassword((current) => !current)}
+											className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-(--sea-ink-soft) transition-colors hover:text-(--sea-ink)"
+											aria-label={
+												showPassword
+													? t("login.hidePassword")
+													: t("login.showPassword")
+											}
+										>
+											{showPassword ? (
+												<EyeOff className="size-4" />
+											) : (
+												<Eye className="size-4" />
+											)}
+										</button>
+									</div>
+									<FieldError
+										isTouched={field.state.meta.isTouched}
+										error={field.state.meta.errors[0]}
+									/>
+								</div>
+							)}
+						</form.Field>
 
-					<form.Field name="rememberMe">
-						{(field) => (
-							<div className="flex items-center justify-between">
-								<Label
-									htmlFor={field.name}
-									className="cursor-pointer text-sm text-(--sea-ink-soft)"
-								>
-									{t("login.rememberMe")}
-								</Label>
-								<Switch
-									id={field.name}
-									checked={field.state.value}
-									onCheckedChange={field.handleChange}
-								/>
+						{serverError && (
+							<div
+								role="alert"
+								className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-400"
+							>
+								<AlertCircle className="mt-px size-4 shrink-0" />
+								<span>{serverError}</span>
 							</div>
 						)}
-					</form.Field>
 
-					<form.Subscribe
-						selector={(state) => ({
-							username: state.values.username,
-							password: state.values.password,
-							isSubmitting: state.isSubmitting,
-						})}
-					>
-						{({ username, password, isSubmitting }) => (
-							<button
-								type="submit"
-								className={cn(
-									buttonVariants({ size: "lg" }),
-									"mt-1 h-11 w-full font-semibold tracking-wide bg-primary text-primary-foreground hover:bg-primary/90",
-								)}
-								disabled={isSubmitting || !username.trim() || !password}
-							>
-								{isSubmitting ? t("login.signingIn") : t("login.signIn")}
-							</button>
-						)}
-					</form.Subscribe>
-				</form>
+						{rememberMeField}
+
+						<form.Subscribe
+							selector={(state) => ({
+								username: state.values.username,
+								password: state.values.password,
+								isSubmitting: state.isSubmitting,
+							})}
+						>
+							{({ username, password, isSubmitting }) => (
+								<button
+									type="submit"
+									className={cn(
+										buttonVariants({ size: "lg" }),
+										"mt-1 h-11 w-full font-semibold tracking-wide bg-primary text-primary-foreground hover:bg-primary/90",
+									)}
+									disabled={isSubmitting || !username.trim() || !password}
+								>
+									{isSubmitting ? t("login.signingIn") : t("login.signIn")}
+								</button>
+							)}
+						</form.Subscribe>
+					</form>
+				) : (
+					// Keep me signed in applies to the SSO session too.
+					rememberMeField
+				)}
 
 				<form.Subscribe selector={(state) => state.values.rememberMe}>
-					{(rememberMe) => <SsoSignInButtons rememberMe={rememberMe} />}
+					{(rememberMe) => (
+						<SsoSignInButtons
+							rememberMe={rememberMe}
+							divider={showPasswordForm}
+						/>
+					)}
 				</form.Subscribe>
+
+				{ssoOnly ? (
+					<p className="mt-5 text-center text-sm">
+						<a
+							href={loginHref(redirectTo, !adminSignIn)}
+							className="font-medium text-(--sea-ink-soft) underline-offset-4 hover:text-(--sea-ink) hover:underline"
+						>
+							{adminSignIn
+								? t("login.ssoOnly.backToSso")
+								: t("login.ssoOnly.adminSignIn")}
+						</a>
+					</p>
+				) : null}
 
 				{/* Divider + admin note */}
 				<div className="mt-6 border-t border-(--line) pt-5">

@@ -139,6 +139,9 @@ var ssoOpenRoutes = []string{
 // when Deps.MFA is set (coverageDeps sets it; the admin login-security routes
 // carry a gate and so are covered there).
 var mfaOpenRoutes = []string{
+	// The login page reads whether the instance is SSO-only before anyone is
+	// signed in; it carries nothing but that flag.
+	"GET /api/v1/auth/login-options",
 	// Pre-login enrollment: the account's password is the credential, since
 	// policy can require MFA before the account is able to sign in.
 	"POST /api/v1/auth/mfa/setup",

@@ -27,6 +27,9 @@ function loginErrorMessage(
 	if (code === ApiErrorCode.IpNotAllowed) {
 		return t("login.errors.ipNotAllowed");
 	}
+	if (code === ApiErrorCode.PasswordLoginDisabled) {
+		return t("login.errors.passwordLoginDisabled");
+	}
 	if (code === ApiErrorCode.TooManyRequests) {
 		return tooManyAttemptsMessage(err, t, locale);
 	}

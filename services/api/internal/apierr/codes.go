@@ -44,6 +44,13 @@ const (
 	CodeInvalidCIDR Code = "INVALID_CIDR"
 	// CodeSelfLockout means the saved allow-list would exclude the admin saving it.
 	CodeSelfLockout Code = "SELF_LOCKOUT"
+	// CodePasswordLoginDisabled means the instance is SSO-only and the account
+	// is not the default super admin: it signs in through SSO, and its
+	// password can be neither used nor set.
+	CodePasswordLoginDisabled Code = "AUTH_PASSWORD_LOGIN_DISABLED"
+	// CodeSSOOnlyNoProvider means SSO-only mode was turned on with no SSO
+	// provider enabled.
+	CodeSSOOnlyNoProvider Code = "SSO_ONLY_NO_PROVIDER"
 
 	// CodeServiceAccountNotFound represents a service account that was not found.
 	CodeServiceAccountNotFound Code = "SERVICE_ACCOUNT_NOT_FOUND"

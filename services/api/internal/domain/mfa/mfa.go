@@ -45,6 +45,14 @@ var (
 	// ErrUnavailable means the server has no ENCRYPTION_KEY, so TOTP
 	// secrets cannot be stored.
 	ErrUnavailable = errors.New("mfa: unavailable (ENCRYPTION_KEY not configured)")
+	// ErrPasswordLoginDisabled means the instance is SSO-only and the account
+	// is not the default super admin: it cannot sign in with, or be given, a
+	// password.
+	ErrPasswordLoginDisabled = errors.New("mfa: password sign-in is disabled (sso-only mode)")
+	// ErrSSOOnlyNoProvider means SSO-only mode was turned on while no SSO
+	// provider is enabled, which would leave nobody but the default super
+	// admin able to sign in.
+	ErrSSOOnlyNoProvider = errors.New("mfa: sso-only mode needs an enabled sso provider")
 )
 
 // LockedError is ErrLocked plus how long the lockout has left.
@@ -85,6 +93,10 @@ type Policy struct {
 	// IPAllowList, when non-empty, limits password login of privileged
 	// accounts to these IPs/CIDRs.
 	IPAllowList []string
+	// SSOOnly turns off password sign-in for every account except the
+	// default super admin (userdom.User.BootstrapAdmin), whatever its roles.
+	// PrivilegedRoles does not apply to it.
+	SSOOnly bool
 }
 
 // Store is the persistence contract.

@@ -118,6 +118,17 @@ type AuthSecurityPolicy struct {
 	PrivilegedRoles []string `json:"privileged_roles"`
 	RequireMFA      bool     `json:"require_mfa"`
 	IPAllowList     []string `json:"ip_allow_list"`
+	// SSOOnly turns off password sign-in for everyone but the default super
+	// admin.
+	SSOOnly bool `json:"sso_only"`
+}
+
+// LoginOptionsResponse is what the (public) login page needs to know about
+// the instance login policy before anyone signs in.
+type LoginOptionsResponse struct {
+	// SSOOnly means only SSO sign-in is offered; the password form is kept
+	// for the default super admin behind a separate entry.
+	SSOOnly bool `json:"sso_only"`
 }
 
 // AllowedCIDRsRequest is an account's IP/CIDR allow-list; empty is unrestricted.

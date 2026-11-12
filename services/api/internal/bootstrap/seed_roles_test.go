@@ -348,6 +348,65 @@ func TestSeed_FreshInstall_AdminAndBot(t *testing.T) {
 	}
 }
 
+// The seeded admin is the one account marked as the default super admin (the
+// account SSO-only mode keeps password sign-in open to). The bot is not, and
+// pointing ADMIN_USERNAME at another account moves the mark to it.
+func TestSeed_MarksTheDefaultSuperAdmin(t *testing.T) {
+	db, apply := newSeedTestDB(t)
+	apply("~")
+	ctx := context.Background()
+	seeder := pgRepo.NewRoleSeedRepository(db)
+	users := pgRepo.NewUserRepository(db)
+	ids, err := seedPlatformRoles(ctx, seeder, nil, quietLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	superAdmin := ids[defaultroles.SuperAdmin]
+
+	marked := func() []string {
+		t.Helper()
+		var names []string
+		if err := db.Select(&names, `SELECT username FROM users WHERE bootstrap_admin ORDER BY username`); err != nil {
+			t.Fatal(err)
+		}
+		return names
+	}
+
+	for i := 0; i < 2; i++ { // idempotent
+		if err := seedAdmin(ctx, users, seeder, superAdmin, config.AdminConfig{Username: "admin", Password: "supersecret"}, quietLog); err != nil {
+			t.Fatal(err)
+		}
+		if err := seedAgentBotUser(ctx, users, seeder, superAdmin, quietLog); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := marked(); len(got) != 1 || got[0] != "admin" {
+		t.Fatalf("marked = %v, want only admin", got)
+	}
+	u, err := users.FindByUsername(ctx, "admin")
+	if err != nil || !u.BootstrapAdmin {
+		t.Fatalf("admin read back with BootstrapAdmin=%v (%v)", u != nil && u.BootstrapAdmin, err)
+	}
+
+	// An existing account (an upgrade, or a changed ADMIN_USERNAME) is
+	// marked too, and the old one loses the mark.
+	existing := &userdom.User{ID: uuid.New(), Username: "ops", PasswordHash: "x"}
+	if err := users.Create(ctx, existing); err != nil {
+		t.Fatal(err)
+	}
+	if err := seedAdmin(ctx, users, seeder, superAdmin, config.AdminConfig{Username: "ops", Password: "supersecret"}, quietLog); err != nil {
+		t.Fatal(err)
+	}
+	if got := marked(); len(got) != 1 || got[0] != "ops" {
+		t.Fatalf("marked = %v, want only ops", got)
+	}
+
+	// The unique index keeps it to one account even outside seedAdmin.
+	if _, err := db.Exec(`UPDATE users SET bootstrap_admin = TRUE WHERE username = 'admin'`); err == nil {
+		t.Fatal("two accounts must not both be marked")
+	}
+}
+
 // An existing admin gains SUPER_ADMIN additively and keeps what it holds; a
 // default role an administrator picked is never overridden.
 func TestSeed_ExistingAdminAndChosenDefault(t *testing.T) {
