@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { ReportIssueButton } from "@/components/report-issue-button";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { assignedTasksQueryOptions, type Task } from "@/lib/interaction-api";
@@ -50,6 +51,7 @@ export function AssignedTasksList() {
 		data,
 		isLoading,
 		isError,
+		error,
 		fetchNextPage,
 		hasNextPage,
 		isFetchingNextPage,
@@ -141,6 +143,7 @@ export function AssignedTasksList() {
 				<p className="text-sm font-medium text-destructive">
 					{t("home.myTasks.loadError")}
 				</p>
+				<ReportIssueButton error={error} />
 			</div>
 		);
 	}

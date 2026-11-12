@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ReportIssueButton } from "@/components/report-issue-button";
 
 import { InlineNotice } from "@/components/shared/inline-notice";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,7 @@ export function SsoSettings() {
 		data: providers,
 		isPending,
 		isError,
+		error,
 	} = useQuery(ssoProvidersQueryOptions);
 	const [editing, setEditing] = useState<SsoProvider | undefined>();
 	const [formOpen, setFormOpen] = useState(false);
@@ -62,9 +64,12 @@ export function SsoSettings() {
 			{isPending ? (
 				<Loader2 className="size-4 animate-spin text-muted-foreground" />
 			) : isError ? (
-				<InlineNotice tone="error">
-					{t("settings.sso.errors.loadFailed")}
-				</InlineNotice>
+				<div className="flex flex-col items-start gap-2">
+					<InlineNotice tone="error">
+						{t("settings.sso.errors.loadFailed")}
+					</InlineNotice>
+					<ReportIssueButton error={error} />
+				</div>
 			) : providers.length === 0 ? (
 				<p className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-sm text-muted-foreground">
 					{t("settings.sso.empty")}

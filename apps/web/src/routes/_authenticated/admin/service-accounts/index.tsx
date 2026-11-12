@@ -7,6 +7,7 @@ import { DeleteServiceAccountDialog } from "@/components/admin/service-accounts/
 import { ServiceAccountFormDialog } from "@/components/admin/service-accounts/ServiceAccountFormDialog";
 import { ServiceAccountRoleDialog } from "@/components/admin/service-accounts/ServiceAccountRoleDialog";
 import { ServiceAccountsTable } from "@/components/admin/service-accounts/ServiceAccountsTable";
+import { ReportIssueButton } from "@/components/report-issue-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +66,7 @@ function ServiceAccountsPage() {
 		data: accountPage,
 		isLoading: isDataLoading,
 		isError,
+		error,
 	} = useQuery({
 		...serviceAccountsPageQueryOptions(page, pageSize, debouncedSearch),
 		enabled: canRead,
@@ -144,10 +146,13 @@ function ServiceAccountsPage() {
 					<Skeleton className="h-14 w-full" />
 				</div>
 			) : isError ? (
-				<NoPermissionState
-					title={t("serviceAccounts.errors.loadFailed")}
-					description={t("serviceAccounts.errors.tryAgain")}
-				/>
+				<div className="flex flex-col items-center gap-3">
+					<NoPermissionState
+						title={t("serviceAccounts.errors.loadFailed")}
+						description={t("serviceAccounts.errors.tryAgain")}
+					/>
+					<ReportIssueButton error={error} />
+				</div>
 			) : accounts.length === 0 && !debouncedSearch.trim() ? (
 				<div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-14 text-center">
 					<ServerCog className="size-9 text-muted-foreground/50" />

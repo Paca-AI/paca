@@ -1,5 +1,6 @@
 import { Plus, Shield } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ReportIssueButton } from "@/components/report-issue-button";
 
 import { Button } from "@/components/ui/button";
 
@@ -32,7 +33,7 @@ export function EmptyRolesState({ canWrite, onCreate }: EmptyRolesStateProps) {
 	);
 }
 
-export function GlobalRolesErrorState() {
+export function GlobalRolesErrorState({ error }: { error?: unknown }) {
 	const { t } = useTranslation("admin");
 
 	return (
@@ -46,6 +47,7 @@ export function GlobalRolesErrorState() {
 					{t("globalRoles.errors.tryAgain")}
 				</p>
 			</div>
+			<ReportIssueButton error={error} />
 		</div>
 	);
 }

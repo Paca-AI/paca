@@ -1,8 +1,8 @@
-import { AlertTriangle, Bug, Lock, RefreshCw } from "lucide-react";
+import { AlertTriangle, Lock, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ReportIssueButton } from "@/components/report-issue-button";
 import { Button } from "@/components/ui/button";
 import { getHttpStatus, isForbiddenError } from "@/lib/api-error";
-import { draftFromError, openIssue } from "@/lib/feedback";
 
 /**
  * Generic error fallback for TanStack Router route errors (loader failures,
@@ -83,20 +83,7 @@ export function RouteErrorComponent({ error }: { error: Error }) {
 						<RefreshCw className="size-3.5" />
 						{t("common.retry", "Retry")}
 					</Button>
-					{/* Opens GitHub's issue form pre-filled with the full error
-					    (message, stack, request/response) so the report is one
-					    click. Opened directly rather than via the feedback dialog:
-					    this component can render when the root route itself has
-					    crashed, where the dialog isn't mounted. */}
-					<Button
-						variant="outline"
-						size="sm"
-						className="gap-1.5"
-						onClick={() => openIssue(draftFromError(error))}
-					>
-						<Bug className="size-3.5" />
-						{t("common.reportIssue", "Report this issue")}
-					</Button>
+					<ReportIssueButton error={error} />
 				</div>
 			)}
 		</div>

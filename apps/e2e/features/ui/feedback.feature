@@ -33,3 +33,12 @@ Feature: Feedback and issue reporting
       Given a page's data request is rejected with a 403
       When the route error screen is shown
       Then no "Report this issue" button should be shown
+
+  @authenticated
+  Rule: Inline load errors offer the same report
+
+    Scenario: A failed list shows the report button
+      Given the users list request fails with an error
+      When the user opens the admin users page
+      Then the failed-to-load message should be shown
+      And the "Report this issue" button should open a pre-filled bug report

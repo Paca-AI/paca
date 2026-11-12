@@ -123,4 +123,30 @@ test.describe("Feedback", () => {
 			page.getByRole("button", { name: "Report this issue" }),
 		).toHaveCount(0);
 	});
+
+	test("An inline list error offers a pre-filled bug report", async ({
+		page,
+	}) => {
+		await signInAsAdmin(page);
+		await stubGithub(page);
+		await page.route(/\/api\/v1\/admin\/users(\?.*)?$/, (route) =>
+			route.fulfill({
+				status: 400,
+				contentType: "application/json",
+				body: JSON.stringify({
+					success: false,
+					error: { code: "E2E_FORCED_ERROR", message: "forced e2e failure" },
+				}),
+			}),
+		);
+
+		await page.goto("/admin/users");
+		await expect(page.getByText(/failed to load users/i)).toBeVisible();
+
+		const popupPromise = page.waitForEvent("popup");
+		await page.getByRole("button", { name: "Report this issue" }).click();
+		const params = new URL((await popupPromise).url()).searchParams;
+		expect(params.get("template")).toBe("bug_report.yml");
+		expect(params.get("logs")).toContain("E2E_FORCED_ERROR");
+	});
 });

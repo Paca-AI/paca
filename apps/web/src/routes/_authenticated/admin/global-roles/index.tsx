@@ -53,6 +53,7 @@ function GlobalRolesPage() {
 		data: rolePage,
 		isLoading: isDataLoading,
 		isError,
+		error,
 	} = useQuery({
 		...platformRolesPageQueryOptions(page, pageSize),
 		enabled: canRead,
@@ -106,7 +107,7 @@ function GlobalRolesPage() {
 			) : isLoading ? (
 				<RolesTableSkeleton />
 			) : isError ? (
-				<GlobalRolesErrorState />
+				<GlobalRolesErrorState error={error} />
 			) : roles.length === 0 ? (
 				<EmptyRolesState
 					canWrite={canWrite}
