@@ -66,3 +66,31 @@ describe("formatErrorDetails / draftFromError", () => {
 		expect(draft.fields?.environment).toContain("Browser:");
 	});
 });
+
+describe("error detail redaction", () => {
+	it("drops query strings and non-diagnostic response data", () => {
+		const error = Object.assign(new Error("boom"), {
+			config: { method: "get", url: "/api/v1/things?token=secret#x" },
+			response: {
+				status: 400,
+				data: {
+					error_code: "BAD",
+					message: "nope",
+					task: { title: "private task title" },
+				},
+			},
+		});
+		const text = formatErrorDetails(error);
+		expect(text).toContain("Request: GET /api/v1/things");
+		expect(text).not.toContain("secret");
+		expect(text).toContain('"error_code":"BAD"');
+		expect(text).not.toContain("private task title");
+	});
+
+	it("omits a response body with no diagnostic keys", () => {
+		const error = Object.assign(new Error("boom"), {
+			response: { status: 500, data: { rows: [1, 2] } },
+		});
+		expect(formatErrorDetails(error)).not.toContain("Response:");
+	});
+});

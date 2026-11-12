@@ -36,6 +36,7 @@ func (h *SettingsHandler) toBrandingResponse(ctx context.Context, ws *settingsdo
 		BrandName:         ws.BrandName,
 		PrimaryColorLight: ws.PrimaryColorLight,
 		PrimaryColorDark:  ws.PrimaryColorDark,
+		FeedbackEnabled:   ws.FeedbackEnabled,
 	}
 	if h.avatarSvc != nil {
 		resp.LogoURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, ws.LogoKey)
@@ -167,7 +168,7 @@ func (h *SettingsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	ws, err := h.svc.UpdateSettings(r.Context(), req.BrandName, req.PrimaryColorLight, req.PrimaryColorDark, id)
+	ws, err := h.svc.UpdateSettings(r.Context(), req.BrandName, req.PrimaryColorLight, req.PrimaryColorDark, req.FeedbackEnabled, id)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

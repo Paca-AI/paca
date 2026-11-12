@@ -446,7 +446,9 @@
 			"saved": "Salvo",
 			"errors": {
 				"updateFailed": "Falha ao salvar. Tente novamente."
-			}
+			},
+			"feedbackLabel": "Feedback",
+			"feedbackDescription": "Mostra “Enviar feedback” no menu do usuário e “Relatar este problema” nas telas de erro, que abrem uma issue do GitHub pré-preenchida. Desative em instâncias privadas ou auto-hospedadas."
 		},
 		"sso": {
 			"title": "Login único (SSO)",

@@ -34,6 +34,13 @@ export interface FeedbackDraft {
 /** Browsers and GitHub both choke on very long URLs; stay well below ~8 KB. */
 export const MAX_ISSUE_URL_LENGTH = 7000;
 
+/**
+ * The URL is built from `encodeURIComponent` lengths (`%20` per space) while
+ * `URLSearchParams` writes `+`, so the budget is slightly conservative: the
+ * link may be a little shorter than necessary, never longer. The shrink loop
+ * is bounded; if many large fields remain it can still exit over the limit.
+ */
+
 const TRUNCATION_MARKER = "\n… [truncated to fit the link]";
 
 function encodedLength(value: string): number {
@@ -103,6 +110,36 @@ function errorStatus(error: unknown): number | undefined {
 	return typeof status === "number" ? status : undefined;
 }
 
+/** Response-body keys that describe the failure without echoing user data. */
+const SAFE_RESPONSE_KEYS = [
+	"error_code",
+	"code",
+	"error",
+	"message",
+	"detail",
+	"status",
+];
+
+/** Keeps only diagnostic keys of an API error body, each capped in length. */
+function redactResponse(data: unknown): unknown {
+	if (data === null || typeof data !== "object" || Array.isArray(data)) {
+		return typeof data === "string" ? data.slice(0, 200) : undefined;
+	}
+	const out: Record<string, unknown> = {};
+	for (const key of SAFE_RESPONSE_KEYS) {
+		const value = (data as Record<string, unknown>)[key];
+		if (typeof value === "string") out[key] = value.slice(0, 200);
+		else if (typeof value === "number" || typeof value === "boolean")
+			out[key] = value;
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Drops the query string and fragment, which can carry tokens or ids. */
+function stripQuery(url: string): string {
+	return url.replace(/[?#].*$/s, "");
+}
+
 /** Everything useful about an error as plain text, for the "logs" field. */
 export function formatErrorDetails(error: unknown): string {
 	const lines: string[] = [];
@@ -122,14 +159,15 @@ export function formatErrorDetails(error: unknown): string {
 		?.config;
 	if (config?.url) {
 		lines.push(
-			`Request: ${(config.method ?? "GET").toUpperCase()} ${config.url}`,
+			`Request: ${(config.method ?? "GET").toUpperCase()} ${stripQuery(config.url)}`,
 		);
 	}
 	const status = errorStatus(error);
 	if (status !== undefined) lines.push(`HTTP status: ${status}`);
-	if (response?.data !== undefined) {
+	const safeBody = redactResponse(response?.data);
+	if (safeBody !== undefined) {
 		try {
-			lines.push(`Response: ${JSON.stringify(response.data)}`);
+			lines.push(`Response: ${JSON.stringify(safeBody)}`);
 		} catch {
 			// Circular or otherwise unserializable payload — skip it.
 		}
@@ -174,7 +212,7 @@ export function draftFromError(error: unknown): FeedbackDraft {
 		kind: "bug",
 		title: errorIssueTitle(error),
 		fields: {
-			summary: `An error screen appeared: ${errorIssueTitle(error)}`,
+			summary: `An error occurred: ${errorIssueTitle(error)}`,
 			area: "Frontend",
 			environment: collectEnvironment(),
 			logs: formatErrorDetails(error),

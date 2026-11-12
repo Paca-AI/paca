@@ -52,11 +52,11 @@ func (f *fakeSettingsSvc) RemoveImage(_ context.Context, _ settingsdom.ImageSlot
 	return &settingsdom.WorkspaceSettings{}, nil
 }
 
-func (f *fakeSettingsSvc) UpdateSettings(_ context.Context, brandName, light, dark *string, _ uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
+func (f *fakeSettingsSvc) UpdateSettings(_ context.Context, brandName, light, dark *string, feedbackEnabled *bool, _ uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
 	if f.updateColorsErr != nil {
 		return nil, f.updateColorsErr
 	}
-	return &settingsdom.WorkspaceSettings{BrandName: brandName, PrimaryColorLight: light, PrimaryColorDark: dark}, nil
+	return &settingsdom.WorkspaceSettings{BrandName: brandName, PrimaryColorLight: light, PrimaryColorDark: dark, FeedbackEnabled: feedbackEnabled == nil || *feedbackEnabled}, nil
 }
 
 var _ settingsdom.Service = (*fakeSettingsSvc)(nil)

@@ -18,6 +18,8 @@ export interface BrandingResponse {
 	brand_name?: string | null;
 	primary_color_light?: string | null;
 	primary_color_dark?: string | null;
+	/** Absent (older API / cold cache) means enabled. */
+	feedback_enabled?: boolean;
 }
 
 // Branding drives CSS variables/favicon/title applied on every page load —
@@ -46,6 +48,15 @@ function writeCachedBranding(data: BrandingResponse): void {
 	}
 }
 
+/**
+ * Whether the in-app feedback entry points are enabled, read from the cached
+ * branding response. Synchronous and provider-free so it also works on the
+ * root route's error screen, where no React Query provider may be mounted.
+ */
+export function isFeedbackEnabledCached(): boolean {
+	return readCachedBranding()?.feedback_enabled !== false;
+}
+
 export async function getBranding(): Promise<BrandingResponse> {
 	const { data } =
 		await apiClient.instance.get<SuccessEnvelope<BrandingResponse>>(
@@ -59,6 +70,8 @@ export async function updateSettings(payload: {
 	brand_name: string | null;
 	primary_color_light: string | null;
 	primary_color_dark: string | null;
+	/** Omit to leave the setting unchanged. */
+	feedback_enabled?: boolean;
 }): Promise<BrandingResponse> {
 	const { data } = await apiClient.instance.patch<
 		SuccessEnvelope<BrandingResponse>

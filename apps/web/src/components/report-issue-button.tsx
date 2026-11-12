@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { isForbiddenError } from "@/lib/api-error";
 import { draftFromError, openIssue } from "@/lib/feedback";
+import { isFeedbackEnabledCached } from "@/lib/settings-api";
 
 /**
  * Opens GitHub's bug-report form pre-filled with the full error (message,
@@ -10,18 +11,18 @@ import { draftFromError, openIssue } from "@/lib/feedback";
  * rather than through a dialog so it also works where no app provider is
  * mounted (e.g. the root route's own error screen).
  *
- * Renders nothing for a permission (403) error: that's an access decision,
- * not something to report.
+ * Renders nothing for a permission (403) error (that's an access decision,
+ * not something to report) or when an admin has turned feedback off.
  */
 export function ReportIssueButton({
 	error,
 	className,
 }: {
-	error?: unknown;
+	error: unknown;
 	className?: string;
 }) {
 	const { t } = useTranslation();
-	if (error && isForbiddenError(error)) return null;
+	if (!isFeedbackEnabledCached() || isForbiddenError(error)) return null;
 	return (
 		<Button
 			type="button"

@@ -154,7 +154,7 @@ const maxBrandNameLength = 100
 // UpdateSettings sets the brand name and the light/dark primary accent
 // colors together, clearing an override when passed nil or an empty string.
 // See CompleteImageUpload's comment on why the mutation runs under WithLock.
-func (s *Service) UpdateSettings(ctx context.Context, brandName, light, dark *string, updatedBy uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
+func (s *Service) UpdateSettings(ctx context.Context, brandName, light, dark *string, feedbackEnabled *bool, updatedBy uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
 	brandName, err := normalizeBrandName(brandName)
 	if err != nil {
 		return nil, err
@@ -172,6 +172,9 @@ func (s *Service) UpdateSettings(ctx context.Context, brandName, light, dark *st
 		ws.BrandName = brandName
 		ws.PrimaryColorLight = light
 		ws.PrimaryColorDark = dark
+		if feedbackEnabled != nil {
+			ws.FeedbackEnabled = *feedbackEnabled
+		}
 		ws.UpdatedAt = time.Now().UTC()
 		ws.UpdatedBy = &updatedBy
 		return ws, nil

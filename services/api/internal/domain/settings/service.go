@@ -39,6 +39,7 @@ type Service interface {
 	// colors together. A nil/empty brandName clears the override (falling
 	// back to the app default "Paca"); a nil light/dark value clears that
 	// mode's color override. A non-nil color must be a "#rrggbb" hex string
-	// or ErrInvalidColor is returned.
-	UpdateSettings(ctx context.Context, brandName, light, dark *string, updatedBy uuid.UUID) (*WorkspaceSettings, error)
+	// or ErrInvalidColor is returned. A nil feedbackEnabled leaves the
+	// feedback setting unchanged.
+	UpdateSettings(ctx context.Context, brandName, light, dark *string, feedbackEnabled *bool, updatedBy uuid.UUID) (*WorkspaceSettings, error)
 }

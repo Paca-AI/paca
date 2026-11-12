@@ -24,8 +24,11 @@ type WorkspaceSettings struct {
 	// browser tab title (<title>) and the wordmark text shown next to the
 	// logo — nil meaning "use the app's default ('Paca')".
 	BrandName *string
-	UpdatedAt time.Time
-	UpdatedBy *uuid.UUID
+	// FeedbackEnabled shows the in-app "Send feedback" / "Report this issue"
+	// entry points. Defaults to true.
+	FeedbackEnabled bool
+	UpdatedAt       time.Time
+	UpdatedBy       *uuid.UUID
 }
 
 // ImageSlot discriminates the two image slots a WorkspaceSettings row holds.

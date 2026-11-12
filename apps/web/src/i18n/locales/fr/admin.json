@@ -446,7 +446,9 @@
 			"saved": "Enregistré",
 			"errors": {
 				"updateFailed": "Échec de l’enregistrement. Veuillez réessayer."
-			}
+			},
+			"feedbackLabel": "Commentaires",
+			"feedbackDescription": "Affiche « Envoyer des commentaires » dans le menu utilisateur et « Signaler ce problème » sur les écrans d’erreur, qui ouvrent un ticket GitHub prérempli. À désactiver pour les instances privées ou auto-hébergées."
 		},
 		"sso": {
 			"title": "Authentification unique (SSO)",

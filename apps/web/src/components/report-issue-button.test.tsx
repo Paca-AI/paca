@@ -1,8 +1,10 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReportIssueButton } from "./report-issue-button";
 
 describe("ReportIssueButton", () => {
+	afterEach(() => window.localStorage.clear());
+
 	it("opens a pre-filled bug report with the error details", () => {
 		const open = vi.spyOn(window, "open").mockImplementation(() => null);
 		render(<ReportIssueButton error={new Error("kaput")} />);
@@ -20,6 +22,15 @@ describe("ReportIssueButton", () => {
 			response: { status: 403, data: { error_code: "FORBIDDEN" } },
 		});
 		const { container } = render(<ReportIssueButton error={error} />);
+		expect(container).toBeEmptyDOMElement();
+	});
+
+	it("renders nothing when an admin disabled feedback", () => {
+		window.localStorage.setItem(
+			"paca:branding-cache",
+			JSON.stringify({ feedback_enabled: false }),
+		);
+		const { container } = render(<ReportIssueButton error={new Error("x")} />);
 		expect(container).toBeEmptyDOMElement();
 	});
 });
