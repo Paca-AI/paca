@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a product, architecture, or documentation improvement
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement.
+        Tip: the in-app **Send feedback** button (user menu) pre-fills this form for you.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A short description of the proposed improvement.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or project problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Your preferred approach, at a high level.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you have looked at, and their tradeoffs.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Product behavior
+        - Repository structure
+        - Architecture
+        - Developer experience
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mockups, related issues, links, or anything else that helps.

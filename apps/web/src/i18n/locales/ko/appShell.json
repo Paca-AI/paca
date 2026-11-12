@@ -88,6 +88,7 @@
 		"myProfile": "계정",
 		"apiKeys": "API 키",
 		"logOut": "로그아웃",
-		"loggingOut": "로그아웃 중…"
+		"loggingOut": "로그아웃 중…",
+		"sendFeedback": "피드백 보내기"
 	}
 }

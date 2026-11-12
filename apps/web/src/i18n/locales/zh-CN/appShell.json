@@ -88,6 +88,7 @@
 		"myProfile": "账户",
 		"apiKeys": "API 密钥",
 		"logOut": "退出登录",
-		"loggingOut": "正在退出登录…"
+		"loggingOut": "正在退出登录…",
+		"sendFeedback": "发送反馈"
 	}
 }

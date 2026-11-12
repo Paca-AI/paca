@@ -88,6 +88,7 @@
 		"myProfile": "Tài khoản",
 		"apiKeys": "Khóa API",
 		"logOut": "Đăng xuất",
-		"loggingOut": "Đang đăng xuất…"
+		"loggingOut": "Đang đăng xuất…",
+		"sendFeedback": "Gửi phản hồi"
 	}
 }

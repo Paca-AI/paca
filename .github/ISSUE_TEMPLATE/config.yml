@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Paca-AI/paca/security/advisories/new
+    about: Please report security issues privately, not in a public issue.

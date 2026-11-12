@@ -88,6 +88,7 @@
 		"myProfile": "Аккаунт",
 		"apiKeys": "API-ключи",
 		"logOut": "Выйти",
-		"loggingOut": "Выход…"
+		"loggingOut": "Выход…",
+		"sendFeedback": "Отправить отзыв"
 	}
 }
