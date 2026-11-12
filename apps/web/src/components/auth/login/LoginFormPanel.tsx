@@ -49,7 +49,7 @@ export function LoginFormPanel({
 	const { data: loginOptions } = useQuery(loginOptionsQueryOptions);
 	const ssoOnly = loginOptions?.sso_only === true;
 	const showPasswordForm = !ssoOnly || adminSignIn;
-	const { data: ssoProviders } = useQuery({
+	const { data: ssoProviders, isError: ssoProvidersFailed } = useQuery({
 		...publicSsoProvidersQueryOptions,
 		enabled: ssoOnly,
 	});
@@ -123,7 +123,9 @@ export function LoginFormPanel({
 						{t("login.ssoOnly.adminHint")}
 					</p>
 				) : null}
-				{ssoOnly && !adminSignIn && ssoProviders?.length === 0 ? (
+				{ssoOnly &&
+				!adminSignIn &&
+				(ssoProvidersFailed || ssoProviders?.length === 0) ? (
 					<div
 						role="alert"
 						className="mb-5 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300"

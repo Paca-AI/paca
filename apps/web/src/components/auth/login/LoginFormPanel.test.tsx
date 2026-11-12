@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 		slug: string;
 		display_name: string;
 	}[],
+	providersFail: false,
 }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
 vi.mock("@/lib/api-client", () => ({
@@ -20,6 +21,7 @@ vi.mock("@/lib/api-client", () => ({
 					return { data: { data: { sso_only: mocks.ssoOnly } } };
 				}
 				if (url === "/auth/sso/providers") {
+					if (mocks.providersFail) throw new Error("network");
 					return { data: { data: mocks.providers } };
 				}
 				return { data: { data: {} } };
@@ -41,6 +43,7 @@ function renderPanel(props: Parameters<typeof LoginFormPanel>[0] = {}) {
 
 beforeEach(() => {
 	mocks.ssoOnly = false;
+	mocks.providersFail = false;
 	mocks.providers = [{ slug: "corp", display_name: "Corp SSO" }];
 });
 
@@ -99,6 +102,16 @@ describe("LoginFormPanel", () => {
 		).toBeInTheDocument();
 		expect(
 			screen.getByRole("link", { name: /sign in as administrator/i }),
+		).toBeInTheDocument();
+	});
+
+	it("says so when the SSO-only provider list fails to load", async () => {
+		mocks.ssoOnly = true;
+		mocks.providersFail = true;
+		renderPanel();
+
+		expect(
+			await screen.findByText(/no single sign-on option is available/i),
 		).toBeInTheDocument();
 	});
 });
