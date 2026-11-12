@@ -130,6 +130,9 @@ func PublishRealtime(ctx context.Context, sink RealtimeSink, e Event) {
 func publishRealtime(ctx context.Context, sink RealtimeSink, e Event) {
 	e = withContextClientOp(ctx, e)
 	msg := realtimeMessage(e)
+	if id := CollabSocket(ctx); id != "" {
+		msg["collab_socket"] = id
+	}
 	if ref, ok := recordChange(ctx, sink, e); ok {
 		msg["seq"] = ref.Seq
 		msg["epoch"] = ref.Epoch

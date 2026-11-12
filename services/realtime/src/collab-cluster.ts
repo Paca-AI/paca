@@ -32,6 +32,7 @@ import {
 	type CollabJoinRequest,
 	type CollabJoinResult,
 	type CollabTransport,
+	type ContentChangeMeta,
 	parseRoomRef,
 	roomName,
 } from "./collab.ts";
@@ -329,9 +330,12 @@ export class CollabCluster {
 	handleContentEvent(
 		type: string,
 		payload: Record<string, unknown>,
+		meta: ContentChangeMeta = {},
 	): Promise<void> {
 		// Only the owner holds the room: on every other replica this finds none.
-		return this.hub.handleContentEvent(type, payload);
+		// A remote member is in the owner's room under its own socket id, so the
+		// echo check works the same for it.
+		return this.hub.handleContentEvent(type, payload, meta);
 	}
 
 	// ── ownership ────────────────────────────────────────────────────────

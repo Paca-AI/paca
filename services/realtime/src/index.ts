@@ -95,7 +95,7 @@ const subscriber = createSubscriber(
 		iamEpoch.observe(epoch);
 		onIamChanged();
 	},
-	(type, payload) => void collab.handleContentEvent(type, payload),
+	(type, payload, meta) => void collab.handleContentEvent(type, payload, meta),
 	(projectId) => sync?.notify(projectId),
 );
 

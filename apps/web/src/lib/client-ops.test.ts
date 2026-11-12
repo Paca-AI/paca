@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { clearOwnOps, isOwnOp, newClientOp, rememberOwnOp } from "./client-ops";
+import {
+	clearOwnOps,
+	collabSocketId,
+	isOwnOp,
+	newClientOp,
+	rememberOwnOp,
+	setCollabSocketProvider,
+} from "./client-ops";
 
 describe("client ops", () => {
 	beforeEach(clearOwnOps);
@@ -22,6 +29,16 @@ describe("client ops", () => {
 		rememberOwnOp("a", 1_000);
 		expect(isOwnOp("a", 1_000 + 59_000)).toBe(true);
 		expect(isOwnOp("a", 1_000 + 61_000)).toBe(false);
+	});
+
+	it("reports the connected socket id, and nothing when there is none", () => {
+		setCollabSocketProvider(null);
+		expect(collabSocketId()).toBeUndefined();
+		setCollabSocketProvider(() => "");
+		expect(collabSocketId()).toBeUndefined();
+		setCollabSocketProvider(() => "sock-1");
+		expect(collabSocketId()).toBe("sock-1");
+		setCollabSocketProvider(null);
 	});
 
 	it("keeps a bounded number of ids, dropping the oldest", () => {

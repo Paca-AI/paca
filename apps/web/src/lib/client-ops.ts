@@ -48,3 +48,23 @@ export function clearOwnOps(): void {
 }
 
 export const CLIENT_OP_HEADER = "X-Client-Op-Id";
+
+// The realtime socket id this tab sends on its mutations (X-Collab-Socket).
+// The collaborative-editing hub uses it to recognise a save made by one of a
+// live room's editors (its own content coming back) and to merge every other
+// write, including one made with the same account's API key by an agent.
+export const COLLAB_SOCKET_HEADER = "X-Collab-Socket";
+
+let collabSocketProvider: (() => string | undefined) | null = null;
+
+/** Registers where the current socket id comes from (socket-client.ts). */
+export function setCollabSocketProvider(
+	provider: (() => string | undefined) | null,
+): void {
+	collabSocketProvider = provider;
+}
+
+/** The id of this tab's connected realtime socket, if there is one. */
+export function collabSocketId(): string | undefined {
+	return collabSocketProvider?.() || undefined;
+}

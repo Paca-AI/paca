@@ -97,18 +97,27 @@ const plainText = (page: Page) =>
 		return (copy.textContent ?? "").replace(/\s+/g, " ").trim();
 	});
 
+// Caret moves differ by platform: on macOS, Home / End do not move the caret
+// in a contenteditable (they scroll), and Ctrl+Home / Ctrl+End do not reach
+// the document's ends. The tests drive a browser on the host, so pick the
+// keys the host's users press.
+const IS_MAC = process.platform === "darwin";
+const KEY_DOC_START = IS_MAC ? "Meta+ArrowUp" : "Control+Home";
+const KEY_DOC_END = IS_MAC ? "Meta+ArrowDown" : "Control+End";
+const KEY_LINE_END = IS_MAC ? "Meta+ArrowRight" : "End";
+
 /** Types at the end of the editor's last paragraph. */
 async function typeAtEnd(page: Page, text: string) {
 	const editor = editorOf(page);
 	await editor.locator(".bn-block-content").last().click();
-	await page.keyboard.press("Control+End");
+	await page.keyboard.press(KEY_DOC_END);
 	await page.keyboard.type(text);
 }
 
 /** Types at the start of the editor's first paragraph. */
 async function typeAtStart(page: Page, text: string) {
 	await editorOf(page).locator(".bn-block-content").first().click();
-	await page.keyboard.press("Control+Home");
+	await page.keyboard.press(KEY_DOC_START);
 	await page.keyboard.type(text);
 }
 
@@ -135,7 +144,7 @@ async function holdSaves(page: Page) {
 /** Types at the end of the editor's n-th block (0-based). */
 async function typeInBlock(page: Page, n: number, text: string) {
 	await editorOf(page).locator(".bn-block-content").nth(n).click();
-	await page.keyboard.press("End");
+	await page.keyboard.press(KEY_LINE_END);
 	await page.keyboard.type(text);
 }
 
@@ -331,6 +340,52 @@ test.describe("Collaborative editing", () => {
 						timeout: 20_000,
 					})
 					.toMatch(/LIVE-[\s\S]*by-the-agent/);
+			} finally {
+				await a.context.close();
+				await b.context.close();
+			}
+		});
+
+		test("reach the editor even when written with that editor's own account", async ({
+			browser,
+			request,
+			playwright,
+		}) => {
+			// An agent using Ann's API key writes as Ann while Ann has the doc
+			// open. It is not her editor's save (no X-Collab-Socket), so it must
+			// be merged into the room instead of being taken for her echo and
+			// overwritten by her next save.
+			const first = name("first");
+			const second = name("second");
+			const { projectId, docId, a, b } = await openDocAsBoth(
+				request,
+				playwright,
+				browser,
+				[first, second],
+			);
+			try {
+				const res = await a.context.request.patch(
+					`${API_URL}/projects/${projectId}/docs/${docId}`,
+					{ data: { content: [first, "by-anns-agent"].map(paragraph) } },
+				);
+				expect(res.ok(), await res.text()).toBeTruthy();
+
+				for (const { page } of [a, b]) {
+					await expect
+						.poll(() => plainText(page), { timeout: 15_000 })
+						.toContain("by-anns-agent");
+				}
+
+				// Her next save keeps the agent's text instead of reverting it.
+				await typeInBlock(a.page, 0, "!");
+				await expect
+					.poll(() => storedDoc(request, projectId, docId), {
+						timeout: 20_000,
+					})
+					.toContain(`${first}!`);
+				const stored = await storedDoc(request, projectId, docId);
+				expect(stored).toContain("by-anns-agent");
+				expect(stored).not.toContain(second);
 			} finally {
 				await a.context.close();
 				await b.context.close();

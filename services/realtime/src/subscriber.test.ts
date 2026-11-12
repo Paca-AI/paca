@@ -312,6 +312,34 @@ describe("routeEvent content changes", () => {
 		}
 		expect(seen).toEqual(["doc.updated", "task.updated"]);
 	});
+
+	it("passes the writing editor's socket from the envelope, not the payload", () => {
+		const seen: unknown[] = [];
+		const { io } = fakeIo({});
+		const r = routing(() => true);
+		const withHook = {
+			...r.routing,
+			onContentChange: (_t: string, _p: unknown, meta: unknown) =>
+				seen.push(meta),
+		};
+		routeEvent(
+			io,
+			{
+				type: "doc.updated",
+				payload: { project_id: P, collab_socket: "spoofed" },
+				collab_socket: "sock-1",
+			},
+			log,
+			withHook,
+		);
+		routeEvent(
+			io,
+			{ type: "doc.updated", payload: { project_id: P }, collab_socket: 7 },
+			log,
+			withHook,
+		);
+		expect(seen).toEqual([{ collabSocket: "sock-1" }, {}]);
+	});
 });
 
 describe("routeEvent with a logged change (carries a seq)", () => {
