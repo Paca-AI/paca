@@ -30,7 +30,7 @@ export function PermissionSummary({
 
 	if (permissions.includes("*")) {
 		return (
-			<span className="inline-flex w-fit items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium leading-none text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/20 dark:text-amber-400">
+			<span className="inline-flex w-fit items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-medium leading-none text-warning">
 				<ShieldAlert className="size-3" aria-hidden="true" />
 				{t("rolePicker.fullAccess")}
 			</span>

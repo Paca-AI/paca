@@ -84,7 +84,7 @@ export function AutomationRunHistoryPanel({
 							<Icon
 								className={cn(
 									"size-3.5 shrink-0",
-									run.status === "completed" && "text-green-600",
+									run.status === "completed" && "text-success",
 									run.status === "failed" && "text-destructive",
 									run.status === "running" &&
 										"text-muted-foreground animate-pulse",
@@ -149,7 +149,7 @@ function RunSteps({
 						<Icon
 							className={cn(
 								"size-3 shrink-0",
-								step.status === "completed" && "text-green-600",
+								step.status === "completed" && "text-success",
 								step.status === "failed" && "text-destructive",
 								step.status === "skipped" && "text-muted-foreground",
 							)}

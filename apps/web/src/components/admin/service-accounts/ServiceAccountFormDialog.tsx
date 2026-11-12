@@ -50,6 +50,7 @@ export function ServiceAccountFormDialog({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { success: "saved" },
 		mutationFn: () =>
 			isEdit
 				? updateServiceAccount(account.id, {

@@ -168,7 +168,7 @@ export function PolicyEditor({
 			{editor.blocked ? (
 				<div
 					role="status"
-					className="rounded-lg border border-amber-300/50 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-300"
+					className="rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-xs text-warning"
 				>
 					{editor.mode === "advanced" && editor.blocked !== "invalidJson"
 						? t("editor.advancedOnly")
@@ -181,16 +181,16 @@ export function PolicyEditor({
 				{editor.mode === "simple" ? (
 					<>
 						{editor.fullAccess ? (
-							<div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-700/30 dark:bg-amber-900/20">
+							<div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5">
 								<ShieldAlert
-									className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400"
+									className="mt-0.5 size-4 shrink-0 text-warning"
 									aria-hidden="true"
 								/>
 								<div className="flex min-w-0 flex-col gap-0.5">
-									<span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+									<span className="text-sm font-semibold text-warning">
 										{t("editor.fullAccess")}
 									</span>
-									<p className="text-xs text-amber-800/90 dark:text-amber-300/90">
+									<p className="text-xs text-warning/90">
 										{t("editor.fullAccessDescription")}
 									</p>
 								</div>

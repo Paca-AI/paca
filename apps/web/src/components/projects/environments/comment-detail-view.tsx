@@ -439,7 +439,7 @@ export function CommentDetailView({
 					<Button size="sm" variant="outline" onClick={handleCopyLink}>
 						{linkCopied ? (
 							<>
-								<Check className="size-3.5 mr-1.5 text-emerald-500" />
+								<Check className="size-3.5 mr-1.5 text-success" />
 								{t("commentDetail.actions.linkCopied")}
 							</>
 						) : (

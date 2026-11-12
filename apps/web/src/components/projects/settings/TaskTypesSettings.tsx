@@ -8,6 +8,14 @@ import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-
 import { DisabledDeleteButton } from "@/components/shared/disabled-delete-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@/components/ui/empty";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -65,6 +73,7 @@ export function TaskTypesSettings({
 	const [deleteType, setDeleteType] = useState<TaskType | null>(null);
 
 	const setDefaultMutation = useMutation({
+		meta: { success: "saved" },
 		mutationFn: (typeId: string) => setDefaultTaskType(projectId, typeId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({
@@ -121,29 +130,29 @@ export function TaskTypesSettings({
 					))}
 				</div>
 			) : !types?.length ? (
-				<div className="flex flex-col items-center gap-4 rounded-xl border border-dashed bg-muted/20 py-16 text-center mt-4">
-					<div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
-						<Tag className="size-6" />
-					</div>
-					<div>
-						<p className="text-sm font-medium">
-							{t("settings.taskTypes.empty.title")}
-						</p>
-						<p className="mt-1 text-xs text-muted-foreground">
+				<Empty className="border border-dashed bg-muted/20 py-16 mt-4">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<Tag className="size-6" />
+						</EmptyMedia>
+						<EmptyTitle>{t("settings.taskTypes.empty.title")}</EmptyTitle>
+						<EmptyDescription>
 							{t("settings.taskTypes.empty.description")}
-						</p>
-					</div>
-					{canWrite ? (
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={() => setCreateOpen(true)}
-						>
-							<Plus className="size-4" />
-							{t("settings.taskTypes.empty.createType")}
-						</Button>
-					) : null}
-				</div>
+						</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						{canWrite ? (
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => setCreateOpen(true)}
+							>
+								<Plus className="size-4" />
+								{t("settings.taskTypes.empty.createType")}
+							</Button>
+						) : null}
+					</EmptyContent>
+				</Empty>
 			) : (
 				<div className="overflow-x-auto rounded-xl border mt-4">
 					<Table>
@@ -204,7 +213,7 @@ export function TaskTypesSettings({
 									</TableCell>
 									<TableCell className="px-5">
 										{type.is_default ? (
-											<span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+											<span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
 												<Star className="size-3 fill-current" />
 												{t("settings.taskTypes.default")}
 											</span>

@@ -1,6 +1,6 @@
-import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Spinner } from "@/components/ui/spinner";
 import "xterm/css/xterm.css";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
@@ -244,7 +244,7 @@ export function EnvironmentTerminal({
 				<div className="flex items-center gap-1.5 text-xs shrink-0">
 					{state === "connecting" && (
 						<span className="flex items-center gap-1.5 text-white/50">
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 							{t("environments.detail.terminal.connecting")}
 						</span>
 					)}
@@ -255,8 +255,8 @@ export function EnvironmentTerminal({
 						</span>
 					)}
 					{state === "error" && (
-						<span className="flex items-center gap-1.5 text-red-400">
-							<span className="size-1.5 rounded-full bg-red-400" />
+						<span className="flex items-center gap-1.5 text-destructive">
+							<span className="size-1.5 rounded-full bg-destructive" />
 							{t("environments.detail.terminal.connectionFailed")}
 						</span>
 					)}

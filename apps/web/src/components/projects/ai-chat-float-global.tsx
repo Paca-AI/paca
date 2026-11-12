@@ -1,13 +1,8 @@
-import {
-	type AppendMessage,
-	AssistantRuntimeProvider,
-	useExternalStoreRuntime,
-} from "@assistant-ui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Bot, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Thread } from "@/components/assistant-ui/thread";
+import { Thread } from "@/components/chat/thread";
 import {
 	AgentPickerContext,
 	AgentPickerInline,
@@ -35,7 +30,6 @@ import { ConversationErrorBox } from "./agents/conversation-error-box";
 import {
 	canReplyToConversation,
 	eventsToThreadMessages,
-	extractTextOnlyContent,
 	isEnvironmentReady,
 } from "./agents/conversation-to-thread-messages";
 import { useConversationEventWindow } from "./agents/use-conversation-event-window";
@@ -147,11 +141,7 @@ export function GlobalAIChatFloat() {
 		});
 	};
 
-	const onNew = async (message: AppendMessage) => {
-		const text = extractTextOnlyContent(message);
-		if (text === null) {
-			throw new Error(t("agents.conversationView.textOnlyMessage"));
-		}
+	const onNew = async (text: string) => {
 		// Snapshot now (not read again after any await) so a badge staged
 		// mid-send can't sneak into this message or get cleared under it.
 		const contextItems = useContextInjectionStore.getState().items;
@@ -241,16 +231,6 @@ export function GlobalAIChatFloat() {
 		messages.length === 0 &&
 		!canReply;
 
-	const runtime = useExternalStoreRuntime({
-		messages,
-		isRunning,
-		convertMessage: (m) => m,
-		onNew,
-		onCancel,
-		isDisabled: !canReply,
-		isSendDisabled: (!conversationId && !agentId) || isSubmitting,
-	});
-
 	const endConversation = useCallback(
 		(id: string) => {
 			const cached = qc.getQueryData<AgentConversation>(
@@ -336,27 +316,31 @@ export function GlobalAIChatFloat() {
 							<FloatingChatFailedBanner message={conversation?.error_message} />
 						) : (
 							<AgentPickerContext.Provider value={pickerState}>
-								<AssistantRuntimeProvider runtime={runtime}>
-									<Thread
-										components={THREAD_COMPONENTS}
-										environmentReady={environmentReady}
-										// A chat_message trigger always persists the user's own
-										// message before the agent runs (see handler.Handle), so
-										// a failed/recoverable turn almost never has
-										// messages.length === 0 — showFailedBanner above
-										// essentially never fires for the common case. Rendered
-										// inside the message flow (not a page footer below the
-										// composer, which read as small print easy to miss) so a
-										// failure with a visible message still explains itself.
-										viewportOverlay={
-											conversation?.error_message ? (
-												<ConversationErrorBox
-													message={conversation.error_message}
-												/>
-											) : undefined
-										}
-									/>
-								</AssistantRuntimeProvider>
+								<Thread
+									messages={messages}
+									isRunning={isRunning}
+									disabled={!canReply}
+									onSend={onNew}
+									sendDisabled={(!conversationId && !agentId) || isSubmitting}
+									onCancel={onCancel}
+									components={THREAD_COMPONENTS}
+									environmentReady={environmentReady}
+									// A chat_message trigger always persists the user's own
+									// message before the agent runs (see handler.Handle), so
+									// a failed/recoverable turn almost never has
+									// messages.length === 0 — showFailedBanner above
+									// essentially never fires for the common case. Rendered
+									// inside the message flow (not a page footer below the
+									// composer, which read as small print easy to miss) so a
+									// failure with a visible message still explains itself.
+									viewportOverlay={
+										conversation?.error_message ? (
+											<ConversationErrorBox
+												message={conversation.error_message}
+											/>
+										) : undefined
+									}
+								/>
 							</AgentPickerContext.Provider>
 						)}
 					</div>

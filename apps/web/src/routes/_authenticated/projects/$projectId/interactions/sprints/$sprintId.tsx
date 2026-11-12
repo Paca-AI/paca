@@ -287,7 +287,7 @@ function SprintPage() {
 											setStartSprintError(null);
 											setStartSprintOpen(true);
 										}}
-										className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 transition-all duration-150"
+										className="flex items-center gap-1.5 rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-success transition-all duration-150"
 									>
 										<Play className="size-3.5 shrink-0 fill-white" />
 										{t("layout.sprintDetail.startSprint")}

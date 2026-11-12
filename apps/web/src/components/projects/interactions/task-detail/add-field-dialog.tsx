@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Switch } from "@/components/ui/switch";
 import {
 	createCustomFieldDefinition,
 	customFieldsQueryOptions,
@@ -225,25 +226,7 @@ export function AddFieldDialog({
 						<span className="text-sm text-foreground/80 font-medium">
 							{t("taskDetail.addFieldDialog.requiredLabel")}
 						</span>
-						<button
-							type="button"
-							role="switch"
-							aria-checked={required}
-							onClick={() => setRequired(!required)}
-							className={cn(
-								"relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-200",
-								required
-									? "bg-primary shadow-sm shadow-primary/20"
-									: "bg-muted/60",
-							)}
-						>
-							<span
-								className={cn(
-									"inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform duration-200",
-									required ? "translate-x-4.5" : "translate-x-0.75",
-								)}
-							/>
-						</button>
+						<Switch checked={required} onCheckedChange={setRequired} />
 					</div>
 				</div>
 

@@ -1,10 +1,11 @@
-import { Loader2, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SearchableList } from "@/components/projects/interactions/task-detail/property-field/searchable-list";
 import { RemoteSelect } from "@/components/shared/remote-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { useRoleSearch } from "@/hooks/use-role-search";
 
@@ -73,9 +74,9 @@ export function UsersFilters({
 					/>
 					<div className="absolute right-2 top-1/2 -translate-y-1/2">
 						{isFetching ? (
-							<Loader2
-								className="size-3.5 animate-spin text-muted-foreground"
-								aria-hidden
+							<Spinner
+								aria-hidden="true"
+								className="size-3.5 text-muted-foreground"
 							/>
 						) : value ? (
 							<button

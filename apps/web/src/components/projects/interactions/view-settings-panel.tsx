@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Popover,
 	PopoverContent,
@@ -77,9 +78,9 @@ const CATEGORY_COLORS: Record<StatusCategory, string> = {
 	backlog: "bg-muted-foreground/40",
 	refinement: "bg-violet-400/70",
 	ready: "bg-sky-400/70",
-	todo: "bg-amber-400/70",
+	todo: "bg-warning/70",
 	inprogress: "bg-primary/70",
-	done: "bg-emerald-500/70",
+	done: "bg-success/70",
 };
 
 // ── Primitives ────────────────────────────────────────────────────────────────
@@ -211,23 +212,16 @@ function CheckRow({
 	dot?: React.ReactNode;
 	icon?: React.ReactNode;
 }) {
-	const ref = useRef<HTMLInputElement>(null);
-	useEffect(() => {
-		if (ref.current) ref.current.indeterminate = !!indeterminate;
-	}, [indeterminate]);
-
 	return (
 		<label
 			htmlFor={`check-${id}`}
 			className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-muted/40"
 		>
-			<input
-				ref={ref}
+			<Checkbox
 				id={`check-${id}`}
-				type="checkbox"
+				indeterminate={!!indeterminate}
 				checked={checked}
-				onChange={onChange}
-				className="size-3.5 cursor-pointer rounded accent-primary shrink-0"
+				onCheckedChange={() => onChange()}
 			/>
 			{dot}
 			{icon}
@@ -297,12 +291,10 @@ function FieldPicker({
 					className="flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/40 active:cursor-grabbing"
 				>
 					<GripVertical className="size-3 shrink-0 text-muted-foreground/40" />
-					<input
-						type="checkbox"
+					<Checkbox
 						id={`field-${f.key}`}
 						checked
-						onChange={() => toggle(f.key)}
-						className="size-3.5 cursor-pointer rounded accent-primary"
+						onCheckedChange={() => toggle(f.key)}
 					/>
 					<label
 						htmlFor={`field-${f.key}`}
@@ -321,12 +313,10 @@ function FieldPicker({
 					className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/40"
 				>
 					<div className="size-3 shrink-0" />
-					<input
-						type="checkbox"
+					<Checkbox
 						id={`field-${f.key}`}
 						checked={false}
-						onChange={() => toggle(f.key)}
-						className="size-3.5 cursor-pointer rounded accent-primary"
+						onCheckedChange={() => toggle(f.key)}
 					/>
 					<label
 						htmlFor={`field-${f.key}`}

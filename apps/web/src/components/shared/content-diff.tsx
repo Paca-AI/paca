@@ -34,10 +34,8 @@ export function DiffLineRow({ line }: { line: DiffLine }) {
 		<div
 			className={cn(
 				"flex gap-2 px-3 py-0.5 font-mono text-xs leading-5",
-				line.type === "added" &&
-					"bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-				line.type === "removed" &&
-					"bg-red-500/10 text-red-700 dark:text-red-400",
+				line.type === "added" && "bg-success/10 text-success",
+				line.type === "removed" && "bg-destructive/10 text-destructive",
 				line.type === "unchanged" && "text-muted-foreground/50",
 			)}
 		>
@@ -118,11 +116,11 @@ export function ContentDiffDialog({
 					</DialogTitle>
 				</DialogHeader>
 				<div className="flex items-center gap-4 px-5 py-2 border-b border-border/25 bg-muted/10 shrink-0">
-					<span className="flex items-center gap-1.5 text-xs text-red-600/80 dark:text-red-400/80">
+					<span className="flex items-center gap-1.5 text-xs text-destructive/80">
 						<span className="font-mono font-bold">-</span>{" "}
 						{t("contentDiff.removed")}
 					</span>
-					<span className="flex items-center gap-1.5 text-xs text-emerald-600/80 dark:text-emerald-400/80">
+					<span className="flex items-center gap-1.5 text-xs text-success/80">
 						<span className="font-mono font-bold">+</span>{" "}
 						{t("contentDiff.added")}
 					</span>

@@ -1,8 +1,15 @@
 import { Plus, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
-
 import { ReportIssueButton } from "@/components/report-issue-button";
 import { Button } from "@/components/ui/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@/components/ui/empty";
 
 interface EmptyUsersStateProps {
 	canWrite: boolean;
@@ -13,23 +20,23 @@ export function EmptyUsersState({ canWrite, onCreate }: EmptyUsersStateProps) {
 	const { t } = useTranslation("admin");
 
 	return (
-		<div className="flex flex-col items-center gap-4 rounded-xl border border-dashed bg-muted/20 py-16 text-center">
-			<div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
-				<Users className="size-6" />
-			</div>
-			<div>
-				<p className="text-sm font-medium">{t("users.empty.title")}</p>
-				<p className="mt-1 text-xs text-muted-foreground">
-					{t("users.empty.description")}
-				</p>
-			</div>
-			{canWrite ? (
-				<Button size="sm" variant="outline" onClick={onCreate}>
-					<Plus className="size-4" />
-					{t("users.empty.createUser")}
-				</Button>
-			) : null}
-		</div>
+		<Empty className="border border-dashed bg-muted/20 py-16 ">
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<Users className="size-6" />
+				</EmptyMedia>
+				<EmptyTitle>{t("users.empty.title")}</EmptyTitle>
+				<EmptyDescription>{t("users.empty.description")}</EmptyDescription>
+			</EmptyHeader>
+			<EmptyContent>
+				{canWrite ? (
+					<Button size="sm" variant="outline" onClick={onCreate}>
+						<Plus className="size-4" />
+						{t("users.empty.createUser")}
+					</Button>
+				) : null}
+			</EmptyContent>
+		</Empty>
 	);
 }
 
@@ -37,20 +44,20 @@ export function NoUsersMatchState({ onClear }: { onClear: () => void }) {
 	const { t } = useTranslation("admin");
 
 	return (
-		<div className="flex flex-col items-center gap-4 rounded-xl border border-dashed bg-muted/20 py-16 text-center">
-			<div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
-				<Users className="size-6" />
-			</div>
-			<div>
-				<p className="text-sm font-medium">{t("users.noMatch.title")}</p>
-				<p className="mt-1 text-xs text-muted-foreground">
-					{t("users.noMatch.description")}
-				</p>
-			</div>
-			<Button size="sm" variant="outline" onClick={onClear}>
-				{t("users.noMatch.clear")}
-			</Button>
-		</div>
+		<Empty className="border border-dashed bg-muted/20 py-16 ">
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<Users className="size-6" />
+				</EmptyMedia>
+				<EmptyTitle>{t("users.noMatch.title")}</EmptyTitle>
+				<EmptyDescription>{t("users.noMatch.description")}</EmptyDescription>
+			</EmptyHeader>
+			<EmptyContent>
+				<Button size="sm" variant="outline" onClick={onClear}>
+					{t("users.noMatch.clear")}
+				</Button>
+			</EmptyContent>
+		</Empty>
 	);
 }
 

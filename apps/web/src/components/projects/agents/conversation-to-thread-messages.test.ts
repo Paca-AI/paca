@@ -483,7 +483,7 @@ describe("eventsToThreadMessages", () => {
 
 		const messages = eventsToThreadMessages(events, true);
 
-		expect(messages[1].status).toEqual({ type: "running" });
+		expect(messages[1].status).toBe("running");
 	});
 
 	it("marks a completed trailing assistant message as complete", () => {
@@ -491,7 +491,7 @@ describe("eventsToThreadMessages", () => {
 
 		const messages = eventsToThreadMessages(events, false);
 
-		expect(messages[1].status).toEqual({ type: "complete", reason: "stop" });
+		expect(messages[1].status).toBe("complete");
 	});
 
 	it("resolves an open tool-call with an error when the tool fails (AgentErrorEvent)", () => {

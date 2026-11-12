@@ -1,16 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-	GitBranch,
-	Link2,
-	Loader2,
-	Lock,
-	Plus,
-	Search,
-	Trash2,
-} from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { GitBranch, Link2, Lock, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyChip, EmptyState, Section } from "@/components/git/git-ui";
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,8 +21,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { listAgents } from "@/lib/agent-api";
 import {
@@ -56,7 +60,6 @@ import {
 	updateGitRepository,
 	updateGitSettings,
 } from "@/lib/git-api";
-import { cn } from "@/lib/utils";
 import { GitConnections } from "./GitConnections";
 import { GitRepositoryBrowserDialog, linkedKey } from "./GitRepositoryPicker";
 
@@ -166,109 +169,62 @@ export function GitSettings({ projectId, canWrite }: GitSettingsProps) {
 				</p>
 			</div>
 
-			<div
-				role="tablist"
-				aria-label={t("project.git.title")}
-				className="flex gap-1 overflow-x-auto border-b"
-				onKeyDown={(e) => {
-					const i = tabs.findIndex((x) => x.id === current);
-					const next =
-						e.key === "ArrowRight"
-							? tabs[(i + 1) % tabs.length]
-							: e.key === "ArrowLeft"
-								? tabs[(i - 1 + tabs.length) % tabs.length]
-								: e.key === "Home"
-									? tabs[0]
-									: e.key === "End"
-										? tabs[tabs.length - 1]
-										: null;
-					if (!next) return;
-					e.preventDefault();
-					setTab(next.id);
-					document.getElementById(`git-tab-${next.id}`)?.focus();
-				}}
+			<Tabs
+				value={current}
+				onValueChange={(v) => setTab(v as GitTab)}
+				className="gap-6"
 			>
-				{tabs.map((x) => (
-					<button
-						key={x.id}
-						type="button"
-						role="tab"
-						id={`git-tab-${x.id}`}
-						aria-selected={current === x.id}
-						aria-controls={`git-panel-${x.id}`}
-						tabIndex={current === x.id ? 0 : -1}
-						onClick={() => setTab(x.id)}
-						className={cn(
-							"-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-							current === x.id
-								? "border-primary text-foreground"
-								: "border-transparent text-muted-foreground hover:text-foreground",
-						)}
-					>
-						{x.label}
-						{x.count !== undefined ? (
-							<span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">
-								{x.count}
-							</span>
-						) : null}
-					</button>
-				))}
-			</div>
+				<TabsList
+					variant="line"
+					aria-label={t("project.git.title")}
+					activateOnFocus
+				>
+					{tabs.map((x) => (
+						<TabsTrigger key={x.id} value={x.id}>
+							{x.label}
+							{x.count !== undefined ? (
+								<span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">
+									{x.count}
+								</span>
+							) : null}
+						</TabsTrigger>
+					))}
+				</TabsList>
 
-			{/* Panels stay mounted so a half-typed repository or an unsaved
+				{/* Panels stay mounted so a half-typed repository or an unsaved
 			   automation change survives a trip to another tab. */}
-			<TabPanel id="connections" current={current}>
-				<GitConnections projectId={projectId} providers={list} />
-			</TabPanel>
-			<TabPanel id="repositories" current={current}>
-				<Repositories
-					projectId={projectId}
-					canWrite={canWrite}
-					providers={list}
-					connections={connections.data ?? []}
-					linked={linked}
-				/>
-			</TabPanel>
-			<TabPanel id="automation" current={current}>
-				<Automation
-					projectId={projectId}
-					canWrite={canWrite}
-					locked={linked.length === 0}
-					settings={settings.data}
-					agentList={agentList}
-				/>
-			</TabPanel>
-			{linked.length > 0 ? (
-				<TabPanel id="usage" current={current}>
-					<HowToUse bot={bot} agentHandle={agentList[0]?.handle ?? "agent"} />
-				</TabPanel>
-			) : null}
+				<TabsContent keepMounted value="connections">
+					<GitConnections projectId={projectId} providers={list} />
+				</TabsContent>
+				<TabsContent keepMounted value="repositories">
+					<Repositories
+						projectId={projectId}
+						canWrite={canWrite}
+						providers={list}
+						connections={connections.data ?? []}
+						linked={linked}
+					/>
+				</TabsContent>
+				<TabsContent keepMounted value="automation">
+					<Automation
+						projectId={projectId}
+						canWrite={canWrite}
+						locked={linked.length === 0}
+						settings={settings.data}
+						agentList={agentList}
+					/>
+				</TabsContent>
+				{linked.length > 0 ? (
+					<TabsContent keepMounted value="usage">
+						<HowToUse bot={bot} agentHandle={agentList[0]?.handle ?? "agent"} />
+					</TabsContent>
+				) : null}
+			</Tabs>
 		</div>
 	);
 }
 
 type GitTab = "connections" | "repositories" | "automation" | "usage";
-
-function TabPanel({
-	id,
-	current,
-	children,
-}: {
-	id: GitTab;
-	current: GitTab;
-	children: ReactNode;
-}) {
-	return (
-		<div
-			role="tabpanel"
-			id={`git-panel-${id}`}
-			aria-labelledby={`git-tab-${id}`}
-			hidden={current !== id}
-		>
-			{children}
-		</div>
-	);
-}
 
 // ── Repositories ─────────────────────────────────────────────────────────────
 
@@ -422,18 +378,18 @@ function Repositories({
 					<Label htmlFor="git-link-provider">
 						{t("project.git.link.platform")}
 					</Label>
-					<select
+					<NativeSelect
 						id="git-link-provider"
-						className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+						className="w-full"
 						value={provider?.id ?? ""}
 						onChange={(e) => setProviderId(e.target.value)}
 					>
 						{providers.map((p) => (
-							<option key={p.id} value={p.id}>
+							<NativeSelectOption key={p.id} value={p.id}>
 								{p.display_name}
-							</option>
+							</NativeSelectOption>
 						))}
-					</select>
+					</NativeSelect>
 				</div>
 			) : null}
 			{options.length === 0 ? (
@@ -447,20 +403,22 @@ function Repositories({
 					<Label htmlFor="git-link-connection">
 						{t("project.git.link.connection")}
 					</Label>
-					<select
+					<NativeSelect
 						id="git-link-connection"
-						className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+						className="w-full"
 						value={chosen}
 						onChange={(e) => setIdentityId(e.target.value)}
 					>
-						<option value="">{t("project.git.link.anyConnection")}</option>
+						<NativeSelectOption value="">
+							{t("project.git.link.anyConnection")}
+						</NativeSelectOption>
 						{options.map((c) => (
-							<option key={c.id} value={c.id}>
+							<NativeSelectOption key={c.id} value={c.id}>
 								{c.display_name || c.handle} ({c.host},{" "}
 								{t(`project.git.connections.scope.${c.scope}` as never)})
-							</option>
+							</NativeSelectOption>
 						))}
-					</select>
+					</NativeSelect>
 					<p className="text-xs text-muted-foreground">
 						{t("project.git.link.connectionHelp")}
 					</p>
@@ -521,7 +479,7 @@ function Repositories({
 			{needsAccess ? (
 				<div
 					role="alert"
-					className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-3 text-sm"
+					className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-3 text-sm"
 				>
 					<p className="font-medium">{t("project.git.access.title")}</p>
 					<p className="text-muted-foreground">
@@ -539,21 +497,21 @@ function Repositories({
 							<Label htmlFor="git-access-connection">
 								{t("project.git.access.connection")}
 							</Label>
-							<select
+							<NativeSelect
 								id="git-access-connection"
-								className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+								className="w-full"
 								value={accessTarget}
 								onChange={(e) => setIdentityId(e.target.value)}
 							>
-								<option value="" disabled>
+								<NativeSelectOption value="" disabled>
 									{t("project.git.access.choose")}
-								</option>
+								</NativeSelectOption>
 								{grantable.map((c) => (
-									<option key={c.id} value={c.id}>
+									<NativeSelectOption key={c.id} value={c.id}>
 										{c.display_name || c.handle}
-									</option>
+									</NativeSelectOption>
 								))}
-							</select>
+							</NativeSelect>
 						</div>
 					) : null}
 					<div>
@@ -563,9 +521,7 @@ function Repositories({
 							disabled={grant.isPending || !accessTarget}
 							onClick={() => grant.mutate()}
 						>
-							{grant.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
-							) : null}
+							{grant.isPending ? <Spinner aria-hidden="true" /> : null}
 							{owner
 								? t("project.git.access.button", { owner })
 								: t("project.git.access.buttonNoOwner")}
@@ -592,7 +548,7 @@ function Repositories({
 					disabled={link.isPending || !input.trim() || !provider}
 				>
 					{link.isPending ? (
-						<Loader2 className="size-4 animate-spin" />
+						<Spinner aria-hidden="true" />
 					) : (
 						<Link2 className="size-4" />
 					)}
@@ -786,6 +742,7 @@ function RepositoryDescription({
 	const current = repository.description ?? "";
 
 	const save = useMutation({
+		meta: { success: "saved" },
 		mutationFn: () =>
 			updateGitRepository(projectId, repository.id, {
 				description: value.trim(),
@@ -826,9 +783,7 @@ function RepositoryDescription({
 				) : null}
 				<div className="flex gap-2">
 					<Button type="submit" size="sm" disabled={save.isPending}>
-						{save.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : null}
+						{save.isPending ? <Spinner aria-hidden="true" /> : null}
 						{t("project.git.repositories.saveDescription")}
 					</Button>
 					<Button
@@ -922,7 +877,7 @@ function ReconnectNotice({
 	return (
 		<div
 			role="status"
-			className="flex basis-full flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-3 text-sm"
+			className="flex basis-full flex-col gap-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-3 text-sm"
 		>
 			<p className="font-medium">{t("project.git.reconnect.title")}</p>
 			<p className="text-muted-foreground">
@@ -931,19 +886,21 @@ function ReconnectNotice({
 					: t("project.git.reconnect.description")}
 			</p>
 			{canWrite && options.length > 1 ? (
-				<select
+				<NativeSelect
 					aria-label={t("project.git.link.connection")}
-					className="h-9 max-w-xs rounded-md border border-input bg-background px-3 text-sm"
+					className="w-full max-w-xs"
 					value={chosen}
 					onChange={(e) => setChoice(e.target.value)}
 				>
-					<option value="">{t("project.git.link.anyConnection")}</option>
+					<NativeSelectOption value="">
+						{t("project.git.link.anyConnection")}
+					</NativeSelectOption>
 					{options.map((c) => (
-						<option key={c.id} value={c.id}>
+						<NativeSelectOption key={c.id} value={c.id}>
 							{c.display_name || c.handle}
-						</option>
+						</NativeSelectOption>
 					))}
-				</select>
+				</NativeSelect>
 			) : null}
 			{errorKey ? (
 				<div role="alert" className="flex flex-col gap-1">
@@ -962,9 +919,7 @@ function ReconnectNotice({
 						disabled={reconnect.isPending}
 						onClick={() => reconnect.mutate()}
 					>
-						{reconnect.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : null}
+						{reconnect.isPending ? <Spinner aria-hidden="true" /> : null}
 						{t("project.git.reconnect.button")}
 					</Button>
 				</div>
@@ -1026,7 +981,7 @@ function WebhookNotice({
 	return (
 		<div
 			role="status"
-			className="flex basis-full flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-3 text-sm"
+			className="flex basis-full flex-col gap-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-3 text-sm"
 		>
 			<p className="font-medium">{t("project.git.webhook.title")}</p>
 			<p className="text-muted-foreground">
@@ -1057,9 +1012,7 @@ function WebhookNotice({
 						disabled={retry.isPending}
 						onClick={() => retry.mutate()}
 					>
-						{retry.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : null}
+						{retry.isPending ? <Spinner aria-hidden="true" /> : null}
 						{t(
 							neverTried
 								? "project.git.webhook.register"
@@ -1098,6 +1051,7 @@ function Automation({
 	}, [settings]);
 
 	const save = useMutation({
+		meta: { success: "saved" },
 		mutationFn: (next: GitProjectSettings) =>
 			updateGitSettings(projectId, next),
 		onSuccess: (next) => {
@@ -1143,86 +1097,87 @@ function Automation({
 					<Label htmlFor="git-responder">
 						{t("project.git.automation.responder.label")}
 					</Label>
-					<select
+					<NativeSelect
 						id="git-responder"
-						className="h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
+						className="w-full"
 						disabled={disabled}
 						value={draft.default_responder_agent_id ?? ""}
 						onChange={(e) =>
 							change({ default_responder_agent_id: e.target.value || null })
 						}
 					>
-						<option value="">
+						<NativeSelectOption value="">
 							{t("project.git.automation.responder.none")}
-						</option>
+						</NativeSelectOption>
 						{agentList.map((a) => (
-							<option key={a.id} value={a.id}>
+							<NativeSelectOption key={a.id} value={a.id}>
 								{a.name}
-							</option>
+							</NativeSelectOption>
 						))}
-					</select>
+					</NativeSelect>
 					<p className="text-xs text-muted-foreground">
 						{t("project.git.automation.responder.help")}
 					</p>
 					{!locked && !draft.default_responder_agent_id ? (
-						<p
-							role="status"
-							className="text-xs font-medium text-amber-600 dark:text-amber-400"
-						>
+						<p role="status" className="text-xs font-medium text-warning">
 							{t("project.git.automation.responder.warning")}
 						</p>
 					) : null}
 				</div>
 
-				<details className="group rounded-lg border border-border/60 px-3 py-2">
-					<summary className="cursor-pointer text-sm font-medium">
-						{t("project.git.automation.advanced")}
-					</summary>
-					<div className="mt-4 flex flex-col gap-5">
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="git-min-permission">
-								{t("project.git.automation.minPermission.label")}
-							</Label>
-							<select
-								id="git-min-permission"
-								className="h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
-								disabled={disabled}
-								value={draft.min_actor_permission}
-								onChange={(e) =>
-									change({
-										min_actor_permission: e.target.value as GitPermission,
-									})
-								}
-							>
-								{GIT_PERMISSIONS.map((p) => (
-									<option key={p} value={p}>
-										{t(`project.git.automation.permission.${p}` as never)}
-									</option>
-								))}
-							</select>
-							<p className="text-xs text-muted-foreground">
-								{t("project.git.automation.minPermission.help")}
-							</p>
-						</div>
+				<Accordion className="rounded-lg border border-border/60 px-3 py-2">
+					<AccordionItem value="item" className="border-b-0">
+						<AccordionTrigger className="py-0 text-sm font-medium">
+							{t("project.git.automation.advanced")}
+						</AccordionTrigger>
+						<AccordionContent keepMounted className="pb-0 pt-0">
+							<div className="mt-4 flex flex-col gap-5">
+								<div className="flex flex-col gap-1.5">
+									<Label htmlFor="git-min-permission">
+										{t("project.git.automation.minPermission.label")}
+									</Label>
+									<NativeSelect
+										id="git-min-permission"
+										className="w-full"
+										disabled={disabled}
+										value={draft.min_actor_permission}
+										onChange={(e) =>
+											change({
+												min_actor_permission: e.target.value as GitPermission,
+											})
+										}
+									>
+										{GIT_PERMISSIONS.map((p) => (
+											<NativeSelectOption key={p} value={p}>
+												{t(`project.git.automation.permission.${p}` as never)}
+											</NativeSelectOption>
+										))}
+									</NativeSelect>
+									<p className="text-xs text-muted-foreground">
+										{t("project.git.automation.minPermission.help")}
+									</p>
+								</div>
 
-						<div className="flex items-center justify-between gap-3">
-							<div>
-								<Label htmlFor="git-paused">
-									{t("project.git.automation.paused.label")}
-								</Label>
-								<p className="text-xs text-muted-foreground">
-									{t("project.git.automation.paused.help")}
-								</p>
+								<div className="flex items-center justify-between gap-3">
+									<div>
+										<Label htmlFor="git-paused">
+											{t("project.git.automation.paused.label")}
+										</Label>
+										<p className="text-xs text-muted-foreground">
+											{t("project.git.automation.paused.help")}
+										</p>
+									</div>
+									<Switch
+										id="git-paused"
+										checked={draft.paused}
+										disabled={disabled}
+										onCheckedChange={(v) => change({ paused: v })}
+									/>
+								</div>
 							</div>
-							<Switch
-								id="git-paused"
-								checked={draft.paused}
-								disabled={disabled}
-								onCheckedChange={(v) => change({ paused: v })}
-							/>
-						</div>
-					</div>
-				</details>
+						</AccordionContent>
+					</AccordionItem>
+				</Accordion>
 
 				{errorKey ? (
 					<p role="alert" className="text-sm text-destructive">
@@ -1238,9 +1193,7 @@ function Automation({
 				{!disabled ? (
 					<div>
 						<Button type="submit" disabled={!dirty || save.isPending}>
-							{save.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
-							) : null}
+							{save.isPending ? <Spinner aria-hidden="true" /> : null}
 							{t("project.git.automation.save")}
 						</Button>
 					</div>
@@ -1275,32 +1228,38 @@ function HowToUse({ bot, agentHandle }: { bot: string; agentHandle: string }) {
 		},
 	];
 	return (
-		<details className="group rounded-xl border border-border/60 px-4 py-3">
-			<summary className="cursor-pointer text-sm font-semibold">
-				{t("project.git.usage.title")}
-			</summary>
-			<div className="mt-3">
-				<p className="mb-3 text-sm text-muted-foreground">
-					{t("project.git.usage.description")}
-				</p>
-				<ul className="flex flex-col divide-y divide-border/60">
-					{items.map((i) => (
-						<li
-							key={i.id}
-							className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
-						>
-							<div className="min-w-0 flex-1">
-								<p className="text-sm font-medium">{i.title}</p>
-								<p className="text-sm text-muted-foreground">{i.description}</p>
-							</div>
-							<CopyChip value={i.example} />
-						</li>
-					))}
-				</ul>
-				<p className="mt-4 border-t border-border/60 pt-3 text-sm text-muted-foreground">
-					{t("project.git.usage.automatic")}
-				</p>
-			</div>
-		</details>
+		<Accordion className="rounded-xl border border-border/60 px-4 py-3">
+			<AccordionItem value="item" className="border-b-0">
+				<AccordionTrigger className="py-0 text-sm font-semibold">
+					{t("project.git.usage.title")}
+				</AccordionTrigger>
+				<AccordionContent keepMounted className="pb-0 pt-0">
+					<div className="mt-3">
+						<p className="mb-3 text-sm text-muted-foreground">
+							{t("project.git.usage.description")}
+						</p>
+						<ul className="flex flex-col divide-y divide-border/60">
+							{items.map((i) => (
+								<li
+									key={i.id}
+									className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+								>
+									<div className="min-w-0 flex-1">
+										<p className="text-sm font-medium">{i.title}</p>
+										<p className="text-sm text-muted-foreground">
+											{i.description}
+										</p>
+									</div>
+									<CopyChip value={i.example} />
+								</li>
+							))}
+						</ul>
+						<p className="mt-4 border-t border-border/60 pt-3 text-sm text-muted-foreground">
+							{t("project.git.usage.automatic")}
+						</p>
+					</div>
+				</AccordionContent>
+			</AccordionItem>
+		</Accordion>
 	);
 }

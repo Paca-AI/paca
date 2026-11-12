@@ -97,7 +97,7 @@ export function ResetPasswordDialog({
 			<DialogContent className="sm:max-w-sm">
 				<DialogHeader>
 					<div className="flex items-center gap-2.5">
-						<div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+						<div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-warning/10 text-warning">
 							<KeyRound className="size-4" />
 						</div>
 						<DialogTitle className="text-base">
@@ -161,7 +161,7 @@ export function ResetPasswordDialog({
 									aria-label={t("users.resetPasswordDialog.copyPassword")}
 								>
 									{copied ? (
-										<Check className="size-4 text-green-500" />
+										<Check className="size-4 text-success" />
 									) : (
 										<Copy className="size-4" />
 									)}

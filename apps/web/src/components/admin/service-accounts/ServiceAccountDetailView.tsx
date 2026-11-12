@@ -3,7 +3,6 @@ import { useNavigate } from "@tanstack/react-router";
 import {
 	Check,
 	KeyRound,
-	Loader2,
 	Save,
 	ServerCog,
 	ShieldCheck,
@@ -11,7 +10,6 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { DeleteServiceAccountDialog } from "@/components/admin/service-accounts/DeleteServiceAccountDialog";
 import { ServiceAccountKeysTab } from "@/components/admin/service-accounts/ServiceAccountKeysTab";
 import { ServiceAccountRolesTab } from "@/components/admin/service-accounts/ServiceAccountRolesTab";
@@ -23,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
@@ -81,6 +80,7 @@ function OverviewTab({
 	const isDirty = name !== account.name || description !== account.description;
 
 	const saveMutation = useMutation({
+		meta: { success: "saved" },
 		mutationFn: () =>
 			updateServiceAccount(account.id, {
 				name: name.trim(),
@@ -157,14 +157,14 @@ function OverviewTab({
 				<div className="flex items-center gap-3">
 					<Button onClick={() => saveMutation.mutate()} disabled={!canSave}>
 						{saveMutation.isPending ? (
-							<Loader2 className="size-4 mr-2 animate-spin" />
+							<Spinner aria-hidden="true" className="mr-2" />
 						) : (
 							<Save className="size-4 mr-2" />
 						)}
 						{t("serviceAccounts.detail.overview.saveChanges")}
 					</Button>
 					{saveMutation.isSuccess && !isDirty ? (
-						<span className="flex items-center gap-1 text-xs text-emerald-600">
+						<span className="flex items-center gap-1 text-xs text-success">
 							<Check className="size-3" />
 							{t("serviceAccounts.detail.overview.saved")}
 						</span>

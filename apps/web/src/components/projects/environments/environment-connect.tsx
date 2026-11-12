@@ -11,7 +11,6 @@ import {
 	Copy,
 	ExternalLink,
 	KeyRound,
-	Loader2,
 	Play,
 	Plus,
 	TerminalSquare,
@@ -37,6 +36,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -228,7 +228,7 @@ function AddSSHKeyDialog({
 						}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							t("environments.detail.sshKeys.addDialog.addKey")
 						)}
@@ -408,7 +408,7 @@ function WebAppConnectTab({
 				)
 			) : (
 				<div className="space-y-3">
-					<p className="text-sm text-amber-600">
+					<p className="text-sm text-warning">
 						{t("environments.connect.webApp.notRunning")}
 					</p>
 					{canWrite && (
@@ -417,7 +417,7 @@ function WebAppConnectTab({
 							disabled={startMutation.isPending}
 						>
 							{startMutation.isPending ? (
-								<Loader2 className="size-4 mr-2 animate-spin" />
+								<Spinner aria-hidden="true" className="mr-2" />
 							) : (
 								<Play className="size-4 mr-2" />
 							)}
@@ -507,7 +507,7 @@ function SSHConnectTab({
 								</p>
 							)}
 							{environment.status !== "running" && (
-								<p className="text-xs text-amber-600">
+								<p className="text-xs text-warning">
 									{t("environments.connect.ssh.notRunning")}
 								</p>
 							)}

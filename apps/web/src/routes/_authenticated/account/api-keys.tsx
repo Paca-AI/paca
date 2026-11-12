@@ -36,6 +36,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { toast } from "@/components/ui/toast";
 import { useTablePaging } from "@/hooks/use-table-paging";
 import {
 	apiKeysPageQueryOptions,
@@ -133,7 +134,7 @@ function APIKeysPage() {
 		void copyToClipboard(revealedKey.key).then((ok) => {
 			if (!ok) {
 				setCopied(false);
-				window.alert(t("apiKeys.errors.copyFailed"));
+				toast.add({ type: "error", title: t("apiKeys.errors.copyFailed") });
 				return;
 			}
 			setCopied(true);
@@ -382,7 +383,7 @@ function APIKeysPage() {
 							</Button>
 						</div>
 						{copied ? (
-							<p className="text-xs text-green-600">
+							<p className="text-xs text-success">
 								{t("apiKeys.revealDialog.copied")}
 							</p>
 						) : null}

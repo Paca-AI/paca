@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AvatarUpload } from "@/components/shared/avatar-upload";
@@ -7,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { projectQueryOptions, updateProject } from "@/lib/project-api";
@@ -31,6 +31,7 @@ export function GeneralSettings({
 	const [saved, setSaved] = useState(false);
 
 	const mutation = useMutation({
+		meta: { success: "saved" },
 		mutationFn: () =>
 			updateProject(projectId, {
 				name: name.trim(),
@@ -209,12 +210,12 @@ export function GeneralSettings({
 							className="gap-1.5"
 						>
 							{mutation.isPending ? (
-								<Loader2 className="size-3.5 animate-spin" />
+								<Spinner aria-hidden="true" className="size-3.5" />
 							) : null}
 							{t("settings.general.saveChanges")}
 						</Button>
 						{saved ? (
-							<span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+							<span className="text-xs text-success font-medium">
 								{t("settings.general.saved")}
 							</span>
 						) : null}

@@ -9,7 +9,6 @@ import {
 	Workflow as AutomationIcon,
 	Clock,
 	GitBranch,
-	Loader2,
 	Plus,
 	Trash2,
 } from "lucide-react";
@@ -30,6 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { isForbiddenError } from "@/lib/api-error";
@@ -326,7 +326,7 @@ function AutomationListPage() {
 							onClick={() => createMutation.mutate()}
 						>
 							{createMutation.isPending && (
-								<Loader2 className="size-4 mr-2 animate-spin" />
+								<Spinner aria-hidden="true" className="mr-2" />
 							)}
 							{t("automation.createDialog.create")}
 						</Button>
@@ -357,7 +357,7 @@ function AutomationListPage() {
 							}
 						>
 							{deleteMutation.isPending && (
-								<Loader2 className="size-4 mr-2 animate-spin" />
+								<Spinner aria-hidden="true" className="mr-2" />
 							)}
 							{t("automation.deleteDialog.confirm")}
 						</Button>

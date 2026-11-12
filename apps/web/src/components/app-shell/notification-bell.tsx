@@ -8,7 +8,6 @@ import type { TFunction } from "i18next";
 import {
 	AtSign,
 	Bell,
-	Loader2,
 	MessageCircleQuestion,
 	UserPlus,
 	Volume2,
@@ -24,6 +23,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
 	MAX_DISPLAYED_UNREAD_COUNT,
@@ -283,7 +283,7 @@ export function NotificationBell() {
 						</ul>
 						{isFetchingNextPage && (
 							<div className="flex items-center justify-center gap-1.5 py-3 text-xs text-muted-foreground">
-								<Loader2 className="h-3 w-3 animate-spin" />
+								<Spinner aria-hidden="true" className="h-3 w-3" />
 								{t("notifications.loadingMore")}
 							</div>
 						)}

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	deleteGitIdentity,
 	type GitIdentity,
@@ -82,7 +83,7 @@ export function DeleteGitIdentityDialog({
 				{usage && usage.names.length + usage.others > 0 ? (
 					<div
 						role="note"
-						className="flex flex-col gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2.5 text-sm"
+						className="flex flex-col gap-1.5 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2.5 text-sm"
 					>
 						<p className="font-medium">
 							{t("git.delete.usage.title", {
@@ -140,9 +141,7 @@ export function DeleteGitIdentityDialog({
 							mutation.mutate();
 						}}
 					>
-						{mutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : null}
+						{mutation.isPending ? <Spinner aria-hidden="true" /> : null}
 						{t("git.delete.confirm")}
 					</Button>
 				</DialogFooter>

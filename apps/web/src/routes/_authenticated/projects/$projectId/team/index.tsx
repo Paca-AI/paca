@@ -10,7 +10,6 @@ import {
 	Bot,
 	Check,
 	KeyRound,
-	Loader2,
 	MoreHorizontal,
 	PenLine,
 	Plus,
@@ -54,6 +53,7 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useCanAssignProjectRole } from "@/hooks/use-can-assign-project-role";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
@@ -536,7 +536,10 @@ function AddMemberDialog({
 									<div className="max-h-52 overflow-y-auto p-1">
 										{isLoadingServiceAccounts ? (
 											<div className="flex items-center justify-center py-4">
-												<Loader2 className="size-4 animate-spin text-muted-foreground" />
+												<Spinner
+													aria-hidden="true"
+													className="text-muted-foreground"
+												/>
 											</div>
 										) : availableServiceAccounts.length === 0 ? (
 											<p className="py-4 text-center text-xs text-muted-foreground">
@@ -621,7 +624,10 @@ function AddMemberDialog({
 									<div className="max-h-52 overflow-y-auto p-1">
 										{isLoadingAgents ? (
 											<div className="flex items-center justify-center py-4">
-												<Loader2 className="size-4 animate-spin text-muted-foreground" />
+												<Spinner
+													aria-hidden="true"
+													className="text-muted-foreground"
+												/>
 											</div>
 										) : availableAgents.length === 0 ? (
 											<p className="py-4 text-center text-xs text-muted-foreground">
@@ -713,7 +719,10 @@ function AddMemberDialog({
 									>
 										{isLoadingUsers ? (
 											<div className="flex items-center justify-center py-4">
-												<Loader2 className="size-4 animate-spin text-muted-foreground" />
+												<Spinner
+													aria-hidden="true"
+													className="text-muted-foreground"
+												/>
 											</div>
 										) : filteredUsers.length === 0 ? (
 											<p className="py-4 text-center text-xs text-muted-foreground">
@@ -733,7 +742,7 @@ function AddMemberDialog({
 										)}
 										{isFetchingNextPage && (
 											<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
-												<Loader2 className="size-3 animate-spin" />
+												<Spinner aria-hidden="true" className="size-3" />
 												{t("team.addMemberDialog.loadingMore")}
 											</div>
 										)}
@@ -806,7 +815,7 @@ function AddMemberDialog({
 						onClick={() => addMutation.mutate()}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : (
 							<Plus className="size-3.5" />
 						)}
@@ -1021,7 +1030,7 @@ function DescriptionChip({
 						disabled={mutation.isPending || value === member.description}
 					>
 						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : (
 							t("team.descriptionChip.save")
 						)}
@@ -1456,7 +1465,7 @@ function TeamPage() {
 							onClick={() => removeMutation.mutate()}
 						>
 							{removeMutation.isPending ? (
-								<Loader2 className="size-3.5 animate-spin" />
+								<Spinner aria-hidden="true" className="size-3.5" />
 							) : (
 								<Trash2 className="size-3.5" />
 							)}

@@ -1,10 +1,21 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { GitBranch, Link2, Loader2 } from "lucide-react";
+import { GitBranch, Link2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from "@/components/ui/native-select";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	createTaskBranch,
 	type GitRepository,
@@ -86,20 +97,22 @@ function RepoSelect({
 }) {
 	const { t } = useTranslation("projects");
 	return (
-		<select
+		<NativeSelect
 			id={id}
-			className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+			className="w-full"
 			value={value}
 			disabled={disabled}
 			onChange={(e) => onChange(e.target.value)}
 		>
-			<option value="">{t("taskDetail.git.forms.selectRepository")}</option>
+			<NativeSelectOption value="">
+				{t("taskDetail.git.forms.selectRepository")}
+			</NativeSelectOption>
 			{repos.map((r) => (
-				<option key={r.id} value={r.id}>
+				<NativeSelectOption key={r.id} value={r.id}>
 					{r.full_path}
-				</option>
+				</NativeSelectOption>
 			))}
-		</select>
+		</NativeSelect>
 	);
 }
 
@@ -127,7 +140,7 @@ function FormActions({
 	return (
 		<div className="flex gap-2">
 			<Button type="submit" size="sm" disabled={!canSubmit || pending}>
-				{pending ? <Loader2 className="size-4 animate-spin" /> : icon}
+				{pending ? <Spinner aria-hidden="true" /> : icon}
 				{submitLabel}
 			</Button>
 			<Button
@@ -570,25 +583,29 @@ export function CreateBranchForm({
 					</Button>
 				</div>
 			)}
-			<details className="text-sm">
-				<summary className="cursor-pointer text-muted-foreground">
-					{t("taskDetail.git.forms.orLocally")}
-				</summary>
-				<div className="mt-2 flex items-center gap-2 rounded-md bg-muted px-3 py-2">
-					<code className="min-w-0 flex-1 break-all text-xs">{local}</code>
-					<Button
-						type="button"
-						size="sm"
-						variant="outline"
-						onClick={() => {
-							void navigator.clipboard?.writeText(local);
-							setCopied(true);
-						}}
-					>
-						{copied ? t("taskDetail.git.copied") : t("taskDetail.git.copy")}
-					</Button>
-				</div>
-			</details>
+			<Accordion className="text-sm">
+				<AccordionItem value="item" className="border-b-0">
+					<AccordionTrigger className="py-0 text-muted-foreground">
+						{t("taskDetail.git.forms.orLocally")}
+					</AccordionTrigger>
+					<AccordionContent keepMounted className="pb-0 pt-0">
+						<div className="mt-2 flex items-center gap-2 rounded-md bg-muted px-3 py-2">
+							<code className="min-w-0 flex-1 break-all text-xs">{local}</code>
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								onClick={() => {
+									void navigator.clipboard?.writeText(local);
+									setCopied(true);
+								}}
+							>
+								{copied ? t("taskDetail.git.copied") : t("taskDetail.git.copy")}
+							</Button>
+						</div>
+					</AccordionContent>
+				</AccordionItem>
+			</Accordion>
 		</form>
 	);
 }

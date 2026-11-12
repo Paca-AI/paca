@@ -46,7 +46,7 @@ describe("member names in pickers", () => {
 		const trigger = screen.getByRole("button", { name: members[0].full_name });
 		expect(within(trigger).getByText("agent-v2")).toBeVisible();
 		await user.click(trigger);
-		const option = screen.getByRole("button", { name: members[1].full_name });
+		const option = screen.getByRole("option", { name: members[1].full_name });
 		expect(within(option).getByTitle(members[1].full_name)).toBeInTheDocument();
 		expect(within(option).getByText("agent-v3")).toBeVisible();
 		await user.click(option);
@@ -69,7 +69,7 @@ describe("member names in pickers", () => {
 		const trigger = screen.getByRole("button", { name: members[0].full_name });
 		expect(within(trigger).getByText("agent-v2")).toBeVisible();
 		await user.click(trigger);
-		const option = screen.getByRole("button", { name: members[1].full_name });
+		const option = screen.getByRole("option", { name: members[1].full_name });
 		expect(within(option).getByText("agent-v3")).toBeVisible();
 		await user.click(option);
 		expect(onChange).toHaveBeenCalledWith({

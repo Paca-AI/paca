@@ -12,7 +12,6 @@ import {
 	Eye,
 	EyeOff,
 	FlaskConical,
-	Loader2,
 	Lock,
 	Search,
 	Server,
@@ -50,6 +49,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -1072,7 +1072,10 @@ export function CreateAgentDialog({
 											}
 										>
 											{verifyCliLoginMutation.isPending ? (
-												<Loader2 className="size-3.5 mr-1.5 animate-spin" />
+												<Spinner
+													aria-hidden="true"
+													className="size-3.5 mr-1.5"
+												/>
 											) : (
 												<Lock className="size-3.5 mr-1.5" />
 											)}
@@ -1083,7 +1086,7 @@ export function CreateAgentDialog({
 												className={cn(
 													"text-xs",
 													verifyCliLoginMutation.data.authenticated
-														? "text-emerald-600"
+														? "text-success"
 														: "text-muted-foreground",
 												)}
 											>
@@ -1224,7 +1227,7 @@ export function CreateAgentDialog({
 										</button>
 									</div>
 									<p className="text-xs text-muted-foreground flex items-center gap-1.5">
-										<span className="size-1.5 shrink-0 rounded-full bg-emerald-500 inline-block" />
+										<span className="size-1.5 shrink-0 rounded-full bg-success inline-block" />
 										{t("agents.createDialog.apiKeyHint")}
 									</p>
 								</div>
@@ -1433,7 +1436,7 @@ export function CreateAgentDialog({
 								>
 									{createMutation.isPending ? (
 										<>
-											<Loader2 className="size-4 mr-1.5 animate-spin" />
+											<Spinner aria-hidden="true" className="mr-1.5" />
 											{t("agents.createDialog.creating")}
 										</>
 									) : (
@@ -1451,7 +1454,7 @@ export function CreateAgentDialog({
 								>
 									{roleIsPending ? (
 										<>
-											<Loader2 className="size-4 mr-1.5 animate-spin" />
+											<Spinner aria-hidden="true" className="mr-1.5" />
 											{roleChange === "remove"
 												? t("agents.detail.globalRole.removing")
 												: t("agents.detail.globalRole.assigning")}

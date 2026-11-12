@@ -11,7 +11,6 @@ import {
 	Copy,
 	ExternalLink,
 	Folder as FolderIcon,
-	Loader2,
 	MoreHorizontal,
 	Network,
 	Play,
@@ -53,6 +52,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -291,7 +291,7 @@ function OverviewTab({
 			</div>
 
 			{environment.ports_pending_restart && (
-				<div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+				<div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
 					<AlertTriangle className="size-4 shrink-0" />
 					<span className="flex-1">
 						{t("environments.detail.overview.portsPendingRestart")}
@@ -310,14 +310,14 @@ function OverviewTab({
 				<div className="flex items-center gap-3">
 					<Button onClick={() => saveMutation.mutate()} disabled={!canSave}>
 						{saveMutation.isPending ? (
-							<Loader2 className="size-4 mr-2 animate-spin" />
+							<Spinner aria-hidden="true" className="mr-2" />
 						) : (
 							<Save className="size-4 mr-2" />
 						)}
 						{t("environments.detail.overview.saveChanges")}
 					</Button>
 					{saveMutation.isSuccess && (
-						<span className="flex items-center gap-1 text-xs text-emerald-600">
+						<span className="flex items-center gap-1 text-xs text-success">
 							<Check className="size-3" />
 							{t("environments.detail.overview.saved")}
 						</span>
@@ -611,7 +611,7 @@ function AddPortForwardDialog({
 						disabled={!isValidPort || addMutation.isPending}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							t("environments.detail.portForwards.addDialog.add")
 						)}
@@ -687,7 +687,7 @@ function RestartEnvironmentDialog({
 						disabled={restartMutation.isPending}
 					>
 						{restartMutation.isPending ? (
-							<Loader2 className="size-4 mr-2 animate-spin" />
+							<Spinner aria-hidden="true" className="mr-2" />
 						) : (
 							<RotateCw className="size-4 mr-2" />
 						)}
@@ -745,7 +745,7 @@ function PortForwardsTab({
 			</p>
 
 			{environment.ports_pending_restart && (
-				<div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+				<div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
 					<AlertTriangle className="size-4 shrink-0" />
 					<span className="flex-1">
 						{isRunning
@@ -1073,7 +1073,7 @@ export function EnvironmentDetailView({
 								disabled={startMutation.isPending}
 							>
 								{startMutation.isPending ? (
-									<Loader2 className="size-3.5 mr-1.5 animate-spin" />
+									<Spinner aria-hidden="true" className="size-3.5 mr-1.5" />
 								) : (
 									<Play className="size-3.5 mr-1.5" />
 								)}
@@ -1105,7 +1105,7 @@ export function EnvironmentDetailView({
 											disabled={stopMutation.isPending}
 										>
 											{stopMutation.isPending ? (
-												<Loader2 className="size-3.5 mr-2 animate-spin" />
+												<Spinner aria-hidden="true" className="size-3.5 mr-2" />
 											) : (
 												<Square className="size-3.5 mr-2" />
 											)}
@@ -1220,7 +1220,7 @@ export function EnvironmentDetailView({
 							disabled={deleteMutation.isPending}
 						>
 							{deleteMutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
+								<Spinner aria-hidden="true" />
 							) : (
 								t("environments.detail.overview.deleteDialog.delete")
 							)}

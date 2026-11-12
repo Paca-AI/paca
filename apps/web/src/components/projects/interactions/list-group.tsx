@@ -622,7 +622,7 @@ export function ListGroup({
 							setStartSprintError(null);
 							setStartSprintOpen(true);
 						}}
-						className="flex items-center gap-1.5 rounded-md bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 active:scale-95 transition-all duration-150 shrink-0"
+						className="flex items-center gap-1.5 rounded-md bg-success px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-success active:scale-95 transition-all duration-150 shrink-0"
 					>
 						<Play className="size-3 fill-white" />
 						{t("board.listGroup.startSprint")}

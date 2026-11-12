@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
-import { Check, Edit2, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Check, Edit2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
 	Table,
@@ -429,7 +430,7 @@ function CreateCustomFieldDialog({
 						onClick={() => mutation.mutate()}
 					>
 						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : null}
 						{t("settings.customFields.createDialog.createField")}
 					</Button>
@@ -723,7 +724,7 @@ function EditCustomFieldDialog({
 						onClick={() => mutation.mutate()}
 					>
 						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : null}
 						{t("settings.customFields.saveChanges")}
 					</Button>
@@ -826,7 +827,7 @@ function DeleteCustomFieldDialog({
 						onClick={() => mutation.mutate()}
 					>
 						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : null}
 						{t("settings.customFields.deleteDialog.deleteField")}
 					</Button>
@@ -984,7 +985,7 @@ export function CustomFieldsSettings({
 									</TableCell>
 									<TableCell className="px-5">
 										{field.is_required ? (
-											<span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-medium">
+											<span className="inline-flex items-center gap-1 text-success text-xs font-medium">
 												<Check className="size-3" />
 												{t("settings.customFields.yes")}
 											</span>
@@ -996,7 +997,7 @@ export function CustomFieldsSettings({
 									</TableCell>
 									<TableCell className="px-5">
 										{field.use_in_search ? (
-											<span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-medium">
+											<span className="inline-flex items-center gap-1 text-success text-xs font-medium">
 												<Check className="size-3" />
 												{t("settings.customFields.yes")}
 											</span>

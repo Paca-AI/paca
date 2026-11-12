@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Loader2, MoreHorizontal, Settings, Trash2, Zap } from "lucide-react";
+import { MoreHorizontal, Settings, Trash2, Zap } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +21,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	type Agent,
 	acpBridgeStatusQueryOptions,
@@ -172,7 +172,7 @@ export function AgentCard({
 								className={cn(
 									"size-1.5 rounded-full",
 									acpStatus?.connected
-										? "bg-emerald-500"
+										? "bg-success"
 										: "bg-muted-foreground/40",
 								)}
 							/>
@@ -223,7 +223,7 @@ export function AgentCard({
 							disabled={deleteMutation.isPending}
 						>
 							{deleteMutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
+								<Spinner aria-hidden="true" />
 							) : (
 								t("agents.card.deleteDialog.delete")
 							)}

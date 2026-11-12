@@ -9,7 +9,7 @@ export function FieldError({ isTouched, error }: FieldErrorProps) {
 	}
 
 	return (
-		<p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">
+		<p role="alert" className="mt-1 text-xs text-destructive">
 			{error}
 		</p>
 	);

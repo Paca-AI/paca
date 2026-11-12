@@ -6,13 +6,11 @@ import {
 	Layers,
 	Link,
 	ListChecks,
-	Loader2,
 	Search,
 	User,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import {
@@ -26,6 +24,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -526,7 +525,10 @@ export function TaskCard({
 								</button>
 								{isEpicSearching && epicSearchLoading ? (
 									<div className="flex items-center justify-center py-4">
-										<Loader2 className="size-4 animate-spin text-muted-foreground/50" />
+										<Spinner
+											aria-hidden="true"
+											className="text-muted-foreground/50"
+										/>
 									</div>
 								) : (
 									<>
@@ -560,7 +562,7 @@ export function TaskCard({
 								)}
 								{activeEpicsPagination?.isLoadingMore && (
 									<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
-										<Loader2 className="size-3 animate-spin" />
+										<Spinner aria-hidden="true" className="size-3" />
 										{t("epicPicker.loadingMore")}
 									</div>
 								)}
@@ -732,7 +734,7 @@ export function TaskCard({
 							className={cn(
 								"inline-flex items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground",
 								task.subtask_done_count === task.subtask_count &&
-									"text-emerald-600",
+									"text-success",
 							)}
 						>
 							<ListChecks className="size-3" aria-hidden />

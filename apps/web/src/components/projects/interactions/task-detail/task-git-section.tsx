@@ -93,7 +93,7 @@ function StateIcon({ cr }: { cr: GitTaskChangeRequest }) {
 	if (cr.state === "closed")
 		return (
 			<GitPullRequestClosed
-				className={`${cls} text-red-500`}
+				className={`${cls} text-destructive`}
 				aria-hidden="true"
 			/>
 		);
@@ -105,7 +105,7 @@ function StateIcon({ cr }: { cr: GitTaskChangeRequest }) {
 			/>
 		);
 	return (
-		<GitPullRequest className={`${cls} text-emerald-500`} aria-hidden="true" />
+		<GitPullRequest className={`${cls} text-success`} aria-hidden="true" />
 	);
 }
 
@@ -113,9 +113,9 @@ const CI_STYLE: Record<
 	GitCISummary["state"],
 	{ cls: string; Icon: typeof Check }
 > = {
-	passing: { cls: "bg-emerald-500/10 text-emerald-600", Icon: Check },
-	failing: { cls: "bg-red-500/10 text-red-600", Icon: CircleAlert },
-	pending: { cls: "bg-amber-500/10 text-amber-600", Icon: Clock },
+	passing: { cls: "bg-success/10 text-success", Icon: Check },
+	failing: { cls: "bg-destructive/10 text-destructive", Icon: CircleAlert },
+	pending: { cls: "bg-warning/10 text-warning", Icon: Clock },
 };
 
 /** The state of a pull request's checks, with the counts in its tooltip. */

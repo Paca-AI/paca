@@ -36,7 +36,7 @@ export function SsoErrorNotice({ code }: { code?: string }) {
 	return (
 		<div
 			role="alert"
-			className="mb-5 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-400"
+			className="mb-5 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-3 text-sm text-destructive"
 		>
 			<AlertCircle className="mt-px size-4 shrink-0" />
 			<span>{t(`login.sso.errors.${key}`)}</span>

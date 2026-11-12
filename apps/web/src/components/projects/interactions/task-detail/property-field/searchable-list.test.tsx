@@ -24,7 +24,7 @@ describe("SearchableList remote mode", () => {
 	it("always shows the search box and reports typing instead of filtering locally", async () => {
 		const r = remote();
 		render(<SearchableList items={[item("alice"), item("bob")]} remote={r} />);
-		await userEvent.type(screen.getByRole("textbox"), "z");
+		await userEvent.type(screen.getByRole("combobox"), "z");
 		expect(r.onQueryChange).toHaveBeenCalledWith("z");
 		// Not filtered locally: the server owns the results.
 		expect(screen.getByText("alice")).toBeInTheDocument();

@@ -6,7 +6,12 @@
 		"noPermissionToView": "You don't have permission to view this",
 		"loadMore": "Carregar mais",
 		"loadingMore": "Carregando mais…",
-		"reportIssue": "Reportar este problema"
+		"reportIssue": "Reportar este problema",
+		"dismiss": "Dispensar",
+		"toast": {
+			"saved": "Salvo",
+			"deleted": "Excluído"
+		}
 	},
 	"dialog": {
 		"closeLabel": "Fechar",

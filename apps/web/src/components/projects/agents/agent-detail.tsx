@@ -9,7 +9,6 @@ import {
 	ExternalLink,
 	GitBranch,
 	KeyRound,
-	Loader2,
 	Plus,
 	Save,
 	Server,
@@ -46,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -867,14 +867,14 @@ function OverviewTab({
 				<div className="flex items-center gap-3 pt-2">
 					<Button onClick={() => saveMutation.mutate()} disabled={!canSave}>
 						{saveMutation.isPending ? (
-							<Loader2 className="size-4 mr-2 animate-spin" />
+							<Spinner aria-hidden="true" className="mr-2" />
 						) : (
 							<Save className="size-4 mr-2" />
 						)}
 						{t("agents.detail.overview.saveChanges")}
 					</Button>
 					{saveMutation.isSuccess && (
-						<span className="flex items-center gap-1 text-xs text-emerald-600">
+						<span className="flex items-center gap-1 text-xs text-success">
 							<Check className="size-3" />
 							{t("agents.detail.overview.saved")}
 						</span>
@@ -989,7 +989,7 @@ function VerifyCLILoginPanel({
 						disabled={verifyMutation.isPending || !environmentId}
 					>
 						{verifyMutation.isPending ? (
-							<Loader2 className="size-3.5 mr-1.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5 mr-1.5" />
 						) : (
 							<CircleCheck className="size-3.5 mr-1.5" />
 						)}
@@ -999,7 +999,7 @@ function VerifyCLILoginPanel({
 			</div>
 			{verifyMutation.isSuccess && (
 				<p
-					className={`mt-2 text-xs ${verifyMutation.data.authenticated ? "text-emerald-600" : "text-muted-foreground"}`}
+					className={`mt-2 text-xs ${verifyMutation.data.authenticated ? "text-success" : "text-muted-foreground"}`}
 				>
 					{verifyMutation.data.authenticated
 						? t("agents.detail.overview.cliLoginVerifiedNow")
@@ -1211,7 +1211,7 @@ function AddMCPServerDialog({
 						disabled={!serverName.trim() || addMutation.isPending}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							t("agents.detail.mcp.addDialog.addServer")
 						)}
@@ -1514,7 +1514,7 @@ function AddSkillDialog({
 						disabled={!skillName.trim() || addMutation.isPending}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							t("agents.detail.skills.addDialog.addSkill")
 						)}
@@ -1783,7 +1783,7 @@ function AddEnvVarDialog({
 						disabled={!isKeyValid || !value || addMutation.isPending}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							t("agents.detail.envVars.addDialog.addVariable")
 						)}

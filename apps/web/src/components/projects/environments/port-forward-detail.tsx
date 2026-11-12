@@ -4,7 +4,6 @@ import {
 	AlertCircle,
 	ArrowLeft,
 	ExternalLink,
-	Loader2,
 	MessageSquare,
 	Server,
 	Trash2,
@@ -23,6 +22,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { portForwardAnnotationsQueryOptions } from "@/lib/annotation-api";
 import { isForbiddenError } from "@/lib/api-error";
@@ -330,7 +330,7 @@ export function PortForwardDetailView({
 							disabled={deleteMutation.isPending}
 						>
 							{deleteMutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
+								<Spinner aria-hidden="true" />
 							) : (
 								t("portForwardDetail.overview.deleteDialog.confirm")
 							)}

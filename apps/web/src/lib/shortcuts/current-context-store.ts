@@ -11,7 +11,7 @@ import type { ContextItem, ContextItemType } from "@/lib/context-items";
  * clobber a newly-focused one's registration.
  *
  * Powers the chat composer's one-click "quick add" affordance (see
- * components/assistant-ui/context-injection.tsx) — read `active` there and
+ * components/chat/context-injection.tsx) — read `active` there and
  * call the context-injection-store's `add` directly, no search needed.
  */
 interface CurrentContextState {

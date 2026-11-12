@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ReportIssueButton } from "@/components/report-issue-button";
-
 import { InlineNotice } from "@/components/shared/inline-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	deleteSsoProvider,
 	type SsoProvider,
@@ -62,7 +62,7 @@ export function SsoSettings() {
 			</div>
 
 			{isPending ? (
-				<Loader2 className="size-4 animate-spin text-muted-foreground" />
+				<Spinner aria-hidden="true" className="text-muted-foreground" />
 			) : isError ? (
 				<div className="flex flex-col items-start gap-2">
 					<InlineNotice tone="error">
@@ -141,6 +141,7 @@ function DeleteProviderDialog({
 	const { t } = useTranslation("admin");
 	const queryClient = useQueryClient();
 	const mutation = useMutation({
+		meta: { success: "deleted" },
 		mutationFn: (id: string) => deleteSsoProvider(id),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({

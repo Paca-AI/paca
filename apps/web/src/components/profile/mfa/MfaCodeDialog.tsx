@@ -1,8 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { InlineNotice } from "@/components/shared/inline-notice";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	ApiErrorCode,
 	getApiErrorCode,
@@ -138,9 +137,7 @@ export function MfaCodeDialog({
 								variant={disabling ? "destructive" : "default"}
 								disabled={!code.trim() || mutation.isPending}
 							>
-								{mutation.isPending ? (
-									<Loader2 className="size-4 animate-spin" />
-								) : null}
+								{mutation.isPending ? <Spinner aria-hidden="true" /> : null}
 								{disabling
 									? t("security.mfa.disable.confirm")
 									: t("security.mfa.regenerate.confirm")}

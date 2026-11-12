@@ -172,7 +172,7 @@ describe("AgentPickerInline", () => {
 		expect(within(trigger).getByText("agent-v2")).toBeVisible();
 		await user.click(trigger);
 
-		const option = screen.getByRole("button", { name: names[1] });
+		const option = screen.getByRole("option", { name: names[1] });
 		expect(within(option).getByTitle(names[1])).toBeInTheDocument();
 		expect(within(option).getByText("agent-v3")).toBeVisible();
 		await user.click(option);

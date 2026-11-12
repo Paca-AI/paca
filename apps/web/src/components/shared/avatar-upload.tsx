@@ -1,9 +1,10 @@
-import { Camera, Loader2, X } from "lucide-react";
+import { Camera, X } from "lucide-react";
 import { useRef, useState } from "react";
 import {
 	EntityAvatar,
 	type EntityAvatarProps,
 } from "@/components/shared/entity-avatar";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	ACCEPTED_AVATAR_CONTENT_TYPES,
 	type AvatarResult,
@@ -116,7 +117,7 @@ export function AvatarUpload({
 					)}
 				>
 					{uploading ? (
-						<Loader2 className="size-4 animate-spin" />
+						<Spinner aria-hidden="true" />
 					) : (
 						<Camera className="size-4" />
 					)}

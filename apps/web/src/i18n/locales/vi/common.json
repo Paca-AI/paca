@@ -6,7 +6,12 @@
 		"noPermissionToView": "You don't have permission to view this",
 		"loadMore": "Tải thêm",
 		"loadingMore": "Đang tải thêm…",
-		"reportIssue": "Báo cáo lỗi này"
+		"reportIssue": "Báo cáo lỗi này",
+		"dismiss": "Đóng",
+		"toast": {
+			"saved": "Đã lưu",
+			"deleted": "Đã xóa"
+		}
 	},
 	"dialog": {
 		"closeLabel": "Đóng",

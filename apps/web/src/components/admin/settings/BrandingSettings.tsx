@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Image as ImageIcon, Loader2 } from "lucide-react";
+import { Image as ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AvatarUpload } from "@/components/shared/avatar-upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import type { AvatarResult } from "@/lib/avatar-api";
 import {
@@ -50,6 +51,7 @@ export function BrandingSettings() {
 	const [saved, setSaved] = useState(false);
 
 	const mutation = useMutation({
+		meta: { success: "saved" },
 		mutationFn: () =>
 			updateSettings({
 				brand_name: brandName,
@@ -245,12 +247,12 @@ export function BrandingSettings() {
 						className="gap-1.5"
 					>
 						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : null}
 						{t("settings.general.save")}
 					</Button>
 					{saved ? (
-						<span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+						<span className="text-xs text-success font-medium">
 							{t("settings.general.saved")}
 						</span>
 					) : null}

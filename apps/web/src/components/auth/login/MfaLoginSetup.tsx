@@ -6,18 +6,18 @@ import {
 	Check,
 	Copy,
 	KeyRound,
-	Loader2,
 	ShieldCheck,
 	Smartphone,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { QrCode } from "@/components/profile/mfa/QrCode";
 import { RecoveryCodes } from "@/components/profile/mfa/RecoveryCodes";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	ApiErrorCode,
 	getApiErrorCode,
@@ -221,7 +221,7 @@ export function MfaLoginSetup({
 							className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-4 py-8 text-center"
 							aria-live="polite"
 						>
-							<Loader2 className="size-6 animate-spin text-primary" />
+							<Spinner aria-hidden="true" className="size-6 text-primary" />
 							<p className="text-sm text-(--sea-ink-soft)">
 								{t("login.mfaSetup.passkeyWaiting")}
 							</p>
@@ -248,7 +248,7 @@ export function MfaLoginSetup({
 
 			{step === "passkeyDone" ? (
 				<div className="space-y-4">
-					<div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+					<div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-3.5 py-3 text-sm text-success">
 						<Check className="size-4 shrink-0" />
 						<span>{t("login.mfaSetup.passkeyDone.notice")}</span>
 					</div>
@@ -278,11 +278,9 @@ export function MfaLoginSetup({
 				<div className="space-y-4">
 					<RecoveryCodes codes={codes} />
 					<label className="flex cursor-pointer items-start gap-2.5 text-sm text-(--sea-ink)">
-						<input
-							type="checkbox"
+						<Checkbox
 							checked={saved}
-							onChange={(e) => setSaved(e.target.checked)}
-							className="mt-0.5 size-4 accent-(--color-primary,currentColor)"
+							onCheckedChange={(value) => setSaved(value)}
 						/>
 						<span>{t("login.mfaSetup.codes.confirm")}</span>
 					</label>
@@ -436,7 +434,7 @@ function AppStep({
 			</div>
 		) : (
 			<div className="flex min-h-40 items-center justify-center">
-				<Loader2 className="size-5 animate-spin text-(--sea-ink-soft)" />
+				<Spinner aria-hidden="true" className="size-5 text-(--sea-ink-soft)" />
 			</div>
 		);
 	}
@@ -513,7 +511,7 @@ function AppStep({
 				className="h-11 w-full font-semibold"
 				disabled={!code.trim() || pending}
 			>
-				{pending ? <Loader2 className="size-4 animate-spin" /> : null}
+				{pending ? <Spinner aria-hidden="true" /> : null}
 				{tProfile("security.mfa.setup.verify")}
 			</Button>
 			<BackLink onClick={onBack}>{t("login.mfaSetup.back")}</BackLink>
@@ -525,7 +523,7 @@ function ErrorNotice({ children }: { children: ReactNode }) {
 	return (
 		<div
 			role="alert"
-			className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-400"
+			className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-3 text-sm text-destructive"
 		>
 			<AlertCircle className="mt-px size-4 shrink-0" />
 			<span>{children}</span>

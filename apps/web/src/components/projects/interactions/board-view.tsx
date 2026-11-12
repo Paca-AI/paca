@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
+import { Spinner } from "@/components/ui/spinner";
 
 import {
 	type Sprint,
@@ -821,7 +822,7 @@ export function BoardView({
 						if (!pg.isLoadingMore) return null;
 						return (
 							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
-								<Loader2 className="size-3 animate-spin" />
+								<Spinner aria-hidden="true" className="size-3" />
 								{t("board.view.loading")}
 							</div>
 						);

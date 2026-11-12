@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { GitBranch, Loader2 } from "lucide-react";
+import { GitBranch } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
 	type BeginGitSetupPayload,
@@ -364,7 +365,7 @@ export function GitSetupDialog({
 							{t("git.cancel")}
 						</DialogClose>
 						<Button type="submit" disabled={busy || !canStart}>
-							{busy ? <Loader2 className="size-4 animate-spin" /> : null}
+							{busy ? <Spinner aria-hidden="true" /> : null}
 							{tokenStep
 								? t("git.setup.submitToken")
 								: kind === "app"

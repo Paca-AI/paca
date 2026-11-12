@@ -817,6 +817,9 @@ describe("GitSettings", () => {
 		repos = [repo];
 		renderPanel();
 		await openTab(/^Automation/);
+		await user.click(
+			await screen.findByRole("button", { name: /^advanced$/i }),
+		);
 		const responder = await screen.findByLabelText(/default responder/i);
 		await screen.findByRole("option", { name: "Reviewer" });
 		const save = screen.getByRole("button", { name: /^save$/i });
@@ -864,9 +867,13 @@ describe("GitSettings", () => {
 	});
 
 	it("shows the automation but cannot change it without git:write", async () => {
+		const user = userEvent.setup();
 		repos = [repo];
 		renderPanel(false);
 		await openTab(/^Automation/);
+		await user.click(
+			await screen.findByRole("button", { name: /^advanced$/i }),
+		);
 		expect(await screen.findByLabelText(/default responder/i)).toBeDisabled();
 		expect(screen.getByLabelText(/minimum access/i)).toBeDisabled();
 		expect(

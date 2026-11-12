@@ -1,7 +1,7 @@
 // Shared by the BlockNote paste handler
 // (components/shared/blocknote-annotation-paste-handler.ts) and the agent
 // conversation composer's onPaste handler
-// (components/assistant-ui/thread.tsx) — both need to recognize the exact
+// (components/chat/thread.tsx) — both need to recognize the exact
 // same "copy link" URL a user gets from the extension's pin popover or the
 // comment detail page's own Copy button (comment-detail-view.tsx), so the
 // regex lives in one place rather than being hand-duplicated twice.

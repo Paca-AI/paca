@@ -27,7 +27,6 @@ import {
 	GanttChart,
 	Home,
 	KanbanSquare,
-	Loader2,
 	MessageSquare,
 	Monitor,
 	Moon,
@@ -83,6 +82,7 @@ import {
 	SidebarSeparator,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import { Spinner } from "@/components/ui/spinner";
 import { useBranding } from "@/hooks/use-branding";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -976,7 +976,7 @@ function ProjectSwitcher({
 						))}
 						{isFetchingNextPage ? (
 							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
-								<Loader2 className="size-3 animate-spin" />
+								<Spinner aria-hidden="true" className="size-3" />
 								{t("projectSwitcher.loadingMore")}
 							</div>
 						) : null}
@@ -1212,6 +1212,56 @@ function ProjectNavItems({ projectId }: { projectId: string }) {
 	);
 }
 
+/** A sidebar group whose label toggles it open/closed, remembering the choice
+ * in localStorage under `storageKey` (same behavior as the Project section). */
+function CollapsibleSidebarGroup({
+	storageKey,
+	label,
+	children,
+}: {
+	storageKey: string;
+	label: string;
+	children: React.ReactNode;
+}) {
+	const [collapsed, setCollapsed] = useState(() => {
+		try {
+			return localStorage.getItem(storageKey) === "true";
+		} catch {
+			return false;
+		}
+	});
+
+	const toggle = () => {
+		setCollapsed((prev) => {
+			const next = !prev;
+			try {
+				localStorage.setItem(storageKey, String(next));
+			} catch {
+				/* ignore */
+			}
+			return next;
+		});
+	};
+
+	return (
+		<SidebarGroup>
+			<SidebarGroupLabel
+				className="flex cursor-pointer items-center justify-between transition-colors hover:text-sidebar-foreground"
+				onClick={toggle}
+			>
+				<span>{label}</span>
+				<ChevronRight
+					className={cn(
+						"size-3.5 text-sidebar-foreground/40 transition-transform duration-200",
+						!collapsed && "rotate-90",
+					)}
+				/>
+			</SidebarGroupLabel>
+			{!collapsed && <SidebarGroupContent>{children}</SidebarGroupContent>}
+		</SidebarGroup>
+	);
+}
+
 // ── Plugin-contributed pages ────────────────────────────────────────────────
 
 /** Sidebar nav items for plugin `project.page` extension points (e.g. a
@@ -1232,36 +1282,36 @@ function PluginProjectPages({ projectId }: { projectId: string }) {
 	if (navItems.length === 0) return null;
 
 	return (
-		<SidebarGroup>
-			<SidebarGroupLabel>{t("nav.plugins")}</SidebarGroupLabel>
-			<SidebarGroupContent>
-				<SidebarMenu>
-					{navItems.map((item) => {
-						const Icon = resolvePluginIcon(item.icon);
-						const to = `/projects/${projectId}/plugins/${item.pluginId}/${item.slug}`;
-						const isActive = location === to || location.startsWith(`${to}/`);
-						return (
-							<SidebarMenuItem key={`${item.pluginId}:${item.slug}`}>
-								<SidebarMenuButton
-									isActive={isActive}
-									tooltip={item.label}
-									render={<Link to={to} />}
-									className={cn(
-										"relative transition-all duration-150",
-										isActive
-											? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-											: NAV_ITEM_INACTIVE_CLASS,
-									)}
-								>
-									<Icon className="size-4" />
-									<span>{item.label}</span>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						);
-					})}
-				</SidebarMenu>
-			</SidebarGroupContent>
-		</SidebarGroup>
+		<CollapsibleSidebarGroup
+			storageKey={`paca:sidebar-project-plugins-collapsed:${projectId}`}
+			label={t("nav.plugins")}
+		>
+			<SidebarMenu>
+				{navItems.map((item) => {
+					const Icon = resolvePluginIcon(item.icon);
+					const to = `/projects/${projectId}/plugins/${item.pluginId}/${item.slug}`;
+					const isActive = location === to || location.startsWith(`${to}/`);
+					return (
+						<SidebarMenuItem key={`${item.pluginId}:${item.slug}`}>
+							<SidebarMenuButton
+								isActive={isActive}
+								tooltip={item.label}
+								render={<Link to={to} />}
+								className={cn(
+									"relative transition-all duration-150",
+									isActive
+										? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
+										: NAV_ITEM_INACTIVE_CLASS,
+								)}
+							>
+								<Icon className="size-4" />
+								<span>{item.label}</span>
+							</SidebarMenuButton>
+						</SidebarMenuItem>
+					);
+				})}
+			</SidebarMenu>
+		</CollapsibleSidebarGroup>
 	);
 }
 
@@ -1890,7 +1940,9 @@ export function AppSidebar() {
 			<SidebarSeparator />
 
 			{/* Navigation — switches between workspace and project context */}
-			<SidebarContent>
+			{/* Optional sections render nothing when empty, which can leave two
+				   dividers back to back; show only the first. */}
+			<SidebarContent className="[&_[data-slot=sidebar-separator]+[data-slot=sidebar-separator]]:hidden">
 				{isProjectContext ? (
 					<>
 						{user && <ProjectNav />}
@@ -1905,6 +1957,7 @@ export function AppSidebar() {
 						/>
 						<SidebarSeparator />
 						<PluginProjectPages projectId={projectId} />
+						<SidebarSeparator />
 						<ProjectNavItems projectId={projectId} />
 					</>
 				) : (
@@ -1993,14 +2046,14 @@ export function AppSidebar() {
 						{showPluginsSection ? (
 							<>
 								<SidebarSeparator />
-								<SidebarGroup>
-									<SidebarGroupLabel>{t("nav.plugins")}</SidebarGroupLabel>
-									<SidebarGroupContent>
-										<SidebarMenu>
-											<PluginAdminPages navItems={adminPluginNavItems} />
-										</SidebarMenu>
-									</SidebarGroupContent>
-								</SidebarGroup>
+								<CollapsibleSidebarGroup
+									storageKey="paca:sidebar-admin-plugins-collapsed"
+									label={t("nav.plugins")}
+								>
+									<SidebarMenu>
+										<PluginAdminPages navItems={adminPluginNavItems} />
+									</SidebarMenu>
+								</CollapsibleSidebarGroup>
 							</>
 						) : null}
 					</>

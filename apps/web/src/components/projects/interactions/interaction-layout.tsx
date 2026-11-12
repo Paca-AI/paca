@@ -6,6 +6,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { Spinner } from "@/components/ui/spinner";
 
 // Upper bound for manual-sort positions.  All computed positions stay strictly
 // inside (0, POSITION_MAX) by always taking midpoints toward the boundaries, so
@@ -16,7 +17,6 @@ import {
 	ChevronDown,
 	KanbanSquare,
 	List,
-	Loader2,
 	Map as MapIcon,
 	Plus,
 	Puzzle,
@@ -2363,7 +2363,7 @@ export function InteractionLayout({
 							disabled={deleteTaskMutation.isPending}
 						>
 							{deleteTaskMutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
+								<Spinner aria-hidden="true" />
 							) : (
 								t("taskDetail.header.deleteDialog.delete")
 							)}

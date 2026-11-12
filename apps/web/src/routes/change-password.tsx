@@ -105,9 +105,9 @@ function ChangePasswordPage() {
 									</span>
 								</div>
 
-								<div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1">
-									<span className="size-1.5 rounded-full bg-amber-400" />
-									<span className="text-xs font-medium text-amber-300">
+								<div className="mb-3 inline-flex items-center gap-2 rounded-full border border-warning/30 bg-warning/10 px-3 py-1">
+									<span className="size-1.5 rounded-full bg-warning" />
+									<span className="text-xs font-medium text-warning">
 										{t("changePassword.actionRequiredBadge")}
 									</span>
 								</div>
@@ -162,8 +162,8 @@ function ChangePasswordPage() {
 
 								{/* Heading */}
 								<div className="mb-1 flex items-center gap-2">
-									<div className="size-2 rounded-full bg-amber-400" />
-									<span className="text-xs font-semibold uppercase tracking-widest text-amber-600 dark:text-amber-400">
+									<div className="size-2 rounded-full bg-warning" />
+									<span className="text-xs font-semibold uppercase tracking-widest text-warning">
 										{t("changePassword.passwordChangeRequiredBadge")}
 									</span>
 								</div>

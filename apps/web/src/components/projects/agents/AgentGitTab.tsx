@@ -1,16 +1,23 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { GitBranch, Loader2, Plug, Trash2 } from "lucide-react";
+import { GitBranch, Plug, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DeleteGitIdentityDialog } from "@/components/git/DeleteGitIdentityDialog";
 import { GitSetupDialog } from "@/components/git/GitSetupDialog";
 import { CopyChip, EmptyState, Section } from "@/components/git/git-ui";
 import { AgentGitTriggers } from "@/components/projects/agents/AgentGitTriggers";
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
@@ -286,45 +293,51 @@ function InstallOnAccount({
 	});
 
 	return (
-		<details className="group rounded-md border border-border/60 p-3">
-			<summary className="cursor-pointer text-sm font-medium">
-				{t("agents.detail.git.install.title")}
-			</summary>
-			<form
-				className="mt-3 flex flex-col gap-2"
-				onSubmit={(e) => {
-					e.preventDefault();
-					setErrorKey(null);
-					install.mutate();
-				}}
-			>
-				<Label htmlFor={`git-agent-owner-${provider.id}`}>
-					{t("agents.detail.git.install.label")}
-				</Label>
-				<div className="flex gap-2">
-					<Input
-						id={`git-agent-owner-${provider.id}`}
-						value={owner}
-						autoComplete="off"
-						placeholder={t("agents.detail.git.install.placeholder")}
-						onChange={(e) => setOwner(e.target.value)}
-					/>
-					<Button type="submit" variant="outline" disabled={install.isPending}>
-						{install.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+		<Accordion className="rounded-md border border-border/60 p-3">
+			<AccordionItem value="item" className="border-b-0">
+				<AccordionTrigger className="py-0 text-sm font-medium">
+					{t("agents.detail.git.install.title")}
+				</AccordionTrigger>
+				<AccordionContent keepMounted className="pb-0 pt-0">
+					<form
+						className="mt-3 flex flex-col gap-2"
+						onSubmit={(e) => {
+							e.preventDefault();
+							setErrorKey(null);
+							install.mutate();
+						}}
+					>
+						<Label htmlFor={`git-agent-owner-${provider.id}`}>
+							{t("agents.detail.git.install.label")}
+						</Label>
+						<div className="flex gap-2">
+							<Input
+								id={`git-agent-owner-${provider.id}`}
+								value={owner}
+								autoComplete="off"
+								placeholder={t("agents.detail.git.install.placeholder")}
+								onChange={(e) => setOwner(e.target.value)}
+							/>
+							<Button
+								type="submit"
+								variant="outline"
+								disabled={install.isPending}
+							>
+								{install.isPending ? <Spinner aria-hidden="true" /> : null}
+								{t("agents.detail.git.install.button")}
+							</Button>
+						</div>
+						<p className="text-xs text-muted-foreground">
+							{t("agents.detail.git.install.help")}
+						</p>
+						{errorKey ? (
+							<p role="alert" className="text-sm text-destructive">
+								{t(`project.git.errors.${errorKey}` as never)}
+							</p>
 						) : null}
-						{t("agents.detail.git.install.button")}
-					</Button>
-				</div>
-				<p className="text-xs text-muted-foreground">
-					{t("agents.detail.git.install.help")}
-				</p>
-				{errorKey ? (
-					<p role="alert" className="text-sm text-destructive">
-						{t(`project.git.errors.${errorKey}` as never)}
-					</p>
-				) : null}
-			</form>
-		</details>
+					</form>
+				</AccordionContent>
+			</AccordionItem>
+		</Accordion>
 	);
 }

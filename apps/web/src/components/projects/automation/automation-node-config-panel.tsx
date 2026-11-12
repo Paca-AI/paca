@@ -1,13 +1,5 @@
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
-import {
-	ChevronDown,
-	Copy,
-	Loader2,
-	Plus,
-	Search,
-	Trash2,
-	X,
-} from "lucide-react";
+import { ChevronDown, Copy, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -42,6 +34,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useTaskPickerSearch } from "@/hooks/use-task-picker-search";
@@ -1504,7 +1497,7 @@ function TargetTaskPicker({
 		<DropdownMenu open={open} onOpenChange={setOpen}>
 			<DropdownMenuTrigger
 				disabled={!canEdit}
-				className="flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
+				className="flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
 			>
 				<span className="truncate text-left">
 					{selectedTask ? (
@@ -1557,7 +1550,10 @@ function TargetTaskPicker({
 				>
 					{isSearching && searchLoading ? (
 						<div className="flex items-center justify-center py-4">
-							<Loader2 className="size-4 animate-spin text-muted-foreground/50" />
+							<Spinner
+								aria-hidden="true"
+								className="text-muted-foreground/50"
+							/>
 						</div>
 					) : (
 						<>
@@ -1580,7 +1576,7 @@ function TargetTaskPicker({
 					)}
 					{activePagination.isLoadingMore && (
 						<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
-							<Loader2 className="size-3 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3" />
 							{t("automation.nodeConfig.trigger.loadingMore")}
 						</div>
 					)}
@@ -1846,7 +1842,7 @@ function WebhookTokenSection({
 					</Button>
 				</div>
 				{copied === "url" && (
-					<p className="text-xs text-green-600">
+					<p className="text-xs text-success">
 						{t("automation.nodeConfig.trigger.copied")}
 					</p>
 				)}
@@ -1870,7 +1866,7 @@ function WebhookTokenSection({
 							</Button>
 						</div>
 						{copied === "token" && (
-							<p className="text-xs text-green-600">
+							<p className="text-xs text-success">
 								{t("automation.nodeConfig.trigger.copied")}
 							</p>
 						)}

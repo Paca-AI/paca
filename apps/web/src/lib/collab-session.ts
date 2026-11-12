@@ -179,7 +179,7 @@ export class CollabSession {
 			break;
 		}
 		if (this.destroyed) return false;
-		if (!res || !res.ok) {
+		if (!res?.ok) {
 			this.setStatus(res ? "lost" : "offline");
 			return false;
 		}

@@ -6,7 +6,12 @@
 		"noPermissionToView": "You don't have permission to view this",
 		"loadMore": "加载更多",
 		"loadingMore": "正在加载更多…",
-		"reportIssue": "报告此问题"
+		"reportIssue": "报告此问题",
+		"dismiss": "关闭",
+		"toast": {
+			"saved": "已保存",
+			"deleted": "已删除"
+		}
 	},
 	"dialog": {
 		"closeLabel": "关闭",

@@ -1,8 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { InlineNotice } from "@/components/shared/inline-notice";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
@@ -129,6 +128,7 @@ function ProviderForm({
 			: `${window.location.origin}/api/v1/auth/sso/${effectiveSlug || "…"}/callback`;
 
 	const mutation = useMutation({
+		meta: { success: "saved" },
 		mutationFn: () => {
 			const input: SsoProviderInput = {
 				slug: effectiveSlug,
@@ -384,7 +384,7 @@ function ProviderForm({
 				</DialogClose>
 				<Button type="submit" disabled={!canSave} className="gap-1.5">
 					{mutation.isPending ? (
-						<Loader2 className="size-3.5 animate-spin" />
+						<Spinner aria-hidden="true" className="size-3.5" />
 					) : null}
 					{t("settings.sso.dialog.save")}
 				</Button>

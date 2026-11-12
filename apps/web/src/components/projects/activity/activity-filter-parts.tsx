@@ -1,7 +1,9 @@
 // Building blocks shared by the activity filter bars (project activity page,
 // agent activity tab): popover section labels, checkbox rows and a local
 // date range picker.
+
 import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Popover,
 	PopoverContent,
@@ -56,12 +58,7 @@ export function CheckListRow({
 }) {
 	return (
 		<label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-muted/40">
-			<input
-				type="checkbox"
-				checked={checked}
-				onChange={onChange}
-				className="size-3.5 shrink-0 cursor-pointer rounded accent-primary"
-			/>
+			<Checkbox checked={checked} onCheckedChange={() => onChange()} />
 			<span className="flex-1 truncate">{label}</span>
 		</label>
 	);

@@ -31,7 +31,7 @@ import {
 } from "@/lib/socket-client";
 import { cn } from "@/lib/utils";
 
-// Lazy: pulls in @assistant-ui/react and the agent/conversation stack, which
+// Lazy: pulls in the chat thread and the agent/conversation stack, which
 // is otherwise dead weight on every authenticated page (dashboard, admin,
 // settings, ...) since the panel starts closed and most loads never open it.
 const GlobalAIChatFloat = lazy(() =>

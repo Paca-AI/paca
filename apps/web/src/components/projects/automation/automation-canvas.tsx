@@ -65,9 +65,9 @@ const KIND_STYLES: Record<
 		icon: GitBranch,
 	},
 	action: {
-		border: "border-amber-500/50",
-		bg: "bg-amber-500/10",
-		text: "text-amber-600 dark:text-amber-400",
+		border: "border-warning/50",
+		bg: "bg-warning/10",
+		text: "text-warning",
 		icon: Play,
 	},
 };

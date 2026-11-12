@@ -6,7 +6,12 @@
 		"noPermissionToView": "You don't have permission to view this",
 		"loadMore": "Загрузить ещё",
 		"loadingMore": "Загрузка…",
-		"reportIssue": "Сообщить об этой проблеме"
+		"reportIssue": "Сообщить об этой проблеме",
+		"dismiss": "Закрыть",
+		"toast": {
+			"saved": "Сохранено",
+			"deleted": "Удалено"
+		}
 	},
 	"dialog": {
 		"closeLabel": "Закрыть",

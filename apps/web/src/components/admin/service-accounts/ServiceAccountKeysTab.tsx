@@ -364,7 +364,7 @@ export function ServiceAccountKeysTab({
 							</Button>
 						</div>
 						{copied ? (
-							<p className="text-xs text-green-600">
+							<p className="text-xs text-success">
 								{t("serviceAccounts.keys.reveal.copied")}
 							</p>
 						) : null}

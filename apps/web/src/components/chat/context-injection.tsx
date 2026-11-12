@@ -4,7 +4,6 @@ import { useParams } from "@tanstack/react-router";
 import {
 	FileText,
 	Hash,
-	Loader2,
 	MessageSquare,
 	Pin,
 	Plus,
@@ -14,6 +13,7 @@ import {
 import { type ComponentType, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChipField } from "@/components/projects/interactions/task-detail/property-field/chip-field";
+import { Spinner } from "@/components/ui/spinner";
 import { useContextItemSearch } from "@/hooks/use-context-item-search";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import type { ContextItem, ContextItemType } from "@/lib/context-items";
@@ -43,9 +43,9 @@ const CONTEXT_TYPE_ICON: Record<
 };
 
 const CONTEXT_TYPE_TEXT_CLASS: Record<ContextItemType, string> = {
-	task: "text-emerald-700 dark:text-emerald-400",
+	task: "text-success",
 	doc: "text-purple-700 dark:text-purple-400",
-	conversation: "text-amber-700 dark:text-amber-400",
+	conversation: "text-warning",
 	automation: "text-sky-700 dark:text-sky-400",
 	annotation: "text-rose-700 dark:text-rose-400",
 };
@@ -199,7 +199,7 @@ function ContextSearchPanel({
 					</p>
 				) : isLoading ? (
 					<div className="flex justify-center py-3">
-						<Loader2 className="size-4 animate-spin text-muted-foreground/50" />
+						<Spinner aria-hidden="true" className="text-muted-foreground/50" />
 					</div>
 				) : results.length === 0 ? (
 					<p className="px-2 py-3 text-center text-xs text-muted-foreground/60">
@@ -233,7 +233,10 @@ function ContextSearchPanel({
 						))}
 						{pagination.isLoadingMore && (
 							<div className="flex justify-center py-2">
-								<Loader2 className="size-3.5 animate-spin text-muted-foreground/50" />
+								<Spinner
+									aria-hidden="true"
+									className="size-3.5 text-muted-foreground/50"
+								/>
 							</div>
 						)}
 					</>

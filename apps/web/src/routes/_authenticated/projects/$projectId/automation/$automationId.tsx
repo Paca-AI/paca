@@ -5,15 +5,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-	ArrowLeft,
-	History,
-	Loader2,
-	Pencil,
-	Save,
-	Workflow,
-	X,
-} from "lucide-react";
+import { ArrowLeft, History, Pencil, Save, Workflow, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AutomationCanvas } from "@/components/projects/automation/automation-canvas";
@@ -23,6 +15,7 @@ import { AutomationRunHistoryPanel } from "@/components/projects/automation/auto
 import { getPriority } from "@/components/projects/interactions/priority";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
@@ -614,7 +607,7 @@ function AutomationBuilderPage() {
 	if (!graph) {
 		return (
 			<div className="flex items-center justify-center flex-1">
-				<Loader2 className="size-5 animate-spin text-muted-foreground" />
+				<Spinner aria-hidden="true" className="size-5 text-muted-foreground" />
 			</div>
 		);
 	}

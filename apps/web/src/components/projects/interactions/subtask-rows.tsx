@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { Spinner } from "@/components/ui/spinner";
 
 import {
 	type ChildTaskFilters,
@@ -175,7 +175,7 @@ export function SubtaskRows({
 					style={indent}
 				>
 					{query.isFetchingNextPage && (
-						<Loader2 className="size-3 animate-spin" />
+						<Spinner aria-hidden="true" className="size-3" />
 					)}
 					{t("board.subtasks.loadMore")}
 				</button>

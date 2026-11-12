@@ -1,8 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -22,6 +20,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { COLOR_PRESETS } from "@/lib/color-presets";
 import {
@@ -251,7 +250,7 @@ export function TaskStatusFormDialog({
 						onClick={() => mutation.mutate()}
 					>
 						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : null}
 						{isEdit
 							? t("taskStatuses.formDialog.saveChanges")

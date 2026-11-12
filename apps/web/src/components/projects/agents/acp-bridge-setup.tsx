@@ -1,9 +1,9 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
-import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	type ACPProvider,
 	type AcpBridgeToken,
@@ -443,7 +443,7 @@ export function AcpBridgeSetup({
 			<div className="flex items-center gap-1.5">
 				<span
 					className={`size-1.5 rounded-full ${
-						status?.connected ? "bg-emerald-500" : "bg-muted-foreground/40"
+						status?.connected ? "bg-success" : "bg-muted-foreground/40"
 					}`}
 				/>
 				<span className="text-xs text-muted-foreground">
@@ -512,7 +512,7 @@ export function AcpBridgeSetup({
 					)}
 					{(skillCommand || mcpCommand) && (
 						<div className="space-y-2">
-							<p className="text-xs text-amber-600">
+							<p className="text-xs text-warning">
 								{t("agents.acpSetup.step4KeyWarning")}
 							</p>
 							{skillCommand && (
@@ -554,7 +554,7 @@ export function AcpBridgeSetup({
 					>
 						{generateKeyMutation.isPending ? (
 							<>
-								<Loader2 className="size-4 mr-1.5 animate-spin" />
+								<Spinner aria-hidden="true" className="mr-1.5" />
 								{t("agents.acpSetup.step4Generating")}
 							</>
 						) : hasAnyKey ? (
@@ -625,7 +625,7 @@ export function AcpBridgeSetup({
 					)}
 					{revealed && (
 						<div className="space-y-1.5">
-							<p className="text-xs text-amber-600">
+							<p className="text-xs text-warning">
 								{t("agents.acpSetup.tokenWarning")}
 							</p>
 							<CommandBox
@@ -643,7 +643,7 @@ export function AcpBridgeSetup({
 					>
 						{generateMutation.isPending ? (
 							<>
-								<Loader2 className="size-4 mr-1.5 animate-spin" />
+								<Spinner aria-hidden="true" className="mr-1.5" />
 								{t("agents.acpSetup.generating")}
 							</>
 						) : hasAnyToken ? (

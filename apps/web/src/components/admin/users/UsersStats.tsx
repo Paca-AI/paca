@@ -30,9 +30,9 @@ export function UsersStats({
 				<>
 					<Separator orientation="vertical" className="h-4" />
 					<div className="flex items-center gap-2">
-						<Shield className="size-4 text-amber-500" />
+						<Shield className="size-4 text-warning" />
 						<span className="text-sm">
-							<span className="font-semibold tabular-nums text-amber-600">
+							<span className="font-semibold tabular-nums text-warning">
 								{mustChangePasswordCount}
 							</span>
 							<span className="ml-1.5 text-muted-foreground">

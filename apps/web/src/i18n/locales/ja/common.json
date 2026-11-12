@@ -6,7 +6,12 @@
 		"noPermissionToView": "You don't have permission to view this",
 		"loadMore": "もっと読み込む",
 		"loadingMore": "読み込み中…",
-		"reportIssue": "この問題を報告"
+		"reportIssue": "この問題を報告",
+		"dismiss": "閉じる",
+		"toast": {
+			"saved": "保存しました",
+			"deleted": "削除しました"
+		}
 	},
 	"dialog": {
 		"closeLabel": "閉じる",

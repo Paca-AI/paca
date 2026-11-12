@@ -1,8 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { InlineNotice } from "@/components/shared/inline-notice";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { User } from "@/lib/admin-api";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
@@ -58,6 +57,7 @@ export function UserSecurityDialog({
 	}, [cidrsQuery.data]);
 
 	const save = useMutation({
+		meta: { success: "saved" },
 		mutationFn: () => setUserAllowedCidrs(user.id, parseList(text)),
 		onSuccess: (cidrs) => {
 			queryClient.setQueryData(queryKey, cidrs);
@@ -142,7 +142,7 @@ export function UserSecurityDialog({
 									onClick={() => reset.mutate()}
 								>
 									{reset.isPending ? (
-										<Loader2 className="size-3.5 animate-spin" />
+										<Spinner aria-hidden="true" className="size-3.5" />
 									) : null}
 									{t("users.security.mfa.confirmReset")}
 								</Button>
@@ -176,9 +176,7 @@ export function UserSecurityDialog({
 						disabled={!dirty || save.isPending}
 						onClick={() => save.mutate()}
 					>
-						{save.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : null}
+						{save.isPending ? <Spinner aria-hidden="true" /> : null}
 						{t("users.security.save")}
 					</Button>
 				</DialogFooter>
