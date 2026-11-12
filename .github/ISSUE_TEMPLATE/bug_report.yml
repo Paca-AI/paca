@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug. The more detail you give, the faster it can be fixed.
-        Tip: the in-app **Send feedback** button (user menu) and the **Report issue** button on error screens pre-fill this form for you.
+        Tip: the **Report this issue** button on the app's error screens pre-fills this form with the error details for you.
   - type: textarea
     id: summary
     attributes:

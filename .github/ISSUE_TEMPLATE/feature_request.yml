@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for suggesting an improvement.
-        Tip: the in-app **Send feedback** button (user menu) pre-fills this form for you.
+        Tip: you can also reach this form from **Send feedback** in the app's user menu.
   - type: textarea
     id: summary
     attributes:

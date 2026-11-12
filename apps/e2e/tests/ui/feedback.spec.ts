@@ -71,6 +71,8 @@ test.describe("Feedback", () => {
 		const popupPromise = page.waitForEvent("popup");
 		await page.getByRole("menuitem", { name: "Send feedback" }).click();
 		const popup = await popupPromise;
+		// The popup event can fire while the page is still about:blank.
+		await popup.waitForURL(/\/Paca-AI\/paca\/issues\/new\/choose/);
 
 		const url = new URL(popup.url());
 		expect(url.origin).toBe(ISSUES_ORIGIN);
@@ -94,6 +96,7 @@ test.describe("Feedback", () => {
 		const popupPromise = page.waitForEvent("popup");
 		await page.getByRole("button", { name: "Report this issue" }).click();
 		const popup = await popupPromise;
+		await popup.waitForURL(/\/Paca-AI\/paca\/issues\/new\?/);
 
 		const url = new URL(popup.url());
 		expect(url.origin).toBe(ISSUES_ORIGIN);
@@ -145,7 +148,9 @@ test.describe("Feedback", () => {
 
 		const popupPromise = page.waitForEvent("popup");
 		await page.getByRole("button", { name: "Report this issue" }).click();
-		const params = new URL((await popupPromise).url()).searchParams;
+		const popup = await popupPromise;
+		await popup.waitForURL(/\/Paca-AI\/paca\/issues\/new\?/);
+		const params = new URL(popup.url()).searchParams;
 		expect(params.get("template")).toBe("bug_report.yml");
 		expect(params.get("logs")).toContain("E2E_FORCED_ERROR");
 	});

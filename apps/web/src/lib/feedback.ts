@@ -34,7 +34,7 @@ export interface FeedbackDraft {
 /** Browsers and GitHub both choke on very long URLs; stay well below ~8 KB. */
 export const MAX_ISSUE_URL_LENGTH = 7000;
 
-const TRUNCATION_MARKER = "\n… [truncated — paste the full text here]";
+const TRUNCATION_MARKER = "\n… [truncated to fit the link]";
 
 function encodedLength(value: string): number {
 	return encodeURIComponent(value).length;
@@ -56,7 +56,8 @@ function truncateToEncodedLength(value: string, max: number): string {
 /**
  * Builds the issue URL. If the result would be too long, the longest field
  * values are truncated first (typically the error stack) so the URL still
- * opens; `truncated` tells the caller so it can offer a copy-to-clipboard.
+ * opens. `truncated` reports whether that happened; the cut text ends with a
+ * visible marker so the reader knows the rest was dropped.
  */
 export function buildIssueUrl(draft: FeedbackDraft): {
 	url: string;
@@ -182,8 +183,6 @@ export function draftFromError(error: unknown): FeedbackDraft {
 }
 
 /** Opens the pre-filled issue form in a new tab. */
-export function openIssue(draft: FeedbackDraft): { truncated: boolean } {
-	const { url, truncated } = buildIssueUrl(draft);
-	window.open(url, "_blank", "noopener,noreferrer");
-	return { truncated };
+export function openIssue(draft: FeedbackDraft): void {
+	window.open(buildIssueUrl(draft).url, "_blank", "noopener,noreferrer");
 }
