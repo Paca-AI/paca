@@ -328,6 +328,56 @@ func TestSSOSignIn(t *testing.T) {
 		}
 	})
 
+	t.Run("group_policy_restricts_sign_in", func(t *testing.T) {
+		update := map[string]any{}
+		for k, v := range provider {
+			update[k] = v
+		}
+		delete(update, "client_secret")
+		update["group_policy_enabled"] = true
+		update["group_claim"] = "realm_access.roles"
+		update["allowed_groups"] = []string{"paca-users"}
+		status, out := doJSON(t, env, root, http.MethodPut, "/api/v1/admin/sso/providers/"+providerID, update)
+		if status != http.StatusOK {
+			t.Fatalf("enable group policy: want 200, got %d (%s)", status, out.ErrorCode)
+		}
+		saved := assertDataMap(t, out)
+		if saved["group_policy_enabled"] != true || saved["group_claim"] != "realm_access.roles" {
+			t.Fatalf("saved provider = %v", saved)
+		}
+
+		// An enabled policy with nothing to match is a configuration error.
+		bad := map[string]any{}
+		for k, v := range update {
+			bad[k] = v
+		}
+		bad["allowed_groups"] = []string{}
+		if status, _ := doJSON(t, env, root, http.MethodPut, "/api/v1/admin/sso/providers/"+providerID, bad); status != http.StatusBadRequest {
+			t.Fatalf("empty allow-list: want 400, got %d", status)
+		}
+
+		// bob is already linked, so the policy must also stop a returning user.
+		idp.signInAs(map[string]any{
+			"sub": "u-2", "email": "bob@corp.example", "email_verified": true,
+			"realm_access": map[string]any{"roles": []string{"guest"}},
+		})
+		if landed := ssoSignIn(t, env, ssoBrowser(t, env), "corp", ""); landed != "/?sso_error=group_not_allowed" {
+			t.Fatalf("landed on %q, want the group_not_allowed error", landed)
+		}
+		idp.signInAs(map[string]any{
+			"sub": "u-2", "email": "bob@corp.example", "email_verified": true,
+			"realm_access": map[string]any{"roles": []string{"guest", "paca-users"}},
+		})
+		if landed := ssoSignIn(t, env, ssoBrowser(t, env), "corp", ""); landed != "/home" {
+			t.Fatalf("landed on %q, want /home", landed)
+		}
+
+		update["group_policy_enabled"] = false
+		if status, out := doJSON(t, env, root, http.MethodPut, "/api/v1/admin/sso/providers/"+providerID, update); status != http.StatusOK {
+			t.Fatalf("disable group policy: want 200, got %d (%s)", status, out.ErrorCode)
+		}
+	})
+
 	t.Run("disabled_providers_cannot_be_used", func(t *testing.T) {
 		update := map[string]any{}
 		for k, v := range provider {

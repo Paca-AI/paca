@@ -19,6 +19,10 @@ type SSOProviderRequest struct {
 	AutoProvision  bool     `json:"auto_provision"`
 	LinkByEmail    bool     `json:"link_by_email"`
 	AllowedDomains []string `json:"allowed_domains"`
+
+	GroupPolicyEnabled bool     `json:"group_policy_enabled"`
+	GroupClaim         string   `json:"group_claim"`
+	AllowedGroups      []string `json:"allowed_groups"`
 }
 
 // ToInput maps the request to the domain input.
@@ -34,26 +38,35 @@ func (r SSOProviderRequest) ToInput() ssodom.ProviderInput {
 		AutoProvision:  r.AutoProvision,
 		LinkByEmail:    r.LinkByEmail,
 		AllowedDomains: r.AllowedDomains,
+
+		GroupPolicyEnabled: r.GroupPolicyEnabled,
+		GroupClaim:         r.GroupClaim,
+		AllowedGroups:      r.AllowedGroups,
 	}
 }
 
 // SSOProviderResponse is the admin view of a provider. The client secret is
 // never returned — only whether one is set.
 type SSOProviderResponse struct {
-	ID              string    `json:"id"`
-	Slug            string    `json:"slug"`
-	DisplayName     string    `json:"display_name"`
-	IssuerURL       string    `json:"issuer_url"`
-	ClientID        string    `json:"client_id"`
-	HasClientSecret bool      `json:"has_client_secret"`
-	Scopes          []string  `json:"scopes"`
-	Enabled         bool      `json:"enabled"`
-	AutoProvision   bool      `json:"auto_provision"`
-	LinkByEmail     bool      `json:"link_by_email"`
-	AllowedDomains  []string  `json:"allowed_domains"`
-	CallbackURL     string    `json:"callback_url"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              string   `json:"id"`
+	Slug            string   `json:"slug"`
+	DisplayName     string   `json:"display_name"`
+	IssuerURL       string   `json:"issuer_url"`
+	ClientID        string   `json:"client_id"`
+	HasClientSecret bool     `json:"has_client_secret"`
+	Scopes          []string `json:"scopes"`
+	Enabled         bool     `json:"enabled"`
+	AutoProvision   bool     `json:"auto_provision"`
+	LinkByEmail     bool     `json:"link_by_email"`
+	AllowedDomains  []string `json:"allowed_domains"`
+
+	GroupPolicyEnabled bool     `json:"group_policy_enabled"`
+	GroupClaim         string   `json:"group_claim"`
+	AllowedGroups      []string `json:"allowed_groups"`
+
+	CallbackURL string    `json:"callback_url"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // SSOProviderFromDomain maps p; callbackURL is the redirect URI to register
@@ -71,9 +84,14 @@ func SSOProviderFromDomain(p *ssodom.Provider, callbackURL string) SSOProviderRe
 		AutoProvision:   p.AutoProvision,
 		LinkByEmail:     p.LinkByEmail,
 		AllowedDomains:  p.AllowedDomains,
-		CallbackURL:     callbackURL,
-		CreatedAt:       p.CreatedAt,
-		UpdatedAt:       p.UpdatedAt,
+
+		GroupPolicyEnabled: p.GroupPolicyEnabled,
+		GroupClaim:         p.GroupClaim,
+		AllowedGroups:      p.AllowedGroups,
+
+		CallbackURL: callbackURL,
+		CreatedAt:   p.CreatedAt,
+		UpdatedAt:   p.UpdatedAt,
 	}
 }
 

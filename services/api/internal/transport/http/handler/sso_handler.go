@@ -153,6 +153,8 @@ func (h *SSOHandler) failRedirect(w http.ResponseWriter, r *http.Request, err er
 		code = "exchange_failed"
 	case errors.Is(err, ssodom.ErrEmailNotAllowed):
 		code = "email_not_allowed"
+	case errors.Is(err, ssodom.ErrGroupNotAllowed):
+		code = "group_not_allowed"
 	case errors.Is(err, ssodom.ErrNoAccount):
 		code = "no_account"
 	case errors.Is(err, ssodom.ErrAccountExists):

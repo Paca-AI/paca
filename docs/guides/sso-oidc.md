@@ -37,7 +37,28 @@ Common issuer URLs:
 | **Create accounts automatically** | A first-time user gets a new account with the [default global role](../architecture/authorization.md). Their username comes from `preferred_username` or their email (with a numeric suffix if it's taken), and their name and email come from the ID token. The account gets a random password nobody knows, so it signs in only through SSO until an admin resets the password. |
 | **Link existing accounts by email** | A first-time user whose *verified* email matches an existing account signs in as that account, and the link is remembered. Only turn this on for a provider you fully trust — and never for a *multi-tenant* issuer (e.g. Microsoft Entra's `common`/`organizations` endpoints), where any tenant's admin can put an arbitrary address in the `email` claim. Emails match case-insensitively. |
 | **Allowed email domains** | Only users whose verified email is in one of these domains may sign in. Leave empty to allow any. |
+| **Require a group or role** | Only users whose verified ID token carries an allowed group or role may sign in — see [Restricting sign-in by IdP group](#restricting-sign-in-by-idp-group). Off by default. |
 | **Scopes** | Defaults to `openid profile email`. `openid` is always added. |
+
+## Restricting sign-in by IdP group
+
+To limit a provider to members of specific IdP groups or roles, turn on **Require a group or role** and fill in:
+
+- **Group claim** — the ID token claim that lists the user's groups or roles, such as `groups` or `roles`. A dotted path reads a nested claim (Keycloak realm roles: `realm_access.roles`). A claim whose own name contains dots, such as `https://example.com/groups`, is matched as written first.
+- **Allowed groups** — comma-separated values; the user needs at least one. Use stable identifiers (Entra group object IDs, not display names). Matching is exact and case-sensitive.
+
+The check runs on the **verified ID token** after the code exchange and before any account is looked up, linked or created, so it applies to returning users as well as first-time ones: removing someone from the IdP group locks them out at their next SSO sign-in (existing Paca sessions are not revoked). A denied sign-in creates no account and no identity link. The claim may be a string or a list of strings. It fails closed: a missing, `null`, empty, non-string or otherwise malformed claim is denied, and the user sees the generic `group_not_allowed` error. The API log records the reason (`sso: sign-in denied by group policy`) without printing the claim contents. Userinfo-endpoint claims are not consulted. When the policy is off, the claim settings are ignored and sign-in behaves as before. Mapping groups to Paca roles is not supported.
+
+### Microsoft Entra ID
+
+1. In the app registration, open **Token configuration → Add groups claim** and choose the group types you need. To keep tokens small, pick **Groups assigned to the application** and assign only the intended groups to the enterprise application. (Alternatively, define **App roles** and use the `roles` claim.)
+2. In Paca, set **Group claim** to `groups` (or `roles`) and **Allowed groups** to the group object IDs (GUIDs) from Entra.
+
+**Groups overage.** Entra stops emitting `groups` when a user belongs to too many groups (200 in a JWT) and sends a reference to Microsoft Graph instead (`_claim_names` / `_claim_sources`). Paca does not resolve that reference, so such users are **denied**. Avoid it by emitting only groups assigned to the application, or by using app roles.
+
+### Other providers
+
+Any OpenID Connect provider that puts groups or roles in the ID token works: configure the provider to include the claim (Okta: a `groups` claim with a filter on the authorization server; Keycloak: a *Group Membership* or *User Realm Role* mapper with *Add to ID token* on, or the built-in `realm_access.roles`), then enter its name and the allowed values in Paca.
 
 ## How sign-in resolves an account
 
@@ -76,6 +97,7 @@ When SSO sign-in fails, the user is sent back to the sign-in page with `?sso_err
 | `state_invalid` | The sign-in took longer than 10 minutes, was replayed, or was finished in a different browser. |
 | `exchange_failed` | The code exchange or ID-token check failed. Usually a wrong client secret, or a redirect URI that doesn't match exactly. The API log has the details. |
 | `email_not_allowed` | The email domain isn't allowed, or the email isn't verified. |
+| `group_not_allowed` | The provider requires an IdP group or role and the ID token's group claim is missing, malformed, empty, replaced by an Entra groups-overage reference, or holds none of the allowed values. The API log has the reason. |
 | `no_account` | No linked account, and the provider neither links nor creates accounts. |
 | `account_exists` | An account already has this email, and linking is off. |
 | `rate_limited` | Too many SSO sign-in requests from this IP (`AUTH_RATE_LIMIT_PER_MINUTE`). |

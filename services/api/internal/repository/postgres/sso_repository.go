@@ -14,7 +14,7 @@ import (
 	ssodom "github.com/Paca-AI/api/internal/domain/sso"
 )
 
-const oidcProviderColumns = `id, slug, display_name, issuer_url, client_id, client_secret, scopes, enabled, auto_provision, link_by_email, allowed_domains, created_at, updated_at`
+const oidcProviderColumns = `id, slug, display_name, issuer_url, client_id, client_secret, scopes, enabled, auto_provision, link_by_email, allowed_domains, group_policy_enabled, group_claim, allowed_groups, created_at, updated_at`
 
 type oidcProviderRecord struct {
 	ID             string    `db:"id"`
@@ -28,6 +28,9 @@ type oidcProviderRecord struct {
 	AutoProvision  bool      `db:"auto_provision"`
 	LinkByEmail    bool      `db:"link_by_email"`
 	AllowedDomains []byte    `db:"allowed_domains"`
+	GroupPolicy    bool      `db:"group_policy_enabled"`
+	GroupClaim     string    `db:"group_claim"`
+	AllowedGroups  []byte    `db:"allowed_groups"`
 	CreatedAt      time.Time `db:"created_at"`
 	UpdatedAt      time.Time `db:"updated_at"`
 }
@@ -47,14 +50,21 @@ func (r *oidcProviderRecord) toEntity() (*ssodom.Provider, error) {
 		Enabled:       r.Enabled,
 		AutoProvision: r.AutoProvision,
 		LinkByEmail:   r.LinkByEmail,
-		CreatedAt:     r.CreatedAt,
-		UpdatedAt:     r.UpdatedAt,
+
+		GroupPolicyEnabled: r.GroupPolicy,
+		GroupClaim:         r.GroupClaim,
+
+		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
 	}
 	if err := json.Unmarshal(r.Scopes, &p.Scopes); err != nil {
 		return nil, fmt.Errorf("sso repo: decode scopes: %w", err)
 	}
 	if err := json.Unmarshal(r.AllowedDomains, &p.AllowedDomains); err != nil {
 		return nil, fmt.Errorf("sso repo: decode allowed_domains: %w", err)
+	}
+	if err := json.Unmarshal(r.AllowedGroups, &p.AllowedGroups); err != nil {
+		return nil, fmt.Errorf("sso repo: decode allowed_groups: %w", err)
 	}
 	return p, nil
 }
@@ -121,10 +131,11 @@ func (r *SSORepository) findProvider(ctx context.Context, where string, arg any)
 func (r *SSORepository) CreateProvider(ctx context.Context, p *ssodom.Provider) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO oidc_providers (`+oidcProviderColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12, $13)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12, $13, $14::jsonb, $15, $16)`,
 		p.ID.String(), p.Slug, p.DisplayName, p.IssuerURL, p.ClientID, p.ClientSecret,
 		jsonStrings(p.Scopes), p.Enabled, p.AutoProvision, p.LinkByEmail,
-		jsonStrings(p.AllowedDomains), p.CreatedAt, p.UpdatedAt,
+		jsonStrings(p.AllowedDomains), p.GroupPolicyEnabled, p.GroupClaim,
+		jsonStrings(p.AllowedGroups), p.CreatedAt, p.UpdatedAt,
 	)
 	return ssoProviderWriteErr("create provider", err)
 }
@@ -134,11 +145,13 @@ func (r *SSORepository) UpdateProvider(ctx context.Context, p *ssodom.Provider) 
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE oidc_providers SET slug = $1, display_name = $2, issuer_url = $3, client_id = $4,
 		  client_secret = $5, scopes = $6::jsonb, enabled = $7, auto_provision = $8,
-		  link_by_email = $9, allowed_domains = $10::jsonb, updated_at = $11
-		WHERE id = $12`,
+		  link_by_email = $9, allowed_domains = $10::jsonb, group_policy_enabled = $11,
+		  group_claim = $12, allowed_groups = $13::jsonb, updated_at = $14
+		WHERE id = $15`,
 		p.Slug, p.DisplayName, p.IssuerURL, p.ClientID, p.ClientSecret,
 		jsonStrings(p.Scopes), p.Enabled, p.AutoProvision, p.LinkByEmail,
-		jsonStrings(p.AllowedDomains), p.UpdatedAt, p.ID.String(),
+		jsonStrings(p.AllowedDomains), p.GroupPolicyEnabled, p.GroupClaim,
+		jsonStrings(p.AllowedGroups), p.UpdatedAt, p.ID.String(),
 	)
 	if err != nil {
 		return ssoProviderWriteErr("update provider", err)

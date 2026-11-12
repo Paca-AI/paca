@@ -53,6 +53,14 @@ function splitList(value: string): string[] {
 		.filter(Boolean);
 }
 
+/** Splits on commas and newlines only: group names may contain spaces. */
+export function splitGroups(value: string): string[] {
+	return value
+		.split(/[,\n]+/)
+		.map((v) => v.trim())
+		.filter(Boolean);
+}
+
 export function SsoProviderDialog({
 	open,
 	onOpenChange,
@@ -98,6 +106,13 @@ function ProviderForm({
 	const [allowedDomains, setAllowedDomains] = useState(
 		(provider?.allowed_domains ?? []).join(", "),
 	);
+	const [groupPolicyEnabled, setGroupPolicyEnabled] = useState(
+		provider?.group_policy_enabled ?? false,
+	);
+	const [groupClaim, setGroupClaim] = useState(provider?.group_claim ?? "");
+	const [allowedGroups, setAllowedGroups] = useState(
+		(provider?.allowed_groups ?? []).join(", "),
+	);
 	const [enabled, setEnabled] = useState(provider?.enabled ?? true);
 	const [autoProvision, setAutoProvision] = useState(
 		provider?.auto_provision ?? true,
@@ -127,6 +142,9 @@ function ProviderForm({
 				auto_provision: autoProvision,
 				link_by_email: linkByEmail,
 				allowed_domains: splitList(allowedDomains),
+				group_policy_enabled: groupPolicyEnabled,
+				group_claim: groupClaim.trim(),
+				allowed_groups: splitGroups(allowedGroups),
 			};
 			return isEdit
 				? updateSsoProvider(provider.id, input)
@@ -158,6 +176,8 @@ function ProviderForm({
 		effectiveSlug !== "" &&
 		issuerUrl.trim() !== "" &&
 		clientId.trim() !== "" &&
+		(!groupPolicyEnabled ||
+			(groupClaim.trim() !== "" && splitGroups(allowedGroups).length > 0)) &&
 		!mutation.isPending;
 
 	return (
@@ -285,6 +305,47 @@ function ProviderForm({
 					placeholder="example.com"
 				/>
 			</Field>
+
+			<div className="flex flex-col gap-3 rounded-lg border border-border/60 p-3">
+				<Toggle
+					id={`${id}-group-policy`}
+					label={t("settings.sso.fields.groupPolicy")}
+					hint={t("settings.sso.fields.groupPolicyHint")}
+					checked={groupPolicyEnabled}
+					onChange={setGroupPolicyEnabled}
+				/>
+				{groupPolicyEnabled ? (
+					<>
+						<Field
+							id={`${id}-group-claim`}
+							label={t("settings.sso.fields.groupClaim")}
+							hint={t("settings.sso.fields.groupClaimHint")}
+						>
+							<Input
+								id={`${id}-group-claim`}
+								value={groupClaim}
+								onChange={(e) => setGroupClaim(e.target.value)}
+								placeholder="groups"
+								autoComplete="off"
+								required
+							/>
+						</Field>
+						<Field
+							id={`${id}-allowed-groups`}
+							label={t("settings.sso.fields.allowedGroups")}
+							hint={t("settings.sso.fields.allowedGroupsHint")}
+						>
+							<Input
+								id={`${id}-allowed-groups`}
+								value={allowedGroups}
+								onChange={(e) => setAllowedGroups(e.target.value)}
+								autoComplete="off"
+								required
+							/>
+						</Field>
+					</>
+				) : null}
+			</div>
 
 			<div className="flex flex-col gap-3 rounded-lg border border-border/60 p-3">
 				<Toggle

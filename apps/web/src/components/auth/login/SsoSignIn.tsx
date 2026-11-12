@@ -14,6 +14,7 @@ const SSO_ERROR_CODES = [
 	"state_invalid",
 	"exchange_failed",
 	"email_not_allowed",
+	"group_not_allowed",
 	"no_account",
 	"account_exists",
 	"ip_not_allowed",
