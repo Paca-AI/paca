@@ -44,8 +44,19 @@ type Provider struct {
 	// AllowedDomains restricts sign-in to these email domains; empty allows
 	// any.
 	AllowedDomains []string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// GroupPolicyEnabled restricts sign-in to identities whose verified ID
+	// token carries at least one of AllowedGroups in GroupClaim. Disabled by
+	// default, in which case GroupClaim and AllowedGroups are ignored.
+	GroupPolicyEnabled bool
+	// GroupClaim names the ID token claim holding the identity's groups or
+	// roles, e.g. "groups", "roles" or a nested path such as
+	// "realm_access.roles".
+	GroupClaim string
+	// AllowedGroups are the stable values (e.g. Entra group object IDs) of
+	// which an identity needs at least one. Matching is exact.
+	AllowedGroups []string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // Identity links a Paca user to the subject a provider asserts for them.
@@ -73,4 +84,8 @@ type ProviderInput struct {
 	AutoProvision  bool
 	LinkByEmail    bool
 	AllowedDomains []string
+
+	GroupPolicyEnabled bool
+	GroupClaim         string
+	AllowedGroups      []string
 }

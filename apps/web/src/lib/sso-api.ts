@@ -23,6 +23,9 @@ export interface SsoProvider {
 	auto_provision: boolean;
 	link_by_email: boolean;
 	allowed_domains: string[];
+	group_policy_enabled: boolean;
+	group_claim: string;
+	allowed_groups: string[];
 	/** The redirect URI to register at the provider. */
 	callback_url: string;
 	created_at: string;
@@ -41,6 +44,9 @@ export interface SsoProviderInput {
 	auto_provision: boolean;
 	link_by_email: boolean;
 	allowed_domains: string[];
+	group_policy_enabled: boolean;
+	group_claim: string;
+	allowed_groups: string[];
 }
 
 export async function listPublicSsoProviders(): Promise<SsoPublicProvider[]> {

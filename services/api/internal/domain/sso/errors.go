@@ -32,6 +32,10 @@ var (
 	// ErrEmailNotAllowed indicates the identity's email domain is not in the
 	// provider's allow-list, or the provider did not verify the email.
 	ErrEmailNotAllowed = errors.New("sso: email not allowed")
+	// ErrGroupNotAllowed indicates the provider enforces a group allow-list
+	// and the identity's group claim is missing, malformed, empty, replaced
+	// by a group-overage pointer, or holds none of the allowed values.
+	ErrGroupNotAllowed = errors.New("sso: group not allowed")
 	// ErrNoAccount indicates no account is linked to the identity and the
 	// provider neither auto-provisions nor links one by email.
 	ErrNoAccount = errors.New("sso: no account for this identity")

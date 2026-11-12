@@ -283,6 +283,17 @@ func applyInput(p *ssodom.Provider, in ssodom.ProviderInput) error {
 		}
 	}
 
+	groupClaim := strings.TrimSpace(in.GroupClaim)
+	groups := normalizeList(in.AllowedGroups, false)
+	if in.GroupPolicyEnabled {
+		if !validClaimPath(groupClaim) {
+			return fmt.Errorf("%w: group claim must be a claim name or a dotted path such as realm_access.roles", ssodom.ErrInvalidProvider)
+		}
+		if len(groups) == 0 {
+			return fmt.Errorf("%w: at least one allowed group is required when the group policy is enabled", ssodom.ErrInvalidProvider)
+		}
+	}
+
 	p.Slug = slug
 	p.DisplayName = name
 	p.IssuerURL = issuer
@@ -295,6 +306,9 @@ func applyInput(p *ssodom.Provider, in ssodom.ProviderInput) error {
 	p.AutoProvision = in.AutoProvision
 	p.LinkByEmail = in.LinkByEmail
 	p.AllowedDomains = domains
+	p.GroupPolicyEnabled = in.GroupPolicyEnabled
+	p.GroupClaim = groupClaim
+	p.AllowedGroups = groups
 	return nil
 }
 
@@ -442,6 +456,12 @@ func (s *Service) CompleteLogin(ctx context.Context, slug, baseURL, code, state,
 				c.merge(uc)
 			}
 		}
+	}
+
+	// Before any account is looked up, linked or created, so the policy
+	// applies to returning and first-time users alike.
+	if err := s.checkGroupPolicy(p, idTok); err != nil {
+		return nil, "", err
 	}
 
 	u, err := s.ResolveUser(ctx, p, c)
