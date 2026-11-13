@@ -18,6 +18,7 @@ databases:
     plan: basic-256mb
     databaseName: paca
     user: paca
+    ipAllowList: []   # private network only
 
 services:
   - type: keyvalue
@@ -57,6 +58,10 @@ services:
       - { key: JWT_SECRET, generateValue: true }
       - { key: ADMIN_USERNAME, value: admin }
       - { key: ADMIN_PASSWORD, generateValue: true }
+      # Required by the API at startup even without an Agent Runner.
+      - { key: AI_AGENT_INTERNAL_KEY, generateValue: true }
+      # 64 hex chars (`openssl rand -hex 32`); encrypts MFA/plugin secrets. Render prompts for it.
+      - { key: ENCRYPTION_KEY, sync: false }
       - { key: COOKIE_SECURE, value: "true" }
       - { key: TRUSTED_PROXY_HOPS, value: "2" }
       - { key: STORAGE_PROVIDER, value: rustfs }

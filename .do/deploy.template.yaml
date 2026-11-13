@@ -5,7 +5,10 @@
 # (same limitation as Render/Railway — use the Droplet path for AI agents).
 # It also has no persistent volumes, so file storage uses DigitalOcean Spaces
 # instead of the bundled RustFS: create a Space first and paste its keys when
-# the deploy form asks. See docs/deployment/one-click.md.
+# the deploy form asks. App Platform dev databases are PostgreSQL-only, so the
+# cache must be an external Valkey/Redis (e.g. a DigitalOcean Managed Valkey
+# or Upstash): paste its rediss:// URL into REDIS_URL for both api and
+# realtime. See docs/deployment/one-click.md.
 spec:
   name: paca
   region: nyc
@@ -13,10 +16,6 @@ spec:
     - name: db
       engine: PG
       version: "16"
-      production: false
-    - name: cache
-      engine: VALKEY
-      version: "8"
       production: false
   services:
     - name: api
@@ -28,11 +27,12 @@ spec:
         - { key: ENV, value: production }
         - { key: PORT, value: "8080" }
         - { key: DATABASE_URL, scope: RUN_TIME, value: "${db.DATABASE_URL}" }
-        - { key: REDIS_URL, scope: RUN_TIME, value: "${cache.DATABASE_URL}" }
+        - { key: REDIS_URL, scope: RUN_TIME, type: SECRET }   # external Valkey/Redis URL, see header
         - { key: JWT_SECRET, scope: RUN_TIME, type: SECRET }
         - { key: ADMIN_USERNAME, value: admin }
         - { key: ADMIN_PASSWORD, scope: RUN_TIME, type: SECRET }
-        - { key: INTERNAL_API_KEY, scope: RUN_TIME, type: SECRET }
+        - { key: AI_AGENT_INTERNAL_KEY, scope: RUN_TIME, type: SECRET }
+        - { key: ENCRYPTION_KEY, scope: RUN_TIME, type: SECRET }   # 64 hex chars: openssl rand -hex 32
         - { key: COOKIE_SECURE, value: "true" }
         - { key: TRUSTED_PROXY_HOPS, value: "2" }
         - { key: PUBLIC_URL, value: "${APP_URL}" }
@@ -40,7 +40,7 @@ spec:
         - { key: STORAGE_ENDPOINT, value: "nyc3.digitaloceanspaces.com" }
         - { key: STORAGE_REGION, value: nyc3 }
         - { key: STORAGE_USE_SSL, value: "true" }
-        - { key: STORAGE_BUCKET, scope: RUN_TIME, value: "" }
+        - { key: STORAGE_BUCKET, scope: RUN_TIME }
         - { key: STORAGE_ACCESS_KEY_ID, scope: RUN_TIME, type: SECRET }
         - { key: STORAGE_SECRET_ACCESS_KEY, scope: RUN_TIME, type: SECRET }
     - name: web
@@ -55,7 +55,7 @@ spec:
         - { key: PORT, value: "3001" }
         - { key: NODE_ENV, value: production }
         - { key: API_URL, value: "${api.PRIVATE_URL}" }
-        - { key: REDIS_URL, scope: RUN_TIME, value: "${cache.DATABASE_URL}" }
+        - { key: REDIS_URL, scope: RUN_TIME, type: SECRET }   # same URL as the api
         - { key: CORS_ORIGINS, value: "${APP_URL}" }
   # Replaces the Caddy gateway: App Platform's own router fans out by path.
   ingress:

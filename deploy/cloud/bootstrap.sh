@@ -84,5 +84,6 @@ export PACA_YES=1 PACA_DIR
 bash /tmp/paca-install.sh
 chmod 600 "$PACA_DIR/.env" 2>/dev/null || true
 
-echo "── Paca is up. Open ${PACA_HTTPS/#yes/https}://${PACA_ADDRESS} (http when HTTPS is off)."
+scheme=http; [[ "$PACA_HTTPS" == yes ]] && scheme=https
+echo "── Paca is up. Open ${scheme}://${PACA_ADDRESS}"
 echo "── Admin credentials: grep ADMIN_ $PACA_DIR/.env"

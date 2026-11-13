@@ -27,7 +27,7 @@ Parameters:
     Type: String
     NoEcho: true
     Default: ""
-    AllowedPattern: "^[A-Za-z0-9!@#%^*_+=.,:-]*$"
+    AllowedPattern: "^(?:[A-Za-z0-9!@#%^*_+=.,:-]{8,})?$"
     Description: Admin password (min 8 chars). Leave empty to auto-generate (read it from /opt/paca/.env).
   AllowedCidr:
     Type: String

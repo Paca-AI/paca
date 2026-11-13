@@ -23,11 +23,19 @@ PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
 echo "Deploying Paca to project ${PROJECT}, zone ${ZONE} (${MACHINE})"
 gcloud services enable compute.googleapis.com
 
-gcloud compute addresses create "${NAME}-ip" --region "$REGION"
+# Describe-then-create so a retry after a partial failure picks up where it stopped.
+gcloud compute addresses describe "${NAME}-ip" --region "$REGION" >/dev/null 2>&1 ||
+    gcloud compute addresses create "${NAME}-ip" --region "$REGION"
 IP="$(gcloud compute addresses describe "${NAME}-ip" --region "$REGION" --format='value(address)')"
 
-gcloud compute firewall-rules create "${NAME}-web" \
-    --allow tcp:80,tcp:443 --target-tags "$NAME"
+gcloud compute firewall-rules describe "${NAME}-web" >/dev/null 2>&1 ||
+    gcloud compute firewall-rules create "${NAME}-web" \
+        --allow tcp:80,tcp:443 --target-tags "$NAME"
+
+if [[ -n "${ADMIN_PASSWORD:-}" && ( ${#ADMIN_PASSWORD} -lt 8 || "$ADMIN_PASSWORD" == *"'"* ) ]]; then
+    echo "ADMIN_PASSWORD must be at least 8 characters and must not contain single quotes." >&2
+    exit 1
+fi
 
 STARTUP="$(mktemp)"
 trap 'rm -f "$STARTUP"' EXIT
@@ -43,6 +51,10 @@ export ADMIN_PASSWORD='${ADMIN_PASSWORD:-}'
 curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/bootstrap.sh | bash
 SCRIPT
 
+if gcloud compute instances describe "$NAME" --zone "$ZONE" >/dev/null 2>&1; then
+    echo "Instance ${NAME} already exists in ${ZONE}; delete it first to redeploy." >&2
+    exit 1
+fi
 gcloud compute instances create "$NAME" \
     --zone "$ZONE" --machine-type "$MACHINE" \
     --image-family ubuntu-2404-lts-amd64 --image-project ubuntu-os-cloud \

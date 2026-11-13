@@ -33,13 +33,17 @@ Like the other VM paths it needs a release that includes `bootstrap.sh`.
 ## DigitalOcean (App Platform button)
 
 [`.do/deploy.template.yaml`](../../.do/deploy.template.yaml) deploys the API, web
-and realtime services plus managed Postgres and Valkey, and uses App Platform's
+and realtime services plus a managed Postgres dev database, and uses App Platform's
 router instead of Caddy. There are no persistent volumes, so files go to
 **DigitalOcean Spaces**:
 
 1. Create a Space (e.g. `my-paca-files`) in `nyc3` and a Spaces access key.
+   Also create a Valkey/Redis instance (DigitalOcean Managed Valkey, Upstash, …):
+   App Platform dev databases are PostgreSQL-only, so you paste its `rediss://`
+   URL into `REDIS_URL` for both `api` and `realtime`.
 2. Click the button, fill the secret fields (`JWT_SECRET`, `ADMIN_PASSWORD`,
-   `INTERNAL_API_KEY`, Spaces key/secret) and set `STORAGE_BUCKET`.
+   `AI_AGENT_INTERNAL_KEY`, `ENCRYPTION_KEY` (`openssl rand -hex 32`), `REDIS_URL`,
+   Spaces key/secret) and set `STORAGE_BUCKET`.
 3. Add a CORS rule on the Space allowing your app URL (GET/PUT/HEAD), since
    browsers upload via presigned Spaces URLs.
 
@@ -81,6 +85,9 @@ Note: `AdminPassword` ends up in instance user-data (readable by anyone with
 RustFS (with a disk), the API, web, realtime services and a Caddy gateway
 (the only public service). All are paid starter plans.
 
+`ENCRYPTION_KEY` (64 hex chars, `openssl rand -hex 32`) is prompted for on
+create; keep it, since changing it makes stored secrets unreadable.
+
 After the first deploy, Render can't know the public URL ahead of time, so set:
 
 - `paca-api`: `PUBLIC_URL=https://<gateway>.onrender.com`,
@@ -111,7 +118,9 @@ maintainer to build the template once. Recipe, mirroring the Render blueprint:
    `STORAGE_PUBLIC_URL=https://${{gateway.RAILWAY_PUBLIC_DOMAIN}}/storage`.
    Realtime: `API_URL=http://paca-api.railway.internal:8080`, `REDIS_URL`,
    `CORS_ORIGINS=https://${{gateway.RAILWAY_PUBLIC_DOMAIN}}`.
-   Use `${{secret(32)}}` for `JWT_SECRET` and `ADMIN_PASSWORD`.
+   Use `${{secret(32)}}` for `JWT_SECRET`, `ADMIN_PASSWORD` and
+   `AI_AGENT_INTERNAL_KEY` (the API refuses to start without it), and
+   `${{secret(64, "abcdef0123456789")}}` for `ENCRYPTION_KEY`.
 5. Publish via *Settings → Generate Template*, then add the resulting
    `https://railway.com/deploy/<code>` button to the README.
 
