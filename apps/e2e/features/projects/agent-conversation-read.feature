@@ -8,8 +8,9 @@ Feature: An agent reads conversations through the agent API
   condition such as conversation.agent_id can limit a role to some
   conversations, for instance the agent's own.
 
-  An owner-private chat belongs to the member who owns it, so another agent can
-  never read it. Task-assigned runs are visible to the whole project.
+  An owner-private chat belongs to the member who owns it, and one agent chats
+  with many members, so such a chat is never readable through this path (the
+  agent's own included). Task-assigned runs are visible to the whole project.
 
   Background:
     Given a project named "E2E_AGENTREAD" exists
@@ -23,20 +24,23 @@ Feature: An agent reads conversations through the agent API
       When it reads that conversation
       Then the response is 403
 
-    Scenario: An agent with conversations:read reads its own conversation
-      Given an agent with conversations:read has a chat
-      When it reads that conversation
+    Scenario: An agent with conversations:read reads its own task run
+      Given a task is assigned to an agent with conversations:read and its bridge starts the run
+      When the agent reads that run
       Then the response is 200
 
-  Rule: Another agent's conversations
+  Rule: Owner-private chats are never readable through the agent API
 
-    Scenario: An owner-private chat is not found even with conversations:read
-      Given an agent with conversations:read
-      And a peer agent has a chat
+    Scenario: Neither the agent's own chat nor a peer's
+      Given an agent with conversations:read and a peer agent each have a chat
+      When the agent reads its own chat
+      Then the response is 404
       When the agent reads the peer's chat
       Then the response is 404
 
-    Scenario: A task-assigned run is readable only with conversations:read
+  Rule: Another agent's task run
+
+    Scenario: Readable only with conversations:read
       Given a task is assigned to a peer agent and its bridge starts the run
       When an agent with conversations:read reads the run
       Then the response is 200
@@ -47,7 +51,7 @@ Feature: An agent reads conversations through the agent API
 
     Scenario: conversation.agent_id equal to the agent's own id
       Given the agent's role allows conversations:read only where conversation.agent_id is its id
-      When it reads its own chat
+      When it reads its own task run
       Then the response is 200
-      When it reads a peer's chat
+      When it reads a peer's task run
       Then the response is 403

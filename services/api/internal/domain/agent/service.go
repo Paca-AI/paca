@@ -133,10 +133,10 @@ type ConversationService interface {
 	// agent's own roles over the conversation's resource — so a role can be
 	// limited to some conversations (for instance its own) with an IAM
 	// condition. This only applies the data rules the gate can't see:
-	//   - a soft-deleted conversation is not found (an agent's own one stays
-	//     readable while its turn is still running);
-	//   - an owner-private chat of another agent is never reachable, since an
-	//     agent is not the member who owns it.
+	//   - a soft-deleted conversation is not found;
+	//   - an owner-private chat is never reachable, the agent's own included:
+	//     an agent is not the member who owns it, and one agent chats with many
+	//     members, so nothing proves the human it acts for is that owner.
 	// Anything else returns ErrConversationNotFound.
 	GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)

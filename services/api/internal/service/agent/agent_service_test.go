@@ -1683,7 +1683,7 @@ func TestGetConversation_OwnerPrivate_WrongMember(t *testing.T) {
 // ─── GetConversationForAgent ─────────────────────────────────────────────────
 //
 // Permission is the router's conversations:read gate; the service applies only
-// the data rules: deleted, and another agent's owner-private chat.
+// the data rules: deleted, and owner-private chats.
 
 func getForAgentSvc(convs ...*agentdom.AgentConversation) *Service {
 	repo := &mockAgentRepo{
@@ -1699,9 +1699,9 @@ func getForAgentSvc(convs ...*agentdom.AgentConversation) *Service {
 	return New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 }
 
-func TestGetConversationForAgent_Own_IncludingOwnerPrivate(t *testing.T) {
-	agentID, projectID, sessionID := uuid.New(), uuid.New(), uuid.New()
-	own := &agentdom.AgentConversation{ID: uuid.New(), AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceOwnerPrivate, ChatSessionID: &sessionID}
+func TestGetConversationForAgent_Own_ProjectShared(t *testing.T) {
+	agentID := uuid.New()
+	own := &agentdom.AgentConversation{ID: uuid.New(), AgentID: agentID, ProjectID: uuid.New(), Audience: agentdom.AudienceProjectShared}
 
 	got, err := getForAgentSvc(own).GetConversationForAgent(context.Background(), own.ID, agentID)
 
@@ -1719,28 +1719,33 @@ func TestGetConversationForAgent_AnotherAgents_ProjectShared(t *testing.T) {
 	assert.Equal(t, target.ID, got.ID)
 }
 
-func TestGetConversationForAgent_AnotherAgents_OwnerPrivateNeverReachable(t *testing.T) {
-	caller, owner, sessionID := uuid.New(), uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: uuid.New(), AgentID: owner, ProjectID: uuid.New(), Audience: agentdom.AudienceOwnerPrivate, ChatSessionID: &sessionID}
+// An owner-private chat is never reachable: not another agent's, and not the
+// caller's own either (the same agent chats with many members, so nothing
+// proves the human it acts for is the chat's owner).
+func TestGetConversationForAgent_OwnerPrivateNeverReachable(t *testing.T) {
+	caller, other, sessionID := uuid.New(), uuid.New(), uuid.New()
+	mk := func(agent uuid.UUID) *agentdom.AgentConversation {
+		return &agentdom.AgentConversation{ID: uuid.New(), AgentID: agent, ProjectID: uuid.New(), Audience: agentdom.AudienceOwnerPrivate, ChatSessionID: &sessionID}
+	}
+	own, theirs := mk(caller), mk(other)
+	svc := getForAgentSvc(own, theirs)
 
-	_, err := getForAgentSvc(target).GetConversationForAgent(context.Background(), target.ID, caller)
-
+	_, err := svc.GetConversationForAgent(context.Background(), own.ID, caller)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+	_, err = svc.GetConversationForAgent(context.Background(), theirs.ID, caller)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
-func TestGetConversationForAgent_Deleted(t *testing.T) {
+func TestGetConversationForAgent_DeletedNotFound(t *testing.T) {
 	agentID, other := uuid.New(), uuid.New()
 	now := time.Now()
-	ownRunning := &agentdom.AgentConversation{ID: uuid.New(), AgentID: agentID, DeletedAt: &now, Status: "running"}
-	ownStopped := &agentdom.AgentConversation{ID: uuid.New(), AgentID: agentID, DeletedAt: &now, Status: "stopped"}
-	othersRunning := &agentdom.AgentConversation{ID: uuid.New(), AgentID: other, Audience: agentdom.AudienceProjectShared, DeletedAt: &now, Status: "running"}
-	svc := getForAgentSvc(ownRunning, ownStopped, othersRunning)
+	own := &agentdom.AgentConversation{ID: uuid.New(), AgentID: agentID, DeletedAt: &now, Status: "stopped"}
+	others := &agentdom.AgentConversation{ID: uuid.New(), AgentID: other, Audience: agentdom.AudienceProjectShared, DeletedAt: &now, Status: "stopped"}
+	svc := getForAgentSvc(own, others)
 
-	_, err := svc.GetConversationForAgent(context.Background(), ownRunning.ID, agentID)
-	assert.NoError(t, err, "its own live turn stays readable")
-	_, err = svc.GetConversationForAgent(context.Background(), ownStopped.ID, agentID)
+	_, err := svc.GetConversationForAgent(context.Background(), own.ID, agentID)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
-	_, err = svc.GetConversationForAgent(context.Background(), othersRunning.ID, agentID)
+	_, err = svc.GetConversationForAgent(context.Background(), others.ID, agentID)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 

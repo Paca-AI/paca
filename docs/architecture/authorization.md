@@ -100,7 +100,7 @@ Keys are *declared attributes*, validated on save against the attribute schema (
 | `agent.environment_id` | agent | no |
 | `environment.type` (the runtime backend: `docker` or `kubernetes`) | environment | no |
 | `conversation.environment_id` | conversation | no |
-| `conversation.agent_id` (the agent the conversation belongs to) | conversation | no |
+| `conversation.agent_id` (the agent a project conversation belongs to; global chats are authorized as `agent/<id>` and have no conversation attributes) | conversation | no |
 
 A key bound to a resource kind must fit at least one of the statement's resources, otherwise the policy is rejected. A positive operator matches if any value matches; a negated one (`StringNotEquals`, `NotIn`) only if no value matches; an absent attribute makes positive operators false and negated ones true. Attributes are loaded lazily, only when a statement references them (`iam.AttributeLoader`, registered per kind in `repository/postgres/iam_attribute_loaders.go`).
 

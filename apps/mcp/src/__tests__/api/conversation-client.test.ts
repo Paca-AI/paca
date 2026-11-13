@@ -62,40 +62,6 @@ describe("PacaAPIConversationClient", () => {
 		expect(fetchMock.mock.calls[0][1].headers["X-Agent-ID"]).toBeUndefined();
 	});
 
-	it("sends X-Conversation-ID header only alongside agentId", async () => {
-		const client = new PacaAPIConversationClient({
-			...CONFIG,
-			agentId: "agent-1",
-			conversationId: "conv-current",
-		});
-		await client.getConversation("c1");
-		expect(fetchMock.mock.calls[0][1].headers["X-Conversation-ID"]).toBe(
-			"conv-current",
-		);
-	});
-
-	it("omits X-Conversation-ID when conversationId is configured without agentId", async () => {
-		const client = new PacaAPIConversationClient({
-			...CONFIG,
-			conversationId: "conv-current",
-		});
-		await client.getConversation("c1");
-		expect(
-			fetchMock.mock.calls[0][1].headers["X-Conversation-ID"],
-		).toBeUndefined();
-	});
-
-	it("omits X-Conversation-ID when conversationId is not configured", async () => {
-		const client = new PacaAPIConversationClient({
-			...CONFIG,
-			agentId: "agent-1",
-		});
-		await client.getConversation("c1");
-		expect(
-			fetchMock.mock.calls[0][1].headers["X-Conversation-ID"],
-		).toBeUndefined();
-	});
-
 	it("throws on non-OK response", async () => {
 		fetchMock.mockResolvedValue(errorResponse(503, "Service Unavailable"));
 		const client = new PacaAPIConversationClient(CONFIG);
@@ -119,10 +85,9 @@ describe("PacaAPIConversationClient", () => {
 	// ---------------------------------------------------------------------------
 	// Agent self-service conversation reads — GET /agents/me/conversations/:id.
 	// No projectId: this path authorizes by the caller's conversations.read
-	// grant and its current conversation's visibility (see
-	// agentdom.Service.GetConversationForAgent), not by project or human
-	// membership, so it works identically for a
-	// project-scoped or global conversation.
+	// grant (see agentdom.Service.GetConversationForAgent), not by project or
+	// human membership, so it works identically for a project-scoped or
+	// global conversation.
 	// ---------------------------------------------------------------------------
 
 	describe("getConversation", () => {

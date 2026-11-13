@@ -198,7 +198,7 @@ Condition keys are *declared attributes* (`GET /roles/attribute-schema`). A key 
 | `agent.environment_id` | agent | no | The agent's default environment. |
 | `environment.type` | environment | no | `docker` or `kubernetes`. |
 | `conversation.environment_id` | conversation | no | The environment a chat runs in. |
-| `conversation.agent_id` | conversation | no | The agent the conversation belongs to. Limit an agent's `conversations:read` to its own conversations with `conversation.agent_id` equal to that agent's id. |
+| `conversation.agent_id` | conversation | no | The agent a *project* conversation belongs to. Limit an agent's `conversations:read` to its own project conversations with `conversation.agent_id` equal to that agent's id. A global chat is authorized as `agent/<id>` (the agent's platform resource) and carries no conversation attributes, so scope those with the role's resources instead. |
 
 ## Role scopes
 

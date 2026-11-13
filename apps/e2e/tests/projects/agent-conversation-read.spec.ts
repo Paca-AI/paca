@@ -5,7 +5,8 @@
 // tool calls. The router gates it on conversations:read, judged on the roles
 // of the agent the API key proves (nothing else the client sends counts), over
 // the conversation's own resource; so an IAM condition can limit an agent to
-// some conversations, for instance its own. These specs call the endpoint as
+// some conversations, for instance its own. An owner-private chat is never
+// readable through this path; task-assigned runs (project-shared) are. These specs call the endpoint as
 // the MCP client does: with the agent's own API key, no other header.
 
 import {
@@ -96,6 +97,25 @@ test.describe("An agent reading conversations through the agent API", () => {
 		};
 	}
 
+	/**
+	 * Assigns a task to `actor` and returns the id of the project-shared run its
+	 * bridge is told to start (a chat is owner-private; a task run is not).
+	 */
+	async function assignedRun(
+		request: APIRequestContext,
+		actor: Actor,
+		title: string,
+	): Promise<string> {
+		const task = await request.post(`${API_URL}/projects/${projectId}/tasks`, {
+			data: { title, assignee_ids: [actor.memberId] },
+		});
+		expect(task.ok(), await task.text()).toBeTruthy();
+		const started = await actor.bridge.next("start_turn");
+		const runId = started.conversation_id as string;
+		expect(runId).toBeTruthy();
+		return runId;
+	}
+
 	/** GET /agents/me/conversations/:id as `actor`: the HTTP status. */
 	async function readAs(
 		playwright: Playwright,
@@ -148,24 +168,26 @@ test.describe("An agent reading conversations through the agent API", () => {
 		expect(await readAs(playwright, agent, own.id)).toBe(403);
 	});
 
-	test("An agent with conversations:read reads its own conversation, no header needed", async ({
+	test("An agent with conversations:read reads its own task run, no other header needed", async ({
 		request,
 		playwright,
 	}) => {
 		const agent = await createActor(request, "READER", readRoleId);
-		const own = await startProjectChat(request, projectId, agent.id, "hi");
+		const run = await assignedRun(request, agent, "Own work");
 
-		expect(await readAs(playwright, agent, own.id)).toBe(200);
+		expect(await readAs(playwright, agent, run)).toBe(200);
 	});
 
-	test("Another agent's owner-private chat is not found even with conversations:read", async ({
+	test("An owner-private chat is never readable through the agent API, the agent's own included", async ({
 		request,
 		playwright,
 	}) => {
 		const reader = await createActor(request, "READER", readRoleId);
 		const peer = await createActor(request, "PEER", noReadRoleId);
-		const peerChat = await startProjectChat(request, projectId, peer.id, "x");
+		const ownChat = await startProjectChat(request, projectId, reader.id, "a");
+		const peerChat = await startProjectChat(request, projectId, peer.id, "b");
 
+		expect(await readAs(playwright, reader, ownChat.id)).toBe(404);
 		expect(await readAs(playwright, reader, peerChat.id)).toBe(404);
 	});
 
@@ -176,17 +198,10 @@ test.describe("An agent reading conversations through the agent API", () => {
 		const reader = await createActor(request, "READER", readRoleId);
 		const blind = await createActor(request, "BLIND", noReadRoleId);
 		const peer = await createActor(request, "PEER", noReadRoleId);
+		const run = await assignedRun(request, peer, "Delegated work");
 
-		const task = await request.post(`${API_URL}/projects/${projectId}/tasks`, {
-			data: { title: "Delegated work", assignee_ids: [peer.memberId] },
-		});
-		expect(task.ok(), await task.text()).toBeTruthy();
-		const started = await peer.bridge.next("start_turn");
-		const runId = started.conversation_id as string;
-		expect(runId).toBeTruthy();
-
-		expect(await readAs(playwright, reader, runId)).toBe(200);
-		expect(await readAs(playwright, blind, runId)).toBe(403);
+		expect(await readAs(playwright, reader, run)).toBe(200);
+		expect(await readAs(playwright, blind, run)).toBe(403);
 	});
 
 	test("A role limited by conversation.agent_id reads its own conversations and no others", async ({
@@ -212,10 +227,10 @@ test.describe("An agent reading conversations through the agent API", () => {
 			},
 		);
 		await replaceMemberRoles(request, projectId, agent.memberId, [ownOnly.id]);
-		const own = await startProjectChat(request, projectId, agent.id, "mine");
-		const peerChat = await startProjectChat(request, projectId, peer.id, "x");
+		const own = await assignedRun(request, agent, "Mine");
+		const peerRun = await assignedRun(request, peer, "Theirs");
 
-		expect(await readAs(playwright, agent, own.id)).toBe(200);
-		expect(await readAs(playwright, agent, peerChat.id)).toBe(403);
+		expect(await readAs(playwright, agent, own)).toBe(200);
+		expect(await readAs(playwright, agent, peerRun)).toBe(403);
 	});
 });

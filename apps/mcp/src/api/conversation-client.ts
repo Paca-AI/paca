@@ -24,11 +24,11 @@ import { formatApiRequestError } from "../utils/index.js";
  * found" (404) on the project-scoped path, or a mis-scoped lookup on the
  * global path, regardless of which one this tool guessed at based on
  * whether the caller happened to pass a projectId. The /agents/me path
- * sidesteps this entirely: the calling agent must hold conversations.read
- * and the target must be visible to the human driving its current
- * conversation (see agentdom.Service.GetConversationForAgent's doc comment
- * for the exact rule), so there's no project/global split — and no projectId parameter —
- * for the caller to get wrong.
+ * sidesteps this entirely: the API gates it on the calling agent's own
+ * conversations.read grant (judged from the API key alone; see
+ * agentdom.Service.GetConversationForAgent's doc comment for the data rules),
+ * so there's no project/global split — and no projectId parameter — for the
+ * caller to get wrong.
  *
  * Only covers GET .../conversations/:id and GET .../conversations/:id/events
  * — every other conversation endpoint (send message, stop, pause,
@@ -49,16 +49,6 @@ export class PacaAPIConversationClient {
 			"Content-Type": "application/json",
 			"X-API-Key": this.config.apiKey,
 		};
-		// The conversation this MCP server instance is running as part of —
-		// load-bearing for the /agents/me path specifically: GetConversationForAgent
-		// authorizes a cross-conversation read (getConversation/
-		// listConversationEvents for a *different* conversationId than this
-		// one) against this header's conversation's own project/actor/owning
-		// member, not against the agent identity alone. See PacaConfig.conversationId's
-		// doc comment.
-		if (this.config.agentId && this.config.conversationId) {
-			headers["X-Conversation-ID"] = this.config.conversationId;
-		}
 
 		const response = await fetch(url, { method, headers });
 

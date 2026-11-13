@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Paca-AI/api/internal/config"
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/transport/http/handler"

@@ -1666,17 +1666,17 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 	if err != nil {
 		return nil, err
 	}
-	own := target.AgentID == callerAgentID
-	// A soft-deleted conversation is gone, except that an agent keeps reading
-	// its own while its turn is still running: a user can delete the
-	// conversation this very agent is mid-turn on, and the agent must not lose
-	// its own live context from under itself.
-	if target.DeletedAt != nil && !(own && target.Status == "running") {
+	// A soft-deleted conversation is gone (deleting one stops it first, so
+	// there is no live turn left to keep readable).
+	if target.DeletedAt != nil {
 		return nil, agentdom.ErrConversationNotFound
 	}
-	// An owner-private chat belongs to the one chat-session member who owns it;
-	// another agent is never that member, however the permission is granted.
-	if !own && target.Audience == agentdom.AudienceOwnerPrivate {
+	// An owner-private chat belongs to the one chat-session member who owns it.
+	// An agent has no member identity, and the same agent can be chatting with
+	// many members at once, so nothing the agent sends can show that the human
+	// it is acting for is that owner: never reachable through this path, the
+	// agent's own chats included, however the permission is granted.
+	if target.Audience == agentdom.AudienceOwnerPrivate {
 		return nil, agentdom.ErrConversationNotFound
 	}
 	return target, nil
@@ -1686,12 +1686,10 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 // project-scoped owner-private conversation is not owned by memberID.
 // project-shared conversations are readable by any project member, whose
 // membership is already enforced by the router's project-scope middleware.
-// A memberID of uuid.Nil (the no-chat-session branch in
-// authorizeAgentConversationRead, where there is no human context) only
-// reaches project-shared conversations: what protects an owner-private
-// conversation from a nil caller is the session-ownership comparison below,
-// since session.MemberID is always a real project_members.id, which
-// uuid.Nil can never equal.
+// A memberID of uuid.Nil (no human context) only reaches project-shared
+// conversations: what protects an owner-private conversation from a nil
+// caller is the session-ownership comparison below, since session.MemberID is
+// always a real project_members.id, which uuid.Nil can never equal.
 func (s *Service) authorizeConversationAccess(ctx context.Context, c *agentdom.AgentConversation, memberID uuid.UUID) error {
 	if c.Audience != agentdom.AudienceOwnerPrivate {
 		return nil
