@@ -344,17 +344,6 @@ func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.
 	presenter.OK(w, r, map[string]any{"message": "conversation deleted"})
 }
 
-// currentConversationIDFromHeader parses X-Conversation-ID — set by
-// agent-runner's MCP server (see executor.go's buildMCPServers and
-// apps/mcp's conversation-client.ts) to the conversation the calling agent
-// process is actually running as part of right now. Missing or malformed
-// yields uuid.Nil, which GetConversationForAgent treats as "no trusted
-// current context to check against" and fails closed, not as a wildcard.
-func currentConversationIDFromHeader(r *http.Request) uuid.UUID {
-	id, _ := uuid.Parse(r.Header.Get("X-Conversation-ID"))
-	return id
-}
-
 // GetConversationForAgent handles GET /agents/me/conversations/:conversationId
 // — an agent (authenticated with its own API key, no human member/actor identity of
 // its own) reading a conversation by ID, e.g. the read_conversation MCP
@@ -373,7 +362,7 @@ func (h *ConversationHandler) GetConversationForAgent(w http.ResponseWriter, r *
 		presenter.Error(w, r, err)
 		return
 	}
-	conv, err := h.svc.GetConversationForAgent(r.Context(), convID, agentID, currentConversationIDFromHeader(r))
+	conv, err := h.svc.GetConversationForAgent(r.Context(), convID, agentID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -396,7 +385,7 @@ func (h *ConversationHandler) GetConversationEventsForAgent(w http.ResponseWrite
 		presenter.Error(w, r, err)
 		return
 	}
-	if _, err := h.svc.GetConversationForAgent(r.Context(), convID, agentID, currentConversationIDFromHeader(r)); err != nil {
+	if _, err := h.svc.GetConversationForAgent(r.Context(), convID, agentID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}

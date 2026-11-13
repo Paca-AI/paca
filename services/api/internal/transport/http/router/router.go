@@ -52,7 +52,10 @@ type Deps struct {
 	// gates (guards.ChatEnvironment / SessionEnvironment).
 	AgentEnvironments httpmw.AgentEnvironmentLookup
 	// MemberPrincipals resolves the assignees of a task request to principals.
-	TaskNumbers      httpmw.TaskNumberLookup
+	TaskNumbers httpmw.TaskNumberLookup
+	// Conversations resolves a conversation addressed by id alone (the agent
+	// API) to its project, for the conversations:read gate.
+	Conversations    httpmw.ConversationLookup
 	MemberPrincipals httpmw.MemberPrincipalLookup
 	// ChangeHeads stamps project reads with the change-log head (X-Change-Seq),
 	// so a realtime client can start its feed where its data was read. Optional.
@@ -462,8 +465,8 @@ func New(deps Deps) http.Handler {
 					// agent doesn't have (see
 					// agentdom.Service.GetConversationForAgent's doc comment).
 					if deps.Conversation != nil {
-						r.Get("/me/conversations/{conversationId}", deps.Conversation.GetConversationForAgent)
-						r.Get("/me/conversations/{conversationId}/events", deps.Conversation.GetConversationEventsForAgent)
+						r.With(require.ConversationByID("conversationId", iam.ActionConversationsRead)).Get("/me/conversations/{conversationId}", deps.Conversation.GetConversationForAgent)
+						r.With(require.ConversationByID("conversationId", iam.ActionConversationsRead)).Get("/me/conversations/{conversationId}/events", deps.Conversation.GetConversationEventsForAgent)
 					}
 
 					// Global chat — chatting with a global agent from the home

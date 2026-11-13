@@ -208,9 +208,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithPublisher(publisher).
 		WithRedisClient(redisClient)
 	agentService = agentService.WithEnvironmentService(environmentService)
-	// Backs GetConversationForAgent's agents.read check (read_conversation
-	// MCP tool) — see agentsvc.Service.authorizer's doc comment.
-	agentService = agentService.WithAuthorizer(authorizer).WithGrantsNotifier(iamNotifier)
+	agentService = agentService.WithGrantsNotifier(iamNotifier)
 	// Every agent run started without an HTTP request of its own (task
 	// assignment, automation, comment mention) and the description-write
 	// trigger go through this gate — see package triggergate. The agent
@@ -583,6 +581,7 @@ func New(cfg *config.Config) (*App, error) {
 		MemberPrincipals:    httpmw.MemberRepoLookup{Repo: projectRepo},
 		ChangeHeads:         publisher,
 		TaskNumbers:         taskRepo,
+		Conversations:       agentRepo,
 		SessionEnvironments: httpmw.AgentRepoLookups{Repo: agentRepo},
 		Health:              handler.NewHealthHandler(),
 		Version:             handler.NewVersionHandler(cfg.Release, cacheStore, log),

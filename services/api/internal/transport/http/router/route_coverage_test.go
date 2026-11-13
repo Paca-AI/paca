@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	"io"
 	"log/slog"
 	"net/http"
@@ -56,6 +57,7 @@ func coverageDeps(iamAuth *iam.Authorizer) Deps {
 		TokenManager:        jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour),
 		IAM:                 iamAuth,
 		AgentEnvironments:   noEnvironment{},
+		Conversations:       noConversations{},
 		SessionEnvironments: noEnvironment{},
 		Health:              handler.NewHealthHandler(),
 		Version:             handler.NewVersionHandler(config.ReleaseConfig{}, nil, log),
@@ -236,6 +238,8 @@ func TestRouteCoverage_EveryNonOpenRouteDeclaresAGate(t *testing.T) {
 // every route on one environment, and using one project agent (chat
 // sessions). Changing it is a deliberate policy change.
 var iamResourceRoutes = mergeRoutes(roleRoutes, map[string]string{
+	"GET /api/v1/agents/me/conversations/{conversationId}":                                                                                    resConversationByID,
+	"GET /api/v1/agents/me/conversations/{conversationId}/events":                                                                             resConversationByID,
 	"GET /api/v1/projects/{projectId}/agents/{agentId}/chat-sessions":                                                                         resAgent,
 	"POST /api/v1/projects/{projectId}/agents/{agentId}/chat-sessions":                                                                        resAgent,
 	"POST /api/v1/projects/{projectId}/agents/{agentId}/chat-sessions/{sessionId}/messages":                                                   resAgent,
@@ -390,6 +394,13 @@ func isAssignGate(resource string) bool {
 
 // noEnvironment is a lookup for agents and sessions that have no environment.
 type noEnvironment struct{}
+
+// noConversations resolves every conversation as missing.
+type noConversations struct{}
+
+func (noConversations) FindConversationByID(context.Context, uuid.UUID) (*agentdom.AgentConversation, error) {
+	return nil, agentdom.ErrConversationNotFound
+}
 
 func (noEnvironment) DefaultEnvironmentID(context.Context, uuid.UUID, uuid.UUID) (*uuid.UUID, error) {
 	return nil, nil

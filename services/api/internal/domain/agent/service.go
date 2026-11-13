@@ -125,54 +125,20 @@ type ConversationService interface {
 	// conversations are readable by any project member; owner-private ones
 	// only by their chat-session owner).
 	GetConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*AgentConversation, error)
-	// GetConversationForAgent returns a conversation for an agent-
-	// authenticated caller (an agent, no human member/actor identity of
-	// its own to check against) — used by the read_conversation MCP tool
-	// when a user attaches a Conversation as chat context.
-	// GetConversation/GetGlobalConversation both require a human
-	// member/actor identity a bare agent doesn't have (agents aren't
-	// project members, and a project-scoped agent's trigger never carries
-	// an actor_account_id), so this can't just delegate to either of those.
-	//
-	// It is NOT enough to check "is this the requested conversation's own
-	// agent" and stop there: the same agent can be talking to many
-	// different humans (a global agent chats with any authenticated user;
-	// a project-scoped agent can hold a separate owner-private conversation
-	// with each project member, and can be invited into more than one
-	// project). Authorizing on agent identity alone would let any one of
-	// those humans point the agent at another human's conversation ID —
-	// one it has no relationship to at all — and have the agent read it
-	// back, bypassing owner_private/project/actor isolation entirely via
-	// the agent as a confused deputy. (An earlier version of this method
-	// did exactly that; see the currentConversationID parameter below for
-	// the fix.)
-	//
-	// currentConversationID is the conversation the calling agent process
-	// is actually running as part of right now (agent-runner's own
-	// trigger.ConversationID, forwarded as X-Conversation-ID — see
-	// ConversationHandler.GetConversationForAgent). The rule:
-	//   - conversationID == currentConversationID is always allowed (an
-	//     agent may always read the conversation it's currently in).
-	//   - Otherwise, currentConversationID must itself resolve to a
-	//     conversation belonging to callerAgentID (an unverifiable or
-	//     mismatched currentConversationID means there is no trusted
-	//     context to check against, so nothing else is reachable), and the
-	//     requested conversation must be visible to *whichever human is
-	//     driving that current conversation* — the same rule
-	//     authorizeConversationAccess/GetGlobalConversation already apply
-	//     when that human asks directly: same actor for two global
-	//     conversations, or same project plus (project_shared, or
-	//     owner-private to that same chat-session member) for two
-	//     project-scoped ones. See the implementation's doc comment for
-	//     the exact rule.
-	// Any conversation outside that boundary is not reachable via this
-	// path (ErrConversationNotFound), including the same agent's
-	// conversation with an unrelated human. A different agent's
-	// conversation (e.g. one a planner delegated a task to) IS reachable
-	// when the caller holds conversations.read and the target passes the
-	// same visibility rule; only the current-conversation shortcut
-	// requires the target to belong to the caller itself.
-	GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*AgentConversation, error)
+	// GetConversationForAgent returns a conversation for an agent-authenticated
+	// caller — used by the read_conversation MCP tool. callerAgentID is the
+	// agent account the API key / token proves (never a client-supplied
+	// value). Whether that agent may read conversations at all is the router's
+	// conversations:read gate on /agents/me/conversations/*, judged on the
+	// agent's own roles over the conversation's resource — so a role can be
+	// limited to some conversations (for instance its own) with an IAM
+	// condition. This only applies the data rules the gate can't see:
+	//   - a soft-deleted conversation is not found (an agent's own one stays
+	//     readable while its turn is still running);
+	//   - an owner-private chat of another agent is never reachable, since an
+	//     agent is not the member who owns it.
+	// Anything else returns ErrConversationNotFound.
+	GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	// StopConversation interrupts (if running) and permanently tears down the
 	// conversation's sandbox. memberID gates ownership (see GetConversation).

@@ -24,7 +24,6 @@ import (
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	roledom "github.com/Paca-AI/api/internal/domain/role"
 	"github.com/Paca-AI/api/internal/events"
-	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/secret"
 	activitysvc "github.com/Paca-AI/api/internal/service/activity"
@@ -69,15 +68,6 @@ type Service struct {
 	// every call site guards against it and behaves as if environments
 	// don't exist yet, rather than panicking.
 	environmentSvc environmentdom.Service
-	// authorizer backs authorizeConversationsReadForConversation's
-	// conversations.read check in GetConversationForAgent — see that
-	// method's doc comment.
-	// Nil is a valid, supported configuration (same convention as
-	// environmentSvc/encryptor above): the check is skipped rather than
-	// failing closed, since every existing GetConversationForAgent test
-	// constructs a bare Service with no authorizer. Production wiring
-	// (bootstrap/app.go) always configures one via WithAuthorizer.
-	authorizer ConversationReadAuthorizer
 	// grants is told when an agent's access is revoked (a deleted agent loses
 	// its attachments and memberships). Nil: nothing is announced.
 	grants events.PolicyInvalidator
@@ -107,10 +97,6 @@ func (s *Service) WithEnvironmentService(svc environmentdom.Service) *Service {
 	return s
 }
 
-// ConversationReadAuthorizer is the IAM check GetConversationForAgent needs;
-// satisfied by *iam.Authorizer.
-type ConversationReadAuthorizer = iam.Checker
-
 // WithGrantsNotifier wires in the policy cache invalidation called after an
 // agent is deleted (its attachments and memberships go with it), which also
 // announces the change to services/realtime.
@@ -124,16 +110,6 @@ func (s *Service) accessRevoked() {
 	if s.grants != nil {
 		s.grants.Invalidate()
 	}
-}
-
-// WithAuthorizer wires in the IAM authorizer — see the authorizer field's
-// doc comment for what it's used for. A nil *iam.Authorizer leaves the
-// check unconfigured (skipped), never a typed nil.
-func (s *Service) WithAuthorizer(a *iam.Authorizer) *Service {
-	if a != nil {
-		s.authorizer = a
-	}
-	return s
 }
 
 // validateDefaultEnvironment resolves and validates a candidate
@@ -1681,143 +1657,29 @@ func (s *Service) GetConversation(ctx context.Context, projectID, conversationID
 }
 
 // GetConversationForAgent implements agentdom.Service.GetConversationForAgent
-// — see its doc comment for the full authorization rule and why bare agent-
-// identity matching isn't sufficient on its own. Also requires the calling
-// agent to hold conversations.read (see
-// authorizeConversationsReadForConversation) to read any conversation other
-// than the one it's currently running as part of — see the same-conversation
-// shortcut below for why that one case is exempt.
-func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
+// — see its doc comment. Whether the calling agent may read conversations at
+// all is decided by the router's conversations:read gate on the agent API
+// routes, from the agent account the API key proves; this only applies the
+// data rules that gate can't see.
+func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error) {
 	target, err := s.repo.FindConversationByID(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
-	// Always allowed, regardless of conversations.read: an agent may read
-	// the conversation it's currently running as part of — it already has
-	// this data as that conversation's own active participant, so gating it
-	// on a permission grant adds no protection while breaking the common
-	// case of a global-scope agent holding no platform role at all. Also
-	// short-circuits the common case (no other conversation was attached)
-	// without a second lookup.
-	if target.ID == currentConversationID {
-		if target.AgentID != callerAgentID {
-			return nil, agentdom.ErrConversationNotFound
-		}
-		// DeletedAt deliberately NOT checked here: a user can delete the
-		// conversation this very agent is mid-turn on (auto-stop-then-delete
-		// soft-deletes immediately; agent-runner's own teardown is
-		// asynchronous), and the agent must still be able to read its own
-		// live execution context for the remainder of that turn rather than
-		// erroring out from under itself the instant the delete lands.
-		return target, nil
-	}
-	// A deleted conversation is not-found for any *other* conversation this
-	// agent asks to read — same treatment GetConversation/GetGlobalConversation
-	// give a human caller. Checked only in this cross-conversation branch,
-	// not the same-conversation shortcut above.
-	if target.DeletedAt != nil {
+	own := target.AgentID == callerAgentID
+	// A soft-deleted conversation is gone, except that an agent keeps reading
+	// its own while its turn is still running: a user can delete the
+	// conversation this very agent is mid-turn on, and the agent must not lose
+	// its own live context from under itself.
+	if target.DeletedAt != nil && !(own && target.Status == "running") {
 		return nil, agentdom.ErrConversationNotFound
 	}
-	if err := s.authorizeConversationsReadForConversation(ctx, callerAgentID, target); err != nil {
-		return nil, err
-	}
-
-	// The target may belong to a different agent (e.g. a planner reading the
-	// conversation of an agent it delegated a task to): that is allowed when
-	// the caller holds conversations.read (checked above) and the target is
-	// visible in the caller's current conversation context below.
-	//
-	// Anything else must be authorized against whichever human is driving
-	// currentConversationID, not against callerAgentID alone — see
-	// authorizeAgentConversationRead.
-	current, err := s.repo.FindConversationByID(ctx, currentConversationID)
-	if err != nil || current.AgentID != callerAgentID {
-		// currentConversationID is missing, unverifiable, or (if ever
-		// spoofed) doesn't even belong to this agent — there is no trusted
-		// context to check the target against, so fail closed rather than
-		// falling back to bare agent-identity matching.
+	// An owner-private chat belongs to the one chat-session member who owns it;
+	// another agent is never that member, however the permission is granted.
+	if !own && target.Audience == agentdom.AudienceOwnerPrivate {
 		return nil, agentdom.ErrConversationNotFound
-	}
-	if err := s.authorizeAgentConversationRead(ctx, current, target); err != nil {
-		return nil, err
 	}
 	return target, nil
-}
-
-// authorizeConversationsReadForConversation reports whether callerAgentID
-// holds conversations.read for the scope conv belongs to: its own global
-// role, or (for a project-scoped conversation) its role in that specific
-// project — an OR. This is the sole enforcement point for read_conversation;
-// the MCP server lists that tool unconditionally and lets a disallowed call
-// come back from here as a 403 rather than pre-filtering the tool list by a
-// separately-fetched permission snapshot. Skipped (always allowed) when
-// s.authorizer is nil — see that field's doc comment.
-func (s *Service) authorizeConversationsReadForConversation(ctx context.Context, callerAgentID uuid.UUID, conv *agentdom.AgentConversation) error {
-	if s.authorizer == nil {
-		return nil
-	}
-	// Platform level: conversations:read on the calling agent's own platform
-	// resource (agent/<id>) — what a migrated global-agent role holding
-	// conversations.read covers (named platform permissions live on the
-	// platform roots, agent/* among them).
-	caller := iam.Agent(callerAgentID.String())
-	globalOK, err := iam.AllowedAll(ctx, s.authorizer, caller, "agent/"+callerAgentID.String(), iam.ActionConversationsRead)
-	if err != nil {
-		return fmt.Errorf("authz: check agent global conversations.read: %w", err)
-	}
-	if globalOK {
-		return nil
-	}
-	if conv.ProjectID != uuid.Nil {
-		projectOK, err := iam.AllowedAll(ctx, s.authorizer, caller, iam.ProjectResource(conv.ProjectID.String()), iam.ActionConversationsRead)
-		if err != nil {
-			return fmt.Errorf("authz: check agent project conversations.read: %w", err)
-		}
-		if projectOK {
-			return nil
-		}
-	}
-	return agentdom.ErrConversationNotFound
-}
-
-// authorizeAgentConversationRead lets an agent read `target` on behalf of
-// `current` — the conversation actually driving this MCP call — only when
-// the human associated with `current` could already reach `target` by
-// asking for it directly, mirroring authorizeConversationAccess (project-
-// scoped) and GetGlobalConversation (global) exactly rather than
-// re-deriving a separate, easier-to-get-wrong rule:
-//   - global (current.ProjectID is nil): target must also be global and
-//     share the same actor_account_id — GetGlobalConversation's own rule.
-//   - project-scoped: target must be in the same project, and either
-//     project_shared (visible to any project member already) or
-//     owner-private to the same chat-session member current belongs to —
-//     authorizeConversationAccess's rule, reused via current's own chat
-//     session so a human never needs to be threaded through explicitly.
-func (s *Service) authorizeAgentConversationRead(ctx context.Context, current, target *agentdom.AgentConversation) error {
-	if current.ProjectID == uuid.Nil {
-		if target.ProjectID != uuid.Nil ||
-			current.ActorAccountID == nil || target.ActorAccountID == nil ||
-			*target.ActorAccountID != *current.ActorAccountID {
-			return agentdom.ErrConversationNotFound
-		}
-		return nil
-	}
-
-	if target.ProjectID != current.ProjectID {
-		return agentdom.ErrConversationNotFound
-	}
-	if current.ChatSessionID == nil {
-		// current isn't chat-session-backed (e.g. a task-assigned or
-		// automation-triggered run) — there is no "human currently
-		// chatting" to authorize target's owner-private audience against,
-		// so only its already-project-wide-visible audience is reachable.
-		return s.authorizeConversationAccess(ctx, target, uuid.Nil)
-	}
-	session, err := s.repo.FindChatSessionByID(ctx, *current.ChatSessionID)
-	if err != nil {
-		return agentdom.ErrConversationNotFound
-	}
-	return s.authorizeConversationAccess(ctx, target, session.MemberID)
 }
 
 // authorizeConversationAccess fails closed (ErrConversationNotFound) when a

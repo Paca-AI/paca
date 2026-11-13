@@ -104,7 +104,7 @@ The same four exist per project at `/projects/:projectId/roles/actions`, `/attri
 }
 ```
 
-`resource_kind` is empty for the generic keys `principal.id`, `principal.type` and `resource.id`. Built-in keys: `task.sprint_id`, `task.status_id`, `task.type_id`, `task.assignee_id`, `view.sprint_id`, `doc.folder_id`, `doc.ancestor_folder_ids`, `agent.environment_id`, `environment.type` (`docker` or `kubernetes`), `conversation.environment_id`.
+`resource_kind` is empty for the generic keys `principal.id`, `principal.type` and `resource.id`. Built-in keys: `task.sprint_id`, `task.status_id`, `task.type_id`, `task.assignee_id`, `view.sprint_id`, `doc.folder_id`, `doc.ancestor_folder_ids`, `agent.environment_id`, `environment.type` (`docker` or `kubernetes`), `conversation.environment_id`, `conversation.agent_id`.
 
 `POST /roles/validate` always answers `200`; problems with the policy are the result, not a request failure:
 

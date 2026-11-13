@@ -40,12 +40,14 @@ type guards struct {
 	members httpmw.MemberPrincipalLookup
 	// taskNumbers resolves GET /tasks/by-number/{n} to the task it names.
 	taskNumbers httpmw.TaskNumberLookup
+	// conversations resolves a conversation addressed by id alone to where it lives.
+	conversations httpmw.ConversationLookup
 }
 
 func newGuards(deps Deps) guards {
 	return guards{
 		iam: deps.IAM, agentEnvs: deps.AgentEnvironments,
-		sessionEnv: deps.SessionEnvironments, roleAttachments: deps.RoleAttachments, members: deps.MemberPrincipals, taskNumbers: deps.TaskNumbers,
+		sessionEnv: deps.SessionEnvironments, roleAttachments: deps.RoleAttachments, members: deps.MemberPrincipals, taskNumbers: deps.TaskNumbers, conversations: deps.Conversations,
 	}
 }
 
@@ -75,7 +77,11 @@ const (
 	resView         = "project/{projectId}/view/{viewId}"
 	resWorkflow     = "project/{projectId}/workflow/{automationId}"
 	resConversation = "project/{projectId}/conversation/{conversationId}"
-	resAnnotation   = "project/{projectId}/annotation/{annotationId}"
+	// resConversationByID: the agent API addresses a conversation by id alone,
+	// so its project (or, for a global chat, its agent) comes from the
+	// conversation itself.
+	resConversationByID = "project/{its project}/conversation/{conversationId}, or agent/{its agent} for a global chat"
+	resAnnotation       = "project/{projectId}/annotation/{annotationId}"
 
 	// Request-attribute gates (see TaskCreate/TaskChange/DocCreate/DocChange):
 	// they authorize the attribute values a request body sets.
@@ -200,6 +206,13 @@ func (g guards) DocCreate() func(http.Handler) http.Handler {
 func (g guards) DocChange() func(http.Handler) http.Handler {
 	return markGate(resDocAttrs, httpmw.RequireRequestAttrs(g.iam, iam.ActionDocsWrite,
 		httpmw.ProjectChildResource("projectId", "doc", "docId"), httpmw.DocAttrs, false))
+}
+
+// ConversationByID requires the actions on the conversation the URL names by
+// id alone (the agent API): the conversation is looked up to find its project,
+// then authorized as project/<P>/conversation/<C> like the human routes.
+func (g guards) ConversationByID(idParam string, actions ...iam.Action) func(http.Handler) http.Handler {
+	return markGate(resConversationByID, g.actions(httpmw.ConversationResource(g.conversations, idParam), actions))
 }
 
 // TaskByNumber is ProjectEntity for the route that addresses a task by its

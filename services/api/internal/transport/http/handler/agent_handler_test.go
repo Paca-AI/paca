@@ -38,7 +38,7 @@ type mockAgentSvc struct {
 	listConversations             func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 	listConversationEvents        func(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error)
 	getConversation               func(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*agentdom.AgentConversation, error)
-	getConversationForAgent       func(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error)
+	getConversationForAgent       func(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error)
 	updateConversationTitle       func(ctx context.Context, projectID, conversationID, memberID uuid.UUID, title string) (*agentdom.AgentConversation, error)
 	deleteConversation            func(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
 	getGlobalConversation         func(ctx context.Context, conversationID, actorAccountID uuid.UUID) (*agentdom.AgentConversation, error)
@@ -151,9 +151,9 @@ func (m *mockAgentSvc) GetConversation(ctx context.Context, projectID, conversat
 	// gate passes by default; tests asserting rejection configure getConversation.
 	return &agentdom.AgentConversation{ID: conversationID, ProjectID: projectID}, nil
 }
-func (m *mockAgentSvc) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error) {
 	if m.getConversationForAgent != nil {
-		return m.getConversationForAgent(ctx, conversationID, callerAgentID, currentConversationID)
+		return m.getConversationForAgent(ctx, conversationID, callerAgentID)
 	}
 	return &agentdom.AgentConversation{ID: conversationID, AgentID: callerAgentID}, nil
 }

@@ -90,6 +90,7 @@ var (
 	conversationScopeColumns = scopeColumns{
 		"resource.id":                 {scalar: "agent_conversations.id"},
 		"conversation.environment_id": {scalar: "agent_conversations.environment_id"},
+		"conversation.agent_id":       {scalar: "agent_conversations.agent_id"},
 	}
 )
 
