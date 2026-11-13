@@ -1188,8 +1188,10 @@ test.describe('View settings panel', () => {
     // Close by pressing Escape and confirm the discard
     await discardAndClose(page);
 
-    // Panel should be closed
-    await expect(page.getByRole('button', { name: 'Save only for me' })).not.toBeVisible({ timeout: 5_000 });
+    // Confirm dialog and panel should both be gone (the dialog also has a
+    // "Save only for me" button, so assert on the dialog/panel title instead)
+    await expect(page.locator('[data-slot="alert-dialog-content"]')).toHaveCount(0);
+    await expect(page.getByText('View settings', { exact: true })).not.toBeVisible({ timeout: 5_000 });
 
     // Reopen and verify the change was discarded
     await openSettings(page);

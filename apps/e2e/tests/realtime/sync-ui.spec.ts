@@ -224,7 +224,7 @@ test.describe("tasks", () => {
 		const taskId = await createTask(request, a.projectId, name("t"));
 		await signIn(page, a.username, RESTRICTED_PASSWORD);
 		await openBacklogTable(page, a.projectId);
-		await expect(page.getByText(name("t")).first()).toBeVisible({
+		await expect(page.getByText(name("t")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 
@@ -244,7 +244,7 @@ test.describe("tasks", () => {
 			);
 			expect(response.ok(), await response.text()).toBeTruthy();
 		});
-		await expect(page.getByText(name("by_agent")).first()).toBeVisible({
+		await expect(page.getByText(name("by_agent")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 	});
@@ -258,7 +258,7 @@ test.describe("tasks", () => {
 		const taskId = await createTask(request, a.projectId, name("t"));
 		await signIn(page, a.username, RESTRICTED_PASSWORD);
 		await openBacklogTable(page, a.projectId);
-		await expect(page.getByText(name("t")).first()).toBeVisible({
+		await expect(page.getByText(name("t")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 		await page.waitForTimeout(1_000);
@@ -282,13 +282,13 @@ test.describe("tasks", () => {
 		const taskId = await createTask(request, a.projectId, name("t"));
 		await signIn(page, a.username, RESTRICTED_PASSWORD);
 		await page.goto(`${BASE_URL}/projects/${a.projectId}/tasks/${taskId}`);
-		await expect(page.getByText(name("t")).first()).toBeVisible({
+		await expect(page.getByText(name("t")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 
 		const fetches = countTaskListFetches(page, a.projectId);
 		await a.api.comment(taskId, name("hello_there"));
-		await expect(page.getByText(name("hello_there")).first()).toBeVisible({
+		await expect(page.getByText(name("hello_there")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 		// A comment touches its own timeline: no task list, and none of the task's
@@ -306,11 +306,11 @@ test.describe("tasks", () => {
 		const taskId = await createTask(request, a.projectId, name("old"));
 		await signIn(page, a.username, RESTRICTED_PASSWORD);
 		await page.goto(`${BASE_URL}/projects/${a.projectId}/tasks/${taskId}`);
-		await expect(page.getByText(name("old")).first()).toBeVisible({
+		await expect(page.getByText(name("old")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 		await a.api.patchTask(taskId, { title: name("fresh") });
-		await expect(page.getByText(name("fresh")).first()).toBeVisible({
+		await expect(page.getByText(name("fresh")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 	});
@@ -326,11 +326,11 @@ test.describe("sprints, views and the board", () => {
 		await signIn(page, a.username, RESTRICTED_PASSWORD);
 		await openBacklog(page, a.projectId);
 		const sprintId = await createSprint(request, a.projectId, name("sprint_a"));
-		await expect(page.getByText(name("sprint_a")).first()).toBeVisible({
+		await expect(page.getByText(name("sprint_a")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 		await a.api.patchSprint(sprintId, { name: name("sprint_b") });
-		await expect(page.getByText(name("sprint_b")).first()).toBeVisible({
+		await expect(page.getByText(name("sprint_b")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(page.getByText(name("sprint_a"), { exact: true })).toHaveCount(
@@ -347,7 +347,7 @@ test.describe("sprints, views and the board", () => {
 		const taskId = await createTask(request, a.projectId, name("t"));
 		await signIn(page, a.username, RESTRICTED_PASSWORD);
 		await page.goto(`${BASE_URL}/projects/${a.projectId}/tasks/${taskId}`);
-		await expect(page.getByText(name("t")).first()).toBeVisible({
+		await expect(page.getByText(name("t")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 		await joined(page);
@@ -355,7 +355,7 @@ test.describe("sprints, views and the board", () => {
 		// task is in it (the task event) without being reloaded.
 		const status = await a.api.createStatus(name("status_x"));
 		await a.api.patchTask(taskId, { status_id: status.id });
-		await expect(page.getByText(name("status_x")).first()).toBeVisible({
+		await expect(page.getByText(name("status_x")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 	});
@@ -392,7 +392,9 @@ test.describe("docs", () => {
 		page,
 		request,
 		playwright,
+		isMobile,
 	}) => {
+		test.skip(isMobile, "the doc tree sits in a collapsed sidebar on mobile");
 		const a = await arrange(request, playwright);
 		await signIn(page, a.username, RESTRICTED_PASSWORD);
 		await page.goto(`${BASE_URL}/projects/${a.projectId}/docs`);
@@ -400,7 +402,7 @@ test.describe("docs", () => {
 		await joined(page);
 
 		await createDoc(request, a.projectId, name("doc_one"));
-		await expect(page.getByText(name("doc_one")).first()).toBeVisible({
+		await expect(page.getByText(name("doc_one")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 		const response = await request.post(
@@ -410,7 +412,7 @@ test.describe("docs", () => {
 			},
 		);
 		expect(response.ok(), await response.text()).toBeTruthy();
-		await expect(page.getByText(name("folder_one")).first()).toBeVisible({
+		await expect(page.getByText(name("folder_one")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 	});
@@ -419,16 +421,18 @@ test.describe("docs", () => {
 		page,
 		request,
 		playwright,
+		isMobile,
 	}) => {
+		test.skip(isMobile, "the doc tree sits in a collapsed sidebar on mobile");
 		const a = await arrange(request, playwright);
 		const docId = await createDoc(request, a.projectId, name("doc_old"));
 		await signIn(page, a.username, RESTRICTED_PASSWORD);
 		await page.goto(`${BASE_URL}/projects/${a.projectId}/docs`);
-		await expect(page.getByText(name("doc_old")).first()).toBeVisible({
+		await expect(page.getByText(name("doc_old")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 		await a.api.patchDoc(docId, { title: name("doc_new") });
-		await expect(page.getByText(name("doc_new")).first()).toBeVisible({
+		await expect(page.getByText(name("doc_new")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 	});
@@ -456,10 +460,10 @@ test.describe("team and project", () => {
 				permissions: { "tasks:read": true },
 			},
 		);
-		await expect(page.getByText(name("newcomer")).first()).toBeVisible({
+		await expect(page.getByText(name("newcomer")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByText(name("role_one")).first()).toBeVisible({
+		await expect(page.getByText(name("role_one")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 
@@ -470,7 +474,7 @@ test.describe("team and project", () => {
 			allow(["projects:read", "docs:read"], [`project/${a.projectId}/*`]),
 		);
 		await replaceMemberRoles(request, a.projectId, newcomer.memberId, [second]);
-		await expect(page.getByText(name("role_two")).first()).toBeVisible({
+		await expect(page.getByText(name("role_two")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 	});
@@ -485,15 +489,15 @@ test.describe("team and project", () => {
 		await signIn(page, a.username, RESTRICTED_PASSWORD);
 		// The task page shows the project's name in its breadcrumb.
 		await page.goto(`${BASE_URL}/projects/${a.projectId}/tasks/${taskId}`);
-		await expect(page.getByText(name("t")).first()).toBeVisible({
+		await expect(page.getByText(name("t")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
-			page.getByText(name("p"), { exact: true }).first(),
+			page.getByText(name("p"), { exact: true }).locator("visible=true").first(),
 		).toBeVisible();
 		await joined(page);
 		await a.api.patchProject({ name: name("renamed_project") });
-		await expect(page.getByText(name("renamed_project")).first()).toBeVisible({
+		await expect(page.getByText(name("renamed_project")).locator("visible=true").first()).toBeVisible({
 			timeout: 15_000,
 		});
 	});
@@ -708,7 +712,7 @@ test.describe("the connection", () => {
 
 		const fetches = countTaskListFetches(page, a.projectId);
 		await context.setOffline(false);
-		await expect(page.getByText(name("renamed_offline")).first()).toBeVisible({
+		await expect(page.getByText(name("renamed_offline")).locator("visible=true").first()).toBeVisible({
 			timeout: 60_000,
 		});
 		await page.waitForTimeout(1_500);
