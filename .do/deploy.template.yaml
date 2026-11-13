@@ -34,7 +34,10 @@ spec:
         - { key: AI_AGENT_INTERNAL_KEY, scope: RUN_TIME, type: SECRET }
         - { key: ENCRYPTION_KEY, scope: RUN_TIME, type: SECRET }   # 64 hex chars: openssl rand -hex 32
         - { key: COOKIE_SECURE, value: "true" }
-        - { key: TRUSTED_PROXY_HOPS, value: "2" }
+        # One proxy hop (the platform ingress, no Caddy). DigitalOcean puts the
+        # ingress server's address in X-Forwarded-For (the real client is in
+        # do-connecting-ip), so every user shares one rate-limit/IP bucket here.
+        - { key: TRUSTED_PROXY_HOPS, value: "1" }
         - { key: PUBLIC_URL, value: "${APP_URL}" }
         - { key: STORAGE_PROVIDER, value: s3 }
         - { key: STORAGE_ENDPOINT, value: "nyc3.digitaloceanspaces.com" }
@@ -43,6 +46,13 @@ spec:
         - { key: STORAGE_BUCKET, scope: RUN_TIME }
         - { key: STORAGE_ACCESS_KEY_ID, scope: RUN_TIME, type: SECRET }
         - { key: STORAGE_SECRET_ACCESS_KEY, scope: RUN_TIME, type: SECRET }
+        # Same writable dirs the Docker image prepares. Plugin installs here live on
+        # the instance's ephemeral disk and their assets are not served (no shared
+        # disk with a gateway), so plugins are not usable on App Platform yet.
+        - { key: PLUGINS_WASM_DIR, value: /plugins }
+        - { key: PLUGINS_FRONTEND_DIR, value: /plugins-frontend }
+        - { key: PLUGINS_MCP_DIR, value: /plugins-mcp }
+        - { key: PLUGINS_SKILLS_DIR, value: /plugins-skills }
     - name: realtime
       image: { registry_type: DOCKER_HUB, registry: pacaai, repository: paca-realtime, tag: latest }
       http_port: 3001

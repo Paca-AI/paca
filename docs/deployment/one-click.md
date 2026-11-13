@@ -118,6 +118,12 @@ volumes, and dev databases are PostgreSQL-only, so before clicking:
 
 If your Space is not in `nyc3`, change `STORAGE_ENDPOINT`/`STORAGE_REGION`.
 
+**Known limits.** Plugins are not usable on App Platform yet (no shared disk, no
+gateway to serve their assets). App Platform reports the ingress server's
+address in `X-Forwarded-For` (the real client is in `do-connecting-ip`), so Paca
+sees one client address: auth rate limiting is shared by all users and IP
+allow-lists can't match real clients.
+
 ## DigitalOcean (Droplet)
 
 1. Create an **Ubuntu 24.04** Droplet, **4 GB RAM / 2 vCPU or more**.
@@ -146,9 +152,6 @@ from this repo; everything else is a paid starter plan.
 `ENCRYPTION_KEY` (64 hex chars, `openssl rand -hex 32`) is prompted for on
 create; keep it, since changing it makes stored secrets unreadable.
 
-`ENCRYPTION_KEY` (64 hex chars, `openssl rand -hex 32`) is prompted for on
-create; keep it, since changing it makes stored secrets unreadable.
-
 After the first deploy, Render can't know the public URL ahead of time, so set:
 
 - `paca-api`: `PUBLIC_URL=https://<gateway>.onrender.com`,
@@ -157,8 +160,18 @@ After the first deploy, Render can't know the public URL ahead of time, so set:
 - `paca` (gateway): `WEB_UPSTREAM=https://<paca-web>.onrender.com`, the static
   site's URL (the gateway proxies the app to it)
 
-then redeploy those two services. The generated `ADMIN_PASSWORD` is in
+then redeploy those services. The generated `ADMIN_PASSWORD` is in
 `paca-api` → Environment.
+
+**Known limits.** Plugins are not usable on Render yet: there is no shared disk
+between the API and the gateway, so plugin assets aren't served and installs
+vanish on restart. The bundled RustFS has **not been verified** on Render: a
+fresh disk may be unwritable to RustFS's non-root user (the Docker stack fixes
+that with a root init step). If `paca-rustfs` logs `Permission denied (os error
+13)`, delete that service and its disk and point the API at external S3
+instead: set `STORAGE_PROVIDER=s3`, `STORAGE_ENDPOINT`, `STORAGE_REGION`,
+`STORAGE_BUCKET`, `STORAGE_USE_SSL=true`, `STORAGE_ACCESS_KEY_ID` and
+`STORAGE_SECRET_ACCESS_KEY` on `paca-api`, and clear `STORAGE_PUBLIC_URL`.
 
 ## Railway (manual template)
 

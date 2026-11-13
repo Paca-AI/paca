@@ -23,8 +23,8 @@ packer build \
 
 The build Droplet is created, configured, cleaned, validated and snapshotted;
 the snapshot shows up under *Images → Snapshots*. The last step runs
-DigitalOcean's own `99-img_check.sh`; fix anything it flags before submitting.
-(The template expects `scripts/90-cleanup.sh` and `scripts/99-img_check.sh` in
+DigitalOcean's own `99-img-check.sh`; fix anything it flags before submitting.
+(The template expects `scripts/90-cleanup.sh` and `scripts/99-img-check.sh` in
 that repo; adjust the two paths in `paca.pkr.hcl` if they were renamed.)
 
 ## Test the snapshot

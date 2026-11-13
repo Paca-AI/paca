@@ -28,6 +28,10 @@ services:
     maxmemoryPolicy: noeviction
     ipAllowList: []   # private network only
 
+  # UNVERIFIED: the compose stack needs a root-run init step to chown a fresh
+  # RustFS volume to uid 10001, and Render has no equivalent. If this service
+  # logs "Permission denied (os error 13)", switch the API to external S3
+  # instead (see docs/deployment/one-click.md, Render section).
   - type: pserv
     name: paca-rustfs
     runtime: image
@@ -76,6 +80,13 @@ services:
         fromService: { type: pserv, name: paca-rustfs, envVarKey: RUSTFS_SECRET_KEY }
       - { key: PUBLIC_URL, sync: false }
       - { key: STORAGE_PUBLIC_URL, sync: false }
+      # Same writable dirs the Docker image prepares. Plugin installs here live on
+      # the instance's ephemeral disk and their frontend/MCP assets are not served
+      # (no gateway mount on this platform), so plugins are not usable on Render yet.
+      - { key: PLUGINS_WASM_DIR, value: /plugins }
+      - { key: PLUGINS_FRONTEND_DIR, value: /plugins-frontend }
+      - { key: PLUGINS_MCP_DIR, value: /plugins-mcp }
+      - { key: PLUGINS_SKILLS_DIR, value: /plugins-skills }
 
   # The React app is plain static files, so it is a static site (no paid
   # instance), built from this repo. The gateway proxies "/" to it: after the

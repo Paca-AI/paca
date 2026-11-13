@@ -73,7 +73,7 @@ build {
   provisioner "shell" {
     scripts = [
       "${var.marketplace_partners_dir}/scripts/90-cleanup.sh",
-      "${var.marketplace_partners_dir}/scripts/99-img_check.sh",
+      "${var.marketplace_partners_dir}/scripts/99-img-check.sh",
     ]
   }
 }
