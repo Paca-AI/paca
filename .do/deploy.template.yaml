@@ -1,0 +1,74 @@
+# DigitalOcean App Platform — "Deploy to DO" button.
+#   https://cloud.digitalocean.com/apps/new?repo=https://github.com/Paca-AI/paca/tree/master
+#
+# App Platform has no Docker socket, so the Agent Runner is NOT included
+# (use the Droplet / AWS / GCP paths for AI agents).
+# It also has no persistent volumes, so file storage uses DigitalOcean Spaces
+# instead of the bundled RustFS: create a Space first and paste its keys when
+# the deploy form asks. App Platform dev databases are PostgreSQL-only, so the
+# cache must be an external Valkey/Redis (e.g. a DigitalOcean Managed Valkey
+# or Upstash): paste its rediss:// URL into REDIS_URL for both api and
+# realtime. See docs/deployment/one-click.md.
+spec:
+  name: paca
+  region: nyc
+  databases:
+    - name: db
+      engine: PG
+      version: "16"
+      production: false
+  services:
+    - name: api
+      image: { registry_type: DOCKER_HUB, registry: pacaai, repository: paca-api, tag: latest }
+      http_port: 8080
+      instance_size_slug: apps-s-1vcpu-1gb
+      health_check: { http_path: /api/healthz }
+      envs:
+        - { key: ENV, value: production }
+        - { key: PORT, value: "8080" }
+        - { key: DATABASE_URL, scope: RUN_TIME, value: "${db.DATABASE_URL}" }
+        - { key: REDIS_URL, scope: RUN_TIME, type: SECRET }   # external Valkey/Redis URL, see header
+        - { key: JWT_SECRET, scope: RUN_TIME, type: SECRET }
+        - { key: ADMIN_USERNAME, value: admin }
+        - { key: ADMIN_PASSWORD, scope: RUN_TIME, type: SECRET }
+        - { key: AI_AGENT_INTERNAL_KEY, scope: RUN_TIME, type: SECRET }
+        - { key: ENCRYPTION_KEY, scope: RUN_TIME, type: SECRET }   # 64 hex chars: openssl rand -hex 32
+        - { key: COOKIE_SECURE, value: "true" }
+        - { key: TRUSTED_PROXY_HOPS, value: "2" }
+        - { key: PUBLIC_URL, value: "${APP_URL}" }
+        - { key: STORAGE_PROVIDER, value: s3 }
+        - { key: STORAGE_ENDPOINT, value: "nyc3.digitaloceanspaces.com" }
+        - { key: STORAGE_REGION, value: nyc3 }
+        - { key: STORAGE_USE_SSL, value: "true" }
+        - { key: STORAGE_BUCKET, scope: RUN_TIME }
+        - { key: STORAGE_ACCESS_KEY_ID, scope: RUN_TIME, type: SECRET }
+        - { key: STORAGE_SECRET_ACCESS_KEY, scope: RUN_TIME, type: SECRET }
+    - name: realtime
+      image: { registry_type: DOCKER_HUB, registry: pacaai, repository: paca-realtime, tag: latest }
+      http_port: 3001
+      instance_size_slug: apps-s-1vcpu-1gb
+      envs:
+        - { key: PORT, value: "3001" }
+        - { key: NODE_ENV, value: production }
+        - { key: API_URL, value: "${api.PRIVATE_URL}" }
+        - { key: REDIS_URL, scope: RUN_TIME, type: SECRET }   # same URL as the api
+        - { key: CORS_ORIGINS, value: "${APP_URL}" }
+  # The React app is plain static files, so it runs as a free App Platform
+  # static site (no instance). It is built from the repo's master branch, so
+  # it can be slightly ahead of the :latest API image between releases.
+  static_sites:
+    - name: web
+      github: { repo: Paca-AI/paca, branch: master, deploy_on_push: false }
+      source_dir: apps/web
+      build_command: command -v bun >/dev/null || npm install -g bun; bun install --frozen-lockfile && bun run build
+      output_dir: dist
+      catchall_document: index.html
+  # Replaces the Caddy gateway: App Platform's own router fans out by path.
+  ingress:
+    rules:
+      - match: { path: { prefix: /api } }
+        component: { name: api, preserve_path_prefix: true }
+      - match: { path: { prefix: /ws } }
+        component: { name: realtime }
+      - match: { path: { prefix: / } }
+        component: { name: web }

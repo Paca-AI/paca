@@ -1,0 +1,417 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Paca (lightweight): managed AWS services, no servers to patch. One ECS
+  Fargate task (gateway + API + web + realtime), RDS Postgres, ElastiCache
+  Valkey, an S3 bucket for files and an Application Load Balancer.
+  Does NOT include the Agent Runner (AI agent sandboxes); use paca.cfn.yaml
+  (EC2) for that.
+
+Parameters:
+  Domain:
+    Type: String
+    Default: ""
+    AllowedPattern: "^[A-Za-z0-9.-]*$"
+    Description: Optional domain you will point (CNAME/ALIAS) at the load balancer. Requires CertificateArn.
+  CertificateArn:
+    Type: String
+    Default: ""
+    Description: Optional ACM certificate ARN (same region) for Domain. Empty serves plain HTTP on the load balancer's address; then cookies are not marked Secure.
+  AllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR allowed to reach Paca on ports 80/443.
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  CacheNodeType:
+    Type: String
+    Default: cache.t4g.micro
+
+Conditions:
+  HasCert: !Not [!Equals [!Ref CertificateArn, ""]]
+  HasDomain: !Not [!Equals [!Ref Domain, ""]]
+
+Resources:
+  # ── Network ─────────────────────────────────────────────────────────────────
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: paca-lite }]
+  Igw:
+    Type: AWS::EC2::InternetGateway
+  IgwAttach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref Vpc, InternetGatewayId: !Ref Igw }
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref Vpc }
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAttach
+    Properties: { RouteTableId: !Ref RouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref Igw }
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+  SubnetARoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref SubnetA, RouteTableId: !Ref RouteTable }
+  SubnetBRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref SubnetB, RouteTableId: !Ref RouteTable }
+
+  AlbSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Paca load balancer
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: !Ref AllowedCidr }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: !Ref AllowedCidr }
+  TaskSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Paca task
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, SourceSecurityGroupId: !Ref AlbSg }
+  DataSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Paca database and cache (task access only)
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref TaskSg }
+        - { IpProtocol: tcp, FromPort: 6379, ToPort: 6379, SourceSecurityGroupId: !Ref TaskSg }
+
+  # ── Secrets ─────────────────────────────────────────────────────────────────
+  DbSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"paca"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludePunctuation: true
+  DatabaseUrlSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      SecretString: !Sub
+        - "postgres://paca:${Password}@${Host}:5432/paca?sslmode=require"
+        - Password: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:password}}"
+          Host: !GetAtt Db.Endpoint.Address
+  JwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      GenerateSecretString: { PasswordLength: 48, ExcludePunctuation: true }
+  AdminPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Description: Paca admin password (username admin).
+    Properties:
+      GenerateSecretString: { PasswordLength: 20, ExcludePunctuation: true }
+  InternalKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      GenerateSecretString: { PasswordLength: 48, ExcludePunctuation: true }
+  EncryptionKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Description: 64 lowercase hex characters, as Paca requires. Back this up, because changing it makes stored secrets unreadable.
+    Properties:
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+        ExcludeUppercase: true
+        ExcludeCharacters: ghijklmnopqrstuvwxyz
+        RequireEachIncludedType: false
+  StorageKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      SecretString: !Sub '{"id":"${StorageAccessKey}","secret":"${StorageAccessKey.SecretAccessKey}"}'
+
+  # ── Data stores ─────────────────────────────────────────────────────────────
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Paca
+      SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+  Db:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: "17.6"
+      DBInstanceClass: !Ref DbInstanceClass
+      AllocatedStorage: 20
+      StorageType: gp3
+      StorageEncrypted: true
+      DBName: paca
+      MasterUsername: paca
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:password}}"
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DataSg]
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Paca
+      SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+  Cache:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupDescription: Paca cache and event streams
+      Engine: valkey
+      EngineVersion: "8.0"
+      CacheNodeType: !Ref CacheNodeType
+      NumCacheClusters: 1
+      AutomaticFailoverEnabled: false
+      TransitEncryptionEnabled: false   # in-VPC only; SG limits access to the task
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      SecurityGroupIds: [!Ref DataSg]
+  Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      # Browsers upload/download through presigned URLs straight to S3.
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: ["*"]
+            AllowedMethods: [GET, PUT, HEAD]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [ETag]
+            MaxAge: 3000
+  StorageUser:
+    Type: AWS::IAM::User
+    Properties:
+      Policies:
+        - PolicyName: paca-bucket
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
+                Resource: !Sub "${Bucket.Arn}/*"
+              - Effect: Allow
+                Action: ["s3:ListBucket", "s3:GetBucketLocation"]
+                Resource: !GetAtt Bucket.Arn
+  StorageAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties: { UserName: !Ref StorageUser }
+
+  # ── Compute ─────────────────────────────────────────────────────────────────
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { RetentionInDays: 30 }
+  Cluster:
+    Type: AWS::ECS::Cluster
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: "sts:AssumeRole" }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-secrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref DatabaseUrlSecret
+                  - !Ref JwtSecret
+                  - !Ref AdminPasswordSecret
+                  - !Ref InternalKeySecret
+                  - !Ref EncryptionKeySecret
+                  - !Ref StorageKeySecret
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: paca-lite
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "1024"
+      Memory: "4096"
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      Volumes:
+        - { Name: plugins }
+        - { Name: plugins-frontend }
+        - { Name: plugins-mcp }
+        - { Name: plugins-skills }
+      ContainerDefinitions:
+        # Containers share one network namespace, so they reach each other on
+        # localhost. The API listens on 8081 because the gateway's internal
+        # plugin-bundle block already uses 8080.
+        - Name: gateway
+          Image: caddy:2-alpine
+          Essential: true
+          PortMappings: [{ ContainerPort: 80 }]
+          EntryPoint: [sh, -c]
+          Command:
+            - >-
+              wget -qO /etc/caddy/Caddyfile
+              https://github.com/Paca-AI/paca/releases/latest/download/Caddyfile &&
+              exec caddy run --config /etc/caddy/Caddyfile
+          Environment:
+            - { Name: SITE_ADDRESS, Value: ":80" }
+            - { Name: API_UPSTREAM, Value: "localhost:8081" }
+            - { Name: WEB_UPSTREAM, Value: "localhost:3000" }
+            - { Name: REALTIME_UPSTREAM, Value: "localhost:3001" }
+          MountPoints:
+            - { SourceVolume: plugins-frontend, ContainerPath: /var/www/plugins, ReadOnly: true }
+            - { SourceVolume: plugins-mcp, ContainerPath: /var/www/plugins-mcp, ReadOnly: true }
+            - { SourceVolume: plugins-skills, ContainerPath: /var/www/plugins-skills, ReadOnly: true }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref "AWS::Region", awslogs-stream-prefix: gateway }
+        - Name: api
+          Image: pacaai/paca-api:latest
+          Essential: true
+          Environment:
+            - { Name: ENV, Value: production }
+            - { Name: PORT, Value: "8081" }
+            - { Name: REDIS_URL, Value: !Sub "redis://${Cache.PrimaryEndPoint.Address}:6379/0" }
+            - { Name: PUBLIC_URL, Value: !If [HasDomain, !Sub "https://${Domain}", !If [HasCert, !Sub "https://${Alb.DNSName}", !Sub "http://${Alb.DNSName}"]] }
+            - { Name: COOKIE_SECURE, Value: !If [HasCert, "true", "false"] }
+            - { Name: TRUSTED_PROXY_HOPS, Value: "2" }
+            - { Name: ADMIN_USERNAME, Value: admin }
+            - { Name: STORAGE_PROVIDER, Value: s3 }
+            # An empty STORAGE_ENDPOINT falls back to the bundled RustFS, so name S3 explicitly.
+            - { Name: STORAGE_ENDPOINT, Value: !Sub "s3.${AWS::Region}.amazonaws.com" }
+            - { Name: STORAGE_REGION, Value: !Ref "AWS::Region" }
+            - { Name: STORAGE_USE_SSL, Value: "true" }
+            - { Name: STORAGE_BUCKET, Value: !Ref Bucket }
+            - { Name: PLUGINS_WASM_DIR, Value: /plugins }
+            - { Name: PLUGINS_FRONTEND_DIR, Value: /plugins-frontend }
+            - { Name: PLUGINS_MCP_DIR, Value: /plugins-mcp }
+            - { Name: PLUGINS_SKILLS_DIR, Value: /plugins-skills }
+          Secrets:
+            - { Name: DATABASE_URL, ValueFrom: !Ref DatabaseUrlSecret }
+            - { Name: JWT_SECRET, ValueFrom: !Ref JwtSecret }
+            - { Name: ADMIN_PASSWORD, ValueFrom: !Ref AdminPasswordSecret }
+            - { Name: AI_AGENT_INTERNAL_KEY, ValueFrom: !Ref InternalKeySecret }
+            - { Name: ENCRYPTION_KEY, ValueFrom: !Ref EncryptionKeySecret }
+            - { Name: STORAGE_ACCESS_KEY_ID, ValueFrom: !Sub "${StorageKeySecret}:id::" }
+            - { Name: STORAGE_SECRET_ACCESS_KEY, ValueFrom: !Sub "${StorageKeySecret}:secret::" }
+          MountPoints:
+            - { SourceVolume: plugins, ContainerPath: /plugins }
+            - { SourceVolume: plugins-frontend, ContainerPath: /plugins-frontend }
+            - { SourceVolume: plugins-mcp, ContainerPath: /plugins-mcp }
+            - { SourceVolume: plugins-skills, ContainerPath: /plugins-skills }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref "AWS::Region", awslogs-stream-prefix: api }
+        - Name: web
+          Image: pacaai/paca-web:latest
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref "AWS::Region", awslogs-stream-prefix: web }
+        - Name: realtime
+          Image: pacaai/paca-realtime:latest
+          Essential: true
+          Environment:
+            - { Name: PORT, Value: "3001" }
+            - { Name: NODE_ENV, Value: production }
+            - { Name: API_URL, Value: "http://localhost:8081" }
+            - { Name: REDIS_URL, Value: !Sub "redis://${Cache.PrimaryEndPoint.Address}:6379/0" }
+            - { Name: CORS_ORIGINS, Value: !If [HasDomain, !Sub "https://${Domain}", !If [HasCert, !Sub "https://${Alb.DNSName}", !Sub "http://${Alb.DNSName}"]] }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref "AWS::Region", awslogs-stream-prefix: realtime }
+
+  # ── Load balancer ───────────────────────────────────────────────────────────
+  Alb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      Subnets: [!Ref SubnetA, !Ref SubnetB]
+      SecurityGroups: [!Ref AlbSg]
+      LoadBalancerAttributes:
+        - { Key: idle_timeout.timeout_seconds, Value: "3600" }   # long-lived WebSockets
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      Protocol: HTTP
+      Port: 80
+      TargetType: ip
+      HealthCheckPath: /api/healthz
+      HealthCheckIntervalSeconds: 30
+      Matcher: { HttpCode: "200" }
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - !If
+          - HasCert
+          - { Type: redirect, RedirectConfig: { Protocol: HTTPS, Port: "443", StatusCode: HTTP_301 } }
+          - { Type: forward, TargetGroupArn: !Ref TargetGroup }
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasCert
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Port: 443
+      Protocol: HTTPS
+      Certificates: [{ CertificateArn: !Ref CertificateArn }]
+      DefaultActions: [{ Type: forward, TargetGroupArn: !Ref TargetGroup }]
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: [HttpListener, DefaultRoute]
+    Properties:
+      Cluster: !Ref Cluster
+      LaunchType: FARGATE
+      DesiredCount: 1
+      TaskDefinition: !Ref TaskDefinition
+      HealthCheckGracePeriodSeconds: 300
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: [!Ref SubnetA, !Ref SubnetB]
+          SecurityGroups: [!Ref TaskSg]
+      LoadBalancers:
+        - { ContainerName: gateway, ContainerPort: 80, TargetGroupArn: !Ref TargetGroup }
+
+Outputs:
+  Url:
+    Description: Open after ~10 minutes (database and cache creation are slow). Username admin.
+    Value: !If [HasDomain, !Sub "https://${Domain}", !If [HasCert, !Sub "https://${Alb.DNSName}", !Sub "http://${Alb.DNSName}"]]
+  LoadBalancerDns:
+    Description: Point your Domain's CNAME/ALIAS record here when using one.
+    Value: !GetAtt Alb.DNSName
+  AdminPasswordSecret:
+    Description: Secrets Manager secret holding the admin password (Console → Secrets Manager → Retrieve).
+    Value: !Ref AdminPasswordSecret
+  EncryptionKeySecret:
+    Description: Back this secret up; losing it makes stored secrets unreadable.
+    Value: !Ref EncryptionKeySecret
