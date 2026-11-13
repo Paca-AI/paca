@@ -55,8 +55,7 @@ an Elastic IP, and an SSM-enabled role (no SSH needed).
 
 **Launch-Stack button:** CloudFormation quick-create needs the template on S3.
 The release workflow uploads it to `s3://paca-cloudformation/latest/paca.cfn.yaml`
-(and a per-version copy) once the setup in the "AWS button setup" steps below is
-done; until then the README button points at a file that doesn't exist yet.
+(see "AWS button setup" below; `deploy/cloud/aws/publish-template.sh` does it by hand); until then the README button points at a file that doesn't exist yet.
 
 Note: `AdminPassword` ends up in instance user-data (readable by anyone with
 `ec2:DescribeInstanceAttribute`). Leave it empty to auto-generate instead.
@@ -105,17 +104,21 @@ maintainer to build the template once. Recipe, mirroring the Render blueprint:
 
 ## Maintainer setup for the AWS and Railway buttons
 
-**AWS button setup** (one time):
+**AWS button setup** (one time; CI uses GitHub OIDC, no stored keys):
 
-1. Create an S3 bucket named `paca-cloudformation` in `us-east-1`. Under
-   *Permissions*, turn off "Block all public access", then add a bucket policy
-   allowing `s3:GetObject` on `arn:aws:s3:::paca-cloudformation/*` to `*`.
-2. Create an IAM user whose only permission is `s3:PutObject` on that bucket.
-3. In the GitHub repo → *Settings → Secrets and variables → Actions*, add
-   secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and a variable
-   `AWS_TEMPLATE_BUCKET=paca-cloudformation`.
-4. The next release uploads the template; the README button then works.
-   (If the bucket name is taken, pick another and update the README URL.)
+1. Create an S3 bucket named `paca-cloudformation` in `us-east-1`. Turn off
+   "Block all public access" and add a bucket policy allowing `s3:GetObject`
+   on `arn:aws:s3:::paca-cloudformation/*` to `*`.
+2. IAM → Identity providers → add `https://token.actions.githubusercontent.com`
+   with audience `sts.amazonaws.com`.
+3. Create a role trusted by that provider, with condition
+   `token.actions.githubusercontent.com:sub` = `repo:Paca-AI/paca:*`, and a
+   policy allowing only `s3:PutObject` on `paca-cloudformation/*`.
+4. In GitHub → Settings → Secrets and variables → Actions → *Variables*, add
+   `AWS_TEMPLATE_BUCKET=paca-cloudformation` and `AWS_ROLE_ARN=<role arn>`.
+5. Each non-prerelease release now uploads the template. To publish before the
+   next release, run `bash deploy/cloud/aws/publish-template.sh` with your own
+   AWS login.
 
 **Railway button:** follow the recipe above, then replace the "Railway button:
 coming" line in the README with the `https://railway.com/deploy/<code>` button.

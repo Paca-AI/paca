@@ -765,6 +765,7 @@ jobs:
       ]
     permissions:
       contents: write
+      id-token: write   # OIDC to AWS for the CloudFormation template upload
 
     steps:
       - name: Checkout repository
@@ -797,16 +798,19 @@ jobs:
             install.sh upgrade.sh install-acp-bridge.sh
 
       # Backs the AWS "Launch Stack" button: CloudFormation quick-create only
-      # accepts a template URL on S3. Skipped until the AWS_* secrets and the
-      # AWS_TEMPLATE_BUCKET variable are configured (see
-      # docs/deployment/one-click.md). Versioned copy per release plus a
-      # stable `latest/` copy the README button points at.
+      # accepts a template URL on S3. Uses GitHub OIDC (no stored keys) and is
+      # skipped until the AWS_ROLE_ARN and AWS_TEMPLATE_BUCKET repo variables
+      # are set (see docs/deployment/one-click.md).
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ vars.AWS_TEMPLATE_BUCKET != '' && vars.AWS_ROLE_ARN != '' && !github.event.release.prerelease }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEMPLATE_REGION || 'us-east-1' }}
+
       - name: Publish CloudFormation template to S3
-        if: ${{ vars.AWS_TEMPLATE_BUCKET != '' && !github.event.release.prerelease }}
+        if: ${{ vars.AWS_TEMPLATE_BUCKET != '' && vars.AWS_ROLE_ARN != '' && !github.event.release.prerelease }}
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ vars.AWS_TEMPLATE_REGION || 'us-east-1' }}
           BUCKET: ${{ vars.AWS_TEMPLATE_BUCKET }}
         run: |
           aws s3 cp paca.cfn.yaml "s3://${BUCKET}/${{ github.event.release.tag_name }}/paca.cfn.yaml"
