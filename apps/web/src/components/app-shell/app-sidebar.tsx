@@ -752,8 +752,8 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 	};
 
 	const isEmpty = rootFolders.length === 0 && rootOnlyDocs.length === 0;
-	const { state: sidebarState } = useSidebar();
-	const isSidebarCollapsed = sidebarState === "collapsed";
+	const { state: sidebarState, isMobile } = useSidebar();
+	const isSidebarCollapsed = sidebarState === "collapsed" && !isMobile;
 
 	// A bare book icon that does nothing is noise on the rail.
 	if (isSidebarCollapsed) return null;
@@ -1153,8 +1153,8 @@ function ProjectNavItems({ projectId }: { projectId: string }) {
 
 	// The icon rail has no room for section headers, so they are not togglable
 	// there (and stay out of the tab order); the section is always expanded.
-	const { state: sidebarState } = useSidebar();
-	const isRail = sidebarState === "collapsed";
+	const { state: sidebarState, isMobile } = useSidebar();
+	const isRail = sidebarState === "collapsed" && !isMobile;
 	const isCollapsed = collapsed && !isRail;
 
 	return (
@@ -1252,8 +1252,8 @@ function CollapsibleSidebarGroup({
 
 	// The icon rail has no room for section headers, so they are not togglable
 	// there (and stay out of the tab order); the section is always expanded.
-	const { state: sidebarState } = useSidebar();
-	const isRail = sidebarState === "collapsed";
+	const { state: sidebarState, isMobile } = useSidebar();
+	const isRail = sidebarState === "collapsed" && !isMobile;
 	const isCollapsed = collapsed && !isRail;
 
 	return (
@@ -1528,8 +1528,8 @@ function ProjectInteractionsSection({ projectId }: { projectId: string }) {
 
 	// The icon rail has no room for section headers, so they are not togglable
 	// there (and stay out of the tab order); the section is always expanded.
-	const { state: sidebarState } = useSidebar();
-	const isRail = sidebarState === "collapsed";
+	const { state: sidebarState, isMobile } = useSidebar();
+	const isRail = sidebarState === "collapsed" && !isMobile;
 	const isCollapsed = collapsed && !isRail;
 
 	// Hide entire section if user lacks the "View Sprints" permission
