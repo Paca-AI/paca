@@ -705,12 +705,12 @@ test.describe("the connection", () => {
 		});
 		await expect.poll(() => frames.opened).toBeGreaterThan(0);
 
-		await context.setOffline(true);
-		await a.api.patchTask(taskId, { title: name("renamed_offline") });
-		await page.waitForTimeout(500);
-		await expect(page.getByText(name("renamed_offline"))).toHaveCount(0);
-
 		const fetches = countTaskListFetches(page, a.projectId);
+		await context.setOffline(true);
+		// Not asserted: whether the title is still absent while offline depends on
+		// the browser. Chromium cuts the open socket; Firefox and WebKit keep
+		// delivering over it, so the change can land before we come back online.
+		await a.api.patchTask(taskId, { title: name("renamed_offline") });
 		await context.setOffline(false);
 		await expect(page.getByText(name("renamed_offline")).locator("visible=true").first()).toBeVisible({
 			timeout: 60_000,
