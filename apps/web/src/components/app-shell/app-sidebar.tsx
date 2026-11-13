@@ -46,7 +46,10 @@ import {
 } from "lucide-react";
 import {
 	type ComponentType,
+	createContext,
+	type ReactNode,
 	useCallback,
+	useContext,
 	useEffect,
 	useMemo,
 	useRef,
@@ -83,6 +86,7 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
 import { useBranding } from "@/hooks/use-branding";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -104,6 +108,7 @@ import {
 	updateFolder,
 } from "@/lib/doc-api";
 import { sprintsInfiniteQueryOptions, updateTask } from "@/lib/interaction-api";
+import { notifyError } from "@/lib/notify";
 import { SIDEBAR_PANE, usePaneWidth } from "@/lib/pane-width";
 import type { PluginNavRegistration } from "@/lib/plugin-api";
 import { ExtensionPoint } from "@/lib/plugins/extension-point";
@@ -168,6 +173,14 @@ function TreeInlineRename({
 }
 
 const DOC_NODE_DRAG_TYPE = "application/x-paca-doc-node";
+const ROOT_DROP_TARGET = "root";
+
+/** The one drop target currently highlighted ("root" or a folder id), shared
+ *  by the whole docs tree so nested targets never highlight together. */
+const DocDropTargetContext = createContext<{
+	active: string | null;
+	setActive: (target: string | null) => void;
+}>({ active: null, setActive: () => {} });
 
 interface DocNodeDragPayload {
 	kind: "doc" | "folder";
@@ -199,8 +212,11 @@ function useDocNodeDrop(
 	targetFolderId: string | null,
 	canWrite: boolean,
 ) {
+	const { t } = useTranslation("appShell");
 	const qc = useQueryClient();
-	const [isOver, setIsOver] = useState(false);
+	const { active, setActive } = useContext(DocDropTargetContext);
+	const targetKey = targetFolderId ?? ROOT_DROP_TARGET;
+	const isOver = active === targetKey;
 
 	const moveMutation = useMutation({
 		mutationFn: async (p: DocNodeDragPayload): Promise<void> => {
@@ -210,17 +226,20 @@ function useDocNodeDrop(
 				await updateDocument(projectId, p.id, { folder_id: targetFolderId });
 			}
 		},
+		onError: (err: unknown) => {
+			const code = getApiErrorCode(err);
+			if (
+				code === ApiErrorCode.DocFolderCycle ||
+				code === ApiErrorCode.DocFolderSelfParent
+			) {
+				toast.add({ type: "error", title: t("docs.errors.moveIntoSelf") });
+			} else {
+				notifyError(err, t("docs.errors.moveFailed"));
+			}
+		},
 		onSettled: () =>
 			qc.invalidateQueries({ queryKey: docQueryKeys.all(projectId) }),
 	});
-
-	// Clear the highlight when any drag ends (cancel, or release off-target).
-	useEffect(() => {
-		if (!isOver) return;
-		const clear = () => setIsOver(false);
-		document.addEventListener("dragend", clear);
-		return () => document.removeEventListener("dragend", clear);
-	}, [isOver]);
 
 	const dropProps = canWrite
 		? {
@@ -230,11 +249,11 @@ function useDocNodeDrop(
 					e.preventDefault();
 					e.stopPropagation();
 					e.dataTransfer.dropEffect = "move";
-					setIsOver(true);
+					setActive(targetKey);
 				},
 				onDragLeave: (e: React.DragEvent) => {
 					if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-						setIsOver(false);
+						setActive(null);
 					}
 				},
 				onDrop: (e: React.DragEvent) => {
@@ -242,7 +261,7 @@ function useDocNodeDrop(
 					if (!raw) return;
 					e.preventDefault();
 					e.stopPropagation();
-					setIsOver(false);
+					setActive(null);
 					let payload: DocNodeDragPayload;
 					try {
 						payload = JSON.parse(raw) as DocNodeDragPayload;
@@ -258,6 +277,30 @@ function useDocNodeDrop(
 		: {};
 
 	return { isOver, dropProps };
+}
+
+/** The top level of the docs tree: dropping here moves an item out of its folder. */
+function DocsRootDropArea({
+	projectId,
+	canWrite,
+	children,
+}: {
+	projectId: string;
+	canWrite: boolean;
+	children: ReactNode;
+}) {
+	const { isOver, dropProps } = useDocNodeDrop(projectId, null, canWrite);
+	return (
+		<div
+			className={cn(
+				"py-1 space-y-0.5 rounded-md transition-colors",
+				isOver && "bg-primary/10 ring-1 ring-primary/40",
+			)}
+			{...dropProps}
+		>
+			{children}
+		</div>
+	);
 }
 
 /** Single document row in the sidebar tree */
@@ -821,12 +864,6 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 		[rootDocsQuery.data],
 	);
 
-	const { isOver: isRootOver, dropProps: rootDropProps } = useDocNodeDrop(
-		projectId,
-		null,
-		canWrite,
-	);
-
 	const newDocMutation = useMutation({
 		meta: { success: "created", subject: "document" },
 		mutationFn: () => createDocument(projectId, { title: t("docs.untitled") }),
@@ -845,6 +882,18 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 		onSuccess: () =>
 			qc.invalidateQueries({ queryKey: docQueryKeys.folders(projectId) }),
 	});
+
+	// The single highlighted drop target, cleared whenever a drag ends.
+	const [activeDropTarget, setActiveDropTarget] = useState<string | null>(null);
+	const dropTargetValue = useMemo(
+		() => ({ active: activeDropTarget, setActive: setActiveDropTarget }),
+		[activeDropTarget],
+	);
+	useEffect(() => {
+		const clear = () => setActiveDropTarget(null);
+		document.addEventListener("dragend", clear);
+		return () => document.removeEventListener("dragend", clear);
+	}, []);
 
 	const toggleCollapse = () => {
 		setCollapsed((prev) => {
@@ -892,88 +941,86 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 
 			{!collapsed && (
 				<SidebarGroupContent>
-					<div
-						className={cn(
-							"py-1 space-y-0.5 rounded-md transition-colors",
-							isRootOver && "bg-primary/10 ring-1 ring-primary/40",
-						)}
-						{...rootDropProps}
-					>
-						{isEmpty ? (
-							<div className="px-4 py-2 text-xs text-sidebar-foreground/40 italic">
-								{t("docs.noDocumentsYet")}
-							</div>
-						) : (
-							<>
-								{rootFolders.map((folder) => (
-									<DocsFolderNode
-										key={folder.id}
-										folder={folder}
-										projectId={projectId}
-										canWrite={canWrite}
-										expandedFolders={expandedFolders}
-										onToggle={toggleFolder}
-										depth={0}
-									/>
-								))}
-								<div className="px-2">
-									<LoadMoreSentinel
-										compact
-										hasMore={!!rootFoldersQuery.hasNextPage}
-										isLoadingMore={rootFoldersQuery.isFetchingNextPage}
-										isError={rootFoldersQuery.isFetchNextPageError}
-										onLoadMore={() => void rootFoldersQuery.fetchNextPage()}
-									/>
+					<DocDropTargetContext.Provider value={dropTargetValue}>
+						<DocsRootDropArea projectId={projectId} canWrite={canWrite}>
+							{isEmpty ? (
+								<div className="px-4 py-2 text-xs text-sidebar-foreground/40 italic">
+									{t("docs.noDocumentsYet")}
 								</div>
-								{rootOnlyDocs.map((doc) => (
-									<DocsDocRow
-										key={doc.id}
-										doc={doc}
-										projectId={projectId}
-										canWrite={canWrite}
-										depth={0}
-									/>
-								))}
-								<div className="px-2">
-									<LoadMoreSentinel
-										compact
-										hasMore={!!rootDocsQuery.hasNextPage}
-										isLoadingMore={rootDocsQuery.isFetchingNextPage}
-										isError={rootDocsQuery.isFetchNextPageError}
-										onLoadMore={() => void rootDocsQuery.fetchNextPage()}
-									/>
+							) : (
+								<>
+									{rootFolders.map((folder) => (
+										<DocsFolderNode
+											key={folder.id}
+											folder={folder}
+											projectId={projectId}
+											canWrite={canWrite}
+											expandedFolders={expandedFolders}
+											onToggle={toggleFolder}
+											depth={0}
+										/>
+									))}
+									<div className="px-2">
+										<LoadMoreSentinel
+											compact
+											hasMore={!!rootFoldersQuery.hasNextPage}
+											isLoadingMore={rootFoldersQuery.isFetchingNextPage}
+											isError={rootFoldersQuery.isFetchNextPageError}
+											onLoadMore={() => void rootFoldersQuery.fetchNextPage()}
+										/>
+									</div>
+									{rootOnlyDocs.map((doc) => (
+										<DocsDocRow
+											key={doc.id}
+											doc={doc}
+											projectId={projectId}
+											canWrite={canWrite}
+											depth={0}
+										/>
+									))}
+									<div className="px-2">
+										<LoadMoreSentinel
+											compact
+											hasMore={!!rootDocsQuery.hasNextPage}
+											isLoadingMore={rootDocsQuery.isFetchingNextPage}
+											isError={rootDocsQuery.isFetchNextPageError}
+											onLoadMore={() => void rootDocsQuery.fetchNextPage()}
+										/>
+									</div>
+								</>
+							)}
+							{canWrite && (
+								<div className="px-2 pt-1">
+									<DropdownMenu>
+										<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/35 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
+											<Plus className="size-3 shrink-0" />
+											<span>{t("docs.add")}</span>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent align="start" className="w-40">
+											<DropdownMenuItem
+												onClick={() => newDocMutation.mutate()}
+												disabled={newDocMutation.isPending}
+											>
+												<File className="size-3.5 mr-2" />
+												{t("docs.newDocument")}
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												onClick={() =>
+													newFolderMutation.mutate(
+														t("docs.newFolderDefaultName"),
+													)
+												}
+												disabled={newFolderMutation.isPending}
+											>
+												<FolderOpen className="size-3.5 mr-2" />
+												{t("docs.newFolder")}
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
 								</div>
-							</>
-						)}
-						{canWrite && (
-							<div className="px-2 pt-1">
-								<DropdownMenu>
-									<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/35 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
-										<Plus className="size-3 shrink-0" />
-										<span>{t("docs.add")}</span>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align="start" className="w-40">
-										<DropdownMenuItem
-											onClick={() => newDocMutation.mutate()}
-											disabled={newDocMutation.isPending}
-										>
-											<File className="size-3.5 mr-2" />
-											{t("docs.newDocument")}
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											onClick={() =>
-												newFolderMutation.mutate(t("docs.newFolderDefaultName"))
-											}
-											disabled={newFolderMutation.isPending}
-										>
-											<FolderOpen className="size-3.5 mr-2" />
-											{t("docs.newFolder")}
-										</DropdownMenuItem>
-									</DropdownMenuContent>
-								</DropdownMenu>
-							</div>
-						)}
-					</div>
+							)}
+						</DocsRootDropArea>
+					</DocDropTargetContext.Provider>
 				</SidebarGroupContent>
 			)}
 		</SidebarGroup>

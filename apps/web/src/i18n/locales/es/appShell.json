@@ -62,7 +62,9 @@
 		"errors": {
 			"titleInvalid": "Ese título no es válido.",
 			"folderNameInvalid": "Ese nombre de carpeta no es válido.",
-			"renameFailed": "No se pudo cambiar el nombre. Inténtalo de nuevo."
+			"renameFailed": "No se pudo cambiar el nombre. Inténtalo de nuevo.",
+			"moveIntoSelf": "Una carpeta no se puede mover dentro de sí misma ni de una de sus subcarpetas.",
+			"moveFailed": "No se pudo mover el elemento. Inténtalo de nuevo."
 		}
 	},
 	"notifications": {

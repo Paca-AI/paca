@@ -62,7 +62,9 @@
 		"errors": {
 			"titleInvalid": "Ce titre n'est pas valide.",
 			"folderNameInvalid": "Ce nom de dossier n'est pas valide.",
-			"renameFailed": "Échec du renommage. Veuillez réessayer."
+			"renameFailed": "Échec du renommage. Veuillez réessayer.",
+			"moveIntoSelf": "Un dossier ne peut pas être déplacé dans lui-même ni dans l'un de ses sous-dossiers.",
+			"moveFailed": "Impossible de déplacer cet élément. Veuillez réessayer."
 		}
 	},
 	"notifications": {

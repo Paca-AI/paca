@@ -62,7 +62,9 @@
 		"errors": {
 			"titleInvalid": "That title isn't valid.",
 			"folderNameInvalid": "That folder name isn't valid.",
-			"renameFailed": "Rename failed. Please try again."
+			"renameFailed": "Rename failed. Please try again.",
+			"moveIntoSelf": "A folder can't be moved into itself or one of its subfolders.",
+			"moveFailed": "Couldn't move that item. Please try again."
 		}
 	},
 	"notifications": {

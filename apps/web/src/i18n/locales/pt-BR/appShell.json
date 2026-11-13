@@ -62,7 +62,9 @@
 		"errors": {
 			"titleInvalid": "Esse título não é válido.",
 			"folderNameInvalid": "Esse nome de pasta não é válido.",
-			"renameFailed": "Falha ao renomear. Tente novamente."
+			"renameFailed": "Falha ao renomear. Tente novamente.",
+			"moveIntoSelf": "Uma pasta não pode ser movida para dentro de si mesma ou de uma de suas subpastas.",
+			"moveFailed": "Não foi possível mover o item. Tente novamente."
 		}
 	},
 	"notifications": {
