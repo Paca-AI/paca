@@ -58,7 +58,7 @@ Feature: Linking, unlinking and automating Git in a project's settings
     Scenario: Choosing a responder saves it to the project
       Given the project has "acme/web" linked
       When the user picks the agent and clicks "Save"
-      Then "Saved." is shown and the warning disappears
+      Then a "Git automation settings updated successfully" toast is shown and the warning disappears
       And the project's settings name that agent
 
     Scenario: Minimum access and the pause switch are saved

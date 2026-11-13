@@ -6,10 +6,9 @@
 // LACKS "Manage Sprints" create a second, limited user through the admin API
 // (see createUserWithProjectPermissions) and sign in as that user.
 //
-// A11y gap worked around here (apps/web): the Start sprint / Complete sprint /
-// Edit sprint / Delete sprint modals are plain `div`s with no dialog role or
-// accessible name, so they are located structurally as the `fixed inset-0`
-// overlay that contains the modal's level-2 heading.
+// The Start sprint / Complete sprint / Edit sprint / Delete sprint modals are
+// Dialog / AlertDialog panels, located by their `data-slot` content element and
+// filtered by their title heading (see helpers/dialog.ts for why not by role).
 
 import {
 	type APIRequestContext,
@@ -18,6 +17,7 @@ import {
 	type Page,
 	test,
 } from "@playwright/test";
+import { DIALOG_CONTENT } from "../helpers/dialog";
 import {
 	API_URL,
 	BASE_URL,
@@ -232,12 +232,7 @@ function columnHeader(page: Page, sprintName: string): Locator {
 		.filter({ has: page.getByText(sprintName, { exact: true }) });
 }
 
-/** A modal overlay identified by its level-2 heading. */
-// Dialog and AlertDialog panels. A bare getByRole("dialog") would also match
-// toasts, which base-ui renders with role="dialog".
-const DIALOG_CONTENT =
-	'[data-slot="dialog-content"], [data-slot="alert-dialog-content"]';
-
+/** A Dialog / AlertDialog panel identified by its title heading. */
 function modal(page: Page, title: string): Locator {
 	return page
 		.locator(DIALOG_CONTENT)

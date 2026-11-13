@@ -595,6 +595,8 @@ Feature: Interaction views (board and list layouts)
       When the user clicks the "View settings" button in the view toolbar
       And the user changes "Sort by" to "Manual"
       When the user clicks outside the popup or presses Escape
+      Then a "Discard unsaved changes?" confirmation should appear
+      When the user clicks "Discard"
       Then the settings popup should close
       And the view should revert to the settings as they were before the popup was opened
 

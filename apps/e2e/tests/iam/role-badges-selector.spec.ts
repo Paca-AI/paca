@@ -199,7 +199,9 @@ test.describe("Role badges on the users list", () => {
 		page,
 	}) => {
 		await page.getByRole("button", { name: "All roles", exact: true }).click();
-		await page.getByRole("option", { name: describedRole }).click();
+		await page
+			.getByRole("option", { name: describedRole, exact: true })
+			.click();
 
 		await expect(rowOf(page, manyRoles.username)).toBeVisible();
 		await expect(rowOf(page, plain.username)).toHaveCount(0);
