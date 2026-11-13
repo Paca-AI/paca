@@ -62,8 +62,11 @@
 		"errors": {
 			"titleInvalid": "そのタイトルは無効です。",
 			"folderNameInvalid": "そのフォルダ名は無効です。",
-			"renameFailed": "名前の変更に失敗しました。もう一度お試しください。"
-		}
+			"renameFailed": "名前の変更に失敗しました。もう一度お試しください。",
+			"moveIntoSelf": "フォルダを自身またはそのサブフォルダに移動することはできません。",
+			"moveFailed": "項目を移動できませんでした。もう一度お試しください。"
+		},
+		"moveToTop": "最上位に移動"
 	},
 	"notifications": {
 		"title": "通知",

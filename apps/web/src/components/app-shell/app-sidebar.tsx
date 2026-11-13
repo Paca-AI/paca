@@ -19,6 +19,7 @@ import {
 	ChevronDown,
 	ChevronRight,
 	Clock,
+	CornerLeftUp,
 	File,
 	FileText,
 	Folder,
@@ -46,7 +47,10 @@ import {
 } from "lucide-react";
 import {
 	type ComponentType,
+	createContext,
+	type ReactNode,
 	useCallback,
+	useContext,
 	useEffect,
 	useMemo,
 	useRef,
@@ -83,6 +87,7 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
 import { useBranding } from "@/hooks/use-branding";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -104,6 +109,7 @@ import {
 	updateFolder,
 } from "@/lib/doc-api";
 import { sprintsInfiniteQueryOptions, updateTask } from "@/lib/interaction-api";
+import { notifyError } from "@/lib/notify";
 import { SIDEBAR_PANE, usePaneWidth } from "@/lib/pane-width";
 import type { PluginNavRegistration } from "@/lib/plugin-api";
 import { ExtensionPoint } from "@/lib/plugins/extension-point";
@@ -116,6 +122,12 @@ import {
 import { projectAvatar } from "@/lib/provider-logos";
 import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 import { cn } from "@/lib/utils";
+import {
+	DOC_NODE_DRAG_TYPE,
+	type DocNodeDragPayload,
+	isMoveBlocked,
+	parseDocNodeDragPayload,
+} from "./doc-dnd";
 import { UserMenu } from "./user-menu";
 
 // Shared by every inactive nav item (top-level, project, plugin, and
@@ -167,6 +179,160 @@ function TreeInlineRename({
 	);
 }
 
+const ROOT_DROP_TARGET = "root";
+
+/** The one drop target currently highlighted ("root" or a folder id), shared
+ *  by the whole docs tree so nested targets never highlight together. */
+const DocDropTargetContext = createContext<{
+	active: string | null;
+	setActive: (target: string | null) => void;
+}>({ active: null, setActive: () => {} });
+
+/** Drag source props for a document or folder row's main button. They live on
+ *  the button itself because Firefox won't start a drag from a button nested
+ *  in a draggable parent. */
+function docNodeDragProps(
+	payload: DocNodeDragPayload,
+	enabled: boolean,
+): React.HTMLAttributes<HTMLElement> & { draggable?: boolean } {
+	if (!enabled) return {};
+	return {
+		draggable: true,
+		onDragStart: (e) => {
+			e.stopPropagation();
+			e.dataTransfer.effectAllowed = "move";
+			e.dataTransfer.setData(DOC_NODE_DRAG_TYPE, JSON.stringify(payload));
+		},
+	};
+}
+
+/** Moves a document or folder into `targetFolderId` (null = top level). Only
+ *  the source and target folders' lists (and folder paths) are refetched. */
+function useMoveDocNode(projectId: string) {
+	const { t } = useTranslation("appShell");
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: async (v: {
+			payload: DocNodeDragPayload;
+			targetFolderId: string | null;
+		}): Promise<void> => {
+			const { payload: p, targetFolderId } = v;
+			if (p.kind === "folder") {
+				await updateFolder(projectId, p.id, { parent_id: targetFolderId });
+			} else {
+				await updateDocument(projectId, p.id, { folder_id: targetFolderId });
+			}
+		},
+		onError: (err: unknown) => {
+			const code = getApiErrorCode(err);
+			if (
+				code === ApiErrorCode.DocFolderCycle ||
+				code === ApiErrorCode.DocFolderSelfParent
+			) {
+				toast.add({ type: "error", title: t("docs.errors.moveIntoSelf") });
+			} else {
+				notifyError(err, t("docs.errors.moveFailed"));
+			}
+		},
+		onSettled: (_data, _err, v) => {
+			const { payload: p, targetFolderId } = v;
+			for (const folderId of [p.parentId, targetFolderId]) {
+				qc.invalidateQueries({
+					queryKey:
+						p.kind === "folder"
+							? docQueryKeys.folderChildren(projectId, folderId)
+							: docQueryKeys.docChildren(projectId, folderId),
+				});
+			}
+			if (p.kind === "folder") {
+				// Every descendant's path changes too, so mark all paths stale.
+				qc.invalidateQueries({
+					queryKey: [...docQueryKeys.all(projectId), "folders", "path"],
+				});
+			} else {
+				qc.invalidateQueries({
+					queryKey: docQueryKeys.detail(projectId, p.id),
+				});
+			}
+		},
+	});
+}
+
+/** Makes an element a drop target that moves dragged documents/folders into
+ *  `targetFolderId` (null = the top level of the tree). `targetPath` is the
+ *  target's id preceded by its ancestors' ids (empty for the top level). */
+function useDocNodeDrop(
+	projectId: string,
+	targetFolderId: string | null,
+	targetPath: readonly string[],
+	canWrite: boolean,
+	onMoved?: () => void,
+) {
+	const { active, setActive } = useContext(DocDropTargetContext);
+	const targetKey = targetFolderId ?? ROOT_DROP_TARGET;
+	const isOver = active === targetKey;
+	const moveMutation = useMoveDocNode(projectId);
+
+	const dropProps = canWrite
+		? {
+				onDragOver: (e: React.DragEvent) => {
+					if (!e.dataTransfer.types.includes(DOC_NODE_DRAG_TYPE)) return;
+					// The innermost folder under the cursor is the target.
+					e.preventDefault();
+					e.stopPropagation();
+					e.dataTransfer.dropEffect = "move";
+					setActive(targetKey);
+				},
+				onDragLeave: (e: React.DragEvent) => {
+					if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+						setActive(null);
+					}
+				},
+				onDrop: (e: React.DragEvent) => {
+					const raw = e.dataTransfer.getData(DOC_NODE_DRAG_TYPE);
+					if (!raw) return;
+					e.preventDefault();
+					e.stopPropagation();
+					setActive(null);
+					const payload = parseDocNodeDragPayload(raw, projectId);
+					if (!payload || isMoveBlocked(payload, targetFolderId, targetPath)) {
+						return;
+					}
+					moveMutation.mutate(
+						{ payload, targetFolderId },
+						{ onSuccess: onMoved },
+					);
+				},
+			}
+		: {};
+
+	return { isOver, dropProps };
+}
+
+/** The top level of the docs tree: dropping here moves an item out of its folder. */
+function DocsRootDropArea({
+	projectId,
+	canWrite,
+	children,
+}: {
+	projectId: string;
+	canWrite: boolean;
+	children: ReactNode;
+}) {
+	const { isOver, dropProps } = useDocNodeDrop(projectId, null, [], canWrite);
+	return (
+		<div
+			className={cn(
+				"py-1 space-y-0.5 rounded-md transition-colors",
+				isOver && "bg-primary/10 ring-1 ring-primary/40",
+			)}
+			{...dropProps}
+		>
+			{children}
+		</div>
+	);
+}
+
 /** Single document row in the sidebar tree */
 function DocsDocRow({
 	doc,
@@ -181,6 +347,7 @@ function DocsDocRow({
 }) {
 	const { t } = useTranslation("appShell");
 	const location = useRouterState({ select: (s) => s.location.pathname });
+	const moveMutation = useMoveDocNode(projectId);
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 	const [renaming, setRenaming] = useState(false);
@@ -239,6 +406,15 @@ function DocsDocRow({
 			>
 				<button
 					type="button"
+					{...docNodeDragProps(
+						{
+							kind: "doc",
+							id: doc.id,
+							projectId,
+							parentId: doc.folder_id ?? null,
+						},
+						canWrite && !renaming,
+					)}
 					className={cn(
 						"flex flex-1 min-w-0 items-center gap-1.5 rounded-md px-2 py-1 cursor-pointer transition-all duration-150 text-sm",
 						isActive
@@ -311,6 +487,25 @@ function DocsDocRow({
 								<Pencil className="size-3.5 mr-2" />
 								{t("docs.rename")}
 							</DropdownMenuItem>
+							{doc.folder_id && (
+								<DropdownMenuItem
+									onClick={(e) => {
+										e.stopPropagation();
+										moveMutation.mutate({
+											payload: {
+												kind: "doc",
+												id: doc.id,
+												projectId,
+												parentId: doc.folder_id ?? null,
+											},
+											targetFolderId: null,
+										});
+									}}
+								>
+									<CornerLeftUp className="size-3.5 mr-2" />
+									{t("docs.moveToTop")}
+								</DropdownMenuItem>
+							)}
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
 								className="text-destructive focus:text-destructive"
@@ -346,6 +541,7 @@ function DocsFolderNode({
 	expandedFolders,
 	onToggle,
 	depth,
+	ancestorIds = [],
 }: {
 	folder: DocFolder;
 	projectId: string;
@@ -353,6 +549,8 @@ function DocsFolderNode({
 	expandedFolders: Set<string>;
 	onToggle: (id: string) => void;
 	depth: number;
+	/** Ids of the folders above this one, outermost first. */
+	ancestorIds?: readonly string[];
 }) {
 	const { t } = useTranslation("appShell");
 	const qc = useQueryClient();
@@ -369,6 +567,21 @@ function DocsFolderNode({
 	const navigate = useNavigate();
 
 	const isExpanded = expandedFolders.has(folder.id);
+	const moveMutation = useMoveDocNode(projectId);
+	const folderPath = useMemo(
+		() => [...ancestorIds, folder.id],
+		[ancestorIds, folder.id],
+	);
+	const { isOver, dropProps } = useDocNodeDrop(
+		projectId,
+		folder.id,
+		folderPath,
+		canWrite,
+		// A collapsed target would swallow the item; open it so the move shows.
+		() => {
+			if (!expandedFolders.has(folder.id)) onToggle(folder.id);
+		},
+	);
 
 	// A folder's subfolders and documents are fetched only once it is
 	// expanded, a page at a time.
@@ -440,7 +653,13 @@ function DocsFolderNode({
 	});
 
 	return (
-		<div>
+		<div
+			className={cn(
+				"rounded-md transition-colors",
+				isOver && "bg-primary/10 ring-1 ring-primary/40",
+			)}
+			{...dropProps}
+		>
 			{/* Folder row */}
 			<div
 				className="group relative flex items-center gap-1 pr-1"
@@ -448,6 +667,15 @@ function DocsFolderNode({
 			>
 				<button
 					type="button"
+					{...docNodeDragProps(
+						{
+							kind: "folder",
+							id: folder.id,
+							projectId,
+							parentId: folder.parent_id ?? null,
+						},
+						canWrite && !renaming,
+					)}
 					className="flex flex-1 min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 cursor-pointer transition-all duration-150 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
 					onClick={() => {
 						if (!renaming) onToggle(folder.id);
@@ -509,6 +737,25 @@ function DocsFolderNode({
 									<Pencil className="size-3.5 mr-2" />
 									{t("docs.rename")}
 								</DropdownMenuItem>
+								{folder.parent_id && (
+									<DropdownMenuItem
+										onClick={(e) => {
+											e.stopPropagation();
+											moveMutation.mutate({
+												payload: {
+													kind: "folder",
+													id: folder.id,
+													projectId,
+													parentId: folder.parent_id ?? null,
+												},
+												targetFolderId: null,
+											});
+										}}
+									>
+										<CornerLeftUp className="size-3.5 mr-2" />
+										{t("docs.moveToTop")}
+									</DropdownMenuItem>
+								)}
 								<DropdownMenuSeparator />
 								<DropdownMenuItem
 									className="text-destructive focus:text-destructive"
@@ -547,6 +794,7 @@ function DocsFolderNode({
 							expandedFolders={expandedFolders}
 							onToggle={onToggle}
 							depth={depth + 1}
+							ancestorIds={folderPath}
 						/>
 					))}
 					<div style={{ paddingLeft: `${8 + (depth + 1) * 16}px` }}>
@@ -732,6 +980,18 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 			qc.invalidateQueries({ queryKey: docQueryKeys.folders(projectId) }),
 	});
 
+	// The single highlighted drop target, cleared whenever a drag ends.
+	const [activeDropTarget, setActiveDropTarget] = useState<string | null>(null);
+	const dropTargetValue = useMemo(
+		() => ({ active: activeDropTarget, setActive: setActiveDropTarget }),
+		[activeDropTarget],
+	);
+	useEffect(() => {
+		const clear = () => setActiveDropTarget(null);
+		document.addEventListener("dragend", clear);
+		return () => document.removeEventListener("dragend", clear);
+	}, []);
+
 	const toggleCollapse = () => {
 		setCollapsed((prev) => {
 			const next = !prev;
@@ -778,82 +1038,86 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 
 			{!collapsed && (
 				<SidebarGroupContent>
-					<div className="py-1 space-y-0.5">
-						{isEmpty ? (
-							<div className="px-4 py-2 text-xs text-sidebar-foreground/40 italic">
-								{t("docs.noDocumentsYet")}
-							</div>
-						) : (
-							<>
-								{rootFolders.map((folder) => (
-									<DocsFolderNode
-										key={folder.id}
-										folder={folder}
-										projectId={projectId}
-										canWrite={canWrite}
-										expandedFolders={expandedFolders}
-										onToggle={toggleFolder}
-										depth={0}
-									/>
-								))}
-								<div className="px-2">
-									<LoadMoreSentinel
-										compact
-										hasMore={!!rootFoldersQuery.hasNextPage}
-										isLoadingMore={rootFoldersQuery.isFetchingNextPage}
-										isError={rootFoldersQuery.isFetchNextPageError}
-										onLoadMore={() => void rootFoldersQuery.fetchNextPage()}
-									/>
+					<DocDropTargetContext.Provider value={dropTargetValue}>
+						<DocsRootDropArea projectId={projectId} canWrite={canWrite}>
+							{isEmpty ? (
+								<div className="px-4 py-2 text-xs text-sidebar-foreground/40 italic">
+									{t("docs.noDocumentsYet")}
 								</div>
-								{rootOnlyDocs.map((doc) => (
-									<DocsDocRow
-										key={doc.id}
-										doc={doc}
-										projectId={projectId}
-										canWrite={canWrite}
-										depth={0}
-									/>
-								))}
-								<div className="px-2">
-									<LoadMoreSentinel
-										compact
-										hasMore={!!rootDocsQuery.hasNextPage}
-										isLoadingMore={rootDocsQuery.isFetchingNextPage}
-										isError={rootDocsQuery.isFetchNextPageError}
-										onLoadMore={() => void rootDocsQuery.fetchNextPage()}
-									/>
+							) : (
+								<>
+									{rootFolders.map((folder) => (
+										<DocsFolderNode
+											key={folder.id}
+											folder={folder}
+											projectId={projectId}
+											canWrite={canWrite}
+											expandedFolders={expandedFolders}
+											onToggle={toggleFolder}
+											depth={0}
+										/>
+									))}
+									<div className="px-2">
+										<LoadMoreSentinel
+											compact
+											hasMore={!!rootFoldersQuery.hasNextPage}
+											isLoadingMore={rootFoldersQuery.isFetchingNextPage}
+											isError={rootFoldersQuery.isFetchNextPageError}
+											onLoadMore={() => void rootFoldersQuery.fetchNextPage()}
+										/>
+									</div>
+									{rootOnlyDocs.map((doc) => (
+										<DocsDocRow
+											key={doc.id}
+											doc={doc}
+											projectId={projectId}
+											canWrite={canWrite}
+											depth={0}
+										/>
+									))}
+									<div className="px-2">
+										<LoadMoreSentinel
+											compact
+											hasMore={!!rootDocsQuery.hasNextPage}
+											isLoadingMore={rootDocsQuery.isFetchingNextPage}
+											isError={rootDocsQuery.isFetchNextPageError}
+											onLoadMore={() => void rootDocsQuery.fetchNextPage()}
+										/>
+									</div>
+								</>
+							)}
+							{canWrite && (
+								<div className="px-2 pt-1">
+									<DropdownMenu>
+										<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/35 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
+											<Plus className="size-3 shrink-0" />
+											<span>{t("docs.add")}</span>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent align="start" className="w-40">
+											<DropdownMenuItem
+												onClick={() => newDocMutation.mutate()}
+												disabled={newDocMutation.isPending}
+											>
+												<File className="size-3.5 mr-2" />
+												{t("docs.newDocument")}
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												onClick={() =>
+													newFolderMutation.mutate(
+														t("docs.newFolderDefaultName"),
+													)
+												}
+												disabled={newFolderMutation.isPending}
+											>
+												<FolderOpen className="size-3.5 mr-2" />
+												{t("docs.newFolder")}
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
 								</div>
-							</>
-						)}
-						{canWrite && (
-							<div className="px-2 pt-1">
-								<DropdownMenu>
-									<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/35 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
-										<Plus className="size-3 shrink-0" />
-										<span>{t("docs.add")}</span>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align="start" className="w-40">
-										<DropdownMenuItem
-											onClick={() => newDocMutation.mutate()}
-											disabled={newDocMutation.isPending}
-										>
-											<File className="size-3.5 mr-2" />
-											{t("docs.newDocument")}
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											onClick={() =>
-												newFolderMutation.mutate(t("docs.newFolderDefaultName"))
-											}
-											disabled={newFolderMutation.isPending}
-										>
-											<FolderOpen className="size-3.5 mr-2" />
-											{t("docs.newFolder")}
-										</DropdownMenuItem>
-									</DropdownMenuContent>
-								</DropdownMenu>
-							</div>
-						)}
-					</div>
+							)}
+						</DocsRootDropArea>
+					</DocDropTargetContext.Provider>
 				</SidebarGroupContent>
 			)}
 		</SidebarGroup>

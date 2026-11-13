@@ -62,8 +62,11 @@
 		"errors": {
 			"titleInvalid": "该标题无效。",
 			"folderNameInvalid": "该文件夹名称无效。",
-			"renameFailed": "重命名失败，请重试。"
-		}
+			"renameFailed": "重命名失败，请重试。",
+			"moveIntoSelf": "无法将文件夹移动到其自身或其子文件夹中。",
+			"moveFailed": "无法移动该项目，请重试。"
+		},
+		"moveToTop": "移到顶层"
 	},
 	"notifications": {
 		"title": "通知",

@@ -132,6 +132,8 @@ export const ApiErrorCode = {
 	// Document domain errors.
 	DocTitleInvalid: "DOC_TITLE_INVALID",
 	DocFolderNameInvalid: "DOC_FOLDER_NAME_INVALID",
+	DocFolderSelfParent: "DOC_FOLDER_SELF_PARENT",
+	DocFolderCycle: "DOC_FOLDER_CYCLE",
 
 	// Annotation domain errors.
 	AnnotationBodyEmpty: "ANNOTATION_BODY_EMPTY",
