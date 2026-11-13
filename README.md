@@ -336,12 +336,13 @@ See [Artifact Hub](https://artifacthub.io/packages/helm/paca/paca) for the full 
 ## One-Click Deploy
 
 [![Deploy to AWS](https://img.shields.io/badge/Deploy_to-AWS-FF9900?style=for-the-badge&labelColor=24292f&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateURL=https://paca-cloudformation.s3.amazonaws.com/latest/paca.cfn.yaml&stackName=paca)
+[![Deploy to GCP](https://img.shields.io/badge/Deploy_to-GCP-4285F4?style=for-the-badge&labelColor=24292f)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/Paca-AI/paca&cloudshell_tutorial=deploy/cloud/gcp/tutorial.md&show=terminal)
 [![Deploy to DigitalOcean](https://img.shields.io/badge/Deploy_to-DigitalOcean-0080FF?style=for-the-badge&labelColor=24292f&logoColor=white)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/Paca-AI/paca/tree/master)
 [![Deploy to Railway](https://img.shields.io/badge/Deploy_to-Railway-7B3FE4?style=for-the-badge&labelColor=24292f&logoColor=white)](docs/deployment/one-click.md#railway-manual-template)
 [![Deploy to Render](https://img.shields.io/badge/Deploy_to-Render-00A67E?style=for-the-badge&labelColor=24292f&logoColor=white)](https://render.com/deploy?repo=https://github.com/Paca-AI/paca)
 [![Deploy to RepoCloud](https://img.shields.io/badge/Deploy_to-RepoCloud-E8590C?style=for-the-badge&labelColor=24292f&logoColor=white)](https://repocloud.io/details/Paca/)
 
-Only AWS (and a [DigitalOcean Droplet](docs/deployment/one-click.md#digitalocean-droplet)) includes the Agent Runner; the others run Paca without AI agent execution. Details in the [one-click deploy docs](docs/deployment/one-click.md).
+Only AWS and GCP (and a [DigitalOcean Droplet](docs/deployment/one-click.md#digitalocean-droplet)) includes the Agent Runner; the others run Paca without AI agent execution. Details in the [one-click deploy docs](docs/deployment/one-click.md).
 
 ---
 

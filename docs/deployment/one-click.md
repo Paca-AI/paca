@@ -2,6 +2,7 @@
 
 | Provider | Path | Full stack (AI agents)? | Status |
 |:--|:--|:--|:--|
+| GCP | Cloud Shell tutorial + `gcloud` script (Compute Engine VM) | ✅ yes | Button added, untested |
 | DigitalOcean | App Platform button (`.do/deploy.template.yaml`) | ❌ no Agent Runner | Button added, untested |
 | DigitalOcean | Droplet + cloud-init | ✅ yes | Manual, no button |
 | AWS | CloudFormation (EC2 + Elastic IP) | ✅ yes | Button needs the S3 setup below |
@@ -16,6 +17,18 @@ if you need agents.
 
 Nothing here has been run against a live account yet — treat the first
 deploy on each provider as a test.
+
+## GCP (Compute Engine via Cloud Shell)
+
+The button opens Google Cloud Shell with this repo and the walkthrough in
+[`deploy/cloud/gcp/tutorial.md`](../../deploy/cloud/gcp/tutorial.md). The
+tutorial runs [`deploy.sh`](../../deploy/cloud/gcp/deploy.sh), which enables
+the Compute API, reserves a static IP, opens ports 80/443 and creates an
+Ubuntu 24.04 `e2-standard-2` VM whose startup script runs `bootstrap.sh`
+(same as the DigitalOcean/AWS VMs). Cloud Shell is already logged in, so no
+credentials are needed; you only pick a billing-enabled project. Set
+`PACA_DOMAIN`, `ADMIN_PASSWORD`, `PACA_ZONE` or `PACA_MACHINE` to customise.
+Like the other VM paths it needs a release that includes `bootstrap.sh`.
 
 ## DigitalOcean (App Platform button)
 
