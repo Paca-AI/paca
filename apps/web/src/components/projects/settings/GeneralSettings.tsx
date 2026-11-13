@@ -28,10 +28,9 @@ export function GeneralSettings({
 	const [nameError, setNameError] = useState<string | null>(null);
 	const [prefixError, setPrefixError] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [saved, setSaved] = useState(false);
 
 	const mutation = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "updated", subject: "projectInfo" },
 		mutationFn: () =>
 			updateProject(projectId, {
 				name: name.trim(),
@@ -50,8 +49,6 @@ export function GeneralSettings({
 			setError(null);
 			setNameError(null);
 			setPrefixError(null);
-			setSaved(true);
-			setTimeout(() => setSaved(false), 2500);
 		},
 		onError: (err: unknown) => {
 			const code = getApiErrorCode(err);
@@ -214,11 +211,6 @@ export function GeneralSettings({
 							) : null}
 							{t("settings.general.saveChanges")}
 						</Button>
-						{saved ? (
-							<span className="text-xs text-success font-medium">
-								{t("settings.general.saved")}
-							</span>
-						) : null}
 					</div>
 				) : (
 					<p className="text-xs text-muted-foreground">

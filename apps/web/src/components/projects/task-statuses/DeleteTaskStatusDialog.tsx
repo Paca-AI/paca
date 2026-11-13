@@ -38,6 +38,7 @@ export function DeleteTaskStatusDialog({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { success: "deleted", subject: "taskStatus" },
 		mutationFn: () => deleteTaskStatus(projectId, status.id),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({

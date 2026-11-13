@@ -17,6 +17,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/toast";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	ACTION_TYPES,
@@ -48,6 +49,7 @@ import {
 	pluginMatchLabel,
 } from "@/lib/automation-plugin-config";
 import { useMemberDirectory } from "@/lib/member-directory";
+import { showErrorToast } from "@/lib/notify";
 import {
 	customFieldsQueryOptions,
 	taskStatusesQueryOptions,
@@ -137,7 +139,6 @@ function AutomationBuilderPage() {
 
 	const [tab, setTab] = useState<"graph" | "runs">("graph");
 	const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [renaming, setRenaming] = useState(false);
 	const [nameDraft, setNameDraft] = useState("");
 
@@ -145,9 +146,11 @@ function AutomationBuilderPage() {
 	const invalidate = () => qc.invalidateQueries({ queryKey: graphKey });
 
 	function reportError(err: unknown) {
-		setErrorMessage(
-			extractErrorMessage(err, t("automation.builder.genericError")),
-		);
+		showErrorToast({
+			title: extractErrorMessage(err, t("automation.builder.genericError")),
+			description: "",
+			error: err,
+		});
 	}
 
 	function labelForType(
@@ -584,6 +587,7 @@ function AutomationBuilderPage() {
 	});
 
 	const renameMutation = useMutation({
+		meta: { success: "renamed", subject: "automation" },
 		mutationFn: () =>
 			updateAutomation(projectId, automationId, { name: nameDraft }),
 		onSuccess: () => {
@@ -594,11 +598,13 @@ function AutomationBuilderPage() {
 	});
 
 	const activateMutation = useMutation({
+		meta: { success: "activated", subject: "automation" },
 		mutationFn: () => activateAutomation(projectId, automationId),
 		onSuccess: invalidate,
 		onError: reportError,
 	});
 	const deactivateMutation = useMutation({
+		meta: { success: "deactivated", subject: "automation" },
 		mutationFn: () => deactivateAutomation(projectId, automationId),
 		onSuccess: invalidate,
 		onError: reportError,
@@ -769,9 +775,11 @@ function AutomationBuilderPage() {
 									target,
 								)
 							) {
-								setErrorMessage(
-									t("automation.builder.taskLessTriggerConnectionError"),
-								);
+								toast.add({
+									type: "error",
+									title: t("automation.builder.taskLessTriggerConnectionError"),
+									timeout: 8000,
+								});
 								return;
 							}
 							addEdgeMutation.mutate({ source, sourceHandle, target });
@@ -781,8 +789,6 @@ function AutomationBuilderPage() {
 						}
 						onDeleteNode={(nodeId) => removeNodeMutation.mutate(nodeId)}
 						onDeleteEdge={(edgeId) => removeEdgeMutation.mutate(edgeId)}
-						errorMessage={errorMessage}
-						onDismissError={() => setErrorMessage(null)}
 					/>
 					{selectedNode && (
 						<AutomationNodeConfigPanel

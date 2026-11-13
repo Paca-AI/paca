@@ -73,7 +73,7 @@ export function TaskTypesSettings({
 	const [deleteType, setDeleteType] = useState<TaskType | null>(null);
 
 	const setDefaultMutation = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "updated", subject: "defaultTaskType" },
 		mutationFn: (typeId: string) => setDefaultTaskType(projectId, typeId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({

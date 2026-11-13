@@ -27,7 +27,7 @@ export function DangerZone({ projectId }: { projectId: string }) {
 	const [confirmName, setConfirmName] = useState("");
 
 	const deleteMutation = useMutation({
-		meta: { success: "deleted" },
+		meta: { success: "deleted", subject: "project", silent: true },
 		mutationFn: () => deleteProject(projectId),
 		onSuccess: async () => {
 			queryClient.removeQueries({ queryKey: ["projects", projectId] });

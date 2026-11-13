@@ -128,11 +128,13 @@ export function CommentDetailView({
 	};
 
 	const resolveMutation = useMutation({
+		meta: { success: "resolved", subject: "comment" },
 		mutationFn: () =>
 			resolveAnnotation(projectId, environmentId, portForwardId, annotationId),
 		onSuccess: invalidate,
 	});
 	const reopenMutation = useMutation({
+		meta: { success: "reopened", subject: "comment" },
 		mutationFn: () =>
 			reopenAnnotation(projectId, environmentId, portForwardId, annotationId),
 		onSuccess: invalidate,
@@ -158,6 +160,7 @@ export function CommentDetailView({
 	// the new task, and attaches the screenshot if one exists — nothing
 	// extra to build here, just kick it off and jump to the result.
 	const createTaskMutation = useMutation({
+		meta: { success: "created", subject: "task" },
 		mutationFn: () =>
 			createTaskFromAnnotation(
 				projectId,

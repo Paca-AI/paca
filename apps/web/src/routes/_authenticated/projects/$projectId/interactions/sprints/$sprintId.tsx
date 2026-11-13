@@ -157,6 +157,7 @@ function SprintPage() {
 		activeSprints?.items.find((s) => s.id !== sprintId) ?? null;
 
 	const completeSprintMutation = useMutation({
+		meta: { success: "completed", subject: "sprint" },
 		mutationFn: () =>
 			completeSprint(projectId, sprintId, {
 				move_to_sprint_id: moveToSprintId ?? null,
@@ -185,6 +186,7 @@ function SprintPage() {
 	});
 
 	const updateSprintMutation = useMutation({
+		meta: { success: "updated", subject: "sprint" },
 		mutationFn: (payload: UpdateSprintPayload) =>
 			updateSprint(projectId, sprintId, payload),
 		onSuccess: () => {
@@ -200,6 +202,7 @@ function SprintPage() {
 	});
 
 	const deleteSprintMutation = useMutation({
+		meta: { success: "deleted", subject: "sprint" },
 		mutationFn: () => deleteSprint(projectId, sprintId),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "sprints"] });

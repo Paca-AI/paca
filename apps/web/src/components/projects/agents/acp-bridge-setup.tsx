@@ -408,6 +408,7 @@ export function AcpBridgeSetup({
 	);
 
 	const generateMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () =>
 			projectId
 				? generateAcpBridgeToken(projectId, agentId)
@@ -419,6 +420,7 @@ export function AcpBridgeSetup({
 	});
 
 	const generateKeyMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () =>
 			projectId
 				? generateAgentMCPKey(projectId, agentId)

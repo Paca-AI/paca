@@ -154,7 +154,7 @@ export function UserFormDialog({
 	};
 
 	const mutation = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "saved", subject: "user" },
 		mutationFn: async (): Promise<{ user: User; password?: string }> => {
 			if (isEdit && user) {
 				const updated = await updateUser(user.id, {

@@ -44,7 +44,6 @@ export function LoginSecuritySettings() {
 	const [roles, setRoles] = useState<string[]>([]);
 	const [ips, setIps] = useState("");
 	const [error, setError] = useState<string | null>(null);
-	const [saved, setSaved] = useState(false);
 
 	useEffect(() => {
 		const p = policyQuery.data;
@@ -57,7 +56,7 @@ export function LoginSecuritySettings() {
 	}, [policyQuery.data]);
 
 	const mutation = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "updated", subject: "loginSecurity" },
 		mutationFn: () =>
 			saveAuthSecurityPolicy({
 				require_mfa: requireMfa,
@@ -67,8 +66,6 @@ export function LoginSecuritySettings() {
 		onSuccess: (policy) => {
 			queryClient.setQueryData(authSecurityPolicyQueryOptions.queryKey, policy);
 			setError(null);
-			setSaved(true);
-			setTimeout(() => setSaved(false), 2500);
 		},
 		onError: (err) =>
 			setError(
@@ -226,11 +223,6 @@ export function LoginSecuritySettings() {
 					) : null}
 					{t("settings.general.save")}
 				</Button>
-				{saved ? (
-					<span className="text-xs font-medium text-success">
-						{t("settings.general.saved")}
-					</span>
-				) : null}
 			</div>
 		</div>
 	);

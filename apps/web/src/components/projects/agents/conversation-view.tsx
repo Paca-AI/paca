@@ -90,6 +90,7 @@ function ConversationControls({
 	};
 
 	const stopMut = useMutation({
+		meta: { success: "stopped", subject: "conversation" },
 		mutationFn: async () => {
 			if (projectId) {
 				await stopConversation(projectId, conversation.id);

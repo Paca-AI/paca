@@ -38,7 +38,7 @@ export function DeleteServiceAccountDialog({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
-		meta: { success: "deleted" },
+		meta: { success: "deleted", subject: "serviceAccount" },
 		mutationFn: () => deleteServiceAccount(account.id),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({

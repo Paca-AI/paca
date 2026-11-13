@@ -153,6 +153,7 @@ function ChangeRequestRow({
 	const qc = useQueryClient();
 	const label = `${cr.repository} #${cr.number}`;
 	const unlink = useMutation({
+		meta: { success: "removed", subject: "changeRequestLink" },
 		mutationFn: () =>
 			unlinkTaskChangeRequest(projectId, taskId, cr.repository_id, cr.number),
 		onSuccess: () =>
@@ -240,6 +241,7 @@ function BranchRow({
 	const qc = useQueryClient();
 	const [copied, setCopied] = useState(false);
 	const unlink = useMutation({
+		meta: { success: "removed", subject: "branchLink" },
 		mutationFn: () =>
 			unlinkTaskBranch(projectId, taskId, branch.repository_id, branch.branch),
 		onSuccess: () =>

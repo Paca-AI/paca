@@ -103,6 +103,7 @@ function AutomationListPage() {
 	const listKey = automationsQueryOptions(projectId).queryKey;
 
 	const createMutation = useMutation({
+		meta: { success: "created", subject: "automation" },
 		mutationFn: () =>
 			createAutomation(projectId, { name: name.trim(), description }),
 		onSuccess: (created) => {
@@ -118,6 +119,7 @@ function AutomationListPage() {
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "automation" },
 		mutationFn: (automationId: string) =>
 			deleteAutomation(projectId, automationId),
 		onSuccess: () => {

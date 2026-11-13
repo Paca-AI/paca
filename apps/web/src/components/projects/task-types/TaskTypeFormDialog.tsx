@@ -61,6 +61,7 @@ export function TaskTypeFormDialog({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "saved", subject: "taskType" },
 		mutationFn: () => {
 			const payload = {
 				name: name.trim(),

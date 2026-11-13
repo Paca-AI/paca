@@ -122,6 +122,7 @@ function APIKeysPage() {
 	});
 
 	const revokeMutation = useMutation({
+		meta: { success: "removed", subject: "apiKey" },
 		mutationFn: (id: string) => revokeAPIKey(id),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["api-keys"] });
@@ -131,7 +132,7 @@ function APIKeysPage() {
 
 	function handleCopy() {
 		if (!revealedKey) return;
-		void copyToClipboard(revealedKey.key).then((ok) => {
+		void copyToClipboard(revealedKey.key, { notify: false }).then((ok) => {
 			if (!ok) {
 				setCopied(false);
 				toast.add({ type: "error", title: t("apiKeys.errors.copyFailed") });

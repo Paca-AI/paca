@@ -196,6 +196,7 @@ function DocsDocRow({
 	const isActive = location === `/projects/${projectId}/docs/${doc.id}`;
 
 	const renameMutation = useMutation({
+		meta: { success: "renamed", subject: "document" },
 		mutationFn: (title: string) => updateDocument(projectId, doc.id, { title }),
 		onSuccess: (updated) => {
 			setRenameError(null);
@@ -220,6 +221,7 @@ function DocsDocRow({
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "document" },
 		mutationFn: () => deleteDocument(projectId, doc.id),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: docQueryKeys.all(projectId) });
@@ -387,6 +389,7 @@ function DocsFolderNode({
 		[docsQuery.data],
 	);
 	const renameMutation = useMutation({
+		meta: { success: "renamed", subject: "folder" },
 		mutationFn: (name: string) => updateFolder(projectId, folder.id, { name }),
 		onSuccess: () => {
 			setRenameError(null);
@@ -405,12 +408,14 @@ function DocsFolderNode({
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "folder" },
 		mutationFn: () => deleteFolder(projectId, folder.id),
 		onSuccess: () =>
 			qc.invalidateQueries({ queryKey: docQueryKeys.folders(projectId) }),
 	});
 
 	const newDocMutation = useMutation({
+		meta: { success: "created", subject: "document" },
 		mutationFn: () =>
 			createDocument(projectId, {
 				title: t("docs.untitled"),
@@ -427,6 +432,7 @@ function DocsFolderNode({
 	});
 
 	const newSubfolderMutation = useMutation({
+		meta: { success: "created", subject: "folder" },
 		mutationFn: (name: string) =>
 			createFolder(projectId, { name, parent_id: folder.id }),
 		onSuccess: () =>
@@ -708,6 +714,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 	);
 
 	const newDocMutation = useMutation({
+		meta: { success: "created", subject: "document" },
 		mutationFn: () => createDocument(projectId, { title: t("docs.untitled") }),
 		onSuccess: (doc) => {
 			qc.invalidateQueries({ queryKey: docQueryKeys.all(projectId) });
@@ -719,6 +726,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 	});
 
 	const newFolderMutation = useMutation({
+		meta: { success: "created", subject: "folder" },
 		mutationFn: (name: string) => createFolder(projectId, { name }),
 		onSuccess: () =>
 			qc.invalidateQueries({ queryKey: docQueryKeys.folders(projectId) }),

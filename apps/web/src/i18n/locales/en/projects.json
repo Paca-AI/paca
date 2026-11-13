@@ -1835,7 +1835,8 @@
 				"datePlaceholder": "Date",
 				"clearDate": "Clear date",
 				"startDate": "Start date",
-				"dueDate": "Due date"
+				"dueDate": "Due date",
+				"clearDates": "Clear dates"
 			},
 			"storyPointsEditor": {
 				"decrease": "Decrease story points",

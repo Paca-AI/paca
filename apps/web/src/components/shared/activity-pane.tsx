@@ -315,6 +315,7 @@ export function ActivityPane<T extends ActivityEntry>({
 	};
 
 	const updateMutation = useMutation({
+		meta: { success: "updated", subject: "comment" },
 		mutationFn: ({
 			commentId,
 			blocks,
@@ -631,6 +632,7 @@ function ActivityItemInner<T extends ActivityEntry>({
 		!isComment && !!onRevert && (isRevertable ? isRevertable(entry) : false);
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "comment" },
 		mutationFn: () => {
 			// biome-ignore lint/style/noNonNullAssertion: guarded by canDelete
 			return deleteComment!(entry.id);

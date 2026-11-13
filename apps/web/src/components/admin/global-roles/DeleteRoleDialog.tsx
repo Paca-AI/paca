@@ -32,7 +32,7 @@ export function DeleteRoleDialog({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
-		meta: { success: "deleted" },
+		meta: { success: "deleted", subject: "role" },
 		mutationFn: () => deleteRole(role.id),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({

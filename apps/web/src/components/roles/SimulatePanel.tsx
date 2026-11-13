@@ -94,6 +94,7 @@ export function SimulatePanel({
 	const [attrError, setAttrError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { silent: true },
 		mutationFn: (input: Parameters<typeof simulatePolicy>[0]) =>
 			simulatePolicy(input, projectId),
 	});

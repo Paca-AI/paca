@@ -1,13 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import {
-	Check,
-	KeyRound,
-	Save,
-	ServerCog,
-	ShieldCheck,
-	Trash2,
-} from "lucide-react";
+import { KeyRound, Save, ServerCog, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DeleteServiceAccountDialog } from "@/components/admin/service-accounts/DeleteServiceAccountDialog";
@@ -26,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { formatDate } from "@/lib/format-date";
+import { notifyError } from "@/lib/notify";
 import { serviceAccountAvatar } from "@/lib/provider-logos";
 import {
 	type ServiceAccount,
@@ -80,7 +74,8 @@ function OverviewTab({
 	const isDirty = name !== account.name || description !== account.description;
 
 	const saveMutation = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "updated", subject: "serviceAccount" },
+		onError: (err) => notifyError(err, saveErrorMessage(err)),
 		mutationFn: () =>
 			updateServiceAccount(account.id, {
 				name: name.trim(),
@@ -99,18 +94,16 @@ function OverviewTab({
 		},
 	});
 
-	const code = saveMutation.isError
-		? getApiErrorCode(saveMutation.error)
-		: null;
-	const saveError = saveMutation.isError
-		? code === ApiErrorCode.ServiceAccountNameInvalid
+	const saveErrorMessage = (err: unknown) => {
+		const code = getApiErrorCode(err);
+		return code === ApiErrorCode.ServiceAccountNameInvalid
 			? t("serviceAccounts.formDialog.errors.nameInvalid")
 			: code === ApiErrorCode.ServiceAccountDescriptionTooLong
 				? t("serviceAccounts.formDialog.errors.descriptionTooLong")
 				: code === ApiErrorCode.ServiceAccountNotFound
 					? t("serviceAccounts.formDialog.errors.notFound")
-					: t("serviceAccounts.detail.overview.saveFailed")
-		: null;
+					: t("serviceAccounts.detail.overview.saveFailed");
+	};
 	const canSave =
 		canWrite && isDirty && !!name.trim() && !saveMutation.isPending;
 
@@ -163,15 +156,6 @@ function OverviewTab({
 						)}
 						{t("serviceAccounts.detail.overview.saveChanges")}
 					</Button>
-					{saveMutation.isSuccess && !isDirty ? (
-						<span className="flex items-center gap-1 text-xs text-success">
-							<Check className="size-3" />
-							{t("serviceAccounts.detail.overview.saved")}
-						</span>
-					) : null}
-					{saveError ? (
-						<span className="text-xs text-destructive">{saveError}</span>
-					) : null}
 				</div>
 			) : null}
 

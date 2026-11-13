@@ -141,7 +141,7 @@ function DeleteProviderDialog({
 	const { t } = useTranslation("admin");
 	const queryClient = useQueryClient();
 	const mutation = useMutation({
-		meta: { success: "deleted" },
+		meta: { success: "deleted", subject: "ssoProvider", silent: true },
 		mutationFn: (id: string) => deleteSsoProvider(id),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({

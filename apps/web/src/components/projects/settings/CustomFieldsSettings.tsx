@@ -163,6 +163,7 @@ function CreateCustomFieldDialog({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "created", subject: "customField" },
 		mutationFn: () =>
 			createCustomFieldDefinition(projectId, {
 				display_name: displayName.trim(),
@@ -478,6 +479,7 @@ function EditCustomFieldDialog({
 	const uiFieldType = field ? toUIFieldType(field.field_type, t) : "";
 
 	const mutation = useMutation({
+		meta: { success: "saved", subject: "customField" },
 		mutationFn: () => {
 			if (!field)
 				return Promise.resolve(field as unknown as CustomFieldDefinition);
@@ -752,6 +754,7 @@ function DeleteCustomFieldDialog({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { success: "deleted", subject: "customField" },
 		mutationFn: () => {
 			if (!field) return Promise.resolve();
 			return deleteCustomFieldDefinition(projectId, field.id);

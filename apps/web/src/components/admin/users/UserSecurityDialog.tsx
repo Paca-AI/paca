@@ -57,7 +57,7 @@ export function UserSecurityDialog({
 	}, [cidrsQuery.data]);
 
 	const save = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "updated", subject: "userSecurity" },
 		mutationFn: () => setUserAllowedCidrs(user.id, parseList(text)),
 		onSuccess: (cidrs) => {
 			queryClient.setQueryData(queryKey, cidrs);
@@ -80,6 +80,7 @@ export function UserSecurityDialog({
 			),
 	});
 	const reset = useMutation({
+		meta: { success: "updated", subject: "userMfa" },
 		mutationFn: () => resetUserMfa(user.id),
 		onSuccess: () => {
 			setResetDone(true);

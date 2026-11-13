@@ -154,8 +154,9 @@ export function PropertiesPanel({
 					mode="date-range"
 					startDate={task.start_date}
 					dueDate={task.due_date}
-					onStartDateChange={(v) => onUpdate?.({ start_date: v })}
-					onDueDateChange={(v) => onUpdate?.({ due_date: v })}
+					onDateRangeChange={({ startDate, dueDate }) =>
+						onUpdate?.({ start_date: startDate, due_date: dueDate })
+					}
 					canEdit={canEdit}
 				/>
 

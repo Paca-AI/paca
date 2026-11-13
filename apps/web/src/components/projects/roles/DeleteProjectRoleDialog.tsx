@@ -35,6 +35,7 @@ export function DeleteProjectRoleDialog({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { success: "deleted", subject: "role" },
 		mutationFn: () => deleteRole(role.id, projectId),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({

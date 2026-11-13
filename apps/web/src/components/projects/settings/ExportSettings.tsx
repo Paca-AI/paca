@@ -74,6 +74,7 @@ export function ExportSettings({
 	const hasActive = exports?.some(isExportActive) ?? false;
 
 	const requestMutation = useMutation({
+		meta: { success: "requested", subject: "projectExport" },
 		mutationFn: () => requestProjectExport(projectId),
 		onSuccess: async () => {
 			setError(null);

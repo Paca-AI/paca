@@ -61,6 +61,7 @@ export function TaskHeader({
 	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "task" },
 		mutationFn: () => {
 			if (!projectId || !task) throw new Error("missing context");
 			return deleteTask(projectId, task.id);

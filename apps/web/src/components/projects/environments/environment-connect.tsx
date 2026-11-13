@@ -134,6 +134,7 @@ function AddSSHKeyDialog({
 	const [publicKey, setPublicKey] = useState("");
 
 	const addMutation = useMutation({
+		meta: { success: "added", subject: "sshKey", silent: true },
 		mutationFn: () =>
 			addSSHKey(projectId, environmentId, {
 				label: label.trim(),
@@ -262,6 +263,7 @@ function SSHKeysManager({
 	).queryKey;
 
 	const deleteMutation = useMutation({
+		meta: { success: "removed", subject: "sshKey" },
 		mutationFn: (keyId: string) =>
 			deleteSSHKey(projectId, environmentId, keyId),
 		onSuccess: () => qc.invalidateQueries({ queryKey: keysKey }),
@@ -370,6 +372,7 @@ function WebAppConnectTab({
 	const isRunning = environment.status === "running";
 
 	const startMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => startEnvironment(projectId, environment.id),
 		onSuccess: (updated) => {
 			qc.setQueryData(

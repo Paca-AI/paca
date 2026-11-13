@@ -107,6 +107,7 @@ function CreateProjectDialog({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "created", subject: "project" },
 		mutationFn: () => {
 			if (!name.trim()) throw new Error("name_required");
 			return createProject({

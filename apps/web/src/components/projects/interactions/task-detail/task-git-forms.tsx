@@ -457,6 +457,7 @@ export function CreateBranchForm({
 	}
 
 	const create = useMutation({
+		meta: { success: "created", subject: "branch" },
 		mutationFn: () =>
 			createTaskBranch(projectId, taskId, {
 				repository_id: picked,

@@ -175,6 +175,7 @@ export function PluginPreferencesPanel() {
 	const { getRegistrations } = usePluginRegistry();
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "pluginPreferences" },
 		mutationFn: updatePluginExtensionSetting,
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["plugins"] });

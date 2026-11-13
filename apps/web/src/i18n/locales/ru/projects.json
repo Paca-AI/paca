@@ -1853,7 +1853,8 @@
 				"datePlaceholder": "Дата",
 				"clearDate": "Очистить дату",
 				"startDate": "Дата начала",
-				"dueDate": "Срок"
+				"dueDate": "Срок",
+				"clearDates": "Очистить даты"
 			},
 			"storyPointsEditor": {
 				"decrease": "Уменьшить story points",

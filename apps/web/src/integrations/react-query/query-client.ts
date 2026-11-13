@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import i18n from "@/i18n";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { notifyError } from "@/lib/notify";
 
 function getHttpStatus(error: unknown): number | undefined {
 	return (error as { response?: { status?: number } } | undefined)?.response
@@ -50,19 +50,89 @@ export function handleMutationError(
 	if (mutation.options.onError || mutation.meta?.silent) return;
 	// 401 is handled by the auth flow (redirect to login), not a toast.
 	if (getHttpStatus(error) === 401) return;
-	toast.add({
-		type: "error",
-		title: i18n.t("common.somethingWentWrong"),
-		description: getApiErrorMessage(error) ?? undefined,
-		timeout: 8000,
-	});
+	notifyError(error);
 }
+
+export const SUCCESS_KINDS = [
+	"saved",
+	"updated",
+	"created",
+	"added",
+	"deleted",
+	"renamed",
+	"removed",
+	"started",
+	"stopped",
+	"requested",
+	"resolved",
+	"reopened",
+	"activated",
+	"deactivated",
+	"completed",
+] as const;
+export type SuccessKind = (typeof SUCCESS_KINDS)[number];
+
+export const SUCCESS_SUBJECTS = [
+	"role",
+	"defaultRole",
+	"serviceAccount",
+	"serviceAccountKey",
+	"serviceAccountRoles",
+	"branding",
+	"loginSecurity",
+	"ssoProvider",
+	"user",
+	"userSecurity",
+	"userMfa",
+	"document",
+	"folder",
+	"pluginPreferences",
+	"agent",
+	"agentSettings",
+	"mcpServer",
+	"skill",
+	"envVar",
+	"conversation",
+	"comment",
+	"task",
+	"sshKey",
+	"environment",
+	"environmentSettings",
+	"portForward",
+	"view",
+	"sprint",
+	"attachment",
+	"branch",
+	"changeRequestLink",
+	"branchLink",
+	"taskLink",
+	"customField",
+	"project",
+	"projectExport",
+	"projectInfo",
+	"gitRepository",
+	"gitSettings",
+	"jevCredentials",
+	"jevSettings",
+	"defaultTaskStatus",
+	"defaultTaskType",
+	"taskStatus",
+	"taskType",
+	"apiKey",
+	"profile",
+	"automation",
+	"teamMember",
+	"memberRoles",
+	"memberDescription",
+	"generic",
+] as const;
+export type SuccessSubject = (typeof SUCCESS_SUBJECTS)[number];
 
 /**
  * Opt-in success confirmation: a mutation declaring
- * `meta: { success: "saved" | "deleted" }` gets a matching toast. Opt-in
- * because most mutations (drag reorders, autosaves, background syncs) would
- * be noise as toasts.
+ * `meta: { success: "updated", subject: "projectInfo" }` gets a toast reading
+ * "Project information updated successfully". Opt-in because most mutations
+ * (drag reorders, autosaves, background syncs) would be noise as toasts.
  *
  * Exported for testing.
  */
@@ -70,9 +140,24 @@ export function handleMutationSuccess(
 	mutation: Mutation<unknown, unknown, unknown, unknown>,
 ): void {
 	const kind = mutation.meta?.success;
-	if (kind === "saved" || kind === "deleted") {
-		toast.add({ type: "success", title: i18n.t(`common.toast.${kind}`) });
+	if (
+		typeof kind !== "string" ||
+		!SUCCESS_KINDS.includes(kind as SuccessKind)
+	) {
+		return;
 	}
+	const rawSubject = mutation.meta?.subject;
+	const subject: SuccessSubject =
+		typeof rawSubject === "string" &&
+		SUCCESS_SUBJECTS.includes(rawSubject as SuccessSubject)
+			? (rawSubject as SuccessSubject)
+			: "generic";
+	toast.add({
+		type: "success",
+		title: i18n.t(`common.toast.${kind as SuccessKind}`, {
+			subject: i18n.t(`common.toast.subjects.${subject}`),
+		}),
+	});
 }
 
 export const queryClient = new QueryClient({

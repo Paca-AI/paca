@@ -1835,7 +1835,8 @@
 				"datePlaceholder": "日付",
 				"clearDate": "日付をクリア",
 				"startDate": "開始日",
-				"dueDate": "期日"
+				"dueDate": "期日",
+				"clearDates": "日付をクリア"
 			},
 			"storyPointsEditor": {
 				"decrease": "ストーリーポイントを減らす",

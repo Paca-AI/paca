@@ -1835,7 +1835,8 @@
 				"datePlaceholder": "날짜",
 				"clearDate": "날짜 지우기",
 				"startDate": "시작일",
-				"dueDate": "마감일"
+				"dueDate": "마감일",
+				"clearDates": "날짜 지우기"
 			},
 			"storyPointsEditor": {
 				"decrease": "스토리 포인트 감소",

@@ -434,6 +434,7 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 	);
 
 	const renameMutation = useMutation({
+		meta: { success: "renamed", subject: "conversation", silent: true },
 		mutationFn: ({ id, title }: { id: string; title: string }) =>
 			projectId
 				? updateConversationTitle(projectId, id, title)
@@ -451,6 +452,7 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "conversation", silent: true },
 		mutationFn: (id: string) =>
 			projectId
 				? deleteConversation(projectId, id)

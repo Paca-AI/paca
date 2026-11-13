@@ -1,9 +1,12 @@
+import { toast } from "@/components/ui/toast";
+import i18n from "@/i18n";
+
 // navigator.clipboard is only defined in a secure context (https or
 // localhost). Paca is commonly served over plain http (LAN IP, internal
 // hostname), where navigator.clipboard is undefined and writeText can't be
 // used. document.execCommand("copy") has no such restriction, so it's the
 // fallback whenever the modern API is unavailable or rejects.
-export async function copyToClipboard(text: string): Promise<boolean> {
+async function writeToClipboard(text: string): Promise<boolean> {
 	if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
 		try {
 			await navigator.clipboard.writeText(text);
@@ -49,6 +52,22 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 	} finally {
 		textarea.remove();
 		previouslyFocused?.focus?.({ preventScroll: true });
+	}
+	return ok;
+}
+
+/**
+ * Copies `text`, resolving to whether it worked. On failure it shows an error
+ * toast so callers only have to handle the success state (the "Copied" flip).
+ * Pass `{ notify: false }` where the caller has a more specific message.
+ */
+export async function copyToClipboard(
+	text: string,
+	{ notify = true }: { notify?: boolean } = {},
+): Promise<boolean> {
+	const ok = await writeToClipboard(text);
+	if (!ok && notify) {
+		toast.add({ type: "error", title: i18n.t("common.copyFailed") });
 	}
 	return ok;
 }

@@ -32,8 +32,7 @@ export function PropertyField({
 	onDateChange,
 	startDate,
 	dueDate,
-	onStartDateChange,
-	onDueDateChange,
+	onDateRangeChange,
 	numberValue = 0,
 	onNumberChange,
 	textValue,
@@ -110,8 +109,7 @@ export function PropertyField({
 						startDate={startDate}
 						dueDate={dueDate}
 						canEdit={canEdit}
-						onStartDateChange={onStartDateChange}
-						onDueDateChange={onDueDateChange}
+						onChange={onDateRangeChange}
 					/>
 				);
 

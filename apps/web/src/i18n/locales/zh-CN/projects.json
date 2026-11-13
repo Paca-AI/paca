@@ -1835,7 +1835,8 @@
 				"datePlaceholder": "日期",
 				"clearDate": "清除日期",
 				"startDate": "开始日期",
-				"dueDate": "截止日期"
+				"dueDate": "截止日期",
+				"clearDates": "清除日期"
 			},
 			"storyPointsEditor": {
 				"decrease": "减少故事点",

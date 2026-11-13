@@ -128,7 +128,7 @@ function ProviderForm({
 			: `${window.location.origin}/api/v1/auth/sso/${effectiveSlug || "…"}/callback`;
 
 	const mutation = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "saved", subject: "ssoProvider" },
 		mutationFn: () => {
 			const input: SsoProviderInput = {
 				slug: effectiveSlug,

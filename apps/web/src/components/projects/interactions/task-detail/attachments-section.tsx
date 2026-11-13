@@ -13,6 +13,7 @@ import {
 	taskAttachmentsQueryOptions,
 	uploadAttachment,
 } from "@/lib/attachment-api";
+import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { AttachmentItem } from "./attachment-item";
 
@@ -31,7 +32,6 @@ export function AttachmentsSection({
 	const qc = useQueryClient();
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [isDragOver, setIsDragOver] = useState(false);
-	const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
 	// ── Query ──────────────────────────────────────────────────────────────
 	const attachmentsQuery = useInfiniteQuery(
@@ -42,15 +42,16 @@ export function AttachmentsSection({
 
 	// ── Upload mutation ────────────────────────────────────────────────────
 	const uploadMutation = useMutation({
+		meta: { success: "added", subject: "attachment" },
 		mutationFn: (file: File) => uploadAttachment(projectId, taskId, file),
 		onSuccess: () => {
-			setAttachmentError(null);
 			qc.invalidateQueries({
 				queryKey: ["projects", projectId, "tasks", taskId, "attachments"],
 			});
 		},
 		onError: (err: unknown) => {
-			setAttachmentError(
+			notifyError(
+				err,
 				getApiErrorCode(err) === ApiErrorCode.AttachmentInvalid
 					? t("taskDetail.attachments.errors.invalid")
 					: t("taskDetail.attachments.errors.uploadFailed"),
@@ -60,16 +61,17 @@ export function AttachmentsSection({
 
 	// ── Delete mutation ────────────────────────────────────────────────────
 	const deleteMutation = useMutation({
+		meta: { success: "removed", subject: "attachment" },
 		mutationFn: (attachmentId: string) =>
 			deleteTaskAttachment(projectId, taskId, attachmentId),
 		onSuccess: () => {
-			setAttachmentError(null);
 			qc.invalidateQueries({
 				queryKey: ["projects", projectId, "tasks", taskId, "attachments"],
 			});
 		},
 		onError: (err: unknown) => {
-			setAttachmentError(
+			notifyError(
+				err,
 				getApiErrorCode(err) === ApiErrorCode.AttachmentNotFound
 					? t("taskDetail.attachments.errors.notFound")
 					: t("taskDetail.attachments.errors.deleteFailed"),
@@ -79,7 +81,6 @@ export function AttachmentsSection({
 
 	const addFiles = (files: File[]) => {
 		if (!canEdit) return;
-		setAttachmentError(null);
 		for (const file of files) {
 			uploadMutation.mutate(file);
 		}
@@ -124,12 +125,6 @@ export function AttachmentsSection({
 					</>
 				)}
 			</div>
-
-			{attachmentError && (
-				<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-					{attachmentError}
-				</p>
-			)}
 
 			{/* Attachment list */}
 			{attachments.length > 0 && (

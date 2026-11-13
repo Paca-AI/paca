@@ -97,6 +97,26 @@ describe("handleMutationSuccess", () => {
 		expect(spy).toHaveBeenCalledTimes(1);
 	});
 
+	it("names the action: kind plus subject", () => {
+		const spy = vi.spyOn(toast, "add").mockReturnValue("id");
+		handleMutationSuccess(
+			withMeta({ success: "updated", subject: "projectInfo" }),
+		);
+		expect(spy).toHaveBeenCalledWith({
+			type: "success",
+			title: "Project information updated successfully",
+		});
+	});
+
+	it("falls back to a generic subject when none is given", () => {
+		const spy = vi.spyOn(toast, "add").mockReturnValue("id");
+		handleMutationSuccess(withMeta({ success: "deleted" }));
+		expect(spy).toHaveBeenCalledWith({
+			type: "success",
+			title: "Item deleted successfully",
+		});
+	});
+
 	it("stays quiet without the opt-in", () => {
 		const spy = vi.spyOn(toast, "add").mockReturnValue("id");
 		handleMutationSuccess(withMeta());

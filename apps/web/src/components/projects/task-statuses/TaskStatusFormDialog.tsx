@@ -69,6 +69,7 @@ export function TaskStatusFormDialog({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "saved", subject: "taskStatus" },
 		mutationFn: () => {
 			if (isEdit && status) {
 				return updateTaskStatus(projectId, status.id, {

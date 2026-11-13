@@ -86,6 +86,7 @@ export function FolderCreateDialog({
 	};
 
 	const addMutation = useMutation({
+		meta: { success: "created", subject: "folder", silent: true },
 		mutationFn: () =>
 			addFolder(projectId, environmentId, { path: path.trim() }),
 		onSuccess: (folder) => {

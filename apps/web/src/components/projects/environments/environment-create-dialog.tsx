@@ -90,6 +90,7 @@ export function EnvironmentCreateDialog({
 		memory.trim() === "" || parseMemoryLimitBytes(memory) >= MIN_MEMORY_BYTES;
 
 	const createMutation = useMutation({
+		meta: { success: "created", subject: "environment", silent: true },
 		mutationFn: () =>
 			createEnvironment(projectId, {
 				name: name.trim(),

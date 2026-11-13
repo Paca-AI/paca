@@ -841,7 +841,8 @@ describe("GitSettings", () => {
 				min_actor_permission: "triage",
 			}),
 		);
-		expect(await screen.findByText("Saved.")).toBeInTheDocument();
+		// Success feedback is a toast now; the form is clean again once saved.
+		await waitFor(() => expect(save).toBeDisabled());
 	});
 
 	it("explains a refusal when saving the automation", async () => {

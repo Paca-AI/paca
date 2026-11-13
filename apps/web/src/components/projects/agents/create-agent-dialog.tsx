@@ -371,6 +371,7 @@ export function CreateAgentDialog({
 	const acpCommandParts = splitShellCommand(acpCommand);
 
 	const createMutation = useMutation({
+		meta: { success: "created", subject: "agent", silent: true },
 		mutationFn: async () => {
 			const typeFields =
 				agentType === "llm"
@@ -503,6 +504,7 @@ export function CreateAgentDialog({
 	// because this dialog's agent doesn't exist yet (verifyCLILogin's own
 	// endpoint is agent-scoped).
 	const verifyCliLoginMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => {
 			if (!projectId || !defaultEnvironmentId) {
 				throw new Error("no environment selected");

@@ -73,6 +73,7 @@ import {
 	stopEnvironment,
 	updateEnvironment,
 } from "@/lib/environment-api";
+import { notifyError } from "@/lib/notify";
 import { timeAgo } from "@/lib/time-ago";
 
 // Shared by the environment detail route
@@ -158,7 +159,14 @@ function OverviewTab({
 		name !== environment.name ||
 		idleTimeout !== String(environment.idle_timeout_minutes);
 
+	const saveErrorMessage = (err: unknown) =>
+		getApiErrorCode(err) === ApiErrorCode.EnvironmentNameInvalid
+			? t("environments.detail.overview.nameRequired")
+			: t("environments.detail.overview.saveFailed");
+
 	const saveMutation = useMutation({
+		meta: { success: "updated", subject: "environmentSettings" },
+		onError: (err) => notifyError(err, saveErrorMessage(err)),
 		mutationFn: () =>
 			updateEnvironment(projectId, environment.id, {
 				name: name.trim(),
@@ -169,13 +177,6 @@ function OverviewTab({
 			qc.invalidateQueries({ queryKey: listKey });
 		},
 	});
-
-	const saveErrorMessage = saveMutation.isError
-		? getApiErrorCode(saveMutation.error) ===
-			ApiErrorCode.EnvironmentNameInvalid
-			? t("environments.detail.overview.nameRequired")
-			: t("environments.detail.overview.saveFailed")
-		: null;
 
 	const idleTimeoutNumber = Number(idleTimeout);
 	const canSave =
@@ -316,15 +317,6 @@ function OverviewTab({
 						)}
 						{t("environments.detail.overview.saveChanges")}
 					</Button>
-					{saveMutation.isSuccess && (
-						<span className="flex items-center gap-1 text-xs text-success">
-							<Check className="size-3" />
-							{t("environments.detail.overview.saved")}
-						</span>
-					)}
-					{saveErrorMessage && (
-						<span className="text-xs text-destructive">{saveErrorMessage}</span>
-					)}
 				</div>
 			)}
 		</div>
@@ -357,6 +349,9 @@ function FoldersTab({
 	const foldersKey = environmentQueryOptions(projectId, environmentId).queryKey;
 
 	const deleteMutation = useMutation({
+		meta: { success: "removed", subject: "folder" },
+		onError: (err) =>
+			notifyError(err, t("environments.detail.folders.deleteFailed")),
 		mutationFn: (folderId: string) =>
 			deleteFolder(projectId, environmentId, folderId),
 		onSuccess: () => {
@@ -432,11 +427,6 @@ function FoldersTab({
 					/>
 				</div>
 			)}
-			{deleteMutation.isError && (
-				<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-					{t("environments.detail.folders.deleteFailed")}
-				</p>
-			)}
 
 			<FolderCreateDialog
 				projectId={projectId}
@@ -507,6 +497,7 @@ function AddPortForwardDialog({
 	const [containerPort, setContainerPort] = useState("");
 
 	const addMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () =>
 			addPortForward(projectId, environmentId, {
 				label: label.trim() || undefined,
@@ -637,6 +628,7 @@ function RestartEnvironmentDialog({
 	const qc = useQueryClient();
 
 	const restartMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => restartEnvironment(projectId, environment.id),
 		onSuccess: (updated) => {
 			qc.setQueryData(
@@ -728,6 +720,9 @@ function PortForwardsTab({
 	).queryKey;
 
 	const deleteMutation = useMutation({
+		meta: { success: "removed", subject: "portForward" },
+		onError: (err) =>
+			notifyError(err, t("environments.detail.portForwards.deleteFailed")),
 		mutationFn: (portForwardId: string) =>
 			deletePortForward(projectId, environment.id, portForwardId),
 		onSuccess: () => {
@@ -879,11 +874,6 @@ function PortForwardsTab({
 					/>
 				</div>
 			)}
-			{deleteMutation.isError && (
-				<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-					{t("environments.detail.portForwards.deleteFailed")}
-				</p>
-			)}
 
 			<AddPortForwardDialog
 				projectId={projectId}
@@ -975,7 +965,14 @@ export function EnvironmentDetailView({
 	// Start/Stop/Delete all live in the header next to Connect (see the
 	// return below) rather than inline in OverviewTab — lifted up here so
 	// they're reachable from every tab, not just Overview.
+	const actionErrorMessage = (err: unknown) =>
+		getApiErrorCode(err) === ApiErrorCode.EnvironmentBusy
+			? t("environments.detail.busy")
+			: t("environments.detail.actionFailed");
+
 	const startMutation = useMutation({
+		meta: { success: "started", subject: "environment" },
+		onError: (err) => notifyError(err, actionErrorMessage(err)),
 		mutationFn: () => startEnvironment(projectId, environmentId),
 		onSuccess: (updated) => {
 			qc.setQueryData(envKey, updated);
@@ -984,6 +981,8 @@ export function EnvironmentDetailView({
 	});
 
 	const stopMutation = useMutation({
+		meta: { success: "stopped", subject: "environment" },
+		onError: (err) => notifyError(err, actionErrorMessage(err)),
 		mutationFn: () => stopEnvironment(projectId, environmentId),
 		onSuccess: (updated) => {
 			qc.setQueryData(envKey, updated);
@@ -992,6 +991,7 @@ export function EnvironmentDetailView({
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "environment", silent: true },
 		mutationFn: () => deleteEnvironment(projectId, environmentId),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: listKey });
@@ -1025,21 +1025,6 @@ export function EnvironmentDetailView({
 		(environment.status === "stopped" ||
 			environment.status === "suspended" ||
 			environment.status === "error");
-	// Start and Stop are independent controls (Start in the header, Stop in
-	// the dropdown menu) with the same failure modes — mainly a race against
-	// another in-flight start/stop/restart — so each gets its own message
-	// instead of one sharing slot that would hide whichever mutation lost.
-	const startErrorMessage = startMutation.isError
-		? getApiErrorCode(startMutation.error) === ApiErrorCode.EnvironmentBusy
-			? t("environments.detail.busy")
-			: t("environments.detail.actionFailed")
-		: null;
-	const stopErrorMessage = stopMutation.isError
-		? getApiErrorCode(stopMutation.error) === ApiErrorCode.EnvironmentBusy
-			? t("environments.detail.busy")
-			: t("environments.detail.actionFailed")
-		: null;
-
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
 			{/* Environment header */}
@@ -1124,16 +1109,6 @@ export function EnvironmentDetailView({
 						)}
 					</div>
 				</div>
-				{startErrorMessage && (
-					<p className="mt-3 text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-						{startErrorMessage}
-					</p>
-				)}
-				{stopErrorMessage && (
-					<p className="mt-3 text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-						{stopErrorMessage}
-					</p>
-				)}
 			</div>
 
 			{/* Tabs */}

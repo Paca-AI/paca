@@ -58,6 +58,7 @@ export function AgentCard({
 	const isProviderCli = agent.agent_type === "provider_cli";
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "agent", silent: true },
 		mutationFn: () =>
 			projectId
 				? deleteAgent(projectId, agent.id)

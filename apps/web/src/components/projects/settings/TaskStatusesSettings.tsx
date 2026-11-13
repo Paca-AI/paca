@@ -39,6 +39,7 @@ import {
 	getApiErrorCode,
 	isForbiddenError,
 } from "@/lib/api-error";
+import { notifyError } from "@/lib/notify";
 import {
 	reorderTaskStatuses,
 	STATUS_CATEGORY_LABELS,
@@ -111,10 +112,9 @@ export function TaskStatusesSettings({
 	const [localOrder, setLocalOrder] = useState<TaskStatus[] | null>(null);
 	const [dragId, setDragId] = useState<string | null>(null);
 	const [dragOverId, setDragOverId] = useState<string | null>(null);
-	const [reorderError, setReorderError] = useState<string | null>(null);
 
 	const setDefaultMutation = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "updated", subject: "defaultTaskStatus" },
 		mutationFn: (statusId: string) => setDefaultTaskStatus(projectId, statusId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({
@@ -130,7 +130,6 @@ export function TaskStatusesSettings({
 				ordered.map((s) => s.id),
 			),
 		onSuccess: () => {
-			setReorderError(null);
 			queryClient.invalidateQueries({
 				queryKey: taskStatusesQueryOptions(projectId).queryKey,
 			});
@@ -138,7 +137,8 @@ export function TaskStatusesSettings({
 		onError: (err: unknown) => {
 			setLocalOrder(null);
 			const code = getApiErrorCode(err);
-			setReorderError(
+			notifyError(
+				err,
 				code === ApiErrorCode.TaskStatusReorderInvalid
 					? t("settings.taskStatuses.reorderInvalid")
 					: t("settings.taskStatuses.reorderFailed"),
@@ -175,7 +175,6 @@ export function TaskStatusesSettings({
 		const [moved] = next.splice(srcIndex, 1);
 		next.splice(targetIndex, 0, moved);
 		setLocalOrder(next);
-		setReorderError(null);
 		reorderMutation.mutate(next);
 	};
 
@@ -202,12 +201,6 @@ export function TaskStatusesSettings({
 					</Button>
 				) : null}
 			</div>
-
-			{reorderError ? (
-				<p className="mt-4 text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-					{reorderError}
-				</p>
-			) : null}
 
 			{noPermission ? (
 				<NoPermissionState

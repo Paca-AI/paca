@@ -48,10 +48,9 @@ export function BrandingSettings() {
 		branding?.feedback_enabled !== false,
 	);
 	const [generalError, setGeneralError] = useState<string | null>(null);
-	const [saved, setSaved] = useState(false);
 
 	const mutation = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "updated", subject: "branding" },
 		mutationFn: () =>
 			updateSettings({
 				brand_name: brandName,
@@ -64,8 +63,6 @@ export function BrandingSettings() {
 				old ? { ...old, ...updated } : updated,
 			);
 			setGeneralError(null);
-			setSaved(true);
-			setTimeout(() => setSaved(false), 2500);
 		},
 		onError: () => {
 			setGeneralError(t("settings.general.errors.updateFailed"));
@@ -251,11 +248,6 @@ export function BrandingSettings() {
 						) : null}
 						{t("settings.general.save")}
 					</Button>
-					{saved ? (
-						<span className="text-xs text-success font-medium">
-							{t("settings.general.saved")}
-						</span>
-					) : null}
 				</div>
 			</div>
 		</div>

@@ -1835,7 +1835,8 @@
 				"datePlaceholder": "Ngày",
 				"clearDate": "Xóa ngày",
 				"startDate": "Ngày bắt đầu",
-				"dueDate": "Ngày đến hạn"
+				"dueDate": "Ngày đến hạn",
+				"clearDates": "Xóa ngày"
 			},
 			"storyPointsEditor": {
 				"decrease": "Giảm story points",

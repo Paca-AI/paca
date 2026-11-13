@@ -60,6 +60,7 @@ import {
 	updateGitRepository,
 	updateGitSettings,
 } from "@/lib/git-api";
+import { notifyError } from "@/lib/notify";
 import { GitConnections } from "./GitConnections";
 import { GitRepositoryBrowserDialog, linkedKey } from "./GitRepositoryPicker";
 
@@ -289,6 +290,7 @@ function Repositories({
 	}, [projectId]);
 
 	const link = useMutation({
+		meta: { success: "added", subject: "gitRepository" },
 		mutationFn: () =>
 			linkGitRepository(projectId, {
 				provider_id: provider?.id ?? "",
@@ -340,6 +342,7 @@ function Repositories({
 	});
 
 	const unlink = useMutation({
+		meta: { success: "removed", subject: "gitRepository" },
 		mutationFn: (id: string) => unlinkGitRepository(projectId, id),
 		onSuccess: () => {
 			setConfirming(null);
@@ -349,7 +352,7 @@ function Repositories({
 		},
 		onError: (err: unknown) => {
 			setConfirming(null);
-			setErrorKey(gitErrorKey(err));
+			notifyError(err, t(`project.git.errors.${gitErrorKey(err)}` as never));
 		},
 	});
 
@@ -742,7 +745,7 @@ function RepositoryDescription({
 	const current = repository.description ?? "";
 
 	const save = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "updated", subject: "gitRepository" },
 		mutationFn: () =>
 			updateGitRepository(projectId, repository.id, {
 				description: value.trim(),
@@ -857,6 +860,7 @@ function ReconnectNotice({
 	const [errorDetail, setErrorDetail] = useState<string | null>(null);
 	const chosen = options.some((c) => c.id === choice) ? choice : "";
 	const reconnect = useMutation({
+		meta: { success: "updated", subject: "gitRepository" },
 		mutationFn: () =>
 			reconnectGitRepository(projectId, repository.id, chosen || undefined),
 		onSuccess: () => {
@@ -1044,24 +1048,21 @@ function Automation({
 	const queryClient = useQueryClient();
 	const [draft, setDraft] = useState<GitProjectSettings | null>(null);
 	const [errorKey, setErrorKey] = useState<string | null>(null);
-	const [saved, setSaved] = useState(false);
 
 	useEffect(() => {
 		if (settings) setDraft(settings);
 	}, [settings]);
 
 	const save = useMutation({
-		meta: { success: "saved" },
+		meta: { success: "updated", subject: "gitSettings" },
 		mutationFn: (next: GitProjectSettings) =>
 			updateGitSettings(projectId, next),
 		onSuccess: (next) => {
 			queryClient.setQueryData(gitSettingsKey(projectId), next);
 			setDraft(next);
 			setErrorKey(null);
-			setSaved(true);
 		},
 		onError: (err: unknown) => {
-			setSaved(false);
 			setErrorKey(gitErrorKey(err));
 		},
 	});
@@ -1070,7 +1071,6 @@ function Automation({
 	const disabled = locked || !canWrite;
 	const dirty = JSON.stringify(draft) !== JSON.stringify(settings ?? draft);
 	const change = (patch: Partial<GitProjectSettings>) => {
-		setSaved(false);
 		setDraft({ ...draft, ...patch });
 	};
 
@@ -1182,11 +1182,6 @@ function Automation({
 				{errorKey ? (
 					<p role="alert" className="text-sm text-destructive">
 						{t(`project.git.errors.${errorKey}` as never)}
-					</p>
-				) : null}
-				{saved ? (
-					<p role="status" className="text-sm text-muted-foreground">
-						{t("project.git.automation.saved")}
 					</p>
 				) : null}
 

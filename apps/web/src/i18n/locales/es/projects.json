@@ -1835,7 +1835,8 @@
 				"datePlaceholder": "Fecha",
 				"clearDate": "Borrar fecha",
 				"startDate": "Fecha de inicio",
-				"dueDate": "Fecha de vencimiento"
+				"dueDate": "Fecha de vencimiento",
+				"clearDates": "Borrar fechas"
 			},
 			"storyPointsEditor": {
 				"decrease": "Disminuir puntos de historia",

@@ -350,6 +350,7 @@ function AddMemberDialog({
 	]);
 
 	const addMutation = useMutation({
+		meta: { success: "added", subject: "teamMember" },
 		mutationFn: () => {
 			if (selectedRoleIds.length === 0) {
 				return Promise.reject(new Error("Role is required"));
@@ -889,6 +890,7 @@ function MemberRoleDialog({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "memberRoles" },
 		mutationFn: (roleIds: string[]) =>
 			replaceMemberRoles(projectId, member.id, roleIds),
 		onError: (err: unknown) => {
@@ -967,6 +969,7 @@ function DescriptionChip({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "memberDescription" },
 		mutationFn: () =>
 			updateProjectMemberRole(projectId, member.id, {
 				description: value.trim(),
@@ -1239,6 +1242,7 @@ function TeamPage() {
 	};
 
 	const removeMutation = useMutation({
+		meta: { success: "removed", subject: "teamMember", silent: true },
 		mutationFn: () => {
 			if (!removingMember) return Promise.resolve();
 			return removeProjectMember(projectId, removingMember.id);

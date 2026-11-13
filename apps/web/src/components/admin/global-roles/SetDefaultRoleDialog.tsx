@@ -40,6 +40,7 @@ export function SetDefaultRoleDialog({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "defaultRole" },
 		mutationFn: () => setDefaultRole(role.id),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({

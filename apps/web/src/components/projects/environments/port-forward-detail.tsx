@@ -124,6 +124,7 @@ export function PortForwardDetailView({
 	};
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "portForward" },
 		mutationFn: () =>
 			deletePortForward(projectId, environmentId, portForwardId),
 		onSuccess: () => {

@@ -95,6 +95,7 @@ export function JevSettings({
 	const [credentialsSaved, setCredentialsSaved] = useState(false);
 
 	const credentialsMutation = useMutation({
+		meta: { success: "updated", subject: "jevCredentials" },
 		mutationFn: (payload: {
 			api_key?: string;
 			base_url?: string;
@@ -132,6 +133,7 @@ export function JevSettings({
 	// relationship to credentialsMutation: a separate, explicit action rather
 	// than something inferred from field edits.
 	const testMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => testProjectJevConfig(projectId),
 	});
 
@@ -141,7 +143,6 @@ export function JevSettings({
 	);
 	const [autoAssignScope, setAutoAssignScope] = useState(saved.autoAssignScope);
 	const [error, setError] = useState<string | null>(null);
-	const [justSaved, setJustSaved] = useState(false);
 
 	// Fixed fields (Importance, Task Type, Story Points, Tags, Epic) always
 	// exist on every task, plus whichever custom fields have a fixed,
@@ -176,6 +177,7 @@ export function JevSettings({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "jevSettings" },
 		mutationFn: () =>
 			updateProject(projectId, {
 				settings: {
@@ -196,8 +198,6 @@ export function JevSettings({
 			setExcludedFields(next.autofillExcludedFields);
 			setAutoAssignScope(next.autoAssignScope);
 			setError(null);
-			setJustSaved(true);
-			setTimeout(() => setJustSaved(false), 2500);
 		},
 		onError: () => setError(t("settings.jev.errors.updateFailed")),
 	});
@@ -375,11 +375,6 @@ export function JevSettings({
 									{t("settings.jev.credentials.testButton")}
 								</Button>
 							) : null}
-							{credentialsSaved ? (
-								<span className="text-xs text-success font-medium">
-									{t("settings.jev.saved")}
-								</span>
-							) : null}
 							{!credentialsSaved && testMutation.isSuccess ? (
 								<span className="text-xs text-success font-medium flex items-center gap-1">
 									<CheckCircle2 className="size-3.5" />
@@ -547,11 +542,6 @@ export function JevSettings({
 							) : null}
 							{t("settings.jev.saveChanges")}
 						</Button>
-						{justSaved ? (
-							<span className="text-xs text-success font-medium">
-								{t("settings.jev.saved")}
-							</span>
-						) : null}
 					</div>
 				) : (
 					<p className="text-xs text-muted-foreground">

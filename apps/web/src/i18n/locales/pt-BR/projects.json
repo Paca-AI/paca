@@ -1835,7 +1835,8 @@
 				"datePlaceholder": "Data",
 				"clearDate": "Limpar data",
 				"startDate": "Data de início",
-				"dueDate": "Data de entrega"
+				"dueDate": "Data de entrega",
+				"clearDates": "Limpar datas"
 			},
 			"storyPointsEditor": {
 				"decrease": "Diminuir story points",

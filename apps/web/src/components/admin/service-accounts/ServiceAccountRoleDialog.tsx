@@ -43,6 +43,7 @@ export function ServiceAccountRoleDialog({
 	);
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "serviceAccountRoles" },
 		mutationFn: (roleIds: string[]) =>
 			replaceServiceAccountRoles(account.id, roleIds),
 		onSuccess: () => {

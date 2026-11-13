@@ -32,7 +32,7 @@ export function DeleteUserDialog({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
-		meta: { success: "deleted" },
+		meta: { success: "deleted", subject: "user" },
 		mutationFn: () => deleteUser(user.id),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
