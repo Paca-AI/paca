@@ -261,7 +261,7 @@ test.describe("The marketplace card of a plugin on old permissions", () => {
 			page.getByRole("heading", { name: "Plugin Settings" }),
 		).toBeVisible();
 		await page
-			.getByRole("button", { name: "Marketplace", exact: true })
+			.getByRole("tab", { name: "Marketplace", exact: true })
 			.click();
 	}
 

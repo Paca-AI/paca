@@ -174,14 +174,15 @@ async function openViewSettings(page: Page): Promise<void> {
 
 const settingRow = (page: Page, label: string) =>
 	page
-		.getByText(label, { exact: true })
+		.locator("label")
+		.filter({ hasText: new RegExp(`^${label}$`) })
 		.locator("xpath=following-sibling::button");
 
 /** Picks `option` for the "Subtasks" setting and saves it for the current user. */
 async function chooseSubtaskMode(page: Page, option: string): Promise<void> {
 	await openViewSettings(page);
 	await settingRow(page, "Subtasks").click();
-	await page.getByRole("button", { name: option, exact: true }).last().click();
+	await page.getByRole("option", { name: option, exact: true }).last().click();
 	await page.getByRole("button", { name: "Save only for me" }).click();
 	await expect(
 		page.getByRole("button", { name: "Save only for me" }),

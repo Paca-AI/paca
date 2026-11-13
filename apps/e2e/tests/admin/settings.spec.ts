@@ -289,7 +289,9 @@ test.describe("Branding form", () => {
 		expect(payload.primary_color_light).toBe("#7c3aed");
 		expect(payload.primary_color_dark).toBe("#a78bfa");
 
-		await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+		await expect(
+			page.getByText("Branding settings updated successfully"),
+		).toBeVisible();
 		await expect(saveButton(page)).toBeDisabled();
 
 		const stored = await readBranding(request);
@@ -308,7 +310,9 @@ test.describe("Branding form", () => {
 		await brandNameField(page).fill(brandName);
 		await colorPreset(page, "Teal").click();
 		await saveButton(page).click();
-		await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+		await expect(
+			page.getByText("Branding settings updated successfully"),
+		).toBeVisible();
 
 		await page.reload();
 		await expect(
@@ -345,7 +349,9 @@ test.describe("Branding form", () => {
 		await expect(
 			page.getByText("Failed to save. Please try again."),
 		).toBeVisible();
-		await expect(page.getByText("Saved", { exact: true })).toHaveCount(0);
+		await expect(
+			page.getByText("Branding settings updated successfully"),
+		).toHaveCount(0);
 		await expect(saveButton(page)).toBeEnabled();
 	});
 });

@@ -1331,6 +1331,14 @@ export function ViewSettingsPanel({
 			? draft.fields
 			: DEFAULT_VISIBLE_FIELDS;
 
+	const allFieldOpts = buildAllFieldOptions(customFields, t);
+	const fieldsLabel = [
+		t("layout.viewSettings.titleField"),
+		...visibleFields.map(
+			(k) => allFieldOpts.find((f) => f.key === k)?.label ?? k,
+		),
+	].join(", ");
+
 	const columnByOpts = buildColumnByOptions(customFields, t);
 	const sortByOpts = buildSortByOptions(customFields, t);
 	const swimlaneOpts = buildSwimlaneOptions(customFields, t);
@@ -1462,6 +1470,18 @@ export function ViewSettingsPanel({
 							className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
 						>
 							<div className="flex flex-col gap-3">
+								<SettingRow label={t("layout.viewSettings.fieldsLabel")}>
+									{/* A summary of what is shown; opens the Fields tab to change it. */}
+									<button
+										type="button"
+										onClick={() => setTab("fields")}
+										title={fieldsLabel}
+										className="truncate rounded-md border border-input px-2.5 py-1.5 text-left text-xs font-medium transition-colors hover:border-ring hover:text-primary"
+									>
+										{fieldsLabel}
+									</button>
+								</SettingRow>
+
 								<SettingRow label={t("layout.viewSettings.columnByLabel")}>
 									<DynamicSelect
 										value={draft.column_by ?? "status"}

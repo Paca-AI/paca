@@ -264,19 +264,20 @@ const openSettings = async (page: Page) => {
 	await expect(panelTitle(page)).toBeVisible();
 };
 
-// The dropdown trigger sits right after its row label inside the same row.
-const settingRowButton = (page: Page, label: string): Locator =>
+// The control sits right after its row label inside the same row. Targets the
+// <label> so the "Fields" tab of the same name is not matched too.
+const settingRowLabel = (page: Page, label: string): Locator =>
 	page
-		.getByText(label, { exact: true })
-		.locator("xpath=following-sibling::button");
+		.locator("label")
+		.filter({ hasText: new RegExp(`^${label}$`) });
+const settingRowButton = (page: Page, label: string): Locator =>
+	settingRowLabel(page, label).locator("xpath=following-sibling::button");
 
-// Option lists render in a portal appended after the panel, so the last
-// matching button is the option, not a same-named table header / filter group.
+// Select options render in a portal appended after the panel, with role option.
 const optionButton = (page: Page, name: string): Locator =>
-	page.getByRole("button", { name, exact: true }).last();
+	page.getByRole("option", { name, exact: true }).last();
 
-// Picking an option leaves the dropdown popover open; clicking the panel title
-// (inside the outer popover) dismisses just the inner one.
+// Picking an option closes the select popup itself.
 const selectDropdownOption = async (
 	page: Page,
 	rowLabel: string,
@@ -284,8 +285,17 @@ const selectDropdownOption = async (
 ) => {
 	await settingRowButton(page, rowLabel).click();
 	await optionButton(page, option).click();
-	await panelTitle(page).click();
 	await expect(settingRowButton(page, rowLabel)).toHaveText(option);
+};
+
+const settingsTab = (page: Page, name: string): Locator =>
+	page.getByRole("tab", { name: new RegExp(`^${name}`) });
+const openFiltersTab = async (page: Page) => {
+	await settingsTab(page, "Filters").click();
+	await expect(settingsTab(page, "Filters")).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
 };
 
 const saveOnlyForMeButton = (page: Page): Locator =>
@@ -293,7 +303,7 @@ const saveOnlyForMeButton = (page: Page): Locator =>
 const saveDropdownTrigger = (page: Page): Locator =>
 	saveOnlyForMeButton(page).locator("xpath=following-sibling::button");
 const saveForEveryoneButton = (page: Page): Locator =>
-	page.getByRole("button", { name: "Save for everyone" });
+	page.getByRole("menuitem", { name: "Save for everyone" });
 const plainSaveButton = (page: Page): Locator =>
 	page.getByRole("button", { name: "Save", exact: true });
 const resetButton = (page: Page): Locator =>
@@ -352,10 +362,11 @@ test.describe("View settings panel content", () => {
 			"Initial size",
 			"Per page",
 		]) {
-			await expect(page.getByText(label, { exact: true })).toBeVisible();
+			await expect(settingRowLabel(page, label)).toBeVisible();
 		}
-		await expect(page.getByText("Display", { exact: true })).toBeVisible();
-		await expect(page.getByText("Filters", { exact: true })).toBeVisible();
+		await expect(settingsTab(page, "Display")).toBeVisible();
+		await expect(settingsTab(page, "Fields")).toBeVisible();
+		await expect(settingsTab(page, "Filters")).toBeVisible();
 		await expect(saveOnlyForMeButton(page)).toBeVisible();
 	});
 
@@ -502,6 +513,7 @@ test.describe("View settings Filters section", () => {
 		await signIn(page);
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
+		await openFiltersTab(page);
 
 		for (const group of [
 			"Sprints",
@@ -538,6 +550,7 @@ test.describe("View settings Filters section", () => {
 		await signIn(page);
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
+		await openFiltersTab(page);
 
 		await expect(
 			page.getByRole("button", { name: "Component", exact: true }).last(),
@@ -548,6 +561,7 @@ test.describe("View settings Filters section", () => {
 		await signIn(page);
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
+		await openFiltersTab(page);
 
 		// The default Product Backlog view ships with a task-type filter, so the
 		// button and a "Task types" badge are already present.
@@ -813,11 +827,47 @@ test.describe("Unsaved settings changes", () => {
 		await openSettings(page);
 		await selectDropdownOption(page, "Sort by", "Title");
 
+		// Closing with unsaved edits asks first; discarding goes back to the saved view.
 		await page.keyboard.press("Escape");
+		const confirm = page.getByRole("alertdialog");
+		await expect(
+			confirm.getByText("Discard unsaved changes?"),
+		).toBeVisible();
+		await confirm.getByRole("button", { name: "Discard" }).click();
 		await expect(saveOnlyForMeButton(page)).toBeHidden();
 
 		await openSettings(page);
 		await expect(settingRowButton(page, "Sort by")).toHaveText("Manual");
+	});
+
+	test("Keep editing in the close confirmation leaves the panel open with the changes", async ({
+		page,
+	}) => {
+		await signIn(page);
+		await navigateToBacklog(page, projectId);
+		await openSettings(page);
+		await selectDropdownOption(page, "Sort by", "Title");
+		await expect(page.getByText("Unsaved changes")).toBeVisible();
+
+		await page.keyboard.press("Escape");
+		const confirm = page.getByRole("alertdialog");
+		await confirm.getByRole("button", { name: "Keep editing" }).click();
+
+		await expect(confirm).toBeHidden();
+		await expect(panelTitle(page)).toBeVisible();
+		await expect(settingRowButton(page, "Sort by")).toHaveText("Title");
+	});
+
+	test("Closing without changes does not ask for confirmation", async ({
+		page,
+	}) => {
+		await signIn(page);
+		await navigateToBacklog(page, projectId);
+		await openSettings(page);
+
+		await page.keyboard.press("Escape");
+		await expect(page.getByRole("alertdialog")).toHaveCount(0);
+		await expect(saveOnlyForMeButton(page)).toBeHidden();
 	});
 });
 

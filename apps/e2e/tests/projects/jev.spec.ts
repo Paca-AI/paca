@@ -177,7 +177,9 @@ test.describe("Jev AI project settings", () => {
 			await page.getByLabel("Model (optional)").fill("e2e-model");
 			await page.getByRole("button", { name: "Save credentials" }).click();
 
-			await expect(page.getByText("Saved ✓")).toBeVisible();
+			await expect(
+				page.getByText("Jev credentials updated successfully"),
+			).toBeVisible();
 			await expect(page.getByText("Configured", { exact: true })).toBeVisible();
 			await expect(apiKeyInput(page)).toHaveValue("");
 			await expect(apiKeyInput(page)).toHaveAttribute(
@@ -285,7 +287,7 @@ test.describe("Jev AI project settings", () => {
 			).toBeVisible();
 			await save.click();
 
-			await expect(page.getByText("Saved ✓")).toBeVisible();
+			await expect(page.getByText("Jev settings updated successfully")).toBeVisible();
 			const settings = (await getProject(request, projectId)).settings as {
 				jev?: Record<string, unknown>;
 			};
@@ -316,7 +318,7 @@ test.describe("Jev AI project settings", () => {
 			await page.getByRole("switch").click();
 			await expect(page.getByText("Fields Jev can set")).toHaveCount(0);
 			await page.getByRole("button", { name: "Save changes" }).click();
-			await expect(page.getByText("Saved ✓")).toBeVisible();
+			await expect(page.getByText("Jev settings updated successfully")).toBeVisible();
 
 			const settings = (await getProject(request, projectId)).settings as {
 				jev?: Record<string, unknown>;
