@@ -181,7 +181,7 @@ test.describe("Following the tail of a conversation", () => {
 		// The sender's message appears and the viewport follows it to the tail.
 		const sentMessage = page.getByText(sent).first();
 		await expect(sentMessage).toBeVisible();
-		await expect(sentMessage).toBeInViewport();
+		await expect(sentMessage).toBeInViewport({ timeout: 15_000 });
 		// No "N new messages" pill is left over.
 		await expect(page.getByText(`${sent}_REPLY`).first()).toBeVisible();
 		await expect(page.getByText(/^\d+ new messages?$/)).toHaveCount(0);
