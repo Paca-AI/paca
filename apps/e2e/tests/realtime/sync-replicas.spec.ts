@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { io, type Socket } from "socket.io-client";
-import * as Y from "../../../web/node_modules/yjs";
+import * as Y from "yjs";
 import {
 	authRequest,
 	BASE_URL,
