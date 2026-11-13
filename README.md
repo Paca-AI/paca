@@ -333,7 +333,7 @@ helm install paca oci://ghcr.io/paca-ai/charts/paca --version <release-version> 
 
 See [Artifact Hub](https://artifacthub.io/packages/helm/paca/paca) for the full values reference, exposing the app via Ingress/TLS or a LoadBalancer, what's bundled vs. pointing at managed Postgres/Redis/S3, the AI agent sandbox's Kubernetes-specific RBAC, and troubleshooting.
 
-## ☁️ One-Click Deploy
+<!-- ## ☁️ One-Click Deploy
 
 Pick the row that fits. **Full stack** runs everything, including the Agent Runner that lets AI agents work in sandboxes. **Lightweight** is fully managed, with no server to look after, but cannot run AI agents.
 
@@ -356,7 +356,7 @@ Pick the row that fits. **Full stack** runs everything, including the Agent Runn
 | **Render** | A blueprint of managed services | Set a few URLs after the first deploy | [![Deploy to Render](https://img.shields.io/badge/Deploy_to-Render-00A67E?style=for-the-badge&labelColor=24292f)](https://render.com/deploy?repo=https://github.com/Paca-AI/paca) |
 | **Railway** | A template of managed services | Template setup guide (not published yet) | [![Deploy to Railway](https://img.shields.io/badge/Deploy_to-Railway-7B3FE4?style=for-the-badge&labelColor=24292f)](docs/deployment/one-click.md#railway-manual-template) |
 
-Not sure which? Pick any row under **Full stack** to get everything. Step-by-step instructions for each are in the [one-click deploy guide](docs/deployment/one-click.md).
+Not sure which? Pick any row under **Full stack** to get everything. Step-by-step instructions for each are in the [one-click deploy guide](docs/deployment/one-click.md). -->
 
 ---
 
