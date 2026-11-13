@@ -316,7 +316,6 @@ export async function handleToolCall(
 				args,
 				clients.taskExtendedClient,
 				clients.docClient,
-				clients.conversationClient,
 			);
 		}
 

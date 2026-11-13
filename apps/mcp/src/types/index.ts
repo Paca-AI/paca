@@ -27,15 +27,9 @@ export interface PacaConfig {
 	projectId?: string;
 	/**
 	 * UUID of the conversation this MCP server instance is running as part
-	 * of, forwarded as X-Conversation-ID on every API request — set
-	 * unconditionally by agent-runner's buildMCPServers (PACA_CONVERSATION_ID),
-	 * unlike projectId. Lets services/api's
-	 * GetConversationForAgent (the read_conversation tool's backing
-	 * endpoint) authorize a cross-conversation read against *this*
-	 * conversation's own project/actor/owning member, instead of trusting
-	 * agentId alone — see that method's doc comment for why bare agent
-	 * identity isn't sufficient. Unset only for a personal API key running
-	 * outside any conversation.
+	 * of — set unconditionally by agent-runner's buildMCPServers
+	 * (PACA_CONVERSATION_ID), unlike projectId. Unset only for a personal API
+	 * key running outside any conversation.
 	 */
 	conversationId?: string;
 	/**

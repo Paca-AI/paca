@@ -174,6 +174,41 @@ func TaskByNumberResource(lookup TaskNumberLookup, projectParam, numberParam str
 	}
 }
 
+// ConversationLookup finds a conversation by id.
+type ConversationLookup interface {
+	FindConversationByID(ctx context.Context, id uuid.UUID) (*agentdom.AgentConversation, error)
+}
+
+// ConversationResource names the conversation in the URL from where it lives,
+// for routes that address one by id alone (no project in the URL, as on the
+// agent API): "project/<P>/conversation/<C>" for a project conversation, or
+// the owning agent's platform resource "agent/<A>" for a global chat. A
+// conversation that does not exist resolves to a resource no policy names, so
+// the caller is refused exactly as for one it may not read, and cannot tell
+// the two apart.
+func ConversationResource(lookup ConversationLookup, idParam string) ResourceResolver {
+	return func(r *http.Request) (string, error) {
+		id, err := urlUUID(r, idParam, "conversation")
+		if err != nil {
+			return "", err
+		}
+		if lookup == nil {
+			return "", apierr.New(apierr.CodeInternalError, "authorization not configured")
+		}
+		c, err := lookup.FindConversationByID(r.Context(), uuid.MustParse(id))
+		if errors.Is(err, agentdom.ErrConversationNotFound) {
+			return "conversation/" + id, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		if c.ProjectID == uuid.Nil {
+			return "agent/" + c.AgentID.String(), nil
+		}
+		return "project/" + c.ProjectID.String() + "/conversation/" + c.ID.String(), nil
+	}
+}
+
 // AgentRepoLookups implements both lookups over the agent repository.
 type AgentRepoLookups struct{ Repo agentdom.Repository }
 

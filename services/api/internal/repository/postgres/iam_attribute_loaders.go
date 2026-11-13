@@ -68,6 +68,7 @@ func NewIAMAttributeLoaders(db *sqlx.DB) []iam.AttributeLoader {
 		}},
 		&scalarLoader{db: db, kind: "conversation", table: "agent_conversations", cols: map[string]string{
 			"conversation.environment_id": "environment_id",
+			"conversation.agent_id":       "agent_id",
 		}},
 	}
 }

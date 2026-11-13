@@ -54,34 +54,26 @@ describe("ask_user_question", () => {
 
 	it("mentions the conversation's owner when no mention is given", async () => {
 		const { task, doc } = makeClients();
-		const conversations = {
-			getCurrentConversation: vi
-				.fn()
-				.mockResolvedValue({ triggered_by_member_id: "m-1" }),
-		} as any;
 		await handleAskTool(
 			"ask_user_question",
 			{ question: "Q?", options: ["A"], projectId: "p1", docId: "d1" },
 			task,
 			doc,
-			conversations,
+			"m-1",
 		);
 		expect(doc.addDocumentComment.mock.calls[0][2]).toMatch(
 			/^@owner \(id: m-1\)\n\n```paca-ask\n/,
 		);
 	});
 
-	it("still posts when the conversation lookup fails", async () => {
+	it("posts without a mention when the owner is unknown", async () => {
 		const { task, doc } = makeClients();
-		const conversations = {
-			getCurrentConversation: vi.fn().mockRejectedValue(new Error("nope")),
-		} as any;
 		await handleAskTool(
 			"ask_user_question",
 			{ question: "Q?", options: ["A"], projectId: "p1", taskId: "t1" },
 			task,
 			doc,
-			conversations,
+			undefined,
 		);
 		expect(task.addTaskComment.mock.calls[0][2].content).toMatch(
 			/^```paca-ask\n/,

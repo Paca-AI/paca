@@ -54,6 +54,7 @@ func NewAttributeSchema() *AttributeSchema {
 		{"agent.environment_id", "agent", false},
 		{"environment.type", "environment", false},
 		{"conversation.environment_id", "conversation", false},
+		{"conversation.agent_id", "conversation", false},
 	}
 	for _, b := range builtin {
 		s.defs[b.key] = AttributeDef{

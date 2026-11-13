@@ -1249,15 +1249,16 @@ func (e *Executor) pacaMCPServerCommandAndEnv(trigger agent.Trigger, cfg agent.C
 		"PACA_AGENT_ID":    cfg.ID.String(),
 		// The conversation this MCP server instance is running as part of —
 		// always set (trigger.ConversationID is required, never uuid.Nil).
-		// Forwarded as X-Conversation-ID on the read_conversation tool's API
-		// calls so services/api's GetConversationForAgent can authorize a
-		// cross-conversation read against *this* conversation's own
-		// project/actor/owning member, instead of bare agent identity alone
-		// — see that method's doc comment.
 		"PACA_CONVERSATION_ID": trigger.ConversationID.String(),
 	}
 	if trigger.ProjectID != uuid.Nil {
 		env["PACA_PROJECT_ID"] = trigger.ProjectID.String()
+	}
+	if trigger.ActorMemberID != nil {
+		// The person who started this run, for ask_user_question's default
+		// "owner" mention. Passed here because the conversation holding it is an
+		// owner-private chat, which the agent API does not return.
+		env["PACA_OWNER_MEMBER_ID"] = trigger.ActorMemberID.String()
 	}
 	if len(trigger.RepoPluginIDs) > 0 {
 		// Read by apps/mcp's repo-tools.ts to scope list_repositories and

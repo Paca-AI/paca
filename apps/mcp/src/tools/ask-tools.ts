@@ -1,7 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type {
-	PacaAPIConversationClient,
 	PacaAPIDocClient,
 	PacaAPITaskExtendedClient,
 } from "../api/index.js";
@@ -100,19 +99,15 @@ export function getAskTools(): Tool[] {
  * The mention for whoever started the conversation this server runs in, so a
  * question on a task/document reaches them even when the agent does not know
  * their username (and may not be allowed to list project members). Written in
- * the `@Name (id: <member id>)` form the API resolves to a real mention.
- * Best-effort: undefined when there is no such person or the lookup fails.
+ * the `@Name (id: <member id>)` form the API resolves to a real mention. The
+ * member id comes from agent-runner (PACA_OWNER_MEMBER_ID): the conversation
+ * itself is an owner-private chat, which the agent API does not return.
+ * Undefined when there is no such person.
  */
-async function conversationOwnerMention(
-	conversationClient?: PacaAPIConversationClient,
-): Promise<string | undefined> {
-	try {
-		const conversation = await conversationClient?.getCurrentConversation();
-		const memberId = conversation?.triggered_by_member_id;
-		return memberId ? `owner (id: ${memberId})` : undefined;
-	} catch {
-		return undefined;
-	}
+function conversationOwnerMention(
+	ownerMemberId: string | undefined,
+): string | undefined {
+	return ownerMemberId ? `owner (id: ${ownerMemberId})` : undefined;
 }
 
 export const ASK_TOOL_NAMES = ["ask_user_question"] as const;
@@ -122,7 +117,8 @@ export async function handleAskTool(
 	args: unknown,
 	taskClient: PacaAPITaskExtendedClient,
 	docClient: PacaAPIDocClient,
-	conversationClient?: PacaAPIConversationClient,
+	ownerMemberId: string | undefined = process.env.PACA_OWNER_MEMBER_ID ||
+		undefined,
 ): Promise<any> {
 	if (toolName !== "ask_user_question") {
 		throw new Error(`Unknown ask tool: ${toolName}`);
@@ -152,7 +148,7 @@ export async function handleAskTool(
 		);
 		const mention =
 			input.mention?.trim().replace(/^@/, "") ||
-			(await conversationOwnerMention(conversationClient));
+			conversationOwnerMention(ownerMemberId);
 		const block = `\`\`\`paca-ask\n${payload}\n\`\`\``;
 		const content = mention ? `@${mention}\n\n${block}` : block;
 		if (input.taskId) {

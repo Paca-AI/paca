@@ -16,7 +16,6 @@ import (
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	roledom "github.com/Paca-AI/api/internal/domain/role"
-	"github.com/Paca-AI/api/internal/platform/authz/iam"
 )
 
 // ---------------------------------------------------------------------------
@@ -1681,623 +1680,78 @@ func TestGetConversation_OwnerPrivate_WrongMember(t *testing.T) {
 // read_conversation MCP tool's simplest case: an agent reading the very
 // conversation it's currently running as part of. Always allowed regardless
 // of audience, and doesn't require a second FindConversationByID lookup.
-func TestGetConversationForAgent_SameConversation_Allowed(t *testing.T) {
-	agentID := uuid.New()
-	conversationID := uuid.New()
-	conversation := &agentdom.AgentConversation{
-		ID:       conversationID,
-		AgentID:  agentID,
-		Audience: agentdom.AudienceOwnerPrivate,
-		Status:   "stopped",
-	}
-	lookups := 0
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
-			lookups++
-			return conversation, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+// ─── GetConversationForAgent ─────────────────────────────────────────────────
+//
+// Permission is the router's conversations:read gate; the service applies only
+// the data rules: deleted, and owner-private chats.
 
-	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, conversationID, result.ID)
-	assert.Equal(t, 1, lookups, "reading the current conversation itself should not need a second lookup")
-}
-
-// TestGetConversationForAgent_SameConversation_AllowedEvenIfDeleted pins
-// that the same-conversation shortcut deliberately does NOT check
-// DeletedAt: a user can delete the conversation this very agent is mid-turn
-// on (auto-stop-then-delete soft-deletes immediately; agent-runner's own
-// teardown is asynchronous), and the agent must still be able to read its
-// own live execution context for the rest of that turn rather than erroring
-// out from under itself the instant the delete lands.
-func TestGetConversationForAgent_SameConversation_AllowedEvenIfDeleted(t *testing.T) {
-	agentID := uuid.New()
-	conversationID := uuid.New()
-	deletedAt := time.Now()
-	conversation := &agentdom.AgentConversation{
-		ID:        conversationID,
-		AgentID:   agentID,
-		Audience:  agentdom.AudienceOwnerPrivate,
-		Status:    "stopped",
-		DeletedAt: &deletedAt,
-	}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
-			return conversation, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, conversationID, result.ID)
-}
-
-// TestGetConversationForAgent_DifferentAgent_SameProject_Allowed: an agent
-// holding conversations.read may read another agent's project_shared
-// conversation in the same project (e.g. a planner reading a delegated
-// agent's run).
-func TestGetConversationForAgent_DifferentAgent_SameProject_Allowed(t *testing.T) {
-	callerAgentID, ownerAgentID := uuid.New(), uuid.New()
-	projectID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: ownerAgentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: callerAgentID, ProjectID: projectID}
+func getForAgentSvc(convs ...*agentdom.AgentConversation) *Service {
 	repo := &mockAgentRepo{
 		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	result, err := svc.GetConversationForAgent(context.Background(), targetID, callerAgentID, currentID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, targetID, result.ID)
-}
-
-// TestGetConversationForAgent_DifferentAgent_NotCurrent_Rejected: another
-// agent's conversation is never reachable through the "current
-// conversation" shortcut, and without a verified current conversation there
-// is no context to authorize against.
-func TestGetConversationForAgent_DifferentAgent_NotCurrent_Rejected(t *testing.T) {
-	callerAgentID, ownerAgentID := uuid.New(), uuid.New()
-	conversationID := uuid.New()
-	conversation := &agentdom.AgentConversation{ID: conversationID, AgentID: ownerAgentID, Audience: agentdom.AudienceProjectShared, Status: "stopped"}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
-			return conversation, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	// Spoofed currentConversationID equal to the target must not bypass.
-	_, err := svc.GetConversationForAgent(context.Background(), conversationID, callerAgentID, conversationID)
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
-
-	_, err = svc.GetConversationForAgent(context.Background(), conversationID, callerAgentID, uuid.Nil)
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
-}
-
-// TestGetConversationForAgent_NoCurrentConversation_Rejected pins the
-// fail-closed default: without a verifiable currentConversationID (e.g. an
-// older agent-runner build that never sends X-Conversation-ID), a *different*
-// conversation of the agent's own is not reachable — there is no trusted
-// context to check its audience against. This is deliberately not the old
-// "any conversation this agent ever had" behavior; see
-// GetConversationForAgent's doc comment.
-func TestGetConversationForAgent_NoCurrentConversation_Rejected(t *testing.T) {
-	agentID := uuid.New()
-	conversationID := uuid.New()
-	conversation := &agentdom.AgentConversation{
-		ID:       conversationID,
-		AgentID:  agentID,
-		Audience: agentdom.AudienceProjectShared,
-		Status:   "stopped",
-	}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == conversationID {
-				return conversation, nil
+			for _, c := range convs {
+				if c.ID == id {
+					return c, nil
+				}
 			}
 			return nil, agentdom.ErrConversationNotFound
 		},
 	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, uuid.Nil)
-
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+	return New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 }
 
-// TestGetConversationForAgent_SpoofedCurrentConversation_Rejected pins that
-// a currentConversationID belonging to a *different* agent (whether spoofed
-// or just stale) is never trusted as context — it's treated the same as no
-// current conversation at all.
-func TestGetConversationForAgent_SpoofedCurrentConversation_Rejected(t *testing.T) {
+func TestGetConversationForAgent_Own_ProjectShared(t *testing.T) {
 	agentID := uuid.New()
-	otherAgentID := uuid.New()
-	conversationID := uuid.New()
-	currentConversationID := uuid.New()
-	target := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, Audience: agentdom.AudienceProjectShared, ProjectID: uuid.New()}
-	current := &agentdom.AgentConversation{ID: currentConversationID, AgentID: otherAgentID, ProjectID: target.ProjectID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == conversationID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+	own := &agentdom.AgentConversation{ID: uuid.New(), AgentID: agentID, ProjectID: uuid.New(), Audience: agentdom.AudienceProjectShared}
 
-	_, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, currentConversationID)
-
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
-}
-
-// TestGetConversationForAgent_Global_SameActor_Allowed and
-// TestGetConversationForAgent_Global_DifferentActor_Rejected are the
-// regression cases for the vulnerability this method used to have: a global
-// agent talks to many different humans, and reading a *different* human's
-// conversation with the same agent must stay denied even though the agent
-// identity matches on both — the whole point of GetGlobalConversation's own
-// actor check ("without it, any authenticated user could read... another
-// user's conversation simply by knowing its ID").
-func TestGetConversationForAgent_Global_SameActor_Allowed(t *testing.T) {
-	agentID := uuid.New()
-	actorAccountID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ActorAccountID: &actorAccountID}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ActorAccountID: &actorAccountID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+	got, err := getForAgentSvc(own).GetConversationForAgent(context.Background(), own.ID, agentID)
 
 	assert.NoError(t, err)
-	assert.Equal(t, targetID, result.ID)
+	assert.Equal(t, own.ID, got.ID)
 }
 
-func TestGetConversationForAgent_Global_DifferentActor_Rejected(t *testing.T) {
-	agentID := uuid.New()
-	victimActorUserID := uuid.New()
-	attackerActorUserID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	// target: the victim's own private global conversation with the shared agent.
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ActorAccountID: &victimActorUserID}
-	// current: the attacker's own, unrelated conversation with that same agent.
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ActorAccountID: &attackerActorUserID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
+func TestGetConversationForAgent_AnotherAgents_ProjectShared(t *testing.T) {
+	caller, owner := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: uuid.New(), AgentID: owner, ProjectID: uuid.New(), Audience: agentdom.AudienceProjectShared}
+
+	got, err := getForAgentSvc(target).GetConversationForAgent(context.Background(), target.ID, caller)
+
+	assert.NoError(t, err)
+	assert.Equal(t, target.ID, got.ID)
+}
+
+// An owner-private chat is never reachable: not another agent's, and not the
+// caller's own either (the same agent chats with many members, so nothing
+// proves the human it acts for is the chat's owner).
+func TestGetConversationForAgent_OwnerPrivateNeverReachable(t *testing.T) {
+	caller, other, sessionID := uuid.New(), uuid.New(), uuid.New()
+	mk := func(agent uuid.UUID) *agentdom.AgentConversation {
+		return &agentdom.AgentConversation{ID: uuid.New(), AgentID: agent, ProjectID: uuid.New(), Audience: agentdom.AudienceOwnerPrivate, ChatSessionID: &sessionID}
 	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+	own, theirs := mk(caller), mk(other)
+	svc := getForAgentSvc(own, theirs)
 
-	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.Error(t, err, "the attacker must not be able to read the victim's private conversation with the same shared agent")
+	_, err := svc.GetConversationForAgent(context.Background(), own.ID, caller)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+	_, err = svc.GetConversationForAgent(context.Background(), theirs.ID, caller)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
-// TestGetConversationForAgent_Project_SharedAudience_Allowed: a
-// project_shared target in the same project is readable regardless of which
-// member current belongs to — it's already visible to any project member.
-func TestGetConversationForAgent_Project_SharedAudience_Allowed(t *testing.T) {
-	agentID := uuid.New()
-	projectID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: nil}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+func TestGetConversationForAgent_DeletedNotFound(t *testing.T) {
+	agentID, other := uuid.New(), uuid.New()
+	now := time.Now()
+	own := &agentdom.AgentConversation{ID: uuid.New(), AgentID: agentID, DeletedAt: &now, Status: "stopped"}
+	others := &agentdom.AgentConversation{ID: uuid.New(), AgentID: other, Audience: agentdom.AudienceProjectShared, DeletedAt: &now, Status: "stopped"}
+	svc := getForAgentSvc(own, others)
 
-	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, targetID, result.ID)
-}
-
-// TestGetConversationForAgent_CrossConversation_Deleted_Rejected is the
-// counterpart to TestGetConversationForAgent_SameConversation_AllowedEvenIfDeleted:
-// a *different* conversation the user has deleted must be not-found for the
-// agent too, same as it already is for a human via GetConversation/
-// GetGlobalConversation — otherwise the read_conversation MCP tool could
-// still return a deleted conversation's full transcript.
-func TestGetConversationForAgent_CrossConversation_Deleted_Rejected(t *testing.T) {
-	agentID := uuid.New()
-	projectID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	deletedAt := time.Now()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared, DeletedAt: &deletedAt}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: nil}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
+	_, err := svc.GetConversationForAgent(context.Background(), own.ID, agentID)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+	_, err = svc.GetConversationForAgent(context.Background(), others.ID, agentID)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
-// TestGetConversationForAgent_Project_OwnerPrivate_SameMember_Allowed and
-// TestGetConversationForAgent_Project_OwnerPrivate_DifferentMember_Rejected
-// are the project-scoped regression cases: a project-scoped agent can hold
-// a separate owner-private conversation with each project member, and
-// reading a *different* member's private conversation must stay denied —
-// mirroring authorizeConversationAccess's own rule for a human caller.
-func TestGetConversationForAgent_Project_OwnerPrivate_SameMember_Allowed(t *testing.T) {
-	agentID := uuid.New()
-	projectID := uuid.New()
-	memberID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	targetSessionID, currentSessionID := uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceOwnerPrivate, ChatSessionID: &targetSessionID}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: &currentSessionID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-		findChatSessionByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error) {
-			// Both sessions belong to the same human — e.g. the member
-			// attached an earlier private conversation of their own as
-			// context in a new private chat with the same agent.
-			return &agentdom.AgentChatSession{ID: id, MemberID: memberID}, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+func TestGetConversationForAgent_Unknown(t *testing.T) {
+	_, err := getForAgentSvc().GetConversationForAgent(context.Background(), uuid.New(), uuid.New())
 
-	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, targetID, result.ID)
-}
-
-func TestGetConversationForAgent_Project_OwnerPrivate_DifferentMember_Rejected(t *testing.T) {
-	agentID := uuid.New()
-	projectID := uuid.New()
-	victimMemberID := uuid.New()
-	attackerMemberID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	targetSessionID, currentSessionID := uuid.New(), uuid.New()
-	// target: the victim's owner-private conversation with the shared project agent.
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceOwnerPrivate, ChatSessionID: &targetSessionID}
-	// current: the attacker's own, unrelated conversation with that same agent, same project.
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: &currentSessionID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-		findChatSessionByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error) {
-			if id == targetSessionID {
-				return &agentdom.AgentChatSession{ID: id, MemberID: victimMemberID}, nil
-			}
-			return &agentdom.AgentChatSession{ID: id, MemberID: attackerMemberID}, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.Error(t, err, "a fellow project member must not be able to read another member's owner-private conversation with the same agent")
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
-}
-
-// TestGetConversationForAgent_Project_DifferentProject_Rejected covers an
-// agent invited into more than one project: a project_shared conversation
-// from a *different* project than current's must still be denied, even
-// though every project member there could already see it in their own
-// project — current's own project is the only one this call may reach into.
-func TestGetConversationForAgent_Project_DifferentProject_Rejected(t *testing.T) {
-	agentID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: uuid.New(), Audience: agentdom.AudienceProjectShared}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: uuid.New()}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
-
-	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
-}
-
-// ---------------------------------------------------------------------------
-// GetConversationForAgent — conversations.read enforcement
-// ---------------------------------------------------------------------------
-//
-// GetConversationForAgent additionally requires the calling agent to hold
-// conversations.read (globally, or in the target conversation's own project)
-// once an IAM authorizer is wired via WithAuthorizer — the sole
-// enforcement point for read_conversation (the MCP server lists that tool
-// unconditionally, see apps/mcp/src/server.ts) — for any conversation
-// *other* than the one the agent is currently running as part of. Every
-// test above constructs a
-// bare Service with no authorizer, so this check never engages for them
-// (see the authorizer field's doc comment) — these tests cover the wired
-// case specifically: the same-conversation shortcut stays unconditionally
-// allowed (an agent already has this data as that conversation's own active
-// participant, and gating it would break a global-scope agent with no
-// global role — the common case, since a global agent's global role is
-// optional), while a genuinely different (cross-conversation) target does
-// require the grant.
-
-// fakeAgentPermissionStore is a minimal iam.Store double for agents: its
-// actions are served the way migration 000064 shapes roles
-// — a global grant as the action on the platform roots, a project grant as
-// the action on project/<P>/* attached in that project.
-type fakeAgentPermissionStore struct {
-	agentGlobalPerms  map[uuid.UUID][]iam.Action
-	agentProjectPerms map[uuid.UUID]map[uuid.UUID][]iam.Action // project_id -> agent_id -> permissions
-}
-
-var testPlatformRoots = []string{"user", "user/*", "role", "role/*", "plugin", "plugin/*", "settings", "sso", "agent", "agent/*", "project"}
-
-func (f *fakeAgentPermissionStore) ListGrants(_ context.Context, p iam.Principal) ([]iam.Grant, error) {
-	if p.Type != "agent" {
-		return nil, nil
-	}
-	agentID := uuid.MustParse(p.ID)
-	actions := func(perms []iam.Action) []string {
-		out := make([]string, len(perms))
-		for i, perm := range perms {
-			out[i] = string(perm)
-		}
-		return out
-	}
-	var grants []iam.Grant
-	if perms := f.agentGlobalPerms[agentID]; len(perms) > 0 {
-		grants = append(grants, iam.Grant{RoleID: "global", Policy: &iam.Policy{Statements: []iam.Statement{
-			{Effect: iam.EffectAllow, Actions: actions(perms), Resources: testPlatformRoots},
-		}}})
-	}
-	for projectID, byAgent := range f.agentProjectPerms {
-		if perms := byAgent[agentID]; len(perms) > 0 {
-			grants = append(grants, iam.Grant{RoleID: "project", ProjectID: projectID.String(), Policy: &iam.Policy{Statements: []iam.Statement{
-				{Effect: iam.EffectAllow, Actions: actions(perms), Resources: []string{"project/" + projectID.String() + "/*"}},
-			}}})
-		}
-	}
-	return grants, nil
-}
-
-func newTestIAMAuthorizer(store iam.Store) *iam.Authorizer {
-	return iam.NewAuthorizer(store, iam.NewRegistry(), iam.NewAttributeSchema())
-}
-
-// TestGetConversationForAgent_SelfRead_AllowedWithoutConversationsRead locks
-// in that the same-conversation shortcut stays exempt from the
-// conversations.read check even when an authorizer is wired and the agent
-// holds no grant anywhere — see GetConversationForAgent's doc comment for
-// why (most importantly: a global-scope agent's global role is optional and
-// commonly unset, so requiring a grant here would break reading its own
-// current conversation in the common case).
-func TestGetConversationForAgent_SelfRead_AllowedWithoutConversationsRead(t *testing.T) {
-	agentID := uuid.New()
-	conversationID := uuid.New()
-	conversation := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, Audience: agentdom.AudienceOwnerPrivate}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
-			return conversation, nil
-		},
-	}
-	authorizer := newTestIAMAuthorizer(&fakeAgentPermissionStore{})
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
-
-	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, conversationID, result.ID)
-}
-
-func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_GlobalGrant_Allowed(t *testing.T) {
-	agentID := uuid.New()
-	actorAccountID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	// Global, same actor on both sides — authorizeAgentConversationRead
-	// alone would already allow this (see
-	// TestGetConversationForAgent_Global_SameActor_Allowed); conversations.read
-	// must not additionally block it.
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ActorAccountID: &actorAccountID}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ActorAccountID: &actorAccountID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	store := &fakeAgentPermissionStore{
-		agentGlobalPerms: map[uuid.UUID][]iam.Action{agentID: {iam.ActionConversationsRead}},
-	}
-	authorizer := newTestIAMAuthorizer(store)
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
-
-	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, targetID, result.ID)
-}
-
-func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_ProjectGrant_Allowed(t *testing.T) {
-	agentID := uuid.New()
-	projectID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	// project_shared — visible to any project member already, so
-	// authorizeAgentConversationRead alone would allow this; conversations.read
-	// must not additionally block it.
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	store := &fakeAgentPermissionStore{
-		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
-			projectID: {agentID: {iam.ActionConversationsRead}},
-		},
-	}
-	authorizer := newTestIAMAuthorizer(store)
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
-
-	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, targetID, result.ID)
-}
-
-func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_NoGrant_Rejected(t *testing.T) {
-	agentID := uuid.New()
-	projectID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	// project_shared again: authorizeAgentConversationRead alone would allow
-	// this, isolating conversations.read as the only reason this must fail.
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	authorizer := newTestIAMAuthorizer(&fakeAgentPermissionStore{})
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
-
-	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
-}
-
-func TestGetConversationForAgent_DifferentAgent_RequiresConversationsRead_ProjectGrant_Allowed(t *testing.T) {
-	callerID, ownerID := uuid.New(), uuid.New()
-	projectID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: ownerID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: callerID, ProjectID: projectID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	store := &fakeAgentPermissionStore{
-		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
-			projectID: {callerID: {iam.ActionConversationsRead}},
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(newTestIAMAuthorizer(store))
-
-	result, err := svc.GetConversationForAgent(context.Background(), targetID, callerID, currentID)
-
-	assert.NoError(t, err)
-	assert.Equal(t, targetID, result.ID)
-}
-
-func TestGetConversationForAgent_DifferentAgent_RequiresConversationsRead_NoGrant_Rejected(t *testing.T) {
-	callerID, ownerID := uuid.New(), uuid.New()
-	projectID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: ownerID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: callerID, ProjectID: projectID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(newTestIAMAuthorizer(&fakeAgentPermissionStore{}))
-
-	_, err := svc.GetConversationForAgent(context.Background(), targetID, callerID, currentID)
-
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
-}
-
-func TestGetConversationForAgent_CrossConversation_RequiresConversationsRead_WrongProjectGrant_Rejected(t *testing.T) {
-	agentID := uuid.New()
-	conversationProjectID := uuid.New()
-	grantedProjectID := uuid.New()
-	targetID, currentID := uuid.New(), uuid.New()
-	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: conversationProjectID, Audience: agentdom.AudienceProjectShared}
-	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: conversationProjectID}
-	repo := &mockAgentRepo{
-		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
-			if id == targetID {
-				return target, nil
-			}
-			return current, nil
-		},
-	}
-	store := &fakeAgentPermissionStore{
-		// conversations.read granted in a *different* project than the one the
-		// conversation actually belongs to — must not transfer.
-		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]iam.Action{
-			grantedProjectID: {agentID: {iam.ActionConversationsRead}},
-		},
-	}
-	authorizer := newTestIAMAuthorizer(store)
-	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
-
-	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
-
-	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 

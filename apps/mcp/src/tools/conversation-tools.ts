@@ -29,8 +29,8 @@ export function getConversationTools(): Tool[] {
 		{
 			name: "read_conversation",
 			description:
-				"Read another conversation's transcript — for example one attached as chat context (an '## Attached Context' section naming a Conversation ID). " +
-				"Works for the conversation you're currently in and, if you hold the conversations.read permission, for any other conversation visible in your current context — your own or another agent's run, such as one you delegated a task to — whether it happened in a project or as a global chat — you don't need to know or specify which. " +
+				"Read the transcript of a conversation that is visible to the whole project — for example the run of an agent you delegated a task to. " +
+				"Requires the conversations.read permission. A chat with a person is private to its owner and cannot be read this way, including the one you're currently in (and a chat attached as context). " +
 				"Returns a condensed, skimmable transcript ('User: ...' / 'Agent: ...' lines, plus one-line '[tool: name] ...' summaries for tool calls — not full arguments or results) rather than a pixel-perfect replay of the UI. " +
 				"Events are paginated: the response reports how many of the conversation's total events are shown, and — if more exist — which cursor to pass back (after/before) on a follow-up call to read further.",
 			inputSchema: {
