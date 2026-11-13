@@ -147,6 +147,11 @@ export const Thread: FC<ThreadProps> = ({
 		<ChatProvider value={chat}>
 			<MessageScrollerProvider
 				defaultScrollPosition={turnAnchor === "top" ? "last-anchor" : "end"}
+				// "bottom" is classic chat behaviour: stay pinned to the tail while
+				// the reader is there. Without autoScroll the scroller never follows
+				// content that arrives after a one-shot scrollToEnd (a sent message
+				// and its reply land later), leaving the viewport behind.
+				autoScroll={turnAnchor === "bottom"}
 			>
 				<div
 					className="bg-background @container flex h-full flex-col text-sm"
@@ -225,8 +230,12 @@ const PENDING_MESSAGE: ChatMessage = {
 const ThreadScrollToBottom: FC = () => {
 	const { t } = useTranslation("projects");
 	return (
-		<MessageScrollerButton direction="end">
-			<span className="sr-only">{t("agents.thread.scrollToBottom")}</span>
+		<MessageScrollerButton
+			direction="end"
+			size="sm"
+			className="rounded-full text-xs shadow-md"
+		>
+			<span>{t("agents.thread.scrollToBottom")}</span>
 		</MessageScrollerButton>
 	);
 };
