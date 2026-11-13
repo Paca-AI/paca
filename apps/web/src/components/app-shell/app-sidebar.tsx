@@ -167,6 +167,99 @@ function TreeInlineRename({
 	);
 }
 
+const DOC_NODE_DRAG_TYPE = "application/x-paca-doc-node";
+
+interface DocNodeDragPayload {
+	kind: "doc" | "folder";
+	id: string;
+	/** The folder it currently sits in (null = top level). */
+	parentId: string | null;
+}
+
+/** Drag source props for a document or folder row. */
+function docNodeDragProps(
+	payload: DocNodeDragPayload,
+	enabled: boolean,
+): React.HTMLAttributes<HTMLElement> & { draggable?: boolean } {
+	if (!enabled) return {};
+	return {
+		draggable: true,
+		onDragStart: (e) => {
+			e.stopPropagation();
+			e.dataTransfer.effectAllowed = "move";
+			e.dataTransfer.setData(DOC_NODE_DRAG_TYPE, JSON.stringify(payload));
+		},
+	};
+}
+
+/** Makes an element a drop target that moves dragged documents/folders into
+ *  `targetFolderId` (null = the top level of the tree). */
+function useDocNodeDrop(
+	projectId: string,
+	targetFolderId: string | null,
+	canWrite: boolean,
+) {
+	const qc = useQueryClient();
+	const [isOver, setIsOver] = useState(false);
+
+	const moveMutation = useMutation({
+		mutationFn: async (p: DocNodeDragPayload): Promise<void> => {
+			if (p.kind === "folder") {
+				await updateFolder(projectId, p.id, { parent_id: targetFolderId });
+			} else {
+				await updateDocument(projectId, p.id, { folder_id: targetFolderId });
+			}
+		},
+		onSettled: () =>
+			qc.invalidateQueries({ queryKey: docQueryKeys.all(projectId) }),
+	});
+
+	// Clear the highlight when any drag ends (cancel, or release off-target).
+	useEffect(() => {
+		if (!isOver) return;
+		const clear = () => setIsOver(false);
+		document.addEventListener("dragend", clear);
+		return () => document.removeEventListener("dragend", clear);
+	}, [isOver]);
+
+	const dropProps = canWrite
+		? {
+				onDragOver: (e: React.DragEvent) => {
+					if (!e.dataTransfer.types.includes(DOC_NODE_DRAG_TYPE)) return;
+					// The innermost folder under the cursor is the target.
+					e.preventDefault();
+					e.stopPropagation();
+					e.dataTransfer.dropEffect = "move";
+					setIsOver(true);
+				},
+				onDragLeave: (e: React.DragEvent) => {
+					if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+						setIsOver(false);
+					}
+				},
+				onDrop: (e: React.DragEvent) => {
+					const raw = e.dataTransfer.getData(DOC_NODE_DRAG_TYPE);
+					if (!raw) return;
+					e.preventDefault();
+					e.stopPropagation();
+					setIsOver(false);
+					let payload: DocNodeDragPayload;
+					try {
+						payload = JSON.parse(raw) as DocNodeDragPayload;
+					} catch {
+						return;
+					}
+					if (payload.parentId === targetFolderId) return;
+					if (payload.kind === "folder" && payload.id === targetFolderId)
+						return;
+					moveMutation.mutate(payload);
+				},
+			}
+		: {};
+
+	return { isOver, dropProps };
+}
+
 /** Single document row in the sidebar tree */
 function DocsDocRow({
 	doc,
@@ -236,6 +329,10 @@ function DocsDocRow({
 			<div
 				className="group relative flex items-center gap-1 pr-1"
 				style={{ paddingLeft: `${8 + depth * 16 + 16}px` }}
+				{...docNodeDragProps(
+					{ kind: "doc", id: doc.id, parentId: doc.folder_id ?? null },
+					canWrite && !renaming,
+				)}
 			>
 				<button
 					type="button"
@@ -369,6 +466,7 @@ function DocsFolderNode({
 	const navigate = useNavigate();
 
 	const isExpanded = expandedFolders.has(folder.id);
+	const { isOver, dropProps } = useDocNodeDrop(projectId, folder.id, canWrite);
 
 	// A folder's subfolders and documents are fetched only once it is
 	// expanded, a page at a time.
@@ -440,11 +538,21 @@ function DocsFolderNode({
 	});
 
 	return (
-		<div>
+		<div
+			className={cn(
+				"rounded-md transition-colors",
+				isOver && "bg-primary/10 ring-1 ring-primary/40",
+			)}
+			{...dropProps}
+		>
 			{/* Folder row */}
 			<div
 				className="group relative flex items-center gap-1 pr-1"
 				style={{ paddingLeft: `${8 + depth * 16}px` }}
+				{...docNodeDragProps(
+					{ kind: "folder", id: folder.id, parentId: folder.parent_id ?? null },
+					canWrite && !renaming,
+				)}
 			>
 				<button
 					type="button"
@@ -713,6 +821,12 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 		[rootDocsQuery.data],
 	);
 
+	const { isOver: isRootOver, dropProps: rootDropProps } = useDocNodeDrop(
+		projectId,
+		null,
+		canWrite,
+	);
+
 	const newDocMutation = useMutation({
 		meta: { success: "created", subject: "document" },
 		mutationFn: () => createDocument(projectId, { title: t("docs.untitled") }),
@@ -778,7 +892,13 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 
 			{!collapsed && (
 				<SidebarGroupContent>
-					<div className="py-1 space-y-0.5">
+					<div
+						className={cn(
+							"py-1 space-y-0.5 rounded-md transition-colors",
+							isRootOver && "bg-primary/10 ring-1 ring-primary/40",
+						)}
+						{...rootDropProps}
+					>
 						{isEmpty ? (
 							<div className="px-4 py-2 text-xs text-sidebar-foreground/40 italic">
 								{t("docs.noDocumentsYet")}
