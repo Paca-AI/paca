@@ -2149,7 +2149,7 @@ export function InteractionLayout({
 			{/* View content */}
 			<div
 				ref={viewContentRef}
-				className="flex flex-1 flex-col overflow-hidden"
+				className="isolate flex flex-1 flex-col overflow-hidden"
 			>
 				{activePluginView && activeView ? (
 					<RemoteComponent
