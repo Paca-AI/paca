@@ -755,21 +755,8 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 	const { state: sidebarState } = useSidebar();
 	const isSidebarCollapsed = sidebarState === "collapsed";
 
-	if (isSidebarCollapsed) {
-		return (
-			<SidebarGroup>
-				<SidebarGroupContent>
-					<SidebarMenu>
-						<SidebarMenuItem>
-							<SidebarMenuButton tooltip={t("docs.documentation")}>
-								<BookOpen className="size-4" />
-							</SidebarMenuButton>
-						</SidebarMenuItem>
-					</SidebarMenu>
-				</SidebarGroupContent>
-			</SidebarGroup>
-		);
-	}
+	// A bare book icon that does nothing is noise on the rail.
+	if (isSidebarCollapsed) return null;
 
 	return (
 		<SidebarGroup className="px-0">
@@ -1164,24 +1151,32 @@ function ProjectNavItems({ projectId }: { projectId: string }) {
 		});
 	};
 
+	// The icon rail has no room for section headers, so they are not togglable
+	// there (and stay out of the tab order); the section is always expanded.
+	const { state: sidebarState } = useSidebar();
+	const isRail = sidebarState === "collapsed";
+	const isCollapsed = collapsed && !isRail;
+
 	return (
 		<SidebarGroup>
-			<SidebarGroupLabel
-				render={<button type="button" />}
-				aria-expanded={!collapsed}
-				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
-				onClick={toggle}
-			>
-				<span>{t("nav.project")}</span>
-				<ChevronRight
-					className={cn(
-						"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
-						!collapsed && "rotate-90",
-					)}
-				/>
-			</SidebarGroupLabel>
+			{!isRail && (
+				<SidebarGroupLabel
+					render={<button type="button" />}
+					aria-expanded={!isCollapsed}
+					className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
+					onClick={toggle}
+				>
+					<span>{t("nav.project")}</span>
+					<ChevronRight
+						className={cn(
+							"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
+							!isCollapsed && "rotate-90",
+						)}
+					/>
+				</SidebarGroupLabel>
+			)}
 
-			{!collapsed && (
+			{!isCollapsed && (
 				<SidebarGroupContent>
 					<SidebarMenu>
 						{PROJECT_NAV_ITEMS.filter((item) => {
@@ -1255,23 +1250,31 @@ function CollapsibleSidebarGroup({
 		});
 	};
 
+	// The icon rail has no room for section headers, so they are not togglable
+	// there (and stay out of the tab order); the section is always expanded.
+	const { state: sidebarState } = useSidebar();
+	const isRail = sidebarState === "collapsed";
+	const isCollapsed = collapsed && !isRail;
+
 	return (
 		<SidebarGroup>
-			<SidebarGroupLabel
-				render={<button type="button" />}
-				aria-expanded={!collapsed}
-				className="w-full text-left flex cursor-pointer items-center justify-between transition-colors hover:text-sidebar-foreground"
-				onClick={toggle}
-			>
-				<span>{label}</span>
-				<ChevronRight
-					className={cn(
-						"size-3.5 text-sidebar-foreground/40 transition-transform duration-200",
-						!collapsed && "rotate-90",
-					)}
-				/>
-			</SidebarGroupLabel>
-			{!collapsed && <SidebarGroupContent>{children}</SidebarGroupContent>}
+			{!isRail && (
+				<SidebarGroupLabel
+					render={<button type="button" />}
+					aria-expanded={!isCollapsed}
+					className="w-full text-left flex cursor-pointer items-center justify-between transition-colors hover:text-sidebar-foreground"
+					onClick={toggle}
+				>
+					<span>{label}</span>
+					<ChevronRight
+						className={cn(
+							"size-3.5 text-sidebar-foreground/40 transition-transform duration-200",
+							!isCollapsed && "rotate-90",
+						)}
+					/>
+				</SidebarGroupLabel>
+			)}
+			{!isCollapsed && <SidebarGroupContent>{children}</SidebarGroupContent>}
 		</SidebarGroup>
 	);
 }
@@ -1523,6 +1526,12 @@ function ProjectInteractionsSection({ projectId }: { projectId: string }) {
 		retry: false,
 	});
 
+	// The icon rail has no room for section headers, so they are not togglable
+	// there (and stay out of the tab order); the section is always expanded.
+	const { state: sidebarState } = useSidebar();
+	const isRail = sidebarState === "collapsed";
+	const isCollapsed = collapsed && !isRail;
+
 	// Hide entire section if user lacks the "View Sprints" permission
 	if (!canViewSprints) return null;
 
@@ -1558,22 +1567,24 @@ function ProjectInteractionsSection({ projectId }: { projectId: string }) {
 
 	return (
 		<SidebarGroup>
-			<SidebarGroupLabel
-				render={<button type="button" />}
-				aria-expanded={!collapsed}
-				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
-				onClick={toggle}
-			>
-				<span>{t("interactions.title")}</span>
-				<ChevronRight
-					className={cn(
-						"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
-						!collapsed && "rotate-90",
-					)}
-				/>
-			</SidebarGroupLabel>
+			{!isRail && (
+				<SidebarGroupLabel
+					render={<button type="button" />}
+					aria-expanded={!isCollapsed}
+					className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
+					onClick={toggle}
+				>
+					<span>{t("interactions.title")}</span>
+					<ChevronRight
+						className={cn(
+							"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
+							!isCollapsed && "rotate-90",
+						)}
+					/>
+				</SidebarGroupLabel>
+			)}
 
-			{!collapsed && (
+			{!isCollapsed && (
 				<SidebarGroupContent>
 					<SidebarMenu>
 						{/* Timeline */}
