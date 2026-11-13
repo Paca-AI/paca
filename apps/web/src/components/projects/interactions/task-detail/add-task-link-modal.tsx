@@ -1,7 +1,19 @@
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
-import { Link2, Search, X } from "lucide-react";
+import { Link2, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@/components/ui/input-group";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import {
 	type DisplayLinkType,
@@ -193,68 +205,59 @@ export function AddTaskLinkModal({
 		});
 	}
 
-	if (!open) return null;
-
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: backdrop element for modal
-		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-			onClick={(e) => {
-				if (e.target === e.currentTarget) onClose();
-			}}
-			onKeyDown={(e) => {
-				if (e.key === "Escape") onClose();
-			}}
-		>
-			<div className="bg-card border border-border/40 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
-				{/* Header */}
-				<div className="flex items-center justify-between px-5 py-4 border-b border-border/20">
-					<div className="flex items-center gap-2.5">
-						<div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center">
+		<Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+			{/* z-60: above the task-detail overlay (z-50), below the floating chat. */}
+			<DialogContent
+				className="z-60 gap-0 p-0 sm:max-w-lg"
+				overlayClassName="z-60"
+			>
+				<DialogHeader className="border-b border-border/20 px-5 py-4">
+					<DialogTitle className="flex items-center gap-2.5 text-base font-semibold">
+						<span className="flex size-7 items-center justify-center rounded-lg bg-primary/10">
 							<Link2 className="size-3.5 text-primary" />
-						</div>
-						<h2 className="text-base font-semibold text-foreground">
-							{t("taskDetail.addTaskLinkModal.title")}
-						</h2>
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className="size-7 rounded-lg flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted/30 transition-all duration-150"
-					>
-						<X className="size-4" />
-					</button>
-				</div>
+						</span>
+						{t("taskDetail.addTaskLinkModal.title")}
+					</DialogTitle>
+				</DialogHeader>
 
 				{/* Link type selector */}
 				<div className="px-5 pt-4 pb-3">
-					<p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/60 mb-2">
+					<p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
 						{t("taskDetail.addTaskLinkModal.relationship")}
 					</p>
-					<div className="grid grid-cols-2 gap-1.5">
+					<ToggleGroup
+						aria-label={t("taskDetail.addTaskLinkModal.relationship")}
+						variant="outline"
+						spacing={1.5}
+						className="grid w-full grid-cols-2"
+						value={[selectedLinkType]}
+						onValueChange={(next) => {
+							// Re-pressing the active relationship would empty the group.
+							const value = next[0];
+							if (value) setSelectedLinkType(value as typeof selectedLinkType);
+						}}
+					>
 						{LINK_TYPE_OPTIONS.map((opt) => (
-							<button
+							<ToggleGroupItem
 								key={opt.value}
-								type="button"
-								onClick={() => setSelectedLinkType(opt.value)}
-								className={`px-3 py-2 rounded-lg text-left text-sm font-medium transition-all duration-150 border ${
-									selectedLinkType === opt.value
-										? "bg-primary/10 border-primary/30 text-primary"
-										: "bg-muted/20 border-border/20 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-								}`}
+								value={opt.value}
 								title={t(opt.descriptionKey)}
+								className="h-auto justify-start px-3 py-2 text-left text-sm"
 							>
 								{t(opt.labelKey)}
-							</button>
+							</ToggleGroupItem>
 						))}
-					</div>
+					</ToggleGroup>
 				</div>
 
 				{/* Search */}
 				<div className="px-5 pb-3">
-					<div className="relative">
-						<Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50" />
-						<input
+					<InputGroup>
+						<InputGroupAddon>
+							<Search />
+						</InputGroupAddon>
+						<InputGroupInput
 							ref={searchRef}
 							type="text"
 							value={query}
@@ -263,28 +266,28 @@ export function AddTaskLinkModal({
 								applyQuery(e.target.value.trim());
 							}}
 							placeholder={t("taskDetail.addTaskLinkModal.searchPlaceholder")}
-							className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-border/30 bg-muted/20 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150"
+							aria-label={t("taskDetail.addTaskLinkModal.searchPlaceholder")}
 						/>
-					</div>
+					</InputGroup>
 				</div>
 
 				{/* Task list */}
 				<div
-					className="mx-5 mb-5 rounded-xl border border-border/20 overflow-hidden max-h-64 overflow-y-auto [scrollbar-gutter:stable]"
+					className="mx-5 mb-5 max-h-64 overflow-hidden overflow-y-auto rounded-xl border border-border/20 [scrollbar-gutter:stable]"
 					onScroll={handleListScroll}
 				>
 					{loading && (
-						<div className="flex items-center justify-center py-8 text-muted-foreground/50 text-sm">
+						<div className="flex items-center justify-center py-8 text-sm text-muted-foreground/50">
 							{t("taskDetail.addTaskLinkModal.loadingTasks")}
 						</div>
 					)}
 					{!loading && isError && filteredTasks.length === 0 && (
-						<div className="flex items-center justify-center py-8 text-destructive/80 text-sm">
+						<div className="flex items-center justify-center py-8 text-sm text-destructive/80">
 							{t("taskDetail.addTaskLinkModal.loadError")}
 						</div>
 					)}
 					{!loading && !isError && filteredTasks.length === 0 && (
-						<div className="flex items-center justify-center py-8 text-muted-foreground/45 text-sm italic">
+						<div className="flex items-center justify-center py-8 text-sm italic text-muted-foreground/45">
 							{t("taskDetail.addTaskLinkModal.noTasksFound")}
 						</div>
 					)}
@@ -298,24 +301,24 @@ export function AddTaskLinkModal({
 									key={task.id}
 									type="button"
 									onClick={() => handleSelect(task)}
-									className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors duration-100 border-b border-border/10 last:border-0"
+									className="flex w-full items-center gap-3 border-b border-border/10 px-4 py-3 text-left transition-colors duration-100 last:border-0 hover:bg-muted/30"
 								>
-									<span className="shrink-0 text-xs font-mono text-muted-foreground/60 min-w-13">
+									<span className="min-w-13 shrink-0 font-mono text-xs text-muted-foreground/60">
 										{prefix}
 									</span>
-									<span className="text-sm text-foreground truncate">
+									<span className="truncate text-sm text-foreground">
 										{task.title}
 									</span>
 								</button>
 							);
 						})}
 					{isFetchingNextPage && (
-						<div className="flex items-center justify-center py-3 text-muted-foreground/50 text-xs">
+						<div className="flex items-center justify-center py-3 text-xs text-muted-foreground/50">
 							{t("taskDetail.addTaskLinkModal.loadingTasks")}
 						</div>
 					)}
 				</div>
-			</div>
-		</div>
+			</DialogContent>
+		</Dialog>
 	);
 }

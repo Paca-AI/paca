@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCanAssignProjectRole } from "@/hooks/use-can-assign-project-role";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
@@ -451,52 +452,35 @@ function AddMemberDialog({
 
 				<div className="space-y-4 py-1">
 					{/* Mode toggle: invite a human user, a global agent or a service account */}
-					<div
-						className={`grid gap-2 ${canInviteServiceAccounts ? "grid-cols-3" : "grid-cols-2"}`}
+					<Tabs
+						value={mode}
+						onValueChange={(m) => {
+							setMode(m as "user" | "agent" | "service_account");
+							setSelectedUser(null);
+							setSelectedAgent(null);
+							setSelectedServiceAccount(null);
+							setError(null);
+						}}
 					>
-						{(
-							[
-								"user",
-								"agent",
-								...(canInviteServiceAccounts
-									? (["service_account"] as const)
-									: []),
-							] as const
-						).map((m) => {
-							const isSelected = mode === m;
-							return (
-								<button
-									key={m}
-									type="button"
-									onClick={() => {
-										setMode(m);
-										setSelectedUser(null);
-										setSelectedAgent(null);
-										setSelectedServiceAccount(null);
-										setError(null);
-									}}
-									className={`flex items-center justify-center gap-1.5 rounded-lg border p-2.5 text-xs font-medium transition-all ${
-										isSelected
-											? "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
-											: "border-border/60 hover:border-border hover:bg-muted/30"
-									}`}
-								>
-									{m === "user" ? (
-										<UserRound className="size-3.5" />
-									) : m === "agent" ? (
-										<Bot className="size-3.5" />
-									) : (
-										<KeyRound className="size-3.5" />
-									)}
-									{m === "user"
-										? t("team.addMemberDialog.modeUser")
-										: m === "agent"
-											? t("team.addMemberDialog.modeAgent")
-											: t("team.addMemberDialog.modeServiceAccount")}
-								</button>
-							);
-						})}
-					</div>
+						<TabsList
+							className={`grid h-auto w-full ${canInviteServiceAccounts ? "grid-cols-3" : "grid-cols-2"}`}
+						>
+							<TabsTrigger value="user" className="py-1.5 text-xs">
+								<UserRound />
+								{t("team.addMemberDialog.modeUser")}
+							</TabsTrigger>
+							<TabsTrigger value="agent" className="py-1.5 text-xs">
+								<Bot />
+								{t("team.addMemberDialog.modeAgent")}
+							</TabsTrigger>
+							{canInviteServiceAccounts ? (
+								<TabsTrigger value="service_account" className="py-1.5 text-xs">
+									<KeyRound />
+									{t("team.addMemberDialog.modeServiceAccount")}
+								</TabsTrigger>
+							) : null}
+						</TabsList>
+					</Tabs>
 
 					{mode === "service_account" ? (
 						<div className="space-y-1.5">

@@ -53,6 +53,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -1111,34 +1112,33 @@ export function EnvironmentDetailView({
 				</div>
 			</div>
 
-			{/* Tabs */}
-			<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
-				<div className="flex items-center gap-1 -mb-px w-max min-w-full">
-					{TABS.map((tab) => {
-						const Icon = tab.icon;
-						const isActive = activeTab === tab.id;
-						return (
-							<button
-								key={tab.id}
-								type="button"
-								onClick={() => handleTabChange(tab.id)}
-								className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-									isActive
-										? "border-primary text-primary"
-										: "border-transparent text-muted-foreground hover:text-foreground"
-								}`}
-							>
-								<Icon className="size-3.5" />
-								{t(tab.labelKey)}
-							</button>
-						);
-					})}
+			<Tabs
+				value={activeTab}
+				onValueChange={(v) => handleTabChange(v as Tab)}
+				className="min-h-0 flex-1 gap-0"
+			>
+				<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
+					<TabsList
+						variant="line"
+						className="h-10 w-max min-w-full justify-start"
+					>
+						{TABS.map((tab) => {
+							const Icon = tab.icon;
+							return (
+								<TabsTrigger
+									key={tab.id}
+									value={tab.id}
+									className="flex-none px-3"
+								>
+									<Icon />
+									{t(tab.labelKey)}
+								</TabsTrigger>
+							);
+						})}
+					</TabsList>
 				</div>
-			</div>
 
-			{/* Tab content */}
-			<div className="flex-1 overflow-auto p-6">
-				{activeTab === "overview" && (
+				<TabsContent value="overview" className="flex-1 overflow-auto p-6">
 					<OverviewTab
 						environment={environment}
 						projectId={projectId}
@@ -1146,23 +1146,23 @@ export function EnvironmentDetailView({
 						onGoToPortForwards={() => handleTabChange("portForwards")}
 						usage={usage}
 					/>
-				)}
-				{activeTab === "folders" && (
+				</TabsContent>
+				<TabsContent value="folders" className="flex-1 overflow-auto p-6">
 					<FoldersTab
 						projectId={projectId}
 						environmentId={environmentId}
 						environmentStatus={environment.status}
 						canWrite={canWrite}
 					/>
-				)}
-				{activeTab === "portForwards" && (
+				</TabsContent>
+				<TabsContent value="portForwards" className="flex-1 overflow-auto p-6">
 					<PortForwardsTab
 						projectId={projectId}
 						environment={environment}
 						canWrite={canWrite}
 					/>
-				)}
-			</div>
+				</TabsContent>
+			</Tabs>
 
 			<Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
 				<DialogContent className="max-w-sm">

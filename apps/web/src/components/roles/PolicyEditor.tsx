@@ -11,9 +11,8 @@ import {
 	ShieldAlert,
 	X,
 } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
@@ -22,6 +21,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { PluginKnownPermission } from "@/lib/plugin-api";
 import { applyHint, policyHints } from "@/lib/policy";
@@ -72,7 +72,6 @@ export function PolicyEditor({
 	enabledCount,
 }: PolicyEditorProps) {
 	const { t } = useTranslation("roles");
-	const panelId = useId();
 	const [query, setQuery] = useState("");
 	// Groups the user folded away; searching shows every group with a match.
 	const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
@@ -135,35 +134,22 @@ export function PolicyEditor({
 		});
 
 	return (
-		<div className="flex flex-col gap-4">
-			<div
-				className="grid w-full grid-cols-2 gap-1 rounded-lg bg-muted p-1 sm:inline-grid sm:w-fit"
-				role="tablist"
-				aria-label={t("editor.modeLabel")}
-			>
+		<Tabs
+			value={editor.mode}
+			onValueChange={(m) => editor.setMode(m as "simple" | "advanced")}
+			className="gap-4"
+		>
+			<TabsList className="w-full sm:w-fit" aria-label={t("editor.modeLabel")}>
 				{(["simple", "advanced"] as const).map((m) => {
 					const Icon = m === "simple" ? ListChecks : Braces;
-					const selected = editor.mode === m;
 					return (
-						<button
-							key={m}
-							type="button"
-							role="tab"
-							aria-selected={selected}
-							aria-controls={panelId}
-							onClick={() => editor.setMode(m)}
-							className={`inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${
-								selected
-									? "bg-background text-foreground shadow-sm ring-1 ring-foreground/10"
-									: "text-muted-foreground hover:text-foreground"
-							}`}
-						>
-							<Icon className="size-3.5" aria-hidden="true" />
+						<TabsTrigger key={m} value={m} className="px-3 text-xs">
+							<Icon aria-hidden="true" />
 							{t(m === "simple" ? "editor.simple" : "editor.advanced")}
-						</button>
+						</TabsTrigger>
 					);
 				})}
-			</div>
+			</TabsList>
 
 			{editor.blocked ? (
 				<div
@@ -177,7 +163,7 @@ export function PolicyEditor({
 				</div>
 			) : null}
 
-			<div id={panelId} role="tabpanel" className="flex min-w-0 flex-col gap-4">
+			<TabsContent value={editor.mode} className="flex min-w-0 flex-col gap-4">
 				{editor.mode === "simple" ? (
 					<>
 						{editor.fullAccess ? (
@@ -436,7 +422,7 @@ export function PolicyEditor({
 						/>
 					</div>
 				)}
-			</div>
-		</div>
+			</TabsContent>
+		</Tabs>
 	);
 }

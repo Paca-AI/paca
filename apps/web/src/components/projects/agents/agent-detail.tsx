@@ -46,6 +46,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -2120,56 +2121,50 @@ export function AgentDetailView({
 				</div>
 			</div>
 
-			{/* Tabs */}
-			<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
-				<div className="flex items-center gap-1 -mb-px w-max min-w-full">
-					{visibleTabs.map((tab) => {
-						const Icon = tab.icon;
-						const isActive = activeTab === tab.id;
-						return (
-							<button
-								key={tab.id}
-								type="button"
-								onClick={() => handleTabChange(tab.id)}
-								className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-									isActive
-										? "border-primary text-primary"
-										: "border-transparent text-muted-foreground hover:text-foreground"
-								}`}
-							>
-								<Icon className="size-3.5" />
-								{t(tab.labelKey)}
-							</button>
-						);
-					})}
-				</div>
-			</div>
-
-			{/* Tab content */}
-			<div
-				className={
-					activeTab === "activity"
-						? "flex flex-1 min-h-0 flex-col p-6"
-						: "flex-1 overflow-auto p-6"
-				}
+			<Tabs
+				value={activeTab}
+				onValueChange={(v) => handleTabChange(v as Tab)}
+				className="min-h-0 flex-1 gap-0"
 			>
-				{activeTab === "overview" && (
+				<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
+					<TabsList
+						variant="line"
+						className="h-10 w-max min-w-full justify-start"
+					>
+						{visibleTabs.map((tab) => {
+							const Icon = tab.icon;
+							return (
+								<TabsTrigger
+									key={tab.id}
+									value={tab.id}
+									className="flex-none px-3"
+								>
+									<Icon />
+									{t(tab.labelKey)}
+								</TabsTrigger>
+							);
+						})}
+					</TabsList>
+				</div>
+
+				<TabsContent value="overview" className="flex-1 overflow-auto p-6">
 					<OverviewTab
 						agent={agent}
 						projectId={projectId}
 						canWrite={canWrite}
 					/>
-				)}
-				{activeTab === "mcp-servers" && agent.agent_type !== "acp" && (
-					<MCPServersTab
-						projectId={projectId}
-						agentId={agentId}
-						canWrite={canWrite}
-					/>
-				)}
-				{activeTab === "skills" &&
-					agent.agent_type !== "acp" &&
-					!cliSkillsUnsupported && (
+				</TabsContent>
+				<TabsContent value="mcp-servers" className="flex-1 overflow-auto p-6">
+					{agent.agent_type !== "acp" && (
+						<MCPServersTab
+							projectId={projectId}
+							agentId={agentId}
+							canWrite={canWrite}
+						/>
+					)}
+				</TabsContent>
+				<TabsContent value="skills" className="flex-1 overflow-auto p-6">
+					{agent.agent_type !== "acp" && !cliSkillsUnsupported && (
 						<SkillsTab
 							projectId={projectId}
 							agentId={agentId}
@@ -2177,27 +2172,39 @@ export function AgentDetailView({
 							canWrite={canWrite}
 						/>
 					)}
-				{activeTab === "env-vars" && agent.agent_type !== "acp" && (
-					<EnvVarsTab
-						projectId={projectId}
-						agentId={agentId}
-						canWrite={canWrite}
-					/>
-				)}
-				{activeTab === "global-role" && !projectId && (
-					<AgentGlobalRoleTab agent={agent} canWrite={canWrite} />
-				)}
-				{activeTab === "git" && projectId && (
-					<AgentGitTab
-						projectId={projectId}
-						agentId={agentId}
-						canWrite={canWrite}
-					/>
-				)}
-				{activeTab === "activity" && projectId && (
-					<AgentActivityTab projectId={projectId} agentId={agentId} />
-				)}
-			</div>
+				</TabsContent>
+				<TabsContent value="env-vars" className="flex-1 overflow-auto p-6">
+					{agent.agent_type !== "acp" && (
+						<EnvVarsTab
+							projectId={projectId}
+							agentId={agentId}
+							canWrite={canWrite}
+						/>
+					)}
+				</TabsContent>
+				<TabsContent value="global-role" className="flex-1 overflow-auto p-6">
+					{!projectId && (
+						<AgentGlobalRoleTab agent={agent} canWrite={canWrite} />
+					)}
+				</TabsContent>
+				<TabsContent value="git" className="flex-1 overflow-auto p-6">
+					{projectId && (
+						<AgentGitTab
+							projectId={projectId}
+							agentId={agentId}
+							canWrite={canWrite}
+						/>
+					)}
+				</TabsContent>
+				<TabsContent
+					value="activity"
+					className="flex min-h-0 flex-1 flex-col p-6"
+				>
+					{projectId && (
+						<AgentActivityTab projectId={projectId} agentId={agentId} />
+					)}
+				</TabsContent>
+			</Tabs>
 		</div>
 	);
 }
