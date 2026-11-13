@@ -143,6 +143,9 @@ func New(deps Deps) http.Handler {
 				r.With(authLimit(3*deps.AuthRateLimit)).Post("/annotation-refresh", deps.Auth.AnnotationRefresh)
 				r.With(httpmw.Authn(deps.TokenManager)).Post("/logout", deps.Auth.Logout)
 				if deps.MFA != nil {
+					// Public — the login page asks whether to offer the
+					// password form (off in SSO-only mode) before sign-in.
+					r.Get("/login-options", deps.MFA.LoginOptions)
 					// Enrollment for an account that policy requires to use MFA
 					// but that cannot sign in until it has; password-authenticated.
 					r.With(authLimit(deps.AuthRateLimit)).Post("/mfa/passkey/options", deps.Auth.PasskeyOptions)

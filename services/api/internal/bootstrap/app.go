@@ -278,7 +278,12 @@ func New(cfg *config.Config) (*App, error) {
 	// pointer's provenance obvious at every read site.
 	projectServiceBase = projectServiceBase.WithEncryptor(encryptor)
 	ssoService := ssosvc.New(pgRepo.NewSSORepository(db), redisRepo.NewSSOStateStore(redisClient, 10*time.Minute),
-		userRepo, userService, authService, log).WithEncryptor(encryptor).WithIPCheck(mfaService)
+		userRepo, userService, authService, log).WithEncryptor(encryptor).WithIPCheck(mfaService).
+		WithPasswordPolicy(mfaService)
+	// SSO-only mode: turning it on needs an enabled provider, and password
+	// set/reset/change is refused to the accounts it keeps off passwords.
+	mfaService.WithSSOProviders(ssoService)
+	userService.WithPasswordPolicy(mfaService)
 	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(triggerGate)

@@ -262,15 +262,28 @@ func (s *Service) BeginPasskeyLogin(ctx context.Context, u *userdom.User, ceremo
 }
 
 // VerifyPasskeyLogin checks the authenticator's assertion for ceremonyID,
-// enforcing the IP allow-lists first, and records the new sign counter.
+// enforcing SSO-only mode and the IP allow-lists first, and records the new
+// sign counter. The passkey is the second factor of a password sign-in, so
+// SSO-only mode applies to it as it does to CheckLogin.
 //
 // A wrong assertion is not counted toward the TOTP lockout: it is a signature
 // over a fresh server challenge, so there is nothing to guess.
 func (s *Service) VerifyPasskeyLogin(ctx context.Context, u *userdom.User, ceremonyID string, response []byte, clientIP string) error {
-	if err := s.CheckIP(ctx, u, clientIP); err != nil {
+	policy, err := s.store.GetPolicy(ctx)
+	if err != nil {
 		return err
 	}
-	return s.verifyAssertion(ctx, u, "login:"+ceremonyID, response, mfadom.ErrInvalidCode)
+	if err := passwordAllowed(policy, u); err != nil {
+		return err
+	}
+	if err := s.checkIP(ctx, u, policy, hasAny(u.RoleNames(), policy.PrivilegedRoles), clientIP); err != nil {
+		return err
+	}
+	if err := s.verifyAssertion(ctx, u, "login:"+ceremonyID, response, mfadom.ErrInvalidCode); err != nil {
+		return err
+	}
+	logSSOOnlyPasswordSignIn(policy, u, clientIP)
+	return nil
 }
 
 // beginAssertion parks a fresh challenge under key and returns the request

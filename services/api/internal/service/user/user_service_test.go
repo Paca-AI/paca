@@ -687,6 +687,83 @@ func TestSetPasswordWithToken_RejectsLostRace(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Password policy (SSO-only mode)
+// ---------------------------------------------------------------------------
+
+var errPasswordsOff = errors.New("password sign-in is disabled")
+
+// stubPasswordPolicy refuses a password to every account but the default
+// super admin, as SSO-only mode does.
+type stubPasswordPolicy struct{}
+
+func (stubPasswordPolicy) CheckPasswordAllowed(_ context.Context, u *userdom.User) error {
+	if u.BootstrapAdmin {
+		return nil
+	}
+	return errPasswordsOff
+}
+
+// TestPasswordPolicy_RefusesSetResetAndChange pins that none of the three
+// ways to give an account a password works for an account the password
+// policy keeps off passwords, and that none of them writes anything or burns
+// the set-password token.
+func TestPasswordPolicy_RefusesSetResetAndChange(t *testing.T) {
+	userID := uuid.New()
+	updateCalled := false
+	tokenRepo := &stubTokenRepo{
+		findActiveByTokenHash: func(_ context.Context, _ string) (*userdom.PasswordSetToken, error) {
+			return &userdom.PasswordSetToken{ID: uuid.New(), UserID: userID}, nil
+		},
+	}
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			// "x" is not a bcrypt hash: had ChangeMyPassword compared the
+			// current password first, it would fail differently.
+			return &userdom.User{ID: userID, PasswordHash: "x", MustChangePassword: true}, nil
+		},
+		update: func(_ context.Context, _ *userdom.User) error {
+			updateCalled = true
+			return nil
+		},
+	}).WithPasswordSetTokenRepo(tokenRepo).WithPasswordPolicy(stubPasswordPolicy{})
+	ctx := context.Background()
+
+	if err := svc.ResetPassword(ctx, userID, "newpassword123"); !errors.Is(err, errPasswordsOff) {
+		t.Errorf("ResetPassword: got %v", err)
+	}
+	if err := svc.ChangeMyPassword(ctx, userID, "whatever", "newpassword123"); !errors.Is(err, errPasswordsOff) {
+		t.Errorf("ChangeMyPassword: got %v", err)
+	}
+	if err := svc.SetPasswordWithToken(ctx, "raw-token", "newpassword123"); !errors.Is(err, errPasswordsOff) {
+		t.Errorf("SetPasswordWithToken: got %v", err)
+	}
+	if updateCalled {
+		t.Error("expected no password written for an account kept off passwords")
+	}
+	if tokenRepo.markUsedCalled {
+		t.Error("expected the set-password token left unused, so it still works if the policy is lifted")
+	}
+}
+
+func TestPasswordPolicy_AllowsTheDefaultSuperAdmin(t *testing.T) {
+	id := uuid.New()
+	updated := false
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: id, PasswordHash: "oldhash", BootstrapAdmin: true}, nil
+		},
+		update: func(_ context.Context, _ *userdom.User) error {
+			updated = true
+			return nil
+		},
+	}).WithPasswordPolicy(stubPasswordPolicy{})
+
+	if err := svc.ResetPassword(context.Background(), id, "newpassword123"); err != nil || !updated {
+		t.Fatalf("default super admin: err %v, updated %v", err, updated)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Delete
 // ---------------------------------------------------------------------------
 

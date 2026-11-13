@@ -111,6 +111,7 @@
 			"errors": {
 				"userNotFound": "Người dùng này không còn tồn tại.",
 				"forbidden": "Bạn không có quyền đặt lại mật khẩu của người dùng này.",
+				"passwordLoginDisabled": "Đăng nhập bằng mật khẩu đã bị tắt (chỉ đăng nhập SSO) nên không thể đặt lại mật khẩu của người dùng này. Họ đăng nhập bằng đăng nhập một lần.",
 				"internalError": "Đã xảy ra lỗi. Vui lòng thử lại.",
 				"generic": "Đã xảy ra lỗi."
 			}
@@ -535,10 +536,17 @@
 				"hint": "Mỗi dòng một địa chỉ IP hoặc dải CIDR, ví dụ 203.0.113.0/24. Hỗ trợ IPv4 và IPv6.",
 				"lockoutWarning": "Hãy đảm bảo địa chỉ của chính bạn nằm trong danh sách, nếu không bạn có thể bị khóa. Đăng nhập SSO không bị ảnh hưởng."
 			},
+			"ssoOnly": {
+				"title": "Chỉ đăng nhập bằng SSO",
+				"description": "Tắt đăng nhập bằng mật khẩu cho mọi tài khoản, bất kể vai trò, trừ quản trị viên mặc định (tài khoản được tạo từ ADMIN_USERNAME). Những người khác đăng nhập bằng đăng nhập một lần và không thể đặt, đặt lại hay đổi mật khẩu.",
+				"noProvider": "Hãy bật một nhà cung cấp SSO trước.",
+				"adminNote": "Trang đăng nhập chỉ hiển thị các nhà cung cấp SSO. Quản trị viên mặc định đăng nhập qua liên kết \"Đăng nhập với tư cách quản trị viên\" (hoặc /?admin=1), ví dụ để tắt tùy chọn này khi nhà cung cấp danh tính không khả dụng."
+			},
 			"noRoles": "Chưa có vai trò nào được bảo vệ nên các quy tắc này hiện không áp dụng cho ai.",
 			"errors": {
 				"invalidCidr": "Một trong các mục không phải địa chỉ IP hoặc dải CIDR hợp lệ.",
 				"selfLockout": "Địa chỉ IP của chính bạn phải có trong danh sách, nếu không bạn sẽ tự khóa mình. Hãy thêm vào và lưu lại.",
+				"ssoOnlyNoProvider": "Chỉ đăng nhập bằng SSO cần ít nhất một nhà cung cấp SSO đang bật.",
 				"saveFailed": "Lưu thất bại. Vui lòng thử lại.",
 				"loadFailed": "Không thể tải cài đặt bảo mật đăng nhập."
 			}

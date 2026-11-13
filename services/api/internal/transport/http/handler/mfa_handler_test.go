@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,12 +23,19 @@ type fakeMFASvc struct {
 	passkeyBegun     bool
 	passkeyAdded     bool
 	cidrs            []string
+	policy           mfadom.Policy
 }
 
 func (f *fakeMFASvc) SetupRequired(context.Context, *userdom.User) (bool, error) {
 	return !f.notRequired, nil
 }
 func (f *fakeMFASvc) CheckIP(context.Context, *userdom.User, string) error { return nil }
+func (f *fakeMFASvc) CheckPasswordAllowed(_ context.Context, u *userdom.User) error {
+	if f.policy.SSOOnly && !u.BootstrapAdmin {
+		return mfadom.ErrPasswordLoginDisabled
+	}
+	return nil
+}
 func (f *fakeMFASvc) Begin(context.Context, *userdom.User) (string, string, error) {
 	f.begun = true
 	return "SECRET", "otpauth://totp/x", nil
@@ -41,7 +49,14 @@ func (f *fakeMFASvc) SetUserCIDRs(_ context.Context, _ uuid.UUID, c []string, _ 
 	return nil
 }
 func (f *fakeMFASvc) GetUserCIDRs(context.Context, uuid.UUID) ([]string, error) { return f.cidrs, nil }
-func (f *fakeMFASvc) GetPolicy(context.Context) (*mfadom.Policy, error)         { return &mfadom.Policy{}, nil }
+func (f *fakeMFASvc) GetPolicy(context.Context) (*mfadom.Policy, error) {
+	p := f.policy
+	return &p, nil
+}
+func (f *fakeMFASvc) SetPolicy(_ context.Context, p *mfadom.Policy, _ *uuid.UUID, _ string) error {
+	f.policy = *p
+	return nil
+}
 
 type fakeUsers struct {
 	userdom.Repository
@@ -152,5 +167,63 @@ func TestMFASetupPasskey_RefusedWhenPolicyDoesNotRequireIt(t *testing.T) {
 	}
 	if svc.passkeyBegun || svc.passkeyAdded {
 		t.Error("a password alone must not add a passkey to an account that is already protected or need not be")
+	}
+}
+
+func TestMFASetup_RefusedInSSOOnlyMode(t *testing.T) {
+	h, svc := newMFAHandler(t)
+	svc.policy.SSOOnly = true
+
+	for name, fn := range map[string]http.HandlerFunc{
+		"begin":          h.SetupBegin,
+		"confirm":        h.SetupConfirm,
+		"passkey begin":  h.SetupPasskeyBegin,
+		"passkey finish": h.SetupPasskeyFinish,
+	} {
+		rec := post(fn, `{"username":"root","password":"secret123","code":"123456","credential":{}}`)
+		if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "AUTH_PASSWORD_LOGIN_DISABLED") {
+			t.Errorf("%s: status %d body %s, want 403 AUTH_PASSWORD_LOGIN_DISABLED", name, rec.Code, rec.Body)
+		}
+	}
+	if svc.begun || svc.confirmed || svc.passkeyBegun || svc.passkeyAdded {
+		t.Error("a password must not enroll a second factor on an account SSO-only mode keeps off passwords")
+	}
+}
+
+func TestMFASetup_SSOOnlyModeKeepsTheDefaultSuperAdmin(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.MinCost)
+	svc := &fakeMFASvc{policy: mfadom.Policy{SSOOnly: true}}
+	h := NewMFAHandler(svc, fakeUsers{u: &userdom.User{ID: uuid.New(), Username: "admin", PasswordHash: string(hash), BootstrapAdmin: true}})
+
+	rec := post(h.SetupBegin, `{"username":"admin","password":"secret123"}`)
+	if rec.Code != http.StatusOK || !svc.begun {
+		t.Fatalf("default super admin: status %d body %s", rec.Code, rec.Body)
+	}
+}
+
+func TestLoginOptions_ReportsSSOOnly(t *testing.T) {
+	h, svc := newMFAHandler(t)
+	for _, on := range []bool{false, true} {
+		svc.policy.SSOOnly = on
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		h.LoginOptions(rec, req)
+		want := fmt.Sprintf(`"sso_only":%t`, on)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("sso_only=%v: status %d body %s", on, rec.Code, rec.Body)
+		}
+	}
+}
+
+func TestPutPolicy_SavesSSOOnly(t *testing.T) {
+	h, svc := newMFAHandler(t)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/",
+		strings.NewReader(`{"privileged_roles":["*"],"require_mfa":false,"ip_allow_list":[],"sso_only":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.PutPolicy(rec, req)
+	if rec.Code != http.StatusOK || !svc.policy.SSOOnly || !strings.Contains(rec.Body.String(), `"sso_only":true`) {
+		t.Fatalf("status %d body %s saved %+v", rec.Code, rec.Body, svc.policy)
 	}
 }

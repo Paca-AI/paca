@@ -27,6 +27,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
 	ssodom "github.com/Paca-AI/api/internal/domain/sso"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/secret"
@@ -74,6 +75,20 @@ func (s *Service) WithIPCheck(c IPChecker) *Service {
 	return s
 }
 
+// PasswordPolicy reports whether an account may use a password at all
+// (SSO-only mode). Nil means every account may.
+type PasswordPolicy interface {
+	CheckPasswordAllowed(ctx context.Context, u *userdom.User) error
+}
+
+// WithPasswordPolicy lets SSO sign-in drop a pending "change your password"
+// requirement from an account that SSO-only mode keeps off passwords: it
+// could never be met, since such an account cannot set a password.
+func (s *Service) WithPasswordPolicy(p PasswordPolicy) *Service {
+	s.passwords = p
+	return s
+}
+
 // Service implements provider management and SSO sign-in.
 type Service struct {
 	repo       ssodom.Repository
@@ -82,6 +97,7 @@ type Service struct {
 	creator    UserCreator
 	sessions   SessionIssuer
 	ipCheck    IPChecker
+	passwords  PasswordPolicy
 	encryptor  *secret.Encryptor
 	httpClient *http.Client
 	log        *slog.Logger
@@ -473,11 +489,37 @@ func (s *Service) CompleteLogin(ctx context.Context, slug, baseURL, code, state,
 			return nil, "", err
 		}
 	}
+	if err := s.dropUnmeetablePasswordChange(ctx, u); err != nil {
+		return nil, "", err
+	}
 	pair, err := s.sessions.IssueSession(u, attempt.RememberMe)
 	if err != nil {
 		return nil, "", err
 	}
 	return pair, SafeRedirect(attempt.Redirect), nil
+}
+
+// dropUnmeetablePasswordChange clears u's must-change-password flag when
+// SSO-only mode keeps u off passwords. Otherwise the session would be stuck on
+// a password change the API refuses (for example, an account an admin created
+// with a temporary password, then linked by email on its first SSO sign-in).
+func (s *Service) dropUnmeetablePasswordChange(ctx context.Context, u *userdom.User) error {
+	if !u.MustChangePassword || s.passwords == nil {
+		return nil
+	}
+	err := s.passwords.CheckPasswordAllowed(ctx, u)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, mfadom.ErrPasswordLoginDisabled) {
+		return err
+	}
+	u.MustChangePassword = false
+	u.UpdatedAt = time.Now()
+	if err := s.users.Update(ctx, u); err != nil {
+		return fmt.Errorf("sso svc: clear must-change-password: %w", err)
+	}
+	return nil
 }
 
 // enabledProvider loads an enabled provider and its (cached) discovery

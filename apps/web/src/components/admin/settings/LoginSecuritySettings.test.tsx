@@ -8,8 +8,13 @@ import { LoginSecuritySettings } from "./LoginSecuritySettings";
 const http = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
 vi.mock("@/lib/api-client", () => ({ apiClient: { instance: http } }));
 
+const sso = vi.hoisted(() => ({
+	providers: [] as { slug: string; display_name: string }[],
+}));
+
 beforeEach(() => {
 	vi.clearAllMocks();
+	sso.providers = [{ slug: "corp", display_name: "Corp SSO" }];
 	http.get.mockImplementation(async (url: string) => {
 		if (url === "/admin/auth-security") {
 			return {
@@ -18,9 +23,13 @@ beforeEach(() => {
 						privileged_roles: ["*"],
 						require_mfa: false,
 						ip_allow_list: [],
+						sso_only: false,
 					},
 				},
 			};
+		}
+		if (url === "/auth/sso/providers") {
+			return { data: { data: sso.providers } };
 		}
 		return {
 			data: {
@@ -64,6 +73,7 @@ describe("LoginSecuritySettings", () => {
 				privileged_roles: ["ADMIN"],
 				require_mfa: true,
 				ip_allow_list: ["203.0.113.0/24"],
+				sso_only: false,
 			}),
 		);
 	});
@@ -90,5 +100,37 @@ describe("LoginSecuritySettings", () => {
 		expect(
 			screen.getByRole("button", { name: /save changes/i }),
 		).toBeDisabled();
+	});
+
+	it("turns on SSO-only sign-in", async () => {
+		const user = userEvent.setup();
+		renderWithQueries(<LoginSecuritySettings />);
+
+		await user.click(
+			await screen.findByRole("switch", { name: /sso-only sign-in/i }),
+		);
+		expect(screen.getByText(/sign in as administrator/i)).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+		await waitFor(() =>
+			expect(http.put).toHaveBeenCalledWith("/admin/auth-security", {
+				privileged_roles: ["*"],
+				require_mfa: false,
+				ip_allow_list: [],
+				sso_only: true,
+			}),
+		);
+	});
+
+	it("can't turn on SSO-only sign-in without an enabled provider", async () => {
+		sso.providers = [];
+		renderWithQueries(<LoginSecuritySettings />);
+
+		expect(
+			await screen.findByText(/enable an sso provider first/i),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("switch", { name: /sso-only sign-in/i }),
+		).toHaveAttribute("aria-disabled", "true");
 	});
 });

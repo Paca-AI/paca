@@ -83,11 +83,21 @@ func seedPlatformRoles(ctx context.Context, seeder platformRoleSeeder, inv polic
 	return ids, nil
 }
 
-// seedAdmin ensures the configured admin account exists and holds
-// SUPER_ADMIN. A missing account is created with that role in the same
-// transaction. An existing, non-deleted account keeps everything it has and
-// gains SUPER_ADMIN if it lacks it; a soft-deleted one is left alone.
-func seedAdmin(ctx context.Context, repo userdom.Repository, seeder platformRoleSeeder, superAdmin uuid.UUID, cfg config.AdminConfig, log *slog.Logger) error {
+// adminSeedRepository is what seedAdmin needs from the user store.
+// *pgRepo.UserRepository implements it.
+type adminSeedRepository interface {
+	FindByUsernameIncludingDeleted(ctx context.Context, username string) (*userdom.User, error)
+	Create(ctx context.Context, u *userdom.User) error
+	MarkBootstrapAdmin(ctx context.Context, id uuid.UUID) (bool, error)
+}
+
+// seedAdmin ensures the configured admin account exists, holds SUPER_ADMIN,
+// and is the account marked as the default super admin (the one password
+// sign-in stays open to while the instance is SSO-only). A missing account is
+// created with that role in the same transaction. An existing, non-deleted
+// account keeps everything it has and gains SUPER_ADMIN if it lacks it; a
+// soft-deleted one is left alone.
+func seedAdmin(ctx context.Context, repo adminSeedRepository, seeder platformRoleSeeder, superAdmin uuid.UUID, cfg config.AdminConfig, log *slog.Logger) error {
 	existing, err := repo.FindByUsernameIncludingDeleted(ctx, cfg.Username)
 	switch {
 	case err == nil:
@@ -101,7 +111,7 @@ func seedAdmin(ctx context.Context, repo userdom.Repository, seeder platformRole
 		if added {
 			log.Info("assigned SUPER_ADMIN role to admin user", "username", cfg.Username)
 		}
-		return nil
+		return markBootstrapAdmin(ctx, repo, existing.ID, cfg.Username, log)
 	case !errors.Is(err, userdom.ErrNotFound):
 		return fmt.Errorf("seed admin: lookup: %w", err)
 	}
@@ -124,6 +134,19 @@ func seedAdmin(ctx context.Context, repo userdom.Repository, seeder platformRole
 		return fmt.Errorf("seed admin: create: %w", err)
 	}
 	log.Info("admin account created", "username", cfg.Username)
+	return markBootstrapAdmin(ctx, repo, admin.ID, cfg.Username, log)
+}
+
+// markBootstrapAdmin moves the default-super-admin mark to id. Changing
+// ADMIN_USERNAME therefore moves it to the newly configured account.
+func markBootstrapAdmin(ctx context.Context, repo adminSeedRepository, id uuid.UUID, username string, log *slog.Logger) error {
+	changed, err := repo.MarkBootstrapAdmin(ctx, id)
+	if err != nil {
+		return fmt.Errorf("seed admin: mark default super admin: %w", err)
+	}
+	if changed {
+		log.Info("marked admin user as the default super admin", "username", username)
+	}
 	return nil
 }
 

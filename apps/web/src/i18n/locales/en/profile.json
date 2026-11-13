@@ -62,6 +62,7 @@
 		"errors": {
 			"currentPasswordRequired": "Current password is required.",
 			"currentPasswordIncorrect": "Current password is incorrect.",
+			"passwordLoginDisabled": "Password sign-in is turned off for this workspace, so your password can't be changed. Sign in with single sign-on instead.",
 			"sessionExpired": "Your session has expired. Please log in again.",
 			"serverError": "Something went wrong on the server. Please try again.",
 			"changeFailed": "Failed to change password."

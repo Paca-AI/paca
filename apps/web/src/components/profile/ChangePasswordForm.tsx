@@ -139,6 +139,9 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 				[ApiErrorCode.Unauthenticated]: t(
 					"changePassword.errors.sessionExpired",
 				),
+				[ApiErrorCode.PasswordLoginDisabled]: t(
+					"changePassword.errors.passwordLoginDisabled",
+				),
 				[ApiErrorCode.InternalError]: t("changePassword.errors.serverError"),
 			};
 			const fallback =

@@ -89,6 +89,8 @@ export function MfaChallengePanel({ pending }: { pending: PendingMfa }) {
 					: t("login.errors.mfaInvalidCode");
 		} else if (errCode === ApiErrorCode.IpNotAllowed) {
 			message = t("login.errors.ipNotAllowed");
+		} else if (errCode === ApiErrorCode.PasswordLoginDisabled) {
+			message = t("login.errors.passwordLoginDisabled");
 		} else if (errCode === ApiErrorCode.TooManyRequests) {
 			message = tooManyAttemptsMessage(err, t, i18n.language);
 		} else {

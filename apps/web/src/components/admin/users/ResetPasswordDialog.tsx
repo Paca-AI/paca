@@ -67,6 +67,9 @@ export function ResetPasswordDialog({
 				[ApiErrorCode.Forbidden]: t(
 					"users.resetPasswordDialog.errors.forbidden",
 				),
+				[ApiErrorCode.PasswordLoginDisabled]: t(
+					"users.resetPasswordDialog.errors.passwordLoginDisabled",
+				),
 				[ApiErrorCode.InternalError]: t(
 					"users.resetPasswordDialog.errors.internalError",
 				),

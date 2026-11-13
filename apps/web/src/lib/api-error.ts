@@ -24,6 +24,8 @@ export const ApiErrorCode = {
 	PasskeyLimit: "PASSKEY_LIMIT",
 	InvalidCidr: "INVALID_CIDR",
 	SelfLockout: "SELF_LOCKOUT",
+	PasswordLoginDisabled: "AUTH_PASSWORD_LOGIN_DISABLED",
+	SsoOnlyNoProvider: "SSO_ONLY_NO_PROVIDER",
 
 	// Password / session gate errors.
 	PasswordChangeRequired: "AUTH_PASSWORD_CHANGE_REQUIRED",

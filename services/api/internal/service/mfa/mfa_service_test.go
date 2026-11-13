@@ -11,6 +11,7 @@ import (
 
 	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
 	roledom "github.com/Paca-AI/api/internal/domain/role"
+	ssodom "github.com/Paca-AI/api/internal/domain/sso"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/secret"
 	"github.com/Paca-AI/api/internal/platform/totp"
@@ -459,5 +460,124 @@ func TestSetUserCIDRsRefusesSelfLockout(t *testing.T) {
 	}
 	if err := svc.SetUserCIDRs(ctx, me, nil, me, "8.8.8.8"); err != nil {
 		t.Fatalf("clearing own list: %v", err)
+	}
+}
+
+// fakeSSOProviders is the enabled-provider list SetPolicy consults before
+// SSO-only mode is turned on.
+type fakeSSOProviders struct {
+	enabled []*ssodom.Provider
+	err     error
+}
+
+func (f fakeSSOProviders) ListEnabledProviders(context.Context) ([]*ssodom.Provider, error) {
+	return f.enabled, f.err
+}
+
+func defaultSuperAdmin() *userdom.User {
+	return &userdom.User{ID: uuid.New(), Username: "admin", BootstrapAdmin: true, Roles: []roledom.Summary{{Name: "SUPER_ADMIN"}}}
+}
+
+func TestCheckLogin_SSOOnlyAllowsOnlyTheDefaultSuperAdmin(t *testing.T) {
+	svc, st, _ := newSvc(t)
+	st.policy = mfadom.Policy{SSOOnly: true}
+	ctx := context.Background()
+
+	otherSuperAdmin := &userdom.User{ID: uuid.New(), Username: "root2", Roles: []roledom.Summary{{Name: "SUPER_ADMIN"}}}
+	plain := &userdom.User{ID: uuid.New(), Username: "bob", Roles: []roledom.Summary{{Name: "USER"}}}
+	for _, u := range []*userdom.User{admin(), otherSuperAdmin, plain} {
+		if err := svc.CheckLogin(ctx, u, "", "1.1.1.1"); !errors.Is(err, mfadom.ErrPasswordLoginDisabled) {
+			t.Errorf("%s: got %v, want ErrPasswordLoginDisabled", u.Username, err)
+		}
+		if err := svc.CheckPasswordAllowed(ctx, u); !errors.Is(err, mfadom.ErrPasswordLoginDisabled) {
+			t.Errorf("%s: CheckPasswordAllowed got %v", u.Username, err)
+		}
+	}
+	root := defaultSuperAdmin()
+	if err := svc.CheckLogin(ctx, root, "", "1.1.1.1"); err != nil {
+		t.Fatalf("default super admin must keep password sign-in: %v", err)
+	}
+	if err := svc.CheckPasswordAllowed(ctx, root); err != nil {
+		t.Fatalf("default super admin: CheckPasswordAllowed got %v", err)
+	}
+
+	// The mode refuses before the IP and MFA checks, so it is the error a
+	// non-exempt account sees even when those would also fail.
+	st.policy = mfadom.Policy{SSOOnly: true, PrivilegedRoles: []string{mfadom.AllRoles}, RequireMFA: true, IPAllowList: []string{"10.0.0.0/8"}}
+	if err := svc.CheckLogin(ctx, plain, "", "1.1.1.1"); !errors.Is(err, mfadom.ErrPasswordLoginDisabled) {
+		t.Fatalf("got %v, want ErrPasswordLoginDisabled first", err)
+	}
+	// The exempt account still answers to the rest of the policy.
+	if err := svc.CheckLogin(ctx, root, "", "1.1.1.1"); !errors.Is(err, mfadom.ErrIPNotAllowed) {
+		t.Fatalf("default super admin outside the allow-list: got %v", err)
+	}
+	if err := svc.CheckLogin(ctx, root, "", "10.0.0.1"); !errors.Is(err, mfadom.ErrSetupRequired) {
+		t.Fatalf("default super admin without MFA: got %v", err)
+	}
+}
+
+func TestCheckLogin_SSOOnlyDefaultSuperAdminStillNeedsTheSecondFactor(t *testing.T) {
+	svc, st, _ := newSvc(t)
+	ctx := context.Background()
+	root := defaultSuperAdmin()
+	sec, _ := enrol(t, svc, root)
+	st.policy = mfadom.Policy{SSOOnly: true}
+
+	if err := svc.CheckLogin(ctx, root, "", "1.1.1.1"); !errors.Is(err, mfadom.ErrRequired) {
+		t.Fatalf("no code: got %v, want ErrRequired", err)
+	}
+	code, _ := totp.Code(sec, svc.now())
+	if err := svc.CheckLogin(ctx, root, code, "1.1.1.1"); err != nil {
+		t.Fatalf("valid code: %v", err)
+	}
+}
+
+func TestCheckLogin_SSOOffLeavesPasswordsAlone(t *testing.T) {
+	svc, _, _ := newSvc(t)
+	plain := &userdom.User{ID: uuid.New(), Username: "bob"}
+	if err := svc.CheckPasswordAllowed(context.Background(), plain); err != nil {
+		t.Fatalf("SSO-only mode is off by default: %v", err)
+	}
+}
+
+func TestVerifyPasskeyLogin_RefusedInSSOOnlyMode(t *testing.T) {
+	svc, st, _ := newSvc(t)
+	st.policy = mfadom.Policy{SSOOnly: true}
+	plain := &userdom.User{ID: uuid.New(), Username: "bob"}
+	if err := svc.VerifyPasskeyLogin(context.Background(), plain, "ceremony", []byte(`{}`), "1.1.1.1"); !errors.Is(err, mfadom.ErrPasswordLoginDisabled) {
+		t.Fatalf("got %v, want ErrPasswordLoginDisabled", err)
+	}
+}
+
+func TestSetPolicy_SSOOnlyNeedsAnEnabledProvider(t *testing.T) {
+	ctx := context.Background()
+	on := &mfadom.Policy{PrivilegedRoles: []string{mfadom.AllRoles}, SSOOnly: true}
+
+	svc, st, _ := newSvc(t)
+	if err := svc.SetPolicy(ctx, on, nil, "1.1.1.1"); !errors.Is(err, mfadom.ErrSSOOnlyNoProvider) {
+		t.Fatalf("no SSO wired: got %v", err)
+	}
+	svc.WithSSOProviders(fakeSSOProviders{})
+	if err := svc.SetPolicy(ctx, on, nil, "1.1.1.1"); !errors.Is(err, mfadom.ErrSSOOnlyNoProvider) {
+		t.Fatalf("no enabled provider: got %v", err)
+	}
+	if st.policy.SSOOnly {
+		t.Fatal("a refused policy must not be saved")
+	}
+	boom := errors.New("db down")
+	svc.WithSSOProviders(fakeSSOProviders{err: boom})
+	if err := svc.SetPolicy(ctx, on, nil, "1.1.1.1"); !errors.Is(err, boom) {
+		t.Fatalf("lookup failure: got %v", err)
+	}
+
+	svc.WithSSOProviders(fakeSSOProviders{enabled: []*ssodom.Provider{{Slug: "okta", Enabled: true}}})
+	if err := svc.SetPolicy(ctx, on, nil, "1.1.1.1"); err != nil || !st.policy.SSOOnly {
+		t.Fatalf("enabled provider: %v (saved %v)", err, st.policy.SSOOnly)
+	}
+
+	// Turning the mode off never needs a provider.
+	svc.WithSSOProviders(fakeSSOProviders{})
+	if err := svc.SetPolicy(ctx, &mfadom.Policy{PrivilegedRoles: []string{mfadom.AllRoles}}, nil, "1.1.1.1"); err != nil || st.policy.SSOOnly {
+		t.Fatalf("turning off: %v (saved %v)", err, st.policy.SSOOnly)
 	}
 }

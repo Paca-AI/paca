@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"slices"
@@ -19,6 +20,7 @@ import (
 	"github.com/google/uuid"
 
 	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
+	ssodom "github.com/Paca-AI/api/internal/domain/sso"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/secret"
 	"github.com/Paca-AI/api/internal/platform/totp"
@@ -49,6 +51,15 @@ type Service struct {
 	passkeys   mfadom.PasskeyStore
 	ceremonies mfadom.CeremonyStore
 	wa         *webauthn.WebAuthn
+
+	// Set by WithSSOProviders; nil means SSO-only mode cannot be turned on.
+	ssoProviders SSOProviders
+}
+
+// SSOProviders lists the SSO providers users can sign in with. SSO-only mode
+// can only be turned on while at least one is enabled.
+type SSOProviders interface {
+	ListEnabledProviders(ctx context.Context) ([]*ssodom.Provider, error)
 }
 
 // New returns a Service. enc may be nil (ENCRYPTION_KEY unset): existing
@@ -60,11 +71,22 @@ func New(store mfadom.Store, enc *secret.Encryptor, issuer string) *Service {
 	return &Service{store: store, enc: enc, issuer: issuer, now: time.Now}
 }
 
+// WithSSOProviders lets SetPolicy check that an SSO provider is enabled before
+// SSO-only mode is turned on.
+func (s *Service) WithSSOProviders(p SSOProviders) *Service {
+	s.ssoProviders = p
+	return s
+}
+
 // CheckLogin runs after the password has been verified. It enforces, in order,
-// the IP allow-lists and the second factor. otp may be a TOTP or recovery code.
+// SSO-only mode, the IP allow-lists and the second factor. otp may be a TOTP or
+// recovery code.
 func (s *Service) CheckLogin(ctx context.Context, u *userdom.User, otp, clientIP string) error {
 	policy, err := s.store.GetPolicy(ctx)
 	if err != nil {
+		return err
+	}
+	if err := passwordAllowed(policy, u); err != nil {
 		return err
 	}
 	privileged := hasAny(u.RoleNames(), policy.PrivilegedRoles)
@@ -88,12 +110,46 @@ func (s *Service) CheckLogin(ctx context.Context, u *userdom.User, otp, clientIP
 		if strings.TrimSpace(otp) == "" || !totpOn {
 			return mfadom.ErrRequired
 		}
-		return s.verifySecondFactor(ctx, enr, otp)
+		if err := s.verifySecondFactor(ctx, enr, otp); err != nil {
+			return err
+		}
+		logSSOOnlyPasswordSignIn(policy, u, clientIP)
+		return nil
 	}
 	if privileged && policy.RequireMFA {
 		return mfadom.ErrSetupRequired
 	}
+	logSSOOnlyPasswordSignIn(policy, u, clientIP)
 	return nil
+}
+
+// CheckPasswordAllowed refuses u a password while the instance is SSO-only,
+// unless u is the default super admin. Besides sign-in itself, everything that
+// authenticates with or sets a password runs it (password-only MFA
+// enrollment, password set, reset and change), so none of them can open a
+// password path SSO-only mode has closed.
+func (s *Service) CheckPasswordAllowed(ctx context.Context, u *userdom.User) error {
+	policy, err := s.store.GetPolicy(ctx)
+	if err != nil {
+		return err
+	}
+	return passwordAllowed(policy, u)
+}
+
+func passwordAllowed(policy *mfadom.Policy, u *userdom.User) error {
+	if policy.SSOOnly && !u.BootstrapAdmin {
+		return mfadom.ErrPasswordLoginDisabled
+	}
+	return nil
+}
+
+// logSSOOnlyPasswordSignIn records a password sign-in that every check has
+// let through while SSO-only mode is on: only the default super admin can
+// make one, so each is a break-glass sign-in worth an audit line.
+func logSSOOnlyPasswordSignIn(policy *mfadom.Policy, u *userdom.User, clientIP string) {
+	if policy.SSOOnly {
+		slog.Warn("password sign-in while sso-only mode is on", "user_id", u.ID, "username", u.Username, "client_ip", clientIP)
+	}
 }
 
 // CheckIP enforces only the IP allow-lists. The password-only enrollment path
@@ -350,6 +406,9 @@ func (s *Service) GetPolicy(ctx context.Context) (*mfadom.Policy, error) {
 // A non-empty instance IP list must contain clientIP, the address of the
 // admin saving it, so a typo can't lock the instance's privileged users (the
 // admin included) out of password login.
+//
+// SSO-only mode needs an enabled SSO provider, so turning it on can't leave
+// the default super admin as the only account able to sign in.
 func (s *Service) SetPolicy(ctx context.Context, p *mfadom.Policy, updatedBy *uuid.UUID, clientIP string) error {
 	cidrs, err := NormalizeCIDRs(p.IPAllowList)
 	if err != nil {
@@ -358,11 +417,32 @@ func (s *Service) SetPolicy(ctx context.Context, p *mfadom.Policy, updatedBy *uu
 	if len(cidrs) > 0 && !ipAllowed(clientIP, cidrs) {
 		return mfadom.ErrSelfLockout
 	}
+	if p.SSOOnly {
+		if err := s.requireSSOProvider(ctx); err != nil {
+			return err
+		}
+	}
 	p.IPAllowList = cidrs
 	if slices.Contains(p.PrivilegedRoles, mfadom.AllRoles) {
 		p.PrivilegedRoles = []string{mfadom.AllRoles}
 	}
 	return s.store.SavePolicy(ctx, p, updatedBy)
+}
+
+// requireSSOProvider returns ErrSSOOnlyNoProvider unless an SSO provider is
+// enabled.
+func (s *Service) requireSSOProvider(ctx context.Context) error {
+	if s.ssoProviders == nil {
+		return mfadom.ErrSSOOnlyNoProvider
+	}
+	ps, err := s.ssoProviders.ListEnabledProviders(ctx)
+	if err != nil {
+		return err
+	}
+	if len(ps) == 0 {
+		return mfadom.ErrSSOOnlyNoProvider
+	}
+	return nil
 }
 
 // SetUserCIDRs validates and saves a per-account allow-list. An admin editing

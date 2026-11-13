@@ -22,6 +22,14 @@ import (
 	"github.com/Paca-AI/api/internal/platform/messaging"
 )
 
+// PasswordPolicy decides whether an account may have a working password.
+// *mfasvc.Service implements it (SSO-only mode).
+type PasswordPolicy interface {
+	// CheckPasswordAllowed returns an error when u may not sign in with, and
+	// so may not be given, a password.
+	CheckPasswordAllowed(ctx context.Context, u *userdom.User) error
+}
+
 // GlobalPermissionReader resolves global permissions for a user.
 type GlobalPermissionReader interface {
 	ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]iam.Action, error)
@@ -37,6 +45,8 @@ type Service struct {
 	// grants is told when an account's access is revoked (see accessRevoked).
 	// Nil is valid: nothing is announced.
 	grants events.PolicyInvalidator
+	// passwords vets every password set, reset and change. Nil allows them all.
+	passwords PasswordPolicy
 }
 
 // ErrAvatarServiceRequired indicates a missing AvatarService dependency when
@@ -91,6 +101,21 @@ func (s *Service) WithEventPublishing(publisher *messaging.Publisher) *Service {
 func (s *Service) WithGrantsNotifier(inv events.PolicyInvalidator) *Service {
 	s.grants = inv
 	return s
+}
+
+// WithPasswordPolicy makes password set, reset and change refuse the accounts
+// p keeps off passwords, so none of them opens a path p has closed.
+func (s *Service) WithPasswordPolicy(p PasswordPolicy) *Service {
+	s.passwords = p
+	return s
+}
+
+// checkPasswordAllowed applies the password policy, if any, to u.
+func (s *Service) checkPasswordAllowed(ctx context.Context, u *userdom.User) error {
+	if s.passwords == nil {
+		return nil
+	}
+	return s.passwords.CheckPasswordAllowed(ctx, u)
 }
 
 // accessRevoked tells the policy cache that an account's grants are gone.
@@ -329,6 +354,9 @@ func (s *Service) ResetPassword(ctx context.Context, id uuid.UUID, newPassword s
 	if err != nil {
 		return err
 	}
+	if err := s.checkPasswordAllowed(ctx, u); err != nil {
+		return err
+	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
@@ -352,6 +380,9 @@ func (s *Service) ResetPassword(ctx context.Context, id uuid.UUID, newPassword s
 func (s *Service) ChangeMyPassword(ctx context.Context, id uuid.UUID, currentPassword, newPassword string) error {
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
+		return err
+	}
+	if err := s.checkPasswordAllowed(ctx, u); err != nil {
 		return err
 	}
 
@@ -437,6 +468,11 @@ func (s *Service) SetPasswordWithToken(ctx context.Context, rawToken, newPasswor
 		// not distinguished, so a caller can't use response differences to
 		// probe an account's password-change state.
 		return userdom.ErrPasswordSetTokenInvalid
+	}
+	// Before the token is claimed, so a link refused while SSO-only mode is
+	// on still works if the mode is turned off before it expires.
+	if err := s.checkPasswordAllowed(ctx, u); err != nil {
+		return err
 	}
 
 	// Claim the token atomically before writing the password: this is what

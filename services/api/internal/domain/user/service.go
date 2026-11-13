@@ -65,6 +65,10 @@ type Service interface {
 	// ResetPassword replaces a user's password hash with the hash of newPassword.
 	// It also sets MustChangePassword = true so the user is forced to change their
 	// password on next login.
+	//
+	// ResetPassword, ChangeMyPassword and SetPasswordWithToken all refuse an
+	// account the password policy keeps off passwords (SSO-only mode), with
+	// the policy's error.
 	ResetPassword(ctx context.Context, id uuid.UUID, newPassword string) error
 	// ChangeMyPassword lets a user change their own password. It verifies
 	// currentPassword against the stored hash, then replaces it with

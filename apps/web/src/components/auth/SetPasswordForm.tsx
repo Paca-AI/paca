@@ -75,6 +75,9 @@ export function SetPasswordForm({
 			}
 			const messages: Partial<Record<string, string>> = {
 				[ApiErrorCode.InternalError]: t("setPassword.errors.serverError"),
+				[ApiErrorCode.PasswordLoginDisabled]: t(
+					"setPassword.errors.passwordLoginDisabled",
+				),
 			};
 			const fallback =
 				err instanceof Error
