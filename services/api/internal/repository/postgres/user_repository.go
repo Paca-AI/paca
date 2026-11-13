@@ -26,6 +26,7 @@ type userReadRow struct {
 	FullName           string     `db:"full_name"`
 	Email              *string    `db:"email"`
 	MustChangePassword bool       `db:"must_change_password"`
+	BootstrapAdmin     bool       `db:"bootstrap_admin"`
 	AvatarKey          *string    `db:"avatar_key"`
 	AvatarThumbKey     *string    `db:"avatar_thumb_key"`
 	CreatedAt          time.Time  `db:"created_at"`
@@ -36,7 +37,7 @@ type userReadRow struct {
 // userReadCols is shared by all read queries. The shared identity fields
 // (display name, avatar, timestamps, soft-delete) live on accounts; the full
 // name is accounts.name.
-const userReadCols = `users.id, users.username, users.password_hash, a.name AS full_name, users.email, users.must_change_password, a.avatar_key, a.avatar_thumb_key, a.created_at, a.updated_at, a.deleted_at`
+const userReadCols = `users.id, users.username, users.password_hash, a.name AS full_name, users.email, users.must_change_password, users.bootstrap_admin, a.avatar_key, a.avatar_thumb_key, a.created_at, a.updated_at, a.deleted_at`
 
 // userFrom is the FROM clause of every user read: the extension row joined to
 // its account.
@@ -336,6 +337,41 @@ func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 	})
 }
 
+// MarkBootstrapAdmin makes id the one account marked as the default super
+// admin (see userdom.User.BootstrapAdmin), clearing the mark from any other
+// account in the same transaction. It reports whether anything changed.
+func (r *UserRepository) MarkBootstrapAdmin(ctx context.Context, id uuid.UUID) (bool, error) {
+	var changed bool
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		cleared, err := tx.ExecContext(ctx, `
+			UPDATE users SET bootstrap_admin = FALSE
+			WHERE bootstrap_admin AND id <> $1`, id.String())
+		if err != nil {
+			return err
+		}
+		set, err := tx.ExecContext(ctx, `
+			UPDATE users SET bootstrap_admin = TRUE
+			WHERE id = $1 AND NOT bootstrap_admin`, id.String())
+		if err != nil {
+			return err
+		}
+		nCleared, err := cleared.RowsAffected()
+		if err != nil {
+			return err
+		}
+		nSet, err := set.RowsAffected()
+		if err != nil {
+			return err
+		}
+		changed = nCleared+nSet > 0
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("user repo: mark bootstrap admin: %w", err)
+	}
+	return changed, nil
+}
+
 // userRepoErr maps a users-table write error to the matching userdom
 // sentinel when it's a unique-constraint violation on username or email
 // (see uniqueViolationConstraint), otherwise wrapping it generically. This
@@ -379,6 +415,7 @@ func rowToEntity(row *userReadRow) *userdom.User {
 		Email:              row.Email,
 		Roles:              []roledom.Summary{},
 		MustChangePassword: row.MustChangePassword,
+		BootstrapAdmin:     row.BootstrapAdmin,
 		AvatarKey:          row.AvatarKey,
 		AvatarThumbKey:     row.AvatarThumbKey,
 		CreatedAt:          row.CreatedAt,

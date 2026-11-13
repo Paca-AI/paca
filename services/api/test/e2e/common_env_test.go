@@ -46,6 +46,7 @@ import (
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	exportsvc "github.com/Paca-AI/api/internal/service/export"
+	mfasvc "github.com/Paca-AI/api/internal/service/mfa"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	rolesvc "github.com/Paca-AI/api/internal/service/role"
 	serviceaccountsvc "github.com/Paca-AI/api/internal/service/serviceaccount"
@@ -273,13 +274,20 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		RefreshTTL:        e2eRefreshTTL,
 		RefreshSessionTTL: e2eRefreshSessionTTL,
 	}
+	// The login gate and SSO-only policy, wired as in bootstrap/app.go. Its
+	// default policy restricts no one, so it changes nothing for tests that
+	// never set one. No encryptor: TOTP enrollment is unavailable, as on an
+	// instance without ENCRYPTION_KEY.
+	mfaService := mfasvc.New(pgRepo.NewMFARepository(db), nil, "Paca")
+	authService.WithLoginGate(mfaService)
+	userService.WithPasswordPolicy(mfaService)
 	authHandler := handler.NewAuthHandler(authService, cookieCfg)
 	// Empty public URL: the callback URL is derived from the request's
 	// Host, i.e. this test server's own address.
-	ssoHandler := handler.NewSSOHandler(
-		ssosvc.New(pgRepo.NewSSORepository(db), redisRepo.NewSSOStateStore(redisClient, 10*time.Minute),
-			userRepo, userService, authService, log),
-		authHandler, "")
+	ssoService := ssosvc.New(pgRepo.NewSSORepository(db), redisRepo.NewSSOStateStore(redisClient, 10*time.Minute),
+		userRepo, userService, authService, log).WithIPCheck(mfaService).WithPasswordPolicy(mfaService)
+	mfaService.WithSSOProviders(ssoService)
+	ssoHandler := handler.NewSSOHandler(ssoService, authHandler, "")
 	engine := router.New(router.Deps{
 		TokenManager:        tm,
 		APIKeyAuth:          apiKeyService,
@@ -291,6 +299,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		Health:              handler.NewHealthHandler(),
 		Auth:                authHandler,
 		SSO:                 ssoHandler,
+		MFA:                 handler.NewMFAHandler(mfaService, userRepo),
 		User:                handler.NewUserHandler(userService),
 		Role:                handler.NewRoleHandler(roleService),
 		RoleAttachments:     httpmw.NewRoleServiceAttachments(roleService),

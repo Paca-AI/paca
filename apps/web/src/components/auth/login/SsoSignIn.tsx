@@ -47,19 +47,29 @@ export function SsoErrorNotice({ code }: { code?: string }) {
 /**
  * "Continue with …" buttons for every enabled SSO provider. Renders nothing
  * when none is configured, so the login page is unchanged by default.
+ * `divider` separates them from a password form above; without one (an
+ * SSO-only login page) it would separate them from nothing.
  */
-export function SsoSignInButtons({ rememberMe }: { rememberMe: boolean }) {
+export function SsoSignInButtons({
+	rememberMe,
+	divider = true,
+}: {
+	rememberMe: boolean;
+	divider?: boolean;
+}) {
 	const { t } = useTranslation("auth");
 	const { data: providers } = useQuery(publicSsoProvidersQueryOptions);
 	if (!providers?.length) return null;
 
 	return (
 		<div className="mt-6">
-			<div className="mb-4 flex items-center gap-3 text-xs text-(--sea-ink-soft)">
-				<span className="h-px flex-1 bg-(--line)" />
-				{t("login.sso.divider")}
-				<span className="h-px flex-1 bg-(--line)" />
-			</div>
+			{divider ? (
+				<div className="mb-4 flex items-center gap-3 text-xs text-(--sea-ink-soft)">
+					<span className="h-px flex-1 bg-(--line)" />
+					{t("login.sso.divider")}
+					<span className="h-px flex-1 bg-(--line)" />
+				</div>
+			) : null}
 			<div className="space-y-2.5">
 				{providers.map((p) => (
 					<a

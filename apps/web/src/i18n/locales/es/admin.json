@@ -111,6 +111,7 @@
 			"errors": {
 				"userNotFound": "Este usuario ya no existe.",
 				"forbidden": "No tienes permiso para restablecer la contraseña de este usuario.",
+				"passwordLoginDisabled": "El inicio de sesión con contraseña está desactivado (solo SSO), así que no se puede restablecer la contraseña de este usuario. Este usuario inicia sesión con el inicio de sesión único.",
 				"internalError": "Algo salió mal. Inténtalo de nuevo.",
 				"generic": "Algo salió mal."
 			}
@@ -535,10 +536,17 @@
 				"hint": "Una dirección IP o rango CIDR por línea, por ejemplo 203.0.113.0/24. Se admiten IPv4 e IPv6.",
 				"lockoutWarning": "Asegúrate de incluir tu propia dirección o podrías quedarte sin acceso. El inicio de sesión por SSO no se ve afectado."
 			},
+			"ssoOnly": {
+				"title": "Inicio de sesión solo con SSO",
+				"description": "Desactiva el inicio de sesión con contraseña para todas las cuentas, sea cual sea su rol, excepto el administrador predeterminado (la cuenta creada a partir de ADMIN_USERNAME). Los demás inician sesión con el inicio de sesión único y sus contraseñas no se pueden establecer, restablecer ni cambiar.",
+				"noProvider": "Primero activa un proveedor de SSO.",
+				"adminNote": "La página de inicio de sesión muestra solo los proveedores de SSO. El administrador predeterminado inicia sesión con el enlace «Iniciar sesión como administrador» (o /?admin=1), por ejemplo para desactivar esta opción si el proveedor de identidad no está disponible."
+			},
 			"noRoles": "Aún no hay ningún rol protegido, así que estas reglas no se aplican a nadie.",
 			"errors": {
 				"invalidCidr": "Una de las entradas no es una dirección IP ni un rango CIDR válido.",
 				"selfLockout": "Tu propia dirección IP debe estar en la lista; de lo contrario te bloquearías a ti mismo. Agrégala y guarda de nuevo.",
+				"ssoOnlyNoProvider": "El inicio de sesión solo con SSO necesita al menos un proveedor de SSO activado.",
 				"saveFailed": "No se pudo guardar. Inténtalo de nuevo.",
 				"loadFailed": "No se pudo cargar la configuración de seguridad de acceso."
 			}

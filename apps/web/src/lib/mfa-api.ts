@@ -32,13 +32,33 @@ export interface MfaEnrollment {
 	uri: string;
 }
 
-/** The instance login policy. It applies to accounts holding any of
- * `privileged_roles`. */
+/** The instance login policy. The MFA requirement and the IP allow-list apply
+ * to accounts holding any of `privileged_roles`; `sso_only` turns off password
+ * sign-in for every account but the default super admin. */
 export interface AuthSecurityPolicy {
 	privileged_roles: string[];
 	require_mfa: boolean;
 	ip_allow_list: string[];
+	sso_only: boolean;
 }
+
+/** What the (public) login page needs to know about the login policy. */
+export interface LoginOptions {
+	/** Only SSO sign-in is offered; the password form is kept for the
+	 * default super admin behind a separate entry. */
+	sso_only: boolean;
+}
+
+export const loginOptionsQueryOptions = queryOptions({
+	queryKey: ["login-options"],
+	queryFn: async () => {
+		const { data } = await apiClient.instance.get<
+			SuccessEnvelope<LoginOptions>
+		>("/auth/login-options");
+		return data.data;
+	},
+	staleTime: 60 * 1000,
+});
 
 export const mfaStatusQueryOptions = queryOptions({
 	queryKey: ["auth", "mfa-status"],

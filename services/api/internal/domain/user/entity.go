@@ -21,6 +21,12 @@ type User struct {
 	// plugin's welcome/invite email), not for login.
 	Email              *string
 	MustChangePassword bool
+	// BootstrapAdmin marks the default super admin: the account seeded at
+	// startup from the admin config. It is the only account that keeps
+	// password sign-in while the instance is SSO-only, so the instance can
+	// always be recovered. Set only by the startup seed (see
+	// bootstrap.seedAdmin); Create and Update never write it.
+	BootstrapAdmin bool
 	// Roles are the platform roles attached to the user (platform-wide
 	// attachments, sorted by name), populated by the repository on reads.
 	//

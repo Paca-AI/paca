@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
 	ssodom "github.com/Paca-AI/api/internal/domain/sso"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
@@ -150,6 +151,8 @@ type fakeUsers struct {
 	byID map[uuid.UUID]*userdom.User
 	// createDelay slows provisioning so concurrent sign-ins overlap.
 	createDelay time.Duration
+	// updates counts Update calls.
+	updates int
 }
 
 func newFakeUsers(us ...*userdom.User) *fakeUsers {
@@ -186,6 +189,15 @@ func (f *fakeUsers) FindByEmail(_ context.Context, email string) (*userdom.User,
 		}
 	}
 	return nil, userdom.ErrNotFound
+}
+
+func (f *fakeUsers) Update(_ context.Context, u *userdom.User) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c := *u
+	f.byID[u.ID] = &c
+	f.updates++
+	return nil
 }
 
 // fakeCreator provisions into a fakeUsers (usersvc.Service.Create's role).
@@ -380,6 +392,69 @@ func TestLoginFlow_ProvisionsThenSignsBackIn(t *testing.T) {
 	if u.FullName != "Jane Doe" || u.Email == nil || *u.Email != "jane.doe@corp.example" {
 		t.Fatalf("provisioned user = %+v", u)
 	}
+}
+
+// fakePasswordPolicy answers CheckPasswordAllowed with err.
+type fakePasswordPolicy struct{ err error }
+
+func (f fakePasswordPolicy) CheckPasswordAllowed(context.Context, *userdom.User) error { return f.err }
+
+func TestCompleteLogin_SSOOnlyDropsUnmeetablePasswordChange(t *testing.T) {
+	login := func(t *testing.T, policy error) (*fakeUsers, *userdom.User, *fakeSessions, error) {
+		t.Helper()
+		email := "jane@corp.example"
+		// An account an admin created with a temporary password, linked by
+		// email on its first SSO sign-in.
+		existing := &userdom.User{ID: uuid.New(), Username: "jane", Email: &email, MustChangePassword: true}
+		users := newFakeUsers(existing)
+		idp := newFakeIDP(t, map[string]any{"sub": "abc", "email": email, "email_verified": true})
+		svc, _, sessions := newTestService(t, users)
+		svc.WithPasswordPolicy(fakePasswordPolicy{err: policy})
+		createCorp(t, svc, idp.srv.URL, func(in *ssodom.ProviderInput) { in.LinkByEmail = true })
+		ctx := context.Background()
+		authURL, binding, err := svc.BeginLogin(ctx, "corp", "https://paca.example", false, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		state := idp.authorize(t, authURL)
+		_, _, err = svc.CompleteLogin(ctx, "corp", "https://paca.example", "good-code", state, binding, "203.0.113.9")
+		stored, _ := users.FindByID(ctx, existing.ID)
+		return users, stored, sessions, err
+	}
+
+	t.Run("sso-only clears the flag", func(t *testing.T) {
+		users, stored, sessions, err := login(t, mfadom.ErrPasswordLoginDisabled)
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if stored.MustChangePassword || users.updates != 1 {
+			t.Fatalf("stored MustChangePassword = %v after %d updates, want cleared", stored.MustChangePassword, users.updates)
+		}
+		if sessions.issuedFor == nil || sessions.issuedFor.MustChangePassword {
+			t.Fatal("the session must not demand a password change the API would refuse")
+		}
+	})
+
+	t.Run("passwords allowed keeps the flag", func(t *testing.T) {
+		users, stored, sessions, err := login(t, nil)
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if !stored.MustChangePassword || users.updates != 0 || !sessions.issuedFor.MustChangePassword {
+			t.Fatal("outside SSO-only mode the pending password change must stay")
+		}
+	})
+
+	t.Run("policy lookup failure fails the sign-in", func(t *testing.T) {
+		boom := errors.New("db down")
+		users, stored, sessions, err := login(t, boom)
+		if !errors.Is(err, boom) {
+			t.Fatalf("err = %v, want %v", err, boom)
+		}
+		if !stored.MustChangePassword || users.updates != 0 || sessions.issuedFor != nil {
+			t.Fatal("a failed policy lookup must change nothing and start no session")
+		}
+	})
 }
 
 func TestCompleteLogin_RejectsWrongBrowserAndReplay(t *testing.T) {

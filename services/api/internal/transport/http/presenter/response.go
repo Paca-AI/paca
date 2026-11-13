@@ -168,6 +168,10 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusForbidden, apierr.CodeForbidden
 	case errors.Is(err, mfadom.ErrIPNotAllowed):
 		return http.StatusForbidden, apierr.CodeIPNotAllowed
+	case errors.Is(err, mfadom.ErrPasswordLoginDisabled):
+		return http.StatusForbidden, apierr.CodePasswordLoginDisabled
+	case errors.Is(err, mfadom.ErrSSOOnlyNoProvider):
+		return http.StatusBadRequest, apierr.CodeSSOOnlyNoProvider
 	case errors.Is(err, mfadom.ErrAlreadyEnabled):
 		return http.StatusConflict, apierr.CodeMFAAlreadyEnabled
 	case errors.Is(err, mfadom.ErrNotEnabled):

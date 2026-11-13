@@ -70,7 +70,7 @@ Unknown fields are rejected.
 | `environments` | `read` `write` `connect` | Environments; `connect` is an interactive shell/SSH key |
 | `settings` | `write` | Workspace settings |
 | `settings.sso` | `write` | SSO providers |
-| `settings.security` | `write` | Login policy: MFA, IP allow-lists |
+| `settings.security` | `write` | Login policy: MFA, IP allow-lists, SSO-only mode |
 | `plugins` | `read` `write` | Plugins |
 | _plugin namespace_ | defined by each plugin | See [Plugin actions](#plugin-actions) |
 

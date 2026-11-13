@@ -51,11 +51,13 @@ export function ChangePasswordCard({ mustChange }: ChangePasswordCardProps) {
 			const message =
 				code === ApiErrorCode.InvalidCurrentPassword
 					? t("changePassword.errors.currentPasswordIncorrect")
-					: code === ApiErrorCode.Unauthenticated
-						? t("changePassword.errors.sessionExpired")
-						: code === ApiErrorCode.InternalError
-							? t("changePassword.errors.serverError")
-							: t("changePassword.errors.changeFailed");
+					: code === ApiErrorCode.PasswordLoginDisabled
+						? t("changePassword.errors.passwordLoginDisabled")
+						: code === ApiErrorCode.Unauthenticated
+							? t("changePassword.errors.sessionExpired")
+							: code === ApiErrorCode.InternalError
+								? t("changePassword.errors.serverError")
+								: t("changePassword.errors.changeFailed");
 			setError(message);
 			setSuccess(false);
 		},
