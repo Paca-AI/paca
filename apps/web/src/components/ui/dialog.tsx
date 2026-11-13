@@ -41,17 +41,20 @@ function DialogOverlay({
 
 function DialogContent({
 	className,
+	overlayClassName,
 	children,
 	showCloseButton = true,
 	...props
 }: DialogPrimitive.Popup.Props & {
 	showCloseButton?: boolean;
+	/** For dialogs that must open above the floating chat (z-70). */
+	overlayClassName?: string;
 }) {
 	const { t } = useTranslation("common");
 
 	return (
 		<DialogPortal>
-			<DialogOverlay />
+			<DialogOverlay className={overlayClassName} />
 			<DialogPrimitive.Popup
 				data-slot="dialog-content"
 				className={cn(

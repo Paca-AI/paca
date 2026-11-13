@@ -2,6 +2,7 @@
 
 import { useParams } from "@tanstack/react-router";
 import {
+	Check,
 	FileText,
 	Hash,
 	MessageSquare,
@@ -9,11 +10,26 @@ import {
 	Plus,
 	Search,
 	Workflow,
+	X,
 } from "lucide-react";
 import { type ComponentType, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChipField } from "@/components/projects/interactions/task-detail/property-field/chip-field";
+import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useContextItemSearch } from "@/hooks/use-context-item-search";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import type { ContextItem, ContextItemType } from "@/lib/context-items";
@@ -121,128 +137,177 @@ export function ContextItemReadOnlyRow({ items }: { items: ContextItem[] }) {
 	);
 }
 
-// ── Search popover body ──────────────────────────────────────────────────────
+// ── Picker dialog ────────────────────────────────────────────────────────────
 
-function ContextSearchPanel({
+/**
+ * Dialog for attaching context: pick a type, search, and click results to
+ * attach or detach them. It stays open so several items can be attached in one
+ * go; "Done" (or Escape) closes it. z-80 keeps it above the floating chat
+ * panel (z-70), which this is opened from.
+ */
+function ContextPickerDialog({
+	open,
+	onOpenChange,
 	projectId,
 	availableTypes,
-	onSelect,
 }: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
 	projectId: string | undefined;
 	availableTypes: readonly ContextItemType[];
-	onSelect: (item: ContextItem) => void;
 }) {
 	const { t } = useTranslation("projects");
+	const items = useContextInjectionStore((s) => s.items);
+	const add = useContextInjectionStore((s) => s.add);
+	const remove = useContextInjectionStore((s) => s.remove);
 	const [type, setType] = useState<ContextItemType>(
 		availableTypes[0] ?? "conversation",
 	);
 	const activeType = availableTypes.includes(type) ? type : availableTypes[0];
 
 	const { search, setSearch, queryTooShort, results, isLoading, pagination } =
-		useContextItemSearch(activeType ?? "conversation", projectId, true);
+		useContextItemSearch(activeType ?? "conversation", projectId, open);
 
 	if (!activeType) return null;
 
+	const isAttached = (id: string) =>
+		items.some((i) => i.type === activeType && i.id === id);
+
 	return (
-		<div className="flex flex-col gap-2">
-			{availableTypes.length > 1 && (
-				<div className="flex items-center gap-0.5 rounded-lg bg-muted/40 p-0.5">
-					{availableTypes.map((tabType) => {
-						const Icon = CONTEXT_TYPE_ICON[tabType];
-						return (
-							<button
-								key={tabType}
-								type="button"
-								onClick={() => setType(tabType)}
-								className={cn(
-									// min-w-0 overrides a flex item's default min-width:auto,
-									// which otherwise ignores flex-1's shrinking and grows the
-									// button (and the whole row) to fit the untruncated label —
-									// exactly what was pushing this row past the popover's box.
-									"flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium transition-colors",
-									activeType === tabType
-										? "bg-background text-foreground shadow-sm"
-										: "text-muted-foreground hover:text-foreground",
-								)}
-							>
-								<Icon className="size-3" />
-								<span className="truncate">
-									{t(CONTEXT_TYPE_LABEL_KEY[tabType])}
-								</span>
-							</button>
-						);
-					})}
-				</div>
-			)}
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="z-80 sm:max-w-lg" overlayClassName="z-80">
+				<DialogHeader>
+					<DialogTitle>
+						{t("agents.thread.contextInjection.attachContext")}
+					</DialogTitle>
+					<DialogDescription>
+						{t("agents.thread.contextInjection.dialogDescription")}
+					</DialogDescription>
+				</DialogHeader>
 
-			<div className="relative">
-				<Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
-				<input
-					// biome-ignore lint/a11y/noAutofocus: intentional for popover
-					autoFocus
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-					placeholder={t(
-						"agents.thread.contextInjection.contextSearchPlaceholder",
-					)}
-					className="w-full rounded-md border border-border/30 bg-muted/20 py-1.5 pr-2 pl-8 text-xs outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
-				/>
-			</div>
-
-			<div
-				onScroll={createLoadMoreScrollHandler(pagination)}
-				className="max-h-96 min-h-10 overflow-y-auto [scrollbar-gutter:stable]"
-			>
-				{queryTooShort ? (
-					<p className="px-2 py-3 text-center text-xs text-muted-foreground/60">
-						{t("agents.thread.contextInjection.contextSearchMinChars")}
-					</p>
-				) : isLoading ? (
-					<div className="flex justify-center py-3">
-						<Spinner aria-hidden="true" className="text-muted-foreground/50" />
-					</div>
-				) : results.length === 0 ? (
-					<p className="px-2 py-3 text-center text-xs text-muted-foreground/60">
-						{t("agents.thread.contextInjection.noContextResults")}
-					</p>
-				) : (
-					<>
-						{results.map((result) => (
-							<button
-								key={result.id}
-								type="button"
-								onClick={() =>
-									onSelect({
-										type: activeType,
-										id: result.id,
-										title: result.title,
-										...(projectId ? { projectId } : {}),
-									})
-								}
-								className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50"
-							>
-								<span className="w-full truncate text-xs font-medium">
-									{result.title}
-								</span>
-								{result.subtitle && (
-									<span className="w-full truncate text-[11px] text-muted-foreground/60">
-										{result.subtitle}
-									</span>
-								)}
-							</button>
-						))}
-						{pagination.isLoadingMore && (
-							<div className="flex justify-center py-2">
-								<Spinner
-									aria-hidden="true"
-									className="size-3.5 text-muted-foreground/50"
-								/>
-							</div>
-						)}
-					</>
+				{availableTypes.length > 1 && (
+					<Tabs
+						value={activeType}
+						onValueChange={(v) => setType(v as ContextItemType)}
+					>
+						<TabsList className="w-full">
+							{availableTypes.map((tabType) => {
+								const Icon = CONTEXT_TYPE_ICON[tabType];
+								return (
+									<TabsTrigger key={tabType} value={tabType}>
+										<Icon />
+										{t(CONTEXT_TYPE_LABEL_KEY[tabType])}
+									</TabsTrigger>
+								);
+							})}
+						</TabsList>
+					</Tabs>
 				)}
-			</div>
-		</div>
+
+				<InputGroup>
+					<InputGroupAddon>
+						<Search />
+					</InputGroupAddon>
+					<InputGroupInput
+						// biome-ignore lint/a11y/noAutofocus: the search box is the point of opening the dialog
+						autoFocus
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+						placeholder={t(
+							"agents.thread.contextInjection.contextSearchPlaceholder",
+						)}
+						aria-label={t(
+							"agents.thread.contextInjection.contextSearchPlaceholder",
+						)}
+					/>
+				</InputGroup>
+
+				<div
+					onScroll={createLoadMoreScrollHandler(pagination)}
+					className="-mx-1 max-h-[50vh] min-h-32 overflow-y-auto px-1 [scrollbar-gutter:stable]"
+				>
+					{queryTooShort ? (
+						<p className="px-2 py-6 text-center text-sm text-muted-foreground">
+							{t("agents.thread.contextInjection.contextSearchMinChars")}
+						</p>
+					) : isLoading ? (
+						<div className="flex justify-center py-6">
+							<Spinner
+								aria-hidden="true"
+								className="text-muted-foreground/60"
+							/>
+						</div>
+					) : results.length === 0 ? (
+						<p className="px-2 py-6 text-center text-sm text-muted-foreground">
+							{t("agents.thread.contextInjection.noContextResults")}
+						</p>
+					) : (
+						<>
+							{results.map((result) => {
+								const attached = isAttached(result.id);
+								return (
+									<button
+										key={result.id}
+										type="button"
+										aria-pressed={attached}
+										onClick={() =>
+											attached
+												? remove(activeType, result.id)
+												: add({
+														type: activeType,
+														id: result.id,
+														title: result.title,
+														...(projectId ? { projectId } : {}),
+													})
+										}
+										className={cn(
+											"flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none",
+											attached && "bg-primary/5",
+										)}
+									>
+										<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+											<span className="truncate text-sm font-medium">
+												{result.title}
+											</span>
+											{result.subtitle && (
+												<span className="truncate text-xs text-muted-foreground">
+													{result.subtitle}
+												</span>
+											)}
+										</span>
+										{attached && (
+											<Check
+												className="size-4 shrink-0 text-primary"
+												aria-hidden="true"
+											/>
+										)}
+									</button>
+								);
+							})}
+							{pagination.isLoadingMore && (
+								<div className="flex justify-center py-2">
+									<Spinner
+										aria-hidden="true"
+										className="size-3.5 text-muted-foreground/60"
+									/>
+								</div>
+							)}
+						</>
+					)}
+				</div>
+
+				<DialogFooter className="items-center sm:justify-between">
+					<span className="text-xs text-muted-foreground">
+						{t("agents.thread.contextInjection.attachedCount", {
+							count: items.length,
+						})}
+					</span>
+					<Button type="button" onClick={() => onOpenChange(false)}>
+						{t("agents.thread.contextInjection.done")}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -264,6 +329,7 @@ export function ContextInjectionRow() {
 	const remove = useContextInjectionStore((s) => s.remove);
 	const add = useContextInjectionStore((s) => s.add);
 	const active = useCurrentContextStore((s) => s.active);
+	const [pickerOpen, setPickerOpen] = useState(false);
 
 	// useContextInjectionStore is a single global store (see its own doc
 	// comment for why that's safe — only one Composer is ever mounted at a
@@ -301,31 +367,38 @@ export function ContextInjectionRow() {
 
 	return (
 		<div className="flex flex-wrap items-center gap-1.5 empty:hidden">
-			<ChipField
-				chips={items.map((item) => ({
-					key: contextItemKey(item.type, item.id),
-					label: <RemovableContextItemLabel item={item} />,
-				}))}
-				onRemoveChip={(key) => {
-					const sep = key.indexOf(":");
-					remove(key.slice(0, sep) as ContextItemType, key.slice(sep + 1));
-				}}
-				canEdit
-				addLabel={t("agents.thread.contextInjection.attachContext")}
-				// ChipField's default popover box (w-52) is sized for its other
-				// callers' short tag/user lists — too narrow for this panel's
-				// type tabs + search input + result list. Widened to fit, and
-				// overflow-hidden clips the box to its own rounded border as a
-				// backstop so no child content (e.g. an unexpectedly long
-				// result title) can ever visually spill past it again.
-				popoverContentClassName="w-96 overflow-hidden p-2.5 rounded-xl border border-border/40 shadow-lg"
+			{items.map((item) => (
+				<span
+					key={contextItemKey(item.type, item.id)}
+					className="inline-flex items-center gap-1 rounded-md border border-border/20 bg-muted/50 px-2 py-0.5 text-xs font-medium text-foreground/80"
+				>
+					<RemovableContextItemLabel item={item} />
+					<button
+						type="button"
+						onClick={() => remove(item.type, item.id)}
+						aria-label={t("agents.thread.contextInjection.removeContextItem", {
+							title: item.title,
+						})}
+						className="text-muted-foreground/60 transition-colors hover:text-destructive"
+					>
+						<X className="size-2.5" />
+					</button>
+				</span>
+			))}
+			<button
+				type="button"
+				onClick={() => setPickerOpen(true)}
+				className="inline-flex items-center gap-1 rounded-md border border-dashed border-border/30 px-2 py-0.5 text-xs text-muted-foreground/60 transition-all duration-150 hover:border-border/60 hover:text-muted-foreground"
 			>
-				<ContextSearchPanel
-					projectId={projectId}
-					availableTypes={availableTypes}
-					onSelect={add}
-				/>
-			</ChipField>
+				<Plus className="size-2.5" />
+				{t("agents.thread.contextInjection.attachContext")}
+			</button>
+			<ContextPickerDialog
+				open={pickerOpen}
+				onOpenChange={setPickerOpen}
+				projectId={projectId}
+				availableTypes={availableTypes}
+			/>
 			{showQuickAdd && active && (
 				<button
 					type="button"

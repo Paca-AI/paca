@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "Automation",
 				"contextTypeAnnotation": "Comment",
 				"noContextResults": "No results found",
-				"contextSearchMinChars": "Type at least 2 characters to search"
+				"contextSearchMinChars": "Type at least 2 characters to search",
+				"dialogDescription": "Search and select items to share with the agent. They are sent along with your next message.",
+				"done": "Done",
+				"attachedCount": "{{count}} attached"
 			}
 		},
 		"acpModelEffort": {

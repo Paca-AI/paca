@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "自動化",
 				"contextTypeAnnotation": "コメント",
 				"noContextResults": "結果が見つかりません",
-				"contextSearchMinChars": "検索するには2文字以上入力してください"
+				"contextSearchMinChars": "検索するには2文字以上入力してください",
+				"dialogDescription": "エージェントと共有する項目を検索して選択します。次のメッセージと一緒に送信されます。",
+				"done": "完了",
+				"attachedCount": "{{count}}件を添付中"
 			}
 		},
 		"acpModelEffort": {

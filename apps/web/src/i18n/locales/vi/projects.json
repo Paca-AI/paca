@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "Tự động hóa",
 				"contextTypeAnnotation": "Bình luận",
 				"noContextResults": "Không tìm thấy kết quả",
-				"contextSearchMinChars": "Nhập ít nhất 2 ký tự để tìm kiếm"
+				"contextSearchMinChars": "Nhập ít nhất 2 ký tự để tìm kiếm",
+				"dialogDescription": "Tìm và chọn các mục để chia sẻ với tác tử. Chúng sẽ được gửi cùng tin nhắn tiếp theo của bạn.",
+				"done": "Xong",
+				"attachedCount": "Đã đính kèm {{count}}"
 			}
 		},
 		"acpModelEffort": {

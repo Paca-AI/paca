@@ -732,7 +732,10 @@
 				"contextTypeAutomation": "Автоматизация",
 				"contextTypeAnnotation": "Комментарий",
 				"noContextResults": "Результаты не найдены",
-				"contextSearchMinChars": "Введите минимум 2 символа для поиска"
+				"contextSearchMinChars": "Введите минимум 2 символа для поиска",
+				"dialogDescription": "Найдите и выберите элементы, которыми хотите поделиться с агентом. Они будут отправлены вместе со следующим сообщением.",
+				"done": "Готово",
+				"attachedCount": "Прикреплено: {{count}}"
 			}
 		},
 		"acpModelEffort": {
