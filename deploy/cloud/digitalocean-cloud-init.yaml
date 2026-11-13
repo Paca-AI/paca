@@ -1,0 +1,15 @@
+#cloud-config
+# Paca on a DigitalOcean Droplet (also valid user-data for any cloud-init VM).
+# Paste into "Advanced Options → Add Initialization scripts (free)" when
+# creating an Ubuntu 24.04 Droplet (recommended: 4 GB RAM / 2 vCPU or larger).
+#
+# To use your own domain / admin password, edit the two `export` lines below.
+package_update: true
+packages: [curl, ca-certificates]
+runcmd:
+  - |
+    export PACA_DOMAIN=""        # e.g. paca.example.com (DNS must already point here)
+    export ADMIN_PASSWORD=""     # leave empty to auto-generate
+    [ -n "$PACA_DOMAIN" ] || unset PACA_DOMAIN
+    [ -n "$ADMIN_PASSWORD" ] || unset ADMIN_PASSWORD
+    curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/bootstrap.sh | bash

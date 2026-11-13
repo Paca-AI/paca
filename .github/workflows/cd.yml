@@ -32,6 +32,8 @@ name: cd
 #     Caddyfile          — Caddy gateway configuration
 #     .env.production.example — environment variable template
 #     install-acp-bridge.sh — installs the paca-acp-bridge binary below
+#     bootstrap.sh       — first-boot VM script behind the DigitalOcean/AWS one-click deploys
+#     paca.cfn.yaml      — AWS CloudFormation template (EC2 + Elastic IP) for the AWS one-click deploy
 #     paca-acp-bridge_<version>_<os>_<arch>.{tar.gz,zip} — ACP bridge local
 #       daemon (Go binary; end users run this on their own machine, so it
 #       ships as release assets rather than a Docker image)
@@ -777,7 +779,9 @@ jobs:
           cp scripts/install.sh                    install.sh
           cp scripts/upgrade.sh                    upgrade.sh
           cp scripts/install-acp-bridge.sh         install-acp-bridge.sh
-          chmod +x install.sh upgrade.sh install-acp-bridge.sh
+          cp deploy/cloud/bootstrap.sh             bootstrap.sh
+          cp deploy/cloud/aws/paca.cfn.yaml        paca.cfn.yaml
+          chmod +x install.sh upgrade.sh install-acp-bridge.sh bootstrap.sh
 
           # Stamp this release's own tag as the scripts' default version. A
           # plain `bash install.sh` / `bash upgrade.sh` / `bash
@@ -792,6 +796,22 @@ jobs:
           sed -i "s/^PACA_DEFAULT_VERSION=\"latest\"$/PACA_DEFAULT_VERSION=\"${VERSION}\"/" \
             install.sh upgrade.sh install-acp-bridge.sh
 
+      # Backs the AWS "Launch Stack" button: CloudFormation quick-create only
+      # accepts a template URL on S3. Skipped until the AWS_* secrets and the
+      # AWS_TEMPLATE_BUCKET variable are configured (see
+      # docs/deployment/one-click.md). Versioned copy per release plus a
+      # stable `latest/` copy the README button points at.
+      - name: Publish CloudFormation template to S3
+        if: ${{ vars.AWS_TEMPLATE_BUCKET != '' && !github.event.release.prerelease }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_TEMPLATE_REGION || 'us-east-1' }}
+          BUCKET: ${{ vars.AWS_TEMPLATE_BUCKET }}
+        run: |
+          aws s3 cp paca.cfn.yaml "s3://${BUCKET}/${{ github.event.release.tag_name }}/paca.cfn.yaml"
+          aws s3 cp paca.cfn.yaml "s3://${BUCKET}/latest/paca.cfn.yaml"
+
       - name: Upload assets to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -800,6 +820,8 @@ jobs:
             install.sh \
             upgrade.sh \
             install-acp-bridge.sh \
+            bootstrap.sh \
+            paca.cfn.yaml \
             docker-compose.yml \
             Caddyfile \
             .env.production.example \
