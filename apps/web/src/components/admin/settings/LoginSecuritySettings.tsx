@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ReportIssueButton } from "@/components/report-issue-button";
-
 import { InlineNotice } from "@/components/shared/inline-notice";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
@@ -51,7 +51,6 @@ export function LoginSecuritySettings() {
 	const [ips, setIps] = useState("");
 	const [ssoOnly, setSsoOnly] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [saved, setSaved] = useState(false);
 
 	useEffect(() => {
 		const p = policyQuery.data;
@@ -65,6 +64,7 @@ export function LoginSecuritySettings() {
 	}, [policyQuery.data]);
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "loginSecurity" },
 		mutationFn: () =>
 			saveAuthSecurityPolicy({
 				require_mfa: requireMfa,
@@ -75,8 +75,6 @@ export function LoginSecuritySettings() {
 		onSuccess: (policy) => {
 			queryClient.setQueryData(authSecurityPolicyQueryOptions.queryKey, policy);
 			setError(null);
-			setSaved(true);
-			setTimeout(() => setSaved(false), 2500);
 		},
 		onError: (err) =>
 			setError(
@@ -174,11 +172,9 @@ export function LoginSecuritySettings() {
 					{t("settings.security.roles.description")}
 				</p>
 				<label className="mb-3 flex cursor-pointer items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm font-medium hover:bg-muted/50">
-					<input
-						type="checkbox"
-						className="size-4 accent-primary"
+					<Checkbox
 						checked={allRoles}
-						onChange={(e) => setAllRoles(e.target.checked)}
+						onCheckedChange={(value) => setAllRoles(value)}
 					/>
 					{t("settings.security.roles.all")}
 				</label>
@@ -189,11 +185,9 @@ export function LoginSecuritySettings() {
 						{choices.map((name) => (
 							<li key={name}>
 								<label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm hover:bg-muted/50">
-									<input
-										type="checkbox"
-										className="size-4 accent-primary"
+									<Checkbox
 										checked={roles.includes(name)}
-										onChange={(e) => toggleRole(name, e.target.checked)}
+										onCheckedChange={(value) => toggleRole(name, value)}
 									/>
 									<span className="truncate">{name}</span>
 								</label>
@@ -269,15 +263,10 @@ export function LoginSecuritySettings() {
 					className="gap-1.5"
 				>
 					{mutation.isPending ? (
-						<Loader2 className="size-3.5 animate-spin" />
+						<Spinner aria-hidden="true" className="size-3.5" />
 					) : null}
 					{t("settings.general.save")}
 				</Button>
-				{saved ? (
-					<span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-						{t("settings.general.saved")}
-					</span>
-				) : null}
 			</div>
 		</div>
 	);

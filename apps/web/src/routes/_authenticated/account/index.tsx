@@ -58,6 +58,7 @@ function ProfilePage() {
 	const [serverError, setServerError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "profile" },
 		mutationFn: () =>
 			updateProfile({ full_name: fullName.trim(), email: email.trim() }),
 		onSuccess: (updated) => {

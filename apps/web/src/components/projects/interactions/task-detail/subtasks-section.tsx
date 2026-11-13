@@ -1,5 +1,6 @@
-import { ListChecks, Loader2 } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Spinner } from "@/components/ui/spinner";
 import type { Task } from "@/lib/interaction-api";
 import type { TaskStatus, TaskType } from "@/lib/project-api";
 import { AddTaskRow } from "../add-task-row";
@@ -83,7 +84,7 @@ export function SubtasksSection({
 						>
 							{isLoadingMore ? (
 								<>
-									<Loader2 className="size-3 animate-spin" />
+									<Spinner aria-hidden="true" className="size-3" />
 									{t("taskDetail.subtasks.loadingMore")}
 								</>
 							) : (

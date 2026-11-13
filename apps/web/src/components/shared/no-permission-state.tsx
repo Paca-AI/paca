@@ -20,12 +20,10 @@ export function NoPermissionState({
 	description?: string;
 }) {
 	return (
-		<div className="flex flex-col items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 py-14 text-center dark:border-amber-900/40 dark:bg-amber-900/10">
-			<Icon className="size-8 text-amber-400 dark:text-amber-500" />
+		<div className="flex flex-col items-center gap-3 rounded-xl border border-warning/30 bg-warning/10 py-14 text-center">
+			<Icon className="size-8 text-warning" />
 			<div className="max-w-sm px-4">
-				<p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-					{title}
-				</p>
+				<p className="text-sm font-medium text-warning">{title}</p>
 				{description && (
 					<p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
 				)}

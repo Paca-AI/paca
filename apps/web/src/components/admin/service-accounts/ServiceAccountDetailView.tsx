@@ -1,17 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import {
-	Check,
-	KeyRound,
-	Loader2,
-	Save,
-	ServerCog,
-	ShieldCheck,
-	Trash2,
-} from "lucide-react";
+import { KeyRound, Save, ServerCog, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { DeleteServiceAccountDialog } from "@/components/admin/service-accounts/DeleteServiceAccountDialog";
 import { ServiceAccountKeysTab } from "@/components/admin/service-accounts/ServiceAccountKeysTab";
 import { ServiceAccountRolesTab } from "@/components/admin/service-accounts/ServiceAccountRolesTab";
@@ -23,10 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { formatDate } from "@/lib/format-date";
+import { notifyError } from "@/lib/notify";
 import { serviceAccountAvatar } from "@/lib/provider-logos";
 import {
 	type ServiceAccount,
@@ -81,6 +75,8 @@ function OverviewTab({
 	const isDirty = name !== account.name || description !== account.description;
 
 	const saveMutation = useMutation({
+		meta: { success: "updated", subject: "serviceAccount" },
+		onError: (err) => notifyError(err, saveErrorMessage(err)),
 		mutationFn: () =>
 			updateServiceAccount(account.id, {
 				name: name.trim(),
@@ -99,18 +95,16 @@ function OverviewTab({
 		},
 	});
 
-	const code = saveMutation.isError
-		? getApiErrorCode(saveMutation.error)
-		: null;
-	const saveError = saveMutation.isError
-		? code === ApiErrorCode.ServiceAccountNameInvalid
+	const saveErrorMessage = (err: unknown) => {
+		const code = getApiErrorCode(err);
+		return code === ApiErrorCode.ServiceAccountNameInvalid
 			? t("serviceAccounts.formDialog.errors.nameInvalid")
 			: code === ApiErrorCode.ServiceAccountDescriptionTooLong
 				? t("serviceAccounts.formDialog.errors.descriptionTooLong")
 				: code === ApiErrorCode.ServiceAccountNotFound
 					? t("serviceAccounts.formDialog.errors.notFound")
-					: t("serviceAccounts.detail.overview.saveFailed")
-		: null;
+					: t("serviceAccounts.detail.overview.saveFailed");
+	};
 	const canSave =
 		canWrite && isDirty && !!name.trim() && !saveMutation.isPending;
 
@@ -157,21 +151,12 @@ function OverviewTab({
 				<div className="flex items-center gap-3">
 					<Button onClick={() => saveMutation.mutate()} disabled={!canSave}>
 						{saveMutation.isPending ? (
-							<Loader2 className="size-4 mr-2 animate-spin" />
+							<Spinner aria-hidden="true" className="mr-2" />
 						) : (
 							<Save className="size-4 mr-2" />
 						)}
 						{t("serviceAccounts.detail.overview.saveChanges")}
 					</Button>
-					{saveMutation.isSuccess && !isDirty ? (
-						<span className="flex items-center gap-1 text-xs text-emerald-600">
-							<Check className="size-3" />
-							{t("serviceAccounts.detail.overview.saved")}
-						</span>
-					) : null}
-					{saveError ? (
-						<span className="text-xs text-destructive">{saveError}</span>
-					) : null}
 				</div>
 			) : null}
 
@@ -369,34 +354,33 @@ export function ServiceAccountDetailView({ accountId }: { accountId: string }) {
 				</div>
 			</div>
 
-			{/* Tabs */}
-			<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
-				<div className="flex items-center gap-1 -mb-px w-max min-w-full">
-					{TABS.map((tab) => {
-						const Icon = tab.icon;
-						const isActive = activeTab === tab.id;
-						return (
-							<button
-								key={tab.id}
-								type="button"
-								onClick={() => handleTabChange(tab.id)}
-								className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-									isActive
-										? "border-primary text-primary"
-										: "border-transparent text-muted-foreground hover:text-foreground"
-								}`}
-							>
-								<Icon className="size-3.5" />
-								{t(tab.labelKey)}
-							</button>
-						);
-					})}
+			<Tabs
+				value={activeTab}
+				onValueChange={(v) => handleTabChange(v as Tab)}
+				className="min-h-0 flex-1 gap-0"
+			>
+				<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
+					<TabsList
+						variant="line"
+						className="h-10 w-max min-w-full justify-start"
+					>
+						{TABS.map((tab) => {
+							const Icon = tab.icon;
+							return (
+								<TabsTrigger
+									key={tab.id}
+									value={tab.id}
+									className="flex-none px-3"
+								>
+									<Icon />
+									{t(tab.labelKey)}
+								</TabsTrigger>
+							);
+						})}
+					</TabsList>
 				</div>
-			</div>
 
-			{/* Tab content */}
-			<div className="flex-1 overflow-auto p-6">
-				{activeTab === "overview" && (
+				<TabsContent value="overview" className="flex-1 overflow-auto p-6">
 					<OverviewTab
 						// Remount when the saved account changes so the form restarts from it.
 						key={account.updated_at}
@@ -404,14 +388,14 @@ export function ServiceAccountDetailView({ accountId }: { accountId: string }) {
 						canWrite={canWrite}
 						onDelete={() => setDeleteOpen(true)}
 					/>
-				)}
-				{activeTab === "api-keys" && (
+				</TabsContent>
+				<TabsContent value="api-keys" className="flex-1 overflow-auto p-6">
 					<ServiceAccountKeysTab account={account} canWrite={canWrite} />
-				)}
-				{activeTab === "roles" && (
+				</TabsContent>
+				<TabsContent value="roles" className="flex-1 overflow-auto p-6">
 					<ServiceAccountRolesTab account={account} canWrite={canWrite} />
-				)}
-			</div>
+				</TabsContent>
+			</Tabs>
 
 			{deleteOpen ? (
 				<DeleteServiceAccountDialog

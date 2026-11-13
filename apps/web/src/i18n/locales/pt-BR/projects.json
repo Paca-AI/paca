@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "Automação",
 				"contextTypeAnnotation": "Comentário",
 				"noContextResults": "Nenhum resultado encontrado",
-				"contextSearchMinChars": "Digite pelo menos 2 caracteres para buscar"
+				"contextSearchMinChars": "Digite pelo menos 2 caracteres para buscar",
+				"dialogDescription": "Pesquise e selecione itens para compartilhar com o agente. Eles serão enviados com a sua próxima mensagem.",
+				"done": "Concluído",
+				"attachedCount": "{{count}} anexado(s)"
 			}
 		},
 		"acpModelEffort": {
@@ -1835,7 +1838,8 @@
 				"datePlaceholder": "Data",
 				"clearDate": "Limpar data",
 				"startDate": "Data de início",
-				"dueDate": "Data de entrega"
+				"dueDate": "Data de entrega",
+				"clearDates": "Limpar datas"
 			},
 			"storyPointsEditor": {
 				"decrease": "Diminuir story points",
@@ -2304,7 +2308,12 @@
 			"subtasksLabel": "Subtarefas",
 			"subtasksCollapsed": "Aninhadas, recolhidas",
 			"subtasksExpanded": "Aninhadas, expandidas",
-			"subtasksHidden": "Ocultas (lista plana)"
+			"subtasksHidden": "Ocultas (lista plana)",
+			"unsavedBadge": "Alterações não salvas",
+			"unsavedTitle": "Descartar alterações não salvas?",
+			"unsavedDescription": "Você alterou as configurações desta visualização, mas não as salvou. Salve-as ou descarte para voltar às últimas configurações salvas.",
+			"keepEditing": "Continuar editando",
+			"discard": "Descartar"
 		},
 		"roadmap": {
 			"taskColumnLabel": "Tarefa",

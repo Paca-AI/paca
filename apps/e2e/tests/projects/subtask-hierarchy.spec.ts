@@ -174,14 +174,15 @@ async function openViewSettings(page: Page): Promise<void> {
 
 const settingRow = (page: Page, label: string) =>
 	page
-		.getByText(label, { exact: true })
+		.locator("label")
+		.filter({ hasText: new RegExp(`^${label}$`) })
 		.locator("xpath=following-sibling::button");
 
 /** Picks `option` for the "Subtasks" setting and saves it for the current user. */
 async function chooseSubtaskMode(page: Page, option: string): Promise<void> {
 	await openViewSettings(page);
 	await settingRow(page, "Subtasks").click();
-	await page.getByRole("button", { name: option, exact: true }).last().click();
+	await page.getByRole("option", { name: option, exact: true }).last().click();
 	await page.getByRole("button", { name: "Save only for me" }).click();
 	await expect(
 		page.getByRole("button", { name: "Save only for me" }),
@@ -398,7 +399,7 @@ test.describe("The Subtasks view setting controls nesting", () => {
 
 	test('The setting defaults to "Nested, collapsed"', async ({ page }) => {
 		await openViewSettings(page);
-		await expect(settingRow(page, "Subtasks")).toHaveText("Nested, collapsed");
+		await expect(settingRow(page, "Subtasks")).toContainText("Nested, collapsed");
 	});
 
 	test('"Nested, expanded" shows subtasks without clicking the chevron', async ({
@@ -446,7 +447,7 @@ test.describe("The Subtasks view setting controls nesting", () => {
 		await page.reload();
 		await expect(title(page, "Child done")).toBeVisible();
 		await openViewSettings(page);
-		await expect(settingRow(page, "Subtasks")).toHaveText("Nested, expanded");
+		await expect(settingRow(page, "Subtasks")).toContainText("Nested, expanded");
 	});
 });
 

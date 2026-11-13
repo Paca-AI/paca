@@ -50,7 +50,7 @@ export const TaskReference = createReactInlineContentSpec(
 	{
 		render: (props) => (
 			<span
-				className="inline-flex items-center gap-1 rounded-full bg-emerald-50/80 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors"
+				className="inline-flex items-center gap-1 rounded-full bg-success/10 px-1.5 py-0.5 text-xs font-medium text-success hover:bg-success/10 transition-colors"
 				data-mention-type="task"
 			>
 				<Hash className="shrink-0" width={12} height={12} />

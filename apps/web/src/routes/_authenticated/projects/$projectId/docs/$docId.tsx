@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertCircle, Check, ChevronRight, MessageSquare } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Check, MessageSquare } from "lucide-react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DocActivityPane } from "@/components/projects/docs/doc-activity-pane";
 import {
@@ -10,6 +10,13 @@ import {
 } from "@/components/projects/docs/doc-editor";
 import { ReportIssueButton } from "@/components/report-issue-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -146,23 +153,27 @@ function DocEditorPage() {
 			{/* ── Header bar ───────────────────────────────────────────────── */}
 			<div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border/30 shrink-0 gap-3 min-w-0">
 				{/* Breadcrumb path */}
-				<div className="flex items-center gap-1 min-w-0 text-xs">
-					{folderPath.map((folder) => (
-						<span key={folder.id} className="flex items-center gap-1 min-w-0">
-							<span className="text-muted-foreground/50 truncate max-w-32">
-								{folder.name}
-							</span>
-							<ChevronRight className="size-3.5 text-muted-foreground/30 shrink-0" />
-						</span>
-					))}
-					{doc?.title ? (
-						<span className="text-foreground/70 font-medium truncate max-w-60">
-							{doc.title}
-						</span>
-					) : !doc ? (
-						<Skeleton className="h-3 w-28" />
-					) : null}
-				</div>
+				<Breadcrumb className="min-w-0">
+					<BreadcrumbList className="flex-nowrap gap-1 text-xs sm:gap-1">
+						{folderPath.map((folder) => (
+							<Fragment key={folder.id}>
+								<BreadcrumbItem className="min-w-0">
+									<span className="max-w-32 truncate">{folder.name}</span>
+								</BreadcrumbItem>
+								<BreadcrumbSeparator />
+							</Fragment>
+						))}
+						<BreadcrumbItem className="min-w-0">
+							{doc?.title ? (
+								<BreadcrumbPage className="max-w-60 truncate font-medium">
+									{doc.title}
+								</BreadcrumbPage>
+							) : !doc ? (
+								<Skeleton className="h-3 w-28" />
+							) : null}
+						</BreadcrumbItem>
+					</BreadcrumbList>
+				</Breadcrumb>
 
 				{/* Right: save status + panel toggle */}
 				<div className="flex items-center gap-2 shrink-0">
@@ -178,7 +189,7 @@ function DocEditorPage() {
 					)}
 					{!dirty && updateMutation.isSuccess && !updateMutation.isPending && (
 						<span className="text-xs text-muted-foreground/60 flex items-center gap-1">
-							<Check className="size-3 text-emerald-500" />
+							<Check className="size-3 text-success" />
 							{t("docs.editorPage.saved")}
 						</span>
 					)}

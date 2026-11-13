@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Section } from "@/components/git/git-ui";
@@ -7,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
 	agentGitTriggersKey,
@@ -119,7 +119,7 @@ export function AgentGitTriggers({
 												)}
 											</p>
 											{trigger.supported ? null : (
-												<p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+												<p className="mt-0.5 text-xs text-warning">
 													{t("agents.detail.git.triggers.unsupported")}
 												</p>
 											)}
@@ -228,7 +228,7 @@ function AutoReviewFilters({
 			{canWrite ? (
 				<div className="sm:col-span-2">
 					<Button type="submit" size="sm" variant="outline" disabled={pending}>
-						{pending ? <Loader2 className="size-4 animate-spin" /> : null}
+						{pending ? <Spinner aria-hidden="true" /> : null}
 						{t("agents.detail.git.triggers.filters.save")}
 					</Button>
 				</div>

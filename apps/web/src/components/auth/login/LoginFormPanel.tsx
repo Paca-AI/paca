@@ -128,7 +128,7 @@ export function LoginFormPanel({
 				(ssoProvidersFailed || ssoProviders?.length === 0) ? (
 					<div
 						role="alert"
-						className="mb-5 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300"
+						className="mb-5 flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-3 text-sm text-warning"
 					>
 						<AlertCircle className="mt-px size-4 shrink-0" />
 						<span>{t("login.ssoOnly.noProviders")}</span>
@@ -237,7 +237,7 @@ export function LoginFormPanel({
 						{serverError && (
 							<div
 								role="alert"
-								className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-400"
+								className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-3 text-sm text-destructive"
 							>
 								<AlertCircle className="mt-px size-4 shrink-0" />
 								<span>{serverError}</span>

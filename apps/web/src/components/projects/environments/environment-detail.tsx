@@ -11,7 +11,6 @@ import {
 	Copy,
 	ExternalLink,
 	Folder as FolderIcon,
-	Loader2,
 	MoreHorizontal,
 	Network,
 	Play,
@@ -53,6 +52,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -73,6 +74,7 @@ import {
 	stopEnvironment,
 	updateEnvironment,
 } from "@/lib/environment-api";
+import { notifyError } from "@/lib/notify";
 import { timeAgo } from "@/lib/time-ago";
 
 // Shared by the environment detail route
@@ -158,7 +160,14 @@ function OverviewTab({
 		name !== environment.name ||
 		idleTimeout !== String(environment.idle_timeout_minutes);
 
+	const saveErrorMessage = (err: unknown) =>
+		getApiErrorCode(err) === ApiErrorCode.EnvironmentNameInvalid
+			? t("environments.detail.overview.nameRequired")
+			: t("environments.detail.overview.saveFailed");
+
 	const saveMutation = useMutation({
+		meta: { success: "updated", subject: "environmentSettings" },
+		onError: (err) => notifyError(err, saveErrorMessage(err)),
 		mutationFn: () =>
 			updateEnvironment(projectId, environment.id, {
 				name: name.trim(),
@@ -169,13 +178,6 @@ function OverviewTab({
 			qc.invalidateQueries({ queryKey: listKey });
 		},
 	});
-
-	const saveErrorMessage = saveMutation.isError
-		? getApiErrorCode(saveMutation.error) ===
-			ApiErrorCode.EnvironmentNameInvalid
-			? t("environments.detail.overview.nameRequired")
-			: t("environments.detail.overview.saveFailed")
-		: null;
 
 	const idleTimeoutNumber = Number(idleTimeout);
 	const canSave =
@@ -291,7 +293,7 @@ function OverviewTab({
 			</div>
 
 			{environment.ports_pending_restart && (
-				<div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+				<div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
 					<AlertTriangle className="size-4 shrink-0" />
 					<span className="flex-1">
 						{t("environments.detail.overview.portsPendingRestart")}
@@ -310,21 +312,12 @@ function OverviewTab({
 				<div className="flex items-center gap-3">
 					<Button onClick={() => saveMutation.mutate()} disabled={!canSave}>
 						{saveMutation.isPending ? (
-							<Loader2 className="size-4 mr-2 animate-spin" />
+							<Spinner aria-hidden="true" className="mr-2" />
 						) : (
 							<Save className="size-4 mr-2" />
 						)}
 						{t("environments.detail.overview.saveChanges")}
 					</Button>
-					{saveMutation.isSuccess && (
-						<span className="flex items-center gap-1 text-xs text-emerald-600">
-							<Check className="size-3" />
-							{t("environments.detail.overview.saved")}
-						</span>
-					)}
-					{saveErrorMessage && (
-						<span className="text-xs text-destructive">{saveErrorMessage}</span>
-					)}
 				</div>
 			)}
 		</div>
@@ -357,6 +350,9 @@ function FoldersTab({
 	const foldersKey = environmentQueryOptions(projectId, environmentId).queryKey;
 
 	const deleteMutation = useMutation({
+		meta: { success: "removed", subject: "folder" },
+		onError: (err) =>
+			notifyError(err, t("environments.detail.folders.deleteFailed")),
 		mutationFn: (folderId: string) =>
 			deleteFolder(projectId, environmentId, folderId),
 		onSuccess: () => {
@@ -432,11 +428,6 @@ function FoldersTab({
 					/>
 				</div>
 			)}
-			{deleteMutation.isError && (
-				<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-					{t("environments.detail.folders.deleteFailed")}
-				</p>
-			)}
 
 			<FolderCreateDialog
 				projectId={projectId}
@@ -507,6 +498,7 @@ function AddPortForwardDialog({
 	const [containerPort, setContainerPort] = useState("");
 
 	const addMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () =>
 			addPortForward(projectId, environmentId, {
 				label: label.trim() || undefined,
@@ -611,7 +603,7 @@ function AddPortForwardDialog({
 						disabled={!isValidPort || addMutation.isPending}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							t("environments.detail.portForwards.addDialog.add")
 						)}
@@ -637,6 +629,7 @@ function RestartEnvironmentDialog({
 	const qc = useQueryClient();
 
 	const restartMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => restartEnvironment(projectId, environment.id),
 		onSuccess: (updated) => {
 			qc.setQueryData(
@@ -687,7 +680,7 @@ function RestartEnvironmentDialog({
 						disabled={restartMutation.isPending}
 					>
 						{restartMutation.isPending ? (
-							<Loader2 className="size-4 mr-2 animate-spin" />
+							<Spinner aria-hidden="true" className="mr-2" />
 						) : (
 							<RotateCw className="size-4 mr-2" />
 						)}
@@ -728,6 +721,9 @@ function PortForwardsTab({
 	).queryKey;
 
 	const deleteMutation = useMutation({
+		meta: { success: "removed", subject: "portForward" },
+		onError: (err) =>
+			notifyError(err, t("environments.detail.portForwards.deleteFailed")),
 		mutationFn: (portForwardId: string) =>
 			deletePortForward(projectId, environment.id, portForwardId),
 		onSuccess: () => {
@@ -745,7 +741,7 @@ function PortForwardsTab({
 			</p>
 
 			{environment.ports_pending_restart && (
-				<div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+				<div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
 					<AlertTriangle className="size-4 shrink-0" />
 					<span className="flex-1">
 						{isRunning
@@ -879,11 +875,6 @@ function PortForwardsTab({
 					/>
 				</div>
 			)}
-			{deleteMutation.isError && (
-				<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-					{t("environments.detail.portForwards.deleteFailed")}
-				</p>
-			)}
 
 			<AddPortForwardDialog
 				projectId={projectId}
@@ -975,7 +966,14 @@ export function EnvironmentDetailView({
 	// Start/Stop/Delete all live in the header next to Connect (see the
 	// return below) rather than inline in OverviewTab — lifted up here so
 	// they're reachable from every tab, not just Overview.
+	const actionErrorMessage = (err: unknown) =>
+		getApiErrorCode(err) === ApiErrorCode.EnvironmentBusy
+			? t("environments.detail.busy")
+			: t("environments.detail.actionFailed");
+
 	const startMutation = useMutation({
+		meta: { success: "started", subject: "environment" },
+		onError: (err) => notifyError(err, actionErrorMessage(err)),
 		mutationFn: () => startEnvironment(projectId, environmentId),
 		onSuccess: (updated) => {
 			qc.setQueryData(envKey, updated);
@@ -984,6 +982,8 @@ export function EnvironmentDetailView({
 	});
 
 	const stopMutation = useMutation({
+		meta: { success: "stopped", subject: "environment" },
+		onError: (err) => notifyError(err, actionErrorMessage(err)),
 		mutationFn: () => stopEnvironment(projectId, environmentId),
 		onSuccess: (updated) => {
 			qc.setQueryData(envKey, updated);
@@ -992,6 +992,7 @@ export function EnvironmentDetailView({
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "environment", silent: true },
 		mutationFn: () => deleteEnvironment(projectId, environmentId),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: listKey });
@@ -1025,21 +1026,6 @@ export function EnvironmentDetailView({
 		(environment.status === "stopped" ||
 			environment.status === "suspended" ||
 			environment.status === "error");
-	// Start and Stop are independent controls (Start in the header, Stop in
-	// the dropdown menu) with the same failure modes — mainly a race against
-	// another in-flight start/stop/restart — so each gets its own message
-	// instead of one sharing slot that would hide whichever mutation lost.
-	const startErrorMessage = startMutation.isError
-		? getApiErrorCode(startMutation.error) === ApiErrorCode.EnvironmentBusy
-			? t("environments.detail.busy")
-			: t("environments.detail.actionFailed")
-		: null;
-	const stopErrorMessage = stopMutation.isError
-		? getApiErrorCode(stopMutation.error) === ApiErrorCode.EnvironmentBusy
-			? t("environments.detail.busy")
-			: t("environments.detail.actionFailed")
-		: null;
-
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
 			{/* Environment header */}
@@ -1073,7 +1059,7 @@ export function EnvironmentDetailView({
 								disabled={startMutation.isPending}
 							>
 								{startMutation.isPending ? (
-									<Loader2 className="size-3.5 mr-1.5 animate-spin" />
+									<Spinner aria-hidden="true" className="size-3.5 mr-1.5" />
 								) : (
 									<Play className="size-3.5 mr-1.5" />
 								)}
@@ -1105,7 +1091,7 @@ export function EnvironmentDetailView({
 											disabled={stopMutation.isPending}
 										>
 											{stopMutation.isPending ? (
-												<Loader2 className="size-3.5 mr-2 animate-spin" />
+												<Spinner aria-hidden="true" className="size-3.5 mr-2" />
 											) : (
 												<Square className="size-3.5 mr-2" />
 											)}
@@ -1124,46 +1110,35 @@ export function EnvironmentDetailView({
 						)}
 					</div>
 				</div>
-				{startErrorMessage && (
-					<p className="mt-3 text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-						{startErrorMessage}
-					</p>
-				)}
-				{stopErrorMessage && (
-					<p className="mt-3 text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-						{stopErrorMessage}
-					</p>
-				)}
 			</div>
 
-			{/* Tabs */}
-			<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
-				<div className="flex items-center gap-1 -mb-px w-max min-w-full">
-					{TABS.map((tab) => {
-						const Icon = tab.icon;
-						const isActive = activeTab === tab.id;
-						return (
-							<button
-								key={tab.id}
-								type="button"
-								onClick={() => handleTabChange(tab.id)}
-								className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-									isActive
-										? "border-primary text-primary"
-										: "border-transparent text-muted-foreground hover:text-foreground"
-								}`}
-							>
-								<Icon className="size-3.5" />
-								{t(tab.labelKey)}
-							</button>
-						);
-					})}
+			<Tabs
+				value={activeTab}
+				onValueChange={(v) => handleTabChange(v as Tab)}
+				className="min-h-0 flex-1 gap-0"
+			>
+				<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
+					<TabsList
+						variant="line"
+						className="h-10 w-max min-w-full justify-start"
+					>
+						{TABS.map((tab) => {
+							const Icon = tab.icon;
+							return (
+								<TabsTrigger
+									key={tab.id}
+									value={tab.id}
+									className="flex-none px-3"
+								>
+									<Icon />
+									{t(tab.labelKey)}
+								</TabsTrigger>
+							);
+						})}
+					</TabsList>
 				</div>
-			</div>
 
-			{/* Tab content */}
-			<div className="flex-1 overflow-auto p-6">
-				{activeTab === "overview" && (
+				<TabsContent value="overview" className="flex-1 overflow-auto p-6">
 					<OverviewTab
 						environment={environment}
 						projectId={projectId}
@@ -1171,23 +1146,23 @@ export function EnvironmentDetailView({
 						onGoToPortForwards={() => handleTabChange("portForwards")}
 						usage={usage}
 					/>
-				)}
-				{activeTab === "folders" && (
+				</TabsContent>
+				<TabsContent value="folders" className="flex-1 overflow-auto p-6">
 					<FoldersTab
 						projectId={projectId}
 						environmentId={environmentId}
 						environmentStatus={environment.status}
 						canWrite={canWrite}
 					/>
-				)}
-				{activeTab === "portForwards" && (
+				</TabsContent>
+				<TabsContent value="portForwards" className="flex-1 overflow-auto p-6">
 					<PortForwardsTab
 						projectId={projectId}
 						environment={environment}
 						canWrite={canWrite}
 					/>
-				)}
-			</div>
+				</TabsContent>
+			</Tabs>
 
 			<Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
 				<DialogContent className="max-w-sm">
@@ -1220,7 +1195,7 @@ export function EnvironmentDetailView({
 							disabled={deleteMutation.isPending}
 						>
 							{deleteMutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
+								<Spinner aria-hidden="true" />
 							) : (
 								t("environments.detail.overview.deleteDialog.delete")
 							)}

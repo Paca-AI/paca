@@ -34,7 +34,7 @@ export function MfaCard() {
 					<div>
 						<CardTitle className="flex items-center gap-2">
 							{status?.enabled ? (
-								<ShieldCheck className="size-4 text-emerald-600" />
+								<ShieldCheck className="size-4 text-success" />
 							) : (
 								<ShieldOff className="size-4 text-muted-foreground" />
 							)}

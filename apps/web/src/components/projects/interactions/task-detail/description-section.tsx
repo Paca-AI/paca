@@ -126,6 +126,7 @@ function DescriptionSectionInner({
 	const agents = agentSearch.agents;
 
 	const writeWithAIMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => {
 			if (!projectId || !taskId || !selectedAgentId)
 				throw new Error("missing context");

@@ -3,6 +3,7 @@ import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { BrandingEffects } from "@/components/app-shell/branding-effects";
 import { RouteErrorComponent } from "@/components/route-error-boundary";
+import { Toaster } from "@/components/ui/toast";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 	{
@@ -10,6 +11,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 			<>
 				<BrandingEffects />
 				<Outlet />
+				<Toaster />
 				{import.meta.env.DEV && <TanStackRouterDevtools />}
 			</>
 		),

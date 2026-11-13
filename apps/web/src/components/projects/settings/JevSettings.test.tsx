@@ -118,8 +118,8 @@ describe("JevSettings — unconfigured project", () => {
 				model: "m1",
 			}),
 		);
-		expect(await screen.findByText("Saved ✓")).toBeInTheDocument();
-		expect(keyInput).toHaveValue("");
+		// Success feedback is a toast now; the input clearing proves it saved.
+		await waitFor(() => expect(keyInput).toHaveValue(""));
 	});
 
 	it("omits api_key when the key field is left blank", async () => {
@@ -268,7 +268,6 @@ describe("JevSettings — configured project", () => {
 				},
 			}),
 		);
-		expect(await screen.findByText("Saved ✓")).toBeInTheDocument();
 	});
 
 	it("re-including an excluded field makes the form clean again", async () => {

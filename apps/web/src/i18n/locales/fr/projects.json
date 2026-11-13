@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "Automatisation",
 				"contextTypeAnnotation": "Commentaire",
 				"noContextResults": "Aucun résultat trouvé",
-				"contextSearchMinChars": "Saisissez au moins 2 caractères pour rechercher"
+				"contextSearchMinChars": "Saisissez au moins 2 caractères pour rechercher",
+				"dialogDescription": "Recherchez et sélectionnez des éléments à partager avec l’agent. Ils seront envoyés avec votre prochain message.",
+				"done": "Terminé",
+				"attachedCount": "{{count}} joint(s)"
 			}
 		},
 		"acpModelEffort": {
@@ -1835,7 +1838,8 @@
 				"datePlaceholder": "Date",
 				"clearDate": "Effacer la date",
 				"startDate": "Date de début",
-				"dueDate": "Date d'échéance"
+				"dueDate": "Date d'échéance",
+				"clearDates": "Effacer les dates"
 			},
 			"storyPointsEditor": {
 				"decrease": "Diminuer les story points",
@@ -2304,7 +2308,12 @@
 			"subtasksLabel": "Sous-tâches",
 			"subtasksCollapsed": "Imbriquées, réduites",
 			"subtasksExpanded": "Imbriquées, développées",
-			"subtasksHidden": "Masquées (liste à plat)"
+			"subtasksHidden": "Masquées (liste à plat)",
+			"unsavedBadge": "Modifications non enregistrées",
+			"unsavedTitle": "Abandonner les modifications non enregistrées ?",
+			"unsavedDescription": "Vous avez modifié les paramètres de cette vue sans les enregistrer. Enregistrez-les, ou abandonnez-les pour revenir aux derniers paramètres enregistrés.",
+			"keepEditing": "Continuer à modifier",
+			"discard": "Abandonner"
 		},
 		"roadmap": {
 			"taskColumnLabel": "Tâche",

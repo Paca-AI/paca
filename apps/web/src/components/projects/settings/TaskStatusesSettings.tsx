@@ -14,6 +14,14 @@ import { TaskStatusFormDialog } from "@/components/projects/task-statuses/TaskSt
 import { DisabledDeleteButton } from "@/components/shared/disabled-delete-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@/components/ui/empty";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -31,6 +39,7 @@ import {
 	getApiErrorCode,
 	isForbiddenError,
 } from "@/lib/api-error";
+import { notifyError } from "@/lib/notify";
 import {
 	reorderTaskStatuses,
 	STATUS_CATEGORY_LABELS,
@@ -48,10 +57,10 @@ function StatusCategoryBadge({ category }: { category: string }) {
 			"bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/20 dark:text-violet-400 dark:border-violet-700/30",
 		ready:
 			"bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-400 dark:border-sky-700/30",
-		todo: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-700/30",
+		todo: "bg-warning/10 text-warning border-warning/30",
 		inprogress:
 			"bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-700/30",
-		done: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-700/30",
+		done: "bg-success/10 text-success border-success/30",
 	};
 	const label =
 		STATUS_CATEGORY_LABELS[category as keyof typeof STATUS_CATEGORY_LABELS] ??
@@ -103,9 +112,9 @@ export function TaskStatusesSettings({
 	const [localOrder, setLocalOrder] = useState<TaskStatus[] | null>(null);
 	const [dragId, setDragId] = useState<string | null>(null);
 	const [dragOverId, setDragOverId] = useState<string | null>(null);
-	const [reorderError, setReorderError] = useState<string | null>(null);
 
 	const setDefaultMutation = useMutation({
+		meta: { success: "updated", subject: "defaultTaskStatus" },
 		mutationFn: (statusId: string) => setDefaultTaskStatus(projectId, statusId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({
@@ -121,7 +130,6 @@ export function TaskStatusesSettings({
 				ordered.map((s) => s.id),
 			),
 		onSuccess: () => {
-			setReorderError(null);
 			queryClient.invalidateQueries({
 				queryKey: taskStatusesQueryOptions(projectId).queryKey,
 			});
@@ -129,7 +137,8 @@ export function TaskStatusesSettings({
 		onError: (err: unknown) => {
 			setLocalOrder(null);
 			const code = getApiErrorCode(err);
-			setReorderError(
+			notifyError(
+				err,
 				code === ApiErrorCode.TaskStatusReorderInvalid
 					? t("settings.taskStatuses.reorderInvalid")
 					: t("settings.taskStatuses.reorderFailed"),
@@ -166,7 +175,6 @@ export function TaskStatusesSettings({
 		const [moved] = next.splice(srcIndex, 1);
 		next.splice(targetIndex, 0, moved);
 		setLocalOrder(next);
-		setReorderError(null);
 		reorderMutation.mutate(next);
 	};
 
@@ -194,12 +202,6 @@ export function TaskStatusesSettings({
 				) : null}
 			</div>
 
-			{reorderError ? (
-				<p className="mt-4 text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-					{reorderError}
-				</p>
-			) : null}
-
 			{noPermission ? (
 				<NoPermissionState
 					icon={LayoutList}
@@ -224,29 +226,29 @@ export function TaskStatusesSettings({
 					))}
 				</div>
 			) : !sorted.length ? (
-				<div className="flex flex-col items-center gap-4 rounded-xl border border-dashed bg-muted/20 py-16 text-center mt-4">
-					<div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
-						<LayoutList className="size-6" />
-					</div>
-					<div>
-						<p className="text-sm font-medium">
-							{t("settings.taskStatuses.empty.title")}
-						</p>
-						<p className="mt-1 text-xs text-muted-foreground">
+				<Empty className="border border-dashed bg-muted/20 py-16 mt-4">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<LayoutList className="size-6" />
+						</EmptyMedia>
+						<EmptyTitle>{t("settings.taskStatuses.empty.title")}</EmptyTitle>
+						<EmptyDescription>
 							{t("settings.taskStatuses.empty.description")}
-						</p>
-					</div>
-					{canWrite ? (
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={() => setCreateOpen(true)}
-						>
-							<Plus className="size-4" />
-							{t("settings.taskStatuses.empty.createStatus")}
-						</Button>
-					) : null}
-				</div>
+						</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						{canWrite ? (
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => setCreateOpen(true)}
+							>
+								<Plus className="size-4" />
+								{t("settings.taskStatuses.empty.createStatus")}
+							</Button>
+						) : null}
+					</EmptyContent>
+				</Empty>
 			) : (
 				<div className="overflow-x-auto rounded-xl border mt-4">
 					<Table>
@@ -323,7 +325,7 @@ export function TaskStatusesSettings({
 									</TableCell>
 									<TableCell className="px-5">
 										{status.is_default ? (
-											<span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+											<span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
 												<Star className="size-3 fill-current" />
 												{t("settings.taskStatuses.default")}
 											</span>

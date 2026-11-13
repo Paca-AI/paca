@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "自動化",
 				"contextTypeAnnotation": "コメント",
 				"noContextResults": "結果が見つかりません",
-				"contextSearchMinChars": "検索するには2文字以上入力してください"
+				"contextSearchMinChars": "検索するには2文字以上入力してください",
+				"dialogDescription": "エージェントと共有する項目を検索して選択します。次のメッセージと一緒に送信されます。",
+				"done": "完了",
+				"attachedCount": "{{count}}件を添付中"
 			}
 		},
 		"acpModelEffort": {
@@ -1835,7 +1838,8 @@
 				"datePlaceholder": "日付",
 				"clearDate": "日付をクリア",
 				"startDate": "開始日",
-				"dueDate": "期日"
+				"dueDate": "期日",
+				"clearDates": "日付をクリア"
 			},
 			"storyPointsEditor": {
 				"decrease": "ストーリーポイントを減らす",
@@ -2304,7 +2308,12 @@
 			"subtasksLabel": "サブタスク",
 			"subtasksCollapsed": "ネスト表示（折りたたみ）",
 			"subtasksExpanded": "ネスト表示（展開）",
-			"subtasksHidden": "非表示（フラット表示）"
+			"subtasksHidden": "非表示（フラット表示）",
+			"unsavedBadge": "未保存の変更",
+			"unsavedTitle": "未保存の変更を破棄しますか？",
+			"unsavedDescription": "このビューの設定を変更しましたが、保存されていません。保存するか、破棄して最後に保存した設定に戻してください。",
+			"keepEditing": "編集を続ける",
+			"discard": "破棄"
 		},
 		"roadmap": {
 			"taskColumnLabel": "タスク",

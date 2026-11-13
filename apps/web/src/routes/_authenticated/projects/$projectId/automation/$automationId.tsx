@@ -5,15 +5,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-	ArrowLeft,
-	History,
-	Loader2,
-	Pencil,
-	Save,
-	Workflow,
-	X,
-} from "lucide-react";
+import { ArrowLeft, History, Pencil, Save, Workflow, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AutomationCanvas } from "@/components/projects/automation/automation-canvas";
@@ -23,7 +15,10 @@ import { AutomationRunHistoryPanel } from "@/components/projects/automation/auto
 import { getPriority } from "@/components/projects/interactions/priority";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "@/components/ui/toast";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	ACTION_TYPES,
@@ -55,6 +50,7 @@ import {
 	pluginMatchLabel,
 } from "@/lib/automation-plugin-config";
 import { useMemberDirectory } from "@/lib/member-directory";
+import { showErrorToast } from "@/lib/notify";
 import {
 	customFieldsQueryOptions,
 	taskStatusesQueryOptions,
@@ -62,7 +58,6 @@ import {
 } from "@/lib/project-api";
 import { useCurrentContextStore } from "@/lib/shortcuts/current-context-store";
 import { useSprintDirectory } from "@/lib/sprint-directory";
-import { cn } from "@/lib/utils";
 
 function extractErrorMessage(err: unknown, fallback: string): string {
 	const e = err as { response?: { data?: { error?: string } } };
@@ -144,7 +139,6 @@ function AutomationBuilderPage() {
 
 	const [tab, setTab] = useState<"graph" | "runs">("graph");
 	const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [renaming, setRenaming] = useState(false);
 	const [nameDraft, setNameDraft] = useState("");
 
@@ -152,9 +146,11 @@ function AutomationBuilderPage() {
 	const invalidate = () => qc.invalidateQueries({ queryKey: graphKey });
 
 	function reportError(err: unknown) {
-		setErrorMessage(
-			extractErrorMessage(err, t("automation.builder.genericError")),
-		);
+		showErrorToast({
+			title: extractErrorMessage(err, t("automation.builder.genericError")),
+			description: "",
+			error: err,
+		});
 	}
 
 	function labelForType(
@@ -591,6 +587,7 @@ function AutomationBuilderPage() {
 	});
 
 	const renameMutation = useMutation({
+		meta: { success: "renamed", subject: "automation" },
 		mutationFn: () =>
 			updateAutomation(projectId, automationId, { name: nameDraft }),
 		onSuccess: () => {
@@ -601,11 +598,13 @@ function AutomationBuilderPage() {
 	});
 
 	const activateMutation = useMutation({
+		meta: { success: "activated", subject: "automation" },
 		mutationFn: () => activateAutomation(projectId, automationId),
 		onSuccess: invalidate,
 		onError: reportError,
 	});
 	const deactivateMutation = useMutation({
+		meta: { success: "deactivated", subject: "automation" },
 		mutationFn: () => deactivateAutomation(projectId, automationId),
 		onSuccess: invalidate,
 		onError: reportError,
@@ -614,7 +613,7 @@ function AutomationBuilderPage() {
 	if (!graph) {
 		return (
 			<div className="flex items-center justify-center flex-1">
-				<Loader2 className="size-5 animate-spin text-muted-foreground" />
+				<Spinner aria-hidden="true" className="size-5 text-muted-foreground" />
 			</div>
 		);
 	}
@@ -703,61 +702,47 @@ function AutomationBuilderPage() {
 				</div>
 			</div>
 
-			{/* View tabs (Graph / Run History) + view-specific actions */}
-			<div className="border-b border-border/50 px-4 shrink-0">
-				<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-					<div className="flex items-center gap-1 -mb-px">
-						<button
-							type="button"
-							onClick={() => setTab("graph")}
-							className={cn(
-								"flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors",
-								tab === "graph"
-									? "border-primary text-primary"
-									: "border-transparent text-muted-foreground hover:text-foreground",
-							)}
-						>
-							<Workflow className="size-3.5" />
-							{t("automation.builder.tabGraph")}
-						</button>
-						<button
-							type="button"
-							onClick={() => setTab("runs")}
-							className={cn(
-								"flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors",
-								tab === "runs"
-									? "border-primary text-primary"
-									: "border-transparent text-muted-foreground hover:text-foreground",
-							)}
-						>
-							<History className="size-3.5" />
-							{t("automation.builder.tabRuns")}
-						</button>
+			<Tabs
+				value={tab}
+				onValueChange={(v) => setTab(v as "graph" | "runs")}
+				className="min-h-0 flex-1 gap-0"
+			>
+				{/* View tabs (Graph / Run History) + view-specific actions */}
+				<div className="border-b border-border/50 px-4 shrink-0">
+					<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+						<TabsList variant="line" className="h-10">
+							<TabsTrigger value="graph" className="flex-none px-3">
+								<Workflow />
+								{t("automation.builder.tabGraph")}
+							</TabsTrigger>
+							<TabsTrigger value="runs" className="flex-none px-3">
+								<History />
+								{t("automation.builder.tabRuns")}
+							</TabsTrigger>
+						</TabsList>
+
+						{tab === "graph" && (
+							<AutomationNodePalette
+								projectId={projectId}
+								canEdit={canManage}
+								onAddTrigger={(triggerType) =>
+									addNodeMutation.mutate({ kind: "trigger", type: triggerType })
+								}
+								onAddCondition={(conditionType) =>
+									addNodeMutation.mutate({
+										kind: "condition",
+										type: conditionType,
+									})
+								}
+								onAddAction={(actionType) =>
+									addNodeMutation.mutate({ kind: "action", type: actionType })
+								}
+							/>
+						)}
 					</div>
-
-					{tab === "graph" && (
-						<AutomationNodePalette
-							projectId={projectId}
-							canEdit={canManage}
-							onAddTrigger={(triggerType) =>
-								addNodeMutation.mutate({ kind: "trigger", type: triggerType })
-							}
-							onAddCondition={(conditionType) =>
-								addNodeMutation.mutate({
-									kind: "condition",
-									type: conditionType,
-								})
-							}
-							onAddAction={(actionType) =>
-								addNodeMutation.mutate({ kind: "action", type: actionType })
-							}
-						/>
-					)}
 				</div>
-			</div>
 
-			{tab === "graph" ? (
-				<div className="flex flex-1 min-h-0 relative">
+				<TabsContent value="graph" className="relative flex min-h-0 flex-1">
 					<AutomationCanvas
 						nodes={graph.nodes}
 						edges={graph.edges}
@@ -776,9 +761,11 @@ function AutomationBuilderPage() {
 									target,
 								)
 							) {
-								setErrorMessage(
-									t("automation.builder.taskLessTriggerConnectionError"),
-								);
+								toast.add({
+									type: "error",
+									title: t("automation.builder.taskLessTriggerConnectionError"),
+									timeout: 8000,
+								});
 								return;
 							}
 							addEdgeMutation.mutate({ source, sourceHandle, target });
@@ -788,8 +775,6 @@ function AutomationBuilderPage() {
 						}
 						onDeleteNode={(nodeId) => removeNodeMutation.mutate(nodeId)}
 						onDeleteEdge={(edgeId) => removeEdgeMutation.mutate(edgeId)}
-						errorMessage={errorMessage}
-						onDismissError={() => setErrorMessage(null)}
 					/>
 					{selectedNode && (
 						<AutomationNodeConfigPanel
@@ -814,21 +799,22 @@ function AutomationBuilderPage() {
 							onRemove={() => removeNodeMutation.mutate(selectedNode.id)}
 						/>
 					)}
-				</div>
-			) : (
-				<AutomationRunHistoryPanel
-					projectId={projectId}
-					automationId={automationId}
-					runs={runs}
-					pagination={{
-						hasMore: !!hasMoreRuns,
-						isLoadingMore: isFetchingMoreRuns,
-						isError: isMoreRunsError,
-						onLoadMore: () => void fetchMoreRuns(),
-					}}
-					nodeLabel={nodeLabel}
-				/>
-			)}
+				</TabsContent>
+				<TabsContent value="runs" className="flex min-h-0 flex-1 flex-col">
+					<AutomationRunHistoryPanel
+						projectId={projectId}
+						automationId={automationId}
+						runs={runs}
+						pagination={{
+							hasMore: !!hasMoreRuns,
+							isLoadingMore: isFetchingMoreRuns,
+							isError: isMoreRunsError,
+							onLoadMore: () => void fetchMoreRuns(),
+						}}
+						nodeLabel={nodeLabel}
+					/>
+				</TabsContent>
+			</Tabs>
 		</div>
 	);
 }

@@ -137,7 +137,7 @@ export function EnvironmentStatusRing({
 						cy="26"
 						r={RADIUS}
 						className={cn(
-							nearIdle ? "stroke-amber-500" : "stroke-emerald-500",
+							nearIdle ? "stroke-warning" : "stroke-success",
 							"transition-[stroke-dashoffset] duration-500 ease-out",
 						)}
 						strokeWidth="2.5"
@@ -498,9 +498,9 @@ export function UsageRingCell({
 							cy="18"
 							r={USAGE_RING_RADIUS}
 							className={cn(
-								color === "red" && "stroke-red-500",
-								color === "amber" && "stroke-amber-500",
-								color === "emerald" && "stroke-emerald-500",
+								color === "red" && "stroke-destructive",
+								color === "amber" && "stroke-warning",
+								color === "emerald" && "stroke-success",
 								"transition-[stroke-dashoffset] duration-500 ease-out",
 							)}
 							strokeWidth="3"

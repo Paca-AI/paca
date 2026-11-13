@@ -235,7 +235,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 					<p
 						id="current-password-error"
 						role="alert"
-						className="mt-1 text-xs text-red-600 dark:text-red-400"
+						className="mt-1 text-xs text-destructive"
 					>
 						{currentPasswordError}
 					</p>
@@ -292,7 +292,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 					<p
 						id="new-password-error"
 						role="alert"
-						className="mt-1 text-xs text-red-600 dark:text-red-400"
+						className="mt-1 text-xs text-destructive"
 					>
 						{newPasswordError}
 					</p>
@@ -355,7 +355,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 					<p
 						id="confirm-password-error"
 						role="alert"
-						className="mt-1 text-xs text-red-600 dark:text-red-400"
+						className="mt-1 text-xs text-destructive"
 					>
 						{confirmPasswordError}
 					</p>

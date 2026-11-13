@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "자동화",
 				"contextTypeAnnotation": "댓글",
 				"noContextResults": "결과를 찾을 수 없습니다",
-				"contextSearchMinChars": "검색하려면 2자 이상 입력하세요"
+				"contextSearchMinChars": "검색하려면 2자 이상 입력하세요",
+				"dialogDescription": "에이전트와 공유할 항목을 검색하여 선택하세요. 다음 메시지와 함께 전송됩니다.",
+				"done": "완료",
+				"attachedCount": "{{count}}개 첨부됨"
 			}
 		},
 		"acpModelEffort": {
@@ -1835,7 +1838,8 @@
 				"datePlaceholder": "날짜",
 				"clearDate": "날짜 지우기",
 				"startDate": "시작일",
-				"dueDate": "마감일"
+				"dueDate": "마감일",
+				"clearDates": "날짜 지우기"
 			},
 			"storyPointsEditor": {
 				"decrease": "스토리 포인트 감소",
@@ -2304,7 +2308,12 @@
 			"subtasksLabel": "하위 작업",
 			"subtasksCollapsed": "중첩, 접힘",
 			"subtasksExpanded": "중첩, 펼침",
-			"subtasksHidden": "숨김(평면 목록)"
+			"subtasksHidden": "숨김(평면 목록)",
+			"unsavedBadge": "저장되지 않은 변경",
+			"unsavedTitle": "저장되지 않은 변경을 취소할까요?",
+			"unsavedDescription": "이 보기의 설정을 변경했지만 저장하지 않았습니다. 저장하거나, 취소하여 마지막으로 저장한 설정으로 돌아가세요.",
+			"keepEditing": "계속 편집",
+			"discard": "취소"
 		},
 		"roadmap": {
 			"taskColumnLabel": "작업",

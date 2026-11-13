@@ -66,7 +66,7 @@ interface UseContextItemSearchResult {
 
 /**
  * Backs the context-injection popover's search box (see
- * components/assistant-ui/context-injection.tsx), dispatching per
+ * components/chat/context-injection.tsx), dispatching per
  * ContextItemType to whichever backend search already exists for that type:
  *   - task: the same searchTasksForPicker use-task-picker-search.ts uses.
  *   - doc / automation: listDocuments/listAutomations — cursor-

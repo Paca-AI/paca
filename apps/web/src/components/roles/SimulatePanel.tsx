@@ -94,6 +94,7 @@ export function SimulatePanel({
 	const [attrError, setAttrError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { silent: true },
 		mutationFn: (input: Parameters<typeof simulatePolicy>[0]) =>
 			simulatePolicy(input, projectId),
 	});
@@ -219,9 +220,7 @@ export function SimulatePanel({
 				>
 					<div
 						className={`flex items-center gap-1.5 text-sm font-semibold ${
-							result.allowed
-								? "text-emerald-700 dark:text-emerald-400"
-								: "text-destructive"
+							result.allowed ? "text-success" : "text-destructive"
 						}`}
 					>
 						{result.allowed ? (

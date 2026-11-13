@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "Automatización",
 				"contextTypeAnnotation": "Comentario",
 				"noContextResults": "No se encontraron resultados",
-				"contextSearchMinChars": "Escribe al menos 2 caracteres para buscar"
+				"contextSearchMinChars": "Escribe al menos 2 caracteres para buscar",
+				"dialogDescription": "Busca y selecciona elementos para compartir con el agente. Se enviarán con tu próximo mensaje.",
+				"done": "Listo",
+				"attachedCount": "{{count}} adjuntos"
 			}
 		},
 		"acpModelEffort": {
@@ -1835,7 +1838,8 @@
 				"datePlaceholder": "Fecha",
 				"clearDate": "Borrar fecha",
 				"startDate": "Fecha de inicio",
-				"dueDate": "Fecha de vencimiento"
+				"dueDate": "Fecha de vencimiento",
+				"clearDates": "Borrar fechas"
 			},
 			"storyPointsEditor": {
 				"decrease": "Disminuir puntos de historia",
@@ -2304,7 +2308,12 @@
 			"subtasksLabel": "Subtareas",
 			"subtasksCollapsed": "Anidadas, contraídas",
 			"subtasksExpanded": "Anidadas, expandidas",
-			"subtasksHidden": "Ocultas (lista plana)"
+			"subtasksHidden": "Ocultas (lista plana)",
+			"unsavedBadge": "Cambios sin guardar",
+			"unsavedTitle": "¿Descartar los cambios sin guardar?",
+			"unsavedDescription": "Cambiaste los ajustes de esta vista pero no los guardaste. Guárdalos o descártalos para volver a los últimos ajustes guardados.",
+			"keepEditing": "Seguir editando",
+			"discard": "Descartar"
 		},
 		"roadmap": {
 			"taskColumnLabel": "Tarea",

@@ -1,4 +1,4 @@
-import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
+import type { ChatMessage } from "@/components/chat/types";
 import type {
 	AgentConversation,
 	AgentConversationEvent,
@@ -10,19 +10,6 @@ import {
 	isForbiddenError,
 } from "@/lib/api-error";
 import { parseContextItems } from "@/lib/context-items";
-
-// Our chat runtimes (conversation-view.tsx / ai-chat-float.tsx / the
-// Conversations page's new-conversation composer) only ever send a single
-// text part — there's no attachment UI wired up to any of them (see
-// thread.tsx's Composer comment) — so reject anything else instead of
-// silently dropping it. Returns null rather than throwing so each call site
-// can raise its own translated error message.
-export function extractTextOnlyContent(message: AppendMessage): string | null {
-	if (message.content.length !== 1 || message.content[0]?.type !== "text") {
-		return null;
-	}
-	return message.content[0].text;
-}
 
 // Literal union, not a plain string, so callers can pass this straight into
 // react-i18next's `t()` — its typed key argument rejects a widened `string`
@@ -283,14 +270,12 @@ function nextToolCallId(current: InProgressMessage, rawId: string): string {
 function toThreadMessage(
 	msg: InProgressMessage,
 	isTrailingAndRunning: boolean,
-): ThreadMessageLike {
+): ChatMessage {
 	return {
 		id: msg.id,
 		role: "assistant",
 		createdAt: msg.createdAt,
-		status: isTrailingAndRunning
-			? { type: "running" }
-			: { type: "complete", reason: "stop" },
+		status: isTrailingAndRunning ? "running" : "complete",
 		content: msg.parts,
 	};
 }
@@ -380,7 +365,7 @@ export function canReplyToConversation(
 }
 
 /**
- * Converts raw conversation events into assistant-ui's ThreadMessageLike[],
+ * Converts raw conversation events into assistant-ui's ChatMessage[],
  * grouping each agent turn's thought/tool-calls/reply into one assistant
  * message's content parts (rather than one bubble per raw event) — the
  * `reasoning`/`tool-call` part types are auto-grouped into collapsible
@@ -392,8 +377,8 @@ export function canReplyToConversation(
 export function eventsToThreadMessages(
 	events: AgentConversationEvent[],
 	isThreadRunning: boolean,
-): ThreadMessageLike[] {
-	const messages: ThreadMessageLike[] = [];
+): ChatMessage[] {
+	const messages: ChatMessage[] = [];
 	let current: InProgressMessage | null = null;
 
 	const flushCurrent = () => {

@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { Loader2, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	type AvailableGitRepository,
 	gitProviderMessage,
@@ -230,7 +231,7 @@ function NextPageSentinel({
 			aria-hidden="true"
 			className="flex h-10 items-center justify-center text-muted-foreground"
 		>
-			<Loader2 className="size-4 animate-spin" />
+			<Spinner aria-hidden="true" />
 		</li>
 	);
 }

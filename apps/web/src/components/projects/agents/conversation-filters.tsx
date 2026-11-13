@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
 import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
 	Popover,
@@ -84,12 +85,7 @@ function CheckListRow({
 }) {
 	return (
 		<label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-muted/40">
-			<input
-				type="checkbox"
-				checked={checked}
-				onChange={onChange}
-				className="size-3.5 shrink-0 cursor-pointer rounded accent-primary"
-			/>
+			<Checkbox checked={checked} onCheckedChange={() => onChange()} />
 			{dotClassName && (
 				<span className={cn("size-1.5 shrink-0 rounded-full", dotClassName)} />
 			)}

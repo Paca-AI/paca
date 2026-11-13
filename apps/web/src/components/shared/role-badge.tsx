@@ -51,8 +51,7 @@ export function roleKind(role: RoleBadgeData): RoleKind {
 }
 
 const KIND_CLASS: Record<RoleKind, string> = {
-	fullAccess:
-		"border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/20 dark:text-amber-400",
+	fullAccess: "border-warning/30 bg-warning/10 text-warning",
 	system: "border-border bg-muted text-foreground/80",
 	default: "border-primary/25 bg-primary/10 text-primary",
 	custom: "border-border bg-background text-foreground/80",
@@ -98,8 +97,7 @@ type TagKind = "fullAccess" | "system" | "default" | "current";
 const TAG_CLASS: Record<TagKind, string> = {
 	fullAccess: KIND_CLASS.fullAccess,
 	system: "border-border bg-muted text-muted-foreground",
-	default:
-		"border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/20 dark:text-amber-400",
+	default: "border-warning/30 bg-warning/10 text-warning",
 	current: "border-transparent bg-muted text-muted-foreground",
 };
 

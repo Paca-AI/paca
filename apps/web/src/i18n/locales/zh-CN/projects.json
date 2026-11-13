@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "自动化",
 				"contextTypeAnnotation": "评论",
 				"noContextResults": "未找到结果",
-				"contextSearchMinChars": "请输入至少2个字符进行搜索"
+				"contextSearchMinChars": "请输入至少2个字符进行搜索",
+				"dialogDescription": "搜索并选择要与智能体共享的项目。它们将随你的下一条消息一起发送。",
+				"done": "完成",
+				"attachedCount": "已附加 {{count}} 项"
 			}
 		},
 		"acpModelEffort": {
@@ -1835,7 +1838,8 @@
 				"datePlaceholder": "日期",
 				"clearDate": "清除日期",
 				"startDate": "开始日期",
-				"dueDate": "截止日期"
+				"dueDate": "截止日期",
+				"clearDates": "清除日期"
 			},
 			"storyPointsEditor": {
 				"decrease": "减少故事点",
@@ -2304,7 +2308,12 @@
 			"subtasksLabel": "子任务",
 			"subtasksCollapsed": "嵌套，已折叠",
 			"subtasksExpanded": "嵌套，已展开",
-			"subtasksHidden": "隐藏（平铺列表）"
+			"subtasksHidden": "隐藏（平铺列表）",
+			"unsavedBadge": "未保存的更改",
+			"unsavedTitle": "放弃未保存的更改？",
+			"unsavedDescription": "你修改了此视图的设置但尚未保存。请保存，或放弃以恢复到上次保存的设置。",
+			"keepEditing": "继续编辑",
+			"discard": "放弃"
 		},
 		"roadmap": {
 			"taskColumnLabel": "任务",

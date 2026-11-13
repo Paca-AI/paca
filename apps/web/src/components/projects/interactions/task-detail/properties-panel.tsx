@@ -3,7 +3,6 @@ import {
 	Check,
 	ExternalLink,
 	Layers,
-	Loader2,
 	Plus,
 	Search,
 	X,
@@ -17,6 +16,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Spinner } from "@/components/ui/spinner";
 import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import type { Task } from "@/lib/interaction-api";
 import {
@@ -154,8 +154,9 @@ export function PropertiesPanel({
 					mode="date-range"
 					startDate={task.start_date}
 					dueDate={task.due_date}
-					onStartDateChange={(v) => onUpdate?.({ start_date: v })}
-					onDueDateChange={(v) => onUpdate?.({ due_date: v })}
+					onDateRangeChange={({ startDate, dueDate }) =>
+						onUpdate?.({ start_date: startDate, due_date: dueDate })
+					}
 					canEdit={canEdit}
 				/>
 
@@ -396,7 +397,10 @@ export function PropertiesPanel({
 										>
 											{isEpicSearching && epicSearchLoading ? (
 												<div className="flex items-center justify-center py-4">
-													<Loader2 className="size-4 animate-spin text-muted-foreground/50" />
+													<Spinner
+														aria-hidden="true"
+														className="text-muted-foreground/50"
+													/>
 												</div>
 											) : (
 												<>
@@ -422,7 +426,7 @@ export function PropertiesPanel({
 											)}
 											{activeEpicsPagination?.isLoadingMore && (
 												<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
-													<Loader2 className="size-3 animate-spin" />
+													<Spinner aria-hidden="true" className="size-3" />
 													{t("epicPicker.loadingMore")}
 												</div>
 											)}

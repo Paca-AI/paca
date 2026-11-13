@@ -154,6 +154,7 @@ export function UserFormDialog({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "saved", subject: "user" },
 		mutationFn: async (): Promise<{ user: User; password?: string }> => {
 			if (isEdit && user) {
 				const updated = await updateUser(user.id, {
@@ -505,7 +506,7 @@ export function UserFormDialog({
 									aria-label={t("users.formDialog.copyPassword")}
 								>
 									{copied ? (
-										<Check className="size-4 text-emerald-500" />
+										<Check className="size-4 text-success" />
 									) : (
 										<Copy className="size-4" />
 									)}

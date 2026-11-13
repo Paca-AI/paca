@@ -808,7 +808,7 @@ test.describe("Workflow automation", () => {
 			await signIn(page);
 			await openBuilder(page, projectId, automationId, automationName);
 
-			await expect(page.getByRole("button", { name: "Graph" })).toBeVisible();
+			await expect(page.getByRole("tab", { name: "Graph" })).toBeVisible();
 			await expect(
 				page.getByRole("button", { name: "Add Trigger" }),
 			).toBeVisible();
@@ -901,7 +901,7 @@ test.describe("Workflow automation", () => {
 			await signIn(page, member.username, member.password);
 			await openBuilder(page, projectId, automationId, automationName);
 
-			await expect(page.getByRole("button", { name: "Graph" })).toBeVisible();
+			await expect(page.getByRole("tab", { name: "Graph" })).toBeVisible();
 			await expect(
 				page.getByRole("button", { name: "Add Trigger" }),
 			).toHaveCount(0);
@@ -919,7 +919,7 @@ test.describe("Workflow automation", () => {
 			await signIn(page);
 			await openBuilder(page, projectId, automationId, automationName);
 
-			await page.getByRole("button", { name: "Run history" }).click();
+			await page.getByRole("tab", { name: "Run history" }).click();
 
 			// The node palette only renders on the Graph tab.
 			await expect(
@@ -934,7 +934,7 @@ test.describe("Workflow automation", () => {
 			await signIn(page);
 			await openBuilder(page, projectId, automationId, automationName);
 
-			await page.getByRole("button", { name: "Run history" }).click();
+			await page.getByRole("tab", { name: "Run history" }).click();
 
 			await expect(page.getByText("No runs yet")).toBeVisible();
 		});

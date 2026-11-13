@@ -27,7 +27,6 @@ import {
 	GanttChart,
 	Home,
 	KanbanSquare,
-	Loader2,
 	MessageSquare,
 	Monitor,
 	Moon,
@@ -83,6 +82,7 @@ import {
 	SidebarSeparator,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import { Spinner } from "@/components/ui/spinner";
 import { useBranding } from "@/hooks/use-branding";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -196,6 +196,7 @@ function DocsDocRow({
 	const isActive = location === `/projects/${projectId}/docs/${doc.id}`;
 
 	const renameMutation = useMutation({
+		meta: { success: "renamed", subject: "document" },
 		mutationFn: (title: string) => updateDocument(projectId, doc.id, { title }),
 		onSuccess: (updated) => {
 			setRenameError(null);
@@ -220,6 +221,7 @@ function DocsDocRow({
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "document" },
 		mutationFn: () => deleteDocument(projectId, doc.id),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: docQueryKeys.all(projectId) });
@@ -387,6 +389,7 @@ function DocsFolderNode({
 		[docsQuery.data],
 	);
 	const renameMutation = useMutation({
+		meta: { success: "renamed", subject: "folder" },
 		mutationFn: (name: string) => updateFolder(projectId, folder.id, { name }),
 		onSuccess: () => {
 			setRenameError(null);
@@ -405,12 +408,14 @@ function DocsFolderNode({
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "folder" },
 		mutationFn: () => deleteFolder(projectId, folder.id),
 		onSuccess: () =>
 			qc.invalidateQueries({ queryKey: docQueryKeys.folders(projectId) }),
 	});
 
 	const newDocMutation = useMutation({
+		meta: { success: "created", subject: "document" },
 		mutationFn: () =>
 			createDocument(projectId, {
 				title: t("docs.untitled"),
@@ -427,6 +432,7 @@ function DocsFolderNode({
 	});
 
 	const newSubfolderMutation = useMutation({
+		meta: { success: "created", subject: "folder" },
 		mutationFn: (name: string) =>
 			createFolder(projectId, { name, parent_id: folder.id }),
 		onSuccess: () =>
@@ -708,6 +714,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 	);
 
 	const newDocMutation = useMutation({
+		meta: { success: "created", subject: "document" },
 		mutationFn: () => createDocument(projectId, { title: t("docs.untitled") }),
 		onSuccess: (doc) => {
 			qc.invalidateQueries({ queryKey: docQueryKeys.all(projectId) });
@@ -719,6 +726,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 	});
 
 	const newFolderMutation = useMutation({
+		meta: { success: "created", subject: "folder" },
 		mutationFn: (name: string) => createFolder(projectId, { name }),
 		onSuccess: () =>
 			qc.invalidateQueries({ queryKey: docQueryKeys.folders(projectId) }),
@@ -744,30 +752,19 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 	};
 
 	const isEmpty = rootFolders.length === 0 && rootOnlyDocs.length === 0;
-	const { state: sidebarState } = useSidebar();
-	const isSidebarCollapsed = sidebarState === "collapsed";
+	const { state: sidebarState, isMobile } = useSidebar();
+	const isSidebarCollapsed = sidebarState === "collapsed" && !isMobile;
 
-	if (isSidebarCollapsed) {
-		return (
-			<SidebarGroup>
-				<SidebarGroupContent>
-					<SidebarMenu>
-						<SidebarMenuItem>
-							<SidebarMenuButton tooltip={t("docs.documentation")}>
-								<BookOpen className="size-4" />
-							</SidebarMenuButton>
-						</SidebarMenuItem>
-					</SidebarMenu>
-				</SidebarGroupContent>
-			</SidebarGroup>
-		);
-	}
+	// A bare book icon that does nothing is noise on the rail.
+	if (isSidebarCollapsed) return null;
 
 	return (
 		<SidebarGroup className="px-0">
 			{/* Section header */}
 			<SidebarGroupLabel
-				className="flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors px-3"
+				render={<button type="button" />}
+				aria-expanded={!collapsed}
+				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors px-3"
 				onClick={toggleCollapse}
 			>
 				<span>{t("docs.documentation")}</span>
@@ -976,7 +973,7 @@ function ProjectSwitcher({
 						))}
 						{isFetchingNextPage ? (
 							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
-								<Loader2 className="size-3 animate-spin" />
+								<Spinner aria-hidden="true" className="size-3" />
 								{t("projectSwitcher.loadingMore")}
 							</div>
 						) : null}
@@ -1154,22 +1151,32 @@ function ProjectNavItems({ projectId }: { projectId: string }) {
 		});
 	};
 
+	// The icon rail has no room for section headers, so they are not togglable
+	// there (and stay out of the tab order); the section is always expanded.
+	const { state: sidebarState, isMobile } = useSidebar();
+	const isRail = sidebarState === "collapsed" && !isMobile;
+	const isCollapsed = collapsed && !isRail;
+
 	return (
 		<SidebarGroup>
-			<SidebarGroupLabel
-				className="flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
-				onClick={toggle}
-			>
-				<span>{t("nav.project")}</span>
-				<ChevronRight
-					className={cn(
-						"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
-						!collapsed && "rotate-90",
-					)}
-				/>
-			</SidebarGroupLabel>
+			{!isRail && (
+				<SidebarGroupLabel
+					render={<button type="button" />}
+					aria-expanded={!isCollapsed}
+					className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
+					onClick={toggle}
+				>
+					<span>{t("nav.project")}</span>
+					<ChevronRight
+						className={cn(
+							"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
+							!isCollapsed && "rotate-90",
+						)}
+					/>
+				</SidebarGroupLabel>
+			)}
 
-			{!collapsed && (
+			{!isCollapsed && (
 				<SidebarGroupContent>
 					<SidebarMenu>
 						{PROJECT_NAV_ITEMS.filter((item) => {
@@ -1212,6 +1219,66 @@ function ProjectNavItems({ projectId }: { projectId: string }) {
 	);
 }
 
+/** A sidebar group whose label toggles it open/closed, remembering the choice
+ * in localStorage under `storageKey` (same behavior as the Project section). */
+function CollapsibleSidebarGroup({
+	storageKey,
+	label,
+	children,
+}: {
+	storageKey: string;
+	label: string;
+	children: React.ReactNode;
+}) {
+	const [collapsed, setCollapsed] = useState(() => {
+		try {
+			return localStorage.getItem(storageKey) === "true";
+		} catch {
+			return false;
+		}
+	});
+
+	const toggle = () => {
+		setCollapsed((prev) => {
+			const next = !prev;
+			try {
+				localStorage.setItem(storageKey, String(next));
+			} catch {
+				/* ignore */
+			}
+			return next;
+		});
+	};
+
+	// The icon rail has no room for section headers, so they are not togglable
+	// there (and stay out of the tab order); the section is always expanded.
+	const { state: sidebarState, isMobile } = useSidebar();
+	const isRail = sidebarState === "collapsed" && !isMobile;
+	const isCollapsed = collapsed && !isRail;
+
+	return (
+		<SidebarGroup>
+			{!isRail && (
+				<SidebarGroupLabel
+					render={<button type="button" />}
+					aria-expanded={!isCollapsed}
+					className="w-full text-left flex cursor-pointer items-center justify-between transition-colors hover:text-sidebar-foreground"
+					onClick={toggle}
+				>
+					<span>{label}</span>
+					<ChevronRight
+						className={cn(
+							"size-3.5 text-sidebar-foreground/40 transition-transform duration-200",
+							!isCollapsed && "rotate-90",
+						)}
+					/>
+				</SidebarGroupLabel>
+			)}
+			{!isCollapsed && <SidebarGroupContent>{children}</SidebarGroupContent>}
+		</SidebarGroup>
+	);
+}
+
 // ── Plugin-contributed pages ────────────────────────────────────────────────
 
 /** Sidebar nav items for plugin `project.page` extension points (e.g. a
@@ -1232,36 +1299,36 @@ function PluginProjectPages({ projectId }: { projectId: string }) {
 	if (navItems.length === 0) return null;
 
 	return (
-		<SidebarGroup>
-			<SidebarGroupLabel>{t("nav.plugins")}</SidebarGroupLabel>
-			<SidebarGroupContent>
-				<SidebarMenu>
-					{navItems.map((item) => {
-						const Icon = resolvePluginIcon(item.icon);
-						const to = `/projects/${projectId}/plugins/${item.pluginId}/${item.slug}`;
-						const isActive = location === to || location.startsWith(`${to}/`);
-						return (
-							<SidebarMenuItem key={`${item.pluginId}:${item.slug}`}>
-								<SidebarMenuButton
-									isActive={isActive}
-									tooltip={item.label}
-									render={<Link to={to} />}
-									className={cn(
-										"relative transition-all duration-150",
-										isActive
-											? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-											: NAV_ITEM_INACTIVE_CLASS,
-									)}
-								>
-									<Icon className="size-4" />
-									<span>{item.label}</span>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						);
-					})}
-				</SidebarMenu>
-			</SidebarGroupContent>
-		</SidebarGroup>
+		<CollapsibleSidebarGroup
+			storageKey={`paca:sidebar-project-plugins-collapsed:${projectId}`}
+			label={t("nav.plugins")}
+		>
+			<SidebarMenu>
+				{navItems.map((item) => {
+					const Icon = resolvePluginIcon(item.icon);
+					const to = `/projects/${projectId}/plugins/${item.pluginId}/${item.slug}`;
+					const isActive = location === to || location.startsWith(`${to}/`);
+					return (
+						<SidebarMenuItem key={`${item.pluginId}:${item.slug}`}>
+							<SidebarMenuButton
+								isActive={isActive}
+								tooltip={item.label}
+								render={<Link to={to} />}
+								className={cn(
+									"relative transition-all duration-150",
+									isActive
+										? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
+										: NAV_ITEM_INACTIVE_CLASS,
+								)}
+							>
+								<Icon className="size-4" />
+								<span>{item.label}</span>
+							</SidebarMenuButton>
+						</SidebarMenuItem>
+					);
+				})}
+			</SidebarMenu>
+		</CollapsibleSidebarGroup>
 	);
 }
 
@@ -1459,6 +1526,12 @@ function ProjectInteractionsSection({ projectId }: { projectId: string }) {
 		retry: false,
 	});
 
+	// The icon rail has no room for section headers, so they are not togglable
+	// there (and stay out of the tab order); the section is always expanded.
+	const { state: sidebarState, isMobile } = useSidebar();
+	const isRail = sidebarState === "collapsed" && !isMobile;
+	const isCollapsed = collapsed && !isRail;
+
 	// Hide entire section if user lacks the "View Sprints" permission
 	if (!canViewSprints) return null;
 
@@ -1494,20 +1567,24 @@ function ProjectInteractionsSection({ projectId }: { projectId: string }) {
 
 	return (
 		<SidebarGroup>
-			<SidebarGroupLabel
-				className="flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
-				onClick={toggle}
-			>
-				<span>{t("interactions.title")}</span>
-				<ChevronRight
-					className={cn(
-						"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
-						!collapsed && "rotate-90",
-					)}
-				/>
-			</SidebarGroupLabel>
+			{!isRail && (
+				<SidebarGroupLabel
+					render={<button type="button" />}
+					aria-expanded={!isCollapsed}
+					className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
+					onClick={toggle}
+				>
+					<span>{t("interactions.title")}</span>
+					<ChevronRight
+						className={cn(
+							"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
+							!isCollapsed && "rotate-90",
+						)}
+					/>
+				</SidebarGroupLabel>
+			)}
 
-			{!collapsed && (
+			{!isCollapsed && (
 				<SidebarGroupContent>
 					<SidebarMenu>
 						{/* Timeline */}
@@ -1890,7 +1967,9 @@ export function AppSidebar() {
 			<SidebarSeparator />
 
 			{/* Navigation — switches between workspace and project context */}
-			<SidebarContent>
+			{/* Optional sections render nothing when empty, which can leave two
+				   dividers back to back; show only the first. */}
+			<SidebarContent className="[&_[data-slot=sidebar-separator]+[data-slot=sidebar-separator]]:hidden">
 				{isProjectContext ? (
 					<>
 						{user && <ProjectNav />}
@@ -1905,6 +1984,7 @@ export function AppSidebar() {
 						/>
 						<SidebarSeparator />
 						<PluginProjectPages projectId={projectId} />
+						<SidebarSeparator />
 						<ProjectNavItems projectId={projectId} />
 					</>
 				) : (
@@ -1993,14 +2073,14 @@ export function AppSidebar() {
 						{showPluginsSection ? (
 							<>
 								<SidebarSeparator />
-								<SidebarGroup>
-									<SidebarGroupLabel>{t("nav.plugins")}</SidebarGroupLabel>
-									<SidebarGroupContent>
-										<SidebarMenu>
-											<PluginAdminPages navItems={adminPluginNavItems} />
-										</SidebarMenu>
-									</SidebarGroupContent>
-								</SidebarGroup>
+								<CollapsibleSidebarGroup
+									storageKey="paca:sidebar-admin-plugins-collapsed"
+									label={t("nav.plugins")}
+								>
+									<SidebarMenu>
+										<PluginAdminPages navItems={adminPluginNavItems} />
+									</SidebarMenu>
+								</CollapsibleSidebarGroup>
 							</>
 						) : null}
 					</>

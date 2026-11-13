@@ -1,8 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -13,6 +12,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	deleteTaskStatus,
@@ -38,6 +38,7 @@ export function DeleteTaskStatusDialog({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { success: "deleted", subject: "taskStatus" },
 		mutationFn: () => deleteTaskStatus(projectId, status.id),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
@@ -112,7 +113,7 @@ export function DeleteTaskStatusDialog({
 						onClick={() => mutation.mutate()}
 					>
 						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : (
 							<Trash2 className="size-3.5" />
 						)}

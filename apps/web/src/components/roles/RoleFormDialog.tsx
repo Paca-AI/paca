@@ -105,6 +105,7 @@ export function RoleFormDialog({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "saved", subject: "role" },
 		mutationFn: async () => {
 			const trimmed = name.trim();
 			if (!trimmed) throw new NameRequired();

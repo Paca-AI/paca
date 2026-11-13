@@ -4,7 +4,7 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { Download, FileArchive, Loader2 } from "lucide-react";
+import { Download, FileArchive } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { useTablePaging } from "@/hooks/use-table-paging";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
@@ -73,6 +74,7 @@ export function ExportSettings({
 	const hasActive = exports?.some(isExportActive) ?? false;
 
 	const requestMutation = useMutation({
+		meta: { success: "requested", subject: "projectExport" },
 		mutationFn: () => requestProjectExport(projectId),
 		onSuccess: async () => {
 			setError(null);
@@ -157,7 +159,7 @@ export function ExportSettings({
 						}}
 					>
 						{busy ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : (
 							<Download className="size-3.5" />
 						)}
@@ -280,7 +282,7 @@ function ExportRow({
 					onClick={onDownload}
 				>
 					{downloading ? (
-						<Loader2 className="size-3.5 animate-spin" />
+						<Spinner aria-hidden="true" className="size-3.5" />
 					) : (
 						<Download className="size-3.5" />
 					)}

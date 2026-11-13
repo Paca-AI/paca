@@ -33,13 +33,11 @@ export function RouteErrorComponent({ error }: { error: Error }) {
 		<div className="flex flex-col h-full items-center justify-center gap-4 p-6">
 			<div
 				className={`flex size-12 items-center justify-center rounded-full ${
-					isForbidden
-						? "bg-amber-100 dark:bg-amber-900/20"
-						: "bg-destructive/10"
+					isForbidden ? "bg-warning/10" : "bg-destructive/10"
 				}`}
 			>
 				{isForbidden ? (
-					<Lock className="size-6 text-amber-500 dark:text-amber-400" />
+					<Lock className="size-6 text-warning" />
 				) : (
 					<AlertTriangle className="size-6 text-destructive" />
 				)}
@@ -47,9 +45,7 @@ export function RouteErrorComponent({ error }: { error: Error }) {
 			<div className="text-center space-y-1 max-w-sm">
 				<p
 					className={`text-sm font-medium ${
-						isForbidden
-							? "text-amber-700 dark:text-amber-400"
-							: "text-destructive"
+						isForbidden ? "text-warning" : "text-destructive"
 					}`}
 				>
 					{isForbidden

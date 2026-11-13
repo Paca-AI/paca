@@ -82,7 +82,7 @@ export function GlobalRolesTable({
 								</TableCell>
 								<TableCell className="px-5">
 									{role.is_default ? (
-										<span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+										<span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
 											<Star className="size-3 fill-current" />
 											{t("globalRoles.table.default")}
 										</span>

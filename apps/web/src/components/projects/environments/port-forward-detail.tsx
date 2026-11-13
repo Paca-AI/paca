@@ -4,7 +4,6 @@ import {
 	AlertCircle,
 	ArrowLeft,
 	ExternalLink,
-	Loader2,
 	MessageSquare,
 	Server,
 	Trash2,
@@ -23,6 +22,8 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { portForwardAnnotationsQueryOptions } from "@/lib/annotation-api";
 import { isForbiddenError } from "@/lib/api-error";
@@ -124,6 +125,7 @@ export function PortForwardDetailView({
 	};
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "portForward" },
 		mutationFn: () =>
 			deletePortForward(projectId, environmentId, portForwardId),
 		onSuccess: () => {
@@ -242,34 +244,33 @@ export function PortForwardDetailView({
 				</div>
 			</div>
 
-			{/* Tabs */}
-			<div className="border-b border-border/50 px-6 shrink-0">
-				<div className="flex items-center gap-1 -mb-px">
-					{TABS.map((tab) => {
-						const Icon = tab.icon;
-						const isActive = activeTab === tab.id;
-						return (
-							<button
-								key={tab.id}
-								type="button"
-								onClick={() => handleTabChange(tab.id)}
-								className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-									isActive
-										? "border-primary text-primary"
-										: "border-transparent text-muted-foreground hover:text-foreground"
-								}`}
-							>
-								<Icon className="size-3.5" />
-								{t(tab.labelKey)}
-							</button>
-						);
-					})}
+			<Tabs
+				value={activeTab}
+				onValueChange={(v) => handleTabChange(v as Tab)}
+				className="min-h-0 flex-1 gap-0"
+			>
+				<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
+					<TabsList
+						variant="line"
+						className="h-10 w-max min-w-full justify-start"
+					>
+						{TABS.map((tab) => {
+							const Icon = tab.icon;
+							return (
+								<TabsTrigger
+									key={tab.id}
+									value={tab.id}
+									className="flex-none px-3"
+								>
+									<Icon />
+									{t(tab.labelKey)}
+								</TabsTrigger>
+							);
+						})}
+					</TabsList>
 				</div>
-			</div>
 
-			{/* Tab content */}
-			<div className="flex-1 overflow-auto p-6">
-				{activeTab === "overview" && (
+				<TabsContent value="overview" className="flex-1 overflow-auto p-6">
 					<div className="max-w-xl rounded-lg border border-border/60 bg-card divide-y divide-border/60">
 						<div className="flex items-center justify-between px-4 py-3">
 							<span className="text-sm text-muted-foreground">
@@ -294,15 +295,15 @@ export function PortForwardDetailView({
 							})}
 						</div>
 					</div>
-				)}
-				{activeTab === "comments" && (
+				</TabsContent>
+				<TabsContent value="comments" className="flex-1 overflow-auto p-6">
 					<PortForwardCommentsTab
 						projectId={projectId}
 						environmentId={environmentId}
 						portForwardId={portForwardId}
 					/>
-				)}
-			</div>
+				</TabsContent>
+			</Tabs>
 
 			<Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
 				<DialogContent className="max-w-sm">
@@ -330,7 +331,7 @@ export function PortForwardDetailView({
 							disabled={deleteMutation.isPending}
 						>
 							{deleteMutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
+								<Spinner aria-hidden="true" />
 							) : (
 								t("portForwardDetail.overview.deleteDialog.confirm")
 							)}

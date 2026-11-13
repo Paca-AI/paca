@@ -188,8 +188,15 @@ describe("AgentGitTab", () => {
 			},
 		});
 		renderTab();
+		await user.click(
+			await screen.findByRole("button", {
+				name: /install on another account/i,
+			}),
+		);
 		await user.type(
-			await screen.findByLabelText(/Install on another account/i),
+			await screen.findByRole("textbox", {
+				name: /install on another account/i,
+			}),
 			"  acme  ",
 		);
 		await user.click(screen.getByRole("button", { name: "Install" }));
@@ -233,6 +240,11 @@ describe("AgentGitTab", () => {
 			response: { status: 409, data: { error_code: "GIT_NO_IDENTITY" } },
 		});
 		renderTab();
+		await user.click(
+			await screen.findByRole("button", {
+				name: /install on another account/i,
+			}),
+		);
 		await user.click(await screen.findByRole("button", { name: "Install" }));
 		expect(await screen.findByRole("alert")).toHaveTextContent(
 			/No connection is available/i,

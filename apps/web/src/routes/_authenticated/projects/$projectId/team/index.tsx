@@ -10,7 +10,6 @@ import {
 	Bot,
 	Check,
 	KeyRound,
-	Loader2,
 	MoreHorizontal,
 	PenLine,
 	Plus,
@@ -54,6 +53,8 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCanAssignProjectRole } from "@/hooks/use-can-assign-project-role";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
@@ -350,6 +351,7 @@ function AddMemberDialog({
 	]);
 
 	const addMutation = useMutation({
+		meta: { success: "added", subject: "teamMember" },
 		mutationFn: () => {
 			if (selectedRoleIds.length === 0) {
 				return Promise.reject(new Error("Role is required"));
@@ -450,52 +452,35 @@ function AddMemberDialog({
 
 				<div className="space-y-4 py-1">
 					{/* Mode toggle: invite a human user, a global agent or a service account */}
-					<div
-						className={`grid gap-2 ${canInviteServiceAccounts ? "grid-cols-3" : "grid-cols-2"}`}
+					<Tabs
+						value={mode}
+						onValueChange={(m) => {
+							setMode(m as "user" | "agent" | "service_account");
+							setSelectedUser(null);
+							setSelectedAgent(null);
+							setSelectedServiceAccount(null);
+							setError(null);
+						}}
 					>
-						{(
-							[
-								"user",
-								"agent",
-								...(canInviteServiceAccounts
-									? (["service_account"] as const)
-									: []),
-							] as const
-						).map((m) => {
-							const isSelected = mode === m;
-							return (
-								<button
-									key={m}
-									type="button"
-									onClick={() => {
-										setMode(m);
-										setSelectedUser(null);
-										setSelectedAgent(null);
-										setSelectedServiceAccount(null);
-										setError(null);
-									}}
-									className={`flex items-center justify-center gap-1.5 rounded-lg border p-2.5 text-xs font-medium transition-all ${
-										isSelected
-											? "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
-											: "border-border/60 hover:border-border hover:bg-muted/30"
-									}`}
-								>
-									{m === "user" ? (
-										<UserRound className="size-3.5" />
-									) : m === "agent" ? (
-										<Bot className="size-3.5" />
-									) : (
-										<KeyRound className="size-3.5" />
-									)}
-									{m === "user"
-										? t("team.addMemberDialog.modeUser")
-										: m === "agent"
-											? t("team.addMemberDialog.modeAgent")
-											: t("team.addMemberDialog.modeServiceAccount")}
-								</button>
-							);
-						})}
-					</div>
+						<TabsList
+							className={`grid h-auto w-full ${canInviteServiceAccounts ? "grid-cols-3" : "grid-cols-2"}`}
+						>
+							<TabsTrigger value="user" className="py-1.5 text-xs">
+								<UserRound />
+								{t("team.addMemberDialog.modeUser")}
+							</TabsTrigger>
+							<TabsTrigger value="agent" className="py-1.5 text-xs">
+								<Bot />
+								{t("team.addMemberDialog.modeAgent")}
+							</TabsTrigger>
+							{canInviteServiceAccounts ? (
+								<TabsTrigger value="service_account" className="py-1.5 text-xs">
+									<KeyRound />
+									{t("team.addMemberDialog.modeServiceAccount")}
+								</TabsTrigger>
+							) : null}
+						</TabsList>
+					</Tabs>
 
 					{mode === "service_account" ? (
 						<div className="space-y-1.5">
@@ -536,7 +521,10 @@ function AddMemberDialog({
 									<div className="max-h-52 overflow-y-auto p-1">
 										{isLoadingServiceAccounts ? (
 											<div className="flex items-center justify-center py-4">
-												<Loader2 className="size-4 animate-spin text-muted-foreground" />
+												<Spinner
+													aria-hidden="true"
+													className="text-muted-foreground"
+												/>
 											</div>
 										) : availableServiceAccounts.length === 0 ? (
 											<p className="py-4 text-center text-xs text-muted-foreground">
@@ -621,7 +609,10 @@ function AddMemberDialog({
 									<div className="max-h-52 overflow-y-auto p-1">
 										{isLoadingAgents ? (
 											<div className="flex items-center justify-center py-4">
-												<Loader2 className="size-4 animate-spin text-muted-foreground" />
+												<Spinner
+													aria-hidden="true"
+													className="text-muted-foreground"
+												/>
 											</div>
 										) : availableAgents.length === 0 ? (
 											<p className="py-4 text-center text-xs text-muted-foreground">
@@ -713,7 +704,10 @@ function AddMemberDialog({
 									>
 										{isLoadingUsers ? (
 											<div className="flex items-center justify-center py-4">
-												<Loader2 className="size-4 animate-spin text-muted-foreground" />
+												<Spinner
+													aria-hidden="true"
+													className="text-muted-foreground"
+												/>
 											</div>
 										) : filteredUsers.length === 0 ? (
 											<p className="py-4 text-center text-xs text-muted-foreground">
@@ -733,7 +727,7 @@ function AddMemberDialog({
 										)}
 										{isFetchingNextPage && (
 											<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
-												<Loader2 className="size-3 animate-spin" />
+												<Spinner aria-hidden="true" className="size-3" />
 												{t("team.addMemberDialog.loadingMore")}
 											</div>
 										)}
@@ -806,7 +800,7 @@ function AddMemberDialog({
 						onClick={() => addMutation.mutate()}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : (
 							<Plus className="size-3.5" />
 						)}
@@ -880,6 +874,7 @@ function MemberRoleDialog({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "memberRoles" },
 		mutationFn: (roleIds: string[]) =>
 			replaceMemberRoles(projectId, member.id, roleIds),
 		onError: (err: unknown) => {
@@ -958,6 +953,7 @@ function DescriptionChip({
 	const [error, setError] = useState<string | null>(null);
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "memberDescription" },
 		mutationFn: () =>
 			updateProjectMemberRole(projectId, member.id, {
 				description: value.trim(),
@@ -1021,7 +1017,7 @@ function DescriptionChip({
 						disabled={mutation.isPending || value === member.description}
 					>
 						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : (
 							t("team.descriptionChip.save")
 						)}
@@ -1230,6 +1226,7 @@ function TeamPage() {
 	};
 
 	const removeMutation = useMutation({
+		meta: { success: "removed", subject: "teamMember", silent: true },
 		mutationFn: () => {
 			if (!removingMember) return Promise.resolve();
 			return removeProjectMember(projectId, removingMember.id);
@@ -1456,7 +1453,7 @@ function TeamPage() {
 							onClick={() => removeMutation.mutate()}
 						>
 							{removeMutation.isPending ? (
-								<Loader2 className="size-3.5 animate-spin" />
+								<Spinner aria-hidden="true" className="size-3.5" />
 							) : (
 								<Trash2 className="size-3.5" />
 							)}

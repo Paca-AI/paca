@@ -116,9 +116,9 @@ async function stubPlugins(
 const pageHeading = (page: Page) =>
 	page.getByRole("heading", { name: "Plugin Settings" });
 const marketplaceTab = (page: Page) =>
-	page.getByRole("button", { name: "Marketplace", exact: true });
+	page.getByRole("tab", { name: "Marketplace", exact: true });
 const layoutTab = (page: Page) =>
-	page.getByRole("button", { name: "Extension Point Layout", exact: true });
+	page.getByRole("tab", { name: "Extension Point Layout", exact: true });
 const searchBox = (page: Page) =>
 	page.getByRole("textbox", { name: "Search plugins" });
 

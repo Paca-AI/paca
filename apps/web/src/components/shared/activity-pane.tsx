@@ -7,7 +7,6 @@ import {
 import {
 	Cog,
 	GitBranch,
-	Loader2,
 	MessageSquare,
 	MoreHorizontal,
 	MoreVertical,
@@ -53,6 +52,8 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useActorAvatar } from "@/hooks/use-actor-avatar";
 import { extractAskQuestion } from "@/lib/ask-question";
 import { searchMentionableMembers } from "@/lib/mention-api";
@@ -314,6 +315,7 @@ export function ActivityPane<T extends ActivityEntry>({
 	};
 
 	const updateMutation = useMutation({
+		meta: { success: "updated", subject: "comment" },
 		mutationFn: ({
 			commentId,
 			blocks,
@@ -407,51 +409,34 @@ export function ActivityPane<T extends ActivityEntry>({
 						storeActivityWidth(widthRef.current);
 				}}
 			/>
-			<div className="flex shrink-0 flex-col gap-2 border-b border-border/25 px-5 py-3 bg-muted/20">
-				<div className="flex items-center gap-2.5">
-					<MessageSquare className="size-3.5 text-muted-foreground/70" />
-					<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-						{t("activityPane.title")}
-					</span>
-					{visible.length > 0 && (
-						<span className="ml-auto rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground/70 tabular-nums">
-							{visible.length}
-							{hasNextPage ? "+" : ""}
-						</span>
-					)}
-				</div>
+			<div className="flex shrink-0 items-center gap-2.5 border-b border-border/25 px-5 py-3 bg-muted/20">
+				<MessageSquare className="size-3.5 text-muted-foreground/70" />
+				<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+					{t("activityPane.title")}
+				</span>
 				{hasNonCommentActivity && (
-					<fieldset
+					<ToggleGroup
+						className="ml-auto"
 						aria-label={t("activityPane.filter.label")}
-						className="flex items-center gap-0.5 rounded-lg border border-border/30 bg-background/60 p-0.5"
+						variant="outline"
+						size="sm"
+						spacing={0}
+						value={[filter]}
+						onValueChange={(next) => {
+							// A group can be emptied by re-pressing the active item; keep one on.
+							const value = next[0];
+							if (value === "comments" || value === "all") {
+								handleFilterChange(value);
+							}
+						}}
 					>
-						<button
-							type="button"
-							aria-pressed={filter === "comments"}
-							onClick={() => handleFilterChange("comments")}
-							className={cn(
-								"flex-1 rounded-md px-2 py-1 text-xs font-medium transition-all duration-150",
-								filter === "comments"
-									? "bg-card text-foreground shadow-sm"
-									: "text-muted-foreground/60 hover:text-foreground/80",
-							)}
-						>
+						<ToggleGroupItem value="comments" className="px-2 text-xs">
 							{t("activityPane.filter.comments")}
-						</button>
-						<button
-							type="button"
-							aria-pressed={filter === "all"}
-							onClick={() => handleFilterChange("all")}
-							className={cn(
-								"flex-1 rounded-md px-2 py-1 text-xs font-medium transition-all duration-150",
-								filter === "all"
-									? "bg-card text-foreground shadow-sm"
-									: "text-muted-foreground/60 hover:text-foreground/80",
-							)}
-						>
+						</ToggleGroupItem>
+						<ToggleGroupItem value="all" className="px-2 text-xs">
 							{t("activityPane.filter.all")}
-						</button>
-					</fieldset>
+						</ToggleGroupItem>
+					</ToggleGroup>
 				)}
 			</div>
 
@@ -567,7 +552,7 @@ export function ActivityPane<T extends ActivityEntry>({
 							className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-40 hover:bg-primary/90 transition-all duration-150 shadow-sm disabled:shadow-none ml-auto"
 						>
 							{addMutation.isPending || updateMutation.isPending ? (
-								<Loader2 className="size-3 animate-spin" />
+								<Spinner aria-hidden="true" className="size-3" />
 							) : (
 								<Send className="size-3" />
 							)}
@@ -647,6 +632,7 @@ function ActivityItemInner<T extends ActivityEntry>({
 		!isComment && !!onRevert && (isRevertable ? isRevertable(entry) : false);
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "comment" },
 		mutationFn: () => {
 			// biome-ignore lint/style/noNonNullAssertion: guarded by canDelete
 			return deleteComment!(entry.id);
@@ -776,7 +762,10 @@ function ActivityItemInner<T extends ActivityEntry>({
 													disabled={revertPending}
 												>
 													{revertPending ? (
-														<Loader2 className="size-3.5 mr-2 animate-spin" />
+														<Spinner
+															aria-hidden="true"
+															className="size-3.5 mr-2"
+														/>
 													) : (
 														<RotateCcw className="size-3.5 mr-2" />
 													)}

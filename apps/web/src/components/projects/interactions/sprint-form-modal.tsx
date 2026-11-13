@@ -1,8 +1,22 @@
-import { Trash2, X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { InlineNotice } from "@/components/shared/inline-notice";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { Sprint } from "@/lib/interaction-api";
+import { cn } from "@/lib/utils";
 
 export interface SprintFormPayload {
 	name: string;
@@ -46,7 +60,6 @@ export function SprintFormModal({
 	otherActiveSprint,
 	errorMessage,
 	onDelete,
-	suppressEscape,
 }: SprintFormModalProps) {
 	const { t } = useTranslation("projects");
 	const idPrefix = mode === "start" ? "ss" : "es";
@@ -80,19 +93,6 @@ export function SprintFormModal({
 			setEndDate(sprint.end_date ? sprint.end_date.slice(0, 10) : "");
 		}
 	}, [sprint, open, mode]);
-
-	// Register a document-level keydown listener while the modal is open so
-	// Escape works regardless of which element currently has focus
-	useEffect(() => {
-		if (!open || suppressEscape) return;
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onOpenChange(false);
-		};
-		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [open, suppressEscape, onOpenChange]);
-
-	if (!open) return null;
 
 	const dateRangeInvalid = Boolean(startDate && endDate && endDate < startDate);
 
@@ -156,98 +156,76 @@ export function SprintFormModal({
 			: t("layout.sprintDetail.editSprintModal.saving");
 
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop
-		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-			onClick={(e) => {
-				if (e.target === e.currentTarget) onOpenChange(false);
-			}}
-			onKeyDown={(e) => {
-				if (e.key === "Escape") onOpenChange(false);
-			}}
-		>
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: modal panel */}
-			<div
-				className="relative w-full max-w-md rounded-xl border border-border/50 bg-background p-6 shadow-2xl mx-4"
-				onClick={(e) => e.stopPropagation()}
-				onKeyDown={(e) => e.stopPropagation()}
-			>
-				<button
-					type="button"
-					onClick={() => onOpenChange(false)}
-					className="absolute right-4 top-4 flex size-7 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all"
-				>
-					<X className="size-4" />
-				</button>
-				<h2 className="font-[Syne] text-lg font-bold tracking-tight mb-4">
-					{title}
-				</h2>
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="max-w-md sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle className="font-[Syne] text-lg font-bold tracking-tight">
+						{title}
+					</DialogTitle>
+				</DialogHeader>
 				{otherActiveSprint && (
-					<p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-						{t("layout.startSprintModal.alreadyActiveWarning", {
-							name: otherActiveSprint.name,
-						})}
-					</p>
+					<Alert className="border-warning/30 bg-warning/10 text-warning">
+						<AlertDescription className="text-warning">
+							{t("layout.startSprintModal.alreadyActiveWarning", {
+								name: otherActiveSprint.name,
+							})}
+						</AlertDescription>
+					</Alert>
 				)}
 				<div className="flex flex-col gap-4">
 					<div className="flex flex-col gap-1.5">
-						<label htmlFor={`${idPrefix}-name`} className="text-sm font-medium">
-							{nameLabel}
-						</label>
-						<input
+						<Label htmlFor={`${idPrefix}-name`}>{nameLabel}</Label>
+						<Input
 							id={`${idPrefix}-name`}
 							value={name}
 							onChange={(e) => setName(e.target.value)}
-							className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50"
 						/>
 					</div>
 					<div className="flex flex-col gap-1.5">
-						<label
+						<Label
 							htmlFor={`${idPrefix}-goal`}
-							className="text-sm font-medium text-muted-foreground"
+							className="text-muted-foreground"
 						>
 							{goalLabel}{" "}
 							<span className="text-xs font-normal">{optionalLabel}</span>
-						</label>
-						<textarea
+						</Label>
+						<Textarea
 							id={`${idPrefix}-goal`}
 							value={goal}
 							onChange={(e) => setGoal(e.target.value)}
 							rows={4}
 							placeholder={goalPlaceholder}
-							className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50 resize-y"
+							className="resize-y"
 						/>
 					</div>
 					<div className="grid grid-cols-2 gap-3">
 						<div className="flex flex-col gap-1.5">
-							<label
+							<Label
 								htmlFor={`${idPrefix}-start`}
-								className="text-sm font-medium text-muted-foreground"
+								className="text-muted-foreground"
 							>
 								{startDateLabel}
-							</label>
-							<input
+							</Label>
+							<Input
 								id={`${idPrefix}-start`}
 								type="date"
 								value={startDate}
 								onChange={(e) => setStartDate(e.target.value)}
-								className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
 							/>
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<label
+							<Label
 								htmlFor={`${idPrefix}-end`}
-								className="text-sm font-medium text-muted-foreground"
+								className="text-muted-foreground"
 							>
 								{endDateLabel}
-							</label>
-							<input
+							</Label>
+							<Input
 								id={`${idPrefix}-end`}
 								type="date"
 								value={endDate}
 								min={startDate || undefined}
 								onChange={(e) => setEndDate(e.target.value)}
-								className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
 							/>
 						</div>
 					</div>
@@ -257,33 +235,27 @@ export function SprintFormModal({
 						</p>
 					)}
 					{errorMessage && (
-						<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-							{errorMessage}
-						</p>
+						<InlineNotice tone="error">{errorMessage}</InlineNotice>
 					)}
 				</div>
-				<div className="mt-6 flex items-center justify-between gap-2">
+				<DialogFooter className="sm:justify-between">
 					{onDelete ? (
-						<button
-							type="button"
-							onClick={onDelete}
-							className="flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/20 transition-all"
-						>
-							<Trash2 className="size-3.5 shrink-0" />
+						<Button type="button" variant="destructive" onClick={onDelete}>
+							<Trash2 data-icon="inline-start" />
 							{t("layout.sprintDetail.editSprintModal.delete")}
-						</button>
+						</Button>
 					) : (
 						<div />
 					)}
 					<div className="flex gap-2">
-						<button
+						<Button
 							type="button"
+							variant="outline"
 							onClick={() => onOpenChange(false)}
-							className="rounded-lg border border-border/50 bg-muted/20 px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-all"
 						>
 							{cancelLabel}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							onClick={handleSubmit}
 							disabled={
@@ -291,17 +263,15 @@ export function SprintFormModal({
 								(mode === "edit" && !name.trim()) ||
 								dateRangeInvalid
 							}
-							className={
-								mode === "start"
-									? "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-all"
-									: "rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
-							}
+							className={cn(
+								mode === "start" && "bg-success text-white hover:bg-success/90",
+							)}
 						>
 							{submitting ? submittingLabel : submitLabel}
-						</button>
+						</Button>
 					</div>
-				</div>
-			</div>
-		</div>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }

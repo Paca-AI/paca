@@ -1,8 +1,3 @@
-import {
-	type AppendMessage,
-	AssistantRuntimeProvider,
-	useExternalStoreRuntime,
-} from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -11,16 +6,16 @@ import {
 	ExternalLink,
 	GitBranch,
 	GitPullRequest,
-	Loader2,
 	Square,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Thread } from "@/components/assistant-ui/thread";
+import { Thread } from "@/components/chat/thread";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	type AgentConversation,
@@ -54,7 +49,6 @@ import {
 	chatSessionAccessDeniedKey,
 	chatSessionApiErrorMessage,
 	eventsToThreadMessages,
-	extractTextOnlyContent,
 	isEnvironmentReady,
 } from "./conversation-to-thread-messages";
 import { LoadOlderEvents, TailFollowIndicator } from "./event-window-controls";
@@ -96,6 +90,7 @@ function ConversationControls({
 	};
 
 	const stopMut = useMutation({
+		meta: { success: "stopped", subject: "conversation" },
 		mutationFn: async () => {
 			if (projectId) {
 				await stopConversation(projectId, conversation.id);
@@ -141,7 +136,7 @@ function ConversationControls({
 				disabled={stopMut.isPending}
 			>
 				{stopMut.isPending ? (
-					<Loader2 className="size-3 animate-spin" />
+					<Spinner aria-hidden="true" className="size-3" />
 				) : (
 					<Square className="size-3" />
 				)}
@@ -287,13 +282,9 @@ export function ConversationView({
 		}
 	};
 
-	const onNew = async (message: AppendMessage) => {
+	const onNew = async (text: string) => {
 		if (!conversation) {
 			throw new Error(t("agents.conversationView.conversationEnded"));
-		}
-		const text = extractTextOnlyContent(message);
-		if (text === null) {
-			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
 		// Snapshot now (not read again after any await) so a badge staged
 		// mid-send can't sneak into this message or get cleared under it.
@@ -404,15 +395,6 @@ export function ConversationView({
 		}
 		invalidate();
 	};
-
-	const runtime = useExternalStoreRuntime({
-		messages,
-		isRunning,
-		convertMessage: (m) => m,
-		onNew,
-		onCancel,
-		isDisabled: !canReply,
-	});
 
 	// Pings the agent-runner service every ~30s while this chat conversation is
 	// loaded, so its sandbox's idle timer never trips as long as this view
@@ -618,36 +600,36 @@ export function ConversationView({
 
 			{/* Thread */}
 			<div className="flex-1 min-h-0">
-				<AssistantRuntimeProvider runtime={runtime}>
-					<Thread
-						turnAnchor="bottom"
-						// A run starting must not pull a reader who is paging back
-						// through history.
-						scrollToBottomOnRunStart={false}
-						environmentReady={environmentReady}
-						viewportHeader={
-							<LoadOlderEvents
-								hasOlder={hasOlder}
-								isLoadingOlder={isLoadingOlder}
-								loadOlder={loadOlder}
+				<Thread
+					messages={messages}
+					isRunning={isRunning}
+					disabled={!canReply}
+					onSend={onNew}
+					onCancel={onCancel}
+					turnAnchor="bottom"
+					environmentReady={environmentReady}
+					viewportHeader={
+						<LoadOlderEvents
+							hasOlder={hasOlder}
+							isLoadingOlder={isLoadingOlder}
+							loadOlder={loadOlder}
+						/>
+					}
+					viewportOverlay={
+						<>
+							{conversation.error_message && (
+								<ConversationErrorBox message={conversation.error_message} />
+							)}
+							{sendError && <ConversationErrorBox message={sendError} />}
+							<TailFollowIndicator
+								newBelow={newBelow}
+								setFollowing={setFollowing}
+								jumpToLatest={jumpToLatest}
+								jumpCount={jumpCount}
 							/>
-						}
-						viewportOverlay={
-							<>
-								{conversation.error_message && (
-									<ConversationErrorBox message={conversation.error_message} />
-								)}
-								{sendError && <ConversationErrorBox message={sendError} />}
-								<TailFollowIndicator
-									newBelow={newBelow}
-									setFollowing={setFollowing}
-									jumpToLatest={jumpToLatest}
-									jumpCount={jumpCount}
-								/>
-							</>
-						}
-					/>
-				</AssistantRuntimeProvider>
+						</>
+					}
+				/>
 			</div>
 			{agentBusyDialog}
 		</div>

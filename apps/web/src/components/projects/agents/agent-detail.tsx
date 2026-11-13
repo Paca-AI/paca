@@ -3,13 +3,11 @@ import { Link } from "@tanstack/react-router";
 import {
 	Activity as ActivityIcon,
 	Bot,
-	Check,
 	CircleCheck,
 	Code2,
 	ExternalLink,
 	GitBranch,
 	KeyRound,
-	Loader2,
 	Plus,
 	Save,
 	Server,
@@ -46,7 +44,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -93,6 +93,7 @@ import {
 	environmentConfigQueryOptions,
 	environmentQueryOptions,
 } from "@/lib/environment-api";
+import { notifyError } from "@/lib/notify";
 import { agentAvatar } from "@/lib/provider-logos";
 import { splitShellCommand } from "@/lib/shell-command";
 import { AgentGitTab } from "./AgentGitTab";
@@ -302,6 +303,8 @@ function OverviewTab({
 					defaultFolderId !== (agent.default_folder_id ?? ""));
 
 	const saveMutation = useMutation({
+		meta: { success: "updated", subject: "agentSettings" },
+		onError: (err) => notifyError(err, saveErrorMessage(err)),
 		mutationFn: () => {
 			const payload = {
 				name: name.trim(),
@@ -374,18 +377,16 @@ function OverviewTab({
 	// The environment/folder pickers are populated from a live query, so a
 	// fresh pick is always valid — this mainly guards one deleted between
 	// load and submit.
-	const saveErrorMessage = saveMutation.isError
-		? (() => {
-				switch (getApiErrorCode(saveMutation.error)) {
-					case ApiErrorCode.AgentDefaultEnvironmentInvalid:
-						return t("agents.detail.overview.defaultEnvironmentInvalid");
-					case ApiErrorCode.AgentDefaultFolderInvalid:
-						return t("agents.detail.overview.defaultFolderInvalid");
-					default:
-						return t("agents.detail.overview.saveFailed");
-				}
-			})()
-		: null;
+	const saveErrorMessage = (err: unknown) => {
+		switch (getApiErrorCode(err)) {
+			case ApiErrorCode.AgentDefaultEnvironmentInvalid:
+				return t("agents.detail.overview.defaultEnvironmentInvalid");
+			case ApiErrorCode.AgentDefaultFolderInvalid:
+				return t("agents.detail.overview.defaultFolderInvalid");
+			default:
+				return t("agents.detail.overview.saveFailed");
+		}
+	};
 
 	return (
 		<div className="space-y-6 max-w-2xl">
@@ -867,21 +868,12 @@ function OverviewTab({
 				<div className="flex items-center gap-3 pt-2">
 					<Button onClick={() => saveMutation.mutate()} disabled={!canSave}>
 						{saveMutation.isPending ? (
-							<Loader2 className="size-4 mr-2 animate-spin" />
+							<Spinner aria-hidden="true" className="mr-2" />
 						) : (
 							<Save className="size-4 mr-2" />
 						)}
 						{t("agents.detail.overview.saveChanges")}
 					</Button>
-					{saveMutation.isSuccess && (
-						<span className="flex items-center gap-1 text-xs text-emerald-600">
-							<Check className="size-3" />
-							{t("agents.detail.overview.saved")}
-						</span>
-					)}
-					{saveErrorMessage && (
-						<span className="text-xs text-destructive">{saveErrorMessage}</span>
-					)}
 				</div>
 			)}
 		</div>
@@ -953,6 +945,7 @@ function VerifyCLILoginPanel({
 }) {
 	const { t } = useTranslation("projects");
 	const verifyMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => {
 			if (!projectId) throw new Error("no project");
 			return verifyCLILogin(projectId, agentId);
@@ -989,7 +982,7 @@ function VerifyCLILoginPanel({
 						disabled={verifyMutation.isPending || !environmentId}
 					>
 						{verifyMutation.isPending ? (
-							<Loader2 className="size-3.5 mr-1.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5 mr-1.5" />
 						) : (
 							<CircleCheck className="size-3.5 mr-1.5" />
 						)}
@@ -999,7 +992,7 @@ function VerifyCLILoginPanel({
 			</div>
 			{verifyMutation.isSuccess && (
 				<p
-					className={`mt-2 text-xs ${verifyMutation.data.authenticated ? "text-emerald-600" : "text-muted-foreground"}`}
+					className={`mt-2 text-xs ${verifyMutation.data.authenticated ? "text-success" : "text-muted-foreground"}`}
 				>
 					{verifyMutation.data.authenticated
 						? t("agents.detail.overview.cliLoginVerifiedNow")
@@ -1097,6 +1090,7 @@ function AddMCPServerDialog({
 	const [url, setUrl] = useState("");
 
 	const addMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => {
 			const payload = {
 				server_name: serverName.trim(),
@@ -1211,7 +1205,7 @@ function AddMCPServerDialog({
 						disabled={!serverName.trim() || addMutation.isPending}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							t("agents.detail.mcp.addDialog.addServer")
 						)}
@@ -1247,6 +1241,7 @@ function MCPServersTab({
 	).queryKey;
 
 	const toggleMutation = useMutation({
+		meta: { success: "updated", subject: "mcpServer" },
 		mutationFn: (s: AgentMCPServer) => {
 			const payload = { is_enabled: !s.is_enabled };
 			return projectId
@@ -1259,6 +1254,7 @@ function MCPServersTab({
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "removed", subject: "mcpServer" },
 		mutationFn: (id: string) =>
 			projectId
 				? deleteMCPServer(projectId, agentId, id)
@@ -1391,6 +1387,7 @@ function AddSkillDialog({
 	const [sourceUrl, setSourceUrl] = useState("");
 
 	const addMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => {
 			const payload = {
 				skill_name: skillName.trim(),
@@ -1514,7 +1511,7 @@ function AddSkillDialog({
 						disabled={!skillName.trim() || addMutation.isPending}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							t("agents.detail.skills.addDialog.addSkill")
 						)}
@@ -1555,6 +1552,7 @@ function SkillsTab({
 	).queryKey;
 
 	const toggleMutation = useMutation({
+		meta: { success: "updated", subject: "skill" },
 		mutationFn: (s: AgentSkill) => {
 			const payload = { is_enabled: !s.is_enabled };
 			return projectId
@@ -1567,6 +1565,7 @@ function SkillsTab({
 	});
 
 	const deleteMutation = useMutation({
+		meta: { success: "removed", subject: "skill" },
 		mutationFn: (id: string) =>
 			projectId
 				? deleteSkill(projectId, agentId, id)
@@ -1701,6 +1700,7 @@ function AddEnvVarDialog({
 	const isKeyValid = ENV_VAR_KEY_PATTERN.test(key.trim());
 
 	const addMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => {
 			const payload = { key: key.trim(), value };
 			return projectId
@@ -1783,7 +1783,7 @@ function AddEnvVarDialog({
 						disabled={!isKeyValid || !value || addMutation.isPending}
 					>
 						{addMutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							t("agents.detail.envVars.addDialog.addVariable")
 						)}
@@ -1819,6 +1819,7 @@ function EnvVarsTab({
 	).queryKey;
 
 	const deleteMutation = useMutation({
+		meta: { success: "removed", subject: "envVar" },
 		mutationFn: (id: string) =>
 			projectId
 				? deleteEnvVar(projectId, agentId, id)
@@ -2120,56 +2121,50 @@ export function AgentDetailView({
 				</div>
 			</div>
 
-			{/* Tabs */}
-			<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
-				<div className="flex items-center gap-1 -mb-px w-max min-w-full">
-					{visibleTabs.map((tab) => {
-						const Icon = tab.icon;
-						const isActive = activeTab === tab.id;
-						return (
-							<button
-								key={tab.id}
-								type="button"
-								onClick={() => handleTabChange(tab.id)}
-								className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-									isActive
-										? "border-primary text-primary"
-										: "border-transparent text-muted-foreground hover:text-foreground"
-								}`}
-							>
-								<Icon className="size-3.5" />
-								{t(tab.labelKey)}
-							</button>
-						);
-					})}
-				</div>
-			</div>
-
-			{/* Tab content */}
-			<div
-				className={
-					activeTab === "activity"
-						? "flex flex-1 min-h-0 flex-col p-6"
-						: "flex-1 overflow-auto p-6"
-				}
+			<Tabs
+				value={activeTab}
+				onValueChange={(v) => handleTabChange(v as Tab)}
+				className="min-h-0 flex-1 gap-0"
 			>
-				{activeTab === "overview" && (
+				<div className="border-b border-border/50 px-6 shrink-0 overflow-x-auto">
+					<TabsList
+						variant="line"
+						className="h-10 w-max min-w-full justify-start"
+					>
+						{visibleTabs.map((tab) => {
+							const Icon = tab.icon;
+							return (
+								<TabsTrigger
+									key={tab.id}
+									value={tab.id}
+									className="flex-none px-3"
+								>
+									<Icon />
+									{t(tab.labelKey)}
+								</TabsTrigger>
+							);
+						})}
+					</TabsList>
+				</div>
+
+				<TabsContent value="overview" className="flex-1 overflow-auto p-6">
 					<OverviewTab
 						agent={agent}
 						projectId={projectId}
 						canWrite={canWrite}
 					/>
-				)}
-				{activeTab === "mcp-servers" && agent.agent_type !== "acp" && (
-					<MCPServersTab
-						projectId={projectId}
-						agentId={agentId}
-						canWrite={canWrite}
-					/>
-				)}
-				{activeTab === "skills" &&
-					agent.agent_type !== "acp" &&
-					!cliSkillsUnsupported && (
+				</TabsContent>
+				<TabsContent value="mcp-servers" className="flex-1 overflow-auto p-6">
+					{agent.agent_type !== "acp" && (
+						<MCPServersTab
+							projectId={projectId}
+							agentId={agentId}
+							canWrite={canWrite}
+						/>
+					)}
+				</TabsContent>
+				<TabsContent value="skills" className="flex-1 overflow-auto p-6">
+					{agent.agent_type !== "acp" && !cliSkillsUnsupported && (
 						<SkillsTab
 							projectId={projectId}
 							agentId={agentId}
@@ -2177,27 +2172,39 @@ export function AgentDetailView({
 							canWrite={canWrite}
 						/>
 					)}
-				{activeTab === "env-vars" && agent.agent_type !== "acp" && (
-					<EnvVarsTab
-						projectId={projectId}
-						agentId={agentId}
-						canWrite={canWrite}
-					/>
-				)}
-				{activeTab === "global-role" && !projectId && (
-					<AgentGlobalRoleTab agent={agent} canWrite={canWrite} />
-				)}
-				{activeTab === "git" && projectId && (
-					<AgentGitTab
-						projectId={projectId}
-						agentId={agentId}
-						canWrite={canWrite}
-					/>
-				)}
-				{activeTab === "activity" && projectId && (
-					<AgentActivityTab projectId={projectId} agentId={agentId} />
-				)}
-			</div>
+				</TabsContent>
+				<TabsContent value="env-vars" className="flex-1 overflow-auto p-6">
+					{agent.agent_type !== "acp" && (
+						<EnvVarsTab
+							projectId={projectId}
+							agentId={agentId}
+							canWrite={canWrite}
+						/>
+					)}
+				</TabsContent>
+				<TabsContent value="global-role" className="flex-1 overflow-auto p-6">
+					{!projectId && (
+						<AgentGlobalRoleTab agent={agent} canWrite={canWrite} />
+					)}
+				</TabsContent>
+				<TabsContent value="git" className="flex-1 overflow-auto p-6">
+					{projectId && (
+						<AgentGitTab
+							projectId={projectId}
+							agentId={agentId}
+							canWrite={canWrite}
+						/>
+					)}
+				</TabsContent>
+				<TabsContent
+					value="activity"
+					className="flex min-h-0 flex-1 flex-col p-6"
+				>
+					{projectId && (
+						<AgentActivityTab projectId={projectId} agentId={agentId} />
+					)}
+				</TabsContent>
+			</Tabs>
 		</div>
 	);
 }

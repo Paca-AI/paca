@@ -732,7 +732,10 @@
 				"contextTypeAutomation": "Автоматизация",
 				"contextTypeAnnotation": "Комментарий",
 				"noContextResults": "Результаты не найдены",
-				"contextSearchMinChars": "Введите минимум 2 символа для поиска"
+				"contextSearchMinChars": "Введите минимум 2 символа для поиска",
+				"dialogDescription": "Найдите и выберите элементы, которыми хотите поделиться с агентом. Они будут отправлены вместе со следующим сообщением.",
+				"done": "Готово",
+				"attachedCount": "Прикреплено: {{count}}"
 			}
 		},
 		"acpModelEffort": {
@@ -1853,7 +1856,8 @@
 				"datePlaceholder": "Дата",
 				"clearDate": "Очистить дату",
 				"startDate": "Дата начала",
-				"dueDate": "Срок"
+				"dueDate": "Срок",
+				"clearDates": "Очистить даты"
 			},
 			"storyPointsEditor": {
 				"decrease": "Уменьшить story points",
@@ -2322,7 +2326,12 @@
 			"subtasksLabel": "Подзадачи",
 			"subtasksCollapsed": "Вложенные, свёрнуты",
 			"subtasksExpanded": "Вложенные, развёрнуты",
-			"subtasksHidden": "Скрыты (плоский список)"
+			"subtasksHidden": "Скрыты (плоский список)",
+			"unsavedBadge": "Несохранённые изменения",
+			"unsavedTitle": "Отменить несохранённые изменения?",
+			"unsavedDescription": "Вы изменили настройки этого представления, но не сохранили их. Сохраните их или отмените, чтобы вернуться к последним сохранённым настройкам.",
+			"keepEditing": "Продолжить редактирование",
+			"discard": "Отменить"
 		},
 		"roadmap": {
 			"taskColumnLabel": "Задача",

@@ -6,6 +6,8 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { Spinner } from "@/components/ui/spinner";
+import { notifyError } from "@/lib/notify";
 
 // Upper bound for manual-sort positions.  All computed positions stay strictly
 // inside (0, POSITION_MAX) by always taking midpoints toward the boundaries, so
@@ -16,7 +18,6 @@ import {
 	ChevronDown,
 	KanbanSquare,
 	List,
-	Loader2,
 	Map as MapIcon,
 	Plus,
 	Puzzle,
@@ -1525,6 +1526,7 @@ export function InteractionLayout({
 	);
 
 	const createTaskMutation = useMutation({
+		meta: { success: "created", subject: "task" },
 		mutationFn: async (payload: {
 			title: string;
 			statusId: string;
@@ -1697,6 +1699,7 @@ export function InteractionLayout({
 	// ── Delete task (Mod+Backspace shortcut / context menu) ─────────────────
 	const [deleteConfirmTask, setDeleteConfirmTask] = useState<Task | null>(null);
 	const deleteTaskMutation = useMutation({
+		meta: { success: "deleted", subject: "task" },
 		mutationFn: (taskId: string) => deleteTask(projectId, taskId),
 		onSuccess: (_, taskId) => {
 			qc.invalidateQueries({ queryKey: tasksListQueryKey });
@@ -1716,6 +1719,7 @@ export function InteractionLayout({
 	);
 
 	const createViewMutation = useMutation({
+		meta: { success: "created", subject: "view" },
 		mutationFn: (payload: {
 			name: string;
 			layout: ViewLayout;
@@ -1743,6 +1747,7 @@ export function InteractionLayout({
 	});
 
 	const renameViewMutation = useMutation({
+		meta: { success: "renamed", subject: "view" },
 		mutationFn: (payload: { viewId: string; name: string }) =>
 			updateViewById(projectId, payload.viewId, { name: payload.name }),
 		onSuccess: () => qc.invalidateQueries({ queryKey: viewsQueryKey }),
@@ -1766,6 +1771,7 @@ export function InteractionLayout({
 	// tracking future changes to) what they just made the team default — so
 	// it's cleared right after.
 	const saveForEveryoneMutation = useMutation({
+		meta: { success: "saved", subject: "view" },
 		mutationFn: async (payload: { viewId: string; config: ViewConfig }) => {
 			await updateViewById(projectId, payload.viewId, {
 				config: payload.config,
@@ -1778,12 +1784,10 @@ export function InteractionLayout({
 		},
 	});
 
-	const [viewActionError, setViewActionError] = useState<string | null>(null);
-
 	const deleteViewMutation = useMutation({
+		meta: { success: "deleted", subject: "view" },
 		mutationFn: (viewId: string) => deleteViewById(projectId, viewId),
 		onSuccess: (_, deletedId) => {
-			setViewActionError(null);
 			qc.invalidateQueries({ queryKey: viewsQueryKey });
 			if (preferredViewId === deletedId) {
 				const remaining = views.filter((v) => v.id !== deletedId);
@@ -1791,7 +1795,8 @@ export function InteractionLayout({
 			}
 		},
 		onError: (err: unknown) => {
-			setViewActionError(
+			notifyError(
+				err,
 				getApiErrorCode(err) === ApiErrorCode.ViewIsLastView
 					? t("layout.shell.viewErrors.isLastView")
 					: t("layout.shell.viewErrors.deleteFailed"),
@@ -1803,12 +1808,12 @@ export function InteractionLayout({
 		mutationFn: (orderedIds: string[]) =>
 			reorderViewsByContext(projectId, context, orderedIds, sprintId),
 		onSuccess: () => {
-			setViewActionError(null);
 			qc.invalidateQueries({ queryKey: viewsQueryKey });
 		},
 		onError: (err: unknown) => {
 			setLocalViews(null);
-			setViewActionError(
+			notifyError(
+				err,
 				getApiErrorCode(err) === ApiErrorCode.ViewReorderInvalid
 					? t("layout.shell.viewErrors.reorderInvalid")
 					: t("layout.shell.viewErrors.reorderFailed"),
@@ -1843,6 +1848,7 @@ export function InteractionLayout({
 
 	// ── Sprint management (backlog only) ────────────────────────────────────
 	const createSprintMutation = useMutation({
+		meta: { success: "created", subject: "sprint" },
 		mutationFn: async () => {
 			// Number the new sprint after every existing one, not just the
 			// loaded ones — the total comes from the server.
@@ -1861,6 +1867,8 @@ export function InteractionLayout({
 	};
 
 	const updateSprintMutation = useMutation({
+		// The start-sprint modal renders its own inline error.
+		meta: { success: "started", subject: "sprint", silent: true },
 		mutationFn: ({
 			sprintId: sid,
 			payload,
@@ -2038,7 +2046,6 @@ export function InteractionLayout({
 											<DropdownMenuItem
 												disabled={views.length <= 1}
 												onClick={() => {
-													setViewActionError(null);
 													deleteViewMutation.mutate(view.id);
 												}}
 												className="text-destructive focus:text-destructive"
@@ -2141,16 +2148,10 @@ export function InteractionLayout({
 				</p>
 			)}
 
-			{viewActionError && (
-				<p className="shrink-0 border-b border-border/25 bg-destructive/10 px-8 py-2 text-xs text-destructive">
-					{viewActionError}
-				</p>
-			)}
-
 			{/* View content */}
 			<div
 				ref={viewContentRef}
-				className="flex flex-1 flex-col overflow-hidden"
+				className="isolate flex flex-1 flex-col overflow-hidden"
 			>
 				{activePluginView && activeView ? (
 					<RemoteComponent
@@ -2363,7 +2364,7 @@ export function InteractionLayout({
 							disabled={deleteTaskMutation.isPending}
 						>
 							{deleteTaskMutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
+								<Spinner aria-hidden="true" />
 							) : (
 								t("taskDetail.header.deleteDialog.delete")
 							)}

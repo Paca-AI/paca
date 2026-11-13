@@ -7,6 +7,14 @@ import { DeleteProjectRoleDialog } from "@/components/projects/roles/DeleteProje
 import { ProjectRoleFormDialog } from "@/components/projects/roles/ProjectRoleFormDialog";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@/components/ui/empty";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -251,29 +259,29 @@ export function RolesSettings({
 			) : isLoading ? (
 				<RolesTableSkeleton />
 			) : !roles?.length ? (
-				<div className="flex flex-col items-center gap-4 rounded-xl border border-dashed bg-muted/20 py-16 text-center mt-4">
-					<div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
-						<Shield className="size-6" />
-					</div>
-					<div>
-						<p className="text-sm font-medium">
-							{t("settings.roles.empty.title")}
-						</p>
-						<p className="mt-1 text-xs text-muted-foreground">
+				<Empty className="border border-dashed bg-muted/20 py-16 mt-4">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<Shield className="size-6" />
+						</EmptyMedia>
+						<EmptyTitle>{t("settings.roles.empty.title")}</EmptyTitle>
+						<EmptyDescription>
 							{t("settings.roles.empty.description")}
-						</p>
-					</div>
-					{canManageRoles ? (
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={() => setCreateOpen(true)}
-						>
-							<Plus className="size-4" />
-							{t("settings.roles.empty.createRole")}
-						</Button>
-					) : null}
-				</div>
+						</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						{canManageRoles ? (
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => setCreateOpen(true)}
+							>
+								<Plus className="size-4" />
+								{t("settings.roles.empty.createRole")}
+							</Button>
+						) : null}
+					</EmptyContent>
+				</Empty>
 			) : (
 				<div className="overflow-x-auto rounded-xl border mt-4">
 					<Table>

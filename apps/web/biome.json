@@ -22,11 +22,32 @@
 		"enabled": true,
 		"indentStyle": "tab"
 	},
-	"assist": { "actions": { "source": { "organizeImports": "on" } } },
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true
+			"recommended": true,
+			"a11y": {
+				"noLabelWithoutControl": {
+					"level": "error",
+					"options": {
+						"inputComponents": [
+							"Checkbox",
+							"Input",
+							"Textarea",
+							"NativeSelect",
+							"Switch",
+							"Select"
+						]
+					}
+				}
+			}
 		}
 	},
 	"javascript": {
@@ -41,5 +62,28 @@
 		"linter": {
 			"enabled": true
 		}
-	}
+	},
+	"overrides": [
+		{
+			"includes": ["**/src/components/ui/**", "**/src/lib/highlighter.tsx"],
+			"linter": {
+				"rules": {
+					"a11y": {
+						"useSemanticElements": "off",
+						"useFocusableInteractive": "off",
+						"noNoninteractiveTabindex": "off",
+						"useKeyWithClickEvents": "off",
+						"useAriaPropsForRole": "off"
+					},
+					"suspicious": {
+						"noArrayIndexKey": "off",
+						"noDoubleEquals": "off"
+					},
+					"security": {
+						"noDangerouslySetInnerHtml": "off"
+					}
+				}
+			}
+		}
+	]
 }

@@ -1,13 +1,13 @@
 import { browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertCircle, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { AlertCircle, KeyRound, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	ApiErrorCode,
 	getApiErrorCode,
@@ -111,7 +111,7 @@ export function MfaChallengePanel({ pending }: { pending: PendingMfa }) {
 	const errorNotice = error ? (
 		<div
 			role="alert"
-			className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-400"
+			className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-3 text-sm text-destructive"
 		>
 			<AlertCircle className="mt-px size-4 shrink-0" />
 			<span>{error}</span>
@@ -155,7 +155,7 @@ export function MfaChallengePanel({ pending }: { pending: PendingMfa }) {
 						)}
 					>
 						{busy ? (
-							<Loader2 className="size-4 animate-spin" />
+							<Spinner aria-hidden="true" />
 						) : (
 							<KeyRound className="size-4" />
 						)}
@@ -218,7 +218,7 @@ export function MfaChallengePanel({ pending }: { pending: PendingMfa }) {
 								"h-11 w-full font-semibold tracking-wide bg-primary text-primary-foreground hover:bg-primary/90",
 							)}
 						>
-							{busy ? <Loader2 className="size-4 animate-spin" /> : null}
+							{busy ? <Spinner aria-hidden="true" /> : null}
 							{busy ? t("login.mfa.verifying") : t("login.mfa.verify")}
 						</button>
 					</form>

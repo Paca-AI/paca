@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { COLOR_PRESETS } from "@/lib/color-presets";
@@ -61,6 +61,7 @@ export function TaskTypeFormDialog({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "saved", subject: "taskType" },
 		mutationFn: () => {
 			const payload = {
 				name: name.trim(),
@@ -287,7 +288,7 @@ export function TaskTypeFormDialog({
 						onClick={() => mutation.mutate()}
 					>
 						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Spinner aria-hidden="true" className="size-3.5" />
 						) : null}
 						{isEdit
 							? t("taskTypes.formDialog.saveChanges")

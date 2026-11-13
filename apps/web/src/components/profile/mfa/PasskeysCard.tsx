@@ -1,9 +1,8 @@
 import { browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Loader2, Trash2 } from "lucide-react";
+import { KeyRound, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { InlineNotice } from "@/components/shared/inline-notice";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	deletePasskey,
@@ -226,9 +226,7 @@ function AddPasskeyDialog({
 							{t("actions.cancel")}
 						</Button>
 						<Button type="submit" disabled={mutation.isPending}>
-							{mutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
-							) : null}
+							{mutation.isPending ? <Spinner aria-hidden="true" /> : null}
 							{t("security.passkeys.continue")}
 						</Button>
 					</DialogFooter>
@@ -304,9 +302,7 @@ function RemovePasskeyDialog({
 							mutation.mutate();
 						}}
 					>
-						{mutation.isPending ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : null}
+						{mutation.isPending ? <Spinner aria-hidden="true" /> : null}
 						{t("security.passkeys.remove")}
 					</Button>
 				</DialogFooter>

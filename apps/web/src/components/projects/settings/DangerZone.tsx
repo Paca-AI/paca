@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { deleteProject, projectQueryOptions } from "@/lib/project-api";
 
 export function DangerZone({ projectId }: { projectId: string }) {
@@ -26,6 +27,7 @@ export function DangerZone({ projectId }: { projectId: string }) {
 	const [confirmName, setConfirmName] = useState("");
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "project", silent: true },
 		mutationFn: () => deleteProject(projectId),
 		onSuccess: async () => {
 			queryClient.removeQueries({ queryKey: ["projects", projectId] });
@@ -127,7 +129,7 @@ export function DangerZone({ projectId }: { projectId: string }) {
 							onClick={() => deleteMutation.mutate()}
 						>
 							{deleteMutation.isPending ? (
-								<Loader2 className="size-3.5 animate-spin" />
+								<Spinner aria-hidden="true" className="size-3.5" />
 							) : (
 								<Trash2 className="size-3.5" />
 							)}

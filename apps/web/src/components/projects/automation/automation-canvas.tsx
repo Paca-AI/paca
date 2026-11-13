@@ -13,7 +13,7 @@ import {
 	useUpdateNodeInternals,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AlertCircle, GitBranch, Play, Trash2, X, Zap } from "lucide-react";
+import { GitBranch, Play, Trash2, Zap } from "lucide-react";
 import {
 	type CSSProperties,
 	useCallback,
@@ -65,9 +65,9 @@ const KIND_STYLES: Record<
 		icon: GitBranch,
 	},
 	action: {
-		border: "border-amber-500/50",
-		bg: "bg-amber-500/10",
-		text: "text-amber-600 dark:text-amber-400",
+		border: "border-warning/50",
+		bg: "bg-warning/10",
+		text: "text-warning",
 		icon: Play,
 	},
 };
@@ -311,8 +311,6 @@ interface AutomationCanvasProps {
 	onMoveNode: (nodeId: string, posX: number, posY: number) => void;
 	onDeleteNode: (nodeId: string) => void;
 	onDeleteEdge: (edgeId: string) => void;
-	errorMessage?: string | null;
-	onDismissError?: () => void;
 }
 
 export function AutomationCanvas({
@@ -328,8 +326,6 @@ export function AutomationCanvas({
 	onMoveNode,
 	onDeleteNode,
 	onDeleteEdge,
-	errorMessage,
-	onDismissError,
 }: AutomationCanvasProps) {
 	const { t } = useTranslation("projects");
 	const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -424,17 +420,6 @@ export function AutomationCanvas({
 
 	return (
 		<div className="relative flex-1 min-h-0">
-			{errorMessage && (
-				<div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive shadow-lg max-w-md">
-					<AlertCircle className="size-3.5 shrink-0" />
-					<span className="flex-1">{errorMessage}</span>
-					{onDismissError && (
-						<button type="button" onClick={onDismissError} className="shrink-0">
-							<X className="size-3.5" />
-						</button>
-					)}
-				</div>
-			)}
 			{selectedEdgeId && canEdit && (
 				<div className="absolute top-3 right-3 z-10">
 					<button

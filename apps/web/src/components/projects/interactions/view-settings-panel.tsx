@@ -13,10 +13,43 @@ import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
 import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { useMemberSearch } from "@/hooks/use-member-search";
 import { useSprintSearch } from "@/hooks/use-sprint-search";
@@ -77,29 +110,12 @@ const CATEGORY_COLORS: Record<StatusCategory, string> = {
 	backlog: "bg-muted-foreground/40",
 	refinement: "bg-violet-400/70",
 	ready: "bg-sky-400/70",
-	todo: "bg-amber-400/70",
+	todo: "bg-warning/70",
 	inprogress: "bg-primary/70",
-	done: "bg-emerald-500/70",
+	done: "bg-success/70",
 };
 
 // ── Primitives ────────────────────────────────────────────────────────────────
-
-function PanelSectionHeader({
-	children,
-	action,
-}: {
-	children: React.ReactNode;
-	action?: React.ReactNode;
-}) {
-	return (
-		<div className="flex items-center justify-between px-3 pt-3.5 pb-1.5">
-			<span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/50">
-				{children}
-			</span>
-			{action}
-		</div>
-	);
-}
 
 function SettingRow({
 	label,
@@ -109,10 +125,10 @@ function SettingRow({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="flex items-center gap-3 px-3 py-1.5">
-			<span className="w-19 shrink-0 text-xs font-medium text-muted-foreground/80">
+		<div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-3">
+			<Label className="text-xs font-medium text-muted-foreground">
 				{label}
-			</span>
+			</Label>
 			{children}
 		</div>
 	);
@@ -128,37 +144,23 @@ function DynamicSelect({
 	onChange: (v: string | undefined) => void;
 }) {
 	const { t } = useTranslation("projects");
-	const selected = options.find((o) => o.key === value);
 	return (
-		<Popover>
-			<PopoverTrigger
-				type="button"
-				className="flex flex-1 items-center justify-between gap-1.5 cursor-pointer rounded-md border border-border/30 bg-background px-2 py-1 text-xs font-medium outline-none transition-all hover:border-border/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 min-w-0"
-			>
-				<span className="truncate">
-					{selected?.label ?? t("layout.viewSettings.noSelection")}
-				</span>
-				<ChevronDown className="size-3 shrink-0 text-muted-foreground/50" />
-			</PopoverTrigger>
-			<PopoverContent
-				className="w-44 p-1 rounded-lg border border-border/40 shadow-lg"
-				align="start"
-			>
+		<Select
+			value={value ?? null}
+			onValueChange={(v) => onChange(v ?? undefined)}
+			items={options.map((o) => ({ value: o.key, label: o.label }))}
+		>
+			<SelectTrigger className="w-full">
+				<SelectValue placeholder={t("layout.viewSettings.noSelection")} />
+			</SelectTrigger>
+			<SelectContent>
 				{options.map((o) => (
-					<button
-						key={o.key}
-						type="button"
-						className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-muted/60 transition-colors duration-100"
-						onClick={() => onChange(o.key)}
-					>
-						<span className="flex-1 text-left truncate">{o.label}</span>
-						{o.key === value && (
-							<Check className="size-3.5 text-primary shrink-0" />
-						)}
-					</button>
+					<SelectItem key={o.key} value={o.key}>
+						{o.label}
+					</SelectItem>
 				))}
-			</PopoverContent>
-		</Popover>
+			</SelectContent>
+		</Select>
 	);
 }
 
@@ -211,23 +213,16 @@ function CheckRow({
 	dot?: React.ReactNode;
 	icon?: React.ReactNode;
 }) {
-	const ref = useRef<HTMLInputElement>(null);
-	useEffect(() => {
-		if (ref.current) ref.current.indeterminate = !!indeterminate;
-	}, [indeterminate]);
-
 	return (
 		<label
 			htmlFor={`check-${id}`}
 			className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-muted/40"
 		>
-			<input
-				ref={ref}
+			<Checkbox
 				id={`check-${id}`}
-				type="checkbox"
+				indeterminate={!!indeterminate}
 				checked={checked}
-				onChange={onChange}
-				className="size-3.5 cursor-pointer rounded accent-primary shrink-0"
+				onCheckedChange={() => onChange()}
 			/>
 			{dot}
 			{icon}
@@ -285,7 +280,7 @@ function FieldPicker({
 	const disabled = allFields.filter((f) => !visibleFields.includes(f.key));
 
 	return (
-		<div className="flex flex-col gap-0.5 py-1 max-h-60 overflow-y-auto">
+		<div className="flex flex-col gap-0.5">
 			{enabled.map((f) => (
 				// biome-ignore lint/a11y/noStaticElementInteractions: drag-to-reorder row
 				<div
@@ -297,12 +292,10 @@ function FieldPicker({
 					className="flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/40 active:cursor-grabbing"
 				>
 					<GripVertical className="size-3 shrink-0 text-muted-foreground/40" />
-					<input
-						type="checkbox"
+					<Checkbox
 						id={`field-${f.key}`}
 						checked
-						onChange={() => toggle(f.key)}
-						className="size-3.5 cursor-pointer rounded accent-primary"
+						onCheckedChange={() => toggle(f.key)}
 					/>
 					<label
 						htmlFor={`field-${f.key}`}
@@ -321,12 +314,10 @@ function FieldPicker({
 					className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/40"
 				>
 					<div className="size-3 shrink-0" />
-					<input
-						type="checkbox"
+					<Checkbox
 						id={`field-${f.key}`}
 						checked={false}
-						onChange={() => toggle(f.key)}
-						className="size-3.5 cursor-pointer rounded accent-primary"
+						onCheckedChange={() => toggle(f.key)}
 					/>
 					<label
 						htmlFor={`field-${f.key}`}
@@ -1147,34 +1138,32 @@ function CollapsibleFilter({
 	defaultOpen?: boolean;
 	children: React.ReactNode;
 }) {
-	const [open, setOpen] = useState(defaultOpen);
 	return (
-		<div className="border-b border-border/20 last:border-0">
-			<button
-				type="button"
-				onClick={() => setOpen((v) => !v)}
-				className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/30 transition-colors"
-			>
-				{open ? (
-					<ChevronDown className="size-3 shrink-0 text-muted-foreground/50" />
-				) : (
-					<ChevronRight className="size-3 shrink-0 text-muted-foreground/50" />
-				)}
-				<span className="flex-1 text-xs font-medium text-foreground/80">
+		<Collapsible
+			defaultOpen={defaultOpen}
+			className="border-b border-border/20 last:border-0"
+		>
+			<CollapsibleTrigger className="group/filter flex w-full items-center gap-2 rounded-md px-2 py-2.5 text-left transition-colors hover:bg-muted/30">
+				<ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60 transition-transform group-aria-expanded/filter:rotate-90" />
+				<span className="flex-1 text-sm font-medium text-foreground/90">
 					{label}
 				</span>
 				{badge != null && badge > 0 && (
-					<span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 text-xs font-semibold text-primary">
+					<Badge variant="secondary" className="h-5 min-w-5 justify-center">
 						{badge}
-					</span>
+					</Badge>
 				)}
-			</button>
-			{open && children}
-		</div>
+			</CollapsibleTrigger>
+			<CollapsibleContent>
+				<div className="pb-2">{children}</div>
+			</CollapsibleContent>
+		</Collapsible>
 	);
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+
+type SettingsTab = "display" | "fields" | "filters";
 
 interface ViewSettingsPanelProps {
 	projectId: string;
@@ -1212,7 +1201,7 @@ export function ViewSettingsPanel({
 	const { data: taskTypes = [] } = useQuery(taskTypesQueryOptions(projectId));
 
 	const [draft, setDraft] = useState<ViewConfig>(() => view?.config ?? {});
-	const [fieldsOpen, setFieldsOpen] = useState(false);
+	const [tab, setTab] = useState<SettingsTab>("display");
 	// Only offer Reset when there's actually something to reset — the draft
 	// (including unsaved edits) differs from the shared/team config. Also
 	// gates "Save for everyone": publishing an unchanged shared config would
@@ -1236,12 +1225,29 @@ export function ViewSettingsPanel({
 		if (open) onPreview(draft);
 	}, [draft, open]);
 
+	const [confirmOpen, setConfirmOpen] = useState(false);
+
+	/** Closes for real: drops the live preview and goes back to the first tab. */
+	const closeNow = () => {
+		if (view) onPreview(view.config ?? {});
+		setDraft(view?.config ?? {});
+		setTab("display");
+		setConfirmOpen(false);
+		onOpenChange(false);
+	};
+
+	// Closing (outside click, Escape, the trigger) with unsaved edits asks first
+	// instead of silently throwing them away.
 	const handleOpenChange = (newOpen: boolean) => {
-		if (!newOpen && view) {
-			onPreview(view.config ?? {});
-			setFieldsOpen(false);
+		if (newOpen) {
+			onOpenChange(true);
+			return;
 		}
-		onOpenChange(newOpen);
+		if (differsFromEffective && !isPending) {
+			setConfirmOpen(true);
+			return;
+		}
+		closeNow();
 	};
 
 	const update = (patch: Partial<ViewConfig>) => {
@@ -1297,7 +1303,8 @@ export function ViewSettingsPanel({
 	const handleSave = async () => {
 		if (!view) return;
 		await onSave(view.id, draft);
-		setFieldsOpen(false);
+		setTab("display");
+		setConfirmOpen(false);
 		onOpenChange(false);
 	};
 
@@ -1310,13 +1317,13 @@ export function ViewSettingsPanel({
 		const shared = view?.shared_config ?? {};
 		setDraft(shared);
 		onPreview(shared);
-		setFieldsOpen(false);
 	};
 
 	const handleSaveForEveryone = async () => {
 		if (!view) return;
 		await onSaveForEveryone(view.id, draft);
-		setFieldsOpen(false);
+		setTab("display");
+		setConfirmOpen(false);
 		onOpenChange(false);
 	};
 
@@ -1379,440 +1386,498 @@ export function ViewSettingsPanel({
 	const hasSavedFilters = filterBadge > 0;
 
 	return (
-		<Popover open={open} onOpenChange={handleOpenChange}>
-			<PopoverTrigger
-				render={
-					<button
-						type="button"
-						aria-label={t("layout.viewSettings.viewSettingsAriaLabel")}
-						className={cn(
-							"relative flex size-7 items-center justify-center rounded-md transition-all duration-150",
-							open
-								? "bg-primary/8 text-primary/80"
-								: "text-muted-foreground/60 hover:text-foreground hover:bg-muted/60",
-						)}
-					/>
-				}
-			>
-				<Settings className="size-3.5" />
-			</PopoverTrigger>
-			<PopoverContent
-				side="bottom"
-				align="end"
-				className="w-80 p-0 rounded-xl border border-border/40 shadow-xl overflow-hidden"
-				sideOffset={6}
-			>
-				{/* ── Header ───────────────────────────────────────────────── */}
-				<div className="flex items-center justify-between px-3 py-2.5 border-b border-border/30 bg-muted/20">
-					{fieldsOpen ? (
-						<>
-							<p className="text-xs font-semibold text-muted-foreground/80">
-								{t("layout.viewSettings.chooseFields")}
-							</p>
-							<button
-								type="button"
-								onClick={() => setFieldsOpen(false)}
-								className="text-xs font-medium text-primary/80 hover:text-primary transition-colors"
-							>
-								{t("layout.viewSettings.back")}
-							</button>
-						</>
-					) : (
-						<>
-							<div className="flex items-center gap-1.5">
-								<p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
-									{t("layout.viewSettings.title")}
-								</p>
-								{isPersonalized && (
-									<span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-primary">
-										{t("layout.viewSettings.onlyVisibleToYou")}
-									</span>
-								)}
-							</div>
-							{hasSavedFilters && (
-								<button
-									type="button"
-									onClick={() => update({ filters: {} })}
-									className="text-xs font-medium text-muted-foreground/60 hover:text-foreground transition-colors"
-								>
-									{t("layout.viewSettings.clearFilters")}
-								</button>
+		<>
+			<Popover open={open} onOpenChange={handleOpenChange}>
+				<PopoverTrigger
+					render={
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-sm"
+							aria-label={t("layout.viewSettings.viewSettingsAriaLabel")}
+							className={cn(
+								"relative size-7 text-muted-foreground/60 hover:text-foreground",
+								open && "bg-primary/10 text-primary/80",
 							)}
-						</>
-					)}
-				</div>
-
-				{/* ── Field picker sub-page ─────────────────────────────────── */}
-				{fieldsOpen ? (
-					<div className="px-1">
-						<FieldPicker
-							visibleFields={visibleFields}
-							customFields={customFields}
-							onChange={(fields) => update({ fields })}
 						/>
+					}
+				>
+					<Settings className="size-3.5" />
+					{(hasSavedFilters || differsFromEffective) && (
+						<span
+							aria-hidden="true"
+							className="absolute top-1 right-1 size-1.5 rounded-full bg-primary"
+						/>
+					)}
+				</PopoverTrigger>
+				{/* Stays a dropdown, not a dialog: the board behind it updates live as
+				    the draft is edited, and a dialog would cover that. */}
+				<PopoverContent
+					side="bottom"
+					align="end"
+					sideOffset={6}
+					className="flex max-h-[min(40rem,calc(100vh-6rem))] w-[26rem] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden rounded-xl border border-border/40 p-0 shadow-xl"
+				>
+					<div className="flex items-center gap-2 border-b border-border/30 px-4 py-3">
+						<p className="text-sm font-semibold">
+							{t("layout.viewSettings.title")}
+						</p>
+						{isPersonalized && (
+							<Badge variant="secondary">
+								{t("layout.viewSettings.onlyVisibleToYou")}
+							</Badge>
+						)}
+						{differsFromEffective && (
+							<Badge variant="outline" className="ml-auto gap-1.5">
+								<span
+									aria-hidden="true"
+									className="size-1.5 rounded-full bg-warning"
+								/>
+								{t("layout.viewSettings.unsavedBadge")}
+							</Badge>
+						)}
 					</div>
-				) : (
-					<div className="overflow-y-auto max-h-[70vh]">
-						{/* ── Display section ─────────────────────────────────── */}
-						<PanelSectionHeader>
-							{t("layout.viewSettings.display")}
-						</PanelSectionHeader>
-						<div className="pb-2 space-y-0.5">
-							<SettingRow label={t("layout.viewSettings.fieldsLabel")}>
-								<button
-									type="button"
-									onClick={() => setFieldsOpen(true)}
-									className="flex-1 truncate text-left text-xs font-medium text-foreground hover:text-primary transition-colors duration-150"
-								>
-									{fieldsLabel}
-								</button>
-							</SettingRow>
 
-							<SettingRow label={t("layout.viewSettings.columnByLabel")}>
-								<DynamicSelect
-									value={draft.column_by ?? "status"}
-									options={columnByOpts}
-									onChange={(v) => update({ column_by: v })}
-								/>
-							</SettingRow>
+					<Tabs
+						value={tab}
+						onValueChange={(v) => setTab(v as SettingsTab)}
+						className="min-h-0 flex-1 gap-0"
+					>
+						<div className="border-b border-border/30 px-3">
+							<TabsList variant="line" className="h-10 w-full justify-start">
+								<TabsTrigger value="display" className="flex-none px-3">
+									{t("layout.viewSettings.display")}
+								</TabsTrigger>
+								<TabsTrigger value="fields" className="flex-none px-3">
+									{t("layout.viewSettings.fieldsLabel")}
+								</TabsTrigger>
+								<TabsTrigger value="filters" className="flex-none px-3">
+									{t("layout.viewSettings.filters")}
+									{filterBadge > 0 && (
+										<Badge
+											variant="secondary"
+											className="h-5 min-w-5 justify-center"
+										>
+											{filterBadge}
+										</Badge>
+									)}
+								</TabsTrigger>
+							</TabsList>
+						</div>
 
-							<SettingRow label={t("layout.viewSettings.swimlanesLabel")}>
-								<DynamicSelect
-									value={draft.swimlanes ?? "none"}
-									options={swimlaneOpts}
-									onChange={(v) => update({ swimlanes: v })}
-								/>
-							</SettingRow>
+						{/* ── Display ─────────────────────────────────────────── */}
+						<TabsContent
+							value="display"
+							className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+						>
+							<div className="flex flex-col gap-3">
+								<SettingRow label={t("layout.viewSettings.fieldsLabel")}>
+									{/* A summary of what is shown; opens the Fields tab to change it. */}
+									<button
+										type="button"
+										onClick={() => setTab("fields")}
+										title={fieldsLabel}
+										className="truncate rounded-md border border-input px-2.5 py-1.5 text-left text-xs font-medium transition-colors hover:border-ring hover:text-primary"
+									>
+										{fieldsLabel}
+									</button>
+								</SettingRow>
 
-							<SettingRow label={t("layout.viewSettings.sortByLabel")}>
-								<DynamicSelect
-									value={sortByValue}
-									options={sortByOpts}
-									onChange={(v) => update({ sort_by: v })}
-								/>
-							</SettingRow>
-
-							{(view?.layout === "Table" || view?.layout === "Roadmap") && (
-								<SettingRow label={t("layout.viewSettings.subtasksLabel")}>
+								<SettingRow label={t("layout.viewSettings.columnByLabel")}>
 									<DynamicSelect
-										value={draft.subtask_mode ?? "collapsed"}
-										options={[
-											{
-												key: "collapsed",
-												label: t("layout.viewSettings.subtasksCollapsed"),
-											},
-											{
-												key: "expanded",
-												label: t("layout.viewSettings.subtasksExpanded"),
-											},
-											{
-												key: "hidden",
-												label: t("layout.viewSettings.subtasksHidden"),
-											},
-										]}
+										value={draft.column_by ?? "status"}
+										options={columnByOpts}
+										onChange={(v) => update({ column_by: v })}
+									/>
+								</SettingRow>
+
+								<SettingRow label={t("layout.viewSettings.swimlanesLabel")}>
+									<DynamicSelect
+										value={draft.swimlanes ?? "none"}
+										options={swimlaneOpts}
+										onChange={(v) => update({ swimlanes: v })}
+									/>
+								</SettingRow>
+
+								<SettingRow label={t("layout.viewSettings.sortByLabel")}>
+									<DynamicSelect
+										value={sortByValue}
+										options={sortByOpts}
+										onChange={(v) => update({ sort_by: v })}
+									/>
+								</SettingRow>
+
+								{(view?.layout === "Table" || view?.layout === "Roadmap") && (
+									<SettingRow label={t("layout.viewSettings.subtasksLabel")}>
+										<DynamicSelect
+											value={draft.subtask_mode ?? "collapsed"}
+											options={[
+												{
+													key: "collapsed",
+													label: t("layout.viewSettings.subtasksCollapsed"),
+												},
+												{
+													key: "expanded",
+													label: t("layout.viewSettings.subtasksExpanded"),
+												},
+												{
+													key: "hidden",
+													label: t("layout.viewSettings.subtasksHidden"),
+												},
+											]}
+											onChange={(v) =>
+												update({
+													subtask_mode: pickSubtaskMode(v, view?.shared_config),
+												})
+											}
+										/>
+									</SettingRow>
+								)}
+
+								<SettingRow label={t("layout.viewSettings.fieldSumLabel")}>
+									<DynamicSelect
+										value={draft.field_sum ?? "count"}
+										options={fieldSumOpts}
+										onChange={(v) => update({ field_sum: v })}
+									/>
+								</SettingRow>
+
+								<SettingRow label={t("layout.viewSettings.initialSizeLabel")}>
+									<DynamicSelect
+										value={String(
+											draft.initial_page_size ?? defaultInitialPageSize,
+										)}
+										options={PAGE_SIZE_OPTIONS}
 										onChange={(v) =>
-											update({
-												subtask_mode: pickSubtaskMode(v, view?.shared_config),
-											})
+											update({ initial_page_size: v ? Number(v) : undefined })
 										}
 									/>
 								</SettingRow>
-							)}
 
-							<SettingRow label={t("layout.viewSettings.fieldSumLabel")}>
-								<DynamicSelect
-									value={draft.field_sum ?? "count"}
-									options={fieldSumOpts}
-									onChange={(v) => update({ field_sum: v })}
-								/>
-							</SettingRow>
-
-							<SettingRow label={t("layout.viewSettings.initialSizeLabel")}>
-								<DynamicSelect
-									value={String(
-										draft.initial_page_size ?? defaultInitialPageSize,
-									)}
-									options={PAGE_SIZE_OPTIONS}
-									onChange={(v) =>
-										update({ initial_page_size: v ? Number(v) : undefined })
-									}
-								/>
-							</SettingRow>
-
-							<SettingRow label={t("layout.viewSettings.perPageLabel")}>
-								<DynamicSelect
-									value={String(draft.page_size ?? defaultPageSize)}
-									options={PAGE_SIZE_OPTIONS}
-									onChange={(v) =>
-										update({ page_size: v ? Number(v) : undefined })
-									}
-								/>
-							</SettingRow>
-						</div>
-
-						{/* ── Filters section ──────────────────────────────────── */}
-						<div className="border-t border-border/20">
-							<PanelSectionHeader>
-								{t("layout.viewSettings.filters")}
-							</PanelSectionHeader>
-
-							<div className="pb-1">
-								<CollapsibleFilter
-									label={t("layout.viewSettings.sprintsLabel")}
-									badge={filterSprintIds.length}
-									defaultOpen={filterSprintIds.length > 0}
-								>
-									<SprintFilterSection
-										projectId={projectId}
-										selectedIds={filterSprintIds}
-										onChange={(ids) =>
-											updateFilters({ sprints: idsToFilterConfig(ids) })
+								<SettingRow label={t("layout.viewSettings.perPageLabel")}>
+									<DynamicSelect
+										value={String(draft.page_size ?? defaultPageSize)}
+										options={PAGE_SIZE_OPTIONS}
+										onChange={(v) =>
+											update({ page_size: v ? Number(v) : undefined })
 										}
 									/>
-								</CollapsibleFilter>
-
-								<CollapsibleFilter
-									label={t("layout.viewSettings.statusesLabel")}
-									badge={filterStatusIds.length}
-									defaultOpen={filterStatusIds.length > 0}
-								>
-									<StatusFilterSection
-										statuses={statuses}
-										selectedIds={filterStatusIds}
-										onChange={(ids) =>
-											updateFilters({ statuses: idsToFilterConfig(ids) })
-										}
-									/>
-								</CollapsibleFilter>
-
-								<CollapsibleFilter
-									label={t("layout.viewSettings.assigneesLabel")}
-									badge={filterAssigneeIds.length}
-									defaultOpen={filterAssigneeIds.length > 0}
-								>
-									<AssigneeFilterSection
-										projectId={projectId}
-										selectedIds={filterAssigneeIds}
-										onChange={(ids) =>
-											updateFilters({ assignees: idsToFilterConfig(ids) })
-										}
-									/>
-								</CollapsibleFilter>
-
-								<CollapsibleFilter
-									label={t("layout.viewSettings.taskTypesLabel")}
-									badge={
-										filterTaskTypeIds.length + (filterTaskTypeAllNormal ? 1 : 0)
-									}
-									defaultOpen={
-										filterTaskTypeIds.length > 0 || filterTaskTypeAllNormal
-									}
-								>
-									<TaskTypeFilterSection
-										taskTypes={taskTypes}
-										selectedIds={filterTaskTypeIds}
-										allNormal={filterTaskTypeAllNormal}
-										onChange={(ids) =>
-											updateFilters({
-												task_types: uiToTaskTypeConfig(
-													filterTaskTypeAllNormal,
-													ids,
-												),
-											})
-										}
-										onAllNormalChange={(next) =>
-											updateFilters({
-												task_types: uiToTaskTypeConfig(
-													next,
-													next
-														? filterTaskTypeIds.filter(
-																(id) =>
-																	taskTypes.find((tt) => tt.id === id)
-																		?.is_system,
-															)
-														: filterTaskTypeIds,
-												),
-											})
-										}
-									/>
-								</CollapsibleFilter>
-
-								<CollapsibleFilter
-									label={t("layout.viewSettings.startDateLabel")}
-									badge={startDateBadge}
-									defaultOpen={startDateBadge > 0}
-								>
-									<RangeFilterInput
-										kind="date"
-										min={filterStartDate?.after}
-										max={filterStartDate?.before}
-										onChange={(after, before) =>
-											updateFilters({ start_date: { after, before } })
-										}
-									/>
-								</CollapsibleFilter>
-
-								<CollapsibleFilter
-									label={t("layout.viewSettings.dueDateLabel")}
-									badge={dueDateBadge}
-									defaultOpen={dueDateBadge > 0}
-								>
-									<RangeFilterInput
-										kind="date"
-										min={filterDueDate?.after}
-										max={filterDueDate?.before}
-										onChange={(after, before) =>
-											updateFilters({ due_date: { after, before } })
-										}
-									/>
-								</CollapsibleFilter>
-
-								<CollapsibleFilter
-									label={t("layout.viewSettings.importanceLabel")}
-									badge={filterImportance.length}
-									defaultOpen={filterImportance.length > 0}
-								>
-									<ImportanceFilterSection
-										selectedBuckets={filterImportance}
-										onChange={(buckets) =>
-											updateFilters({
-												importance: buckets.length > 0 ? buckets : undefined,
-											})
-										}
-									/>
-								</CollapsibleFilter>
-
-								<CollapsibleFilter
-									label={t("layout.viewSettings.storyPointsLabel")}
-									badge={storyPointsBadge}
-									defaultOpen={storyPointsBadge > 0}
-								>
-									<RangeFilterInput
-										kind="number"
-										min={
-											filterStoryPoints?.min != null
-												? String(filterStoryPoints.min)
-												: undefined
-										}
-										max={
-											filterStoryPoints?.max != null
-												? String(filterStoryPoints.max)
-												: undefined
-										}
-										onChange={(min, max) =>
-											updateFilters({
-												story_points: {
-													min: min !== undefined ? Number(min) : undefined,
-													max: max !== undefined ? Number(max) : undefined,
-												},
-											})
-										}
-									/>
-								</CollapsibleFilter>
-
-								<CollapsibleFilter
-									label={t("layout.viewSettings.tagsLabel")}
-									badge={filterTags.length}
-									defaultOpen={filterTags.length > 0}
-								>
-									<TagsFilterSection
-										tags={filterTags}
-										onChange={(tags) =>
-											updateFilters({
-												tags: tags.length > 0 ? tags : undefined,
-											})
-										}
-									/>
-								</CollapsibleFilter>
-
-								{customFields.map((cf) => {
-									const value = customFieldFilters[cf.field_key];
-									const count = customFieldFilterCount(value);
-									return (
-										<CollapsibleFilter
-											key={cf.id}
-											label={cf.display_name}
-											badge={count}
-											defaultOpen={count > 0}
-										>
-											<CustomFieldFilterSection
-												cf={cf}
-												value={value}
-												onChange={(next) =>
-													updateCustomFieldFilter(cf.field_key, next)
-												}
-											/>
-										</CollapsibleFilter>
-									);
-								})}
+								</SettingRow>
 							</div>
-						</div>
-					</div>
-				)}
+						</TabsContent>
 
-				{/* ── Footer ───────────────────────────────────────────────── */}
-				<div className="flex items-center justify-end gap-2 px-3 py-2.5 border-t border-border/30 bg-muted/10">
-					{differsFromShared && (
-						<button
-							type="button"
-							onClick={handleReset}
-							className="mr-auto rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground/80 transition-all duration-150 hover:bg-muted hover:text-foreground"
+						{/* ── Fields ──────────────────────────────────────────── */}
+						<TabsContent
+							value="fields"
+							className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
 						>
-							{t("layout.viewSettings.reset")}
-						</button>
-					)}
-					{canSaveForEveryone ? (
-						<div className="flex items-stretch">
-							{/* PE-1: personal save is the default so Timeline/Board filters
-							    never leak to other users. Publishing the team default stays
-							    in the dropdown for views.write holders. */}
-							<button
+							<p className="mb-2 px-1 text-xs text-muted-foreground">
+								{t("layout.viewSettings.chooseFields")}
+							</p>
+							<FieldPicker
+								visibleFields={visibleFields}
+								customFields={customFields}
+								onChange={(fields) => update({ fields })}
+							/>
+						</TabsContent>
+
+						{/* ── Filters ─────────────────────────────────────────── */}
+						<TabsContent
+							value="filters"
+							className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+						>
+							{hasSavedFilters && (
+								<div className="flex justify-end px-2 pb-1">
+									<Button
+										type="button"
+										variant="ghost"
+										size="xs"
+										onClick={() => update({ filters: {} })}
+									>
+										{t("layout.viewSettings.clearFilters")}
+									</Button>
+								</div>
+							)}
+							<CollapsibleFilter
+								label={t("layout.viewSettings.sprintsLabel")}
+								badge={filterSprintIds.length}
+								defaultOpen={filterSprintIds.length > 0}
+							>
+								<SprintFilterSection
+									projectId={projectId}
+									selectedIds={filterSprintIds}
+									onChange={(ids) =>
+										updateFilters({ sprints: idsToFilterConfig(ids) })
+									}
+								/>
+							</CollapsibleFilter>
+
+							<CollapsibleFilter
+								label={t("layout.viewSettings.statusesLabel")}
+								badge={filterStatusIds.length}
+								defaultOpen={filterStatusIds.length > 0}
+							>
+								<StatusFilterSection
+									statuses={statuses}
+									selectedIds={filterStatusIds}
+									onChange={(ids) =>
+										updateFilters({ statuses: idsToFilterConfig(ids) })
+									}
+								/>
+							</CollapsibleFilter>
+
+							<CollapsibleFilter
+								label={t("layout.viewSettings.assigneesLabel")}
+								badge={filterAssigneeIds.length}
+								defaultOpen={filterAssigneeIds.length > 0}
+							>
+								<AssigneeFilterSection
+									projectId={projectId}
+									selectedIds={filterAssigneeIds}
+									onChange={(ids) =>
+										updateFilters({ assignees: idsToFilterConfig(ids) })
+									}
+								/>
+							</CollapsibleFilter>
+
+							<CollapsibleFilter
+								label={t("layout.viewSettings.taskTypesLabel")}
+								badge={
+									filterTaskTypeIds.length + (filterTaskTypeAllNormal ? 1 : 0)
+								}
+								defaultOpen={
+									filterTaskTypeIds.length > 0 || filterTaskTypeAllNormal
+								}
+							>
+								<TaskTypeFilterSection
+									taskTypes={taskTypes}
+									selectedIds={filterTaskTypeIds}
+									allNormal={filterTaskTypeAllNormal}
+									onChange={(ids) =>
+										updateFilters({
+											task_types: uiToTaskTypeConfig(
+												filterTaskTypeAllNormal,
+												ids,
+											),
+										})
+									}
+									onAllNormalChange={(next) =>
+										updateFilters({
+											task_types: uiToTaskTypeConfig(
+												next,
+												next
+													? filterTaskTypeIds.filter(
+															(id) =>
+																taskTypes.find((tt) => tt.id === id)?.is_system,
+														)
+													: filterTaskTypeIds,
+											),
+										})
+									}
+								/>
+							</CollapsibleFilter>
+
+							<CollapsibleFilter
+								label={t("layout.viewSettings.startDateLabel")}
+								badge={startDateBadge}
+								defaultOpen={startDateBadge > 0}
+							>
+								<RangeFilterInput
+									kind="date"
+									min={filterStartDate?.after}
+									max={filterStartDate?.before}
+									onChange={(after, before) =>
+										updateFilters({ start_date: { after, before } })
+									}
+								/>
+							</CollapsibleFilter>
+
+							<CollapsibleFilter
+								label={t("layout.viewSettings.dueDateLabel")}
+								badge={dueDateBadge}
+								defaultOpen={dueDateBadge > 0}
+							>
+								<RangeFilterInput
+									kind="date"
+									min={filterDueDate?.after}
+									max={filterDueDate?.before}
+									onChange={(after, before) =>
+										updateFilters({ due_date: { after, before } })
+									}
+								/>
+							</CollapsibleFilter>
+
+							<CollapsibleFilter
+								label={t("layout.viewSettings.importanceLabel")}
+								badge={filterImportance.length}
+								defaultOpen={filterImportance.length > 0}
+							>
+								<ImportanceFilterSection
+									selectedBuckets={filterImportance}
+									onChange={(buckets) =>
+										updateFilters({
+											importance: buckets.length > 0 ? buckets : undefined,
+										})
+									}
+								/>
+							</CollapsibleFilter>
+
+							<CollapsibleFilter
+								label={t("layout.viewSettings.storyPointsLabel")}
+								badge={storyPointsBadge}
+								defaultOpen={storyPointsBadge > 0}
+							>
+								<RangeFilterInput
+									kind="number"
+									min={
+										filterStoryPoints?.min != null
+											? String(filterStoryPoints.min)
+											: undefined
+									}
+									max={
+										filterStoryPoints?.max != null
+											? String(filterStoryPoints.max)
+											: undefined
+									}
+									onChange={(min, max) =>
+										updateFilters({
+											story_points: {
+												min: min !== undefined ? Number(min) : undefined,
+												max: max !== undefined ? Number(max) : undefined,
+											},
+										})
+									}
+								/>
+							</CollapsibleFilter>
+
+							<CollapsibleFilter
+								label={t("layout.viewSettings.tagsLabel")}
+								badge={filterTags.length}
+								defaultOpen={filterTags.length > 0}
+							>
+								<TagsFilterSection
+									tags={filterTags}
+									onChange={(tags) =>
+										updateFilters({
+											tags: tags.length > 0 ? tags : undefined,
+										})
+									}
+								/>
+							</CollapsibleFilter>
+
+							{customFields.map((cf) => {
+								const value = customFieldFilters[cf.field_key];
+								const count = customFieldFilterCount(value);
+								return (
+									<CollapsibleFilter
+										key={cf.id}
+										label={cf.display_name}
+										badge={count}
+										defaultOpen={count > 0}
+									>
+										<CustomFieldFilterSection
+											cf={cf}
+											value={value}
+											onChange={(next) =>
+												updateCustomFieldFilter(cf.field_key, next)
+											}
+										/>
+									</CollapsibleFilter>
+								);
+							})}
+						</TabsContent>
+					</Tabs>
+
+					{/* ── Footer ───────────────────────────────────────────── */}
+					<div className="flex items-center justify-between gap-2 border-t border-border/30 bg-muted/20 px-4 py-3">
+						{differsFromShared ? (
+							<Button type="button" variant="outline" onClick={handleReset}>
+								{t("layout.viewSettings.reset")}
+							</Button>
+						) : (
+							<span />
+						)}
+						{canSaveForEveryone ? (
+							<div className="flex items-stretch">
+								{/* PE-1: personal save is the default so Timeline/Board filters
+								    never leak to other users. Publishing the team default stays
+								    in the menu for views.write holders. */}
+								<Button
+									type="button"
+									onClick={handleSave}
+									disabled={isPending || !differsFromEffective}
+									className="rounded-r-none"
+								>
+									{isPending
+										? t("layout.viewSettings.saving")
+										: t("layout.viewSettings.saveOnlyForMe")}
+								</Button>
+								<DropdownMenu>
+									<DropdownMenuTrigger
+										disabled={isPending}
+										render={
+											<Button
+												type="button"
+												size="icon"
+												aria-label={t("layout.viewSettings.saveForEveryone")}
+												className="rounded-l-none border-l border-primary-foreground/20"
+											/>
+										}
+									>
+										<ChevronDown />
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align="end" side="top">
+										<DropdownMenuItem
+											onClick={handleSaveForEveryone}
+											disabled={isPending || !differsFromShared}
+										>
+											{t("layout.viewSettings.saveForEveryone")}
+										</DropdownMenuItem>
+									</DropdownMenuContent>
+								</DropdownMenu>
+							</div>
+						) : (
+							<Button
 								type="button"
 								onClick={handleSave}
 								disabled={isPending || !differsFromEffective}
-								className="rounded-l-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90 disabled:opacity-40"
 							>
 								{isPending
 									? t("layout.viewSettings.saving")
-									: t("layout.viewSettings.saveOnlyForMe")}
-							</button>
-							<Popover>
-								<PopoverTrigger
-									type="button"
-									disabled={isPending}
-									className="rounded-r-lg border-l border-primary-foreground/20 bg-primary px-1.5 py-1.5 text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90 disabled:opacity-40"
-								>
-									<ChevronDown className="size-3" />
-								</PopoverTrigger>
-								<PopoverContent
-									align="end"
-									className="w-52 p-1 rounded-lg border border-border/40 shadow-lg"
-								>
-									<button
-										type="button"
-										onClick={handleSaveForEveryone}
-										disabled={isPending || !differsFromShared}
-										className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors duration-100 hover:bg-muted/60 disabled:opacity-40"
-									>
-										{t("layout.viewSettings.saveForEveryone")}
-									</button>
-								</PopoverContent>
-							</Popover>
-						</div>
-					) : (
-						<button
-							type="button"
-							onClick={handleSave}
-							disabled={isPending || !differsFromEffective}
-							className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90 disabled:opacity-40"
-						>
+									: t("layout.viewSettings.save")}
+							</Button>
+						)}
+					</div>
+				</PopoverContent>
+			</Popover>
+
+			<AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							{t("layout.viewSettings.unsavedTitle")}
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							{t("layout.viewSettings.unsavedDescription")}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>
+							{t("layout.viewSettings.keepEditing")}
+						</AlertDialogCancel>
+						<AlertDialogAction variant="outline" onClick={closeNow}>
+							{t("layout.viewSettings.discard")}
+						</AlertDialogAction>
+						<AlertDialogAction onClick={handleSave} disabled={isPending}>
 							{isPending
 								? t("layout.viewSettings.saving")
-								: t("layout.viewSettings.save")}
-						</button>
-					)}
-				</div>
-			</PopoverContent>
-		</Popover>
+								: canSaveForEveryone
+									? t("layout.viewSettings.saveOnlyForMe")
+									: t("layout.viewSettings.save")}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</>
 	);
 }

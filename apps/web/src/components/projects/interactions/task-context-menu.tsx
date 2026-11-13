@@ -3,7 +3,6 @@ import {
 	Copy,
 	Layers,
 	Link2,
-	Loader2,
 	Search,
 	Sparkles,
 	Trash2,
@@ -11,7 +10,6 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
 import {
 	ContextMenu,
@@ -25,6 +23,7 @@ import {
 	ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { KbdChord } from "@/components/ui/kbd";
+import { Spinner } from "@/components/ui/spinner";
 import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import { useMemberSearch } from "@/hooks/use-member-search";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -304,7 +303,10 @@ export function TaskContextMenu({
 								})}
 								{memberSearch.isLoading ? (
 									<div className="flex items-center justify-center py-4">
-										<Loader2 className="size-4 animate-spin text-muted-foreground/50" />
+										<Spinner
+											aria-hidden="true"
+											className="text-muted-foreground/50"
+										/>
 									</div>
 								) : memberSearch.members.length === 0 ? (
 									<p className="px-3 py-4 text-center text-xs text-muted-foreground/50">
@@ -313,7 +315,7 @@ export function TaskContextMenu({
 								) : null}
 								{memberSearch.isLoadingMore && (
 									<div className="flex items-center justify-center py-2 text-xs text-muted-foreground/50">
-										<Loader2 className="size-3 animate-spin" />
+										<Spinner aria-hidden="true" className="size-3" />
 									</div>
 								)}
 							</div>
@@ -426,7 +428,10 @@ export function TaskContextMenu({
 							>
 								{isEpicSearching && epicSearchLoading ? (
 									<div className="flex items-center justify-center py-4">
-										<Loader2 className="size-4 animate-spin text-muted-foreground/50" />
+										<Spinner
+											aria-hidden="true"
+											className="text-muted-foreground/50"
+										/>
 									</div>
 								) : (
 									<>
@@ -455,7 +460,7 @@ export function TaskContextMenu({
 								)}
 								{activeEpicsPagination?.isLoadingMore && (
 									<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
-										<Loader2 className="size-3 animate-spin" />
+										<Spinner aria-hidden="true" className="size-3" />
 										{t("epicPicker.loadingMore")}
 									</div>
 								)}

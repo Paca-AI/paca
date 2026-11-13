@@ -1,14 +1,9 @@
-import type { ThreadMessageLike } from "@assistant-ui/react";
-import {
-	type AppendMessage,
-	AssistantRuntimeProvider,
-	useExternalStoreRuntime,
-} from "@assistant-ui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Thread } from "@/components/assistant-ui/thread";
+import { Thread } from "@/components/chat/thread";
+import type { ChatMessage } from "@/components/chat/types";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	conversationQueryOptions,
@@ -35,7 +30,6 @@ import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	chatSessionAccessDeniedKey,
 	chatSessionApiErrorMessage,
-	extractTextOnlyContent,
 } from "./conversation-to-thread-messages";
 
 // Shared between the project-scoped Conversations page's blank-composer
@@ -105,12 +99,8 @@ export function NewConversationThread({
 	const { dialog: agentBusyDialog, send: sendWithBusyPrompt } =
 		useAgentBusyPrompt();
 
-	const onNew = async (message: AppendMessage) => {
+	const onNew = async (text: string) => {
 		if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
-		const text = extractTextOnlyContent(message);
-		if (text === null) {
-			throw new Error(t("agents.conversationView.textOnlyMessage"));
-		}
 		// Snapshot now (not read again after any await) so a badge staged
 		// mid-send can't sneak into this message or get cleared under it.
 		const contextItems = useContextInjectionStore.getState().items;
@@ -192,30 +182,22 @@ export function NewConversationThread({
 		}
 	};
 
-	const messages: ThreadMessageLike[] = [];
-
-	const runtime = useExternalStoreRuntime<ThreadMessageLike>({
-		messages,
-		isRunning: false,
-		convertMessage: (m) => m,
-		onNew,
-		isDisabled: !canStartConversation,
-		isSendDisabled: !canStartConversation || !agentId || isSubmitting,
-	});
+	const messages: ChatMessage[] = [];
 
 	return (
 		<AgentPickerContext.Provider value={pickerState}>
 			<EnvironmentPickerContext.Provider value={environmentPickerState}>
-				<AssistantRuntimeProvider runtime={runtime}>
-					<Thread
-						components={{ ComposerStart: ComposerStartRow }}
-						viewportOverlay={
-							sendError ? (
-								<ConversationErrorBox message={sendError} />
-							) : undefined
-						}
-					/>
-				</AssistantRuntimeProvider>
+				<Thread
+					messages={messages}
+					isRunning={false}
+					disabled={!canStartConversation}
+					onSend={onNew}
+					sendDisabled={!canStartConversation || !agentId || isSubmitting}
+					components={{ ComposerStart: ComposerStartRow }}
+					viewportOverlay={
+						sendError ? <ConversationErrorBox message={sendError} /> : undefined
+					}
+				/>
 			</EnvironmentPickerContext.Provider>
 			{agentBusyDialog}
 		</AgentPickerContext.Provider>

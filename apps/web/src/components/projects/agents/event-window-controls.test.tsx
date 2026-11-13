@@ -6,9 +6,12 @@ const viewport = vi.hoisted(() => ({
 	state: { isAtBottom: true, scrollToBottom: vi.fn() },
 }));
 
-vi.mock("@assistant-ui/react", () => ({
-	useThreadViewport: (selector: (s: typeof viewport.state) => unknown) =>
-		selector(viewport.state),
+vi.mock("@/components/ui/message-scroller", () => ({
+	useMessageScrollerScrollable: () => ({
+		start: false,
+		end: !viewport.state.isAtBottom,
+	}),
+	useMessageScroller: () => ({ scrollToEnd: viewport.state.scrollToBottom }),
 }));
 vi.mock("react-i18next", () => ({
 	useTranslation: () => ({ t: (k: string) => k }),

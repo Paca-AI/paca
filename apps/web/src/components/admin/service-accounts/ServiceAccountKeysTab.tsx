@@ -20,10 +20,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/toast";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import type { APIKey, CreateAPIKeyResponse } from "@/lib/apikey-api";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatDate as formatDateLocale } from "@/lib/format-date";
+import { notifyError } from "@/lib/notify";
 import {
 	createServiceAccountKey,
 	revokeServiceAccountKey,
@@ -200,26 +202,29 @@ export function ServiceAccountKeysTab({
 	const [createOpen, setCreateOpen] = useState(false);
 	const [revealed, setRevealed] = useState<CreateAPIKeyResponse | null>(null);
 	const [copied, setCopied] = useState(false);
-	const [error, setError] = useState<string | null>(null);
 	const [revokeTarget, setRevokeTarget] = useState<APIKey | null>(null);
 
 	const revokeMutation = useMutation({
+		meta: { success: "removed", subject: "serviceAccountKey" },
 		mutationFn: (keyId: string) => revokeServiceAccountKey(account.id, keyId),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey });
 			setRevokeTarget(null);
 		},
-		onError: () => {
+		onError: (err) => {
 			setRevokeTarget(null);
-			setError(t("serviceAccounts.keys.errors.revokeFailed"));
+			notifyError(err, t("serviceAccounts.keys.errors.revokeFailed"));
 		},
 	});
 
 	function handleCopy() {
 		if (!revealed) return;
-		void copyToClipboard(revealed.key).then((ok) => {
+		void copyToClipboard(revealed.key, { notify: false }).then((ok) => {
 			if (!ok) {
-				setError(t("serviceAccounts.keys.errors.copyFailed"));
+				toast.add({
+					type: "error",
+					title: t("serviceAccounts.keys.errors.copyFailed"),
+				});
 				return;
 			}
 			setCopied(true);
@@ -240,8 +245,6 @@ export function ServiceAccountKeysTab({
 					</Button>
 				) : null}
 			</div>
-
-			{error ? <p className="text-sm text-destructive">{error}</p> : null}
 
 			{isLoading ? (
 				<div className="space-y-2">
@@ -364,7 +367,7 @@ export function ServiceAccountKeysTab({
 							</Button>
 						</div>
 						{copied ? (
-							<p className="text-xs text-green-600">
+							<p className="text-xs text-success">
 								{t("serviceAccounts.keys.reveal.copied")}
 							</p>
 						) : null}

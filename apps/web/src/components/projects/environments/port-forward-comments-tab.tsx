@@ -59,16 +59,19 @@ export function PortForwardCommentsTab({
 	const [taskErrors, setTaskErrors] = useState<Record<string, string>>({});
 
 	const resolveMutation = useMutation({
+		meta: { success: "resolved", subject: "comment" },
 		mutationFn: (annotationId: string) =>
 			resolveAnnotation(projectId, environmentId, portForwardId, annotationId),
 		onSuccess: () => qc.invalidateQueries({ queryKey: annotationsKey }),
 	});
 	const reopenMutation = useMutation({
+		meta: { success: "reopened", subject: "comment" },
 		mutationFn: (annotationId: string) =>
 			reopenAnnotation(projectId, environmentId, portForwardId, annotationId),
 		onSuccess: () => qc.invalidateQueries({ queryKey: annotationsKey }),
 	});
 	const createTaskMutation = useMutation({
+		meta: { success: "created", subject: "task" },
 		mutationFn: (annotationId: string) =>
 			createTaskFromAnnotation(
 				projectId,

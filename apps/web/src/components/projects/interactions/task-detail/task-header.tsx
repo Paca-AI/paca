@@ -1,16 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-	Check,
-	ChevronRight,
-	Hash,
-	Loader2,
-	MoreVertical,
-	Share2,
-	Trash2,
-	X,
-} from "lucide-react";
+import { Check, Hash, MoreVertical, Share2, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -26,6 +24,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Spinner } from "@/components/ui/spinner";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatDate } from "@/lib/format-date";
 import type { Task } from "@/lib/interaction-api";
@@ -62,6 +61,7 @@ export function TaskHeader({
 	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	const deleteMutation = useMutation({
+		meta: { success: "deleted", subject: "task" },
 		mutationFn: () => {
 			if (!projectId || !task) throw new Error("missing context");
 			return deleteTask(projectId, task.id);
@@ -97,23 +97,23 @@ export function TaskHeader({
 		<div className="flex shrink-0 items-center gap-2 lg:gap-3 border-b border-border/30 px-4 py-2.5 bg-muted/20">
 			{/* Breadcrumb (page mode only) */}
 			{mode === "page" && projectName && (
-				<nav className="hidden md:flex items-center gap-1.5 text-sm text-muted-foreground/80 mr-2">
-					<span className="hover:text-foreground transition-colors cursor-pointer">
-						{projectName}
-					</span>
-					<ChevronRight className="size-3 text-muted-foreground/45" />
-					{interactionName && (
-						<>
-							<span className="hover:text-foreground transition-colors cursor-pointer">
-								{interactionName}
-							</span>
-							<ChevronRight className="size-3 text-muted-foreground/45" />
-						</>
-					)}
-					<span className="text-foreground/80 truncate max-w-36 font-medium">
-						{task.title}
-					</span>
-				</nav>
+				<Breadcrumb className="mr-2 hidden md:flex">
+					<BreadcrumbList className="gap-1.5 text-sm">
+						<BreadcrumbItem>{projectName}</BreadcrumbItem>
+						{interactionName && (
+							<>
+								<BreadcrumbSeparator />
+								<BreadcrumbItem>{interactionName}</BreadcrumbItem>
+							</>
+						)}
+						<BreadcrumbSeparator />
+						<BreadcrumbItem className="min-w-0">
+							<BreadcrumbPage className="max-w-36 truncate font-medium">
+								{task.title}
+							</BreadcrumbPage>
+						</BreadcrumbItem>
+					</BreadcrumbList>
+				</Breadcrumb>
 			)}
 
 			{/* Task short ID */}
@@ -137,13 +137,13 @@ export function TaskHeader({
 					className={cn(
 						"flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-all duration-150",
 						linkCopied
-							? "text-emerald-500 bg-emerald-500/10"
+							? "text-success bg-success/10"
 							: "text-muted-foreground/70 hover:text-foreground hover:bg-muted/60",
 					)}
 				>
 					{linkCopied ? (
 						<>
-							<Check className="size-3 text-emerald-500" />
+							<Check className="size-3 text-success" />
 							<span>{t("taskDetail.header.copied")}</span>
 						</>
 					) : (
@@ -213,7 +213,7 @@ export function TaskHeader({
 							disabled={deleteMutation.isPending}
 						>
 							{deleteMutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
+								<Spinner aria-hidden="true" />
 							) : (
 								t("taskDetail.header.deleteDialog.delete")
 							)}

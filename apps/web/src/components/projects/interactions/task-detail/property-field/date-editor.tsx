@@ -1,4 +1,6 @@
 import { CalendarDays, Minus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import type { DateRange } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -56,51 +58,131 @@ export function SingleDateEditor({
 	);
 }
 
+export type DateRangeValue = {
+	startDate: string | null;
+	dueDate: string | null;
+};
+
+/** Start and due date edited together in one range calendar: click the first
+ * day, then the last (the same day twice gives a one-day span). The change is
+ * saved when the second day is clicked, or when the picker closes after only a
+ * start was picked. */
 export function DateRangeEditor({
 	startDate,
 	dueDate,
 	canEdit,
-	onStartDateChange,
-	onDueDateChange,
+	onChange,
 }: {
 	startDate?: string | null;
 	dueDate?: string | null;
 	canEdit: boolean;
-	onStartDateChange?: (v: string | null) => void;
-	onDueDateChange?: (v: string | null) => void;
+	onChange?: (range: DateRangeValue) => void;
 }) {
 	const { t } = useTranslation("projects");
+	const [open, setOpen] = useState(false);
+	const [draft, setDraft] = useState<DateRange | undefined>(undefined);
+	// First day clicked while a range is being picked; null between picks.
+	const [anchor, setAnchor] = useState<Date | null>(null);
+
+	const startLabel =
+		displayDate(startDate) ??
+		t("taskDetail.propertyField.dateEditor.startDate");
+	const dueLabel =
+		displayDate(dueDate) ?? t("taskDetail.propertyField.dateEditor.dueDate");
+	const triggerClass =
+		"inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium";
+
 	if (!canEdit) {
 		return (
-			<div className="flex items-center gap-2 flex-wrap">
-				<span className="inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium">
-					<CalendarDays className="size-3 shrink-0 opacity-70" />
-					{displayDate(startDate) ??
-						t("taskDetail.propertyField.dateEditor.startDate")}
-				</span>
+			<span className={triggerClass}>
+				<CalendarDays className="size-3 shrink-0 opacity-70" />
+				{startLabel}
 				<Minus className="size-3 text-border/40 shrink-0" />
-				<span className="inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium">
-					<CalendarDays className="size-3 shrink-0 opacity-70" />
-					{displayDate(dueDate) ??
-						t("taskDetail.propertyField.dateEditor.dueDate")}
-				</span>
-			</div>
+				{dueLabel}
+			</span>
 		);
 	}
 
+	const commit = (range: DateRange | undefined) => {
+		const next: DateRangeValue = {
+			startDate: range?.from ? toISODate(range.from) : null,
+			dueDate: range?.to ? toISODate(range.to) : null,
+		};
+		if (
+			next.startDate !== (startDate ?? null) ||
+			next.dueDate !== (dueDate ?? null)
+		) {
+			onChange?.(next);
+		}
+	};
+
+	const handleOpenChange = (next: boolean) => {
+		if (next) {
+			setDraft({ from: toDateObject(startDate), to: toDateObject(dueDate) });
+			setAnchor(null);
+		} else if (anchor) {
+			// Closed after picking only a start: keep that start, and keep the
+			// existing due date unless it would now fall before the new start.
+			const due = toDateObject(dueDate);
+			commit({ from: anchor, to: due && due >= anchor ? due : undefined });
+		}
+		setOpen(next);
+	};
+
 	return (
-		<div className="flex items-center gap-2 flex-wrap">
-			<SingleDateEditor
-				value={startDate}
-				placeholder={t("taskDetail.propertyField.dateEditor.startDate")}
-				onChange={onStartDateChange}
-			/>
-			<Minus className="size-3 text-border/40 shrink-0" />
-			<SingleDateEditor
-				value={dueDate}
-				placeholder={t("taskDetail.propertyField.dateEditor.dueDate")}
-				onChange={onDueDateChange}
-			/>
-		</div>
+		<Popover open={open} onOpenChange={handleOpenChange}>
+			<PopoverTrigger
+				type="button"
+				className={`${triggerClass} hover:border-border/50 hover:bg-muted/40 transition-all duration-150`}
+			>
+				<CalendarDays className="size-3 shrink-0 opacity-70" />
+				<span>{startLabel}</span>
+				<Minus className="size-3 text-border/40 shrink-0" />
+				<span>{dueLabel}</span>
+			</PopoverTrigger>
+			<PopoverContent
+				className="w-auto p-2 rounded-xl border border-border/40 shadow-lg"
+				align="start"
+			>
+				<Calendar
+					mode="range"
+					numberOfMonths={2}
+					defaultMonth={toDateObject(startDate) ?? toDateObject(dueDate)}
+					selected={draft}
+					// DayPicker treats a first click as a finished one-day range, so
+					// the two clicks are handled here: start, then end.
+					onSelect={() => {}}
+					onDayClick={(day) => {
+						if (!anchor) {
+							setAnchor(day);
+							setDraft({ from: day, to: undefined });
+							return;
+						}
+						const [from, to] = day < anchor ? [day, anchor] : [anchor, day];
+						commit({ from, to });
+						setAnchor(null);
+						setDraft(undefined);
+						setOpen(false);
+					}}
+				/>
+				{(startDate || dueDate) && (
+					<div className="border-t border-border/30 pt-1.5 px-1 pb-0.5">
+						<button
+							type="button"
+							className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-destructive transition-colors duration-150"
+							onClick={() => {
+								onChange?.({ startDate: null, dueDate: null });
+								setAnchor(null);
+								setDraft(undefined);
+								setOpen(false);
+							}}
+						>
+							<Trash2 className="size-3" />
+							{t("taskDetail.propertyField.dateEditor.clearDates")}
+						</button>
+					</div>
+				)}
+			</PopoverContent>
+		</Popover>
 	);
 }

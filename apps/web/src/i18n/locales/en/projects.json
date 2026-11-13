@@ -722,7 +722,10 @@
 				"contextTypeAutomation": "Automation",
 				"contextTypeAnnotation": "Comment",
 				"noContextResults": "No results found",
-				"contextSearchMinChars": "Type at least 2 characters to search"
+				"contextSearchMinChars": "Type at least 2 characters to search",
+				"dialogDescription": "Search and select items to share with the agent. They are sent along with your next message.",
+				"done": "Done",
+				"attachedCount": "{{count}} attached"
 			}
 		},
 		"acpModelEffort": {
@@ -1835,7 +1838,8 @@
 				"datePlaceholder": "Date",
 				"clearDate": "Clear date",
 				"startDate": "Start date",
-				"dueDate": "Due date"
+				"dueDate": "Due date",
+				"clearDates": "Clear dates"
 			},
 			"storyPointsEditor": {
 				"decrease": "Decrease story points",
@@ -2304,7 +2308,12 @@
 			"subtasksLabel": "Subtasks",
 			"subtasksCollapsed": "Nested, collapsed",
 			"subtasksExpanded": "Nested, expanded",
-			"subtasksHidden": "Hidden (flat list)"
+			"subtasksHidden": "Hidden (flat list)",
+			"unsavedBadge": "Unsaved changes",
+			"unsavedTitle": "Discard unsaved changes?",
+			"unsavedDescription": "You changed this view’s settings but haven’t saved them. Save them, or discard to go back to the last saved settings.",
+			"keepEditing": "Keep editing",
+			"discard": "Discard"
 		},
 		"roadmap": {
 			"taskColumnLabel": "Task",

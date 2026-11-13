@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	beginAgentGitAccess,
 	beginGitAccess,
@@ -199,7 +200,7 @@ export function GitSetupCallback({ search }: { search: string }) {
 	return (
 		<div className="flex flex-1 items-center justify-center p-6">
 			<div className="flex flex-col items-center gap-3 text-center">
-				<Loader2 className="size-8 animate-spin text-primary" />
+				<Spinner aria-hidden="true" className="size-8 text-primary" />
 				<h1 className="text-lg font-semibold">{t("git.callback.working")}</h1>
 				<p className="text-sm text-muted-foreground">
 					{t("git.callback.workingHint")}

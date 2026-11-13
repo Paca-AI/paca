@@ -1,8 +1,9 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { CalendarDays, ChevronRight, Loader2 } from "lucide-react";
+import { CalendarDays, ChevronRight } from "lucide-react";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PaneResizeHandle } from "@/components/shared/pane-resize-handle";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	type ChildTaskFilters,
 	childTasksInfiniteQueryOptions,
@@ -753,7 +754,7 @@ function RoadmapChildRows({
 	);
 
 	if (query.isPending) {
-		return note(<Loader2 className="size-3 animate-spin" aria-hidden />);
+		return note(<Spinner aria-hidden="true" className="size-3" />);
 	}
 	if (query.isError) {
 		return note(

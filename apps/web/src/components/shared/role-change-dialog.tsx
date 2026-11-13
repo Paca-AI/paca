@@ -234,7 +234,7 @@ function ChangeRow({
 			<span
 				className={
 					tone === "add"
-						? "min-w-20 shrink-0 font-medium text-emerald-600 dark:text-emerald-400"
+						? "min-w-20 shrink-0 font-medium text-success"
 						: "min-w-20 shrink-0 font-medium text-destructive"
 				}
 			>

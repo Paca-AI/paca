@@ -233,8 +233,9 @@ test.describe('Timeline view settings defaults', () => {
     await signIn(page);
     await navigateToTimeline(page, projectId);
 
-    // Open view settings
+    // Open view settings; the task type filter lives on the Filters tab
     await page.getByRole('button', { name: 'View settings' }).click();
+    await page.getByRole('tab', { name: /^Filters/ }).click();
 
     // Epic checkbox should be checked by default
     await expect(page.getByRole('checkbox', { name: 'Epic' })).toBeChecked();
@@ -258,9 +259,10 @@ test.describe('Timeline view settings defaults', () => {
     // The "Column by" row is a custom dropdown: its trigger button follows the
     // row label and shows the selected option's label.
     const columnByTrigger = page
-      .getByText('Column by', { exact: true })
+      .locator('label')
+      .filter({ hasText: /^Column by$/ })
       .locator('xpath=following-sibling::button');
-    await expect(columnByTrigger).toHaveText('Status');
+    await expect(columnByTrigger).toContainText('Status');
 
     // Close settings panel
     await page.keyboard.press('Escape');
@@ -273,7 +275,8 @@ test.describe('Timeline view settings defaults', () => {
     // Open view settings
     await page.getByRole('button', { name: 'View settings' }).click();
 
-    // Sprints filter button should be visible
+    // Sprints filter group (on the Filters tab) should be visible
+    await page.getByRole('tab', { name: /^Filters/ }).click();
     await expect(page.getByRole('button', { name: 'Sprints' })).toBeVisible();
 
     // Close settings panel

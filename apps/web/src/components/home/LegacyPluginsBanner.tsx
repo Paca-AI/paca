@@ -63,9 +63,9 @@ export function LegacyPluginsBanner() {
 	return (
 		<div
 			role="alert"
-			className="flex items-start gap-3 border-b border-amber-300/40 bg-amber-50 px-6 py-3 dark:border-amber-700/30 dark:bg-amber-900/15"
+			className="flex items-start gap-3 border-b border-warning/40 bg-warning/10 px-6 py-3"
 		>
-			<TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+			<TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
 			<div className="flex flex-1 flex-col gap-1 text-sm">
 				<span className="font-semibold text-foreground">
 					{t("home.legacyPluginsBanner.title", { count: affected.length })}
@@ -88,7 +88,7 @@ export function LegacyPluginsBanner() {
 				type="button"
 				onClick={dismiss}
 				aria-label={t("home.legacyPluginsBanner.dismiss")}
-				className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-amber-200/40 hover:text-foreground dark:hover:bg-amber-800/30"
+				className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-warning/10 hover:text-foreground"
 			>
 				<X className="size-4" />
 			</button>

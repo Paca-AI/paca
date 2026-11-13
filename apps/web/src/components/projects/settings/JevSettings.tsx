@@ -4,7 +4,6 @@ import {
 	Eye,
 	EyeOff,
 	KeyRound,
-	Loader2,
 	Lock,
 	Sparkles,
 	Users,
@@ -17,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
 	customFieldsQueryOptions,
@@ -95,6 +95,7 @@ export function JevSettings({
 	const [credentialsSaved, setCredentialsSaved] = useState(false);
 
 	const credentialsMutation = useMutation({
+		meta: { success: "updated", subject: "jevCredentials" },
 		mutationFn: (payload: {
 			api_key?: string;
 			base_url?: string;
@@ -132,6 +133,7 @@ export function JevSettings({
 	// relationship to credentialsMutation: a separate, explicit action rather
 	// than something inferred from field edits.
 	const testMutation = useMutation({
+		meta: { silent: true },
 		mutationFn: () => testProjectJevConfig(projectId),
 	});
 
@@ -141,7 +143,6 @@ export function JevSettings({
 	);
 	const [autoAssignScope, setAutoAssignScope] = useState(saved.autoAssignScope);
 	const [error, setError] = useState<string | null>(null);
-	const [justSaved, setJustSaved] = useState(false);
 
 	// Fixed fields (Importance, Task Type, Story Points, Tags, Epic) always
 	// exist on every task, plus whichever custom fields have a fixed,
@@ -176,6 +177,7 @@ export function JevSettings({
 	};
 
 	const mutation = useMutation({
+		meta: { success: "updated", subject: "jevSettings" },
 		mutationFn: () =>
 			updateProject(projectId, {
 				settings: {
@@ -196,8 +198,6 @@ export function JevSettings({
 			setExcludedFields(next.autofillExcludedFields);
 			setAutoAssignScope(next.autoAssignScope);
 			setError(null);
-			setJustSaved(true);
-			setTimeout(() => setJustSaved(false), 2500);
 		},
 		onError: () => setError(t("settings.jev.errors.updateFailed")),
 	});
@@ -231,7 +231,7 @@ export function JevSettings({
 								<span
 									className={`size-1.5 rounded-full ${
 										project?.jev_configured
-											? "bg-emerald-500"
+											? "bg-success"
 											: "bg-muted-foreground/40"
 									}`}
 								/>
@@ -294,7 +294,7 @@ export function JevSettings({
 								</button>
 							</div>
 							<p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1.5">
-								<span className="size-1.5 shrink-0 rounded-full bg-emerald-500 inline-block" />
+								<span className="size-1.5 shrink-0 rounded-full bg-success inline-block" />
 								{t("agents.createDialog.apiKeyHint")}
 							</p>
 						</div>
@@ -357,7 +357,7 @@ export function JevSettings({
 								className="gap-1.5"
 							>
 								{credentialsMutation.isPending ? (
-									<Loader2 className="size-3.5 animate-spin" />
+									<Spinner aria-hidden="true" className="size-3.5" />
 								) : null}
 								{t("settings.jev.credentials.saveButton")}
 							</Button>
@@ -370,18 +370,13 @@ export function JevSettings({
 									className="gap-1.5"
 								>
 									{testMutation.isPending ? (
-										<Loader2 className="size-3.5 animate-spin" />
+										<Spinner aria-hidden="true" className="size-3.5" />
 									) : null}
 									{t("settings.jev.credentials.testButton")}
 								</Button>
 							) : null}
-							{credentialsSaved ? (
-								<span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-									{t("settings.jev.saved")}
-								</span>
-							) : null}
 							{!credentialsSaved && testMutation.isSuccess ? (
-								<span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+								<span className="text-xs text-success font-medium flex items-center gap-1">
 									<CheckCircle2 className="size-3.5" />
 									{t("settings.jev.credentials.testSuccess")}
 								</span>
@@ -543,15 +538,10 @@ export function JevSettings({
 							className="gap-1.5"
 						>
 							{mutation.isPending ? (
-								<Loader2 className="size-3.5 animate-spin" />
+								<Spinner aria-hidden="true" className="size-3.5" />
 							) : null}
 							{t("settings.jev.saveChanges")}
 						</Button>
-						{justSaved ? (
-							<span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-								{t("settings.jev.saved")}
-							</span>
-						) : null}
 					</div>
 				) : (
 					<p className="text-xs text-muted-foreground">

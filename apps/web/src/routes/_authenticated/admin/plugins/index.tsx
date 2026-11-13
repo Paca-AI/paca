@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PluginMarketplacePanel } from "@/components/plugins/PluginMarketplacePanel";
 import { PluginPreferencesPanel } from "@/components/plugins/PluginPreferencesPanel";
-import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
@@ -13,6 +12,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { myPermissionsQueryOptions } from "@/lib/admin-api";
 import { hasPermission } from "@/lib/permissions";
 
@@ -52,54 +52,47 @@ function PluginSettingsPage() {
 
 			<Separator />
 
-			<div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 p-1 w-fit">
-				<Button
-					type="button"
-					size="sm"
-					variant={tab === "marketplace" ? "secondary" : "ghost"}
-					onClick={() => setTab("marketplace")}
-				>
-					{t("plugins.tabs.marketplace")}
-				</Button>
-				<Button
-					type="button"
-					size="sm"
-					variant={tab === "layout" ? "secondary" : "ghost"}
-					onClick={() => setTab("layout")}
-				>
-					{t("plugins.tabs.layout")}
-				</Button>
-			</div>
-
-			{tab === "marketplace" ? (
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">
-							{t("plugins.marketplace.title")}
-						</CardTitle>
-						<CardDescription>
-							{t("plugins.marketplace.description")}
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<PluginMarketplacePanel />
-					</CardContent>
-				</Card>
-			) : null}
-
-			{tab === "layout" ? (
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">
-							{t("plugins.layout.title")}
-						</CardTitle>
-						<CardDescription>{t("plugins.layout.description")}</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<PluginPreferencesPanel />
-					</CardContent>
-				</Card>
-			) : null}
+			<Tabs
+				value={tab}
+				onValueChange={(v) => setTab(v as "marketplace" | "layout")}
+			>
+				<TabsList>
+					<TabsTrigger value="marketplace">
+						{t("plugins.tabs.marketplace")}
+					</TabsTrigger>
+					<TabsTrigger value="layout">{t("plugins.tabs.layout")}</TabsTrigger>
+				</TabsList>
+				<TabsContent value="marketplace">
+					<Card>
+						<CardHeader>
+							<CardTitle className="text-base">
+								{t("plugins.marketplace.title")}
+							</CardTitle>
+							<CardDescription>
+								{t("plugins.marketplace.description")}
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<PluginMarketplacePanel />
+						</CardContent>
+					</Card>
+				</TabsContent>
+				<TabsContent value="layout">
+					<Card>
+						<CardHeader>
+							<CardTitle className="text-base">
+								{t("plugins.layout.title")}
+							</CardTitle>
+							<CardDescription>
+								{t("plugins.layout.description")}
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<PluginPreferencesPanel />
+						</CardContent>
+					</Card>
+				</TabsContent>
+			</Tabs>
 		</div>
 	);
 }
