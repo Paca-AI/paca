@@ -245,8 +245,9 @@ function useMoveDocNode(projectId: string) {
 				});
 			}
 			if (p.kind === "folder") {
+				// Every descendant's path changes too, so mark all paths stale.
 				qc.invalidateQueries({
-					queryKey: docQueryKeys.folderPath(projectId, p.id),
+					queryKey: [...docQueryKeys.all(projectId), "folders", "path"],
 				});
 			} else {
 				qc.invalidateQueries({
