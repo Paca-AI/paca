@@ -775,7 +775,9 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 		<SidebarGroup className="px-0">
 			{/* Section header */}
 			<SidebarGroupLabel
-				className="flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors px-3"
+				render={<button type="button" />}
+				aria-expanded={!collapsed}
+				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors px-3"
 				onClick={toggleCollapse}
 			>
 				<span>{t("docs.documentation")}</span>
@@ -1165,7 +1167,9 @@ function ProjectNavItems({ projectId }: { projectId: string }) {
 	return (
 		<SidebarGroup>
 			<SidebarGroupLabel
-				className="flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
+				render={<button type="button" />}
+				aria-expanded={!collapsed}
+				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
 				onClick={toggle}
 			>
 				<span>{t("nav.project")}</span>
@@ -1254,7 +1258,9 @@ function CollapsibleSidebarGroup({
 	return (
 		<SidebarGroup>
 			<SidebarGroupLabel
-				className="flex cursor-pointer items-center justify-between transition-colors hover:text-sidebar-foreground"
+				render={<button type="button" />}
+				aria-expanded={!collapsed}
+				className="w-full text-left flex cursor-pointer items-center justify-between transition-colors hover:text-sidebar-foreground"
 				onClick={toggle}
 			>
 				<span>{label}</span>
@@ -1553,7 +1559,9 @@ function ProjectInteractionsSection({ projectId }: { projectId: string }) {
 	return (
 		<SidebarGroup>
 			<SidebarGroupLabel
-				className="flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
+				render={<button type="button" />}
+				aria-expanded={!collapsed}
+				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
 				onClick={toggle}
 			>
 				<span>{t("interactions.title")}</span>

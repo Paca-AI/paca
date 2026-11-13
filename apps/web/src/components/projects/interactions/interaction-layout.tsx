@@ -1867,6 +1867,8 @@ export function InteractionLayout({
 	};
 
 	const updateSprintMutation = useMutation({
+		// The start-sprint modal renders its own inline error.
+		meta: { success: "started", subject: "sprint", silent: true },
 		mutationFn: ({
 			sprintId: sid,
 			payload,

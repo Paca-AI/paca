@@ -219,6 +219,20 @@ function SprintPage() {
 		},
 	});
 
+	// Starting reuses the update endpoint but reports "started", and the start
+	// modal shows its own inline error.
+	const startSprintMutation = useMutation({
+		meta: { success: "started", subject: "sprint", silent: true },
+		mutationFn: (payload: UpdateSprintPayload) =>
+			updateSprint(projectId, sprintId, payload),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "sprints"] });
+			qc.invalidateQueries({
+				queryKey: ["projects", projectId, "sprints", sprintId],
+			});
+		},
+	});
+
 	const deleteSprintMutation = useMutation({
 		meta: { success: "deleted", subject: "sprint" },
 		mutationFn: () => deleteSprint(projectId, sprintId),
@@ -338,7 +352,7 @@ function SprintPage() {
 				onOpenChange={setStartSprintOpen}
 				onSubmit={async (_sid, payload) => {
 					try {
-						await updateSprintMutation.mutateAsync(payload);
+						await startSprintMutation.mutateAsync(payload);
 					} catch (err) {
 						setStartSprintError(t("layout.startSprintModal.error"));
 						throw err;

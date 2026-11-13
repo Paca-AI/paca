@@ -1230,6 +1230,7 @@ export function ViewSettingsPanel({
 	/** Closes for real: drops the live preview and goes back to the first tab. */
 	const closeNow = () => {
 		if (view) onPreview(view.config ?? {});
+		setDraft(view?.config ?? {});
 		setTab("display");
 		setConfirmOpen(false);
 		onOpenChange(false);

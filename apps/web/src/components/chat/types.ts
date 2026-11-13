@@ -38,11 +38,18 @@ export type ToolCallStatus =
 	| { type: "complete" }
 	| { type: "incomplete"; reason: "cancelled" | "error"; error?: unknown };
 
-/** A tool call is running while its message is and no result has arrived. */
+/**
+ * A tool call is running while its message is and no result has arrived. A
+ * result-less call in a finished message was cut short (run stopped/failed).
+ */
 export function toolCallStatus(
 	part: ChatToolCallPart,
 	messageRunning: boolean,
 ): ToolCallStatus {
-	if (part.result === undefined && messageRunning) return { type: "running" };
+	if (part.result === undefined) {
+		return messageRunning
+			? { type: "running" }
+			: { type: "incomplete", reason: "cancelled" };
+	}
 	return { type: "complete" };
 }
