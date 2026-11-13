@@ -35,10 +35,7 @@ func envValue(env *[]acp.EnvVariable, name string) (string, bool) {
 
 // TestBuildMCPServers_AlwaysSetsConversationID pins that PACA_CONVERSATION_ID
 // is forwarded unconditionally (trigger.ConversationID is always set,
-// unlike ProjectID/ActorAccountID) — services/api's GetConversationForAgent
-// relies on it being present to authorize a read_conversation call against
-// the calling conversation's own project/actor/owning member; see that
-// method's doc comment.
+// unlike ProjectID/ActorAccountID).
 func TestBuildMCPServers_AlwaysSetsConversationID(t *testing.T) {
 	e := &Executor{opts: Options{AgentKeys: fakeAgentKeys{}, PacaAPIURL: "http://api", PacaGatewayURL: "http://gw"}}
 	conversationID := uuid.New()
@@ -54,6 +51,22 @@ func TestBuildMCPServers_AlwaysSetsConversationID(t *testing.T) {
 	}
 	if val != conversationID.String() {
 		t.Errorf("PACA_CONVERSATION_ID = %q, want %q", val, conversationID.String())
+	}
+}
+
+func TestBuildMCPServers_SetsOwnerMemberIDWhenPresent(t *testing.T) {
+	e := &Executor{opts: Options{AgentKeys: fakeAgentKeys{}, PacaAPIURL: "http://api", PacaGatewayURL: "http://gw"}}
+	owner := uuid.New()
+	cfg := agent.Config{ID: uuid.New()}
+
+	with := findPacaServer(t, e.buildMCPServers(agent.Trigger{ConversationID: uuid.New(), AgentID: uuid.New(), ActorMemberID: &owner}, cfg))
+	if val, ok := envValue(with.Env, "PACA_OWNER_MEMBER_ID"); !ok || val != owner.String() {
+		t.Errorf("PACA_OWNER_MEMBER_ID = %q (set=%v), want %q", val, ok, owner.String())
+	}
+
+	without := findPacaServer(t, e.buildMCPServers(agent.Trigger{ConversationID: uuid.New(), AgentID: uuid.New()}, cfg))
+	if _, ok := envValue(without.Env, "PACA_OWNER_MEMBER_ID"); ok {
+		t.Error("PACA_OWNER_MEMBER_ID must be absent when the run has no actor member")
 	}
 }
 

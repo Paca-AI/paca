@@ -1254,6 +1254,12 @@ func (e *Executor) pacaMCPServerCommandAndEnv(trigger agent.Trigger, cfg agent.C
 	if trigger.ProjectID != uuid.Nil {
 		env["PACA_PROJECT_ID"] = trigger.ProjectID.String()
 	}
+	if trigger.ActorMemberID != nil {
+		// The person who started this run, for ask_user_question's default
+		// "owner" mention. Passed here because the conversation holding it is an
+		// owner-private chat, which the agent API does not return.
+		env["PACA_OWNER_MEMBER_ID"] = trigger.ActorMemberID.String()
+	}
 	if len(trigger.RepoPluginIDs) > 0 {
 		// Read by apps/mcp's repo-tools.ts to scope list_repositories and
 		// gate whether the repo tool set is shown to the agent at all — see
