@@ -1064,22 +1064,33 @@ test.describe('Filtering and searching tasks within a view', () => {
 test.describe('View settings panel', () => {
   let projectId: string;
 
-  // The panel's dropdowns are custom popovers (not native <select>): each row is
-  // a label followed by a trigger button showing the current value, and picking
-  // an option leaves the dropdown popover open until the panel title is clicked.
+  // The panel is a popover with Display / Fields / Filters tabs. Each Display
+  // row is a <label> followed by a base-ui Select (role=combobox) whose options
+  // are role=option and which closes itself once an option is picked.
   const openSettings = async (page: Page) => {
     await page.getByRole('button', { name: 'View settings', exact: true }).click();
     await expect(page.getByText('View settings', { exact: true })).toBeVisible();
   };
 
+  const rowLabel = (page: Page, label: string) =>
+    page.locator('[data-slot="label"]').getByText(label, { exact: true });
+
   const rowButton = (page: Page, label: string) =>
-    page.getByText(label, { exact: true }).locator('xpath=following-sibling::button');
+    rowLabel(page, label).locator('xpath=following-sibling::*[@role="combobox"]');
 
   const chooseOption = async (page: Page, row: string, option: string) => {
     await rowButton(page, row).click();
-    await page.getByRole('button', { name: option, exact: true }).last().click();
-    await page.getByText('View settings', { exact: true }).click();
-    await expect(rowButton(page, row)).toHaveText(option);
+    await page.getByRole('option', { name: option, exact: true }).click();
+    await expect(rowButton(page, row)).toContainText(option);
+  };
+
+  // Escape with unsaved edits asks before closing; throw the edits away.
+  const discardAndClose = async (page: Page) => {
+    await page.keyboard.press('Escape');
+    await page
+      .locator('[data-slot="alert-dialog-content"]')
+      .getByRole('button', { name: 'Discard', exact: true })
+      .click();
   };
 
   test.beforeEach(async ({ request, context }) => {
@@ -1101,11 +1112,11 @@ test.describe('View settings panel', () => {
     await openSettings(page);
 
     // All expected setting rows should be visible
-    await expect(page.getByText('Fields', { exact: true })).toBeVisible();
-    await expect(page.getByText('Column by', { exact: true })).toBeVisible();
-    await expect(page.getByText('Swimlanes', { exact: true })).toBeVisible();
-    await expect(page.getByText('Sort by', { exact: true })).toBeVisible();
-    await expect(page.getByText('Field sum', { exact: true })).toBeVisible();
+    await expect(rowLabel(page, 'Fields')).toBeVisible();
+    await expect(rowLabel(page, 'Column by')).toBeVisible();
+    await expect(rowLabel(page, 'Swimlanes')).toBeVisible();
+    await expect(rowLabel(page, 'Sort by')).toBeVisible();
+    await expect(rowLabel(page, 'Field sum')).toBeVisible();
   });
 
   test('The settings panel offers a Save action and shows Reset only once the draft differs from the team default', async ({ page }) => {
@@ -1128,10 +1139,10 @@ test.describe('View settings panel', () => {
     await navigateToBacklog(page, projectId);
 
     await openSettings(page);
-    await expect(rowButton(page, 'Sort by')).toHaveText('Manual');
+    await expect(rowButton(page, 'Sort by')).toContainText('Manual');
 
     await chooseOption(page, 'Sort by', 'Importance');
-    await expect(rowButton(page, 'Sort by')).toHaveText('Importance');
+    await expect(rowButton(page, 'Sort by')).toContainText('Importance');
   });
 
   test('Clicking "Save only for me" persists the settings and closes the popup', async ({ page }) => {
@@ -1148,7 +1159,7 @@ test.describe('View settings panel', () => {
 
     // After reopening, the saved setting should persist
     await openSettings(page);
-    await expect(rowButton(page, 'Sort by')).toHaveText('Importance');
+    await expect(rowButton(page, 'Sort by')).toContainText('Importance');
   });
 
   test('Clicking Reset reverts the draft to the team default', async ({ page }) => {
@@ -1161,7 +1172,7 @@ test.describe('View settings panel', () => {
     await chooseOption(page, 'Sort by', 'Importance');
 
     await page.getByRole('button', { name: 'Reset', exact: true }).click();
-    await expect(rowButton(page, 'Sort by')).toHaveText(initialValue.trim());
+    await expect(rowButton(page, 'Sort by')).toContainText(initialValue.trim());
     await expect(page.getByRole('button', { name: 'Reset', exact: true })).toHaveCount(0);
   });
 
@@ -1174,15 +1185,15 @@ test.describe('View settings panel', () => {
 
     await chooseOption(page, 'Sort by', 'Importance');
 
-    // Close by pressing Escape
-    await page.keyboard.press('Escape');
+    // Close by pressing Escape and confirm the discard
+    await discardAndClose(page);
 
     // Panel should be closed
     await expect(page.getByRole('button', { name: 'Save only for me' })).not.toBeVisible({ timeout: 5_000 });
 
     // Reopen and verify the change was discarded
     await openSettings(page);
-    await expect(rowButton(page, 'Sort by')).toHaveText(initialValue);
+    await expect(rowButton(page, 'Sort by')).toContainText(initialValue);
   });
 
   test('View settings are persisted per view', async ({ page, request }) => {
@@ -1204,13 +1215,13 @@ test.describe('View settings panel', () => {
     await page.getByRole('button', { name: 'MyTable', exact: true }).click();
     await openSettings(page);
     // MyTable view should have the default sort (manual), not the Board's explicit sort
-    await expect(rowButton(page, 'Sort by')).toHaveText('Manual');
+    await expect(rowButton(page, 'Sort by')).toContainText('Manual');
     await page.keyboard.press('Escape');
 
     // Switch back to Board view — its explicitly saved setting must be preserved
     await page.getByRole('button', { name: 'Board', exact: true }).click();
     await openSettings(page);
-    await expect(rowButton(page, 'Sort by')).toHaveText('Importance');
+    await expect(rowButton(page, 'Sort by')).toContainText('Importance');
   });
 });
 

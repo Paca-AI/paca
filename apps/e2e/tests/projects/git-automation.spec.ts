@@ -279,7 +279,9 @@ test.describe("Project Git automation", () => {
 				.getByLabel("Default responder")
 				.selectOption({ label: agentName });
 			await page.getByRole("button", { name: "Save" }).click();
-			await expect(page.getByText("Saved.")).toBeVisible();
+			await expect(
+				page.getByText("Git automation settings updated successfully").first(),
+			).toBeVisible();
 			await expect(
 				page.getByText("mentions that name no agent are ignored"),
 			).toHaveCount(0);
@@ -303,7 +305,9 @@ test.describe("Project Git automation", () => {
 				.selectOption({ label: "Admin" });
 			await page.getByRole("switch", { name: /pause automation/i }).click();
 			await page.getByRole("button", { name: "Save" }).click();
-			await expect(page.getByText("Saved.")).toBeVisible();
+			await expect(
+				page.getByText("Git automation settings updated successfully").first(),
+			).toBeVisible();
 
 			await authRequest(request);
 			expect(await settings(request)).toMatchObject({

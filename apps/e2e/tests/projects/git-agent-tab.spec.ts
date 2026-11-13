@@ -238,7 +238,9 @@ test.describe("Agent Git tab", () => {
 			).toBeVisible();
 			await expect(page.getByText("@paca-reviewer")).toBeVisible();
 			await page.getByRole("button", { name: "Remove" }).click();
-			const dialog = page.getByRole("dialog");
+			const dialog = page
+				.getByRole("dialog")
+				.and(page.locator(':not([data-slot="toast"])'));
 			await expect(dialog).toBeVisible();
 			await dialog.getByRole("button", { name: "Remove connection" }).click();
 			await expect

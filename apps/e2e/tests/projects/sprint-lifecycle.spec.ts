@@ -233,10 +233,15 @@ function columnHeader(page: Page, sprintName: string): Locator {
 }
 
 /** A modal overlay identified by its level-2 heading. */
+// Dialog and AlertDialog panels. A bare getByRole("dialog") would also match
+// toasts, which base-ui renders with role="dialog".
+const DIALOG_CONTENT =
+	'[data-slot="dialog-content"], [data-slot="alert-dialog-content"]';
+
 function modal(page: Page, title: string): Locator {
 	return page
-		.locator("div.fixed.inset-0")
-		.filter({ has: page.getByRole("heading", { level: 2, name: title }) });
+		.locator(DIALOG_CONTENT)
+		.filter({ has: page.getByRole("heading", { name: title }) });
 }
 
 function pageHeaderButton(page: Page, name: string): Locator {
@@ -275,10 +280,7 @@ test.describe("Creating a sprint (quick create — no modal)", () => {
 		const header = columnHeader(page, "Sprint 1");
 		await expect(header).toBeVisible();
 		await expect(header.getByText("Draft", { exact: true })).toBeVisible();
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-		await expect(
-			page.locator("div.fixed.inset-0").getByRole("heading", { level: 2 }),
-		).toHaveCount(0);
+		await expect(page.locator(DIALOG_CONTENT)).toHaveCount(0);
 
 		if (!isMobile) {
 			await expect(

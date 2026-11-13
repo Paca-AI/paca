@@ -66,7 +66,9 @@ async function openSecurity(page: Page) {
 
 async function addPasskey(page: Page, name: string) {
 	await page.getByRole("button", { name: "Add a passkey" }).click();
-	const dialog = page.getByRole("dialog");
+	const dialog = page
+		.getByRole("dialog")
+		.and(page.locator(':not([data-slot="toast"])'));
 	await dialog.getByLabel("Name").fill(name);
 	await dialog.getByRole("button", { name: "Continue" }).click();
 	await expect(dialog).toBeHidden();
@@ -174,7 +176,9 @@ test.describe("Removing a passkey", () => {
 		await addPasskey(page, "Tablet");
 
 		await page.getByRole("button", { name: "Remove Tablet" }).click();
-		const dialog = page.getByRole("dialog");
+		const dialog = page
+			.getByRole("dialog")
+			.and(page.locator(':not([data-slot="toast"])'));
 		await expect(dialog.getByLabel("Password")).toHaveCount(0);
 
 		// With the authenticator gone nothing can approve the removal.
@@ -196,7 +200,9 @@ test.describe("Removing a passkey", () => {
 		await addPasskey(page, "Laptop");
 
 		await page.getByRole("button", { name: "Remove Laptop" }).click();
-		const dialog = page.getByRole("dialog");
+		const dialog = page
+			.getByRole("dialog")
+			.and(page.locator(':not([data-slot="toast"])'));
 		await dialog.getByRole("button", { name: "Remove", exact: true }).click();
 		await expect(dialog).toBeHidden();
 		await expect(

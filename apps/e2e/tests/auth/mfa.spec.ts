@@ -537,7 +537,9 @@ test.describe("In the browser", () => {
 		await page
 			.getByRole("button", { name: "Set up two-step verification" })
 			.click();
-		const dialog = page.getByRole("dialog");
+		const dialog = page
+			.getByRole("dialog")
+			.and(page.locator(':not([data-slot="toast"])'));
 		const secret = (
 			await dialog
 				.getByLabel("Copy setup key")
@@ -603,7 +605,9 @@ test.describe("In the browser", () => {
 		// Turn it off again with a recovery code.
 		await openSecurity(page);
 		await page.getByRole("button", { name: "Turn off" }).first().click();
-		const off = page.getByRole("dialog");
+		const off = page
+			.getByRole("dialog")
+			.and(page.locator(':not([data-slot="toast"])'));
 		await off
 			.getByLabel("Authentication code or recovery code")
 			.fill(recovery[0]);
@@ -712,7 +716,9 @@ test.describe("In the browser", () => {
 			has: page.getByText(target.username, { exact: true }),
 		});
 		await row.getByRole("button", { name: "Security" }).click();
-		const dialog = page.getByRole("dialog");
+		const dialog = page
+			.getByRole("dialog")
+			.and(page.locator(':not([data-slot="toast"])'));
 		await expect(dialog).toContainText("Sign-in protections for");
 
 		await dialog.getByLabel("Allowed IP addresses").fill("not-an-ip");
