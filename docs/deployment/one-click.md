@@ -1,63 +1,26 @@
 # One-click deploys
 
-| Provider | Path | Full stack (AI agents)? | Status |
-|:--|:--|:--|:--|
-| GCP | Cloud Shell tutorial + `gcloud` script (Compute Engine VM) | ✅ yes | Button added, untested |
-| DigitalOcean | App Platform button (`.do/deploy.template.yaml`) | ❌ no Agent Runner | Button added, untested |
-| DigitalOcean | Droplet + cloud-init | ✅ yes | Manual, no button |
-| AWS | CloudFormation (EC2 + Elastic IP) | ✅ yes | Button needs the S3 setup below |
-| Render | Blueprint (`render.yaml`) | ❌ no Agent Runner | Ready |
-| Railway | Template (built in Railway dashboard) | ❌ no Agent Runner | Recipe only |
+Paca ships one-click paths for **AWS**, **GCP** and **DigitalOcean**. Each
+creates a single VM that installs the full stack (API, web, realtime, Postgres,
+Valkey, storage and the Agent Runner) with the same non-interactive
+`install.sh`, through [`deploy/cloud/bootstrap.sh`](../../deploy/cloud/bootstrap.sh).
 
-**Why only the VM paths run AI agents.** The Agent Runner starts each agent
-sandbox as a Docker container through the host's Docker socket. Render and
-Railway don't expose one, so there Paca runs without agent execution
-(boards, docs, sprints, automations and realtime all work). Pick a VM deploy
-if you need agents.
+| Provider | Path | Button |
+|:--|:--|:--|
+| AWS | CloudFormation (EC2 + Elastic IP) | Launch Stack; needs the maintainer setup below |
+| GCP | Cloud Shell tutorial + `gcloud` script | Opens Cloud Shell |
+| DigitalOcean | Droplet + cloud-init | Opens this guide (DigitalOcean has no link that pre-fills a cloud-init script) |
 
-Nothing here has been run against a live account yet — treat the first
-deploy on each provider as a test.
+**Why only VMs.** The Agent Runner starts each agent sandbox as a Docker
+container through the host's Docker socket. Platforms without one (App
+Platform, Render, Railway and similar) can run only part of Paca, so they are
+not offered here.
 
-## GCP (Compute Engine via Cloud Shell)
-
-The button opens Google Cloud Shell with this repo and the walkthrough in
-[`deploy/cloud/gcp/tutorial.md`](../../deploy/cloud/gcp/tutorial.md). The
-tutorial runs [`deploy.sh`](../../deploy/cloud/gcp/deploy.sh), which enables
-the Compute API, reserves a static IP, opens ports 80/443 and creates an
-Ubuntu 24.04 `e2-standard-2` VM whose startup script runs `bootstrap.sh`
-(same as the DigitalOcean/AWS VMs). Cloud Shell is already logged in, so no
-credentials are needed; you only pick a billing-enabled project. Set
-`PACA_DOMAIN`, `ADMIN_PASSWORD`, `PACA_ZONE` or `PACA_MACHINE` to customise.
-Like the other VM paths it needs a release that includes `bootstrap.sh`.
-
-## DigitalOcean (App Platform button)
-
-[`.do/deploy.template.yaml`](../../.do/deploy.template.yaml) deploys the API, web
-and realtime services plus a managed Postgres dev database, and uses App Platform's
-router instead of Caddy. There are no persistent volumes, so files go to
-**DigitalOcean Spaces**:
-
-1. Create a Space (e.g. `my-paca-files`) in `nyc3` and a Spaces access key.
-   Also create a Valkey/Redis instance (DigitalOcean Managed Valkey, Upstash, …):
-   App Platform dev databases are PostgreSQL-only, so you paste its `rediss://`
-   URL into `REDIS_URL` for both `api` and `realtime`.
-2. Click the button, fill the secret fields (`JWT_SECRET`, `ADMIN_PASSWORD`,
-   `AI_AGENT_INTERNAL_KEY`, `ENCRYPTION_KEY` (`openssl rand -hex 32`), `REDIS_URL`,
-   Spaces key/secret) and set `STORAGE_BUCKET`.
-3. Add a CORS rule on the Space allowing your app URL (GET/PUT/HEAD), since
-   browsers upload via presigned Spaces URLs.
-
-If your Space is not in `nyc3`, change `STORAGE_ENDPOINT`/`STORAGE_REGION`.
-
-## DigitalOcean (Droplet)
-
-1. Create an **Ubuntu 24.04** Droplet, **4 GB RAM / 2 vCPU or more**.
-2. Under *Advanced Options → Add Initialization scripts*, paste
-   [`deploy/cloud/digitalocean-cloud-init.yaml`](../../deploy/cloud/digitalocean-cloud-init.yaml).
-   Fill in `PACA_DOMAIN` (DNS already pointing at the Droplet → HTTPS) and/or
-   `ADMIN_PASSWORD`, or leave both empty.
-3. After ~5 minutes open `http://<droplet-ip>`. Admin credentials:
-   `ssh root@<ip> grep ADMIN_ /opt/paca/.env` (progress: `/var/log/paca-install.log`).
+Nothing here has been run against a live account yet; treat the first deploy
+on each provider as a test. The VM paths download `bootstrap.sh` from the
+latest release, so they need a release that includes it. Default size is about
+4–8 GB of RAM (`e2-standard-2`, `t3.large`, or a 4 GB Droplet); 4 GB is the
+minimum.
 
 ## AWS (CloudFormation)
 
@@ -77,54 +40,29 @@ The release workflow uploads it to `s3://paca-cloudformation/latest/paca.cfn.yam
 Note: `AdminPassword` ends up in instance user-data (readable by anyone with
 `ec2:DescribeInstanceAttribute`). Leave it empty to auto-generate instead.
 
-## Render (Blueprint)
+## GCP (Compute Engine via Cloud Shell)
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Paca-AI/paca)
+The button opens Google Cloud Shell with this repo and the walkthrough in
+[`deploy/cloud/gcp/tutorial.md`](../../deploy/cloud/gcp/tutorial.md). The
+tutorial runs [`deploy.sh`](../../deploy/cloud/gcp/deploy.sh), which enables
+the Compute API, reserves a static IP, opens ports 80/443 and creates an
+Ubuntu 24.04 `e2-standard-2` VM whose startup script runs `bootstrap.sh`
+(same as the DigitalOcean/AWS VMs). Cloud Shell is already logged in, so no
+credentials are needed; you only pick a billing-enabled project. Set
+`PACA_DOMAIN`, `ADMIN_PASSWORD`, `PACA_ZONE` or `PACA_MACHINE` to customise.
+Like the other VM paths it needs a release that includes `bootstrap.sh`.
 
-[`render.yaml`](../../render.yaml) provisions Postgres, Key Value (Valkey),
-RustFS (with a disk), the API, web, realtime services and a Caddy gateway
-(the only public service). All are paid starter plans.
+## DigitalOcean (Droplet)
 
-`ENCRYPTION_KEY` (64 hex chars, `openssl rand -hex 32`) is prompted for on
-create; keep it, since changing it makes stored secrets unreadable.
+1. Create an **Ubuntu 24.04** Droplet, **4 GB RAM / 2 vCPU or more**.
+2. Under *Advanced Options → Add Initialization scripts*, paste
+   [`deploy/cloud/digitalocean-cloud-init.yaml`](../../deploy/cloud/digitalocean-cloud-init.yaml).
+   Fill in `PACA_DOMAIN` (DNS already pointing at the Droplet → HTTPS) and/or
+   `ADMIN_PASSWORD`, or leave both empty.
+3. After ~5 minutes open `http://<droplet-ip>`. Admin credentials:
+   `ssh root@<ip> grep ADMIN_ /opt/paca/.env` (progress: `/var/log/paca-install.log`).
 
-After the first deploy, Render can't know the public URL ahead of time, so set:
-
-- `paca-api`: `PUBLIC_URL=https://<gateway>.onrender.com`,
-  `STORAGE_PUBLIC_URL=https://<gateway>.onrender.com/storage`
-- `paca-realtime`: `CORS_ORIGINS=https://<gateway>.onrender.com`
-
-then redeploy those two services. The generated `ADMIN_PASSWORD` is in
-`paca-api` → Environment.
-
-## Railway (manual template)
-
-Railway templates are authored in the Railway dashboard (there is no in-repo
-file format that creates one), so the "Deploy on Railway" button needs a
-maintainer to build the template once. Recipe, mirroring the Render blueprint:
-
-1. New project → add **PostgreSQL** and **Redis** (or Valkey) from the catalog.
-2. Add Docker-image services: `pacaai/paca-api`, `pacaai/paca-web`,
-   `pacaai/paca-realtime`, `rustfs/rustfs:1.0.0-rc.6` (volume at `/data/rustfs0`).
-3. Add a service built from this repo with Dockerfile path
-   `deploy/render/gateway/Dockerfile` (it's a plain Caddy image; Railway
-   handles TLS). Give it the only public domain and set `PORT=80`,
-   `SITE_ADDRESS=:80`, plus `API_UPSTREAM`, `WEB_UPSTREAM`,
-   `REALTIME_UPSTREAM`, `STORAGE_UPSTREAM` as `<service>.railway.internal:<port>`
-   (8080, 3000, 3001, 9000).
-4. API env: copy the keys from `render.yaml`'s `paca-api` block, using
-   `${{Postgres.DATABASE_URL}}` / `${{Redis.REDIS_URL}}` references,
-   `PUBLIC_URL=https://${{gateway.RAILWAY_PUBLIC_DOMAIN}}` and
-   `STORAGE_PUBLIC_URL=https://${{gateway.RAILWAY_PUBLIC_DOMAIN}}/storage`.
-   Realtime: `API_URL=http://paca-api.railway.internal:8080`, `REDIS_URL`,
-   `CORS_ORIGINS=https://${{gateway.RAILWAY_PUBLIC_DOMAIN}}`.
-   Use `${{secret(32)}}` for `JWT_SECRET`, `ADMIN_PASSWORD` and
-   `AI_AGENT_INTERNAL_KEY` (the API refuses to start without it), and
-   `${{secret(64, "abcdef0123456789")}}` for `ENCRYPTION_KEY`.
-5. Publish via *Settings → Generate Template*, then add the resulting
-   `https://railway.com/deploy/<code>` button to the README.
-
-## Maintainer setup for the AWS and Railway buttons
+## Maintainer setup for the AWS button
 
 **AWS button setup** (one time; CI uses GitHub OIDC, no stored keys):
 
@@ -141,6 +79,3 @@ maintainer to build the template once. Recipe, mirroring the Render blueprint:
 5. Each non-prerelease release now uploads the template. To publish before the
    next release, run `bash deploy/cloud/aws/publish-template.sh` with your own
    AWS login.
-
-**Railway button:** follow the recipe above, then replace the "Railway button:
-coming" line in the README with the `https://railway.com/deploy/<code>` button.

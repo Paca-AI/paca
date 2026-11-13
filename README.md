@@ -337,12 +337,10 @@ See [Artifact Hub](https://artifacthub.io/packages/helm/paca/paca) for the full 
 
 [![Deploy to AWS](https://img.shields.io/badge/Deploy_to-AWS-FF9900?style=for-the-badge&labelColor=24292f&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateURL=https://paca-cloudformation.s3.amazonaws.com/latest/paca.cfn.yaml&stackName=paca)
 [![Deploy to GCP](https://img.shields.io/badge/Deploy_to-GCP-4285F4?style=for-the-badge&labelColor=24292f)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/Paca-AI/paca&cloudshell_tutorial=deploy/cloud/gcp/tutorial.md&show=terminal)
-[![Deploy to DigitalOcean](https://img.shields.io/badge/Deploy_to-DigitalOcean-0080FF?style=for-the-badge&labelColor=24292f&logoColor=white)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/Paca-AI/paca/tree/master)
-[![Deploy to Railway](https://img.shields.io/badge/Deploy_to-Railway-7B3FE4?style=for-the-badge&labelColor=24292f&logoColor=white)](docs/deployment/one-click.md#railway-manual-template)
-[![Deploy to Render](https://img.shields.io/badge/Deploy_to-Render-00A67E?style=for-the-badge&labelColor=24292f&logoColor=white)](https://render.com/deploy?repo=https://github.com/Paca-AI/paca)
+[![Deploy to DigitalOcean](https://img.shields.io/badge/Deploy_to-DigitalOcean-0080FF?style=for-the-badge&labelColor=24292f)](docs/deployment/one-click.md#digitalocean-droplet)
 [![Deploy to RepoCloud](https://img.shields.io/badge/Deploy_to-RepoCloud-E8590C?style=for-the-badge&labelColor=24292f&logoColor=white)](https://repocloud.io/details/Paca/)
 
-Only AWS and GCP (and a [DigitalOcean Droplet](docs/deployment/one-click.md#digitalocean-droplet)) includes the Agent Runner; the others run Paca without AI agent execution. Details in the [one-click deploy docs](docs/deployment/one-click.md).
+AWS, GCP and DigitalOcean each create one VM running the full stack, including the Agent Runner for AI agents. Step-by-step guides in [docs/deployment/one-click.md](docs/deployment/one-click.md).
 
 ---
 
@@ -519,7 +517,7 @@ But Paca is built from conviction: human-AI collaboration in a real Scrum team s
 | [apps/extension/README.md](apps/extension/README.md) | Browser extension — comment on environment preview pages, turn comments into tasks |
 | [docs/plugins/](docs/plugins/) | Plugin system: backend (WASM) and frontend |
 | [deploy/README.md](deploy/README.md) | Full deployment reference |
-| [docs/deployment/one-click.md](docs/deployment/one-click.md) | One-click deploys: DigitalOcean, AWS, Render, Railway |
+| [docs/deployment/one-click.md](docs/deployment/one-click.md) | One-click deploys: AWS, GCP, DigitalOcean |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [SECURITY.md](SECURITY.md) | Security policy |
 
