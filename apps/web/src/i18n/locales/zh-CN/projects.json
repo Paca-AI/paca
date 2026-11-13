@@ -2308,7 +2308,12 @@
 			"subtasksLabel": "子任务",
 			"subtasksCollapsed": "嵌套，已折叠",
 			"subtasksExpanded": "嵌套，已展开",
-			"subtasksHidden": "隐藏（平铺列表）"
+			"subtasksHidden": "隐藏（平铺列表）",
+			"unsavedBadge": "未保存的更改",
+			"unsavedTitle": "放弃未保存的更改？",
+			"unsavedDescription": "你修改了此视图的设置但尚未保存。请保存，或放弃以恢复到上次保存的设置。",
+			"keepEditing": "继续编辑",
+			"discard": "放弃"
 		},
 		"roadmap": {
 			"taskColumnLabel": "任务",

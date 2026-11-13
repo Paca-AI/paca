@@ -2308,7 +2308,12 @@
 			"subtasksLabel": "Subtareas",
 			"subtasksCollapsed": "Anidadas, contraídas",
 			"subtasksExpanded": "Anidadas, expandidas",
-			"subtasksHidden": "Ocultas (lista plana)"
+			"subtasksHidden": "Ocultas (lista plana)",
+			"unsavedBadge": "Cambios sin guardar",
+			"unsavedTitle": "¿Descartar los cambios sin guardar?",
+			"unsavedDescription": "Cambiaste los ajustes de esta vista pero no los guardaste. Guárdalos o descártalos para volver a los últimos ajustes guardados.",
+			"keepEditing": "Seguir editando",
+			"discard": "Descartar"
 		},
 		"roadmap": {
 			"taskColumnLabel": "Tarea",

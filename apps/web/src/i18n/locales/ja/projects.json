@@ -2308,7 +2308,12 @@
 			"subtasksLabel": "サブタスク",
 			"subtasksCollapsed": "ネスト表示（折りたたみ）",
 			"subtasksExpanded": "ネスト表示（展開）",
-			"subtasksHidden": "非表示（フラット表示）"
+			"subtasksHidden": "非表示（フラット表示）",
+			"unsavedBadge": "未保存の変更",
+			"unsavedTitle": "未保存の変更を破棄しますか？",
+			"unsavedDescription": "このビューの設定を変更しましたが、保存されていません。保存するか、破棄して最後に保存した設定に戻してください。",
+			"keepEditing": "編集を続ける",
+			"discard": "破棄"
 		},
 		"roadmap": {
 			"taskColumnLabel": "タスク",

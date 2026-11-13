@@ -2308,7 +2308,12 @@
 			"subtasksLabel": "Công việc con",
 			"subtasksCollapsed": "Lồng nhau, thu gọn",
 			"subtasksExpanded": "Lồng nhau, mở rộng",
-			"subtasksHidden": "Ẩn (danh sách phẳng)"
+			"subtasksHidden": "Ẩn (danh sách phẳng)",
+			"unsavedBadge": "Thay đổi chưa lưu",
+			"unsavedTitle": "Hủy các thay đổi chưa lưu?",
+			"unsavedDescription": "Bạn đã thay đổi cài đặt của chế độ xem này nhưng chưa lưu. Hãy lưu, hoặc hủy để quay lại cài đặt đã lưu gần nhất.",
+			"keepEditing": "Tiếp tục chỉnh sửa",
+			"discard": "Hủy bỏ"
 		},
 		"roadmap": {
 			"taskColumnLabel": "Nhiệm vụ",

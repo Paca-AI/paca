@@ -2308,7 +2308,12 @@
 			"subtasksLabel": "Sous-tâches",
 			"subtasksCollapsed": "Imbriquées, réduites",
 			"subtasksExpanded": "Imbriquées, développées",
-			"subtasksHidden": "Masquées (liste à plat)"
+			"subtasksHidden": "Masquées (liste à plat)",
+			"unsavedBadge": "Modifications non enregistrées",
+			"unsavedTitle": "Abandonner les modifications non enregistrées ?",
+			"unsavedDescription": "Vous avez modifié les paramètres de cette vue sans les enregistrer. Enregistrez-les, ou abandonnez-les pour revenir aux derniers paramètres enregistrés.",
+			"keepEditing": "Continuer à modifier",
+			"discard": "Abandonner"
 		},
 		"roadmap": {
 			"taskColumnLabel": "Tâche",

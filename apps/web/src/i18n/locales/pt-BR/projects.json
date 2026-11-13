@@ -2308,7 +2308,12 @@
 			"subtasksLabel": "Subtarefas",
 			"subtasksCollapsed": "Aninhadas, recolhidas",
 			"subtasksExpanded": "Aninhadas, expandidas",
-			"subtasksHidden": "Ocultas (lista plana)"
+			"subtasksHidden": "Ocultas (lista plana)",
+			"unsavedBadge": "Alterações não salvas",
+			"unsavedTitle": "Descartar alterações não salvas?",
+			"unsavedDescription": "Você alterou as configurações desta visualização, mas não as salvou. Salve-as ou descarte para voltar às últimas configurações salvas.",
+			"keepEditing": "Continuar editando",
+			"discard": "Descartar"
 		},
 		"roadmap": {
 			"taskColumnLabel": "Tarefa",
