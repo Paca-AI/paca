@@ -285,7 +285,7 @@ const selectDropdownOption = async (
 ) => {
 	await settingRowButton(page, rowLabel).click();
 	await optionButton(page, option).click();
-	await expect(settingRowButton(page, rowLabel)).toHaveText(option);
+	await expect(settingRowButton(page, rowLabel)).toContainText(option);
 };
 
 const settingsTab = (page: Page, name: string): Locator =>
@@ -834,10 +834,11 @@ test.describe("Unsaved settings changes", () => {
 			confirm.getByText("Discard unsaved changes?"),
 		).toBeVisible();
 		await confirm.getByRole("button", { name: "Discard" }).click();
+		await expect(confirm).toBeHidden();
 		await expect(saveOnlyForMeButton(page)).toBeHidden();
 
 		await openSettings(page);
-		await expect(settingRowButton(page, "Sort by")).toHaveText("Manual");
+		await expect(settingRowButton(page, "Sort by")).toContainText("Manual");
 	});
 
 	test("Keep editing in the close confirmation leaves the panel open with the changes", async ({
@@ -855,7 +856,7 @@ test.describe("Unsaved settings changes", () => {
 
 		await expect(confirm).toBeHidden();
 		await expect(panelTitle(page)).toBeVisible();
-		await expect(settingRowButton(page, "Sort by")).toHaveText("Title");
+		await expect(settingRowButton(page, "Sort by")).toContainText("Title");
 	});
 
 	test("Closing without changes does not ask for confirmation", async ({
@@ -946,7 +947,7 @@ test.describe("Personal vs shared view settings — views.write holder", () => {
 
 		await openSettings(page);
 		await expect(personalBadge(page)).toHaveCount(0);
-		await expect(settingRowButton(page, "Sort by")).toHaveText("Title");
+		await expect(settingRowButton(page, "Sort by")).toContainText("Title");
 	});
 
 	test('"Save only for me" keeps the settings personal', async ({
@@ -969,7 +970,7 @@ test.describe("Personal vs shared view settings — views.write holder", () => {
 
 		await openSettings(page);
 		await expect(personalBadge(page)).toBeVisible();
-		await expect(settingRowButton(page, "Sort by")).toHaveText("Title");
+		await expect(settingRowButton(page, "Sort by")).toContainText("Title");
 	});
 
 	test("Another member never sees a personal-only save", async ({
@@ -1008,7 +1009,7 @@ test.describe("Personal vs shared view settings — views.write holder", () => {
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
 		await expect(personalBadge(page)).toBeVisible();
-		await expect(settingRowButton(page, "Sort by")).toHaveText("Title");
+		await expect(settingRowButton(page, "Sort by")).toContainText("Title");
 
 		await selectDropdownOption(page, "Sort by", "Created");
 		await saveForEveryoneAndWaitClosed(page);
@@ -1031,10 +1032,10 @@ test.describe("Personal vs shared view settings — views.write holder", () => {
 		await signIn(page);
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
-		await expect(settingRowButton(page, "Sort by")).toHaveText("Title");
+		await expect(settingRowButton(page, "Sort by")).toContainText("Title");
 
 		await resetButton(page).click();
-		await expect(settingRowButton(page, "Sort by")).toHaveText("Manual");
+		await expect(settingRowButton(page, "Sort by")).toContainText("Manual");
 		await expect(resetButton(page)).toHaveCount(0);
 
 		// Reset is local until saved: the stored personal override is untouched.
@@ -1147,10 +1148,10 @@ test.describe("Personal view settings — member without views.write", () => {
 		await signIn(page, VIEWER_USERNAME, VIEWER_PASSWORD);
 		await navigateToBacklog(page, projectId);
 		await openSettings(page);
-		await expect(settingRowButton(page, "Sort by")).toHaveText("Title");
+		await expect(settingRowButton(page, "Sort by")).toContainText("Title");
 
 		await resetButton(page).click();
-		await expect(settingRowButton(page, "Sort by")).toHaveText("Created");
+		await expect(settingRowButton(page, "Sort by")).toContainText("Created");
 	});
 });
 

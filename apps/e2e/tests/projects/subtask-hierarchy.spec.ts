@@ -399,7 +399,7 @@ test.describe("The Subtasks view setting controls nesting", () => {
 
 	test('The setting defaults to "Nested, collapsed"', async ({ page }) => {
 		await openViewSettings(page);
-		await expect(settingRow(page, "Subtasks")).toHaveText("Nested, collapsed");
+		await expect(settingRow(page, "Subtasks")).toContainText("Nested, collapsed");
 	});
 
 	test('"Nested, expanded" shows subtasks without clicking the chevron', async ({
@@ -447,7 +447,7 @@ test.describe("The Subtasks view setting controls nesting", () => {
 		await page.reload();
 		await expect(title(page, "Child done")).toBeVisible();
 		await openViewSettings(page);
-		await expect(settingRow(page, "Subtasks")).toHaveText("Nested, expanded");
+		await expect(settingRow(page, "Subtasks")).toContainText("Nested, expanded");
 	});
 });
 

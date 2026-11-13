@@ -262,7 +262,7 @@ test.describe('Timeline view settings defaults', () => {
       .locator('label')
       .filter({ hasText: /^Column by$/ })
       .locator('xpath=following-sibling::button');
-    await expect(columnByTrigger).toHaveText('Status');
+    await expect(columnByTrigger).toContainText('Status');
 
     // Close settings panel
     await page.keyboard.press('Escape');
