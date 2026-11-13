@@ -7,7 +7,9 @@
 set -euo pipefail
 BUCKET="${AWS_TEMPLATE_BUCKET:-paca-cloudformation}"
 VERSION="${1:-dev}"
-FILE="$(dirname "$0")/paca.cfn.yaml"
-aws s3 cp "$FILE" "s3://${BUCKET}/${VERSION}/paca.cfn.yaml"
-aws s3 cp "$FILE" "s3://${BUCKET}/latest/paca.cfn.yaml"
-echo "Published: https://${BUCKET}.s3.amazonaws.com/latest/paca.cfn.yaml"
+DIR="$(dirname "$0")"
+for t in paca.cfn.yaml paca-lite.cfn.yaml; do
+    aws s3 cp "$DIR/$t" "s3://${BUCKET}/${VERSION}/$t"
+    aws s3 cp "$DIR/$t" "s3://${BUCKET}/latest/$t"
+    echo "Published: https://${BUCKET}.s3.amazonaws.com/latest/$t"
+done

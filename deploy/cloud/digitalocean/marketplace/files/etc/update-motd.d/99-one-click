@@ -1,0 +1,10 @@
+#!/bin/sh
+cat <<MSG
+------------------------------------------------------------------------------
+Paca is installed in /opt/paca (first boot takes about 5 minutes).
+  Open:        http://$(curl -fsS --max-time 2 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null)
+  Admin login: grep ADMIN_ /opt/paca/.env
+  Install log: /var/log/paca-install.log
+  Docs:        https://github.com/Paca-AI/paca/blob/master/deploy/README.md
+------------------------------------------------------------------------------
+MSG

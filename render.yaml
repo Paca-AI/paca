@@ -1,0 +1,137 @@
+# Render Blueprint — one-click Paca deploy.
+#   https://render.com/deploy?repo=https://github.com/Paca-AI/paca
+#
+# Differences from the VM install (deploy/docker-compose.prod.yml):
+#   * Render has no Docker socket, so the Agent Runner (which launches agent
+#     sandboxes as containers) is NOT included. Boards, docs, sprints,
+#     automations and realtime all work; built-in AI agent execution does not.
+#     Use a VM deploy (AWS / GCP / DigitalOcean Droplet) if you need it.
+#   * TLS is terminated by Render; the Caddy gateway serves plain HTTP behind it.
+#   * After the first deploy, set PUBLIC_URL (api, realtime) and
+#     STORAGE_PUBLIC_URL (api) to the gateway's https://….onrender.com URL
+#     (or your custom domain) — Render can't know it ahead of time — then redeploy. Also set the gateway's WEB_UPSTREAM to the paca-web static
+#     site's URL (https://….onrender.com).
+#   * Costs: every service below except the static web site is a paid "starter" instance (Render's free
+#     tier has no private services or disks).
+
+databases:
+  - name: paca-db
+    plan: basic-256mb
+    databaseName: paca
+    user: paca
+    ipAllowList: []   # private network only
+
+services:
+  - type: keyvalue
+    name: paca-valkey
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []   # private network only
+
+  # UNVERIFIED: the compose stack needs a root-run init step to chown a fresh
+  # RustFS volume to uid 10001, and Render has no equivalent. If this service
+  # logs "Permission denied (os error 13)", switch the API to external S3
+  # instead (see docs/deployment/one-click.md, Render section).
+  - type: pserv
+    name: paca-rustfs
+    runtime: image
+    image:
+      url: docker.io/rustfs/rustfs:1.0.0-rc.6
+    plan: starter
+    disk:
+      name: rustfs-data
+      mountPath: /data/rustfs0
+      sizeGB: 10
+    envVars:
+      - { key: RUSTFS_VOLUMES, value: /data/rustfs0 }
+      - { key: RUSTFS_ADDRESS, value: "0.0.0.0:9000" }
+      - { key: RUSTFS_ACCESS_KEY, generateValue: true }
+      - { key: RUSTFS_SECRET_KEY, generateValue: true }
+
+  - type: pserv
+    name: paca-api
+    runtime: image
+    image:
+      url: docker.io/pacaai/paca-api:latest
+    plan: starter
+    healthCheckPath: /api/healthz
+    envVars:
+      - { key: ENV, value: production }
+      - { key: PORT, value: "8080" }
+      - { key: DATABASE_URL, fromDatabase: { name: paca-db, property: connectionString } }
+      - { key: REDIS_URL, fromService: { type: keyvalue, name: paca-valkey, property: connectionString } }
+      - { key: JWT_SECRET, generateValue: true }
+      - { key: ADMIN_USERNAME, value: admin }
+      - { key: ADMIN_PASSWORD, generateValue: true }
+      # Required by the API at startup even without an Agent Runner.
+      - { key: AI_AGENT_INTERNAL_KEY, generateValue: true }
+      # 64 hex chars (`openssl rand -hex 32`); encrypts MFA/plugin secrets. Render prompts for it.
+      - { key: ENCRYPTION_KEY, sync: false }
+      - { key: COOKIE_SECURE, value: "true" }
+      - { key: TRUSTED_PROXY_HOPS, value: "2" }
+      - { key: STORAGE_PROVIDER, value: rustfs }
+      - key: STORAGE_ENDPOINT
+        fromService: { type: pserv, name: paca-rustfs, property: hostport }
+      - { key: STORAGE_BUCKET, value: paca }
+      - { key: STORAGE_USE_SSL, value: "false" }
+      - key: STORAGE_ACCESS_KEY_ID
+        fromService: { type: pserv, name: paca-rustfs, envVarKey: RUSTFS_ACCESS_KEY }
+      - key: STORAGE_SECRET_ACCESS_KEY
+        fromService: { type: pserv, name: paca-rustfs, envVarKey: RUSTFS_SECRET_KEY }
+      - { key: PUBLIC_URL, sync: false }
+      - { key: STORAGE_PUBLIC_URL, sync: false }
+      # Same writable dirs the Docker image prepares. Plugin installs here live on
+      # the instance's ephemeral disk and their frontend/MCP assets are not served
+      # (no gateway mount on this platform), so plugins are not usable on Render yet.
+      - { key: PLUGINS_WASM_DIR, value: /plugins }
+      - { key: PLUGINS_FRONTEND_DIR, value: /plugins-frontend }
+      - { key: PLUGINS_MCP_DIR, value: /plugins-mcp }
+      - { key: PLUGINS_SKILLS_DIR, value: /plugins-skills }
+
+  # The React app is plain static files, so it is a static site (no paid
+  # instance), built from this repo. The gateway proxies "/" to it: after the
+  # first deploy set the gateway's WEB_UPSTREAM to this site's public URL.
+  - type: web
+    name: paca-web
+    runtime: static
+    rootDir: apps/web
+    buildCommand: command -v bun >/dev/null || npm install -g bun; bun install --frozen-lockfile && bun run build
+    staticPublishPath: dist
+    routes:
+      - { type: rewrite, source: /*, destination: /index.html }
+
+  - type: pserv
+    name: paca-realtime
+    runtime: image
+    image:
+      url: docker.io/pacaai/paca-realtime:latest
+    plan: starter
+    # fromService hostport has no scheme, but the realtime service needs a full URL.
+    dockerCommand: sh -c 'API_URL="http://$API_HOSTPORT" exec bun run src/index.ts'
+    envVars:
+      - { key: PORT, value: "3001" }
+      - { key: NODE_ENV, value: production }
+      - { key: REDIS_URL, fromService: { type: keyvalue, name: paca-valkey, property: connectionString } }
+      - key: API_HOSTPORT
+        fromService: { type: pserv, name: paca-api, property: hostport }
+      - { key: CORS_ORIGINS, sync: false }
+
+  # Public entrypoint: routes /api, /ws, /storage and everything else to the
+  # private services above (see deploy/caddy/Caddyfile).
+  - type: web
+    name: paca
+    runtime: docker
+    dockerfilePath: ./deploy/render/gateway/Dockerfile
+    dockerContext: .
+    plan: starter
+    envVars:
+      - { key: PORT, value: "80" }
+      - { key: SITE_ADDRESS, value: ":80" }
+      - key: API_UPSTREAM
+        fromService: { type: pserv, name: paca-api, property: hostport }
+      # https://<paca-web static site>.onrender.com — set after the first deploy.
+      - { key: WEB_UPSTREAM, sync: false }
+      - key: REALTIME_UPSTREAM
+        fromService: { type: pserv, name: paca-realtime, property: hostport }
+      - key: STORAGE_UPSTREAM
+        fromService: { type: pserv, name: paca-rustfs, property: hostport }

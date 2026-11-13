@@ -34,6 +34,7 @@ name: cd
 #     install-acp-bridge.sh — installs the paca-acp-bridge binary below
 #     bootstrap.sh       — first-boot VM script behind the DigitalOcean/AWS one-click deploys
 #     paca.cfn.yaml      — AWS CloudFormation template (EC2 + Elastic IP) for the AWS one-click deploy
+#     paca-lite.cfn.yaml — AWS CloudFormation template (ECS Fargate + RDS + ElastiCache + S3), no Agent Runner
 #     paca-acp-bridge_<version>_<os>_<arch>.{tar.gz,zip} — ACP bridge local
 #       daemon (Go binary; end users run this on their own machine, so it
 #       ships as release assets rather than a Docker image)
@@ -782,6 +783,7 @@ jobs:
           cp scripts/install-acp-bridge.sh         install-acp-bridge.sh
           cp deploy/cloud/bootstrap.sh             bootstrap.sh
           cp deploy/cloud/aws/paca.cfn.yaml        paca.cfn.yaml
+          cp deploy/cloud/aws/paca-lite.cfn.yaml   paca-lite.cfn.yaml
           chmod +x install.sh upgrade.sh install-acp-bridge.sh bootstrap.sh
 
           # Stamp this release's own tag as the scripts' default version. A
@@ -813,8 +815,10 @@ jobs:
         env:
           BUCKET: ${{ vars.AWS_TEMPLATE_BUCKET }}
         run: |
-          aws s3 cp paca.cfn.yaml "s3://${BUCKET}/${{ github.event.release.tag_name }}/paca.cfn.yaml"
-          aws s3 cp paca.cfn.yaml "s3://${BUCKET}/latest/paca.cfn.yaml"
+          for t in paca.cfn.yaml paca-lite.cfn.yaml; do
+            aws s3 cp "$t" "s3://${BUCKET}/${{ github.event.release.tag_name }}/$t"
+            aws s3 cp "$t" "s3://${BUCKET}/latest/$t"
+          done
 
       - name: Upload assets to GitHub Release
         env:
@@ -826,6 +830,7 @@ jobs:
             install-acp-bridge.sh \
             bootstrap.sh \
             paca.cfn.yaml \
+            paca-lite.cfn.yaml \
             docker-compose.yml \
             Caddyfile \
             .env.production.example \
