@@ -96,15 +96,17 @@ export function getAskTools(): Tool[] {
 }
 
 /**
- * The mention for whoever started the work this server runs in, so a question
- * on a task/document reaches them even when the agent does not know their
- * username (and may not be allowed to list project members). Written in the
- * `@Name (id: <member id>)` form the API resolves to a real mention. The member
- * id comes from agent-runner (PACA_OWNER_MEMBER_ID), not from reading the
- * conversation: a chat is owner-private and not readable through the agent
- * API. Undefined when there is no such person.
+ * The mention for whoever started the conversation this server runs in, so a
+ * question on a task/document reaches them even when the agent does not know
+ * their username (and may not be allowed to list project members). Written in
+ * the `@Name (id: <member id>)` form the API resolves to a real mention. The
+ * member id comes from agent-runner (PACA_OWNER_MEMBER_ID): the conversation
+ * itself is an owner-private chat, which the agent API does not return.
+ * Undefined when there is no such person.
  */
-function ownerMention(ownerMemberId: string | undefined): string | undefined {
+function conversationOwnerMention(
+	ownerMemberId: string | undefined,
+): string | undefined {
 	return ownerMemberId ? `owner (id: ${ownerMemberId})` : undefined;
 }
 
@@ -145,7 +147,8 @@ export async function handleAskTool(
 			2,
 		);
 		const mention =
-			input.mention?.trim().replace(/^@/, "") || ownerMention(ownerMemberId);
+			input.mention?.trim().replace(/^@/, "") ||
+			conversationOwnerMention(ownerMemberId);
 		const block = `\`\`\`paca-ask\n${payload}\n\`\`\``;
 		const content = mention ? `@${mention}\n\n${block}` : block;
 		if (input.taskId) {

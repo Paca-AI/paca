@@ -507,8 +507,9 @@ func (m *Manager) recreateEnvironmentIfMissingEnv(ctx context.Context, backendRe
 // legitimately differ between one StartEnvironment call and the next.
 // PACA_API_URL/PACA_GATEWAY_URL are deployment-level; PACA_API_KEY is the
 // agent's own key, stable for that agent until it is revoked. PACA_WORKDIR/PACA_ACTOR_USER_ID/
-// PACA_REPO_PLUGIN_IDS are conversation-scoped instead — trigger.Workdir,
-// trigger.ActorAccountID, and trigger.RepoPluginIDs, none of which describe
+// PACA_REPO_PLUGIN_IDS/PACA_OWNER_MEMBER_ID are conversation-scoped instead —
+// trigger.Workdir, trigger.ActorAccountID, trigger.RepoPluginIDs and
+// trigger.ActorMemberID, none of which describe
 // this environment's own identity, unlike PACA_AGENT_ID/PACA_PROJECT_ID
 // (deliberately excluded from this list — see below) — but they need the
 // exact same treatment: Goose's EnvKeys lookup resolves each against the
@@ -543,7 +544,7 @@ func (m *Manager) recreateEnvironmentIfMissingEnv(ctx context.Context, backendRe
 // instead of surfacing as the caller bug it actually is.
 var pacaInfraEnvKeys = []string{
 	"PACA_API_KEY", "PACA_API_URL", "PACA_GATEWAY_URL",
-	"PACA_WORKDIR", "PACA_REPO_PLUGIN_IDS",
+	"PACA_WORKDIR", "PACA_REPO_PLUGIN_IDS", "PACA_OWNER_MEMBER_ID",
 	// GOOSE_PATH_ROOT is deployment-level fixed, like the PACA_API_* trio
 	// above, not conversation-scoped — included here (rather than getting
 	// its own GOOSE_PROVIDER-style one-time backfill) purely so a container

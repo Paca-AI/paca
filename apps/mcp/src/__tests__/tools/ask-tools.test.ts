@@ -52,7 +52,7 @@ describe("ask_user_question", () => {
 		});
 	});
 
-	it("mentions the owner (PACA_OWNER_MEMBER_ID) when no mention is given", async () => {
+	it("mentions the conversation's owner when no mention is given", async () => {
 		const { task, doc } = makeClients();
 		await handleAskTool(
 			"ask_user_question",
@@ -66,7 +66,7 @@ describe("ask_user_question", () => {
 		);
 	});
 
-	it("posts without a mention when no owner is known", async () => {
+	it("posts without a mention when the owner is unknown", async () => {
 		const { task, doc } = makeClients();
 		await handleAskTool(
 			"ask_user_question",

@@ -923,3 +923,20 @@ func TestEnsureEnvironmentInfraEnv_LeavesLLMKeysWhenProviderDiffers(t *testing.T
 		t.Errorf("deployment env[ANTHROPIC_API_KEY] = %q, want it absent (another provider's key var)", got["ANTHROPIC_API_KEY"])
 	}
 }
+
+// Conversation-scoped keys of the paca MCP server's env must be reconciled on
+// every attach to an existing environment (the container's own env is what the
+// MCP subprocess reads), or a later conversation sees the first one's value.
+func TestPacaInfraEnvKeys_IncludeConversationScopedKeys(t *testing.T) {
+	for _, want := range []string{"PACA_WORKDIR", "PACA_REPO_PLUGIN_IDS", "PACA_OWNER_MEMBER_ID"} {
+		found := false
+		for _, k := range pacaInfraEnvKeys {
+			if k == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("pacaInfraEnvKeys is missing %s", want)
+		}
+	}
+}
