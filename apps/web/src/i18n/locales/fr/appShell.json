@@ -65,7 +65,8 @@
 			"renameFailed": "Échec du renommage. Veuillez réessayer.",
 			"moveIntoSelf": "Un dossier ne peut pas être déplacé dans lui-même ni dans l'un de ses sous-dossiers.",
 			"moveFailed": "Impossible de déplacer cet élément. Veuillez réessayer."
-		}
+		},
+		"moveToTop": "Déplacer au niveau supérieur"
 	},
 	"notifications": {
 		"title": "Notifications",

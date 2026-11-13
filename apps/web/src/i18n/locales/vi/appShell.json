@@ -65,7 +65,8 @@
 			"renameFailed": "Đổi tên không thành công. Vui lòng thử lại.",
 			"moveIntoSelf": "Không thể di chuyển thư mục vào chính nó hoặc một thư mục con của nó.",
 			"moveFailed": "Không thể di chuyển mục này. Vui lòng thử lại."
-		}
+		},
+		"moveToTop": "Chuyển lên cấp cao nhất"
 	},
 	"notifications": {
 		"title": "Thông báo",

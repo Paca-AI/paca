@@ -65,7 +65,8 @@
 			"renameFailed": "Rename failed. Please try again.",
 			"moveIntoSelf": "A folder can't be moved into itself or one of its subfolders.",
 			"moveFailed": "Couldn't move that item. Please try again."
-		}
+		},
+		"moveToTop": "Move to top level"
 	},
 	"notifications": {
 		"title": "Notifications",

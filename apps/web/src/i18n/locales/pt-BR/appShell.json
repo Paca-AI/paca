@@ -65,7 +65,8 @@
 			"renameFailed": "Falha ao renomear. Tente novamente.",
 			"moveIntoSelf": "Uma pasta não pode ser movida para dentro de si mesma ou de uma de suas subpastas.",
 			"moveFailed": "Não foi possível mover o item. Tente novamente."
-		}
+		},
+		"moveToTop": "Mover para o nível superior"
 	},
 	"notifications": {
 		"title": "Notificações",

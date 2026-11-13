@@ -19,6 +19,7 @@ import {
 	ChevronDown,
 	ChevronRight,
 	Clock,
+	CornerLeftUp,
 	File,
 	FileText,
 	Folder,
@@ -121,6 +122,12 @@ import {
 import { projectAvatar } from "@/lib/provider-logos";
 import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 import { cn } from "@/lib/utils";
+import {
+	DOC_NODE_DRAG_TYPE,
+	type DocNodeDragPayload,
+	isMoveBlocked,
+	parseDocNodeDragPayload,
+} from "./doc-dnd";
 import { UserMenu } from "./user-menu";
 
 // Shared by every inactive nav item (top-level, project, plugin, and
@@ -172,7 +179,6 @@ function TreeInlineRename({
 	);
 }
 
-const DOC_NODE_DRAG_TYPE = "application/x-paca-doc-node";
 const ROOT_DROP_TARGET = "root";
 
 /** The one drop target currently highlighted ("root" or a folder id), shared
@@ -182,14 +188,9 @@ const DocDropTargetContext = createContext<{
 	setActive: (target: string | null) => void;
 }>({ active: null, setActive: () => {} });
 
-interface DocNodeDragPayload {
-	kind: "doc" | "folder";
-	id: string;
-	/** The folder it currently sits in (null = top level). */
-	parentId: string | null;
-}
-
-/** Drag source props for a document or folder row. */
+/** Drag source props for a document or folder row's main button. They live on
+ *  the button itself because Firefox won't start a drag from a button nested
+ *  in a draggable parent. */
 function docNodeDragProps(
 	payload: DocNodeDragPayload,
 	enabled: boolean,
@@ -205,21 +206,17 @@ function docNodeDragProps(
 	};
 }
 
-/** Makes an element a drop target that moves dragged documents/folders into
- *  `targetFolderId` (null = the top level of the tree). */
-function useDocNodeDrop(
-	projectId: string,
-	targetFolderId: string | null,
-	canWrite: boolean,
-) {
+/** Moves a document or folder into `targetFolderId` (null = top level). Only
+ *  the source and target folders' lists (and folder paths) are refetched. */
+function useMoveDocNode(projectId: string) {
 	const { t } = useTranslation("appShell");
 	const qc = useQueryClient();
-	const { active, setActive } = useContext(DocDropTargetContext);
-	const targetKey = targetFolderId ?? ROOT_DROP_TARGET;
-	const isOver = active === targetKey;
-
-	const moveMutation = useMutation({
-		mutationFn: async (p: DocNodeDragPayload): Promise<void> => {
+	return useMutation({
+		mutationFn: async (v: {
+			payload: DocNodeDragPayload;
+			targetFolderId: string | null;
+		}): Promise<void> => {
+			const { payload: p, targetFolderId } = v;
 			if (p.kind === "folder") {
 				await updateFolder(projectId, p.id, { parent_id: targetFolderId });
 			} else {
@@ -237,9 +234,43 @@ function useDocNodeDrop(
 				notifyError(err, t("docs.errors.moveFailed"));
 			}
 		},
-		onSettled: () =>
-			qc.invalidateQueries({ queryKey: docQueryKeys.all(projectId) }),
+		onSettled: (_data, _err, v) => {
+			const { payload: p, targetFolderId } = v;
+			for (const folderId of [p.parentId, targetFolderId]) {
+				qc.invalidateQueries({
+					queryKey:
+						p.kind === "folder"
+							? docQueryKeys.folderChildren(projectId, folderId)
+							: docQueryKeys.docChildren(projectId, folderId),
+				});
+			}
+			if (p.kind === "folder") {
+				qc.invalidateQueries({
+					queryKey: docQueryKeys.folderPath(projectId, p.id),
+				});
+			} else {
+				qc.invalidateQueries({
+					queryKey: docQueryKeys.detail(projectId, p.id),
+				});
+			}
+		},
 	});
+}
+
+/** Makes an element a drop target that moves dragged documents/folders into
+ *  `targetFolderId` (null = the top level of the tree). `targetPath` is the
+ *  target's id preceded by its ancestors' ids (empty for the top level). */
+function useDocNodeDrop(
+	projectId: string,
+	targetFolderId: string | null,
+	targetPath: readonly string[],
+	canWrite: boolean,
+	onMoved?: () => void,
+) {
+	const { active, setActive } = useContext(DocDropTargetContext);
+	const targetKey = targetFolderId ?? ROOT_DROP_TARGET;
+	const isOver = active === targetKey;
+	const moveMutation = useMoveDocNode(projectId);
 
 	const dropProps = canWrite
 		? {
@@ -262,16 +293,14 @@ function useDocNodeDrop(
 					e.preventDefault();
 					e.stopPropagation();
 					setActive(null);
-					let payload: DocNodeDragPayload;
-					try {
-						payload = JSON.parse(raw) as DocNodeDragPayload;
-					} catch {
+					const payload = parseDocNodeDragPayload(raw, projectId);
+					if (!payload || isMoveBlocked(payload, targetFolderId, targetPath)) {
 						return;
 					}
-					if (payload.parentId === targetFolderId) return;
-					if (payload.kind === "folder" && payload.id === targetFolderId)
-						return;
-					moveMutation.mutate(payload);
+					moveMutation.mutate(
+						{ payload, targetFolderId },
+						{ onSuccess: onMoved },
+					);
 				},
 			}
 		: {};
@@ -289,7 +318,7 @@ function DocsRootDropArea({
 	canWrite: boolean;
 	children: ReactNode;
 }) {
-	const { isOver, dropProps } = useDocNodeDrop(projectId, null, canWrite);
+	const { isOver, dropProps } = useDocNodeDrop(projectId, null, [], canWrite);
 	return (
 		<div
 			className={cn(
@@ -317,6 +346,7 @@ function DocsDocRow({
 }) {
 	const { t } = useTranslation("appShell");
 	const location = useRouterState({ select: (s) => s.location.pathname });
+	const moveMutation = useMoveDocNode(projectId);
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 	const [renaming, setRenaming] = useState(false);
@@ -372,13 +402,18 @@ function DocsDocRow({
 			<div
 				className="group relative flex items-center gap-1 pr-1"
 				style={{ paddingLeft: `${8 + depth * 16 + 16}px` }}
-				{...docNodeDragProps(
-					{ kind: "doc", id: doc.id, parentId: doc.folder_id ?? null },
-					canWrite && !renaming,
-				)}
 			>
 				<button
 					type="button"
+					{...docNodeDragProps(
+						{
+							kind: "doc",
+							id: doc.id,
+							projectId,
+							parentId: doc.folder_id ?? null,
+						},
+						canWrite && !renaming,
+					)}
 					className={cn(
 						"flex flex-1 min-w-0 items-center gap-1.5 rounded-md px-2 py-1 cursor-pointer transition-all duration-150 text-sm",
 						isActive
@@ -451,6 +486,25 @@ function DocsDocRow({
 								<Pencil className="size-3.5 mr-2" />
 								{t("docs.rename")}
 							</DropdownMenuItem>
+							{doc.folder_id && (
+								<DropdownMenuItem
+									onClick={(e) => {
+										e.stopPropagation();
+										moveMutation.mutate({
+											payload: {
+												kind: "doc",
+												id: doc.id,
+												projectId,
+												parentId: doc.folder_id ?? null,
+											},
+											targetFolderId: null,
+										});
+									}}
+								>
+									<CornerLeftUp className="size-3.5 mr-2" />
+									{t("docs.moveToTop")}
+								</DropdownMenuItem>
+							)}
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
 								className="text-destructive focus:text-destructive"
@@ -486,6 +540,7 @@ function DocsFolderNode({
 	expandedFolders,
 	onToggle,
 	depth,
+	ancestorIds = [],
 }: {
 	folder: DocFolder;
 	projectId: string;
@@ -493,6 +548,8 @@ function DocsFolderNode({
 	expandedFolders: Set<string>;
 	onToggle: (id: string) => void;
 	depth: number;
+	/** Ids of the folders above this one, outermost first. */
+	ancestorIds?: readonly string[];
 }) {
 	const { t } = useTranslation("appShell");
 	const qc = useQueryClient();
@@ -509,7 +566,21 @@ function DocsFolderNode({
 	const navigate = useNavigate();
 
 	const isExpanded = expandedFolders.has(folder.id);
-	const { isOver, dropProps } = useDocNodeDrop(projectId, folder.id, canWrite);
+	const moveMutation = useMoveDocNode(projectId);
+	const folderPath = useMemo(
+		() => [...ancestorIds, folder.id],
+		[ancestorIds, folder.id],
+	);
+	const { isOver, dropProps } = useDocNodeDrop(
+		projectId,
+		folder.id,
+		folderPath,
+		canWrite,
+		// A collapsed target would swallow the item; open it so the move shows.
+		() => {
+			if (!expandedFolders.has(folder.id)) onToggle(folder.id);
+		},
+	);
 
 	// A folder's subfolders and documents are fetched only once it is
 	// expanded, a page at a time.
@@ -592,13 +663,18 @@ function DocsFolderNode({
 			<div
 				className="group relative flex items-center gap-1 pr-1"
 				style={{ paddingLeft: `${8 + depth * 16}px` }}
-				{...docNodeDragProps(
-					{ kind: "folder", id: folder.id, parentId: folder.parent_id ?? null },
-					canWrite && !renaming,
-				)}
 			>
 				<button
 					type="button"
+					{...docNodeDragProps(
+						{
+							kind: "folder",
+							id: folder.id,
+							projectId,
+							parentId: folder.parent_id ?? null,
+						},
+						canWrite && !renaming,
+					)}
 					className="flex flex-1 min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 cursor-pointer transition-all duration-150 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
 					onClick={() => {
 						if (!renaming) onToggle(folder.id);
@@ -660,6 +736,25 @@ function DocsFolderNode({
 									<Pencil className="size-3.5 mr-2" />
 									{t("docs.rename")}
 								</DropdownMenuItem>
+								{folder.parent_id && (
+									<DropdownMenuItem
+										onClick={(e) => {
+											e.stopPropagation();
+											moveMutation.mutate({
+												payload: {
+													kind: "folder",
+													id: folder.id,
+													projectId,
+													parentId: folder.parent_id ?? null,
+												},
+												targetFolderId: null,
+											});
+										}}
+									>
+										<CornerLeftUp className="size-3.5 mr-2" />
+										{t("docs.moveToTop")}
+									</DropdownMenuItem>
+								)}
 								<DropdownMenuSeparator />
 								<DropdownMenuItem
 									className="text-destructive focus:text-destructive"
@@ -698,6 +793,7 @@ function DocsFolderNode({
 							expandedFolders={expandedFolders}
 							onToggle={onToggle}
 							depth={depth + 1}
+							ancestorIds={folderPath}
 						/>
 					))}
 					<div style={{ paddingLeft: `${8 + (depth + 1) * 16}px` }}>
