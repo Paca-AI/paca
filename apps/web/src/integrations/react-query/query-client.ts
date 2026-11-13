@@ -41,6 +41,11 @@ export function shouldRetryQuery(
  * is left alone; every other one would otherwise fail without the user
  * seeing anything, so it gets an error toast.
  *
+ * Only `onError` declared in the mutation options (`useMutation({ onError })`)
+ * is detected. A callback passed per call, `mutate(vars, { onError })`, is NOT
+ * visible here and would show both its own handling and this toast; such
+ * mutations must also set `meta: { silent: true }`.
+ *
  * Exported for testing.
  */
 export function handleMutationError(

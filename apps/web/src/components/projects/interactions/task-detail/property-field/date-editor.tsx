@@ -121,8 +121,10 @@ export function DateRangeEditor({
 			setDraft({ from: toDateObject(startDate), to: toDateObject(dueDate) });
 			setAnchor(null);
 		} else if (anchor) {
-			// Closed after picking only a start: keep that start.
-			commit({ from: anchor, to: undefined });
+			// Closed after picking only a start: keep that start, and keep the
+			// existing due date unless it would now fall before the new start.
+			const due = toDateObject(dueDate);
+			commit({ from: anchor, to: due && due >= anchor ? due : undefined });
 		}
 		setOpen(next);
 	};

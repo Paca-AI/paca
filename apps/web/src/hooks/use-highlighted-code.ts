@@ -27,6 +27,9 @@ export function useHighlightedCode(value: string, language: string) {
 		};
 	}, [language]);
 
+	// Derived state adjusted during render (React's supported pattern for
+	// state derived from previous renders): the cache is rebuilt from scratch
+	// when the highlighter changes or the code is no longer an extension of it.
 	// The complete lines, highlighted. While the code streams, only the new
 	// lines are tokenized, starting from the grammar state of the last one.
 	const [done, setDone] = React.useState<{
