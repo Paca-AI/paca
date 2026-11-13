@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Paca on a single EC2 instance (Docker Compose). Creates a security group, an
+  Elastic IP and an Ubuntu 24.04 instance that installs Paca on first boot.
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.large
+    AllowedValues: [t3.medium, t3.large, t3.xlarge, m6i.large, m6i.xlarge]
+    Description: t3.large (8 GB) is recommended; t3.medium (4 GB) is the minimum.
+  VolumeSize:
+    Type: Number
+    Default: 40
+    MinValue: 20
+    Description: Root disk size in GB.
+  KeyName:
+    Type: String
+    Default: ""
+    Description: Optional EC2 key pair for SSH. Leave empty to use SSM Session Manager only.
+  Domain:
+    Type: String
+    Default: ""
+    AllowedPattern: "^[A-Za-z0-9.-]*$"
+    Description: Optional domain whose DNS A record you will point at the Elastic IP (enables HTTPS). Leave empty for HTTP on the IP.
+  AdminPassword:
+    Type: String
+    NoEcho: true
+    Default: ""
+    AllowedPattern: "^(?:[A-Za-z0-9!@#%^*_+=.,:-]{8,})?$"
+    Description: Admin password (min 8 chars). Leave empty to auto-generate (read it from /opt/paca/.env).
+  AllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR allowed to reach Paca on ports 80/443.
+  SshCidr:
+    Type: String
+    Default: ""
+    Description: CIDR allowed to SSH (port 22). Empty keeps SSH closed.
+  ImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+
+Conditions:
+  HasKey: !Not [!Equals [!Ref KeyName, ""]]
+  HasSsh: !Not [!Equals [!Ref SshCidr, ""]]
+  HasDomain: !Not [!Equals [!Ref Domain, ""]]
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Paca web access
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: !Ref AllowedCidr }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: !Ref AllowedCidr }
+
+  SshIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HasSsh
+    Properties:
+      GroupId: !GetAtt SecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: !Ref SshCidr
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: ec2.amazonaws.com }, Action: "sts:AssumeRole" }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref Role]
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      KeyName: !If [HasKey, !Ref KeyName, !Ref "AWS::NoValue"]
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds: [!GetAtt SecurityGroup.GroupId]
+      MetadataOptions: { HttpTokens: required, HttpPutResponseHopLimit: 2 }
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: { VolumeSize: !Ref VolumeSize, VolumeType: gp3, Encrypted: true }
+      Tags: [{ Key: Name, Value: paca }]
+      UserData:
+        Fn::Base64: !Sub |
+          #!/usr/bin/env bash
+          export PACA_DOMAIN='${Domain}'
+          export ADMIN_PASSWORD='${AdminPassword}'
+          export PACA_PUBLIC_IP='${ElasticIp}'
+          [ -n "$PACA_DOMAIN" ] || unset PACA_DOMAIN
+          [ -n "$ADMIN_PASSWORD" ] || unset ADMIN_PASSWORD
+          curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/bootstrap.sh | bash
+
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  ElasticIpAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt ElasticIp.AllocationId
+      InstanceId: !Ref Instance
+
+Outputs:
+  PublicIp:
+    Value: !Ref ElasticIp
+  Url:
+    Description: Open this after ~5 minutes (first boot pulls the images).
+    Value: !If [HasDomain, !Sub "https://${Domain}", !Sub "http://${ElasticIp}"]

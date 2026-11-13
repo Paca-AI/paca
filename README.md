@@ -333,9 +333,14 @@ helm install paca oci://ghcr.io/paca-ai/charts/paca --version <release-version> 
 
 See [Artifact Hub](https://artifacthub.io/packages/helm/paca/paca) for the full values reference, exposing the app via Ingress/TLS or a LoadBalancer, what's bundled vs. pointing at managed Postgres/Redis/S3, the AI agent sandbox's Kubernetes-specific RBAC, and troubleshooting.
 
-## ☁️ One-Click Deploy
+## One-Click Deploy
 
-[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/Paca/)
+[![Deploy to AWS](https://img.shields.io/badge/Deploy_to-AWS-FF9900?style=for-the-badge&labelColor=24292f&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateURL=https://paca-cloudformation.s3.amazonaws.com/latest/paca.cfn.yaml&stackName=paca)
+[![Deploy to GCP](https://img.shields.io/badge/Deploy_to-GCP-4285F4?style=for-the-badge&labelColor=24292f)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/Paca-AI/paca&cloudshell_tutorial=deploy/cloud/gcp/tutorial.md&show=terminal)
+[![Deploy to DigitalOcean](https://img.shields.io/badge/Deploy_to-DigitalOcean-0080FF?style=for-the-badge&labelColor=24292f)](docs/deployment/one-click.md#digitalocean-droplet)
+[![Deploy to RepoCloud](https://img.shields.io/badge/Deploy_to-RepoCloud-E8590C?style=for-the-badge&labelColor=24292f&logoColor=white)](https://repocloud.io/details/Paca/)
+
+AWS, GCP and DigitalOcean each create one VM running the full stack, including the Agent Runner for AI agents. Step-by-step guides in [docs/deployment/one-click.md](docs/deployment/one-click.md).
 
 ---
 
@@ -512,6 +517,7 @@ But Paca is built from conviction: human-AI collaboration in a real Scrum team s
 | [apps/extension/README.md](apps/extension/README.md) | Browser extension — comment on environment preview pages, turn comments into tasks |
 | [docs/plugins/](docs/plugins/) | Plugin system: backend (WASM) and frontend |
 | [deploy/README.md](deploy/README.md) | Full deployment reference |
+| [docs/deployment/one-click.md](docs/deployment/one-click.md) | One-click deploys: AWS, GCP, DigitalOcean |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [SECURITY.md](SECURITY.md) | Security policy |
 
