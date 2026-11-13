@@ -116,3 +116,17 @@ func TestModelEnv(t *testing.T) {
 		t.Errorf("codex has no env mechanism, got %v", got)
 	}
 }
+
+// The claude-code default must launch an adapter new enough to support the
+// models Paca offers. claude-agent-acp@0.44.0 bundles Claude Code 2.1.170,
+// which rejects claude-opus-5-5 with "version 2.1.280 or newer is required".
+func TestClaudeCodeDefaultUsesCurrentAdapter(t *testing.T) {
+	cmd, err := ResolveCommand("claude-code", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"npx", "-y", "@agentclientprotocol/claude-agent-acp@0.107.0"}
+	if !reflect.DeepEqual(cmd, want) {
+		t.Fatalf("command = %v, want %v", cmd, want)
+	}
+}

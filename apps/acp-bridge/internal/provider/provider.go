@@ -40,7 +40,7 @@ type info struct {
 // pins.
 var registry = map[string]info{
 	"claude-code": {
-		defaultCommand: []string{"npx", "-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
+		defaultCommand: []string{"npx", "-y", "@agentclientprotocol/claude-agent-acp@0.107.0"},
 		permissionMode: "bypassPermissions",
 	},
 	"codex": {
