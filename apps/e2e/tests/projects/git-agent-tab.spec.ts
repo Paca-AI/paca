@@ -6,6 +6,7 @@
 // user are real.
 
 import { expect, type Page, test } from "@playwright/test";
+import { dialogPanel } from "../helpers/dialog";
 import {
 	assignGlobalRoles,
 	authRequest,
@@ -238,7 +239,7 @@ test.describe("Agent Git tab", () => {
 			).toBeVisible();
 			await expect(page.getByText("@paca-reviewer")).toBeVisible();
 			await page.getByRole("button", { name: "Remove" }).click();
-			const dialog = page.getByRole("dialog");
+			const dialog = dialogPanel(page);
 			await expect(dialog).toBeVisible();
 			await dialog.getByRole("button", { name: "Remove connection" }).click();
 			await expect

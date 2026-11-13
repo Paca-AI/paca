@@ -532,7 +532,7 @@ test.describe("Environment detail Overview", () => {
 
 		for (const tab of ["Overview", "Folders", "Port forwards"]) {
 			await expect(
-				page.getByRole("button", { name: tab, exact: true }),
+				page.getByRole("tab", { name: tab, exact: true }),
 			).toBeVisible();
 		}
 		await expect(

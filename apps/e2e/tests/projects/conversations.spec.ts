@@ -229,7 +229,7 @@ async function selectAgent(page: Page, agentName: string): Promise<void> {
 	// The agent picker is a popover button in the composer's action row; its
 	// label is the placeholder until an agent is chosen.
 	await page.getByRole("button", { name: "Select an agent…" }).click();
-	await page.getByRole("button", { name: agentName, exact: true }).click();
+	await page.getByRole("option", { name: agentName, exact: true }).click();
 }
 
 async function sendMessage(page: Page, text: string): Promise<void> {
