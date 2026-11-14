@@ -315,8 +315,13 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 			// Records which fields a human explicitly set, so the Jev
 			// autofill consumer never overwrites them — as in bootstrap/app.go.
 			handler.WithTaskAutofillRepository(taskRepo)),
-		Sprint:       handler.NewSprintHandler(sprintService, viewService),
-		Document:     handler.NewDocumentHandler(docService, docActivityService).WithDocAuthorizer(authorizer),
+		Sprint: handler.NewSprintHandler(sprintService, viewService),
+		// The list scoper as in bootstrap/app.go: without it document lists and
+		// the change feed would not be narrowed to what the caller may read.
+		Document: handler.NewDocumentHandler(docService, docActivityService).
+			WithDocListScoper(authorizer).
+			WithDocAuthorizer(authorizer).
+			WithDocChanges(docsvc.NewChangesService(docRepo)),
 		View:         handler.NewViewHandler(viewService),
 		Attachment:   handler.NewAttachmentHandler(attachmentService),
 		APIKey:       handler.NewAPIKeyHandler(apiKeyService),

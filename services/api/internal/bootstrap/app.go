@@ -79,6 +79,7 @@ type App struct {
 	dueDateScheduler       *worker.DueDateScheduler
 	cronScheduler          *worker.CronScheduler
 	changeReconciler       *worker.ChangeReconciler
+	docHashBackfill        *worker.DocHashBackfill
 	waitScheduler          *worker.WaitScheduler
 	gitRouter              *gitsvc.Router
 	stopGitRouter          context.CancelFunc
@@ -299,6 +300,8 @@ func New(cfg *config.Config) (*App, error) {
 	cronScheduler := worker.NewCronScheduler(redisClient, automationConsumer, log)
 	waitScheduler := worker.NewWaitScheduler(redisClient, automationConsumer, log)
 	changeReconciler := newChangeReconciler(db, publisher, taskRepo, sprintRepo, log)
+	// Fills the content hash on documents written before the column existed.
+	docHashBackfill := worker.NewDocHashBackfill(docRepo, log)
 
 	// Object storage — defaults to RustFS; switches to AWS S3 when STORAGE_PROVIDER=s3.
 	storageClient, err := storage.NewS3Client(context.Background(), storage.S3Config{
@@ -630,6 +633,7 @@ func New(cfg *config.Config) (*App, error) {
 		Document: handler.NewDocumentHandler(docService, docActivityService).
 			WithDocListScoper(authorizer).
 			WithDocAuthorizer(authorizer).
+			WithDocChanges(docsvc.NewChangesService(docRepo)).
 			WithDocAvatarService(attachmentService).
 			WithDocNotificationService(notificationService),
 		DocFile:            handler.NewDocFileHandler(attachmentService),
@@ -661,7 +665,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, changeReconciler: changeReconciler, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, changeReconciler: changeReconciler, docHashBackfill: docHashBackfill, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
 }
 
 // platformActionsReader lists a user's or agent's effective platform-level
@@ -710,6 +714,7 @@ func (a *App) Run() error {
 	if a.changeReconciler != nil {
 		a.changeReconciler.Start(context.Background())
 	}
+	a.docHashBackfill.Start(context.Background())
 	a.waitScheduler.Start(context.Background())
 	gitCtx, stop := context.WithCancel(context.Background())
 	a.stopGitRouter = stop
@@ -735,6 +740,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	if a.changeReconciler != nil {
 		a.changeReconciler.Stop()
 	}
+	a.docHashBackfill.Stop()
 	a.waitScheduler.Stop()
 	if a.stopGitRouter != nil {
 		a.stopGitRouter()

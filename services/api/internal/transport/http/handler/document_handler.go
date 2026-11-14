@@ -22,6 +22,7 @@ import (
 // DocumentHandler handles documentation endpoints.
 type DocumentHandler struct {
 	svc             docdom.Service
+	changesSvc      docdom.ChangesService
 	activitySvc     docdom.ActivityService
 	avatarSvc       attachmentdom.AvatarService
 	notificationSvc notificationdom.Service

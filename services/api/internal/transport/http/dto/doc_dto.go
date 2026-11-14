@@ -356,3 +356,62 @@ func DocumentSearchHitFromEntity(h docdom.SearchHit) DocumentSearchHitResponse {
 		UpdatedAt: h.Document.UpdatedAt,
 	}
 }
+
+// =============================================================================
+// Change feed and batch read
+// =============================================================================
+
+// DocChangeResponse is one document in the change feed: metadata only. A
+// tombstone (deleted = true) carries the id and nothing else about the
+// document; its folder_id and content_hash are null and its title is empty.
+type DocChangeResponse struct {
+	ID          uuid.UUID  `json:"id"`
+	FolderID    *uuid.UUID `json:"folder_id"`
+	Title       string     `json:"title"`
+	ContentHash *string    `json:"content_hash"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	Deleted     bool       `json:"deleted"`
+}
+
+// DocChangeFolderResponse is one folder of the tree the change feed sends.
+type DocChangeFolderResponse struct {
+	ID       uuid.UUID  `json:"id"`
+	ParentID *uuid.UUID `json:"parent_id"`
+	Name     string     `json:"name"`
+}
+
+// DocChangesResponse is the body of GET /projects/:projectId/docs/changes.
+type DocChangesResponse struct {
+	Cursor string              `json:"cursor"`
+	Reset  bool                `json:"reset"`
+	Docs   []DocChangeResponse `json:"docs"`
+	// Folders is null when no folder changed since the cursor, and the whole
+	// tree (possibly empty) when one did or on a reset.
+	Folders []DocChangeFolderResponse `json:"folders"`
+}
+
+// DocChangesFromEntity maps a ChangeSet to its response.
+func DocChangesFromEntity(set *docdom.ChangeSet) DocChangesResponse {
+	resp := DocChangesResponse{Cursor: set.Cursor, Reset: set.Reset, Docs: make([]DocChangeResponse, 0, len(set.Docs))}
+	for _, d := range set.Docs {
+		if d.DeletedAt != nil {
+			resp.Docs = append(resp.Docs, DocChangeResponse{ID: d.ID, UpdatedAt: *d.DeletedAt, Deleted: true})
+			continue
+		}
+		resp.Docs = append(resp.Docs, DocChangeResponse{
+			ID: d.ID, FolderID: d.FolderID, Title: d.Title, ContentHash: d.ContentHash, UpdatedAt: d.UpdatedAt,
+		})
+	}
+	if set.FoldersIncluded {
+		resp.Folders = make([]DocChangeFolderResponse, 0, len(set.Folders))
+		for _, f := range set.Folders {
+			resp.Folders = append(resp.Folders, DocChangeFolderResponse{ID: f.ID, ParentID: f.ParentID, Name: f.Name})
+		}
+	}
+	return resp
+}
+
+// BatchGetDocumentsRequest is the body of POST /projects/:projectId/docs/batch-get.
+type BatchGetDocumentsRequest struct {
+	IDs []string `json:"ids"`
+}

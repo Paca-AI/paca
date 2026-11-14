@@ -108,6 +108,11 @@ func sameResolution(a, b docdom.DocPathResolution) bool {
 func (r *DocumentRepository) WriteDocumentAtPath(ctx context.Context, w docdom.DocPathWrite) (*docdom.DocPathWriteResult, error) {
 	var result *docdom.DocPathWriteResult
 	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		// The change counter first, then the folder lock, then rows: the
+		// order every document and folder write takes them in (lockDocSeq).
+		if err := lockDocSeq(ctx, tx, w.ProjectID.String()); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('doc_folders:' || $1::text, 0))`, w.ProjectID.String()); err != nil {
 			return err
 		}
