@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
@@ -128,52 +127,5 @@ func TestBackfillContentText_FillsWithoutMovingSeq(t *testing.T) {
 	}
 	if h := head(); h != headBefore {
 		t.Errorf("project seq moved from %d to %d", headBefore, h)
-	}
-}
-
-// The search must be able to use the trigram indexes: with an OR branch that
-// has no index (the JSON-path match for rows not yet backfilled) the planner
-// would read every document of the project instead.
-func TestSearchDocuments_UsesTrigramIndex(t *testing.T) {
-	f := newScopeFx(t)
-	ctx := context.Background()
-	repo := NewDocumentRepository(f.db)
-
-	// Enough filled rows that an index is worth it, each with its own text.
-	pgExec(t, f.db, `INSERT INTO documents (id, project_id, title, content, content_text)
-		SELECT gen_random_uuid(), $1, 'doc ' || g, '[]'::jsonb, 'line about topic ' || md5(g::text) || E'\nsecond line ' || g
-		FROM generate_series(1, 3000) AS g`, f.p)
-	pgExec(t, f.db, `INSERT INTO documents (id, project_id, title, content, content_text)
-		VALUES (gen_random_uuid(), $1, 'needle doc', '[]'::jsonb, 'the zebracorn lives here')`, f.p)
-	pgExec(t, f.db, `ANALYZE documents`)
-	f.role(policyJSON("Allow", "docs:read", "project/*/doc/*", ""))
-
-	q, args, none, err := repo.searchDocumentsQuery(f.ctx("docs:read", "doc"), f.p, "zebracorn", 20)
-	if err != nil || none {
-		t.Fatalf("build query: none=%v err=%v", none, err)
-	}
-	tx, err := f.db.BeginTxx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	// The plan, not the timing, is under test: rule out a sequential scan so
-	// a cost estimate on a small table cannot flip the result.
-	if _, err := tx.ExecContext(ctx, `SET LOCAL enable_seqscan = off`); err != nil {
-		t.Fatal(err)
-	}
-	var lines []string
-	if err := tx.SelectContext(ctx, &lines, `EXPLAIN `+q, args...); err != nil {
-		t.Fatal(err)
-	}
-	plan := strings.Join(lines, "\n")
-	if !strings.Contains(plan, "idx_documents_content_text_trgm") || !strings.Contains(plan, "idx_documents_title_trgm") {
-		t.Fatalf("search plan does not use the trigram indexes:\n%s", plan)
-	}
-
-	// And the query finds the row.
-	docs, err := repo.SearchDocuments(f.ctx("docs:read", "doc"), f.p, "zebracorn", 20)
-	if err != nil || len(docs) != 1 || docs[0].Title != "needle doc" {
-		t.Fatalf("search = %v, %v; want the needle doc", docIDs(docs), err)
 	}
 }

@@ -6,8 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	"github.com/Paca-AI/api/internal/worker"
@@ -269,5 +272,58 @@ func TestUpsertByPath_StoresContentText(t *testing.T) {
 	}
 	if got := storedContentText(t, f.env, id); got == nil || *got != "second text" {
 		t.Fatalf("after update content_text = %v", got)
+	}
+}
+
+// The search must use the trigram indexes. Seeded and analysed table in this
+// test's own database; the plan is read with EXPLAIN of the exact statement
+// SearchDocuments runs.
+func TestSearch_UsesTrigramIndexes(t *testing.T) {
+	t.Parallel()
+	owner, projID := docFeedOwner(t, "search-explain")
+	env := owner.env
+	// Enough filled rows, each with its own text, that an index beats reading
+	// the project, plus a few not yet backfilled.
+	if _, err := env.db.ExecContext(env.ctx, `INSERT INTO documents (id, project_id, title, content, content_text)
+		SELECT gen_random_uuid(), $1, 'doc ' || g, '[]'::jsonb,
+		       CASE WHEN g % 1000 = 0 THEN NULL ELSE 'line about topic ' || md5(g::text) || E'\nsecond line ' || g END
+		FROM generate_series(1, 5000) AS g`, projID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.db.ExecContext(env.ctx, `ANALYZE documents`); err != nil {
+		t.Fatal(err)
+	}
+	q, args, err := pgRepo.NewDocumentRepository(env.db).SearchDocumentsQuery(env.ctx, uuid.MustParse(projID), "zebracorn", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	explain := func(forced bool) string {
+		t.Helper()
+		tx, err := env.db.BeginTxx(env.ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		if forced {
+			if _, err := tx.ExecContext(env.ctx, `SET LOCAL enable_seqscan = off`); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var lines []string
+		if err := tx.SelectContext(env.ctx, &lines, `EXPLAIN `+q, args...); err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(lines, "\n")
+	}
+	usesTrigram := func(plan string) bool {
+		return strings.Contains(plan, "idx_documents_content_text_trgm") && strings.Contains(plan, "idx_documents_title_trgm")
+	}
+	// Every branch of the OR has an index path (stable whatever the costs).
+	if plan := explain(true); !usesTrigram(plan) {
+		t.Fatalf("with sequential scans off, the plan does not use the trigram indexes:\n%s", plan)
+	}
+	// And the planner picks them on its own for a project this size.
+	if plan := explain(false); !usesTrigram(plan) || strings.Contains(plan, "Seq Scan on documents") {
+		t.Fatalf("with default settings, the plan does not use the trigram indexes:\n%s", plan)
 	}
 }

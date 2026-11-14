@@ -563,6 +563,18 @@ func (r *DocumentRepository) SearchDocuments(ctx context.Context, projectID uuid
 	return out, nil
 }
 
+// SearchDocumentsQuery returns the statement and arguments SearchDocuments
+// runs for this caller, so tests and diagnostics can EXPLAIN the exact query.
+// It errors when the caller's scope can see no document (SearchDocuments then
+// runs no query at all).
+func (r *DocumentRepository) SearchDocumentsQuery(ctx context.Context, projectID uuid.UUID, query string, limit int) (string, []any, error) {
+	q, args, none, err := r.searchDocumentsQuery(ctx, projectID, query, limit)
+	if err == nil && none {
+		err = errors.New("search scope allows no documents: no query to run")
+	}
+	return q, args, err
+}
+
 // searchDocumentsQuery builds SearchDocuments' statement and arguments. none
 // is true when the caller's scope can see no document at all.
 func (r *DocumentRepository) searchDocumentsQuery(ctx context.Context, projectID uuid.UUID, query string, limit int) (string, []any, bool, error) {
