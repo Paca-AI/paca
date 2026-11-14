@@ -5,9 +5,11 @@ package docsvc_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +29,9 @@ type fakeDocRepo struct {
 	docs       map[uuid.UUID]*docdom.Document
 	snapshots  map[uuid.UUID]*docdom.DocSnapshot
 	activities map[uuid.UUID]*docdom.Activity
+	// inDecide is true while an UpdateDocumentAtomic decide function runs,
+	// i.e. while the real repository would hold the row lock.
+	inDecide atomic.Bool
 }
 
 func newFakeDocRepo() *fakeDocRepo {
@@ -234,7 +239,13 @@ func (r *fakeDocRepo) UpdateDocumentAtomic(ctx context.Context, id uuid.UUID, de
 		return nil, err
 	}
 	cp := *cur
-	if err := decide(&cp); err != nil {
+	r.inDecide.Store(true)
+	err = decide(&cp)
+	r.inDecide.Store(false)
+	if err != nil {
+		if errors.Is(err, docdom.ErrNoChange) {
+			return cur, nil // nothing written, as the real repository does
+		}
 		return nil, err
 	}
 	r.mu.Lock()
@@ -258,11 +269,14 @@ func (r *fakeDocRepo) DeleteDocument(_ context.Context, id uuid.UUID) error {
 
 // -- DocSnapshotRepository --
 
-func (r *fakeDocRepo) ListSnapshots(_ context.Context, documentID uuid.UUID, cursorAfter *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
+func (r *fakeDocRepo) ListSnapshots(_ context.Context, documentID uuid.UUID, contentHash *string, cursorAfter *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var out []*docdom.DocSnapshot
 	for _, s := range r.snapshots {
+		if contentHash != nil && (s.ContentHash == nil || *s.ContentHash != *contentHash) {
+			continue
+		}
 		if s.DocumentID == documentID {
 			cp := *s
 			out = append(out, &cp)
@@ -896,7 +910,7 @@ func TestUpdateDocument_TitleChange_CreatesSnapshot(t *testing.T) {
 	}
 
 	// A snapshot should have been created preserving the old title.
-	snaps, _, err := repo.ListSnapshots(ctx, d.ID, nil, 100)
+	snaps, _, err := repo.ListSnapshots(ctx, d.ID, nil, nil, 100)
 	if err != nil {
 		t.Fatalf("ListSnapshots error: %v", err)
 	}
@@ -932,7 +946,7 @@ func TestUpdateDocument_ContentChange_CreatesSnapshot(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	snaps, _, _ := repo.ListSnapshots(ctx, d.ID, nil, 100)
+	snaps, _, _ := repo.ListSnapshots(ctx, d.ID, nil, nil, 100)
 	if len(snaps) != 1 {
 		t.Fatalf("expected 1 snapshot, got %d", len(snaps))
 	}
@@ -949,7 +963,7 @@ func TestUpdateDocument_ContentChange_CreatesSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error on second update: %v", err)
 	}
-	snaps, _, _ = repo.ListSnapshots(ctx, d.ID, nil, 100)
+	snaps, _, _ = repo.ListSnapshots(ctx, d.ID, nil, nil, 100)
 	if len(snaps) != 1 {
 		t.Errorf("expected still 1 snapshot (no duplicate on identical content), got %d", len(snaps))
 	}
@@ -1140,7 +1154,7 @@ func TestListSnapshots_DocNotFound(t *testing.T) {
 	repo := newFakeDocRepo()
 	svc := docsvc.New(repo, nil)
 
-	_, _, err := svc.ListSnapshots(ctx, uuid.New(), uuid.New(), nil, 100)
+	_, _, err := svc.ListSnapshots(ctx, uuid.New(), uuid.New(), nil, nil, 100)
 	if err != docdom.ErrDocNotFound {
 		t.Errorf("expected ErrDocNotFound, got %v", err)
 	}
@@ -1163,7 +1177,7 @@ func TestListSnapshots_OK(t *testing.T) {
 	v2 := json.RawMessage(`{"v":2}`)
 	_, _ = svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
 
-	snaps, _, err := svc.ListSnapshots(ctx, projectID, d.ID, nil, 100)
+	snaps, _, err := svc.ListSnapshots(ctx, projectID, d.ID, nil, nil, 100)
 	if err != nil {
 		t.Fatalf("ListSnapshots error: %v", err)
 	}
@@ -1199,7 +1213,7 @@ func TestGetSnapshot_OK(t *testing.T) {
 	v2 := json.RawMessage(`{"v":2}`)
 	_, _ = svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
 
-	snaps, _, _ := svc.ListSnapshots(ctx, projectID, d.ID, nil, 100)
+	snaps, _, _ := svc.ListSnapshots(ctx, projectID, d.ID, nil, nil, 100)
 	if len(snaps) == 0 {
 		t.Fatal("no snapshots created")
 	}
@@ -1279,7 +1293,7 @@ func TestListSnapshots_WrongProject_ReturnsNotFound(t *testing.T) {
 	v2 := json.RawMessage(`{"v":2}`)
 	_, _ = svc.UpdateDocument(ctx, ownerProjectID, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
 
-	if _, _, err := svc.ListSnapshots(ctx, attackerProjectID, d.ID, nil, 100); err != docdom.ErrDocNotFound {
+	if _, _, err := svc.ListSnapshots(ctx, attackerProjectID, d.ID, nil, nil, 100); err != docdom.ErrDocNotFound {
 		t.Fatalf("expected ErrDocNotFound for cross-project ListSnapshots, got %v", err)
 	}
 }
@@ -1299,7 +1313,7 @@ func TestGetSnapshot_WrongProject_ReturnsNotFound(t *testing.T) {
 	})
 	v2 := json.RawMessage(`{"v":2}`)
 	_, _ = svc.UpdateDocument(ctx, ownerProjectID, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
-	snaps, _, _ := svc.ListSnapshots(ctx, ownerProjectID, d.ID, nil, 100)
+	snaps, _, _ := svc.ListSnapshots(ctx, ownerProjectID, d.ID, nil, nil, 100)
 	if len(snaps) == 0 {
 		t.Fatal("no snapshots created")
 	}

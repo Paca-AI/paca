@@ -542,7 +542,7 @@ func (h *DocumentHandler) ListSnapshots(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	cursor := parseCursorParam(r)
-	snaps, hasMore, err := h.svc.ListSnapshots(r.Context(), projectID, docID, cursor, pageSize)
+	snaps, hasMore, err := h.svc.ListSnapshots(r.Context(), projectID, docID, nil, cursor, pageSize)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

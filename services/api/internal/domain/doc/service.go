@@ -101,8 +101,9 @@ type UpdateDocumentInput struct {
 type DocSnapshotService interface {
 	// ListSnapshots returns one cursor-paginated page of a document's snapshots,
 	// newest first, without their bodies (see DocSnapshotRepository.ListSnapshots).
+	// contentHash, when non-nil, keeps only the snapshots holding that version.
 	// projectID is used to verify the document belongs to the expected project.
-	ListSnapshots(ctx context.Context, projectID, documentID uuid.UUID, cursorAfter *string, limit int) ([]*DocSnapshot, bool, error)
+	ListSnapshots(ctx context.Context, projectID, documentID uuid.UUID, contentHash *string, cursorAfter *string, limit int) ([]*DocSnapshot, bool, error)
 	// GetSnapshot returns a single snapshot by ID.
 	// projectID is used to verify the snapshot's document belongs to the
 	// expected project.

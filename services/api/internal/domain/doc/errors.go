@@ -8,6 +8,11 @@ var (
 	ErrDocNotFound     = errors.New("document: not found")
 	ErrDocTitleInvalid = errors.New("document: title is empty or invalid")
 
+	// ErrNoChange is returned by an UpdateDocumentAtomic decide function to say
+	// the write changes nothing: the repository skips the UPDATE, commits, and
+	// returns the current row with a nil error.
+	ErrNoChange = errors.New("doc: no change")
+
 	// ErrInvalidCursor is returned when a client-supplied tree-listing cursor
 	// cannot be decoded.
 	ErrInvalidCursor = errors.New("doc: invalid pagination cursor")

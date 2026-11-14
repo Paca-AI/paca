@@ -260,17 +260,19 @@ func (s *Service) CreateDocument(ctx context.Context, in docdom.CreateDocumentIn
 
 	now := time.Now()
 	memberID := s.resolveMember(ctx, in.CreatedBy, in.ProjectID)
+	hash := docdom.ContentHash(in.Content)
 	d := &docdom.Document{
-		ID:        uuid.New(),
-		ProjectID: in.ProjectID,
-		FolderID:  in.FolderID,
-		Title:     title,
-		Content:   in.Content,
-		Position:  0,
-		CreatedBy: memberID,
-		UpdatedBy: memberID,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:          uuid.New(),
+		ProjectID:   in.ProjectID,
+		FolderID:    in.FolderID,
+		Title:       title,
+		Content:     in.Content,
+		ContentHash: &hash,
+		Position:    0,
+		CreatedBy:   memberID,
+		UpdatedBy:   memberID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	if err := s.repo.CreateDocument(ctx, d); err != nil {
@@ -323,6 +325,8 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 				contentChanged = true
 			}
 			d.Content = *in.Content
+			hash := docdom.ContentHash(d.Content)
+			d.ContentHash = &hash
 		}
 		if in.FolderID != nil { // double-pointer present → update folder
 			d.FolderID = *in.FolderID
@@ -376,7 +380,7 @@ func (s *Service) DeleteDocument(ctx context.Context, projectID, id uuid.UUID) e
 // --- Snapshot Service -------------------------------------------------------
 
 // ListSnapshots returns one page of a document's snapshots, newest first.
-func (s *Service) ListSnapshots(ctx context.Context, projectID, documentID uuid.UUID, cursorAfter *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
+func (s *Service) ListSnapshots(ctx context.Context, projectID, documentID uuid.UUID, contentHash *string, cursorAfter *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
 	d, err := s.repo.FindDocumentByID(ctx, documentID)
 	if err != nil {
 		return nil, false, err
@@ -384,7 +388,7 @@ func (s *Service) ListSnapshots(ctx context.Context, projectID, documentID uuid.
 	if d.ProjectID != projectID {
 		return nil, false, docdom.ErrDocNotFound
 	}
-	return s.repo.ListSnapshots(ctx, documentID, cursorAfter, limit)
+	return s.repo.ListSnapshots(ctx, documentID, contentHash, cursorAfter, limit)
 }
 
 // GetSnapshot returns a single snapshot.

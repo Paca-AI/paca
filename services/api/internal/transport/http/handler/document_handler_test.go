@@ -34,6 +34,7 @@ type fakeDocSvc struct {
 	snaps       []*docdom.DocSnapshot
 	snapsMore   bool
 	snapCursor  *string
+	snapHash    *string
 	snapLimit   int
 }
 
@@ -74,8 +75,8 @@ func (f *fakeDocSvc) UpdateDocument(_ context.Context, _, _ uuid.UUID, _ docdom.
 }
 func (f *fakeDocSvc) DeleteDocument(_ context.Context, _, _ uuid.UUID) error { return nil }
 
-func (f *fakeDocSvc) ListSnapshots(_ context.Context, _, _ uuid.UUID, cursor *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
-	f.snapCursor, f.snapLimit = cursor, limit
+func (f *fakeDocSvc) ListSnapshots(_ context.Context, _, _ uuid.UUID, hash *string, cursor *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
+	f.snapHash, f.snapCursor, f.snapLimit = hash, cursor, limit
 	return f.snaps, f.snapsMore, nil
 }
 func (f *fakeDocSvc) GetSnapshot(_ context.Context, _, _ uuid.UUID) (*docdom.DocSnapshot, error) {
