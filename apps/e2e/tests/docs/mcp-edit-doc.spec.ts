@@ -15,8 +15,8 @@ import { pathToFileURL } from "node:url";
 import { expect, test } from "@playwright/test";
 import {
 	API_URL,
-	BASE_URL,
 	authRequest,
+	BASE_URL,
 	createProject,
 	newRunId,
 } from "../helpers/e2e-api";
@@ -121,72 +121,79 @@ function tenBlocks() {
 }
 
 test.describe("MCP edit_doc", () => {
-	test("changing one line leaves the nine other stored blocks identical", async ({
-		request,
-	}) => {
-		const { PacaAPIClient, PacaAPIDocClient, PacaAPIExtendedClient } =
-			await loadMcp("api/index.js");
-		const { handleFilesystemDocTool } = await loadMcp(
-			"tools/filesystem-doc-tools.js",
-		);
-		const run = newRunId();
-		await authRequest(request);
-		const projectId = await createProject(request, `${PREFIX}${run}`);
-		const keyRes = await request.post(`${API_URL}/users/me/api-keys`, {
-			data: { name: `${PREFIX}${run}` },
-		});
-		expect(keyRes.ok()).toBeTruthy();
-		const key = (await keyRes.json()).data as { id: string; key: string };
-
-		try {
-			const created = await request.post(
-				`${API_URL}/projects/${projectId}/docs`,
-				{
-					data: { title: `${PREFIX}${run}`, content: tenBlocks() },
-				},
+	for (const by of ["docId", "path"] as const) {
+		test(`changing one line by ${by} leaves the nine other stored blocks identical`, async ({
+			request,
+		}) => {
+			const { PacaAPIClient, PacaAPIDocClient, PacaAPIExtendedClient } =
+				await loadMcp("api/index.js");
+			const { handleFilesystemDocTool } = await loadMcp(
+				"tools/filesystem-doc-tools.js",
 			);
-			expect(created.ok()).toBeTruthy();
-			const docId = (await created.json()).data.id as string;
-			const readBlocks = async () => {
-				const res = await request.get(
-					`${API_URL}/projects/${projectId}/docs/${docId}`,
-				);
-				expect(res.ok()).toBeTruthy();
-				return ((await res.json()).data.content as unknown[]).map((b) =>
-					JSON.stringify(b),
-				);
-			};
-			const before = await readBlocks();
-			expect(before).toHaveLength(10);
+			const run = newRunId();
+			const title = `${PREFIX}${by}_${run}`;
+			await authRequest(request);
+			const projectId = await createProject(request, title);
+			const keyRes = await request.post(`${API_URL}/users/me/api-keys`, {
+				data: { name: title },
+			});
+			expect(keyRes.ok()).toBeTruthy();
+			const key = (await keyRes.json()).data as { id: string; key: string };
 
-			const config = { baseURL: BASE_URL, apiKey: key.key };
-			const result = await handleFilesystemDocTool(
-				"edit_doc",
-				{
-					projectId,
-					docId,
-					old_string: "Push the image",
-					new_string: "Push the tag",
-					note: "e2e: one-line edit",
-				},
-				new PacaAPIClient(config),
-				new PacaAPIDocClient(config),
-				new PacaAPIExtendedClient(config),
-			);
-			expect(result.isError, result.content?.[0]?.text).toBeFalsy();
+			try {
+				const created = await request.post(
+					`${API_URL}/projects/${projectId}/docs`,
+					{ data: { title, content: tenBlocks() } },
+				);
+				expect(created.ok()).toBeTruthy();
+				const docId = (await created.json()).data.id as string;
+				const readBlocks = async () => {
+					const res = await request.get(
+						`${API_URL}/projects/${projectId}/docs/${docId}`,
+					);
+					expect(res.ok()).toBeTruthy();
+					return (await res.json()).data.content as Array<{ id: string }>;
+				};
+				const beforeBlocks = await readBlocks();
+				const before = beforeBlocks.map((b) => JSON.stringify(b));
+				expect(before).toHaveLength(10);
 
-			const after = await readBlocks();
-			expect(after).toHaveLength(10);
-			for (let i = 0; i < 10; i++) {
-				if (i === 4) {
-					expect(after[i]).toContain("Push the tag");
-					continue;
+				const config = { baseURL: BASE_URL, apiKey: key.key };
+				// By path, edit_doc reads through the by-path route and sends
+				// that response's ETag as If-Match; a rejected If-Match would
+				// fail twice (412, retry, 412) and end in a tool error.
+				const result = await handleFilesystemDocTool(
+					"edit_doc",
+					{
+						projectId,
+						...(by === "docId" ? { docId } : { path: title }),
+						old_string: "Push the image",
+						new_string: "Push the tag",
+						note: `e2e: one-line edit by ${by}`,
+					},
+					new PacaAPIClient(config),
+					new PacaAPIDocClient(config),
+					new PacaAPIExtendedClient(config),
+				);
+				expect(result.isError, result.content?.[0]?.text).toBeFalsy();
+
+				const afterBlocks = await readBlocks();
+				const after = afterBlocks.map((b) => JSON.stringify(b));
+				expect(after).toHaveLength(10);
+				for (let i = 0; i < 10; i++) {
+					if (i === 4) {
+						expect(after[i]).toContain("Push the tag");
+						expect(afterBlocks[i].id, "edited block keeps its id").toBe(
+							beforeBlocks[i].id,
+						);
+						continue;
+					}
+					expect(after[i], `block ${i}`).toBe(before[i]);
 				}
-				expect(after[i], `block ${i}`).toBe(before[i]);
+			} finally {
+				await request.delete(`${API_URL}/users/me/api-keys/${key.id}`);
+				await request.delete(`${API_URL}/projects/${projectId}`);
 			}
-		} finally {
-			await request.delete(`${API_URL}/users/me/api-keys/${key.id}`);
-			await request.delete(`${API_URL}/projects/${projectId}`);
-		}
-	});
+		});
+	}
 });
