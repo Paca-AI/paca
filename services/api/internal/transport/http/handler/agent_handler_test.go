@@ -1598,3 +1598,20 @@ func TestListGlobalAgents_IsPaginated(t *testing.T) {
 		t.Fatalf("last page must report next_cursor null: %s", w.Body.String())
 	}
 }
+
+func TestGetLLMModels_RunnerUnreachableReturnsEmptyList(t *testing.T) {
+	down := httptest.NewServer(http.NotFoundHandler())
+	down.Close()
+
+	h := handler.NewAgentHandler(&mockAgentSvc{}, down.URL, "test-internal-key", "")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/agents/llm-models", nil)
+	h.GetLLMModels(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != "{}" {
+		t.Fatalf("body = %q, want {}", got)
+	}
+}

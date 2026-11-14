@@ -1748,7 +1748,13 @@ func (h *AgentHandler) GetLLMModels(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to reach agent-runner service"))
+		// PACA_AGENT_RUNNER=no scales agent-runner to 0 (scripts/install.sh:776-778).
+		// Agent pages fetch this list (apps/web/src/routes/_authenticated/projects/$projectId/agents/index.tsx:44-45).
+		// {} matches the expected provider-keyed shape (apps/web/src/lib/agent-api.ts:2073-2079).
+		slog.Warn("llm models: agent-runner unreachable, returning empty list", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{}"))
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
