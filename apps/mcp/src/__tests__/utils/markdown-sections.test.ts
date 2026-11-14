@@ -156,3 +156,21 @@ describe("numberLines", () => {
 		expect(numberLines(["a", "b"], 9)).toBe("9: a\n10: b");
 	});
 });
+
+describe("review fixes", () => {
+	it("line 0 alone is not a range", () => {
+		expect(parseLineRange("0", 10)).toHaveProperty("error");
+		expect(parseLineRange("0-0", 10)).toHaveProperty("error");
+		expect(parseLineRange("0-3", 10)).toEqual({ start: 1, end: 3 });
+	});
+
+	it("finds a section whose heading has emphasis", () => {
+		const md = "## Step **one**\n\nbody\n\n## Step _two_\n\nmore\n";
+		expect(findSection(md, "Step one")).toMatchObject({
+			status: "found",
+			start: 1,
+			end: 4,
+		});
+		expect(findSection(md, "step **two**")).toMatchObject({ start: 5 });
+	});
+});

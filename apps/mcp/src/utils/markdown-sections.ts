@@ -76,12 +76,11 @@ export type SectionResult =
  * heading of the same or a higher level, or to the end of the document.
  */
 export function findSection(markdown: string, name: string): SectionResult {
-	const wanted = name
-		.trim()
-		.replace(/^#{1,6}\s+/, "")
-		.toLowerCase();
+	// Compared without emphasis markers, so "Step one" finds "Step **one**".
+	const norm = (s: string) => stripEmphasis(s).trim().toLowerCase();
+	const wanted = norm(name.trim().replace(/^#{1,6}\s+/, ""));
 	const headings = markdownHeadings(markdown);
-	const matches = headings.filter((h) => h.text.toLowerCase() === wanted);
+	const matches = headings.filter((h) => norm(h.text) === wanted);
 	if (matches.length === 0) return { status: "not_found" };
 	if (matches.length > 1) return { status: "ambiguous", matches };
 	const heading = matches[0];
@@ -115,6 +114,11 @@ export function parseLineRange(
 	if (from > to) {
 		return {
 			error: `Invalid line range "${range}": the start is after the end.`,
+		};
+	}
+	if (to < 1) {
+		return {
+			error: `Invalid line range "${range}": lines are numbered from 1.`,
 		};
 	}
 	const start = Math.max(1, from);
