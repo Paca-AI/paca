@@ -12,12 +12,36 @@ import (
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 )
 
-// fakeHashStore holds document bodies and the hashes filled in so far.
+// fakeHashStore holds document bodies and the hashes and plain texts filled
+// in so far.
 type fakeHashStore struct {
-	bodies []json.RawMessage
-	hashes []string // "" = not backfilled yet
-	calls  int
-	failOn int // the call number that fails (0 = none)
+	bodies    []json.RawMessage
+	hashes    []string // "" = not backfilled yet
+	calls     int
+	failOn    int       // the hash call number that fails (0 = none)
+	texts     []*string // nil = not backfilled yet
+	textCalls int
+	textFail  int // the text call number that fails (0 = none)
+}
+
+func (f *fakeHashStore) BackfillContentText(_ context.Context, limit int, text func(json.RawMessage) string) (int, error) {
+	f.textCalls++
+	if f.textCalls == f.textFail {
+		return 0, errors.New("database unreachable")
+	}
+	n := 0
+	for i, body := range f.bodies {
+		if f.texts[i] != nil {
+			continue
+		}
+		if n == limit {
+			break
+		}
+		s := text(body)
+		f.texts[i] = &s
+		n++
+	}
+	return n, nil
 }
 
 func (f *fakeHashStore) BackfillContentHashes(_ context.Context, limit int, hash func(json.RawMessage) string) (int, error) {
@@ -40,7 +64,7 @@ func (f *fakeHashStore) BackfillContentHashes(_ context.Context, limit int, hash
 }
 
 func newFakeHashStore(n int) *fakeHashStore {
-	f := &fakeHashStore{hashes: make([]string, n)}
+	f := &fakeHashStore{hashes: make([]string, n), texts: make([]*string, n)}
 	for i := 0; i < n; i++ {
 		f.bodies = append(f.bodies, json.RawMessage(`[{"id":"x","type":"paragraph","content":[{"type":"text","text":"doc `+string(rune('a'+i%26))+`","styles":{}}]}]`))
 	}
@@ -57,8 +81,8 @@ func TestDocHashBackfill_FillsAndStops(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filled != 450 {
-		t.Fatalf("filled %d rows, want 450", filled)
+	if filled != 900 {
+		t.Fatalf("filled %d, want 450 hashes + 450 texts", filled)
 	}
 	for i, h := range store.hashes {
 		if h != docdom.ContentHash(store.bodies[i]) {
@@ -74,6 +98,53 @@ func TestDocHashBackfill_FillsAndStops(t *testing.T) {
 	store.calls = 0
 	if filled, err := b.Run(context.Background()); err != nil || filled != 0 || store.calls != 1 {
 		t.Fatalf("second run: filled %d, calls %d, err %v; want 0, 1, nil", filled, store.calls, err)
+	}
+}
+
+// The same run fills content_text (migration 000090) after the hashes, in
+// batches of the same size, and counts those rows too.
+func TestDocHashBackfill_FillsContentTextToo(t *testing.T) {
+	store := newFakeHashStore(250)
+	b := NewDocHashBackfill(store, quietLogger())
+
+	filled, err := b.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filled != 500 {
+		t.Fatalf("filled %d, want 250 hashes + 250 texts", filled)
+	}
+	for i, txt := range store.texts {
+		if txt == nil || *txt != docdom.ContentText(store.bodies[i]) {
+			t.Fatalf("row %d has text %v, want the plain text of its body", i, txt)
+		}
+	}
+	// 200 + 50, then the empty batch.
+	if store.textCalls != 3 {
+		t.Fatalf("made %d text batch calls, want 3", store.textCalls)
+	}
+
+	store.textCalls = 0
+	if filled, err := b.Run(context.Background()); err != nil || filled != 0 || store.textCalls != 1 {
+		t.Fatalf("second run: filled %d, text calls %d, err %v; want 0, 1, nil", filled, store.textCalls, err)
+	}
+}
+
+func TestDocHashBackfill_TextErrorIsRetried(t *testing.T) {
+	store := newFakeHashStore(10)
+	store.textFail = 1
+	b := NewDocHashBackfill(store, quietLogger()).WithRetryDelay(time.Millisecond)
+
+	b.Start(context.Background())
+	select {
+	case <-b.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the backfill did not finish")
+	}
+	for i, txt := range store.texts {
+		if txt == nil {
+			t.Fatalf("row %d never got its text", i)
+		}
 	}
 }
 

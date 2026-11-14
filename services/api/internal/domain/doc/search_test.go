@@ -53,3 +53,46 @@ func TestNewSearchHit(t *testing.T) {
 		t.Errorf("content hit = %+v", h)
 	}
 }
+
+func TestNewSearchHit_PhraseAcrossFormattingReportsBlock(t *testing.T) {
+	content := json.RawMessage(`[
+	 {"type":"heading","content":[{"type":"text","text":"Intro"}]},
+	 {"type":"bulletListItem","content":[{"type":"text","text":"parent"}],"children":[
+	   {"type":"bulletListItem","content":[{"type":"text","text":"run the "},{"type":"text","text":"blue","styles":{"bold":true}},{"type":"text","text":" deploy"}]}]},
+	 {"type":"paragraph","content":[{"type":"text","text":"blue deploy again"}]}
+	]`)
+	d := &Document{ID: uuid.New(), Title: "Guide", Content: content}
+	h := NewSearchHit(d, "the BLUE deploy")
+	if h.MatchedIn != SearchMatchContent || h.Block != 3 {
+		t.Fatalf("hit = %+v, want a content match in block 3 (the nested item)", h)
+	}
+	if h.Snippet != "run the blue deploy" {
+		t.Fatalf("snippet = %q, want the matched block's text", h.Snippet)
+	}
+	// The first matching block wins.
+	if h := NewSearchHit(d, "blue deploy"); h.Block != 3 {
+		t.Fatalf("first match block = %d, want 3", h.Block)
+	}
+	if h := NewSearchHit(d, "again"); h.Block != 4 {
+		t.Fatalf("last block = %d, want 4", h.Block)
+	}
+	// A title match has no block.
+	if h := NewSearchHit(d, "guide"); h.MatchedIn != SearchMatchTitle || h.Block != 0 {
+		t.Fatalf("title hit = %+v", h)
+	}
+}
+
+func TestNewSearchHit_LongBlockSnippetIsTrimmed(t *testing.T) {
+	text := strings.Repeat("a ", 100) + "needle " + strings.Repeat("b ", 100)
+	content, _ := json.Marshal([]any{
+		map[string]any{"type": "paragraph", "content": []any{map[string]any{"type": "text", "text": "first"}}},
+		map[string]any{"type": "paragraph", "content": []any{map[string]any{"type": "text", "text": text}}},
+	})
+	h := NewSearchHit(&Document{ID: uuid.New(), Title: "x", Content: content}, "needle")
+	if h.Block != 2 || !strings.HasPrefix(h.Snippet, "…") || !strings.HasSuffix(h.Snippet, "…") || !strings.Contains(h.Snippet, "needle") {
+		t.Fatalf("hit = %+v", h)
+	}
+	if strings.Contains(h.Snippet, "first") {
+		t.Fatalf("snippet reaches into another block: %q", h.Snippet)
+	}
+}

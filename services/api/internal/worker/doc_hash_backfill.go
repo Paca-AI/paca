@@ -15,13 +15,17 @@ const (
 	docHashBackfillRetryDelay = time.Minute
 )
 
-// DocHashStore fills in missing document content hashes, one batch per call.
+// DocHashStore fills in missing document content hashes and plain texts, one
+// batch per call.
 type DocHashStore interface {
 	// BackfillContentHashes stores hash(content) on up to limit documents
 	// whose content_hash is NULL, soft-deleted ones included, and returns how
 	// many it filled. It must not change seq or updated_at. It may skip rows
 	// that are locked; zero means none could be filled.
 	BackfillContentHashes(ctx context.Context, limit int, hash func(content json.RawMessage) string) (int, error)
+	// BackfillContentText does the same for content_text: it stores
+	// text(content) on up to limit documents whose content_text is NULL.
+	BackfillContentText(ctx context.Context, limit int, text func(content json.RawMessage) string) (int, error)
 }
 
 // DocHashBackfill fills documents.content_hash on the rows written before the
@@ -32,9 +36,12 @@ type DocHashStore interface {
 // background, and exits when no NULL hash is left; rows written after the
 // migration always carry a hash, so there is nothing to poll for.
 //
-// It does not show up in the change feed: the store writes the hash without
-// moving seq or updated_at, because a document's hash is the same before and
-// after it is stored.
+// It also fills documents.content_text, the plain text search reads, on the
+// rows written before migration 000090, once the hashes are done.
+//
+// It does not show up in the change feed: the store writes the hash and the
+// text without moving seq or updated_at, because both are derived from the
+// content and a client sees the same document before and after.
 type DocHashBackfill struct {
 	store      DocHashStore
 	logger     *slog.Logger
@@ -59,12 +66,35 @@ func (b *DocHashBackfill) WithRetryDelay(d time.Duration) *DocHashBackfill {
 	return b
 }
 
-// Run fills batches until none is left and returns how many rows it filled.
-// It stops at the first error.
+// Run fills batches until none is left, hashes first and then plain texts,
+// and returns how many row updates it made. It stops at the first error.
 func (b *DocHashBackfill) Run(ctx context.Context) (int, error) {
+	hashes, err := b.drain(ctx, func() (int, error) {
+		return b.store.BackfillContentHashes(ctx, docHashBackfillBatch, docdom.ContentHash)
+	})
+	if err != nil || b.stopped() {
+		return hashes, err
+	}
+	texts, err := b.drain(ctx, func() (int, error) {
+		return b.store.BackfillContentText(ctx, docHashBackfillBatch, docdom.ContentText)
+	})
+	return hashes + texts, err
+}
+
+func (b *DocHashBackfill) stopped() bool {
+	select {
+	case <-b.stopCh:
+		return true
+	default:
+		return false
+	}
+}
+
+// drain calls batch until it fills nothing, Stop is called or ctx ends.
+func (b *DocHashBackfill) drain(ctx context.Context, batch func() (int, error)) (int, error) {
 	total := 0
 	for {
-		n, err := b.store.BackfillContentHashes(ctx, docHashBackfillBatch, docdom.ContentHash)
+		n, err := batch()
 		total += n
 		if err != nil {
 			return total, err
@@ -93,7 +123,7 @@ func (b *DocHashBackfill) Start(ctx context.Context) {
 		for {
 			n, err := b.Run(ctx)
 			if n > 0 {
-				b.logger.Info("doc hash backfill: stored content hashes", "rows", n)
+				b.logger.Info("doc hash backfill: stored content hashes and texts", "rows", n)
 			}
 			if err == nil {
 				return

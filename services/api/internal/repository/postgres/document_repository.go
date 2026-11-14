@@ -537,33 +537,23 @@ func (r *DocumentRepository) ListAllDocuments(ctx context.Context, projectID uui
 }
 
 // SearchDocuments matches query (literally, case-insensitively) against the
-// title or any inline "text" node inside the BlockNote JSON content. The
-// jsonpath walk restricts body matching to visible text so structural keys
-// like "type":"paragraph" never match.
+// title or the document's plain text (content_text, one line per block with
+// a block's inline runs joined, so a phrase that crosses bold or a link
+// matches). Both have trigram indexes (migration 000090).
+//
+// A row the content_text backfill has not reached yet (content_text IS NULL)
+// is matched the old way, against each inline "text" node of the BlockNote
+// JSON; that branch goes once every row is filled.
 func (r *DocumentRepository) SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]*docdom.Document, error) {
-	pattern := "%" + escapeLikePattern(strings.TrimSpace(query)) + "%"
-	sink := &argList{args: []any{projectID.String(), pattern}}
-	clause, none, err := scopeSQL(ctx, "doc", docScopeColumns, sink)
+	q, args, none, err := r.searchDocumentsQuery(ctx, projectID, query, limit)
 	if err != nil {
 		return nil, err
 	}
 	if none {
 		return []*docdom.Document{}, nil
 	}
-	scopeAnd := ""
-	if clause != "" {
-		scopeAnd = " AND " + clause
-	}
-	limitP := sink.addArg(limit)
 	var records []documentRecord
-	err = r.db.SelectContext(ctx, &records, `SELECT `+documentCols+` FROM documents
-		WHERE project_id = $1 AND deleted_at IS NULL
-		  AND (title ILIKE $2 OR EXISTS (
-		        SELECT 1 FROM jsonb_path_query(COALESCE(content, 'null'::jsonb), 'lax $.**.text') AS t
-		        WHERE jsonb_typeof(t) = 'string' AND (t #>> '{}') ILIKE $2))`+scopeAnd+`
-		ORDER BY updated_at DESC, id ASC
-		LIMIT `+limitP, sink.args...)
-	if err != nil {
+	if err := r.db.SelectContext(ctx, &records, q, args...); err != nil {
 		return nil, err
 	}
 	out := make([]*docdom.Document, 0, len(records))
@@ -571,6 +561,32 @@ func (r *DocumentRepository) SearchDocuments(ctx context.Context, projectID uuid
 		out = append(out, documentFromRecord(rec))
 	}
 	return out, nil
+}
+
+// searchDocumentsQuery builds SearchDocuments' statement and arguments. none
+// is true when the caller's scope can see no document at all.
+func (r *DocumentRepository) searchDocumentsQuery(ctx context.Context, projectID uuid.UUID, query string, limit int) (string, []any, bool, error) {
+	pattern := "%" + escapeLikePattern(strings.TrimSpace(query)) + "%"
+	sink := &argList{args: []any{projectID.String(), pattern}}
+	clause, none, err := scopeSQL(ctx, "doc", docScopeColumns, sink)
+	if err != nil || none {
+		return "", nil, none, err
+	}
+	scopeAnd := ""
+	if clause != "" {
+		scopeAnd = " AND " + clause
+	}
+	limitP := sink.addArg(limit)
+	q := `SELECT ` + documentCols + ` FROM documents
+		WHERE project_id = $1 AND deleted_at IS NULL
+		  AND (title ILIKE $2
+		       OR content_text ILIKE $2
+		       OR (content_text IS NULL AND EXISTS (
+		            SELECT 1 FROM jsonb_path_query(COALESCE(content, 'null'::jsonb), 'lax $.**.text') AS t
+		            WHERE jsonb_typeof(t) = 'string' AND (t #>> '{}') ILIKE $2)))` + scopeAnd + `
+		ORDER BY updated_at DESC, id ASC
+		LIMIT ` + limitP
+	return q, sink.args, false, nil
 }
 
 // FindDocumentByID returns a single non-deleted document.
@@ -614,11 +630,11 @@ func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Docum
 func insertDocument(ctx context.Context, ex sqlx.ExecerContext, d *docdom.Document) error {
 	rec := documentToRecord(d)
 	_, err := ex.ExecContext(ctx, `
-		INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked, content_text)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 		rec.ID, rec.ProjectID, rec.FolderID, rec.Title, rec.Content, rec.ContentHash,
 		rec.Position, rec.CreatedBy, rec.UpdatedBy, rec.CreatedAt, rec.UpdatedAt, rec.DeletedAt,
-		rec.Source, rec.SourceLocked,
+		rec.Source, rec.SourceLocked, docdom.ContentText(d.Content),
 	)
 	return err
 }
@@ -676,10 +692,10 @@ func updateDocumentLocked(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, decide
 	out := documentToRecord(current)
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE documents SET folder_id=$1, title=$2, content=$3, content_hash=$4, position=$5, updated_by=$6, updated_at=$7,
-			source=$9, source_locked=$10
+			source=$9, source_locked=$10, content_text=$11
 		WHERE id=$8 AND deleted_at IS NULL`,
 		out.FolderID, out.Title, out.Content, out.ContentHash, out.Position, out.UpdatedBy, out.UpdatedAt, out.ID,
-		out.Source, out.SourceLocked,
+		out.Source, out.SourceLocked, docdom.ContentText(current.Content),
 	); err != nil {
 		return nil, err
 	}
@@ -738,6 +754,48 @@ func (r *DocumentRepository) BackfillContentHashes(ctx context.Context, limit in
 			}
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE documents SET content_hash = $1 WHERE id = $2 AND content_hash IS NULL`, hash(content), row.ID); err != nil {
+				return err
+			}
+		}
+		filled = len(rows)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return filled, nil
+}
+
+// BackfillContentText implements worker.DocHashStore: it stores
+// text(content) as content_text on up to limit documents whose content_text
+// is NULL (deleted ones included) and returns how many it filled. It is
+// BackfillContentHashes for the plain-text column of migration 000090, with
+// the same rules: one transaction with paca.skip_doc_seq = 'on' so the rows
+// keep their seq and updated_at and stay out of the change feed (the text is
+// derived from content a client already has), and FOR UPDATE SKIP LOCKED
+// because it takes document rows without the change counter. Empty content
+// stores an empty string, so a filled row never matches again.
+func (r *DocumentRepository) BackfillContentText(ctx context.Context, limit int, text func(content json.RawMessage) string) (int, error) {
+	filled := 0
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if _, err := tx.ExecContext(ctx, `SELECT set_config('paca.skip_doc_seq', 'on', true)`); err != nil {
+			return err
+		}
+		var rows []struct {
+			ID      string           `db:"id"`
+			Content *json.RawMessage `db:"content"`
+		}
+		if err := tx.SelectContext(ctx, &rows,
+			`SELECT id, content FROM documents WHERE content_text IS NULL ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED`, limit); err != nil {
+			return err
+		}
+		for _, row := range rows {
+			var content json.RawMessage
+			if row.Content != nil {
+				content = *row.Content
+			}
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE documents SET content_text = $1 WHERE id = $2 AND content_text IS NULL`, text(content), row.ID); err != nil {
 				return err
 			}
 		}

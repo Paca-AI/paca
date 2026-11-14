@@ -332,8 +332,9 @@ func DocActivityFromEntity(a *docdom.Activity) DocActivityResponse {
 }
 
 // DocumentSearchHitResponse is one result of a title/content document search:
-// list-item metadata plus where the query matched and an excerpt (empty for
-// title matches). Content is never included.
+// list-item metadata plus where the query matched, an excerpt and the 1-based
+// block number of the first match (both absent for title matches). Content is
+// never included.
 type DocumentSearchHitResponse struct {
 	ID        uuid.UUID  `json:"id"`
 	ProjectID uuid.UUID  `json:"project_id"`
@@ -341,6 +342,7 @@ type DocumentSearchHitResponse struct {
 	Title     string     `json:"title"`
 	MatchedIn string     `json:"matched_in"`
 	Snippet   string     `json:"snippet,omitempty"`
+	Block     int        `json:"block,omitempty"`
 	UpdatedAt time.Time  `json:"updated_at"`
 }
 
@@ -353,6 +355,7 @@ func DocumentSearchHitFromEntity(h docdom.SearchHit) DocumentSearchHitResponse {
 		Title:     h.Document.Title,
 		MatchedIn: h.MatchedIn,
 		Snippet:   h.Snippet,
+		Block:     h.Block,
 		UpdatedAt: h.Document.UpdatedAt,
 	}
 }
