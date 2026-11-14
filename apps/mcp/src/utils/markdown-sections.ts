@@ -76,11 +76,16 @@ export type SectionResult =
  * heading of the same or a higher level, or to the end of the document.
  */
 export function findSection(markdown: string, name: string): SectionResult {
-	// Compared without emphasis markers, so "Step one" finds "Step **one**".
-	const norm = (s: string) => stripEmphasis(s).trim().toLowerCase();
-	const wanted = norm(name.trim().replace(/^#{1,6}\s+/, ""));
+	// An exact match (ignoring case) first; failing that, compared without
+	// emphasis markers, so "Step one" finds "Step **one**".
+	const exact = (s: string) => s.trim().toLowerCase();
+	const loose = (s: string) => exact(stripEmphasis(s));
+	const raw = name.trim().replace(/^#{1,6}\s+/, "");
 	const headings = markdownHeadings(markdown);
-	const matches = headings.filter((h) => norm(h.text) === wanted);
+	let matches = headings.filter((h) => exact(h.text) === exact(raw));
+	if (matches.length === 0) {
+		matches = headings.filter((h) => loose(h.text) === loose(raw));
+	}
 	if (matches.length === 0) return { status: "not_found" };
 	if (matches.length > 1) return { status: "ambiguous", matches };
 	const heading = matches[0];
@@ -140,9 +145,22 @@ export function numberLines(lines: string[], first: number): string {
 /** Tests one line of Markdown (`index` is its 0-based line index). */
 export type LineMatcher = (line: string, index: number) => boolean;
 
-/** Removes the `*` and `_` emphasis markers, so `foo **bar**` reads `foo bar`. */
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * Removes emphasis markers, so `foo **bar**` reads `foo bar`: every run of
+ * `*`, and runs of `_` that are not inside a word (`snake_case` keeps its
+ * underscore, as Markdown does not read it as emphasis).
+ */
 export function stripEmphasis(text: string): string {
-	return text.replace(/[*_]+/g, "");
+	return text
+		.replace(/\*+/g, "")
+		.replace(/_+/g, (run, at: number, all: string) =>
+			WORD_CHAR.test(all[at - 1] ?? "") &&
+			WORD_CHAR.test(all[at + run.length] ?? "")
+				? run
+				: "",
+		);
 }
 
 /**

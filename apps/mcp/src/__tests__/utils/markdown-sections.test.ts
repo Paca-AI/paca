@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
 	findSection,
+	literalMatcher,
 	markdownHeadings,
 	markdownLines,
 	numberLines,
 	outlineOf,
 	parseLineRange,
+	stripEmphasis,
 } from "../../utils/markdown-sections.js";
 
 const DOC = [
@@ -175,11 +177,39 @@ describe("review fixes", () => {
 	});
 });
 
+describe("emphasis in section names (second review)", () => {
+	it("prefers an exact heading over one that matches with markers removed", () => {
+		const md = "## a_b\n\none\n\n## ab\n\ntwo\n";
+		expect(findSection(md, "a_b")).toMatchObject({ status: "found", start: 1 });
+		expect(findSection(md, "ab")).toMatchObject({ status: "found", start: 5 });
+	});
+
+	it("does not treat underscores inside words as emphasis", () => {
+		const md = "## snake_case_name\n\nbody\n";
+		expect(findSection(md, "snakecasename")).toEqual({ status: "not_found" });
+		expect(findSection(md, "Snake_Case_Name")).toMatchObject({
+			status: "found",
+		});
+	});
+
+	it("stripEmphasis removes only markers that delimit emphasis", () => {
+		expect(stripEmphasis("snake_case_name")).toBe("snake_case_name");
+		expect(stripEmphasis("_it_ and __bold__ and **b** and *i*")).toBe(
+			"it and bold and b and i",
+		);
+		expect(stripEmphasis("(_x_)")).toBe("(x)");
+		expect(literalMatcher("snakecase")("snake_case")).toBe(false);
+		expect(literalMatcher("foo bar")("foo **bar**")).toBe(true);
+	});
+});
+
 describe("regexLineHits in an ES module process", () => {
 	it("works when the worker starts in ES module mode", async () => {
 		const { execFileSync } = await import("node:child_process");
 		const { fileURLToPath } = await import("node:url");
-		const src = fileURLToPath(new URL("../../utils/markdown-sections.ts", import.meta.url));
+		const src = fileURLToPath(
+			new URL("../../utils/markdown-sections.ts", import.meta.url),
+		);
 		// The eval worker inherits --input-type=module; it must not use require.
 		const out = execFileSync(
 			process.execPath,
