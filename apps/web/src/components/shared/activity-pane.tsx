@@ -96,6 +96,8 @@ export interface ActivityPaneConfig<T extends ActivityEntry> {
 	) => { old: unknown; new: unknown; title?: string } | null;
 	isRevertable?: (entry: T) => boolean;
 	describeActivity: (entry: T) => ReactNode;
+	/** Optional detail shown under a non-comment entry (a change's note). */
+	describeActivityDetail?: (entry: T) => ReactNode;
 	getCommentBlocks: (content: T["content"]) => unknown[] | null;
 	nameMaps?: Record<string, Record<string, string>>;
 	currentUserId?: string;
@@ -125,6 +127,7 @@ export function ActivityPane<T extends ActivityEntry>({
 	getDiffContent,
 	isRevertable,
 	describeActivity,
+	describeActivityDetail,
 	getCommentBlocks,
 	currentUserId,
 }: ActivityPaneConfig<T>) {
@@ -479,6 +482,7 @@ export function ActivityPane<T extends ActivityEntry>({
 							key={entry.id}
 							entry={entry}
 							describeActivity={describeActivity}
+							describeActivityDetail={describeActivityDetail}
 							getCommentBlocks={getCommentBlocks}
 							updateComment={updateComment}
 							deleteComment={deleteComment}
@@ -568,6 +572,7 @@ interface ActivityItemInnerProps<T extends ActivityEntry> {
 	projectId: string;
 	entry: T;
 	describeActivity: (entry: T) => ReactNode;
+	describeActivityDetail?: (entry: T) => ReactNode;
 	getCommentBlocks: (content: T["content"]) => unknown[] | null;
 	updateComment?: (commentId: string, blocks: unknown[]) => Promise<unknown>;
 	deleteComment?: (commentId: string) => Promise<void>;
@@ -588,6 +593,7 @@ function ActivityItemInner<T extends ActivityEntry>({
 	projectId,
 	entry,
 	describeActivity,
+	describeActivityDetail,
 	getCommentBlocks,
 	updateComment,
 	deleteComment,
@@ -792,6 +798,7 @@ function ActivityItemInner<T extends ActivityEntry>({
 								</>
 							)}
 						</div>
+						{describeActivityDetail?.(entry)}
 						{revertError && (
 							<p className="text-xs text-destructive/70 pl-0.5">
 								{revertError}
