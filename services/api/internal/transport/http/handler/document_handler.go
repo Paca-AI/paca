@@ -446,7 +446,7 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 	// Capture old state for activity recording.
 	oldDoc, _ := h.svc.GetDocument(r.Context(), docID)
 
-	d, err := h.svc.UpdateDocument(r.Context(), projectID, docID, docdom.UpdateDocumentInput{
+	d, _, err := h.svc.UpdateDocument(r.Context(), projectID, docID, docdom.UpdateDocumentInput{
 		Title:     req.Title,
 		Content:   req.Content.Ptr(),
 		FolderID:  req.FolderID.Ptr(),

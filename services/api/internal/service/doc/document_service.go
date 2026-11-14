@@ -282,23 +282,29 @@ func (s *Service) CreateDocument(ctx context.Context, in docdom.CreateDocumentIn
 }
 
 // UpdateDocument updates a document's mutable fields and creates a snapshot
-// when the content changes. The read-modify-write runs under a row lock so a
-// concurrent save isn't reverted and a concurrent delete isn't undone.
-func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, in docdom.UpdateDocumentInput) (*docdom.Document, error) {
-	contentChanged := false
+// when the content or title changes. The read-modify-write runs under a row
+// lock so a concurrent save isn't reverted, a concurrent delete isn't undone,
+// and the If-Match and "did anything change" checks see the row that will be
+// written. A write that changes nothing is not written at all.
+func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, in docdom.UpdateDocumentInput) (*docdom.Document, docdom.DocChange, error) {
+	var change docdom.DocChange
 	var oldContent json.RawMessage
-	var oldTitle string
+	var oldTitle, oldHash string
 
 	// Lookups that don't depend on the locked row run before the transaction,
 	// so the row lock isn't held across extra round trips on other connections.
 	if in.FolderID != nil && *in.FolderID != nil {
 		folder, ferr := s.repo.FindFolderByID(ctx, **in.FolderID)
 		if ferr != nil {
-			return nil, ferr
+			return nil, docdom.DocChange{}, ferr
 		}
 		if folder.ProjectID != projectID {
-			return nil, docdom.ErrFolderNotInProject
+			return nil, docdom.DocChange{}, docdom.ErrFolderNotInProject
 		}
+	}
+	var newHash string
+	if in.Content != nil {
+		newHash = docdom.ContentHash(*in.Content)
 	}
 	updatedBy := s.resolveMember(ctx, in.UpdatedBy, projectID)
 
@@ -306,52 +312,69 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 		if d.ProjectID != projectID {
 			return docdom.ErrDocNotFound
 		}
+		change = docdom.DocChange{}
 		oldContent = d.Content
 		oldTitle = d.Title
+		oldHash = d.Hash()
+
+		if in.IfMatch != nil && *in.IfMatch != "*" && *in.IfMatch != oldHash {
+			return &docdom.VersionConflictError{CurrentHash: oldHash, UpdatedAt: d.UpdatedAt, UpdatedBy: d.UpdatedBy}
+		}
 
 		if in.Title != nil {
 			title := strings.TrimSpace(*in.Title)
 			if title == "" {
 				return docdom.ErrDocTitleInvalid
 			}
-			if title != d.Title && strings.Contains(title, "/") {
-				return docdom.ErrDocTitleInvalid
+			if title != d.Title {
+				if strings.Contains(title, "/") {
+					return docdom.ErrDocTitleInvalid
+				}
+				d.Title = title
+				change.Title = true
 			}
-			d.Title = title
 		}
-		if in.Content != nil {
-			// Only treat as changed if the raw JSON differs.
-			if string(*in.Content) != string(d.Content) {
-				contentChanged = true
-			}
+		if in.Content != nil && newHash != oldHash {
 			d.Content = *in.Content
-			hash := docdom.ContentHash(d.Content)
-			d.ContentHash = &hash
+			change.Content = true
 		}
-		if in.FolderID != nil { // double-pointer present → update folder
+		if in.FolderID != nil && !sameFolder(*in.FolderID, d.FolderID) {
 			d.FolderID = *in.FolderID
+			change.Folder = true
 		}
-		if in.Position != nil {
+		if in.Position != nil && *in.Position != d.Position {
 			d.Position = *in.Position
+			change.Position = true
 		}
+		if !change.Any() {
+			return docdom.ErrNoChange
+		}
+		// Every real write stores the hash, so a row written before the
+		// column existed gets one on its next write.
+		h := d.Hash()
+		if change.Content {
+			h = newHash
+		}
+		d.ContentHash = &h
 		d.UpdatedBy = updatedBy
 		d.UpdatedAt = time.Now()
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, docdom.DocChange{}, err
 	}
 
-	// Create a snapshot whenever content or title changed.
-	if contentChanged || d.Title != oldTitle {
+	// Create a snapshot of the previous version whenever content or title changed.
+	if change.Content || change.Title {
 		snapTime := time.Now()
 		snap := &docdom.DocSnapshot{
-			ID:         uuid.New(),
-			DocumentID: d.ID,
-			Title:      oldTitle,
-			Content:    oldContent,
-			CreatedBy:  d.UpdatedBy,
-			CreatedAt:  snapTime,
+			ID:          uuid.New(),
+			DocumentID:  d.ID,
+			Title:       oldTitle,
+			Content:     oldContent,
+			ContentHash: &oldHash,
+			CreatedBy:   d.UpdatedBy,
+			CreatedAt:   snapTime,
 		}
 		// Snapshot creation failures are non-fatal; we still return the
 		// updated document.
@@ -362,7 +385,16 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 		}
 	}
 
-	return d, nil
+	return d, change, nil
+}
+
+// sameFolder reports whether two optional folder ids name the same folder
+// (both nil means both at the root).
+func sameFolder(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // DeleteDocument soft-deletes a document.

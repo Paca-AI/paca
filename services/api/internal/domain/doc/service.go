@@ -66,10 +66,14 @@ type DocumentService interface {
 	GetDocument(ctx context.Context, id uuid.UUID) (*Document, error)
 	// CreateDocument creates a new document in the project.
 	CreateDocument(ctx context.Context, in CreateDocumentInput) (*Document, error)
-	// UpdateDocument updates a document's mutable fields and optionally
-	// creates a snapshot when the content changes.
-	// projectID is used to verify the document belongs to the expected project.
-	UpdateDocument(ctx context.Context, projectID, id uuid.UUID, in UpdateDocumentInput) (*Document, error)
+	// UpdateDocument updates a document's mutable fields and creates a
+	// snapshot when the content or title changes. Content counts as changed
+	// only when its ContentHash differs. A write that changes nothing writes
+	// nothing and returns the stored document with an empty DocChange. When
+	// in.IfMatch is set and is not the stored content hash (or "*"), it
+	// returns a *VersionConflictError. projectID is used to verify the
+	// document belongs to the expected project.
+	UpdateDocument(ctx context.Context, projectID, id uuid.UUID, in UpdateDocumentInput) (*Document, DocChange, error)
 	// DeleteDocument soft-deletes a document.
 	// projectID is used to verify the document belongs to the expected project.
 	DeleteDocument(ctx context.Context, projectID, id uuid.UUID) error
@@ -93,7 +97,21 @@ type UpdateDocumentInput struct {
 	FolderID  **uuid.UUID
 	Position  *int
 	UpdatedBy *uuid.UUID
+	// IfMatch, when set, is the content hash the caller last saw, or "*" (any
+	// version, as long as the document exists). Checked under the row lock.
+	IfMatch *string
 }
+
+// DocChange says which fields an UpdateDocument call actually changed.
+type DocChange struct {
+	Content  bool
+	Title    bool
+	Folder   bool
+	Position bool
+}
+
+// Any reports whether anything changed.
+func (c DocChange) Any() bool { return c.Content || c.Title || c.Folder || c.Position }
 
 // --- Snapshot Service -------------------------------------------------------
 

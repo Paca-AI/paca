@@ -70,8 +70,8 @@ func (f *fakeDocSvc) GetDocument(_ context.Context, _ uuid.UUID) (*docdom.Docume
 func (f *fakeDocSvc) CreateDocument(_ context.Context, _ docdom.CreateDocumentInput) (*docdom.Document, error) {
 	return &docdom.Document{ID: uuid.New()}, nil
 }
-func (f *fakeDocSvc) UpdateDocument(_ context.Context, _, _ uuid.UUID, _ docdom.UpdateDocumentInput) (*docdom.Document, error) {
-	return nil, docdom.ErrDocNotFound
+func (f *fakeDocSvc) UpdateDocument(_ context.Context, _, _ uuid.UUID, _ docdom.UpdateDocumentInput) (*docdom.Document, docdom.DocChange, error) {
+	return nil, docdom.DocChange{}, docdom.ErrDocNotFound
 }
 func (f *fakeDocSvc) DeleteDocument(_ context.Context, _, _ uuid.UUID) error { return nil }
 
