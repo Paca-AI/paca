@@ -338,6 +338,13 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 			d.Content = *in.Content
 			change.Content = true
 		}
+		// A locked managed copy changes content and title only through a
+		// push from its own repository. Checked against the stored lock, so
+		// unlocking and editing take two writes. Moves stay allowed.
+		if d.SourceLocked && (change.Content || change.Title) &&
+			(in.Source == nil || d.Source == nil || in.Source.Repository != d.Source.Repository) {
+			return docdom.ErrDocLocked
+		}
 		if in.FolderID != nil && !sameFolder(*in.FolderID, d.FolderID) {
 			d.FolderID = *in.FolderID
 			change.Folder = true
@@ -350,6 +357,13 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 			src := *in.Source
 			d.Source = &src
 			change.Source = true
+		}
+		if in.Lock != nil && *in.Lock != d.SourceLocked {
+			if *in.Lock && d.Source == nil {
+				return docdom.ErrDocLockNeedsSource
+			}
+			d.SourceLocked = *in.Lock
+			change.Lock = true
 		}
 		if !change.Any() {
 			return docdom.ErrNoChange

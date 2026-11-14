@@ -480,6 +480,7 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 		Position:  req.Position,
 		UpdatedBy: updatedBy,
 		IfMatch:   ifMatch,
+		Lock:      req.SourceLocked,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -491,7 +492,7 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 	// not stored, so it records no activity (and so publishes no doc.updated
 	// event) and notifies no one.
 	if updatedBy != nil && oldDoc != nil && change.Any() {
-		changes := docChangedFields(oldDoc, req, change)
+		changes := docChangedFields(oldDoc, d, change)
 		if len(changes) > 0 {
 			content, _ := json.Marshal(map[string]any{"changes": changes})
 			_ = h.activitySvc.RecordActivity(r.Context(), docdom.RecordActivityInput{
@@ -800,29 +801,29 @@ func parseDocCommentID(r *http.Request) (uuid.UUID, error) {
 // =============================================================================
 
 // docChangedFields returns a FieldChange for each field the service reports
-// changed, with the old value from old and the new one from the request.
-// Content counts as changed only when its content hash did (change.Content),
-// never because the JSON bytes differ.
-func docChangedFields(old *docdom.Document, req dto.UpdateDocumentRequest, change docdom.DocChange) []docdom.FieldChange {
+// changed, with the old value from old and the new one from the stored
+// document cur. Content counts as changed only when its content hash did
+// (change.Content), never because the JSON bytes differ. A source change alone
+// is not listed (it records no activity); a lock change is.
+func docChangedFields(old, cur *docdom.Document, change docdom.DocChange) []docdom.FieldChange {
 	var changes []docdom.FieldChange
 
-	if change.Title && req.Title != nil {
-		changes = append(changes, docdom.FieldChange{Field: "title", Old: old.Title, New: strings.TrimSpace(*req.Title)})
+	if change.Title {
+		changes = append(changes, docdom.FieldChange{Field: "title", Old: old.Title, New: cur.Title})
 	}
 
-	if change.Content && req.Content.Set {
-		changes = append(changes, docdom.FieldChange{Field: "content", Old: old.Content, New: req.Content.Value})
+	if change.Content {
+		changes = append(changes, docdom.FieldChange{Field: "content", Old: old.Content, New: cur.Content})
 	}
 
-	if change.Folder && req.FolderID.Set {
-		oldVal := uuidPtrToStr(old.FolderID)
-		newVal := ""
-		if req.FolderID.Value != nil {
-			newVal = req.FolderID.Value.String()
-		}
-		if oldVal != newVal {
+	if change.Folder {
+		if oldVal, newVal := uuidPtrToStr(old.FolderID), uuidPtrToStr(cur.FolderID); oldVal != newVal {
 			changes = append(changes, docdom.FieldChange{Field: "folder_id", Old: oldVal, New: newVal})
 		}
+	}
+
+	if change.Lock {
+		changes = append(changes, docdom.FieldChange{Field: "source_locked", Old: old.SourceLocked, New: cur.SourceLocked})
 	}
 
 	return changes

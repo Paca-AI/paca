@@ -23,6 +23,14 @@ var (
 	// *VersionConflictError, which matches it with errors.Is.
 	ErrVersionConflict = errors.New("document: version conflict")
 
+	// ErrDocLocked means the document is a locked managed copy and the write
+	// would change its content or title without naming its repository as
+	// the source.
+	ErrDocLocked = errors.New("document: locked managed copy; edit it in its repository")
+	// ErrDocLockNeedsSource means a write asked to lock a document that has
+	// no source: only a managed copy can be locked.
+	ErrDocLockNeedsSource = errors.New("document: only a document with a source can be locked")
+
 	// ErrInvalidCursor is returned when a client-supplied tree-listing cursor
 	// cannot be decoded.
 	ErrInvalidCursor = errors.New("doc: invalid pagination cursor")

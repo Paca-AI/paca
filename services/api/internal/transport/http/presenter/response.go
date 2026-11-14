@@ -419,6 +419,10 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeDocNotFound
 	case errors.Is(err, docdom.ErrDocTitleInvalid):
 		return http.StatusBadRequest, apierr.CodeDocTitleInvalid
+	case errors.Is(err, docdom.ErrDocLocked):
+		return http.StatusConflict, apierr.CodeDocLocked
+	case errors.Is(err, docdom.ErrDocLockNeedsSource):
+		return http.StatusBadRequest, apierr.CodeDocLockNeedsSource
 	case errors.Is(err, docdom.ErrFolderNotFound):
 		return http.StatusNotFound, apierr.CodeDocFolderNotFound
 	case errors.Is(err, docdom.ErrFolderNameInvalid):

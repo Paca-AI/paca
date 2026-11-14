@@ -67,6 +67,9 @@ type UpdateDocumentRequest struct {
 	Content  OptionalJSON `json:"content"`
 	FolderID OptionalUUID `json:"folder_id"`
 	Position *int         `json:"position"`
+	// SourceLocked locks (true) or unlocks (false) a managed copy. The source
+	// itself is set only by a push to the document's path.
+	SourceLocked *bool `json:"source_locked"`
 }
 
 // DocumentResponse is the full public representation of a document (including content).
