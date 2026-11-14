@@ -743,6 +743,68 @@ describe("edit_doc", () => {
 		expect(text(res)).toMatch(/push it/);
 	});
 
+	it("old_string equal to new_string writes nothing", async () => {
+		const { c } = setup();
+		const res = await call(
+			"edit_doc",
+			{ projectId: "p1", path: "Spec", old_string: "Paragraph 2", new_string: "Paragraph 2" },
+			c,
+		);
+		expect(res.isError).toBeFalsy();
+		expect(text(res)).toMatch(/nothing changed/i);
+		expect(c.docClient.patchDocument).not.toHaveBeenCalled();
+	});
+
+	it("old_string ambiguous after the re-read carries the other writer's details", async () => {
+		const { doc, c } = setup();
+		const newer = docOf("e1", "Spec", `${TEN}\n\nParagraph 2 text. again`);
+		c.docClient.getByPath
+			.mockResolvedValueOnce({ status: "found", doc, etag: '"a"' })
+			.mockResolvedValueOnce({ status: "found", doc: newer, etag: '"b"' });
+		c.docClient.patchDocument.mockRejectedValueOnce(
+			new PacaAPIError("conflict", 412, "VERSION_CONFLICT", {
+				updated_by: "u7",
+				updated_at: "2026-11-14T10:06:00Z",
+				note: "copied paragraph 2",
+				client: "claude-code/s3",
+				task: "PACA-91",
+			}),
+		);
+		const res = await call(
+			"edit_doc",
+			{ projectId: "p1", path: "Spec", old_string: "Paragraph 2 text.", new_string: "x" },
+			c,
+		);
+		expect(res.isError).toBe(true);
+		const out = text(res);
+		for (const s of ["2 times", "u7", "2026-11-14T10:06:00Z", "copied paragraph 2", "claude-code/s3", "PACA-91"]) {
+			expect(out).toContain(s);
+		}
+	});
+
+	it("409 DOC_LOCKED after the read names the repository file from a fresh read", async () => {
+		const { doc, c } = setup();
+		const locked = {
+			...doc,
+			source: { repository: "paca", path: "docs/spec.md" },
+			source_locked: true,
+		};
+		c.docClient.getByPath
+			.mockResolvedValueOnce({ status: "found", doc, etag: '"a"' })
+			.mockResolvedValueOnce({ status: "found", doc: locked, etag: '"b"' });
+		c.docClient.patchDocument.mockRejectedValue(
+			new PacaAPIError("locked", 409, "DOC_LOCKED"),
+		);
+		const res = await call(
+			"edit_doc",
+			{ projectId: "p1", path: "Spec", old_string: "Paragraph 2", new_string: "x" },
+			c,
+		);
+		expect(res.isError).toBe(true);
+		expect(c.docClient.patchDocument).toHaveBeenCalledTimes(1);
+		expect(text(res)).toContain("docs/spec.md in paca");
+	});
+
 	it("an unlocked managed copy is edited and the reply warns about the next push", async () => {
 		const { doc, c } = setup({
 			source: { repository: "paca", path: "docs/spec.md" },

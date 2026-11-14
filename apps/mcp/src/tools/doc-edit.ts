@@ -586,6 +586,11 @@ async function describeWriter(
  * copy was locked since the read) is not retried.
  */
 export async function editDocument(deps: EditDeps, edit: EditRequest) {
+	if (edit.oldString === edit.newString) {
+		return toolText(
+			"old_string and new_string are the same, so nothing changed and nothing was written.",
+		);
+	}
 	let conflict: Record<string, string> | undefined;
 	for (let attempt = 1; attempt <= 2; attempt++) {
 		const loaded = await deps.load();
@@ -606,6 +611,12 @@ export async function editDocument(deps: EditDeps, edit: EditRequest) {
 			if (conflict && err.kind === "not_found") {
 				return toolText(
 					`old_string is no longer in the document: someone changed it after you read it, and nothing was written. ${await describeWriter(conflict, deps)} Read the section again with read_doc and decide how to redo the edit.`,
+					true,
+				);
+			}
+			if (conflict) {
+				return toolText(
+					`Someone changed the document after you read it, and in their version: ${err.message} Nothing was written. ${await describeWriter(conflict, deps)} Read the section again with read_doc and redo the edit.`,
 					true,
 				);
 			}
@@ -630,7 +641,10 @@ export async function editDocument(deps: EditDeps, edit: EditRequest) {
 				err.status === 409 &&
 				err.code === "DOC_LOCKED"
 			) {
-				return toolText(lockedMessage(doc), true);
+				// Locked since the read: read it again for the repository file.
+				const fresh = await deps.load().catch(() => null);
+				const current = fresh && !("error" in fresh) ? fresh.doc : doc;
+				return toolText(lockedMessage(current), true);
 			}
 			throw err;
 		}
