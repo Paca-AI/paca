@@ -2,10 +2,13 @@ package dto
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
+	"github.com/Paca-AI/api/internal/apierr"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 )
 
@@ -59,6 +62,54 @@ type CreateDocumentRequest struct {
 	Title    string          `json:"title"`
 	FolderID *uuid.UUID      `json:"folder_id"`
 	Content  json.RawMessage `json:"content"`
+	WriteNote
+}
+
+// Limits on a write's note, client label and task reference, in characters.
+const (
+	MaxWriteNoteLen   = 500
+	MaxWriteClientLen = 200
+	MaxWriteTaskLen   = 50
+)
+
+// WriteNote is the optional plain text a document write carries: why it was
+// made (Note), what made it (Client, an opaque label such as
+// "claude-code/<session>", never used for authorization) and the task it
+// belongs to (Task, free text such as "PACA-88"). It is stored with the
+// write's activity entry.
+type WriteNote struct {
+	Note   string `json:"note"`
+	Client string `json:"client"`
+	Task   string `json:"task"`
+}
+
+// Validate checks the length limits.
+func (n WriteNote) Validate() error {
+	for _, f := range []struct {
+		name, value string
+		max         int
+	}{{"note", n.Note, MaxWriteNoteLen}, {"client", n.Client, MaxWriteClientLen}, {"task", n.Task, MaxWriteTaskLen}} {
+		if utf8.RuneCountInString(f.value) > f.max {
+			return apierr.New(apierr.CodeDocNoteInvalid, fmt.Sprintf("%s: at most %d characters", f.name, f.max))
+		}
+	}
+	return nil
+}
+
+// Fields returns the non-empty values keyed by their JSON names, for an
+// activity entry's content.
+func (n WriteNote) Fields() map[string]string {
+	out := map[string]string{}
+	if n.Note != "" {
+		out["note"] = n.Note
+	}
+	if n.Client != "" {
+		out["client"] = n.Client
+	}
+	if n.Task != "" {
+		out["task"] = n.Task
+	}
+	return out
 }
 
 // UpdateDocumentRequest is the body for PATCH /projects/:projectId/docs/:docId.
@@ -70,6 +121,7 @@ type UpdateDocumentRequest struct {
 	// SourceLocked locks (true) or unlocks (false) a managed copy. The source
 	// itself is set only by a push to the document's path.
 	SourceLocked *bool `json:"source_locked"`
+	WriteNote
 }
 
 // PutDocumentByPathRequest is the body for PUT /projects/:projectId/docs/by-path.
@@ -82,6 +134,7 @@ type PutDocumentByPathRequest struct {
 	Source *DocSourceRequest `json:"source"`
 	// Lock sets source_locked; locking needs Source.
 	Lock *bool `json:"lock"`
+	WriteNote
 }
 
 // DocSourceRequest is the source a by-path write sets.

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -390,6 +389,10 @@ func (h *DocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Request)
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	if err := req.Validate(); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	if err := dto.ValidateBlockNoteContent(req.Content); err != nil {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "content: "+err.Error()))
 		return
@@ -414,14 +417,7 @@ func (h *DocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Request)
 
 	// Record creation activity (best-effort).
 	if createdBy != nil {
-		content, _ := json.Marshal(map[string]string{"title": d.Title})
-		_ = h.activitySvc.RecordActivity(r.Context(), docdom.RecordActivityInput{
-			DocumentID:   d.ID,
-			ProjectID:    projectID,
-			ActorID:      createdBy,
-			ActivityType: docdom.ActivityTypeDocCreated,
-			Content:      content,
-		})
+		h.recordDocCreated(r.Context(), projectID, d, *createdBy, req.WriteNote)
 	}
 
 	w.Header().Set("ETag", docETag(d))
@@ -459,6 +455,10 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	if err := req.Validate(); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	if req.Content.Set && req.Content.Value != nil {
 		if err := dto.ValidateBlockNoteContent(req.Content.Value); err != nil {
 			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "content: "+err.Error()))
@@ -484,7 +484,7 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 		Lock:      req.SourceLocked,
 	})
 	if err != nil {
-		presenter.Error(w, r, err)
+		presenter.Error(w, r, h.withLastNote(r.Context(), projectID, docID, err))
 		return
 	}
 	w.Header().Set("ETag", docETag(d))
@@ -493,26 +493,7 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 	// not stored, so it records no activity (and so publishes no doc.updated
 	// event) and notifies no one.
 	if updatedBy != nil && oldDoc != nil && change.Any() {
-		changes := docChangedFields(oldDoc, d, change)
-		if len(changes) > 0 {
-			content, _ := json.Marshal(map[string]any{"changes": changes})
-			_ = h.activitySvc.RecordActivity(r.Context(), docdom.RecordActivityInput{
-				DocumentID:   docID,
-				ProjectID:    oldDoc.ProjectID,
-				ActorID:      updatedBy,
-				ActivityType: docdom.ActivityTypeDocUpdated,
-				Content:      content,
-			})
-		}
-
-		// Publish a plugin event for each user newly @mentioned in the
-		// content (no in-app row — see notificationSvc.NotifyDocMentioned's
-		// doc comment).
-		if h.notificationSvc != nil && change.Content && req.Content.Value != nil {
-			for _, mentionedID := range newlyMentionedUserIDs(oldDoc.Content, req.Content.Value) {
-				h.notificationSvc.NotifyDocMentioned(r.Context(), mentionedID, *updatedBy, oldDoc.ProjectID, docID)
-			}
-		}
+		h.recordDocUpdate(r.Context(), oldDoc.ProjectID, oldDoc, d, req.Content.Value, change, *updatedBy, req.WriteNote)
 	}
 
 	presenter.OK(w, r, dto.DocumentFromEntity(d))

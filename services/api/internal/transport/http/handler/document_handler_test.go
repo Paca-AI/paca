@@ -104,6 +104,8 @@ type fakeDocActivitySvc struct {
 	pageCursor *string
 	pageLimit  int
 	recorded   []docdom.RecordActivityInput
+	// list, when set, is the page ListActivities returns.
+	list []*docdom.Activity
 }
 
 func (f *fakeDocActivitySvc) RecordActivity(_ context.Context, in docdom.RecordActivityInput) error {
@@ -112,6 +114,9 @@ func (f *fakeDocActivitySvc) RecordActivity(_ context.Context, in docdom.RecordA
 }
 func (f *fakeDocActivitySvc) ListActivities(_ context.Context, _, _ uuid.UUID, cursor *string, limit int) ([]*docdom.Activity, *string, error) {
 	f.pageCursor, f.pageLimit = cursor, limit
+	if f.list != nil {
+		return f.list, nil, nil
+	}
 	next := "next-page"
 	return []*docdom.Activity{{ID: uuid.New()}}, &next, nil
 }

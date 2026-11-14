@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -108,6 +109,10 @@ func (h *DocumentHandler) PutDocumentByPath(w http.ResponseWriter, r *http.Reque
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	if err := req.Validate(); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	if len(req.Content) == 0 || string(req.Content) == "null" {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "content is required"))
 		return
@@ -142,6 +147,9 @@ func (h *DocumentHandler) PutDocumentByPath(w http.ResponseWriter, r *http.Reque
 		},
 	})
 	if err != nil {
+		if oldDoc != nil {
+			err = h.withLastNote(r.Context(), projectID, oldDoc.ID, err)
+		}
 		presenter.Error(w, r, err)
 		return
 	}
@@ -150,13 +158,9 @@ func (h *DocumentHandler) PutDocumentByPath(w http.ResponseWriter, r *http.Reque
 	if actor != nil {
 		switch {
 		case created:
-			content, _ := json.Marshal(map[string]any{"title": d.Title})
-			_ = h.activitySvc.RecordActivity(r.Context(), docdom.RecordActivityInput{
-				DocumentID: d.ID, ProjectID: projectID, ActorID: actor,
-				ActivityType: docdom.ActivityTypeDocCreated, Content: content,
-			})
+			h.recordDocCreated(r.Context(), projectID, d, *actor, req.WriteNote)
 		case oldDoc != nil && change.Any():
-			h.recordDocUpdate(r.Context(), projectID, oldDoc, d, change, *actor)
+			h.recordDocUpdate(r.Context(), projectID, oldDoc, d, d.Content, change, *actor, req.WriteNote)
 		}
 	}
 
@@ -193,21 +197,105 @@ func (h *DocumentHandler) authorizeDocWrite(ctx context.Context, p iam.Principal
 	return nil
 }
 
-// recordDocUpdate records the doc.updated activity of a write (none for a
-// source-only change) and notifies people newly @mentioned in new content.
-func (h *DocumentHandler) recordDocUpdate(ctx context.Context, projectID uuid.UUID, oldDoc, d *docdom.Document, change docdom.DocChange, actor uuid.UUID) {
+// recordDocCreated records the doc.created activity of a new document, with
+// the write's note, client label and task reference.
+func (h *DocumentHandler) recordDocCreated(ctx context.Context, projectID uuid.UUID, d *docdom.Document, actor uuid.UUID, note dto.WriteNote) {
+	content, _ := json.Marshal(activityContent(note, "title", d.Title))
+	_ = h.activitySvc.RecordActivity(ctx, docdom.RecordActivityInput{
+		DocumentID: d.ID, ProjectID: projectID, ActorID: &actor,
+		ActivityType: docdom.ActivityTypeDocCreated, Content: content,
+	})
+}
+
+// recordDocUpdate records the doc.updated activity of a write, with its note,
+// client label and task reference (no entry, so no note, for a source-only
+// change), and notifies people newly @mentioned in newContent (the content
+// the write sent).
+func (h *DocumentHandler) recordDocUpdate(ctx context.Context, projectID uuid.UUID, oldDoc, d *docdom.Document, newContent json.RawMessage, change docdom.DocChange, actor uuid.UUID, note dto.WriteNote) {
 	if changes := docChangedFields(oldDoc, d, change); len(changes) > 0 {
-		content, _ := json.Marshal(map[string]any{"changes": changes})
+		content, _ := json.Marshal(activityContent(note, "changes", changes))
 		_ = h.activitySvc.RecordActivity(ctx, docdom.RecordActivityInput{
 			DocumentID: d.ID, ProjectID: projectID, ActorID: &actor,
 			ActivityType: docdom.ActivityTypeDocUpdated, Content: content,
 		})
 	}
-	if h.notificationSvc != nil && change.Content {
-		for _, mentionedID := range newlyMentionedUserIDs(oldDoc.Content, d.Content) {
+	if h.notificationSvc != nil && change.Content && newContent != nil {
+		for _, mentionedID := range newlyMentionedUserIDs(oldDoc.Content, newContent) {
 			h.notificationSvc.NotifyDocMentioned(ctx, mentionedID, actor, projectID, d.ID)
 		}
 	}
+}
+
+// activityContent is an activity entry's content: key: value plus the
+// write's non-empty note, client and task.
+func activityContent(note dto.WriteNote, key string, value any) map[string]any {
+	out := map[string]any{key: value}
+	for k, v := range note.Fields() {
+		out[k] = v
+	}
+	return out
+}
+
+// lastNotePages bounds how far back withLastNote looks for the write that
+// stored the current content.
+const lastNotePages = 3
+
+// withLastNote adds to a version conflict what the write that stored the
+// current content said about itself: the note, client and task of the
+// document's newest doc.created entry or doc.updated entry with a content
+// change. Any other error is returned as it is. Best effort: a failed lookup
+// leaves them empty.
+func (h *DocumentHandler) withLastNote(ctx context.Context, projectID, docID uuid.UUID, err error) error {
+	var conflict *docdom.VersionConflictError
+	if !errors.As(err, &conflict) || conflict.CurrentHash == "" {
+		return err
+	}
+	var cursor *string
+	for range lastNotePages {
+		page, next, lerr := h.activitySvc.ListActivities(ctx, projectID, docID, cursor, 50)
+		if lerr != nil {
+			return err
+		}
+		for _, a := range page {
+			if n, ok := contentWriteNote(a); ok {
+				conflict.Note, conflict.Client, conflict.Task = n.Note, n.Client, n.Task
+				return err
+			}
+		}
+		if next == nil {
+			return err
+		}
+		cursor = next
+	}
+	return err
+}
+
+// contentWriteNote reports whether the entry stored content (a doc.created entry, or
+// a doc.updated entry with a content change) and returns its note.
+func contentWriteNote(a *docdom.Activity) (dto.WriteNote, bool) {
+	var c struct {
+		dto.WriteNote
+		Changes []struct {
+			Field string `json:"field"`
+		} `json:"changes"`
+	}
+	switch a.ActivityType {
+	case docdom.ActivityTypeDocCreated:
+	case docdom.ActivityTypeDocUpdated:
+		if json.Unmarshal(a.Content, &c) != nil {
+			return dto.WriteNote{}, false
+		}
+		for _, ch := range c.Changes {
+			if ch.Field == "content" {
+				return c.WriteNote, true
+			}
+		}
+		return dto.WriteNote{}, false
+	default:
+		return dto.WriteNote{}, false
+	}
+	_ = json.Unmarshal(a.Content, &c)
+	return c.WriteNote, true
 }
 
 func docResource(projectID, docID uuid.UUID) string {

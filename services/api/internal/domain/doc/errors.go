@@ -64,6 +64,9 @@ type VersionConflictError struct {
 	CurrentHash string
 	UpdatedAt   time.Time
 	UpdatedBy   *uuid.UUID // project member; nil when unknown
+	// Note, Client and Task are what the write that stored the current
+	// content said about itself (empty when it said nothing).
+	Note, Client, Task string
 }
 
 func (e *VersionConflictError) Error() string { return ErrVersionConflict.Error() }

@@ -245,6 +245,9 @@ const (
 	// CodeDocSourceInvalid indicates a source without a repository or path,
 	// or with a field over 500 characters.
 	CodeDocSourceInvalid Code = "DOC_SOURCE_INVALID"
+	// CodeDocNoteInvalid indicates a write's note, client label or task
+	// reference is longer than its limit.
+	CodeDocNoteInvalid Code = "DOC_NOTE_INVALID"
 	// CodeDocFolderNotFound indicates the requested document folder does not exist.
 	CodeDocFolderNotFound Code = "DOC_FOLDER_NOT_FOUND"
 	// CodeDocFolderNameInvalid indicates an empty or invalid folder name.

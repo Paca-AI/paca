@@ -132,6 +132,11 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		if docConflict.UpdatedBy != nil {
 			details["updated_by"] = docConflict.UpdatedBy.String()
 		}
+		for k, v := range map[string]string{"note": docConflict.Note, "client": docConflict.Client, "task": docConflict.Task} {
+			if v != "" {
+				details[k] = v
+			}
+		}
 	}
 	var fieldErr *agentdom.FieldNotSupportedError
 	if details == nil && errors.As(err, &fieldErr) {
@@ -769,6 +774,7 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeDocActivityNotFound:
 		return http.StatusNotFound
 	case apierr.CodeDocTitleInvalid,
+		apierr.CodeDocNoteInvalid,
 		apierr.CodeDocFolderNameInvalid,
 		apierr.CodeDocFolderNotInProject,
 		apierr.CodeDocFolderSelfParent,
