@@ -366,6 +366,119 @@ test.describe("Managed copies", () => {
 		).not.toContain("lost-edit");
 	});
 
+	test("locking with an unsaved edit takes one click and keeps the edit", async ({
+		page,
+		request,
+	}) => {
+		const projectId = await newProject(request, "LOCKSAVE");
+		const copy = await pushCopy(request, projectId, "Plan", { lock: false });
+
+		await signIn(page);
+		await page.goto(`${BASE_URL}/projects/${projectId}/docs/${copy.id}`);
+		await expect(editorOf(page)).toContainText("Pushed text", {
+			timeout: 20_000,
+		});
+		await expectEditable(page, true);
+
+		// Hold the content save, and note the order the page sends its writes.
+		const sent: ("content" | "lock")[] = [];
+		const held: (() => Promise<void>)[] = [];
+		await page.route(
+			`**/api/v1/projects/${projectId}/docs/${copy.id}`,
+			async (route) => {
+				const req = route.request();
+				const body = req.postData() ?? "";
+				if (req.method() !== "PATCH") return route.continue();
+				if (body.includes('"source_locked"')) {
+					sent.push("lock");
+					return route.continue();
+				}
+				if (!body.includes('"content"')) return route.continue();
+				sent.push("content");
+				held.push(() => route.continue());
+			},
+		);
+
+		await typeAtEnd(page, " kept-edit");
+
+		// Press on Lock: the editor loses focus and saves. Release only once
+		// that save is in flight, as a person's click does.
+		const lock = banner(page).getByRole("button", { name: "Lock" });
+		const box = await lock.boundingBox();
+		if (!box) throw new Error("Lock button is not on screen");
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await expect.poll(() => held.length, { timeout: 10_000 }).toBe(1);
+		await page.mouse.up();
+
+		// The lock waits for the save instead of racing it.
+		await page.waitForTimeout(500);
+		expect(sent).toEqual(["content"]);
+		for (const go of held.splice(0)) await go();
+
+		await expect(banner(page)).toContainText(LOCKED_TEXT, { timeout: 15_000 });
+		await expectEditable(page, false);
+		expect(sent).toEqual(["content", "lock"]);
+		await expect(page.getByText(NOT_SAVED_TEXT)).toHaveCount(0);
+		await expect(editorOf(page)).toContainText("kept-edit");
+		const stored = await readDoc(request, projectId, copy.id);
+		expect(JSON.stringify(stored.content)).toContain("kept-edit");
+	});
+
+	test("a locked managed copy offers no Revert in its activity", async ({
+		page,
+		request,
+	}) => {
+		const projectId = await newProject(request, "REVERT");
+		await pushCopy(request, projectId, "Plan", { lock: false });
+		// A second push changes the content, which records a revertable entry.
+		const copy = await pushCopy(request, projectId, "Plan", {
+			lock: false,
+			text: "Second push",
+		});
+		await setLock(request, projectId, copy.id, true);
+
+		await signIn(page);
+		await page.goto(`${BASE_URL}/projects/${projectId}/docs/${copy.id}`);
+		await expect(banner(page)).toContainText(LOCKED_TEXT, { timeout: 20_000 });
+
+		const openEntryMenu = async () => {
+			const entry = page.getByText("updated content", { exact: true }).first();
+			await expect(entry).toBeVisible({ timeout: 15_000 });
+			const trigger = entry
+				.locator(
+					"xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]",
+				)
+				.getByRole("button", { name: "Entry actions" });
+			await expect(async () => {
+				await trigger.focus();
+				await page.keyboard.press("Enter");
+				await expect(page.getByRole("menuitem").first()).toBeVisible({
+					timeout: 2_000,
+				});
+			}).toPass({ timeout: 15_000 });
+		};
+
+		await page.getByRole("button", { name: "Comments & activity" }).click();
+		await page
+			.getByRole("button", { name: "All activity", exact: true })
+			.click();
+		await openEntryMenu();
+		await expect(
+			page.getByRole("menuitem", { name: "View diff" }),
+		).toBeVisible();
+		await expect(page.getByRole("menuitem", { name: "Revert" })).toHaveCount(0);
+		await page.keyboard.press("Escape");
+
+		// Unlocked, the same entry can be reverted again.
+		await banner(page).getByRole("button", { name: "Unlock" }).click();
+		await expect(banner(page)).toContainText(UNLOCKED_TEXT, {
+			timeout: 15_000,
+		});
+		await openEntryMenu();
+		await expect(page.getByRole("menuitem", { name: "Revert" })).toBeVisible();
+	});
+
 	test("a locked document cannot be renamed from the tree but can be moved", async ({
 		page,
 		request,

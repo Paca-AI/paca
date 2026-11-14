@@ -47,6 +47,20 @@ Feature: Managed document copies
       And the editor is read-only and shows the stored content
       And the save is not sent again
 
+    Scenario: Locking with an unsaved edit takes one click and keeps the edit
+      Given an unlocked managed copy is open with an unsaved edit
+      When the user clicks "Lock"
+      Then the edit is saved before the lock is sent
+      And the banner says the copy is locked
+      And the stored document contains the edit
+
+    Scenario: A locked managed copy offers no Revert in its activity
+      Given a locked managed copy whose content was changed by a push
+      When the user opens an "updated content" entry's actions
+      Then "View diff" is offered and "Revert" is not
+      When the user clicks "Unlock"
+      Then "Revert" is offered again
+
     Scenario: A locked document cannot be renamed from the tree but can be moved
       Given a locked managed copy inside the folder "Guides"
       When the user opens the document options in the tree

@@ -111,12 +111,16 @@ interface DocActivityPaneProps {
 	projectId: string;
 	docId: string;
 	canEdit?: boolean;
+	/** Whether a past version may be restored. False on a locked managed copy:
+	 *  the lock covers content and title, not comments. Defaults to `canEdit`. */
+	canRevert?: boolean;
 }
 
 export function DocActivityPane({
 	projectId,
 	docId,
 	canEdit = true,
+	canRevert = canEdit,
 }: DocActivityPaneProps) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -207,9 +211,9 @@ export function DocActivityPane({
 					? (commentId) => deleteDocComment(projectId, docId, commentId)
 					: undefined
 			}
-			onRevert={canEdit ? handleRevert : undefined}
+			onRevert={canRevert ? handleRevert : undefined}
 			getDiffContent={getDiffContent}
-			isRevertable={canEdit ? isRevertable : undefined}
+			isRevertable={canRevert ? isRevertable : undefined}
 			describeActivity={(entry) => describeDocActivity(entry, t)}
 			describeActivityDetail={(entry) => {
 				const note = getDocActivityNote(entry);

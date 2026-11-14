@@ -82,6 +82,8 @@ function DocEditorPage() {
 		setDirtyState(value);
 	}, []);
 	const editorRef = useRef<DocEditorHandle>(null);
+	// The content save still in flight, if any (never rejects).
+	const saveInFlightRef = useRef<Promise<void> | null>(null);
 	const docIdRef = useRef(docId);
 	docIdRef.current = docId;
 
@@ -161,8 +163,14 @@ function DocEditorPage() {
 	});
 
 	const lockMutation = useMutation({
-		mutationFn: (sourceLocked: boolean) =>
-			updateDocument(projectId, docId, { source_locked: sourceLocked }),
+		// Clicking Lock blurs the editor, which saves. The lock waits for that
+		// save, or the server could apply the lock first and refuse the edit.
+		mutationFn: async (sourceLocked: boolean) => {
+			await saveInFlightRef.current;
+			return updateDocument(projectId, docId, {
+				source_locked: sourceLocked,
+			});
+		},
 		onSuccess: (updated) => {
 			qc.setQueryData(docQueryKeys.detail(projectId, docId), updated);
 			// The tree shows a lock glyph on locked copies.
@@ -184,7 +192,20 @@ function DocEditorPage() {
 	const handleContentSave = useCallback(
 		(blocks: unknown[] | null) => {
 			setDirty(false);
-			updateMutation.mutate({ docId, content: blocks });
+			// Errors are handled by the mutation's onError; this promise only
+			// tells the lock when the save has settled.
+			const settled = updateMutation
+				.mutateAsync({ docId, content: blocks })
+				.then(
+					() => undefined,
+					() => undefined,
+				)
+				.finally(() => {
+					if (saveInFlightRef.current === settled) {
+						saveInFlightRef.current = null;
+					}
+				});
+			saveInFlightRef.current = settled;
 		},
 		[updateMutation, setDirty, docId],
 	);
@@ -315,9 +336,7 @@ function DocEditorPage() {
 								locked={locked}
 								canWrite={canWrite}
 								onToggleLock={(next) => lockMutation.mutate(next)}
-								// Clicking Lock blurs the editor, which saves: let that save
-								// land first, or the lock could refuse it.
-								pending={lockMutation.isPending || updateMutation.isPending}
+								pending={lockMutation.isPending}
 							/>
 						)}
 						{doc && (
@@ -366,6 +385,8 @@ function DocEditorPage() {
 						projectId={projectId}
 						docId={docId}
 						canEdit={canWrite}
+						// The lock covers content and title; comments stay open.
+						canRevert={canWrite && !locked}
 					/>
 				)}
 			</div>
