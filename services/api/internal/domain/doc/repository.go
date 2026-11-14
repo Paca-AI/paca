@@ -75,9 +75,11 @@ type DocumentRepository interface {
 	ListAllDocuments(ctx context.Context, projectID uuid.UUID) ([]*Document, error)
 	// SearchDocuments returns up to limit non-deleted documents of a project
 	// whose title OR body text contains query (case-insensitive, matched
-	// literally). Body text means the inline "text" nodes of the BlockNote
-	// JSON, not its structural keys. Results include Content so the caller can
-	// build snippets; ordered updated_at DESC, id ASC.
+	// literally). Body text is documents.content_text (ContentText: one line
+	// per block, a block's inline runs joined, so a phrase across formatting
+	// matches); a row not backfilled yet (content_text NULL) is matched
+	// against each "text" string of its JSON instead. Results include Content
+	// so the caller can build snippets; ordered updated_at DESC, id ASC.
 	SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]*Document, error)
 	// FindDocumentByID returns a single non-deleted document.
 	FindDocumentByID(ctx context.Context, id uuid.UUID) (*Document, error)

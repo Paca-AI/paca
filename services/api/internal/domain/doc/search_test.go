@@ -96,3 +96,13 @@ func TestNewSearchHit_LongBlockSnippetIsTrimmed(t *testing.T) {
 		t.Fatalf("snippet reaches into another block: %q", h.Snippet)
 	}
 }
+
+// Content that is not BlockNote's top-level array has lines that are not
+// blocks, so its hits carry an excerpt but no block.
+func TestNewSearchHit_NonArrayContentHasNoBlock(t *testing.T) {
+	content := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"pm shape here"}]}]}`)
+	h := NewSearchHit(&Document{ID: uuid.New(), Title: "x", Content: content}, "shape")
+	if h.MatchedIn != SearchMatchContent || h.Block != 0 || h.Snippet != "pm shape here" {
+		t.Fatalf("hit = %+v, want a content match with the excerpt and no block", h)
+	}
+}

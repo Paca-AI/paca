@@ -1,7 +1,9 @@
 package docdom
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"strings"
 )
 
@@ -21,16 +23,92 @@ import (
 // "children"), not by an "id": the web editor saves blocks without ids.
 // Structural keys (type, props, ids) are never text. nil, null, [] and content
 // that does not parse all give "".
+//
+// The API does not require BlockNote's top-level array. Content of any other
+// shape gives every string stored under a "text" key, at any depth, in
+// document order, one per line: what search matched in such content before
+// this column existed, so no document it found becomes unfindable. Lines
+// there are not blocks.
 func ContentText(content json.RawMessage) string {
+	text, _ := contentLines(content)
+	return text
+}
+
+// contentLines is ContentText, and whether its lines are blocks (the content
+// is BlockNote's top-level array, or empty).
+func contentLines(content json.RawMessage) (string, bool) {
 	if len(content) == 0 {
-		return ""
+		return "", true
 	}
 	var blocks []any
 	if err := json.Unmarshal(content, &blocks); err != nil {
-		return ""
+		return textStrings(content), false
 	}
 	var lines []string
 	appendBlockLines(blocks, &lines)
+	return strings.Join(lines, "\n"), true
+}
+
+// SearchQuery normalizes a search query: surrounding space trimmed and line
+// breaks turned into spaces. ContentText holds one block per line, so a
+// query is matched within one line, by the SQL and by the hit builder alike.
+func SearchQuery(q string) string {
+	return strings.TrimSpace(lineBreaks.Replace(q))
+}
+
+// textStrings returns every string value under a "text" key in raw, in the
+// order it appears, one per line ("" when raw does not parse).
+func textStrings(raw json.RawMessage) string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	// Per open container: whether it is an object, and for an object whether
+	// the next token is a key.
+	type frame struct{ object, wantKey bool }
+	var (
+		stack   []frame
+		lastKey string
+		lines   []string
+	)
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if err != io.EOF {
+				return ""
+			}
+			break
+		}
+		inObject := len(stack) > 0 && stack[len(stack)-1].object
+		if inObject && stack[len(stack)-1].wantKey {
+			if d, ok := tok.(json.Delim); ok && d == '}' {
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			lastKey, _ = tok.(string)
+			stack[len(stack)-1].wantKey = false
+			continue
+		}
+		// tok is a value (or the end of an array).
+		if inObject {
+			stack[len(stack)-1].wantKey = true
+		}
+		switch v := tok.(type) {
+		case json.Delim:
+			switch v {
+			case '{':
+				stack = append(stack, frame{object: true, wantKey: true})
+			case '[':
+				stack = append(stack, frame{})
+			case ']':
+				stack = stack[:len(stack)-1]
+				if len(stack) > 0 && stack[len(stack)-1].object {
+					stack[len(stack)-1].wantKey = true
+				}
+			}
+		case string:
+			if inObject && lastKey == "text" {
+				lines = append(lines, lineBreaks.Replace(v))
+			}
+		}
+	}
 	return strings.Join(lines, "\n")
 }
 

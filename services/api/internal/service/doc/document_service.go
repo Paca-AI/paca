@@ -213,7 +213,7 @@ func (s *Service) ListDocuments(ctx context.Context, projectID uuid.UUID, filter
 
 // SearchDocuments finds documents whose title or body contains query.
 func (s *Service) SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]docdom.SearchHit, error) {
-	query = strings.TrimSpace(query)
+	query = docdom.SearchQuery(query)
 	if query == "" {
 		return nil, nil
 	}

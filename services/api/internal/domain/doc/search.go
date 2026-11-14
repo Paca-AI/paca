@@ -128,9 +128,14 @@ func NewSearchHit(d *Document, query string) SearchHit {
 	if strings.Contains(strings.ToLower(d.Title), strings.ToLower(strings.TrimSpace(query))) {
 		return SearchHit{Document: d, MatchedIn: SearchMatchTitle}
 	}
-	for i, line := range strings.Split(ContentText(d.Content), "\n") {
+	text, lineIsBlock := contentLines(d.Content)
+	for i, line := range strings.Split(text, "\n") {
 		if s := BuildSnippet(line, query); s != "" {
-			return SearchHit{Document: d, MatchedIn: SearchMatchContent, Snippet: s, Block: i + 1}
+			hit := SearchHit{Document: d, MatchedIn: SearchMatchContent, Snippet: s}
+			if lineIsBlock {
+				hit.Block = i + 1
+			}
+			return hit
 		}
 	}
 	// Matched through text ContentText leaves out (the JSON-path match of a

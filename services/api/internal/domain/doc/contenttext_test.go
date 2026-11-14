@@ -70,6 +70,15 @@ func TestContentText(t *testing.T) {
 			"Title",
 		},
 		{
+			"top level not an array: every text string, in order, one per line",
+			`{"type":"doc","content":[
+				{"type":"paragraph","content":[{"type":"text","text":"pm "},{"type":"text","text":"shape","marks":[{"type":"bold"}]}]},
+				{"type":"paragraph","attrs":{"text":"attr"},"content":[{"type":"text","text":"second\nline"}]}]}`,
+			"pm \nshape\nattr\nsecond line",
+		},
+		{"top level a bare string", `"just text"`, ""},
+		{"top level object without text", `{"type":"doc"}`, ""},
+		{
 			"plain string content",
 			`[{"type":"paragraph","content":"just a string"}]`,
 			"just a string",

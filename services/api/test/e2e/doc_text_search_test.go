@@ -327,3 +327,46 @@ func TestSearch_UsesTrigramIndexes(t *testing.T) {
 		t.Fatalf("with default settings, the plan does not use the trigram indexes:\n%s", plan)
 	}
 }
+
+// Content that is not BlockNote's top-level array (the API rejects it now,
+// but older rows can hold it) was found by its "text" strings before
+// content_text existed; it must still be found once filled.
+func TestSearch_NonArrayContentFoundAfterBackfill(t *testing.T) {
+	t.Parallel()
+	owner, _ := docFeedOwner(t, "search-non-array")
+	id := owner.createDoc("PM", nil, "placeholder")
+	clearContentText(t, owner.env, id)
+	if _, err := owner.env.db.ExecContext(owner.env.ctx,
+		`UPDATE documents SET content = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"pm shape okapi"}]}]}'::jsonb WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	// Not backfilled: found through the old JSON-path branch.
+	if hits := owner.search("shape okapi"); len(hits) != 1 || hits[0].ID != id {
+		t.Fatalf("before backfill hits = %+v", hits)
+	}
+	bf := worker.NewDocHashBackfill(pgRepo.NewDocumentRepository(owner.env.db), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := bf.Run(owner.env.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedContentText(t, owner.env, id); got == nil || *got != "pm shape okapi" {
+		t.Fatalf("content_text after backfill = %v", got)
+	}
+	hits := owner.search("shape okapi")
+	if len(hits) != 1 || hits[0].ID != id || hits[0].MatchedIn != "content" || hits[0].Block != 0 || hits[0].Snippet != "pm shape okapi" {
+		t.Fatalf("hits = %+v, want the doc with an excerpt and no block", hits)
+	}
+}
+
+// A query is matched within one line of content_text: its line breaks become
+// spaces, so the SQL and the excerpt agree.
+func TestSearch_QueryLineBreakMatchesWithinOneBlock(t *testing.T) {
+	t.Parallel()
+	owner, _ := docFeedOwner(t, "search-newline")
+	id := owner.createDoc("A", nil, "restart the worker now")
+	owner.createDocWith("B", nil, `[{"type":"paragraph","content":[{"type":"text","text":"the"}]},{"type":"paragraph","content":[{"type":"text","text":"worker"}]}]`)
+
+	hits := owner.search("the\nworker")
+	if len(hits) != 1 || hits[0].ID != id || hits[0].Block != 1 || hits[0].Snippet != "restart the worker now" {
+		t.Fatalf("hits = %+v, want only A at block 1", hits)
+	}
+}
