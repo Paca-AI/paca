@@ -1,3 +1,5 @@
+import { Worker } from "node:worker_threads";
+
 // Line-based views of a document's Markdown: outline, sections, line ranges
 // and grep matching.
 //
@@ -131,8 +133,8 @@ export function numberLines(lines: string[], first: number): string {
 
 // ── grep ──────────────────────────────────────────────────────────────────────
 
-/** Tests one line of Markdown. */
-export type LineMatcher = (line: string) => boolean;
+/** Tests one line of Markdown (`index` is its 0-based line index). */
+export type LineMatcher = (line: string, index: number) => boolean;
 
 /** Removes the `*` and `_` emphasis markers, so `foo **bar**` reads `foo bar`. */
 export function stripEmphasis(text: string): string {
@@ -157,10 +159,65 @@ export function literalMatcher(
 	};
 }
 
-/** A regular-expression matcher; throws a SyntaxError for an invalid pattern. */
-export function regexMatcher(pattern: string, ignoreCase = false): LineMatcher {
-	const re = new RegExp(pattern, ignoreCase ? "i" : "");
-	return (line) => re.test(line);
+/** Thrown when a regular expression ran past its time limit. */
+export class RegexTimeoutError extends Error {
+	constructor(readonly ms: number) {
+		super(`the regular expression took longer than ${ms} ms`);
+		this.name = "RegexTimeoutError";
+	}
+}
+
+// Runs in a worker thread, so a pattern that backtracks for hours can be
+// stopped: the MCP process itself is single-threaded.
+const REGEX_WORKER = `
+const { parentPort, workerData } = require("node:worker_threads");
+const re = new RegExp(workerData.pattern, workerData.flags);
+const out = workerData.texts.map((text) => {
+	const hits = [];
+	const lines = text.split("\\n");
+	for (let i = 0; i < lines.length; i++) if (re.test(lines[i])) hits.push(i);
+	return hits;
+});
+parentPort.postMessage(out);
+`;
+
+/**
+ * The 0-based indexes of the lines of each text that match `pattern`,
+ * computed in a worker thread that is terminated after `timeoutMs` (then a
+ * RegexTimeoutError is thrown). An invalid pattern throws a SyntaxError
+ * before any worker starts.
+ */
+export async function regexLineHits(
+	pattern: string,
+	ignoreCase: boolean,
+	texts: string[],
+	timeoutMs = 2000,
+): Promise<number[][]> {
+	const flags = ignoreCase ? "i" : "";
+	new RegExp(pattern, flags); // compiling never backtracks: syntax check only
+	if (texts.length === 0) return [];
+	const worker = new Worker(REGEX_WORKER, {
+		eval: true,
+		workerData: { pattern, flags, texts },
+	});
+	try {
+		return await new Promise<number[][]>((resolve, reject) => {
+			const timer = setTimeout(
+				() => reject(new RegexTimeoutError(timeoutMs)),
+				timeoutMs,
+			);
+			worker.once("message", (hits: number[][]) => {
+				clearTimeout(timer);
+				resolve(hits);
+			});
+			worker.once("error", (err) => {
+				clearTimeout(timer);
+				reject(err);
+			});
+		});
+	} finally {
+		void worker.terminate();
+	}
 }
 
 export interface GrepLine {
@@ -184,7 +241,7 @@ export function grepLines(
 	const hits: number[] = [];
 	let truncated = false;
 	for (let i = 0; i < lines.length; i++) {
-		if (!matcher(lines[i])) continue;
+		if (!matcher(lines[i], i)) continue;
 		if (hits.length === limit) {
 			truncated = true;
 			break;

@@ -253,15 +253,10 @@ describe("grep_docs", () => {
 	);
 	const b = docOf("b", "Readme", "Nothing here.\n\nfoo bar at the end\n");
 
-	it("literal pattern matches across bold and prints grep-style lines", async () => {
-		const c = clients({
-			docs: [a, b],
-			folders,
-			search: [
-				{ id: "a", folder_id: "f1", title: "Setup", matched_in: "content" },
-				{ id: "b", folder_id: null, title: "Readme", matched_in: "content" },
-			],
-		});
+	it("a literal phrase across bold is found although the server search misses it", async () => {
+		// Server search matches one text run at a time: "foo bar" finds
+		// neither "**foo** bar" nor anything else here.
+		const c = clients({ docs: [a, b], folders, search: [] });
 		const res = await call(
 			"grep_docs",
 			{ projectId: "p1", pattern: "foo bar" },
@@ -271,16 +266,30 @@ describe("grep_docs", () => {
 		expect(out).toContain("Guides/Setup:1: Install **foo** bar now.");
 		expect(out).toContain("Readme:3: foo bar at the end");
 		expect(out).not.toContain("foo again");
-		// The server gets the phrase without emphasis markers.
-		expect(c.docClient.searchDocuments).toHaveBeenCalledWith(
-			"p1",
-			"foo bar",
-			50,
-		);
-		expect(c.docClient.batchGet).toHaveBeenCalledWith("p1", ["a", "b"]);
+		expect(c.docClient.searchDocuments).not.toHaveBeenCalled();
 	});
 
-	it("searches the server with the pattern as written, and without emphasis markers when it has some", async () => {
+	it.each([
+		["## Setup", "Guide:1: ## Setup"],
+		["- [ ] task", "Guide:5: * [ ] task"],
+		["`code`", "Guide:3: run `code` now"],
+		["[link](", "Guide:7: a [link](http://x.y) here"],
+		["| a |", "Guide:9: | a |"],
+	])("a literal with Markdown syntax (%s) is found in the Markdown read_doc shows", async (pattern, want) => {
+		const md =
+			"## Setup\n\nrun `code` now\n\n- [ ] task\n\na [link](http://x.y) here\n\n| a |\n|---|\n| 1 |\n";
+		const g = docOf("g", "Guide", md);
+		const c = clients({ docs: [g], search: [] });
+		const res = await call(
+			"grep_docs",
+			{ projectId: "p1", pattern: pattern.replace("- [ ]", "* [ ]") },
+			c,
+		);
+		expect(text(res)).toContain(want);
+		expect(c.docClient.searchDocuments).not.toHaveBeenCalled();
+	});
+
+	it("a single word is narrowed through the server search, once, and scans when search finds nothing", async () => {
 		const snake = docOf("s", "Env", "Set PACA_E2E to 1.\n");
 		const c = clients({
 			docs: [snake, a],
@@ -295,29 +304,50 @@ describe("grep_docs", () => {
 			c,
 		);
 		expect(text(res)).toContain("Env:1: Set PACA_E2E to 1.");
-		// As written first (the stored text has the underscore), then without
-		// the markers in case they were emphasis.
 		expect(c.docClient.searchDocuments.mock.calls).toEqual([
 			["p1", "PACA_E2E", 50],
-			["p1", "PACAE2E", 50],
 		]);
+		expect(c.docClient.batchGet).toHaveBeenCalledWith("p1", ["s"]);
 
 		c.docClient.searchDocuments.mockClear();
-		c.docClient.searchDocuments
-			.mockResolvedValueOnce([])
-			.mockResolvedValueOnce([
-				{ id: "a", folder_id: "f1", title: "Setup", matched_in: "content" },
-			]);
-		const bold = await call(
+		c.docClient.searchDocuments.mockResolvedValueOnce([]);
+		const again = await call(
 			"grep_docs",
-			{ projectId: "p1", pattern: "**foo** bar" },
+			{ projectId: "p1", pattern: "again" },
 			c,
 		);
-		expect(c.docClient.searchDocuments.mock.calls).toEqual([
-			["p1", "**foo** bar", 50],
-			["p1", "foo bar", 50],
-		]);
-		expect(text(bold)).toContain("Guides/Setup:1: Install **foo** bar now.");
+		expect(text(again)).toContain("Guides/Setup:5: foo again");
+	});
+
+	it("a catastrophic regex is stopped within about two seconds", async () => {
+		const evil = docOf("e", "Evil", `${"a".repeat(40)}b\n`);
+		const c = clients({ docs: [evil] });
+		const started = Date.now();
+		const res = await call(
+			"grep_docs",
+			{ projectId: "p1", pattern: "^(a+)+$", regex: true },
+			c,
+		);
+		expect(Date.now() - started).toBeLessThan(4000);
+		expect(res.isError).toBe(true);
+		expect(text(res)).toMatch(/took too long/);
+	}, 10_000);
+
+	it("says how many documents could not be read on an older server", async () => {
+		const c = clients({ docs: [a, b], folders, batchUnsupported: true });
+		c.apiClient.getDocument.mockImplementation(
+			async (_p: string, id: string) => {
+				if (id === "a") throw new Error("HTTP 500 Internal Server Error");
+				return b;
+			},
+		);
+		const res = await call(
+			"grep_docs",
+			{ projectId: "p1", pattern: "foo bar" },
+			c,
+		);
+		expect(text(res)).toContain("Readme:3: foo bar at the end");
+		expect(text(res)).toMatch(/1 document could not be read/);
 	});
 
 	it("regex scans the documents under path", async () => {

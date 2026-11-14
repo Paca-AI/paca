@@ -6,11 +6,7 @@ import type {
 	PacaAPIExtendedClient,
 } from "../api/index.js";
 import { pagingFields, pagingProperties } from "../api/paginate.js";
-import type {
-	Document,
-	DocumentFolder,
-	DocumentSearchHit,
-} from "../types/index.js";
+import type { Document, DocumentFolder } from "../types/index.js";
 import { blocknoteToMarkdown, markdownToBlocknote } from "../utils/index.js";
 import {
 	findSection,
@@ -22,8 +18,8 @@ import {
 	numberLines,
 	outlineOf,
 	parseLineRange,
-	regexMatcher,
-	stripEmphasis,
+	RegexTimeoutError,
+	regexLineHits,
 } from "../utils/markdown-sections.js";
 import { editDocument, type LoadedDoc } from "./doc-edit.js";
 
@@ -379,6 +375,8 @@ async function memberName(
 const SEARCH_MAX = 50;
 /** The most documents one grep_docs call reads. */
 const GREP_MAX_DOCS = 200;
+/** How long a grep_docs regex may run. */
+const REGEX_TIMEOUT_MS = 2000;
 /** The most ids one POST /docs/batch-get takes. */
 const BATCH_MAX = 100;
 
@@ -476,8 +474,9 @@ async function fetchDocs(
 	ids: string[],
 	apiClient: PacaAPIClient,
 	docClient: PacaAPIDocClient,
-): Promise<Document[]> {
+): Promise<{ docs: Document[]; failed: number }> {
 	const out: Document[] = [];
+	let failed = 0;
 	for (let i = 0; i < ids.length; i += BATCH_MAX) {
 		const chunk = ids.slice(i, i + BATCH_MAX);
 		const res = await docClient.batchGet(projectId, chunk);
@@ -488,15 +487,36 @@ async function fetchDocs(
 		const rest = ids.slice(i);
 		for (let j = 0; j < rest.length; j += 10) {
 			const got = await Promise.all(
-				rest
-					.slice(j, j + 10)
-					.map((id) => apiClient.getDocument(projectId, id).catch(() => null)),
+				rest.slice(j, j + 10).map((id) =>
+					apiClient.getDocument(projectId, id).then(
+						(d) => d,
+						() => null,
+					),
+				),
 			);
-			out.push(...got.filter((d): d is Document => !!d));
+			for (const d of got) {
+				if (d) out.push(d);
+				else failed++;
+			}
 		}
 		break;
 	}
-	return out;
+	return { docs: out, failed };
+}
+
+/**
+ * Whether the server search can stand in for scanning: a single word with
+ * no Markdown syntax. Search matches one formatting run of the stored text,
+ * so a phrase may be split by bold or a link, and Markdown that read_doc
+ * shows (`##`, `- [ ]`, backticks, link brackets, table pipes) is not in the
+ * stored text at all.
+ */
+function searchable(pattern: string): boolean {
+	return (
+		/^[\p{L}\p{N}](?:[\p{L}\p{N}.,:;'"!?@/+=-]|_(?=[\p{L}\p{N}]))*$/u.test(
+			pattern,
+		) && !/^\d+[.)]$/.test(pattern)
+	);
 }
 
 function grepOutput(path: string, groups: GrepLine[][], context: number) {
@@ -624,8 +644,10 @@ export function getFilesystemDocTools(): Tool[] {
 			description:
 				"Find lines in a project's documents, like grep: prints 'Folder/Title:12: text' for each matching line " +
 				"(context lines as 'Folder/Title-11- text', groups separated by '--'). Line numbers are lines of the Markdown read_doc returns. " +
-				"A literal pattern is found through the server's search, then matched line by line (a phrase crossing **bold** or _italic_ still matches). " +
-				"With regex or path, the documents under path (the whole project when absent) are scanned, at most 200. " +
+				"Patterns match the Markdown text, so Markdown syntax (## Heading, * [ ] task, `code`) can be part of a pattern; a literal also matches with ** and _ removed, so 'foo bar' finds 'foo **bar**'. " +
+				"A single plain word is first narrowed to candidate documents through the server's search (which may miss a word split by formatting); " +
+				"anything else, or a word the search does not find, scans the documents under path (the whole project when absent), at most 200 per call. " +
+				"A regex that runs longer than 2 seconds is stopped with an error. " +
 				"For many repeated searches, a local mirror and rg are cheaper.",
 			inputSchema: {
 				type: "object",
@@ -729,7 +751,8 @@ export function getFilesystemDocTools(): Tool[] {
 				"Create or update a document at the given path. " +
 				"If the document already exists it will be updated; otherwise it will be created. " +
 				"Missing intermediate folders are created automatically. " +
-				"Always prefer this over creating local files when writing project documentation.",
+				"Always prefer this over creating local files when writing project documentation. " +
+				"To change part of an existing document, use edit_doc instead: it rewrites only what changed.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -959,41 +982,28 @@ export async function handleFilesystemDocTool(
 		case "grep_docs": {
 			const { projectId, pattern, regex, ignoreCase, path, context, limit } =
 				GrepDocsSchema.parse(args);
-			let matcher: LineMatcher;
-			try {
-				matcher = regex
-					? regexMatcher(pattern, ignoreCase)
-					: literalMatcher(pattern, ignoreCase);
-			} catch (err) {
-				return errorResult(
-					`Invalid regular expression: ${(err as Error).message}`,
-				);
+			if (regex) {
+				try {
+					new RegExp(pattern, ignoreCase ? "i" : "");
+				} catch (err) {
+					return errorResult(
+						`Invalid regular expression: ${(err as Error).message}`,
+					);
+				}
 			}
 
 			const notices: string[] = [];
-			let candidates: GrepCandidate[];
-			if (!regex && !path?.trim()) {
-				// The server's search narrows a literal pattern to candidate
-				// documents. It searches the stored text, which has no emphasis
-				// markers, so a pattern with `*` or `_` is also searched without
-				// them (`PACA_E2E` as written, `**foo** bar` as `foo bar` too).
-				const queries = [pattern];
-				const plain = stripEmphasis(pattern);
-				if (plain !== pattern && plain.trim() !== "") queries.push(plain);
-				const hits: DocumentSearchHit[] = [];
-				let capped = false;
-				for (const q of queries) {
-					const found = await docClient.searchDocuments(
-						projectId,
-						q,
-						SEARCH_MAX,
-					);
-					if (found.length === SEARCH_MAX) capped = true;
-					for (const h of found) {
-						if (!hits.some((x) => x.id === h.id)) hits.push(h);
-					}
-				}
-				if (capped) {
+			let candidates: GrepCandidate[] = [];
+			let scan = regex || !!path?.trim() || !searchable(pattern);
+			if (!scan) {
+				// A single plain word: the server's search narrows it to
+				// candidate documents; with no hit, scan instead.
+				const hits = await docClient.searchDocuments(
+					projectId,
+					pattern,
+					SEARCH_MAX,
+				);
+				if (hits.length === SEARCH_MAX) {
 					notices.push(
 						`The server search returned ${SEARCH_MAX} documents, the most it returns, so some documents may be missing: pass path to scan a folder instead.`,
 					);
@@ -1010,7 +1020,9 @@ export async function handleFilesystemDocTool(
 					id: h.id,
 					path: (h.folder_id ? (chains.get(h.folder_id) ?? "") : "") + h.title,
 				}));
-			} else {
+				scan = candidates.length === 0;
+			}
+			if (scan) {
 				const scope = await grepScope(
 					projectId,
 					path ?? "",
@@ -1026,33 +1038,71 @@ export async function handleFilesystemDocTool(
 				}
 			}
 
-			const docs = new Map(
-				(
-					await fetchDocs(
-						projectId,
-						candidates.map((c) => c.id),
-						apiClient,
-						docClient,
-					)
-				).map((d) => [d.id, d]),
+			const fetched = await fetchDocs(
+				projectId,
+				candidates.map((c) => c.id),
+				apiClient,
+				docClient,
 			);
+			if (fetched.failed > 0) {
+				notices.push(
+					`${fetched.failed} document${fetched.failed === 1 ? "" : "s"} could not be read (server error or no access) and ${fetched.failed === 1 ? "was" : "were"} not searched.`,
+				);
+			}
+			const docs = new Map(fetched.docs.map((d) => [d.id, d]));
+			const found = candidates.flatMap((c) => {
+				const doc = docs.get(c.id);
+				if (!doc) return [];
+				const markdown = doc.content ? blocknoteToMarkdown(doc.content) : "";
+				return [{ path: c.path, markdown }];
+			});
+
+			// Literal matching is linear; a regex runs in a worker thread with
+			// a time limit, so a catastrophic pattern cannot block the server.
+			let matchers: LineMatcher[];
+			if (regex) {
+				try {
+					const hits = await regexLineHits(
+						pattern,
+						ignoreCase,
+						found.map((f) => f.markdown),
+						REGEX_TIMEOUT_MS,
+					);
+					matchers = hits.map((h) => {
+						const set = new Set(h);
+						return (_line: string, index: number) => set.has(index);
+					});
+				} catch (err) {
+					if (err instanceof RegexTimeoutError) {
+						return errorResult(
+							`The regular expression took too long (over ${REGEX_TIMEOUT_MS / 1000} s) and was stopped. Simplify it: avoid nested quantifiers such as (a+)+ or alternations that overlap, or search for a literal string.`,
+						);
+					}
+					throw err;
+				}
+			} else {
+				const m = literalMatcher(pattern, ignoreCase);
+				matchers = found.map(() => m);
+			}
+
 			const blocks: string[] = [];
 			let total = 0;
 			let withMatches = 0;
-			let searched = 0;
-			for (let i = 0; i < candidates.length; i++) {
-				const doc = docs.get(candidates[i].id);
-				if (!doc) continue;
-				searched++;
-				const markdown = doc.content ? blocknoteToMarkdown(doc.content) : "";
-				const res = grepLines(markdown, matcher, context, limit - total);
+			const searched = found.length;
+			for (let i = 0; i < found.length; i++) {
+				const res = grepLines(
+					found[i].markdown,
+					matchers[i],
+					context,
+					limit - total,
+				);
 				if (res.matches > 0) {
 					withMatches++;
 					total += res.matches;
-					blocks.push(grepOutput(candidates[i].path, res.groups, context));
+					blocks.push(grepOutput(found[i].path, res.groups, context));
 				}
 				if (total >= limit) {
-					if (res.truncated || i < candidates.length - 1) {
+					if (res.truncated || i < found.length - 1) {
 						notices.push(
 							`Stopped at the limit of ${limit} matching lines; there may be more. Raise limit (at most 200) or narrow with path.`,
 						);
