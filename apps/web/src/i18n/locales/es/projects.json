@@ -1003,6 +1003,15 @@
 			"deleted": "eliminó el documento",
 			"moved": "movió el documento",
 			"contentChangeDiff": "Diferencias del cambio de contenido"
+		},
+		"managedCopy": {
+			"copyOf": "Copia de {{path}} en {{repository}}",
+			"copyOfAtCommit": "Copia de {{path}} en {{repository}} en {{commit}}",
+			"locked": "Bloqueado: edita el archivo en el repositorio y súbelo con push.",
+			"unlocked": "Los cambios hechos aquí se sobrescriben en el próximo push salvo que se incorporen al archivo.",
+			"lock": "Bloquear",
+			"unlock": "Desbloquear",
+			"editNotSaved": "Tu última edición no se guardó."
 		}
 	},
 	"roles": {

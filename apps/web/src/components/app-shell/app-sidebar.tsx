@@ -21,6 +21,7 @@ import {
 	Clock,
 	CornerLeftUp,
 	File,
+	FileCode2,
 	FileText,
 	Folder,
 	FolderKanban,
@@ -28,6 +29,7 @@ import {
 	GanttChart,
 	Home,
 	KanbanSquare,
+	Lock,
 	MessageSquare,
 	Monitor,
 	Moon,
@@ -57,6 +59,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useManagedCopyLabel } from "@/components/projects/docs/managed-copy-banner";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
 import { PaneResizeHandle } from "@/components/shared/pane-resize-handle";
@@ -333,6 +336,29 @@ function DocsRootDropArea({
 	);
 }
 
+/** Marks a tree row whose document is a managed copy of a repository file.
+ *  The label is part of the row button's accessible name and its tooltip. */
+function ManagedCopyMarker({
+	label,
+	locked,
+}: {
+	label: string;
+	locked: boolean;
+}) {
+	const Icon = locked ? Lock : FileCode2;
+	return (
+		<span
+			role="img"
+			aria-label={label}
+			title={label}
+			data-testid={locked ? "doc-locked-marker" : "doc-managed-marker"}
+			className="ml-auto flex shrink-0 items-center text-sidebar-foreground/40"
+		>
+			<Icon aria-hidden className="size-3" />
+		</span>
+	);
+}
+
 /** Single document row in the sidebar tree */
 function DocsDocRow({
 	doc,
@@ -346,6 +372,8 @@ function DocsDocRow({
 	depth: number;
 }) {
 	const { t } = useTranslation("appShell");
+	const { t: tProjects } = useTranslation("projects");
+	const managedCopyLabel = useManagedCopyLabel();
 	const location = useRouterState({ select: (s) => s.location.pathname });
 	const moveMutation = useMoveDocNode(projectId);
 	const navigate = useNavigate();
@@ -466,6 +494,16 @@ function DocsDocRow({
 							)}
 						</span>
 					)}
+					{doc.source && !renaming && (
+						<ManagedCopyMarker
+							label={
+								doc.source_locked
+									? `${managedCopyLabel(doc.source)}. ${tProjects("docs.managedCopy.locked")}`
+									: managedCopyLabel(doc.source)
+							}
+							locked={doc.source_locked}
+						/>
+					)}
 				</button>
 
 				{canWrite && !renaming && (
@@ -478,6 +516,19 @@ function DocsDocRow({
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="start" className="w-36">
 							<DropdownMenuItem
+								// A locked managed copy's title comes from its repository.
+								// It stays focusable and hoverable so the reason can be read.
+								disabled={doc.source_locked}
+								className={
+									doc.source_locked
+										? "data-disabled:pointer-events-auto"
+										: undefined
+								}
+								title={
+									doc.source_locked
+										? tProjects("docs.managedCopy.locked")
+										: undefined
+								}
 								onClick={(e) => {
 									e.stopPropagation();
 									setRenameError(null);
@@ -486,6 +537,11 @@ function DocsDocRow({
 							>
 								<Pencil className="size-3.5 mr-2" />
 								{t("docs.rename")}
+								{doc.source_locked && (
+									<span className="sr-only">
+										{tProjects("docs.managedCopy.locked")}
+									</span>
+								)}
 							</DropdownMenuItem>
 							{doc.folder_id && (
 								<DropdownMenuItem

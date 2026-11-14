@@ -1003,6 +1003,15 @@
 			"deleted": "ドキュメントを削除しました",
 			"moved": "ドキュメントを移動しました",
 			"contentChangeDiff": "内容の変更差分"
+		},
+		"managedCopy": {
+			"copyOf": "{{repository}} の {{path}} のコピー",
+			"copyOfAtCommit": "{{repository}} の {{path}} のコピー（{{commit}}）",
+			"locked": "ロック中: リポジトリでファイルを編集してプッシュしてください。",
+			"unlocked": "ここでの編集は、ファイルに取り込まない限り次のプッシュで上書きされます。",
+			"lock": "ロック",
+			"unlock": "ロック解除",
+			"editNotSaved": "最後の編集は保存されていません。"
 		}
 	},
 	"roles": {

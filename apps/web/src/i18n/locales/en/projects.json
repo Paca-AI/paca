@@ -1003,6 +1003,15 @@
 			"deleted": "deleted the document",
 			"moved": "moved the document",
 			"contentChangeDiff": "Content change diff"
+		},
+		"managedCopy": {
+			"copyOf": "Copy of {{path}} in {{repository}}",
+			"copyOfAtCommit": "Copy of {{path}} in {{repository}} at {{commit}}",
+			"locked": "Locked: edit the file in the repository and push it.",
+			"unlocked": "Edits made here are overwritten by the next push unless they are merged into the file.",
+			"lock": "Lock",
+			"unlock": "Unlock",
+			"editNotSaved": "Your last edit was not saved."
 		}
 	},
 	"roles": {

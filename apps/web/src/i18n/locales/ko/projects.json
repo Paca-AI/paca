@@ -1003,6 +1003,15 @@
 			"deleted": "문서를 삭제했습니다",
 			"moved": "문서를 이동했습니다",
 			"contentChangeDiff": "내용 변경 차이"
+		},
+		"managedCopy": {
+			"copyOf": "{{repository}}의 {{path}} 사본",
+			"copyOfAtCommit": "{{repository}}의 {{path}} 사본 ({{commit}})",
+			"locked": "잠김: 저장소에서 파일을 편집한 뒤 푸시하세요.",
+			"unlocked": "여기서 한 편집은 파일에 반영하지 않으면 다음 푸시 때 덮어써집니다.",
+			"lock": "잠그기",
+			"unlock": "잠금 해제",
+			"editNotSaved": "마지막 편집은 저장되지 않았습니다."
 		}
 	},
 	"roles": {

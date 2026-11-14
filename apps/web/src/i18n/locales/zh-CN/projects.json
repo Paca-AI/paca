@@ -1003,6 +1003,15 @@
 			"deleted": "删除了该文档",
 			"moved": "移动了该文档",
 			"contentChangeDiff": "内容更改差异"
+		},
+		"managedCopy": {
+			"copyOf": "{{repository}} 中 {{path}} 的副本",
+			"copyOfAtCommit": "{{repository}} 中 {{path}} 的副本（{{commit}}）",
+			"locked": "已锁定：请在仓库中编辑该文件并推送。",
+			"unlocked": "除非合并到文件中，否则在此处所做的编辑会被下一次推送覆盖。",
+			"lock": "锁定",
+			"unlock": "解锁",
+			"editNotSaved": "你最后的编辑未保存。"
 		}
 	},
 	"roles": {
