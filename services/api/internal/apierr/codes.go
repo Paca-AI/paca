@@ -236,6 +236,15 @@ const (
 	// CodeDocLockNeedsSource indicates a lock was asked for on a document
 	// that is not a managed copy (it has no source).
 	CodeDocLockNeedsSource Code = "DOC_LOCK_NEEDS_SOURCE"
+	// CodeDocPathInvalid indicates a document path with no title (empty, or
+	// only slashes and spaces) or one that is too long.
+	CodeDocPathInvalid Code = "DOC_PATH_INVALID"
+	// CodeDocPathIsFolder indicates a document path whose last segment names
+	// a folder.
+	CodeDocPathIsFolder Code = "DOC_PATH_IS_FOLDER"
+	// CodeDocSourceInvalid indicates a source without a repository or path,
+	// or with a field over 500 characters.
+	CodeDocSourceInvalid Code = "DOC_SOURCE_INVALID"
 	// CodeDocFolderNotFound indicates the requested document folder does not exist.
 	CodeDocFolderNotFound Code = "DOC_FOLDER_NOT_FOUND"
 	// CodeDocFolderNameInvalid indicates an empty or invalid folder name.

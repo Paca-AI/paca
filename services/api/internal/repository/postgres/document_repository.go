@@ -340,8 +340,12 @@ func (r *DocumentRepository) FindFolderByID(_ context.Context, id uuid.UUID) (*d
 
 // CreateFolder persists a new folder.
 func (r *DocumentRepository) CreateFolder(ctx context.Context, f *docdom.DocFolder) error {
+	return insertFolder(ctx, r.db, f)
+}
+
+func insertFolder(ctx context.Context, ex sqlx.ExecerContext, f *docdom.DocFolder) error {
 	rec := folderToRecord(f)
-	_, err := r.db.ExecContext(ctx, `
+	_, err := ex.ExecContext(ctx, `
 		INSERT INTO doc_folders (id, project_id, parent_id, name, position, created_by, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		rec.ID, rec.ProjectID, rec.ParentID, rec.Name, rec.Position, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
@@ -565,8 +569,12 @@ func (r *DocumentRepository) FindDocumentTitleByID(_ context.Context, id uuid.UU
 
 // CreateDocument persists a new document.
 func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Document) error {
+	return insertDocument(ctx, r.db, d)
+}
+
+func insertDocument(ctx context.Context, ex sqlx.ExecerContext, d *docdom.Document) error {
 	rec := documentToRecord(d)
-	_, err := r.db.ExecContext(ctx, `
+	_, err := ex.ExecContext(ctx, `
 		INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		rec.ID, rec.ProjectID, rec.FolderID, rec.Title, rec.Content, rec.ContentHash,
@@ -581,39 +589,45 @@ func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Docum
 func (r *DocumentRepository) UpdateDocumentAtomic(ctx context.Context, id uuid.UUID, decide func(current *docdom.Document) error) (*docdom.Document, error) {
 	var result *docdom.Document
 	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
-		var rec documentRecord
-		if err := tx.GetContext(ctx, &rec, `SELECT `+documentCols+` FROM documents WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id.String()); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return docdom.ErrDocNotFound
-			}
-			return err
-		}
-		current := documentFromRecord(rec)
-		if err := decide(current); err != nil {
-			if errors.Is(err, docdom.ErrNoChange) {
-				// Nothing to write: return the row as stored, not as decide left it.
-				result = documentFromRecord(rec)
-				return nil
-			}
-			return err
-		}
-		out := documentToRecord(current)
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE documents SET folder_id=$1, title=$2, content=$3, content_hash=$4, position=$5, updated_by=$6, updated_at=$7,
-				source=$9, source_locked=$10
-			WHERE id=$8 AND deleted_at IS NULL`,
-			out.FolderID, out.Title, out.Content, out.ContentHash, out.Position, out.UpdatedBy, out.UpdatedAt, out.ID,
-			out.Source, out.SourceLocked,
-		); err != nil {
-			return err
-		}
-		result = current
-		return nil
+		var err error
+		result, err = updateDocumentLocked(ctx, tx, id, decide)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+// updateDocumentLocked is UpdateDocumentAtomic's read-modify-write inside the
+// caller's transaction tx.
+func updateDocumentLocked(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, decide func(current *docdom.Document) error) (*docdom.Document, error) {
+	var rec documentRecord
+	if err := tx.GetContext(ctx, &rec, `SELECT `+documentCols+` FROM documents WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id.String()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, docdom.ErrDocNotFound
+		}
+		return nil, err
+	}
+	current := documentFromRecord(rec)
+	if err := decide(current); err != nil {
+		if errors.Is(err, docdom.ErrNoChange) {
+			// Nothing to write: return the row as stored, not as decide left it.
+			return documentFromRecord(rec), nil
+		}
+		return nil, err
+	}
+	out := documentToRecord(current)
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE documents SET folder_id=$1, title=$2, content=$3, content_hash=$4, position=$5, updated_by=$6, updated_at=$7,
+			source=$9, source_locked=$10
+		WHERE id=$8 AND deleted_at IS NULL`,
+		out.FolderID, out.Title, out.Content, out.ContentHash, out.Position, out.UpdatedBy, out.UpdatedAt, out.ID,
+		out.Source, out.SourceLocked,
+	); err != nil {
+		return nil, err
+	}
+	return current, nil
 }
 
 // DeleteDocument soft-deletes a document.

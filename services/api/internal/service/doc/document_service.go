@@ -287,10 +287,6 @@ func (s *Service) CreateDocument(ctx context.Context, in docdom.CreateDocumentIn
 // and the If-Match and "did anything change" checks see the row that will be
 // written. A write that changes nothing is not written at all.
 func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, in docdom.UpdateDocumentInput) (*docdom.Document, docdom.DocChange, error) {
-	var change docdom.DocChange
-	var oldContent json.RawMessage
-	var oldTitle, oldHash string
-
 	// Lookups that don't depend on the locked row run before the transaction,
 	// so the row lock isn't held across extra round trips on other connections.
 	if in.FolderID != nil && *in.FolderID != nil {
@@ -302,114 +298,143 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 			return nil, docdom.DocChange{}, docdom.ErrFolderNotInProject
 		}
 	}
-	var newHash string
-	if in.Content != nil {
-		newHash = docdom.ContentHash(*in.Content)
-	}
-	updatedBy := s.resolveMember(ctx, in.UpdatedBy, projectID)
-
-	d, err := s.repo.UpdateDocumentAtomic(ctx, id, func(d *docdom.Document) error {
-		if d.ProjectID != projectID {
-			return docdom.ErrDocNotFound
-		}
-		change = docdom.DocChange{}
-		oldContent = d.Content
-		oldTitle = d.Title
-		oldHash = d.Hash()
-
-		if in.IfMatch != nil && *in.IfMatch != "*" && *in.IfMatch != oldHash {
-			return &docdom.VersionConflictError{CurrentHash: oldHash, UpdatedAt: d.UpdatedAt, UpdatedBy: d.UpdatedBy}
-		}
-
-		if in.Title != nil {
-			title := strings.TrimSpace(*in.Title)
-			if title == "" {
-				return docdom.ErrDocTitleInvalid
-			}
-			if title != d.Title {
-				if strings.Contains(title, "/") {
-					return docdom.ErrDocTitleInvalid
-				}
-				d.Title = title
-				change.Title = true
-			}
-		}
-		if in.Content != nil && newHash != oldHash {
-			d.Content = *in.Content
-			change.Content = true
-		}
-		// A locked managed copy changes content and title only through a
-		// push from its own repository. Checked against the stored lock, so
-		// unlocking and editing take two writes. Moves stay allowed.
-		if d.SourceLocked && (change.Content || change.Title) &&
-			(in.Source == nil || d.Source == nil || in.Source.Repository != d.Source.Repository) {
-			return docdom.ErrDocLocked
-		}
-		if in.FolderID != nil && !sameFolder(*in.FolderID, d.FolderID) {
-			d.FolderID = *in.FolderID
-			change.Folder = true
-		}
-		if in.Position != nil && *in.Position != d.Position {
-			d.Position = *in.Position
-			change.Position = true
-		}
-		if in.Source != nil && !docdom.SameSource(in.Source, d.Source) {
-			src := *in.Source
-			d.Source = &src
-			change.Source = true
-		}
-		if in.Lock != nil && *in.Lock != d.SourceLocked {
-			if *in.Lock && d.Source == nil {
-				return docdom.ErrDocLockNeedsSource
-			}
-			d.SourceLocked = *in.Lock
-			change.Lock = true
-		}
-		if !change.Any() {
-			return docdom.ErrNoChange
-		}
-		if !change.Edited() {
-			// Only the source or the lock changed: the document a reader sees
-			// is the same, so it keeps its updated_at, updated_by and hash.
-			return nil
-		}
-		// Every real write stores the hash, so a row written before the
-		// column existed gets one on its next write.
-		h := d.Hash()
-		if change.Content {
-			h = newHash
-		}
-		d.ContentHash = &h
-		d.UpdatedBy = updatedBy
-		d.UpdatedAt = storedNow()
-		return nil
-	})
+	u := s.newUpdate(ctx, projectID, in)
+	d, err := s.repo.UpdateDocumentAtomic(ctx, id, u.decide)
 	if err != nil {
 		return nil, docdom.DocChange{}, err
 	}
+	s.snapshotOld(ctx, d, u)
+	return d, u.change, nil
+}
 
-	// Create a snapshot of the previous version whenever content or title changed.
-	if change.Content || change.Title {
-		snapTime := time.Now()
-		snap := &docdom.DocSnapshot{
-			ID:          uuid.New(),
-			DocumentID:  d.ID,
-			Title:       oldTitle,
-			Content:     oldContent,
-			ContentHash: &oldHash,
-			CreatedBy:   d.UpdatedBy,
-			CreatedAt:   snapTime,
-		}
-		// Snapshot creation failures are non-fatal; we still return the
-		// updated document.
-		if err := s.repo.CreateSnapshot(ctx, snap); err == nil {
-			// Prune any other snapshots taken within the past 3 minutes so
-			// that rapid edits do not accumulate excessive history entries.
-			_ = s.repo.DeleteRecentSnapshotsExcept(ctx, d.ID, snap.ID, snapTime.Add(-3*time.Minute))
-		}
+// docUpdate is one UpdateDocument decision: decide runs under the row lock
+// and records what changed and the version it replaced.
+type docUpdate struct {
+	projectID  uuid.UUID
+	in         docdom.UpdateDocumentInput
+	newHash    string
+	updatedBy  *uuid.UUID
+	change     docdom.DocChange
+	oldContent json.RawMessage
+	oldTitle   string
+	oldHash    string
+}
+
+func (s *Service) newUpdate(ctx context.Context, projectID uuid.UUID, in docdom.UpdateDocumentInput) *docUpdate {
+	u := &docUpdate{projectID: projectID, in: in, updatedBy: s.resolveMember(ctx, in.UpdatedBy, projectID)}
+	if in.Content != nil {
+		u.newHash = docdom.ContentHash(*in.Content)
+	}
+	return u
+}
+
+// decide validates and applies the update to d, the locked row. The If-Match
+// and "did anything change" checks run here, so they see the row that will be
+// written.
+func (u *docUpdate) decide(d *docdom.Document) error {
+	in := u.in
+	if d.ProjectID != u.projectID {
+		return docdom.ErrDocNotFound
+	}
+	change := docdom.DocChange{}
+	u.change = change
+	u.oldContent = d.Content
+	u.oldTitle = d.Title
+	u.oldHash = d.Hash()
+
+	if in.IfMatch != nil && *in.IfMatch != "*" && *in.IfMatch != u.oldHash {
+		return &docdom.VersionConflictError{CurrentHash: u.oldHash, UpdatedAt: d.UpdatedAt, UpdatedBy: d.UpdatedBy}
 	}
 
-	return d, change, nil
+	if in.Title != nil {
+		title := strings.TrimSpace(*in.Title)
+		if title == "" {
+			return docdom.ErrDocTitleInvalid
+		}
+		if title != d.Title {
+			if strings.Contains(title, "/") {
+				return docdom.ErrDocTitleInvalid
+			}
+			d.Title = title
+			change.Title = true
+		}
+	}
+	if in.Content != nil && u.newHash != u.oldHash {
+		d.Content = *in.Content
+		change.Content = true
+	}
+	// A locked managed copy changes content and title only through a push
+	// from its own repository. Checked against the stored lock, so unlocking
+	// and editing take two writes. Moves stay allowed.
+	if d.SourceLocked && (change.Content || change.Title) &&
+		(in.Source == nil || d.Source == nil || in.Source.Repository != d.Source.Repository) {
+		return docdom.ErrDocLocked
+	}
+	if in.FolderID != nil && !sameFolder(*in.FolderID, d.FolderID) {
+		d.FolderID = *in.FolderID
+		change.Folder = true
+	}
+	if in.Position != nil && *in.Position != d.Position {
+		d.Position = *in.Position
+		change.Position = true
+	}
+	if in.Source != nil && !docdom.SameSource(in.Source, d.Source) {
+		src := *in.Source
+		d.Source = &src
+		change.Source = true
+	}
+	if in.Lock != nil && *in.Lock != d.SourceLocked {
+		if *in.Lock && d.Source == nil {
+			return docdom.ErrDocLockNeedsSource
+		}
+		d.SourceLocked = *in.Lock
+		change.Lock = true
+	}
+	u.change = change
+	if !change.Any() {
+		return docdom.ErrNoChange
+	}
+	if !change.Edited() {
+		// Only the source or the lock changed: the document a reader sees is
+		// the same, so it keeps its updated_at, updated_by and hash.
+		return nil
+	}
+	// Every real write stores the hash, so a row written before the column
+	// existed gets one on its next write.
+	h := d.Hash()
+	if change.Content {
+		h = u.newHash
+	}
+	d.ContentHash = &h
+	d.UpdatedBy = u.updatedBy
+	d.UpdatedAt = storedNow()
+	return nil
+}
+
+// snapshotOld keeps the version an update replaced, when its content or title
+// changed.
+func (s *Service) snapshotOld(ctx context.Context, d *docdom.Document, u *docUpdate) {
+	if !u.change.Content && !u.change.Title {
+		return
+	}
+	snapTime := time.Now()
+	oldHash := u.oldHash
+	snap := &docdom.DocSnapshot{
+		ID:          uuid.New(),
+		DocumentID:  d.ID,
+		Title:       u.oldTitle,
+		Content:     u.oldContent,
+		ContentHash: &oldHash,
+		CreatedBy:   d.UpdatedBy,
+		CreatedAt:   snapTime,
+	}
+	// Snapshot creation failures are non-fatal; we still return the updated
+	// document.
+	if err := s.repo.CreateSnapshot(ctx, snap); err == nil {
+		// Prune any other snapshots taken within the past 3 minutes so that
+		// rapid edits do not accumulate excessive history entries.
+		_ = s.repo.DeleteRecentSnapshotsExcept(ctx, d.ID, snap.ID, snapTime.Add(-3*time.Minute))
+	}
 }
 
 // storedNow is the current time at the precision Postgres keeps (microseconds),

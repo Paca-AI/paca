@@ -316,7 +316,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 			// autofill consumer never overwrites them — as in bootstrap/app.go.
 			handler.WithTaskAutofillRepository(taskRepo)),
 		Sprint:       handler.NewSprintHandler(sprintService, viewService),
-		Document:     handler.NewDocumentHandler(docService, docActivityService),
+		Document:     handler.NewDocumentHandler(docService, docActivityService).WithDocAuthorizer(authorizer),
 		View:         handler.NewViewHandler(viewService),
 		Attachment:   handler.NewAttachmentHandler(attachmentService),
 		APIKey:       handler.NewAPIKeyHandler(apiKeyService),

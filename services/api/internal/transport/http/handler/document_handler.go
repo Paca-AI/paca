@@ -27,6 +27,7 @@ type DocumentHandler struct {
 	avatarSvc       attachmentdom.AvatarService
 	notificationSvc notificationdom.Service
 	listScoper      ListScoper
+	authz           docAuthorizer
 }
 
 // NewDocumentHandler returns a DocumentHandler wired to the doc service and

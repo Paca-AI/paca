@@ -12,6 +12,7 @@ type Service interface {
 	DocFolderService
 	DocumentService
 	DocSnapshotService
+	DocPathService
 }
 
 // --- Folder Service ---------------------------------------------------------

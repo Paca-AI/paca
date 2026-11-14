@@ -72,6 +72,40 @@ type UpdateDocumentRequest struct {
 	SourceLocked *bool `json:"source_locked"`
 }
 
+// PutDocumentByPathRequest is the body for PUT /projects/:projectId/docs/by-path.
+type PutDocumentByPathRequest struct {
+	// Path is "Folder/Sub folder/Title": segments are trimmed, empty ones
+	// dropped, the last is the title. Missing folders are created.
+	Path    string          `json:"path"`
+	Content json.RawMessage `json:"content"`
+	// Source names the repository file this document is a managed copy of.
+	Source *DocSourceRequest `json:"source"`
+	// Lock sets source_locked; locking needs Source.
+	Lock *bool `json:"lock"`
+}
+
+// DocSourceRequest is the source a by-path write sets.
+type DocSourceRequest struct {
+	Repository string `json:"repository"`
+	Path       string `json:"path"`
+	Commit     string `json:"commit"`
+}
+
+// Entity maps the request source to the domain type (nil stays nil).
+func (s *DocSourceRequest) Entity() *docdom.DocSource {
+	if s == nil {
+		return nil
+	}
+	return &docdom.DocSource{Repository: s.Repository, Path: s.Path, Commit: s.Commit}
+}
+
+// DocumentWriteResponse is a document written by path, plus whether the write
+// changed what a reader sees.
+type DocumentWriteResponse struct {
+	DocumentResponse
+	Changed bool `json:"changed"`
+}
+
 // DocumentResponse is the full public representation of a document (including content).
 type DocumentResponse struct {
 	ID        uuid.UUID       `json:"id"`

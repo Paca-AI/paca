@@ -629,6 +629,7 @@ func New(cfg *config.Config) (*App, error) {
 		Attachment: handler.NewAttachmentHandler(attachmentService),
 		Document: handler.NewDocumentHandler(docService, docActivityService).
 			WithDocListScoper(authorizer).
+			WithDocAuthorizer(authorizer).
 			WithDocAvatarService(attachmentService).
 			WithDocNotificationService(notificationService),
 		DocFile:            handler.NewDocFileHandler(attachmentService),

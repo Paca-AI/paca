@@ -42,6 +42,9 @@ type fakeDocSvc struct {
 	updateErr    error
 	lastUpdate   *docdom.UpdateDocumentInput
 	snapLimit    int
+	// by-path writes
+	lastUpsert   *docdom.UpsertByPathInput
+	upsertFolder *uuid.UUID
 }
 
 func (f *fakeDocSvc) ListFolders(_ context.Context, _ uuid.UUID, parent *uuid.UUID, _ docdom.FolderFilter, cursor *string, limit int) ([]*docdom.DocFolder, bool, error) {

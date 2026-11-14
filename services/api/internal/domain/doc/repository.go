@@ -12,6 +12,7 @@ type Repository interface {
 	DocFolderRepository
 	DocumentRepository
 	DocSnapshotRepository
+	DocPathRepository
 }
 
 // DocFolderRepository defines persistence for document folders.
