@@ -134,7 +134,20 @@ func (r *DocumentRepository) WriteDocumentAtPath(ctx context.Context, w docdom.D
 			parent = &id
 		}
 		if res.Doc != nil {
-			if out.Doc, err = updateDocumentLocked(ctx, tx, res.Doc.ID, w.Decide); err != nil {
+			// A document is deleted by id, without the folder lock, so it can
+			// go between the resolve above and the row lock. Then the row is
+			// missing before decide runs: the path changed, and the service
+			// resolves again (and creates the document). ErrDocNotFound from
+			// decide itself is passed on.
+			decided := false
+			decide := func(d *docdom.Document) error {
+				decided = true
+				return w.Decide(d)
+			}
+			if out.Doc, err = updateDocumentLocked(ctx, tx, res.Doc.ID, decide); err != nil {
+				if !decided && errors.Is(err, docdom.ErrDocNotFound) {
+					return docdom.ErrDocPathChanged
+				}
 				return err
 			}
 		} else {

@@ -25,7 +25,7 @@ var (
 	// the path no longer resolves the way the caller saw it (a folder or the
 	// document appeared, moved or was deleted in between). The service
 	// resolves, authorizes and tries again.
-	ErrDocPathChanged = errors.New("document: path changed while it was being written")
+	ErrDocPathChanged = errors.New("document: path changed while it was being written; retry the request")
 	// ErrDocSourceInvalid means a source has no repository or path, or a field
 	// is longer than MaxSourceFieldLen.
 	ErrDocSourceInvalid = errors.New("document: source needs a repository and a path, each at most 500 characters")

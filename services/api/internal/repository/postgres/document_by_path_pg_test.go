@@ -155,3 +155,72 @@ func TestWriteDocumentAtPath_ConcurrentCreatesOneDoc(t *testing.T) {
 		t.Fatalf("%d documents and %d folders, want 1 and 2", docs, folders)
 	}
 }
+
+// A document deleted by id (which takes no folder lock) after the write
+// resolved it, but before the write locked its row, means the path changed:
+// the service resolves again and creates the document. It is not a 404.
+func TestWriteDocumentAtPath_DocDeletedBeforeRowLockIsPathChanged(t *testing.T) {
+	f := newScopeFx(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(f.db)
+
+	d := pathDoc()
+	d.ProjectID, d.Title = f.p, "Gone"
+	if err := repo.CreateDocument(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	expect, err := repo.ResolveDocPath(ctx, f.p, nil, "Gone")
+	if err != nil || expect.Doc == nil {
+		t.Fatalf("resolve: %+v %v", expect, err)
+	}
+
+	// Another transaction deletes the row and holds its lock until we
+	// commit it, so the write resolves the document (the delete is not yet
+	// visible) and then waits on the row in FOR UPDATE.
+	del, err := f.db.BeginTxx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = del.Rollback() }()
+	if _, err := del.ExecContext(ctx, `UPDATE documents SET deleted_at = now() WHERE id = $1`, d.ID.String()); err != nil {
+		t.Fatal(err)
+	}
+
+	errc := make(chan error, 1)
+	go func() {
+		_, err := repo.WriteDocumentAtPath(ctx, docdom.DocPathWrite{
+			ProjectID: f.p, Title: "Gone", Expect: *expect,
+			NewFolder: pathFolder, NewDoc: pathDoc,
+			Decide: func(*docdom.Document) error { return nil },
+		})
+		errc <- err
+	}()
+
+	// Wait until the write is blocked on the row lock.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var waiting int
+		if err := f.db.GetContext(ctx, &waiting, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%FOR UPDATE%'`); err != nil {
+			t.Fatal(err)
+		}
+		if waiting > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("write never waited on the row lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := del.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-errc:
+		if !errors.Is(err, docdom.ErrDocPathChanged) {
+			t.Fatalf("err = %v, want ErrDocPathChanged", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("write did not finish")
+	}
+}

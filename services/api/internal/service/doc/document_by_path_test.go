@@ -128,3 +128,39 @@ func TestUpsertDocumentByPath_AuthorizesDeepestExistingFolder(t *testing.T) {
 		t.Fatalf("seen %v created %v err %v", seen, created, err)
 	}
 }
+
+// A document deleted after the write resolved it makes the repository report
+// the path changed; the service resolves again, authorizes a create and
+// creates the document.
+func TestUpsertDocumentByPath_DocDeletedMeanwhileIsCreated(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	p := uuid.New()
+
+	first, _, _, err := svc.UpsertDocumentByPath(ctx, docdom.UpsertByPathInput{ProjectID: p, Path: "Doc", Content: json.RawMessage(hashBlocksA)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var authorized []string
+	d, _, created, err := svc.UpsertDocumentByPath(ctx, docdom.UpsertByPathInput{
+		ProjectID: p, Path: "Doc", Content: json.RawMessage(hashBlocksB),
+		Authorize: func(ctx context.Context, _ *uuid.UUID, existing *docdom.Document) error {
+			if existing != nil {
+				authorized = append(authorized, "change")
+				if err := repo.DeleteDocument(ctx, existing.ID); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				authorized = append(authorized, "create")
+			}
+			return nil
+		},
+	})
+	if err != nil || !created || d.ID == first.ID {
+		t.Fatalf("got %+v created=%v err=%v", d, created, err)
+	}
+	if len(authorized) != 2 || authorized[0] != "change" || authorized[1] != "create" {
+		t.Fatalf("authorized = %v", authorized)
+	}
+}

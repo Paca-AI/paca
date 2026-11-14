@@ -242,6 +242,9 @@ const (
 	// CodeDocPathIsFolder indicates a document path whose last segment names
 	// a folder.
 	CodeDocPathIsFolder Code = "DOC_PATH_IS_FOLDER"
+	// CodeDocPathChanged indicates a by-path write kept finding the path
+	// changed by other writers while it wrote; the request can be retried.
+	CodeDocPathChanged Code = "DOC_PATH_CHANGED"
 	// CodeDocSourceInvalid indicates a source without a repository or path,
 	// or with a field over 500 characters.
 	CodeDocSourceInvalid Code = "DOC_SOURCE_INVALID"
