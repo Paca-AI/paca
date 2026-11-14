@@ -637,6 +637,71 @@ func TestScopedListTaskPositions(t *testing.T) {
 	}
 }
 
+// A project's link listing only mentions links whose two tasks the caller
+// may read, and never a link to a deleted task.
+func TestScopedListProjectTaskLinks(t *testing.T) {
+	f := newScopeFx(t)
+	s5, s6 := uuid.New(), uuid.New()
+	pgExec(t, f.db, `INSERT INTO sprints (id, project_id, name) VALUES ($1,$3,'S5'), ($2,$3,'S6')`, s5, s6, f.p)
+	task := func(n int, sprint uuid.UUID, deleted bool) uuid.UUID {
+		id := uuid.New()
+		var del any
+		if deleted {
+			del = "2026-01-01T00:00:00Z"
+		}
+		pgExec(t, f.db, `INSERT INTO tasks (id, project_id, task_number, sprint_id, title, deleted_at) VALUES ($1,$2,$3,$4,'t',$5)`, id, f.p, n, sprint, del)
+		return id
+	}
+	a, b, c := task(1, s5, false), task(2, s5, false), task(3, s6, false)
+	gone := task(4, s5, true)
+	link := func(src, dst uuid.UUID, linkType string) uuid.UUID {
+		id := uuid.New()
+		pgExec(t, f.db, `INSERT INTO task_links (id, source_task_id, target_task_id, link_type) VALUES ($1,$2,$3,$4)`, id, src, dst, linkType)
+		return id
+	}
+	inS5 := link(a, b, "blocks")
+	toS6 := link(b, c, "blocks")
+	link(c, a, "relates_to")
+	link(gone, a, "blocks")
+	// Another project's link never shows up.
+	other := f.fx.project()
+	x, y := uuid.New(), uuid.New()
+	pgExec(t, f.db, `INSERT INTO tasks (id, project_id, task_number, title) VALUES ($1,$3,1,'x'), ($2,$3,2,'y')`, x, y, other)
+	link(x, y, "blocks")
+
+	f.role(policyJSON("Allow", "tasks:read", "project/*/task/*", `{"StringEquals":{"task.sprint_id":["`+s5.String()+`"]}}`))
+
+	repo := NewTaskLinkRepository(f.db)
+	linkIDs := func(ctx context.Context, linkType taskdom.LinkType) []string {
+		links, _, err := repo.ListProjectTaskLinks(ctx, f.p, linkType, nil, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, l := range links {
+			out = append(out, l.ID.String())
+		}
+		return sorted(out)
+	}
+	if got := linkIDs(context.Background(), taskdom.LinkTypeBlocks); fmt.Sprint(got) != fmt.Sprint(sorted([]string{inS5.String(), toS6.String()})) {
+		t.Fatalf("unscoped blocks links = %v, want the two between live tasks", got)
+	}
+	if got := linkIDs(context.Background(), taskdom.LinkTypeRelatesTo); len(got) != 1 {
+		t.Fatalf("unscoped relates_to links = %v, want one", got)
+	}
+	// The S6 task is not readable, so the link to it is left out too.
+	if got := linkIDs(f.ctx("tasks:read", "task"), taskdom.LinkTypeBlocks); fmt.Sprint(got) != fmt.Sprint([]string{inS5.String()}) {
+		t.Fatalf("scoped blocks links = %v, want only %s", got, inS5)
+	}
+	if got := linkIDs(f.ctx("tasks:write", "task"), taskdom.LinkTypeBlocks); len(got) != 0 { // no tasks:write grant: deny-all
+		t.Fatalf("no-access links = %v, want none", got)
+	}
+	bad := iam.WithScope(context.Background(), "task", &iam.Node{Kind: iam.NodeCond, Key: "task.nope", Op: "In", Values: iam.ValueList{"x"}})
+	if _, _, err := repo.ListProjectTaskLinks(bad, f.p, taskdom.LinkTypeBlocks, nil, 50); err == nil {
+		t.Fatal("unmapped attribute must be an error")
+	}
+}
+
 func TestScopedTaskListStatusCategory(t *testing.T) {
 	f := newScopeFx(t)
 	refStatus, backlogStatus := uuid.New(), uuid.New()

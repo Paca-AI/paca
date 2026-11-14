@@ -363,6 +363,11 @@ func (c *CachedService) ListTaskLinks(ctx context.Context, projectID, taskID uui
 	return c.svc.ListTaskLinks(ctx, projectID, taskID, cursorAfter, limit)
 }
 
+// ListProjectTaskLinks delegates directly to the underlying service (not cached).
+func (c *CachedService) ListProjectTaskLinks(ctx context.Context, projectID uuid.UUID, linkType taskdom.LinkType, cursorAfter *string, limit int) ([]*taskdom.TaskLink, bool, error) {
+	return c.svc.ListProjectTaskLinks(ctx, projectID, linkType, cursorAfter, limit)
+}
+
 // CreateTaskLink delegates directly to the underlying service (not cached).
 func (c *CachedService) CreateTaskLink(ctx context.Context, in taskdom.CreateTaskLinkInput) (*taskdom.TaskLink, error) {
 	return c.svc.CreateTaskLink(ctx, in)

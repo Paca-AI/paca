@@ -1998,6 +1998,50 @@ func (h *TaskHandler) ListTaskLinks(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, map[string]any{"items": resp, "page_size": pageSize, "next_cursor": nextCursor, "total_count": total})
 }
 
+// ListProjectTaskLinks handles GET /projects/:projectId/task-links: one page
+// of the project's links of the required link_type, oldest first. A link is
+// listed only when the caller may read both of its tasks, so a client can
+// draw the links between the tasks it shows (the Gantt view's dependency
+// arrows) with one request instead of one per task.
+func (h *TaskHandler) ListProjectTaskLinks(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	linkType := taskdom.LinkType(r.URL.Query().Get("link_type"))
+	if !taskdom.ValidLinkTypes[linkType] {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "link_type must be one of: blocks, relates_to, duplicates"))
+		return
+	}
+	pageSize, err := parsePageSize(r, 100, 500)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	scopeCtx, err := scopedContext(r, h.listScoper, iam.ActionTasksRead, projectID, "task")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	links, hasMore, err := h.svc.ListProjectTaskLinks(scopeCtx, projectID, linkType, parseCursorParam(r), pageSize)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.ProjectTaskLinkResponse, 0, len(links))
+	for _, l := range links {
+		resp = append(resp, dto.ProjectTaskLinkFromEntity(l))
+	}
+	var nextCursor *string
+	if hasMore && len(links) > 0 {
+		c := taskdom.EncodeLinkCursor(links[len(links)-1])
+		nextCursor = &c
+	}
+	presenter.OK(w, r, map[string]any{"items": resp, "page_size": pageSize, "next_cursor": nextCursor})
+}
+
 // CreateTaskLink handles POST /projects/:projectId/tasks/:taskId/links.
 func (h *TaskHandler) CreateTaskLink(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)

@@ -22,6 +22,10 @@ type TaskLinkService interface {
 	// ListTaskLinks returns one page of the links for taskID, computing inverse
 	// display labels; see TaskLinkRepository.ListTaskLinks for the paging contract.
 	ListTaskLinks(ctx context.Context, projectID, taskID uuid.UUID, cursorAfter *string, limit int) ([]*TaskLink, bool, int, error)
+	// ListProjectTaskLinks returns one page of a project's links of linkType
+	// between tasks the caller may read; see
+	// TaskLinkRepository.ListProjectTaskLinks for the paging contract.
+	ListProjectTaskLinks(ctx context.Context, projectID uuid.UUID, linkType LinkType, cursorAfter *string, limit int) ([]*TaskLink, bool, error)
 	// CreateTaskLink creates a directed link between two tasks in the same project.
 	CreateTaskLink(ctx context.Context, in CreateTaskLinkInput) (*TaskLink, error)
 	// DeleteTaskLink removes the link identified by linkID, verifying it

@@ -21,6 +21,15 @@ func (s *Service) ListTaskLinks(ctx context.Context, projectID, taskID uuid.UUID
 	return s.repo.ListTaskLinks(ctx, taskID, cursorAfter, limit)
 }
 
+// ListProjectTaskLinks returns one page of the project's links of linkType
+// whose two tasks the caller may read.
+func (s *Service) ListProjectTaskLinks(ctx context.Context, projectID uuid.UUID, linkType taskdom.LinkType, cursorAfter *string, limit int) ([]*taskdom.TaskLink, bool, error) {
+	if !taskdom.ValidLinkTypes[linkType] {
+		return nil, false, taskdom.ErrTaskLinkTypeInvalid
+	}
+	return s.repo.ListProjectTaskLinks(ctx, projectID, linkType, cursorAfter, limit)
+}
+
 // CreateTaskLink validates and persists a new directed link.
 func (s *Service) CreateTaskLink(ctx context.Context, in taskdom.CreateTaskLinkInput) (*taskdom.TaskLink, error) {
 	if in.SourceTaskID == in.TargetTaskID {
