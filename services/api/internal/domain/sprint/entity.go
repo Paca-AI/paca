@@ -65,18 +65,51 @@ type ViewType string
 
 // View type constants.
 const (
-	ViewTypeTable   ViewType = "table"
-	ViewTypeBoard   ViewType = "board"
-	ViewTypeRoadmap ViewType = "roadmap"
-	ViewTypePlugin  ViewType = "plugin"
+	ViewTypeTable  ViewType = "table"
+	ViewTypeBoard  ViewType = "board"
+	ViewTypeGantt  ViewType = "gantt"
+	ViewTypePlugin ViewType = "plugin"
 )
+
+// viewTypeRoadmap is the former name of ViewTypeGantt. It is still accepted
+// on input for one release, so older clients keep working, and is stored as
+// ViewTypeGantt (see NormalizeViewType); it is never persisted or returned.
+const viewTypeRoadmap ViewType = "roadmap"
 
 // ValidViewTypes is the set of allowed view_type values.
 var ValidViewTypes = map[ViewType]bool{
-	ViewTypeTable:   true,
-	ViewTypeBoard:   true,
-	ViewTypeRoadmap: true,
-	ViewTypePlugin:  true,
+	ViewTypeTable:  true,
+	ViewTypeBoard:  true,
+	ViewTypeGantt:  true,
+	ViewTypePlugin: true,
+}
+
+// NormalizeViewType maps a deprecated alias to the view type it stands for
+// ("roadmap" → "gantt") and returns any other value unchanged.
+func NormalizeViewType(vt ViewType) ViewType {
+	if vt == viewTypeRoadmap {
+		return ViewTypeGantt
+	}
+	return vt
+}
+
+// Gantt zoom levels: the time span one step of the Gantt chart's scale covers.
+const (
+	GanttZoomDay     = "day"
+	GanttZoomWeek    = "week"
+	GanttZoomMonth   = "month"
+	GanttZoomQuarter = "quarter"
+	GanttZoomYear    = "year"
+)
+
+// ValidGanttZooms is the set of allowed ViewConfig.GanttZoom values (empty
+// means the client's default).
+var ValidGanttZooms = map[string]bool{
+	GanttZoomDay:     true,
+	GanttZoomWeek:    true,
+	GanttZoomMonth:   true,
+	GanttZoomQuarter: true,
+	GanttZoomYear:    true,
 }
 
 // FilterEntry is a discriminated union stored inside a FilterConfig's Items
@@ -204,6 +237,12 @@ type ViewConfig struct {
 	// "collapsed" (nested, collapsed — also the meaning of empty), "expanded"
 	// (nested, expanded by default) or "hidden" (flat, no nesting).
 	SubtaskMode string `json:"subtask_mode,omitempty"`
+	// GanttZoom is the Gantt view's time scale: "day", "week", "month",
+	// "quarter" or "year". Empty means the client's default.
+	GanttZoom string `json:"gantt_zoom,omitempty"`
+	// GanttDependencies controls whether the Gantt view draws its "blocks"
+	// links as arrows: "shown" (also the meaning of empty) or "hidden".
+	GanttDependencies string `json:"gantt_dependencies,omitempty"`
 	// Plugin view fields (only set when view_type = "plugin")
 	// PluginID stores the plugin manifest identifier (reverse-DNS), not the
 	// plugin UUID used by plugin-extension-settings APIs.

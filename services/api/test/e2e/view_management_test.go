@@ -740,7 +740,7 @@ func TestE2ETimelineViewManagement_CRUD(t *testing.T) {
 	var viewID string
 
 	t.Run("create_view", func(t *testing.T) {
-		viewID = createTimelineViewViaAPI(t, env, client, token, projID, "Roadmap", "roadmap")
+		viewID = createTimelineViewViaAPI(t, env, client, token, projID, "Gantt", "gantt")
 		if viewID == "" {
 			t.Fatal("expected non-empty view id")
 		}
@@ -779,7 +779,7 @@ func TestE2ETimelineViewManagement_CRUD(t *testing.T) {
 
 	t.Run("update_name", func(t *testing.T) {
 		url := fmt.Sprintf("%s/api/v1/projects/%s/views/%s", env.base, projID, viewID)
-		body := jsonBody(t, map[string]any{"name": "Renamed Roadmap"})
+		body := jsonBody(t, map[string]any{"name": "Renamed Gantt"})
 		req := mustRequest(env.ctx, t, http.MethodPatch, url, body)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -789,8 +789,8 @@ func TestE2ETimelineViewManagement_CRUD(t *testing.T) {
 		var env2 envelope
 		decodeJSON(t, resp, &env2)
 		data := assertDataMap(t, env2)
-		if data["name"] != "Renamed Roadmap" {
-			t.Errorf("expected name=Renamed Roadmap, got %v", data["name"])
+		if data["name"] != "Renamed Gantt" {
+			t.Errorf("expected name=Renamed Gantt, got %v", data["name"])
 		}
 	})
 
@@ -843,7 +843,7 @@ func TestE2ETimelineViewManagement_DeleteLastViewRejected(t *testing.T) {
 		onlyViewID = remaining[0]
 	} else {
 		// Create a fresh one, delete all but one.
-		onlyViewID = createTimelineViewViaAPI(t, env, client, token, projID, "Sole Timeline", "roadmap")
+		onlyViewID = createTimelineViewViaAPI(t, env, client, token, projID, "Sole Timeline", "gantt")
 		for _, id := range remaining {
 			deleteTimelineViewViaAPI(t, env, client, token, projID, id)
 		}
@@ -873,7 +873,7 @@ func TestE2ETimelineViewManagement_ContextIsolation(t *testing.T) {
 	client, token := taskMemberLogin(t, env, "timeline-isolation-user", "timelinepass3")
 	projID := createProjectForTasksViaAPI(t, env, client, token)
 
-	tlViewID := createTimelineViewViaAPI(t, env, client, token, projID, "My Roadmap", "roadmap")
+	tlViewID := createTimelineViewViaAPI(t, env, client, token, projID, "My Gantt", "gantt")
 	blViewID := createBacklogViewViaAPI(t, env, client, token, projID, "My Backlog", "table")
 
 	t.Run("timeline_list_excludes_backlog", func(t *testing.T) {
