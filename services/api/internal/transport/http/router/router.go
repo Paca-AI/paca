@@ -816,6 +816,11 @@ func New(deps Deps) http.Handler {
 					})
 				})
 
+				// Project-wide task links (e.g. the Gantt view's dependency
+				// arrows). The listing is narrowed to links whose two tasks
+				// the caller may read, so tasks:read on the project is enough.
+				r.With(require.Project(iam.ActionTasksRead)).Get("/task-links", deps.Task.ListProjectTaskLinks)
+
 				// Custom field definitions — project schema, same split as
 				// task types/statuses above (view via tasks:read, redefine
 				// via project.settings.custom_fields:write).

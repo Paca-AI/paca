@@ -86,7 +86,7 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 
 ### Planning & Task Management
 - ✅ Task linking — link related tasks (blocked by, blocks, related, duplicate, parent/child)
-- ✅ Timeline / Roadmap view — Gantt-style view of epics by start → due date, selectable alongside Board/Table on any interaction
+- ✅ Timeline / Gantt view — epics as bars from start → due date with Day–Year zoom, `blocks` dependency arrows that flag scheduling conflicts, and drag-to-reschedule; selectable alongside Board/Table on any interaction
 - ✅ Advanced view settings — per-view column grouping, swimlanes, sort, field visibility/ordering, slicing, and field aggregation across built-in and custom fields
 - ✅ Interactions sidebar — quick nav to Timeline, Product Backlog, and Sprints, with drag-and-drop to reassign a task's sprint
 
@@ -118,7 +118,7 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 - ✅ Webhook plugin (outgoing webhooks for task and sprint events, configurable per project)
 - ✅ Time logging plugin (track time spent per task, per sprint)
 - ✅ Dashboard plugin
-- 📋 Calendar plugin — a `view` extension that renders tasks on a month/week calendar by start and due date, selectable alongside Board/Table/Roadmap on any interaction, with drag-to-reschedule and sprint boundaries shown
+- 📋 Calendar plugin — a `view` extension that renders tasks on a month/week calendar by start and due date, selectable alongside Board/Table/Gantt on any interaction, with drag-to-reschedule and sprint boundaries shown
 
 ### Security & Access Control
 - ✅ Global RBAC — admin-managed global roles with granular, per-domain permission control

@@ -2318,13 +2318,16 @@
 			"subtasksCollapsed": "Lồng nhau, thu gọn",
 			"subtasksExpanded": "Lồng nhau, mở rộng",
 			"subtasksHidden": "Ẩn (danh sách phẳng)",
+			"ganttDependenciesLabel": "Mũi tên phụ thuộc",
+			"ganttDependenciesShown": "Hiện",
+			"ganttDependenciesHidden": "Ẩn",
 			"unsavedBadge": "Thay đổi chưa lưu",
 			"unsavedTitle": "Hủy các thay đổi chưa lưu?",
 			"unsavedDescription": "Bạn đã thay đổi cài đặt của chế độ xem này nhưng chưa lưu. Hãy lưu, hoặc hủy để quay lại cài đặt đã lưu gần nhất.",
 			"keepEditing": "Tiếp tục chỉnh sửa",
 			"discard": "Hủy bỏ"
 		},
-		"roadmap": {
+		"gantt": {
 			"taskColumnLabel": "Nhiệm vụ",
 			"noTasksToDisplay": "Không có nhiệm vụ để hiển thị",
 			"noDatesSet": "Chưa đặt ngày",
@@ -2332,7 +2335,24 @@
 			"startDateTooltip": "Bắt đầu: {{date}}",
 			"dueDateTooltip": "Đến hạn: {{date}}",
 			"loading": "Đang tải…",
-			"viewMore": "Xem thêm"
+			"viewMore": "Xem thêm",
+			"zoomLabel": "Thu phóng",
+			"zoom": {
+				"day": "Ngày",
+				"week": "Tuần",
+				"month": "Tháng",
+				"quarter": "Quý",
+				"year": "Năm"
+			},
+			"today": "Hôm nay",
+			"jumpToToday": "Đi tới hôm nay",
+			"quarterLabel": "Q{{n}}",
+			"startsBeforeBlocker": "Bắt đầu trước khi “{{title}}” kết thúc",
+			"resizeStart": "Kéo để đổi ngày bắt đầu",
+			"resizeEnd": "Kéo để đổi ngày đến hạn",
+			"rescheduled": "Đã đổi lịch “{{title}}”",
+			"undo": "Hoàn tác",
+			"rescheduleFailed": "Không thể đổi lịch nhiệm vụ"
 		},
 		"newViewPopover": {
 			"addView": "Thêm chế độ xem",
@@ -2346,7 +2366,7 @@
 			"layouts": {
 				"board": "Bảng",
 				"table": "Bảng dữ liệu",
-				"roadmap": "Lộ trình",
+				"gantt": "Gantt",
 				"plugin": "Plugin"
 			}
 		},
@@ -2372,7 +2392,7 @@
 		},
 		"timeline": {
 			"title": "Dòng thời gian",
-			"description": "Epic và kế hoạch dài hạn trên một lộ trình."
+			"description": "Epic và kế hoạch dài hạn trên biểu đồ Gantt."
 		},
 		"sprintDetail": {
 			"notFound": "Không tìm thấy sprint hoặc bạn không có quyền truy cập.",

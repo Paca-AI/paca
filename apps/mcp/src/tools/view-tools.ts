@@ -220,9 +220,9 @@ export function getViewTools(): Tool[] {
 					},
 					viewType: {
 						type: "string",
-						enum: ["table", "board", "roadmap", "plugin"],
+						enum: ["table", "board", "gantt", "plugin"],
 						description:
-							"The type of view. Use 'table', 'board', or 'roadmap' for the built-in layouts, or 'plugin' to host a plugin-provided view (requires pluginManifestId and pluginComponent).",
+							"The type of view. Use 'table', 'board', or 'gantt' for the built-in layouts, or 'plugin' to host a plugin-provided view (requires pluginManifestId and pluginComponent).",
 					},
 					sprintId: {
 						type: "string",
@@ -312,9 +312,9 @@ export function getViewTools(): Tool[] {
 					},
 					viewType: {
 						type: "string",
-						enum: ["table", "board", "roadmap", "plugin"],
+						enum: ["table", "board", "gantt", "plugin"],
 						description:
-							"The type of view (table, board, roadmap, or plugin — plugin requires pluginManifestId and pluginComponent).",
+							"The type of view (table, board, gantt, or plugin — plugin requires pluginManifestId and pluginComponent).",
 					},
 					sprintId: {
 						type: "string",

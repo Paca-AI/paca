@@ -674,6 +674,29 @@ func TaskLinkFromEntity(l *taskdom.TaskLink) TaskLinkResponse {
 	return resp
 }
 
+// ProjectTaskLinkResponse is one link in a project-wide link listing. Unlike
+// TaskLinkResponse it is not seen from either task, so it carries neither a
+// display label nor a summary of the other task: both ids are tasks the
+// caller already reads through the task list.
+type ProjectTaskLinkResponse struct {
+	ID           uuid.UUID        `json:"id"`
+	SourceTaskID uuid.UUID        `json:"source_task_id"`
+	TargetTaskID uuid.UUID        `json:"target_task_id"`
+	LinkType     taskdom.LinkType `json:"link_type"`
+	CreatedAt    time.Time        `json:"created_at"`
+}
+
+// ProjectTaskLinkFromEntity maps a domain TaskLink to a ProjectTaskLinkResponse.
+func ProjectTaskLinkFromEntity(l *taskdom.TaskLink) ProjectTaskLinkResponse {
+	return ProjectTaskLinkResponse{
+		ID:           l.ID,
+		SourceTaskID: l.SourceTaskID,
+		TargetTaskID: l.TargetTaskID,
+		LinkType:     l.LinkType,
+		CreatedAt:    l.CreatedAt,
+	}
+}
+
 // TaskSnapshot is the task as realtime clients patch it into their cache: the
 // route response without the description, which can be large and which
 // collaborative editing owns, so a client keeps the one it has.

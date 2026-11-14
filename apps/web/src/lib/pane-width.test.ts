@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	clampPaneWidth,
-	ROADMAP_TASK_PANE,
+	GANTT_TASK_PANE,
 	readStoredPaneWidth,
 	SIDEBAR_PANE,
 	storePaneWidth,
@@ -19,15 +19,15 @@ describe("pane width", () => {
 	});
 
 	it("falls back to the default when nothing valid is stored", () => {
-		expect(readStoredPaneWidth(ROADMAP_TASK_PANE, 1600)).toBe(280);
-		localStorage.setItem(ROADMAP_TASK_PANE.storageKey, "junk");
-		expect(readStoredPaneWidth(ROADMAP_TASK_PANE, 1600)).toBe(280);
+		expect(readStoredPaneWidth(GANTT_TASK_PANE, 1600)).toBe(280);
+		localStorage.setItem(GANTT_TASK_PANE.storageKey, "junk");
+		expect(readStoredPaneWidth(GANTT_TASK_PANE, 1600)).toBe(280);
 	});
 
 	it("round-trips a stored width and clears it at the default", () => {
-		storePaneWidth(ROADMAP_TASK_PANE, 400);
-		expect(readStoredPaneWidth(ROADMAP_TASK_PANE, 1600)).toBe(400);
-		storePaneWidth(ROADMAP_TASK_PANE, ROADMAP_TASK_PANE.defaultWidth);
-		expect(localStorage.getItem(ROADMAP_TASK_PANE.storageKey)).toBeNull();
+		storePaneWidth(GANTT_TASK_PANE, 400);
+		expect(readStoredPaneWidth(GANTT_TASK_PANE, 1600)).toBe(400);
+		storePaneWidth(GANTT_TASK_PANE, GANTT_TASK_PANE.defaultWidth);
+		expect(localStorage.getItem(GANTT_TASK_PANE.storageKey)).toBeNull();
 	});
 });

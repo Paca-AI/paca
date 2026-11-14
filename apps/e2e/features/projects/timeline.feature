@@ -1,11 +1,11 @@
 @projects @interactions @timeline
-Feature: Timeline interaction (Epic roadmap)
+Feature: Timeline interaction (Epic Gantt chart)
   The Timeline is a dedicated project interaction accessible from the project
   sidebar under the "Interactions" section, appearing above "Product Backlog"
   and all sprint entries.  Its purpose is long-horizon planning of Epics on a
-  Gantt-style roadmap.  When a user opens the Timeline the page header shows
-  "Timeline" with the subtitle "Epics and long-horizon planning on a roadmap."
-  The default and only pre-configured view uses the Roadmap layout.  The
+  Gantt chart.  When a user opens the Timeline the page header shows
+  "Timeline" with the subtitle "Epics and long-horizon planning on a Gantt chart."
+  The default and only pre-configured view uses the Gantt layout.  The
   Timeline view settings pre-filter to show only the "Epic" system task type;
   normal task types (Story, Bug, Task, etc.) are excluded by default.  The
   timeline canvas renders a month-based horizontal bar chart — each visible
@@ -13,7 +13,7 @@ Feature: Timeline interaction (Epic roadmap)
   Epics exist an empty-state message "No tasks to display" is shown.  An
   "Add task" button at the bottom of the canvas creates new Epic tasks inline.
   Users may add Board or Table views to the Timeline interaction in addition
-  to the default Roadmap view.  The view settings "Column by" dropdown
+  to the default Gantt view.  The view settings "Column by" dropdown
   defaults to "Status" (not "Sprint") for the Timeline interaction.  The
   Timeline interaction does not show any sprint-related controls (no "New
   sprint" button, no sprint columns, no "Start sprint" button).
@@ -40,16 +40,16 @@ Feature: Timeline interaction (Epic roadmap)
       When the user navigates to the Timeline interaction
       Then the page heading should display "Timeline"
 
-    Scenario: Timeline page subtitle reads "Epics and long-horizon planning on a roadmap."
+    Scenario: Timeline page subtitle reads "Epics and long-horizon planning on a Gantt chart."
       When the user navigates to the Timeline interaction
-      Then the page subtitle should read "Epics and long-horizon planning on a roadmap."
+      Then the page subtitle should read "Epics and long-horizon planning on a Gantt chart."
 
     Scenario: Timeline does not show a "New sprint" button
       When the user navigates to the Timeline interaction
       Then no "New sprint" button should be visible on the Timeline page
 
   @authenticated
-  Rule: Timeline default Roadmap view
+  Rule: Timeline default Gantt view
 
     Background:
       Given the user already has a stored authenticated session
@@ -57,11 +57,11 @@ Feature: Timeline interaction (Epic roadmap)
       And the user has the "View Sprints" project permission in "E2E_TIMELINE_VIEW_PROJECT"
       And the user has navigated to the Timeline interaction inside "E2E_TIMELINE_VIEW_PROJECT"
 
-    Scenario: Timeline opens with the Roadmap view active by default
-      Then the "Roadmap" view tab should be active
-      And the Roadmap (Gantt-style timeline) layout should be displayed
+    Scenario: Timeline opens with the Gantt view active by default
+      Then the "Gantt" view tab should be active
+      And the Gantt timeline layout should be displayed
 
-    Scenario: Timeline Roadmap view shows a month-based horizontal axis
+    Scenario: Timeline Gantt view shows a month-based horizontal axis
       Then the timeline canvas should display at least one month label on the horizontal axis
 
     Scenario: Timeline empty state shows "No tasks to display" when no Epics exist
@@ -71,8 +71,18 @@ Feature: Timeline interaction (Epic roadmap)
     Scenario: An "Add task" button is visible at the bottom of the Timeline canvas
       Then an "Add task" button should be present below the timeline canvas
 
-    Scenario: Timeline Roadmap view shows a task list panel on the left side
+    Scenario: Timeline Gantt view shows a task list panel on the left side
       Then a left-side panel with the label "Task" should be visible alongside the timeline canvas
+
+    Scenario: The Gantt view offers zoom levels and remembers the chosen one
+      Then the Gantt toolbar should offer the "Day", "Week", "Month", "Quarter" and "Year" zoom levels
+      And the "Week" zoom level should be selected
+      When the user selects the "Month" zoom level
+      And the user reloads the page
+      Then the "Month" zoom level should still be selected
+
+    Scenario: The Gantt view can jump back to today
+      Then a "Today" button should be present in the Gantt toolbar
 
     Scenario: Each Epic appears as a horizontal bar spanning its scheduled date range
       Given the project has an Epic named "E2E_EPIC_BAR" with start date "2026-04-01" and due date "2026-04-30"
@@ -99,7 +109,7 @@ Feature: Timeline interaction (Epic roadmap)
       Then under "Task types" the "Epic" checkbox should be checked
       And the "Story", "Bug", and "Task" type checkboxes should be unchecked
 
-    Scenario: Only Epics appear in the Timeline Roadmap view by default
+    Scenario: Only Epics appear in the Timeline Gantt view by default
       Given the project has an Epic "E2E_TL_EPIC" and a Story "E2E_TL_STORY"
       Then "E2E_TL_EPIC" should appear in the timeline task list
       And "E2E_TL_STORY" should not appear in the timeline task list
@@ -155,9 +165,9 @@ Feature: Timeline interaction (Epic roadmap)
     Scenario: An "Add view" button is visible to the right of the last view tab
       Then an "Add view" button should be visible immediately to the right of the last view tab
 
-    Scenario: Clicking "Add view" opens a view creation dialog with Board, Table, and Roadmap options
+    Scenario: Clicking "Add view" opens a view creation dialog with Board, Table, and Gantt options
       When the user clicks the "Add view" button
-      Then a dialog should appear offering "Board", "Table", and "Roadmap" as layout options
+      Then a dialog should appear offering "Board", "Table", and "Gantt" as layout options
       And a "View name" field should be pre-filled with a default name
 
     Scenario: Creating a Board view on the Timeline adds a new tab

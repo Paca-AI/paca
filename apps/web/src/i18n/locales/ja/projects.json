@@ -2318,13 +2318,16 @@
 			"subtasksCollapsed": "ネスト表示（折りたたみ）",
 			"subtasksExpanded": "ネスト表示（展開）",
 			"subtasksHidden": "非表示（フラット表示）",
+			"ganttDependenciesLabel": "依存関係の矢印",
+			"ganttDependenciesShown": "表示",
+			"ganttDependenciesHidden": "非表示",
 			"unsavedBadge": "未保存の変更",
 			"unsavedTitle": "未保存の変更を破棄しますか？",
 			"unsavedDescription": "このビューの設定を変更しましたが、保存されていません。保存するか、破棄して最後に保存した設定に戻してください。",
 			"keepEditing": "編集を続ける",
 			"discard": "破棄"
 		},
-		"roadmap": {
+		"gantt": {
 			"taskColumnLabel": "タスク",
 			"noTasksToDisplay": "表示するタスクはありません",
 			"noDatesSet": "日付が設定されていません",
@@ -2332,7 +2335,24 @@
 			"startDateTooltip": "開始: {{date}}",
 			"dueDateTooltip": "期日: {{date}}",
 			"loading": "読み込み中…",
-			"viewMore": "もっと見る"
+			"viewMore": "もっと見る",
+			"zoomLabel": "ズーム",
+			"zoom": {
+				"day": "日",
+				"week": "週",
+				"month": "月",
+				"quarter": "四半期",
+				"year": "年"
+			},
+			"today": "今日",
+			"jumpToToday": "今日へ移動",
+			"quarterLabel": "Q{{n}}",
+			"startsBeforeBlocker": "「{{title}}」の終了前に開始します",
+			"resizeStart": "ドラッグして開始日を変更",
+			"resizeEnd": "ドラッグして期日を変更",
+			"rescheduled": "「{{title}}」の日程を変更しました",
+			"undo": "元に戻す",
+			"rescheduleFailed": "タスクの日程を変更できませんでした"
 		},
 		"newViewPopover": {
 			"addView": "ビューを追加",
@@ -2346,7 +2366,7 @@
 			"layouts": {
 				"board": "ボード",
 				"table": "テーブル",
-				"roadmap": "ロードマップ",
+				"gantt": "ガント",
 				"plugin": "プラグイン"
 			}
 		},
@@ -2372,7 +2392,7 @@
 		},
 		"timeline": {
 			"title": "タイムライン",
-			"description": "ロードマップ上でのエピックと長期的な計画。"
+			"description": "ガントチャート上でのエピックと長期的な計画。"
 		},
 		"sprintDetail": {
 			"notFound": "スプリントが見つからないか、アクセスが拒否されました。",

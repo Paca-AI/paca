@@ -84,6 +84,22 @@ describe("EVENT_RULES", () => {
 		expect(attachment("links")).toBe(false);
 	});
 
+	it("refreshes the project-wide link listings on a link change only", () => {
+		const listingsRefreshed = (type: string) =>
+			(
+				route(type, { task_id: "t" }).queryClient
+					.invalidateQueries as unknown as {
+					mock: { calls: Array<[{ queryKey?: unknown[] }]> };
+				}
+			).mock.calls.some(
+				([a]) => JSON.stringify(a.queryKey) === '["projects","p","task-links"]',
+			);
+		expect(listingsRefreshed("task.link.added")).toBe(true);
+		expect(listingsRefreshed("task.link.removed")).toBe(true);
+		expect(listingsRefreshed("task.comment.added")).toBe(false);
+		expect(listingsRefreshed("task.attachment.added")).toBe(false);
+	});
+
 	it("falls through to the broad rule when the narrow one has nothing to act on", () => {
 		expect(route("task.comment.added", {}).rule).toBe("task");
 		expect(route("doc.comment.added", {}).rule).toBe("doc");

@@ -464,7 +464,7 @@ export const PAGE_SIZE_DEFAULTS: Record<
 > = {
 	Table: { initial: 5, perPage: 20 },
 	Board: { initial: 20, perPage: 20 },
-	Roadmap: { initial: 100, perPage: 100 },
+	Gantt: { initial: 100, perPage: 100 },
 	Plugin: { initial: 5, perPage: 20 },
 };
 

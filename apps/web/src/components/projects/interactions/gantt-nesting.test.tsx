@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Task } from "@/lib/interaction-api";
-import { RoadmapView } from "./roadmap-view";
+import { GanttView } from "./gantt-view";
 import { resetSubtaskViewState } from "./use-subtask-expansion";
 
 const get = vi.hoisted(() => vi.fn());
@@ -26,7 +26,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 	...overrides,
 });
 
-describe("RoadmapView nested tasks", () => {
+describe("GanttView nested tasks", () => {
 	beforeEach(() => {
 		get.mockReset();
 		localStorage.clear();
@@ -48,7 +48,7 @@ describe("RoadmapView nested tasks", () => {
 		});
 		render(
 			<QueryClientProvider client={qc}>
-				<RoadmapView
+				<GanttView
 					projectId="p1"
 					viewKey="v1"
 					tasks={[makeTask({ subtask_count: 1, subtask_done_count: 0 })]}

@@ -2,7 +2,7 @@
 Feature: Interaction views (board and list layouts)
   Each project interaction (product backlog or a sprint) can be explored
   through one or more saved views.  A view defines a named layout — Table,
-  Board, or Roadmap — and persists the user's preferred way of looking at work
+  Board, or Gantt — and persists the user's preferred way of looking at work
   items.  Each view also stores display settings (visible fields, column
   grouping, swimlanes, sort order, field sum, and slice dimension).  The
   default view opened when entering the product backlog is the Table view
@@ -63,11 +63,11 @@ Feature: Interaction views (board and list layouts)
       Then the tabular list layout should be displayed
       And each task should appear as a row with its title, status, type, and assignee
 
-    Scenario: Roadmap view is indicated by its tab label
-      Given the "Product Backlog" interaction has a view named "Roadmap" with layout "Roadmap"
+    Scenario: Gantt view is indicated by its tab label
+      Given the "Product Backlog" interaction has a view named "Gantt" with layout "Gantt"
       When the user clicks "Product Backlog" in the project sidebar
-      And the user clicks the "Roadmap" view tab
-      Then the roadmap timeline layout should be displayed
+      And the user clicks the "Gantt" view tab
+      Then the Gantt timeline layout should be displayed
       And each task should appear as a horizontal bar spanning its scheduled date range
 
     Scenario: Navigating to a sprint opens the default Board view
@@ -394,7 +394,7 @@ Feature: Interaction views (board and list layouts)
       Then a popover or dialog should open
       And it should offer "Table" as a layout option
       And it should offer "Board" as a layout option
-      And it should offer "Roadmap" as a layout option
+      And it should offer "Gantt" as a layout option
       And it should contain a "View name" field pre-filled with a default name
 
     Scenario: Creating a Board view adds a new tab in the tab bar
@@ -413,13 +413,13 @@ Feature: Interaction views (board and list layouts)
       Then a tab labelled "E2E_TABLE_VIEW" should appear in the view tab bar
       And the tabular list layout should be active
 
-    Scenario: Creating a Roadmap view adds a new tab in the tab bar
+    Scenario: Creating a Gantt view adds a new tab in the tab bar
       When the user clicks the "Add view" button to the right of the last view tab
-      And the user changes the view name to "E2E_ROADMAP_VIEW"
-      And the user selects the "Roadmap" layout
+      And the user changes the view name to "E2E_GANTT_VIEW"
+      And the user selects the "Gantt" layout
       And the user confirms view creation
-      Then a tab labelled "E2E_ROADMAP_VIEW" should appear in the view tab bar
-      And the roadmap timeline layout should be active
+      Then a tab labelled "E2E_GANTT_VIEW" should appear in the view tab bar
+      And the Gantt timeline layout should be active
 
     Scenario: Creating a view without a name defaults to a generated name
       When the user clicks the "Add view" button to the right of the last view tab
@@ -611,7 +611,7 @@ Feature: Interaction views (board and list layouts)
     Background:
       Given the user already has a stored authenticated session
       And a project named "E2E_REORDER_PROJECT" exists
-      And the project has a "Product Backlog" interaction with views "Board", "Table", and "Roadmap" (in that order)
+      And the project has a "Product Backlog" interaction with views "Board", "Table", and "Gantt" (in that order)
       And the user has the "Manage Views" project permission in "E2E_REORDER_PROJECT"
       And the user has navigated to the "Product Backlog" interaction inside "E2E_REORDER_PROJECT"
 
@@ -620,19 +620,19 @@ Feature: Interaction views (board and list layouts)
       Then the tab should indicate it is draggable (e.g. a grab cursor or visible drag handle)
 
     Scenario: Dragging a view tab to a new position reorders the tab bar
-      Given the view tabs are ordered "Board", "Table", "Roadmap"
-      When the user drags the "Roadmap" tab and drops it before the "Board" tab
-      Then the view tabs should be reordered to "Roadmap", "Board", "Table"
+      Given the view tabs are ordered "Board", "Table", "Gantt"
+      When the user drags the "Gantt" tab and drops it before the "Board" tab
+      Then the view tabs should be reordered to "Gantt", "Board", "Table"
 
     Scenario: Dropping a view tab on its original position leaves the order unchanged
-      Given the view tabs are ordered "Board", "Table", "Roadmap"
+      Given the view tabs are ordered "Board", "Table", "Gantt"
       When the user drags the "Table" tab and drops it back in the same position
-      Then the view tabs should remain in the order "Board", "Table", "Roadmap"
+      Then the view tabs should remain in the order "Board", "Table", "Gantt"
 
     Scenario: The reordered tab order persists after a page refresh
-      Given the user has dragged the "Roadmap" tab to the first position
+      Given the user has dragged the "Gantt" tab to the first position
       When the user refreshes the page
-      Then the view tabs should still appear with "Roadmap" as the first tab
+      Then the view tabs should still appear with "Gantt" as the first tab
 
     Scenario: The first tab after reordering becomes the default view for the interaction
       Given the user has dragged the "Table" tab to the first position and refreshed the page

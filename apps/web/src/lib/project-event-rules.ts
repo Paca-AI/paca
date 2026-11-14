@@ -23,6 +23,7 @@ import {
 	applyTaskChange,
 	refreshTaskSubQueries,
 } from "@/lib/cache-patch";
+import { projectTaskLinksKey } from "@/lib/interaction-api";
 import { invalidateMemberDirectory } from "@/lib/member-directory";
 import { projectRolesKey } from "@/lib/role-api";
 import type { RealtimeEvent } from "@/lib/socket-client";
@@ -109,6 +110,12 @@ export const EVENT_RULES: EventRule[] = [
 				part,
 				"activities",
 			]);
+			// The project-wide listings (the Gantt view's arrows) include it too.
+			if (part === "links") {
+				void ctx.queryClient.invalidateQueries({
+					queryKey: projectTaskLinksKey(ctx.projectId),
+				});
+			}
 			invalidateAgentActivities(ctx);
 			return true;
 		},

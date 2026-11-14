@@ -492,8 +492,8 @@ func TestCreateProject_SeedsDefaultViews(t *testing.T) {
 	if backlogView.ViewType != sprintdom.ViewTypeTable || backlogView.Config.ColumnBy != "sprint" {
 		t.Fatalf("unexpected backlog default view: %+v", backlogView)
 	}
-	if timelineView.ViewType != sprintdom.ViewTypeRoadmap {
-		t.Fatalf("expected roadmap timeline view, got %+v", timelineView.ViewType)
+	if timelineView.ViewType != sprintdom.ViewTypeGantt {
+		t.Fatalf("expected gantt timeline view, got %+v", timelineView.ViewType)
 	}
 	// Backlog view must use the "normal" virtual group to include all non-system
 	// types dynamically.

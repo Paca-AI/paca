@@ -268,7 +268,7 @@ Table sprint_views {
   sprint_id uuid [null, ref: > sprints.id, note: 'null for project-level views (backlog, timeline); set for sprint views']
   project_id uuid [not null, ref: > projects.id]
   name varchar [not null]
-  view_type varchar [not null, note: 'Layout: table | board | roadmap | plugin']
+  view_type varchar [not null, note: 'Layout: table | board | gantt | plugin']
   view_context varchar [not null, note: 'Interaction discriminator: sprint | backlog | timeline. sprint rows always have sprint_id set; backlog and timeline rows have sprint_id = null.']
   position double [not null, default: 0, note: 'Zero-based tab order within the interaction; lower = further left in the tab bar. Updated on drag-to-reorder.']
   config jsonb [note: '''

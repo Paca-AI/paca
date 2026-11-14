@@ -554,8 +554,8 @@ describe("interaction-api", () => {
 		it("maps Table → table", () => {
 			expect(layoutToViewType("Table")).toBe("table");
 		});
-		it("maps Roadmap → roadmap", () => {
-			expect(layoutToViewType("Roadmap")).toBe("roadmap");
+		it("maps Gantt → gantt", () => {
+			expect(layoutToViewType("Gantt")).toBe("gantt");
 		});
 	});
 });

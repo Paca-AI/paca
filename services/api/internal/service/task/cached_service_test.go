@@ -229,6 +229,10 @@ func (s *stubTaskSvc) ListTaskLinks(_ context.Context, _, _ uuid.UUID, _ *string
 	return []*taskdom.TaskLink{}, false, 0, nil
 }
 
+func (s *stubTaskSvc) ListProjectTaskLinks(_ context.Context, _ uuid.UUID, _ taskdom.LinkType, _ *string, _ int) ([]*taskdom.TaskLink, bool, error) {
+	return []*taskdom.TaskLink{}, false, nil
+}
+
 func (s *stubTaskSvc) CreateTaskLink(_ context.Context, in taskdom.CreateTaskLinkInput) (*taskdom.TaskLink, error) {
 	return &taskdom.TaskLink{
 		ID:           uuid.New(),

@@ -2318,13 +2318,16 @@
 			"subtasksCollapsed": "중첩, 접힘",
 			"subtasksExpanded": "중첩, 펼침",
 			"subtasksHidden": "숨김(평면 목록)",
+			"ganttDependenciesLabel": "종속성 화살표",
+			"ganttDependenciesShown": "표시",
+			"ganttDependenciesHidden": "숨김",
 			"unsavedBadge": "저장되지 않은 변경",
 			"unsavedTitle": "저장되지 않은 변경을 취소할까요?",
 			"unsavedDescription": "이 보기의 설정을 변경했지만 저장하지 않았습니다. 저장하거나, 취소하여 마지막으로 저장한 설정으로 돌아가세요.",
 			"keepEditing": "계속 편집",
 			"discard": "취소"
 		},
-		"roadmap": {
+		"gantt": {
 			"taskColumnLabel": "작업",
 			"noTasksToDisplay": "표시할 작업이 없습니다",
 			"noDatesSet": "설정된 날짜 없음",
@@ -2332,7 +2335,24 @@
 			"startDateTooltip": "시작: {{date}}",
 			"dueDateTooltip": "마감: {{date}}",
 			"loading": "불러오는 중…",
-			"viewMore": "더 보기"
+			"viewMore": "더 보기",
+			"zoomLabel": "확대/축소",
+			"zoom": {
+				"day": "일",
+				"week": "주",
+				"month": "월",
+				"quarter": "분기",
+				"year": "연"
+			},
+			"today": "오늘",
+			"jumpToToday": "오늘로 이동",
+			"quarterLabel": "{{n}}분기",
+			"startsBeforeBlocker": "“{{title}}” 종료 전에 시작합니다",
+			"resizeStart": "드래그하여 시작일 변경",
+			"resizeEnd": "드래그하여 마감일 변경",
+			"rescheduled": "“{{title}}” 일정을 변경했습니다",
+			"undo": "실행 취소",
+			"rescheduleFailed": "작업 일정을 변경하지 못했습니다"
 		},
 		"newViewPopover": {
 			"addView": "뷰 추가",
@@ -2346,7 +2366,7 @@
 			"layouts": {
 				"board": "보드",
 				"table": "테이블",
-				"roadmap": "로드맵",
+				"gantt": "간트",
 				"plugin": "플러그인"
 			}
 		},
@@ -2372,7 +2392,7 @@
 		},
 		"timeline": {
 			"title": "타임라인",
-			"description": "로드맵에서 에픽과 장기 계획을 관리하세요."
+			"description": "간트 차트에서 에픽과 장기 계획을 관리하세요."
 		},
 		"sprintDetail": {
 			"notFound": "스프린트를 찾을 수 없거나 접근 권한이 없습니다.",

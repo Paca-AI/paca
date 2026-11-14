@@ -227,6 +227,10 @@ func (r *fakeTaskRepo) ListAllTaskLinks(_ context.Context, _ uuid.UUID) ([]*task
 	return []*taskdom.TaskLink{}, nil
 }
 
+func (r *fakeTaskRepo) ListProjectTaskLinks(_ context.Context, _ uuid.UUID, _ taskdom.LinkType, _ *string, _ int) ([]*taskdom.TaskLink, bool, error) {
+	return []*taskdom.TaskLink{}, false, nil
+}
+
 func (r *fakeTaskRepo) FindTaskLinkByID(_ context.Context, _ uuid.UUID) (*taskdom.TaskLink, error) {
 	return nil, taskdom.ErrTaskLinkNotFound
 }

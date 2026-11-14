@@ -128,8 +128,8 @@ func defaultProjectViewInputs(projectID uuid.UUID, taskTypes []*taskdom.TaskType
 		},
 		{
 			ProjectID:   projectID,
-			Name:        "Roadmap",
-			ViewType:    sprintdom.ViewTypeRoadmap,
+			Name:        "Gantt",
+			ViewType:    sprintdom.ViewTypeGantt,
 			Position:    0,
 			ViewContext: sprintdom.ViewContextTimeline,
 			Config: sprintdom.ViewConfig{

@@ -13,6 +13,7 @@ import {
 	type DisplayLinkType,
 	deleteTaskLink,
 	LINK_TYPE_LABELS,
+	projectTaskLinksKey,
 	type TaskLink,
 	taskLinksQueryOptions,
 } from "@/lib/interaction-api";
@@ -80,6 +81,8 @@ export function TaskLinksSection({
 			qc.invalidateQueries({
 				queryKey: taskLinksQueryOptions(projectId, taskId).queryKey,
 			});
+			// The Gantt view draws its dependency arrows from these.
+			qc.invalidateQueries({ queryKey: projectTaskLinksKey(projectId) });
 		},
 		onError: (err: unknown) => {
 			const code = getApiErrorCode(err);
@@ -106,6 +109,8 @@ export function TaskLinksSection({
 			qc.invalidateQueries({
 				queryKey: taskLinksQueryOptions(projectId, taskId).queryKey,
 			});
+			// The Gantt view draws its dependency arrows from these.
+			qc.invalidateQueries({ queryKey: projectTaskLinksKey(projectId) });
 		},
 		onError: (err: unknown) => {
 			notifyError(

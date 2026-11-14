@@ -160,7 +160,7 @@ func (s *ViewService) CreateView(ctx context.Context, in sprintdom.CreateViewInp
 		return nil, sprintdom.ErrViewNameInvalid
 	}
 
-	vt := in.ViewType
+	vt := sprintdom.NormalizeViewType(in.ViewType)
 	if vt == "" {
 		vt = sprintdom.ViewTypeTable
 	}
@@ -208,10 +208,11 @@ func (s *ViewService) UpdateView(ctx context.Context, projectID, id uuid.UUID, i
 			v.Name = name
 		}
 		if in.ViewType != nil {
-			if !sprintdom.ValidViewTypes[*in.ViewType] {
+			vt := sprintdom.NormalizeViewType(*in.ViewType)
+			if !sprintdom.ValidViewTypes[vt] {
 				return sprintdom.ErrViewTypeInvalid
 			}
-			v.ViewType = *in.ViewType
+			v.ViewType = vt
 		}
 		if in.Config != nil {
 			v.Config = normalizeViewConfig(*in.Config)
@@ -502,12 +503,21 @@ func (s *ViewService) OverlayUserConfigs(ctx context.Context, accountID uuid.UUI
 }
 
 // normalizeViewConfig clears values outside their allowed set so a typo is not
-// persisted; unknown subtask modes fall back to the default (empty).
+// persisted; unknown subtask modes, Gantt zooms and Gantt dependency modes fall
+// back to the default (empty).
 func normalizeViewConfig(cfg sprintdom.ViewConfig) sprintdom.ViewConfig {
 	switch cfg.SubtaskMode {
 	case "", "collapsed", "expanded", "hidden":
 	default:
 		cfg.SubtaskMode = ""
+	}
+	if !sprintdom.ValidGanttZooms[cfg.GanttZoom] {
+		cfg.GanttZoom = ""
+	}
+	switch cfg.GanttDependencies {
+	case "", "shown", "hidden":
+	default:
+		cfg.GanttDependencies = ""
 	}
 	return cfg
 }
@@ -560,6 +570,12 @@ func mergeViewConfig(shared, override sprintdom.ViewConfig) sprintdom.ViewConfig
 	if override.SubtaskMode != "" {
 		out.SubtaskMode = override.SubtaskMode
 	}
+	if override.GanttZoom != "" {
+		out.GanttZoom = override.GanttZoom
+	}
+	if override.GanttDependencies != "" {
+		out.GanttDependencies = override.GanttDependencies
+	}
 	// out.PluginID / out.PluginComponent intentionally left at shared's value.
 	return out
 }
@@ -603,6 +619,12 @@ func diffViewConfig(shared, desired sprintdom.ViewConfig) sprintdom.ViewConfig {
 	}
 	if desired.SubtaskMode != shared.SubtaskMode {
 		out.SubtaskMode = desired.SubtaskMode
+	}
+	if desired.GanttZoom != shared.GanttZoom {
+		out.GanttZoom = desired.GanttZoom
+	}
+	if desired.GanttDependencies != shared.GanttDependencies {
+		out.GanttDependencies = desired.GanttDependencies
 	}
 	return out
 }

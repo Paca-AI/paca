@@ -129,6 +129,64 @@ func (r *TaskLinkRepository) ListAllTaskLinks(ctx context.Context, taskID uuid.U
 	return taskLinksFromRows(rows)
 }
 
+// ListProjectTaskLinks returns one page of the project's links of linkType
+// whose source and target are both live tasks, ordered by (created_at, id)
+// ascending. When the context carries a task scope (see iam.WithScope), a link
+// is listed only when the caller may read both of its tasks, filtered in the
+// query, so the page never reveals a task the caller cannot see.
+func (r *TaskLinkRepository) ListProjectTaskLinks(ctx context.Context, projectID uuid.UUID, linkType taskdom.LinkType, cursorAfter *string, limit int) ([]*taskdom.TaskLink, bool, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	sink := &argList{args: []any{projectID.String(), string(linkType)}}
+	clause, none, err := scopeSQL(ctx, "task", taskScopeColumns, sink)
+	if err != nil {
+		return nil, false, fmt.Errorf("task link repo: list project links: %w", err)
+	}
+	if none {
+		return []*taskdom.TaskLink{}, false, nil
+	}
+	scopeAnd := ""
+	if clause != "" {
+		scopeAnd = " AND " + clause
+	}
+	q := `
+		WITH visible AS (
+		    SELECT tasks.id FROM tasks
+		    WHERE tasks.project_id = $1 AND tasks.deleted_at IS NULL` + scopeAnd + `
+		)
+		SELECT tl.id, tl.source_task_id, tl.target_task_id, tl.link_type, tl.created_by, tl.created_at
+		FROM task_links tl
+		JOIN visible src ON src.id = tl.source_task_id
+		JOIN visible dst ON dst.id = tl.target_task_id
+		WHERE tl.link_type = $2`
+	if cursorAfter != nil {
+		at, id, err := taskdom.DecodeLinkCursor(*cursorAfter)
+		if err != nil {
+			return nil, false, err
+		}
+		q += ` AND (tl.created_at, tl.id) > (` + sink.addArg(at) + `, ` + sink.addArg(id.String()) + `::uuid)`
+	}
+	q += ` ORDER BY tl.created_at ASC, tl.id ASC LIMIT ` + sink.addArg(limit+1)
+	var records []taskLinkRecord
+	if err := r.db.SelectContext(ctx, &records, q, sink.args...); err != nil {
+		return nil, false, fmt.Errorf("task link repo: list project links: %w", err)
+	}
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
+	}
+	links := make([]*taskdom.TaskLink, 0, len(records))
+	for i := range records {
+		link, err := records[i].toDomain()
+		if err != nil {
+			return nil, false, err
+		}
+		links = append(links, link)
+	}
+	return links, hasMore, nil
+}
+
 // FindTaskLinkByID returns a single link by primary key (no task join).
 func (r *TaskLinkRepository) FindTaskLinkByID(ctx context.Context, id uuid.UUID) (*taskdom.TaskLink, error) {
 	const q = `

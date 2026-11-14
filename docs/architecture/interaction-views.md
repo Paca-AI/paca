@@ -98,6 +98,20 @@ For plugin views (`view_type = "plugin"`), config also includes:
 
 `plugin_manifest_id` is the plugin manifest reverse-DNS identifier.
 
+For Gantt views (`view_type = "gantt"`), config may also include:
+
+```json
+{
+  "gantt_zoom": "week",
+  "gantt_dependencies": "shown"
+}
+```
+
+- `gantt_zoom` is the time scale: `day`, `week` (the default when unset), `month`, `quarter` or `year`.
+- `gantt_dependencies` is `shown` (the default when unset) or `hidden`, and controls the dependency arrows.
+
+An unknown value for either key is dropped rather than stored. Like every other config key, both are per user: picking a zoom saves it to the user's personal override of the view.
+
 ### Rule of thumb
 
 - **Presentation** belongs in top-level config keys such as `column_by`, `sort_by`, and `slice_by`
@@ -111,7 +125,7 @@ Typical defaults are:
 
 - **Sprint**: Board and Table, both seeded with `column_by = status`, the current sprint selected, and non-system task types
 - **Backlog**: Table, seeded with `column_by = sprint`, all sprints, and non-system task types
-- **Timeline**: Roadmap, seeded with Epic-only task types across all sprints
+- **Timeline**: Gantt, seeded with Epic-only task types across all sprints
 
 Additional views can still be created by users per context.
 
@@ -126,7 +140,18 @@ For every interaction page:
    - sprint scope now comes from `filters.sprint_ids` when present
    - page defaults are seeded by the API when projects and sprints are created
 5. if the view uses manual sorting, load its task positions from the shared task-positions endpoint
-6. render Board, Table, or Roadmap using the same task payload
+6. render Board, Table, or Gantt using the same task payload
+
+## Gantt view
+
+The Gantt view (`view_type = "gantt"`) draws each task as a bar from its start date to its due date, both days included. A task with only one of the two dates is drawn as a one-day bar on that date. Rows keep the view's grouping and sorting, and nested subtasks follow the view's `subtask_mode`, just as in the Table view.
+
+- **Zoom.** A toolbar switches the scale between Day, Week, Month, Quarter and Year. The choice is stored per view as `gantt_zoom`. The **Today** button scrolls the chart back to the current date, and the task column stays pinned while the chart scrolls.
+- **Dependency arrows.** `blocks` links are drawn as arrows from the end of the blocking task to the start of the blocked one. When the blocked task starts on or before the blocker's due date, the arrow turns red and the blocked bar is outlined, with the conflict named in its tooltip. The links come from `GET /api/v1/projects/:projectId/task-links?link_type=blocks`, which only lists links whose two tasks the caller can read. A link is drawn only when both tasks are on screen with dates. The **Dependency arrows** setting (`gantt_dependencies`) hides the arrows.
+- **Drag to reschedule.** People who can edit tasks can drag a bar to move it, or drag either end to change the start or due date. Changes snap to whole days and show the new dates while dragging; Escape cancels. The save goes through the regular task update (`PATCH /tasks/:taskId`, which needs `tasks:write`), so it is recorded in the task's activity, reaches other clients in real time, and can be reverted from the **Undo** action in the confirmation toast. Moving a bar shifts only the dates the task has. Dragging an end of a single-date bar also fills in the missing date, so the task keeps the range that was drawn. Without edit permission the chart is read-only.
+- Dragging a row by its task name still reorders it (under manual sort) or moves the task to another group, as before.
+
+`roadmap` is the former name of this layout. Migration `000090` renamed existing views and kept their config. For one release the API still accepts `roadmap` in a create or update request and stores it as `gantt`.
 
 ## Maintenance guidance
 

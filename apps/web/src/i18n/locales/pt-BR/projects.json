@@ -2318,13 +2318,16 @@
 			"subtasksCollapsed": "Aninhadas, recolhidas",
 			"subtasksExpanded": "Aninhadas, expandidas",
 			"subtasksHidden": "Ocultas (lista plana)",
+			"ganttDependenciesLabel": "Setas de dependência",
+			"ganttDependenciesShown": "Visíveis",
+			"ganttDependenciesHidden": "Ocultas",
 			"unsavedBadge": "Alterações não salvas",
 			"unsavedTitle": "Descartar alterações não salvas?",
 			"unsavedDescription": "Você alterou as configurações desta visualização, mas não as salvou. Salve-as ou descarte para voltar às últimas configurações salvas.",
 			"keepEditing": "Continuar editando",
 			"discard": "Descartar"
 		},
-		"roadmap": {
+		"gantt": {
 			"taskColumnLabel": "Tarefa",
 			"noTasksToDisplay": "Nenhuma tarefa para exibir",
 			"noDatesSet": "Nenhuma data definida",
@@ -2332,7 +2335,24 @@
 			"startDateTooltip": "Início: {{date}}",
 			"dueDateTooltip": "Entrega: {{date}}",
 			"loading": "Carregando…",
-			"viewMore": "Ver mais"
+			"viewMore": "Ver mais",
+			"zoomLabel": "Zoom",
+			"zoom": {
+				"day": "Dia",
+				"week": "Semana",
+				"month": "Mês",
+				"quarter": "Trimestre",
+				"year": "Ano"
+			},
+			"today": "Hoje",
+			"jumpToToday": "Ir para hoje",
+			"quarterLabel": "T{{n}}",
+			"startsBeforeBlocker": "Começa antes de “{{title}}” terminar",
+			"resizeStart": "Arraste para alterar a data de início",
+			"resizeEnd": "Arraste para alterar a data de entrega",
+			"rescheduled": "“{{title}}” foi reagendada",
+			"undo": "Desfazer",
+			"rescheduleFailed": "Não foi possível reagendar a tarefa"
 		},
 		"newViewPopover": {
 			"addView": "Adicionar visão",
@@ -2346,7 +2366,7 @@
 			"layouts": {
 				"board": "Quadro",
 				"table": "Tabela",
-				"roadmap": "Roadmap",
+				"gantt": "Gantt",
 				"plugin": "Plugin"
 			}
 		},
@@ -2372,7 +2392,7 @@
 		},
 		"timeline": {
 			"title": "Linha do tempo",
-			"description": "Épicos e planejamento de longo prazo em um roadmap."
+			"description": "Épicos e planejamento de longo prazo em um gráfico de Gantt."
 		},
 		"sprintDetail": {
 			"notFound": "Sprint não encontrado ou acesso negado.",

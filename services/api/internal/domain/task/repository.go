@@ -26,6 +26,13 @@ type TaskLinkRepository interface {
 	// ListAllTaskLinks returns every link of the task. For internal jobs such
 	// as automations; not exposed over the API.
 	ListAllTaskLinks(ctx context.Context, taskID uuid.UUID) ([]*TaskLink, error)
+	// ListProjectTaskLinks returns one page of the project's links of
+	// linkType whose source and target are both live tasks the caller may
+	// read (the task scope attached to ctx, see iam.WithScope), ordered by
+	// created_at then id ascending. LinkedTask and DisplayLinkType are not
+	// populated. cursorAfter is the cursor from EncodeLinkCursor (nil for the
+	// first page); hasMore reports whether more follow.
+	ListProjectTaskLinks(ctx context.Context, projectID uuid.UUID, linkType LinkType, cursorAfter *string, limit int) (links []*TaskLink, hasMore bool, err error)
 	// FindTaskLinkByID returns a single link by primary key.
 	FindTaskLinkByID(ctx context.Context, id uuid.UUID) (*TaskLink, error)
 	// CreateTaskLinkIfNotExists persists l, unless an equivalent link already

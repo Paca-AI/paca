@@ -463,7 +463,7 @@ func TestIntegrationViews_CreateInvalidTypeReturns400(t *testing.T) {
 
 	w := serve(r, authedJSONReq(t.Context(), http.MethodPost, base, tok, map[string]any{
 		"name":      "Bad",
-		"view_type": "gantt",
+		"view_type": "calendar",
 	}))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d (%s)", w.Code, w.Body.String())
@@ -1062,11 +1062,20 @@ func TestIntegrationViews_Reorder(t *testing.T) {
 	}
 	id2 := viewIDFrom(t, w2.Body.Bytes())
 
+	// "roadmap" is the deprecated name of the gantt layout: still accepted,
+	// stored and returned as "gantt".
 	w3 := serve(r, authedJSONReq(t.Context(), http.MethodPost, base, tok, map[string]any{"name": "Gamma", "view_type": "roadmap"}))
 	if w3.Code != http.StatusCreated {
 		t.Fatalf("create v3: expected 201, got %d", w3.Code)
 	}
 	id3 := viewIDFrom(t, w3.Body.Bytes())
+	var gammaResp struct {
+		Data map[string]any `json:"data"`
+	}
+	_ = json.Unmarshal(w3.Body.Bytes(), &gammaResp)
+	if vt, _ := gammaResp.Data["view_type"].(string); vt != "gantt" {
+		t.Errorf("create with the roadmap alias: view_type = %q, want %q", vt, "gantt")
+	}
 
 	// Reorder: Gamma(id3), Alpha(id1), Beta(id2)
 	reorderW := serve(r, authedJSONReq(t.Context(), http.MethodPut, strings.Replace(base, "?", "/positions?", 1), tok, map[string]any{
@@ -1243,8 +1252,8 @@ func TestIntegrationTimelineViews_CRUD(t *testing.T) {
 
 	// Create first timeline view
 	createW := serve(r, authedJSONReq(t.Context(), http.MethodPost, base, tok, map[string]any{
-		"name":      "Roadmap",
-		"view_type": "roadmap",
+		"name":      "Gantt",
+		"view_type": "gantt",
 	}))
 	if createW.Code != http.StatusCreated {
 		t.Fatalf("create timeline view: expected 201, got %d (%s)", createW.Code, createW.Body.String())
@@ -1286,7 +1295,7 @@ func TestIntegrationTimelineViews_CRUD(t *testing.T) {
 
 	// Update name
 	patchW := serve(r, authedJSONReq(t.Context(), http.MethodPatch, itemBase+"/"+viewID, tok, map[string]any{
-		"name": "Renamed Roadmap",
+		"name": "Renamed Gantt",
 	}))
 	if patchW.Code != http.StatusOK {
 		t.Fatalf("patch timeline view: expected 200, got %d (%s)", patchW.Code, patchW.Body.String())
@@ -1295,8 +1304,8 @@ func TestIntegrationTimelineViews_CRUD(t *testing.T) {
 		Data map[string]any `json:"data"`
 	}
 	_ = json.Unmarshal(patchW.Body.Bytes(), &patchResp)
-	if patchResp.Data["name"] != "Renamed Roadmap" {
-		t.Errorf("expected name=Renamed Roadmap, got %v", patchResp.Data["name"])
+	if patchResp.Data["name"] != "Renamed Gantt" {
+		t.Errorf("expected name=Renamed Gantt, got %v", patchResp.Data["name"])
 	}
 
 	// Create second view so we can delete the first
@@ -1332,7 +1341,7 @@ func TestIntegrationTimelineViews_DeleteLastViewRejected(t *testing.T) {
 
 	createW := serve(r, authedJSONReq(t.Context(), http.MethodPost, base, tok, map[string]any{
 		"name":      "Only Timeline View",
-		"view_type": "roadmap",
+		"view_type": "gantt",
 	}))
 	if createW.Code != http.StatusCreated {
 		t.Fatalf("create timeline view: expected 201, got %d", createW.Code)
@@ -1363,7 +1372,7 @@ func TestIntegrationTimelineViews_BacklogViewsNotReturned(t *testing.T) {
 	// Create a timeline view and a backlog view
 	w1 := serve(r, authedJSONReq(t.Context(), http.MethodPost, timelineBase, tok, map[string]any{
 		"name":      "Timeline View",
-		"view_type": "roadmap",
+		"view_type": "gantt",
 	}))
 	if w1.Code != http.StatusCreated {
 		t.Fatalf("create timeline view: expected 201, got %d", w1.Code)
@@ -1405,7 +1414,7 @@ func TestIntegrationTimelineViews_Reorder(t *testing.T) {
 	itemBase := fmt.Sprintf("/api/v1/projects/%s/views", projectID)
 	base := itemBase + "?context=timeline"
 
-	w1 := serve(r, authedJSONReq(t.Context(), http.MethodPost, base, tok, map[string]any{"name": "Alpha", "view_type": "roadmap"}))
+	w1 := serve(r, authedJSONReq(t.Context(), http.MethodPost, base, tok, map[string]any{"name": "Alpha", "view_type": "gantt"}))
 	if w1.Code != http.StatusCreated {
 		t.Fatalf("create tl v1: expected 201, got %d", w1.Code)
 	}
@@ -1509,7 +1518,7 @@ func TestIntegrationTimelineViews_AuthzGuard(t *testing.T) {
 
 	w := serve(r, authedJSONReq(t.Context(), http.MethodPost, base, tok, map[string]any{
 		"name":      "Unauthorized",
-		"view_type": "roadmap",
+		"view_type": "gantt",
 	}))
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", w.Code)
