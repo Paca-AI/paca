@@ -20,13 +20,14 @@ async function main() {
 			out: (line) => console.log(line),
 			err: (line) => console.error(line),
 		});
-		process.exit(code);
+		// Not process.exit: it can drop output still waiting on a pipe.
+		process.exitCode = code;
 		return;
 	}
 	if (process.argv.includes("--help") || process.argv.includes("-h")) {
 		const { USAGE } = await import("./cli/index.js");
 		console.log(USAGE);
-		process.exit(0);
+		return;
 	}
 
 	// Handle --version flag

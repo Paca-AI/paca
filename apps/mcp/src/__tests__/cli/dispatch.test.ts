@@ -137,25 +137,25 @@ describe("index.ts dispatch", () => {
 	});
 	afterEach(() => {
 		process.argv = argv;
+		process.exitCode = undefined;
 		vi.doUnmock("../../cli/index.js");
 		vi.doUnmock("../../server.js");
 		vi.restoreAllMocks();
 	});
 
-	it("runs the command and exits with its code instead of starting the server", async () => {
+	it("runs the command and sets its exit code instead of starting the server", async () => {
 		const runCliMock = vi.fn().mockResolvedValue(2);
 		const createServer = vi.fn();
 		vi.doMock("../../cli/index.js", () => ({ runCli: runCliMock }));
 		vi.doMock("../../server.js", () => ({ createServer }));
-		const exited = new Promise<number>((resolve) => {
-			vi.spyOn(process, "exit").mockImplementation(((code: number) => {
-				resolve(code);
-				return undefined as never;
-			}) as never);
-		});
+		// process.exit would drop output still waiting on a pipe.
+		const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+			throw new Error("process.exit called");
+		}) as never);
 		process.argv = ["node", "paca", "push", "a.md"];
 		await import("../../index.js");
-		expect(await exited).toBe(2);
+		await vi.waitFor(() => expect(process.exitCode).toBe(2));
+		expect(exit).not.toHaveBeenCalled();
 		expect(runCliMock.mock.calls[0][0]).toEqual(["push", "a.md"]);
 		expect(createServer).not.toHaveBeenCalled();
 	});
