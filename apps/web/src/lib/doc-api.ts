@@ -73,6 +73,10 @@ export interface FieldChange {
 export interface DocActivityContent {
 	text?: unknown;
 	changes?: FieldChange[] | null;
+	/** A write's note, client label and task reference, when it sent them. */
+	note?: string;
+	client?: string;
+	task?: string;
 	[key: string]: unknown;
 }
 

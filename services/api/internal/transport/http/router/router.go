@@ -842,6 +842,14 @@ func New(deps Deps) http.Handler {
 					// isn't parsed as a document ID)
 					r.With(require.Project(iam.ActionDocsRead)).Get("/search", deps.Document.SearchDocuments)
 
+					// Documents — by path (also before /{docId}). The gate
+					// can only check the project: the folder and document
+					// are known once the path is resolved, and the handler
+					// authorizes them then (docs:read on the document,
+					// docs:write on the folder or document it writes).
+					r.With(require.Project(iam.ActionDocsRead)).Get("/by-path", deps.Document.GetDocumentByPath)
+					r.With(require.Project(iam.ActionDocsWrite)).Put("/by-path", deps.Document.PutDocumentByPath)
+
 					// Documents — change feed and batch read (also before /{docId}).
 					r.With(require.Project(iam.ActionDocsRead)).Get("/changes", deps.Document.ListChanges)
 					r.With(require.Project(iam.ActionDocsRead)).Post("/batch-get", deps.Document.BatchGetDocuments)

@@ -261,7 +261,7 @@ func TestDocSeq_ConcurrentWritesAndFolderDeleteDoNotDeadlock(t *testing.T) {
 			status int
 			body   string
 		}
-		results := make(chan result, 3*perFolder+2)
+		results := make(chan result, 4*perFolder+2)
 		var wg sync.WaitGroup
 		run := func(what, method, url string, body any) {
 			wg.Add(1)
@@ -276,6 +276,12 @@ func TestDocSeq_ConcurrentWritesAndFolderDeleteDoNotDeadlock(t *testing.T) {
 			run("save", http.MethodPatch, docs+"/"+ids[i], map[string]any{"content": docBlocks("a", fmt.Sprintf("round %d", round))})
 			if i%3 == 0 {
 				run("delete doc", http.MethodDelete, docs+"/"+ids[i], nil)
+			}
+			if i%2 == 0 {
+				// A push by path takes the counter, then the folder lock,
+				// then the document row. If it loses to the folder delete or
+				// rename it creates the folder and the document again.
+				run("push by path", http.MethodPut, docs+"/by-path", map[string]any{"path": fmt.Sprintf("F%d/d%d", round, i), "content": docBlocks("a", fmt.Sprintf("pushed %d", round))})
 			}
 			if i%4 == 0 {
 				// At the top level: creating a doc in a folder that is being

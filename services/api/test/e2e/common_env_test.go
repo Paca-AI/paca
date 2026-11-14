@@ -320,6 +320,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		// the change feed would not be narrowed to what the caller may read.
 		Document: handler.NewDocumentHandler(docService, docActivityService).
 			WithDocListScoper(authorizer).
+			WithDocAuthorizer(authorizer).
 			WithDocChanges(docsvc.NewChangesService(docRepo)),
 		View:         handler.NewViewHandler(viewService),
 		Attachment:   handler.NewAttachmentHandler(attachmentService),

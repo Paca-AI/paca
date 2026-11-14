@@ -230,6 +230,27 @@ const (
 	CodeDocNotFound Code = "DOC_NOT_FOUND"
 	// CodeDocTitleInvalid indicates an empty or invalid document title.
 	CodeDocTitleInvalid Code = "DOC_TITLE_INVALID"
+	// CodeDocLocked indicates the document is a locked managed copy: its
+	// content and title change only through a push from its repository.
+	CodeDocLocked Code = "DOC_LOCKED"
+	// CodeDocLockNeedsSource indicates a lock was asked for on a document
+	// that is not a managed copy (it has no source).
+	CodeDocLockNeedsSource Code = "DOC_LOCK_NEEDS_SOURCE"
+	// CodeDocPathInvalid indicates a document path with no title (empty, or
+	// only slashes and spaces) or one that is too long.
+	CodeDocPathInvalid Code = "DOC_PATH_INVALID"
+	// CodeDocPathIsFolder indicates a document path whose last segment names
+	// a folder.
+	CodeDocPathIsFolder Code = "DOC_PATH_IS_FOLDER"
+	// CodeDocPathChanged indicates a by-path write kept finding the path
+	// changed by other writers while it wrote; the request can be retried.
+	CodeDocPathChanged Code = "DOC_PATH_CHANGED"
+	// CodeDocSourceInvalid indicates a source without a repository or path,
+	// or with a field over 500 characters.
+	CodeDocSourceInvalid Code = "DOC_SOURCE_INVALID"
+	// CodeDocNoteInvalid indicates a write's note, client label or task
+	// reference is longer than its limit.
+	CodeDocNoteInvalid Code = "DOC_NOTE_INVALID"
 	// CodeDocFolderNotFound indicates the requested document folder does not exist.
 	CodeDocFolderNotFound Code = "DOC_FOLDER_NOT_FOUND"
 	// CodeDocFolderNameInvalid indicates an empty or invalid folder name.

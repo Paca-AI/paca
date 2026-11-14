@@ -23,6 +23,14 @@ var (
 	// *VersionConflictError, which matches it with errors.Is.
 	ErrVersionConflict = errors.New("document: version conflict")
 
+	// ErrDocLocked means the document is a locked managed copy and the write
+	// would change its content or title without naming its repository as
+	// the source.
+	ErrDocLocked = errors.New("document: locked managed copy; edit it in its repository")
+	// ErrDocLockNeedsSource means a write asked to lock a document that has
+	// no source: only a managed copy can be locked.
+	ErrDocLockNeedsSource = errors.New("document: only a document with a source can be locked")
+
 	// ErrInvalidCursor is returned when a client-supplied tree-listing cursor
 	// cannot be decoded.
 	ErrInvalidCursor = errors.New("doc: invalid pagination cursor")
@@ -60,6 +68,9 @@ type VersionConflictError struct {
 	CurrentHash string
 	UpdatedAt   time.Time
 	UpdatedBy   *uuid.UUID // project member; nil when unknown
+	// Note, Client and Task are what the write that stored the current
+	// content said about itself (empty when it said nothing).
+	Note, Client, Task string
 }
 
 func (e *VersionConflictError) Error() string { return ErrVersionConflict.Error() }

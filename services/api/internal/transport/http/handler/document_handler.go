@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,6 +27,7 @@ type DocumentHandler struct {
 	avatarSvc       attachmentdom.AvatarService
 	notificationSvc notificationdom.Service
 	listScoper      ListScoper
+	authz           docAuthorizer
 }
 
 // NewDocumentHandler returns a DocumentHandler wired to the doc service and
@@ -390,6 +390,10 @@ func (h *DocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Request)
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	if err := req.Validate(); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	if err := dto.ValidateBlockNoteContent(req.Content); err != nil {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "content: "+err.Error()))
 		return
@@ -414,14 +418,7 @@ func (h *DocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Request)
 
 	// Record creation activity (best-effort).
 	if createdBy != nil {
-		content, _ := json.Marshal(map[string]string{"title": d.Title})
-		_ = h.activitySvc.RecordActivity(r.Context(), docdom.RecordActivityInput{
-			DocumentID:   d.ID,
-			ProjectID:    projectID,
-			ActorID:      createdBy,
-			ActivityType: docdom.ActivityTypeDocCreated,
-			Content:      content,
-		})
+		h.recordDocCreated(r.Context(), projectID, d, *createdBy, req.WriteNote)
 	}
 
 	w.Header().Set("ETag", docETag(d))
@@ -459,6 +456,10 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	if err := req.Validate(); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	if req.Content.Set && req.Content.Value != nil {
 		if err := dto.ValidateBlockNoteContent(req.Content.Value); err != nil {
 			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "content: "+err.Error()))
@@ -481,9 +482,10 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 		Position:  req.Position,
 		UpdatedBy: updatedBy,
 		IfMatch:   ifMatch,
+		Lock:      req.SourceLocked,
 	})
 	if err != nil {
-		presenter.Error(w, r, err)
+		presenter.Error(w, r, h.withLastNote(r.Context(), projectID, docID, err))
 		return
 	}
 	w.Header().Set("ETag", docETag(d))
@@ -492,26 +494,7 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 	// not stored, so it records no activity (and so publishes no doc.updated
 	// event) and notifies no one.
 	if updatedBy != nil && oldDoc != nil && change.Any() {
-		changes := docChangedFields(oldDoc, req, change)
-		if len(changes) > 0 {
-			content, _ := json.Marshal(map[string]any{"changes": changes})
-			_ = h.activitySvc.RecordActivity(r.Context(), docdom.RecordActivityInput{
-				DocumentID:   docID,
-				ProjectID:    oldDoc.ProjectID,
-				ActorID:      updatedBy,
-				ActivityType: docdom.ActivityTypeDocUpdated,
-				Content:      content,
-			})
-		}
-
-		// Publish a plugin event for each user newly @mentioned in the
-		// content (no in-app row — see notificationSvc.NotifyDocMentioned's
-		// doc comment).
-		if h.notificationSvc != nil && change.Content && req.Content.Value != nil {
-			for _, mentionedID := range newlyMentionedUserIDs(oldDoc.Content, req.Content.Value) {
-				h.notificationSvc.NotifyDocMentioned(r.Context(), mentionedID, *updatedBy, oldDoc.ProjectID, docID)
-			}
-		}
+		h.recordDocUpdate(r.Context(), oldDoc.ProjectID, oldDoc, d, req.Content.Value, change, *updatedBy, req.WriteNote)
 	}
 
 	presenter.OK(w, r, dto.DocumentFromEntity(d))
@@ -801,29 +784,29 @@ func parseDocCommentID(r *http.Request) (uuid.UUID, error) {
 // =============================================================================
 
 // docChangedFields returns a FieldChange for each field the service reports
-// changed, with the old value from old and the new one from the request.
-// Content counts as changed only when its content hash did (change.Content),
-// never because the JSON bytes differ.
-func docChangedFields(old *docdom.Document, req dto.UpdateDocumentRequest, change docdom.DocChange) []docdom.FieldChange {
+// changed, with the old value from old and the new one from the stored
+// document cur. Content counts as changed only when its content hash did
+// (change.Content), never because the JSON bytes differ. A source change alone
+// is not listed (it records no activity); a lock change is.
+func docChangedFields(old, cur *docdom.Document, change docdom.DocChange) []docdom.FieldChange {
 	var changes []docdom.FieldChange
 
-	if change.Title && req.Title != nil {
-		changes = append(changes, docdom.FieldChange{Field: "title", Old: old.Title, New: strings.TrimSpace(*req.Title)})
+	if change.Title {
+		changes = append(changes, docdom.FieldChange{Field: "title", Old: old.Title, New: cur.Title})
 	}
 
-	if change.Content && req.Content.Set {
-		changes = append(changes, docdom.FieldChange{Field: "content", Old: old.Content, New: req.Content.Value})
+	if change.Content {
+		changes = append(changes, docdom.FieldChange{Field: "content", Old: old.Content, New: cur.Content})
 	}
 
-	if change.Folder && req.FolderID.Set {
-		oldVal := uuidPtrToStr(old.FolderID)
-		newVal := ""
-		if req.FolderID.Value != nil {
-			newVal = req.FolderID.Value.String()
-		}
-		if oldVal != newVal {
+	if change.Folder {
+		if oldVal, newVal := uuidPtrToStr(old.FolderID), uuidPtrToStr(cur.FolderID); oldVal != newVal {
 			changes = append(changes, docdom.FieldChange{Field: "folder_id", Old: oldVal, New: newVal})
 		}
+	}
+
+	if change.Lock {
+		changes = append(changes, docdom.FieldChange{Field: "source_locked", Old: old.SourceLocked, New: cur.SourceLocked})
 	}
 
 	return changes

@@ -124,13 +124,20 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	// A doc If-Match conflict names the version that is stored now.
 	var docConflict *docdom.VersionConflictError
-	if details == nil && errors.As(err, &docConflict) {
+	// A conflict with no stored version (If-Match on a path that has no
+	// document) has nothing to name, so it carries no details.
+	if details == nil && errors.As(err, &docConflict) && (docConflict.CurrentHash != "" || !docConflict.UpdatedAt.IsZero()) {
 		details = map[string]string{
 			"content_hash": docConflict.CurrentHash,
 			"updated_at":   docConflict.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		}
 		if docConflict.UpdatedBy != nil {
 			details["updated_by"] = docConflict.UpdatedBy.String()
+		}
+		for k, v := range map[string]string{"note": docConflict.Note, "client": docConflict.Client, "task": docConflict.Task} {
+			if v != "" {
+				details[k] = v
+			}
 		}
 	}
 	var fieldErr *agentdom.FieldNotSupportedError
@@ -421,6 +428,18 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeDocNotFound
 	case errors.Is(err, docdom.ErrDocTitleInvalid):
 		return http.StatusBadRequest, apierr.CodeDocTitleInvalid
+	case errors.Is(err, docdom.ErrDocLocked):
+		return http.StatusConflict, apierr.CodeDocLocked
+	case errors.Is(err, docdom.ErrDocLockNeedsSource):
+		return http.StatusBadRequest, apierr.CodeDocLockNeedsSource
+	case errors.Is(err, docdom.ErrDocPathInvalid):
+		return http.StatusBadRequest, apierr.CodeDocPathInvalid
+	case errors.Is(err, docdom.ErrDocPathIsFolder):
+		return http.StatusConflict, apierr.CodeDocPathIsFolder
+	case errors.Is(err, docdom.ErrDocPathChanged):
+		return http.StatusConflict, apierr.CodeDocPathChanged
+	case errors.Is(err, docdom.ErrDocSourceInvalid):
+		return http.StatusBadRequest, apierr.CodeDocSourceInvalid
 	case errors.Is(err, docdom.ErrFolderNotFound):
 		return http.StatusNotFound, apierr.CodeDocFolderNotFound
 	case errors.Is(err, docdom.ErrFolderNameInvalid):
@@ -761,6 +780,7 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeDocActivityNotFound:
 		return http.StatusNotFound
 	case apierr.CodeDocTitleInvalid,
+		apierr.CodeDocNoteInvalid,
 		apierr.CodeDocFolderNameInvalid,
 		apierr.CodeDocFolderNotInProject,
 		apierr.CodeDocFolderSelfParent,

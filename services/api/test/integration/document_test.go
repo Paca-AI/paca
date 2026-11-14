@@ -1095,3 +1095,11 @@ func TestIntegrationDocuments_CrossProjectAccessReturns404(t *testing.T) {
 		t.Errorf("victim doc title must be unchanged, got %q", docEnv.Data.Title)
 	}
 }
+
+func (r *fakeDocRepoIT) ResolveDocPath(context.Context, uuid.UUID, []string, string) (*docdom.DocPathResolution, error) {
+	return &docdom.DocPathResolution{}, nil
+}
+
+func (r *fakeDocRepoIT) WriteDocumentAtPath(context.Context, docdom.DocPathWrite) (*docdom.DocPathWriteResult, error) {
+	return nil, errors.New("by-path writes are not used by these tests")
+}
