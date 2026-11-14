@@ -2,6 +2,7 @@
 	"activityPane": {
 		"resize": "활동 패널 크기 조절",
 		"title": "활동",
+		"actions": "항목 작업",
 		"empty": "아직 활동이 없습니다",
 		"emptyComments": "아직 댓글이 없습니다",
 		"showAllActivity": "전체 활동 보기",

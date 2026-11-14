@@ -2,6 +2,7 @@
 	"activityPane": {
 		"resize": "アクティビティパネルのサイズを変更",
 		"title": "アクティビティ",
+		"actions": "エントリーの操作",
 		"empty": "アクティビティはまだありません",
 		"emptyComments": "コメントはまだありません",
 		"showAllActivity": "すべてのアクティビティを表示",

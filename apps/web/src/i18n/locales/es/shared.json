@@ -2,6 +2,7 @@
 	"activityPane": {
 		"resize": "Cambiar el tamaño del panel de actividad",
 		"title": "Actividad",
+		"actions": "Acciones de la entrada",
 		"empty": "Aún no hay actividad",
 		"emptyComments": "Aún no hay comentarios",
 		"showAllActivity": "Mostrar toda la actividad",
