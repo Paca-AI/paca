@@ -118,6 +118,7 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 - ✅ Webhook plugin (outgoing webhooks for task and sprint events, configurable per project)
 - ✅ Time logging plugin (track time spent per task, per sprint)
 - ✅ Dashboard plugin
+- 📋 Calendar plugin — a `view` extension that renders tasks on a month/week calendar by start and due date, selectable alongside Board/Table/Roadmap on any interaction, with drag-to-reschedule and sprint boundaries shown
 
 ### Security & Access Control
 - ✅ Global RBAC — admin-managed global roles with granular, per-domain permission control
@@ -134,6 +135,11 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 
 _These are ideas we find compelling but have not yet committed to._
 
+- 💡 Team chat & meetings — built-in messaging and voice/video, combining Slack-style channels and threads with Discord-style voice rooms, so people can talk and handle tasks on one platform
+  - 💡 Channels, threads, direct messages, mentions, and reactions, scoped to workspaces and projects
+  - 💡 Task-aware chat — link, create, and update tasks from a conversation, with task and sprint context shown inline
+  - 💡 Voice and video rooms that people can drop into, with screen sharing
+  - 💡 Agents as first-class participants — agents can join chat conversations and meetings, respond to mentions, and take notes, summarize, and turn discussion into tasks
 - 💡 Multi-agent orchestration — agents that delegate sub-tasks to other agents
 - 💡 Hosted cloud option (opt-in, for teams that don't want to self-host)
 
