@@ -65,6 +65,48 @@ describe("runCli", () => {
 		});
 	});
 
+	it("passes push options and the client label", async () => {
+		const push = vi.fn().mockResolvedValue(0);
+		await runCli(
+			[
+				"push",
+				"docs/plan.md",
+				"--path",
+				"Plans/X",
+				"--note",
+				"why",
+				"--task",
+				"PACA-88",
+				"--lock",
+				"--force",
+				"--dry-run",
+			],
+			{ ...ENV, PACA_CLIENT: "claude-code/s1" },
+			io().io,
+			{ push },
+		);
+		expect(push.mock.calls[0][0]).toEqual({
+			projectId: "p-env",
+			file: "docs/plan.md",
+			path: "Plans/X",
+			note: "why",
+			task: "PACA-88",
+			lock: true,
+			force: true,
+			dryRun: true,
+			client: "claude-code/s1",
+		});
+	});
+
+	it("push labels the client paca-cli by default and needs a file", async () => {
+		const push = vi.fn().mockResolvedValue(0);
+		await runCli(["push", "a.md"], ENV, io().io, { push });
+		expect(push.mock.calls[0][0].client).toBe("paca-cli");
+		const o = io();
+		expect(await runCli(["push"], ENV, o.io, { push })).toBe(1);
+		expect(o.err.join("\n")).toContain("push needs a file");
+	});
+
 	it("rejects an unknown option", async () => {
 		const o = io();
 		expect(await runCli(["pull", "--nope"], ENV, o.io)).toBe(1);

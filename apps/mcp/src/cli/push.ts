@@ -1,0 +1,273 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import {
+	type PacaAPIDocClient,
+	PacaAPIError,
+	type PutByPathInput,
+	type PutByPathResult,
+} from "../api/doc-client.js";
+import type { GitExec } from "../git/git-runner.js";
+import { blocknoteToMarkdown, markdownToBlocknote } from "../utils/index.js";
+import { unifiedDiff } from "./diff.js";
+import { gitSource } from "./git-source.js";
+import {
+	type CliIO,
+	call,
+	EXIT,
+	type PushState,
+	readJSON,
+	sha256,
+	TOO_OLD,
+	writeFileAtomic,
+	writeJSON,
+} from "./state.js";
+
+export interface PushOptions {
+	projectId: string;
+	/** The repository file to push. */
+	file: string;
+	/** The document path ("Folder/Title"); defaults to the recorded one, then
+	 *  Plans/<name> (Specifications/<name> under a specs folder). */
+	path?: string;
+	note?: string;
+	task?: string;
+	lock: boolean;
+	force: boolean;
+	dryRun: boolean;
+	/** Client label sent with the write. */
+	client: string;
+}
+
+export type PushClient = Pick<PacaAPIDocClient, "putByPath" | "getByPath">;
+
+const NOTE_MAX = 500;
+
+/** The document path a file is pushed to when nothing else says. */
+export function defaultDocPath(relPath: string): string {
+	const parts = relPath.split("/");
+	const name = (parts.pop() as string).replace(/\.md$/i, "");
+	return parts.includes("specs") ? `Specifications/${name}` : `Plans/${name}`;
+}
+
+/**
+ * Writes a repository file to its Paca document by path. Returns the exit
+ * code: 0 written or unchanged, 1 error, 2 conflict. Throws UnreachableError
+ * when the server cannot be reached (nothing is recorded then).
+ */
+export async function runPush(
+	opts: PushOptions,
+	client: PushClient,
+	io: CliIO,
+	deps: { cwd?: string; git?: GitExec } = {},
+): Promise<number> {
+	const cwd = deps.cwd ?? process.cwd();
+	const abs = path.resolve(cwd, opts.file);
+	let text: string;
+	try {
+		text = await fs.readFile(abs, "utf8");
+	} catch (err) {
+		io.err(`cannot read ${opts.file}: ${(err as Error).message}`);
+		return EXIT.error;
+	}
+	let src: Awaited<ReturnType<typeof gitSource>>;
+	try {
+		src = await gitSource(abs, cwd, deps.git);
+	} catch (err) {
+		io.err((err as Error).message);
+		return EXIT.error;
+	}
+	const rel = src.relPath;
+	const statePath = path.join(src.root, ".paca", "push.json");
+	const basePath = path.join(
+		src.root,
+		".paca",
+		"push-base",
+		`${sha256(rel)}.md`,
+	);
+	const state: PushState = (await readJSON<PushState>(statePath)) ?? {};
+	const entry = state[rel];
+	const fileSha = sha256(text);
+
+	if (entry && entry.file_sha256 === fileSha && !opts.force) {
+		io.out("unchanged");
+		return EXIT.ok;
+	}
+
+	const docPath = opts.path || entry?.doc_path || defaultDocPath(rel);
+	const ifMatch =
+		!opts.force && entry?.etag && entry.doc_path === docPath
+			? entry.etag
+			: undefined;
+	const note =
+		opts.note ??
+		(src.commit && src.lastSubject
+			? src.lastSubject.slice(0, NOTE_MAX)
+			: undefined);
+	const input: PutByPathInput = {
+		path: docPath,
+		content: [],
+		source: {
+			repository: src.repository,
+			path: rel,
+			...(src.commit ? { commit: src.commit } : {}),
+		},
+	};
+	if (opts.lock) input.lock = true;
+	if (note) input.note = note;
+	if (opts.client) input.client = opts.client.slice(0, 200);
+	if (opts.task) input.task = opts.task;
+
+	if (opts.dryRun) {
+		io.out(`would push ${rel} to ${docPath} (nothing sent)`);
+		io.out(
+			`  source: ${src.repository} ${rel}${src.commit ? ` @ ${src.commit.slice(0, 12)}` : " (uncommitted)"}`,
+		);
+		io.out(`  If-Match: ${ifMatch ?? "none"}`);
+		if (opts.lock) io.out("  lock: yes");
+		if (note) io.out(`  note: ${note}`);
+		if (opts.task) io.out(`  task: ${opts.task}`);
+		return EXIT.ok;
+	}
+
+	input.content = markdownToBlocknote(text);
+
+	let res: PutByPathResult | undefined;
+	for (let attempt = 1; !res; attempt++) {
+		try {
+			res = await call(() =>
+				client.putByPath(opts.projectId, input, ifMatch ? { ifMatch } : {}),
+			);
+		} catch (err) {
+			if (!(err instanceof PacaAPIError)) throw err;
+			if (err.code === "DOC_PATH_CHANGED" && attempt < 2) continue;
+			return reportWriteError(err, {
+				opts,
+				client,
+				io,
+				docPath,
+				rel,
+				basePath,
+				text,
+			});
+		}
+	}
+	if (res.status === "unsupported") {
+		io.err(TOO_OLD);
+		return EXIT.error;
+	}
+
+	await writeFileAtomic(basePath, text);
+	state[rel] = {
+		doc_path: docPath,
+		doc_id: res.doc.id,
+		file_sha256: fileSha,
+		etag: res.etag ?? res.doc.content_hash,
+	};
+	await writeJSON(statePath, state);
+
+	if (
+		res.created &&
+		entry?.doc_id &&
+		entry.doc_path === docPath &&
+		entry.doc_id !== res.doc.id
+	)
+		io.err(
+			`warning: the document pushed before (${entry.doc_id}) is gone from ${entry.doc_path}; created a new one`,
+		);
+	if (!res.changed)
+		io.out(
+			opts.lock && res.doc.source_locked
+				? `unchanged content; ${docPath} is locked`
+				: "unchanged",
+		);
+	else io.out(`${res.created ? "created" : "updated"} ${docPath}`);
+	return EXIT.ok;
+}
+
+async function reportWriteError(
+	err: PacaAPIError,
+	ctx: {
+		opts: PushOptions;
+		client: PushClient;
+		io: CliIO;
+		docPath: string;
+		rel: string;
+		basePath: string;
+		text: string;
+	},
+): Promise<number> {
+	const { opts, client, io, docPath } = ctx;
+	if (err.status === 412) {
+		const d = err.details;
+		if (!d || Object.keys(d).length === 0) {
+			io.err(
+				`conflict: the document at ${docPath} is gone or was moved since the last push`,
+			);
+			io.err("use --force to create it again");
+			return EXIT.conflict;
+		}
+		io.err("conflict: the Paca copy changed since the last push");
+		io.err(
+			`  written by ${d.updated_by || "someone"}${d.updated_at ? ` at ${d.updated_at}` : ""}`,
+		);
+		if (d.note) io.err(`  note: ${d.note}`);
+		if (d.client) io.err(`  client: ${d.client}`);
+		if (d.task) io.err(`  task: ${d.task}`);
+		const paca = await call(() =>
+			client.getByPath(opts.projectId, docPath),
+		).catch((e) => {
+			if (e instanceof PacaAPIError) return null;
+			throw e;
+		});
+		if (paca?.status === "found") {
+			const pacaText = blocknoteToMarkdown(paca.doc.content as any[] | null);
+			let base: string | null = null;
+			try {
+				base = await fs.readFile(ctx.basePath, "utf8");
+			} catch {
+				// No copy of the last push kept here.
+			}
+			if (base === null)
+				io.err(
+					`  (the last pushed version is not kept here; showing ${ctx.rel} against the Paca copy)`,
+				);
+			const diff = unifiedDiff(
+				base ?? ctx.text,
+				pacaText,
+				base === null ? ctx.rel : "last push",
+				"Paca copy",
+			);
+			for (const line of diff.trimEnd().split("\n")) if (line) io.err(line);
+		} else {
+			io.err("  (could not read the Paca copy to show what changed)");
+		}
+		io.err(
+			`merge that change into ${opts.file} and push again, or use --force to overwrite`,
+		);
+		return EXIT.conflict;
+	}
+	if (err.code === "DOC_PATH_CHANGED") {
+		io.err(
+			`the document path ${docPath} kept changing during the push; try again`,
+		);
+		return EXIT.error;
+	}
+	if (err.code === "DOC_LOCKED") {
+		const cur = await call(() =>
+			client.getByPath(opts.projectId, docPath),
+		).catch(() => null);
+		const s = cur?.status === "found" ? cur.doc.source : null;
+		io.err(
+			s
+				? `${docPath} is a managed copy locked to ${s.repository} (${s.path}); push it from that repository, or unlock it in Paca`
+				: `${docPath} is locked to another repository; unlock it in Paca to push from here`,
+		);
+		return EXIT.error;
+	}
+	if (err.code === "DOC_PATH_IS_FOLDER") {
+		io.err(`${docPath} is a folder in Paca; pass --path "Folder/Title"`);
+		return EXIT.error;
+	}
+	io.err(err.message);
+	return EXIT.error;
+}

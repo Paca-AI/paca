@@ -395,6 +395,80 @@ Plugin tools appear alongside core tools — there is no distinction from the AI
 
 To add MCP tools to your own plugin, see the [MCP Plugin System](../../docs/plugins/mcp-plugin-system.md) docs and the [`@paca-ai/plugin-sdk-mcp`](../../plugin-sdk-mcp/README.md) SDK.
 
+## Command line: `pull` and `push`
+
+The package also runs two commands for working with documents as files. They
+read the same environment as the server: `PACA_API_KEY`, `PACA_API_URL` and
+`PACA_PROJECT_ID` (or `--project <id>`). `PACA_CLIENT` sets the client label
+sent with writes (default `paca-cli`). They need a Paca server with the
+document change feed and by-path routes; an older server answers "this Paca
+server is too old for pull/push".
+
+```bash
+npx @paca-ai/paca-mcp pull [--project <id>] [--dir .paca/docs] [--force]
+npx @paca-ai/paca-mcp push <file> [--path "Folder/Title"] [--project <id>] [--note "…"] [--task PACA-88] [--lock] [--force] [--dry-run]
+```
+
+### `pull`: mirror documents to Markdown files
+
+`pull` writes every document you can read to `<dir>/<folder path>/<title>.md`.
+The first run downloads everything; later runs ask the server what changed
+since the last one, so an up-to-date pull is one request. Edited documents are
+fetched again, moved or renamed ones (including folder renames) are moved
+without downloading them, and deleted ones are removed. When you lose access
+to a document, its file is removed on the next pull.
+
+- File names come from titles and folder names. Characters that are not safe
+  in file names become `_`, and two documents that would get the same name
+  (compared without case) are told apart by `~<first 8 characters of the id>`.
+  Nothing is written outside `--dir`, and files in `--dir` that `pull` did not
+  write are never overwritten.
+- The mirror is read-only for now. A mirror file you edited is kept: `pull`
+  reports it, leaves it as it is and exits 2. `--force` overwrites it. A
+  document that was deleted while its file was edited also keeps the file.
+- State: `<dir>/.paca-sync.json` (cursor, folders, and per document its file,
+  content hash and file hash) and `<dir>/.paca-base/<id>.md` (what the server
+  had at the last pull). Both are written only after every file was written.
+- Removing a mirrored file does not revoke copies already made of it: anything
+  that read the mirror before keeps what it read.
+
+### `push`: write a repository file to a document
+
+`push docs/plan.md` writes the file to a document by path (default
+`Plans/<file name>`, or `Specifications/<file name>` when the file is under a
+`specs` folder; later pushes reuse the recorded path; `--path` sets another).
+The document records where it comes from: the repository (`owner/name` from the
+`origin` remote, else the folder name), the file's path in it, and the commit
+when the file has no uncommitted changes.
+
+- An unchanged file is not sent (`unchanged`). A push the server finds
+  identical is also `unchanged`.
+- Each push after the first sends `If-Match` with what the last push stored.
+  If someone changed the document in Paca since, the push stops (exit 2) and
+  prints who changed it, when, their note, client and task, and a diff from the
+  last pushed version to the Paca copy. Merge that change into the file and
+  push again, or use `--force` to overwrite it.
+- `--note` and `--task` are stored with the change; without `--note`, the note
+  is the subject of the file's last commit (when the file is committed).
+- `--lock` makes the document read-only in Paca: only a push from the same
+  repository can change it. A push to a document locked to another repository
+  fails and names that repository.
+- `--dry-run` prints what would be sent and sends nothing.
+- State: `.paca/push.json` at the repository root (per file: document path and
+  id, file hash, ETag) and `.paca/push-base/` (the last pushed text of each
+  file, used for the conflict diff). Outside a git repository, the working
+  folder takes the place of the repository root. You may want `.paca/` in
+  `.gitignore`.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Done, or nothing to do |
+| 1 | Error (bad arguments, server error, server too old) |
+| 2 | Conflict: the Paca copy changed since the last push, or a mirror file was edited locally |
+| 3 | The server could not be reached; nothing was recorded |
+
 ## Markdown/BlockNote Conversion
 
 The MCP server automatically handles conversion between Markdown and BlockNote JSON format:

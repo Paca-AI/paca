@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import { PacaAPIDocClient, PacaAPIError } from "../api/doc-client.js";
 import { type PullClient, type PullOptions, runPull } from "./pull.js";
+import { type PushClient, type PushOptions, runPush } from "./push.js";
 import { type CliIO, EXIT, UnreachableError } from "./state.js";
 
 export const USAGE = `Usage:
@@ -27,6 +28,7 @@ export const CLI_COMMANDS = ["pull", "push"] as const;
 
 export interface CliDeps {
 	pull?: (opts: PullOptions, client: PullClient, io: CliIO) => Promise<number>;
+	push?: (opts: PushOptions, client: PushClient, io: CliIO) => Promise<number>;
 }
 
 /** Runs `pull` or `push` (argv starts with the command) and returns the
@@ -82,6 +84,29 @@ export async function runCli(
 				client,
 				io,
 			);
+		}
+		if (command === "push") {
+			const [file, ...extra] = positionals;
+			if (!file) {
+				io.err("push needs a file: push <file> [options]");
+				return EXIT.error;
+			}
+			if (extra.length) {
+				io.err(`push takes one file; also got: ${extra.join(" ")}`);
+				return EXIT.error;
+			}
+			const opts: PushOptions = {
+				projectId,
+				file,
+				lock: values.lock === true,
+				force: values.force === true,
+				dryRun: values["dry-run"] === true,
+				client: env.PACA_CLIENT || "paca-cli",
+			};
+			if (values.path) opts.path = values.path;
+			if (values.note !== undefined) opts.note = values.note;
+			if (values.task) opts.task = values.task;
+			return await (deps.push ?? runPush)(opts, client, io);
 		}
 		io.err(`unknown command: ${command}`);
 		io.err(USAGE);
