@@ -420,12 +420,20 @@ to a document, its file is removed on the next pull.
 
 - File names come from titles and folder names. Characters that are not safe
   in file names become `_`, and two documents that would get the same name
-  (compared without case) are told apart by `~<first 8 characters of the id>`.
-  Nothing is written outside `--dir`, and files in `--dir` that `pull` did not
-  write are never overwritten.
+  (compared without case and Unicode normalization) are told apart by
+  `~<first 8 characters of the id>`. Names Windows reserves (`CON`, `NUL`, …)
+  get a `_` prefix. Nothing is written outside `--dir`, and files in `--dir`
+  that `pull` did not write are never overwritten; a folder whose path is such
+  a file gets `~<first 8 characters of the folder id>`.
+- `pull` refuses to run (exit 1) when the mirror folder contains a symlink, so
+  it never writes, moves or deletes through one.
+- If a pull fails part way, files it moved are put back, and a file left
+  mid-move by an interrupted pull is put back by the next one.
 - The mirror is read-only for now. A mirror file you edited is kept: `pull`
-  reports it, leaves it as it is and exits 2. `--force` overwrites it. A
-  document that was deleted while its file was edited also keeps the file.
+  reports it, leaves it as it is and exits 2. `--force` overwrites it. When a
+  document is deleted (or you lose access) while its file was edited, the file
+  is kept and every pull reports it and exits 2 until you delete the file or
+  run `pull --force`, which removes it.
 - State: `<dir>/.paca-sync.json` (cursor, folders, and per document its file,
   content hash and file hash) and `<dir>/.paca-base/<id>.md` (what the server
   had at the last pull). Both are written only after every file was written.
@@ -441,8 +449,9 @@ The document records where it comes from: the repository (`owner/name` from the
 `origin` remote, else the folder name), the file's path in it, and the commit
 when the file has no uncommitted changes.
 
-- An unchanged file is not sent (`unchanged`). A push the server finds
-  identical is also `unchanged`.
+- An unchanged file is not sent (`unchanged`), unless `--path`, `--lock` or
+  `--force` asks for something new. A push the server finds identical is also
+  `unchanged`.
 - Each push after the first sends `If-Match` with what the last push stored.
   If someone changed the document in Paca since, the push stops (exit 2) and
   prints who changed it, when, their note, client and task, and a diff from the
@@ -455,8 +464,10 @@ when the file has no uncommitted changes.
   fails and names that repository.
 - `--dry-run` prints what would be sent and sends nothing.
 - State: `.paca/push.json` at the repository root (per file: document path and
-  id, file hash, ETag) and `.paca/push-base/` (the last pushed text of each
-  file, used for the conflict diff). Outside a git repository, the working
+  id, file hash, ETag, and the project and server URL it was pushed to; an
+  entry for another project or server is ignored) and `.paca/push-base/` (the
+  last pushed text of each file as Paca stores it, used for the conflict
+  diff). Outside a git repository, the working
   folder takes the place of the repository root. You may want `.paca/` in
   `.gitignore`.
 
