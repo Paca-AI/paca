@@ -210,6 +210,19 @@ export interface Document {
 	updated_by?: string | null;
 	created_at: string;
 	updated_at: string;
+	/** Hash of the content alone; the If-Match value for writes. */
+	content_hash?: string;
+	/** The repository file a managed copy is pushed from. */
+	source?: DocSource | null;
+	/** A locked managed copy changes only through a push from its repository. */
+	source_locked?: boolean;
+}
+
+/** The repository file a managed document copy comes from. */
+export interface DocSource {
+	repository: string;
+	path: string;
+	commit?: string;
 }
 
 export interface DocumentSearchHit {

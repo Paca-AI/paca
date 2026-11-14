@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { PacaAPIClient, PacaAPIDocClient } from "../api/index.js";
 import { pagingFields, pagingProperties } from "../api/paginate.js";
 import type { Document, DocumentFolder } from "../types/index.js";
-import { blocknoteToMarkdown } from "../utils/index.js";
+import { blocknoteToMarkdown, markdownToBlocknote } from "../utils/index.js";
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
 
@@ -54,8 +54,11 @@ type ResolvedPath =
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 //
-// A path is resolved one component at a time with exact-name lookups against
-// the folder / document lists, so no call ever reads the whole tree.
+// A document path is resolved by the server in one request (GET/PUT
+// /docs/by-path). A server from before those routes answers "unsupported", and
+// so does a path that names a folder for the tools that also act on folders:
+// then the path is resolved one component at a time with exact-name lookups
+// against the folder / document lists, so no call ever reads the whole tree.
 
 function parsePath(path: string): string[] {
 	return path
@@ -147,6 +150,37 @@ async function ensureFolderPath(
 	}
 
 	return currentFolderId;
+}
+
+/**
+ * Resolves a path that may name a document or a folder (delete_doc,
+ * move_doc): a document in one request where the server supports it, else
+ * (a folder, or an older server) the folder walk. When a folder and a
+ * document share the path's name, the server picks the document.
+ */
+async function resolveDocOrFolder(
+	projectId: string,
+	path: string,
+	apiClient: PacaAPIClient,
+	docClient: PacaAPIDocClient,
+): Promise<ResolvedPath | null> {
+	if (parsePath(path).length === 0) return { type: "root" };
+	const byPath = await docClient.getByPath(projectId, path);
+	if (byPath.status === "found") return { type: "doc", doc: byPath.doc };
+	if (byPath.status === "not_found") return null;
+	return resolvePath(projectId, path, apiClient, docClient);
+}
+
+function renderDoc(doc: Document, path: string) {
+	const content = doc.content ? blocknoteToMarkdown(doc.content) : "";
+	return {
+		content: [
+			{
+				type: "text",
+				text: `📄 ${doc.title}\nPath: ${path}\nUpdated: ${doc.updated_at}\n\n---\n\n${content}`,
+			},
+		],
+	};
 }
 
 // ── Directory listing cursor ──────────────────────────────────────────────────
@@ -423,7 +457,23 @@ export async function handleFilesystemDocTool(
 				};
 			}
 
-			const resolved = await resolvePath(projectId, path, apiClient, docClient);
+			const byPath =
+				parsePath(path).length > 0
+					? await docClient.getByPath(projectId, path)
+					: ({ status: "folder" } as const);
+			if (byPath.status === "found") {
+				return renderDoc(byPath.doc, path);
+			}
+			if (byPath.status === "not_found") {
+				return {
+					content: [{ type: "text", text: `Not found: ${path}` }],
+					isError: true,
+				};
+			}
+			const resolved =
+				byPath.status === "folder"
+					? ({ type: "folder" } as const)
+					: await resolvePath(projectId, path, apiClient, docClient);
 
 			if (!resolved) {
 				return {
@@ -444,15 +494,7 @@ export async function handleFilesystemDocTool(
 			}
 
 			const doc = await apiClient.getDocument(projectId, resolved.doc.id);
-			const content = doc.content ? blocknoteToMarkdown(doc.content) : "";
-			return {
-				content: [
-					{
-						type: "text",
-						text: `📄 ${doc.title}\nPath: ${path}\nUpdated: ${doc.updated_at}\n\n---\n\n${content}`,
-					},
-				],
-			};
+			return renderDoc(doc, path);
 		}
 
 		case "write_doc": {
@@ -471,6 +513,22 @@ export async function handleFilesystemDocTool(
 				};
 			}
 
+			const written = await docClient.putByPath(projectId, {
+				path,
+				content: content ? markdownToBlocknote(content) : [],
+			});
+			if (written.status === "written") {
+				const verb = written.created
+					? "Created"
+					: written.changed
+						? "Updated"
+						: "Unchanged";
+				return {
+					content: [{ type: "text", text: `${verb} document: ${path}` }],
+				};
+			}
+
+			// An older server: create the folders and the document one call at a time.
 			const folderNames = parts.slice(0, -1);
 			const docTitle = parts[parts.length - 1];
 			const folderId = await ensureFolderPath(
@@ -501,7 +559,12 @@ export async function handleFilesystemDocTool(
 
 		case "delete_doc": {
 			const { projectId, path } = DeleteDocSchema.parse(args);
-			const resolved = await resolvePath(projectId, path, apiClient, docClient);
+			const resolved = await resolveDocOrFolder(
+				projectId,
+				path,
+				apiClient,
+				docClient,
+			);
 
 			if (!resolved || resolved.type === "root") {
 				return {
@@ -525,7 +588,7 @@ export async function handleFilesystemDocTool(
 
 		case "move_doc": {
 			const { projectId, sourcePath, destPath } = MoveDocSchema.parse(args);
-			const source = await resolvePath(
+			const source = await resolveDocOrFolder(
 				projectId,
 				sourcePath,
 				apiClient,
