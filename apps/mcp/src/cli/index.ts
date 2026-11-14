@@ -64,10 +64,8 @@ export async function runCli(
 		io.err("Set PACA_PROJECT_ID or pass --project <id>.");
 		return EXIT.error;
 	}
-	const client = new PacaAPIDocClient({
-		apiKey,
-		baseURL: env.PACA_API_URL || "http://localhost:8080",
-	});
+	const baseURL = env.PACA_API_URL || "http://localhost:8080";
+	const client = new PacaAPIDocClient({ apiKey, baseURL });
 
 	try {
 		if (command === "pull") {
@@ -102,6 +100,7 @@ export async function runCli(
 				force: values.force === true,
 				dryRun: values["dry-run"] === true,
 				client: env.PACA_CLIENT || "paca-cli",
+				server: baseURL,
 			};
 			if (values.path) opts.path = values.path;
 			if (values.note !== undefined) opts.note = values.note;

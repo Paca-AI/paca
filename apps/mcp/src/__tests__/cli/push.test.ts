@@ -373,6 +373,100 @@ describe("runPush", () => {
 		expect(lines).toContain("unchanged content; Plans/plan is locked");
 	});
 
+	it("an entry recorded for another project is ignored", async () => {
+		client.putByPath.mockResolvedValue(written({ created: true }));
+		await push("docs/plan.md");
+		expect(await push("docs/plan.md", { projectId: "p2" })).toBe(0);
+		expect(client.putByPath).toHaveBeenCalledTimes(2);
+		expect(client.putByPath.mock.calls[1][0]).toBe("p2");
+		expect(putOpts(1)).toEqual({});
+		expect(state()["docs/plan.md"]).toMatchObject({ project: "p2" });
+	});
+
+	it("an entry recorded for another server is ignored", async () => {
+		client.putByPath.mockResolvedValue(written({ created: true }));
+		await push("docs/plan.md", { server: "http://a.test" });
+		expect(await push("docs/plan.md", { server: "http://b.test" })).toBe(0);
+		expect(client.putByPath).toHaveBeenCalledTimes(2);
+		expect(putOpts(1)).toEqual({});
+		expect(state()["docs/plan.md"]).toMatchObject({
+			project: "p1",
+			server: "http://b.test",
+		});
+	});
+
+	it("--path on an unchanged file pushes it", async () => {
+		client.putByPath.mockResolvedValue(written({ created: true }));
+		await push("docs/plan.md");
+		expect(await push("docs/plan.md", { path: "Other/X" })).toBe(0);
+		expect(client.putByPath).toHaveBeenCalledTimes(2);
+		expect(body(1).path).toBe("Other/X");
+	});
+
+	it("--lock on an unchanged file pushes it", async () => {
+		client.putByPath.mockResolvedValue(written({ created: true }));
+		await push("docs/plan.md");
+		expect(await push("docs/plan.md", { lock: true })).toBe(0);
+		expect(client.putByPath).toHaveBeenCalledTimes(2);
+		expect(body(1).lock).toBe(true);
+	});
+
+	it("the conflict diff ignores Markdown the converter rewrites", async () => {
+		write("docs/plan.md", "# T\n\n__bold__ text\n\n1) x\n2) y\n");
+		client.putByPath.mockResolvedValue(written({ created: true }));
+		await push("docs/plan.md");
+		write("docs/plan.md", "# T\n\n__bold__ text\n\n1) x\n2) y\n\nmine\n");
+		client.putByPath.mockRejectedValue(
+			new PacaAPIError("version conflict", 412, "VERSION_CONFLICT", {
+				content_hash: "other",
+				updated_at: "t",
+			}),
+		);
+		client.getByPath.mockResolvedValue({
+			status: "found",
+			doc: {
+				content: markdownToBlocknote(
+					"# T\n\n__bold__ text, edited\n\n1) x\n2) y\n",
+				),
+			},
+		});
+		lines = [];
+		expect(await push("docs/plan.md")).toBe(2);
+		const changed = lines.filter(
+			(l) => /^[-+]/.test(l) && !l.startsWith("---") && !l.startsWith("+++"),
+		);
+		expect(changed).toHaveLength(2);
+		expect(changed[0]).toMatch(/^-.*bold.* text$/);
+		expect(changed[1]).toMatch(/^\+.*bold.* text, edited$/);
+	});
+
+	it("a network failure reading the Paca copy after a 412 still exits 2", async () => {
+		client.putByPath.mockResolvedValue(written({ created: true }));
+		await push("docs/plan.md");
+		write("docs/plan.md", "mine\n");
+		client.putByPath.mockRejectedValue(
+			new PacaAPIError("version conflict", 412, "VERSION_CONFLICT", {
+				content_hash: "other",
+				updated_at: "t",
+			}),
+		);
+		client.getByPath.mockRejectedValue(new TypeError("fetch failed"));
+		lines = [];
+		expect(await push("docs/plan.md")).toBe(2);
+		const out = lines.join("\n");
+		expect(out).toContain(
+			"conflict: the Paca copy changed since the last push",
+		);
+		expect(out).toContain("could not read the Paca copy");
+	});
+
+	it("accepts a file whose name starts with two dots", async () => {
+		write("..draft.md", "draft\n");
+		client.putByPath.mockResolvedValue(written({ created: true }));
+		expect(await push("..draft.md")).toBe(0);
+		expect(body().source.path).toBe("..draft.md");
+	});
+
 	it("outside git, uses the folder name and paths from the working folder", async () => {
 		const plain = fs.realpathSync(
 			fs.mkdtempSync(path.join(os.tmpdir(), "paca-plain-")),

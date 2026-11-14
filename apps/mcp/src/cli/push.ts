@@ -36,6 +36,9 @@ export interface PushOptions {
 	dryRun: boolean;
 	/** Client label sent with the write. */
 	client: string;
+	/** The Paca server URL; recorded so a push to another server does not
+	 *  reuse this one's state. */
+	server?: string;
 }
 
 export type PushClient = Pick<PacaAPIDocClient, "putByPath" | "getByPath">;
@@ -78,17 +81,31 @@ export async function runPush(
 	}
 	const rel = src.relPath;
 	const statePath = path.join(src.root, ".paca", "push.json");
+	const server = opts.server ?? "";
 	const basePath = path.join(
 		src.root,
 		".paca",
 		"push-base",
-		`${sha256(rel)}.md`,
+		`${sha256(`${server}\n${opts.projectId}\n${rel}`)}.md`,
 	);
 	const state: PushState = (await readJSON<PushState>(statePath)) ?? {};
-	const entry = state[rel];
+	// An entry recorded for another project or server says nothing here.
+	const recorded = state[rel];
+	const entry =
+		recorded &&
+		recorded.project === opts.projectId &&
+		(recorded.server ?? "") === server
+			? recorded
+			: undefined;
 	const fileSha = sha256(text);
 
-	if (entry && entry.file_sha256 === fileSha && !opts.force) {
+	if (
+		entry &&
+		entry.file_sha256 === fileSha &&
+		!opts.force &&
+		!opts.lock &&
+		(!opts.path || opts.path === entry.doc_path)
+	) {
 		io.out("unchanged");
 		return EXIT.ok;
 	}
@@ -130,6 +147,9 @@ export async function runPush(
 	}
 
 	input.content = markdownToBlocknote(text);
+	// The base copy is kept as the converter writes it, so the conflict diff
+	// against the Paca copy (also converted) shows only real changes.
+	const canonical = blocknoteToMarkdown(input.content);
 
 	let res: PutByPathResult | undefined;
 	for (let attempt = 1; !res; attempt++) {
@@ -147,7 +167,7 @@ export async function runPush(
 				docPath,
 				rel,
 				basePath,
-				text,
+				text: canonical,
 			});
 		}
 	}
@@ -156,8 +176,10 @@ export async function runPush(
 		return EXIT.error;
 	}
 
-	await writeFileAtomic(basePath, text);
+	await writeFileAtomic(basePath, canonical);
 	state[rel] = {
+		project: opts.projectId,
+		server,
 		doc_path: docPath,
 		doc_id: res.doc.id,
 		file_sha256: fileSha,
@@ -213,12 +235,11 @@ async function reportWriteError(
 		if (d.note) io.err(`  note: ${d.note}`);
 		if (d.client) io.err(`  client: ${d.client}`);
 		if (d.task) io.err(`  task: ${d.task}`);
+		// Any failure here (even an unreachable server) still ends as a
+		// conflict, just without the diff.
 		const paca = await call(() =>
 			client.getByPath(opts.projectId, docPath),
-		).catch((e) => {
-			if (e instanceof PacaAPIError) return null;
-			throw e;
-		});
+		).catch(() => null);
 		if (paca?.status === "found") {
 			const pacaText = blocknoteToMarkdown(paca.doc.content as any[] | null);
 			let base: string | null = null;

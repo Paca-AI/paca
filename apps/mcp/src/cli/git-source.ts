@@ -57,7 +57,7 @@ export async function gitSource(
 	const top = await run("rev-parse", "--show-toplevel");
 	const root = top ? await fs.realpath(top) : await fs.realpath(cwd);
 	const rel = path.relative(root, abs);
-	if (!rel || rel.startsWith("..") || path.isAbsolute(rel))
+	if (!rel || rel.split(path.sep)[0] === ".." || path.isAbsolute(rel))
 		throw new Error(
 			`${file} is outside ${top ? "the repository" : "the working folder"} (${root})`,
 		);

@@ -95,6 +95,7 @@ describe("runCli", () => {
 			force: true,
 			dryRun: true,
 			client: "claude-code/s1",
+			server: "http://paca.test",
 		});
 	});
 

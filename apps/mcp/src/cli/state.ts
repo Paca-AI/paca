@@ -125,6 +125,10 @@ export const BASE_DIR = ".paca-base";
 // ==================== push state ====================
 
 export interface PushFileState {
+	/** Project and server the entry was recorded for; an entry for another
+	 *  one is ignored. */
+	project: string;
+	server: string;
 	doc_path: string;
 	doc_id?: string;
 	file_sha256: string;
