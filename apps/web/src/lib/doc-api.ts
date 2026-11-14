@@ -20,6 +20,14 @@ export interface DocFolderListResult {
 	items: DocFolder[];
 }
 
+/** Where a managed copy comes from: a file in a code repository that an agent
+ *  pushes to Paca. Absent on documents created in Paca. */
+export interface DocSource {
+	repository: string;
+	path: string;
+	commit?: string;
+}
+
 export interface Document {
 	id: string;
 	project_id?: string | null;
@@ -31,6 +39,9 @@ export interface Document {
 	updated_by?: string | null;
 	created_at: string;
 	updated_at: string;
+	source?: DocSource;
+	/** A locked managed copy rejects content and title changes made in Paca. */
+	source_locked: boolean;
 }
 
 export interface DocumentListResult {
@@ -371,6 +382,7 @@ export async function updateDocument(
 		content?: unknown[] | null;
 		folder_id?: string | null;
 		position?: number;
+		source_locked?: boolean;
 	},
 ): Promise<Document> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Document>>(

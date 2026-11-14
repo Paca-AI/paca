@@ -1003,6 +1003,15 @@
 			"deleted": "đã xóa tài liệu",
 			"moved": "đã di chuyển tài liệu",
 			"contentChangeDiff": "Thay đổi nội dung"
+		},
+		"managedCopy": {
+			"copyOf": "Bản sao của {{path}} trong {{repository}}",
+			"copyOfAtCommit": "Bản sao của {{path}} trong {{repository}} tại {{commit}}",
+			"locked": "Đã khóa: hãy sửa tệp trong kho mã rồi push lên.",
+			"unlocked": "Các chỉnh sửa ở đây sẽ bị ghi đè ở lần push tiếp theo, trừ khi được đưa vào tệp.",
+			"lock": "Khóa",
+			"unlock": "Mở khóa",
+			"editNotSaved": "Chỉnh sửa gần nhất của bạn chưa được lưu."
 		}
 	},
 	"roles": {
