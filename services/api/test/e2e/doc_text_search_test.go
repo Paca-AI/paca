@@ -290,7 +290,11 @@ func TestSearch_UsesTrigramIndexes(t *testing.T) {
 		FROM generate_series(1, 5000) AS g`, projID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := env.db.ExecContext(env.ctx, `ANALYZE documents`); err != nil {
+	// VACUUM as well as ANALYZE: GIN cost estimates read the index metapage
+	// and pending list, which only VACUUM updates, so an autovacuum between
+	// this and the EXPLAIN cannot change the plan's inputs. Outside a
+	// transaction, as VACUUM requires.
+	if _, err := env.db.ExecContext(env.ctx, `VACUUM ANALYZE documents`); err != nil {
 		t.Fatal(err)
 	}
 	q, args, err := pgRepo.NewDocumentRepository(env.db).SearchDocumentsQuery(env.ctx, uuid.MustParse(projID), "zebracorn", 20)
