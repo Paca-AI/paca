@@ -100,6 +100,15 @@ export const TailFollowIndicator: FC<{
 		if (lastJumpRef.current === jumpCount) return;
 		lastJumpRef.current = jumpCount;
 		scrollToEnd({ behavior: "auto" });
+		// The sender's message and the reply render after this effect runs; on
+		// WebKit the scroller's auto-follow does not always catch them, leaving
+		// the viewport behind. Re-pin shortly after, while the jump is fresh.
+		const timers = [100, 400].map((ms) =>
+			window.setTimeout(() => scrollToEnd({ behavior: "auto" }), ms),
+		);
+		return () => {
+			for (const t of timers) window.clearTimeout(t);
+		};
 	}, [jumpCount, scrollToEnd]);
 
 	const show = newBelow > 0 && !isAtBottom;

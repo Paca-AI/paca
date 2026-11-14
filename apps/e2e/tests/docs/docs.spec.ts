@@ -500,10 +500,13 @@ test.describe('Document history', () => {
     const entry = page.getByText('updated content', { exact: true });
     await expect(entry).toBeVisible({ timeout: 15_000 });
     // The options trigger has no accessible name and is only revealed on hover.
-    await entry
-      .locator(GROUP_ANCESTOR)
-      .getByRole('button')
-      .click({ force: true });
+    // On WebKit the forced click can land before the trigger is wired up, so
+    // retry until the menu is actually open.
+    const trigger = entry.locator(GROUP_ANCESTOR).getByRole('button');
+    await expect(async () => {
+      await trigger.click({ force: true });
+      await expect(page.getByRole('menuitem').first()).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 15_000 });
   };
 
   test('User can view what changed in a document update', async ({ page }) => {
