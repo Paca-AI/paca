@@ -76,7 +76,7 @@ describe("PacaAPIDocClient by-path", () => {
 		expect(await client.getByPath("p1", "x")).toEqual({ status: "folder" });
 		// What a server without the route answers: "by-path" is taken for a doc id.
 		fetchMock.mockResolvedValueOnce(
-			respond(400, apiError("BAD_REQUEST", "invalid doc id")),
+			respond(400, apiError("BAD_REQUEST", "invalid document id")),
 		);
 		expect(await client.getByPath("p1", "x")).toEqual({
 			status: "unsupported",

@@ -67,7 +67,7 @@ export type PutByPathResult =
 /**
  * Reports whether an error answer means the server has no by-path route (a
  * Paca from before it). Such a server reads GET /docs/by-path as a document
- * whose id is "by-path" (400 "invalid doc id") and has no PUT on it (405). A
+ * whose id is "by-path" (400 "invalid document id") and has no PUT on it (405). A
  * 404 without an API error code is a route the server (or a proxy) does not
  * know. A 404 DOC_NOT_FOUND is a real answer from a newer server.
  */
@@ -77,7 +77,7 @@ function isMissingByPathRoute(err: PacaAPIError): boolean {
 	return (
 		err.status === 400 &&
 		err.code === "BAD_REQUEST" &&
-		/invalid doc id/i.test(err.message)
+		/invalid document id/i.test(err.message)
 	);
 }
 
