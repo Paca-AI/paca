@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Paca-AI/api/internal/apierr"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
@@ -88,6 +89,10 @@ func docMetaTag(d *docdom.Document) string {
 	resp := dto.DocumentFromEntity(d)
 	resp.Content = nil
 	resp.ContentHash = ""
+	// The same instant must tag the same way whatever zone or precision the
+	// value was read with (a fresh time.Now versus a row read back).
+	resp.CreatedAt = resp.CreatedAt.UTC().Truncate(time.Microsecond)
+	resp.UpdatedAt = resp.UpdatedAt.UTC().Truncate(time.Microsecond)
 	raw, err := json.Marshal(resp)
 	if err != nil {
 		// Not reachable for this struct; an empty tag still yields a valid ETag

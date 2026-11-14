@@ -134,3 +134,18 @@ func TestDocETag_CoversMetadata(t *testing.T) {
 		}
 	}
 }
+
+// The ETag a write returns must equal the ETag of the next read: the same
+// instant gives the same tag at nanosecond or microsecond precision and in
+// any time zone (Postgres stores microseconds; time.Now has nanoseconds).
+func TestDocETag_SameInstantSameTag(t *testing.T) {
+	h := testHash
+	written := time.Date(2026, 11, 14, 8, 32, 46, 53518099, time.UTC)
+	fresh := docdom.Document{ID: uuid.New(), ProjectID: uuid.New(), Title: "Doc", ContentHash: &h, CreatedAt: written, UpdatedAt: written}
+	stored := fresh
+	stored.CreatedAt = written.Truncate(time.Microsecond).In(time.FixedZone("IST", 19800))
+	stored.UpdatedAt = stored.CreatedAt
+	if a, b := docETag(&fresh), docETag(&stored); a != b {
+		t.Fatalf("ETag differs for the same instant: %q (as written) vs %q (as stored)", a, b)
+	}
+}

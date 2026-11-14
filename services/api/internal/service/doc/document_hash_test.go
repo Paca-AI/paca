@@ -252,3 +252,26 @@ func lastDecideErr(repo *fakeDocRepo) error {
 	defer repo.mu.RUnlock()
 	return repo.lastDecideErr
 }
+
+// Timestamps a write returns are at the precision Postgres stores, so the
+// response of a write and the next read of the row agree.
+func TestDocumentWrites_TimestampsAtStoredPrecision(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+
+	created, err := svc.CreateDocument(ctx, docdom.CreateDocumentInput{ProjectID: projectID, Title: "Doc", Content: json.RawMessage(hashBlocksA)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, _, err := svc.UpdateDocument(ctx, projectID, created.ID, docdom.UpdateDocumentInput{Content: raw(hashBlocksB)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, ts := range map[string]time.Time{"created_at": created.CreatedAt, "create updated_at": created.UpdatedAt, "update updated_at": updated.UpdatedAt} {
+		if !ts.Equal(ts.Truncate(time.Microsecond)) {
+			t.Errorf("%s = %v has sub-microsecond digits Postgres would drop", name, ts)
+		}
+	}
+}

@@ -258,7 +258,7 @@ func (s *Service) CreateDocument(ctx context.Context, in docdom.CreateDocumentIn
 		}
 	}
 
-	now := time.Now()
+	now := storedNow()
 	memberID := s.resolveMember(ctx, in.CreatedBy, in.ProjectID)
 	hash := docdom.ContentHash(in.Content)
 	d := &docdom.Document{
@@ -357,7 +357,7 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 		}
 		d.ContentHash = &h
 		d.UpdatedBy = updatedBy
-		d.UpdatedAt = time.Now()
+		d.UpdatedAt = storedNow()
 		return nil
 	})
 	if err != nil {
@@ -387,6 +387,12 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 
 	return d, change, nil
 }
+
+// storedNow is the current time at the precision Postgres keeps (microseconds),
+// so the document a write returns carries the same timestamps as the row a
+// later read returns. Without it a write's response and the next read differ
+// in their sub-microsecond digits, and so in the ETag built from them.
+func storedNow() time.Time { return time.Now().Truncate(time.Microsecond) }
 
 // sameFolder reports whether two optional folder ids name the same folder
 // (both nil means both at the root).
