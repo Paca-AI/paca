@@ -37,6 +37,32 @@ type Document struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time // non-nil = soft-deleted
+	// Source names the repository file a managed copy is pushed from; nil
+	// for a document created in Paca.
+	Source *DocSource
+	// SourceLocked refuses content and title edits that do not come from
+	// Source's repository (see UpdateDocumentInput.Source).
+	SourceLocked bool
+}
+
+// DocSource is the repository file a managed document copy comes from.
+type DocSource struct {
+	Repository string `json:"repository"`
+	Path       string `json:"path"`
+	// Commit is the commit the pushed file was read at; empty when the file
+	// had uncommitted changes.
+	Commit string `json:"commit,omitempty"`
+}
+
+// MaxSourceFieldLen is the longest a DocSource field may be, in characters.
+const MaxSourceFieldLen = 500
+
+// SameSource reports whether two optional sources are equal.
+func SameSource(a, b *DocSource) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // DocSnapshot is a point-in-time copy of a document's content.

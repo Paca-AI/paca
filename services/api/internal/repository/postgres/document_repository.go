@@ -44,6 +44,9 @@ type documentRecord struct {
 	CreatedAt   time.Time  `db:"created_at"`
 	UpdatedAt   time.Time  `db:"updated_at"`
 	DeletedAt   *time.Time `db:"deleted_at"`
+	// Source is NULL on documents created in Paca (migration 000089).
+	Source       *json.RawMessage `db:"source"`
+	SourceLocked bool             `db:"source_locked"`
 }
 
 type docSnapshotRecord struct {
@@ -129,6 +132,8 @@ func documentFromRecord(r documentRecord) *docdom.Document {
 		DeletedAt: r.DeletedAt,
 	}
 	d.ContentHash = r.ContentHash
+	d.Source = sourceFromJSON(r.Source)
+	d.SourceLocked = r.SourceLocked
 	if r.Content != nil {
 		d.Content = *r.Content
 	}
@@ -158,6 +163,8 @@ func documentToRecord(d *docdom.Document) documentRecord {
 		DeletedAt: d.DeletedAt,
 	}
 	r.ContentHash = d.ContentHash
+	r.Source = sourceToJSON(d.Source)
+	r.SourceLocked = d.SourceLocked
 	if d.Content != nil {
 		r.Content = &d.Content
 	}
@@ -174,6 +181,32 @@ func documentToRecord(d *docdom.Document) documentRecord {
 		r.UpdatedBy = &s
 	}
 	return r
+}
+
+// sourceFromJSON decodes a documents.source value; NULL (or anything that is
+// not a source object) is nil.
+func sourceFromJSON(raw *json.RawMessage) *docdom.DocSource {
+	if raw == nil {
+		return nil
+	}
+	var src docdom.DocSource
+	if err := json.Unmarshal(*raw, &src); err != nil || src.Repository == "" {
+		return nil
+	}
+	return &src
+}
+
+// sourceToJSON encodes a source for documents.source (nil is NULL).
+func sourceToJSON(src *docdom.DocSource) *json.RawMessage {
+	if src == nil {
+		return nil
+	}
+	b, err := json.Marshal(src)
+	if err != nil {
+		return nil
+	}
+	raw := json.RawMessage(b)
+	return &raw
 }
 
 func snapshotFromRecord(r docSnapshotRecord) *docdom.DocSnapshot {
@@ -381,10 +414,10 @@ func (r *DocumentRepository) DeleteFolder(ctx context.Context, id uuid.UUID) err
 // Document CRUD
 // =============================================================================
 
-const documentCols = `id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at`
+const documentCols = `id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked`
 
 // documentTreeCols is documentCols without the (potentially large) body.
-const documentTreeCols = `id, project_id, folder_id, title, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at`
+const documentTreeCols = `id, project_id, folder_id, title, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked`
 
 // ListDocuments returns one cursor-paginated page of a project's documents in
 // manual order (position, title, id), without their bodies. filter narrows by
@@ -534,10 +567,11 @@ func (r *DocumentRepository) FindDocumentTitleByID(_ context.Context, id uuid.UU
 func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Document) error {
 	rec := documentToRecord(d)
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		rec.ID, rec.ProjectID, rec.FolderID, rec.Title, rec.Content, rec.ContentHash,
 		rec.Position, rec.CreatedBy, rec.UpdatedBy, rec.CreatedAt, rec.UpdatedAt, rec.DeletedAt,
+		rec.Source, rec.SourceLocked,
 	)
 	return err
 }
@@ -565,9 +599,11 @@ func (r *DocumentRepository) UpdateDocumentAtomic(ctx context.Context, id uuid.U
 		}
 		out := documentToRecord(current)
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE documents SET folder_id=$1, title=$2, content=$3, content_hash=$4, position=$5, updated_by=$6, updated_at=$7
+			UPDATE documents SET folder_id=$1, title=$2, content=$3, content_hash=$4, position=$5, updated_by=$6, updated_at=$7,
+				source=$9, source_locked=$10
 			WHERE id=$8 AND deleted_at IS NULL`,
 			out.FolderID, out.Title, out.Content, out.ContentHash, out.Position, out.UpdatedBy, out.UpdatedAt, out.ID,
+			out.Source, out.SourceLocked,
 		); err != nil {
 			return err
 		}

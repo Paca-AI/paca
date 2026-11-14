@@ -85,6 +85,24 @@ type DocumentResponse struct {
 	UpdatedBy   *uuid.UUID `json:"updated_by,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	// Source names the repository file a managed copy is pushed from; absent
+	// for a document created in Paca.
+	Source       *DocSourceResponse `json:"source,omitempty"`
+	SourceLocked bool               `json:"source_locked"`
+}
+
+// DocSourceResponse is the repository file a managed document copy comes from.
+type DocSourceResponse struct {
+	Repository string `json:"repository"`
+	Path       string `json:"path"`
+	Commit     string `json:"commit,omitempty"`
+}
+
+func docSourceResponse(src *docdom.DocSource) *DocSourceResponse {
+	if src == nil {
+		return nil
+	}
+	return &DocSourceResponse{Repository: src.Repository, Path: src.Path, Commit: src.Commit}
 }
 
 // DocumentListItemResponse is a lightweight representation used in list responses
@@ -99,6 +117,9 @@ type DocumentListItemResponse struct {
 	UpdatedBy *uuid.UUID `json:"updated_by,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
+	// Source and SourceLocked let the tree mark managed copies.
+	Source       *DocSourceResponse `json:"source,omitempty"`
+	SourceLocked bool               `json:"source_locked"`
 }
 
 // DocumentFromEntity maps a domain Document to a DocumentResponse DTO.
@@ -115,6 +136,9 @@ func DocumentFromEntity(d *docdom.Document) DocumentResponse {
 		UpdatedBy:   d.UpdatedBy,
 		CreatedAt:   d.CreatedAt,
 		UpdatedAt:   d.UpdatedAt,
+
+		Source:       docSourceResponse(d.Source),
+		SourceLocked: d.SourceLocked,
 	}
 }
 
@@ -130,6 +154,9 @@ func DocumentListItemFromEntity(d *docdom.Document) DocumentListItemResponse {
 		UpdatedBy: d.UpdatedBy,
 		CreatedAt: d.CreatedAt,
 		UpdatedAt: d.UpdatedAt,
+
+		Source:       docSourceResponse(d.Source),
+		SourceLocked: d.SourceLocked,
 	}
 }
 

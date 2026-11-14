@@ -346,8 +346,18 @@ func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, i
 			d.Position = *in.Position
 			change.Position = true
 		}
+		if in.Source != nil && !docdom.SameSource(in.Source, d.Source) {
+			src := *in.Source
+			d.Source = &src
+			change.Source = true
+		}
 		if !change.Any() {
 			return docdom.ErrNoChange
+		}
+		if !change.Edited() {
+			// Only the source or the lock changed: the document a reader sees
+			// is the same, so it keeps its updated_at, updated_by and hash.
+			return nil
 		}
 		// Every real write stores the hash, so a row written before the
 		// column existed gets one on its next write.

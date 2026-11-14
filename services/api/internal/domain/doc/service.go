@@ -100,6 +100,13 @@ type UpdateDocumentInput struct {
 	// IfMatch, when set, is the content hash the caller last saw, or "*" (any
 	// version, as long as the document exists). Checked under the row lock.
 	IfMatch *string
+	// Source, when set, replaces the document's source (the repository file a
+	// managed copy is pushed from). A write whose Source names the locked
+	// document's own repository may change its content and title.
+	Source *DocSource
+	// Lock, when set, sets SourceLocked. Locking needs a source (the
+	// document's or this input's).
+	Lock *bool
 }
 
 // DocChange says which fields an UpdateDocument call actually changed.
@@ -108,10 +115,22 @@ type DocChange struct {
 	Title    bool
 	Folder   bool
 	Position bool
+	// Source: the source changed. Alone it updates only the source: no
+	// snapshot, no activity, and updated_at stays as it was.
+	Source bool
+	// Lock: source_locked changed. Like Source it leaves updated_at alone and
+	// takes no snapshot, but it is recorded as an activity.
+	Lock bool
 }
 
 // Any reports whether anything changed.
-func (c DocChange) Any() bool { return c.Content || c.Title || c.Folder || c.Position }
+func (c DocChange) Any() bool {
+	return c.Content || c.Title || c.Folder || c.Position || c.Source || c.Lock
+}
+
+// Edited reports whether a field a reader of the document sees changed: its
+// content, title, folder or position (not its source or lock).
+func (c DocChange) Edited() bool { return c.Content || c.Title || c.Folder || c.Position }
 
 // --- Snapshot Service -------------------------------------------------------
 
