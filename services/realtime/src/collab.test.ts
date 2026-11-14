@@ -546,6 +546,136 @@ describe("external writes (agent / REST) into a live room", () => {
 		expect(text).not.toContain("by agent");
 	});
 
+	// The room every editor left is kept for a grace period. A write made
+	// then cannot be merged (nobody would receive it), so the room must not
+	// survive it: the next editor would get the old content from the room and
+	// their next save would overwrite the write.
+	const roomsOf = (hub: CollabHub) =>
+		(hub as unknown as { rooms: Map<string, unknown> }).rooms;
+	const docOf = (update: Uint8Array) => {
+		const d = new Y.Doc();
+		Y.applyUpdate(d, update);
+		return d;
+	};
+
+	test("drops the room when the stored content changes after every editor left", async () => {
+		const { hub, sent } = await liveRoom();
+		hub.leave("s1", ref);
+		hub.leave("s2", ref);
+		expect(hub.roomCount).toBe(1); // still in its grace period
+
+		const written = [para("a", "alpha"), para("b", "bravo by agent")];
+		await hub.handleContentEvent("doc.updated", event(stored, written));
+		expect(hub.roomCount).toBe(0);
+		expect(sent.some((m) => m.event === "collab:update")).toBe(false);
+
+		// The next editor gets a fresh, empty room and the seed grant, so it
+		// writes the stored content (the agent's) into the room.
+		const res = await hub.join("s3", { userId: "u3", rawToken: "t" }, ref);
+		expect(res.ok).toBe(true);
+		if (!res.ok) return;
+		expect(res.seed).toBe(true);
+		expect(isEmpty(docOf(res.update))).toBe(true);
+
+		// It seeds the written content; nothing of the old room comes back.
+		const seedDoc = blocksToYDoc(ed, written as never, COLLAB_FRAGMENT);
+		hub.update("s3", ref, Y.encodeStateAsUpdate(seedDoc));
+		await tick();
+		const again = await hub.join("s4", { userId: "u4", rawToken: "t" }, ref);
+		expect(again.ok && again.seed).toBe(false);
+		if (!again.ok) return;
+		const text = docOf(again.update).getXmlFragment(COLLAB_FRAGMENT).toString();
+		expect(text).toContain("bravo by agent");
+		expect(text.match(/alpha/g)).toHaveLength(1);
+		expect(text).not.toMatch(/bravo(?! by agent)/);
+	});
+
+	test("drops the room when its last editor leaves while the write waits on their updates", async () => {
+		let release: () => void = () => {};
+		let slow = false;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const t = setup(async () => {
+			if (slow) await gate;
+			return true;
+		});
+		const seedDoc = blocksToYDoc(ed, stored as never, COLLAB_FRAGMENT);
+		await t.hub.join("s1", { userId: "u1", rawToken: "t" }, ref);
+		t.hub.update("s1", ref, Y.encodeStateAsUpdate(seedDoc));
+		await tick();
+
+		// An update of s1 is stuck on its access check when the write arrives.
+		slow = true;
+		t.hub.update("s1", ref, contentUpdate());
+		const merged = t.hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "bravo by agent")]),
+		);
+		await tick();
+		t.hub.leave("s1", ref);
+		release();
+		await merged;
+		expect(t.hub.roomCount).toBe(0);
+	});
+
+	test("a join racing the write ends up in a fresh room, and the old grace timer cannot remove it", async () => {
+		let release: () => void = () => {};
+		let slow = false;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const t = setup(async () => {
+			if (slow) await gate;
+			return true;
+		});
+		const seedDoc = blocksToYDoc(ed, stored as never, COLLAB_FRAGMENT);
+		await t.hub.join("s1", { userId: "u1", rawToken: "t" }, ref);
+		t.hub.update("s1", ref, Y.encodeStateAsUpdate(seedDoc));
+		await tick();
+		t.hub.leave("s1", ref);
+		const old = roomsOf(t.hub).get(`collab:${P}:doc:${D}`) as {
+			destroyTimer?: unknown;
+		};
+		expect(old.destroyTimer).toBeDefined();
+
+		// A join is waiting on its access check while the write drops the room.
+		slow = true;
+		const joining = t.hub.join("s2", { userId: "u2", rawToken: "t" }, ref);
+		await t.hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "bravo by agent")]),
+		);
+		expect(t.hub.roomCount).toBe(0);
+		release();
+		const res = await joining;
+		expect(res.ok && res.seed).toBe(true);
+		if (!res.ok) return;
+		expect(isEmpty(docOf(res.update))).toBe(true);
+		const fresh = roomsOf(t.hub).get(`collab:${P}:doc:${D}`);
+		expect(fresh).toBeDefined();
+		expect(fresh).not.toBe(old);
+		// The dropped room's grace timer was cleared with it.
+		expect(old.destroyTimer).toBeUndefined();
+	});
+
+	test("never drops a room that has editors", async () => {
+		const { hub } = await liveRoom();
+		hub.leave("s1", ref);
+		await hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "bravo by agent")]),
+		);
+		expect(hub.roomCount).toBe(1);
+		// Even when the write is the save of the remaining editor.
+		await hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "edited")], "u2"),
+			{ collabSocket: "s2" },
+		);
+		expect(hub.roomCount).toBe(1);
+	});
+
 	test("refuses an external write once the room's byte budget is spent", async () => {
 		const { hub, sent } = await liveRoom();
 		const rooms = (hub as unknown as { rooms: Map<string, { bytes: number }> })

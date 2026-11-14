@@ -22,8 +22,9 @@
 // source of truth. A client saves the block JSON through the normal REST route
 // (debounced / on blur) exactly as before, so MCP, search, exports and every
 // other consumer of the stored content keep working. When the last editor
-// leaves, the room is dropped after a short grace period and the next editor
-// re-seeds it from the stored content.
+// leaves, the room is dropped after a short grace period (or at once, if the
+// stored content changes meanwhile) and the next editor re-seeds it from the
+// stored content.
 //
 // Writes by others: an agent / MCP / script saving through REST while editors
 // are connected is not in the room, and the editors' next save would overwrite
@@ -491,7 +492,9 @@ export class CollabHub {
 	// Y.Doc and relays the result to all members. A no-op when nobody has the
 	// resource open (the next editor seeds from the stored content), when the
 	// room is not seeded yet, or when the write is the save of one of the
-	// room's editor sockets.
+	// room's editor sockets. A room every editor has left (kept for its grace
+	// period) is dropped instead: it would hand the next editor the content
+	// from before the write, and that editor's next save would overwrite it.
 	async applyExternal(
 		ref: CollabRoomRef,
 		collabSocket: string | undefined,
@@ -500,7 +503,12 @@ export class CollabHub {
 	): Promise<MergeResult | undefined> {
 		const name = roomName(ref);
 		let room = this.rooms.get(name);
-		if (!room?.seeded || room.members.size === 0) return undefined;
+		if (!room) return undefined;
+		if (room.members.size === 0) {
+			this.dropRoom(room);
+			return undefined;
+		}
+		if (!room.seeded) return undefined;
 		// An editor's own save comes back as this event: its content is already
 		// the room's, and merging it again could revive blocks deleted since.
 		// It is recognised by the socket that saved, not by the account: an
@@ -516,7 +524,12 @@ export class CollabHub {
 		if (waiting.length) {
 			await Promise.all(waiting);
 			room = this.rooms.get(name);
-			if (!room?.seeded || room.members.size === 0) return undefined;
+			if (!room) return undefined;
+			if (room.members.size === 0) {
+				this.dropRoom(room);
+				return undefined;
+			}
+			if (!room.seeded) return undefined;
 		}
 		// The merge's size is only known afterwards, so the budget is checked
 		// before it and charged with the real update after it. One write can
@@ -695,10 +708,8 @@ export class CollabHub {
 		}
 		if (room.members.size === 0) {
 			room.destroyTimer = setTimeout(() => {
-				if (room.members.size === 0) {
-					this.destroy(room);
-					this.rooms.delete(room.name);
-				}
+				room.destroyTimer = undefined;
+				if (room.members.size === 0) this.dropRoom(room);
 			}, DESTROY_GRACE_MS);
 			room.destroyTimer.unref?.();
 		}
@@ -756,9 +767,19 @@ export class CollabHub {
 		room.seedTimer = undefined;
 	}
 
+	// dropRoom destroys a room and forgets it, unless the name already belongs
+	// to a newer room. Synchronous, so a join never sees a half-dropped room:
+	// it either finds this room before the drop or creates a fresh one after.
+	private dropRoom(room: Room): void {
+		this.destroy(room);
+		if (this.rooms.get(room.name) === room) this.rooms.delete(room.name);
+	}
+
 	private destroy(room: Room): void {
 		if (room.seedTimer) clearTimeout(room.seedTimer);
+		room.seedTimer = undefined;
 		if (room.destroyTimer) clearTimeout(room.destroyTimer);
+		room.destroyTimer = undefined;
 		room.awareness.destroy();
 		room.doc.destroy();
 	}
