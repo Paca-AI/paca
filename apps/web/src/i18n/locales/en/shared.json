@@ -2,6 +2,7 @@
 	"activityPane": {
 		"resize": "Resize activity panel",
 		"title": "Activity",
+		"actions": "Entry actions",
 		"empty": "No activity yet",
 		"emptyComments": "No comments yet",
 		"showAllActivity": "Show all activity",

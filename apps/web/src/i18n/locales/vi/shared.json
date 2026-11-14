@@ -2,6 +2,7 @@
 	"activityPane": {
 		"resize": "Thay đổi kích thước bảng hoạt động",
 		"title": "Hoạt động",
+		"actions": "Thao tác với mục",
 		"empty": "Chưa có hoạt động nào",
 		"emptyComments": "Chưa có bình luận nào",
 		"showAllActivity": "Xem tất cả hoạt động",

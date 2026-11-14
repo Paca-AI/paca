@@ -2,6 +2,7 @@
 	"activityPane": {
 		"resize": "调整活动面板大小",
 		"title": "动态",
+		"actions": "条目操作",
 		"empty": "暂无动态",
 		"emptyComments": "暂无评论",
 		"showAllActivity": "显示全部动态",

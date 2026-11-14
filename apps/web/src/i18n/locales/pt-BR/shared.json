@@ -2,6 +2,7 @@
 	"activityPane": {
 		"resize": "Redimensionar o painel de atividades",
 		"title": "Atividade",
+		"actions": "Ações da entrada",
 		"empty": "Nenhuma atividade ainda",
 		"emptyComments": "Nenhum comentário ainda",
 		"showAllActivity": "Mostrar toda a atividade",
