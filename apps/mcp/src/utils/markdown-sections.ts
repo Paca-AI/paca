@@ -165,16 +165,20 @@ export function literalMatcher(
 
 /** Thrown when a regular expression ran past its time limit. */
 export class RegexTimeoutError extends Error {
-	constructor(readonly ms: number) {
+	readonly ms: number;
+	constructor(ms: number) {
 		super(`the regular expression took longer than ${ms} ms`);
 		this.name = "RegexTimeoutError";
+		this.ms = ms;
 	}
 }
 
 // Runs in a worker thread, so a pattern that backtracks for hours can be
 // stopped: the MCP process itself is single-threaded.
+// Written to run whether Node evaluates it as CommonJS or as an ES module
+// (an eval worker inherits --input-type), so it uses import(), not require.
 const REGEX_WORKER = `
-const { parentPort, workerData } = require("node:worker_threads");
+import("node:worker_threads").then(({ parentPort, workerData }) => {
 const re = new RegExp(workerData.pattern, workerData.flags);
 const out = workerData.texts.map((text) => {
 	const hits = [];
@@ -183,6 +187,7 @@ const out = workerData.texts.map((text) => {
 	return hits;
 });
 parentPort.postMessage(out);
+});
 `;
 
 /**

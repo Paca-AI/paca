@@ -174,3 +174,24 @@ describe("review fixes", () => {
 		expect(findSection(md, "step **two**")).toMatchObject({ start: 5 });
 	});
 });
+
+describe("regexLineHits in an ES module process", () => {
+	it("works when the worker starts in ES module mode", async () => {
+		const { execFileSync } = await import("node:child_process");
+		const { fileURLToPath } = await import("node:url");
+		const src = fileURLToPath(new URL("../../utils/markdown-sections.ts", import.meta.url));
+		// The eval worker inherits --input-type=module; it must not use require.
+		const out = execFileSync(
+			process.execPath,
+			[
+				"--input-type=module",
+				"--experimental-strip-types",
+				"--no-warnings",
+				"-e",
+				`const m = await import(${JSON.stringify(src)}); console.log(JSON.stringify(await m.regexLineHits("^b", false, ["a\\nb\\nc"])));`,
+			],
+			{ encoding: "utf8" },
+		);
+		expect(out.trim()).toBe("[[1]]");
+	});
+});
