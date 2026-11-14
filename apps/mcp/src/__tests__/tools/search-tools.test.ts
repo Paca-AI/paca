@@ -124,6 +124,10 @@ describe("search_docs", () => {
 		const tool = getSearchTools().find((t) => t.name === "search_docs");
 		const query = (tool?.inputSchema.properties as any).query.description;
 		expect(query).not.toContain("single run of text");
+		// Not promised unconditionally: older servers and rows not yet
+		// indexed still match within one run of text.
+		expect(query).not.toContain("so a phrase works");
+		expect(query).toContain("retry with one or two distinctive words");
 		expect(tool?.description).toContain("block");
 	});
 

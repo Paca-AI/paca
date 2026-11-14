@@ -29,7 +29,7 @@ export function getSearchTools(): Tool[] {
 			name: "search_docs",
 			description:
 				"Search a project's documentation by keyword across BOTH document titles and body text (case-insensitive, literal match — not fuzzy or semantic). " +
-				"Returns each match's path, where it matched (title or content), a short excerpt and, for a content match, the block number of the first match (blocks counted in document order, nested blocks after their parent; not a Markdown line number). " +
+				"Returns each match's path, where it matched (title or content), a short excerpt and, when the server reports it, the block number of the first match (blocks counted in document order, nested blocks after their parent; not a Markdown line number). " +
 				"Use this to find relevant docs quickly instead of walking list_docs; then open a result with read_doc.",
 			inputSchema: {
 				type: "object",
@@ -42,7 +42,7 @@ export function getSearchTools(): Tool[] {
 					query: {
 						type: "string",
 						description:
-							"Text to look for. Matched literally within one block, across bold, italic and links, so a phrase works.",
+							"Text to look for, matched literally within one block. A phrase that crosses bold, italic or a link usually matches; if a phrase finds nothing, retry with one or two distinctive words.",
 					},
 					limit: {
 						type: "number",
