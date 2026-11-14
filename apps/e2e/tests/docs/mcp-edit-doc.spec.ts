@@ -50,6 +50,9 @@ const props = {
 	textAlignment: "left",
 };
 
+/** The ids the ten blocks are created with (the API keeps ids as sent). */
+const IDS = Array.from({ length: 10 }, (_, i) => `mcp-edit-b${i}`);
+
 /** Ten blocks of the kinds people write: headings, styled text, lists, code. */
 function tenBlocks() {
 	return [
@@ -117,7 +120,7 @@ function tenBlocks() {
 			content: [text("Run the previous tag.")],
 			children: [],
 		},
-	];
+	].map((b, i) => ({ id: IDS[i], ...b }));
 }
 
 test.describe("MCP edit_doc", () => {
@@ -156,7 +159,7 @@ test.describe("MCP edit_doc", () => {
 				};
 				const beforeBlocks = await readBlocks();
 				const before = beforeBlocks.map((b) => JSON.stringify(b));
-				expect(before).toHaveLength(10);
+				expect(beforeBlocks.map((b) => b.id)).toEqual(IDS);
 
 				const config = { baseURL: BASE_URL, apiKey: key.key };
 				// By path, edit_doc reads through the by-path route and sends
@@ -179,13 +182,11 @@ test.describe("MCP edit_doc", () => {
 
 				const afterBlocks = await readBlocks();
 				const after = afterBlocks.map((b) => JSON.stringify(b));
-				expect(after).toHaveLength(10);
+				// Every id unchanged, the edited block's included.
+				expect(afterBlocks.map((b) => b.id)).toEqual(IDS);
 				for (let i = 0; i < 10; i++) {
 					if (i === 4) {
 						expect(after[i]).toContain("Push the tag");
-						expect(afterBlocks[i].id, "edited block keeps its id").toBe(
-							beforeBlocks[i].id,
-						);
 						continue;
 					}
 					expect(after[i], `block ${i}`).toBe(before[i]);
