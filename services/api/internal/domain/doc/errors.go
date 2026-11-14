@@ -27,6 +27,10 @@ var (
 	// cannot be decoded.
 	ErrInvalidCursor = errors.New("doc: invalid pagination cursor")
 
+	// ErrTooManyDocIDs is returned by a batch read asked for more than
+	// MaxBatchGetIDs documents.
+	ErrTooManyDocIDs = errors.New("doc: too many document ids in one batch")
+
 	// Folder errors.
 	ErrFolderNotFound     = errors.New("doc folder: not found")
 	ErrFolderNameInvalid  = errors.New("doc folder: name is empty or invalid")

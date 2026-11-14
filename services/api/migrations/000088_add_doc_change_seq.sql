@@ -29,6 +29,13 @@
 --    documents through the foreign key; that is an update of each document, so
 --    each gets a new seq from the documents trigger.
 --
+-- Lock order: the counter row is taken before any document or folder row. The
+-- triggers alone would take it after the row they fire for, which deadlocks
+-- with a folder delete (counter, then every document in the folder), so the
+-- repository locks the counter at the start of each writing transaction
+-- (lockDocSeq in internal/repository/postgres/document_repository.go). New
+-- code that writes these tables must do the same.
+--
 -- doc_sync_state has no foreign key to projects on purpose: the triggers run
 -- inside the cascade of a hard project delete, where the project row is
 -- already gone. A row left behind by that is three numbers.

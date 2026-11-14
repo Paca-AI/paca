@@ -19,7 +19,8 @@ const (
 type DocHashStore interface {
 	// BackfillContentHashes stores hash(content) on up to limit documents
 	// whose content_hash is NULL, soft-deleted ones included, and returns how
-	// many it filled. It must not change seq or updated_at.
+	// many it filled. It must not change seq or updated_at. It may skip rows
+	// that are locked; zero means none could be filled.
 	BackfillContentHashes(ctx context.Context, limit int, hash func(content json.RawMessage) string) (int, error)
 }
 
@@ -68,8 +69,9 @@ func (b *DocHashBackfill) Run(ctx context.Context) (int, error) {
 		if err != nil {
 			return total, err
 		}
-		// A short batch means no row is left.
-		if n < docHashBackfillBatch {
+		// Only an empty batch says nothing is left: a short one may have
+		// skipped rows another transaction was holding.
+		if n == 0 {
 			return total, nil
 		}
 		select {

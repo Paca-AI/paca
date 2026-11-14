@@ -65,9 +65,9 @@ func TestDocHashBackfill_FillsAndStops(t *testing.T) {
 			t.Fatalf("row %d has hash %q, want the content hash of its body", i, h)
 		}
 	}
-	// 200 + 200 + 50: a short batch ends the loop without one more query.
-	if store.calls != 3 {
-		t.Fatalf("made %d batch calls, want 3", store.calls)
+	// 200 + 200 + 50, then the empty batch that ends the loop.
+	if store.calls != 4 {
+		t.Fatalf("made %d batch calls, want 4", store.calls)
 	}
 
 	// Nothing left: one query, then done.

@@ -305,15 +305,34 @@ func (r *DocumentRepository) FindFolderByID(_ context.Context, id uuid.UUID) (*d
 	return folderFromRecord(rec), nil
 }
 
+// lockDocSeq takes the project's change counter row (doc_sync_state, migration
+// 000088) for the rest of the transaction, creating it if the project has
+// none yet. The triggers that number document and folder writes take the same
+// row, and a transaction that reaches it while holding a document or folder
+// row deadlocks with one that holds the counter and wants that row (a folder
+// delete updates every document in the folder). So every transaction that
+// writes documents or folders calls this first: counter, then rows.
+func lockDocSeq(ctx context.Context, tx *sqlx.Tx, projectID string) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO doc_sync_state AS s (project_id) VALUES ($1)
+		ON CONFLICT (project_id) DO UPDATE SET seq = s.seq`, projectID)
+	return err
+}
+
 // CreateFolder persists a new folder.
 func (r *DocumentRepository) CreateFolder(ctx context.Context, f *docdom.DocFolder) error {
 	rec := folderToRecord(f)
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO doc_folders (id, project_id, parent_id, name, position, created_by, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		rec.ID, rec.ProjectID, rec.ParentID, rec.Name, rec.Position, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
-	)
-	return err
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if err := lockDocSeq(ctx, tx, rec.ProjectID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO doc_folders (id, project_id, parent_id, name, position, created_by, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			rec.ID, rec.ProjectID, rec.ParentID, rec.Name, rec.Position, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+		)
+		return err
+	})
 }
 
 // UpdateFolderAtomic implements docdom.DocFolderRepository — see its doc
@@ -328,6 +347,9 @@ func (r *DocumentRepository) UpdateFolderAtomic(ctx context.Context, id uuid.UUI
 			if errors.Is(err, sql.ErrNoRows) {
 				return docdom.ErrFolderNotFound
 			}
+			return err
+		}
+		if err := lockDocSeq(ctx, tx, projectID); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('doc_folders:' || $1::text, 0))`, projectID); err != nil {
@@ -373,8 +395,20 @@ func (r *DocumentRepository) UpdateFolderAtomic(ctx context.Context, id uuid.UUI
 
 // DeleteFolder permanently deletes a folder.
 func (r *DocumentRepository) DeleteFolder(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM doc_folders WHERE id = $1`, id.String())
-	return err
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var projectID string
+		if err := tx.GetContext(ctx, &projectID, `SELECT project_id FROM doc_folders WHERE id = $1`, id.String()); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil // already gone
+			}
+			return err
+		}
+		if err := lockDocSeq(ctx, tx, projectID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM doc_folders WHERE id = $1`, id.String())
+		return err
+	})
 }
 
 // =============================================================================
@@ -533,13 +567,32 @@ func (r *DocumentRepository) FindDocumentTitleByID(_ context.Context, id uuid.UU
 // CreateDocument persists a new document.
 func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Document) error {
 	rec := documentToRecord(d)
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		rec.ID, rec.ProjectID, rec.FolderID, rec.Title, rec.Content, rec.ContentHash,
-		rec.Position, rec.CreatedBy, rec.UpdatedBy, rec.CreatedAt, rec.UpdatedAt, rec.DeletedAt,
-	)
-	return err
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if err := lockDocSeq(ctx, tx, rec.ProjectID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			rec.ID, rec.ProjectID, rec.FolderID, rec.Title, rec.Content, rec.ContentHash,
+			rec.Position, rec.CreatedBy, rec.UpdatedBy, rec.CreatedAt, rec.UpdatedAt, rec.DeletedAt,
+		)
+		return err
+	})
+}
+
+// lockDocSeqOf is lockDocSeq for the project of document id. The project is
+// read without a lock (a document never changes project). ErrDocNotFound when
+// the document does not exist.
+func lockDocSeqOf(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
+	var projectID string
+	if err := tx.GetContext(ctx, &projectID, `SELECT project_id FROM documents WHERE id = $1`, id.String()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return docdom.ErrDocNotFound
+		}
+		return err
+	}
+	return lockDocSeq(ctx, tx, projectID)
 }
 
 // UpdateDocumentAtomic implements docdom.DocumentRepository — see its doc
@@ -547,6 +600,9 @@ func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Docum
 func (r *DocumentRepository) UpdateDocumentAtomic(ctx context.Context, id uuid.UUID, decide func(current *docdom.Document) error) (*docdom.Document, error) {
 	var result *docdom.Document
 	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if err := lockDocSeqOf(ctx, tx, id); err != nil {
+			return err
+		}
 		var rec documentRecord
 		if err := tx.GetContext(ctx, &rec, `SELECT `+documentCols+` FROM documents WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id.String()); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -582,8 +638,17 @@ func (r *DocumentRepository) UpdateDocumentAtomic(ctx context.Context, id uuid.U
 
 // DeleteDocument soft-deletes a document.
 func (r *DocumentRepository) DeleteDocument(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE documents SET deleted_at = $1 WHERE id = $2`, time.Now(), id.String())
-	return err
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if err := lockDocSeqOf(ctx, tx, id); err != nil {
+			if errors.Is(err, docdom.ErrDocNotFound) {
+				return nil // nothing to delete, as before
+			}
+			return err
+		}
+		// An already deleted document keeps the time of its deletion.
+		_, err := tx.ExecContext(ctx, `UPDATE documents SET deleted_at = $1 WHERE id = $2 AND deleted_at IS NULL`, time.Now(), id.String())
+		return err
+	})
 }
 
 // BackfillContentHashes implements worker.DocHashStore: it stores
@@ -598,7 +663,10 @@ func (r *DocumentRepository) DeleteDocument(ctx context.Context, id uuid.UUID) e
 //
 // The rows are locked while they are hashed, so a concurrent save cannot slip
 // between the read and the write; a save that got there first has stored its
-// own hash and the row no longer matches.
+// own hash and the row no longer matches. Rows another transaction holds are
+// skipped, not waited for: the backfill takes document rows without the
+// change counter (see lockDocSeq), so waiting could deadlock with a folder
+// delete. A skipped row is picked up by a later batch or the next start.
 func (r *DocumentRepository) BackfillContentHashes(ctx context.Context, limit int, hash func(content json.RawMessage) string) (int, error) {
 	filled := 0
 	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
@@ -610,7 +678,7 @@ func (r *DocumentRepository) BackfillContentHashes(ctx context.Context, limit in
 			Content *json.RawMessage `db:"content"`
 		}
 		if err := tx.SelectContext(ctx, &rows,
-			`SELECT id, content FROM documents WHERE content_hash IS NULL ORDER BY id LIMIT $1 FOR UPDATE`, limit); err != nil {
+			`SELECT id, content FROM documents WHERE content_hash IS NULL ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED`, limit); err != nil {
 			return err
 		}
 		for _, row := range rows {

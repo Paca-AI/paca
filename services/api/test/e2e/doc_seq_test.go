@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 )
 
@@ -235,5 +236,63 @@ func TestDocSeq_MigrationNumbersExistingRows(t *testing.T) {
 	}
 	if seq, created := docSeq(t, env, first); seq != 4 || created != 1 {
 		t.Fatalf("after the migration: seq %d, created_seq %d; want 4 and 1", seq, created)
+	}
+}
+
+// Numbering a write takes the project's doc_sync_state row. Every writer must
+// take it before any document or folder row, or a document save and a folder
+// delete lock each other out (one holds the document and wants the counter,
+// the other holds the counter and wants the document) and Postgres aborts one
+// of them with a deadlock.
+func TestDocSeq_ConcurrentWritesAndFolderDeleteDoNotDeadlock(t *testing.T) {
+	t.Parallel()
+	env, client, token, _, docs := docSeqSetup(t, "doc-seq-deadlock")
+
+	const rounds, perFolder = 6, 12
+	for round := 0; round < rounds; round++ {
+		folder := createDocFolderViaAPI(t, env, client, token, docs, fmt.Sprintf("F%d", round), nil)
+		ids := make([]string, perFolder)
+		for i := range ids {
+			ids[i] = postDocViaAPI(t, env, client, token, docs, map[string]any{"title": fmt.Sprintf("d%d", i), "folder_id": folder, "content": docBlocks("a", "x")})
+		}
+
+		type result struct {
+			what   string
+			status int
+			body   string
+		}
+		results := make(chan result, 3*perFolder+2)
+		var wg sync.WaitGroup
+		run := func(what, method, url string, body any) {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				status, _, _, raw := docRequest(t, env, client, token, method, url, body, nil)
+				results <- result{what, status, string(raw)}
+			}()
+		}
+		// Reverse id order for the saves, so they meet the cascade head-on.
+		for i := perFolder - 1; i >= 0; i-- {
+			run("save", http.MethodPatch, docs+"/"+ids[i], map[string]any{"content": docBlocks("a", fmt.Sprintf("round %d", round))})
+			if i%3 == 0 {
+				run("delete doc", http.MethodDelete, docs+"/"+ids[i], nil)
+			}
+			if i%4 == 0 {
+				// At the top level: creating a doc in a folder that is being
+				// deleted fails on the foreign key, a separate, older race.
+				run("create", http.MethodPost, docs, map[string]any{"title": "new", "content": docBlocks("a", "y")})
+			}
+		}
+		run("rename folder", http.MethodPatch, docs+"/folders/"+folder, map[string]any{"name": fmt.Sprintf("G%d", round)})
+		run("delete folder", http.MethodDelete, docs+"/folders/"+folder, nil)
+		wg.Wait()
+		close(results)
+		for r := range results {
+			// Losing a race is fine (the doc or folder is already gone); a
+			// server error is not.
+			if r.status >= 500 {
+				t.Fatalf("round %d, %s: status %d: %s", round, r.what, r.status, r.body)
+			}
+		}
 	}
 }
