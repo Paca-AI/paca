@@ -124,7 +124,9 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	// A doc If-Match conflict names the version that is stored now.
 	var docConflict *docdom.VersionConflictError
-	if details == nil && errors.As(err, &docConflict) {
+	// A conflict with no stored version (If-Match on a path that has no
+	// document) has nothing to name, so it carries no details.
+	if details == nil && errors.As(err, &docConflict) && (docConflict.CurrentHash != "" || !docConflict.UpdatedAt.IsZero()) {
 		details = map[string]string{
 			"content_hash": docConflict.CurrentHash,
 			"updated_at":   docConflict.UpdatedAt.UTC().Format(time.RFC3339Nano),

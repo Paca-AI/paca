@@ -196,9 +196,10 @@ func TestUpsertByPath_IfMatchStale412(t *testing.T) {
 		t.Fatalf("stale If-Match: %d %s %v", st, e.ErrorCode, det)
 	}
 	// If-Match on a path with no document is a failed precondition too.
-	st, e, _ = f.put(t, pushBody("Other", "a", "x", nil), map[string]string{"If-Match": "*"})
-	if st != http.StatusPreconditionFailed {
-		t.Fatalf("If-Match on a missing doc: %d %s", st, e.Error)
+	// There is no stored version to name, so the answer has no details.
+	st, e, _, raw = docRequest(t, f.env, f.client, f.token, http.MethodPut, f.docs+"/by-path", pushBody("Other", "a", "x", nil), map[string]string{"If-Match": "*"})
+	if det := errorDetails(raw); st != http.StatusPreconditionFailed || e.ErrorCode != "VERSION_CONFLICT" || len(det) != 0 {
+		t.Fatalf("If-Match on a missing doc: %d %s %v", st, e.ErrorCode, det)
 	}
 }
 
