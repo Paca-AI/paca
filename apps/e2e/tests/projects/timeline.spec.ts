@@ -133,14 +133,14 @@ test.describe('Timeline interaction page header and navigation', () => {
     await expect(page.getByRole('heading', { name: 'Timeline' })).toBeVisible();
   });
 
-  test('Timeline page subtitle reads "Epics and long-horizon planning on a roadmap."', async ({
+  test('Timeline page subtitle reads "Epics and long-horizon planning on a Gantt chart."', async ({
     page,
   }) => {
     await signIn(page);
     await navigateToTimeline(page, projectId);
 
     // Verify the subtitle text
-    await expect(page.getByText('Epics and long-horizon planning on a roadmap.')).toBeVisible();
+    await expect(page.getByText('Epics and long-horizon planning on a Gantt chart.')).toBeVisible();
   });
 
   test('Timeline page does not show a "New sprint" button', async ({ page }) => {
@@ -152,7 +152,7 @@ test.describe('Timeline interaction page header and navigation', () => {
   });
 });
 
-test.describe('Timeline default Roadmap view', () => {
+test.describe('Timeline default Gantt view', () => {
   let projectId: string;
 
   test.beforeEach(async ({ request, context }) => {
@@ -166,14 +166,14 @@ test.describe('Timeline default Roadmap view', () => {
     await cleanupTestProjects(request);
   });
 
-  test('Timeline opens with the Roadmap view tab active by default', async ({ page }) => {
+  test('Timeline opens with the Gantt view tab active by default', async ({ page }) => {
     await signIn(page);
     await navigateToTimeline(page, projectId);
 
-    // Roadmap tab should be active (text-primary class)
-    const roadmapTab = page.getByRole('button', { name: 'Roadmap', exact: true });
-    await expect(roadmapTab).toBeVisible();
-    await expect(roadmapTab).toHaveClass(/text-primary/);
+    // Gantt tab should be active (text-primary class)
+    const ganttTab = page.getByRole('button', { name: 'Gantt', exact: true });
+    await expect(ganttTab).toBeVisible();
+    await expect(ganttTab).toHaveClass(/text-primary/);
   });
 
   test('Timeline empty state shows "No tasks to display" when no Epics exist', async ({ page }) => {
@@ -184,7 +184,7 @@ test.describe('Timeline default Roadmap view', () => {
     await expect(page.getByText('No tasks to display')).toBeVisible();
   });
 
-  test('Timeline Roadmap view shows month labels on the horizontal axis', async ({ page }) => {
+  test('Timeline Gantt view shows month labels on the horizontal axis', async ({ page }) => {
     await signIn(page);
     await navigateToTimeline(page, projectId);
 
@@ -202,7 +202,7 @@ test.describe('Timeline default Roadmap view', () => {
     await expect(page.getByRole('button', { name: 'Add task' })).toBeVisible();
   });
 
-  test('Timeline Roadmap view shows a "Task" column label in the left-side panel', async ({
+  test('Timeline Gantt view shows a "Task" column label in the left-side panel', async ({
     page,
   }) => {
     await signIn(page);
@@ -210,6 +210,38 @@ test.describe('Timeline default Roadmap view', () => {
 
     // The left panel header label "Task" should be visible
     await expect(page.getByText('Task', { exact: true }).first()).toBeVisible();
+  });
+
+  test('Gantt view offers zoom levels and remembers the chosen one', async ({ page }) => {
+    await signIn(page);
+    await navigateToTimeline(page, projectId);
+
+    const zoom = page.getByRole('group', { name: 'Zoom' });
+    for (const level of ['Day', 'Week', 'Month', 'Quarter', 'Year']) {
+      await expect(zoom.getByRole('button', { name: level, exact: true })).toBeVisible();
+    }
+    await expect(zoom.getByRole('button', { name: 'Week', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+    // The pick is saved as the user's own view config before reloading.
+    await Promise.all([
+      page.waitForResponse(
+        (resp) => resp.request().method() === 'PUT' && /\/views\/[^/]+\/config$/.test(new URL(resp.url()).pathname),
+      ),
+      zoom.getByRole('button', { name: 'Month', exact: true }).click(),
+    ]);
+    await expect(zoom.getByRole('button', { name: 'Month', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+    await page.reload();
+    await expect(
+      page.getByRole('group', { name: 'Zoom' }).getByRole('button', { name: 'Month', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
+  });
+
+  test('Gantt view has a "Today" button', async ({ page }) => {
+    await signIn(page);
+    await navigateToTimeline(page, projectId);
+
+    await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeVisible();
   });
 });
 
