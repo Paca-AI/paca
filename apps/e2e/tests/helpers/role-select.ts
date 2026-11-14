@@ -26,8 +26,13 @@ export async function openRoleSelect(
 	label: string | RegExp,
 ): Promise<Locator> {
 	const list = page.getByRole("listbox", { name: label });
-	if (!(await list.isVisible().catch(() => false))) {
-		await roleSelectField(scope, label).click();
+	const field = roleSelectField(scope, label);
+	// Wait for either the inline list (change-role dialog) or the field to
+	// render; checking list visibility instantly races the dialog mounting on
+	// slower engines (webkit) and ends up waiting for a field that never exists.
+	await list.or(field).first().waitFor();
+	if (!(await list.isVisible())) {
+		await field.click();
 	}
 	await expect(list).toBeVisible();
 	return list;
