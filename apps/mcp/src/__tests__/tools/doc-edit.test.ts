@@ -218,3 +218,262 @@ describe("spliceEdit", () => {
 		expect(JSON.stringify(blocks)).toBe(json);
 	});
 });
+
+// ── Blocks Markdown cannot carry ──────────────────────────────────────────────
+
+const t = (text: string, styles: Record<string, unknown> = {}) => ({
+	type: "text",
+	text,
+	styles,
+});
+const P = {
+	textColor: "default",
+	backgroundColor: "default",
+	textAlignment: "left",
+};
+let seq = 0;
+const para = (text: any, props = {}, children: any[] = []) => ({
+	id: `p${++seq}`,
+	type: "paragraph",
+	props: { ...P, ...props },
+	content: typeof text === "string" ? [t(text)] : text,
+	children,
+});
+const item = (
+	type: string,
+	text: string,
+	props = {},
+	children: any[] = [],
+) => ({
+	id: `i${++seq}`,
+	type,
+	props: { ...P, ...props },
+	content: [t(text)],
+	children,
+});
+
+function expectUnsafe(
+	blocks: any[],
+	oldString: string,
+	line: number,
+	why: RegExp,
+) {
+	try {
+		spliceEdit(blocks, oldString, `${oldString}X`, false);
+		expect.unreachable("the edit should be refused");
+	} catch (err) {
+		expect(err).toBeInstanceOf(SpliceError);
+		expect((err as SpliceError).kind).toBe("unsafe");
+		expect((err as SpliceError).lines).toEqual([line]);
+		expect((err as Error).message).toContain(`line ${line}`);
+		expect((err as Error).message).toMatch(why);
+		expect((err as Error).message).toMatch(/write_doc|web editor/);
+	}
+}
+
+describe("spliceEdit refuses blocks Markdown cannot carry", () => {
+	it("a table without a header row", () => {
+		const tbl = {
+			id: "tb",
+			type: "table",
+			props: { textColor: "default" },
+			content: {
+				type: "tableContent",
+				columnWidths: [null, null],
+				rows: [
+					{ cells: [[t("h1")], [t("h2")]] },
+					{ cells: [[t("a")], [t("b")]] },
+				],
+			},
+			children: [],
+		};
+		expectUnsafe([para("x"), tbl, para("y")], "| a", 3, /table/);
+	});
+
+	it("a mermaid diagram", () => {
+		const m = {
+			id: "m",
+			type: "mermaid",
+			props: { code: "graph TD; A-->B" },
+			children: [],
+		};
+		expectUnsafe([m, para("x")], "A-->B", 1, /mermaid/);
+	});
+
+	it("a toggle list item", () => {
+		expectUnsafe(
+			[item("toggleListItem", "t", {}, [para("inside")]), para("x")],
+			"inside",
+			1,
+			/toggleListItem/,
+		);
+	});
+
+	it("a paragraph with nested blocks", () => {
+		expectUnsafe(
+			[
+				para("parent", {}, [para("child", { textColor: "blue" })]),
+				para("after"),
+			],
+			"child",
+			1,
+			/nested/,
+		);
+	});
+
+	it("keeps a nested block's colour and id when its parent is edited", () => {
+		const sub = item("bulletListItem", "sub", { textColor: "red" });
+		const blocks = [item("bulletListItem", "top", {}, [sub]), para("z")];
+		const res = spliceEdit(blocks, "top", "TOP", false);
+		expect(res.blocks[0].children[0]).toBe(sub);
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+	});
+
+	it("mention and document reference chips", () => {
+		expectUnsafe(
+			[
+				para([
+					t("hi "),
+					{ type: "teamMention", props: { id: "u1", name: "Ann", avatar: "" } },
+					t(" there"),
+				]),
+				para("x"),
+			],
+			"there",
+			1,
+			/teamMention/,
+		);
+		expectUnsafe(
+			[
+				para([
+					t("see "),
+					{ type: "docReference", props: { id: "d1", title: "Spec" } },
+				]),
+				para("x"),
+			],
+			"see",
+			1,
+			/docReference/,
+		);
+	});
+
+	it("underline and coloured text", () => {
+		expectUnsafe(
+			[
+				para("x"),
+				para([t("under", { underline: true }), t(" bold", { bold: true })]),
+			],
+			"bold",
+			3,
+			/underline/,
+		);
+		expectUnsafe(
+			[para([t("red", { textColor: "red" }), t(" plain")])],
+			"plain",
+			1,
+			/textColor/,
+		);
+	});
+
+	it("still edits a block whose shape Markdown keeps, with its nested blocks reused", () => {
+		const child = item("bulletListItem", "sub");
+		const blocks = [item("bulletListItem", "top", {}, [child]), para("z")];
+		const res = spliceEdit(blocks, "top", "TOP", false);
+		expect(res.blocks[0]).not.toBe(blocks[0]);
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+		expect(res.blocks[0].children[0]).toBe(child);
+		expect(res.blocks[1]).toBe(blocks[1]);
+	});
+
+	it("does not refuse an unsafe block the edit does not touch", () => {
+		const blocks = [para("parent", {}, [para("child")]), para("after")];
+		const res = spliceEdit(blocks, "after", "AFTER", false);
+		expect(res.blocks[0]).toBe(blocks[0]);
+	});
+});
+
+// Seeded fuzz (from review): random documents, one marker edited; every
+// block outside the edited list run is the same object, and an edit is
+// either applied as asked or refused as unsafe.
+describe("spliceEdit fuzz", () => {
+	it("never loses an untouched block", () => {
+		let seed = 1;
+		const rnd = (k: number) => {
+			seed = (seed * 1103515245 + 12345) % 2147483648;
+			return seed % k;
+		};
+		let n = 0;
+		const mk = (marker: string): any => {
+			const kinds = [
+				() => para(`para ${marker}`),
+				() => para([]),
+				() => ({
+					id: `b${++n}`,
+					type: "heading",
+					props: { ...P, level: 1 + rnd(3) },
+					content: [t(`head ${marker}`)],
+					children: [],
+				}),
+				() => item("bulletListItem", `bul ${marker}`),
+				() => item("numberedListItem", `num ${marker}`),
+				() => item("checkListItem", `chk ${marker}`, { checked: rnd(2) === 1 }),
+				() => ({
+					id: `b${++n}`,
+					type: "codeBlock",
+					props: { language: "ts" },
+					content: [t(`code ${marker}\nline2`)],
+					children: [],
+				}),
+				() => ({
+					id: `b${++n}`,
+					type: "quote",
+					props: {},
+					content: [t(`quote ${marker}`)],
+					children: [],
+				}),
+				() => para(`par ${marker}`, {}, [para(`kid ${marker}`)]),
+				() =>
+					item("bulletListItem", `bp ${marker}`, {}, [
+						item("bulletListItem", `bk ${marker}`),
+					]),
+			];
+			return kinds[rnd(kinds.length)]();
+		};
+		const isList = (b: any) =>
+			["bulletListItem", "numberedListItem", "checkListItem"].includes(
+				b.type,
+			) || blocknoteToMarkdown([b]) === "";
+		let applied = 0;
+		for (let iter = 0; iter < 300; iter++) {
+			const len = 3 + rnd(8);
+			const blocks = Array.from({ length: len }, (_, i) => mk(`m${i}x`));
+			const target = rnd(len);
+			const marker = JSON.stringify(blocks[target]).match(/m\d+x/)?.[0];
+			if (!marker) continue;
+			const before = blocknoteToMarkdown(blocks);
+			let res: ReturnType<typeof spliceEdit>;
+			try {
+				res = spliceEdit(blocks, marker, `${marker}Z`, false);
+			} catch (err) {
+				// A marker can also sit in a nested block of the same block.
+				expect(["unsafe", "ambiguous"]).toContain((err as SpliceError).kind);
+				continue;
+			}
+			applied++;
+			expect(blocknoteToMarkdown(res.blocks)).toBe(
+				before.replace(marker, `${marker}Z`),
+			);
+			let lo = target;
+			let hi = target;
+			if (isList(blocks[target])) {
+				while (lo > 0 && isList(blocks[lo - 1])) lo--;
+				while (hi < len - 1 && isList(blocks[hi + 1])) hi++;
+			}
+			const kept = new Set(res.blocks);
+			for (let i = 0; i < len; i++) {
+				if (i < lo || i > hi) expect(kept.has(blocks[i])).toBe(true);
+			}
+		}
+		expect(applied).toBeGreaterThan(150);
+	});
+});

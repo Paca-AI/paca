@@ -16,7 +16,7 @@ export type Block = Record<string, any>;
 export class SpliceError extends Error {
 	constructor(
 		message: string,
-		readonly kind: "not_found" | "ambiguous" | "empty",
+		readonly kind: "not_found" | "ambiguous" | "empty" | "unsafe",
 		/** The 1-based Markdown lines where `old_string` starts. */
 		readonly lines: number[] = [],
 	) {
@@ -117,6 +117,179 @@ const DEFAULT_PROPS: Record<string, unknown> = {
 	textAlignment: "left",
 };
 
+// ── Can Markdown carry this block? ────────────────────────────────────────────
+//
+// A block the edit touches is rewritten from Markdown. That is only safe when
+// rendering the block to Markdown and parsing it back gives the same block
+// (ids aside); otherwise the edit would silently drop what Markdown cannot
+// say (a mention chip, underline, a colour on a nested block, a toggle, a
+// table without a header row, a diagram).
+
+/** Prop values that mean "not set": a missing key equals one of these. */
+const NEUTRAL_PROPS: Record<string, unknown> = {
+	...DEFAULT_PROPS,
+	isToggleable: false,
+	checked: false,
+	colspan: 1,
+	rowspan: 1,
+	caption: "",
+	showPreview: true,
+	language: "text",
+};
+
+function canonProps(props: unknown): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(
+		(props ?? {}) as Record<string, unknown>,
+	)) {
+		if (v === undefined || NEUTRAL_PROPS[k] === v) continue;
+		out[k] = v;
+	}
+	return out;
+}
+
+/** Inline content with false styles dropped and equal-styled text joined. */
+function canonInline(content: unknown): unknown[] {
+	if (!Array.isArray(content)) return [];
+	const out: Block[] = [];
+	for (const node of content as Block[]) {
+		if (node?.type === "text" && typeof node.text === "string") {
+			if (node.text === "") continue;
+			const styles = Object.fromEntries(
+				Object.entries((node.styles ?? {}) as Record<string, unknown>)
+					.filter(([, v]) => v !== false && v !== undefined)
+					.sort(([a], [b]) => a.localeCompare(b)),
+			);
+			const prev = out[out.length - 1];
+			if (prev?.type === "text" && stable(prev.styles) === stable(styles)) {
+				prev.text += node.text;
+			} else {
+				out.push({ type: "text", text: node.text, styles });
+			}
+		} else if (node?.type === "link") {
+			out.push({
+				type: "link",
+				href: node.href,
+				content: canonInline(node.content),
+			});
+		} else {
+			out.push(node);
+		}
+	}
+	return out;
+}
+
+function canonContent(content: unknown): unknown {
+	if (content == null) return null;
+	if (Array.isArray(content)) return canonInline(content);
+	const c = content as Block;
+	if (c.type === "tableContent") {
+		return {
+			type: c.type,
+			headerRows: c.headerRows ?? null,
+			headerCols: c.headerCols ?? null,
+			columnWidths: (c.columnWidths ?? []).map((w: unknown) => w ?? null),
+			rows: (c.rows ?? []).map((r: Block) => ({
+				cells: (r.cells ?? []).map((cell: unknown) =>
+					Array.isArray(cell)
+						? { props: {}, content: canonInline(cell) }
+						: {
+								props: canonProps((cell as Block).props),
+								content: canonInline((cell as Block).content),
+							},
+				),
+			})),
+		};
+	}
+	return c;
+}
+
+function canonBlock(b: Block): unknown {
+	return {
+		type: b.type,
+		props: canonProps(b.props),
+		content: canonContent(b.content),
+		children: (Array.isArray(b.children) ? b.children : []).map(canonBlock),
+	};
+}
+
+/** JSON with object keys sorted, for comparing values. */
+function stable(v: unknown): string {
+	return JSON.stringify(v, (_k, x) =>
+		x && typeof x === "object" && !Array.isArray(x)
+			? Object.fromEntries(
+					Object.entries(x).sort(([a], [b]) => a.localeCompare(b)),
+				)
+			: x,
+	);
+}
+
+/** Why `b` cannot be rewritten from Markdown, or null when it can.
+ *  `paired`: the edit replaces it by one block of its type, which inherits
+ *  its id and the props Markdown cannot carry (colours, alignment). */
+function markdownLoss(b: Block, paired: boolean): string | null {
+	const parsed = markdownToBlocknote(render([b]));
+	const back =
+		paired && parsed.length === 1 && parsed[0].type === b.type
+			? [inherit(b, parsed[0])]
+			: parsed;
+	if (back.length !== 1) {
+		return Array.isArray(b.children) && b.children.length > 0
+			? "its nested blocks would become separate top-level blocks"
+			: `a ${b.type} block has no exact Markdown form`;
+	}
+	const a = canonBlock(b) as Block;
+	const z = canonBlock(back[0]) as Block;
+	if (a.type !== z.type) return `a ${b.type} block would become a ${z.type}`;
+	if (stable(a.children) !== stable(z.children)) {
+		return "its nested blocks would change (their type, colours or other properties)";
+	}
+	if (stable(a.props) !== stable(z.props)) {
+		const keys = [
+			...new Set([...Object.keys(a.props), ...Object.keys(z.props)]),
+		]
+			.filter((k) => stable(a.props[k]) !== stable(z.props[k]))
+			.join(", ");
+		return `its ${keys} would be lost`;
+	}
+	if (stable(a.content) !== stable(z.content)) {
+		const what = new Set<string>();
+		const walk = (nodes: unknown) => {
+			if (!Array.isArray(nodes)) return;
+			for (const n of nodes as Block[]) {
+				if (n?.type === "text") {
+					for (const s of Object.keys(n.styles ?? {})) {
+						if (!["bold", "italic", "code", "strike"].includes(s)) what.add(s);
+					}
+				} else if (n?.type === "link") walk(n.content);
+				else if (n?.type) what.add(n.type);
+			}
+		};
+		if (b.type === "table")
+			return "this table (its header row or cell formatting) would change";
+		walk(b.content);
+		return what.size > 0
+			? `its ${[...what].join(", ")} would be lost`
+			: "its text would not come back the same from Markdown";
+	}
+	return null;
+}
+
+/** Old nested blocks that equal the new ones (ids aside) are kept as they were. */
+function reuseChildren(old: Block, fresh: Block): Block[] | undefined {
+	const oc = Array.isArray(old.children) ? old.children : [];
+	const nc = Array.isArray(fresh.children) ? fresh.children : undefined;
+	if (!nc) return nc;
+	return nc.map((c: Block, k: number) => {
+		const o = oc[k];
+		if (!o) return c;
+		if (o.type !== c.type) return c;
+		const kept = inherit(o, c);
+		// Unchanged once its colours are restored: the stored object as it was.
+		return stable(canonBlock(o)) === stable(canonBlock(kept)) ? o : kept;
+	});
+}
+
 /**
  * `fresh` (parsed from Markdown) standing in for `old`: it keeps old's id
  * (or lack of one) and the props Markdown cannot carry, such as colours.
@@ -128,6 +301,8 @@ function inherit(old: Block, fresh: Block): Block {
 		props[k] = v;
 	}
 	const out: Block = { ...fresh, props };
+	const children = reuseChildren(old, fresh);
+	if (children) out.children = children;
 	if ("id" in old) out.id = old.id;
 	else delete out.id;
 	return out;
@@ -139,7 +314,11 @@ function inherit(old: Block, fresh: Block): Block {
  * renders) as the original object. Old blocks that render to nothing are
  * kept unless the blocks on both sides of them were replaced.
  */
-function align(oldBlocks: Block[], oldKeys: string[], fresh: Block[]): Block[] {
+function align(
+	oldBlocks: Block[],
+	oldKeys: string[],
+	fresh: Block[],
+): { blocks: Block[]; replaced: Array<{ i: number; paired: boolean }> } {
 	const newKeys = fresh.map((b) => render([b]));
 	const n = oldBlocks.length;
 	const m = fresh.length;
@@ -190,6 +369,8 @@ function align(oldBlocks: Block[], oldKeys: string[], fresh: Block[]): Block[] {
 	};
 
 	const out: Block[] = [];
+	const replaced: Array<{ i: number; paired: boolean }> = [];
+	let delIdx: number[] = [];
 	let dels: Block[] = [];
 	let ins: Block[] = [];
 	const flush = () => {
@@ -199,6 +380,8 @@ function align(oldBlocks: Block[], oldKeys: string[], fresh: Block[]): Block[] {
 			dels.length === ins.length &&
 			dels.every((d, k) => d.type === ins[k].type);
 		out.push(...(paired ? ins.map((b, k) => inherit(dels[k], b)) : ins));
+		for (const i of delIdx) replaced.push({ i, paired });
+		delIdx = [];
 		dels = [];
 		ins = [];
 	};
@@ -213,10 +396,11 @@ function align(oldBlocks: Block[], oldKeys: string[], fresh: Block[]): Block[] {
 			out.push(oldBlocks[o.i]);
 		} else if (oldKeys[o.i] !== "") {
 			dels.push(oldBlocks[o.i]);
+			delIdx.push(o.i);
 		}
 	}
 	flush();
-	return out;
+	return { blocks: out, replaced };
 }
 
 /**
@@ -226,7 +410,9 @@ function align(oldBlocks: Block[], oldKeys: string[], fresh: Block[]): Block[] {
  * every other block in the result is the same object as in `blocks`.
  *
  * Throws a SpliceError when `oldString` is empty, is not found, or is found
- * more than once without `replaceAll`.
+ * more than once without `replaceAll`, and when a block the edit would
+ * rewrite has something Markdown cannot carry ("unsafe"): nothing is
+ * changed then.
  */
 export function spliceEdit(
 	blocks: Block[],
@@ -291,14 +477,31 @@ export function spliceEdit(
 		}
 		text += full.slice(at, units[ub].end);
 
-		out.push(...blocks.slice(next, from));
-		out.push(
-			...align(
-				blocks.slice(from, to),
-				renders.slice(from, to),
-				markdownToBlocknote(text),
-			),
+		const aligned = align(
+			blocks.slice(from, to),
+			renders.slice(from, to),
+			markdownToBlocknote(text),
 		);
+		for (const { i: k, paired } of aligned.replaced) {
+			const b = blocks[from + k];
+			const loss = markdownLoss(b, paired);
+			if (!loss) continue;
+			const unit =
+				units.find((u) => u.from <= from + k && from + k < u.to) ?? units[ua];
+			const first = renders[from + k].split("\n")[0];
+			const at = first ? full.indexOf(first, unit.start) : -1;
+			const line = lineAt(
+				full,
+				at >= 0 ? at : unit.start + (unit.start > 0 ? 1 : 0),
+			);
+			throw new SpliceError(
+				`The edit touches the ${b.type} block on line ${line}, which edit_doc cannot rewrite: ${loss} in Markdown. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
+				"unsafe",
+				[line],
+			);
+		}
+		out.push(...blocks.slice(next, from));
+		out.push(...aligned.blocks);
 		next = to;
 	}
 	out.push(...blocks.slice(next));
