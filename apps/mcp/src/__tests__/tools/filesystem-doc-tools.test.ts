@@ -627,6 +627,66 @@ describe("handleFilesystemDocTool – by-path server", () => {
 		updated_at: "2026-01-01T00:00:00Z",
 	};
 
+	it("write_doc sends a note, a task and the PACA_CLIENT label", async () => {
+		vi.stubEnv("PACA_CLIENT", "claude-code/s1");
+		try {
+			const putByPath = vi.fn().mockResolvedValue({
+				status: "written",
+				doc: DOC,
+				created: false,
+				changed: true,
+			});
+			const docClient = makeDocClient({ byPath: { putByPath } });
+			await handleFilesystemDocTool(
+				"write_doc",
+				{
+					projectId: "p1",
+					path: "API/Endpoints",
+					content: "# Hi",
+					note: "add the auth section",
+					task: "PACA-88",
+				},
+				makeApiClient(),
+				docClient,
+			);
+			expect(putByPath).toHaveBeenCalledWith(
+				"p1",
+				expect.objectContaining({
+					path: "API/Endpoints",
+					note: "add the auth section",
+					task: "PACA-88",
+					client: "claude-code/s1",
+				}),
+			);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("write_doc sends no note fields when none are given", async () => {
+		vi.stubEnv("PACA_CLIENT", "");
+		try {
+			const putByPath = vi.fn().mockResolvedValue({
+				status: "written",
+				doc: DOC,
+				created: true,
+				changed: true,
+			});
+			await handleFilesystemDocTool(
+				"write_doc",
+				{ projectId: "p1", path: "Endpoints", content: "x" },
+				makeApiClient(),
+				makeDocClient({ byPath: { putByPath } }),
+			);
+			const input = putByPath.mock.calls[0][1];
+			expect(input).not.toHaveProperty("note");
+			expect(input).not.toHaveProperty("task");
+			expect(input).not.toHaveProperty("client");
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("read_doc resolves a nested path in one request", async () => {
 		const apiClient = makeApiClient();
 		const docClient = makeDocClient({

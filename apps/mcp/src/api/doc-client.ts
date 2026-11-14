@@ -36,6 +36,12 @@ export interface PutByPathInput {
 	source?: DocSource;
 	/** Lock the managed copy (needs `source`). */
 	lock?: boolean;
+	/** Why the write was made (plain text, at most 500 characters). */
+	note?: string;
+	/** What made it: an opaque label such as "claude-code/<session>" (at most 200). */
+	client?: string;
+	/** The task it belongs to, such as "PACA-88" (at most 50). */
+	task?: string;
 }
 
 /** What GET /docs/by-path answered. `unsupported`: the server is older and

@@ -32,7 +32,20 @@ const WriteDocSchema = z.object({
 	projectId: z.string(),
 	path: z.string(),
 	content: z.string(),
+	note: z.string().max(500).optional(),
+	task: z.string().max(50).optional(),
 });
+
+/** The note, task and client label a write records with its activity entry:
+ *  only the non-empty ones. The client label comes from PACA_CLIENT. */
+function writeNote(note?: string, task?: string) {
+	const out: { note?: string; task?: string; client?: string } = {};
+	if (note) out.note = note;
+	if (task) out.task = task;
+	const client = process.env.PACA_CLIENT?.slice(0, 200);
+	if (client) out.client = client;
+	return out;
+}
 
 const DeleteDocSchema = z.object({
 	projectId: z.string(),
@@ -295,6 +308,17 @@ export function getFilesystemDocTools(): Tool[] {
 						type: "string",
 						description: "Document content in Markdown format.",
 					},
+					note: {
+						type: "string",
+						description:
+							"Optional: why you made this change, in a sentence (at most 500 characters). " +
+							"It is shown with the change in the document's activity. Plain text: no secrets.",
+					},
+					task: {
+						type: "string",
+						description:
+							"Optional: the task this change belongs to, such as 'PACA-88' (at most 50 characters).",
+					},
 				},
 				required: ["projectId", "path", "content"],
 			},
@@ -498,7 +522,8 @@ export async function handleFilesystemDocTool(
 		}
 
 		case "write_doc": {
-			const { projectId, path, content } = WriteDocSchema.parse(args);
+			const { projectId, path, content, note, task } =
+				WriteDocSchema.parse(args);
 			const parts = parsePath(path);
 
 			if (parts.length === 0) {
@@ -516,6 +541,7 @@ export async function handleFilesystemDocTool(
 			const written = await docClient.putByPath(projectId, {
 				path,
 				content: content ? markdownToBlocknote(content) : [],
+				...writeNote(note, task),
 			});
 			if (written.status === "written") {
 				const verb = written.created
@@ -528,7 +554,8 @@ export async function handleFilesystemDocTool(
 				};
 			}
 
-			// An older server: create the folders and the document one call at a time.
+			// An older server: create the folders and the document one call at a
+			// time. It has nowhere to store a note, so none is sent.
 			const folderNames = parts.slice(0, -1);
 			const docTitle = parts[parts.length - 1];
 			const folderId = await ensureFolderPath(

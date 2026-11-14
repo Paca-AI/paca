@@ -109,10 +109,19 @@ function formatDocActivity(activity: any): string {
 			? blocknoteToMarkdown(activity.content)
 			: JSON.stringify(activity.content, null, 2);
 
+	// A write's note, client label and task, when it recorded them.
+	const extra = ["note", "client", "task"]
+		.map((key) => {
+			const value = activity.content?.[key];
+			if (typeof value !== "string" || !value) return "";
+			return `\n${key[0].toUpperCase()}${key.slice(1)}: ${value}`;
+		})
+		.join("");
+
 	return `Activity: ${activity.activity_type}
 ID: ${activity.id}
 User: ${activity.actor_name} (@${activity.actor_username}, ${activity.actor_id})
-Description: ${content}
+Description: ${content}${extra}
 Created: ${activity.created_at}`;
 }
 
