@@ -689,7 +689,7 @@ function ActivityItemInner<T extends ActivityEntry>({
 							)}
 							{canEdit && canDelete && !isEditing && (
 								<DropdownMenu>
-									<DropdownMenuTrigger className="inline-flex items-center justify-center ml-auto size-5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-all duration-150">
+									<DropdownMenuTrigger className="inline-flex items-center justify-center ml-auto size-5 pointer-coarse:size-8 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 transition-all duration-150">
 										<MoreHorizontal className="size-3" />
 									</DropdownMenuTrigger>
 									<DropdownMenuContent align="end" className="w-36">
@@ -746,7 +746,7 @@ function ActivityItemInner<T extends ActivityEntry>({
 							{(diffContent || canRevert) && (
 								<>
 									<DropdownMenu>
-										<DropdownMenuTrigger className="shrink-0 inline-flex items-center justify-center size-5 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-all duration-150">
+										<DropdownMenuTrigger className="shrink-0 inline-flex items-center justify-center size-5 pointer-coarse:size-8 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 transition-all duration-150">
 											<MoreVertical className="size-3" />
 										</DropdownMenuTrigger>
 										<DropdownMenuContent align="end" className="w-40">
