@@ -175,7 +175,7 @@ In the **Auth** column, actions joined by `+` are all required, and the action a
 | `POST` | `/api/v1/projects/:projectId/sprints/:sprintId/start` | Access token (fresh) + `sprints:write` | Start a planned sprint: set name, goal, start date, and due date, then transition `status` to `active`. Multiple sprints may be active simultaneously. Fails with `409 SPRINT_NOT_PLANNED` if the sprint is not in `planned` state. |
 | `POST` | `/api/v1/projects/:projectId/sprints/:sprintId/complete` | Access token (fresh) + `sprints:write` | Complete an active sprint: transition `status` to `completed` and move all incomplete tasks to the specified sprint (or back to no-sprint if `move_to_sprint_id` is `null`). Fails with `409 SPRINT_NOT_ACTIVE` if the sprint is not in `active` state. |
 | `GET` | `/api/v1/projects/:projectId/views?context=sprint&sprint_id=:sprintId` | Access token (fresh) + `sprints:read` | List saved view configurations. `context` must be `sprint`, `backlog`, or `timeline`; the `sprint` context requires `sprint_id`. |
-| `POST` | `/api/v1/projects/:projectId/views?context=sprint&sprint_id=:sprintId` | Access token (fresh) + `sprints:write` | Create a saved view configuration. `context` must be `sprint`, `backlog`, or `timeline`; the `sprint` context requires `sprint_id`. Sprint creation seeds one Board and one Table view with `column_by = status`, the current sprint selected, and non-system task types. Project creation seeds one backlog Table view with `column_by = sprint` plus one timeline Roadmap view filtered to Epics. |
+| `POST` | `/api/v1/projects/:projectId/views?context=sprint&sprint_id=:sprintId` | Access token (fresh) + `sprints:write` | Create a saved view configuration. `context` must be `sprint`, `backlog`, or `timeline`; the `sprint` context requires `sprint_id`. Sprint creation seeds one Board and one Table view with `column_by = status`, the current sprint selected, and non-system task types. Project creation seeds one backlog Table view with `column_by = sprint` plus one timeline Gantt view filtered to Epics. `view_type` is `table`, `board`, `gantt` or `plugin`; the former name `roadmap` is still accepted for one release and stored as `gantt`. |
 | `GET` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `views:read` | Get a single view configuration. |
 | `PATCH` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `views:write` | Update a view's name or config. |
 | `DELETE` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `views:write` | Delete a view. Fails with `409 VIEW_IS_LAST_VIEW` if it is the only remaining view. |
@@ -188,6 +188,7 @@ In the **Auth** column, actions joined by `+` are all required, and the action a
 | `GET` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks:read` | Get task detail. |
 | `PATCH` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks:write` | Update a task. |
 | `DELETE` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks:write` | Soft-delete a task. |
+| `GET` | `/api/v1/projects/:projectId/task-links?link_type=blocks` | Access token (fresh) + `tasks:read` | List the project's task links of one `link_type` (`blocks`, `relates_to` or `duplicates`, required), oldest first, cursor-paginated: `{items, page_size, next_cursor}` (`cursor`, `page_size` ≤ 500, default 100). Each item is `{id, source_task_id, target_task_id, link_type, created_at}`. A link is listed only when both of its tasks are live and readable by the caller. Backs the Gantt view's dependency arrows. |
 | `GET` | `/api/v1/projects/:projectId/custom-fields` | Access token (fresh) + `tasks:read` | List custom field definitions for a project. |
 | `POST` | `/api/v1/projects/:projectId/custom-fields` | Access token (fresh) + `project.settings.custom_fields:write` | Create a custom field definition. |
 | `GET` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Access token (fresh) + `tasks:read` | Get a custom field definition by ID. |
@@ -781,7 +782,7 @@ Success response data:
 Function:
 
 - create a new sprint view;
-- `view_type` must be one of `board`, `table`, or `roadmap`;
+- `view_type` must be one of `board`, `table`, `gantt`, or `plugin` (`roadmap`, the former name of `gantt`, is still accepted for one release);
 - `position` defaults to the next available slot.
 
 Request body:
@@ -912,7 +913,7 @@ Success response data:
 Function:
 
 - create a new product-backlog view;
-- `view_type` must be one of `board`, `table`, or `roadmap`;
+- `view_type` must be one of `board`, `table`, `gantt`, or `plugin` (`roadmap`, the former name of `gantt`, is still accepted for one release);
 - `position` defaults to the next available slot.
 
 Request body:
@@ -1026,7 +1027,7 @@ Success response data: same envelope as the product-backlog task list.
 Function:
 
 - list all saved view configurations for the timeline ordered by `position`;
-- project creation automatically seeds a single Roadmap view (position 0) as the default.
+- project creation automatically seeds a single Gantt view (position 0) as the default.
 
 Success response data: same envelope as the product-backlog views list.
 
@@ -1035,7 +1036,7 @@ Success response data: same envelope as the product-backlog views list.
 Function:
 
 - create a new timeline view;
-- `view_type` must be one of `board`, `table`, or `roadmap`;
+- `view_type` must be one of `board`, `table`, `gantt`, or `plugin` (`roadmap`, the former name of `gantt`, is still accepted for one release);
 - `position` defaults to the next available slot.
 
 Success response: `201 Created` with view data.
@@ -1788,7 +1789,7 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `SPRINT_STATUS_INVALID` | 400 | Sprint status value is not one of the allowed values. |
 | `VIEW_NOT_FOUND` | 404 | Sprint view with the given ID does not exist. |
 | `VIEW_NAME_INVALID` | 400 | View name is empty or invalid. |
-| `VIEW_TYPE_INVALID` | 400 | View type is not one of `board`, `table`, or `roadmap`. |
+| `VIEW_TYPE_INVALID` | 400 | View type is not one of `board`, `table`, `gantt`, or `plugin`. |
 | `VIEW_IS_LAST_VIEW` | 409 | View cannot be deleted because it is the only remaining view on the sprint. |
 | `CUSTOM_FIELD_NOT_FOUND` | 404 | Custom field definition with the given ID does not exist. |
 | `CUSTOM_FIELD_KEY_INVALID` | 400 | `field_key` is empty or contains invalid characters. |

@@ -80,7 +80,7 @@ See [marketplace.md](marketplace.md) for schema and operational details.
 | `sidebar.project.section` | Project sidebar | Adds a collapsible section inside a project's sidebar navigation. |
 | `task.detail.section` | Task detail panel | Adds a panel below the description in the task drawer/page. |
 | `project.settings.tab` | Project settings | Adds a tab to the project settings page. |
-| `view` | Main content area | Registers a full view (e.g., Gantt, Roadmap, Calendar) as a selectable board view. |
+| `view` | Main content area | Registers a full view (e.g., Calendar, Workload) as a selectable board view. |
 | `project.page` / `admin.page` | Project / admin sidebar | A full page reached from a `navItems` entry in the project or admin sidebar. |
 | `app.page` | `/plugin-pages/{pluginId}/{slug}` | A full page at a top-level URL on the Paca origin, listed in no sidebar. Use it for an address an external service redirects the browser to (see [Plugin pages and callbacks](frontend-plugin-system.md#plugin-pages-and-callbacks)). |
 | `api.route` | Backend | Registers one or more HTTP routes under `/api/v1/plugins/{pluginId}/`. |

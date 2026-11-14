@@ -99,7 +99,7 @@ Notes:
   mouse stay in sync by construction.
 - All edit shortcuts respect `canEdit`; read-only users keep
   navigation and `Mod+O` only.
-- Roadmap view has no columns, so move-left/right are inactive there.
+- Gantt view has no columns, so move-left/right are inactive there.
 - Hovering is tracked via `mouseenter`/`mouseleave` on the card/row root — see
   "Architecture" below for why keyboard focus isn't wired up yet.
 
