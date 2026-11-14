@@ -47,6 +47,8 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
 const MOVE_TMP = ".paca-tmp-move-";
 /** Held for the length of a pull, so two pulls never share a mirror. */
 const LOCK_FILE = ".paca-pull.lock";
+/** An empty or unreadable lock file this old is left by a crash. */
+const UNREADABLE_LOCK_STALE_MS = 10_000;
 
 /** Whether `name` (in the mirror root) is a move temp this command made. */
 function isMoveTmp(name: string): boolean {
@@ -710,15 +712,34 @@ async function takeLock(
 			// Being written right now, or unreadable: treat it as held.
 		}
 		const pid = typeof held.pid === "number" ? held.pid : null;
-		if (pid === null || isRunning(pid)) {
+		if (pid === null) {
+			// Empty or unreadable: a pull may be writing it right now, or one
+			// crashed between creating and writing it. Stale once old enough.
+			let age = 0;
+			try {
+				age = Date.now() - (await fs.stat(file)).mtimeMs;
+			} catch {
+				continue; // Gone meanwhile: try to take it again.
+			}
+			if (age < UNREADABLE_LOCK_STALE_MS) {
+				io.err(
+					`another pull is running in ${label}; if it is not, remove ${path.join(label, LOCK_FILE)}`,
+				);
+				return null;
+			}
 			io.err(
-				`another pull is running in ${label}${pid === null ? "" : ` (process ${pid}, started ${String(held.started)})`}; if it is not, remove ${path.join(label, LOCK_FILE)}`,
+				`took over a stale lock in ${label}: the lock file is empty or unreadable and ${Math.round(age / 1000)}s old`,
+			);
+		} else if (isRunning(pid)) {
+			io.err(
+				`another pull is running in ${label} (process ${pid}, started ${String(held.started)}); if it is not, remove ${path.join(label, LOCK_FILE)}`,
 			);
 			return null;
+		} else {
+			io.err(
+				`took over a stale lock in ${label} from process ${pid} (started ${String(held.started)}), which is no longer running`,
+			);
 		}
-		io.err(
-			`took over a stale lock in ${label} from process ${pid} (started ${String(held.started)}), which is no longer running`,
-		);
 		await fs.rm(file, { force: true });
 	}
 	io.err(`another pull is running in ${label}`);

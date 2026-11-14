@@ -848,6 +848,35 @@ describe("runPull", () => {
 		expect(exists(".paca-pull.lock")).toBe(false);
 	});
 
+	it("an empty lock file older than 10 seconds is taken over", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+		});
+		fs.mkdirSync(dir, { recursive: true });
+		const lock = path.join(dir, ".paca-pull.lock");
+		fs.writeFileSync(lock, "");
+		const old = new Date(Date.now() - 60_000);
+		fs.utimesSync(lock, old, old);
+		srv.resetFeed();
+		lines = [];
+		expect(await pull(srv)).toBe(0);
+		expect(lines.join("\n")).toContain("stale lock");
+		expect(exists(".paca-pull.lock")).toBe(false);
+	});
+
+	it("a fresh empty lock file still counts as held", async () => {
+		const srv = fakeServer();
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(path.join(dir, ".paca-pull.lock"), "");
+		lines = [];
+		expect(await pull(srv)).toBe(1);
+		expect(lines.join("\n")).toContain("another pull is running in");
+	});
+
 	it("the lock is released when a pull fails", async () => {
 		const srv = fakeServer();
 		srv.client.getChanges.mockRejectedValueOnce(new Error("boom"));
