@@ -84,7 +84,7 @@ func TestDocs_IdenticalPushIsNoOp(t *testing.T) {
 	created := assertDataMap(t, e)
 	docID, _ := created["id"].(string)
 	hash, _ := created["content_hash"].(string)
-	if len(hash) != 64 || hdr.Get("ETag") != `"`+hash+`"` {
+	if len(hash) != 64 || !strings.HasPrefix(hdr.Get("ETag"), `"`+hash+`-`) {
 		t.Fatalf("create: content_hash %q ETag %q", hash, hdr.Get("ETag"))
 	}
 
@@ -108,7 +108,7 @@ func TestDocs_IdenticalPushIsNoOp(t *testing.T) {
 	if second["updated_at"] != first["updated_at"] {
 		t.Fatalf("updated_at moved on an identical push: %v -> %v", first["updated_at"], second["updated_at"])
 	}
-	if second["content_hash"] != first["content_hash"] || hdr.Get("ETag") != `"`+first["content_hash"].(string)+`"` {
+	if second["content_hash"] != first["content_hash"] || !strings.HasPrefix(hdr.Get("ETag"), `"`+first["content_hash"].(string)+`-`) {
 		t.Fatalf("hash changed on an identical push: %v -> %v (ETag %q)", first["content_hash"], second["content_hash"], hdr.Get("ETag"))
 	}
 	if n := docSnapshotCount(t, env, docID); n != snaps {
@@ -118,7 +118,7 @@ func TestDocs_IdenticalPushIsNoOp(t *testing.T) {
 		t.Fatalf("identical push recorded a doc.updated activity: %d -> %d", evs, n)
 	}
 
-	// GET agrees, and If-None-Match with that hash is a 304 with no body.
+	// GET agrees, and If-None-Match with its ETag is a 304 with no body.
 	status, e, hdr, _ = docRequest(t, env, client, token, http.MethodGet, docs+"/"+docID, nil, nil)
 	if status != http.StatusOK || assertDataMap(t, e)["updated_at"] != first["updated_at"] {
 		t.Fatalf("get: %d %v", status, e.Data)
@@ -190,5 +190,53 @@ func TestDocs_TwoWritersSecondGets412(t *testing.T) {
 	status, e, _, _ = docRequest(t, env, client, token, http.MethodPatch, docs+"/"+docID, map[string]any{"title": "x"}, map[string]string{"If-Match": `"7"`})
 	if status != http.StatusBadRequest {
 		t.Fatalf("malformed If-Match: %d %q", status, e.ErrorCode)
+	}
+}
+
+// A rename keeps the content hash, but a client revalidating with the old
+// ETag must get the new title; and If-Match stays a precondition on content,
+// so a write made with the pre-rename ETag still goes through.
+func TestDocs_RenameChangesETagNotContentHash(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	seedTaskMemberUser(t, env, "doc-rename-user", "docrenamepass1")
+	client, token := taskMemberLogin(t, env, "doc-rename-user", "docrenamepass1")
+	projID := createProjectForTasksViaAPI(t, env, client, token)
+	docs := fmt.Sprintf("%s/api/v1/projects/%s/docs", env.base, projID)
+
+	status, e, hdr, _ := docRequest(t, env, client, token, http.MethodPost, docs, map[string]any{"title": "Before", "content": docBlocks("a", "body")}, nil)
+	if status != http.StatusCreated {
+		t.Fatalf("create: %d %s", status, e.Error)
+	}
+	created := assertDataMap(t, e)
+	docID, _ := created["id"].(string)
+	hash, _ := created["content_hash"].(string)
+	oldETag := hdr.Get("ETag")
+
+	status, e, hdr, _ = docRequest(t, env, client, token, http.MethodPatch, docs+"/"+docID, map[string]any{"title": "After"}, nil)
+	if status != http.StatusOK {
+		t.Fatalf("rename: %d %s", status, e.Error)
+	}
+	if got := assertDataMap(t, e)["content_hash"]; got != hash {
+		t.Fatalf("content_hash changed on a rename: %v -> %v", hash, got)
+	}
+	newETag := hdr.Get("ETag")
+	if newETag == oldETag || !strings.HasPrefix(newETag, `"`+hash+`-`) {
+		t.Fatalf("ETag after a rename = %q (before %q)", newETag, oldETag)
+	}
+
+	status, e, _, _ = docRequest(t, env, client, token, http.MethodGet, docs+"/"+docID, nil, map[string]string{"If-None-Match": oldETag})
+	if status != http.StatusOK || assertDataMap(t, e)["title"] != "After" {
+		t.Fatalf("GET with the pre-rename ETag: %d %v, want 200 with the new title", status, e.Data)
+	}
+	status, _, _, raw := docRequest(t, env, client, token, http.MethodGet, docs+"/"+docID, nil, map[string]string{"If-None-Match": newETag})
+	if status != http.StatusNotModified || len(raw) != 0 {
+		t.Fatalf("GET with the current ETag: %d body %q", status, raw)
+	}
+
+	// The pre-rename ETag still names the stored content.
+	status, e, _, _ = docRequest(t, env, client, token, http.MethodPatch, docs+"/"+docID, map[string]any{"content": docBlocks("b", "new body")}, map[string]string{"If-Match": oldETag})
+	if status != http.StatusOK || assertDataMap(t, e)["title"] != "After" {
+		t.Fatalf("content write with the pre-rename ETag: %d %v", status, e.Data)
 	}
 }

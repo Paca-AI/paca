@@ -341,8 +341,11 @@ func (h *DocumentHandler) SearchDocuments(w http.ResponseWriter, r *http.Request
 	presenter.OK(w, r, map[string]any{"items": resp})
 }
 
-// GetDocument handles GET /projects/:projectId/docs/:docId. The ETag is the
-// content hash; If-None-Match naming it gets 304 with no body.
+// GetDocument handles GET /projects/:projectId/docs/:docId. The ETag covers
+// the whole response (content hash plus a tag over title, folder, position and
+// the other fields, see docETag), so If-None-Match gets 304 with no body only
+// when nothing the client would receive has changed. content_hash in the body
+// is the content alone, and is what If-Match on a write compares.
 func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
@@ -363,11 +366,11 @@ func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, docdom.ErrDocNotFound)
 		return
 	}
-	hash := d.Hash()
-	w.Header().Set("ETag", docETag(hash))
+	etag := docETag(d)
+	w.Header().Set("ETag", etag)
 	// An authenticated response: never served from a cache without revalidating.
 	w.Header().Set("Cache-Control", "private, no-cache")
-	if inm := r.Header.Get("If-None-Match"); inm != "" && etagMatches(inm, hash) {
+	if inm := r.Header.Get("If-None-Match"); inm != "" && etagMatches(inm, etag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
@@ -420,13 +423,19 @@ func (h *DocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
-	w.Header().Set("ETag", docETag(d.Hash()))
+	w.Header().Set("ETag", docETag(d))
 	presenter.Created(w, r, dto.DocumentFromEntity(d))
 }
 
 // UpdateDocument handles PATCH /projects/:projectId/docs/:docId. An If-Match
-// content hash that is no longer current gets 412 with the stored version in
-// error_details. A write that changes nothing is a 200 that stores nothing.
+// content hash (or document ETag) whose content is no longer current gets 412
+// with the stored version in error_details. A write that changes nothing is a
+// 200 that stores nothing.
+//
+// If-Match is a precondition on content only: a rename or a move since the
+// caller read the document does not fail it. A caller that also sends title or
+// folder_id overwrites whatever is stored for those, so send only the fields
+// you mean to change.
 func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
@@ -476,7 +485,7 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 		presenter.Error(w, r, err)
 		return
 	}
-	w.Header().Set("ETag", docETag(d.Hash()))
+	w.Header().Set("ETag", docETag(d))
 
 	// Record update activity (best-effort). A write that changed nothing was
 	// not stored, so it records no activity (and so publishes no doc.updated

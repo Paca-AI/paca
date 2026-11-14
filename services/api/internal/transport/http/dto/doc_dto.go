@@ -76,8 +76,9 @@ type DocumentResponse struct {
 	FolderID  *uuid.UUID      `json:"folder_id,omitempty"`
 	Title     string          `json:"title"`
 	Content   json.RawMessage `json:"content"`
-	// ContentHash identifies the content version (also sent as the ETag):
-	// the same blocks give the same hash whatever their block ids.
+	// ContentHash identifies the content version: the same blocks give the
+	// same hash whatever their block ids. It is the If-Match token for writes
+	// and the first part of the ETag.
 	ContentHash string     `json:"content_hash"`
 	Position    int        `json:"position"`
 	CreatedBy   *uuid.UUID `json:"created_by,omitempty"`

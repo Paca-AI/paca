@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -87,6 +88,33 @@ func getWithHeader(t *testing.T, r chi.Router, path, name, value string) *httpRe
 	return serve(r, req)
 }
 
+// etagHasHash reports whether etag is "<hash>-<16 hex>": the content hash, then
+// the tag over the rest of the response.
+func etagHasHash(etag, hash string) bool {
+	return regexp.MustCompile(`^"` + hash + `-[0-9a-f]{16}"$`).MatchString(etag)
+}
+
+// A rename keeps the content hash but is a different response: a client that
+// revalidates must get the new title, not a 304.
+func TestGetDocument_RenameIsNot304(t *testing.T) {
+	projectID := uuid.New()
+	d := etagDoc(projectID, true)
+	svc := &fakeDocSvc{doc: d}
+	r := newDocRouterWithNotify(svc, &fakeDocActivitySvc{}, &mockNotificationSvc{})
+	path := "/projects/" + projectID.String() + "/docs/" + d.ID.String()
+	before := getWithHeader(t, r, path, "", "").Header().Get("ETag")
+
+	d.Title = "Renamed"
+	w := getWithHeader(t, r, path, "If-None-Match", before)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"title":"Renamed"`) {
+		t.Fatalf("after a rename: got %d %s, want 200 with the new title", w.Code, w.Body.String())
+	}
+	after := w.Header().Get("ETag")
+	if after == before || !etagHasHash(after, *d.ContentHash) {
+		t.Fatalf("ETag after a rename = %q (before %q): want a new ETag with the same content hash", after, before)
+	}
+}
+
 func TestGetDocument_SetsETagAndContentHash(t *testing.T) {
 	projectID := uuid.New()
 	for _, stored := range []bool{true, false} {
@@ -98,8 +126,8 @@ func TestGetDocument_SetsETagAndContentHash(t *testing.T) {
 			t.Fatalf("got %d: %s", w.Code, w.Body.String())
 		}
 		want := docdom.ContentHash(json.RawMessage(etagBlocks))
-		if got := w.Header().Get("ETag"); got != `"`+want+`"` {
-			t.Fatalf("stored=%v ETag = %q, want %q", stored, got, `"`+want+`"`)
+		if got := w.Header().Get("ETag"); !etagHasHash(got, want) {
+			t.Fatalf("stored=%v ETag = %q, want \"%s-<meta tag>\"", stored, got, want)
 		}
 		if got := w.Header().Get("Cache-Control"); got != "private, no-cache" {
 			t.Fatalf("stored=%v Cache-Control = %q, want %q", stored, got, "private, no-cache")
@@ -122,7 +150,11 @@ func TestGetDocument_IfNoneMatch304(t *testing.T) {
 	r := newDocRouterWithNotify(&fakeDocSvc{doc: d}, &fakeDocActivitySvc{}, &mockNotificationSvc{})
 	path := "/projects/" + projectID.String() + "/docs/" + d.ID.String()
 
-	for _, inm := range []string{`"` + *d.ContentHash + `"`, `W/"` + *d.ContentHash + `"`, `*`, `"nope", "` + *d.ContentHash + `"`} {
+	etag := getWithHeader(t, r, path, "", "").Header().Get("ETag")
+	if !etagHasHash(etag, *d.ContentHash) {
+		t.Fatalf("ETag = %q", etag)
+	}
+	for _, inm := range []string{etag, "W/" + etag, `*`, `"nope", ` + etag} {
 		w := getWithHeader(t, r, path, "If-None-Match", inm)
 		if w.Code != http.StatusNotModified {
 			t.Fatalf("If-None-Match %q: got %d", inm, w.Code)
@@ -130,12 +162,16 @@ func TestGetDocument_IfNoneMatch304(t *testing.T) {
 		if w.Body.Len() != 0 {
 			t.Fatalf("304 must have an empty body, got %q", w.Body.String())
 		}
-		if w.Header().Get("ETag") != `"`+*d.ContentHash+`"` {
+		if w.Header().Get("ETag") != etag {
 			t.Fatalf("304 must repeat the ETag, got %q", w.Header().Get("ETag"))
 		}
 		if got := w.Header().Get("Cache-Control"); got != "private, no-cache" {
 			t.Fatalf("304 Cache-Control = %q, want %q", got, "private, no-cache")
 		}
+	}
+	// The content hash alone is not the response, so it is not a match.
+	if w := getWithHeader(t, r, path, "If-None-Match", `"`+*d.ContentHash+`"`); w.Code != http.StatusOK {
+		t.Fatalf("If-None-Match with the bare content hash: got %d, want 200", w.Code)
 	}
 	if w := getWithHeader(t, r, path, "If-None-Match", `"`+strings.Repeat("0", 64)+`"`); w.Code != http.StatusOK {
 		t.Fatalf("stale If-None-Match: got %d", w.Code)
@@ -258,7 +294,7 @@ func TestUpdateDocument_NoOpRecordsNothing(t *testing.T) {
 	if !resp.Data.UpdatedAt.Equal(d.UpdatedAt) {
 		t.Fatalf("updated_at = %v, want %v", resp.Data.UpdatedAt, d.UpdatedAt)
 	}
-	if w.Header().Get("ETag") != `"`+*d.ContentHash+`"` {
+	if !etagHasHash(w.Header().Get("ETag"), *d.ContentHash) {
 		t.Fatalf("ETag = %q", w.Header().Get("ETag"))
 	}
 
@@ -290,7 +326,7 @@ func TestCreateDocument_SetsETagAndContentHash(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("got %d: %s", w.Code, w.Body.String())
 	}
-	if w.Header().Get("ETag") != `"`+*d.ContentHash+`"` || !strings.Contains(w.Body.String(), `"content_hash":"`+*d.ContentHash+`"`) {
+	if !etagHasHash(w.Header().Get("ETag"), *d.ContentHash) || !strings.Contains(w.Body.String(), `"content_hash":"`+*d.ContentHash+`"`) {
 		t.Fatalf("ETag %q body %s", w.Header().Get("ETag"), w.Body.String())
 	}
 }
