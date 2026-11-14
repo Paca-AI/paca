@@ -35,7 +35,13 @@ type fakeDocSvc struct {
 	snapsMore   bool
 	snapCursor  *string
 	snapHash    *string
-	snapLimit   int
+	// single-document reads and writes
+	doc          *docdom.Document
+	updateDoc    *docdom.Document
+	updateChange docdom.DocChange
+	updateErr    error
+	lastUpdate   *docdom.UpdateDocumentInput
+	snapLimit    int
 }
 
 func (f *fakeDocSvc) ListFolders(_ context.Context, _ uuid.UUID, parent *uuid.UUID, _ docdom.FolderFilter, cursor *string, limit int) ([]*docdom.DocFolder, bool, error) {
@@ -65,12 +71,20 @@ func (f *fakeDocSvc) SearchDocuments(_ context.Context, _ uuid.UUID, _ string, _
 	return nil, nil
 }
 func (f *fakeDocSvc) GetDocument(_ context.Context, _ uuid.UUID) (*docdom.Document, error) {
+	if f.doc != nil {
+		cp := *f.doc
+		return &cp, nil
+	}
 	return nil, docdom.ErrDocNotFound
 }
 func (f *fakeDocSvc) CreateDocument(_ context.Context, _ docdom.CreateDocumentInput) (*docdom.Document, error) {
 	return &docdom.Document{ID: uuid.New()}, nil
 }
-func (f *fakeDocSvc) UpdateDocument(_ context.Context, _, _ uuid.UUID, _ docdom.UpdateDocumentInput) (*docdom.Document, docdom.DocChange, error) {
+func (f *fakeDocSvc) UpdateDocument(_ context.Context, _, _ uuid.UUID, in docdom.UpdateDocumentInput) (*docdom.Document, docdom.DocChange, error) {
+	f.lastUpdate = &in
+	if f.updateErr != nil || f.updateDoc != nil {
+		return f.updateDoc, f.updateChange, f.updateErr
+	}
 	return nil, docdom.DocChange{}, docdom.ErrDocNotFound
 }
 func (f *fakeDocSvc) DeleteDocument(_ context.Context, _, _ uuid.UUID) error { return nil }
@@ -86,9 +100,11 @@ func (f *fakeDocSvc) GetSnapshot(_ context.Context, _, _ uuid.UUID) (*docdom.Doc
 type fakeDocActivitySvc struct {
 	pageCursor *string
 	pageLimit  int
+	recorded   []docdom.RecordActivityInput
 }
 
-func (f *fakeDocActivitySvc) RecordActivity(_ context.Context, _ docdom.RecordActivityInput) error {
+func (f *fakeDocActivitySvc) RecordActivity(_ context.Context, in docdom.RecordActivityInput) error {
+	f.recorded = append(f.recorded, in)
 	return nil
 }
 func (f *fakeDocActivitySvc) ListActivities(_ context.Context, _, _ uuid.UUID, cursor *string, limit int) ([]*docdom.Activity, *string, error) {
