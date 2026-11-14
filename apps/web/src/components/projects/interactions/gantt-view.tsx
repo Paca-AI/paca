@@ -655,7 +655,10 @@ export function GanttView({
 				),
 			].join("\n");
 		}
-		const resizable = canReschedule && box.width >= MIN_RESIZABLE_PX;
+		// Keep the handles mounted while dragging: unmounting the element that
+		// holds pointer capture would drop the drag when the bar gets narrow.
+		const resizable =
+			canReschedule && (isDragging || box.width >= MIN_RESIZABLE_PX);
 
 		return (
 			<div

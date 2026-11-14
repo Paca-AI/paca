@@ -331,6 +331,30 @@ describe("GanttView rescheduling", () => {
 		});
 	});
 
+	it("keeps the edge handle while a drag shrinks the bar below the handle size", async () => {
+		const onRescheduleTask = vi.fn().mockResolvedValue({});
+		// Four days at 6px each is 24px wide; one day off the start leaves 18px.
+		renderGantt([dated({ due_date: "2026-03-13T00:00:00Z" })], {
+			zoom: "month",
+			onRescheduleTask,
+		});
+		const bar = barOf("t1") as HTMLElement;
+		const handle = bar.querySelector(
+			'[data-gantt-handle="start"]',
+		) as HTMLElement;
+
+		fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 100 });
+		fireEvent.pointerMove(bar, { pointerId: 1, clientX: 106 });
+		expect(handle.isConnected).toBe(true);
+		await act(async () =>
+			fireEvent.pointerUp(bar, { pointerId: 1, clientX: 106 }),
+		);
+
+		expect(onRescheduleTask).toHaveBeenCalledWith("t1", {
+			start_date: "2026-03-11T00:00:00Z",
+		});
+	});
+
 	it("shows the new dates while saving and offers an undo", async () => {
 		let resolve: (v: unknown) => void = () => {};
 		const onRescheduleTask = vi
