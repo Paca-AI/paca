@@ -685,15 +685,174 @@ describe("runPull", () => {
 		expect(tmpFiles(dir)).toEqual([]);
 	});
 
-	it("leftover temporary files are removed", async () => {
+	it("leftover temporary files are removed, other .paca-tmp files are not", async () => {
 		const srv = fakeServer();
 		srv.docs.set(ID(1), { id: ID(1), title: "A", folder_id: "f", text: "one" });
 		srv.resetFeed([{ id: "f", parent_id: null, name: "F" }]);
 		await pull(srv);
-		fs.writeFileSync(path.join(dir, "F", ".paca-tmp-123-abc"), "half");
+		fs.writeFileSync(
+			path.join(dir, "F", ".paca-tmp-w-0123456789abcdef"),
+			"half",
+		);
+		fs.writeFileSync(path.join(dir, ".paca-tmp-notes"), "mine");
+		fs.writeFileSync(path.join(dir, "F", ".paca-tmp-123-abc"), "mine too");
 		srv.feed([]);
 		expect(await pull(srv)).toBe(0);
+		expect(exists("F/.paca-tmp-w-0123456789abcdef")).toBe(false);
+		expect(read(".paca-tmp-notes")).toBe("mine");
+		expect(read("F/.paca-tmp-123-abc")).toBe("mine too");
+	});
+
+	it("rolls back a swap of two files when a later step fails", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), { id: ID(1), title: "X", folder_id: null, text: "A1" });
+		srv.docs.set(ID(2), { id: ID(2), title: "Y", folder_id: null, text: "B1" });
+		srv.resetFeed();
+		await pull(srv);
+		const stateBefore = fs.readFileSync(
+			path.join(dir, ".paca-sync.json"),
+			"utf8",
+		);
+		srv.docs.set(ID(1), { id: ID(1), title: "Y", folder_id: null, text: "A2" });
+		srv.docs.set(ID(2), { id: ID(2), title: "X", folder_id: null, text: "B1" });
+		fs.rmSync(path.join(dir, ".paca-base"), { recursive: true });
+		fs.writeFileSync(path.join(dir, ".paca-base"), "");
+		const changes = () =>
+			srv.feed([
+				srv.entry(srv.docs.get(ID(1)) as ServerDoc),
+				srv.entry(srv.docs.get(ID(2)) as ServerDoc),
+			]);
+		changes();
+		await expect(pull(srv)).rejects.toThrow();
+		// Each file is back at the path the state records. A's file may already
+		// hold A's new server content (it was unedited); the next pull adopts it.
+		expect(["A1", "A2"]).toContain(read("X.md").trim());
+		expect(read("Y.md").trim()).toBe("B1");
 		expect(tmpFiles(dir)).toEqual([]);
+		expect(fs.readFileSync(path.join(dir, ".paca-sync.json"), "utf8")).toBe(
+			stateBefore,
+		);
+		fs.rmSync(path.join(dir, ".paca-base"));
+		changes();
+		lines = [];
+		expect(await pull(srv)).toBe(0);
+		expect(read("Y.md").trim()).toBe("A2");
+		expect(read("X.md").trim()).toBe("B1");
+		expect(lines.join("\n")).not.toContain("kept");
+	});
+
+	it("rolls back a rename cycle and a file written this run", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), { id: ID(1), title: "X", folder_id: null, text: "A1" });
+		srv.docs.set(ID(2), { id: ID(2), title: "Y", folder_id: null, text: "B1" });
+		srv.docs.set(ID(3), { id: ID(3), title: "Z", folder_id: null, text: "C1" });
+		srv.resetFeed();
+		await pull(srv);
+		srv.docs.set(ID(1), { id: ID(1), title: "Y", folder_id: null, text: "A2" });
+		srv.docs.set(ID(2), { id: ID(2), title: "Z", folder_id: null, text: "B1" });
+		srv.docs.set(ID(3), { id: ID(3), title: "X", folder_id: null, text: "C1" });
+		srv.docs.set(ID(4), {
+			id: ID(4),
+			title: "New",
+			folder_id: null,
+			text: "D1",
+		});
+		fs.rmSync(path.join(dir, ".paca-base"), { recursive: true });
+		fs.writeFileSync(path.join(dir, ".paca-base"), "");
+		const changes = () =>
+			srv.feed(
+				[1, 2, 3, 4].map((n) => srv.entry(srv.docs.get(ID(n)) as ServerDoc)),
+			);
+		changes();
+		await expect(pull(srv)).rejects.toThrow();
+		expect(["A1", "A2"]).toContain(read("X.md").trim());
+		expect(read("Y.md").trim()).toBe("B1");
+		expect(read("Z.md").trim()).toBe("C1");
+		expect(exists("New.md")).toBe(false);
+		expect(tmpFiles(dir)).toEqual([]);
+		fs.rmSync(path.join(dir, ".paca-base"));
+		changes();
+		expect(await pull(srv)).toBe(0);
+		expect(read("Y.md").trim()).toBe("A2");
+		expect(read("Z.md").trim()).toBe("B1");
+		expect(read("X.md").trim()).toBe("C1");
+		expect(read("New.md").trim()).toBe("D1");
+	});
+
+	it("recovers a stranded move to the mirror root when its folder is now a file", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), { id: ID(1), title: "A", folder_id: "f", text: "one" });
+		srv.resetFeed([{ id: "f", parent_id: null, name: "F" }]);
+		await pull(srv);
+		fs.rmSync(path.join(dir, "F"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "F"), "a file now");
+		fs.writeFileSync(path.join(dir, `.paca-tmp-move-${ID(1)}`), "LOCAL EDIT\n");
+		srv.feed([]);
+		lines = [];
+		const code = await pull(srv);
+		expect([0, 2]).toContain(code);
+		expect(read(`recovered-${ID(1)}.md`)).toBe("LOCAL EDIT\n");
+		expect(read("F")).toBe("a file now");
+		expect(lines.join("\n")).toContain(`recovered-${ID(1)}.md`);
+	});
+
+	it("a second pull on the same mirror exits 1 while one is running", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+		});
+		srv.resetFeed();
+		srv.resetFeed();
+		lines = [];
+		const codes = await Promise.all([pull(srv), pull(srv)]);
+		expect(codes.sort()).toEqual([0, 1]);
+		expect(lines.join("\n")).toContain("another pull is running in");
+		expect(exists(".paca-pull.lock")).toBe(false);
+	});
+
+	it("a lock held by a running process stops the pull", async () => {
+		const srv = fakeServer();
+		fs.mkdirSync(dir, { recursive: true });
+		const lock = JSON.stringify({
+			pid: process.pid,
+			started: "2026-11-14T00:00:00Z",
+		});
+		fs.writeFileSync(path.join(dir, ".paca-pull.lock"), lock);
+		lines = [];
+		expect(await pull(srv)).toBe(1);
+		expect(lines.join("\n")).toContain("another pull is running in");
+		expect(srv.client.getChanges).not.toHaveBeenCalled();
+		expect(read(".paca-pull.lock")).toBe(lock);
+	});
+
+	it("a stale lock is taken over and reported", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+		});
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(
+			path.join(dir, ".paca-pull.lock"),
+			JSON.stringify({ pid: 2 ** 22 + 12345, started: "2026-11-14T00:00:00Z" }),
+		);
+		srv.resetFeed();
+		lines = [];
+		expect(await pull(srv)).toBe(0);
+		expect(lines.join("\n")).toContain("stale lock");
+		expect(exists(".paca-pull.lock")).toBe(false);
+	});
+
+	it("the lock is released when a pull fails", async () => {
+		const srv = fakeServer();
+		srv.client.getChanges.mockRejectedValueOnce(new Error("boom"));
+		await expect(pull(srv)).rejects.toThrow("boom");
+		expect(exists(".paca-pull.lock")).toBe(false);
 	});
 
 	it("a file at a folder's path gives the folder another name", async () => {

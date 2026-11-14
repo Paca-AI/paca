@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -49,10 +49,16 @@ export async function fileSha256(file: string): Promise<string | null> {
 	try {
 		return sha256(await fs.readFile(file));
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+		// ENOTDIR: a folder on the way is now a file, so there is no file.
+		const code = (err as NodeJS.ErrnoException).code;
+		if (code === "ENOENT" || code === "ENOTDIR") return null;
 		throw err;
 	}
 }
+
+/** Temporary file of an atomic write: this prefix and 16 hex digits. */
+export const WRITE_TMP_PREFIX = ".paca-tmp-w-";
+export const WRITE_TMP_RE = /^\.paca-tmp-w-[0-9a-f]{16}$/;
 
 /** Writes a file through a temporary file in the same folder and a rename,
  *  so a reader never sees half of it. */
@@ -63,7 +69,7 @@ export async function writeFileAtomic(
 	await fs.mkdir(path.dirname(file), { recursive: true });
 	const tmp = path.join(
 		path.dirname(file),
-		`.paca-tmp-${process.pid}-${Math.random().toString(36).slice(2)}`,
+		`${WRITE_TMP_PREFIX}${randomBytes(8).toString("hex")}`,
 	);
 	try {
 		await fs.writeFile(tmp, data);

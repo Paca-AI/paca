@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -24,6 +25,7 @@ import {
 	type PullState,
 	sha256,
 	TOO_OLD,
+	WRITE_TMP_RE,
 	writeFileAtomic,
 	writeJSON,
 } from "./state.js";
@@ -43,6 +45,13 @@ const BATCH = 100;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
 /** A file mid-move: `<mirror>/.paca-tmp-move-<doc id>`. */
 const MOVE_TMP = ".paca-tmp-move-";
+/** Held for the length of a pull, so two pulls never share a mirror. */
+const LOCK_FILE = ".paca-pull.lock";
+
+/** Whether `name` (in the mirror root) is a move temp this command made. */
+function isMoveTmp(name: string): boolean {
+	return name.startsWith(MOVE_TMP) && SAFE_ID.test(name.slice(MOVE_TMP.length));
+}
 
 interface DocMeta extends MirrorDoc {
 	/** Content hash the server reported most recently. */
@@ -50,10 +59,14 @@ interface DocMeta extends MirrorDoc {
 	managed?: true;
 }
 
-/** One rename done this run, so a failure can put the file back. */
+/** One file moved this run, so a failure can put it back. */
 interface Moved {
+	/** Where the file was before this run. */
 	orig: string;
+	/** Where it is now. */
 	cur: string;
+	/** Its temporary name in the mirror root. */
+	tmp: string;
 }
 
 /**
@@ -80,6 +93,21 @@ export async function runPull(
 		return EXIT.error;
 	}
 
+	const token = await takeLock(root, opts.dir, io);
+	if (!token) return EXIT.error;
+	try {
+		return await pullLocked(root, opts, client, io);
+	} finally {
+		await releaseLock(root, token);
+	}
+}
+
+async function pullLocked(
+	root: string,
+	opts: PullOptions,
+	client: PullClient,
+	io: CliIO,
+): Promise<number> {
 	const statePath = path.join(root, PULL_STATE_FILE);
 	const stateText = await readText(statePath);
 	const prev: PullState | null = stateText ? JSON.parse(stateText) : null;
@@ -276,6 +304,8 @@ export async function runPull(
 
 	const vacated: string[] = [];
 	const journal: Moved[] = [];
+	/** Files this run created where nothing was before. */
+	const created: string[] = [];
 	let removedCount = 0;
 	let moved = 0;
 	let updated = 0;
@@ -308,7 +338,7 @@ export async function runPull(
 			const from = await safePath(root, p.file);
 			if (!(await exists(from))) continue;
 			const tmp = await safePath(root, `${MOVE_TMP}${id}`);
-			const entry = { orig: from, cur: from };
+			const entry = { orig: from, cur: from, tmp };
 			journal.push(entry);
 			await fs.rename(from, tmp);
 			entry.cur = tmp;
@@ -365,6 +395,7 @@ export async function runPull(
 				continue;
 			}
 			if (current !== mdSha) {
+				if (current === null) created.push(abs);
 				await writeFileAtomic(abs, markdown);
 				updated++;
 				lines.push(`updated ${file}`);
@@ -383,7 +414,7 @@ export async function runPull(
 			if (m.managed) next[id].managed = true;
 		}
 	} catch (err) {
-		await rollBack(journal);
+		await rollBack(root, journal, created);
 		throw err;
 	}
 
@@ -435,21 +466,44 @@ async function safePath(
 		if ((await fs.lstat(abs)).isSymbolicLink())
 			throw new Error(`refusing to write through a symlink: ${rel}`);
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+		const code = (err as NodeJS.ErrnoException).code;
+		if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
 	}
 	return abs;
 }
 
-/** Puts files moved this run back where they were, newest first. A file
- *  that cannot be put back stays under its temporary name, and the next
- *  pull recovers it. */
-async function rollBack(journal: Moved[]): Promise<void> {
-	for (const m of [...journal].reverse()) {
-		if (m.cur === m.orig) continue;
+/**
+ * Undoes this run's moves after a failure: files it created are removed
+ * (server content, fetched again next time), then every moved file goes to
+ * its temporary name, then from there to where it was. Two phases, so swaps
+ * and rename cycles come back too. A file that cannot be put back stays
+ * under its temporary name, and the next pull recovers it.
+ */
+async function rollBack(
+	root: string,
+	journal: Moved[],
+	created: string[],
+): Promise<void> {
+	for (const f of created) await fs.rm(f, { force: true }).catch(() => {});
+	const back = journal.filter((m) => m.cur !== m.orig);
+	for (const m of back) {
+		if (m.cur === m.tmp) continue;
+		try {
+			const from = m.cur;
+			await fs.rename(from, m.tmp);
+			m.cur = m.tmp;
+			await pruneEmpty(root, path.dirname(from));
+		} catch {
+			// Stays where it is.
+		}
+	}
+	for (const m of back) {
+		if (m.cur !== m.tmp) continue;
 		try {
 			if (await exists(m.orig)) continue;
 			await fs.mkdir(path.dirname(m.orig), { recursive: true });
-			await fs.rename(m.cur, m.orig);
+			await fs.rename(m.tmp, m.orig);
+			m.cur = m.orig;
 		} catch {
 			// Left for recoverMoves on the next run.
 		}
@@ -474,16 +528,21 @@ async function recoverMoves(
 		return;
 	}
 	for (const e of entries) {
-		if (!e.name.startsWith(MOVE_TMP) || !e.isFile()) continue;
+		if (!isMoveTmp(e.name) || !e.isFile()) continue;
 		const id = e.name.slice(MOVE_TMP.length);
 		const tmp = path.join(root, e.name);
 		const p = SAFE_ID.test(id) ? docs[id] : undefined;
 		if (p) {
-			const target = await safePath(root, p.file, { mkdir: true });
-			if (!(await exists(target))) {
-				await fs.rename(tmp, target);
-				io.err(`recovered ${p.file} from an interrupted pull`);
-				continue;
+			try {
+				const target = await safePath(root, p.file, { mkdir: true });
+				if (!(await exists(target))) {
+					await fs.rename(tmp, target);
+					io.err(`recovered ${p.file} from an interrupted pull`);
+					continue;
+				}
+			} catch {
+				// Its folder cannot be made (a file is in the way, say): fall
+				// back to a name in the mirror root.
 			}
 		}
 		const safeName = SAFE_ID.test(id) ? id : "file";
@@ -509,8 +568,7 @@ async function removeTempFiles(root: string): Promise<void> {
 		for (const e of entries) {
 			const p = path.join(abs, e.name);
 			if (e.isDirectory()) await walk(p);
-			else if (e.name.startsWith(".paca-tmp-") && !e.name.startsWith(MOVE_TMP))
-				await fs.rm(p, { force: true });
+			else if (WRITE_TMP_RE.test(e.name)) await fs.rm(p, { force: true });
 		}
 	};
 	await walk(root);
@@ -573,8 +631,15 @@ async function scanMirror(
 		}
 		for (const e of entries) {
 			const r = rel ? `${rel}/${e.name}` : e.name;
-			if (!rel && (e.name === BASE_DIR || e.name === PULL_STATE_FILE)) continue;
-			if (e.name.startsWith(".paca-tmp-")) continue;
+			if (
+				!rel &&
+				(e.name === BASE_DIR ||
+					e.name === PULL_STATE_FILE ||
+					e.name === LOCK_FILE ||
+					isMoveTmp(e.name))
+			)
+				continue;
+			if (WRITE_TMP_RE.test(e.name)) continue;
 			if (e.isDirectory()) {
 				dirs.add(nameKey(r));
 				await walk(path.join(abs, e.name), r);
@@ -597,5 +662,76 @@ async function pruneEmpty(root: string, from: string): Promise<void> {
 			return;
 		}
 		cur = path.dirname(cur);
+	}
+}
+
+/** Whether a process with this id is running. */
+function isRunning(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (err) {
+		return (err as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
+/**
+ * Takes the mirror's lock file (created exclusively), holding this
+ * process's id, start time and a token. A lock whose process is gone is
+ * taken over and reported. Returns the token, or null when another pull
+ * holds the lock (reported).
+ */
+async function takeLock(
+	root: string,
+	label: string,
+	io: CliIO,
+): Promise<string | null> {
+	const file = path.join(root, LOCK_FILE);
+	const token = randomBytes(8).toString("hex");
+	for (let attempt = 0; attempt < 2; attempt++) {
+		try {
+			await fs.writeFile(
+				file,
+				JSON.stringify({
+					pid: process.pid,
+					started: new Date().toISOString(),
+					token,
+				}),
+				{ flag: "wx" },
+			);
+			return token;
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+		}
+		let held: { pid?: unknown; started?: unknown } = {};
+		try {
+			held = JSON.parse(await fs.readFile(file, "utf8"));
+		} catch {
+			// Being written right now, or unreadable: treat it as held.
+		}
+		const pid = typeof held.pid === "number" ? held.pid : null;
+		if (pid === null || isRunning(pid)) {
+			io.err(
+				`another pull is running in ${label}${pid === null ? "" : ` (process ${pid}, started ${String(held.started)})`}; if it is not, remove ${path.join(label, LOCK_FILE)}`,
+			);
+			return null;
+		}
+		io.err(
+			`took over a stale lock in ${label} from process ${pid} (started ${String(held.started)}), which is no longer running`,
+		);
+		await fs.rm(file, { force: true });
+	}
+	io.err(`another pull is running in ${label}`);
+	return null;
+}
+
+/** Removes the lock file if it is still the one this pull took. */
+async function releaseLock(root: string, token: string): Promise<void> {
+	const file = path.join(root, LOCK_FILE);
+	try {
+		const held = JSON.parse(await fs.readFile(file, "utf8"));
+		if (held.token === token) await fs.rm(file, { force: true });
+	} catch {
+		// Already gone.
 	}
 }

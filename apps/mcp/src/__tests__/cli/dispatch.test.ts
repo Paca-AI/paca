@@ -140,6 +140,7 @@ describe("index.ts dispatch", () => {
 		process.exitCode = undefined;
 		vi.doUnmock("../../cli/index.js");
 		vi.doUnmock("../../server.js");
+		vi.doUnmock("@modelcontextprotocol/sdk/server/stdio.js");
 		vi.restoreAllMocks();
 	});
 
@@ -158,5 +159,25 @@ describe("index.ts dispatch", () => {
 		expect(exit).not.toHaveBeenCalled();
 		expect(runCliMock.mock.calls[0][0]).toEqual(["push", "a.md"]);
 		expect(createServer).not.toHaveBeenCalled();
+	});
+	it("with no arguments starts the MCP server", async () => {
+		const connect = vi.fn().mockResolvedValue(undefined);
+		const createServer = vi.fn().mockResolvedValue({ connect });
+		vi.doMock("../../server.js", () => ({ createServer }));
+		vi.doMock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
+			StdioServerTransport: class {},
+		}));
+		const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+			throw new Error("process.exit called");
+		}) as never);
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.stubEnv("PACA_API_KEY", "k");
+		process.argv = ["node", "paca"];
+		await import("../../index.js");
+		await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+		expect(createServer.mock.calls[0][0]).toMatchObject({ apiKey: "k" });
+		expect(exit).not.toHaveBeenCalled();
+		expect(log).not.toHaveBeenCalled();
+		vi.unstubAllEnvs();
 	});
 });
