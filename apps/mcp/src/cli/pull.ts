@@ -1,15 +1,17 @@
+import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { PacaAPIDocClient } from "../api/doc-client.js";
 import type { Document } from "../types/index.js";
 import { blocknoteToMarkdown } from "../utils/index.js";
 import {
-	folderPathFor,
+	folderDirs,
 	isInside,
 	type MirrorDoc,
 	type MirrorFolder,
 	mirrorCandidates,
 	mirrorFileFor,
+	nameKey,
 } from "./mirror-paths.js";
 import {
 	BASE_DIR,
@@ -39,6 +41,8 @@ export type PullClient = Pick<PacaAPIDocClient, "getChanges" | "batchGet">;
 const BATCH = 100;
 /** Ids are used as file names (base copies), so only plain ids are taken. */
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
+/** A file mid-move: `<mirror>/.paca-tmp-move-<doc id>`. */
+const MOVE_TMP = ".paca-tmp-move-";
 
 interface DocMeta extends MirrorDoc {
 	/** Content hash the server reported most recently. */
@@ -46,10 +50,17 @@ interface DocMeta extends MirrorDoc {
 	managed?: true;
 }
 
+/** One rename done this run, so a failure can put the file back. */
+interface Moved {
+	orig: string;
+	cur: string;
+}
+
 /**
  * Mirrors the project's documents to Markdown files under `opts.dir`.
- * Returns the exit code: 0 done, 1 error, 2 a locally edited file was kept.
- * Throws on a failed file write (the state file is then left unchanged) and
+ * Returns the exit code: 0 done, 1 error (nothing changed), 2 a locally
+ * edited file was kept. Throws on a failed file operation, after putting
+ * moved files back (the state file is then left unchanged), and
  * UnreachableError when the server cannot be reached.
  */
 export async function runPull(
@@ -57,8 +68,19 @@ export async function runPull(
 	client: PullClient,
 	io: CliIO,
 ): Promise<number> {
-	const dir = path.resolve(opts.dir);
-	const statePath = path.join(dir, PULL_STATE_FILE);
+	await fs.mkdir(path.resolve(opts.dir), { recursive: true });
+	// Every path below is under the real path of the mirror folder.
+	const root = await fs.realpath(path.resolve(opts.dir));
+
+	const link = await findSymlink(root);
+	if (link) {
+		io.err(
+			`refusing to pull: ${link} in the mirror folder is a symlink; pull never writes through symlinks, so remove it`,
+		);
+		return EXIT.error;
+	}
+
+	const statePath = path.join(root, PULL_STATE_FILE);
 	const stateText = await readText(statePath);
 	const prev: PullState | null = stateText ? JSON.parse(stateText) : null;
 	if (prev && prev.project !== opts.projectId) {
@@ -67,7 +89,23 @@ export async function runPull(
 		);
 		return EXIT.error;
 	}
-	const prevDocs: Record<string, PullDocState> = prev?.docs ?? {};
+	const prevDocs: Record<string, PullDocState> = {};
+	for (const [id, d] of Object.entries(prev?.docs ?? {})) {
+		if (
+			SAFE_ID.test(id) &&
+			d &&
+			typeof d.file === "string" &&
+			isInside(root, path.resolve(root, d.file))
+		)
+			prevDocs[id] = d;
+		else
+			io.err(
+				`ignored a state entry with an unusable id or file: ${JSON.stringify(id)}`,
+			);
+	}
+
+	await recoverMoves(root, prevDocs, io);
+	await removeTempFiles(root);
 
 	const feed = await call(() =>
 		client.getChanges(opts.projectId, prev?.cursor || undefined),
@@ -86,9 +124,11 @@ export async function runPull(
 			)
 		: (prev?.folders ?? {});
 
-	// What the mirror should hold, starting from the last pull.
+	// What the mirror should hold, starting from the last pull. Orphans (kept
+	// files of gone documents) are not part of it unless the feed lists them.
 	const meta = new Map<string, DocMeta>();
 	for (const [id, d] of Object.entries(prevDocs)) {
+		if (d.orphan) continue;
 		meta.set(id, {
 			id,
 			title: d.title,
@@ -104,6 +144,7 @@ export async function runPull(
 		);
 		for (const id of meta.keys()) if (!listed.has(id)) removed.add(id);
 	}
+	const listed: string[] = [];
 	for (const c of feed.docs) {
 		if (!SAFE_ID.test(c.id)) {
 			io.err(`skipped a document with an unusable id: ${JSON.stringify(c.id)}`);
@@ -114,6 +155,7 @@ export async function runPull(
 			continue;
 		}
 		removed.delete(c.id);
+		listed.push(c.id);
 		meta.set(c.id, {
 			id: c.id,
 			title: c.title,
@@ -124,17 +166,24 @@ export async function runPull(
 	}
 	for (const id of removed) meta.delete(id);
 
-	// Fetch what is new, changed, behind, or missing on disk.
-	const fetchIds: string[] = [];
+	// Content is needed for docs that are new, changed, behind, or missing on
+	// disk. Docs an incremental feed lists are fetched too, for their source
+	// (a source or lock change bumps the feed but not the content hash). A
+	// reset lists every doc, so it fetches only what changed.
+	const needContent = new Set<string>();
 	for (const [id, m] of meta) {
 		const p = prevDocs[id];
 		if (
 			!p ||
+			p.orphan ||
 			m.remote_hash !== p.content_hash ||
-			!(await exists(resolveIn(dir, p.file)))
+			!(await exists(path.resolve(root, p.file)))
 		)
-			fetchIds.push(id);
+			needContent.add(id);
 	}
+	const fetchIds = [...meta.keys()].filter(
+		(id) => needContent.has(id) || (!feed.reset && listed.includes(id)),
+	);
 	const fetched = new Map<string, Document>();
 	for (let i = 0; i < fetchIds.length; i += BATCH) {
 		const chunk = fetchIds.slice(i, i + BATCH);
@@ -150,6 +199,7 @@ export async function runPull(
 		if (!d) {
 			// Not readable any more (deleted or access lost since the feed).
 			meta.delete(id);
+			needContent.delete(id);
 			removed.add(id);
 			continue;
 		}
@@ -160,40 +210,48 @@ export async function runPull(
 			remote_hash: d.content_hash ?? meta.get(id)?.remote_hash ?? null,
 			managed: d.source ? true : undefined,
 		});
+		if (d.content_hash && d.content_hash !== prevDocs[id]?.content_hash)
+			needContent.add(id);
 	}
 
 	const lines: string[] = [];
+	const next: Record<string, PullDocState> = {};
 	let kept = 0;
 
-	// Removals: a file edited since the last pull is kept (unless --force).
+	// Gone documents (and earlier orphans): an edited file is kept and
+	// reported on every pull until it is removed or --force removes it.
 	const toRemove: string[] = [];
-	const keptFiles: string[] = [];
-	for (const id of removed) {
+	const goneIds = new Set(removed);
+	for (const [id, p] of Object.entries(prevDocs))
+		if (p.orphan && !meta.has(id)) goneIds.add(id);
+	for (const id of goneIds) {
 		const p = prevDocs[id];
 		if (!p) continue;
-		const abs = resolveIn(dir, p.file);
-		const sha = await fileSha256(abs);
-		if (sha !== null && sha !== p.file_sha256 && !opts.force) {
+		const sha = await fileSha256(path.resolve(root, p.file));
+		if (sha === null) continue;
+		if (sha !== p.file_sha256 && !opts.force) {
 			kept++;
-			keptFiles.push(p.file);
+			next[id] = { ...p, orphan: true };
 			lines.push(
-				`kept ${p.file}: edited locally; the document was removed in Paca`,
+				`kept ${p.file}: edited locally; the document was removed in Paca (delete the file, or pull --force to remove it)`,
 			);
 			continue;
 		}
 		toRemove.push(id);
 	}
 
-	// Layout: names already in use by files that are not ours, and folders.
-	const owned = new Set(
-		Object.values(prevDocs).map((d) => d.file.toLowerCase()),
+	// Layout. Names in use by files pull did not write are taken, and a
+	// folder whose path is such a file gets another name.
+	const owned = new Set<string>();
+	for (const [id, p] of Object.entries(prevDocs))
+		if (!next[id]?.orphan) owned.add(nameKey(p.file));
+	const { files: foreignFiles, dirs: foreignDirs } = await scanMirror(
+		root,
+		owned,
 	);
-	for (const f of keptFiles) owned.delete(f.toLowerCase());
-	const taken = await foreignPaths(dir, owned);
-	for (const id of Object.keys(folders)) {
-		const p = folderPathFor(id, folders);
-		if (p) taken.add(p.toLowerCase());
-	}
+	const dirs = folderDirs(folders, foreignFiles);
+	const taken = new Set([...foreignFiles, ...foreignDirs]);
+	for (const d of Object.values(dirs)) if (d) taken.add(nameKey(d));
 	const layout = new Map<string, string>();
 	const ids = [...meta.keys()].sort();
 	for (const id of ids) {
@@ -201,121 +259,136 @@ export async function runPull(
 		const m = meta.get(id) as DocMeta;
 		if (
 			p &&
-			mirrorCandidates(m, folders).includes(p.file) &&
-			!taken.has(p.file.toLowerCase())
+			mirrorCandidates(m, folders, dirs).includes(p.file) &&
+			!taken.has(nameKey(p.file))
 		) {
 			layout.set(id, p.file);
-			taken.add(p.file.toLowerCase());
+			taken.add(nameKey(p.file));
 		}
 	}
 	for (const id of ids) {
 		if (!layout.has(id))
-			layout.set(id, mirrorFileFor(meta.get(id) as DocMeta, folders, taken));
+			layout.set(
+				id,
+				mirrorFileFor(meta.get(id) as DocMeta, folders, taken, dirs),
+			);
 	}
 
 	const vacated: string[] = [];
-	const next: Record<string, PullDocState> = {};
+	const journal: Moved[] = [];
 	let removedCount = 0;
 	let moved = 0;
 	let updated = 0;
-
-	// 1. Remove.
-	for (const id of toRemove) {
-		const p = prevDocs[id];
-		const abs = resolveIn(dir, p.file);
-		if (await exists(abs)) {
-			await fs.rm(abs, { force: true });
-			removedCount++;
-			lines.push(`removed ${p.file}`);
+	try {
+		// 1. Remove.
+		for (const id of toRemove) {
+			const p = prevDocs[id];
+			const abs = await safePath(root, p.file);
+			if (await exists(abs)) {
+				await fs.rm(abs, { force: true });
+				removedCount++;
+				lines.push(`removed ${p.file}`);
+			}
+			vacated.push(abs);
 		}
-		await fs.rm(resolveIn(dir, `${BASE_DIR}/${id}.md`), { force: true });
-		vacated.push(abs);
-	}
-	for (const id of removed) {
-		if (!toRemove.includes(id))
-			await fs.rm(resolveIn(dir, `${BASE_DIR}/${id}.md`), { force: true });
-	}
+		for (const id of goneIds) {
+			if (next[id]?.orphan) continue;
+			await fs.rm(await safePath(root, `${BASE_DIR}/${id}.md`), {
+				force: true,
+			});
+		}
 
-	// 2. Move, through temporary names so two files can swap.
-	const moves: Array<{ id: string; from: string; to: string; tmp: string }> =
-		[];
-	for (const id of ids) {
-		const p = prevDocs[id];
-		const to = layout.get(id) as string;
-		if (!p || p.file === to) continue;
-		const from = resolveIn(dir, p.file);
-		if (!(await exists(from))) continue;
-		moves.push({ id, from, to, tmp: resolveIn(dir, `.paca-tmp-move-${id}`) });
-	}
-	for (const m of moves) await fs.rename(m.from, m.tmp);
-	for (const m of moves) {
-		const target = resolveIn(dir, m.to);
-		await fs.mkdir(path.dirname(target), { recursive: true });
-		await fs.rename(m.tmp, target);
-		vacated.push(m.from);
-		moved++;
-		lines.push(`moved ${prevDocs[m.id].file} -> ${m.to}`);
-	}
+		// 2. Move, through temporary names so two files can swap. A failure
+		// puts every moved file back (catch below).
+		const moves: Array<{ id: string; to: string; entry: Moved }> = [];
+		for (const id of ids) {
+			const p = prevDocs[id];
+			const to = layout.get(id) as string;
+			if (!p || p.orphan || p.file === to) continue;
+			const from = await safePath(root, p.file);
+			if (!(await exists(from))) continue;
+			const tmp = await safePath(root, `${MOVE_TMP}${id}`);
+			const entry = { orig: from, cur: from };
+			journal.push(entry);
+			await fs.rename(from, tmp);
+			entry.cur = tmp;
+			moves.push({ id, to, entry });
+		}
+		for (const m of moves) {
+			const target = await safePath(root, m.to, { mkdir: true });
+			if (await exists(target))
+				throw new Error(
+					`refusing to move over ${m.to}: a file is already there`,
+				);
+			await fs.rename(m.entry.cur, target);
+			m.entry.cur = target;
+			vacated.push(m.entry.orig);
+			moved++;
+			lines.push(`moved ${prevDocs[m.id].file} -> ${m.to}`);
+		}
 
-	// 3. Write fetched content; keep files edited since the last pull.
-	for (const id of ids) {
-		const m = meta.get(id) as DocMeta;
-		const p = prevDocs[id];
-		const file = layout.get(id) as string;
-		const d = fetched.get(id);
-		if (!d) {
-			next[id] = {
-				...(p as PullDocState),
+		// 3. Write new content; keep files edited since the last pull.
+		for (const id of ids) {
+			const m = meta.get(id) as DocMeta;
+			const p = prevDocs[id];
+			const file = layout.get(id) as string;
+			const d = fetched.get(id);
+			const base: Partial<PullDocState> = {
 				file,
 				title: m.title,
 				folder_id: m.folder_id,
 			};
-			if (m.managed) next[id].managed = true;
-			else delete next[id].managed;
-			continue;
-		}
-		const markdown = blocknoteToMarkdown(d.content as any[] | null);
-		const mdSha = sha256(markdown);
-		const abs = resolveIn(dir, file);
-		const current = await fileSha256(abs);
-		if (
-			p &&
-			current !== null &&
-			current !== p.file_sha256 &&
-			current !== mdSha &&
-			!opts.force
-		) {
-			kept++;
-			lines.push(`kept ${file}: edited locally; use --force to overwrite`);
+			if (!d || !needContent.has(id)) {
+				next[id] = { ...(p as PullDocState), ...base };
+				delete next[id].orphan;
+				if (m.managed) next[id].managed = true;
+				else delete next[id].managed;
+				continue;
+			}
+			const markdown = blocknoteToMarkdown(d.content as any[] | null);
+			const mdSha = sha256(markdown);
+			const abs = await safePath(root, file, { mkdir: true });
+			const current = await fileSha256(abs);
+			if (
+				p &&
+				current !== null &&
+				current !== p.file_sha256 &&
+				current !== mdSha &&
+				!opts.force
+			) {
+				kept++;
+				lines.push(`kept ${file}: edited locally; use --force to overwrite`);
+				next[id] = { ...p, ...base, remote_hash: m.remote_hash };
+				delete next[id].orphan;
+				if (m.managed) next[id].managed = true;
+				else delete next[id].managed;
+				continue;
+			}
+			if (current !== mdSha) {
+				await writeFileAtomic(abs, markdown);
+				updated++;
+				lines.push(`updated ${file}`);
+			}
+			await writeFileAtomic(
+				await safePath(root, `${BASE_DIR}/${id}.md`, { mkdir: true }),
+				markdown,
+			);
 			next[id] = {
-				...p,
 				file,
 				title: m.title,
 				folder_id: m.folder_id,
-				remote_hash: m.remote_hash,
+				content_hash: m.remote_hash,
+				file_sha256: mdSha,
 			};
 			if (m.managed) next[id].managed = true;
-			else delete next[id].managed;
-			continue;
 		}
-		if (current !== mdSha) {
-			await writeFileAtomic(abs, markdown);
-			updated++;
-			lines.push(`updated ${file}`);
-		}
-		await writeFileAtomic(resolveIn(dir, `${BASE_DIR}/${id}.md`), markdown);
-		next[id] = {
-			file,
-			title: m.title,
-			folder_id: m.folder_id,
-			content_hash: m.remote_hash,
-			file_sha256: mdSha,
-		};
-		if (m.managed) next[id].managed = true;
+	} catch (err) {
+		await rollBack(journal);
+		throw err;
 	}
 
 	// 4. Drop folders the moves and removals emptied.
-	for (const f of vacated) await pruneEmpty(dir, path.dirname(f));
+	for (const f of vacated) await pruneEmpty(root, path.dirname(f));
 
 	const state: PullState = {
 		project: opts.projectId,
@@ -336,12 +409,133 @@ export async function runPull(
 	return kept ? EXIT.conflict : EXIT.ok;
 }
 
-/** `rel` resolved under `dir`; throws if it would land outside it. */
-function resolveIn(dir: string, rel: string): string {
-	const abs = path.resolve(dir, rel);
-	if (!isInside(dir, abs))
+/**
+ * `rel` resolved under `root`, checked before any write, rename or delete:
+ * it must stay inside `root` by its text, the nearest existing folder above
+ * it must really be inside `root` (no symlinked folder on the way), and it
+ * must not itself be a symlink. `mkdir` creates the parent folders first.
+ */
+async function safePath(
+	root: string,
+	rel: string,
+	opts: { mkdir?: boolean } = {},
+): Promise<string> {
+	const abs = path.resolve(root, rel);
+	if (!isInside(root, abs))
 		throw new Error(`refusing a path outside the mirror folder: ${rel}`);
+	if (opts.mkdir) await fs.mkdir(path.dirname(abs), { recursive: true });
+	let anc = path.dirname(abs);
+	while (!(await exists(anc))) anc = path.dirname(anc);
+	const real = await fs.realpath(anc);
+	if (real !== root && !isInside(root, real))
+		throw new Error(
+			`refusing a path that leaves the mirror folder through a symlink: ${rel}`,
+		);
+	try {
+		if ((await fs.lstat(abs)).isSymbolicLink())
+			throw new Error(`refusing to write through a symlink: ${rel}`);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+	}
 	return abs;
+}
+
+/** Puts files moved this run back where they were, newest first. A file
+ *  that cannot be put back stays under its temporary name, and the next
+ *  pull recovers it. */
+async function rollBack(journal: Moved[]): Promise<void> {
+	for (const m of [...journal].reverse()) {
+		if (m.cur === m.orig) continue;
+		try {
+			if (await exists(m.orig)) continue;
+			await fs.mkdir(path.dirname(m.orig), { recursive: true });
+			await fs.rename(m.cur, m.orig);
+		} catch {
+			// Left for recoverMoves on the next run.
+		}
+	}
+}
+
+/**
+ * Puts back files a crashed pull left mid-move (`.paca-tmp-move-<id>`) at
+ * the path the state file still records, so the local-edit check applies
+ * to them as before. One that cannot go back (unknown id, path taken) is
+ * renamed to `recovered-<id>.md` and reported, never deleted.
+ */
+async function recoverMoves(
+	root: string,
+	docs: Record<string, PullDocState>,
+	io: CliIO,
+): Promise<void> {
+	let entries: Dirent[];
+	try {
+		entries = await fs.readdir(root, { withFileTypes: true });
+	} catch {
+		return;
+	}
+	for (const e of entries) {
+		if (!e.name.startsWith(MOVE_TMP) || !e.isFile()) continue;
+		const id = e.name.slice(MOVE_TMP.length);
+		const tmp = path.join(root, e.name);
+		const p = SAFE_ID.test(id) ? docs[id] : undefined;
+		if (p) {
+			const target = await safePath(root, p.file, { mkdir: true });
+			if (!(await exists(target))) {
+				await fs.rename(tmp, target);
+				io.err(`recovered ${p.file} from an interrupted pull`);
+				continue;
+			}
+		}
+		const safeName = SAFE_ID.test(id) ? id : "file";
+		let n = 0;
+		let name = `recovered-${safeName}.md`;
+		while (await exists(path.join(root, name)))
+			name = `recovered-${safeName}-${++n}.md`;
+		await fs.rename(tmp, path.join(root, name));
+		io.err(`an interrupted pull left a file; it is now ${name}`);
+	}
+}
+
+/** Removes temporary files of interrupted writes anywhere in the mirror
+ *  (they hold server content that was never put in place). */
+async function removeTempFiles(root: string): Promise<void> {
+	const walk = async (abs: string) => {
+		let entries: Dirent[];
+		try {
+			entries = await fs.readdir(abs, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const e of entries) {
+			const p = path.join(abs, e.name);
+			if (e.isDirectory()) await walk(p);
+			else if (e.name.startsWith(".paca-tmp-") && !e.name.startsWith(MOVE_TMP))
+				await fs.rm(p, { force: true });
+		}
+	};
+	await walk(root);
+}
+
+/** The first symlink inside the mirror folder (relative path), or null. */
+async function findSymlink(root: string): Promise<string | null> {
+	const walk = async (abs: string, rel: string): Promise<string | null> => {
+		let entries: Dirent[];
+		try {
+			entries = await fs.readdir(abs, { withFileTypes: true });
+		} catch {
+			return null;
+		}
+		for (const e of entries) {
+			const r = rel ? `${rel}/${e.name}` : e.name;
+			if (e.isSymbolicLink()) return r;
+			if (e.isDirectory()) {
+				const found = await walk(path.join(abs, e.name), r);
+				if (found) return found;
+			}
+		}
+		return null;
+	};
+	return walk(root, "");
 }
 
 async function readText(file: string): Promise<string | null> {
@@ -362,15 +556,16 @@ async function exists(file: string): Promise<boolean> {
 	}
 }
 
-/** Lower-cased relative paths of everything in the mirror folder that pull
- *  did not write (files and folders), so pull never writes over them. */
-async function foreignPaths(
-	dir: string,
+/** Name keys of everything in the mirror folder that pull did not write:
+ *  files (except `owned` ones) and folders. */
+async function scanMirror(
+	root: string,
 	owned: Set<string>,
-): Promise<Set<string>> {
-	const out = new Set<string>();
+): Promise<{ files: Set<string>; dirs: Set<string> }> {
+	const files = new Set<string>();
+	const dirs = new Set<string>();
 	const walk = async (abs: string, rel: string) => {
-		let entries: import("node:fs").Dirent[];
+		let entries: Dirent[];
 		try {
 			entries = await fs.readdir(abs, { withFileTypes: true });
 		} catch {
@@ -381,21 +576,21 @@ async function foreignPaths(
 			if (!rel && (e.name === BASE_DIR || e.name === PULL_STATE_FILE)) continue;
 			if (e.name.startsWith(".paca-tmp-")) continue;
 			if (e.isDirectory()) {
-				out.add(r.toLowerCase());
+				dirs.add(nameKey(r));
 				await walk(path.join(abs, e.name), r);
-			} else if (!owned.has(r.toLowerCase())) {
-				out.add(r.toLowerCase());
+			} else if (!owned.has(nameKey(r))) {
+				files.add(nameKey(r));
 			}
 		}
 	};
-	await walk(dir, "");
-	return out;
+	await walk(root, "");
+	return { files, dirs };
 }
 
-/** Removes `from` and its parents while they are empty and inside `dir`. */
-async function pruneEmpty(dir: string, from: string): Promise<void> {
+/** Removes `from` and its parents while they are empty and inside `root`. */
+async function pruneEmpty(root: string, from: string): Promise<void> {
 	let cur = from;
-	while (isInside(dir, cur)) {
+	while (isInside(root, cur)) {
 		try {
 			await fs.rmdir(cur);
 		} catch {

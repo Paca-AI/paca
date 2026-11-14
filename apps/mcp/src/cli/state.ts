@@ -106,6 +106,10 @@ export interface PullDocState {
 	file_sha256: string;
 	/** The document is a managed copy of a repository file. */
 	managed?: true;
+	/** The document is gone (deleted or no longer readable) but its file
+	 *  was edited locally, so it was kept; reported on every pull until the
+	 *  file is removed or `--force` removes it. */
+	orphan?: true;
 }
 
 export interface PullState {

@@ -1,8 +1,10 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	folderDirs,
 	isInside,
 	mirrorFileFor,
+	nameKey,
 	sanitizeSegment,
 } from "../../cli/mirror-paths.js";
 
@@ -20,6 +22,12 @@ describe("sanitizeSegment", () => {
 		["", "_"],
 		["   ", "_"],
 		["Plan v2.1", "Plan v2.1"],
+		["CON", "_CON"],
+		["nul.txt", "_nul.txt"],
+		["com1", "_com1"],
+		["Console", "Console"],
+		["Plan.", "Plan_"],
+		["a. ", "a__"],
 	])("%j becomes %j", (input, want) => {
 		expect(sanitizeSegment(input)).toBe(want);
 	});
@@ -120,6 +128,42 @@ describe("mirrorFileFor", () => {
 				new Set(),
 			),
 		).toBe("t.md");
+	});
+});
+
+describe("folder paths and Unicode", () => {
+	it("compares names after Unicode normalization", () => {
+		const taken = new Set<string>();
+		const a = mirrorFileFor(
+			{ id: ID1, title: "caf\u00e9", folder_id: null },
+			{},
+			taken,
+		);
+		const b = mirrorFileFor(
+			{ id: ID2, title: "cafe\u0301", folder_id: null },
+			{},
+			taken,
+		);
+		expect(nameKey(a)).not.toBe(nameKey(b));
+		expect(b).toBe("cafe\u0301~22222222.md");
+	});
+
+	it("gives a folder a suffix when its path is a file", () => {
+		const folders = {
+			"fsub-1234": { parent_id: null, name: "Sub" },
+			child: { parent_id: "fsub-1234", name: "In" },
+		};
+		const dirs = folderDirs(folders, new Set([nameKey("Sub")]));
+		expect(dirs["fsub-1234"]).toBe("Sub~fsub-123");
+		expect(dirs.child).toBe("Sub~fsub-123/In");
+		expect(
+			mirrorFileFor(
+				{ id: ID1, title: "t", folder_id: "child" },
+				folders,
+				new Set(),
+				dirs,
+			),
+		).toBe("Sub~fsub-123/In/t.md");
 	});
 });
 

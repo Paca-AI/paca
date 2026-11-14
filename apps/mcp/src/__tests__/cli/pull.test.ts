@@ -76,6 +76,19 @@ function fakeServer() {
 	return { docs, client, entry, tomb, feed, resetFeed };
 }
 
+/** Temporary files pull leaves anywhere under `root`. */
+function tmpFiles(root: string): string[] {
+	const out: string[] = [];
+	const walk = (d: string) => {
+		for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+			if (e.name.startsWith(".paca-tmp-")) out.push(path.join(d, e.name));
+			if (e.isDirectory()) walk(path.join(d, e.name));
+		}
+	};
+	walk(root);
+	return out;
+}
+
 describe("runPull", () => {
 	let dir: string;
 	let lines: string[];
@@ -201,8 +214,12 @@ describe("runPull", () => {
 		expect(read("B2.md")).toContain("two");
 		expect(exists("C.md")).toBe(false);
 		expect(exists(`.paca-base/${ID(3)}.md`)).toBe(false);
-		// Only the edited doc is fetched; the moved one is renamed.
-		expect(srv.client.batchGet.mock.calls.map((c) => c[1])).toEqual([[ID(1)]]);
+		// Docs the feed lists are fetched (to refresh title and source), but
+		// the renamed one is moved, not written again.
+		expect(srv.client.batchGet.mock.calls.map((c) => c[1])).toEqual([
+			[ID(1), ID(2)],
+		]);
+		expect(lines).not.toContain("updated B2.md");
 		expect(lines[0]).toBe("1 updated, 1 moved, 1 removed");
 		expect(lines).toContain("moved B.md -> B2.md");
 		expect(lines).toContain("removed C.md");
@@ -460,6 +477,36 @@ describe("runPull", () => {
 		expect(await pull(srv)).toBe(2);
 		expect(read("A.md")).toBe("edit");
 		expect(lines.join("\n")).toContain("kept A.md");
+		// Reported on every pull until the file is removed or --force is used.
+		srv.feed([]);
+		lines = [];
+		expect(await pull(srv)).toBe(2);
+		expect(lines.join("\n")).toContain(
+			"kept A.md: edited locally; the document was removed in Paca (delete the file, or pull --force to remove it)",
+		);
+		fs.rmSync(path.join(dir, "A.md"));
+		srv.feed([]);
+		expect(await pull(srv)).toBe(0);
+		expect(state().docs).toEqual({});
+	});
+
+	it("pull --force removes an edited file whose document was deleted", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+		});
+		srv.resetFeed();
+		await pull(srv);
+		fs.writeFileSync(path.join(dir, "A.md"), "edit");
+		srv.docs.delete(ID(1));
+		srv.feed([srv.tomb(ID(1))]);
+		expect(await pull(srv)).toBe(2);
+		srv.feed([]);
+		expect(await pull(srv, true)).toBe(0);
+		expect(exists("A.md")).toBe(false);
 		expect(state().docs).toEqual({});
 	});
 
@@ -566,5 +613,277 @@ describe("runPull", () => {
 		);
 		expect(res).toBe(1);
 		expect(lines.join("\n")).toContain("belongs to project p1");
+	});
+
+	it("a failed move is rolled back and the local edit survives", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+		});
+		srv.docs.set(ID(2), {
+			id: ID(2),
+			title: "B",
+			folder_id: "fs",
+			text: "two",
+		});
+		srv.resetFeed([{ id: "fs", parent_id: null, name: "Sub" }]);
+		await pull(srv);
+		const stateBefore = fs.readFileSync(
+			path.join(dir, ".paca-sync.json"),
+			"utf8",
+		);
+		fs.writeFileSync(path.join(dir, "A.md"), "LOCAL EDIT\n");
+		fs.chmodSync(path.join(dir, "Sub"), 0o555); // the move into Sub fails
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: "fs",
+			text: "one",
+		});
+		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
+		try {
+			await expect(pull(srv)).rejects.toThrow();
+		} finally {
+			fs.chmodSync(path.join(dir, "Sub"), 0o755);
+		}
+		expect(read("A.md")).toBe("LOCAL EDIT\n");
+		expect(tmpFiles(dir)).toEqual([]);
+		expect(fs.readFileSync(path.join(dir, ".paca-sync.json"), "utf8")).toBe(
+			stateBefore,
+		);
+		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
+		expect(await pull(srv)).toBe(0);
+		expect(read("Sub/A.md")).toBe("LOCAL EDIT\n");
+	});
+
+	it("a move stranded by a crash is put back on the next pull", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+		});
+		srv.resetFeed();
+		await pull(srv);
+		fs.writeFileSync(path.join(dir, `.paca-tmp-move-${ID(1)}`), "LOCAL EDIT\n");
+		fs.rmSync(path.join(dir, "A.md"));
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one v2",
+		});
+		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
+		lines = [];
+		expect(await pull(srv)).toBe(2);
+		expect(read("A.md")).toBe("LOCAL EDIT\n");
+		expect(lines.join("\n")).toContain("kept A.md: edited locally");
+		expect(tmpFiles(dir)).toEqual([]);
+	});
+
+	it("leftover temporary files are removed", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), { id: ID(1), title: "A", folder_id: "f", text: "one" });
+		srv.resetFeed([{ id: "f", parent_id: null, name: "F" }]);
+		await pull(srv);
+		fs.writeFileSync(path.join(dir, "F", ".paca-tmp-123-abc"), "half");
+		srv.feed([]);
+		expect(await pull(srv)).toBe(0);
+		expect(tmpFiles(dir)).toEqual([]);
+	});
+
+	it("a file at a folder's path gives the folder another name", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "a",
+			folder_id: null,
+			text: "one",
+		});
+		srv.resetFeed();
+		await pull(srv);
+		fs.writeFileSync(path.join(dir, "a.md"), "LOCAL EDIT\n");
+		fs.writeFileSync(path.join(dir, "Sub"), "user file");
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "a",
+			folder_id: "fsub-1234",
+			text: "one",
+		});
+		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)], {
+			folders: [{ id: "fsub-1234", parent_id: null, name: "Sub" }],
+		});
+		expect(await pull(srv)).toBe(0);
+		expect(read("Sub")).toBe("user file");
+		expect(read("Sub~fsub-123/a.md")).toBe("LOCAL EDIT\n");
+		srv.feed([]);
+		expect(await pull(srv)).toBe(0);
+	});
+
+	it("a failed write after a move leaves no duplicate on the next pull", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+		});
+		srv.docs.set(ID(2), {
+			id: ID(2),
+			title: "B",
+			folder_id: null,
+			text: "two",
+		});
+		srv.resetFeed();
+		await pull(srv);
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one v2",
+		});
+		srv.docs.set(ID(2), {
+			id: ID(2),
+			title: "B2",
+			folder_id: null,
+			text: "two",
+		});
+		fs.rmSync(path.join(dir, ".paca-base"), { recursive: true });
+		fs.writeFileSync(path.join(dir, ".paca-base"), "");
+		const changes = () =>
+			srv.feed([
+				srv.entry(srv.docs.get(ID(1)) as ServerDoc),
+				srv.entry(srv.docs.get(ID(2)) as ServerDoc),
+			]);
+		changes();
+		await expect(pull(srv)).rejects.toThrow();
+		fs.rmSync(path.join(dir, ".paca-base"));
+		changes();
+		expect(await pull(srv)).toBe(0);
+		const mds = fs
+			.readdirSync(dir)
+			.filter((f) => f.endsWith(".md"))
+			.sort();
+		expect(mds).toEqual(["A.md", "B2.md"]);
+	});
+
+	it("refuses to work through a symlink in the mirror", async () => {
+		const srv = fakeServer();
+		const outside = path.join(path.dirname(dir), "outside");
+		fs.mkdirSync(dir, { recursive: true });
+		fs.mkdirSync(outside);
+		fs.symlinkSync(outside, path.join(dir, "Plans"));
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "x",
+			folder_id: "f1",
+			text: "secret",
+		});
+		srv.resetFeed([{ id: "f1", parent_id: null, name: "Plans" }]);
+		lines = [];
+		expect(await pull(srv)).toBe(1);
+		expect(fs.readdirSync(outside)).toEqual([]);
+		expect(lines.join("\n")).toContain("symlink");
+		expect(lines.join("\n")).toContain("Plans");
+	});
+
+	it("refuses a symlinked .paca-base", async () => {
+		const srv = fakeServer();
+		const outside = path.join(path.dirname(dir), "outside");
+		fs.mkdirSync(dir, { recursive: true });
+		fs.mkdirSync(outside);
+		fs.symlinkSync(outside, path.join(dir, ".paca-base"));
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "x",
+			folder_id: null,
+			text: "secret",
+		});
+		srv.resetFeed();
+		expect(await pull(srv)).toBe(1);
+		expect(fs.readdirSync(outside)).toEqual([]);
+	});
+
+	it("titles that differ only in Unicode normalization get two files", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "café",
+			folder_id: null,
+			text: "one",
+		});
+		srv.docs.set(ID(2), {
+			id: ID(2),
+			title: "café",
+			folder_id: null,
+			text: "two",
+		});
+		srv.resetFeed();
+		expect(await pull(srv)).toBe(0);
+		const bodies = fs
+			.readdirSync(dir)
+			.filter((f) => f.endsWith(".md"))
+			.map((f) => fs.readFileSync(path.join(dir, f), "utf8").trim())
+			.sort();
+		expect(bodies).toEqual(["one", "two"]);
+	});
+
+	it("refreshes managed when a doc gains a source without a content change", async () => {
+		const srv = fakeServer();
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+		});
+		srv.resetFeed();
+		await pull(srv);
+		const mtime = fs.statSync(path.join(dir, "A.md")).mtimeMs;
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+			source: { repository: "o/r", path: "a.md" },
+		});
+		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
+		expect(await pull(srv)).toBe(0);
+		expect(state().docs[ID(1)].managed).toBe(true);
+		expect(fs.statSync(path.join(dir, "A.md")).mtimeMs).toBe(mtime);
+		srv.docs.set(ID(1), {
+			id: ID(1),
+			title: "A",
+			folder_id: null,
+			text: "one",
+		});
+		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
+		await pull(srv);
+		expect(state().docs[ID(1)].managed).toBeUndefined();
+	});
+
+	it("ignores a state entry whose id is not a plain id", async () => {
+		const srv = fakeServer();
+		srv.resetFeed();
+		await pull(srv);
+		fs.writeFileSync(path.join(dir, "notes.md"), "mine");
+		const s = state();
+		s.docs["../notes"] = {
+			file: "notes.md",
+			title: "notes",
+			folder_id: null,
+			content_hash: "x",
+			file_sha256: "y",
+		};
+		fs.writeFileSync(path.join(dir, ".paca-sync.json"), JSON.stringify(s));
+		srv.resetFeed();
+		lines = [];
+		expect(await pull(srv)).toBe(0);
+		expect(read("notes.md")).toBe("mine");
+		expect(lines.join("\n")).toContain("ignored a state entry");
+		expect(state().docs).toEqual({});
 	});
 });

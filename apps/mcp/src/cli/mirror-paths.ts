@@ -28,7 +28,6 @@ export function sanitizeSegment(name: string): string {
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what this removes
 	let s = name.replace(/[/\\:*?"<>|\u0000-\u001f\u007f]/g, "_");
 	if (s.trim() === "" || s === "." || s === "..") s = "_";
-	if (s.toLowerCase().startsWith(".paca-")) s = `_${s}`;
 	if (Buffer.byteLength(s) > MAX_SEGMENT_BYTES) {
 		let out = "";
 		for (const ch of s) {
@@ -37,7 +36,47 @@ export function sanitizeSegment(name: string): string {
 		}
 		s = out;
 	}
+	// Windows drops trailing dots and spaces, and reserves device names.
+	s = s.replace(/[. ]+$/, (m) => "_".repeat(m.length));
+	if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(s)) s = `_${s}`;
+	if (s.toLowerCase().startsWith(".paca-")) s = `_${s}`;
 	return s;
+}
+
+/** The key two names are compared by: the same file on a case-insensitive,
+ *  normalization-insensitive file system (APFS, NTFS) has the same key. */
+export function nameKey(name: string): string {
+	return name.normalize("NFC").toLowerCase();
+}
+
+/**
+ * The mirror folder of every folder in `folders` ("A/B", "" when unknown).
+ * A folder whose path is taken by a file (`files` holds name keys of files
+ * in the mirror) gets `~<first 8 characters of its id>`, so docs never need
+ * to be written under a file.
+ */
+export function folderDirs(
+	folders: Record<string, MirrorFolder>,
+	files: Set<string>,
+): Record<string, string> {
+	const out: Record<string, string> = {};
+	const visiting = new Set<string>();
+	const dirOf = (id: string): string => {
+		if (id in out) return out[id];
+		const f = folders[id];
+		if (!f || visiting.has(id)) return "";
+		visiting.add(id);
+		const parent = f.parent_id ? dirOf(f.parent_id) : "";
+		visiting.delete(id);
+		const join = (seg: string) => (parent ? `${parent}/${seg}` : seg);
+		let p = join(sanitizeSegment(f.name));
+		if (files.has(nameKey(p)))
+			p = join(`${sanitizeSegment(f.name)}~${sanitizeSegment(id).slice(0, 8)}`);
+		out[id] = p;
+		return p;
+	};
+	for (const id of Object.keys(folders)) dirOf(id);
+	return out;
 }
 
 /** The sanitized folder path of `folderId` ("A/B"), or "" at the top level.
@@ -61,25 +100,26 @@ export function folderPathFor(
 
 /**
  * The mirror file of `doc`, relative to the mirror folder, with `/`
- * separators: `<folder path>/<title>.md`. `taken` holds the lower-cased
- * paths already used (files and folders); a name already in it (compared
- * case-insensitively, for case-insensitive file systems) gets
+ * separators: `<folder path>/<title>.md`. `taken` holds the name keys
+ * (`nameKey`) of paths already used (files and folders); a name already in
+ * it gets
  * `~<first 8 characters of the id>` before `.md`. The result is added to
- * `taken`.
+ * `taken`. `dirs` (from `folderDirs`) overrides folder paths.
  */
 export function mirrorFileFor(
 	doc: MirrorDoc,
 	folders: Record<string, MirrorFolder>,
 	taken: Set<string>,
+	dirs?: Record<string, string>,
 ): string {
-	const candidates = mirrorCandidates(doc, folders);
-	let file = candidates.find((c) => !taken.has(c.toLowerCase()));
+	const candidates = mirrorCandidates(doc, folders, dirs);
+	let file = candidates.find((c) => !taken.has(nameKey(c)));
 	const last = candidates[candidates.length - 1].slice(0, -3);
 	for (let n = 2; !file; n++) {
 		const c = `${last}~${n}.md`;
-		if (!taken.has(c.toLowerCase())) file = c;
+		if (!taken.has(nameKey(c))) file = c;
 	}
-	taken.add(file.toLowerCase());
+	taken.add(nameKey(file));
 	return file;
 }
 
@@ -88,8 +128,11 @@ export function mirrorFileFor(
 export function mirrorCandidates(
 	doc: MirrorDoc,
 	folders: Record<string, MirrorFolder>,
+	dirs?: Record<string, string>,
 ): string[] {
-	const dir = folderPathFor(doc.folder_id, folders);
+	const dir =
+		(doc.folder_id && dirs?.[doc.folder_id]) ||
+		folderPathFor(doc.folder_id, folders);
 	const base = sanitizeSegment(doc.title);
 	const join = (name: string) => (dir ? `${dir}/${name}` : name);
 	const idPart = sanitizeSegment(doc.id);
