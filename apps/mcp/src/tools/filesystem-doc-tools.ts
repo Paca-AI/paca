@@ -18,8 +18,7 @@ import {
 	numberLines,
 	outlineOf,
 	parseLineRange,
-	RegexTimeoutError,
-	regexLineHits,
+	regexScan,
 } from "../utils/markdown-sections.js";
 import { editDocument, type LoadedDoc } from "./doc-edit.js";
 
@@ -375,8 +374,11 @@ async function memberName(
 const SEARCH_MAX = 50;
 /** The most documents one grep_docs call reads. */
 const GREP_MAX_DOCS = 200;
-/** How long a grep_docs regex may run. */
-const REGEX_TIMEOUT_MS = 2000;
+/** How long a grep_docs regex may run on one document, and in all. */
+const REGEX_DOC_MS = 500;
+const REGEX_TOTAL_MS = 10_000;
+/** After this many documents where the regex ran too long, it stops. */
+const REGEX_MAX_SLOW = 3;
 /** The most ids one POST /docs/batch-get takes. */
 const BATCH_MAX = 100;
 
@@ -519,6 +521,20 @@ function searchable(pattern: string): boolean {
 	);
 }
 
+/**
+ * The word the server search looks for to find candidate documents: the
+ * pattern itself when it is one plain word, otherwise its longest run of
+ * letters and digits of three or more (null when it has none).
+ */
+function searchWord(pattern: string): string | null {
+	if (searchable(pattern)) return pattern;
+	let best: string | null = null;
+	for (const w of pattern.match(/[\p{L}\p{N}]+/gu) ?? []) {
+		if (w.length >= 3 && (!best || w.length > best.length)) best = w;
+	}
+	return best;
+}
+
 function grepOutput(path: string, groups: GrepLine[][], context: number) {
 	return groups
 		.map((g) =>
@@ -645,9 +661,9 @@ export function getFilesystemDocTools(): Tool[] {
 				"Find lines in a project's documents, like grep: prints 'Folder/Title:12: text' for each matching line " +
 				"(context lines as 'Folder/Title-11- text', groups separated by '--'). Line numbers are lines of the Markdown read_doc returns. " +
 				"Patterns match the Markdown text, so Markdown syntax (## Heading, * [ ] task, `code`) can be part of a pattern; a literal also matches with ** and _ removed, so 'foo bar' finds 'foo **bar**'. " +
-				"A single plain word is first narrowed to candidate documents through the server's search (which may miss a word split by formatting); " +
-				"anything else, or a word the search does not find, scans the documents under path (the whole project when absent), at most 200 per call. " +
-				"A regex that runs longer than 2 seconds is stopped with an error. " +
+				"Without path, a literal is first narrowed to candidate documents across the project through the server's search for its longest word (which may miss a word split by formatting); " +
+				"a regex, a path, a pattern with no word of three letters, or no match among the candidates scans the documents under path (the whole project when absent), at most 200 per call. " +
+				"A regex gets 0.5 s per document and 10 s in all: a document where it runs longer is skipped and named in a notice, and the search stops after 3 such documents. " +
 				"For many repeated searches, a local mirror and rg are cheaper.",
 			inputSchema: {
 				type: "object",
@@ -992,134 +1008,164 @@ export async function handleFilesystemDocTool(
 				}
 			}
 
-			const notices: string[] = [];
-			let candidates: GrepCandidate[] = [];
-			let scan = regex || !!path?.trim() || !searchable(pattern);
-			if (!scan) {
-				// A single plain word: the server's search narrows it to
-				// candidate documents; with no hit, scan instead.
-				const hits = await docClient.searchDocuments(
+			// Reads the candidates and matches them; null when a literal found
+			// nothing among search candidates (the caller then scans).
+			const run = async (
+				candidates: GrepCandidate[],
+				notices: string[],
+				fromSearch: boolean,
+			) => {
+				const fetched = await fetchDocs(
 					projectId,
-					pattern,
-					SEARCH_MAX,
-				);
-				if (hits.length === SEARCH_MAX) {
-					notices.push(
-						`The server search returned ${SEARCH_MAX} documents, the most it returns, so some documents may be missing: pass path to scan a folder instead.`,
-					);
-				}
-				const chains = new Map<string, string>();
-				for (const id of new Set(hits.map((h) => h.folder_id))) {
-					if (!id) continue;
-					const chain = await docClient
-						.getFolderPath(projectId, id)
-						.catch(() => [] as DocumentFolder[]);
-					chains.set(id, chain.map((f) => `${f.name}/`).join(""));
-				}
-				candidates = hits.map((h) => ({
-					id: h.id,
-					path: (h.folder_id ? (chains.get(h.folder_id) ?? "") : "") + h.title,
-				}));
-				scan = candidates.length === 0;
-			}
-			if (scan) {
-				const scope = await grepScope(
-					projectId,
-					path ?? "",
+					candidates.map((c) => c.id),
 					apiClient,
 					docClient,
 				);
-				if ("error" in scope) return errorResult(scope.error);
-				candidates = scope.items;
-				if (scope.truncated) {
-					notices.push(
-						`Searched only the first ${GREP_MAX_DOCS} documents${path ? ` under ${path}` : ""}: pass a narrower path to search the rest.`,
-					);
-				}
-			}
+				const docs = new Map(fetched.docs.map((d) => [d.id, d]));
+				const found = candidates.flatMap((c) => {
+					const doc = docs.get(c.id);
+					if (!doc) return [];
+					const markdown = doc.content ? blocknoteToMarkdown(doc.content) : "";
+					return [{ path: c.path, markdown }];
+				});
 
-			const fetched = await fetchDocs(
-				projectId,
-				candidates.map((c) => c.id),
-				apiClient,
-				docClient,
-			);
-			if (fetched.failed > 0) {
-				notices.push(
-					`${fetched.failed} document${fetched.failed === 1 ? "" : "s"} could not be read (server error or no access) and ${fetched.failed === 1 ? "was" : "were"} not searched.`,
-				);
-			}
-			const docs = new Map(fetched.docs.map((d) => [d.id, d]));
-			const found = candidates.flatMap((c) => {
-				const doc = docs.get(c.id);
-				if (!doc) return [];
-				const markdown = doc.content ? blocknoteToMarkdown(doc.content) : "";
-				return [{ path: c.path, markdown }];
-			});
-
-			// Literal matching is linear; a regex runs in a worker thread with
-			// a time limit, so a catastrophic pattern cannot block the server.
-			let matchers: LineMatcher[];
-			if (regex) {
-				try {
-					const hits = await regexLineHits(
+				// Literal matching is linear; a regex runs in a worker thread
+				// with a time limit per document, so a catastrophic pattern
+				// cannot block the server.
+				let matchers: LineMatcher[];
+				let notSearched = 0;
+				const extra: string[] = [];
+				if (regex) {
+					const scan = await regexScan(
 						pattern,
 						ignoreCase,
 						found.map((f) => f.markdown),
-						REGEX_TIMEOUT_MS,
+						{
+							perDocMs: REGEX_DOC_MS,
+							totalMs: REGEX_TOTAL_MS,
+							maxTimeouts: REGEX_MAX_SLOW,
+						},
 					);
-					matchers = hits.map((h) => {
-						const set = new Set(h);
+					matchers = scan.hits.map((h) => {
+						const set = new Set(h ?? []);
 						return (_line: string, index: number) => set.has(index);
 					});
-				} catch (err) {
-					if (err instanceof RegexTimeoutError) {
-						return errorResult(
-							`The regular expression took too long (over ${REGEX_TIMEOUT_MS / 1000} s) and was stopped. Simplify it: avoid nested quantifiers such as (a+)+ or alternations that overlap, or search for a literal string.`,
+					notSearched = scan.timedOut.length + scan.unsearched.length;
+					if (scan.timedOut.length > 0) {
+						extra.push(
+							`The regular expression ran longer than ${REGEX_DOC_MS} ms and was stopped in: ${scan.timedOut.map((i) => found[i].path).join(", ")}.`,
 						);
 					}
-					throw err;
-				}
-			} else {
-				const m = literalMatcher(pattern, ignoreCase);
-				matchers = found.map(() => m);
-			}
-
-			const blocks: string[] = [];
-			let total = 0;
-			let withMatches = 0;
-			const searched = found.length;
-			for (let i = 0; i < found.length; i++) {
-				const res = grepLines(
-					found[i].markdown,
-					matchers[i],
-					context,
-					limit - total,
-				);
-				if (res.matches > 0) {
-					withMatches++;
-					total += res.matches;
-					blocks.push(grepOutput(found[i].path, res.groups, context));
-				}
-				if (total >= limit) {
-					if (res.truncated || i < found.length - 1) {
-						notices.push(
-							`Stopped at the limit of ${limit} matching lines; there may be more. Raise limit (at most 200) or narrow with path.`,
+					if (scan.unsearched.length > 0) {
+						const n = scan.unsearched.length;
+						extra.push(
+							scan.timedOut.length >= REGEX_MAX_SLOW
+								? `Stopped after ${REGEX_MAX_SLOW} slow documents: ${n} more ${n === 1 ? "was" : "were"} not searched. Simplify the regular expression (avoid nested quantifiers such as (a+)+) or narrow with path.`
+								: `Stopped at the time limit of ${REGEX_TOTAL_MS / 1000} s: ${n} more document${n === 1 ? " was" : "s were"} not searched. Narrow with path or simplify the regular expression.`,
 						);
 					}
-					break;
+				} else {
+					const m = literalMatcher(pattern, ignoreCase);
+					matchers = found.map(() => m);
 				}
-			}
 
-			const tail = notices.length > 0 ? `\n\n${notices.join("\n")}` : "";
-			if (total === 0) {
+				const blocks: string[] = [];
+				let total = 0;
+				let withMatches = 0;
+				for (let i = 0; i < found.length; i++) {
+					const res = grepLines(
+						found[i].markdown,
+						matchers[i],
+						context,
+						limit - total,
+					);
+					if (res.matches > 0) {
+						withMatches++;
+						total += res.matches;
+						blocks.push(grepOutput(found[i].path, res.groups, context));
+					}
+					if (total >= limit) {
+						if (res.truncated || i < found.length - 1) {
+							extra.push(
+								`Stopped at the limit of ${limit} matching lines; there may be more. Raise limit (at most 200) or narrow with path.`,
+							);
+						}
+						break;
+					}
+				}
+				if (fromSearch && total === 0) return null;
+				if (fetched.failed > 0) {
+					notices.push(
+						`${fetched.failed} document${fetched.failed === 1 ? "" : "s"} could not be read (server error or no access) and ${fetched.failed === 1 ? "was" : "were"} not searched.`,
+					);
+				}
+				notices.push(...extra);
+				const searched = found.length - notSearched;
+				const tail = notices.length > 0 ? `\n\n${notices.join("\n")}` : "";
+				if (total === 0) {
+					return textResult(
+						`No matches for "${pattern}" in ${searched} document${searched === 1 ? "" : "s"} searched.${tail}`,
+					);
+				}
 				return textResult(
-					`No matches for "${pattern}" in ${searched} document${searched === 1 ? "" : "s"} searched.${tail}`,
+					`${total} matching line${total === 1 ? "" : "s"} in ${withMatches} document${withMatches === 1 ? "" : "s"} (${searched} searched):\n\n${blocks.join(context > 0 ? "\n--\n" : "\n")}${tail}`,
+				);
+			};
+
+			// A literal without path: the server's search for its longest
+			// word gives candidate documents across the whole project. With
+			// no candidate or no match among them, scan instead.
+			const word = regex || path?.trim() ? null : searchWord(pattern);
+			if (word) {
+				const hits = await docClient.searchDocuments(
+					projectId,
+					word,
+					SEARCH_MAX,
+				);
+				if (hits.length > 0) {
+					const chains = new Map<string, string>();
+					for (const id of new Set(hits.map((h) => h.folder_id))) {
+						if (!id) continue;
+						const chain = await docClient
+							.getFolderPath(projectId, id)
+							.catch(() => [] as DocumentFolder[]);
+						chains.set(id, chain.map((f) => `${f.name}/`).join(""));
+					}
+					const notices: string[] = [];
+					if (hits.length === SEARCH_MAX) {
+						notices.push(
+							`The server search returned ${SEARCH_MAX} documents, the most it returns, so some documents may be missing: pass path to scan a folder instead.`,
+						);
+					}
+					const result = await run(
+						hits.map((h) => ({
+							id: h.id,
+							path:
+								(h.folder_id ? (chains.get(h.folder_id) ?? "") : "") + h.title,
+						})),
+						notices,
+						true,
+					);
+					if (result) return result;
+				}
+			}
+
+			const scope = await grepScope(
+				projectId,
+				path ?? "",
+				apiClient,
+				docClient,
+			);
+			if ("error" in scope) return errorResult(scope.error);
+			const notices: string[] = [];
+			if (scope.truncated) {
+				notices.push(
+					`Searched only the first ${GREP_MAX_DOCS} documents${path ? ` under ${path}` : ""}: pass a narrower path to search the rest.`,
 				);
 			}
-			return textResult(
-				`${total} matching line${total === 1 ? "" : "s"} in ${withMatches} document${withMatches === 1 ? "" : "s"} (${searched} searched):\n\n${blocks.join(context > 0 ? "\n--\n" : "\n")}${tail}`,
-			);
+			return (await run(scope.items, notices, false)) as ReturnType<
+				typeof textResult
+			>;
 		}
 
 		case "edit_doc": {

@@ -192,27 +192,102 @@ export class RegexTimeoutError extends Error {
 }
 
 // Runs in a worker thread, so a pattern that backtracks for hours can be
-// stopped: the MCP process itself is single-threaded.
+// stopped: the MCP process itself is single-threaded. It posts each text's
+// result as soon as it has it, so the caller can time every text.
 // Written to run whether Node evaluates it as CommonJS or as an ES module
 // (an eval worker inherits --input-type), so it uses import(), not require.
 const REGEX_WORKER = `
 import("node:worker_threads").then(({ parentPort, workerData }) => {
 const re = new RegExp(workerData.pattern, workerData.flags);
-const out = workerData.texts.map((text) => {
+workerData.texts.forEach((text, k) => {
 	const hits = [];
 	const lines = text.split("\\n");
 	for (let i = 0; i < lines.length; i++) if (re.test(lines[i])) hits.push(i);
-	return hits;
+	parentPort.postMessage({ k, hits });
 });
-parentPort.postMessage(out);
 });
 `;
 
+export interface RegexScan {
+	/** Each text's 0-based matching line indexes; null when not searched. */
+	hits: Array<number[] | null>;
+	/** Texts where the pattern ran past `perDocMs` (or the total limit). */
+	timedOut: number[];
+	/** Texts not reached: the run stopped before them. */
+	unsearched: number[];
+}
+
+/**
+ * Matches `pattern` against every line of each text in a worker thread.
+ * A text that takes longer than `perDocMs` is given up (the worker is
+ * terminated and a new one goes on with the next text); the run stops
+ * after `maxTimeouts` such texts or after `totalMs` in all. An invalid
+ * pattern throws a SyntaxError before any worker starts.
+ */
+export async function regexScan(
+	pattern: string,
+	ignoreCase: boolean,
+	texts: string[],
+	opts: { perDocMs?: number; totalMs?: number; maxTimeouts?: number } = {},
+): Promise<RegexScan> {
+	const perDocMs = opts.perDocMs ?? 500;
+	const totalMs = opts.totalMs ?? 10_000;
+	const maxTimeouts = opts.maxTimeouts ?? 3;
+	const flags = ignoreCase ? "i" : "";
+	new RegExp(pattern, flags); // compiling never backtracks: syntax check only
+	const hits: Array<number[] | null> = texts.map(() => null);
+	const timedOut: number[] = [];
+	const deadline = Date.now() + totalMs;
+	let next = 0;
+	while (
+		next < texts.length &&
+		timedOut.length < maxTimeouts &&
+		Date.now() < deadline
+	) {
+		const first = next;
+		const worker = new Worker(REGEX_WORKER, {
+			eval: true,
+			workerData: { pattern, flags, texts: texts.slice(first) },
+		});
+		try {
+			await new Promise<void>((resolve, reject) => {
+				let timer: ReturnType<typeof setTimeout> | undefined;
+				const arm = () => {
+					clearTimeout(timer);
+					const ms = Math.max(0, Math.min(perDocMs, deadline - Date.now()));
+					timer = setTimeout(() => {
+						timedOut.push(next);
+						next++;
+						resolve();
+					}, ms);
+				};
+				worker.on("message", (m: { k: number; hits: number[] }) => {
+					hits[first + m.k] = m.hits;
+					next = first + m.k + 1;
+					if (next >= texts.length) {
+						clearTimeout(timer);
+						resolve();
+					} else arm();
+				});
+				worker.once("error", (err) => {
+					clearTimeout(timer);
+					reject(err);
+				});
+				arm();
+			});
+		} finally {
+			void worker.terminate();
+		}
+	}
+	const unsearched: number[] = [];
+	for (let i = next; i < texts.length; i++) unsearched.push(i);
+	return { hits, timedOut, unsearched };
+}
+
 /**
  * The 0-based indexes of the lines of each text that match `pattern`,
- * computed in a worker thread that is terminated after `timeoutMs` (then a
- * RegexTimeoutError is thrown). An invalid pattern throws a SyntaxError
- * before any worker starts.
+ * all within `timeoutMs` (else a RegexTimeoutError is thrown). An invalid
+ * pattern throws a SyntaxError before any worker starts.
  */
 export async function regexLineHits(
 	pattern: string,
@@ -220,31 +295,19 @@ export async function regexLineHits(
 	texts: string[],
 	timeoutMs = 2000,
 ): Promise<number[][]> {
-	const flags = ignoreCase ? "i" : "";
-	new RegExp(pattern, flags); // compiling never backtracks: syntax check only
-	if (texts.length === 0) return [];
-	const worker = new Worker(REGEX_WORKER, {
-		eval: true,
-		workerData: { pattern, flags, texts },
-	});
-	try {
-		return await new Promise<number[][]>((resolve, reject) => {
-			const timer = setTimeout(
-				() => reject(new RegexTimeoutError(timeoutMs)),
-				timeoutMs,
-			);
-			worker.once("message", (hits: number[][]) => {
-				clearTimeout(timer);
-				resolve(hits);
-			});
-			worker.once("error", (err) => {
-				clearTimeout(timer);
-				reject(err);
-			});
-		});
-	} finally {
-		void worker.terminate();
+	if (texts.length === 0) {
+		new RegExp(pattern, ignoreCase ? "i" : "");
+		return [];
 	}
+	const res = await regexScan(pattern, ignoreCase, texts, {
+		perDocMs: timeoutMs,
+		totalMs: timeoutMs,
+		maxTimeouts: 1,
+	});
+	if (res.timedOut.length > 0 || res.unsearched.length > 0) {
+		throw new RegexTimeoutError(timeoutMs);
+	}
+	return res.hits as number[][];
 }
 
 export interface GrepLine {

@@ -266,7 +266,8 @@ describe("grep_docs", () => {
 		expect(out).toContain("Guides/Setup:1: Install **foo** bar now.");
 		expect(out).toContain("Readme:3: foo bar at the end");
 		expect(out).not.toContain("foo again");
-		expect(c.docClient.searchDocuments).not.toHaveBeenCalled();
+		// Server search found no candidates for "foo", so it scanned.
+		expect(c.docClient.searchDocuments.mock.calls).toEqual([["p1", "foo", 50]]);
 	});
 
 	it.each([
@@ -286,7 +287,6 @@ describe("grep_docs", () => {
 			c,
 		);
 		expect(text(res)).toContain(want);
-		expect(c.docClient.searchDocuments).not.toHaveBeenCalled();
 	});
 
 	it("a single word is narrowed through the server search, once, and scans when search finds nothing", async () => {
@@ -319,9 +319,11 @@ describe("grep_docs", () => {
 		expect(text(again)).toContain("Guides/Setup:5: foo again");
 	});
 
-	it("a catastrophic regex is stopped within about two seconds", async () => {
-		const evil = docOf("e", "Evil", `${"a".repeat(40)}b\n`);
-		const c = clients({ docs: [evil] });
+	it("a catastrophic regex stops after three slow documents, quickly", async () => {
+		const docs = Array.from({ length: 6 }, (_, i) =>
+			docOf(`e${i}`, `Evil ${i}`, `${"a".repeat(40)}b\n`),
+		);
+		const c = clients({ docs });
 		const started = Date.now();
 		const res = await call(
 			"grep_docs",
@@ -329,9 +331,91 @@ describe("grep_docs", () => {
 			c,
 		);
 		expect(Date.now() - started).toBeLessThan(4000);
-		expect(res.isError).toBe(true);
-		expect(text(res)).toMatch(/took too long/);
+		expect(res.isError).toBeFalsy();
+		const out = text(res);
+		expect(out).toContain(
+			"The regular expression ran longer than 500 ms and was stopped in: Evil 0, Evil 1, Evil 2.",
+		);
+		expect(out).toContain(
+			"Stopped after 3 slow documents: 3 more were not searched. Simplify the regular expression (avoid nested quantifiers such as (a+)+) or narrow with path.",
+		);
+		expect(out).toMatch(/in 0 documents searched/);
 	}, 10_000);
+
+	it("a regex slow in one document still reports the others' matches", async () => {
+		const evil = docOf("e", "Evil", `${"a".repeat(40)}b\n`);
+		const good = docOf("g", "Good", "aaaa\n");
+		const c = clients({ docs: [evil, good] });
+		const res = await call(
+			"grep_docs",
+			{ projectId: "p1", pattern: "^(a+)+$", regex: true },
+			c,
+		);
+		expect(res.isError).toBeFalsy();
+		expect(text(res)).toContain("Good:1: aaaa");
+		expect(text(res)).toContain(
+			"The regular expression ran longer than 500 ms and was stopped in: Evil.",
+		);
+	}, 10_000);
+
+	it("a phrase across bold is found in a document past the first 200 scanned", async () => {
+		const docs = Array.from({ length: 250 }, (_, i) =>
+			docOf(`d${i}`, `Doc ${i}`, "zzz\n"),
+		);
+		docs[240] = docOf("d240", "Deep", "Install **foo** bar now.\n");
+		const c = clients({
+			docs,
+			search: [
+				{ id: "d240", folder_id: null, title: "Deep", matched_in: "content" },
+			],
+		});
+		const res = await call(
+			"grep_docs",
+			{ projectId: "p1", pattern: "Install foo bar" },
+			c,
+		);
+		expect(text(res)).toContain("Deep:1: Install **foo** bar now.");
+		expect(text(res)).not.toMatch(/first 200/);
+		expect(c.docClient.searchDocuments.mock.calls).toEqual([
+			["p1", "Install", 50],
+		]);
+		expect(c.docClient.batchGet.mock.calls.flatMap((x: any) => x[1])).toEqual([
+			"d240",
+		]);
+	});
+
+	it("scans when the candidates from search do not match, and says when the scan is cut", async () => {
+		const docs = Array.from({ length: 205 }, (_, i) =>
+			docOf(`d${i}`, `Doc ${i}`, "zzz\n"),
+		);
+		docs[3] = docOf("d3", "Hit", "Install **foo** bar now.\n");
+		docs[204] = docOf("d204", "Decoy", "Install it.\n");
+		const c = clients({
+			docs,
+			search: [
+				{ id: "d204", folder_id: null, title: "Decoy", matched_in: "content" },
+			],
+		});
+		const res = await call(
+			"grep_docs",
+			{ projectId: "p1", pattern: "Install foo bar" },
+			c,
+		);
+		expect(text(res)).toContain("Hit:1: Install **foo** bar now.");
+		expect(text(res)).toMatch(/first 200 documents/);
+	});
+
+	it("does not search for a pattern without a word of three letters", async () => {
+		const g = docOf("g", "Guide", "| a |\n|---|\n| 1 |\n");
+		const c = clients({ docs: [g] });
+		const res = await call(
+			"grep_docs",
+			{ projectId: "p1", pattern: "| a |" },
+			c,
+		);
+		expect(text(res)).toContain("Guide:1: | a |");
+		expect(c.docClient.searchDocuments).not.toHaveBeenCalled();
+	});
 
 	it("says how many documents could not be read on an older server", async () => {
 		const c = clients({ docs: [a, b], folders, batchUnsupported: true });
@@ -747,7 +831,12 @@ describe("edit_doc", () => {
 		const { c } = setup();
 		const res = await call(
 			"edit_doc",
-			{ projectId: "p1", path: "Spec", old_string: "Paragraph 2", new_string: "Paragraph 2" },
+			{
+				projectId: "p1",
+				path: "Spec",
+				old_string: "Paragraph 2",
+				new_string: "Paragraph 2",
+			},
 			c,
 		);
 		expect(res.isError).toBeFalsy();
@@ -772,12 +861,24 @@ describe("edit_doc", () => {
 		);
 		const res = await call(
 			"edit_doc",
-			{ projectId: "p1", path: "Spec", old_string: "Paragraph 2 text.", new_string: "x" },
+			{
+				projectId: "p1",
+				path: "Spec",
+				old_string: "Paragraph 2 text.",
+				new_string: "x",
+			},
 			c,
 		);
 		expect(res.isError).toBe(true);
 		const out = text(res);
-		for (const s of ["2 times", "u7", "2026-11-14T10:06:00Z", "copied paragraph 2", "claude-code/s3", "PACA-91"]) {
+		for (const s of [
+			"2 times",
+			"u7",
+			"2026-11-14T10:06:00Z",
+			"copied paragraph 2",
+			"claude-code/s3",
+			"PACA-91",
+		]) {
 			expect(out).toContain(s);
 		}
 	});
@@ -797,7 +898,12 @@ describe("edit_doc", () => {
 		);
 		const res = await call(
 			"edit_doc",
-			{ projectId: "p1", path: "Spec", old_string: "Paragraph 2", new_string: "x" },
+			{
+				projectId: "p1",
+				path: "Spec",
+				old_string: "Paragraph 2",
+				new_string: "x",
+			},
 			c,
 		);
 		expect(res.isError).toBe(true);

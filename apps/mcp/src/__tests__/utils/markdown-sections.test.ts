@@ -7,6 +7,7 @@ import {
 	numberLines,
 	outlineOf,
 	parseLineRange,
+	regexScan,
 	stripEmphasis,
 } from "../../utils/markdown-sections.js";
 
@@ -224,4 +225,44 @@ describe("regexLineHits in an ES module process", () => {
 		);
 		expect(out.trim()).toBe("[[1]]");
 	});
+});
+
+describe("regexScan", () => {
+	const evil = `${"a".repeat(40)}b`;
+
+	it("returns each text's matching lines", async () => {
+		const res = await regexScan("^b", false, ["a\nb", "x", "b"]);
+		expect(res).toEqual({ hits: [[1], [], [0]], timedOut: [], unsearched: [] });
+	});
+
+	it("skips a text that takes too long and goes on with the next", async () => {
+		const res = await regexScan("^(a+)+$", false, ["aa", evil, "aaa"], {
+			perDocMs: 300,
+		});
+		expect(res).toEqual({
+			hits: [[0], null, [0]],
+			timedOut: [1],
+			unsearched: [],
+		});
+	});
+
+	it("stops after maxTimeouts slow texts", async () => {
+		const res = await regexScan("^(a+)+$", false, [evil, evil, evil, "a"], {
+			perDocMs: 200,
+			maxTimeouts: 2,
+		});
+		expect(res.timedOut).toEqual([0, 1]);
+		expect(res.unsearched).toEqual([2, 3]);
+	}, 10_000);
+
+	it("stops at the total time limit", async () => {
+		const started = Date.now();
+		const res = await regexScan("^(a+)+$", false, [evil, "a", "a"], {
+			perDocMs: 5000,
+			totalMs: 300,
+		});
+		expect(Date.now() - started).toBeLessThan(2000);
+		expect(res.hits[0]).toBeNull();
+		expect([...res.timedOut, ...res.unsearched]).toEqual([0, 1, 2]);
+	}, 10_000);
 });
