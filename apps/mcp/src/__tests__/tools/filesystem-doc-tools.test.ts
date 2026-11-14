@@ -126,8 +126,8 @@ function makeDocClient(opts: { folders?: any[]; byPath?: any } = {}) {
 // ── Tool definitions ───────────────────────────────────────────────────────────
 
 describe("getFilesystemDocTools", () => {
-	it("returns 5 tools", () => {
-		expect(getFilesystemDocTools()).toHaveLength(5);
+	it("returns 7 tools", () => {
+		expect(getFilesystemDocTools()).toHaveLength(7);
 	});
 
 	it("includes all expected tool names", () => {
@@ -138,6 +138,8 @@ describe("getFilesystemDocTools", () => {
 			"write_doc",
 			"delete_doc",
 			"move_doc",
+			"grep_docs",
+			"edit_doc",
 		]) {
 			expect(names).toContain(n);
 		}

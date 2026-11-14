@@ -82,6 +82,18 @@ export type PutByPathResult =
 	  }
 	| { status: "unsupported" };
 
+/** A content write to one document by id (PATCH /docs/{docId}). */
+export interface PatchDocumentInput {
+	/** BlockNote blocks, sent as they are. */
+	content: unknown[];
+	/** Why the write was made (plain text, at most 500 characters). */
+	note?: string;
+	/** What made it: an opaque label (at most 200). */
+	client?: string;
+	/** The task it belongs to, such as "PACA-88" (at most 50). */
+	task?: string;
+}
+
 /**
  * Reports whether an error answer means the server has no by-path route (a
  * Paca from before it). Such a server reads GET /docs/by-path as a document
@@ -275,6 +287,27 @@ export class PacaAPIDocClient {
 				return { status: "unsupported" };
 			throw err;
 		}
+	}
+
+	/** Writes `input.content` (BlockNote blocks, untouched) to the document.
+	 *  `ifMatch` is a content hash or ETag the stored content must still
+	 *  have; a mismatch throws a PacaAPIError with status 412 and the current
+	 *  version in `details`, a locked managed copy one with 409 DOC_LOCKED. */
+	async patchDocument(
+		projectId: string,
+		docId: string,
+		input: PatchDocumentInput,
+		opts: { ifMatch?: string } = {},
+	): Promise<{ doc: Document; etag?: string }> {
+		const headers: Record<string, string> = {};
+		if (opts.ifMatch) headers["If-Match"] = opts.ifMatch;
+		const res = await this.send(
+			"PATCH",
+			`/api/v1/projects/${projectId}/docs/${docId}`,
+			input,
+			headers,
+		);
+		return { doc: res.data, etag: res.headers?.get("ETag") ?? undefined };
 	}
 
 	// ==================== Change feed and batch read ====================

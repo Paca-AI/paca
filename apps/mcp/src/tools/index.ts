@@ -164,13 +164,16 @@ export async function handleToolCall(
 			name === "read_doc" ||
 			name === "write_doc" ||
 			name === "delete_doc" ||
-			name === "move_doc"
+			name === "move_doc" ||
+			name === "grep_docs" ||
+			name === "edit_doc"
 		) {
 			return handleFilesystemDocTool(
 				name,
 				args,
 				clients.apiClient,
 				clients.docClient,
+				clients.extendedClient,
 			);
 		}
 
