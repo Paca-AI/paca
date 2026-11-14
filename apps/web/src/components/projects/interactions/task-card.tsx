@@ -84,7 +84,7 @@ interface TaskCardProps {
 	onUpdate?: (taskId: string, payload: UpdatePayload) => void;
 	/** Keyboard-shortcut hooks (Mod+Backspace / Mod+Left / Mod+Right) — fire
 	 * only while this card is hovered. `onMoveLeft`/`onMoveRight` are omitted
-	 * by the caller when there's no adjacent column (e.g. Roadmap view). */
+	 * by the caller when there's no adjacent column (e.g. Gantt view). */
 	onDelete?: (taskId: string) => void;
 	onMoveLeft?: () => void;
 	onMoveRight?: () => void;

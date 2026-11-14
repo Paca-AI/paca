@@ -2309,13 +2309,16 @@
 			"subtasksCollapsed": "Anidadas, contraídas",
 			"subtasksExpanded": "Anidadas, expandidas",
 			"subtasksHidden": "Ocultas (lista plana)",
+			"ganttDependenciesLabel": "Flechas de dependencia",
+			"ganttDependenciesShown": "Visibles",
+			"ganttDependenciesHidden": "Ocultas",
 			"unsavedBadge": "Cambios sin guardar",
 			"unsavedTitle": "¿Descartar los cambios sin guardar?",
 			"unsavedDescription": "Cambiaste los ajustes de esta vista pero no los guardaste. Guárdalos o descártalos para volver a los últimos ajustes guardados.",
 			"keepEditing": "Seguir editando",
 			"discard": "Descartar"
 		},
-		"roadmap": {
+		"gantt": {
 			"taskColumnLabel": "Tarea",
 			"noTasksToDisplay": "No hay tareas para mostrar",
 			"noDatesSet": "Sin fechas establecidas",
@@ -2323,7 +2326,24 @@
 			"startDateTooltip": "Inicio: {{date}}",
 			"dueDateTooltip": "Vencimiento: {{date}}",
 			"loading": "Cargando…",
-			"viewMore": "Ver más"
+			"viewMore": "Ver más",
+			"zoomLabel": "Zoom",
+			"zoom": {
+				"day": "Día",
+				"week": "Semana",
+				"month": "Mes",
+				"quarter": "Trimestre",
+				"year": "Año"
+			},
+			"today": "Hoy",
+			"jumpToToday": "Ir a hoy",
+			"quarterLabel": "T{{n}}",
+			"startsBeforeBlocker": "Empieza antes de que termine «{{title}}»",
+			"resizeStart": "Arrastra para cambiar la fecha de inicio",
+			"resizeEnd": "Arrastra para cambiar la fecha de vencimiento",
+			"rescheduled": "Se reprogramó «{{title}}»",
+			"undo": "Deshacer",
+			"rescheduleFailed": "No se pudo reprogramar la tarea"
 		},
 		"newViewPopover": {
 			"addView": "Añadir vista",
@@ -2337,7 +2357,7 @@
 			"layouts": {
 				"board": "Tablero",
 				"table": "Tabla",
-				"roadmap": "Hoja de ruta",
+				"gantt": "Gantt",
 				"plugin": "Plugin"
 			}
 		},
@@ -2363,7 +2383,7 @@
 		},
 		"timeline": {
 			"title": "Cronología",
-			"description": "Épicas y planificación a largo plazo en una hoja de ruta."
+			"description": "Épicas y planificación a largo plazo en un diagrama de Gantt."
 		},
 		"sprintDetail": {
 			"notFound": "Sprint no encontrado o acceso denegado.",

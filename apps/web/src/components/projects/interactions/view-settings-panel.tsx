@@ -104,6 +104,18 @@ export function pickSubtaskMode(
 	return resolveSubtaskMode(shared) === "collapsed" ? undefined : "collapsed";
 }
 
+/**
+ * The value to store for a chosen "Dependency arrows" option. "Shown" is the
+ * unset default, stored explicitly only when the team default hides them.
+ */
+export function pickGanttDependencies(
+	chosen: string | undefined,
+	shared: ViewConfig | undefined,
+): ViewConfig["gantt_dependencies"] {
+	if (chosen === "hidden") return "hidden";
+	return shared?.gantt_dependencies === "hidden" ? "shown" : undefined;
+}
+
 // ── Category visual config ────────────────────────────────────────────────────
 
 const CATEGORY_COLORS: Record<StatusCategory, string> = {
@@ -1507,7 +1519,7 @@ export function ViewSettingsPanel({
 									/>
 								</SettingRow>
 
-								{(view?.layout === "Table" || view?.layout === "Roadmap") && (
+								{(view?.layout === "Table" || view?.layout === "Gantt") && (
 									<SettingRow label={t("layout.viewSettings.subtasksLabel")}>
 										<DynamicSelect
 											value={draft.subtask_mode ?? "collapsed"}
@@ -1528,6 +1540,42 @@ export function ViewSettingsPanel({
 											onChange={(v) =>
 												update({
 													subtask_mode: pickSubtaskMode(v, view?.shared_config),
+												})
+											}
+										/>
+									</SettingRow>
+								)}
+
+								{view?.layout === "Gantt" && (
+									<SettingRow
+										label={t("layout.viewSettings.ganttDependenciesLabel")}
+									>
+										<DynamicSelect
+											value={
+												draft.gantt_dependencies === "hidden"
+													? "hidden"
+													: "shown"
+											}
+											options={[
+												{
+													key: "shown",
+													label: t(
+														"layout.viewSettings.ganttDependenciesShown",
+													),
+												},
+												{
+													key: "hidden",
+													label: t(
+														"layout.viewSettings.ganttDependenciesHidden",
+													),
+												},
+											]}
+											onChange={(v) =>
+												update({
+													gantt_dependencies: pickGanttDependencies(
+														v,
+														view?.shared_config,
+													),
 												})
 											}
 										/>

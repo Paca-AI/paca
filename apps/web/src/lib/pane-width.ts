@@ -20,7 +20,9 @@ export const SIDEBAR_PANE: PaneWidthConfig = {
 	keyStep: 16,
 };
 
-export const ROADMAP_TASK_PANE: PaneWidthConfig = {
+export const GANTT_TASK_PANE: PaneWidthConfig = {
+	// Named from when the Gantt view was called Roadmap; kept so the width
+	// people already set survives the rename.
 	storageKey: "paca:roadmap-task-column-width",
 	defaultWidth: 280,
 	minWidth: 200,

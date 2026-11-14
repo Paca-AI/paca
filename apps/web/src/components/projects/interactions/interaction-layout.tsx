@@ -15,10 +15,10 @@ import { notifyError } from "@/lib/notify";
 const POSITION_MAX = Number.MAX_SAFE_INTEGER; // 2^53 − 1 ≈ 9 × 10^15
 
 import {
+	ChartGantt,
 	ChevronDown,
 	KanbanSquare,
 	List,
-	Map as MapIcon,
 	Plus,
 	Puzzle,
 	Search,
@@ -64,6 +64,7 @@ import {
 	deleteViewById,
 	epicTasksInfiniteQueryOptions,
 	type FilterConfig,
+	type GanttZoom,
 	type InteractionView,
 	type ListTasksOptions,
 	layoutToViewType,
@@ -71,6 +72,7 @@ import {
 	listSprints,
 	listTaskColumns,
 	MAX_COLUMNS,
+	projectTaskLinksQueryOptions,
 	reorderViewsByContext,
 	resolveFilterConfig,
 	resolveTaskTypeFilter,
@@ -102,11 +104,12 @@ import { formatChord, isMacPlatform } from "@/lib/shortcuts/keymap";
 import { usePageShortcutStore } from "@/lib/shortcuts/page-shortcut-store";
 import { cn } from "@/lib/utils";
 import { BoardView } from "./board-view";
+import type { DateUpdate } from "./gantt-scale";
+import { GanttView } from "./gantt-view";
 import { ListView } from "./list-view";
 import { NewViewPopover } from "./new-view-popover";
 import { getImportanceBucketBounds } from "./priority";
 import { RenameViewDialog } from "./rename-view-dialog";
-import { RoadmapView } from "./roadmap-view";
 import type { SprintFormPayload } from "./sprint-form-modal";
 import { TaskDetailModal } from "./task-detail-modal";
 import { resolveSubtaskMode } from "./use-subtask-expansion";
@@ -428,9 +431,9 @@ export function InteractionLayout({
 					])
 				: context === "timeline"
 					? createViewByContext(projectId, context, {
-							name: "Roadmap",
-							view_type: "roadmap",
-							config: buildDefaultViewConfig("Roadmap"),
+							name: "Gantt",
+							view_type: "gantt",
+							config: buildDefaultViewConfig("Gantt"),
 						})
 					: createViewByContext(projectId, context, {
 							name: "Table",
@@ -545,6 +548,14 @@ export function InteractionLayout({
 	const [renameOpen, setRenameOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const activeViewConfig = previewConfig ?? activeView?.config;
+	// The Gantt view draws "blocks" links as arrows unless the view hides them.
+	const showGanttDependencies =
+		activeView?.layout === "Gantt" &&
+		activeViewConfig?.gantt_dependencies !== "hidden";
+	const ganttLinksQuery = useQuery({
+		...projectTaskLinksQueryOptions(projectId, "blocks"),
+		enabled: !!projectId && showGanttDependencies,
+	});
 	// Creatable task types follow the active view's filter; if no filter is set,
 	// all non-system types are available.  This lets views on any page control
 	// which types can be created without hard-coding page-level rules.
@@ -640,7 +651,7 @@ export function InteractionLayout({
 	const subtaskViewKey = effectiveViewId ?? activeView?.id ?? "default";
 	const excludeSubtasks =
 		resolveSubtaskMode(activeViewConfig) !== "hidden" &&
-		(activeView?.layout === "Table" || activeView?.layout === "Roadmap");
+		(activeView?.layout === "Table" || activeView?.layout === "Gantt");
 	const hasExplicitFilterConfig = activeViewConfig?.filters !== undefined;
 	const apiFilters = useMemo(() => {
 		let assignee_ids: string[] | undefined;
@@ -824,9 +835,9 @@ export function InteractionLayout({
 	// Some column_bys have columns that come from the data (tags, assignees,
 	// reporters, free-valued custom fields): the API lists them, narrowed by the
 	// view's filters, instead of the client guessing from the tasks it loaded.
-	// The Roadmap isn't paginated per column and keeps grouping what it loads.
+	// The Gantt view isn't paginated per column and keeps grouping what it loads.
 	const needsApiColumns =
-		hasApiColumns(columnBy, customFields) && activeView?.layout !== "Roadmap";
+		hasApiColumns(columnBy, customFields) && activeView?.layout !== "Gantt";
 	const columnsFilterOpts = useMemo(() => {
 		const {
 			pageSize: _pageSize,
@@ -873,7 +884,7 @@ export function InteractionLayout({
 	);
 
 	const fetchColumnDefs = useMemo(() => {
-		if (activeView?.layout === "Roadmap") return [];
+		if (activeView?.layout === "Gantt") return [];
 		// Columns not listed (still loading, or the request failed): there is no
 		// per-column query to run.
 		if (needsApiColumns && !dynamicColumns) return [];
@@ -893,7 +904,7 @@ export function InteractionLayout({
 	const colQueriesEnabled =
 		fetchColumnDefs.length > 0 &&
 		!viewsQuery.isLoading &&
-		activeView?.layout !== "Roadmap";
+		activeView?.layout !== "Gantt";
 
 	// Filters carried onto the children listed under an expanded parent row:
 	// the view's own filters and sort, minus what scopes the top level.
@@ -985,7 +996,7 @@ export function InteractionLayout({
 			: [],
 	});
 
-	// Fallback single query for non-supported column_by (importance, custom fields) or roadmap
+	// Fallback single query for non-supported column_by (importance, custom fields) or Gantt
 	// Tracks total items to show so WS-triggered refetches restore the same depth.
 	const [globalExpandedPageSize, setGlobalExpandedPageSize] = useState<
 		number | null
@@ -1210,7 +1221,7 @@ export function InteractionLayout({
 		],
 	);
 
-	// Global load-more (roadmap / non-column views)
+	// Global load-more (Gantt / non-column views)
 	const [globalNextCursor, setGlobalNextCursor] = useState<string | null>(null);
 	const [globalExtraTasks, setGlobalExtraTasks] = useState<Task[]>([]);
 	const [globalLoadingMore, setGlobalLoadingMore] = useState(false);
@@ -1696,6 +1707,18 @@ export function InteractionLayout({
 		[projectId, qc, tasksListQueryKey],
 	);
 
+	// Gantt: saves the dates of a dragged bar. Unlike a column move it resolves
+	// or rejects, so the chart can drop its optimistic bar and offer an undo.
+	const handleRescheduleTask = useCallback(
+		async (taskId: string, update: DateUpdate) => {
+			const updatedTask = await updateTask(projectId, taskId, update);
+			qc.setQueryData(["projects", projectId, "tasks", taskId], updatedTask);
+			void qc.invalidateQueries({ queryKey: tasksListQueryKey });
+			return updatedTask;
+		},
+		[projectId, qc, tasksListQueryKey],
+	);
+
 	// ── Delete task (Mod+Backspace shortcut / context menu) ─────────────────
 	const [deleteConfirmTask, setDeleteConfirmTask] = useState<Task | null>(null);
 	const deleteTaskMutation = useMutation({
@@ -2011,8 +2034,8 @@ export function InteractionLayout({
 								>
 									{view.layout === "Board" ? (
 										<KanbanSquare className="size-3.5" />
-									) : view.layout === "Roadmap" ? (
-										<MapIcon className="size-3.5" />
+									) : view.layout === "Gantt" ? (
+										<ChartGantt className="size-3.5" />
 									) : view.layout === "Plugin" ? (
 										<Puzzle className="size-3.5" />
 									) : (
@@ -2220,8 +2243,8 @@ export function InteractionLayout({
 								: undefined
 						}
 					/>
-				) : activeView?.layout === "Roadmap" ? (
-					<RoadmapView
+				) : activeView?.layout === "Gantt" ? (
+					<GanttView
 						projectId={projectId}
 						childFilters={childFilters}
 						viewKey={subtaskViewKey}
@@ -2239,6 +2262,22 @@ export function InteractionLayout({
 						manualSort={isManualSort}
 						onReorderTask={effectiveViewId ? handleReorderTask : undefined}
 						onMoveToColumn={canEdit ? handleMoveToColumn : undefined}
+						onRescheduleTask={canEdit ? handleRescheduleTask : undefined}
+						zoom={activeViewConfig?.gantt_zoom}
+						onZoomChange={
+							isRealView && activeView
+								? (zoom: GanttZoom) =>
+										updateViewConfigMutation.mutate({
+											viewId: activeView.id,
+											config: {
+												...(activeView.config ?? {}),
+												gantt_zoom: zoom,
+											},
+										})
+								: undefined
+						}
+						showDependencies={showGanttDependencies}
+						blockLinks={ganttLinksQuery.data}
 						pagination={globalPagination}
 						onCreateTask={handleCreateTask}
 						onTaskClick={handleTaskClick}

@@ -2309,13 +2309,16 @@
 			"subtasksCollapsed": "Imbriquées, réduites",
 			"subtasksExpanded": "Imbriquées, développées",
 			"subtasksHidden": "Masquées (liste à plat)",
+			"ganttDependenciesLabel": "Flèches de dépendance",
+			"ganttDependenciesShown": "Affichées",
+			"ganttDependenciesHidden": "Masquées",
 			"unsavedBadge": "Modifications non enregistrées",
 			"unsavedTitle": "Abandonner les modifications non enregistrées ?",
 			"unsavedDescription": "Vous avez modifié les paramètres de cette vue sans les enregistrer. Enregistrez-les, ou abandonnez-les pour revenir aux derniers paramètres enregistrés.",
 			"keepEditing": "Continuer à modifier",
 			"discard": "Abandonner"
 		},
-		"roadmap": {
+		"gantt": {
 			"taskColumnLabel": "Tâche",
 			"noTasksToDisplay": "Aucune tâche à afficher",
 			"noDatesSet": "Aucune date définie",
@@ -2323,7 +2326,24 @@
 			"startDateTooltip": "Début : {{date}}",
 			"dueDateTooltip": "Échéance : {{date}}",
 			"loading": "Chargement…",
-			"viewMore": "Voir plus"
+			"viewMore": "Voir plus",
+			"zoomLabel": "Zoom",
+			"zoom": {
+				"day": "Jour",
+				"week": "Semaine",
+				"month": "Mois",
+				"quarter": "Trimestre",
+				"year": "Année"
+			},
+			"today": "Aujourd'hui",
+			"jumpToToday": "Aller à aujourd'hui",
+			"quarterLabel": "T{{n}}",
+			"startsBeforeBlocker": "Commence avant la fin de « {{title}} »",
+			"resizeStart": "Faites glisser pour modifier la date de début",
+			"resizeEnd": "Faites glisser pour modifier la date d'échéance",
+			"rescheduled": "« {{title}} » replanifiée",
+			"undo": "Annuler",
+			"rescheduleFailed": "Impossible de replanifier la tâche"
 		},
 		"newViewPopover": {
 			"addView": "Ajouter une vue",
@@ -2337,7 +2357,7 @@
 			"layouts": {
 				"board": "Tableau",
 				"table": "Table",
-				"roadmap": "Feuille de route",
+				"gantt": "Gantt",
 				"plugin": "Plugin"
 			}
 		},
@@ -2363,7 +2383,7 @@
 		},
 		"timeline": {
 			"title": "Chronologie",
-			"description": "Epics et planification à long terme sur une feuille de route."
+			"description": "Epics et planification à long terme sur un diagramme de Gantt."
 		},
 		"sprintDetail": {
 			"notFound": "Sprint introuvable ou accès refusé.",

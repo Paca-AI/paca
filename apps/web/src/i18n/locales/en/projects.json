@@ -2309,13 +2309,16 @@
 			"subtasksCollapsed": "Nested, collapsed",
 			"subtasksExpanded": "Nested, expanded",
 			"subtasksHidden": "Hidden (flat list)",
+			"ganttDependenciesLabel": "Dependency arrows",
+			"ganttDependenciesShown": "Shown",
+			"ganttDependenciesHidden": "Hidden",
 			"unsavedBadge": "Unsaved changes",
 			"unsavedTitle": "Discard unsaved changes?",
 			"unsavedDescription": "You changed this view’s settings but haven’t saved them. Save them, or discard to go back to the last saved settings.",
 			"keepEditing": "Keep editing",
 			"discard": "Discard"
 		},
-		"roadmap": {
+		"gantt": {
 			"taskColumnLabel": "Task",
 			"noTasksToDisplay": "No tasks to display",
 			"noDatesSet": "No dates set",
@@ -2323,7 +2326,24 @@
 			"startDateTooltip": "Start: {{date}}",
 			"dueDateTooltip": "Due: {{date}}",
 			"loading": "Loading…",
-			"viewMore": "View more"
+			"viewMore": "View more",
+			"zoomLabel": "Zoom",
+			"zoom": {
+				"day": "Day",
+				"week": "Week",
+				"month": "Month",
+				"quarter": "Quarter",
+				"year": "Year"
+			},
+			"today": "Today",
+			"jumpToToday": "Jump to today",
+			"quarterLabel": "Q{{n}}",
+			"startsBeforeBlocker": "Starts before “{{title}}” ends",
+			"resizeStart": "Drag to change the start date",
+			"resizeEnd": "Drag to change the due date",
+			"rescheduled": "Rescheduled “{{title}}”",
+			"undo": "Undo",
+			"rescheduleFailed": "Couldn't reschedule the task"
 		},
 		"newViewPopover": {
 			"addView": "Add view",
@@ -2337,7 +2357,7 @@
 			"layouts": {
 				"board": "Board",
 				"table": "Table",
-				"roadmap": "Roadmap",
+				"gantt": "Gantt",
 				"plugin": "Plugin"
 			}
 		},
@@ -2363,7 +2383,7 @@
 		},
 		"timeline": {
 			"title": "Timeline",
-			"description": "Epics and long-horizon planning on a roadmap."
+			"description": "Epics and long-horizon planning on a Gantt chart."
 		},
 		"sprintDetail": {
 			"notFound": "Sprint not found or access denied.",

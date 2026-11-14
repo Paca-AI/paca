@@ -2309,13 +2309,16 @@
 			"subtasksCollapsed": "嵌套，已折叠",
 			"subtasksExpanded": "嵌套，已展开",
 			"subtasksHidden": "隐藏（平铺列表）",
+			"ganttDependenciesLabel": "依赖箭头",
+			"ganttDependenciesShown": "显示",
+			"ganttDependenciesHidden": "隐藏",
 			"unsavedBadge": "未保存的更改",
 			"unsavedTitle": "放弃未保存的更改？",
 			"unsavedDescription": "你修改了此视图的设置但尚未保存。请保存，或放弃以恢复到上次保存的设置。",
 			"keepEditing": "继续编辑",
 			"discard": "放弃"
 		},
-		"roadmap": {
+		"gantt": {
 			"taskColumnLabel": "任务",
 			"noTasksToDisplay": "没有可显示的任务",
 			"noDatesSet": "未设置日期",
@@ -2323,7 +2326,24 @@
 			"startDateTooltip": "开始：{{date}}",
 			"dueDateTooltip": "截止：{{date}}",
 			"loading": "正在加载…",
-			"viewMore": "查看更多"
+			"viewMore": "查看更多",
+			"zoomLabel": "缩放",
+			"zoom": {
+				"day": "日",
+				"week": "周",
+				"month": "月",
+				"quarter": "季度",
+				"year": "年"
+			},
+			"today": "今天",
+			"jumpToToday": "跳转到今天",
+			"quarterLabel": "Q{{n}}",
+			"startsBeforeBlocker": "在“{{title}}”结束前开始",
+			"resizeStart": "拖动以更改开始日期",
+			"resizeEnd": "拖动以更改截止日期",
+			"rescheduled": "已重新安排“{{title}}”",
+			"undo": "撤销",
+			"rescheduleFailed": "无法重新安排任务"
 		},
 		"newViewPopover": {
 			"addView": "添加视图",
@@ -2337,7 +2357,7 @@
 			"layouts": {
 				"board": "看板",
 				"table": "表格",
-				"roadmap": "路线图",
+				"gantt": "甘特图",
 				"plugin": "插件"
 			}
 		},
@@ -2363,7 +2383,7 @@
 		},
 		"timeline": {
 			"title": "时间线",
-			"description": "在路线图上展示史诗和长期规划。"
+			"description": "在甘特图上展示史诗和长期规划。"
 		},
 		"sprintDetail": {
 			"notFound": "未找到冲刺或访问被拒绝。",

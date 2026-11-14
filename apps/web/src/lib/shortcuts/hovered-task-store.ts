@@ -12,7 +12,7 @@ export interface TaskShortcutActions {
 	canEdit: boolean;
 	open: () => void;
 	openEpic: () => void;
-	/** Absent when the view has no column concept (e.g. Roadmap). */
+	/** Absent when the view has no column concept (e.g. Gantt). */
 	moveLeft?: () => void;
 	moveRight?: () => void;
 	delete: () => void;

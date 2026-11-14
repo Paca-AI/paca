@@ -2327,13 +2327,16 @@
 			"subtasksCollapsed": "Вложенные, свёрнуты",
 			"subtasksExpanded": "Вложенные, развёрнуты",
 			"subtasksHidden": "Скрыты (плоский список)",
+			"ganttDependenciesLabel": "Стрелки зависимостей",
+			"ganttDependenciesShown": "Показаны",
+			"ganttDependenciesHidden": "Скрыты",
 			"unsavedBadge": "Несохранённые изменения",
 			"unsavedTitle": "Отменить несохранённые изменения?",
 			"unsavedDescription": "Вы изменили настройки этого представления, но не сохранили их. Сохраните их или отмените, чтобы вернуться к последним сохранённым настройкам.",
 			"keepEditing": "Продолжить редактирование",
 			"discard": "Отменить"
 		},
-		"roadmap": {
+		"gantt": {
 			"taskColumnLabel": "Задача",
 			"noTasksToDisplay": "Нет задач для отображения",
 			"noDatesSet": "Даты не заданы",
@@ -2341,7 +2344,24 @@
 			"startDateTooltip": "Начало: {{date}}",
 			"dueDateTooltip": "Срок: {{date}}",
 			"loading": "Загрузка…",
-			"viewMore": "Показать ещё"
+			"viewMore": "Показать ещё",
+			"zoomLabel": "Масштаб",
+			"zoom": {
+				"day": "День",
+				"week": "Неделя",
+				"month": "Месяц",
+				"quarter": "Квартал",
+				"year": "Год"
+			},
+			"today": "Сегодня",
+			"jumpToToday": "Перейти к сегодняшнему дню",
+			"quarterLabel": "{{n}} кв.",
+			"startsBeforeBlocker": "Начинается до завершения «{{title}}»",
+			"resizeStart": "Перетащите, чтобы изменить дату начала",
+			"resizeEnd": "Перетащите, чтобы изменить срок",
+			"rescheduled": "Сроки «{{title}}» изменены",
+			"undo": "Отменить",
+			"rescheduleFailed": "Не удалось изменить сроки задачи"
 		},
 		"newViewPopover": {
 			"addView": "Добавить представление",
@@ -2355,7 +2375,7 @@
 			"layouts": {
 				"board": "Доска",
 				"table": "Таблица",
-				"roadmap": "Roadmap",
+				"gantt": "Гант",
 				"plugin": "Плагин"
 			}
 		},
@@ -2381,7 +2401,7 @@
 		},
 		"timeline": {
 			"title": "Таймлайн",
-			"description": "Эпики и долгосрочное планирование на roadmap."
+			"description": "Эпики и долгосрочное планирование на диаграмме Ганта."
 		},
 		"sprintDetail": {
 			"notFound": "Спринт не найден или доступ запрещён.",

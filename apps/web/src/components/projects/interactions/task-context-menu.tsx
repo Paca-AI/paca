@@ -75,7 +75,7 @@ interface TaskContextMenuProps {
 	onUpdate?: (taskId: string, update: TaskFieldUpdate) => void;
 	onDelete?: (taskId: string) => void;
 	/** All columns of the active view — omitted for views with no column
-	 * concept (e.g. Roadmap), which hides the "Move to" submenu. */
+	 * concept (e.g. Gantt), which hides the "Move to" submenu. */
 	columnDefs?: ColumnGroupDef[];
 	onMoveToColumnDef?: (task: Task, colDef: ColumnGroupDef) => void;
 	taskIdPrefix?: string;

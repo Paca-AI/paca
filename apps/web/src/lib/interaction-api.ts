@@ -102,7 +102,10 @@ interface TaskPositionListResult {
 }
 
 // ── View types ─────────────────────────────────────────────────────────────────
-export type ViewType = "table" | "board" | "roadmap" | "plugin";
+export type ViewType = "table" | "board" | "gantt" | "plugin";
+
+/** The time span one step of the Gantt chart's scale covers. */
+export type GanttZoom = "day" | "week" | "month" | "quarter" | "year";
 
 /**
  * A single entry in a FilterConfig's `items` map.
@@ -211,6 +214,10 @@ export interface ViewConfig {
 	collapsed_columns?: string[];
 	/** Table / Timeline: how subtasks are shown. Unset means "collapsed". */
 	subtask_mode?: "collapsed" | "expanded" | "hidden";
+	/** Gantt: the time scale. Unset falls back to the view's default ("week"). */
+	gantt_zoom?: GanttZoom;
+	/** Gantt: whether "blocks" links are drawn as arrows. Unset means "shown". */
+	gantt_dependencies?: "shown" | "hidden";
 	/** Saved number of tasks to fetch when paginating further ("load more") within this view. Unset falls back to a fixed default. */
 	page_size?: number;
 	/** Saved number of tasks to fetch on the first load of this view, independent of page_size. Unset falls back to the layout's default. */
@@ -220,7 +227,7 @@ export interface ViewConfig {
 	plugin_component?: string;
 }
 
-export type ViewLayout = "Board" | "Table" | "Roadmap" | "Plugin";
+export type ViewLayout = "Board" | "Table" | "Gantt" | "Plugin";
 
 // ── Filter resolver helpers ───────────────────────────────────────────────────
 
@@ -299,14 +306,14 @@ export interface InteractionView {
 // ── View shape helpers ─────────────────────────────────────────────────────────
 function viewTypeToLayout(vt: ViewType): ViewLayout {
 	if (vt === "board") return "Board";
-	if (vt === "roadmap") return "Roadmap";
+	if (vt === "gantt") return "Gantt";
 	if (vt === "plugin") return "Plugin";
 	return "Table";
 }
 
 export function layoutToViewType(l: ViewLayout): ViewType {
 	if (l === "Board") return "board";
-	if (l === "Roadmap") return "roadmap";
+	if (l === "Gantt") return "gantt";
 	if (l === "Plugin") return "plugin";
 	return "table";
 }
@@ -1315,6 +1322,63 @@ export async function deleteTaskLink(
 		`/projects/${projectId}/tasks/${taskId}/links/${linkId}`,
 	);
 }
+
+/** A link in a project-wide listing: just the two task ids, no summary. */
+export interface ProjectTaskLink {
+	id: string;
+	source_task_id: string;
+	target_task_id: string;
+	link_type: LinkType;
+	created_at: string;
+}
+
+export const PROJECT_TASK_LINKS_PAGE_SIZE = 500;
+/** Stops a runaway listing: 20 pages of 500 is far more links of one type
+ *  than a project's chart can show. */
+const PROJECT_TASK_LINKS_MAX_PAGES = 20;
+
+/** Every link of `linkType` in the project between tasks the caller may read,
+ *  oldest first, gathered across pages. */
+export async function listProjectTaskLinks(
+	projectId: string,
+	linkType: LinkType,
+): Promise<ProjectTaskLink[]> {
+	const links: ProjectTaskLink[] = [];
+	let cursor: string | undefined;
+	for (let page = 0; page < PROJECT_TASK_LINKS_MAX_PAGES; page++) {
+		const { data } = await apiClient.instance.get<
+			SuccessEnvelope<{
+				items: ProjectTaskLink[];
+				next_cursor: string | null;
+			}>
+		>(`/projects/${projectId}/task-links`, {
+			params: {
+				link_type: linkType,
+				page_size: PROJECT_TASK_LINKS_PAGE_SIZE,
+				cursor,
+			},
+		});
+		links.push(...data.data.items);
+		if (!data.data.next_cursor) break;
+		cursor = data.data.next_cursor;
+	}
+	return links;
+}
+
+/** Key prefix of the project-wide link listings; a link change refreshes them. */
+export const projectTaskLinksKey = (projectId: string) =>
+	["projects", projectId, "task-links"] as const;
+
+export const projectTaskLinksQueryOptions = (
+	projectId: string,
+	linkType: LinkType,
+) =>
+	queryOptions({
+		queryKey: [...projectTaskLinksKey(projectId), linkType],
+		queryFn: () => listProjectTaskLinks(projectId, linkType),
+		staleTime: 15_000,
+		enabled: !!projectId,
+	});
 
 export const taskLinksQueryOptions = (projectId: string, taskId: string) =>
 	infiniteQueryOptions({
