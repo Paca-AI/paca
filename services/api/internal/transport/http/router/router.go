@@ -842,6 +842,10 @@ func New(deps Deps) http.Handler {
 					// isn't parsed as a document ID)
 					r.With(require.Project(iam.ActionDocsRead)).Get("/search", deps.Document.SearchDocuments)
 
+					// Documents — change feed and batch read (also before /{docId}).
+					r.With(require.Project(iam.ActionDocsRead)).Get("/changes", deps.Document.ListChanges)
+					r.With(require.Project(iam.ActionDocsRead)).Post("/batch-get", deps.Document.BatchGetDocuments)
+
 					// Documents — collection
 					r.With(require.Project(iam.ActionDocsRead)).Get("/", deps.Document.ListDocuments)
 					r.With(require.Project(iam.ActionDocsWrite), require.DocCreate()).Post("/", deps.Document.CreateDocument)

@@ -415,6 +415,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeBadRequest
 	case errors.Is(err, docdom.ErrInvalidCursor):
 		return http.StatusBadRequest, apierr.CodeBadRequest
+	case errors.Is(err, docdom.ErrTooManyDocIDs):
+		return http.StatusBadRequest, apierr.CodeBadRequest
 	case errors.Is(err, docdom.ErrDocNotFound):
 		return http.StatusNotFound, apierr.CodeDocNotFound
 	case errors.Is(err, docdom.ErrDocTitleInvalid):
