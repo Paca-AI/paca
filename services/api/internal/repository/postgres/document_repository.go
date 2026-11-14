@@ -586,6 +586,52 @@ func (r *DocumentRepository) DeleteDocument(ctx context.Context, id uuid.UUID) e
 	return err
 }
 
+// BackfillContentHashes implements worker.DocHashStore: it stores
+// hash(content) on up to limit documents whose content_hash is NULL (deleted
+// ones included) and returns how many it filled.
+//
+// The batch runs in one transaction with paca.skip_doc_seq = 'on', which the
+// documents_bump_seq trigger reads (migration 000088): storing a hash changes
+// nothing a client can see, so the rows keep their seq and stay out of the
+// change feed. The setting is transaction-local, so it never reaches another
+// statement on the pooled connection. updated_at is not written either.
+//
+// The rows are locked while they are hashed, so a concurrent save cannot slip
+// between the read and the write; a save that got there first has stored its
+// own hash and the row no longer matches.
+func (r *DocumentRepository) BackfillContentHashes(ctx context.Context, limit int, hash func(content json.RawMessage) string) (int, error) {
+	filled := 0
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if _, err := tx.ExecContext(ctx, `SELECT set_config('paca.skip_doc_seq', 'on', true)`); err != nil {
+			return err
+		}
+		var rows []struct {
+			ID      string           `db:"id"`
+			Content *json.RawMessage `db:"content"`
+		}
+		if err := tx.SelectContext(ctx, &rows,
+			`SELECT id, content FROM documents WHERE content_hash IS NULL ORDER BY id LIMIT $1 FOR UPDATE`, limit); err != nil {
+			return err
+		}
+		for _, row := range rows {
+			var content json.RawMessage
+			if row.Content != nil {
+				content = *row.Content
+			}
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE documents SET content_hash = $1 WHERE id = $2 AND content_hash IS NULL`, hash(content), row.ID); err != nil {
+				return err
+			}
+		}
+		filled = len(rows)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return filled, nil
+}
+
 // =============================================================================
 // Snapshot CRUD
 // =============================================================================
