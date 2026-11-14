@@ -205,8 +205,25 @@ test.describe("Table pagination", () => {
 
 		await page.goto("/admin/service-accounts");
 		const search = page.getByPlaceholder("Search by name or description…");
+		// The search is debounced and resets to page 1 when it lands, so wait for
+		// the filtered response before paging; otherwise a slow browser clicks
+		// "Next page" first and the late debounce snaps back to page 1.
+		const searched = page.waitForResponse(
+			(res) =>
+				res.url().includes("/service-accounts") &&
+				res.url().includes(`search=${ACCOUNT_PREFIX}`),
+		);
 		await search.fill(ACCOUNT_PREFIX);
-		await expectTablePaging(page, 25, () => search.fill(ACCOUNT_PREFIX));
+		await searched;
+		await expectTablePaging(page, 25, async () => {
+			const reapplied = page.waitForResponse(
+				(res) =>
+					res.url().includes("/service-accounts") &&
+					res.url().includes(`search=${ACCOUNT_PREFIX}`),
+			);
+			await search.fill(ACCOUNT_PREFIX);
+			await reapplied;
+		});
 
 		// A narrower search shrinks the total and the page count with it.
 		await search.fill(`${ACCOUNT_PREFIX}0`);
