@@ -4,9 +4,14 @@ interface InlineContent {
 	content?: InlineContent[] | string;
 }
 
+interface TableContent {
+	type: "tableContent";
+	rows: { cells: (InlineContent[] | { content: InlineContent[] })[] }[];
+}
+
 interface Block {
 	type?: string;
-	content?: InlineContent[] | null;
+	content?: InlineContent[] | TableContent | null;
 	children?: Block[] | null;
 }
 
@@ -29,11 +34,22 @@ export function blockNoteToLines(blocks: unknown): string[] {
 	if (!Array.isArray(blocks)) return [];
 	const lines: string[] = [];
 	for (const block of blocks as Block[]) {
-		let text = "";
+		let blockLines = [""];
 		if (Array.isArray(block.content)) {
-			text = inlineContentToText(block.content);
+			blockLines = [inlineContentToText(block.content)];
+		} else if (
+			block.content?.type === "tableContent" &&
+			block.content.rows.length > 0
+		) {
+			blockLines = block.content.rows.map((row) =>
+				row.cells
+					.map((cell) =>
+						inlineContentToText(Array.isArray(cell) ? cell : cell.content),
+					)
+					.join("\t"),
+			);
 		}
-		lines.push(text);
+		lines.push(...blockLines);
 		if (Array.isArray(block.children) && block.children.length > 0) {
 			lines.push(...blockNoteToLines(block.children));
 		}

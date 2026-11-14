@@ -14,6 +14,88 @@ function link(text: string, href = "https://example.com") {
 	return { type: "link", href, content: [{ type: "text", text, styles: {} }] };
 }
 
+function table(rows: unknown[][]) {
+	return {
+		type: "table",
+		content: { type: "tableContent", rows: rows.map((cells) => ({ cells })) },
+	};
+}
+
+function cell(text: string) {
+	return {
+		type: "tableCell",
+		content: [{ type: "text", text, styles: {} }],
+	};
+}
+
+describe("BlockNote table diff text", () => {
+	it("extracts rows with styled text, links and empty cells", () => {
+		expect(
+			blockNoteToLines([
+				table([
+					[cell("Name"), cell("Status")],
+					[
+						{
+							type: "tableCell",
+							content: [
+								{ type: "text", text: "Read ", styles: { bold: true } },
+								link("文档"),
+							],
+						},
+						cell(""),
+					],
+				]),
+			]),
+		).toEqual(["Name\tStatus", "Read 文档\t"]);
+	});
+
+	it("supports legacy inline-array cells", () => {
+		expect(
+			blockNoteToLines([
+				table([[[{ type: "text", text: "Legacy" }], [link("Guide")], []]]),
+			]),
+		).toEqual(["Legacy\tGuide\t"]);
+	});
+
+	it("reports an edited cell and preserves an unchanged header", () => {
+		expect(
+			diffBlockNoteContent(
+				[table([[cell("Status")], [cell("Pending")]])],
+				[table([[cell("Status")], [cell("Done")]])],
+			),
+		).toEqual([
+			{ type: "unchanged", text: "Status" },
+			{ type: "removed", text: "Pending" },
+			{ type: "added", text: "Done" },
+		]);
+	});
+
+	it("keeps cell boundaries when the concatenated text is identical", () => {
+		expect(
+			diffBlockNoteContent(
+				[table([[cell("a"), cell("bc")]])],
+				[table([[cell("ab"), cell("c")]])],
+			),
+		).toEqual([
+			{ type: "removed", text: "a\tbc" },
+			{ type: "added", text: "ab\tc" },
+		]);
+	});
+
+	it("preserves empty tables and nested block order", () => {
+		expect(
+			blockNoteToLines([
+				table([]),
+				paragraph(
+					[{ type: "text", text: "Parent" }],
+					[table([[cell("Child")]])],
+				),
+				paragraph([{ type: "text", text: "After" }]),
+			]),
+		).toEqual(["", "Parent", "Child", "After"]);
+	});
+});
+
 describe("BlockNote diff text", () => {
 	it("includes link labels in their original inline order", () => {
 		expect(
