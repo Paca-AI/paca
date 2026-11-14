@@ -481,8 +481,8 @@ export interface UpdateTaskStatusInput {
 
 // ==================== Views ====================
 
-export type ViewType = "table" | "board" | "roadmap" | "plugin";
-export type ViewLayout = "Board" | "Table" | "Roadmap";
+export type ViewType = "table" | "board" | "gantt" | "plugin";
+export type ViewLayout = "Board" | "Table" | "Gantt";
 export type ViewsContext = "sprint" | "backlog" | "timeline";
 
 export type FilterEntry = boolean | FilterConfig;
