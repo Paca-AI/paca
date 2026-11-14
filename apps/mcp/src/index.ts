@@ -12,6 +12,23 @@ const require = createRequire(import.meta.url);
  * Initializes the API clients and starts the MCP server.
  */
 async function main() {
+	// `pull` and `push` are command-line tools, not the server.
+	const command = process.argv[2];
+	if (command === "pull" || command === "push") {
+		const { runCli } = await import("./cli/index.js");
+		const code = await runCli(process.argv.slice(2), process.env, {
+			out: (line) => console.log(line),
+			err: (line) => console.error(line),
+		});
+		process.exit(code);
+		return;
+	}
+	if (process.argv.includes("--help") || process.argv.includes("-h")) {
+		const { USAGE } = await import("./cli/index.js");
+		console.log(USAGE);
+		process.exit(0);
+	}
+
 	// Handle --version flag
 	if (process.argv.includes("--version") || process.argv.includes("-v")) {
 		const { version } = require("../package.json") as { version: string };

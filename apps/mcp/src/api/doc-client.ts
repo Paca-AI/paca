@@ -26,6 +26,24 @@ export class PacaAPIError extends Error {
 	}
 }
 
+/** One document in the change feed (metadata only). A tombstone has
+ *  `deleted: true`, an empty title and null folder_id and content_hash. */
+export interface DocChange {
+	id: string;
+	folder_id: string | null;
+	title: string;
+	content_hash: string | null;
+	updated_at: string;
+	deleted: boolean;
+}
+
+/** One folder of the tree the change feed sends. */
+export interface DocChangeFolder {
+	id: string;
+	parent_id: string | null;
+	name: string;
+}
+
 /** A write by path: the document at `path` is created or updated. */
 export interface PutByPathInput {
 	/** "Folder/Sub folder/Title"; missing folders are created. */
@@ -252,6 +270,66 @@ export class PacaAPIDocClient {
 				changed: res.data?.changed !== false,
 				etag: res.headers?.get("ETag") ?? undefined,
 			};
+		} catch (err) {
+			if (err instanceof PacaAPIError && isMissingByPathRoute(err))
+				return { status: "unsupported" };
+			throw err;
+		}
+	}
+
+	// ==================== Change feed and batch read ====================
+
+	/** What changed in the documents the caller can read since `since` (the
+	 *  cursor of the last call). Without `since`, or when the server cannot
+	 *  use it, `reset` is true and `docs` is the whole visible list.
+	 *  `folders: null` means the folder tree did not change. */
+	async getChanges(
+		projectId: string,
+		since?: string,
+	): Promise<
+		| {
+				status: "ok";
+				cursor: string;
+				reset: boolean;
+				docs: DocChange[];
+				folders: DocChangeFolder[] | null;
+		  }
+		| { status: "unsupported" }
+	> {
+		const query = since ? `?since=${encodeURIComponent(since)}` : "";
+		try {
+			const res = await this.send(
+				"GET",
+				`/api/v1/projects/${projectId}/docs/changes${query}`,
+			);
+			return {
+				status: "ok",
+				cursor: res.data?.cursor ?? "",
+				reset: res.data?.reset === true,
+				docs: res.data?.docs ?? [],
+				folders: res.data?.folders ?? null,
+			};
+		} catch (err) {
+			if (err instanceof PacaAPIError && isMissingByPathRoute(err))
+				return { status: "unsupported" };
+			throw err;
+		}
+	}
+
+	/** The listed documents with their content, in the order asked for (at
+	 *  most 100 ids; the caller chunks). Ids the caller cannot read are left
+	 *  out. */
+	async batchGet(
+		projectId: string,
+		ids: string[],
+	): Promise<{ status: "ok"; items: Document[] } | { status: "unsupported" }> {
+		try {
+			const res = await this.send(
+				"POST",
+				`/api/v1/projects/${projectId}/docs/batch-get`,
+				{ ids },
+			);
+			return { status: "ok", items: res.data?.items ?? [] };
 		} catch (err) {
 			if (err instanceof PacaAPIError && isMissingByPathRoute(err))
 				return { status: "unsupported" };
