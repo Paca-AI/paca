@@ -321,6 +321,17 @@
     ],
     "base_url": "https://api.perplexity.ai"
   },
+  "runcrate": {
+    "models": [
+      "Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "deepseek-ai/DeepSeek-V4-Flash",
+      "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      "moonshotai/Kimi-K2.6",
+      "openai/gpt-oss-120b",
+      "zai-org/GLM-5.2"
+    ],
+    "base_url": "https://api.runcrate.ai"
+  },
   "together_ai": {
     "models": [
       "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
