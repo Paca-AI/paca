@@ -36,12 +36,14 @@ type documentRecord struct {
 	FolderID  *string          `db:"folder_id"`
 	Title     string           `db:"title"`
 	Content   *json.RawMessage `db:"content"`
-	Position  int              `db:"position"`
-	CreatedBy *string          `db:"created_by"`
-	UpdatedBy *string          `db:"updated_by"`
-	CreatedAt time.Time        `db:"created_at"`
-	UpdatedAt time.Time        `db:"updated_at"`
-	DeletedAt *time.Time       `db:"deleted_at"`
+	// ContentHash is NULL on rows written before migration 000087.
+	ContentHash *string    `db:"content_hash"`
+	Position    int        `db:"position"`
+	CreatedBy   *string    `db:"created_by"`
+	UpdatedBy   *string    `db:"updated_by"`
+	CreatedAt   time.Time  `db:"created_at"`
+	UpdatedAt   time.Time  `db:"updated_at"`
+	DeletedAt   *time.Time `db:"deleted_at"`
 }
 
 type docSnapshotRecord struct {
@@ -49,6 +51,7 @@ type docSnapshotRecord struct {
 	DocumentID     string           `db:"document_id"`
 	Title          string           `db:"title"`
 	Content        *json.RawMessage `db:"content"`
+	ContentHash    *string          `db:"content_hash"`
 	SnapshotNumber int64            `db:"snapshot_number"`
 	CreatedBy      *string          `db:"created_by"`
 	CreatedAt      time.Time        `db:"created_at"`
@@ -125,6 +128,7 @@ func documentFromRecord(r documentRecord) *docdom.Document {
 		UpdatedAt: r.UpdatedAt,
 		DeletedAt: r.DeletedAt,
 	}
+	d.ContentHash = r.ContentHash
 	if r.Content != nil {
 		d.Content = *r.Content
 	}
@@ -153,6 +157,7 @@ func documentToRecord(d *docdom.Document) documentRecord {
 		UpdatedAt: d.UpdatedAt,
 		DeletedAt: d.DeletedAt,
 	}
+	r.ContentHash = d.ContentHash
 	if d.Content != nil {
 		r.Content = &d.Content
 	}
@@ -177,6 +182,7 @@ func snapshotFromRecord(r docSnapshotRecord) *docdom.DocSnapshot {
 		DocumentID:     uuid.MustParse(r.DocumentID),
 		Title:          r.Title,
 		SnapshotNumber: r.SnapshotNumber,
+		ContentHash:    r.ContentHash,
 		CreatedAt:      r.CreatedAt,
 	}
 	if r.Content != nil {
@@ -375,10 +381,10 @@ func (r *DocumentRepository) DeleteFolder(ctx context.Context, id uuid.UUID) err
 // Document CRUD
 // =============================================================================
 
-const documentCols = `id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, deleted_at`
+const documentCols = `id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at`
 
 // documentTreeCols is documentCols without the (potentially large) body.
-const documentTreeCols = `id, project_id, folder_id, title, position, created_by, updated_by, created_at, updated_at, deleted_at`
+const documentTreeCols = `id, project_id, folder_id, title, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at`
 
 // ListDocuments returns one cursor-paginated page of a project's documents in
 // manual order (position, title, id), without their bodies. filter narrows by
@@ -528,9 +534,9 @@ func (r *DocumentRepository) FindDocumentTitleByID(_ context.Context, id uuid.UU
 func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Document) error {
 	rec := documentToRecord(d)
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO documents (id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		rec.ID, rec.ProjectID, rec.FolderID, rec.Title, rec.Content,
+		INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		rec.ID, rec.ProjectID, rec.FolderID, rec.Title, rec.Content, rec.ContentHash,
 		rec.Position, rec.CreatedBy, rec.UpdatedBy, rec.CreatedAt, rec.UpdatedAt, rec.DeletedAt,
 	)
 	return err
@@ -550,13 +556,18 @@ func (r *DocumentRepository) UpdateDocumentAtomic(ctx context.Context, id uuid.U
 		}
 		current := documentFromRecord(rec)
 		if err := decide(current); err != nil {
+			if errors.Is(err, docdom.ErrNoChange) {
+				// Nothing to write: return the row as stored, not as decide left it.
+				result = documentFromRecord(rec)
+				return nil
+			}
 			return err
 		}
 		out := documentToRecord(current)
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE documents SET folder_id=$1, title=$2, content=$3, position=$4, updated_by=$5, updated_at=$6
-			WHERE id=$7 AND deleted_at IS NULL`,
-			out.FolderID, out.Title, out.Content, out.Position, out.UpdatedBy, out.UpdatedAt, out.ID,
+			UPDATE documents SET folder_id=$1, title=$2, content=$3, content_hash=$4, position=$5, updated_by=$6, updated_at=$7
+			WHERE id=$8 AND deleted_at IS NULL`,
+			out.FolderID, out.Title, out.Content, out.ContentHash, out.Position, out.UpdatedBy, out.UpdatedAt, out.ID,
 		); err != nil {
 			return err
 		}
@@ -580,7 +591,7 @@ func (r *DocumentRepository) DeleteDocument(ctx context.Context, id uuid.UUID) e
 // =============================================================================
 
 const snapshotJoinSQL = `
-	SELECT ds.id, ds.document_id, ds.title, ds.content, ds.snapshot_number, ds.created_by, ds.created_at,
+	SELECT ds.id, ds.document_id, ds.title, ds.content, ds.content_hash, ds.snapshot_number, ds.created_by, ds.created_at,
 	       acc.name AS created_by_name
 	FROM doc_snapshots ds
 	LEFT JOIN project_members pm ON pm.id = ds.created_by
@@ -588,7 +599,7 @@ const snapshotJoinSQL = `
 
 // snapshotListJoinSQL is snapshotJoinSQL without the body column, for lists.
 const snapshotListJoinSQL = `
-	SELECT ds.id, ds.document_id, ds.title, ds.snapshot_number, ds.created_by, ds.created_at,
+	SELECT ds.id, ds.document_id, ds.title, ds.content_hash, ds.snapshot_number, ds.created_by, ds.created_at,
 	       acc.name AS created_by_name
 	FROM doc_snapshots ds
 	LEFT JOIN project_members pm ON pm.id = ds.created_by
@@ -596,12 +607,16 @@ const snapshotListJoinSQL = `
 
 // ListSnapshots returns one page of a document's snapshots, newest first and
 // without their bodies, keyset-paginated on snapshot_number.
-func (r *DocumentRepository) ListSnapshots(ctx context.Context, documentID uuid.UUID, cursorAfter *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
+func (r *DocumentRepository) ListSnapshots(ctx context.Context, documentID uuid.UUID, contentHash *string, cursorAfter *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
 	if limit <= 0 {
 		limit = 30
 	}
 	where := `ds.document_id = $1`
 	args := []any{documentID.String()}
+	if contentHash != nil {
+		args = append(args, *contentHash)
+		where += fmt.Sprintf(` AND ds.content_hash = $%d`, len(args))
+	}
 	if cursorAfter != nil {
 		n, err := docdom.DecodeSnapshotCursor(*cursorAfter)
 		if err != nil {
@@ -659,9 +674,9 @@ func (r *DocumentRepository) CreateSnapshot(ctx context.Context, s *docdom.DocSn
 		createdBy = &str
 	}
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO doc_snapshots (id, document_id, title, content, snapshot_number, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		s.ID.String(), s.DocumentID.String(), s.Title, s.Content, s.SnapshotNumber, createdBy, s.CreatedAt,
+		INSERT INTO doc_snapshots (id, document_id, title, content, content_hash, snapshot_number, created_by, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		s.ID.String(), s.DocumentID.String(), s.Title, s.Content, s.ContentHash, s.SnapshotNumber, createdBy, s.CreatedAt,
 	)
 	return err
 }

@@ -24,6 +24,7 @@ type mockNotificationSvc struct {
 	unreadCount       func(ctx context.Context, userID uuid.UUID) (int64, error)
 	markAsRead        func(ctx context.Context, id, userID uuid.UUID) error
 	markAllAsRead     func(ctx context.Context, userID uuid.UUID) error
+	docMentions       int
 }
 
 func (m *mockNotificationSvc) NotifyAssigned(_ context.Context, _ notificationdom.NotifyAssignedInput) error {
@@ -43,6 +44,7 @@ func (m *mockNotificationSvc) NotifyMentioned(_ context.Context, _ notificationd
 }
 
 func (m *mockNotificationSvc) NotifyDocMentioned(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) {
+	m.docMentions++
 }
 
 func (m *mockNotificationSvc) NotifyTaskDescriptionMentioned(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) {

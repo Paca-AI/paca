@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Paca-AI/api/internal/apierr"
 	accountdom "github.com/Paca-AI/api/internal/domain/account"
@@ -120,6 +121,17 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 	if apiErr != nil {
 		details = apiErr.Details
 		issues = apiErr.Issues
+	}
+	// A doc If-Match conflict names the version that is stored now.
+	var docConflict *docdom.VersionConflictError
+	if details == nil && errors.As(err, &docConflict) {
+		details = map[string]string{
+			"content_hash": docConflict.CurrentHash,
+			"updated_at":   docConflict.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		}
+		if docConflict.UpdatedBy != nil {
+			details["updated_by"] = docConflict.UpdatedBy.String()
+		}
 	}
 	var fieldErr *agentdom.FieldNotSupportedError
 	if details == nil && errors.As(err, &fieldErr) {
@@ -270,7 +282,7 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeProjectMemberNotFound
 	case errors.Is(err, projectdom.ErrMemberAlreadyAdded):
 		return http.StatusConflict, apierr.CodeProjectMemberAlreadyAdded
-	case errors.Is(err, taskdom.ErrVersionConflict), errors.Is(err, sprintdom.ErrVersionConflict):
+	case errors.Is(err, taskdom.ErrVersionConflict), errors.Is(err, sprintdom.ErrVersionConflict), errors.Is(err, docdom.ErrVersionConflict):
 		return http.StatusPreconditionFailed, apierr.CodeVersionConflict
 	case errors.Is(err, taskdom.ErrTaskNotFound):
 		return http.StatusNotFound, apierr.CodeTaskNotFound

@@ -28,12 +28,15 @@ type Document struct {
 	FolderID  *uuid.UUID // nil = root (not in any folder)
 	Title     string
 	Content   json.RawMessage // BlockNote JSON array of block objects; nil = no content
-	Position  int
-	CreatedBy *uuid.UUID
-	UpdatedBy *uuid.UUID
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt *time.Time // non-nil = soft-deleted
+	// ContentHash is the stored ContentHash(Content); nil on rows written
+	// before the column existed (use Hash, which computes it then).
+	ContentHash *string
+	Position    int
+	CreatedBy   *uuid.UUID
+	UpdatedBy   *uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	DeletedAt   *time.Time // non-nil = soft-deleted
 }
 
 // DocSnapshot is a point-in-time copy of a document's content.
@@ -44,8 +47,19 @@ type DocSnapshot struct {
 	DocumentID     uuid.UUID
 	Title          string
 	Content        json.RawMessage // BlockNote JSON at the time of the snapshot
+	ContentHash    *string         // hash of Content; nil on snapshots taken before the column existed
 	SnapshotNumber int64           // monotonically increasing per document
 	CreatedBy      *uuid.UUID
 	CreatedByName  string // denormalised from project_members → users
 	CreatedAt      time.Time
+}
+
+// Hash returns the document's content hash: the stored one, or ContentHash of
+// the body when the row has none yet. The body must be loaded for the computed
+// case; list queries select the stored hash and leave Content empty.
+func (d *Document) Hash() string {
+	if d.ContentHash != nil {
+		return *d.ContentHash
+	}
+	return ContentHash(d.Content)
 }

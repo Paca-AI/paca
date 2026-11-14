@@ -30,7 +30,7 @@ func TestListSnapshots_PagesNewestFirstWithoutBodies(t *testing.T) {
 		if pages > 5 {
 			t.Fatal("pagination did not terminate")
 		}
-		page, more, err := repo.ListSnapshots(ctx, docID, cursor, 2)
+		page, more, err := repo.ListSnapshots(ctx, docID, nil, cursor, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,7 +50,7 @@ func TestListSnapshots_PagesNewestFirstWithoutBodies(t *testing.T) {
 		t.Fatalf("snapshot order = %v, want newest first", got)
 	}
 	bad := "nope"
-	if _, _, err := repo.ListSnapshots(ctx, docID, &bad, 2); !errors.Is(err, docdom.ErrInvalidCursor) {
+	if _, _, err := repo.ListSnapshots(ctx, docID, nil, &bad, 2); !errors.Is(err, docdom.ErrInvalidCursor) {
 		t.Fatalf("bad cursor err = %v", err)
 	}
 }

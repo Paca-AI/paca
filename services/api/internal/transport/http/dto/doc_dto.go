@@ -76,11 +76,15 @@ type DocumentResponse struct {
 	FolderID  *uuid.UUID      `json:"folder_id,omitempty"`
 	Title     string          `json:"title"`
 	Content   json.RawMessage `json:"content"`
-	Position  int             `json:"position"`
-	CreatedBy *uuid.UUID      `json:"created_by,omitempty"`
-	UpdatedBy *uuid.UUID      `json:"updated_by,omitempty"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	// ContentHash identifies the content version: the same blocks give the
+	// same hash whatever their block ids. It is the If-Match token for writes
+	// and the first part of the ETag.
+	ContentHash string     `json:"content_hash"`
+	Position    int        `json:"position"`
+	CreatedBy   *uuid.UUID `json:"created_by,omitempty"`
+	UpdatedBy   *uuid.UUID `json:"updated_by,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // DocumentListItemResponse is a lightweight representation used in list responses
@@ -100,16 +104,17 @@ type DocumentListItemResponse struct {
 // DocumentFromEntity maps a domain Document to a DocumentResponse DTO.
 func DocumentFromEntity(d *docdom.Document) DocumentResponse {
 	return DocumentResponse{
-		ID:        d.ID,
-		ProjectID: d.ProjectID,
-		FolderID:  d.FolderID,
-		Title:     d.Title,
-		Content:   d.Content,
-		Position:  d.Position,
-		CreatedBy: d.CreatedBy,
-		UpdatedBy: d.UpdatedBy,
-		CreatedAt: d.CreatedAt,
-		UpdatedAt: d.UpdatedAt,
+		ID:          d.ID,
+		ProjectID:   d.ProjectID,
+		FolderID:    d.FolderID,
+		Title:       d.Title,
+		Content:     d.Content,
+		ContentHash: d.Hash(),
+		Position:    d.Position,
+		CreatedBy:   d.CreatedBy,
+		UpdatedBy:   d.UpdatedBy,
+		CreatedAt:   d.CreatedAt,
+		UpdatedAt:   d.UpdatedAt,
 	}
 }
 
@@ -138,6 +143,7 @@ type DocSnapshotResponse struct {
 	DocumentID     uuid.UUID       `json:"document_id"`
 	Title          string          `json:"title"`
 	Content        json.RawMessage `json:"content,omitempty"`
+	ContentHash    *string         `json:"content_hash,omitempty"` // absent on snapshots taken before hashes were stored
 	SnapshotNumber int64           `json:"snapshot_number"`
 	CreatedBy      *uuid.UUID      `json:"created_by,omitempty"`
 	CreatedByName  string          `json:"created_by_name,omitempty"`
@@ -151,6 +157,7 @@ func DocSnapshotFromEntity(s *docdom.DocSnapshot) DocSnapshotResponse {
 		DocumentID:     s.DocumentID,
 		Title:          s.Title,
 		Content:        s.Content,
+		ContentHash:    s.ContentHash,
 		SnapshotNumber: s.SnapshotNumber,
 		CreatedBy:      s.CreatedBy,
 		CreatedByName:  s.CreatedByName,

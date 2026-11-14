@@ -3,6 +3,7 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -207,9 +208,14 @@ func (r *fakeDocRepoIT) UpdateDocumentAtomic(ctx context.Context, id uuid.UUID, 
 	if err != nil {
 		return nil, err
 	}
-	if err := decide(cur); err != nil {
+	cp := *cur
+	if err := decide(&cp); err != nil {
+		if errors.Is(err, docdom.ErrNoChange) {
+			return cur, nil // nothing written, as the real repository does
+		}
 		return nil, err
 	}
+	cur = &cp
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	st := *cur
@@ -229,11 +235,14 @@ func (r *fakeDocRepoIT) DeleteDocument(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *fakeDocRepoIT) ListSnapshots(_ context.Context, documentID uuid.UUID, cursorAfter *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
+func (r *fakeDocRepoIT) ListSnapshots(_ context.Context, documentID uuid.UUID, contentHash *string, cursorAfter *string, limit int) ([]*docdom.DocSnapshot, bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var out []*docdom.DocSnapshot
 	for _, s := range r.snapshots {
+		if contentHash != nil && (s.ContentHash == nil || *s.ContentHash != *contentHash) {
+			continue
+		}
 		if s.DocumentID == documentID {
 			cp := *s
 			out = append(out, &cp)

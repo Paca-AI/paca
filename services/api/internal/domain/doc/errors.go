@@ -1,12 +1,27 @@
 package docdom
 
-import "errors"
+import (
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Sentinel domain errors for the document aggregate.
 var (
 	// Document errors.
 	ErrDocNotFound     = errors.New("document: not found")
 	ErrDocTitleInvalid = errors.New("document: title is empty or invalid")
+
+	// ErrNoChange is returned by an UpdateDocumentAtomic decide function to say
+	// the write changes nothing: the repository skips the UPDATE, commits, and
+	// returns the current row with a nil error.
+	ErrNoChange = errors.New("doc: no change")
+
+	// ErrVersionConflict means the document's content changed since the
+	// version the caller named in If-Match. The error actually returned is a
+	// *VersionConflictError, which matches it with errors.Is.
+	ErrVersionConflict = errors.New("document: version conflict")
 
 	// ErrInvalidCursor is returned when a client-supplied tree-listing cursor
 	// cannot be decoded.
@@ -33,3 +48,17 @@ var (
 	// there is no member to attribute the comment to.
 	ErrCommentActorUnidentified = errors.New("doc activity: request has no identifiable project member")
 )
+
+// VersionConflictError is the ErrVersionConflict a write gets when its If-Match
+// hash is not the stored content's hash. It names the version that is stored,
+// so the caller can see what it lost to.
+type VersionConflictError struct {
+	CurrentHash string
+	UpdatedAt   time.Time
+	UpdatedBy   *uuid.UUID // project member; nil when unknown
+}
+
+func (e *VersionConflictError) Error() string { return ErrVersionConflict.Error() }
+
+// Is makes errors.Is(err, ErrVersionConflict) true.
+func (e *VersionConflictError) Is(target error) bool { return target == ErrVersionConflict }

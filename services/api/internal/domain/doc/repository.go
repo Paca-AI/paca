@@ -86,7 +86,9 @@ type DocumentRepository interface {
 	// calls decide to validate and mutate it, and writes it back in the same
 	// transaction, so a concurrent save or delete can neither be reverted nor
 	// have the document resurrected. Returns ErrDocNotFound when the document
-	// doesn't exist or is deleted. decide's error aborts the write.
+	// doesn't exist or is deleted. decide's error aborts the write, except
+	// ErrNoChange: the UPDATE is skipped, the transaction commits and the
+	// current row is returned with a nil error.
 	UpdateDocumentAtomic(ctx context.Context, id uuid.UUID, decide func(current *Document) error) (*Document, error)
 	// DeleteDocument soft-deletes a document (sets deleted_at).
 	DeleteDocument(ctx context.Context, id uuid.UUID) error
@@ -96,9 +98,10 @@ type DocumentRepository interface {
 type DocSnapshotRepository interface {
 	// ListSnapshots returns up to limit of a document's snapshots, newest
 	// first, after the snapshot cursorAfter names (nil = the newest), plus
-	// whether older ones remain. Snapshot bodies are not loaded — fetch one
-	// with FindSnapshotByID.
-	ListSnapshots(ctx context.Context, documentID uuid.UUID, cursorAfter *string, limit int) ([]*DocSnapshot, bool, error)
+	// whether older ones remain. contentHash, when non-nil, keeps only the
+	// snapshots holding that version (see DocSnapshot.ContentHash). Snapshot
+	// bodies are not loaded — fetch one with FindSnapshotByID.
+	ListSnapshots(ctx context.Context, documentID uuid.UUID, contentHash *string, cursorAfter *string, limit int) ([]*DocSnapshot, bool, error)
 	// FindSnapshotByID returns a single snapshot.
 	FindSnapshotByID(ctx context.Context, id uuid.UUID) (*DocSnapshot, error)
 	// FindLatestSnapshot returns the snapshot with the highest snapshot_number
