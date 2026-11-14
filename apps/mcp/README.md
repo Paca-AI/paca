@@ -427,8 +427,13 @@ to a document, its file is removed on the next pull.
   a file gets `~<first 8 characters of the folder id>`.
 - `pull` refuses to run (exit 1) when the mirror folder contains a symlink, so
   it never writes, moves or deletes through one.
-- If a pull fails part way, files it moved are put back, and a file left
-  mid-move by an interrupted pull is put back by the next one.
+- If a pull fails part way, files it moved are put back where they were
+  (an unedited one may already hold the newer server copy) and files it
+  created are removed; a file left mid-move by an interrupted pull is put back
+  by the next one.
+- One pull at a time per mirror: a pull holds `<dir>/.paca-pull.lock`, and a
+  second one exits 1. A lock left by a process that is no longer running is
+  taken over.
 - The mirror is read-only for now. A mirror file you edited is kept: `pull`
   reports it, leaves it as it is and exits 2. `--force` overwrites it. When a
   document is deleted (or you lose access) while its file was edited, the file
