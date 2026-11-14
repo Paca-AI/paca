@@ -148,9 +148,25 @@ function canonProps(props: unknown): Record<string, unknown> {
 	return out;
 }
 
-/** Inline content with false styles dropped and equal-styled text joined. */
-function canonInline(content: unknown): unknown[] {
+/** Inline content with false styles dropped and equal-styled text joined.
+ *  `loose`: whitespace Markdown does not show is normalised too (runs of
+ *  spaces and tabs, spaces around a line break, and the text's two ends),
+ *  so a paragraph typed with a trailing or double space still compares
+ *  equal to what Markdown gives back. */
+function canonInline(content: unknown, loose = false): unknown[] {
 	if (!Array.isArray(content)) return [];
+	const out = canonRuns(content, loose);
+	if (!loose) return out;
+	const texts = out.filter((n) => n.type === "text");
+	if (texts.length > 0) {
+		texts[0].text = texts[0].text.replace(/^\s+/, "");
+		const last = texts[texts.length - 1];
+		last.text = last.text.replace(/\s+$/, "");
+	}
+	return out.filter((n) => !(n.type === "text" && n.text === ""));
+}
+
+function canonRuns(content: unknown[], loose: boolean): Block[] {
 	const out: Block[] = [];
 	for (const node of content as Block[]) {
 		if (node?.type === "text" && typeof node.text === "string") {
@@ -166,11 +182,15 @@ function canonInline(content: unknown): unknown[] {
 			} else {
 				out.push({ type: "text", text: node.text, styles });
 			}
+			if (loose) {
+				const last = out[out.length - 1];
+				last.text = last.text.replace(/[ \t]+/g, " ").replace(/ ?\n ?/g, "\n");
+			}
 		} else if (node?.type === "link") {
 			out.push({
 				type: "link",
 				href: node.href,
-				content: canonInline(node.content),
+				content: canonInline(node.content, loose),
 			});
 		} else {
 			out.push(node);
@@ -179,9 +199,9 @@ function canonInline(content: unknown): unknown[] {
 	return out;
 }
 
-function canonContent(content: unknown): unknown {
+function canonContent(content: unknown, loose = false): unknown {
 	if (content == null) return null;
-	if (Array.isArray(content)) return canonInline(content);
+	if (Array.isArray(content)) return canonInline(content, loose);
 	const c = content as Block;
 	if (c.type === "tableContent") {
 		return {
@@ -204,13 +224,47 @@ function canonContent(content: unknown): unknown {
 	return c;
 }
 
-function canonBlock(b: Block): unknown {
+/** `b` without ids and neutral values, for comparing. `loose`: also
+ *  without whitespace Markdown does not show (never in code blocks). */
+function canonBlock(b: Block, loose = false): unknown {
 	return {
 		type: b.type,
 		props: canonProps(b.props),
-		content: canonContent(b.content),
-		children: (Array.isArray(b.children) ? b.children : []).map(canonBlock),
+		content: canonContent(b.content, loose && b.type !== "codeBlock"),
+		children: (Array.isArray(b.children) ? b.children : []).map((c: Block) =>
+			canonBlock(c, loose),
+		),
 	};
+}
+
+/** What the Markdown round trip adds to a soft line break: the parser keeps
+ *  the indent of the continuation line, so "l1\nl2" comes back as
+ *  "l1\n l2". Removes it from parsed blocks (not from code). */
+function fixSoftBreaks(blocks: Block[]): Block[] {
+	const inline = (nodes: unknown): unknown =>
+		Array.isArray(nodes)
+			? nodes.map((n: Block) =>
+					n?.type === "text" && typeof n.text === "string"
+						? { ...n, text: n.text.replace(/\n +/g, "\n") }
+						: n?.type === "link"
+							? { ...n, content: inline(n.content) }
+							: n,
+				)
+			: nodes;
+	return blocks.map((b) => ({
+		...b,
+		...(b.type !== "codeBlock" && Array.isArray(b.content)
+			? { content: inline(b.content) }
+			: {}),
+		...(Array.isArray(b.children)
+			? { children: fixSoftBreaks(b.children) }
+			: {}),
+	}));
+}
+
+/** "a table block", "an image block". */
+function aBlock(type: string): string {
+	return `${/^[aeiou]/i.test(type) ? "an" : "a"} ${type} block`;
 }
 
 /** JSON with object keys sorted, for comparing values. */
@@ -224,23 +278,33 @@ function stable(v: unknown): string {
 	);
 }
 
-/** Why `b` cannot be rewritten from Markdown, or null when it can.
- *  `paired`: the edit replaces it by one block of its type, which inherits
- *  its id and the props Markdown cannot carry (colours, alignment). */
-function markdownLoss(b: Block, paired: boolean): string | null {
-	const parsed = markdownToBlocknote(render([b]));
+/** How a replaced block's props reach what replaces it:
+ *  "paired": one block of its type stands in for it, inheriting its id and
+ *  the props Markdown cannot carry (colours, alignment);
+ *  "carried": the blocks of a merge or split take its colours and alignment. */
+type Carry = "paired" | "carried";
+
+/** Why `b` cannot be rewritten from Markdown, or null when it can. */
+function markdownLoss(b: Block, carry: Carry): string | null {
+	const parsed = fixSoftBreaks(markdownToBlocknote(render([b])));
 	const back =
-		paired && parsed.length === 1 && parsed[0].type === b.type
+		carry === "paired" && parsed.length === 1 && parsed[0].type === b.type
 			? [inherit(b, parsed[0])]
 			: parsed;
 	if (back.length !== 1) {
 		return Array.isArray(b.children) && b.children.length > 0
 			? "its nested blocks would become separate top-level blocks"
-			: `a ${b.type} block has no exact Markdown form`;
+			: `Markdown has no exact form for ${aBlock(b.type)}`;
 	}
-	const a = canonBlock(b) as Block;
-	const z = canonBlock(back[0]) as Block;
-	if (a.type !== z.type) return `a ${b.type} block would become a ${z.type}`;
+	const a = canonBlock(b, true) as Block;
+	const z = canonBlock(back[0], true) as Block;
+	if (carry === "carried") {
+		for (const k of Object.keys(DEFAULT_PROPS)) {
+			delete a.props[k];
+			delete z.props[k];
+		}
+	}
+	if (a.type !== z.type) return `it would become ${aBlock(z.type)}`;
 	if (stable(a.children) !== stable(z.children)) {
 		return "its nested blocks would change (their type, colours or other properties)";
 	}
@@ -266,11 +330,11 @@ function markdownLoss(b: Block, paired: boolean): string | null {
 			}
 		};
 		if (b.type === "table")
-			return "this table (its header row or cell formatting) would change";
+			return "its header row or cell formatting would change";
 		walk(b.content);
 		return what.size > 0
 			? `its ${[...what].join(", ")} would be lost`
-			: "its text would not come back the same from Markdown";
+			: "its text would not come back the same";
 	}
 	return null;
 }
@@ -308,6 +372,51 @@ function inherit(old: Block, fresh: Block): Block {
 	return out;
 }
 
+/** What happened to an old block the edit replaced. */
+type Replaced =
+	| { i: number; how: "deleted" | Carry }
+	| { i: number; how: "unclear"; from: number; to: number };
+
+/** The colours and alignment of `b` that differ from the defaults. */
+function ownProps(b: Block): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const k of Object.keys(DEFAULT_PROPS)) {
+		const v = (b.props ?? {})[k];
+		if (v !== undefined && v !== DEFAULT_PROPS[k]) out[k] = v;
+	}
+	return out;
+}
+
+/**
+ * The colours and alignment that the `count` blocks replacing `dels` take:
+ * a merge into one block takes the first block's, a split of one block
+ * gives every part its own, and otherwise the old blocks must agree. Null
+ * when they do not.
+ */
+function carriedProps(
+	dels: Block[],
+	count: number,
+): Record<string, unknown> | null {
+	const first = ownProps(dels[0]);
+	if (count === 1 || dels.length === 1) return first;
+	return dels.every((d) => stable(ownProps(d)) === stable(first))
+		? first
+		: null;
+}
+
+/** `fresh` with `props` set where it has the default value. */
+function withProps(fresh: Block, props: Record<string, unknown>): Block {
+	const own = { ...(fresh.props ?? {}) };
+	let changed = false;
+	for (const [k, v] of Object.entries(props)) {
+		if (k in own && own[k] === DEFAULT_PROPS[k]) {
+			own[k] = v;
+			changed = true;
+		}
+	}
+	return changed ? { ...fresh, props: own } : fresh;
+}
+
 /**
  * Replaces `oldBlocks` with `fresh`, keeping every old block whose own
  * Markdown is unchanged (longest common subsequence of the per-block
@@ -318,7 +427,7 @@ function align(
 	oldBlocks: Block[],
 	oldKeys: string[],
 	fresh: Block[],
-): { blocks: Block[]; replaced: Array<{ i: number; paired: boolean }> } {
+): { blocks: Block[]; replaced: Replaced[] } {
 	const newKeys = fresh.map((b) => render([b]));
 	const n = oldBlocks.length;
 	const m = fresh.length;
@@ -369,18 +478,37 @@ function align(
 	};
 
 	const out: Block[] = [];
-	const replaced: Array<{ i: number; paired: boolean }> = [];
+	const replaced: Replaced[] = [];
 	let delIdx: number[] = [];
 	let dels: Block[] = [];
 	let ins: Block[] = [];
 	const flush = () => {
-		// A changed stretch with as many new blocks as old ones of the same
-		// types: each new block stands in for the old one at its place.
-		const paired =
+		if (ins.length === 0) {
+			// Deleted outright: nothing of them is rewritten.
+			for (const i of delIdx) replaced.push({ i, how: "deleted" });
+		} else if (
+			// As many new blocks as old ones, of the same types: each new
+			// block stands in for the old one at its place.
 			dels.length === ins.length &&
-			dels.every((d, k) => d.type === ins[k].type);
-		out.push(...(paired ? ins.map((b, k) => inherit(dels[k], b)) : ins));
-		for (const i of delIdx) replaced.push({ i, paired });
+			dels.every((d, k) => d.type === ins[k].type)
+		) {
+			out.push(...ins.map((b, k) => inherit(dels[k], b)));
+			for (const i of delIdx) replaced.push({ i, how: "paired" });
+		} else if (dels.length > 0) {
+			// A merge, split or change of type: the new blocks take the old
+			// colours and alignment where that is unambiguous.
+			const props = carriedProps(dels, ins.length);
+			out.push(...(props ? ins.map((b) => withProps(b, props)) : ins));
+			for (const i of delIdx) {
+				replaced.push(
+					props
+						? { i, how: "carried" }
+						: { i, how: "unclear", from: dels.length, to: ins.length },
+				);
+			}
+		} else {
+			out.push(...ins);
+		}
 		delIdx = [];
 		dels = [];
 		ins = [];
@@ -480,11 +608,16 @@ export function spliceEdit(
 		const aligned = align(
 			blocks.slice(from, to),
 			renders.slice(from, to),
-			markdownToBlocknote(text),
+			fixSoftBreaks(markdownToBlocknote(text)),
 		);
-		for (const { i: k, paired } of aligned.replaced) {
+		for (const r of aligned.replaced) {
+			if (r.how === "deleted") continue;
+			const k = r.i;
 			const b = blocks[from + k];
-			const loss = markdownLoss(b, paired);
+			const loss =
+				r.how === "unclear"
+					? `the edit turns ${r.from} blocks with different colours or alignment into ${r.to}, so which block keeps which is unclear`
+					: markdownLoss(b, r.how);
 			if (!loss) continue;
 			const unit =
 				units.find((u) => u.from <= from + k && from + k < u.to) ?? units[ua];
@@ -495,7 +628,7 @@ export function spliceEdit(
 				at >= 0 ? at : unit.start + (unit.start > 0 ? 1 : 0),
 			);
 			throw new SpliceError(
-				`The edit touches the ${b.type} block on line ${line}, which edit_doc cannot rewrite: ${loss} in Markdown. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
+				`The edit touches the ${b.type} block on line ${line}, which edit_doc cannot rewrite from Markdown: ${loss}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
 				"unsafe",
 				[line],
 			);

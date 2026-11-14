@@ -392,6 +392,140 @@ describe("spliceEdit refuses blocks Markdown cannot carry", () => {
 	});
 });
 
+describe("spliceEdit edits paragraphs with whitespace Markdown does not show", () => {
+	it.each([
+		["a trailing space", "has word "],
+		["a leading space", " has word"],
+		["a double space", "has  word here"],
+		["a tab", "has\tword"],
+		["a trailing line break", "has word\n"],
+		["a soft line break", "has word\nnext"],
+	])("%s", (_name, text) => {
+		const blocks = [para(text), para("after")];
+		const res = spliceEdit(blocks, "word", "WORD", false);
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+		expect(JSON.stringify(res.blocks[0].content)).toContain("WORD");
+		expect(res.blocks[1]).toBe(blocks[1]);
+	});
+
+	it("keeps a soft line break without adding a space after it", () => {
+		const blocks = [para("l1 word\nl2"), para("after")];
+		const res = spliceEdit(blocks, "word", "WORD", false);
+		expect(res.blocks[0].content).toEqual([t("l1 WORD\nl2")]);
+	});
+
+	it("keeps two line breaks in a row without spaces", () => {
+		const blocks = [para("x\n\ny word")];
+		const res = spliceEdit(blocks, "word", "WORD", false);
+		expect(res.blocks[0].content).toEqual([t("x\n\ny WORD")]);
+	});
+});
+
+describe("spliceEdit deletes, merges and splits blocks with props", () => {
+	it("deletes a red paragraph", () => {
+		const blocks = [para("a"), para("red", { textColor: "red" }), para("b")];
+		const res = spliceEdit(blocks, "red\n\n", "", false);
+		expect(res.blocks).toEqual([blocks[0], blocks[2]]);
+		expect(res.blocks[0]).toBe(blocks[0]);
+		expect(res.blocks[1]).toBe(blocks[2]);
+	});
+
+	it("deletes a paragraph with nested blocks", () => {
+		const blocks = [
+			para("a"),
+			para("parent", { textColor: "red" }, [para("child")]),
+			para("b"),
+		];
+		const md = blocknoteToMarkdown([blocks[1]]);
+		const res = spliceEdit(blocks, `${md.trimEnd()}\n\n`, "", false);
+		expect(res.blocks).toHaveLength(2);
+		expect(res.blocks[0]).toBe(blocks[0]);
+		expect(res.blocks[1]).toBe(blocks[2]);
+	});
+
+	it("a merge keeps the first block's props", () => {
+		const blocks = [
+			para("red", { textColor: "red" }),
+			para("plain"),
+			para("b"),
+		];
+		const res = spliceEdit(blocks, "red\n\nplain", "red plain", false);
+		expect(res.blocks).toHaveLength(2);
+		expect(res.blocks[0].content).toEqual([t("red plain")]);
+		expect(res.blocks[0].props.textColor).toBe("red");
+		expect(res.blocks[1]).toBe(blocks[2]);
+	});
+
+	it("a merge into a plain first block drops the second block's props", () => {
+		const blocks = [para("plain"), para("red", { textColor: "red" })];
+		const res = spliceEdit(blocks, "plain\n\nred", "plain red", false);
+		expect(res.blocks).toHaveLength(1);
+		expect(res.blocks[0].props.textColor).toBe("default");
+	});
+
+	it("a split gives both halves the props", () => {
+		const blocks = [para("one two", { textAlignment: "center" }), para("b")];
+		const res = spliceEdit(blocks, "one two", "one\n\ntwo", false);
+		expect(res.blocks).toHaveLength(3);
+		expect(res.blocks[0].props.textAlignment).toBe("center");
+		expect(res.blocks[1].props.textAlignment).toBe("center");
+		expect(res.blocks[2]).toBe(blocks[1]);
+	});
+
+	it("a paragraph turned into a heading keeps its colour", () => {
+		const blocks = [para("Title", { textColor: "blue" }), para("b")];
+		const res = spliceEdit(blocks, "Title", "# Title", false);
+		expect(res.blocks[0].type).toBe("heading");
+		expect(res.blocks[0].props.textColor).toBe("blue");
+	});
+
+	it("refuses to spread blocks with different props over a different number of blocks", () => {
+		const blocks = [
+			para("aa", { textColor: "red" }),
+			para("bb", { textColor: "blue" }),
+			para("z"),
+		];
+		expect(() => spliceEdit(blocks, "aa\n\nbb", "x\n\ny\n\nw", false)).toThrow(
+			"The edit touches the paragraph block on line 1, which edit_doc cannot rewrite from Markdown: the edit turns 2 blocks with different colours or alignment into 3, so which block keeps which is unclear. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.",
+		);
+	});
+});
+
+describe("spliceEdit refusal messages", () => {
+	it("names what is lost in one sentence", () => {
+		const blocks = [para([t("under", { underline: true }), t(" text")])];
+		expect(() => spliceEdit(blocks, "text", "TEXT", false)).toThrow(
+			"The edit touches the paragraph block on line 1, which edit_doc cannot rewrite from Markdown: its underline would be lost. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.",
+		);
+	});
+
+	it('uses "an" before a vowel and says Markdown once', () => {
+		const img = {
+			id: "img",
+			type: "image",
+			props: {
+				url: "https://example.com/a.png",
+				name: "a.png",
+				caption: "cap",
+				previewWidth: 300,
+				textAlignment: "left",
+				backgroundColor: "default",
+				showPreview: true,
+			},
+			children: [],
+		};
+		let message = "";
+		try {
+			spliceEdit([img, para("x")], "a.png", "b.png", true);
+		} catch (err) {
+			message = (err as Error).message;
+		}
+		expect(message).toBe(
+			"The edit touches the image block on line 1, which edit_doc cannot rewrite from Markdown: Markdown has no exact form for an image block. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.",
+		);
+	});
+});
+
 // Seeded fuzz (from review): random documents, one marker edited; every
 // block outside the edited list run is the same object, and an edit is
 // either applied as asked or refused as unsafe.
@@ -431,6 +565,11 @@ describe("spliceEdit fuzz", () => {
 					content: [t(`quote ${marker}`)],
 					children: [],
 				}),
+				() => para(`ws ${marker} `),
+				() => para(`two  spaces ${marker}`),
+				() => para(` lead\t${marker}`),
+				() => para(`soft ${marker}\nbreak`),
+				() => para(`red ${marker}`, { textColor: "red" }),
 				() => para(`par ${marker}`, {}, [para(`kid ${marker}`)]),
 				() =>
 					item("bulletListItem", `bp ${marker}`, {}, [
@@ -455,8 +594,11 @@ describe("spliceEdit fuzz", () => {
 			try {
 				res = spliceEdit(blocks, marker, `${marker}Z`, false);
 			} catch (err) {
-				// A marker can also sit in a nested block of the same block.
+				// Only a paragraph with nested blocks is refused (Markdown
+				// flattens them), and its marker can also sit in the nested
+				// block (ambiguous). Every other block here is ordinary.
 				expect(["unsafe", "ambiguous"]).toContain((err as SpliceError).kind);
+				expect(blocks[target].children.length).toBeGreaterThan(0);
 				continue;
 			}
 			applied++;
@@ -469,11 +611,17 @@ describe("spliceEdit fuzz", () => {
 				while (lo > 0 && isList(blocks[lo - 1])) lo--;
 				while (hi < len - 1 && isList(blocks[hi + 1])) hi++;
 			}
+			// A soft line break comes back without a space after it.
+			for (const b of res.blocks) {
+				if (b.type !== "codeBlock") {
+					expect(JSON.stringify(b.content)).not.toContain("\\n ");
+				}
+			}
 			const kept = new Set(res.blocks);
 			for (let i = 0; i < len; i++) {
 				if (i < lo || i > hi) expect(kept.has(blocks[i])).toBe(true);
 			}
 		}
-		expect(applied).toBeGreaterThan(150);
+		expect(applied).toBeGreaterThan(200);
 	});
 });
