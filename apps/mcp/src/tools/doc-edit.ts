@@ -381,7 +381,7 @@ type Replaced =
 function ownProps(b: Block): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const k of Object.keys(DEFAULT_PROPS)) {
-		const v = (b.props ?? {})[k];
+		const v = b.props?.[k];
 		if (v !== undefined && v !== DEFAULT_PROPS[k]) out[k] = v;
 	}
 	return out;
