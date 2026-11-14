@@ -443,24 +443,90 @@ describe("spliceEdit deletes, merges and splits blocks with props", () => {
 		expect(res.blocks[1]).toBe(blocks[2]);
 	});
 
-	it("a merge keeps the first block's props", () => {
-		const blocks = [
-			para("red", { textColor: "red" }),
-			para("plain"),
-			para("b"),
-		];
-		const res = spliceEdit(blocks, "red\n\nplain", "red plain", false);
-		expect(res.blocks).toHaveLength(2);
-		expect(res.blocks[0].content).toEqual([t("red plain")]);
-		expect(res.blocks[0].props.textColor).toBe("red");
-		expect(res.blocks[1]).toBe(blocks[2]);
+	const differ = (lines: string) =>
+		`The edit merges, splits or retypes the blocks on ${lines}, which edit_doc cannot rewrite from Markdown: they have different colours or alignment, so the new blocks cannot keep them. Nothing was changed. Edit those blocks in the web editor, or rewrite the document with write_doc if losing that is acceptable.`;
+	function expectRefused(fn: () => unknown, message: string, lines: number[]) {
+		try {
+			fn();
+			expect.unreachable("the edit should be refused");
+		} catch (err) {
+			expect((err as Error).message).toBe(message);
+			expect((err as SpliceError).kind).toBe("unsafe");
+			expect((err as SpliceError).lines).toEqual(lines);
+		}
+	}
+
+	it("refuses to put a red block's colour on another block's text", () => {
+		const blocks = [para("A", { textColor: "red" }), para("B"), para("z")];
+		expectRefused(
+			() => spliceEdit(blocks, "A\n\nB", "B2", false),
+			differ("lines 1 and 3"),
+			[1, 3],
+		);
 	});
 
-	it("a merge into a plain first block drops the second block's props", () => {
-		const blocks = [para("plain"), para("red", { textColor: "red" })];
-		const res = spliceEdit(blocks, "plain\n\nred", "plain red", false);
-		expect(res.blocks).toHaveLength(1);
-		expect(res.blocks[0].props.textColor).toBe("default");
+	it("refuses to merge a red and a blue block", () => {
+		const blocks = [
+			para("A", { textColor: "red" }),
+			para("B", { textColor: "blue" }),
+		];
+		expectRefused(
+			() => spliceEdit(blocks, "A\n\nB", "A B", false),
+			differ("lines 1 and 3"),
+			[1, 3],
+		);
+	});
+
+	it("refuses to merge a plain block with a red one", () => {
+		const blocks = [para("A"), para("B", { textColor: "red" })];
+		expectRefused(
+			() => spliceEdit(blocks, "A\n\nB", "A B", false),
+			differ("lines 1 and 3"),
+			[1, 3],
+		);
+	});
+
+	it("refuses to turn a red paragraph into list items", () => {
+		const blocks = [para("x", { textColor: "red" }), para("z")];
+		expectRefused(
+			() => spliceEdit(blocks, "x", "* one\n* two", false),
+			"The edit touches the paragraph block on line 1, which edit_doc cannot rewrite from Markdown: it would become bulletListItem blocks, which cannot keep its colour or alignment. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.",
+			[1],
+		);
+	});
+
+	it("refuses to turn a blue paragraph into a heading", () => {
+		const blocks = [para("Title", { textColor: "blue" }), para("b")];
+		expect(() => spliceEdit(blocks, "Title", "# Title", false)).toThrow(
+			/it would become heading blocks, which cannot keep its colour or alignment/,
+		);
+	});
+
+	it("turns a plain paragraph into a heading or list items", () => {
+		const blocks = [para("Title"), para("x"), para("b")];
+		const res = spliceEdit(blocks, "Title", "# Title", false);
+		expect(res.blocks[0].type).toBe("heading");
+		const res2 = spliceEdit(blocks, "x", "* one\n* two", false);
+		expect(res2.blocks.map((b) => b.type)).toEqual([
+			"paragraph",
+			"bulletListItem",
+			"bulletListItem",
+			"paragraph",
+		]);
+	});
+
+	it("merges blocks that share their props, keeping them", () => {
+		const blocks = [
+			para("A", { textColor: "red" }),
+			para("B", { textColor: "red" }),
+			para("C"),
+			para("D"),
+		];
+		const res = spliceEdit(blocks, "A\n\nB", "A B", false);
+		expect(res.blocks[0].content).toEqual([t("A B")]);
+		expect(res.blocks[0].props.textColor).toBe("red");
+		const res2 = spliceEdit(blocks, "C\n\nD", "C D", false);
+		expect(res2.blocks[2].props.textColor).toBe("default");
 	});
 
 	it("a split gives both halves the props", () => {
@@ -472,11 +538,12 @@ describe("spliceEdit deletes, merges and splits blocks with props", () => {
 		expect(res.blocks[2]).toBe(blocks[1]);
 	});
 
-	it("a paragraph turned into a heading keeps its colour", () => {
-		const blocks = [para("Title", { textColor: "blue" }), para("b")];
-		const res = spliceEdit(blocks, "Title", "# Title", false);
-		expect(res.blocks[0].type).toBe("heading");
-		expect(res.blocks[0].props.textColor).toBe("blue");
+	it("a new paragraph added after a red one stays default", () => {
+		const blocks = [para("red", { textColor: "red" }), para("z")];
+		const res = spliceEdit(blocks, "red", "red\n\nnew", false);
+		expect(res.blocks[0]).toBe(blocks[0]);
+		expect(res.blocks[1].content).toEqual([t("new")]);
+		expect(res.blocks[1].props.textColor).toBe("default");
 	});
 
 	it("refuses to spread blocks with different props over a different number of blocks", () => {
@@ -485,9 +552,45 @@ describe("spliceEdit deletes, merges and splits blocks with props", () => {
 			para("bb", { textColor: "blue" }),
 			para("z"),
 		];
-		expect(() => spliceEdit(blocks, "aa\n\nbb", "x\n\ny\n\nw", false)).toThrow(
-			"The edit touches the paragraph block on line 1, which edit_doc cannot rewrite from Markdown: the edit turns 2 blocks with different colours or alignment into 3, so which block keeps which is unclear. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.",
+		expectRefused(
+			() => spliceEdit(blocks, "aa\n\nbb", "x\n\ny\n\nw", false),
+			differ("lines 1 and 3"),
+			[1, 3],
 		);
+	});
+});
+
+describe("spliceEdit whitespace in code and tables", () => {
+	it("keeps inline code strict: double spaces in code are refused", () => {
+		const blocks = [para([t("x  y", { code: true }), t(" end")])];
+		expect(() => spliceEdit(blocks, "end", "END", false)).toThrow(SpliceError);
+	});
+
+	it("compares table cell text loosely", () => {
+		const blocks = stored("| h1 | h2 |\n|---|---|\n| a | b |\n");
+		const walk = (v: any): void => {
+			if (Array.isArray(v)) v.forEach(walk);
+			else if (v && typeof v === "object") {
+				if (v.type === "text" && v.text === "a") v.text = "a  x ";
+				else Object.values(v).forEach(walk);
+			}
+		};
+		walk(blocks);
+		const res = spliceEdit(blocks, "| b", "| B", false);
+		expect(JSON.stringify(res.blocks[0])).toContain('"B"');
+	});
+
+	it("keeps inline code in a table cell strict", () => {
+		const blocks = stored("| h1 | h2 |\n|---|---|\n| `a` | b |\n");
+		const walk = (v: any): void => {
+			if (Array.isArray(v)) v.forEach(walk);
+			else if (v && typeof v === "object") {
+				if (v.type === "text" && v.text === "a") v.text = "a  x";
+				else Object.values(v).forEach(walk);
+			}
+		};
+		walk(blocks);
+		expect(() => spliceEdit(blocks, "| b", "| B", false)).toThrow(SpliceError);
 	});
 });
 

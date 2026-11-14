@@ -159,9 +159,10 @@ function canonInline(content: unknown, loose = false): unknown[] {
 	if (!loose) return out;
 	const texts = out.filter((n) => n.type === "text");
 	if (texts.length > 0) {
-		texts[0].text = texts[0].text.replace(/^\s+/, "");
+		const first = texts[0];
+		if (!first.styles.code) first.text = first.text.replace(/^\s+/, "");
 		const last = texts[texts.length - 1];
-		last.text = last.text.replace(/\s+$/, "");
+		if (!last.styles.code) last.text = last.text.replace(/\s+$/, "");
 	}
 	return out.filter((n) => !(n.type === "text" && n.text === ""));
 }
@@ -182,7 +183,8 @@ function canonRuns(content: unknown[], loose: boolean): Block[] {
 			} else {
 				out.push({ type: "text", text: node.text, styles });
 			}
-			if (loose) {
+			// Inline code keeps its spaces in Markdown: compared strictly.
+			if (loose && !out[out.length - 1].styles.code) {
 				const last = out[out.length - 1];
 				last.text = last.text.replace(/[ \t]+/g, " ").replace(/ ?\n ?/g, "\n");
 			}
@@ -212,10 +214,10 @@ function canonContent(content: unknown, loose = false): unknown {
 			rows: (c.rows ?? []).map((r: Block) => ({
 				cells: (r.cells ?? []).map((cell: unknown) =>
 					Array.isArray(cell)
-						? { props: {}, content: canonInline(cell) }
+						? { props: {}, content: canonInline(cell, loose) }
 						: {
 								props: canonProps((cell as Block).props),
-								content: canonInline((cell as Block).content),
+								content: canonInline((cell as Block).content, loose),
 							},
 				),
 			})),
@@ -375,7 +377,11 @@ function inherit(old: Block, fresh: Block): Block {
 /** What happened to an old block the edit replaced. */
 type Replaced =
 	| { i: number; how: "deleted" | Carry }
-	| { i: number; how: "unclear"; from: number; to: number };
+	/** Old blocks of a merge or split whose colours or alignment differ;
+	 *  `group`: all of that stretch's old blocks. */
+	| { i: number; how: "differ"; group: number[] }
+	/** A block with colours or alignment that becomes blocks of `to` types. */
+	| { i: number; how: "retype"; to: string[] };
 
 /** The colours and alignment of `b` that differ from the defaults. */
 function ownProps(b: Block): Record<string, unknown> {
@@ -385,23 +391,6 @@ function ownProps(b: Block): Record<string, unknown> {
 		if (v !== undefined && v !== DEFAULT_PROPS[k]) out[k] = v;
 	}
 	return out;
-}
-
-/**
- * The colours and alignment that the `count` blocks replacing `dels` take:
- * a merge into one block takes the first block's, a split of one block
- * gives every part its own, and otherwise the old blocks must agree. Null
- * when they do not.
- */
-function carriedProps(
-	dels: Block[],
-	count: number,
-): Record<string, unknown> | null {
-	const first = ownProps(dels[0]);
-	if (count === 1 || dels.length === 1) return first;
-	return dels.every((d) => stable(ownProps(d)) === stable(first))
-		? first
-		: null;
 }
 
 /** `fresh` with `props` set where it has the default value. */
@@ -496,16 +485,23 @@ function align(
 			for (const i of delIdx) replaced.push({ i, how: "paired" });
 		} else if (dels.length > 0) {
 			// A merge, split or change of type: the new blocks take the old
-			// colours and alignment where that is unambiguous.
-			const props = carriedProps(dels, ins.length);
-			out.push(...(props ? ins.map((b) => withProps(b, props)) : ins));
+			// colours and alignment only when every old block has the same
+			// ones and the new blocks keep their type (all default always
+			// qualifies: nothing to carry).
+			const props = ownProps(dels[0]);
+			const agree = dels.every((d) => stable(ownProps(d)) === stable(props));
+			const sameType = ins.every((b) => dels.every((d) => d.type === b.type));
+			const group = [...delIdx];
 			for (const i of delIdx) {
 				replaced.push(
-					props
-						? { i, how: "carried" }
-						: { i, how: "unclear", from: dels.length, to: ins.length },
+					!agree
+						? { i, how: "differ", group }
+						: Object.keys(props).length > 0 && !sameType
+							? { i, how: "retype", to: [...new Set(ins.map((b) => b.type))] }
+							: { i, how: "carried" },
 				);
 			}
+			out.push(...ins.map((b) => withProps(b, props)));
 		} else {
 			out.push(...ins);
 		}
@@ -610,23 +606,35 @@ export function spliceEdit(
 			renders.slice(from, to),
 			fixSoftBreaks(markdownToBlocknote(text)),
 		);
+		// The line where block `idx` starts in the full Markdown.
+		const lineOf = (idx: number) => {
+			const unit = units.find((u) => u.from <= idx && idx < u.to) ?? units[ua];
+			const first = renders[idx].split("\n")[0];
+			const at = first ? full.indexOf(first, unit.start) : -1;
+			return lineAt(full, at >= 0 ? at : unit.start + (unit.start > 0 ? 1 : 0));
+		};
 		for (const r of aligned.replaced) {
 			if (r.how === "deleted") continue;
 			const k = r.i;
 			const b = blocks[from + k];
+			if (r.how === "differ") {
+				const lines = r.group.map((g) => lineOf(from + g));
+				const named =
+					lines.length === 1
+						? `line ${lines[0]}`
+						: `lines ${lines.slice(0, -1).join(", ")} and ${lines[lines.length - 1]}`;
+				throw new SpliceError(
+					`The edit merges, splits or retypes the blocks on ${named}, which edit_doc cannot rewrite from Markdown: they have different colours or alignment, so the new blocks cannot keep them. Nothing was changed. Edit those blocks in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
+					"unsafe",
+					lines,
+				);
+			}
 			const loss =
-				r.how === "unclear"
-					? `the edit turns ${r.from} blocks with different colours or alignment into ${r.to}, so which block keeps which is unclear`
+				r.how === "retype"
+					? `it would become ${r.to.join(", ")} blocks, which cannot keep its colour or alignment`
 					: markdownLoss(b, r.how);
 			if (!loss) continue;
-			const unit =
-				units.find((u) => u.from <= from + k && from + k < u.to) ?? units[ua];
-			const first = renders[from + k].split("\n")[0];
-			const at = first ? full.indexOf(first, unit.start) : -1;
-			const line = lineAt(
-				full,
-				at >= 0 ? at : unit.start + (unit.start > 0 ? 1 : 0),
-			);
+			const line = lineOf(from + k);
 			throw new SpliceError(
 				`The edit touches the ${b.type} block on line ${line}, which edit_doc cannot rewrite from Markdown: ${loss}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
 				"unsafe",
