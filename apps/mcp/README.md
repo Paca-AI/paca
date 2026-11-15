@@ -449,7 +449,9 @@ to a document, its file is removed on the next pull.
   change in Paca, `pull` reports it (`modified locally <file>`) and leaves it
   for `push`. If the document changed too, `pull` merges the two (see
   "Editing documents as files"). `--force` replaces an edited file with the
-  Paca version. When a document is deleted (or you lose access) while its file
+  Paca version only where `pull` would otherwise keep, merge or mark it (its
+  document changed in Paca, or the file still has the conflict markers of an
+  earlier merge); a file whose document did not change is left alone. When a document is deleted (or you lose access) while its file
   was edited, the file is kept and every pull reports it and exits 2 until you
   delete the file or run `pull --force`, which removes it. If the document
   comes back (restored in Paca), the kept file is its file again: it moves
@@ -493,10 +495,18 @@ npx @paca-ai/paca-mcp push .paca/docs/Plans/Roadmap.md --note "move the launch t
   <repository>; edit that file and push it`); a document that was deleted or
   that `pull` has not finished recording; an empty file (a document is deleted
   in Paca, not by emptying its file); a file with conflict markers
-  (`<<<<<<<`, `|||||||` or `>>>>>>>` lines outside fenced code that its
-  pulled version does not have); `--path`, `--lock` and `--force`. An
-  unchanged file prints `unchanged`.
-- `--dry-run` prints how many blocks would change and sends nothing.
+  that its pulled version does not have: `<<<<<<<`, `|||||||` or `>>>>>>>`
+  lines outside fenced code, and the lines `pull`'s merge writes
+  (`<<<<<<< local`, `||||||| base`, `>>>>>>> Paca …`) anywhere, fenced code
+  included); a file an interrupted pull left in the middle of a merge (run
+  `pull` first); `--path`, `--lock` and `--force`. An unchanged file prints
+  `unchanged`.
+- Whether the document changed in Paca is asked of Paca on every push, never
+  taken from what an earlier pull saw.
+- `--dry-run` prints how many blocks would change and sends nothing. The
+  count is the same the push prints: blocks edited or replaced, plus blocks
+  added or removed, plus blocks moved (one each), so one edited paragraph is
+  `1 block changed`.
 - A push holds the mirror's lock (`.paca-pull.lock`), so a push and a pull of
   the same mirror never run at once.
 
@@ -504,11 +514,15 @@ npx @paca-ai/paca-mcp push .paca/docs/Plans/Roadmap.md --note "move the launch t
 line, and these differences are not edits:
 
 - a byte order mark, CRLF line ends, and the newlines at the end of the file;
-- whitespace at the end of a line;
+- outside fenced code, spaces and tabs at the end of a line (other white
+  space, such as a non-breaking space, is text);
 - a run of blank lines outside fenced code (read as one blank line);
 - outside fenced code, a `-` or `+` bullet (read as `*`);
-- outside fenced code, the padding of table cells, and the delimiter row
-  (`| --- | :-: |`) apart from its alignment.
+- outside fenced code, the padding of table cells, and a table's delimiter
+  row (its second row, `| --- | :-: |`) apart from its alignment.
+
+Inside fenced code only line ends are read loosely: trailing spaces there are
+part of the code.
 
 Anything else must be written as Paca writes it, or the push is refused with
 the line and what Paca would save there (for example `__bold__` where Paca
@@ -521,19 +535,42 @@ Paca, `pull` runs `git merge-file --diff3` with the version you pulled as the
 base (`.paca-base/<id>.md`, or the snapshot of that version when the base copy
 is gone):
 
+- A file that already says what Paca holds, but for the rules above (a push
+  that stopped after its write, say), takes Paca's version; nothing is
+  reported for it.
 - A clean merge writes the merged file (`merged <file>`), and `push` then
   sends your part.
 - A conflict writes the file with markers (`<<<<<<< local`, `||||||| base`,
   `=======`, `>>>>>>> Paca (<writer>, <time>)`), lists the file as conflicted
   and exits 2. Every line you wrote is in the file. Resolve the marked lines,
-  then push; push refuses the file while the markers are there.
-- The file is kept as it is (exit 2, `kept <file>: edited locally`) when
-  `git` is not installed or fails, when neither the base copy nor a snapshot
-  of the pulled version is left (Paca's version is then written next to it as
-  `<file>.remote.md`), when an interrupted pull had written into the file, and
-  for managed copies. `pull --force` replaces it with the Paca version.
+  then push; push refuses the file while the markers are there, and every
+  pull reports it as conflicted (exit 2) and never merges it again until they
+  are gone. `pull --force` replaces it with Paca's version, discarding your
+  edits in it.
+- The file is kept as it is (exit 2, `kept <file>: edited locally …`), with
+  what to do next:
+  - `git` is not installed or fails: pull again once it works;
+  - neither the base copy nor a snapshot of the pulled version is left (the
+    server keeps one snapshot per 3 minutes of edits): Paca's version is
+    written next to the file as `<file>.remote.md` (removed again, unless you
+    edited it, once the file no longer needs it). Compare the two and save
+    your edits elsewhere; `pull --force` then replaces the file with Paca's
+    version, discarding your edits in it;
+  - an interrupted pull had written into the file before you edited it: save
+    your edits elsewhere, then `pull --force`;
+  - a managed copy: edit it in its repository; `pull --force` replaces it.
+- If the document goes back to the version you pulled, the file is simply
+  edited locally again and `push` sends it.
 - A document that was moved or renamed while you edited its file moves first,
   then merges under its new name.
+- A merge is journalled: Paca's version is written as
+  `.paca-base/<id>.next.md` and recorded in the state before the merged file
+  is written, then becomes the base copy. A pull that stops anywhere is
+  finished or redone by the next one, so a file is never merged twice and
+  markers never nest. One case it cannot tell apart: a conflicting merge that
+  stopped after writing the file, whose markers you then all resolved before
+  the next pull; that pull merges your resolution again and may mark the same
+  lines.
 
 **Limits.** Formatting Markdown cannot show must never move to another block,
 so these edits are refused, or can be, even when the text would be right
@@ -542,8 +579,10 @@ so these edits are refused, or can be, even when the text would be right
 - Moving blocks, when the document holds any block with formatting Markdown
   cannot show: a reorder anywhere in it is refused, not only next to the
   formatted block. That includes moving a section that holds formatted
-  blocks. In a document without such blocks, a move is sent and the moved
-  blocks keep their ids.
+  blocks. In a document without such blocks, a move is sent.
+- Ids: a plain block keeps its id where it stays in place (edited or not). A
+  moved plain block may get a new id: a move is often read as removing the
+  block and adding it again elsewhere.
 - Changes in several places that each pass alone but together could move
   formatting: deleting a formatted paragraph and adding one elsewhere,
   rewording a formatted paragraph and another one, or editing a formatted
