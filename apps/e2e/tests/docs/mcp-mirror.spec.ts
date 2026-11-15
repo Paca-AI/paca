@@ -170,6 +170,19 @@ test.describe("MCP mirror", () => {
 			// Leave the editor, so no later autosave changes the document
 			// after the reference below is read.
 			await page.goto(`${BASE_URL}/projects/${projectId}`);
+			// A save on leaving may still land: wait until two reads agree.
+			let seen = "";
+			await expect
+				.poll(
+					async () => {
+						const now = JSON.stringify(await readBlocks());
+						const same = now === seen;
+						seen = now;
+						return same;
+					},
+					{ timeout: 10_000, intervals: [500] },
+				)
+				.toBe(true);
 			// What the browser's save stored: the reference for the blocks the
 			// mirror edit must leave alone.
 			const browserBlocks = await readBlocks();
