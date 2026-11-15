@@ -266,3 +266,17 @@ describe("regexScan", () => {
 		expect([...res.timedOut, ...res.unsearched]).toEqual([0, 1, 2]);
 	}, 10_000);
 });
+
+describe("literalMatcher with a pattern of only emphasis markers", () => {
+	it.each([
+		"**",
+		"*",
+		"_",
+		"__",
+		"***",
+	])("%s matches only lines that contain it", (pattern) => {
+		const m = literalMatcher(pattern);
+		expect(m("no asterisk here", 0)).toBe(false);
+		expect(m(`a ${pattern} b`, 0)).toBe(true);
+	});
+});

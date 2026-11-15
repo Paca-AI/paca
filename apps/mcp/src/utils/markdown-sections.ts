@@ -175,6 +175,12 @@ export function literalMatcher(
 	const fold = (s: string) => (ignoreCase ? s.toLowerCase() : s);
 	const plain = fold(pattern);
 	const stripped = fold(stripEmphasis(pattern));
+	// A pattern of only markers has no stripped form to try: "" would match
+	// every line. (A pattern without markers still needs the line stripped,
+	// so "foo bar" finds "foo **bar**".)
+	if (stripped === "") {
+		return (line) => fold(line).includes(plain);
+	}
 	return (line) => {
 		const l = fold(line);
 		return l.includes(plain) || stripEmphasis(l).includes(stripped);
