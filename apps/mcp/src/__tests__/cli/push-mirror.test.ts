@@ -269,14 +269,24 @@ describe("push of a mirror file", () => {
 		expect(snapshot()).toEqual(before);
 	});
 
-	it("a document pull saw newer is refused before any request", async () => {
+	it("whether the document changed in Paca is asked of Paca, never taken from what a pull saw", async () => {
+		// Flags an earlier pull left: Paca is back at the version pulled.
 		setState((s) => {
 			s.docs[ID].remote_hash = "newer";
+			s.docs[ID].unmerged = true;
 		});
 		fs.writeFileSync(file(), read().replace("Last paragraph.", "Last one."));
-		server.client.batchGet.mockClear();
+		expect(await push(".paca/docs/Plan.md"), output()).toBe(0);
+		expect(state().docs[ID].remote_hash).toBeUndefined();
+		expect(state().docs[ID].unmerged).toBeUndefined();
+		// Paca changed: refused, naming the writer.
+		server.edit(ID, (b) => {
+			b[1].content[0].text = "First, by Ann.";
+		});
+		fs.writeFileSync(file(), read().replace("Last one.", "Last two."));
+		lines = [];
 		expect(await push(".paca/docs/Plan.md")).toBe(2);
-		expect(server.client.batchGet).not.toHaveBeenCalled();
+		expect(output()).toContain("written by ann");
 		expect(output()).toContain(
 			"the document changed in Paca; pull, then push again",
 		);

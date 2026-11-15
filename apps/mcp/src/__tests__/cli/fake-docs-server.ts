@@ -43,7 +43,12 @@ export function storedBlocks(
 
 export function fakeDocsServer() {
 	const docs = new Map<string, FakeDoc>();
-	/** Every version each document had, newest last. */
+	/** `real`: snapshots as the server keeps them: each write keeps the
+	 *  version it replaced and drops the other snapshots of the past 3
+	 *  minutes (every one, at test speed). Otherwise every version each
+	 *  document had is kept, as if writes were minutes apart. */
+	const options = { real: false };
+	/** Snapshots, newest last. */
 	const snapshots = new Map<
 		string,
 		Array<{ id: string; content: any[]; content_hash: string }>
@@ -59,6 +64,20 @@ export function fakeDocsServer() {
 		snapshots.set(d.id, list);
 	};
 	const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+	/** A write replaces `d`'s content with `next`. */
+	const replace = (d: FakeDoc, next: any[]) => {
+		if (options.real)
+			snapshots.set(d.id, [
+				{
+					id: `s${++tick}-${d.id.slice(0, 4)}`,
+					content: copy(d.content),
+					content_hash: d.hash,
+				},
+			]);
+		d.content = next;
+		d.hash = hashOf(next);
+		if (!options.real) snap(d);
+	};
 	const toDoc = (d: FakeDoc) => ({
 		id: d.id,
 		title: d.title,
@@ -120,9 +139,7 @@ export function fakeDocsServer() {
 						...(d.task ? { task: d.task } : {}),
 					});
 				}
-				d.content = copy(input.content);
-				d.hash = hashOf(d.content);
-				snap(d);
+				replace(d, copy(input.content));
 				d.updated_by = "agent";
 				d.updated_at = `2026-11-15T10:00:${String(++tick).padStart(2, "0")}Z`;
 				d.note = input.note;
@@ -176,7 +193,7 @@ export function fakeDocsServer() {
 			hash: hashOf(content),
 			...extra,
 		});
-		snap(docs.get(id) as FakeDoc);
+		if (!options.real) snap(docs.get(id) as FakeDoc);
 	};
 	/** Another writer changes a document. */
 	const edit = (
@@ -187,9 +204,7 @@ export function fakeDocsServer() {
 		const d = docs.get(id) as FakeDoc;
 		const next = copy(d.content);
 		change(next);
-		d.content = next;
-		d.hash = hashOf(next);
-		snap(d);
+		replace(d, next);
 		Object.assign(d, {
 			updated_by: "ann",
 			updated_at: "2026-11-15T09:30:00Z",
@@ -199,5 +214,5 @@ export function fakeDocsServer() {
 			...who,
 		});
 	};
-	return { docs, snapshots, client, add, edit };
+	return { docs, snapshots, options, client, add, edit };
 }

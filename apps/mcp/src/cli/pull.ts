@@ -31,6 +31,7 @@ import {
 	PULL_STATE_FILE,
 	type PullDocState,
 	type PullState,
+	removeRemoteCopy,
 	sha256,
 	TOO_OLD,
 	WRITE_TMP_RE,
@@ -492,6 +493,8 @@ async function pullLocked(
 				next[id] = { ...(p as PullDocState), ...base };
 				delete next[id].orphan;
 				delete next[id].pending_sha256;
+				// Paca holds the version pulled: nothing waits to be merged.
+				if (m.remote_hash === p?.content_hash) settled(next[id]);
 				if (m.managed) next[id].managed = true;
 				else delete next[id].managed;
 				// Edited here, unchanged in Paca: left for push.
@@ -526,11 +529,10 @@ async function pullLocked(
 				current !== mdSha &&
 				!opts.force
 			) {
-				const keep = (why: string, unmerged = false) => {
+				const discard = `pull --force replaces ${file} with Paca's version, discarding your edits in it`;
+				const keep = (line: string, unmerged = false) => {
 					kept++;
-					lines.push(
-						`kept ${file}: edited locally; use --force to overwrite${why}`,
-					);
+					lines.push(line);
 					next[id] = { ...p, ...base, remote_hash: m.remote_hash };
 					delete next[id].orphan;
 					delete next[id].pending_sha256;
@@ -540,7 +542,18 @@ async function pullLocked(
 				};
 				// A managed copy is edited in its repository, never here.
 				if (m.managed || p.orphan) {
-					keep("");
+					keep(`kept ${file}: edited locally; use --force to overwrite`);
+					continue;
+				}
+				// Paca holds the version pulled (a server whose feed missed
+				// the change back): the edit waits for push.
+				if (m.remote_hash === p.content_hash) {
+					next[id] = { ...p, ...base };
+					delete next[id].orphan;
+					delete next[id].pending_sha256;
+					settled(next[id]);
+					modified++;
+					lines.push(`modified locally ${file}`);
 					continue;
 				}
 				// Conflict markers from an earlier merge: merging again would
@@ -564,7 +577,7 @@ async function pullLocked(
 				// Paca or invents a conflict.
 				if (!p.content_hash || p.unmerged || hadPending.has(id)) {
 					keep(
-						" (an interrupted pull wrote into it, so it is not merged)",
+						`kept ${file}: edited locally, but an interrupted pull had written into it, so it is not merged; save your edits elsewhere: ${discard}`,
 						true,
 					);
 					continue;
@@ -582,9 +595,10 @@ async function pullLocked(
 					if (!(await exists(remoteAbs))) created.push(remoteAbs);
 					await writeFileAtomic(remoteAbs, markdown);
 					keep(
-						` (the version it was pulled at is gone, so it cannot be merged; Paca's version is in ${remoteFile})`,
+						`kept ${file}: edited locally, and the version it was pulled at is gone, so it cannot be merged; compare it with Paca's version in ${remoteFile} and save your edits elsewhere: ${discard}`,
 						true,
 					);
+					next[id].remote_copy = { file: remoteFile, sha256: mdSha };
 					continue;
 				}
 				const localText = await fs.readFile(abs, "utf8");
@@ -598,7 +612,9 @@ async function pullLocked(
 					opts.git,
 				);
 				if (res.status === "unavailable") {
-					keep(` (could not merge: ${res.why})`);
+					keep(
+						`kept ${file}: edited locally, and it could not be merged: ${res.why}; pull again once git works, or save your edits elsewhere: ${discard}`,
+					);
 					continue;
 				}
 				// The merged file, then the base copy (Paca's version), then
@@ -665,8 +681,12 @@ async function pullLocked(
 		throw err;
 	}
 
-	// 4. Drop folders the moves and removals emptied.
+	// 4. Drop folders the moves and removals emptied, and Paca's versions
+	// written next to files that no longer need them.
 	for (const f of vacated) await pruneEmpty(root, path.dirname(f));
+	for (const [id, p] of Object.entries(prevDocs))
+		if (p.remote_copy && next[id]?.remote_copy?.file !== p.remote_copy.file)
+			await removeRemoteCopy(root, p.remote_copy);
 
 	const state: PullState = {
 		project: opts.projectId,
@@ -689,6 +709,13 @@ async function pullLocked(
 	io.out(parts.length ? parts.join(", ") : "up to date");
 	for (const l of lines) io.out(l);
 	return kept || conflicted ? EXIT.conflict : EXIT.ok;
+}
+
+/** Drops what an entry says about a newer version waiting to be merged. */
+function settled(d: PullDocState): void {
+	delete d.remote_hash;
+	delete d.unmerged;
+	delete d.remote_copy;
 }
 
 /** The first line of the file at `abs` that is a conflict marker pull's

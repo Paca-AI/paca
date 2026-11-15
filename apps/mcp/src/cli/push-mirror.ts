@@ -26,6 +26,7 @@ import {
 	type PullDocState,
 	type PullState,
 	readJSON,
+	removeRemoteCopy,
 	sha256,
 	TOO_OLD,
 	writeFileAtomic,
@@ -239,10 +240,9 @@ async function pushLocked(
 		);
 		return EXIT.error;
 	}
-	// The last pull already saw a newer version and kept the file.
-	if (entry.remote_hash && entry.remote_hash !== entry.content_hash)
-		return reportConflict(io, label, {});
-
+	// Whether the document changed in Paca is asked of Paca below, never
+	// taken from what the last pull saw (`remote_hash`, `unmerged`): those
+	// go stale when the document goes back to the version pulled.
 	const read = await call(() => client.batchGet(opts.projectId, [id]));
 	if (read.status === "unsupported") {
 		io.err(TOO_OLD);
@@ -289,8 +289,10 @@ async function pushLocked(
 		delete next.pending_sha256;
 		delete next.unmerged;
 		delete next.conflict;
+		delete next.remote_copy;
 		state.docs[id] = next;
 		await writeJSON(statePath, state);
+		await removeRemoteCopy(root, entry.remote_copy);
 		if (text !== markdown) {
 			await writeFileAtomic(file, markdown);
 			return true;
