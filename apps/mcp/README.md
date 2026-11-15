@@ -478,7 +478,10 @@ when the file has no uncommitted changes.
   `.paca/push.json` records for another file (same project and server) stops
   with exit 1 and names that file; pass `--path` to push to another document.
   `--force` does not override this, and `--dry-run` reports it too. If the
-  other file is gone, remove its entry from `.paca/push.json`.
+  other file is gone (it was moved, as with `git mv`), the push takes over its
+  entry instead and says so: `If-Match` and the conflict diff still use the
+  last push from the old name, and the document records the new source path
+  even when the content is unchanged.
 - `--dry-run` prints what would be sent and sends nothing.
 - State: `.paca/push.json` at the repository root (per file: document path and
   id, file hash, ETag, and the project and server URL it was pushed to; an

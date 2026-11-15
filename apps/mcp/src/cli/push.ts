@@ -82,12 +82,14 @@ export async function runPush(
 	const rel = src.relPath;
 	const statePath = path.join(src.root, ".paca", "push.json");
 	const server = opts.server ?? "";
-	const basePath = path.join(
-		src.root,
-		".paca",
-		"push-base",
-		`${sha256(`${server}\n${opts.projectId}\n${rel}`)}.md`,
-	);
+	const baseFor = (file: string) =>
+		path.join(
+			src.root,
+			".paca",
+			"push-base",
+			`${sha256(`${server}\n${opts.projectId}\n${file}`)}.md`,
+		);
+	const basePath = baseFor(rel);
 	const state: PushState = (await readJSON<PushState>(statePath)) ?? {};
 	// An entry recorded for another project or server says nothing here.
 	const recorded = state[rel];
@@ -120,15 +122,25 @@ export async function runPush(
 			(e.server ?? "") === server &&
 			e.doc_path === docPath,
 	);
+	// A recorded file that is gone was moved (git mv): this file takes over
+	// its entry, so If-Match still catches a change made in Paca.
+	let takeover: string | undefined;
 	if (owner) {
-		io.err(
-			`${docPath} is already pushed from ${owner[0]}; pass --path "Folder/Title" to push ${rel} to another document`,
+		if (await exists(path.join(src.root, owner[0]))) {
+			io.err(
+				`${docPath} is already pushed from ${owner[0]}; pass --path "Folder/Title" to push ${rel} to another document`,
+			);
+			return EXIT.error;
+		}
+		takeover = owner[0];
+		io.out(
+			`${rel} takes over ${docPath} from ${takeover}, which no longer exists`,
 		);
-		return EXIT.error;
 	}
+	const prior = takeover ? state[takeover] : entry;
 	const ifMatch =
-		!opts.force && entry?.etag && entry.doc_path === docPath
-			? entry.etag
+		!opts.force && prior?.etag && prior.doc_path === docPath
+			? prior.etag
 			: undefined;
 	const note =
 		opts.note ??
@@ -181,7 +193,7 @@ export async function runPush(
 				io,
 				docPath,
 				rel,
-				basePath,
+				basePath: takeover ? baseFor(takeover) : basePath,
 				text: canonical,
 			});
 		}
@@ -192,6 +204,10 @@ export async function runPush(
 	}
 
 	await writeFileAtomic(basePath, canonical);
+	if (takeover) {
+		delete state[takeover];
+		await fs.rm(baseFor(takeover), { force: true });
+	}
 	state[rel] = {
 		project: opts.projectId,
 		server,
@@ -204,12 +220,12 @@ export async function runPush(
 
 	if (
 		res.created &&
-		entry?.doc_id &&
-		entry.doc_path === docPath &&
-		entry.doc_id !== res.doc.id
+		prior?.doc_id &&
+		prior.doc_path === docPath &&
+		prior.doc_id !== res.doc.id
 	)
 		io.err(
-			`warning: the document pushed before (${entry.doc_id}) is gone from ${entry.doc_path}; created a new one`,
+			`warning: the document pushed before (${prior.doc_id}) is gone from ${prior.doc_path}; created a new one`,
 		);
 	if (!res.changed)
 		io.out(
@@ -306,4 +322,13 @@ async function reportWriteError(
 	}
 	io.err(err.message);
 	return EXIT.error;
+}
+
+async function exists(file: string): Promise<boolean> {
+	try {
+		await fs.lstat(file);
+		return true;
+	} catch {
+		return false;
+	}
 }

@@ -539,6 +539,91 @@ describe("runPush", () => {
 			);
 		});
 
+		const TAKEOVER =
+			"docs/b/plan.md takes over Plans/plan from docs/api/plan.md, which no longer exists";
+		const baseFiles = () =>
+			fs.readdirSync(path.join(root, ".paca/push-base")).sort();
+		const moveApi = () => {
+			fs.mkdirSync(path.join(root, "docs/b"), { recursive: true });
+			fs.renameSync(
+				path.join(root, "docs/api/plan.md"),
+				path.join(root, "docs/b/plan.md"),
+			);
+		};
+
+		it("is taken over when the other file is gone, keeping If-Match", async () => {
+			const basesBefore = baseFiles();
+			moveApi();
+			client.putByPath.mockResolvedValue(
+				written({ changed: false, etag: '"e2-0000"' }),
+			);
+			expect(await push("docs/b/plan.md")).toBe(0);
+			// Same content, new source path: still sent.
+			expect(client.putByPath).toHaveBeenCalledTimes(1);
+			expect(putOpts()).toEqual({ ifMatch: '"e1-0000"' });
+			expect(body()).toMatchObject({
+				path: "Plans/plan",
+				source: { path: "docs/b/plan.md" },
+			});
+			expect(lines).toContain(TAKEOVER);
+			const s = state();
+			expect(s["docs/api/plan.md"]).toBeUndefined();
+			expect(s["docs/b/plan.md"]).toMatchObject({
+				doc_path: "Plans/plan",
+				doc_id: DOC_ID,
+				etag: '"e2-0000"',
+			});
+			// The base copy follows the entry.
+			expect(baseFiles()).toHaveLength(basesBefore.length);
+			expect(baseFiles()).not.toEqual(basesBefore);
+		});
+
+		it("a 412 after a takeover shows the diff from the old base", async () => {
+			moveApi();
+			write("docs/b/plan.md", "# API plan\n\nmine\n");
+			client.putByPath.mockRejectedValue(
+				new PacaAPIError("version conflict", 412, "VERSION_CONFLICT", {
+					content_hash: "other",
+					updated_by: "user-7",
+				}),
+			);
+			client.getByPath.mockResolvedValue({
+				status: "found",
+				doc: { content: markdownToBlocknote("# API plan\n\nfrom Paca\n") },
+			});
+			const before = fs.readFileSync(
+				path.join(root, ".paca/push.json"),
+				"utf8",
+			);
+			expect(await push("docs/b/plan.md")).toBe(2);
+			expect(putOpts()).toEqual({ ifMatch: '"e1-0000"' });
+			const out = lines.join("\n");
+			expect(out).toContain("--- last push");
+			expect(out).toContain("+from Paca");
+			expect(out).not.toContain("is not kept here");
+			// Nothing recorded on a conflict: the next push takes over again.
+			expect(fs.readFileSync(path.join(root, ".paca/push.json"), "utf8")).toBe(
+				before,
+			);
+		});
+
+		it("--dry-run reports a takeover and changes nothing", async () => {
+			moveApi();
+			const before = fs.readFileSync(
+				path.join(root, ".paca/push.json"),
+				"utf8",
+			);
+			const basesBefore = baseFiles();
+			expect(await push("docs/b/plan.md", { dryRun: true })).toBe(0);
+			expect(client.putByPath).not.toHaveBeenCalled();
+			expect(lines).toContain(TAKEOVER);
+			expect(lines.join("\n")).toContain('If-Match: "e1-0000"');
+			expect(fs.readFileSync(path.join(root, ".paca/push.json"), "utf8")).toBe(
+				before,
+			);
+			expect(baseFiles()).toEqual(basesBefore);
+		});
+
 		it("is allowed with another --path", async () => {
 			expect(await push("docs/ui/plan.md", { path: "Plans/ui-plan" })).toBe(0);
 			expect(body()).toMatchObject({ path: "Plans/ui-plan" });
