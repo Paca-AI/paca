@@ -7,12 +7,15 @@ import { runPush } from "../../cli/push.js";
 import { blocknoteToMarkdown } from "../../utils/index.js";
 import { docId, fakeDocsServer, storedBlocks } from "./fake-docs-server.js";
 
-// A merging pull that stops for good at its n-th file write (the state
-// before moves when it changes, the merged file, the base copy, the
-// state), as if the process were killed there: no error, no cleanup.
+// A merging pull that stops at its n-th file write or rename: for good
+// ("kill": no error, no cleanup, as if the process were killed there), or
+// with an error ("throw").
 const stop = vi.hoisted(() => ({
 	armed: false,
 	left: 0,
+	mode: "kill" as "kill" | "throw",
+	/** In "throw" mode, only a write to a file with this name stops. */
+	only: null as string | null,
 	reached: null as null | (() => void),
 	writes: [] as string[],
 }));
@@ -22,11 +25,17 @@ vi.mock("../../cli/state.js", async (importOriginal) => {
 		<A extends [string, ...unknown[]]>(fn: (...a: A) => Promise<void>) =>
 		(...a: A) => {
 			if (stop.armed) {
-				if (stop.left-- <= 0) {
+				const name = path.basename(a[0]);
+				if (stop.mode === "throw") {
+					if (name === stop.only) {
+						stop.armed = false;
+						return Promise.reject(new Error("disk full"));
+					}
+				} else if (stop.left-- <= 0) {
 					stop.reached?.();
 					return new Promise<void>(() => {});
 				}
-				stop.writes.push(path.basename(a[0]));
+				stop.writes.push(name);
 			}
 			return fn(...a);
 		};
@@ -34,112 +43,230 @@ vi.mock("../../cli/state.js", async (importOriginal) => {
 		...orig,
 		writeFileAtomic: gate(orig.writeFileAtomic),
 		writeJSON: gate(orig.writeJSON),
+		moveFile: gate(orig.moveFile),
 	};
 });
 
 const ID = docId(1);
+const ID2 = docId(2);
+const DOC = "# Plan\n\nFirst.\n\nRed one.\n\nThird.\n\nLast.";
 
-describe("a merging pull killed after each write", () => {
-	const run = async (n: number) => {
-		const root = fs.realpathSync(
-			fs.mkdtempSync(path.join(os.tmpdir(), "paca-mk-")),
+async function setup() {
+	const root = fs.realpathSync(
+		fs.mkdtempSync(path.join(os.tmpdir(), "paca-mk-")),
+	);
+	const mirror = path.join(root, "m");
+	const server = fakeDocsServer();
+	server.add(
+		ID,
+		"Plan",
+		storedBlocks(DOC, (b) => {
+			b[2].props.textColor = "red";
+		}),
+	);
+	const out: string[] = [];
+	const io = {
+		out: (l: string) => out.push(l),
+		err: (l: string) => out.push(l),
+	};
+	const said = () => out.splice(0).join("\n");
+	const pull = () =>
+		runPull({ projectId: "p1", dir: mirror, force: false }, server.client, io);
+	const push = (rel = "m/Plan.md") =>
+		runPush(
+			{
+				projectId: "p1",
+				file: rel,
+				lock: false,
+				force: false,
+				dryRun: false,
+				client: "paca-cli",
+			},
+			server.client as any,
+			io,
+			{ cwd: root },
 		);
-		const mirror = path.join(root, "m");
+	const file = (rel = "Plan.md") => path.join(mirror, rel);
+	const read = (rel = "Plan.md") => fs.readFileSync(file(rel), "utf8");
+	const write = (text: string, rel = "Plan.md") =>
+		fs.writeFileSync(file(rel), text);
+	const render = (id = ID) =>
+		blocknoteToMarkdown(server.docs.get(id)?.content as any[]);
+	const state = () =>
+		JSON.parse(fs.readFileSync(path.join(mirror, ".paca-sync.json"), "utf8"));
+	const leftovers = () =>
+		fs
+			.readdirSync(path.join(mirror, ".paca-base"))
+			.filter((n) => n.endsWith(".next.md"));
+	expect(await pull()).toBe(0);
+	said();
+	return {
+		root,
+		mirror,
+		server,
+		pull,
+		push,
+		said,
+		read,
+		write,
+		render,
+		state,
+		leftovers,
+		cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+	};
+}
+
+/** Runs `pull` and stops it at its n-th write: "done" when it finished. */
+async function killed(
+	pull: () => Promise<number>,
+	mirror: string,
+	n: number,
+): Promise<{ first: "done" | "killed"; writes: string[] }> {
+	const hit = new Promise<"killed">((r) => {
+		stop.reached = () => r("killed");
+	});
+	stop.mode = "kill";
+	stop.left = n;
+	stop.writes = [];
+	stop.armed = true;
+	const first = await Promise.race([pull().then(() => "done" as const), hit]);
+	stop.armed = false;
+	fs.rmSync(path.join(mirror, ".paca-pull.lock"), { force: true });
+	return { first, writes: [...stop.writes] };
+}
+
+const opens = (text: string) =>
+	text.split("\n").filter((l) => l.startsWith("<<<<<<<")).length;
+
+describe("a merging pull stopped at each step of its journal", () => {
+	for (const restart of ["pull", "push"] as const) {
+		it(`clean merge, restarted with ${restart}: the same merge, and a push keeps both changes`, async () => {
+			const want =
+				"# Plan\n\nFirst, by Ann.\n\nRed one.\n\nThird, mine.\n\nLast.\n";
+			const stops: string[][] = [];
+			for (let n = 0; n < 10; n++) {
+				const h = await setup();
+				try {
+					h.write(h.read().replace("Third.", "Third, mine."));
+					h.server.edit(ID, (b) => {
+						b[1].content[0].text = "First, by Ann.";
+					});
+					const k = await killed(h.pull, h.mirror, n);
+					if (k.first === "done") break;
+					stops.push(k.writes);
+					const at = `stopped after ${k.writes.join(", ") || "nothing"}`;
+					if (restart === "push") {
+						// Refused either way: mid-merge, or Paca changed.
+						expect([1, 2], at).toContain(await h.push());
+						expect(h.server.client.patchDocument).not.toHaveBeenCalled();
+						h.said();
+					}
+					expect(await h.pull(), `${at}\n${h.said()}`).toBe(0);
+					expect(h.read(), at).toBe(want);
+					expect(h.leftovers(), at).toEqual([]);
+					expect(h.state().docs[ID].merge_pending, at).toBeUndefined();
+					expect(await h.push(), at).toBe(0);
+					expect(h.said(), at).toBe(
+						"updated Plan from m/Plan.md (1 block changed)",
+					);
+					expect(h.render(), at).toBe(want);
+					expect(h.server.docs.get(ID)?.content[2].props.textColor).toBe("red");
+				} finally {
+					h.cleanup();
+				}
+			}
+			// Stopped before Paca's version, before the journal, before the
+			// merged file, before the base copy, and before the final state.
+			expect(stops).toEqual([
+				[],
+				[`${ID}.next.md`],
+				[`${ID}.next.md`, ".paca-sync.json"],
+				[`${ID}.next.md`, ".paca-sync.json", "Plan.md"],
+				[`${ID}.next.md`, ".paca-sync.json", "Plan.md", `${ID}.next.md`],
+			]);
+		});
+
+		it(`conflicting merge, restarted with ${restart}: one set of markers, no edit lost, and a resolution pushes`, async () => {
+			const stops: string[][] = [];
+			for (let n = 0; n < 10; n++) {
+				const h = await setup();
+				try {
+					h.write(h.read().replace("First.", "First, mine."));
+					h.server.edit(ID, (b) => {
+						b[1].content[0].text = "First, by Ann.";
+					});
+					const k = await killed(h.pull, h.mirror, n);
+					if (k.first === "done") break;
+					stops.push(k.writes);
+					const at = `stopped after ${k.writes.join(", ") || "nothing"}`;
+					if (restart === "push") {
+						expect([1, 2], at).toContain(await h.push());
+						expect(h.server.client.patchDocument).not.toHaveBeenCalled();
+						h.said();
+					}
+					expect(await h.pull(), at).toBe(2);
+					expect(h.said(), at).toContain("conflict Plan.md");
+					const text = h.read();
+					expect(opens(text), at).toBe(1);
+					expect(text, at).toContain(
+						"<<<<<<< local\nFirst, mine.\n||||||| base\nFirst.\n=======\nFirst, by Ann.\n>>>>>>> Paca",
+					);
+					expect(h.state().docs[ID]).toMatchObject({ conflict: true });
+					expect(h.leftovers(), at).toEqual([]);
+					// Pulled again: still one set of markers.
+					expect(await h.pull(), at).toBe(2);
+					expect(opens(h.read()), at).toBe(1);
+					h.said();
+					// Resolved, keeping both sides: pushed.
+					const resolved = h
+						.read()
+						.replace(
+							/<<<<<<< local\n[\s\S]*?>>>>>>> Paca[^\n]*\n/,
+							"First, mine and Ann's.\n",
+						);
+					h.write(resolved);
+					expect(await h.push(), `${at}\n${h.said()}`).toBe(0);
+					expect(h.render()).toBe(resolved);
+				} finally {
+					h.cleanup();
+				}
+			}
+			expect(stops.map((w) => w.length)).toEqual([0, 1, 2, 3, 4]);
+		});
+	}
+
+	it("a later error after a merge keeps the merge: the next pull finishes it without merging again", async () => {
+		const h = await setup();
 		try {
-			const server = fakeDocsServer();
-			server.add(
-				ID,
-				"Plan",
-				storedBlocks("# Plan\n\nFirst.\n\nRed one.\n\nThird.\n\nLast.", (b) => {
-					b[2].props.textColor = "red";
-				}),
-			);
-			const pull = (out: string[] = []) =>
-				runPull({ projectId: "p1", dir: mirror, force: false }, server.client, {
-					out: (l) => out.push(l),
-					err: (l) => out.push(l),
-				});
-			const push = (out: string[] = []) =>
-				runPush(
-					{
-						projectId: "p1",
-						file: "m/Plan.md",
-						lock: false,
-						force: false,
-						dryRun: false,
-						client: "paca-cli",
-					},
-					server.client as any,
-					{ out: (l) => out.push(l), err: (l) => out.push(l) },
-					{ cwd: root },
-				);
-			expect(await pull()).toBe(0);
-			const file = path.join(mirror, "Plan.md");
-			fs.writeFileSync(
-				file,
-				fs.readFileSync(file, "utf8").replace("Third.", "Third, mine."),
-			);
-			server.edit(ID, (b) => {
+			h.server.add(ID2, "Zeta", storedBlocks("Zeta one.\n\nZeta two."));
+			expect(await h.pull()).toBe(0);
+			h.said();
+			// Plan conflicts; Zeta merges cleanly but its file write fails.
+			h.write(h.read().replace("First.", "First, mine."));
+			h.server.edit(ID, (b) => {
 				b[1].content[0].text = "First, by Ann.";
 			});
-
-			const hit = new Promise<"killed">((r) => {
-				stop.reached = () => r("killed");
+			h.write(
+				h.read("Zeta.md").replace("Zeta two.", "Zeta two, mine."),
+				"Zeta.md",
+			);
+			h.server.edit(ID2, (b) => {
+				b[0].content[0].text = "Zeta one, by Ann.";
 			});
-			stop.left = n;
-			stop.writes = [];
+			stop.mode = "throw";
+			stop.only = "Zeta.md";
 			stop.armed = true;
-			const first = await Promise.race([
-				pull().then(() => "done" as const),
-				hit,
-			]);
+			await expect(h.pull()).rejects.toThrow("disk full");
 			stop.armed = false;
-			if (first === "done") return null;
-			const before = [...stop.writes];
-			fs.rmSync(path.join(mirror, ".paca-pull.lock"), { force: true });
-
-			const out: string[] = [];
-			const code = await pull(out);
-			const merged = fs.readFileSync(file, "utf8");
-			const pushed: string[] = [];
-			const pushCode = await push(pushed);
-			return {
-				before,
-				code,
-				out,
-				merged,
-				pushCode,
-				pushed,
-				stored: blocknoteToMarkdown(server.docs.get(ID)?.content as any[]),
-				red: server.docs.get(ID)?.content[2].props.textColor,
-			};
+			const conflicted = h.read();
+			expect(opens(conflicted)).toBe(1);
+			expect(h.state().docs[ID].merge_pending).toBeDefined();
+			expect(await h.pull()).toBe(2);
+			expect(h.read()).toBe(conflicted);
+			expect(h.read("Zeta.md")).toBe("Zeta one, by Ann.\n\nZeta two, mine.\n");
+			expect(h.leftovers()).toEqual([]);
 		} finally {
-			fs.rmSync(root, { recursive: true, force: true });
+			h.cleanup();
 		}
-	};
-
-	it("restarts to the same merge, and a push then keeps both changes", async () => {
-		const want =
-			"# Plan\n\nFirst, by Ann.\n\nRed one.\n\nThird, mine.\n\nLast.\n";
-		const stops: string[][] = [];
-		for (let n = 0; n < 8; n++) {
-			const r = await run(n);
-			if (r === null) break;
-			stops.push(r.before);
-			expect({ n, code: r.code, out: r.out }).toMatchObject({ n, code: 0 });
-			expect(r.merged, `stopped after ${r.before.join(", ")}`).toBe(want);
-			expect({ n, push: r.pushCode, said: r.pushed }).toEqual({
-				n,
-				push: 0,
-				said: ["updated Plan from m/Plan.md (1 block changed)"],
-			});
-			expect(r.stored).toBe(want);
-			expect(r.red).toBe("red");
-		}
-		// Stopped before the merged file, before the base copy, and before
-		// the state.
-		expect(stops.map((w) => w.length)).toEqual([0, 1, 2]);
-		expect(stops[2][0]).toBe("Plan.md");
-		expect(stops[2][1]).toBe(`${ID}.md`);
 	});
 });

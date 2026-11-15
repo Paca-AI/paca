@@ -99,6 +99,11 @@ export async function removeRemoteCopy(
 		await fs.rm(abs, { force: true });
 }
 
+/** Renames a file (its own function, so tests can stop a run at it). */
+export async function moveFile(from: string, to: string): Promise<void> {
+	await fs.rename(from, to);
+}
+
 /** Reads a JSON file, or returns null when it does not exist. */
 export async function readJSON<T>(file: string): Promise<T | null> {
 	let text: string;
@@ -146,6 +151,12 @@ export interface PullDocState {
 	 *  was pulled at is left: pull keeps it rather than merging until
 	 *  `pull --force` replaces it or a push records it. */
 	unmerged?: true;
+	/** A merge in progress (its journal): Paca's version is written to
+	 *  `.paca-base/<id>.next.md` and this is recorded before the merged
+	 *  file is written; the next pull finishes or drops it (see pull's
+	 *  `settleMerges`). `merged_sha` is the sha256 of the text the file is
+	 *  about to get. */
+	merge_pending?: { remote_hash: string | null; merged_sha: string };
 	/** Paca's version, written next to the file when the two could not be
 	 *  merged (the version the file was pulled at is gone), and its sha256.
 	 *  Removed, unless it was edited, once the entry no longer needs it. */

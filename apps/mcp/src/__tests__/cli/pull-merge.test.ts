@@ -443,6 +443,50 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		expect(output()).toBe("up to date");
 	});
 
+	it("a file that says what Paca now holds, but for the normalising rules, takes Paca's version and reports nothing", async () => {
+		// As a push stopped after its write leaves it: "-" bullets here,
+		// the same item in Paca.
+		write(read().replace("* two\n", "* two\n\n- three\n"));
+		server.edit(ID, (b) => {
+			b.splice(6, 0, {
+				...JSON.parse(JSON.stringify(b[4])),
+				id: "added",
+				content: [{ type: "text", text: "three", styles: {} }],
+			});
+		});
+		expect(render()).toContain("* three\n");
+		expect(await pull(), output()).toBe(0);
+		expect(output()).toBe("up to date");
+		expect(read()).toBe(render());
+		expect(fs.readFileSync(basePath(), "utf8")).toBe(render());
+		expect(state().docs[ID]).toMatchObject({
+			content_hash: server.docs.get(ID)?.hash,
+			file_sha256: sha(render()),
+		});
+	});
+
+	it("a merge journal's leftover copy of Paca's version is removed and never taken for a document", async () => {
+		const stray = path.join(mirror, ".paca-base", `${ID}.next.md`);
+		fs.writeFileSync(stray, "left by a pull that stopped\n");
+		expect(await pull(), output()).toBe(0);
+		expect(output()).toBe("up to date");
+		expect(fs.existsSync(stray)).toBe(false);
+	});
+
+	it("--force replaces only files it would otherwise keep, merge or report as conflicted", async () => {
+		const OTHER = docId(2);
+		server.add(OTHER, "Other", storedBlocks("Beta."));
+		expect(await pull()).toBe(0);
+		write("Beta, edited here and never pushed.\n", "Other.md");
+		write(read().replace("Third paragraph.", "Third paragraph, mine."));
+		server.edit(ID, annEdits("First paragraph, by Ann."));
+		lines = [];
+		expect(await pull({ force: true }), output()).toBe(0);
+		expect(read()).toBe(render());
+		expect(read("Other.md")).toBe("Beta, edited here and never pushed.\n");
+		expect(output()).toContain("modified locally Other.md");
+	});
+
 	it("a managed copy edited here is kept, not merged", async () => {
 		write(read().replace("Third paragraph.", "Third paragraph, mine."));
 		server.edit(ID, annEdits("First paragraph, by Ann."));

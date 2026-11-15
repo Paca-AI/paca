@@ -5,6 +5,7 @@ import path from "node:path";
 import type { PacaAPIDocClient } from "../api/doc-client.js";
 import type { Document } from "../types/index.js";
 import { blocknoteToMarkdown } from "../utils/index.js";
+import { normaliseMarkdown } from "../utils/md-normalise.js";
 import {
 	BASE_LABEL,
 	type GitRunner,
@@ -28,6 +29,7 @@ import {
 	call,
 	EXIT,
 	fileSha256,
+	moveFile,
 	PULL_STATE_FILE,
 	type PullDocState,
 	type PullState,
@@ -158,6 +160,7 @@ async function pullLocked(
 			.map(([id]) => id),
 	);
 	await settlePending(root, prevDocs);
+	await settleMerges(root, prevDocs);
 	await removeTempFiles(root);
 
 	const feed = await call(() =>
@@ -235,9 +238,9 @@ async function pullLocked(
 			p.pending_sha256 ||
 			m.remote_hash !== p.content_hash ||
 			!(await exists(path.resolve(root, p.file))) ||
-			// --force puts Paca's version over a file edited here.
-			(opts.force &&
-				(await fileSha256(path.resolve(root, p.file))) !== p.file_sha256)
+			// --force puts Paca's version over a file with conflict markers
+			// (its document has not changed since they were written).
+			(opts.force && p.conflict)
 		)
 			needContent.add(id);
 	}
@@ -363,6 +366,13 @@ async function pullLocked(
 	let updated = 0;
 	/** Whether the state file was rewritten mid-run (to restore on failure). */
 	let stateChanged = false;
+	/** The state as last written mid-run; merges add their journal to it. */
+	let interim: PullState | null = null;
+	/** Merges journalled this run: kept if the state is restored. */
+	const journalled: Record<
+		string,
+		NonNullable<PullDocState["merge_pending"]>
+	> = {};
 	try {
 		// 1. Remove.
 		for (const id of toRemove) {
@@ -459,7 +469,7 @@ async function pullLocked(
 				}
 			}
 			for (const [id, n] of Object.entries(next)) if (n.orphan) docs[id] = n;
-			const interim: PullState = { ...base, dirs, docs };
+			interim = { ...base, dirs, docs };
 			if (JSON.stringify(interim) !== JSON.stringify(prev)) {
 				await writeJSON(statePath, interim);
 				stateChanged = true;
@@ -530,6 +540,28 @@ async function pullLocked(
 				!opts.force
 			) {
 				const discard = `pull --force replaces ${file} with Paca's version, discarding your edits in it`;
+				const localText = await fs.readFile(abs, "utf8");
+				// The file says what Paca now holds, but for what the
+				// normalising rules allow (a push that stopped after its
+				// write, say): Paca's version is taken, nothing to report.
+				if (
+					normaliseMarkdown(localText).text === normaliseMarkdown(markdown).text
+				) {
+					await writeFileAtomic(abs, markdown);
+					await writeFileAtomic(
+						await safePath(root, `${BASE_DIR}/${id}.md`, { mkdir: true }),
+						markdown,
+					);
+					next[id] = {
+						file,
+						title: m.title,
+						folder_id: m.folder_id,
+						content_hash: m.remote_hash,
+						file_sha256: mdSha,
+					};
+					if (m.managed) next[id].managed = true;
+					continue;
+				}
 				const keep = (line: string, unmerged = false) => {
 					kept++;
 					lines.push(line);
@@ -601,7 +633,6 @@ async function pullLocked(
 					next[id].remote_copy = { file: remoteFile, sha256: mdSha };
 					continue;
 				}
-				const localText = await fs.readFile(abs, "utf8");
 				const who = [d.updated_by, d.updated_at].filter(Boolean).join(", ");
 				const res = await mergeFile(
 					root,
@@ -617,17 +648,36 @@ async function pullLocked(
 					);
 					continue;
 				}
-				// The merged file, then the base copy (Paca's version), then
-				// (at the end of the run) the state. A stop after the file
-				// leaves the old base and state: the next pull merges the
-				// merged file with the same version again, which gives the same
-				// text. A stop after the base merges against Paca's version,
-				// which keeps the file as it is.
-				if (res.text !== localText) await writeFileAtomic(abs, res.text);
-				await writeFileAtomic(
-					await safePath(root, `${BASE_DIR}/${id}.md`, { mkdir: true }),
-					markdown,
+				// Journalled, so a stop anywhere is told apart on the next pull
+				// (settleMerges): (1) Paca's version as `<id>.next.md` and the
+				// journal in the state, (2) the merged file, (3) `.next.md`
+				// over the base copy, (4) the state at the end of the run.
+				const basePath = await safePath(root, `${BASE_DIR}/${id}.md`, {
+					mkdir: true,
+				});
+				const nextPath = await safePath(
+					root,
+					`${BASE_DIR}/${id}${NEXT_SUFFIX}`,
 				);
+				await writeFileAtomic(nextPath, markdown);
+				const pending = {
+					remote_hash: m.remote_hash,
+					merged_sha: sha256(res.text),
+				};
+				const journal: PullState = interim ?? {
+					...(prev as PullState),
+					dirs,
+				};
+				journal.docs = {
+					...journal.docs,
+					[id]: { ...journal.docs[id], merge_pending: pending },
+				};
+				interim = journal;
+				journalled[id] = pending;
+				await writeJSON(statePath, journal);
+				stateChanged = true;
+				if (res.text !== localText) await writeFileAtomic(abs, res.text);
+				await moveFile(nextPath, basePath);
 				next[id] = {
 					file,
 					title: m.title,
@@ -674,7 +724,17 @@ async function pullLocked(
 			stateChanged
 				? async () => {
 						if (stateText === null) await fs.rm(statePath, { force: true });
-						else await writeFileAtomic(statePath, stateText);
+						else if (Object.keys(journalled).length === 0 || !prev)
+							await writeFileAtomic(statePath, stateText);
+						else {
+							// A merged file stays merged: its journal is kept, so
+							// the next pull finishes the merge instead of merging
+							// it again.
+							const docs = { ...prev.docs };
+							for (const [id, mp] of Object.entries(journalled))
+								if (docs[id]) docs[id] = { ...docs[id], merge_pending: mp };
+							await writeJSON(statePath, { ...prev, docs });
+						}
 					}
 				: null,
 		);
@@ -871,6 +931,72 @@ async function rollBack(
 			// Left for recoverMoves on the next run.
 		}
 	}
+}
+
+/** Paca's version of a document mid-merge: `.paca-base/<id>.next.md`. */
+const NEXT_SUFFIX = ".next.md";
+
+/**
+ * Finishes or drops merges an interrupted pull journalled
+ * (`merge_pending`). The merged file was written when it has the sha256
+ * recorded or holds pull's conflict marker lines: then `.next.md` becomes
+ * the base copy (unless it already is: `.next.md` gone and the base copy
+ * no longer the one recorded) and the entry is Paca's version, edited here.
+ * Otherwise the file is as it was: `.next.md` is dropped and the merge runs
+ * again. Then any `.next.md` left over is removed.
+ */
+async function settleMerges(
+	root: string,
+	docs: Record<string, PullDocState>,
+): Promise<void> {
+	const baseDir = path.join(root, BASE_DIR);
+	for (const [id, p] of Object.entries(docs)) {
+		const mp = p.merge_pending;
+		if (!mp) continue;
+		const nextPath = path.join(baseDir, `${id}${NEXT_SUFFIX}`);
+		const basePath = path.join(baseDir, `${id}.md`);
+		const nextText = await readText(nextPath).catch(() => null);
+		const baseText = await readText(basePath).catch(() => null);
+		const remote =
+			nextText ??
+			(baseText !== null && sha256(baseText) !== p.file_sha256
+				? baseText
+				: null);
+		const fileText = await readText(path.resolve(root, p.file)).catch(
+			() => null,
+		);
+		const marked =
+			fileText !== null &&
+			remote !== null &&
+			pullMarkerLine(fileText, remote) > 0;
+		const written =
+			remote !== null &&
+			fileText !== null &&
+			(sha256(fileText) === mp.merged_sha || marked);
+		const d: PullDocState = { ...p };
+		delete d.merge_pending;
+		if (written) {
+			if (nextText !== null) await moveFile(nextPath, basePath);
+			d.content_hash = mp.remote_hash;
+			d.file_sha256 = sha256(remote as string);
+			delete d.pending_sha256;
+			settled(d);
+			if (marked) d.conflict = true;
+			else delete d.conflict;
+		} else {
+			await fs.rm(nextPath, { force: true });
+		}
+		docs[id] = d;
+	}
+	let names: string[] = [];
+	try {
+		names = await fs.readdir(baseDir);
+	} catch {
+		return;
+	}
+	for (const n of names)
+		if (n.endsWith(NEXT_SUFFIX))
+			await fs.rm(path.join(baseDir, n), { force: true });
 }
 
 /**

@@ -205,6 +205,12 @@ async function pushLocked(
 		);
 		return EXIT.error;
 	}
+	if (entry.merge_pending) {
+		io.err(
+			`${label}: an interrupted pull left this file in the middle of a merge; run pull first`,
+		);
+		return EXIT.error;
+	}
 	if (entry.managed) {
 		// Read only to name the repository file.
 		const res = await call(() => client.batchGet(opts.projectId, [id])).catch(
