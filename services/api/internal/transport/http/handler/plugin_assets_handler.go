@@ -31,6 +31,10 @@ func NewPluginAssetsHandler(store pluginrt.Store) *PluginAssetsHandler {
 }
 
 // Serve handles GET /plugin-assets/{kind}/{name}/*.
+//
+// Range requests are intentionally not supported: bundle files are small
+// scripts, styles and wasm that browsers fetch whole, and an S3 body is not
+// seekable. Clients get the full body with 200.
 func (h *PluginAssetsHandler) Serve(w http.ResponseWriter, r *http.Request) {
 	var kind pluginrt.ArtifactKind
 	switch chi.URLParam(r, "kind") {
@@ -76,7 +80,7 @@ func (h *PluginAssetsHandler) Serve(w http.ResponseWriter, r *http.Request) {
 	} else {
 		hdr.Set("Cache-Control", "public, max-age=900, immutable")
 	}
-	if asset.ETag != "" && r.Header.Get("If-None-Match") == asset.ETag {
+	if asset.ETag != "" && ifNoneMatchHit(r.Header.Get("If-None-Match"), asset.ETag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
@@ -91,4 +95,24 @@ func (h *PluginAssetsHandler) Serve(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodHead {
 		_, _ = io.Copy(w, asset.Body)
 	}
+}
+
+// ifNoneMatchHit implements If-None-Match's weak comparison: the header may be
+// "*" or a comma-separated list, and a W/ prefix (added when a proxy such as
+// Caddy's gzip encoder weakens the validator) is ignored.
+func ifNoneMatchHit(header, etag string) bool {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return false
+	}
+	if header == "*" {
+		return true
+	}
+	want := strings.TrimPrefix(etag, "W/")
+	for _, cand := range strings.Split(header, ",") {
+		if strings.TrimPrefix(strings.TrimSpace(cand), "W/") == want {
+			return true
+		}
+	}
+	return false
 }

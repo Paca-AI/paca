@@ -411,3 +411,62 @@ func TestMigrateLocalToStore(t *testing.T) {
 		t.Errorf("rerun changed the bucket:\n%v\n%v", before, got)
 	}
 }
+
+func TestStore_S3_UpgradeKeepsOldFilesUntilNewUploaded(t *testing.T) {
+	ctx := context.Background()
+	st, fake := newS3TestStore(t)
+
+	v1 := t.TempDir()
+	for name, body := range map[string]string{"index.html": "1", "old.js": "old"} {
+		if err := os.WriteFile(filepath.Join(v1, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.PutTree(ctx, KindFrontend, "com.paca.x", v1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Upgrade with a bundle that has an unreadable (dangling) source file:
+	// the walk skips non-regular files, so make the upload itself fail by
+	// pointing the store at a failing client.
+	v2 := t.TempDir()
+	if err := os.WriteFile(filepath.Join(v2, "index.html"), []byte("2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	failing := &failingPutS3{S3API: fake}
+	bad := &s3Store{cfg: st.(*s3Store).cfg, s3: failing}
+	if err := bad.PutTree(ctx, KindFrontend, "com.paca.x", v2); err == nil {
+		t.Fatal("expected upload error")
+	}
+	if _, err := st.OpenAsset(ctx, KindFrontend, "com.paca.x", "old.js"); err != nil {
+		t.Errorf("failed upgrade must keep old files: %v", err)
+	}
+
+	// A successful upgrade prunes the stale file.
+	if err := st.PutTree(ctx, KindFrontend, "com.paca.x", v2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.OpenAsset(ctx, KindFrontend, "com.paca.x", "old.js"); !errors.Is(err, ErrAssetNotFound) {
+		t.Errorf("stale file survived upgrade: %v", err)
+	}
+}
+
+type failingPutS3 struct{ S3API }
+
+func (f *failingPutS3) PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	return nil, errors.New("boom")
+}
+
+func TestStore_S3_ListMigrationsIgnoresNested(t *testing.T) {
+	ctx := context.Background()
+	st, fake := newS3TestStore(t)
+	fake.objects["plugins/com.paca.x/migrations/0001_a.sql"] = []byte("A")
+	fake.objects["plugins/com.paca.x/migrations/sub/0002_b.sql"] = []byte("B")
+	got, err := st.ListMigrations(ctx, "com.paca.x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "0001_a.sql" {
+		t.Errorf("migrations = %+v", got)
+	}
+}

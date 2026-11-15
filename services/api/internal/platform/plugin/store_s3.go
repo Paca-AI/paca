@@ -74,9 +74,11 @@ func (s *s3Store) ListMigrations(ctx context.Context, name string) ([]MigrationF
 	if err != nil {
 		return nil, fmt.Errorf("plugin store: list s3 migrations for %q: %w", name, err)
 	}
+	dirPrefix := s.key(name, "migrations") + "/"
 	var files []MigrationFile
 	for _, key := range keys { // ListObjectsV2 returns keys in lexicographic order
-		if filepath.Ext(key) != ".sql" {
+		// Like the local store, only files directly in migrations/ count.
+		if strings.Contains(strings.TrimPrefix(key, dirPrefix), "/") || filepath.Ext(key) != ".sql" {
 			continue
 		}
 		data, err := s.get(ctx, key)
@@ -139,19 +141,31 @@ func (s *s3Store) OpenAsset(ctx context.Context, kind ArtifactKind, name, relPat
 }
 
 // PutBackend writes plugin.json last, so a half-finished upload never leaves a
-// manifest that points at a missing binary.
+// manifest that points at a missing binary. Replacing an existing install
+// uploads the new objects before removing stale ones, so readers never see an
+// empty plugin mid-upgrade.
 func (s *s3Store) PutBackend(ctx context.Context, name string, b BackendBundle) error {
 	if err := plugindom.ValidatePluginName(name); err != nil {
 		return err
 	}
 	if b.HasMigrations {
-		if err := s.deletePrefix(ctx, s.key(name, "migrations")+"/"); err != nil {
-			return fmt.Errorf("clear migrations: %w", err)
+		// Upload first, prune stale objects after, so a failed upload never
+		// leaves the plugin without its migrations.
+		prefix := s.key(name, "migrations") + "/"
+		existing, err := s.list(ctx, prefix)
+		if err != nil {
+			return fmt.Errorf("list migrations: %w", err)
 		}
+		keep := map[string]struct{}{}
 		for _, path := range b.Migrations {
-			if err := s.putFile(ctx, s.key(name, "migrations", filepath.Base(path)), path); err != nil {
+			key := prefix + filepath.Base(path)
+			if err := s.putFile(ctx, key, path); err != nil {
 				return fmt.Errorf("upload migration %q: %w", filepath.Base(path), err)
 			}
+			keep[key] = struct{}{}
+		}
+		if err := s.deleteKeys(ctx, existing, keep); err != nil {
+			return fmt.Errorf("clear stale migrations: %w", err)
 		}
 	}
 	if b.WASMPath != "" {
@@ -173,10 +187,15 @@ func (s *s3Store) PutTree(ctx context.Context, kind ArtifactKind, name, srcDir s
 		return err
 	}
 	prefix := s.key(name, string(kind)) + "/"
-	if err := s.deletePrefix(ctx, prefix); err != nil {
-		return fmt.Errorf("clear %s bundle: %w", kind, err)
+	// Upload the new files first and prune stale ones afterwards: the bundle is
+	// never empty while an upgrade runs, and a failed upload leaves the old
+	// files in place.
+	existing, err := s.list(ctx, prefix)
+	if err != nil {
+		return fmt.Errorf("list %s bundle: %w", kind, err)
 	}
-	return filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, walkErr error) error {
+	keep := map[string]struct{}{}
+	err = filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -187,11 +206,20 @@ func (s *s3Store) PutTree(ctx context.Context, kind ArtifactKind, name, srcDir s
 		if err != nil {
 			return err
 		}
-		if err := s.putFile(ctx, prefix+filepath.ToSlash(rel), path); err != nil {
+		key := prefix + filepath.ToSlash(rel)
+		if err := s.putFile(ctx, key, path); err != nil {
 			return fmt.Errorf("upload %s/%s: %w", kind, rel, err)
 		}
+		keep[key] = struct{}{}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if err := s.deleteKeys(ctx, existing, keep); err != nil {
+		return fmt.Errorf("clear stale %s files: %w", kind, err)
+	}
+	return nil
 }
 
 func (s *s3Store) DeleteAll(ctx context.Context, name string) error {
@@ -283,17 +311,26 @@ func (s *s3Store) deletePrefix(ctx context.Context, prefix string) error {
 	if err != nil {
 		return err
 	}
-	// One DeleteObject per key rather than the batch DeleteObjects call: it is
-	// the one delete every S3-compatible store implements (Google Cloud
-	// Storage's S3 interoperability layer has no multi-object delete), and a
-	// plugin is at most a few hundred small files.
+	return s.deleteKeys(ctx, keys, nil)
+}
+
+// deleteKeys removes keys not in keep. One DeleteObject per key rather than the
+// batch DeleteObjects call: it is the one delete every S3-compatible store
+// implements (Google Cloud Storage's S3 interoperability layer has no
+// multi-object delete), and a plugin is at most a few hundred small files.
+// A failing key does not stop the rest; the errors are joined.
+func (s *s3Store) deleteKeys(ctx context.Context, keys []string, keep map[string]struct{}) error {
+	var errs []error
 	for _, k := range keys {
+		if _, ok := keep[k]; ok {
+			continue
+		}
 		if _, err := s.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
 			Bucket: aws.String(s.cfg.S3Bucket),
 			Key:    aws.String(k),
 		}); err != nil {
-			return fmt.Errorf("delete %q: %w", k, err)
+			errs = append(errs, fmt.Errorf("delete %q: %w", k, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
