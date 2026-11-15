@@ -229,10 +229,15 @@ describe("runPull killed between moves and writes", () => {
 			stop.reached = r;
 		});
 		stop.armed = true;
-		void runPull({ projectId: "p1", dir, force: false }, client, io);
-		await reached;
+		const run = runPull({ projectId: "p1", dir, force: false }, client, io);
+		// A pull that writes nothing finishes instead: the test says which.
+		const how = await Promise.race([
+			reached.then(() => "killed" as const),
+			run.then((code) => code),
+		]);
 		stop.armed = false;
-		fs.rmSync(path.join(dir, ".paca-pull.lock"));
+		fs.rmSync(path.join(dir, ".paca-pull.lock"), { force: true });
+		return how;
 	};
 	const pull = (client: ReturnType<typeof fakeServer>) =>
 		runPull({ projectId: "p1", dir, force: false }, client, io);
@@ -340,5 +345,67 @@ describe("runPull killed between moves and writes", () => {
 		docs.set(ID1, { id: ID1, title: "A", folder_id: null, text: "v3" });
 		expect(await pull(client)).toBe(0);
 		expect(fs.readFileSync(path.join(dir, "A.md"), "utf8")).toContain("v3");
+	});
+	describe("pull's own write after several interrupted pulls", () => {
+		const setup = async () => {
+			const docs = new Map<string, ServerDoc>([
+				[ID1, { id: ID1, title: "X", folder_id: null, text: "v1" }],
+			]);
+			const deleted = new Set<string>();
+			const client = fakeServer(docs, deleted);
+			await pull(client);
+			const set = (text: string) =>
+				docs.set(ID1, { id: ID1, title: "X", folder_id: null, text });
+			const read = () => fs.readFileSync(path.join(dir, "X.md"), "utf8");
+			return { docs, deleted, client, set, read };
+		};
+
+		it("is recognised after a kill once written and once before writing", async () => {
+			const t = await setup();
+			t.set("v2");
+			await killAtWrite(t.client, 1); // X.md holds v2
+			t.set("v3");
+			await killAtWrite(t.client, 0); // stopped right after the interim state
+			expect(t.read()).toContain("v2");
+			expect(await pull(t.client)).toBe(0);
+			expect(t.read()).toContain("v3");
+		});
+
+		it("is recognised after three interruptions in a row", async () => {
+			const t = await setup();
+			t.set("v2");
+			expect(await killAtWrite(t.client, 1)).toBe("killed");
+			t.set("v3");
+			expect(await killAtWrite(t.client, 1)).toBe("killed");
+			t.set("v4");
+			expect(await killAtWrite(t.client, 0)).toBe("killed");
+			t.set("v5");
+			expect(await killAtWrite(t.client, 0)).toBe("killed");
+			expect(await pull(t.client)).toBe(0);
+			expect(t.read()).toContain("v5");
+		});
+
+		it("a user edit after an interrupted pull is still kept", async () => {
+			const t = await setup();
+			t.set("v2");
+			await killAtWrite(t.client, 1);
+			fs.writeFileSync(path.join(dir, "X.md"), "MY EDIT\n");
+			t.set("v3");
+			expect(await killAtWrite(t.client, 0)).toBe(2); // kept, nothing written
+			expect(await pull(t.client)).toBe(2);
+			expect(t.read()).toBe("MY EDIT\n");
+		});
+
+		it("is removed, not kept, when the document is then deleted", async () => {
+			const t = await setup();
+			t.set("v2");
+			await killAtWrite(t.client, 1);
+			t.set("v3");
+			await killAtWrite(t.client, 0);
+			t.docs.delete(ID1);
+			t.deleted.add(ID1);
+			expect(await pull(t.client)).toBe(0);
+			expect(mirrorFiles(dir)).toEqual([]);
+		});
 	});
 });

@@ -135,6 +135,7 @@ async function pullLocked(
 	}
 
 	await recoverMoves(root, prevDocs, io);
+	await settlePending(root, prevDocs);
 	await removeTempFiles(root);
 
 	const feed = await call(() =>
@@ -207,6 +208,9 @@ async function pullLocked(
 			!p ||
 			p.orphan ||
 			p.reserved ||
+			// The file holds an earlier interrupted pull's write: write it
+			// again so the state records what it holds.
+			p.pending_sha256 ||
 			m.remote_hash !== p.content_hash ||
 			!(await exists(path.resolve(root, p.file)))
 		)
@@ -263,7 +267,7 @@ async function pullLocked(
 		if (
 			!p.reserved &&
 			sha !== p.file_sha256 &&
-			sha !== p.pending_sha256 &&
+			!p.pending_sha256?.includes(sha) &&
 			!opts.force
 		) {
 			kept++;
@@ -404,12 +408,18 @@ async function pullLocked(
 					continue;
 				}
 				docs[id] = { ...p, file: layout.get(id) as string };
-				delete docs[id].pending_sha256;
 				// A file holding what this run writes came from pull, so it is
 				// not mistaken for a local edit if the run stops after writing.
+				// The hash of what an earlier stopped pull left on disk (kept by
+				// settlePending) stays accepted too.
 				const md = markdownOf.get(id);
-				if (md !== undefined && !p.reserved)
-					docs[id].pending_sha256 = sha256(md);
+				if (md !== undefined && !p.reserved) {
+					const h = sha256(md);
+					docs[id].pending_sha256 = [
+						h,
+						...(p.pending_sha256 ?? []).filter((x) => x !== h),
+					];
+				}
 			}
 			for (const [id, n] of Object.entries(next)) if (n.orphan) docs[id] = n;
 			const interim: PullState = { ...base, dirs, docs };
@@ -459,7 +469,7 @@ async function pullLocked(
 				!p.reserved &&
 				current !== null &&
 				current !== p.file_sha256 &&
-				current !== p.pending_sha256 &&
+				!(current !== null && p.pending_sha256?.includes(current)) &&
 				current !== mdSha &&
 				!opts.force
 			) {
@@ -617,6 +627,32 @@ async function rollBack(
 		} catch {
 			// Left for recoverMoves on the next run.
 		}
+	}
+}
+
+/**
+ * Settles what earlier interrupted pulls recorded as pending: a file that
+ * holds one of those writes keeps only that hash (pull wrote it); any other
+ * file (unchanged since `file_sha256`, edited locally, or missing) keeps
+ * none. So the list never grows past the hash on disk plus the one the next
+ * write adds, however many pulls stop in a row, and a user edit is never
+ * accepted as pull's write.
+ */
+async function settlePending(
+	root: string,
+	docs: Record<string, PullDocState>,
+): Promise<void> {
+	for (const [id, p] of Object.entries(docs)) {
+		const raw = p.pending_sha256 as unknown;
+		if (raw === undefined) continue;
+		const list = (Array.isArray(raw) ? raw : [raw]).filter(
+			(h): h is string => typeof h === "string",
+		);
+		const sha = await fileSha256(path.resolve(root, p.file));
+		const keep = sha !== null && sha !== p.file_sha256 && list.includes(sha);
+		docs[id] = { ...p };
+		if (keep) docs[id].pending_sha256 = [sha];
+		else delete docs[id].pending_sha256;
 	}
 }
 
