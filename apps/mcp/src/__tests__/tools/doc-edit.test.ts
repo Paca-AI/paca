@@ -457,13 +457,14 @@ describe("spliceEdit deletes, merges and splits blocks with props", () => {
 		}
 	}
 
-	it("refuses to put a red block's colour on another block's text", () => {
+	it("never puts a red block's colour on another block's text", () => {
+		// "A" is gone and "B2" continues "B": A is deleted, B edited.
 		const blocks = [para("A", { textColor: "red" }), para("B"), para("z")];
-		expectRefused(
-			() => spliceEdit(blocks, "A\n\nB", "B2", false),
-			differ("lines 1 and 3"),
-			[1, 3],
-		);
+		const res = spliceEdit(blocks, "A\n\nB", "B2", false);
+		expect(res.blocks).toHaveLength(2);
+		expect(res.blocks[0].id).toBe(blocks[1].id);
+		expect(res.blocks[0].props.textColor).toBe("default");
+		expect(res.blocks[1]).toBe(blocks[2]);
 	});
 
 	it("refuses to merge a red and a blue block", () => {
@@ -491,6 +492,11 @@ describe("spliceEdit deletes, merges and splits blocks with props", () => {
 		const blocks = [para("x", { textColor: "red" }), para("z")];
 		expectRefused(
 			() => spliceEdit(blocks, "x", "* one\n* two", false),
+			"The edit touches the paragraph block on line 1, which edit_doc cannot rewrite from Markdown: it would be replaced by new blocks without its textColor. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.",
+			[1],
+		);
+		expectRefused(
+			() => spliceEdit(blocks, "x", "* x\n* two", false),
 			"The edit touches the paragraph block on line 1, which edit_doc cannot rewrite from Markdown: it would become bulletListItem blocks, which cannot keep its colour or alignment. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.",
 			[1],
 		);
@@ -530,12 +536,17 @@ describe("spliceEdit deletes, merges and splits blocks with props", () => {
 		expect(res2.blocks[2].props.textColor).toBe("default");
 	});
 
-	it("a split gives both halves the props", () => {
-		const blocks = [para("one two", { textAlignment: "center" }), para("b")];
-		const res = spliceEdit(blocks, "one two", "one\n\ntwo", false);
+	it("a split gives the props to the part that continues the text most", () => {
+		const blocks = [
+			para("one two three", { textAlignment: "center" }),
+			para("b"),
+		];
+		const res = spliceEdit(blocks, "one two three", "one\n\ntwo three", false);
 		expect(res.blocks).toHaveLength(3);
-		expect(res.blocks[0].props.textAlignment).toBe("center");
+		expect(res.blocks[0].props.textAlignment).toBe("left");
+		expect(res.blocks[0].id).not.toBe(blocks[0].id);
 		expect(res.blocks[1].props.textAlignment).toBe("center");
+		expect(res.blocks[1].id).toBe(blocks[0].id);
 		expect(res.blocks[2]).toBe(blocks[1]);
 	});
 
@@ -555,6 +566,11 @@ describe("spliceEdit deletes, merges and splits blocks with props", () => {
 		];
 		expectRefused(
 			() => spliceEdit(blocks, "aa\n\nbb", "x\n\ny\n\nw", false),
+			"The edit touches the paragraph block on line 1, which edit_doc cannot rewrite from Markdown: it would be replaced by new blocks without its textColor. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.",
+			[1],
+		);
+		expectRefused(
+			() => spliceEdit(blocks, "aa\n\nbb", "aa bb\n\ny\n\nw", false),
 			differ("lines 1 and 3"),
 			[1, 3],
 		);
@@ -947,6 +963,185 @@ describe("spliceEdit edits whose Markdown reads differently in the whole documen
 		expect(err).toBeInstanceOf(SpliceError);
 		expect((err as SpliceError).kind).toBe("unsafe");
 		expect((err as SpliceError).message).toMatch(/blocks after it/);
+	});
+});
+
+describe("spliceEdit pairs blocks by position, then by text (fifth review)", () => {
+	const fail = (blocks: any[], o: string, n: string, all = false) => {
+		try {
+			spliceEdit(blocks, o, n, all);
+		} catch (e) {
+			return e as SpliceError;
+		}
+		throw new Error("the edit was applied");
+	};
+
+	it("indenting the second of two equal items nests it under the first (P1)", () => {
+		const blocks = stored("* dup\n* dup", (b) => {
+			b[0].props.textColor = "red";
+		});
+		const res = spliceEdit(blocks, "* dup\n\n* dup", "* dup\n\n  * dup", false);
+		expect(res.blocks).toHaveLength(1);
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+		expect(res.blocks[0].props.textColor).toBe("red");
+		expect(res.blocks[0].children).toEqual([blocks[1]]);
+		expect(res.blocks[0].children[0]).toBe(blocks[1]);
+	});
+
+	it("indenting the third of three equal coloured items keeps every colour in place", () => {
+		const blocks = stored("* x\n* x\n* x", (b) => {
+			b[0].props.textColor = "red";
+			b[1].props.textColor = "green";
+		});
+		const res = spliceEdit(
+			blocks,
+			"* x\n\n* x\n\n* x",
+			"* x\n\n* x\n\n  * x",
+			false,
+		);
+		expect(res.blocks[0]).toBe(blocks[0]);
+		expect(res.blocks[1].id).toBe(blocks[1].id);
+		expect(res.blocks[1].props.textColor).toBe("green");
+		expect(res.blocks[1].children[0]).toBe(blocks[2]);
+	});
+
+	it("indenting under an equal block of another type keeps both types (P5)", () => {
+		const blocks = stored("* dup\n* dup");
+		blocks[0].type = "toggleListItem";
+		const res = spliceEdit(blocks, "* dup\n\n* dup", "* dup\n\n  * dup", false);
+		expect(res.blocks[0].type).toBe("toggleListItem");
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+		expect(res.blocks[0].children[0]).toBe(blocks[1]);
+	});
+
+	it("indenting a plain item under a chip item that reads the same keeps the chip on the parent", () => {
+		const blocks = stored("* @Ann (id: u1)\n* @Ann (id: u1)");
+		blocks[0].content = [
+			{ type: "teamMention", props: { id: "u1", name: "Ann", avatar: "" } },
+		];
+		const res = spliceEdit(
+			blocks,
+			"* @Ann (id: u1)\n\n* @Ann (id: u1)",
+			"* @Ann (id: u1)\n\n  * @Ann (id: u1)",
+			false,
+		);
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+		expect(res.blocks[0].content).toBe(blocks[0].content);
+		expect(res.blocks[0].children[0]).toBe(blocks[1]);
+	});
+
+	it("outdenting a grandchild that reads like its red parent keeps the red on the parent (P2)", () => {
+		const blocks = stored("* a\n    * dup\n        * dup", (b) => {
+			b[0].children[0].props.textColor = "red";
+		});
+		const kid = blocks[0].children[0];
+		const grand = kid.children[0];
+		const res = spliceEdit(blocks, "    * dup", "  * dup", false);
+		expect(res.blocks[0].children[0].id).toBe(kid.id);
+		expect(res.blocks[0].children[0].props.textColor).toBe("red");
+		expect(res.blocks[0].children[1]).toBe(grand);
+	});
+
+	it("a split gives the old block's id and colour to the block that continues its text (P3)", () => {
+		const blocks = stored("intro\n\nWarning: x\n\nend", (b) => {
+			b[1].props.textColor = "red";
+		});
+		const res = spliceEdit(
+			blocks,
+			"Warning: x",
+			"Note: y\n\nWarning: x2",
+			false,
+		);
+		expect(res.blocks[0]).toBe(blocks[0]);
+		expect(res.blocks[1].id).not.toBe(blocks[1].id);
+		expect(res.blocks[1].props.textColor ?? "default").toBe("default");
+		expect(res.blocks[2].id).toBe(blocks[1].id);
+		expect(res.blocks[2].props.textColor).toBe("red");
+		expect(res.blocks[3]).toBe(blocks[2]);
+	});
+
+	it("a split of plain blocks gives the id to the block that continues the text", () => {
+		const blocks = stored("intro\n\nWarning: x\n\nend");
+		const res = spliceEdit(
+			blocks,
+			"Warning: x",
+			"Note: y\n\nWarning: x2",
+			false,
+		);
+		expect(res.blocks[2].id).toBe(blocks[1].id);
+		expect(res.blocks[1].id).not.toBe(blocks[1].id);
+	});
+
+	it("a nested split gives the id and colour to the continuing child", () => {
+		const blocks = stored("* p\n    * Warning x", (b) => {
+			b[0].children[0].props.textColor = "red";
+		});
+		const kid = blocks[0].children[0];
+		const res = spliceEdit(
+			blocks,
+			"  * Warning x",
+			"  * Note y\n\n  * Warning x2",
+			false,
+		);
+		const [a, b] = res.blocks[0].children;
+		expect(a.id).not.toBe(kid.id);
+		expect(a.props.textColor ?? "default").toBe("default");
+		expect(b.id).toBe(kid.id);
+		expect(b.props.textColor).toBe("red");
+	});
+
+	it("swapping and editing two blocks keeps each id and colour on its own text", () => {
+		const blocks = stored("alpha one\n\nbeta two", (b) => {
+			b[0].props.textColor = "red";
+		});
+		const res = spliceEdit(
+			blocks,
+			"alpha one\n\nbeta two",
+			"beta two.\n\nalpha one.",
+			false,
+		);
+		expect(res.blocks[0].id).toBe(blocks[1].id);
+		expect(res.blocks[0].props.textColor ?? "default").toBe("default");
+		expect(res.blocks[1].id).toBe(blocks[0].id);
+		expect(res.blocks[1].props.textColor).toBe("red");
+	});
+
+	it("refuses deleting one of two equal blocks that differ in colour", () => {
+		const blocks = stored("x\n\nx", (b) => {
+			b[0].props.textColor = "red";
+		});
+		const err = fail(blocks, "x\n\nx", "x");
+		expect(err.kind).toBe("unsafe");
+		expect(err.message).toMatch(/cannot tell which/);
+		expect(err.lines).toEqual([1, 3]);
+	});
+
+	it("names the lines of nested blocks it cannot tell apart", () => {
+		const blocks = stored("* a\n    * dup\n        * dup", (b) => {
+			b[0].children[0].props.textColor = "red";
+		});
+		const err = fail(blocks, "* a\n\n  * dup\n\n    * dup", "* a\n\n  * dup");
+		expect(err.message).toMatch(/cannot tell which/);
+		expect(err.lines).toEqual([3, 5]);
+	});
+
+	it("deletes one of two equal plain blocks", () => {
+		const blocks = stored("x\n\nx");
+		const res = spliceEdit(blocks, "x\n\nx", "x", false);
+		expect(res.blocks).toEqual([blocks[0]]);
+	});
+
+	it("refuses a split of a coloured block into halves that continue it equally", () => {
+		const blocks = stored("Hello world", (b) => {
+			b[0].props.textColor = "red";
+		});
+		expect(fail(blocks, "Hello world", "Hello\n\nworld").message).toMatch(
+			/cannot tell which/,
+		);
+		const plain = stored("Hello world");
+		const res = spliceEdit(plain, "Hello world", "Hello\n\nworld", false);
+		expect(res.blocks[0].id).toBe(plain[0].id);
+		expect(res.blocks[1].id).not.toBe(plain[0].id);
 	});
 });
 

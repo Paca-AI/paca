@@ -314,31 +314,25 @@ function stable(v: unknown): string {
 	);
 }
 
-/** How a replaced block's props reach what replaces it:
+/** How an old block's props reach the block that replaces it:
  *  "paired": one block of its type stands in for it, inheriting its id and
  *  the props Markdown cannot carry (colours, alignment);
- *  "carried": the blocks of a merge or split take its colours and alignment. */
+ *  "carried": it is merged into another block, which keeps its own. */
 type Carry = "paired" | "carried";
 
-/** Why `b` cannot be rewritten from Markdown, or null when it can. */
+/** Why `b`'s own part (its type, props and text; its nested blocks are
+ *  aligned on their own) cannot be rewritten from Markdown, or null. */
 function markdownLoss(b: Block, carry: Carry): string | null {
-	const parsed = fixSoftBreaks(markdownToBlocknote(render([b])));
+	const own = { ...b, children: [] };
+	const parsed = fixSoftBreaks(markdownToBlocknote(render([own])));
 	let back: Block[] = parsed;
 	if (carry === "paired" && parsed.length === 1 && parsed[0].type === b.type) {
-		try {
-			back = [inherit(b, parsed[0])];
-		} catch (err) {
-			if (err instanceof NestedUnsafe) return `a nested block: ${err.loss}`;
-			throw err;
-		}
+		back = [inherit(b, parsed[0])];
 	}
-	if (back.length !== 1) {
-		return Array.isArray(b.children) && b.children.length > 0
-			? "its nested blocks would become separate top-level blocks"
-			: `Markdown has no exact form for ${aBlock(b.type)}`;
-	}
-	const a = canonBlock(b, true) as Block;
-	const z = canonBlock(back[0], true) as Block;
+	if (back.length !== 1)
+		return `Markdown has no exact form for ${aBlock(b.type)}`;
+	const a = canonBlock(own, true) as Block;
+	const z = canonBlock({ ...back[0], children: [] }, true) as Block;
 	if (carry === "carried") {
 		for (const k of Object.keys(DEFAULT_PROPS)) {
 			delete a.props[k];
@@ -346,9 +340,6 @@ function markdownLoss(b: Block, carry: Carry): string | null {
 		}
 	}
 	if (a.type !== z.type) return `it would become ${aBlock(z.type)}`;
-	if (stable(a.children) !== stable(z.children)) {
-		return "its nested blocks would change (their type, colours or other properties)";
-	}
 	if (stable(a.props) !== stable(z.props)) {
 		const keys = [
 			...new Set([...Object.keys(a.props), ...Object.keys(z.props)]),
@@ -380,39 +371,30 @@ function markdownLoss(b: Block, carry: Carry): string | null {
 	return null;
 }
 
-/**
- * How old blocks map onto parsed ones while one edit is aligned, at every
- * depth: `moves` takes a parsed block to the old block it stands for (its
- * render is the same, so the old object is returned as it was), `used`
- * holds the old blocks taken that way, so none is used twice.
- */
-interface AlignCtx {
-	moves: Map<Block, Block>;
-	used: Set<Block>;
-}
-
-const newCtx = (): AlignCtx => ({ moves: new Map(), used: new Set() });
-
-/** A nested block the edit would rewrite with a loss (see markdownLoss). */
-class NestedUnsafe extends Error {
-	constructor(
-		readonly loss: string,
-		readonly blockType: string,
-	) {
-		super(loss);
-	}
-}
-
 function subtree(b: Block): Block[] {
 	return [b, ...(Array.isArray(b.children) ? b.children : []).flatMap(subtree)];
 }
 
-/** `b` with every parsed block that stands for an old one replaced by it. */
-function materialize(b: Block, ctx: AlignCtx): Block {
-	const old = ctx.moves.get(b);
-	if (old) return old;
-	if (!Array.isArray(b.children) || b.children.length === 0) return b;
-	return { ...b, children: b.children.map((c: Block) => materialize(c, ctx)) };
+const kidsOf = (b: Block): Block[] =>
+	Array.isArray(b.children) ? b.children : [];
+
+/** How blocks nest, types aside. */
+const shape = (b: Block): string => `(${kidsOf(b).map(shape).join("")})`;
+
+/** Whether Markdown writes `b`'s nested blocks as nested (a list item's
+ *  are; a paragraph's come back as blocks after it). */
+function nestsInMarkdown(b: Block): boolean {
+	if (kidsOf(b).length === 0) return true;
+	const back = fixSoftBreaks(markdownToBlocknote(render([b])));
+	return back.length === 1 && shape(back[0]) === shape(b);
+}
+
+/** Why an old block whose nested blocks Markdown cannot nest cannot be
+ *  rewritten. */
+function nestedLoss(b: Block): string {
+	return markdownToBlocknote(render([b])).length > 1
+		? "its nested blocks would become separate top-level blocks"
+		: "its nested blocks would change (their type, colours or other properties)";
 }
 
 /** Props Markdown writes (a list's start number, a check, a heading level,
@@ -423,9 +405,10 @@ const MARKDOWN_PROPS = new Set(["start", "checked", "level", "language"]);
 /**
  * `fresh` (parsed from Markdown) standing in for `old`: it keeps old's id
  * (or lack of one) and the props Markdown cannot carry, such as colours;
- * the props Markdown writes come from `fresh`.
+ * the props Markdown writes, the text and the nested blocks come from
+ * `fresh` (the caller aligns the nested blocks).
  */
-function inherit(old: Block, fresh: Block, ctx: AlignCtx = newCtx()): Block {
+function inherit(old: Block, fresh: Block): Block {
 	const props: Record<string, unknown> = { ...(old.props ?? {}) };
 	for (const k of MARKDOWN_PROPS) {
 		if (!(k in (fresh.props ?? {})) && NEUTRAL_PROPS[k] !== props[k]) {
@@ -437,131 +420,165 @@ function inherit(old: Block, fresh: Block, ctx: AlignCtx = newCtx()): Block {
 		props[k] = v;
 	}
 	const out: Block = { ...fresh, props };
-	if (Array.isArray(fresh.children)) {
-		const oc: Block[] = Array.isArray(old.children) ? old.children : [];
-		out.children = align(
-			oc,
-			oc.map((c) => render([c])),
-			fresh.children,
-			ctx,
-			true,
-		).blocks;
-	}
 	if ("id" in old) out.id = old.id;
 	else delete out.id;
 	return out;
 }
 
-/** What happened to an old block the edit replaced. */
-type Replaced =
-	| { i: number; how: "deleted" | Carry }
-	/** Old blocks of a merge or split whose colours or alignment differ;
-	 *  `group`: all of that stretch's old blocks. */
-	| { i: number; how: "differ"; group: number[] }
-	/** A block with colours or alignment that becomes blocks of `to` types. */
-	| { i: number; how: "retype"; to: string[] }
-	/** A nested block of this one (of `type`) would be rewritten with `loss`. */
-	| { i: number; how: "nested"; type: string; loss: string };
+/** What `b` carries that tells it apart from a block that reads the same. */
+const dataOf = (b: Block) => stable([b.type, uncarried(b)]);
+const carries = (b: Block) => !carriesNothing(uncarried(b));
 
-/** The colours and alignment of `b` that differ from the defaults. */
-function ownProps(b: Block): Record<string, unknown> {
-	const out: Record<string, unknown> = {};
-	for (const k of Object.keys(DEFAULT_PROPS)) {
-		const v = b.props?.[k];
-		if (v !== undefined && v !== DEFAULT_PROPS[k]) out[k] = v;
+/** Why the alignment cannot rewrite an old block. */
+export interface Problem {
+	block: Block;
+	why: string;
+	/** "differ": the blocks merged with it (`with`) have other colours;
+	 *  "ambiguous": the edit could mean it or the blocks in `with`. */
+	kind: "loss" | "differ" | "ambiguous";
+	with?: Block[];
+}
+
+/** A block of an edited range, in document order (parents before
+ *  children). */
+interface Entry {
+	b: Block;
+	/** The block it is nested in; null at the top of the range. */
+	parent: Block | null;
+	/** Its own Markdown ("" when it shows nothing). For an old block whose
+	 *  nested blocks Markdown cannot nest (`whole`), the Markdown of its
+	 *  whole subtree: it is matched, or rewritten, as one. */
+	key: string;
+	whole: boolean;
+	/** Entries in its subtree, itself included. */
+	size: number;
+}
+
+function flatten(
+	blocks: Block[],
+	parent: Block | null,
+	old: boolean,
+	out: Entry[] = [],
+): Entry[] {
+	for (const b of blocks) {
+		const whole = old && !nestsInMarkdown(b);
+		const e: Entry = {
+			b,
+			parent,
+			key: whole ? render([b]) : ownKey(b),
+			whole,
+			size: 1,
+		};
+		out.push(e);
+		const at = out.length;
+		if (!whole) flatten(kidsOf(b), b, old, out);
+		e.size = out.length - at + 1;
 	}
 	return out;
 }
 
-/** `fresh` with `props` set where it has the default value. */
-function withProps(fresh: Block, props: Record<string, unknown>): Block {
-	const own = { ...(fresh.props ?? {}) };
-	let changed = false;
-	for (const [k, v] of Object.entries(props)) {
-		if (k in own && own[k] === DEFAULT_PROPS[k]) {
-			own[k] = v;
-			changed = true;
-		}
-	}
-	return changed ? { ...fresh, props: own } : fresh;
-}
-
-/** Why the edit cannot rewrite old block `oldBlocks[r.i]`, or null. */
-function lossOf(r: Replaced, oldBlocks: Block[]): string | null {
-	if (r.how === "deleted") return null;
-	if (r.how === "differ") {
-		return "it and the blocks merged or split with it have different colours or alignment, so the new blocks cannot keep them";
-	}
-	if (r.how === "retype") {
-		return `it would become ${r.to.join(", ")} blocks, which cannot keep its colour or alignment`;
-	}
-	if (r.how === "nested") return `in ${aBlock(r.type)} nested in it, ${r.loss}`;
-	return markdownLoss(oldBlocks[r.i], r.how);
-}
-
 /**
- * Replaces `oldBlocks` with `fresh` (parsed from the edited Markdown):
- * - an old block whose render is unchanged is kept as the very object read
- *   (longest common subsequence of renders, so duplicates pair in order);
- * - an old block whose render reappears elsewhere among the changed blocks,
- *   at any depth (moved, swapped, indented, outdented), is that object
- *   there; duplicates pair in document order;
- * - the rest pair by position: as many new blocks as old ones, of the same
- *   types, each stands in for the old one (same id, colours, alignment);
- *   otherwise (a merge, split or change of type) the new blocks are new
- *   and take the old colours and alignment only where they all agree;
- * - nested blocks are aligned the same way, recursively;
- * - old blocks that render to nothing (an empty paragraph) always stay: at
- *   their place among blocks paired one to one; in a merge or split, before
- *   the new blocks when they were before the old ones, after the first new
- *   block when they were between old ones, and after the new blocks when
- *   they were after.
- * `nested`: a loss in a replaced block throws NestedUnsafe (the caller
- * names the top-level block); at the top level the losses are returned.
+ * Replaces `oldBlocks` with `fresh` (parsed from the edited Markdown). Which
+ * old block a new block is, is decided by one rule, at every depth at once
+ * (both trees flattened in document order, parents before children):
+ * 1. Position. The longest common subsequence of the blocks' own Markdown
+ *    (without their nested blocks) pairs old and new blocks that read the
+ *    same, in order. Such an old block is returned as the very object read
+ *    when its nested blocks are too, else with only its nested blocks
+ *    replaced: its type, props, text and id stay. So an indent nests the
+ *    second of two equal items under the first, never the other way round.
+ *    When a deleted old block reads like a kept one next to it in that
+ *    order and differs from it (colours, type, chips), the edit could mean
+ *    either: it is refused ("ambiguous").
+ * 2. Moves. Old and new blocks the order left out that read the same pair
+ *    in order (a swap); when the old ones differ and are not as many as
+ *    the new ones, the edit is refused ("ambiguous").
+ * 3. Text. The rest, between two blocks paired above, are rewritten:
+ *    - as many new blocks as old ones, of the same types, and no new block
+ *      continues another old block's text better than its own (see
+ *      shared): each stands in for the old block at its position (its id,
+ *      colours, alignment);
+ *    - otherwise each old block goes to the new block that continues its
+ *      text most (a tie refuses the edit when the old block carries
+ *      something Markdown cannot write; otherwise the first wins; an old
+ *      block whose text no new block continues is deleted). The first old
+ *      block a new block continues gives it its id and props, when their
+ *      types match; the others merged into it must have the same colours
+ *      and alignment. New blocks no old block continues are new: plain,
+ *      with ids of their own.
+ * Old blocks that render to nothing (an empty paragraph) stay, placed
+ * after the block that now stands for their previous sibling, else before
+ * the first new block next to the one that stands for their next sibling,
+ * else first in what stands for their parent.
  */
 function align(
 	oldBlocks: Block[],
-	oldKeys: string[],
 	fresh: Block[],
-	ctx: AlignCtx = newCtx(),
-	nested = false,
-): { blocks: Block[]; replaced: Replaced[] } {
-	const newKeys = fresh.map((b) => render([b]));
-	const n = oldBlocks.length;
-	const m = fresh.length;
-	// A pair the move map already fixed must stay that pair.
-	const eq = (i: number, j: number) => {
-		if (oldKeys[i] === "" || oldKeys[i] !== newKeys[j]) return false;
-		const was = ctx.moves.get(fresh[j]);
-		if (was) return was === oldBlocks[i];
-		return !ctx.used.has(oldBlocks[i]);
-	};
-	const lcs: number[][] = Array.from({ length: n + 1 }, () =>
-		new Array<number>(m + 1).fill(0),
-	);
-	for (let i = n - 1; i >= 0; i--) {
-		for (let j = m - 1; j >= 0; j--) {
-			lcs[i][j] = eq(i, j)
-				? lcs[i + 1][j + 1] + 1
-				: Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+): { blocks: Block[]; problems: Problem[] } {
+	const O = flatten(oldBlocks, null, true);
+	const F = flatten(fresh, null, false);
+	const n = O.length;
+	const m = F.length;
+	const subs = new Map<number, string>();
+	const subOf = (j: number) => {
+		let k = subs.get(j);
+		if (k === undefined) {
+			k = render([F[j].b]);
+			subs.set(j, k);
 		}
-	}
+		return k;
+	};
+	const eq = (i: number, j: number) =>
+		O[i].key !== "" &&
+		(O[i].whole ? subOf(j) === O[i].key : O[i].key === F[j].key);
+	const step = (i: number, j: number) => (O[i].whole ? F[j].size : 1);
 
 	type Op =
 		| { op: "keep"; i: number; j: number }
 		| { op: "del"; i: number }
 		| { op: "ins"; j: number };
-	const ops: Op[] = [];
-	let i = 0;
-	let j = 0;
-	while (i < n || j < m) {
-		if (i < n && j < m && eq(i, j) && lcs[i][j] === lcs[i + 1][j + 1] + 1) {
+	// The common prefix and suffix first: most edits touch a few blocks.
+	const head: Op[] = [];
+	let i0 = 0;
+	let j0 = 0;
+	while (i0 < n && j0 < m && eq(i0, j0)) {
+		head.push({ op: "keep", i: i0, j: j0 });
+		j0 += step(i0, j0);
+		i0++;
+	}
+	const tail: Op[] = [];
+	let i1 = n;
+	let j1 = m;
+	while (i1 > i0 && j1 > j0 && !O[i1 - 1].whole && eq(i1 - 1, j1 - 1)) {
+		i1--;
+		j1--;
+		tail.unshift({ op: "keep", i: i1, j: j1 });
+	}
+	const w = j1 - j0 + 1;
+	const dp = new Int32Array((i1 - i0 + 1) * w);
+	const at = (i: number, j: number) => (i - i0) * w + (j - j0);
+	for (let i = i1 - 1; i >= i0; i--) {
+		for (let j = j1 - 1; j >= j0; j--) {
+			let v = Math.max(dp[at(i + 1, j)], dp[at(i, j + 1)]);
+			if (eq(i, j) && j + step(i, j) <= j1) {
+				v = Math.max(v, 1 + dp[at(i + 1, j + step(i, j))]);
+			}
+			dp[at(i, j)] = v;
+		}
+	}
+	const ops: Op[] = [...head];
+	for (let i = i0, j = j0; i < i1 || j < j1; ) {
+		if (
+			i < i1 &&
+			j < j1 &&
+			eq(i, j) &&
+			j + step(i, j) <= j1 &&
+			dp[at(i, j)] === 1 + dp[at(i + 1, j + step(i, j))]
+		) {
 			ops.push({ op: "keep", i, j });
-			ctx.moves.set(fresh[j], oldBlocks[i]);
-			ctx.used.add(oldBlocks[i]);
+			j += step(i, j);
 			i++;
-			j++;
-		} else if (j < m && (i === n || lcs[i][j + 1] >= lcs[i + 1][j])) {
+		} else if (j < j1 && (i === i1 || dp[at(i, j + 1)] >= dp[at(i + 1, j)])) {
 			ops.push({ op: "ins", j });
 			j++;
 		} else {
@@ -569,181 +586,264 @@ function align(
 			i++;
 		}
 	}
+	ops.push(...tail);
 
-	const stretches: Op[][] = [];
+	type Role = { how: "keep" | "whole" | "pair"; old: Block } | { how: "new" };
+	const role = new Map<Block, Role>();
+	/** The new block that stands for an old one. */
+	const counterpart = new Map<Block, Block>();
+	const problems: Problem[] = [];
+	const freshParent = new Map<Block, Block | null>();
+	for (const e of F) freshParent.set(e.b, e.parent);
+	const loss = (o: Entry, carry: Carry) => {
+		const why = o.whole ? nestedLoss(o.b) : markdownLoss(o.b, carry);
+		if (why) problems.push({ block: o.b, why, kind: "loss" });
+	};
+
+	for (const op of ops) {
+		if (op.op !== "keep") continue;
+		const o = O[op.i];
+		role.set(F[op.j].b, { how: o.whole ? "whole" : "keep", old: o.b });
+		counterpart.set(o.b, F[op.j].b);
+	}
+
+	// Moves.
+	const loose = new Map<string, { olds: Entry[]; news: Entry[] }>();
+	const group = (key: string) => {
+		let g = loose.get(key);
+		if (!g) {
+			g = { olds: [], news: [] };
+			loose.set(key, g);
+		}
+		return g;
+	};
+	for (const op of ops) {
+		if (op.op === "del" && O[op.i].key !== "" && !O[op.i].whole) {
+			group(O[op.i].key).olds.push(O[op.i]);
+		} else if (op.op === "ins") group(F[op.j].key).news.push(F[op.j]);
+	}
+	for (const { olds, news } of loose.values()) {
+		const k = Math.min(olds.length, news.length);
+		if (k === 0) continue;
+		const differ = new Set(olds.map((o) => dataOf(o.b))).size > 1;
+		if (
+			(olds.length > news.length && differ) ||
+			(news.length > olds.length && olds.some((o) => carries(o.b)))
+		) {
+			problems.push({
+				block: olds[0].b,
+				why: "ambiguous",
+				kind: "ambiguous",
+				with: olds.slice(1).map((o) => o.b),
+			});
+			continue;
+		}
+		for (let q = 0; q < k; q++) {
+			role.set(news[q].b, { how: "keep", old: olds[q].b });
+			counterpart.set(olds[q].b, news[q].b);
+		}
+	}
+
+	// Rewrites, stretch by stretch.
+	const stretchOf = new Map<Block, Entry[]>();
+	let prevKeep: Entry | null = null;
 	for (let k = 0; k < ops.length; ) {
-		if (ops[k].op === "keep") {
-			stretches.push([ops[k++]]);
+		const op = ops[k];
+		if (op.op === "keep") {
+			prevKeep = O[op.i];
+			k++;
 			continue;
 		}
 		const st: Op[] = [];
 		while (k < ops.length && ops[k].op !== "keep") st.push(ops[k++]);
-		stretches.push(st);
-	}
-
-	// Moves: an old block (or nested block) the diff did not keep whose
-	// render reappears among the new blocks (or nested blocks) the diff did
-	// not keep, anywhere at this level, is that old block there (moved,
-	// swapped, indented or outdented). Duplicates pair in document order.
-	const oldPool = ops.flatMap((o) =>
-		o.op === "del" ? subtree(oldBlocks[o.i]) : [],
-	);
-	const newPool = ops.flatMap((o) =>
-		o.op === "ins" ? subtree(fresh[o.j]) : [],
-	);
-	for (const old of oldPool) {
-		if (ctx.used.has(old)) continue;
-		const key = render([old]);
-		if (key === "") continue;
-		const to = newPool.find((f) => !ctx.moves.has(f) && render([f]) === key);
-		if (!to) continue;
-		ctx.moves.set(to, old);
-		ctx.used.add(old);
-	}
-
-	const out: Block[] = [];
-	const replaced: Replaced[] = [];
-	let insertedAlone = false;
-	const record = (r: Replaced) => {
-		if (!nested) {
-			replaced.push(r);
-			return;
-		}
-		const loss = lossOf(r, oldBlocks);
-		if (loss) throw new NestedUnsafe(loss, oldBlocks[r.i].type);
-	};
-	const emit = (st: Op[]) => {
-		const olds = st.flatMap((o) => (o.op === "del" ? [o.i] : []));
-		const empty = (i: number) => oldKeys[i] === "";
-		// Old blocks moved elsewhere are not replaced here.
-		const reals = olds.filter((i) => !empty(i) && !ctx.used.has(oldBlocks[i]));
-		const ins = st.flatMap((o) => (o.op === "ins" ? [fresh[o.j]] : []));
-		const freeIns = ins.filter((f) => !ctx.moves.has(f));
-
-		// The stretch's new blocks in order, each with the old block it
-		// stands in for (positional pairing), if any.
-		const items: Block[] = [];
-		const pairPos = new Map<number, number>();
-		let mode: "insert" | "delete" | "paired" | "split";
-		if (reals.length === 0) mode = "insert";
-		else if (freeIns.length === 0) mode = "delete";
-		else if (
-			reals.length === freeIns.length &&
-			reals.every((r, k) => oldBlocks[r].type === freeIns[k].type)
-		)
-			mode = "paired";
-		else mode = "split";
-
-		if (mode === "insert" && freeIns.length > 0) insertedAlone = true;
-		if (mode === "delete")
-			for (const r of reals) record({ i: r, how: "deleted" });
-
-		let props: Record<string, unknown> = {};
-		if (mode === "split") {
-			const dels = reals.map((r) => oldBlocks[r]);
-			props = ownProps(dels[0]);
-			const agree = dels.every((d) => stable(ownProps(d)) === stable(props));
-			const sameType = freeIns.every((b) =>
-				dels.every((d) => d.type === b.type),
-			);
-			for (const r of reals) {
-				record(
-					!agree
-						? { i: r, how: "differ", group: reals }
-						: Object.keys(props).length > 0 && !sameType
-							? {
-									i: r,
-									how: "retype",
-									to: [...new Set(freeIns.map((b) => b.type))],
-								}
-							: { i: r, how: "carried" },
+		const next = ops[k] as { op: "keep"; i: number } | undefined;
+		const nextKeep = next ? O[next.i] : null;
+		const olds = st.flatMap((s) =>
+			s.op === "del" && !counterpart.has(O[s.i].b) ? [O[s.i]] : [],
+		);
+		const news = st.flatMap((s) =>
+			s.op === "ins" && !role.has(F[s.j].b) ? [F[s.j]] : [],
+		);
+		for (const o of olds) stretchOf.set(o.b, news);
+		const reals = olds.filter((o) => o.key !== "");
+		const deleted: Entry[] = [];
+		const consistent = () =>
+			reals.length === news.length &&
+			reals.every((r, q) => r.b.type === news[q].b.type) &&
+			reals.every((r, q) => {
+				const mine = shared(ownText(r.b), ownText(news[q].b));
+				return news.every(
+					(f, l) =>
+						l === q ||
+						(shared(ownText(r.b), ownText(f.b)) <= mine &&
+							shared(ownText(reals[l].b), ownText(news[q].b)) <= mine),
 				);
-			}
-		}
-		let q = 0;
-		for (const f of ins) {
-			const moved = ctx.moves.get(f);
-			if (moved) {
-				items.push(moved);
-				continue;
-			}
-			if (mode === "paired") {
-				const r = reals[q++];
-				pairPos.set(r, items.length);
-				try {
-					items.push(inherit(oldBlocks[r], f, ctx));
-				} catch (err) {
-					if (nested || !(err instanceof NestedUnsafe)) throw err;
-					record({ i: r, how: "nested", type: err.blockType, loss: err.loss });
-					items.push(f);
+			});
+		if (news.length === 0) deleted.push(...reals);
+		else if (reals.length > 0 && consistent()) {
+			reals.forEach((r, q) => {
+				role.set(news[q].b, { how: "pair", old: r.b });
+				counterpart.set(r.b, news[q].b);
+				loss(r, "paired");
+			});
+		} else if (reals.length > 0) {
+			const claims = new Map<Entry, Entry[]>();
+			for (const r of reals) {
+				const scores = news.map((f) => shared(ownText(r.b), ownText(f.b)));
+				const best = Math.max(...scores);
+				if (best === 0) {
+					deleted.push(r);
 					continue;
 				}
-				record({ i: r, how: "paired" });
-			} else if (mode === "split") {
-				const made = withProps(materialize(f, ctx), props);
-				if (q++ === 0) {
-					// The first new block continues the first old one (its id),
-					// when they have the same type.
-					pairPos.set(reals[0], items.length);
-					const first = oldBlocks[reals[0]];
-					if (first.type === made.type && typeof first.id === "string") {
-						items.push({ ...made, id: first.id });
-						continue;
-					}
+				const ties = news.filter((_, q) => scores[q] === best);
+				if (ties.length > 1 && carries(r.b)) {
+					problems.push({ block: r.b, why: "split", kind: "ambiguous" });
+					continue;
 				}
-				items.push(made);
-			} else {
-				items.push(materialize(f, ctx));
+				const list = claims.get(ties[0]) ?? [];
+				list.push(r);
+				claims.set(ties[0], list);
+			}
+			for (const f of news) {
+				const cl = claims.get(f);
+				if (!cl) continue;
+				const first = cl[0];
+				for (const r of cl) counterpart.set(r.b, f.b);
+				if (first.b.type === f.b.type) {
+					role.set(f.b, { how: "pair", old: first.b });
+					loss(first, "paired");
+				} else if (first.whole || carries(first.b)) {
+					problems.push({
+						block: first.b,
+						why: first.whole
+							? nestedLoss(first.b)
+							: `it would become ${[...new Set(news.map((x) => x.b.type))].join(", ")} blocks, which cannot keep its colour or alignment`,
+						kind: "loss",
+					});
+				}
+				for (const r of cl.slice(1)) {
+					if (
+						stable(uncarried(r.b).props) !== stable(uncarried(first.b).props)
+					) {
+						problems.push({
+							block: r.b,
+							why: "differ",
+							kind: "differ",
+							with: cl.map((c) => c.b),
+						});
+					} else loss(r, "carried");
+				}
 			}
 		}
+		// A deleted block that reads like a kept neighbour in the order, but
+		// differs from it: the edit could mean either.
+		for (const d of deleted) {
+			for (const kept of [prevKeep, nextKeep]) {
+				if (
+					kept &&
+					!kept.whole &&
+					kept.key === d.key &&
+					dataOf(kept.b) !== dataOf(d.b)
+				) {
+					problems.push({
+						block: kept.b,
+						why: "ambiguous",
+						kind: "ambiguous",
+						with: [d.b],
+					});
+				}
+			}
+		}
+	}
 
-		// Old blocks that render to nothing: placed by their old neighbours.
-		const before: Block[][] = items.map(() => []);
-		const after: Block[][] = items.map(() => []);
-		const lead: Block[] = [];
-		const tail: Block[] = [];
-		for (const e of olds.filter(empty)) {
-			const old = oldBlocks[e];
-			if (items.length === 0 || mode === "insert" || mode === "delete") {
-				// No pairing to place it by: the diff's order.
-				const at = st.findIndex((o) => o.op === "del" && o.i === e);
-				const insBefore = st.slice(0, at).filter((o) => o.op === "ins").length;
-				if (insBefore === 0) lead.push(old);
-				else after[Math.min(insBefore, items.length) - 1].push(old);
-				continue;
-			}
-			const next = reals.find((r) => r > e);
-			const prev = [...reals].reverse().find((r) => r < e);
-			if (mode === "paired") {
-				if (next !== undefined) before[pairPos.get(next) as number].push(old);
-				else if (prev !== undefined)
-					after[pairPos.get(prev) as number].push(old);
-				else lead.push(old);
-			} else if (prev === undefined) {
-				before[pairPos.get(reals[0]) ?? 0].push(old);
-			} else if (next !== undefined) {
-				after[pairPos.get(reals[0]) ?? 0].push(old);
-			} else tail.push(old);
-		}
-		out.push(...lead);
-		for (let k = 0; k < items.length; k++) {
-			out.push(...before[k], items[k], ...after[k]);
-		}
-		out.push(...tail);
+	// Blocks that render to nothing.
+	const before = new Map<Block, Block[]>();
+	const after = new Map<Block, Block[]>();
+	const first = new Map<Block | null, Block[]>();
+	const put = <K>(map: Map<K, Block[]>, k: K, b: Block) => {
+		const list = map.get(k) ?? [];
+		list.push(b);
+		map.set(k, list);
 	};
-	for (const st of stretches) {
-		if (st[0].op === "keep") {
-			out.push(oldBlocks[(st[0] as { i: number }).i]);
-			continue;
+	for (const e of O) {
+		if (e.key !== "" || counterpart.has(e.b)) continue;
+		const sibs = e.parent ? kidsOf(e.parent) : oldBlocks;
+		const k = sibs.indexOf(e.b);
+		let done = false;
+		for (let p = k - 1; p >= 0 && !done; p--) {
+			const c = counterpart.get(sibs[p]);
+			if (c) {
+				put(after, c, e.b);
+				done = true;
+			}
 		}
-		emit(st);
+		for (let q = k + 1; q < sibs.length && !done; q++) {
+			const c = counterpart.get(sibs[q]);
+			if (c) {
+				const par = freshParent.get(c);
+				const lead = (stretchOf.get(e.b) ?? []).find(
+					(f) => freshParent.get(f.b) === par,
+				);
+				put(before, lead?.b ?? c, e.b);
+				done = true;
+			}
+		}
+		if (!done) {
+			// No sibling stands anywhere: by the old blocks around it in its
+			// stretch. Between two, after the first new block; before them
+			// all, before the new blocks; after them all, after.
+			const pc = e.parent ? counterpart.get(e.parent) : undefined;
+			const par = pc ?? null;
+			const news = (stretchOf.get(e.b) ?? []).filter(
+				(f) => freshParent.get(f.b) === par,
+			);
+			const real = (x: Block) => x !== e.b && ownKey(x) !== "";
+			const prev = sibs.slice(0, k).some(real);
+			const nextReal = sibs.slice(k + 1).some(real);
+			if (news.length > 0 && prev)
+				put(after, news[nextReal ? 0 : news.length - 1].b, e.b);
+			else if (news.length > 0 && nextReal) put(before, news[0].b, e.b);
+			else put(first, par, e.b);
+		}
 	}
-	// Text deleted in one stretch and inserted in another (moved past a
-	// block the edit kept) is a rewrite too: check what was deleted.
-	if (insertedAlone && !nested) {
-		for (const r of replaced) if (r.how === "deleted") r.how = "carried";
-	}
-	return { blocks: out, replaced };
+
+	const same = (a: Block[], b: Block[]) =>
+		a.length === b.length && a.every((x, k) => x === b[k]);
+	const arrange = (parent: Block | null, list: Block[]): Block[] => {
+		const out = [...(first.get(parent) ?? [])];
+		for (const c of list) {
+			out.push(...(before.get(c) ?? []), build(c), ...(after.get(c) ?? []));
+		}
+		return out;
+	};
+	const build = (f: Block): Block => {
+		const r = role.get(f);
+		if (r?.how === "whole") return r.old;
+		const kids = arrange(f, kidsOf(f));
+		if (r?.how === "keep") {
+			if (same(kids, kidsOf(r.old))) return r.old;
+			// A type Markdown has no form for may write its nested blocks
+			// differently from the type it reads back as (a toggle indents a
+			// paragraph, a bullet does not).
+			if (
+				r.old.type !== f.type &&
+				render([{ ...r.old, children: kids }]) !==
+					render([{ ...f, children: kids }])
+			) {
+				problems.push({
+					block: r.old,
+					why:
+						markdownLoss(r.old, "paired") ??
+						"Markdown writes its nested blocks differently",
+					kind: "loss",
+				});
+			}
+			return { ...r.old, children: kids };
+		}
+		if (r?.how === "pair") return { ...inherit(r.old, f), children: kids };
+		return Array.isArray(f.children) ? { ...f, children: kids } : f;
+	};
+	return { blocks: arrange(null, fresh), problems };
 }
 
 // ── Final audit ───────────────────────────────────────────────────────────────
@@ -1091,11 +1191,7 @@ export function spliceEdit(
 		text += full.slice(at, units[ub].end);
 
 		const fresh = fixSoftBreaks(markdownToBlocknote(text));
-		const aligned = align(
-			blocks.slice(from, to),
-			renders.slice(from, to),
-			fresh,
-		);
+		const aligned = align(blocks.slice(from, to), fresh);
 		// The line where block `idx` starts in the full Markdown.
 		const lineOf = (idx: number) => {
 			if (starts[idx] >= 0) return lineAt(full, starts[idx]);
@@ -1104,27 +1200,83 @@ export function spliceEdit(
 			const at = first ? full.indexOf(first, unit.start) : -1;
 			return lineAt(full, at >= 0 ? at : unit.start + (unit.start > 0 ? 1 : 0));
 		};
-		for (const r of aligned.replaced) {
-			if (r.how === "deleted") continue;
-			const k = r.i;
-			const b = blocks[from + k];
-			if (r.how === "differ") {
-				const lines = r.group.map((g) => lineOf(from + g));
-				const named =
+		// Every block of the range, at any depth, with the top-level block
+		// it is in (its line names it).
+		const topOf = new Map<Block, number>();
+		for (let k = from; k < to; k++) {
+			for (const b of subtree(blocks[k])) topOf.set(b, k);
+		}
+		// A nested block's line: its own first line, looked for in order
+		// from where its top-level block starts.
+		const nestedLines = new Map<Block, number>();
+		const lineOfBlock = (b: Block) => {
+			const k = topOf.get(b) ?? from;
+			if (blocks[k] === b) return lineOf(k);
+			if (!nestedLines.has(b)) {
+				const unit = units.find((u) => u.from <= k && k < u.to) ?? units[ua];
+				let cursor = starts[k] >= 0 ? starts[k] : unit.start;
+				for (const x of subtree(blocks[k])) {
+					const first = ownKey(x).split("\n")[0].trim();
+					const found = first ? full.indexOf(first, cursor) : -1;
+					if (found < 0) continue;
+					nestedLines.set(x, lineAt(full, found));
+					cursor = found + first.length;
+				}
+			}
+			return nestedLines.get(b) ?? lineOf(k);
+		};
+		const named = (bs: Block[]) => {
+			const lines = [...new Set(bs.map(lineOfBlock))].sort((x, y) => x - y);
+			return {
+				lines,
+				text:
 					lines.length === 1
 						? `line ${lines[0]}`
-						: `lines ${lines.slice(0, -1).join(", ")} and ${lines[lines.length - 1]}`;
+						: `lines ${lines.slice(0, -1).join(", ")} and ${lines[lines.length - 1]}`,
+			};
+		};
+		const where = (b: Block) => {
+			const k = topOf.get(b) ?? from;
+			return blocks[k] === b
+				? `the ${b.type} block on line ${lineOf(k)}`
+				: `a ${b.type} block nested in the block on line ${lineOf(k)}`;
+		};
+		for (const p of aligned.problems) {
+			if (p.kind === "differ") {
+				const { lines, text } = named(p.with ?? [p.block]);
 				throw new SpliceError(
-					`The edit merges, splits or retypes the blocks on ${named}, which edit_doc cannot rewrite from Markdown: they have different colours or alignment, so the new blocks cannot keep them. Nothing was changed. Edit those blocks in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
+					`The edit merges, splits or retypes the blocks on ${text}, which edit_doc cannot rewrite from Markdown: they have different colours or alignment, so the new blocks cannot keep them. Nothing was changed. Edit those blocks in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
 					"unsafe",
 					lines,
 				);
 			}
-			const loss = lossOf(r, blocks.slice(from, to));
-			if (!loss) continue;
-			const line = lineOf(from + k);
+			if (p.kind === "ambiguous") {
+				const all = [p.block, ...(p.with ?? [])];
+				const marked = all.find((b) => carries(b)) ?? p.block;
+				const what = describeUncarried(uncarried(marked)) || "type";
+				if (p.why === "split") {
+					const line = lineOf(topOf.get(p.block) ?? from);
+					throw new SpliceError(
+						`The edit splits ${where(p.block)} into blocks that continue its text equally, so edit_doc cannot tell which one keeps its ${what}. Nothing was changed. Split it unevenly, edit it in the web editor, or rewrite that part with write_doc.`,
+						"unsafe",
+						[line],
+					);
+				}
+				const { lines, text } = named(all);
+				throw new SpliceError(
+					`The edit could mean more than one of the blocks on ${text}: they read the same in Markdown but differ in ${what}, so edit_doc cannot tell which one the edit keeps. Nothing was changed. Make that change in the web editor, or rewrite that part with write_doc.`,
+					"unsafe",
+					lines,
+				);
+			}
+			const k = topOf.get(p.block) ?? from;
+			const line = lineOf(k);
+			const why =
+				blocks[k] === p.block
+					? p.why
+					: `in ${aBlock(p.block.type)} nested in it, ${p.why}`;
 			throw new SpliceError(
-				`The edit touches the ${b.type} block on line ${line}, which edit_doc cannot rewrite from Markdown: ${loss}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
+				`The edit touches the ${blocks[k].type} block on line ${line}, which edit_doc cannot rewrite from Markdown: ${why}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
 				"unsafe",
 				[line],
 			);
@@ -1150,16 +1302,9 @@ export function spliceEdit(
 		}
 		const bad = auditEdit(blocks.slice(from, to), aligned.blocks);
 		if (bad) {
-			const top = blocks
-				.slice(from, to)
-				.findIndex((b) => subtree(b).includes(bad.block));
-			const line = lineOf(from + Math.max(0, top));
-			const where =
-				top >= 0 && blocks[from + top] !== bad.block
-					? `a ${bad.block.type} block nested in the block on line ${line}`
-					: `the ${bad.block.type} block on line ${line}`;
+			const line = lineOf(topOf.get(bad.block) ?? from);
 			throw new SpliceError(
-				`The edit touches ${where}, which edit_doc cannot rewrite from Markdown: ${bad.why}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
+				`The edit touches ${where(bad.block)}, which edit_doc cannot rewrite from Markdown: ${bad.why}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
 				"unsafe",
 				[line],
 			);
