@@ -19,6 +19,10 @@ type SearchHit struct {
 	Document  *Document
 	MatchedIn string
 	Snippet   string
+	// Block is the 1-based line of ContentText(content) holding the first
+	// match: the block's position in document order, children counted after
+	// their parent. 0 for a title match (or when no single block holds it).
+	Block int
 }
 
 // snippetRadius is how many runes of context BuildSnippet keeps either side
@@ -117,11 +121,25 @@ outer:
 }
 
 // NewSearchHit classifies a matched document and builds its snippet. Title
-// matches carry no snippet; content matches carry an excerpt.
+// matches carry no snippet or block. A content match carries the block of the
+// first match and an excerpt of that block's text (ContentText, the same text
+// the search query matched, so a phrase across bold or a link is found).
 func NewSearchHit(d *Document, query string) SearchHit {
 	if strings.Contains(strings.ToLower(d.Title), strings.ToLower(strings.TrimSpace(query))) {
 		return SearchHit{Document: d, MatchedIn: SearchMatchTitle}
 	}
+	text, lineIsBlock := contentLines(d.Content)
+	for i, line := range strings.Split(text, "\n") {
+		if s := BuildSnippet(line, query); s != "" {
+			hit := SearchHit{Document: d, MatchedIn: SearchMatchContent, Snippet: s}
+			if lineIsBlock {
+				hit.Block = i + 1
+			}
+			return hit
+		}
+	}
+	// Matched through text ContentText leaves out (the JSON-path match of a
+	// row not backfilled yet also sees "text" keys outside inline content).
 	return SearchHit{
 		Document:  d,
 		MatchedIn: SearchMatchContent,

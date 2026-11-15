@@ -29,6 +29,7 @@ type fakeDocRepo struct {
 	docs       map[uuid.UUID]*docdom.Document
 	snapshots  map[uuid.UUID]*docdom.DocSnapshot
 	activities map[uuid.UUID]*docdom.Activity
+	lastSearch string
 	// inDecide is true while an UpdateDocumentAtomic decide function runs,
 	// i.e. while the real repository would hold the row lock.
 	inDecide atomic.Bool
@@ -186,6 +187,9 @@ func (r *fakeDocRepo) ListAllDocuments(ctx context.Context, projectID uuid.UUID)
 }
 
 func (r *fakeDocRepo) SearchDocuments(_ context.Context, projectID uuid.UUID, query string, limit int) ([]*docdom.Document, error) {
+	r.mu.Lock()
+	r.lastSearch = query
+	r.mu.Unlock()
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	q := strings.ToLower(query)
@@ -1364,6 +1368,33 @@ func TestSearchDocuments_TitleAndBody(t *testing.T) {
 	}
 	if hits, _ := svc.SearchDocuments(ctx, projectID, "   ", 5); len(hits) != 0 {
 		t.Error("blank query should return nothing")
+	}
+}
+
+// content_text holds one block per line, so a query is matched within one
+// line: its line breaks become spaces before it reaches the repository, and
+// the hit builder (which works per line) finds the same match.
+func TestSearchDocuments_QueryLineBreaksBecomeSpaces(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	projectID := uuid.New()
+	content := json.RawMessage(`[{"type":"paragraph","content":[{"type":"text","text":"restart the worker now"}]}]`)
+	if _, err := svc.CreateDocument(ctx, docdom.CreateDocumentInput{ProjectID: projectID, Title: "Runbook", Content: content}); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := svc.SearchDocuments(ctx, projectID, "the\r\nworker\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.lastSearch != "the worker" {
+		t.Fatalf("repository got query %q, want %q", repo.lastSearch, "the worker")
+	}
+	if len(hits) != 1 || hits[0].Block != 1 || hits[0].Snippet != "restart the worker now" {
+		t.Fatalf("hits = %+v, want block 1 with the line as excerpt", hits)
+	}
+	if hits, _ := svc.SearchDocuments(ctx, projectID, "\n\r\n", 5); len(hits) != 0 {
+		t.Error("a query of only line breaks should return nothing")
 	}
 }
 

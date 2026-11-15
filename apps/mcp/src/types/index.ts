@@ -232,6 +232,8 @@ export interface DocumentSearchHit {
 	title: string;
 	matched_in: "title" | "content";
 	snippet?: string;
+	/** 1-based block of the first content match (absent for title matches). */
+	block?: number;
 	updated_at: string;
 }
 
