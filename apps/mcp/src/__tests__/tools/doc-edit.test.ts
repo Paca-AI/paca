@@ -772,6 +772,160 @@ describe("spliceEdit refusal lines inside lists", () => {
 	});
 });
 
+// Independent review of 161cfaeb: nested children paired by index, a prop
+// Markdown expresses (start) not following the edit, colours lost on moved
+// or re-nested blocks, and an empty block moved by a merge.
+describe("spliceEdit nested children, moves and Markdown props (fourth review)", () => {
+	const B = "bulletListItem";
+	const kids = () => [
+		item(B, "a", {}, [
+			item(B, "k1", { textColor: "red" }),
+			item(B, "k2", { textColor: "blue" }),
+		]),
+	];
+	const own = (b: any) => [
+		b.id,
+		b.type,
+		b.props.textColor,
+		b.content.map((c: any) => c.text).join(""),
+	];
+
+	it("deleting the first nested child keeps the second as stored", () => {
+		const blocks = kids();
+		const res = spliceEdit(blocks, "  * k1\n\n", "", false);
+		expect(res.blocks[0].children).toHaveLength(1);
+		expect(res.blocks[0].children[0]).toBe(blocks[0].children[1]);
+	});
+
+	it("inserting a nested child gives it a new id and moves no props", () => {
+		const blocks = kids();
+		const res = spliceEdit(blocks, "  * k1", "  * new\n\n  * k1", false);
+		const [n, k1, k2] = res.blocks[0].children;
+		expect(n.id).not.toBe(blocks[0].children[0].id);
+		expect(n.id).not.toBe(blocks[0].children[1].id);
+		expect(n.props.textColor).toBe("default");
+		expect(k1).toBe(blocks[0].children[0]);
+		expect(k2).toBe(blocks[0].children[1]);
+	});
+
+	it("deleting a grandchild keeps its sibling as stored", () => {
+		const blocks = [
+			item(B, "a", {}, [
+				item(B, "k1", {}, [
+					item(B, "g1", { textColor: "red" }),
+					item(B, "g2", { textColor: "blue" }),
+				]),
+			]),
+		];
+		const res = spliceEdit(blocks, "    * g1\n\n", "", false);
+		const grand = res.blocks[0].children[0].children;
+		expect(grand).toHaveLength(1);
+		expect(grand[0]).toBe(blocks[0].children[0].children[1]);
+	});
+
+	it("refuses to retype a coloured nested child", () => {
+		const blocks = [
+			item(B, "a", {}, [
+				item(B, "k1", { textColor: "red" }),
+				item("numberedListItem", "k2", { textColor: "blue" }),
+			]),
+		];
+		expect(() => spliceEdit(blocks, "  * k1", "  1. k1", false)).toThrow(
+			SpliceError,
+		);
+	});
+
+	it.each([
+		[
+			"3. a",
+			"1. a",
+			[
+				item("numberedListItem", "a", { start: 3 }),
+				item("numberedListItem", "b"),
+			],
+		],
+		["3. a", "1. a", [para("x"), item("numberedListItem", "a", { start: 3 })]],
+		[
+			"3.",
+			"1.",
+			[
+				item("numberedListItem", "a", { start: 3 }),
+				item("numberedListItem", "b"),
+			],
+		],
+	])("a list start set in Markdown follows the edit (%s to %s)", (o, n, blocks) => {
+		const before = blocknoteToMarkdown(blocks);
+		const res = spliceEdit(blocks, o, n, false);
+		// What the edited Markdown says once parsed (numbering included).
+		expect(blocknoteToMarkdown(res.blocks)).toBe(
+			blocknoteToMarkdown(markdownToBlocknote(before.replace(o, n))),
+		);
+		const num = res.blocks.find((b) => b.type === "numberedListItem");
+		expect(num.props.start ?? 1).toBe(1);
+	});
+
+	it("an edit Markdown cannot show is refused, not reported as done", () => {
+		const blocks = [para("a"), para("b")];
+		expect(() => spliceEdit(blocks, "a", "a ", false)).toThrow(SpliceError);
+	});
+
+	it("swapping two coloured paragraphs moves the stored blocks", () => {
+		const blocks = [
+			para("a", { textColor: "red" }),
+			para("b", { textColor: "blue" }),
+		];
+		const res = spliceEdit(blocks, "a\n\nb", "b\n\na", false);
+		expect(res.blocks).toEqual([blocks[1], blocks[0]]);
+		expect(res.blocks[0]).toBe(blocks[1]);
+		expect(res.blocks[1]).toBe(blocks[0]);
+	});
+
+	it("swapping two coloured list items moves the stored blocks", () => {
+		const blocks = [
+			item(B, "x", { textColor: "red" }),
+			item(B, "y", { textColor: "blue" }),
+		];
+		const res = spliceEdit(blocks, "x\n\n* y", "y\n\n* x", false);
+		expect(res.blocks[0]).toBe(blocks[1]);
+		expect(res.blocks[1]).toBe(blocks[0]);
+	});
+
+	it("indenting a coloured item keeps its id and colour", () => {
+		const blocks = [
+			item(B, "a", { textColor: "red" }),
+			item(B, "b", { textColor: "red" }),
+		];
+		const res = spliceEdit(blocks, "* b", "  * b", false);
+		expect(res.blocks).toHaveLength(1);
+		expect(own(res.blocks[0])).toEqual(own(blocks[0]));
+		expect(res.blocks[0].children).toHaveLength(1);
+		expect(res.blocks[0].children[0]).toEqual({ ...blocks[1], children: [] });
+	});
+
+	// Rule: in a merge or split (old and new blocks not paired one to one),
+	// empty blocks before the first old block stay before the new blocks,
+	// empty blocks between old blocks follow the first new block (they
+	// followed the first old one), and those after stay after.
+	it("an empty block inside a merge or split follows the first new block", () => {
+		const e = para([]);
+		const blocks = [item(B, "a"), e, item(B, "b")];
+		const res = spliceEdit(blocks, "a\n\n- b", "A\n\nmid\n\n- B", false);
+		const texts = res.blocks.map((b) =>
+			b.content.map((c: any) => c.text).join(""),
+		);
+		expect(texts).toEqual(["A", "", "mid", "B"]);
+		expect(res.blocks[1]).toBe(e);
+	});
+
+	it("an empty block keeps its place between items paired one to one", () => {
+		const e = para([]);
+		const blocks = [item(B, "a", { textColor: "red" }), e, item(B, "b")];
+		const res = spliceEdit(blocks, "a\n\n- b", "A\n\n- B", false);
+		expect(res.blocks[1]).toBe(e);
+		expect(res.blocks.map((b) => b.id)).toEqual(blocks.map((b) => b.id));
+	});
+});
+
 describe("spliceEdit fuzz", () => {
 	it("keeps every untouched block in place and never loses what Markdown cannot carry", () => {
 		let seed = 1;
