@@ -80,13 +80,11 @@ services:
         fromService: { type: pserv, name: paca-rustfs, envVarKey: RUSTFS_SECRET_KEY }
       - { key: PUBLIC_URL, sync: false }
       - { key: STORAGE_PUBLIC_URL, sync: false }
-      # Same writable dirs the Docker image prepares. Plugin installs here live on
-      # the instance's ephemeral disk and their frontend/MCP assets are not served
-      # (no gateway mount on this platform), so plugins are not usable on Render yet.
-      - { key: PLUGINS_WASM_DIR, value: /plugins }
-      - { key: PLUGINS_FRONTEND_DIR, value: /plugins-frontend }
-      - { key: PLUGINS_MCP_DIR, value: /plugins-mcp }
-      - { key: PLUGINS_SKILLS_DIR, value: /plugins-skills }
+      # Installed plugins are stored in the RustFS bucket above (under plugins/),
+      # not on the instance's ephemeral disk, so they survive redeploys. The gateway
+      # (PLUGINS_STORE below) forwards /plugins* to this service, which streams
+      # them out of the bucket. Must match the gateway's value.
+      - { key: PLUGINS_STORE, value: s3 }
 
   # The React app is plain static files, so it is a static site (no paid
   # instance), built from this repo. The gateway proxies "/" to it: after the
@@ -135,3 +133,6 @@ services:
         fromService: { type: pserv, name: paca-realtime, property: hostport }
       - key: STORAGE_UPSTREAM
         fromService: { type: pserv, name: paca-rustfs, property: hostport }
+      # Plugins live in the bucket, so forward /plugins* to the api. Must match
+      # the api's PLUGINS_STORE.
+      - { key: PLUGINS_STORE, value: s3 }

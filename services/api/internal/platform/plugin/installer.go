@@ -19,18 +19,16 @@ import (
 	"github.com/Paca-AI/api/internal/platform/netguard"
 )
 
-// Installer downloads and installs marketplace plugin artifacts into local stores.
+// Installer downloads marketplace plugin artifacts and installs them into the
+// plugin Store (local folders or the bucket, per PLUGINS_STORE).
 type Installer struct {
-	backendDir  string
-	frontendDir string
-	mcpDir      string
-	skillsDir   string
-	httpClient  *http.Client
-	log         *slog.Logger
+	store      Store
+	httpClient *http.Client
+	log        *slog.Logger
 }
 
 // NewInstaller creates a marketplace installer.
-func NewInstaller(backendDir, frontendDir, mcpDir, skillsDir string, httpClient *http.Client, log *slog.Logger) *Installer {
+func NewInstaller(store Store, httpClient *http.Client, log *slog.Logger) *Installer {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 5 * time.Minute}
 	}
@@ -42,14 +40,7 @@ func NewInstaller(backendDir, frontendDir, mcpDir, skillsDir string, httpClient 
 	if httpClient.Transport == nil {
 		httpClient.Transport = netguard.NewSafeHTTPTransport()
 	}
-	return &Installer{
-		backendDir:  backendDir,
-		frontendDir: frontendDir,
-		mcpDir:      mcpDir,
-		skillsDir:   skillsDir,
-		httpClient:  httpClient,
-		log:         log,
-	}
+	return &Installer{store: store, httpClient: httpClient, log: log}
 }
 
 // Install downloads, validates, and installs artifacts for one plugin.
@@ -65,11 +56,11 @@ func NewInstaller(backendDir, frontendDir, mcpDir, skillsDir string, httpClient 
 // it unwrapped and leaves any already-installed artifacts for this plugin
 // name completely untouched.
 func (i *Installer) Install(ctx context.Context, item MarketplacePlugin, checkManifest func(plugindom.PluginManifest) error) (plugindom.PluginManifest, error) {
-	if strings.TrimSpace(i.backendDir) == "" {
-		return plugindom.PluginManifest{}, fmt.Errorf("plugin backend directory is not configured")
+	if i.store == nil {
+		return plugindom.PluginManifest{}, fmt.Errorf("plugin store is not configured")
 	}
-	if strings.TrimSpace(i.frontendDir) == "" {
-		return plugindom.PluginManifest{}, fmt.Errorf("plugin frontend directory is not configured")
+	if err := i.store.CheckInstallable(); err != nil {
+		return plugindom.PluginManifest{}, err
 	}
 
 	tmpRoot, err := os.MkdirTemp("", "paca-plugin-install-*")
@@ -138,16 +129,9 @@ func (i *Installer) Install(ctx context.Context, item MarketplacePlugin, checkMa
 	if err := plugindom.ValidatePluginName(item.Name); err != nil {
 		return plugindom.PluginManifest{}, err
 	}
-	backendPluginDir, err := safePluginDir(i.backendDir, item.Name)
-	if err != nil {
-		return plugindom.PluginManifest{}, err
-	}
-	frontendPluginDir, err := safePluginDir(i.frontendDir, item.Name)
-	if err != nil {
-		return plugindom.PluginManifest{}, err
-	}
 
-	// Backend WASM — optional.
+	// Backend (WASM + manifest) and migrations — both optional.
+	var backend BackendBundle
 	if strings.TrimSpace(item.Artifacts.BackendTarGzURL) != "" {
 		backendWASM, err := findFirstFile(backendExtract, func(path string) bool {
 			return strings.HasSuffix(strings.ToLower(filepath.Base(path)), ".wasm")
@@ -155,40 +139,21 @@ func (i *Installer) Install(ctx context.Context, item MarketplacePlugin, checkMa
 		if err != nil {
 			return plugindom.PluginManifest{}, fmt.Errorf("resolve .wasm file: %w", err)
 		}
-		if err := os.MkdirAll(backendPluginDir, 0o755); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("mkdir backend plugin dir: %w", err)
-		}
-		if err := copyFile(backendWASM, filepath.Join(backendPluginDir, "backend.wasm")); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("write backend.wasm: %w", err) //nolint:govet
-		}
-		if err := copyFile(manifestPath, filepath.Join(backendPluginDir, "plugin.json")); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("write plugin.json: %w", err)
-		}
+		backend.WASMPath = backendWASM
+		backend.ManifestPath = manifestPath
 	}
-
-	// Migrations — optional.
 	if strings.TrimSpace(item.Artifacts.MigrationsTarGzURL) != "" {
-		if err := os.MkdirAll(backendPluginDir, 0o755); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("mkdir backend plugin dir: %w", err)
-		}
-		migrationsDst := filepath.Join(backendPluginDir, "migrations")
-		if err := os.RemoveAll(migrationsDst); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("clear migrations dir: %w", err)
-		}
-		if err := os.MkdirAll(migrationsDst, 0o755); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("mkdir migrations dir: %w", err)
-		}
 		migrationFiles, err := findAllFiles(migrationsExtract, func(path string) bool {
 			return strings.HasSuffix(strings.ToLower(path), ".sql")
 		})
 		if err != nil {
 			return plugindom.PluginManifest{}, fmt.Errorf("list migration files: %w", err)
 		}
-		for _, path := range migrationFiles {
-			if err := copyFile(path, filepath.Join(migrationsDst, filepath.Base(path))); err != nil {
-				return plugindom.PluginManifest{}, fmt.Errorf("copy migration %q: %w", filepath.Base(path), err)
-			}
-		}
+		backend.Migrations = migrationFiles
+		backend.HasMigrations = true
+	}
+	if err := i.store.PutBackend(ctx, item.Name, backend); err != nil {
+		return plugindom.PluginManifest{}, err
 	}
 
 	// Frontend bundle — optional.
@@ -197,67 +162,41 @@ func (i *Installer) Install(ctx context.Context, item MarketplacePlugin, checkMa
 		if err != nil {
 			return plugindom.PluginManifest{}, fmt.Errorf("resolve frontend content root: %w", err)
 		}
-		if err := os.MkdirAll(i.frontendDir, 0o755); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("mkdir frontend root: %w", err)
-		}
-		if err := os.RemoveAll(frontendPluginDir); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("clear frontend dir: %w", err)
-		}
-		if err := copyDir(frontendContentRoot, frontendPluginDir); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("copy frontend bundle: %w", err)
+		if err := i.store.PutTree(ctx, KindFrontend, item.Name, frontendContentRoot); err != nil {
+			return plugindom.PluginManifest{}, err
 		}
 	}
 
-	// MCP bundle — optional, installed to a dedicated mcp store served at /plugins-mcp/.
-	if strings.TrimSpace(item.Artifacts.MCPTarGzURL) != "" {
-		if strings.TrimSpace(i.mcpDir) == "" {
-			return plugindom.PluginManifest{}, fmt.Errorf("plugin MCP directory is not configured (PLUGINS_MCP_DIR)")
+	// MCP and skills bundles — optional, each in its own store served at
+	// /plugins-mcp/ and /plugins-skills/.
+	for _, b := range []struct {
+		kind    ArtifactKind
+		url     string
+		extract string
+	}{
+		{KindMCP, item.Artifacts.MCPTarGzURL, mcpExtract},
+		{KindSkills, item.Artifacts.SkillsTarGzURL, skillsExtract},
+	} {
+		if strings.TrimSpace(b.url) == "" {
+			continue
 		}
-		if err := i.downloadAndExtractTarGz(ctx, item.Artifacts.MCPTarGzURL, mcpExtract); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("download mcp: %w", err)
+		if err := i.store.RequireKind(b.kind); err != nil {
+			return plugindom.PluginManifest{}, err
 		}
-		mcpContentRoot, err := resolveSingleRootDir(mcpExtract)
+		if err := i.downloadAndExtractTarGz(ctx, b.url, b.extract); err != nil {
+			return plugindom.PluginManifest{}, fmt.Errorf("download %s: %w", b.kind, err)
+		}
+		root, err := resolveSingleRootDir(b.extract)
 		if err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("resolve mcp content root: %w", err)
+			return plugindom.PluginManifest{}, fmt.Errorf("resolve %s content root: %w", b.kind, err)
 		}
-		mcpPluginDir := filepath.Join(i.mcpDir, item.Name)
-		if err := os.MkdirAll(i.mcpDir, 0o755); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("mkdir mcp root: %w", err)
-		}
-		if err := os.RemoveAll(mcpPluginDir); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("clear mcp dir: %w", err)
-		}
-		if err := copyDir(mcpContentRoot, mcpPluginDir); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("copy mcp bundle: %w", err)
-		}
-	}
-
-	// Skills bundle — optional, installed to a dedicated skills store served at /plugins-skills/.
-	if strings.TrimSpace(item.Artifacts.SkillsTarGzURL) != "" {
-		if strings.TrimSpace(i.skillsDir) == "" {
-			return plugindom.PluginManifest{}, fmt.Errorf("plugin skills directory is not configured (PLUGINS_SKILLS_DIR)")
-		}
-		if err := i.downloadAndExtractTarGz(ctx, item.Artifacts.SkillsTarGzURL, skillsExtract); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("download skills: %w", err)
-		}
-		skillsContentRoot, err := resolveSingleRootDir(skillsExtract)
-		if err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("resolve skills content root: %w", err)
-		}
-		skillsPluginDir := filepath.Join(i.skillsDir, item.Name)
-		if err := os.MkdirAll(i.skillsDir, 0o755); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("mkdir skills root: %w", err)
-		}
-		if err := os.RemoveAll(skillsPluginDir); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("clear skills dir: %w", err)
-		}
-		if err := copyDir(skillsContentRoot, skillsPluginDir); err != nil {
-			return plugindom.PluginManifest{}, fmt.Errorf("copy skills bundle: %w", err)
+		if err := i.store.PutTree(ctx, b.kind, item.Name, root); err != nil {
+			return plugindom.PluginManifest{}, err
 		}
 	}
 
 	if i.log != nil {
-		i.log.Info("plugin artifacts installed", "name", item.Name, "backend_dir", backendPluginDir, "frontend_dir", frontendPluginDir)
+		i.log.Info("plugin artifacts installed", "name", item.Name, "store", i.store.Mode())
 	}
 
 	return manifest, nil
@@ -265,55 +204,21 @@ func (i *Installer) Install(ctx context.Context, item MarketplacePlugin, checkMa
 
 // Uninstall removes all installed files for a plugin from the backend,
 // frontend, MCP, and skills stores. It does NOT touch the database.
+//
+// It runs on its own context rather than the caller's: it is mostly called to
+// roll back a failed request, whose context may already be cancelled.
 func (i *Installer) Uninstall(name string) error {
 	// Plugin names come from the database and may predate name validation;
-	// refuse anything that could resolve outside the plugin roots before any
-	// RemoveAll runs.
-	if err := plugindom.ValidatePluginName(name); err != nil {
+	// the store refuses anything that could resolve outside the plugin roots
+	// before any delete runs.
+	if i.store == nil {
+		return fmt.Errorf("plugin store is not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := i.store.DeleteAll(ctx, name); err != nil {
 		return err
 	}
-	backendPluginDir, err := safePluginDir(i.backendDir, name)
-	if err != nil {
-		return err
-	}
-	frontendPluginDir, err := safePluginDir(i.frontendDir, name)
-	if err != nil {
-		return err
-	}
-	var mcpPluginDir, skillsPluginDir string
-	if strings.TrimSpace(i.mcpDir) != "" {
-		if mcpPluginDir, err = safePluginDir(i.mcpDir, name); err != nil {
-			return err
-		}
-	}
-	if strings.TrimSpace(i.skillsDir) != "" {
-		if skillsPluginDir, err = safePluginDir(i.skillsDir, name); err != nil {
-			return err
-		}
-	}
-
-	var errs []error
-	if err := os.RemoveAll(backendPluginDir); err != nil {
-		errs = append(errs, fmt.Errorf("remove backend dir: %w", err))
-	}
-	if err := os.RemoveAll(frontendPluginDir); err != nil {
-		errs = append(errs, fmt.Errorf("remove frontend dir: %w", err))
-	}
-	if strings.TrimSpace(i.mcpDir) != "" {
-		if err := os.RemoveAll(mcpPluginDir); err != nil {
-			errs = append(errs, fmt.Errorf("remove mcp dir: %w", err))
-		}
-	}
-	if strings.TrimSpace(i.skillsDir) != "" {
-		if err := os.RemoveAll(skillsPluginDir); err != nil {
-			errs = append(errs, fmt.Errorf("remove skills dir: %w", err))
-		}
-	}
-
-	if len(errs) > 0 {
-		return errors.Join(errs...)
-	}
-
 	if i.log != nil {
 		i.log.Info("plugin files removed", "name", name)
 	}

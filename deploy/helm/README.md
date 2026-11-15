@@ -178,6 +178,17 @@ to your cluster's own CronJob/operator tooling instead.
 
 ## Plugin storage (advanced)
 
+`api.plugins.store` chooses where installed plugins live. The default,
+`local`, is the shared volume described below. Set it to `s3` to keep them in
+the object-storage bucket (under `plugins/`) instead: no volume, no
+`ReadWriteMany` StorageClass and no NFS provisioner is then needed, because
+the gateway forwards plugin files to the api, which streams them out of the
+bucket. Changing the value does not move already-installed plugins — run
+`migrate-plugins` inside the api Pod first (see
+[Plugin Storage Location](https://github.com/Paca-AI/paca/blob/master/docs/plugins/backend-plugin-system.md#plugin-storage-location)).
+
+With `local` (the default):
+
 Installed plugins (backend WASM, frontend bundles, MCP bundles, Agent
 Skills bundles) are written by the `api` Pod and read back out by the
 `gateway` Pod to serve over HTTP — the two need concurrent access to the

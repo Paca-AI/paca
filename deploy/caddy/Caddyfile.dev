@@ -35,13 +35,13 @@
 #   /environments/*/stats/ws → agent-runner's static-environment live
 #                       usage-stats WebSocket (forwarded as-is)
 #   /storage/*      →  RustFS                  (/storage stripped)
-#   /plugins/*      →  Plugin frontend assets  (static files)
+#   /plugins/*      →  Plugin frontend assets  (static files, or the API when PLUGINS_STORE=s3)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
 #   /plugins-skills/* → Plugin Agent Skills bundles (static files)
 #   /*              →  Web application         (SPA with client-side routing;
 #                       Vite HMR WebSocket proxied automatically)
 # =============================================================================
-(mcp_skills_routes) {
+(plugin_mcp_skills_local) {
 	handle_path /plugins-mcp/* {
 		root * /var/www/plugins-mcp
 		header Cache-Control "public, max-age=900, immutable"
@@ -53,6 +53,51 @@
 		header Cache-Control "public, max-age=900, immutable"
 		file_server
 	}
+}
+
+(plugin_frontend_local) {
+	handle_path /plugins/* {
+		root * /var/www/plugins
+
+		@wasm path *.wasm
+		header @wasm Content-Type "application/wasm"
+
+		# remoteEntry.js keeps its name across builds but not its contents (it
+		# lists the exposed components and hashed chunks), so it must be
+		# revalidated, not cached as immutable; the hashed chunks can be.
+		@remote_entry path */remoteEntry.js
+		@fingerprinted not path */remoteEntry.js
+		header @fingerprinted Cache-Control "public, max-age=900, immutable"
+		header @remote_entry Cache-Control "no-cache"
+		file_server
+	}
+}
+
+# PLUGINS_STORE=s3: bundles live in the private bucket, so the API streams
+# them (GET /api/v1/plugin-assets/<kind>/<plugin>/<file>) instead of this
+# gateway reading folders.
+(plugin_mcp_skills_s3) {
+	handle_path /plugins-mcp/* {
+		rewrite * /api/v1/plugin-assets/mcp{path}
+		reverse_proxy api:8080
+	}
+
+	handle_path /plugins-skills/* {
+		rewrite * /api/v1/plugin-assets/skills{path}
+		reverse_proxy api:8080
+	}
+}
+
+(plugin_frontend_s3) {
+	handle_path /plugins/* {
+		rewrite * /api/v1/plugin-assets/frontend{path}
+		reverse_proxy api:8080
+	}
+}
+
+# Pick the local or s3 variant from PLUGINS_STORE ("local" when unset).
+(mcp_skills_routes) {
+	import plugin_mcp_skills_{$PLUGINS_STORE:local}
 }
 
 :80 {
@@ -86,21 +131,9 @@
 		reverse_proxy realtime:3001
 	}
 
-	handle_path /plugins/* {
-		root * /var/www/plugins
-
-		@wasm path *.wasm
-		header @wasm Content-Type "application/wasm"
-
-		# remoteEntry.js keeps its name across builds but not its contents (it
-		# lists the exposed components and hashed chunks), so it must be
-		# revalidated, not cached as immutable; the hashed chunks can be.
-		@remote_entry path */remoteEntry.js
-		@fingerprinted not path */remoteEntry.js
-		header @fingerprinted Cache-Control "public, max-age=900, immutable"
-		header @remote_entry Cache-Control "no-cache"
-		file_server
-	}
+	# Plugin frontend bundles: shared folder (PLUGINS_STORE=local) or the API
+	# (PLUGINS_STORE=s3) — see the plugin_frontend_* snippets at the top.
+	import plugin_frontend_{$PLUGINS_STORE:local}
 
 	import mcp_skills_routes
 

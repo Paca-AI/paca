@@ -286,6 +286,10 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-}
       # Origin Git providers deliver to, when it must differ from PUBLIC_URL.
       GIT_WEBHOOK_PUBLIC_URL: ${GIT_WEBHOOK_PUBLIC_URL:-}
+      # "local" keeps plugins in the folders below; "s3" stores them in the
+      # STORAGE_* bucket instead (the gateway reads PLUGINS_STORE too, to route
+      # /plugins/* through the API). The *_DIR settings are ignored in s3 mode.
+      PLUGINS_STORE: ${PLUGINS_STORE:-local}
       PLUGINS_WASM_DIR: /plugins
       PLUGINS_FRONTEND_DIR: /plugins-frontend
       PLUGINS_MCP_DIR: /plugins-mcp
@@ -370,6 +374,10 @@ services:
       # a Let's Encrypt certificate automatically. Leave unset (or ":80") for
       # IP-only / localhost deployments served over plain HTTP.
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      # Must match the API's PLUGINS_STORE: "s3" makes the gateway forward
+      # /plugins/*, /plugins-mcp/* and /plugins-skills/* to the API instead of
+      # serving the plugin folders below.
+      PLUGINS_STORE: ${PLUGINS_STORE:-local}
     volumes:
       # Caddyfile must exist alongside this docker-compose.yml.
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
@@ -488,6 +496,9 @@ volumes:
   postgres_data:
   valkey_data:
   rustfs_data:
+  # The four plugin volumes below are only used when PLUGINS_STORE=local (the
+  # default). With PLUGINS_STORE=s3 they stay empty; Compose still creates them,
+  # so remove them (and their mounts) if you never intend to use local mode.
   backend_plugins:
   frontend_plugins:
   mcp_plugins:

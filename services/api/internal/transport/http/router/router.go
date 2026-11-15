@@ -45,7 +45,9 @@ type Deps struct {
 	APIKey          *handler.APIKeyHandler
 	Plugin          *handler.PluginHandler
 	Skills          *handler.SkillsHandler
-	Agent           *handler.AgentHandler
+	// PluginAssets streams plugin bundle files out of the plugin store; optional.
+	PluginAssets *handler.PluginAssetsHandler
+	Agent        *handler.AgentHandler
 	// ServiceAccount serves /admin/service-accounts; optional.
 	ServiceAccount *handler.ServiceAccountHandler
 	// AgentEnvironments / SessionEnvironments back the chat environment
@@ -1165,6 +1167,14 @@ func New(deps Deps) http.Handler {
 					r.Use(httpmw.RequireFreshPassword())
 					r.Get("/skills", deps.Skills.ListSkills)
 				})
+			}
+
+			// Plugin bundle files (frontend / MCP / skills) — public static
+			// assets, exactly what the gateway serves from disk in local mode.
+			// Only reachable by the gateway in PLUGINS_STORE=s3 mode, where the
+			// bucket is private.
+			if deps.PluginAssets != nil {
+				r.Get("/plugin-assets/{kind}/{name}/*", deps.PluginAssets.Serve)
 			}
 
 			// Plugin routes

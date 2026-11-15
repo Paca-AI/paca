@@ -117,6 +117,9 @@ spec:
               value: {{ .Values.publicUrl | quote }}
             - name: GIT_WEBHOOK_PUBLIC_URL
               value: {{ .Values.gitWebhookPublicUrl | quote }}
+            - name: PLUGINS_STORE
+              value: {{ .Values.api.plugins.store | default "local" | quote }}
+            {{- if ne (.Values.api.plugins.store | default "local") "s3" }}
             - name: PLUGINS_WASM_DIR
               value: /plugins
             - name: PLUGINS_FRONTEND_DIR
@@ -125,6 +128,7 @@ spec:
               value: /plugins-mcp
             - name: PLUGINS_SKILLS_DIR
               value: /plugins-skills
+            {{- end }}
             - name: PLUGIN_FETCH_PRIVATE_HOSTS
               value: {{ .Values.api.plugins.fetchPrivateHosts | quote }}
             {{- if .Values.agentRunner.enabled }}
@@ -158,6 +162,7 @@ spec:
               port: http
             initialDelaySeconds: 15
             periodSeconds: 20
+          {{- if ne (.Values.api.plugins.store | default "local") "s3" }}
           volumeMounts:
             - name: plugins
               mountPath: /plugins
@@ -171,8 +176,11 @@ spec:
             - name: plugins
               mountPath: /plugins-skills
               subPath: skills
+          {{- end }}
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
+      {{- if ne (.Values.api.plugins.store | default "local") "s3" }}
       volumes:
         - name: plugins
           {{- include "paca.pluginsVolume" . | nindent 10 }}
+      {{- end }}

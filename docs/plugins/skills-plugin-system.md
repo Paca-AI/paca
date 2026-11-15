@@ -118,7 +118,12 @@ You are reviewing a pull request...
 
 `name` in the frontmatter must match the directory name (and the `names` entry in your manifest). `triggers` is optional — omit it for an always-active skill (its content is injected into every conversation's system prompt); declare it for a model-selectable skill invoked on demand (progressive disclosure), the same distinction Paca's own default skills make (see [default-skills.md](../ai-agent/default-skills.md)).
 
-The installer extracts this tarball to `{PLUGINS_SKILLS_DIR}/{pluginId}/` and the gateway serves it at `/plugins-skills/{pluginId}/`.
+The installer extracts this tarball into the plugin store (`PLUGINS_STORE`) and the gateway serves it at `/plugins-skills/{pluginId}/`:
+
+- `local` (default): `{PLUGINS_SKILLS_DIR}/{pluginId}/`, served by the gateway straight from that folder.
+- `s3`: `{PLUGINS_S3_PREFIX}/{pluginId}/skills/` in the storage bucket, streamed by the API (`/api/v1/plugin-assets/skills/...`) through the gateway.
+
+See [Plugin Storage Location](backend-plugin-system.md#plugin-storage-location).
 
 ## Precedence (as designed)
 

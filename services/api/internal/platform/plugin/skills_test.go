@@ -48,7 +48,7 @@ func TestListSkills_ReturnsEnabledPluginSkills(t *testing.T) {
 		},
 	}}
 
-	skills, err := ListSkills(context.Background(), svc, dir)
+	skills, err := ListSkills(context.Background(), svc, LocalSkillReader(dir))
 	if err != nil {
 		t.Fatalf("ListSkills: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestListSkills_SkipsDisabledPlugins(t *testing.T) {
 		},
 	}}
 
-	skills, err := ListSkills(context.Background(), svc, dir)
+	skills, err := ListSkills(context.Background(), svc, LocalSkillReader(dir))
 	if err != nil {
 		t.Fatalf("ListSkills: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestListSkills_SkipsPluginsWithoutSkillsManifest(t *testing.T) {
 		{Name: "com.paca.webhook", Enabled: true, Manifest: plugindom.PluginManifest{}},
 	}}
 
-	skills, err := ListSkills(context.Background(), svc, dir)
+	skills, err := ListSkills(context.Background(), svc, LocalSkillReader(dir))
 	if err != nil {
 		t.Fatalf("ListSkills: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestListSkills_SkipsUnreadableSkillFileRatherThanFailing(t *testing.T) {
 		},
 	}}
 
-	skills, err := ListSkills(context.Background(), svc, dir)
+	skills, err := ListSkills(context.Background(), svc, LocalSkillReader(dir))
 	if err != nil {
 		t.Fatalf("ListSkills: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestListSkills_SkipsNameCollidingWithBundledSkill(t *testing.T) {
 		},
 	}}
 
-	skills, err := ListSkills(context.Background(), svc, dir)
+	skills, err := ListSkills(context.Background(), svc, LocalSkillReader(dir))
 	if err != nil {
 		t.Fatalf("ListSkills: %v", err)
 	}
@@ -169,18 +169,18 @@ func TestListSkills_SkipsNameCollidingWithBundledSkill(t *testing.T) {
 func TestListSkills_PropagatesListPluginsError(t *testing.T) {
 	svc := &fakePluginLister{err: errors.New("db unavailable")}
 
-	_, err := ListSkills(context.Background(), svc, t.TempDir())
+	_, err := ListSkills(context.Background(), svc, LocalSkillReader(t.TempDir()))
 	if err == nil {
 		t.Fatal("expected error to propagate")
 	}
 }
 
 func TestListSkills_NoSkillsDirOrService(t *testing.T) {
-	if skills, err := ListSkills(context.Background(), nil, "/some/dir"); err != nil || skills != nil {
+	if skills, err := ListSkills(context.Background(), nil, LocalSkillReader("/some/dir")); err != nil || skills != nil {
 		t.Fatalf("expected (nil, nil) for nil service, got (%+v, %v)", skills, err)
 	}
-	if skills, err := ListSkills(context.Background(), &fakePluginLister{}, ""); err != nil || skills != nil {
-		t.Fatalf("expected (nil, nil) for empty skillsDir, got (%+v, %v)", skills, err)
+	if skills, err := ListSkills(context.Background(), &fakePluginLister{}, nil); err != nil || skills != nil {
+		t.Fatalf("expected (nil, nil) for nil reader, got (%+v, %v)", skills, err)
 	}
 }
 
@@ -201,7 +201,7 @@ func TestListSkillsAndRoutes_OnlyRoutesForReturnedSkills(t *testing.T) {
 		{Name: "com.paca.off", Enabled: false, Manifest: manifest},
 	}}
 
-	skills, routes, err := ListSkillsAndRoutes(context.Background(), svc, dir)
+	skills, routes, err := ListSkillsAndRoutes(context.Background(), svc, LocalSkillReader(dir))
 	if err != nil {
 		t.Fatalf("ListSkillsAndRoutes: %v", err)
 	}

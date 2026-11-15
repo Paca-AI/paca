@@ -51,7 +51,8 @@ func buildTarGz(t *testing.T, files map[string]string) []byte {
 // supplied Transport bypasses the SSRF guard.
 func newTestInstaller(t *testing.T, backendDir, frontendDir string) *Installer {
 	t.Helper()
-	return NewInstaller(backendDir, frontendDir, "", "", &http.Client{Transport: http.DefaultTransport}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	store := newLocalStore(StoreConfig{WASMDir: backendDir, FrontendDir: frontendDir})
+	return NewInstaller(store, &http.Client{Transport: http.DefaultTransport}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 // TestInstall_CheckManifestRejection_LeavesExistingArtifactsUntouched is a
@@ -306,7 +307,7 @@ func TestInstaller_Uninstall_RejectsTraversalNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	roots := filepath.Join(base, "roots")
-	inst := NewInstaller(filepath.Join(roots, "backend"), filepath.Join(roots, "frontend"), filepath.Join(roots, "mcp"), filepath.Join(roots, "skills"), nil, nil)
+	inst := NewInstaller(newLocalStore(StoreConfig{WASMDir: filepath.Join(roots, "backend"), FrontendDir: filepath.Join(roots, "frontend"), MCPDir: filepath.Join(roots, "mcp"), SkillsDir: filepath.Join(roots, "skills")}), nil, nil)
 
 	for _, name := range []string{"../../victim", "../victim", "..", ".", "a/../../../victim", "/abs", "a/b", `a\b`, ""} {
 		if err := inst.Uninstall(name); err == nil {

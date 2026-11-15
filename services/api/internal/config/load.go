@@ -224,9 +224,10 @@ func Load() (*Config, error) {
 			EncryptionKey: env("ENCRYPTION_KEY", env("GITHUB_ENCRYPTION_KEY", "")),
 		},
 		Plugins: PluginsConfig{
-			// PLUGINS_STORE controls where WASM binaries are loaded from.
-			// "local" reads from the local filesystem; "s3" reads from the
-			// object-storage bucket configured via STORAGE_* variables.
+			// PLUGINS_STORE controls where installed plugins (backend, frontend,
+			// MCP and skills bundles) are stored. "local" uses the PLUGINS_*_DIR
+			// folders; "s3" uses the object-storage bucket configured via
+			// STORAGE_* variables under PLUGINS_S3_PREFIX.
 			Store:                 env("PLUGINS_STORE", "local"),
 			WASMDir:               env("PLUGINS_WASM_DIR", "./plugins/local/backend"),
 			FrontendDir:           env("PLUGINS_FRONTEND_DIR", "./plugins/local/frontend"),

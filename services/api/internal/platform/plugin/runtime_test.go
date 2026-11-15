@@ -92,7 +92,7 @@ func loadPoisonPluginWithLogger(t *testing.T, limits ResourceLimits, log *slog.L
 		t.Fatalf("write fixture wasm: %v", err)
 	}
 
-	store := &Store{cfg: StoreConfig{Store: "local", WASMDir: dir}}
+	store := newLocalStore(StoreConfig{WASMDir: dir})
 	rt := NewRuntime(store, HostServices{}, limits, log)
 
 	p := plugindom.Plugin{
@@ -256,7 +256,7 @@ func loadLegacyMallocPlugin(t *testing.T, limits ResourceLimits) *Runtime {
 		t.Fatalf("write fixture wasm: %v", err)
 	}
 
-	store := &Store{cfg: StoreConfig{Store: "local", WASMDir: dir}}
+	store := newLocalStore(StoreConfig{WASMDir: dir})
 	rt := NewRuntime(store, HostServices{}, limits, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	p := plugindom.Plugin{

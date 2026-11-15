@@ -18,12 +18,12 @@ import (
 // Migrations are run in lexicographic filename order and are idempotent.
 type MigrationRunner struct {
 	db    *sql.DB
-	store *Store
+	store Store
 	log   *slog.Logger
 }
 
 // NewMigrationRunner creates a MigrationRunner.
-func NewMigrationRunner(db *sql.DB, store *Store, log *slog.Logger) *MigrationRunner {
+func NewMigrationRunner(db *sql.DB, store Store, log *slog.Logger) *MigrationRunner {
 	return &MigrationRunner{db: db, store: store, log: log}
 }
 

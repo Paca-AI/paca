@@ -193,3 +193,12 @@ jobs:
         env:
           PACA_E2E: "1"
         run: go test -v -timeout 450s -parallel 8 ./test/e2e/...
+
+      - name: Run plugin runtime E2E tests against the S3 plugin store
+        # The same plugin scenarios again, with plugins stored in the RustFS
+        # testcontainer (PLUGINS_STORE=s3) instead of local folders — the only
+        # place the bucket-backed store meets a real S3-compatible backend.
+        env:
+          PACA_E2E: "1"
+          PACA_E2E_PLUGIN_STORE: s3
+        run: go test -v -timeout 300s -parallel 4 -run '^TestE2EPluginRuntime' ./test/e2e/...

@@ -277,6 +277,14 @@ api:
   # installed plugins won't survive a Pod restart or be visible to the
   # gateway, so plugin installation isn't usable in that mode.
   plugins:
+    # Where installed plugins live: "local" (the persistent volume below) or
+    # "s3" (the object-storage bucket the api already uses for attachments —
+    # the persistence block below is then ignored: no PVC is created and
+    # nothing is mounted, and the gateway forwards plugin assets to the api
+    # instead of reading a shared volume, so no ReadWriteMany class is needed).
+    # Switching an existing install does not move its plugins: run
+    # `migrate-plugins` first (docs/plugins/backend-plugin-system.md).
+    store: local
     # Comma-separated exact hostnames paca.fetch may reach on a private address,
     # e.g. a self-hosted GitLab inside the cluster's network. Empty blocks all
     # private addresses. See docs/plugins/backend-plugin-system.md.

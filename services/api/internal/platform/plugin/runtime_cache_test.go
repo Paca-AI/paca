@@ -80,7 +80,7 @@ func loadCachePlugin(t *testing.T, services HostServices) *Runtime {
 		t.Fatalf("write fixture wasm: %v", err)
 	}
 
-	store := &Store{cfg: StoreConfig{Store: "local", WASMDir: dir}}
+	store := newLocalStore(StoreConfig{WASMDir: dir})
 	rt := NewRuntime(store, services, DefaultResourceLimits(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	p := plugindom.Plugin{

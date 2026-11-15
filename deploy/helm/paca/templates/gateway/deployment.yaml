@@ -38,6 +38,8 @@ spec:
             - containerPort: 8080
               name: internal
           env:
+            - name: PLUGINS_STORE
+              value: {{ .Values.api.plugins.store | default "local" | quote }}
             - name: SITE_ADDRESS
               value: {{ include "paca.gatewaySiteAddress" . | quote }}
             - name: API_UPSTREAM
@@ -59,6 +61,7 @@ spec:
               mountPath: /etc/caddy/Caddyfile
               subPath: Caddyfile
               readOnly: true
+            {{- if ne (.Values.api.plugins.store | default "local") "s3" }}
             - name: plugins
               mountPath: /var/www/plugins
               subPath: frontend
@@ -71,6 +74,7 @@ spec:
               mountPath: /var/www/plugins-skills
               subPath: skills
               readOnly: true
+            {{- end }}
             - name: caddy-data
               mountPath: /data
           readinessProbe:
@@ -89,8 +93,10 @@ spec:
         - name: caddyfile
           configMap:
             name: {{ include "paca.fullname" . }}-gateway
+        {{- if ne (.Values.api.plugins.store | default "local") "s3" }}
         - name: plugins
           {{- include "paca.pluginsVolume" . | nindent 10 }}
+        {{- end }}
         # Caddy's own TLS certificate/state storage — see the Caddyfile's
         # SITE_ADDRESS doc comment. emptyDir is fine even for automatic
         # HTTPS: a Pod recreation triggers one re-issuance, not a lost

@@ -76,7 +76,7 @@ Application Load Balancer, with **RDS Postgres**, **ElastiCache Valkey** and an
    `AdminPasswordSecret` output).
 
 Limits: one task (no horizontal scaling, a short blip on redeploy); installed
-plugins live on the task's ephemeral disk and are lost when it restarts;
+plugins are stored in the S3 bucket (`PLUGINS_STORE=s3`) and survive restarts;
 images come from Docker Hub, which rate-limits anonymous pulls from shared AWS
 addresses; keep the `EncryptionKeySecret` safe. The bucket and database
 snapshot are kept when you delete the stack.
@@ -92,8 +92,8 @@ Storage** bucket (S3-compatible access through an HMAC key) and Secret Manager
 secrets. Docker Hub images are pulled through an Artifact Registry remote
 repository. Allow about 15 minutes; the script can be re-run safely.
 
-Limits: one always-on instance (no scaling out); installed plugins live on the
-instance's ephemeral disk; Memorystore and Cloud SQL bill continuously even
+Limits: one always-on instance (no scaling out); installed plugins are stored in the
+Cloud Storage bucket (`PLUGINS_STORE=s3`); Memorystore and Cloud SQL bill continuously even
 when idle. Storage through Cloud Storage's S3 interoperability endpoint and the
 multi-container Cloud Run spec are untested against a live project.
 
@@ -118,8 +118,11 @@ volumes, and dev databases are PostgreSQL-only, so before clicking:
 
 If your Space is not in `nyc3`, change `STORAGE_ENDPOINT`/`STORAGE_REGION`.
 
-**Known limits.** Plugins are not usable on App Platform yet (no shared disk, no
-gateway to serve their assets). App Platform reports the ingress server's
+**Known limits.** Plugins are stored in the Space (`PLUGINS_STORE=s3`), and the
+ingress rules send `/plugins`, `/plugins-mcp` and `/plugins-skills` to the API,
+which streams them out of the Space, so no shared disk or gateway is needed.
+The ingress prefix rules and `rewrite` are untested on a live App; open a plugin
+page after the first deploy to confirm. App Platform reports the ingress server's
 address in `X-Forwarded-For` (the real client is in `do-connecting-ip`), so Paca
 sees one client address: auth rate limiting is shared by all users and IP
 allow-lists can't match real clients.
@@ -163,9 +166,9 @@ After the first deploy, Render can't know the public URL ahead of time, so set:
 then redeploy those services. The generated `ADMIN_PASSWORD` is in
 `paca-api` → Environment.
 
-**Known limits.** Plugins are not usable on Render yet: there is no shared disk
-between the API and the gateway, so plugin assets aren't served and installs
-vanish on restart. The bundled RustFS has **not been verified** on Render: a
+**Known limits.** Plugins are stored in the bundled RustFS bucket
+(`PLUGINS_STORE=s3`) and the gateway forwards `/plugins*` to the API, so they
+survive restarts and need no shared disk. The bundled RustFS has **not been verified** on Render: a
 fresh disk may be unwritable to RustFS's non-root user (the Docker stack fixes
 that with a root init step). If `paca-rustfs` logs `Permission denied (os error
 13)`, delete that service and its disk and point the API at external S3

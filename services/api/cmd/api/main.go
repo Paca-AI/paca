@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +20,18 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
+	}
+
+	// `api migrate-plugins [--dry-run]` copies locally installed plugins into
+	// the bucket (see docs/plugins/backend-plugin-system.md) and exits.
+	if len(os.Args) > 1 && os.Args[1] == "migrate-plugins" {
+		fs := flag.NewFlagSet("migrate-plugins", flag.ExitOnError)
+		dryRun := fs.Bool("dry-run", false, "list what would be copied without writing anything")
+		_ = fs.Parse(os.Args[2:])
+		if err := bootstrap.MigratePluginsToBucket(context.Background(), cfg, *dryRun, os.Stdout); err != nil {
+			log.Fatalf("migrate-plugins: %v", err)
+		}
+		return
 	}
 
 	app, err := bootstrap.New(cfg)

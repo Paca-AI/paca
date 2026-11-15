@@ -41,6 +41,7 @@ var openRouteGroups = []struct {
 			"GET /api/v1/environments/config",
 			"GET /api/v1/plugins",
 			"GET /api/v1/skills",
+			"GET /api/v1/plugin-assets/{kind}/{name}/*",
 		},
 	},
 	{
@@ -180,7 +181,8 @@ func allRoutes(t *testing.T, authorizer *iam.Authorizer) []routeUnderTest {
 		APIKey:          handler.NewAPIKeyHandler(nil),
 		ServiceAccount:  handler.NewServiceAccountHandler(nil, nil),
 		Plugin:          handler.NewPluginHandler(nil, nil, nil),
-		Skills:          handler.NewSkillsHandler(nil, ""),
+		Skills:          handler.NewSkillsHandler(nil, nil),
+		PluginAssets:    handler.NewPluginAssetsHandler(nil),
 		Agent:           handler.NewAgentHandler(nil, "", "", ""),
 		Environment:     handler.NewEnvironmentHandler(nil, ""),
 		Git:             handler.NewGitHandler(nil),
