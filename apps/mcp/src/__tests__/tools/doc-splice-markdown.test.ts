@@ -284,6 +284,23 @@ describe("spliceMarkdown", () => {
 		expect(e2.message).toContain("join line 3 with line 4");
 	});
 
+	it("a block that starts or ends with a link, whose text next to it has a space, is sent", () => {
+		const blocks = stored(
+			"# T\n\nSee [docs](https://x.test)\n\n[docs](https://x.test) are here\n\n* see [docs](https://x.test)\n\nEnd.\n",
+		);
+		const render = pulled(blocks);
+		for (const file of [
+			render.replace("End.", "End, edited."),
+			render.replace("See [docs]", "Read [docs]"),
+			render.replace(") are here", ") are there"),
+			render.replace("* see [docs]", "* read [docs]"),
+		]) {
+			const res = spliceMarkdown(blocks, file);
+			expect(res.changed, file).toBe(1);
+			expect(pulled(res.blocks), file).toBe(file);
+		}
+	});
+
 	it("a block Paca would store with spaces at the start or end of its text, which the render does not show, is refused with its line", () => {
 		const blocks = stored("# T\n\nIntro here.\n\nOther.\n");
 		const render = pulled(blocks);
@@ -895,6 +912,21 @@ describe("spliceMarkdown fuzz", () => {
 				}),
 				() => blk("paragraph", "dup line", look()),
 				() => blk("bulletListItem", "dup line", look()),
+				// Text next to a link at the block's start or end.
+				() => ({
+					...blk("paragraph", ""),
+					content: [
+						t(`see ${m} `),
+						{ type: "link", href: "https://x.test", content: [t("docs")] },
+					],
+				}),
+				() => ({
+					...blk(LIST[rnd(2)], ""),
+					content: [
+						{ type: "link", href: "https://x.test", content: [t("docs")] },
+						t(` here ${m}`),
+					],
+				}),
 				() => table(m),
 			];
 			return kinds[rnd(kinds.length)]();
@@ -1129,13 +1161,17 @@ describe("spliceMarkdown fuzz", () => {
 			// list's first item is numbered from it). Nothing else may differ.
 			const noStart = (b: any) =>
 				JSON.stringify({ ...b, props: { ...b.props, start: undefined } });
-			for (let i = 1; i < len; i++) {
+			// The same for a numbered item next to any edit in its list (an
+			// item or a paragraph added or joined beside it): only its "start"
+			// may differ, and it keeps its id.
+			for (let i = 0; i < len; i++) {
 				if (
-					reached[i - 1] &&
 					!reached[i] &&
-					blocks[i - 1].type === "numberedListItem" &&
 					blocks[i].type === "numberedListItem" &&
-					!res.blocks.includes(blocks[i])
+					!res.blocks.includes(blocks[i]) &&
+					((i > 0 && reached[i - 1]) ||
+						(i + 1 < len && reached[i + 1]) ||
+						res.blocks.some((x: any) => x.id === blocks[i].id))
 				) {
 					const now = res.blocks.find((x: any) => x.id === blocks[i].id);
 					expect(now, `${where}\nnumbered ${i}`).toBeDefined();

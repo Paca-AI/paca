@@ -2350,11 +2350,14 @@ export function spliceMarkdown(
 	const fileLines = file.split("\n");
 	const loose = (b: Block): string | null => {
 		if (b.type === "codeBlock" || !Array.isArray(b.content)) return null;
-		const runs = b.content.filter((r: any) => r?.type === "text");
-		const first = runs[0]?.text;
-		const last = runs[runs.length - 1]?.text;
-		if (typeof first === "string" && /^[ \t]/.test(first)) return first;
-		if (typeof last === "string" && /[ \t]$/.test(last)) return last;
+		// The block's own first and last inline nodes, when they are text:
+		// a space next to a link or a mention is one the file shows.
+		const first = b.content[0];
+		const last = b.content[b.content.length - 1];
+		if (first?.type === "text" && /^[ \t]/.test(first.text ?? ""))
+			return first.text;
+		if (last?.type === "text" && /[ \t]$/.test(last.text ?? ""))
+			return last.text;
 		for (const c of (b.children ?? []) as Block[]) {
 			const x = loose(c);
 			if (x !== null) return x;
