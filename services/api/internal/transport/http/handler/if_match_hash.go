@@ -24,16 +24,29 @@ import (
 // folder, position, timestamps, ...). If-None-Match compares the whole ETag,
 // so a 304 never hides a rename or a move. If-Match accepts either form and
 // reads only the content hash from it.
+//
+// A proxy that compresses the response appends the content coding to a strong
+// ETag: the bundled Caddy gateway (encode gzip) turns "<hash>-<meta>" into
+// "<hash>-<meta>-gzip". Clients send that tag back unchanged, so both headers
+// accept one such suffix after the meta tag and ignore it: the suffixed and
+// the unsuffixed tag name the same document version.
 
 // metaTagLen is the length, in hex characters, of an ETag's meta tag.
 const metaTagLen = 16
 
+// etagCodingSuffixes are the content codings a compressing proxy may append to
+// a document ETag ("<hash>-<meta>-<coding>"), lowercase.
+var etagCodingSuffixes = map[string]bool{"gzip": true, "br": true, "zstd": true, "deflate": true}
+
 // ifMatchHash reads the document content hash a write names in its If-Match
 // header: a content hash or a whole document ETag, quoted, weak (W/"...") or
-// bare, or * (any version, as long as the document exists). Only the content
-// hash is returned (lowercase); an ETag's meta tag is ignored, because the
-// precondition is about content. nil when the header is absent, so a write
-// without it behaves as it always did. Anything else is a bad request, not
+// bare, or * (any version, as long as the document exists). A whole ETag may
+// end in a content-coding suffix (-gzip, -br, -zstd, -deflate), which a proxy
+// that compresses the response, such as the bundled Caddy gateway, appends;
+// it is ignored. Only the content hash is returned (lowercase); an ETag's meta
+// tag is ignored, because the precondition is about content. nil when the
+// header is absent, so a write without it behaves as it always did. Anything
+// else is a bad request, not
 // silently ignored: the caller asked for a precondition and would otherwise
 // believe it held. Documents use a content hash, not the row version
 // ifMatchVersion reads for tasks and sprints.
@@ -57,7 +70,9 @@ func ifMatchHash(r *http.Request) (*string, error) {
 // value docETag returned: a comma-separated list of entity tags (weak ones
 // compare like strong ones) or *. Only a whole ETag matches. A bare content
 // hash does not, because the response also carries fields the content hash
-// does not cover. A malformed tag in the list matches nothing.
+// does not cover. A content-coding suffix (see parseEntityTag) is ignored on
+// both sides, so the tag a compressing proxy returned matches the document it
+// came from. A malformed tag in the list matches nothing.
 func etagMatches(headerValue, etag string) bool {
 	_, want, ok := parseEntityTag(etag)
 	if !ok || !strings.Contains(want, "-") {
@@ -106,6 +121,13 @@ func docMetaTag(d *docdom.Document) string {
 // parseEntityTag reads an entity tag that is a content hash or a document
 // ETag, accepting "<tag>", W/"<tag>" and a bare <tag>. It returns the content
 // hash and the whole tag, both lowercase.
+//
+// A document ETag may carry one content-coding suffix after its meta tag,
+// "<hash>-<meta>-<coding>" with coding one of etagCodingSuffixes (any case):
+// a proxy that compresses the response, such as the bundled Caddy gateway,
+// appends it, and the client sends it back as it got it. The suffix is
+// dropped, so whole is "<hash>-<meta>" either way. It is only valid after a
+// meta tag; an empty, unknown or repeated suffix makes the tag invalid.
 func parseEntityTag(tag string) (contentHash, whole string, ok bool) {
 	tag = strings.TrimPrefix(tag, "W/")
 	if len(tag) >= 2 && tag[0] == '"' && tag[len(tag)-1] == '"' {
@@ -118,6 +140,12 @@ func parseEntityTag(tag string) (contentHash, whole string, ok bool) {
 	}
 	if !hasMeta {
 		return contentHash, contentHash, true
+	}
+	if meta, coding, hasCoding := strings.Cut(metaPart, "-"); hasCoding {
+		if !etagCodingSuffixes[strings.ToLower(coding)] {
+			return "", "", false
+		}
+		metaPart = meta
 	}
 	if len(metaPart) != metaTagLen || !isHex(metaPart) {
 		return "", "", false
