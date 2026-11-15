@@ -494,7 +494,13 @@ when the file has no uncommitted changes.
   changes only case on a case-insensitive file system), the push takes over its
   entry instead and says so: `If-Match` and the conflict diff still use the
   last push from the old name, and the document records the new source path
-  even when the content is unchanged.
+  even when the content is unchanged. If several gone files claim the
+  document, all their entries are dropped. Paths are compared as Paca
+  resolves them: without case, with spaces around each segment and empty
+  segments ignored (`Plans/plan`, ` plans / PLAN ` and `Plans//plan` are one
+  document), and recorded as you typed them. If Paca still resolves a push to
+  a document another file records, the push says so, records nothing and
+  exits 1.
 - `--dry-run` prints what would be sent and sends nothing.
 - State: `.paca/push.json` at the repository root (per file: document path and
   id, file hash, ETag, and the project and server URL it was pushed to; an
