@@ -116,6 +116,10 @@ export interface PullDocState {
 	 *  was edited locally, so it was kept; reported on every pull until the
 	 *  file is removed or `--force` removes it. */
 	orphan?: true;
+	/** sha256 of what a pull that stopped part way was about to write to
+	 *  `file`: a file with this hash came from that pull, not a local edit.
+	 *  Says nothing about what the file holds. */
+	pending_sha256?: string;
 	/** The name was taken by a pull that stopped before it recorded this
 	 *  document's content: a file there came from that pull (the name was
 	 *  free when it was taken), so the next pull overwrites it. The content

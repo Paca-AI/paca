@@ -220,7 +220,11 @@ describe("runPull killed between moves and writes", () => {
 				(d as { file: string }).file,
 			]),
 		);
-	const killAtWrite = async (client: ReturnType<typeof fakeServer>) => {
+	const killAtWrite = async (
+		client: ReturnType<typeof fakeServer>,
+		skip?: number,
+	) => {
+		if (skip !== undefined) stop.skip = skip;
 		const reached = new Promise<void>((r) => {
 			stop.reached = r;
 		});
@@ -319,5 +323,22 @@ describe("runPull killed between moves and writes", () => {
 		expect(await pull(client)).toBe(2);
 		expect(mirrorFiles(dir)).toEqual(["Y.md"]);
 		expect(fs.readFileSync(path.join(dir, "Y.md"), "utf8")).toBe("MY EDIT\n");
+	});
+	it.each([
+		["in place", false],
+		["into a file deleted locally", true],
+	])("a file written %s before the kill is not taken for a local edit later", async (_how, deleteFirst) => {
+		const docs = new Map<string, ServerDoc>([
+			[ID1, { id: ID1, title: "A", folder_id: null, text: "v1" }],
+		]);
+		const client = fakeServer(docs);
+		await pull(client);
+		if (deleteFirst) fs.rmSync(path.join(dir, "A.md"));
+		docs.set(ID1, { id: ID1, title: "A", folder_id: null, text: "v2" });
+		await killAtWrite(client, 1); // A.md is written; its base copy is not
+		expect(fs.readFileSync(path.join(dir, "A.md"), "utf8")).toContain("v2");
+		docs.set(ID1, { id: ID1, title: "A", folder_id: null, text: "v3" });
+		expect(await pull(client)).toBe(0);
+		expect(fs.readFileSync(path.join(dir, "A.md"), "utf8")).toContain("v3");
 	});
 });

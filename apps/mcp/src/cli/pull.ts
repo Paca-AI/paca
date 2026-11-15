@@ -260,7 +260,12 @@ async function pullLocked(
 		if (!p) continue;
 		const sha = await fileSha256(path.resolve(root, p.file));
 		if (sha === null) continue;
-		if (!p.reserved && sha !== p.file_sha256 && !opts.force) {
+		if (
+			!p.reserved &&
+			sha !== p.file_sha256 &&
+			sha !== p.pending_sha256 &&
+			!opts.force
+		) {
 			kept++;
 			next[id] = { ...p, orphan: true };
 			lines.push(
@@ -306,6 +311,14 @@ async function pullLocked(
 				id,
 				mirrorFileFor(meta.get(id) as DocMeta, folders, taken, dirs),
 			);
+	}
+
+	// The Markdown each fetched document will be written as.
+	const markdownOf = new Map<string, string>();
+	for (const id of ids) {
+		const d = fetched.get(id);
+		if (d && needContent.has(id))
+			markdownOf.set(id, blocknoteToMarkdown(d.content as any[] | null));
 	}
 
 	const vacated: string[] = [];
@@ -385,7 +398,17 @@ async function pullLocked(
 			};
 			for (const id of ids) {
 				const p = prevDocs[id];
-				docs[id] = p ? { ...p, file: layout.get(id) as string } : reserve(id);
+				if (!p) {
+					docs[id] = reserve(id);
+					continue;
+				}
+				docs[id] = { ...p, file: layout.get(id) as string };
+				delete docs[id].pending_sha256;
+				// A file holding what this run writes came from pull, so it is
+				// not mistaken for a local edit if the run stops after writing.
+				const md = markdownOf.get(id);
+				if (md !== undefined && !p.reserved)
+					docs[id].pending_sha256 = sha256(md);
 			}
 			for (const [id, n] of Object.entries(next)) if (n.orphan) docs[id] = n;
 			const interim: PullState = { ...base, dirs, docs };
@@ -421,11 +444,12 @@ async function pullLocked(
 			if (!d || !needContent.has(id)) {
 				next[id] = { ...(p as PullDocState), ...base };
 				delete next[id].orphan;
+				delete next[id].pending_sha256;
 				if (m.managed) next[id].managed = true;
 				else delete next[id].managed;
 				continue;
 			}
-			const markdown = blocknoteToMarkdown(d.content as any[] | null);
+			const markdown = markdownOf.get(id) as string;
 			const mdSha = sha256(markdown);
 			const abs = await safePath(root, file, { mkdir: true });
 			const current = await fileSha256(abs);
@@ -434,6 +458,7 @@ async function pullLocked(
 				!p.reserved &&
 				current !== null &&
 				current !== p.file_sha256 &&
+				current !== p.pending_sha256 &&
 				current !== mdSha &&
 				!opts.force
 			) {
@@ -441,6 +466,7 @@ async function pullLocked(
 				lines.push(`kept ${file}: edited locally; use --force to overwrite`);
 				next[id] = { ...p, ...base, remote_hash: m.remote_hash };
 				delete next[id].orphan;
+				delete next[id].pending_sha256;
 				if (m.managed) next[id].managed = true;
 				else delete next[id].managed;
 				continue;
