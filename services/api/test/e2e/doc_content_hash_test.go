@@ -240,3 +240,45 @@ func TestDocs_RenameChangesETagNotContentHash(t *testing.T) {
 		t.Fatalf("content write with the pre-rename ETag: %d %v", status, e.Data)
 	}
 }
+
+// A compressing proxy (the bundled Caddy gateway with encode gzip) hands the
+// client "<hash>-<meta>-gzip"; sending that tag back unchanged must work as
+// the unsuffixed tag does in If-Match and If-None-Match.
+func TestDocs_CompressionSuffixedETag(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	seedTaskMemberUser(t, env, "doc-gzip-etag-user", "docgzipetagpass1")
+	client, token := taskMemberLogin(t, env, "doc-gzip-etag-user", "docgzipetagpass1")
+	projID := createProjectForTasksViaAPI(t, env, client, token)
+	docs := fmt.Sprintf("%s/api/v1/projects/%s/docs", env.base, projID)
+
+	status, e, hdr, _ := docRequest(t, env, client, token, http.MethodPost, docs, map[string]any{"title": "Gzip", "content": docBlocks("a", "base")}, nil)
+	if status != http.StatusCreated {
+		t.Fatalf("create: %d %s", status, e.Error)
+	}
+	docID, _ := assertDataMap(t, e)["id"].(string)
+	etag := hdr.Get("ETag")
+	if !strings.HasSuffix(etag, `"`) {
+		t.Fatalf("create: ETag %q is not a quoted tag", etag)
+	}
+	suffixed := func(tag string) string { return strings.TrimSuffix(tag, `"`) + `-gzip"` }
+
+	// The suffixed tag names the stored content: the write goes through.
+	status, e, hdr, _ = docRequest(t, env, client, token, http.MethodPatch, docs+"/"+docID, map[string]any{"content": docBlocks("b", "second")}, map[string]string{"If-Match": suffixed(etag)})
+	if status != http.StatusOK {
+		t.Fatalf("write with a suffixed current ETag: %d %q %s", status, e.ErrorCode, e.Error)
+	}
+	current := hdr.Get("ETag")
+
+	// The same suffixed tag is now stale: 412, not 400.
+	status, e, _, _ = docRequest(t, env, client, token, http.MethodPatch, docs+"/"+docID, map[string]any{"content": docBlocks("c", "third")}, map[string]string{"If-Match": suffixed(etag)})
+	if status != http.StatusPreconditionFailed || e.ErrorCode != "VERSION_CONFLICT" {
+		t.Fatalf("write with a suffixed stale ETag: %d %q", status, e.ErrorCode)
+	}
+
+	// Revalidating with the suffixed current tag is a 304.
+	status, _, _, raw := docRequest(t, env, client, token, http.MethodGet, docs+"/"+docID, nil, map[string]string{"If-None-Match": suffixed(current)})
+	if status != http.StatusNotModified || len(raw) != 0 {
+		t.Fatalf("GET with a suffixed current ETag: %d body %q", status, raw)
+	}
+}

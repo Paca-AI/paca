@@ -149,3 +149,83 @@ func TestDocETag_SameInstantSameTag(t *testing.T) {
 		t.Fatalf("ETag differs for the same instant: %q (as written) vs %q (as stored)", a, b)
 	}
 }
+
+// A proxy that compresses the response, such as the bundled Caddy gateway
+// with encode gzip, appends the content coding to a strong ETag:
+// "<hash>-<meta>-gzip". The client sends that tag back unchanged, so it must
+// name the same document version as the unsuffixed tag.
+func TestIfMatchHash_AcceptsCompressionSuffix(t *testing.T) {
+	whole := testHash + "-" + testMeta
+	for _, header := range []string{
+		`"` + whole + `-gzip"`,
+		`"` + whole + `-br"`,
+		`"` + whole + `-zstd"`,
+		`"` + whole + `-deflate"`,
+		`"` + whole + `-GZIP"`,
+		`"` + whole + `-Br"`,
+		`W/"` + whole + `-gzip"`,
+		whole + "-gzip",
+		`"` + strings.ToUpper(whole) + `-gzip"`,
+	} {
+		r := httptest.NewRequestWithContext(context.Background(), "PATCH", "/", nil)
+		r.Header.Set("If-Match", header)
+		got, err := ifMatchHash(r)
+		if err != nil || got == nil || *got != testHash {
+			t.Errorf("If-Match %q = %v, %v; want the content hash alone", header, got, err)
+		}
+	}
+	for _, bad := range []string{
+		`"` + testHash + `-gzip"`,                  // a coding without a meta tag
+		testHash + "-gzip",                         // same, bare
+		`"` + whole + `-"`,                         // empty coding
+		`"` + whole + `-compress"`,                 // unknown coding
+		`"` + whole + `-identity"`,                 // not a compression
+		`"` + whole + `-gzip-gzip"`,                // two codings
+		`"` + whole + `-br-gzip"`,                  // two codings
+		`"` + whole + `--gzip"`,                    // empty segment
+		`"` + whole + `-gzip "`,                    // trailing space inside the quotes
+		`"` + testHash + `-gzip-` + testMeta + `"`, // coding before the meta tag
+	} {
+		r := httptest.NewRequestWithContext(context.Background(), "PATCH", "/", nil)
+		r.Header.Set("If-Match", bad)
+		if _, err := ifMatchHash(r); err == nil {
+			t.Errorf("If-Match %q must be refused, not ignored", bad)
+		}
+	}
+}
+
+func TestEtagMatches_CompressionSuffix(t *testing.T) {
+	whole := testHash + "-" + testMeta
+	etag := `"` + whole + `"`
+	other := strings.Repeat("f", 64)
+	cases := []struct {
+		header string
+		want   bool
+	}{
+		{`"` + whole + `-gzip"`, true},
+		{`"` + whole + `-br"`, true},
+		{`"` + whole + `-zstd"`, true},
+		{`"` + whole + `-deflate"`, true},
+		{`"` + whole + `-GZIP"`, true},
+		{`W/"` + whole + `-gzip"`, true},
+		{whole + "-gzip", true},
+		{`"` + other + `", "` + whole + `-gzip"`, true},
+		// A suffix does not make a different version match.
+		{`"` + other + "-" + testMeta + `-gzip"`, false},
+		{`"` + testHash + `-0000000000000000-gzip"`, false},
+		// Malformed shapes match nothing.
+		{`"` + testHash + `-gzip"`, false},
+		{`"` + whole + `-"`, false},
+		{`"` + whole + `-compress"`, false},
+		{`"` + whole + `-gzip-gzip"`, false},
+	}
+	for _, c := range cases {
+		if got := etagMatches(c.header, etag); got != c.want {
+			t.Errorf("etagMatches(%q) = %v, want %v", c.header, got, c.want)
+		}
+	}
+	// The stored side is compared the same way, whichever side carries it.
+	if !etagMatches(`"`+whole+`"`, `"`+whole+`-gzip"`) {
+		t.Error("a suffixed etag argument must match its unsuffixed tag")
+	}
+}
