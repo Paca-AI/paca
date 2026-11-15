@@ -9,6 +9,8 @@ import { markdownToBlocknote } from "../../utils/index.js";
 // were killed there (Ctrl-C, out of memory): no error, no rollback.
 const stop = vi.hoisted(() => ({
 	armed: false,
+	/** Content writes let through before the stop. */
+	skip: 0,
 	reached: null as null | (() => void),
 }));
 vi.mock("../../cli/state.js", async (importOriginal) => {
@@ -16,7 +18,7 @@ vi.mock("../../cli/state.js", async (importOriginal) => {
 	return {
 		...orig,
 		writeFileAtomic: (file: string, text: string) => {
-			if (stop.armed) {
+			if (stop.armed && stop.skip-- <= 0) {
 				stop.reached?.();
 				return new Promise<void>(() => {});
 			}
@@ -112,6 +114,7 @@ describe("runPull killed between moves and writes", () => {
 	beforeEach(() => {
 		dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "paca-kill-")), "m");
 		stop.armed = false;
+		stop.skip = 0;
 	});
 	afterEach(() => {
 		stop.armed = false;
@@ -207,5 +210,47 @@ describe("runPull killed between moves and writes", () => {
 		).toBe(0);
 		expect(mirrorFiles(dir)).toEqual(["A.md"]);
 		expect(fs.readFileSync(path.join(dir, "A.md"), "utf8")).toContain("two v2");
+	});
+	const state = () =>
+		JSON.parse(fs.readFileSync(path.join(dir, ".paca-sync.json"), "utf8"));
+	const files = () =>
+		Object.fromEntries(
+			Object.entries(state().docs).map(([id, d]) => [
+				id,
+				(d as { file: string }).file,
+			]),
+		);
+	const killAtWrite = async (client: ReturnType<typeof fakeServer>) => {
+		const reached = new Promise<void>((r) => {
+			stop.reached = r;
+		});
+		stop.armed = true;
+		void runPull({ projectId: "p1", dir, force: false }, client, io);
+		await reached;
+		stop.armed = false;
+		fs.rmSync(path.join(dir, ".paca-pull.lock"));
+	};
+	const pull = (client: ReturnType<typeof fakeServer>) =>
+		runPull({ projectId: "p1", dir, force: false }, client, io);
+
+	it("a title swap with one file deleted locally never gives one file to two documents", async () => {
+		const docs = new Map<string, ServerDoc>([
+			[ID1, { id: ID1, title: "A", folder_id: null, text: "one" }],
+			[ID2, { id: ID2, title: "B", folder_id: null, text: "two" }],
+		]);
+		const client = fakeServer(docs);
+		await pull(client);
+		fs.rmSync(path.join(dir, "B.md"));
+		docs.set(ID1, { id: ID1, title: "B", folder_id: null, text: "one" });
+		docs.set(ID2, { id: ID2, title: "A", folder_id: null, text: "two" });
+		await killAtWrite(client);
+		const recorded = Object.values(files());
+		expect(new Set(recorded).size).toBe(recorded.length);
+		expect(await pull(client)).toBe(0);
+		expect(await pull(client)).toBe(0);
+		expect(mirrorFiles(dir)).toEqual(["A.md", "B.md"]);
+		expect(fs.readFileSync(path.join(dir, "A.md"), "utf8")).toContain("two");
+		expect(fs.readFileSync(path.join(dir, "B.md"), "utf8")).toContain("one");
+		expect(files()).toEqual({ [ID1]: "B.md", [ID2]: "A.md" });
 	});
 });

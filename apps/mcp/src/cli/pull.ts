@@ -351,18 +351,28 @@ async function pullLocked(
 			entry.cur = tmp;
 			moves.push({ id, to, entry });
 		}
-		// Every moving file is now under its temporary name. Record the new
-		// names before putting them there, with the old cursor and folders,
-		// so a pull killed from here on leaves a state that matches the disk:
-		// recoverMoves puts a file still under its temporary name at the new
-		// name, and the next pull redoes the rest. Removed documents are
-		// dropped, since a moved file may now sit at one's old name.
-		if (moves.length > 0 && prev) {
-			const docs: Record<string, PullDocState> = { ...prev.docs };
-			for (const id of goneIds) if (!next[id]?.orphan) delete docs[id];
-			for (const m of moves) docs[m.id] = { ...docs[m.id], file: m.to };
-			await writeJSON(statePath, { ...prev, dirs, docs });
-			stateChanged = true;
+		// Every moving file is now under its temporary name. Record the
+		// layout before putting them in place, with the old cursor and
+		// folders, so a pull killed from here on leaves a state that matches
+		// the disk: recoverMoves puts a file still under its temporary name
+		// at its new name, and the next pull redoes the rest. Every document
+		// is recorded at its new name, moved or not (one whose file is
+		// missing must not keep a name another document now takes), and
+		// removed documents are dropped. Content fields are the old ones.
+		if (prev) {
+			const docs: Record<string, PullDocState> = {};
+			for (const [id, p] of Object.entries(prevDocs)) {
+				if (next[id]?.orphan) docs[id] = next[id];
+				else if (!meta.has(id)) continue;
+				else if (!p.orphan) docs[id] = { ...p, file: layout.get(id) as string };
+				// A revived orphan's file is not moved: keep it only where it is.
+				else if (p.file === layout.get(id)) docs[id] = p;
+			}
+			const interim: PullState = { ...prev, dirs, docs };
+			if (JSON.stringify(interim) !== JSON.stringify(prev)) {
+				await writeJSON(statePath, interim);
+				stateChanged = true;
+			}
 		}
 		for (const m of moves) {
 			const target = await safePath(root, m.to, { mkdir: true });
