@@ -311,6 +311,8 @@ async function pullLocked(
 	let removedCount = 0;
 	let moved = 0;
 	let updated = 0;
+	/** Whether the state file was rewritten mid-run (to restore on failure). */
+	let stateChanged = false;
 	try {
 		// 1. Remove.
 		for (const id of toRemove) {
@@ -345,6 +347,19 @@ async function pullLocked(
 			await fs.rename(from, tmp);
 			entry.cur = tmp;
 			moves.push({ id, to, entry });
+		}
+		// Every moving file is now under its temporary name. Record the new
+		// names before putting them there, with the old cursor and folders,
+		// so a pull killed from here on leaves a state that matches the disk:
+		// recoverMoves puts a file still under its temporary name at the new
+		// name, and the next pull redoes the rest. Removed documents are
+		// dropped, since a moved file may now sit at one's old name.
+		if (moves.length > 0 && prev) {
+			const docs: Record<string, PullDocState> = { ...prev.docs };
+			for (const id of goneIds) if (!next[id]?.orphan) delete docs[id];
+			for (const m of moves) docs[m.id] = { ...docs[m.id], file: m.to };
+			await writeJSON(statePath, { ...prev, docs });
+			stateChanged = true;
 		}
 		for (const m of moves) {
 			const target = await safePath(root, m.to, { mkdir: true });
@@ -416,7 +431,11 @@ async function pullLocked(
 			if (m.managed) next[id].managed = true;
 		}
 	} catch (err) {
-		await rollBack(root, journal, created);
+		await rollBack(root, journal, created, async () => {
+			if (!stateChanged) return;
+			if (stateText === null) await fs.rm(statePath, { force: true });
+			else await writeFileAtomic(statePath, stateText);
+		});
 		throw err;
 	}
 
@@ -479,12 +498,16 @@ async function safePath(
  * (server content, fetched again next time), then every moved file goes to
  * its temporary name, then from there to where it was. Two phases, so swaps
  * and rename cycles come back too. A file that cannot be put back stays
- * under its temporary name, and the next pull recovers it.
+ * under its temporary name, and the next pull recovers it. `restoreState`
+ * runs between the phases: with every moved file under its temporary name,
+ * the state file can go back to the old names without ever naming a path
+ * the file is not at (recoverMoves follows the state either way).
  */
 async function rollBack(
 	root: string,
 	journal: Moved[],
 	created: string[],
+	restoreState: () => Promise<void>,
 ): Promise<void> {
 	for (const f of created) await fs.rm(f, { force: true }).catch(() => {});
 	const back = journal.filter((m) => m.cur !== m.orig);
@@ -498,6 +521,13 @@ async function rollBack(
 		} catch {
 			// Stays where it is.
 		}
+	}
+	try {
+		await restoreState();
+	} catch {
+		// The state still names the new paths: leave the files under their
+		// temporary names, and the next pull puts them there.
+		return;
 	}
 	for (const m of back) {
 		if (m.cur !== m.tmp) continue;
