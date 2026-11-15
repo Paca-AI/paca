@@ -16,7 +16,7 @@ export type Block = Record<string, any>;
 export class SpliceError extends Error {
 	constructor(
 		message: string,
-		readonly kind: "not_found" | "ambiguous" | "empty" | "unsafe",
+		readonly kind: "not_found" | "ambiguous" | "empty" | "unsafe" | "no_change",
 		/** The 1-based Markdown lines where `old_string` starts. */
 		readonly lines: number[] = [],
 	) {
@@ -383,12 +383,23 @@ function reuseChildren(old: Block, fresh: Block): Block[] | undefined {
 	});
 }
 
+/** Props Markdown writes (a list's start number, a check, a heading level,
+ *  a code block's language): an edit's new Markdown decides them, also
+ *  when the parser leaves one out at its default value (start 1). */
+const MARKDOWN_PROPS = new Set(["start", "checked", "level", "language"]);
+
 /**
  * `fresh` (parsed from Markdown) standing in for `old`: it keeps old's id
- * (or lack of one) and the props Markdown cannot carry, such as colours.
+ * (or lack of one) and the props Markdown cannot carry, such as colours;
+ * the props Markdown writes come from `fresh`.
  */
 function inherit(old: Block, fresh: Block): Block {
 	const props: Record<string, unknown> = { ...(old.props ?? {}) };
+	for (const k of MARKDOWN_PROPS) {
+		if (!(k in (fresh.props ?? {})) && NEUTRAL_PROPS[k] !== props[k]) {
+			delete props[k];
+		}
+	}
 	for (const [k, v] of Object.entries(fresh.props ?? {})) {
 		if (k in props && DEFAULT_PROPS[k] === v) continue;
 		props[k] = v;
@@ -645,10 +656,11 @@ export function spliceEdit(
 		}
 		text += full.slice(at, units[ub].end);
 
+		const fresh = fixSoftBreaks(markdownToBlocknote(text));
 		const aligned = align(
 			blocks.slice(from, to),
 			renders.slice(from, to),
-			fixSoftBreaks(markdownToBlocknote(text)),
+			fresh,
 		);
 		// The line where block `idx` starts in the full Markdown.
 		const lineOf = (idx: number) => {
@@ -684,6 +696,25 @@ export function spliceEdit(
 				`The edit touches the ${b.type} block on line ${line}, which edit_doc cannot rewrite from Markdown: ${loss}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
 				"unsafe",
 				[line],
+			);
+		}
+		// The result must say what the edit asks for: its Markdown is that
+		// of the edited text parsed as a whole (blocks that render to nothing
+		// aside), and differs from what was there.
+		const shown = (bs: Block[]) => render(bs.filter((b) => render([b]) !== ""));
+		const got = shown(aligned.blocks);
+		if (got === shown(blocks.slice(from, to))) {
+			throw new SpliceError(
+				`The edit changes nothing in the document as Markdown shows it (starting on line ${lineAt(full, matches[0])}), so nothing was changed. Markdown does not show some differences, such as extra spaces; edit the text that read_doc returns.`,
+				"no_change",
+				[lineAt(full, matches[0])],
+			);
+		}
+		if (got !== shown(fresh)) {
+			throw new SpliceError(
+				`edit_doc could not apply the edit starting on line ${lineAt(full, matches[0])} exactly as written, so nothing was changed. Rewrite that part with write_doc, or edit it in the web editor.`,
+				"unsafe",
+				[lineAt(full, matches[0])],
 			);
 		}
 		out.push(...blocks.slice(next, from));
