@@ -1767,6 +1767,34 @@ function lostByMarkdown(b: any): string {
 			inline.push(JSON.stringify(node));
 		}
 	}
+	const c = b.content;
+	if (c?.type === "tableContent") {
+		if ((c.columnWidths ?? []).some((w: unknown) => w != null)) {
+			props.push(`widths=${JSON.stringify(c.columnWidths)}`);
+		}
+		if ((c.headerRows ?? 0) !== 1) props.push(`headerRows=${c.headerRows}`);
+		if (c.headerCols) props.push(`headerCols=${c.headerCols}`);
+		(c.rows ?? []).forEach((r: any, y: number) => {
+			(r.cells ?? []).forEach((cell: any, x: number) => {
+				for (const [k, v] of Object.entries(cell?.props ?? {})) {
+					const plain = { ...neutral, colspan: 1, rowspan: 1 } as any;
+					if (v !== undefined && plain[k] !== v)
+						props.push(`${y},${x}:${k}=${v}`);
+				}
+			});
+		});
+	}
+	const mdTypes = [
+		"paragraph",
+		"heading",
+		"bulletListItem",
+		"numberedListItem",
+		"checkListItem",
+		"codeBlock",
+		"quote",
+		"table",
+	];
+	if (b.type && !mdTypes.includes(b.type)) props.push(`type=${b.type}`);
 	return JSON.stringify([props, inline.sort()]);
 }
 const NOTHING_LOST = lostByMarkdown({ props: {}, content: [] });
@@ -1778,19 +1806,6 @@ const ownText = (b: any) =>
 		.map((n: any) => n.text ?? "")
 		.join("");
 const MARKER = /m\d+(?:c\d+)*x/g;
-/** Common prefix plus common suffix (not overlapping), written here apart
- *  from the implementation's. */
-function overlap(a: string, b: string): number {
-	let p = 0;
-	while (p < a.length && p < b.length && a[p] === b[p]) p++;
-	let q = 0;
-	while (
-		q < Math.min(a.length, b.length) - p &&
-		a[a.length - 1 - q] === b[b.length - 1 - q]
-	)
-		q++;
-	return p + q;
-}
 
 describe("spliceEdit fuzz by edit kind", () => {
 	it("keeps untouched blocks, never moves or drops what Markdown cannot carry, and shows exactly the edit", () => {
@@ -2141,18 +2156,79 @@ describe("spliceEdit fuzz by edit kind", () => {
 			return { old: ` ${m}`, new: `${rnd(2) === 0 ? "\n" : "  \n"}${m}` };
 		};
 
+		// Sixth review: edits that reorder or restructure blocks with data.
+		// Each plants what it needs (see below), marked mS0x, mS1x or mTx.
+		const section = (md: string, a: string, b: string, end: string) => {
+			const from = md.lastIndexOf("\n", md.indexOf(a)) + 1;
+			const mid = md.lastIndexOf("\n", md.indexOf(b)) + 1;
+			const stop = md.indexOf(end, mid) + end.length;
+			return { from, mid, stop };
+		};
+		const swapAt = (md: string, end: string, rename: boolean): Edit => {
+			if (!md.includes("mS0x") || !md.includes("mS1x")) return null;
+			const { from, mid, stop } = section(md, "mS0x", "mS1x", end);
+			const a = md.slice(from, mid).replace(/\n+$/, "");
+			const sep = md.slice(from + a.length, mid);
+			const b = md.slice(mid, stop);
+			const ren = (x: string) => (rename ? x.replace(/(mS\dx)/, "$1 B.") : x);
+			return { old: a + sep + b, new: ren(b) + sep + ren(a) };
+		};
+		KINDS.secSwap = (md) => swapAt(md, "Status: done", rnd(2) === 0);
+		KINDS.secTree = (md) => swapAt(md, "dup line", false);
+		// Two neighbouring one-line blocks swapped, both ends of each
+		// rewritten: "(1) <second>." and "(2) <first>.".
+		KINDS.swapRewrite = (md) => {
+			const ls = lines(md);
+			const k = pick(
+				ls
+					.map((_, i) => i)
+					.filter(
+						(i) =>
+							textLine(ls[i]) &&
+							!!ls[i].match(MARKER) &&
+							(textLine(ls[i + 1]) ||
+								(ls[i + 1] === "" && textLine(ls[i + 2]))),
+					),
+			);
+			if (k === undefined) return null;
+			const z = textLine(ls[k + 1]) ? k + 1 : k + 2;
+			const [, ia, pa] = ls[k].match(PREFIX) ?? [];
+			const [, iz, pz] = ls[z].match(PREFIX) ?? [];
+			const body = (l: string) => l.replace(PREFIX, "");
+			const sep = z === k + 1 ? "\n" : "\n\n";
+			return {
+				old: `${ls[k]}${sep}${ls[z]}`,
+				new: `${ia ?? ""}${pa ?? ""}(1) ${body(ls[z])}.${sep}${iz ?? ""}${pz ?? ""}(2) ${body(ls[k])}.`,
+			};
+		};
+		KINDS.dupDeleteOfN = (md) => {
+			const three = "dup line\n\ndup line\n\ndup line";
+			if (!md.includes(three)) return null;
+			return { old: three, new: "dup line\n\ndup line" };
+		};
+		KINDS.table = (md) => {
+			if (md.includes("mTx")) return { old: "mTx", new: "mTxZ" };
+			const k = md.indexOf("| a | b |");
+			const j = md.indexOf("| a | b |", k + 1);
+			if (k < 0 || j < 0) return null;
+			const one = md.slice(k, j).replace(/\n+$/, "");
+			const end = md.indexOf("\n\n", j);
+			const two = md.slice(k, end < 0 ? md.length : end).replace(/\n+$/, "");
+			return { old: two, new: one };
+		};
+
 		const stats: Record<
 			string,
 			{ applied: number; refused: number; skipped: number }
 		> = {};
 		const reasons: Record<string, number> = {};
-		for (let iter = 0; iter < 2400; iter++) {
+		for (let iter = 0; iter < 4200; iter++) {
 			const kind = Object.keys(KINDS)[iter % Object.keys(KINDS).length];
 			stats[kind] ??= { applied: 0, refused: 0, skipped: 0 };
 			const s = stats[kind];
-			const len = 3 + rnd(7);
-			const blocks = Array.from({ length: len }, (_, i) => mk(`m${i}`));
-			if (kind.startsWith("dup")) {
+			let len = 3 + rnd(7);
+			const blocks: any[] = Array.from({ length: len }, (_, i) => mk(`m${i}`));
+			if (kind.startsWith("dup") && kind !== "dupDeleteOfN") {
 				// Two neighbours that read the same but may differ in colour,
 				// or a mention chip next to plain text that reads the same.
 				const at = rnd(len - 1);
@@ -2180,6 +2256,53 @@ describe("spliceEdit fuzz by edit kind", () => {
 				][rnd(3)]();
 				blocks.splice(at, 2, ...(rnd(2) === 0 ? pair : pair.reverse()));
 			}
+			const spot = rnd(len);
+			if (kind === "secSwap") {
+				// Two sections whose second lines read the same.
+				blocks.splice(
+					spot,
+					0,
+					blk("heading", "head mS0x", { level: 2, isToggleable: false }),
+					blk("paragraph", "Status: done", look()),
+					blk("heading", "head mS1x", { level: 2, isToggleable: false }),
+					blk("paragraph", "Status: done", look()),
+				);
+			} else if (kind === "secTree") {
+				// Two list items whose nested items read the same.
+				blocks.splice(
+					spot,
+					0,
+					blk("bulletListItem", "top mS0x", {}, [
+						blk("bulletListItem", "dup line", look()),
+					]),
+					blk("bulletListItem", "top mS1x", {}, [
+						blk("bulletListItem", "dup line", look()),
+					]),
+				);
+			} else if (kind === "dupDeleteOfN") {
+				blocks.splice(
+					spot,
+					0,
+					...[0, 1, 2].map(() => blk("paragraph", "dup line", look())),
+				);
+			} else if (kind === "table") {
+				const tbl = (text: string) => {
+					const [tb] = JSON.parse(
+						JSON.stringify(
+							markdownToBlocknote(`| a | b |\n|---|---|\n| ${text} | 2 |`),
+						),
+					);
+					tb.id = id();
+					if (rnd(2) === 0) {
+						tb.content.columnWidths = [120 + rnd(200), null];
+						tb.content.rows[1].cells[rnd(2)].props.backgroundColor = "red";
+					}
+					return tb;
+				};
+				if (rnd(2) === 0) blocks.splice(spot, 0, tbl("mTx"));
+				else blocks.splice(spot, 0, tbl("1"), tbl("1"));
+			}
+			len = blocks.length;
 			const json = blocks.map((b) => JSON.stringify(b));
 			const md = blocknoteToMarkdown(blocks);
 			const tops = blocks
@@ -2256,6 +2379,27 @@ describe("spliceEdit fuzz by edit kind", () => {
 				let a = k - 1;
 				while (a >= 0 && ownText(blocks[a]) === "") a--;
 				if (a >= 0) touched[a] = true;
+			}
+			// The part edit_doc rewrites: the blocks the edit touches, with the
+			// rest of a list they are in and the empty blocks next to them.
+			const LISTS = [...LIST, "toggleListItem"];
+			const inRun = [...touched];
+			for (let grew = true; grew; ) {
+				grew = false;
+				for (let i = 0; i < len; i++) {
+					if (inRun[i]) continue;
+					const near = [i - 1, i + 1].filter((q) => inRun[q]);
+					if (
+						near.length > 0 &&
+						(blocknoteToMarkdown([{ ...blocks[i], children: [] }]).trim() ===
+							"" ||
+							(LISTS.includes(blocks[i].type) &&
+								near.some((q) => LISTS.includes(blocks[q].type))))
+					) {
+						inRun[i] = true;
+						grew = true;
+					}
+				}
 			}
 			// Numbered items right after a touched block may be renumbered.
 			// A list is re-parsed as a whole, so an item of a touched run that
@@ -2343,43 +2487,119 @@ describe("spliceEdit fuzz by edit kind", () => {
 				).toBe(lost);
 			}
 
-			// An id stays with the text that continues it most: no new block
-			// (an id not read) continues an old block's text better than the
-			// block that kept its id.
-			const olds = new Map(everyBlock(blocks).map((b) => [b.id, b]));
-			const born = outs.filter((b) => !olds.has(b.id));
-			for (const b of outs) {
-				const o = olds.get(b.id);
-				if (!o || o === b || ownText(b) === ownText(o)) continue;
-				const mine = overlap(ownText(b), ownText(o));
-				for (const f of born) {
-					expect(
-						overlap(ownText(f), ownText(o)),
-						`${ctx}\n${o.id} kept on text that continues it less than new ${f.id}`,
-					).toBeLessThanOrEqual(mine);
-				}
-			}
-
-			// Siblings that read the same (and show something) keep their
-			// order.
-			const pos = new Map(outs.map((b, k) => [b.id, k]));
+			// R1 (sixth review), checked here on its own. The edited part is
+			// each run of top-level blocks between two kept ones; in a run that
+			// holds data Markdown cannot write (at any depth), every block with
+			// such data, or holding a nested block with it, was
+			// (a) kept: its id on a block with the same own Markdown and data,
+			//     under the block with its old parent's id, and all kept blocks
+			//     of the run in their old order; or
+			// (b) edited in place: the run maps one to one by position (paths
+			//     of blocks that show something, by id), and no block's new
+			//     text holds the text of another block that left its place; or
+			// (c) deleted, when its own Markdown is unique in the run.
+			// And no block was deleted while a block with data reads the same.
 			const ownMd = (b: any) => blocknoteToMarkdown([{ ...b, children: [] }]);
-			for (const sibs of [
-				blocks,
-				...everyBlock(blocks).map((b) => b.children ?? []),
-			]) {
-				for (let a = 0; a < sibs.length; a++) {
-					for (let z = a + 1; z < sibs.length; z++) {
-						const pa = pos.get(sibs[a].id);
-						const pz = pos.get(sibs[z].id);
-						if (pa === undefined || pz === undefined) continue;
-						// Blank blocks are placed by their neighbours (rule D).
-						if (ownMd(sibs[a]) !== ownMd(sibs[z]) || ownMd(sibs[a]) === "")
-							continue;
+			const isData = (b: any): boolean =>
+				lostByMarkdown(b) !== NOTHING_LOST || (b.children ?? []).some(isData);
+			const resAt = blocks.map((b) =>
+				res.blocks.findIndex((x) => x.id === b.id),
+			);
+			const flatWithPlace = (tops: any[]) => {
+				const out: { b: any; parent: string | null; path: string }[] = [];
+				const walk = (bs: any[], parent: string | null, pre: string) => {
+					let k = 0;
+					for (const b of bs) {
+						const path = ownMd(b).trim() === "" ? "" : `${pre}${k++}`;
+						out.push({ b, parent, path });
+						walk(b.children ?? [], b.id, path === "" ? `${pre}~` : `${path}.`);
+					}
+				};
+				walk(tops, null, "");
+				return out;
+			};
+			for (let i = 0; i < len; ) {
+				if (!inRun[i]) {
+					i++;
+					continue;
+				}
+				let j = i;
+				while (j < len && inRun[j]) j++;
+				const before = i > 0 ? resAt[i - 1] : -1;
+				const after = j < len ? resAt[j] : res.blocks.length;
+				const oldRun = flatWithPlace(blocks.slice(i, j));
+				const newRun = flatWithPlace(res.blocks.slice(before + 1, after));
+				i = j;
+				const data = oldRun.filter((p) => isData(p.b));
+				if (data.length === 0) continue;
+				const where = `${ctx}\nRES ${JSON.stringify(res.blocks)}`;
+				const newById = new Map(newRun.map((p) => [p.b.id, p]));
+				const oldOrder = new Map(oldRun.map((p, k) => [p.b.id, k]));
+				const same = (o: any, n: any) =>
+					n === o ||
+					(n.type === o.type &&
+						ownMd(n) === ownMd(o) &&
+						lostByMarkdown(n) === lostByMarkdown(o));
+				let last = -1;
+				for (const p of newRun) {
+					const k = oldOrder.get(p.b.id);
+					if (k === undefined || !same(oldRun[k].b, p.b)) continue;
+					expect(
+						k,
+						`${where}\n${p.b.id}: kept blocks out of order`,
+					).toBeGreaterThan(last);
+					last = k;
+				}
+				const shownOld = oldRun.filter((p) => p.path !== "");
+				const shownNew = newRun.filter((p) => p.path !== "");
+				const byPos =
+					shownOld.length === shownNew.length &&
+					shownOld.every(
+						(p, k) =>
+							shownNew[k].path === p.path && shownNew[k].b.id === p.b.id,
+					);
+				if (byPos) {
+					const was = shownOld.map((p) => ownText(p.b));
+					const now = shownNew.map((p) => ownText(p.b));
+					const left = was.map((x, k) => x !== "" && !now[k].includes(x));
+					for (let k = 0; k < now.length; k++) {
+						if (!left[k]) continue;
+						for (let q = 0; q < was.length; q++) {
+							expect(
+								q !== k && left[q] && now[k].includes(was[q]),
+								`${where}\ntext of ${shownOld[q].b.id} moved into ${shownOld[k].b.id}`,
+							).toBe(false);
+						}
+					}
+				}
+				for (const p of oldRun) {
+					if (newById.has(p.b.id) || ownMd(p.b).trim() === "") continue;
+					const twin = data.find(
+						(d) => d.b !== p.b && ownMd(d.b) === ownMd(p.b),
+					);
+					expect(
+						twin,
+						`${where}\n${p.b.id} deleted next to an equal data block`,
+					).toBeUndefined();
+				}
+				for (const d of data) {
+					const n = newById.get(d.b.id);
+					if (n && same(d.b, n.b)) {
 						expect(
-							pa,
-							`${ctx}\n${sibs[a].id} and ${sibs[z].id} swapped`,
-						).toBeLessThan(pz);
+							n.parent,
+							`${where}\n${d.b.id} moved to another parent`,
+						).toBe(d.parent);
+					} else if (n) {
+						expect(
+							byPos && n.path === d.path,
+							`${where}\n${d.b.id} neither kept nor edited in place`,
+						).toBe(true);
+					} else {
+						const twins = oldRun.filter((p) => ownMd(p.b) === ownMd(d.b));
+						expect(
+							ownMd(d.b).trim() !== "" && twins.length === 1,
+							`${where}\n${d.b.id} deleted though not unique`,
+						).toBe(true);
 					}
 				}
 			}
