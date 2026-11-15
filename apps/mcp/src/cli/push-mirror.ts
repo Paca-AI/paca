@@ -235,7 +235,7 @@ async function pushLocked(
 		io.err(
 			`${label}: the version it was edited from is not known (an interrupted pull may have written into it, or the version it was pulled at is gone), so it cannot be pushed${copy ? `; Paca's version is in ${copy} to compare with` : ""}. Save your edits elsewhere, then delete ${label} and pull, or run pull --force; either replaces it with Paca's version`,
 		);
-		return EXIT.error;
+		return EXIT.conflict;
 	}
 	if (entry.managed) {
 		// Read only to name the repository file.

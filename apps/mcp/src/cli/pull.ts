@@ -99,9 +99,10 @@ interface Moved {
 
 /**
  * Mirrors the project's documents to Markdown files under `opts.dir`.
- * Returns the exit code: 0 done, 1 error (nothing changed), 2 a locally
- * edited file was kept. Throws on a failed file operation, after putting
- * moved files back (the state file is then left unchanged), and
+ * Returns the exit code: 0 done, 1 error (nothing changed), 2 a file edited
+ * here was kept (it could not be merged, its base is unknown, or it is a
+ * managed copy or a removed document) or has conflict markers. Throws on a
+ * failed file operation, after putting moved files back (the state file is then left unchanged), and
  * UnreachableError when the server cannot be reached.
  */
 export async function runPull(

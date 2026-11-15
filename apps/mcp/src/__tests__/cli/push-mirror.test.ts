@@ -290,14 +290,14 @@ describe("push of a mirror file", () => {
 		fs.writeFileSync(file(), read().replace("Last one.", "Last one!"));
 		lines = [];
 		const sent = server.client.patchDocument.mock.calls.length;
-		expect(await push(".paca/docs/Plan.md")).toBe(1);
+		expect(await push(".paca/docs/Plan.md")).toBe(2);
 		expect(output()).toBe(
 			".paca/docs/Plan.md: the version it was edited from is not known (an interrupted pull may have written into it, or the version it was pulled at is gone), so it cannot be pushed; Paca's version is in .paca/docs/Plan.remote.md to compare with. Save your edits elsewhere, then delete .paca/docs/Plan.md and pull, or run pull --force; either replaces it with Paca's version",
 		);
 		// A copy no longer holding what pull wrote is not named.
 		fs.writeFileSync(file("Plan.remote.md"), "my notes\n");
 		lines = [];
-		expect(await push(".paca/docs/Plan.md")).toBe(1);
+		expect(await push(".paca/docs/Plan.md")).toBe(2);
 		expect(output()).not.toContain("Plan.remote.md");
 		expect(server.client.patchDocument.mock.calls.length).toBe(sent);
 		setState((s) => {

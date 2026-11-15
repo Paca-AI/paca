@@ -323,7 +323,7 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		expect(read()).toBe(mine);
 		// Push refuses it, naming the ways out.
 		lines = [];
-		expect(await push(), output()).toBe(1);
+		expect(await push(), output()).toBe(2);
 		expect(output()).toContain(
 			"Paca's version is in .paca/docs/Plan.remote.md",
 		);
@@ -356,7 +356,7 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		expect(state().docs[ID].unmerged).toBe(true);
 		expect(read("Plan.remote.md")).toBe(render());
 		lines = [];
-		expect(await push(), output()).toBe(1);
+		expect(await push(), output()).toBe(2);
 		// An edited copy is the user's: not overwritten, not removed.
 		fs.appendFileSync(file("Plan.remote.md"), "my note\n");
 		server.edit(ID, annEdits("First paragraph, by Ann."));

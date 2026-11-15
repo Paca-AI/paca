@@ -292,7 +292,7 @@ describe("a merging pull stopped at each step of its journal", () => {
 			expect(h.state().docs[ID].unmerged).toBe(true);
 			expect(h.read("Plan.remote.md")).toBe(h.render());
 			const sent = h.server.client.patchDocument.mock.calls.length;
-			expect(await h.push()).toBe(1);
+			expect(await h.push()).toBe(2);
 			const said = h.said();
 			expect(said).toContain("delete m/Plan.md and pull");
 			expect(said).toContain("pull --force");
@@ -381,7 +381,7 @@ describe("a merging pull stopped at each step of its journal", () => {
 				);
 				expect(h.state().docs[ID].unmerged).toBe(true);
 				expect(h.read("Plan.remote.md")).toBe(h.render());
-				expect(await h.push()).toBe(1);
+				expect(await h.push()).toBe(2);
 				expect(h.render()).not.toContain("SECRET");
 				expect(h.read()).toContain("Third, mine.");
 			} finally {
@@ -465,7 +465,7 @@ describe("a merging pull stopped at each step of its journal", () => {
 				"Plan.remote.md is not pull's copy (a file of yours, or a copy you edited), so Paca's version is not written there: save your edits elsewhere, then delete Plan.md and pull, or run pull --force",
 			);
 			expect(h.read("Plan.remote.md")).toBe("my notes\n");
-			expect(await h.push()).toBe(1);
+			expect(await h.push()).toBe(2);
 			expect(h.said()).not.toContain("Plan.remote.md");
 			// Deleting the file and pulling gives Paca's version; the user's
 			// file stays.

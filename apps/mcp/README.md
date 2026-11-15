@@ -612,7 +612,7 @@ is gone):
     name that pull did not write (one of yours, or a copy you edited) is
     left alone, and the message then says so instead of pointing at it. Nothing settles this file but you: every pull keeps it,
     even when the document goes back to an earlier version, and `push`
-    refuses it (exit 1), naming the `.remote.md` copy once a pull has
+    refuses it (exit 2), naming the `.remote.md` copy once a pull has
     written it. Compare the two and
     save your edits elsewhere, then delete the file and pull, or run
     `pull --force`; either replaces the file with Paca's version, and the
@@ -722,7 +722,7 @@ when the file has no uncommitted changes.
 |---|---|
 | 0 | Done, or nothing to do |
 | 1 | Error (bad arguments, server error, server too old) |
-| 2 | Conflict: the Paca copy changed since the last push or pull, a merge left conflict markers, or an edited mirror file was kept |
+| 2 | Conflict: the Paca copy changed since the last push or pull; `pull` merged with conflict markers or kept a file edited here that it could not merge; or `push` refused a mirror file until a pull settles it (an interrupted pull left it unfinished, or the version it was edited from is not known) |
 | 3 | The server could not be reached; nothing was recorded |
 
 ## Markdown/BlockNote Conversion
