@@ -1,9 +1,14 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { runPull } from "../../cli/pull.js";
 import { SpliceError, spliceMarkdown } from "../../tools/doc-edit.js";
 import {
 	blocknoteToMarkdown,
 	markdownToBlocknote,
 } from "../../utils/converters.js";
+import { docId, fakeDocsServer } from "../cli/fake-docs-server.js";
 
 /** Blocks the way the API returns them: parsed from Markdown, then passed
  *  through JSON, with a few props Markdown cannot express. */
@@ -137,9 +142,28 @@ describe("spliceMarkdown", () => {
 		expect(res.lines).toEqual([]);
 	});
 
-	it("pull output of a fixture with every block type is identical to the render", () => {
-		const blocks = everyType();
-		const md = pulled(blocks);
+	it("pull output of a fixture with every block type is identical to the render", async () => {
+		// Through the real pull, into a file.
+		const server = fakeDocsServer();
+		server.add(docId(1), "Every type", everyType());
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "paca-every-"));
+		let md: string;
+		try {
+			const said: string[] = [];
+			const code = await runPull(
+				{ projectId: "p1", dir, force: false },
+				server.client,
+				{ out: (l) => said.push(l), err: (l) => said.push(l) },
+			);
+			expect(code, said.join("\n")).toBe(0);
+			md = fs.readFileSync(path.join(dir, "Every type.md"), "utf8");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+		// Blocks as the server returns them next time.
+		const blocks = (await server.client.batchGet("p1", [docId(1)])).items[0]
+			.content as any[];
+		expect(md).toBe(pulled(blocks));
 		// Untouched blocks must render, alone and in place, exactly as the
 		// whole document does: that is what lets an edit leave them alone.
 		const res = spliceMarkdown(blocks, md);
@@ -631,7 +655,7 @@ const PLAIN = {
 
 describe("spliceMarkdown fuzz", () => {
 	it("keeps untouched blocks, never moves or drops what Markdown cannot carry, and renders to the file", () => {
-		let seed = 11;
+		let seed = Number(process.env.FUZZ_SEED) || 11;
 		const rnd = (k: number) => {
 			seed = (seed * 1103515245 + 12345) % 2147483648;
 			return Math.floor((seed / 2147483648) * k);
@@ -871,8 +895,9 @@ describe("spliceMarkdown fuzz", () => {
 			if (edits.length > 1) multi++;
 			const where = `${ctx}\nRES ${JSON.stringify(res.blocks)}`;
 
-			// A. It renders to the file (newlines at its end aside, and the
-			// padding of table cells, which the render sets per column).
+			// A. It renders to the file (newlines at its end aside, the
+			// padding of table cells, which the render sets per column, and
+			// the bullet sign, which the render varies to keep lists apart).
 			const body = edited.replace(/\n+$/, "");
 			const unpad = (x: string) =>
 				x
@@ -880,7 +905,7 @@ describe("spliceMarkdown fuzz", () => {
 					.map((l) =>
 						l.startsWith("|")
 							? l.replace(/ +\|/g, " |").replace(/-{2,}/g, "-")
-							: l,
+							: l.replace(/^(\s*)[-+*] /, "$1* "),
 					)
 					.join("\n");
 			expect(unpad(blocknoteToMarkdown(res.blocks)), where).toBe(
@@ -888,10 +913,11 @@ describe("spliceMarkdown fuzz", () => {
 			);
 
 			// B. Blocks the edits do not reach are the very objects read, in
-			// order. A block is reached when an edited line falls in its part
-			// of the Markdown (blank lines squashed: a list's spacing depends
-			// on all of it), or in a neighbour's; then the rest of a list it
-			// is in, empty blocks next to it, and numbered items after it.
+			// order. An edit reaches the blocks whose own lines it changes
+			// (lines it only keeps, at its ends, aside), and both blocks
+			// around a blank line between them that it removes or changes:
+			// that joins them. Positions are taken with blank lines squashed,
+			// since a list's spacing depends on all of it.
 			const flat = squash(md);
 			const ends = blocks.map((_, i) => {
 				const upto = squash(
@@ -902,44 +928,88 @@ describe("spliceMarkdown fuzz", () => {
 			});
 			const offs: number[] = [0];
 			for (const l of ls) offs.push(offs[offs.length - 1] + l.length + 1);
-			const touched = blocks.map((_, i) => {
-				const a = i === 0 ? 0 : ends[i - 1];
-				return edits.some((e) => {
-					const s = squash(md.slice(0, offs[e.lo])).length;
-					const z = squash(md.slice(0, offs[e.hi])).length;
-					return s < ends[i] && Math.max(z, s + 1) > a;
-				});
-			});
-			const reached = touched.map(
-				(x, i) => x || !!touched[i - 1] || !!touched[i + 1],
-			);
-			const LISTS = [...LIST, "toggleListItem"];
-			const shows = (b: any) =>
-				blocknoteToMarkdown([{ ...b, children: [] }]).trim() !== "";
-			for (let grew = true; grew; ) {
-				grew = false;
-				for (let i = 0; i < len; i++) {
-					if (reached[i]) continue;
-					const near = [i - 1, i + 1].filter((q) => reached[q]);
+			// The block a line of the file is in: [i] for its own line or a
+			// blank line inside it, [i - 1, i] for the blank line between two.
+			const blocksOf = (k: number): number[] => {
+				if (k < 0 || k >= ls.length) return [];
+				const s = squash(md.slice(0, offs[k])).length;
+				const blank = ls[k].trim() === "";
+				const i = ends.findIndex((x) => (blank ? x >= s : x > s));
+				if (i < 0) return [];
+				const start = i === 0 ? 0 : ends[i - 1] + 1;
+				return blank && s === start && i > 0 ? [i - 1, i] : [i];
+			};
+			const reached: boolean[] = blocks.map(() => false);
+			for (const e of edits) {
+				let lo = e.lo;
+				let hi = e.hi;
+				let r0 = 0;
+				let r1 = e.repl.length;
+				while (lo < hi && r0 < r1 && ls[lo] === e.repl[r0]) {
+					lo++;
+					r0++;
+				}
+				while (lo < hi && r0 < r1 && ls[hi - 1] === e.repl[r1 - 1]) {
+					hi--;
+					r1--;
+				}
+				for (let k = lo; k < hi; k++)
+					for (const i of blocksOf(k)) reached[i] = true;
+				// Lines added inside a block (between its own lines) are in it.
+				if (lo === hi) {
+					const before = blocksOf(lo - 1);
+					const after = blocksOf(lo);
 					if (
-						near.length > 0 &&
-						(!shows(blocks[i]) ||
-							(LISTS.includes(blocks[i].type) &&
-								near.some((q) => LISTS.includes(blocks[q].type))))
-					) {
-						reached[i] = true;
-						grew = true;
-					}
+						before.length === 1 &&
+						after.length === 1 &&
+						before[0] === after[0]
+					)
+						reached[before[0]] = true;
 				}
 			}
+			// The one exception: edit_doc re-reads a numbered item after an
+			// edited one in its list, dropping a "start" it cannot show (only a
+			// list's first item is numbered from it). Nothing else may differ.
+			const noStart = (b: any) =>
+				JSON.stringify({ ...b, props: { ...b.props, start: undefined } });
 			for (let i = 1; i < len; i++) {
-				if (reached[i - 1] && blocks[i].type === "numberedListItem")
+				if (
+					reached[i - 1] &&
+					!reached[i] &&
+					blocks[i - 1].type === "numberedListItem" &&
+					blocks[i].type === "numberedListItem" &&
+					!res.blocks.includes(blocks[i])
+				) {
+					const now = res.blocks.find((x: any) => x.id === blocks[i].id);
+					expect(now, `${where}\nnumbered ${i}`).toBeDefined();
+					expect(noStart(now), `${where}\nnumbered ${i}`).toBe(
+						noStart(blocks[i]),
+					);
 					reached[i] = true;
+				}
 			}
+			// Of two blocks alike but for their ids, an edit of one may keep
+			// the other: a reached twin stands in for an untouched block.
+			const noId = (b: any) => JSON.stringify({ ...b, id: undefined });
+			const twins = new Set<any>();
 			let at = 0;
 			for (let i = 0; i < len; i++) {
 				if (reached[i]) continue;
-				const found = res.blocks.indexOf(blocks[i], at);
+				let found = res.blocks.indexOf(blocks[i], at);
+				if (found < 0) {
+					found = res.blocks.findIndex(
+						(x: any, k: number) =>
+							k >= at &&
+							!twins.has(x) &&
+							blocks.some((b, q) => b === x && reached[q]) &&
+							noId(x) === noId(blocks[i]),
+					);
+					if (found >= 0) {
+						twins.add(res.blocks[found]);
+						at = found + 1;
+						continue;
+					}
+				}
 				expect(
 					found,
 					`${where}\nblock ${i} missing or out of order`,

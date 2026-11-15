@@ -2256,6 +2256,18 @@ export function spliceMarkdown(
 		);
 	}
 
+	// A block re-read with its range (a list item next to an edited one)
+	// that came back as it was read is the object read: same id, same JSON.
+	const byId = new Map(
+		blocks.flatMap((x) => (x.id === undefined ? [] : [[x.id, x] as const])),
+	);
+	out = out.map((x) => {
+		const was = x.id === undefined ? undefined : byId.get(x.id);
+		return was && was !== x && JSON.stringify(was) === JSON.stringify(x)
+			? was
+			: x;
+	});
+
 	// The file must be what Paca now holds, line for line, but for what
 	// the normalising rules allow.
 	const now = render(out);
