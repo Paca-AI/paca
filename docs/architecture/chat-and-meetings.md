@@ -54,7 +54,7 @@ The existing pipeline (API â†’ Valkey pub/sub + capped per-project change log â†
 
 Every decision stays in router gates (`require.Channel(...)`, modelled on `ProjectEntity`); none in handlers or services.
 
-- New actions: `channels:read|write`, `messages:write|moderate`, `calls:join|record|moderate`.
+- New actions (the complete set; the registry and its coverage test are written from this list): `channels:read|write`, `messages:write|moderate`, `calls:join|record|moderate|invite_agent`, `proposals:write|resolve`. `calls:invite_agent` is checked on `project/<p>/agent/<id>`, and `proposals:*` on `project/<p>/proposal/*` (see the meeting assistant sections).
 - New resources: `project/<p>/channel/<id>`, and a new platform root `channel/<id>` for workspace channels and cross-project DMs (touches `iam.PlatformRootFor` and its sync test).
 - **The one new engine feature.** Conditions compare against literal values only, and `principal.id` is an attribute, not a variable. "Private channel visible only to its members" therefore cannot be written in a policy today. Proposal: add a small, general **policy variable** (`${principal.id}`) and loader attributes `channel.kind` and `channel.member_ids`. The shipped roles then use two statements:
   1. Allow `channels:read` on public channels.
@@ -105,7 +105,7 @@ One screen, reachable from both contexts, with tabs **Mentions**, **Threads** (f
 ### Switching and finding
 
 - The project switcher shows unread and mention counts per project, so an urgent mention in another project is visible before you switch.
-- The command palette (Ctrl+K) jumps to any channel or DM across projects, with a project chip to tell same-named channels apart (`#release` in two projects), and switches context on open.
+- A command palette (Ctrl+K) jumps to any channel or DM across projects, with a project chip to tell same-named channels apart (`#release` in two projects), and switches context on open. There is no command palette in the web app today (`components/ui/command.tsx` is an unused cmdk primitive), so this is new work, included in the Phase 1 UI scope.
 - Chat view header has a **This project / Everywhere** scope toggle for channel lists and search.
 
 ### Cross-scope rules
@@ -205,7 +205,7 @@ The API verifies LiveKit webhooks (Go server SDK / `livekit/protocol`) and recor
 
 ### Infrastructure changes
 
-- `deploy/caddy/Caddyfile` sends `Permissions-Policy: camera=(), microphone=(), geolocation=()`. It must allow `camera=(self), microphone=(self), display-capture=(self)`, or calls fail silently. `deploy/helm/paca/files/Caddyfile` is a hand-synced copy and changes with it.
+- `deploy/caddy/Caddyfile` sends `Permissions-Policy: camera=(), microphone=(), geolocation=()`. It must allow `camera=(self), microphone=(self), display-capture=(self)`, or calls fail silently. `deploy/helm/paca/files/Caddyfile` is a hand-synced copy and `deploy/caddy/Caddyfile.dev` (mounted by `docker-compose.dev.yml`) carries the same header; all three change together. The e2e stack mounts the main `Caddyfile`.
 - Add a `/livekit/*` signaling route.
 - Caddy owns 443, so TURN/TLS cannot also use it. Use TURN/UDP (3478) plus TCP 7881 fallback; TURN/TLS needs its own port or domain and a trusted certificate.
 - LiveKit does not run on serverless or private-NAT clusters, and needs a UDP media range (or single mux port) reachable from clients. Verify exact port options against LiveKit's config reference when building.
@@ -344,7 +344,7 @@ The proposal row in the database is the source of truth. LiveKit RPC is only the
 |---|---|
 | Payload 15 KiB each way; method name 64 bytes | RPC carries only an id and a short summary; the browser fetches the full proposal from the API. |
 | Default 10 s timeout covering the whole request | The RPC is only an acknowledgement ("card shown"). Approval is asynchronous and arrives as a second RPC or is read from the proposal. |
-| No delivery guarantees; no handler (error 1400), recipient gone (1401, 1503) | The proposal is persisted and also shown as a card in the channel, so a missed RPC loses nothing. The tool result tells the LLM "pending, user not reachable". |
+| No documented delivery guarantees (the RPC page states none); no handler (error 1400), recipient gone (1401, 1503) | The proposal is persisted and also shown as a card in the channel, so a missed RPC loses nothing. The tool result tells the LLM "pending, user not reachable". |
 | No authentication of the response, and the docs' example trusts the first remote participant | Never trust an RPC reply for state. Identities come from the token our API minted, so the worker targets one specific `account_id`; outcomes are read from the API row. |
 | Hidden participants cannot call RPC | Call participants are never hidden; the worker joins visible and labelled as an agent. |
 
@@ -390,7 +390,7 @@ The worker (`services/meeting-agent`), explicit dispatch, per-participant STT, t
 | Phase | Scope | Exit criteria |
 |---|---|---|
 | **0. Spikes (about 1 week)** | (a) IAM policy variable and `channel.member_ids` loader. (b) Composer format: compact BlockNote vs lighter markdown JSON. (c) LiveKit behind Caddy with Valkey, and a two-browser call. (d) Fan-out test: a busy channel with many sockets. (e) Meeting assistant: RPC with a text-only agent on self-hosted LiveKit, token grants for RPC, and Node vs Python worker (see "Forwarded tool calls"). | A short ADR per spike with a go/no-go. |
-| **1. Chat core** | Migrations; `domain/service/repository/handler/dto/router` for channels, messages, threads and reactions; unread/read state, mentions, attachments, notifications; event topics with `AuthzFor` and registry regeneration; realtime channel rooms plus the per-user `user:<id>:chat` room; `GET /chat/unread-summary`; web UI (sidebar Chat group, Inbox, channel view, thread pane, composer, project-switcher badges, mobile layout); default roles; i18n in all 9 locales. | Works end to end across two users, including private channels and DMs. Unit and e2e tests pass. |
+| **1. Chat core** | Migrations; `domain/service/repository/handler/dto/router` for channels, messages, threads and reactions; unread/read state, mentions, attachments, notifications; event topics with `AuthzFor` and registry regeneration; realtime channel rooms plus the per-user `user:<id>:chat` room; `GET /chat/unread-summary`; web UI (command palette, sidebar Chat group, Inbox, channel view, thread pane, composer, project-switcher badges, mobile layout); default roles; i18n in all 9 locales. | Works end to end across two users, including private channels and DMs. Unit and e2e tests pass. |
 | **1b. Presence and task-comment UX (independent track, can start first)** | Ephemeral presence layer in `services/realtime` (typing, viewers); typing indicator in task comments; enriched mention notifications (project, sprint, excerpt, deep link to the comment); task card and sprint badges; `task_reads` and the unread-since divider; in-app rows for description and doc mentions; `/notifications` page. | Typing and rich mentions work on tasks without any chat tables. The presence layer is then reused by chat. |
 | **2. Task-aware and agents** | Task/doc chips, create-task-from-message, slash commands, search; `@agent` triggers, MCP tools, skill; automation nodes; agent DM conversation list (new, resume, search, pin, archive) with `agent_conversations.channel_id`. | An agent can be mentioned in chat, reply and create a task, and its DM lists every conversation. |
 | **3. Meetings** | Compose/Helm/Caddy changes; token endpoint, webhooks, `call_*` tables; voice channels, huddles, screen share, sidebar presence, moderation. | Real calls work through the gateway on Compose; the Helm chart renders and deploys. |
