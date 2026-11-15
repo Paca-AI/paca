@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -381,5 +384,156 @@ func TestSearch_QueryLineBreakMatchesWithinOneBlock(t *testing.T) {
 	hits := owner.search("the\nworker")
 	if len(hits) != 1 || hits[0].ID != id || hits[0].Block != 1 || hits[0].Snippet != "restart the worker now" {
 		t.Fatalf("hits = %+v, want only A at block 1", hits)
+	}
+}
+
+// A writer that changes content without filling content_text (an API pod
+// from before migration 000092 during a rolling upgrade, or any raw UPDATE)
+// must not leave the old text in the index: the trigger turns content_text
+// back to NULL, search falls back to the JSON-path match, and the backfill
+// fills it again without putting the document in the change feed.
+func TestSearch_OldWriterContentChangeClearsText(t *testing.T) {
+	t.Parallel()
+	owner, projID := docFeedOwner(t, "search-old-writer")
+	id := owner.createDoc("Notes", nil, "alpha bravo")
+	if got := storedContentText(t, owner.env, id); got == nil || *got != "alpha bravo" {
+		t.Fatalf("after create content_text = %v", got)
+	}
+
+	if _, err := owner.env.db.ExecContext(owner.env.ctx,
+		`UPDATE documents SET content = '[{"type":"paragraph","content":[{"type":"text","text":"charlie delta"}]}]'::jsonb WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedContentText(t, owner.env, id); got != nil {
+		t.Fatalf("after a content change that did not fill it, content_text = %q, want NULL", *got)
+	}
+	if hits := owner.search("charlie delta"); len(hits) != 1 || hits[0].ID != id {
+		t.Fatalf("search for the new text: %+v, want the doc", hits)
+	}
+	if hits := owner.search("alpha bravo"); len(hits) != 0 {
+		t.Fatalf("search for the old text: %+v, want nothing", hits)
+	}
+
+	cursor := owner.pull("").Cursor
+	headBefore, _ := docSyncState(t, owner.env, projID)
+	type row struct {
+		Seq       int64     `db:"seq"`
+		UpdatedAt time.Time `db:"updated_at"`
+	}
+	read := func() row {
+		var r row
+		if err := owner.env.db.GetContext(owner.env.ctx, &r, `SELECT seq, updated_at FROM documents WHERE id = $1`, id); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	before := read()
+
+	bf := worker.NewDocHashBackfill(pgRepo.NewDocumentRepository(owner.env.db), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := bf.Run(owner.env.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedContentText(t, owner.env, id); got == nil || *got != "charlie delta" {
+		t.Fatalf("after the backfill content_text = %v, want %q", got, "charlie delta")
+	}
+	if r := read(); r.Seq != before.Seq || !r.UpdatedAt.Equal(before.UpdatedAt) {
+		t.Errorf("seq/updated_at moved from %+v to %+v", before, r)
+	}
+	if head, _ := docSyncState(t, owner.env, projID); head != headBefore {
+		t.Errorf("project seq moved from %d to %d", headBefore, head)
+	}
+	if up := owner.pull(cursor); up.Reset || len(up.Docs) != 0 {
+		t.Fatalf("pull after the backfill: %s, want nothing", up.raw)
+	}
+	if hits := owner.search("charlie delta"); len(hits) != 1 || hits[0].ID != id || hits[0].Block != 1 {
+		t.Fatalf("search after the backfill: %+v, want the doc at block 1", hits)
+	}
+}
+
+// An UPDATE that lists content in SET without changing it (an old pod's
+// rename may do this) keeps content_text: JSONB compares by value, so a
+// re-serialized copy with other key order and spacing is the same content.
+func TestSearch_OldWriterSameContentKeepsText(t *testing.T) {
+	t.Parallel()
+	owner, _ := docFeedOwner(t, "search-old-writer-same")
+	id := owner.createDocWith("Notes", nil, `[{"type":"paragraph","content":[{"type":"text","text":"echo foxtrot","styles":{}}]}]`)
+
+	if _, err := owner.env.db.ExecContext(owner.env.ctx,
+		`UPDATE documents SET title = 'Renamed', content = content WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owner.env.db.ExecContext(owner.env.ctx,
+		`UPDATE documents SET content = '[ { "content" : [ { "styles" : {}, "text" : "echo foxtrot", "type" : "text" } ], "type" : "paragraph" } ]'::jsonb WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedContentText(t, owner.env, id); got == nil || *got != "echo foxtrot" {
+		t.Fatalf("content_text = %v, want %q", got, "echo foxtrot")
+	}
+}
+
+// Writes through the API fill content_text themselves and declare it, so the
+// trigger leaves it alone: a formatting-only change (same text, different
+// content) and a text change both keep it filled and current, and each write
+// is still numbered and in the change feed.
+func TestDocUpdate_KeepsContentTextFilled(t *testing.T) {
+	t.Parallel()
+	owner, projID := docFeedOwner(t, "doc-update-text")
+	plain := `[{"type":"paragraph","content":[{"type":"text","text":"golf hotel","styles":{}}]}]`
+	bold := `[{"type":"paragraph","content":[{"type":"text","text":"golf ","styles":{}},{"type":"text","text":"hotel","styles":{"bold":true}}]}]`
+	changed := `[{"type":"paragraph","content":[{"type":"text","text":"india juliet","styles":{}}]}]`
+	id := owner.createDocWith("Notes", nil, plain)
+
+	for _, step := range []struct{ content, want string }{{bold, "golf hotel"}, {changed, "india juliet"}} {
+		cursor := owner.pull("").Cursor
+		headBefore, _ := docSyncState(t, owner.env, projID)
+		owner.must(http.StatusOK, http.MethodPatch, "/"+id, map[string]any{"content": json.RawMessage(step.content)})
+		if got := storedContentText(t, owner.env, id); got == nil || *got != step.want {
+			t.Fatalf("after writing %s content_text = %v, want %q", step.content, got, step.want)
+		}
+		if head, _ := docSyncState(t, owner.env, projID); head <= headBefore {
+			t.Errorf("after writing %s project seq %d, want more than %d", step.content, head, headBefore)
+		}
+		if up := owner.pull(cursor); up.Reset || len(up.Docs) != 1 || up.Docs[0].ID != id {
+			t.Errorf("pull after writing %s: %s, want the doc", step.content, up.raw)
+		}
+	}
+	if hits := owner.search("golf hotel"); len(hits) != 0 {
+		t.Fatalf("search for the replaced text: %+v, want nothing", hits)
+	}
+	if hits := owner.search("india juliet"); len(hits) != 1 || hits[0].ID != id {
+		t.Fatalf("search for the current text: %+v, want the doc", hits)
+	}
+}
+
+// Migration 000092 can be applied again over itself (each file runs in one
+// transaction, as the migration runner does), and leaves one trigger.
+func TestMigration000092_AppliesTwice(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	_, thisFile, _, _ := runtime.Caller(0)
+	body, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "..", "..", "migrations", "000092_clear_stale_content_text.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		tx, err := env.db.BeginTxx(env.ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.ExecContext(env.ctx, string(body)); err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("apply %d: %v", i+1, err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	if err := env.db.GetContext(env.ctx, &n,
+		`SELECT count(*) FROM pg_trigger WHERE tgrelid = 'documents'::regclass AND tgname = 'documents_clear_content_text'`); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("documents_clear_content_text triggers: %d, want 1", n)
 	}
 }

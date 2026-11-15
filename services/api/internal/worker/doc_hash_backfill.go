@@ -36,8 +36,12 @@ type DocHashStore interface {
 // background, and exits when no NULL hash is left; rows written after the
 // migration always carry a hash, so there is nothing to poll for.
 //
-// It also fills documents.content_text, the plain text search reads, on the
-// rows written before migration 000091, once the hashes are done.
+// It also fills documents.content_text, the plain text search reads, once
+// the hashes are done: on the rows written before migration 000091, and on
+// rows whose content was changed later by something that did not fill it (an
+// API pod from before 000092 during a rolling upgrade; a trigger turns their
+// content_text back to NULL). Such a row stays NULL until the next process
+// start: search still finds it, only without the index.
 //
 // It does not show up in the change feed: the store writes the hash and the
 // text without moving seq or updated_at, because both are derived from the

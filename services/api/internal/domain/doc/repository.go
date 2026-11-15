@@ -77,7 +77,8 @@ type DocumentRepository interface {
 	// whose title OR body text contains query (case-insensitive, matched
 	// literally). Body text is documents.content_text (ContentText: one line
 	// per block, a block's inline runs joined, so a phrase across formatting
-	// matches); a row not backfilled yet (content_text NULL) is matched
+	// matches); a row whose content_text is not filled (NULL: not backfilled
+	// yet, or content changed by a writer that did not fill it) is matched
 	// against each "text" string of its JSON instead. Results include Content
 	// so the caller can build snippets; ordered updated_at DESC, id ASC.
 	SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]*Document, error)

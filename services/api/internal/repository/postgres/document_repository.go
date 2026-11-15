@@ -541,9 +541,10 @@ func (r *DocumentRepository) ListAllDocuments(ctx context.Context, projectID uui
 // a block's inline runs joined, so a phrase that crosses bold or a link
 // matches). Both have trigram indexes (migration 000091).
 //
-// A row the content_text backfill has not reached yet (content_text IS NULL)
-// is matched the old way, against each inline "text" node of the BlockNote
-// JSON; that branch goes once every row is filled.
+// A row whose content_text is not filled (content_text IS NULL: written
+// before migration 000091 and not backfilled yet, or its content changed by
+// something that did not fill it) is matched the old way, against each
+// inline "text" node of the BlockNote JSON.
 func (r *DocumentRepository) SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]*docdom.Document, error) {
 	q, args, none, err := r.searchDocumentsQuery(ctx, projectID, query, limit)
 	if err != nil {
@@ -705,6 +706,12 @@ func updateDocumentLocked(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, decide
 		return nil, err
 	}
 	out := documentToRecord(current)
+	// This UPDATE fills content_text itself: tell the documents_clear_content_text
+	// trigger (migration 000092) not to clear it. Transaction-local; every
+	// statement in tx that sets content comes through here.
+	if _, err := tx.ExecContext(ctx, `SELECT set_config('paca.content_text_written', 'on', true)`); err != nil {
+		return nil, err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE documents SET folder_id=$1, title=$2, content=$3, content_hash=$4, position=$5, updated_by=$6, updated_at=$7,
 			source=$9, source_locked=$10, content_text=$11
