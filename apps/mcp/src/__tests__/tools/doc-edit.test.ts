@@ -2151,7 +2151,16 @@ describe("spliceEdit fuzz by edit kind", () => {
 			return kinds[rnd(kinds.length)]();
 		};
 
-		type Edit = { old: string; new: string; all?: boolean } | null;
+		// mustRefuse: the edit reorders blocks (or table rows or columns) with
+		// data, disguised as in-place edits: it must be refused.
+		type Edit = {
+			old: string;
+			new: string;
+			all?: boolean;
+			mustRefuse?: boolean;
+		} | null;
+		// The blocks being edited (set before each kind runs).
+		let cur: any[] = [];
 		const KINDS: Record<string, (md: string, tops: string[]) => Edit> = {};
 		const lines = (md: string) => md.split("\n");
 		const lineWith = (md: string, m: string) =>
@@ -2420,6 +2429,127 @@ describe("spliceEdit fuzz by edit kind", () => {
 				new: `${ia ?? ""}${pa ?? ""}(1) ${body(ls[z])}.${sep}${iz ?? ""}${pz ?? ""}(2) ${body(ls[k])}.`,
 			};
 		};
+		// Swaps and rotations of one-line blocks, each text reworded on the
+		// way: a prefix and a suffix added, upper-cased, and one word it
+		// shares with the text it replaces swapped for another. When a moved
+		// block holds data, the edit must be refused: the new text at each
+		// place still reads most like the text that was elsewhere.
+		const holdsData = (b: any): boolean =>
+			lostByMarkdown(b) !== NOTHING_LOST || (b.children ?? []).some(holdsData);
+		const blockOf = (line: string) => {
+			const m = line.match(MARKER)?.[0];
+			return m
+				? everyBlock(cur).find((b) => ownText(b).includes(m))
+				: undefined;
+		};
+		const reword = (from: string, to: string) => {
+			const target = new Set(to.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+			let done = false;
+			const body = from.replace(/[\p{L}\p{N}]+/gu, (w) => {
+				if (done || !target.has(w.toLowerCase())) return w.toUpperCase();
+				done = true;
+				return "QQ";
+			});
+			return `SO ${body}!`;
+		};
+		const rotate = (md: string, count: number): Edit => {
+			const ls = lines(md);
+			const runs = ls
+				.map((_, i) => i)
+				.flatMap((i) => {
+					const at: number[] = [i];
+					while (at.length < count) {
+						const q = at[at.length - 1];
+						const z = textLine(ls[q + 1])
+							? q + 1
+							: ls[q + 1] === "" && textLine(ls[q + 2])
+								? q + 2
+								: -1;
+						if (z < 0) return [];
+						at.push(z);
+					}
+					return at.every((q) => textLine(ls[q]) && ls[q].match(MARKER))
+						? [at]
+						: [];
+				});
+			const at = pick(runs);
+			if (!at) return null;
+			const parts = at.map((q) => {
+				const [, ind, pre] = ls[q].match(PREFIX) ?? [];
+				return {
+					head: `${ind ?? ""}${pre ?? ""}`,
+					body: ls[q].replace(PREFIX, ""),
+				};
+			});
+			if (
+				new Set(parts.map((p) => p.body)).size < count ||
+				parts.some((p) => p.body.trim() === "")
+			)
+				return null;
+			const seps = at.slice(1).map((q, k) => (q === at[k] + 1 ? "\n" : "\n\n"));
+			const join = (xs: string[]) =>
+				xs.map((x, k) => (k === 0 ? x : seps[k - 1] + x)).join("");
+			// Each place takes the text of the place before it (the last
+			// place's goes to the first).
+			const moved = parts.map((p, k) => {
+				const src = parts[(k + count - 1) % count].body;
+				return `${p.head}${reword(src, p.body)}`;
+			});
+			return {
+				old: join(at.map((q) => ls[q])),
+				new: join(moved),
+				mustRefuse: at.some((q) => {
+					const b = blockOf(ls[q]);
+					return !!b && holdsData(b);
+				}),
+			};
+		};
+		KINDS.swapReword = (md) => rotate(md, 2);
+		KINDS.rotateReword = (md) => rotate(md, 3);
+		// Tables with formatting: rows swapped, columns swapped, or one row
+		// deleted and another added. All must be refused.
+		const tableLines = (md: string) => {
+			const ls = lines(md);
+			const k = ls.findIndex((l) => l.includes("alpha one"));
+			if (k < 0) return null;
+			let a = k;
+			while (a > 0 && ls[a - 1].startsWith("|")) a--;
+			let z = k;
+			while (z + 1 < ls.length && ls[z + 1].startsWith("|")) z++;
+			return ls.slice(a, z + 1);
+		};
+		KINDS.tableRowSwap = (md) => {
+			const t = tableLines(md);
+			if (!t || t.length !== 4) return null;
+			return {
+				old: `${t[2]}\n${t[3]}`,
+				new: `${t[3]}\n${t[2]}`,
+				mustRefuse: true,
+			};
+		};
+		KINDS.tableColSwap = (md) => {
+			const t = tableLines(md);
+			if (!t) return null;
+			const swap = (l: string) => {
+				const c = l.split("|");
+				return [c[0], c[2], c[1], ...c.slice(3)].join("|");
+			};
+			return {
+				old: t.join("\n"),
+				new: t.map(swap).join("\n"),
+				mustRefuse: true,
+			};
+		};
+		KINDS.tableRowReplace = (md) => {
+			const t = tableLines(md);
+			if (!t || t.length !== 4) return null;
+			const fresh = t[3].replace(/beta/, "gamma").replace(/two/, "three");
+			return {
+				old: `${t[2]}\n${t[3]}`,
+				new: `${t[3]}\n${fresh}`,
+				mustRefuse: true,
+			};
+		};
 		KINDS.dupDeleteOfN = (md) => {
 			const three = "dup line\n\ndup line\n\ndup line";
 			if (!md.includes(three)) return null;
@@ -2504,6 +2634,21 @@ describe("spliceEdit fuzz by edit kind", () => {
 					0,
 					...[0, 1, 2].map(() => blk("paragraph", "dup line", look())),
 				);
+			} else if (kind.startsWith("tableRow") || kind === "tableColSwap") {
+				// A table with formatting Markdown cannot write.
+				const [tb] = JSON.parse(
+					JSON.stringify(
+						markdownToBlocknote(
+							"| name mTx | state |\n|---|---|\n| alpha one | done |\n| beta two | late |",
+						),
+					),
+				);
+				tb.id = id();
+				if (rnd(2) === 0) tb.content.columnWidths = [120 + rnd(200), null];
+				else
+					tb.content.rows[1 + rnd(2)].cells[rnd(2)].props.backgroundColor =
+						"red";
+				blocks.splice(spot, 0, tb);
 			} else if (kind === "table") {
 				const tbl = (text: string) => {
 					const [tb] = JSON.parse(
@@ -2527,6 +2672,7 @@ describe("spliceEdit fuzz by edit kind", () => {
 			const tops = blocks
 				.map((b) => ownText(b).match(MARKER)?.[0])
 				.filter((m): m is string => !!m && md.includes(m));
+			cur = blocks;
 			const edit = KINDS[kind](md, tops);
 			if (!edit || edit.old === edit.new || !md.includes(edit.old)) {
 				s.skipped++;
@@ -2545,6 +2691,10 @@ describe("spliceEdit fuzz by edit kind", () => {
 				continue;
 			}
 			s.applied++;
+			expect(
+				edit.mustRefuse ?? false,
+				`${ctx}\napplied a disguised reorder\nRES ${JSON.stringify(res.blocks)}`,
+			).toBe(false);
 			const edited = md.split(edit.old).join(edit.new);
 
 			// C: the result shows the edited Markdown exactly. Both sides are
@@ -2777,20 +2927,6 @@ describe("spliceEdit fuzz by edit kind", () => {
 						(p, k) =>
 							shownNew[k].path === p.path && shownNew[k].b.id === p.b.id,
 					);
-				if (byPos) {
-					const was = shownOld.map((p) => ownText(p.b));
-					const now = shownNew.map((p) => ownText(p.b));
-					const left = was.map((x, k) => x !== "" && !now[k].includes(x));
-					for (let k = 0; k < now.length; k++) {
-						if (!left[k]) continue;
-						for (let q = 0; q < was.length; q++) {
-							expect(
-								q !== k && left[q] && now[k].includes(was[q]),
-								`${where}\ntext of ${shownOld[q].b.id} moved into ${shownOld[k].b.id}`,
-							).toBe(false);
-						}
-					}
-				}
 				for (const p of oldRun) {
 					if (newById.has(p.b.id) || ownMd(p.b).trim() === "") continue;
 					const twin = data.find(
@@ -2840,7 +2976,15 @@ describe("spliceEdit fuzz by edit kind", () => {
 			);
 		}
 		for (const [k, v] of Object.entries(stats)) {
-			expect(v.applied, `${k} applied too rarely`).toBeGreaterThan(10);
+			// Kinds that only make disguised reorders of blocks with data are
+			// refused whenever they hit one; they must hit often enough.
+			if (k.startsWith("table") && k !== "table") {
+				expect(v.refused, `${k} ran too rarely`).toBeGreaterThan(100);
+			} else if (k.endsWith("Reword")) {
+				expect(v.refused, `${k} ran too rarely`).toBeGreaterThan(40);
+			} else {
+				expect(v.applied, `${k} applied too rarely`).toBeGreaterThan(10);
+			}
 		}
 	}, 60_000);
 });
