@@ -226,6 +226,75 @@ describe("markdownToBlocknote", () => {
 		expect(markdownToBlocknote("")).toEqual([]);
 	});
 
+	it("parses a checklist item's text without the space a blank line next to it used to add", () => {
+		const text = (md: string) =>
+			markdownToBlocknote(md).map(function f(b: any): any {
+				return [
+					b.type,
+					(b.content ?? []).map((r: any) => r.text),
+					(b.children ?? []).map(f),
+				];
+			});
+		expect(text("* a\n\n* [ ] task2\n")).toEqual([
+			["bulletListItem", ["a"], []],
+			["checkListItem", ["task2"], []],
+		]);
+		expect(text("* [ ] a\n\n* [x] b\n")).toEqual([
+			["checkListItem", ["a"], []],
+			["checkListItem", ["b"], []],
+		]);
+		expect(text("* [ ] a\n\n  * x\n")).toEqual([
+			["checkListItem", ["a"], [["bulletListItem", ["x"], []]]],
+		]);
+		// A styled first run: the space before it goes, the styles stay.
+		expect(text("* a\n\n* [ ] **b** c\n")[1]).toEqual([
+			"checkListItem",
+			["b", " c"],
+			[],
+		]);
+		// The same as written tight.
+		expect(text("* a\n\n* [ ] task2\n")).toEqual(text("* a\n* [ ] task2\n"));
+		// A non-breaking space is text, and stays.
+		expect(text("* [ ] \u00a0a\n")[0][1]).toEqual(["\u00a0a"]);
+		// Other blocks are not touched.
+		expect(text("* a\n\n* b\n")).toEqual([
+			["bulletListItem", ["a"], []],
+			["bulletListItem", ["b"], []],
+		]);
+	});
+
+	it("reads Paca's own render of checklist items back as the blocks it came from", () => {
+		const P = {
+			backgroundColor: "default",
+			textColor: "default",
+			textAlignment: "left",
+		};
+		const ck = (t: string, children: any[] = []) => ({
+			type: "checkListItem",
+			props: { ...P, checked: false },
+			content: [{ type: "text", text: t, styles: {} }],
+			children,
+		});
+		const bl = (t: string, children: any[] = []) => ({
+			type: "bulletListItem",
+			props: P,
+			content: [{ type: "text", text: t, styles: {} }],
+			children,
+		});
+		const strip = (bs: any[]) =>
+			JSON.parse(JSON.stringify(bs, (k, v) => (k === "id" ? undefined : v)));
+		for (const doc of [
+			[ck("a"), ck("b")],
+			[ck("a", [bl("x")])],
+			[bl("a"), ck("b")],
+			[ck("a"), bl("b")],
+			[bl("a", [ck("x"), ck("y")])],
+		]) {
+			const md = blocknoteToMarkdown(JSON.parse(JSON.stringify(doc)));
+			expect(strip(markdownToBlocknote(md)), md).toEqual(strip(doc));
+		}
+	});
+
 	it("returns empty array for whitespace-only string", () => {
 		expect(markdownToBlocknote("   ")).toEqual([]);
 	});

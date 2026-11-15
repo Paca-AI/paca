@@ -288,7 +288,40 @@ export function blocknoteToMarkdown(
 export function markdownToBlocknote(markdown: string): any[] {
 	if (!markdown || markdown.trim() === "") return [];
 	const e = getEditor();
-	return (e as any)._exportManager.tryParseMarkdownToBlocks(markdown);
+	return trimCheckListText(
+		(e as any)._exportManager.tryParseMarkdownToBlocks(markdown),
+	);
+}
+
+/**
+ * The parser gives a checklist item in a loose list (a blank line next to
+ * it) a space before its text: the space after `[ ]` in the Markdown.
+ * Markdown never starts an item's text with spaces or tabs, so they are
+ * dropped from the start of every checklist item's text (plain text runs
+ * only; a non-breaking space is text and stays), as the parser already
+ * does for a tight list.
+ */
+function trimCheckListText(blocks: any[]): any[] {
+	for (const b of blocks) {
+		if (!b || typeof b !== "object") continue;
+		if (b.type === "checkListItem" && Array.isArray(b.content)) {
+			while (
+				b.content.length > 0 &&
+				b.content[0]?.type === "text" &&
+				typeof b.content[0].text === "string" &&
+				!b.content[0].styles?.code
+			) {
+				const text = b.content[0].text.replace(/^[ \t]+/, "");
+				if (text !== "") {
+					b.content[0] = { ...b.content[0], text };
+					break;
+				}
+				b.content.shift();
+			}
+		}
+		if (Array.isArray(b.children)) trimCheckListText(b.children);
+	}
+	return blocks;
 }
 
 /** The fields of a project member needed to turn an `@mention` into a chip. */

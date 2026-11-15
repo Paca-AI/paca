@@ -989,11 +989,10 @@ describe("spliceMarkdown fuzz", () => {
 				lists(unpad(body === "" ? "" : `${body}\n`)),
 			);
 			// And, not taking the rules' word for it, the file parses to what
-			// Paca now holds (but for the space the parser puts before a
-			// checklist item's text when a blank line is next to it).
+			// Paca now holds.
 			const parsed = (x: string) =>
 				JSON.stringify(markdownToBlocknote(x), (k, v) =>
-					k === "id" ? undefined : k === "text" ? v.trimStart() : v,
+					k === "id" ? undefined : v,
 				);
 			expect(parsed(edited), where).toBe(
 				parsed(blocknoteToMarkdown(res.blocks)),
