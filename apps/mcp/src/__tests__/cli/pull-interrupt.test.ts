@@ -253,4 +253,50 @@ describe("runPull killed between moves and writes", () => {
 		expect(fs.readFileSync(path.join(dir, "B.md"), "utf8")).toContain("one");
 		expect(files()).toEqual({ [ID1]: "B.md", [ID2]: "A.md" });
 	});
+	it("a new document written before the kill is not duplicated", async () => {
+		const docs = new Map<string, ServerDoc>([
+			[ID1, { id: ID1, title: "A", folder_id: null, text: "one" }],
+		]);
+		const client = fakeServer(docs);
+		await pull(client);
+		docs.set(ID2, { id: ID2, title: "N", folder_id: null, text: "new" });
+		stop.skip = 1; // N.md is written; its base copy write never returns
+		await killAtWrite(client);
+		expect(mirrorFiles(dir)).toEqual(["A.md", "N.md"]);
+		expect(await pull(client)).toBe(0);
+		expect(mirrorFiles(dir)).toEqual(["A.md", "N.md"]);
+		expect(files()).toEqual({ [ID1]: "A.md", [ID2]: "N.md" });
+		expect(state().docs[ID2].content_hash).toBe("h:new");
+	});
+
+	it("a first pull killed part way is not duplicated", async () => {
+		const docs = new Map<string, ServerDoc>([
+			[ID1, { id: ID1, title: "A", folder_id: null, text: "one" }],
+			[ID2, { id: ID2, title: "B", folder_id: null, text: "two" }],
+		]);
+		const client = fakeServer(docs);
+		stop.skip = 2; // A.md and its base copy are written
+		await killAtWrite(client);
+		expect(mirrorFiles(dir)).toEqual(["A.md"]);
+		expect(await pull(client)).toBe(0);
+		expect(mirrorFiles(dir)).toEqual(["A.md", "B.md"]);
+		expect(files()).toEqual({ [ID1]: "A.md", [ID2]: "B.md" });
+	});
+
+	it("a new document deleted after the kill has its file removed", async () => {
+		const docs = new Map<string, ServerDoc>([
+			[ID1, { id: ID1, title: "A", folder_id: null, text: "one" }],
+		]);
+		const deleted = new Set<string>();
+		const client = fakeServer(docs, deleted);
+		await pull(client);
+		docs.set(ID2, { id: ID2, title: "N", folder_id: null, text: "new" });
+		stop.skip = 1;
+		await killAtWrite(client);
+		docs.delete(ID2);
+		deleted.add(ID2);
+		expect(await pull(client)).toBe(0);
+		expect(mirrorFiles(dir)).toEqual(["A.md"]);
+		expect(files()).toEqual({ [ID1]: "A.md" });
+	});
 });

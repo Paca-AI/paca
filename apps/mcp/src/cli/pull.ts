@@ -206,6 +206,7 @@ async function pullLocked(
 		if (
 			!p ||
 			p.orphan ||
+			p.reserved ||
 			m.remote_hash !== p.content_hash ||
 			!(await exists(path.resolve(root, p.file)))
 		)
@@ -259,7 +260,7 @@ async function pullLocked(
 		if (!p) continue;
 		const sha = await fileSha256(path.resolve(root, p.file));
 		if (sha === null) continue;
-		if (sha !== p.file_sha256 && !opts.force) {
+		if (!p.reserved && sha !== p.file_sha256 && !opts.force) {
 			kept++;
 			next[id] = { ...p, orphan: true };
 			lines.push(
@@ -358,17 +359,39 @@ async function pullLocked(
 		// at its new name, and the next pull redoes the rest. Every document
 		// is recorded at its new name, moved or not (one whose file is
 		// missing must not keep a name another document now takes), and
-		// removed documents are dropped. Content fields are the old ones.
-		if (prev) {
+		// removed documents are dropped. Content fields are the old ones; a
+		// document with none yet gets `reserved`, so a file this run writes
+		// for it is not taken for someone else's on the next pull.
+		{
+			const base: PullState = prev ?? {
+				project: opts.projectId,
+				cursor: "",
+				folders,
+				docs: {},
+			};
 			const docs: Record<string, PullDocState> = {};
-			for (const [id, p] of Object.entries(prevDocs)) {
-				if (next[id]?.orphan) docs[id] = next[id];
-				else if (!meta.has(id)) continue;
+			const reserve = (id: string): PullDocState => {
+				const m = meta.get(id) as DocMeta;
+				return {
+					file: layout.get(id) as string,
+					title: m.title,
+					folder_id: m.folder_id,
+					content_hash: null,
+					file_sha256: "",
+					reserved: true,
+				};
+			};
+			for (const id of ids) {
+				const p = prevDocs[id];
+				if (!p) docs[id] = reserve(id);
 				else if (!p.orphan) docs[id] = { ...p, file: layout.get(id) as string };
-				// A revived orphan's file is not moved: keep it only where it is.
+				// A revived orphan's file is not moved: it stays where it is as a
+				// file pull did not write, unless it already has its name.
 				else if (p.file === layout.get(id)) docs[id] = p;
+				else docs[id] = reserve(id);
 			}
-			const interim: PullState = { ...prev, dirs, docs };
+			for (const [id, n] of Object.entries(next)) if (n.orphan) docs[id] = n;
+			const interim: PullState = { ...base, dirs, docs };
 			if (JSON.stringify(interim) !== JSON.stringify(prev)) {
 				await writeJSON(statePath, interim);
 				stateChanged = true;
@@ -411,6 +434,7 @@ async function pullLocked(
 			const current = await fileSha256(abs);
 			if (
 				p &&
+				!p.reserved &&
 				current !== null &&
 				current !== p.file_sha256 &&
 				current !== mdSha &&

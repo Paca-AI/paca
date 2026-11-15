@@ -116,6 +116,11 @@ export interface PullDocState {
 	 *  was edited locally, so it was kept; reported on every pull until the
 	 *  file is removed or `--force` removes it. */
 	orphan?: true;
+	/** The name was taken by a pull that stopped before it recorded this
+	 *  document's content: a file there came from that pull (the name was
+	 *  free when it was taken), so the next pull overwrites it. The content
+	 *  fields say nothing then. */
+	reserved?: true;
 }
 
 export interface PullState {
