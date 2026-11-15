@@ -1145,6 +1145,34 @@ describe("spliceEdit pairs blocks by position, then by text (fifth review)", () 
 	});
 });
 
+// Measured on an M-series Mac: 800 items with replace_all about 1.0 s,
+// one edit in 3000 items about 1.5 s (before: 108 s and 4.5 s). The bound
+// leaves room for slower machines; it catches a return of quadratic work.
+describe("spliceEdit time on long lists", () => {
+	it("replaces a word in all 800 items of a list in a few seconds", () => {
+		const blocks = stored(
+			Array.from({ length: 800 }, (_, i) => `* item ${i} word`).join("\n"),
+		);
+		const t0 = Date.now();
+		const res = spliceEdit(blocks, "word", "term", true);
+		expect(Date.now() - t0).toBeLessThan(6000);
+		expect(res.replaced).toBe(800);
+		expect(res.blocks.map((b) => b.id)).toEqual(blocks.map((b) => b.id));
+		expect(blocknoteToMarkdown(res.blocks)).not.toContain("word");
+	}, 60_000);
+
+	it("edits one item of a 3000-item list in a few seconds", () => {
+		const blocks = stored(
+			Array.from({ length: 3000 }, (_, i) => `* item ${i}`).join("\n"),
+		);
+		const t0 = Date.now();
+		const res = spliceEdit(blocks, "item 7\n", "item seven\n", false);
+		expect(Date.now() - t0).toBeLessThan(6000);
+		expect(res.blocks.filter((b, i) => b !== blocks[i])).toHaveLength(1);
+		expect(res.blocks[7].id).toBe(blocks[7].id);
+	}, 60_000);
+});
+
 // The final audit, tested directly on the wrong results the reviews found
 // (as if the alignment had produced them), so it holds on its own.
 describe("auditEdit", () => {

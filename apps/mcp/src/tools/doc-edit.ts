@@ -48,10 +48,61 @@ interface Unit {
 
 /** Renders of blocks by object, for one edit: the exporter is slow, and a
  *  block is never changed once read or parsed. spliceEdit starts afresh. */
-let keys = {
+const newKeys = () => ({
 	own: new WeakMap<Block, string>(),
+	sub: new WeakMap<Block, string>(),
 	text: new WeakMap<Block, string>(),
-};
+	canon: new WeakMap<Block, string>(),
+});
+let keys = newKeys();
+
+/** A block's Markdown with its nested blocks (cached per object). */
+function subKey(b: Block): string {
+	if (!Array.isArray(b.children) || b.children.length === 0) return ownKey(b);
+	let k = keys.sub.get(b);
+	if (k === undefined) {
+		k = render([b]);
+		keys.sub.set(b, k);
+	}
+	return k;
+}
+
+/** Whether a block shows nothing in Markdown (an empty paragraph), without
+ *  rendering the blocks that obviously show something. */
+function blank(b: Block): boolean {
+	// Headings, list items, quotes and code always write a marker; a
+	// paragraph with visible text writes it.
+	if (MARKER_TYPES.has(b.type)) return false;
+	if (
+		b.type === "paragraph" &&
+		Array.isArray(b.content) &&
+		b.content.some(
+			(c: Block) => typeof c?.text === "string" && c.text.trim() !== "",
+		)
+	) {
+		return false;
+	}
+	return subKey(b) === "";
+}
+const MARKER_TYPES = new Set([
+	"heading",
+	"bulletListItem",
+	"numberedListItem",
+	"checkListItem",
+	"codeBlock",
+	"quote",
+]);
+
+/** A block's own fields as Markdown sees them (type, props without neutral
+ *  values, text): blocks equal here render the same, without the exporter. */
+function canonOwn(b: Block): string {
+	let k = keys.canon.get(b);
+	if (k === undefined) {
+		k = stable([b.type, canonProps(b.props), canonContent(b.content)]);
+		keys.canon.set(b, k);
+	}
+	return k;
+}
 
 function render(blocks: Block[]): string {
 	return blocknoteToMarkdown(blocks);
@@ -465,7 +516,8 @@ function flatten(
 		const e: Entry = {
 			b,
 			parent,
-			key: whole ? render([b]) : ownKey(b),
+			// A new block's key is looked up when needed (see align).
+			key: whole ? render([b]) : old ? ownKey(b) : "",
 			whole,
 			size: 1,
 		};
@@ -519,18 +571,14 @@ function align(
 	const F = flatten(fresh, null, false);
 	const n = O.length;
 	const m = F.length;
-	const subs = new Map<number, string>();
-	const subOf = (j: number) => {
-		let k = subs.get(j);
-		if (k === undefined) {
-			k = render([F[j].b]);
-			subs.set(j, k);
-		}
-		return k;
-	};
+	const subOf = (j: number) => subKey(F[j].b);
+	// Blocks equal as Markdown sees them render the same: the exporter
+	// runs only for those that differ there.
 	const eq = (i: number, j: number) =>
 		O[i].key !== "" &&
-		(O[i].whole ? subOf(j) === O[i].key : O[i].key === F[j].key);
+		(O[i].whole
+			? subOf(j) === O[i].key
+			: canonOwn(O[i].b) === canonOwn(F[j].b) || O[i].key === ownKey(F[j].b));
 	const step = (i: number, j: number) => (O[i].whole ? F[j].size : 1);
 
 	type Op =
@@ -620,7 +668,7 @@ function align(
 	for (const op of ops) {
 		if (op.op === "del" && O[op.i].key !== "" && !O[op.i].whole) {
 			group(O[op.i].key).olds.push(O[op.i]);
-		} else if (op.op === "ins") group(F[op.j].key).news.push(F[op.j]);
+		} else if (op.op === "ins") group(ownKey(F[op.j].b)).news.push(F[op.j]);
 	}
 	for (const { olds, news } of loose.values()) {
 		const k = Math.min(olds.length, news.length);
@@ -1131,11 +1179,11 @@ export function spliceEdit(
 	newString: string,
 	replaceAll: boolean,
 ): { blocks: Block[]; replaced: number; lines: number[] } {
-	keys = { own: new WeakMap(), text: new WeakMap() };
+	keys = newKeys();
 	if (oldString === "") {
 		throw new SpliceError("old_string must not be empty.", "empty");
 	}
-	const renders = blocks.map((b) => render([b]));
+	const renders = blocks.map(subKey);
 	const full = render(blocks);
 	const found = occurrences(full, oldString);
 	const lines = found.map((at) => lineAt(full, at));
@@ -1284,7 +1332,7 @@ export function spliceEdit(
 		// The result must say what the edit asks for: its Markdown is that
 		// of the edited text parsed as a whole (blocks that render to nothing
 		// aside), and differs from what was there.
-		const shown = (bs: Block[]) => render(bs.filter((b) => render([b]) !== ""));
+		const shown = (bs: Block[]) => render(bs.filter((b) => !blank(b)));
 		const got = shown(aligned.blocks);
 		if (got === shown(blocks.slice(from, to))) {
 			throw new SpliceError(
@@ -1327,10 +1375,11 @@ export function spliceEdit(
 	edited += full.slice(at);
 	const reread = (md: string) =>
 		fixSoftBreaks(markdownToBlocknote(md))
-			.map((b) => render([b]))
-			.filter((r) => r !== "")
+			.filter((b) => !blank(b))
+			.map(subKey)
 			.join("\n");
-	if (reread(render(out)) !== reread(edited)) {
+	const now = render(out);
+	if (now !== edited && reread(now) !== reread(edited)) {
 		throw new SpliceError(
 			`The edit starting on line ${lines[0]} changes how Markdown reads the blocks after it (it leaves a code fence open, for example), so nothing was changed. Close what the edit opens, or rewrite that part with write_doc.`,
 			"unsafe",
