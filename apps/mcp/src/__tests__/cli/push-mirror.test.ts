@@ -359,6 +359,29 @@ describe("push of a mirror file", () => {
 		);
 	});
 
+	it("an empty or whitespace-only file is refused", async () => {
+		for (const empty of ["", "\n", "  \n\n\t\r\n", "\ufeff\n"]) {
+			fs.writeFileSync(file(), empty);
+			const before = snapshot();
+			lines = [];
+			expect(await push(".paca/docs/Plan.md"), JSON.stringify(empty)).toBe(1);
+			expect(output()).toBe(
+				".paca/docs/Plan.md is empty; a document is deleted in Paca, not by emptying its file",
+			);
+			expect(server.client.patchDocument).not.toHaveBeenCalled();
+			expect(snapshot()).toEqual(before);
+		}
+		// A document that is empty in Paca: blank lines are no edit.
+		server.add(docId(4), "Blank", []);
+		lines = [];
+		expect(await pull()).toBe(0);
+		fs.writeFileSync(file("Blank.md"), "\n\n");
+		lines = [];
+		expect(await push(".paca/docs/Blank.md"), output()).toBe(0);
+		expect(output()).toBe("unchanged");
+		expect(server.client.patchDocument).not.toHaveBeenCalled();
+	});
+
 	it("a conflict file git merge-file wrote is refused", async () => {
 		const md = read();
 		const tmp = fs.mkdtempSync(path.join(root, "m-"));

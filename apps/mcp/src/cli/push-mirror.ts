@@ -239,6 +239,14 @@ async function pushLocked(
 		);
 		return EXIT.error;
 	}
+	// An empty base copy is an empty document: saving its file again with
+	// only blank lines is no edit.
+	if (text.trim() === "" && baseText.trim() !== "") {
+		io.err(
+			`${label} is empty; a document is deleted in Paca, not by emptying its file`,
+		);
+		return EXIT.error;
+	}
 	// The last pull already saw a newer version and kept the file.
 	if (entry.remote_hash && entry.remote_hash !== entry.content_hash)
 		return reportConflict(io, label, {});
