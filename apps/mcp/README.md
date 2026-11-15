@@ -438,8 +438,10 @@ to a document, its file is removed on the next pull.
   records every document's new file name (and reserves the names of new
   files), so a pull stopped part way (Ctrl-C, out of memory) leaves a state
   that matches the files, and the next pull finishes the job without
-  duplicates. A file written at a reserved name is overwritten by the next
-  pull, even if you edited it in between.
+  duplicates, and it records what it is about to write so a file it wrote is
+  not reported as edited locally later. A file written at a reserved name
+  (a new document's) is overwritten by the next pull, even if you edited it
+  in between.
 - One pull at a time per mirror: a pull holds `<dir>/.paca-pull.lock`, and a
   second one exits 1. A lock left by a process that is no longer running is
   taken over.
@@ -447,7 +449,10 @@ to a document, its file is removed on the next pull.
   reports it, leaves it as it is and exits 2. `--force` overwrites it. When a
   document is deleted (or you lose access) while its file was edited, the file
   is kept and every pull reports it and exits 2 until you delete the file or
-  run `pull --force`, which removes it.
+  run `pull --force`, which removes it. If the document comes back (restored
+  in Paca), the kept file is its file again: it moves with the document like
+  any edited file and is reported as edited locally, never overwritten
+  without `--force`.
 - State: `<dir>/.paca-sync.json` (cursor, folders and their directories, and
   per document its file, content hash and file hash) and
   `<dir>/.paca-base/<id>.md` (what the server had at the last pull). During a
@@ -485,7 +490,8 @@ when the file has no uncommitted changes.
   `.paca/push.json` records for another file (same project and server) stops
   with exit 1 and names that file; pass `--path` to push to another document.
   `--force` does not override this, and `--dry-run` reports it too. If the
-  other file is gone (it was moved, as with `git mv`), the push takes over its
+  other file is gone (it was moved, as with `git mv`, including a move that
+  changes only case on a case-insensitive file system), the push takes over its
   entry instead and says so: `If-Match` and the conflict diff still use the
   last push from the old name, and the document records the new source path
   even when the content is unchanged.
