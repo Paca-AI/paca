@@ -126,9 +126,8 @@ async function typeAtEnd(page: Page, text: string) {
 	await page.keyboard.type(text);
 }
 
-/** Opens the Documentation section of the sidebar (a Sheet on phones). */
-async function openDocsTree(page: Page, projectId: string) {
-	await page.goto(`${BASE_URL}/projects/${projectId}`);
+/** On phones the sidebar is a closed Sheet; opens it. No-op on wider screens. */
+async function openSidebarOnPhone(page: Page) {
 	const viewport = page.viewportSize();
 	if (viewport && viewport.width < 768) {
 		await page
@@ -136,6 +135,12 @@ async function openDocsTree(page: Page, projectId: string) {
 			.getByRole("button", { name: "Toggle Sidebar" })
 			.click();
 	}
+}
+
+/** Opens the Documentation section of the sidebar (a Sheet on phones). */
+async function openDocsTree(page: Page, projectId: string) {
+	await page.goto(`${BASE_URL}/projects/${projectId}`);
+	await openSidebarOnPhone(page);
 	await expect(page.getByText("Documentation", { exact: true })).toBeVisible({
 		timeout: 10_000,
 	});
@@ -197,6 +202,7 @@ test.describe("Managed copies", () => {
 		await expectEditable(page, true);
 
 		// The tree marks the copy; the marker's text is part of the row's name.
+		await openSidebarOnPhone(page);
 		await expect(
 			page.getByRole("button", { name: new RegExp(`^Plan.*${COPY_OF}`) }),
 		).toBeVisible();
@@ -205,10 +211,11 @@ test.describe("Managed copies", () => {
 		await page.goto(`${BASE_URL}/projects/${projectId}/docs/${plain.id}`);
 		await expect(editorOf(page)).toContainText("Plain text");
 		await expect(page.getByText(/^Copy of /)).toHaveCount(0);
+		await expectEditable(page, true);
+		await openSidebarOnPhone(page);
 		await expect(
 			page.getByRole("button", { name: "Plain", exact: true }),
 		).toBeVisible();
-		await expectEditable(page, true);
 	});
 
 	test("a locked managed copy is read-only and can be unlocked", async ({
