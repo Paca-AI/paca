@@ -579,4 +579,48 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		expect(output()).toBe("up to date");
 		expect(read("Notes.md")).toBe(md);
 	});
+
+	it("the full loop with a conflict: pull marks it, push refuses, a hand resolution pushes", async () => {
+		const NOTES = docId(2);
+		server.add(
+			NOTES,
+			"Notes",
+			storedBlocks("# Notes\n\nIntro.\n\nMiddle.\n\nEnd."),
+		);
+		expect(await pull()).toBe(0);
+		const notes = () => server.docs.get(NOTES)?.content as any[];
+		const before = JSON.parse(JSON.stringify(notes()));
+		write(read("Notes.md").replace("Middle.", "Middle, mine."), "Notes.md");
+		server.edit(NOTES, (b) => {
+			b[2].content[0].text = "Middle, by Ann.";
+		});
+		lines = [];
+		expect(await push(".paca/docs/Notes.md"), output()).toBe(2);
+		lines = [];
+		expect(await pull(), output()).toBe(2);
+		expect(output()).toContain(
+			"conflict Notes.md: edited here and in Paca (ann, 2026-11-15T09:30:00Z); resolve the marked lines (1 conflict), then push",
+		);
+		expect(read("Notes.md")).toBe(
+			"# Notes\n\nIntro.\n\n<<<<<<< local\nMiddle, mine.\n||||||| base\nMiddle.\n=======\nMiddle, by Ann.\n>>>>>>> Paca (ann, 2026-11-15T09:30:00Z)\n\nEnd.\n",
+		);
+		lines = [];
+		expect(await push(".paca/docs/Notes.md"), output()).toBe(1);
+		expect(output()).toContain("has conflict markers (line 5)");
+		// Resolved by hand.
+		const resolved = "# Notes\n\nIntro.\n\nMiddle, mine and Ann's.\n\nEnd.\n";
+		write(resolved, "Notes.md");
+		lines = [];
+		expect(await push(".paca/docs/Notes.md"), output()).toBe(0);
+		expect(output()).toBe(
+			"updated Notes from .paca/docs/Notes.md (1 block changed)",
+		);
+		expect(render(NOTES)).toBe(resolved);
+		const now = notes();
+		for (const k of [0, 1, 3]) expect(now[k]).toEqual(before[k]);
+		expect(state().docs[NOTES].conflict).toBeUndefined();
+		lines = [];
+		expect(await pull(), output()).toBe(0);
+		expect(output()).toBe("up to date");
+	});
 });
