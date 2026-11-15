@@ -546,7 +546,8 @@ is gone):
   then push; push refuses the file while the markers are there, and every
   pull reports it as conflicted (exit 2) and never merges it again until they
   are gone. `pull --force` replaces it with Paca's version, discarding your
-  edits in it.
+  edits in it; deleting the file and pulling does the same for that file
+  alone.
 - The file is kept as it is (exit 2, `kept <file>: edited locally …`), with
   what to do next:
   - `git` is not installed or fails: pull again once it works;
@@ -559,6 +560,9 @@ is gone):
   - an interrupted pull had written into the file before you edited it: save
     your edits elsewhere, then `pull --force`;
   - a managed copy: edit it in its repository; `pull --force` replaces it.
+
+  Instead of `pull --force`, which replaces every such file, you can delete
+  one file and pull: that file alone is written again from Paca.
 - If the document goes back to the version you pulled, the file is simply
   edited locally again and `push` sends it.
 - A document that was moved or renamed while you edited its file moves first,
