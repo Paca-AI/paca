@@ -719,7 +719,9 @@ function align(
 			} else tail.push(old);
 		}
 		out.push(...lead);
-		items.forEach((b, k) => out.push(...before[k], b, ...after[k]));
+		for (let k = 0; k < items.length; k++) {
+			out.push(...before[k], items[k], ...after[k]);
+		}
 		out.push(...tail);
 	};
 	for (const st of stretches) {
