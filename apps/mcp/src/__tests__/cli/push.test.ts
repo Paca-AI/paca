@@ -659,8 +659,82 @@ describe("runPush", () => {
 		});
 
 		it("is allowed with another --path", async () => {
+			client.putByPath.mockResolvedValue(written({ id: "other-doc" }));
 			expect(await push("docs/ui/plan.md", { path: "Plans/ui-plan" })).toBe(0);
 			expect(body()).toMatchObject({ path: "Plans/ui-plan" });
+		});
+
+		it.each([
+			["a case variant", "docs/ui/Plan.md", undefined],
+			["spaces around segments", "docs/ui/plan.md", " Plans / plan "],
+			["doubled slashes", "docs/ui/plan.md", "Plans//plan/"],
+		])("is refused for %s of the path", async (_why, file, docPath) => {
+			if (file !== "docs/ui/plan.md") {
+				fs.rmSync(path.join(root, "docs/ui/plan.md"));
+				write(file, "# UI plan\n");
+			}
+			expect(await push(file, docPath ? { path: docPath } : {})).toBe(1);
+			expect(client.putByPath).not.toHaveBeenCalled();
+			expect(lines.join("\n")).toContain(
+				"is already pushed from docs/api/plan.md",
+			);
+		});
+
+		it("--path that differs from the recorded path only in case and spaces keeps If-Match", async () => {
+			write("docs/api/plan.md", "# API plan\n\nmore\n");
+			client.putByPath.mockResolvedValue(written());
+			expect(await push("docs/api/plan.md", { path: " plans / PLAN " })).toBe(
+				0,
+			);
+			expect(putOpts()).toEqual({ ifMatch: '"e1-0000"' });
+			// Unchanged file, same document under another spelling: unchanged.
+			client.putByPath.mockClear();
+			expect(await push("docs/api/plan.md", { path: "PLANS/plan" })).toBe(0);
+			expect(client.putByPath).not.toHaveBeenCalled();
+		});
+
+		describe("when two entries already claim one document", () => {
+			const addEntry = (file: string, etag: string) => {
+				const st = state();
+				st[file] = { ...st["docs/api/plan.md"], doc_path: "plans/Plan", etag };
+				fs.writeFileSync(
+					path.join(root, ".paca/push.json"),
+					JSON.stringify(st),
+				);
+			};
+
+			it("refuses while either file exists", async () => {
+				addEntry("docs/old/plan.md", '"e0-0000"'); // gone
+				expect(await push("docs/ui/plan.md")).toBe(1);
+				expect(lines.join("\n")).toContain(
+					"is already pushed from docs/api/plan.md",
+				);
+				expect(client.putByPath).not.toHaveBeenCalled();
+			});
+
+			it("takes over when all are gone and drops every stale entry", async () => {
+				addEntry("docs/old/plan.md", '"e0-0000"');
+				fs.rmSync(path.join(root, "docs/api/plan.md"));
+				client.putByPath.mockResolvedValue(written({ etag: '"e2-0000"' }));
+				expect(await push("docs/ui/plan.md")).toBe(0);
+				// The first stale entry by file name gives If-Match: an older one
+				// can only end in a conflict, never in an overwrite.
+				expect(putOpts()).toEqual({ ifMatch: '"e1-0000"' });
+				const out = lines.join("\n");
+				expect(out).toContain("from docs/api/plan.md");
+				expect(out).toContain("docs/old/plan.md");
+				expect(Object.keys(state()).sort()).toEqual(["docs/ui/plan.md"]);
+			});
+		});
+
+		it("refuses to record a document another file already records", async () => {
+			// The server can match names that compare differently here (a few
+			// non-ASCII characters lower-case differently in JavaScript and
+			// Postgres): the response's document id gives it away.
+			client.putByPath.mockResolvedValue(written());
+			expect(await push("docs/ui/plan.md", { path: "Plans/other" })).toBe(1);
+			expect(lines.join("\n")).toContain("docs/api/plan.md");
+			expect(state()["docs/ui/plan.md"]).toBeUndefined();
 		});
 
 		it("is allowed when the other entry is for another project or server", async () => {

@@ -53,6 +53,21 @@ export function defaultDocPath(relPath: string): string {
 }
 
 /**
+ * The key two document paths are compared by, the way the server resolves
+ * them: split on "/", segments trimmed, empty ones dropped, compared without
+ * case. JavaScript's toLowerCase and Postgres's LOWER differ for a few
+ * non-ASCII characters; the document id check after a write covers those.
+ */
+export function docPathKey(docPath: string): string {
+	return docPath
+		.split("/")
+		.map((s) => s.trim())
+		.filter(Boolean)
+		.join("/")
+		.toLowerCase();
+}
+
+/**
  * Writes a repository file to its Paca document by path. Returns the exit
  * code: 0 written or unchanged, 1 error, 2 conflict. Throws UnreachableError
  * when the server cannot be reached (nothing is recorded then).
@@ -106,7 +121,7 @@ export async function runPush(
 		entry.file_sha256 === fileSha &&
 		!opts.force &&
 		!opts.lock &&
-		(!opts.path || opts.path === entry.doc_path)
+		(!opts.path || docPathKey(opts.path) === docPathKey(entry.doc_path))
 	) {
 		io.out("unchanged");
 		return EXIT.ok;
@@ -115,37 +130,50 @@ export async function runPush(
 	const docPath = opts.path || entry?.doc_path || defaultDocPath(rel);
 	// Two files pushed to one document would overwrite each other. --force
 	// overwrites the Paca copy; it does not make two files share a document.
-	const owner = Object.entries(state).find(
-		([file, e]) =>
-			file !== rel &&
-			e.project === opts.projectId &&
-			(e.server ?? "") === server &&
-			e.doc_path === docPath,
-	);
-	// A recorded file that is gone was moved (git mv): this file takes over
-	// its entry, so If-Match still catches a change made in Paca. So does a
-	// recorded name that is this same file (a move that changed only case,
-	// on a case-insensitive file system).
-	let takeover: string | undefined;
-	if (owner) {
-		const other = path.join(src.root, owner[0]);
-		const gone = !(await exists(other));
-		if (!gone && !(await sameFile(other, abs))) {
+	// The path is recorded as typed (messages show it as the user wrote it)
+	// and compared by its key.
+	const key = docPathKey(docPath);
+	const sameTarget = (e: PushState[string]) =>
+		e.project === opts.projectId && (e.server ?? "") === server;
+	const owners = Object.entries(state)
+		.filter(
+			([file, e]) =>
+				file !== rel && sameTarget(e) && docPathKey(e.doc_path) === key,
+		)
+		.map(([file]) => file)
+		.sort();
+	// Recorded files that are gone were moved (git mv): this file takes over
+	// their entries, so If-Match still catches a change made in Paca. So does
+	// a recorded name that is this same file (a move that changed only case,
+	// on a case-insensitive file system). Any other file still there blocks.
+	const gone = new Set<string>();
+	for (const file of owners) {
+		const other = path.join(src.root, file);
+		if (!(await exists(other))) gone.add(file);
+		else if (!(await sameFile(other, abs))) {
 			io.err(
-				`${docPath} is already pushed from ${owner[0]}; pass --path "Folder/Title" to push ${rel} to another document`,
+				`${docPath} is already pushed from ${file}; pass --path "Folder/Title" to push ${rel} to another document`,
 			);
 			return EXIT.error;
 		}
-		takeover = owner[0];
+	}
+	// The first by name gives If-Match: if two entries claim the document, an
+	// older ETag can only end in a conflict, never in an overwrite.
+	const takeover: string | undefined = owners[0];
+	if (takeover) {
 		io.out(
-			gone
+			gone.has(takeover)
 				? `${rel} takes over ${docPath} from ${takeover}, which no longer exists`
 				: `${rel} takes over ${docPath} from ${takeover}, the same file under its old name`,
 		);
+		if (owners.length > 1)
+			io.out(
+				`  also drops the stale entries for ${owners.slice(1).join(", ")}`,
+			);
 	}
 	const prior = takeover ? state[takeover] : entry;
 	const ifMatch =
-		!opts.force && prior?.etag && prior.doc_path === docPath
+		!opts.force && prior?.etag && docPathKey(prior.doc_path) === key
 			? prior.etag
 			: undefined;
 	const note =
@@ -209,8 +237,24 @@ export async function runPush(
 		return EXIT.error;
 	}
 
+	// The server matched a document another file records under a path that
+	// compares differently here: do not record a second entry for it.
+	const twin = Object.entries(state).find(
+		([file, e]) =>
+			file !== rel &&
+			!owners.includes(file) &&
+			sameTarget(e) &&
+			e.doc_id === res.doc.id,
+	);
+	if (twin) {
+		io.err(
+			`${docPath} was written, but Paca resolved it to the document ${twin[0]} is pushed to (${twin[1].doc_path}); nothing was recorded. Push ${twin[0]} again to put its content back, and pass --path "Folder/Title" to push ${rel} to another document`,
+		);
+		return EXIT.error;
+	}
+
 	await writeFileAtomic(basePath, canonical);
-	if (takeover) delete state[takeover];
+	for (const file of owners) delete state[file];
 	state[rel] = {
 		project: opts.projectId,
 		server,
@@ -223,12 +267,13 @@ export async function runPush(
 	// Only once the entry has moved: until then a rerun takes over again and
 	// needs the old base copy for its conflict diff. A copy left behind is
 	// never read again.
-	if (takeover) await fs.rm(baseFor(takeover), { force: true }).catch(() => {});
+	for (const file of owners)
+		await fs.rm(baseFor(file), { force: true }).catch(() => {});
 
 	if (
 		res.created &&
 		prior?.doc_id &&
-		prior.doc_path === docPath &&
+		docPathKey(prior.doc_path) === key &&
 		prior.doc_id !== res.doc.id
 	)
 		io.err(
