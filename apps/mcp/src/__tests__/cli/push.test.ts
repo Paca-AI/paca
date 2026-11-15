@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -576,6 +577,23 @@ describe("runPush", () => {
 			// The base copy follows the entry.
 			expect(baseFiles()).toHaveLength(basesBefore.length);
 			expect(baseFiles()).not.toEqual(basesBefore);
+		});
+
+		it("a takeover records the new entry before it removes the old base copy", async () => {
+			moveApi();
+			// The old base copy cannot be removed (a folder is in its place):
+			// the new entry must be recorded anyway.
+			const oldBase = path.join(
+				root,
+				".paca/push-base",
+				`${createHash("sha256").update("\np1\ndocs/api/plan.md").digest("hex")}.md`,
+			);
+			fs.rmSync(oldBase);
+			fs.mkdirSync(path.join(oldBase, "x"), { recursive: true });
+			client.putByPath.mockResolvedValue(written({ etag: '"e2-0000"' }));
+			await push("docs/b/plan.md").catch(() => {});
+			expect(state()["docs/api/plan.md"]).toBeUndefined();
+			expect(state()["docs/b/plan.md"]).toMatchObject({ etag: '"e2-0000"' });
 		});
 
 		it("a 412 after a takeover shows the diff from the old base", async () => {

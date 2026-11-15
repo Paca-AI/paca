@@ -210,10 +210,7 @@ export async function runPush(
 	}
 
 	await writeFileAtomic(basePath, canonical);
-	if (takeover) {
-		delete state[takeover];
-		await fs.rm(baseFor(takeover), { force: true });
-	}
+	if (takeover) delete state[takeover];
 	state[rel] = {
 		project: opts.projectId,
 		server,
@@ -223,6 +220,10 @@ export async function runPush(
 		etag: res.etag ?? res.doc.content_hash,
 	};
 	await writeJSON(statePath, state);
+	// Only once the entry has moved: until then a rerun takes over again and
+	// needs the old base copy for its conflict diff. A copy left behind is
+	// never read again.
+	if (takeover) await fs.rm(baseFor(takeover), { force: true }).catch(() => {});
 
 	if (
 		res.created &&
