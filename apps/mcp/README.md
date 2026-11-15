@@ -424,13 +424,19 @@ to a document, its file is removed on the next pull.
   `~<first 8 characters of the id>`. Names Windows reserves (`CON`, `NUL`, …)
   get a `_` prefix. Nothing is written outside `--dir`, and files in `--dir`
   that `pull` did not write are never overwritten; a folder whose path is such
-  a file gets `~<first 8 characters of the folder id>`.
+  a file gets `~<first 8 characters of the folder id>`. Sibling folders whose
+  names are the same when compared that way get one directory each: a folder
+  keeps the directory it had at the last pull, and a new clash gives the
+  suffix to the newcomer (lowest id first when neither had one). A folder
+  keeps its suffix after the clash ends, so its files do not move back.
 - `pull` refuses to run (exit 1) when the mirror folder contains a symlink, so
   it never writes, moves or deletes through one.
 - If a pull fails part way, files it moved are put back where they were
   (an unedited one may already hold the newer server copy) and files it
   created are removed; a file left mid-move by an interrupted pull is put back
-  by the next one.
+  by the next one. The new file names are recorded before any content is
+  written, so a pull stopped after its moves (Ctrl-C, out of memory) leaves
+  the state matching the files, and the next pull finishes the job.
 - One pull at a time per mirror: a pull holds `<dir>/.paca-pull.lock`, and a
   second one exits 1. A lock left by a process that is no longer running is
   taken over.
@@ -439,9 +445,10 @@ to a document, its file is removed on the next pull.
   document is deleted (or you lose access) while its file was edited, the file
   is kept and every pull reports it and exits 2 until you delete the file or
   run `pull --force`, which removes it.
-- State: `<dir>/.paca-sync.json` (cursor, folders, and per document its file,
-  content hash and file hash) and `<dir>/.paca-base/<id>.md` (what the server
-  had at the last pull). Both are written only after every file was written.
+- State: `<dir>/.paca-sync.json` (cursor, folders and their directories, and
+  per document its file, content hash and file hash) and
+  `<dir>/.paca-base/<id>.md` (what the server had at the last pull). The
+  cursor and content hashes are recorded only after every file was written.
 - Removing a mirrored file does not revoke copies already made of it: anything
   that read the mirror before keeps what it read.
 
@@ -467,6 +474,11 @@ when the file has no uncommitted changes.
 - `--lock` makes the document read-only in Paca: only a push from the same
   repository can change it. A push to a document locked to another repository
   fails and names that repository.
+- Two files never share a document: a push to a document path that
+  `.paca/push.json` records for another file (same project and server) stops
+  with exit 1 and names that file; pass `--path` to push to another document.
+  `--force` does not override this, and `--dry-run` reports it too. If the
+  other file is gone, remove its entry from `.paca/push.json`.
 - `--dry-run` prints what would be sent and sends nothing.
 - State: `.paca/push.json` at the repository root (per file: document path and
   id, file hash, ETag, and the project and server URL it was pushed to; an
