@@ -445,14 +445,16 @@ to a document, its file is removed on the next pull.
 - One pull at a time per mirror: a pull holds `<dir>/.paca-pull.lock`, and a
   second one exits 1. A lock left by a process that is no longer running is
   taken over.
-- The mirror is read-only for now. A mirror file you edited is kept: `pull`
-  reports it, leaves it as it is and exits 2. `--force` overwrites it. When a
-  document is deleted (or you lose access) while its file was edited, the file
-  is kept and every pull reports it and exits 2 until you delete the file or
-  run `pull --force`, which removes it. If the document comes back (restored
-  in Paca), the kept file is its file again: it moves with the document like
-  any edited file and is reported as edited locally, never overwritten
-  without `--force`.
+- A mirror file you edited is never overwritten. If its document did not
+  change in Paca, `pull` reports it (`modified locally <file>`) and leaves it
+  for `push`. If the document changed too, `pull` merges the two (see
+  "Editing documents as files"). `--force` replaces an edited file with the
+  Paca version. When a document is deleted (or you lose access) while its file
+  was edited, the file is kept and every pull reports it and exits 2 until you
+  delete the file or run `pull --force`, which removes it. If the document
+  comes back (restored in Paca), the kept file is its file again: it moves
+  with the document like any edited file and is reported as edited locally,
+  never overwritten without `--force`.
 - State: `<dir>/.paca-sync.json` (cursor, folders and their directories, and
   per document its file, content hash and file hash) and
   `<dir>/.paca-base/<id>.md` (what the server had at the last pull). During a
@@ -463,6 +465,95 @@ to a document, its file is removed on the next pull.
   written as each document is.
 - Removing a mirrored file does not revoke copies already made of it: anything
   that read the mirror before keeps what it read.
+
+### Editing documents as files
+
+A file `pull` wrote can be edited and pushed back: `push <file>` on a file in a
+mirror folder edits the document it was pulled from instead of writing a
+repository file.
+
+```bash
+npx @paca-ai/paca-mcp pull
+$EDITOR .paca/docs/Plans/Roadmap.md
+npx @paca-ai/paca-mcp push .paca/docs/Plans/Roadmap.md --note "move the launch to May"
+```
+
+- Only the blocks your edit reaches are rewritten. Every other block is sent
+  back exactly as Paca stores it, with formatting Markdown cannot show
+  (colours, alignment, mentions, underline, table cell colours and widths)
+  intact. A block with such formatting can be edited in place; an edit that
+  would move or rebuild it is refused with the line it is on, and nothing is
+  sent. Make that change in smaller steps, or in the web editor.
+- The push sends `If-Match` with the version you pulled. If the document
+  changed in Paca since, the push stops (exit 2) with who changed it and when,
+  their note, client and task: run `pull`, which merges, then push again.
+- Refused before anything is sent (exit 1): a file `pull` did not write (`not
+  a pulled document`), including another file whose name only differs by case
+  or Unicode form; a managed copy (`this document is a copy of <path> in
+  <repository>; edit that file and push it`); a document that was deleted or
+  that `pull` has not finished recording; an empty file (a document is deleted
+  in Paca, not by emptying its file); a file with conflict markers
+  (`<<<<<<<`, `|||||||` or `>>>>>>>` lines outside fenced code that its
+  pulled version does not have); `--path`, `--lock` and `--force`. An
+  unchanged file prints `unchanged`.
+- `--dry-run` prints how many blocks would change and sends nothing.
+- A push holds the mirror's lock (`.paca-pull.lock`), so a push and a pull of
+  the same mirror never run at once.
+
+**How the file is read.** The file is compared with Paca's Markdown line by
+line, and these differences are not edits:
+
+- a byte order mark, CRLF line ends, and the newlines at the end of the file;
+- whitespace at the end of a line;
+- a run of blank lines outside fenced code (read as one blank line);
+- outside fenced code, a `-` or `+` bullet (read as `*`);
+- outside fenced code, the padding of table cells, and the delimiter row
+  (`| --- | :-: |`) apart from its alignment.
+
+Anything else must be written as Paca writes it, or the push is refused with
+the line and what Paca would save there (for example `__bold__` where Paca
+writes `**bold**`). After a push that differed only by these rules (or an
+`unchanged` one), the file is rewritten to Paca's Markdown and the push prints
+`normalised <file>`, so the next `pull` finds nothing to do.
+
+**Merging on pull.** When a file was edited here and its document changed in
+Paca, `pull` runs `git merge-file --diff3` with the version you pulled as the
+base (`.paca-base/<id>.md`, or the snapshot of that version when the base copy
+is gone):
+
+- A clean merge writes the merged file (`merged <file>`), and `push` then
+  sends your part.
+- A conflict writes the file with markers (`<<<<<<< local`, `||||||| base`,
+  `=======`, `>>>>>>> Paca (<writer>, <time>)`), lists the file as conflicted
+  and exits 2. Every line you wrote is in the file. Resolve the marked lines,
+  then push; push refuses the file while the markers are there.
+- The file is kept as it is (exit 2, `kept <file>: edited locally`) when
+  `git` is not installed or fails, when neither the base copy nor a snapshot
+  of the pulled version is left (Paca's version is then written next to it as
+  `<file>.remote.md`), when an interrupted pull had written into the file, and
+  for managed copies. `pull --force` replaces it with the Paca version.
+- A document that was moved or renamed while you edited its file moves first,
+  then merges under its new name.
+
+**Limits.** Formatting Markdown cannot show must never move to another block,
+so these edits are refused, or can be, even when the text would be right
+(make them in smaller steps or in the web editor):
+
+- Moving blocks, when the document holds any block with formatting Markdown
+  cannot show: a reorder anywhere in it is refused, not only next to the
+  formatted block. That includes moving a section that holds formatted
+  blocks. In a document without such blocks, a move is sent and the moved
+  blocks keep their ids.
+- Changes in several places that each pass alone but together could move
+  formatting: deleting a formatted paragraph and adding one elsewhere,
+  rewording a formatted paragraph and another one, or editing a formatted
+  paragraph and adding one that reads like it.
+- Two identical paragraphs where one is formatted: deleting or rewording one
+  of them can be refused, since it cannot be told which one you meant.
+- Two structural edits (an item added, removed or moved) in one list that has
+  a formatted item can be refused.
+- A numbered list item after one you edited can lose a start number it does
+  not show (only a list's first item is numbered from it).
 
 ### `push`: write a repository file to a document
 
@@ -516,7 +607,7 @@ when the file has no uncommitted changes.
 |---|---|
 | 0 | Done, or nothing to do |
 | 1 | Error (bad arguments, server error, server too old) |
-| 2 | Conflict: the Paca copy changed since the last push, or a mirror file was edited locally |
+| 2 | Conflict: the Paca copy changed since the last push or pull, a merge left conflict markers, or an edited mirror file was kept |
 | 3 | The server could not be reached; nothing was recorded |
 
 ## Markdown/BlockNote Conversion
