@@ -426,9 +426,8 @@ func TestStore_S3_UpgradeKeepsOldFilesUntilNewUploaded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Upgrade with a bundle that has an unreadable (dangling) source file:
-	// the walk skips non-regular files, so make the upload itself fail by
-	// pointing the store at a failing client.
+	// Upgrade whose upload fails part-way: the old objects must survive, so
+	// point the store at a client whose PutObject always fails.
 	v2 := t.TempDir()
 	if err := os.WriteFile(filepath.Join(v2, "index.html"), []byte("2"), 0o644); err != nil {
 		t.Fatal(err)
