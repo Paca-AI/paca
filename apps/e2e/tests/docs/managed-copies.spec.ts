@@ -126,7 +126,7 @@ async function typeAtEnd(page: Page, text: string) {
 	await page.keyboard.type(text);
 }
 
-/** On phones the sidebar is a closed Sheet; opens it. No-op on wider screens. */
+/** On phones the sidebar is a closed Sheet; opens it and waits for the docs tree. No-op on wider screens. */
 async function openSidebarOnPhone(page: Page) {
 	const viewport = page.viewportSize();
 	if (viewport && viewport.width < 768) {
@@ -134,6 +134,10 @@ async function openSidebarOnPhone(page: Page) {
 			.getByRole("main")
 			.getByRole("button", { name: "Toggle Sidebar" })
 			.click();
+		// The Sheet's contents mount after the click, so wait for the tree.
+		await expect(page.getByText("Documentation", { exact: true })).toBeVisible({
+			timeout: 10_000,
+		});
 	}
 }
 
