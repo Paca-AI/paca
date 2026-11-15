@@ -279,7 +279,9 @@ describe("a merging pull stopped at each step of its journal", () => {
 			expect(h.read()).toContain("SECRET");
 			h.write(h.read().replace("Last.", "Last, mine."));
 			expect(await h.pull()).toBe(2);
-			expect(h.said()).toContain("an interrupted pull may have written into it");
+			expect(h.said()).toContain(
+				"an interrupted pull may have written into it",
+			);
 			expect(h.read("Plan.remote.md")).toBe(h.render());
 			// Ann reverts: Paca is back at the version recorded.
 			h.server.edit(ID, (b) => {
@@ -412,6 +414,65 @@ describe("a merging pull stopped at each step of its journal", () => {
 			expect(e.content_hash).toBe(was);
 			expect(e.unmerged).toBe(true);
 			expect(e.merge_pending).toBeUndefined();
+		} finally {
+			h.cleanup();
+		}
+	});
+
+	it("Paca's version next to a file whose base is unknown: recorded before it is written, so a stop after the write still refreshes it when Paca moves on", async () => {
+		for (let n = 0; n < 4; n++) {
+			const h = await setup();
+			try {
+				h.write(h.read().replace("Third.", "Third, mine."));
+				fs.rmSync(path.join(h.mirror, ".paca-base", `${ID}.md`));
+				(h.server.client as any).listSnapshots = undefined;
+				h.server.edit(ID, (b) => {
+					b[1].content[0].text = "First, by Ann.";
+				});
+				const k = await killed(h.pull, h.mirror, n);
+				h.said();
+				h.server.edit(ID, (b) => {
+					b[3].content[0].text = "Third, by Bob.";
+				});
+				expect(await h.pull()).toBe(2);
+				const said = h.said();
+				expect(said).toContain(
+					"compare it with Paca's version in Plan.remote.md",
+				);
+				expect(h.read("Plan.remote.md"), `n=${n}`).toBe(h.render());
+				expect(h.read()).toContain("Third, mine.");
+				if (k.first === "done") break;
+			} finally {
+				h.cleanup();
+			}
+		}
+	});
+
+	it("a file of the user's own at the name of Paca's version is left alone, and the message does not call it Paca's version", async () => {
+		const h = await setup();
+		try {
+			fs.writeFileSync(path.join(h.mirror, "Plan.remote.md"), "my notes\n");
+			h.write(h.read().replace("Third.", "Third, mine."));
+			fs.rmSync(path.join(h.mirror, ".paca-base", `${ID}.md`));
+			(h.server.client as any).listSnapshots = undefined;
+			h.server.edit(ID, (b) => {
+				b[1].content[0].text = "First, by Ann.";
+			});
+			expect(await h.pull()).toBe(2);
+			const said = h.said();
+			expect(said).not.toContain("Paca's version in Plan.remote.md");
+			expect(said).toContain(
+				"Plan.remote.md is not pull's copy (a file of yours, or a copy you edited), so Paca's version is not written there: save your edits elsewhere, then delete Plan.md and pull, or run pull --force",
+			);
+			expect(h.read("Plan.remote.md")).toBe("my notes\n");
+			expect(await h.push()).toBe(1);
+			expect(h.said()).not.toContain("Plan.remote.md");
+			// Deleting the file and pulling gives Paca's version; the user's
+			// file stays.
+			fs.rmSync(path.join(h.mirror, "Plan.md"));
+			expect(await h.pull()).toBe(0);
+			expect(h.read()).toBe(h.render());
+			expect(h.read("Plan.remote.md")).toBe("my notes\n");
 		} finally {
 			h.cleanup();
 		}

@@ -636,24 +636,51 @@ async function pullLocked(
 						remoteFile = `${stem}.remote~${id.slice(0, 8)}.md`;
 					const remoteAbs = await safePath(root, remoteFile, { mkdir: true });
 					const was = await fileSha256(remoteAbs);
-					// A copy the user edited is theirs: left alone.
-					const theirs =
-						was !== null &&
-						was !== mdSha &&
-						!(
-							p.remote_copy?.file === remoteFile && p.remote_copy.sha256 === was
-						);
-					if (was === null) created.push(remoteAbs);
-					if (!theirs && was !== mdSha)
+					// The copy is pull's when it holds what pull wrote there (or
+					// was about to replace, if a pull stopped in between); any
+					// other file at that name is the user's: left alone.
+					const rc =
+						p.remote_copy?.file === remoteFile ? p.remote_copy : undefined;
+					const ours =
+						was === null ||
+						was === mdSha ||
+						(rc !== undefined && (was === rc.sha256 || was === rc.previous));
+					if (ours && was !== mdSha) {
+						// Recorded before it is written, so a stop after the write
+						// still knows the copy is pull's (and refreshes it).
+						const journal: PullState = interim ?? {
+							...(prev as PullState),
+							dirs,
+						};
+						journal.docs = {
+							...journal.docs,
+							[id]: {
+								...journal.docs[id],
+								unmerged: true,
+								remote_copy: {
+									file: remoteFile,
+									sha256: mdSha,
+									...(was !== null ? { previous: was } : {}),
+								},
+							},
+						};
+						interim = journal;
+						await writeJSON(statePath, journal);
+						stateChanged = true;
+						if (was === null) created.push(remoteAbs);
 						await writeFileAtomic(remoteAbs, markdown);
+					}
+					const unknown = `kept ${file}: edited locally, ${why}, so the version it was edited from is not known and it is not merged`;
+					const out = `delete ${file} and pull, or run pull --force (either replaces ${file} with Paca's version)`;
 					keep(
-						`kept ${file}: edited locally, ${why}, so the version it was edited from is not known and it is not merged; compare it with Paca's version in ${remoteFile} and save your edits elsewhere, then delete ${file} and pull, or run pull --force (either replaces ${file} with Paca's version)`,
+						ours
+							? `${unknown}; compare it with Paca's version in ${remoteFile} and save your edits elsewhere, then ${out}`
+							: `${unknown}; ${remoteFile} is not pull's copy (a file of yours, or a copy you edited), so Paca's version is not written there: save your edits elsewhere, then ${out}`,
 						true,
 					);
-					if (theirs) {
-						if (p.remote_copy) next[id].remote_copy = p.remote_copy;
-						else delete next[id].remote_copy;
-					} else next[id].remote_copy = { file: remoteFile, sha256: mdSha };
+					if (ours) next[id].remote_copy = { file: remoteFile, sha256: mdSha };
+					else if (rc) next[id].remote_copy = rc;
+					else delete next[id].remote_copy;
 				};
 				if (!p.content_hash || p.unmerged || hadPending.has(id)) {
 					await keepUnknown(
@@ -793,6 +820,7 @@ async function pullLocked(
 									]),
 								];
 							if (d.unmerged) kept.unmerged = true;
+							if (d.remote_copy) kept.remote_copy = d.remote_copy;
 							const mp = journalled[id] ?? d.merge_pending;
 							if (mp) kept.merge_pending = mp;
 							docs[id] = kept;

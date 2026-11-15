@@ -84,7 +84,7 @@ export async function writeFileAtomic(
  *  unless it was edited since. */
 export async function removeRemoteCopy(
 	root: string,
-	copy: { file: string; sha256: string } | undefined,
+	copy: { file: string; sha256: string; previous?: string } | undefined,
 ): Promise<void> {
 	if (!copy || typeof copy.file !== "string") return;
 	const abs = path.resolve(root, copy.file);
@@ -95,7 +95,8 @@ export async function removeRemoteCopy(
 	} catch {
 		return;
 	}
-	if ((await fileSha256(abs)) === copy.sha256)
+	const sha = await fileSha256(abs);
+	if (sha !== null && (sha === copy.sha256 || sha === copy.previous))
 		await fs.rm(abs, { force: true });
 }
 
@@ -168,7 +169,12 @@ export interface PullDocState {
 	/** Paca's version, written next to the file when the two could not be
 	 *  merged (the version the file was pulled at is gone), and its sha256.
 	 *  Removed, unless it was edited, once the entry no longer needs it. */
-	remote_copy?: { file: string; sha256: string };
+	remote_copy?: {
+		file: string;
+		sha256: string;
+		/** What the copy held before a pull that stopped was replacing it. */
+		previous?: string;
+	};
 	/** The last merge wrote conflict markers into the file. Pull reports
 	 *  the file as conflicted while it still has them, and never merges it
 	 *  again; cleared by a push, or by a pull that finds none left. */

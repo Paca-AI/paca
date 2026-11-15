@@ -602,8 +602,9 @@ is gone):
     snapshot of the pulled version is left (the server keeps one snapshot
     per 3 minutes of edits), or an interrupted pull may have written into the
     file before you edited it (a stopped merge included; see below). Paca's version is written next to the file
-    as `<file>.remote.md` and follows Paca on later pulls (a copy you edited
-    is left alone). Nothing settles this file but you: every pull keeps it,
+    as `<file>.remote.md` and follows Paca on later pulls. A file at that
+    name that pull did not write (one of yours, or a copy you edited) is
+    left alone, and the message then says so instead of pointing at it. Nothing settles this file but you: every pull keeps it,
     even when the document goes back to an earlier version, and `push`
     refuses it (exit 1), naming the `.remote.md` copy once a pull has
     written it. Compare the two and
