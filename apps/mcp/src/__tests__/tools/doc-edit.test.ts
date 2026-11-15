@@ -1523,7 +1523,6 @@ function overlap(a: string, b: string): number {
 		q++;
 	return p + q;
 }
-const ONE_MARKER = /m\d+(?:c\d+)*x/;
 
 describe("spliceEdit fuzz by edit kind", () => {
 	it("keeps untouched blocks, never moves or drops what Markdown cannot carry, and shows exactly the edit", () => {
@@ -1777,7 +1776,7 @@ describe("spliceEdit fuzz by edit kind", () => {
 			if (k === undefined) return null;
 			const a = ls.slice(0, k).filter((l) => l.trim() !== "").length;
 			const above = ls.findIndex(
-				(l, q) =>
+				(_, q) =>
 					q < k &&
 					ls.slice(0, q + 1).filter((x) => x.trim() !== "").length === a,
 			);
