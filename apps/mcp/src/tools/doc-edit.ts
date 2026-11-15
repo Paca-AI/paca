@@ -737,7 +737,13 @@ function align(
 		} else if (reals.length > 0) {
 			const claims = new Map<Entry, Entry[]>();
 			for (const r of reals) {
-				const scores = news.map((f) => shared(ownText(r.b), ownText(f.b)));
+				// Text inside a new block's text continues there whole.
+				const mine = ownText(r.b);
+				const scores = news.map((f) =>
+					mine !== "" && ownText(f.b).includes(mine)
+						? mine.length
+						: shared(mine, ownText(f.b)),
+				);
 				const best = Math.max(...scores);
 				if (best === 0) {
 					deleted.push(r);
@@ -1031,6 +1037,8 @@ function shared(a: string, b: string): number {
  *       has its id (its content did not move to another block);
  *    c. when neither, the result has no new block (one with an id not
  *       read): it was deleted, not rewritten;
+ *    d. and when its id is gone, its text is not inside the text of a
+ *       block the edit wrote (it was merged there);
  * 3. a result block with an old block's id but other Markdown does not
  *    hold the Markdown of a different old block whose id is not on it;
  * 4. a result block with an old block's id but other text continues that
@@ -1048,6 +1056,7 @@ export function auditEdit(
 	const olds = oldBlocks.flatMap(subtree);
 	const news = newBlocks.flatMap(subtree);
 	const returned = new Set(news);
+	const oldSet = new Set(olds);
 	const oldById = new Map<string, Block>();
 	for (const o of olds) if (typeof o.id === "string") oldById.set(o.id, o);
 	const byId = new Map<string, Block>();
@@ -1095,6 +1104,26 @@ export function auditEdit(
 			return {
 				block: o,
 				why: `it would be replaced by new blocks without its ${describeUncarried(u)}`,
+			};
+		}
+		const text = ownText(o);
+		if (
+			!n &&
+			text.trim() !== "" &&
+			news.some(
+				(x) =>
+					!oldSet.has(x) &&
+					ownText(x).includes(text) &&
+					!(
+						u.type === null &&
+						u.inline.length === 0 &&
+						stable(uncarried(x).props) === stable(u.props)
+					),
+			)
+		) {
+			return {
+				block: o,
+				why: `its text would move into another block without its ${describeUncarried(u)}`,
 			};
 		}
 	}

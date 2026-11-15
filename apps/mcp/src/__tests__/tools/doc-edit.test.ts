@@ -1125,6 +1125,12 @@ describe("spliceEdit pairs blocks by position, then by text (fifth review)", () 
 		expect(err.lines).toEqual([3, 5]);
 	});
 
+	it("refuses a merge that puts a coloured block's text inside another block", () => {
+		const blocks = [para("A"), para("B", { textColor: "blue" }), para("C")];
+		const err = fail(blocks, "A\n\nB\n\nC", "A B C");
+		expect(err.message).toMatch(/different colours or alignment/);
+	});
+
 	it("deletes one of two equal plain blocks", () => {
 		const blocks = stored("x\n\nx");
 		const res = spliceEdit(blocks, "x\n\nx", "x", false);
@@ -1441,6 +1447,14 @@ describe("auditEdit: which block an id is (fifth review)", () => {
 			{ ...para("alpha one.", { textColor: "red" }), id: a.id },
 		];
 		expect(auditEdit([a, b], good)).toBeNull();
+	});
+
+	it("refuses a coloured block whose text went inside another block", () => {
+		const c = para("code");
+		const k = para("kid text", { backgroundColor: "blue" });
+		const bad = [{ ...c, content: [t("code and kid text inside")] }];
+		expect(auditEdit([c, k], bad)?.why).toMatch(/into another block/);
+		expect(auditEdit([c, k], [{ ...c, content: [t("code")] }])).toBeNull();
 	});
 
 	it("allows an ordinary in-place edit of many similar blocks", () => {
