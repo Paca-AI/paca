@@ -444,11 +444,17 @@ async function pullLocked(
 			if (m.managed) next[id].managed = true;
 		}
 	} catch (err) {
-		await rollBack(root, journal, created, async () => {
-			if (!stateChanged) return;
-			if (stateText === null) await fs.rm(statePath, { force: true });
-			else await writeFileAtomic(statePath, stateText);
-		});
+		await rollBack(
+			root,
+			journal,
+			created,
+			stateChanged
+				? async () => {
+						if (stateText === null) await fs.rm(statePath, { force: true });
+						else await writeFileAtomic(statePath, stateText);
+					}
+				: null,
+		);
 		throw err;
 	}
 
@@ -512,18 +518,27 @@ async function safePath(
  * (server content, fetched again next time), then every moved file goes to
  * its temporary name, then from there to where it was. Two phases, so swaps
  * and rename cycles come back too. A file that cannot be put back stays
- * under its temporary name, and the next pull recovers it. `restoreState`
- * runs between the phases: with every moved file under its temporary name,
- * the state file can go back to the old names without ever naming a path
- * the file is not at (recoverMoves follows the state either way).
+ * under its temporary name, and the next pull recovers it.
+ *
+ * `restoreState` (set when this run rewrote the state file) runs between
+ * the phases, and only when every created file is gone and every moved
+ * file reached its temporary name: the old state then never names a path
+ * a file is not at. Otherwise, or when restoring fails, everything stays as
+ * it is: the state still names the new paths, a file still under its
+ * temporary name is put at its new name by the next pull, and a file that
+ * could not leave its new name is already there.
  */
 async function rollBack(
 	root: string,
 	journal: Moved[],
 	created: string[],
-	restoreState: () => Promise<void>,
+	restoreState: (() => Promise<void>) | null,
 ): Promise<void> {
-	for (const f of created) await fs.rm(f, { force: true }).catch(() => {});
+	let clean = true;
+	for (const f of created)
+		await fs.rm(f, { force: true }).catch(() => {
+			clean = false;
+		});
 	const back = journal.filter((m) => m.cur !== m.orig);
 	for (const m of back) {
 		if (m.cur === m.tmp) continue;
@@ -533,15 +548,16 @@ async function rollBack(
 			m.cur = m.tmp;
 			await pruneEmpty(root, path.dirname(from));
 		} catch {
-			// Stays where it is.
+			clean = false; // Stays where it is.
 		}
 	}
-	try {
-		await restoreState();
-	} catch {
-		// The state still names the new paths: leave the files under their
-		// temporary names, and the next pull puts them there.
-		return;
+	if (restoreState) {
+		if (!clean) return;
+		try {
+			await restoreState();
+		} catch {
+			return;
+		}
 	}
 	for (const m of back) {
 		if (m.cur !== m.tmp) continue;
