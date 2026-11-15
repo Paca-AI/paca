@@ -282,6 +282,7 @@ async function pushLocked(
 		};
 		delete next.remote_hash;
 		delete next.pending_sha256;
+		delete next.unmerged;
 		state.docs[id] = next;
 		await writeJSON(statePath, state);
 		if (text !== markdown) {

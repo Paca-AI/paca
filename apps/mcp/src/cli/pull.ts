@@ -5,6 +5,7 @@ import path from "node:path";
 import type { PacaAPIDocClient } from "../api/doc-client.js";
 import type { Document } from "../types/index.js";
 import { blocknoteToMarkdown } from "../utils/index.js";
+import { type GitRunner, mergeFile } from "./merge.js";
 import {
 	folderDirs,
 	isInside,
@@ -36,9 +37,14 @@ export interface PullOptions {
 	dir: string;
 	/** Overwrite mirror files that were edited locally. */
 	force: boolean;
+	/** Runs git for the merge (tests replace it). */
+	git?: GitRunner;
 }
 
-export type PullClient = Pick<PacaAPIDocClient, "getChanges" | "batchGet">;
+export type PullClient = Pick<PacaAPIDocClient, "getChanges" | "batchGet"> &
+	/** For a merge whose base copy is gone: the snapshot of the version the
+	 *  file was pulled at. */
+	Partial<Pick<PacaAPIDocClient, "listSnapshots" | "getSnapshot">>;
 
 const BATCH = 100;
 /** Ids are used as file names (base copies), so only plain ids are taken. */
@@ -135,6 +141,14 @@ async function pullLocked(
 	}
 
 	await recoverMoves(root, prevDocs, io);
+	// Entries an interrupted pull left claiming a write it never recorded:
+	// their file may hold that write, so their base is not what an edit of
+	// the file started from.
+	const hadPending = new Set(
+		Object.entries(prevDocs)
+			.filter(([, d]) => d.pending_sha256 !== undefined)
+			.map(([id]) => id),
+	);
 	await settlePending(root, prevDocs);
 	await removeTempFiles(root);
 
@@ -212,7 +226,10 @@ async function pullLocked(
 			// again so the state records what it holds.
 			p.pending_sha256 ||
 			m.remote_hash !== p.content_hash ||
-			!(await exists(path.resolve(root, p.file)))
+			!(await exists(path.resolve(root, p.file))) ||
+			// --force puts Paca's version over a file edited here.
+			(opts.force &&
+				(await fileSha256(path.resolve(root, p.file))) !== p.file_sha256)
 		)
 			needContent.add(id);
 	}
@@ -252,6 +269,9 @@ async function pullLocked(
 	const lines: string[] = [];
 	const next: Record<string, PullDocState> = {};
 	let kept = 0;
+	let merged = 0;
+	let conflicted = 0;
+	let modified = 0;
 
 	// Gone documents (and earlier orphans): an edited file is kept and
 	// reported on every pull until it is removed or --force removes it.
@@ -413,7 +433,16 @@ async function pullLocked(
 				// The hash of what an earlier stopped pull left on disk (kept by
 				// settlePending) stays accepted too.
 				const md = markdownOf.get(id);
-				if (md !== undefined && !p.reserved) {
+				// Not for a file edited here (it is merged or kept, never
+				// overwritten), unless --force overwrites it: a merged file is
+				// a local edit, not pull's write.
+				const now = await fileSha256(path.resolve(root, p.file));
+				const editedHere =
+					now !== null &&
+					now !== p.file_sha256 &&
+					!p.pending_sha256?.includes(now) &&
+					now !== (md === undefined ? null : sha256(md));
+				if (md !== undefined && !p.reserved && (opts.force || !editedHere)) {
 					const h = sha256(md);
 					docs[id].pending_sha256 = [
 						h,
@@ -458,6 +487,14 @@ async function pullLocked(
 				delete next[id].pending_sha256;
 				if (m.managed) next[id].managed = true;
 				else delete next[id].managed;
+				// Edited here, unchanged in Paca: left for push.
+				if (p && !p.reserved && !p.orphan) {
+					const sha = await fileSha256(path.resolve(root, file));
+					if (sha !== null && sha !== p.file_sha256) {
+						modified++;
+						lines.push(`modified locally ${file}`);
+					}
+				}
 				continue;
 			}
 			const markdown = markdownOf.get(id) as string;
@@ -473,13 +510,96 @@ async function pullLocked(
 				current !== mdSha &&
 				!opts.force
 			) {
-				kept++;
-				lines.push(`kept ${file}: edited locally; use --force to overwrite`);
-				next[id] = { ...p, ...base, remote_hash: m.remote_hash };
-				delete next[id].orphan;
-				delete next[id].pending_sha256;
-				if (m.managed) next[id].managed = true;
-				else delete next[id].managed;
+				const keep = (why: string, unmerged = false) => {
+					kept++;
+					lines.push(
+						`kept ${file}: edited locally; use --force to overwrite${why}`,
+					);
+					next[id] = { ...p, ...base, remote_hash: m.remote_hash };
+					delete next[id].orphan;
+					delete next[id].pending_sha256;
+					if (unmerged) next[id].unmerged = true;
+					if (m.managed) next[id].managed = true;
+					else delete next[id].managed;
+				};
+				// A managed copy is edited in its repository, never here.
+				if (m.managed || p.orphan) {
+					keep("");
+					continue;
+				}
+				// Merged only from a base the file is known to have been
+				// edited from: a merge from any other drops a change made in
+				// Paca or invents a conflict.
+				if (!p.content_hash || p.unmerged || hadPending.has(id)) {
+					keep(
+						" (an interrupted pull wrote into it, so it is not merged)",
+						true,
+					);
+					continue;
+				}
+				// Edited here and changed in Paca: merge the two.
+				const baseText = await baseFor(root, client, opts.projectId, id, p);
+				if (baseText === null) {
+					// Never the file of another document.
+					const stem = file.replace(/\.md$/i, "");
+					const docFiles = new Set([...layout.values()].map(nameKey));
+					let remoteFile = `${stem}.remote.md`;
+					if (docFiles.has(nameKey(remoteFile)))
+						remoteFile = `${stem}.remote~${id.slice(0, 8)}.md`;
+					const remoteAbs = await safePath(root, remoteFile, { mkdir: true });
+					if (!(await exists(remoteAbs))) created.push(remoteAbs);
+					await writeFileAtomic(remoteAbs, markdown);
+					keep(
+						` (the version it was pulled at is gone, so it cannot be merged; Paca's version is in ${remoteFile})`,
+						true,
+					);
+					continue;
+				}
+				const localText = await fs.readFile(abs, "utf8");
+				const who = [d.updated_by, d.updated_at].filter(Boolean).join(", ");
+				const res = await mergeFile(
+					root,
+					localText,
+					baseText,
+					markdown,
+					{
+						local: "local",
+						base: "base",
+						remote: `Paca${who ? ` (${who})` : ""}`,
+					},
+					opts.git,
+				);
+				if (res.status === "unavailable") {
+					keep(` (could not merge: ${res.why})`);
+					continue;
+				}
+				// The merged file, then the base copy (Paca's version), then
+				// (at the end of the run) the state. A stop after the file
+				// leaves the old base and state: the next pull merges the
+				// merged file with the same version again, which gives the same
+				// text. A stop after the base merges against Paca's version,
+				// which keeps the file as it is.
+				if (res.text !== localText) await writeFileAtomic(abs, res.text);
+				await writeFileAtomic(
+					await safePath(root, `${BASE_DIR}/${id}.md`, { mkdir: true }),
+					markdown,
+				);
+				next[id] = {
+					file,
+					title: m.title,
+					folder_id: m.folder_id,
+					content_hash: m.remote_hash,
+					file_sha256: mdSha,
+				};
+				if (res.status === "clean") {
+					merged++;
+					lines.push(`merged ${file}: your edits and the changes in Paca`);
+				} else {
+					conflicted++;
+					lines.push(
+						`conflict ${file}: edited here and in Paca${who ? ` (${who})` : ""}; resolve the marked lines (${res.conflicts} conflict${res.conflicts === 1 ? "" : "s"}), then push`,
+					);
+				}
 				continue;
 			}
 			if (current !== mdSha) {
@@ -533,10 +653,58 @@ async function pullLocked(
 	if (updated) parts.push(`${updated} updated`);
 	if (moved) parts.push(`${moved} moved`);
 	if (removedCount) parts.push(`${removedCount} removed`);
+	if (merged) parts.push(`${merged} merged`);
+	if (conflicted) parts.push(`${conflicted} conflicted`);
 	if (kept) parts.push(`${kept} kept`);
+	if (modified) parts.push(`${modified} modified locally`);
 	io.out(parts.length ? parts.join(", ") : "up to date");
 	for (const l of lines) io.out(l);
-	return kept ? EXIT.conflict : EXIT.ok;
+	return kept || conflicted ? EXIT.conflict : EXIT.ok;
+}
+
+/**
+ * What the file held when it was last written by pull or push: its base
+ * copy when that is intact (its sha256 is the one recorded), else the
+ * snapshot of the version recorded, rendered as pull renders it. Null when
+ * neither is there.
+ */
+async function baseFor(
+	root: string,
+	client: PullClient,
+	projectId: string,
+	id: string,
+	p: PullDocState,
+): Promise<string | null> {
+	const text = await readText(path.join(root, BASE_DIR, `${id}.md`)).catch(
+		() => null,
+	);
+	if (text !== null && sha256(text) === p.file_sha256) return text;
+	const hash = p.content_hash;
+	if (!hash || !client.listSnapshots || !client.getSnapshot) return null;
+	try {
+		const page = await call(() =>
+			(client.listSnapshots as NonNullable<PullClient["listSnapshots"]>)(
+				projectId,
+				id,
+				{ contentHash: hash, pageSize: 100 },
+			),
+		);
+		// A server that does not filter lists other versions: check the hash.
+		const hit = page.items.find((s) => s.content_hash === hash);
+		if (!hit) return null;
+		const snap = await call(() =>
+			(client.getSnapshot as NonNullable<PullClient["getSnapshot"]>)(
+				projectId,
+				id,
+				hit.id,
+			),
+		);
+		if (snap.content_hash !== undefined && snap.content_hash !== hash)
+			return null;
+		return blocknoteToMarkdown((snap.content ?? []) as any[]);
+	} catch {
+		return null;
+	}
 }
 
 /**

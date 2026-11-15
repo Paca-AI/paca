@@ -43,7 +43,21 @@ export function storedBlocks(
 
 export function fakeDocsServer() {
 	const docs = new Map<string, FakeDoc>();
+	/** Every version each document had, newest last. */
+	const snapshots = new Map<
+		string,
+		Array<{ id: string; content: any[]; content_hash: string }>
+	>();
 	let tick = 0;
+	const snap = (d: FakeDoc) => {
+		const list = snapshots.get(d.id) ?? [];
+		list.push({
+			id: `s${list.length + 1}-${d.id.slice(0, 4)}`,
+			content: copy(d.content),
+			content_hash: d.hash,
+		});
+		snapshots.set(d.id, list);
+	};
 	const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 	const toDoc = (d: FakeDoc) => ({
 		id: d.id,
@@ -108,6 +122,7 @@ export function fakeDocsServer() {
 				}
 				d.content = copy(input.content);
 				d.hash = hashOf(d.content);
+				snap(d);
 				d.updated_by = "agent";
 				d.updated_at = `2026-11-15T10:00:${String(++tick).padStart(2, "0")}Z`;
 				d.note = input.note;
@@ -116,6 +131,36 @@ export function fakeDocsServer() {
 				return { doc: toDoc(d), etag: `"${d.hash}-gzip"` };
 			},
 		),
+		listSnapshots: vi.fn(
+			async (_p: string, id: string, opts: { contentHash?: string } = {}) => ({
+				items: [...(snapshots.get(id) ?? [])]
+					.reverse()
+					.filter(
+						(x) => !opts.contentHash || x.content_hash === opts.contentHash,
+					)
+					.map((x) => ({
+						id: x.id,
+						title: docs.get(id)?.title ?? "",
+						content: null,
+						content_hash: x.content_hash,
+						snapshot_number: 0,
+						created_at: "",
+					})),
+				nextCursor: null,
+			}),
+		),
+		getSnapshot: vi.fn(async (_p: string, id: string, snapshotId: string) => {
+			const x = (snapshots.get(id) ?? []).find((y) => y.id === snapshotId);
+			if (!x) throw new PacaAPIError("snapshot not found", 404, "NOT_FOUND");
+			return {
+				id: x.id,
+				title: docs.get(id)?.title ?? "",
+				content: copy(x.content),
+				content_hash: x.content_hash,
+				snapshot_number: 0,
+				created_at: "",
+			};
+		}),
 	};
 	const add = (
 		id: string,
@@ -131,6 +176,7 @@ export function fakeDocsServer() {
 			hash: hashOf(content),
 			...extra,
 		});
+		snap(docs.get(id) as FakeDoc);
 	};
 	/** Another writer changes a document. */
 	const edit = (
@@ -143,6 +189,7 @@ export function fakeDocsServer() {
 		change(next);
 		d.content = next;
 		d.hash = hashOf(next);
+		snap(d);
 		Object.assign(d, {
 			updated_by: "ann",
 			updated_at: "2026-11-15T09:30:00Z",
@@ -152,5 +199,5 @@ export function fakeDocsServer() {
 			...who,
 		});
 	};
-	return { docs, client, add, edit };
+	return { docs, snapshots, client, add, edit };
 }

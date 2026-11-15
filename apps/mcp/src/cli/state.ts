@@ -122,6 +122,11 @@ export interface PullDocState {
 	 *  nothing about what the file holds; at most two (the one on disk and
 	 *  the one being written), see `settlePending`. */
 	pending_sha256?: string[];
+	/** The file was edited from a version other than `content_hash` (an
+	 *  interrupted pull had written into it), or no copy of the version it
+	 *  was pulled at is left: pull keeps it rather than merging until
+	 *  `pull --force` replaces it or a push records it. */
+	unmerged?: true;
 	/** The name was taken by a pull that stopped before it recorded this
 	 *  document's content: a file there came from that pull (the name was
 	 *  free when it was taken), so the next pull overwrites it. The content
