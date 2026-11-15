@@ -673,8 +673,18 @@ function align(
 				}
 				record({ i: r, how: "paired" });
 			} else if (mode === "split") {
-				if (q++ === 0) pairPos.set(reals[0], items.length);
-				items.push(withProps(materialize(f, ctx), props));
+				const made = withProps(materialize(f, ctx), props);
+				if (q++ === 0) {
+					// The first new block continues the first old one (its id),
+					// when they have the same type.
+					pairPos.set(reals[0], items.length);
+					const first = oldBlocks[reals[0]];
+					if (first.type === made.type && typeof first.id === "string") {
+						items.push({ ...made, id: first.id });
+						continue;
+					}
+				}
+				items.push(made);
 			} else {
 				items.push(materialize(f, ctx));
 			}
@@ -725,6 +735,175 @@ function align(
 		for (const r of replaced) if (r.how === "deleted") r.how = "carried";
 	}
 	return { blocks: out, replaced };
+}
+
+// ── Final audit ───────────────────────────────────────────────────────────────
+//
+// Checked on the result of every edited range, whatever path built it: the
+// alignment above should never produce what this refuses, but if it does,
+// the edit is refused instead of written.
+
+/** Block types Markdown writes (their text and Markdown props). */
+const MARKDOWN_TYPES = new Set([
+	"paragraph",
+	"heading",
+	"bulletListItem",
+	"numberedListItem",
+	"checkListItem",
+	"codeBlock",
+	"quote",
+	"table",
+]);
+const MARKDOWN_STYLES = new Set(["bold", "italic", "code", "strike"]);
+
+/** What of `b` Markdown cannot carry: a type it has no form for, props
+ *  other than the ones it writes (colours, alignment and the like), inline
+ *  nodes other than text and links (mention chips), text styles other than
+ *  bold, italic, code and strike (underline, coloured text). Text aside. */
+function uncarried(b: Block): {
+	type: string | null;
+	props: Record<string, unknown>;
+	inline: string[];
+} {
+	const props = canonProps(b.props);
+	for (const k of MARKDOWN_PROPS) delete props[k];
+	const inline: string[] = [];
+	const walk = (nodes: unknown) => {
+		if (!Array.isArray(nodes)) return;
+		for (const n of nodes as Block[]) {
+			if (n?.type === "text") {
+				for (const [k, v] of Object.entries(n.styles ?? {})) {
+					if (v !== false && v !== undefined && !MARKDOWN_STYLES.has(k)) {
+						inline.push(`${k}=${stable(v)}`);
+					}
+				}
+			} else if (n?.type === "link") walk(n.content);
+			else inline.push(stable(n));
+		}
+	};
+	if (Array.isArray(b.content)) walk(b.content);
+	else if (b.content?.type === "tableContent") {
+		for (const r of b.content.rows ?? []) {
+			for (const c of r.cells ?? []) walk(Array.isArray(c) ? c : c?.content);
+		}
+	}
+	return { type: MARKDOWN_TYPES.has(b.type) ? null : b.type, props, inline };
+}
+
+function carriesNothing(u: ReturnType<typeof uncarried>): boolean {
+	return (
+		u.type === null &&
+		Object.keys(u.props).length === 0 &&
+		u.inline.length === 0
+	);
+}
+
+function describeUncarried(u: ReturnType<typeof uncarried>): string {
+	const what = [
+		...(u.type ? [`its ${u.type} type`] : []),
+		...Object.keys(u.props),
+		...new Set(
+			u.inline.map((x) =>
+				x.startsWith("{") ? JSON.parse(x).type : x.split("=")[0],
+			),
+		),
+	];
+	return what.join(", ");
+}
+
+/** A block's own Markdown, without its nested blocks. */
+const ownKey = (b: Block) => render([{ ...b, children: [] }]);
+
+/**
+ * Checks the blocks an edit produced (`newBlocks`) against the ones it
+ * replaced (`oldBlocks`), at every depth. Returns the first old block the
+ * result mistreats, with why, or null. The rule:
+ * 1. no id appears twice in the result;
+ * 2. an old block that holds anything Markdown cannot carry (see
+ *    uncarried) and is not returned as the very object read:
+ *    a. when its id is in the result, that block has its type and the same
+ *       uncarried data (its text may differ: edited in place);
+ *    b. when its own Markdown is in the result, a block with that Markdown
+ *       has its id (its content did not move to another block);
+ *    c. when neither, the result has no new block (one with an id not
+ *       read): it was deleted, not rewritten;
+ * 3. a result block with an old block's id but other Markdown does not
+ *    hold the Markdown of a different old block whose id is not on it.
+ */
+export function auditEdit(
+	oldBlocks: Block[],
+	newBlocks: Block[],
+): { block: Block; why: string } | null {
+	const olds = oldBlocks.flatMap(subtree);
+	const news = newBlocks.flatMap(subtree);
+	const returned = new Set(news);
+	const oldById = new Map<string, Block>();
+	for (const o of olds) if (typeof o.id === "string") oldById.set(o.id, o);
+	const byId = new Map<string, Block>();
+	for (const n of news) {
+		if (typeof n.id !== "string") continue;
+		if (byId.has(n.id)) {
+			return {
+				block: oldById.get(n.id) ?? n,
+				why: "its id would appear twice",
+			};
+		}
+		byId.set(n.id, n);
+	}
+	const newKeys = news.map(ownKey);
+	const hasNew = news.some(
+		(n) => typeof n.id !== "string" || !oldById.has(n.id),
+	);
+	const holds = (id: unknown, key: string) =>
+		news.some((x, k) => x.id === id && newKeys[k] === key);
+
+	for (const o of olds) {
+		if (returned.has(o)) continue;
+		const u = uncarried(o);
+		if (carriesNothing(u)) continue;
+		const key = ownKey(o);
+		const n = typeof o.id === "string" ? byId.get(o.id) : undefined;
+		if (n) {
+			if (n.type !== o.type) {
+				return {
+					block: o,
+					why: `it would become ${aBlock(n.type)} and lose its ${describeUncarried(u)}`,
+				};
+			}
+			if (stable(uncarried(n)) !== stable(u)) {
+				return { block: o, why: `its ${describeUncarried(u)} would be lost` };
+			}
+		}
+		if (newKeys.includes(key) && !holds(o.id, key)) {
+			return {
+				block: o,
+				why: `its content would move to another block without its ${describeUncarried(u)}`,
+			};
+		}
+		if (!n && !newKeys.includes(key) && hasNew) {
+			return {
+				block: o,
+				why: `it would be replaced by new blocks without its ${describeUncarried(u)}`,
+			};
+		}
+	}
+
+	for (let k = 0; k < news.length; k++) {
+		const n = news[k];
+		const o = typeof n.id === "string" ? oldById.get(n.id) : undefined;
+		// A block returned as the very object read is as it was.
+		if (!o || o === n || newKeys[k] === ownKey(o)) continue;
+		const from = olds.find(
+			(p) => p !== o && ownKey(p) === newKeys[k] && !holds(p.id, newKeys[k]),
+		);
+		if (from) {
+			return {
+				block: o,
+				why: "its id would end up on text that came from another block",
+			};
+		}
+	}
+	return null;
 }
 
 /**
@@ -858,6 +1037,22 @@ export function spliceEdit(
 				`edit_doc could not apply the edit starting on line ${lineAt(full, matches[0])} exactly as written, so nothing was changed. Rewrite that part with write_doc, or edit it in the web editor.`,
 				"unsafe",
 				[lineAt(full, matches[0])],
+			);
+		}
+		const bad = auditEdit(blocks.slice(from, to), aligned.blocks);
+		if (bad) {
+			const top = blocks
+				.slice(from, to)
+				.findIndex((b) => subtree(b).includes(bad.block));
+			const line = lineOf(from + Math.max(0, top));
+			const where =
+				top >= 0 && blocks[from + top] !== bad.block
+					? `a ${bad.block.type} block nested in the block on line ${line}`
+					: `the ${bad.block.type} block on line ${line}`;
+			throw new SpliceError(
+				`The edit touches ${where}, which edit_doc cannot rewrite from Markdown: ${bad.why}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
+				"unsafe",
+				[line],
 			);
 		}
 		out.push(...blocks.slice(next, from));

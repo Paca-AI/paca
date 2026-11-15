@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SpliceError, spliceEdit } from "../../tools/doc-edit.js";
+import { auditEdit, SpliceError, spliceEdit } from "../../tools/doc-edit.js";
 import {
 	blocknoteToMarkdown,
 	markdownToBlocknote,
@@ -923,6 +923,101 @@ describe("spliceEdit nested children, moves and Markdown props (fourth review)",
 		const res = spliceEdit(blocks, "a\n\n- b", "A\n\n- B", false);
 		expect(res.blocks[1]).toBe(e);
 		expect(res.blocks.map((b) => b.id)).toEqual(blocks.map((b) => b.id));
+	});
+});
+
+// The final audit, tested directly on the wrong results the reviews found
+// (as if the alignment had produced them), so it holds on its own.
+describe("auditEdit", () => {
+	const B = "bulletListItem";
+	const withId = (b: any, id: string) => ({ ...b, id });
+
+	it("refuses a swap that lost a moved block's colour", () => {
+		const a = para("a", { textColor: "red" });
+		const b = para("b", { textColor: "blue" });
+		const bad = [{ ...para("b"), id: "fresh-1" }, a];
+		expect(auditEdit([a, b], bad)?.block).toBe(b);
+		expect(auditEdit([a, b], [b, a])).toBeNull();
+	});
+
+	it("refuses ids shifted onto a sibling's text (nested insert)", () => {
+		const k1 = item(B, "k1", { textColor: "red" });
+		const k2 = item(B, "k2", { textColor: "blue" });
+		const a = item(B, "a", {}, [k1, k2]);
+		const bad = [
+			{
+				...a,
+				children: [
+					withId(item(B, "new", { textColor: "red" }), k1.id),
+					withId(item(B, "k1", { textColor: "blue" }), k2.id),
+					withId(item(B, "k2"), "fresh-2"),
+				],
+			},
+		];
+		expect(auditEdit([a], bad)).not.toBeNull();
+		const good = [
+			{ ...a, children: [withId(item(B, "new"), "fresh-3"), k1, k2] },
+		];
+		expect(auditEdit([a], good)).toBeNull();
+	});
+
+	it("refuses ids shifted onto a sibling's text without colours", () => {
+		const k1 = item(B, "k1");
+		const k2 = item(B, "k2");
+		const a = item(B, "a", {}, [k1, k2]);
+		const bad = [
+			{
+				...a,
+				children: [
+					withId(item(B, "new"), k1.id),
+					withId(item(B, "k1"), k2.id),
+					withId(item(B, "k2"), "fresh-4"),
+				],
+			},
+		];
+		expect(auditEdit([a], bad)).not.toBeNull();
+	});
+
+	it("refuses a nested child that kept its id but lost its colour", () => {
+		const k1 = item(B, "k1", { textColor: "red" });
+		const a = item(B, "a", {}, [k1]);
+		const bad = [{ ...a, children: [withId(item(B, "K1"), k1.id)] }];
+		expect(auditEdit([a], bad)?.why).toMatch(/textColor/);
+	});
+
+	it("refuses an indented block that lost its colour", () => {
+		const a = item(B, "a", { textColor: "red" });
+		const b = item(B, "b", { textColor: "red" });
+		const bad = [{ ...a, children: [withId(item(B, "b"), "fresh-5")] }];
+		expect(auditEdit([a, b], bad)?.block).toBe(b);
+	});
+
+	it("refuses a duplicate id", () => {
+		const a = para("a");
+		expect(auditEdit([a], [a, withId(para("b"), a.id)])?.why).toMatch(/twice/);
+	});
+
+	it("allows deleting a coloured block outright, and editing one in place", () => {
+		const a = para("a", { textColor: "red" });
+		const z = para("z");
+		expect(auditEdit([a, z], [z])).toBeNull();
+		expect(auditEdit([a], [{ ...a, content: [t("A")] }])).toBeNull();
+	});
+
+	it("refuses losing a coloured block while new blocks appear", () => {
+		const a = para("a", { textColor: "red" });
+		expect(auditEdit([a], [withId(para("x"), "fresh-6")])?.block).toBe(a);
+	});
+
+	it("refuses a mention chip lost from a block that kept its id", () => {
+		const chip = {
+			type: "teamMention",
+			props: { id: "u1", name: "Ann", avatar: "" },
+		};
+		const a = { ...para("x"), content: [t("hi "), chip] };
+		expect(auditEdit([a], [{ ...a, content: [t("hi @Ann")] }])?.why).toMatch(
+			/teamMention/,
+		);
 	});
 });
 
