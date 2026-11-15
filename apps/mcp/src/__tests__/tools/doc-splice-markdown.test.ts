@@ -391,7 +391,8 @@ describe("spliceMarkdown", () => {
 		expect(res.blocks[0]).toBe(blocks[1]);
 		expect(res.blocks[1]).toBe(blocks[0]);
 		expect(res.blocks[2]).toBe(blocks[2]);
-		blocks.forEach((b, i) => expect(JSON.stringify(b)).toBe(json[i]));
+		for (const [i, b] of blocks.entries())
+			expect(JSON.stringify(b)).toBe(json[i]);
 		// List items swapped, and paragraphs swapped next to a list.
 		const list = stored("alpha one\n\nbeta two\n\n* li one\n\n* li two\n\nend");
 		const both = pulled(list)
