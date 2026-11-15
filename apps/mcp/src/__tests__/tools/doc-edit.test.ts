@@ -1510,6 +1510,19 @@ const ownText = (b: any) =>
 		.map((n: any) => n.text ?? "")
 		.join("");
 const MARKER = /m\d+(?:c\d+)*x/g;
+/** Common prefix plus common suffix (not overlapping), written here apart
+ *  from the implementation's. */
+function overlap(a: string, b: string): number {
+	let p = 0;
+	while (p < a.length && p < b.length && a[p] === b[p]) p++;
+	let q = 0;
+	while (
+		q < Math.min(a.length, b.length) - p &&
+		a[a.length - 1 - q] === b[b.length - 1 - q]
+	)
+		q++;
+	return p + q;
+}
 const ONE_MARKER = /m\d+(?:c\d+)*x/;
 
 describe("spliceEdit fuzz by edit kind", () => {
@@ -1614,6 +1627,25 @@ describe("spliceEdit fuzz by edit kind", () => {
 				// Duplicate renders, some with colours Markdown cannot write.
 				() => blk("paragraph", "dup line", look()),
 				() => blk("bulletListItem", "dup line", look()),
+				// Duplicates that differ in what Markdown cannot write: nested
+				// under one another, check items, and a mention chip next to
+				// plain text that reads the same.
+				() => ({
+					...blk("bulletListItem", "dup line", look()),
+					children: [blk("bulletListItem", "dup line", look())],
+				}),
+				() => blk("checkListItem", "TODO", { checked: false, ...look() }),
+				() => blk("checkListItem", "TODO", { checked: false, ...look() }),
+				() => ({
+					...blk("bulletListItem", ""),
+					content: [
+						{
+							type: "teamMention",
+							props: { id: "u0", name: "Ann", avatar: "" },
+						},
+					],
+				}),
+				() => blk("bulletListItem", "@Ann (id: u0)"),
 			];
 			return kinds[rnd(kinds.length)]();
 		};
@@ -1723,19 +1755,84 @@ describe("spliceEdit fuzz by edit kind", () => {
 			const cut = rnd(2) === 0 ? l.trimStart() : l.replace(/^( {2,4}|\t)/, "");
 			return { old: l, new: cut };
 		};
+		// Lines a line-level edit may take: not blank, not a code fence.
+		const textLine = (l: string | undefined) =>
+			!!l && l.trim() !== "" && !l.trimStart().startsWith("```");
+		// A line that reads like the text line above it (a duplicate).
+		const dupLines = (ls: string[]) =>
+			ls
+				.map((_, k) => k)
+				.filter((k) => {
+					if (!textLine(ls[k])) return false;
+					const above = ls
+						.slice(0, k)
+						.filter((l) => l.trim() !== "")
+						.pop();
+					return !!above && above.trim() === ls[k].trim();
+				});
+		const ITEM = /^\s*([-*+]|\d+[.)])\s/;
+		KINDS.dupIndent = (md) => {
+			const ls = lines(md);
+			const k = pick(dupLines(ls).filter((q) => ITEM.test(ls[q])));
+			if (k === undefined) return null;
+			const a = ls.slice(0, k).filter((l) => l.trim() !== "").length;
+			const above = ls.findIndex(
+				(l, q) =>
+					q < k &&
+					ls.slice(0, q + 1).filter((x) => x.trim() !== "").length === a,
+			);
+			const old = ls.slice(above, k + 1).join("\n");
+			return {
+				old,
+				new: `${ls.slice(above, k).join("\n")}\n${/^\s*\d/.test(ls[k]) ? "   " : "  "}${ls[k]}`,
+				all: md.split(old).length > 2,
+			};
+		};
+		KINDS.dupOutdent = (md) => {
+			const ls = lines(md);
+			const k = pick(
+				ls
+					.map((_, q) => q)
+					.filter((q) => /^\s+\S/.test(ls[q]) && ITEM.test(ls[q])),
+			);
+			if (k === undefined) return null;
+			const old = `\n${ls[k]}`;
+			return {
+				old,
+				new: `\n${ls[k].replace(/^( {2,3}|\t)/, "")}`,
+				all: md.split(old).length > 2,
+			};
+		};
+		KINDS.dupSplit = (md) => {
+			if (!md.includes("dup line")) return null;
+			return rnd(2) === 0
+				? { old: "dup line", new: "dup\n\nline", all: true }
+				: { old: "dup line", new: "dup line\n\ndup line", all: true };
+		};
+		KINDS.dupInsertBefore = (md) => {
+			const ls = lines(md);
+			const k = pick(dupLines(ls));
+			if (k === undefined) return null;
+			const [, indent, prefix] = ls[k].match(PREFIX) ?? [];
+			return {
+				old: `\n${ls[k]}`,
+				new: `\n${indent ?? ""}${prefix ?? ""}fresh mNEWx\n${prefix ? "" : "\n"}${ls[k]}`,
+				all: md.split(`\n${ls[k]}`).length > 2,
+			};
+		};
 		KINDS.swap = (md, tops) => {
 			if (rnd(2) === 0) {
-				// Two neighbouring lines (list items at one depth, or a parent
-				// and its first nested item).
+				// Two neighbouring lines (list items at one depth, a parent and
+				// its first nested item, or duplicates).
 				const ls = lines(md);
 				const k = pick(
 					ls
 						.map((_, i) => i)
 						.filter(
 							(i) =>
-								i + 1 < ls.length &&
-								ONE_MARKER.test(ls[i]) &&
-								ONE_MARKER.test(ls[i + 1]),
+								textLine(ls[i]) &&
+								textLine(ls[i + 1]) &&
+								ls[i].trim() !== ls[i + 1].trim(),
 						),
 				);
 				if (k === undefined) return null;
@@ -1782,12 +1879,40 @@ describe("spliceEdit fuzz by edit kind", () => {
 			{ applied: number; refused: number; skipped: number }
 		> = {};
 		const reasons: Record<string, number> = {};
-		for (let iter = 0; iter < 1800; iter++) {
+		for (let iter = 0; iter < 2400; iter++) {
 			const kind = Object.keys(KINDS)[iter % Object.keys(KINDS).length];
 			stats[kind] ??= { applied: 0, refused: 0, skipped: 0 };
 			const s = stats[kind];
 			const len = 3 + rnd(7);
 			const blocks = Array.from({ length: len }, (_, i) => mk(`m${i}`));
+			if (kind.startsWith("dup")) {
+				// Two neighbours that read the same but may differ in colour,
+				// or a mention chip next to plain text that reads the same.
+				const at = rnd(len - 1);
+				const pair = [
+					() => [
+						blk("bulletListItem", "dup line", look()),
+						blk("bulletListItem", "dup line", look()),
+					],
+					() => [
+						blk("checkListItem", "TODO", { checked: false, ...look() }),
+						blk("checkListItem", "TODO", { checked: false, ...look() }),
+					],
+					() => [
+						{
+							...blk("bulletListItem", ""),
+							content: [
+								{
+									type: "teamMention",
+									props: { id: "u0", name: "Ann", avatar: "" },
+								},
+							],
+						},
+						blk("bulletListItem", "@Ann (id: u0)"),
+					],
+				][rnd(3)]();
+				blocks.splice(at, 2, ...(rnd(2) === 0 ? pair : pair.reverse()));
+			}
 			const json = blocks.map((b) => JSON.stringify(b));
 			const md = blocknoteToMarkdown(blocks);
 			const tops = blocks
@@ -1838,14 +1963,25 @@ describe("spliceEdit fuzz by edit kind", () => {
 				hits.push(k);
 				if (!edit.all) break;
 			}
+			// Positions with runs of newlines collapsed: whether a list is
+			// tight or loose depends on all of it, so a prefix of the blocks
+			// may space its last list differently.
+			const squash = (x: string) => x.replace(/\n+/g, "\n");
+			const flat = squash(md);
 			const ends = blocks.map((_, i) => {
-				const upto = blocknoteToMarkdown(blocks.slice(0, i + 1)).trimEnd();
-				expect(md.startsWith(upto), ctx).toBe(true);
+				const upto = squash(
+					blocknoteToMarkdown(blocks.slice(0, i + 1)),
+				).trimEnd();
+				expect(flat.startsWith(upto), `${ctx}\nprefix ${i}`).toBe(true);
 				return upto.length;
 			});
+			for (let k = 0; k < hits.length; k++) {
+				hits[k] = squash(md.slice(0, hits[k])).length;
+			}
+			const span = squash(edit.old).length;
 			const touched = blocks.map((_, i) => {
 				const a = i === 0 ? 0 : ends[i - 1];
-				return hits.some((h) => h < ends[i] && h + edit.old.length > a);
+				return hits.some((h) => h < ends[i] && h + Math.max(span, 1) > a);
 			});
 			// Indenting a block nests it in the block above it, which changes.
 			if (kind === "indent") {
@@ -1888,6 +2024,20 @@ describe("spliceEdit fuzz by edit kind", () => {
 			let at = 0;
 			for (let i = 0; i < len; i++) {
 				if (!keep[i]) continue;
+				// A later item of a numbered run that stores a start (which
+				// the parser never writes there) loses it whenever its list is
+				// re-parsed, touched or not: it keeps its id and place.
+				if (run(i) && run(i - 1) && blocks[i].props.start !== undefined) {
+					const k = res.blocks.findIndex(
+						(b, q) => q >= at && b.id === blocks[i].id,
+					);
+					expect(
+						k,
+						`${ctx}\nblock ${i} missing or out of order`,
+					).toBeGreaterThanOrEqual(0);
+					at = k + 1;
+					continue;
+				}
 				const found = res.blocks.indexOf(blocks[i], at);
 				expect(
 					found,
@@ -1920,7 +2070,51 @@ describe("spliceEdit fuzz by edit kind", () => {
 					(ownText(holder).match(MARKER) ?? []).length,
 					`${ctx}\n${o.id}'s text moved to ${holder.id} without its id`,
 				).toBeGreaterThan(1);
-				expect(lostByMarkdown(holder), ctx).toBe(lost);
+				expect(
+					lostByMarkdown(holder),
+					`${ctx}\nOLD ${JSON.stringify(o)}\nRES ${JSON.stringify(res.blocks)}`,
+				).toBe(lost);
+			}
+
+			// An id stays with the text that continues it most: no new block
+			// (an id not read) continues an old block's text better than the
+			// block that kept its id.
+			const olds = new Map(everyBlock(blocks).map((b) => [b.id, b]));
+			const born = outs.filter((b) => !olds.has(b.id));
+			for (const b of outs) {
+				const o = olds.get(b.id);
+				if (!o || o === b || ownText(b) === ownText(o)) continue;
+				const mine = overlap(ownText(b), ownText(o));
+				for (const f of born) {
+					expect(
+						overlap(ownText(f), ownText(o)),
+						`${ctx}\n${o.id} kept on text that continues it less than new ${f.id}`,
+					).toBeLessThanOrEqual(mine);
+				}
+			}
+
+			// Siblings that read the same (and show something) keep their
+			// order.
+			const pos = new Map(outs.map((b, k) => [b.id, k]));
+			const ownMd = (b: any) => blocknoteToMarkdown([{ ...b, children: [] }]);
+			for (const sibs of [
+				blocks,
+				...everyBlock(blocks).map((b) => b.children ?? []),
+			]) {
+				for (let a = 0; a < sibs.length; a++) {
+					for (let z = a + 1; z < sibs.length; z++) {
+						const pa = pos.get(sibs[a].id);
+						const pz = pos.get(sibs[z].id);
+						if (pa === undefined || pz === undefined) continue;
+						// Blank blocks are placed by their neighbours (rule D).
+						if (ownMd(sibs[a]) !== ownMd(sibs[z]) || ownMd(sibs[a]) === "")
+							continue;
+						expect(
+							pa,
+							`${ctx}\n${sibs[a].id} and ${sibs[z].id} swapped`,
+						).toBeLessThan(pz);
+					}
+				}
 			}
 		}
 		// FUZZ_OUT=<file> writes the counts, and why each refusal happened.
