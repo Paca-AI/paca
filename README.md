@@ -6,8 +6,11 @@
 
 <p align="center"><strong>AI-native. Free. Lightweight. Open-source.<br/>The fully customizable alternative to Jira, Trello, ClickUp, and Monday.</strong></p>
 
+<p align="center"><strong>🌱 A non-profit, community-owned project — built by contributors, for everyone. Free forever, no paid tiers.</strong></p>
+
 <p align="center">
   <a href="https://github.com/Paca-AI/paca/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License" /></a>
+  <img src="https://img.shields.io/badge/non--profit-community%20project-2ea44f" alt="Non-profit community project" />
   <a href="https://github.com/Paca-AI/paca/releases"><img src="https://img.shields.io/github/v/release/Paca-AI/paca" alt="Latest Release" /></a>
   <a href="https://github.com/Paca-AI/paca/stargazers"><img src="https://img.shields.io/github/stars/Paca-AI/paca?style=social" alt="Stars" /></a>
   <a href="https://artifacthub.io/packages/helm/paca/paca"><img src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/paca" alt="Artifact Hub" /></a>
@@ -51,7 +54,7 @@
 
 ## What is Paca?
 
-Paca is a **self-hosted project management platform** where AI agents and humans collaborate as equal teammates inside a Scrum team — not as chatbots bolted on the side.
+Paca is a **non-profit, community-driven** project: a **self-hosted project management platform** where AI agents and humans collaborate as equal teammates inside a Scrum team — not as chatbots bolted on the side.
 
 Jira gives you a backlog. ClickUp gives you automations. Monday gives you dashboards. **Paca gives your AI agents a seat at the table.** They join sprint planning, pick up tasks from the board, write BDD specs, and adapt alongside humans in real time.
 
@@ -81,6 +84,8 @@ Paca is, and will always be, **free and non-profit**.
 - **No paywalled features.** Every feature — today and in the future — is available to everyone, at no cost.
 - **No open-core bait-and-switch.** We will not move existing features behind a paywall or a license change.
 - **Belongs to the community.** Paca is built by its contributors and for its users. It is not a vendor's product, and its direction is shaped in the open through issues, discussions, and pull requests.
+- **Not a business.** No company sells Paca and there is no paid edition. Sponsors help cover infrastructure costs; the project's direction stays with the community.
+- **Everyone is welcome to help.** Code, docs, translations, plugins, bug reports, and ideas all count. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
