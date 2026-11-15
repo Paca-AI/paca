@@ -1650,6 +1650,24 @@ describe("spliceEdit time on long lists", () => {
 		expect(blocknoteToMarkdown(res.blocks)).not.toContain("word");
 	}, 60_000);
 
+	// Depth 100 took 3.8 s before nested blocks were trusted once their
+	// parent's whole subtree read back nested (about 0.3 s now).
+	it("edits the leaf of a list nested 100 deep quickly", () => {
+		const blocks = stored(
+			Array.from({ length: 100 }, (_, i) => `${"    ".repeat(i)}* d ${i}`).join(
+				"\n",
+			),
+			(b) => {
+				b[0].props.textColor = "red";
+			},
+		);
+		const t0 = Date.now();
+		const res = spliceEdit(blocks, "d 99", "d last", false);
+		expect(Date.now() - t0).toBeLessThan(1500);
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+		expect(res.blocks[0].props.textColor).toBe("red");
+	}, 60_000);
+
 	it("edits one item of a 3000-item list in a few seconds", () => {
 		const blocks = stored(
 			Array.from({ length: 3000 }, (_, i) => `* item ${i}`).join("\n"),

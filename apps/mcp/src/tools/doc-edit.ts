@@ -563,9 +563,13 @@ function flatten(
 	parent: Block | null,
 	old: boolean,
 	out: Entry[] = [],
+	// The blocks were read back nested as they are, as part of a parent
+	// whose whole subtree Markdown nests: no need to parse them again
+	// (each check parses the whole subtree, which made deep lists slow).
+	nested = false,
 ): Entry[] {
 	for (const b of blocks) {
-		const whole = old && !nestsInMarkdown(b);
+		const whole = old && !nested && !nestsInMarkdown(b);
 		const e: Entry = {
 			b,
 			parent,
@@ -576,7 +580,7 @@ function flatten(
 		};
 		out.push(e);
 		const at = out.length;
-		if (!whole) flatten(kidsOf(b), b, old, out);
+		if (!whole) flatten(kidsOf(b), b, old, out, old);
 		e.size = out.length - at + 1;
 	}
 	return out;
