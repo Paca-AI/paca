@@ -268,6 +268,7 @@ async function pullLocked(
 		) {
 			kept++;
 			next[id] = { ...p, orphan: true };
+			delete next[id].pending_sha256;
 			lines.push(
 				`kept ${p.file}: edited locally; the document was removed in Paca (delete the file, or pull --force to remove it)`,
 			);
