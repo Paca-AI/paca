@@ -522,32 +522,30 @@ describe("spliceEdit deletes, merges and splits blocks with props", () => {
 		]);
 	});
 
-	it("merges blocks that share their props, keeping them", () => {
+	// Sixth review: a merge of blocks with data is refused (where the data
+	// goes is decided by nothing but text); plain blocks merge freely.
+	it("refuses merging blocks with props; merges plain ones", () => {
 		const blocks = [
 			para("A", { textColor: "red" }),
 			para("B", { textColor: "red" }),
 			para("C"),
 			para("D"),
 		];
-		const res = spliceEdit(blocks, "A\n\nB", "A B", false);
-		expect(res.blocks[0].content).toEqual([t("A B")]);
-		expect(res.blocks[0].props.textColor).toBe("red");
+		expect(() => spliceEdit(blocks, "A\n\nB", "A B", false)).toThrow(
+			/smaller edits/,
+		);
 		const res2 = spliceEdit(blocks, "C\n\nD", "C D", false);
 		expect(res2.blocks[2].props.textColor).toBe("default");
 	});
 
-	it("a split gives the props to the part that continues the text most", () => {
+	it("refuses splitting a block with props (sixth review)", () => {
 		const blocks = [
 			para("one two three", { textAlignment: "center" }),
 			para("b"),
 		];
-		const res = spliceEdit(blocks, "one two three", "one\n\ntwo three", false);
-		expect(res.blocks).toHaveLength(3);
-		expect(res.blocks[0].props.textAlignment).toBe("left");
-		expect(res.blocks[0].id).not.toBe(blocks[0].id);
-		expect(res.blocks[1].props.textAlignment).toBe("center");
-		expect(res.blocks[1].id).toBe(blocks[0].id);
-		expect(res.blocks[2]).toBe(blocks[1]);
+		expect(() =>
+			spliceEdit(blocks, "one two three", "one\n\ntwo three", false),
+		).toThrow(/smaller edits/);
 	});
 
 	it("a new paragraph added after a red one stays default", () => {
@@ -800,12 +798,6 @@ describe("spliceEdit nested children, moves and Markdown props (fourth review)",
 			item(B, "k2", { textColor: "blue" }),
 		]),
 	];
-	const own = (b: any) => [
-		b.id,
-		b.type,
-		b.props.textColor,
-		b.content.map((c: any) => c.text).join(""),
-	];
 
 	it("deleting the first nested child keeps the second as stored", () => {
 		const blocks = kids();
@@ -886,37 +878,34 @@ describe("spliceEdit nested children, moves and Markdown props (fourth review)",
 		expect(() => spliceEdit(blocks, "a", "a ", false)).toThrow(SpliceError);
 	});
 
-	it("swapping two coloured paragraphs moves the stored blocks", () => {
+	it("refuses swapping two coloured paragraphs (sixth review)", () => {
 		const blocks = [
 			para("a", { textColor: "red" }),
 			para("b", { textColor: "blue" }),
 		];
-		const res = spliceEdit(blocks, "a\n\nb", "b\n\na", false);
-		expect(res.blocks).toEqual([blocks[1], blocks[0]]);
-		expect(res.blocks[0]).toBe(blocks[1]);
-		expect(res.blocks[1]).toBe(blocks[0]);
+		expect(() => spliceEdit(blocks, "a\n\nb", "b\n\na", false)).toThrow(
+			/order of the blocks/,
+		);
 	});
 
-	it("swapping two coloured list items moves the stored blocks", () => {
+	it("refuses swapping two coloured list items (sixth review)", () => {
 		const blocks = [
 			item(B, "x", { textColor: "red" }),
 			item(B, "y", { textColor: "blue" }),
 		];
-		const res = spliceEdit(blocks, "x\n\n* y", "y\n\n* x", false);
-		expect(res.blocks[0]).toBe(blocks[1]);
-		expect(res.blocks[1]).toBe(blocks[0]);
+		expect(() => spliceEdit(blocks, "x\n\n* y", "y\n\n* x", false)).toThrow(
+			/order of the blocks/,
+		);
 	});
 
-	it("indenting a coloured item keeps its id and colour", () => {
+	it("refuses indenting a coloured item (sixth review)", () => {
 		const blocks = [
 			item(B, "a", { textColor: "red" }),
 			item(B, "b", { textColor: "red" }),
 		];
-		const res = spliceEdit(blocks, "* b", "  * b", false);
-		expect(res.blocks).toHaveLength(1);
-		expect(own(res.blocks[0])).toEqual(own(blocks[0]));
-		expect(res.blocks[0].children).toHaveLength(1);
-		expect(res.blocks[0].children[0]).toEqual({ ...blocks[1], children: [] });
+		expect(() => spliceEdit(blocks, "* b", "  * b", false)).toThrow(
+			/under another block/,
+		);
 	});
 
 	// Rule: in a merge or split (old and new blocks not paired one to one),
@@ -1042,22 +1031,13 @@ describe("spliceEdit pairs blocks by position, then by text (fifth review)", () 
 		expect(res.blocks[0].children[1]).toBe(grand);
 	});
 
-	it("a split gives the old block's id and colour to the block that continues its text (P3)", () => {
+	it("refuses a split of a coloured block (P3; sixth review)", () => {
 		const blocks = stored("intro\n\nWarning: x\n\nend", (b) => {
 			b[1].props.textColor = "red";
 		});
-		const res = spliceEdit(
-			blocks,
-			"Warning: x",
-			"Note: y\n\nWarning: x2",
-			false,
-		);
-		expect(res.blocks[0]).toBe(blocks[0]);
-		expect(res.blocks[1].id).not.toBe(blocks[1].id);
-		expect(res.blocks[1].props.textColor ?? "default").toBe("default");
-		expect(res.blocks[2].id).toBe(blocks[1].id);
-		expect(res.blocks[2].props.textColor).toBe("red");
-		expect(res.blocks[3]).toBe(blocks[2]);
+		expect(
+			fail(blocks, "Warning: x", "Note: y\n\nWarning: x2").message,
+		).toMatch(/smaller edits/);
 	});
 
 	it("a split of plain blocks gives the id to the block that continues the text", () => {
@@ -1072,38 +1052,18 @@ describe("spliceEdit pairs blocks by position, then by text (fifth review)", () 
 		expect(res.blocks[1].id).not.toBe(blocks[1].id);
 	});
 
-	it("a nested split gives the id and colour to the continuing child", () => {
+	it("refuses a nested split of a coloured child (sixth review)", () => {
 		const blocks = stored("* p\n    * Warning x", (b) => {
 			b[0].children[0].props.textColor = "red";
 		});
-		const kid = blocks[0].children[0];
-		const res = spliceEdit(
-			blocks,
-			"  * Warning x",
-			"  * Note y\n\n  * Warning x2",
-			false,
-		);
-		const [a, b] = res.blocks[0].children;
-		expect(a.id).not.toBe(kid.id);
-		expect(a.props.textColor ?? "default").toBe("default");
-		expect(b.id).toBe(kid.id);
-		expect(b.props.textColor).toBe("red");
+		fail(blocks, "  * Warning x", "  * Note y\n\n  * Warning x2");
 	});
 
-	it("swapping and editing two blocks keeps each id and colour on its own text", () => {
+	it("refuses swapping and editing a coloured block (sixth review)", () => {
 		const blocks = stored("alpha one\n\nbeta two", (b) => {
 			b[0].props.textColor = "red";
 		});
-		const res = spliceEdit(
-			blocks,
-			"alpha one\n\nbeta two",
-			"beta two.\n\nalpha one.",
-			false,
-		);
-		expect(res.blocks[0].id).toBe(blocks[1].id);
-		expect(res.blocks[0].props.textColor ?? "default").toBe("default");
-		expect(res.blocks[1].id).toBe(blocks[0].id);
-		expect(res.blocks[1].props.textColor).toBe("red");
+		fail(blocks, "alpha one\n\nbeta two", "beta two.\n\nalpha one.");
 	});
 
 	it("refuses deleting one of two equal blocks that differ in colour", () => {
@@ -1168,6 +1128,293 @@ describe("spliceEdit pairs blocks by position, then by text (fifth review)", () 
 	});
 });
 
+// Sixth review: where data Markdown cannot show (colours, chips, a toggle,
+// table formatting) may go. Inside an edited range, a block holding such
+// data is either kept where it was (same parent, every kept block in the
+// same order) or edited in place in a range that maps one to one by
+// position; text similarity never decides where it goes. Ranges without
+// such data are free.
+describe("spliceEdit keeps data blocks in place or refuses (sixth review)", () => {
+	const fail = (blocks: any[], o: string, n: string, all = false) => {
+		try {
+			spliceEdit(blocks, o, n, all);
+		} catch (e) {
+			expect(e).toBeInstanceOf(SpliceError);
+			return e as SpliceError;
+		}
+		throw new Error("the edit was applied");
+	};
+	const smaller = /smaller edits/;
+	const chip = () => ({
+		type: "teamMention",
+		props: { id: "u-Ann", name: "Ann", avatar: "" },
+	});
+	const T = "| a | b |\n|---|---|\n| 1 | 2 |";
+	const formatTable = (tb: any) => {
+		tb.content.columnWidths = [300, null];
+		tb.content.rows[1].cells[0].props.backgroundColor = "red";
+	};
+
+	it("refuses swapping two sections whose equal lines differ in colour (p23)", () => {
+		const doc = "## Alice\n\nStatus: done\n\n## Bob\n\nStatus: done";
+		const blocks = stored(doc, (b) => {
+			b[1].props.backgroundColor = "green";
+			b[3].props.backgroundColor = "red";
+		});
+		const e = fail(
+			blocks,
+			doc,
+			"## Bob\n\nStatus: done\n\n## Alice\n\nStatus: done",
+		);
+		expect(e.kind).toBe("unsafe");
+		expect(e.message).toMatch(smaller);
+	});
+
+	it("refuses swapping list subtrees whose equal children differ in colour (p22)", () => {
+		const blocks = stored("* A\n    * x\n* B\n    * x", (b) => {
+			b[0].children[0].props.textColor = "red";
+			b[1].children[0].props.textColor = "blue";
+		});
+		const full = blocknoteToMarkdown(blocks).trimEnd();
+		const [a, b] = [
+			full.slice(0, full.indexOf("* B")),
+			full.slice(full.indexOf("* B")),
+		];
+		expect(fail(blocks, full, `${b}\n\n${a.trimEnd()}`).message).toMatch(
+			smaller,
+		);
+	});
+
+	it("refuses swapping sections when a chip line reads like a plain one (p30)", () => {
+		const P1 = "Hi @Ann (id: u-Ann)";
+		const blocks = stored(`# A\n\n${P1}\n\n# B\n\n${P1}`, (b) => {
+			b[1].content = [t("Hi "), chip()];
+		});
+		const full = blocknoteToMarkdown(blocks).trimEnd();
+		const line = full.split("\n\n")[1];
+		expect(
+			fail(blocks, full, `# B\n\n${line}\n\n# A\n\n${line}`).message,
+		).toMatch(smaller);
+	});
+
+	it("refuses a reorder that rewrites both ends of each line (p28)", () => {
+		const blocks = stored("Alice is done\n\nBob is pending\n\nend", (b) => {
+			b[0].props.backgroundColor = "green";
+			b[1].props.backgroundColor = "red";
+		});
+		fail(
+			blocks,
+			"Alice is done\n\nBob is pending",
+			"(1) Bob is pending.\n\n(2) Alice is done.",
+		);
+	});
+
+	it("sees table formatting: refuses deleting one of two equal tables (p27)", () => {
+		for (const which of [0, 1]) {
+			const blocks = stored(`${T}\n\n${T}\n\nend`, (b) =>
+				formatTable(b[which]),
+			);
+			const full = blocknoteToMarkdown(blocks);
+			const two = full.slice(0, full.indexOf("\n\nend"));
+			const one = two.slice(0, two.length / 2 - 1);
+			fail(blocks, two, one);
+		}
+	});
+
+	it("refuses swapping sections with equal tables, one formatted (p27)", () => {
+		const blocks = stored(`# A\n\n${T}\n\n# B\n\n${T}`, (b) =>
+			formatTable(b[1]),
+		);
+		const full = blocknoteToMarkdown(blocks).trimEnd();
+		const tbl = full.split("# A\n\n")[1].split("\n\n# B")[0];
+		fail(blocks, full, `# B\n\n${tbl}\n\n# A\n\n${tbl}`);
+	});
+
+	it("edits a formatted table's cell text and keeps its widths and cell colour", () => {
+		const blocks = stored(T, (b) => formatTable(b[0]));
+		const res = spliceEdit(blocks, "| 2 |", "| 3 |", false);
+		const tb = res.blocks[0];
+		expect(tb.id).toBe(blocks[0].id);
+		expect(tb.content.columnWidths).toEqual([300, null]);
+		expect(tb.content.rows[1].cells[0].props.backgroundColor).toBe("red");
+		expect(blocknoteToMarkdown(res.blocks)).toContain("| 3 |");
+	});
+
+	it("refuses deleting one of three equal blocks when one is coloured, either end (p24)", () => {
+		for (const at of [0, 2]) {
+			const blocks = stored("x\n\nx\n\nx", (b) => {
+				b[at].props.textColor = "red";
+			});
+			fail(blocks, "x\n\nx\n\nx", "x\n\nx");
+		}
+	});
+
+	it("refuses indenting a coloured item (its parent would change)", () => {
+		const blocks = stored("* a\n* b", (b) => {
+			b[1].props.textColor = "red";
+		});
+		expect(fail(blocks, "* b", "  * b").message).toMatch(smaller);
+	});
+
+	it("refuses splitting a coloured paragraph (P3, now)", () => {
+		const blocks = stored("intro\n\nWarning: x\n\nend", (b) => {
+			b[1].props.textColor = "red";
+		});
+		fail(blocks, "Warning: x", "Note: y\n\nWarning: x2");
+	});
+
+	it("merges two plain paragraphs, the first shorter (p20)", () => {
+		const blocks = stored("Hi\n\nthere everyone\n\nend");
+		const res = spliceEdit(
+			blocks,
+			"Hi\n\nthere everyone",
+			"Hi there everyone",
+			false,
+		);
+		expect(blocknoteToMarkdown(res.blocks)).toBe("Hi there everyone\n\nend\n");
+		expect(res.blocks[1]).toBe(blocks[2]);
+	});
+
+	it("reorders and renames plain sections (p23, no data)", () => {
+		const doc = "## Alice\n\nStatus: done\n\n## Bob\n\nStatus: done";
+		const blocks = stored(doc);
+		const res = spliceEdit(
+			blocks,
+			doc,
+			"## Bob B.\n\nStatus: done\n\n## Alice A.\n\nStatus: done",
+			false,
+		);
+		expect(blocknoteToMarkdown(res.blocks)).toBe(
+			"## Bob B.\n\nStatus: done\n\n## Alice A.\n\nStatus: done\n",
+		);
+	});
+
+	it("edits an item with an empty nested paragraph, keeping the empty one (p32)", () => {
+		const K = {
+			id: "K",
+			type: "paragraph",
+			props: { ...P },
+			content: [],
+			children: [],
+		};
+		const blocks = stored("* alpha\n* b", (b) => {
+			b[0].children = [K];
+		});
+		const res = spliceEdit(blocks, "alpha", "beta", false);
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+		expect(res.blocks[0].children[0]).toBe(K);
+		expect(blocknoteToMarkdown(res.blocks)).toContain("beta");
+	});
+
+	it("still does the ordinary edits next to coloured blocks", () => {
+		const red = (b: any) => {
+			b.props.textColor = "red";
+		};
+		// A word in a coloured paragraph.
+		let blocks = stored("one\n\ntwo\n\nthree", (b) => red(b[1]));
+		let res = spliceEdit(blocks, "two", "deux", false);
+		expect(res.blocks[1].id).toBe(blocks[1].id);
+		expect(res.blocks[1].props.textColor).toBe("red");
+		// A bullet added to a list with a coloured item.
+		blocks = stored("* a\n* b", (b) => red(b[0]));
+		res = spliceEdit(blocks, "* b", "* b\n* c", false);
+		expect(res.blocks[0]).toBe(blocks[0]);
+		expect(res.blocks).toHaveLength(3);
+		// A plain paragraph inserted and one deleted next to a coloured one.
+		blocks = stored("x\n\nwarn\n\ny", (b) => red(b[1]));
+		res = spliceEdit(blocks, "warn", "warn\n\nnew", false);
+		expect(res.blocks[1]).toBe(blocks[1]);
+		res = spliceEdit(blocks, "x\n\nwarn", "warn", false);
+		expect(res.blocks[0]).toBe(blocks[1]);
+		// Text inside a coloured nested child.
+		blocks = stored("* a\n    * b\n* c", (b) => red(b[0].children[0]));
+		res = spliceEdit(blocks, "b", "bee", false);
+		expect(res.blocks[0].children[0].id).toBe(blocks[0].children[0].id);
+		expect(res.blocks[0].children[0].props.textColor).toBe("red");
+		// Indenting a plain item under a coloured parent.
+		blocks = stored("* a\n* b", (b) => red(b[0]));
+		res = spliceEdit(blocks, "* b", "  * b", false);
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+		expect(res.blocks[0].props.textColor).toBe("red");
+		expect(res.blocks[0].children[0].id).toBe(blocks[1].id);
+	});
+
+	it("deletes a coloured block whose Markdown is unique in the range", () => {
+		const blocks = stored("a\n\nb\n\nc", (b) => {
+			b[1].props.textColor = "red";
+		});
+		const res = spliceEdit(blocks, "a\n\nb", "a", false);
+		expect(res.blocks.map((b) => b.id)).toEqual([blocks[0].id, blocks[2].id]);
+	});
+});
+
+// The audit enforces the rule above on its own, on hand-built wrong results.
+describe("auditEdit: data blocks stay in place (sixth review)", () => {
+	const fresh = (b: any) => ({ ...b, id: `fresh-${++seq}` });
+
+	it("refuses headings moved around coloured lines that stay (finding 1)", () => {
+		const ha = { ...para("Alice"), type: "heading", props: { ...P, level: 2 } };
+		const sa = para("Status: done", { backgroundColor: "green" });
+		const hb = { ...para("Bob"), type: "heading", props: { ...P, level: 2 } };
+		const sb = para("Status: done", { backgroundColor: "red" });
+		expect(auditEdit([ha, sa, hb, sb], [hb, sa, ha, sb])).not.toBeNull();
+		expect(auditEdit([ha, sa, hb, sb], [ha, sa, hb, sb])).toBeNull();
+	});
+
+	it("refuses positional ids when text moved between the blocks (finding 2)", () => {
+		const a = para("Alice is done", { backgroundColor: "green" });
+		const b = para("Bob is pending", { backgroundColor: "red" });
+		const bad = [
+			{
+				...para("(1) Bob is pending.", { backgroundColor: "green" }),
+				id: a.id,
+			},
+			{ ...para("(2) Alice is done.", { backgroundColor: "red" }), id: b.id },
+		];
+		expect(auditEdit([a, b], bad)).not.toBeNull();
+		const good = [
+			{ ...para("Alice is done!", { backgroundColor: "green" }), id: a.id },
+			{ ...para("Bob is pending!", { backgroundColor: "red" }), id: b.id },
+		];
+		expect(auditEdit([a, b], good)).toBeNull();
+	});
+
+	it("refuses losing a formatted table that reads like a kept plain one (finding 3)", () => {
+		const [plain] = stored(T0);
+		const [fmt] = stored(T0, (b) => {
+			b[0].content.columnWidths = [300, null];
+			b[0].content.rows[1].cells[0].props.backgroundColor = "red";
+		});
+		expect(auditEdit([fmt, plain], [plain])).not.toBeNull();
+		expect(auditEdit([fmt, plain], [fmt])).not.toBeNull();
+		expect(auditEdit([fmt], [])).toBeNull();
+	});
+
+	it("refuses a coloured block moved under another parent", () => {
+		const a = item("bulletListItem", "a");
+		const b = item("bulletListItem", "b", { textColor: "red" });
+		expect(auditEdit([a, b], [{ ...a, children: [b] }])?.why).toMatch(
+			/under another block/,
+		);
+	});
+
+	it("allows a plain block moved under a kept coloured one", () => {
+		const a = item("bulletListItem", "a", { textColor: "red" });
+		const b = item("bulletListItem", "b");
+		expect(auditEdit([a, b], [{ ...a, children: [b] }])).toBeNull();
+	});
+
+	it("allows any id movement in a range without data", () => {
+		const a = para("one");
+		const b = para("two");
+		expect(auditEdit([a, b], [b, a])).toBeNull();
+		expect(
+			auditEdit([a, b], [{ ...para("two!"), id: a.id }, fresh(para("one"))]),
+		).toBeNull();
+	});
+});
+const T0 = "| a | b |\n|---|---|\n| 1 | 2 |";
+
 // Measured on an M-series Mac: 800 items with replace_all about 1.0 s,
 // one edit in 3000 items about 1.5 s (before: 108 s and 4.5 s). The bound
 // leaves room for slower machines; it catches a return of quadratic work.
@@ -1207,7 +1454,8 @@ describe("auditEdit", () => {
 		const b = para("b", { textColor: "blue" });
 		const bad = [{ ...para("b"), id: "fresh-1" }, a];
 		expect(auditEdit([a, b], bad)?.block).toBe(b);
-		expect(auditEdit([a, b], [b, a])).toBeNull();
+		// Sixth review: a swap of coloured blocks is refused as such.
+		expect(auditEdit([a, b], [b, a])?.why).toMatch(/order/);
 	});
 
 	it("refuses ids shifted onto a sibling's text (nested insert)", () => {
@@ -1231,7 +1479,8 @@ describe("auditEdit", () => {
 		expect(auditEdit([a], good)).toBeNull();
 	});
 
-	it("refuses ids shifted onto a sibling's text without colours", () => {
+	// Sixth review: ids of blocks without data are best effort (R2).
+	it("allows ids shifted onto a sibling's text without colours", () => {
 		const k1 = item(B, "k1");
 		const k2 = item(B, "k2");
 		const a = item(B, "a", {}, [k1, k2]);
@@ -1245,7 +1494,7 @@ describe("auditEdit", () => {
 				],
 			},
 		];
-		expect(auditEdit([a], bad)).not.toBeNull();
+		expect(auditEdit([a], bad)).toBeNull();
 	});
 
 	it("refuses a nested child that kept its id but lost its colour", () => {
@@ -1425,7 +1674,7 @@ describe("auditEdit: which block an id is (fifth review)", () => {
 		const a = item(B, "dup", { textColor: "red" });
 		const b = item(B, "dup");
 		expect(auditEdit([a, b], [{ ...b, children: [a] }])?.why).toMatch(
-			/swap places/,
+			/order|under another block/,
 		);
 		expect(auditEdit([a, b], [{ ...a, children: [b] }])).toBeNull();
 	});
@@ -1443,12 +1692,13 @@ describe("auditEdit: which block an id is (fifth review)", () => {
 			{ ...para("Note: y", { textColor: "red" }), id: w.id },
 			fresh(para("Warning: x2", { textColor: "red" })),
 		];
-		expect(auditEdit([w], bad)?.why).toMatch(/text that does not continue/);
-		const good = [
+		expect(auditEdit([w], bad)).not.toBeNull();
+		// Sixth review: a split of a coloured block is refused either way.
+		const split = [
 			fresh(para("Note: y")),
 			{ ...para("Warning: x2", { textColor: "red" }), id: w.id },
 		];
-		expect(auditEdit([w], good)).toBeNull();
+		expect(auditEdit([w], split)?.why).toMatch(/splits/);
 	});
 
 	it("refuses ids swapped onto each other's edited text (swap and edit)", () => {
@@ -1458,12 +1708,13 @@ describe("auditEdit: which block an id is (fifth review)", () => {
 			{ ...para("beta two.", { textColor: "red" }), id: a.id },
 			{ ...para("alpha one."), id: b.id },
 		];
-		expect(auditEdit([a, b], bad)?.why).toMatch(/came from another block/);
-		const good = [
+		expect(auditEdit([a, b], bad)?.why).toMatch(/moves text/);
+		// Sixth review: the swap itself is refused too.
+		const swapped = [
 			{ ...para("beta two."), id: b.id },
 			{ ...para("alpha one.", { textColor: "red" }), id: a.id },
 		];
-		expect(auditEdit([a, b], good)).toBeNull();
+		expect(auditEdit([a, b], swapped)).not.toBeNull();
 	});
 
 	it("refuses a coloured block whose text went inside another block", () => {
@@ -2150,7 +2401,7 @@ describe("spliceEdit fuzz by edit kind", () => {
 			);
 		}
 		for (const [k, v] of Object.entries(stats)) {
-			expect(v.applied, `${k} applied too rarely`).toBeGreaterThan(15);
+			expect(v.applied, `${k} applied too rarely`).toBeGreaterThan(10);
 		}
 	}, 60_000);
 });

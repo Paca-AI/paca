@@ -435,9 +435,31 @@ const shape = (b: Block): string => `(${kidsOf(b).map(shape).join("")})`;
 /** Whether Markdown writes `b`'s nested blocks as nested (a list item's
  *  are; a paragraph's come back as blocks after it). */
 function nestsInMarkdown(b: Block): boolean {
-	if (kidsOf(b).length === 0) return true;
+	if (kidsOf(b).every(blank)) return true;
 	const back = fixSoftBreaks(markdownToBlocknote(render([b])));
-	return back.length === 1 && shape(back[0]) === shape(b);
+	return back.length === 1 && shape(back[0]) === shapeShown(b);
+}
+
+/** How blocks nest, without those that show nothing (an empty paragraph
+ *  writes no Markdown, so it is placed by its neighbours instead). */
+const shapeShown = (b: Block): string =>
+	`(${kidsOf(b)
+		.filter((k) => !blank(k))
+		.map(shapeShown)
+		.join("")})`;
+
+/** `blocks` without those that show nothing, at any depth. */
+function withoutBlank(blocks: Block[]): Block[] {
+	return blocks
+		.filter((b) => !blank(b))
+		.map((b) => {
+			const kids = kidsOf(b);
+			if (kids.length === 0) return b;
+			const next = withoutBlank(kids);
+			return next.length === kids.length && next.every((k, i) => k === kids[i])
+				? b
+				: { ...b, children: next };
+		});
 }
 
 /** Why an old block whose nested blocks Markdown cannot nest cannot be
@@ -473,6 +495,36 @@ function inherit(old: Block, fresh: Block): Block {
 	const out: Block = { ...fresh, props };
 	if ("id" in old) out.id = old.id;
 	else delete out.id;
+	const table = inheritTable(old.content, fresh.content);
+	if (table) out.content = table;
+	return out;
+}
+
+/** A table's new text (`fresh`) with the formatting Markdown cannot write
+ *  kept from `old` (column widths, header settings, each cell's props), when
+ *  both have the same rows and columns; otherwise null. */
+function inheritTable(old: unknown, fresh: unknown): Block | null {
+	const o = old as Block | null;
+	const f = fresh as Block | null;
+	if (o?.type !== "tableContent" || f?.type !== "tableContent") return null;
+	const dims = (t: Block) =>
+		(t.rows ?? []).map((r: Block) => (r.cells ?? []).length).join(",");
+	if (dims(o) !== dims(f)) return null;
+	const out: Block = { ...f };
+	for (const k of ["columnWidths", "headerRows", "headerCols"]) {
+		if (k in o) out[k] = o[k];
+		else delete out[k];
+	}
+	out.rows = (f.rows ?? []).map((r: Block, y: number) => ({
+		...r,
+		cells: (r.cells ?? []).map((c: unknown, x: number) => {
+			const was = o.rows[y].cells[x];
+			if (Array.isArray(was) || !was?.props) return c;
+			const content = Array.isArray(c) ? c : (c as Block).content;
+			const base = Array.isArray(c) ? { type: "tableCell" } : (c as Block);
+			return { ...base, props: was.props, content };
+		}),
+	}));
 	return out;
 }
 
@@ -961,9 +1013,23 @@ function uncarried(b: Block): {
 	};
 	if (Array.isArray(b.content)) walk(b.content);
 	else if (b.content?.type === "tableContent") {
-		for (const r of b.content.rows ?? []) {
-			for (const c of r.cells ?? []) walk(Array.isArray(c) ? c : c?.content);
+		const tc = b.content;
+		// Markdown writes a table's text, with one header row: not its
+		// column widths, other header rows or columns, or cell formatting.
+		if ((tc.columnWidths ?? []).some((w: unknown) => w != null)) {
+			props["column widths"] = tc.columnWidths;
 		}
+		if ((tc.headerRows ?? 0) !== 1) props["header rows"] = tc.headerRows ?? 0;
+		if (tc.headerCols) props["header columns"] = tc.headerCols;
+		const cells: unknown[] = [];
+		(tc.rows ?? []).forEach((r: Block, y: number) => {
+			(r.cells ?? []).forEach((c: unknown, x: number) => {
+				const cp = Array.isArray(c) ? {} : canonProps((c as Block)?.props);
+				if (Object.keys(cp).length > 0) cells.push([y, x, cp]);
+				walk(Array.isArray(c) ? c : (c as Block)?.content);
+			});
+		});
+		if (cells.length > 0) props["cell formatting"] = cells;
 	}
 	return { type: MARKDOWN_TYPES.has(b.type) ? null : b.type, props, inline };
 }
@@ -1039,6 +1105,180 @@ function shared(a: string, b: string): number {
 	return p + q;
 }
 
+/** The blocks of `blocks` (any depth) that hold data Markdown cannot write,
+ *  or hold a nested block that does. */
+function withData(blocks: Block[]): Set<Block> {
+	const out = new Set<Block>();
+	const walk = (b: Block): boolean => {
+		let has = carries(b);
+		for (const k of kidsOf(b)) if (walk(k)) has = true;
+		if (has) out.add(b);
+		return has;
+	};
+	for (const b of blocks) walk(b);
+	return out;
+}
+
+/** A block of a range with where it is: its parent, its place in document
+ *  order, and its path of sibling indices counting only blocks that show
+ *  something ("" for a block that shows nothing). */
+interface Place {
+	b: Block;
+	parent: Block | null;
+	order: number;
+	path: string;
+}
+
+function places(blocks: Block[]): Place[] {
+	const out: Place[] = [];
+	const walk = (bs: Block[], parent: Block | null, prefix: string) => {
+		let k = 0;
+		for (const b of bs) {
+			const path = blank(b) ? "" : `${prefix}${k++}`;
+			out.push({ b, parent, order: out.length, path });
+			walk(kidsOf(b), b, path === "" ? `${prefix}~` : `${path}.`);
+		}
+	};
+	walk(blocks, null, "");
+	return out;
+}
+
+/**
+ * R1, checked on the result: inside an edited range, every old block that
+ * holds data Markdown cannot write (or holds a nested block that does,
+ * `deep`) has one of these outcomes, else the edit is refused:
+ * (a) kept: a result block with its id has its own part unchanged (type,
+ *     props, text), under the block that stands for its old parent, and
+ *     all kept blocks of the range, with data or not, keep their order;
+ * (b) edited in place: the range maps one to one by position (the same
+ *     blocks at the same paths, by id, blanks aside), and no block's new
+ *     text holds the text of another block that left its place (a reorder
+ *     rewritten as edits);
+ * (c) deleted: its id is gone and its own Markdown is unique in the range.
+ * And no block is deleted while a block with data reads the same: the edit
+ * could mean either. Text similarity decides nothing here.
+ */
+function staysInPlace(
+	oldBlocks: Block[],
+	newBlocks: Block[],
+	deep: Set<Block>,
+	oldById: Map<string, Block>,
+): { block: Block; why: string; smaller: true } | null {
+	const O = places(oldBlocks);
+	const N = places(newBlocks);
+	const oldPlace = new Map(O.map((p) => [p.b, p]));
+	const oldOf = (n: Block | null): Block | null | undefined => {
+		if (n === null) return null;
+		if (oldPlace.has(n)) return n;
+		return typeof n.id === "string" ? oldById.get(n.id) : undefined;
+	};
+	const newOf = new Map<Block, Place>();
+	for (const p of N) {
+		const o = oldOf(p.b);
+		if (o) newOf.set(o, p);
+	}
+	const kept = (o: Block, n: Block) =>
+		o === n ||
+		(o.type === n.type &&
+			dataOf(o) === dataOf(n) &&
+			(canonOwn(o) === canonOwn(n) || ownKey(o) === ownKey(n)));
+	const firstData = O.find((p) => deep.has(p.b))?.b as Block;
+	const has = (d: Block) => {
+		const u = uncarried(d);
+		if (!carriesNothing(u))
+			return `it has ${describeUncarried(u)}, which Markdown cannot show,`;
+		const kid = subtree(d).find((x) => x !== d && carries(x)) as Block;
+		return `it holds ${aBlock(kid.type)} with ${describeUncarried(uncarried(kid))}, which Markdown cannot show,`;
+	};
+	const refuse = (d: Block, what: string) => ({
+		block: d,
+		why: `${has(d)} and the edit ${what}`,
+		smaller: true as const,
+	});
+
+	// (a)'s order: kept blocks, in the result's order, in the old order.
+	let last: Place | null = null;
+	for (const p of N) {
+		const o = oldOf(p.b);
+		if (!o || !kept(o, p.b)) continue;
+		const op = oldPlace.get(o) as Place;
+		if (last && op.order < last.order) {
+			const d = deep.has(o) ? o : deep.has(last.b) ? last.b : firstData;
+			return refuse(d, "would change the order of the blocks around it");
+		}
+		last = op;
+	}
+
+	// (b): one to one by position.
+	const shownO = O.filter((p) => p.path !== "");
+	const shownN = N.filter((p) => p.path !== "");
+	const byPos =
+		shownO.length === shownN.length &&
+		shownO.every(
+			(p, k) => shownN[k].path === p.path && oldOf(shownN[k].b) === p.b,
+		);
+	if (byPos) {
+		const texts = shownO.map((p) => ownText(p.b));
+		const now = shownN.map((p) => ownText(p.b));
+		const left = texts.map((x, k) => x !== "" && !now[k].includes(x));
+		for (let k = 0; k < now.length && byPos; k++) {
+			if (!left[k]) continue;
+			const q = texts.findIndex(
+				(x, j) => j !== k && left[j] && now[k].includes(x),
+			);
+			if (q >= 0) {
+				const d = deep.has(shownO[k].b)
+					? shownO[k].b
+					: deep.has(shownO[q].b)
+						? shownO[q].b
+						: firstData;
+				return refuse(d, "moves text from one block to another");
+			}
+		}
+	}
+
+	const count = new Map<string, number>();
+	for (const p of O) {
+		const k = ownKey(p.b);
+		count.set(k, (count.get(k) ?? 0) + 1);
+	}
+
+	for (const op of O) {
+		const o = op.b;
+		const np = newOf.get(o);
+		if (!np) {
+			// Deleted: not while a block with data reads the same.
+			const twin = [...deep].find((d) => d !== o && ownKey(d) === ownKey(o));
+			if (twin && ownKey(o) !== "") {
+				return refuse(
+					twin,
+					"deletes a block that reads the same, so edit_doc cannot tell which one goes",
+				);
+			}
+			if (
+				deep.has(o) &&
+				(ownKey(o) === "" || (count.get(ownKey(o)) ?? 0) > 1)
+			) {
+				return refuse(o, "deletes it or a block that reads the same");
+			}
+			continue;
+		}
+		if (!deep.has(o)) continue;
+		if (kept(o, np.b)) {
+			if (oldOf(np.parent) !== op.parent) {
+				return refuse(o, "would move it under another block");
+			}
+			continue;
+		}
+		if (byPos && np.path === op.path) continue;
+		return refuse(
+			o,
+			"splits, merges, moves or rewrites the blocks around it, so edit_doc cannot tell which new block it is",
+		);
+	}
+	return null;
+}
+
 /**
  * Checks the blocks an edit produced (`newBlocks`) against the ones it
  * replaced (`oldBlocks`), at every depth. Returns the first old block the
@@ -1067,7 +1307,7 @@ function shared(a: string, b: string): number {
 export function auditEdit(
 	oldBlocks: Block[],
 	newBlocks: Block[],
-): { block: Block; why: string } | null {
+): { block: Block; why: string; smaller?: boolean } | null {
 	const olds = oldBlocks.flatMap(subtree);
 	const news = newBlocks.flatMap(subtree);
 	const returned = new Set(news);
@@ -1143,11 +1383,18 @@ export function auditEdit(
 		}
 	}
 
+	const deep = withData(oldBlocks);
+	if (deep.size > 0) {
+		const bad = staysInPlace(oldBlocks, newBlocks, deep, oldById);
+		if (bad) return bad;
+	}
+
 	for (let k = 0; k < news.length; k++) {
 		const n = news[k];
 		const o = typeof n.id === "string" ? oldById.get(n.id) : undefined;
-		// A block returned as the very object read is as it was.
-		if (!o || o === n || newKeys[k] === ownKey(o)) continue;
+		// A block returned as the very object read is as it was; ids of
+		// blocks without data may move (R2).
+		if (!o || o === n || !deep.has(o) || newKeys[k] === ownKey(o)) continue;
 		const from = olds.find(
 			(p) => p !== o && ownKey(p) === newKeys[k] && !holds(p.id, newKeys[k]),
 		);
@@ -1166,7 +1413,7 @@ export function auditEdit(
 	const others = olds.filter((p) => !returned.has(p));
 	for (const n of news) {
 		const o = typeof n.id === "string" ? oldById.get(n.id) : undefined;
-		if (!o || o === n) continue;
+		if (!o || o === n || !deep.has(o)) continue;
 		const text = ownText(n);
 		const was = ownText(o);
 		if (text === was) continue;
@@ -1185,7 +1432,8 @@ export function auditEdit(
 		}
 	}
 
-	// 5. Blocks that read the same keep their order.
+	// 5. Blocks that read the same keep their order (in a range with data).
+	if (deep.size === 0) return null;
 	const at = new Map<unknown, number>();
 	news.forEach((n, k) => {
 		if (typeof n.id === "string") at.set(n.id, k);
@@ -1376,7 +1624,7 @@ export function spliceEdit(
 		// The result must say what the edit asks for: its Markdown is that
 		// of the edited text parsed as a whole (blocks that render to nothing
 		// aside), and differs from what was there.
-		const shown = (bs: Block[]) => render(bs.filter((b) => !blank(b)));
+		const shown = (bs: Block[]) => render(withoutBlank(bs));
 		const got = shown(aligned.blocks);
 		if (got === shown(blocks.slice(from, to))) {
 			throw new SpliceError(
@@ -1396,7 +1644,9 @@ export function spliceEdit(
 		if (bad) {
 			const line = lineOf(topOf.get(bad.block) ?? from);
 			throw new SpliceError(
-				`The edit touches ${where(bad.block)}, which edit_doc cannot rewrite from Markdown: ${bad.why}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
+				bad.smaller
+					? `The edit touches ${where(bad.block)}, which edit_doc cannot rewrite from Markdown: ${bad.why}. Nothing was changed. Make the change in smaller edits (change text in place, and add, delete or move plain blocks in edits of their own), or in the web editor.`
+					: `The edit touches ${where(bad.block)}, which edit_doc cannot rewrite from Markdown: ${bad.why}. Nothing was changed. Edit that block in the web editor, or rewrite the document with write_doc if losing that is acceptable.`,
 				"unsafe",
 				[line],
 			);
