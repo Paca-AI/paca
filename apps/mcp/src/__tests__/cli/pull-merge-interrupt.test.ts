@@ -235,6 +235,35 @@ describe("a merging pull stopped at each step of its journal", () => {
 		});
 	}
 
+	it("a document renamed and edited in Paca while its file is edited here: a stop at any write, then pull, moves and merges it", async () => {
+		const want =
+			"# Plan\n\nFirst, by Ann.\n\nRed one.\n\nThird, mine.\n\nLast.\n";
+		const stops: string[][] = [];
+		for (let n = 0; n < 12; n++) {
+			const h = await setup();
+			try {
+				h.write(h.read().replace("Third.", "Third, mine."));
+				h.server.edit(ID, (b) => {
+					b[1].content[0].text = "First, by Ann.";
+				});
+				(h.server.docs.get(ID) as any).title = "Renamed";
+				const k = await killed(h.pull, h.mirror, n);
+				if (k.first === "done") break;
+				stops.push(k.writes);
+				const at = `stopped after ${k.writes.join(", ") || "nothing"}`;
+				expect(await h.pull(), `${at}\n${h.said()}`).toBe(0);
+				expect(h.read("Renamed.md"), at).toBe(want);
+				expect(h.state().docs[ID].unmerged, at).toBeUndefined();
+				expect(await h.push("m/Renamed.md"), at).toBe(0);
+				expect(h.render(), at).toBe(want);
+			} finally {
+				h.cleanup();
+			}
+		}
+		expect(stops.length).toBeGreaterThan(3);
+		expect(stops[1]).toEqual([".paca-sync.json"]);
+	});
+
 	it("a later error after a merge keeps the merge: the next pull finishes it without merging again", async () => {
 		const h = await setup();
 		try {

@@ -392,6 +392,13 @@ async function pullLocked(
 			});
 		}
 
+		// Each file's hash before any moves (a moving file is under its
+		// temporary name below), to tell pull's writes from local edits.
+		const onDisk = new Map<string, string | null>();
+		for (const id of ids) {
+			const p = prevDocs[id];
+			if (p) onDisk.set(id, await fileSha256(path.resolve(root, p.file)));
+		}
 		// 2. Move, through temporary names so two files can swap. A failure
 		// puts every moved file back (catch below).
 		const moves: Array<{ id: string; to: string; entry: Moved }> = [];
@@ -454,7 +461,7 @@ async function pullLocked(
 				// Not for a file edited here (it is merged or kept, never
 				// overwritten), unless --force overwrites it: a merged file is
 				// a local edit, not pull's write.
-				const now = await fileSha256(path.resolve(root, p.file));
+				const now = onDisk.get(id) ?? null;
 				const editedHere =
 					now !== null &&
 					now !== p.file_sha256 &&
