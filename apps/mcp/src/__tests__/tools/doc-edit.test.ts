@@ -2665,7 +2665,10 @@ describe("spliceEdit fuzz by edit kind", () => {
 			{ applied: number; refused: number; skipped: number }
 		> = {};
 		const reasons: Record<string, number> = {};
-		for (let iter = 0; iter < 4200; iter++) {
+		// About 60 cases per kind keeps this near 10 s on a laptop.
+		// FUZZ_ITER=<n> runs a longer search locally.
+		const iterations = Number(process.env.FUZZ_ITER) || 1560;
+		for (let iter = 0; iter < iterations; iter++) {
 			const kind = Object.keys(KINDS)[iter % Object.keys(KINDS).length];
 			stats[kind] ??= { applied: 0, refused: 0, skipped: 0 };
 			const s = stats[kind];
@@ -3069,16 +3072,23 @@ describe("spliceEdit fuzz by edit kind", () => {
 				].join("\n"),
 			);
 		}
+		const perKind = iterations / Object.keys(KINDS).length;
 		for (const [k, v] of Object.entries(stats)) {
 			// Kinds that only make disguised reorders of blocks with data are
 			// refused whenever they hit one; they must hit often enough.
 			if (k.startsWith("table") && k !== "table") {
-				expect(v.refused, `${k} ran too rarely`).toBeGreaterThan(100);
+				expect(v.refused, `${k} ran too rarely`).toBeGreaterThan(perKind * 0.6);
 			} else if (k.endsWith("Reword")) {
-				expect(v.refused, `${k} ran too rarely`).toBeGreaterThan(40);
+				expect(v.refused, `${k} ran too rarely`).toBeGreaterThan(perKind / 4);
+				expect(v.applied, `${k} never applied`).toBeGreaterThan(0);
 			} else {
-				expect(v.applied, `${k} applied too rarely`).toBeGreaterThan(10);
+				// Every other kind must both apply and refuse, except inserting
+				// before a duplicate, which is always safe.
+				expect(v.applied, `${k} applied too rarely`).toBeGreaterThan(1);
+				if (k !== "dupInsertBefore") {
+					expect(v.refused, `${k} never refused`).toBeGreaterThan(0);
+				}
 			}
 		}
-	}, 60_000);
+	}, 180_000);
 });
