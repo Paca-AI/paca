@@ -928,6 +928,29 @@ describe("spliceEdit nested children, moves and Markdown props (fourth review)",
 
 // The final audit, tested directly on the wrong results the reviews found
 // (as if the alignment had produced them), so it holds on its own.
+describe("spliceEdit edits whose Markdown reads differently in the whole document", () => {
+	it.each([
+		[
+			"removes a closing fence",
+			"```ts\ncode a\n```\n\npara b\n\npara c",
+			"a\n```\n\npara b",
+			"a b",
+		],
+		["opens a fence", "para a\n\npara b", "para a", "```\npara a"],
+	])("refuses an edit that %s", (_, md, o, n) => {
+		const blocks = stored(md);
+		let err: unknown;
+		try {
+			spliceEdit(blocks, o, n, false);
+		} catch (e) {
+			err = e;
+		}
+		expect(err).toBeInstanceOf(SpliceError);
+		expect((err as SpliceError).kind).toBe("unsafe");
+		expect((err as SpliceError).message).toMatch(/blocks after it/);
+	});
+});
+
 describe("auditEdit", () => {
 	const B = "bulletListItem";
 	const withId = (b: any, id: string) => ({ ...b, id });

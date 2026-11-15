@@ -1062,6 +1062,29 @@ export function spliceEdit(
 		next = to;
 	}
 	out.push(...blocks.slice(next));
+	// Each range was parsed on its own, so an edit that changes how
+	// Markdown reads the blocks after it (it leaves a code fence open, say)
+	// would apply as if they were not there: the document as a whole must
+	// read as the edited Markdown does.
+	let edited = "";
+	let at = 0;
+	for (const ms of found) {
+		edited += full.slice(at, ms) + newString;
+		at = ms + oldString.length;
+	}
+	edited += full.slice(at);
+	const reread = (md: string) =>
+		fixSoftBreaks(markdownToBlocknote(md))
+			.map((b) => render([b]))
+			.filter((r) => r !== "")
+			.join("\n");
+	if (reread(render(out)) !== reread(edited)) {
+		throw new SpliceError(
+			`The edit starting on line ${lines[0]} changes how Markdown reads the blocks after it (it leaves a code fence open, for example), so nothing was changed. Close what the edit opens, or rewrite that part with write_doc.`,
+			"unsafe",
+			[lines[0]],
+		);
+	}
 	return { blocks: out, replaced: found.length, lines };
 }
 
