@@ -3,18 +3,28 @@
 // not taken for edits. Line by line, and only these rules:
 //
 // - a byte order mark, CRLF line ends and the newlines at the end;
-// - whitespace at the end of a line;
+// - outside fenced code, spaces and tabs at the end of a line;
 // - a run of blank lines outside fenced code reads as one blank line;
 // - outside fenced code, a "-" or "+" bullet reads as "*";
-// - outside fenced code, a table row reads with its cells trimmed, and the
-//   delimiter row ("| --- | :-: |") as just its alignment.
+// - outside fenced code, a table row reads with its cells trimmed, and a
+//   table's second row, its delimiter row ("| --- | :-: |"), as just its
+//   alignment.
 //
-// Nothing else: any other difference is a difference.
+// Nothing else: any other difference is a difference. Inside fenced code
+// only line ends are read loosely.
 
 /** An opening or closing code fence: its character run. */
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const BULLET = /^(\s*)[-+](?=[ \t])/;
 const DELIMITER = /^:?-+:?$/;
+/** Spaces and tabs at the end of a line (not other white space, such as a
+ *  non-breaking space, which is text). */
+const TRAILING = /[ \t]+$/;
+
+/** Whether a line has nothing but spaces and tabs. */
+export function isBlank(line: string): boolean {
+	return /^[ \t]*$/.test(line);
+}
 
 /**
  * For each line, whether it is part of fenced code (the fence lines
@@ -58,9 +68,9 @@ function cells(row: string): string[] {
 	return out.map((x) => x.trim());
 }
 
-function tableRow(line: string): string {
+function tableRow(line: string, second: boolean): string {
 	let cs = cells(line.trim());
-	if (cs.length > 0 && cs.every((x) => DELIMITER.test(x))) {
+	if (second && cs.length > 0 && cs.every((x) => DELIMITER.test(x))) {
 		cs = cs.map(
 			(x) => `${x.startsWith(":") ? ":" : ""}-${x.endsWith(":") ? ":" : ""}`,
 		);
@@ -74,10 +84,16 @@ function tableRow(line: string): string {
  */
 export function lineKeys(lines: string[]): string[] {
 	const fenced = fencedLines(lines);
+	/** Rows of the table the line is in, before it. */
+	let row = 0;
 	return lines.map((raw, k) => {
-		const line = raw.replace(/\s+$/, "");
-		if (fenced[k]) return line;
-		if (line.trimStart().startsWith("|")) return tableRow(line);
+		if (fenced[k]) {
+			row = 0;
+			return raw;
+		}
+		const line = raw.replace(TRAILING, "");
+		if (line.trimStart().startsWith("|")) return tableRow(line, row++ === 1);
+		row = 0;
 		return line.replace(BULLET, "$1*");
 	});
 }
@@ -112,7 +128,7 @@ export function normaliseMarkdown(text: string): {
 		lines.push(key);
 		from.push(k + 1);
 	});
-	while (lines.length > 0 && lines[lines.length - 1].trim() === "") {
+	while (lines.length > 0 && lines[lines.length - 1] === "") {
 		lines.pop();
 		from.pop();
 	}

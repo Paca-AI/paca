@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { blocknoteToMarkdown, markdownToBlocknote } from "../../utils/index.js";
 import {
 	fencedLines,
 	lineKeys,
@@ -17,7 +18,23 @@ describe("normaliseMarkdown", () => {
 
 	it("drops whitespace at the end of lines", () => {
 		expect(norm("a  \n\t\nb\t\n")).toBe("a\n\nb\n");
-		expect(norm("```\ncode   \n```\n")).toBe("```\ncode\n```\n");
+	});
+
+	it("changes nothing inside fenced code but line ends", () => {
+		expect(norm("```\ncode   \n```\n")).toBe("```\ncode   \n```\n");
+		expect(norm("```\r\nkeep  \r\n\t\r\n```\r\n")).toBe(
+			"```\nkeep  \n\t\n```\n",
+		);
+		expect(norm("```\nkeep  \n```\n")).not.toBe(norm("```\nkeep\n```\n"));
+		// An unclosed fence keeps its lines too.
+		expect(norm("```\nx  \n")).toBe("```\nx  \n");
+	});
+
+	it("drops only spaces and tabs at the end of a line", () => {
+		// A non-breaking space is text.
+		expect(norm("Price: 5\u00a0\n")).toBe("Price: 5\u00a0\n");
+		expect(norm("Price: 5\u00a0\n")).not.toBe(norm("Price: 5\n"));
+		expect(norm("a\n\u00a0\n\nb\n")).toBe("a\n\u00a0\n\nb\n");
 	});
 
 	it("collapses runs of blank lines outside fenced code only", () => {
@@ -51,11 +68,81 @@ describe("normaliseMarkdown", () => {
 			"| name | state |\n| :- | -: |\n| a | b |\n",
 		);
 		expect(norm("| :-: |\n")).toBe("| :-: |\n");
+		expect(norm("| a |\n|---|\n\n|  x |\n|:---:|\n")).toBe(
+			"| a |\n| - |\n\n| x |\n| :-: |\n",
+		);
 		// An escaped "|" stays in its cell.
 		expect(norm("|  a \\| b  |  c |\n")).toBe("| a \\| b | c |\n");
 		// Empty cells count.
 		expect(norm("| a |  | c |\n")).toBe("| a |  | c |\n");
 		expect(norm("```\n|  a |\n```\n")).toBe("```\n|  a |\n```\n");
+	});
+
+	it("reads only a table's second row as its delimiter row", () => {
+		// Data rows of dashes are text.
+		expect(norm("| a | b |\n| --- | --- |\n| - | - |\n")).toBe(
+			"| a | b |\n| - | - |\n| - | - |\n",
+		);
+		expect(norm("| a | b |\n| --- | --- |\n| - | - |\n")).not.toBe(
+			norm("| a | b |\n| --- | --- |\n| --- | :-: |\n"),
+		);
+		expect(norm("| --- |\n| a |\n")).not.toBe(norm("| - |\n| a |\n"));
+		// A fence ends a table.
+		expect(norm("| a |\n```\n| --- |\n```\n| b |\n| --- |\n")).toBe(
+			"| a |\n```\n| --- |\n```\n| b |\n| - |\n",
+		);
+	});
+
+	it("never reads a file one visible character away from the render as the render", () => {
+		let seed = Number(process.env.FUZZ_SEED) || 7;
+		const rnd = (k: number) => {
+			seed = (seed * 1103515245 + 12345) % 2147483648;
+			return Math.floor((seed / 2147483648) * k);
+		};
+		const pieces = [
+			() => `para ${rnd(100)} text`,
+			() => `# head ${rnd(100)}`,
+			() => `* item ${rnd(100)}\n* item two`,
+			() => `1. one ${rnd(100)}\n2. two`,
+			() => `- [ ] todo ${rnd(100)}`,
+			() => `> quote ${rnd(100)}`,
+			() => `| a | b |\n| --- | :-: |\n| - | x${rnd(100)} |\n| y | --- |`,
+			() => `\`\`\`ts\ncode ${rnd(100)}  \n  - x\n\n\`\`\``,
+			() => "---",
+			() => `**bold** _em_ \`span\` ${rnd(100)}`,
+		];
+		const ALNUM =
+			"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+		let checked = 0;
+		for (let n = 0; n < 400; n++) {
+			const md = Array.from({ length: 1 + rnd(6) }, () =>
+				pieces[rnd(pieces.length)](),
+			).join("\n\n");
+			const render = blocknoteToMarkdown(
+				JSON.parse(JSON.stringify(markdownToBlocknote(md))),
+			);
+			const lines = render.split("\n");
+			const spots = lines.flatMap((l, i) =>
+				[...l].flatMap((c, j) => (/\s/.test(c) ? [] : [[i, j] as const])),
+			);
+			if (spots.length === 0) continue;
+			const [i, j] = spots[rnd(spots.length)];
+			let c = ALNUM[rnd(ALNUM.length)];
+			if (c === lines[i][j]) c = c === "q" ? "Q" : "q";
+			// Replace the character, or put one before it.
+			const line =
+				rnd(2) === 0
+					? lines[i].slice(0, j) + c + lines[i].slice(j + 1)
+					: lines[i].slice(0, j) + c + lines[i].slice(j);
+			const file = [...lines.slice(0, i), line, ...lines.slice(i + 1)].join(
+				"\n",
+			);
+			expect(norm(file), JSON.stringify({ render, file })).not.toBe(
+				norm(render),
+			);
+			checked++;
+		}
+		expect(checked).toBeGreaterThan(350);
 	});
 
 	it("changes nothing else", () => {

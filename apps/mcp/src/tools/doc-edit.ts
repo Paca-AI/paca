@@ -12,6 +12,7 @@ import { blocknoteToMarkdown, markdownToBlocknote } from "../utils/index.js";
 import { diffOps, type LineOp, splitLines } from "../utils/line-diff.js";
 import {
 	fencedLines,
+	isBlank,
 	lineKeys,
 	normaliseMarkdown,
 } from "../utils/md-normalise.js";
@@ -1975,7 +1976,7 @@ function canonical(
 		...diffOps(
 			ka.slice(head, ka.length - tail),
 			kf.slice(head, kf.length - tail),
-			(k) => (k.trim() === "" ? 1 : 64),
+			(k) => (isBlank(k) ? 1 : 64),
 		),
 		...same(tail),
 	];
@@ -1992,8 +1993,8 @@ function canonical(
 		(l, k) =>
 			!(
 				k > 0 &&
-				l.trim() === "" &&
-				lines[k - 1].trim() === "" &&
+				isBlank(l) &&
+				isBlank(lines[k - 1]) &&
 				!fenced[k] &&
 				!fenced[k - 1]
 			),

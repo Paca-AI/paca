@@ -9,6 +9,7 @@ import { runPull } from "../../cli/pull.js";
 import { type PushOptions, runPush } from "../../cli/push.js";
 import { conflictLine } from "../../cli/push-mirror.js";
 import { blocknoteToMarkdown } from "../../utils/index.js";
+import { normaliseMarkdown } from "../../utils/md-normalise.js";
 import { docId, fakeDocsServer, storedBlocks } from "./fake-docs-server.js";
 
 const ID = docId(1);
@@ -756,6 +757,38 @@ describe("push of a mirror file", () => {
 			fs.writeFileSync(file(), blocknoteToMarkdown(stored()));
 			lines = [];
 			await push(".paca/docs/Plan.md");
+		}
+	});
+
+	it("edits the normalising rules do not cover are sent: spaces in code, a non-breaking space, a dash table cell", async () => {
+		const ID2 = docId(2);
+		server.add(
+			ID2,
+			"Code",
+			storedBlocks(
+				"Intro.\n\n```text\nline one\nkeep  \n```\n\nPrice: 5\n\n| a | b |\n| --- | --- |\n| - | - |\n| x | y |",
+			),
+		);
+		expect(await pull()).toBe(0);
+		const pulled = read("Code.md");
+		expect(pulled).toContain("keep  \n```");
+		const edits = [
+			(x: string) => x.replace("keep  \n", "keep\n"),
+			(x: string) => x.replace("Price: 5", "Price: 5\u00a0"),
+			(x: string) => x.replace("| - | - |\n| x", "| --- | - |\n| x"),
+		];
+		for (const edit of edits) {
+			const was = blocknoteToMarkdown(server.docs.get(ID2)?.content as any[]);
+			const want = edit(was);
+			expect(want).not.toBe(was);
+			fs.writeFileSync(file("Code.md"), want);
+			lines = [];
+			expect(await push(".paca/docs/Code.md"), output()).toBe(0);
+			expect(output()).toContain("(1 block changed)");
+			const now = blocknoteToMarkdown(server.docs.get(ID2)?.content as any[]);
+			// The render pads table columns, which the rules allow.
+			expect(normaliseMarkdown(now).text).toBe(normaliseMarkdown(want).text);
+			expect(read("Code.md")).toBe(now);
 		}
 	});
 
