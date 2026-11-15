@@ -1131,6 +1131,23 @@ describe("spliceEdit pairs blocks by position, then by text (fifth review)", () 
 		expect(err.message).toMatch(/different colours or alignment/);
 	});
 
+	it("plain blocks rewritten past recognition in a split keep their ids in order", () => {
+		const e = para([]);
+		const blocks = [
+			item("bulletListItem", "a"),
+			e,
+			item("bulletListItem", "b"),
+		];
+		const res = spliceEdit(blocks, "* a\n\n- b", "* A\n\nmid\n\n* B", false);
+		const ids = res.blocks.map((b) => b.id);
+		expect(ids[0]).toBe(blocks[0].id);
+		expect(ids).toContain(blocks[2].id);
+		expect(ids).toContain(e.id);
+		expect(res.blocks.find((b) => b.id === blocks[2].id)?.content).toEqual([
+			t("B"),
+		]);
+	});
+
 	it("deletes one of two equal plain blocks", () => {
 		const blocks = stored("x\n\nx");
 		const res = spliceEdit(blocks, "x\n\nx", "x", false);

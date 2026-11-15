@@ -556,8 +556,9 @@ function flatten(
  *      block whose text no new block continues is deleted). The first old
  *      block a new block continues gives it its id and props, when their
  *      types match; the others merged into it must have the same colours
- *      and alignment. New blocks no old block continues are new: plain,
- *      with ids of their own.
+ *      and alignment. A plain old block no new block continues gives its
+ *      id to the next new block of its type nothing continues, in order.
+ *      Other new blocks are new: plain, with ids of their own.
  * Old blocks that render to nothing (an empty paragraph) stay, placed
  * after the block that now stands for their previous sibling, else before
  * the first new block next to the one that stands for their next sibling,
@@ -757,6 +758,20 @@ function align(
 				const list = claims.get(ties[0]) ?? [];
 				list.push(r);
 				claims.set(ties[0], list);
+			}
+			// Plain blocks no new block continues (rewritten past recognition)
+			// keep their ids on the new blocks nothing continues, in order and
+			// by type. Blocks that carry more stay deleted: the audit decides.
+			let from = 0;
+			for (const r of [...deleted]) {
+				if (carries(r.b) || r.whole) continue;
+				const q = news.findIndex(
+					(f, k) => k >= from && !claims.has(f) && f.b.type === r.b.type,
+				);
+				if (q < 0) continue;
+				claims.set(news[q], [r]);
+				deleted.splice(deleted.indexOf(r), 1);
+				from = q + 1;
 			}
 			for (const f of news) {
 				const cl = claims.get(f);
