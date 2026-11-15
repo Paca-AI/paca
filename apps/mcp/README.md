@@ -487,8 +487,11 @@ npx @paca-ai/paca-mcp push .paca/docs/Plans/Roadmap.md --note "move the launch t
   would move or rebuild it is refused with the line it is on, and nothing is
   sent. Make that change in smaller steps, or in the web editor.
 - The push sends `If-Match` with the version you pulled. If the document
-  changed in Paca since, the push stops (exit 2) with who changed it and when,
-  their note, client and task: run `pull`, which merges, then push again.
+  changed in Paca since, the push stops (exit 2) with who changed it and when:
+  run `pull`, which merges, then push again. Most such conflicts are seen
+  before the write, from the document Paca returns, which carries no note;
+  only when the change lands between that read and the write does Paca's
+  refusal also give the writer's note, client and task.
 - Refused before anything is sent (exit 1): a file `pull` did not write (`not
   a pulled document`), including another file whose name only differs by case
   or Unicode form; a managed copy (`this document is a copy of <path> in
@@ -568,32 +571,51 @@ is gone):
   edits in it; deleting the file and pulling does the same for that file
   alone.
 - The file is kept as it is (exit 2, `kept <file>: edited locally …`), with
-  what to do next:
-  - `git` is not installed or fails: pull again once it works;
-  - neither the base copy nor a snapshot of the pulled version is left (the
-    server keeps one snapshot per 3 minutes of edits): Paca's version is
-    written next to the file as `<file>.remote.md` (removed again, unless you
-    edited it, once the file no longer needs it). Compare the two and save
-    your edits elsewhere; `pull --force` then replaces the file with Paca's
-    version, discarding your edits in it;
-  - an interrupted pull had written into the file before you edited it: save
-    your edits elsewhere, then `pull --force`;
-  - a managed copy: edit it in its repository; `pull --force` replaces it.
+  what to do next. Two kinds, never mixed:
+  - The version it was edited from is known, but the merge cannot run now:
+    `git` is not installed or fails (pull again once it works), or the file
+    is a managed copy (edit it in its repository; `pull --force` replaces
+    it). If the document goes back to the version you pulled, the file is
+    simply edited locally again and `push` sends it.
+  - The version it was edited from is not known: neither the base copy nor a
+    snapshot of the pulled version is left (the server keeps one snapshot
+    per 3 minutes of edits), or an interrupted pull had written into the
+    file before you edited it. Paca's version is written next to the file
+    as `<file>.remote.md` and follows Paca on later pulls (a copy you edited
+    is left alone). Nothing settles this file but you: every pull keeps it,
+    even when the document goes back to an earlier version, and `push`
+    refuses it (exit 1), naming the `.remote.md` copy once a pull has
+    written it. Compare the two and
+    save your edits elsewhere, then delete the file and pull, or run
+    `pull --force`; either replaces the file with Paca's version, and the
+    `.remote.md` copy is then removed (unless you edited it).
 
   Instead of `pull --force`, which replaces every such file, you can delete
   one file and pull: that file alone is written again from Paca.
-- If the document goes back to the version you pulled, the file is simply
-  edited locally again and `push` sends it.
 - A document that was moved or renamed while you edited its file moves first,
   then merges under its new name.
 - A merge is journalled: Paca's version is written as
-  `.paca-base/<id>.next.md` and recorded in the state before the merged file
-  is written, then becomes the base copy. A pull that stops anywhere is
-  finished or redone by the next one, so a file is never merged twice and
-  markers never nest. One case it cannot tell apart: a conflicting merge that
-  stopped after writing the file, whose markers you then all resolved before
-  the next pull; that pull merges your resolution again and may mark the same
-  lines.
+  `.paca-base/<id>.next.md` and recorded in the state, with the hashes of
+  your file before the merge and of the merged file, before the merged file
+  is written; then it becomes the base copy. A pull that stops anywhere is
+  settled by the next one from what is on disk, in this order:
+  - `.next.md` is gone and the base copy is Paca's version: the merge had
+    finished; its record is completed;
+  - `.next.md` is there and the file is as it was before the merge: the
+    merge starts over;
+  - the file is the merged file, or still has the merge's conflict markers:
+    the merge had written it; it is completed (and reported as conflicted
+    while markers are left);
+  - anything else: you changed the file after the merge wrote it and before
+    the next pull, and the merge is redone on your file.
+
+  A file is merged twice only in that last case: a clean merge that stopped
+  after writing the file which you then edited, or a conflicting merge that
+  stopped after writing the file whose markers you then all resolved, before
+  the next pull. The redone merge applies Paca's changes to a file that
+  already has them; identical changes merge cleanly, but changes next to
+  your edits may be marked as a conflict again. Markers never nest: a file
+  that still has the merge's markers is never merged again.
 
 **Limits.** Formatting Markdown cannot show must never move to another block,
 so these edits are refused, or can be, even when the text would be right

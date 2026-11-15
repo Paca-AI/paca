@@ -256,8 +256,8 @@ async function pushLocked(
 		return EXIT.error;
 	}
 	// Whether the document changed in Paca is asked of Paca below, never
-	// taken from what the last pull saw (`remote_hash`, `unmerged`): those
-	// go stale when the document goes back to the version pulled.
+	// taken from what the last pull saw (`remote_hash`): that goes stale
+	// when the document goes back to the version pulled.
 	const read = await call(() => client.batchGet(opts.projectId, [id]));
 	if (read.status === "unsupported") {
 		io.err(TOO_OLD);
