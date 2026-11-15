@@ -632,28 +632,138 @@ describe("spliceEdit refusal messages", () => {
 // Seeded fuzz (from review): random documents, one marker edited; every
 // block outside the edited list run is the same object, and an edit is
 // either applied as asked or refused as unsafe.
+// Bot review on Paca-AI/paca#770: a block that renders to nothing (an empty
+// paragraph) next to a list detached the edit's insertion from the deletion
+// it pairs with, so the edited block lost its id and props, skipped the loss
+// check, and the empty block moved.
+describe("spliceEdit with empty blocks next to lists", () => {
+	const empty = () => para([]);
+	const chip = {
+		type: "teamMention",
+		props: { id: "u1", name: "Ann", avatar: "" },
+	};
+
+	/** Every block but `touched` is the same object at the same place; the
+	 *  touched one keeps its id and props. */
+	function expectInPlace(input: any[], output: any[], touched: number) {
+		expect(output).toHaveLength(input.length);
+		for (let i = 0; i < input.length; i++) {
+			if (i === touched) {
+				expect(output[i]).not.toBe(input[i]);
+				expect(output[i].id).toBe(input[i].id);
+				expect(output[i].props).toEqual(input[i].props);
+			} else {
+				expect(output[i]).toBe(input[i]);
+			}
+		}
+	}
+
+	it("keeps the id, the colour and the empty block's place (empty before a list)", () => {
+		const blocks = [
+			empty(),
+			item("bulletListItem", "alpha", { textColor: "red" }),
+		];
+		const res = spliceEdit(blocks, "alpha", "ALPHA", false);
+		expectInPlace(blocks, res.blocks, 1);
+		expect(res.blocks[1].content).toEqual([t("ALPHA")]);
+	});
+
+	it("refuses to drop a mention chip (empty before a list)", () => {
+		const blocks = [
+			empty(),
+			{
+				...item("bulletListItem", "x"),
+				content: [t("hi "), chip, t(" there")],
+			},
+		];
+		expect(() => spliceEdit(blocks, "there", "THERE", false)).toThrow(
+			/teamMention would be lost/,
+		);
+	});
+
+	it("keeps empties after, between and several in a row", () => {
+		const blocks = [
+			item("bulletListItem", "one", { textColor: "red" }),
+			empty(),
+			empty(),
+			item("bulletListItem", "two", { textColor: "blue" }),
+			empty(),
+			item("numberedListItem", "three", { backgroundColor: "yellow" }),
+			empty(),
+		];
+		for (const [word, at] of [
+			["one", 0],
+			["two", 3],
+			["three", 5],
+		] as const) {
+			const res = spliceEdit(blocks, word, word.toUpperCase(), false);
+			expectInPlace(blocks, res.blocks, at);
+		}
+	});
+
+	it("keeps empties between two items an edit replaces", () => {
+		const blocks = [
+			item("bulletListItem", "x1", { textColor: "red" }),
+			empty(),
+			item("bulletListItem", "x2", { textColor: "red" }),
+		];
+		const res = spliceEdit(blocks, "x", "y", true);
+		expect(res.blocks).toHaveLength(3);
+		expect(res.blocks[1]).toBe(blocks[1]);
+		expect(res.blocks.map((b) => b.id)).toEqual(blocks.map((b) => b.id));
+		expect(res.blocks[0].props.textColor).toBe("red");
+		expect(res.blocks[2].props.textColor).toBe("red");
+	});
+
+	it("checks a block whose text moves past an unchanged one for loss", () => {
+		const a = { ...para("x"), content: [t("hi "), chip, t(" there")] };
+		const blocks = [a, para("beta"), para("z")];
+		const md = blocknoteToMarkdown([a]).trimEnd();
+		let res: ReturnType<typeof spliceEdit> | undefined;
+		try {
+			res = spliceEdit(blocks, `${md}\n\nbeta`, `beta\n\n${md}`, false);
+		} catch (err) {
+			expect((err as SpliceError).kind).toBe("unsafe");
+			return;
+		}
+		// Applied only if the chip survived (its block kept as stored).
+		expect(JSON.stringify(res.blocks)).toContain("teamMention");
+	});
+});
+
 describe("spliceEdit fuzz", () => {
-	it("never loses an untouched block", () => {
+	it("keeps every untouched block in place and never loses what Markdown cannot carry", () => {
 		let seed = 1;
 		const rnd = (k: number) => {
 			seed = (seed * 1103515245 + 12345) % 2147483648;
 			return seed % k;
 		};
 		let n = 0;
+		const chip = () => ({
+			type: "teamMention",
+			props: { id: `u${++n}`, name: "Ann", avatar: "" },
+		});
+		const colour = () =>
+			[{}, { textColor: "red" }, { backgroundColor: "blue" }][rnd(3)];
 		const mk = (marker: string): any => {
 			const kinds = [
 				() => para(`para ${marker}`),
 				() => para([]),
+				() => para([]),
 				() => ({
 					id: `b${++n}`,
 					type: "heading",
-					props: { ...P, level: 1 + rnd(3) },
+					props: { ...P, level: 1 + rnd(3), isToggleable: false, ...colour() },
 					content: [t(`head ${marker}`)],
 					children: [],
 				}),
-				() => item("bulletListItem", `bul ${marker}`),
-				() => item("numberedListItem", `num ${marker}`),
-				() => item("checkListItem", `chk ${marker}`, { checked: rnd(2) === 1 }),
+				() => item("bulletListItem", `bul ${marker}`, colour()),
+				() => item("numberedListItem", `num ${marker}`, colour()),
+				() =>
+					item("checkListItem", `chk ${marker}`, {
+						checked: rnd(2) === 1,
+						...colour(),
+					}),
 				() => ({
 					id: `b${++n}`,
 					type: "codeBlock",
@@ -664,7 +774,7 @@ describe("spliceEdit fuzz", () => {
 				() => ({
 					id: `b${++n}`,
 					type: "quote",
-					props: {},
+					props: { textColor: "default", backgroundColor: "default" },
 					content: [t(`quote ${marker}`)],
 					children: [],
 				}),
@@ -673,6 +783,12 @@ describe("spliceEdit fuzz", () => {
 				() => para(` lead\t${marker}`),
 				() => para(`soft ${marker}\nbreak`),
 				() => para(`red ${marker}`, { textColor: "red" }),
+				() => para([t("hi "), chip(), t(` chip ${marker}`)]),
+				() => ({
+					...item("bulletListItem", "x", colour()),
+					content: [chip(), t(` lchip ${marker}`)],
+				}),
+				() => para([t("under", { underline: true }), t(` u ${marker}`)]),
 				() => para(`par ${marker}`, {}, [para(`kid ${marker}`)]),
 				() =>
 					item("bulletListItem", `bp ${marker}`, {}, [
@@ -681,14 +797,24 @@ describe("spliceEdit fuzz", () => {
 			];
 			return kinds[rnd(kinds.length)]();
 		};
-		const isList = (b: any) =>
-			["bulletListItem", "numberedListItem", "checkListItem"].includes(
-				b.type,
-			) || blocknoteToMarkdown([b]) === "";
+		// What Markdown cannot carry: a refusal is allowed only for these.
+		const special = (b: any) =>
+			b.children.length > 0 ||
+			JSON.stringify(b.content).includes("teamMention") ||
+			JSON.stringify(b.content).includes("underline");
+		const carried = (b: any) => {
+			const s = JSON.stringify(b.content ?? []);
+			return {
+				chips: (s.match(/teamMention/g) ?? []).length,
+				underline: (s.match(/underline/g) ?? []).length,
+			};
+		};
 		let applied = 0;
-		for (let iter = 0; iter < 300; iter++) {
+		let refused = 0;
+		for (let iter = 0; iter < 400; iter++) {
 			const len = 3 + rnd(8);
 			const blocks = Array.from({ length: len }, (_, i) => mk(`m${i}x`));
+			const json = blocks.map((b) => JSON.stringify(b));
 			const target = rnd(len);
 			const marker = JSON.stringify(blocks[target]).match(/m\d+x/)?.[0];
 			if (!marker) continue;
@@ -697,34 +823,36 @@ describe("spliceEdit fuzz", () => {
 			try {
 				res = spliceEdit(blocks, marker, `${marker}Z`, false);
 			} catch (err) {
-				// Only a paragraph with nested blocks is refused (Markdown
-				// flattens them), and its marker can also sit in the nested
-				// block (ambiguous). Every other block here is ordinary.
 				expect(["unsafe", "ambiguous"]).toContain((err as SpliceError).kind);
-				expect(blocks[target].children.length).toBeGreaterThan(0);
+				expect(special(blocks[target])).toBe(true);
+				refused++;
 				continue;
 			}
 			applied++;
 			expect(blocknoteToMarkdown(res.blocks)).toBe(
 				before.replace(marker, `${marker}Z`),
 			);
-			let lo = target;
-			let hi = target;
-			if (isList(blocks[target])) {
-				while (lo > 0 && isList(blocks[lo - 1])) lo--;
-				while (hi < len - 1 && isList(blocks[hi + 1])) hi++;
-			}
-			// A soft line break comes back without a space after it.
-			for (const b of res.blocks) {
-				if (b.type !== "codeBlock") {
-					expect(JSON.stringify(b.content)).not.toContain("\\n ");
-				}
-			}
-			const kept = new Set(res.blocks);
+			// Same blocks in the same order: every other block (empty ones
+			// included) is the very object read; the edited one keeps its id
+			// and props and loses no chip or underline.
+			expect(res.blocks).toHaveLength(len);
 			for (let i = 0; i < len; i++) {
-				if (i < lo || i > hi) expect(kept.has(blocks[i])).toBe(true);
+				if (i === target) continue;
+				expect(res.blocks[i]).toBe(blocks[i]);
+				expect(JSON.stringify(res.blocks[i])).toBe(json[i]);
+			}
+			const edited = res.blocks[target];
+			expect(edited.id).toBe(blocks[target].id);
+			expect(edited.type).toBe(blocks[target].type);
+			for (const [k, v] of Object.entries(blocks[target].props)) {
+				expect(edited.props[k], `prop ${k}`).toEqual(v);
+			}
+			expect(carried(edited)).toEqual(carried(blocks[target]));
+			if (edited.type !== "codeBlock") {
+				expect(JSON.stringify(edited.content)).not.toContain("\\n ");
 			}
 		}
 		expect(applied).toBeGreaterThan(200);
+		expect(refused).toBeGreaterThan(10);
 	});
 });

@@ -410,7 +410,7 @@ function withProps(fresh: Block, props: Record<string, unknown>): Block {
  * Replaces `oldBlocks` with `fresh`, keeping every old block whose own
  * Markdown is unchanged (longest common subsequence of the per-block
  * renders) as the original object. Old blocks that render to nothing are
- * kept unless the blocks on both sides of them were replaced.
+ * always kept, at their place.
  */
 function align(
 	oldBlocks: Block[],
@@ -453,77 +453,93 @@ function align(
 		}
 	}
 
-	const kept = new Set(
-		ops.filter((o) => o.op === "keep").map((o) => (o as { i: number }).i),
-	);
-	// An empty block is dropped only when the edit replaced the blocks on
-	// both sides of it.
-	const enclosed = (k: number) => {
-		let p = k - 1;
-		while (p >= 0 && oldKeys[p] === "") p--;
-		let q = k + 1;
-		while (q < n && oldKeys[q] === "") q++;
-		return p >= 0 && !kept.has(p) && q < n && !kept.has(q);
-	};
-
+	// Ops between two kept blocks form one stretch: its old blocks are
+	// replaced by its new ones as a whole. An old block that renders to
+	// nothing (an empty paragraph) is never replaced: it stays, at its place
+	// among the old blocks, and cannot split a stretch, so an edited block
+	// is always paired with what replaces it.
 	const out: Block[] = [];
 	const replaced: Replaced[] = [];
-	let delIdx: number[] = [];
-	let dels: Block[] = [];
-	let ins: Block[] = [];
-	const flush = () => {
+	let insertedAlone = false;
+	const emit = (stretch: Op[]) => {
+		const olds = stretch.flatMap((o) => (o.op === "del" ? [o.i] : []));
+		const ins = stretch.flatMap((o) => (o.op === "ins" ? [fresh[o.j]] : []));
+		const reals = olds.filter((i) => oldKeys[i] !== "");
+		const dels = reals.map((i) => oldBlocks[i]);
+		if (reals.length === 0) {
+			// New blocks only (around kept empty blocks, in the diff's order).
+			if (ins.length > 0) insertedAlone = true;
+			for (const o of stretch) {
+				out.push(
+					o.op === "ins" ? fresh[o.j] : oldBlocks[(o as { i: number }).i],
+				);
+			}
+			return;
+		}
 		if (ins.length === 0) {
 			// Deleted outright: nothing of them is rewritten.
-			for (const i of delIdx) replaced.push({ i, how: "deleted" });
-		} else if (
+			for (const i of olds) {
+				if (oldKeys[i] === "") out.push(oldBlocks[i]);
+				else replaced.push({ i, how: "deleted" });
+			}
+			return;
+		}
+		if (
 			// As many new blocks as old ones, of the same types: each new
 			// block stands in for the old one at its place.
 			dels.length === ins.length &&
 			dels.every((d, k) => d.type === ins[k].type)
 		) {
-			out.push(...ins.map((b, k) => inherit(dels[k], b)));
-			for (const i of delIdx) replaced.push({ i, how: "paired" });
-		} else if (dels.length > 0) {
-			// A merge, split or change of type: the new blocks take the old
-			// colours and alignment only when every old block has the same
-			// ones and the new blocks keep their type (all default always
-			// qualifies: nothing to carry).
-			const props = ownProps(dels[0]);
-			const agree = dels.every((d) => stable(ownProps(d)) === stable(props));
-			const sameType = ins.every((b) => dels.every((d) => d.type === b.type));
-			const group = [...delIdx];
-			for (const i of delIdx) {
-				replaced.push(
-					!agree
-						? { i, how: "differ", group }
-						: Object.keys(props).length > 0 && !sameType
-							? { i, how: "retype", to: [...new Set(ins.map((b) => b.type))] }
-							: { i, how: "carried" },
-				);
+			let q = 0;
+			for (const i of olds) {
+				if (oldKeys[i] === "") {
+					out.push(oldBlocks[i]);
+					continue;
+				}
+				out.push(inherit(oldBlocks[i], ins[q++]));
+				replaced.push({ i, how: "paired" });
 			}
-			out.push(...ins.map((b) => withProps(b, props)));
-		} else {
-			out.push(...ins);
+			return;
 		}
-		delIdx = [];
-		dels = [];
-		ins = [];
+		// A merge, split or change of type: the new blocks take the old
+		// colours and alignment only when every old block has the same ones
+		// and the new blocks keep their type (all default always qualifies:
+		// nothing to carry). Empty blocks before the first old block stay
+		// before the new ones, the others after them.
+		const props = ownProps(dels[0]);
+		const agree = dels.every((d) => stable(ownProps(d)) === stable(props));
+		const sameType = ins.every((b) => dels.every((d) => d.type === b.type));
+		for (const i of reals) {
+			replaced.push(
+				!agree
+					? { i, how: "differ", group: reals }
+					: Object.keys(props).length > 0 && !sameType
+						? { i, how: "retype", to: [...new Set(ins.map((b) => b.type))] }
+						: { i, how: "carried" },
+			);
+		}
+		for (const i of olds)
+			if (oldKeys[i] === "" && i < reals[0]) out.push(oldBlocks[i]);
+		out.push(...ins.map((b) => withProps(b, props)));
+		for (const i of olds)
+			if (oldKeys[i] === "" && i > reals[0]) out.push(oldBlocks[i]);
 	};
-	for (const o of ops) {
+	for (let k = 0; k < ops.length; ) {
+		const o = ops[k];
 		if (o.op === "keep") {
-			flush();
 			out.push(oldBlocks[o.i]);
-		} else if (o.op === "ins") {
-			ins.push(fresh[o.j]);
-		} else if (oldKeys[o.i] === "" && !enclosed(o.i)) {
-			flush();
-			out.push(oldBlocks[o.i]);
-		} else if (oldKeys[o.i] !== "") {
-			dels.push(oldBlocks[o.i]);
-			delIdx.push(o.i);
+			k++;
+			continue;
 		}
+		const stretch: Op[] = [];
+		while (k < ops.length && ops[k].op !== "keep") stretch.push(ops[k++]);
+		emit(stretch);
 	}
-	flush();
+	// Text deleted in one stretch and inserted in another (moved past a
+	// block the edit kept) is a rewrite too: check what was deleted.
+	if (insertedAlone) {
+		for (const r of replaced) if (r.how === "deleted") r.how = "carried";
+	}
 	return { blocks: out, replaced };
 }
 
