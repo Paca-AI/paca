@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PacaAPIError } from "../../api/doc-client.js";
 import { runPull } from "../../cli/pull.js";
 import { type PushOptions, runPush } from "../../cli/push.js";
+import { conflictLine } from "../../cli/push-mirror.js";
 import { blocknoteToMarkdown } from "../../utils/index.js";
 import { docId, fakeDocsServer, storedBlocks } from "./fake-docs-server.js";
 
@@ -320,6 +321,90 @@ describe("push of a mirror file", () => {
 		expect(snapshot()).toEqual(before);
 	});
 
+	it("marker lines the document already holds, or inside fenced code, are not conflicts", async () => {
+		const CODE = docId(3);
+		server.add(
+			CODE,
+			"Merge notes",
+			storedBlocks(
+				"How a conflict looks:\n\n```\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> branch\n```\n\nThe end.",
+			),
+		);
+		expect(await pull()).toBe(0);
+		const md = read("Merge notes.md");
+		expect(md).toContain("\n<<<<<<< HEAD\n");
+		// Saved again unchanged: no conflict, and nothing to send.
+		fs.writeFileSync(file("Merge notes.md"), md);
+		lines = [];
+		expect(await push(".paca/docs/Merge notes.md"), output()).toBe(0);
+		expect(output()).toBe("unchanged");
+		// Edited elsewhere: the markers the document holds are not conflicts.
+		fs.writeFileSync(
+			file("Merge notes.md"),
+			md.replace("The end.", "The end, edited."),
+		);
+		lines = [];
+		expect(await push(".paca/docs/Merge notes.md"), output()).toBe(0);
+		expect(output()).toMatch(/^updated Merge notes/);
+		// New marker lines inside a fence are code, not conflicts.
+		const fenced = read("Merge notes.md").replace(
+			"theirs\n>>>>>>> branch\n```",
+			"theirs\n>>>>>>> branch\n```\n\n```text\n|||||||  base\n>>>>>>> other\n```",
+		);
+		fs.writeFileSync(file("Merge notes.md"), fenced);
+		lines = [];
+		expect(await push(".paca/docs/Merge notes.md"), output()).toBe(0);
+		expect(blocknoteToMarkdown(server.docs.get(CODE)?.content as any[])).toBe(
+			fenced,
+		);
+	});
+
+	it("a conflict file git merge-file wrote is refused", async () => {
+		const md = read();
+		const tmp = fs.mkdtempSync(path.join(root, "m-"));
+		const put = (n: string, x: string) => {
+			fs.writeFileSync(path.join(tmp, n), x);
+			return path.join(tmp, n);
+		};
+		const ours = put("ours", md.replace("Last paragraph.", "Last, mine."));
+		const baseFile = put("base", md);
+		const theirs = put(
+			"theirs",
+			md.replace("Last paragraph.", "Last, theirs."),
+		);
+		let merged = "";
+		try {
+			execFileSync(
+				"git",
+				[
+					"merge-file",
+					"-p",
+					"--diff3",
+					"-L",
+					"Plan.md",
+					"-L",
+					"base",
+					"-L",
+					"Paca",
+					ours,
+					baseFile,
+					theirs,
+				],
+				{ encoding: "utf8" },
+			);
+		} catch (err: any) {
+			merged = err.stdout;
+		}
+		expect(merged).toContain("||||||| base");
+		fs.writeFileSync(file(), merged);
+		const before = snapshot();
+		expect(await push(".paca/docs/Plan.md")).toBe(1);
+		const at = merged.split("\n").indexOf("<<<<<<< Plan.md") + 1;
+		expect(output()).toContain(`conflict markers (line ${at})`);
+		expect(server.client.patchDocument).not.toHaveBeenCalled();
+		expect(snapshot()).toEqual(before);
+	});
+
 	it("refused splice writes nothing and exits 1", async () => {
 		// Swap the red and the blue paragraph.
 		const md = read();
@@ -614,5 +699,26 @@ describe("push of a mirror file", () => {
 		expect(res).toBe(0);
 		expect(putByPath).toHaveBeenCalledTimes(1);
 		expect(server.client.patchDocument).not.toHaveBeenCalled();
+	});
+});
+
+describe("conflictLine", () => {
+	it("finds new marker lines outside fenced code", () => {
+		const conflict =
+			"a\n\n<<<<<<< mine\nx\n||||||| base\ny\n=======\nz\n>>>>>>> Paca\n";
+		expect(conflictLine(conflict, "a\n")).toBe(3);
+		expect(conflictLine("a\n\n>>>>>>> Paca\n", "a\n")).toBe(3);
+		expect(conflictLine("a\r\n\r\n||||||| base\r\n", "a\n")).toBe(3);
+		// "=======" alone is a heading underline.
+		expect(conflictLine("Title\n=======\n", "")).toBe(0);
+		// Seven characters, then a space or the end of the line.
+		expect(conflictLine("<<<<<<<<\n<<<<<<<x\n", "")).toBe(0);
+	});
+	it("skips fenced code and marker lines the base copy holds", () => {
+		expect(conflictLine("```\n<<<<<<< a\n```\n", "")).toBe(0);
+		expect(conflictLine("~~~~\n<<<<<<< a\n~~~\n>>>>>>> b\n~~~~\n", "")).toBe(0);
+		expect(conflictLine("```\nx\n```\n<<<<<<< a\n", "")).toBe(4);
+		expect(conflictLine("x\n<<<<<<< a\n", "<<<<<<< a\n")).toBe(0);
+		expect(conflictLine("x\n<<<<<<< b\n", "<<<<<<< a\n")).toBe(2);
 	});
 });

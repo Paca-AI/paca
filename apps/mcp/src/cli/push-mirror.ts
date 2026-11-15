@@ -40,6 +40,47 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
 /** A line git merge-file writes around a conflict. "=======" alone is not
  *  taken for one: it is also a heading underline in Markdown. */
 const CONFLICT_MARKER = /^(?:<{7}|>{7}|\|{7})(?:\s|$)/;
+/** An opening or closing code fence: its character and length. */
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+
+/** Lines outside fenced code, numbered from 1. */
+function unfenced(text: string): Array<[number, string]> {
+	const out: Array<[number, string]> = [];
+	let open: string | null = null;
+	text.split(/\r?\n/).forEach((line, k) => {
+		const f = FENCE.exec(line)?.[1];
+		if (open === null) {
+			if (
+				f &&
+				!(f[0] === "`" && line.slice(line.indexOf(f) + f.length).includes("`"))
+			)
+				open = f;
+			else out.push([k + 1, line]);
+		} else if (
+			f &&
+			f[0] === open[0] &&
+			f.length >= open.length &&
+			line.trim() === f
+		) {
+			open = null;
+		}
+	});
+	return out;
+}
+
+/** The first line of `text` (from 1) that git merge-file writes around a
+ *  conflict, outside fenced code and not already in the base copy; 0 if
+ *  none. */
+export function conflictLine(text: string, base: string): number {
+	const known = new Set(
+		base.split(/\r?\n/).filter((l) => CONFLICT_MARKER.test(l)),
+	);
+	const hit = unfenced(text).find(
+		([, l]) => CONFLICT_MARKER.test(l) && !known.has(l),
+	);
+	return hit ? hit[0] : 0;
+}
+
 const AGAIN = "the document changed in Paca; pull, then push again";
 
 function managedMessage(source: DocSource | null | undefined): string {
@@ -185,16 +226,18 @@ async function pushLocked(
 	const bytes = await fs.readFile(file);
 	const fileSha = sha256(bytes);
 	const text = bytes.toString("utf8");
-	const marker = text.split(/\r?\n/).findIndex((l) => CONFLICT_MARKER.test(l));
-	if (marker >= 0) {
-		io.err(
-			`${label} has conflict markers (line ${marker + 1}); resolve them, then push`,
-		);
-		return EXIT.error;
-	}
 	if (fileSha === entry.file_sha256) {
 		io.out("unchanged");
 		return EXIT.ok;
+	}
+	const basePath = path.join(root, BASE_DIR, `${id}.md`);
+	const baseText = await fs.readFile(basePath, "utf8").catch(() => "");
+	const marker = conflictLine(text, baseText);
+	if (marker > 0) {
+		io.err(
+			`${label} has conflict markers (line ${marker}); resolve them, then push`,
+		);
+		return EXIT.error;
 	}
 	// The last pull already saw a newer version and kept the file.
 	if (entry.remote_hash && entry.remote_hash !== entry.content_hash)
@@ -229,7 +272,6 @@ async function pushLocked(
 		refusal = err;
 	}
 
-	const basePath = path.join(root, BASE_DIR, `${id}.md`);
 	/** The base copy, then the state: a stop between them leaves a state
 	 *  that says "edited locally", which the next push settles as
 	 *  unchanged (the server then already holds the file). */
