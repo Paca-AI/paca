@@ -14,6 +14,7 @@ The package version follows the main Paca repository release and is published on
 - Malformed BlockNote links in comments degrade to recoverable plain text instead of breaking MCP task and activity reads ([#589](https://github.com/Paca-AI/paca/issues/589)).
 
 ### Added
+- **`pull` and `push` commands** — `npx @paca-ai/paca-mcp pull` mirrors a project's documents to Markdown files and later moves only what changed (one request when nothing did); `npx @paca-ai/paca-mcp push <file>` writes a repository file to a document by path as a managed copy, with `If-Match` against the last push, a diff of what changed in Paca on conflict, and optional locking. See "Command line" in the README ([#747](https://github.com/Paca-AI/paca/issues/747)).
 - **`search_docs` and `search_tasks`** — keyword search across document titles + body text and task titles/`#number`/descriptions, returning compact results with excerpts so agents can find context without walking `list_docs` / paging `list_tasks`. Backed by a new `GET /projects/{id}/docs/search` endpoint and a `search_content=true` option on the task list endpoint. Matching is literal and case-insensitive (not fuzzy/semantic) and is per text run, so a phrase split across differently-formatted runs may not match.
 
 ### Changed
