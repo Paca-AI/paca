@@ -16,13 +16,13 @@ import (
 // MigrationReport lists what [MigrateLocalToStore] found and copied.
 type MigrationReport struct {
 	// Plugins is one entry per plugin found in the local folders, sorted by name.
-	Plugins []PluginMigration
+	Plugins []MigratedPlugin
 	// Skipped are folder names that are not valid plugin names.
 	Skipped []string
 }
 
-// PluginMigration is the outcome for one plugin.
-type PluginMigration struct {
+// MigratedPlugin is the outcome for one plugin.
+type MigratedPlugin struct {
 	Name string
 	// Parts names what was (or, in a dry run, would be) copied: "backend",
 	// "migrations", "frontend", "mcp", "skills".
@@ -85,7 +85,7 @@ func MigrateLocalToStore(ctx context.Context, src StoreConfig, dst Store, dryRun
 
 	var errs []error
 	for _, name := range sorted {
-		pm := PluginMigration{Name: name}
+		pm := MigratedPlugin{Name: name}
 		pm.Parts, pm.Err = migrateOne(ctx, src, dst, name, dryRun)
 		if pm.Err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, pm.Err))

@@ -45,6 +45,12 @@ func (h *PluginAssetsHandler) Serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rel := chi.URLParam(r, "*")
+	// Caddy's file_server answers a directory URL with its index.html, so do the
+	// same: /plugins/<id>/ (or any trailing-slash path) serves the bundle's
+	// index.html in both modes. A bundle without one still 404s.
+	if rel == "" || strings.HasSuffix(rel, "/") {
+		rel += "index.html"
+	}
 
 	asset, err := h.store.OpenAsset(r.Context(), kind, chi.URLParam(r, "name"), rel)
 	if err != nil {

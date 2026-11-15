@@ -27,7 +27,7 @@ func TestPluginAssetsHandler_Serve(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(src, "assets"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for rel, body := range map[string]string{"assets/remoteEntry.js": "entry", "assets/chunk-abc.js": "chunk"} {
+	for rel, body := range map[string]string{"assets/remoteEntry.js": "entry", "assets/chunk-abc.js": "chunk", "index.html": "home"} {
 		if err := os.WriteFile(filepath.Join(src, rel), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -72,6 +72,17 @@ func TestPluginAssetsHandler_Serve(t *testing.T) {
 		t.Error("expected an ETag")
 	} else if w2 := get("/plugin-assets/frontend/com.paca.x/assets/remoteEntry.js", map[string]string{"If-None-Match": etag}); w2.Code != http.StatusNotModified {
 		t.Errorf("conditional GET = %d, want 304", w2.Code)
+	}
+
+	// A directory URL serves its index.html, like the gateway's file_server.
+	for _, p := range []string{"/plugin-assets/frontend/com.paca.x/", "/plugin-assets/frontend/com.paca.x/index.html"} {
+		if w := get(p, nil); w.Code != http.StatusOK || w.Body.String() != "home" {
+			t.Errorf("GET %s = %d %q, want 200 home", p, w.Code, w.Body.String())
+		}
+	}
+	// ...and a directory without one still 404s.
+	if w := get("/plugin-assets/frontend/com.paca.x/assets/", nil); w.Code != http.StatusNotFound {
+		t.Errorf("GET assets/ = %d, want 404", w.Code)
 	}
 
 	for _, p := range []string{
