@@ -65,7 +65,7 @@ func (u docUser) createDocWith(title string, folderID *string, content string) s
 }
 
 // clearContentText makes documents look like rows written before migration
-// 000090, without numbering the change.
+// 000091, without numbering the change.
 func clearContentText(t *testing.T, env *e2eEnv, ids ...string) {
 	t.Helper()
 	tx, err := env.db.BeginTxx(env.ctx, nil)

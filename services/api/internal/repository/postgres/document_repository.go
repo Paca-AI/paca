@@ -539,7 +539,7 @@ func (r *DocumentRepository) ListAllDocuments(ctx context.Context, projectID uui
 // SearchDocuments matches query (literally, case-insensitively) against the
 // title or the document's plain text (content_text, one line per block with
 // a block's inline runs joined, so a phrase that crosses bold or a link
-// matches). Both have trigram indexes (migration 000090).
+// matches). Both have trigram indexes (migration 000091).
 //
 // A row the content_text backfill has not reached yet (content_text IS NULL)
 // is matched the old way, against each inline "text" node of the BlockNote
@@ -781,7 +781,7 @@ func (r *DocumentRepository) BackfillContentHashes(ctx context.Context, limit in
 // BackfillContentText implements worker.DocHashStore: it stores
 // text(content) as content_text on up to limit documents whose content_text
 // is NULL (deleted ones included) and returns how many it filled. It is
-// BackfillContentHashes for the plain-text column of migration 000090, with
+// BackfillContentHashes for the plain-text column of migration 000091, with
 // the same rules: one transaction with paca.skip_doc_seq = 'on' so the rows
 // keep their seq and updated_at and stay out of the change feed (the text is
 // derived from content a client already has), and FOR UPDATE SKIP LOCKED

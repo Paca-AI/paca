@@ -69,7 +69,7 @@ func TestBackfillContentText_FillsWithoutMovingSeq(t *testing.T) {
 		($3,$4,'empty',NULL)`, live, deleted, empty, f.p)
 	pgExec(t, f.db, `UPDATE documents SET deleted_at = now() WHERE id = $1`, deleted)
 	// Raw inserts bypass the repository, so these rows look like rows written
-	// before migration 000090.
+	// before migration 000091.
 	for _, id := range []uuid.UUID{live, deleted, empty} {
 		if got := contentTextOf(t, f, id); got != nil {
 			t.Fatalf("seeded row %s already has content_text %q", id, *got)

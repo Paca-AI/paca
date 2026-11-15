@@ -1,4 +1,4 @@
--- 000090_add_documents_content_text.sql
+-- 000091_add_documents_content_text.sql
 -- Indexed document search that matches across formatting (Paca-AI/paca#747).
 --
 -- pg_trgm comes first, so a database role that may not create it fails here,

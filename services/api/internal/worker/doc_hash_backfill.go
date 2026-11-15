@@ -37,7 +37,7 @@ type DocHashStore interface {
 // migration always carry a hash, so there is nothing to poll for.
 //
 // It also fills documents.content_text, the plain text search reads, on the
-// rows written before migration 000090, once the hashes are done.
+// rows written before migration 000091, once the hashes are done.
 //
 // It does not show up in the change feed: the store writes the hash and the
 // text without moving seq or updated_at, because both are derived from the
