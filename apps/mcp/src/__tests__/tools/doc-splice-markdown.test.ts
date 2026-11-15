@@ -8,6 +8,7 @@ import {
 	blocknoteToMarkdown,
 	markdownToBlocknote,
 } from "../../utils/converters.js";
+import { normaliseMarkdown } from "../../utils/md-normalise.js";
 import { docId, fakeDocsServer } from "../cli/fake-docs-server.js";
 
 /** Blocks the way the API returns them: parsed from Markdown, then passed
@@ -183,6 +184,55 @@ describe("spliceMarkdown", () => {
 		expectKept(blocks, json, one.blocks, [k]);
 		expect(one.blocks[k].id).toBe(blocks[k].id);
 		expect(pulled(one.blocks)).toBe(edited);
+	});
+
+	it("a list item added without a blank line, or nested with a tab or four spaces, is one new block", () => {
+		const blocks = stored("# T\n\n* one\n\n* two\n\nend\n");
+		const json = blocks.map((b) => JSON.stringify(b));
+		const render = pulled(blocks);
+		for (const [file, want, changed] of [
+			[render.replace("* two\n", "* two\n* three\n"), "* two\n\n* three\n", []],
+			[
+				render.replace("* two\n", "* two\n\t* nested\n"),
+				"* two\n\n  * nested\n",
+				[2],
+			],
+			[
+				render.replace("* two\n", "* two\n    * nested\n"),
+				"* two\n\n  * nested\n",
+				[2],
+			],
+			// The whole list written tight, with "-" bullets.
+			[
+				render.replace("* one\n\n* two\n", "- one\n- two\n- three\n"),
+				"* two\n\n* three\n",
+				[],
+			],
+		] as Array<[string, string, number[]]>) {
+			const res = spliceMarkdown(blocks, file);
+			expect(res.changed, file).toBe(1);
+			expect(pulled(res.blocks), file).toBe(render.replace("* two\n", want));
+			expectKept(blocks, json, res.blocks, changed);
+		}
+	});
+
+	it("a blank line taken out next to a checklist item, or a thematic break's characters changed, is refused with its line", () => {
+		const blocks = stored("* a\n\n* [ ] b\n\n---\n\nend\n");
+		const render = pulled(blocks);
+		expect(render).toContain("* a\n\n* [ ] b\n");
+		const tight = render.replace("* a\n\n* [ ] b", "* a\n* [ ] b");
+		expect(refusal(() => spliceMarkdown(blocks, tight)).lines).toEqual([2]);
+		const brk = render.match(/^(\*\*\*|---)$/m)?.[0] ?? "***";
+		const at = render.split("\n").indexOf(brk) + 1;
+		// "* - -" is a list item, and "- - -" the same divider Paca writes
+		// as it does: neither is read as the other, and both are refused
+		// with their line.
+		for (const other of ["* - -", "- - -"]) {
+			const file = render.replace(`\n${brk}\n`, `\n${other}\n`);
+			expect(refusal(() => spliceMarkdown(blocks, file)).lines, other).toEqual([
+				at,
+			]);
+		}
 	});
 
 	it("one edited paragraph changes one block", () => {
@@ -932,8 +982,21 @@ describe("spliceMarkdown fuzz", () => {
 							: l.replace(/^(\s*)[-+*] /, "$1* "),
 					)
 					.join("\n");
-			expect(unpad(blocknoteToMarkdown(res.blocks)), where).toBe(
-				unpad(body === "" ? "" : `${body}\n`),
+			// A list item's indent and the blank lines between items, which
+			// the normalising rules read the render's way, aside too.
+			const lists = (x: string) => normaliseMarkdown(x).text;
+			expect(lists(unpad(blocknoteToMarkdown(res.blocks))), where).toBe(
+				lists(unpad(body === "" ? "" : `${body}\n`)),
+			);
+			// And, not taking the rules' word for it, the file parses to what
+			// Paca now holds (but for the space the parser puts before a
+			// checklist item's text when a blank line is next to it).
+			const parsed = (x: string) =>
+				JSON.stringify(markdownToBlocknote(x), (k, v) =>
+					k === "id" ? undefined : k === "text" ? v.trimStart() : v,
+				);
+			expect(parsed(edited), where).toBe(
+				parsed(blocknoteToMarkdown(res.blocks)),
 			);
 
 			// B. Blocks the edits do not reach are the very objects read, in

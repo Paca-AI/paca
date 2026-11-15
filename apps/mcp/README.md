@@ -517,12 +517,31 @@ line, and these differences are not edits:
 - outside fenced code, spaces and tabs at the end of a line (other white
   space, such as a non-breaking space, is text);
 - a run of blank lines outside fenced code (read as one blank line);
-- outside fenced code, a `-` or `+` bullet (read as `*`);
+- outside fenced code, a `-` or `+` bullet (read as `*`), but not on a
+  thematic break line (`- - -` is a divider, not a bullet);
+- outside fenced code, blank lines between two list items (so `* three`
+  added straight under `* two` is one new item), unless one of the two is a
+  checklist item: next to one, a blank line changes what Paca reads (Paca
+  writes a run of checklist items with no blank lines between);
+- outside fenced code, how a list item is indented, as long as it nests the
+  same: a nested item written with a tab or four spaces is read as Paca
+  writes it (two spaces under `* `, three under `1. `), and one space under
+  `* ` is a sibling, read as such. After a line that continues an item
+  without its indent (a lazy continuation), indents are read as written
+  until the list ends;
 - outside fenced code, the padding of table cells, and a table's delimiter
   row (its second row, `| --- | :-: |`) apart from its alignment.
 
 Inside fenced code only line ends are read loosely: trailing spaces there are
-part of the code.
+part of the code. Two differences are read as no edit although they are
+one:
+
+- a run of blank lines inside indented code (code indented four spaces, not
+  fenced) is read as one blank line, like any other run; Paca writes code
+  fenced, so a file with indented code is refused at that line anyway;
+- a line that starts with `|` is read as a table row even outside a table, so
+  `| a` and `| a |` on a line of text read the same, and changing one into
+  the other is not sent.
 
 Anything else must be written as Paca writes it, or the push is refused with
 the line and what Paca would save there (for example `__bold__` where Paca

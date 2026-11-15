@@ -93,6 +93,91 @@ describe("normaliseMarkdown", () => {
 		);
 	});
 
+	it("reads blank lines between two list items as not there", () => {
+		expect(norm("* a\n* b\n")).toBe(norm("* a\n\n* b\n"));
+		expect(norm("* two\n  * nested\n* three\n")).toBe(
+			norm("* two\n\n  * nested\n\n* three\n"),
+		);
+		expect(norm("1. a\n2. b\n")).toBe(norm("1. a\n\n2. b\n"));
+		// Next to a checklist item a blank line changes the parse.
+		expect(norm("- [ ] a\n- [x] b\n")).not.toBe(norm("* [ ] a\n\n* [x] b\n"));
+		expect(norm("* a\n* [ ] b\n")).not.toBe(norm("* a\n\n* [ ] b\n"));
+		// Not between a paragraph and a list, nor inside fenced code.
+		expect(norm("a\n* b\n")).not.toBe(norm("a\n\n* b\n"));
+		expect(norm("```\n* a\n* b\n```\n")).not.toBe(
+			norm("```\n* a\n\n* b\n```\n"),
+		);
+	});
+
+	it("reads a nested item's indent as the renderer writes it when it parses the same", () => {
+		const render = "* two\n\n  * nested\n";
+		expect(norm("* two\n\t* nested\n")).toBe(norm(render));
+		expect(norm("* two\n    * nested\n")).toBe(norm(render));
+		expect(norm("* two\n   * nested\n")).toBe(norm(render));
+		expect(norm("1. a\n    1. b\n")).toBe(norm("1. a\n\n   1. b\n"));
+		// One space is not enough to nest under "* ": a sibling.
+		expect(norm("* two\n * nested\n")).not.toBe(norm(render));
+		expect(norm("* two\n * nested\n")).toBe(norm("* two\n\n* nested\n"));
+		// After text at the top level, an indented item starts no nesting.
+		expect(norm("* a\n\npara\n\n  * b\n")).toBe(norm("* a\n\npara\n\n* b\n"));
+		// A lazy line leaves the list unknown: indents are read as written.
+		expect(norm("* a\nlazy\n  * b\n")).not.toBe(norm("* a\nlazy\n* b\n"));
+	});
+
+	it("leaves a thematic break's characters alone", () => {
+		expect(norm("- - -\n")).not.toBe(norm("* - -\n"));
+		expect(norm("- - -\n")).toBe("- - -\n");
+		expect(norm("_ _ _\n")).toBe("_ _ _\n");
+		expect(norm("* * *\n")).toBe("* * *\n");
+	});
+
+	it("reads list blocks the same however blank lines and nesting indents are written", () => {
+		let seed = Number(process.env.FUZZ_SEED) || 5;
+		const rnd = (k: number) => {
+			seed = (seed * 1103515245 + 12345) % 2147483648;
+			return Math.floor((seed / 2147483648) * k);
+		};
+		const shape = (md: string) =>
+			JSON.stringify(markdownToBlocknote(md), (k, v) =>
+				k === "id" ? undefined : v,
+			);
+		for (let n = 0; n < 200; n++) {
+			const lines: string[] = [];
+			let depth = 0;
+			/** Per depth: the last item's kind and, if numbered, its number. */
+			const last: Array<{ kind: number; num: number }> = [];
+			for (let i = 0; i < 2 + rnd(6); i++) {
+				depth = Math.max(0, Math.min(depth + rnd(3) - 1, 2));
+				if (i === 0) depth = 0;
+				last.length = depth + 1;
+				const kind = rnd(4);
+				// Numbered items count on from the item before at their depth,
+				// as the render numbers them.
+				const num =
+					last[depth]?.kind === 2 && kind === 2 ? last[depth].num + 1 : 1;
+				last[depth] = { kind, num };
+				const marker = ["*", "-", `${num}.`, "* [ ]"][kind];
+				lines.push(`${"\t".repeat(depth)}${marker} item ${i}`);
+			}
+			const md = `${lines.join("\n")}\n`;
+			const render = blocknoteToMarkdown(
+				JSON.parse(JSON.stringify(markdownToBlocknote(md))),
+			);
+			// The same items with no blank lines, nested with tabs or with
+			// four spaces.
+			for (const file of [md, md.replace(/\t/g, "    ")]) {
+				const what = JSON.stringify({ render, file });
+				const same = shape(file) === shape(render);
+				// Never read as the render when it parses differently.
+				if (norm(file) === norm(render)) expect(same, what).toBe(true);
+				// Read as the render when it parses the same, checklist items
+				// aside (a blank line next to one changes the parse).
+				if (same && !file.includes("[ ]"))
+					expect(norm(file), what).toBe(norm(render));
+			}
+		}
+	});
+
 	it("never reads a file one visible character away from the render as the render", () => {
 		let seed = Number(process.env.FUZZ_SEED) || 7;
 		const rnd = (k: number) => {
