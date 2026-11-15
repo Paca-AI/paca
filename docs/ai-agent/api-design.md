@@ -290,6 +290,8 @@ Two read-only, project-agnostic reference endpoints under `/api/v1/agents`, used
 
 Proxies to `services/agent-runner`'s `/llm/models`, returning the verified LLM models available, grouped by provider.
 
+If agent-runner is unreachable (for example, scaled to 0 with `PACA_AGENT_RUNNER=no`), the endpoint returns `200` with `{}` and logs a warning. A runner that answers with an error still returns `500`.
+
 ---
 
 ### `GET /api/v1/agents/skill-templates`
