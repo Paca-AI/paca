@@ -171,6 +171,87 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		expect(render()).toContain("Last paragraph, mine.");
 	});
 
+	it("a conflict inside fenced code is marked, flagged, refused by push and never stored", async () => {
+		const CODE = docId(3);
+		server.add(
+			CODE,
+			"Code",
+			storedBlocks(
+				"# Code\n\nIntro.\n\n```ts\nconst a = 1;\nconst b = 2;\n```\n\nEnd.",
+			),
+		);
+		expect(await pull()).toBe(0);
+		const codeText = () => server.docs.get(CODE)?.content as any[];
+		write(read("Code.md").replace("const a = 1;", "const a = 10;"), "Code.md");
+		server.edit(CODE, (b) => {
+			b[2].content[0].text = b[2].content[0].text.replace(
+				"const a = 1;",
+				"const a = 2;",
+			);
+		});
+		lines = [];
+		expect(await pull(), output()).toBe(2);
+		expect(output()).toContain("conflict Code.md: edited here and in Paca");
+		expect(read("Code.md")).toContain(
+			"```ts\n<<<<<<< local\nconst a = 10;\n||||||| base\nconst a = 1;\n=======\nconst a = 2;\n>>>>>>> Paca",
+		);
+		expect(state().docs[CODE].conflict).toBe(true);
+		// Push refuses: the markers are inside the fence.
+		const sent = server.client.patchDocument.mock.calls.length;
+		lines = [];
+		expect(await push(".paca/docs/Code.md"), output()).toBe(1);
+		expect(output()).toContain("has conflict markers (line 6)");
+		expect(server.client.patchDocument.mock.calls.length).toBe(sent);
+		expect(JSON.stringify(codeText())).not.toContain("<<<<<<<");
+		// Pull while the markers are there: still a conflict, not merged again.
+		lines = [];
+		expect(await pull(), output()).toBe(2);
+		expect(output()).toBe(
+			"1 conflicted\nconflict Code.md: the conflict markers from an earlier pull are still there (line 6); resolve them, then push",
+		);
+		// Resolved by hand: pull clears the flag, push stores the resolution.
+		const resolved = read("Code.md").replace(
+			/<<<<<<< local\n[^]*?>>>>>>> Paca[^\n]*\n/,
+			"const a = 12;\n",
+		);
+		write(resolved, "Code.md");
+		lines = [];
+		expect(await pull(), output()).toBe(0);
+		expect(output()).toBe("1 modified locally\nmodified locally Code.md");
+		expect(state().docs[CODE].conflict).toBeUndefined();
+		lines = [];
+		expect(await push(".paca/docs/Code.md"), output()).toBe(0);
+		expect(blocknoteToMarkdown(codeText())).toBe(resolved);
+	});
+
+	it("a conflict on a fence line leaves markers outside any fence's reach that push still refuses", async () => {
+		const CODE = docId(3);
+		server.add(
+			CODE,
+			"Code",
+			storedBlocks("Intro.\n\n```ts\nconst a = 1;\nconst b = 2;\n```\n\nEnd."),
+		);
+		expect(await pull()).toBe(0);
+		write(
+			read("Code.md")
+				.replace("```ts", "```js")
+				.replace("const b = 2;", "const b = 3;"),
+			"Code.md",
+		);
+		server.edit(CODE, (b) => {
+			b[1].props.language = "python";
+		});
+		lines = [];
+		expect(await pull(), output()).toBe(2);
+		expect(state().docs[CODE].conflict).toBe(true);
+		lines = [];
+		expect(await push(".paca/docs/Code.md"), output()).toBe(1);
+		expect(output()).toContain("has conflict markers");
+		const md = blocknoteToMarkdown(server.docs.get(CODE)?.content as any[]);
+		expect(md).not.toContain("<<<<<<<");
+		expect(md).not.toContain(">>>>>>>");
+	});
+
 	it("a missing base copy is replaced by the snapshot of the version pulled", async () => {
 		write(read().replace("Third paragraph.", "Third paragraph, mine."));
 		server.edit(ID, annEdits("First paragraph, by Ann."));

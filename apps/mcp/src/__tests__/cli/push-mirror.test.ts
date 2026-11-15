@@ -863,4 +863,20 @@ describe("conflictLine", () => {
 		expect(conflictLine("x\n<<<<<<< a\n", "<<<<<<< a\n")).toBe(0);
 		expect(conflictLine("x\n<<<<<<< b\n", "<<<<<<< a\n")).toBe(2);
 	});
+	it("finds the marker lines pull writes anywhere, fenced code included", () => {
+		expect(conflictLine("```\n<<<<<<< local\nx\n```\n", "")).toBe(2);
+		expect(conflictLine("```\nx\n||||||| base\n```\n", "")).toBe(3);
+		expect(conflictLine("~~~\n>>>>>>> Paca\n~~~\n", "")).toBe(2);
+		expect(conflictLine("```\n>>>>>>> Paca (ann, 2026-11-15)\n```\n", "")).toBe(
+			2,
+		);
+		// Not pull's labels: other text after the marker, inside a fence.
+		expect(
+			conflictLine("```\n<<<<<<< localhost\n>>>>>>> Pacament\n```\n", ""),
+		).toBe(0);
+		// The same line in the base copy is the document's own.
+		expect(
+			conflictLine("```\n<<<<<<< local\n```\n", "```\n<<<<<<< local\n```\n"),
+		).toBe(0);
+	});
 });

@@ -5,7 +5,14 @@ import path from "node:path";
 import type { PacaAPIDocClient } from "../api/doc-client.js";
 import type { Document } from "../types/index.js";
 import { blocknoteToMarkdown } from "../utils/index.js";
-import { type GitRunner, mergeFile } from "./merge.js";
+import {
+	BASE_LABEL,
+	type GitRunner,
+	LOCAL_LABEL,
+	mergeFile,
+	pullMarkerLine,
+	remoteLabel,
+} from "./merge.js";
 import {
 	folderDirs,
 	isInside,
@@ -490,9 +497,18 @@ async function pullLocked(
 				// Edited here, unchanged in Paca: left for push.
 				if (p && !p.reserved && !p.orphan) {
 					const sha = await fileSha256(path.resolve(root, file));
-					if (sha !== null && sha !== p.file_sha256) {
-						modified++;
-						lines.push(`modified locally ${file}`);
+					const marked = p.conflict
+						? await markerLine(root, id, path.resolve(root, file))
+						: 0;
+					if (marked > 0) {
+						conflicted++;
+						lines.push(stillMarked(file, marked));
+					} else {
+						delete next[id].conflict;
+						if (sha !== null && sha !== p.file_sha256) {
+							modified++;
+							lines.push(`modified locally ${file}`);
+						}
 					}
 				}
 				continue;
@@ -525,6 +541,22 @@ async function pullLocked(
 				// A managed copy is edited in its repository, never here.
 				if (m.managed || p.orphan) {
 					keep("");
+					continue;
+				}
+				// Conflict markers from an earlier merge: merging again would
+				// nest them.
+				const marked = await markerLine(root, id, abs);
+				if (marked > 0) {
+					conflicted++;
+					lines.push(stillMarked(file, marked));
+					next[id] = {
+						...p,
+						...base,
+						remote_hash: m.remote_hash,
+						conflict: true,
+					};
+					delete next[id].orphan;
+					delete next[id].pending_sha256;
 					continue;
 				}
 				// Merged only from a base the file is known to have been
@@ -562,11 +594,7 @@ async function pullLocked(
 					localText,
 					baseText,
 					markdown,
-					{
-						local: "local",
-						base: "base",
-						remote: `Paca${who ? ` (${who})` : ""}`,
-					},
+					{ local: LOCAL_LABEL, base: BASE_LABEL, remote: remoteLabel(who) },
 					opts.git,
 				);
 				if (res.status === "unavailable") {
@@ -596,6 +624,7 @@ async function pullLocked(
 					lines.push(`merged ${file}: your edits and the changes in Paca`);
 				} else {
 					conflicted++;
+					next[id].conflict = true;
 					lines.push(
 						`conflict ${file}: edited here and in Paca${who ? ` (${who})` : ""}; resolve the marked lines (${res.conflicts} conflict${res.conflicts === 1 ? "" : "s"}), then push`,
 					);
@@ -660,6 +689,25 @@ async function pullLocked(
 	io.out(parts.length ? parts.join(", ") : "up to date");
 	for (const l of lines) io.out(l);
 	return kept || conflicted ? EXIT.conflict : EXIT.ok;
+}
+
+/** The first line of the file at `abs` that is a conflict marker pull's
+ *  merge wrote (and not a line of the base copy); 0 if none. */
+async function markerLine(
+	root: string,
+	id: string,
+	abs: string,
+): Promise<number> {
+	const text = await readText(abs).catch(() => null);
+	if (text === null) return 0;
+	const base =
+		(await readText(path.join(root, BASE_DIR, `${id}.md`)).catch(() => null)) ??
+		"";
+	return pullMarkerLine(text, base);
+}
+
+function stillMarked(file: string, line: number): string {
+	return `conflict ${file}: the conflict markers from an earlier pull are still there (line ${line}); resolve them, then push`;
 }
 
 /**

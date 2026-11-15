@@ -429,7 +429,10 @@ describe("runPull", () => {
 		);
 		// Base and state are Paca's version: the file is a local edit of it.
 		expect(read(`.paca-base/${ID(1)}.md`)).toBe("one v2\n");
-		expect(state().docs[ID(1)]).toMatchObject({ content_hash: "h:one v2" });
+		expect(state().docs[ID(1)]).toMatchObject({
+			content_hash: "h:one v2",
+			conflict: true,
+		});
 		// push refuses the file while it has the markers.
 		lines = [];
 		expect(
@@ -448,11 +451,13 @@ describe("runPull", () => {
 			),
 		).toBe(1);
 		expect(lines.join("\n")).toContain("conflict markers (line 1)");
-		// The next pull reports the edit, and --force overwrites.
+		// The next pull reports the markers, and --force overwrites.
 		srv.feed([]);
 		lines = [];
-		expect(await pull(srv)).toBe(0);
-		expect(lines).toContain("modified locally A.md");
+		expect(await pull(srv)).toBe(2);
+		expect(lines).toContain(
+			"conflict A.md: the conflict markers from an earlier pull are still there (line 1); resolve them, then push",
+		);
 		srv.feed([]);
 		expect(await pull(srv, true)).toBe(0);
 		expect(read("A.md")).toBe("one v2\n");

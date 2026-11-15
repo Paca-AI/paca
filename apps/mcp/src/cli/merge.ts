@@ -13,6 +13,31 @@ export type MergeResult =
 	/** The merge could not run (no git, or git failed): `why` says so. */
 	| { status: "unavailable"; why: string };
 
+/** Pull's names for the three sides, in the marker lines git writes. */
+export const LOCAL_LABEL = "local";
+export const BASE_LABEL = "base";
+export function remoteLabel(who: string): string {
+	return `Paca${who ? ` (${who})` : ""}`;
+}
+/** A marker line pull's merge writes, with pull's labels. */
+const PULL_MARKER = /^(?:<{7} local|\|{7} base|>{7} Paca(?: \(.*\))?)$/;
+
+/** Whether `line` is a marker line pull's merge writes. */
+export function isPullMarker(line: string): boolean {
+	return PULL_MARKER.test(line);
+}
+
+/** The first line of `text` (from 1) that is a marker line pull's merge
+ *  writes, anywhere (fenced code included), and not a line of `base`; 0 if
+ *  none. */
+export function pullMarkerLine(text: string, base: string): number {
+	const known = new Set(base.split(/\r?\n/).filter(isPullMarker));
+	const k = text
+		.split(/\r?\n/)
+		.findIndex((l) => isPullMarker(l) && !known.has(l));
+	return k + 1;
+}
+
 export interface MergeLabels {
 	local: string;
 	base: string;

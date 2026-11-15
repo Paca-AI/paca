@@ -13,6 +13,7 @@ import { type Block, SpliceError, spliceMarkdown } from "../tools/doc-edit.js";
 import type { DocSource } from "../types/index.js";
 import { blocknoteToMarkdown } from "../utils/index.js";
 import { fencedLines } from "../utils/md-normalise.js";
+import { isPullMarker } from "./merge.js";
 import { nameKey } from "./mirror-paths.js";
 import { releaseLock, takeLock } from "./pull.js";
 import type { PushOptions } from "./push.js";
@@ -42,8 +43,10 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
  *  taken for one: it is also a heading underline in Markdown. */
 const CONFLICT_MARKER = /^(?:<{7}|>{7}|\|{7})(?:\s|$)/;
 /** The first line of `text` (from 1) that git merge-file writes around a
- *  conflict, outside fenced code and not already in the base copy; 0 if
- *  none. */
+ *  conflict and that is not already in the base copy; 0 if none. Any such
+ *  line counts outside fenced code; inside it, only the marker lines pull's
+ *  merge writes (with its labels), since a conflict can fall inside code,
+ *  or on a fence line and leave the fences unmatched. */
 export function conflictLine(text: string, base: string): number {
 	const known = new Set(
 		base.split(/\r?\n/).filter((l) => CONFLICT_MARKER.test(l)),
@@ -51,7 +54,9 @@ export function conflictLine(text: string, base: string): number {
 	const lines = text.split(/\r?\n/);
 	const fenced = fencedLines(lines);
 	const k = lines.findIndex(
-		(l, i) => !fenced[i] && CONFLICT_MARKER.test(l) && !known.has(l),
+		(l, i) =>
+			((!fenced[i] && CONFLICT_MARKER.test(l)) || isPullMarker(l)) &&
+			!known.has(l),
 	);
 	return k + 1;
 }
@@ -283,6 +288,7 @@ async function pushLocked(
 		delete next.remote_hash;
 		delete next.pending_sha256;
 		delete next.unmerged;
+		delete next.conflict;
 		state.docs[id] = next;
 		await writeJSON(statePath, state);
 		if (text !== markdown) {

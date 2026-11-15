@@ -127,6 +127,10 @@ export interface PullDocState {
 	 *  was pulled at is left: pull keeps it rather than merging until
 	 *  `pull --force` replaces it or a push records it. */
 	unmerged?: true;
+	/** The last merge wrote conflict markers into the file. Pull reports
+	 *  the file as conflicted while it still has them, and never merges it
+	 *  again; cleared by a push, or by a pull that finds none left. */
+	conflict?: true;
 	/** The name was taken by a pull that stopped before it recorded this
 	 *  document's content: a file there came from that pull (the name was
 	 *  free when it was taken), so the next pull overwrites it. The content
