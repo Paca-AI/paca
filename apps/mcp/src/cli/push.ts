@@ -111,6 +111,21 @@ export async function runPush(
 	}
 
 	const docPath = opts.path || entry?.doc_path || defaultDocPath(rel);
+	// Two files pushed to one document would overwrite each other. --force
+	// overwrites the Paca copy; it does not make two files share a document.
+	const owner = Object.entries(state).find(
+		([file, e]) =>
+			file !== rel &&
+			e.project === opts.projectId &&
+			(e.server ?? "") === server &&
+			e.doc_path === docPath,
+	);
+	if (owner) {
+		io.err(
+			`${docPath} is already pushed from ${owner[0]}; pass --path "Folder/Title" to push ${rel} to another document`,
+		);
+		return EXIT.error;
+	}
 	const ifMatch =
 		!opts.force && entry?.etag && entry.doc_path === docPath
 			? entry.etag

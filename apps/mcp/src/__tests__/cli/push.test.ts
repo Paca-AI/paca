@@ -498,6 +498,61 @@ describe("runPush", () => {
 		}
 	});
 
+	describe("a document path another file already uses", () => {
+		beforeEach(async () => {
+			write("docs/api/plan.md", "# API plan\n");
+			write("docs/ui/plan.md", "# UI plan\n");
+			client.putByPath.mockResolvedValue(written({ created: true }));
+			expect(await push("docs/api/plan.md")).toBe(0);
+			client.putByPath.mockClear();
+			lines = [];
+		});
+
+		it("is refused, naming the other file", async () => {
+			expect(await push("docs/ui/plan.md")).toBe(1);
+			expect(client.putByPath).not.toHaveBeenCalled();
+			expect(lines.join("\n")).toContain(
+				"Plans/plan is already pushed from docs/api/plan.md",
+			);
+			expect(lines.join("\n")).toContain("--path");
+			expect(state()["docs/ui/plan.md"]).toBeUndefined();
+			expect(state()["docs/api/plan.md"]).toMatchObject({
+				doc_path: "Plans/plan",
+			});
+		});
+
+		it("is refused for --path too", async () => {
+			write("notes/other.md", "x\n");
+			expect(await push("notes/other.md", { path: "Plans/plan" })).toBe(1);
+			expect(client.putByPath).not.toHaveBeenCalled();
+		});
+
+		it("is refused with --force", async () => {
+			expect(await push("docs/ui/plan.md", { force: true })).toBe(1);
+			expect(client.putByPath).not.toHaveBeenCalled();
+		});
+
+		it("is refused with --dry-run", async () => {
+			expect(await push("docs/ui/plan.md", { dryRun: true })).toBe(1);
+			expect(lines.join("\n")).toContain(
+				"Plans/plan is already pushed from docs/api/plan.md",
+			);
+		});
+
+		it("is allowed with another --path", async () => {
+			expect(await push("docs/ui/plan.md", { path: "Plans/ui-plan" })).toBe(0);
+			expect(body()).toMatchObject({ path: "Plans/ui-plan" });
+		});
+
+		it("is allowed when the other entry is for another project or server", async () => {
+			expect(await push("docs/ui/plan.md", { projectId: "p2" })).toBe(0);
+			expect(
+				await push("docs/ui/plan.md", { server: "http://other.test" }),
+			).toBe(0);
+			expect(client.putByPath).toHaveBeenCalledTimes(2);
+		});
+	});
+
 	it("refuses a file outside the repository", async () => {
 		const outside = path.join(os.tmpdir(), `paca-outside-${process.pid}.md`);
 		fs.writeFileSync(outside, "x");
