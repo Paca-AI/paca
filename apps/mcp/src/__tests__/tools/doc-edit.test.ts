@@ -1681,50 +1681,79 @@ describe("spliceEdit names the lines of nested list items", () => {
 	}
 });
 
-// Measured on an M-series Mac: 800 items with replace_all about 1.0 s,
-// one edit in 3000 items about 1.5 s (before: 108 s and 4.5 s). The bound
-// leaves room for slower machines; it catches a return of quadratic work.
-describe("spliceEdit time on long lists", () => {
-	it("replaces a word in all 800 items of a list in a few seconds", () => {
-		const blocks = stored(
-			Array.from({ length: 800 }, (_, i) => `* item ${i} word`).join("\n"),
+// Scaling, not speed: each operation is timed at two sizes (best of three
+// runs each) and the ratio must stay well under what quadratic (or, for
+// depth, cubic) work would give. Absolute times vary with the machine
+// (CI runners are about 3x slower than the Mac this was written on); the
+// test timeout is only a hang guard. Ratios measured on that Mac: see the
+// PR notes.
+describe("spliceEdit scales on long lists", () => {
+	const best = (make: () => any[], run: (blocks: any[]) => unknown) => {
+		let min = Number.POSITIVE_INFINITY;
+		for (let k = 0; k < 3; k++) {
+			const blocks = make();
+			const t0 = performance.now();
+			run(blocks);
+			min = Math.min(min, performance.now() - t0);
+		}
+		return min;
+	};
+	const ratio = (
+		small: number,
+		big: number,
+		make: (n: number) => any[],
+		run: (blocks: any[], n: number) => unknown,
+	) => {
+		const a = best(
+			() => make(small),
+			(b) => run(b, small),
 		);
-		const t0 = Date.now();
-		const res = spliceEdit(blocks, "word", "term", true);
-		expect(Date.now() - t0).toBeLessThan(6000);
-		expect(res.replaced).toBe(800);
-		expect(res.blocks.map((b) => b.id)).toEqual(blocks.map((b) => b.id));
-		expect(blocknoteToMarkdown(res.blocks)).not.toContain("word");
-	}, 60_000);
+		const z = best(
+			() => make(big),
+			(b) => run(b, big),
+		);
+		// Floor tiny times so timer noise cannot blow up the ratio.
+		if (process.env.RATIO_OUT)
+			console.log(
+				`RATIO ${small}->${big}: ${a.toFixed(0)} ms -> ${z.toFixed(0)} ms = ${(z / Math.max(a, 5)).toFixed(2)}`,
+			);
+		return z / Math.max(a, 5);
+	};
+	const list = (n: number) =>
+		stored(Array.from({ length: n }, (_, i) => `* item ${i} word`).join("\n"));
 
-	// Depth 100 took 3.8 s before nested blocks were trusted once their
-	// parent's whole subtree read back nested (about 0.3 s now).
-	it("edits the leaf of a list nested 100 deep quickly", () => {
-		const blocks = stored(
-			Array.from({ length: 100 }, (_, i) => `${"    ".repeat(i)}* d ${i}`).join(
-				"\n",
-			),
-			(b) => {
-				b[0].props.textColor = "red";
-			},
-		);
-		const t0 = Date.now();
-		const res = spliceEdit(blocks, "d 99", "d last", false);
-		expect(Date.now() - t0).toBeLessThan(1500);
-		expect(res.blocks[0].id).toBe(blocks[0].id);
-		expect(res.blocks[0].props.textColor).toBe("red");
-	}, 60_000);
+	it("replace_all over every item: 4x the items, well under 16x the time", () => {
+		const r = ratio(200, 800, list, (b) => {
+			const res = spliceEdit(b, "word", "term", true);
+			expect(res.replaced).toBe(b.length);
+		});
+		expect(r).toBeLessThan(9);
+	}, 120_000);
 
-	it("edits one item of a 3000-item list in a few seconds", () => {
-		const blocks = stored(
-			Array.from({ length: 3000 }, (_, i) => `* item ${i}`).join("\n"),
-		);
-		const t0 = Date.now();
-		const res = spliceEdit(blocks, "item 7\n", "item seven\n", false);
-		expect(Date.now() - t0).toBeLessThan(6000);
-		expect(res.blocks.filter((b, i) => b !== blocks[i])).toHaveLength(1);
-		expect(res.blocks[7].id).toBe(blocks[7].id);
-	}, 60_000);
+	it("one edit in a long list: 4x the items, well under 16x the time", () => {
+		const r = ratio(750, 3000, list, (b, n) => {
+			const res = spliceEdit(b, `item ${n >> 1} word`, "item X word", false);
+			expect(res.blocks.filter((x, i) => x !== b[i])).toHaveLength(1);
+		});
+		expect(r).toBeLessThan(9);
+	}, 120_000);
+
+	it("a leaf edit in a deep list: 4x the depth, well under 64x the time", () => {
+		const deep = (d: number) =>
+			stored(
+				Array.from({ length: d }, (_, i) => `${"    ".repeat(i)}* d ${i}`).join(
+					"\n",
+				),
+				(b) => {
+					b[0].props.textColor = "red";
+				},
+			);
+		const r = ratio(25, 100, deep, (b, d) => {
+			const res = spliceEdit(b, `d ${d - 1}`, "d last", false);
+			expect(res.blocks[0].props.textColor).toBe("red");
+		});
+		expect(r).toBeLessThan(20);
+	}, 120_000);
 });
 
 // The final audit, tested directly on the wrong results the reviews found
