@@ -299,4 +299,25 @@ describe("runPull killed between moves and writes", () => {
 		expect(mirrorFiles(dir)).toEqual(["A.md"]);
 		expect(files()).toEqual({ [ID1]: "A.md" });
 	});
+	it("a kept file whose document comes back is safe when a pull is killed and the new document deleted", async () => {
+		const docs = new Map<string, ServerDoc>([
+			[ID1, { id: ID1, title: "X", folder_id: null, text: "o" }],
+		]);
+		const deleted = new Set<string>();
+		const client = fakeServer(docs, deleted);
+		await pull(client);
+		fs.writeFileSync(path.join(dir, "X.md"), "MY EDIT\n");
+		docs.delete(ID1);
+		deleted.add(ID1);
+		expect(await pull(client)).toBe(2);
+		deleted.delete(ID1);
+		docs.set(ID1, { id: ID1, title: "Y", folder_id: null, text: "o" });
+		docs.set(ID2, { id: ID2, title: "X", folder_id: null, text: "new doc" });
+		await killAtWrite(client);
+		docs.delete(ID2);
+		deleted.add(ID2);
+		expect(await pull(client)).toBe(2);
+		expect(mirrorFiles(dir)).toEqual(["Y.md"]);
+		expect(fs.readFileSync(path.join(dir, "Y.md"), "utf8")).toBe("MY EDIT\n");
+	});
 });

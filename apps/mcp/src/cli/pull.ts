@@ -342,7 +342,9 @@ async function pullLocked(
 		for (const id of ids) {
 			const p = prevDocs[id];
 			const to = layout.get(id) as string;
-			if (!p || p.orphan || p.file === to) continue;
+			// A revived orphan's edited file moves with its document like any
+			// other, and the write step below keeps it as edited locally.
+			if (!p || p.file === to) continue;
 			const from = await safePath(root, p.file);
 			if (!(await exists(from))) continue;
 			const tmp = await safePath(root, `${MOVE_TMP}${id}`);
@@ -383,12 +385,7 @@ async function pullLocked(
 			};
 			for (const id of ids) {
 				const p = prevDocs[id];
-				if (!p) docs[id] = reserve(id);
-				else if (!p.orphan) docs[id] = { ...p, file: layout.get(id) as string };
-				// A revived orphan's file is not moved: it stays where it is as a
-				// file pull did not write, unless it already has its name.
-				else if (p.file === layout.get(id)) docs[id] = p;
-				else docs[id] = reserve(id);
+				docs[id] = p ? { ...p, file: layout.get(id) as string } : reserve(id);
 			}
 			for (const [id, n] of Object.entries(next)) if (n.orphan) docs[id] = n;
 			const interim: PullState = { ...base, dirs, docs };

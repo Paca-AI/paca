@@ -490,6 +490,87 @@ describe("runPull", () => {
 		expect(state().docs).toEqual({});
 	});
 
+	describe("a kept file whose document comes back under another name", () => {
+		// O ("X") is pulled, X.md is edited, O is deleted (X.md kept), then O
+		// comes back as "Y".
+		const setup = async () => {
+			const srv = fakeServer();
+			srv.docs.set(ID(1), {
+				id: ID(1),
+				title: "X",
+				folder_id: null,
+				text: "o",
+			});
+			srv.resetFeed();
+			await pull(srv);
+			fs.writeFileSync(path.join(dir, "X.md"), "MY EDIT\n");
+			srv.docs.delete(ID(1));
+			srv.feed([srv.tomb(ID(1))]);
+			expect(await pull(srv)).toBe(2);
+			srv.docs.set(ID(1), {
+				id: ID(1),
+				title: "Y",
+				folder_id: null,
+				text: "o",
+			});
+			return srv;
+		};
+
+		it("moves with its document and is kept when a new document takes its old name", async () => {
+			const srv = await setup();
+			srv.docs.set(ID(2), {
+				id: ID(2),
+				title: "X",
+				folder_id: null,
+				text: "new doc",
+			});
+			srv.feed([
+				srv.entry(srv.docs.get(ID(1)) as ServerDoc),
+				srv.entry(srv.docs.get(ID(2)) as ServerDoc),
+			]);
+			lines = [];
+			expect(await pull(srv)).toBe(2);
+			expect(read("Y.md")).toBe("MY EDIT\n");
+			expect(read("X.md")).toContain("new doc");
+			expect(lines.join("\n")).toContain("kept Y.md: edited locally");
+			expect(state().docs[ID(1)]).toMatchObject({ file: "Y.md" });
+			expect(state().docs[ID(1)].orphan).toBeUndefined();
+			// Same server content as before the delete: like any edited file of
+			// an unchanged document, it is left alone from now on.
+			srv.feed([]);
+			expect(await pull(srv)).toBe(0);
+			expect(read("Y.md")).toBe("MY EDIT\n");
+		});
+
+		it("is not moved over when a live document is renamed onto its old name", async () => {
+			const srv = await setup();
+			srv.docs.set(ID(3), {
+				id: ID(3),
+				title: "L",
+				folder_id: null,
+				text: "live",
+			});
+			srv.feed([srv.entry(srv.docs.get(ID(3)) as ServerDoc)]);
+			await pull(srv);
+			srv.docs.set(ID(3), {
+				id: ID(3),
+				title: "X",
+				folder_id: null,
+				text: "live",
+			});
+			srv.feed([
+				srv.entry(srv.docs.get(ID(1)) as ServerDoc),
+				srv.entry(srv.docs.get(ID(3)) as ServerDoc),
+			]);
+			expect(await pull(srv)).toBe(2);
+			expect(read("Y.md")).toBe("MY EDIT\n");
+			expect(read("X.md")).toContain("live");
+			expect(exists("L.md")).toBe(false);
+			srv.feed([]);
+			expect(await pull(srv)).toBe(0);
+		});
+	});
+
 	it("pull --force removes an edited file whose document was deleted", async () => {
 		const srv = fakeServer();
 		srv.docs.set(ID(1), {
