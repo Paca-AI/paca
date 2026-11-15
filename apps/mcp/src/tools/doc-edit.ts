@@ -10,6 +10,11 @@ import { PacaAPIError } from "../api/doc-client.js";
 import type { Document } from "../types/index.js";
 import { blocknoteToMarkdown, markdownToBlocknote } from "../utils/index.js";
 import { diffOps, type LineOp, splitLines } from "../utils/line-diff.js";
+import {
+	fencedLines,
+	lineKeys,
+	normaliseMarkdown,
+} from "../utils/md-normalise.js";
 
 export type Block = Record<string, any>;
 
@@ -1933,6 +1938,74 @@ function asRendered(markdown: string, renderEnd: string): string {
 	return text === "" ? "" : text + (renderEnd || "\n");
 }
 
+/**
+ * The file with every line that only differs from a line of the render by
+ * the normalising rules taken as the render writes it, and runs of blank
+ * lines outside fenced code collapsed: what is left differing from the
+ * render is what the file changes. `fileOf(n)` is the line of `file` (from
+ * 1) that line n of the result came from.
+ */
+function canonical(
+	full: string,
+	file: string,
+	renderEnd: string,
+): { md: string; fileOf: (line: number) => number } {
+	const a = splitLines(full);
+	const f = splitLines(file);
+	const ka = lineKeys(a);
+	const kf = lineKeys(f);
+	const lines: string[] = [];
+	const src: number[] = [];
+	let i = 0;
+	let j = 0;
+	// The common first and last lines set aside, as in spliceMarkdown.
+	let head = 0;
+	while (head < ka.length && head < kf.length && ka[head] === kf[head]) head++;
+	let tail = 0;
+	while (
+		tail < ka.length - head &&
+		tail < kf.length - head &&
+		ka[ka.length - 1 - tail] === kf[kf.length - 1 - tail]
+	)
+		tail++;
+	const same = (n: number) =>
+		Array.from({ length: n }, () => ({ kind: " " as const, line: "" }));
+	const ops: LineOp[] = [
+		...same(head),
+		...diffOps(
+			ka.slice(head, ka.length - tail),
+			kf.slice(head, kf.length - tail),
+			(k) => (k.trim() === "" ? 1 : 64),
+		),
+		...same(tail),
+	];
+	for (const op of ops) {
+		if (op.kind === "-") {
+			i++;
+			continue;
+		}
+		lines.push(op.kind === " " ? a[i++] : f[j]);
+		src.push(++j);
+	}
+	const fenced = fencedLines(lines);
+	const keep = lines.map(
+		(l, k) =>
+			!(
+				k > 0 &&
+				l.trim() === "" &&
+				lines[k - 1].trim() === "" &&
+				!fenced[k] &&
+				!fenced[k - 1]
+			),
+	);
+	const out = lines.filter((_, k) => keep[k]);
+	const from = src.filter((_, k) => keep[k]);
+	return {
+		md: out.length === 0 ? "" : out.join("\n") + (renderEnd || "\n"),
+		fileOf: (n) => from[Math.min(n, from.length) - 1] ?? Math.max(1, f.length),
+	};
+}
+
 /** The length of the longest strictly rising subsequence of `xs`. */
 function longestRising(xs: number[]): number {
 	const tails: number[] = [];
@@ -2016,7 +2089,14 @@ export function spliceMarkdown(
 ): { blocks: Block[]; changed: number; lines: number[] } {
 	const prep = prepare(blocks);
 	const { full, units } = prep;
-	const md = asRendered(markdown, full.match(/\n*$/)?.[0] ?? "");
+	const renderEnd = full.match(/\n*$/)?.[0] ?? "";
+	const file = asRendered(markdown, renderEnd);
+	if (file === full) return { blocks, changed: 0, lines: [] };
+	// Differences the normalising rules allow are no edit.
+	const want = normaliseMarkdown(file);
+	if (want.text === normaliseMarkdown(full).text)
+		return { blocks, changed: 0, lines: [] };
+	const { md, fileOf } = canonical(full, file, renderEnd);
 	if (md === full) return { blocks, changed: 0, lines: [] };
 
 	// The line diff, with the common first and last lines set aside so a
@@ -2067,9 +2147,11 @@ export function spliceMarkdown(
 		hunks.push(h);
 	}
 	const fileLine = (renderLine: number) =>
-		Math.max(
-			1,
-			(toFile[Math.min(renderLine, a.length) - 1] ?? b.length - 1) + 1,
+		fileOf(
+			Math.max(
+				1,
+				(toFile[Math.min(renderLine, a.length) - 1] ?? b.length - 1) + 1,
+			),
 		);
 
 	// Each run as a change of whole lines of the render: [s, e) replaced by
@@ -2174,18 +2256,27 @@ export function spliceMarkdown(
 		);
 	}
 
-	// The file must be what Paca now holds, line for line.
+	// The file must be what Paca now holds, line for line, but for what
+	// the normalising rules allow.
 	const now = render(out);
-	if (now !== md) {
-		const got = splitLines(now);
+	const got = normaliseMarkdown(now);
+	if (now !== md && got.text !== want.text) {
 		let k = 0;
-		while (k < got.length && k < b.length && got[k] === b[k]) k++;
-		const show = (line: string | undefined) =>
-			line === undefined ? "nothing" : JSON.stringify(line);
+		while (
+			k < got.lines.length &&
+			k < want.lines.length &&
+			got.lines[k] === want.lines[k]
+		)
+			k++;
+		const nowLines = now.split("\n");
+		const fileLines = file.split("\n");
+		const show = (lines: string[], at: number | undefined) =>
+			at === undefined ? "nothing" : JSON.stringify(lines[at - 1]);
+		const line = want.from[k] ?? (want.from[want.from.length - 1] ?? 0) + 1;
 		throw new SpliceError(
-			`The file does not read back as written: Paca would save line ${k + 1} as ${show(got[k])}, where the file has ${show(b[k])}. Paca writes Markdown one way (for example "* " for bullet items); write that line as Paca would, so the file and the document stay the same. Nothing was changed.`,
+			`The file does not read back as written: Paca would save line ${line} as ${show(nowLines, got.from[k])}, where the file has ${show(fileLines, want.from[k])}. Paca writes Markdown one way (for example "***" for a thematic break); write that line as Paca would, so the file and the document stay the same. Nothing was changed.`,
 			"unsafe",
-			[k + 1],
+			[line],
 		);
 	}
 
@@ -2209,7 +2300,9 @@ export function spliceMarkdown(
 		blocks: out,
 		changed,
 		lines: [
-			...new Set(hunks.map((h) => Math.max(1, Math.min(h.na + 1, b.length)))),
+			...new Set(
+				hunks.map((h) => fileOf(Math.max(1, Math.min(h.na + 1, b.length)))),
+			),
 		],
 	};
 }

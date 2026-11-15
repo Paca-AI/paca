@@ -8,8 +8,8 @@ import { runPush } from "../../cli/push.js";
 import { blocknoteToMarkdown } from "../../utils/index.js";
 import { docId, fakeDocsServer, storedBlocks } from "./fake-docs-server.js";
 
-// A push that stops for good at its n-th file write (the base copy, then the
-// state), as if the process were killed there: no error, no cleanup.
+// A push that stops for good at its n-th file write (the base copy, the
+// state, then the file when it is normalised), as if the process were killed there: no error, no cleanup.
 const stop = vi.hoisted(() => ({
 	armed: false,
 	left: 0,
@@ -37,7 +37,7 @@ const ID = docId(1);
 const sha = (x: string) => createHash("sha256").update(x).digest("hex");
 
 describe("a mirror push killed after each write", () => {
-	const run = async (n: number) => {
+	const run = async (n: number, change = (md: string) => md) => {
 		const root = fs.realpathSync(
 			fs.mkdtempSync(path.join(os.tmpdir(), "paca-pk-")),
 		);
@@ -75,7 +75,7 @@ describe("a mirror push killed after each write", () => {
 			const edited = fs
 				.readFileSync(file, "utf8")
 				.replace("Plain one.", "Plain one, edited.");
-			fs.writeFileSync(file, edited);
+			fs.writeFileSync(file, change(edited));
 
 			const hit = new Promise<"killed">((r) => {
 				stop.reached = () => r("killed");
@@ -146,5 +146,36 @@ describe("a mirror push killed after each write", () => {
 		}
 		// Stopped before the base copy, and between it and the state.
 		expect(kills).toBe(2);
+	});
+
+	it("a normalising push records the write and rewrites the file on the next push", async () => {
+		// Whitespace at a line's end and a CRLF save: the rules allow both.
+		const messy = (md: string) =>
+			md.replace("Last.", "Last.   ").replace(/\n/g, "\r\n");
+		let kills = 0;
+		for (let n = 0; n < 6; n++) {
+			const r = await run(n, messy);
+			if (r === null) break;
+			kills++;
+			expect({ n, code: r.code, out: r.out }).toEqual({
+				n,
+				code: 0,
+				out: ["unchanged", "normalised m/Plan.md"],
+			});
+			expect(r.server.client.patchDocument).toHaveBeenCalledTimes(1);
+			const doc = r.server.docs.get(ID);
+			expect(blocknoteToMarkdown(doc?.content as any[])).toBe(r.edited);
+			expect(r.state.content_hash).toBe(doc?.hash);
+			expect(r.state.file_sha256).toBe(sha(r.edited));
+			expect(r.base).toBe(r.edited);
+			expect(r.file).toBe(r.edited);
+			expect({ n, pull: r.pullCode, said: r.pulled }).toEqual({
+				n,
+				pull: 0,
+				said: ["up to date"],
+			});
+		}
+		// Stopped before the base copy, the state, and the file.
+		expect(kills).toBe(3);
 	});
 });

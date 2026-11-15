@@ -155,13 +155,69 @@ describe("push of a mirror file", () => {
 		expect(server.client.patchDocument).not.toHaveBeenCalled();
 	});
 
-	it("a file saved with CRLF line ends and no change sends nothing", async () => {
-		fs.writeFileSync(file(), read().replace(/\n/g, "\r\n"));
-		expect(await push(".paca/docs/Plan.md")).toBe(0);
+	it("a file saved with CRLF line ends and no change sends nothing, and is normalised", async () => {
+		const pulled = read();
+		fs.writeFileSync(file(), pulled.replace(/\n/g, "\r\n"));
+		const before = snapshot();
+		expect(await push(".paca/docs/Plan.md", { dryRun: true })).toBe(0);
 		expect(output()).toBe("unchanged");
+		expect(snapshot()).toEqual(before);
+		expect(read()).toBe(pulled.replace(/\n/g, "\r\n"));
+		lines = [];
+		expect(await push(".paca/docs/Plan.md")).toBe(0);
+		expect(output()).toBe("unchanged\nnormalised .paca/docs/Plan.md");
 		expect(server.client.patchDocument).not.toHaveBeenCalled();
-		// The file now counts as what pull wrote.
-		expect(state().docs[ID].file_sha256).toBe(sha(read()));
+		// The file is the render again, and counts as what pull wrote.
+		expect(read()).toBe(pulled);
+		expect(state().docs[ID].file_sha256).toBe(sha(pulled));
+		lines = [];
+		expect(await pull()).toBe(0);
+		expect(output()).toBe("up to date");
+	});
+
+	it("an edit written with other bullets and table padding is sent, then the file is rewritten to the render", async () => {
+		server.add(
+			docId(5),
+			"Table",
+			storedBlocks(
+				"Intro.\n\n* a\n\n* b\n\n| key | value |\n|---|---|\n| x | y |",
+			),
+		);
+		expect(await pull()).toBe(0);
+		const md = read("Table.md");
+		const edited = md
+			.replace("* a\n\n* b", "- a\n\n\n- b  \n\n- c")
+			.replace(/\| x +\| y +\|/, "|x|y, longer|");
+		fs.writeFileSync(file("Table.md"), edited);
+		lines = [];
+		expect(await push(".paca/docs/Table.md", { dryRun: true }), output()).toBe(
+			0,
+		);
+		expect(read("Table.md")).toBe(edited);
+		lines = [];
+		expect(await push(".paca/docs/Table.md"), output()).toBe(0);
+		const now = blocknoteToMarkdown(
+			server.docs.get(docId(5))?.content as any[],
+		);
+		expect(now).toContain("* a\n\n* b\n\n* c");
+		expect(now).toContain("| x   | y, longer |");
+		expect(output()).toBe(
+			"updated Table from .paca/docs/Table.md (2 blocks changed)\nnormalised .paca/docs/Table.md",
+		);
+		expect(read("Table.md")).toBe(now);
+		expect(state().docs[docId(5)].file_sha256).toBe(sha(now));
+		expect(
+			fs.readFileSync(
+				path.join(mirror, ".paca-base", `${docId(5)}.md`),
+				"utf8",
+			),
+		).toBe(now);
+		lines = [];
+		expect(await pull()).toBe(0);
+		expect(output()).toBe("up to date");
+		lines = [];
+		expect(await push(".paca/docs/Table.md")).toBe(0);
+		expect(output()).toBe("unchanged");
 	});
 
 	it("stale hash exits 2 naming the other writer (a 412 adds the note, next test)", async () => {
@@ -378,7 +434,8 @@ describe("push of a mirror file", () => {
 		fs.writeFileSync(file("Blank.md"), "\n\n");
 		lines = [];
 		expect(await push(".paca/docs/Blank.md"), output()).toBe(0);
-		expect(output()).toBe("unchanged");
+		expect(output()).toBe("unchanged\nnormalised .paca/docs/Blank.md");
+		expect(read("Blank.md")).toBe("");
 		expect(server.client.patchDocument).not.toHaveBeenCalled();
 	});
 

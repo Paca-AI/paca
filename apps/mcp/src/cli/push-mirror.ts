@@ -12,6 +12,7 @@ import {
 import { type Block, SpliceError, spliceMarkdown } from "../tools/doc-edit.js";
 import type { DocSource } from "../types/index.js";
 import { blocknoteToMarkdown } from "../utils/index.js";
+import { fencedLines } from "../utils/md-normalise.js";
 import { nameKey } from "./mirror-paths.js";
 import { releaseLock, takeLock } from "./pull.js";
 import type { PushOptions } from "./push.js";
@@ -40,34 +41,6 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
 /** A line git merge-file writes around a conflict. "=======" alone is not
  *  taken for one: it is also a heading underline in Markdown. */
 const CONFLICT_MARKER = /^(?:<{7}|>{7}|\|{7})(?:\s|$)/;
-/** An opening or closing code fence: its character and length. */
-const FENCE = /^ {0,3}(`{3,}|~{3,})/;
-
-/** Lines outside fenced code, numbered from 1. */
-function unfenced(text: string): Array<[number, string]> {
-	const out: Array<[number, string]> = [];
-	let open: string | null = null;
-	text.split(/\r?\n/).forEach((line, k) => {
-		const f = FENCE.exec(line)?.[1];
-		if (open === null) {
-			if (
-				f &&
-				!(f[0] === "`" && line.slice(line.indexOf(f) + f.length).includes("`"))
-			)
-				open = f;
-			else out.push([k + 1, line]);
-		} else if (
-			f &&
-			f[0] === open[0] &&
-			f.length >= open.length &&
-			line.trim() === f
-		) {
-			open = null;
-		}
-	});
-	return out;
-}
-
 /** The first line of `text` (from 1) that git merge-file writes around a
  *  conflict, outside fenced code and not already in the base copy; 0 if
  *  none. */
@@ -75,10 +48,12 @@ export function conflictLine(text: string, base: string): number {
 	const known = new Set(
 		base.split(/\r?\n/).filter((l) => CONFLICT_MARKER.test(l)),
 	);
-	const hit = unfenced(text).find(
-		([, l]) => CONFLICT_MARKER.test(l) && !known.has(l),
+	const lines = text.split(/\r?\n/);
+	const fenced = fencedLines(lines);
+	const k = lines.findIndex(
+		(l, i) => !fenced[i] && CONFLICT_MARKER.test(l) && !known.has(l),
 	);
-	return hit ? hit[0] : 0;
+	return k + 1;
 }
 
 const AGAIN = "the document changed in Paca; pull, then push again";
@@ -280,30 +255,42 @@ async function pushLocked(
 		refusal = err;
 	}
 
-	/** The base copy, then the state: a stop between them leaves a state
-	 *  that says "edited locally", which the next push settles as
-	 *  unchanged (the server then already holds the file). */
+	/** The base copy, then the state (with the sha256 of the render), then
+	 *  the file, rewritten to the render when it differs only by the
+	 *  normalising rules. A stop before the state is written leaves a state
+	 *  that says "edited locally", and a stop before the file is rewritten
+	 *  leaves a file that differs from the state: either way the next push
+	 *  finds the server already holds the file, and records it again. */
 	const record = async (hash: string | null, markdown: string) => {
 		await writeFileAtomic(basePath, markdown);
 		const next: PullDocState = {
 			...entry,
 			content_hash: hash,
-			file_sha256: fileSha,
+			file_sha256: sha256(markdown),
 		};
 		delete next.remote_hash;
 		delete next.pending_sha256;
 		state.docs[id] = next;
 		await writeJSON(statePath, state);
+		if (text !== markdown) {
+			await writeFileAtomic(file, markdown);
+			return true;
+		}
+		return false;
 	};
 
 	// Nothing to send only when the result is the stored array itself:
 	// counts never decide it (a reorder can keep every block as read).
 	if (spliced && spliced.blocks === blocks) {
 		// Paca already holds what the file says (a save that changed only
-		// line ends, or a push that stopped before recording its write).
-		if (!opts.dryRun)
-			await record(doc.content_hash ?? null, blocknoteToMarkdown(blocks));
+		// what the normalising rules allow, or a push that stopped before
+		// recording its write).
 		io.out("unchanged");
+		if (
+			!opts.dryRun &&
+			(await record(doc.content_hash ?? null, blocknoteToMarkdown(blocks)))
+		)
+			io.out(`normalised ${label}`);
 		return EXIT.ok;
 	}
 	if (moved)
@@ -361,10 +348,13 @@ async function pushLocked(
 		io.err(err.message);
 		return EXIT.error;
 	}
-	await record(
-		written.doc?.content_hash ?? null,
-		blocknoteToMarkdown(spliced.blocks),
-	);
 	io.out(`updated ${entry.title} from ${label} (${blocksSaid} changed)`);
+	if (
+		await record(
+			written.doc?.content_hash ?? null,
+			blocknoteToMarkdown(spliced.blocks),
+		)
+	)
+		io.out(`normalised ${label}`);
 	return EXIT.ok;
 }

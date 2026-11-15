@@ -500,21 +500,56 @@ describe("spliceMarkdown", () => {
 		const blocks = stored("intro\n\n* a\n\n* b");
 		expect(pulled(blocks)).toBe("intro\n\n* a\n\n* b\n");
 		const err = refusal(() =>
-			spliceMarkdown(blocks, "intro\n\n* a\n\n* b\n\n- c\n"),
+			spliceMarkdown(blocks, "intro\n\n* a\n\n* b\n\n__c__\n"),
 		);
 		expect(err.kind).toBe("unsafe");
 		expect(err.message).toMatch(/line 7/);
-		expect(err.message).toContain("* c");
+		expect(err.message).toContain('"**c**"');
+		expect(err.message).toContain('"__c__"');
+		// Counted in the file, past blank lines the rules collapse.
+		const err2 = refusal(() =>
+			spliceMarkdown(blocks, "intro\n\n\n\n* a\n\n* b\n\n__c__\n"),
+		);
+		expect(err2.message).toMatch(/line 9/);
 	});
 
-	it("refuses an edit that only changes what Markdown does not show", () => {
+	it("takes what the normalising rules allow as written the render's way", () => {
+		const blocks = stored(
+			"intro\n\n* a\n\n* b\n\n| k | v |\n|---|---|\n| x | y |",
+		);
+		const md = pulled(blocks);
+		expect(md).toContain("* a\n\n* b");
+		// Only the rules' differences: no edit, and the very array back.
+		const same = md
+			.replace("* a", "- a")
+			.replace("* b", "+ b  ")
+			.replace("intro\n\n", "intro\n\n\n\n")
+			.replace(/\| x +\| y +\|/, "|x|y|");
+		expect(same).not.toBe(md);
+		const res = spliceMarkdown(blocks, same);
+		expect(res.blocks).toBe(blocks);
+		expect(res.changed).toBe(0);
+		// With an edit: new "-" items and unpadded rows read as Paca writes
+		// them, and the blocks the rules alone touch stay as read.
+		const edited = same
+			.replace("+ b  ", "+ b\n\n- c")
+			.replace("|x|y|", "|x|y|\n|longer cell|z|");
+		const res2 = spliceMarkdown(blocks, edited);
+		expect(pulled(res2.blocks)).toContain("* b\n\n* c");
+		expect(pulled(res2.blocks)).toContain("| longer cell | z |");
+		expect(res2.blocks[0]).toBe(blocks[0]);
+		expect(res2.blocks[1]).toBe(blocks[1]);
+	});
+
+	it("an edit that only adds whitespace at a line's end is no edit", () => {
 		const blocks = stored(TEN);
 		const md = pulled(blocks).replace(
 			"Careful with prod.",
 			"Careful with prod. ",
 		);
-		const err = refusal(() => spliceMarkdown(blocks, md));
-		expect(["no_change", "unsafe"]).toContain(err.kind);
+		const res = spliceMarkdown(blocks, md);
+		expect(res.blocks).toBe(blocks);
+		expect(res.changed).toBe(0);
 	});
 });
 
@@ -835,10 +870,20 @@ describe("spliceMarkdown fuzz", () => {
 			if (edits.length > 1) multi++;
 			const where = `${ctx}\nRES ${JSON.stringify(res.blocks)}`;
 
-			// A. It renders to the file (newlines at its end aside).
+			// A. It renders to the file (newlines at its end aside, and the
+			// padding of table cells, which the render sets per column).
 			const body = edited.replace(/\n+$/, "");
-			expect(blocknoteToMarkdown(res.blocks), where).toBe(
-				body === "" ? "" : `${body}\n`,
+			const unpad = (x: string) =>
+				x
+					.split("\n")
+					.map((l) =>
+						l.startsWith("|")
+							? l.replace(/ +\|/g, " |").replace(/-{2,}/g, "-")
+							: l,
+					)
+					.join("\n");
+			expect(unpad(blocknoteToMarkdown(res.blocks)), where).toBe(
+				unpad(body === "" ? "" : `${body}\n`),
 			);
 
 			// B. Blocks the edits do not reach are the very objects read, in
