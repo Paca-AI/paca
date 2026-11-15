@@ -248,7 +248,7 @@ export async function runPush(
 	);
 	if (twin) {
 		io.err(
-			`${docPath} was written, but Paca resolved it to the document ${twin[0]} is pushed to (${twin[1].doc_path}); nothing was recorded. Push ${twin[0]} again to put its content back, and pass --path "Folder/Title" to push ${rel} to another document`,
+			`${docPath} was written, but Paca resolved it to the document ${twin[0]} is pushed to (${twin[1].doc_path}); nothing was recorded. Push ${twin[0]} with --force to put its content back, and pass --path "Folder/Title" to push ${rel} to another document`,
 		);
 		return EXIT.error;
 	}
