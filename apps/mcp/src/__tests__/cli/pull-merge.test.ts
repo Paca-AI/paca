@@ -209,6 +209,27 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		expect(output()).toBe(
 			"1 conflicted\nconflict Code.md: the conflict markers from an earlier pull are still there (line 6); resolve them, then push",
 		);
+		// Deleting the file and pulling would write Paca's version afresh
+		// (checked on a copy of the mirror).
+		const copy = path.join(root, "copy");
+		fs.cpSync(mirror, copy, { recursive: true });
+		fs.rmSync(path.join(copy, "Code.md"));
+		lines = [];
+		expect(
+			await runPull(
+				{ projectId: "p1", dir: copy, force: false },
+				server.client,
+				io,
+			),
+			output(),
+		).toBe(0);
+		expect(fs.readFileSync(path.join(copy, "Code.md"), "utf8")).toBe(
+			blocknoteToMarkdown(codeText()),
+		);
+		expect(
+			JSON.parse(fs.readFileSync(path.join(copy, ".paca-sync.json"), "utf8"))
+				.docs[CODE].conflict,
+		).toBeUndefined();
 		// Resolved by hand: pull clears the flag, push stores the resolution.
 		const resolved = read("Code.md").replace(
 			/<<<<<<< local\n[\s\S]*?>>>>>>> Paca[^\n]*\n/,
