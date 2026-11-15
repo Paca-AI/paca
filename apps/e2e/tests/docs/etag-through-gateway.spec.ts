@@ -73,7 +73,11 @@ test("the ETag the gateway returns works as If-Match on a content write", async 
 	});
 	expect(read.status()).toBe(200);
 	const etag = read.headers().etag;
-	expect(etag).toBeTruthy();
+	// Without the coding suffix this would pass on an API that rejects it.
+	expect(
+		etag,
+		"the gateway should append the content coding to the ETag",
+	).toMatch(/^"[0-9a-f]{64}-[0-9a-f]{16}-gzip"$/);
 	const before = (await read.json()).data.content_hash as string;
 
 	// Round-trip the tag exactly as the gateway returned it.
