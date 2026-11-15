@@ -165,11 +165,12 @@ type StorageConfig struct {
 
 // PluginsConfig holds runtime settings for the plugin subsystem.
 type PluginsConfig struct {
-	// Store selects where WASM plugin binaries are loaded from.
-	// Accepted values: "local" (default) or "s3".
-	// When "local", WASMDir is the root directory on the local filesystem.
-	// When "s3", the Storage bucket and prefix are reused (STORAGE_BUCKET /
-	// PLUGINS_S3_PREFIX).
+	// Store selects where installed plugins live (PLUGINS_STORE): backend
+	// binaries, manifests, migrations, and the frontend, MCP and skills
+	// bundles. Accepted values: "local" (default) or "s3".
+	// When "local", the *Dir fields below are the roots on the local
+	// filesystem. When "s3", the Storage bucket (STORAGE_*) is used with
+	// S3Prefix, and the *Dir fields are ignored.
 	Store string
 
 	// WASMDir is the local filesystem directory that contains plugin WASM
@@ -193,8 +194,9 @@ type PluginsConfig struct {
 	// {SkillsDir}/{pluginName}/{skillName}/SKILL.md.
 	SkillsDir string
 
-	// S3Prefix is the S3 key prefix used when Store is "s3".
-	// Plugin WASM binaries are fetched from {S3Prefix}/{pluginName}/backend.wasm.
+	// S3Prefix is the S3 key prefix used when Store is "s3". Objects are
+	// {S3Prefix}/{pluginName}/backend.wasm, plugin.json, migrations/*.sql,
+	// frontend/..., mcp/... and skills/{skill}/SKILL.md.
 	S3Prefix string
 
 	// MarketplaceCatalogURL points to a public JSON catalog in a GitHub repository

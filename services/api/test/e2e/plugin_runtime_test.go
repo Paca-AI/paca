@@ -16,6 +16,7 @@ import (
 	"time"
 
 	pluginrt "github.com/Paca-AI/api/internal/platform/plugin"
+	"github.com/Paca-AI/api/internal/platform/storage"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
@@ -87,6 +88,46 @@ type pluginRuntimeE2EEnv struct {
 	pluginService plugindom.Service
 	runtime       *pluginrt.Runtime
 	wasmDir       string
+	store         pluginrt.Store
+	s3Mode        bool
+}
+
+// newPluginE2EStore returns the plugin store the runtime loads binaries from:
+// local folders by default, or -- with PACA_E2E_PLUGIN_STORE=s3 -- the RustFS
+// testcontainer, so the same scenarios exercise the bucket-backed store.
+func newPluginE2EStore(t *testing.T, ctx context.Context, wasmDir string) (pluginrt.Store, bool) {
+	t.Helper()
+	if os.Getenv("PACA_E2E_PLUGIN_STORE") != "s3" {
+		store, err := pluginrt.NewStore(ctx, pluginrt.StoreConfig{Store: "local", WASMDir: wasmDir})
+		if err != nil {
+			t.Fatalf("create plugin store: %v", err)
+		}
+		return store, false
+	}
+	if sharedStorageEndpoint == "" {
+		t.Fatal("PACA_E2E_PLUGIN_STORE=s3 needs the RustFS testcontainer, which did not start")
+	}
+	client, err := storage.NewS3Client(ctx, storage.S3Config{
+		Endpoint:        "http://" + sharedStorageEndpoint,
+		Region:          "us-east-1",
+		AccessKeyID:     "rustfsadmin",
+		SecretAccessKey: "rustfsadmin",
+		ForcePathStyle:  true,
+	})
+	if err != nil {
+		t.Fatalf("init storage client: %v", err)
+	}
+	const bucket = "paca-plugins-e2e"
+	if err := client.EnsureBucket(ctx, bucket); err != nil {
+		t.Fatalf("ensure bucket: %v", err)
+	}
+	store, err := pluginrt.NewStore(ctx, pluginrt.StoreConfig{
+		Store: "s3", S3Bucket: bucket, S3Prefix: "plugins", S3Region: "us-east-1", S3Client: client.Raw(),
+	})
+	if err != nil {
+		t.Fatalf("create s3 plugin store: %v", err)
+	}
+	return store, true
 }
 
 // newPluginRuntimeE2EEnv wires a real *pluginrt.Runtime (instead of nil) into
@@ -100,10 +141,7 @@ func newPluginRuntimeE2EEnv(t *testing.T, limits pluginrt.ResourceLimits) *plugi
 	db := env.db
 
 	wasmDir := t.TempDir()
-	store, err := pluginrt.NewStore(env.ctx, pluginrt.StoreConfig{Store: "local", WASMDir: wasmDir})
-	if err != nil {
-		t.Fatalf("create plugin store: %v", err)
-	}
+	store, s3Mode := newPluginE2EStore(t, env.ctx, wasmDir)
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	runtime := pluginrt.NewRuntime(store, pluginrt.HostServices{DB: db.DB, Log: log}, limits, log)
@@ -142,6 +180,8 @@ func newPluginRuntimeE2EEnv(t *testing.T, limits pluginrt.ResourceLimits) *plugi
 		pluginService: pluginService,
 		runtime:       runtime,
 		wasmDir:       wasmDir,
+		store:         store,
+		s3Mode:        s3Mode,
 	}
 }
 
@@ -238,6 +278,22 @@ func (p *pluginRuntimeE2EEnv) installAndLoad(t *testing.T, token, pluginName str
 	}
 	if err := os.WriteFile(filepath.Join(pluginDir, "backend.wasm"), wasmBytes, 0o644); err != nil {
 		t.Fatalf("write plugin wasm: %v", err)
+	}
+
+	if p.s3Mode {
+		// PACA_E2E_PLUGIN_STORE=s3: the runtime loads the binary from the
+		// bucket, so upload what was staged on disk above.
+		manifestPath := filepath.Join(pluginDir, "plugin.json")
+		if err := os.WriteFile(manifestPath, []byte(`{"id":"`+pluginName+`"}`), 0o644); err != nil {
+			t.Fatalf("write plugin.json: %v", err)
+		}
+		if err := p.store.PutBackend(p.env.ctx, pluginName, pluginrt.BackendBundle{
+			WASMPath:     filepath.Join(pluginDir, "backend.wasm"),
+			ManifestPath: manifestPath,
+		}); err != nil {
+			t.Fatalf("upload plugin to the bucket: %v", err)
+		}
+		t.Cleanup(func() { _ = p.store.DeleteAll(context.Background(), pluginName) })
 	}
 
 	manifest := map[string]any{

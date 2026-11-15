@@ -128,11 +128,6 @@ spec:
     spec:
       serviceAccountName: ${SA}
       timeoutSeconds: 3600
-      volumes:
-        - {name: plugins, emptyDir: {}}
-        - {name: plugins-frontend, emptyDir: {}}
-        - {name: plugins-mcp, emptyDir: {}}
-        - {name: plugins-skills, emptyDir: {}}
       containers:
         # Containers share localhost. The API listens on 8081 because the
         # gateway's internal plugin-bundle block already uses 8080.
@@ -147,10 +142,9 @@ spec:
             - {name: API_UPSTREAM, value: "localhost:8081"}
             - {name: WEB_UPSTREAM, value: "localhost:3000"}
             - {name: REALTIME_UPSTREAM, value: "localhost:3001"}
-          volumeMounts:
-            - {name: plugins-frontend, mountPath: /var/www/plugins}
-            - {name: plugins-mcp, mountPath: /var/www/plugins-mcp}
-            - {name: plugins-skills, mountPath: /var/www/plugins-skills}
+            # Plugins live in the Cloud Storage bucket, not on a shared volume, so
+            # the gateway forwards /plugins* to the API. Must match the API's value.
+            - {name: PLUGINS_STORE, value: s3}
         - name: api
           image: ${AR}/pacaai/paca-api:${TAG}
           env:
@@ -166,10 +160,8 @@ spec:
             - {name: STORAGE_REGION, value: auto}
             - {name: STORAGE_USE_SSL, value: "true"}
             - {name: STORAGE_BUCKET, value: "${BUCKET}"}
-            - {name: PLUGINS_WASM_DIR, value: /plugins}
-            - {name: PLUGINS_FRONTEND_DIR, value: /plugins-frontend}
-            - {name: PLUGINS_MCP_DIR, value: /plugins-mcp}
-            - {name: PLUGINS_SKILLS_DIR, value: /plugins-skills}
+            # Installed plugins live in the Cloud Storage bucket above under plugins/.
+            - {name: PLUGINS_STORE, value: s3}
             - {name: DATABASE_URL, $(sec database-url | sed 's/^{//;s/}$//')}
             - {name: JWT_SECRET, $(sec jwt | sed 's/^{//;s/}$//')}
             - {name: ADMIN_PASSWORD, $(sec admin-password | sed 's/^{//;s/}$//')}
@@ -177,11 +169,6 @@ spec:
             - {name: ENCRYPTION_KEY, $(sec encryption-key | sed 's/^{//;s/}$//')}
             - {name: STORAGE_ACCESS_KEY_ID, $(sec storage-key-id | sed 's/^{//;s/}$//')}
             - {name: STORAGE_SECRET_ACCESS_KEY, $(sec storage-key-secret | sed 's/^{//;s/}$//')}
-          volumeMounts:
-            - {name: plugins, mountPath: /plugins}
-            - {name: plugins-frontend, mountPath: /plugins-frontend}
-            - {name: plugins-mcp, mountPath: /plugins-mcp}
-            - {name: plugins-skills, mountPath: /plugins-skills}
         - name: web
           image: ${AR}/pacaai/paca-web:${TAG}
         - name: realtime

@@ -58,7 +58,14 @@ func NewS3Client(ctx context.Context, cfg S3Config) (*S3Client, error) {
 		return nil, fmt.Errorf("storage: load aws config: %w", err)
 	}
 
-	var s3Opts []func(*s3.Options)
+	// Only add checksum headers when an operation requires them. The SDK's
+	// newer default (a CRC32 on every PutObject) is rejected or ignored
+	// inconsistently by S3-compatible stores — Google Cloud Storage's
+	// interoperability API, RustFS — and gains nothing over TLS here.
+	s3Opts := []func(*s3.Options){func(o *s3.Options) {
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+	}}
 
 	if cfg.Endpoint != "" {
 		scheme := "http"
@@ -86,6 +93,11 @@ func NewS3Client(ctx context.Context, cfg S3Config) (*S3Client, error) {
 		cfg:     cfg,
 	}, nil
 }
+
+// Raw returns the underlying AWS S3 client, for subsystems (the plugin store)
+// that need operations beyond the Client interface but must share this
+// client's endpoint and credentials.
+func (c *S3Client) Raw() *s3.Client { return c.s3 }
 
 // internalEndpoint returns the full scheme+host of the internal endpoint as
 // it appears in presigned URLs (e.g. "http://rustfs:9000").

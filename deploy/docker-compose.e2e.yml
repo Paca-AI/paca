@@ -77,6 +77,10 @@ services:
       # internal-only routes. Must match INTERNAL_API_KEY in the agent-runner service.
       AI_AGENT_INTERNAL_KEY: e2e-internal-api-key
       # Plugin subsystem — load WASM binaries + migrations from the local plugin store.
+      # "local" keeps plugins in the folders below; "s3" stores them in the
+      # STORAGE_* bucket instead (the gateway reads PLUGINS_STORE too, to route
+      # /plugins/* through the API). The *_DIR settings are ignored in s3 mode.
+      PLUGINS_STORE: ${PLUGINS_STORE:-local}
       PLUGINS_WASM_DIR: /plugins
       PLUGINS_FRONTEND_DIR: /plugins-frontend
       PLUGINS_MCP_DIR: /plugins-mcp
@@ -166,6 +170,11 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    environment:
+      # Must match the API's PLUGINS_STORE: "s3" makes the gateway forward
+      # /plugins/*, /plugins-mcp/* and /plugins-skills/* to the API instead of
+      # serving the plugin folders below.
+      PLUGINS_STORE: ${PLUGINS_STORE:-local}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       # Frontend plugin store — built JS bundles, served at /plugins/.

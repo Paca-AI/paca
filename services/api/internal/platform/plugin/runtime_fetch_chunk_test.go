@@ -94,7 +94,7 @@ func loadFetchPlugin(t *testing.T, bodySize *int) *pluginInstance {
 			Request:    r,
 		}, nil
 	})}
-	store := &Store{cfg: StoreConfig{Store: "local", WASMDir: dir}}
+	store := newLocalStore(StoreConfig{WASMDir: dir})
 	rt := NewRuntime(store, HostServices{HTTPClient: client}, DefaultResourceLimits(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	p := plugindom.Plugin{
 		Name:    fetchPluginName,

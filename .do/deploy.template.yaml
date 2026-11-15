@@ -46,13 +46,10 @@ spec:
         - { key: STORAGE_BUCKET, scope: RUN_TIME }
         - { key: STORAGE_ACCESS_KEY_ID, scope: RUN_TIME, type: SECRET }
         - { key: STORAGE_SECRET_ACCESS_KEY, scope: RUN_TIME, type: SECRET }
-        # Same writable dirs the Docker image prepares. Plugin installs here live on
-        # the instance's ephemeral disk and their assets are not served (no shared
-        # disk with a gateway), so plugins are not usable on App Platform yet.
-        - { key: PLUGINS_WASM_DIR, value: /plugins }
-        - { key: PLUGINS_FRONTEND_DIR, value: /plugins-frontend }
-        - { key: PLUGINS_MCP_DIR, value: /plugins-mcp }
-        - { key: PLUGINS_SKILLS_DIR, value: /plugins-skills }
+        # Installed plugins are stored in the Space above (under plugins/), not on
+        # the instance's ephemeral disk. The ingress rules below send /plugins*
+        # to this service, which streams them out of the Space.
+        - { key: PLUGINS_STORE, value: s3 }
     - name: realtime
       image: { registry_type: DOCKER_HUB, registry: pacaai, repository: paca-realtime, tag: latest }
       http_port: 3001
@@ -80,5 +77,14 @@ spec:
         component: { name: api, preserve_path_prefix: true }
       - match: { path: { prefix: /ws } }
         component: { name: realtime }
+      # Plugin frontend / MCP / skills bundles: no gateway here, so rewrite the
+      # public paths onto the API's plugin-asset route (see
+      # docs/plugins/backend-plugin-system.md, "Plugin Storage Location").
+      - match: { path: { prefix: /plugins-mcp } }
+        component: { name: api, rewrite: /api/v1/plugin-assets/mcp }
+      - match: { path: { prefix: /plugins-skills } }
+        component: { name: api, rewrite: /api/v1/plugin-assets/skills }
+      - match: { path: { prefix: /plugins } }
+        component: { name: api, rewrite: /api/v1/plugin-assets/frontend }
       - match: { path: { prefix: / } }
         component: { name: web }

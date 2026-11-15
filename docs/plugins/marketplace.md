@@ -65,11 +65,13 @@ When an admin clicks Install in the web app:
 1. Web app calls `POST /api/v1/admin/plugins/marketplace/install`.
 2. API resolves the plugin entry from catalog.
 3. API downloads all tar.gz artifacts.
-4. API extracts artifacts into local plugin stores:
+4. API extracts artifacts into the plugin store (`PLUGINS_STORE`, see [Plugin Storage](backend-plugin-system.md#plugin-storage-location)). With `local`:
    - Backend: `PLUGINS_WASM_DIR/<plugin-id>/backend.wasm`
    - Manifest: `PLUGINS_WASM_DIR/<plugin-id>/plugin.json`
    - Migrations: `PLUGINS_WASM_DIR/<plugin-id>/migrations/*.sql`
-   - Frontend: `PLUGINS_FRONTEND_DIR/<plugin-id>/...`
+   - Frontend / MCP / skills: `PLUGINS_FRONTEND_DIR`, `PLUGINS_MCP_DIR`, `PLUGINS_SKILLS_DIR` `/<plugin-id>/...`
+
+   With `s3` the same files are uploaded to `{PLUGINS_S3_PREFIX}/<plugin-id>/` in the storage bucket.
 5. API registers plugin record in database (`plugins` table) — rejecting the install with `PLUGIN_INCOMPATIBLE_HOST_VERSION` if the downloaded manifest's `minCoreVersion` (see [backend-plugin-system.md](backend-plugin-system.md#minimum-host-version-mincoreversion)) is newer than the running Paca build.
 6. API runs plugin migrations.
 7. API loads/reloads runtime module.
@@ -94,8 +96,9 @@ Environment variables:
 
 - `PLUGINS_MARKETPLACE_CATALOG_URL`
 - `PLUGINS_MARKETPLACE_TIMEOUT`
-- `PLUGINS_WASM_DIR`
-- `PLUGINS_FRONTEND_DIR`
+- `PLUGINS_STORE` (`local` or `s3`)
+- `PLUGINS_S3_PREFIX` (s3 only)
+- `PLUGINS_WASM_DIR`, `PLUGINS_FRONTEND_DIR`, `PLUGINS_MCP_DIR`, `PLUGINS_SKILLS_DIR` (local only)
 
 Default catalog URL:
 
@@ -113,6 +116,6 @@ Plugin developers publish through PRs to `Paca-AI/paca-plugins`:
 
 ## Operational Notes
 
-- The API installer currently targets local plugin stores (`PLUGINS_STORE=local`).
-- Gateway must serve frontend bundles from `/plugins/*` so remote entries are reachable.
-- Backend store must be writable by API for marketplace installation.
+- The installer writes to whichever store `PLUGINS_STORE` selects (`local` folders or the `s3` bucket).
+- Gateway must serve frontend bundles from `/plugins/*` so remote entries are reachable. With `local` it reads the shared folders; with `s3` it forwards to the API. Set `PLUGINS_STORE` identically on the API and the gateway.
+- In `local` mode the plugin folders must be writable by the API. In `s3` mode the API needs write access to the bucket.

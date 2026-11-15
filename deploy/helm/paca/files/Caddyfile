@@ -14,7 +14,7 @@
 #   /agent-bridge/ws → agent-runner's local ACP bridge WebSocket (forwarded as-is)
 #   /environments/*/terminal/ws → agent-runner's static-environment browser terminal WebSocket
 #   /storage/*      →  RustFS                  (/storage stripped)
-#   /plugins/*      →  Plugin frontend assets  (static files)
+#   /plugins/*      →  Plugin frontend assets  (static files, or the API when PLUGINS_STORE=s3)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
 #   /plugins-skills/* → Plugin Agent Skills bundles (static files)
 #   /*              →  Web application         (SPA with client-side routing)
@@ -57,7 +57,7 @@
 # sync the way an earlier version of this feature had.
 # =============================================================================
 
-(mcp_skills_routes) {
+(plugin_mcp_skills_local) {
 	# -- MCP plugin bundles -------------------------------------------------------
 	#
 	# Self-contained ESM bundles loaded at runtime by the MCP server. Kept on a
@@ -89,6 +89,69 @@
 		root * /var/www/plugins-skills
 		header Cache-Control "public, max-age=900, immutable"
 		file_server
+	}
+}
+
+(plugin_frontend_local) {
+	# -- Plugin frontend assets (PLUGINS_STORE=local) -------------------------------------------
+	#
+	# Serves statically-built micro-frontend bundles for locally installed
+	# plugins. Only plugins/local/frontend is mounted here (plugins/local/backend
+	# is mounted exclusively to the API container), so WASM binaries and SQL
+	# migrations are never reachable over HTTP.
+	#
+	# Set remoteEntryUrl in each plugin's plugin.json to:
+	#   /plugins/<plugin-id>/assets/remoteEntry.js
+	handle_path /plugins/* {
+		root * /var/www/plugins
+
+		@wasm path *.wasm
+		header @wasm Content-Type "application/wasm"
+
+		# Fingerprinted assets (the hashed chunk/css files a build emits) can be
+		# cached immutably. remoteEntry.js is the exception: its name is stable
+		# but its contents change with every plugin build (it lists the
+		# component exposes and the hashed chunks to load), so a cached copy
+		# after an upgrade points the host at components or chunks that no
+		# longer exist and the plugin fails to load. Make the browser
+		# revalidate it (cheap: it is ETag'd and a few KB).
+		@remote_entry path */remoteEntry.js
+		@fingerprinted not path */remoteEntry.js
+		header @fingerprinted Cache-Control "public, max-age=900, immutable"
+		header @remote_entry Cache-Control "no-cache"
+		file_server
+	}
+}
+
+# Same two routes when PLUGINS_STORE=s3: the bundles live in the (private)
+# bucket, which the gateway cannot read, so the API streams them out of the
+# plugin store instead (GET /api/v1/plugin-assets/<kind>/<plugin>/<file>).
+(plugin_mcp_skills_s3) {
+	handle_path /plugins-mcp/* {
+		rewrite * /api/v1/plugin-assets/mcp{path}
+		reverse_proxy {$API_UPSTREAM:api:8080}
+	}
+
+	handle_path /plugins-skills/* {
+		rewrite * /api/v1/plugin-assets/skills{path}
+		reverse_proxy {$API_UPSTREAM:api:8080}
+	}
+}
+
+# Picks plugin_mcp_skills_local or plugin_mcp_skills_s3 from PLUGINS_STORE
+# (the same variable the API reads; "local" when unset). Imported by both the
+# public site block and the internal :8080 block below.
+(mcp_skills_routes) {
+	import plugin_mcp_skills_{$PLUGINS_STORE:local}
+}
+
+# PLUGINS_STORE=s3: the micro-frontend bundles live in the private bucket, so
+# the API streams them (see plugin_mcp_skills_s3 above). Only the frontend/
+# prefix is reachable this way — backend.wasm and migrations are not.
+(plugin_frontend_s3) {
+	handle_path /plugins/* {
+		rewrite * /api/v1/plugin-assets/frontend{path}
+		reverse_proxy {$API_UPSTREAM:api:8080}
 	}
 }
 
@@ -141,34 +204,12 @@
 		reverse_proxy {$REALTIME_UPSTREAM:realtime:3001}
 	}
 
-	# -- Local plugin frontend assets -------------------------------------------
+	# -- Plugin frontend assets ---------------------------------------------------
 	#
-	# Serves statically-built micro-frontend bundles for locally installed
-	# plugins. Only plugins/local/frontend is mounted here (plugins/local/backend
-	# is mounted exclusively to the API container), so WASM binaries and SQL
-	# migrations are never reachable over HTTP.
-	#
-	# Set remoteEntryUrl in each plugin's plugin.json to:
-	#   /plugins/<plugin-id>/assets/remoteEntry.js
-	handle_path /plugins/* {
-		root * /var/www/plugins
-
-		@wasm path *.wasm
-		header @wasm Content-Type "application/wasm"
-
-		# Fingerprinted assets (the hashed chunk/css files a build emits) can be
-		# cached immutably. remoteEntry.js is the exception: its name is stable
-		# but its contents change with every plugin build (it lists the
-		# component exposes and the hashed chunks to load), so a cached copy
-		# after an upgrade points the host at components or chunks that no
-		# longer exist and the plugin fails to load. Make the browser
-		# revalidate it (cheap: it is ETag'd and a few KB).
-		@remote_entry path */remoteEntry.js
-		@fingerprinted not path */remoteEntry.js
-		header @fingerprinted Cache-Control "public, max-age=900, immutable"
-		header @remote_entry Cache-Control "no-cache"
-		file_server
-	}
+	# Served from the shared folder (PLUGINS_STORE=local, the default) or
+	# streamed from the bucket through the API (PLUGINS_STORE=s3) — see the
+	# plugin_frontend_* snippets at the top of this file.
+	import plugin_frontend_{$PLUGINS_STORE:local}
 
 	# -- MCP plugin bundles + Plugin Agent Skills bundles -------------------------
 	#

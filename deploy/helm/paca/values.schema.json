@@ -194,6 +194,7 @@
           "type": "object",
           "additionalProperties": true,
           "properties": {
+            "store": { "type": "string", "enum": ["local", "s3"] },
             "persistence": {
               "type": "object",
               "additionalProperties": true,

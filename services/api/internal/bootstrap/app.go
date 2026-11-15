@@ -23,7 +23,6 @@ import (
 	"github.com/Paca-AI/api/internal/platform/netguard"
 	pluginrt "github.com/Paca-AI/api/internal/platform/plugin"
 	"github.com/Paca-AI/api/internal/platform/secret"
-	"github.com/Paca-AI/api/internal/platform/storage"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	redisRepo "github.com/Paca-AI/api/internal/repository/redis"
@@ -304,16 +303,7 @@ func New(cfg *config.Config) (*App, error) {
 	docHashBackfill := worker.NewDocHashBackfill(docRepo, log)
 
 	// Object storage — defaults to RustFS; switches to AWS S3 when STORAGE_PROVIDER=s3.
-	storageClient, err := storage.NewS3Client(context.Background(), storage.S3Config{
-		Endpoint:        cfg.Storage.Endpoint,
-		PublicURL:       cfg.Storage.PublicURL,
-		Region:          cfg.Storage.Region,
-		Bucket:          cfg.Storage.Bucket,
-		AccessKeyID:     cfg.Storage.AccessKeyID,
-		SecretAccessKey: cfg.Storage.SecretAccessKey,
-		UseSSL:          cfg.Storage.UseSSL,
-		ForcePathStyle:  cfg.Storage.Provider != "s3", // self-hosted S3-compatible stores require path-style
-	})
+	storageClient, err := newStorageClient(context.Background(), cfg)
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: storage client: %w", err)
 	}
@@ -365,11 +355,17 @@ func New(cfg *config.Config) (*App, error) {
 	sqlDB := db.DB
 
 	pluginStore, err := pluginrt.NewStore(context.Background(), pluginrt.StoreConfig{
-		Store:    cfg.Plugins.Store,
-		WASMDir:  cfg.Plugins.WASMDir,
-		S3Bucket: cfg.Storage.Bucket,
-		S3Prefix: cfg.Plugins.S3Prefix,
-		S3Region: cfg.Storage.Region,
+		Store:       cfg.Plugins.Store,
+		WASMDir:     cfg.Plugins.WASMDir,
+		FrontendDir: cfg.Plugins.FrontendDir,
+		MCPDir:      cfg.Plugins.MCPDir,
+		SkillsDir:   cfg.Plugins.SkillsDir,
+		S3Bucket:    cfg.Storage.Bucket,
+		S3Prefix:    cfg.Plugins.S3Prefix,
+		S3Region:    cfg.Storage.Region,
+		// Reuse the attachment storage client so PLUGINS_STORE=s3 honours the
+		// same endpoint and credentials (RustFS or AWS) as the rest of the app.
+		S3Client: storageClient.Raw(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: plugin store: %w", err)
@@ -448,7 +444,7 @@ func New(cfg *config.Config) (*App, error) {
 	}, log)
 	marketplaceClient := pluginrt.NewMarketplaceClient(cfg.Plugins.MarketplaceCatalogURL, cfg.Plugins.MarketplaceTimeout)
 	installerHTTPClient := &http.Client{Timeout: cfg.Plugins.MarketplaceTimeout}
-	pluginInstaller := pluginrt.NewInstaller(cfg.Plugins.WASMDir, cfg.Plugins.FrontendDir, cfg.Plugins.MCPDir, cfg.Plugins.SkillsDir, installerHTTPClient, log)
+	pluginInstaller := pluginrt.NewInstaller(pluginStore, installerHTTPClient, log)
 
 	pluginService := pluginsvc.New(pluginRepo).WithHostVersion(cfg.Release.Version).WithActionRegistry(authorizer.Registry())
 
@@ -640,7 +636,8 @@ func New(cfg *config.Config) (*App, error) {
 		Notification:       handler.NewNotificationHandler(notificationService, handler.WithNotificationAvatarService(attachmentService)),
 		APIKey:             handler.NewAPIKeyHandler(apiKeyService),
 		ServiceAccount:     handler.NewServiceAccountHandler(serviceAccountService, apiKeyService).WithAvatarService(attachmentService),
-		Skills:             handler.NewSkillsHandler(pluginService, cfg.Plugins.SkillsDir),
+		Skills:             handler.NewSkillsHandler(pluginService, pluginStore),
+		PluginAssets:       handler.NewPluginAssetsHandler(pluginStore),
 		Plugin:             pluginHandler,
 		Agent:              agentHandler,
 		Environment:        environmentHandler,

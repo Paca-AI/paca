@@ -142,6 +142,7 @@ added.
 | `api.admin.username` | | `admin` |
 | `api.jwt.accessTtl` / `.refreshTtl` / `.refreshSessionTtl` | | `15m` / `168h` / `24h` |
 | `api.cookieSecure` | Set `false` only when TLS isn't terminated anywhere in front of this deployment — otherwise browsers silently drop the auth cookie and login never sticks | `true` |
+| `api.plugins.store` | Where installed plugins live: `local` (the volume below, shared by the api and gateway Pods) or `s3` (the `storage` bucket under `plugins/`; no volume, no `ReadWriteMany` class, and the persistence rows below are ignored). Changing it does not move existing plugins — run `migrate-plugins` first (see `docs/plugins/backend-plugin-system.md`) | `local` |
 | `api.plugins.persistence.enabled` | Shared storage for installed plugins (backend WASM, frontend/MCP/skills bundles) — needs a `ReadWriteMany` StorageClass; set `false` to fall back to a per-Pod `emptyDir` (installed plugins then won't survive a restart or be visible to the gateway) | `true` |
 | `api.plugins.persistence.accessMode` / `.storageClassName` / `.size` | `.storageClassName` empty auto-falls back to `nfsProvisioner`'s StorageClass when that's enabled (see "NFS provisioner" above), else the cluster default | `ReadWriteMany` / `""` / `5Gi` |
 

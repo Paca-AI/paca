@@ -150,7 +150,7 @@ type pluginInstance struct {
 
 // Runtime manages the lifecycle of all installed plugin WASM modules.
 type Runtime struct {
-	store    *Store
+	store    Store
 	limits   ResourceLimits
 	services HostServices
 	log      *slog.Logger
@@ -209,7 +209,7 @@ var disallowedFetchHeaders = map[string]struct{}{
 }
 
 // NewRuntime creates a Runtime wired to the given store and host services.
-func NewRuntime(store *Store, services HostServices, limits ResourceLimits, log *slog.Logger) *Runtime {
+func NewRuntime(store Store, services HostServices, limits ResourceLimits, log *slog.Logger) *Runtime {
 	return &Runtime{
 		store:           store,
 		limits:          limits,

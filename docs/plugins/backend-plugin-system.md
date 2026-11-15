@@ -331,21 +331,38 @@ Limits are configurable via environment variables (see `services/api/.env.exampl
 
 ## Plugin Storage Location
 
-The host reads plugin binaries from a configured path:
+`PLUGINS_STORE` chooses where installed plugins live: backend WASM, `plugin.json`, migrations, and the frontend, MCP and skills bundles. One setting covers all of it.
 
-- **Local (development/self-hosted):** `./plugins/dist/{pluginId}/` directory.
-- **Object storage (production):** S3-compatible bucket, same credentials as attachment storage.
+| | `local` (default) | `s3` |
+|---|---|---|
+| Where | folders: `PLUGINS_WASM_DIR`, `PLUGINS_FRONTEND_DIR`, `PLUGINS_MCP_DIR`, `PLUGINS_SKILLS_DIR` | the `STORAGE_*` bucket (same credentials and endpoint as attachments), under `PLUGINS_S3_PREFIX` (default `plugins`) |
+| Install / uninstall | copy into / delete from the folders | upload to / delete from `{prefix}/<plugin-id>/` |
+| Shared volumes between API and gateway | required | not needed |
+| Gateway serves `/plugins/*`, `/plugins-mcp/*`, `/plugins-skills/*` | from the mounted folders | by forwarding to the API (`/api/v1/plugin-assets/...`), so the bucket stays private |
 
-The server config entry:
-```yaml
-plugins:
-  store: local          # or "s3"
-  local_path: ./plugins/dist
-  s3_bucket: paca-plugins
-  cdn_allowlist:
-    - https://plugins.paca.app
-    - https://cdn.example.com
+Bucket layout in `s3` mode:
+
 ```
+{prefix}/<plugin-id>/backend.wasm | plugin.json | migrations/*.sql
+{prefix}/<plugin-id>/frontend/... | mcp/... | skills/<skill>/SKILL.md
+```
+
+Only `frontend/`, `mcp/` and `skills/` are ever reachable over HTTP; the WASM, manifest and migrations are not.
+
+Set `PLUGINS_STORE` to the same value on the API **and** the gateway (compose and Helm pass it to both; Helm: `api.plugins.store`). Changing the value does not move already-installed plugins by itself. To switch an existing install from `local` to `s3`:
+
+1. Keep the plugin folders mounted and `PLUGINS_STORE=local` until the copy is done.
+2. Run the migration inside the API container, which has the folder settings and the `STORAGE_*` settings it needs. `--dry-run` only lists what would be copied:
+
+   ```bash
+   docker compose exec api /app/api migrate-plugins --dry-run
+   docker compose exec api /app/api migrate-plugins
+   ```
+
+   (Use the API binary's path in your image; Kubernetes: `kubectl exec deploy/<release>-api -- <binary> migrate-plugins`.) It copies backend, migrations, frontend, MCP and skills for every plugin, reads each `backend.wasm` back from the bucket to check it, and prints one line per plugin. It never changes the local folders, so it is safe to re-run, and a plugin that fails does not stop the others.
+3. Set `PLUGINS_STORE=s3` on the API and the gateway and restart them. To roll back, set it to `local` again; the folders are untouched.
+
+With Helm, step 2 needs the plugins volume still mounted, so run it before setting `api.plugins.store=s3` (which removes the volume), from a Pod that still has `store: local`, and then upgrade.
 
 ## Outbound Requests
 

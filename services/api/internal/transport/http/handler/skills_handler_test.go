@@ -13,6 +13,7 @@ import (
 
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/Paca-AI/api/internal/platform/bundledskills"
+	pluginrt "github.com/Paca-AI/api/internal/platform/plugin"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 )
@@ -73,7 +74,7 @@ func TestSkillsHandler_ListSkills_MergesPluginSkillsIntoCLIFlavor(t *testing.T) 
 			},
 		},
 	}}
-	h := handler.NewSkillsHandler(svc, dir)
+	h := handler.NewSkillsHandler(svc, pluginrt.LocalSkillReader(dir))
 
 	w := httptest.NewRecorder()
 	h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills", nil))
@@ -110,7 +111,7 @@ func TestSkillsHandler_ListSkills_RoutesFollowServedPluginSkills(t *testing.T) {
 	}
 	routerOf := func(t *testing.T, enabled bool, query string) (string, []dto.SkillResponse) {
 		t.Helper()
-		h := handler.NewSkillsHandler(&fakePluginLister{plugins: []*plugindom.Plugin{manifest(enabled)}}, dir)
+		h := handler.NewSkillsHandler(&fakePluginLister{plugins: []*plugindom.Plugin{manifest(enabled)}}, pluginrt.LocalSkillReader(dir))
 		w := httptest.NewRecorder()
 		h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills"+query, nil))
 		if w.Code != http.StatusOK {
@@ -146,7 +147,7 @@ func TestSkillsHandler_ListSkills_RoutesFollowServedPluginSkills(t *testing.T) {
 
 func TestSkillsHandler_ListSkills_FallsBackToBundledOnPluginListError(t *testing.T) {
 	svc := &fakePluginLister{err: errors.New("db unavailable")}
-	h := handler.NewSkillsHandler(svc, t.TempDir())
+	h := handler.NewSkillsHandler(svc, pluginrt.LocalSkillReader(t.TempDir()))
 
 	w := httptest.NewRecorder()
 	h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills", nil))
@@ -162,7 +163,7 @@ func TestSkillsHandler_ListSkills_FallsBackToBundledOnPluginListError(t *testing
 }
 
 func TestSkillsHandler_ListSkills_NoPluginServiceConfigured(t *testing.T) {
-	h := handler.NewSkillsHandler(nil, "")
+	h := handler.NewSkillsHandler(nil, nil)
 
 	w := httptest.NewRecorder()
 	h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills", nil))

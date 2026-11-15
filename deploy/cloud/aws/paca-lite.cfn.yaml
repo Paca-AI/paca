@@ -257,11 +257,6 @@ Resources:
       Cpu: "1024"
       Memory: "4096"
       ExecutionRoleArn: !GetAtt ExecutionRole.Arn
-      Volumes:
-        - { Name: plugins }
-        - { Name: plugins-frontend }
-        - { Name: plugins-mcp }
-        - { Name: plugins-skills }
       ContainerDefinitions:
         # Containers share one network namespace, so they reach each other on
         # localhost. The API listens on 8081 because the gateway's internal
@@ -281,10 +276,10 @@ Resources:
             - { Name: API_UPSTREAM, Value: "localhost:8081" }
             - { Name: WEB_UPSTREAM, Value: "localhost:3000" }
             - { Name: REALTIME_UPSTREAM, Value: "localhost:3001" }
-          MountPoints:
-            - { SourceVolume: plugins-frontend, ContainerPath: /var/www/plugins, ReadOnly: true }
-            - { SourceVolume: plugins-mcp, ContainerPath: /var/www/plugins-mcp, ReadOnly: true }
-            - { SourceVolume: plugins-skills, ContainerPath: /var/www/plugins-skills, ReadOnly: true }
+            # Installed plugins live in the S3 bucket, not on a shared volume, so
+            # the gateway forwards /plugins* to the API instead of reading folders.
+            # Must match the API's PLUGINS_STORE.
+            - { Name: PLUGINS_STORE, Value: s3 }
           LogConfiguration:
             LogDriver: awslogs
             Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref "AWS::Region", awslogs-stream-prefix: gateway }
@@ -305,10 +300,9 @@ Resources:
             - { Name: STORAGE_REGION, Value: !Ref "AWS::Region" }
             - { Name: STORAGE_USE_SSL, Value: "true" }
             - { Name: STORAGE_BUCKET, Value: !Ref Bucket }
-            - { Name: PLUGINS_WASM_DIR, Value: /plugins }
-            - { Name: PLUGINS_FRONTEND_DIR, Value: /plugins-frontend }
-            - { Name: PLUGINS_MCP_DIR, Value: /plugins-mcp }
-            - { Name: PLUGINS_SKILLS_DIR, Value: /plugins-skills }
+            # Installed plugins (backend, frontend, MCP, skills) are stored in the
+            # bucket above under plugins/, via the same IAM user.
+            - { Name: PLUGINS_STORE, Value: s3 }
           Secrets:
             - { Name: DATABASE_URL, ValueFrom: !Ref DatabaseUrlSecret }
             - { Name: JWT_SECRET, ValueFrom: !Ref JwtSecret }
@@ -317,11 +311,6 @@ Resources:
             - { Name: ENCRYPTION_KEY, ValueFrom: !Ref EncryptionKeySecret }
             - { Name: STORAGE_ACCESS_KEY_ID, ValueFrom: !Sub "${StorageKeySecret}:id::" }
             - { Name: STORAGE_SECRET_ACCESS_KEY, ValueFrom: !Sub "${StorageKeySecret}:secret::" }
-          MountPoints:
-            - { SourceVolume: plugins, ContainerPath: /plugins }
-            - { SourceVolume: plugins-frontend, ContainerPath: /plugins-frontend }
-            - { SourceVolume: plugins-mcp, ContainerPath: /plugins-mcp }
-            - { SourceVolume: plugins-skills, ContainerPath: /plugins-skills }
           LogConfiguration:
             LogDriver: awslogs
             Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref "AWS::Region", awslogs-stream-prefix: api }

@@ -16,14 +16,14 @@ import (
 // skills contributed by enabled plugins.
 type SkillsHandler struct {
 	pluginSvc pluginrt.Lister
-	skillsDir string
+	skills    pluginrt.SkillReader
 }
 
-// NewSkillsHandler returns a SkillsHandler. pluginSvc and skillsDir may be
-// left zero-valued (nil / ""), in which case ListSkills falls back to
+// NewSkillsHandler returns a SkillsHandler. pluginSvc and skills may be
+// left nil, in which case ListSkills falls back to
 // bundled skills only.
-func NewSkillsHandler(pluginSvc pluginrt.Lister, skillsDir string) *SkillsHandler {
-	return &SkillsHandler{pluginSvc: pluginSvc, skillsDir: skillsDir}
+func NewSkillsHandler(pluginSvc pluginrt.Lister, skills pluginrt.SkillReader) *SkillsHandler {
+	return &SkillsHandler{pluginSvc: pluginSvc, skills: skills}
 }
 
 // ListSkills responds with every skill's name, path, and raw file content
@@ -48,7 +48,7 @@ func (h *SkillsHandler) ListSkills(w http.ResponseWriter, r *http.Request) {
 	target := r.URL.Query().Get("target")
 	skills := bundledskills.List(target)
 
-	pluginSkills, routes, err := pluginrt.ListSkillsAndRoutes(r.Context(), h.pluginSvc, h.skillsDir)
+	pluginSkills, routes, err := pluginrt.ListSkillsAndRoutes(r.Context(), h.pluginSvc, h.skills)
 	if err != nil {
 		slog.Error("skills: failed to list plugin-contributed skills", "error", err)
 	} else {
