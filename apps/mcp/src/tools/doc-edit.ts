@@ -2388,12 +2388,31 @@ export function spliceMarkdown(
 		)
 			k++;
 		const nowLines = now.split("\n");
-		const fileLines = file.split("\n");
 		const show = (lines: string[], at: number | undefined) =>
 			at === undefined ? "nothing" : JSON.stringify(lines[at - 1]);
 		const line = want.from[k] ?? (want.from[want.from.length - 1] ?? 0) + 1;
+		const theirs = got.lines[k];
+		const mine = want.lines[k];
+		const after = want.lines[k + 1];
+		let why: string;
+		if (theirs === "" && mine !== undefined && mine !== "")
+			why = `Paca writes a blank line before line ${line} (${JSON.stringify(fileLines[line - 1])}); add one there`;
+		else if (mine === "" && theirs !== undefined && theirs !== "")
+			why = `Paca writes no blank line at line ${line}; remove it`;
+		else if (
+			theirs !== undefined &&
+			mine !== undefined &&
+			mine !== "" &&
+			after !== undefined &&
+			after !== "" &&
+			theirs.startsWith(`${mine.trimEnd()} `) &&
+			theirs.includes(after.trim())
+		)
+			why = `Paca keeps a paragraph on one line: join line ${line} with line ${want.from[k + 1]}`;
+		else
+			why = `Paca would save line ${line} as ${show(nowLines, got.from[k])}, where the file has ${show(fileLines, want.from[k])}. Paca writes Markdown one way (for example "***" for a thematic break); write that line as Paca would`;
 		throw new SpliceError(
-			`The file does not read back as written: Paca would save line ${line} as ${show(nowLines, got.from[k])}, where the file has ${show(fileLines, want.from[k])}. Paca writes Markdown one way (for example "***" for a thematic break); write that line as Paca would, so the file and the document stay the same. Nothing was changed.`,
+			`The file does not read back as written: ${why}, so the file and the document stay the same. Nothing was changed.`,
 			"unsafe",
 			[line],
 		);

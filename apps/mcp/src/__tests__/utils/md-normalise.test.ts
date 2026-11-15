@@ -99,9 +99,9 @@ describe("normaliseMarkdown", () => {
 			norm("* two\n\n  * nested\n\n* three\n"),
 		);
 		expect(norm("1. a\n2. b\n")).toBe(norm("1. a\n\n2. b\n"));
-		// Next to a checklist item a blank line changes the parse.
-		expect(norm("- [ ] a\n- [x] b\n")).not.toBe(norm("* [ ] a\n\n* [x] b\n"));
-		expect(norm("* a\n* [ ] b\n")).not.toBe(norm("* a\n\n* [ ] b\n"));
+		// Checklist items too.
+		expect(norm("- [ ] a\n- [x] b\n")).toBe(norm("* [ ] a\n\n* [x] b\n"));
+		expect(norm("* a\n* [ ] b\n")).toBe(norm("* a\n\n* [ ] b\n"));
 		// Not between a paragraph and a list, nor inside fenced code.
 		expect(norm("a\n* b\n")).not.toBe(norm("a\n\n* b\n"));
 		expect(norm("```\n* a\n* b\n```\n")).not.toBe(
@@ -122,6 +122,22 @@ describe("normaliseMarkdown", () => {
 		expect(norm("* a\n\npara\n\n  * b\n")).toBe(norm("* a\n\npara\n\n* b\n"));
 		// A lazy line leaves the list unknown: indents are read as written.
 		expect(norm("* a\nlazy\n  * b\n")).not.toBe(norm("* a\nlazy\n* b\n"));
+	});
+
+	it("reads a numbered item's number as its place in its list gives it, but for the first item's", () => {
+		expect(norm("1. a\n1. b\n1. c\n")).toBe(norm("1. a\n\n2. b\n\n3. c\n"));
+		expect(norm("3. a\n1. b\n")).toBe(norm("3. a\n\n4. b\n"));
+		expect(norm("1. a\n   * x\n1. b\n")).toBe(norm("1. a\n\n   * x\n\n2. b\n"));
+		expect(norm("* p\n  1. a\n  1. b\n")).toBe(norm("* p\n\n  1. a\n\n  2. b\n"));
+		// The first item's number is the list's start: it counts.
+		expect(norm("1. a\n")).not.toBe(norm("2. a\n"));
+		// A bullet, or text at the list's level, starts a new list.
+		expect(norm("1. a\n* x\n1. b\n")).not.toBe(norm("1. a\n* x\n2. b\n"));
+		expect(norm("1. a\n\ntext\n\n1. b\n")).not.toBe(
+			norm("1. a\n\ntext\n\n2. b\n"),
+		);
+		// So does another delimiter.
+		expect(norm("1. a\n1) b\n")).not.toBe(norm("1. a\n2) b\n"));
 	});
 
 	it("leaves a thematic break's characters alone", () => {
@@ -156,7 +172,8 @@ describe("normaliseMarkdown", () => {
 				const num =
 					last[depth]?.kind === 2 && kind === 2 ? last[depth].num + 1 : 1;
 				last[depth] = { kind, num };
-				const marker = ["*", "-", `${num}.`, "* [ ]"][kind];
+				// Every other numbered item written "1.", as some people do.
+				const marker = ["*", "-", `${n % 2 ? 1 : num}.`, "* [ ]"][kind];
 				lines.push(`${"\t".repeat(depth)}${marker} item ${i}`);
 			}
 			const md = `${lines.join("\n")}\n`;
@@ -170,9 +187,8 @@ describe("normaliseMarkdown", () => {
 				const same = shape(file) === shape(render);
 				// Never read as the render when it parses differently.
 				if (norm(file) === norm(render)) expect(same, what).toBe(true);
-				// Read as the render when it parses the same, checklist items
-				// aside (a blank line next to one changes the parse).
-				if (same && !file.includes("[ ]"))
+				// Read as the render when it parses the same.
+				if (same)
 					expect(norm(file), what).toBe(norm(render));
 			}
 		}
@@ -222,6 +238,13 @@ describe("normaliseMarkdown", () => {
 			const file = [...lines.slice(0, i), line, ...lines.slice(i + 1)].join(
 				"\n",
 			);
+			// A change Markdown does not see (the number of a numbered item
+			// after the first) is not one.
+			const parsed = (x: string) =>
+				JSON.stringify(markdownToBlocknote(x), (k, v) =>
+					k === "id" ? undefined : v,
+				);
+			if (parsed(file) === parsed(render)) continue;
 			expect(norm(file), JSON.stringify({ render, file })).not.toBe(
 				norm(render),
 			);

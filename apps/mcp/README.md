@@ -528,28 +528,44 @@ line, and these differences are not edits:
 - outside fenced code, a `-` or `+` bullet (read as `*`), but not on a
   thematic break line (`- - -` is a divider, not a bullet);
 - outside fenced code, blank lines between two list items (so `* three`
-  added straight under `* two` is one new item), unless one of the two is a
-  checklist item: next to one, a blank line changes what Paca reads (Paca
-  writes a run of checklist items with no blank lines between);
+  added straight under `* two` is one new item, checklist items included);
 - outside fenced code, how a list item is indented, as long as it nests the
   same: a nested item written with a tab or four spaces is read as Paca
   writes it (two spaces under `* `, three under `1. `), and one space under
-  `* ` is a sibling, read as such. After a line that continues an item
-  without its indent (a lazy continuation), indents are read as written
-  until the list ends;
+  `* ` is a sibling, read as such. Where a line that is not an item would
+  belong somewhere else under the item's own indent than under Paca's (text
+  or code inside an item, or a line that continues an item without its
+  indent), that list's indents are read as written;
+- outside fenced code, the number of a numbered item after the first in its
+  list: Markdown numbers a list from its first item, so `1.` on every item
+  reads as Paca's `1.`, `2.`, `3.` (the first item's number is the list's
+  start, and counts);
 - outside fenced code, the padding of table cells, and a table's delimiter
-  row (its second row, `| --- | :-: |`) apart from its alignment.
+  row (its second row, `| --- | :-: |`) apart from its alignment, for a row
+  indented three spaces at most (four make it code).
+
+A `-` or `+` bullet, an indent and a number are read this way only on a line
+that starts a list item: not on a line that continues a paragraph, such as
+`10. ten` straight after text (only a bullet or `1.` can start a list
+there).
 
 Inside fenced code only line ends are read loosely: trailing spaces there are
-part of the code. Two differences are read as no edit although they are
-one:
+part of the code. These differences are read as no edit although they are
+one; Paca's own Markdown never has them, so they only matter in a file
+written by hand:
 
 - a run of blank lines inside indented code (code indented four spaces, not
   fenced) is read as one blank line, like any other run; Paca writes code
   fenced, so a file with indented code is refused at that line anyway;
 - a line that starts with `|` is read as a table row even outside a table, so
   `| a` and `| a |` on a line of text read the same, and changing one into
-  the other is not sent.
+  the other is not sent;
+- blank lines at the end of a fenced code block that is never closed are
+  dropped, like the blank lines at the end of any file.
+
+A refusal says what to write: for example that Paca writes a blank line
+before a line, or that Paca keeps a paragraph on one line (join the line
+with the one after it).
 
 Anything else must be written as Paca writes it, or the push is refused with
 the line and what Paca would save there (for example `__bold__` where Paca

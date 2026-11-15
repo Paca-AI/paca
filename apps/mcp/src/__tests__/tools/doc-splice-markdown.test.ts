@@ -216,12 +216,14 @@ describe("spliceMarkdown", () => {
 		}
 	});
 
-	it("a blank line taken out next to a checklist item, or a thematic break's characters changed, is refused with its line", () => {
+	it("a blank line taken out next to a checklist item is no edit; a thematic break's characters changed are refused with their line", () => {
 		const blocks = stored("* a\n\n* [ ] b\n\n---\n\nend\n");
 		const render = pulled(blocks);
 		expect(render).toContain("* a\n\n* [ ] b\n");
 		const tight = render.replace("* a\n\n* [ ] b", "* a\n* [ ] b");
-		expect(refusal(() => spliceMarkdown(blocks, tight)).lines).toEqual([2]);
+		const same = spliceMarkdown(blocks, tight);
+		expect(same.blocks).toBe(blocks);
+		expect(same.changed).toBe(0);
 		const brk = render.match(/^(\*\*\*|---)$/m)?.[0] ?? "***";
 		const at = render.split("\n").indexOf(brk) + 1;
 		// "* - -" is a list item, and "- - -" the same divider Paca writes
@@ -233,6 +235,53 @@ describe("spliceMarkdown", () => {
 				at,
 			]);
 		}
+	});
+
+	it('numbered items written all "1.", and checklist items added next to others with or without blank lines, are sent', () => {
+		const blocks = stored(
+			"# T\n\nIntro para.\n\n1. one\n2. two\n\n* [ ] c1\n* [x] c2\n\nEnd.\n",
+		);
+		const render = pulled(blocks);
+		for (const [file, want] of [
+			[render.replace("2. two\n", "2. two\n1. three\n"), "3. three"],
+			[
+				render.replace("1. one\n\n2. two\n", "1. one\n1. two\n1. three\n"),
+				"3. three",
+			],
+			[render.replace("* [x] c2\n", "* [x] c2\n\n* [ ] c3\n"), "* [ ] c3"],
+			[
+				render.replace("Intro para.", "- [ ] Intro\n- [ ] para."),
+				"* [ ] para.",
+			],
+		]) {
+			const res = spliceMarkdown(blocks, file);
+			expect(res.changed, file).toBeGreaterThan(0);
+			expect(pulled(res.blocks), file).toContain(want);
+		}
+	});
+
+	it("a refusal over a blank line or a wrapped paragraph says what to write, not that a line would be saved as nothing", () => {
+		const blocks = stored("# T\n\nIntro para.\n\n* a\n\nEnd.\n");
+		const render = pulled(blocks);
+		// A list straight after a paragraph: Paca puts a blank line between.
+		const e1 = refusal(() =>
+			spliceMarkdown(
+				blocks,
+				render.replace("Intro para.\n\n* a", "Intro para.\n* b\n* a"),
+			),
+		);
+		expect(e1.lines).toEqual([4]);
+		expect(e1.message).toContain(
+			'Paca writes a blank line before line 4 ("* b")',
+		);
+		expect(e1.message).not.toContain('as ""');
+		// A paragraph written on two lines.
+		const e2 = refusal(() =>
+			spliceMarkdown(blocks, render.replace("Intro para.", "Intro\nnew para.")),
+		);
+		expect(e2.lines).toEqual([3]);
+		expect(e2.message).toContain("Paca keeps a paragraph on one line");
+		expect(e2.message).toContain("join line 3 with line 4");
 	});
 
 	it("a block Paca would store with spaces at the start or end of its text, which the render does not show, is refused with its line", () => {
@@ -1067,6 +1116,12 @@ describe("spliceMarkdown fuzz", () => {
 						before[0] === after[0]
 					)
 						reached[before[0]] = true;
+					// Indented lines added after a block are its children: in it.
+					if (
+						before.length > 0 &&
+						e.repl.slice(r0, r1).some((l) => /^\s+\S/.test(l))
+					)
+						reached[before[before.length - 1]] = true;
 				}
 			}
 			// The one exception: edit_doc re-reads a numbered item after an

@@ -12,9 +12,11 @@
 //   written with spaces or tabs, as long as it nests the same; one at the
 //   top level is not indented. Only where the list it is in is known: not
 //   after a line that continues an item lazily, until the list ends;
-// - outside fenced code, blank lines between two list items read as none,
-//   unless one of them is a checklist item (a blank line next to one
-//   changes what it parses to);
+// - outside fenced code, blank lines between two list items read as none;
+// - outside fenced code, a numbered item after the first in its list reads
+//   with the number its place gives it (the first item's number, the
+//   list's start, counted on), as Markdown reads it: "1." for every item
+//   reads as Paca's "1.", "2.", "3.";
 // - outside fenced code, a table row reads with its cells trimmed, and a
 //   table's second row, its delimiter row ("| --- | :-: |"), as just its
 //   alignment.
@@ -27,9 +29,6 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const BULLET = /^(\s*)[-+](?=[ \t])/;
 /** A list item's start: its indent, its marker and the white space after. */
 const ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)/;
-/** A checklist item: next to one, a blank line changes what it parses to
- *  (the render writes a run of them with none between). */
-const CHECK = /^[ \t]*([-*+]|\d{1,9}[.)])[ \t]+\[[ xX]\]/;
 /** A thematic break ("***", "- - -", "___"). */
 const BREAK = /^ {0,3}([-*_])([ \t]*\1){2,}[ \t]*$/;
 const DELIMITER = /^:?-+:?$/;
@@ -72,66 +71,149 @@ function width(ws: string): number {
 	return col;
 }
 
+/** A list item whose place in its list is known: the indent the render
+ *  writes it with, and, for a numbered item, the number its place gives
+ *  it (the first item's own number, which is the list's start, counted on
+ *  for the items after it). */
+interface ItemPlace {
+	indent: string;
+	number: number | null;
+}
+
 /**
  * For each line outside fenced code that starts a list item whose place in
- * its list is known, the indent the render writes it with ("" at the top
- * level); null for every other line.
+ * its list is known, that place (see ItemPlace); null for every other line.
  */
-export function itemIndents(lines: string[]): Array<string | null> {
+export function itemPlaces(lines: string[]): Array<ItemPlace | null> {
 	const fenced = fencedLines(lines);
+	const out: Array<ItemPlace | null> = lines.map(() => null);
 	/** The open items: where their content starts in the file, and in the
 	 *  render. */
 	let open: Array<{ file: number; render: number }> = [];
-	/** Whether a lazy line made the list unknown, until the list ends. */
+	/** Per depth, the numbered list open there: its delimiter and the
+	 *  number of its next item. */
+	let lists: Array<{ delim: string; next: number } | undefined> = [];
+	/** Whether the list is unknown (a lazy line, or a line whose place
+	 *  depends on how its items are indented), until the list ends. */
 	let unknown = false;
+	/** The first line of the outermost list open. */
+	let listStart = 0;
 	let blankBefore = true;
-	return lines.map((line, k) => {
+	/** Whether the line before is a paragraph's text (or other text). */
+	let text = false;
+	const end = () => {
+		open = [];
+		lists = [];
+		unknown = false;
+	};
+	/** A line that is not an item, at column `w`: if it falls in other
+	 *  items (or is code in one) with the items' content where the file
+	 *  has it than where the render has it, the items' indents cannot be
+	 *  read the render's way: the list becomes unknown, and what was read
+	 *  of it is taken back. */
+	const giveUp = (k: number) => {
+		unknown = true;
+		for (let n = listStart; n < k; n++) out[n] = null;
+	};
+	const check = (w: number, k: number) => {
+		for (const o of open)
+			if (
+				w >= o.file !== w >= o.render ||
+				w >= o.file + 4 !== w >= o.render + 4
+			)
+				return giveUp(k);
+	};
+	lines.forEach((line, k) => {
 		if (fenced[k]) {
+			text = false;
+			const w = width(/^[ \t]*/.exec(line)?.[0] ?? "");
 			// A fence at the top level ends the lists.
-			if (width(/^[ \t]*/.exec(line)?.[0] ?? "") < (open[0]?.file ?? 1)) {
-				open = [];
-				unknown = false;
+			if (w < (open[0]?.file ?? 1)) end();
+			else {
+				check(w, k);
+				lists.length = Math.min(lists.length, open.length);
 			}
 			blankBefore = false;
-			return null;
+			return;
 		}
 		if (isBlank(line)) {
 			blankBefore = true;
-			return null;
+			text = false;
+			return;
 		}
-		const m = BREAK.test(line) ? null : ITEM.exec(line);
+		let m = BREAK.test(line) ? null : ITEM.exec(line);
 		const w = width(/^[ \t]*/.exec(line)?.[0] ?? "");
 		const wasBlank = blankBefore;
+		const wasText = text;
 		blankBefore = false;
+		// Only a bullet item, or a numbered one starting at 1, with text,
+		// can interrupt a paragraph; any other such line continues it.
+		if (
+			m &&
+			wasText &&
+			(m[3] === "" || (/^\d/.test(m[2]) && !/^0*1[.)]$/.test(m[2])))
+		)
+			m = null;
+		text = !m;
 		if (!m) {
+			if (open.length > 0) check(w, k);
 			while (open.length > 0 && w < open[open.length - 1].file) {
 				if (!wasBlank) {
-					// A lazy continuation: the item goes on.
-					unknown = true;
-					return null;
+					// A lazy continuation: the item goes on, and where the
+					// lines after it belong depends on how its items are
+					// indented.
+					giveUp(k);
+					return;
 				}
 				open.pop();
 			}
-			if (open.length === 0) unknown = false;
-			return null;
+			// Text in an item (or at the top level) ends the lists below it.
+			lists.length = Math.min(lists.length, open.length);
+			if (open.length === 0) end();
+			return;
 		}
-		if (unknown) return null;
+		if (unknown) return;
+		const fresh = open.length === 0;
 		while (open.length > 0 && w < open[open.length - 1].file) open.pop();
 		const parent = open[open.length - 1];
 		// Indented code, not an item.
-		if (parent ? w >= parent.file + 4 : w > 3) return null;
+		if (parent ? w >= parent.file + 4 : w > 3) {
+			if (parent) check(w, k);
+			return;
+		}
+		if (fresh) {
+			lists = [];
+			listStart = k;
+		}
+		const depth = open.length;
+		lists.length = Math.min(lists.length, depth + 1);
 		const indent = parent ? parent.render : 0;
 		const marker = m[2];
+		let number: number | null = null;
+		const num = /^(\d+)([.)])$/.exec(marker);
+		if (num) {
+			const list = lists[depth];
+			number =
+				list && list.delim === num[2] ? list.next : Number.parseInt(num[1], 10);
+			lists[depth] = { delim: num[2], next: number + 1 };
+		} else lists[depth] = undefined;
+		const shown = number === null ? marker : `${number}${marker.slice(-1)}`;
 		const after =
 			m[3] === ""
 				? 1
 				: Math.min(width(m[1] + marker + m[3]) - w - marker.length, 4);
 		open.push({
 			file: w + marker.length + after,
-			render: indent + marker.length + 1,
+			render: indent + shown.length + 1,
 		});
-		return " ".repeat(indent);
+		out[k] = { indent: " ".repeat(indent), number };
 	});
+	return out;
+}
+
+/** itemPlaces' indents alone. */
+export function itemIndents(lines: string[]): Array<string | null> {
+	return itemPlaces(lines).map((p) => p?.indent ?? null);
 }
 
 /** The cells of a table row, split at "|" signs that are not escaped. */
@@ -170,7 +252,7 @@ function tableRow(line: string, second: boolean): string {
  */
 export function lineKeys(lines: string[]): string[] {
 	const fenced = fencedLines(lines);
-	const indents = itemIndents(lines);
+	const places = itemPlaces(lines);
 	/** Rows of the table the line is in, before it. */
 	let row = 0;
 	return lines.map((raw, k) => {
@@ -179,11 +261,21 @@ export function lineKeys(lines: string[]): string[] {
 			return raw;
 		}
 		const line = raw.replace(TRAILING, "");
-		if (line.trimStart().startsWith("|")) return tableRow(line, row++ === 1);
+		// A table row is indented three columns at most (four make code).
+		if (
+			line.trimStart().startsWith("|") &&
+			width(/^[ \t]*/.exec(line)?.[0] ?? "") <= 3
+		)
+			return tableRow(line, row++ === 1);
 		row = 0;
-		const indent = indents[k];
-		const item = indent === null ? line : indent + line.trimStart();
-		return BREAK.test(item) ? item : item.replace(BULLET, "$1*");
+		const place = places[k];
+		// Only a line known to start a list item (not, say, a line that
+		// continues a paragraph) has its indent, number and bullet read.
+		if (!place) return line;
+		let item = place.indent + line.trimStart();
+		if (place.number !== null)
+			item = item.replace(/^(\s*)\d+(?=[.)])/, `$1${place.number}`);
+		return item.replace(BULLET, "$1*");
 	});
 }
 
@@ -206,10 +298,10 @@ export function normaliseMarkdown(text: string): {
 	/** Whether line k is blank and between two list items. */
 	const between = raw.map(() => false);
 	for (let k = 0; k < raw.length; k++) {
-		if (items[k] === null || CHECK.test(raw[k])) continue;
+		if (items[k] === null) continue;
 		let n = k + 1;
 		while (n < raw.length && !fenced[n] && isBlank(raw[n])) n++;
-		if (n > k + 1 && n < raw.length && items[n] !== null && !CHECK.test(raw[n]))
+		if (n > k + 1 && n < raw.length && items[n] !== null)
 			for (let b = k + 1; b < n; b++) between[b] = true;
 	}
 	const lines: string[] = [];
