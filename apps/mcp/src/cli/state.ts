@@ -194,6 +194,9 @@ export interface PullState {
 	 *  another one with the same name key appears. */
 	dirs?: Record<string, string>;
 	docs: Record<string, PullDocState>;
+	/** Folders (mirror-relative) a pull was moving files out of when it
+	 *  stopped: the next pull removes the ones left empty. */
+	vacating?: string[];
 }
 
 export const PULL_STATE_FILE = ".paca-sync.json";

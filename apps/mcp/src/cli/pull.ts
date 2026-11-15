@@ -497,7 +497,18 @@ async function pullLocked(
 				}
 			}
 			for (const [id, n] of Object.entries(next)) if (n.orphan) docs[id] = n;
+			// The folders files move out of, so a stop before they are
+			// removed (step 4) leaves them to the next pull.
+			const leaving = new Set(base.vacating ?? []);
+			for (const m of moves)
+				leaving.add(path.relative(root, path.dirname(m.entry.orig)));
+			for (const id of toRemove)
+				leaving.add(path.dirname(prevDocs[id].file));
+			leaving.delete("");
+			leaving.delete(".");
 			interim = { ...base, dirs, docs };
+			if (leaving.size > 0) interim.vacating = [...leaving].sort();
+			else delete interim.vacating;
 			if (JSON.stringify(interim) !== JSON.stringify(prev)) {
 				await writeJSON(statePath, interim);
 				stateChanged = true;
@@ -837,6 +848,12 @@ async function pullLocked(
 	// 4. Drop folders the moves and removals emptied, and Paca's versions
 	// written next to files that no longer need them.
 	for (const f of vacated) await pruneEmpty(root, path.dirname(f));
+	// Folders an earlier, stopped pull was moving files out of.
+	for (const d of prev?.vacating ?? []) {
+		if (typeof d !== "string") continue;
+		const abs = path.resolve(root, d);
+		if (isInside(root, abs)) await pruneEmpty(root, abs);
+	}
 	for (const [id, p] of Object.entries(prevDocs))
 		if (p.remote_copy && next[id]?.remote_copy?.file !== p.remote_copy.file)
 			await removeRemoteCopy(root, p.remote_copy);
