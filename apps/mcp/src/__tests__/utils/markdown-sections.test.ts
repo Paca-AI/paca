@@ -232,7 +232,12 @@ describe("regexScan", () => {
 
 	it("returns each text's matching lines", async () => {
 		const res = await regexScan("^b", false, ["a\nb", "x", "b"]);
-		expect(res).toEqual({ hits: [[1], [], [0]], timedOut: [], unsearched: [] });
+		expect(res).toEqual({
+			hits: [[1], [], [0]],
+			timedOut: [],
+			unsearched: [],
+			stoppedBy: null,
+		});
 	});
 
 	it("skips a text that takes too long and goes on with the next", async () => {
@@ -243,6 +248,7 @@ describe("regexScan", () => {
 			hits: [[0], null, [0]],
 			timedOut: [1],
 			unsearched: [],
+			stoppedBy: null,
 		});
 	});
 
@@ -253,6 +259,7 @@ describe("regexScan", () => {
 		});
 		expect(res.timedOut).toEqual([0, 1]);
 		expect(res.unsearched).toEqual([2, 3]);
+		expect(res.stoppedBy).toBe("slow");
 	}, 10_000);
 
 	it("stops at the total time limit", async () => {
@@ -263,7 +270,10 @@ describe("regexScan", () => {
 		});
 		expect(Date.now() - started).toBeLessThan(2000);
 		expect(res.hits[0]).toBeNull();
-		expect([...res.timedOut, ...res.unsearched]).toEqual([0, 1, 2]);
+		// Cut off by the total budget, not slow on its own: not timedOut.
+		expect(res.timedOut).toEqual([]);
+		expect(res.unsearched).toEqual([0, 1, 2]);
+		expect(res.stoppedBy).toBe("time");
 	}, 10_000);
 });
 

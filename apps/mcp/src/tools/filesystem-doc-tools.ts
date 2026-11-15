@@ -1059,9 +1059,9 @@ export async function handleFilesystemDocTool(
 					if (scan.unsearched.length > 0) {
 						const n = scan.unsearched.length;
 						extra.push(
-							scan.timedOut.length >= REGEX_MAX_SLOW
+							scan.stoppedBy === "slow"
 								? `Stopped after ${REGEX_MAX_SLOW} slow documents: ${n} more ${n === 1 ? "was" : "were"} not searched. Simplify the regular expression (avoid nested quantifiers such as (a+)+) or narrow with path.`
-								: `Stopped at the time limit of ${REGEX_TOTAL_MS / 1000} s: ${n} more document${n === 1 ? " was" : "s were"} not searched. Narrow with path or simplify the regular expression.`,
+								: `Stopped at the time limit of ${REGEX_TOTAL_MS / 1000} s: ${n} more document${n === 1 ? " was" : "s were"} not searched. Narrow with path to search them.`,
 						);
 					}
 				} else {

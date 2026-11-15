@@ -217,10 +217,13 @@ workerData.texts.forEach((text, k) => {
 export interface RegexScan {
 	/** Each text's 0-based matching line indexes; null when not searched. */
 	hits: Array<number[] | null>;
-	/** Texts where the pattern ran past `perDocMs` (or the total limit). */
+	/** Texts where the pattern ran past `perDocMs`. */
 	timedOut: number[];
-	/** Texts not reached: the run stopped before them. */
+	/** Texts not searched to the end: the run stopped before or during them. */
 	unsearched: number[];
+	/** Why the run stopped early: `maxTimeouts` slow texts, or the total
+	 *  time limit. Null when every text was searched or given up as slow. */
+	stoppedBy: "slow" | "time" | null;
 }
 
 /**
@@ -245,9 +248,11 @@ export async function regexScan(
 	const timedOut: number[] = [];
 	const deadline = Date.now() + totalMs;
 	let next = 0;
+	let outOfTime = false;
 	while (
 		next < texts.length &&
 		timedOut.length < maxTimeouts &&
+		!outOfTime &&
 		Date.now() < deadline
 	) {
 		const first = next;
@@ -260,12 +265,20 @@ export async function regexScan(
 				let timer: ReturnType<typeof setTimeout> | undefined;
 				const arm = () => {
 					clearTimeout(timer);
-					const ms = Math.max(0, Math.min(perDocMs, deadline - Date.now()));
-					timer = setTimeout(() => {
-						timedOut.push(next);
-						next++;
-						resolve();
-					}, ms);
+					const left = Math.max(0, deadline - Date.now());
+					// The text is slow only when its own limit ran out; when the
+					// total limit is shorter, it is merely not finished.
+					const ownLimit = perDocMs <= left;
+					timer = setTimeout(
+						() => {
+							if (ownLimit) {
+								timedOut.push(next);
+								next++;
+							} else outOfTime = true;
+							resolve();
+						},
+						ownLimit ? perDocMs : left,
+					);
 				};
 				worker.on("message", (m: { k: number; hits: number[] }) => {
 					hits[first + m.k] = m.hits;
@@ -287,7 +300,13 @@ export async function regexScan(
 	}
 	const unsearched: number[] = [];
 	for (let i = next; i < texts.length; i++) unsearched.push(i);
-	return { hits, timedOut, unsearched };
+	const stoppedBy =
+		unsearched.length === 0
+			? null
+			: timedOut.length >= maxTimeouts
+				? "slow"
+				: "time";
+	return { hits, timedOut, unsearched, stoppedBy };
 }
 
 /**
