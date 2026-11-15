@@ -1933,6 +1933,22 @@ function asRendered(markdown: string, renderEnd: string): string {
 	return text === "" ? "" : text + (renderEnd || "\n");
 }
 
+/** The length of the longest strictly rising subsequence of `xs`. */
+function longestRising(xs: number[]): number {
+	const tails: number[] = [];
+	for (const x of xs) {
+		let lo = 0;
+		let hi = tails.length;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			if (tails[mid] < x) lo = mid + 1;
+			else hi = mid;
+		}
+		tails[lo] = x;
+	}
+	return tails.length;
+}
+
 /** The refusal for what auditEdit found in a whole document's result,
  *  naming lines of the document's render. */
 function wholeAuditError(
@@ -2173,14 +2189,22 @@ export function spliceMarkdown(
 		);
 	}
 
-	// New or rewritten blocks, plus removed ones (neither returned nor
-	// standing, by id, behind a rewritten one).
-	const before = new Set(blocks);
+	// New or rewritten blocks, removed ones (neither returned nor standing,
+	// by id, behind a rewritten one), and moved ones: blocks returned as
+	// read but out of their old order (as few as explain the new order).
+	const before = new Map(blocks.map((x, k) => [x, k]));
 	const after = new Set(out);
 	const ids = new Set(out.map((x) => x.id).filter((x) => x !== undefined));
+	const keptAt = out.flatMap((x) => {
+		const k = before.get(x);
+		return k === undefined ? [] : [k];
+	});
 	const changed =
-		out.filter((x) => !before.has(x)).length +
-		blocks.filter((x) => !after.has(x) && !ids.has(x.id)).length;
+		out.length -
+		keptAt.length +
+		blocks.filter((x) => !after.has(x) && !ids.has(x.id)).length +
+		keptAt.length -
+		longestRising(keptAt);
 	return {
 		blocks: out,
 		changed,

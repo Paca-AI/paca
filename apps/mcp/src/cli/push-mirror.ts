@@ -246,7 +246,9 @@ async function pushLocked(
 		await writeJSON(statePath, state);
 	};
 
-	if (spliced && spliced.changed === 0) {
+	// Nothing to send only when the result is the stored array itself:
+	// counts never decide it (a reorder can keep every block as read).
+	if (spliced && spliced.blocks === blocks) {
 		// Paca already holds what the file says (a save that changed only
 		// line ends, or a push that stopped before recording its write).
 		if (!opts.dryRun)

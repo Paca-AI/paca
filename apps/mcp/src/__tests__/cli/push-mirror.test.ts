@@ -492,6 +492,79 @@ describe("push of a mirror file", () => {
 		expect(blocknoteToMarkdown(now)).toBe(read("Every.md"));
 	});
 
+	it("a reorder-only edit is sent, and the next pull leaves the file alone", async () => {
+		// Plain blocks only: a swap next to a formatted block is refused
+		// (a documented limit).
+		const PLAIN = docId(2);
+		server.add(
+			PLAIN,
+			"Plain",
+			storedBlocks("Alpha one.\n\nBeta two.\n\n- li one\n- li two\n\nEnd."),
+		);
+		expect(await pull()).toBe(0);
+		const plain = () => server.docs.get(PLAIN)?.content as any[];
+		const before = plain().map((b: any) => b.id);
+		for (const [from, to] of [
+			["Alpha one.\n\nBeta two.", "Beta two.\n\nAlpha one."],
+			["* li one\n\n* li two", "* li two\n\n* li one"],
+		]) {
+			const swapped = read("Plain.md").replace(from, to);
+			expect(swapped).not.toBe(read("Plain.md"));
+			fs.writeFileSync(file("Plain.md"), swapped);
+			lines = [];
+			const calls = server.client.patchDocument.mock.calls.length;
+			expect(
+				await push(".paca/docs/Plain.md", { dryRun: true }),
+				output(),
+			).toBe(0);
+			expect(output()).toMatch(/[1-9]\d* blocks? would change/);
+			expect(server.client.patchDocument.mock.calls.length).toBe(calls);
+			lines = [];
+			expect(await push(".paca/docs/Plain.md"), output()).toBe(0);
+			expect(server.client.patchDocument.mock.calls.length).toBe(calls + 1);
+			expect(output()).not.toContain("unchanged");
+			expect(output()).toMatch(/[1-9]\d* blocks? changed/);
+			expect(blocknoteToMarkdown(plain())).toBe(swapped);
+			expect([...plain().map((b: any) => b.id)].sort()).toEqual(
+				[...before].sort(),
+			);
+			lines = [];
+			expect(await pull()).toBe(0);
+			expect(output()).toBe("up to date");
+			expect(read("Plain.md")).toBe(swapped);
+		}
+	});
+
+	it("a file that differs from what Paca holds is sent or refused, never recorded as unchanged", async () => {
+		const md = read();
+		const variants = [
+			md.replace("* one\n\n* two", "* two\n\n* one"),
+			md.replace("# Plan\n\nFirst paragraph.", "First paragraph.\n\n# Plan"),
+			md.replace("First paragraph.", "First paragraph!"),
+		];
+		expect(md).toContain("* one\n\n* two");
+		for (const v of variants) {
+			expect(v).not.toBe(md);
+			fs.writeFileSync(file(), v);
+			lines = [];
+			const calls = server.client.patchDocument.mock.calls.length;
+			const code = await push(".paca/docs/Plan.md");
+			if (code === 0) {
+				expect(server.client.patchDocument.mock.calls.length, v).toBe(
+					calls + 1,
+				);
+				expect(blocknoteToMarkdown(stored()), v).toBe(v);
+			} else {
+				expect(code, output()).toBe(1);
+				expect(output()).toContain("cannot push");
+			}
+			// Back to what Paca holds for the next variant.
+			fs.writeFileSync(file(), blocknoteToMarkdown(stored()));
+			lines = [];
+			await push(".paca/docs/Plan.md");
+		}
+	});
+
 	it("repository files next to a mirror still push as repository files", async () => {
 		const git = (...args: string[]) =>
 			execFileSync("git", args, {

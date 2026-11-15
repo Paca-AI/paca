@@ -378,6 +378,30 @@ describe("spliceMarkdown", () => {
 		});
 	});
 
+	it("a reorder of plain blocks is a change", () => {
+		const blocks = stored("alpha one\n\nbeta two\n\nend");
+		const json = blocks.map((b) => JSON.stringify(b));
+		const swapped = "beta two\n\nalpha one\n\nend\n";
+		const res = spliceMarkdown(blocks, swapped);
+		expect(res.blocks).not.toBe(blocks);
+		expect(res.changed).toBe(1);
+		expect(pulled(res.blocks)).toBe(swapped);
+		// The moved blocks are the objects read, in their new order.
+		expect(res.blocks).toHaveLength(3);
+		expect(res.blocks[0]).toBe(blocks[1]);
+		expect(res.blocks[1]).toBe(blocks[0]);
+		expect(res.blocks[2]).toBe(blocks[2]);
+		blocks.forEach((b, i) => expect(JSON.stringify(b)).toBe(json[i]));
+		// List items swapped, and paragraphs swapped next to a list.
+		const list = stored("alpha one\n\nbeta two\n\n* li one\n\n* li two\n\nend");
+		const both = pulled(list)
+			.replace("alpha one\n\nbeta two", "beta two\n\nalpha one")
+			.replace("* li one\n\n* li two", "* li two\n\n* li one");
+		const res2 = spliceMarkdown(list, both);
+		expect(res2.changed).toBeGreaterThan(0);
+		expect(pulled(res2.blocks)).toBe(both);
+	});
+
 	it("formatted table row swap is refused", () => {
 		const blocks = stored(
 			"| name | state |\n|---|---|\n| alpha | done |\n| beta | late |",
