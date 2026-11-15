@@ -235,6 +235,22 @@ describe("spliceMarkdown", () => {
 		}
 	});
 
+	it("a block Paca would store with spaces at the start or end of its text, which the render does not show, is refused with its line", () => {
+		const blocks = stored("# T\n\nIntro here.\n\nOther.\n");
+		const render = pulled(blocks);
+		for (const file of [
+			render.replace("Intro here.", "&#32;Intro edited."),
+			render.replace("Intro here.", "Intro edited.&#32;"),
+		]) {
+			const e = refusal(() => spliceMarkdown(blocks, file));
+			expect(e.lines, file).toEqual([3]);
+			expect(e.message).toContain("spaces at the start or end");
+		}
+		// A non-breaking space is text Markdown shows: sent.
+		const nb = render.replace("Intro here.", "\u00a0Intro edited.");
+		expect(spliceMarkdown(blocks, nb).changed).toBe(1);
+	});
+
 	it("one edited paragraph changes one block", () => {
 		const blocks = stored(TEN);
 		const json = blocks.map((b) => JSON.stringify(b));

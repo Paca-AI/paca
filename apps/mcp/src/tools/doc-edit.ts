@@ -2343,6 +2343,38 @@ export function spliceMarkdown(
 			: x;
 	});
 
+	// Spaces or tabs at the start or end of a new block's text: Markdown
+	// cannot show them (the render drops them), so the read-back below would
+	// not see them, and Paca would store text the file does not say.
+	const kept = new Set(blocks);
+	const fileLines = file.split("\n");
+	const loose = (b: Block): string | null => {
+		if (b.type === "codeBlock" || !Array.isArray(b.content)) return null;
+		const runs = b.content.filter((r: any) => r?.type === "text");
+		const first = runs[0]?.text;
+		const last = runs[runs.length - 1]?.text;
+		if (typeof first === "string" && /^[ \t]/.test(first)) return first;
+		if (typeof last === "string" && /[ \t]$/.test(last)) return last;
+		for (const c of (b.children ?? []) as Block[]) {
+			const x = loose(c);
+			if (x !== null) return x;
+		}
+		return null;
+	};
+	for (const b of out) {
+		if (kept.has(b)) continue;
+		const text = loose(b);
+		if (text === null) continue;
+		const words = text.trim();
+		let at = fileLines.findIndex((l) => words !== "" && l.includes(words));
+		if (at < 0) at = (hunks.length > 0 ? fileOf(hunks[0].na + 1) : 1) - 1;
+		throw new SpliceError(
+			`Paca would store the text on line ${at + 1} with spaces at the start or end (${JSON.stringify(text)}), which Markdown cannot show, so the file and the document would differ. Write the line without them. Nothing was changed.`,
+			"unsafe",
+			[at + 1],
+		);
+	}
+
 	// The file must be what Paca now holds, line for line, but for what
 	// the normalising rules allow.
 	const now = render(out);
