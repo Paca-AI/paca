@@ -1415,6 +1415,225 @@ describe("auditEdit: data blocks stay in place (sixth review)", () => {
 });
 const T0 = "| a | b |\n|---|---|\n| 1 | 2 |";
 
+// Seventh review: reorders disguised as in-place edits. Inside a table
+// with formatting, rows (and, when every row changes, columns) must stay
+// where they are; across blocks edited in place, a block with data must
+// not end up with text closer to another edited block's old text than to
+// its own. Both only refuse; neither decides where data goes.
+describe("spliceEdit refuses disguised reorders (seventh review)", () => {
+	const fail = (blocks: any[], o: string, n: string, all = false) => {
+		try {
+			spliceEdit(blocks, o, n, all);
+		} catch (e) {
+			expect(e).toBeInstanceOf(SpliceError);
+			return e as SpliceError;
+		}
+		throw new Error("the edit was applied");
+	};
+	const TBL = "| name | state |\n| - | - |\n| Alice | done |\n| Bob | late |";
+	const redCell = (y: number, x: number) => (bs: any[]) => {
+		bs[0].content.rows[y].cells[x].props.backgroundColor = "red";
+	};
+	const rows = (blocks: any[]) => {
+		const lines = blocknoteToMarkdown(blocks).trimEnd().split("\n");
+		return { head: lines[0], a: lines[2], b: lines[3] };
+	};
+	const two = (colour = 0) =>
+		stored(
+			"Alice finished the quarterly report\n\nBob reviewed the budget\n\nend",
+			(bs) => {
+				bs[colour].props.backgroundColor = "green";
+			},
+		);
+	const OLD2 = "Alice finished the quarterly report\n\nBob reviewed the budget";
+
+	it("refuses swapping the rows of a table with a coloured cell (q2)", () => {
+		const blocks = stored(TBL, redCell(1, 0));
+		const { a, b } = rows(blocks);
+		expect(fail(blocks, `${a}\n${b}`, `${b}\n${a}`).message).toMatch(/row/);
+	});
+
+	it("refuses deleting one row and adding another in a formatted table (q2)", () => {
+		const blocks = stored(TBL, redCell(1, 0));
+		const { a, b } = rows(blocks);
+		const carol = a.replace("Alice", "Carol").replace("done ", "new  ");
+		fail(blocks, `${a}\n${b}`, `${b}\n${carol}`);
+	});
+
+	it("refuses swapping the columns of a table with widths (q6)", () => {
+		const blocks = stored(
+			"| name | state |\n| - | - |\n| Alice | done |",
+			(bs) => {
+				bs[0].content.columnWidths = [300, null];
+			},
+		);
+		const full = blocknoteToMarkdown(blocks).trimEnd();
+		expect(
+			fail(blocks, full, "| state | name |\n| - | - |\n| done | Alice |")
+				.message,
+		).toMatch(/column/);
+	});
+
+	it("refuses a reorder with one word reworded in each block (q6)", () => {
+		const e = fail(
+			two(),
+			OLD2,
+			"(1) Bob reviewed the new budget.\n\n(2) Alice finished the Q3 report.",
+		);
+		expect(e.message).toMatch(/lines 1 and 3/);
+		expect(e.message).toMatch(/one at a time/);
+	});
+
+	it("refuses other disguised swaps and rotations (q1, q3, q6)", () => {
+		fail(
+			two(),
+			OLD2,
+			"today bob reviewed the budget!\n\nyesterday alice finished the quarterly report!",
+		);
+		fail(
+			two(1),
+			OLD2,
+			"(1) bob reviewed the budget.\n\n(2) alice finished the quarterly report.",
+		);
+		fail(
+			two(),
+			OLD2,
+			"Something else entirely\n\nso alice finished the quarterly report!",
+		);
+		const three = stored(
+			"Alice finished the report\n\nBob reviewed the budget\n\nCarol booked the venue",
+			(bs) => {
+				bs[0].props.textColor = "red";
+			},
+		);
+		fail(
+			three,
+			"Alice finished the report\n\nBob reviewed the budget\n\nCarol booked the venue",
+			"Now Carol has booked the venue.\n\nNow Alice has finished the report.\n\nNow Bob has reviewed the budget.",
+		);
+		const hp = stored(
+			"## Alice finished the report\n\nBob reviewed the budget",
+			(bs) => {
+				bs[0].props.textColor = "red";
+			},
+		);
+		fail(
+			hp,
+			"## Alice finished the report\n\nBob reviewed the budget",
+			"## (1) bob reviewed the budget.\n\n(2) alice finished the report.",
+		);
+		const checks = stored("* [ ] buy milk now\n* [ ] call the bank", (bs) => {
+			bs[0].props.textColor = "red";
+		});
+		fail(
+			checks,
+			"* [ ] buy milk now\n* [ ] call the bank",
+			"* [ ] Call The Bank!\n* [ ] Buy Milk Now!",
+		);
+		const nested = stored("* alpha one\n  * b\n* delta two", (bs) => {
+			bs[1].props.textColor = "red";
+		});
+		fail(
+			nested,
+			"* alpha one\n\n  * b\n\n* delta two",
+			"* (x) delta 2\n\n  * b\n\n* (y) Alpha 1",
+		);
+	});
+
+	it("still replaces a word in many coloured blocks at once", () => {
+		const blocks = stored(
+			Array.from({ length: 30 }, (_, i) => `* item ${i} word`).join("\n"),
+			(bs) => {
+				for (const b of bs) b.props.textColor = "red";
+			},
+		);
+		const res = spliceEdit(blocks, "word", "term", true);
+		expect(res.blocks.map((b) => b.id)).toEqual(blocks.map((b) => b.id));
+		expect(res.blocks.every((b) => b.props.textColor === "red")).toBe(true);
+	});
+
+	it("still edits two adjacent coloured paragraphs a little each", () => {
+		const blocks = stored(`${OLD2}\n\nend`, (bs) => {
+			bs[0].props.textColor = "red";
+			bs[1].props.backgroundColor = "blue";
+		});
+		const res = spliceEdit(
+			blocks,
+			OLD2,
+			"Alice finished the annual report\n\nBob reviewed the new budget",
+			false,
+		);
+		expect(res.blocks[0].id).toBe(blocks[0].id);
+		expect(res.blocks[0].props.textColor).toBe("red");
+		expect(res.blocks[1].props.backgroundColor).toBe("blue");
+	});
+
+	it("still edits cells in several rows of a formatted table in one edit", () => {
+		const blocks = stored(TBL, (bs) => {
+			redCell(1, 0)(bs);
+			bs[0].content.columnWidths = [300, null];
+		});
+		const { a, b } = rows(blocks);
+		const res = spliceEdit(
+			blocks,
+			`${a}\n${b}`,
+			`${a.replace("done ", "done!")}\n${b.replace("late ", "later")}`,
+			false,
+		);
+		const tc = res.blocks[0].content;
+		expect(tc.columnWidths).toEqual([300, null]);
+		expect(tc.rows[1].cells[0].props.backgroundColor).toBe("red");
+		expect(blocknoteToMarkdown(res.blocks)).toContain("later");
+	});
+
+	it("still sorts the rows of a plain table", () => {
+		const blocks = stored(TBL);
+		const { a, b } = rows(blocks);
+		const res = spliceEdit(blocks, `${a}\n${b}`, `${b}\n${a}`, false);
+		expect(blocknoteToMarkdown(res.blocks).indexOf("Bob")).toBeLessThan(
+			blocknoteToMarkdown(res.blocks).indexOf("Alice"),
+		);
+	});
+});
+
+describe("auditEdit: disguised reorders (seventh review)", () => {
+	it("refuses a table whose rows were swapped under their cell formatting", () => {
+		const [tb] = stored(
+			"| name | state |\n| - | - |\n| Alice | done |\n| Bob | late |",
+			(bs) => {
+				bs[0].content.rows[1].cells[0].props.backgroundColor = "red";
+			},
+		);
+		const rowsNow = tb.content.rows.map((r: any, y: number) => ({
+			...r,
+			cells: r.cells.map((c: any, x: number) => ({
+				...c,
+				content:
+					tb.content.rows[y === 1 ? 2 : y === 2 ? 1 : y].cells[x].content,
+			})),
+		}));
+		const swapped = { ...tb, content: { ...tb.content, rows: rowsNow } };
+		expect(auditEdit([tb], [swapped])?.why).toMatch(/row/);
+	});
+
+	it("refuses reworded texts swapped between blocks kept by position", () => {
+		const a = para("Alice finished the quarterly report", {
+			backgroundColor: "green",
+		});
+		const b = para("Bob reviewed the budget");
+		const bad = [
+			{ ...a, content: [t("(1) Bob reviewed the new budget.")] },
+			{ ...b, content: [t("(2) Alice finished the Q3 report.")] },
+		];
+		expect(auditEdit([a, b], bad)?.why).toMatch(/reads more like/);
+		const good = [
+			{ ...a, content: [t("Alice finished the Q3 report")] },
+			{ ...b, content: [t("Bob reviewed the new budget")] },
+		];
+		expect(auditEdit([a, b], good)).toBeNull();
+	});
+});
+
 // Measured on an M-series Mac: 800 items with replace_all about 1.0 s,
 // one edit in 3000 items about 1.5 s (before: 108 s and 4.5 s). The bound
 // leaves room for slower machines; it catches a return of quadratic work.

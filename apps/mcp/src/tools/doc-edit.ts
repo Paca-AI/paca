@@ -53,6 +53,7 @@ const newKeys = () => ({
 	sub: new WeakMap<Block, string>(),
 	text: new WeakMap<Block, string>(),
 	canon: new WeakMap<Block, string>(),
+	words: new Map<string, Map<string, number>>(),
 });
 let keys = newKeys();
 
@@ -1105,6 +1106,113 @@ function shared(a: string, b: string): number {
 	return p + q;
 }
 
+// ── Disguised reorders ────────────────────────────────────────────────────────
+//
+// A guard, not a guarantee: two blocks swapped and reworded can look like
+// two in-place edits. When a block's new text shares more words with
+// another edited block's old text than with its own, the edit is refused.
+// A rewrite that shares no words with anything is, by definition, new
+// content at that position, and applies. These checks only refuse; they
+// never choose where data goes.
+
+/** The words of `text`: lower-cased runs of letters and digits, counted. */
+function wordsOf(text: string): Map<string, number> {
+	let w = keys.words.get(text);
+	if (!w) {
+		w = new Map();
+		for (const m of text.toLowerCase().matchAll(/[\p{L}\p{N}]+/gu)) {
+			w.set(m[0], (w.get(m[0]) ?? 0) + 1);
+		}
+		keys.words.set(text, w);
+	}
+	return w;
+}
+
+/** How alike two texts are by their words (Dice: shared words, counted
+ *  with repeats, over all words), from 0 to 1. */
+function alike(a: string, b: string): number {
+	const x = wordsOf(a);
+	const y = wordsOf(b);
+	let total = 0;
+	for (const n of x.values()) total += n;
+	for (const n of y.values()) total += n;
+	if (total === 0) return 0;
+	const [small, big] = x.size <= y.size ? [x, y] : [y, x];
+	let both = 0;
+	for (const [w, n] of small) both += Math.min(n, big.get(w) ?? 0);
+	return (2 * both) / total;
+}
+
+/**
+ * Among edited units (old and new text at each position), the first pair
+ * where unit `k`'s new text is equal or closer to unit `j`'s old text than
+ * to its own: [k, j], or null. Only units in `changed` take part.
+ */
+function closerToOther(
+	was: string[],
+	now: string[],
+	changed: number[],
+): [number, number] | null {
+	for (const k of changed) {
+		const own = alike(now[k], was[k]);
+		for (const j of changed) {
+			if (j === k) continue;
+			if (now[k] === was[j] || alike(now[k], was[j]) > own) return [k, j];
+		}
+	}
+	return null;
+}
+
+const TABLE_DATA = [
+	"column widths",
+	"header rows",
+	"header columns",
+	"cell formatting",
+];
+
+/**
+ * Inside a table with formatting Markdown cannot write (column widths,
+ * header settings, cell props), an edit may only change cell text in
+ * place: the formatting stays by row and column index. Returns why the
+ * edit from `o` to `n` could be a reorder of rows (or, when every row
+ * changed, of columns), or null.
+ */
+function tableMoves(o: Block, n: Block): string | null {
+	if (o.content?.type !== "tableContent" || n.content?.type !== "tableContent")
+		return null;
+	const props = uncarried(o).props;
+	if (!TABLE_DATA.some((k) => k in props)) return null;
+	const grid = (b: Block): string[][] =>
+		(b.content.rows ?? []).map((r: Block) =>
+			(r.cells ?? []).map((c: unknown) =>
+				ownText({ content: Array.isArray(c) ? c : (c as Block)?.content }),
+			),
+		);
+	const a = grid(o);
+	const z = grid(n);
+	const dims = (g: string[][]) => g.map((r) => r.length).join(",");
+	if (dims(a) !== dims(z)) return null;
+	const check = (was: string[], now: string[], what: string) => {
+		const changed = now.flatMap((x, k) => (x !== was[k] ? [k] : []));
+		if (changed.length < 2) return null;
+		const hit = closerToOther(was, now, changed);
+		return hit
+			? `the edit changes its ${what}s ${hit[0] + 1} and ${hit[1] + 1} so that one reads like the other did, which could move its formatting to another ${what}`
+			: null;
+	};
+	const sep = "\u0000";
+	const rows = check(
+		a.map((r) => r.join(sep)),
+		z.map((r) => r.join(sep)),
+		"row",
+	);
+	if (rows) return rows;
+	if (a.some((r, y) => r.join(sep) === z[y].join(sep))) return null;
+	const cols = (g: string[][]) =>
+		(g[0] ?? []).map((_, x) => g.map((r) => r[x]).join(sep));
+	return check(cols(a), cols(z), "column");
+}
+
 /** The blocks of `blocks` (any depth) that hold data Markdown cannot write,
  *  or hold a nested block that does. */
 function withData(blocks: Block[]): Set<Block> {
@@ -1163,7 +1271,7 @@ function staysInPlace(
 	newBlocks: Block[],
 	deep: Set<Block>,
 	oldById: Map<string, Block>,
-): { block: Block; why: string; smaller: true } | null {
+): { block: Block; why: string; smaller: true; pair?: Block } | null {
 	const O = places(oldBlocks);
 	const N = places(newBlocks);
 	const oldPlace = new Map(O.map((p) => [p.b, p]));
@@ -1233,6 +1341,30 @@ function staysInPlace(
 						? shownO[q].b
 						: firstData;
 				return refuse(d, "moves text from one block to another");
+			}
+		}
+		// Disguised reorders (see closerToOther): when two or more blocks
+		// are edited in place and one holds data, no edited block's new text
+		// may read more like another edited block's old text than its own,
+		// and no block's new text may read more like a data block's old text
+		// than the data block's own new text does.
+		const changed = now.flatMap((x, k) => (x !== texts[k] ? [k] : []));
+		if (changed.length >= 2 && changed.some((k) => deep.has(shownO[k].b))) {
+			for (const k of changed) {
+				if (!deep.has(shownO[k].b)) continue;
+				const own = alike(now[k], texts[k]);
+				for (const j of changed) {
+					if (j === k) continue;
+					if (alike(now[k], texts[j]) > own || alike(now[j], texts[k]) > own) {
+						return {
+							...refuse(
+								shownO[k].b,
+								"rewrites it and another block so that one reads more like the other's old text than its own, which could be a reorder",
+							),
+							pair: shownO[j].b,
+						};
+					}
+				}
 			}
 		}
 	}
@@ -1307,7 +1439,7 @@ function staysInPlace(
 export function auditEdit(
 	oldBlocks: Block[],
 	newBlocks: Block[],
-): { block: Block; why: string; smaller?: boolean } | null {
+): { block: Block; why: string; smaller?: boolean; pair?: Block } | null {
 	const olds = oldBlocks.flatMap(subtree);
 	const news = newBlocks.flatMap(subtree);
 	const returned = new Set(news);
@@ -1381,6 +1513,15 @@ export function auditEdit(
 				why: `its text would move into another block without its ${describeUncarried(u)}`,
 			};
 		}
+	}
+
+	// Tables with formatting: cell text changes in place only.
+	for (const o of olds) {
+		if (o.type !== "table" || returned.has(o) || typeof o.id !== "string")
+			continue;
+		const n = byId.get(o.id);
+		const why = n && tableMoves(o, n);
+		if (why) return { block: o, why, smaller: true };
 	}
 
 	const deep = withData(oldBlocks);
@@ -1641,6 +1782,15 @@ export function spliceEdit(
 			);
 		}
 		const bad = auditEdit(blocks.slice(from, to), aligned.blocks);
+		if (bad?.pair) {
+			const { lines, text } = named([bad.block, bad.pair]);
+			const what = describeUncarried(uncarried(bad.block)) || "data";
+			throw new SpliceError(
+				`The edit rewrites the blocks on ${text} so that one reads more like the other's old text than its own, so edit_doc cannot tell it from a reorder, and the block on line ${lineOfBlock(bad.block)} has ${what}, which Markdown cannot show. Nothing was changed. Edit the blocks one at a time, or move them in the web editor.`,
+				"unsafe",
+				lines,
+			);
+		}
 		if (bad) {
 			const line = lineOf(topOf.get(bad.block) ?? from);
 			throw new SpliceError(
