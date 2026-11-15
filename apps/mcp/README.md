@@ -498,15 +498,18 @@ npx @paca-ai/paca-mcp push .paca/docs/Plans/Roadmap.md --note "move the launch t
   taken for a mirror file, so a repository file there (after `pull --dir .`,
   say) is refused rather than pushed as a repository file: keep the mirror in
   a folder of its own (`pull --dir .paca/docs`), or move the file out of it; a managed copy (`this document is a copy of <path> in
-  <repository>; edit that file and push it`); a document that was deleted or
-  that `pull` has not finished recording; an empty file (a document is deleted
+  <repository>; edit that file and push it`); a document that was deleted; an empty file (a document is deleted
   in Paca, not by emptying its file); a file with conflict markers
   that its pulled version does not have: `<<<<<<<`, `|||||||` or `>>>>>>>`
   lines outside fenced code, and the lines `pull`'s merge writes
   (`<<<<<<< local`, `||||||| base`, `>>>>>>> Paca …`) anywhere, fenced code
-  included); a file an interrupted pull left in the middle of a merge (run
-  `pull` first); `--path`, `--lock` and `--force`. An unchanged file prints
+  included); `--path`, `--lock` and `--force`. An unchanged file prints
   `unchanged`.
+- A file an interrupted pull left unfinished is refused before anything is
+  read (exit 2, `run pull first`): a document it had not finished recording,
+  a file it left in the middle of a merge, or a file it wrote (or was about
+  to write) Paca's version into before it stopped. Only `pull` can tell that
+  text from your edits; push never guesses. Pull, then push.
 - An edited file whose base copy (`.paca-base/<id>.md`) is gone or is not
   what the last pull or push wrote is refused (exit 2): the version it was
   edited from is not known. Save your edits elsewhere, then delete the file

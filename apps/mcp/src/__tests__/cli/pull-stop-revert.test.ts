@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -47,7 +48,8 @@ async function setup() {
 	const mirror = path.join(root, "m");
 	const server = fakeDocsServer();
 	server.add(ID, "Plan", storedBlocks(DOC));
-	const io = { out: () => {}, err: () => {} };
+	const errs: string[] = [];
+	const io = { out: () => {}, err: (l: string) => errs.push(l) };
 	const pull = () =>
 		runPull({ projectId: "p1", dir: mirror, force: false }, server.client, io);
 	const push = () =>
@@ -71,10 +73,12 @@ async function setup() {
 		pull,
 		push,
 		mirror,
+		errs,
+		state: () =>
+			JSON.parse(fs.readFileSync(path.join(mirror, ".paca-sync.json"), "utf8")),
 		read: () => fs.readFileSync(file, "utf8"),
 		write: (t: string) => fs.writeFileSync(file, t),
-		render: () =>
-			blocknoteToMarkdown(server.docs.get(ID)?.content as any[]),
+		render: () => blocknoteToMarkdown(server.docs.get(ID)?.content as any[]),
 		cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
 	};
 }
@@ -107,41 +111,91 @@ async function stopped(
 // The invariant, from outside: whatever stops a pull, and whatever the user
 // does after, when Paca goes back to the earlier version, Paca never ends up
 // holding the change that was taken back, and the user's edits are never
-// lost (they are in Paca or in the file).
+// lost (they are in Paca or in the file). Both orders after the stop: pull
+// then push, and push straight away (which must refuse, or send nothing
+// taken back, and whose "run pull first" must then work).
+const UNKNOWN = "the version it was edited from is not known";
 describe("a stopped pull, then Paca goes back to the earlier version", () => {
 	for (const kind of ["plain", "merge"] as const)
 		for (const mode of ["kill", "throw"] as const)
 			for (const edit of [false, true])
-				it(`${kind} pull, ${mode} at every write, ${edit ? "an edit after" : "no edit"}`, async () => {
-					for (let n = 0; n < 12; n++) {
-						const h = await setup();
-						try {
-							if (kind === "merge")
-								h.write(h.read().replace("Last.", "Last, mine."));
-							h.server.edit(ID, (b) => {
-								b[1].content[0].text = "First, by Ann.";
-							});
-							const first = await stopped(h, n, mode);
-							if (edit) h.write(h.read().replace("Third.", "Third, mine."));
-							h.server.edit(ID, (b) => {
-								b[1].content[0].text = "First.";
-							});
-							await h.pull();
-							await h.push();
-							// And once more, as a user who saw nothing wrong would.
-							await h.pull();
-							await h.push();
-							const where = `${kind} ${mode} n=${n} edit=${edit}\nPaca:\n${h.render()}\nfile:\n${h.read()}`;
-							expect(h.render(), where).not.toContain("First, by Ann.");
-							for (const mine of [
-								...(kind === "merge" ? ["Last, mine."] : []),
-								...(edit ? ["Third, mine."] : []),
-							])
-								expect(`${h.render()}\n${h.read()}`, where).toContain(mine);
-							if (first === "done") break;
-						} finally {
-							h.cleanup();
+				for (const order of ["pull first", "push first"] as const)
+					it(`${kind} pull, ${mode} at every write, ${edit ? "an edit after" : "no edit"}, ${order}`, async () => {
+						for (let n = 0; n < 12; n++) {
+							const h = await setup();
+							try {
+								if (kind === "merge")
+									h.write(h.read().replace("Last.", "Last, mine."));
+								h.server.edit(ID, (b) => {
+									b[1].content[0].text = "First, by Ann.";
+								});
+								const first = await stopped(h, n, mode);
+								if (edit) h.write(h.read().replace("Third.", "Third, mine."));
+								h.server.edit(ID, (b) => {
+									b[1].content[0].text = "First.";
+								});
+								const where = () =>
+									`${kind} ${mode} n=${n} edit=${edit} ${order}\nPaca:\n${h.render()}\nfile:\n${h.read()}\nerrors:\n${h.errs.join("\n")}`;
+								if (order === "push first") {
+									const code = await h.push();
+									expect(h.render(), where()).not.toContain("First, by Ann.");
+									if (code !== 0) {
+										expect(code, where()).toBe(2);
+										expect(h.errs.at(-1), where()).toMatch(
+											/run pull first|pull, then push|not known/,
+										);
+									}
+								}
+								// What the refusal says: pull, then push.
+								h.errs.length = 0;
+								await h.pull();
+								const pushed = await h.push();
+								// Pushed, or refused for the one reason only the user
+								// can settle (their edits stay in the file).
+								if (pushed !== 0)
+									expect(h.errs.join("\n"), where()).toContain(UNKNOWN);
+								// And once more, as a user who saw nothing wrong would.
+								await h.pull();
+								await h.push();
+								expect(h.render(), where()).not.toContain("First, by Ann.");
+								for (const mine of [
+									...(kind === "merge" ? ["Last, mine."] : []),
+									...(edit ? ["Third, mine."] : []),
+								])
+									expect(`${h.render()}\n${h.read()}`, where()).toContain(mine);
+								if (first === "done") break;
+							} finally {
+								h.cleanup();
+							}
 						}
-					}
+					});
+});
+
+describe("a pull that fails after writing a file but before its base copy", () => {
+	it("leaves the hash of what it wrote in the state on disk", async () => {
+		for (let n = 0; n < 12; n++) {
+			const h = await setup();
+			try {
+				h.server.edit(ID, (b) => {
+					b[1].content[0].text = "First, by Ann.";
 				});
+				const first = await stopped(h, n, "throw");
+				if (first === "done") break;
+				if (!h.read().includes("First, by Ann.")) continue;
+				const base = fs.readFileSync(
+					path.join(h.mirror, ".paca-base", `${ID}.md`),
+					"utf8",
+				);
+				if (base.includes("First, by Ann.")) continue;
+				const sha = createHash("sha256").update(h.read()).digest("hex");
+				expect(h.state().docs[ID].pending_sha256, `n=${n}`).toContain(sha);
+				return;
+			} finally {
+				h.cleanup();
+			}
+		}
+		throw new Error(
+			"no write index left the file written and its base copy not",
+		);
+	});
 });

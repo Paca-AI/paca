@@ -203,17 +203,26 @@ async function pushLocked(
 		);
 		return EXIT.error;
 	}
+	// Any in-flight marker an interrupted pull left (see the invariant in
+	// pull.ts): only pull can tell its text from a user's edit, so push
+	// never decides that and sends nothing until a pull has settled it.
 	if (entry.reserved) {
 		io.err(
 			`${label}: an interrupted pull has not recorded this document yet; run pull first`,
 		);
-		return EXIT.error;
+		return EXIT.conflict;
 	}
 	if (entry.merge_pending) {
 		io.err(
 			`${label}: an interrupted pull left this file in the middle of a merge; run pull first`,
 		);
-		return EXIT.error;
+		return EXIT.conflict;
+	}
+	if (entry.pending_sha256?.length) {
+		io.err(
+			`${label}: an interrupted pull left this file unfinished; run pull first`,
+		);
+		return EXIT.conflict;
 	}
 	if (entry.unmerged) {
 		// Named only while it holds what pull wrote there: Paca's version.

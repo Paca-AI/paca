@@ -361,22 +361,44 @@ describe("push of a mirror file", () => {
 			"this document is a copy of docs/plan.md in Acme/widgets; edit that file and push it",
 		);
 
-		for (const [flag, want] of [
-			["orphan", "was removed in Paca"],
-			["reserved", "run pull first"],
-		] as const) {
+		// The orphan cannot be pushed at all; the in-flight markers an
+		// interrupted pull leaves wait for a pull (exit 2, as a conflict).
+		const marks: [string, (d: any) => void, number, string][] = [
+			["orphan", (d) => (d.orphan = true), 1, "was removed in Paca"],
+			[
+				"reserved",
+				(d) => (d.reserved = true),
+				2,
+				"has not recorded this document yet; run pull first",
+			],
+			[
+				"merge_pending",
+				(d) => (d.merge_pending = { remote_hash: "h", merged_sha: "s" }),
+				2,
+				"in the middle of a merge; run pull first",
+			],
+			[
+				"pending_sha256",
+				(d) => (d.pending_sha256 = ["0".repeat(64)]),
+				2,
+				"an interrupted pull left this file unfinished; run pull first",
+			],
+		];
+		for (const [flag, set, code, want] of marks) {
 			lines = [];
 			setState((s) => {
 				delete s.docs[ID].managed;
 				delete s.docs[ID].orphan;
 				delete s.docs[ID].reserved;
-				s.docs[ID][flag] = true;
+				delete s.docs[ID].merge_pending;
+				delete s.docs[ID].pending_sha256;
+				set(s.docs[ID]);
 			});
-			expect(await push(".paca/docs/Plan.md")).toBe(1);
-			expect(output()).toContain(want);
+			expect(await push(".paca/docs/Plan.md"), flag).toBe(code);
+			expect(output(), flag).toContain(want);
 		}
 		setState((s) => {
-			delete s.docs[ID].reserved;
+			delete s.docs[ID].pending_sha256;
 		});
 
 		lines = [];
