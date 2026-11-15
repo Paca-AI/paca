@@ -139,7 +139,8 @@ func NewSearchHit(d *Document, query string) SearchHit {
 		}
 	}
 	// Matched through text ContentText leaves out (the JSON-path match of a
-	// row not backfilled yet also sees "text" keys outside inline content).
+	// row whose content_text is not filled also sees "text" keys outside
+	// inline content).
 	return SearchHit{
 		Document:  d,
 		MatchedIn: SearchMatchContent,

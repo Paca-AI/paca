@@ -86,6 +86,10 @@ jobs:
         working-directory: apps/e2e
         run: bun install --frozen-lockfile
 
+      - name: Build the MCP server (tests/docs/mcp-edit-doc.spec.ts runs its edit_doc)
+        working-directory: apps/mcp
+        run: bun install --frozen-lockfile && bun run build
+
       - name: Install Playwright browsers
         working-directory: apps/e2e
         env:

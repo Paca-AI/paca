@@ -273,13 +273,19 @@ describe("handleToolCall – sprint tool routing", () => {
 });
 
 describe("handleToolCall – document tool routing", () => {
-	it("routes list_docs to handleFilesystemDocTool", async () => {
-		await handleToolCall(makeRequest("list_docs"), stubClients);
+	it.each([
+		"list_docs",
+		"read_doc",
+		"grep_docs",
+		"edit_doc",
+	])("routes %s to handleFilesystemDocTool", async (name) => {
+		await handleToolCall(makeRequest(name), stubClients);
 		expect(handleFilesystemDocTool).toHaveBeenCalledWith(
-			"list_docs",
+			name,
 			{},
 			stubClients.apiClient,
 			stubClients.docClient,
+			stubClients.extendedClient,
 		);
 	});
 });
