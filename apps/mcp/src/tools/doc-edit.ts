@@ -9,6 +9,7 @@
 import { PacaAPIError } from "../api/doc-client.js";
 import type { Document } from "../types/index.js";
 import { blocknoteToMarkdown, markdownToBlocknote } from "../utils/index.js";
+import { diffOps, type LineOp, splitLines } from "../utils/line-diff.js";
 
 export type Block = Record<string, any>;
 
@@ -1614,6 +1615,36 @@ export function auditEdit(
 	return null;
 }
 
+/** A document's Markdown and where each block is in it, for one edit.
+ *  Resets the per-edit render cache. */
+interface Prepared {
+	full: string;
+	renders: string[];
+	units: Unit[];
+	starts: number[];
+}
+
+function prepare(blocks: Block[]): Prepared {
+	keys = newKeys();
+	const renders = blocks.map(subKey);
+	const full = render(blocks);
+	const units = unitsOf(blocks, renders, full);
+	const starts = blockStarts(renders, units, full);
+	return { full, renders, units, starts };
+}
+
+/** A run of top-level blocks [from, to) whose Markdown, full[start, end),
+ *  is replaced by `text`. `at` is where the first change in it starts in
+ *  the full Markdown (refusals name its line). */
+interface Range {
+	from: number;
+	to: number;
+	start: number;
+	end: number;
+	text: string;
+	at: number;
+}
+
 /**
  * Replaces `oldString` with `newString` in the document's Markdown and
  * returns the new top-level blocks. Only the blocks the matches touch are
@@ -1631,12 +1662,11 @@ export function spliceEdit(
 	newString: string,
 	replaceAll: boolean,
 ): { blocks: Block[]; replaced: number; lines: number[] } {
-	keys = newKeys();
 	if (oldString === "") {
 		throw new SpliceError("old_string must not be empty.", "empty");
 	}
-	const renders = blocks.map(subKey);
-	const full = render(blocks);
+	const prep = prepare(blocks);
+	const { full, units } = prep;
 	const found = occurrences(full, oldString);
 	const lines = found.map((at) => lineAt(full, at));
 	if (found.length === 0) {
@@ -1653,11 +1683,8 @@ export function spliceEdit(
 		);
 	}
 
-	const units = unitsOf(blocks, renders, full);
-	const starts = blockStarts(renders, units, full);
-
 	// Each match touches a run of units; overlapping runs merge.
-	const ranges: Array<{ ua: number; ub: number; matches: number[] }> = [];
+	const groups: Array<{ ua: number; ub: number; matches: number[] }> = [];
 	for (const ms of found) {
 		const me = ms + oldString.length;
 		let ua = -1;
@@ -1667,20 +1694,15 @@ export function spliceEdit(
 			if (ua === -1) ua = k;
 			ub = k;
 		});
-		const last = ranges[ranges.length - 1];
+		const last = groups[groups.length - 1];
 		if (last && ua <= last.ub) {
 			last.ub = Math.max(last.ub, ub);
 			last.matches.push(ms);
 		} else {
-			ranges.push({ ua, ub, matches: [ms] });
+			groups.push({ ua, ub, matches: [ms] });
 		}
 	}
-
-	const out: Block[] = [];
-	let next = 0; // the first block not yet copied
-	for (const { ua, ub, matches } of ranges) {
-		const from = units[ua].from;
-		const to = units[ub].to;
+	const ranges: Range[] = groups.map(({ ua, ub, matches }) => {
 		const start = units[ua].start;
 		let text = "";
 		let at = start;
@@ -1689,13 +1711,59 @@ export function spliceEdit(
 			at = ms + oldString.length;
 		}
 		text += full.slice(at, units[ub].end);
+		return {
+			from: units[ua].from,
+			to: units[ub].to,
+			start,
+			end: units[ub].end,
+			text,
+			at: matches[0],
+		};
+	});
+
+	let edited = "";
+	let at = 0;
+	for (const ms of found) {
+		edited += full.slice(at, ms) + newString;
+		at = ms + oldString.length;
+	}
+	edited += full.slice(at);
+	return {
+		blocks: applyRanges(blocks, prep, ranges, edited, lines[0]),
+		replaced: found.length,
+		lines,
+	};
+}
+
+/**
+ * Rewrites each range of `blocks` from its new Markdown (`text`), keeping
+ * every block outside the ranges as the very object read, and runs the
+ * checks every edit gets: the alignment's problems, that the range shows
+ * exactly the new Markdown, the final audit (auditEdit), and that the whole
+ * document reads as `edited` (the full new Markdown). `firstLine` names
+ * where the edit starts for that last check. Throws a SpliceError, having
+ * changed nothing, when one fails.
+ */
+function applyRanges(
+	blocks: Block[],
+	prep: Prepared,
+	ranges: Range[],
+	edited: string,
+	firstLine: number,
+): Block[] {
+	const { full, renders, units, starts } = prep;
+	const out: Block[] = [];
+	let next = 0; // the first block not yet copied
+	for (const range of ranges) {
+		const { from, to, text } = range;
+		const startLine = () => lineAt(full, range.at);
 
 		const fresh = fixSoftBreaks(markdownToBlocknote(text));
 		const aligned = align(blocks.slice(from, to), fresh);
 		// The line where block `idx` starts in the full Markdown.
 		const lineOf = (idx: number) => {
 			if (starts[idx] >= 0) return lineAt(full, starts[idx]);
-			const unit = units.find((u) => u.from <= idx && idx < u.to) ?? units[ua];
+			const unit = units.find((u) => u.from <= idx && idx < u.to) ?? range;
 			const first = renders[idx].split("\n")[0];
 			const at = first ? full.indexOf(first, unit.start) : -1;
 			return lineAt(full, at >= 0 ? at : unit.start + (unit.start > 0 ? 1 : 0));
@@ -1713,7 +1781,7 @@ export function spliceEdit(
 			const k = topOf.get(b) ?? from;
 			if (blocks[k] === b) return lineOf(k);
 			if (!nestedLines.has(b)) {
-				const unit = units.find((u) => u.from <= k && k < u.to) ?? units[ua];
+				const unit = units.find((u) => u.from <= k && k < u.to) ?? range;
 				let cursor = starts[k] >= 0 ? starts[k] : unit.start;
 				for (const x of subtree(blocks[k])) {
 					// Without its list marker: alone, a nested numbered item
@@ -1793,16 +1861,16 @@ export function spliceEdit(
 		const got = shown(aligned.blocks);
 		if (got === shown(blocks.slice(from, to))) {
 			throw new SpliceError(
-				`The edit changes nothing in the document as Markdown shows it (starting on line ${lineAt(full, matches[0])}), so nothing was changed. Markdown does not show some differences, such as extra spaces; edit the text that read_doc returns.`,
+				`The edit changes nothing in the document as Markdown shows it (starting on line ${startLine()}), so nothing was changed. Markdown does not show some differences, such as extra spaces; edit the text that read_doc returns.`,
 				"no_change",
-				[lineAt(full, matches[0])],
+				[startLine()],
 			);
 		}
 		if (got !== shown(fresh)) {
 			throw new SpliceError(
-				`edit_doc could not apply the edit starting on line ${lineAt(full, matches[0])} exactly as written, so nothing was changed. Rewrite that part with write_doc, or edit it in the web editor.`,
+				`edit_doc could not apply the edit starting on line ${startLine()} exactly as written, so nothing was changed. Rewrite that part with write_doc, or edit it in the web editor.`,
 				"unsafe",
-				[lineAt(full, matches[0])],
+				[startLine()],
 			);
 		}
 		const bad = auditEdit(blocks.slice(from, to), aligned.blocks);
@@ -1834,13 +1902,6 @@ export function spliceEdit(
 	// Markdown reads the blocks after it (it leaves a code fence open, say)
 	// would apply as if they were not there: the document as a whole must
 	// read as the edited Markdown does.
-	let edited = "";
-	let at = 0;
-	for (const ms of found) {
-		edited += full.slice(at, ms) + newString;
-		at = ms + oldString.length;
-	}
-	edited += full.slice(at);
 	const reread = (md: string) =>
 		fixSoftBreaks(markdownToBlocknote(md))
 			.filter((b) => !blank(b))
@@ -1849,12 +1910,284 @@ export function spliceEdit(
 	const now = render(out);
 	if (now !== edited && reread(now) !== reread(edited)) {
 		throw new SpliceError(
-			`The edit starting on line ${lines[0]} changes how Markdown reads the blocks after it (it leaves a code fence open, for example), so nothing was changed. Close what the edit opens, or rewrite that part with write_doc.`,
+			`The edit starting on line ${firstLine} changes how Markdown reads the blocks after it (it leaves a code fence open, for example), so nothing was changed. Close what the edit opens, or rewrite that part with write_doc.`,
 			"unsafe",
-			[lines[0]],
+			[firstLine],
 		);
 	}
-	return { blocks: out, replaced: found.length, lines };
+	return out;
+}
+
+// ── A whole edited file ───────────────────────────────────────────────────────
+
+/**
+ * `markdown` (a file's text) the way the document's render writes it: no
+ * byte order mark, LF line ends, and the render's own newline at the end
+ * (`renderEnd`), so an editor's saving habits are not an edit.
+ */
+function asRendered(markdown: string, renderEnd: string): string {
+	const text = markdown
+		.replace(/^﻿/, "")
+		.replace(/\r\n/g, "\n")
+		.replace(/\n+$/, "");
+	return text === "" ? "" : text + (renderEnd || "\n");
+}
+
+/** The refusal for what auditEdit found in a whole document's result,
+ *  naming lines of the document's render. */
+function wholeAuditError(
+	blocks: Block[],
+	prep: Prepared,
+	bad: NonNullable<ReturnType<typeof auditEdit>>,
+): SpliceError {
+	const { full, units, starts } = prep;
+	const topOf = (b: Block) =>
+		Math.max(
+			0,
+			blocks.findIndex((x) => subtree(x).includes(b)),
+		);
+	const lineOf = (b: Block) => {
+		const k = topOf(b);
+		if (starts[k] >= 0) return lineAt(full, starts[k]);
+		const u = units.find((x) => x.from <= k && k < x.to);
+		return u ? lineAt(full, u.start + (u.start > 0 ? 1 : 0)) : 1;
+	};
+	const where = (b: Block) =>
+		blocks[topOf(b)] === b
+			? `the ${b.type} block on line ${lineOf(b)}`
+			: `a ${b.type} block nested in the block on line ${lineOf(b)}`;
+	if (bad.pair) {
+		const lines = [...new Set([lineOf(bad.block), lineOf(bad.pair)])].sort(
+			(x, y) => x - y,
+		);
+		const what = describeUncarried(uncarried(bad.block)) || "data";
+		return new SpliceError(
+			`The edit rewrites the blocks on lines ${lines.join(" and ")} so that one reads more like the other's old text than its own, so it cannot be told from a reorder, and the block on line ${lineOf(bad.block)} has ${what}, which Markdown cannot show. Nothing was changed. Edit the blocks one at a time, or move them in the web editor.`,
+			"unsafe",
+			lines,
+		);
+	}
+	return new SpliceError(
+		`The edit touches ${where(bad.block)}, which cannot be rewritten from Markdown: ${bad.why}. Nothing was changed. Make the change in smaller steps (change text in place, and add, delete or move plain blocks on their own), or in the web editor.`,
+		"unsafe",
+		[lineOf(bad.block)],
+	);
+}
+
+/**
+ * Applies a whole edited file to the document: `markdown` is the
+ * document's Markdown (as pull writes it, the same render read_doc and
+ * edit_doc use) with any number of changes. The file is compared with the
+ * render line by line; each changed run of lines becomes an edit of the
+ * blocks it falls in, and all of them go through the same range code,
+ * alignment and audit as edit_doc in one pass. Every block outside them is
+ * returned as the very object read.
+ *
+ * The result must render to exactly the file (byte order mark, CRLF line
+ * ends and newlines at the end aside): a file Paca would write differently
+ * (a "-" bullet where it writes "*") is refused with its line, so the file
+ * and what Paca holds stay equal after a write.
+ *
+ * Returns the new top-level blocks, how many top-level blocks are new or
+ * rewritten plus how many were removed (`changed`), and the lines of the
+ * file where the changes start. An unchanged file returns `blocks` itself
+ * and `changed: 0`. Throws a SpliceError, having changed nothing, as
+ * spliceEdit does; its lines are lines of the file.
+ */
+export function spliceMarkdown(
+	blocks: Block[],
+	markdown: string,
+): { blocks: Block[]; changed: number; lines: number[] } {
+	const prep = prepare(blocks);
+	const { full, units } = prep;
+	const md = asRendered(markdown, full.match(/\n*$/)?.[0] ?? "");
+	if (md === full) return { blocks, changed: 0, lines: [] };
+
+	// The line diff, with the common first and last lines set aside so a
+	// long document with a small edit stays cheap.
+	const a = splitLines(full);
+	const b = splitLines(md);
+	let head = 0;
+	while (head < a.length && head < b.length && a[head] === b[head]) head++;
+	let tail = 0;
+	while (
+		tail < a.length - head &&
+		tail < b.length - head &&
+		a[a.length - 1 - tail] === b[b.length - 1 - tail]
+	)
+		tail++;
+	const ops: LineOp[] = [
+		...a.slice(0, head).map((line) => ({ kind: " " as const, line })),
+		// A blank line weighs little, so the diff lines up text, not the
+		// blank lines between blocks.
+		...diffOps(
+			a.slice(head, a.length - tail),
+			b.slice(head, b.length - tail),
+			(line) => (line.trim() === "" ? 1 : 64),
+		),
+		...a.slice(a.length - tail).map((line) => ({ kind: " " as const, line })),
+	];
+
+	// Changed runs of lines: old lines [oa, ob) become new lines [na, nb).
+	// Each old line maps to the file line where it now is (a removed line,
+	// to where its run's new lines start), for naming lines in refusals.
+	const hunks: Array<{ oa: number; ob: number; na: number; nb: number }> = [];
+	const toFile: number[] = [];
+	let la = 0;
+	let lb = 0;
+	for (let k = 0; k < ops.length; ) {
+		if (ops[k].kind === " ") {
+			toFile[la++] = lb++;
+			k++;
+			continue;
+		}
+		const h = { oa: la, ob: la, na: lb, nb: lb };
+		for (; k < ops.length && ops[k].kind !== " "; k++) {
+			if (ops[k].kind === "-") toFile[la++] = h.na;
+			else lb++;
+		}
+		h.ob = la;
+		h.nb = lb;
+		hunks.push(h);
+	}
+	const fileLine = (renderLine: number) =>
+		Math.max(
+			1,
+			(toFile[Math.min(renderLine, a.length) - 1] ?? b.length - 1) + 1,
+		);
+
+	// Each run as a change of whole lines of the render: [s, e) replaced by
+	// `text`. A run that only adds lines takes the line before it (or, at
+	// the top, after it), so every change covers at least one character and
+	// falls in a unit.
+	const off: number[] = [0];
+	for (const line of a) off.push(off[off.length - 1] + line.length + 1);
+	const at = (k: number) => Math.min(off[k], full.length);
+	const added = (h: (typeof hunks)[number]) =>
+		b
+			.slice(h.na, h.nb)
+			.map((l) => `${l}\n`)
+			.join("");
+	const changes = hunks.map((h) => {
+		if (h.oa < h.ob) return { s: at(h.oa), e: at(h.ob), text: added(h) };
+		if (h.oa > 0)
+			return {
+				s: at(h.oa - 1),
+				e: at(h.oa),
+				text: `${a[h.oa - 1]}\n${added(h)}`,
+			};
+		return { s: 0, e: at(1), text: `${added(h)}${a[0]}\n` };
+	});
+
+	let ranges: Range[];
+	if (full === "" || units.length === 0) {
+		// Nothing shows yet: the file is the whole document.
+		ranges = [
+			{
+				from: 0,
+				to: blocks.length,
+				start: 0,
+				end: full.length,
+				text: md,
+				at: 0,
+			},
+		];
+	} else {
+		const groups: Array<{ ua: number; ub: number; cs: typeof changes }> = [];
+		for (const c of changes) {
+			let ua = -1;
+			let ub = -1;
+			units.forEach((u, k) => {
+				if (!touches(u, c.s, c.e)) return;
+				if (ua === -1) ua = k;
+				ub = k;
+			});
+			// A unit's first line is the blank line that separates it from
+			// the one before: a change there (two paragraphs joined, one
+			// split) is re-read with the unit before it.
+			while (ua > 0 && c.s <= units[ua].start) ua--;
+			const last = groups[groups.length - 1];
+			if (last && ua <= last.ub) {
+				last.ub = Math.max(last.ub, ub);
+				last.cs.push(c);
+			} else {
+				groups.push({ ua, ub, cs: [c] });
+			}
+		}
+		ranges = groups.map(({ ua, ub, cs }) => {
+			const start = units[ua].start;
+			const end = units[ub].end;
+			let text = "";
+			let pos = start;
+			for (const c of cs) {
+				text += full.slice(pos, c.s) + c.text;
+				pos = c.e;
+			}
+			text += full.slice(pos, end);
+			return {
+				from: units[ua].from,
+				to: units[ub].to,
+				start,
+				end,
+				text,
+				at: cs[0].s,
+			};
+		});
+	}
+
+	let out: Block[];
+	try {
+		out = applyRanges(blocks, prep, ranges, md, lineAt(full, ranges[0].at));
+		// Each range was audited on its own; a block deleted in one range
+		// and written again in another (a move across the file) is only seen
+		// by auditing the document as a whole.
+		const bad = auditEdit(blocks, out);
+		if (bad) throw wholeAuditError(blocks, prep, bad);
+	} catch (err) {
+		if (!(err instanceof SpliceError)) throw err;
+		const lines = [...new Set(err.lines.map(fileLine))];
+		const same =
+			lines.length === err.lines.length &&
+			lines.every((l, k) => l === err.lines[k]);
+		throw new SpliceError(
+			same
+				? err.message
+				: `${err.message} (Those line numbers count the document as pulled; in the edited file: ${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")}.)`,
+			err.kind,
+			lines,
+		);
+	}
+
+	// The file must be what Paca now holds, line for line.
+	const now = render(out);
+	if (now !== md) {
+		const got = splitLines(now);
+		let k = 0;
+		while (k < got.length && k < b.length && got[k] === b[k]) k++;
+		const show = (line: string | undefined) =>
+			line === undefined ? "nothing" : JSON.stringify(line);
+		throw new SpliceError(
+			`The file does not read back as written: Paca would save line ${k + 1} as ${show(got[k])}, where the file has ${show(b[k])}. Paca writes Markdown one way (for example "* " for bullet items); write that line as Paca would, so the file and the document stay the same. Nothing was changed.`,
+			"unsafe",
+			[k + 1],
+		);
+	}
+
+	// New or rewritten blocks, plus removed ones (neither returned nor
+	// standing, by id, behind a rewritten one).
+	const before = new Set(blocks);
+	const after = new Set(out);
+	const ids = new Set(out.map((x) => x.id).filter((x) => x !== undefined));
+	const changed =
+		out.filter((x) => !before.has(x)).length +
+		blocks.filter((x) => !after.has(x) && !ids.has(x.id)).length;
+	return {
+		blocks: out,
+		changed,
+		lines: [
+			...new Set(hunks.map((h) => Math.max(1, Math.min(h.na + 1, b.length)))),
+		],
+	};
 }
 
 // ── edit_doc ──────────────────────────────────────────────────────────────────
