@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { runPull } from "../../cli/pull.js";
+import { runPull, settled } from "../../cli/pull.js";
 import { runPush } from "../../cli/push.js";
 import { blocknoteToMarkdown } from "../../utils/index.js";
 import { docId, fakeDocsServer, storedBlocks } from "./fake-docs-server.js";
@@ -279,7 +279,7 @@ describe("a merging pull stopped at each step of its journal", () => {
 			expect(h.read()).toContain("SECRET");
 			h.write(h.read().replace("Last.", "Last, mine."));
 			expect(await h.pull()).toBe(2);
-			expect(h.said()).toContain("an interrupted pull had written into it");
+			expect(h.said()).toContain("an interrupted pull may have written into it");
 			expect(h.read("Plan.remote.md")).toBe(h.render());
 			// Ann reverts: Paca is back at the version recorded.
 			h.server.edit(ID, (b) => {
@@ -334,6 +334,84 @@ describe("a merging pull stopped at each step of its journal", () => {
 			expect(await h.push()).toBe(0);
 			expect(h.render()).not.toContain("SECRET");
 			expect(h.render()).toContain("Last, mine.");
+		} finally {
+			h.cleanup();
+		}
+	});
+
+	for (const [what, k, spoil] of [
+		[
+			"Paca's version (.next.md) deleted",
+			3,
+			(m: string) => fs.rmSync(path.join(m, ".paca-base", `${ID}.next.md`)),
+		],
+		[
+			"the base copy edited",
+			4,
+			(m: string) =>
+				fs.writeFileSync(path.join(m, ".paca-base", `${ID}.md`), "mine\n"),
+		],
+		[
+			"the base copy deleted",
+			4,
+			(m: string) => fs.rmSync(path.join(m, ".paca-base", `${ID}.md`)),
+		],
+	] as Array<[string, number, (m: string) => void]>)
+		it(`a merge stopped after its file write, then ${what} and Ann's revert: the file is kept with its base unknown, and push never re-applies the change`, async () => {
+			const h = await setup();
+			try {
+				const before = JSON.parse(
+					JSON.stringify(h.server.docs.get(ID)?.content),
+				);
+				h.write(h.read().replace("Third.", "Third, mine."));
+				h.server.edit(ID, (b) => {
+					b[1].content[0].text = "First, SECRET by Ann.";
+				});
+				await killed(h.pull, h.mirror, k);
+				expect(h.read()).toContain("SECRET");
+				spoil(h.mirror);
+				h.server.edit(ID, (b) => {
+					b.splice(0, b.length, ...JSON.parse(JSON.stringify(before)));
+				});
+				expect(await h.pull()).toBe(2);
+				expect(h.said()).toContain(
+					"the version it was edited from is not known",
+				);
+				expect(h.state().docs[ID].unmerged).toBe(true);
+				expect(h.read("Plan.remote.md")).toBe(h.render());
+				expect(await h.push()).toBe(1);
+				expect(h.render()).not.toContain("SECRET");
+				expect(h.read()).toContain("Third, mine.");
+			} finally {
+				h.cleanup();
+			}
+		});
+
+	it("a journal whose Paca version is gone and whose base copy was edited by hand is not finished: the base is unknown", async () => {
+		const h = await setup();
+		try {
+			h.write(h.read().replace("Third.", "Third, mine."));
+			const st = h.state();
+			const was = st.docs[ID].content_hash;
+			st.docs[ID].merge_pending = {
+				remote_hash: "R1",
+				merged_sha: "a".repeat(64),
+				local_sha: "b".repeat(64),
+				remote_sha: "c".repeat(64),
+			};
+			fs.writeFileSync(
+				path.join(h.mirror, ".paca-sync.json"),
+				JSON.stringify(st),
+			);
+			fs.writeFileSync(
+				path.join(h.mirror, ".paca-base", `${ID}.md`),
+				"garbage the user typed\n",
+			);
+			expect(await h.pull()).toBe(2);
+			const e = h.state().docs[ID];
+			expect(e.content_hash).toBe(was);
+			expect(e.unmerged).toBe(true);
+			expect(e.merge_pending).toBeUndefined();
 		} finally {
 			h.cleanup();
 		}
@@ -471,5 +549,35 @@ describe("a merging pull stopped at each step of its journal", () => {
 		} finally {
 			h.cleanup();
 		}
+	});
+});
+
+describe("settled", () => {
+	it("drops what waits to be merged, but never the unknown base, nor Paca's version written next to such a file", () => {
+		const unknown: any = {
+			file: "Plan.md",
+			content_hash: "R0",
+			file_sha256: "s",
+			remote_hash: "R1",
+			unmerged: true,
+			remote_copy: { file: "Plan.remote.md", sha256: "c" },
+		};
+		settled(unknown);
+		expect(unknown.remote_hash).toBeUndefined();
+		expect(unknown.unmerged).toBe(true);
+		expect(unknown.remote_copy).toEqual({
+			file: "Plan.remote.md",
+			sha256: "c",
+		});
+		const known: any = {
+			file: "Plan.md",
+			content_hash: "R0",
+			file_sha256: "s",
+			remote_hash: "R1",
+			remote_copy: { file: "Plan.remote.md", sha256: "c" },
+		};
+		settled(known);
+		expect(known.remote_hash).toBeUndefined();
+		expect(known.remote_copy).toBeUndefined();
 	});
 });

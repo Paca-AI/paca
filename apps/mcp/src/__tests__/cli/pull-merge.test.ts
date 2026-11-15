@@ -566,7 +566,7 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		const base = fs.readFileSync(basePath(), "utf8");
 		expect(await pull(), output()).toBe(2);
 		expect(output()).toContain(
-			"kept Plan.md: edited locally, but an interrupted pull had written into it, so the version it was edited from is not known and it is not merged; compare it with Paca's version in Plan.remote.md and save your edits elsewhere, then delete Plan.md and pull, or run pull --force (either replaces Plan.md with Paca's version)",
+			"kept Plan.md: edited locally, and an interrupted pull may have written into it, so the version it was edited from is not known and it is not merged; compare it with Paca's version in Plan.remote.md and save your edits elsewhere, then delete Plan.md and pull, or run pull --force (either replaces Plan.md with Paca's version)",
 		);
 		expect(read()).toBe(mine);
 		expect(fs.readFileSync(basePath(), "utf8")).toBe(base);

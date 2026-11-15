@@ -579,8 +579,8 @@ is gone):
     simply edited locally again and `push` sends it.
   - The version it was edited from is not known: neither the base copy nor a
     snapshot of the pulled version is left (the server keeps one snapshot
-    per 3 minutes of edits), or an interrupted pull had written into the
-    file before you edited it. Paca's version is written next to the file
+    per 3 minutes of edits), or an interrupted pull may have written into the
+    file before you edited it (a stopped merge included; see below). Paca's version is written next to the file
     as `<file>.remote.md` and follows Paca on later pulls (a copy you edited
     is left alone). Nothing settles this file but you: every pull keeps it,
     even when the document goes back to an earlier version, and `push`
@@ -606,16 +606,19 @@ is gone):
   - the file is the merged file, or still has the merge's conflict markers:
     the merge had written it; it is completed (and reported as conflicted
     while markers are left);
-  - anything else: you changed the file after the merge wrote it and before
-    the next pull, and the merge is redone on your file.
+  - anything else (you changed the file after the merge wrote it and
+    before the next pull, or `.next.md` or the base copy was deleted or
+    changed): which version the file was edited from cannot be told, so the
+    file is kept with its base unknown, as above (Paca's version next to it
+    as `<file>.remote.md`; delete the file and pull, or `pull --force`).
 
-  A file is merged twice only in that last case: a clean merge that stopped
-  after writing the file which you then edited, or a conflicting merge that
-  stopped after writing the file whose markers you then all resolved, before
-  the next pull. The redone merge applies Paca's changes to a file that
-  already has them; identical changes merge cleanly, but changes next to
-  your edits may be marked as a conflict again. Markers never nest: a file
-  that still has the merge's markers is never merged again.
+  A file is never merged twice, and markers never nest.
+
+  The same holds for a pull that stops or fails after writing a file it was
+  not merging: the next pull knows that file may hold Paca's newer text. If
+  you edited the file in between, it is kept with its base unknown, even if
+  the document has gone back to the version you pulled, so a push can never
+  send a change that was taken back in Paca.
 
 **Limits.** Formatting Markdown cannot show must never move to another block,
 so these edits are refused, or can be, even when the text would be right

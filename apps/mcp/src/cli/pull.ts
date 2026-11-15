@@ -1,3 +1,13 @@
+// The invariant every path here keeps: a mirror file may hold text that
+// came from Paca only if its state entry names the version that text came
+// from (`content_hash`, with the base copy `.paca-base/<id>.md` holding that
+// version's render, whose sha256 is `file_sha256`), or the entry says the
+// version is not known (`unmerged`), or says a write is in flight
+// (`pending_sha256`, `merge_pending`, `reserved`). No path removes an
+// in-flight marker except by reaching one of the first two: when a stopped
+// pull cannot be told apart from a user's edit, the entry becomes
+// `unmerged`, never a plain local edit, so Paca going back to the recorded
+// version can never make a push send text Paca took back.
 import { randomBytes } from "node:crypto";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
@@ -649,7 +659,7 @@ async function pullLocked(
 					await keepUnknown(
 						p.unmerged && p.remote_copy && !hadPending.has(id)
 							? "and an earlier pull could not tell what it was edited from"
-							: "but an interrupted pull had written into it",
+							: "and an interrupted pull may have written into it",
 					);
 					continue;
 				}
@@ -762,18 +772,34 @@ async function pullLocked(
 			created,
 			stateChanged
 				? async () => {
-						if (stateText === null) await fs.rm(statePath, { force: true });
-						else if (Object.keys(journalled).length === 0 || !prev)
-							await writeFileAtomic(statePath, stateText);
-						else {
-							// A merged file stays merged: its journal is kept, so
-							// the next pull finishes the merge instead of merging
-							// it again.
-							const docs = { ...prev.docs };
-							for (const [id, mp] of Object.entries(journalled))
-								if (docs[id]) docs[id] = { ...docs[id], merge_pending: mp };
-							await writeJSON(statePath, { ...prev, docs });
+						if (stateText === null || !prev) {
+							await fs.rm(statePath, { force: true });
+							return;
 						}
+						// The old state, but with every in-flight marker this run
+						// recorded (pending writes, merge journals, an unknown
+						// base): a file this run wrote into stays told apart from
+						// a user's edit (see the invariant at the top).
+						const docs = { ...prev.docs };
+						for (const [id, d] of Object.entries(interim?.docs ?? {})) {
+							const was = docs[id];
+							if (!was) continue;
+							const kept: PullDocState = { ...was };
+							if (d.pending_sha256)
+								kept.pending_sha256 = [
+									...new Set([
+										...d.pending_sha256,
+										...(was.pending_sha256 ?? []),
+									]),
+								];
+							if (d.unmerged) kept.unmerged = true;
+							const mp = journalled[id] ?? d.merge_pending;
+							if (mp) kept.merge_pending = mp;
+							docs[id] = kept;
+						}
+						if (JSON.stringify(docs) === JSON.stringify(prev.docs))
+							await writeFileAtomic(statePath, stateText);
+						else await writeJSON(statePath, { ...prev, docs });
 					}
 				: null,
 		);
@@ -814,8 +840,8 @@ async function pullLocked(
  *  (Paca holds the version recorded again). Not `unmerged`: the version
  *  the file was edited from is not known, so Paca going back to the
  *  recorded version says nothing about the file; only the user settles it
- *  (deleting the file and pulling, or pull --force). */
-function settled(d: PullDocState): void {
+ *  (deleting the file and pulling, or pull --force). Exported for tests. */
+export function settled(d: PullDocState): void {
 	delete d.remote_hash;
 	if (!d.unmerged) delete d.remote_copy;
 }
@@ -993,9 +1019,13 @@ const NEXT_SUFFIX = ".next.md";
  * 3. `.next.md` there and the file has the merged sha, or holds pull's
  *    conflict marker lines (not in Paca's version): written; `.next.md`
  *    becomes the base copy and the entry is finished.
- * 4. Otherwise (edited between the stop and now, from which text cannot
- *    be told): `.next.md` is dropped and the merge runs again, which is
- *    visible and loses nothing.
+ * 4. Otherwise (edited between the stop and now; or `.next.md` gone, or
+ *    the base copy changed or gone, without rule 1 holding): which text
+ *    the file was edited from cannot be told, so the entry becomes
+ *    `unmerged` (the base is unknown: kept, with Paca's version next to
+ *    it, until the user settles it), never merged again. A file still
+ *    holding what it held before the merge (and not the merged text) is
+ *    not touched: the merge runs again.
  *
  * Then any `.next.md` left over is removed.
  */
@@ -1015,6 +1045,10 @@ async function settleMerges(
 		const fileText = await readText(filePath).catch(() => null);
 		const fileSha = await fileSha256(filePath).catch(() => null);
 		let remote: string | null = null;
+		/** Whether the file is known to hold nothing the merge wrote. */
+		const untouched =
+			fileSha === null ||
+			(fileSha === mp.local_sha && mp.local_sha !== mp.merged_sha);
 		if (nextText === null) {
 			if (
 				baseText !== null &&
@@ -1034,6 +1068,15 @@ async function settleMerges(
 		}
 		const d: PullDocState = { ...p };
 		delete d.merge_pending;
+		// Not finished, and the file may hold what the merge wrote (edited
+		// since, or Paca's version or the base copy gone or changed): the
+		// version it was edited from is not known.
+		if (
+			remote === null &&
+			!(nextText !== null && fileSha === mp.local_sha) &&
+			!untouched
+		)
+			d.unmerged = true;
 		if (remote !== null) {
 			d.content_hash = mp.remote_hash;
 			d.file_sha256 = sha256(remote);
@@ -1060,7 +1103,8 @@ async function settleMerges(
  * Settles what earlier interrupted pulls recorded as pending: a file that
  * holds one of those writes keeps only that hash (pull wrote it); any other
  * file (unchanged since `file_sha256`, edited locally, or missing) keeps
- * none. So the list never grows past the hash on disk plus the one the next
+ * none, and an edited one becomes `unmerged` (see the invariant at the
+ * top). So the list never grows past the hash on disk plus the one the next
  * write adds, however many pulls stop in a row, and a user edit is never
  * accepted as pull's write.
  */
@@ -1079,6 +1123,11 @@ async function settlePending(
 		docs[id] = { ...p };
 		if (keep) docs[id].pending_sha256 = [sha];
 		else delete docs[id].pending_sha256;
+		// Edited since: it may have been edited from the write the stopped
+		// pull made, so the version it was edited from is not known,
+		// whatever Paca holds now.
+		if (sha !== null && sha !== p.file_sha256 && !keep && !p.reserved)
+			docs[id].unmerged = true;
 	}
 }
 

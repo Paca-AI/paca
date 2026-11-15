@@ -216,7 +216,7 @@ async function pushLocked(
 			? path.join(path.dirname(label), path.basename(entry.remote_copy.file))
 			: null;
 		io.err(
-			`${label}: the version it was edited from is not known (an interrupted pull wrote into it, or the version it was pulled at is gone), so it cannot be pushed${copy ? `; Paca's version is in ${copy} to compare with` : ""}. Save your edits elsewhere, then delete ${label} and pull, or run pull --force; either replaces it with Paca's version`,
+			`${label}: the version it was edited from is not known (an interrupted pull may have written into it, or the version it was pulled at is gone), so it cannot be pushed${copy ? `; Paca's version is in ${copy} to compare with` : ""}. Save your edits elsewhere, then delete ${label} and pull, or run pull --force; either replaces it with Paca's version`,
 		);
 		return EXIT.error;
 	}

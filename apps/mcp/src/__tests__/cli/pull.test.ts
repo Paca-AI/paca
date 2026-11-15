@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPull } from "../../cli/pull.js";
 import { runPush } from "../../cli/push.js";
+import { sha256 } from "../../cli/state.js";
 import { markdownToBlocknote } from "../../utils/index.js";
 
 const ID = (n: number) =>
@@ -88,6 +89,12 @@ function tmpFiles(root: string): string[] {
 	};
 	walk(root);
 	return out;
+}
+
+/** The state file as an object, with no pending writes recorded. */
+function withoutPending(state: any): any {
+	for (const d of Object.values(state.docs) as any[]) delete d.pending_sha256;
+	return state;
 }
 
 describe("runPull", () => {
@@ -622,7 +629,7 @@ describe("runPull", () => {
 		expect(state().docs).toEqual({});
 	});
 
-	it("state is unchanged when a write fails", async () => {
+	it("state is unchanged when a write fails, but for the write in flight", async () => {
 		const srv = fakeServer();
 		srv.docs.set(ID(1), {
 			id: ID(1),
@@ -647,9 +654,11 @@ describe("runPull", () => {
 		});
 		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
 		await expect(pull(srv)).rejects.toThrow();
-		expect(fs.readFileSync(path.join(dir, ".paca-sync.json"), "utf8")).toBe(
-			stateBefore,
-		);
+		// The old state, but for the write in flight: the file may hold it.
+		expect(withoutPending(state())).toEqual(JSON.parse(stateBefore));
+		expect(state().docs[ID(1)].pending_sha256).toEqual([
+			sha256("one v2\n"),
+		]);
 		// Once fixed, the half-done write is not mistaken for a local edit.
 		fs.rmSync(path.join(dir, ".paca-base"));
 		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
@@ -845,9 +854,8 @@ describe("runPull", () => {
 		expect(["A1", "A2"]).toContain(read("X.md").trim());
 		expect(read("Y.md").trim()).toBe("B1");
 		expect(tmpFiles(dir)).toEqual([]);
-		expect(fs.readFileSync(path.join(dir, ".paca-sync.json"), "utf8")).toBe(
-			stateBefore,
-		);
+		// The old state, but for the writes in flight.
+		expect(withoutPending(state())).toEqual(JSON.parse(stateBefore));
 		fs.rmSync(path.join(dir, ".paca-base"));
 		changes();
 		lines = [];
