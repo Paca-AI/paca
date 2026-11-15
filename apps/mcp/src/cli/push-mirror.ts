@@ -161,9 +161,21 @@ async function pushLocked(
 	const entries = Object.entries(state.docs).filter(
 		([, d]) => d && typeof d.file === "string",
 	);
-	const found =
-		entries.find(([, d]) => d.file === rel) ??
-		entries.find(([, d]) => nameKey(d.file) === nameKey(rel));
+	let found = entries.find(([, d]) => d.file === rel);
+	if (!found) {
+		// A name that only folds to a pulled file's (case, Unicode form) is
+		// that file only where the file system says so: the same device and
+		// inode.
+		const me = await fs.stat(file);
+		for (const e of entries) {
+			if (nameKey(e[1].file) !== nameKey(rel)) continue;
+			const st = await fs.stat(path.join(root, e[1].file)).catch(() => null);
+			if (st && st.dev === me.dev && st.ino === me.ino) {
+				found = e;
+				break;
+			}
+		}
+	}
 	if (!found) {
 		io.err(
 			`${label}: not a pulled document; pull writes the files here, and only those are pushed from a mirror folder`,

@@ -415,6 +415,35 @@ describe("push of a mirror file", () => {
 		);
 	});
 
+	it("a file whose name only folds to a pulled one's counts only if it is that file on disk", async () => {
+		const upper = file("PLAN.md");
+		// On a case-insensitive file system PLAN.md is Plan.md.
+		const sensitive = !fs.existsSync(upper);
+		const edited = read().replace("Last paragraph.", "Last, edited.");
+		if (!sensitive) {
+			fs.writeFileSync(upper, edited);
+			expect(await push(".paca/docs/PLAN.md"), output()).toBe(0);
+			expect(blocknoteToMarkdown(stored())).toBe(edited);
+			return;
+		}
+		// Another file that only differs by case: not a pulled document.
+		fs.writeFileSync(upper, edited);
+		const before = snapshot();
+		expect(await push(".paca/docs/PLAN.md")).toBe(1);
+		expect(output()).toBe(
+			".paca/docs/PLAN.md: not a pulled document; pull writes the files here, and only those are pushed from a mirror folder",
+		);
+		expect(server.client.patchDocument).not.toHaveBeenCalled();
+		expect(snapshot()).toEqual(before);
+		// A second name of the very file (a hard link) is that file.
+		fs.rmSync(upper);
+		fs.writeFileSync(file(), edited);
+		fs.linkSync(file(), upper);
+		lines = [];
+		expect(await push(".paca/docs/PLAN.md"), output()).toBe(0);
+		expect(blocknoteToMarkdown(stored())).toBe(edited);
+	});
+
 	it("an empty or whitespace-only file is refused", async () => {
 		for (const empty of ["", "\n", "  \n\n\t\r\n", "\ufeff\n"]) {
 			fs.writeFileSync(file(), empty);
