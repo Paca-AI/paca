@@ -486,6 +486,33 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		});
 	});
 
+	it("--force leaves a conflict resolved by hand alone, and clears its flag", async () => {
+		const OTHER = docId(2);
+		server.add(OTHER, "Other", storedBlocks("Other."));
+		expect(await pull()).toBe(0);
+		write(read().replace("First paragraph.", "First paragraph, mine."));
+		write("Other, mine.\n", "Other.md");
+		server.edit(ID, annEdits("First paragraph, by Ann."));
+		server.edit(OTHER, (b) => {
+			b[0].content[0].text = "Other, by Ann.";
+		});
+		expect(await pull(), output()).toBe(2);
+		expect(state().docs[ID].conflict).toBe(true);
+		expect(state().docs[OTHER].conflict).toBe(true);
+		// Plan.md resolved by hand; Other.md discarded with --force.
+		const resolved = render().replace(
+			"First paragraph, by Ann.",
+			"First paragraph, mine and Ann's.",
+		);
+		write(resolved);
+		lines = [];
+		expect(await pull({ force: true }), output()).toBe(0);
+		expect(read()).toBe(resolved);
+		expect(read("Other.md")).toBe(render(OTHER));
+		expect(state().docs[ID].conflict).toBeUndefined();
+		expect(output()).toContain("modified locally Plan.md");
+	});
+
 	it("a merge journal's leftover copy of Paca's version is removed and never taken for a document", async () => {
 		const stray = path.join(mirror, ".paca-base", `${ID}.next.md`);
 		fs.writeFileSync(stray, "left by a pull that stopped\n");

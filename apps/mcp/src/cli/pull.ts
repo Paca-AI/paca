@@ -238,9 +238,12 @@ async function pullLocked(
 			p.pending_sha256 ||
 			m.remote_hash !== p.content_hash ||
 			!(await exists(path.resolve(root, p.file))) ||
-			// --force puts Paca's version over a file with conflict markers
-			// (its document has not changed since they were written).
-			(opts.force && p.conflict)
+			// --force puts Paca's version over a file that still has pull's
+			// conflict markers (its document has not changed since they were
+			// written). A file whose markers are resolved is a local edit.
+			(opts.force &&
+				p.conflict &&
+				(await markerLine(root, id, path.resolve(root, p.file))) > 0)
 		)
 			needContent.add(id);
 	}
