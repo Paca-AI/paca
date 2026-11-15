@@ -174,6 +174,21 @@ function blockStarts(renders: string[], units: Unit[], full: string): number[] {
 	return out;
 }
 
+/** Where `text` next starts a line of `full` at or after `from`, after
+ *  only indentation, quote marks and a list marker; -1 if nowhere. */
+function lineStartOf(full: string, text: string, from: number): number {
+	for (
+		let at = full.indexOf(text, from);
+		at >= 0;
+		at = full.indexOf(text, at + 1)
+	) {
+		const head = full.slice(full.lastIndexOf("\n", at - 1) + 1, at);
+		if (/^[\s>]*(?:(?:[*+-]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)?$/.test(head))
+			return at;
+	}
+	return -1;
+}
+
 function occurrences(text: string, needle: string): number[] {
 	const out: number[] = [];
 	for (
@@ -1701,8 +1716,13 @@ export function spliceEdit(
 				const unit = units.find((u) => u.from <= k && k < u.to) ?? units[ua];
 				let cursor = starts[k] >= 0 ? starts[k] : unit.start;
 				for (const x of subtree(blocks[k])) {
-					const first = ownKey(x).split("\n")[0].trim();
-					const found = first ? full.indexOf(first, cursor) : -1;
+					// Without its list marker: alone, a nested numbered item
+					// renders "1. dup" where the document writes "2. dup".
+					const first = ownKey(x)
+						.split("\n")[0]
+						.replace(LIST_MARKER, "")
+						.trim();
+					const found = first ? lineStartOf(full, first, cursor) : -1;
 					if (found < 0) continue;
 					nestedLines.set(x, lineAt(full, found));
 					cursor = found + first.length;

@@ -1634,6 +1634,53 @@ describe("auditEdit: disguised reorders (seventh review)", () => {
 	});
 });
 
+// Refusals name the lines of nested blocks as read_doc writes them, for
+// every list type and depth (a nested numbered item is written "2. dup"
+// in the document but renders "1. dup" alone).
+describe("spliceEdit names the lines of nested list items", () => {
+	// [type, with a numbered item before them that stores start 3]
+	const TYPES: Array<[string, boolean]> = [
+		["bulletListItem", false],
+		["numberedListItem", false],
+		["numberedListItem", true],
+		["checkListItem", false],
+		["toggleListItem", false],
+	];
+	for (const depth of [2, 3]) {
+		for (const [type, lead] of TYPES) {
+			it(`${type}${lead ? " after a start" : ""} at depth ${depth}`, () => {
+				const kids = [0, 1].map((k) =>
+					item(type, "dup", k === 1 ? { textColor: "red" } : {}),
+				);
+				if (type === "checkListItem") {
+					for (const k of kids) k.props.checked = false;
+				}
+				if (lead) kids.unshift(item(type, "first", { start: 3 }));
+				let tree: any[] = kids;
+				for (let d = depth; d > 1; d--) {
+					tree = [item("bulletListItem", `level ${d - 1}`, {}, tree)];
+				}
+				const blocks = [para("intro"), ...tree, para("end")];
+				const md = blocknoteToMarkdown(blocks);
+				const ls = md.split("\n");
+				const at = ls.flatMap((l, k) => (/dup/.test(l) ? [k + 1] : []));
+				expect(at).toHaveLength(2);
+				const start = md.indexOf(ls[at[0] - 1]);
+				const stop =
+					md.indexOf(ls[at[1] - 1], start + 1) + ls[at[1] - 1].length;
+				try {
+					spliceEdit(blocks, md.slice(start, stop), ls[at[0] - 1], false);
+					expect.unreachable("the edit should be refused");
+				} catch (e) {
+					expect(e, md).toBeInstanceOf(SpliceError);
+					expect((e as SpliceError).lines, (e as Error).message).toEqual(at);
+					expect((e as Error).message).toContain(`lines ${at[0]} and ${at[1]}`);
+				}
+			});
+		}
+	}
+});
+
 // Measured on an M-series Mac: 800 items with replace_all about 1.0 s,
 // one edit in 3000 items about 1.5 s (before: 108 s and 4.5 s). The bound
 // leaves room for slower machines; it catches a return of quadratic work.
