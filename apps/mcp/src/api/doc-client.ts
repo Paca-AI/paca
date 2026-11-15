@@ -429,17 +429,12 @@ export class PacaAPIDocClient {
 	async listSnapshots(
 		projectId: string,
 		docId: string,
-		opts: PageOptions = {},
+		opts: PageOptions & { contentHash?: string } = {},
 	): Promise<Page<DocumentSnapshot>> {
 		// One page, newest first; list items carry no body (getSnapshot returns it).
-		return toPage<DocumentSnapshot>(
-			await this.get(
-				withPaging(
-					`/api/v1/projects/${projectId}/docs/${docId}/snapshots`,
-					opts,
-				),
-			),
-		);
+		const { contentHash, ...paging } = opts;
+		const url = `/api/v1/projects/${projectId}/docs/${docId}/snapshots${contentHash ? `?content_hash=${encodeURIComponent(contentHash)}` : ""}`;
+		return toPage<DocumentSnapshot>(await this.get(withPaging(url, paging)));
 	}
 
 	async getSnapshot(
