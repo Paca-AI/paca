@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { auditEdit, SpliceError, spliceEdit } from "../../tools/doc-edit.js";
 import {
@@ -1168,4 +1169,480 @@ describe("spliceEdit fuzz", () => {
 		expect(applied).toBeGreaterThan(200);
 		expect(refused).toBeGreaterThan(10);
 	});
+});
+
+// ── Fuzz by edit kind ─────────────────────────────────────────────────────────
+
+/** What a block holds that Markdown cannot write, computed here on its own
+ *  (not with the implementation's helpers): props other than the ones
+ *  Markdown writes, at a value other than the neutral one, and inline nodes
+ *  or text styles Markdown has no syntax for. */
+function lostByMarkdown(b: any): string {
+	const neutral: Record<string, unknown> = {
+		textColor: "default",
+		backgroundColor: "default",
+		textAlignment: "left",
+		isToggleable: false,
+	};
+	const written = new Set(["start", "checked", "level", "language"]);
+	const props = Object.entries(b.props ?? {})
+		.filter(([k, v]) => !written.has(k) && v !== undefined && neutral[k] !== v)
+		.map(([k, v]) => `${k}=${String(v)}`)
+		.sort();
+	const inline: string[] = [];
+	for (const node of Array.isArray(b.content) ? b.content : []) {
+		if (node.type === "text") {
+			for (const [s, v] of Object.entries(node.styles ?? {})) {
+				if (!["bold", "italic", "code", "strike"].includes(s)) {
+					inline.push(`${s}=${String(v)}:${node.text}`);
+				}
+			}
+		} else if (node.type !== "link") {
+			inline.push(JSON.stringify(node));
+		}
+	}
+	return JSON.stringify([props, inline.sort()]);
+}
+const NOTHING_LOST = lostByMarkdown({ props: {}, content: [] });
+
+const everyBlock = (bs: any[]): any[] =>
+	bs.flatMap((b) => [b, ...everyBlock(b.children ?? [])]);
+const ownText = (b: any) =>
+	(Array.isArray(b.content) ? b.content : [])
+		.map((n: any) => n.text ?? "")
+		.join("");
+const MARKER = /m\d+(?:c\d+)*x/g;
+const ONE_MARKER = /m\d+(?:c\d+)*x/;
+
+describe("spliceEdit fuzz by edit kind", () => {
+	it("keeps untouched blocks, never moves or drops what Markdown cannot carry, and shows exactly the edit", () => {
+		let seed = 7;
+		// The high bits: an LCG's low bits repeat with a short period.
+		const rnd = (k: number) => {
+			seed = (seed * 1103515245 + 12345) % 2147483648;
+			return Math.floor((seed / 2147483648) * k);
+		};
+		let n = 0;
+		const id = () => `f${++n}`;
+		const look = () =>
+			[
+				{},
+				{},
+				{},
+				{},
+				{},
+				{ textColor: "red" },
+				{ backgroundColor: "blue" },
+				{ textAlignment: "center" },
+			][rnd(8)];
+		const blk = (
+			type: string,
+			text: string,
+			props: Record<string, unknown> = {},
+			children: any[] = [],
+		) => ({
+			id: id(),
+			type,
+			props: { ...P, ...props },
+			content: text === "" ? [] : [t(text)],
+			children,
+		});
+		const LIST = ["bulletListItem", "numberedListItem", "checkListItem"];
+		const listItem = (type: string, text: string, extra = {}) =>
+			blk(type, text, {
+				...(type === "checkListItem" ? { checked: rnd(2) === 1 } : {}),
+				...look(),
+				...extra,
+			});
+		const mk = (p: string): any => {
+			const m = `${p}x`;
+			const kinds = [
+				() => blk("paragraph", `para ${m}`, look()),
+				() => blk("paragraph", ""),
+				() => blk("heading", "", { level: 1, isToggleable: false }),
+				() => blk("bulletListItem", ""),
+				() => ({ ...blk("codeBlock", ""), props: { language: "text" } }),
+				() => ({
+					...blk("quote", ""),
+					props: { textColor: "default", backgroundColor: "default" },
+				}),
+				() =>
+					blk("heading", `head ${m}`, {
+						level: 1 + rnd(3),
+						isToggleable: false,
+						...look(),
+					}),
+				() => listItem(LIST[rnd(3)], `item ${m}`),
+				() => listItem("numberedListItem", `num ${m}`, { start: 3 }),
+				// Nested lists with a different marker at each depth.
+				() => {
+					const [a, b, c] = [rnd(3), rnd(3), rnd(3)];
+					const grand =
+						rnd(2) === 0 ? [listItem(LIST[c], `grand ${p}c0c0x`)] : [];
+					const kid = listItem(LIST[b], `kid ${p}c0x`);
+					kid.children = grand;
+					return {
+						...listItem(LIST[a], `top ${m}`),
+						children: [kid, listItem(LIST[(b + 1) % 3], `kid ${p}c1x`)],
+					};
+				},
+				() =>
+					blk("paragraph", `par ${m}`, look(), [
+						blk("paragraph", `kid ${p}c0x`),
+					]),
+				() => ({
+					...blk("codeBlock", `code ${m}\nline2`),
+					props: { language: "ts" },
+				}),
+				() => ({
+					...blk("quote", `quote ${m}`),
+					props: { textColor: "default", backgroundColor: "default" },
+				}),
+				() => ({
+					...blk("paragraph", ""),
+					content: [
+						t("hi "),
+						{
+							type: "teamMention",
+							props: { id: id(), name: "Ann", avatar: "" },
+						},
+						t(` chip ${m}`),
+					],
+				}),
+				() => ({
+					...blk("paragraph", ""),
+					content: [t("under", { underline: true }), t(` u ${m}`)],
+				}),
+				// Duplicate renders, some with colours Markdown cannot write.
+				() => blk("paragraph", "dup line", look()),
+				() => blk("bulletListItem", "dup line", look()),
+			];
+			return kinds[rnd(kinds.length)]();
+		};
+
+		type Edit = { old: string; new: string; all?: boolean } | null;
+		const KINDS: Record<string, (md: string, tops: string[]) => Edit> = {};
+		const lines = (md: string) => md.split("\n");
+		const lineWith = (md: string, m: string) =>
+			lines(md).find((l) => l.includes(m));
+		const pick = <T>(xs: T[]): T | undefined => xs[rnd(xs.length)];
+		const all = (md: string) => md.match(MARKER) ?? [];
+		const pair = (tops: string[]) => {
+			const i = rnd(Math.max(tops.length - 1, 1));
+			return tops.length > 1 ? [tops[i], tops[i + 1]] : null;
+		};
+		const PREFIX =
+			/^(\s*)((?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?|#{1,6}\s+|>\s+)?/;
+		KINDS.inline = (md) => {
+			const m = pick(all(md));
+			return m ? { old: m, new: `${m}Z` } : null;
+		};
+		KINDS.cross = (md, tops) => {
+			const p = pair(tops);
+			if (!p) return null;
+			const old = md.slice(md.indexOf(p[0]), md.indexOf(p[1]) + p[1].length);
+			return {
+				old,
+				new: old.replace(p[0], `${p[0]}Z`).replace(p[1], `${p[1]}Z`),
+			};
+		};
+		KINDS.delete = (md, tops) => {
+			const m = pick(all(md));
+			if (!m) return null;
+			const ls = lines(md);
+			const a = ls.findIndex((l) => l.includes(m));
+			const next = tops[tops.indexOf(m) + 1];
+			if (next && rnd(2) === 0) {
+				const b = ls.findIndex((l) => l.includes(next));
+				return { old: `${ls.slice(a, b).join("\n")}\n`, new: "" };
+			}
+			return a > 0
+				? { old: `\n${ls[a]}`, new: "" }
+				: { old: `${ls[a]}\n`, new: "" };
+		};
+		KINDS.insert = (md) => {
+			const m = pick(all(md));
+			if (!m) return null;
+			const l = lineWith(md, m) ?? "";
+			const [, indent, prefix] = l.match(PREFIX) ?? [];
+			const extra =
+				rnd(2) === 0 || !prefix
+					? `\n\nnew para mNEWx`
+					: `\n${indent}${prefix.replace(/\d+/, "9")}fresh mNEWx`;
+			return { old: l, new: l + extra };
+		};
+		KINDS.merge = (md, tops) => {
+			const p = pair(tops);
+			if (!p) return null;
+			return {
+				old: md.slice(md.indexOf(p[0]), md.indexOf(p[1]) + p[1].length),
+				new: `${p[0]} ${p[1]}`,
+			};
+		};
+		KINDS.split = (md) => {
+			const m = pick(all(md));
+			if (!m) return null;
+			const l = lineWith(md, m) ?? "";
+			const [, indent, prefix] = l.match(PREFIX) ?? [];
+			return {
+				old: ` ${m}`,
+				new: rnd(2) === 0 || !prefix ? `\n\n${m}` : `\n${indent}${prefix}${m}`,
+			};
+		};
+		KINDS.retype = (md) => {
+			const m = pick(all(md));
+			if (!m) return null;
+			const l = lineWith(md, m) ?? "";
+			const [whole, indent] = l.match(PREFIX) ?? ["", ""];
+			const to = pick(["", "## ", "- ", "1. ", "3. ", "- [ ] ", "> "]);
+			const next = `${indent}${to}${l.slice(whole.length)}`;
+			return next === l ? null : { old: l, new: next };
+		};
+		KINDS.indent = (md) => {
+			const ls = lines(md);
+			const m = pick(
+				all(md).filter((x) => {
+					const k = ls.findIndex((l) => l.includes(x));
+					const above =
+						ls
+							.slice(0, k)
+							.filter((l) => l !== "")
+							.pop() ?? "";
+					const item = /^\s*([-*+]|\d+[.)])\s/;
+					return item.test(ls[k]) && item.test(above);
+				}),
+			);
+			if (!m) return null;
+			const l = lineWith(md, m) ?? "";
+			return { old: l, new: `${/^\s*\d/.test(l) ? "   " : "  "}${l}` };
+		};
+		KINDS.outdent = (md) => {
+			const m = pick(
+				all(md).filter((x) => /^\s+\S/.test(lineWith(md, x) ?? "")),
+			);
+			if (!m) return null;
+			const l = lineWith(md, m) ?? "";
+			const cut = rnd(2) === 0 ? l.trimStart() : l.replace(/^( {2,4}|\t)/, "");
+			return { old: l, new: cut };
+		};
+		KINDS.swap = (md, tops) => {
+			if (rnd(2) === 0) {
+				// Two neighbouring lines (list items at one depth, or a parent
+				// and its first nested item).
+				const ls = lines(md);
+				const k = pick(
+					ls
+						.map((_, i) => i)
+						.filter(
+							(i) =>
+								i + 1 < ls.length &&
+								ONE_MARKER.test(ls[i]) &&
+								ONE_MARKER.test(ls[i + 1]),
+						),
+				);
+				if (k === undefined) return null;
+				return {
+					old: `${ls[k]}\n${ls[k + 1]}`,
+					new: `${ls[k + 1]}\n${ls[k]}`,
+				};
+			}
+			const p = pair(tops);
+			if (!p) return null;
+			const start = md.lastIndexOf("\n", md.indexOf(p[0])) + 1;
+			const mid = md.lastIndexOf("\n", md.indexOf(p[1])) + 1;
+			const after = tops[tops.indexOf(p[1]) + 1];
+			const stop = after ? md.lastIndexOf("\n", md.indexOf(after)) : md.length;
+			const a = md.slice(start, mid).replace(/\n+$/, "");
+			const sep = md.slice(start + a.length, mid);
+			const b = md.slice(mid, stop).replace(/\n+$/, "");
+			return { old: a + sep + b, new: b + sep + a };
+		};
+		KINDS.replaceAll = (md) => {
+			if (md.split("dup line").length > 2) {
+				return { old: "dup line", new: "dup lineZ", all: true };
+			}
+			const m = pick(all(md));
+			return m ? { old: m.slice(0, 2), new: "mm", all: true } : null;
+		};
+		KINDS.marker = (md) => {
+			const m = pick(all(md));
+			if (!m) return null;
+			const l = lineWith(md, m) ?? "";
+			const swapped = l
+				.replace(
+					/^(\s*)([-*+])(\s)/,
+					(_, a, b, c) => a + (b === "-" ? "*" : "-") + c,
+				)
+				.replace(/^(\s*\d+)\.(\s)/, "$1)$2");
+			if (swapped !== l && rnd(2) === 0) return { old: l, new: swapped };
+			// A soft or a hard line break inside the block's text.
+			return { old: ` ${m}`, new: `${rnd(2) === 0 ? "\n" : "  \n"}${m}` };
+		};
+
+		const stats: Record<
+			string,
+			{ applied: number; refused: number; skipped: number }
+		> = {};
+		const reasons: Record<string, number> = {};
+		for (let iter = 0; iter < 1800; iter++) {
+			const kind = Object.keys(KINDS)[iter % Object.keys(KINDS).length];
+			stats[kind] ??= { applied: 0, refused: 0, skipped: 0 };
+			const s = stats[kind];
+			const len = 3 + rnd(7);
+			const blocks = Array.from({ length: len }, (_, i) => mk(`m${i}`));
+			const json = blocks.map((b) => JSON.stringify(b));
+			const md = blocknoteToMarkdown(blocks);
+			const tops = blocks
+				.map((b) => ownText(b).match(MARKER)?.[0])
+				.filter((m): m is string => !!m && md.includes(m));
+			const edit = KINDS[kind](md, tops);
+			if (!edit || edit.old === edit.new || !md.includes(edit.old)) {
+				s.skipped++;
+				continue;
+			}
+			const ctx = `${kind} #${iter}: ${JSON.stringify(edit)}\n${md}`;
+			let res: ReturnType<typeof spliceEdit>;
+			try {
+				res = spliceEdit(blocks, edit.old, edit.new, edit.all ?? false);
+			} catch (err) {
+				expect(err, ctx).toBeInstanceOf(SpliceError);
+				s.refused++;
+				const msg = (err as Error).message;
+				const why = `${kind} ${(err as SpliceError).kind}: ${(msg.match(/Markdown: (.*?)\. Nothing/)?.[1] ?? msg.slice(0, 60)).replace(/\d+/g, "N")}`;
+				reasons[why] = (reasons[why] ?? 0) + 1;
+				continue;
+			}
+			s.applied++;
+			const edited = md.split(edit.old).join(edit.new);
+
+			// C: the result shows the edited Markdown exactly. Both sides are
+			// read back through the converters the same number of times, so
+			// what they normalize cancels out: an empty code block's language,
+			// or a quote nested in a list item, which the renderer writes
+			// without its indent.
+			const again = (x: string) => blocknoteToMarkdown(markdownToBlocknote(x));
+			expect(again(blocknoteToMarkdown(res.blocks)), ctx).toBe(
+				again(again(edited)),
+			);
+
+			// Untouched blocks: a top-level block none of whose markers (or,
+			// for a duplicate, whose text) the edit's old_string touches, and
+			// that is not an empty block next to a touched one, is the very
+			// object read, unchanged, in the same order.
+			// A block is touched when a match of old_string overlaps its
+			// Markdown; its span comes from rendering the blocks before it.
+			const hits: number[] = [];
+			for (
+				let k = md.indexOf(edit.old);
+				k >= 0;
+				k = md.indexOf(edit.old, k + edit.old.length)
+			) {
+				hits.push(k);
+				if (!edit.all) break;
+			}
+			const ends = blocks.map((_, i) => {
+				const upto = blocknoteToMarkdown(blocks.slice(0, i + 1)).trimEnd();
+				expect(md.startsWith(upto), ctx).toBe(true);
+				return upto.length;
+			});
+			const touched = blocks.map((_, i) => {
+				const a = i === 0 ? 0 : ends[i - 1];
+				return hits.some((h) => h < ends[i] && h + edit.old.length > a);
+			});
+			// Indenting a block nests it in the block above it, which changes.
+			if (kind === "indent") {
+				const k = touched.indexOf(true);
+				let a = k - 1;
+				while (a >= 0 && ownText(blocks[a]) === "") a--;
+				if (a >= 0) touched[a] = true;
+			}
+			// Numbered items right after a touched block may be renumbered.
+			// A list is re-parsed as a whole, so an item of a touched run that
+			// is not its first may also lose a `start` Markdown does not show
+			// there (the parser only writes it on a run's first item).
+			const run = (i: number) => blocks[i]?.type === "numberedListItem";
+			for (let i = 1; i < len; i++) {
+				if (touched[i - 1] && run(i)) touched[i] = true;
+			}
+			for (let i = len - 2; i >= 0; i--) {
+				if (
+					touched[i + 1] &&
+					run(i) &&
+					run(i - 1) &&
+					blocks[i].props.start !== undefined
+				) {
+					touched[i] = true;
+				}
+			}
+			// A block with no text of its own (an empty paragraph, heading,
+			// list item, code block or quote) counts as touched when the
+			// nearest block with text on either side is.
+			const bare = blocks.map((b) => ownText(b) === "");
+			const keep = blocks.map((_, i) => {
+				if (touched[i]) return false;
+				if (!bare[i]) return true;
+				let a = i - 1;
+				while (a >= 0 && bare[a]) a--;
+				let z = i + 1;
+				while (z < len && bare[z]) z++;
+				return !(touched[a] || touched[z]);
+			});
+			let at = 0;
+			for (let i = 0; i < len; i++) {
+				if (!keep[i]) continue;
+				const found = res.blocks.indexOf(blocks[i], at);
+				expect(
+					found,
+					`${ctx}\nblock ${i} missing or out of order`,
+				).toBeGreaterThanOrEqual(0);
+				expect(JSON.stringify(res.blocks[found]), ctx).toBe(json[i]);
+				at = found + 1;
+			}
+
+			// B, checked here on its own: no id twice; and for every block
+			// read, at any depth, that holds something Markdown cannot write,
+			// either its id survives with that data, or its text (its unique
+			// marker) is gone from the document, or it was merged into a
+			// block holding several markers with the same data.
+			const outs = everyBlock(res.blocks);
+			const ids = outs.map((b) => b.id);
+			expect(new Set(ids).size, ctx).toBe(ids.length);
+			for (const o of everyBlock(blocks)) {
+				const lost = lostByMarkdown(o);
+				if (lost === NOTHING_LOST) continue;
+				const same = outs.find((b) => b.id === o.id);
+				if (same) {
+					expect(lostByMarkdown(same), `${ctx}\n${o.id} lost data`).toBe(lost);
+					continue;
+				}
+				const m = ownText(o).match(MARKER)?.[0];
+				const holder = m && outs.find((b) => ownText(b).includes(m));
+				if (!holder) continue;
+				expect(
+					(ownText(holder).match(MARKER) ?? []).length,
+					`${ctx}\n${o.id}'s text moved to ${holder.id} without its id`,
+				).toBeGreaterThan(1);
+				expect(lostByMarkdown(holder), ctx).toBe(lost);
+			}
+		}
+		// FUZZ_OUT=<file> writes the counts, and why each refusal happened.
+		if (process.env.FUZZ_OUT) {
+			writeFileSync(
+				process.env.FUZZ_OUT,
+				[
+					"kind: applied / refused / skipped",
+					...Object.entries(stats).map(
+						([k, v]) => `${k}: ${v.applied} / ${v.refused} / ${v.skipped}`,
+					),
+					"",
+					...Object.entries(reasons)
+						.sort()
+						.map(([k, v]) => `${v}\t${k}`),
+				].join("\n"),
+			);
+		}
+		for (const [k, v] of Object.entries(stats)) {
+			expect(v.applied, `${k} applied too rarely`).toBeGreaterThan(15);
+		}
+	}, 60_000);
 });
