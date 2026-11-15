@@ -217,6 +217,15 @@ describe("GanttView row drag and drop", () => {
 	});
 });
 
+describe("GanttView group header", () => {
+	it("pins the group label to the left edge like the task column", () => {
+		renderGantt([makeTask({ id: "t1", title: "Alpha" })]);
+		const pinned = screen.getByText("Todo").closest(".sticky");
+		expect(pinned).toHaveClass("left-0");
+		expect(pinned).toHaveTextContent("Todo1");
+	});
+});
+
 // ── Zoom, rescheduling and dependencies ──────────────────────────────────────
 
 /** The bar of a task (rows without dates have none). */
