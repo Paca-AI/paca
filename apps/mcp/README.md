@@ -454,7 +454,7 @@ to a document, its file is removed on the next pull.
   pull the state file is written up to twice: once with the new file names
   (keeping the old cursor and content hashes), and once at the end with the
   new cursor and content hashes, after every file and base copy was written.
-  The state never records content a file does not hold; base copies are
+  The state never claims content pull did not write; base copies are
   written as each document is.
 - Removing a mirrored file does not revoke copies already made of it: anything
   that read the mirror before keeps what it read.
