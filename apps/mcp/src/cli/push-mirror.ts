@@ -184,8 +184,11 @@ async function pushLocked(
 		}
 	}
 	if (!found) {
+		const where = label.endsWith(rel)
+			? label.slice(0, label.length - rel.length).replace(/\/$/, "") || "."
+			: root;
 		io.err(
-			`${label}: not a pulled document; pull writes the files here, and only those are pushed from a mirror folder`,
+			`${label}: not a pulled document; it is in the pull mirror ${where} (the folder that holds ${PULL_STATE_FILE}), where only the files pull wrote are pushed. To push it as a repository file, keep it outside that folder: move it out, or keep the mirror in a folder of its own (pull --dir <folder>)`,
 		);
 		return EXIT.error;
 	}

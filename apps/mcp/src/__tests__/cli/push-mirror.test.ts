@@ -382,8 +382,8 @@ describe("push of a mirror file", () => {
 		lines = [];
 		fs.writeFileSync(file("Notes.md"), "# Mine\n");
 		expect(await push(".paca/docs/Notes.md")).toBe(1);
-		expect(output()).toContain(
-			"not a pulled document; pull writes the files here",
+		expect(output()).toBe(
+			".paca/docs/Notes.md: not a pulled document; it is in the pull mirror .paca/docs (the folder that holds .paca-sync.json), where only the files pull wrote are pushed. To push it as a repository file, keep it outside that folder: move it out, or keep the mirror in a folder of its own (pull --dir <folder>)",
 		);
 
 		lines = [];
@@ -495,7 +495,7 @@ describe("push of a mirror file", () => {
 		const before = snapshot();
 		expect(await push(".paca/docs/PLAN.md")).toBe(1);
 		expect(output()).toBe(
-			".paca/docs/PLAN.md: not a pulled document; pull writes the files here, and only those are pushed from a mirror folder",
+			".paca/docs/PLAN.md: not a pulled document; it is in the pull mirror .paca/docs (the folder that holds .paca-sync.json), where only the files pull wrote are pushed. To push it as a repository file, keep it outside that folder: move it out, or keep the mirror in a folder of its own (pull --dir <folder>)",
 		);
 		expect(server.client.patchDocument).not.toHaveBeenCalled();
 		expect(snapshot()).toEqual(before);

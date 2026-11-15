@@ -494,7 +494,10 @@ npx @paca-ai/paca-mcp push .paca/docs/Plans/Roadmap.md --note "move the launch t
   refusal also give the writer's note, client and task.
 - Refused before anything is sent (exit 1): a file `pull` did not write (`not
   a pulled document`), including another file whose name only differs by case
-  or Unicode form; a managed copy (`this document is a copy of <path> in
+  or Unicode form. Any file under a folder that holds `.paca-sync.json` is
+  taken for a mirror file, so a repository file there (after `pull --dir .`,
+  say) is refused rather than pushed as a repository file: keep the mirror in
+  a folder of its own (`pull --dir .paca/docs`), or move the file out of it; a managed copy (`this document is a copy of <path> in
   <repository>; edit that file and push it`); a document that was deleted or
   that `pull` has not finished recording; an empty file (a document is deleted
   in Paca, not by emptying its file); a file with conflict markers
