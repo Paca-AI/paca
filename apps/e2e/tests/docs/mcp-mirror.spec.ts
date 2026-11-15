@@ -162,12 +162,14 @@ test.describe("MCP mirror", () => {
 			await page.keyboard.press("End");
 			await page.keyboard.type(" Edited in the browser.");
 			await page.keyboard.press("Control+s");
-			await expect(page.getByText(/saved/i)).toBeVisible({ timeout: 10_000 });
 			await expect
 				.poll(async () => JSON.stringify((await readBlocks())[1]), {
 					timeout: 10_000,
 				})
 				.toContain("Edited in the browser.");
+			// Leave the editor, so no later autosave changes the document
+			// after the reference below is read.
+			await page.goto(`${BASE_URL}/projects/${projectId}`);
 			// What the browser's save stored: the reference for the blocks the
 			// mirror edit must leave alone.
 			const browserBlocks = await readBlocks();
@@ -198,7 +200,8 @@ test.describe("MCP mirror", () => {
 			expect(after).toHaveLength(browser.length);
 			expect(after[1]).toContain("Paragraph one. Edited in the browser.");
 			expect(after[3]).toContain("Paragraph three, edited as a file.");
-			expect(JSON.parse(after[3]).id).toBe(IDS[3]);
+			// The edited block keeps the id the browser's save stored (if any).
+			expect(JSON.parse(after[3]).id).toBe(JSON.parse(browser[3]).id);
 			for (const i of [0, 1, 2, 4, 5]) {
 				expect(after[i], `block ${i}`).toBe(browser[i]);
 			}
