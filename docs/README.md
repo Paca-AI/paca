@@ -9,6 +9,7 @@ This directory is the main documentation home for Paca.
 - [architecture/service-boundaries.md](architecture/service-boundaries.md): responsibilities for each service.
 - [architecture/database-schema.md](architecture/database-schema.md): database schema (DBML) and interactive diagram.
 - [architecture/interaction-views.md](architecture/interaction-views.md): how sprint, backlog, and timeline views share one model and one task-list API.
+- [architecture/chat-and-meetings.md](architecture/chat-and-meetings.md): proposal for built-in team chat and LiveKit-based voice/video meetings.
 - [architecture/authorization.md](architecture/authorization.md): the IAM-style policy model (statements, actions, resources, conditions, role attachments), route gates, list scoping, and how to add a route safely.
 - [ai-agent/pm-agent.md](ai-agent/pm-agent.md): PM / business analyst agent — drafts requirements in Refinement for human approval, read-only on code.
 - [guides/getting-started.md](guides/getting-started.md): what a new contributor should read first.
