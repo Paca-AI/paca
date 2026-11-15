@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -48,6 +49,7 @@ vi.mock("../../cli/state.js", async (importOriginal) => {
 });
 
 const ID = docId(1);
+const sha = (x: string) => createHash("sha256").update(x).digest("hex");
 const ID2 = docId(2);
 const DOC = "# Plan\n\nFirst.\n\nRed one.\n\nThird.\n\nLast.";
 
@@ -262,6 +264,178 @@ describe("a merging pull stopped at each step of its journal", () => {
 		}
 		expect(stops.length).toBeGreaterThan(3);
 		expect(stops[1]).toEqual([".paca-sync.json"]);
+	});
+
+	it("a file an interrupted pull wrote into stays unmerged when Paca goes back: pull keeps it, push refuses, deleting it and pulling settles it", async () => {
+		const h = await setup();
+		try {
+			const before = JSON.parse(JSON.stringify(h.server.docs.get(ID)?.content));
+			h.server.edit(ID, (b) => {
+				b[1].content[0].text = "First, SECRET by Ann.";
+			});
+			// A plain pull stopped after writing Ann's version into the file.
+			const k = await killed(h.pull, h.mirror, 2);
+			expect(k.writes).toEqual([".paca-sync.json", "Plan.md"]);
+			expect(h.read()).toContain("SECRET");
+			h.write(h.read().replace("Last.", "Last, mine."));
+			expect(await h.pull()).toBe(2);
+			expect(h.said()).toContain("an interrupted pull had written into it");
+			expect(h.read("Plan.remote.md")).toBe(h.render());
+			// Ann reverts: Paca is back at the version recorded.
+			h.server.edit(ID, (b) => {
+				b.splice(0, b.length, ...JSON.parse(JSON.stringify(before)));
+			});
+			expect(await h.pull()).toBe(2);
+			expect(h.said()).toContain("kept Plan.md");
+			expect(h.state().docs[ID].unmerged).toBe(true);
+			expect(h.read("Plan.remote.md")).toBe(h.render());
+			const sent = h.server.client.patchDocument.mock.calls.length;
+			expect(await h.push()).toBe(1);
+			const said = h.said();
+			expect(said).toContain("delete m/Plan.md and pull");
+			expect(said).toContain("pull --force");
+			expect(said).toContain("Plan.remote.md");
+			expect(h.server.client.patchDocument.mock.calls.length).toBe(sent);
+			expect(h.render()).not.toContain("SECRET");
+			// The way out: delete the file and pull.
+			fs.rmSync(path.join(h.mirror, "Plan.md"));
+			expect(await h.pull()).toBe(0);
+			expect(h.read()).toBe(h.render());
+			expect(h.state().docs[ID].unmerged).toBeUndefined();
+			expect(fs.existsSync(path.join(h.mirror, "Plan.remote.md"))).toBe(false);
+		} finally {
+			h.cleanup();
+		}
+	});
+
+	it("a merge stopped after its base copy, then an edit here and Ann's revert: the next pull merges the revert, and push never re-applies it", async () => {
+		const h = await setup();
+		try {
+			const before = JSON.parse(JSON.stringify(h.server.docs.get(ID)?.content));
+			h.write(h.read().replace("Third.", "Third, mine."));
+			h.server.edit(ID, (b) => {
+				b[1].content[0].text = "First, SECRET by Ann.";
+			});
+			const k = await killed(h.pull, h.mirror, 4);
+			expect(k.writes).toEqual([
+				`${ID}.next.md`,
+				".paca-sync.json",
+				"Plan.md",
+				`${ID}.next.md`,
+			]);
+			h.write(h.read().replace("Last.", "Last, mine."));
+			h.server.edit(ID, (b) => {
+				b.splice(0, b.length, ...JSON.parse(JSON.stringify(before)));
+			});
+			expect(await h.pull(), h.said()).toBe(0);
+			expect(h.read()).toBe(
+				"# Plan\n\nFirst.\n\nRed one.\n\nThird, mine.\n\nLast, mine.\n",
+			);
+			expect(await h.push()).toBe(0);
+			expect(h.render()).not.toContain("SECRET");
+			expect(h.render()).toContain("Last, mine.");
+		} finally {
+			h.cleanup();
+		}
+	});
+
+	it("a journal whose file still has the sha it had before the merge is started over, even when the file has lines like pull's markers", async () => {
+		const h = await setup();
+		try {
+			const before = h.state().docs[ID];
+			// The user documents a conflict, literally.
+			const mine = h
+				.read()
+				.replace(
+					"Last.",
+					"Last.\n\n```text\n<<<<<<< local\nx\n=======\ny\n>>>>>>> Paca\n```",
+				);
+			h.write(mine);
+			// As a merge stopped after step 1 leaves it.
+			const next =
+				"# Plan\n\nFirst, by someone.\n\nRed one.\n\nThird.\n\nLast.\n";
+			fs.writeFileSync(
+				path.join(h.mirror, ".paca-base", `${ID}.next.md`),
+				next,
+			);
+			const s = h.state();
+			s.docs[ID].merge_pending = {
+				remote_hash: "elsewhere",
+				merged_sha: sha("what the merge would write\n"),
+				local_sha: sha(mine),
+				remote_sha: sha(next),
+			};
+			fs.writeFileSync(
+				path.join(h.mirror, ".paca-sync.json"),
+				`${JSON.stringify(s, null, 2)}\n`,
+			);
+			expect(await h.pull(), h.said()).toBe(0);
+			expect(h.read()).toBe(mine);
+			expect(h.leftovers()).toEqual([]);
+			const now = h.state().docs[ID];
+			expect(now.content_hash).toBe(before.content_hash);
+			expect(now.file_sha256).toBe(before.file_sha256);
+			expect(now.conflict).toBeUndefined();
+			expect(now.merge_pending).toBeUndefined();
+		} finally {
+			h.cleanup();
+		}
+	});
+
+	it("a conflicting merge stopped after its file write, then an edit here without resolving: the restart keeps one set of markers, and a resolution pushes", async () => {
+		const h = await setup();
+		try {
+			h.write(h.read().replace("First.", "First, mine."));
+			h.server.edit(ID, (b) => {
+				b[1].content[0].text = "First, by Ann.";
+			});
+			const k = await killed(h.pull, h.mirror, 3);
+			expect(k.writes).toEqual([`${ID}.next.md`, ".paca-sync.json", "Plan.md"]);
+			h.write(h.read().replace("Last.", "Last, mine."));
+			expect(await h.pull()).toBe(2);
+			h.said();
+			expect(opens(h.read())).toBe(1);
+			const resolved = h
+				.read()
+				.replace(
+					/<<<<<<< local\n[\s\S]*?>>>>>>> Paca[^\n]*\n/,
+					"First, mine and Ann's.\n",
+				);
+			h.write(resolved);
+			// Pushed straight away: the state already records Ann's version.
+			expect(await h.push(), h.said()).toBe(0);
+			expect(h.render()).toBe(resolved);
+		} finally {
+			h.cleanup();
+		}
+	});
+
+	it("a conflicting merge stopped after its base copy, then the conflict resolved to Paca's side: the restart finishes it", async () => {
+		const h = await setup();
+		try {
+			h.write(h.read().replace("First.", "First, mine."));
+			h.server.edit(ID, (b) => {
+				b[1].content[0].text = "First, by Ann.";
+			});
+			await killed(h.pull, h.mirror, 4);
+			// No snapshot to fall back on, as on a server that pruned it.
+			(h.server.client as any).listSnapshots = undefined;
+			(h.server.client as any).getSnapshot = undefined;
+			const theirs = h
+				.read()
+				.replace(
+					/<<<<<<< local\n[\s\S]*?=======\n([\s\S]*?)>>>>>>> Paca[^\n]*\n/,
+					"$1",
+				);
+			h.write(theirs.replace("Last.", "Last, mine."));
+			expect(await h.pull(), h.said()).toBe(0);
+			expect(h.state().docs[ID].merge_pending).toBeUndefined();
+			expect(await h.push()).toBe(0);
+			expect(h.render()).toContain("First, by Ann.");
+			expect(h.render()).toContain("Last, mine.");
+		} finally {
+			h.cleanup();
+		}
 	});
 
 	it("a later error after a merge keeps the merge: the next pull finishes it without merging again", async () => {

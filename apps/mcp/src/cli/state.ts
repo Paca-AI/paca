@@ -146,17 +146,25 @@ export interface PullDocState {
 	 *  nothing about what the file holds; at most two (the one on disk and
 	 *  the one being written), see `settlePending`. */
 	pending_sha256?: string[];
-	/** The file was edited from a version other than `content_hash` (an
-	 *  interrupted pull had written into it), or no copy of the version it
-	 *  was pulled at is left: pull keeps it rather than merging until
-	 *  `pull --force` replaces it or a push records it. */
+	/** The version the file was edited from is not known: an interrupted
+	 *  pull had written into it, or no copy of the version it was pulled at
+	 *  is left. Pull keeps it, with Paca's version next to it, and push
+	 *  refuses it, until the user deletes the file and pulls or runs
+	 *  `pull --force`. Paca going back to `content_hash` does not clear it. */
 	unmerged?: true;
 	/** A merge in progress (its journal): Paca's version is written to
 	 *  `.paca-base/<id>.next.md` and this is recorded before the merged
 	 *  file is written; the next pull finishes or drops it (see pull's
 	 *  `settleMerges`). `merged_sha` is the sha256 of the text the file is
 	 *  about to get. */
-	merge_pending?: { remote_hash: string | null; merged_sha: string };
+	merge_pending?: {
+		remote_hash: string | null;
+		merged_sha: string;
+		/** sha256 of the file before the merge. */
+		local_sha?: string | null;
+		/** sha256 of Paca's version (what `.next.md` holds). */
+		remote_sha?: string;
+	};
 	/** Paca's version, written next to the file when the two could not be
 	 *  merged (the version the file was pulled at is gone), and its sha256.
 	 *  Removed, unless it was edited, once the entry no longer needs it. */

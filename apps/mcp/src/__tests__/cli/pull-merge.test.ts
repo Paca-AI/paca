@@ -313,7 +313,7 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		fs.rmSync(basePath());
 		expect(await pull(), output()).toBe(2);
 		expect(output()).toContain(
-			"kept Plan.md: edited locally, and the version it was pulled at is gone, so it cannot be merged; compare it with Paca's version in Plan.remote.md and save your edits elsewhere: pull --force replaces Plan.md with Paca's version, discarding your edits in it",
+			"kept Plan.md: edited locally, and the version it was pulled at is gone, so the version it was edited from is not known and it is not merged; compare it with Paca's version in Plan.remote.md and save your edits elsewhere, then delete Plan.md and pull, or run pull --force (either replaces Plan.md with Paca's version)",
 		);
 		expect(read()).toBe(mine);
 		expect(read("Plan.remote.md")).toBe(render());
@@ -321,9 +321,12 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		lines = [];
 		expect(await pull(), output()).toBe(2);
 		expect(read()).toBe(mine);
-		// Push asks Paca, which has changed, so it refuses.
+		// Push refuses it, naming the ways out.
 		lines = [];
-		expect(await push(), output()).toBe(2);
+		expect(await push(), output()).toBe(1);
+		expect(output()).toContain(
+			"Paca's version is in .paca/docs/Plan.remote.md",
+		);
 		// --force puts Paca's version in place and removes the copy.
 		lines = [];
 		expect(await pull({ force: true }), output()).toBe(0);
@@ -333,7 +336,7 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		expect(fs.existsSync(file("Plan.remote.md"))).toBe(false);
 	});
 
-	it("Paca's version written next to a file is left in place once edited, and removed when the document goes back", async () => {
+	it("a file whose base is gone stays kept when Paca goes back; Paca's version next to it follows Paca, and an edited copy is left alone", async () => {
 		server.options.real = true;
 		const mine = read().replace("Third paragraph.", "Third paragraph, mine.");
 		write(mine);
@@ -342,27 +345,29 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		server.edit(ID, annEdits("First paragraph, by Ann again."));
 		fs.rmSync(basePath());
 		expect(await pull(), output()).toBe(2);
-		// Ann restores the version pulled: nothing to merge any more.
+		// Ann restores the version pulled: the file is still kept, since
+		// what it was edited from cannot be checked.
 		server.edit(ID, (b) => {
 			b.splice(0, b.length, ...JSON.parse(JSON.stringify(pulled)));
 		});
-		lines = [];
-		expect(await pull(), output()).toBe(0);
-		expect(output()).toBe("1 modified locally\nmodified locally Plan.md");
-		expect(fs.existsSync(file("Plan.remote.md"))).toBe(false);
-		expect(state().docs[ID].unmerged).toBeUndefined();
-		// The same again, with the copy edited: it is the user's now.
-		server.edit(ID, annEdits("First paragraph, by Ann."));
-		server.edit(ID, annEdits("First paragraph, by Ann again."));
 		lines = [];
 		expect(await pull(), output()).toBe(2);
-		fs.appendFileSync(file("Plan.remote.md"), "my note\n");
-		server.edit(ID, (b) => {
-			b.splice(0, b.length, ...JSON.parse(JSON.stringify(pulled)));
-		});
+		expect(output()).toContain("kept Plan.md");
+		expect(state().docs[ID].unmerged).toBe(true);
+		expect(read("Plan.remote.md")).toBe(render());
 		lines = [];
-		expect(await pull(), output()).toBe(0);
+		expect(await push(), output()).toBe(1);
+		// An edited copy is the user's: not overwritten, not removed.
+		fs.appendFileSync(file("Plan.remote.md"), "my note\n");
+		server.edit(ID, annEdits("First paragraph, by Ann."));
+		lines = [];
+		expect(await pull(), output()).toBe(2);
 		expect(read("Plan.remote.md")).toContain("my note");
+		lines = [];
+		expect(await pull({ force: true }), output()).toBe(0);
+		expect(read()).toBe(render());
+		expect(read("Plan.remote.md")).toContain("my note");
+		expect(state().docs[ID].unmerged).toBeUndefined();
 	});
 
 	it("a kept file whose document goes back to the version pulled pushes again", async () => {
@@ -547,7 +552,7 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		expect(output()).not.toContain("merged");
 	});
 
-	it("a file an interrupted pull wrote into is not merged, and nothing is written", async () => {
+	it("a file an interrupted pull wrote into is not merged; only Paca's version is written, next to it", async () => {
 		const mine = read().replace("Third paragraph.", "Third paragraph, mine.");
 		write(mine);
 		server.edit(ID, annEdits("First paragraph, by Ann."));
@@ -561,11 +566,11 @@ describe("pull merges a file edited here with changes made in Paca", () => {
 		const base = fs.readFileSync(basePath(), "utf8");
 		expect(await pull(), output()).toBe(2);
 		expect(output()).toContain(
-			"kept Plan.md: edited locally, but an interrupted pull had written into it, so it is not merged; save your edits elsewhere: pull --force replaces Plan.md with Paca's version, discarding your edits in it",
+			"kept Plan.md: edited locally, but an interrupted pull had written into it, so the version it was edited from is not known and it is not merged; compare it with Paca's version in Plan.remote.md and save your edits elsewhere, then delete Plan.md and pull, or run pull --force (either replaces Plan.md with Paca's version)",
 		);
 		expect(read()).toBe(mine);
 		expect(fs.readFileSync(basePath(), "utf8")).toBe(base);
-		expect(fs.existsSync(file("Plan.remote.md"))).toBe(false);
+		expect(read("Plan.remote.md")).toBe(render());
 		// Still not merged on the next pull.
 		lines = [];
 		expect(await pull(), output()).toBe(2);

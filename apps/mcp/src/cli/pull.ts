@@ -233,6 +233,9 @@ async function pullLocked(
 			!p ||
 			p.orphan ||
 			p.reserved ||
+			// The version its file was edited from is not known: Paca's
+			// version is written next to it on every pull.
+			p.unmerged ||
 			// The file holds an earlier interrupted pull's write: write it
 			// again so the state records what it holds.
 			p.pending_sha256 ||
@@ -470,6 +473,11 @@ async function pullLocked(
 					now !== p.file_sha256 &&
 					!p.pending_sha256?.includes(now) &&
 					now !== (md === undefined ? null : sha256(md));
+				// Edited after an interrupted pull wrote into it: the version
+				// it was edited from is not known, which the pending hash said
+				// (dropped above): kept in the interim state too.
+				if (editedHere && hadPending.has(id) && !p.reserved && !opts.force)
+					docs[id].unmerged = true;
 				if (md !== undefined && !p.reserved && (opts.force || !editedHere)) {
 					const h = sha256(md);
 					docs[id].pending_sha256 = [
@@ -587,17 +595,6 @@ async function pullLocked(
 					keep(`kept ${file}: edited locally; use --force to overwrite`);
 					continue;
 				}
-				// Paca holds the version pulled (a server whose feed missed
-				// the change back): the edit waits for push.
-				if (m.remote_hash === p.content_hash) {
-					next[id] = { ...p, ...base };
-					delete next[id].orphan;
-					delete next[id].pending_sha256;
-					settled(next[id]);
-					modified++;
-					lines.push(`modified locally ${file}`);
-					continue;
-				}
 				// Conflict markers from an earlier merge: merging again would
 				// nest them.
 				const marked = await markerLine(root, id, abs);
@@ -617,16 +614,10 @@ async function pullLocked(
 				// Merged only from a base the file is known to have been
 				// edited from: a merge from any other drops a change made in
 				// Paca or invents a conflict.
-				if (!p.content_hash || p.unmerged || hadPending.has(id)) {
-					keep(
-						`kept ${file}: edited locally, but an interrupted pull had written into it, so it is not merged; save your edits elsewhere: ${discard}`,
-						true,
-					);
-					continue;
-				}
-				// Edited here and changed in Paca: merge the two.
-				const baseText = await baseFor(root, client, opts.projectId, id, p);
-				if (baseText === null) {
+				/** Keeps the file with the version it was edited from unknown:
+				 *  Paca's version goes next to it, and only the user settles
+				 *  it. */
+				const keepUnknown = async (why: string) => {
 					// Never the file of another document.
 					const stem = file.replace(/\.md$/i, "");
 					const docFiles = new Set([...layout.values()].map(nameKey));
@@ -634,13 +625,49 @@ async function pullLocked(
 					if (docFiles.has(nameKey(remoteFile)))
 						remoteFile = `${stem}.remote~${id.slice(0, 8)}.md`;
 					const remoteAbs = await safePath(root, remoteFile, { mkdir: true });
-					if (!(await exists(remoteAbs))) created.push(remoteAbs);
-					await writeFileAtomic(remoteAbs, markdown);
+					const was = await fileSha256(remoteAbs);
+					// A copy the user edited is theirs: left alone.
+					const theirs =
+						was !== null &&
+						was !== mdSha &&
+						!(
+							p.remote_copy?.file === remoteFile && p.remote_copy.sha256 === was
+						);
+					if (was === null) created.push(remoteAbs);
+					if (!theirs && was !== mdSha)
+						await writeFileAtomic(remoteAbs, markdown);
 					keep(
-						`kept ${file}: edited locally, and the version it was pulled at is gone, so it cannot be merged; compare it with Paca's version in ${remoteFile} and save your edits elsewhere: ${discard}`,
+						`kept ${file}: edited locally, ${why}, so the version it was edited from is not known and it is not merged; compare it with Paca's version in ${remoteFile} and save your edits elsewhere, then delete ${file} and pull, or run pull --force (either replaces ${file} with Paca's version)`,
 						true,
 					);
-					next[id].remote_copy = { file: remoteFile, sha256: mdSha };
+					if (theirs) {
+						if (p.remote_copy) next[id].remote_copy = p.remote_copy;
+						else delete next[id].remote_copy;
+					} else next[id].remote_copy = { file: remoteFile, sha256: mdSha };
+				};
+				if (!p.content_hash || p.unmerged || hadPending.has(id)) {
+					await keepUnknown(
+						p.unmerged && p.remote_copy && !hadPending.has(id)
+							? "and an earlier pull could not tell what it was edited from"
+							: "but an interrupted pull had written into it",
+					);
+					continue;
+				}
+				// Paca holds the version pulled (a server whose feed missed
+				// the change back): the edit waits for push.
+				if (m.remote_hash === p.content_hash) {
+					next[id] = { ...p, ...base };
+					delete next[id].orphan;
+					delete next[id].pending_sha256;
+					settled(next[id]);
+					modified++;
+					lines.push(`modified locally ${file}`);
+					continue;
+				}
+				// Edited here and changed in Paca: merge the two.
+				const baseText = await baseFor(root, client, opts.projectId, id, p);
+				if (baseText === null) {
+					await keepUnknown("and the version it was pulled at is gone");
 					continue;
 				}
 				const who = [d.updated_by, d.updated_at].filter(Boolean).join(", ");
@@ -673,6 +700,8 @@ async function pullLocked(
 				const pending = {
 					remote_hash: m.remote_hash,
 					merged_sha: sha256(res.text),
+					local_sha: current,
+					remote_sha: mdSha,
 				};
 				const journal: PullState = interim ?? {
 					...(prev as PullState),
@@ -781,11 +810,14 @@ async function pullLocked(
 	return kept || conflicted ? EXIT.conflict : EXIT.ok;
 }
 
-/** Drops what an entry says about a newer version waiting to be merged. */
+/** Drops what an entry says about a newer version waiting to be merged
+ *  (Paca holds the version recorded again). Not `unmerged`: the version
+ *  the file was edited from is not known, so Paca going back to the
+ *  recorded version says nothing about the file; only the user settles it
+ *  (deleting the file and pulling, or pull --force). */
 function settled(d: PullDocState): void {
 	delete d.remote_hash;
-	delete d.unmerged;
-	delete d.remote_copy;
+	if (!d.unmerged) delete d.remote_copy;
 }
 
 /** The first line of the file at `abs` that is a conflict marker pull's
@@ -948,12 +980,24 @@ const NEXT_SUFFIX = ".next.md";
 
 /**
  * Finishes or drops merges an interrupted pull journalled
- * (`merge_pending`). The merged file was written when it has the sha256
- * recorded or holds pull's conflict marker lines: then `.next.md` becomes
- * the base copy (unless it already is: `.next.md` gone and the base copy
- * no longer the one recorded) and the entry is Paca's version, edited here.
- * Otherwise the file is as it was: `.next.md` is dropped and the merge runs
- * again. Then any `.next.md` left over is removed.
+ * (`merge_pending`), deciding by what is on disk, in this order:
+ *
+ * 1. `.next.md` gone and the base copy is Paca's version recorded
+ *    (`remote_sha`): the merged file and the base copy were written;
+ *    the entry is finished for `remote_hash`, whatever the file holds now
+ *    (an edit made since is a local edit on the new base).
+ * 2. `.next.md` there and the file has the sha it had before the merge
+ *    (`local_sha`): nothing was written; the merge runs again. This comes
+ *    before any marker test, so marker-like lines of the user's own are
+ *    never taken for a written merge.
+ * 3. `.next.md` there and the file has the merged sha, or holds pull's
+ *    conflict marker lines (not in Paca's version): written; `.next.md`
+ *    becomes the base copy and the entry is finished.
+ * 4. Otherwise (edited between the stop and now, from which text cannot
+ *    be told): `.next.md` is dropped and the merge runs again, which is
+ *    visible and loses nothing.
+ *
+ * Then any `.next.md` left over is removed.
  */
 async function settleMerges(
 	root: string,
@@ -967,34 +1011,37 @@ async function settleMerges(
 		const basePath = path.join(baseDir, `${id}.md`);
 		const nextText = await readText(nextPath).catch(() => null);
 		const baseText = await readText(basePath).catch(() => null);
-		const remote =
-			nextText ??
-			(baseText !== null && sha256(baseText) !== p.file_sha256
-				? baseText
-				: null);
-		const fileText = await readText(path.resolve(root, p.file)).catch(
-			() => null,
-		);
-		const marked =
+		const filePath = path.resolve(root, p.file);
+		const fileText = await readText(filePath).catch(() => null);
+		const fileSha = await fileSha256(filePath).catch(() => null);
+		let remote: string | null = null;
+		if (nextText === null) {
+			if (
+				baseText !== null &&
+				(mp.remote_sha !== undefined
+					? sha256(baseText) === mp.remote_sha
+					: sha256(baseText) !== p.file_sha256)
+			)
+				remote = baseText;
+		} else if (fileSha !== null && fileSha === mp.local_sha) {
+			remote = null;
+		} else if (
 			fileText !== null &&
-			remote !== null &&
-			pullMarkerLine(fileText, remote) > 0;
-		const written =
-			remote !== null &&
-			fileText !== null &&
-			(sha256(fileText) === mp.merged_sha || marked);
+			(fileSha === mp.merged_sha || pullMarkerLine(fileText, nextText) > 0)
+		) {
+			await moveFile(nextPath, basePath);
+			remote = nextText;
+		}
 		const d: PullDocState = { ...p };
 		delete d.merge_pending;
-		if (written) {
-			if (nextText !== null) await moveFile(nextPath, basePath);
+		if (remote !== null) {
 			d.content_hash = mp.remote_hash;
-			d.file_sha256 = sha256(remote as string);
+			d.file_sha256 = sha256(remote);
 			delete d.pending_sha256;
 			settled(d);
-			if (marked) d.conflict = true;
+			if (fileText !== null && pullMarkerLine(fileText, remote) > 0)
+				d.conflict = true;
 			else delete d.conflict;
-		} else {
-			await fs.rm(nextPath, { force: true });
 		}
 		docs[id] = d;
 	}

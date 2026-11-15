@@ -270,15 +270,31 @@ describe("push of a mirror file", () => {
 	});
 
 	it("whether the document changed in Paca is asked of Paca, never taken from what a pull saw", async () => {
-		// Flags an earlier pull left: Paca is back at the version pulled.
+		// A flag an earlier pull left: Paca is back at the version pulled.
 		setState((s) => {
 			s.docs[ID].remote_hash = "newer";
-			s.docs[ID].unmerged = true;
 		});
 		fs.writeFileSync(file(), read().replace("Last paragraph.", "Last one."));
 		expect(await push(".paca/docs/Plan.md"), output()).toBe(0);
 		expect(state().docs[ID].remote_hash).toBeUndefined();
-		expect(state().docs[ID].unmerged).toBeUndefined();
+		// The version a file was edited from not known: refused, with the
+		// ways out, whatever Paca holds.
+		setState((s) => {
+			s.docs[ID].unmerged = true;
+			s.docs[ID].remote_copy = { file: "Plan.remote.md", sha256: "x" };
+		});
+		fs.writeFileSync(file(), read().replace("Last one.", "Last one!"));
+		lines = [];
+		const sent = server.client.patchDocument.mock.calls.length;
+		expect(await push(".paca/docs/Plan.md")).toBe(1);
+		expect(output()).toBe(
+			".paca/docs/Plan.md: the version it was edited from is not known (an interrupted pull wrote into it, or the version it was pulled at is gone), so it cannot be pushed; Paca's version is in .paca/docs/Plan.remote.md to compare with. Save your edits elsewhere, then delete .paca/docs/Plan.md and pull, or run pull --force; either replaces it with Paca's version",
+		);
+		expect(server.client.patchDocument.mock.calls.length).toBe(sent);
+		setState((s) => {
+			delete s.docs[ID].unmerged;
+			delete s.docs[ID].remote_copy;
+		});
 		// Paca changed: refused, naming the writer.
 		server.edit(ID, (b) => {
 			b[1].content[0].text = "First, by Ann.";
