@@ -308,6 +308,34 @@ describe("push of a mirror file", () => {
 		);
 	});
 
+	it("an edited file whose base copy is gone or is not the version recorded is refused as base unknown, and nothing is sent", async () => {
+		const basePath = path.join(mirror, ".paca-base", `${ID}.md`);
+		fs.writeFileSync(file(), read().replace("Last paragraph.", "Last one."));
+		const sent = server.client.patchDocument.mock.calls.length;
+		for (const spoil of [
+			() => fs.writeFileSync(basePath, "not what pull wrote\n"),
+			() => fs.rmSync(basePath),
+		]) {
+			spoil();
+			lines = [];
+			expect(await push(".paca/docs/Plan.md")).toBe(2);
+			expect(output()).toBe(
+				".paca/docs/Plan.md: the version it was edited from is not known (its base copy, .paca-base/" +
+					`${ID}.md, is gone or is not the version the last pull or push wrote), so it cannot be pushed. Save your edits elsewhere, then delete .paca/docs/Plan.md and pull, or run pull --force; either replaces it with Paca's version`,
+			);
+			expect(server.client.patchDocument.mock.calls.length).toBe(sent);
+		}
+		// A file that already says what Paca holds (here saved with CRLF) is
+		// recorded again, which writes the base copy back.
+		fs.writeFileSync(
+			file(),
+			blocknoteToMarkdown(stored()).replace(/\n/g, "\r\n"),
+		);
+		lines = [];
+		expect(await push(".paca/docs/Plan.md")).toBe(0);
+		expect(base()).toBe(blocknoteToMarkdown(stored()));
+	});
+
 	it("managed, orphan, reserved and unknown files are refused", async () => {
 		fs.writeFileSync(file(), read().replace("Last paragraph.", "Last one."));
 		const before = snapshot();

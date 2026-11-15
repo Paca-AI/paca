@@ -504,6 +504,11 @@ npx @paca-ai/paca-mcp push .paca/docs/Plans/Roadmap.md --note "move the launch t
   included); a file an interrupted pull left in the middle of a merge (run
   `pull` first); `--path`, `--lock` and `--force`. An unchanged file prints
   `unchanged`.
+- An edited file whose base copy (`.paca-base/<id>.md`) is gone or is not
+  what the last pull or push wrote is refused (exit 2): the version it was
+  edited from is not known. Save your edits elsewhere, then delete the file
+  and pull, or run `pull --force`. A file that already says what Paca holds
+  is recorded again, which writes the base copy back.
 - Whether the document changed in Paca is asked of Paca on every push, never
   taken from what an earlier pull saw.
 - `--dry-run` prints how many blocks would change and sends nothing. The

@@ -329,6 +329,16 @@ async function pushLocked(
 			io.out(`normalised ${label}`);
 		return EXIT.ok;
 	}
+	// The base copy is what the last pull or push wrote for the version
+	// recorded; one that is gone or changed says the state no longer knows
+	// what the file was edited from (see the invariant in pull.ts).
+	const baseNow = await fs.readFile(basePath, "utf8").catch(() => null);
+	if (baseNow === null || sha256(baseNow) !== entry.file_sha256) {
+		io.err(
+			`${label}: the version it was edited from is not known (its base copy, ${BASE_DIR}/${id}.md, is gone or is not the version the last pull or push wrote), so it cannot be pushed. Save your edits elsewhere, then delete ${label} and pull, or run pull --force; either replaces it with Paca's version`,
+		);
+		return EXIT.conflict;
+	}
 	if (moved)
 		return reportConflict(io, label, {
 			updated_by: doc.updated_by,
