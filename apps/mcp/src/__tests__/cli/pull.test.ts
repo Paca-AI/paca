@@ -912,6 +912,103 @@ describe("runPull", () => {
 		expect(await pull(srv)).toBe(0);
 	});
 
+	describe("sibling folders with one name key", () => {
+		const FA = "aaaaaaaa-folder";
+		const FB = "bbbbbbbb-folder";
+
+		it("get two directories and keep both documents", async () => {
+			const srv = fakeServer();
+			srv.docs.set(ID(1), {
+				id: ID(1),
+				title: "x",
+				folder_id: FA,
+				text: "one",
+			});
+			srv.docs.set(ID(2), {
+				id: ID(2),
+				title: "x",
+				folder_id: FB,
+				text: "two",
+			});
+			srv.resetFeed([
+				{ id: FA, parent_id: null, name: "Design" },
+				{ id: FB, parent_id: null, name: "design" },
+			]);
+			expect(await pull(srv)).toBe(0);
+			expect(read("Design/x.md")).toContain("one");
+			expect(read("design~bbbbbbbb/x.md")).toContain("two");
+		});
+
+		it("an existing directory keeps its name when a lower id clashes later", async () => {
+			const srv = fakeServer();
+			srv.docs.set(ID(2), {
+				id: ID(2),
+				title: "x",
+				folder_id: FB,
+				text: "two",
+			});
+			srv.resetFeed([{ id: FB, parent_id: null, name: "design" }]);
+			await pull(srv);
+			srv.docs.set(ID(1), {
+				id: ID(1),
+				title: "x",
+				folder_id: FA,
+				text: "one",
+			});
+			srv.client.batchGet.mockClear();
+			srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)], {
+				folders: [
+					{ id: FA, parent_id: null, name: "Design" },
+					{ id: FB, parent_id: null, name: "design" },
+				],
+			});
+			lines = [];
+			expect(await pull(srv)).toBe(0);
+			expect(lines.join("\n")).not.toContain("moved");
+			expect(read("design/x.md")).toContain("two");
+			expect(read("Design~aaaaaaaa/x.md")).toContain("one");
+			expect(srv.client.batchGet.mock.calls.flat(2)).not.toContain(ID(2));
+		});
+
+		it("a suffixed directory keeps its suffix after the clash ends, and a renamed folder moves without downloads", async () => {
+			const srv = fakeServer();
+			srv.docs.set(ID(1), {
+				id: ID(1),
+				title: "x",
+				folder_id: FA,
+				text: "one",
+			});
+			srv.docs.set(ID(2), {
+				id: ID(2),
+				title: "x",
+				folder_id: FB,
+				text: "two",
+			});
+			srv.resetFeed([
+				{ id: FA, parent_id: null, name: "Design" },
+				{ id: FB, parent_id: null, name: "design" },
+			]);
+			await pull(srv);
+			srv.client.batchGet.mockClear();
+			srv.feed([], {
+				folders: [
+					{ id: FA, parent_id: null, name: "Renamed" },
+					{ id: FB, parent_id: null, name: "design" },
+				],
+			});
+			expect(await pull(srv)).toBe(0);
+			expect(read("Renamed/x.md")).toContain("one");
+			expect(read("design~bbbbbbbb/x.md")).toContain("two");
+			expect(exists("Design")).toBe(false);
+			expect(srv.client.batchGet).not.toHaveBeenCalled();
+			// Stable on the next pull too.
+			srv.feed([]);
+			lines = [];
+			expect(await pull(srv)).toBe(0);
+			expect(lines).toEqual(["up to date"]);
+		});
+	});
+
 	it("a failed write after a move leaves no duplicate on the next pull", async () => {
 		const srv = fakeServer();
 		srv.docs.set(ID(1), {

@@ -167,6 +167,87 @@ describe("folder paths and Unicode", () => {
 	});
 });
 
+describe("folderDirs for sibling folders with one name key", () => {
+	const FA = "aaaaaaaa-0000-4000-8000-000000000001";
+	const FB = "bbbbbbbb-0000-4000-8000-000000000002";
+
+	it.each([
+		["case", "Design", "design"],
+		["Unicode normalization", "caf\u00e9", "cafe\u0301"],
+		["characters mapped to _", "a:b", "a?b"],
+	])("gives the higher id a suffix (%s)", (_why, a, b) => {
+		const dirs = folderDirs(
+			{
+				[FB]: { parent_id: null, name: b },
+				[FA]: { parent_id: null, name: a },
+			},
+			new Set(),
+		);
+		expect(dirs[FA]).toBe(sanitizeSegment(a));
+		expect(dirs[FB]).toBe(`${sanitizeSegment(b)}~bbbbbbbb`);
+	});
+
+	it("puts child folders and documents under the suffixed folder", () => {
+		const folders = {
+			[FA]: { parent_id: null, name: "Design" },
+			[FB]: { parent_id: null, name: "design" },
+			child: { parent_id: FB, name: "In" },
+		};
+		const dirs = folderDirs(folders, new Set());
+		expect(dirs.child).toBe("design~bbbbbbbb/In");
+		expect(
+			mirrorFileFor(
+				{ id: ID1, title: "t", folder_id: "child" },
+				folders,
+				new Set(),
+				dirs,
+			),
+		).toBe("design~bbbbbbbb/In/t.md");
+	});
+
+	it("a folder keeps its previous directory when it is still valid", () => {
+		const dirs = folderDirs(
+			{
+				[FA]: { parent_id: null, name: "Design" },
+				[FB]: { parent_id: null, name: "design" },
+			},
+			new Set(),
+			{ [FB]: "design", [FA]: "Design~aaaaaaaa" },
+		);
+		expect(dirs).toEqual({ [FB]: "design", [FA]: "Design~aaaaaaaa" });
+	});
+
+	it("a previous directory that no longer fits is not kept", () => {
+		const dirs = folderDirs(
+			{
+				[FA]: { parent_id: null, name: "Design" },
+				[FB]: { parent_id: null, name: "Renamed" },
+			},
+			new Set(),
+			// FB was renamed; FA had the suffix only because of the clash.
+			{ [FB]: "design", [FA]: "Design~aaaaaaaa" },
+		);
+		expect(dirs[FB]).toBe("Renamed");
+		expect(dirs[FA]).toBe("Design~aaaaaaaa");
+	});
+
+	it("never gives two folders one directory", () => {
+		const dirs = folderDirs(
+			{
+				[FA]: { parent_id: null, name: "x" },
+				[FB]: { parent_id: null, name: "X" },
+				c: { parent_id: null, name: "x~aaaaaaaa" },
+			},
+			new Set([nameKey("x~bbbbbbbb")]),
+			{ c: "x~aaaaaaaa" },
+		);
+		const keys = Object.values(dirs).map(nameKey);
+		expect(new Set(keys).size).toBe(keys.length);
+		expect(dirs.c).toBe("x~aaaaaaaa");
+		expect(dirs[FA]).toBe("x");
+	});
+});
+
 describe("isInside", () => {
 	it.each([
 		["/m", "/m/a.md", true],

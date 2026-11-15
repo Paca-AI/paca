@@ -50,32 +50,78 @@ export function nameKey(name: string): string {
 }
 
 /**
- * The mirror folder of every folder in `folders` ("A/B", "" when unknown).
- * A folder whose path is taken by a file (`files` holds name keys of files
- * in the mirror) gets `~<first 8 characters of its id>`, so docs never need
- * to be written under a file.
+ * The mirror folder of every folder in `folders` ("A/B"). No two folders
+ * get directories with the same name key, and none gets a directory whose
+ * path is taken by a file (`files` holds name keys of files in the mirror).
+ * Among folders that would clash, a folder keeps its directory from the
+ * last pull (`prev`) while that is still one of its names; the others are
+ * named by lowest id first, the first taking the plain name and the rest
+ * `~<first 8 characters of the id>` (then the whole id, then `~2`, ...),
+ * as `mirrorFileFor` names documents. A suffix is kept after the clash
+ * ends, so files do not move back and forth.
  */
 export function folderDirs(
 	folders: Record<string, MirrorFolder>,
 	files: Set<string>,
+	prev: Record<string, string> = {},
 ): Record<string, string> {
 	const out: Record<string, string> = {};
-	const visiting = new Set<string>();
-	const dirOf = (id: string): string => {
-		if (id in out) return out[id];
-		const f = folders[id];
-		if (!f || visiting.has(id)) return "";
-		visiting.add(id);
-		const parent = f.parent_id ? dirOf(f.parent_id) : "";
-		visiting.delete(id);
-		const join = (seg: string) => (parent ? `${parent}/${seg}` : seg);
-		let p = join(sanitizeSegment(f.name));
-		if (files.has(nameKey(p)))
-			p = join(`${sanitizeSegment(f.name)}~${sanitizeSegment(id).slice(0, 8)}`);
-		out[id] = p;
-		return p;
+	const used = new Set(files);
+	const ids = Object.keys(folders).sort();
+	const childrenOf = new Map<string, string[]>();
+	const top: string[] = [];
+	for (const id of ids) {
+		const parent = folders[id].parent_id;
+		if (parent && parent in folders) {
+			const list = childrenOf.get(parent) ?? [];
+			list.push(id);
+			childrenOf.set(parent, list);
+		} else top.push(id);
+	}
+
+	/** Names `group` (sibling folders under `parentDir`), then their
+	 *  children. */
+	const assign = (group: string[], parentDir: string) => {
+		const join = (seg: string) => (parentDir ? `${parentDir}/${seg}` : seg);
+		const candidates = (id: string) => {
+			const base = sanitizeSegment(folders[id].name);
+			const idPart = sanitizeSegment(id);
+			return [base, `${base}~${idPart.slice(0, 8)}`, `${base}~${idPart}`].map(
+				join,
+			);
+		};
+		const isName = (id: string, dir: string) => {
+			const c = candidates(id);
+			if (c.includes(dir)) return true;
+			const rest = dir.startsWith(`${c[2]}~`) ? dir.slice(c[2].length + 1) : "";
+			return /^[0-9]+$/.test(rest);
+		};
+		const todo = group.filter((id) => !(id in out));
+		for (const id of todo) {
+			const p = prev[id];
+			if (typeof p === "string" && isName(id, p) && !used.has(nameKey(p))) {
+				out[id] = p;
+				used.add(nameKey(p));
+			}
+		}
+		for (const id of todo) {
+			if (id in out) continue;
+			const c = candidates(id);
+			let dir = c.find((d) => !used.has(nameKey(d)));
+			for (let n = 2; !dir; n++)
+				if (!used.has(nameKey(`${c[2]}~${n}`))) dir = `${c[2]}~${n}`;
+			out[id] = dir;
+			used.add(nameKey(dir));
+		}
+		for (const id of todo) {
+			const kids = childrenOf.get(id);
+			if (kids) assign(kids, out[id]);
+		}
 	};
-	for (const id of Object.keys(folders)) dirOf(id);
+	assign(top, "");
+	// Folders in a parent cycle are not reached from the top: start each
+	// remaining cycle at the top level.
+	for (const id of ids) if (!(id in out)) assign([id], "");
 	return out;
 }
 

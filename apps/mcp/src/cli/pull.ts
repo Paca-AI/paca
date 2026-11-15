@@ -279,7 +279,10 @@ async function pullLocked(
 		root,
 		owned,
 	);
-	const dirs = folderDirs(folders, foreignFiles);
+	const prevDirs: Record<string, string> = {};
+	for (const [id, d] of Object.entries(prev?.dirs ?? {}))
+		if (typeof d === "string") prevDirs[id] = d;
+	const dirs = folderDirs(folders, foreignFiles, prevDirs);
 	const taken = new Set([...foreignFiles, ...foreignDirs]);
 	for (const d of Object.values(dirs)) if (d) taken.add(nameKey(d));
 	const layout = new Map<string, string>();
@@ -358,7 +361,7 @@ async function pullLocked(
 			const docs: Record<string, PullDocState> = { ...prev.docs };
 			for (const id of goneIds) if (!next[id]?.orphan) delete docs[id];
 			for (const m of moves) docs[m.id] = { ...docs[m.id], file: m.to };
-			await writeJSON(statePath, { ...prev, docs });
+			await writeJSON(statePath, { ...prev, dirs, docs });
 			stateChanged = true;
 		}
 		for (const m of moves) {
@@ -446,6 +449,7 @@ async function pullLocked(
 		project: opts.projectId,
 		cursor: feed.cursor,
 		folders,
+		dirs,
 		docs: next,
 	};
 	const newText = `${JSON.stringify(state, null, 2)}\n`;

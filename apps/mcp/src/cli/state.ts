@@ -122,6 +122,9 @@ export interface PullState {
 	project: string;
 	cursor: string;
 	folders: Record<string, { parent_id: string | null; name: string }>;
+	/** The mirror directory of each folder, so a folder keeps its name when
+	 *  another one with the same name key appears. */
+	dirs?: Record<string, string>;
 	docs: Record<string, PullDocState>;
 }
 
