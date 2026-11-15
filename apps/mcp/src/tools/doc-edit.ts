@@ -88,6 +88,33 @@ function unitsOf(blocks: Block[], renders: string[], full: string): Unit[] {
 	return units;
 }
 
+// A list marker at the start of a block's own render ("1. ", "* ", "- [ ] "):
+// in a list the number differs ("2. "), so a block is found by its text.
+const LIST_MARKER = /^\s*(?:[*+-]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/;
+
+/**
+ * Where each block starts in `full` (the offset of its first line), or -1
+ * when that is not found. Inside a unit the blocks are found in order, each
+ * after the one before it, by the first line of its own render without its
+ * list marker: a numbered item renders "1. beta" alone but "2. beta" in
+ * its list.
+ */
+function blockStarts(renders: string[], units: Unit[], full: string): number[] {
+	const out = renders.map(() => -1);
+	for (const u of units) {
+		let cursor = u.start;
+		for (let k = u.from; k < u.to; k++) {
+			const first = renders[k].split("\n")[0].replace(LIST_MARKER, "");
+			if (first === "") continue;
+			const found = full.indexOf(first, cursor);
+			if (found === -1 || found >= u.end) continue;
+			out[k] = full.lastIndexOf("\n", found - 1) + 1;
+			cursor = found + first.length;
+		}
+	}
+	return out;
+}
+
 function occurrences(text: string, needle: string): number[] {
 	const out: number[] = [];
 	for (
@@ -582,6 +609,7 @@ export function spliceEdit(
 	}
 
 	const units = unitsOf(blocks, renders, full);
+	const starts = blockStarts(renders, units, full);
 
 	// Each match touches a run of units; overlapping runs merge.
 	const ranges: Array<{ ua: number; ub: number; matches: number[] }> = [];
@@ -624,6 +652,7 @@ export function spliceEdit(
 		);
 		// The line where block `idx` starts in the full Markdown.
 		const lineOf = (idx: number) => {
+			if (starts[idx] >= 0) return lineAt(full, starts[idx]);
 			const unit = units.find((u) => u.from <= idx && idx < u.to) ?? units[ua];
 			const first = renders[idx].split("\n")[0];
 			const at = first ? full.indexOf(first, unit.start) : -1;

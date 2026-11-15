@@ -731,6 +731,47 @@ describe("spliceEdit with empty blocks next to lists", () => {
 	});
 });
 
+// Bot review on Paca-AI/paca#770: a refusal named the wrong line for a
+// numbered item, whose own render ("1. beta") is not what the list shows.
+describe("spliceEdit refusal lines inside lists", () => {
+	function refusedLines(blocks: any[], oldString: string, newString: string) {
+		try {
+			spliceEdit(blocks, oldString, newString, false);
+		} catch (err) {
+			expect((err as SpliceError).kind).toBe("unsafe");
+			return (err as SpliceError).lines;
+		}
+		return expect.unreachable("the edit should be refused");
+	}
+
+	it.each([
+		["numberedListItem", [3, 5]],
+		["bulletListItem", [3, 5]],
+		["checkListItem", [3, 4]],
+	])("names each %s's own line", (type, want) => {
+		const blocks = [
+			para("intro"),
+			item(type, "alpha", { textColor: "red" }),
+			item(type, "beta", { textColor: "blue" }),
+			para("z"),
+		];
+		const md = blocknoteToMarkdown(blocks);
+		const span = md.slice(md.indexOf("alpha"), md.indexOf("beta") + 4);
+		expect(refusedLines(blocks, span, "alpha beta")).toEqual(want);
+	});
+
+	it("names the line of an item after a multi-line item", () => {
+		const blocks = [
+			item("numberedListItem", "one\ntwo"),
+			item("numberedListItem", "x", { textColor: "red" }),
+			para("z"),
+		];
+		// "1. one\\\n   two\n\n2. x": the red item starts on line 4.
+		expect(blocknoteToMarkdown(blocks).split("\n")[3]).toMatch(/x$/);
+		expect(refusedLines(blocks, "x", "y\n\nnew paragraph")).toEqual([4]);
+	});
+});
+
 describe("spliceEdit fuzz", () => {
 	it("keeps every untouched block in place and never loses what Markdown cannot carry", () => {
 		let seed = 1;
