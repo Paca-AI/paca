@@ -434,9 +434,12 @@ to a document, its file is removed on the next pull.
 - If a pull fails part way, files it moved are put back where they were
   (an unedited one may already hold the newer server copy) and files it
   created are removed; a file left mid-move by an interrupted pull is put back
-  by the next one. The new file names are recorded before any content is
-  written, so a pull stopped after its moves (Ctrl-C, out of memory) leaves
-  the state matching the files, and the next pull finishes the job.
+  by the next one. Before any file is moved into place or written, the state
+  records every document's new file name (and reserves the names of new
+  files), so a pull stopped part way (Ctrl-C, out of memory) leaves a state
+  that matches the files, and the next pull finishes the job without
+  duplicates. A file written at a reserved name is overwritten by the next
+  pull, even if you edited it in between.
 - One pull at a time per mirror: a pull holds `<dir>/.paca-pull.lock`, and a
   second one exits 1. A lock left by a process that is no longer running is
   taken over.
@@ -447,8 +450,12 @@ to a document, its file is removed on the next pull.
   run `pull --force`, which removes it.
 - State: `<dir>/.paca-sync.json` (cursor, folders and their directories, and
   per document its file, content hash and file hash) and
-  `<dir>/.paca-base/<id>.md` (what the server had at the last pull). The
-  cursor and content hashes are recorded only after every file was written.
+  `<dir>/.paca-base/<id>.md` (what the server had at the last pull). During a
+  pull the state file is written up to twice: once with the new file names
+  (keeping the old cursor and content hashes), and once at the end with the
+  new cursor and content hashes, after every file and base copy was written.
+  The state never records content a file does not hold; base copies are
+  written as each document is.
 - Removing a mirrored file does not revoke copies already made of it: anything
   that read the mirror before keeps what it read.
 
