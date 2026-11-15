@@ -98,8 +98,16 @@ function reportConflict(
  * Pushes `file` (absolute), a file in the mirror folder `mirror.root`, to
  * the document pull wrote it from. Holds the mirror's lock throughout, so a
  * pull of the same mirror never runs in between. Refusals write nothing
- * and send nothing. Returns the exit code: 0 written or unchanged, 1
- * refused or error, 2 the document changed in Paca.
+ * and send nothing. Returns the exit code:
+ *   0  written, or unchanged
+ *   1  refused or error: not a pulled document, a managed copy, an empty
+ *      file, conflict markers, an edit that cannot be applied, a missing or
+ *      damaged state file, a failed request
+ *   2  nothing was sent because a pull, or the user, has to settle the file
+ *      first: the document changed or was deleted in Paca; an interrupted
+ *      pull left the file unfinished (`reserved`, `merge_pending`,
+ *      `pending_sha256`); the version it was edited from is not known
+ *      (`unmerged`, or the base copy is gone or is not what was recorded)
  */
 export async function pushMirrorFile(
 	opts: PushOptions,
