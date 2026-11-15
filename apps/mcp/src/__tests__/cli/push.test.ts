@@ -624,6 +624,22 @@ describe("runPush", () => {
 			expect(baseFiles()).toEqual(basesBefore);
 		});
 
+		it("is taken over after a move that changes only case", async () => {
+			// On a case-insensitive file system (macOS, Windows) the old name
+			// still opens the moved file; on a case-sensitive one it is gone.
+			// Either way this push takes over the entry.
+			fs.renameSync(path.join(root, "docs/api"), path.join(root, "docs/tmp"));
+			fs.renameSync(path.join(root, "docs/tmp"), path.join(root, "docs/API"));
+			client.putByPath.mockResolvedValue(written({ etag: '"e2-0000"' }));
+			expect(await push("docs/API/plan.md")).toBe(0);
+			expect(putOpts()).toEqual({ ifMatch: '"e1-0000"' });
+			expect(lines.join("\n")).toContain(
+				"docs/API/plan.md takes over Plans/plan from docs/api/plan.md",
+			);
+			expect(state()["docs/api/plan.md"]).toBeUndefined();
+			expect(state()["docs/API/plan.md"]).toMatchObject({ etag: '"e2-0000"' });
+		});
+
 		it("is allowed with another --path", async () => {
 			expect(await push("docs/ui/plan.md", { path: "Plans/ui-plan" })).toBe(0);
 			expect(body()).toMatchObject({ path: "Plans/ui-plan" });

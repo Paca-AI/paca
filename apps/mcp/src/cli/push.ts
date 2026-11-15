@@ -123,10 +123,14 @@ export async function runPush(
 			e.doc_path === docPath,
 	);
 	// A recorded file that is gone was moved (git mv): this file takes over
-	// its entry, so If-Match still catches a change made in Paca.
+	// its entry, so If-Match still catches a change made in Paca. So does a
+	// recorded name that is this same file (a move that changed only case,
+	// on a case-insensitive file system).
 	let takeover: string | undefined;
 	if (owner) {
-		if (await exists(path.join(src.root, owner[0]))) {
+		const other = path.join(src.root, owner[0]);
+		const gone = !(await exists(other));
+		if (!gone && !(await sameFile(other, abs))) {
 			io.err(
 				`${docPath} is already pushed from ${owner[0]}; pass --path "Folder/Title" to push ${rel} to another document`,
 			);
@@ -134,7 +138,9 @@ export async function runPush(
 		}
 		takeover = owner[0];
 		io.out(
-			`${rel} takes over ${docPath} from ${takeover}, which no longer exists`,
+			gone
+				? `${rel} takes over ${docPath} from ${takeover}, which no longer exists`
+				: `${rel} takes over ${docPath} from ${takeover}, the same file under its old name`,
 		);
 	}
 	const prior = takeover ? state[takeover] : entry;
@@ -328,6 +334,15 @@ async function exists(file: string): Promise<boolean> {
 	try {
 		await fs.lstat(file);
 		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Whether two paths name one file (their real paths are equal). */
+async function sameFile(a: string, b: string): Promise<boolean> {
+	try {
+		return (await fs.realpath(a)) === (await fs.realpath(b));
 	} catch {
 		return false;
 	}
