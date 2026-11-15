@@ -578,7 +578,10 @@ func (r *DocumentRepository) SearchDocumentsQuery(ctx context.Context, projectID
 // searchDocumentsQuery builds SearchDocuments' statement and arguments. none
 // is true when the caller's scope can see no document at all.
 func (r *DocumentRepository) searchDocumentsQuery(ctx context.Context, projectID uuid.UUID, query string, limit int) (string, []any, bool, error) {
-	pattern := "%" + escapeLikePattern(strings.TrimSpace(query)) + "%"
+	// content_text holds one block per line, so the pattern must be one line
+	// too: normalized here, next to the SQL that depends on it, and not only
+	// by the service.
+	pattern := "%" + escapeLikePattern(docdom.SearchQuery(query)) + "%"
 	sink := &argList{args: []any{projectID.String(), pattern}}
 	clause, none, err := scopeSQL(ctx, "doc", docScopeColumns, sink)
 	if err != nil || none {

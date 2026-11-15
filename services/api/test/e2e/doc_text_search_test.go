@@ -301,6 +301,15 @@ func TestSearch_UsesTrigramIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The repository normalizes the query itself: a line break can never
+	// match content_text, which holds one block per line.
+	_, brArgs, err := pgRepo.NewDocumentRepository(env.db).SearchDocumentsQuery(env.ctx, uuid.MustParse(projID), " the\r\nworker\n", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(brArgs) < 2 || brArgs[1] != "%the worker%" {
+		t.Fatalf("pattern for a query with line breaks = %v, want %%the worker%%", brArgs)
+	}
 	explain := func(forced bool) string {
 		t.Helper()
 		tx, err := env.db.BeginTxx(env.ctx, nil)

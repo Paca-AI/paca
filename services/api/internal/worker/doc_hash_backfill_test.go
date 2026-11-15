@@ -101,7 +101,7 @@ func TestDocHashBackfill_FillsAndStops(t *testing.T) {
 	}
 }
 
-// The same run fills content_text (migration 000090) after the hashes, in
+// The same run fills content_text (migration 000091) after the hashes, in
 // batches of the same size, and counts those rows too.
 func TestDocHashBackfill_FillsContentTextToo(t *testing.T) {
 	store := newFakeHashStore(250)
