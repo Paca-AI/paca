@@ -927,8 +927,6 @@ describe("spliceEdit nested children, moves and Markdown props (fourth review)",
 	});
 });
 
-// The final audit, tested directly on the wrong results the reviews found
-// (as if the alignment had produced them), so it holds on its own.
 describe("spliceEdit edits whose Markdown reads differently in the whole document", () => {
 	it.each([
 		[
@@ -952,6 +950,8 @@ describe("spliceEdit edits whose Markdown reads differently in the whole documen
 	});
 });
 
+// The final audit, tested directly on the wrong results the reviews found
+// (as if the alignment had produced them), so it holds on its own.
 describe("auditEdit", () => {
 	const B = "bulletListItem";
 	const withId = (b: any, id: string) => ({ ...b, id });
@@ -1168,6 +1168,67 @@ describe("spliceEdit fuzz", () => {
 		}
 		expect(applied).toBeGreaterThan(200);
 		expect(refused).toBeGreaterThan(10);
+	});
+});
+
+describe("auditEdit: which block an id is (fifth review)", () => {
+	const B = "bulletListItem";
+	const fresh = (b: any) => ({ ...b, id: `fresh-${++seq}` });
+
+	it("refuses equal-render blocks that swap places on indent (P1)", () => {
+		const a = item(B, "dup", { textColor: "red" });
+		const b = item(B, "dup");
+		expect(auditEdit([a, b], [{ ...b, children: [a] }])?.why).toMatch(
+			/swap places/,
+		);
+		expect(auditEdit([a, b], [{ ...a, children: [b] }])).toBeNull();
+	});
+
+	it("refuses equal-render blocks whose types swap places (P5)", () => {
+		const a = { ...item(B, "dup"), type: "toggleListItem" };
+		const b = item(B, "dup");
+		expect(auditEdit([a, b], [{ ...b, children: [a] }])).not.toBeNull();
+		expect(auditEdit([a, b], [{ ...a, children: [b] }])).toBeNull();
+	});
+
+	it("refuses an id kept on new text while its own text goes to a new block (P3)", () => {
+		const w = para("Warning: x", { textColor: "red" });
+		const bad = [
+			{ ...para("Note: y", { textColor: "red" }), id: w.id },
+			fresh(para("Warning: x2", { textColor: "red" })),
+		];
+		expect(auditEdit([w], bad)?.why).toMatch(/text that does not continue/);
+		const good = [
+			fresh(para("Note: y")),
+			{ ...para("Warning: x2", { textColor: "red" }), id: w.id },
+		];
+		expect(auditEdit([w], good)).toBeNull();
+	});
+
+	it("refuses ids swapped onto each other's edited text (swap and edit)", () => {
+		const a = para("alpha one", { textColor: "red" });
+		const b = para("beta two");
+		const bad = [
+			{ ...para("beta two.", { textColor: "red" }), id: a.id },
+			{ ...para("alpha one."), id: b.id },
+		];
+		expect(auditEdit([a, b], bad)?.why).toMatch(/came from another block/);
+		const good = [
+			{ ...para("beta two."), id: b.id },
+			{ ...para("alpha one.", { textColor: "red" }), id: a.id },
+		];
+		expect(auditEdit([a, b], good)).toBeNull();
+	});
+
+	it("allows an ordinary in-place edit of many similar blocks", () => {
+		const olds = Array.from({ length: 30 }, (_, i) =>
+			item(B, `item ${i} word`),
+		);
+		const news = olds.map((o) => ({
+			...o,
+			content: [t(o.content[0].text.replace("word", "term"))],
+		}));
+		expect(auditEdit(olds, news)).toBeNull();
 	});
 });
 

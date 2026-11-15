@@ -46,6 +46,13 @@ interface Unit {
 	end: number;
 }
 
+/** Renders of blocks by object, for one edit: the exporter is slow, and a
+ *  block is never changed once read or parsed. spliceEdit starts afresh. */
+let keys = {
+	own: new WeakMap<Block, string>(),
+	text: new WeakMap<Block, string>(),
+};
+
 function render(blocks: Block[]): string {
 	return blocknoteToMarkdown(blocks);
 }
@@ -814,7 +821,54 @@ function describeUncarried(u: ReturnType<typeof uncarried>): string {
 }
 
 /** A block's own Markdown, without its nested blocks. */
-const ownKey = (b: Block) => render([{ ...b, children: [] }]);
+function ownKey(b: Block): string {
+	let k = keys.own.get(b);
+	if (k === undefined) {
+		k = render([{ ...b, children: [] }]);
+		keys.own.set(b, k);
+	}
+	return k;
+}
+
+/** A block's own text: its text runs (and link text) joined, or its own
+ *  Markdown for a block without runs (a table). */
+function ownText(b: Block): string {
+	let k = keys.text.get(b);
+	if (k === undefined) {
+		if (Array.isArray(b.content)) {
+			const parts: string[] = [];
+			const walk = (nodes: Block[]) => {
+				for (const n of nodes) {
+					if (typeof n?.text === "string") parts.push(n.text);
+					else if (Array.isArray(n?.content)) walk(n.content);
+				}
+			};
+			walk(b.content);
+			k = parts.join("");
+		} else k = ownKey(b);
+		keys.text.set(b, k);
+	}
+	return k;
+}
+
+/**
+ * How much text `a` and `b` share: their common prefix plus their common
+ * suffix (not overlapping it). Cheap, and enough to tell which new block
+ * continues an old one: "Warning: x" shares 10 with "Warning: x2" and none
+ * with "Note: y".
+ */
+function shared(a: string, b: string): number {
+	const max = Math.min(a.length, b.length);
+	let p = 0;
+	while (p < max && a.charCodeAt(p) === b.charCodeAt(p)) p++;
+	let q = 0;
+	while (
+		q < max - p &&
+		a.charCodeAt(a.length - 1 - q) === b.charCodeAt(b.length - 1 - q)
+	)
+		q++;
+	return p + q;
+}
 
 /**
  * Checks the blocks an edit produced (`newBlocks`) against the ones it
@@ -830,7 +884,14 @@ const ownKey = (b: Block) => render([{ ...b, children: [] }]);
  *    c. when neither, the result has no new block (one with an id not
  *       read): it was deleted, not rewritten;
  * 3. a result block with an old block's id but other Markdown does not
- *    hold the Markdown of a different old block whose id is not on it.
+ *    hold the Markdown of a different old block whose id is not on it;
+ * 4. a result block with an old block's id but other text continues that
+ *    text (see shared) at least as well as any new block does, and at
+ *    least as well as it continues the text of any other old block not
+ *    returned as read;
+ * 5. old blocks with the same own Markdown keep their order: none moves
+ *    past another (an indent nests the second under the first, not the
+ *    other way round).
  */
 export function auditEdit(
 	oldBlocks: Block[],
@@ -905,6 +966,51 @@ export function auditEdit(
 			};
 		}
 	}
+
+	// 4. An id stays with the text it was on.
+	const fresh = news.filter(
+		(n) => typeof n.id !== "string" || !oldById.has(n.id),
+	);
+	const others = olds.filter((p) => !returned.has(p));
+	for (const n of news) {
+		const o = typeof n.id === "string" ? oldById.get(n.id) : undefined;
+		if (!o || o === n) continue;
+		const text = ownText(n);
+		const was = ownText(o);
+		if (text === was) continue;
+		const mine = shared(text, was);
+		if (fresh.some((f) => shared(ownText(f), was) > mine)) {
+			return {
+				block: o,
+				why: "its id would stay on text that does not continue it, while a new block does",
+			};
+		}
+		if (others.some((p) => p !== o && shared(text, ownText(p)) > mine)) {
+			return {
+				block: o,
+				why: "its id would end up on text that came from another block",
+			};
+		}
+	}
+
+	// 5. Blocks that read the same keep their order.
+	const at = new Map<unknown, number>();
+	news.forEach((n, k) => {
+		if (typeof n.id === "string") at.set(n.id, k);
+	});
+	const last = new Map<string, number>();
+	for (const o of olds) {
+		const key = ownKey(o);
+		const k = at.get(o.id);
+		if (key === "" || k === undefined) continue;
+		if (k < (last.get(key) ?? -1)) {
+			return {
+				block: o,
+				why: "it and another block that reads the same in Markdown would swap places",
+			};
+		}
+		last.set(key, k);
+	}
 	return null;
 }
 
@@ -925,6 +1031,7 @@ export function spliceEdit(
 	newString: string,
 	replaceAll: boolean,
 ): { blocks: Block[]; replaced: number; lines: number[] } {
+	keys = { own: new WeakMap(), text: new WeakMap() };
 	if (oldString === "") {
 		throw new SpliceError("old_string must not be empty.", "empty");
 	}
