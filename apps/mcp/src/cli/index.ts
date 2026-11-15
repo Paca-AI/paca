@@ -13,6 +13,9 @@ export const USAGE = `Usage:
       [--note "..."] [--task PACA-88] [--lock] [--force] [--dry-run]
       Write a repository file to the document at --path (default
       Plans/<file name>, or Specifications/<name> under a specs folder).
+      A file in a pull mirror is pushed back to the document it was
+      pulled from, as an edit of only the blocks it changes (--path,
+      --lock and --force do not apply; on a conflict, pull, then push).
 
 Environment: PACA_API_KEY (required), PACA_API_URL (default
 http://localhost:8080), PACA_PROJECT_ID (or --project), PACA_CLIENT (client

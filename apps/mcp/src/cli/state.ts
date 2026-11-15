@@ -142,6 +142,35 @@ export interface PullState {
 export const PULL_STATE_FILE = ".paca-sync.json";
 export const BASE_DIR = ".paca-base";
 
+/**
+ * The mirror folder `file` is in: the nearest folder above it with a pull
+ * state file, looked for up to the top of the git repository it is in (or
+ * of the file system). Returns the folder's real path and the file's path
+ * in it ("/" separated), or null.
+ */
+export async function findMirror(
+	file: string,
+): Promise<{ root: string; rel: string } | null> {
+	const real = await fs.realpath(file);
+	const has = async (p: string) => {
+		try {
+			await fs.lstat(p);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	for (let dir = path.dirname(real); ; dir = path.dirname(dir)) {
+		if (await has(path.join(dir, PULL_STATE_FILE)))
+			return {
+				root: dir,
+				rel: path.relative(dir, real).split(path.sep).join("/"),
+			};
+		if ((await has(path.join(dir, ".git"))) || path.dirname(dir) === dir)
+			return null;
+	}
+}
+
 // ==================== push state ====================
 
 export interface PushFileState {

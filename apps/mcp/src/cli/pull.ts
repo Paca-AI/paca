@@ -825,9 +825,9 @@ function isRunning(pid: number): boolean {
  * Takes the mirror's lock file (created exclusively), holding this
  * process's id, start time and a token. A lock whose process is gone is
  * taken over and reported. Returns the token, or null when another pull
- * holds the lock (reported).
+ * holds the lock (reported). A mirror push takes it too.
  */
-async function takeLock(
+export async function takeLock(
 	root: string,
 	label: string,
 	io: CliIO,
@@ -891,7 +891,7 @@ async function takeLock(
 }
 
 /** Removes the lock file if it is still the one this pull took. */
-async function releaseLock(root: string, token: string): Promise<void> {
+export async function releaseLock(root: string, token: string): Promise<void> {
 	const file = path.join(root, LOCK_FILE);
 	try {
 		const held = JSON.parse(await fs.readFile(file, "utf8"));
