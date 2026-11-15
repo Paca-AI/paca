@@ -802,6 +802,35 @@ describe("push of a mirror file", () => {
 		}
 	});
 
+	it("one edited paragraph is one block changed, in --dry-run and in the push, when the blocks have no ids", async () => {
+		const BARE = docId(2);
+		server.add(
+			BARE,
+			"Bare",
+			storedBlocks("# Bare\n\nOne.\n\nTwo.\n\nThree.\n\nFour.").map((b) => {
+				const { id: _id, ...rest } = b;
+				return rest;
+			}),
+		);
+		expect(await pull()).toBe(0);
+		fs.writeFileSync(
+			file("Bare.md"),
+			read("Bare.md").replace("Three.", "Three, edited."),
+		);
+		lines = [];
+		expect(await push(".paca/docs/Bare.md", { dryRun: true }), output()).toBe(
+			0,
+		);
+		expect(output()).toBe(
+			".paca/docs/Bare.md: 1 block would change in Bare (nothing sent)",
+		);
+		lines = [];
+		expect(await push(".paca/docs/Bare.md"), output()).toBe(0);
+		expect(output()).toBe(
+			"updated Bare from .paca/docs/Bare.md (1 block changed)",
+		);
+	});
+
 	it("repository files next to a mirror still push as repository files", async () => {
 		const git = (...args: string[]) =>
 			execFileSync("git", args, {

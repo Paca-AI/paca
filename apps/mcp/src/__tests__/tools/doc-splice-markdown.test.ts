@@ -198,6 +198,30 @@ describe("spliceMarkdown", () => {
 		expect(pulled(res.blocks)).toBe(md);
 	});
 
+	it("counts blocks as a person would, with or without ids", () => {
+		const md = "one\n\ntwo\n\nthree\n\nfour\n\nfive";
+		const noIds = () =>
+			stored(md).map((b) => {
+				const { id: _id, ...rest } = b;
+				return rest;
+			});
+		for (const blocks of [stored(md), noIds()]) {
+			const count = (file: string) => spliceMarkdown(blocks, file).changed;
+			// One edited paragraph.
+			expect(count("one\n\ntwo, edited\n\nthree\n\nfour\n\nfive\n")).toBe(1);
+			// Two edited, apart.
+			expect(
+				count("one, edited\n\ntwo\n\nthree\n\nfour, edited\n\nfive\n"),
+			).toBe(2);
+			// One added, one removed elsewhere.
+			expect(count("one\n\nnew\n\ntwo\n\nthree\n\nfive\n")).toBe(2);
+			// One split in two, two joined into one.
+			expect(count("one\n\ntw\n\no\n\nthree\n\nfour\n\nfive\n")).toBe(2);
+			// One moved.
+			expect(count("three\n\none\n\ntwo\n\nfour\n\nfive\n")).toBe(1);
+		}
+	});
+
 	it("edits in three separate places change three blocks, all others identical", () => {
 		const blocks = stored(TEN);
 		const json = blocks.map((b) => JSON.stringify(b));

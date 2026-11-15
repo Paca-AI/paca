@@ -2007,10 +2007,79 @@ function canonical(
 	};
 }
 
-/** The length of the longest strictly rising subsequence of `xs`. */
-function longestRising(xs: number[]): number {
+/**
+ * How many blocks an edit changes, as a person counts them. Blocks
+ * returned as read stand in place (as many as can, in their old order) or
+ * moved (one each). Between two blocks that stand in place, new blocks and
+ * removed ones pair up as edits, and the rest are additions or removals
+ * (the larger of the two counts); an addition that reads exactly like a
+ * removal elsewhere (but for ids) is that block moved, and counts once.
+ * Ids decide nothing, so a document whose blocks have none counts the same.
+ */
+export function countChanged(blocks: Block[], out: Block[]): number {
+	const before = new Map(blocks.map((x, k) => [x, k]));
+	const after = new Set(out);
+	const keptAt = out.flatMap((x) => {
+		const k = before.get(x);
+		return k === undefined ? [] : [k];
+	});
+	const stay = new Set(longestRising(keptAt));
+	let changed = keptAt.length - stay.size;
+	/** Per gap between blocks that stay: what was added and removed. */
+	const gaps: Array<{ added: Block[]; removed: Block[] }> = [];
+	let i = 0;
+	let j = 0;
+	while (i <= blocks.length || j <= out.length) {
+		const gap = { added: [] as Block[], removed: [] as Block[] };
+		while (i < blocks.length && !stay.has(i)) {
+			if (!after.has(blocks[i])) gap.removed.push(blocks[i]);
+			i++;
+		}
+		while (j < out.length) {
+			const k = before.get(out[j]);
+			if (k !== undefined && stay.has(k)) break;
+			if (k === undefined) gap.added.push(out[j]);
+			j++;
+		}
+		changed += Math.max(gap.added.length, gap.removed.length);
+		gaps.push(gap);
+		i++;
+		j++;
+	}
+	// Additions left over in one gap that read like removals left over in
+	// another: moves, one each instead of two.
+	const unIded = (b: Block): string =>
+		JSON.stringify({
+			...b,
+			id: undefined,
+			children: (b.children ?? []).map((c: Block) => JSON.parse(unIded(c))),
+		});
+	const free = gaps.map((g) => ({
+		cap: g.removed.length - g.added.length,
+		keys: g.removed.map(unIded),
+	}));
+	for (const g of gaps) {
+		let left = g.added.length - g.removed.length;
+		for (const b of g.added) {
+			if (left <= 0) break;
+			const k = unIded(b);
+			const hit = free.find((f) => f.cap > 0 && f.keys.includes(k));
+			if (!hit) continue;
+			hit.keys.splice(hit.keys.indexOf(k), 1);
+			hit.cap--;
+			changed--;
+			left--;
+		}
+	}
+	return changed;
+}
+
+/** The values of a longest strictly rising subsequence of `xs`. */
+function longestRising(xs: number[]): number[] {
 	const tails: number[] = [];
-	for (const x of xs) {
+	const at: number[] = [];
+	const prev: number[] = [];
+	xs.forEach((x, n) => {
 		let lo = 0;
 		let hi = tails.length;
 		while (lo < hi) {
@@ -2019,8 +2088,13 @@ function longestRising(xs: number[]): number {
 			else hi = mid;
 		}
 		tails[lo] = x;
-	}
-	return tails.length;
+		at[lo] = n;
+		prev[n] = lo > 0 ? at[lo - 1] : -1;
+	});
+	const seq: number[] = [];
+	for (let n = tails.length ? at[tails.length - 1] : -1; n >= 0; n = prev[n])
+		seq.push(xs[n]);
+	return seq.reverse();
 }
 
 /** The refusal for what auditEdit found in a whole document's result,
@@ -2293,22 +2367,7 @@ export function spliceMarkdown(
 		);
 	}
 
-	// New or rewritten blocks, removed ones (neither returned nor standing,
-	// by id, behind a rewritten one), and moved ones: blocks returned as
-	// read but out of their old order (as few as explain the new order).
-	const before = new Map(blocks.map((x, k) => [x, k]));
-	const after = new Set(out);
-	const ids = new Set(out.map((x) => x.id).filter((x) => x !== undefined));
-	const keptAt = out.flatMap((x) => {
-		const k = before.get(x);
-		return k === undefined ? [] : [k];
-	});
-	const changed =
-		out.length -
-		keptAt.length +
-		blocks.filter((x) => !after.has(x) && !ids.has(x.id)).length +
-		keptAt.length -
-		longestRising(keptAt);
+	const changed = countChanged(blocks, out);
 	return {
 		blocks: out,
 		changed,
