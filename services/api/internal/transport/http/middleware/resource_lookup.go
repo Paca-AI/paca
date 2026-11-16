@@ -178,7 +178,10 @@ func TaskByNumberResource(lookup TaskNumberLookup, projectParam, numberParam str
 // TaskByKeyResource names the task in the URL by its global key (e.g. "PRJ-1"):
 // "project/<P>/task/<T>". A key that is invalid or names no task resolves to
 // a resource no policy names ("task-key/<raw>"), so the caller is refused
-// unless they hold wildcard access.
+// unless they hold wildcard access. The endpoint's contract is therefore
+// "403 for any key you cannot resolve": a mistyped key and a key to a task you
+// may not read are indistinguishable (no existence oracle), and the handler's
+// 400/404 answers are reachable only by wildcard-grant holders.
 func TaskByKeyResource(lookup TaskNumberLookup, keyParam string) ResourceResolver {
 	return func(r *http.Request) (string, error) {
 		raw := chi.URLParam(r, keyParam)
