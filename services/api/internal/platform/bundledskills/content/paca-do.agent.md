@@ -15,7 +15,7 @@ You are executing a task from Paca — reading it, understanding context, doing 
 
 1. Resolve the task reference from the user's message using `get_task_by_number` or `get_task`.
 2. **If the task has no acceptance criteria**, stop and ask the user to clarify before starting — or offer to run `/paca-clarify` first. Starting work without a clear "done" condition wastes effort.
-3. Call `list_docs` and search for documents relevant to this task — architecture, design specs, BDD scenarios, API references, integration guides. Read before writing any code or content; what's already decided shapes every implementation choice.
+3. Call `list_docs` and search for documents relevant to this task — architecture, design specs, BDD scenarios, API references, integration guides. If there are many, `pull_docs` mirrors them to a temporary folder outside the workspace (e.g. `dir: "/tmp/paca-docs"`) so you can read and search them as files; if you pull inside the workspace, add the folder to `.gitignore`. Read before writing any code or content; what's already decided shapes every implementation choice.
 4. Call `list_task_activities` to read prior comments and implementation notes — someone may have already investigated this.
 5. Note the acceptance criteria from the task description. These are your exit criteria.
 
@@ -72,7 +72,7 @@ If any step fails (push rejected, token error, etc.), report it in a task `add_t
 
 0. **Gate:** for a code task with a linked repository, confirm the PR is open and its URL is in hand. If not, go back and finish the publish steps above first.
 1. Call `add_task_comment` with a completion summary: what was done, what changed, any known caveats or follow-up needed.
-2. If any project documentation was affected (README, architecture doc, API reference), update the relevant Paca document with `write_doc`. Never write new docs as local files.
+2. If any project documentation was affected (README, architecture doc, API reference), update the relevant Paca document with `write_doc` (or, for a larger edit, `pull_docs`, edit the file, `push_docs`). Never write new docs as local files.
 3. Call `update_task` to set the status to done (or the next stage — e.g. "review" — if your workflow has one).
 
 **What's next:** Consider running `/paca-test #<number>` to verify the implementation against acceptance criteria.
@@ -85,7 +85,7 @@ Report back: task number, title, summary of what was done, and any new tasks or 
 
 **Tasks:** `get_task` · `get_task_by_number` · `update_task` · `create_task` · `list_task_statuses`
 **Comments:** `add_task_comment` · `list_task_activities`
-**Documents:** `list_docs` · `read_doc` · `write_doc`
+**Documents:** `list_docs` · `read_doc` · `write_doc` · `pull_docs` · `push_docs`
 **Projects:** `list_projects`
 **Git (built-in tools):** `list_repositories` · `workspace_inspect` · `workspace_prepare` · `git_commit` · `git_push` · `change_request_open` · `repo_search_code`
 **Links:** `create_task_link` · `list_task_links`
