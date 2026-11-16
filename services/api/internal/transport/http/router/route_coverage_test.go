@@ -16,6 +16,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/config"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -58,6 +59,7 @@ func coverageDeps(iamAuth *iam.Authorizer) Deps {
 		IAM:                 iamAuth,
 		AgentEnvironments:   noEnvironment{},
 		Conversations:       noConversations{},
+		TaskNumbers:         noTaskNumbers{},
 		SessionEnvironments: noEnvironment{},
 		Health:              handler.NewHealthHandler(),
 		Version:             handler.NewVersionHandler(config.ReleaseConfig{}, nil, log),
@@ -283,7 +285,7 @@ var iamResourceRoutes = mergeRoutes(roleRoutes, map[string]string{
 // act on tasks, not on the view, and stay project-gated.
 func entityRouteResource(pattern string) (string, bool) {
 	switch {
-	case strings.Contains(pattern, "/tasks/{taskId}"), strings.Contains(pattern, "/task-positions/{taskId}"), strings.Contains(pattern, "/tasks/by-number/"):
+	case strings.Contains(pattern, "/tasks/{taskId}"), strings.Contains(pattern, "/task-positions/{taskId}"), strings.Contains(pattern, "/tasks/by-number/"), strings.Contains(pattern, "/tasks/by-key/"):
 		return resTask, true
 	case strings.Contains(pattern, "/projects/{projectId}/agents/{agentId}"):
 		return resAgent, true
@@ -401,6 +403,17 @@ type noConversations struct{}
 
 func (noConversations) FindConversationByID(context.Context, uuid.UUID) (*agentdom.AgentConversation, error) {
 	return nil, agentdom.ErrConversationNotFound
+}
+
+// noTaskNumbers resolves every task number or key as missing.
+type noTaskNumbers struct{}
+
+func (noTaskNumbers) FindTaskByNumber(context.Context, uuid.UUID, int64) (*taskdom.Task, error) {
+	return nil, taskdom.ErrTaskNotFound
+}
+
+func (noTaskNumbers) FindTaskByKey(context.Context, string, int64) (*taskdom.Task, error) {
+	return nil, taskdom.ErrTaskNotFound
 }
 
 func (noEnvironment) DefaultEnvironmentID(context.Context, uuid.UUID, uuid.UUID) (*uuid.UUID, error) {
@@ -771,7 +784,7 @@ func TestEntityRoutesHonourPerEntityPolicy(t *testing.T) {
 			res, ok := entityRouteResource(rt.pattern)
 			// (by-number is covered in the middleware tests: its number
 			// resolves to an id through a lookup.)
-			if !ok || !strings.Contains(res, "/"+c.kind+"/") || strings.Contains(rt.pattern, "by-number") {
+			if !ok || !strings.Contains(res, "/"+c.kind+"/") || strings.Contains(rt.pattern, "by-number") || strings.Contains(rt.pattern, "by-key") {
 				continue
 			}
 			for id, want := range map[string]int{blocked: http.StatusForbidden, other: http.StatusNoContent} {

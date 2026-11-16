@@ -217,6 +217,20 @@ func (f *fakeTaskSvc) GetTaskByNumber(_ context.Context, projectID uuid.UUID, ta
 	return nil, taskdom.ErrTaskNotFound
 }
 
+func (f *fakeTaskSvc) GetTaskByKey(_ context.Context, prefix string, taskNumber int64) (*taskdom.Task, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if strings.EqualFold(prefix, "PRJ") {
+		for _, t := range f.tasks {
+			if t.TaskNumber == taskNumber {
+				cp := *t
+				return &cp, nil
+			}
+		}
+	}
+	return nil, taskdom.ErrTaskNotFound
+}
+
 func (f *fakeTaskSvc) CreateTask(_ context.Context, in taskdom.CreateTaskInput) (*taskdom.Task, error) {
 	if in.Title == "" {
 		return nil, taskdom.ErrTaskTitleInvalid
@@ -519,6 +533,7 @@ func buildTaskHandlerRouter(svc *fakeTaskSvc) chi.Router {
 func buildTaskHandlerRouterWithActivity(svc *fakeTaskSvc, actSvc *fakeActivitySvc) chi.Router {
 	h := handler.NewTaskHandler(svc, &fakeViewSvcTask{}, actSvc)
 	r := chi.NewRouter()
+	r.Get("/tasks/by-key/{taskKey}", h.GetTaskByKey)
 	r.Route("/projects/{projectId}", func(r chi.Router) {
 		r.Get("/task-types", h.ListTaskTypes)
 		r.Post("/task-types", h.CreateTaskType)
@@ -1540,6 +1555,60 @@ func TestTaskHandler_GetTaskByNumber_InvalidNumberReturns400(t *testing.T) {
 	)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid task number, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_GetTaskByKey_Returns200(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	created, err := svc.CreateTask(context.Background(), taskdom.CreateTaskInput{
+		ProjectID: projectID,
+		Title:     "Key Lookup Task",
+	})
+	if err != nil {
+		t.Fatalf("setup CreateTask: %v", err)
+	}
+
+	w := doTaskRequest(r, http.MethodGet, fmt.Sprintf("/tasks/by-key/prj-%d", created.TaskNumber), nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var env struct {
+		Data struct {
+			ID         string `json:"id"`
+			ProjectID  string `json:"project_id"`
+			TaskNumber int64  `json:"task_number"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if env.Data.ID != created.ID.String() || env.Data.ProjectID != projectID.String() {
+		t.Fatalf("got task (%s, %s), want (%s, %s)", env.Data.ID, env.Data.ProjectID, created.ID, projectID)
+	}
+}
+
+func TestTaskHandler_GetTaskByKey_NotFoundReturns404(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+
+	w := doTaskRequest(r, http.MethodGet, "/tasks/by-key/PRJ-9999", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_GetTaskByKey_InvalidKeyReturns400(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+
+	for _, bad := range []string{"invalid", "PRJ-0", "PRJ-abc", "TOOLONGPREFIX123-1"} {
+		w := doTaskRequest(r, http.MethodGet, "/tasks/by-key/"+bad, nil)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("key %q: expected 400, got %d: %s", bad, w.Code, w.Body.String())
+		}
 	}
 }
 

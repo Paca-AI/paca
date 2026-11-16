@@ -28,7 +28,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatDate } from "@/lib/format-date";
 import type { Task } from "@/lib/interaction-api";
-import { deleteTask } from "@/lib/interaction-api";
+import { deleteTask, taskShareUrl } from "@/lib/interaction-api";
 import { cn } from "@/lib/utils";
 import { shortId } from "./helpers";
 
@@ -82,9 +82,9 @@ export function TaskHeader({
 	});
 
 	const handleShare = () => {
-		// Always share the canonical task detail page URL, not modal URLs with query params
+		// Always share the short task URL (or canonical page URL), not modal URLs with query params
 		const taskUrl = projectId
-			? `${window.location.origin}/projects/${projectId}/tasks/${task.id}`
+			? taskShareUrl(task, taskIdPrefix, projectId)
 			: window.location.href;
 		void copyToClipboard(taskUrl).then((ok) => {
 			if (!ok) return;

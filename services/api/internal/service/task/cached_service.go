@@ -270,6 +270,11 @@ func (c *CachedService) GetTaskByNumber(ctx context.Context, projectID uuid.UUID
 	return c.svc.GetTaskByNumber(ctx, projectID, taskNumber)
 }
 
+// GetTaskByKey delegates directly to the underlying service (not cached).
+func (c *CachedService) GetTaskByKey(ctx context.Context, prefix string, taskNumber int64) (*taskdom.Task, error) {
+	return c.svc.GetTaskByKey(ctx, prefix, taskNumber)
+}
+
 // CreateTask delegates directly to the underlying service (not cached).
 func (c *CachedService) CreateTask(ctx context.Context, in taskdom.CreateTaskInput) (*taskdom.Task, error) {
 	return c.svc.CreateTask(ctx, in)
