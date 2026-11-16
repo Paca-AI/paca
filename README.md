@@ -160,9 +160,8 @@ Plan  →  Act  →  Check  →  Adapt
 
 - **Real-time collaborative document editing** — several people (and agents) can edit the same document at once and see each other's changes live.
 - **Gantt view** — the Roadmap view is now a full Gantt chart with task links and zoom.
-- **Edit documents as files over MCP** — let Claude Code or any editor work on your project docs as local Markdown files, then push the edits back to Paca with conflict detection. See [docs/guides/mcp-server-setup.md](docs/guides/mcp-server-setup.md).
+- **Edit documents as files over MCP** — let Claude Code or any editor work on your project docs as local Markdown files, then push the edits back to Paca with conflict detection. See [`pull` and `push`](apps/mcp/README.md#command-line-pull-and-push).
 - **Analyst role and `/paca-analyst`** — talk a request or bug through with an agent and get draft tasks in a new **Refinement** status for a human to approve.
-- **More automation nodes** — new subtask, comment, notify and link actions, plus Git-aware triggers, conditions and actions.
 - **Drag-and-drop docs** — move documents and folders around in the sidebar.
 - **SSO-only mode** — block password sign-in and restrict SSO access by IdP group or role.
 
