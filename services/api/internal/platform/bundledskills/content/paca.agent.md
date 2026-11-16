@@ -26,6 +26,8 @@ This is your default operating procedure for every conversation — it always ap
 | Set priorities across the backlog | `load_skill(name: "paca-prioritize")` |
 | Execute a task end-to-end | `load_skill(name: "paca-do")` |
 | Test or verify a task | `load_skill(name: "paca-test")` |
+| Read or search many docs at once ("pull the docs", "read all docs") | `pull_docs`, then read the files |
+| Edit a doc with a file editor, or make many edits to one doc | `pull_docs` → edit the file → `push_docs` |
 | Write or update documentation | `load_skill(name: "paca-doc")` |
 | Automate a process — auto-assignment, status chaining, reacting to events, handing work to an agent | `load_skill(name: "paca-automation")` |
 | Review the pull request linked to a task (spec + standards) | `load_skill(name: "paca-review")` |
@@ -84,6 +86,17 @@ If a reference is found, fetch that task first, then apply the action the user i
 | Break work into pieces | `create_task` × N, each referencing the parent |
 | Write or update documentation | `write_doc` (path decides create vs. update) |
 
+## Reading and editing docs as files
+
+`read_doc` loads one document into the conversation. To read, search or edit **several** documents, or to make many edits to one, mirror them to local Markdown files instead:
+
+1. `pull_docs(projectId, dir)` writes every document to `<dir>/<folder>/<title>.md` and returns what changed. **Pull into a temporary folder outside the workspace** (e.g. `dir: "/tmp/paca-docs"`), not the repository you are working in. Reuse the same `dir` on later pulls to refresh; edits you made to a file are merged with changes made in Paca. If you do pull inside the workspace (the default `.paca/docs`), add that folder to `.gitignore` first (check it is not already ignored) so the mirror is never committed or pushed to the Git repository.
+2. Read and search those files with your file tools, and edit them in place.
+3. `push_docs(projectId, file)` sends an edited file back to the document it came from, changing only the blocks you edited. Pass `dryRun: true` to preview.
+4. If a push reports a conflict, run `pull_docs` again, resolve any conflict markers in the file, then push again. Use `force` only when the user asks to discard their or Paca's changes.
+
+`push_docs` also writes any other Markdown file to a document (`path: "Folder/Title"`). The mirror folder is a working copy of Paca, not a place to keep documentation: always push your changes back, and never leave a doc only on disk.
+
 ## Step 3 — Get the project if needed
 
 If no project is in context, call `list_projects` and pick the most relevant one based on the message. Only ask the user if it is genuinely ambiguous between two equally plausible candidates.
@@ -127,7 +140,7 @@ Whenever you get stuck without enough information to proceed — regardless of h
 ## Tool reference
 
 **Tasks:** `create_task` · `list_tasks` · `get_task` · `get_task_by_number` · `update_task` · `delete_task`
-**Documents:** `list_docs` · `read_doc` · `write_doc` · `move_doc` · `delete_doc`
+**Documents:** `list_docs` · `read_doc` · `write_doc` · `pull_docs` · `push_docs` · `move_doc` · `delete_doc`
 **Sprints:** `create_sprint` · `list_sprints` · `get_sprint` · `update_sprint` · `complete_sprint`
 **Projects:** `list_projects` · `get_project` · `create_project` · `update_project`
 **Comments:** `add_task_comment` · `update_task_comment` · `list_task_activities` · `add_doc_comment` · `update_doc_comment` · `list_doc_activities`

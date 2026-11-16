@@ -409,6 +409,14 @@ npx @paca-ai/paca-mcp pull [--project <id>] [--dir .paca/docs] [--force]
 npx @paca-ai/paca-mcp push <file> [--path "Folder/Title"] [--project <id>] [--note "…"] [--task PACA-88] [--lock] [--force] [--dry-run]
 ```
 
+The server also has a `pull_docs` tool (`projectId`, optional `dir`, optional
+`force`) that runs the same `pull`, so an agent asked to "pull docs" needs no
+shell. It writes into `dir` (default `.paca/docs`) relative to the server's
+working directory and returns the command's output; prefer a temporary `dir` outside the repository, and git-ignore the folder if it is inside one; a conflict is reported but
+is not a tool error. A matching `push_docs` tool (`projectId`, `file`, optional
+`path`, `note`, `task`, `lock`, `force`, `dryRun`) runs `push`; a conflict tells
+the caller to run `pull_docs` and push again.
+
 ### `pull`: mirror documents to Markdown files
 
 `pull` writes every document you can read to `<dir>/<folder path>/<title>.md`.

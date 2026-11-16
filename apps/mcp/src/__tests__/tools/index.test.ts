@@ -290,6 +290,17 @@ describe("handleToolCall – document tool routing", () => {
 	});
 });
 
+describe("handleToolCall – pull_docs routing", () => {
+	it("lists pull_docs and routes it to the mirror tool, not the filesystem tools", async () => {
+		expect(getAllTools().map((t) => t.name)).toContain("pull_docs");
+		vi.mocked(handleFilesystemDocTool).mockClear();
+		await handleToolCall(makeRequest("pull_docs"), stubClients).catch(
+			() => undefined,
+		);
+		expect(handleFilesystemDocTool).not.toHaveBeenCalled();
+	});
+});
+
 describe("handleToolCall – search tool routing", () => {
 	it.each([
 		"search_docs",
