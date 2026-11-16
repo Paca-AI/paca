@@ -156,6 +156,17 @@ Plan  →  Act  →  Check  →  Adapt
 
 ---
 
+## What's New in v0.21.0
+
+- **Real-time collaborative document editing** — several people (and agents) can edit the same document at once and see each other's changes live.
+- **Gantt view** — the Roadmap view is now a full Gantt chart with task links and zoom.
+- **Edit documents as files over MCP** — let Claude Code or any editor work on your project docs as local Markdown files, then push the edits back to Paca with conflict detection. See [`pull` and `push`](apps/mcp/README.md#command-line-pull-and-push).
+- **Analyst role and `/paca-analyst`** — talk a request or bug through with an agent and get draft tasks in a new **Refinement** status for a human to approve.
+- **Drag-and-drop docs** — move documents and folders around in the sidebar.
+- **SSO-only mode** — block password sign-in and restrict SSO access by IdP group or role.
+
+---
+
 ## What's New in v0.20.0
 
 - **Git integration — agents that work on your pull requests** — connect a Git host and let AI agents work where your code lives. Mention an agent on a pull/merge request or issue, or hand it work, and it replies, pushes commits, reviews, and fixes CI, with every action attributed to a bot identity and bounded by least-privilege credentials. GitHub ships first, and the provider SPI lets a plugin add GitLab, Bitbucket, Gitea or Azure DevOps without touching the core.
