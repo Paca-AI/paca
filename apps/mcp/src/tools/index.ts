@@ -183,7 +183,7 @@ export async function handleToolCall(
 			);
 		}
 
-		// Document mirror tool (pull_docs)
+		// Document mirror tools (pull_docs, push_docs)
 		if (DOC_MIRROR_TOOL_NAMES.has(name)) {
 			return handleDocMirrorTool(name, args, clients.docClient);
 		}

@@ -1,3 +1,6 @@
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { PacaAPIDocClient } from "../api/index.js";
@@ -23,6 +26,66 @@ const PushDocsSchema = z.object({
 	dryRun: z.boolean().optional().default(false),
 });
 
+/** Result of a tool call. */
+interface ToolResult {
+	content: { type: "text"; text: string }[];
+	isError: boolean;
+}
+
+/** Folders the tools may read from and write to: the server's working
+ *  directory, the system temp folder, and any in PACA_MCP_FILE_ROOTS
+ *  (path-delimiter separated). Keeps a prompt-injected agent from pushing
+ *  e.g. ~/.ssh files into a document or mirroring into arbitrary folders. */
+function allowedRoots(): string[] {
+	const extra = (process.env.PACA_MCP_FILE_ROOTS ?? "")
+		.split(path.delimiter)
+		.filter(Boolean);
+	return [process.cwd(), os.tmpdir(), ...extra].map((r) => path.resolve(r));
+}
+
+/** realpath of the nearest existing ancestor, plus the not-yet-created rest. */
+async function realish(abs: string): Promise<string> {
+	const rest: string[] = [];
+	let cur = abs;
+	for (;;) {
+		try {
+			return path.join(await fs.realpath(cur), ...rest);
+		} catch {
+			const parent = path.dirname(cur);
+			if (parent === cur) return abs;
+			rest.unshift(path.basename(cur));
+			cur = parent;
+		}
+	}
+}
+
+/** Throws unless `target` (resolved against the cwd, symlinks followed) is
+ *  inside an allowed root. */
+export async function assertAllowedPath(
+	target: string,
+	what: string,
+): Promise<void> {
+	const real = await realish(path.resolve(target));
+	for (const root of allowedRoots()) {
+		const r = await realish(root);
+		const rel = path.relative(r, real);
+		if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) return;
+	}
+	throw new Error(
+		`${what} "${target}" is outside the folders the Paca MCP server may use (its working directory, the system temp folder, or PACA_MCP_FILE_ROOTS).`,
+	);
+}
+
+/** Keeps a mirror out of Git: a `.gitignore` of `*` inside the mirror folder. */
+async function ignoreMirror(dir: string): Promise<void> {
+	const file = path.join(path.resolve(dir), ".gitignore");
+	try {
+		await fs.writeFile(file, "*\n", { flag: "wx" });
+	} catch {
+		// exists already, or the folder is not writable: nothing to do
+	}
+}
+
 export const DOC_MIRROR_TOOL_NAMES = new Set(["pull_docs", "push_docs"]);
 
 export function getDocMirrorTools(): Tool[] {
@@ -34,8 +97,8 @@ export function getDocMirrorTools(): Tool[] {
 				"Use this when asked to 'pull docs' or to work on documents as local files; use read_doc / list_docs only to read a few documents into the conversation. " +
 				"Running it again moves only what changed in Paca, and a file edited locally is merged with the changes made in Paca " +
 				"(a conflict leaves conflict markers in the file and is reported). " +
-				"Files are written relative to the working directory of the Paca MCP server. " +
-				"Prefer a temporary folder outside the repository (e.g. dir '/tmp/paca-docs'); if the mirror is inside a Git workspace, add it to .gitignore so it is not committed. " +
+				"Files are written relative to the working directory of the Paca MCP server, and only inside that directory, the system temp folder or PACA_MCP_FILE_ROOTS. " +
+				"Prefer a temporary folder outside the repository (e.g. dir '/tmp/paca-docs'); the mirror folder gets its own .gitignore so it is never committed. " +
 				"To send an edited file back, use push_docs on the file.",
 			inputSchema: {
 				type: "object",
@@ -66,7 +129,8 @@ export function getDocMirrorTools(): Tool[] {
 				"A file written by pull_docs is pushed back to the document it came from, as an edit of only the blocks it changes " +
 				"(path, lock and force do not apply; on a conflict, run pull_docs, resolve, then push again). " +
 				"Any other file is written to the document at `path` (default Plans/<file name>, or Specifications/<name> under a specs folder) as a managed copy. " +
-				"The file is read relative to the working directory of the Paca MCP server. Use dryRun to see what would change.",
+				"The file is read relative to the working directory of the Paca MCP server, and must be inside that directory, the system temp folder or PACA_MCP_FILE_ROOTS. " +
+				"Pushing a file that is not a pull mirror file records its sync state in .paca/push.json at the file's Git root. Use dryRun to see what would change.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -118,7 +182,7 @@ export function getDocMirrorTools(): Tool[] {
 async function runCommand(
 	run: (io: CliIO) => Promise<number>,
 	summaries: { ok: string; conflict: string; failed: string },
-): Promise<any> {
+): Promise<ToolResult> {
 	const lines: string[] = [];
 	const io: CliIO = {
 		out: (line) => lines.push(line),
@@ -170,20 +234,24 @@ export async function handleDocMirrorTool(
 			io: CliIO,
 		) => Promise<number>;
 	} = {},
-): Promise<any> {
+): Promise<ToolResult> {
 	if (toolName === "pull_docs") {
 		const { projectId, dir, force } = PullDocsSchema.parse(args);
-		return runCommand(
+		await assertAllowedPath(dir, "dir");
+		const res = await runCommand(
 			(io) => (deps.pull ?? runPull)({ projectId, dir, force }, docClient, io),
 			{
 				ok: `Pulled documents to ${dir}.`,
-				conflict: `Pulled documents to ${dir}, but some files need attention: a file edited locally was kept or has conflict markers. Resolve them, or pull again with force to take Paca's version.`,
+				conflict: `Pulled documents to ${dir}, but some files need attention: a file edited locally was kept or has conflict markers. Resolve the markers in those files. Only if the local edits are not needed, pull again with force: that DISCARDS them and takes Paca's version.`,
 				failed: "Pull failed; nothing was changed.",
 			},
 		);
+		if (!res.isError) await ignoreMirror(dir);
+		return res;
 	}
 	if (toolName === "push_docs") {
 		const a = PushDocsSchema.parse(args);
+		await assertAllowedPath(a.file, "file");
 		const opts: PushOptions = {
 			projectId: a.projectId,
 			file: a.file,

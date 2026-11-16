@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { EXIT, UnreachableError } from "../../cli/state.js";
 import {
 	DOC_MIRROR_TOOL_NAMES,
@@ -7,6 +10,57 @@ import {
 } from "../../tools/doc-mirror-tools.js";
 
 const client = {} as never;
+
+// Run in a scratch working directory so the tools never touch the repository.
+const origCwd = process.cwd();
+let work = "";
+beforeAll(() => {
+	work = realpathSync(mkdtempSync(path.join(os.tmpdir(), "paca-mirror-")));
+	process.chdir(work);
+});
+afterAll(() => process.chdir(origCwd));
+
+describe("path confinement", () => {
+	it("refuses a mirror folder outside the allowed roots", async () => {
+		const pull = vi.fn(async () => EXIT.ok);
+		await expect(
+			handleDocMirrorTool(
+				"pull_docs",
+				{ projectId: "p", dir: "/etc/x" },
+				client,
+				{
+					pull,
+				},
+			),
+		).rejects.toThrow(/outside the folders/);
+		expect(pull).not.toHaveBeenCalled();
+	});
+
+	it("refuses to push a file outside the allowed roots or via ..", async () => {
+		const push = vi.fn(async () => EXIT.ok);
+		for (const file of ["/etc/passwd", "../../../etc/passwd"]) {
+			await expect(
+				handleDocMirrorTool("push_docs", { projectId: "p", file }, client, {
+					push,
+				}),
+			).rejects.toThrow(/outside the folders/);
+		}
+		expect(push).not.toHaveBeenCalled();
+	});
+
+	it("git-ignores the mirror folder after a successful pull", async () => {
+		const dir = path.join(os.tmpdir(), `paca-mirror-ig-${process.pid}`);
+		await handleDocMirrorTool("pull_docs", { projectId: "p", dir }, client, {
+			pull: async () => {
+				const { mkdirSync } = await import("node:fs");
+				mkdirSync(dir, { recursive: true });
+				return EXIT.ok;
+			},
+		});
+		expect(existsSync(path.join(dir, ".gitignore"))).toBe(true);
+		expect(readFileSync(path.join(dir, ".gitignore"), "utf8")).toBe("*\n");
+	});
+});
 
 describe("getDocMirrorTools", () => {
 	it("lists pull_docs and push_docs with their required arguments", () => {
