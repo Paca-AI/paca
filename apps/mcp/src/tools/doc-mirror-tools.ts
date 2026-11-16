@@ -36,7 +36,7 @@ export function getDocMirrorTools(): Tool[] {
 				"(a conflict leaves conflict markers in the file and is reported). " +
 				"Files are written relative to the working directory of the Paca MCP server. " +
 				"Prefer a temporary folder outside the repository (e.g. dir '/tmp/paca-docs'); if the mirror is inside a Git workspace, add it to .gitignore so it is not committed. " +
-				"To send an edited file back, run `npx @paca-ai/paca-mcp push <file>`.",
+				"To send an edited file back, use push_docs on the file.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -198,7 +198,7 @@ export async function handleDocMirrorTool(
 		if (a.task) opts.task = a.task;
 		return runCommand((io) => (deps.push ?? runPush)(opts, docClient, io), {
 			ok: a.dryRun ? "Dry run done; nothing was written." : `Pushed ${a.file}.`,
-			conflict: `Did not push ${a.file}: the document changed in Paca. Run pull_docs, resolve any conflict markers, then push again.`,
+			conflict: `Did not push ${a.file}: Paca changed since the last sync, or the pulled file needs a pull first. Follow the guidance below (a command-line flag such as --force is the force argument, and pull is pull_docs), then push again.`,
 			failed: "Push failed; nothing was written.",
 		});
 	}
