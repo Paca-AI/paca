@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -46,6 +52,34 @@ describe("path confinement", () => {
 			).rejects.toThrow(/outside the folders/);
 		}
 		expect(push).not.toHaveBeenCalled();
+	});
+
+	it("refuses the working directory itself as the mirror folder", async () => {
+		await expect(
+			handleDocMirrorTool("pull_docs", { projectId: "p", dir: "." }, client, {
+				pull: async () => EXIT.ok,
+			}),
+		).rejects.toThrow(/working directory/);
+	});
+
+	it("accepts /tmp as documented", async () => {
+		const pull = vi.fn(async () => EXIT.ok);
+		await handleDocMirrorTool(
+			"pull_docs",
+			{ projectId: "p", dir: `/tmp/paca-docs-${process.pid}` },
+			client,
+			{ pull },
+		);
+		expect(pull).toHaveBeenCalled();
+	});
+
+	it("leaves an existing non-mirror folder without a .gitignore", async () => {
+		const dir = path.join(work, "own-folder");
+		mkdirSync(dir);
+		await handleDocMirrorTool("pull_docs", { projectId: "p", dir }, client, {
+			pull: async () => EXIT.ok,
+		});
+		expect(existsSync(path.join(dir, ".gitignore"))).toBe(false);
 	});
 
 	it("git-ignores the mirror folder after a successful pull", async () => {

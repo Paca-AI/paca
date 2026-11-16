@@ -6,7 +6,12 @@ import { z } from "zod";
 import type { PacaAPIDocClient } from "../api/index.js";
 import { type PullOptions, runPull } from "../cli/pull.js";
 import { type PushOptions, runPush } from "../cli/push.js";
-import { type CliIO, EXIT, UnreachableError } from "../cli/state.js";
+import {
+	type CliIO,
+	EXIT,
+	PULL_STATE_FILE,
+	UnreachableError,
+} from "../cli/state.js";
 import { formatToolError } from "../utils/index.js";
 
 const PullDocsSchema = z.object({
@@ -40,7 +45,12 @@ function allowedRoots(): string[] {
 	const extra = (process.env.PACA_MCP_FILE_ROOTS ?? "")
 		.split(path.delimiter)
 		.filter(Boolean);
-	return [process.cwd(), os.tmpdir(), ...extra].map((r) => path.resolve(r));
+	// "/tmp" is the folder the tool help and skills name; on macOS and Windows
+	// it is not os.tmpdir(), so admit it where it exists.
+	const posixTmp = process.platform === "win32" ? [] : ["/tmp"];
+	return [process.cwd(), os.tmpdir(), ...posixTmp, ...extra].map((r) =>
+		path.resolve(r),
+	);
 }
 
 /** realpath of the nearest existing ancestor, plus the not-yet-created rest. */
@@ -72,8 +82,24 @@ export async function assertAllowedPath(
 		if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) return;
 	}
 	throw new Error(
-		`${what} "${target}" is outside the folders the Paca MCP server may use (its working directory, the system temp folder, or PACA_MCP_FILE_ROOTS).`,
+		`${what} "${target}" is outside the folders the Paca MCP server may use (its working directory, the system temp folder ${os.tmpdir()}, /tmp, or PACA_MCP_FILE_ROOTS).`,
 	);
+}
+
+/** True when `dir` does not exist yet or already holds a pull mirror. */
+async function isMirrorOrNew(dir: string): Promise<boolean> {
+	const abs = path.resolve(dir);
+	try {
+		await fs.stat(abs);
+	} catch {
+		return true;
+	}
+	try {
+		await fs.stat(path.join(abs, PULL_STATE_FILE));
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /** Keeps a mirror out of Git: a `.gitignore` of `*` inside the mirror folder. */
@@ -111,7 +137,7 @@ export function getDocMirrorTools(): Tool[] {
 					dir: {
 						type: "string",
 						description:
-							"Mirror folder: an absolute path (preferably a temporary folder like '/tmp/paca-docs') or relative to the server's working directory (default '.paca/docs', which must then be git-ignored).",
+							"Mirror folder: an absolute path (preferably a temporary folder like '/tmp/paca-docs') or relative to the server's working directory (default '.paca/docs'). The folder gets its own .gitignore.",
 					},
 					force: {
 						type: "boolean",
@@ -238,6 +264,13 @@ export async function handleDocMirrorTool(
 	if (toolName === "pull_docs") {
 		const { projectId, dir, force } = PullDocsSchema.parse(args);
 		await assertAllowedPath(dir, "dir");
+		if ((await realish(path.resolve(dir))) === (await realish(process.cwd())))
+			throw new Error(
+				`dir "${dir}" is the server's working directory; use a separate mirror folder.`,
+			);
+		// Only a folder this pull creates, or an existing mirror, is git-ignored;
+		// a caller's own folder is left alone.
+		const ownsFolder = await isMirrorOrNew(dir);
 		const res = await runCommand(
 			(io) => (deps.pull ?? runPull)({ projectId, dir, force }, docClient, io),
 			{
@@ -246,7 +279,7 @@ export async function handleDocMirrorTool(
 				failed: "Pull failed; nothing was changed.",
 			},
 		);
-		if (!res.isError) await ignoreMirror(dir);
+		if (!res.isError && ownsFolder) await ignoreMirror(dir);
 		return res;
 	}
 	if (toolName === "push_docs") {
