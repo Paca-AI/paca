@@ -338,31 +338,6 @@ helm install paca oci://ghcr.io/paca-ai/charts/paca --version <release-version> 
 
 See [Artifact Hub](https://artifacthub.io/packages/helm/paca/paca) for the full values reference, exposing the app via Ingress/TLS or a LoadBalancer, what's bundled vs. pointing at managed Postgres/Redis/S3, the AI agent sandbox's Kubernetes-specific RBAC, and troubleshooting.
 
-<!-- ## ☁️ One-Click Deploy
-
-Pick the row that fits. **Full stack** runs everything, including the Agent Runner that lets AI agents work in sandboxes. **Lightweight** is fully managed, with no server to look after, but cannot run AI agents.
-
-### Full stack: AI agents included
-
-| Provider | Deploys | Button |
-|:--|:--|:--|
-| **AWS** | One EC2 VM from a CloudFormation template | [![Deploy to AWS](https://img.shields.io/badge/Deploy_to-AWS-FF9900?style=for-the-badge&labelColor=24292f)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateURL=https://paca-cloudformation.s3.amazonaws.com/latest/paca.cfn.yaml&stackName=paca) |
-| **Google Cloud** | One Compute Engine VM, launched from Cloud Shell | [![Deploy to GCP](https://img.shields.io/badge/Deploy_to-GCP-4285F4?style=for-the-badge&labelColor=24292f)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/Paca-AI/paca&cloudshell_tutorial=deploy/cloud/gcp/tutorial.md&show=terminal) |
-| **DigitalOcean** | One Droplet from a cloud-init script | [![Deploy to DigitalOcean Droplet](https://img.shields.io/badge/Deploy_to-DigitalOcean_Droplet-0069D9?style=for-the-badge&labelColor=24292f)](docs/deployment/one-click.md#digitalocean-droplet) |
-| **RepoCloud** | Hosted by RepoCloud, nothing to set up | [![Deploy to RepoCloud](https://img.shields.io/badge/Deploy_to-RepoCloud-E8590C?style=for-the-badge&labelColor=24292f)](https://repocloud.io/details/Paca/) |
-
-### Lightweight: managed, no AI agents
-
-| Provider | Deploys | You also need | Button |
-|:--|:--|:--|:--|
-| **AWS** | ECS Fargate, RDS Postgres, ElastiCache and S3 | Optional domain and ACM certificate for HTTPS | [![Deploy to AWS (lightweight)](https://img.shields.io/badge/Deploy_to-AWS-FF9900?style=for-the-badge&labelColor=24292f)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateURL=https://paca-cloudformation.s3.amazonaws.com/latest/paca-lite.cfn.yaml&stackName=paca-lite) |
-| **Google Cloud** | Cloud Run, Cloud SQL, Memorystore and Cloud Storage, launched from Cloud Shell | Nothing | [![Deploy to GCP (lightweight)](https://img.shields.io/badge/Deploy_to-GCP-4285F4?style=for-the-badge&labelColor=24292f)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/Paca-AI/paca&cloudshell_tutorial=deploy/cloud/gcp/tutorial-lite.md&show=terminal) |
-| **DigitalOcean** | App Platform apps and a Postgres database | A Valkey/Redis URL and a Spaces bucket | [![Deploy to DigitalOcean App Platform](https://img.shields.io/badge/Deploy_to-DigitalOcean_App-0080FF?style=for-the-badge&labelColor=24292f)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/Paca-AI/paca/tree/master) |
-| **Render** | A blueprint of managed services | Set a few URLs after the first deploy | [![Deploy to Render](https://img.shields.io/badge/Deploy_to-Render-00A67E?style=for-the-badge&labelColor=24292f)](https://render.com/deploy?repo=https://github.com/Paca-AI/paca) |
-| **Railway** | A template of managed services | Template setup guide (not published yet) | [![Deploy to Railway](https://img.shields.io/badge/Deploy_to-Railway-7B3FE4?style=for-the-badge&labelColor=24292f)](docs/deployment/one-click.md#railway-manual-template) |
-
-Not sure which? Pick any row under **Full stack** to get everything. Step-by-step instructions for each are in the [one-click deploy guide](docs/deployment/one-click.md). -->
-
 ---
 
 ## MCP Server — Connect Any AI Agent to Paca
@@ -538,7 +513,6 @@ But Paca is built from conviction: human-AI collaboration in a real Scrum team s
 | [apps/extension/README.md](apps/extension/README.md) | Browser extension — comment on environment preview pages, turn comments into tasks |
 | [docs/plugins/](docs/plugins/) | Plugin system: backend (WASM) and frontend |
 | [deploy/README.md](deploy/README.md) | Full deployment reference |
-| [docs/deployment/one-click.md](docs/deployment/one-click.md) | One-click deploys: AWS, GCP, DigitalOcean |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [SECURITY.md](SECURITY.md) | Security policy |
 
