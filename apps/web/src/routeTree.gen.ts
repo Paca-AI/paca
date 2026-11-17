@@ -16,6 +16,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginMfaRouteImport } from './routes/login/mfa'
 import { Route as AuthenticatedConversationsRouteImport } from './routes/_authenticated/conversations'
+import { Route as AuthenticatedTaskKeyRouteImport } from './routes/_authenticated/$taskKey'
 import { Route as AuthenticatedAccountRouteRouteImport } from './routes/_authenticated/account/route'
 import { Route as AuthenticatedHomeIndexRouteImport } from './routes/_authenticated/home/index'
 import { Route as AuthenticatedConversationsIndexRouteImport } from './routes/_authenticated/conversations/index'
@@ -97,6 +98,11 @@ const AuthenticatedConversationsRoute =
     path: '/conversations',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedTaskKeyRoute = AuthenticatedTaskKeyRouteImport.update({
+  id: '/$taskKey',
+  path: '/$taskKey',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAccountRouteRoute =
   AuthenticatedAccountRouteRouteImport.update({
     id: '/account',
@@ -383,6 +389,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
   '/account': typeof AuthenticatedAccountRouteRouteWithChildren
+  '/$taskKey': typeof AuthenticatedTaskKeyRoute
   '/conversations': typeof AuthenticatedConversationsRouteWithChildren
   '/login/mfa': typeof LoginMfaRoute
   '/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
@@ -435,6 +442,7 @@ export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
+  '/$taskKey': typeof AuthenticatedTaskKeyRoute
   '/login/mfa': typeof LoginMfaRoute
   '/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
   '/account/preferences': typeof AuthenticatedAccountPreferencesRoute
@@ -487,6 +495,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
   '/_authenticated/account': typeof AuthenticatedAccountRouteRouteWithChildren
+  '/_authenticated/$taskKey': typeof AuthenticatedTaskKeyRoute
   '/_authenticated/conversations': typeof AuthenticatedConversationsRouteWithChildren
   '/login/mfa': typeof LoginMfaRoute
   '/_authenticated/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
@@ -542,6 +551,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/set-password'
     | '/account'
+    | '/$taskKey'
     | '/conversations'
     | '/login/mfa'
     | '/account/api-keys'
@@ -594,6 +604,7 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/profile'
     | '/set-password'
+    | '/$taskKey'
     | '/login/mfa'
     | '/account/api-keys'
     | '/account/preferences'
@@ -645,6 +656,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/set-password'
     | '/_authenticated/account'
+    | '/_authenticated/$taskKey'
     | '/_authenticated/conversations'
     | '/login/mfa'
     | '/_authenticated/account/api-keys'
@@ -751,6 +763,13 @@ declare module '@tanstack/react-router' {
       path: '/conversations'
       fullPath: '/conversations'
       preLoaderRoute: typeof AuthenticatedConversationsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/$taskKey': {
+      id: '/_authenticated/$taskKey'
+      path: '/$taskKey'
+      fullPath: '/$taskKey'
+      preLoaderRoute: typeof AuthenticatedTaskKeyRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/account': {
@@ -1206,6 +1225,7 @@ const AuthenticatedProjectsProjectIdRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAccountRouteRoute: typeof AuthenticatedAccountRouteRouteWithChildren
+  AuthenticatedTaskKeyRoute: typeof AuthenticatedTaskKeyRoute
   AuthenticatedConversationsRoute: typeof AuthenticatedConversationsRouteWithChildren
   AuthenticatedProjectsProjectIdRoute: typeof AuthenticatedProjectsProjectIdRouteWithChildren
   AuthenticatedHomeIndexRoute: typeof AuthenticatedHomeIndexRoute
@@ -1225,6 +1245,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAccountRouteRoute: AuthenticatedAccountRouteRouteWithChildren,
+  AuthenticatedTaskKeyRoute: AuthenticatedTaskKeyRoute,
   AuthenticatedConversationsRoute: AuthenticatedConversationsRouteWithChildren,
   AuthenticatedProjectsProjectIdRoute:
     AuthenticatedProjectsProjectIdRouteWithChildren,

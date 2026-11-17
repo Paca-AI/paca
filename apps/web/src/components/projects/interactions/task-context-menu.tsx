@@ -28,6 +28,7 @@ import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import { useMemberSearch } from "@/hooks/use-member-search";
 import { copyToClipboard } from "@/lib/clipboard";
 import type { Task } from "@/lib/interaction-api";
+import { taskShareUrl } from "@/lib/interaction-api";
 import {
 	findEpicType,
 	type TaskStatus,
@@ -133,8 +134,7 @@ export function TaskContextMenu({
 		void copyToClipboard(taskLabel);
 	};
 	const copyLink = () => {
-		const url = `${window.location.origin}/projects/${projectId}/tasks/${task.id}`;
-		void copyToClipboard(url);
+		void copyToClipboard(taskShareUrl(task, taskIdPrefix, projectId));
 	};
 
 	return (

@@ -66,6 +66,9 @@ func (permissiveTaskRepo) FindTaskByID(_ context.Context, id uuid.UUID) (*taskdo
 func (permissiveTaskRepo) FindTaskByNumber(context.Context, uuid.UUID, int64) (*taskdom.Task, error) {
 	return nil, taskdom.ErrTaskNotFound
 }
+func (permissiveTaskRepo) FindTaskByKey(context.Context, string, int64) (*taskdom.Task, error) {
+	return nil, taskdom.ErrTaskNotFound
+}
 func (permissiveTaskRepo) CreateTask(context.Context, *taskdom.Task) error { return nil }
 func (permissiveTaskRepo) UpdateTaskFields(context.Context, *taskdom.Task, []taskdom.TaskField, map[string]any) error {
 	return nil

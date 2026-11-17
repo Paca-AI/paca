@@ -1595,6 +1595,37 @@ func (r *TaskRepository) FindTaskByNumber(ctx context.Context, projectID uuid.UU
 	return t, nil
 }
 
+// FindTaskByKey returns the non-deleted task matching the given project task_id_prefix
+// (case-insensitive) and project-scoped task_number.
+func (r *TaskRepository) FindTaskByKey(ctx context.Context, prefix string, taskNumber int64) (*taskdom.Task, error) {
+	var rec taskRecord
+	err := r.db.GetContext(ctx, &rec, `SELECT `+taskCols+` FROM tasks WHERE id = (
+		SELECT t.id
+		FROM tasks t
+		JOIN projects p ON p.id = t.project_id
+		WHERE upper(p.task_id_prefix) = upper($1)
+		  AND t.task_number = $2
+		  AND t.deleted_at IS NULL
+		  AND p.deleted_at IS NULL
+		ORDER BY p.created_at ASC
+		LIMIT 1
+	)`, prefix, taskNumber)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("task repo: find by key: %w", err)
+	}
+	t, err := toTaskEntity(&rec)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.attachAssigneeIDs(ctx, []*taskdom.Task{t}); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
 // CreateTask persists a new task, assigning the next per-project task_number atomically.
 func (r *TaskRepository) CreateTask(ctx context.Context, t *taskdom.Task) error {
 	cf, err := json.Marshal(t.CustomFields)

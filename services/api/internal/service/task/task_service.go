@@ -449,6 +449,11 @@ func (s *Service) GetTaskByNumber(ctx context.Context, projectID uuid.UUID, task
 	return s.repo.FindTaskByNumber(ctx, projectID, taskNumber)
 }
 
+// GetTaskByKey returns the non-deleted task matching the given project prefix and task number.
+func (s *Service) GetTaskByKey(ctx context.Context, prefix string, taskNumber int64) (*taskdom.Task, error) {
+	return s.repo.FindTaskByKey(ctx, prefix, taskNumber)
+}
+
 // CreateTask creates a new task. When TaskTypeID or StatusID are not provided,
 // the project's default task type / status is resolved automatically.
 func (s *Service) CreateTask(ctx context.Context, in taskdom.CreateTaskInput) (*taskdom.Task, error) {

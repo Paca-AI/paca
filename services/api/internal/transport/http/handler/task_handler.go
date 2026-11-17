@@ -1119,6 +1119,22 @@ func (h *TaskHandler) GetTaskByNumber(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, dto.TaskFromEntity(t))
 }
 
+// GetTaskByKey handles GET /tasks/by-key/:taskKey.
+// It looks up a task by its project prefix and sequential number (e.g. PRJ-1).
+func (h *TaskHandler) GetTaskByKey(w http.ResponseWriter, r *http.Request) {
+	prefix, taskNumber, ok := taskdom.ParseTaskKey(chi.URLParam(r, "taskKey"))
+	if !ok {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid task key"))
+		return
+	}
+	t, err := h.svc.GetTaskByKey(r.Context(), prefix, taskNumber)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.TaskFromEntity(t))
+}
+
 // CreateTask handles POST /projects/:projectId/tasks.
 func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)

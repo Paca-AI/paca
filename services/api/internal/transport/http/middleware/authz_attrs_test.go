@@ -209,6 +209,14 @@ func (f fakeTaskNumbers) FindTaskByNumber(_ context.Context, _ uuid.UUID, n int6
 	return &taskdom.Task{ID: id}, nil
 }
 
+func (f fakeTaskNumbers) FindTaskByKey(_ context.Context, _ string, n int64) (*taskdom.Task, error) {
+	id, ok := f[n]
+	if !ok {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	return &taskdom.Task{ID: id}, nil
+}
+
 func TestTaskByNumberResource(t *testing.T) {
 	project, task := uuid.NewString(), uuid.New()
 	lookup := fakeTaskNumbers{7: task}
@@ -226,6 +234,44 @@ func TestTaskByNumberResource(t *testing.T) {
 		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/projects/"+project+"/tasks/by-number/"+c.number, nil))
 		if got != c.want {
 			t.Errorf("number %q: resource %q, want %q", c.number, got, c.want)
+		}
+	}
+}
+
+type fakeTaskKeys struct {
+	projectID uuid.UUID
+	taskID    uuid.UUID
+}
+
+func (f fakeTaskKeys) FindTaskByNumber(_ context.Context, _ uuid.UUID, _ int64) (*taskdom.Task, error) {
+	return nil, taskdom.ErrTaskNotFound
+}
+
+func (f fakeTaskKeys) FindTaskByKey(_ context.Context, prefix string, n int64) (*taskdom.Task, error) {
+	if prefix == "PRJ" && n == 7 {
+		return &taskdom.Task{ID: f.taskID, ProjectID: f.projectID}, nil
+	}
+	return nil, taskdom.ErrTaskNotFound
+}
+
+func TestTaskByKeyResource(t *testing.T) {
+	project, task := uuid.New(), uuid.New()
+	lookup := fakeTaskKeys{projectID: project, taskID: task}
+	cases := []struct{ key, want string }{
+		{"PRJ-7", "project/" + project.String() + "/task/" + task.String()},
+		{"prj-7", "project/" + project.String() + "/task/" + task.String()},
+		{"PRJ-8", "task-key/PRJ-8"},
+		{"invalid", "task-key/invalid"},
+	}
+	for _, c := range cases {
+		r := chi.NewRouter()
+		var got string
+		r.Get("/tasks/by-key/{taskKey}", func(_ http.ResponseWriter, req *http.Request) {
+			got, _ = TaskByKeyResource(lookup, "taskKey")(req)
+		})
+		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/tasks/by-key/"+c.key, nil))
+		if got != c.want {
+			t.Errorf("key %q: resource %q, want %q", c.key, got, c.want)
 		}
 	}
 }
