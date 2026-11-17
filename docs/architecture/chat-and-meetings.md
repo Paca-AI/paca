@@ -2,7 +2,7 @@
 
 Design and delivery plan for built-in team chat (a Slack alternative) and voice/video meetings (a Discord alternative) in Paca v1.0.0.
 
-> **Status:** proposal. Nothing here is implemented or prototyped yet. The Phase 0 spikes below decide the open points. The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
+> **Status:** proposal. Nothing here is implemented. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
 
 ## Goals
 
@@ -385,11 +385,63 @@ The worker (`services/meeting-agent`), explicit dispatch, per-participant STT, t
 - Node vs Python worker, including registering RPC methods on the agent's local participant, and async tool results while a proposal is pending.
 - Behaviour on reconnect: a user who reloads mid-card gets the card from the API, not from RPC.
 
+## Phase 0 results
+
+All five spikes ran on 2026-11-17 and came back **go**. The probes were throwaway and are not in the repo.
+
+### (a) Private channels in IAM: go
+
+A small engine change is enough: an operand of the form `${principal.<name>}` expands to the request's value for that key before the operator runs. An absent attribute expands to nothing, so positive operators fail closed. Only `principal.*` keys can be variables, so a variable never triggers a resource attribute load. Validation rejects any other `${...}` operand and rejects variables with `StringLike` or `Bool`.
+
+A prototype with a test confirmed the two-statement policy (public: `channel.kind` equals `public`; private and DMs: `channel.member_ids` equals `${principal.id}`) gives the right decision for public non-member, private member, private non-member, DM without members and a missing principal.
+
+Still to do in Phase 1: register `channel.kind` and `channel.member_ids` with a loader and labels in all locales, add the `channel` platform root and resource root, and document the variable in `docs/api/roles-and-policies.md` and [authorization.md](authorization.md). If `channel.member_ids` is slow for very large private channels, replace it with a principal-scoped boolean.
+
+### (b) Composer format: go on BlockNote
+
+`CommentEditor` (`apps/web/src/components/shared/comment-blocknote.tsx`) is already a compact composer with `@user`, `#task` and `#doc` menus, and `internal/pkg/mention` already parses that format. Chat only needs Enter to submit (Shift+Enter for a newline).
+
+- Store BlockNote-compatible JSON in `messages.content`, with a small block set (paragraphs, lists, code, quote).
+- Render read-only messages with a lightweight block renderer, not one BlockNote editor per message (`CommentDisplay` creates a full editor each). **Not measured:** benchmark 50 and 200 messages in Phase 1.
+
+### (c) LiveKit behind Caddy with Valkey: go
+
+A scratch stack (LiveKit 1.13.11, Valkey 8, Caddy 2) worked with `reverse_proxy livekit:7880` and no special directives. Two headless Chromium pages with fake media devices joined one room and each received the other's audio and video, so Playwright can run calls in CI.
+
+- Media does not pass through Caddy. It needs the host's UDP range and TCP 7881, which is why LiveKit stays opt-in.
+- `livekit/server-sdk-go/v2` only compiles with `replace` directives for LiveKit's pion forks (`pion/webrtc/v4` and `pion/ice/v4`, as in the SDK's own `go.mod`). Token minting alone (`livekit/protocol/auth`) does not need the SDK.
+- Not verified: TURN, NAT traversal, TLS termination, Helm rendering.
+
+### (d) Realtime fan-out: go, check access at join
+
+A real Socket.IO server with 500 and 2,000 sockets in one room at 20 messages per second compared a room emit against the existing per-event `AccessDecider` path:
+
+| Sockets | Strategy | Server CPU (ms) | Delivery p50 / p99 (ms) | API checks |
+|---|---|---|---|---|
+| 500 | room | 2686 | 8 / 25 | 0 |
+| 500 | per-event, warm cache | 3277 | 9 / 27 | 500 |
+| 500 | per-event, no cache | 4968 | 15 / 34 | 78,000 |
+| 2000 | room | 3581 | 14 / 47 | 0 |
+| 2000 | per-event, warm cache | 4664 | 17 / 55 | 2,000 |
+| 2000 | per-event, no cache | 6642 | 21 / 50 | 312,000 |
+
+Delivery is cheap either way (the warm path costs about 30% more CPU). The cost is API load, which the stubbed API (3 ms per batch) does not model. Even a warm cache sends one check per socket per channel every 30 s, and any miss or IAM flush sends one per socket per message. So: check at join and on the IAM-change resync, then `io.to("channel:<id>")`. A channel is the unit of access; a per-message deny is not supported. This was single-node on loopback; load-test the join path against the real API in Phase 1, since a reconnect storm becomes one check per socket per joined channel.
+
+### (e) Forwarded tool calls over LiveKit RPC: go, with constraints
+
+Tested against the same stack with a Go client (`server-sdk-go` v2.20): an agent participant called `paca.proposal.show` on a user participant that answered after 2 s.
+
+- It works through Caddy and Valkey, with async replies. The handler sees the caller identity from the caller's token, set by the server.
+- The caller's token needs `CanPublishData`. Without it the call fails after about 7 s as `1501 Connection timeout`, indistinguishable from an absent participant, so the worker must report it clearly. An unregistered method returns `1400`.
+- Any participant with `CanPublishData` can call any other, so the browser handler must accept `paca.proposal.*` only from identities the API minted for agents (for example an `agent:` prefix) and treat payloads as untrusted.
+- RPC timeouts are bounded (the SDK clamps to at least 8 s, default 15 s). A person may take minutes, so RPC only shows the card; the proposal state and its resolution live in `agent_proposals` and the API.
+- Not decided: Node vs Python worker. No LiveKit Agents worker or STT was run. Decide it when the `services/meeting-agent` skeleton is written.
+
 ## Delivery plan
 
 | Phase | Scope | Exit criteria |
 |---|---|---|
-| **0. Spikes (about 1 week)** | (a) IAM policy variable and `channel.member_ids` loader. (b) Composer format: compact BlockNote vs lighter markdown JSON. (c) LiveKit behind Caddy with Valkey, and a two-browser call. (d) Fan-out test: a busy channel with many sockets. (e) Meeting assistant: RPC with a text-only agent on self-hosted LiveKit, token grants for RPC, and Node vs Python worker (see "Forwarded tool calls"). | A short ADR per spike with a go/no-go. |
+| **0. Spikes (about 1 week)** | (a) IAM policy variable and `channel.member_ids` loader. (b) Composer format: compact BlockNote vs lighter markdown JSON. (c) LiveKit behind Caddy with Valkey, and a two-browser call. (d) Fan-out test: a busy channel with many sockets. (e) Meeting assistant: RPC with a text-only agent on self-hosted LiveKit, token grants for RPC, and Node vs Python worker (see "Forwarded tool calls"). | A go/no-go per spike. **Done**, see [Phase 0 results](#phase-0-results). |
 | **1. Chat core** | Migrations; `domain/service/repository/handler/dto/router` for channels, messages, threads and reactions; unread/read state, mentions, attachments, notifications; event topics with `AuthzFor` and registry regeneration; realtime channel rooms plus the per-user `user:<id>:chat` room; `GET /chat/unread-summary`; web UI (command palette, sidebar Chat group, Inbox, channel view, thread pane, composer, project-switcher badges, mobile layout); default roles; i18n in all 9 locales. | Works end to end across two users, including private channels and DMs. Unit and e2e tests pass. |
 | **1b. Presence and task-comment UX (independent track, can start first)** | Ephemeral presence layer in `services/realtime` (typing, viewers); typing indicator in task comments; enriched mention notifications (project, sprint, excerpt, deep link to the comment); task card and sprint badges; `task_reads` and the unread-since divider; in-app rows for description and doc mentions; `/notifications` page. | Typing and rich mentions work on tasks without any chat tables. The presence layer is then reused by chat. |
 | **2. Task-aware and agents** | Task/doc chips, create-task-from-message, slash commands, search; `@agent` triggers, MCP tools, skill; automation nodes; agent DM conversation list (new, resume, search, pin, archive) with `agent_conversations.channel_id`. | An agent can be mentioned in chat, reply and create a task, and its DM lists every conversation. |
