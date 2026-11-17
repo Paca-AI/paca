@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/database"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	"github.com/Paca-AI/api/migrations"
-	"github.com/google/uuid"
 )
 
 func TestProjectPrefixMigrationPG(t *testing.T) {
@@ -75,7 +76,7 @@ func TestProjectPrefixMigrationPG(t *testing.T) {
 		t.Fatalf("audit count=%d err=%v", changed, err)
 	}
 	var oldPrefix, newPrefix string
-	if err = db.QueryRow(`SELECT old_prefix,new_prefix FROM project_prefix_changes_000093 WHERE project_id=$1`, ids[1]).Scan(&oldPrefix, &newPrefix); err != nil || oldPrefix != "pay" || newPrefix != "PAY3" {
+	if err = db.QueryRowContext(t.Context(), `SELECT old_prefix,new_prefix FROM project_prefix_changes_000093 WHERE project_id=$1`, ids[1]).Scan(&oldPrefix, &newPrefix); err != nil || oldPrefix != "pay" || newPrefix != "PAY3" {
 		t.Fatalf("audit=%q -> %q err=%v", oldPrefix, newPrefix, err)
 	}
 	tasks := NewTaskRepository(db)
