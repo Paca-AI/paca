@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/google/uuid"
 
@@ -35,53 +35,28 @@ func validatePrefix(p string) error {
 	return nil
 }
 
-// suggestPrefix derives a short uppercase identifier from the project name.
-// Rules (matches JIRA-style behavior):
-//  1. Split by whitespace/hyphens/underscores.
-//  2. If single word: first 4 letters (or all if shorter), stripped of non-alpha.
-//  3. If multiple words: first letter of each word, up to 4, uppercase.
-//  4. Remove non-alphanumeric characters and return uppercase.
+// suggestPrefix derives an ASCII prefix using the same word boundaries as the
+// create form. Non-ASCII names fall back to PROJ so automatic creation always
+// produces a valid key. Create allocates a free suffix using the unique index.
 func suggestPrefix(name string) string {
-	// Strip non-alphanumeric/space characters (keep letters, digits, spaces).
-	var sb strings.Builder
-	for _, r := range name {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
-			sb.WriteRune(r)
+	clean := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			return r
 		}
-	}
-	clean := strings.TrimSpace(sb.String())
+		return ' '
+	}, name)
 	words := strings.Fields(clean)
 	if len(words) == 0 {
 		return "PROJ"
 	}
-	var prefix string
 	if len(words) == 1 {
-		// Single word: up to 4 leading letters/digits.
-		count := 0
-		for _, r := range words[0] {
-			if count >= 4 {
-				break
-			}
-			if unicode.IsLetter(r) || unicode.IsDigit(r) {
-				prefix += string(r)
-				count++
-			}
-		}
-	} else {
-		// Multiple words: first letter of each, up to 4 words.
-		for i, w := range words {
-			if i >= 4 {
-				break
-			}
-			for _, r := range w {
-				if unicode.IsLetter(r) || unicode.IsDigit(r) {
-					prefix += string(r)
-					break
-				}
-			}
-		}
+		return strings.ToUpper(words[0][:min(4, len(words[0]))])
 	}
-	return strings.ToUpper(prefix)
+	var prefix strings.Builder
+	for _, word := range words[:min(4, len(words))] {
+		prefix.WriteByte(word[0])
+	}
+	return strings.ToUpper(prefix.String())
 }
 
 // taskBootstrapper is the minimal persistence interface the project service
@@ -293,7 +268,8 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 	}
 
 	prefix := strings.ToUpper(strings.TrimSpace(in.TaskIDPrefix))
-	if prefix == "" {
+	autoPrefix := prefix == ""
+	if autoPrefix {
 		prefix = suggestPrefix(name)
 	}
 	if err := validatePrefix(prefix); err != nil {
@@ -317,8 +293,28 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 			Name: r.Name, Description: r.Description, Policy: r.Policy, System: r.System,
 		})
 	}
-	if err := s.repo.Create(ctx, p, setup); err != nil {
-		return nil, err
+	// The index is the arbiter: a preflight availability check alone races.
+	// Each failed Create rolls its transaction back, including role/member setup.
+	for suffix := int64(2); ; suffix++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		err := s.repo.Create(ctx, p, setup)
+		if err == nil {
+			break
+		}
+		if !autoPrefix || !errors.Is(err, projectdom.ErrPrefixTaken) {
+			return nil, err
+		}
+		digits := strconv.FormatInt(suffix, 10)
+		if len(digits) > 10 {
+			return nil, projectdom.ErrPrefixTaken
+		}
+		base := prefix
+		if len(base)+len(digits) > 10 {
+			base = base[:10-len(digits)]
+		}
+		p.TaskIDPrefix = base + digits
 	}
 
 	// Bootstrap default task types and statuses.

@@ -1806,3 +1806,20 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `GITHUB_WEBHOOK_URL_REQUIRED` | 500 | `PUBLIC_URL` is not configured; automatic webhook creation is unavailable. |
 | `BAD_REQUEST` | 400 | Malformed or invalid request body. |
 | `INTERNAL_ERROR` | 500 | Unexpected server error. |
+
+### Project task ID prefixes
+
+A non-empty `task_id_prefix` identifies one active project, case-insensitively.
+Create and update return HTTP 409 with `PROJECT_PREFIX_TAKEN` when an explicit
+prefix is already used; `PROJECT_NAME_TAKEN` remains a distinct error. On
+create, an omitted or empty prefix is generated from the name, with a numeric
+suffix if necessary. Automatic suggestions use ASCII word initials or the first
+four characters of a single word, falling back to `PROJ` for names without
+ASCII letters or digits. An empty update still leaves the prefix unchanged.
+Existing empty prefixes remain allowed in storage and are not task-key lookup
+targets. Soft deletion releases a prefix for reuse.
+
+Short task URLs resolve using the current prefix. Prefix changes and reuse can
+change their target; UUID-based URLs remain stable. See the [migration
+notes](../guides/local-development.md#project-prefix-uniqueness-000093) for the
+impact on existing duplicate prefixes.

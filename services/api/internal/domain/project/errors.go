@@ -7,6 +7,7 @@ var (
 	ErrNotFound           = errors.New("project: not found")
 	ErrNameTaken          = errors.New("project: name already in use")
 	ErrNameInvalid        = errors.New("project: name is empty or invalid")
+	ErrPrefixTaken        = errors.New("project: task ID prefix already in use")
 	ErrPrefixInvalid      = errors.New("project: task ID prefix must be 1–10 uppercase letters/digits")
 	ErrMemberAlreadyAdded = errors.New("project: user is already a member")
 	ErrMemberNotFound     = errors.New("project: member not found")

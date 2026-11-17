@@ -159,6 +159,7 @@
 				"nameRequired": "项目名称不能为空。",
 				"nameTaken": "已存在同名项目。",
 				"nameInvalid": "项目名称为空或无效。",
+				"prefixTaken": "此前缀已被其他项目使用。",
 				"prefixInvalid": "前缀必须为 1–10 个大写字母/数字（例如 PACA）。",
 				"generic": "出现错误，请重试。"
 			}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -128,6 +129,9 @@ func (r *fakeProjectRepo) Create(_ context.Context, p *projectdom.Project, setup
 	defer r.mu.Unlock()
 
 	for _, existing := range r.projects {
+		if p.TaskIDPrefix != "" && strings.EqualFold(existing.TaskIDPrefix, p.TaskIDPrefix) {
+			return projectdom.ErrPrefixTaken
+		}
 		if existing.Name == p.Name {
 			return projectdom.ErrNameTaken
 		}
@@ -151,6 +155,9 @@ func (r *fakeProjectRepo) Update(_ context.Context, p *projectdom.Project) error
 		return projectdom.ErrNotFound
 	}
 	for _, existing := range r.projects {
+		if existing.ID != p.ID && p.TaskIDPrefix != "" && strings.EqualFold(existing.TaskIDPrefix, p.TaskIDPrefix) {
+			return projectdom.ErrPrefixTaken
+		}
 		if existing.ID != p.ID && existing.Name == p.Name {
 			return projectdom.ErrNameTaken
 		}
@@ -830,4 +837,41 @@ func TestIntegrationProject_AnonymousAccess_Returns401(t *testing.T) {
 			t.Fatalf("GET %s: expected 401, got %d (%s)", url, w.Code, w.Body.String())
 		}
 	}
+}
+
+func TestIntegrationProjectPrefixConflicts(t *testing.T) {
+	repo := newFakeProjectRepo()
+	store := &projectPermStore{globalPerms: []iam.Action{iam.ActionProjectsCreate}, projectPerms: map[uuid.UUID][]iam.Action{}}
+	router := buildProjectTestRouter(repo, store)
+	token := issueProjectToken(t, uuid.NewString())
+	request := func(method, path, name, prefix string) *httptest.ResponseRecorder {
+		return serve(router, authedJSONReq(t.Context(), method, path, token, map[string]any{"name": name, "task_id_prefix": prefix}))
+	}
+	create := func(name, prefix string) string {
+		t.Helper()
+		w := request(http.MethodPost, "/api/v1/projects", name, prefix)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("create: %d %s", w.Code, w.Body)
+		}
+		id := projectIDFromCreate(t, w)
+		store.projectPerms[uuid.MustParse(id)] = []iam.Action{actionAll}
+		return id
+	}
+	first := create("First", "PAY")
+	second := create("Second", "OTHER")
+	for _, tc := range []struct{ method, path, name, prefix, code string }{
+		{http.MethodPost, "/api/v1/projects", "Third", "pay", "PROJECT_PREFIX_TAKEN"},
+		{http.MethodPatch, "/api/v1/projects/" + second, "Second", "pAy", "PROJECT_PREFIX_TAKEN"},
+		{http.MethodPost, "/api/v1/projects", "First", "FREE", "PROJECT_NAME_TAKEN"},
+	} {
+		w := request(tc.method, tc.path, tc.name, tc.prefix)
+		if w.Code != http.StatusConflict || decodeErrorCode(t, w) != tc.code {
+			t.Fatalf("%s: %d %s", tc.code, w.Code, w.Body)
+		}
+	}
+	deleted := serve(router, authedJSONReq(t.Context(), http.MethodDelete, "/api/v1/projects/"+first, token, nil))
+	if deleted.Code != http.StatusOK {
+		t.Fatalf("delete: %d %s", deleted.Code, deleted.Body)
+	}
+	create("Reuse", "pay")
 }

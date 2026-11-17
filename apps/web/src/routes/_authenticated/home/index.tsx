@@ -79,7 +79,7 @@ function suggestPrefix(name: string): string {
 		.toUpperCase();
 }
 
-function CreateProjectDialog({
+export function CreateProjectDialog({
 	open,
 	onOpenChange,
 }: {
@@ -113,7 +113,7 @@ function CreateProjectDialog({
 			return createProject({
 				name: name.trim(),
 				description: description.trim() || undefined,
-				task_id_prefix: prefix.trim() || undefined,
+				task_id_prefix: prefixTouched ? prefix.trim() || undefined : undefined,
 			});
 		},
 		onSuccess: async () => {
@@ -136,6 +136,10 @@ function CreateProjectDialog({
 			}
 			if (code === ApiErrorCode.ProjectNameInvalid) {
 				setNameError(t("home.createDialog.errors.nameInvalid"));
+				return;
+			}
+			if (code === ApiErrorCode.ProjectPrefixTaken) {
+				setPrefixError(t("home.createDialog.errors.prefixTaken"));
 				return;
 			}
 			if (code === ApiErrorCode.ProjectPrefixInvalid) {
@@ -180,6 +184,7 @@ function CreateProjectDialog({
 								setNameError(null);
 								if (!prefixTouched) {
 									setPrefix(suggestPrefix(val));
+									setPrefixError(null);
 								}
 							}}
 							placeholder={t("home.createDialog.namePlaceholder")}

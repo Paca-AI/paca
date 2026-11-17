@@ -85,6 +85,7 @@ export const ApiErrorCode = {
 	ProjectNotFound: "PROJECT_NOT_FOUND",
 	ProjectNameTaken: "PROJECT_NAME_TAKEN",
 	ProjectNameInvalid: "PROJECT_NAME_INVALID",
+	ProjectPrefixTaken: "PROJECT_PREFIX_TAKEN",
 	ProjectPrefixInvalid: "PROJECT_PREFIX_INVALID",
 	ProjectMemberNotFound: "PROJECT_MEMBER_NOT_FOUND",
 	ProjectMemberAlreadyAdded: "PROJECT_MEMBER_ALREADY_ADDED",

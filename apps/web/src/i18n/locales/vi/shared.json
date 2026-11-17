@@ -159,6 +159,7 @@
 				"nameRequired": "Vui lòng nhập tên dự án.",
 				"nameTaken": "Đã tồn tại một dự án với tên này.",
 				"nameInvalid": "Tên dự án trống hoặc không hợp lệ.",
+				"prefixTaken": "Tiền tố này đã được một dự án khác sử dụng.",
 				"prefixInvalid": "Tiền tố phải gồm 1–10 chữ in hoa/chữ số (vd: PACA).",
 				"generic": "Đã xảy ra lỗi. Vui lòng thử lại."
 			}

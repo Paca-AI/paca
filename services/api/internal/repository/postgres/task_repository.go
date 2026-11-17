@@ -1604,11 +1604,10 @@ func (r *TaskRepository) FindTaskByKey(ctx context.Context, prefix string, taskN
 		FROM tasks t
 		JOIN projects p ON p.id = t.project_id
 		WHERE upper(p.task_id_prefix) = upper($1)
+		  AND p.task_id_prefix <> ''
 		  AND t.task_number = $2
 		  AND t.deleted_at IS NULL
 		  AND p.deleted_at IS NULL
-		ORDER BY p.created_at ASC
-		LIMIT 1
 	)`, prefix, taskNumber)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, taskdom.ErrTaskNotFound

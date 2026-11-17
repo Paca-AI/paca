@@ -1241,6 +1241,7 @@
 			"errors": {
 				"nameTaken": "A project with this name already exists.",
 				"nameInvalid": "Project name is empty or invalid.",
+				"prefixTaken": "This prefix is already used by another project.",
 				"prefixInvalid": "Prefix must be 1–10 uppercase letters/digits (e.g. PACA).",
 				"updateFailed": "Failed to update project. Please try again."
 			}

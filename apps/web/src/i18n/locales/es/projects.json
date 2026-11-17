@@ -1241,6 +1241,7 @@
 			"errors": {
 				"nameTaken": "Ya existe un proyecto con este nombre.",
 				"nameInvalid": "El nombre del proyecto está vacío o no es válido.",
+				"prefixTaken": "Otro proyecto ya utiliza este prefijo.",
 				"prefixInvalid": "El prefijo debe tener entre 1 y 10 letras mayúsculas/dígitos (p. ej. PACA).",
 				"updateFailed": "No se pudo actualizar el proyecto. Inténtalo de nuevo."
 			}

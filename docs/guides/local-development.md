@@ -143,3 +143,42 @@ These are intentionally weak defaults — never use them in production.
 - `services/realtime` consumes those events and fans them out to Socket.IO clients.
 - `services/agent-runner` reads agent trigger events from a separate Valkey Stream and manages Docker containers running Goose conversations over ACP.
 - `apps/mcp` is stateless; run it with `npx @paca-ai/paca-mcp` pointed at the running API.
+
+### Project prefix uniqueness (000093)
+
+Migration `000093_unique_project_task_id_prefix.sql` makes non-empty task ID
+prefixes unique, ignoring case, among projects with `deleted_at IS NULL`.
+Empty prefixes and soft-deleted projects are excluded. It keeps the oldest
+project in each duplicate group (`created_at`, then UUID `id` to break ties).
+Newer duplicates receive the first available numeric suffix starting at 2;
+the base is shortened as needed to keep the result within 10 characters.
+Existing active prefixes, including already suffixed ones, are reserved.
+
+The migration records each changed project UUID, original prefix, replacement
+prefix and timestamp in `project_prefix_changes_000093`. Inspect that table
+after upgrading to find the projects whose external references need updating.
+The table is retained even if a project is later deleted.
+
+Task UUIDs, project UUIDs and task numbers are unchanged. UUID-based task URLs
+keep working. Displayed task keys, CSV labels, newly copied short links and
+future git task-key matching use the new prefix. Historical short links and
+textual git references are not rewritten or aliased: an old duplicate key
+continues to address the project that kept the prefix, or returns not found
+if that project has no such task. Previously the lookup could fall through
+to another duplicate project with that task number. Permissions are still
+checked on the resolved task. Changing a prefix later or reusing one after
+soft deletion can likewise change what an old short link addresses; use UUID
+URLs for references that must remain stable across those operations.
+
+Deduplication, audit records and the index are committed in one migration
+transaction. A table lock blocks project writes during the migration and
+index build, so plan an upgrade window for a large projects table. Errors
+roll back all three changes. The migration tolerates a retry after the
+runner commits it but crashes before recording its filename.
+
+There is no automatic down migration: removing the index does not restore
+old prefixes. Keep a backup and the audit table. Restoring old duplicate
+prefixes would reintroduce ambiguous links, and blindly applying that history
+after subsequent edits could overwrite newer choices. An application-only
+rollback can keep the index and new prefixes, but older binaries do not
+handle prefix conflicts or allocate collision-free defaults correctly.
