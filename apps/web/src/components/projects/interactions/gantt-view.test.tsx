@@ -219,10 +219,56 @@ describe("GanttView row drag and drop", () => {
 
 describe("GanttView group header", () => {
 	it("pins the group label to the left edge like the task column", () => {
-		renderGantt([makeTask({ id: "t1", title: "Alpha" })]);
-		const pinned = screen.getByText("Todo").closest(".sticky");
-		expect(pinned).toHaveClass("left-0");
-		expect(pinned).toHaveTextContent("Todo1");
+		const label =
+			"Waiting for cross functional planning and stakeholder approval before implementation can begin";
+		renderGantt([makeTask({ id: "t1", title: "Alpha" })], {
+			statuses: [{ ...statuses[0], name: label }, statuses[1]],
+			columnBy: "status",
+		});
+		const groupLabel = screen.getByText(label);
+		const pinned = groupLabel.closest(".sticky") as HTMLElement;
+		const count = groupLabel.nextElementSibling as HTMLElement;
+		const taskColumn = screen
+			.getByText("Alpha")
+			.closest(".sticky") as HTMLElement;
+		const handle = screen.getByTestId("gantt-task-column-resize-handle");
+		const header = handle.parentElement as HTMLElement;
+		const initialWidth = taskColumn.style.width;
+
+		expect(pinned).toHaveClass("sticky", "left-0");
+		expect(pinned).toHaveTextContent(`${label}1`);
+		expect(count).toHaveTextContent(/^1$/);
+		expect(initialWidth).toMatch(/^\d+px$/);
+		expect(header.style.width).toBe(initialWidth);
+		expect.soft(pinned.style.width).toBe(taskColumn.style.width);
+		expect.soft(pinned.style.width).toBe(header.style.width);
+		expect.soft(pinned).toHaveClass("shrink-0");
+		expect.soft(groupLabel).toHaveClass("min-w-0", "truncate");
+		expect.soft(count).toHaveClass("shrink-0");
+
+		const resizeKey =
+			Number.parseFloat(initialWidth) ===
+			Number(handle.getAttribute("aria-valuemin"))
+				? "End"
+				: "Home";
+		act(() => {
+			handle.dispatchEvent(
+				new KeyboardEvent("keydown", { key: resizeKey, bubbles: true }),
+			);
+		});
+		act(() => {
+			handle.dispatchEvent(
+				new KeyboardEvent("keyup", { key: resizeKey, bubbles: true }),
+			);
+		});
+
+		expect(taskColumn.style.width).not.toBe(initialWidth);
+		expect(header.style.width).toBe(taskColumn.style.width);
+		expect.soft(pinned.style.width).toBe(taskColumn.style.width);
+		expect.soft(pinned.style.width).toBe(header.style.width);
+		expect(pinned).toHaveClass("sticky", "left-0");
+		expect(pinned).toHaveTextContent(`${label}1`);
+		expect(count).toHaveTextContent(/^1$/);
 	});
 });
 
