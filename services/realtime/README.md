@@ -250,6 +250,23 @@ epoch, or ahead of the log is answered with `reset`.
 - **Snapshots are entity-level.** An `entity` is checked with the event's own action and resource, so it is right only for data that is the same for every viewer; there is no field-level filtering. Plugins cannot yet emit entity changes of their own.
 - **Project-level presence** (who is viewing which task) is not built. It is a product feature rather than a sync gap; it would reuse the awareness idea of collaborative editing and stay out of the log.
 
+## Chat
+
+Chat does not use the project rooms or the change log: message bodies would crowd out task and doc changes in the capped log, and a per-event access check per socket is expensive in a busy channel (see the fan-out measurements in [Chat and meetings](../../docs/architecture/chat-and-meetings.md#phase-0-results)). Two kinds of room carry it (`src/chat.ts`):
+
+| Room | Joined | Carries |
+|---|---|---|
+| `channel:<channelId>` | by `chat:join {projectId, channelId}` once the API confirms `channels:read` on `project/<p>/channel/<c>` | `chat` events: `chat.message.new`, `.updated`, `.deleted`, `chat.reaction.changed`, each `{project_id, channel_id, seq, message_id, thread_root_id, actor_id}` |
+| `user:<userId>:chat` | automatically at connect | `chat:unread` nudges (same payload) for channels the account has joined, across every project |
+
+- **Nudges, not messages.** The API publishes only ids and the channel `seq`; a client fetches content with `GET /projects/{p}/channels/{c}/messages?after_seq=`. A missed nudge costs one refetch, never a message.
+- **Access is checked at join and when it changes**, not per event: on `iam.changed`, every minute, and on `chat.channel.access_changed` (a member joined, left or was added), which re-checks that channel's room. A socket that loses access leaves the room and receives `chat:revoked {channelId}`. A failed check keeps the room, since a nudge carries no content and the REST routes are gated anyway.
+- **Channel lifecycle** (`chat.channel.changed`: created, renamed, archived) is an ordinary project event with an `authz` descriptor (`channels:read` on the channel), delivered as `event` to the project's `chat` room after a per-socket check. It is not written to the change log.
+- **Direct messages** have no project. A client joins with `chat:join {channelId}` (no `projectId`); the access check asks `POST /users/me/permissions/check` for `channels:read` on `channel/<id>`, and the room, nudges and re-checks work as for project channels. A new direct message (`chat.dm.created`) nudges both members so it appears in their lists.
+- A socket may watch at most 50 channels; ids are validated as UUIDs before they become room names.
+- **Mentions, thread follows and saved messages** need no realtime of their own: they are written with the message and read from the Inbox lists, which the same nudges refresh.
+- Typing and presence are not built yet (Phase 1b).
+
 ## Running more than one replica
 
 Every replica reads the same Valkey and holds only its own sockets:

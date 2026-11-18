@@ -63,6 +63,7 @@ import { useManagedCopyLabel } from "@/components/projects/docs/managed-copy-ban
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
 import { PaneResizeHandle } from "@/components/shared/pane-resize-handle";
+import { ChatSidebarSection } from "@/components/team-chat/chat-sidebar-section";
 import { Badge } from "@/components/ui/badge";
 import {
 	DropdownMenu,
@@ -2294,6 +2295,8 @@ export function AppSidebar() {
 					<>
 						{user && <ProjectNav />}
 						{user && <SidebarSeparator />}
+						{user && <ChatSidebarSection projectId={projectId} />}
+						{user && <SidebarSeparator />}
 						<ProjectInteractionsSection projectId={projectId} />
 						<SidebarSeparator />
 						{canReadDocs && <DocsSidebarSection projectId={projectId} />}
@@ -2323,6 +2326,7 @@ export function AppSidebar() {
 								</SidebarGroupContent>
 							</SidebarGroup>
 						)}
+						{user && <ChatSidebarSection />}
 
 						<ExtensionPoint point="sidebar.general.section" />
 						{/* Admin section */}

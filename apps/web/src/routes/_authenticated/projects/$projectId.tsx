@@ -44,8 +44,12 @@ function ProjectLayout() {
 	// its nested conversation routes) while keeping it available everywhere
 	// else in the project.
 	const matches = useMatches();
-	const onConversationsPage = matches.some((m) =>
-		m.routeId.startsWith("/_authenticated/projects/$projectId/conversations"),
+	// The chat page has its own composer at the same screen corner.
+	const hideChatFloat = matches.some(
+		(m) =>
+			m.routeId.startsWith(
+				"/_authenticated/projects/$projectId/conversations",
+			) || m.routeId.startsWith("/_authenticated/projects/$projectId/chat"),
 	);
 
 	// The float exists to start/reply to chats — a PROJECT_VIEWER
@@ -68,7 +72,7 @@ function ProjectLayout() {
 	return (
 		<>
 			<Outlet />
-			{!onConversationsPage && canChat && <AIChatFloat projectId={projectId} />}
+			{!hideChatFloat && canChat && <AIChatFloat projectId={projectId} />}
 		</>
 	);
 }

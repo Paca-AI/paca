@@ -125,8 +125,13 @@ func TestPlatformRoles(t *testing.T) {
 	}
 
 	user := parse(t, byName[defaultroles.User])
-	if got, want := actionsOf(user), []string{"users:read"}; !slices.Equal(got, want) {
+	// Reading users, and direct messages (the collection, and the channels the
+	// caller belongs to: see the DirectMessages statement).
+	if got, want := actionsOf(user), []string{"channels:read", "channels:write", "messages:write", "users:read"}; !slices.Equal(got, want) {
 		t.Errorf("USER actions = %v, want %v", got, want)
+	}
+	if !allows(user, "channels:read", "channel") {
+		t.Error("USER may list direct messages")
 	}
 	if !byName[defaultroles.User].Default {
 		t.Error("USER must be the default role")

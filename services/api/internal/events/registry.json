@@ -433,6 +433,11 @@
       "prefix": "agent.",
       "publisher": "services/agent-runner",
       "action": "conversations:read"
+    },
+    {
+      "prefix": "chat.channel.",
+      "publisher": "services/api chat service",
+      "action": "channels:read"
     }
   ],
   "not_realtime": {

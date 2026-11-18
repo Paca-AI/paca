@@ -13,7 +13,7 @@ var ConditionOperators = []string{"StringEquals", "StringNotEquals", "StringLike
 const maxStatements = 100
 
 var resourceRoots = map[string]struct{}{
-	"project": {}, "user": {}, "service_account": {}, "role": {}, "plugin": {}, "agent": {}, "settings": {}, "sso": {}, "git_identity": {},
+	"project": {}, "user": {}, "service_account": {}, "role": {}, "plugin": {}, "agent": {}, "settings": {}, "sso": {}, "git_identity": {}, "channel": {},
 }
 
 // Issue is one validation problem; Path locates it (e.g.
@@ -108,6 +108,21 @@ func validateConditions(c Conditions, resources []string, schema *AttributeSchem
 			if len(vals) == 0 {
 				add(path, "operand must not be empty")
 			}
+			for _, v := range vals {
+				if !strings.Contains(v, varPrefix) {
+					continue
+				}
+				switch {
+				case !IsPrincipalVariable(v):
+					add(path, "operand %q: only ${principal.<name>} variables are supported", v)
+				case op == "StringLike" || op == "Bool":
+					add(path, "operand %q: variables cannot be used with %s", v, op)
+				default:
+					if k, _ := VariableKey(v); !principalKeyDeclared(schema, k) {
+						add(path, "operand %q: unknown principal attribute", v)
+					}
+				}
+			}
 			if op == "Bool" {
 				for _, v := range vals {
 					if v != "true" && v != "false" {
@@ -136,4 +151,9 @@ func kindFitsResources(kind string, resources []string) bool {
 		}
 	}
 	return false
+}
+
+func principalKeyDeclared(schema *AttributeSchema, key string) bool {
+	def, ok := lookupAttr(schema, key)
+	return ok && def.ResourceKind == ""
 }

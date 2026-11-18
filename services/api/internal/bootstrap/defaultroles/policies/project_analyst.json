@@ -4,8 +4,12 @@
     {
       "sid": "ReadProject",
       "effect": "Allow",
-      "actions": ["projects:read"],
-      "resources": ["project/PROJECT_ID"]
+      "actions": [
+        "projects:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID"
+      ]
     },
     {
       "sid": "Read",
@@ -23,46 +27,139 @@
         "views:read",
         "workflows:read"
       ],
-      "resources": ["project/PROJECT_ID/*"]
+      "resources": [
+        "project/PROJECT_ID/*"
+      ]
     },
     {
       "sid": "Write",
       "effect": "Allow",
-      "actions": ["conversations:write", "docs:write"],
-      "resources": ["project/PROJECT_ID/*"]
+      "actions": [
+        "conversations:write",
+        "docs:write"
+      ],
+      "resources": [
+        "project/PROJECT_ID/*"
+      ]
     },
     {
       "sid": "CreateTasks",
       "effect": "Allow",
-      "actions": ["tasks:write"],
-      "resources": ["project/PROJECT_ID"]
+      "actions": [
+        "tasks:write"
+      ],
+      "resources": [
+        "project/PROJECT_ID"
+      ]
     },
     {
       "sid": "RefineDrafts",
       "effect": "Allow",
-      "actions": ["tasks:write"],
-      "resources": ["project/PROJECT_ID/task/*"],
-      "conditions": { "In": { "task.status_category": ["refinement"] } }
+      "actions": [
+        "tasks:write"
+      ],
+      "resources": [
+        "project/PROJECT_ID/task/*"
+      ],
+      "conditions": {
+        "In": {
+          "task.status_category": [
+            "refinement"
+          ]
+        }
+      }
     },
     {
       "sid": "LeaveDraftsUnassigned",
       "effect": "Deny",
-      "actions": ["tasks:write"],
-      "resources": ["project/PROJECT_ID/task/*"],
-      "conditions": { "StringLike": { "task.assignee_id": ["*"] } }
+      "actions": [
+        "tasks:write"
+      ],
+      "resources": [
+        "project/PROJECT_ID/task/*"
+      ],
+      "conditions": {
+        "StringLike": {
+          "task.assignee_id": [
+            "*"
+          ]
+        }
+      }
     },
     {
       "sid": "LeaveDraftsUnplanned",
       "effect": "Deny",
-      "actions": ["tasks:write"],
-      "resources": ["project/PROJECT_ID/task/*"],
-      "conditions": { "StringLike": { "task.sprint_id": ["*"] } }
+      "actions": [
+        "tasks:write"
+      ],
+      "resources": [
+        "project/PROJECT_ID/task/*"
+      ],
+      "conditions": {
+        "StringLike": {
+          "task.sprint_id": [
+            "*"
+          ]
+        }
+      }
     },
     {
       "sid": "ReadRoles",
       "effect": "Allow",
-      "actions": ["roles:read"],
-      "resources": ["project/PROJECT_ID/role/*"]
+      "actions": [
+        "roles:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID/role/*"
+      ]
+    },
+    {
+      "sid": "ChatCollection",
+      "effect": "Allow",
+      "actions": [
+        "channels:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID"
+      ]
+    },
+    {
+      "sid": "ChatPublicChannels",
+      "effect": "Allow",
+      "actions": [
+        "channels:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID/channel/*"
+      ],
+      "conditions": {
+        "In": {
+          "channel.kind": [
+            "public",
+            "voice"
+          ]
+        }
+      }
+    },
+    {
+      "sid": "ChatPrivateChannels",
+      "effect": "Allow",
+      "actions": [
+        "channels:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID/channel/*"
+      ],
+      "conditions": {
+        "StringEquals": {
+          "channel.kind": [
+            "private"
+          ],
+          "channel.member_ids": [
+            "${principal.id}"
+          ]
+        }
+      }
     }
   ]
 }

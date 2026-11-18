@@ -52,13 +52,14 @@ const collabNet = config.collabCluster
 		}
 	: undefined;
 
-const { httpServer, io, resyncer, expiry, collab, sync } = createSocketServer(
-	config,
-	logger,
-	decider,
-	new ValkeyChangeLogReader(commands),
-	collabNet,
-);
+const { httpServer, io, resyncer, expiry, collab, sync, chat } =
+	createSocketServer(
+		config,
+		logger,
+		decider,
+		new ValkeyChangeLogReader(commands),
+		collabNet,
+	);
 if (collab instanceof CollabCluster) {
 	await collab.start();
 	logger.info(
@@ -71,6 +72,7 @@ if (collab instanceof CollabCluster) {
 function onIamChanged(): void {
 	resyncer.onIamChanged();
 	void collab.recheck();
+	void chat.recheck();
 }
 
 // A missed iam.changed announcement is noticed through the API's counter.
@@ -97,12 +99,16 @@ const subscriber = createSubscriber(
 	},
 	(type, payload, meta) => void collab.handleContentEvent(type, payload, meta),
 	(projectId) => sync?.notify(projectId),
+	chat,
 );
 
 // A missed iam.changed announcement must cost at most one interval, as it does
 // for project rooms (see resync.ts): re-check collab editors periodically too.
 // The decider caches answers for 30 s, so each pass sees fresh decisions.
-const collabRecheck = setInterval(() => void collab.recheck(), 60_000);
+const collabRecheck = setInterval(() => {
+	void collab.recheck();
+	void chat.recheck();
+}, 60_000);
 collabRecheck.unref();
 
 httpServer.listen(config.port, () => {

@@ -42,6 +42,7 @@ type Deps struct {
 	Document        *handler.DocumentHandler
 	DocFile         *handler.DocFileHandler
 	Notification    *handler.NotificationHandler
+	Chat            *handler.ChatHandler
 	APIKey          *handler.APIKeyHandler
 	Plugin          *handler.PluginHandler
 	Skills          *handler.SkillsHandler
@@ -222,6 +223,24 @@ func New(deps Deps) http.Handler {
 							r.Post("/me/api-keys", deps.APIKey.Create)
 							r.Delete("/me/api-keys/{keyId}", deps.APIKey.Revoke)
 						})
+					}
+
+					// Chat unread counts across the caller's own projects. Open to
+					// any authenticated caller: it only counts the caller's own
+					// joined channels, in projects they still belong to.
+					if deps.Chat != nil {
+						r.Get("/me/chat/unread-summary", deps.Chat.UnreadSummary)
+						r.Get("/me/chat/inbox", deps.Chat.Inbox)
+						r.Get("/me/chat/mentions", deps.Chat.Mentions)
+						r.Get("/me/chat/threads", deps.Chat.Threads)
+						r.Get("/me/chat/saved", deps.Chat.Saved)
+						r.Post("/me/chat/read-all", deps.Chat.MarkAllRead)
+						// The batch form of "may I?" for resources under a platform
+						// root (a direct message), for services/realtime. It reports
+						// the caller's own access and gates nothing.
+						if deps.Project != nil {
+							r.With(httpmw.ProbeRootAccess(deps.IAM)).Post("/me/permissions/check", deps.Project.CheckMyAccess)
+						}
 					}
 
 					// Notification routes
@@ -413,6 +432,43 @@ func New(deps Deps) http.Handler {
 				r.Get("/projects/workspace-stats", deps.Project.GetWorkspaceStats)
 				r.With(require.Global(iam.ActionProjectsCreate)).Post("/projects", deps.Project.CreateProject)
 			})
+
+			// Direct messages (docs/architecture/chat-and-meetings.md): one-to-one
+			// conversations between two accounts of any kind. They live under a
+			// platform root, so each route is gated on channel/{channelId} (or on the
+			// collection, "channel", for the list, the directory and a start), and
+			// membership is part of the role's policy, not a check in code.
+			if deps.Chat != nil {
+				r.Group(func(r chi.Router) {
+					r.Use(httpmw.Authn(deps.TokenManager, deps.APIKeyAuth))
+					r.Use(httpmw.RequireFreshPassword())
+					r.Route("/chat", func(r chi.Router) {
+						r.With(require.Global(iam.ActionChannelsRead)).Get("/dms", deps.Chat.ListDMs)
+						r.With(require.Global(iam.ActionChannelsWrite), require.DMStart(), httpmw.RequireJSONContentType()).Post("/dms", deps.Chat.StartDM)
+						r.With(require.Global(iam.ActionChannelsWrite)).Get("/directory", deps.Chat.Directory)
+						r.Route("/dms/{channelId}", func(r chi.Router) {
+							read := require.DirectChannel(iam.ActionChannelsRead)
+							post := require.DirectChannel(iam.ActionChannelsRead, iam.ActionMessagesWrite)
+							r.With(read).Get("/", deps.Chat.GetChannel)
+							r.With(read).Put("/star", deps.Chat.StarChannel)
+							r.With(read).Delete("/star", deps.Chat.UnstarChannel)
+							r.With(read).Get("/agent", deps.Chat.AgentRuns)
+							r.With(read, httpmw.RequireJSONContentType()).Post("/read", deps.Chat.MarkRead)
+							r.With(read).Get("/messages", deps.Chat.ListMessages)
+							r.With(post, httpmw.RequireJSONContentType()).Post("/messages", deps.Chat.PostMessage)
+							r.With(post, httpmw.RequireJSONContentType()).Patch("/messages/{messageId}", deps.Chat.EditMessage)
+							r.With(post).Delete("/messages/{messageId}", deps.Chat.DeleteMessage)
+							r.With(post).Put("/messages/{messageId}/reactions/{emoji}", deps.Chat.AddReaction)
+							r.With(post).Delete("/messages/{messageId}/reactions/{emoji}", deps.Chat.RemoveReaction)
+							r.With(read).Put("/messages/{messageId}/save", deps.Chat.SaveMessage)
+							r.With(read).Delete("/messages/{messageId}/save", deps.Chat.UnsaveMessage)
+							r.With(read).Put("/messages/{messageId}/follow", deps.Chat.FollowThread)
+							r.With(read).Delete("/messages/{messageId}/follow", deps.Chat.UnfollowThread)
+							r.With(read, httpmw.RequireJSONContentType()).Post("/messages/{messageId}/thread-read", deps.Chat.MarkThreadRead)
+						})
+					})
+				})
+			}
 
 			// Port forward resolution — how the Paca browser extension
 			// turns "I'm on host:<port>" into "this is environment X in
@@ -978,6 +1034,50 @@ func New(deps Deps) http.Handler {
 							Post("/{agentId}/chat-sessions", deps.Agent.StartChatSession)
 						r.With(require.AgentUse(iam.ActionConversationsWrite), require.SessionEnvironment()).
 							Post("/{agentId}/chat-sessions/{sessionId}/messages", deps.Agent.SendChatMessage)
+					})
+				}
+
+				// Chat channels (docs/architecture/chat-and-meetings.md). Every
+				// route on one channel is authorized on the channel itself, so
+				// a private channel's visibility comes from the policy
+				// (channel.kind / channel.member_ids), not from code. Editing
+				// your own message and removing someone else's are separate
+				// routes so each has its own gate.
+				if deps.Chat != nil {
+					r.Route("/channels", func(r chi.Router) {
+						r.With(require.Project(iam.ActionChannelsRead)).Get("/", deps.Chat.ListChannels)
+						r.With(require.Project(iam.ActionChannelsWrite), require.ChannelCreate(), httpmw.RequireJSONContentType()).Post("/", deps.Chat.CreateChannel)
+						r.Route("/{channelId}", func(r chi.Router) {
+							read := require.ChannelEntity(iam.ActionChannelsRead)
+							write := require.ChannelEntity(iam.ActionChannelsWrite)
+							post := require.ChannelEntity(iam.ActionChannelsRead, iam.ActionMessagesWrite)
+							r.With(read).Get("/", deps.Chat.GetChannel)
+							r.With(write, httpmw.RequireJSONContentType()).Patch("/", deps.Chat.UpdateChannel)
+							r.With(write).Post("/archive", deps.Chat.ArchiveChannel)
+							r.With(write).Post("/unarchive", deps.Chat.UnarchiveChannel)
+							r.With(read).Put("/star", deps.Chat.StarChannel)
+							r.With(read).Delete("/star", deps.Chat.UnstarChannel)
+							r.With(read).Post("/join", deps.Chat.JoinChannel)
+							r.With(read).Post("/leave", deps.Chat.LeaveChannel)
+							r.With(write).Put("/members/{accountId}", deps.Chat.AddMember)
+							r.With(read, httpmw.RequireJSONContentType()).Patch("/notification-pref", deps.Chat.SetNotificationPref)
+							r.With(read, httpmw.RequireJSONContentType()).Post("/read", deps.Chat.MarkRead)
+							r.With(read).Get("/messages", deps.Chat.ListMessages)
+							r.With(post, httpmw.RequireJSONContentType()).Post("/messages", deps.Chat.PostMessage)
+							r.With(post, httpmw.RequireJSONContentType()).Patch("/messages/{messageId}", deps.Chat.EditMessage)
+							r.With(post).Delete("/messages/{messageId}", deps.Chat.DeleteMessage)
+							r.With(post).Put("/messages/{messageId}/reactions/{emoji}", deps.Chat.AddReaction)
+							r.With(post).Delete("/messages/{messageId}/reactions/{emoji}", deps.Chat.RemoveReaction)
+							// Saving a message and following a thread are the caller's own
+							// bookmarks: reading the channel is what they need.
+							r.With(read).Put("/messages/{messageId}/save", deps.Chat.SaveMessage)
+							r.With(read).Delete("/messages/{messageId}/save", deps.Chat.UnsaveMessage)
+							r.With(read).Put("/messages/{messageId}/follow", deps.Chat.FollowThread)
+							r.With(read).Delete("/messages/{messageId}/follow", deps.Chat.UnfollowThread)
+							r.With(read, httpmw.RequireJSONContentType()).Post("/messages/{messageId}/thread-read", deps.Chat.MarkThreadRead)
+							r.With(require.ChannelEntity(iam.ActionChannelsRead, iam.ActionMessagesModerate)).
+								Delete("/moderation/messages/{messageId}", deps.Chat.ModerateDeleteMessage)
+						})
 					})
 				}
 

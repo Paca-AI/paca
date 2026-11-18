@@ -70,6 +70,20 @@ const (
 	ActionAnnotationsWrite   Action = "annotations:write"
 	ActionAnnotationsResolve Action = "annotations:resolve"
 
+	// Chat and meetings (docs/architecture/chat-and-meetings.md). Channels and
+	// messages are checked on project/<p>/channel/<id>, or on the platform root
+	// channel/<id> for workspace channels and DMs.
+	ActionChannelsRead     Action = "channels:read"
+	ActionChannelsWrite    Action = "channels:write"
+	ActionMessagesWrite    Action = "messages:write"
+	ActionMessagesModerate Action = "messages:moderate"
+	ActionCallsJoin        Action = "calls:join"
+	ActionCallsRecord      Action = "calls:record"
+	ActionCallsModerate    Action = "calls:moderate"
+	ActionCallsInviteAgent Action = "calls:invite_agent"
+	ActionProposalsWrite   Action = "proposals:write"
+	ActionProposalsResolve Action = "proposals:resolve"
+
 	ActionSettingsWrite Action = "settings:write"
 	// ActionSettingsSSOWrite is root-equivalent: a provider that links
 	// accounts by email signs in as any account with a matching email.
@@ -124,6 +138,9 @@ func BuiltinActions() []Action {
 		ActionEnvironmentsRead, ActionEnvironmentsWrite, ActionEnvironmentsConnect,
 		ActionWorkflowsRead, ActionWorkflowsWrite,
 		ActionAnnotationsRead, ActionAnnotationsWrite, ActionAnnotationsResolve,
+		ActionChannelsRead, ActionChannelsWrite, ActionMessagesWrite, ActionMessagesModerate,
+		ActionCallsJoin, ActionCallsRecord, ActionCallsModerate, ActionCallsInviteAgent,
+		ActionProposalsWrite, ActionProposalsResolve,
 		ActionSettingsWrite, ActionSettingsSSOWrite, ActionSettingsSecurityWrite, ActionPluginsRead, ActionPluginsWrite,
 		ActionGitRead, ActionGitWrite, ActionGitApprove, ActionGitMerge, ActionGitConnectionsManage, ActionGitIdentitiesManage,
 	}

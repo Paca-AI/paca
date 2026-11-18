@@ -575,6 +575,47 @@ const (
 	// CodeAutomationUpdateTaskSelfParent indicates an update_task node would set the triggered task as its own parent.
 	CodeAutomationUpdateTaskSelfParent Code = "AUTOMATION_UPDATE_TASK_SELF_PARENT"
 
+	// Chat (docs/architecture/chat-and-meetings.md).
+	// CodeChannelNotFound is the CHANNEL_NOT_FOUND error code.
+	CodeChannelNotFound Code = "CHANNEL_NOT_FOUND"
+	// CodeChannelNameInvalid is the CHANNEL_NAME_INVALID error code.
+	CodeChannelNameInvalid Code = "CHANNEL_NAME_INVALID"
+	// CodeChannelNameTaken is the CHANNEL_NAME_TAKEN error code.
+	CodeChannelNameTaken Code = "CHANNEL_NAME_TAKEN"
+	// CodeChannelKindInvalid is the CHANNEL_KIND_INVALID error code.
+	CodeChannelKindInvalid Code = "CHANNEL_KIND_INVALID"
+	// CodeChannelArchived is the CHANNEL_ARCHIVED error code.
+	CodeChannelArchived Code = "CHANNEL_ARCHIVED"
+	// CodeChannelProtected is the CHANNEL_PROTECTED error code.
+	CodeChannelProtected Code = "CHANNEL_PROTECTED"
+	// CodeChannelTopicTooLong is the CHANNEL_TOPIC_TOO_LONG error code.
+	CodeChannelTopicTooLong Code = "CHANNEL_TOPIC_TOO_LONG"
+	// CodeMessageNotFound is the MESSAGE_NOT_FOUND error code.
+	CodeMessageNotFound Code = "MESSAGE_NOT_FOUND"
+	// CodeMessageEmpty is the MESSAGE_EMPTY error code.
+	CodeMessageEmpty Code = "MESSAGE_EMPTY"
+	// CodeMessageContentInvalid is the MESSAGE_CONTENT_INVALID error code.
+	CodeMessageContentInvalid Code = "MESSAGE_CONTENT_INVALID"
+	// CodeMessageTooLong is the MESSAGE_TOO_LONG error code.
+	CodeMessageTooLong Code = "MESSAGE_TOO_LONG"
+	// CodeThreadRootInvalid is the THREAD_ROOT_INVALID error code.
+	CodeThreadRootInvalid Code = "THREAD_ROOT_INVALID"
+	// CodeEmojiInvalid is the EMOJI_INVALID error code.
+	CodeEmojiInvalid Code = "EMOJI_INVALID"
+	// CodeChannelNotMember is the CHANNEL_NOT_MEMBER error code.
+	CodeChannelNotMember Code = "CHANNEL_NOT_MEMBER"
+	// CodeChatNotProjectMember is the CHAT_NOT_PROJECT_MEMBER error code.
+	CodeChatNotProjectMember Code = "CHAT_NOT_PROJECT_MEMBER"
+	// CodeChatSeqInvalid is the CHAT_SEQ_INVALID error code.
+	CodeChatSeqInvalid Code = "CHAT_SEQ_INVALID"
+
+	// CodeDMSelf is the DM_SELF error code.
+	CodeDMSelf Code = "DM_SELF"
+	// CodeDMPeerNotFound is the DM_PEER_NOT_FOUND error code.
+	CodeDMPeerNotFound Code = "DM_PEER_NOT_FOUND"
+	// CodeDMNotSupported is the DM_NOT_SUPPORTED error code.
+	CodeDMNotSupported Code = "DM_NOT_SUPPORTED"
+
 	// CodeAnnotationNotFound indicates the requested page annotation does not exist.
 	CodeAnnotationNotFound Code = "ANNOTATION_NOT_FOUND"
 	// CodeAnnotationBodyEmpty indicates a comment/reply body was empty.

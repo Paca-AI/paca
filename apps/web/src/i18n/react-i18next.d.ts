@@ -3,6 +3,7 @@ import "i18next";
 import admin from "./locales/en/admin.json";
 import appShell from "./locales/en/appShell.json";
 import auth from "./locales/en/auth.json";
+import chat from "./locales/en/chat.json";
 import common from "./locales/en/common.json";
 import errors from "./locales/en/errors.json";
 import plugins from "./locales/en/plugins.json";
@@ -19,6 +20,7 @@ declare module "i18next" {
 			admin: typeof admin;
 			appShell: typeof appShell;
 			auth: typeof auth;
+			chat: typeof chat;
 			common: typeof common;
 			errors: typeof errors;
 			plugins: typeof plugins;
