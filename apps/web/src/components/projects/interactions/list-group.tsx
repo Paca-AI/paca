@@ -1,8 +1,10 @@
 import { ChevronDown, ChevronRight, Play, Plus } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useStableCallback } from "@/hooks/use-stable-callback";
+import { useStableValue } from "@/hooks/use-stable-value";
 
 import type { ChildTaskFilters, Sprint, Task } from "@/lib/interaction-api";
 import {
@@ -29,6 +31,20 @@ import {
 	getTaskSwimlaneKey,
 	type TaskFieldUpdate,
 } from "./view-utils";
+
+const EMPTY_EPICS: Task[] = [];
+
+// The copy of an Epic shown without its subtask counts, kept per source task so
+// the row it feeds stays memoized between renders.
+const countlessEpics = new WeakMap<Task, Task>();
+function withoutSubtaskCounts(task: Task): Task {
+	let copy = countlessEpics.get(task);
+	if (!copy) {
+		copy = { ...task, subtask_count: 0, subtask_done_count: 0 };
+		countlessEpics.set(task, copy);
+	}
+	return copy;
+}
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -107,6 +123,111 @@ export interface SubtaskNesting {
 	filtersActive: boolean;
 }
 
+interface ListRowContentProps {
+	task: Task;
+	taskIdPrefix: string;
+	statuses: TaskStatus[];
+	taskTypes: TaskType[];
+	epics: Task[];
+	epicsPagination: EpicsPagination | undefined;
+	customFields: CustomFieldDefinition[];
+	visibleFields: string[];
+	canEdit: boolean;
+	showDragHandle: boolean;
+	isDragging: boolean;
+	projectId: string;
+	columnDefs: ColumnGroupDef[] | undefined;
+	prevGroupDef: ColumnGroupDef | undefined;
+	nextGroupDef: ColumnGroupDef | undefined;
+	nested: boolean;
+	expanded: boolean;
+	onOpen: (task: Task) => void;
+	onUpdateTaskField:
+		| ((taskId: string, update: TaskFieldUpdate) => void)
+		| undefined;
+	onDelete: ((taskId: string) => void) | undefined;
+	onMoveToGroupDef: (task: Task, target: ColumnGroupDef) => void;
+	onToggleSubtasks: (taskId: string) => void;
+}
+
+/** A table row and its context menu. Memoized with stable props, so opening a
+ *  task or loading more rows re-renders only the rows that changed instead of
+ *  every row in the table. */
+const ListRowContent = memo(function ListRowContent({
+	task,
+	taskIdPrefix,
+	statuses,
+	taskTypes,
+	epics,
+	epicsPagination,
+	customFields,
+	visibleFields,
+	canEdit,
+	showDragHandle,
+	isDragging,
+	projectId,
+	columnDefs,
+	prevGroupDef,
+	nextGroupDef,
+	nested,
+	expanded,
+	onOpen,
+	onUpdateTaskField,
+	onDelete,
+	onMoveToGroupDef,
+	onToggleSubtasks,
+}: ListRowContentProps) {
+	return (
+		<TaskContextMenu
+			task={task}
+			statuses={statuses}
+			taskTypes={taskTypes}
+			epics={epics}
+			epicsPagination={epicsPagination}
+			canEdit={canEdit}
+			onOpen={() => onOpen(task)}
+			onUpdate={onUpdateTaskField}
+			onDelete={canEdit ? onDelete : undefined}
+			columnDefs={columnDefs}
+			onMoveToColumnDef={onMoveToGroupDef}
+			taskIdPrefix={taskIdPrefix}
+			projectId={projectId}
+		>
+			<TaskRow
+				task={task}
+				taskIdPrefix={taskIdPrefix}
+				statuses={statuses}
+				taskTypes={taskTypes}
+				epics={epics}
+				epicsPagination={epicsPagination}
+				customFields={customFields}
+				visibleFields={visibleFields}
+				onClick={() => onOpen(task)}
+				showDragHandle={showDragHandle}
+				isDragging={isDragging}
+				canEdit={canEdit}
+				onUpdateTaskField={onUpdateTaskField}
+				onDelete={canEdit ? onDelete : undefined}
+				onMoveLeft={
+					canEdit && prevGroupDef
+						? () => onMoveToGroupDef(task, prevGroupDef)
+						: undefined
+				}
+				onMoveRight={
+					canEdit && nextGroupDef
+						? () => onMoveToGroupDef(task, nextGroupDef)
+						: undefined
+				}
+				subtasks={
+					nested
+						? { expanded, onToggle: () => onToggleSubtasks(task.id) }
+						: undefined
+				}
+			/>
+		</TaskContextMenu>
+	);
+});
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ListGroup({
@@ -117,7 +238,7 @@ export function ListGroup({
 	members,
 	reporters,
 	customFields,
-	epics = [],
+	epics = EMPTY_EPICS,
 	epicsPagination,
 	canCreate,
 	defaultCollapsed,
@@ -185,6 +306,27 @@ export function ListGroup({
 		if (Object.keys(colUpdate).length > 0)
 			onUpdateTaskField?.(task.id, colUpdate);
 	};
+
+	// Stable handles for the memoized rows (see ListRowContent): a row only
+	// re-renders when something it shows changes, not on every render of the
+	// group — which a task opening or a page of tasks loading triggers.
+	const stableTaskClick = useStableCallback((task: Task) => onTaskClick(task));
+	const stableUpdateField = useStableCallback(
+		(taskId: string, update: TaskFieldUpdate) =>
+			onUpdateTaskField?.(taskId, update),
+	);
+	const stableDelete = useStableCallback((taskId: string) =>
+		onDeleteTask?.(taskId),
+	);
+	const stableMoveToGroupDef = useStableCallback(
+		(task: Task, target: ColumnGroupDef) => moveTaskToGroupDef(task, target),
+	);
+	const stableToggleSubtasks = useStableCallback((taskId: string) =>
+		nesting?.onToggle(taskId),
+	);
+	const stablePrevGroupDef = useStableValue(prevGroupDef);
+	const stableNextGroupDef = useStableValue(nextGroupDef);
+	const stableAllGroupDefs = useStableValue(allGroupDefs);
 
 	// Builds onCreateTask arguments for either grouping mode
 	const handleAdd = (title: string, typeId: string | null) => {
@@ -442,56 +584,30 @@ export function ListGroup({
 					: (e) => handleIntraGroupDrop(e, task, index)
 			}
 		>
-			<TaskContextMenu
+			<ListRowContent
 				task={task}
+				taskIdPrefix={taskIdPrefix}
 				statuses={statuses}
 				taskTypes={taskTypes}
 				epics={epics}
 				epicsPagination={epicsPagination}
+				customFields={customFields}
+				visibleFields={visibleFields}
 				canEdit={!!canEdit}
-				onOpen={() => onTaskClick(task)}
-				onUpdate={onUpdateTaskField}
-				onDelete={canEdit ? onDeleteTask : undefined}
-				columnDefs={allGroupDefs}
-				onMoveToColumnDef={moveTaskToGroupDef}
-				taskIdPrefix={taskIdPrefix}
+				showDragHandle={isDraggable && !isMobile}
+				isDragging={draggingId === task.id}
 				projectId={projectId}
-			>
-				<TaskRow
-					task={task}
-					taskIdPrefix={taskIdPrefix}
-					statuses={statuses}
-					taskTypes={taskTypes}
-					epics={epics}
-					epicsPagination={epicsPagination}
-					customFields={customFields}
-					visibleFields={visibleFields}
-					onClick={() => onTaskClick(task)}
-					showDragHandle={isDraggable && !isMobile}
-					isDragging={draggingId === task.id}
-					canEdit={canEdit}
-					onUpdateTaskField={onUpdateTaskField}
-					onDelete={canEdit ? onDeleteTask : undefined}
-					onMoveLeft={
-						canEdit && prevGroupDef
-							? () => moveTaskToGroupDef(task, prevGroupDef)
-							: undefined
-					}
-					onMoveRight={
-						canEdit && nextGroupDef
-							? () => moveTaskToGroupDef(task, nextGroupDef)
-							: undefined
-					}
-					subtasks={
-						nesting
-							? {
-									expanded: nesting.isExpanded(task.id),
-									onToggle: () => nesting.onToggle(task.id),
-								}
-							: undefined
-					}
-				/>
-			</TaskContextMenu>
+				columnDefs={stableAllGroupDefs}
+				prevGroupDef={stablePrevGroupDef}
+				nextGroupDef={stableNextGroupDef}
+				nested={!!nesting}
+				expanded={!!nesting?.isExpanded(task.id)}
+				onOpen={stableTaskClick}
+				onUpdateTaskField={onUpdateTaskField ? stableUpdateField : undefined}
+				onDelete={onDeleteTask ? stableDelete : undefined}
+				onMoveToGroupDef={stableMoveToGroupDef}
+				onToggleSubtasks={stableToggleSubtasks}
+			/>
 		</div>
 	);
 
@@ -506,7 +622,7 @@ export function ListGroup({
 		// nest them (only the Timeline does).
 		const task =
 			epicTypeId && listed.task_type_id === epicTypeId
-				? { ...listed, subtask_count: 0, subtask_done_count: 0 }
+				? withoutSubtaskCounts(listed)
 				: listed;
 		return (
 			<Fragment key={task.id}>

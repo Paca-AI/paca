@@ -1,4 +1,5 @@
 import {
+	type UseQueryResult,
 	useInfiniteQuery,
 	useMutation,
 	useQueries,
@@ -7,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Spinner } from "@/components/ui/spinner";
+import { useStableCallback } from "@/hooks/use-stable-callback";
 import { notifyError } from "@/lib/notify";
 
 // Upper bound for manual-sort positions.  All computed positions stay strictly
@@ -281,6 +283,22 @@ function buildColumnFilter(
 		};
 	}
 	return { ...baseOpts, ...group };
+}
+
+/** The slice of each column query the layout reads. Returned through
+ *  `useQueries`' `combine` so the array keeps its identity until a column's
+ *  data or status really changes: a plain `useQueries()` result is a new
+ *  array on every render, which made `tasks` — and everything derived from it
+ *  (members, column definitions, pagination) — recompute on every render and
+ *  re-render every card on the board. */
+function combineColumnQueries(
+	results: UseQueryResult<Awaited<ReturnType<typeof listAllTasks>>>[],
+) {
+	return results.map((q) => ({
+		data: q.data,
+		dataUpdatedAt: q.dataUpdatedAt,
+		fetchStatus: q.fetchStatus,
+	}));
 }
 
 /** Sets `?taskId=` on the current URL without triggering a route navigation. */
@@ -949,6 +967,7 @@ export function InteractionLayout({
 	>({});
 
 	const columnQueries = useQueries({
+		combine: combineColumnQueries,
 		queries: colQueriesEnabled
 			? fetchColumnDefs.map((col) => {
 					const effectivePageSize =
@@ -1733,13 +1752,12 @@ export function InteractionLayout({
 			if (selectedTaskId === taskId) setSelectedTaskId(null);
 		},
 	});
-	const handleRequestDeleteTask = useCallback(
-		(taskId: string) => {
-			const task = tasks.find((t) => t.id === taskId);
-			if (task) setDeleteConfirmTask(task);
-		},
-		[tasks],
-	);
+	// Stable identity: it is handed to every card, and depending on `tasks`
+	// would re-render all of them each time a page of tasks loads.
+	const handleRequestDeleteTask = useStableCallback((taskId: string) => {
+		const task = tasks.find((t) => t.id === taskId);
+		if (task) setDeleteConfirmTask(task);
+	});
 
 	const createViewMutation = useMutation({
 		meta: { success: "created", subject: "view" },
