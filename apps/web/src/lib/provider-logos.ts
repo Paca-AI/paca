@@ -121,11 +121,16 @@ export function resolveAvatarSrc(
 // browser download every avatar again, and they blink back to their initials
 // meanwhile. The first URL seen for an avatar is kept and reused until it is
 // old, well before its one-hour signature expires.
-const SIGNED_URL_KEEP_MS = 20 * 60 * 1000;
+// Shared with IdDirectory; both derive from the API's 1h avatar URL TTL.
+export const SIGNED_URL_KEEP_MS = 20 * 60 * 1000;
 const signedUrls = new Map<string, { url: string; at: number }>();
 
+export function isSignedUrl(url: string): boolean {
+	return url.includes("X-Amz-Signature=");
+}
+
 export function stableSignedUrl(url: string, now = Date.now()): string {
-	if (!url.includes("X-Amz-Signature=")) return url;
+	if (!isSignedUrl(url)) return url;
 	const base = url.split("?")[0];
 	const kept = signedUrls.get(base);
 	if (kept && now - kept.at < SIGNED_URL_KEEP_MS) return kept.url;

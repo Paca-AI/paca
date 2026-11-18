@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { isSignedUrl, SIGNED_URL_KEEP_MS } from "./provider-logos";
 
 // How long a resolved item is served without refreshing it, and how long to
 // wait before retrying ids whose lookup failed.
@@ -24,13 +25,10 @@ interface Entry<T> {
 // is unchanged: swapping it in would change every <img src> that shows it and
 // make the browser fetch each avatar again. The kept URL is replaced once it
 // is this old, well before the signature (an hour) expires.
-const SIGNED_URL_KEEP_MS = 20 * 60 * 1000;
 
 function stableJson(value: unknown): string {
 	return JSON.stringify(value, (_key, v) =>
-		typeof v === "string" && v.includes("X-Amz-Signature=")
-			? v.split("?")[0]
-			: v,
+		typeof v === "string" && isSignedUrl(v) ? v.split("?")[0] : v,
 	);
 }
 

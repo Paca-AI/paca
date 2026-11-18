@@ -339,6 +339,13 @@ const BoardCardSlot = memo(function BoardCardSlot({
 });
 
 const EMPTY: never[] = [];
+// Shared "no swimlane" def; module scope keeps its identity stable so memoized
+// cards in that layout don't re-render on every BoardView render.
+const NO_SWIMLANE: ColumnGroupDef = {
+	key: "__all",
+	label: "",
+	fieldValue: null,
+};
 
 export function BoardView({
 	projectId,
@@ -1010,12 +1017,6 @@ export function BoardView({
 
 	if (hasSwimlanes) {
 		// ── Swimlanes-outer layout: swimlane rows → column cells inside ──────
-		// Shared singleton swimlane def for "no swimlane" filter
-		const noSwim: ColumnGroupDef = {
-			key: "__all",
-			label: "",
-			fieldValue: null,
-		};
 		// Only use defined defs; filter out the __all sentinel
 		const visibleSwimDefs = swimlaneDefs.filter((s) => s.key !== "__all");
 
@@ -1080,7 +1081,7 @@ export function BoardView({
 					</div>
 
 					{/* One row per swimlane */}
-					{(visibleSwimDefs.length > 0 ? visibleSwimDefs : [noSwim]).map(
+					{(visibleSwimDefs.length > 0 ? visibleSwimDefs : [NO_SWIMLANE]).map(
 						(swimDef) => (
 							<div
 								key={swimDef.key}
@@ -1120,12 +1121,6 @@ export function BoardView({
 	}
 
 	// ── No-swimlane layout: horizontal columns ────────────────────────────────
-	const noSwimAll: ColumnGroupDef = {
-		key: "__all",
-		label: "",
-		fieldValue: null,
-	};
-
 	return (
 		<div className="flex flex-1 min-h-0 items-stretch gap-4 overflow-x-auto overflow-y-hidden px-6 pt-5 pb-8">
 			{effectiveColumnDefs.map((colDef) => {
@@ -1174,7 +1169,7 @@ export function BoardView({
 					);
 				}
 
-				const addTaskRow = renderAddTaskRow(colDef, noSwimAll);
+				const addTaskRow = renderAddTaskRow(colDef, NO_SWIMLANE);
 				return (
 					<div
 						key={colDef.key}
@@ -1186,7 +1181,7 @@ export function BoardView({
 						 * z-index/stacking-context edge cases. */}
 						<div className="shrink-0">{renderColHeader(colDef)}</div>
 						<ColumnScrollArea pagination={columnPagination?.[colDef.key]}>
-							{renderCellCards(colDef, noSwimAll, "min-h-full", false, true)}
+							{renderCellCards(colDef, NO_SWIMLANE, "min-h-full", false, true)}
 						</ColumnScrollArea>
 						{/* Pinned footer, same reasoning as the header above — always
 						 * reachable without scrolling to the bottom of the column. */}

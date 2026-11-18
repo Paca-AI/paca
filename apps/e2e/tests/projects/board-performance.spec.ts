@@ -212,7 +212,11 @@ async function openBoard(page: Page, projectId: string) {
 test.describe("Board stays responsive with many tasks", () => {
 	let projectId: string;
 
-	test.beforeEach(async ({ request }) => {
+	test.beforeEach(async ({ request, browserName }) => {
+		test.skip(
+			browserName !== "chromium",
+			"CPU throttling and long tasks need CDP",
+		);
 		test.setTimeout(240_000);
 		projectId = await seedBoard(request);
 	});
