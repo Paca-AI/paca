@@ -12,7 +12,26 @@ export const MAX_IDS_PER_LOOKUP = 100;
 interface Entry<T> {
 	/** null: looked up and not found (deleted, not visible, no longer a member…). */
 	item: T | null;
+	/** When the id was last confirmed by the server. */
 	at: number;
+	/** When `item` itself was last replaced. */
+	itemAt: number;
+}
+
+// Presigned storage URLs (avatars) are re-signed on every response, so the
+// same avatar arrives with a different query string each time. Compared with
+// the signature stripped, a record whose only difference is a fresh signature
+// is unchanged: swapping it in would change every <img src> that shows it and
+// make the browser fetch each avatar again. The kept URL is replaced once it
+// is this old, well before the signature (an hour) expires.
+const SIGNED_URL_KEEP_MS = 20 * 60 * 1000;
+
+function stableJson(value: unknown): string {
+	return JSON.stringify(value, (_key, v) =>
+		typeof v === "string" && v.includes("X-Amz-Signature=")
+			? v.split("?")[0]
+			: v,
+	);
 }
 
 /** Resolves ids to records without loading whole lists: ids asked for while
@@ -65,12 +84,38 @@ export class IdDirectory<T> {
 	 *  list) so they needn't be asked for again. */
 	seed(items: T[]): void {
 		const now = Date.now();
+		let changed = false;
 		for (const item of items) {
-			for (const key of this.keysOf(item)) {
-				if (key) this.entries.set(key, { item, at: now });
-			}
+			if (this.store(item, now)) changed = true;
 		}
-		if (items.length > 0) this.bump();
+		if (changed) this.bump();
+	}
+
+	/** Records `item` under each of its ids. Returns whether anything a
+	 *  subscriber could render differently was replaced. */
+	private store(item: T, now: number, onlyKnown?: Set<string>): boolean {
+		const serialized = stableJson(item);
+		let changed = false;
+		for (const key of this.keysOf(item)) {
+			if (!key) continue;
+			if (onlyKnown && !onlyKnown.has(key)) continue;
+			const existing = this.entries.get(key);
+			// Every page of tasks re-seeds the people it embeds. Re-seeding an
+			// unchanged record must not notify subscribers: each notification
+			// re-renders every card and picker showing a member, so a page
+			// load would redraw the whole board.
+			if (
+				existing?.item != null &&
+				now - existing.itemAt < SIGNED_URL_KEEP_MS &&
+				stableJson(existing.item) === serialized
+			) {
+				existing.at = now;
+				continue;
+			}
+			this.entries.set(key, { item, at: now, itemAt: now });
+			changed = true;
+		}
+		return changed;
 	}
 
 	/** Drops everything cached; ids in use are fetched again on next read. */
@@ -105,13 +150,15 @@ export class IdDirectory<T> {
 		try {
 			const items = await this.fetchBatch(chunk);
 			const now = Date.now();
-			for (const id of chunk) this.entries.set(id, { item: null, at: now });
+			const requested = new Set(chunk);
+			const found = new Set<string>();
 			for (const item of items) {
-				for (const key of this.keysOf(item)) {
-					if (key && this.entries.has(key)) {
-						this.entries.set(key, { item, at: now });
-					}
-				}
+				for (const key of this.keysOf(item)) if (key) found.add(key);
+				this.store(item, now, requested);
+			}
+			for (const id of chunk) {
+				if (!found.has(id))
+					this.entries.set(id, { item: null, at: now, itemAt: now });
 			}
 			for (const id of chunk) this.failedAt.delete(id);
 		} catch {

@@ -5,6 +5,7 @@ import {
 	notificationActorAvatar,
 	resolveAvatarSrc,
 	serviceAccountAvatar,
+	stableSignedUrl,
 } from "./provider-logos";
 
 describe("resolveAvatarSrc", () => {
@@ -92,5 +93,34 @@ describe("avatar adapters", () => {
 		expect(
 			resolveAvatarSrc(identity.type, identity.avatarUrl, identity.agent),
 		).toBe("/provider-logos/codex.svg");
+	});
+});
+
+describe("stableSignedUrl", () => {
+	const signed = (path: string, sig: string) =>
+		`http://h/${path}?X-Amz-Date=${sig}&X-Amz-Signature=${sig}`;
+
+	it("keeps the first URL while the same avatar is re-signed", () => {
+		const first = signed("avatars/u1/full.png", "a");
+		expect(stableSignedUrl(first, 0)).toBe(first);
+		expect(stableSignedUrl(signed("avatars/u1/full.png", "b"), 60_000)).toBe(
+			first,
+		);
+		expect(resolveAvatarSrc("human", signed("avatars/u1/full.png", "c"))).toBe(
+			resolveAvatarSrc("human", signed("avatars/u1/full.png", "d")),
+		);
+	});
+
+	it("follows a new upload, a different avatar, and an old signature", () => {
+		const first = signed("avatars/u2/one.png", "a");
+		stableSignedUrl(first, 0);
+		const other = signed("avatars/u2/two.png", "a");
+		expect(stableSignedUrl(other, 1)).toBe(other);
+		const renewed = signed("avatars/u2/one.png", "z");
+		expect(stableSignedUrl(renewed, 21 * 60 * 1000)).toBe(renewed);
+	});
+
+	it("leaves unsigned URLs alone", () => {
+		expect(stableSignedUrl("/uploads/a.png?v=1")).toBe("/uploads/a.png?v=1");
 	});
 });

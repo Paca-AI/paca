@@ -105,7 +105,7 @@ export function resolveAvatarSrc(
 	avatarUrl: string | null | undefined,
 	agent?: AgentProviderInfo,
 ): string | undefined {
-	if (avatarUrl) return avatarUrl;
+	if (avatarUrl) return stableSignedUrl(avatarUrl);
 	if (type !== "agent" || !agent) return undefined;
 	return lookupProviderLogo(
 		agent.agentType ?? undefined,
@@ -113,6 +113,24 @@ export function resolveAvatarSrc(
 		agent.acpProvider,
 		agent.cliProvider,
 	);
+}
+
+// The API signs a stored avatar's URL afresh on every response, so the same
+// avatar arrives with a different query string each time a list is fetched
+// (every page of tasks, every refetch). Handing each one to <img> makes the
+// browser download every avatar again, and they blink back to their initials
+// meanwhile. The first URL seen for an avatar is kept and reused until it is
+// old, well before its one-hour signature expires.
+const SIGNED_URL_KEEP_MS = 20 * 60 * 1000;
+const signedUrls = new Map<string, { url: string; at: number }>();
+
+export function stableSignedUrl(url: string, now = Date.now()): string {
+	if (!url.includes("X-Amz-Signature=")) return url;
+	const base = url.split("?")[0];
+	const kept = signedUrls.get(base);
+	if (kept && now - kept.at < SIGNED_URL_KEEP_MS) return kept.url;
+	signedUrls.set(base, { url, at: now });
+	return url;
 }
 
 /** Props <EntityAvatar> takes from an API record (see the adapters below). */
