@@ -884,20 +884,26 @@ export function GanttView({
 		return (
 			// Opaque, so the gridlines behind the rows don't run through it.
 			<div className="relative bg-background">
-				<div className="flex items-center gap-2 border-b border-border/15 bg-muted/20 px-4 py-2">
-					<span
-						className="size-2 shrink-0 rounded-full"
-						style={{
-							background: group.color ?? "oklch(var(--muted-foreground) / 0.4)",
-							boxShadow: group.color ? `0 0 6px ${group.color}40` : undefined,
-						}}
-					/>
-					<span className="text-xs font-bold uppercase tracking-[0.07em] text-foreground/65">
-						{group.label}
-					</span>
-					<span className="rounded-full bg-muted/70 px-2 py-px text-xs font-bold tabular-nums text-muted-foreground/60">
-						{count}
-					</span>
+				<div className="flex border-b border-border/15 bg-muted/20">
+					<div
+						className="sticky left-0 z-10 flex shrink-0 items-center gap-2 px-4 py-2"
+						style={{ width: leftColW }}
+					>
+						<span
+							className="size-2 shrink-0 rounded-full"
+							style={{
+								background:
+									group.color ?? "oklch(var(--muted-foreground) / 0.4)",
+								boxShadow: group.color ? `0 0 6px ${group.color}40` : undefined,
+							}}
+						/>
+						<span className="min-w-0 truncate text-xs font-bold uppercase tracking-[0.07em] text-foreground/65">
+							{group.label}
+						</span>
+						<span className="shrink-0 rounded-full bg-muted/70 px-2 py-px text-xs font-bold tabular-nums text-muted-foreground/60">
+							{count}
+						</span>
+					</div>
 				</div>
 			</div>
 		);
