@@ -285,7 +285,6 @@ function buildColumnFilter(
 	return { ...baseOpts, ...group };
 }
 
-/** Sets `?taskId=` on the current URL without triggering a route navigation. */
 /** The slice of each column query the layout reads. Returned through
  *  `useQueries`' `combine` so the array keeps its identity until a column's
  *  data or status really changes: a plain `useQueries()` result is a new
@@ -302,6 +301,7 @@ function combineColumnQueries(
 	}));
 }
 
+/** Sets `?taskId=` on the current URL without triggering a route navigation. */
 function setTaskIdSearchParam(taskId: string) {
 	try {
 		const url = new URL(window.location.href);

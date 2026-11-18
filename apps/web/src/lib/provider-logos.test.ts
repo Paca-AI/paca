@@ -120,6 +120,16 @@ describe("stableSignedUrl", () => {
 		expect(stableSignedUrl(renewed, 21 * 60 * 1000)).toBe(renewed);
 	});
 
+	it("does not replace the kept URL with an older-signed one", () => {
+		const at = (d: string) =>
+			`http://h/avatars/u3/full.png?X-Amz-Date=${d}&X-Amz-Signature=x${d}`;
+		const fresh = at("20260101T010000Z");
+		stableSignedUrl(fresh, 0);
+		expect(stableSignedUrl(at("20260101T000000Z"), 25 * 60 * 1000)).toBe(fresh);
+		const newer = at("20260101T010500Z");
+		expect(stableSignedUrl(newer, 26 * 60 * 1000)).toBe(newer);
+	});
+
 	it("leaves unsigned URLs alone", () => {
 		expect(stableSignedUrl("/uploads/a.png?v=1")).toBe("/uploads/a.png?v=1");
 	});

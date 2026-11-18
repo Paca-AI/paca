@@ -96,7 +96,7 @@ export class IdDirectory<T> {
 		let changed = false;
 		for (const key of this.keysOf(item)) {
 			if (!key) continue;
-			if (onlyKnown && !onlyKnown.has(key)) continue;
+			if (onlyKnown && !onlyKnown.has(key) && !this.entries.has(key)) continue;
 			const existing = this.entries.get(key);
 			// Every page of tasks re-seeds the people it embeds. Re-seeding an
 			// unchanged record must not notify subscribers: each notification

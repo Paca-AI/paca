@@ -122,11 +122,28 @@ export function resolveAvatarSrc(
 // meanwhile. The first URL seen for an avatar is kept and reused until it is
 // old, well before its one-hour signature expires.
 // Shared with IdDirectory; both derive from the API's 1h avatar URL TTL.
+// Only S3-style presigned URLs (X-Amz-*) are recognised.
 export const SIGNED_URL_KEEP_MS = 20 * 60 * 1000;
-const signedUrls = new Map<string, { url: string; at: number }>();
+const MAX_SIGNED_URLS = 500;
+// Deliberately module state, written while rendering: every component showing
+// the same avatar must agree on one URL, so it cannot live in a component.
+const signedUrls = new Map<
+	string,
+	{ url: string; at: number; signedAt: number }
+>();
 
 export function isSignedUrl(url: string): boolean {
 	return url.includes("X-Amz-Signature=");
+}
+
+/** When the URL was signed (from X-Amz-Date), or `fallback` if unreadable. */
+function signedAtOf(url: string, fallback: number): number {
+	const m = /[?&]X-Amz-Date=(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/.exec(
+		url,
+	);
+	if (!m) return fallback;
+	const t = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+	return Number.isNaN(t) ? fallback : t;
 }
 
 export function stableSignedUrl(url: string, now = Date.now()): string {
@@ -134,7 +151,17 @@ export function stableSignedUrl(url: string, now = Date.now()): string {
 	const base = url.split("?")[0];
 	const kept = signedUrls.get(base);
 	if (kept && now - kept.at < SIGNED_URL_KEEP_MS) return kept.url;
-	signedUrls.set(base, { url, at: now });
+	const signedAt = signedAtOf(url, now);
+	// A stale copy (say from cached query data) must not replace a fresher
+	// kept URL, or it could be served past its signature's expiry.
+	if (kept && signedAt < kept.signedAt) return kept.url;
+	if (signedUrls.size >= MAX_SIGNED_URLS) {
+		for (const [key, v] of signedUrls) {
+			if (now - v.at >= SIGNED_URL_KEEP_MS) signedUrls.delete(key);
+		}
+		if (signedUrls.size >= MAX_SIGNED_URLS) signedUrls.clear();
+	}
+	signedUrls.set(base, { url, at: now, signedAt });
 	return url;
 }
 
