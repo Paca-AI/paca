@@ -99,11 +99,14 @@ export const EVENT_RULES: EventRule[] = [
 		name: "files",
 		matches: (t) => t === "file.changed",
 		handle: (ctx, event) => {
-			applyFileChange(
-				ctx.queryClient,
-				{ projectId: ctx.projectId },
-				event.payload as FileChangedPayload,
-			);
+			const payload = event.payload as FileChangedPayload;
+			// A socket with platform files:read also receives the general
+			// scope's changes (useWorkspaceFilesRealtime owns those), and a
+			// project event names its own project.
+			if (payload.scope !== "project" || payload.project_id !== ctx.projectId) {
+				return true;
+			}
+			applyFileChange(ctx.queryClient, { projectId: ctx.projectId }, payload);
 			return true;
 		},
 	},

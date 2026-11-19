@@ -72,8 +72,11 @@ export function createResyncer(
 			});
 			await Promise.all(workers);
 			// A role change can also grant or revoke the platform-level
-			// files:read that the workspace file room stands for.
-			if (announce) await resyncWorkspaceFiles();
+			// files:read that the workspace file room stands for. Unlike a
+			// project room it has no per-event check behind it, so the periodic
+			// pass covers it too (a failed announced pass, or a socket restored
+			// by connection state recovery, is corrected within one interval).
+			await resyncWorkspaceFiles();
 		} finally {
 			running = false;
 			if (again) {

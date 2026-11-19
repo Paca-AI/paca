@@ -63,8 +63,8 @@ const NAMESPACE_QUERY_ROOTS: Record<string, readonly string[]> = {
 	project: [],
 	members: ["members"],
 	agents: ["agents"],
-	// The file manager's queries are keyed ["files", scope, ...], outside the
-	// project prefix, so there is nothing under ["projects", id] to reset.
+	// The file manager's queries are keyed ["files", projectId, ...], outside
+	// the ["projects", id] prefix: holdsDataOf matches them separately.
 	files: [],
 };
 
@@ -81,6 +81,10 @@ function holdsDataOf(
 	projectId: string,
 	namespaces: readonly string[],
 ): boolean {
+	// The file manager's queries live under ["files", projectId, ...].
+	if (queryKey[0] === "files" && queryKey[1] === projectId) {
+		return namespaces.includes("files");
+	}
 	if (queryKey[0] !== "projects" || queryKey[1] !== projectId) return false;
 	const root = queryKey[2];
 	if (
@@ -197,6 +201,10 @@ export function useProjectRealtime(projectId: string | undefined): void {
 			});
 			void queryClient.invalidateQueries({
 				queryKey: ["users", "me", "tasks"],
+			});
+			// The project's file listings: file.changed is not replayed.
+			void queryClient.invalidateQueries({
+				queryKey: ["files", currentProjectId],
 			});
 		}
 		const unsubscribeResets = onProjectReset((resetProjectId) => {
