@@ -361,13 +361,19 @@ export class PacaAPIClient {
 	// ==================== Document Methods ====================
 
 	/** One page of documents; `folderId` narrows to one folder ("null" for
-	 *  the top level), `title` to an exact, case-insensitive title. */
+	 *  the top level), `viewId` lists the notes of a note view instead, and
+	 *  `title` narrows to an exact, case-insensitive title. */
 	async listDocuments(
 		projectId: string,
-		opts: PageOptions & { folderId?: string; title?: string } = {},
+		opts: PageOptions & {
+			folderId?: string;
+			viewId?: string;
+			title?: string;
+		} = {},
 	): Promise<Page<Document>> {
 		const filters = new URLSearchParams();
-		if (opts.folderId) filters.set("folder_id", opts.folderId);
+		if (opts.viewId) filters.set("view_id", opts.viewId);
+		else if (opts.folderId) filters.set("folder_id", opts.folderId);
 		if (opts.title) filters.set("title", opts.title);
 		const qs = filters.toString();
 		return toPage<Document>(
@@ -396,7 +402,11 @@ export class PacaAPIClient {
 		};
 
 		if (input.folder_id !== undefined) body.folder_id = input.folder_id;
+		if (input.view_id !== undefined) body.view_id = input.view_id;
 		if (input.position !== undefined) body.position = input.position;
+		if (input.note) body.note = input.note;
+		if (input.client) body.client = input.client;
+		if (input.task) body.task = input.task;
 
 		return this.post(`/api/v1/projects/${input.project_id}/docs`, body);
 	}

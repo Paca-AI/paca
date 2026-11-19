@@ -284,12 +284,17 @@ The MCP server provides **81 tools** across **16 categories** for comprehensive 
 - `delete_sprint` - Delete a sprint
 - `complete_sprint` - Mark a sprint as completed
 
-### 📄 Document Management (5 tools)
-- `list_documents` - List all documents in a project
-- `get_document` - Get details of a specific document
-- `create_document` - Create a new document
-- `update_document` - Update an existing document
-- `delete_document` - Delete a document
+### 📄 Document Management (9 tools)
+- `list_docs` - List one folder of the docs tree (paged), or with `viewId` the notes of a note view with their `docId`
+- `read_doc` - Read a document as Markdown by path or `docId` (whole, outline, one section or a line range)
+- `grep_docs` - Find lines across documents, literal or regex, with context
+- `edit_doc` - Replace an exact string in a document, rewriting only the blocks it touches
+- `write_doc` - Create or update a document by path, or with `viewId` a note of a note view by title
+- `delete_doc` - Delete a document or folder by path, or a document (such as a note) by `docId`
+- `move_doc` - Move or rename a document or folder
+- `pull_docs` / `push_docs` - Mirror a project's documents to Markdown files and push file changes back
+
+Notes are documents that belong to a note view (`viewType: "note"`) instead of a folder: they are not part of the docs tree, so no path reaches them.
 
 ### 👥 Project Members (5 tools)
 - `list_project_members` - List the members of a project (paged)
@@ -319,7 +324,7 @@ The MCP server provides **81 tools** across **16 categories** for comprehensive 
 
 ### 🎯 Views (9 tools)
 - `list_views` - List all views in a project
-- `create_view` - Create a new view (sprint/backlog/timeline)
+- `create_view` - Create a new view (sprint/backlog/timeline; `table`, `board`, `gantt`, `note` or `plugin`)
 - `reorder_views` - Reorder views in a project
 - `get_view` - Get details of a specific view
 - `update_view` - Update an existing view

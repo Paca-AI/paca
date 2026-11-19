@@ -27,12 +27,17 @@ This document lists all MCP tools implemented for the Paca API server.
 - `delete_sprint` - Delete a sprint
 - `complete_sprint` - Mark a sprint as completed
 
-### 4. Documents (5 tools)
-- `list_documents` - List all documents in a project
-- `get_document` - Get details of a specific document
-- `create_document` - Create a new document
-- `update_document` - Update an existing document
-- `delete_document` - Delete a document
+### 4. Documents (9 tools)
+- `list_docs` - List one folder of the docs tree (paged), or with `viewId` the notes of a note view with their `docId`
+- `read_doc` - Read a document as Markdown by path or `docId` (whole, outline, one section or a line range)
+- `grep_docs` - Find lines across documents, literal or regex, with context
+- `edit_doc` - Replace an exact string in a document, rewriting only the blocks it touches
+- `write_doc` - Create or update a document by path, or with `viewId` a note of a note view by title
+- `delete_doc` - Delete a document or folder by path, or a document (such as a note) by `docId`
+- `move_doc` - Move or rename a document or folder
+- `pull_docs` / `push_docs` - Mirror a project's documents to Markdown files and push file changes back
+
+Notes are documents that belong to a note view (`viewType: "note"`) instead of a folder: they are not part of the docs tree, so no path reaches them.
 
 ### Search (2 tools)
 - `search_docs` - Keyword search over document titles and body text; returns path, match location and an excerpt
@@ -66,7 +71,7 @@ This document lists all MCP tools implemented for the Paca API server.
 
 ### 9. Views (9 tools)
 - `list_views` - List all views in a project
-- `create_view` - Create a new view
+- `create_view` - Create a new view (`table`, `board`, `gantt`, `note` or `plugin`)
 - `reorder_views` - Reorder views in a project
 - `get_view` - Get details of a specific view
 - `update_view` - Update an existing view
