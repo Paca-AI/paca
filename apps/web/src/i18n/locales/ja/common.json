@@ -37,6 +37,7 @@
 				"userSecurity": "ユーザーのセキュリティ設定",
 				"userMfa": "ユーザーの2要素認証",
 				"document": "ドキュメント",
+				"note": "ノート",
 				"folder": "フォルダー",
 				"pluginPreferences": "プラグインの設定",
 				"agent": "エージェント",

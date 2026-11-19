@@ -33,6 +33,8 @@ export interface Document {
 	id: string;
 	project_id?: string | null;
 	folder_id?: string | null;
+	/** The note view a note belongs to; absent on documents of the docs tree. */
+	view_id?: string | null;
 	title: string;
 	content: unknown[] | null;
 	position: number;
@@ -178,6 +180,10 @@ export const docQueryKeys = {
 		["projects", projectId, "docs", docId, "snapshots", snapshotId] as const,
 	activities: (projectId: string, docId: string) =>
 		["projects", projectId, "docs", docId, "activities"] as const,
+	/** The notes of one note view. Under the docs prefix, so the doc realtime
+	 *  events that refresh the docs tree refresh it too. */
+	viewNotes: (projectId: string, viewId: string) =>
+		["projects", projectId, "docs", "view-notes", viewId] as const,
 };
 
 // ── Query options ─────────────────────────────────────────────────────────────
@@ -208,6 +214,15 @@ export const docsInfiniteQueryOptions = (
 			listDocuments(projectId, { folderId, cursor: pageParam }),
 		initialPageParam: undefined as string | undefined,
 		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+	});
+
+/** Every note of a note view, in manual order. A view holds a handful of
+ *  notes, and reordering renumbers them all, so they are loaded in full. */
+export const viewNotesQueryOptions = (projectId: string, viewId: string) =>
+	queryOptions({
+		queryKey: docQueryKeys.viewNotes(projectId, viewId),
+		queryFn: () => listViewNotes(projectId, viewId),
+		enabled: !!viewId,
 	});
 
 /** The folders from the root down to this one, for breadcrumbs. */
@@ -325,13 +340,15 @@ export async function deleteFolder(
 
 /** One page of a project's documents in manual order, without their bodies.
  *  `folderId` narrows to the documents directly inside that folder (null =
- *  documents outside any folder; omit for documents anywhere); `search` is a
- *  case-insensitive title match. Returns the page envelope so callers can
- *  keep paging via next_cursor. */
+ *  documents outside any folder; omit for documents anywhere in the docs
+ *  tree); `viewId` lists the notes of that note view instead (notes are never
+ *  in the docs tree); `search` is a case-insensitive title match. Returns the
+ *  page envelope so callers can keep paging via next_cursor. */
 export async function listDocuments(
 	projectId: string,
 	opts: {
 		folderId?: string | null;
+		viewId?: string;
 		search?: string;
 		cursor?: string;
 		pageSize?: number;
@@ -340,13 +357,36 @@ export async function listDocuments(
 	const params: Record<string, string | number> = {
 		page_size: opts.pageSize ?? DOC_TREE_PAGE_SIZE,
 	};
-	if (opts.folderId !== undefined) params.folder_id = opts.folderId ?? "null";
+	if (opts.viewId) params.view_id = opts.viewId;
+	else if (opts.folderId !== undefined)
+		params.folder_id = opts.folderId ?? "null";
 	if (opts.search?.trim()) params.search = opts.search.trim();
 	if (opts.cursor) params.cursor = opts.cursor;
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<DocumentListResult>
 	>(`/projects/${projectId}/docs`, { params });
 	return data.data;
+}
+
+const VIEW_NOTES_PAGE_SIZE = 200;
+
+/** Every note of a note view, following next_cursor to the end. */
+export async function listViewNotes(
+	projectId: string,
+	viewId: string,
+): Promise<Document[]> {
+	const notes: Document[] = [];
+	let cursor: string | undefined;
+	do {
+		const page = await listDocuments(projectId, {
+			viewId,
+			cursor,
+			pageSize: VIEW_NOTES_PAGE_SIZE,
+		});
+		notes.push(...page.items);
+		cursor = page.next_cursor ?? undefined;
+	} while (cursor);
+	return notes;
 }
 
 export async function getDocument(
@@ -364,6 +404,8 @@ export async function createDocument(
 	payload: {
 		title?: string;
 		folder_id?: string | null;
+		/** Creates a note of this note view instead of a docs-tree document. */
+		view_id?: string;
 		content?: unknown[] | null;
 		position?: number;
 	},

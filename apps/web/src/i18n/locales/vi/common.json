@@ -37,6 +37,7 @@
 				"userSecurity": "Cài đặt bảo mật người dùng",
 				"userMfa": "Xác thực hai lớp của người dùng",
 				"document": "Tài liệu",
+				"note": "Ghi chú",
 				"folder": "Thư mục",
 				"pluginPreferences": "Tùy chọn plugin",
 				"agent": "Tác tử",

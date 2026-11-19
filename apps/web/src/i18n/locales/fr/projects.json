@@ -2367,7 +2367,40 @@
 				"board": "Tableau",
 				"table": "Table",
 				"gantt": "Gantt",
-				"plugin": "Plugin"
+				"plugin": "Plugin",
+				"note": "Note"
+			}
+		},
+		"noteView": {
+			"title": "Notes",
+			"newNote": "Nouvelle note",
+			"untitled": "Sans titre",
+			"titleLabel": "Titre de la note",
+			"actions": "Actions pour {{title}}",
+			"rename": "Renommer",
+			"moveUp": "Monter",
+			"moveDown": "Descendre",
+			"delete": "Supprimer",
+			"empty": {
+				"title": "Aucune note pour l’instant",
+				"description": "Rédigez les objectifs du sprint, des comptes rendus de réunion ou une checklist propres à cette vue.",
+				"readOnly": "Cette vue n’a pas encore de notes."
+			},
+			"noPermission": {
+				"title": "Vous ne pouvez pas voir ces notes",
+				"description": "Les notes sont des documents. Demandez à un administrateur du projet l’accès aux documents du projet."
+			},
+			"deleteDialog": {
+				"title": "Supprimer la note ?",
+				"description": "« {{title}} » sera supprimée pour tout le monde.",
+				"cancel": "Annuler",
+				"delete": "Supprimer"
+			},
+			"errors": {
+				"titleInvalid": "Le titre ne peut pas être vide ni contenir « / ».",
+				"renameFailed": "Impossible de renommer la note. Veuillez réessayer.",
+				"reorderFailed": "Impossible de réordonner les notes",
+				"loadFailed": "Impossible de charger les notes."
 			}
 		},
 		"renameViewDialog": {
