@@ -39,9 +39,9 @@ func (h *ChatHandler) WithChatRootScoper(s RootScoper) *ChatHandler {
 	return h
 }
 
-// rootScopedContext attaches the caller's scope over direct messages. Without
-// a scoper nothing is listed (fail closed).
-func (h *ChatHandler) rootScopedContext(r *http.Request) (context.Context, error) {
+// rootScopedContext adds the caller's scope over direct messages to ctx.
+// Without a scoper nothing is listed (fail closed).
+func (h *ChatHandler) rootScopedContext(r *http.Request, ctx context.Context) (context.Context, error) {
 	if h.rootScoper == nil {
 		return nil, apierr.New(apierr.CodeInternalError, "authorization not configured")
 	}
@@ -49,11 +49,11 @@ func (h *ChatHandler) rootScopedContext(r *http.Request) (context.Context, error
 	if err != nil {
 		return nil, err
 	}
-	n, err := h.rootScoper.ListRootScope(r.Context(), principal, string(iam.ActionChannelsRead), "channel")
+	n, err := h.rootScoper.ListRootScope(ctx, principal, string(iam.ActionChannelsRead), "channel")
 	if err != nil {
 		return nil, err
 	}
-	return iam.WithScope(r.Context(), "channel", n), nil
+	return iam.WithScope(ctx, "channel", n), nil
 }
 
 // NewChatHandler returns a ChatHandler.
@@ -590,26 +590,13 @@ func dtoPeer(p *chatdom.DMPeer) *dto.PeerResponse {
 	return &dto.PeerResponse{AccountID: p.AccountID, Name: p.Name, Kind: p.Kind}
 }
 
-// withRootScope adds the caller's direct-message scope to ctx.
-func (h *ChatHandler) withRootScope(r *http.Request, ctx context.Context) (context.Context, error) {
-	principal, err := middleware.IAMPrincipalFrom(r)
-	if err != nil {
-		return nil, err
-	}
-	n, err := h.rootScoper.ListRootScope(ctx, principal, string(iam.ActionChannelsRead), "channel")
-	if err != nil {
-		return nil, err
-	}
-	return iam.WithScope(ctx, "channel", n), nil
-}
-
 // ListDMs handles GET /chat/dms: the caller's direct messages, newest first.
 func (h *ChatHandler) ListDMs(w http.ResponseWriter, r *http.Request) {
 	me, ok := requireAccountID(w, r)
 	if !ok {
 		return
 	}
-	ctx, err := h.rootScopedContext(r)
+	ctx, err := h.rootScopedContext(r, r.Context())
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -695,7 +682,7 @@ func (h *ChatHandler) inboxScope(w http.ResponseWriter, r *http.Request, me uuid
 	}
 	scoped := iam.WithProjectScopes(ctx, "channel", byProject)
 	if h.rootScoper != nil {
-		if scoped, err = h.withRootScope(r, scoped); err != nil {
+		if scoped, err = h.rootScopedContext(r, scoped); err != nil {
 			presenter.Error(w, r, err)
 			return nil, false
 		}

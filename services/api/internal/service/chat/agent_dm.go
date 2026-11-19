@@ -59,17 +59,21 @@ var (
 // agent can still look busy for a moment: wait it out instead of leaving the
 // messages behind.
 func (s *Service) forwardAfterTurn(ctx context.Context, link *chatdom.AgentLink) {
-	for i := 0; i < forwardBusyRetries; i++ {
-		if !s.forward(ctx, link) {
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(forwardBusyBackoff * time.Duration(i+1)):
-		}
+	if !s.forward(ctx, link) {
+		return
 	}
-	slog.Warn("chat: agent still busy, messages left unforwarded", "channel_id", link.ChannelID)
+	// Still busy: wait it out off the caller's goroutine, so one slow agent does
+	// not hold up the event consumer that delivers every other agent's turn.
+	ctx = context.WithoutCancel(ctx)
+	go func() {
+		for i := 1; i < forwardBusyRetries; i++ {
+			time.Sleep(forwardBusyBackoff * time.Duration(i))
+			if !s.forward(ctx, link) {
+				return
+			}
+		}
+		slog.Warn("chat: agent still busy, messages left unforwarded", "channel_id", link.ChannelID)
+	}()
 }
 
 // forward reports whether the agent was busy, so the caller may try again.

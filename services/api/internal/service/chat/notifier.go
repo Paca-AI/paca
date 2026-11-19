@@ -2,6 +2,7 @@ package chatsvc
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/google/uuid"
 
@@ -62,5 +63,9 @@ func (n *PubSubNotifier) Notify(ctx context.Context, ev chatdom.Notification) {
 	if ev.Type == chatdom.EventChannelChanged {
 		msg.Authz = &wireAuthz{Action: "channels:read", Resource: "project/" + ev.ProjectID.String() + "/channel/" + ev.ChannelID.String()}
 	}
-	_ = n.pub.Publish(ctx, events.ChannelRealtime, msg)
+	// A lost announcement costs a client one refetch (after_seq), so this is
+	// logged, not returned.
+	if err := n.pub.Publish(ctx, events.ChannelRealtime, msg); err != nil {
+		slog.Warn("chat: publish realtime announcement", "type", ev.Type, "channel_id", ev.ChannelID, "err", err)
+	}
 }

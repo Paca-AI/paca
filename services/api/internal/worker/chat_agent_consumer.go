@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -147,6 +148,10 @@ func (c *ChatAgentConsumer) handle(msg redis.XMessage) {
 		return
 	}
 	conv, err := c.repo.FindConversationByID(ctx, convID)
+	if errors.Is(err, agentdom.ErrConversationNotFound) {
+		c.ack(ctx, msg.ID) // gone for good: redelivery cannot help
+		return
+	}
 	if err != nil {
 		c.log.Error("chat agent consumer: find conversation", "conversation_id", convID, "err", err)
 		return // not acked: retried on restart
