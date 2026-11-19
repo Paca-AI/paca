@@ -205,6 +205,13 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 		presenter.Error(w, r, apierr.New(apierr.CodeTokenInvalid, "expected access token"))
 		return r, false
 	}
+	if tm.IsRevoked(r.Context(), claims.FamilyID) {
+		// The session was signed out (logout, or ended from another device).
+		// Its access token is still validly signed until it expires, so the
+		// family's revocation flag is what ends it now.
+		presenter.Error(w, r, apierr.New(apierr.CodeTokenInvalid, "session has been signed out"))
+		return r, false
+	}
 	if !enforceTokenScope(claims, r.URL.Path) {
 		// A token whose Scope doesn't permit this path must never
 		// authenticate the request, even though it's a real, validly-

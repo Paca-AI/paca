@@ -135,3 +135,17 @@ type LoginOptionsResponse struct {
 type AllowedCIDRsRequest struct {
 	AllowedCIDRs []string `json:"allowed_cidrs"`
 }
+
+// SessionResponse is one signed-in device in GET /users/me/sessions.
+type SessionResponse struct {
+	ID string `json:"id"`
+	// Current is true for the session making the request.
+	Current bool `json:"current"`
+	// Browser and OS are read from the User-Agent; either may be empty.
+	Browser      string    `json:"browser"`
+	OS           string    `json:"os"`
+	IP           string    `json:"ip"`
+	RememberMe   bool      `json:"remember_me"`
+	CreatedAt    time.Time `json:"created_at"`
+	LastActiveAt time.Time `json:"last_active_at"`
+}

@@ -176,7 +176,10 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// --- Services -----------------------------------------------------------
-	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
+	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL).
+		WithSessionStore(redisRepo.NewSessionStore(redisClient))
+	// So signing a device out also ends the access token it already holds.
+	tokenManager.WithRevocationCheck(refreshStore.IsFamilyRevoked)
 	userService := usersvc.New(userRepo, permissionStore).
 		WithPasswordSetTokenRepo(passwordSetTokenRepo).
 		WithEventPublishing(publisher).
@@ -590,6 +593,7 @@ func New(cfg *config.Config) (*App, error) {
 		Health:              handler.NewHealthHandler(),
 		Version:             handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                authHandler,
+		Session:             handler.NewSessionHandler(authService),
 		SSO:                 handler.NewSSOHandler(ssoService, authHandler, cfg.Server.PublicURL),
 		MFA:                 handler.NewMFAHandler(mfaService, userRepo).WithLoginThrottle(loginThrottle),
 		User:                handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
