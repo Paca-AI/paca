@@ -14,7 +14,7 @@
         "agents:read",
         "annotations:read",
         "conversations:read",
-        "docs:read",
+        "docs:read", "files:read",
         "environments:read",
         "project.members:read",
         "sprints:read",

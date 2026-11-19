@@ -253,7 +253,7 @@ export function ServiceAccountKeysTab({
 				</div>
 			) : keys.length === 0 ? (
 				<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
-					<KeyRound className="size-8 text-muted-foreground/40" />
+					<KeyRound className="size-8 text-muted-foreground/90" />
 					<p className="text-sm text-muted-foreground">
 						{t("serviceAccounts.keys.empty")}
 					</p>

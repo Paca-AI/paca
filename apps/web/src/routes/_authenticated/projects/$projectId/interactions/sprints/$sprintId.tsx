@@ -405,7 +405,7 @@ function SprintPage() {
 									"flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all",
 									moveToSprintId === null
 										? "border-primary/50 bg-primary/5"
-										: "border-border/40 hover:bg-muted/30",
+										: "border-border/60 hover:bg-muted/30",
 								)}
 							>
 								<RadioGroupItem value={MOVE_TO_BACKLOG} />
@@ -431,7 +431,7 @@ function SprintPage() {
 										"flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all",
 										moveToSprintId === s.id
 											? "border-primary/50 bg-primary/5"
-											: "border-border/40 hover:bg-muted/30",
+											: "border-border/60 hover:bg-muted/30",
 									)}
 								>
 									<RadioGroupItem value={s.id} />

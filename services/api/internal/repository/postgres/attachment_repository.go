@@ -25,6 +25,8 @@ type fileRecord struct {
 	UploadStatus      string    `db:"upload_status"`
 	MultipartUploadID *string   `db:"multipart_upload_id"`
 	UploadedBy        *string   `db:"uploaded_by"`
+	ProjectID         *string   `db:"project_id"`
+	FolderID          *string   `db:"folder_id"`
 	CreatedAt         time.Time `db:"created_at"`
 	UpdatedAt         time.Time `db:"updated_at"`
 }
@@ -65,16 +67,16 @@ func NewAttachmentRepository(db *sqlx.DB) *AttachmentRepository {
 
 // --- File ------------------------------------------------------------------
 
-const fileSelectCols = `id, storage_key, bucket, file_name, content_type, file_size, upload_status, multipart_upload_id, uploaded_by, created_at, updated_at`
+const fileSelectCols = `id, storage_key, bucket, file_name, content_type, file_size, upload_status, multipart_upload_id, uploaded_by, project_id, folder_id, created_at, updated_at`
 
 // CreateFile inserts a new file metadata record.
 func (r *AttachmentRepository) CreateFile(ctx context.Context, f *attachmentdom.File) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO files (id, storage_key, bucket, file_name, content_type, file_size, upload_status, multipart_upload_id, uploaded_by, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		INSERT INTO files (id, storage_key, bucket, file_name, content_type, file_size, upload_status, multipart_upload_id, uploaded_by, project_id, folder_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		f.ID.String(), f.StorageKey, f.Bucket, f.FileName, f.ContentType,
 		f.FileSize, string(f.UploadStatus), f.MultipartUploadID,
-		uuidPtrToStringPtr(f.UploadedBy), f.CreatedAt, f.UpdatedAt,
+		uuidPtrToStringPtr(f.UploadedBy), uuidPtrToStringPtr(f.ProjectID), uuidPtrToStringPtr(f.FolderID), f.CreatedAt, f.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("attachment repo: create file: %w", err)
@@ -222,6 +224,8 @@ func fileRecordToEntity(r *fileRecord) *attachmentdom.File {
 		UploadStatus:      attachmentdom.UploadStatus(r.UploadStatus),
 		MultipartUploadID: r.MultipartUploadID,
 		UploadedBy:        stringPtrToUUIDPtr(r.UploadedBy),
+		ProjectID:         stringPtrToUUIDPtr(r.ProjectID),
+		FolderID:          stringPtrToUUIDPtr(r.FolderID),
 		CreatedAt:         r.CreatedAt,
 		UpdatedAt:         r.UpdatedAt,
 	}

@@ -218,7 +218,7 @@ export function CommentDetailView({
 	if (isLoading) {
 		return (
 			<div className="flex h-full flex-col overflow-hidden bg-background">
-				<div className="shrink-0 border-b border-border/40 px-5 py-2.5">
+				<div className="shrink-0 border-b border-border/60 px-5 py-2.5">
 					<Skeleton className="h-4 w-32" />
 				</div>
 				<div className="flex-1 overflow-y-auto px-4 lg:px-8 py-6 space-y-6 max-w-2xl mx-auto w-full">
@@ -242,7 +242,7 @@ export function CommentDetailView({
 			);
 		}
 		return (
-			<div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground/60">
+			<div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground/90">
 				<AlertCircle className="size-10" />
 				<div className="text-center">
 					<p className="text-base font-medium text-foreground/70">
@@ -271,7 +271,7 @@ export function CommentDetailView({
 	return (
 		<div className="flex h-full flex-col overflow-hidden bg-background">
 			{/* Back navigation strip */}
-			<div className="shrink-0 border-b border-border/40 px-5 py-2.5 flex items-center justify-between gap-3">
+			<div className="shrink-0 border-b border-border/60 px-5 py-2.5 flex items-center justify-between gap-3">
 				<Link
 					to="/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId"
 					params={{ projectId, environmentId, portForwardId }}
@@ -335,7 +335,7 @@ export function CommentDetailView({
 			</div>
 
 			{createTaskError && (
-				<p className="shrink-0 border-b border-border/40 bg-destructive/10 px-5 py-2 text-xs text-destructive">
+				<p className="shrink-0 border-b border-border/60 bg-destructive/10 px-5 py-2 text-xs text-destructive">
 					{createTaskError}
 				</p>
 			)}
@@ -418,7 +418,7 @@ export function CommentDetailView({
 					</div>
 				)}
 
-				<div className="flex items-center gap-2 pt-1 border-t border-border/40 pt-4">
+				<div className="flex items-center gap-2 pt-1 border-t border-border/60 pt-4">
 					{canResolve &&
 						(resolved ? (
 							<Button
@@ -538,7 +538,7 @@ function CommentContext({ annotation }: { annotation: PageAnnotation }) {
 					{t("commentDetail.context.consoleErrors")}
 				</p>
 				{annotation.console_errors.length === 0 ? (
-					<p className="text-xs text-muted-foreground/70">
+					<p className="text-xs text-muted-foreground">
 						{t("commentDetail.context.noConsoleErrors")}
 					</p>
 				) : (
@@ -561,7 +561,7 @@ function CommentContext({ annotation }: { annotation: PageAnnotation }) {
 					{t("commentDetail.context.failedRequests")}
 				</p>
 				{annotation.failed_requests.length === 0 ? (
-					<p className="text-xs text-muted-foreground/70">
+					<p className="text-xs text-muted-foreground">
 						{t("commentDetail.context.noFailedRequests")}
 					</p>
 				) : (

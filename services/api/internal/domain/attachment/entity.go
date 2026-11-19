@@ -35,8 +35,13 @@ type File struct {
 	UploadStatus      UploadStatus
 	MultipartUploadID *string
 	UploadedBy        *uuid.UUID
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	// ProjectID and FolderID place the file in the file manager at creation:
+	// only the file manager's own uploads set them (the database derives them
+	// for task attachments, doc images and annotation screenshots).
+	ProjectID *uuid.UUID
+	FolderID  *uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // TaskAttachment is the join record that links a confirmed File to a Task.

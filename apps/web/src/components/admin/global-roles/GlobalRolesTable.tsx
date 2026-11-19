@@ -57,7 +57,7 @@ export function GlobalRolesTable({
 									<div className="flex items-center gap-2">
 										{role.is_system ? (
 											<Lock
-												className="size-3.5 shrink-0 text-muted-foreground/40"
+												className="size-3.5 shrink-0 text-muted-foreground/90"
 												aria-label={t("globalRoles.table.builtIn")}
 											/>
 										) : null}
@@ -75,7 +75,7 @@ export function GlobalRolesTable({
 											{role.description}
 										</span>
 									) : (
-										<span className="text-xs italic text-muted-foreground/60">
+										<span className="text-xs italic text-muted-foreground/90">
 											{t("globalRoles.table.noDescription")}
 										</span>
 									)}

@@ -1,8 +1,10 @@
 import { ChevronDown, ChevronRight, Play, Plus } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useStableCallback } from "@/hooks/use-stable-callback";
+import { useStableValue } from "@/hooks/use-stable-value";
 
 import type { ChildTaskFilters, Sprint, Task } from "@/lib/interaction-api";
 import {
@@ -29,6 +31,20 @@ import {
 	getTaskSwimlaneKey,
 	type TaskFieldUpdate,
 } from "./view-utils";
+
+const EMPTY_EPICS: Task[] = [];
+
+// The copy of an Epic shown without its subtask counts, kept per source task so
+// the row it feeds stays memoized between renders.
+const countlessEpics = new WeakMap<Task, Task>();
+function withoutSubtaskCounts(task: Task): Task {
+	let copy = countlessEpics.get(task);
+	if (!copy) {
+		copy = { ...task, subtask_count: 0, subtask_done_count: 0 };
+		countlessEpics.set(task, copy);
+	}
+	return copy;
+}
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -107,6 +123,111 @@ export interface SubtaskNesting {
 	filtersActive: boolean;
 }
 
+interface ListRowContentProps {
+	task: Task;
+	taskIdPrefix: string;
+	statuses: TaskStatus[];
+	taskTypes: TaskType[];
+	epics: Task[];
+	epicsPagination: EpicsPagination | undefined;
+	customFields: CustomFieldDefinition[];
+	visibleFields: string[];
+	canEdit: boolean;
+	showDragHandle: boolean;
+	isDragging: boolean;
+	projectId: string;
+	columnDefs: ColumnGroupDef[] | undefined;
+	prevGroupDef: ColumnGroupDef | undefined;
+	nextGroupDef: ColumnGroupDef | undefined;
+	nested: boolean;
+	expanded: boolean;
+	onOpen: (task: Task) => void;
+	onUpdateTaskField:
+		| ((taskId: string, update: TaskFieldUpdate) => void)
+		| undefined;
+	onDelete: ((taskId: string) => void) | undefined;
+	onMoveToGroupDef: (task: Task, target: ColumnGroupDef) => void;
+	onToggleSubtasks: (taskId: string) => void;
+}
+
+/** A table row and its context menu. Memoized with stable props, so opening a
+ *  task or loading more rows re-renders only the rows that changed instead of
+ *  every row in the table. */
+const ListRowContent = memo(function ListRowContent({
+	task,
+	taskIdPrefix,
+	statuses,
+	taskTypes,
+	epics,
+	epicsPagination,
+	customFields,
+	visibleFields,
+	canEdit,
+	showDragHandle,
+	isDragging,
+	projectId,
+	columnDefs,
+	prevGroupDef,
+	nextGroupDef,
+	nested,
+	expanded,
+	onOpen,
+	onUpdateTaskField,
+	onDelete,
+	onMoveToGroupDef,
+	onToggleSubtasks,
+}: ListRowContentProps) {
+	return (
+		<TaskContextMenu
+			task={task}
+			statuses={statuses}
+			taskTypes={taskTypes}
+			epics={epics}
+			epicsPagination={epicsPagination}
+			canEdit={canEdit}
+			onOpen={() => onOpen(task)}
+			onUpdate={onUpdateTaskField}
+			onDelete={canEdit ? onDelete : undefined}
+			columnDefs={columnDefs}
+			onMoveToColumnDef={onMoveToGroupDef}
+			taskIdPrefix={taskIdPrefix}
+			projectId={projectId}
+		>
+			<TaskRow
+				task={task}
+				taskIdPrefix={taskIdPrefix}
+				statuses={statuses}
+				taskTypes={taskTypes}
+				epics={epics}
+				epicsPagination={epicsPagination}
+				customFields={customFields}
+				visibleFields={visibleFields}
+				onClick={() => onOpen(task)}
+				showDragHandle={showDragHandle}
+				isDragging={isDragging}
+				canEdit={canEdit}
+				onUpdateTaskField={onUpdateTaskField}
+				onDelete={canEdit ? onDelete : undefined}
+				onMoveLeft={
+					canEdit && prevGroupDef
+						? () => onMoveToGroupDef(task, prevGroupDef)
+						: undefined
+				}
+				onMoveRight={
+					canEdit && nextGroupDef
+						? () => onMoveToGroupDef(task, nextGroupDef)
+						: undefined
+				}
+				subtasks={
+					nested
+						? { expanded, onToggle: () => onToggleSubtasks(task.id) }
+						: undefined
+				}
+			/>
+		</TaskContextMenu>
+	);
+});
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ListGroup({
@@ -117,7 +238,7 @@ export function ListGroup({
 	members,
 	reporters,
 	customFields,
-	epics = [],
+	epics = EMPTY_EPICS,
 	epicsPagination,
 	canCreate,
 	defaultCollapsed,
@@ -185,6 +306,27 @@ export function ListGroup({
 		if (Object.keys(colUpdate).length > 0)
 			onUpdateTaskField?.(task.id, colUpdate);
 	};
+
+	// Stable handles for the memoized rows (see ListRowContent): a row only
+	// re-renders when something it shows changes, not on every render of the
+	// group — which a task opening or a page of tasks loading triggers.
+	const stableTaskClick = useStableCallback((task: Task) => onTaskClick(task));
+	const stableUpdateField = useStableCallback(
+		(taskId: string, update: TaskFieldUpdate) =>
+			onUpdateTaskField?.(taskId, update),
+	);
+	const stableDelete = useStableCallback((taskId: string) =>
+		onDeleteTask?.(taskId),
+	);
+	const stableMoveToGroupDef = useStableCallback(
+		(task: Task, target: ColumnGroupDef) => moveTaskToGroupDef(task, target),
+	);
+	const stableToggleSubtasks = useStableCallback((taskId: string) =>
+		nesting?.onToggle(taskId),
+	);
+	const stablePrevGroupDef = useStableValue(prevGroupDef);
+	const stableNextGroupDef = useStableValue(nextGroupDef);
+	const stableAllGroupDefs = useStableValue(allGroupDefs);
 
 	// Builds onCreateTask arguments for either grouping mode
 	const handleAdd = (title: string, typeId: string | null) => {
@@ -296,12 +438,12 @@ export function ListGroup({
 	// ── Column-header row ─────────────────────────────────────────────────────
 
 	const columnHeaders = (
-		<div className="flex items-center gap-2 px-4 py-1.5 bg-muted/20 border-b border-border/25 sm:gap-3">
+		<div className="flex items-center gap-2 px-4 py-1.5 bg-muted/20 border-b border-border/50 sm:gap-3">
 			{isDraggable && !isMobile && <div className="w-3 shrink-0" />}
-			<div className="w-14 shrink-0 sm:w-20 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/60">
+			<div className="w-14 shrink-0 sm:w-20 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/90">
 				{t("board.listGroup.columnHeaders.id")}
 			</div>
-			<div className="flex-1 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/60">
+			<div className="flex-1 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/90">
 				{t("board.listGroup.columnHeaders.title")}
 			</div>
 			{visibleFields.map((fk) => {
@@ -311,7 +453,7 @@ export function ListGroup({
 						key={fk}
 						className={cn(
 							col.className,
-							"text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/60",
+							"text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/90",
 							col.responsive ? "hidden sm:block" : "",
 						)}
 					>
@@ -442,56 +584,30 @@ export function ListGroup({
 					: (e) => handleIntraGroupDrop(e, task, index)
 			}
 		>
-			<TaskContextMenu
+			<ListRowContent
 				task={task}
+				taskIdPrefix={taskIdPrefix}
 				statuses={statuses}
 				taskTypes={taskTypes}
 				epics={epics}
 				epicsPagination={epicsPagination}
+				customFields={customFields}
+				visibleFields={visibleFields}
 				canEdit={!!canEdit}
-				onOpen={() => onTaskClick(task)}
-				onUpdate={onUpdateTaskField}
-				onDelete={canEdit ? onDeleteTask : undefined}
-				columnDefs={allGroupDefs}
-				onMoveToColumnDef={moveTaskToGroupDef}
-				taskIdPrefix={taskIdPrefix}
+				showDragHandle={isDraggable && !isMobile}
+				isDragging={draggingId === task.id}
 				projectId={projectId}
-			>
-				<TaskRow
-					task={task}
-					taskIdPrefix={taskIdPrefix}
-					statuses={statuses}
-					taskTypes={taskTypes}
-					epics={epics}
-					epicsPagination={epicsPagination}
-					customFields={customFields}
-					visibleFields={visibleFields}
-					onClick={() => onTaskClick(task)}
-					showDragHandle={isDraggable && !isMobile}
-					isDragging={draggingId === task.id}
-					canEdit={canEdit}
-					onUpdateTaskField={onUpdateTaskField}
-					onDelete={canEdit ? onDeleteTask : undefined}
-					onMoveLeft={
-						canEdit && prevGroupDef
-							? () => moveTaskToGroupDef(task, prevGroupDef)
-							: undefined
-					}
-					onMoveRight={
-						canEdit && nextGroupDef
-							? () => moveTaskToGroupDef(task, nextGroupDef)
-							: undefined
-					}
-					subtasks={
-						nesting
-							? {
-									expanded: nesting.isExpanded(task.id),
-									onToggle: () => nesting.onToggle(task.id),
-								}
-							: undefined
-					}
-				/>
-			</TaskContextMenu>
+				columnDefs={stableAllGroupDefs}
+				prevGroupDef={stablePrevGroupDef}
+				nextGroupDef={stableNextGroupDef}
+				nested={!!nesting}
+				expanded={!!nesting?.isExpanded(task.id)}
+				onOpen={stableTaskClick}
+				onUpdateTaskField={onUpdateTaskField ? stableUpdateField : undefined}
+				onDelete={onDeleteTask ? stableDelete : undefined}
+				onMoveToGroupDef={stableMoveToGroupDef}
+				onToggleSubtasks={stableToggleSubtasks}
+			/>
 		</div>
 	);
 
@@ -506,7 +622,7 @@ export function ListGroup({
 		// nest them (only the Timeline does).
 		const task =
 			epicTypeId && listed.task_type_id === epicTypeId
-				? { ...listed, subtask_count: 0, subtask_done_count: 0 }
+				? withoutSubtaskCounts(listed)
 				: listed;
 		return (
 			<Fragment key={task.id}>
@@ -552,7 +668,7 @@ export function ListGroup({
 			type="button"
 			onClick={groupPagination.onLoadMore}
 			disabled={groupPagination.isLoadingMore}
-			className="flex w-full items-center justify-center border-t border-border/10 py-2 text-xs font-medium text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
+			className="flex w-full items-center justify-center border-t border-border/50 py-2 text-xs font-medium text-muted-foreground/90 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
 		>
 			{groupPagination.isLoadingMore
 				? t("board.listGroup.loading")
@@ -566,7 +682,7 @@ export function ListGroup({
 		// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop group
 		<div
 			className={cn(
-				"border-b border-border/25 last:border-0 transition-all duration-150",
+				"border-b border-border/50 last:border-0 transition-all duration-150",
 				isDropTarget && "bg-primary/5 ring-inset ring-2 ring-primary/20",
 			)}
 			onDragOver={handleGroupDragOver}
@@ -593,9 +709,9 @@ export function ListGroup({
 				className="flex w-full items-center gap-2.5 px-4 py-3 hover:bg-muted/30 transition-colors duration-150 cursor-pointer"
 			>
 				{collapsed ? (
-					<ChevronRight className="size-3.5 text-muted-foreground/60 shrink-0" />
+					<ChevronRight className="size-3.5 text-muted-foreground/90 shrink-0" />
 				) : (
-					<ChevronDown className="size-3.5 text-muted-foreground/60 shrink-0" />
+					<ChevronDown className="size-3.5 text-muted-foreground/90 shrink-0" />
 				)}
 				{groupDef.color && (
 					<span
@@ -645,7 +761,7 @@ export function ListGroup({
 				)}
 
 				{/* Task count / field sum badge */}
-				<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground/70 tabular-nums">
+				<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground tabular-nums">
 					{fieldSum && fieldSum !== "count"
 						? `${apiFieldSum ?? 0}`
 						: (totalCount ?? tasks.length)}
@@ -725,7 +841,7 @@ export function ListGroup({
 								<div
 									key={swimDef.key}
 									className={cn(
-										"border-t border-border/15",
+										"border-t border-border/50",
 										dragOverSwimKey === swimDef.key &&
 											isDraggable &&
 											"bg-primary/5 ring-inset ring-1 ring-primary/20",
@@ -740,7 +856,7 @@ export function ListGroup({
 								>
 									{swimDef.key !== "__all" && (
 										<div className="flex items-center gap-2 px-8 py-1.5 bg-muted/10">
-											<span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/50">
+											<span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
 												{swimDef.label}
 											</span>
 										</div>
@@ -749,7 +865,7 @@ export function ListGroup({
 									{swimDef.key === (swimlaneDefs[0]?.key ?? "__all") &&
 										columnHeaders}
 									{laneTasks.length === 0 && !groupPagination?.hasMore ? (
-										<div className="flex flex-col items-center py-5 text-muted-foreground/40">
+										<div className="flex flex-col items-center py-5 text-muted-foreground/90">
 											<p className="text-sm font-medium">
 												{t("board.listGroup.noTasks")}
 											</p>
@@ -778,7 +894,7 @@ export function ListGroup({
 					<>
 						{columnHeaders}
 						{orderedTasks.length === 0 && !groupPagination?.hasMore ? (
-							<div className="flex flex-col items-center py-8 text-muted-foreground/40">
+							<div className="flex flex-col items-center py-8 text-muted-foreground/90">
 								<p className="text-sm font-medium">
 									{t("board.listGroup.noTasks")}
 								</p>

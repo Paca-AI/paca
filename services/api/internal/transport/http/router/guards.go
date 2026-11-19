@@ -222,6 +222,13 @@ func (g guards) TaskByNumber(actions ...iam.Action) func(http.Handler) http.Hand
 	return markGate(resTask, g.actions(httpmw.TaskByNumberResource(g.taskNumbers, "projectId", "taskNumber"), actions))
 }
 
+// TaskByKey authorizes actions on the task named by its global key (e.g.
+// "PRJ-1"): the key is resolved to the task, which the actions are then
+// authorized on.
+func (g guards) TaskByKey(actions ...iam.Action) func(http.Handler) http.Handler {
+	return markGate(resTask, g.actions(httpmw.TaskByKeyResource(g.taskNumbers, "taskKey"), actions))
+}
+
 // Environment requires the actions on one environment:
 // project/{projectId}/environment/{environmentId}. Every route on one
 // environment uses it, so Deny statements on the environment and

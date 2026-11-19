@@ -58,7 +58,7 @@ export function RemoteSelect({
 			</PopoverTrigger>
 			<PopoverContent
 				className={cn(
-					"w-64 p-1 rounded-xl border border-border/40 shadow-lg",
+					"w-64 p-1 rounded-xl border border-border/60 shadow-lg",
 					contentClassName,
 				)}
 				align="start"

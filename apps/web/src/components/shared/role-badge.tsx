@@ -256,7 +256,7 @@ export function RoleBadgeList({
 	const { t } = useTranslation("shared");
 	if (roles.length === 0) {
 		return (
-			<span className="text-xs italic text-muted-foreground/60">
+			<span className="text-xs italic text-muted-foreground/90">
 				{emptyLabel ?? t("roleBadge.noRoles")}
 			</span>
 		);

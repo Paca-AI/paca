@@ -73,7 +73,7 @@ export function DocActivityNoteLine({ note }: { note: DocActivityNote }) {
 					{note.note}
 				</p>
 			)}
-			{meta && <p className="text-muted-foreground/50 break-all">{meta}</p>}
+			{meta && <p className="text-muted-foreground/90 break-all">{meta}</p>}
 		</div>
 	);
 }

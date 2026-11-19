@@ -137,7 +137,7 @@ export function PropertiesPanel({
 
 	return (
 		<>
-			<div className="divide-y divide-border/20 rounded-xl border border-border/30 bg-card/50 px-4 py-0.5">
+			<div className="divide-y divide-border/50 rounded-xl border border-border/50 bg-card/50 px-4 py-0.5">
 				<PropertyField
 					label={t("taskDetail.properties.status")}
 					mode="select"
@@ -188,7 +188,7 @@ export function PropertiesPanel({
 					{canEdit ? (
 						<div className="flex items-center gap-2 flex-wrap">
 							<DropdownMenu>
-								<DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-full border border-border/30 bg-muted/30 px-3 py-1 text-sm font-semibold text-muted-foreground hover:bg-muted/50 hover:border-border/50 transition-all duration-150">
+								<DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-sm font-semibold text-muted-foreground hover:bg-muted/50 hover:border-border/50 transition-all duration-150">
 									{(() => {
 										const bucket = getImportanceBucket(task.importance ?? 0);
 										const level = PRIORITY_LEVELS.find(
@@ -349,7 +349,7 @@ export function PropertiesPanel({
 												</span>
 											</>
 										) : (
-											<span className="text-muted-foreground/50 italic">
+											<span className="text-muted-foreground/90 italic">
 												{t("taskDetail.properties.none")}
 											</span>
 										)}
@@ -375,7 +375,7 @@ export function PropertiesPanel({
 										{hasActions && <DropdownMenuSeparator />}
 										<div className="px-1 pb-1">
 											<div className="relative">
-												<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+												<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/90" />
 												<input
 													type="text"
 													value={epicSearch}
@@ -387,7 +387,7 @@ export function PropertiesPanel({
 														if (e.key !== "Escape") e.stopPropagation();
 													}}
 													placeholder={t("epicPicker.searchPlaceholder")}
-													className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+													className="w-full rounded-lg border border-border/50 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/90 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
 												/>
 											</div>
 										</div>
@@ -399,7 +399,7 @@ export function PropertiesPanel({
 												<div className="flex items-center justify-center py-4">
 													<Spinner
 														aria-hidden="true"
-														className="text-muted-foreground/50"
+														className="text-muted-foreground/90"
 													/>
 												</div>
 											) : (
@@ -416,7 +416,7 @@ export function PropertiesPanel({
 														</DropdownMenuItem>
 													))}
 													{displayedEpics.length === 0 && (
-														<p className="px-2 py-4 text-center text-xs text-muted-foreground/50">
+														<p className="px-2 py-4 text-center text-xs text-muted-foreground/90">
 															{isEpicSearching
 																? t("epicPicker.noEpicsFound")
 																: t("epicPicker.noEpicsYet")}
@@ -425,7 +425,7 @@ export function PropertiesPanel({
 												</>
 											)}
 											{activeEpicsPagination?.isLoadingMore && (
-												<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+												<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/90">
 													<Spinner aria-hidden="true" className="size-3" />
 													{t("epicPicker.loadingMore")}
 												</div>
@@ -456,7 +456,7 @@ export function PropertiesPanel({
 									<DropdownMenu>
 										<DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-muted/50 transition-colors duration-150 cursor-pointer -ml-2 max-w-52 truncate">
 											{ParentIcon ? (
-												<ParentIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
+												<ParentIcon className="size-3.5 shrink-0 text-muted-foreground" />
 											) : (
 												<ArrowRight className="size-3.5 shrink-0 opacity-60" />
 											)}
@@ -513,7 +513,7 @@ export function PropertiesPanel({
 				<button
 					type="button"
 					onClick={() => setAddFieldOpen(true)}
-					className="mt-3 flex items-center gap-2 text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors duration-150 font-medium"
+					className="mt-3 flex items-center gap-2 text-sm text-muted-foreground/90 hover:text-muted-foreground transition-colors duration-150 font-medium"
 				>
 					<Plus className="size-3.5" />
 					{t("taskDetail.properties.addFields")}

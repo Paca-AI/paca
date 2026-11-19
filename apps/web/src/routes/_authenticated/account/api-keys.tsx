@@ -220,7 +220,7 @@ function APIKeysPage() {
 						</Table>
 					) : keys.length === 0 ? (
 						<div className="flex flex-col items-center gap-2 py-10 text-center">
-							<Key className="size-8 text-muted-foreground/50" />
+							<Key className="size-8 text-muted-foreground/90" />
 							<p className="text-sm text-muted-foreground">
 								{t("apiKeys.empty")}
 							</p>

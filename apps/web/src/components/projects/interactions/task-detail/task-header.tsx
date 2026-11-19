@@ -28,7 +28,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatDate } from "@/lib/format-date";
 import type { Task } from "@/lib/interaction-api";
-import { deleteTask } from "@/lib/interaction-api";
+import { deleteTask, taskShareUrl } from "@/lib/interaction-api";
 import { cn } from "@/lib/utils";
 import { shortId } from "./helpers";
 
@@ -82,9 +82,9 @@ export function TaskHeader({
 	});
 
 	const handleShare = () => {
-		// Always share the canonical task detail page URL, not modal URLs with query params
+		// Always share the short task URL (or canonical page URL), not modal URLs with query params
 		const taskUrl = projectId
-			? `${window.location.origin}/projects/${projectId}/tasks/${task.id}`
+			? taskShareUrl(task, taskIdPrefix, projectId)
 			: window.location.href;
 		void copyToClipboard(taskUrl).then((ok) => {
 			if (!ok) return;
@@ -94,7 +94,7 @@ export function TaskHeader({
 	};
 
 	return (
-		<div className="flex shrink-0 items-center gap-2 lg:gap-3 border-b border-border/30 px-4 py-2.5 bg-muted/20">
+		<div className="flex shrink-0 items-center gap-2 lg:gap-3 border-b border-border/50 px-4 py-2.5 bg-muted/20">
 			{/* Breadcrumb (page mode only) */}
 			{mode === "page" && projectName && (
 				<Breadcrumb className="mr-2 hidden md:flex">
@@ -117,8 +117,8 @@ export function TaskHeader({
 			)}
 
 			{/* Task short ID */}
-			<div className="flex items-center gap-1.5 rounded-md bg-muted/60 px-2 py-1 border border-border/30">
-				<Hash className="size-3 text-muted-foreground/60" />
+			<div className="flex items-center gap-1.5 rounded-md bg-muted/60 px-2 py-1 border border-border/50">
+				<Hash className="size-3 text-muted-foreground/90" />
 				<span className="font-[JetBrains_Mono,monospace] text-xs font-semibold text-muted-foreground tracking-wider">
 					{taskIdPrefix && task.task_number > 0
 						? `${taskIdPrefix}-${task.task_number}`
@@ -126,7 +126,7 @@ export function TaskHeader({
 				</span>
 			</div>
 
-			<span className="hidden md:inline text-xs text-muted-foreground/60 font-medium">
+			<span className="hidden md:inline text-xs text-muted-foreground/90 font-medium">
 				{t("taskDetail.header.created", { date: formatDate(task.created_at) })}
 			</span>
 
@@ -138,7 +138,7 @@ export function TaskHeader({
 						"flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-all duration-150",
 						linkCopied
 							? "text-success bg-success/10"
-							: "text-muted-foreground/70 hover:text-foreground hover:bg-muted/60",
+							: "text-muted-foreground hover:text-foreground hover:bg-muted/60",
 					)}
 				>
 					{linkCopied ? (
@@ -157,7 +157,7 @@ export function TaskHeader({
 				{canDelete && (
 					<DropdownMenu>
 						<DropdownMenuTrigger
-							className="flex size-7 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
+							className="flex size-7 items-center justify-center rounded-md text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
 							aria-label={t("taskDetail.header.taskActions")}
 						>
 							<MoreVertical className="size-4" />
@@ -178,7 +178,7 @@ export function TaskHeader({
 					<button
 						type="button"
 						onClick={onClose}
-						className="flex size-7 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
+						className="flex size-7 items-center justify-center rounded-md text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
 						aria-label={t("taskDetail.header.closeTaskDetail")}
 					>
 						<X className="size-3.5" />

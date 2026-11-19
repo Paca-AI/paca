@@ -241,13 +241,13 @@ function DocEditorPage() {
 		return (
 			<div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
 				<div className="flex size-14 items-center justify-center rounded-xl bg-muted/50">
-					<AlertCircle className="size-7 text-muted-foreground/60" />
+					<AlertCircle className="size-7 text-muted-foreground/90" />
 				</div>
 				<div className="text-center">
 					<p className="text-base font-semibold text-foreground/80">
 						{t("docs.editorPage.notFound.title")}
 					</p>
-					<p className="text-sm mt-1.5 text-muted-foreground/70">
+					<p className="text-sm mt-1.5 text-muted-foreground">
 						{t("docs.editorPage.notFound.description")}
 					</p>
 					<div className="mt-3 flex justify-center">
@@ -261,7 +261,7 @@ function DocEditorPage() {
 	return (
 		<div className="flex flex-col h-full min-h-0">
 			{/* ── Header bar ───────────────────────────────────────────────── */}
-			<div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border/30 shrink-0 gap-3 min-w-0">
+			<div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border/50 shrink-0 gap-3 min-w-0">
 				{/* Breadcrumb path */}
 				<Breadcrumb className="min-w-0">
 					<BreadcrumbList className="flex-nowrap gap-1 text-xs sm:gap-1">
@@ -288,17 +288,17 @@ function DocEditorPage() {
 				{/* Right: save status + panel toggle */}
 				<div className="flex items-center gap-2 shrink-0">
 					{dirty && !updateMutation.isPending && (
-						<span className="text-xs text-muted-foreground/50">
+						<span className="text-xs text-muted-foreground/90">
 							{t("docs.editorPage.unsaved")}
 						</span>
 					)}
 					{updateMutation.isPending && (
-						<span className="text-xs text-muted-foreground/60">
+						<span className="text-xs text-muted-foreground/90">
 							{t("docs.editorPage.saving")}
 						</span>
 					)}
 					{!dirty && updateMutation.isSuccess && !updateMutation.isPending && (
-						<span className="text-xs text-muted-foreground/60 flex items-center gap-1">
+						<span className="text-xs text-muted-foreground/90 flex items-center gap-1">
 							<Check className="size-3 text-success" />
 							{t("docs.editorPage.saved")}
 						</span>
@@ -308,7 +308,7 @@ function DocEditorPage() {
 						variant="ghost"
 						size="icon"
 						className={cn(
-							"size-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all duration-150",
+							"size-7 text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150",
 							rightPanel === "activity" && "bg-muted/40 text-foreground",
 						)}
 						title={t("docs.editorPage.commentsAndActivity")}

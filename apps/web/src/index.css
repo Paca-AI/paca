@@ -58,7 +58,7 @@
 	--secondary: #f0f0f0;
 	--secondary-foreground: #111111;
 	--muted: #f5f5f5;
-	--muted-foreground: #737373;
+	--muted-foreground: #5f5f5f;
 	--accent: #f0f0f0;
 	--accent-foreground: #111111;
 	--destructive: oklch(0.577 0.245 27.325);
@@ -66,8 +66,8 @@
 	--success: oklch(0.527 0.154 150.069);
 	--warning: oklch(0.555 0.163 48.998);
 	--info: oklch(0.488 0.243 264.376);
-	--border: #d4d4d4;
-	--input: #d4d4d4;
+	--border: #c8c8c8;
+	--input: #c8c8c8;
 	--ring: #5a9e1c;
 	--chart-1: oklch(0.646 0.222 41.116);
 	--chart-2: oklch(0.6 0.118 184.704);
@@ -81,7 +81,7 @@
 	--sidebar-primary-foreground: #ffffff;
 	--sidebar-accent: #f0f0f0;
 	--sidebar-accent-foreground: #111111;
-	--sidebar-border: #e8e8e8;
+	--sidebar-border: #dedede;
 	--sidebar-ring: #5a9e1c;
 }
 
@@ -118,7 +118,7 @@
 	--secondary: #1e1e1e;
 	--secondary-foreground: #f0f0f0;
 	--muted: #1a1a1a;
-	--muted-foreground: #888888;
+	--muted-foreground: #a0a0a0;
 	--accent: #1e1e1e;
 	--accent-foreground: #f0f0f0;
 	--destructive: oklch(0.396 0.141 25.723);
@@ -126,8 +126,8 @@
 	--success: oklch(0.792 0.209 151.711);
 	--warning: oklch(0.828 0.189 84.429);
 	--info: oklch(0.707 0.165 254.624);
-	--border: #2a2a2a;
-	--input: #2a2a2a;
+	--border: #3a3a3a;
+	--input: #3a3a3a;
 	--ring: #9ed957;
 	--chart-1: oklch(0.488 0.243 264.376);
 	--chart-2: oklch(0.696 0.17 162.48);
@@ -140,7 +140,7 @@
 	--sidebar-primary-foreground: #0a0a0a;
 	--sidebar-accent: #1a1a1a;
 	--sidebar-accent-foreground: #f0f0f0;
-	--sidebar-border: #1e1e1e;
+	--sidebar-border: #2a2a2a;
 	--sidebar-ring: #9ed957;
 }
 
@@ -488,6 +488,36 @@ a {
 }
 
 /* Make BlockNote side menu buttons smaller - Applied to all instances */
+/*
+ * BlockNote file blocks (file / empty "add file" placeholders). The library
+ * hard-codes light greys for their background and hover (#f2f1ee, #e1e1e1),
+ * which in dark mode turns the block white under the light editor text. Use
+ * the app's own tokens so both themes follow the rest of the UI.
+ */
+.bn-root [data-file-block] .bn-add-file-button,
+.bn-root [data-file-block] .bn-file-name-with-icon {
+	color: var(--foreground);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-md, 0.5rem);
+	transition:
+		background-color 150ms,
+		border-color 150ms;
+}
+.bn-root [data-file-block] .bn-add-file-button {
+	background-color: var(--muted);
+	color: var(--muted-foreground);
+}
+.bn-root
+	.bn-editor[contenteditable="true"]
+	[data-file-block]
+	.bn-add-file-button:hover,
+.bn-root [data-file-block] .bn-file-name-with-icon:hover,
+.bn-root .ProseMirror-selectednode .bn-file-name-with-icon {
+	background-color: var(--accent);
+	color: var(--accent-foreground);
+	border-color: var(--ring);
+}
+
 .bn-root .bn-side-menu {
 	gap: 2px;
 	padding: 2px;

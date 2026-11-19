@@ -207,6 +207,28 @@
 				"invalid": "La clé d'accès n'a pas pu être vérifiée. Veuillez réessayer.",
 				"generic": "Une erreur s'est produite. Veuillez réessayer."
 			}
+		},
+		"sessions": {
+			"title": "Appareils connectés",
+			"description": "Navigateurs et appareils actuellement connectés à votre compte. Déconnectez ceux que vous ne reconnaissez pas ou n'utilisez plus.",
+			"current": "Cet appareil",
+			"empty": "Aucun appareil connecté à afficher pour le moment.",
+			"activeNow": "Actif maintenant",
+			"signedIn": "Connecté le {{date}}",
+			"deviceFull": "{{browser}} sur {{os}}",
+			"unknownDevice": "Appareil inconnu",
+			"revoke": "Déconnecter",
+			"revokeLabel": "Déconnecter {{name}}",
+			"revokeOthers": "Déconnecter tous les autres appareils",
+			"revokeTitle": "Déconnecter cet appareil ?",
+			"revokeDescription": "{{name}} sera déconnecté immédiatement et devra se reconnecter.",
+			"revokeOthersTitle": "Déconnecter tous les autres appareils ?",
+			"revokeOthersDescription": "Tous les appareils sauf celui-ci seront déconnectés immédiatement et devront se reconnecter.",
+			"confirm": "Déconnecter",
+			"errors": {
+				"load": "Impossible de charger vos appareils connectés.",
+				"generic": "Une erreur s'est produite. Veuillez réessayer."
+			}
 		}
 	}
 }

@@ -83,7 +83,7 @@ export function SubtaskRows({
 					<div
 						// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton
 						key={i}
-						className="flex items-center gap-3 border-b border-border/20 py-2.5"
+						className="flex items-center gap-3 border-b border-dashed border-border/30 py-2.5"
 						style={indent}
 					>
 						<div className="h-3 w-16 animate-pulse rounded bg-muted/60" />
@@ -97,7 +97,7 @@ export function SubtaskRows({
 	if (query.isError) {
 		return (
 			<div
-				className="flex items-center gap-2 border-b border-border/20 py-2.5 text-xs text-destructive"
+				className="flex items-center gap-2 border-b border-dashed border-border/30 py-2.5 text-xs text-destructive"
 				style={indent}
 			>
 				{t("board.subtasks.loadError")}
@@ -116,7 +116,7 @@ export function SubtaskRows({
 		<>
 			{filtersActive && total > 0 && children.length < total && (
 				<div
-					className="border-b border-border/20 py-1.5 text-xs text-muted-foreground/70"
+					className="border-b border-dashed border-border/30 py-1.5 text-xs text-muted-foreground"
 					style={indent}
 				>
 					{t("board.subtasks.matching", {
@@ -127,7 +127,7 @@ export function SubtaskRows({
 			)}
 			{children.length === 0 && total > 0 && (
 				<div
-					className="border-b border-border/20 py-2.5 text-xs text-muted-foreground/60"
+					className="border-b border-dashed border-border/30 py-2.5 text-xs text-muted-foreground/90"
 					style={indent}
 				>
 					{t("board.subtasks.noMatch")}
@@ -171,7 +171,7 @@ export function SubtaskRows({
 					type="button"
 					onClick={() => query.fetchNextPage()}
 					disabled={query.isFetchingNextPage}
-					className="flex w-full items-center gap-2 border-b border-border/20 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
+					className="flex w-full items-center gap-2 border-b border-dashed border-border/30 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
 					style={indent}
 				>
 					{query.isFetchingNextPage && (

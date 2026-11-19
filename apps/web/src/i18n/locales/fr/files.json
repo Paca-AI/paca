@@ -1,0 +1,240 @@
+{
+	"title": "Fichiers",
+	"nav": {
+		"files": "Fichiers",
+		"recent": "Récents",
+		"starred": "Favoris",
+		"trash": "Corbeille"
+	},
+	"roots": {
+		"general": "Général",
+		"empty": "Vous n’avez encore accès à aucun fichier.",
+		"emptyHint": "Les fichiers des projets que vous pouvez lire apparaissent ici sous forme de dossiers."
+	},
+	"header": {
+		"new": "Nouveau",
+		"newFolder": "Nouveau dossier",
+		"uploadFile": "Importer un fichier",
+		"uploadFolder": "Importer un dossier",
+		"search": "Rechercher dans {{where}}",
+		"view": {
+			"grid": "Vue en grille",
+			"list": "Vue en liste"
+		},
+		"typeFilter": "Type",
+		"allTypes": "Tous les types"
+	},
+	"types": {
+		"document": "Documents",
+		"spreadsheet": "Feuilles de calcul",
+		"presentation": "Présentations",
+		"pdf": "PDF",
+		"image": "Images",
+		"video": "Vidéos",
+		"audio": "Audio",
+		"archive": "Archives"
+	},
+	"kinds": {
+		"folder": "Dossier",
+		"image": "Image",
+		"video": "Vidéo",
+		"audio": "Audio",
+		"pdf": "PDF",
+		"document": "Document",
+		"spreadsheet": "Feuille de calcul",
+		"presentation": "Présentation",
+		"archive": "Archive",
+		"code": "Code",
+		"text": "Texte",
+		"other": "Fichier"
+	},
+	"columns": {
+		"name": "Nom",
+		"owner": "Propriétaire",
+		"modified": "Dernière modification",
+		"size": "Taille",
+		"location": "Emplacement",
+		"trashed": "Date de mise à la corbeille"
+	},
+	"sections": {
+		"folders": "Dossiers",
+		"files": "Fichiers"
+	},
+	"sectionTitle": {
+		"recent": "Récents",
+		"starred": "Favoris",
+		"trash": "Corbeille"
+	},
+	"empty": {
+		"folder": "Ce dossier est vide",
+		"folderHint": "Faites glisser des fichiers ici ou utilisez Nouveau pour en ajouter.",
+		"search": "Aucun fichier ne correspond à votre recherche",
+		"recent": "Aucun fichier ouvert récemment",
+		"recentHint": "Les fichiers que vous prévisualisez ou téléchargez apparaissent ici.",
+		"starred": "Aucun favori pour l’instant",
+		"starredHint": "Ajoutez des fichiers et dossiers aux favoris pour les retrouver vite.",
+		"trash": "La corbeille est vide",
+		"trashHint": "Les éléments restent ici 30 jours, puis sont supprimés définitivement."
+	},
+	"actions": {
+		"open": "Ouvrir",
+		"preview": "Aperçu",
+		"download": "Télécharger",
+		"star": "Ajouter aux favoris",
+		"unstar": "Retirer des favoris",
+		"rename": "Renommer",
+		"move": "Déplacer vers…",
+		"details": "Détails",
+		"trash": "Mettre à la corbeille",
+		"delete": "Supprimer",
+		"restore": "Restaurer",
+		"deleteForever": "Supprimer définitivement",
+		"more": "Plus d’actions"
+	},
+	"system": {
+		"task_attachments": "Fichiers joints aux tâches de ce projet.",
+		"task": "Pièces jointes de cette tâche.",
+		"docs": "Fichiers intégrés dans les documents de ce projet.",
+		"annotations": "Captures d’écran issues des commentaires de page."
+	},
+	"dialogs": {
+		"newFolder": {
+			"title": "Nouveau dossier",
+			"label": "Nom du dossier",
+			"default": "Dossier sans titre",
+			"create": "Créer"
+		},
+		"rename": {
+			"title": "Renommer",
+			"label": "Nom",
+			"save": "Enregistrer"
+		},
+		"move": {
+			"title": "Déplacer {{name}}",
+			"titleMany": "Déplacer {{count}} éléments",
+			"here": "Déplacer ici",
+			"noFolders": "Aucun dossier ici"
+		},
+		"deleteForever": {
+			"title": "Supprimer définitivement ?",
+			"body": "{{name}} sera supprimé définitivement. Cette action est irréversible.",
+			"bodyMany": "{{count}} éléments seront supprimés définitivement. Cette action est irréversible.",
+			"confirm": "Supprimer définitivement"
+		},
+		"cancel": "Annuler",
+		"deleteManaged": {
+			"title": "Supprimer définitivement ?",
+			"confirm": "Supprimer",
+			"taskAttachment": "{{name}} est joint à une tâche. La supprimer la retire de la tâche et ne peut pas être annulé.",
+			"doc": "{{name}} est utilisé dans un document. Le supprimer l’efface définitivement et le document affichera un fichier cassé. Cette action est irréversible.",
+			"annotation": "{{name}} est une capture d’écran d’un commentaire de page. La supprimer l’efface définitivement, du commentaire et de toute tâche à laquelle elle est jointe. Cette action est irréversible.",
+			"many": "{{count}} des fichiers sélectionnés sont utilisés par des tâches, des documents ou des commentaires de page. Les supprimer les retire de ces endroits définitivement. Cette action est irréversible."
+		}
+	},
+	"details": {
+		"title": "Détails",
+		"type": "Type",
+		"size": "Taille",
+		"owner": "Propriétaire",
+		"created": "Créé",
+		"modified": "Modifié",
+		"location": "Emplacement",
+		"source": "Source",
+		"unknownOwner": "Inconnu"
+	},
+	"source": {
+		"upload": "Importé",
+		"task_attachment": "Pièce jointe de tâche",
+		"doc": "Fichier de document",
+		"annotation": "Capture d’annotation"
+	},
+	"upload": {
+		"uploading": "Importation de {{count}} élément",
+		"done": "Importations terminées",
+		"failed": "{{count}} en échec",
+		"cancel": "Annuler",
+		"dropHere": "Déposez pour importer dans {{where}}",
+		"error": "Échec de l’importation",
+		"uploading_other": "Importation de {{count}} éléments"
+	},
+	"preview": {
+		"loading": "Chargement de l’aperçu…",
+		"tooLarge": "Ce fichier est trop volumineux pour l’aperçu ({{size}}). Téléchargez-le pour l’ouvrir.",
+		"failed": "L’aperçu n’a pas pu être chargé.",
+		"download": "Télécharger",
+		"previous": "Fichier précédent",
+		"next": "Fichier suivant",
+		"close": "Fermer"
+	},
+	"toast": {
+		"folderCreated": "Dossier créé",
+		"renamed": "Renommé",
+		"moved": "Déplacé",
+		"movedMany": "{{count}} éléments déplacés",
+		"trashed": "Mis à la corbeille",
+		"trashedMany": "{{count}} éléments mis à la corbeille",
+		"restored": "Restauré",
+		"deleted": "Supprimé",
+		"starred": "Ajouté aux favoris",
+		"unstarred": "Retiré des favoris",
+		"failed": "Une erreur s’est produite"
+	},
+	"errors": {
+		"FILE_NODE_NOT_FOUND": "Cet élément n’existe plus.",
+		"FILE_NAME_INVALID": "Les noms ne peuvent pas être vides ni contenir de barres obliques.",
+		"FILE_NODE_LOCKED": "Cet élément est géré par Paca et ne peut pas être modifié.",
+		"FILE_NOT_FOLDER": "Ce n’est pas un dossier.",
+		"FILE_NOT_FILE": "Ce n’est pas un fichier.",
+		"FILE_MOVE_INTO_SELF": "Un dossier ne peut pas être déplacé dans lui-même.",
+		"FILE_NODE_TRASHED": "Cet élément est dans la corbeille.",
+		"FILE_NODE_NOT_TRASHED": "Cet élément n’est pas dans la corbeille.",
+		"FILE_UPLOAD_INCOMPLETE": "L’importation ne s’est pas terminée.",
+		"FILE_TOO_LARGE": "Ce fichier est trop volumineux pour être importé.",
+		"FILE_TYPE_INVALID": "Filtre de type de fichier inconnu."
+	},
+	"noAccess": {
+		"title": "Vous ne pouvez pas voir ces fichiers",
+		"body": "Demandez l’accès aux fichiers à un administrateur du projet."
+	},
+	"selected": "{{count}} sélectionné(s)",
+	"picker": {
+		"search": "Rechercher des fichiers",
+		"root": "Fichiers",
+		"empty": "Aucun fichier correspondant dans ce dossier"
+	},
+	"filePanel": {
+		"tabs": {
+			"upload": "Importer",
+			"files": "Depuis les fichiers",
+			"embed": "Intégrer un lien"
+		},
+		"upload": {
+			"title": {
+				"image": "Importer une image",
+				"video": "Importer une vidéo",
+				"audio": "Importer un fichier audio",
+				"file": "Importer un fichier"
+			},
+			"hint": "Glissez-déposez ou cliquez pour choisir",
+			"uploading": "Importation…",
+			"error": "L’importation a échoué. Veuillez réessayer."
+		},
+		"files": {
+			"hint": {
+				"image": "Choisissez une image parmi les fichiers de ce projet",
+				"video": "Choisissez une vidéo parmi les fichiers de ce projet",
+				"audio": "Choisissez un audio parmi les fichiers de ce projet",
+				"file": "Choisissez un fichier parmi les fichiers de ce projet"
+			}
+		},
+		"embed": {
+			"placeholder": "Collez un lien…",
+			"button": {
+				"image": "Intégrer l’image",
+				"video": "Intégrer la vidéo",
+				"audio": "Intégrer l’audio",
+				"file": "Intégrer le fichier"
+			}
+		}
+	}
+}

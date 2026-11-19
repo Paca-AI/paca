@@ -29,7 +29,7 @@ export function FieldValue({
 	const { t } = useTranslation("projects");
 	if (empty) {
 		return (
-			<span className="text-sm text-muted-foreground/50 italic">
+			<span className="text-sm text-muted-foreground/90 italic">
 				{t("taskDetail.common.empty")}
 			</span>
 		);
@@ -41,7 +41,7 @@ export function FieldValue({
 
 export function SectionHeading({ children }: { children: React.ReactNode }) {
 	return (
-		<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 mb-4 flex items-center gap-2">
+		<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground mb-4 flex items-center gap-2">
 			<span>{children}</span>
 			<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 		</h3>

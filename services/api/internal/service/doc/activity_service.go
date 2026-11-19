@@ -193,6 +193,9 @@ func (s *ActivitySvc) handleMentions(ctx context.Context, projectID, documentID 
 			}
 			// An agent mentioning itself must not retrigger its own conversation.
 			if member.ID == author.ID {
+				// Log it: a silent skip here is indistinguishable from the
+				// mention doing nothing.
+				slog.WarnContext(ctx, "doc comment mention skipped: agent mentioned itself", "project_id", projectID, "agent_id", *member.AgentID, "document_id", documentID)
 				continue
 			}
 			if text == "" {

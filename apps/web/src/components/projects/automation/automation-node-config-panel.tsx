@@ -1526,7 +1526,7 @@ function TargetTaskPicker({
 				)}
 				<div className="px-1 pb-1">
 					<div className="relative">
-						<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+						<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/90" />
 						<input
 							type="text"
 							value={search}
@@ -1540,7 +1540,7 @@ function TargetTaskPicker({
 							placeholder={t(
 								"automation.nodeConfig.trigger.searchTaskPlaceholder",
 							)}
-							className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+							className="w-full rounded-lg border border-border/50 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/90 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
 						/>
 					</div>
 				</div>
@@ -1552,7 +1552,7 @@ function TargetTaskPicker({
 						<div className="flex items-center justify-center py-4">
 							<Spinner
 								aria-hidden="true"
-								className="text-muted-foreground/50"
+								className="text-muted-foreground/90"
 							/>
 						</div>
 					) : (
@@ -1566,7 +1566,7 @@ function TargetTaskPicker({
 								</DropdownMenuItem>
 							))}
 							{displayedTasks.length === 0 && (
-								<p className="px-2 py-4 text-center text-xs text-muted-foreground/50">
+								<p className="px-2 py-4 text-center text-xs text-muted-foreground/90">
 									{isSearching
 										? t("automation.nodeConfig.trigger.noTasksFound")
 										: t("automation.nodeConfig.trigger.noTasksYet")}
@@ -1575,7 +1575,7 @@ function TargetTaskPicker({
 						</>
 					)}
 					{activePagination.isLoadingMore && (
-						<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+						<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/90">
 							<Spinner aria-hidden="true" className="size-3" />
 							{t("automation.nodeConfig.trigger.loadingMore")}
 						</div>

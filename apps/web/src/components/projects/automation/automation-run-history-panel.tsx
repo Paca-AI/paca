@@ -141,7 +141,7 @@ function RunSteps({
 	}
 
 	return (
-		<div className="border-t border-border/60 divide-y divide-border/40">
+		<div className="border-t border-border/60 divide-y divide-border/60">
 			{steps.map((step) => {
 				const Icon = STEP_STATUS_ICON[step.status];
 				return (

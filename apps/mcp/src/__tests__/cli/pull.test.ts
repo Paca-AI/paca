@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPull } from "../../cli/pull.js";
+import { runPush } from "../../cli/push.js";
+import { sha256 } from "../../cli/state.js";
 import { markdownToBlocknote } from "../../utils/index.js";
 
 const ID = (n: number) =>
@@ -87,6 +89,12 @@ function tmpFiles(root: string): string[] {
 	};
 	walk(root);
 	return out;
+}
+
+/** The state file as an object, with no pending writes recorded. */
+function withoutPending(state: any): any {
+	for (const d of Object.values(state.docs) as any[]) delete d.pending_sha256;
+	return state;
 }
 
 describe("runPull", () => {
@@ -400,7 +408,7 @@ describe("runPull", () => {
 		expect(read(`A~${ID(1).slice(0, 8)}.md`)).toContain("one");
 	});
 
-	it("locally edited file is kept and exits 2", async () => {
+	it("a file edited here and in Paca on the same line gets conflict markers, keeps the local text, and exits 2", async () => {
 		const srv = fakeServer();
 		srv.docs.set(ID(1), {
 			id: ID(1),
@@ -420,16 +428,46 @@ describe("runPull", () => {
 		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
 		lines = [];
 		expect(await pull(srv)).toBe(2);
-		expect(read("A.md")).toBe("my local edit\n");
-		expect(lines.join("\n")).toContain(
-			"kept A.md: edited locally; use --force to overwrite",
+		expect(read("A.md")).toBe(
+			"<<<<<<< local\nmy local edit\n||||||| base\none\n=======\none v2\n>>>>>>> Paca\n",
 		);
-		// The next pull still knows the doc is behind, and --force overwrites.
+		expect(lines.join("\n")).toContain(
+			"conflict A.md: edited here and in Paca",
+		);
+		// Base and state are Paca's version: the file is a local edit of it.
+		expect(read(`.paca-base/${ID(1)}.md`)).toBe("one v2\n");
+		expect(state().docs[ID(1)]).toMatchObject({
+			content_hash: "h:one v2",
+			conflict: true,
+		});
+		// push refuses the file while it has the markers.
+		lines = [];
+		expect(
+			await runPush(
+				{
+					projectId: "p1",
+					file: "m/A.md",
+					lock: false,
+					force: false,
+					dryRun: false,
+					client: "paca-cli",
+				},
+				srv.client as any,
+				io,
+				{ cwd: path.dirname(dir) },
+			),
+		).toBe(1);
+		expect(lines.join("\n")).toContain("conflict markers (line 1)");
+		// The next pull reports the markers, and --force overwrites.
 		srv.feed([]);
+		lines = [];
 		expect(await pull(srv)).toBe(2);
+		expect(lines).toContain(
+			"conflict A.md: the conflict markers from an earlier pull are still there (line 1); resolve them, then push",
+		);
 		srv.feed([]);
 		expect(await pull(srv, true)).toBe(0);
-		expect(read("A.md")).toContain("one v2");
+		expect(read("A.md")).toBe("one v2\n");
 	});
 
 	it("a locally edited file is left alone when the doc did not change", async () => {
@@ -591,7 +629,7 @@ describe("runPull", () => {
 		expect(state().docs).toEqual({});
 	});
 
-	it("state is unchanged when a write fails", async () => {
+	it("state is unchanged when a write fails, but for the write in flight", async () => {
 		const srv = fakeServer();
 		srv.docs.set(ID(1), {
 			id: ID(1),
@@ -616,9 +654,11 @@ describe("runPull", () => {
 		});
 		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
 		await expect(pull(srv)).rejects.toThrow();
-		expect(fs.readFileSync(path.join(dir, ".paca-sync.json"), "utf8")).toBe(
-			stateBefore,
-		);
+		// The old state, but for the write in flight: the file may hold it.
+		expect(withoutPending(state())).toEqual(JSON.parse(stateBefore));
+		expect(state().docs[ID(1)].pending_sha256).toEqual([
+			sha256("one v2\n"),
+		]);
 		// Once fixed, the half-done write is not mistaken for a local edit.
 		fs.rmSync(path.join(dir, ".paca-base"));
 		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
@@ -761,8 +801,12 @@ describe("runPull", () => {
 		srv.feed([srv.entry(srv.docs.get(ID(1)) as ServerDoc)]);
 		lines = [];
 		expect(await pull(srv)).toBe(2);
-		expect(read("A.md")).toBe("LOCAL EDIT\n");
-		expect(lines.join("\n")).toContain("kept A.md: edited locally");
+		expect(read("A.md")).toBe(
+			"<<<<<<< local\nLOCAL EDIT\n||||||| base\none\n=======\none v2\n>>>>>>> Paca\n",
+		);
+		expect(lines.join("\n")).toContain(
+			"conflict A.md: edited here and in Paca",
+		);
 		expect(tmpFiles(dir)).toEqual([]);
 	});
 
@@ -810,9 +854,8 @@ describe("runPull", () => {
 		expect(["A1", "A2"]).toContain(read("X.md").trim());
 		expect(read("Y.md").trim()).toBe("B1");
 		expect(tmpFiles(dir)).toEqual([]);
-		expect(fs.readFileSync(path.join(dir, ".paca-sync.json"), "utf8")).toBe(
-			stateBefore,
-		);
+		// The old state, but for the writes in flight.
+		expect(withoutPending(state())).toEqual(JSON.parse(stateBefore));
 		fs.rmSync(path.join(dir, ".paca-base"));
 		changes();
 		lines = [];

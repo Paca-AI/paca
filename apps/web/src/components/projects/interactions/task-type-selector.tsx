@@ -46,7 +46,7 @@ export function TaskTypeSelector({
 			<span className="truncate">{taskType.name}</span>
 		</>
 	) : (
-		<span className="text-muted-foreground/50">
+		<span className="text-muted-foreground/90">
 			{t("board.taskTypeSelector.noType")}
 		</span>
 	);
@@ -72,7 +72,7 @@ export function TaskTypeSelector({
 				{badgeContent}
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-44 p-1 rounded-xl border border-border/40 shadow-lg"
+				className="w-44 p-1 rounded-xl border border-border/60 shadow-lg"
 				align={align}
 			>
 				<SearchableList

@@ -63,8 +63,8 @@ function ActivityRow({
 	const description = describeItem(item, names, t);
 
 	return (
-		<div className="flex items-start gap-3 border-b border-border/10 px-1 py-2.5 last:border-0">
-			<div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/40 text-muted-foreground/80">
+		<div className="flex items-start gap-3 border-b border-border/50 px-1 py-2.5 last:border-0">
+			<div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/40 text-muted-foreground">
 				<Icon className="size-3.5" />
 			</div>
 			<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
@@ -75,7 +75,7 @@ function ActivityRow({
 					<span className="text-sm text-foreground/80">{description}</span>
 				)}
 				{item.source_deleted ? (
-					<span className="truncate text-sm font-medium text-muted-foreground/70">
+					<span className="truncate text-sm font-medium text-muted-foreground">
 						{item.source_title}
 					</span>
 				) : item.source_type === "task" ? (
@@ -95,7 +95,7 @@ function ActivityRow({
 						{item.source_title}
 					</Link>
 				)}
-				<span className="ml-auto shrink-0 text-xs text-muted-foreground/45">
+				<span className="ml-auto shrink-0 text-xs text-muted-foreground/90">
 					{timeAgo(item.created_at, tCommon)}
 				</span>
 			</div>
@@ -170,7 +170,7 @@ export function AgentActivityTab({
 					</div>
 				) : items.length === 0 ? (
 					<div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
-						<Activity className="size-8 text-muted-foreground/40" />
+						<Activity className="size-8 text-muted-foreground/90" />
 						<p className="text-sm text-muted-foreground">
 							{hasActiveFilters
 								? t("agents.detail.activity.emptyFiltered.title")

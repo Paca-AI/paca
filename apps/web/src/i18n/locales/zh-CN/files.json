@@ -1,0 +1,239 @@
+{
+	"title": "文件",
+	"nav": {
+		"files": "文件",
+		"recent": "最近",
+		"starred": "已加星标",
+		"trash": "回收站"
+	},
+	"roots": {
+		"general": "通用",
+		"empty": "您还没有可访问的文件。",
+		"emptyHint": "您有权读取的项目文件会以文件夹形式显示在这里。"
+	},
+	"header": {
+		"new": "新建",
+		"newFolder": "新建文件夹",
+		"uploadFile": "上传文件",
+		"uploadFolder": "上传文件夹",
+		"search": "在 {{where}} 中搜索",
+		"view": {
+			"grid": "网格视图",
+			"list": "列表视图"
+		},
+		"typeFilter": "类型",
+		"allTypes": "所有类型"
+	},
+	"types": {
+		"document": "文档",
+		"spreadsheet": "电子表格",
+		"presentation": "演示文稿",
+		"pdf": "PDF",
+		"image": "图片",
+		"video": "视频",
+		"audio": "音频",
+		"archive": "压缩包"
+	},
+	"kinds": {
+		"folder": "文件夹",
+		"image": "图片",
+		"video": "视频",
+		"audio": "音频",
+		"pdf": "PDF",
+		"document": "文档",
+		"spreadsheet": "电子表格",
+		"presentation": "演示文稿",
+		"archive": "压缩包",
+		"code": "代码",
+		"text": "文本",
+		"other": "文件"
+	},
+	"columns": {
+		"name": "名称",
+		"owner": "所有者",
+		"modified": "最后修改",
+		"size": "大小",
+		"location": "位置",
+		"trashed": "移入回收站的日期"
+	},
+	"sections": {
+		"folders": "文件夹",
+		"files": "文件"
+	},
+	"sectionTitle": {
+		"recent": "最近",
+		"starred": "已加星标",
+		"trash": "回收站"
+	},
+	"empty": {
+		"folder": "此文件夹为空",
+		"folderHint": "将文件拖到此处，或使用“新建”添加。",
+		"search": "没有与搜索匹配的文件",
+		"recent": "没有最近打开的文件",
+		"recentHint": "您预览或下载的文件会显示在这里。",
+		"starred": "还没有加星标的项目",
+		"starredHint": "为文件和文件夹加星标，方便快速找到。",
+		"trash": "回收站为空",
+		"trashHint": "项目会在这里保留 30 天，之后将被永久删除。"
+	},
+	"actions": {
+		"open": "打开",
+		"preview": "预览",
+		"download": "下载",
+		"star": "添加星标",
+		"unstar": "取消星标",
+		"rename": "重命名",
+		"move": "移动到…",
+		"details": "详细信息",
+		"trash": "移入回收站",
+		"delete": "删除",
+		"restore": "还原",
+		"deleteForever": "永久删除",
+		"more": "更多操作"
+	},
+	"system": {
+		"task_attachments": "附加到此项目任务的文件。",
+		"task": "此任务的附件。",
+		"docs": "嵌入此项目文档中的文件。",
+		"annotations": "来自页面评论的截图。"
+	},
+	"dialogs": {
+		"newFolder": {
+			"title": "新建文件夹",
+			"label": "文件夹名称",
+			"default": "未命名文件夹",
+			"create": "创建"
+		},
+		"rename": {
+			"title": "重命名",
+			"label": "名称",
+			"save": "保存"
+		},
+		"move": {
+			"title": "移动 {{name}}",
+			"titleMany": "移动 {{count}} 个项目",
+			"here": "移动到此处",
+			"noFolders": "此处没有文件夹"
+		},
+		"deleteForever": {
+			"title": "永久删除？",
+			"body": "{{name}} 将被永久删除，且无法撤销。",
+			"bodyMany": "{{count}} 个项目将被永久删除，且无法撤销。",
+			"confirm": "永久删除"
+		},
+		"cancel": "取消",
+		"deleteManaged": {
+			"title": "永久删除？",
+			"confirm": "删除",
+			"taskAttachment": "{{name}} 已附加到任务。删除后将从任务中移除，且无法撤销。",
+			"doc": "{{name}} 正在文档中使用。删除后将被永久移除，文档中会显示损坏的文件。此操作无法撤销。",
+			"annotation": "{{name}} 是页面评论中的截图。删除后将从评论及其附加的所有任务中永久移除。此操作无法撤销。",
+			"many": "所选文件中有 {{count}} 个正被任务、文档或页面评论使用。删除后将从这些位置永久移除。此操作无法撤销。"
+		}
+	},
+	"details": {
+		"title": "详细信息",
+		"type": "类型",
+		"size": "大小",
+		"owner": "所有者",
+		"created": "创建时间",
+		"modified": "修改时间",
+		"location": "位置",
+		"source": "来源",
+		"unknownOwner": "未知"
+	},
+	"source": {
+		"upload": "已上传",
+		"task_attachment": "任务附件",
+		"doc": "文档文件",
+		"annotation": "批注截图"
+	},
+	"upload": {
+		"uploading": "正在上传 {{count}} 个项目",
+		"done": "上传完成",
+		"failed": "{{count}} 个失败",
+		"cancel": "取消",
+		"dropHere": "拖放到此处上传到 {{where}}",
+		"error": "上传失败"
+	},
+	"preview": {
+		"loading": "正在加载预览…",
+		"tooLarge": "此文件过大，无法预览（{{size}}）。请下载后打开。",
+		"failed": "无法加载预览。",
+		"download": "下载",
+		"previous": "上一个文件",
+		"next": "下一个文件",
+		"close": "关闭"
+	},
+	"toast": {
+		"folderCreated": "已创建文件夹",
+		"renamed": "已重命名",
+		"moved": "已移动",
+		"movedMany": "已移动 {{count}} 个项目",
+		"trashed": "已移入回收站",
+		"trashedMany": "已将 {{count}} 个项目移入回收站",
+		"restored": "已还原",
+		"deleted": "已删除",
+		"starred": "已添加星标",
+		"unstarred": "已取消星标",
+		"failed": "出了点问题"
+	},
+	"errors": {
+		"FILE_NODE_NOT_FOUND": "该项目已不存在。",
+		"FILE_NAME_INVALID": "名称不能为空，也不能包含斜杠。",
+		"FILE_NODE_LOCKED": "此项目由 Paca 管理，无法更改。",
+		"FILE_NOT_FOLDER": "这不是文件夹。",
+		"FILE_NOT_FILE": "这不是文件。",
+		"FILE_MOVE_INTO_SELF": "文件夹不能移动到自身内部。",
+		"FILE_NODE_TRASHED": "该项目在回收站中。",
+		"FILE_NODE_NOT_TRASHED": "该项目不在回收站中。",
+		"FILE_UPLOAD_INCOMPLETE": "上传未完成。",
+		"FILE_TOO_LARGE": "文件过大，无法上传。",
+		"FILE_TYPE_INVALID": "未知的文件类型筛选。"
+	},
+	"noAccess": {
+		"title": "您无法查看这些文件",
+		"body": "请向项目管理员申请文件访问权限。"
+	},
+	"selected": "已选择 {{count}} 项",
+	"picker": {
+		"search": "搜索文件",
+		"root": "文件",
+		"empty": "此文件夹中没有匹配的文件"
+	},
+	"filePanel": {
+		"tabs": {
+			"upload": "上传",
+			"files": "从文件中选择",
+			"embed": "嵌入链接"
+		},
+		"upload": {
+			"title": {
+				"image": "上传图片",
+				"video": "上传视频",
+				"audio": "上传音频文件",
+				"file": "上传文件"
+			},
+			"hint": "拖放或点击选择",
+			"uploading": "正在上传…",
+			"error": "上传失败，请重试。"
+		},
+		"files": {
+			"hint": {
+				"image": "从此项目的文件中选择图片",
+				"video": "从此项目的文件中选择视频",
+				"audio": "从此项目的文件中选择音频",
+				"file": "从此项目的文件中选择文件"
+			}
+		},
+		"embed": {
+			"placeholder": "粘贴链接…",
+			"button": {
+				"image": "嵌入图片",
+				"video": "嵌入视频",
+				"audio": "嵌入音频",
+				"file": "嵌入文件"
+			}
+		}
+	}
+}

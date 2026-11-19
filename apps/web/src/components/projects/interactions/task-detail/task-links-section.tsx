@@ -133,7 +133,7 @@ export function TaskLinksSection({
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
-				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 flex items-center gap-2">
+				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground flex items-center gap-2">
 					<span>{t("taskDetail.links.title")}</span>
 					<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 				</h3>
@@ -155,10 +155,10 @@ export function TaskLinksSection({
 				<div className="space-y-3">
 					{orderedKeys.map((displayType) => (
 						<div key={displayType}>
-							<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/50 mb-1.5 px-0.5">
+							<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/90 mb-1.5 px-0.5">
 								{LINK_TYPE_LABELS[displayType as DisplayLinkType]}
 							</p>
-							<div className="rounded-xl border border-border/25 bg-card/50 divide-y divide-border/15 overflow-hidden">
+							<div className="rounded-xl border border-border/50 bg-card/50 divide-y divide-border/50 overflow-hidden">
 								{grouped[displayType].map((link) => {
 									const linkedTask = link.linked_task;
 									const prefix = taskIdPrefix
@@ -169,8 +169,8 @@ export function TaskLinksSection({
 											key={link.id}
 											className="flex items-center gap-3 px-4 py-2.5 group"
 										>
-											<Link2 className="size-3 text-muted-foreground/40 shrink-0" />
-											<span className="shrink-0 text-xs font-mono text-muted-foreground/50">
+											<Link2 className="size-3 text-muted-foreground/90 shrink-0" />
+											<span className="shrink-0 text-xs font-mono text-muted-foreground/90">
 												{prefix}
 											</span>
 											{/* biome-ignore lint/a11y/useSemanticElements: span for styling and truncation */}
@@ -197,7 +197,7 @@ export function TaskLinksSection({
 													<button
 														type="button"
 														onClick={() => onNavigateToTask(linkedTask.id)}
-														className="size-6 rounded flex items-center justify-center text-muted-foreground/50 hover:text-foreground hover:bg-muted/30 transition-all duration-100"
+														className="size-6 rounded flex items-center justify-center text-muted-foreground/90 hover:text-foreground hover:bg-muted/30 transition-all duration-100"
 														title={t("taskDetail.links.openTask")}
 													>
 														<ExternalLink className="size-3" />
@@ -207,7 +207,7 @@ export function TaskLinksSection({
 													<button
 														type="button"
 														onClick={() => deleteMutation.mutate(link.id)}
-														className="size-6 rounded flex items-center justify-center text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-all duration-100"
+														className="size-6 rounded flex items-center justify-center text-muted-foreground/90 hover:text-destructive hover:bg-destructive/10 transition-all duration-100"
 														title={t("taskDetail.links.removeLink")}
 													>
 														<Trash2 className="size-3" />
@@ -231,7 +231,7 @@ export function TaskLinksSection({
 			/>
 
 			{orderedKeys.length === 0 && (
-				<div className="flex items-center gap-3 px-1 py-3 text-muted-foreground/45">
+				<div className="flex items-center gap-3 px-1 py-3 text-muted-foreground/90">
 					<Link2 className="size-4 opacity-70" />
 					<p className="text-sm italic">{t("taskDetail.links.empty")}</p>
 				</div>

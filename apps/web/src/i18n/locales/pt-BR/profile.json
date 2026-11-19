@@ -207,6 +207,28 @@
 				"invalid": "Não foi possível verificar a chave de acesso. Tente novamente.",
 				"generic": "Algo deu errado. Tente novamente."
 			}
+		},
+		"sessions": {
+			"title": "Dispositivos conectados",
+			"description": "Navegadores e dispositivos atualmente conectados à sua conta. Desconecte os que você não reconhece ou não usa mais.",
+			"current": "Este dispositivo",
+			"empty": "Ainda não há dispositivos conectados para mostrar.",
+			"activeNow": "Ativo agora",
+			"signedIn": "Conectado em {{date}}",
+			"deviceFull": "{{browser}} no {{os}}",
+			"unknownDevice": "Dispositivo desconhecido",
+			"revoke": "Desconectar",
+			"revokeLabel": "Desconectar {{name}}",
+			"revokeOthers": "Desconectar todos os outros dispositivos",
+			"revokeTitle": "Desconectar este dispositivo?",
+			"revokeDescription": "{{name}} será desconectado imediatamente e precisará entrar novamente.",
+			"revokeOthersTitle": "Desconectar todos os outros dispositivos?",
+			"revokeOthersDescription": "Todos os dispositivos, exceto este, serão desconectados imediatamente e precisarão entrar novamente.",
+			"confirm": "Desconectar",
+			"errors": {
+				"load": "Não foi possível carregar seus dispositivos conectados.",
+				"generic": "Algo deu errado. Tente novamente."
+			}
 		}
 	}
 }

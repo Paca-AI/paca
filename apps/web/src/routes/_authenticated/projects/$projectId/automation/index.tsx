@@ -198,7 +198,7 @@ function AutomationListPage() {
 				) : automations.length === 0 ? (
 					<div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
 						<div className="flex size-16 items-center justify-center rounded-2xl bg-muted/50">
-							<AutomationIcon className="size-8 text-muted-foreground/50" />
+							<AutomationIcon className="size-8 text-muted-foreground/90" />
 						</div>
 						<div>
 							<p className="font-medium text-sm">
@@ -259,7 +259,7 @@ function AutomationListPage() {
 														e.stopPropagation();
 														setDeleteTarget(a);
 													}}
-													className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+													className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground/90 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
 												>
 													<Trash2 className="size-3.5" />
 												</button>

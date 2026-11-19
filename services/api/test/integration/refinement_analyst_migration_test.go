@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -143,7 +144,35 @@ func assertSamePolicyAsTemplate(t *testing.T, project uuid.UUID, got string) {
 	if err := json.Unmarshal(want, &w); err != nil {
 		t.Fatal(err)
 	}
+	normalizePolicy(g)
+	normalizePolicy(w)
 	if !reflect.DeepEqual(g, w) {
 		t.Errorf("migrated Analyst policy differs from the template:\n got  %s\n want %s", got, want)
+	}
+}
+
+// normalizePolicy puts a policy in a comparable form. It drops the file
+// manager's files:* actions, because the shipped template carries them but this
+// migration predates them (000093 adds them to existing roles), and sorts each
+// statement's actions and resources, since the order of those lists is not part
+// of what the template comparison is about.
+func normalizePolicy(policy any) {
+	p, _ := policy.(map[string]any)
+	stmts, _ := p["statements"].([]any)
+	for _, s := range stmts {
+		st, _ := s.(map[string]any)
+		if actions, ok := st["actions"].([]any); ok {
+			kept := actions[:0]
+			for _, a := range actions {
+				if name, _ := a.(string); !strings.HasPrefix(name, "files:") {
+					kept = append(kept, a)
+				}
+			}
+			st["actions"] = kept
+		}
+		for _, key := range []string{"actions", "resources"} {
+			list, _ := st[key].([]any)
+			sort.Slice(list, func(i, j int) bool { return list[i].(string) < list[j].(string) })
+		}
 	}
 }

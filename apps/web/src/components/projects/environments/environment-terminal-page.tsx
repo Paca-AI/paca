@@ -53,7 +53,7 @@ export function EnvironmentTerminalPage({
 					<Skeleton className="h-full w-full rounded-lg" />
 				) : environment.status !== "running" ? (
 					<div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border">
-						<TerminalSquare className="size-8 text-muted-foreground/40" />
+						<TerminalSquare className="size-8 text-muted-foreground/90" />
 						<p className="text-sm text-muted-foreground">
 							{t("environments.detail.terminal.notRunning")}
 						</p>

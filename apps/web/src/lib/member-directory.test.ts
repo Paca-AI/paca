@@ -100,4 +100,40 @@ describe("MemberDirectory", () => {
 		await vi.runAllTimersAsync();
 		expect(spy).toHaveBeenCalledTimes(2);
 	});
+
+	it("does not notify or swap the record when a seed only carries a re-signed avatar URL", () => {
+		const signed = (sig: string) =>
+			member({
+				avatar_url: `http://h/avatars/u1/full.png?X-Amz-Date=${sig}&X-Amz-Signature=${sig}`,
+			});
+		const dir = new MemberDirectory("p");
+		const listener = vi.fn();
+		dir.subscribe(listener);
+
+		dir.seed([signed("aaa")]);
+		expect(listener).toHaveBeenCalledTimes(1);
+		const first = dir.get("m1");
+
+		// Every page of tasks re-signs the same avatar.
+		dir.seed([signed("bbb")]);
+		expect(listener).toHaveBeenCalledTimes(1);
+		expect(dir.get("m1")).toBe(first);
+
+		// A real change still goes through.
+		dir.seed([{ ...signed("ccc"), full_name: "Alice B" }]);
+		expect(listener).toHaveBeenCalledTimes(2);
+		expect(dir.get("m1")?.full_name).toBe("Alice B");
+	});
+
+	it("takes a re-signed avatar URL once the kept one is old", () => {
+		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+		const dir = new MemberDirectory("p");
+		const url = (sig: string) =>
+			member({ avatar_url: `http://h/a.png?X-Amz-Signature=${sig}` });
+		dir.seed([url("old")]);
+
+		vi.setSystemTime(new Date("2026-01-01T00:30:00Z"));
+		dir.seed([url("new")]);
+		expect(dir.get("m1")?.avatar_url).toContain("Signature=new");
+	});
 });

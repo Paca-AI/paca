@@ -546,3 +546,47 @@ func TestActorIDFromContext(t *testing.T) {
 		t.Fatalf("expected actor ID %v, got %v", testActorID, retrievedActorID)
 	}
 }
+
+func TestAuthn_RevokedSessionAccessTokenRejected(t *testing.T) {
+	tm := newTestTokenManager()
+	revoked := map[string]bool{}
+	tm.WithRevocationCheck(func(_ context.Context, fid string) (bool, error) { return revoked[fid], nil })
+
+	token, err := tm.IssueAccess(testUserID, "alice", "USER", "fam-1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := chi.NewRouter()
+	r.With(Authn(tm)).Get("/protected", okHandler)
+	call := func() int {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/protected", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	if got := call(); got != http.StatusOK {
+		t.Fatalf("live session: %d, want 200", got)
+	}
+	revoked["fam-1"] = true
+	if got := call(); got != http.StatusUnauthorized {
+		t.Fatalf("revoked session: %d, want 401", got)
+	}
+}
+
+func TestAuthn_RevocationLookupFailureFailsOpen(t *testing.T) {
+	tm := newTestTokenManager()
+	tm.WithRevocationCheck(func(context.Context, string) (bool, error) { return false, errors.New("redis down") })
+	token, _ := tm.IssueAccess(testUserID, "alice", "USER", "fam-1", false)
+
+	r := chi.NewRouter()
+	r.With(Authn(tm)).Get("/protected", okHandler)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200", w.Code)
+	}
+}

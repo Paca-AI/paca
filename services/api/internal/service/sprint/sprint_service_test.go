@@ -142,6 +142,9 @@ func (r *fakeTaskRepo) FindTaskByID(_ context.Context, id uuid.UUID) (*taskdom.T
 func (r *fakeTaskRepo) FindTaskByNumber(_ context.Context, _ uuid.UUID, _ int64) (*taskdom.Task, error) {
 	return nil, taskdom.ErrTaskNotFound
 }
+func (r *fakeTaskRepo) FindTaskByKey(_ context.Context, _ string, _ int64) (*taskdom.Task, error) {
+	return nil, taskdom.ErrTaskNotFound
+}
 func (r *fakeTaskRepo) CreateTask(_ context.Context, t *taskdom.Task) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

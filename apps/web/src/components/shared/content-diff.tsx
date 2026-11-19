@@ -22,7 +22,7 @@ interface ContentDiffProps {
 export function DiffCollapsedRow({ count }: { count: number }) {
 	const { t } = useTranslation("shared");
 	return (
-		<div className="flex items-center justify-center px-3 py-1 font-mono text-[11px] text-muted-foreground/40 bg-muted/10 border-y border-border/20">
+		<div className="flex items-center justify-center px-3 py-1 font-mono text-[11px] text-muted-foreground/90 bg-muted/10 border-y border-border/50">
 			{t("contentDiff.collapsedLines", { count })}
 		</div>
 	);
@@ -36,7 +36,7 @@ export function DiffLineRow({ line }: { line: DiffLine }) {
 				"flex gap-2 px-3 py-0.5 font-mono text-xs leading-5",
 				line.type === "added" && "bg-success/10 text-success",
 				line.type === "removed" && "bg-destructive/10 text-destructive",
-				line.type === "unchanged" && "text-muted-foreground/50",
+				line.type === "unchanged" && "text-muted-foreground/90",
 			)}
 		>
 			<span className="select-none w-3 shrink-0 text-center">
@@ -67,7 +67,7 @@ export function ContentDiff({ oldContent, newContent }: ContentDiffProps) {
 
 	if (!hasChanges) {
 		return (
-			<div className="flex flex-col items-center py-8 text-muted-foreground/40">
+			<div className="flex flex-col items-center py-8 text-muted-foreground/90">
 				<GitBranch className="size-5 mb-2" />
 				<p className="text-xs font-medium">{t("contentDiff.noDifferences")}</p>
 			</div>
@@ -75,7 +75,7 @@ export function ContentDiff({ oldContent, newContent }: ContentDiffProps) {
 	}
 
 	return (
-		<div className="rounded-lg border border-border/30 overflow-hidden bg-muted/5">
+		<div className="rounded-lg border border-border/50 overflow-hidden bg-muted/5">
 			{rows.map((row, idx) =>
 				row.type === "collapsed" ? (
 					// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
@@ -109,13 +109,13 @@ export function ContentDiffDialog({
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-2xl max-h-[80vh] flex flex-col gap-0 p-0 overflow-hidden">
-				<DialogHeader className="px-5 py-4 border-b border-border/25 shrink-0">
+				<DialogHeader className="px-5 py-4 border-b border-border/50 shrink-0">
 					<DialogTitle className="flex items-center gap-2 text-sm">
-						<GitBranch className="size-4 text-muted-foreground/60" />
+						<GitBranch className="size-4 text-muted-foreground/90" />
 						{resolvedTitle}
 					</DialogTitle>
 				</DialogHeader>
-				<div className="flex items-center gap-4 px-5 py-2 border-b border-border/25 bg-muted/10 shrink-0">
+				<div className="flex items-center gap-4 px-5 py-2 border-b border-border/50 bg-muted/10 shrink-0">
 					<span className="flex items-center gap-1.5 text-xs text-destructive/80">
 						<span className="font-mono font-bold">-</span>{" "}
 						{t("contentDiff.removed")}

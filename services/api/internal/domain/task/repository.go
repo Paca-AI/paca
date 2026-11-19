@@ -85,6 +85,7 @@ type TaskRepository interface {
 	SumTaskField(ctx context.Context, projectID uuid.UUID, filter TaskFilter, fieldKey string) (float64, error)
 	FindTaskByID(ctx context.Context, id uuid.UUID) (*Task, error)
 	FindTaskByNumber(ctx context.Context, projectID uuid.UUID, taskNumber int64) (*Task, error)
+	FindTaskByKey(ctx context.Context, prefix string, taskNumber int64) (*Task, error)
 	CreateTask(ctx context.Context, t *Task) error
 	UpdateTask(ctx context.Context, t *Task) error
 	// UpdateTaskFields writes only the listed fields of t (plus updated_at),

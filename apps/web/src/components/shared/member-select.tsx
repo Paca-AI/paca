@@ -66,7 +66,7 @@ export function MemberSelect({
 				<ChevronDown className="pointer-events-none size-4 shrink-0 text-muted-foreground" />
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-64 p-1 rounded-xl border border-border/40 shadow-lg"
+				className="w-64 p-1 rounded-xl border border-border/60 shadow-lg"
 				align="start"
 			>
 				<SearchableList

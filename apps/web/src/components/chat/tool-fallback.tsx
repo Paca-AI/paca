@@ -139,18 +139,18 @@ function ToolFallbackDiffBlockView({ diff }: { diff: ToolFallbackDiffBlock }) {
 	return (
 		<div className="aui-tool-fallback-diff-block flex flex-col gap-1">
 			{diff.path && (
-				<p className="aui-tool-fallback-diff-path text-muted-foreground/70 font-mono text-[11px]">
+				<p className="aui-tool-fallback-diff-path text-muted-foreground font-mono text-[11px]">
 					{diff.path}
 				</p>
 			)}
 			{isTooLarge ? (
-				<p className="text-muted-foreground/40 text-xs italic">
+				<p className="text-muted-foreground/90 text-xs italic">
 					{t("contentDiff.diffTooLarge", {
 						lines: Math.max(oldLines.length, newLines.length),
 					})}
 				</p>
 			) : hasChanges ? (
-				<div className="rounded-md border border-border/30 overflow-hidden bg-muted/5">
+				<div className="rounded-md border border-border/50 overflow-hidden bg-muted/5">
 					{rows.map((row, idx) =>
 						row.type === "collapsed" ? (
 							// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
@@ -162,7 +162,7 @@ function ToolFallbackDiffBlockView({ diff }: { diff: ToolFallbackDiffBlock }) {
 					)}
 				</div>
 			) : (
-				<p className="text-muted-foreground/40 text-xs italic">
+				<p className="text-muted-foreground/90 text-xs italic">
 					{t("contentDiff.noDifferences")}
 				</p>
 			)}

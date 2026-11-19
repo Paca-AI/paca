@@ -145,6 +145,19 @@ export const ApiErrorCode = {
 	AttachmentNotFound: "ATTACHMENT_NOT_FOUND",
 	AttachmentInvalid: "ATTACHMENT_INVALID",
 
+	// File manager errors.
+	FileNodeNotFound: "FILE_NODE_NOT_FOUND",
+	FileNameInvalid: "FILE_NAME_INVALID",
+	FileNodeLocked: "FILE_NODE_LOCKED",
+	FileNotFolder: "FILE_NOT_FOLDER",
+	FileNotFile: "FILE_NOT_FILE",
+	FileMoveIntoSelf: "FILE_MOVE_INTO_SELF",
+	FileNodeTrashed: "FILE_NODE_TRASHED",
+	FileNodeNotTrashed: "FILE_NODE_NOT_TRASHED",
+	FileUploadIncomplete: "FILE_UPLOAD_INCOMPLETE",
+	FileTooLarge: "FILE_TOO_LARGE",
+	FileTypeInvalid: "FILE_TYPE_INVALID",
+
 	// GitHub integration errors.
 	GitHubIntegrationNotFound: "GITHUB_INTEGRATION_NOT_FOUND",
 	GitHubRepositoryNotFound: "GITHUB_REPOSITORY_NOT_FOUND",

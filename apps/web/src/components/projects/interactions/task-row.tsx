@@ -317,7 +317,7 @@ export function TaskRow({
 											</span>
 										</>
 									) : (
-										<span className="text-xs text-muted-foreground/50">—</span>
+										<span className="text-xs text-muted-foreground/90">—</span>
 									);
 								})()}
 							</DropdownMenuTrigger>
@@ -366,7 +366,7 @@ export function TaskRow({
 									</span>
 								</>
 							) : (
-								<span className="text-xs text-muted-foreground/50">—</span>
+								<span className="text-xs text-muted-foreground/90">—</span>
 							);
 						})()}
 					</div>
@@ -382,7 +382,7 @@ export function TaskRow({
 						onKeyDown={(e) => e.stopPropagation()}
 					>
 						<DropdownMenu>
-							<DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide hover:opacity-80 transition-opacity truncate max-w-full cursor-pointer">
+							<DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide hover:opacity-80 transition-opacity truncate max-w-full cursor-pointer">
 								{status ? (
 									<>
 										<span
@@ -395,7 +395,7 @@ export function TaskRow({
 										{status.name}
 									</>
 								) : (
-									<span className="text-xs text-muted-foreground/50">—</span>
+									<span className="text-xs text-muted-foreground/90">—</span>
 								)}
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="start">
@@ -425,7 +425,7 @@ export function TaskRow({
 						className={cn(col.className, responsiveClass, "items-center")}
 					>
 						{status ? (
-							<span className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide whitespace-nowrap max-w-full">
+							<span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide whitespace-nowrap max-w-full">
 								<span
 									className="size-1.5 rounded-full shrink-0"
 									style={{
@@ -439,7 +439,7 @@ export function TaskRow({
 								<span className="truncate">{status.name}</span>
 							</span>
 						) : (
-							<span className="text-xs text-muted-foreground/50">—</span>
+							<span className="text-xs text-muted-foreground/90">—</span>
 						)}
 					</div>
 				);
@@ -493,7 +493,7 @@ export function TaskRow({
 						key="start_date"
 						className={cn(col.className, responsiveClass, "items-center")}
 					>
-						<span className="text-xs text-muted-foreground/70 truncate">
+						<span className="text-xs text-muted-foreground truncate">
 							{task.start_date
 								? formatDate(
 										task.start_date,
@@ -511,7 +511,7 @@ export function TaskRow({
 						key="due_date"
 						className={cn(col.className, responsiveClass, "items-center")}
 					>
-						<span className="text-xs text-muted-foreground/70 truncate">
+						<span className="text-xs text-muted-foreground truncate">
 							{task.due_date
 								? formatDate(
 										task.due_date,
@@ -538,7 +538,7 @@ export function TaskRow({
 								{task.story_points}
 							</span>
 						) : (
-							<span className="text-xs text-muted-foreground/50">—</span>
+							<span className="text-xs text-muted-foreground/90">—</span>
 						)}
 					</div>
 				);
@@ -549,7 +549,7 @@ export function TaskRow({
 						key="created"
 						className={cn(col.className, responsiveClass, "items-center")}
 					>
-						<span className="text-xs text-muted-foreground/50 truncate">
+						<span className="text-xs text-muted-foreground/90 truncate">
 							{formatDate(task.created_at, { month: "short", day: "numeric" })}
 						</span>
 					</div>
@@ -573,7 +573,7 @@ export function TaskRow({
 								))}
 							</span>
 						) : (
-							<span className="text-xs text-muted-foreground/40">—</span>
+							<span className="text-xs text-muted-foreground/90">—</span>
 						)}
 					</div>
 				);
@@ -605,21 +605,21 @@ export function TaskRow({
 										<span className="truncate">{epic.title}</span>
 									</>
 								) : (
-									<span className="text-muted-foreground/40">—</span>
+									<span className="text-muted-foreground/90">—</span>
 								)}
 							</PopoverTrigger>
 							<PopoverContent
-								className="w-64 p-1.5 rounded-xl border border-border/40 shadow-lg"
+								className="w-64 p-1.5 rounded-xl border border-border/60 shadow-lg"
 								align="start"
 							>
 								<div className="relative mb-1">
-									<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+									<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/90" />
 									<input
 										type="text"
 										value={epicSearch}
 										onChange={(e) => setEpicSearch(e.target.value)}
 										placeholder={t("epicPicker.searchPlaceholder")}
-										className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+										className="w-full rounded-lg border border-border/50 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/90 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
 									/>
 								</div>
 								<div
@@ -644,7 +644,7 @@ export function TaskRow({
 										<div className="flex items-center justify-center py-4">
 											<Spinner
 												aria-hidden="true"
-												className="text-muted-foreground/50"
+												className="text-muted-foreground/90"
 											/>
 										</div>
 									) : (
@@ -670,7 +670,7 @@ export function TaskRow({
 												</button>
 											))}
 											{displayedEpics.length === 0 && (
-												<p className="px-3 py-4 text-center text-xs text-muted-foreground/50">
+												<p className="px-3 py-4 text-center text-xs text-muted-foreground/90">
 													{isEpicSearching
 														? t("epicPicker.noEpicsFound")
 														: t("epicPicker.noEpicsYet")}
@@ -679,7 +679,7 @@ export function TaskRow({
 										</>
 									)}
 									{activeEpicsPagination?.isLoadingMore && (
-										<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+										<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/90">
 											<Spinner aria-hidden="true" className="size-3" />
 											{t("epicPicker.loadingMore")}
 										</div>
@@ -699,7 +699,7 @@ export function TaskRow({
 								<span className="truncate">{epic.title}</span>
 							</span>
 						) : (
-							<span className="text-xs text-muted-foreground/40">—</span>
+							<span className="text-xs text-muted-foreground/90">—</span>
 						)}
 					</div>
 				);
@@ -713,13 +713,13 @@ export function TaskRow({
 
 				const renderValue = () => {
 					if (val === null || val === undefined || val === "")
-						return <span className="text-xs text-muted-foreground/40">—</span>;
+						return <span className="text-xs text-muted-foreground/90">—</span>;
 					switch (cf.field_type) {
 						case "boolean":
 							return val ? (
 								<Check className="size-3.5 text-primary" />
 							) : (
-								<span className="text-xs text-muted-foreground/40">—</span>
+								<span className="text-xs text-muted-foreground/90">—</span>
 							);
 						case "number":
 							return (
@@ -729,7 +729,7 @@ export function TaskRow({
 							);
 						case "date":
 							return (
-								<span className="text-xs text-muted-foreground/70">
+								<span className="text-xs text-muted-foreground">
 									{formatDate(
 										String(val),
 										{ month: "short", day: "numeric" },
@@ -807,7 +807,9 @@ export function TaskRow({
 			onMouseLeave={() => setIsHovered(false)}
 			className={cn(
 				"group relative flex items-center gap-2 px-4 py-2.5 cursor-pointer sm:gap-3",
-				"hover:bg-muted/30 transition-colors duration-150 border-b border-border/20 last:border-0",
+				// No `last:` reset: each row is the only child of its drag/menu
+				// wrapper, so `last:border-0` would strip every divider.
+				"hover:bg-muted/30 transition-colors duration-150 border-b border-dashed border-border/30",
 				isDragging && "opacity-40 bg-muted/20",
 				depth > 0 && "bg-muted/10",
 			)}
@@ -844,7 +846,7 @@ export function TaskRow({
 							subtasks.onToggle();
 						}}
 						onKeyDown={(e) => e.stopPropagation()}
-						className="-ml-1.5 -mr-1.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-muted/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+						className="-ml-1.5 -mr-1.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
 					>
 						<ChevronRight
 							className={cn(
@@ -857,11 +859,11 @@ export function TaskRow({
 					<span aria-hidden className="-ml-1.5 -mr-1.5 size-6 shrink-0" />
 				))}
 			{showDragHandle && (
-				<GripVertical className="size-3.5 shrink-0 -ml-1.5 text-muted-foreground/30 group-hover:text-muted-foreground/70 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+				<GripVertical className="size-3.5 shrink-0 -ml-1.5 text-muted-foreground/90 group-hover:text-muted-foreground cursor-grab opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
 			)}
 
 			{/* Task ID — separate fixed-width column left of title */}
-			<span className="w-14 shrink-0 font-[JetBrains_Mono,monospace] text-xs font-semibold text-muted-foreground/55 tracking-wide sm:w-20">
+			<span className="w-14 shrink-0 font-[JetBrains_Mono,monospace] text-xs font-semibold text-muted-foreground/90 tracking-wide sm:w-20">
 				{taskIdPrefix
 					? `${taskIdPrefix}-${task.task_number}`
 					: task.task_number > 0

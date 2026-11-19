@@ -848,6 +848,33 @@ export async function getTask(
 	return data.data;
 }
 
+export const TASK_KEY_RE = /^[A-Za-z0-9]{1,10}-[1-9][0-9]*$/;
+
+export function isTaskKey(value: string): boolean {
+	return TASK_KEY_RE.test(value.trim());
+}
+
+/** Shareable URL for a task: the short `/PRJ-1` form when the project has a
+ *  task prefix, otherwise the canonical project/task URL. */
+export function taskShareUrl(
+	task: { id: string; project_id?: string; task_number: number },
+	taskIdPrefix: string | undefined,
+	projectId?: string,
+): string {
+	const origin = window.location.origin;
+	if (taskIdPrefix && task.task_number > 0) {
+		return `${origin}/${taskIdPrefix.toUpperCase()}-${task.task_number}`;
+	}
+	return `${origin}/projects/${projectId ?? task.project_id}/tasks/${task.id}`;
+}
+
+export async function getTaskByKey(taskKey: string): Promise<Task> {
+	const { data } = await apiClient.instance.get<SuccessEnvelope<Task>>(
+		`/tasks/by-key/${encodeURIComponent(taskKey.trim().toUpperCase())}`,
+	);
+	return data.data;
+}
+
 export async function updateTask(
 	projectId: string,
 	taskId: string,
@@ -921,6 +948,14 @@ export const taskQueryOptions = (projectId: string, taskId: string) =>
 		queryKey: ["projects", projectId, "tasks", taskId],
 		queryFn: () => getTask(projectId, taskId),
 		staleTime: 15_000,
+	});
+
+export const taskByKeyQueryOptions = (taskKey: string) =>
+	queryOptions({
+		queryKey: ["tasks", "by-key", taskKey.trim().toUpperCase()],
+		queryFn: () => getTaskByKey(taskKey),
+		staleTime: 15_000,
+		retry: false,
 	});
 
 /** Infinite-query version of the subtasks fetch — backs the task detail

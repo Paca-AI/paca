@@ -917,7 +917,7 @@ func TestCompleteMFALogin_RejectsOtherTokens(t *testing.T) {
 	ctx := context.Background()
 
 	// A real session token must not stand in for a challenge.
-	sess, _ := svc.IssueSession(u, false)
+	sess, _ := svc.IssueSession(ctx, u, false)
 	for _, tok := range []string{sess.AccessToken, sess.RefreshToken, "garbage"} {
 		if _, err := svc.CompleteMFALogin(ctx, tok, "123456", "1.1.1.1"); !errors.Is(err, domainauth.ErrTokenInvalid) {
 			t.Fatalf("token %.12s…: got %v, want ErrTokenInvalid", tok, err)

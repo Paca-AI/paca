@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Paca-AI/api/internal/apierr"
+	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
 
@@ -111,4 +112,19 @@ func (l *fixedWindowLimiter) allow(key string, now time.Time) (bool, time.Durati
 	}
 	c.n++
 	return true, 0
+}
+
+// WithClientInfo records the caller's address and User-Agent on the request
+// context (domainauth.ClientInfo), where sign-in and refresh pick them up to
+// label the session.
+func WithClientInfo(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ua := r.UserAgent()
+		if len(ua) > 512 {
+			// Cut on a rune boundary so a multibyte character isn't split.
+			ua = strings.ToValidUTF8(ua[:512], "")
+		}
+		ctx := domainauth.WithClientInfo(r.Context(), domainauth.ClientInfo{IP: ClientIP(r), UserAgent: ua})
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

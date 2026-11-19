@@ -2,6 +2,7 @@ import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+import { mapPool } from "./concurrency";
 
 // ── Shapes ────────────────────────────────────────────────────────────────────
 
@@ -526,6 +527,8 @@ interface DownloadURLResult {
 }
 
 const DOC_MULTIPART_CHUNK_SIZE = 5 * 1024 * 1024; // 5 MiB — matches server DefaultPartSize
+/** Parts of one file uploaded at the same time. */
+const DOC_MULTIPART_CONCURRENCY = 4;
 
 async function initiateDocUpload(
 	projectId: string,
@@ -593,33 +596,36 @@ export async function uploadDocFile(
 
 	if (session.is_multipart && session.multipart) {
 		const { upload_id, parts } = session.multipart;
-		const completedParts: CompletedPart[] = [];
+		const completedParts: CompletedPart[] = await mapPool(
+			parts,
+			DOC_MULTIPART_CONCURRENCY,
+			async (part, _i, signal) => {
+				const start = (part.part_number - 1) * DOC_MULTIPART_CHUNK_SIZE;
+				const end = Math.min(start + DOC_MULTIPART_CHUNK_SIZE, file.size);
+				const chunk = file.slice(start, end);
 
-		for (const part of parts) {
-			const start = (part.part_number - 1) * DOC_MULTIPART_CHUNK_SIZE;
-			const end = Math.min(start + DOC_MULTIPART_CHUNK_SIZE, file.size);
-			const chunk = file.slice(start, end);
+				const resp = await fetch(part.upload_url, {
+					method: "PUT",
+					body: chunk,
+					signal,
+					headers: { "Content-Type": file.type || "application/octet-stream" },
+				});
 
-			const resp = await fetch(part.upload_url, {
-				method: "PUT",
-				body: chunk,
-				headers: { "Content-Type": file.type || "application/octet-stream" },
-			});
+				if (!resp.ok) {
+					throw new Error(
+						`Part ${part.part_number} upload failed: ${resp.status}`,
+					);
+				}
 
-			if (!resp.ok) {
-				throw new Error(
-					`Part ${part.part_number} upload failed: ${resp.status}`,
-				);
-			}
-
-			const etag = resp.headers.get("ETag") ?? resp.headers.get("etag");
-			if (!etag) {
-				throw new Error(
-					`Part ${part.part_number} upload succeeded but did not return an ETag header.`,
-				);
-			}
-			completedParts.push({ part_number: part.part_number, etag });
-		}
+				const etag = resp.headers.get("ETag") ?? resp.headers.get("etag");
+				if (!etag) {
+					throw new Error(
+						`Part ${part.part_number} upload succeeded but did not return an ETag header.`,
+					);
+				}
+				return { part_number: part.part_number, etag };
+			},
+		);
 
 		return completeDocUpload(projectId, docId, {
 			file_id: session.file_id,

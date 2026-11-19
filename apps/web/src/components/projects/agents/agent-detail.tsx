@@ -1280,7 +1280,7 @@ function MCPServersTab({
 
 			{servers.length === 0 ? (
 				<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
-					<Server className="size-8 text-muted-foreground/40" />
+					<Server className="size-8 text-muted-foreground/90" />
 					<p className="text-sm text-muted-foreground">
 						{t("agents.detail.mcp.empty.title")}
 					</p>
@@ -1591,7 +1591,7 @@ function SkillsTab({
 
 			{skills.length === 0 ? (
 				<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
-					<Wand2 className="size-8 text-muted-foreground/40" />
+					<Wand2 className="size-8 text-muted-foreground/90" />
 					<p className="text-sm text-muted-foreground">
 						{t("agents.detail.skills.empty.title")}
 					</p>
@@ -1845,7 +1845,7 @@ function EnvVarsTab({
 
 			{envVars.length === 0 ? (
 				<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
-					<KeyRound className="size-8 text-muted-foreground/40" />
+					<KeyRound className="size-8 text-muted-foreground/90" />
 					<p className="text-sm text-muted-foreground">
 						{t("agents.detail.envVars.empty.title")}
 					</p>
@@ -2108,7 +2108,7 @@ export function AgentDetailView({
 							<span className="text-sm text-muted-foreground">
 								@{agent.handle}
 							</span>
-							<span className="text-muted-foreground/40">·</span>
+							<span className="text-muted-foreground/90">·</span>
 							<Badge variant="secondary" className="text-xs">
 								{agent.agent_type === "acp"
 									? (agent.acp_provider ?? "acp")

@@ -217,7 +217,7 @@ func (f fakeCreator) Create(_ context.Context, in userdom.CreateInput) (*userdom
 
 type fakeSessions struct{ issuedFor *userdom.User }
 
-func (f *fakeSessions) IssueSession(u *userdom.User, _ bool) (*domainauth.TokenPair, error) {
+func (f *fakeSessions) IssueSession(_ context.Context, u *userdom.User, _ bool) (*domainauth.TokenPair, error) {
 	f.issuedFor = u
 	return &domainauth.TokenPair{AccessToken: "access-" + u.Username}, nil
 }

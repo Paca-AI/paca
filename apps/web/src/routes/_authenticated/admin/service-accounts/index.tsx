@@ -155,7 +155,7 @@ function ServiceAccountsPage() {
 				</div>
 			) : accounts.length === 0 && !debouncedSearch.trim() ? (
 				<div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-14 text-center">
-					<ServerCog className="size-9 text-muted-foreground/50" />
+					<ServerCog className="size-9 text-muted-foreground/90" />
 					<div>
 						<p className="font-medium">{t("serviceAccounts.empty.title")}</p>
 						<p className="text-sm text-muted-foreground">

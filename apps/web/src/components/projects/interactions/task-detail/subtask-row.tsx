@@ -63,12 +63,12 @@ export function SubtaskRow({
 		<div
 			onClick={onClick}
 			className={cn(
-				"group flex items-center gap-2.5 px-3.5 py-2 transition-colors duration-150 border-b border-border/15 last:border-0",
+				"group flex items-center gap-2.5 px-3.5 py-2 transition-colors duration-150 border-b border-border/50 last:border-0",
 				onClick ? "cursor-pointer hover:bg-muted/30" : "hover:bg-muted/20",
 			)}
 		>
 			{/* Task ID */}
-			<span className="w-16 shrink-0 font-[JetBrains_Mono,monospace] text-xs font-semibold text-muted-foreground/50 tracking-wide truncate">
+			<span className="w-16 shrink-0 font-[JetBrains_Mono,monospace] text-xs font-semibold text-muted-foreground/90 tracking-wide truncate">
 				{displayId}
 			</span>
 
@@ -135,7 +135,7 @@ export function SubtaskRow({
 									</span>
 								</>
 							) : (
-								<span className="text-xs text-muted-foreground/40">—</span>
+								<span className="text-xs text-muted-foreground/90">—</span>
 							)}
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
@@ -175,7 +175,7 @@ export function SubtaskRow({
 						</span>
 					</>
 				) : (
-					<span className="text-xs text-muted-foreground/40">—</span>
+					<span className="text-xs text-muted-foreground/90">—</span>
 				)}
 			</div>
 
@@ -188,7 +188,7 @@ export function SubtaskRow({
 			>
 				{canEditField && statuses.length > 0 ? (
 					<DropdownMenu>
-						<DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide hover:opacity-80 transition-opacity cursor-pointer truncate max-w-full">
+						<DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide hover:opacity-80 transition-opacity cursor-pointer truncate max-w-full">
 							{status ? (
 								<>
 									<span
@@ -200,7 +200,7 @@ export function SubtaskRow({
 									<span className="truncate">{status.name}</span>
 								</>
 							) : (
-								<span className="text-muted-foreground/40">—</span>
+								<span className="text-muted-foreground/90">—</span>
 							)}
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
@@ -222,7 +222,7 @@ export function SubtaskRow({
 						</DropdownMenuContent>
 					</DropdownMenu>
 				) : status ? (
-					<span className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide truncate max-w-full">
+					<span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground tracking-wide truncate max-w-full">
 						<span
 							className="size-1.5 rounded-full shrink-0"
 							style={{ background: status.color ?? "var(--muted-foreground)" }}
@@ -230,7 +230,7 @@ export function SubtaskRow({
 						<span className="truncate">{status.name}</span>
 					</span>
 				) : (
-					<span className="text-xs text-muted-foreground/40">—</span>
+					<span className="text-xs text-muted-foreground/90">—</span>
 				)}
 			</div>
 		</div>

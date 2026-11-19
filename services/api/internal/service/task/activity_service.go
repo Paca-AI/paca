@@ -235,6 +235,10 @@ func (s *ActivitySvc) triggerMentionedAgent(ctx context.Context, in taskdom.AddC
 	// An agent mentioning itself (e.g. quoting its own comment) must not
 	// retrigger its own conversation, or it can loop indefinitely.
 	if agentMember.ID == member.ID {
+		// Log it: a silent skip here is indistinguishable from the mention
+		// doing nothing, which makes automation re-dispatch via mention
+		// (blocked by design for self-mentions) look broken.
+		slog.WarnContext(ctx, "comment mention skipped: agent mentioned itself", "project_id", in.ProjectID, "agent_id", *agentMember.AgentID, "task_id", in.TaskID)
 		return true
 	}
 	agentID := *agentMember.AgentID
