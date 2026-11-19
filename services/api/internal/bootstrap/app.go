@@ -37,6 +37,7 @@ import (
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
 	exportsvc "github.com/Paca-AI/api/internal/service/export"
+	filesvc "github.com/Paca-AI/api/internal/service/file"
 	gitsvc "github.com/Paca-AI/api/internal/service/git"
 	mfasvc "github.com/Paca-AI/api/internal/service/mfa"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
@@ -78,6 +79,7 @@ type App struct {
 	questionConsumer       *worker.QuestionNotificationConsumer
 	chatAgentConsumer      *worker.ChatAgentConsumer
 	dueDateScheduler       *worker.DueDateScheduler
+	fileTrashPurger        *worker.FileTrashPurger
 	cronScheduler          *worker.CronScheduler
 	changeReconciler       *worker.ChangeReconciler
 	docHashBackfill        *worker.DocHashBackfill
@@ -176,7 +178,10 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// --- Services -----------------------------------------------------------
-	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
+	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL).
+		WithSessionStore(redisRepo.NewSessionStore(redisClient))
+	// So signing a device out also ends the access token it already holds.
+	tokenManager.WithRevocationCheck(refreshStore.IsFamilyRevoked)
 	userService := usersvc.New(userRepo, permissionStore).
 		WithPasswordSetTokenRepo(passwordSetTokenRepo).
 		WithEventPublishing(publisher).
@@ -318,6 +323,9 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepo), storageClient, cfg.Storage.Bucket)
+	fileRepo := pgRepo.NewFileRepository(db)
+	fileService := filesvc.New(fileRepo, attachmentRepo, storageClient, cfg.Storage.Bucket)
+	fileTrashPurger := worker.NewFileTrashPurger(redisClient, fileService, log)
 	// projectExportService builds asynchronous project exports (a zip of tasks,
 	// task comments/activities and docs):
 	// the handler only queues them on a Valkey stream, projectExportConsumer
@@ -595,6 +603,7 @@ func New(cfg *config.Config) (*App, error) {
 		Health:              handler.NewHealthHandler(),
 		Version:             handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                authHandler,
+		Session:             handler.NewSessionHandler(authService),
 		SSO:                 handler.NewSSOHandler(ssoService, authHandler, cfg.Server.PublicURL),
 		MFA:                 handler.NewMFAHandler(mfaService, userRepo).WithLoginThrottle(loginThrottle),
 		User:                handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
@@ -643,6 +652,7 @@ func New(cfg *config.Config) (*App, error) {
 			WithDocAvatarService(attachmentService).
 			WithDocNotificationService(notificationService),
 		DocFile:            handler.NewDocFileHandler(attachmentService),
+		File:               handler.NewFileHandler(fileService, projectService, authorizer),
 		Notification:       handler.NewNotificationHandler(notificationService, handler.WithNotificationAvatarService(attachmentService)),
 		APIKey:             handler.NewAPIKeyHandler(apiKeyService),
 		ServiceAccount:     handler.NewServiceAccountHandler(serviceAccountService, apiKeyService).WithAvatarService(attachmentService),
@@ -673,7 +683,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, chatAgentConsumer: chatAgentConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, changeReconciler: changeReconciler, docHashBackfill: docHashBackfill, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, chatAgentConsumer: chatAgentConsumer, dueDateScheduler: dueDateScheduler, fileTrashPurger: fileTrashPurger, cronScheduler: cronScheduler, changeReconciler: changeReconciler, docHashBackfill: docHashBackfill, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
 }
 
 // platformActionsReader lists a user's or agent's effective platform-level
@@ -719,6 +729,7 @@ func (a *App) Run() error {
 	a.questionConsumer.Start(context.Background())
 	a.chatAgentConsumer.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
+	a.fileTrashPurger.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
 	if a.changeReconciler != nil {
 		a.changeReconciler.Start(context.Background())
@@ -746,6 +757,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.questionConsumer.Stop()
 	a.chatAgentConsumer.Stop()
 	a.dueDateScheduler.Stop()
+	a.fileTrashPurger.Stop()
 	a.cronScheduler.Stop()
 	if a.changeReconciler != nil {
 		a.changeReconciler.Stop()

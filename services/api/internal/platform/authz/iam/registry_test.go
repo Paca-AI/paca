@@ -30,7 +30,7 @@ func TestBuiltinActionsAreRegisteredAndWellFormed(t *testing.T) {
 		"agents:read", "agents:write", "annotations:read", "annotations:resolve", "annotations:write",
 		"calls:invite_agent", "calls:join", "calls:moderate", "calls:record", "channels:read", "channels:write",
 		"conversations:read", "conversations:write", "docs:read", "docs:write",
-		"environments:connect", "environments:read", "environments:write", "git.connections:manage", "git.identities:manage", "git:approve", "git:merge", "git:read", "git:write",
+		"environments:connect", "environments:read", "environments:write", "files:read", "files:write", "git.connections:manage", "git.identities:manage", "git:approve", "git:merge", "git:read", "git:write",
 		"messages:moderate", "messages:write",
 		"plugins:read", "plugins:write", "project.activities:read", "project.members:read", "project.members:write",
 		"project.settings.custom_fields:write", "project.settings.task_statuses:write", "project.settings.task_types:write",

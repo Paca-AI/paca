@@ -264,7 +264,7 @@ function Row({
 					</span>
 				) : null}
 				{showProject && item.project_name ? (
-					<span className="ml-auto max-w-20 truncate pr-1 text-[10px] font-normal text-sidebar-foreground/50">
+					<span className="ml-auto max-w-20 truncate pr-1 text-[10px] font-normal text-sidebar-foreground/60">
 						{item.project_name}
 					</span>
 				) : null}
@@ -377,7 +377,7 @@ export function ChatSidebarSection({ projectId }: { projectId?: string }) {
 						)}
 						<ChevronRight
 							className={cn(
-								"size-3.5 text-sidebar-foreground/40 transition-transform duration-200",
+								"size-3.5 text-sidebar-foreground/60 transition-transform duration-200",
 								state.open.chat && "rotate-90",
 							)}
 						/>

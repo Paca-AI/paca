@@ -28,6 +28,7 @@ type Deps struct {
 	Health  *handler.HealthHandler
 	Version *handler.VersionHandler
 	Auth    *handler.AuthHandler
+	Session *handler.SessionHandler
 	User    *handler.UserHandler
 	// Role serves the IAM roles and attachments API; RoleAttachments backs the
 	// assignment gates (which roles a request adds and removes). Both are
@@ -41,6 +42,9 @@ type Deps struct {
 	Attachment      *handler.AttachmentHandler
 	Document        *handler.DocumentHandler
 	DocFile         *handler.DocFileHandler
+	// File serves the Drive-style file manager (/files and
+	// /projects/{projectId}/files); optional.
+	File         *handler.FileHandler
 	Notification    *handler.NotificationHandler
 	Chat            *handler.ChatHandler
 	APIKey          *handler.APIKeyHandler
@@ -100,6 +104,8 @@ func New(deps Deps) http.Handler {
 	r.Use(loggerMiddleware(deps.Log))
 	r.Use(chimw.Recoverer)
 	r.Use(corsMiddleware(deps.CORSAllowedOrigins))
+	// Lets a sign-in or refresh record where it came from (see domainauth.ClientInfo).
+	r.Use(httpmw.WithClientInfo)
 
 	r.Route("/api", func(r chi.Router) {
 		// Public routes
@@ -204,6 +210,16 @@ func New(deps Deps) http.Handler {
 							r.Post("/me/passkeys/register/finish", deps.MFA.FinishPasskeyRegistration)
 							r.Post("/me/passkeys/verify/options", deps.MFA.BeginPasskeyVerification)
 							r.Delete("/me/passkeys/{passkeyId}", deps.MFA.DeletePasskey)
+						})
+					}
+					// Signed-in devices — JWT/cookie auth only, so a leaked API key
+					// can neither list nor end the owner's sessions.
+					if deps.Session != nil {
+						r.Group(func(r chi.Router) {
+							r.Use(httpmw.RequireJWTAuth())
+							r.Get("/me/sessions", deps.Session.List)
+							r.Delete("/me/sessions", deps.Session.RevokeOthers)
+							r.Delete("/me/sessions/{sessionId}", deps.Session.Revoke)
 						})
 					}
 					r.Post("/me/avatar/initiate-upload", deps.User.InitiateAvatarUpload)
@@ -431,6 +447,18 @@ func New(deps Deps) http.Handler {
 				r.Get("/projects", deps.Project.ListProjects)
 				r.Get("/projects/workspace-stats", deps.Project.GetWorkspaceStats)
 				r.With(require.Global(iam.ActionProjectsCreate)).Post("/projects", deps.Project.CreateProject)
+				if deps.Task != nil {
+					r.With(require.TaskByKey(iam.ActionTasksRead)).Get("/tasks/by-key/{taskKey}", deps.Task.GetTaskByKey)
+				}
+				// Files (general scope): the workspace's own files. The roots route
+				// lists the general folder and every project whose files the caller
+				// may read, and filters in the handler (see openRouteGroups).
+				if deps.File != nil {
+					r.Route("/files", func(r chi.Router) {
+						r.Get("/roots", deps.File.Roots)
+						mountFileRoutes(r, deps.File, require.Global(iam.ActionFilesRead), require.Global(iam.ActionFilesWrite))
+					})
+				}
 			})
 
 			// Direct messages (docs/architecture/chat-and-meetings.md): one-to-one
@@ -948,6 +976,14 @@ func New(deps Deps) http.Handler {
 						r.With(require.ProjectEntity("doc", "docId", resDoc, iam.ActionDocsWrite)).Delete("/files/{fileId}", deps.DocFile.DeleteDocFile)
 					})
 				})
+
+				// Files (project scope): the project's folders and files, including
+				// the default folders for task attachments, doc files and screenshots.
+				if deps.File != nil {
+					r.Route("/files", func(r chi.Router) {
+						mountFileRoutes(r, deps.File, require.Project(iam.ActionFilesRead), require.Project(iam.ActionFilesWrite))
+					})
+				}
 
 				// Agents
 				if deps.Agent != nil {
@@ -1495,4 +1531,26 @@ func sameHostnameOrigin(origin, host string) bool {
 		reqHost = h
 	}
 	return u.Hostname() == reqHost
+}
+
+// mountFileRoutes registers the file manager routes of one scope. read and
+// write are that scope's gates (a project's files:*, or the general scope's
+// platform-root files:*). Starring is per-user state, so it only needs read.
+func mountFileRoutes(r chi.Router, h *handler.FileHandler, read, write func(http.Handler) http.Handler) {
+	r.With(read).Get("/nodes", h.List)
+	r.With(read).Get("/nodes/{nodeId}", h.Get)
+	r.With(read).Get("/nodes/{nodeId}/path", h.Path)
+	r.With(read).Get("/nodes/{nodeId}/download-url", h.DownloadURL)
+	r.With(read).Put("/nodes/{nodeId}/star", h.SetStarred)
+	r.With(read).Get("/starred", h.ListStarred)
+	r.With(read).Get("/recent", h.ListRecent)
+	r.With(read).Get("/trash", h.ListTrash)
+
+	r.With(write).Post("/folders", h.CreateFolder)
+	r.With(write).Patch("/nodes/{nodeId}", h.Update)
+	r.With(write).Delete("/nodes/{nodeId}", h.Trash)
+	r.With(write).Post("/nodes/{nodeId}/restore", h.Restore)
+	r.With(write).Delete("/nodes/{nodeId}/permanent", h.DeletePermanently)
+	r.With(write).Post("/uploads/initiate", h.InitiateUpload)
+	r.With(write).Post("/uploads/complete", h.CompleteUpload)
 }

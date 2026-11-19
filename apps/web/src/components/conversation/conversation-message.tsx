@@ -47,13 +47,13 @@ export function ConversationMessage({
 			<div className={cn("flex gap-3", className)} {...rest}>
 				{avatar}
 				<div className="min-w-0 flex-1">
-					<div className="group rounded-xl rounded-tl-lg border border-border/25 bg-card/70 px-3.5 py-2.5">
+					<div className="group rounded-xl rounded-tl-lg border border-border/50 bg-card/70 px-3.5 py-2.5">
 						<div className="mb-1 flex items-center gap-2">
 							<span className="text-xs font-semibold text-foreground">
 								{name}
 							</span>
 							{badge}
-							<span className="text-xs text-muted-foreground/50">{time}</span>
+							<span className="text-xs text-muted-foreground/90">{time}</span>
 							{headerExtra}
 						</div>
 						{children}

@@ -115,7 +115,7 @@ func TestPlatformRoles(t *testing.T) {
 	// settings.write, agents.* and plugins.* — and deliberately not
 	// global_roles.write/assign or settings.sso.write.
 	admin := parse(t, byName[defaultroles.Admin])
-	if got, want := actionsOf(admin), []string{"agents:*", "plugins:*", "projects:*", "roles:read", "settings:write", "users:*"}; !slices.Equal(got, want) {
+	if got, want := actionsOf(admin), []string{"agents:*", "files:read", "files:write", "plugins:*", "projects:*", "roles:read", "settings:write", "users:*"}; !slices.Equal(got, want) {
 		t.Errorf("ADMIN actions = %v, want %v", got, want)
 	}
 	for _, a := range []string{"roles:write", "roles:assign", "settings.sso:write"} {

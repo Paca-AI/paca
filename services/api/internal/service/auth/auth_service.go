@@ -62,6 +62,7 @@ type Service struct {
 	refreshStore      RefreshTokenStore
 	refreshTTL        time.Duration
 	refreshSessionTTL time.Duration
+	sessions          domainauth.SessionStore
 }
 
 // New returns a configured auth Service.
@@ -73,6 +74,14 @@ func New(users userdom.Repository, tokens *jwttoken.Manager, refreshStore Refres
 		refreshTTL:        refreshTTL,
 		refreshSessionTTL: refreshSessionTTL,
 	}
+}
+
+// WithSessionStore turns on the per-account session registry behind
+// ListSessions and RevokeSession. Without it sessions are still issued and
+// revoked, just not listed.
+func (s *Service) WithSessionStore(st domainauth.SessionStore) *Service {
+	s.sessions = st
+	return s
 }
 
 // WithLoginGate installs the IP allow-list / MFA check run after the password.
@@ -161,7 +170,7 @@ func (s *Service) Login(ctx context.Context, in domainauth.LoginInput) (*domaina
 
 	s.resetThrottle(ctx, key, in.ClientIP)
 	s.trustClient(ctx, key, in.ClientIP)
-	return s.IssueSession(u, in.RememberMe)
+	return s.IssueSession(ctx, u, in.RememberMe)
 }
 
 // resetThrottle forgets earlier wrong passwords once the password is right and
@@ -234,7 +243,7 @@ func (s *Service) finishChallenge(ctx context.Context, u *userdom.User, claims *
 		return nil, domainauth.ErrTokenInvalid
 	}
 	s.trustClient(ctx, domainauth.NormalizeLoginKey(u.Username), clientIP)
-	return s.IssueSession(u, claims.RememberMe)
+	return s.IssueSession(ctx, u, claims.RememberMe)
 }
 
 // BeginPasskeyLogin returns the WebAuthn request options for the account a
@@ -272,7 +281,9 @@ func (s *Service) CompletePasskeyLogin(ctx context.Context, challenge string, re
 // fresh token family with the same token pairs Login returns. Login calls it
 // after checking the password; SSO sign-in calls it after the identity
 // provider has vouched for the user, so both paths yield identical sessions.
-func (s *Service) IssueSession(u *userdom.User, rememberMe bool) (*domainauth.TokenPair, error) {
+// The caller's address and User-Agent (domainauth.WithClientInfo) are recorded
+// with the session.
+func (s *Service) IssueSession(ctx context.Context, u *userdom.User, rememberMe bool) (*domainauth.TokenPair, error) {
 	familyID := uuid.NewString()
 	sub := u.ID.String()
 
@@ -303,6 +314,8 @@ func (s *Service) IssueSession(u *userdom.User, rememberMe bool) (*domainauth.To
 		return nil, err
 	}
 
+	s.recordSession(ctx, familyID, u.ID, rememberMe, refreshTTL)
+
 	return &domainauth.TokenPair{
 		AccessToken:  access,
 		RefreshToken: refresh,
@@ -311,6 +324,30 @@ func (s *Service) IssueSession(u *userdom.User, rememberMe bool) (*domainauth.To
 		AnnotationAccessToken:  annotationAccess,
 		AnnotationRefreshToken: annotationRefresh,
 	}, nil
+}
+
+// recordSession registers the session, or on a refresh moves its activity
+// time and client details forward. It also adopts sessions that predate the
+// registry the first time they refresh. A registry outage must not fail a
+// sign-in or refresh, so errors are logged and dropped.
+func (s *Service) recordSession(ctx context.Context, familyID string, userID uuid.UUID, rememberMe bool, ttl time.Duration) {
+	if s.sessions == nil {
+		return
+	}
+	ci := domainauth.ClientInfoFrom(ctx)
+	now := time.Now()
+	err := s.sessions.Save(ctx, domainauth.Session{
+		ID:           familyID,
+		UserID:       userID,
+		IP:           ci.IP,
+		UserAgent:    ci.UserAgent,
+		RememberMe:   rememberMe,
+		CreatedAt:    now,
+		LastActiveAt: now,
+	}, ttl)
+	if err != nil {
+		slog.Warn("recording session failed", "error", err)
+	}
 }
 
 // rotateRefreshToken validates refreshToken's rotation state — signature,
@@ -445,6 +482,8 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 		return nil, err
 	}
 
+	s.recordSession(ctx, claims.FamilyID, u.ID, claims.RememberMe, refreshTTL)
+
 	return &domainauth.TokenPair{
 		AccessToken:  access,
 		RefreshToken: refresh,
@@ -488,6 +527,11 @@ func (s *Service) RefreshAnnotation(ctx context.Context, annotationRefreshToken 
 		return nil, err
 	}
 
+	// This rotation extends the family's lifetime too, so the registry entry
+	// must follow it or a session kept alive only by the extension would
+	// drop out of the list (and out of "sign out all other devices").
+	s.recordSession(ctx, claims.FamilyID, u.ID, claims.RememberMe, refreshTTL)
+
 	return &domainauth.TokenPair{
 		RefreshTTL:             refreshTTL,
 		AnnotationAccessToken:  access,
@@ -501,5 +545,94 @@ func (s *Service) Logout(ctx context.Context, familyID string) error {
 	if familyID == "" {
 		return nil
 	}
-	return s.refreshStore.RevokeFamily(ctx, familyID, s.refreshTTL)
+	if err := s.refreshStore.RevokeFamily(ctx, familyID, s.refreshTTL); err != nil {
+		return err
+	}
+	s.forgetSession(ctx, familyID)
+	return nil
+}
+
+// forgetSession drops a revoked session from the registry. Best effort: the
+// revocation already holds, and the entry expires with the token anyway.
+func (s *Service) forgetSession(ctx context.Context, familyID string) {
+	if s.sessions == nil {
+		return
+	}
+	if err := s.sessions.Delete(ctx, familyID); err != nil {
+		slog.Warn("forgetting session failed", "error", err)
+	}
+}
+
+// ListSessions implements domainauth.SessionService.
+func (s *Service) ListSessions(ctx context.Context, userID uuid.UUID, currentID string) ([]domainauth.Session, error) {
+	if s.sessions == nil {
+		return nil, nil
+	}
+	list, err := s.sessions.ListByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := list[:0]
+	for _, sess := range list {
+		// Revoked sessions are deleted with their revocation; this only
+		// catches one whose delete failed.
+		if revoked, err := s.refreshStore.IsFamilyRevoked(ctx, sess.ID); err == nil && revoked {
+			continue
+		}
+		sess.Current = sess.ID == currentID
+		out = append(out, sess)
+	}
+	return out, nil
+}
+
+// RevokeSession implements domainauth.SessionService.
+func (s *Service) RevokeSession(ctx context.Context, userID uuid.UUID, sessionID string) error {
+	if s.sessions == nil {
+		return domainauth.ErrSessionNotFound
+	}
+	sess, err := s.sessions.Get(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if sess.UserID != userID {
+		return domainauth.ErrSessionNotFound
+	}
+	if err := s.refreshStore.RevokeFamily(ctx, sessionID, s.refreshTTL); err != nil {
+		return err
+	}
+	s.forgetSession(ctx, sessionID)
+	return nil
+}
+
+// RevokeOtherSessions implements domainauth.SessionService.
+func (s *Service) RevokeOtherSessions(ctx context.Context, userID uuid.UUID, keepID string) (int, error) {
+	if s.sessions == nil {
+		return 0, nil
+	}
+	list, err := s.sessions.ListByUser(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	// Only sessions in the registry are visible here: one that predates the
+	// registry is adopted on its next refresh, so until then it is not ended.
+	n := 0
+	var errs []error
+	for _, sess := range list {
+		if sess.ID == keepID {
+			continue
+		}
+		// An entry recreated by a refresh racing a revocation is already gone.
+		if revoked, err := s.refreshStore.IsFamilyRevoked(ctx, sess.ID); err == nil && revoked {
+			s.forgetSession(ctx, sess.ID)
+			continue
+		}
+		if err := s.refreshStore.RevokeFamily(ctx, sess.ID, s.refreshTTL); err != nil {
+			// Keep going: one failure must not leave the others signed in.
+			errs = append(errs, err)
+			continue
+		}
+		s.forgetSession(ctx, sess.ID)
+		n++
+	}
+	return n, errors.Join(errs...)
 }

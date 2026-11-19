@@ -73,10 +73,10 @@ function DraggableItem({
 			className={`flex items-center gap-2 rounded-lg border px-3 py-2 bg-background transition-colors ${
 				dragOverIndex === index
 					? "border-primary/50 bg-primary/5"
-					: "border-border/40 hover:border-border/70"
+					: "border-border/60 hover:border-border/70"
 			}`}
 		>
-			<GripVertical className="size-4 text-muted-foreground/40 shrink-0 cursor-grab active:cursor-grabbing" />
+			<GripVertical className="size-4 text-muted-foreground/90 shrink-0 cursor-grab active:cursor-grabbing" />
 			<div className="flex-1 min-w-0">
 				<p className="text-sm font-medium truncate">{reg.label}</p>
 				<p className="text-xs text-muted-foreground truncate">
@@ -145,7 +145,7 @@ function PointSection({
 
 	return (
 		<div className="space-y-2">
-			<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">
+			<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/90">
 				{t(EXTENSION_POINT_LABEL_KEYS[point])}
 			</p>
 			<div className="space-y-1.5">

@@ -12,7 +12,7 @@ export function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
 	return (
 		<kbd
 			className={cn(
-				"inline-flex min-w-[1.15rem] items-center justify-center rounded-[5px] border border-b-2 border-border/70 bg-muted/60 px-1.5 py-0.5 text-center font-[JetBrains_Mono,monospace] text-[10px] font-semibold leading-none text-muted-foreground/90",
+				"inline-flex min-w-[1.15rem] items-center justify-center rounded-[5px] border border-b-2 border-border/70 bg-muted/60 px-1.5 py-0.5 text-center font-[JetBrains_Mono,monospace] text-[10px] font-semibold leading-none text-muted-foreground",
 				className,
 			)}
 			{...props}

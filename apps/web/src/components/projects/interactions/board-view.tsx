@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
 import { Spinner } from "@/components/ui/spinner";
+import { useStableCallback } from "@/hooks/use-stable-callback";
+import { useStableValue } from "@/hooks/use-stable-value";
 
 import {
 	type Sprint,
@@ -201,23 +203,167 @@ export function ColumnScrollArea({
 
 // ── Board view ────────────────────────────────────────────────────────────────
 
+interface BoardCardSlotProps {
+	task: Task;
+	index: number;
+	colDef: ColumnGroupDef;
+	swimDef: ColumnGroupDef | undefined;
+	swimOverKey: string;
+	prevColDef: ColumnGroupDef | undefined;
+	nextColDef: ColumnGroupDef | undefined;
+	showDropLine: boolean;
+	isDragging: boolean;
+	manualSort: boolean;
+	statuses: TaskStatus[];
+	taskTypes: TaskType[];
+	customFields: CustomFieldDefinition[];
+	epics: Task[];
+	epicsPagination: EpicsPagination | undefined;
+	visibleFields: string[];
+	canEdit: boolean;
+	taskIdPrefix: string;
+	projectId: string;
+	columnDefs: ColumnGroupDef[];
+	setOverColumnKey: (key: string | null) => void;
+	setOverSwimKey: (key: string | null) => void;
+	setOverCardId: (id: string | null) => void;
+	onOpen: (task: Task) => void;
+	onInlineUpdate: (taskId: string, payload: TaskFieldUpdate) => void;
+	onDelete: ((taskId: string) => void) | undefined;
+	onMoveToColumnDef: (task: Task, colDef: ColumnGroupDef) => void;
+	onDragStart: (e: React.DragEvent, taskId: string) => void;
+	onDragEnd: () => void;
+	onDropOnCard: (
+		e: React.DragEvent,
+		colDef: ColumnGroupDef,
+		targetTaskId: string,
+		targetIndex: number,
+		swimDef?: ColumnGroupDef,
+	) => void;
+}
+
+/** One card of a board cell. Memoized with stable props, so a change that
+ *  touches a few cards (opening a task, a page of tasks loading into a
+ *  column, a drag hovering over one) re-renders only those, not every card on
+ *  the board. */
+const BoardCardSlot = memo(function BoardCardSlot({
+	task,
+	index,
+	colDef,
+	swimDef,
+	swimOverKey,
+	prevColDef,
+	nextColDef,
+	showDropLine,
+	isDragging,
+	manualSort,
+	statuses,
+	taskTypes,
+	customFields,
+	epics,
+	epicsPagination,
+	visibleFields,
+	canEdit,
+	taskIdPrefix,
+	projectId,
+	columnDefs,
+	setOverColumnKey,
+	setOverSwimKey,
+	setOverCardId,
+	onOpen,
+	onInlineUpdate,
+	onDelete,
+	onMoveToColumnDef,
+	onDragStart,
+	onDragEnd,
+	onDropOnCard,
+}: BoardCardSlotProps) {
+	return (
+		// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop card slot
+		<div
+			className={cn("relative", showDropLine && "border-t-2 border-primary/60")}
+			onDragOver={(e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				setOverColumnKey(colDef.key);
+				setOverSwimKey(swimOverKey);
+				if (manualSort) setOverCardId(task.id);
+			}}
+			onDrop={(e) => onDropOnCard(e, colDef, task.id, index, swimDef)}
+		>
+			<TaskContextMenu
+				task={task}
+				statuses={statuses}
+				taskTypes={taskTypes}
+				epics={epics}
+				epicsPagination={epicsPagination}
+				canEdit={canEdit}
+				onOpen={() => onOpen(task)}
+				onUpdate={onInlineUpdate}
+				onDelete={canEdit ? onDelete : undefined}
+				columnDefs={columnDefs}
+				onMoveToColumnDef={onMoveToColumnDef}
+				taskIdPrefix={taskIdPrefix}
+				projectId={projectId}
+			>
+				<TaskCard
+					task={task}
+					taskIdPrefix={taskIdPrefix}
+					statuses={statuses}
+					taskTypes={taskTypes}
+					customFields={customFields}
+					epics={epics}
+					epicsPagination={epicsPagination}
+					visibleFields={visibleFields}
+					canEdit={canEdit}
+					isDragging={isDragging}
+					onDragStart={(e) => onDragStart(e, task.id)}
+					onDragEnd={onDragEnd}
+					onClick={() => onOpen(task)}
+					onUpdate={canEdit ? onInlineUpdate : undefined}
+					onDelete={canEdit ? onDelete : undefined}
+					onMoveLeft={
+						canEdit && prevColDef
+							? () => onMoveToColumnDef(task, prevColDef)
+							: undefined
+					}
+					onMoveRight={
+						canEdit && nextColDef
+							? () => onMoveToColumnDef(task, nextColDef)
+							: undefined
+					}
+				/>
+			</TaskContextMenu>
+		</div>
+	);
+});
+
+const EMPTY: never[] = [];
+// Shared "no swimlane" def; module scope keeps its identity stable so memoized
+// cards in that layout don't re-render on every BoardView render.
+const NO_SWIMLANE: ColumnGroupDef = {
+	key: "__all",
+	label: "",
+	fieldValue: null,
+};
+
 export function BoardView({
 	projectId,
 	taskIdPrefix = "",
 	tasks,
 	statuses,
 	taskTypes,
-	members = [],
+	members = EMPTY,
 	reporters,
 	dynamicColumns,
-	customFields = [],
-	sprints = [],
+	customFields = EMPTY,
+	sprints = EMPTY,
 	sprintsPagination,
 	viewConfig,
 	canCreate,
 	canEdit,
 	tasksQueryKey,
-	epics = [],
+	epics = EMPTY,
 	epicsPagination,
 	onCreateTask,
 	onTaskClick,
@@ -269,15 +415,21 @@ export function BoardView({
 
 	// Inline field update handler used by TaskCard — delegates to onMoveToColumn
 	// (which does proper cache invalidation) or falls back to updateMutation.
-	const handleInlineUpdate = (taskId: string, payload: TaskFieldUpdate) => {
-		if (onUpdateTask) {
-			onUpdateTask(taskId, payload);
-		} else if (onMoveToColumn) {
-			onMoveToColumn(taskId, payload);
-		} else {
-			updateMutation.mutate({ taskId, update: payload });
-		}
-	};
+	const handleInlineUpdate = useStableCallback(
+		(taskId: string, payload: TaskFieldUpdate) => {
+			if (onUpdateTask) {
+				onUpdateTask(taskId, payload);
+			} else if (onMoveToColumn) {
+				onMoveToColumn(taskId, payload);
+			} else {
+				updateMutation.mutate({ taskId, update: payload });
+			}
+		},
+	);
+
+	const stableOnTaskClick = useStableCallback((task: Task) =>
+		onTaskClick(task),
+	);
 
 	// ── View context ──────────────────────────────────────────────────────────
 
@@ -349,42 +501,46 @@ export function BoardView({
 
 	// ── Drag handlers ────────────────────────────────────────────────────────
 
-	const handleDragStart = (e: React.DragEvent, taskId: string) => {
-		if (!canEdit) return;
-		setDraggingId(taskId);
-		e.dataTransfer.effectAllowed = "move";
-		e.dataTransfer.setData("text/plain", taskId);
-		e.dataTransfer.setData("application/x-paca-task-id", taskId);
-	};
+	const handleDragStart = useStableCallback(
+		(e: React.DragEvent, taskId: string) => {
+			if (!canEdit) return;
+			setDraggingId(taskId);
+			e.dataTransfer.effectAllowed = "move";
+			e.dataTransfer.setData("text/plain", taskId);
+			e.dataTransfer.setData("application/x-paca-task-id", taskId);
+		},
+	);
 
-	const handleDragEnd = () => {
+	const handleDragEnd = useStableCallback(() => {
 		setDraggingId(null);
 		setOverColumnKey(null);
 		setOverCardId(null);
 		setOverSwimKey(null);
-	};
+	});
 
 	/** Moves a task into `colDef` — shared by drag-and-drop and the
 	 * keyboard move-left/move-right shortcuts so both stay in sync. */
-	const moveTaskToColumnDef = (task: Task, colDef: ColumnGroupDef) => {
-		const currentKeys = getTaskColumnKeys(task, columnBy, viewCtx);
-		if (currentKeys.includes(colDef.key)) return;
-		const update = buildColumnDropUpdate(
-			columnBy,
-			colDef.fieldValue,
-			customFields,
-		);
-		// Preserve sprint_id when changing status so the task doesn't silently
-		// get moved to the product backlog.
-		if (isStatusGrouping) {
-			update.sprint_id = task.sprint_id;
-		}
-		if (onMoveToColumn) {
-			onMoveToColumn(task.id, update);
-		} else {
-			updateMutation.mutate({ taskId: task.id, update });
-		}
-	};
+	const moveTaskToColumnDef = useStableCallback(
+		(task: Task, colDef: ColumnGroupDef) => {
+			const currentKeys = getTaskColumnKeys(task, columnBy, viewCtx);
+			if (currentKeys.includes(colDef.key)) return;
+			const update = buildColumnDropUpdate(
+				columnBy,
+				colDef.fieldValue,
+				customFields,
+			);
+			// Preserve sprint_id when changing status so the task doesn't silently
+			// get moved to the product backlog.
+			if (isStatusGrouping) {
+				update.sprint_id = task.sprint_id;
+			}
+			if (onMoveToColumn) {
+				onMoveToColumn(task.id, update);
+			} else {
+				updateMutation.mutate({ taskId: task.id, update });
+			}
+		},
+	);
 
 	const handleDropOnColumn = (e: React.DragEvent, colDef: ColumnGroupDef) => {
 		e.preventDefault();
@@ -405,98 +561,100 @@ export function BoardView({
 		setOverSwimKey(null);
 	};
 
-	const handleDropOnCard = (
-		e: React.DragEvent,
-		colDef: ColumnGroupDef,
-		targetTaskId: string,
-		targetIndex: number,
-		swimDef?: ColumnGroupDef,
-	) => {
-		e.preventDefault();
-		e.stopPropagation();
-		const taskId = e.dataTransfer.getData("text/plain");
-		if (!taskId || !canEdit) {
-			setDraggingId(null);
-			setOverCardId(null);
-			setOverSwimKey(null);
-			return;
-		}
-		const task = tasks.find((t) => t.id === taskId);
-		if (!task) {
-			setDraggingId(null);
-			setOverCardId(null);
-			setOverSwimKey(null);
-			return;
-		}
-
-		const updates: TaskFieldUpdate = {};
-		const currentColKeys = getTaskColumnKeys(task, columnBy, viewCtx);
-		const colChanged = !currentColKeys.includes(colDef.key);
-
-		if (colChanged) {
-			const colUpdate = buildColumnDropUpdate(
-				columnBy,
-				colDef.fieldValue,
-				customFields,
-			);
-			Object.assign(updates, colUpdate);
-			// Preserve sprint_id when changing status so the task doesn't silently
-			// get moved to the product backlog.
-			if (isStatusGrouping) {
-				updates.sprint_id = task.sprint_id;
+	const handleDropOnCard = useStableCallback(
+		(
+			e: React.DragEvent,
+			colDef: ColumnGroupDef,
+			targetTaskId: string,
+			targetIndex: number,
+			swimDef?: ColumnGroupDef,
+		) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const taskId = e.dataTransfer.getData("text/plain");
+			if (!taskId || !canEdit) {
+				setDraggingId(null);
+				setOverCardId(null);
+				setOverSwimKey(null);
+				return;
 			}
-		}
+			const task = tasks.find((t) => t.id === taskId);
+			if (!task) {
+				setDraggingId(null);
+				setOverCardId(null);
+				setOverSwimKey(null);
+				return;
+			}
 
-		// Update swimlane field if task dropped onto a different band
-		if (
-			swimDef &&
-			swimDef.key !== "__all" &&
-			swimlaneBy &&
-			swimlaneBy !== "none"
-		) {
-			const currentSwimKey = getTaskSwimlaneKey(task, swimlaneBy, viewCtx);
-			if (currentSwimKey !== swimDef.key) {
-				const swimUpdate = buildColumnDropUpdate(
-					swimlaneBy,
-					swimDef.fieldValue,
+			const updates: TaskFieldUpdate = {};
+			const currentColKeys = getTaskColumnKeys(task, columnBy, viewCtx);
+			const colChanged = !currentColKeys.includes(colDef.key);
+
+			if (colChanged) {
+				const colUpdate = buildColumnDropUpdate(
+					columnBy,
+					colDef.fieldValue,
 					customFields,
 				);
-				if (swimUpdate.custom_fields && updates.custom_fields) {
-					updates.custom_fields = {
-						...updates.custom_fields,
-						...swimUpdate.custom_fields,
-					};
-				} else {
-					Object.assign(updates, swimUpdate);
-				}
-			}
-		}
-
-		if (Object.keys(updates).length > 0) {
-			if (onMoveToColumn) {
-				onMoveToColumn(taskId, updates);
-			} else {
-				updateMutation.mutate({ taskId, update: updates });
-			}
-		} else if (manualSort && taskId !== targetTaskId && !colChanged) {
-			// Reorder within same column
-			const current = getColumnTasks(colDef.key);
-			const srcIdx = current.findIndex((t) => t.id === taskId);
-			if (srcIdx !== -1) {
-				// After removing source, indices shift by -1 for elements past it.
-				// Adjust so the item lands BEFORE the visual drop target.
-				const adjustedTarget =
-					srcIdx < targetIndex ? targetIndex - 1 : targetIndex;
+				Object.assign(updates, colUpdate);
+				// Preserve sprint_id when changing status so the task doesn't silently
+				// get moved to the product backlog.
 				if (isStatusGrouping) {
-					onReorderTask?.(colDef.key, taskId, adjustedTarget);
+					updates.sprint_id = task.sprint_id;
 				}
 			}
-		}
-		setDraggingId(null);
-		setOverColumnKey(null);
-		setOverCardId(null);
-		setOverSwimKey(null);
-	};
+
+			// Update swimlane field if task dropped onto a different band
+			if (
+				swimDef &&
+				swimDef.key !== "__all" &&
+				swimlaneBy &&
+				swimlaneBy !== "none"
+			) {
+				const currentSwimKey = getTaskSwimlaneKey(task, swimlaneBy, viewCtx);
+				if (currentSwimKey !== swimDef.key) {
+					const swimUpdate = buildColumnDropUpdate(
+						swimlaneBy,
+						swimDef.fieldValue,
+						customFields,
+					);
+					if (swimUpdate.custom_fields && updates.custom_fields) {
+						updates.custom_fields = {
+							...updates.custom_fields,
+							...swimUpdate.custom_fields,
+						};
+					} else {
+						Object.assign(updates, swimUpdate);
+					}
+				}
+			}
+
+			if (Object.keys(updates).length > 0) {
+				if (onMoveToColumn) {
+					onMoveToColumn(taskId, updates);
+				} else {
+					updateMutation.mutate({ taskId, update: updates });
+				}
+			} else if (manualSort && taskId !== targetTaskId && !colChanged) {
+				// Reorder within same column
+				const current = getColumnTasks(colDef.key);
+				const srcIdx = current.findIndex((t) => t.id === taskId);
+				if (srcIdx !== -1) {
+					// After removing source, indices shift by -1 for elements past it.
+					// Adjust so the item lands BEFORE the visual drop target.
+					const adjustedTarget =
+						srcIdx < targetIndex ? targetIndex - 1 : targetIndex;
+					if (isStatusGrouping) {
+						onReorderTask?.(colDef.key, taskId, adjustedTarget);
+					}
+				}
+			}
+			setDraggingId(null);
+			setOverColumnKey(null);
+			setOverCardId(null);
+			setOverSwimKey(null);
+		},
+	);
 
 	/** Handles dropping a card directly onto a swimlane band (updates swimlane + column field). */
 	const handleDropOnSwimlaneBand = (
@@ -572,7 +730,7 @@ export function BoardView({
 
 	// ── Dynamic column defs (for number/text/date fields with no preset values) ──
 
-	const effectiveColumnDefs: ColumnGroupDef[] = useMemo(() => {
+	const computedColumnDefs: ColumnGroupDef[] = useMemo(() => {
 		let defs: ColumnGroupDef[];
 		if (columnDefs.length > 0) {
 			defs = columnDefs;
@@ -618,6 +776,11 @@ export function BoardView({
 		statuses,
 		t,
 	]);
+
+	// The definitions are rebuilt whenever the task list changes (they can
+	// depend on it), usually to the same contents; keeping the previous array
+	// stops every card re-rendering when a page of tasks loads.
+	const effectiveColumnDefs = useStableValue(computedColumnDefs);
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -735,82 +898,46 @@ export function BoardView({
 				}
 			>
 				{laneTasks.length === 0 && !columnPagination?.[colDef.key]?.hasMore && (
-					<div className="flex flex-1 flex-col items-center justify-center py-6 text-muted-foreground/30">
+					<div className="flex flex-1 flex-col items-center justify-center py-6 text-muted-foreground/90">
 						<p className="text-sm">{t("board.view.noTasks")}</p>
 					</div>
 				)}
 				{laneTasks.map((task, index) => (
-					// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop card slot
-					<div
+					<BoardCardSlot
 						key={task.id}
-						className={cn(
-							"relative",
-							manualSort &&
-								overCardId === task.id &&
-								draggingId !== task.id &&
-								"border-t-2 border-primary/60",
-						)}
-						onDragOver={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							setOverColumnKey(colDef.key);
-							setOverSwimKey(swimOverKey);
-							if (manualSort) setOverCardId(task.id);
-						}}
-						onDrop={(e) =>
-							handleDropOnCard(
-								e,
-								colDef,
-								task.id,
-								index,
-								hasSwimlanes ? swimDef : undefined,
-							)
+						task={task}
+						index={index}
+						colDef={colDef}
+						swimDef={hasSwimlanes ? swimDef : undefined}
+						swimOverKey={swimOverKey}
+						prevColDef={prevColDef}
+						nextColDef={nextColDef}
+						showDropLine={
+							!!manualSort && overCardId === task.id && draggingId !== task.id
 						}
-					>
-						<TaskContextMenu
-							task={task}
-							statuses={statuses}
-							taskTypes={taskTypes}
-							epics={epics}
-							epicsPagination={epicsPagination}
-							canEdit={!!canEdit}
-							onOpen={() => onTaskClick(task)}
-							onUpdate={handleInlineUpdate}
-							onDelete={canEdit ? onDeleteTask : undefined}
-							columnDefs={effectiveColumnDefs}
-							onMoveToColumnDef={moveTaskToColumnDef}
-							taskIdPrefix={taskIdPrefix}
-							projectId={projectId}
-						>
-							<TaskCard
-								task={task}
-								taskIdPrefix={taskIdPrefix}
-								statuses={statuses}
-								taskTypes={taskTypes}
-								customFields={customFields}
-								epics={epics}
-								epicsPagination={epicsPagination}
-								visibleFields={visibleFields}
-								canEdit={canEdit}
-								isDragging={draggingId === task.id}
-								onDragStart={(e) => handleDragStart(e, task.id)}
-								onDragEnd={handleDragEnd}
-								onClick={() => onTaskClick(task)}
-								onUpdate={canEdit ? handleInlineUpdate : undefined}
-								onDelete={canEdit ? onDeleteTask : undefined}
-								onMoveLeft={
-									canEdit && prevColDef
-										? () => moveTaskToColumnDef(task, prevColDef)
-										: undefined
-								}
-								onMoveRight={
-									canEdit && nextColDef
-										? () => moveTaskToColumnDef(task, nextColDef)
-										: undefined
-								}
-							/>
-						</TaskContextMenu>
-					</div>
+						isDragging={draggingId === task.id}
+						manualSort={!!manualSort}
+						statuses={statuses}
+						taskTypes={taskTypes}
+						customFields={customFields}
+						epics={epics}
+						epicsPagination={epicsPagination}
+						visibleFields={visibleFields}
+						canEdit={!!canEdit}
+						taskIdPrefix={taskIdPrefix}
+						projectId={projectId}
+						columnDefs={effectiveColumnDefs}
+						setOverColumnKey={setOverColumnKey}
+						setOverSwimKey={setOverSwimKey}
+						setOverCardId={setOverCardId}
+						onOpen={stableOnTaskClick}
+						onInlineUpdate={handleInlineUpdate}
+						onDelete={onDeleteTask}
+						onMoveToColumnDef={moveTaskToColumnDef}
+						onDragStart={handleDragStart}
+						onDragEnd={handleDragEnd}
+						onDropOnCard={handleDropOnCard}
+					/>
 				))}
 				{(() => {
 					const pg = columnPagination?.[colDef.key];
@@ -821,7 +948,7 @@ export function BoardView({
 						// the in-flight indicator, not a click target.
 						if (!pg.isLoadingMore) return null;
 						return (
-							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/90">
 								<Spinner aria-hidden="true" className="size-3" />
 								{t("board.view.loading")}
 							</div>
@@ -832,7 +959,7 @@ export function BoardView({
 							type="button"
 							onClick={pg.onLoadMore}
 							disabled={pg.isLoadingMore}
-							className="mt-1 w-full rounded-lg border border-dashed border-border/40 py-1.5 text-xs font-medium text-muted-foreground/70 hover:border-primary/40 hover:text-primary transition-all duration-150 disabled:opacity-50"
+							className="mt-1 w-full rounded-lg border border-dashed border-border/60 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/40 hover:text-primary transition-all duration-150 disabled:opacity-50"
 						>
 							{pg.isLoadingMore
 								? t("board.view.loading")
@@ -881,7 +1008,7 @@ export function BoardView({
 						<ChevronLeft className="size-3 text-muted-foreground" />
 					)}
 				</button>
-				<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground/70 tabular-nums">
+				<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground tabular-nums">
 					{displayCount}
 				</span>
 			</div>
@@ -890,12 +1017,6 @@ export function BoardView({
 
 	if (hasSwimlanes) {
 		// ── Swimlanes-outer layout: swimlane rows → column cells inside ──────
-		// Shared singleton swimlane def for "no swimlane" filter
-		const noSwim: ColumnGroupDef = {
-			key: "__all",
-			label: "",
-			fieldValue: null,
-		};
 		// Only use defined defs; filter out the __all sentinel
 		const visibleSwimDefs = swimlaneDefs.filter((s) => s.key !== "__all");
 
@@ -903,7 +1024,7 @@ export function BoardView({
 			<div className="flex flex-1 min-h-0 flex-col overflow-auto">
 				<div className="min-w-max px-6 pt-5 pb-8 flex flex-col gap-0">
 					{/* Sticky column-header row */}
-					<div className="flex gap-4 pb-2 sticky top-0 z-10 bg-background border-b border-border/20 mb-1">
+					<div className="flex gap-4 pb-2 sticky top-0 z-10 bg-background border-b border-border/50 mb-1">
 						{/* Swimlane label placeholder to align with row labels */}
 						<div className="w-36 shrink-0" />
 						{effectiveColumnDefs.map((colDef) => {
@@ -924,7 +1045,7 @@ export function BoardView({
 										>
 											<ChevronRight className="size-3.5 text-muted-foreground" />
 										</button>
-										<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground/70 tabular-nums">
+										<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground tabular-nums">
 											{displayCount}
 										</span>
 										{colDef.color && (
@@ -960,11 +1081,11 @@ export function BoardView({
 					</div>
 
 					{/* One row per swimlane */}
-					{(visibleSwimDefs.length > 0 ? visibleSwimDefs : [noSwim]).map(
+					{(visibleSwimDefs.length > 0 ? visibleSwimDefs : [NO_SWIMLANE]).map(
 						(swimDef) => (
 							<div
 								key={swimDef.key}
-								className="flex gap-4 py-3 border-b border-border/15 last:border-0"
+								className="flex gap-4 py-3 border-b border-border/50 last:border-0"
 							>
 								{/* Swimlane label */}
 								<div className="w-36 shrink-0 flex items-start pt-1 gap-2">
@@ -1000,12 +1121,6 @@ export function BoardView({
 	}
 
 	// ── No-swimlane layout: horizontal columns ────────────────────────────────
-	const noSwimAll: ColumnGroupDef = {
-		key: "__all",
-		label: "",
-		fieldValue: null,
-	};
-
 	return (
 		<div className="flex flex-1 min-h-0 items-stretch gap-4 overflow-x-auto overflow-y-hidden px-6 pt-5 pb-8">
 			{effectiveColumnDefs.map((colDef) => {
@@ -1027,7 +1142,7 @@ export function BoardView({
 							>
 								<ChevronRight className="size-3.5 text-muted-foreground" />
 							</button>
-							<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground/70 tabular-nums">
+							<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground tabular-nums">
 								{displayCount}
 							</span>
 							{colDef.color && (
@@ -1054,7 +1169,7 @@ export function BoardView({
 					);
 				}
 
-				const addTaskRow = renderAddTaskRow(colDef, noSwimAll);
+				const addTaskRow = renderAddTaskRow(colDef, NO_SWIMLANE);
 				return (
 					<div
 						key={colDef.key}
@@ -1066,7 +1181,7 @@ export function BoardView({
 						 * z-index/stacking-context edge cases. */}
 						<div className="shrink-0">{renderColHeader(colDef)}</div>
 						<ColumnScrollArea pagination={columnPagination?.[colDef.key]}>
-							{renderCellCards(colDef, noSwimAll, "min-h-full", false, true)}
+							{renderCellCards(colDef, NO_SWIMLANE, "min-h-full", false, true)}
 						</ColumnScrollArea>
 						{/* Pinned footer, same reasoning as the header above — always
 						 * reachable without scrolling to the bottom of the column. */}

@@ -356,7 +356,7 @@ export function TaskDetailModal({
 									</span>
 								)}
 								{status && (
-									<span className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-muted/40 px-3 py-1 text-xs font-semibold text-muted-foreground tracking-wide">
+									<span className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs font-semibold text-muted-foreground tracking-wide">
 										<span
 											className="size-1.75 rounded-full shrink-0 ring-2 ring-offset-1 ring-offset-background"
 											style={{
@@ -415,7 +415,7 @@ export function TaskDetailModal({
 
 						{/* Properties */}
 						<div>
-							<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 mb-3 flex items-center gap-2">
+							<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground mb-3 flex items-center gap-2">
 								<span>{t("taskDetail.properties.title")}</span>
 								<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 							</h3>
@@ -543,15 +543,15 @@ export function TaskDetailModal({
 		</div>
 	) : (
 		<div className="flex h-full items-center justify-center">
-			<div className="flex flex-col items-center gap-4 text-muted-foreground/70">
+			<div className="flex flex-col items-center gap-4 text-muted-foreground">
 				<div className="flex size-14 items-center justify-center rounded-xl bg-muted/50">
-					<AlertCircle className="size-7 text-muted-foreground/60" />
+					<AlertCircle className="size-7 text-muted-foreground/90" />
 				</div>
 				<div className="text-center">
 					<p className="text-lg font-semibold text-foreground/80">
 						{t("taskDetail.notFound.title")}
 					</p>
-					<p className="text-base mt-1.5 text-muted-foreground/70">
+					<p className="text-base mt-1.5 text-muted-foreground">
 						{t("taskDetail.notFound.description")}
 					</p>
 				</div>

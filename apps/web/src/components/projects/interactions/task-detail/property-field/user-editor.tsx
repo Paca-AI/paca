@@ -26,7 +26,7 @@ export function UserEditor({
 	if (!canEdit) {
 		if (!userValue) {
 			return (
-				<span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground/50 italic">
+				<span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground/90 italic">
 					<User className="size-3.5 opacity-60" />
 					{t("taskDetail.common.unassigned")}
 				</span>
@@ -49,7 +49,7 @@ export function UserEditor({
 				className={
 					userValue
 						? "flex items-center gap-2.5 hover:opacity-80 transition-opacity duration-150"
-						: "inline-flex items-center gap-1.5 text-sm text-muted-foreground/50 italic hover:text-muted-foreground/80 transition-colors"
+						: "inline-flex items-center gap-1.5 text-sm text-muted-foreground/90 italic hover:text-muted-foreground transition-colors"
 				}
 			>
 				{userValue ? (
@@ -67,7 +67,7 @@ export function UserEditor({
 				)}
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-56 p-1 rounded-xl border border-border/40 shadow-lg"
+				className="w-56 p-1 rounded-xl border border-border/60 shadow-lg"
 				align="start"
 			>
 				<SearchableList

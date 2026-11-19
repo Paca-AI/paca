@@ -32,6 +32,11 @@ import {
 	handleDocActivityTool,
 } from "./doc-activity-tools.js";
 import {
+	DOC_MIRROR_TOOL_NAMES,
+	getDocMirrorTools,
+	handleDocMirrorTool,
+} from "./doc-mirror-tools.js";
+import {
 	getFilesystemDocTools,
 	handleFilesystemDocTool,
 } from "./filesystem-doc-tools.js";
@@ -88,6 +93,7 @@ export function getAllTools(): Tool[] {
 		...getTaskLinkTools(),
 		...getAutomationTools(),
 		...getDocActivityTools(),
+		...getDocMirrorTools(),
 		...getRepoTools(),
 		...getWorkspaceTools(),
 		...getGitTools(),
@@ -175,6 +181,11 @@ export async function handleToolCall(
 				clients.docClient,
 				clients.extendedClient,
 			);
+		}
+
+		// Document mirror tools (pull_docs, push_docs)
+		if (DOC_MIRROR_TOOL_NAMES.has(name)) {
+			return handleDocMirrorTool(name, args, clients.docClient);
 		}
 
 		// Search tools

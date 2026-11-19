@@ -38,6 +38,7 @@ const PLATFORM_ROOTS: Record<string, readonly string[]> = {
 	channels: ["channel"],
 	messages: ["channel"],
 	calls: ["channel"],
+	files: ["file/*"],
 };
 
 /** Where a workspace-wide check of one action lands: its platform root, or

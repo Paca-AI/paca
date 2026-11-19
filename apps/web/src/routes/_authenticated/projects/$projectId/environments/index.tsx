@@ -130,7 +130,7 @@ function EnvironmentsPage() {
 				) : environments.length === 0 ? (
 					<div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
 						<div className="flex size-16 items-center justify-center rounded-2xl bg-muted/50">
-							<Server className="size-8 text-muted-foreground/50" />
+							<Server className="size-8 text-muted-foreground/90" />
 						</div>
 						<div>
 							<p className="font-medium text-sm">

@@ -10,10 +10,12 @@ import type { GitExec } from "../git/git-runner.js";
 import { blocknoteToMarkdown, markdownToBlocknote } from "../utils/index.js";
 import { unifiedDiff } from "./diff.js";
 import { gitSource } from "./git-source.js";
+import { pushMirrorFile } from "./push-mirror.js";
 import {
 	type CliIO,
 	call,
 	EXIT,
+	findMirror,
 	type PushState,
 	readJSON,
 	sha256,
@@ -41,7 +43,10 @@ export interface PushOptions {
 	server?: string;
 }
 
-export type PushClient = Pick<PacaAPIDocClient, "putByPath" | "getByPath">;
+export type PushClient = Pick<
+	PacaAPIDocClient,
+	"putByPath" | "getByPath" | "batchGet" | "patchDocument"
+>;
 
 const NOTE_MAX = 500;
 
@@ -68,9 +73,11 @@ export function docPathKey(docPath: string): string {
 }
 
 /**
- * Writes a repository file to its Paca document by path. Returns the exit
- * code: 0 written or unchanged, 1 error, 2 conflict. Throws UnreachableError
- * when the server cannot be reached (nothing is recorded then).
+ * Writes a repository file to its Paca document by path, or a file pull
+ * wrote (in a mirror folder) to the document it came from, as an edit of
+ * the blocks it changes (see pushMirrorFile). Returns the exit code: 0
+ * written or unchanged, 1 error, 2 conflict. Throws UnreachableError when
+ * the server cannot be reached (nothing is recorded then).
  */
 export async function runPush(
 	opts: PushOptions,
@@ -87,6 +94,9 @@ export async function runPush(
 		io.err(`cannot read ${opts.file}: ${(err as Error).message}`);
 		return EXIT.error;
 	}
+	// A file in a mirror folder is never pushed as a repository file.
+	const mirror = await findMirror(abs);
+	if (mirror) return pushMirrorFile(opts, client, io, mirror, abs, cwd);
 	let src: Awaited<ReturnType<typeof gitSource>>;
 	try {
 		src = await gitSource(abs, cwd, deps.git);

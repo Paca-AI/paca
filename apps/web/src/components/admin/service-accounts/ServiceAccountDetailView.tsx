@@ -343,7 +343,7 @@ export function ServiceAccountDetailView({ accountId }: { accountId: string }) {
 							</Badge>
 							{account.description ? (
 								<>
-									<span className="text-muted-foreground/40">·</span>
+									<span className="text-muted-foreground/90">·</span>
 									<span className="truncate text-sm text-muted-foreground">
 										{account.description}
 									</span>

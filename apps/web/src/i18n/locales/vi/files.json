@@ -1,0 +1,239 @@
+{
+	"title": "Tệp",
+	"nav": {
+		"files": "Tệp",
+		"recent": "Gần đây",
+		"starred": "Có gắn dấu sao",
+		"trash": "Thùng rác"
+	},
+	"roots": {
+		"general": "Chung",
+		"empty": "Bạn chưa có quyền truy cập tệp nào.",
+		"emptyHint": "Tệp của các dự án bạn có thể đọc sẽ xuất hiện ở đây dưới dạng thư mục."
+	},
+	"header": {
+		"new": "Mới",
+		"newFolder": "Thư mục mới",
+		"uploadFile": "Tải tệp lên",
+		"uploadFolder": "Tải thư mục lên",
+		"search": "Tìm trong {{where}}",
+		"view": {
+			"grid": "Dạng lưới",
+			"list": "Dạng danh sách"
+		},
+		"typeFilter": "Loại",
+		"allTypes": "Tất cả loại"
+	},
+	"types": {
+		"document": "Tài liệu",
+		"spreadsheet": "Bảng tính",
+		"presentation": "Bản trình bày",
+		"pdf": "PDF",
+		"image": "Hình ảnh",
+		"video": "Video",
+		"audio": "Âm thanh",
+		"archive": "Tệp nén"
+	},
+	"kinds": {
+		"folder": "Thư mục",
+		"image": "Hình ảnh",
+		"video": "Video",
+		"audio": "Âm thanh",
+		"pdf": "PDF",
+		"document": "Tài liệu",
+		"spreadsheet": "Bảng tính",
+		"presentation": "Bản trình bày",
+		"archive": "Tệp nén",
+		"code": "Mã nguồn",
+		"text": "Văn bản",
+		"other": "Tệp"
+	},
+	"columns": {
+		"name": "Tên",
+		"owner": "Chủ sở hữu",
+		"modified": "Sửa đổi lần cuối",
+		"size": "Kích thước",
+		"location": "Vị trí",
+		"trashed": "Ngày chuyển vào thùng rác"
+	},
+	"sections": {
+		"folders": "Thư mục",
+		"files": "Tệp"
+	},
+	"sectionTitle": {
+		"recent": "Gần đây",
+		"starred": "Có gắn dấu sao",
+		"trash": "Thùng rác"
+	},
+	"empty": {
+		"folder": "Thư mục này trống",
+		"folderHint": "Kéo tệp vào đây hoặc dùng Mới để thêm.",
+		"search": "Không có tệp nào khớp với tìm kiếm",
+		"recent": "Chưa mở tệp nào gần đây",
+		"recentHint": "Các tệp bạn xem trước hoặc tải xuống sẽ hiện ở đây.",
+		"starred": "Chưa gắn dấu sao cho mục nào",
+		"starredHint": "Gắn dấu sao cho tệp và thư mục để tìm nhanh.",
+		"trash": "Thùng rác trống",
+		"trashHint": "Các mục được giữ ở đây 30 ngày rồi bị xóa vĩnh viễn."
+	},
+	"actions": {
+		"open": "Mở",
+		"preview": "Xem trước",
+		"download": "Tải xuống",
+		"star": "Thêm vào mục có dấu sao",
+		"unstar": "Bỏ khỏi mục có dấu sao",
+		"rename": "Đổi tên",
+		"move": "Di chuyển đến…",
+		"details": "Chi tiết",
+		"trash": "Chuyển vào thùng rác",
+		"delete": "Xóa",
+		"restore": "Khôi phục",
+		"deleteForever": "Xóa vĩnh viễn",
+		"more": "Thêm thao tác"
+	},
+	"system": {
+		"task_attachments": "Các tệp đính kèm vào công việc của dự án này.",
+		"task": "Các tệp đính kèm của công việc này.",
+		"docs": "Các tệp được nhúng trong tài liệu của dự án này.",
+		"annotations": "Ảnh chụp màn hình từ các bình luận trên trang."
+	},
+	"dialogs": {
+		"newFolder": {
+			"title": "Thư mục mới",
+			"label": "Tên thư mục",
+			"default": "Thư mục chưa đặt tên",
+			"create": "Tạo"
+		},
+		"rename": {
+			"title": "Đổi tên",
+			"label": "Tên",
+			"save": "Lưu"
+		},
+		"move": {
+			"title": "Di chuyển {{name}}",
+			"titleMany": "Di chuyển {{count}} mục",
+			"here": "Di chuyển vào đây",
+			"noFolders": "Không có thư mục nào ở đây"
+		},
+		"deleteForever": {
+			"title": "Xóa vĩnh viễn?",
+			"body": "{{name}} sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
+			"bodyMany": "{{count}} mục sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
+			"confirm": "Xóa vĩnh viễn"
+		},
+		"cancel": "Hủy",
+		"deleteManaged": {
+			"title": "Xóa vĩnh viễn?",
+			"confirm": "Xóa",
+			"taskAttachment": "{{name}} đang được đính kèm vào một công việc. Xóa sẽ gỡ nó khỏi công việc và không thể hoàn tác.",
+			"doc": "{{name}} đang được dùng trong một tài liệu. Xóa sẽ xóa vĩnh viễn và tài liệu sẽ hiển thị tệp bị lỗi. Không thể hoàn tác.",
+			"annotation": "{{name}} là ảnh chụp màn hình từ một bình luận trên trang. Xóa sẽ xóa vĩnh viễn khỏi bình luận và mọi công việc mà nó được đính kèm. Không thể hoàn tác.",
+			"many": "{{count}} trong số các tệp đã chọn đang được công việc, tài liệu hoặc bình luận trên trang sử dụng. Xóa sẽ gỡ chúng khỏi đó vĩnh viễn. Không thể hoàn tác."
+		}
+	},
+	"details": {
+		"title": "Chi tiết",
+		"type": "Loại",
+		"size": "Kích thước",
+		"owner": "Chủ sở hữu",
+		"created": "Ngày tạo",
+		"modified": "Ngày sửa đổi",
+		"location": "Vị trí",
+		"source": "Nguồn",
+		"unknownOwner": "Không rõ"
+	},
+	"source": {
+		"upload": "Đã tải lên",
+		"task_attachment": "Tệp đính kèm công việc",
+		"doc": "Tệp tài liệu",
+		"annotation": "Ảnh chụp màn hình chú thích"
+	},
+	"upload": {
+		"uploading": "Đang tải lên {{count}} mục",
+		"done": "Đã tải lên xong",
+		"failed": "{{count}} mục thất bại",
+		"cancel": "Hủy",
+		"dropHere": "Thả để tải lên {{where}}",
+		"error": "Tải lên thất bại"
+	},
+	"preview": {
+		"loading": "Đang tải bản xem trước…",
+		"tooLarge": "Tệp này quá lớn để xem trước ({{size}}). Hãy tải xuống để mở.",
+		"failed": "Không thể tải bản xem trước.",
+		"download": "Tải xuống",
+		"previous": "Tệp trước",
+		"next": "Tệp sau",
+		"close": "Đóng"
+	},
+	"toast": {
+		"folderCreated": "Đã tạo thư mục",
+		"renamed": "Đã đổi tên",
+		"moved": "Đã di chuyển",
+		"movedMany": "Đã di chuyển {{count}} mục",
+		"trashed": "Đã chuyển vào thùng rác",
+		"trashedMany": "Đã chuyển {{count}} mục vào thùng rác",
+		"restored": "Đã khôi phục",
+		"deleted": "Đã xóa",
+		"starred": "Đã thêm vào mục có dấu sao",
+		"unstarred": "Đã bỏ khỏi mục có dấu sao",
+		"failed": "Đã xảy ra lỗi"
+	},
+	"errors": {
+		"FILE_NODE_NOT_FOUND": "Mục này không còn tồn tại.",
+		"FILE_NAME_INVALID": "Tên không được để trống hoặc chứa dấu gạch chéo.",
+		"FILE_NODE_LOCKED": "Mục này do Paca quản lý và không thể thay đổi.",
+		"FILE_NOT_FOLDER": "Đó không phải là thư mục.",
+		"FILE_NOT_FILE": "Đó không phải là tệp.",
+		"FILE_MOVE_INTO_SELF": "Không thể di chuyển thư mục vào chính nó.",
+		"FILE_NODE_TRASHED": "Mục này đang ở trong thùng rác.",
+		"FILE_NODE_NOT_TRASHED": "Mục này không ở trong thùng rác.",
+		"FILE_UPLOAD_INCOMPLETE": "Quá trình tải lên chưa hoàn tất.",
+		"FILE_TOO_LARGE": "Tệp này quá lớn để tải lên.",
+		"FILE_TYPE_INVALID": "Bộ lọc loại tệp không hợp lệ."
+	},
+	"noAccess": {
+		"title": "Bạn không thể xem các tệp này",
+		"body": "Hãy nhờ quản trị viên dự án cấp quyền truy cập tệp."
+	},
+	"selected": "Đã chọn {{count}}",
+	"picker": {
+		"search": "Tìm tệp",
+		"root": "Tệp",
+		"empty": "Không có tệp phù hợp trong thư mục này"
+	},
+	"filePanel": {
+		"tabs": {
+			"upload": "Tải lên",
+			"files": "Từ tệp",
+			"embed": "Nhúng liên kết"
+		},
+		"upload": {
+			"title": {
+				"image": "Tải ảnh lên",
+				"video": "Tải video lên",
+				"audio": "Tải tệp âm thanh lên",
+				"file": "Tải tệp lên"
+			},
+			"hint": "Kéo thả hoặc nhấp để chọn",
+			"uploading": "Đang tải lên…",
+			"error": "Tải lên thất bại. Vui lòng thử lại."
+		},
+		"files": {
+			"hint": {
+				"image": "Chọn ảnh từ tệp của dự án này",
+				"video": "Chọn video từ tệp của dự án này",
+				"audio": "Chọn tệp âm thanh từ tệp của dự án này",
+				"file": "Chọn tệp từ tệp của dự án này"
+			}
+		},
+		"embed": {
+			"placeholder": "Dán liên kết…",
+			"button": {
+				"image": "Nhúng ảnh",
+				"video": "Nhúng video",
+				"audio": "Nhúng âm thanh",
+				"file": "Nhúng tệp"
+			}
+		}
+	}
+}

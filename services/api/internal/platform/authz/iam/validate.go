@@ -13,7 +13,7 @@ var ConditionOperators = []string{"StringEquals", "StringNotEquals", "StringLike
 const maxStatements = 100
 
 var resourceRoots = map[string]struct{}{
-	"project": {}, "user": {}, "service_account": {}, "role": {}, "plugin": {}, "agent": {}, "settings": {}, "sso": {}, "git_identity": {}, "channel": {},
+	"project": {}, "user": {}, "service_account": {}, "role": {}, "plugin": {}, "agent": {}, "settings": {}, "sso": {}, "git_identity": {}, "channel": {}, "file": {},
 }
 
 // Issue is one validation problem; Path locates it (e.g.

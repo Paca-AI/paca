@@ -176,6 +176,10 @@ func (s *stubTaskSvc) GetTaskByNumber(_ context.Context, projectID uuid.UUID, n 
 	return &taskdom.Task{ProjectID: projectID, TaskNumber: n}, nil
 }
 
+func (s *stubTaskSvc) GetTaskByKey(_ context.Context, _ string, n int64) (*taskdom.Task, error) {
+	return &taskdom.Task{TaskNumber: n}, nil
+}
+
 func (s *stubTaskSvc) CreateTask(_ context.Context, in taskdom.CreateTaskInput) (*taskdom.Task, error) {
 	return &taskdom.Task{ID: uuid.New(), ProjectID: in.ProjectID, Title: in.Title}, nil
 }

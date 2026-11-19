@@ -33,9 +33,9 @@ export function ConversationEvent({
 						<span className="text-xs font-medium text-foreground/80">
 							{actor}
 						</span>
-						<span className="text-xs text-muted-foreground/70">{text}</span>
+						<span className="text-xs text-muted-foreground">{text}</span>
 						{time ? (
-							<span className="text-xs text-muted-foreground/45">{time}</span>
+							<span className="text-xs text-muted-foreground/90">{time}</span>
 						) : null}
 					</div>
 					{actions}

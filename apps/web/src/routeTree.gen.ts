@@ -16,12 +16,17 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginMfaRouteImport } from './routes/login/mfa'
 import { Route as AuthenticatedConversationsRouteImport } from './routes/_authenticated/conversations'
+import { Route as AuthenticatedTaskKeyRouteImport } from './routes/_authenticated/$taskKey'
 import { Route as AuthenticatedAccountRouteRouteImport } from './routes/_authenticated/account/route'
 import { Route as AuthenticatedHomeIndexRouteImport } from './routes/_authenticated/home/index'
+import { Route as AuthenticatedFilesIndexRouteImport } from './routes/_authenticated/files/index'
 import { Route as AuthenticatedConversationsIndexRouteImport } from './routes/_authenticated/conversations/index'
 import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authenticated/chat/index'
 import { Route as AuthenticatedAccountIndexRouteImport } from './routes/_authenticated/account/index'
 import { Route as AuthenticatedProjectsProjectIdRouteImport } from './routes/_authenticated/projects/$projectId'
+import { Route as AuthenticatedFilesTrashRouteImport } from './routes/_authenticated/files/trash'
+import { Route as AuthenticatedFilesStarredRouteImport } from './routes/_authenticated/files/starred'
+import { Route as AuthenticatedFilesRecentRouteImport } from './routes/_authenticated/files/recent'
 import { Route as AuthenticatedConversationsConversationIdRouteImport } from './routes/_authenticated/conversations/$conversationId'
 import { Route as AuthenticatedAccountSecurityRouteImport } from './routes/_authenticated/account/security'
 import { Route as AuthenticatedAccountPreferencesRouteImport } from './routes/_authenticated/account/preferences'
@@ -41,6 +46,7 @@ import { Route as AuthenticatedGitSetupCallbackRouteImport } from './routes/_aut
 import { Route as AuthenticatedChatDmChannelIdRouteImport } from './routes/_authenticated/chat/dm/$channelId'
 import { Route as AuthenticatedProjectsProjectIdTeamIndexRouteImport } from './routes/_authenticated/projects/$projectId/team/index'
 import { Route as AuthenticatedProjectsProjectIdSettingsIndexRouteImport } from './routes/_authenticated/projects/$projectId/settings/index'
+import { Route as AuthenticatedProjectsProjectIdFilesIndexRouteImport } from './routes/_authenticated/projects/$projectId/files/index'
 import { Route as AuthenticatedProjectsProjectIdEnvironmentsIndexRouteImport } from './routes/_authenticated/projects/$projectId/environments/index'
 import { Route as AuthenticatedProjectsProjectIdDocsIndexRouteImport } from './routes/_authenticated/projects/$projectId/docs/index'
 import { Route as AuthenticatedProjectsProjectIdConversationsIndexRouteImport } from './routes/_authenticated/projects/$projectId/conversations/index'
@@ -53,6 +59,9 @@ import { Route as AuthenticatedAdminAgentsAgentIdIndexRouteImport } from './rout
 import { Route as AuthenticatedProjectsProjectIdTasksTaskIdRouteImport } from './routes/_authenticated/projects/$projectId/tasks/$taskId'
 import { Route as AuthenticatedProjectsProjectIdInteractionsTimelineRouteImport } from './routes/_authenticated/projects/$projectId/interactions/timeline'
 import { Route as AuthenticatedProjectsProjectIdInteractionsBacklogRouteImport } from './routes/_authenticated/projects/$projectId/interactions/backlog'
+import { Route as AuthenticatedProjectsProjectIdFilesTrashRouteImport } from './routes/_authenticated/projects/$projectId/files/trash'
+import { Route as AuthenticatedProjectsProjectIdFilesStarredRouteImport } from './routes/_authenticated/projects/$projectId/files/starred'
+import { Route as AuthenticatedProjectsProjectIdFilesRecentRouteImport } from './routes/_authenticated/projects/$projectId/files/recent'
 import { Route as AuthenticatedProjectsProjectIdDocsDocIdRouteImport } from './routes/_authenticated/projects/$projectId/docs/$docId'
 import { Route as AuthenticatedProjectsProjectIdDmChannelIdRouteImport } from './routes/_authenticated/projects/$projectId/dm.$channelId'
 import { Route as AuthenticatedProjectsProjectIdConversationsConversationIdRouteImport } from './routes/_authenticated/projects/$projectId/conversations/$conversationId'
@@ -103,6 +112,11 @@ const AuthenticatedConversationsRoute =
     path: '/conversations',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedTaskKeyRoute = AuthenticatedTaskKeyRouteImport.update({
+  id: '/$taskKey',
+  path: '/$taskKey',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAccountRouteRoute =
   AuthenticatedAccountRouteRouteImport.update({
     id: '/account',
@@ -112,6 +126,11 @@ const AuthenticatedAccountRouteRoute =
 const AuthenticatedHomeIndexRoute = AuthenticatedHomeIndexRouteImport.update({
   id: '/home/',
   path: '/home/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedFilesIndexRoute = AuthenticatedFilesIndexRouteImport.update({
+  id: '/files/',
+  path: '/files/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedConversationsIndexRoute =
@@ -135,6 +154,23 @@ const AuthenticatedProjectsProjectIdRoute =
   AuthenticatedProjectsProjectIdRouteImport.update({
     id: '/projects/$projectId',
     path: '/projects/$projectId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFilesTrashRoute = AuthenticatedFilesTrashRouteImport.update({
+  id: '/files/trash',
+  path: '/files/trash',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedFilesStarredRoute =
+  AuthenticatedFilesStarredRouteImport.update({
+    id: '/files/starred',
+    path: '/files/starred',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFilesRecentRoute =
+  AuthenticatedFilesRecentRouteImport.update({
+    id: '/files/recent',
+    path: '/files/recent',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedConversationsConversationIdRoute =
@@ -251,6 +287,12 @@ const AuthenticatedProjectsProjectIdSettingsIndexRoute =
     path: '/settings/',
     getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
   } as any)
+const AuthenticatedProjectsProjectIdFilesIndexRoute =
+  AuthenticatedProjectsProjectIdFilesIndexRouteImport.update({
+    id: '/files/',
+    path: '/files/',
+    getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+  } as any)
 const AuthenticatedProjectsProjectIdEnvironmentsIndexRoute =
   AuthenticatedProjectsProjectIdEnvironmentsIndexRouteImport.update({
     id: '/environments/',
@@ -321,6 +363,24 @@ const AuthenticatedProjectsProjectIdInteractionsBacklogRoute =
   AuthenticatedProjectsProjectIdInteractionsBacklogRouteImport.update({
     id: '/interactions/backlog',
     path: '/interactions/backlog',
+    getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+  } as any)
+const AuthenticatedProjectsProjectIdFilesTrashRoute =
+  AuthenticatedProjectsProjectIdFilesTrashRouteImport.update({
+    id: '/files/trash',
+    path: '/files/trash',
+    getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+  } as any)
+const AuthenticatedProjectsProjectIdFilesStarredRoute =
+  AuthenticatedProjectsProjectIdFilesStarredRouteImport.update({
+    id: '/files/starred',
+    path: '/files/starred',
+    getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+  } as any)
+const AuthenticatedProjectsProjectIdFilesRecentRoute =
+  AuthenticatedProjectsProjectIdFilesRecentRouteImport.update({
+    id: '/files/recent',
+    path: '/files/recent',
     getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
   } as any)
 const AuthenticatedProjectsProjectIdDocsDocIdRoute =
@@ -424,16 +484,21 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
   '/account': typeof AuthenticatedAccountRouteRouteWithChildren
+  '/$taskKey': typeof AuthenticatedTaskKeyRoute
   '/conversations': typeof AuthenticatedConversationsRouteWithChildren
   '/login/mfa': typeof LoginMfaRoute
   '/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
   '/account/preferences': typeof AuthenticatedAccountPreferencesRoute
   '/account/security': typeof AuthenticatedAccountSecurityRoute
   '/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
+  '/files/recent': typeof AuthenticatedFilesRecentRoute
+  '/files/starred': typeof AuthenticatedFilesStarredRoute
+  '/files/trash': typeof AuthenticatedFilesTrashRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRouteWithChildren
   '/account/': typeof AuthenticatedAccountIndexRoute
   '/chat/': typeof AuthenticatedChatIndexRoute
   '/conversations/': typeof AuthenticatedConversationsIndexRoute
+  '/files/': typeof AuthenticatedFilesIndexRoute
   '/home/': typeof AuthenticatedHomeIndexRoute
   '/chat/dm/$channelId': typeof AuthenticatedChatDmChannelIdRoute
   '/git/setup/callback': typeof AuthenticatedGitSetupCallbackRoute
@@ -454,6 +519,9 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/conversations/$conversationId': typeof AuthenticatedProjectsProjectIdConversationsConversationIdRoute
   '/projects/$projectId/dm/$channelId': typeof AuthenticatedProjectsProjectIdDmChannelIdRoute
   '/projects/$projectId/docs/$docId': typeof AuthenticatedProjectsProjectIdDocsDocIdRoute
+  '/projects/$projectId/files/recent': typeof AuthenticatedProjectsProjectIdFilesRecentRoute
+  '/projects/$projectId/files/starred': typeof AuthenticatedProjectsProjectIdFilesStarredRoute
+  '/projects/$projectId/files/trash': typeof AuthenticatedProjectsProjectIdFilesTrashRoute
   '/projects/$projectId/interactions/backlog': typeof AuthenticatedProjectsProjectIdInteractionsBacklogRoute
   '/projects/$projectId/interactions/timeline': typeof AuthenticatedProjectsProjectIdInteractionsTimelineRoute
   '/projects/$projectId/tasks/$taskId': typeof AuthenticatedProjectsProjectIdTasksTaskIdRoute
@@ -466,6 +534,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/conversations/': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
   '/projects/$projectId/docs/': typeof AuthenticatedProjectsProjectIdDocsIndexRoute
   '/projects/$projectId/environments/': typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
+  '/projects/$projectId/files/': typeof AuthenticatedProjectsProjectIdFilesIndexRoute
   '/projects/$projectId/settings/': typeof AuthenticatedProjectsProjectIdSettingsIndexRoute
   '/projects/$projectId/team/': typeof AuthenticatedProjectsProjectIdTeamIndexRoute
   '/projects/$projectId/environments/$environmentId/connect': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute
@@ -482,14 +551,19 @@ export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
+  '/$taskKey': typeof AuthenticatedTaskKeyRoute
   '/login/mfa': typeof LoginMfaRoute
   '/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
   '/account/preferences': typeof AuthenticatedAccountPreferencesRoute
   '/account/security': typeof AuthenticatedAccountSecurityRoute
   '/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
+  '/files/recent': typeof AuthenticatedFilesRecentRoute
+  '/files/starred': typeof AuthenticatedFilesStarredRoute
+  '/files/trash': typeof AuthenticatedFilesTrashRoute
   '/account': typeof AuthenticatedAccountIndexRoute
   '/chat': typeof AuthenticatedChatIndexRoute
   '/conversations': typeof AuthenticatedConversationsIndexRoute
+  '/files': typeof AuthenticatedFilesIndexRoute
   '/home': typeof AuthenticatedHomeIndexRoute
   '/chat/dm/$channelId': typeof AuthenticatedChatDmChannelIdRoute
   '/git/setup/callback': typeof AuthenticatedGitSetupCallbackRoute
@@ -508,6 +582,9 @@ export interface FileRoutesByTo {
   '/projects/$projectId/conversations/$conversationId': typeof AuthenticatedProjectsProjectIdConversationsConversationIdRoute
   '/projects/$projectId/dm/$channelId': typeof AuthenticatedProjectsProjectIdDmChannelIdRoute
   '/projects/$projectId/docs/$docId': typeof AuthenticatedProjectsProjectIdDocsDocIdRoute
+  '/projects/$projectId/files/recent': typeof AuthenticatedProjectsProjectIdFilesRecentRoute
+  '/projects/$projectId/files/starred': typeof AuthenticatedProjectsProjectIdFilesStarredRoute
+  '/projects/$projectId/files/trash': typeof AuthenticatedProjectsProjectIdFilesTrashRoute
   '/projects/$projectId/interactions/backlog': typeof AuthenticatedProjectsProjectIdInteractionsBacklogRoute
   '/projects/$projectId/interactions/timeline': typeof AuthenticatedProjectsProjectIdInteractionsTimelineRoute
   '/projects/$projectId/tasks/$taskId': typeof AuthenticatedProjectsProjectIdTasksTaskIdRoute
@@ -520,6 +597,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
   '/projects/$projectId/docs': typeof AuthenticatedProjectsProjectIdDocsIndexRoute
   '/projects/$projectId/environments': typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
+  '/projects/$projectId/files': typeof AuthenticatedProjectsProjectIdFilesIndexRoute
   '/projects/$projectId/settings': typeof AuthenticatedProjectsProjectIdSettingsIndexRoute
   '/projects/$projectId/team': typeof AuthenticatedProjectsProjectIdTeamIndexRoute
   '/projects/$projectId/environments/$environmentId/connect': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute
@@ -539,16 +617,21 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
   '/_authenticated/account': typeof AuthenticatedAccountRouteRouteWithChildren
+  '/_authenticated/$taskKey': typeof AuthenticatedTaskKeyRoute
   '/_authenticated/conversations': typeof AuthenticatedConversationsRouteWithChildren
   '/login/mfa': typeof LoginMfaRoute
   '/_authenticated/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
   '/_authenticated/account/preferences': typeof AuthenticatedAccountPreferencesRoute
   '/_authenticated/account/security': typeof AuthenticatedAccountSecurityRoute
   '/_authenticated/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
+  '/_authenticated/files/recent': typeof AuthenticatedFilesRecentRoute
+  '/_authenticated/files/starred': typeof AuthenticatedFilesStarredRoute
+  '/_authenticated/files/trash': typeof AuthenticatedFilesTrashRoute
   '/_authenticated/projects/$projectId': typeof AuthenticatedProjectsProjectIdRouteWithChildren
   '/_authenticated/account/': typeof AuthenticatedAccountIndexRoute
   '/_authenticated/chat/': typeof AuthenticatedChatIndexRoute
   '/_authenticated/conversations/': typeof AuthenticatedConversationsIndexRoute
+  '/_authenticated/files/': typeof AuthenticatedFilesIndexRoute
   '/_authenticated/home/': typeof AuthenticatedHomeIndexRoute
   '/_authenticated/chat/dm/$channelId': typeof AuthenticatedChatDmChannelIdRoute
   '/_authenticated/git/setup/callback': typeof AuthenticatedGitSetupCallbackRoute
@@ -569,6 +652,9 @@ export interface FileRoutesById {
   '/_authenticated/projects/$projectId/conversations/$conversationId': typeof AuthenticatedProjectsProjectIdConversationsConversationIdRoute
   '/_authenticated/projects/$projectId/dm/$channelId': typeof AuthenticatedProjectsProjectIdDmChannelIdRoute
   '/_authenticated/projects/$projectId/docs/$docId': typeof AuthenticatedProjectsProjectIdDocsDocIdRoute
+  '/_authenticated/projects/$projectId/files/recent': typeof AuthenticatedProjectsProjectIdFilesRecentRoute
+  '/_authenticated/projects/$projectId/files/starred': typeof AuthenticatedProjectsProjectIdFilesStarredRoute
+  '/_authenticated/projects/$projectId/files/trash': typeof AuthenticatedProjectsProjectIdFilesTrashRoute
   '/_authenticated/projects/$projectId/interactions/backlog': typeof AuthenticatedProjectsProjectIdInteractionsBacklogRoute
   '/_authenticated/projects/$projectId/interactions/timeline': typeof AuthenticatedProjectsProjectIdInteractionsTimelineRoute
   '/_authenticated/projects/$projectId/tasks/$taskId': typeof AuthenticatedProjectsProjectIdTasksTaskIdRoute
@@ -581,6 +667,7 @@ export interface FileRoutesById {
   '/_authenticated/projects/$projectId/conversations/': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
   '/_authenticated/projects/$projectId/docs/': typeof AuthenticatedProjectsProjectIdDocsIndexRoute
   '/_authenticated/projects/$projectId/environments/': typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
+  '/_authenticated/projects/$projectId/files/': typeof AuthenticatedProjectsProjectIdFilesIndexRoute
   '/_authenticated/projects/$projectId/settings/': typeof AuthenticatedProjectsProjectIdSettingsIndexRoute
   '/_authenticated/projects/$projectId/team/': typeof AuthenticatedProjectsProjectIdTeamIndexRoute
   '/_authenticated/projects/$projectId/environments/$environmentId/connect': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute
@@ -600,16 +687,21 @@ export interface FileRouteTypes {
     | '/profile'
     | '/set-password'
     | '/account'
+    | '/$taskKey'
     | '/conversations'
     | '/login/mfa'
     | '/account/api-keys'
     | '/account/preferences'
     | '/account/security'
     | '/conversations/$conversationId'
+    | '/files/recent'
+    | '/files/starred'
+    | '/files/trash'
     | '/projects/$projectId'
     | '/account/'
     | '/chat/'
     | '/conversations/'
+    | '/files/'
     | '/home/'
     | '/chat/dm/$channelId'
     | '/git/setup/callback'
@@ -630,6 +722,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/conversations/$conversationId'
     | '/projects/$projectId/dm/$channelId'
     | '/projects/$projectId/docs/$docId'
+    | '/projects/$projectId/files/recent'
+    | '/projects/$projectId/files/starred'
+    | '/projects/$projectId/files/trash'
     | '/projects/$projectId/interactions/backlog'
     | '/projects/$projectId/interactions/timeline'
     | '/projects/$projectId/tasks/$taskId'
@@ -642,6 +737,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/conversations/'
     | '/projects/$projectId/docs/'
     | '/projects/$projectId/environments/'
+    | '/projects/$projectId/files/'
     | '/projects/$projectId/settings/'
     | '/projects/$projectId/team/'
     | '/projects/$projectId/environments/$environmentId/connect'
@@ -658,14 +754,19 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/profile'
     | '/set-password'
+    | '/$taskKey'
     | '/login/mfa'
     | '/account/api-keys'
     | '/account/preferences'
     | '/account/security'
     | '/conversations/$conversationId'
+    | '/files/recent'
+    | '/files/starred'
+    | '/files/trash'
     | '/account'
     | '/chat'
     | '/conversations'
+    | '/files'
     | '/home'
     | '/chat/dm/$channelId'
     | '/git/setup/callback'
@@ -684,6 +785,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/conversations/$conversationId'
     | '/projects/$projectId/dm/$channelId'
     | '/projects/$projectId/docs/$docId'
+    | '/projects/$projectId/files/recent'
+    | '/projects/$projectId/files/starred'
+    | '/projects/$projectId/files/trash'
     | '/projects/$projectId/interactions/backlog'
     | '/projects/$projectId/interactions/timeline'
     | '/projects/$projectId/tasks/$taskId'
@@ -696,6 +800,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/conversations'
     | '/projects/$projectId/docs'
     | '/projects/$projectId/environments'
+    | '/projects/$projectId/files'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/team'
     | '/projects/$projectId/environments/$environmentId/connect'
@@ -714,16 +819,21 @@ export interface FileRouteTypes {
     | '/profile'
     | '/set-password'
     | '/_authenticated/account'
+    | '/_authenticated/$taskKey'
     | '/_authenticated/conversations'
     | '/login/mfa'
     | '/_authenticated/account/api-keys'
     | '/_authenticated/account/preferences'
     | '/_authenticated/account/security'
     | '/_authenticated/conversations/$conversationId'
+    | '/_authenticated/files/recent'
+    | '/_authenticated/files/starred'
+    | '/_authenticated/files/trash'
     | '/_authenticated/projects/$projectId'
     | '/_authenticated/account/'
     | '/_authenticated/chat/'
     | '/_authenticated/conversations/'
+    | '/_authenticated/files/'
     | '/_authenticated/home/'
     | '/_authenticated/chat/dm/$channelId'
     | '/_authenticated/git/setup/callback'
@@ -744,6 +854,9 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$projectId/conversations/$conversationId'
     | '/_authenticated/projects/$projectId/dm/$channelId'
     | '/_authenticated/projects/$projectId/docs/$docId'
+    | '/_authenticated/projects/$projectId/files/recent'
+    | '/_authenticated/projects/$projectId/files/starred'
+    | '/_authenticated/projects/$projectId/files/trash'
     | '/_authenticated/projects/$projectId/interactions/backlog'
     | '/_authenticated/projects/$projectId/interactions/timeline'
     | '/_authenticated/projects/$projectId/tasks/$taskId'
@@ -756,6 +869,7 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$projectId/conversations/'
     | '/_authenticated/projects/$projectId/docs/'
     | '/_authenticated/projects/$projectId/environments/'
+    | '/_authenticated/projects/$projectId/files/'
     | '/_authenticated/projects/$projectId/settings/'
     | '/_authenticated/projects/$projectId/team/'
     | '/_authenticated/projects/$projectId/environments/$environmentId/connect'
@@ -828,6 +942,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedConversationsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/$taskKey': {
+      id: '/_authenticated/$taskKey'
+      path: '/$taskKey'
+      fullPath: '/$taskKey'
+      preLoaderRoute: typeof AuthenticatedTaskKeyRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/account': {
       id: '/_authenticated/account'
       path: '/account'
@@ -840,6 +961,13 @@ declare module '@tanstack/react-router' {
       path: '/home'
       fullPath: '/home/'
       preLoaderRoute: typeof AuthenticatedHomeIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/files/': {
+      id: '/_authenticated/files/'
+      path: '/files'
+      fullPath: '/files/'
+      preLoaderRoute: typeof AuthenticatedFilesIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/conversations/': {
@@ -868,6 +996,27 @@ declare module '@tanstack/react-router' {
       path: '/projects/$projectId'
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/files/trash': {
+      id: '/_authenticated/files/trash'
+      path: '/files/trash'
+      fullPath: '/files/trash'
+      preLoaderRoute: typeof AuthenticatedFilesTrashRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/files/starred': {
+      id: '/_authenticated/files/starred'
+      path: '/files/starred'
+      fullPath: '/files/starred'
+      preLoaderRoute: typeof AuthenticatedFilesStarredRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/files/recent': {
+      id: '/_authenticated/files/recent'
+      path: '/files/recent'
+      fullPath: '/files/recent'
+      preLoaderRoute: typeof AuthenticatedFilesRecentRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/conversations/$conversationId': {
@@ -1003,6 +1152,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdRoute
     }
+    '/_authenticated/projects/$projectId/files/': {
+      id: '/_authenticated/projects/$projectId/files/'
+      path: '/files'
+      fullPath: '/projects/$projectId/files/'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdFilesIndexRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
     '/_authenticated/projects/$projectId/environments/': {
       id: '/_authenticated/projects/$projectId/environments/'
       path: '/environments'
@@ -1085,6 +1241,27 @@ declare module '@tanstack/react-router' {
       path: '/interactions/backlog'
       fullPath: '/projects/$projectId/interactions/backlog'
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdInteractionsBacklogRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
+    '/_authenticated/projects/$projectId/files/trash': {
+      id: '/_authenticated/projects/$projectId/files/trash'
+      path: '/files/trash'
+      fullPath: '/projects/$projectId/files/trash'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdFilesTrashRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
+    '/_authenticated/projects/$projectId/files/starred': {
+      id: '/_authenticated/projects/$projectId/files/starred'
+      path: '/files/starred'
+      fullPath: '/projects/$projectId/files/starred'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdFilesStarredRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
+    '/_authenticated/projects/$projectId/files/recent': {
+      id: '/_authenticated/projects/$projectId/files/recent'
+      path: '/files/recent'
+      fullPath: '/projects/$projectId/files/recent'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdFilesRecentRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdRoute
     }
     '/_authenticated/projects/$projectId/docs/$docId': {
@@ -1268,6 +1445,9 @@ interface AuthenticatedProjectsProjectIdRouteChildren {
   AuthenticatedProjectsProjectIdAutomationAutomationIdRoute: typeof AuthenticatedProjectsProjectIdAutomationAutomationIdRoute
   AuthenticatedProjectsProjectIdDmChannelIdRoute: typeof AuthenticatedProjectsProjectIdDmChannelIdRoute
   AuthenticatedProjectsProjectIdDocsDocIdRoute: typeof AuthenticatedProjectsProjectIdDocsDocIdRoute
+  AuthenticatedProjectsProjectIdFilesRecentRoute: typeof AuthenticatedProjectsProjectIdFilesRecentRoute
+  AuthenticatedProjectsProjectIdFilesStarredRoute: typeof AuthenticatedProjectsProjectIdFilesStarredRoute
+  AuthenticatedProjectsProjectIdFilesTrashRoute: typeof AuthenticatedProjectsProjectIdFilesTrashRoute
   AuthenticatedProjectsProjectIdInteractionsBacklogRoute: typeof AuthenticatedProjectsProjectIdInteractionsBacklogRoute
   AuthenticatedProjectsProjectIdInteractionsTimelineRoute: typeof AuthenticatedProjectsProjectIdInteractionsTimelineRoute
   AuthenticatedProjectsProjectIdTasksTaskIdRoute: typeof AuthenticatedProjectsProjectIdTasksTaskIdRoute
@@ -1276,6 +1456,7 @@ interface AuthenticatedProjectsProjectIdRouteChildren {
   AuthenticatedProjectsProjectIdAutomationIndexRoute: typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
   AuthenticatedProjectsProjectIdDocsIndexRoute: typeof AuthenticatedProjectsProjectIdDocsIndexRoute
   AuthenticatedProjectsProjectIdEnvironmentsIndexRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
+  AuthenticatedProjectsProjectIdFilesIndexRoute: typeof AuthenticatedProjectsProjectIdFilesIndexRoute
   AuthenticatedProjectsProjectIdSettingsIndexRoute: typeof AuthenticatedProjectsProjectIdSettingsIndexRoute
   AuthenticatedProjectsProjectIdTeamIndexRoute: typeof AuthenticatedProjectsProjectIdTeamIndexRoute
   AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute
@@ -1302,6 +1483,12 @@ const AuthenticatedProjectsProjectIdRouteChildren: AuthenticatedProjectsProjectI
       AuthenticatedProjectsProjectIdDmChannelIdRoute,
     AuthenticatedProjectsProjectIdDocsDocIdRoute:
       AuthenticatedProjectsProjectIdDocsDocIdRoute,
+    AuthenticatedProjectsProjectIdFilesRecentRoute:
+      AuthenticatedProjectsProjectIdFilesRecentRoute,
+    AuthenticatedProjectsProjectIdFilesStarredRoute:
+      AuthenticatedProjectsProjectIdFilesStarredRoute,
+    AuthenticatedProjectsProjectIdFilesTrashRoute:
+      AuthenticatedProjectsProjectIdFilesTrashRoute,
     AuthenticatedProjectsProjectIdInteractionsBacklogRoute:
       AuthenticatedProjectsProjectIdInteractionsBacklogRoute,
     AuthenticatedProjectsProjectIdInteractionsTimelineRoute:
@@ -1318,6 +1505,8 @@ const AuthenticatedProjectsProjectIdRouteChildren: AuthenticatedProjectsProjectI
       AuthenticatedProjectsProjectIdDocsIndexRoute,
     AuthenticatedProjectsProjectIdEnvironmentsIndexRoute:
       AuthenticatedProjectsProjectIdEnvironmentsIndexRoute,
+    AuthenticatedProjectsProjectIdFilesIndexRoute:
+      AuthenticatedProjectsProjectIdFilesIndexRoute,
     AuthenticatedProjectsProjectIdSettingsIndexRoute:
       AuthenticatedProjectsProjectIdSettingsIndexRoute,
     AuthenticatedProjectsProjectIdTeamIndexRoute:
@@ -1347,9 +1536,14 @@ const AuthenticatedProjectsProjectIdRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAccountRouteRoute: typeof AuthenticatedAccountRouteRouteWithChildren
+  AuthenticatedTaskKeyRoute: typeof AuthenticatedTaskKeyRoute
   AuthenticatedConversationsRoute: typeof AuthenticatedConversationsRouteWithChildren
+  AuthenticatedFilesRecentRoute: typeof AuthenticatedFilesRecentRoute
+  AuthenticatedFilesStarredRoute: typeof AuthenticatedFilesStarredRoute
+  AuthenticatedFilesTrashRoute: typeof AuthenticatedFilesTrashRoute
   AuthenticatedProjectsProjectIdRoute: typeof AuthenticatedProjectsProjectIdRouteWithChildren
   AuthenticatedChatIndexRoute: typeof AuthenticatedChatIndexRoute
+  AuthenticatedFilesIndexRoute: typeof AuthenticatedFilesIndexRoute
   AuthenticatedHomeIndexRoute: typeof AuthenticatedHomeIndexRoute
   AuthenticatedChatDmChannelIdRoute: typeof AuthenticatedChatDmChannelIdRoute
   AuthenticatedGitSetupCallbackRoute: typeof AuthenticatedGitSetupCallbackRoute
@@ -1368,10 +1562,15 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAccountRouteRoute: AuthenticatedAccountRouteRouteWithChildren,
+  AuthenticatedTaskKeyRoute: AuthenticatedTaskKeyRoute,
   AuthenticatedConversationsRoute: AuthenticatedConversationsRouteWithChildren,
+  AuthenticatedFilesRecentRoute: AuthenticatedFilesRecentRoute,
+  AuthenticatedFilesStarredRoute: AuthenticatedFilesStarredRoute,
+  AuthenticatedFilesTrashRoute: AuthenticatedFilesTrashRoute,
   AuthenticatedProjectsProjectIdRoute:
     AuthenticatedProjectsProjectIdRouteWithChildren,
   AuthenticatedChatIndexRoute: AuthenticatedChatIndexRoute,
+  AuthenticatedFilesIndexRoute: AuthenticatedFilesIndexRoute,
   AuthenticatedHomeIndexRoute: AuthenticatedHomeIndexRoute,
   AuthenticatedChatDmChannelIdRoute: AuthenticatedChatDmChannelIdRoute,
   AuthenticatedGitSetupCallbackRoute: AuthenticatedGitSetupCallbackRoute,

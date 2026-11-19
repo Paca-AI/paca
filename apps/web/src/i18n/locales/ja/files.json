@@ -1,0 +1,239 @@
+{
+	"title": "ファイル",
+	"nav": {
+		"files": "ファイル",
+		"recent": "最近",
+		"starred": "スター付き",
+		"trash": "ゴミ箱"
+	},
+	"roots": {
+		"general": "一般",
+		"empty": "アクセスできるファイルはまだありません。",
+		"emptyHint": "閲覧できるプロジェクトのファイルがフォルダとしてここに表示されます。"
+	},
+	"header": {
+		"new": "新規",
+		"newFolder": "新しいフォルダ",
+		"uploadFile": "ファイルをアップロード",
+		"uploadFolder": "フォルダをアップロード",
+		"search": "{{where}} 内を検索",
+		"view": {
+			"grid": "グリッド表示",
+			"list": "リスト表示"
+		},
+		"typeFilter": "種類",
+		"allTypes": "すべての種類"
+	},
+	"types": {
+		"document": "ドキュメント",
+		"spreadsheet": "スプレッドシート",
+		"presentation": "プレゼンテーション",
+		"pdf": "PDF",
+		"image": "画像",
+		"video": "動画",
+		"audio": "音声",
+		"archive": "アーカイブ"
+	},
+	"kinds": {
+		"folder": "フォルダ",
+		"image": "画像",
+		"video": "動画",
+		"audio": "音声",
+		"pdf": "PDF",
+		"document": "ドキュメント",
+		"spreadsheet": "スプレッドシート",
+		"presentation": "プレゼンテーション",
+		"archive": "アーカイブ",
+		"code": "コード",
+		"text": "テキスト",
+		"other": "ファイル"
+	},
+	"columns": {
+		"name": "名前",
+		"owner": "所有者",
+		"modified": "最終更新",
+		"size": "サイズ",
+		"location": "場所",
+		"trashed": "ゴミ箱に移動した日"
+	},
+	"sections": {
+		"folders": "フォルダ",
+		"files": "ファイル"
+	},
+	"sectionTitle": {
+		"recent": "最近",
+		"starred": "スター付き",
+		"trash": "ゴミ箱"
+	},
+	"empty": {
+		"folder": "このフォルダは空です",
+		"folderHint": "ファイルをここにドラッグするか、「新規」から追加してください。",
+		"search": "検索に一致するファイルはありません",
+		"recent": "最近開いたファイルはありません",
+		"recentHint": "プレビューまたはダウンロードしたファイルがここに表示されます。",
+		"starred": "スター付きの項目はありません",
+		"starredHint": "ファイルやフォルダにスターを付けるとすぐに見つけられます。",
+		"trash": "ゴミ箱は空です",
+		"trashHint": "項目は30日間保管され、その後完全に削除されます。"
+	},
+	"actions": {
+		"open": "開く",
+		"preview": "プレビュー",
+		"download": "ダウンロード",
+		"star": "スター付きに追加",
+		"unstar": "スターを外す",
+		"rename": "名前を変更",
+		"move": "移動先…",
+		"details": "詳細",
+		"trash": "ゴミ箱に移動",
+		"delete": "削除",
+		"restore": "復元",
+		"deleteForever": "完全に削除",
+		"more": "その他の操作"
+	},
+	"system": {
+		"task_attachments": "このプロジェクトのタスクに添付されたファイルです。",
+		"task": "このタスクの添付ファイルです。",
+		"docs": "このプロジェクトのドキュメントに埋め込まれたファイルです。",
+		"annotations": "ページコメントのスクリーンショットです。"
+	},
+	"dialogs": {
+		"newFolder": {
+			"title": "新しいフォルダ",
+			"label": "フォルダ名",
+			"default": "無題のフォルダ",
+			"create": "作成"
+		},
+		"rename": {
+			"title": "名前を変更",
+			"label": "名前",
+			"save": "保存"
+		},
+		"move": {
+			"title": "{{name}} を移動",
+			"titleMany": "{{count}} 件を移動",
+			"here": "ここに移動",
+			"noFolders": "ここにフォルダはありません"
+		},
+		"deleteForever": {
+			"title": "完全に削除しますか？",
+			"body": "{{name}} は完全に削除されます。元に戻せません。",
+			"bodyMany": "{{count}} 件が完全に削除されます。元に戻せません。",
+			"confirm": "完全に削除"
+		},
+		"cancel": "キャンセル",
+		"deleteManaged": {
+			"title": "完全に削除しますか？",
+			"confirm": "削除",
+			"taskAttachment": "{{name}} はタスクに添付されています。削除するとタスクからも外れ、元に戻せません。",
+			"doc": "{{name}} はドキュメントで使われています。削除すると完全に削除され、ドキュメントにはファイルが壊れた状態で表示されます。元に戻せません。",
+			"annotation": "{{name}} はページコメントのスクリーンショットです。削除すると、コメントと添付されているすべてのタスクから完全に削除されます。元に戻せません。",
+			"many": "選択したファイルのうち {{count}} 件がタスク、ドキュメント、またはページコメントで使われています。削除すると、そこからも完全に削除されます。元に戻せません。"
+		}
+	},
+	"details": {
+		"title": "詳細",
+		"type": "種類",
+		"size": "サイズ",
+		"owner": "所有者",
+		"created": "作成日",
+		"modified": "更新日",
+		"location": "場所",
+		"source": "ソース",
+		"unknownOwner": "不明"
+	},
+	"source": {
+		"upload": "アップロード済み",
+		"task_attachment": "タスクの添付ファイル",
+		"doc": "ドキュメントのファイル",
+		"annotation": "注釈のスクリーンショット"
+	},
+	"upload": {
+		"uploading": "{{count}} 件をアップロード中",
+		"done": "アップロード完了",
+		"failed": "{{count}} 件失敗",
+		"cancel": "キャンセル",
+		"dropHere": "ここにドロップして {{where}} にアップロード",
+		"error": "アップロードに失敗しました"
+	},
+	"preview": {
+		"loading": "プレビューを読み込み中…",
+		"tooLarge": "このファイルはプレビューするには大きすぎます（{{size}}）。ダウンロードして開いてください。",
+		"failed": "プレビューを読み込めませんでした。",
+		"download": "ダウンロード",
+		"previous": "前のファイル",
+		"next": "次のファイル",
+		"close": "閉じる"
+	},
+	"toast": {
+		"folderCreated": "フォルダを作成しました",
+		"renamed": "名前を変更しました",
+		"moved": "移動しました",
+		"movedMany": "{{count}} 件を移動しました",
+		"trashed": "ゴミ箱に移動しました",
+		"trashedMany": "{{count}} 件をゴミ箱に移動しました",
+		"restored": "復元しました",
+		"deleted": "削除しました",
+		"starred": "スター付きに追加しました",
+		"unstarred": "スターを外しました",
+		"failed": "問題が発生しました"
+	},
+	"errors": {
+		"FILE_NODE_NOT_FOUND": "その項目はもう存在しません。",
+		"FILE_NAME_INVALID": "名前は空にできず、スラッシュも使えません。",
+		"FILE_NODE_LOCKED": "この項目は Paca が管理しているため変更できません。",
+		"FILE_NOT_FOLDER": "フォルダではありません。",
+		"FILE_NOT_FILE": "ファイルではありません。",
+		"FILE_MOVE_INTO_SELF": "フォルダを自分自身の中に移動することはできません。",
+		"FILE_NODE_TRASHED": "その項目はゴミ箱にあります。",
+		"FILE_NODE_NOT_TRASHED": "その項目はゴミ箱にありません。",
+		"FILE_UPLOAD_INCOMPLETE": "アップロードが完了しませんでした。",
+		"FILE_TOO_LARGE": "ファイルが大きすぎてアップロードできません。",
+		"FILE_TYPE_INVALID": "不明なファイル種類のフィルターです。"
+	},
+	"noAccess": {
+		"title": "これらのファイルを表示できません",
+		"body": "プロジェクト管理者にファイルへのアクセスを依頼してください。"
+	},
+	"selected": "{{count}} 件選択中",
+	"picker": {
+		"search": "ファイルを検索",
+		"root": "ファイル",
+		"empty": "このフォルダに一致するファイルはありません"
+	},
+	"filePanel": {
+		"tabs": {
+			"upload": "アップロード",
+			"files": "ファイルから選択",
+			"embed": "リンクを埋め込む"
+		},
+		"upload": {
+			"title": {
+				"image": "画像をアップロード",
+				"video": "動画をアップロード",
+				"audio": "音声ファイルをアップロード",
+				"file": "ファイルをアップロード"
+			},
+			"hint": "ドラッグ＆ドロップするか、クリックして選択",
+			"uploading": "アップロード中…",
+			"error": "アップロードに失敗しました。もう一度お試しください。"
+		},
+		"files": {
+			"hint": {
+				"image": "このプロジェクトのファイルから画像を選択",
+				"video": "このプロジェクトのファイルから動画を選択",
+				"audio": "このプロジェクトのファイルから音声を選択",
+				"file": "このプロジェクトのファイルからファイルを選択"
+			}
+		},
+		"embed": {
+			"placeholder": "リンクを貼り付け…",
+			"button": {
+				"image": "画像を埋め込む",
+				"video": "動画を埋め込む",
+				"audio": "音声を埋め込む",
+				"file": "ファイルを埋め込む"
+			}
+		}
+	}
+}

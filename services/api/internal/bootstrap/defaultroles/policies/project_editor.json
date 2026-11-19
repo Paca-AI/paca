@@ -24,6 +24,8 @@
         "conversations:write",
         "docs:read",
         "docs:write",
+        "files:read",
+        "files:write",
         "environments:connect",
         "environments:read",
         "environments:write",

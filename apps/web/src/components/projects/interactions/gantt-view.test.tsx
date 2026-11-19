@@ -1,11 +1,14 @@
 // Tests for gantt-view.tsx: row drag-and-drop, zoom, rescheduling and
 // dependency arrows.
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Task } from "@/lib/interaction-api";
-import type { TaskStatus } from "@/lib/project-api";
+import type { Task, ViewConfig } from "@/lib/interaction-api";
+import { getMemberDirectory } from "@/lib/member-directory";
+import type { ProjectMember, TaskStatus } from "@/lib/project-api";
 import { GanttView } from "./gantt-view";
 
 const notifyError = vi.hoisted(() => vi.fn());
@@ -78,6 +81,14 @@ function createDt() {
 const onMoveToColumn = vi.fn();
 const onReorderTask = vi.fn();
 
+// The assignee picker and the Jev check read through React Query.
+function wrapper({ children }: { children: ReactNode }) {
+	const qc = new QueryClient({
+		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+	});
+	return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
+
 function renderGantt(
 	tasks: Task[],
 	overrides: Partial<Parameters<typeof GanttView>[0]> = {},
@@ -95,6 +106,7 @@ function renderGantt(
 			onTaskClick={vi.fn()}
 			{...overrides}
 		/>,
+		{ wrapper },
 	);
 }
 
@@ -112,9 +124,7 @@ async function startDrag(title: string, dt: ReturnType<typeof createDt>) {
 }
 
 function groupOf(label: string) {
-	return screen
-		.getByText(label)
-		.closest("div.border-border\\/20") as HTMLElement;
+	return screen.getByText(label).closest("[data-gantt-group]") as HTMLElement;
 }
 
 beforeEach(() => {
@@ -214,6 +224,61 @@ describe("GanttView row drag and drop", () => {
 
 		expect(screen.getByText("Todo")).toBeInTheDocument();
 		expect(screen.queryByText("Done")).not.toBeInTheDocument();
+	});
+});
+
+describe("GanttView group header", () => {
+	it("pins the group label to the left edge like the task column", () => {
+		const label =
+			"Waiting for cross functional planning and stakeholder approval before implementation can begin";
+		renderGantt([makeTask({ id: "t1", title: "Alpha" })], {
+			statuses: [{ ...statuses[0], name: label }, statuses[1]],
+			columnBy: "status",
+		});
+		const groupLabel = screen.getByText(label);
+		const pinned = groupLabel.closest(".sticky") as HTMLElement;
+		const count = groupLabel.nextElementSibling as HTMLElement;
+		const taskColumn = screen
+			.getByText("Alpha")
+			.closest(".sticky") as HTMLElement;
+		const handle = screen.getByTestId("gantt-task-column-resize-handle");
+		const header = handle.parentElement as HTMLElement;
+		const initialWidth = taskColumn.style.width;
+
+		expect(pinned).toHaveClass("sticky", "left-0");
+		expect(pinned).toHaveTextContent(`${label}1`);
+		expect(count).toHaveTextContent(/^1$/);
+		expect(initialWidth).toMatch(/^\d+px$/);
+		expect(header.style.width).toBe(initialWidth);
+		expect.soft(pinned.style.width).toBe(taskColumn.style.width);
+		expect.soft(pinned.style.width).toBe(header.style.width);
+		expect.soft(pinned).toHaveClass("shrink-0");
+		expect.soft(groupLabel).toHaveClass("min-w-0", "truncate");
+		expect.soft(count).toHaveClass("shrink-0");
+
+		const resizeKey =
+			Number.parseFloat(initialWidth) ===
+			Number(handle.getAttribute("aria-valuemin"))
+				? "End"
+				: "Home";
+		act(() => {
+			handle.dispatchEvent(
+				new KeyboardEvent("keydown", { key: resizeKey, bubbles: true }),
+			);
+		});
+		act(() => {
+			handle.dispatchEvent(
+				new KeyboardEvent("keyup", { key: resizeKey, bubbles: true }),
+			);
+		});
+
+		expect(taskColumn.style.width).not.toBe(initialWidth);
+		expect(header.style.width).toBe(taskColumn.style.width);
+		expect.soft(pinned.style.width).toBe(taskColumn.style.width);
+		expect.soft(pinned.style.width).toBe(header.style.width);
+		expect(pinned).toHaveClass("sticky", "left-0");
+		expect(pinned).toHaveTextContent(`${label}1`);
+		expect(count).toHaveTextContent(/^1$/);
 	});
 });
 
@@ -521,5 +586,50 @@ describe("GanttView dependencies", () => {
 		});
 		expect(screen.queryByTestId("gantt-dependencies")).toBeNull();
 		expect(barOf("e1")).not.toHaveAttribute("data-violation");
+	});
+});
+
+describe("GanttView assignees", () => {
+	const member = {
+		id: "member-ada",
+		full_name: "Ada Lovelace",
+		username: "ada",
+	} as ProjectMember;
+	beforeEach(() => {
+		// Assignees are resolved by id through the member directory.
+		getMemberDirectory(PROJECT_ID).seed([member]);
+	});
+	const assigned = () =>
+		makeTask({ id: "a1", title: "Assigned task", assignee_ids: [member.id] });
+
+	it("shows the assignee next to the task name by default", () => {
+		renderGantt([assigned()]);
+		expect(screen.getByText("AL")).toBeInTheDocument();
+	});
+
+	it("hides assignees when the view's fields leave them out", () => {
+		renderGantt([assigned()], {
+			viewConfig: { fields: ["importance"] } as ViewConfig,
+		});
+		expect(screen.queryByText("AL")).not.toBeInTheDocument();
+	});
+
+	it("does not open the task when the assignee is clicked", () => {
+		const onTaskClick = vi.fn();
+		renderGantt([assigned()], { onTaskClick });
+		fireEvent.click(screen.getByText("AL"));
+		expect(onTaskClick).not.toHaveBeenCalled();
+	});
+});
+
+describe("GanttView task IDs", () => {
+	it("shows the task ID with the project's prefix", () => {
+		renderGantt([makeTask({ task_number: 7 })], { taskIdPrefix: "PACA" });
+		expect(screen.getByText("PACA-7")).toBeInTheDocument();
+	});
+
+	it("falls back to #n when the project has no prefix", () => {
+		renderGantt([makeTask({ task_number: 7 })]);
+		expect(screen.getByText("#7")).toBeInTheDocument();
 	});
 });

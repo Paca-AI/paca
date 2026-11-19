@@ -25,13 +25,13 @@ const VISIBLE_FIELDS = ["type", "status", "importance", "due_date"];
 function AssignedTasksListSkeleton() {
 	return (
 		<div className="rounded-xl border border-border/60 bg-card overflow-hidden">
-			<div className="flex items-center gap-2.5 px-4 py-3 border-b border-border/25">
+			<div className="flex items-center gap-2.5 px-4 py-3 border-b border-border/50">
 				<Skeleton className="h-3.5 w-24" />
 			</div>
 			{[0, 1, 2].map((i) => (
 				<div
 					key={i}
-					className="flex items-center gap-3 px-4 py-2.5 border-b border-border/20 last:border-0"
+					className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0"
 				>
 					<Skeleton className="h-3.5 w-14 shrink-0" />
 					<Skeleton className="h-3.5 flex-1" />
@@ -151,11 +151,11 @@ export function AssignedTasksList() {
 	if (tasks.length === 0) {
 		return (
 			<div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/10 py-10 text-center">
-				<CheckCircle2 className="size-6 text-muted-foreground/30" />
+				<CheckCircle2 className="size-6 text-muted-foreground/90" />
 				<p className="text-sm font-medium text-foreground/70">
 					{t("home.myTasks.emptyTitle")}
 				</p>
-				<p className="text-xs text-muted-foreground/70 max-w-xs">
+				<p className="text-xs text-muted-foreground max-w-xs">
 					{t("home.myTasks.emptyDescription")}
 				</p>
 			</div>
@@ -201,7 +201,7 @@ export function AssignedTasksList() {
 					type="button"
 					onClick={() => void fetchNextPage()}
 					disabled={isFetchingNextPage}
-					className="flex w-full items-center justify-center gap-1.5 border-t border-border/10 py-2.5 text-xs font-medium text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
+					className="flex w-full items-center justify-center gap-1.5 border-t border-border/50 py-2.5 text-xs font-medium text-muted-foreground/90 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
 				>
 					{isFetchingNextPage ? (
 						<>

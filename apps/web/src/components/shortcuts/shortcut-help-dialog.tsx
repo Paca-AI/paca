@@ -29,7 +29,7 @@ function ShortcutRow({ entry }: { entry: ShortcutDisplayEntry }) {
 				{entry.chords.map((chord, chordIdx) => (
 					<span key={chord.key} className="flex items-center gap-1">
 						{chordIdx > 0 && (
-							<span className="text-[10px] text-muted-foreground/40">/</span>
+							<span className="text-[10px] text-muted-foreground/90">/</span>
 						)}
 						<KbdChord chord={chord} />
 					</span>
@@ -54,7 +54,7 @@ export function ShortcutHelpDialog({
 				<div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
 					{SHORTCUT_GROUPS.map((group) => (
 						<div key={group} className="mb-3">
-							<p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground/60">
+							<p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground/90">
 								{t(`groups.${group}`)}
 							</p>
 							{SHORTCUT_DISPLAY.filter((e) => e.group === group).map(
@@ -65,7 +65,7 @@ export function ShortcutHelpDialog({
 						</div>
 					))}
 				</div>
-				<p className="border-t border-border/40 pt-2.5 text-xs text-muted-foreground/70">
+				<p className="border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
 					{t("dialog.footer")}
 				</p>
 			</DialogContent>

@@ -147,7 +147,7 @@ function ChangePasswordPage() {
 						{/* Form panel */}
 						<div className="relative flex flex-col justify-center px-8 py-10 sm:px-10">
 							{/* Mobile top accent */}
-							<div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-border/40 lg:hidden" />
+							<div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-border/60 lg:hidden" />
 
 							<div className="relative">
 								{/* Mobile logo */}

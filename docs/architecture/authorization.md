@@ -79,7 +79,7 @@ user/<id>  role/<id>  agent/<id>  plugin/<id>  settings  sso     platform level,
 
 `iam.ParseResource` splits a name into kind, id and project. Anything with an empty segment, or whose root is not one of `project`, `user`, `role`, `plugin`, `agent`, `settings`, `sso`, is rejected on save.
 
-Project-level actions (`tasks:read`, `docs:write`, ...) are checked on `project/<id>` for a collection-level request (list, create) and on `project/<id>/<kind>/<id>` for a request about one entity. Platform actions are checked on their *platform root* (`iam.PlatformRootFor`): `users` on `user/*`, `roles` on `role/*`, `plugins` on `plugin/*`, `agents` on `agent/*`, `settings` on `settings`, `settings.sso` on `sso`, `projects` on `project`. An action with no platform root is checked on `*`, so only a `*` holder passes (fail closed).
+Project-level actions (`tasks:read`, `docs:write`, ...) are checked on `project/<id>` for a collection-level request (list, create) and on `project/<id>/<kind>/<id>` for a request about one entity. Platform actions are checked on their *platform root* (`iam.PlatformRootFor`): `users` on `user/*`, `roles` on `role/*`, `plugins` on `plugin/*`, `agents` on `agent/*`, `settings` on `settings`, `settings.sso` on `sso`, `projects` on `project`, `files` on `file/*`. An action with no platform root is checked on `*`, so only a `*` holder passes (fail closed).
 
 A statement on `*` or a platform root applies at platform level. A *named* action granted on a platform root does not open a project (this is the fix for GHSA-hjcj-373w-vq8m): only `*` on `*`, or a grant on `project/...`, reaches inside projects.
 

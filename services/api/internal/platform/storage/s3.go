@@ -246,6 +246,18 @@ func (c *S3Client) DeleteObject(ctx context.Context, bucket, key string) error {
 	return nil
 }
 
+// StatObject returns the size of a stored object.
+func (c *S3Client) StatObject(ctx context.Context, bucket, key string) (int64, error) {
+	out, err := c.s3.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+	if err != nil {
+		return 0, fmt.Errorf("storage: stat object %q: %w", key, err)
+	}
+	if out.ContentLength == nil {
+		return 0, nil
+	}
+	return *out.ContentLength, nil
+}
+
 // GetObject downloads an object's contents into memory, bounded by maxBytes
 // (see the Client interface doc — maxBytes <= 0 means unbounded).
 func (c *S3Client) GetObject(ctx context.Context, bucket, key string, maxBytes int64) ([]byte, error) {

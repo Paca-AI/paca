@@ -293,6 +293,8 @@ export interface DocumentSnapshot {
 	title: string;
 	content: unknown[] | null;
 	snapshot_number: number;
+	/** Absent on snapshots taken before hashes were stored. */
+	content_hash?: string;
 	created_by?: string | null;
 	created_by_name?: string;
 	created_at: string;

@@ -22,6 +22,7 @@ import (
 	chatdom "github.com/Paca-AI/api/internal/domain/chat"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
+	filedom "github.com/Paca-AI/api/internal/domain/file"
 	gitdom "github.com/Paca-AI/api/internal/domain/git"
 	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
@@ -210,6 +211,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeInvalidCIDR
 	case errors.Is(err, domainauth.ErrTokenInvalid):
 		return http.StatusUnauthorized, apierr.CodeTokenInvalid
+	case errors.Is(err, domainauth.ErrSessionNotFound):
+		return http.StatusNotFound, apierr.CodeSessionNotFound
 	case errors.Is(err, domainauth.ErrSessionInvalidated):
 		return http.StatusUnauthorized, apierr.CodeTokenInvalid
 	case errors.Is(err, userdom.ErrNotFound):
@@ -356,6 +359,28 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeCustomFieldTypeInvalid
 	case errors.Is(err, taskdom.ErrCustomFieldNameInvalid):
 		return http.StatusBadRequest, apierr.CodeCustomFieldNameInvalid
+	case errors.Is(err, filedom.ErrNodeNotFound), errors.Is(err, filedom.ErrUploadScopeMismatch):
+		return http.StatusNotFound, apierr.CodeFileNodeNotFound
+	case errors.Is(err, filedom.ErrNameInvalid):
+		return http.StatusBadRequest, apierr.CodeFileNameInvalid
+	case errors.Is(err, filedom.ErrNodeLocked):
+		return http.StatusConflict, apierr.CodeFileNodeLocked
+	case errors.Is(err, filedom.ErrNotFolder):
+		return http.StatusBadRequest, apierr.CodeFileNotFolder
+	case errors.Is(err, filedom.ErrNotFile):
+		return http.StatusBadRequest, apierr.CodeFileNotFile
+	case errors.Is(err, filedom.ErrMoveIntoSelf):
+		return http.StatusBadRequest, apierr.CodeFileMoveIntoSelf
+	case errors.Is(err, filedom.ErrNodeTrashed):
+		return http.StatusConflict, apierr.CodeFileNodeTrashed
+	case errors.Is(err, filedom.ErrNodeNotTrashed):
+		return http.StatusConflict, apierr.CodeFileNodeNotTrashed
+	case errors.Is(err, filedom.ErrUploadNotComplete):
+		return http.StatusConflict, apierr.CodeFileUploadIncomplete
+	case errors.Is(err, filedom.ErrFileTooLarge):
+		return http.StatusRequestEntityTooLarge, apierr.CodeFileTooLarge
+	case errors.Is(err, filedom.ErrInvalidType):
+		return http.StatusBadRequest, apierr.CodeFileTypeInvalid
 	case errors.Is(err, attachmentdom.ErrFileNotFound):
 		return http.StatusNotFound, apierr.CodeFileNotFound
 	case errors.Is(err, attachmentdom.ErrAttachmentNotFound):

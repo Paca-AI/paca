@@ -4,14 +4,30 @@ import { useAgentSearch } from "@/hooks/use-agent-search";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
 
-import { SideMenuController, useCreateBlockNote } from "@blocknote/react";
+import {
+	FilePanelController,
+	SideMenuController,
+	useCreateBlockNote,
+} from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bot, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { createAnnotationPasteHandler } from "@/components/shared/blocknote-annotation-paste-handler";
 import { CustomSideMenu } from "@/components/shared/blocknote-custom-side-menu";
+import {
+	FileBlockPanel,
+	FilePanelScopeContext,
+} from "@/components/shared/blocknote-file-panel";
 import { customSchema } from "@/components/shared/blocknote-schema";
 import { normalizeBlockContent } from "@/components/shared/comment-blocknote";
 import { MentionSuggestionMenus } from "@/components/shared/mention-suggestion-menus";
@@ -25,10 +41,13 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { useCollabSession } from "@/hooks/use-collab-session";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useThemeMode } from "@/hooks/use-theme-mode";
 import { writeTaskDescriptionWithAI } from "@/lib/agent-api";
 import {
+	attachmentAsFileNode,
 	getAttachmentDownloadURL,
+	getTaskAttachment,
 	uploadAttachment,
 } from "@/lib/attachment-api";
 import {
@@ -36,6 +55,13 @@ import {
 	type CollabStatus,
 	seedCollabDoc,
 } from "@/lib/collab-session";
+import { type FileNode, getNode, getNodeDownload } from "@/lib/files-api";
+import {
+	ATTACHMENT_SCHEME,
+	collectInlineMedia,
+	type InlineMediaRef,
+	parseMediaUri,
+} from "@/lib/inline-media";
 import { cleanBlocks, cn, isRemoteOnlyChange } from "@/lib/utils";
 
 type UpdateFn = (payload: { description?: unknown[] | null }) => void;
@@ -48,8 +74,8 @@ interface DescriptionSectionProps {
 	onUpdate?: UpdateFn;
 }
 
-/** Custom URI scheme used to store attachment references in the markdown. */
-const ATTACHMENT_SCHEME = "attachment://";
+// The viewer (and its heavy document libraries) is fetched only when a preview opens.
+const FilePreview = lazy(() => import("@/components/files/file-preview"));
 
 /**
  * Task description. Editors join a real-time Yjs room for the task (see
@@ -65,7 +91,7 @@ export function DescriptionSection(props: DescriptionSectionProps) {
 	);
 	if (collab.phase === "connecting") {
 		return (
-			<div className="min-h-24 rounded-xl border border-border/25 bg-card/50" />
+			<div className="min-h-24 rounded-xl border border-border/50 bg-card/50" />
 		);
 	}
 	return (
@@ -202,12 +228,15 @@ function DescriptionSectionInner({
 			 * Converts our custom `attachment://` URI into a fresh presigned URL.
 			 */
 			resolveFileUrl: async (url: string) => {
-				if (!url.startsWith(ATTACHMENT_SCHEME)) return url;
-				// URI format: attachment://{projectId}/{taskId}/{attachmentId}
-				const path = url.slice(ATTACHMENT_SCHEME.length);
-				const [pId, tId, attachmentId] = path.split("/");
-				if (!pId || !tId || !attachmentId) return url;
-				return getAttachmentDownloadURL(pId, tId, attachmentId);
+				const ref = parseMediaUri(url);
+				if (!ref) return url;
+				// attachment://{projectId}/{taskId}/{attachmentId} or
+				// files://{projectId}/{fileId} (a file picked from the project's Files).
+				return ref.source === "attachment"
+					? getAttachmentDownloadURL(ref.projectId, ref.taskId, ref.id)
+					: getNodeDownload({ projectId: ref.projectId }, ref.id).then(
+							(d) => d.url,
+						);
 			},
 		},
 		[collab],
@@ -304,6 +333,82 @@ function DescriptionSectionInner({
 		}
 	}, [canEdit, editor, onUpdate]);
 
+	// Clicking an inline image that is a task attachment opens the in-app
+	// preview, across all such images of the description. Images with any other
+	// source keep BlockNote's own behaviour.
+	const [preview, setPreview] = useState<{
+		files: FileNode[];
+		index: number;
+		where: Map<string, InlineMediaRef>;
+	} | null>(null);
+	/**
+	 * Opens the preview on the image or file block `blockId`, across all of the
+	 * description's attachment and project-file blocks.
+	 */
+	const openPreview = useCallback(
+		async (blockId: string) => {
+			const refs = collectInlineMedia(editor.document);
+			const clicked = refs.findIndex((r) => r.blockId === blockId);
+			if (clicked < 0) return false;
+			const results = await Promise.allSettled(
+				refs.map((r) =>
+					r.source === "attachment"
+						? getTaskAttachment(r.projectId, r.taskId, r.id).then((a) =>
+								attachmentAsFileNode(a, r.projectId),
+							)
+						: getNode({ projectId: r.projectId }, r.id),
+				),
+			);
+			// Files that no longer exist are skipped; the clicked one must load.
+			if (results[clicked].status !== "fulfilled") return false;
+			const files: FileNode[] = [];
+			const where = new Map<string, InlineMediaRef>();
+			let index = 0;
+			results.forEach((res, i) => {
+				if (res.status !== "fulfilled") return;
+				if (i === clicked) index = files.length;
+				files.push(res.value);
+				where.set(res.value.id, refs[i]);
+			});
+			setPreview({ files, index, where });
+			return true;
+		},
+		[editor],
+	);
+
+	// Clicking an image or a file block that is a task attachment, or one
+	// chosen from the project's Files, opens the in-app preview. Anything else
+	// (an external link) keeps BlockNote's own behaviour. Captured so it runs
+	// before the block's own click handling.
+	const handleMediaClick = useCallback(
+		(e: React.MouseEvent<HTMLDivElement>) => {
+			const target = e.target as HTMLElement;
+			const isImage = target.tagName === "IMG";
+			const isFile = !!target.closest(".bn-file-name-with-icon");
+			if (!isImage && !isFile) return;
+			const blockId = target.closest("[data-id]")?.getAttribute("data-id");
+			if (!blockId) return;
+			const block = editor.getBlock(blockId);
+			if (!block || !parseMediaUri((block.props as { url?: string })?.url))
+				return;
+			e.preventDefault();
+			e.stopPropagation();
+			void openPreview(blockId);
+		},
+		[editor, openPreview],
+	);
+
+	// Picking from the project's Files needs files:read; without it the panel
+	// only offers upload and embed.
+	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
+	const filePanelScope = useMemo(
+		() => ({
+			projectId,
+			canPickFiles: !!projectId && hasProjectPermission("files:read"),
+		}),
+		[projectId, hasProjectPermission],
+	);
+
 	// Save when focus leaves the entire editor container (mirrors title onBlur).
 	const handleBlur = useCallback(
 		(e: React.FocusEvent<HTMLDivElement>) => {
@@ -329,14 +434,14 @@ function DescriptionSectionInner({
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
-				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 flex items-center gap-2">
+				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground flex items-center gap-2">
 					<span>{t("taskDetail.description.title")}</span>
 					<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 				</h3>
 				{canEdit && (
 					<button
 						type="button"
-						className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors duration-150 font-medium"
+						className="flex items-center gap-1.5 text-xs text-muted-foreground/90 hover:text-muted-foreground transition-colors duration-150 font-medium"
 						onClick={() => setWriteWithAIOpen(true)}
 					>
 						<Sparkles className="size-3" />
@@ -345,11 +450,12 @@ function DescriptionSectionInner({
 				)}
 			</div>
 
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: wrapper captures blur from BlockNote rich-text editor */}
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: wrapper captures blur and image/file clicks from the BlockNote rich-text editor */}
 			<div
-				className="rounded-xl border border-border/25 bg-card/50 hover:border-border/50 transition-all duration-200 overflow-hidden [&_.bn-editor]:min-h-20 [&_.bn-editor]:py-3 [&_.bn-editor]:text-base [&_.bn-editor]:leading-relaxed"
+				className="rounded-xl border border-border/50 bg-card/50 hover:border-border/50 transition-all duration-200 overflow-hidden [&_.bn-editor]:min-h-20 [&_.bn-editor]:py-3 [&_.bn-editor]:text-base [&_.bn-editor]:leading-relaxed"
 				onBlur={handleBlur}
 				onKeyDown={handleKeyDown}
+				onClickCapture={handleMediaClick}
 			>
 				<BlockNoteView
 					editor={editor}
@@ -358,13 +464,59 @@ function DescriptionSectionInner({
 					theme={resolvedMode}
 					className="bn-shadcn"
 					sideMenu={false}
+					// MentionSuggestionMenus below provides the "/" menu (with the
+					// extra items); leaving BlockNote's own on made two menus open
+					// on top of each other.
+					slashMenu={false}
+					filePanel={false}
 				>
 					<SideMenuController sideMenu={CustomSideMenu} />
+					<FilePanelScopeContext.Provider value={filePanelScope}>
+						<FilePanelController filePanel={FileBlockPanel} />
+					</FilePanelScopeContext.Provider>
 					{canEdit && (
 						<MentionSuggestionMenus editor={editor} projectId={projectId} />
 					)}
 				</BlockNoteView>
 			</div>
+
+			{preview && (
+				<Suspense fallback={null}>
+					<FilePreview
+						files={preview.files}
+						index={preview.index}
+						scope={{ projectId: preview.files[0]?.project_id ?? null }}
+						onIndexChange={(i) =>
+							setPreview((p) => (p ? { ...p, index: i } : p))
+						}
+						onClose={() => setPreview(null)}
+						resolveUrl={(f) => {
+							const r = preview.where.get(f.id);
+							if (!r) return Promise.reject(new Error("unknown file"));
+							return r.source === "attachment"
+								? getAttachmentDownloadURL(r.projectId, r.taskId, f.id)
+								: getNodeDownload({ projectId: r.projectId }, f.id).then(
+										(d) => d.url,
+									);
+						}}
+						onDownload={(f) => {
+							const r = preview.where.get(f.id);
+							if (!r) return;
+							const url =
+								r.source === "attachment"
+									? getAttachmentDownloadURL(r.projectId, r.taskId, f.id, {
+											download: true,
+										})
+									: getNodeDownload({ projectId: r.projectId }, f.id, {
+											download: true,
+										}).then((d) => d.url);
+							void url.then((u) =>
+								window.open(u, "_blank", "noopener,noreferrer"),
+							);
+						}}
+					/>
+				</Suspense>
+			)}
 
 			<Dialog
 				open={writeWithAIOpen}
@@ -409,7 +561,7 @@ function DescriptionSectionInner({
 										"w-full flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all duration-150",
 										selectedAgentId === agent.id
 											? "border-primary/60 bg-primary/5 text-foreground"
-											: "border-border/40 bg-card/50 hover:border-border/70 hover:bg-muted/30 text-muted-foreground hover:text-foreground",
+											: "border-border/60 bg-card/50 hover:border-border/70 hover:bg-muted/30 text-muted-foreground hover:text-foreground",
 									)}
 								>
 									<div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
@@ -419,7 +571,7 @@ function DescriptionSectionInner({
 										<p className="text-base font-medium leading-tight truncate">
 											{agent.name}
 										</p>
-										<p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
+										<p className="text-xs text-muted-foreground mt-0.5 truncate">
 											@{agent.handle}
 										</p>
 									</div>

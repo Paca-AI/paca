@@ -300,7 +300,7 @@ export function JevSettings({
 						</div>
 
 						<div>
-							<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80 mb-1.5">
+							<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
 								{t("settings.jev.credentials.advancedLabel")}
 							</p>
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -511,7 +511,7 @@ export function JevSettings({
 					</div>
 				) : (
 					<div className="rounded-xl border border-dashed border-border bg-muted/20 py-16 text-center">
-						<div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
+						<div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground/90">
 							<Sparkles className="size-5" />
 						</div>
 						<p className="text-sm font-medium">

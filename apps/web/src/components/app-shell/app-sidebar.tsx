@@ -59,6 +59,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { FilesSidebarSection } from "@/components/files/files-sidebar-section";
 import { useManagedCopyLabel } from "@/components/projects/docs/managed-copy-banner";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
@@ -353,7 +354,7 @@ function ManagedCopyMarker({
 			aria-label={label}
 			title={label}
 			data-testid={locked ? "doc-locked-marker" : "doc-managed-marker"}
-			className="ml-auto flex shrink-0 items-center text-sidebar-foreground/40"
+			className="ml-auto flex shrink-0 items-center text-sidebar-foreground/60"
 		>
 			<Icon aria-hidden className="size-3" />
 		</span>
@@ -469,7 +470,7 @@ function DocsDocRow({
 					<FileText
 						className={cn(
 							"size-3.5 shrink-0 transition-colors",
-							isActive ? "text-primary/70" : "text-sidebar-foreground/40",
+							isActive ? "text-primary/70" : "text-sidebar-foreground/60",
 						)}
 					/>
 					{renaming ? (
@@ -489,7 +490,7 @@ function DocsDocRow({
 					) : (
 						<span className="truncate leading-snug">
 							{doc.title || (
-								<span className="italic text-sidebar-foreground/40">
+								<span className="italic text-sidebar-foreground/60">
 									{t("docs.untitled")}
 								</span>
 							)}
@@ -510,7 +511,7 @@ function DocsDocRow({
 				{canWrite && !renaming && (
 					<DropdownMenu>
 						<DropdownMenuTrigger
-							className="opacity-0 group-hover:opacity-100 flex size-5 shrink-0 items-center justify-center rounded text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-150"
+							className="opacity-0 group-hover:opacity-100 flex size-5 shrink-0 items-center justify-center rounded text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-150"
 							onClick={(e) => e.stopPropagation()}
 						>
 							<MoreHorizontal className="size-3" />
@@ -744,14 +745,14 @@ function DocsFolderNode({
 				>
 					<ChevronRight
 						className={cn(
-							"size-3 shrink-0 text-sidebar-foreground/30 transition-transform duration-150",
+							"size-3 shrink-0 text-sidebar-foreground/60 transition-transform duration-150",
 							isExpanded && "rotate-90",
 						)}
 					/>
 					{isExpanded ? (
-						<FolderOpen className="size-3.5 shrink-0 text-sidebar-foreground/40" />
+						<FolderOpen className="size-3.5 shrink-0 text-sidebar-foreground/60" />
 					) : (
-						<Folder className="size-3.5 shrink-0 text-sidebar-foreground/40" />
+						<Folder className="size-3.5 shrink-0 text-sidebar-foreground/60" />
 					)}
 					{renaming ? (
 						<TreeInlineRename
@@ -778,7 +779,7 @@ function DocsFolderNode({
 					<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
 						<DropdownMenu>
 							<DropdownMenuTrigger
-								className="flex size-5 items-center justify-center rounded text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-150"
+								className="flex size-5 items-center justify-center rounded text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-all duration-150"
 								onClick={(e) => e.stopPropagation()}
 							>
 								<MoreHorizontal className="size-3" />
@@ -885,7 +886,7 @@ function DocsFolderNode({
 						childFolders.length === 0 &&
 						!addingDoc && (
 							<div
-								className="text-xs text-sidebar-foreground/30 italic py-1"
+								className="text-xs text-sidebar-foreground/60 italic py-1"
 								style={{ paddingLeft: `${8 + (depth + 1) * 16 + 26}px` }}
 							>
 								{t("docs.emptyFolder")}
@@ -894,7 +895,7 @@ function DocsFolderNode({
 					{canWrite && (
 						<div style={{ paddingLeft: `${8 + (depth + 1) * 16 + 16}px` }}>
 							<DropdownMenu>
-								<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/35 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
+								<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
 									<Plus className="size-3 shrink-0" />
 									<span>{t("docs.add")}</span>
 								</DropdownMenuTrigger>
@@ -1081,13 +1082,13 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 			<SidebarGroupLabel
 				render={<button type="button" />}
 				aria-expanded={!collapsed}
-				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors px-3"
+				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors px-4"
 				onClick={toggleCollapse}
 			>
 				<span>{t("docs.documentation")}</span>
 				<ChevronRight
 					className={cn(
-						"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
+						"size-3.5 transition-transform duration-200 text-sidebar-foreground/60",
 						!collapsed && "rotate-90",
 					)}
 				/>
@@ -1098,7 +1099,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 					<DocDropTargetContext.Provider value={dropTargetValue}>
 						<DocsRootDropArea projectId={projectId} canWrite={canWrite}>
 							{isEmpty ? (
-								<div className="px-4 py-2 text-xs text-sidebar-foreground/40 italic">
+								<div className="px-4 py-2 text-xs text-sidebar-foreground/60 italic">
 									{t("docs.noDocumentsYet")}
 								</div>
 							) : (
@@ -1146,7 +1147,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 							{canWrite && (
 								<div className="px-2 pt-1">
 									<DropdownMenu>
-										<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/35 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
+										<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
 											<Plus className="size-3 shrink-0" />
 											<span>{t("docs.add")}</span>
 										</DropdownMenuTrigger>
@@ -1490,7 +1491,7 @@ function ProjectNavItems({ projectId }: { projectId: string }) {
 					<span>{t("nav.project")}</span>
 					<ChevronRight
 						className={cn(
-							"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
+							"size-3.5 transition-transform duration-200 text-sidebar-foreground/60",
 							!isCollapsed && "rotate-90",
 						)}
 					/>
@@ -1589,7 +1590,7 @@ function CollapsibleSidebarGroup({
 					<span>{label}</span>
 					<ChevronRight
 						className={cn(
-							"size-3.5 text-sidebar-foreground/40 transition-transform duration-200",
+							"size-3.5 text-sidebar-foreground/60 transition-transform duration-200",
 							!isCollapsed && "rotate-90",
 						)}
 					/>
@@ -1898,7 +1899,7 @@ function ProjectInteractionsSection({ projectId }: { projectId: string }) {
 					<span>{t("interactions.title")}</span>
 					<ChevronRight
 						className={cn(
-							"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
+							"size-3.5 transition-transform duration-200 text-sidebar-foreground/60",
 							!isCollapsed && "rotate-90",
 						)}
 					/>
@@ -1998,7 +1999,7 @@ function ProjectInteractionsSection({ projectId }: { projectId: string }) {
 									>
 										<ChevronRight
 											className={cn(
-												"size-3.5 shrink-0 transition-transform duration-200 text-sidebar-foreground/40",
+												"size-3.5 shrink-0 transition-transform duration-200 text-sidebar-foreground/60",
 												!plannedSprintsCollapsed && "rotate-90",
 											)}
 										/>
@@ -2066,7 +2067,7 @@ function ProjectInteractionsSection({ projectId }: { projectId: string }) {
 									>
 										<ChevronRight
 											className={cn(
-												"size-3.5 shrink-0 transition-transform duration-200 text-sidebar-foreground/40",
+												"size-3.5 shrink-0 transition-transform duration-200 text-sidebar-foreground/60",
 												!completedSprintsCollapsed && "rotate-90",
 											)}
 										/>
@@ -2151,7 +2152,7 @@ function ThemeSwitcher() {
 
 			{/* Expanded: segmented 3-way control */}
 			<div className="flex items-center justify-between px-2 py-1.5 group-data-[collapsible=icon]:hidden">
-				<span className="text-xs font-medium text-sidebar-foreground/50 tracking-wide">
+				<span className="text-xs font-medium text-sidebar-foreground/60 tracking-wide">
 					{t("theme.label")}
 				</span>
 				<div className="flex items-center gap-0.5 rounded-md border border-sidebar-border bg-sidebar p-0.5">
@@ -2165,7 +2166,7 @@ function ThemeSwitcher() {
 								"flex size-6 items-center justify-center rounded transition-all duration-150",
 								mode === m
 									? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-									: "text-sidebar-foreground/40 hover:text-sidebar-foreground/70",
+									: "text-sidebar-foreground/60 hover:text-sidebar-foreground/70",
 							)}
 						>
 							<Icon className="size-3.5" />
@@ -2287,27 +2288,22 @@ export function AppSidebar() {
 
 			<SidebarSeparator />
 
-			{/* Navigation — switches between workspace and project context */}
-			{/* Optional sections render nothing when empty, which can leave two
-				   dividers back to back; show only the first. */}
-			<SidebarContent className="[&_[data-slot=sidebar-separator]+[data-slot=sidebar-separator]]:hidden">
+			{/* Navigation — switches between workspace and project context.
+			    Sections are set apart by their own headings, so no dividers
+			    between them; separators only frame the header and footer. */}
+			<SidebarContent>
 				{isProjectContext ? (
 					<>
 						{user && <ProjectNav />}
-						{user && <SidebarSeparator />}
 						{user && <ChatSidebarSection projectId={projectId} />}
-						{user && <SidebarSeparator />}
 						<ProjectInteractionsSection projectId={projectId} />
-						<SidebarSeparator />
 						{canReadDocs && <DocsSidebarSection projectId={projectId} />}
-						<SidebarSeparator />
+						<FilesSidebarSection projectId={projectId} />
 						<ExtensionPoint
 							point="sidebar.project.section"
 							componentProps={{ projectId }}
 						/>
-						<SidebarSeparator />
 						<PluginProjectPages projectId={projectId} />
-						<SidebarSeparator />
 						<ProjectNavItems projectId={projectId} />
 					</>
 				) : (
@@ -2328,84 +2324,78 @@ export function AppSidebar() {
 						)}
 						{user && <ChatSidebarSection />}
 
+						<FilesSidebarSection />
+
 						<ExtensionPoint point="sidebar.general.section" />
 						{/* Admin section */}
 						{showAdminSection ? (
-							<>
-								<SidebarSeparator />
-								<SidebarGroup>
-									<SidebarGroupLabel>
-										{t("nav.administration")}
-									</SidebarGroupLabel>
-									<SidebarGroupContent>
-										<SidebarMenu>
-											{canAccessGlobalRoles ? (
-												<NavItem
-													to="/admin/global-roles"
-													icon={Shield}
-													label={t("nav.globalRoles")}
-												/>
-											) : null}
-											{canAccessUsers ? (
-												<NavItem
-													to="/admin/users"
-													icon={Users}
-													label={t("nav.users")}
-												/>
-											) : null}
-											{canAccessGlobalAgents ? (
-												<NavItem
-													to="/admin/agents"
-													icon={Bot}
-													label={t("nav.agents")}
-												/>
-											) : null}
-											{canAccessServiceAccounts ? (
-												<NavItem
-													to="/admin/service-accounts"
-													icon={ServerCog}
-													label={t("nav.serviceAccounts")}
-												/>
-											) : null}
-											{canAccessPlugins ? (
-												<NavItem
-													to="/admin/plugins"
-													icon={Puzzle}
-													label={t("nav.plugins")}
-													exact
-												/>
-											) : null}
-											{canAccessSettings ? (
-												<NavItem
-													to="/admin/settings"
-													icon={Settings}
-													label={t("nav.settings")}
-												/>
-											) : null}
+							<SidebarGroup>
+								<SidebarGroupLabel>{t("nav.administration")}</SidebarGroupLabel>
+								<SidebarGroupContent>
+									<SidebarMenu>
+										{canAccessGlobalRoles ? (
 											<NavItem
-												to="/admin/changelog"
-												icon={Sparkles}
-												label={t("nav.changelog")}
+												to="/admin/global-roles"
+												icon={Shield}
+												label={t("nav.globalRoles")}
 											/>
-										</SidebarMenu>
-									</SidebarGroupContent>
-								</SidebarGroup>
-							</>
+										) : null}
+										{canAccessUsers ? (
+											<NavItem
+												to="/admin/users"
+												icon={Users}
+												label={t("nav.users")}
+											/>
+										) : null}
+										{canAccessGlobalAgents ? (
+											<NavItem
+												to="/admin/agents"
+												icon={Bot}
+												label={t("nav.agents")}
+											/>
+										) : null}
+										{canAccessServiceAccounts ? (
+											<NavItem
+												to="/admin/service-accounts"
+												icon={ServerCog}
+												label={t("nav.serviceAccounts")}
+											/>
+										) : null}
+										{canAccessPlugins ? (
+											<NavItem
+												to="/admin/plugins"
+												icon={Puzzle}
+												label={t("nav.plugins")}
+												exact
+											/>
+										) : null}
+										{canAccessSettings ? (
+											<NavItem
+												to="/admin/settings"
+												icon={Settings}
+												label={t("nav.settings")}
+											/>
+										) : null}
+										<NavItem
+											to="/admin/changelog"
+											icon={Sparkles}
+											label={t("nav.changelog")}
+										/>
+									</SidebarMenu>
+								</SidebarGroupContent>
+							</SidebarGroup>
 						) : null}
 						{/* Plugin-contributed admin pages get their own sidebar section,
 						   separate from core workspace administration. */}
 						{showPluginsSection ? (
-							<>
-								<SidebarSeparator />
-								<CollapsibleSidebarGroup
-									storageKey="paca:sidebar-admin-plugins-collapsed"
-									label={t("nav.plugins")}
-								>
-									<SidebarMenu>
-										<PluginAdminPages navItems={adminPluginNavItems} />
-									</SidebarMenu>
-								</CollapsibleSidebarGroup>
-							</>
+							<CollapsibleSidebarGroup
+								storageKey="paca:sidebar-admin-plugins-collapsed"
+								label={t("nav.plugins")}
+							>
+								<SidebarMenu>
+									<PluginAdminPages navItems={adminPluginNavItems} />
+								</SidebarMenu>
+							</CollapsibleSidebarGroup>
 						) : null}
 					</>
 				)}

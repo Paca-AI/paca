@@ -133,6 +133,7 @@ type TaskService interface {
 	// GetTask returns the task identified by id, verifying it belongs to projectID.
 	GetTask(ctx context.Context, projectID, id uuid.UUID) (*Task, error)
 	GetTaskByNumber(ctx context.Context, projectID uuid.UUID, taskNumber int64) (*Task, error)
+	GetTaskByKey(ctx context.Context, prefix string, taskNumber int64) (*Task, error)
 	CreateTask(ctx context.Context, in CreateTaskInput) (*Task, error)
 	// UpdateTask updates the task identified by id, verifying it belongs to projectID.
 	UpdateTask(ctx context.Context, projectID, id uuid.UUID, in UpdateTaskInput) (*Task, error)

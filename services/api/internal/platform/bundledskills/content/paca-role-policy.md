@@ -51,7 +51,7 @@ Form `domain:verb`. Wildcards: `*` (every action) and `domain:*` (every action o
 - project team and log: `project.members:read` `project.members:write` `project.activities:read` `project:export`
 - tasks: `tasks:read` `tasks:write` (tasks, comments, task links)
 - project task schema: `project.settings.task_types:write` `project.settings.task_statuses:write` `project.settings.custom_fields:write`
-- planning and content: `sprints:read` `sprints:write` `views:read` `views:write` `docs:read` `docs:write` `workflows:read` `workflows:write`
+- planning and content: `sprints:read` `sprints:write` `views:read` `views:write` `docs:read` `docs:write` `files:read` `files:write` `workflows:read` `workflows:write`
 - annotations: `annotations:read` `annotations:write` `annotations:resolve`
 - chat: `channels:read` `channels:write` `messages:write` `messages:moderate`
 - calls: `calls:join` `calls:record` `calls:moderate` `calls:invite_agent`

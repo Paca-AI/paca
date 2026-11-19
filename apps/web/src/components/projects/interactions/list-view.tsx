@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
+import { useStableValue } from "@/hooks/use-stable-value";
 
 import type {
 	ChildTaskFilters,
@@ -100,6 +101,8 @@ export interface ListViewProps {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+const EMPTY_TASKS: Task[] = [];
+
 export function ListView({
 	projectId,
 	tasks,
@@ -195,7 +198,7 @@ export function ListView({
 		[columnBy, viewCtx, t],
 	);
 
-	const effectiveGroupDefs = useMemo((): ColumnGroupDef[] => {
+	const computedGroupDefs = useMemo((): ColumnGroupDef[] => {
 		let defs: ColumnGroupDef[];
 		if (groupDefs.length > 0) {
 			defs = groupDefs;
@@ -241,15 +244,30 @@ export function ListView({
 		t,
 	]);
 
+	// Rebuilt whenever the task list changes (dynamic groups depend on it),
+	// usually to the same contents: keep the previous array so rows don't
+	// re-render for it.
+	const effectiveGroupDefs = useStableValue(computedGroupDefs);
+
 	const swimlaneDefs = useMemo(
 		() => getSwimlaneDefs(swimlaneBy, viewCtx, t),
 		[swimlaneBy, viewCtx, t],
 	);
 
+	// One array per group, rebuilt only when the tasks or the grouping change:
+	// a fresh array on every render makes each group reset its row state.
+	const tasksByGroup = useMemo(() => {
+		const byGroup = new Map<string, Task[]>();
+		for (const def of effectiveGroupDefs) byGroup.set(def.key, []);
+		for (const task of tasks) {
+			for (const key of new Set(getTaskColumnKeys(task, columnBy, viewCtx))) {
+				byGroup.get(key)?.push(task);
+			}
+		}
+		return byGroup;
+	}, [tasks, effectiveGroupDefs, columnBy, viewCtx]);
 	const getGroupTasks = (groupKey: string): Task[] =>
-		tasks.filter((t) =>
-			getTaskColumnKeys(t, columnBy, viewCtx).includes(groupKey),
-		);
+		tasksByGroup.get(groupKey) ?? EMPTY_TASKS;
 
 	const savedCollapsedColumns = viewConfig?.collapsed_columns;
 

@@ -1,0 +1,240 @@
+{
+	"title": "Archivos",
+	"nav": {
+		"files": "Archivos",
+		"recent": "Recientes",
+		"starred": "Destacados",
+		"trash": "Papelera"
+	},
+	"roots": {
+		"general": "General",
+		"empty": "Todavía no tienes acceso a ningún archivo.",
+		"emptyHint": "Los archivos de los proyectos que puedes leer aparecen aquí como carpetas."
+	},
+	"header": {
+		"new": "Nuevo",
+		"newFolder": "Carpeta nueva",
+		"uploadFile": "Subir archivo",
+		"uploadFolder": "Subir carpeta",
+		"search": "Buscar en {{where}}",
+		"view": {
+			"grid": "Vista de cuadrícula",
+			"list": "Vista de lista"
+		},
+		"typeFilter": "Tipo",
+		"allTypes": "Todos los tipos"
+	},
+	"types": {
+		"document": "Documentos",
+		"spreadsheet": "Hojas de cálculo",
+		"presentation": "Presentaciones",
+		"pdf": "PDF",
+		"image": "Imágenes",
+		"video": "Vídeos",
+		"audio": "Audio",
+		"archive": "Archivos comprimidos"
+	},
+	"kinds": {
+		"folder": "Carpeta",
+		"image": "Imagen",
+		"video": "Vídeo",
+		"audio": "Audio",
+		"pdf": "PDF",
+		"document": "Documento",
+		"spreadsheet": "Hoja de cálculo",
+		"presentation": "Presentación",
+		"archive": "Archivo comprimido",
+		"code": "Código",
+		"text": "Texto",
+		"other": "Archivo"
+	},
+	"columns": {
+		"name": "Nombre",
+		"owner": "Propietario",
+		"modified": "Última modificación",
+		"size": "Tamaño",
+		"location": "Ubicación",
+		"trashed": "Fecha de envío a la papelera"
+	},
+	"sections": {
+		"folders": "Carpetas",
+		"files": "Archivos"
+	},
+	"sectionTitle": {
+		"recent": "Recientes",
+		"starred": "Destacados",
+		"trash": "Papelera"
+	},
+	"empty": {
+		"folder": "Esta carpeta está vacía",
+		"folderHint": "Arrastra archivos aquí o usa Nuevo para añadirlos.",
+		"search": "Ningún archivo coincide con tu búsqueda",
+		"recent": "No hay archivos abiertos recientemente",
+		"recentHint": "Los archivos que previsualices o descargues aparecerán aquí.",
+		"starred": "Aún no hay elementos destacados",
+		"starredHint": "Destaca archivos y carpetas para encontrarlos rápido.",
+		"trash": "La papelera está vacía",
+		"trashHint": "Los elementos permanecen aquí 30 días y después se eliminan definitivamente."
+	},
+	"actions": {
+		"open": "Abrir",
+		"preview": "Vista previa",
+		"download": "Descargar",
+		"star": "Añadir a destacados",
+		"unstar": "Quitar de destacados",
+		"rename": "Cambiar nombre",
+		"move": "Mover a…",
+		"details": "Detalles",
+		"trash": "Mover a la papelera",
+		"delete": "Eliminar",
+		"restore": "Restaurar",
+		"deleteForever": "Eliminar definitivamente",
+		"more": "Más acciones"
+	},
+	"system": {
+		"task_attachments": "Archivos adjuntos a las tareas de este proyecto.",
+		"task": "Adjuntos de esta tarea.",
+		"docs": "Archivos incrustados en los documentos de este proyecto.",
+		"annotations": "Capturas de pantalla de los comentarios de página."
+	},
+	"dialogs": {
+		"newFolder": {
+			"title": "Carpeta nueva",
+			"label": "Nombre de la carpeta",
+			"default": "Carpeta sin título",
+			"create": "Crear"
+		},
+		"rename": {
+			"title": "Cambiar nombre",
+			"label": "Nombre",
+			"save": "Guardar"
+		},
+		"move": {
+			"title": "Mover {{name}}",
+			"titleMany": "Mover {{count}} elementos",
+			"here": "Mover aquí",
+			"noFolders": "No hay carpetas aquí"
+		},
+		"deleteForever": {
+			"title": "¿Eliminar definitivamente?",
+			"body": "{{name}} se eliminará definitivamente. No se puede deshacer.",
+			"bodyMany": "{{count}} elementos se eliminarán definitivamente. No se puede deshacer.",
+			"confirm": "Eliminar definitivamente"
+		},
+		"cancel": "Cancelar",
+		"deleteManaged": {
+			"title": "¿Eliminar definitivamente?",
+			"confirm": "Eliminar",
+			"taskAttachment": "{{name}} está adjunto a una tarea. Al eliminarlo se quita de la tarea y no se puede deshacer.",
+			"doc": "{{name}} se usa en un documento. Al eliminarlo se borra definitivamente y el documento mostrará un archivo roto. No se puede deshacer.",
+			"annotation": "{{name}} es una captura de pantalla de un comentario de página. Al eliminarla se borra definitivamente, del comentario y de cualquier tarea a la que esté adjunta. No se puede deshacer.",
+			"many": "{{count}} de los archivos seleccionados se usan en tareas, documentos o comentarios de página. Al eliminarlos se quitan de allí definitivamente. No se puede deshacer."
+		}
+	},
+	"details": {
+		"title": "Detalles",
+		"type": "Tipo",
+		"size": "Tamaño",
+		"owner": "Propietario",
+		"created": "Creado",
+		"modified": "Modificado",
+		"location": "Ubicación",
+		"source": "Origen",
+		"unknownOwner": "Desconocido"
+	},
+	"source": {
+		"upload": "Subido",
+		"task_attachment": "Adjunto de tarea",
+		"doc": "Archivo de documento",
+		"annotation": "Captura de anotación"
+	},
+	"upload": {
+		"uploading": "Subiendo {{count}} elemento",
+		"done": "Subidas completadas",
+		"failed": "{{count}} con error",
+		"cancel": "Cancelar",
+		"dropHere": "Suelta para subir a {{where}}",
+		"error": "Error al subir",
+		"uploading_other": "Subiendo {{count}} elementos"
+	},
+	"preview": {
+		"loading": "Cargando vista previa…",
+		"tooLarge": "Este archivo es demasiado grande para previsualizarlo ({{size}}). Descárgalo para abrirlo.",
+		"failed": "No se pudo cargar la vista previa.",
+		"download": "Descargar",
+		"previous": "Archivo anterior",
+		"next": "Archivo siguiente",
+		"close": "Cerrar"
+	},
+	"toast": {
+		"folderCreated": "Carpeta creada",
+		"renamed": "Nombre cambiado",
+		"moved": "Movido",
+		"movedMany": "{{count}} elementos movidos",
+		"trashed": "Movido a la papelera",
+		"trashedMany": "{{count}} elementos movidos a la papelera",
+		"restored": "Restaurado",
+		"deleted": "Eliminado",
+		"starred": "Añadido a destacados",
+		"unstarred": "Quitado de destacados",
+		"failed": "Algo salió mal"
+	},
+	"errors": {
+		"FILE_NODE_NOT_FOUND": "Ese elemento ya no existe.",
+		"FILE_NAME_INVALID": "Los nombres no pueden estar vacíos ni contener barras.",
+		"FILE_NODE_LOCKED": "Paca gestiona este elemento y no se puede modificar.",
+		"FILE_NOT_FOLDER": "Eso no es una carpeta.",
+		"FILE_NOT_FILE": "Eso no es un archivo.",
+		"FILE_MOVE_INTO_SELF": "Una carpeta no se puede mover dentro de sí misma.",
+		"FILE_NODE_TRASHED": "Ese elemento está en la papelera.",
+		"FILE_NODE_NOT_TRASHED": "Ese elemento no está en la papelera.",
+		"FILE_UPLOAD_INCOMPLETE": "La subida no se completó.",
+		"FILE_TOO_LARGE": "Ese archivo es demasiado grande para subirlo.",
+		"FILE_TYPE_INVALID": "Filtro de tipo de archivo desconocido."
+	},
+	"noAccess": {
+		"title": "No puedes ver estos archivos",
+		"body": "Pide acceso a los archivos a un administrador del proyecto."
+	},
+	"selected": "{{count}} seleccionados",
+	"picker": {
+		"search": "Buscar archivos",
+		"root": "Archivos",
+		"empty": "No hay archivos coincidentes en esta carpeta"
+	},
+	"filePanel": {
+		"tabs": {
+			"upload": "Subir",
+			"files": "Desde archivos",
+			"embed": "Insertar enlace"
+		},
+		"upload": {
+			"title": {
+				"image": "Subir una imagen",
+				"video": "Subir un vídeo",
+				"audio": "Subir un archivo de audio",
+				"file": "Subir un archivo"
+			},
+			"hint": "Arrastra y suelta, o haz clic para elegir",
+			"uploading": "Subiendo…",
+			"error": "La subida falló. Inténtalo de nuevo."
+		},
+		"files": {
+			"hint": {
+				"image": "Elige una imagen de los archivos de este proyecto",
+				"video": "Elige un vídeo de los archivos de este proyecto",
+				"audio": "Elige un audio de los archivos de este proyecto",
+				"file": "Elige un archivo de los archivos de este proyecto"
+			}
+		},
+		"embed": {
+			"placeholder": "Pega un enlace…",
+			"button": {
+				"image": "Insertar imagen",
+				"video": "Insertar vídeo",
+				"audio": "Insertar audio",
+				"file": "Insertar archivo"
+			}
+		}
+	}
+}

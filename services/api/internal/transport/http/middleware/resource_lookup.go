@@ -140,9 +140,10 @@ func SessionEnvironmentResource(lookup SessionEnvironmentLookup, projectParam, a
 	}
 }
 
-// TaskNumberLookup finds the task a project-scoped task number names.
+// TaskNumberLookup finds the task a project-scoped task number or global key names.
 type TaskNumberLookup interface {
 	FindTaskByNumber(ctx context.Context, projectID uuid.UUID, taskNumber int64) (*taskdom.Task, error)
+	FindTaskByKey(ctx context.Context, prefix string, taskNumber int64) (*taskdom.Task, error)
 }
 
 // TaskByNumberResource names the task in the URL by its project-scoped number:
@@ -171,6 +172,34 @@ func TaskByNumberResource(lookup TaskNumberLookup, projectParam, numberParam str
 			return "", err
 		}
 		return "project/" + projectID + "/task/" + t.ID.String(), nil
+	}
+}
+
+// TaskByKeyResource names the task in the URL by its global key (e.g. "PRJ-1"):
+// "project/<P>/task/<T>". A key that is invalid or names no task resolves to
+// a resource no policy names ("task-key/<raw>"), so the caller is refused
+// unless they hold wildcard access. The endpoint's contract is therefore
+// "403 for any key you cannot resolve": a mistyped key and a key to a task you
+// may not read are indistinguishable (no existence oracle), and the handler's
+// 400/404 answers are reachable only by wildcard-grant holders.
+func TaskByKeyResource(lookup TaskNumberLookup, keyParam string) ResourceResolver {
+	return func(r *http.Request) (string, error) {
+		raw := chi.URLParam(r, keyParam)
+		prefix, number, ok := taskdom.ParseTaskKey(raw)
+		if !ok {
+			return "task-key/" + raw, nil
+		}
+		if lookup == nil {
+			return "", apierr.New(apierr.CodeInternalError, "authorization not configured")
+		}
+		t, err := lookup.FindTaskByKey(r.Context(), prefix, number)
+		if errors.Is(err, taskdom.ErrTaskNotFound) {
+			return "task-key/" + raw, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		return "project/" + t.ProjectID.String() + "/task/" + t.ID.String(), nil
 	}
 }
 

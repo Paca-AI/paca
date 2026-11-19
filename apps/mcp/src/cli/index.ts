@@ -8,18 +8,24 @@ export const USAGE = `Usage:
   npx @paca-ai/paca-mcp                 start the MCP server (stdio)
   npx @paca-ai/paca-mcp pull [--project <id>] [--dir .paca/docs] [--force]
       Mirror the project's documents to Markdown files in --dir.
-      --force overwrites mirror files that were edited locally.
+      A file edited here is merged with the changes made in Paca.
+      --force replaces every mirror file with Paca's version, discarding
+      edits made here (including files pull kept or left conflicted).
   npx @paca-ai/paca-mcp push <file> [--path "Folder/Title"] [--project <id>]
       [--note "..."] [--task PACA-88] [--lock] [--force] [--dry-run]
       Write a repository file to the document at --path (default
       Plans/<file name>, or Specifications/<name> under a specs folder).
+      A file in a pull mirror is pushed back to the document it was
+      pulled from, as an edit of only the blocks it changes (--path,
+      --lock and --force do not apply; on a conflict, pull, then push).
 
 Environment: PACA_API_KEY (required), PACA_API_URL (default
 http://localhost:8080), PACA_PROJECT_ID (or --project), PACA_CLIENT (client
 label sent with writes, default paca-cli).
 
-Exit codes: 0 done or unchanged, 1 error, 2 conflict (the Paca copy changed,
-or a mirror file was edited locally), 3 server unreachable.
+Exit codes: 0 done or unchanged, 1 error, 2 conflict (the Paca copy changed;
+pull merged with conflict markers or kept a file it could not merge; or push
+refused a mirror file until a pull settles it), 3 server unreachable.
 
 Removing a mirrored file does not revoke copies already made of it.`;
 

@@ -29,6 +29,16 @@ vi.mock("../../tools/sprint-tools.js", () => ({
 		.fn()
 		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
 }));
+vi.mock("../../tools/doc-mirror-tools.js", () => ({
+	DOC_MIRROR_TOOL_NAMES: new Set(["pull_docs", "push_docs"]),
+	getDocMirrorTools: vi.fn(() => [
+		{ name: "pull_docs" },
+		{ name: "push_docs" },
+	]),
+	handleDocMirrorTool: vi
+		.fn()
+		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
+}));
 vi.mock("../../tools/filesystem-doc-tools.js", () => ({
 	getFilesystemDocTools: vi.fn(() => [
 		{ name: "list_docs" },
@@ -140,6 +150,7 @@ import { handleAttachmentTool } from "../../tools/attachment-tools.js";
 import { handleAutomationTool } from "../../tools/automation-tools.js";
 import { handleConversationTool } from "../../tools/conversation-tools.js";
 import { handleDocActivityTool } from "../../tools/doc-activity-tools.js";
+import { handleDocMirrorTool } from "../../tools/doc-mirror-tools.js";
 import { handleFilesystemDocTool } from "../../tools/filesystem-doc-tools.js";
 import { getAllTools, handleToolCall } from "../../tools/index.js";
 import { handleProjectMemberTool } from "../../tools/member-tools.js";
@@ -287,6 +298,24 @@ describe("handleToolCall – document tool routing", () => {
 			stubClients.docClient,
 			stubClients.extendedClient,
 		);
+	});
+});
+
+describe("handleToolCall – document mirror tool routing", () => {
+	it.each([
+		"pull_docs",
+		"push_docs",
+	])("lists %s and routes it to handleDocMirrorTool only", async (name) => {
+		expect(getAllTools().map((t) => t.name)).toContain(name);
+		vi.mocked(handleDocMirrorTool).mockClear();
+		vi.mocked(handleFilesystemDocTool).mockClear();
+		await handleToolCall(makeRequest(name), stubClients);
+		expect(handleDocMirrorTool).toHaveBeenCalledWith(
+			name,
+			{},
+			stubClients.docClient,
+		);
+		expect(handleFilesystemDocTool).not.toHaveBeenCalled();
 	});
 });
 

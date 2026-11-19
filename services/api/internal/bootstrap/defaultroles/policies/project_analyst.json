@@ -18,7 +18,7 @@
         "agents:read",
         "annotations:read",
         "conversations:read",
-        "docs:read",
+        "docs:read", "files:read",
         "environments:read",
         "git:read",
         "project.members:read",
@@ -36,7 +36,8 @@
       "effect": "Allow",
       "actions": [
         "conversations:write",
-        "docs:write"
+        "docs:write",
+        "files:write"
       ],
       "resources": [
         "project/PROJECT_ID/*"

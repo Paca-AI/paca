@@ -484,7 +484,7 @@ export function ConversationView({
 			);
 		}
 		return (
-			<div className="flex flex-col h-full items-center justify-center text-muted-foreground/50 gap-3">
+			<div className="flex flex-col h-full items-center justify-center text-muted-foreground/90 gap-3">
 				<Bot className="size-10" />
 				<p className="text-sm">{t("agents.conversationView.notFound")}</p>
 			</div>
@@ -542,7 +542,7 @@ export function ConversationView({
 	return (
 		<div className="flex flex-col h-full min-h-0">
 			{/* Header */}
-			<div className="shrink-0 border-b border-border/40 px-5 py-3 flex items-center gap-3 bg-background/80 backdrop-blur-sm">
+			<div className="shrink-0 border-b border-border/60 px-5 py-3 flex items-center gap-3 bg-background/80 backdrop-blur-sm">
 				<div className="flex items-center gap-2 min-w-0 flex-1">
 					<Bot className="size-4 text-primary shrink-0" />
 					<span className="text-sm font-medium truncate">

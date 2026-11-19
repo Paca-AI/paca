@@ -6,6 +6,7 @@ import auth from "./locales/en/auth.json";
 import chat from "./locales/en/chat.json";
 import common from "./locales/en/common.json";
 import errors from "./locales/en/errors.json";
+import files from "./locales/en/files.json";
 import plugins from "./locales/en/plugins.json";
 import profile from "./locales/en/profile.json";
 import projects from "./locales/en/projects.json";
@@ -23,6 +24,7 @@ declare module "i18next" {
 			chat: typeof chat;
 			common: typeof common;
 			errors: typeof errors;
+			files: typeof files;
 			plugins: typeof plugins;
 			profile: typeof profile;
 			projects: typeof projects;

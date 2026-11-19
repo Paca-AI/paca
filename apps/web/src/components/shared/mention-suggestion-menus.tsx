@@ -11,6 +11,7 @@ import {
 import { Workflow } from "lucide-react";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { useDebouncedAsyncCallback } from "@/hooks/use-debounced-callback";
+import { useStableCallback } from "@/hooks/use-stable-callback";
 import {
 	searchMentionableDocuments,
 	searchMentionableMembers,
@@ -41,6 +42,24 @@ interface MentionSuggestionMenuProps {
 	 *  queried on demand instead of being preloaded in full (see
 	 *  mention-api.ts). */
 	projectId?: string | null;
+}
+
+/**
+ * Keeps the items of each group together, in the order the groups first
+ * appear. The menu renders one label per run of items in a group and keys it
+ * by the group name, so an item added at the end with a group that already
+ * appeared earlier (the Mermaid item, in "Advanced") produces two labels with
+ * the same key. React then reuses and drops DOM nodes unpredictably, and
+ * clicking an item with the mouse stops working.
+ */
+export function groupContiguously<T extends { group?: string }>(
+	items: readonly T[],
+): T[] {
+	const order: (string | undefined)[] = [];
+	for (const item of items) {
+		if (!order.includes(item.group)) order.push(item.group);
+	}
+	return order.flatMap((group) => items.filter((item) => item.group === group));
 }
 
 export function MentionSuggestionMenus({
@@ -155,43 +174,55 @@ export function MentionSuggestionMenus({
 		}));
 	};
 
-	const getSlashMenuItems = (): DefaultReactSuggestionItem[] => [
-		...getDefaultReactSlashMenuItems(editor),
-		{
-			title: "Mermaid Diagram",
-			subtext: "Insert a Mermaid diagram",
-			aliases: ["mermaid", "diagram", "flowchart", "graph", "sequence"],
-			group: "Advanced",
-			icon: <Workflow size={18} />,
-			onItemClick: () => {
-				insertOrUpdateBlockForSlashMenu(editor, { type: "mermaid" });
+	const getSlashMenuItems = (): DefaultReactSuggestionItem[] =>
+		groupContiguously([
+			...getDefaultReactSlashMenuItems(editor),
+			{
+				title: "Mermaid Diagram",
+				subtext: "Insert a Mermaid diagram",
+				aliases: ["mermaid", "diagram", "flowchart", "graph", "sequence"],
+				group: "Advanced",
+				icon: <Workflow size={18} />,
+				onItemClick: () => {
+					insertOrUpdateBlockForSlashMenu(editor, { type: "mermaid" });
+				},
 			},
-		},
-	];
+		]);
+
+	// BlockNote reloads a menu's items whenever the identity of its getItems
+	// changes, and closes the menu when a reload comes back with nothing. These
+	// must therefore not be recreated on every render: in a collaborative editor
+	// the parent re-renders as peers' cursors move, which made the menu opened
+	// by the "+" button close itself a moment after it appeared.
+	const loadSlashItems = useStableCallback(async (query: string) =>
+		filterSuggestionItems(getSlashMenuItems(), query),
+	);
+	const loadMentionItems = useStableCallback(async (query: string) =>
+		// Already filtered server-side by `query`.
+		getTeamMentionItems(query),
+	);
+	const loadReferenceItems = useStableCallback(async (query: string) => [
+		// Tasks and documents are already filtered server-side by
+		// `query`; re-running filterSuggestionItems here would
+		// incorrectly drop matches on the "#<task_number>" subtext
+		// for non-title search terms.
+		...(await getTaskReferenceItems(query)),
+		...(await getDocReferenceItems(query)),
+	]);
 
 	return (
 		<>
 			<SuggestionMenuController
 				triggerCharacter="/"
-				getItems={async (query) =>
-					filterSuggestionItems(getSlashMenuItems(), query)
-				}
+				getItems={loadSlashItems}
 			/>
 			<SuggestionMenuController
 				triggerCharacter="@"
-				// Already filtered server-side by `query`.
-				getItems={async (query) => getTeamMentionItems(query)}
+				getItems={loadMentionItems}
 			/>
 			<SuggestionMenuController
 				triggerCharacter="#"
-				getItems={async (query) => [
-					// Tasks and documents are already filtered server-side by
-					// `query`; re-running filterSuggestionItems here would
-					// incorrectly drop matches on the "#<task_number>" subtext
-					// for non-title search terms.
-					...(await getTaskReferenceItems(query)),
-					...(await getDocReferenceItems(query)),
-				]}
+				getItems={loadReferenceItems}
 			/>
 		</>
 	);

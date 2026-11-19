@@ -1,4 +1,5 @@
 import {
+	type UseQueryResult,
 	useInfiniteQuery,
 	useMutation,
 	useQueries,
@@ -7,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Spinner } from "@/components/ui/spinner";
+import { useStableCallback } from "@/hooks/use-stable-callback";
 import { notifyError } from "@/lib/notify";
 
 // Upper bound for manual-sort positions.  All computed positions stay strictly
@@ -135,13 +137,13 @@ function ListViewSkeleton() {
 	return (
 		<div className="flex flex-col overflow-hidden h-full">
 			{/* group header */}
-			<div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/30 bg-muted/20">
+			<div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/50 bg-muted/20">
 				<Skeleton className="size-4 rounded" />
 				<Skeleton className="h-3.5 w-20" />
 				<Skeleton className="h-4 w-6 rounded-full ml-1" />
 			</div>
 			{/* column header row */}
-			<div className="flex items-center gap-4 px-4 py-2 border-b border-border/20 bg-muted/10">
+			<div className="flex items-center gap-4 px-4 py-2 border-b border-border/50 bg-muted/10">
 				<Skeleton className="h-3 w-14 shrink-0" />
 				<Skeleton className="h-3 flex-1" />
 				<Skeleton className="h-3 w-16 shrink-0" />
@@ -159,7 +161,7 @@ function ListViewSkeleton() {
 			].map(({ id, w, wp, ws }) => (
 				<div
 					key={id}
-					className="flex items-center gap-4 px-4 py-3 border-b border-border/15 last:border-0"
+					className="flex items-center gap-4 px-4 py-3 border-b border-border/50 last:border-0"
 				>
 					<Skeleton className="size-5 rounded shrink-0" />
 					<Skeleton className={`h-3.5 ${w} shrink-0`} />
@@ -281,6 +283,22 @@ function buildColumnFilter(
 		};
 	}
 	return { ...baseOpts, ...group };
+}
+
+/** The slice of each column query the layout reads. Returned through
+ *  `useQueries`' `combine` so the array keeps its identity until a column's
+ *  data or status really changes: a plain `useQueries()` result is a new
+ *  array on every render, which made `tasks` — and everything derived from it
+ *  (members, column definitions, pagination) — recompute on every render and
+ *  re-render every card on the board. */
+function combineColumnQueries(
+	results: UseQueryResult<Awaited<ReturnType<typeof listAllTasks>>>[],
+) {
+	return results.map((q) => ({
+		data: q.data,
+		dataUpdatedAt: q.dataUpdatedAt,
+		fetchStatus: q.fetchStatus,
+	}));
 }
 
 /** Sets `?taskId=` on the current URL without triggering a route navigation. */
@@ -949,6 +967,7 @@ export function InteractionLayout({
 	>({});
 
 	const columnQueries = useQueries({
+		combine: combineColumnQueries,
 		queries: colQueriesEnabled
 			? fetchColumnDefs.map((col) => {
 					const effectivePageSize =
@@ -1733,13 +1752,12 @@ export function InteractionLayout({
 			if (selectedTaskId === taskId) setSelectedTaskId(null);
 		},
 	});
-	const handleRequestDeleteTask = useCallback(
-		(taskId: string) => {
-			const task = tasks.find((t) => t.id === taskId);
-			if (task) setDeleteConfirmTask(task);
-		},
-		[tasks],
-	);
+	// Stable identity: it is handed to every card, and depending on `tasks`
+	// would re-render all of them each time a page of tasks loads.
+	const handleRequestDeleteTask = useStableCallback((taskId: string) => {
+		const task = tasks.find((t) => t.id === taskId);
+		if (task) setDeleteConfirmTask(task);
+	});
 
 	const createViewMutation = useMutation({
 		meta: { success: "created", subject: "view" },
@@ -1952,7 +1970,7 @@ export function InteractionLayout({
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
 			{/* Header */}
-			<div className="shrink-0 border-b border-border/30 px-8 py-5">
+			<div className="shrink-0 border-b border-border/50 px-8 py-5">
 				<div className="flex flex-wrap items-center gap-3">
 					<h1 className="font-[Syne] text-2xl font-bold tracking-tight flex-1 min-w-[8rem]">
 						{title}
@@ -1976,7 +1994,7 @@ export function InteractionLayout({
 			</div>
 
 			{/* View tab bar */}
-			<div className="flex shrink-0 items-center gap-1 border-b border-border/25 bg-muted/20 px-4">
+			<div className="flex shrink-0 items-center gap-1 border-b border-border/50 bg-muted/20 px-4">
 				<div className="flex items-center gap-0.5 overflow-x-auto overflow-y-hidden flex-1 min-w-0">
 					{displayViews.map((view) => {
 						const isActive = view.id === activeView?.id;
@@ -2029,7 +2047,7 @@ export function InteractionLayout({
 										"flex items-center gap-1.5 px-2.5 py-2.5 text-xs font-medium transition-all duration-150",
 										isActive
 											? "text-primary"
-											: "text-muted-foreground/80 hover:text-foreground",
+											: "text-muted-foreground hover:text-foreground",
 									)}
 								>
 									{view.layout === "Board" ? (
@@ -2050,7 +2068,7 @@ export function InteractionLayout({
 											render={
 												<button
 													type="button"
-													className="flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
+													className="flex size-6 items-center justify-center rounded-md text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
 												/>
 											}
 										>
@@ -2097,10 +2115,10 @@ export function InteractionLayout({
 					)}
 				</div>
 
-				<div className="flex shrink-0 items-center gap-1 pl-3 border-l border-border/25 ml-2">
+				<div className="flex shrink-0 items-center gap-1 pl-3 border-l border-border/50 ml-2">
 					{searchOpen ? (
-						<div className="flex items-center gap-1.5 rounded-lg border border-border/30 bg-muted/15 px-3 py-1.5 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15 transition-all duration-150">
-							<Search className="size-3.5 text-muted-foreground/60 shrink-0" />
+						<div className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/15 px-3 py-1.5 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15 transition-all duration-150">
+							<Search className="size-3.5 text-muted-foreground/90 shrink-0" />
 							<input
 								ref={searchRef}
 								value={searchQuery}
@@ -2109,7 +2127,7 @@ export function InteractionLayout({
 									debouncedSetSearchQuery(e.target.value);
 								}}
 								placeholder={t("layout.shell.searchTasksPlaceholder")}
-								className="w-36 bg-transparent text-xs font-medium outline-none placeholder:text-muted-foreground/50"
+								className="w-36 bg-transparent text-xs font-medium outline-none placeholder:text-muted-foreground/90"
 								onKeyDown={(e) => {
 									if (e.key === "Escape") {
 										setSearchOpen(false);
@@ -2125,7 +2143,7 @@ export function InteractionLayout({
 									setSearchQuery("");
 									setDebouncedSearchQuery("");
 								}}
-								className="flex size-5 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground transition-all duration-150"
+								className="flex size-5 items-center justify-center rounded-md text-muted-foreground/90 hover:text-foreground transition-all duration-150"
 							>
 								<X className="size-3" />
 							</button>
@@ -2135,7 +2153,7 @@ export function InteractionLayout({
 							type="button"
 							onClick={() => setSearchOpen(true)}
 							title={`${t("layout.shell.searchTasksPlaceholder")} (${formatChord({ mod: true, key: "F" }, isMacPlatform())})`}
-							className="flex size-7 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
+							className="flex size-7 items-center justify-center rounded-md text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
 						>
 							<Search className="size-3.5" />
 						</button>
@@ -2166,7 +2184,7 @@ export function InteractionLayout({
 			</div>
 
 			{columnsTruncated && (
-				<p className="shrink-0 border-b border-border/25 bg-muted/40 px-8 py-2 text-xs text-muted-foreground">
+				<p className="shrink-0 border-b border-border/50 bg-muted/40 px-8 py-2 text-xs text-muted-foreground">
 					{t("layout.shell.columnsTruncated", { max: MAX_COLUMNS })}
 				</p>
 			)}
@@ -2246,6 +2264,7 @@ export function InteractionLayout({
 				) : activeView?.layout === "Gantt" ? (
 					<GanttView
 						projectId={projectId}
+						taskIdPrefix={taskIdPrefix}
 						childFilters={childFilters}
 						viewKey={subtaskViewKey}
 						tasks={tasks}

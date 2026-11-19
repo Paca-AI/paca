@@ -65,9 +65,9 @@ func TestLegacyBuiltinKeysMapOntoBuiltinActions(t *testing.T) {
 		}
 	}
 	for _, a := range iam.BuiltinActions() {
-		// Service accounts, the Git integration, login security and chat and
+		// Service accounts, the file manager, the Git integration, login security and chat and
 		// meetings did not exist when the legacy keys did.
-		if strings.HasPrefix(string(a), "service_accounts:") || strings.HasPrefix(string(a), "git") || strings.HasPrefix(string(a), "settings.security:") ||
+		if strings.HasPrefix(string(a), "service_accounts:") || strings.HasPrefix(string(a), "files:") || strings.HasPrefix(string(a), "git") || strings.HasPrefix(string(a), "settings.security:") ||
 			strings.HasPrefix(string(a), "channels:") || strings.HasPrefix(string(a), "messages:") || strings.HasPrefix(string(a), "calls:") || strings.HasPrefix(string(a), "proposals:") {
 			continue
 		}

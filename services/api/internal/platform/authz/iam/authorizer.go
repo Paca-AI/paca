@@ -386,6 +386,8 @@ func PlatformRootFor(action string) string {
 		// "channel", which "channel/*" also covers, so a policy can allow the
 		// collection unconditionally and each channel on its attributes.
 		return "channel"
+	case "files":
+		return "file/*"
 	}
 	return ""
 }

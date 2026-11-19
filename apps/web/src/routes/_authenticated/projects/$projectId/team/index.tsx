@@ -1357,7 +1357,7 @@ function TeamPage() {
 						{(members ?? []).length === 0 ? (
 							<div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 bg-muted/10 py-14">
 								<div className="flex size-12 items-center justify-center rounded-xl bg-muted">
-									<Search className="size-6 text-muted-foreground/60" />
+									<Search className="size-6 text-muted-foreground/90" />
 								</div>
 								<div className="text-center">
 									<p className="text-sm font-medium">

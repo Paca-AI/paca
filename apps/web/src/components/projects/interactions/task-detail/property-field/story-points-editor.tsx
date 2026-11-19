@@ -94,7 +94,7 @@ export function StoryPointsEditor({
 						onChange?.(prev);
 					}
 				}}
-				className="w-12 rounded-lg border border-border/30 bg-muted/25 px-1.5 py-1 text-sm text-center tabular-nums font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150 placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+				className="w-12 rounded-lg border border-border/50 bg-muted/25 px-1.5 py-1 text-sm text-center tabular-nums font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150 placeholder:text-muted-foreground/90 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
 			/>
 			<button
 				type="button"

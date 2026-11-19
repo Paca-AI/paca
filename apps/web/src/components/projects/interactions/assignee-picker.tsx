@@ -74,7 +74,7 @@ export function AssigneePicker({
 		<div
 			className={cn(
 				s.box,
-				"flex items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary ring-1 ring-border/25",
+				"flex items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary ring-1 ring-border/50",
 			)}
 		>
 			<Sparkles className={s.sparkle} />
@@ -98,7 +98,7 @@ export function AssigneePicker({
 				<div
 					className={cn(
 						s.box,
-						"flex items-center justify-center rounded-full bg-linear-to-br from-muted/80 to-muted/40 text-muted-foreground text-xs font-bold ring-1 ring-border/25",
+						"flex items-center justify-center rounded-full bg-linear-to-br from-muted/80 to-muted/40 text-muted-foreground text-xs font-bold ring-1 ring-border/50",
 					)}
 				>
 					<User className={s.icon} />
@@ -132,7 +132,7 @@ export function AssigneePicker({
 					"text-sm",
 					names
 						? "font-medium text-foreground"
-						: "italic text-muted-foreground/50",
+						: "italic text-muted-foreground/90",
 				)}
 				text={names || t("taskDetail.common.unassigned")}
 			/>
@@ -159,7 +159,7 @@ export function AssigneePicker({
 				{trigger}
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-52 p-1 rounded-xl border border-border/40 shadow-lg"
+				className="w-52 p-1 rounded-xl border border-border/60 shadow-lg"
 				align={align}
 			>
 				{/* biome-ignore lint/a11y/noStaticElementInteractions: portaled content still bubbles React events to the clickable card/row; this only stops that */}

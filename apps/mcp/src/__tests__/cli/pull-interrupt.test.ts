@@ -391,9 +391,14 @@ describe("runPull killed between moves and writes", () => {
 			await killAtWrite(t.client, 1);
 			fs.writeFileSync(path.join(dir, "X.md"), "MY EDIT\n");
 			t.set("v3");
-			expect(await killAtWrite(t.client, 0)).toBe(2); // kept, nothing written
+			// Kept; the only write is Paca's version next to it.
+			expect(await killAtWrite(t.client, 0)).toBe("killed");
+			expect(t.read()).toBe("MY EDIT\n");
 			expect(await pull(t.client)).toBe(2);
 			expect(t.read()).toBe("MY EDIT\n");
+			expect(fs.readFileSync(path.join(dir, "X.remote.md"), "utf8")).toContain(
+				"v3",
+			);
 		});
 
 		it("is removed, not kept, when the document is then deleted", async () => {

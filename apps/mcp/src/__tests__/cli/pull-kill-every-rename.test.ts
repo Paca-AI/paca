@@ -167,6 +167,11 @@ describe("a pull killed at any rename", () => {
 			return {
 				code,
 				files,
+				folders: fs
+					.readdirSync(dir, { withFileTypes: true })
+					.filter((e) => e.isDirectory() && !e.name.startsWith("."))
+					.map((e) => e.name)
+					.sort(),
 				recorded: Object.values(state.docs as Record<string, { file: string }>)
 					.map((d) => d.file)
 					.sort(),
@@ -186,6 +191,8 @@ describe("a pull killed at any rename", () => {
 			const want = ["A.md", "B.md", "E.md", "G/C.md", "N.md"];
 			expect({ n, files: r.files }).toEqual({ n, files: want });
 			expect({ n, recorded: r.recorded }).toEqual({ n, recorded: want });
+			// The renamed folder's old name is gone, not left empty.
+			expect({ n, folders: r.folders }).toEqual({ n, folders: ["G"] });
 			expect(r.content["B.md"]).toContain("local");
 			expect(r.content["A.md"]).toBe("two v2");
 			expect(r.content["E.md"]).toBe("four");

@@ -28,6 +28,7 @@ import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import { useMemberSearch } from "@/hooks/use-member-search";
 import { copyToClipboard } from "@/lib/clipboard";
 import type { Task } from "@/lib/interaction-api";
+import { taskShareUrl } from "@/lib/interaction-api";
 import {
 	findEpicType,
 	type TaskStatus,
@@ -133,8 +134,7 @@ export function TaskContextMenu({
 		void copyToClipboard(taskLabel);
 	};
 	const copyLink = () => {
-		const url = `${window.location.origin}/projects/${projectId}/tasks/${task.id}`;
-		void copyToClipboard(url);
+		void copyToClipboard(taskShareUrl(task, taskIdPrefix, projectId));
 	};
 
 	return (
@@ -246,7 +246,7 @@ export function TaskContextMenu({
 								)}
 							</ContextMenuItem>
 							<div className="relative px-1 pt-1 pb-1.5">
-								<Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+								<Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/90" />
 								<input
 									type="text"
 									value={memberSearch.query}
@@ -260,7 +260,7 @@ export function TaskContextMenu({
 									onChange={(e) => memberSearch.onQueryChange(e.target.value)}
 									placeholder={t("taskDetail.searchableList.searchPlaceholder")}
 									aria-label={t("taskDetail.searchableList.searchPlaceholder")}
-									className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+									className="w-full rounded-lg border border-border/50 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/90 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
 								/>
 							</div>
 							<div
@@ -305,16 +305,16 @@ export function TaskContextMenu({
 									<div className="flex items-center justify-center py-4">
 										<Spinner
 											aria-hidden="true"
-											className="text-muted-foreground/50"
+											className="text-muted-foreground/90"
 										/>
 									</div>
 								) : memberSearch.members.length === 0 ? (
-									<p className="px-3 py-4 text-center text-xs text-muted-foreground/50">
+									<p className="px-3 py-4 text-center text-xs text-muted-foreground/90">
 										{t("taskDetail.searchableList.noResults")}
 									</p>
 								) : null}
 								{memberSearch.isLoadingMore && (
-									<div className="flex items-center justify-center py-2 text-xs text-muted-foreground/50">
+									<div className="flex items-center justify-center py-2 text-xs text-muted-foreground/90">
 										<Spinner aria-hidden="true" className="size-3" />
 									</div>
 								)}
@@ -406,7 +406,7 @@ export function TaskContextMenu({
 								)}
 							</ContextMenuItem>
 							<div className="relative px-1 pt-1 pb-1.5">
-								<Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+								<Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/90" />
 								<input
 									type="text"
 									value={epicSearch}
@@ -419,7 +419,7 @@ export function TaskContextMenu({
 									}}
 									onChange={(e) => setEpicSearch(e.target.value)}
 									placeholder={t("epicPicker.searchPlaceholder")}
-									className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+									className="w-full rounded-lg border border-border/50 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/90 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
 								/>
 							</div>
 							<div
@@ -430,7 +430,7 @@ export function TaskContextMenu({
 									<div className="flex items-center justify-center py-4">
 										<Spinner
 											aria-hidden="true"
-											className="text-muted-foreground/50"
+											className="text-muted-foreground/90"
 										/>
 									</div>
 								) : (
@@ -450,7 +450,7 @@ export function TaskContextMenu({
 											</ContextMenuItem>
 										))}
 										{displayedEpics.length === 0 && (
-											<p className="px-3 py-4 text-center text-xs text-muted-foreground/50">
+											<p className="px-3 py-4 text-center text-xs text-muted-foreground/90">
 												{isEpicSearching
 													? t("epicPicker.noEpicsFound")
 													: t("epicPicker.noEpicsYet")}
@@ -459,7 +459,7 @@ export function TaskContextMenu({
 									</>
 								)}
 								{activeEpicsPagination?.isLoadingMore && (
-									<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+									<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/90">
 										<Spinner aria-hidden="true" className="size-3" />
 										{t("epicPicker.loadingMore")}
 									</div>
