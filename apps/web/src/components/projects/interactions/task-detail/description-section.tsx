@@ -91,7 +91,7 @@ export function DescriptionSection(props: DescriptionSectionProps) {
 	);
 	if (collab.phase === "connecting") {
 		return (
-			<div className="min-h-24 rounded-xl border border-border/25 bg-card/50" />
+			<div className="min-h-24 rounded-xl border border-border/50 bg-card/50" />
 		);
 	}
 	return (
@@ -434,14 +434,14 @@ function DescriptionSectionInner({
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
-				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 flex items-center gap-2">
+				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground flex items-center gap-2">
 					<span>{t("taskDetail.description.title")}</span>
 					<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 				</h3>
 				{canEdit && (
 					<button
 						type="button"
-						className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors duration-150 font-medium"
+						className="flex items-center gap-1.5 text-xs text-muted-foreground/90 hover:text-muted-foreground transition-colors duration-150 font-medium"
 						onClick={() => setWriteWithAIOpen(true)}
 					>
 						<Sparkles className="size-3" />
@@ -452,7 +452,7 @@ function DescriptionSectionInner({
 
 			{/* biome-ignore lint/a11y/noStaticElementInteractions: wrapper captures blur and image/file clicks from the BlockNote rich-text editor */}
 			<div
-				className="rounded-xl border border-border/25 bg-card/50 hover:border-border/50 transition-all duration-200 overflow-hidden [&_.bn-editor]:min-h-20 [&_.bn-editor]:py-3 [&_.bn-editor]:text-base [&_.bn-editor]:leading-relaxed"
+				className="rounded-xl border border-border/50 bg-card/50 hover:border-border/50 transition-all duration-200 overflow-hidden [&_.bn-editor]:min-h-20 [&_.bn-editor]:py-3 [&_.bn-editor]:text-base [&_.bn-editor]:leading-relaxed"
 				onBlur={handleBlur}
 				onKeyDown={handleKeyDown}
 				onClickCapture={handleMediaClick}
@@ -561,7 +561,7 @@ function DescriptionSectionInner({
 										"w-full flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all duration-150",
 										selectedAgentId === agent.id
 											? "border-primary/60 bg-primary/5 text-foreground"
-											: "border-border/40 bg-card/50 hover:border-border/70 hover:bg-muted/30 text-muted-foreground hover:text-foreground",
+											: "border-border/60 bg-card/50 hover:border-border/70 hover:bg-muted/30 text-muted-foreground hover:text-foreground",
 									)}
 								>
 									<div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
@@ -571,7 +571,7 @@ function DescriptionSectionInner({
 										<p className="text-base font-medium leading-tight truncate">
 											{agent.name}
 										</p>
-										<p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
+										<p className="text-xs text-muted-foreground mt-0.5 truncate">
 											@{agent.handle}
 										</p>
 									</div>

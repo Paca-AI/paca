@@ -116,7 +116,7 @@ export function SubtaskRows({
 		<>
 			{filtersActive && total > 0 && children.length < total && (
 				<div
-					className="border-b border-dashed border-border/30 py-1.5 text-xs text-muted-foreground/70"
+					className="border-b border-dashed border-border/30 py-1.5 text-xs text-muted-foreground"
 					style={indent}
 				>
 					{t("board.subtasks.matching", {
@@ -127,7 +127,7 @@ export function SubtaskRows({
 			)}
 			{children.length === 0 && total > 0 && (
 				<div
-					className="border-b border-dashed border-border/30 py-2.5 text-xs text-muted-foreground/60"
+					className="border-b border-dashed border-border/30 py-2.5 text-xs text-muted-foreground/90"
 					style={indent}
 				>
 					{t("board.subtasks.noMatch")}

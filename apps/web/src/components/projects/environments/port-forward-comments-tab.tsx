@@ -110,7 +110,7 @@ export function PortForwardCommentsTab({
 	if (!annotations || annotations.length === 0) {
 		return (
 			<div className="flex flex-col items-center justify-center gap-3 py-10 rounded-xl border border-dashed border-border">
-				<MessageSquare className="size-7 text-muted-foreground/40" />
+				<MessageSquare className="size-7 text-muted-foreground/90" />
 				<p className="text-sm text-muted-foreground">
 					{t("portForwardDetail.comments.empty")}
 				</p>
@@ -218,7 +218,7 @@ function AnnotationCard({
 						<Skeleton className="size-full" />
 					)
 				) : (
-					<ImageOff className="size-5 text-muted-foreground/40" />
+					<ImageOff className="size-5 text-muted-foreground/90" />
 				)}
 			</Link>
 			<div className="min-w-0 flex-1 space-y-1.5">

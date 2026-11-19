@@ -41,7 +41,7 @@ export function TaskDetailPanel({
 			>
 				{task && (
 					<>
-						<SheetHeader className="border-b border-border/25 px-5 py-4 bg-muted/20 gap-2">
+						<SheetHeader className="border-b border-border/50 px-5 py-4 bg-muted/20 gap-2">
 							{/* Type + Status badges */}
 							<div className="flex items-center gap-2 flex-wrap">
 								{taskType && (
@@ -61,7 +61,7 @@ export function TaskDetailPanel({
 									</span>
 								)}
 								{status && (
-									<span className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-muted/40 px-3 py-1 text-xs font-semibold text-muted-foreground tracking-wide">
+									<span className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs font-semibold text-muted-foreground tracking-wide">
 										<span
 											className="size-1.75 rounded-full shrink-0 ring-2 ring-offset-1 ring-offset-background"
 											style={{
@@ -83,7 +83,7 @@ export function TaskDetailPanel({
 						<div className="px-5 py-4 flex flex-col gap-5">
 							{/* Properties */}
 							<div>
-								<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 mb-3 flex items-center gap-2">
+								<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground mb-3 flex items-center gap-2">
 									<span>{t("taskDetail.properties.title")}</span>
 									<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 								</h3>
@@ -122,7 +122,7 @@ export function TaskDetailPanel({
 												</span>
 											</div>
 										) : (
-											<span className="text-sm text-muted-foreground/50 italic">
+											<span className="text-sm text-muted-foreground/90 italic">
 												{t("taskDetail.common.unassigned")}
 											</span>
 										)}
@@ -176,7 +176,7 @@ export function TaskDetailPanel({
 							{/* Description */}
 							{task.description && task.description.length > 0 && (
 								<div>
-									<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 mb-3 flex items-center gap-2">
+									<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground mb-3 flex items-center gap-2">
 										<span>{t("taskDetail.description.title")}</span>
 										<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 									</h3>

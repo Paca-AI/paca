@@ -249,7 +249,7 @@ function CreateCustomFieldDialog({
 							placeholder="release_tag"
 							className="font-mono text-sm"
 						/>
-						<p className="text-xs text-muted-foreground/60">
+						<p className="text-xs text-muted-foreground/90">
 							{t("settings.customFields.fieldKeyHint")}
 						</p>
 					</div>
@@ -363,7 +363,7 @@ function CreateCustomFieldDialog({
 								onBlur={() => setRows(clampRows(rows))}
 								className="h-8 w-24 text-xs"
 							/>
-							<p className="text-xs text-muted-foreground/70">
+							<p className="text-xs text-muted-foreground">
 								{t("settings.customFields.rowsHint", {
 									min: MIN_ROWS,
 									max: MAX_ROWS,
@@ -378,7 +378,7 @@ function CreateCustomFieldDialog({
 							<p className="text-sm font-medium">
 								{t("settings.customFields.requiredLabel")}
 							</p>
-							<p className="text-xs text-muted-foreground/70">
+							<p className="text-xs text-muted-foreground">
 								{t("settings.customFields.requiredHint")}
 							</p>
 						</div>
@@ -395,7 +395,7 @@ function CreateCustomFieldDialog({
 							<p className="text-sm font-medium">
 								{t("settings.customFields.useInSearchLabel")}
 							</p>
-							<p className="text-xs text-muted-foreground/70">
+							<p className="text-xs text-muted-foreground">
 								{t("settings.customFields.useInSearchHint")}
 							</p>
 						</div>
@@ -550,7 +550,7 @@ function EditCustomFieldDialog({
 							disabled
 							className="font-mono text-sm opacity-60"
 						/>
-						<p className="text-xs text-muted-foreground/60">
+						<p className="text-xs text-muted-foreground/90">
 							{t("settings.customFields.fieldKeyImmutableHint")}
 						</p>
 					</div>
@@ -566,7 +566,7 @@ function EditCustomFieldDialog({
 								{uiFieldType}
 							</button>
 						</div>
-						<p className="text-xs text-muted-foreground/60">
+						<p className="text-xs text-muted-foreground/90">
 							{t("settings.customFields.fieldTypeImmutableHint")}
 						</p>
 					</div>
@@ -658,7 +658,7 @@ function EditCustomFieldDialog({
 								onBlur={() => setRows(clampRows(rows))}
 								className="h-8 w-24 text-xs"
 							/>
-							<p className="text-xs text-muted-foreground/70">
+							<p className="text-xs text-muted-foreground">
 								{t("settings.customFields.rowsHint", {
 									min: MIN_ROWS,
 									max: MAX_ROWS,
@@ -673,7 +673,7 @@ function EditCustomFieldDialog({
 							<p className="text-sm font-medium">
 								{t("settings.customFields.requiredLabel")}
 							</p>
-							<p className="text-xs text-muted-foreground/70">
+							<p className="text-xs text-muted-foreground">
 								{t("settings.customFields.requiredHint")}
 							</p>
 						</div>
@@ -690,7 +690,7 @@ function EditCustomFieldDialog({
 							<p className="text-sm font-medium">
 								{t("settings.customFields.useInSearchLabel")}
 							</p>
-							<p className="text-xs text-muted-foreground/70">
+							<p className="text-xs text-muted-foreground">
 								{t("settings.customFields.useInSearchHint")}
 							</p>
 						</div>
@@ -928,7 +928,7 @@ export function CustomFieldsSettings({
 			) : fields.length === 0 ? (
 				<div className="mt-4 flex flex-col items-center gap-4 rounded-xl border border-dashed border-border/60 bg-muted/10 py-14 text-center">
 					<div className="flex size-11 items-center justify-center rounded-xl bg-muted">
-						<Plus className="size-5 text-muted-foreground/60" />
+						<Plus className="size-5 text-muted-foreground/90" />
 					</div>
 					<div>
 						<p className="text-sm font-medium">
@@ -982,7 +982,7 @@ export function CustomFieldsSettings({
 										{field.field_key}
 									</TableCell>
 									<TableCell className="px-5">
-										<span className="inline-flex items-center rounded-md border border-border/40 bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+										<span className="inline-flex items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
 											{toUIFieldType(field.field_type, t)}
 										</span>
 									</TableCell>
@@ -993,7 +993,7 @@ export function CustomFieldsSettings({
 												{t("settings.customFields.yes")}
 											</span>
 										) : (
-											<span className="text-xs text-muted-foreground/50">
+											<span className="text-xs text-muted-foreground/90">
 												{t("settings.customFields.no")}
 											</span>
 										)}
@@ -1005,7 +1005,7 @@ export function CustomFieldsSettings({
 												{t("settings.customFields.yes")}
 											</span>
 										) : (
-											<span className="text-xs text-muted-foreground/50">
+											<span className="text-xs text-muted-foreground/90">
 												{t("settings.customFields.no")}
 											</span>
 										)}

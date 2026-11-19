@@ -37,9 +37,9 @@ export function SprintPicker({
 	const current = sprintId ? getSprint(sprintId) : undefined;
 
 	const trigger = (
-		<span className="inline-flex items-center gap-2 rounded-full border border-border/30 bg-muted/30 px-3 py-1 text-sm font-semibold text-muted-foreground">
+		<span className="inline-flex items-center gap-2 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-sm font-semibold text-muted-foreground">
 			{sprintId ? (
-				<KanbanSquare className="size-3 shrink-0 text-muted-foreground/70" />
+				<KanbanSquare className="size-3 shrink-0 text-muted-foreground" />
 			) : (
 				<BookOpen className="size-3 shrink-0 opacity-60" />
 			)}
@@ -60,7 +60,7 @@ export function SprintPicker({
 				{trigger}
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-56 p-1 rounded-xl border border-border/40 shadow-lg"
+				className="w-56 p-1 rounded-xl border border-border/60 shadow-lg"
 				align="start"
 			>
 				<SearchableList
@@ -90,10 +90,10 @@ export function SprintPicker({
 						},
 						content: (
 							<>
-								<KanbanSquare className="size-3.5 shrink-0 text-muted-foreground/70" />
+								<KanbanSquare className="size-3.5 shrink-0 text-muted-foreground" />
 								<span className="flex-1 truncate text-left">{s.name}</span>
 								{s.status === "planned" && (
-									<span className="text-[11px] text-muted-foreground/60">
+									<span className="text-[11px] text-muted-foreground/90">
 										{t("taskDetail.properties.sprintNotStarted")}
 									</span>
 								)}

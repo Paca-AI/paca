@@ -113,7 +113,7 @@ export function AttachmentsSection({
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
-				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 flex items-center gap-2">
+				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground flex items-center gap-2">
 					<span>{t("taskDetail.attachments.title")}</span>
 					<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 				</h3>
@@ -122,7 +122,7 @@ export function AttachmentsSection({
 						<button
 							type="button"
 							onClick={() => fileInputRef.current?.click()}
-							className="flex size-7 items-center justify-center rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-all duration-150"
+							className="flex size-7 items-center justify-center rounded-lg text-muted-foreground/90 hover:text-foreground hover:bg-muted/50 transition-all duration-150"
 							aria-label={t("taskDetail.attachments.uploadLabel")}
 						>
 							<Upload className="size-3.5" />
@@ -198,7 +198,7 @@ export function AttachmentsSection({
 						"w-full rounded-xl border-2 border-dashed p-8 text-center transition-all duration-200 cursor-pointer group/drop",
 						isDragOver
 							? "border-primary/50 bg-primary/5 text-primary shadow-sm shadow-primary/10"
-							: "border-border/20 bg-muted/5 text-muted-foreground/50 hover:border-border/40 hover:bg-muted/10",
+							: "border-border/50 bg-muted/5 text-muted-foreground/90 hover:border-border/60 hover:bg-muted/10",
 					)}
 				>
 					<div
@@ -206,15 +206,15 @@ export function AttachmentsSection({
 							"mx-auto mb-3 flex size-10 items-center justify-center rounded-xl transition-all duration-200",
 							isDragOver
 								? "bg-primary/10 text-primary"
-								: "bg-muted/30 text-muted-foreground/45 group-hover/drop:bg-muted/40 group-hover/drop:text-muted-foreground/70",
+								: "bg-muted/30 text-muted-foreground/90 group-hover/drop:bg-muted/40 group-hover/drop:text-muted-foreground",
 						)}
 					>
 						<Paperclip className="size-5" />
 					</div>
-					<p className="text-sm font-medium text-muted-foreground/70 group-hover/drop:text-muted-foreground transition-colors">
+					<p className="text-sm font-medium text-muted-foreground group-hover/drop:text-muted-foreground transition-colors">
 						{t("taskDetail.attachments.dropZoneTitle")}
 					</p>
-					<p className="text-xs mt-1.5 text-muted-foreground/45 transition-colors">
+					<p className="text-xs mt-1.5 text-muted-foreground/90 transition-colors">
 						{t("taskDetail.attachments.dropZoneSubtitle")}
 					</p>
 				</button>

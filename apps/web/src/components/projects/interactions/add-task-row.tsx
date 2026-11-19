@@ -71,7 +71,7 @@ export function AddTaskRow({
 			<button
 				type="button"
 				onClick={cancel}
-				className="flex items-center gap-1.5 rounded-lg bg-muted/40 text-muted-foreground/80 hover:bg-muted/60 hover:text-foreground px-2.5 py-1.5 text-xs font-semibold transition-all duration-150"
+				className="flex items-center gap-1.5 rounded-lg bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground px-2.5 py-1.5 text-xs font-semibold transition-all duration-150"
 			>
 				{t("board.addTaskRow.cancel")}
 			</button>
@@ -107,7 +107,7 @@ export function AddTaskRow({
 				type="button"
 				data-shortcut="add-task-trigger"
 				onClick={openForm}
-				className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-muted-foreground/70 hover:text-foreground hover:bg-muted/30 transition-all duration-150 w-full"
+				className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-all duration-150 w-full"
 			>
 				<Plus className="size-3" />
 				{resolvedLabel}
@@ -119,7 +119,7 @@ export function AddTaskRow({
 
 	if (variant === "board") {
 		return (
-			<div className="rounded-xl border border-border/30 bg-card/50 p-2.5 shadow-sm">
+			<div className="rounded-xl border border-border/50 bg-card/50 p-2.5 shadow-sm">
 				{typeSelector && (
 					<div className="flex items-center gap-1.5 mb-2">{typeSelector}</div>
 				)}
@@ -132,7 +132,7 @@ export function AddTaskRow({
 						if (e.key === "Escape") cancel();
 					}}
 					placeholder={resolvedPlaceholder}
-					className="w-full rounded-lg border border-border/30 bg-muted/15 px-3 py-2 text-sm font-medium outline-none placeholder:text-muted-foreground/50 focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all duration-150"
+					className="w-full rounded-lg border border-border/50 bg-muted/15 px-3 py-2 text-sm font-medium outline-none placeholder:text-muted-foreground/90 focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all duration-150"
 				/>
 				<div className="mt-2 flex items-center gap-1.5 justify-end">
 					{actionButtons}
@@ -156,7 +156,7 @@ export function AddTaskRow({
 						if (e.key === "Escape") cancel();
 					}}
 					placeholder={resolvedPlaceholder}
-					className="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground/50"
+					className="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground/90"
 				/>
 				{actionButtons}
 			</div>

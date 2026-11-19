@@ -91,7 +91,7 @@ export function MultiUserEditor({
 				{userValues.map((u) => (
 					<span
 						key={u.value}
-						className="inline-flex items-center gap-1.5 rounded-full border border-border/30 bg-muted/30 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground"
+						className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground"
 					>
 						<EntityAvatar {...u.avatar} size="xs" />
 						{u.label}

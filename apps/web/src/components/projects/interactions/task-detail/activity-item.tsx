@@ -230,19 +230,19 @@ export function ActivityItem({
 					"flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold mt-0.5 ring-1",
 					isComment
 						? "bg-linear-to-br from-primary/20 to-primary/10 text-primary ring-primary/15"
-						: "bg-muted/40 text-muted-foreground/80 ring-border/20",
+						: "bg-muted/40 text-muted-foreground ring-border/50",
 				)}
 			>
 				{initial}
 			</div>
 			<div className="flex-1 min-w-0">
 				{isComment ? (
-					<div className="rounded-xl rounded-tl-lg border border-border/25 bg-card/70 px-3.5 py-2.5">
+					<div className="rounded-xl rounded-tl-lg border border-border/50 bg-card/70 px-3.5 py-2.5">
 						<div className="mb-1 flex items-center gap-2">
 							<span className="text-sm font-semibold text-foreground">
 								{displayName}
 							</span>
-							<span className="text-xs text-muted-foreground/50">
+							<span className="text-xs text-muted-foreground/90">
 								{timeAgo(entry.created_at, tCommon)}
 							</span>
 						</div>
@@ -261,10 +261,10 @@ export function ActivityItem({
 						<span className="text-sm font-medium text-foreground/80">
 							{displayName}
 						</span>
-						<span className="text-sm text-muted-foreground/70">
+						<span className="text-sm text-muted-foreground">
 							{activityDescription(entry, names, t)}
 						</span>
-						<span className="text-xs text-muted-foreground/45">
+						<span className="text-xs text-muted-foreground/90">
 							{timeAgo(entry.created_at, tCommon)}
 						</span>
 					</div>

@@ -157,7 +157,7 @@ function FormActions({
 }
 
 const FORM_CLASS =
-	"flex flex-col gap-3 rounded-xl border border-border/25 bg-card/50 p-4";
+	"flex flex-col gap-3 rounded-xl border border-border/50 bg-card/50 p-4";
 
 // ── Link a pull request ──────────────────────────────────────────────────────
 

@@ -15,7 +15,7 @@ function OptionContent({ option }: { option: SelectOption }) {
 			<span className="flex-1 text-left">
 				{option.label}
 				{option.hint && (
-					<span className="ml-1.5 text-xs text-muted-foreground/60">
+					<span className="ml-1.5 text-xs text-muted-foreground/90">
 						{option.hint}
 					</span>
 				)}

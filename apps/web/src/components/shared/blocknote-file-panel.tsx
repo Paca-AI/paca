@@ -139,7 +139,7 @@ export function FileBlockPanel({ blockId }: FilePanelProps) {
 								"group/drop flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed p-8 text-center transition-all duration-200",
 								dragging
 									? "border-primary/50 bg-primary/5 text-primary"
-									: "border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:bg-muted/40",
+									: "border-border/60 bg-muted/20 text-muted-foreground hover:border-border hover:bg-muted/40",
 							)}
 						>
 							{uploading ? (

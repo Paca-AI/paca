@@ -52,7 +52,7 @@ export function ManagedCopyBanner({
 	return (
 		<section
 			aria-label={label(source)}
-			className="mb-4 flex items-start gap-3 rounded-lg border border-border/40 bg-muted/30 px-4 py-3 text-sm"
+			className="mb-4 flex items-start gap-3 rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-sm"
 		>
 			<StateIcon
 				aria-hidden

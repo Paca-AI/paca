@@ -128,7 +128,7 @@ export function ContextItemReadOnlyRow({ items }: { items: ContextItem[] }) {
 			{items.map((item) => (
 				<span
 					key={contextItemKey(item.type, item.id)}
-					className="inline-flex items-center gap-1 rounded-md border border-border/20 bg-muted/50 px-2 py-0.5 text-xs font-medium"
+					className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-muted/50 px-2 py-0.5 text-xs font-medium"
 				>
 					<ContextItemLabel item={item} />
 				</span>
@@ -234,7 +234,7 @@ function ContextPickerDialog({
 						<div className="flex justify-center py-6">
 							<Spinner
 								aria-hidden="true"
-								className="text-muted-foreground/60"
+								className="text-muted-foreground/90"
 							/>
 						</div>
 					) : results.length === 0 ? (
@@ -288,7 +288,7 @@ function ContextPickerDialog({
 								<div className="flex justify-center py-2">
 									<Spinner
 										aria-hidden="true"
-										className="size-3.5 text-muted-foreground/60"
+										className="size-3.5 text-muted-foreground/90"
 									/>
 								</div>
 							)}
@@ -370,7 +370,7 @@ export function ContextInjectionRow() {
 			{items.map((item) => (
 				<span
 					key={contextItemKey(item.type, item.id)}
-					className="inline-flex items-center gap-1 rounded-md border border-border/20 bg-muted/50 px-2 py-0.5 text-xs font-medium text-foreground/80"
+					className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-muted/50 px-2 py-0.5 text-xs font-medium text-foreground/80"
 				>
 					<RemovableContextItemLabel item={item} />
 					<button
@@ -379,7 +379,7 @@ export function ContextInjectionRow() {
 						aria-label={t("agents.thread.contextInjection.removeContextItem", {
 							title: item.title,
 						})}
-						className="text-muted-foreground/60 transition-colors hover:text-destructive"
+						className="text-muted-foreground/90 transition-colors hover:text-destructive"
 					>
 						<X className="size-2.5" />
 					</button>
@@ -388,7 +388,7 @@ export function ContextInjectionRow() {
 			<button
 				type="button"
 				onClick={() => setPickerOpen(true)}
-				className="inline-flex items-center gap-1 rounded-md border border-dashed border-border/30 px-2 py-0.5 text-xs text-muted-foreground/60 transition-all duration-150 hover:border-border/60 hover:text-muted-foreground"
+				className="inline-flex items-center gap-1 rounded-md border border-dashed border-border/50 px-2 py-0.5 text-xs text-muted-foreground/90 transition-all duration-150 hover:border-border/60 hover:text-muted-foreground"
 			>
 				<Plus className="size-2.5" />
 				{t("agents.thread.contextInjection.attachContext")}
@@ -406,7 +406,7 @@ export function ContextInjectionRow() {
 					title={t("agents.thread.contextInjection.addCurrent", {
 						title: active.title,
 					})}
-					className="inline-flex max-w-48 items-center gap-1 rounded-md border border-dashed border-border/40 px-2 py-0.5 text-xs text-muted-foreground transition-colors duration-150 hover:border-primary/50 hover:text-primary"
+					className="inline-flex max-w-48 items-center gap-1 rounded-md border border-dashed border-border/60 px-2 py-0.5 text-xs text-muted-foreground transition-colors duration-150 hover:border-primary/50 hover:text-primary"
 				>
 					<Plus className="size-2.5 shrink-0" />
 					<span className="truncate">

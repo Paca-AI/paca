@@ -303,7 +303,7 @@ export function TaskStatusesSettings({
 								>
 									<TableCell className="px-2">
 										{canWrite ? (
-											<GripVertical className="size-3.5 shrink-0 text-muted-foreground/40" />
+											<GripVertical className="size-3.5 shrink-0 text-muted-foreground/90" />
 										) : null}
 									</TableCell>
 									<TableCell className="px-5 text-sm text-muted-foreground tabular-nums">

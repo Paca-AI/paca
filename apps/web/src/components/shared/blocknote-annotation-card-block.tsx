@@ -76,7 +76,7 @@ function AnnotationCardView({
 
 	if (isLoading) {
 		return (
-			<div className="my-1 flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 p-3 text-xs text-muted-foreground">
+			<div className="my-1 flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
 				<MessageSquare className="size-3.5 shrink-0 animate-pulse" />
 				Loading comment…
 			</div>
@@ -85,7 +85,7 @@ function AnnotationCardView({
 
 	if (isError || !annotation) {
 		return (
-			<div className="my-1 flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 p-3 text-xs text-muted-foreground">
+			<div className="my-1 flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
 				<AlertCircle className="size-3.5 shrink-0" />
 				Comment not found — it may have been deleted.
 			</div>
@@ -102,11 +102,11 @@ function AnnotationCardView({
 			href={url}
 			target="_blank"
 			rel="noopener noreferrer"
-			className="my-1 flex gap-3 rounded-lg border border-border/40 bg-card p-3 no-underline transition-colors hover:border-border/70 hover:bg-muted/30"
+			className="my-1 flex gap-3 rounded-lg border border-border/60 bg-card p-3 no-underline transition-colors hover:border-border/70 hover:bg-muted/30"
 			contentEditable={false}
 		>
 			{annotation.screenshot_file_id && (
-				<div className="size-16 shrink-0 overflow-hidden rounded-md border border-border/40 bg-muted">
+				<div className="size-16 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted">
 					{screenshotUrl && (
 						<img
 							src={screenshotUrl}
@@ -147,7 +147,7 @@ function AnnotationCardView({
 					{excerptOf(annotation.body, 140)}
 				</p>
 			</div>
-			<ExternalLink className="size-3.5 shrink-0 self-start text-muted-foreground/50" />
+			<ExternalLink className="size-3.5 shrink-0 self-start text-muted-foreground/90" />
 		</a>
 	);
 }

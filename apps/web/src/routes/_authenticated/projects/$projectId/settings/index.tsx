@@ -232,7 +232,7 @@ function SettingsPage() {
 				<div className="max-w-6xl mx-auto w-full px-6 py-8 flex gap-10 items-start">
 					{/* Sidebar nav — hidden on small screens */}
 					<aside className="hidden lg:flex flex-col gap-1 w-48 shrink-0 sticky top-8">
-						<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60 px-3 mb-1">
+						<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/90 px-3 mb-1">
 							{t("project.settingsPage.title")}
 						</p>
 						{visibleNavItems.map(({ id, labelKey, icon: Icon }) => (
@@ -251,7 +251,7 @@ function SettingsPage() {
 							</button>
 						))}
 						{pluginTabs.length > 0 && (
-							<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60 px-3 mt-4 mb-1">
+							<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/90 px-3 mt-4 mb-1">
 								{t("project.settingsPage.nav.plugins")}
 							</p>
 						)}

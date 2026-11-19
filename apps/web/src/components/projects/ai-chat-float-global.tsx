@@ -291,7 +291,7 @@ export function GlobalAIChatFloat() {
 					)}
 				>
 					{/* Panel header */}
-					<div className="flex shrink-0 items-center justify-between border-b border-border/40 bg-muted/30 px-4 py-3">
+					<div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-muted/30 px-4 py-3">
 						<div className="flex items-center gap-2">
 							<Bot className="size-4 text-primary" />
 							<span className="text-sm font-semibold">

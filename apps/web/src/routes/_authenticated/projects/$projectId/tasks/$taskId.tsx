@@ -25,7 +25,7 @@ function TaskDetailSkeleton() {
 	return (
 		<div className="flex h-full flex-col overflow-hidden bg-background">
 			{/* Back nav strip */}
-			<div className="shrink-0 border-b border-border/40 px-5 py-2.5 flex items-center gap-3">
+			<div className="shrink-0 border-b border-border/60 px-5 py-2.5 flex items-center gap-3">
 				<Skeleton className="h-4 w-28" />
 			</div>
 			{/* Task detail skeleton body */}
@@ -43,7 +43,7 @@ function TaskDetailSkeleton() {
 					<div className="space-y-3">
 						<div className="flex items-center gap-2 mb-3">
 							<Skeleton className="h-3 w-20" />
-							<div className="flex-1 h-px bg-border/30" />
+							<div className="flex-1 h-px bg-border/50" />
 						</div>
 						{[
 							{ lw: "w-20", vw: "w-32" },
@@ -63,7 +63,7 @@ function TaskDetailSkeleton() {
 					<div className="space-y-2 pt-2">
 						<div className="flex items-center gap-2 mb-3">
 							<Skeleton className="h-3 w-24" />
-							<div className="flex-1 h-px bg-border/30" />
+							<div className="flex-1 h-px bg-border/50" />
 						</div>
 						<Skeleton className="h-3.5 w-full" />
 						<Skeleton className="h-3.5 w-5/6" />
@@ -72,7 +72,7 @@ function TaskDetailSkeleton() {
 					</div>
 				</div>
 				{/* Right sidebar — activity panel placeholder */}
-				<div className="hidden lg:block w-72 shrink-0 border-l border-border/30 p-4 space-y-3">
+				<div className="hidden lg:block w-72 shrink-0 border-l border-border/50 p-4 space-y-3">
 					<Skeleton className="h-4 w-24 mb-4" />
 					{[
 						{ fw: "w-4/5" },
@@ -131,7 +131,7 @@ function TaskDetailPage() {
 			);
 		}
 		return (
-			<div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground/60">
+			<div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground/90">
 				<AlertCircle className="size-10" />
 				<div className="text-center">
 					<p className="text-base font-medium text-foreground/70">
@@ -154,7 +154,7 @@ function TaskDetailPage() {
 	return (
 		<div className="flex h-full flex-col overflow-hidden bg-background">
 			{/* Back navigation strip */}
-			<div className="shrink-0 border-b border-border/40 px-5 py-2.5 flex items-center gap-3">
+			<div className="shrink-0 border-b border-border/60 px-5 py-2.5 flex items-center gap-3">
 				<Link
 					to="/projects/$projectId"
 					params={{ projectId }}

@@ -670,7 +670,7 @@ function AutomationBuilderPage() {
 											setNameDraft(graph.automation.name);
 											setRenaming(true);
 										}}
-										className="text-muted-foreground/50 hover:text-foreground transition-colors"
+										className="text-muted-foreground/90 hover:text-foreground transition-colors"
 									>
 										<Pencil className="size-3" />
 									</button>

@@ -59,14 +59,14 @@ const dateTriggerClassName = (active: boolean) =>
 		"inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-all duration-150",
 		active
 			? "border-primary/40 bg-primary/8 text-primary"
-			: "border-border/25 bg-muted/25 text-muted-foreground hover:border-border/50 hover:bg-muted/40",
+			: "border-border/50 bg-muted/25 text-muted-foreground hover:border-border/50 hover:bg-muted/40",
 	);
 
 // ── Popover section building blocks ──────────────────────────────────────────
 
 function FilterSectionLabel({ children }: { children: React.ReactNode }) {
 	return (
-		<p className="px-0.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
+		<p className="px-0.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
 			{children}
 		</p>
 	);
@@ -203,7 +203,7 @@ export function ConversationFilters({
 	return (
 		<div className="flex items-center gap-1.5 border-b border-border/50 px-2 py-2">
 			<div className="relative min-w-0 flex-1">
-				<Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/60" />
+				<Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/90" />
 				<Input
 					value={searchInput}
 					onChange={(e) => {
@@ -223,7 +223,7 @@ export function ConversationFilters({
 						"relative flex size-7 shrink-0 items-center justify-center rounded-md transition-all duration-150",
 						filtersOpen || activeFilterCount > 0
 							? "bg-primary/8 text-primary/80"
-							: "text-muted-foreground/60 hover:text-foreground hover:bg-muted/60",
+							: "text-muted-foreground/90 hover:text-foreground hover:bg-muted/60",
 					)}
 				>
 					<SlidersHorizontal className="size-3.5" />
@@ -237,10 +237,10 @@ export function ConversationFilters({
 					side="bottom"
 					align="end"
 					sideOffset={6}
-					className="w-72 rounded-xl border border-border/40 p-0 shadow-xl"
+					className="w-72 rounded-xl border border-border/60 p-0 shadow-xl"
 				>
-					<div className="border-b border-border/30 bg-muted/20 px-3 py-2">
-						<p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+					<div className="border-b border-border/50 bg-muted/20 px-3 py-2">
+						<p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
 							{t("conversationsPage.filters.title")}
 						</p>
 					</div>
@@ -284,7 +284,7 @@ export function ConversationFilters({
 								/>
 							</div>
 						</section>
-						<div className="border-t border-border/20" />
+						<div className="border-t border-border/50" />
 
 						<section>
 							<FilterSectionLabel>
@@ -306,7 +306,7 @@ export function ConversationFilters({
 							</div>
 						</section>
 
-						<div className="border-t border-border/20" />
+						<div className="border-t border-border/50" />
 
 						<section>
 							<FilterSectionLabel>
@@ -326,7 +326,7 @@ export function ConversationFilters({
 							</div>
 						</section>
 
-						<div className="border-t border-border/20" />
+						<div className="border-t border-border/50" />
 
 						<section>
 							<FilterSectionLabel>
@@ -351,7 +351,7 @@ export function ConversationFilters({
 					}}
 					aria-label={t("conversationsPage.filters.clearAll")}
 					title={t("conversationsPage.filters.clearAll")}
-					className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-all duration-150 hover:bg-muted/60 hover:text-foreground"
+					className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/90 transition-all duration-150 hover:bg-muted/60 hover:text-foreground"
 				>
 					<X className="size-3.5" />
 				</button>

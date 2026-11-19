@@ -196,11 +196,11 @@ export function TaskCard({
 									);
 								})()
 							) : (
-								<span className="text-xs text-muted-foreground/50">--</span>
+								<span className="text-xs text-muted-foreground/90">--</span>
 							)}
 						</PopoverTrigger>
 						<PopoverContent
-							className="w-44 p-1 rounded-xl border border-border/40 shadow-lg"
+							className="w-44 p-1 rounded-xl border border-border/60 shadow-lg"
 							align="start"
 						>
 							{taskTypes.map((tt) => {
@@ -218,7 +218,7 @@ export function TaskCard({
 									>
 										{TtIcon && (
 											<TtIcon
-												className="size-3.5 text-muted-foreground/80 shrink-0"
+												className="size-3.5 text-muted-foreground shrink-0"
 												style={tt.color ? { color: tt.color } : undefined}
 											/>
 										)}
@@ -265,7 +265,7 @@ export function TaskCard({
 					<DropdownMenu key="status">
 						<DropdownMenuTrigger
 							onClick={(e) => e.stopPropagation()}
-							className="nodrag inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/40 px-1.5 py-0.5 text-xs font-semibold text-muted-foreground hover:opacity-80 transition-opacity cursor-pointer"
+							className="nodrag inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-xs font-semibold text-muted-foreground hover:opacity-80 transition-opacity cursor-pointer"
 						>
 							{status ? (
 								<>
@@ -276,7 +276,7 @@ export function TaskCard({
 									{status.name}
 								</>
 							) : (
-								<span className="text-xs text-muted-foreground/50">—</span>
+								<span className="text-xs text-muted-foreground/90">—</span>
 							)}
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="start">
@@ -303,7 +303,7 @@ export function TaskCard({
 				) : status ? (
 					<span
 						key="status"
-						className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/40 px-1.5 py-0.5 text-xs font-semibold text-muted-foreground"
+						className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-xs font-semibold text-muted-foreground"
 					>
 						<span
 							className="size-1.5 rounded-full shrink-0"
@@ -345,7 +345,7 @@ export function TaskCard({
 									{t(p.labelKey)}
 								</>
 							) : (
-								<span className="text-xs text-muted-foreground/40">
+								<span className="text-xs text-muted-foreground/90">
 									{t("board.taskCard.priorityLabel")}
 								</span>
 							)}
@@ -417,7 +417,7 @@ export function TaskCard({
 				return task.start_date ? (
 					<span
 						key="start_date"
-						className="text-xs text-muted-foreground/70 shrink-0"
+						className="text-xs text-muted-foreground shrink-0"
 					>
 						{formatDate(
 							task.start_date,
@@ -431,7 +431,7 @@ export function TaskCard({
 				return task.due_date ? (
 					<span
 						key="due_date"
-						className="text-xs text-muted-foreground/70 shrink-0"
+						className="text-xs text-muted-foreground shrink-0"
 					>
 						{formatDate(
 							task.due_date,
@@ -445,7 +445,7 @@ export function TaskCard({
 				return (
 					<span
 						key="created"
-						className="text-xs text-muted-foreground/50 shrink-0"
+						className="text-xs text-muted-foreground/90 shrink-0"
 					>
 						{formatDate(task.created_at, { month: "short", day: "numeric" })}
 					</span>
@@ -484,24 +484,24 @@ export function TaskCard({
 							{epic ? (
 								<span className="max-w-20 truncate">{epic.title}</span>
 							) : (
-								<span className="text-muted-foreground/40">
+								<span className="text-muted-foreground/90">
 									{t("board.taskCard.epicLabel")}
 								</span>
 							)}
 						</PopoverTrigger>
 						<PopoverContent
-							className="w-64 p-1.5 rounded-xl border border-border/40 shadow-lg"
+							className="w-64 p-1.5 rounded-xl border border-border/60 shadow-lg"
 							align="start"
 						>
 							<div className="relative mb-1">
-								<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+								<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/90" />
 								<input
 									type="text"
 									value={epicSearch}
 									onClick={(e) => e.stopPropagation()}
 									onChange={(e) => setEpicSearch(e.target.value)}
 									placeholder={t("epicPicker.searchPlaceholder")}
-									className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+									className="w-full rounded-lg border border-border/50 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/90 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
 								/>
 							</div>
 							<div
@@ -527,7 +527,7 @@ export function TaskCard({
 									<div className="flex items-center justify-center py-4">
 										<Spinner
 											aria-hidden="true"
-											className="text-muted-foreground/50"
+											className="text-muted-foreground/90"
 										/>
 									</div>
 								) : (
@@ -552,7 +552,7 @@ export function TaskCard({
 											</button>
 										))}
 										{displayedEpics.length === 0 && (
-											<p className="px-3 py-4 text-center text-xs text-muted-foreground/50">
+											<p className="px-3 py-4 text-center text-xs text-muted-foreground/90">
 												{isEpicSearching
 													? t("epicPicker.noEpicsFound")
 													: t("epicPicker.noEpicsYet")}
@@ -561,7 +561,7 @@ export function TaskCard({
 									</>
 								)}
 								{activeEpicsPagination?.isLoadingMore && (
-									<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+									<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/90">
 										<Spinner aria-hidden="true" className="size-3" />
 										{t("epicPicker.loadingMore")}
 									</div>
@@ -587,7 +587,7 @@ export function TaskCard({
 				const val = task.custom_fields[cf.field_key];
 				if (val === null || val === undefined || val === "")
 					return (
-						<span key={fieldKey} className="text-xs text-muted-foreground/30">
+						<span key={fieldKey} className="text-xs text-muted-foreground/90">
 							—
 						</span>
 					);
@@ -597,7 +597,7 @@ export function TaskCard({
 						return val ? (
 							<Check key={fieldKey} className="size-3 text-primary shrink-0" />
 						) : (
-							<span key={fieldKey} className="text-xs text-muted-foreground/40">
+							<span key={fieldKey} className="text-xs text-muted-foreground/90">
 								✗
 							</span>
 						);
@@ -614,7 +614,7 @@ export function TaskCard({
 						return (
 							<span
 								key={fieldKey}
-								className="text-xs text-muted-foreground/70 shrink-0"
+								className="text-xs text-muted-foreground shrink-0"
 							>
 								{formatDate(
 									String(val),
@@ -696,7 +696,7 @@ export function TaskCard({
 			onMouseEnter={() => setIsHovered(true)}
 			onMouseLeave={() => setIsHovered(false)}
 			className={cn(
-				"group relative rounded-xl border border-border/30 bg-card p-3 shadow-xs cursor-pointer transition-all duration-150 select-none",
+				"group relative rounded-xl border border-border/50 bg-card p-3 shadow-xs cursor-pointer transition-all duration-150 select-none",
 				"hover:border-border/50 hover:shadow-sm",
 				isDragging && "opacity-50 ring-2 ring-primary/30 shadow-lg rotate-1",
 				draggable && "cursor-grab active:cursor-grabbing",
@@ -704,13 +704,13 @@ export function TaskCard({
 		>
 			{draggable && (
 				<div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-					<GripVertical className="size-3.5 text-muted-foreground/60" />
+					<GripVertical className="size-3.5 text-muted-foreground/90" />
 				</div>
 			)}
 
 			{(taskIdPrefix || task.task_number > 0) && (
 				<div className="mb-1 flex items-center">
-					<span className="font-[JetBrains_Mono,monospace] text-xs font-semibold text-muted-foreground/50 tracking-wide">
+					<span className="font-[JetBrains_Mono,monospace] text-xs font-semibold text-muted-foreground/90 tracking-wide">
 						{taskIdPrefix
 							? `${taskIdPrefix}-${task.task_number}`
 							: `#${task.task_number}`}
@@ -749,7 +749,7 @@ export function TaskCard({
 			 * columns on mobile — shown unconditionally rather than behind
 			 * group-hover, which touch has no equivalent of. */}
 			{isMobile && (onMoveLeft || onMoveRight) && (
-				<div className="nodrag mt-2 flex items-center justify-end gap-1.5 border-t border-border/20 pt-2">
+				<div className="nodrag mt-2 flex items-center justify-end gap-1.5 border-t border-border/50 pt-2">
 					<button
 						type="button"
 						disabled={!onMoveLeft}
@@ -758,7 +758,7 @@ export function TaskCard({
 							onMoveLeft?.();
 						}}
 						aria-label={t("board.taskCard.moveLeft")}
-						className="flex size-7 items-center justify-center rounded-md border border-border/40 text-muted-foreground disabled:opacity-30"
+						className="flex size-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground disabled:opacity-30"
 					>
 						<ChevronLeft className="size-3.5" />
 					</button>
@@ -770,7 +770,7 @@ export function TaskCard({
 							onMoveRight?.();
 						}}
 						aria-label={t("board.taskCard.moveRight")}
-						className="flex size-7 items-center justify-center rounded-md border border-border/40 text-muted-foreground disabled:opacity-30"
+						className="flex size-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground disabled:opacity-30"
 					>
 						<ChevronRight className="size-3.5" />
 					</button>

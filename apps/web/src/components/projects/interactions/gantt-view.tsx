@@ -724,7 +724,7 @@ export function GanttView({
 					{isDragging && (
 						<span
 							role="status"
-							className="pointer-events-none absolute bottom-full left-0 mb-1.5 whitespace-nowrap rounded-md border border-border/40 bg-popover px-2 py-0.5 text-[11px] font-medium text-popover-foreground shadow-sm"
+							className="pointer-events-none absolute bottom-full left-0 mb-1.5 whitespace-nowrap rounded-md border border-border/60 bg-popover px-2 py-0.5 text-[11px] font-medium text-popover-foreground shadow-sm"
 						>
 							{rangeLabel}
 						</span>
@@ -769,7 +769,7 @@ export function GanttView({
 				<div
 					className={cn(
 						"sticky left-0 z-10 flex shrink-0 items-center gap-1.5",
-						"border-r border-border/20 bg-background px-4 py-2.5",
+						"border-r border-border/50 bg-background px-4 py-2.5",
 						// Opaque version of the row's hover tint: a translucent fill
 						// would let bars show through this sticky column when scrolled.
 						"group-hover:bg-[color-mix(in_oklab,var(--color-muted)_30%,var(--color-background))] transition-colors duration-100",
@@ -789,7 +789,7 @@ export function GanttView({
 									e.stopPropagation();
 									expansion.toggle(task.id);
 								}}
-								className="-ml-1.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-muted/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+								className="-ml-1.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
 							>
 								<ChevronRight
 									className={cn(
@@ -809,7 +809,7 @@ export function GanttView({
 						}}
 					/>
 					{(taskIdPrefix || task.task_number > 0) && (
-						<span className="shrink-0 font-[JetBrains_Mono,monospace] text-xs font-semibold tracking-wide text-muted-foreground/80">
+						<span className="shrink-0 font-[JetBrains_Mono,monospace] text-xs font-semibold tracking-wide text-muted-foreground/90">
 							{taskIdPrefix
 								? `${taskIdPrefix}-${task.task_number}`
 								: `#${task.task_number}`}
@@ -929,7 +929,7 @@ export function GanttView({
 		return (
 			// Opaque, so the gridlines behind the rows don't run through it.
 			<div className="relative bg-background">
-				<div className="flex border-b border-border/15 bg-muted/20">
+				<div className="flex border-b border-border/50 bg-muted/20">
 					<div
 						className="sticky left-0 z-10 flex shrink-0 items-center gap-2 px-4 py-2"
 						style={{ width: leftColW }}
@@ -945,7 +945,7 @@ export function GanttView({
 						<span className="min-w-0 truncate text-xs font-bold uppercase tracking-[0.07em] text-foreground/65">
 							{group.label}
 						</span>
-						<span className="shrink-0 rounded-full bg-muted/70 px-2 py-px text-xs font-bold tabular-nums text-muted-foreground/60">
+						<span className="shrink-0 rounded-full bg-muted/70 px-2 py-px text-xs font-bold tabular-nums text-muted-foreground/90">
 							{count}
 						</span>
 					</div>
@@ -959,10 +959,10 @@ export function GanttView({
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
 			{/* ── Toolbar: zoom and jump to today ─────────────────────── */}
-			<div className="flex shrink-0 items-center gap-2 border-b border-border/20 px-4 py-1.5">
+			<div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-1.5">
 				<fieldset
 					aria-label={t("layout.gantt.zoomLabel")}
-					className="flex items-center rounded-lg border border-border/40 p-0.5"
+					className="flex items-center rounded-lg border border-border/60 p-0.5"
 				>
 					{GANTT_ZOOMS.map((z) => (
 						<button
@@ -985,7 +985,7 @@ export function GanttView({
 					type="button"
 					onClick={jumpToToday}
 					title={t("layout.gantt.jumpToToday")}
-					className="flex items-center gap-1.5 rounded-lg border border-border/40 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors duration-100 hover:border-primary/50 hover:text-primary"
+					className="flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors duration-100 hover:border-primary/50 hover:text-primary"
 				>
 					<LocateFixed className="size-3.5" />
 					{t("layout.gantt.today")}
@@ -1006,19 +1006,19 @@ export function GanttView({
 					<div
 						className={cn(
 							"sticky top-0 z-20 flex h-11 shrink-0",
-							"border-b border-border/25 bg-background",
+							"border-b border-border/50 bg-background",
 						)}
 					>
 						{/* Task column label */}
 						<div
 							className={cn(
 								"sticky left-0 z-30 flex shrink-0 items-center gap-1.5",
-								"border-r border-border/25 bg-background/95 px-4",
+								"border-r border-border/50 bg-background/95 px-4",
 							)}
 							style={{ width: leftColW }}
 						>
-							<CalendarDays className="size-3 text-muted-foreground/45" />
-							<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
+							<CalendarDays className="size-3 text-muted-foreground/90" />
+							<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
 								{t("layout.gantt.taskColumnLabel")}
 							</span>
 							<PaneResizeHandle
@@ -1040,10 +1040,10 @@ export function GanttView({
 								scale.major.map((c) => (
 									<div
 										key={c.key}
-										className="absolute top-0 flex h-1/2 items-center overflow-hidden border-r border-border/25 px-2"
+										className="absolute top-0 flex h-1/2 items-center overflow-hidden border-r border-border/50 px-2"
 										style={{ left: c.left, width: c.width }}
 									>
-										<span className="whitespace-nowrap text-[11px] font-semibold text-muted-foreground/60">
+										<span className="whitespace-nowrap text-[11px] font-semibold text-muted-foreground/90">
 											{c.label}
 										</span>
 									</div>
@@ -1052,12 +1052,12 @@ export function GanttView({
 								<div
 									key={c.key}
 									className={cn(
-										"absolute flex items-center justify-center overflow-hidden border-r border-border/15",
+										"absolute flex items-center justify-center overflow-hidden border-r border-border/50",
 										hasMajorBand ? "bottom-0 h-1/2" : "inset-y-0",
 									)}
 									style={{ left: c.left, width: c.width }}
 								>
-									<span className="whitespace-nowrap text-[11px] font-medium text-muted-foreground/50">
+									<span className="whitespace-nowrap text-[11px] font-medium text-muted-foreground/90">
 										{c.label}
 									</span>
 								</div>
@@ -1089,7 +1089,7 @@ export function GanttView({
 							{scale.minor.map((c) => (
 								<div
 									key={c.key}
-									className="absolute inset-y-0 w-px bg-border/12"
+									className="absolute inset-y-0 w-px bg-border/30"
 									style={{ left: c.left }}
 								/>
 							))}
@@ -1106,7 +1106,7 @@ export function GanttView({
 
 						{/* ── Content ────────────────────────────────────────────── */}
 						{tasks.length === 0 ? (
-							<div className="flex flex-col items-center py-20 text-muted-foreground/40">
+							<div className="flex flex-col items-center py-20 text-muted-foreground/90">
 								<CalendarDays className="mb-2 size-7" />
 								<p className="text-sm font-medium">
 									{t("layout.gantt.noTasksToDisplay")}
@@ -1127,8 +1127,9 @@ export function GanttView({
 									// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop group drop zone
 									<div
 										key={group.key}
+										data-gantt-group={group.key}
 										className={cn(
-											"border-b border-border/20 last:border-0",
+											"border-b border-border/50 last:border-0",
 											canDrag &&
 												overGroupKey === group.key &&
 												draggingId &&
@@ -1214,12 +1215,12 @@ export function GanttView({
 
 					{/* ── Pagination button ─────────────────────────────────── */}
 					{pagination?.hasMore && (
-						<div className="flex justify-center py-4 border-t border-border/20">
+						<div className="flex justify-center py-4 border-t border-border/50">
 							<button
 								type="button"
 								onClick={pagination.onLoadMore}
 								disabled={pagination.isLoadingMore}
-								className="rounded-lg border border-border/40 px-4 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:text-primary transition-all duration-150 disabled:opacity-50"
+								className="rounded-lg border border-border/60 px-4 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:text-primary transition-all duration-150 disabled:opacity-50"
 							>
 								{pagination.isLoadingMore
 									? t("layout.gantt.loading")
@@ -1233,7 +1234,7 @@ export function GanttView({
 						defaultStatusId &&
 						onCreateTask &&
 						taskTypes.length > 0 && (
-							<div className="border-t border-border/20 bg-muted/5">
+							<div className="border-t border-border/50 bg-muted/5">
 								<AddTaskRow
 									taskTypes={taskTypes}
 									variant="list"
@@ -1282,7 +1283,7 @@ function GanttChildRows({
 	const note = (text: React.ReactNode) => (
 		<div className="flex border-b border-dashed border-border/30">
 			<div
-				className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border/20 bg-background py-2 pr-4 text-xs text-muted-foreground/70"
+				className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border/50 bg-background py-2 pr-4 text-xs text-muted-foreground"
 				style={{ width: leftColWidth, paddingLeft: 40 + depth * 16 }}
 			>
 				{text}

@@ -168,7 +168,7 @@ function MermaidBlockView({
 	}, [editing]);
 
 	return (
-		<div className="my-1 rounded-lg border border-border/40 bg-muted/20 p-2">
+		<div className="my-1 rounded-lg border border-border/60 bg-muted/20 p-2">
 			<MermaidDiagram code={code} blockId={blockId} />
 			{editable && (
 				<>
@@ -200,7 +200,7 @@ function MermaidBlockView({
 							spellCheck={false}
 							rows={Math.max(3, code.split("\n").length + 1)}
 							placeholder={"graph TD\n  A --> B"}
-							className="mt-1 w-full resize-y rounded-md border border-border/40 bg-background px-2 py-1.5 font-mono text-xs leading-relaxed outline-none focus:border-border"
+							className="mt-1 w-full resize-y rounded-md border border-border/60 bg-background px-2 py-1.5 font-mono text-xs leading-relaxed outline-none focus:border-border"
 						/>
 					)}
 				</>

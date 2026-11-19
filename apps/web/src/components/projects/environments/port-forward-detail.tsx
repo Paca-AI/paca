@@ -169,7 +169,7 @@ export function PortForwardDetailView({
 			);
 		}
 		return (
-			<div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground/60">
+			<div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground/90">
 				<AlertCircle className="size-10" />
 				<div className="text-center">
 					<p className="text-base font-medium text-foreground/70">
@@ -209,7 +209,7 @@ export function PortForwardDetailView({
 							{environment?.name ??
 								t("portForwardDetail.notFound.backToEnvironment")}
 						</Link>
-						<span className="text-muted-foreground/40 shrink-0">/</span>
+						<span className="text-muted-foreground/90 shrink-0">/</span>
 						<h1 className="text-lg font-semibold truncate">
 							{portForward.label}
 						</h1>

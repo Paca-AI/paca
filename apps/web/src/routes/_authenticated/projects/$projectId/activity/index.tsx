@@ -177,10 +177,10 @@ function ProjectActivityPage() {
 								<div className="space-y-6">
 									{groups.map((group) => (
 										<section key={group.key}>
-											<h2 className="sticky top-0 z-10 bg-background/95 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 backdrop-blur">
+											<h2 className="sticky top-0 z-10 bg-background/95 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground backdrop-blur">
 												{group.label}
 											</h2>
-											<ol className="mt-1 divide-y divide-border/30 rounded-xl border border-border/50">
+											<ol className="mt-1 divide-y divide-border/50 rounded-xl border border-border/50">
 												{group.items.map((item) => (
 													<ActivityRow
 														key={item.id}
@@ -219,7 +219,7 @@ function EmptyState({ filtered }: { filtered: boolean }) {
 	return (
 		<div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
 			<div className="flex size-14 items-center justify-center rounded-2xl bg-muted/50">
-				<Activity className="size-7 text-muted-foreground/50" />
+				<Activity className="size-7 text-muted-foreground/90" />
 			</div>
 			<p className="text-sm font-medium">{t(`activityLog.${key}.title`)}</p>
 			<p className="max-w-xs text-xs text-muted-foreground">
@@ -281,7 +281,7 @@ function ActivityRow({
 			<time
 				dateTime={item.created_at}
 				title={new Date(item.created_at).toLocaleString()}
-				className="shrink-0 pt-0.5 text-xs text-muted-foreground/60"
+				className="shrink-0 pt-0.5 text-xs text-muted-foreground/90"
 			>
 				{timeAgo(item.created_at, tCommon)}
 			</time>

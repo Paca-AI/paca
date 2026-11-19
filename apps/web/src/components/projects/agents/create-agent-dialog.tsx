@@ -655,7 +655,7 @@ export function CreateAgentDialog({
 									const buttonClassName = cn(
 										"rounded-lg border p-3 text-left transition-all",
 										isDisabled
-											? "cursor-not-allowed border-border/40 opacity-50"
+											? "cursor-not-allowed border-border/60 opacity-50"
 											: isSelected
 												? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
 												: "border-border/60 hover:border-border hover:bg-muted/30",
@@ -1214,7 +1214,7 @@ export function CreateAgentDialog({
 										<button
 											type="button"
 											onClick={() => setShowApiKey((s) => !s)}
-											className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground transition-colors"
+											className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/90 hover:text-foreground transition-colors"
 											aria-label={
 												showApiKey
 													? t("agents.createDialog.hideApiKey")

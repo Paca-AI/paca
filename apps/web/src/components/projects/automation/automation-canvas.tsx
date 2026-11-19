@@ -149,7 +149,7 @@ function NodeShell({ data }: NodeProps<Node<BaseNodeData>>) {
 						e.stopPropagation();
 						onDelete();
 					}}
-					className="nodrag absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 flex size-5 shrink-0 items-center justify-center rounded-full border border-border/40 bg-card text-muted-foreground/60 shadow-sm hover:text-destructive-foreground hover:bg-destructive hover:border-destructive transition-all"
+					className="nodrag absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 flex size-5 shrink-0 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground/90 shadow-sm hover:text-destructive-foreground hover:bg-destructive hover:border-destructive transition-all"
 				>
 					<Trash2 className="size-3" />
 				</button>
@@ -254,11 +254,11 @@ function ConditionBranchRows({
 	}, [node.id, handleIds, updateNodeInternals]);
 
 	return (
-		<div className="border-t border-border/40">
+		<div className="border-t border-border/60">
 			{branches.map((b, i) => (
 				<div
 					key={b.handle}
-					className="relative flex items-center gap-2 border-b border-border/20 px-3 py-1.5"
+					className="relative flex items-center gap-2 border-b border-border/50 px-3 py-1.5"
 				>
 					<span
 						className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"

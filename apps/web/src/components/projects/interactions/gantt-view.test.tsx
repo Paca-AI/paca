@@ -124,9 +124,7 @@ async function startDrag(title: string, dt: ReturnType<typeof createDt>) {
 }
 
 function groupOf(label: string) {
-	return screen
-		.getByText(label)
-		.closest("div.border-border\\/20") as HTMLElement;
+	return screen.getByText(label).closest("[data-gantt-group]") as HTMLElement;
 }
 
 beforeEach(() => {

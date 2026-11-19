@@ -898,7 +898,7 @@ export function BoardView({
 				}
 			>
 				{laneTasks.length === 0 && !columnPagination?.[colDef.key]?.hasMore && (
-					<div className="flex flex-1 flex-col items-center justify-center py-6 text-muted-foreground/30">
+					<div className="flex flex-1 flex-col items-center justify-center py-6 text-muted-foreground/90">
 						<p className="text-sm">{t("board.view.noTasks")}</p>
 					</div>
 				)}
@@ -948,7 +948,7 @@ export function BoardView({
 						// the in-flight indicator, not a click target.
 						if (!pg.isLoadingMore) return null;
 						return (
-							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/90">
 								<Spinner aria-hidden="true" className="size-3" />
 								{t("board.view.loading")}
 							</div>
@@ -959,7 +959,7 @@ export function BoardView({
 							type="button"
 							onClick={pg.onLoadMore}
 							disabled={pg.isLoadingMore}
-							className="mt-1 w-full rounded-lg border border-dashed border-border/40 py-1.5 text-xs font-medium text-muted-foreground/70 hover:border-primary/40 hover:text-primary transition-all duration-150 disabled:opacity-50"
+							className="mt-1 w-full rounded-lg border border-dashed border-border/60 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/40 hover:text-primary transition-all duration-150 disabled:opacity-50"
 						>
 							{pg.isLoadingMore
 								? t("board.view.loading")
@@ -1008,7 +1008,7 @@ export function BoardView({
 						<ChevronLeft className="size-3 text-muted-foreground" />
 					)}
 				</button>
-				<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground/70 tabular-nums">
+				<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground tabular-nums">
 					{displayCount}
 				</span>
 			</div>
@@ -1024,7 +1024,7 @@ export function BoardView({
 			<div className="flex flex-1 min-h-0 flex-col overflow-auto">
 				<div className="min-w-max px-6 pt-5 pb-8 flex flex-col gap-0">
 					{/* Sticky column-header row */}
-					<div className="flex gap-4 pb-2 sticky top-0 z-10 bg-background border-b border-border/20 mb-1">
+					<div className="flex gap-4 pb-2 sticky top-0 z-10 bg-background border-b border-border/50 mb-1">
 						{/* Swimlane label placeholder to align with row labels */}
 						<div className="w-36 shrink-0" />
 						{effectiveColumnDefs.map((colDef) => {
@@ -1045,7 +1045,7 @@ export function BoardView({
 										>
 											<ChevronRight className="size-3.5 text-muted-foreground" />
 										</button>
-										<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground/70 tabular-nums">
+										<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground tabular-nums">
 											{displayCount}
 										</span>
 										{colDef.color && (
@@ -1085,7 +1085,7 @@ export function BoardView({
 						(swimDef) => (
 							<div
 								key={swimDef.key}
-								className="flex gap-4 py-3 border-b border-border/15 last:border-0"
+								className="flex gap-4 py-3 border-b border-border/50 last:border-0"
 							>
 								{/* Swimlane label */}
 								<div className="w-36 shrink-0 flex items-start pt-1 gap-2">
@@ -1142,7 +1142,7 @@ export function BoardView({
 							>
 								<ChevronRight className="size-3.5 text-muted-foreground" />
 							</button>
-							<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground/70 tabular-nums">
+							<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground tabular-nums">
 								{displayCount}
 							</span>
 							{colDef.color && (
