@@ -199,21 +199,10 @@ func (h *FileHandler) Update(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "name or move is required"))
 		return
 	}
-	var (
-		n   *filedom.Node
-		err error
-	)
-	if req.Name != nil {
-		if n, err = h.svc.Rename(r.Context(), fr.scope, fr.actor, fr.node, *req.Name); err != nil {
-			presenter.Error(w, r, err)
-			return
-		}
-	}
-	if req.Move {
-		if n, err = h.svc.Move(r.Context(), fr.scope, fr.actor, fr.node, req.ParentID); err != nil {
-			presenter.Error(w, r, err)
-			return
-		}
+	n, err := h.svc.Update(r.Context(), fr.scope, fr.actor, fr.node, req.Name, req.Move, req.ParentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
 	}
 	presenter.OK(w, r, dto.FileNodeFromEntity(n))
 }
@@ -444,11 +433,30 @@ func (h *FileHandler) accessibleProjects(ctx context.Context, principal iam.Prin
 	if err != nil {
 		return nil, err
 	}
-	var projects []*projectdom.Project
 	if all {
-		projects, _, err = h.projects.List(ctx, 1, 10000)
-	} else {
-		projects, _, err = h.projects.ListAccessible(ctx, accountID, 1, 10000)
+		return pageAll(func(page int) ([]*projectdom.Project, int64, error) {
+			return h.projects.List(ctx, page, accessiblePageSize)
+		})
 	}
-	return projects, err
+	return pageAll(func(page int) ([]*projectdom.Project, int64, error) {
+		return h.projects.ListAccessible(ctx, accountID, page, accessiblePageSize)
+	})
+}
+
+const accessiblePageSize = 500
+
+// pageAll walks every page of a project listing, so no project is dropped
+// past a fixed cap.
+func pageAll(fetch func(page int) ([]*projectdom.Project, int64, error)) ([]*projectdom.Project, error) {
+	var out []*projectdom.Project
+	for page := 1; ; page++ {
+		items, total, err := fetch(page)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, items...)
+		if len(items) == 0 || int64(len(out)) >= total {
+			return out, nil
+		}
+	}
 }

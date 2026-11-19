@@ -53,6 +53,8 @@ type Service interface {
 	CreateFolder(ctx context.Context, scope Scope, actor uuid.UUID, parentID *uuid.UUID, name string) (*Node, error)
 	Rename(ctx context.Context, scope Scope, actor, id uuid.UUID, name string) (*Node, error)
 	Move(ctx context.Context, scope Scope, actor, id uuid.UUID, parentID *uuid.UUID) (*Node, error)
+	// Update renames and/or moves a node, validating both before writing either.
+	Update(ctx context.Context, scope Scope, actor, id uuid.UUID, name *string, move bool, parentID *uuid.UUID) (*Node, error)
 
 	// Trash moves an item to the trash. Files that a task, document or
 	// annotation uses (Node.DeletedForGood) are deleted for good instead, and

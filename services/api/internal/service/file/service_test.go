@@ -16,7 +16,6 @@ import (
 // fakeRepo is an in-memory filedom.Repository holding nodes by id.
 type fakeRepo struct {
 	nodes     map[uuid.UUID]*filedom.Node
-	unlinked  []uuid.UUID
 	purged    []uuid.UUID
 	trashed   []uuid.UUID
 	moved     map[uuid.UUID]*uuid.UUID
@@ -81,10 +80,6 @@ func (r *fakeRepo) PurgeSubtree(_ context.Context, n *filedom.Node) ([]filedom.S
 func (r *fakeRepo) PurgeTrashedBefore(context.Context, time.Time, int) ([]filedom.StorageObject, error) {
 	return r.purgeObjs, nil
 }
-func (r *fakeRepo) UnlinkTaskAttachment(_ context.Context, id uuid.UUID) (bool, error) {
-	r.unlinked = append(r.unlinked, id)
-	return true, nil
-}
 func (r *fakeRepo) SetStarred(_ context.Context, _, item uuid.UUID, on bool) error {
 	r.starred[item] = on
 	return nil
@@ -116,8 +111,10 @@ func (f *fakeFiles) DeleteFile(_ context.Context, id uuid.UUID) error {
 }
 
 type fakeStore struct {
-	deleted []string
-	got     string
+	deleted  []string
+	got      string
+	statSize int64
+	statErr  error
 }
 
 func (s *fakeStore) PresignPutObject(_ context.Context, _, key, _ string, _ time.Duration) (string, error) {
@@ -249,8 +246,8 @@ func TestTrashingATaskAttachmentDeletesItForGood(t *testing.T) {
 	if err := svc.Trash(t.Context(), scope, actor, att.ID); err != nil {
 		t.Fatal(err)
 	}
-	if len(repo.unlinked) != 1 || repo.unlinked[0] != att.ID || len(repo.purged) != 1 || len(repo.trashed) != 0 {
-		t.Fatalf("unlinked %v purged %v trashed %v: attachment must be unlinked and purged, not trashed", repo.unlinked, repo.purged, repo.trashed)
+	if len(repo.purged) != 1 || len(repo.trashed) != 0 {
+		t.Fatalf("purged %v trashed %v: attachment must be purged (and unlinked with it), not trashed", repo.purged, repo.trashed)
 	}
 	if len(store.deleted) != 1 || store.deleted[0] != "k/spec.pdf" {
 		t.Fatalf("deleted objects = %v", store.deleted)
@@ -352,5 +349,47 @@ func TestRestoreAndPermanentDeleteNeedTheTrash(t *testing.T) {
 	}
 	if err := svc.DeletePermanently(t.Context(), scope, live.ID); !errors.Is(err, filedom.ErrNodeNotTrashed) {
 		t.Fatalf("permanently delete a live file = %v", err)
+	}
+}
+
+func (s *fakeStore) StatObject(context.Context, string, string) (int64, error) {
+	return s.statSize, s.statErr
+}
+
+func TestCompleteUploadRequiresTheObject(t *testing.T) {
+	repo := newFakeRepo()
+	svc, files, store := newSvc(repo)
+	id := uuid.New()
+	files.files[id] = &attachmentdom.File{
+		ID: id, StorageKey: "files/" + project.String() + "/" + id.String() + "/a.txt", Bucket: "b",
+		FileSize: 10, UploadStatus: attachmentdom.UploadStatusPending, UploadedBy: &actor, ProjectID: &project,
+	}
+	repo.nodes[id] = &filedom.Node{ID: id, ProjectID: &project, Kind: filedom.KindFile, Name: "a.txt"}
+
+	store.statErr = errors.New("not found")
+	if _, err := svc.CompleteUpload(t.Context(), scope, actor, filedom.CompleteInput{FileID: id}); !errors.Is(err, filedom.ErrUploadNotComplete) {
+		t.Fatalf("missing object: err = %v, want ErrUploadNotComplete", err)
+	}
+	store.statErr, store.statSize = nil, 3
+	if _, err := svc.CompleteUpload(t.Context(), scope, actor, filedom.CompleteInput{FileID: id}); !errors.Is(err, filedom.ErrUploadNotComplete) {
+		t.Fatalf("size mismatch: err = %v, want ErrUploadNotComplete", err)
+	}
+	if files.files[id].UploadStatus != attachmentdom.UploadStatusPending {
+		t.Fatal("a rejected upload must stay pending")
+	}
+	store.statSize = 10
+	if _, err := svc.CompleteUpload(t.Context(), scope, actor, filedom.CompleteInput{FileID: id}); err != nil {
+		t.Fatalf("matching object: %v", err)
+	}
+}
+
+func TestActiveContentIsForcedToDownload(t *testing.T) {
+	for _, c := range []struct{ ct, name string }{{"text/html", "a.bin"}, {"image/svg+xml; charset=utf-8", "a"}, {"application/octet-stream", "x.HTML"}} {
+		if !isActiveContent(c.ct, c.name) {
+			t.Errorf("%v should be active content", c)
+		}
+	}
+	if isActiveContent("image/png", "a.png") || isActiveContent("application/pdf", "a.pdf") {
+		t.Error("images and PDFs must stay inline")
 	}
 }

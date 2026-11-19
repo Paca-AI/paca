@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -355,7 +356,7 @@ func (r *FileRepository) Restore(ctx context.Context, n *filedom.Node) error {
 		// An item whose parent folder is still in the trash goes back to the root.
 		if n.ParentID != nil {
 			var parentTrashed bool
-			if err := tx.GetContext(ctx, &parentTrashed, `SELECT deleted_at IS NOT NULL FROM file_folders WHERE id = $1`, *n.ParentID); err != nil {
+			if err := tx.GetContext(ctx, &parentTrashed, `SELECT COALESCE((SELECT deleted_at IS NOT NULL FROM file_folders WHERE id = $1), TRUE)`, *n.ParentID); err != nil {
 				return err
 			}
 			if parentTrashed {
@@ -424,6 +425,11 @@ func purgeTx(ctx context.Context, tx *sqlx.Tx, n *filedom.Node) ([]filedom.Stora
 		return nil, err
 	}
 	if len(files) > 0 {
+		// A file a task still lists as an attachment is unlinked in the same
+		// transaction, so the task and the file never end up half-deleted.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM task_attachments WHERE file_id = ANY($1::uuid[])`, fileIDStrings(files, func(f fileObj) uuid.UUID { return f.ID })); err != nil {
+			return nil, err
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM files WHERE id = ANY($1::uuid[])`, fileIDStrings(files, func(f fileObj) uuid.UUID { return f.ID })); err != nil {
 			return nil, err
 		}
@@ -476,26 +482,18 @@ func (r *FileRepository) PurgeTrashedBefore(ctx context.Context, t time.Time, li
 		ORDER BY n.deleted_at LIMIT $2`, t, limit); err != nil {
 		return nil, fmt.Errorf("file repo: find expired trash: %w", err)
 	}
+	// One failing root must not block the newer ones behind it on every tick.
 	var all []filedom.StorageObject
+	var errs []error
 	for _, root := range roots {
 		objs, err := r.PurgeSubtree(ctx, &filedom.Node{ID: root.ID, Kind: filedom.Kind(root.Kind)})
 		if err != nil {
-			return all, err
+			errs = append(errs, err)
+			continue
 		}
 		all = append(all, objs...)
 	}
-	return all, nil
-}
-
-// UnlinkTaskAttachment removes the task attachment backed by the file. A
-// trigger sends the file to the trash.
-func (r *FileRepository) UnlinkTaskAttachment(ctx context.Context, fileID uuid.UUID) (bool, error) {
-	res, err := r.db.ExecContext(ctx, `DELETE FROM task_attachments WHERE file_id = $1`, fileID)
-	if err != nil {
-		return false, fmt.Errorf("file repo: unlink task attachment: %w", err)
-	}
-	n, _ := res.RowsAffected()
-	return n > 0, nil
+	return all, errors.Join(errs...)
 }
 
 // SetStarred stars or unstars an item for the user.

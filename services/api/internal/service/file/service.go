@@ -19,6 +19,32 @@ import (
 
 const presignedUploadTTL = time.Hour
 
+// objectStatter is implemented by stores that can report an object's size.
+type objectStatter interface {
+	StatObject(ctx context.Context, bucket, key string) (int64, error)
+}
+
+// activeContentTypes can run script when a browser renders them from the
+// storage origin, so they are only ever served as downloads.
+func isActiveContent(contentType, name string) bool {
+	ct, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		ct = strings.ToLower(strings.TrimSpace(contentType))
+	}
+	switch ct {
+	case "text/html", "application/xhtml+xml", "image/svg+xml", "text/xml", "application/xml",
+		"text/javascript", "application/javascript", "application/x-javascript", "text/css":
+		return true
+	}
+	n := strings.ToLower(name)
+	for _, ext := range []string{".html", ".htm", ".xhtml", ".svg", ".xml", ".js", ".mjs"} {
+		if strings.HasSuffix(n, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 // Service implements filedom.Service.
 type Service struct {
 	repo   filedom.Repository
@@ -164,6 +190,50 @@ func (s *Service) Rename(ctx context.Context, scope filedom.Scope, actor, id uui
 	return s.repo.GetNode(ctx, id, actor)
 }
 
+// Update renames and/or moves a node. Everything is validated before anything
+// is written, so a rejected move cannot leave a rename applied.
+func (s *Service) Update(ctx context.Context, scope filedom.Scope, actor, id uuid.UUID, name *string, move bool, parentID *uuid.UUID) (*filedom.Node, error) {
+	var newName string
+	if name != nil {
+		var err error
+		if newName, err = validateName(*name); err != nil {
+			return nil, err
+		}
+	}
+	n, err := s.liveNode(ctx, scope, actor, id)
+	if err != nil {
+		return nil, err
+	}
+	if n.Locked() {
+		return nil, filedom.ErrNodeLocked
+	}
+	if move {
+		if _, err := s.destination(ctx, scope, actor, parentID); err != nil {
+			return nil, err
+		}
+		if parentID != nil && n.IsFolder() {
+			inside, err := s.repo.IsSelfOrDescendant(ctx, id, *parentID)
+			if err != nil {
+				return nil, err
+			}
+			if inside {
+				return nil, filedom.ErrMoveIntoSelf
+			}
+		}
+	}
+	if name != nil {
+		if err := s.repo.Rename(ctx, n, newName); err != nil {
+			return nil, err
+		}
+	}
+	if move {
+		if err := s.repo.Move(ctx, n, parentID); err != nil {
+			return nil, err
+		}
+	}
+	return s.repo.GetNode(ctx, id, actor)
+}
+
 // Move moves a node to another folder of the same scope (nil: the root).
 func (s *Service) Move(ctx context.Context, scope filedom.Scope, actor, id uuid.UUID, parentID *uuid.UUID) (*filedom.Node, error) {
 	n, err := s.liveNode(ctx, scope, actor, id)
@@ -211,13 +281,10 @@ func (s *Service) Trash(ctx context.Context, scope filedom.Scope, actor, id uuid
 // uses, for good, and the bytes with it. These files are never trashed: the
 // owner would lose the file when the retention period ended, with nothing
 // having told the user so when they asked for the delete (the web UI confirms
-// it up front). A task attachment is unlinked first so the task loses it too;
-// an annotation screenshot's row also detaches from its annotation and task
+// it up front). The repository unlinks a task attachment in the same
+// transaction as the delete, so the task loses it too; an annotation screenshot's row also detaches from its annotation and task
 // through the foreign keys on files.
 func (s *Service) deleteReferencedFile(ctx context.Context, n *filedom.Node) error {
-	if _, err := s.repo.UnlinkTaskAttachment(ctx, n.ID); err != nil {
-		return err
-	}
 	objs, err := s.repo.PurgeSubtree(ctx, n)
 	if err != nil {
 		return err
@@ -383,6 +450,15 @@ func (s *Service) CompleteUpload(ctx context.Context, scope filedom.Scope, actor
 			return nil, fmt.Errorf("file svc: complete multipart: %w", err)
 		}
 	}
+	// The bytes must really be in the store, with the size the upload declared:
+	// otherwise the listing would show a file that cannot be opened, with a
+	// size the client made up.
+	if st, ok := s.store.(objectStatter); ok {
+		size, err := st.StatObject(ctx, f.Bucket, f.StorageKey)
+		if err != nil || size != f.FileSize {
+			return nil, filedom.ErrUploadNotComplete
+		}
+	}
 	if err := s.files.UpdateFileStatus(ctx, f.ID, attachmentdom.UploadStatusUploaded, nil); err != nil {
 		return nil, fmt.Errorf("file svc: update file status: %w", err)
 	}
@@ -399,7 +475,7 @@ func (s *Service) DownloadURL(ctx context.Context, scope filedom.Scope, actor, i
 		return "", nil, filedom.ErrNotFile
 	}
 	disposition := ""
-	if forceDownload {
+	if forceDownload || isActiveContent(n.ContentType, n.Name) {
 		name := strings.Map(func(r rune) rune {
 			if unicode.IsControl(r) {
 				return -1

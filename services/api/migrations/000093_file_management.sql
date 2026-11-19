@@ -53,6 +53,7 @@ ALTER TABLE files
 
 CREATE INDEX IF NOT EXISTS idx_files_folder ON files (folder_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_files_project_root ON files (project_id) WHERE folder_id IS NULL AND deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_files_project ON files (project_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_files_trash ON files (deleted_at) WHERE deleted_at IS NOT NULL;
 
 -- Per-user state. item_id is a folder or file id; ids are unique across both

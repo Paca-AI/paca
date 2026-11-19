@@ -47,14 +47,12 @@ type Repository interface {
 	// the scope root when the parent is still trashed.
 	Trash(ctx context.Context, n *Node, by uuid.UUID, at time.Time) error
 	Restore(ctx context.Context, n *Node) error
-	// PurgeSubtree permanently removes the node (and a folder's contents) and
+	// PurgeSubtree permanently removes the node (and a folder's contents),
+	// unlinking any task attachment that uses a file in the same transaction, and
 	// returns the objects to delete from the object store.
 	PurgeSubtree(ctx context.Context, n *Node) ([]StorageObject, error)
 	// PurgeTrashedBefore does the same for every trashed subtree older than t.
 	PurgeTrashedBefore(ctx context.Context, t time.Time, limit int) ([]StorageObject, error)
-	// UnlinkTaskAttachment removes the task attachment backed by the file;
-	// false when the file backs none.
-	UnlinkTaskAttachment(ctx context.Context, fileID uuid.UUID) (bool, error)
 	SetStarred(ctx context.Context, userID, itemID uuid.UUID, starred bool) error
 	// Touch records that the user opened the item.
 	Touch(ctx context.Context, userID, itemID uuid.UUID) error
