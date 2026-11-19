@@ -13,6 +13,8 @@ interface AttachmentItemProps {
 	taskId: string;
 	canDelete?: boolean;
 	onDelete?: (id: string) => void;
+	/** Opens the in-app preview of this attachment. */
+	onPreview: (attachment: TaskAttachment) => void;
 }
 
 function formatBytes(bytes: number, t: TFunction<"projects">): string {
@@ -33,6 +35,7 @@ export function AttachmentItem({
 	taskId,
 	canDelete,
 	onDelete,
+	onPreview,
 }: AttachmentItemProps) {
 	const { t } = useTranslation("projects");
 	const { t: tCommon } = useTranslation("common");
@@ -40,18 +43,7 @@ export function AttachmentItem({
 	const ext =
 		attachment.file.file_name.split(".").pop()?.toUpperCase() ?? "FILE";
 
-	const handlePreview = async () => {
-		try {
-			const url = await getAttachmentDownloadURL(
-				projectId,
-				taskId,
-				attachment.id,
-			);
-			window.open(url, "_blank", "noopener,noreferrer");
-		} catch {
-			// silently ignore — user can retry by clicking again
-		}
-	};
+	const handlePreview = () => onPreview(attachment);
 
 	const handleDownload = async () => {
 		if (isDownloading) return;

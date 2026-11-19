@@ -21,6 +21,12 @@
         "agent", "agent/*",
         "project"
       ]
+    },
+    {
+      "sid": "GeneralFiles",
+      "effect": "Allow",
+      "actions": ["files:read", "files:write"],
+      "resources": ["file/*"]
     }
   ]
 }

@@ -488,6 +488,36 @@ a {
 }
 
 /* Make BlockNote side menu buttons smaller - Applied to all instances */
+/*
+ * BlockNote file blocks (file / empty "add file" placeholders). The library
+ * hard-codes light greys for their background and hover (#f2f1ee, #e1e1e1),
+ * which in dark mode turns the block white under the light editor text. Use
+ * the app's own tokens so both themes follow the rest of the UI.
+ */
+.bn-root [data-file-block] .bn-add-file-button,
+.bn-root [data-file-block] .bn-file-name-with-icon {
+	color: var(--foreground);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-md, 0.5rem);
+	transition:
+		background-color 150ms,
+		border-color 150ms;
+}
+.bn-root [data-file-block] .bn-add-file-button {
+	background-color: var(--muted);
+	color: var(--muted-foreground);
+}
+.bn-root
+	.bn-editor[contenteditable="true"]
+	[data-file-block]
+	.bn-add-file-button:hover,
+.bn-root [data-file-block] .bn-file-name-with-icon:hover,
+.bn-root .ProseMirror-selectednode .bn-file-name-with-icon {
+	background-color: var(--accent);
+	color: var(--accent-foreground);
+	border-color: var(--ring);
+}
+
 .bn-root .bn-side-menu {
 	gap: 2px;
 	padding: 2px;

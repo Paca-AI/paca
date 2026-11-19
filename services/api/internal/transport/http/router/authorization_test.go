@@ -96,6 +96,7 @@ var openRouteGroups = []struct {
 		routes: []string{
 			"GET /api/v1/projects",
 			"GET /api/v1/projects/workspace-stats",
+			"GET /api/v1/files/roots",
 			"GET /api/v1/port-forwards/resolve",
 			"GET /api/v1/projects/{projectId}/members/me/permissions",
 			"POST /api/v1/projects/{projectId}/members/me/permissions/check",
@@ -177,6 +178,7 @@ func allRoutes(t *testing.T, authorizer *iam.Authorizer) []routeUnderTest {
 		Attachment:      handler.NewAttachmentHandler(nil),
 		Document:        handler.NewDocumentHandler(nil, nil),
 		DocFile:         handler.NewDocFileHandler(nil),
+		File:            handler.NewFileHandler(nil, nil, nil),
 		Notification:    handler.NewNotificationHandler(nil),
 		APIKey:          handler.NewAPIKeyHandler(nil),
 		ServiceAccount:  handler.NewServiceAccountHandler(nil, nil),

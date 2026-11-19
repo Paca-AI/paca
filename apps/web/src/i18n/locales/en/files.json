@@ -1,0 +1,237 @@
+{
+	"title": "Files",
+	"nav": {
+		"files": "Files",
+		"recent": "Recent",
+		"starred": "Starred",
+		"trash": "Trash"
+	},
+	"roots": {
+		"general": "General",
+		"empty": "You do not have access to any files yet.",
+		"emptyHint": "Files of the projects you can read appear here as folders."
+	},
+	"header": {
+		"new": "New",
+		"newFolder": "New folder",
+		"uploadFile": "File upload",
+		"uploadFolder": "Folder upload",
+		"search": "Search in {{where}}",
+		"view": {
+			"grid": "Grid view",
+			"list": "List view"
+		},
+		"typeFilter": "Type",
+		"allTypes": "All types"
+	},
+	"types": {
+		"document": "Documents",
+		"spreadsheet": "Spreadsheets",
+		"presentation": "Presentations",
+		"pdf": "PDFs",
+		"image": "Images",
+		"video": "Videos",
+		"audio": "Audio",
+		"archive": "Archives"
+	},
+	"kinds": {
+		"folder": "Folder",
+		"image": "Image",
+		"video": "Video",
+		"audio": "Audio",
+		"pdf": "PDF",
+		"document": "Document",
+		"spreadsheet": "Spreadsheet",
+		"presentation": "Presentation",
+		"archive": "Archive",
+		"code": "Code",
+		"text": "Text",
+		"other": "File"
+	},
+	"columns": {
+		"name": "Name",
+		"owner": "Owner",
+		"modified": "Last modified",
+		"size": "Size",
+		"location": "Location",
+		"trashed": "Date moved to trash"
+	},
+	"sections": {
+		"folders": "Folders",
+		"files": "Files"
+	},
+	"sectionTitle": {
+		"recent": "Recent",
+		"starred": "Starred",
+		"trash": "Trash"
+	},
+	"empty": {
+		"folder": "This folder is empty",
+		"folderHint": "Drag files here or use New to add some.",
+		"search": "No files match your search",
+		"recent": "No recently opened files",
+		"recentHint": "Files you preview or download show up here.",
+		"starred": "Nothing starred yet",
+		"starredHint": "Star files and folders to find them quickly.",
+		"trash": "Trash is empty",
+		"trashHint": "Items stay here for 30 days, then are deleted for good."
+	},
+	"actions": {
+		"open": "Open",
+		"preview": "Preview",
+		"download": "Download",
+		"star": "Add to starred",
+		"unstar": "Remove from starred",
+		"rename": "Rename",
+		"move": "Move to…",
+		"details": "Details",
+		"trash": "Move to trash",
+		"delete": "Delete",
+		"restore": "Restore",
+		"deleteForever": "Delete forever",
+		"more": "More actions"
+	},
+	"system": {
+		"task_attachments": "Files attached to this project's tasks.",
+		"task": "Attachments of this task.",
+		"docs": "Files embedded in this project's documents.",
+		"annotations": "Screenshots from page comments."
+	},
+	"dialogs": {
+		"newFolder": {
+			"title": "New folder",
+			"label": "Folder name",
+			"default": "Untitled folder",
+			"create": "Create"
+		},
+		"rename": {
+			"title": "Rename",
+			"label": "Name",
+			"save": "Save"
+		},
+		"move": {
+			"title": "Move {{name}}",
+			"titleMany": "Move {{count}} items",
+			"here": "Move here",
+			"noFolders": "No folders here"
+		},
+		"deleteTaskAttachment": {
+			"title": "Delete this attachment?",
+			"body": "{{name}} is attached to a task. Deleting it removes it from the task and cannot be undone.",
+			"confirm": "Delete"
+		},
+		"deleteForever": {
+			"title": "Delete forever?",
+			"body": "{{name}} will be permanently deleted. This cannot be undone.",
+			"bodyMany": "{{count}} items will be permanently deleted. This cannot be undone.",
+			"confirm": "Delete forever"
+		},
+		"cancel": "Cancel"
+	},
+	"details": {
+		"title": "Details",
+		"type": "Type",
+		"size": "Size",
+		"owner": "Owner",
+		"created": "Created",
+		"modified": "Modified",
+		"location": "Location",
+		"source": "Source",
+		"unknownOwner": "Unknown"
+	},
+	"source": {
+		"upload": "Uploaded",
+		"task_attachment": "Task attachment",
+		"doc": "Document file",
+		"annotation": "Annotation screenshot"
+	},
+	"upload": {
+		"uploading": "Uploading {{count}} item",
+		"uploading_other": "Uploading {{count}} items",
+		"done": "Uploads complete",
+		"failed": "{{count}} failed",
+		"cancel": "Cancel",
+		"dropHere": "Drop to upload to {{where}}",
+		"error": "Upload failed"
+	},
+	"preview": {
+		"loading": "Loading preview…",
+		"tooLarge": "This file is too large to preview ({{size}}). Download it to open it.",
+		"failed": "The preview could not be loaded.",
+		"download": "Download",
+		"previous": "Previous file",
+		"next": "Next file",
+		"close": "Close"
+	},
+	"toast": {
+		"folderCreated": "Folder created",
+		"renamed": "Renamed",
+		"moved": "Moved",
+		"movedMany": "{{count}} items moved",
+		"trashed": "Moved to trash",
+		"trashedMany": "{{count}} items moved to trash",
+		"restored": "Restored",
+		"deleted": "Deleted",
+		"starred": "Added to starred",
+		"unstarred": "Removed from starred",
+		"failed": "Something went wrong"
+	},
+	"errors": {
+		"FILE_NODE_NOT_FOUND": "That item no longer exists.",
+		"FILE_NAME_INVALID": "Names cannot be empty or contain slashes.",
+		"FILE_NODE_LOCKED": "This item is managed by Paca and cannot be changed.",
+		"FILE_NOT_FOLDER": "That is not a folder.",
+		"FILE_NOT_FILE": "That is not a file.",
+		"FILE_MOVE_INTO_SELF": "A folder cannot be moved into itself.",
+		"FILE_NODE_TRASHED": "That item is in the trash.",
+		"FILE_NODE_NOT_TRASHED": "That item is not in the trash.",
+		"FILE_UPLOAD_INCOMPLETE": "The upload did not finish.",
+		"FILE_TOO_LARGE": "That file is too large to upload.",
+		"FILE_TYPE_INVALID": "Unknown file type filter."
+	},
+	"noAccess": {
+		"title": "You cannot view these files",
+		"body": "Ask a project admin for files access."
+	},
+	"selected": "{{count}} selected",
+	"picker": {
+		"search": "Search files",
+		"root": "Files",
+		"empty": "No matching files in this folder"
+	},
+	"filePanel": {
+		"tabs": {
+			"upload": "Upload",
+			"files": "From files",
+			"embed": "Embed link"
+		},
+		"upload": {
+			"title": {
+				"image": "Upload an image",
+				"video": "Upload a video",
+				"audio": "Upload an audio file",
+				"file": "Upload a file"
+			},
+			"hint": "Drag and drop, or click to choose",
+			"uploading": "Uploading…",
+			"error": "The upload failed. Please try again."
+		},
+		"files": {
+			"hint": {
+				"image": "Pick an image from this project's files",
+				"video": "Pick a video from this project's files",
+				"audio": "Pick an audio file from this project's files",
+				"file": "Pick a file from this project's files"
+			}
+		},
+		"embed": {
+			"placeholder": "Paste a link…",
+			"button": {
+				"image": "Embed image",
+				"video": "Embed video",
+				"audio": "Embed audio",
+				"file": "Embed file"
+			}
+		}
+	}
+}

@@ -59,6 +59,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { FilesSidebarSection } from "@/components/files/files-sidebar-section";
 import { useManagedCopyLabel } from "@/components/projects/docs/managed-copy-banner";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
@@ -2298,6 +2299,8 @@ export function AppSidebar() {
 						<SidebarSeparator />
 						{canReadDocs && <DocsSidebarSection projectId={projectId} />}
 						<SidebarSeparator />
+						<FilesSidebarSection projectId={projectId} />
+						<SidebarSeparator />
 						<ExtensionPoint
 							point="sidebar.project.section"
 							componentProps={{ projectId }}
@@ -2323,6 +2326,8 @@ export function AppSidebar() {
 								</SidebarGroupContent>
 							</SidebarGroup>
 						)}
+
+						<FilesSidebarSection />
 
 						<ExtensionPoint point="sidebar.general.section" />
 						{/* Admin section */}

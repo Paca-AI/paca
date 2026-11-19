@@ -52,6 +52,13 @@ const (
 	ActionDocsRead     Action = "docs:read"
 	ActionDocsWrite    Action = "docs:write"
 
+	// Files: the Drive-style file manager. Read covers browsing, previewing
+	// and downloading; write covers uploading, creating folders, renaming,
+	// moving, trashing and restoring. The general (workspace) scope is checked
+	// on the platform root "file/*"; a project's files on the project.
+	ActionFilesRead  Action = "files:read"
+	ActionFilesWrite Action = "files:write"
+
 	ActionAgentsRead         Action = "agents:read"
 	ActionAgentsWrite        Action = "agents:write"
 	ActionConversationsRead  Action = "conversations:read"
@@ -119,7 +126,7 @@ func BuiltinActions() []Action {
 		ActionProjectActivitiesRead, ActionProjectExport,
 		ActionTasksRead, ActionTasksWrite,
 		ActionProjectSettingsTaskTypesWrite, ActionProjectSettingsTaskStatusesWrite, ActionProjectSettingsCustomFieldsWrite,
-		ActionSprintsRead, ActionSprintsWrite, ActionViewsRead, ActionViewsWrite, ActionDocsRead, ActionDocsWrite,
+		ActionSprintsRead, ActionSprintsWrite, ActionViewsRead, ActionViewsWrite, ActionDocsRead, ActionDocsWrite, ActionFilesRead, ActionFilesWrite,
 		ActionAgentsRead, ActionAgentsWrite, ActionConversationsRead, ActionConversationsWrite,
 		ActionEnvironmentsRead, ActionEnvironmentsWrite, ActionEnvironmentsConnect,
 		ActionWorkflowsRead, ActionWorkflowsWrite,

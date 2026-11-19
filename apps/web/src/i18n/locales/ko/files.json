@@ -1,0 +1,236 @@
+{
+	"title": "파일",
+	"nav": {
+		"files": "파일",
+		"recent": "최근",
+		"starred": "별표 표시",
+		"trash": "휴지통"
+	},
+	"roots": {
+		"general": "일반",
+		"empty": "아직 접근할 수 있는 파일이 없습니다.",
+		"emptyHint": "읽기 권한이 있는 프로젝트의 파일이 폴더로 여기에 표시됩니다."
+	},
+	"header": {
+		"new": "새로 만들기",
+		"newFolder": "새 폴더",
+		"uploadFile": "파일 업로드",
+		"uploadFolder": "폴더 업로드",
+		"search": "{{where}}에서 검색",
+		"view": {
+			"grid": "그리드 보기",
+			"list": "목록 보기"
+		},
+		"typeFilter": "유형",
+		"allTypes": "모든 유형"
+	},
+	"types": {
+		"document": "문서",
+		"spreadsheet": "스프레드시트",
+		"presentation": "프레젠테이션",
+		"pdf": "PDF",
+		"image": "이미지",
+		"video": "동영상",
+		"audio": "오디오",
+		"archive": "압축 파일"
+	},
+	"kinds": {
+		"folder": "폴더",
+		"image": "이미지",
+		"video": "동영상",
+		"audio": "오디오",
+		"pdf": "PDF",
+		"document": "문서",
+		"spreadsheet": "스프레드시트",
+		"presentation": "프레젠테이션",
+		"archive": "압축 파일",
+		"code": "코드",
+		"text": "텍스트",
+		"other": "파일"
+	},
+	"columns": {
+		"name": "이름",
+		"owner": "소유자",
+		"modified": "최종 수정",
+		"size": "크기",
+		"location": "위치",
+		"trashed": "휴지통으로 이동한 날짜"
+	},
+	"sections": {
+		"folders": "폴더",
+		"files": "파일"
+	},
+	"sectionTitle": {
+		"recent": "최근",
+		"starred": "별표 표시",
+		"trash": "휴지통"
+	},
+	"empty": {
+		"folder": "이 폴더는 비어 있습니다",
+		"folderHint": "파일을 여기로 끌어 놓거나 새로 만들기로 추가하세요.",
+		"search": "검색과 일치하는 파일이 없습니다",
+		"recent": "최근에 연 파일이 없습니다",
+		"recentHint": "미리 보거나 다운로드한 파일이 여기에 표시됩니다.",
+		"starred": "별표 표시한 항목이 없습니다",
+		"starredHint": "파일과 폴더에 별표를 표시해 빠르게 찾아보세요.",
+		"trash": "휴지통이 비어 있습니다",
+		"trashHint": "항목은 30일 동안 보관된 후 영구 삭제됩니다."
+	},
+	"actions": {
+		"open": "열기",
+		"preview": "미리보기",
+		"download": "다운로드",
+		"star": "별표 표시에 추가",
+		"unstar": "별표 표시 해제",
+		"rename": "이름 바꾸기",
+		"move": "이동…",
+		"details": "세부정보",
+		"trash": "휴지통으로 이동",
+		"delete": "삭제",
+		"restore": "복원",
+		"deleteForever": "영구 삭제",
+		"more": "더보기"
+	},
+	"system": {
+		"task_attachments": "이 프로젝트의 작업에 첨부된 파일입니다.",
+		"task": "이 작업의 첨부 파일입니다.",
+		"docs": "이 프로젝트의 문서에 삽입된 파일입니다.",
+		"annotations": "페이지 댓글의 스크린샷입니다."
+	},
+	"dialogs": {
+		"newFolder": {
+			"title": "새 폴더",
+			"label": "폴더 이름",
+			"default": "제목 없는 폴더",
+			"create": "만들기"
+		},
+		"rename": {
+			"title": "이름 바꾸기",
+			"label": "이름",
+			"save": "저장"
+		},
+		"move": {
+			"title": "{{name}} 이동",
+			"titleMany": "{{count}}개 항목 이동",
+			"here": "여기로 이동",
+			"noFolders": "여기에는 폴더가 없습니다"
+		},
+		"deleteTaskAttachment": {
+			"title": "이 첨부 파일을 삭제할까요?",
+			"body": "{{name}}은(는) 작업에 첨부되어 있습니다. 삭제하면 작업에서도 제거되며 되돌릴 수 없습니다.",
+			"confirm": "삭제"
+		},
+		"deleteForever": {
+			"title": "영구 삭제할까요?",
+			"body": "{{name}}이(가) 영구 삭제됩니다. 되돌릴 수 없습니다.",
+			"bodyMany": "{{count}}개 항목이 영구 삭제됩니다. 되돌릴 수 없습니다.",
+			"confirm": "영구 삭제"
+		},
+		"cancel": "취소"
+	},
+	"details": {
+		"title": "세부정보",
+		"type": "유형",
+		"size": "크기",
+		"owner": "소유자",
+		"created": "생성일",
+		"modified": "수정일",
+		"location": "위치",
+		"source": "출처",
+		"unknownOwner": "알 수 없음"
+	},
+	"source": {
+		"upload": "업로드됨",
+		"task_attachment": "작업 첨부 파일",
+		"doc": "문서 파일",
+		"annotation": "주석 스크린샷"
+	},
+	"upload": {
+		"uploading": "{{count}}개 항목 업로드 중",
+		"done": "업로드 완료",
+		"failed": "{{count}}개 실패",
+		"cancel": "취소",
+		"dropHere": "여기에 놓아 {{where}}에 업로드",
+		"error": "업로드 실패"
+	},
+	"preview": {
+		"loading": "미리보기를 불러오는 중…",
+		"tooLarge": "이 파일은 미리 보기에는 너무 큽니다({{size}}). 다운로드하여 여세요.",
+		"failed": "미리보기를 불러오지 못했습니다.",
+		"download": "다운로드",
+		"previous": "이전 파일",
+		"next": "다음 파일",
+		"close": "닫기"
+	},
+	"toast": {
+		"folderCreated": "폴더를 만들었습니다",
+		"renamed": "이름을 바꿨습니다",
+		"moved": "이동했습니다",
+		"movedMany": "{{count}}개 항목을 이동했습니다",
+		"trashed": "휴지통으로 이동했습니다",
+		"trashedMany": "{{count}}개 항목을 휴지통으로 이동했습니다",
+		"restored": "복원했습니다",
+		"deleted": "삭제했습니다",
+		"starred": "별표 표시에 추가했습니다",
+		"unstarred": "별표 표시를 해제했습니다",
+		"failed": "문제가 발생했습니다"
+	},
+	"errors": {
+		"FILE_NODE_NOT_FOUND": "해당 항목이 더 이상 없습니다.",
+		"FILE_NAME_INVALID": "이름은 비워 둘 수 없고 슬래시를 포함할 수 없습니다.",
+		"FILE_NODE_LOCKED": "이 항목은 Paca에서 관리하므로 변경할 수 없습니다.",
+		"FILE_NOT_FOLDER": "폴더가 아닙니다.",
+		"FILE_NOT_FILE": "파일이 아닙니다.",
+		"FILE_MOVE_INTO_SELF": "폴더를 자기 자신 안으로 이동할 수 없습니다.",
+		"FILE_NODE_TRASHED": "해당 항목은 휴지통에 있습니다.",
+		"FILE_NODE_NOT_TRASHED": "해당 항목은 휴지통에 없습니다.",
+		"FILE_UPLOAD_INCOMPLETE": "업로드가 완료되지 않았습니다.",
+		"FILE_TOO_LARGE": "파일이 너무 커서 업로드할 수 없습니다.",
+		"FILE_TYPE_INVALID": "알 수 없는 파일 유형 필터입니다."
+	},
+	"noAccess": {
+		"title": "이 파일을 볼 수 없습니다",
+		"body": "프로젝트 관리자에게 파일 접근 권한을 요청하세요."
+	},
+	"selected": "{{count}}개 선택됨",
+	"picker": {
+		"search": "파일 검색",
+		"root": "파일",
+		"empty": "이 폴더에 일치하는 파일이 없습니다"
+	},
+	"filePanel": {
+		"tabs": {
+			"upload": "업로드",
+			"files": "파일에서 선택",
+			"embed": "링크 삽입"
+		},
+		"upload": {
+			"title": {
+				"image": "이미지 업로드",
+				"video": "동영상 업로드",
+				"audio": "오디오 파일 업로드",
+				"file": "파일 업로드"
+			},
+			"hint": "끌어다 놓거나 클릭하여 선택",
+			"uploading": "업로드 중…",
+			"error": "업로드에 실패했습니다. 다시 시도해 주세요."
+		},
+		"files": {
+			"hint": {
+				"image": "이 프로젝트의 파일에서 이미지 선택",
+				"video": "이 프로젝트의 파일에서 동영상 선택",
+				"audio": "이 프로젝트의 파일에서 오디오 선택",
+				"file": "이 프로젝트의 파일에서 파일 선택"
+			}
+		},
+		"embed": {
+			"placeholder": "링크 붙여넣기…",
+			"button": {
+				"image": "이미지 삽입",
+				"video": "동영상 삽입",
+				"audio": "오디오 삽입",
+				"file": "파일 삽입"
+			}
+		}
+	}
+}
