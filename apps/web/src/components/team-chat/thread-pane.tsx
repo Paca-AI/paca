@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, BellOff, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +17,14 @@ import {
 	setReaction,
 	setThreadFollowed,
 } from "@/lib/chat-api";
-import { mergeMessages, toggleReaction } from "@/lib/chat-cache";
+import {
+	firstSeq,
+	lastSeq,
+	type MessageWindow,
+	toggleReaction,
+	withNewest,
+	withOlder,
+} from "@/lib/chat-cache";
 import { Composer } from "./composer";
 import { type MessageActions, MessageItem } from "./message-item";
 import { MessageList } from "./message-list";
@@ -53,38 +60,34 @@ export function ThreadPane({
 	const queryClient = useQueryClient();
 	const key = chatKeys.thread(projectId, channelId, root.id);
 
+	// The replies live in the query cache as one window, so a refetch of the
+	// newest page and the older pages the user loaded stay together.
 	const replies = useQuery({
 		queryKey: key,
-		queryFn: async () =>
-			(
-				await listMessages(projectId, channelId, {
-					threadRootId: root.id,
-					pageSize: REPLY_PAGE,
-				})
-			).items,
+		queryFn: async (): Promise<MessageWindow> => {
+			const page = await listMessages(projectId, channelId, {
+				threadRootId: root.id,
+				pageSize: REPLY_PAGE,
+			});
+			// Merge into what is loaded unless a gap opened since; then start over.
+			const cur = queryClient.getQueryData<MessageWindow>(key);
+			const first = page.items[0]?.seq ?? 0;
+			const contiguous = !!cur && (first === 0 || first <= lastSeq(cur) + 1);
+			return withNewest(cur, page, !contiguous);
+		},
 	});
-
-	// Replies older than the newest page, loaded on demand.
-	const [older, setOlder] = useState<{ items: ChatMessage[]; done: boolean }>({
-		items: [],
-		done: false,
-	});
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reset when another thread opens
-	useEffect(() => setOlder({ items: [], done: false }), [root.id]);
-	const allReplies = mergeMessages(older.items, replies.data ?? []);
-	const hasOlder = !older.done && (replies.data?.length ?? 0) >= REPLY_PAGE;
+	const allReplies = replies.data?.items ?? [];
 	const loadOlder = useMutation({
 		mutationFn: () =>
 			listMessages(projectId, channelId, {
 				threadRootId: root.id,
-				beforeSeq: allReplies[0]?.seq,
+				beforeSeq: firstSeq(replies.data),
 				pageSize: REPLY_PAGE,
 			}),
 		onSuccess: (page) =>
-			setOlder((cur) => ({
-				items: mergeMessages(cur.items, page.items),
-				done: !page.has_more,
-			})),
+			queryClient.setQueryData<MessageWindow>(key, (cur) =>
+				withOlder(cur, page),
+			),
 	});
 
 	const refresh = () => {
@@ -101,10 +104,15 @@ export function ThreadPane({
 		mutationFn: (v: { m: ChatMessage; emoji: string; on: boolean }) =>
 			setReaction(projectId, channelId, v.m.id, v.emoji, v.on),
 		onMutate: (v) => {
-			queryClient.setQueryData<ChatMessage[]>(key, (cur) =>
-				cur?.map((m) =>
-					m.id === v.m.id ? toggleReaction(m, v.emoji, v.on) : m,
-				),
+			queryClient.setQueryData<MessageWindow>(key, (cur) =>
+				cur
+					? {
+							...cur,
+							items: cur.items.map((m) =>
+								m.id === v.m.id ? toggleReaction(m, v.emoji, v.on) : m,
+							),
+						}
+					: cur,
 			);
 		},
 		onSettled: () => void queryClient.invalidateQueries({ queryKey: key }),
@@ -138,7 +146,7 @@ export function ThreadPane({
 	});
 
 	// A followed thread on screen is a read thread.
-	const newest = (replies.data ?? []).reduce((n, m) => Math.max(n, m.seq), 0);
+	const newest = lastSeq(replies.data);
 	useEffect(() => {
 		if (!root.following || newest === 0) return;
 		const id = setTimeout(() => {
@@ -200,7 +208,7 @@ export function ThreadPane({
 			</div>
 			<MessageList
 				items={allReplies}
-				hasOlder={hasOlder}
+				hasOlder={replies.data?.hasOlder ?? false}
 				loadingOlder={loadOlder.isPending}
 				onLoadOlder={() => loadOlder.mutate()}
 				currentUserId={currentUserId}
