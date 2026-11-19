@@ -527,6 +527,11 @@ func (s *Service) RefreshAnnotation(ctx context.Context, annotationRefreshToken 
 		return nil, err
 	}
 
+	// This rotation extends the family's lifetime too, so the registry entry
+	// must follow it or a session kept alive only by the extension would
+	// drop out of the list (and out of "sign out all other devices").
+	s.recordSession(ctx, claims.FamilyID, u.ID, claims.RememberMe, refreshTTL)
+
 	return &domainauth.TokenPair{
 		RefreshTTL:             refreshTTL,
 		AnnotationAccessToken:  access,

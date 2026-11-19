@@ -178,6 +178,7 @@ function RevokeDialog({
 		},
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ["auth", "sessions"] });
+			setFailed(false);
 			onClose();
 		},
 		onError: () => setFailed(true),

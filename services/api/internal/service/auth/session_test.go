@@ -239,3 +239,22 @@ func TestSessions_NoStoreConfigured(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestRefreshAnnotation_KeepsSessionRegistered(t *testing.T) {
+	f := newSessionFixture(t)
+	ctx := domainauth.WithClientInfo(context.Background(), domainauth.ClientInfo{IP: "1.1.1.1", UserAgent: "ua"})
+	pair, err := f.svc.IssueSession(ctx, f.user, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, _ := jwttoken.New("test-secret", time.Minute, time.Hour).Verify(pair.AnnotationRefreshToken)
+	// Its registry entry lapsed while the extension kept the family alive.
+	_ = f.sessions.Delete(ctx, claims.FamilyID)
+
+	if _, err := f.svc.RefreshAnnotation(ctx, pair.AnnotationRefreshToken); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.sessions.Get(ctx, claims.FamilyID); err != nil {
+		t.Fatalf("session not re-registered: %v", err)
+	}
+}

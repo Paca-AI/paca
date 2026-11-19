@@ -33,6 +33,24 @@ func NewSessionStore(client *redis.Client) *SessionStore {
 	return &SessionStore{client: client}
 }
 
+// extendExpiry raises KEYS[1]'s expiry to ARGV[1] milliseconds unless it
+// already lasts longer. PTTL is -1 for a key without an expiry, which counts
+// as shorter, so a freshly created index always gets one.
+var extendExpiry = redis.NewScript(`
+local cur = redis.call('PTTL', KEYS[1])
+if cur < tonumber(ARGV[1]) then
+	return redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return 0`)
+
+// validID reports whether id could be a session id. Ids are UUID family ids;
+// anything else is rejected before it is spliced into a key, where it could
+// otherwise land in the per-user index namespace ("user:<uuid>").
+func validID(id string) bool {
+	_, err := uuid.Parse(id)
+	return err == nil
+}
+
 func sessionKey(id string) string { return sessionPrefix + id }
 
 func sessionUserKey(userID uuid.UUID) string { return sessionUserPrefix + userID.String() }
@@ -52,10 +70,10 @@ func (s *SessionStore) Save(ctx context.Context, sess domainauth.Session, ttl ti
 	pipe.HSet(ctx, key, "ip", sess.IP, "user_agent", sess.UserAgent, "last_active_at", last)
 	pipe.Expire(ctx, key, ttl)
 	pipe.ZAdd(ctx, idx, redis.Z{Score: float64(last), Member: sess.ID})
-	// The index must outlive its longest-lived member.
-	if cur := s.client.TTL(ctx, idx).Val(); cur < ttl {
-		pipe.Expire(ctx, idx, ttl)
-	}
+	// The index must outlive its longest-lived member. Done server-side in the
+	// same transaction so concurrent saves with different TTLs (remember-me
+	// or not) can only ever extend it, never shorten it.
+	extendExpiry.Eval(ctx, pipe, []string{idx}, ttl.Milliseconds())
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("session store: save %q: %w", sess.ID, err)
 	}
@@ -64,6 +82,9 @@ func (s *SessionStore) Save(ctx context.Context, sess domainauth.Session, ttl ti
 
 // Get implements domainauth.SessionStore.
 func (s *SessionStore) Get(ctx context.Context, id string) (*domainauth.Session, error) {
+	if !validID(id) {
+		return nil, domainauth.ErrSessionNotFound
+	}
 	m, err := s.client.HGetAll(ctx, sessionKey(id)).Result()
 	if err != nil {
 		return nil, fmt.Errorf("session store: get %q: %w", id, err)
@@ -118,6 +139,9 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID uuid.UUID) ([]doma
 
 // Delete implements domainauth.SessionStore.
 func (s *SessionStore) Delete(ctx context.Context, id string) error {
+	if !validID(id) {
+		return nil
+	}
 	key := sessionKey(id)
 	uid, err := s.client.HGet(ctx, key, "user_id").Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
