@@ -51,11 +51,16 @@ func (s *Service) announce(ctx context.Context, scope filedom.Scope, change stri
 	// root marks the scope's top level, whose listing has no folder id.
 	ids := make([]string, 0, len(folders))
 	root := false
+	seen := make(map[uuid.UUID]struct{}, len(folders))
 	for _, f := range folders {
 		if f == nil {
 			root = true
 			continue
 		}
+		if _, dup := seen[*f]; dup {
+			continue
+		}
+		seen[*f] = struct{}{}
 		ids = append(ids, f.String())
 	}
 	payload["folder_ids"] = ids

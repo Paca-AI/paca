@@ -325,8 +325,13 @@ func (s *Service) Restore(ctx context.Context, scope filedom.Scope, actor, id uu
 		return nil, err
 	}
 	// Restore may put it back at the root when its folder is gone: announce
-	// where it landed.
-	s.announce(ctx, scope, changeRestored, restored, restored.ParentID)
+	// where it landed. A restored folder also brings its contents back, so its
+	// own listing changed too.
+	if restored.IsFolder() {
+		s.announce(ctx, scope, changeRestored, restored, restored.ParentID, &restored.ID)
+	} else {
+		s.announce(ctx, scope, changeRestored, restored, restored.ParentID)
+	}
 	return restored, nil
 }
 

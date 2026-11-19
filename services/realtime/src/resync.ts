@@ -137,26 +137,38 @@ export function createResyncer(
 
 	// resyncWorkspaceFiles puts each account's sockets in the workspace files
 	// room, or takes them out, by their current platform-level files:read. One
-	// request per account (and token); a failure leaves the room as it is.
+	// request per account (not per token or socket): a user's tabs share the
+	// answer. Tokens are tried until one is accepted; only the sockets whose own
+	// token the API rejected are ended. Any other failure leaves the room as it
+	// is until the next pass.
 	async function resyncWorkspaceFiles(): Promise<void> {
-		const byToken = new Map<string, Socket[]>();
+		const byUser = new Map<string, Socket[]>();
 		for (const socket of io.sockets.sockets.values()) {
-			const list = byToken.get(socket.data.rawToken);
+			const list = byUser.get(socket.data.userId);
 			if (list) list.push(socket);
-			else byToken.set(socket.data.rawToken, [socket]);
+			else byUser.set(socket.data.userId, [socket]);
 		}
-		const jobs = [...byToken.entries()].map(([token, sockets]) => async () => {
-			try {
-				const auth = await verifyTokenWithAPI(apiUrl, token);
-				const allowed = auth.globalPermissions.includes("files:read");
-				for (const s of sockets) {
-					if (allowed) s.join(WORKSPACE_FILES_ROOM);
-					else s.leave(WORKSPACE_FILES_ROOM);
-				}
-			} catch (err) {
-				logger.warn({ err }, "workspace files room resync failed");
-				if (err instanceof ApiRequestError && err.status === 401) {
-					for (const s of sockets) s.disconnect(true);
+		const jobs = [...byUser.values()].map((sockets) => async () => {
+			let live = sockets;
+			for (const token of new Set(sockets.map((s) => s.data.rawToken))) {
+				try {
+					const auth = await verifyTokenWithAPI(apiUrl, token);
+					const allowed = auth.globalPermissions.includes("files:read");
+					for (const s of live) {
+						if (allowed) s.join(WORKSPACE_FILES_ROOM);
+						else s.leave(WORKSPACE_FILES_ROOM);
+					}
+					return;
+				} catch (err) {
+					logger.warn({ err }, "workspace files room resync failed");
+					if (err instanceof ApiRequestError && err.status === 401) {
+						for (const s of live) {
+							if (s.data.rawToken === token) s.disconnect(true);
+						}
+						live = live.filter((s) => s.data.rawToken !== token);
+						continue;
+					}
+					return;
 				}
 			}
 		});

@@ -460,26 +460,47 @@ export interface FileChangedPayload {
 	root?: boolean;
 }
 
-/**
- * Applies another user's file change to the cache. Only what the change can
- * touch is refetched: a listing of a folder the change names (or of the
- * scope's top level), a search (it can match anywhere), the Recent/Starred/
- * Trash sections, and breadcrumbs. A folder that was trashed or deleted takes
- * the listing of its own contents with it. Inactive queries are only marked
- * stale, so nothing is fetched for a folder nobody is looking at.
- */
-export function applyFileChange(
+// A burst of changes (moving many files) must not refetch every active search
+// and section once per event: the first change of a burst is applied at once,
+// the ones that follow within the window are merged into a single trailing pass.
+const FILE_CHANGE_WINDOW_MS = 250;
+
+interface FileChangeBurst {
+	timer: ReturnType<typeof setTimeout>;
+	pending: FileChangedPayload[];
+}
+
+const bursts = new WeakMap<QueryClient, Map<string, FileChangeBurst>>();
+
+function invalidateForChanges(
 	qc: QueryClient,
 	scope: FileScope,
-	payload: FileChangedPayload,
+	payloads: FileChangedPayload[],
 ): void {
 	const key = scopeKey(scope);
-	const folders = new Set(payload.folder_ids ?? []);
-	const goneFolder =
-		payload.kind === "folder" &&
-		(payload.change === "trashed" || payload.change === "deleted")
-			? payload.node_id
-			: undefined;
+	const folders = new Set<string>();
+	let root = false;
+	for (const payload of payloads) {
+		for (const id of payload.folder_ids ?? []) folders.add(id);
+		if (payload.root === true) root = true;
+		// A folder that was trashed or deleted takes the listing of its own
+		// contents with it.
+		if (
+			payload.kind === "folder" &&
+			payload.node_id &&
+			(payload.change === "trashed" || payload.change === "deleted")
+		) {
+			folders.add(payload.node_id);
+		}
+		// A restored folder brings its contents back with it.
+		if (
+			payload.kind === "folder" &&
+			payload.node_id &&
+			payload.change === "restored"
+		) {
+			folders.add(payload.node_id);
+		}
+	}
 	void qc.invalidateQueries({
 		predicate: (query) => {
 			const k = query.queryKey;
@@ -488,13 +509,54 @@ export function applyFileChange(
 				const p = (k[3] ?? {}) as FileListParams;
 				if (p.q) return true;
 				const parent = p.parentId ?? null;
-				if (parent === null) return payload.root === true;
-				return folders.has(parent) || parent === goneFolder;
+				if (parent === null) return root;
+				return folders.has(parent);
 			}
 			// "section" (recent, starred, trash) and "path" (breadcrumbs).
 			return k[2] === "section" || k[2] === "path";
 		},
 	});
+}
+
+/**
+ * Applies another user's file change to the cache. Only what the change can
+ * touch is refetched: a listing of a folder the change names (or of the
+ * scope's top level), a search (it can match anywhere), the Recent/Starred/
+ * Trash sections, and breadcrumbs. Inactive queries are only marked stale, so
+ * nothing is fetched for a folder nobody is looking at. Bursts are coalesced.
+ */
+export function applyFileChange(
+	qc: QueryClient,
+	scope: FileScope,
+	payload: FileChangedPayload,
+): void {
+	const key = scopeKey(scope);
+	let perClient = bursts.get(qc);
+	if (!perClient) {
+		perClient = new Map();
+		bursts.set(qc, perClient);
+	}
+	const clients = perClient;
+	const open = clients.get(key);
+	if (open) {
+		open.pending.push(payload);
+		return;
+	}
+	invalidateForChanges(qc, scope, [payload]);
+	const burst: FileChangeBurst = {
+		pending: [],
+		timer: setTimeout(function flush() {
+			const pending = burst.pending;
+			burst.pending = [];
+			if (pending.length === 0) {
+				clients.delete(key);
+				return;
+			}
+			invalidateForChanges(qc, scope, pending);
+			burst.timer = setTimeout(flush, FILE_CHANGE_WINDOW_MS);
+		}, FILE_CHANGE_WINDOW_MS),
+	};
+	clients.set(key, burst);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

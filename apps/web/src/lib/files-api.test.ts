@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	applyFileChange,
 	fileCategory,
@@ -114,5 +114,31 @@ describe("applyFileChange", () => {
 		applyFileChange(qc, scope, { root: true, folder_ids: ["a"] });
 		expect(stale()).not.toContain("otherScope");
 		expect(stale()).not.toContain("general");
+	});
+
+	it("refreshes the contents of a restored folder", () => {
+		const { qc, stale } = seeded();
+		applyFileChange(qc, scope, {
+			change: "restored",
+			kind: "folder",
+			node_id: "b",
+			folder_ids: ["a"],
+		});
+		expect(stale()).toEqual(["a", "b", "path", "search", "trash"]);
+	});
+
+	describe("bursts", () => {
+		afterEach(() => vi.useRealTimers());
+
+		it("applies the first change at once and merges the rest into one pass", () => {
+			vi.useFakeTimers();
+			const { qc, stale } = seeded();
+			applyFileChange(qc, scope, { folder_ids: ["a"] });
+			expect(stale()).toEqual(["a", "path", "search", "trash"]);
+			applyFileChange(qc, scope, { folder_ids: ["b"] });
+			expect(stale()).not.toContain("b");
+			vi.advanceTimersByTime(300);
+			expect(stale()).toContain("b");
+		});
 	});
 });
