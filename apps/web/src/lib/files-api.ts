@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+import { mapPool } from "./concurrency";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -259,6 +260,8 @@ interface UploadSession {
 }
 
 const MULTIPART_CHUNK_SIZE = 5 * 1024 * 1024; // matches the server's DefaultPartSize
+/** Parts of one file uploaded at the same time. */
+const MULTIPART_CONCURRENCY = 4;
 
 export class UploadAbortedError extends Error {
 	constructor() {
@@ -330,29 +333,43 @@ export async function uploadFile(
 	} = { file_id: session.file_id };
 
 	if (session.is_multipart && session.multipart) {
-		const parts: { part_number: number; etag: string }[] = [];
-		let done = 0;
-		for (const part of session.multipart.parts) {
-			const start = (part.part_number - 1) * MULTIPART_CHUNK_SIZE;
-			const chunk = file.slice(
-				start,
-				Math.min(start + MULTIPART_CHUNK_SIZE, file.size),
-			);
-			const etag = await putWithProgress(
-				part.upload_url,
-				chunk,
-				contentType,
-				(loaded) => report(done + loaded),
-				opts.signal,
-			);
-			if (!etag) {
-				throw new Error(
-					"The object store did not expose the ETag header; multipart uploads need it exposed through CORS.",
+		const partLoaded = new Map<number, number>();
+		const reportParts = () => {
+			let sum = 0;
+			for (const v of partLoaded.values()) sum += v;
+			report(sum);
+		};
+		// mapPool aborts the signal on the first failed part (or on opts.signal).
+		const parts = await mapPool(
+			session.multipart.parts,
+			MULTIPART_CONCURRENCY,
+			async (part, _i, signal) => {
+				const start = (part.part_number - 1) * MULTIPART_CHUNK_SIZE;
+				const chunk = file.slice(
+					start,
+					Math.min(start + MULTIPART_CHUNK_SIZE, file.size),
 				);
-			}
-			parts.push({ part_number: part.part_number, etag });
-			done += chunk.size;
-		}
+				const etag = await putWithProgress(
+					part.upload_url,
+					chunk,
+					contentType,
+					(loaded) => {
+						partLoaded.set(part.part_number, loaded);
+						reportParts();
+					},
+					signal,
+				);
+				if (!etag) {
+					throw new Error(
+						"The object store did not expose the ETag header; multipart uploads need it exposed through CORS.",
+					);
+				}
+				partLoaded.set(part.part_number, chunk.size);
+				reportParts();
+				return { part_number: part.part_number, etag };
+			},
+			opts.signal,
+		);
 		completion = {
 			file_id: session.file_id,
 			upload_id: session.multipart.upload_id,
