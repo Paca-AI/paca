@@ -69,7 +69,7 @@ export function SearchableList({
 			{visible.map((item, i) => (
 				<Fragment key={item.key}>
 					{item.group && item.group !== visible[i - 1]?.group && (
-						<div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+						<div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/90">
 							{item.group}
 						</div>
 					)}
@@ -93,7 +93,7 @@ export function SearchableList({
 				/>
 			)}
 			{searching && visible.length === 0 && (
-				<p className="px-3 py-3 text-center text-xs text-muted-foreground/60">
+				<p className="px-3 py-3 text-center text-xs text-muted-foreground/90">
 					{emptyLabel ?? t("taskDetail.searchableList.noResults")}
 				</p>
 			)}

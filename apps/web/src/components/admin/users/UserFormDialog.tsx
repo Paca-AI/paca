@@ -417,7 +417,7 @@ export function UserFormDialog({
 								className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
 							>
 								{t("users.formDialog.emailLabel")}{" "}
-								<span className="normal-case font-normal text-muted-foreground/70">
+								<span className="normal-case font-normal text-muted-foreground">
 									{t("users.formDialog.emailOptionalHint")}
 								</span>
 							</Label>

@@ -30,7 +30,7 @@ const dateTriggerClassName = (active: boolean) =>
 		"inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-all duration-150",
 		active
 			? "border-primary/40 bg-primary/8 text-primary"
-			: "border-border/25 bg-muted/25 text-muted-foreground hover:border-border/50 hover:bg-muted/40",
+			: "border-border/50 bg-muted/25 text-muted-foreground hover:border-border/50 hover:bg-muted/40",
 	);
 
 // ── Popover section building blocks ──────────────────────────────────────────
@@ -41,7 +41,7 @@ export function FilterSectionLabel({
 	children: React.ReactNode;
 }) {
 	return (
-		<p className="px-0.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
+		<p className="px-0.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
 			{children}
 		</p>
 	);

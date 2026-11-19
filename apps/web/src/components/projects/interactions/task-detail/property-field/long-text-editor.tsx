@@ -56,7 +56,7 @@ export function LongTextEditor({
 						e.currentTarget.blur();
 					}
 				}}
-				className="w-full min-w-30 resize-y rounded-lg border border-border/30 bg-muted/25 px-2.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150"
+				className="w-full min-w-30 resize-y rounded-lg border border-border/50 bg-muted/25 px-2.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150"
 			/>
 		);
 	}
@@ -74,7 +74,7 @@ export function LongTextEditor({
 			{value ? (
 				value
 			) : (
-				<span className="text-muted-foreground/50 italic">
+				<span className="text-muted-foreground/90 italic">
 					{t("taskDetail.common.empty")}
 				</span>
 			)}

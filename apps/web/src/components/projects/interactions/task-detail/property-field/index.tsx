@@ -71,7 +71,7 @@ export function PropertyField({
 					return (
 						<button
 							type="button"
-							className="inline-flex items-center gap-2 rounded-full border border-border/30 bg-muted/30 px-3 py-1 text-sm font-semibold text-muted-foreground"
+							className="inline-flex items-center gap-2 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-sm font-semibold text-muted-foreground"
 						>
 							{selected.colorDot && (
 								<span
@@ -96,7 +96,7 @@ export function PropertyField({
 			case "date":
 				if (!canEdit) {
 					return (
-						<span className="inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium">
+						<span className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium">
 							{dateValue ?? t("taskDetail.common.empty")}
 						</span>
 					);

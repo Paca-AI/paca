@@ -93,7 +93,7 @@ function RoleTableRow({
 			<TableCell className="px-5">
 				<div className="flex items-center gap-2">
 					{shared || role.is_system ? (
-						<Lock className="size-3.5 shrink-0 text-muted-foreground/40" />
+						<Lock className="size-3.5 shrink-0 text-muted-foreground/90" />
 					) : null}
 					<span className="font-mono text-sm font-medium">{role.name}</span>
 				</div>
@@ -107,7 +107,7 @@ function RoleTableRow({
 						{role.description}
 					</span>
 				) : (
-					<span className="text-xs italic text-muted-foreground/60">
+					<span className="text-xs italic text-muted-foreground/90">
 						{t("settings.roles.noDescription")}
 					</span>
 				)}
@@ -325,7 +325,7 @@ export function RolesSettings({
 
 			{/* System roles note */}
 			{systemRoles.length > 0 ? (
-				<p className="text-xs text-muted-foreground/60 mt-3 flex items-center gap-1">
+				<p className="text-xs text-muted-foreground/90 mt-3 flex items-center gap-1">
 					<Lock className="size-3 shrink-0" />
 					{t("settings.roles.systemRolesNote")}
 				</p>

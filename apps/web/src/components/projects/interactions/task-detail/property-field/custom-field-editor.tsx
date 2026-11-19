@@ -61,7 +61,7 @@ export function CustomFieldEditor({
 		case "Date":
 			if (!canEdit) {
 				return (
-					<span className="inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium">
+					<span className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium">
 						<CalendarDays className="size-3 shrink-0 opacity-70" />
 						{displayDate(rawValue as string | null) ??
 							t("taskDetail.common.empty")}

@@ -26,13 +26,13 @@ export function SingleDateEditor({
 		<Popover>
 			<PopoverTrigger
 				type="button"
-				className="inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground hover:border-border/50 hover:bg-muted/40 transition-all duration-150 font-medium"
+				className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground hover:border-border/50 hover:bg-muted/40 transition-all duration-150 font-medium"
 			>
 				<CalendarDays className="size-3 shrink-0 opacity-70" />
 				<span>{displayDate(value) ?? resolvedPlaceholder}</span>
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-auto p-2 rounded-xl border border-border/40 shadow-lg"
+				className="w-auto p-2 rounded-xl border border-border/60 shadow-lg"
 				align="start"
 			>
 				<Calendar
@@ -42,10 +42,10 @@ export function SingleDateEditor({
 					initialFocus
 				/>
 				{value && (
-					<div className="border-t border-border/30 pt-1.5 px-1 pb-0.5">
+					<div className="border-t border-border/50 pt-1.5 px-1 pb-0.5">
 						<button
 							type="button"
-							className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-destructive transition-colors duration-150"
+							className="flex items-center gap-1.5 text-xs text-muted-foreground/90 hover:text-destructive transition-colors duration-150"
 							onClick={() => onChange?.(null)}
 						>
 							<Trash2 className="size-3" />
@@ -90,7 +90,7 @@ export function DateRangeEditor({
 	const dueLabel =
 		displayDate(dueDate) ?? t("taskDetail.propertyField.dateEditor.dueDate");
 	const triggerClass =
-		"inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium";
+		"inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium";
 
 	if (!canEdit) {
 		return (
@@ -141,7 +141,7 @@ export function DateRangeEditor({
 				<span>{dueLabel}</span>
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-auto p-2 rounded-xl border border-border/40 shadow-lg"
+				className="w-auto p-2 rounded-xl border border-border/60 shadow-lg"
 				align="start"
 			>
 				<Calendar
@@ -166,10 +166,10 @@ export function DateRangeEditor({
 					}}
 				/>
 				{(startDate || dueDate) && (
-					<div className="border-t border-border/30 pt-1.5 px-1 pb-0.5">
+					<div className="border-t border-border/50 pt-1.5 px-1 pb-0.5">
 						<button
 							type="button"
-							className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-destructive transition-colors duration-150"
+							className="flex items-center gap-1.5 text-xs text-muted-foreground/90 hover:text-destructive transition-colors duration-150"
 							onClick={() => {
 								onChange?.({ startDate: null, dueDate: null });
 								setAnchor(null);

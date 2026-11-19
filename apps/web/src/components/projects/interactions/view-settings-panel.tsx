@@ -195,7 +195,7 @@ function FilterPill({
 				"inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-all duration-100",
 				selected
 					? "border-primary/30 bg-primary/8 text-primary"
-					: "border-border/30 bg-transparent text-muted-foreground hover:border-border/60 hover:text-foreground",
+					: "border-border/50 bg-transparent text-muted-foreground hover:border-border/60 hover:text-foreground",
 			)}
 		>
 			{selected && <Check className="size-2.5 shrink-0" />}
@@ -303,7 +303,7 @@ function FieldPicker({
 					onDrop={() => handleDrop(f.key)}
 					className="flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/40 active:cursor-grabbing"
 				>
-					<GripVertical className="size-3 shrink-0 text-muted-foreground/40" />
+					<GripVertical className="size-3 shrink-0 text-muted-foreground/90" />
 					<Checkbox
 						id={`field-${f.key}`}
 						checked
@@ -318,7 +318,7 @@ function FieldPicker({
 				</div>
 			))}
 			{disabled.length > 0 && (
-				<div className="mx-2 my-1 border-t border-border/20" />
+				<div className="mx-2 my-1 border-t border-border/50" />
 			)}
 			{disabled.map((f) => (
 				<div
@@ -333,7 +333,7 @@ function FieldPicker({
 					/>
 					<label
 						htmlFor={`field-${f.key}`}
-						className="flex-1 cursor-pointer truncate text-xs font-medium text-muted-foreground/60"
+						className="flex-1 cursor-pointer truncate text-xs font-medium text-muted-foreground/90"
 					>
 						{f.label}
 					</label>
@@ -374,7 +374,7 @@ function SprintFilterSection({
 		isAll
 	) {
 		return (
-			<p className="px-3 pb-2 text-xs text-muted-foreground/50">
+			<p className="px-3 pb-2 text-xs text-muted-foreground/90">
 				{t("layout.viewSettings.sprintFilter.noSprints")}
 			</p>
 		);
@@ -392,7 +392,7 @@ function SprintFilterSection({
 				onChange={(e) => search.onQueryChange(e.target.value)}
 				placeholder={t("taskDetail.searchableList.searchPlaceholder")}
 				aria-label={t("taskDetail.searchableList.searchPlaceholder")}
-				className="w-full rounded-lg border border-border/30 bg-muted/25 px-2.5 py-1.5 text-xs placeholder:text-muted-foreground/50 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+				className="w-full rounded-lg border border-border/50 bg-muted/25 px-2.5 py-1.5 text-xs placeholder:text-muted-foreground/90 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
 			/>
 			<div className="flex flex-wrap gap-1.5">
 				<FilterPill selected={isAll} onClick={() => onChange([])}>
@@ -468,7 +468,7 @@ function StatusFilterSection({
 
 	if (statuses.length === 0) {
 		return (
-			<p className="px-3 pb-2 text-xs text-muted-foreground/50">
+			<p className="px-3 pb-2 text-xs text-muted-foreground/90">
 				{t("layout.viewSettings.statusFilter.noStatuses")}
 			</p>
 		);
@@ -498,13 +498,13 @@ function StatusFilterSection({
 									CATEGORY_COLORS[cat],
 								)}
 							/>
-							<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">
+							<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
 								{STATUS_CATEGORY_LABELS[cat]}
 							</span>
 							<button
 								type="button"
 								onClick={() => toggleGroup(groupIds)}
-								className="ml-auto text-xs text-muted-foreground/50 hover:text-primary transition-colors font-medium"
+								className="ml-auto text-xs text-muted-foreground/90 hover:text-primary transition-colors font-medium"
 							>
 								{allChecked
 									? t("layout.viewSettings.statusFilter.clear")
@@ -583,14 +583,14 @@ function AssigneeFilterSection({
 	return (
 		<div className="px-1 pb-3">
 			<div className="relative px-1 pb-1.5">
-				<Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-[calc(50%+0.0625rem)] text-muted-foreground/50" />
+				<Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-[calc(50%+0.0625rem)] text-muted-foreground/90" />
 				<input
 					type="text"
 					value={search.query}
 					onChange={(e) => search.onQueryChange(e.target.value)}
 					placeholder={t("taskDetail.searchableList.searchPlaceholder")}
 					aria-label={t("taskDetail.searchableList.searchPlaceholder")}
-					className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-xs placeholder:text-muted-foreground/50 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+					className="w-full rounded-lg border border-border/50 bg-muted/25 py-1.5 pr-2 pl-8 text-xs placeholder:text-muted-foreground/90 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
 				/>
 			</div>
 			<div className="max-h-44 space-y-0.5 overflow-y-auto">
@@ -616,7 +616,7 @@ function AssigneeFilterSection({
 					);
 				})}
 				{search.members.length === 0 && !search.isLoading ? (
-					<p className="px-2 py-1 text-xs text-muted-foreground/50">
+					<p className="px-2 py-1 text-xs text-muted-foreground/90">
 						{search.query.trim()
 							? t("taskDetail.searchableList.noResults")
 							: t("layout.viewSettings.assigneeFilter.noMembers")}
@@ -747,7 +747,7 @@ function TaskTypeFilterSection({
 			{normalTypes.length > 0 && (
 				<>
 					<div className="flex items-center gap-1.5 px-2 pt-2 pb-0.5">
-						<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">
+						<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
 							{t("layout.viewSettings.taskTypeFilter.normalTypes")}
 						</span>
 					</div>
@@ -789,7 +789,7 @@ function TaskTypeFilterSection({
 			{systemTypes.length > 0 && (
 				<>
 					<div className="flex items-center gap-1.5 px-2 pt-2 pb-0.5">
-						<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">
+						<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
 							{t("layout.viewSettings.taskTypeFilter.systemTypes")}
 						</span>
 					</div>
@@ -807,7 +807,7 @@ function TaskTypeFilterSection({
 			)}
 
 			{taskTypes.length === 0 && (
-				<p className="px-2 py-1 text-xs text-muted-foreground/50">
+				<p className="px-2 py-1 text-xs text-muted-foreground/90">
 					{t("layout.viewSettings.taskTypeFilter.noTaskTypes")}
 				</p>
 			)}
@@ -907,7 +907,7 @@ function TagsFilterSection({
 						value={input}
 						onChange={(e) => setInput(e.target.value)}
 						placeholder={t("layout.viewSettings.tagsFilter.addTagPlaceholder")}
-						className="w-full rounded-lg border border-border/30 bg-muted/25 px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150"
+						className="w-full rounded-lg border border-border/50 bg-muted/25 px-3 py-2 text-sm placeholder:text-muted-foreground/90 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150"
 						onKeyDown={(e) => {
 							if (e.key === "Enter") {
 								e.preventDefault();
@@ -950,7 +950,7 @@ function CustomFieldSelectorFilter({
 
 	if (options.length === 0) {
 		return (
-			<p className="px-3 pb-2 text-xs text-muted-foreground/50">
+			<p className="px-3 pb-2 text-xs text-muted-foreground/90">
 				{noOptionsLabel}
 			</p>
 		);
@@ -1003,15 +1003,15 @@ function RangeFilterInput({
 				value={min ?? ""}
 				onChange={(e) => onChange(e.target.value || undefined, max)}
 				placeholder={t("layout.viewSettings.customFieldFilter.min")}
-				className="w-full min-w-0 rounded-md border border-border/30 bg-background px-2 py-1 text-xs outline-none transition-all hover:border-border/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+				className="w-full min-w-0 rounded-md border border-border/50 bg-background px-2 py-1 text-xs outline-none transition-all hover:border-border/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
 			/>
-			<span className="shrink-0 text-xs text-muted-foreground/50">–</span>
+			<span className="shrink-0 text-xs text-muted-foreground/90">–</span>
 			<input
 				type={kind === "number" ? "number" : "date"}
 				value={max ?? ""}
 				onChange={(e) => onChange(min, e.target.value || undefined)}
 				placeholder={t("layout.viewSettings.customFieldFilter.max")}
-				className="w-full min-w-0 rounded-md border border-border/30 bg-background px-2 py-1 text-xs outline-none transition-all hover:border-border/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+				className="w-full min-w-0 rounded-md border border-border/50 bg-background px-2 py-1 text-xs outline-none transition-all hover:border-border/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
 			/>
 		</div>
 	);
@@ -1044,7 +1044,7 @@ function CustomFieldContainsFilter({
 				placeholder={t(
 					"layout.viewSettings.customFieldFilter.containsPlaceholder",
 				)}
-				className="w-full min-w-0 rounded-md border border-border/30 bg-background px-2 py-1 text-xs outline-none transition-all hover:border-border/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+				className="w-full min-w-0 rounded-md border border-border/50 bg-background px-2 py-1 text-xs outline-none transition-all hover:border-border/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
 			/>
 		</div>
 	);
@@ -1153,10 +1153,10 @@ function CollapsibleFilter({
 	return (
 		<Collapsible
 			defaultOpen={defaultOpen}
-			className="border-b border-border/20 last:border-0"
+			className="border-b border-border/50 last:border-0"
 		>
 			<CollapsibleTrigger className="group/filter flex w-full items-center gap-2 rounded-md px-2 py-2.5 text-left transition-colors hover:bg-muted/30">
-				<ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60 transition-transform group-aria-expanded/filter:rotate-90" />
+				<ChevronRight className="size-3.5 shrink-0 text-muted-foreground/90 transition-transform group-aria-expanded/filter:rotate-90" />
 				<span className="flex-1 text-sm font-medium text-foreground/90">
 					{label}
 				</span>
@@ -1408,7 +1408,7 @@ export function ViewSettingsPanel({
 							size="icon-sm"
 							aria-label={t("layout.viewSettings.viewSettingsAriaLabel")}
 							className={cn(
-								"relative size-7 text-muted-foreground/60 hover:text-foreground",
+								"relative size-7 text-muted-foreground/90 hover:text-foreground",
 								open && "bg-primary/10 text-primary/80",
 							)}
 						/>
@@ -1428,9 +1428,9 @@ export function ViewSettingsPanel({
 					side="bottom"
 					align="end"
 					sideOffset={6}
-					className="flex max-h-[min(40rem,calc(100vh-6rem))] w-[26rem] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden rounded-xl border border-border/40 p-0 shadow-xl"
+					className="flex max-h-[min(40rem,calc(100vh-6rem))] w-[26rem] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden rounded-xl border border-border/60 p-0 shadow-xl"
 				>
-					<div className="flex items-center gap-2 border-b border-border/30 px-4 py-3">
+					<div className="flex items-center gap-2 border-b border-border/50 px-4 py-3">
 						<p className="text-sm font-semibold">
 							{t("layout.viewSettings.title")}
 						</p>
@@ -1455,7 +1455,7 @@ export function ViewSettingsPanel({
 						onValueChange={(v) => setTab(v as SettingsTab)}
 						className="min-h-0 flex-1 gap-0"
 					>
-						<div className="border-b border-border/30 px-3">
+						<div className="border-b border-border/50 px-3">
 							<TabsList variant="line" className="h-10 w-full justify-start">
 								<TabsTrigger value="display" className="flex-none px-3">
 									{t("layout.viewSettings.display")}
@@ -1837,7 +1837,7 @@ export function ViewSettingsPanel({
 					</Tabs>
 
 					{/* ── Footer ───────────────────────────────────────────── */}
-					<div className="flex items-center justify-between gap-2 border-t border-border/30 bg-muted/20 px-4 py-3">
+					<div className="flex items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-4 py-3">
 						{differsFromShared ? (
 							<Button type="button" variant="outline" onClick={handleReset}>
 								{t("layout.viewSettings.reset")}

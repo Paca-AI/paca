@@ -62,7 +62,7 @@ export function AttachmentItem({
 	};
 
 	return (
-		<div className="group/att flex items-center gap-3.5 rounded-xl border border-border/20 bg-muted/15 px-4 py-3 transition-all duration-150 hover:bg-muted/25 hover:border-border/35">
+		<div className="group/att flex items-center gap-3.5 rounded-xl border border-border/50 bg-muted/15 px-4 py-3 transition-all duration-150 hover:bg-muted/25 hover:border-border/50">
 			<button
 				type="button"
 				onClick={handlePreview}
@@ -81,7 +81,7 @@ export function AttachmentItem({
 				<p className="text-sm font-medium text-foreground truncate">
 					{attachment.file.file_name}
 				</p>
-				<p className="text-xs text-muted-foreground/60 mt-0.5">
+				<p className="text-xs text-muted-foreground/90 mt-0.5">
 					{formatBytes(attachment.file.file_size, t)} ·{" "}
 					{timeAgo(attachment.created_at, tCommon)}
 				</p>
@@ -95,7 +95,7 @@ export function AttachmentItem({
 					type="button"
 					onClick={handleDownload}
 					disabled={isDownloading}
-					className="shrink-0 size-7 flex items-center justify-center rounded-lg text-muted-foreground/45 hover:text-foreground hover:bg-muted/50 transition-all duration-150 disabled:opacity-50"
+					className="shrink-0 size-7 flex items-center justify-center rounded-lg text-muted-foreground/90 hover:text-foreground hover:bg-muted/50 transition-all duration-150 disabled:opacity-50"
 					aria-label={t("taskDetail.attachments.downloadLabel", {
 						fileName: attachment.file.file_name,
 					})}
@@ -106,7 +106,7 @@ export function AttachmentItem({
 					<button
 						type="button"
 						onClick={() => onDelete?.(attachment.id)}
-						className="shrink-0 size-7 flex items-center justify-center rounded-lg text-muted-foreground/45 hover:text-destructive hover:bg-destructive/8 transition-all duration-150"
+						className="shrink-0 size-7 flex items-center justify-center rounded-lg text-muted-foreground/90 hover:text-destructive hover:bg-destructive/8 transition-all duration-150"
 						aria-label={t("taskDetail.attachments.deleteLabel", {
 							fileName: attachment.file.file_name,
 						})}

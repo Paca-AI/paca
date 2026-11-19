@@ -43,7 +43,7 @@ export function ReporterPicker({
 			</span>
 		</span>
 	) : (
-		<span className="inline-flex items-center gap-1.5 text-sm italic text-muted-foreground/50">
+		<span className="inline-flex items-center gap-1.5 text-sm italic text-muted-foreground/90">
 			<User className="size-3.5 opacity-60" />
 			{t("taskDetail.common.none")}
 		</span>
@@ -60,7 +60,7 @@ export function ReporterPicker({
 				{trigger}
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-56 p-1 rounded-xl border border-border/40 shadow-lg"
+				className="w-56 p-1 rounded-xl border border-border/60 shadow-lg"
 				align="start"
 			>
 				<SearchableList

@@ -55,13 +55,13 @@ export function SubtasksSection({
 	const { t } = useTranslation("projects");
 	return (
 		<div className="space-y-3">
-			<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 flex items-center gap-2">
+			<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground flex items-center gap-2">
 				<span>{t("taskDetail.subtasks.title")}</span>
 				<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 			</h3>
 
 			{(subtasks.length > 0 || canEdit) && (
-				<div className="rounded-xl border border-border/25 bg-card/50 divide-y divide-border/15 overflow-hidden">
+				<div className="rounded-xl border border-border/50 bg-card/50 divide-y divide-border/50 overflow-hidden">
 					{subtasks.map((sub) => (
 						<SubtaskRow
 							key={sub.id}
@@ -80,7 +80,7 @@ export function SubtasksSection({
 							type="button"
 							onClick={onLoadMore}
 							disabled={isLoadingMore}
-							className="flex w-full items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
+							className="flex w-full items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-muted-foreground/90 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
 						>
 							{isLoadingMore ? (
 								<>
@@ -107,7 +107,7 @@ export function SubtasksSection({
 			)}
 
 			{!canEdit && subtasks.length === 0 && (
-				<div className="flex items-center gap-3 px-1 py-3 text-muted-foreground/45">
+				<div className="flex items-center gap-3 px-1 py-3 text-muted-foreground/90">
 					<ListChecks className="size-4 opacity-70" />
 					<p className="text-sm italic">{t("taskDetail.subtasks.empty")}</p>
 				</div>

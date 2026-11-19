@@ -39,7 +39,7 @@ export function PermissionSummary({
 
 	if (permissions.length === 0) {
 		return (
-			<span className="text-xs italic text-muted-foreground/60">
+			<span className="text-xs italic text-muted-foreground/90">
 				{t("globalRoles.table.noPermissionsAssigned")}
 			</span>
 		);

@@ -365,7 +365,7 @@ export function ActivityPane<T extends ActivityEntry>({
 
 	return (
 		<div
-			className="relative flex w-full lg:w-(--activity-pane-width) lg:max-w-[50vw] lg:shrink-0 flex-col h-full lg:overflow-hidden border-t lg:border-t-0 lg:border-l border-border/25 bg-muted/10"
+			className="relative flex w-full lg:w-(--activity-pane-width) lg:max-w-[50vw] lg:shrink-0 flex-col h-full lg:overflow-hidden border-t lg:border-t-0 lg:border-l border-border/50 bg-muted/10"
 			style={{ "--activity-pane-width": `${width}px` } as CSSProperties}
 		>
 			{/* biome-ignore lint/a11y/useSemanticElements: draggable splitter */}
@@ -412,8 +412,8 @@ export function ActivityPane<T extends ActivityEntry>({
 						storeActivityWidth(widthRef.current);
 				}}
 			/>
-			<div className="flex shrink-0 items-center gap-2.5 border-b border-border/25 px-5 py-3 bg-muted/20">
-				<MessageSquare className="size-3.5 text-muted-foreground/70" />
+			<div className="flex shrink-0 items-center gap-2.5 border-b border-border/50 px-5 py-3 bg-muted/20">
+				<MessageSquare className="size-3.5 text-muted-foreground" />
 				<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
 					{t("activityPane.title")}
 				</span>
@@ -456,13 +456,13 @@ export function ActivityPane<T extends ActivityEntry>({
 						onLoadMore={loadOlder}
 					/>
 					{sorted.length === 0 && (
-						<div className="flex flex-col items-center py-8 text-muted-foreground/40">
+						<div className="flex flex-col items-center py-8 text-muted-foreground/90">
 							<MessageSquare className="size-6 mb-2" />
 							<p className="text-xs font-medium">{t("activityPane.empty")}</p>
 						</div>
 					)}
 					{sorted.length > 0 && visible.length === 0 && (
-						<div className="flex flex-col items-center py-8 text-muted-foreground/40">
+						<div className="flex flex-col items-center py-8 text-muted-foreground/90">
 							<MessageSquare className="size-6 mb-2" />
 							<p className="text-xs font-medium">
 								{t("activityPane.emptyComments")}
@@ -504,7 +504,7 @@ export function ActivityPane<T extends ActivityEntry>({
 			</ScrollArea>
 
 			{addComment && (
-				<div className="shrink-0 border-t border-border/25 p-3 space-y-1 bg-background/50">
+				<div className="shrink-0 border-t border-border/50 p-3 space-y-1 bg-background/50">
 					{editingCommentId && (
 						<div className="flex items-center gap-2 px-1 pb-1">
 							<span className="text-xs font-medium text-foreground/70">
@@ -522,7 +522,7 @@ export function ActivityPane<T extends ActivityEntry>({
 					)}
 					<fieldset
 						className={cn(
-							"min-w-0 rounded-xl border border-border/30 bg-card/80 transition-all duration-200 overflow-hidden",
+							"min-w-0 rounded-xl border border-border/50 bg-card/80 transition-all duration-200 overflow-hidden",
 							editorFocused && "border-primary/25 shadow-sm shadow-primary/5",
 							"[&_.bn-editor]:min-h-6 [&_.bn-editor]:max-h-48 [&_.bn-editor]:overflow-y-auto [&_.bn-editor]:py-1.5 [&_.bn-editor]:px-3 [&_.bn-editor]:text-sm [&_.bn-editor]:leading-relaxed",
 						)}
@@ -545,7 +545,7 @@ export function ActivityPane<T extends ActivityEntry>({
 					</fieldset>
 					<div className="flex items-center justify-between">
 						{editorFocused && (
-							<p className="text-xs text-muted-foreground/40 pl-1">
+							<p className="text-xs text-muted-foreground/90 pl-1">
 								{t("activityPane.sendHint")}
 							</p>
 						)}
@@ -676,12 +676,12 @@ function ActivityItemInner<T extends ActivityEntry>({
 			/>
 			<div className="flex-1 min-w-0">
 				{isComment ? (
-					<div className="group rounded-xl rounded-tl-lg border border-border/25 bg-card/70 px-3.5 py-2.5">
+					<div className="group rounded-xl rounded-tl-lg border border-border/50 bg-card/70 px-3.5 py-2.5">
 						<div className="mb-1 flex items-center gap-2">
 							<span className="text-xs font-semibold text-foreground">
 								{displayName}
 							</span>
-							<span className="text-xs text-muted-foreground/50">
+							<span className="text-xs text-muted-foreground/90">
 								{timeAgo(entry.created_at, tCommon)}
 							</span>
 							{isEditing && (
@@ -697,7 +697,7 @@ function ActivityItemInner<T extends ActivityEntry>({
 								<DropdownMenu>
 									<DropdownMenuTrigger
 										aria-label={t("activityPane.actions")}
-										className="inline-flex items-center justify-center ml-auto size-5 pointer-coarse:size-8 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 transition-all duration-150"
+										className="inline-flex items-center justify-center ml-auto size-5 pointer-coarse:size-8 rounded-md text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 transition-all duration-150"
 									>
 										<MoreHorizontal className="size-3" />
 									</DropdownMenuTrigger>
@@ -745,10 +745,10 @@ function ActivityItemInner<T extends ActivityEntry>({
 								<span className="text-xs font-medium text-foreground/80">
 									{displayName}
 								</span>
-								<span className="text-xs text-muted-foreground/70">
+								<span className="text-xs text-muted-foreground">
 									{describeActivity(entry)}
 								</span>
-								<span className="text-xs text-muted-foreground/45">
+								<span className="text-xs text-muted-foreground/90">
 									{timeAgo(entry.created_at, tCommon)}
 								</span>
 							</div>
@@ -757,7 +757,7 @@ function ActivityItemInner<T extends ActivityEntry>({
 									<DropdownMenu>
 										<DropdownMenuTrigger
 											aria-label={t("activityPane.actions")}
-											className="shrink-0 inline-flex items-center justify-center size-5 pointer-coarse:size-8 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 transition-all duration-150"
+											className="shrink-0 inline-flex items-center justify-center size-5 pointer-coarse:size-8 rounded-md text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 transition-all duration-150"
 										>
 											<MoreVertical className="size-3" />
 										</DropdownMenuTrigger>

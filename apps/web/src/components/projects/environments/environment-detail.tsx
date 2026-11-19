@@ -379,7 +379,7 @@ function FoldersTab({
 
 			{folders.length === 0 ? (
 				<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
-					<FolderIcon className="size-8 text-muted-foreground/40" />
+					<FolderIcon className="size-8 text-muted-foreground/90" />
 					<p className="text-sm text-muted-foreground">
 						{t("environments.detail.folders.empty.title")}
 					</p>
@@ -778,7 +778,7 @@ function PortForwardsTab({
 
 			{forwards.length === 0 ? (
 				<div className="flex flex-col items-center justify-center gap-3 py-10 rounded-xl border border-dashed border-border">
-					<Network className="size-7 text-muted-foreground/40" />
+					<Network className="size-7 text-muted-foreground/90" />
 					<p className="text-sm text-muted-foreground">
 						{t("environments.detail.portForwards.empty.title")}
 					</p>

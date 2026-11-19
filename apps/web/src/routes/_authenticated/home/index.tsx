@@ -334,7 +334,7 @@ function ProjectCard({ project }: { project: Project }) {
 							{project.description}
 						</p>
 					) : (
-						<p className="mt-0.5 text-xs text-muted-foreground/40 italic">
+						<p className="mt-0.5 text-xs text-muted-foreground/90 italic">
 							{t("home.projectCard.noDescription")}
 						</p>
 					)}
@@ -596,7 +596,7 @@ function HomePage() {
 								<button
 									type="button"
 									onClick={() => setCreateOpen(true)}
-									className="group flex min-h-30 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/10 p-5 text-muted-foreground/50 transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary/70"
+									className="group flex min-h-30 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/10 p-5 text-muted-foreground/90 transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary/70"
 								>
 									<div className="flex size-9 items-center justify-center rounded-xl border border-dashed border-current transition-colors">
 										<Plus className="size-4" />
@@ -667,7 +667,7 @@ function HomePage() {
 												</div>
 												<ArrowRight
 													className={cn(
-														"mt-1 size-3.5 shrink-0 text-muted-foreground/30 transition-all",
+														"mt-1 size-3.5 shrink-0 text-muted-foreground/90 transition-all",
 														isActionable &&
 															"group-hover:translate-x-0.5 group-hover:text-primary/50",
 													)}
@@ -680,14 +680,14 @@ function HomePage() {
 													<button
 														type="button"
 														onClick={() => setCreateOpen(true)}
-														className="group flex w-full items-start gap-3.5 rounded-xl border border-border/40 bg-muted/20 px-4 py-3.5 text-left transition-all hover:bg-muted/50 hover:border-primary/20"
+														className="group flex w-full items-start gap-3.5 rounded-xl border border-border/60 bg-muted/20 px-4 py-3.5 text-left transition-all hover:bg-muted/50 hover:border-primary/20"
 													>
 														{inner}
 													</button>
 												) : (
 													<div
 														className={cn(
-															"flex items-start gap-3.5 rounded-xl border border-border/40 bg-muted/20 px-4 py-3.5",
+															"flex items-start gap-3.5 rounded-xl border border-border/60 bg-muted/20 px-4 py-3.5",
 															isLocked && "opacity-50",
 														)}
 													>
@@ -774,7 +774,7 @@ function HomePage() {
 												</div>
 												<ArrowRight
 													className={cn(
-														"size-3.5 shrink-0 text-muted-foreground/30 transition-all",
+														"size-3.5 shrink-0 text-muted-foreground/90 transition-all",
 														onClick &&
 															"group-hover:translate-x-0.5 group-hover:text-primary/60",
 													)}

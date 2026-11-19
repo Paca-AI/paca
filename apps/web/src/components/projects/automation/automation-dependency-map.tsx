@@ -37,7 +37,7 @@ export function AutomationDependencyMap({
 					{entries.map((entry) => (
 						<div
 							key={entry.node_id}
-							className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2 text-xs"
+							className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2 text-xs"
 						>
 							<span className="font-medium">{entry.automation_name}</span>
 							<span className="text-muted-foreground">

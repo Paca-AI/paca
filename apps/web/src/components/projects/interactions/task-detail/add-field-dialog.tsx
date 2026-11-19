@@ -212,7 +212,7 @@ export function AddFieldDialog({
 					</div>
 
 					{/* Required toggle */}
-					<div className="flex items-center justify-between rounded-xl border border-border/20 bg-muted/15 px-4 py-3">
+					<div className="flex items-center justify-between rounded-xl border border-border/50 bg-muted/15 px-4 py-3">
 						<Label htmlFor="add-field-required" className="font-medium">
 							{t("taskDetail.addFieldDialog.requiredLabel")}
 						</Label>

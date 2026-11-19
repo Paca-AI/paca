@@ -29,8 +29,8 @@ export function SelectEditor({
 				type="button"
 				className={
 					firstSelected
-						? "inline-flex items-center gap-2 rounded-full border border-border/30 bg-muted/30 px-3 py-1 text-sm font-semibold text-muted-foreground hover:bg-muted/50 hover:border-border/50 transition-all duration-150"
-						: "inline-flex items-center gap-1.5 text-sm text-muted-foreground/50 italic hover:text-muted-foreground/80 transition-colors"
+						? "inline-flex items-center gap-2 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-sm font-semibold text-muted-foreground hover:bg-muted/50 hover:border-border/50 transition-all duration-150"
+						: "inline-flex items-center gap-1.5 text-sm text-muted-foreground/90 italic hover:text-muted-foreground transition-colors"
 				}
 			>
 				{firstSelected ? (
@@ -52,7 +52,7 @@ export function SelectEditor({
 				)}
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-52 p-1 rounded-xl border border-border/40 shadow-lg"
+				className="w-52 p-1 rounded-xl border border-border/60 shadow-lg"
 				align={align}
 			>
 				<SearchableList

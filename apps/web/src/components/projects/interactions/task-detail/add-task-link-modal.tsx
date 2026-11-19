@@ -212,7 +212,7 @@ export function AddTaskLinkModal({
 				className="z-60 gap-0 p-0 sm:max-w-lg"
 				overlayClassName="z-60"
 			>
-				<DialogHeader className="border-b border-border/20 px-5 py-4">
+				<DialogHeader className="border-b border-border/50 px-5 py-4">
 					<DialogTitle className="flex items-center gap-2.5 text-base font-semibold">
 						<span className="flex size-7 items-center justify-center rounded-lg bg-primary/10">
 							<Link2 className="size-3.5 text-primary" />
@@ -223,7 +223,7 @@ export function AddTaskLinkModal({
 
 				{/* Link type selector */}
 				<div className="px-5 pt-4 pb-3">
-					<p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
+					<p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
 						{t("taskDetail.addTaskLinkModal.relationship")}
 					</p>
 					<ToggleGroup
@@ -273,11 +273,11 @@ export function AddTaskLinkModal({
 
 				{/* Task list */}
 				<div
-					className="mx-5 mb-5 max-h-64 overflow-hidden overflow-y-auto rounded-xl border border-border/20 [scrollbar-gutter:stable]"
+					className="mx-5 mb-5 max-h-64 overflow-hidden overflow-y-auto rounded-xl border border-border/50 [scrollbar-gutter:stable]"
 					onScroll={handleListScroll}
 				>
 					{loading && (
-						<div className="flex items-center justify-center py-8 text-sm text-muted-foreground/50">
+						<div className="flex items-center justify-center py-8 text-sm text-muted-foreground/90">
 							{t("taskDetail.addTaskLinkModal.loadingTasks")}
 						</div>
 					)}
@@ -287,7 +287,7 @@ export function AddTaskLinkModal({
 						</div>
 					)}
 					{!loading && !isError && filteredTasks.length === 0 && (
-						<div className="flex items-center justify-center py-8 text-sm italic text-muted-foreground/45">
+						<div className="flex items-center justify-center py-8 text-sm italic text-muted-foreground/90">
 							{t("taskDetail.addTaskLinkModal.noTasksFound")}
 						</div>
 					)}
@@ -301,9 +301,9 @@ export function AddTaskLinkModal({
 									key={task.id}
 									type="button"
 									onClick={() => handleSelect(task)}
-									className="flex w-full items-center gap-3 border-b border-border/10 px-4 py-3 text-left transition-colors duration-100 last:border-0 hover:bg-muted/30"
+									className="flex w-full items-center gap-3 border-b border-border/50 px-4 py-3 text-left transition-colors duration-100 last:border-0 hover:bg-muted/30"
 								>
-									<span className="min-w-13 shrink-0 font-mono text-xs text-muted-foreground/60">
+									<span className="min-w-13 shrink-0 font-mono text-xs text-muted-foreground/90">
 										{prefix}
 									</span>
 									<span className="truncate text-sm text-foreground">
@@ -313,7 +313,7 @@ export function AddTaskLinkModal({
 							);
 						})}
 					{isFetchingNextPage && (
-						<div className="flex items-center justify-center py-3 text-xs text-muted-foreground/50">
+						<div className="flex items-center justify-center py-3 text-xs text-muted-foreground/90">
 							{t("taskDetail.addTaskLinkModal.loadingTasks")}
 						</div>
 					)}

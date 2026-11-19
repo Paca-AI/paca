@@ -84,7 +84,7 @@ export function FilesSidebarSection({ projectId }: { projectId?: string }) {
 				<span>{t("title")}</span>
 				<ChevronRight
 					className={cn(
-						"size-3.5 text-sidebar-foreground/40 transition-transform duration-200",
+						"size-3.5 text-sidebar-foreground/60 transition-transform duration-200",
 						!collapsed && "rotate-90",
 					)}
 				/>

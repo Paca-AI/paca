@@ -76,7 +76,7 @@ export function ProjectActivityFilters({
 	return (
 		<div className="flex items-center gap-2">
 			<div className="relative min-w-0 flex-1 sm:max-w-sm">
-				<Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+				<Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/90" />
 				<Input
 					value={searchInput}
 					onChange={(e) => {
@@ -111,7 +111,7 @@ export function ProjectActivityFilters({
 					side="bottom"
 					align="start"
 					sideOffset={6}
-					className="w-80 rounded-xl border border-border/40 p-0 shadow-xl"
+					className="w-80 rounded-xl border border-border/60 p-0 shadow-xl"
 				>
 					<div className="max-h-[70vh] space-y-3 overflow-y-auto p-3">
 						<section>
@@ -135,7 +135,7 @@ export function ProjectActivityFilters({
 							</div>
 						</section>
 
-						<div className="border-t border-border/20" />
+						<div className="border-t border-border/50" />
 
 						<section>
 							<FilterSectionLabel>
@@ -190,7 +190,7 @@ export function ProjectActivityFilters({
 							</div>
 						</section>
 
-						<div className="border-t border-border/20" />
+						<div className="border-t border-border/50" />
 
 						<section>
 							<FilterSectionLabel>
@@ -213,7 +213,7 @@ export function ProjectActivityFilters({
 							</div>
 						</section>
 
-						<div className="border-t border-border/20" />
+						<div className="border-t border-border/50" />
 
 						<section>
 							<FilterSectionLabel>

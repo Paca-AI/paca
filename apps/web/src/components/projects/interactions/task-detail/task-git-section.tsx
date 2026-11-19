@@ -47,9 +47,9 @@ interface TaskGitSectionProps {
 const PILL =
 	"flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-150";
 const PILL_PRIMARY = `${PILL} bg-primary/8 text-primary/80 hover:bg-primary/15 hover:text-primary`;
-const PILL_QUIET = `${PILL} text-muted-foreground/70 hover:bg-muted/50 hover:text-foreground`;
+const PILL_QUIET = `${PILL} text-muted-foreground hover:bg-muted/50 hover:text-foreground`;
 const ROWS =
-	"rounded-xl border border-border/25 bg-card/50 divide-y divide-border/15 overflow-hidden";
+	"rounded-xl border border-border/50 bg-card/50 divide-y divide-border/50 overflow-hidden";
 
 function SectionHeader({
 	title,
@@ -60,7 +60,7 @@ function SectionHeader({
 }) {
 	return (
 		<div className="flex items-center justify-between">
-			<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 flex items-center gap-2">
+			<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground flex items-center gap-2">
 				<span>{title}</span>
 				<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 			</h3>
@@ -77,7 +77,7 @@ function Empty({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="flex items-center gap-2 rounded-xl border border-dashed border-border/40 px-4 py-3 text-sm text-muted-foreground">
+		<div className="flex items-center gap-2 rounded-xl border border-dashed border-border/60 px-4 py-3 text-sm text-muted-foreground">
 			{icon}
 			{children}
 		</div>
@@ -165,7 +165,7 @@ function ChangeRequestRow({
 	return (
 		<div className="group flex items-center gap-3 px-4 py-2.5">
 			<StateIcon cr={cr} />
-			<span className="shrink-0 font-mono text-xs text-muted-foreground/60">
+			<span className="shrink-0 font-mono text-xs text-muted-foreground/90">
 				#{cr.number}
 			</span>
 			<div className="min-w-0 flex-1">
@@ -184,7 +184,7 @@ function ChangeRequestRow({
 						{title}
 					</span>
 				)}
-				<div className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-muted-foreground/70">
+				<div className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-muted-foreground">
 					<span className="truncate">{cr.repository}</span>
 					{cr.head_ref ? (
 						<span className="flex shrink-0 items-center gap-1">
@@ -252,7 +252,7 @@ function BranchRow({
 	return (
 		<div className="group flex items-center gap-3 px-4 py-2.5">
 			<GitBranch
-				className="size-3.5 shrink-0 text-muted-foreground/60"
+				className="size-3.5 shrink-0 text-muted-foreground/90"
 				aria-hidden="true"
 			/>
 			<div className="min-w-0 flex-1">
@@ -262,7 +262,7 @@ function BranchRow({
 				>
 					{branch.branch}
 				</span>
-				<span className="block truncate text-xs text-muted-foreground/70">
+				<span className="block truncate text-xs text-muted-foreground">
 					{branch.repository}
 				</span>
 			</div>

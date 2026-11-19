@@ -31,7 +31,7 @@ export function TagsEditor({
 			onRemoveChip={handleRemove}
 			canEdit={canEdit}
 			addLabel={t("taskDetail.propertyField.tagsEditor.addTag")}
-			popoverContentClassName="w-52 p-2 rounded-xl border border-border/40 shadow-lg"
+			popoverContentClassName="w-52 p-2 rounded-xl border border-border/60 shadow-lg"
 		>
 			<form
 				onSubmit={(e) => {
@@ -48,7 +48,7 @@ export function TagsEditor({
 					placeholder={t(
 						"taskDetail.propertyField.tagsEditor.addTagPlaceholder",
 					)}
-					className="w-full rounded-lg border border-border/30 bg-muted/25 px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150"
+					className="w-full rounded-lg border border-border/50 bg-muted/25 px-3 py-2 text-sm placeholder:text-muted-foreground/90 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150"
 					onKeyDown={(e) => {
 						if (e.key === "Enter") {
 							e.preventDefault();

@@ -438,12 +438,12 @@ export function ListGroup({
 	// ── Column-header row ─────────────────────────────────────────────────────
 
 	const columnHeaders = (
-		<div className="flex items-center gap-2 px-4 py-1.5 bg-muted/20 border-b border-border/25 sm:gap-3">
+		<div className="flex items-center gap-2 px-4 py-1.5 bg-muted/20 border-b border-border/50 sm:gap-3">
 			{isDraggable && !isMobile && <div className="w-3 shrink-0" />}
-			<div className="w-14 shrink-0 sm:w-20 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/60">
+			<div className="w-14 shrink-0 sm:w-20 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/90">
 				{t("board.listGroup.columnHeaders.id")}
 			</div>
-			<div className="flex-1 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/60">
+			<div className="flex-1 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/90">
 				{t("board.listGroup.columnHeaders.title")}
 			</div>
 			{visibleFields.map((fk) => {
@@ -453,7 +453,7 @@ export function ListGroup({
 						key={fk}
 						className={cn(
 							col.className,
-							"text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/60",
+							"text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/90",
 							col.responsive ? "hidden sm:block" : "",
 						)}
 					>
@@ -668,7 +668,7 @@ export function ListGroup({
 			type="button"
 			onClick={groupPagination.onLoadMore}
 			disabled={groupPagination.isLoadingMore}
-			className="flex w-full items-center justify-center border-t border-border/10 py-2 text-xs font-medium text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
+			className="flex w-full items-center justify-center border-t border-border/50 py-2 text-xs font-medium text-muted-foreground/90 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
 		>
 			{groupPagination.isLoadingMore
 				? t("board.listGroup.loading")
@@ -682,7 +682,7 @@ export function ListGroup({
 		// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop group
 		<div
 			className={cn(
-				"border-b border-border/25 last:border-0 transition-all duration-150",
+				"border-b border-border/50 last:border-0 transition-all duration-150",
 				isDropTarget && "bg-primary/5 ring-inset ring-2 ring-primary/20",
 			)}
 			onDragOver={handleGroupDragOver}
@@ -709,9 +709,9 @@ export function ListGroup({
 				className="flex w-full items-center gap-2.5 px-4 py-3 hover:bg-muted/30 transition-colors duration-150 cursor-pointer"
 			>
 				{collapsed ? (
-					<ChevronRight className="size-3.5 text-muted-foreground/60 shrink-0" />
+					<ChevronRight className="size-3.5 text-muted-foreground/90 shrink-0" />
 				) : (
-					<ChevronDown className="size-3.5 text-muted-foreground/60 shrink-0" />
+					<ChevronDown className="size-3.5 text-muted-foreground/90 shrink-0" />
 				)}
 				{groupDef.color && (
 					<span
@@ -761,7 +761,7 @@ export function ListGroup({
 				)}
 
 				{/* Task count / field sum badge */}
-				<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground/70 tabular-nums">
+				<span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-bold text-muted-foreground tabular-nums">
 					{fieldSum && fieldSum !== "count"
 						? `${apiFieldSum ?? 0}`
 						: (totalCount ?? tasks.length)}
@@ -841,7 +841,7 @@ export function ListGroup({
 								<div
 									key={swimDef.key}
 									className={cn(
-										"border-t border-border/15",
+										"border-t border-border/50",
 										dragOverSwimKey === swimDef.key &&
 											isDraggable &&
 											"bg-primary/5 ring-inset ring-1 ring-primary/20",
@@ -856,7 +856,7 @@ export function ListGroup({
 								>
 									{swimDef.key !== "__all" && (
 										<div className="flex items-center gap-2 px-8 py-1.5 bg-muted/10">
-											<span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/50">
+											<span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
 												{swimDef.label}
 											</span>
 										</div>
@@ -865,7 +865,7 @@ export function ListGroup({
 									{swimDef.key === (swimlaneDefs[0]?.key ?? "__all") &&
 										columnHeaders}
 									{laneTasks.length === 0 && !groupPagination?.hasMore ? (
-										<div className="flex flex-col items-center py-5 text-muted-foreground/40">
+										<div className="flex flex-col items-center py-5 text-muted-foreground/90">
 											<p className="text-sm font-medium">
 												{t("board.listGroup.noTasks")}
 											</p>
@@ -894,7 +894,7 @@ export function ListGroup({
 					<>
 						{columnHeaders}
 						{orderedTasks.length === 0 && !groupPagination?.hasMore ? (
-							<div className="flex flex-col items-center py-8 text-muted-foreground/40">
+							<div className="flex flex-col items-center py-8 text-muted-foreground/90">
 								<p className="text-sm font-medium">
 									{t("board.listGroup.noTasks")}
 								</p>
