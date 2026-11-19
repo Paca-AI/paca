@@ -599,7 +599,7 @@ export async function uploadDocFile(
 		const completedParts: CompletedPart[] = await mapPool(
 			parts,
 			DOC_MULTIPART_CONCURRENCY,
-			async (part) => {
+			async (part, _i, signal) => {
 				const start = (part.part_number - 1) * DOC_MULTIPART_CHUNK_SIZE;
 				const end = Math.min(start + DOC_MULTIPART_CHUNK_SIZE, file.size);
 				const chunk = file.slice(start, end);
@@ -607,6 +607,7 @@ export async function uploadDocFile(
 				const resp = await fetch(part.upload_url, {
 					method: "PUT",
 					body: chunk,
+					signal,
 					headers: { "Content-Type": file.type || "application/octet-stream" },
 				});
 

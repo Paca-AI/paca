@@ -339,50 +339,37 @@ export async function uploadFile(
 			for (const v of partLoaded.values()) sum += v;
 			report(sum);
 		};
-		// A failed part aborts its siblings instead of letting them run on.
-		const partsController = new AbortController();
-		const onOuterAbort = () => partsController.abort();
-		opts.signal?.addEventListener("abort", onOuterAbort, { once: true });
-		if (opts.signal?.aborted) partsController.abort();
-		let parts: { part_number: number; etag: string }[];
-		try {
-			parts = await mapPool(
-				session.multipart.parts,
-				MULTIPART_CONCURRENCY,
-				async (part) => {
-					const start = (part.part_number - 1) * MULTIPART_CHUNK_SIZE;
-					const chunk = file.slice(
-						start,
-						Math.min(start + MULTIPART_CHUNK_SIZE, file.size),
-					);
-					try {
-						const etag = await putWithProgress(
-							part.upload_url,
-							chunk,
-							contentType,
-							(loaded) => {
-								partLoaded.set(part.part_number, loaded);
-								reportParts();
-							},
-							partsController.signal,
-						);
-						if (!etag) {
-							throw new Error(
-								"The object store did not expose the ETag header; multipart uploads need it exposed through CORS.",
-							);
-						}
-						partLoaded.set(part.part_number, chunk.size);
+		// mapPool aborts the signal on the first failed part (or on opts.signal).
+		const parts = await mapPool(
+			session.multipart.parts,
+			MULTIPART_CONCURRENCY,
+			async (part, _i, signal) => {
+				const start = (part.part_number - 1) * MULTIPART_CHUNK_SIZE;
+				const chunk = file.slice(
+					start,
+					Math.min(start + MULTIPART_CHUNK_SIZE, file.size),
+				);
+				const etag = await putWithProgress(
+					part.upload_url,
+					chunk,
+					contentType,
+					(loaded) => {
+						partLoaded.set(part.part_number, loaded);
 						reportParts();
-						return { part_number: part.part_number, etag };
-					} catch (error) {
-						partsController.abort();
-						throw error;
-					}
-				},
-			);
-		} finally {
-			opts.signal?.removeEventListener("abort", onOuterAbort);
-		}
+					},
+					signal,
+				);
+				if (!etag) {
+					throw new Error(
+						"The object store did not expose the ETag header; multipart uploads need it exposed through CORS.",
+					);
+				}
+				partLoaded.set(part.part_number, chunk.size);
+				reportParts();
+				return { part_number: part.part_number, etag };
+			},
+			opts.signal,
+		);
 		completion = {
 			file_id: session.file_id,
 			upload_id: session.multipart.upload_id,

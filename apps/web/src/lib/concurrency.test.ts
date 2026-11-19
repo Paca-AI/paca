@@ -42,6 +42,45 @@ describe("mapPool", () => {
 		expect(started.length).toBeLessThan(6);
 	});
 
+	it("aborts the signal of in-flight siblings but still reports the first error", async () => {
+		const err = new Error("first");
+		let siblingAborted = false;
+		await expect(
+			mapPool([0, 1], 2, async (n, _i, signal) => {
+				if (n === 0) {
+					await tick(1);
+					throw err;
+				}
+				await new Promise<void>((_, reject) =>
+					signal.addEventListener("abort", () => {
+						siblingAborted = true;
+						reject(new Error("aborted"));
+					}),
+				);
+			}),
+		).rejects.toBe(err);
+		expect(siblingAborted).toBe(true);
+	});
+
+	it("aborts the item signal when the outer signal aborts", async () => {
+		const outer = new AbortController();
+		const p = mapPool(
+			[0],
+			1,
+			(_n, _i, signal) =>
+				new Promise<void>((_, reject) =>
+					signal.addEventListener("abort", () => reject(new Error("stop"))),
+				),
+			outer.signal,
+		);
+		outer.abort();
+		await expect(p).rejects.toThrow("stop");
+	});
+
+	it("treats a non-positive limit as 1", async () => {
+		expect(await mapPool([1, 2, 3], 0, async (n) => n * 2)).toEqual([2, 4, 6]);
+	});
+
 	it("handles an empty list", async () => {
 		expect(await mapPool([], 3, async () => 1)).toEqual([]);
 	});
@@ -71,5 +110,24 @@ describe("createLimiter", () => {
 		const limit = createLimiter(1);
 		await expect(limit(() => Promise.reject(new Error("x")))).rejects.toThrow();
 		expect(await limit(async () => "ok")).toBe("ok");
+	});
+
+	it("does not exceed the limit when a call arrives as a slot is released", async () => {
+		const limit = createLimiter(1);
+		let active = 0;
+		let peak = 0;
+		const run = async () => {
+			active++;
+			peak = Math.max(peak, active);
+			await tick(2);
+			active--;
+		};
+		const first = limit(run);
+		const second = limit(run);
+		await first;
+		// `first` has released; `second` is being woken. A new call must queue.
+		const third = limit(run);
+		await Promise.all([second, third]);
+		expect(peak).toBe(1);
 	});
 });

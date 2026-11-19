@@ -219,7 +219,7 @@ async function uploadAttachmentNow(
 		const completedParts: CompletedPart[] = await mapPool(
 			parts,
 			MULTIPART_CONCURRENCY,
-			async (part) => {
+			async (part, _i, signal) => {
 				const start = (part.part_number - 1) * MULTIPART_CHUNK_SIZE;
 				const end = Math.min(start + MULTIPART_CHUNK_SIZE, file.size);
 				const chunk = file.slice(start, end);
@@ -227,6 +227,7 @@ async function uploadAttachmentNow(
 				const resp = await fetch(part.upload_url, {
 					method: "PUT",
 					body: chunk,
+					signal,
 					headers: { "Content-Type": contentType },
 				});
 
