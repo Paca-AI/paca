@@ -398,32 +398,66 @@ func (h *FileHandler) Roots(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	roots := make([]dto.FileRootResponse, 0, 8)
-	general, err := iam.AllowedAll(r.Context(), h.authorizer, principal, iam.PlatformResource(iam.ActionFilesRead), iam.ActionFilesRead)
-	if err != nil {
-		presenter.Error(w, r, err)
-		return
-	}
-	if general {
-		roots = append(roots, dto.FileRootResponse{Kind: "general", Name: "General"})
-	}
 	projects, err := h.accessibleProjects(r.Context(), principal, accountID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
+	// One grants lookup answers the general scope and every project together.
+	queries := make([]iam.Query, 0, len(projects)+1)
+	queries = append(queries, iam.Query{Action: string(iam.ActionFilesRead), Resource: iam.PlatformResource(iam.ActionFilesRead)})
 	for _, p := range projects {
-		allowed, aerr := iam.AllowedAll(r.Context(), h.authorizer, principal, iam.ProjectResource(p.ID.String()), iam.ActionFilesRead)
-		if aerr != nil {
-			presenter.Error(w, r, aerr)
-			return
-		}
-		if allowed {
+		queries = append(queries, iam.Query{Action: string(iam.ActionFilesRead), Resource: iam.ProjectResource(p.ID.String())})
+	}
+	allowed, err := h.allowed(r.Context(), principal, queries)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	roots := make([]dto.FileRootResponse, 0, 8)
+	if allowed[0] {
+		roots = append(roots, dto.FileRootResponse{Kind: "general", Name: "General"})
+	}
+	for i, p := range projects {
+		if allowed[i+1] {
 			id := p.ID
 			roots = append(roots, dto.FileRootResponse{Kind: "project", ProjectID: &id, Name: p.Name})
 		}
 	}
 	presenter.OK(w, r, map[string]any{"items": roots})
+}
+
+// manyChecker is implemented by *iam.Authorizer: it answers several questions
+// from one grants lookup.
+type manyChecker interface {
+	AuthorizeMany(ctx context.Context, p iam.Principal, queries []iam.Query) ([]iam.Result, error)
+}
+
+// allowed evaluates the queries, in one grants lookup when the checker can.
+// Any error means unknown, which the caller must treat as a denial.
+func (h *FileHandler) allowed(ctx context.Context, p iam.Principal, queries []iam.Query) ([]bool, error) {
+	out := make([]bool, len(queries))
+	if m, ok := h.authorizer.(manyChecker); ok {
+		results, err := m.AuthorizeMany(ctx, p, queries)
+		if err != nil {
+			return nil, err
+		}
+		for i := range results {
+			out[i] = results[i].Allowed
+		}
+		return out, nil
+	}
+	if h.authorizer == nil {
+		return nil, iam.ErrNotConfigured
+	}
+	for i, q := range queries {
+		res, err := h.authorizer.Authorize(ctx, p, q.Action, q.Resource)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = res.Allowed
+	}
+	return out, nil
 }
 
 // accessibleProjects lists every project when the caller holds the
