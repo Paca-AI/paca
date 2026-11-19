@@ -2264,6 +2264,7 @@ export function InteractionLayout({
 				) : activeView?.layout === "Gantt" ? (
 					<GanttView
 						projectId={projectId}
+						taskIdPrefix={taskIdPrefix}
 						childFilters={childFilters}
 						viewKey={subtaskViewKey}
 						tasks={tasks}

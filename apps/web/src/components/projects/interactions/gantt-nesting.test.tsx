@@ -77,6 +77,10 @@ describe("GanttView nested tasks", () => {
 				.find((b) => b.getAttribute("aria-expanded") !== null) as HTMLElement,
 		);
 		expect(await screen.findByText("Child task")).toBeTruthy();
-		expect(get.mock.calls[0][1].params.parent_task_id).toBe("epic-1");
+		// Find the child-task request by URL: the view also loads the project.
+		const childCall = get.mock.calls.find(([url]) =>
+			String(url).endsWith("/tasks"),
+		);
+		expect(childCall?.[1].params.parent_task_id).toBe("epic-1");
 	});
 });

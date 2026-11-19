@@ -1,11 +1,14 @@
 // Tests for gantt-view.tsx: row drag-and-drop, zoom, rescheduling and
 // dependency arrows.
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Task } from "@/lib/interaction-api";
-import type { TaskStatus } from "@/lib/project-api";
+import type { Task, ViewConfig } from "@/lib/interaction-api";
+import { getMemberDirectory } from "@/lib/member-directory";
+import type { ProjectMember, TaskStatus } from "@/lib/project-api";
 import { GanttView } from "./gantt-view";
 
 const notifyError = vi.hoisted(() => vi.fn());
@@ -78,6 +81,14 @@ function createDt() {
 const onMoveToColumn = vi.fn();
 const onReorderTask = vi.fn();
 
+// The assignee picker and the Jev check read through React Query.
+function wrapper({ children }: { children: ReactNode }) {
+	const qc = new QueryClient({
+		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+	});
+	return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
+
 function renderGantt(
 	tasks: Task[],
 	overrides: Partial<Parameters<typeof GanttView>[0]> = {},
@@ -95,6 +106,7 @@ function renderGantt(
 			onTaskClick={vi.fn()}
 			{...overrides}
 		/>,
+		{ wrapper },
 	);
 }
 
@@ -576,5 +588,50 @@ describe("GanttView dependencies", () => {
 		});
 		expect(screen.queryByTestId("gantt-dependencies")).toBeNull();
 		expect(barOf("e1")).not.toHaveAttribute("data-violation");
+	});
+});
+
+describe("GanttView assignees", () => {
+	const member = {
+		id: "member-ada",
+		full_name: "Ada Lovelace",
+		username: "ada",
+	} as ProjectMember;
+	beforeEach(() => {
+		// Assignees are resolved by id through the member directory.
+		getMemberDirectory(PROJECT_ID).seed([member]);
+	});
+	const assigned = () =>
+		makeTask({ id: "a1", title: "Assigned task", assignee_ids: [member.id] });
+
+	it("shows the assignee next to the task name by default", () => {
+		renderGantt([assigned()]);
+		expect(screen.getByText("AL")).toBeInTheDocument();
+	});
+
+	it("hides assignees when the view's fields leave them out", () => {
+		renderGantt([assigned()], {
+			viewConfig: { fields: ["importance"] } as ViewConfig,
+		});
+		expect(screen.queryByText("AL")).not.toBeInTheDocument();
+	});
+
+	it("does not open the task when the assignee is clicked", () => {
+		const onTaskClick = vi.fn();
+		renderGantt([assigned()], { onTaskClick });
+		fireEvent.click(screen.getByText("AL"));
+		expect(onTaskClick).not.toHaveBeenCalled();
+	});
+});
+
+describe("GanttView task IDs", () => {
+	it("shows the task ID with the project's prefix", () => {
+		renderGantt([makeTask({ task_number: 7 })], { taskIdPrefix: "PACA" });
+		expect(screen.getByText("PACA-7")).toBeInTheDocument();
+	});
+
+	it("falls back to #n when the project has no prefix", () => {
+		renderGantt([makeTask({ task_number: 7 })]);
+		expect(screen.getByText("#7")).toBeInTheDocument();
 	});
 });
