@@ -210,9 +210,32 @@ func TestDefaultFoldersAreLocked(t *testing.T) {
 	if _, err := svc.InitiateUpload(t.Context(), scope, actor, filedom.UploadInput{ParentID: &sys.ID, FileName: "a.txt", FileSize: 1}); !errors.Is(err, filedom.ErrNodeLocked) {
 		t.Fatalf("upload into default folder = %v", err)
 	}
-	// Files inside can still go to the trash.
-	if err := svc.Trash(t.Context(), scope, actor, inSys.ID); err != nil || len(repo.trashed) != 1 {
-		t.Fatalf("trash doc image = %v, trashed %v", err, repo.trashed)
+}
+
+// A file that something else references is deleted for good, never parked in
+// the trash where it would later detach from its owner without a word.
+func TestReferencedFilesAreDeletedForGood(t *testing.T) {
+	for _, source := range []string{filedom.SourceDoc, filedom.SourceAnnotation} {
+		sys := folder("Default", filedom.SystemKeyDocs, &project)
+		f := fileNode("shot.png", source, sys)
+		repo := newFakeRepo(sys, f)
+		repo.purgeObjs = []filedom.StorageObject{{Bucket: "b", Key: "k/shot.png"}}
+		svc, _, store := newSvc(repo)
+
+		if err := svc.Trash(t.Context(), scope, actor, f.ID); err != nil {
+			t.Fatalf("%s: %v", source, err)
+		}
+		if len(repo.trashed) != 0 || len(repo.purged) != 1 || len(store.deleted) != 1 {
+			t.Fatalf("%s: trashed %v purged %v deleted %v, want purged and removed from the store", source, repo.trashed, repo.purged, store.deleted)
+		}
+	}
+
+	// A plain upload still goes to the trash.
+	up := fileNode("plain.txt", filedom.SourceUpload, nil)
+	repo := newFakeRepo(up)
+	svc, _, _ := newSvc(repo)
+	if err := svc.Trash(t.Context(), scope, actor, up.ID); err != nil || len(repo.trashed) != 1 || len(repo.purged) != 0 {
+		t.Fatalf("trash upload = %v, trashed %v purged %v", err, repo.trashed, repo.purged)
 	}
 }
 

@@ -115,18 +115,21 @@
 			"here": "移动到此处",
 			"noFolders": "此处没有文件夹"
 		},
-		"deleteTaskAttachment": {
-			"title": "删除此附件？",
-			"body": "{{name}} 已附加到任务。删除后将从任务中移除，且无法撤销。",
-			"confirm": "删除"
-		},
 		"deleteForever": {
 			"title": "永久删除？",
 			"body": "{{name}} 将被永久删除，且无法撤销。",
 			"bodyMany": "{{count}} 个项目将被永久删除，且无法撤销。",
 			"confirm": "永久删除"
 		},
-		"cancel": "取消"
+		"cancel": "取消",
+		"deleteManaged": {
+			"title": "永久删除？",
+			"confirm": "删除",
+			"taskAttachment": "{{name}} 已附加到任务。删除后将从任务中移除，且无法撤销。",
+			"doc": "{{name}} 正在文档中使用。删除后将被永久移除，文档中会显示损坏的文件。此操作无法撤销。",
+			"annotation": "{{name}} 是页面评论中的截图。删除后将从评论及其附加的所有任务中永久移除。此操作无法撤销。",
+			"many": "所选文件中有 {{count}} 个正被任务、文档或页面评论使用。删除后将从这些位置永久移除。此操作无法撤销。"
+		}
 	},
 	"details": {
 		"title": "详细信息",

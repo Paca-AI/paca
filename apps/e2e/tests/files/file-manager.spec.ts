@@ -485,4 +485,65 @@ test.describe("File manager", () => {
 		);
 		expect(Math.max(r, g, b)).toBeLessThan(100);
 	});
+
+	test("deleting a document file asks first and removes it for good instead of trashing it", async ({
+		page,
+		request,
+	}) => {
+		await authRequest(request);
+		const projectId = await createProject(request, uniqueName("docfile"));
+		const doc = await request.post(`${API_URL}/projects/${projectId}/docs`, {
+			data: { title: "With a file" },
+		});
+		const docId = (await doc.json()).data.id as string;
+		const base = `${API_URL}/projects/${projectId}/docs/${docId}/files`;
+		const body = Buffer.from("document file body");
+		const init = await request.post(`${base}/initiate-upload`, {
+			data: {
+				file_name: "diagram.txt",
+				content_type: "text/plain",
+				file_size: body.length,
+			},
+		});
+		expect(init.ok()).toBeTruthy();
+		const session = (await init.json()).data as {
+			file_id: string;
+			upload_url: string;
+		};
+		expect(
+			(
+				await request.put(session.upload_url, {
+					data: body,
+					headers: { "Content-Type": "text/plain" },
+				})
+			).ok(),
+		).toBeTruthy();
+		expect(
+			(
+				await request.post(`${base}/complete-upload`, {
+					data: { file_id: session.file_id },
+				})
+			).ok(),
+		).toBeTruthy();
+
+		await signIn(page);
+		await page.goto(filesUrl(projectId));
+		await item(page, "Document files").dblclick();
+		await expect(
+			page.getByRole("button", { name: "Document files" }),
+		).toBeVisible();
+		await item(page, "diagram.txt").click({ button: "right" });
+		// Offered as Delete, not "Move to trash": it is used by a document.
+		await expect(
+			page.getByRole("menuitem", { name: "Move to trash" }),
+		).toHaveCount(0);
+		await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+		await expect(page.getByText(/is used in a document/)).toBeVisible();
+		await page.getByRole("button", { name: "Delete", exact: true }).click();
+		await expect(item(page, "diagram.txt")).toHaveCount(0);
+
+		// Gone for good: nothing to restore from the trash.
+		await page.goto(filesUrl(projectId, "/trash"));
+		await expect(page.getByText("Trash is empty")).toBeVisible();
+	});
 });

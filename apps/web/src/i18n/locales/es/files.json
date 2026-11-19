@@ -115,18 +115,21 @@
 			"here": "Mover aquí",
 			"noFolders": "No hay carpetas aquí"
 		},
-		"deleteTaskAttachment": {
-			"title": "¿Eliminar este adjunto?",
-			"body": "{{name}} está adjunto a una tarea. Al eliminarlo se quita de la tarea y no se puede deshacer.",
-			"confirm": "Eliminar"
-		},
 		"deleteForever": {
 			"title": "¿Eliminar definitivamente?",
 			"body": "{{name}} se eliminará definitivamente. No se puede deshacer.",
 			"bodyMany": "{{count}} elementos se eliminarán definitivamente. No se puede deshacer.",
 			"confirm": "Eliminar definitivamente"
 		},
-		"cancel": "Cancelar"
+		"cancel": "Cancelar",
+		"deleteManaged": {
+			"title": "¿Eliminar definitivamente?",
+			"confirm": "Eliminar",
+			"taskAttachment": "{{name}} está adjunto a una tarea. Al eliminarlo se quita de la tarea y no se puede deshacer.",
+			"doc": "{{name}} se usa en un documento. Al eliminarlo se borra definitivamente y el documento mostrará un archivo roto. No se puede deshacer.",
+			"annotation": "{{name}} es una captura de pantalla de un comentario de página. Al eliminarla se borra definitivamente, del comentario y de cualquier tarea a la que esté adjunta. No se puede deshacer.",
+			"many": "{{count}} de los archivos seleccionados se usan en tareas, documentos o comentarios de página. Al eliminarlos se quitan de allí definitivamente. No se puede deshacer."
+		}
 	},
 	"details": {
 		"title": "Detalles",

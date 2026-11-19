@@ -6,6 +6,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import {
 	ChevronRight,
 	FilePlus2,
@@ -70,6 +71,7 @@ import {
 import {
 	createFolder,
 	deleteNodePermanently,
+	deletesForGood,
 	FILE_TYPE_FILTERS,
 	type FileNode,
 	type FileRoot,
@@ -121,6 +123,19 @@ export interface FilesSearch {
 	scope?: string;
 	q?: string;
 	type?: string;
+}
+
+/** The warning for deleting files that tasks, documents or annotations use. */
+function deleteManagedBody(t: TFunction<"files">, nodes: FileNode[]): string {
+	const managed = nodes.filter(deletesForGood);
+	const only = managed.length === 1 && nodes.length === 1 ? managed[0] : null;
+	if (only?.source === "doc")
+		return t("dialogs.deleteManaged.doc", { name: only.name });
+	if (only?.source === "annotation")
+		return t("dialogs.deleteManaged.annotation", { name: only.name });
+	if (only)
+		return t("dialogs.deleteManaged.taskAttachment", { name: only.name });
+	return t("dialogs.deleteManaged.many", { count: managed.length });
 }
 
 export function parseFilesSearch(raw: Record<string, unknown>): FilesSearch {
@@ -442,12 +457,15 @@ export function FilesPage({
 		onSuccess: (items) => {
 			setDialog(null);
 			setSelected(new Set());
-			// Task attachments are deleted for good, so there is nothing to undo.
-			const undoable = items.filter((n) => n.source !== "task_attachment");
+			// Files that tasks, documents and annotations use are deleted for good,
+			// so there is nothing to undo for them.
+			const undoable = items.filter((n) => !deletesForGood(n));
 			ok(
-				items.length === 1
-					? t("toast.trashed")
-					: t("toast.trashedMany", { count: items.length }),
+				items.every(deletesForGood)
+					? t("toast.deleted")
+					: items.length === 1
+						? t("toast.trashed")
+						: t("toast.trashedMany", { count: items.length }),
 				undoable.length > 0
 					? {
 							label: t("actions.restore"),
@@ -525,6 +543,22 @@ export function FilesPage({
 		else setPreviewId(n.id);
 	};
 
+	/**
+	 * Trashes the items the caller may trash (never the default folders, never
+	 * where they cannot write), asking first when any of them is deleted for
+	 * good. Every path to "trash" goes through here, so the Delete key, the
+	 * selection bar and the menus submit the same set.
+	 */
+	const trashNodes = (items: FileNode[]) => {
+		const deletable = items.filter(
+			(n) => !n.system && canWriteScope(scopeOfNode(n)),
+		);
+		if (deletable.length === 0) return;
+		if (deletable.some(deletesForGood))
+			setDialog({ kind: "trash", nodes: deletable });
+		else trashM.mutate(deletable);
+	};
+
 	const handlers: FileActionHandlers = {
 		open,
 		download: (n) => void download(n),
@@ -532,13 +566,7 @@ export function FilesPage({
 		rename: (n) => setDialog({ kind: "rename", node: n }),
 		move: (n) => setDialog({ kind: "move", nodes: targetsFor(n) }),
 		details: (n) => setDetailsNode(n),
-		trash: (n) => {
-			const items = targetsFor(n);
-			// Only attachments of tasks need a confirmation: that delete is final.
-			if (items.some((x) => x.source === "task_attachment"))
-				setDialog({ kind: "trash", nodes: items });
-			else trashM.mutate(items);
-		},
+		trash: (n) => trashNodes(targetsFor(n)),
 		restore: (n) => restoreM.mutate(targetsFor(n)),
 		deleteForever: (n) =>
 			setDialog({ kind: "deleteForever", nodes: targetsFor(n) }),
@@ -610,10 +638,7 @@ export function FilesPage({
 			picked.length > 0 &&
 			!inTrash
 		) {
-			const items = picked.filter(
-				(n) => !n.system && canWriteScope(scopeOfNode(n)),
-			);
-			if (items.length > 0) handlers.trash(items[0]);
+			trashNodes(picked);
 		}
 	};
 
@@ -885,7 +910,7 @@ export function FilesPage({
 										<Button
 											size="sm"
 											variant="outline"
-											onClick={() => handlers.trash(first)}
+											onClick={() => trashNodes(picked)}
 										>
 											<Trash2 className="size-4" />
 											{t("actions.trash")}
@@ -1013,15 +1038,11 @@ export function FilesPage({
 			)}
 			<ConfirmDialog
 				open={dialog?.kind === "trash"}
-				title={t("dialogs.deleteTaskAttachment.title")}
+				title={t("dialogs.deleteManaged.title")}
 				body={
-					dialog?.kind === "trash"
-						? t("dialogs.deleteTaskAttachment.body", {
-								name: dialog.nodes[0]?.name,
-							})
-						: ""
+					dialog?.kind === "trash" ? deleteManagedBody(t, dialog.nodes) : ""
 				}
-				confirmLabel={t("dialogs.deleteTaskAttachment.confirm")}
+				confirmLabel={t("dialogs.deleteManaged.confirm")}
 				pending={trashM.isPending}
 				onConfirm={() =>
 					dialog?.kind === "trash" && trashM.mutate(dialog.nodes)

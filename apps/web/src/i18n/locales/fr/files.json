@@ -115,18 +115,21 @@
 			"here": "Déplacer ici",
 			"noFolders": "Aucun dossier ici"
 		},
-		"deleteTaskAttachment": {
-			"title": "Supprimer cette pièce jointe ?",
-			"body": "{{name}} est joint à une tâche. La supprimer la retire de la tâche et ne peut pas être annulé.",
-			"confirm": "Supprimer"
-		},
 		"deleteForever": {
 			"title": "Supprimer définitivement ?",
 			"body": "{{name}} sera supprimé définitivement. Cette action est irréversible.",
 			"bodyMany": "{{count}} éléments seront supprimés définitivement. Cette action est irréversible.",
 			"confirm": "Supprimer définitivement"
 		},
-		"cancel": "Annuler"
+		"cancel": "Annuler",
+		"deleteManaged": {
+			"title": "Supprimer définitivement ?",
+			"confirm": "Supprimer",
+			"taskAttachment": "{{name}} est joint à une tâche. La supprimer la retire de la tâche et ne peut pas être annulé.",
+			"doc": "{{name}} est utilisé dans un document. Le supprimer l’efface définitivement et le document affichera un fichier cassé. Cette action est irréversible.",
+			"annotation": "{{name}} est une capture d’écran d’un commentaire de page. La supprimer l’efface définitivement, du commentaire et de toute tâche à laquelle elle est jointe. Cette action est irréversible.",
+			"many": "{{count}} des fichiers sélectionnés sont utilisés par des tâches, des documents ou des commentaires de page. Les supprimer les retire de ces endroits définitivement. Cette action est irréversible."
+		}
 	},
 	"details": {
 		"title": "Détails",

@@ -115,18 +115,21 @@
 			"here": "Di chuyển vào đây",
 			"noFolders": "Không có thư mục nào ở đây"
 		},
-		"deleteTaskAttachment": {
-			"title": "Xóa tệp đính kèm này?",
-			"body": "{{name}} đang được đính kèm vào một công việc. Xóa sẽ gỡ nó khỏi công việc và không thể hoàn tác.",
-			"confirm": "Xóa"
-		},
 		"deleteForever": {
 			"title": "Xóa vĩnh viễn?",
 			"body": "{{name}} sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
 			"bodyMany": "{{count}} mục sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
 			"confirm": "Xóa vĩnh viễn"
 		},
-		"cancel": "Hủy"
+		"cancel": "Hủy",
+		"deleteManaged": {
+			"title": "Xóa vĩnh viễn?",
+			"confirm": "Xóa",
+			"taskAttachment": "{{name}} đang được đính kèm vào một công việc. Xóa sẽ gỡ nó khỏi công việc và không thể hoàn tác.",
+			"doc": "{{name}} đang được dùng trong một tài liệu. Xóa sẽ xóa vĩnh viễn và tài liệu sẽ hiển thị tệp bị lỗi. Không thể hoàn tác.",
+			"annotation": "{{name}} là ảnh chụp màn hình từ một bình luận trên trang. Xóa sẽ xóa vĩnh viễn khỏi bình luận và mọi công việc mà nó được đính kèm. Không thể hoàn tác.",
+			"many": "{{count}} trong số các tệp đã chọn đang được công việc, tài liệu hoặc bình luận trên trang sử dụng. Xóa sẽ gỡ chúng khỏi đó vĩnh viễn. Không thể hoàn tác."
+		}
 	},
 	"details": {
 		"title": "Chi tiết",

@@ -20,7 +20,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import type { FileNode } from "@/lib/files-api";
+import { deletesForGood, type FileNode } from "@/lib/files-api";
 
 export interface FileActionHandlers {
 	open: (n: FileNode) => void;
@@ -127,15 +127,13 @@ export function buildFileActions(
 		run: () => h.details(n),
 		separatorBefore: true,
 	});
-	// The default folders cannot go; files inside them can (a task attachment is
-	// deleted for good, anything else goes to the trash).
+	// The default folders cannot go; files inside them can (the files that tasks,
+	// documents and annotations use are deleted for good, anything else goes to
+	// the trash).
 	if (canWrite && !n.system) {
 		actions.push({
 			key: "trash",
-			label:
-				n.source === "task_attachment"
-					? t("actions.delete")
-					: t("actions.trash"),
+			label: deletesForGood(n) ? t("actions.delete") : t("actions.trash"),
 			icon: <Trash2 className={icon} />,
 			run: () => h.trash(n),
 			destructive: true,

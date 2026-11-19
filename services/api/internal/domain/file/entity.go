@@ -133,6 +133,22 @@ func (n *Node) Locked() bool {
 	return n.SystemKey != "" || n.ParentSystemKey != ""
 }
 
+// DeletedForGood reports whether deleting the item removes it permanently
+// instead of moving it to the trash: the files other parts of the product
+// reference (task attachments, document files, annotation screenshots). A
+// restorable trash entry would only postpone detaching them from their owner,
+// silently, when the retention period ends.
+func (n *Node) DeletedForGood() bool {
+	if n.IsFolder() {
+		return false
+	}
+	switch n.Source {
+	case SourceTaskAttachment, SourceDoc, SourceAnnotation:
+		return true
+	}
+	return false
+}
+
 // StorageObject names an object to delete from the object store.
 type StorageObject struct {
 	Bucket string

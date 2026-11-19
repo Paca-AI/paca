@@ -229,11 +229,14 @@ CREATE TRIGGER trg_file_annotation_screenshot
     FOR EACH ROW EXECUTE FUNCTION file_on_annotation_screenshot();
 
 -- Removing an attachment from a task sends its file to the trash instead of
--- leaving it in the task's folder with nothing pointing at it.
+-- leaving it in the task's folder with nothing pointing at it. Only files that
+-- have a folder: the others are not in file_items, so the trash list and the
+-- purge could never reach a row stamped here.
 CREATE OR REPLACE FUNCTION file_on_task_attachment_delete() RETURNS trigger AS $$
 BEGIN
     UPDATE files SET deleted_at = NOW()
-     WHERE id = OLD.file_id AND source = 'task_attachment' AND deleted_at IS NULL;
+     WHERE id = OLD.file_id AND source = 'task_attachment'
+       AND folder_id IS NOT NULL AND deleted_at IS NULL;
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
@@ -290,9 +293,12 @@ BEGIN
     END LOOP;
 
     -- Task attachments removed from their task before this migration left the
-    -- file behind; those files are now unreferenced, so trash them.
+    -- file behind; those files are now unreferenced, so trash them. Rows with
+    -- no folder (their task is gone) are not in file_items and stay as they are:
+    -- trashing them would hide them from the trash list and the purge.
     UPDATE files SET deleted_at = NOW()
      WHERE source = 'task_attachment' AND upload_status = 'uploaded' AND deleted_at IS NULL
+       AND folder_id IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM task_attachments ta WHERE ta.file_id = files.id);
 END;
 $$;
@@ -313,9 +319,12 @@ $$;
 --     and files:write cover every file of a scope, so the general files are
 --     granted to a role on purpose, not to everyone by default;
 --   * every other role that grants docs:read or docs:write in an Allow
---     statement: the matching files action in the same statement, because
---     files are project content of the same kind (a project's documents and
---     the files embedded in them). Roles with "*" already cover it.
+--     statement confined to projects (every resource under "project/"): the
+--     matching files action in the same statement, because files are project
+--     content of the same kind (a project's documents and the files embedded in
+--     them). A statement that can match "file/*", such as resource "*", is left
+--     alone: the general scope is granted deliberately, never derived. Roles
+--     with "*" already cover it.
 
 UPDATE roles
    SET policy = jsonb_set(policy, '{statements}',
@@ -332,7 +341,12 @@ UPDATE roles r
    SET policy = jsonb_set(r.policy, '{statements}', (
         SELECT COALESCE(jsonb_agg(
             CASE
-              WHEN s->>'effect' = 'Allow' AND jsonb_typeof(s->'actions') = 'array' THEN
+              WHEN s->>'effect' = 'Allow' AND jsonb_typeof(s->'actions') = 'array'
+                   AND jsonb_typeof(s->'resources') = 'array'
+                   -- only statements confined to projects: one that can match
+                   -- "file/*" (e.g. resource "*") would hand out the general scope
+                   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(s->'resources') AS res
+                                    WHERE res NOT LIKE 'project/%') THEN
                 jsonb_set(s, '{actions}',
                   (s->'actions')
                   || CASE WHEN (s->'actions') ? 'docs:read'  AND NOT (s->'actions') ? 'files:read'

@@ -54,9 +54,9 @@ type Service interface {
 	Rename(ctx context.Context, scope Scope, actor, id uuid.UUID, name string) (*Node, error)
 	Move(ctx context.Context, scope Scope, actor, id uuid.UUID, parentID *uuid.UUID) (*Node, error)
 
-	// Trash moves an item to the trash. A task attachment is different: it is
-	// removed from its task and deleted for good. The default folders cannot
-	// be deleted.
+	// Trash moves an item to the trash. Files that a task, document or
+	// annotation uses (Node.DeletedForGood) are deleted for good instead, and
+	// leave their owner. The default folders cannot be deleted.
 	Trash(ctx context.Context, scope Scope, actor, id uuid.UUID) error
 	Restore(ctx context.Context, scope Scope, actor, id uuid.UUID) (*Node, error)
 	// DeletePermanently removes a trashed node and its bytes for good.

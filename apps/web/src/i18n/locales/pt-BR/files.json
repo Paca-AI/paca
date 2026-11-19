@@ -115,18 +115,21 @@
 			"here": "Mover para cá",
 			"noFolders": "Não há pastas aqui"
 		},
-		"deleteTaskAttachment": {
-			"title": "Excluir este anexo?",
-			"body": "{{name}} está anexado a uma tarefa. Excluí-lo o remove da tarefa e não pode ser desfeito.",
-			"confirm": "Excluir"
-		},
 		"deleteForever": {
 			"title": "Excluir permanentemente?",
 			"body": "{{name}} será excluído permanentemente. Isso não pode ser desfeito.",
 			"bodyMany": "{{count}} itens serão excluídos permanentemente. Isso não pode ser desfeito.",
 			"confirm": "Excluir permanentemente"
 		},
-		"cancel": "Cancelar"
+		"cancel": "Cancelar",
+		"deleteManaged": {
+			"title": "Excluir permanentemente?",
+			"confirm": "Excluir",
+			"taskAttachment": "{{name}} está anexado a uma tarefa. Excluí-lo o remove da tarefa e não pode ser desfeito.",
+			"doc": "{{name}} é usado em um documento. Excluí-lo o remove permanentemente e o documento mostrará um arquivo quebrado. Isso não pode ser desfeito.",
+			"annotation": "{{name}} é uma captura de tela de um comentário de página. Excluí-la a remove permanentemente, do comentário e de qualquer tarefa à qual esteja anexada. Isso não pode ser desfeito.",
+			"many": "{{count}} dos arquivos selecionados são usados por tarefas, documentos ou comentários de página. Excluí-los os remove de lá permanentemente. Isso não pode ser desfeito."
+		}
 	},
 	"details": {
 		"title": "Detalhes",

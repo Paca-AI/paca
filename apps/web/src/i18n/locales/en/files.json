@@ -115,18 +115,21 @@
 			"here": "Move here",
 			"noFolders": "No folders here"
 		},
-		"deleteTaskAttachment": {
-			"title": "Delete this attachment?",
-			"body": "{{name}} is attached to a task. Deleting it removes it from the task and cannot be undone.",
-			"confirm": "Delete"
-		},
 		"deleteForever": {
 			"title": "Delete forever?",
 			"body": "{{name}} will be permanently deleted. This cannot be undone.",
 			"bodyMany": "{{count}} items will be permanently deleted. This cannot be undone.",
 			"confirm": "Delete forever"
 		},
-		"cancel": "Cancel"
+		"cancel": "Cancel",
+		"deleteManaged": {
+			"title": "Delete forever?",
+			"confirm": "Delete",
+			"taskAttachment": "{{name}} is attached to a task. Deleting it removes it from the task and cannot be undone.",
+			"doc": "{{name}} is used in a document. Deleting it removes it for good and the document will show a broken file. This cannot be undone.",
+			"annotation": "{{name}} is a screenshot from a page comment. Deleting it removes it for good, from the comment and from any task it is attached to. This cannot be undone.",
+			"many": "{{count}} of the selected files are used by tasks, documents or page comments. Deleting them removes them from there for good. This cannot be undone."
+		}
 	},
 	"details": {
 		"title": "Details",

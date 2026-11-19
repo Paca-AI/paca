@@ -191,7 +191,8 @@ func (s *Service) Move(ctx context.Context, scope filedom.Scope, actor, id uuid.
 	return s.repo.GetNode(ctx, id, actor)
 }
 
-// Trash moves an item to the trash; a task attachment is deleted for good.
+// Trash moves an item to the trash. Files that a task, document or annotation
+// uses are deleted for good instead (see deleteReferencedFile).
 func (s *Service) Trash(ctx context.Context, scope filedom.Scope, actor, id uuid.UUID) error {
 	n, err := s.liveNode(ctx, scope, actor, id)
 	if err != nil {
@@ -200,17 +201,20 @@ func (s *Service) Trash(ctx context.Context, scope filedom.Scope, actor, id uuid
 	if n.SystemKey != "" {
 		return filedom.ErrNodeLocked
 	}
-	if !n.IsFolder() && n.Source == filedom.SourceTaskAttachment {
-		return s.deleteTaskAttachment(ctx, n)
+	if n.DeletedForGood() {
+		return s.deleteReferencedFile(ctx, n)
 	}
 	return s.repo.Trash(ctx, n, actor, s.now())
 }
 
-// deleteTaskAttachment removes a task attachment seen from the file manager:
-// the task loses it too, and the bytes go with it. Doc images and screenshots
-// go to the trash like any other file, because the document or annotation
-// that embeds them may still be reachable.
-func (s *Service) deleteTaskAttachment(ctx context.Context, n *filedom.Node) error {
+// deleteReferencedFile deletes a file that a task, document or annotation
+// uses, for good, and the bytes with it. These files are never trashed: the
+// owner would lose the file when the retention period ended, with nothing
+// having told the user so when they asked for the delete (the web UI confirms
+// it up front). A task attachment is unlinked first so the task loses it too;
+// an annotation screenshot's row also detaches from its annotation and task
+// through the foreign keys on files.
+func (s *Service) deleteReferencedFile(ctx context.Context, n *filedom.Node) error {
 	if _, err := s.repo.UnlinkTaskAttachment(ctx, n.ID); err != nil {
 		return err
 	}

@@ -139,11 +139,12 @@ func typeClause(t string) (string, error) {
 func (r *FileRepository) List(ctx context.Context, p filedom.ListParams) ([]*filedom.Node, int, error) {
 	sink := &argList{args: []any{p.UserID}}
 	where := []string{scopeClause(sink, p.Scope), `n.deleted_at IS NULL`}
-	if p.Query != "" {
+	switch {
+	case p.Query != "":
 		where = append(where, `n.name ILIKE `+sink.addArg("%"+escapeLike(p.Query)+"%")+` ESCAPE '\'`)
-	} else if p.ParentID == nil {
+	case p.ParentID == nil:
 		where = append(where, `n.parent_id IS NULL`)
-	} else {
+	default:
 		where = append(where, `n.parent_id = `+sink.addArg(*p.ParentID))
 	}
 	if p.Type != "" {

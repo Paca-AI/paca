@@ -431,6 +431,19 @@ export function invalidateFiles(qc: QueryClient, scope: FileScope) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Whether deleting the item removes it for good instead of trashing it: the
+ * files that tasks, documents and annotations use. Mirrors the API.
+ */
+export function deletesForGood(n: Pick<FileNode, "kind" | "source">): boolean {
+	return (
+		n.kind === "file" &&
+		(n.source === "task_attachment" ||
+			n.source === "doc" ||
+			n.source === "annotation")
+	);
+}
+
 /** The scope a node belongs to (nodes carry their project id). */
 export function scopeOfNode(n: FileNode): FileScope {
 	return { projectId: n.project_id };
