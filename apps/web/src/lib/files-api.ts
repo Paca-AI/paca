@@ -446,6 +446,57 @@ export function invalidateFiles(qc: QueryClient, scope: FileScope) {
 	return qc.invalidateQueries({ queryKey: filesScopeKey(scope) });
 }
 
+/**
+ * The payload of a `file.changed` realtime event: ids only (no names), naming
+ * the folders whose listing changed. `root` means the scope's top level.
+ */
+export interface FileChangedPayload {
+	change?: string;
+	scope?: string;
+	project_id?: string;
+	node_id?: string;
+	kind?: string;
+	folder_ids?: string[];
+	root?: boolean;
+}
+
+/**
+ * Applies another user's file change to the cache. Only what the change can
+ * touch is refetched: a listing of a folder the change names (or of the
+ * scope's top level), a search (it can match anywhere), the Recent/Starred/
+ * Trash sections, and breadcrumbs. A folder that was trashed or deleted takes
+ * the listing of its own contents with it. Inactive queries are only marked
+ * stale, so nothing is fetched for a folder nobody is looking at.
+ */
+export function applyFileChange(
+	qc: QueryClient,
+	scope: FileScope,
+	payload: FileChangedPayload,
+): void {
+	const key = scopeKey(scope);
+	const folders = new Set(payload.folder_ids ?? []);
+	const goneFolder =
+		payload.kind === "folder" &&
+		(payload.change === "trashed" || payload.change === "deleted")
+			? payload.node_id
+			: undefined;
+	void qc.invalidateQueries({
+		predicate: (query) => {
+			const k = query.queryKey;
+			if (k[0] !== "files" || k[1] !== key) return false;
+			if (k[2] === "nodes") {
+				const p = (k[3] ?? {}) as FileListParams;
+				if (p.q) return true;
+				const parent = p.parentId ?? null;
+				if (parent === null) return payload.root === true;
+				return folders.has(parent) || parent === goneFolder;
+			}
+			// "section" (recent, starred, trash) and "path" (breadcrumbs).
+			return k[2] === "section" || k[2] === "path";
+		},
+	});
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**

@@ -320,7 +320,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepo), storageClient, cfg.Storage.Bucket)
 	fileRepo := pgRepo.NewFileRepository(db)
-	fileService := filesvc.New(fileRepo, attachmentRepo, storageClient, cfg.Storage.Bucket)
+	fileService := filesvc.New(fileRepo, attachmentRepo, storageClient, cfg.Storage.Bucket).WithRealtime(publisher)
 	fileTrashPurger := worker.NewFileTrashPurger(redisClient, fileService, log)
 	// projectExportService builds asynchronous project exports (a zip of tasks,
 	// task comments/activities and docs):

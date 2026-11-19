@@ -63,6 +63,9 @@ const NAMESPACE_QUERY_ROOTS: Record<string, readonly string[]> = {
 	project: [],
 	members: ["members"],
 	agents: ["agents"],
+	// The file manager's queries are keyed ["files", scope, ...], outside the
+	// project prefix, so there is nothing under ["projects", id] to reset.
+	files: [],
 };
 
 // The project's own permission queries live under ["members", "me"]: never

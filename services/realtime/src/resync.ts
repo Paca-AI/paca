@@ -12,8 +12,12 @@
 import type { Logger } from "pino";
 import type { Server, Socket } from "socket.io";
 import type { AccessDecider } from "./access.ts";
-import { ApiRequestError, fetchProjectPermissions } from "./api-client.ts";
-import type { EventNamespace } from "./permissions.ts";
+import {
+	ApiRequestError,
+	fetchProjectPermissions,
+	verifyTokenWithAPI,
+} from "./api-client.ts";
+import { type EventNamespace, WORKSPACE_FILES_ROOM } from "./permissions.ts";
 import { syncProjectRooms } from "./rooms.ts";
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -67,6 +71,9 @@ export function createResyncer(
 				for (let job = jobs.shift(); job; job = jobs.shift()) await job();
 			});
 			await Promise.all(workers);
+			// A role change can also grant or revoke the platform-level
+			// files:read that the workspace file room stands for.
+			if (announce) await resyncWorkspaceFiles();
 		} finally {
 			running = false;
 			if (again) {
@@ -123,6 +130,37 @@ export function createResyncer(
 				socket.emit("permissions:changed", { projectId, namespaces: after });
 			}
 		}
+	}
+
+	// resyncWorkspaceFiles puts each account's sockets in the workspace files
+	// room, or takes them out, by their current platform-level files:read. One
+	// request per account (and token); a failure leaves the room as it is.
+	async function resyncWorkspaceFiles(): Promise<void> {
+		const byToken = new Map<string, Socket[]>();
+		for (const socket of io.sockets.sockets.values()) {
+			const list = byToken.get(socket.data.rawToken);
+			if (list) list.push(socket);
+			else byToken.set(socket.data.rawToken, [socket]);
+		}
+		const jobs = [...byToken.entries()].map(([token, sockets]) => async () => {
+			try {
+				const auth = await verifyTokenWithAPI(apiUrl, token);
+				const allowed = auth.globalPermissions.includes("files:read");
+				for (const s of sockets) {
+					if (allowed) s.join(WORKSPACE_FILES_ROOM);
+					else s.leave(WORKSPACE_FILES_ROOM);
+				}
+			} catch (err) {
+				logger.warn({ err }, "workspace files room resync failed");
+				if (err instanceof ApiRequestError && err.status === 401) {
+					for (const s of sockets) s.disconnect(true);
+				}
+			}
+		});
+		const workers = Array.from({ length: CONCURRENCY }, async () => {
+			for (let job = jobs.shift(); job; job = jobs.shift()) await job();
+		});
+		await Promise.all(workers);
 	}
 
 	function roomsOf(socket: Socket, projectId: string): string {

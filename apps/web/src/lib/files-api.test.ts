@@ -1,5 +1,7 @@
+import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import {
+	applyFileChange,
 	fileCategory,
 	filesBase,
 	filesScopeKey,
@@ -46,5 +48,71 @@ describe("formatFileSize", () => {
 		expect(formatFileSize(1536)).toBe("1.5 KB");
 		expect(formatFileSize(10 * 1024 * 1024)).toBe("10 MB");
 		expect(formatFileSize(3 * 1024 ** 3)).toBe("3.0 GB");
+	});
+});
+
+describe("applyFileChange", () => {
+	const scope = { projectId: "p1" };
+	function seeded() {
+		const qc = new QueryClient();
+		const keys = {
+			root: ["files", "p1", "nodes", { parentId: null }],
+			rootUndefined: ["files", "p1", "nodes", {}],
+			a: ["files", "p1", "nodes", { parentId: "a" }],
+			b: ["files", "p1", "nodes", { parentId: "b" }],
+			search: ["files", "p1", "nodes", { parentId: "b", q: "x" }],
+			trash: ["files", "p1", "section", "trash"],
+			path: ["files", "p1", "path", "a"],
+			otherScope: ["files", "p2", "nodes", { parentId: "a" }],
+			general: ["files", "general", "nodes", { parentId: null }],
+		};
+		for (const k of Object.values(keys)) qc.setQueryData(k, []);
+		const stale = () =>
+			Object.entries(keys)
+				.filter(([, k]) => qc.getQueryState(k)?.isInvalidated)
+				.map(([name]) => name)
+				.sort();
+		return { qc, stale };
+	}
+
+	it("refetches only the folders the change names, searches and sections", () => {
+		const { qc, stale } = seeded();
+		applyFileChange(qc, scope, { change: "created", folder_ids: ["a"] });
+		expect(stale()).toEqual(["a", "path", "search", "trash"]);
+	});
+
+	it("treats the scope's top level as a listing of its own", () => {
+		const { qc, stale } = seeded();
+		applyFileChange(qc, scope, {
+			change: "moved",
+			root: true,
+			folder_ids: ["b"],
+		});
+		expect(stale()).toEqual([
+			"b",
+			"path",
+			"root",
+			"rootUndefined",
+			"search",
+			"trash",
+		]);
+	});
+
+	it("also refreshes the listing of a folder that was trashed", () => {
+		const { qc, stale } = seeded();
+		applyFileChange(qc, scope, {
+			change: "trashed",
+			kind: "folder",
+			node_id: "b",
+			folder_ids: ["a"],
+		});
+		expect(stale()).toEqual(["a", "b", "path", "search", "trash"]);
+	});
+
+	it("never touches another scope", () => {
+		const { qc, stale } = seeded();
+		applyFileChange(qc, scope, { root: true, folder_ids: ["a"] });
+		expect(stale()).not.toContain("otherScope");
+		expect(stale()).not.toContain("general");
 	});
 });
