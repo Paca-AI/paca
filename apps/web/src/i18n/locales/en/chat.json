@@ -1,0 +1,210 @@
+{
+	"title": "Chat",
+	"channels": {
+		"heading": "Channels",
+		"new": "New channel",
+		"empty": "No channels yet",
+		"select": "Pick a channel to start talking",
+		"unreadBadge": "Unread messages",
+		"private": "Private channel",
+		"public": "Public channel",
+		"voice": "Voice channel",
+		"mentionBadge": "Mentions"
+	},
+	"header": {
+		"noTopic": "No topic set",
+		"join": "Join",
+		"leave": "Leave",
+		"following": "Following",
+		"archive": "Archive channel",
+		"archiveConfirmTitle": "Archive this channel?",
+		"archiveConfirmBody": "It becomes read-only. People can still read what was said.",
+		"archived": "Archived"
+	},
+	"create": {
+		"title": "New channel",
+		"description": "Channels keep a conversation about one topic together.",
+		"name": "Name",
+		"namePlaceholder": "e.g. release",
+		"topic": "Topic (optional)",
+		"topicPlaceholder": "What is this channel for?",
+		"visibility": "Visibility",
+		"public": "Public",
+		"publicHint": "Anyone with access to the project can read and join it.",
+		"private": "Private",
+		"privateHint": "Only people you add can read it.",
+		"submit": "Create channel",
+		"cancel": "Cancel"
+	},
+	"composer": {
+		"placeholder": "Message #{{channel}}",
+		"replyPlaceholder": "Reply in thread",
+		"send": "Send",
+		"hint": "Enter to send, Shift+Enter for a new line",
+		"readOnly": "You can read this channel but not post in it.",
+		"archived": "This channel is archived.",
+		"tooLong": "That message is too long.",
+		"mentionList": "People to mention"
+	},
+	"message": {
+		"edited": "(edited)",
+		"deleted": "This message was deleted",
+		"edit": "Edit",
+		"delete": "Delete",
+		"moderatorDelete": "Remove message",
+		"reply": "Reply in thread",
+		"react": "Add reaction",
+		"save": "Save",
+		"cancel": "Cancel",
+		"viewThread": "View thread ({{count}})",
+		"bookmark": "Save message",
+		"unbookmark": "Remove from saved",
+		"viewRun": "View run"
+	},
+	"thread": {
+		"title": "Thread",
+		"close": "Close thread",
+		"empty": "No replies yet",
+		"follow": "Follow",
+		"unfollow": "Unfollow"
+	},
+	"list": {
+		"loadOlder": "Load earlier messages",
+		"empty": "No messages yet. Say hello!",
+		"newMessages": "New messages",
+		"loadFailed": "Messages could not be loaded.",
+		"retry": "Try again",
+		"today": "Today",
+		"yesterday": "Yesterday",
+		"newDivider": "New"
+	},
+	"errors": {
+		"generic": "Something went wrong. Try again.",
+		"forbidden": "You do not have permission to do that.",
+		"channelNotFound": "This channel no longer exists.",
+		"nameInvalid": "Give the channel a name of up to 80 characters.",
+		"nameTaken": "A channel with this name already exists.",
+		"kindInvalid": "Pick a valid channel type.",
+		"archived": "This channel is archived.",
+		"protected": "The general channel cannot be renamed or archived.",
+		"topicTooLong": "The topic is too long.",
+		"messageNotFound": "That message no longer exists.",
+		"messageEmpty": "Write something first.",
+		"messageInvalid": "That message could not be sent.",
+		"messageTooLong": "That message is too long.",
+		"threadInvalid": "You cannot reply to that message.",
+		"emojiInvalid": "That reaction is not supported.",
+		"notMember": "You are not in this channel.",
+		"notProjectMember": "That person is not a member of this project.",
+		"seqInvalid": "That request was not valid.",
+		"dmSelf": "You can't message yourself.",
+		"dmPeerNotFound": "That account no longer exists.",
+		"dmNotSupported": "That isn't available in direct messages."
+	},
+	"noPermission": {
+		"title": "You don't have permission to use chat in this project",
+		"description": "Ask a project admin to give you access to its channels."
+	},
+	"inbox": {
+		"title": "Inbox",
+		"subtitle": "Channels you follow, across all your projects",
+		"projectFilter": "Project",
+		"allProjects": "All projects",
+		"markAllRead": "Mark all read",
+		"markRead": "Mark read",
+		"tabs": {
+			"all": "All",
+			"unread": "Unread",
+			"mentions": "Mentions",
+			"threads": "Threads",
+			"saved": "Saved"
+		},
+		"loadFailed": "Your inbox could not be loaded.",
+		"emptyTitle": "Nothing to follow yet",
+		"emptyBody": "Join a channel and its conversations show up here.",
+		"caughtUpTitle": "You're all caught up",
+		"caughtUpBody": "Unread messages from every project land here.",
+		"noMessages": "No messages yet",
+		"replies": "Replies: {{n}}",
+		"unreadReplies": "Unread replies: {{n}}",
+		"unreadMention": "Unread mention",
+		"tabUnread": "Unread: {{n}}",
+		"empty": {
+			"mentionsTitle": "No mentions",
+			"mentionsBody": "When someone mentions you with @, it shows up here.",
+			"threadsTitle": "No followed threads",
+			"threadsBody": "You follow a thread when you reply in it, are mentioned in it, or choose Follow.",
+			"savedTitle": "Nothing saved",
+			"savedBody": "Save a message from its toolbar to find it here."
+		}
+	},
+	"browse": {
+		"title": "Browse channels",
+		"subtitle": "Every channel in this project you can read",
+		"search": "Search channels",
+		"noMatch": "No channel matches that name."
+	},
+	"sidebar": {
+		"collapse": "Collapse",
+		"expand": "Expand",
+		"starred": "Starred",
+		"star": "Star",
+		"unstar": "Unstar",
+		"showMore": "Show {{n}} more",
+		"showLess": "Show less"
+	},
+	"dm": {
+		"heading": "Direct messages",
+		"new": "New message",
+		"empty": "No direct messages yet",
+		"inboxChip": "Direct message",
+		"dialog": {
+			"title": "New message",
+			"description": "Start a conversation with someone you share a project with.",
+			"search": "Search by name",
+			"noMatch": "No one matches that name.",
+			"empty": "There is no one to message yet."
+		},
+		"kinds": {
+			"user": "People",
+			"agent": "Agents",
+			"service_account": "Service accounts"
+		},
+		"badge": {
+			"agent": "agent",
+			"service_account": "service"
+		},
+		"hints": {
+			"agent": "An agent reads what you send here. Replies in direct messages are not available yet.",
+			"service_account": "Service accounts read messages through the API. They do not reply on their own."
+		},
+		"composerPlaceholder": "Message {{name}}",
+		"kindLabel": {
+			"user": "Person",
+			"agent": "Agent",
+			"service_account": "Service account"
+		}
+	},
+	"agent": {
+		"working": "{{name}} is working…",
+		"runs": "Runs ({{count}})",
+		"runsTitle": "Runs",
+		"search": "Search runs",
+		"empty": "No runs yet. Message {{name}} to start one.",
+		"noMatch": "No runs match.",
+		"noReplies": "{{name}} belongs to a project and can't answer in direct messages. What you write here is only kept.",
+		"open": "Open run",
+		"untitled": "Untitled run",
+		"all": "All",
+		"failedHint": "{{name}}'s last run failed. Send a message to try again.",
+		"status": {
+			"queued": "Queued",
+			"running": "Working",
+			"paused": "Waiting",
+			"finished": "Done",
+			"failed": "Failed",
+			"stopped": "Stopped"
+		},
+		"isWorking": "is working…"
+	}
+}

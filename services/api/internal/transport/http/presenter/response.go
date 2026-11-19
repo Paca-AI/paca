@@ -19,6 +19,7 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
+	chatdom "github.com/Paca-AI/api/internal/domain/chat"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	filedom "github.com/Paca-AI/api/internal/domain/file"
@@ -685,6 +686,44 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusUnauthorized, apierr.CodeAutomationWebhookTokenInvalid
 	case errors.Is(err, automationdom.ErrUpdateTaskSelfParent):
 		return http.StatusBadRequest, apierr.CodeAutomationUpdateTaskSelfParent
+	case errors.Is(err, chatdom.ErrChannelNotFound):
+		return http.StatusNotFound, apierr.CodeChannelNotFound
+	case errors.Is(err, chatdom.ErrChannelNameInvalid):
+		return http.StatusBadRequest, apierr.CodeChannelNameInvalid
+	case errors.Is(err, chatdom.ErrChannelNameTaken):
+		return http.StatusConflict, apierr.CodeChannelNameTaken
+	case errors.Is(err, chatdom.ErrChannelKindInvalid):
+		return http.StatusBadRequest, apierr.CodeChannelKindInvalid
+	case errors.Is(err, chatdom.ErrChannelArchived):
+		return http.StatusConflict, apierr.CodeChannelArchived
+	case errors.Is(err, chatdom.ErrChannelProtected):
+		return http.StatusConflict, apierr.CodeChannelProtected
+	case errors.Is(err, chatdom.ErrTopicTooLong):
+		return http.StatusBadRequest, apierr.CodeChannelTopicTooLong
+	case errors.Is(err, chatdom.ErrMessageNotFound):
+		return http.StatusNotFound, apierr.CodeMessageNotFound
+	case errors.Is(err, chatdom.ErrMessageEmpty):
+		return http.StatusBadRequest, apierr.CodeMessageEmpty
+	case errors.Is(err, chatdom.ErrMessageContentBad):
+		return http.StatusBadRequest, apierr.CodeMessageContentInvalid
+	case errors.Is(err, chatdom.ErrMessageTooLong):
+		return http.StatusBadRequest, apierr.CodeMessageTooLong
+	case errors.Is(err, chatdom.ErrThreadRootInvalid):
+		return http.StatusBadRequest, apierr.CodeThreadRootInvalid
+	case errors.Is(err, chatdom.ErrEmojiInvalid):
+		return http.StatusBadRequest, apierr.CodeEmojiInvalid
+	case errors.Is(err, chatdom.ErrNotAMember):
+		return http.StatusConflict, apierr.CodeChannelNotMember
+	case errors.Is(err, chatdom.ErrNotProjectMember):
+		return http.StatusUnprocessableEntity, apierr.CodeChatNotProjectMember
+	case errors.Is(err, chatdom.ErrSeqInvalid):
+		return http.StatusBadRequest, apierr.CodeChatSeqInvalid
+	case errors.Is(err, chatdom.ErrDMSelf):
+		return http.StatusBadRequest, apierr.CodeDMSelf
+	case errors.Is(err, chatdom.ErrDMPeerNotFound):
+		return http.StatusNotFound, apierr.CodeDMPeerNotFound
+	case errors.Is(err, chatdom.ErrDMNotSupported):
+		return http.StatusBadRequest, apierr.CodeDMNotSupported
 	case errors.Is(err, annotationdom.ErrAnnotationNotFound):
 		return http.StatusNotFound, apierr.CodeAnnotationNotFound
 	case errors.Is(err, annotationdom.ErrAnnotationBodyEmpty),
@@ -950,6 +989,31 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAutomationActivateNoTrigger,
 		apierr.CodeAutomationActivateNoAction:
 		return http.StatusBadRequest
+	case apierr.CodeChannelNotFound,
+		apierr.CodeMessageNotFound:
+		return http.StatusNotFound
+	case apierr.CodeChannelNameInvalid,
+		apierr.CodeChannelKindInvalid,
+		apierr.CodeChannelTopicTooLong,
+		apierr.CodeMessageEmpty,
+		apierr.CodeMessageContentInvalid,
+		apierr.CodeMessageTooLong,
+		apierr.CodeThreadRootInvalid,
+		apierr.CodeEmojiInvalid,
+		apierr.CodeChatSeqInvalid:
+		return http.StatusBadRequest
+	case apierr.CodeChannelNameTaken,
+		apierr.CodeChannelArchived,
+		apierr.CodeChannelProtected,
+		apierr.CodeChannelNotMember:
+		return http.StatusConflict
+	case apierr.CodeChatNotProjectMember:
+		return http.StatusUnprocessableEntity
+	case apierr.CodeDMSelf,
+		apierr.CodeDMNotSupported:
+		return http.StatusBadRequest
+	case apierr.CodeDMPeerNotFound:
+		return http.StatusNotFound
 	case apierr.CodeAnnotationNotFound,
 		apierr.CodeAnnotationScreenshotNotUploaded,
 		apierr.CodeAnnotationScreenshotMismatch,

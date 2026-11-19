@@ -109,7 +109,7 @@ func conditionsHold(c Conditions, attrs map[string][]string) (bool, bool) {
 	}
 	for op, kv := range c {
 		for key, want := range kv {
-			if ok, _ := evalOp(op, attrs[key], want); !ok {
+			if ok, _ := evalOp(op, attrs[key], ExpandVars(want, attrs)); !ok {
 				return false, true
 			}
 		}
@@ -168,4 +168,53 @@ func ReferencedConditionKeys(grants []Grant) map[string]struct{} {
 		}
 	}
 	return keys
+}
+
+// varPrefix and varSuffix delimit a policy variable operand: "${principal.id}".
+const (
+	varPrefix = "${"
+	varSuffix = "}"
+)
+
+// VariableKey returns the attribute key of a whole-operand variable such as
+// "${principal.id}" and true; any other operand yields "", false.
+func VariableKey(operand string) (string, bool) {
+	if !strings.HasPrefix(operand, varPrefix) || !strings.HasSuffix(operand, varSuffix) {
+		return "", false
+	}
+	return operand[len(varPrefix) : len(operand)-len(varSuffix)], true
+}
+
+// IsPrincipalVariable reports whether operand is a variable over a principal.*
+// attribute, the only kind of variable the engine accepts.
+func IsPrincipalVariable(operand string) bool {
+	k, ok := VariableKey(operand)
+	return ok && strings.HasPrefix(k, "principal.") && validKeyPart(strings.TrimPrefix(k, "principal."))
+}
+
+// ExpandVars replaces each "${principal.<name>}" operand with the request's
+// values for that key. An absent attribute expands to nothing, so a positive
+// operator cannot match it (fail closed). Operands that are not principal
+// variables are kept as literals. The input is never modified.
+func ExpandVars(want ValueList, attrs map[string][]string) ValueList {
+	has := false
+	for _, w := range want {
+		if IsPrincipalVariable(w) {
+			has = true
+			break
+		}
+	}
+	if !has {
+		return want
+	}
+	out := make(ValueList, 0, len(want))
+	for _, w := range want {
+		if IsPrincipalVariable(w) {
+			k, _ := VariableKey(w)
+			out = append(out, attrs[k]...)
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
 }

@@ -195,6 +195,63 @@ func DocAttrs(_ context.Context, body map[string]json.RawMessage) (map[string][]
 	return attrs, nil
 }
 
+// ChannelAttrs extracts the attributes of the channel a create request
+// describes: channel.kind from the body, and channel.member_ids, which is the
+// caller (the creator always joins) plus the members the body names. The
+// authorizer judges the channel as it will exist, so a policy that allows a
+// private channel only to its members accepts the creator and nobody else.
+func ChannelAttrs(r *http.Request, body map[string]json.RawMessage) (map[string][]string, error) {
+	attrs := map[string][]string{}
+	var kind string
+	if raw, ok := body["kind"]; ok {
+		if err := json.Unmarshal(raw, &kind); err != nil {
+			return nil, apierr.New(apierr.CodeBadRequest, "invalid kind")
+		}
+	}
+	if kind != "" {
+		attrs["channel.kind"] = []string{kind}
+	}
+	members := map[string]bool{}
+	if p, err := IAMPrincipalFrom(r); err == nil {
+		members[p.ID] = true
+	}
+	if raw, ok := body["member_ids"]; ok && string(bytes.TrimSpace(raw)) != "null" {
+		var ids []uuid.UUID
+		if err := json.Unmarshal(raw, &ids); err != nil {
+			return nil, apierr.New(apierr.CodeBadRequest, "invalid member_ids")
+		}
+		for _, id := range ids {
+			members[id.String()] = true
+		}
+	}
+	for id := range members {
+		attrs["channel.member_ids"] = append(attrs["channel.member_ids"], id)
+	}
+	return attrs, nil
+}
+
+// DMAttrs extracts the attributes of the direct message a start request
+// describes: kind dm, and as members the caller and the account named by
+// account_id. The authorizer judges the conversation as it will exist.
+func DMAttrs(r *http.Request, body map[string]json.RawMessage) (map[string][]string, error) {
+	attrs := map[string][]string{"channel.kind": {"dm"}}
+	members := map[string]bool{}
+	if p, err := IAMPrincipalFrom(r); err == nil {
+		members[p.ID] = true
+	}
+	if raw, ok := body["account_id"]; ok && string(bytes.TrimSpace(raw)) != "null" {
+		var id uuid.UUID
+		if err := json.Unmarshal(raw, &id); err != nil {
+			return nil, apierr.New(apierr.CodeBadRequest, "invalid account_id")
+		}
+		members[id.String()] = true
+	}
+	for id := range members {
+		attrs["channel.member_ids"] = append(attrs["channel.member_ids"], id)
+	}
+	return attrs, nil
+}
+
 // MemberRepoLookup implements MemberPrincipalLookup over the member repository.
 type MemberRepoLookup struct{ Repo projectdom.MemberRepository }
 

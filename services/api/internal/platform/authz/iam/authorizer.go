@@ -283,6 +283,20 @@ func (a *Authorizer) ListScope(ctx context.Context, p Principal, action, project
 	return CompileScope(grants, p, action, projectID, kind, a.schema), nil
 }
 
+// ListRootScope compiles the principal's platform-wide grants into a predicate
+// over the resources of kind that live under a platform root ("channel/<id>"
+// for direct messages). The repository applies it inside the list query.
+func (a *Authorizer) ListRootScope(ctx context.Context, p Principal, action, kind string) (*Node, error) {
+	if !p.valid() {
+		return False(), nil
+	}
+	grants, err := a.store.ListGrants(ctx, p)
+	if err != nil {
+		return nil, fmt.Errorf("iam: list grants: %w", err)
+	}
+	return CompileRootScope(grants, p, action, kind, a.schema), nil
+}
+
 // ListScopes is ListScope for a list that spans projects: one scope per entry
 // of projectIDs, compiled from a single fetch of the principal's grants. An
 // error means the scopes are unknown and the caller MUST deny.
@@ -366,13 +380,19 @@ func PlatformRootFor(action string) string {
 		return "project"
 	case "git.identities":
 		return "git_identity/*"
+	case "channels", "messages", "calls":
+		// The bare root: workspace channels and direct messages are judged on
+		// "channel/<id>", and a collection-level check (list, create) on
+		// "channel", which "channel/*" also covers, so a policy can allow the
+		// collection unconditionally and each channel on its attributes.
+		return "channel"
 	case "files":
 		return "file/*"
 	}
 	return ""
 }
 
-var projectChildKinds = []string{"task", "sprint", "doc", "view", "workflow", "annotation", "agent", "environment", "conversation", "role", "plugin"}
+var projectChildKinds = []string{"task", "sprint", "doc", "view", "workflow", "annotation", "channel", "proposal", "agent", "environment", "conversation", "role", "plugin"}
 
 func possiblyAllowedOnChild(grants []Grant, action, projectID string) bool {
 	for _, k := range projectChildKinds {

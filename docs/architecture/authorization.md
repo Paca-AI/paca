@@ -100,11 +100,19 @@ Keys are *declared attributes*, validated on save against the attribute schema (
 | `agent.environment_id` | agent | no |
 | `environment.type` (the runtime backend: `docker` or `kubernetes`) | environment | no |
 | `conversation.environment_id` | conversation | no |
+| `channel.kind` (`public`, `private`, `dm`, `group_dm`, `voice`) | channel | no |
+| `channel.member_ids` | channel | yes |
 | `conversation.agent_id` (the agent a project conversation belongs to; global chats are authorized as `agent/<id>` and have no conversation attributes) | conversation | no |
 
 A key bound to a resource kind must fit at least one of the statement's resources, otherwise the policy is rejected. A positive operator matches if any value matches; a negated one (`StringNotEquals`, `NotIn`) only if no value matches; an absent attribute makes positive operators false and negated ones true. Attributes are loaded lazily, only when a statement references them (`iam.AttributeLoader`, registered per kind in `repository/postgres/iam_attribute_loaders.go`).
 
+**Policy variables.** An operand may be `${principal.<name>}` (for example `${principal.id}`). It expands to the request principal's value for that key before the operator runs, so a policy can say "the caller is in this resource's `channel.member_ids`". An absent attribute expands to nothing, so positive operators fail closed. Only `principal.*` keys are variables (a variable never triggers a resource attribute load), a variable must be the whole operand, and `StringLike` and `Bool` reject variables on save. The SQL scope compiler expands them when it compiles the scope.
+
 Creates and moves are judged on the attributes the request carries: `AuthorizeCreate` evaluates the new resource with the request's attributes (a role limited to Sprint 5 cannot create a task with no sprint), and `AuthorizeChange` requires an update to be allowed both before and after the change (moving a task to another sprint, a document to another folder).
+
+### Direct messages
+
+A direct message is a workspace-scope channel (kind `dm`, no project) between two accounts of any kind. It is judged on `channel/<id>`, and the collection (list, directory, start) on the bare root `channel`. The shipped `USER` role carries two statements: `ChatCollection` (unconditional on `channel`) and `DirectMessages` (on `channel/*`, when `channel.kind` is `dm` and `channel.member_ids` holds `${principal.id}`). Nobody else reads a conversation, whatever their other roles, and an administrator can remove or narrow the statements. Lists over such resources are scoped in SQL by `Authorizer.ListRootScope` (`iam.CompileRootScope`), which, like `CompileScope`, applies only platform-wide grants.
 
 ### Role attachments
 

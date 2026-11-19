@@ -4,8 +4,12 @@
     {
       "sid": "ReadProject",
       "effect": "Allow",
-      "actions": ["projects:read"],
-      "resources": ["project/PROJECT_ID"]
+      "actions": [
+        "projects:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID"
+      ]
     },
     {
       "sid": "Read",
@@ -22,13 +26,67 @@
         "views:read",
         "workflows:read"
       ],
-      "resources": ["project/PROJECT_ID/*"]
+      "resources": [
+        "project/PROJECT_ID/*"
+      ]
     },
     {
       "sid": "ReadRoles",
       "effect": "Allow",
-      "actions": ["roles:read"],
-      "resources": ["project/PROJECT_ID/role/*"]
+      "actions": [
+        "roles:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID/role/*"
+      ]
+    },
+    {
+      "sid": "ChatCollection",
+      "effect": "Allow",
+      "actions": [
+        "channels:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID"
+      ]
+    },
+    {
+      "sid": "ChatPublicChannels",
+      "effect": "Allow",
+      "actions": [
+        "channels:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID/channel/*"
+      ],
+      "conditions": {
+        "In": {
+          "channel.kind": [
+            "public",
+            "voice"
+          ]
+        }
+      }
+    },
+    {
+      "sid": "ChatPrivateChannels",
+      "effect": "Allow",
+      "actions": [
+        "channels:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID/channel/*"
+      ],
+      "conditions": {
+        "StringEquals": {
+          "channel.kind": [
+            "private"
+          ],
+          "channel.member_ids": [
+            "${principal.id}"
+          ]
+        }
+      }
     }
   ]
 }

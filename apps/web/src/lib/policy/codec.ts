@@ -35,6 +35,9 @@ const PLATFORM_ROOTS: Record<string, readonly string[]> = {
 	agents: ["agent", "agent/*"],
 	projects: ["project"],
 	"git.identities": ["git_identity/*"],
+	channels: ["channel"],
+	messages: ["channel"],
+	calls: ["channel"],
 	files: ["file/*"],
 };
 

@@ -1,0 +1,210 @@
+{
+	"title": "채팅",
+	"channels": {
+		"heading": "채널",
+		"new": "새 채널",
+		"empty": "아직 채널이 없습니다",
+		"select": "채널을 선택해 대화를 시작하세요",
+		"unreadBadge": "읽지 않은 메시지",
+		"private": "비공개 채널",
+		"public": "공개 채널",
+		"voice": "음성 채널",
+		"mentionBadge": "멘션"
+	},
+	"header": {
+		"noTopic": "설정된 주제 없음",
+		"join": "참여",
+		"leave": "나가기",
+		"following": "팔로우 중",
+		"archive": "채널 보관",
+		"archiveConfirmTitle": "이 채널을 보관할까요?",
+		"archiveConfirmBody": "채널이 읽기 전용이 됩니다. 나눈 대화는 계속 읽을 수 있습니다.",
+		"archived": "보관됨"
+	},
+	"create": {
+		"title": "새 채널",
+		"description": "채널은 하나의 주제에 대한 대화를 한곳에 모아 줍니다.",
+		"name": "이름",
+		"namePlaceholder": "예: release",
+		"topic": "주제 (선택)",
+		"topicPlaceholder": "이 채널은 무엇을 위한 곳인가요?",
+		"visibility": "공개 범위",
+		"public": "공개",
+		"publicHint": "프로젝트에 접근할 수 있는 누구나 읽고 참여할 수 있습니다.",
+		"private": "비공개",
+		"privateHint": "추가한 사람만 읽을 수 있습니다.",
+		"submit": "채널 만들기",
+		"cancel": "취소"
+	},
+	"composer": {
+		"placeholder": "#{{channel}}에 메시지 보내기",
+		"replyPlaceholder": "스레드에 답글 달기",
+		"send": "보내기",
+		"hint": "Enter로 전송, Shift+Enter로 줄바꿈",
+		"readOnly": "이 채널을 읽을 수는 있지만 글을 올릴 수는 없습니다.",
+		"archived": "이 채널은 보관되었습니다.",
+		"tooLong": "메시지가 너무 깁니다.",
+		"mentionList": "멘션할 사람"
+	},
+	"message": {
+		"edited": "(수정됨)",
+		"deleted": "삭제된 메시지입니다",
+		"edit": "수정",
+		"delete": "삭제",
+		"moderatorDelete": "메시지 제거",
+		"reply": "스레드에 답글 달기",
+		"react": "반응 추가",
+		"save": "저장",
+		"cancel": "취소",
+		"viewThread": "스레드 보기 ({{count}})",
+		"bookmark": "메시지 저장",
+		"unbookmark": "저장 취소",
+		"viewRun": "실행 보기"
+	},
+	"thread": {
+		"title": "스레드",
+		"close": "스레드 닫기",
+		"empty": "아직 답글이 없습니다",
+		"follow": "팔로우",
+		"unfollow": "팔로우 취소"
+	},
+	"list": {
+		"loadOlder": "이전 메시지 불러오기",
+		"empty": "아직 메시지가 없습니다. 인사를 건네 보세요!",
+		"newMessages": "새 메시지",
+		"loadFailed": "메시지를 불러오지 못했습니다.",
+		"retry": "다시 시도",
+		"today": "오늘",
+		"yesterday": "어제",
+		"newDivider": "새 메시지"
+	},
+	"errors": {
+		"generic": "문제가 발생했습니다. 다시 시도하세요.",
+		"forbidden": "이 작업을 수행할 권한이 없습니다.",
+		"channelNotFound": "이 채널은 더 이상 존재하지 않습니다.",
+		"nameInvalid": "채널 이름을 80자 이내로 입력하세요.",
+		"nameTaken": "같은 이름의 채널이 이미 있습니다.",
+		"kindInvalid": "올바른 채널 유형을 선택하세요.",
+		"archived": "이 채널은 보관되었습니다.",
+		"protected": "일반 채널은 이름을 바꾸거나 보관할 수 없습니다.",
+		"topicTooLong": "주제가 너무 깁니다.",
+		"messageNotFound": "해당 메시지는 더 이상 존재하지 않습니다.",
+		"messageEmpty": "먼저 내용을 입력하세요.",
+		"messageInvalid": "메시지를 보낼 수 없습니다.",
+		"messageTooLong": "메시지가 너무 깁니다.",
+		"threadInvalid": "해당 메시지에는 답글을 달 수 없습니다.",
+		"emojiInvalid": "지원하지 않는 반응입니다.",
+		"notMember": "이 채널의 구성원이 아닙니다.",
+		"notProjectMember": "해당 사용자는 이 프로젝트의 구성원이 아닙니다.",
+		"seqInvalid": "올바르지 않은 요청입니다.",
+		"dmSelf": "자신에게는 메시지를 보낼 수 없습니다.",
+		"dmPeerNotFound": "해당 계정이 더 이상 존재하지 않습니다.",
+		"dmNotSupported": "다이렉트 메시지에서는 사용할 수 없습니다."
+	},
+	"noPermission": {
+		"title": "이 프로젝트에서 채팅을 사용할 권한이 없습니다",
+		"description": "프로젝트 관리자에게 채널 접근 권한을 요청하세요."
+	},
+	"inbox": {
+		"title": "받은 편지함",
+		"subtitle": "모든 프로젝트에서 팔로우 중인 채널",
+		"projectFilter": "프로젝트",
+		"allProjects": "모든 프로젝트",
+		"markAllRead": "모두 읽음 처리",
+		"markRead": "읽음 처리",
+		"tabs": {
+			"all": "전체",
+			"unread": "읽지 않음",
+			"mentions": "멘션",
+			"threads": "스레드",
+			"saved": "저장됨"
+		},
+		"loadFailed": "받은 편지함을 불러오지 못했습니다.",
+		"emptyTitle": "아직 팔로우할 항목이 없습니다",
+		"emptyBody": "채널에 참여하면 대화가 여기에 표시됩니다.",
+		"caughtUpTitle": "모두 읽었습니다",
+		"caughtUpBody": "모든 프로젝트의 읽지 않은 메시지가 여기에 모입니다.",
+		"noMessages": "아직 메시지가 없습니다",
+		"replies": "답글: {{n}}",
+		"unreadReplies": "읽지 않은 답글: {{n}}",
+		"unreadMention": "읽지 않은 멘션",
+		"tabUnread": "읽지 않음: {{n}}",
+		"empty": {
+			"mentionsTitle": "멘션이 없습니다",
+			"mentionsBody": "누군가 @로 멘션하면 여기에 표시됩니다.",
+			"threadsTitle": "팔로우 중인 스레드가 없습니다",
+			"threadsBody": "스레드에 답글을 달거나, 멘션되거나, 팔로우를 선택하면 팔로우됩니다.",
+			"savedTitle": "저장한 항목이 없습니다",
+			"savedBody": "메시지의 도구 모음에서 저장하면 여기에서 찾을 수 있습니다."
+		}
+	},
+	"browse": {
+		"title": "채널 둘러보기",
+		"subtitle": "이 프로젝트에서 읽을 수 있는 모든 채널",
+		"search": "채널 검색",
+		"noMatch": "해당 이름의 채널이 없습니다."
+	},
+	"sidebar": {
+		"collapse": "접기",
+		"expand": "펼치기",
+		"starred": "즐겨찾기",
+		"star": "즐겨찾기 추가",
+		"unstar": "즐겨찾기 해제",
+		"showMore": "{{n}}개 더 보기",
+		"showLess": "간략히 보기"
+	},
+	"dm": {
+		"heading": "다이렉트 메시지",
+		"new": "새 메시지",
+		"empty": "아직 다이렉트 메시지가 없습니다",
+		"inboxChip": "다이렉트 메시지",
+		"dialog": {
+			"title": "새 메시지",
+			"description": "같은 프로젝트에 있는 사람과 대화를 시작하세요.",
+			"search": "이름으로 검색",
+			"noMatch": "해당 이름과 일치하는 사람이 없습니다.",
+			"empty": "아직 메시지를 보낼 상대가 없습니다."
+		},
+		"kinds": {
+			"user": "사람",
+			"agent": "에이전트",
+			"service_account": "서비스 계정"
+		},
+		"badge": {
+			"agent": "에이전트",
+			"service_account": "서비스"
+		},
+		"hints": {
+			"agent": "에이전트는 여기서 보낸 내용을 읽습니다. 다이렉트 메시지의 답장은 아직 지원되지 않습니다.",
+			"service_account": "서비스 계정은 API로 메시지를 읽습니다. 스스로 답장하지 않습니다."
+		},
+		"composerPlaceholder": "{{name}}에게 메시지 보내기",
+		"kindLabel": {
+			"user": "사람",
+			"agent": "에이전트",
+			"service_account": "서비스 계정"
+		}
+	},
+	"agent": {
+		"working": "{{name}}이(가) 작업 중…",
+		"runs": "실행 ({{count}})",
+		"runsTitle": "실행",
+		"search": "실행 검색",
+		"empty": "아직 실행이 없습니다. {{name}}에게 메시지를 보내 시작하세요.",
+		"noMatch": "일치하는 실행이 없습니다.",
+		"noReplies": "{{name}}은(는) 프로젝트에 속해 있어 다이렉트 메시지에 답할 수 없습니다. 여기에 쓴 내용은 저장만 됩니다.",
+		"open": "실행 열기",
+		"untitled": "제목 없는 실행",
+		"all": "전체",
+		"failedHint": "{{name}}의 마지막 실행이 실패했습니다. 메시지를 보내 다시 시도하세요.",
+		"status": {
+			"queued": "대기 중",
+			"running": "작업 중",
+			"paused": "대기",
+			"finished": "완료",
+			"failed": "실패",
+			"stopped": "중지됨"
+		},
+		"isWorking": "작업 중…"
+	}
+}

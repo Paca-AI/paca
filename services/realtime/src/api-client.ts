@@ -117,7 +117,8 @@ export async function fetchProjectPermissions(
 }
 
 // AccessQuery is one question for checkAccess: may the token's account
-// perform `action` on `resource` (an IAM resource name inside the project)?
+// perform `action` on `resource` (an IAM resource name inside the project, or,
+// with an empty projectId, one under a platform root such as "channel/<id>")?
 export interface AccessQuery {
 	action: string;
 	resource: string;
@@ -135,18 +136,20 @@ export async function checkAccess(
 	projectId: string,
 	queries: AccessQuery[],
 ): Promise<boolean[]> {
-	const res = await fetch(
-		`${apiUrl}/api/v1/projects/${encodeURIComponent(projectId)}/members/me/permissions/check`,
-		{
-			method: "POST",
-			headers: {
-				Authorization: `Bearer ${token}`,
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ checks: queries }),
-			signal: AbortSignal.timeout(8_000),
+	// An empty project id asks about resources outside any project (a direct
+	// message), which the API answers at /users/me/permissions/check.
+	const path = projectId
+		? `/projects/${encodeURIComponent(projectId)}/members/me/permissions/check`
+		: "/users/me/permissions/check";
+	const res = await fetch(`${apiUrl}/api/v1${path}`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${token}`,
+			"Content-Type": "application/json",
 		},
-	);
+		body: JSON.stringify({ checks: queries }),
+		signal: AbortSignal.timeout(8_000),
+	});
 	if (!res.ok) {
 		throw new ApiRequestError(
 			`API access check failed: HTTP ${res.status}`,

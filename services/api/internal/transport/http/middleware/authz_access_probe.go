@@ -45,6 +45,18 @@ func AccessProbeResultsFrom(r *http.Request) ([]bool, bool) {
 // comes back false, as it would from a gate. A malformed body is a 400; an
 // authorizer failure is a 500, never an allow.
 func ProbeAccess(a *iam.Authorizer, projectParam string) func(http.Handler) http.Handler {
+	return probeAccess(a, projectParam)
+}
+
+// ProbeRootAccess is ProbeAccess for resources outside any project: each check
+// must name a resource under a platform root, such as "channel/<id>" for a
+// direct message. services/realtime asks it before placing a socket in a
+// direct message's room.
+func ProbeRootAccess(a *iam.Authorizer) func(http.Handler) http.Handler {
+	return probeAccess(a, "")
+}
+
+func probeAccess(a *iam.Authorizer, projectParam string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, err := IAMPrincipalFrom(r)
@@ -52,10 +64,12 @@ func ProbeAccess(a *iam.Authorizer, projectParam string) func(http.Handler) http
 				presenter.Error(w, r, err)
 				return
 			}
-			projectID, err := urlUUID(r, projectParam, "project")
-			if err != nil {
-				presenter.Error(w, r, err)
-				return
+			var projectID string
+			if projectParam != "" {
+				if projectID, err = urlUUID(r, projectParam, "project"); err != nil {
+					presenter.Error(w, r, err)
+					return
+				}
 			}
 			buf, err := peekBodyLimit(r, maxAccessProbeBody)
 			if err != nil {
@@ -71,7 +85,8 @@ func ProbeAccess(a *iam.Authorizer, projectParam string) func(http.Handler) http
 			}
 			queries := make([]iam.Query, len(body.Checks))
 			for i, c := range body.Checks {
-				if _, _, inProject := iam.ParseResource(c.Resource); inProject != projectID || c.Action == "" {
+				kind, _, inProject := iam.ParseResource(c.Resource)
+				if inProject != projectID || c.Action == "" || (projectID == "" && kind == "") {
 					presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "every check needs an action and a resource inside this project"))
 					return
 				}

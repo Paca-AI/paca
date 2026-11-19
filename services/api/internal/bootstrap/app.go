@@ -33,6 +33,7 @@ import (
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
+	chatsvc "github.com/Paca-AI/api/internal/service/chat"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
 	exportsvc "github.com/Paca-AI/api/internal/service/export"
@@ -76,6 +77,7 @@ type App struct {
 	taskAutoAssignConsumer *worker.TaskAutoAssignConsumer
 	agentQueueConsumer     *worker.AgentQueueConsumer
 	questionConsumer       *worker.QuestionNotificationConsumer
+	chatAgentConsumer      *worker.ChatAgentConsumer
 	dueDateScheduler       *worker.DueDateScheduler
 	fileTrashPurger        *worker.FileTrashPurger
 	cronScheduler          *worker.CronScheduler
@@ -187,7 +189,9 @@ func New(cfg *config.Config) (*App, error) {
 	agentRepo := pgRepo.NewAgentRepository(db)
 	environmentRepo := pgRepo.NewEnvironmentRepository(db)
 	annotationRepo := pgRepo.NewAnnotationRepository(db)
+	chatRepo := pgRepo.NewChatRepository(db)
 	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo).
+		WithCreateHook(chatRepo.EnsureGeneral).
 		WithActivityRecorder(activityRecorder).
 		WithServiceAccounts(pgRepo.NewServiceAccountRepository(db))
 	projectServiceBase = projectServiceBase.WithRoleInvalidator(iamNotifier)
@@ -511,6 +515,11 @@ func New(cfg *config.Config) (*App, error) {
 	// (the ask_user_question MCP tool) — detected from the conversation event
 	// stream, so no agent-facing API is involved.
 	questionConsumer := worker.NewQuestionNotificationConsumer(redisClient, agentRepo, projectRepo, notificationService, log)
+	// A direct message with a global agent is answered by it: the service hands
+	// the person's words to the agent's global chat and the consumer next line posts
+	// the reply when its turn ends.
+	chatService := chatsvc.New(chatRepo).WithNotifier(chatsvc.NewPubSubNotifier(publisher)).WithAgentResponder(chatsvc.NewGlobalAgentResponder(agentService))
+	chatAgentConsumer := worker.NewChatAgentConsumer(redisClient, agentRepo, chatService, log)
 
 	// Forward every recorded activity (task created/updated/deleted, comments,
 	// links, etc.) to subscribed plugins. ActivitySvc appends to the
@@ -564,6 +573,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithListScoper(authorizer).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
 		WithDockerInSandbox(cfg.DockerInSandbox)
+	chatHandler := handler.NewChatHandler(chatService).WithChatListScoper(authorizer).WithChatProjectsScoper(authorizer).WithChatRootScoper(authorizer)
 	annotationHandler := handler.NewAnnotationHandler(annotationService).
 		WithAnnotationListScoper(authorizer).
 		WithAvatarService(attachmentService).
@@ -653,6 +663,7 @@ func New(cfg *config.Config) (*App, error) {
 		Environment:        environmentHandler,
 		Git:                gitHandler,
 		Annotation:         annotationHandler,
+		Chat:               chatHandler,
 		Conversation:       convHandler,
 		Automation:         automationHandler,
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),
@@ -672,7 +683,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, dueDateScheduler: dueDateScheduler, fileTrashPurger: fileTrashPurger, cronScheduler: cronScheduler, changeReconciler: changeReconciler, docHashBackfill: docHashBackfill, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, chatAgentConsumer: chatAgentConsumer, dueDateScheduler: dueDateScheduler, fileTrashPurger: fileTrashPurger, cronScheduler: cronScheduler, changeReconciler: changeReconciler, docHashBackfill: docHashBackfill, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
 }
 
 // platformActionsReader lists a user's or agent's effective platform-level
@@ -716,6 +727,7 @@ func (a *App) Run() error {
 	a.taskAutoAssignConsumer.Start(context.Background())
 	a.agentQueueConsumer.Start(context.Background())
 	a.questionConsumer.Start(context.Background())
+	a.chatAgentConsumer.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
 	a.fileTrashPurger.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
@@ -743,6 +755,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.taskAutoAssignConsumer.Stop()
 	a.agentQueueConsumer.Stop()
 	a.questionConsumer.Stop()
+	a.chatAgentConsumer.Stop()
 	a.dueDateScheduler.Stop()
 	a.fileTrashPurger.Stop()
 	a.cronScheduler.Stop()

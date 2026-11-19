@@ -66,6 +66,14 @@ func NewIAMAttributeLoaders(db *sqlx.DB) []iam.AttributeLoader {
 		&scalarLoader{db: db, kind: "environment", table: "environments", where: "deleted_at IS NULL", cols: map[string]string{
 			"environment.type": "backend",
 		}},
+		// Project channels. channel.member_ids holds the account ids of the
+		// channel's members, comparable with ${principal.id}.
+		&scalarLoader{db: db, kind: "channel", table: "channels", cols: map[string]string{
+			"channel.kind": "kind",
+		}, multi: map[string]string{
+			"channel.member_ids": `SELECT cm.account_id::text FROM channel_members cm WHERE cm.channel_id = $1::uuid
+				AND ($2::text = '' OR EXISTS (SELECT 1 FROM channels c WHERE c.id = cm.channel_id AND c.project_id::text = $2::text))`,
+		}},
 		&scalarLoader{db: db, kind: "conversation", table: "agent_conversations", cols: map[string]string{
 			"conversation.environment_id": "environment_id",
 			"conversation.agent_id":       "agent_id",

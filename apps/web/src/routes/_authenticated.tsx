@@ -16,6 +16,7 @@ import {
 	SidebarProvider,
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { useChatUnreadRealtime } from "@/hooks/use-chat-realtime";
 import { onTokenRefreshed } from "@/lib/api-client";
 import { isPasswordChangeRequired } from "@/lib/api-error";
 import { currentUserQueryOptions } from "@/lib/auth-api";
@@ -49,6 +50,9 @@ const PROJECT_ROUTE_RE = /^\/projects\/[^/]+/;
 // pathname check here instead of useMatches()/routeId since this layout
 // sits above the project/non-project split rather than inside one project.
 const CONVERSATIONS_ROUTE_RE = /^\/conversations(\/|$)/;
+// The chat pages (Inbox, direct messages) have their own composer at the same
+// screen corner as the floating launcher.
+const CHAT_ROUTE_RE = /^\/chat(\/|$)/;
 
 export const Route = createFileRoute("/_authenticated")({
 	beforeLoad: async ({ context: { queryClient }, location }) => {
@@ -89,6 +93,8 @@ function AuthenticatedLayout() {
 	const { data: user } = useQuery(currentUserQueryOptions);
 	const pathname = useRouterState({ select: (s) => s.location.pathname });
 	const sidebarPane = usePaneWidth(SIDEBAR_PANE);
+	// Unread nudges for every project, whichever page is open.
+	useChatUnreadRealtime(!!user);
 	// Global agent chat is available everywhere except inside a project
 	// (project pages already mount their own project-scoped AIChatFloat, see
 	// routes/_authenticated/projects/$projectId.tsx) or on the global
@@ -96,7 +102,8 @@ function AuthenticatedLayout() {
 	const showGlobalChat =
 		!!user &&
 		!PROJECT_ROUTE_RE.test(pathname) &&
-		!CONVERSATIONS_ROUTE_RE.test(pathname);
+		!CONVERSATIONS_ROUTE_RE.test(pathname) &&
+		!CHAT_ROUTE_RE.test(pathname);
 
 	useEffect(() => {
 		if (!user) return;

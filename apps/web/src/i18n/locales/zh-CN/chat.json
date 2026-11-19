@@ -1,0 +1,210 @@
+{
+	"title": "聊天",
+	"channels": {
+		"heading": "频道",
+		"new": "新建频道",
+		"empty": "还没有频道",
+		"select": "选择一个频道开始交流",
+		"unreadBadge": "未读消息",
+		"private": "私密频道",
+		"public": "公开频道",
+		"voice": "语音频道",
+		"mentionBadge": "提及"
+	},
+	"header": {
+		"noTopic": "未设置主题",
+		"join": "加入",
+		"leave": "退出",
+		"following": "已关注",
+		"archive": "归档频道",
+		"archiveConfirmTitle": "归档此频道？",
+		"archiveConfirmBody": "频道将变为只读，大家仍可查看已有的对话。",
+		"archived": "已归档"
+	},
+	"create": {
+		"title": "新建频道",
+		"description": "频道把围绕同一主题的对话集中在一起。",
+		"name": "名称",
+		"namePlaceholder": "例如：release",
+		"topic": "主题（可选）",
+		"topicPlaceholder": "这个频道是做什么的？",
+		"visibility": "可见范围",
+		"public": "公开",
+		"publicHint": "有项目访问权限的人都可以阅读并加入。",
+		"private": "私密",
+		"privateHint": "只有你添加的人可以阅读。",
+		"submit": "创建频道",
+		"cancel": "取消"
+	},
+	"composer": {
+		"placeholder": "发消息到 #{{channel}}",
+		"replyPlaceholder": "在讨论串中回复",
+		"send": "发送",
+		"hint": "按 Enter 发送，Shift+Enter 换行",
+		"readOnly": "你可以阅读此频道，但不能发言。",
+		"archived": "此频道已归档。",
+		"tooLong": "消息太长。",
+		"mentionList": "可提及的人"
+	},
+	"message": {
+		"edited": "（已编辑）",
+		"deleted": "此消息已被删除",
+		"edit": "编辑",
+		"delete": "删除",
+		"moderatorDelete": "移除消息",
+		"reply": "在讨论串中回复",
+		"react": "添加表情回应",
+		"save": "保存",
+		"cancel": "取消",
+		"viewThread": "查看讨论串（{{count}}）",
+		"bookmark": "保存消息",
+		"unbookmark": "从已保存中移除",
+		"viewRun": "查看运行"
+	},
+	"thread": {
+		"title": "讨论串",
+		"close": "关闭讨论串",
+		"empty": "还没有回复",
+		"follow": "关注",
+		"unfollow": "取消关注"
+	},
+	"list": {
+		"loadOlder": "加载更早的消息",
+		"empty": "还没有消息，打个招呼吧！",
+		"newMessages": "新消息",
+		"loadFailed": "无法加载消息。",
+		"retry": "重试",
+		"today": "今天",
+		"yesterday": "昨天",
+		"newDivider": "新消息"
+	},
+	"errors": {
+		"generic": "出错了，请重试。",
+		"forbidden": "你没有权限执行此操作。",
+		"channelNotFound": "此频道已不存在。",
+		"nameInvalid": "请为频道取一个不超过 80 个字符的名称。",
+		"nameTaken": "已有同名频道。",
+		"kindInvalid": "请选择有效的频道类型。",
+		"archived": "此频道已归档。",
+		"protected": "常规频道不能重命名或归档。",
+		"topicTooLong": "主题太长。",
+		"messageNotFound": "该消息已不存在。",
+		"messageEmpty": "请先输入内容。",
+		"messageInvalid": "无法发送该消息。",
+		"messageTooLong": "消息太长。",
+		"threadInvalid": "你无法回复该消息。",
+		"emojiInvalid": "不支持该表情回应。",
+		"notMember": "你不在此频道中。",
+		"notProjectMember": "此人不是该项目的成员。",
+		"seqInvalid": "请求无效。",
+		"dmSelf": "你不能给自己发消息。",
+		"dmPeerNotFound": "该账号已不存在。",
+		"dmNotSupported": "私信中不支持此操作。"
+	},
+	"noPermission": {
+		"title": "你无权在此项目中使用聊天",
+		"description": "请联系项目管理员授予你频道访问权限。"
+	},
+	"inbox": {
+		"title": "收件箱",
+		"subtitle": "你在所有项目中关注的频道",
+		"projectFilter": "项目",
+		"allProjects": "所有项目",
+		"markAllRead": "全部标为已读",
+		"markRead": "标为已读",
+		"tabs": {
+			"all": "全部",
+			"unread": "未读",
+			"mentions": "提及",
+			"threads": "讨论串",
+			"saved": "已保存"
+		},
+		"loadFailed": "无法加载收件箱。",
+		"emptyTitle": "还没有可关注的内容",
+		"emptyBody": "加入频道后，对话会显示在这里。",
+		"caughtUpTitle": "已全部读完",
+		"caughtUpBody": "所有项目的未读消息都会出现在这里。",
+		"noMessages": "还没有消息",
+		"replies": "回复：{{n}}",
+		"unreadReplies": "未读回复：{{n}}",
+		"unreadMention": "未读提及",
+		"tabUnread": "未读：{{n}}",
+		"empty": {
+			"mentionsTitle": "没有提及",
+			"mentionsBody": "有人用 @ 提到你时，会显示在这里。",
+			"threadsTitle": "没有关注的讨论串",
+			"threadsBody": "在讨论串中回复、被提及或选择关注，就会关注它。",
+			"savedTitle": "还没有保存的内容",
+			"savedBody": "在消息的工具栏中保存后，可在这里找到。"
+		}
+	},
+	"browse": {
+		"title": "浏览频道",
+		"subtitle": "此项目中你可以阅读的所有频道",
+		"search": "搜索频道",
+		"noMatch": "没有匹配该名称的频道。"
+	},
+	"sidebar": {
+		"collapse": "收起",
+		"expand": "展开",
+		"starred": "已加星标",
+		"star": "加星标",
+		"unstar": "取消星标",
+		"showMore": "再显示 {{n}} 个",
+		"showLess": "收起部分"
+	},
+	"dm": {
+		"heading": "私信",
+		"new": "新消息",
+		"empty": "还没有私信",
+		"inboxChip": "私信",
+		"dialog": {
+			"title": "新消息",
+			"description": "与和你共同参与项目的人开始对话。",
+			"search": "按名称搜索",
+			"noMatch": "没有匹配该名称的人。",
+			"empty": "还没有可以发消息的人。"
+		},
+		"kinds": {
+			"user": "成员",
+			"agent": "智能体",
+			"service_account": "服务账号"
+		},
+		"badge": {
+			"agent": "智能体",
+			"service_account": "服务"
+		},
+		"hints": {
+			"agent": "智能体会读取你在这里发送的内容。暂不支持在私信中回复。",
+			"service_account": "服务账号通过 API 读取消息，不会自行回复。"
+		},
+		"composerPlaceholder": "发消息给 {{name}}",
+		"kindLabel": {
+			"user": "成员",
+			"agent": "智能体",
+			"service_account": "服务账号"
+		}
+	},
+	"agent": {
+		"working": "{{name}} 正在处理…",
+		"runs": "运行（{{count}}）",
+		"runsTitle": "运行",
+		"search": "搜索运行",
+		"empty": "还没有运行。给 {{name}} 发消息即可开始。",
+		"noMatch": "没有匹配的运行。",
+		"noReplies": "{{name}} 属于某个项目，无法在私信中回复。你在这里写的内容只会被保存。",
+		"open": "打开运行",
+		"untitled": "未命名运行",
+		"all": "全部",
+		"failedHint": "{{name}} 上一次运行失败。发送消息可重试。",
+		"status": {
+			"queued": "排队中",
+			"running": "处理中",
+			"paused": "等待中",
+			"finished": "已完成",
+			"failed": "失败",
+			"stopped": "已停止"
+		},
+		"isWorking": "正在处理…"
+	}
+}

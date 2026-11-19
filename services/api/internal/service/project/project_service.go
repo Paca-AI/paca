@@ -117,6 +117,10 @@ type Service struct {
 	// onDelete runs after a project is deleted, to release what other services
 	// hold for it (Git connections). Best effort: the project is gone either way.
 	onDelete func(ctx context.Context, id uuid.UUID)
+	// onCreate runs after a project is created, to give it what other services
+	// start a project with (its #general chat channel). Best effort: the project
+	// exists either way and those services create their defaults lazily.
+	onCreate func(ctx context.Context, id uuid.UUID, createdBy *uuid.UUID) error
 }
 
 // RoleInvalidator drops cached role policies; *iam.Authorizer implements it.
@@ -128,6 +132,12 @@ type RoleInvalidator interface {
 // role attachments change (a member or agent added to a project).
 func (s *Service) WithRoleInvalidator(inv RoleInvalidator) *Service {
 	s.roles = inv
+	return s
+}
+
+// WithCreateHook sets a callback run after a project is created.
+func (s *Service) WithCreateHook(fn func(ctx context.Context, id uuid.UUID, createdBy *uuid.UUID) error) *Service {
+	s.onCreate = fn
 	return s
 }
 
@@ -329,6 +339,10 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 		if err := s.seedDefaultTaskStatuses(ctx, p.ID, now); err != nil {
 			return nil, err
 		}
+	}
+
+	if s.onCreate != nil {
+		_ = s.onCreate(ctx, p.ID, in.CreatedBy)
 	}
 
 	return p, nil
