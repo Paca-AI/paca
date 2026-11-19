@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -19,6 +20,7 @@ type Manager struct {
 	accessTTL  time.Duration
 	refreshTTL time.Duration
 	revoked    RevocationCheck
+	lastWarn   atomic.Int64 // unix seconds of the last lookup-failure log
 }
 
 // RevocationCheck reports whether a session family has been revoked.
@@ -44,7 +46,11 @@ func (m *Manager) IsRevoked(ctx context.Context, familyID string) bool {
 	}
 	revoked, err := m.revoked(ctx, familyID)
 	if err != nil {
-		slog.Warn("session revocation lookup failed", "error", err)
+		// During an outage every request fails; log at most once a minute.
+		now := time.Now().Unix()
+		if last := m.lastWarn.Load(); now-last >= 60 && m.lastWarn.CompareAndSwap(last, now) {
+			slog.Warn("session revocation lookup failed", "error", err)
+		}
 		return false
 	}
 	return revoked

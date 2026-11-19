@@ -85,6 +85,11 @@ func (h *SessionHandler) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if current == "" {
+		// Without the caller's own session id "all others" would include it.
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "token has no session"))
+		return
+	}
 	n, err := h.svc.RevokeOtherSessions(r.Context(), uid, current)
 	if err != nil {
 		presenter.Error(w, r, err)

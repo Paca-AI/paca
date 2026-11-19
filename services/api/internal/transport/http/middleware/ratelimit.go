@@ -121,7 +121,8 @@ func WithClientInfo(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ua := r.UserAgent()
 		if len(ua) > 512 {
-			ua = ua[:512]
+			// Cut on a rune boundary so a multibyte character isn't split.
+			ua = strings.ToValidUTF8(ua[:512], "")
 		}
 		ctx := domainauth.WithClientInfo(r.Context(), domainauth.ClientInfo{IP: ClientIP(r), UserAgent: ua})
 		next.ServeHTTP(w, r.WithContext(ctx))

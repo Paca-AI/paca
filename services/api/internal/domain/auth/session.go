@@ -39,10 +39,13 @@ func ClientInfoFrom(ctx context.Context) ClientInfo {
 // Session is one signed-in browser or device: a refresh-token family. Its ID
 // is the family id carried in the account's tokens.
 type Session struct {
-	ID         string
-	UserID     uuid.UUID
+	ID     string
+	UserID uuid.UUID
+	// IP and UserAgent are those of the sign-in and never change; LastIP is
+	// where the latest refresh came from.
 	IP         string
 	UserAgent  string
+	LastIP     string
 	RememberMe bool
 	CreatedAt  time.Time
 	// LastActiveAt is when the session last rotated its refresh token, so it
@@ -55,7 +58,7 @@ type Session struct {
 // SessionStore keeps the registry of live sessions. Revocation itself stays
 // with RefreshTokenStore; this only remembers which sessions exist.
 type SessionStore interface {
-	// Save creates the session, or refreshes IP, User-Agent and LastActiveAt
+	// Save creates the session, or refreshes LastIP and LastActiveAt
 	// of an existing one (CreatedAt is kept). The entry lives for ttl.
 	Save(ctx context.Context, s Session, ttl time.Duration) error
 	// Get returns the session, or ErrSessionNotFound.
@@ -92,7 +95,7 @@ func ParseUserAgent(userAgent string) (browser, os string) {
 		return "", ""
 	case has("Edg/") || has("EdgA/") || has("EdgiOS/"):
 		browser = "Edge"
-	case has("OPR/") || has("Opera"):
+	case has("OPR/") || has("Opera/"):
 		browser = "Opera"
 	case has("Firefox/") || has("FxiOS/"):
 		browser = "Firefox"

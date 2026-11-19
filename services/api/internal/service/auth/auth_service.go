@@ -613,16 +613,26 @@ func (s *Service) RevokeOtherSessions(ctx context.Context, userID uuid.UUID, kee
 	if err != nil {
 		return 0, err
 	}
+	// Only sessions in the registry are visible here: one that predates the
+	// registry is adopted on its next refresh, so until then it is not ended.
 	n := 0
+	var errs []error
 	for _, sess := range list {
 		if sess.ID == keepID {
 			continue
 		}
+		// An entry recreated by a refresh racing a revocation is already gone.
+		if revoked, err := s.refreshStore.IsFamilyRevoked(ctx, sess.ID); err == nil && revoked {
+			s.forgetSession(ctx, sess.ID)
+			continue
+		}
 		if err := s.refreshStore.RevokeFamily(ctx, sess.ID, s.refreshTTL); err != nil {
-			return n, err
+			// Keep going: one failure must not leave the others signed in.
+			errs = append(errs, err)
+			continue
 		}
 		s.forgetSession(ctx, sess.ID)
 		n++
 	}
-	return n, nil
+	return n, errors.Join(errs...)
 }
