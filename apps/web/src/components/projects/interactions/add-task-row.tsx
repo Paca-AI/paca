@@ -144,7 +144,7 @@ export function AddTaskRow({
 	// ── Open state: list variant ──────────────────────────────────────────────
 
 	return (
-		<div className="flex flex-col gap-1.5 px-4 py-2.5 border-b border-border/20">
+		<div className="flex flex-col gap-1.5 px-4 py-2.5 border-b border-dashed border-border/30">
 			<div className="flex items-center gap-2">
 				{typeSelector}
 				<input
