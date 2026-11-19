@@ -67,11 +67,11 @@ func (s *SessionStore) Save(ctx context.Context, sess domainauth.Session, ttl ti
 	pipe.HSetNX(ctx, key, "created_at", sess.CreatedAt.UnixMilli())
 	pipe.HSetNX(ctx, key, "user_id", sess.UserID.String())
 	pipe.HSetNX(ctx, key, "remember_me", boolStr(sess.RememberMe))
-	// The sign-in's IP and User-Agent stay as first recorded, so a hijacked
-	// session refreshing from elsewhere cannot overwrite where it began.
+	// The sign-in's IP and User-Agent stay as first recorded, so a session
+	// refreshing from elsewhere cannot overwrite where it began.
 	pipe.HSetNX(ctx, key, "ip", sess.IP)
 	pipe.HSetNX(ctx, key, "user_agent", sess.UserAgent)
-	pipe.HSet(ctx, key, "last_ip", sess.IP, "last_active_at", last)
+	pipe.HSet(ctx, key, "last_active_at", last)
 	pipe.Expire(ctx, key, ttl)
 	pipe.ZAdd(ctx, idx, redis.Z{Score: float64(last), Member: sess.ID})
 	// The index must outlive its longest-lived member. Done server-side in the
@@ -172,7 +172,6 @@ func decodeSession(id string, m map[string]string) (*domainauth.Session, error) 
 		UserID:       uid,
 		IP:           m["ip"],
 		UserAgent:    m["user_agent"],
-		LastIP:       m["last_ip"],
 		RememberMe:   m["remember_me"] == "1",
 		CreatedAt:    millis(m["created_at"]),
 		LastActiveAt: millis(m["last_active_at"]),

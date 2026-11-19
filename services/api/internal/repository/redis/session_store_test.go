@@ -48,7 +48,7 @@ func TestSessionStore_SaveGetKeepsCreatedAt(t *testing.T) {
 	if !got.CreatedAt.Equal(t0) || !got.LastActiveAt.Equal(t1) {
 		t.Fatalf("created=%v last=%v, want %v / %v", got.CreatedAt, got.LastActiveAt, t0, t1)
 	}
-	if got.IP != "1.1.1.1" || got.LastIP != "2.2.2.2" || got.UserAgent != "ua1" || !got.RememberMe || got.UserID != uid {
+	if got.IP != "1.1.1.1" || got.UserAgent != "ua1" || !got.RememberMe || got.UserID != uid {
 		t.Fatalf("unexpected session: %+v", got)
 	}
 }
