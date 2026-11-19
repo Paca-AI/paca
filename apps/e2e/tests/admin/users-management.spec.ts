@@ -145,7 +145,8 @@ async function openUsersPage(page: Page) {
   await page.goto('/admin/users');
   // If a prior test invalidated the server-side session stored in AUTH_FILE, the app
   // redirects to login. Re-authenticate directly so these tests remain self-contained.
-  if (!page.url().includes('/admin')) {
+  // Compare the path only: the login redirect keeps `?redirect=/admin/users` in the URL.
+  if (!new URL(page.url()).pathname.startsWith('/admin')) {
     await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
     await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();

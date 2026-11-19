@@ -383,7 +383,10 @@ function DescriptionSectionInner({
 	const handleMediaClick = useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
 			const target = e.target as HTMLElement;
-			const isImage = target.tagName === "IMG";
+			// Some browsers hit BlockNote's wrapper around the <img>, not the image.
+			const isImage =
+				target.tagName === "IMG" ||
+				target.classList.contains("bn-visual-media-wrapper");
 			const isFile = !!target.closest(".bn-file-name-with-icon");
 			if (!isImage && !isFile) return;
 			const blockId = target.closest("[data-id]")?.getAttribute("data-id");
