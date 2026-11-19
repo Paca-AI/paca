@@ -45,11 +45,11 @@ type Deps struct {
 	// File serves the Drive-style file manager (/files and
 	// /projects/{projectId}/files); optional.
 	File         *handler.FileHandler
-	Notification    *handler.NotificationHandler
-	Chat            *handler.ChatHandler
-	APIKey          *handler.APIKeyHandler
-	Plugin          *handler.PluginHandler
-	Skills          *handler.SkillsHandler
+	Notification *handler.NotificationHandler
+	Chat         *handler.ChatHandler
+	APIKey       *handler.APIKeyHandler
+	Plugin       *handler.PluginHandler
+	Skills       *handler.SkillsHandler
 	// PluginAssets streams plugin bundle files out of the plugin store; optional.
 	PluginAssets *handler.PluginAssetsHandler
 	Agent        *handler.AgentHandler

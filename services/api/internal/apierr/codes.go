@@ -602,8 +602,7 @@ const (
 	// CodeAutomationUpdateTaskSelfParent indicates an update_task node would set the triggered task as its own parent.
 	CodeAutomationUpdateTaskSelfParent Code = "AUTOMATION_UPDATE_TASK_SELF_PARENT"
 
-	// Chat (docs/architecture/chat-and-meetings.md).
-	// CodeChannelNotFound is the CHANNEL_NOT_FOUND error code.
+	// CodeChannelNotFound is the CHANNEL_NOT_FOUND error code (chat; see docs/architecture/chat-and-meetings.md).
 	CodeChannelNotFound Code = "CHANNEL_NOT_FOUND"
 	// CodeChannelNameInvalid is the CHANNEL_NAME_INVALID error code.
 	CodeChannelNameInvalid Code = "CHANNEL_NAME_INVALID"

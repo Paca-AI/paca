@@ -30,7 +30,7 @@ Federation, end-to-end encryption, Slack/Discord import, incoming chat webhooks 
 
 ### Data model
 
-Migration `000093+`. Scopes are `workspace` and `project`; every project gets a `#general` channel. Channel kinds: `public`, `private`, `dm`, `group_dm`, `voice`.
+Migration `000094`. Scopes are `workspace` and `project`; every project gets a `#general` channel. Channel kinds: `public`, `private`, `dm`, `group_dm`, `voice`.
 
 | Table | Holds |
 |---|---|

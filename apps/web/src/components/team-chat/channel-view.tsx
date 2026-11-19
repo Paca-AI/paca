@@ -99,12 +99,15 @@ export function ChannelView({
 	const key = chatKeys.messages(projectId, channelId);
 	const win = useQuery({
 		queryKey: key,
-		queryFn: async (): Promise<MessageWindow> =>
-			withNewest(
-				undefined,
-				await listMessages(projectId, channelId, { pageSize: 50 }),
-				true,
-			),
+		queryFn: async (): Promise<MessageWindow> => {
+			const page = await listMessages(projectId, channelId, { pageSize: 50 });
+			// A refetch refreshes the newest page in place, so older pages the
+			// user loaded stay. Only when there is a gap does it start over.
+			const cur = queryClient.getQueryData<MessageWindow>(key);
+			const first = page.items[0]?.seq ?? 0;
+			const contiguous = !!cur && (first === 0 || first <= lastSeq(cur) + 1);
+			return withNewest(cur, page, !contiguous);
+		},
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnWindowFocus: false,
 	});
@@ -117,7 +120,9 @@ export function ChannelView({
 	useEffect(() => setThreadRootId(thread?.id ?? null), [channelId, thread?.id]);
 
 	// Reading is the act of looking at the newest message.
-	const newest = lastSeq(win.data);
+	// Replies live in threads, outside the window, yet count as unread: read up
+	// to the channel's head (the server clamps to it).
+	const newest = Math.max(lastSeq(win.data), channel?.last_seq ?? 0);
 	useEffect(() => {
 		if (!channel || newest === 0) return;
 		if (channel.is_member && channel.last_read_seq >= newest) return;
@@ -264,7 +269,7 @@ export function ChannelView({
 			openThread: (m) => setThreadRootId(m.id),
 			save: (m, saved) => save.mutate({ m, saved }),
 		}),
-		[react, edit, remove],
+		[react, edit, remove, save.mutate],
 	);
 
 	// The root of an opened thread may be older than the page loaded: fetch it.

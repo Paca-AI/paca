@@ -156,6 +156,7 @@ export function InboxPage({
 						{t(`inbox.tabs.${k}`)}
 						{badge(k) > 0 ? (
 							<span
+								role="img"
 								className="ml-1.5 rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground"
 								aria-label={t("inbox.tabUnread", { n: badge(k) })}
 							>

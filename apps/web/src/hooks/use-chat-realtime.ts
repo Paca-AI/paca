@@ -193,7 +193,18 @@ export function useChatRealtime(
 		// After a reconnect the room is gone and announcements were missed.
 		const onConnect = () => {
 			join();
-			void catchUp().catch(() => undefined);
+			void catchUp()
+				.catch(() => undefined)
+				.then(() => {
+					// Edits, deletes, reactions and reply counts are live-only
+					// announcements: refetch what is on screen.
+					void queryClient.invalidateQueries({
+						queryKey: chatKeys.messages(projectId, channelId),
+					});
+					void queryClient.invalidateQueries({
+						queryKey: ["chat", projectId, "thread", channelId],
+					});
+				});
 		};
 
 		// Anything that happened since this channel was last on screen.

@@ -63,6 +63,7 @@ function Badge({ unread, mentions }: { unread: number; mentions: number }) {
 	if (mentions > 0) {
 		return (
 			<SidebarMenuBadge
+				role="img"
 				aria-label={t("channels.mentionBadge")}
 				className="rounded-full bg-destructive px-1.5 text-white"
 			>
@@ -92,6 +93,7 @@ function HeaderBadge({
 	if (mentions > 0) {
 		return (
 			<span
+				role="img"
 				aria-label={t("channels.mentionBadge")}
 				className="rounded-full bg-destructive px-1.5 text-[10px] font-medium text-white"
 			>
@@ -102,6 +104,7 @@ function HeaderBadge({
 	if (unread > 0) {
 		return (
 			<span
+				role="img"
 				aria-label={t("channels.unreadBadge")}
 				className="rounded-full bg-sidebar-foreground px-1.5 text-[10px] font-medium text-sidebar"
 			>

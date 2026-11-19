@@ -67,7 +67,7 @@ export function replaceMessage(
 	w: MessageWindow | undefined,
 	m: ChatMessage,
 ): MessageWindow | undefined {
-	if (!w || !w.items.some((x) => x.id === m.id)) return w;
+	if (!w?.items.some((x) => x.id === m.id)) return w;
 	return { ...w, items: mergeMessages(w.items, [m]) };
 }
 

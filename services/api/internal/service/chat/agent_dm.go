@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -46,13 +47,42 @@ func (s *Service) forwardToAgent(ctx context.Context, ch *chatdom.Channel, perso
 	s.forward(ctx, link)
 }
 
-func (s *Service) forward(ctx context.Context, link *chatdom.AgentLink) {
+// Agent-bridge timings; variables so tests can shorten them.
+var (
+	forwardBusyRetries = 5
+	forwardBusyBackoff = time.Second
+	recordRunRetries   = 3
+)
+
+// forwardAfterTurn sends what the person wrote during a turn. The runner
+// publishes turn_end just before it flips the conversation to paused, so the
+// agent can still look busy for a moment: wait it out instead of leaving the
+// messages behind.
+func (s *Service) forwardAfterTurn(ctx context.Context, link *chatdom.AgentLink) {
+	for i := 0; i < forwardBusyRetries; i++ {
+		if !s.forward(ctx, link) {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(forwardBusyBackoff * time.Duration(i+1)):
+		}
+	}
+	slog.Warn("chat: agent still busy, messages left unforwarded", "channel_id", link.ChannelID)
+}
+
+// forward reports whether the agent was busy, so the caller may try again.
+func (s *Service) forward(ctx context.Context, link *chatdom.AgentLink) (busy bool) {
+	// The hand-off outlives the request that triggered it: a client that
+	// aborts its POST must not strand a claimed message.
+	ctx = context.WithoutCancel(ctx)
 	msgs, err := s.repo.MessagesToForward(ctx, link.ChannelID, link.AccountID, link.ForwardedSeq)
 	if err != nil || len(msgs) == 0 {
 		if err != nil {
 			slog.Warn("chat: messages to forward", "channel_id", link.ChannelID, "err", err)
 		}
-		return
+		return false
 	}
 	texts := make([]string, 0, len(msgs))
 	for _, m := range msgs {
@@ -61,21 +91,28 @@ func (s *Service) forward(ctx context.Context, link *chatdom.AgentLink) {
 	from, upto := link.ForwardedSeq, msgs[len(msgs)-1].Seq
 	claimed, err := s.repo.ClaimForward(ctx, link.ChannelID, from, upto)
 	if err != nil || !claimed {
-		return // another caller is forwarding the same messages
+		return false // another caller is forwarding the same messages
 	}
 	sessionID, convID, err := s.agents.Send(ctx, link.AgentID, link.AccountID, link.SessionID, strings.Join(texts, "\n\n"))
 	if err != nil {
-		_ = s.repo.ReleaseForward(ctx, link.ChannelID, from, upto)
+		if rerr := s.repo.ReleaseForward(ctx, link.ChannelID, from, upto); rerr != nil {
+			slog.Error("chat: release forward claim", "channel_id", link.ChannelID, "err", rerr)
+		}
 		if errors.Is(err, chatdom.ErrAgentBusy) {
-			return // sent when the current answer ends
+			return true // sent when the current answer ends
 		}
 		slog.Warn("chat: forward to agent", "channel_id", link.ChannelID, "agent_id", link.AgentID, "err", err)
-		s.agentSays(ctx, link, "I couldn't pick that up right now. Please try again in a moment.", nil)
-		return
+		_ = s.agentSays(ctx, link, "I couldn't pick that up right now. Please try again in a moment.", nil)
+		return false
 	}
-	if err := s.repo.SetAgentRun(ctx, link.ChannelID, sessionID, convID); err != nil {
-		slog.Warn("chat: record agent run", "channel_id", link.ChannelID, "err", err)
+	// Without the run recorded the answer would be taken for someone else's.
+	for i := 0; i < recordRunRetries; i++ {
+		if err = s.repo.SetAgentRun(ctx, link.ChannelID, sessionID, convID); err == nil {
+			return false
+		}
 	}
+	slog.Error("chat: record agent run", "channel_id", link.ChannelID, "err", err)
+	return false
 }
 
 // OnAgentTurnEnd turns what the agent wrote in a finished turn into a message
@@ -95,28 +132,31 @@ func (s *Service) OnAgentTurnEnd(ctx context.Context, sessionID, conversationID 
 	if text == "" {
 		text = "I'm done, but I have nothing to add in words. Open the run to see what I did."
 	}
-	// Mark first: a repeated delivery of the same turn must not post twice.
+	// Post before marking the turn bridged: a failure in between repeats the
+	// delivery (at worst a duplicate reply) instead of losing the answer.
+	if err := s.agentSays(ctx, link, text, &conversationID); err != nil {
+		return err
+	}
 	if err := s.repo.SetBridgedIndex(ctx, link.ChannelID, turnEnd); err != nil {
 		return err
 	}
-	s.agentSays(ctx, link, text, &conversationID)
-	s.forward(ctx, link)
+	s.forwardAfterTurn(ctx, link)
 	return nil
 }
 
 // agentSays posts text into the direct message as the agent.
-func (s *Service) agentSays(ctx context.Context, link *chatdom.AgentLink, text string, run *uuid.UUID) {
+// Only a failure to store it is an error: once stored it is not retried.
+func (s *Service) agentSays(ctx context.Context, link *chatdom.AgentLink, text string, run *uuid.UUID) error {
 	content := blocksOf(text)
 	m := &chatdom.Message{ChannelID: link.ChannelID, AuthorID: link.AgentID, Content: content, ContentText: text, RunID: run}
 	if err := s.repo.CreateMessage(ctx, m); err != nil {
 		slog.Warn("chat: agent message", "channel_id", link.ChannelID, "err", err)
-		return
+		return err
 	}
-	full, err := s.repo.FindMessage(ctx, link.ChannelID, m.ID, link.AgentID)
-	if err != nil {
-		return
+	if full, err := s.repo.FindMessage(ctx, link.ChannelID, m.ID, link.AgentID); err == nil {
+		s.notifyMessage(ctx, chatdom.EventMessageNew, uuid.Nil, full, link.AgentID)
 	}
-	s.notifyMessage(ctx, chatdom.EventMessageNew, uuid.Nil, full, link.AgentID)
+	return nil
 }
 
 // blocksOf is text as block content: one paragraph block per blank-line

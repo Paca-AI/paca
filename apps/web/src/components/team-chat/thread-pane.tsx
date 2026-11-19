@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, BellOff, X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,10 +17,12 @@ import {
 	setReaction,
 	setThreadFollowed,
 } from "@/lib/chat-api";
-import { toggleReaction } from "@/lib/chat-cache";
+import { mergeMessages, toggleReaction } from "@/lib/chat-cache";
 import { Composer } from "./composer";
 import { type MessageActions, MessageItem } from "./message-item";
 import { MessageList } from "./message-list";
+
+const REPLY_PAGE = 100;
 
 /** The replies to one message, with their own composer. */
 export function ThreadPane({
@@ -57,9 +59,32 @@ export function ThreadPane({
 			(
 				await listMessages(projectId, channelId, {
 					threadRootId: root.id,
-					pageSize: 100,
+					pageSize: REPLY_PAGE,
 				})
 			).items,
+	});
+
+	// Replies older than the newest page, loaded on demand.
+	const [older, setOlder] = useState<{ items: ChatMessage[]; done: boolean }>({
+		items: [],
+		done: false,
+	});
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset when another thread opens
+	useEffect(() => setOlder({ items: [], done: false }), [root.id]);
+	const allReplies = mergeMessages(older.items, replies.data ?? []);
+	const hasOlder = !older.done && (replies.data?.length ?? 0) >= REPLY_PAGE;
+	const loadOlder = useMutation({
+		mutationFn: () =>
+			listMessages(projectId, channelId, {
+				threadRootId: root.id,
+				beforeSeq: allReplies[0]?.seq,
+				pageSize: REPLY_PAGE,
+			}),
+		onSuccess: (page) =>
+			setOlder((cur) => ({
+				items: mergeMessages(cur.items, page.items),
+				done: !page.has_more,
+			})),
 	});
 
 	const refresh = () => {
@@ -174,10 +199,10 @@ export function ThreadPane({
 				/>
 			</div>
 			<MessageList
-				items={replies.data ?? []}
-				hasOlder={false}
-				loadingOlder={false}
-				onLoadOlder={() => undefined}
+				items={allReplies}
+				hasOlder={hasOlder}
+				loadingOlder={loadOlder.isPending}
+				onLoadOlder={() => loadOlder.mutate()}
 				currentUserId={currentUserId}
 				canReact={canReact}
 				canModerate={canModerate}

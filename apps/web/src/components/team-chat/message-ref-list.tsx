@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Bookmark, Hash, Lock, MessagesSquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { MessageRef, MessageRefList } from "@/lib/chat-api";
+import type { MessageRef, MessageRefList as RefListKind } from "@/lib/chat-api";
 import { relativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import { PeerAvatar } from "./peer-avatar";
@@ -27,7 +27,7 @@ export function MessageRefList({
 	list,
 	items,
 }: {
-	list: MessageRefList;
+	list: RefListKind;
 	items: MessageRef[];
 }) {
 	const { t, i18n } = useTranslation("chat");

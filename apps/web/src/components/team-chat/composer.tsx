@@ -216,15 +216,16 @@ export function Composer({
 	return (
 		<div className="relative border-t p-3">
 			{shown && options.length > 0 ? (
-				<ul
+				<div
 					role="listbox"
 					aria-label={t("composer.mentionList")}
 					className="absolute bottom-full left-3 z-20 mb-1 w-72 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-md"
 				>
 					{options.map((m, i) => (
-						<li
+						<div
 							key={m.id}
 							role="option"
+							tabIndex={-1}
 							aria-selected={i === highlight}
 							// mousedown, so the textarea keeps its caret
 							onMouseDown={(e) => {
@@ -239,9 +240,9 @@ export function Composer({
 							<span className="truncate text-xs text-muted-foreground">
 								@{m.username}
 							</span>
-						</li>
+						</div>
 					))}
-				</ul>
+				</div>
 			) : null}
 			<div className="flex items-end gap-2">
 				<Textarea
