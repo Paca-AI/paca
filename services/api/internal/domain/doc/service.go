@@ -84,6 +84,9 @@ type DocumentService interface {
 type CreateDocumentInput struct {
 	ProjectID uuid.UUID
 	FolderID  *uuid.UUID
+	// ViewID, when set, creates a note of that note view; FolderID must then
+	// be nil.
+	ViewID    *uuid.UUID
 	Title     string
 	Content   json.RawMessage
 	CreatedBy *uuid.UUID

@@ -212,6 +212,9 @@ func (s *ViewService) UpdateView(ctx context.Context, projectID, id uuid.UUID, i
 			if !sprintdom.ValidViewTypes[vt] {
 				return sprintdom.ErrViewTypeInvalid
 			}
+			if vt != v.ViewType && (vt == sprintdom.ViewTypeNote || v.ViewType == sprintdom.ViewTypeNote) {
+				return sprintdom.ErrViewNoteTypeChange
+			}
 			v.ViewType = vt
 		}
 		if in.Config != nil {
@@ -235,6 +238,7 @@ func (s *ViewService) UpdateView(ctx context.Context, projectID, id uuid.UUID, i
 
 // DeleteView removes a view by ID.  Deletion of the last remaining view is
 // rejected with ErrViewIsLastView.  Verifies the view belongs to projectID.
+// A note view's notes are soft-deleted with it (migration 000094).
 func (s *ViewService) DeleteView(ctx context.Context, projectID, id uuid.UUID) error {
 	v, err := s.repo.FindViewByID(ctx, id)
 	if err != nil {

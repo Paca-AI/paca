@@ -367,3 +367,44 @@ func TestRequireItemTasks_BodyShape(t *testing.T) {
 		t.Fatalf("data after the body: got %d, want 400", rec.Code)
 	}
 }
+
+func TestRequireDocView_NotesFollowTheirView(t *testing.T) {
+	project, s5, s6 := uuid.NewString(), uuid.NewString(), uuid.NewString()
+	vIn5, vIn6 := uuid.NewString(), uuid.NewString()
+	grant := projectGrant(project, iam.Statement{
+		Effect: iam.EffectAllow, Actions: []string{"views:read"}, Resources: []string{"project/*/view/*"},
+		Conditions: iam.Conditions{"StringEquals": {"view.sprint_id": {s5}}},
+	})
+	user := iam.User("00000000-0000-0000-0000-0000000000aa")
+	a := newFakeIAM(&fakeIAMStore{grants: map[iam.Principal][]iam.Grant{user: {grant}}})
+	a.RegisterLoader(attrLoader{kind: "view", data: map[string]map[string][]string{
+		vIn5: {"view.sprint_id": {s5}}, vIn6: {"view.sprint_id": {s6}},
+	}})
+	gate := RequireDocView(a, iam.ActionViewsRead, "projectId")
+	base := "/projects/" + project + "/docs"
+	pattern := "/projects/{projectId}/docs"
+
+	for _, c := range []struct {
+		name, method, path, body string
+		want                     int
+	}{
+		{"list the notes of a readable view", "GET", base + "?view_id=" + vIn5, "", 204},
+		{"list the notes of another sprint's view", "GET", base + "?view_id=" + vIn6, "", 403},
+		{"list the notes of an unknown view", "GET", base + "?view_id=" + uuid.NewString(), "", 403},
+		{"list the docs tree", "GET", base, "", 204},
+		{"malformed view id (handler answers 400)", "GET", base + "?view_id=nope", "", 204},
+		{"create a note in a readable view", "POST", base, `{"title":"n","view_id":"` + vIn5 + `"}`, 204},
+		{"create a note in another sprint's view", "POST", base, `{"title":"n","view_id":"` + vIn6 + `"}`, 403},
+		{"view_id matched as the handler binds it", "POST", base, `{"title":"n","View_ID":"` + vIn6 + `"}`, 403},
+		{"create a tree document", "POST", base, `{"title":"d"}`, 204},
+		{"view_id null", "POST", base, `{"title":"d","view_id":null}`, 204},
+		{"body not the handler's shape", "POST", base, `[1]`, 204},
+		{"data after the body", "POST", base, `{"title":"n"} {"view_id":"` + vIn6 + `"}`, 400},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if rec := serveBody(t, c.method, pattern, c.path, c.body, gate); rec.Code != c.want {
+				t.Fatalf("got %d, want %d: %s", rec.Code, c.want, rec.Body)
+			}
+		})
+	}
+}

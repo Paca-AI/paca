@@ -3,6 +3,7 @@ package sprintsvc_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -1763,4 +1764,62 @@ func TestViewService_BulkMoveTasks_WrongProject_ReturnsNotFound(t *testing.T) {
 
 func (permissiveTaskRepo) ListGroupColumns(_ context.Context, _ uuid.UUID, _ taskdom.TaskFilter, _, _ string) ([]taskdom.GroupColumn, error) {
 	return nil, nil
+}
+
+// ---------------------------------------------------------------------------
+// Note views: a view of documents, which keeps its type.
+// ---------------------------------------------------------------------------
+
+func TestViewService_NoteViewIsCreatedInEveryContext(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+	projectID := uuid.New()
+
+	for _, in := range []sprintdom.CreateViewInput{
+		// permissiveSprintRepo's sprints have no project.
+		{SprintID: uuidPtr(uuid.New()), ViewContext: sprintdom.ViewContextSprint},
+		{ProjectID: projectID, ViewContext: sprintdom.ViewContextBacklog},
+		{ProjectID: projectID, ViewContext: sprintdom.ViewContextTimeline},
+	} {
+		in.Name, in.ViewType = "Notes", sprintdom.ViewTypeNote
+		v, err := svc.CreateView(ctx, in)
+		if err != nil {
+			t.Fatalf("create a %s note view: %v", in.ViewContext, err)
+		}
+		if v.ViewType != sprintdom.ViewTypeNote {
+			t.Fatalf("%s view_type = %q, want note", in.ViewContext, v.ViewType)
+		}
+	}
+}
+
+func TestViewService_UpdateView_NoteTypeCannotChange(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+	projectID := uuid.New()
+
+	notes, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
+		ProjectID: projectID, Name: "Notes", ViewType: sprintdom.ViewTypeNote, ViewContext: sprintdom.ViewContextBacklog,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := seedProjectView(t, svc, projectID, sprintdom.ViewConfig{})
+
+	board, note := sprintdom.ViewTypeBoard, sprintdom.ViewTypeNote
+	if _, err := svc.UpdateView(ctx, projectID, notes.ID, sprintdom.UpdateViewInput{ViewType: &board}); !errors.Is(err, sprintdom.ErrViewNoteTypeChange) {
+		t.Fatalf("note view -> board: err = %v, want ErrViewNoteTypeChange", err)
+	}
+	if _, err := svc.UpdateView(ctx, projectID, table.ID, sprintdom.UpdateViewInput{ViewType: &note}); !errors.Is(err, sprintdom.ErrViewNoteTypeChange) {
+		t.Fatalf("table -> note view: err = %v, want ErrViewNoteTypeChange", err)
+	}
+
+	// Naming the type it already has is not a change: a rename still works.
+	name := "Meeting notes"
+	got, err := svc.UpdateView(ctx, projectID, notes.ID, sprintdom.UpdateViewInput{Name: &name, ViewType: &note})
+	if err != nil {
+		t.Fatalf("rename a note view: %v", err)
+	}
+	if got.Name != name || got.ViewType != sprintdom.ViewTypeNote {
+		t.Fatalf("renamed view = %q/%q, want %q/note", got.Name, got.ViewType, name)
+	}
 }
