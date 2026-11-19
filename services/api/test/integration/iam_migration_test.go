@@ -918,8 +918,9 @@ func TestIAMMigrationKeyMapping(t *testing.T) {
 	}
 	var regActions []string
 	for _, a := range iam.NewRegistry().Actions() {
-		// Service accounts postdate the legacy keys migration 000064 converted.
-		if !strings.HasPrefix(a, "service_accounts:") {
+		// Service accounts and the file manager postdate the legacy keys
+		// migration 000064 converted.
+		if !strings.HasPrefix(a, "service_accounts:") && !strings.HasPrefix(a, "files:") {
 			regActions = append(regActions, a)
 		}
 	}

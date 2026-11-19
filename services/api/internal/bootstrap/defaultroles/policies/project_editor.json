@@ -15,6 +15,7 @@
         "annotations:read", "annotations:resolve", "annotations:write",
         "conversations:read", "conversations:write",
         "docs:read", "docs:write",
+        "files:read", "files:write",
         "environments:connect", "environments:read", "environments:write",
         "git:read", "git:write",
         "project.members:read",

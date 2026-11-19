@@ -59,6 +59,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { FilesSidebarSection } from "@/components/files/files-sidebar-section";
 import { useManagedCopyLabel } from "@/components/projects/docs/managed-copy-banner";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
@@ -1080,7 +1081,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 			<SidebarGroupLabel
 				render={<button type="button" />}
 				aria-expanded={!collapsed}
-				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors px-3"
+				className="w-full text-left flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors px-4"
 				onClick={toggleCollapse}
 			>
 				<span>{t("docs.documentation")}</span>
@@ -2295,6 +2296,7 @@ export function AppSidebar() {
 						{user && <ProjectNav />}
 						<ProjectInteractionsSection projectId={projectId} />
 						{canReadDocs && <DocsSidebarSection projectId={projectId} />}
+						<FilesSidebarSection projectId={projectId} />
 						<ExtensionPoint
 							point="sidebar.project.section"
 							componentProps={{ projectId }}
@@ -2318,6 +2320,8 @@ export function AppSidebar() {
 								</SidebarGroupContent>
 							</SidebarGroup>
 						)}
+
+						<FilesSidebarSection />
 
 						<ExtensionPoint point="sidebar.general.section" />
 						{/* Admin section */}

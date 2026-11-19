@@ -41,10 +41,13 @@ type Deps struct {
 	Attachment      *handler.AttachmentHandler
 	Document        *handler.DocumentHandler
 	DocFile         *handler.DocFileHandler
-	Notification    *handler.NotificationHandler
-	APIKey          *handler.APIKeyHandler
-	Plugin          *handler.PluginHandler
-	Skills          *handler.SkillsHandler
+	// File serves the Drive-style file manager (/files and
+	// /projects/{projectId}/files); optional.
+	File         *handler.FileHandler
+	Notification *handler.NotificationHandler
+	APIKey       *handler.APIKeyHandler
+	Plugin       *handler.PluginHandler
+	Skills       *handler.SkillsHandler
 	// PluginAssets streams plugin bundle files out of the plugin store; optional.
 	PluginAssets *handler.PluginAssetsHandler
 	Agent        *handler.AgentHandler
@@ -414,6 +417,15 @@ func New(deps Deps) http.Handler {
 				r.With(require.Global(iam.ActionProjectsCreate)).Post("/projects", deps.Project.CreateProject)
 				if deps.Task != nil {
 					r.With(require.TaskByKey(iam.ActionTasksRead)).Get("/tasks/by-key/{taskKey}", deps.Task.GetTaskByKey)
+				}
+				// Files (general scope): the workspace's own files. The roots route
+				// lists the general folder and every project whose files the caller
+				// may read, and filters in the handler (see openRouteGroups).
+				if deps.File != nil {
+					r.Route("/files", func(r chi.Router) {
+						r.Get("/roots", deps.File.Roots)
+						mountFileRoutes(r, deps.File, require.Global(iam.ActionFilesRead), require.Global(iam.ActionFilesWrite))
+					})
 				}
 			})
 
@@ -895,6 +907,14 @@ func New(deps Deps) http.Handler {
 						r.With(require.ProjectEntity("doc", "docId", resDoc, iam.ActionDocsWrite)).Delete("/files/{fileId}", deps.DocFile.DeleteDocFile)
 					})
 				})
+
+				// Files (project scope): the project's folders and files, including
+				// the default folders for task attachments, doc files and screenshots.
+				if deps.File != nil {
+					r.Route("/files", func(r chi.Router) {
+						mountFileRoutes(r, deps.File, require.Project(iam.ActionFilesRead), require.Project(iam.ActionFilesWrite))
+					})
+				}
 
 				// Agents
 				if deps.Agent != nil {
@@ -1398,4 +1418,26 @@ func sameHostnameOrigin(origin, host string) bool {
 		reqHost = h
 	}
 	return u.Hostname() == reqHost
+}
+
+// mountFileRoutes registers the file manager routes of one scope. read and
+// write are that scope's gates (a project's files:*, or the general scope's
+// platform-root files:*). Starring is per-user state, so it only needs read.
+func mountFileRoutes(r chi.Router, h *handler.FileHandler, read, write func(http.Handler) http.Handler) {
+	r.With(read).Get("/nodes", h.List)
+	r.With(read).Get("/nodes/{nodeId}", h.Get)
+	r.With(read).Get("/nodes/{nodeId}/path", h.Path)
+	r.With(read).Get("/nodes/{nodeId}/download-url", h.DownloadURL)
+	r.With(read).Put("/nodes/{nodeId}/star", h.SetStarred)
+	r.With(read).Get("/starred", h.ListStarred)
+	r.With(read).Get("/recent", h.ListRecent)
+	r.With(read).Get("/trash", h.ListTrash)
+
+	r.With(write).Post("/folders", h.CreateFolder)
+	r.With(write).Patch("/nodes/{nodeId}", h.Update)
+	r.With(write).Delete("/nodes/{nodeId}", h.Trash)
+	r.With(write).Post("/nodes/{nodeId}/restore", h.Restore)
+	r.With(write).Delete("/nodes/{nodeId}/permanent", h.DeletePermanently)
+	r.With(write).Post("/uploads/initiate", h.InitiateUpload)
+	r.With(write).Post("/uploads/complete", h.CompleteUpload)
 }

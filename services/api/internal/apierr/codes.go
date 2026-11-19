@@ -182,6 +182,31 @@ const (
 	// CodeCustomFieldNameInvalid indicates an empty or invalid display name.
 	CodeCustomFieldNameInvalid Code = "CUSTOM_FIELD_NAME_INVALID"
 
+	// File manager (Drive-style folders and files).
+
+	// CodeFileNodeNotFound indicates the file or folder does not exist (or is in another scope).
+	CodeFileNodeNotFound Code = "FILE_NODE_NOT_FOUND"
+	// CodeFileNameInvalid indicates an empty, too long or malformed file or folder name.
+	CodeFileNameInvalid Code = "FILE_NAME_INVALID"
+	// CodeFileNodeLocked indicates the item is managed by Paca (Task attachments) and cannot be changed.
+	CodeFileNodeLocked Code = "FILE_NODE_LOCKED"
+	// CodeFileNotFolder indicates a folder was required.
+	CodeFileNotFolder Code = "FILE_NOT_FOLDER"
+	// CodeFileNotFile indicates a file was required.
+	CodeFileNotFile Code = "FILE_NOT_FILE"
+	// CodeFileMoveIntoSelf indicates a folder was moved into itself or a descendant.
+	CodeFileMoveIntoSelf Code = "FILE_MOVE_INTO_SELF"
+	// CodeFileNodeTrashed indicates the item is in the trash.
+	CodeFileNodeTrashed Code = "FILE_NODE_TRASHED"
+	// CodeFileNodeNotTrashed indicates the item is not in the trash.
+	CodeFileNodeNotTrashed Code = "FILE_NODE_NOT_TRASHED"
+	// CodeFileUploadIncomplete indicates the file's upload never finished.
+	CodeFileUploadIncomplete Code = "FILE_UPLOAD_INCOMPLETE"
+	// CodeFileTooLarge indicates the file exceeds the maximum upload size.
+	CodeFileTooLarge Code = "FILE_TOO_LARGE"
+	// CodeFileTypeInvalid indicates an unknown type filter.
+	CodeFileTypeInvalid Code = "FILE_TYPE_INVALID"
+
 	// CodeFileNotFound indicates the requested file record does not exist.
 	CodeFileNotFound Code = "FILE_NOT_FOUND"
 	// CodeAttachmentNotFound indicates the requested task attachment does not exist.

@@ -4,18 +4,23 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { Paperclip, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
+	attachmentAsFileNode,
 	deleteTaskAttachment,
+	getAttachmentDownloadURL,
 	taskAttachmentsQueryOptions,
 	uploadAttachment,
 } from "@/lib/attachment-api";
 import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { AttachmentItem } from "./attachment-item";
+
+// The viewer (and its heavy document libraries) is fetched only when a preview opens.
+const FilePreview = lazy(() => import("@/components/files/file-preview"));
 
 interface AttachmentsSectionProps {
 	projectId: string;
@@ -39,6 +44,13 @@ export function AttachmentsSection({
 	);
 	const attachments =
 		attachmentsQuery.data?.pages.flatMap((p) => p.items) ?? [];
+
+	// ── Preview ────────────────────────────────────────────────────────────
+	const [previewId, setPreviewId] = useState<string | null>(null);
+	const previewFiles = attachments.map((a) =>
+		attachmentAsFileNode(a, projectId),
+	);
+	const previewIndex = previewFiles.findIndex((f) => f.id === previewId);
 
 	// ── Upload mutation ────────────────────────────────────────────────────
 	const uploadMutation = useMutation({
@@ -137,6 +149,7 @@ export function AttachmentsSection({
 							taskId={taskId}
 							canDelete={canEdit}
 							onDelete={(id) => deleteMutation.mutate(id)}
+							onPreview={(a) => setPreviewId(a.id)}
 						/>
 					))}
 					<LoadMoreSentinel
@@ -146,6 +159,28 @@ export function AttachmentsSection({
 						onLoadMore={() => void attachmentsQuery.fetchNextPage()}
 					/>
 				</div>
+			)}
+
+			{previewIndex >= 0 && (
+				<Suspense fallback={null}>
+					<FilePreview
+						files={previewFiles}
+						index={previewIndex}
+						scope={{ projectId }}
+						onIndexChange={(i) => setPreviewId(previewFiles[i]?.id ?? null)}
+						onClose={() => setPreviewId(null)}
+						resolveUrl={(f) =>
+							getAttachmentDownloadURL(projectId, taskId, f.id)
+						}
+						onDownload={(f) =>
+							void getAttachmentDownloadURL(projectId, taskId, f.id, {
+								download: true,
+							}).then((url) =>
+								window.open(url, "_blank", "noopener,noreferrer"),
+							)
+						}
+					/>
+				</Suspense>
 			)}
 
 			{/* Drop zone */}

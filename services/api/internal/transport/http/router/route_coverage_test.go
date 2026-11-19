@@ -74,6 +74,7 @@ func coverageDeps(iamAuth *iam.Authorizer) Deps {
 		Attachment:          handler.NewAttachmentHandler(nil),
 		Document:            handler.NewDocumentHandler(nil, nil),
 		DocFile:             handler.NewDocFileHandler(nil),
+		File:                handler.NewFileHandler(nil, nil, nil),
 		Notification:        handler.NewNotificationHandler(nil),
 		APIKey:              handler.NewAPIKeyHandler(nil),
 		ServiceAccount:      handler.NewServiceAccountHandler(nil, nil),

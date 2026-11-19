@@ -35,6 +35,7 @@ const PLATFORM_ROOTS: Record<string, readonly string[]> = {
 	agents: ["agent", "agent/*"],
 	projects: ["project"],
 	"git.identities": ["git_identity/*"],
+	files: ["file/*"],
 };
 
 /** Where a workspace-wide check of one action lands: its platform root, or

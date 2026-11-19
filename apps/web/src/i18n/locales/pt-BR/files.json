@@ -1,0 +1,240 @@
+{
+	"title": "Arquivos",
+	"nav": {
+		"files": "Arquivos",
+		"recent": "Recentes",
+		"starred": "Com estrela",
+		"trash": "Lixeira"
+	},
+	"roots": {
+		"general": "Geral",
+		"empty": "Você ainda não tem acesso a nenhum arquivo.",
+		"emptyHint": "Os arquivos dos projetos que você pode ler aparecem aqui como pastas."
+	},
+	"header": {
+		"new": "Novo",
+		"newFolder": "Nova pasta",
+		"uploadFile": "Enviar arquivo",
+		"uploadFolder": "Enviar pasta",
+		"search": "Pesquisar em {{where}}",
+		"view": {
+			"grid": "Visualização em grade",
+			"list": "Visualização em lista"
+		},
+		"typeFilter": "Tipo",
+		"allTypes": "Todos os tipos"
+	},
+	"types": {
+		"document": "Documentos",
+		"spreadsheet": "Planilhas",
+		"presentation": "Apresentações",
+		"pdf": "PDFs",
+		"image": "Imagens",
+		"video": "Vídeos",
+		"audio": "Áudio",
+		"archive": "Arquivos compactados"
+	},
+	"kinds": {
+		"folder": "Pasta",
+		"image": "Imagem",
+		"video": "Vídeo",
+		"audio": "Áudio",
+		"pdf": "PDF",
+		"document": "Documento",
+		"spreadsheet": "Planilha",
+		"presentation": "Apresentação",
+		"archive": "Arquivo compactado",
+		"code": "Código",
+		"text": "Texto",
+		"other": "Arquivo"
+	},
+	"columns": {
+		"name": "Nome",
+		"owner": "Proprietário",
+		"modified": "Última modificação",
+		"size": "Tamanho",
+		"location": "Local",
+		"trashed": "Data de envio para a lixeira"
+	},
+	"sections": {
+		"folders": "Pastas",
+		"files": "Arquivos"
+	},
+	"sectionTitle": {
+		"recent": "Recentes",
+		"starred": "Com estrela",
+		"trash": "Lixeira"
+	},
+	"empty": {
+		"folder": "Esta pasta está vazia",
+		"folderHint": "Arraste arquivos para cá ou use Novo para adicionar.",
+		"search": "Nenhum arquivo corresponde à sua pesquisa",
+		"recent": "Nenhum arquivo aberto recentemente",
+		"recentHint": "Os arquivos que você visualiza ou baixa aparecem aqui.",
+		"starred": "Nada com estrela ainda",
+		"starredHint": "Adicione estrela a arquivos e pastas para encontrá-los rapidamente.",
+		"trash": "A lixeira está vazia",
+		"trashHint": "Os itens ficam aqui por 30 dias e depois são excluídos permanentemente."
+	},
+	"actions": {
+		"open": "Abrir",
+		"preview": "Visualizar",
+		"download": "Baixar",
+		"star": "Adicionar estrela",
+		"unstar": "Remover estrela",
+		"rename": "Renomear",
+		"move": "Mover para…",
+		"details": "Detalhes",
+		"trash": "Mover para a lixeira",
+		"delete": "Excluir",
+		"restore": "Restaurar",
+		"deleteForever": "Excluir permanentemente",
+		"more": "Mais ações"
+	},
+	"system": {
+		"task_attachments": "Arquivos anexados às tarefas deste projeto.",
+		"task": "Anexos desta tarefa.",
+		"docs": "Arquivos incorporados nos documentos deste projeto.",
+		"annotations": "Capturas de tela de comentários de página."
+	},
+	"dialogs": {
+		"newFolder": {
+			"title": "Nova pasta",
+			"label": "Nome da pasta",
+			"default": "Pasta sem título",
+			"create": "Criar"
+		},
+		"rename": {
+			"title": "Renomear",
+			"label": "Nome",
+			"save": "Salvar"
+		},
+		"move": {
+			"title": "Mover {{name}}",
+			"titleMany": "Mover {{count}} itens",
+			"here": "Mover para cá",
+			"noFolders": "Não há pastas aqui"
+		},
+		"deleteForever": {
+			"title": "Excluir permanentemente?",
+			"body": "{{name}} será excluído permanentemente. Isso não pode ser desfeito.",
+			"bodyMany": "{{count}} itens serão excluídos permanentemente. Isso não pode ser desfeito.",
+			"confirm": "Excluir permanentemente"
+		},
+		"cancel": "Cancelar",
+		"deleteManaged": {
+			"title": "Excluir permanentemente?",
+			"confirm": "Excluir",
+			"taskAttachment": "{{name}} está anexado a uma tarefa. Excluí-lo o remove da tarefa e não pode ser desfeito.",
+			"doc": "{{name}} é usado em um documento. Excluí-lo o remove permanentemente e o documento mostrará um arquivo quebrado. Isso não pode ser desfeito.",
+			"annotation": "{{name}} é uma captura de tela de um comentário de página. Excluí-la a remove permanentemente, do comentário e de qualquer tarefa à qual esteja anexada. Isso não pode ser desfeito.",
+			"many": "{{count}} dos arquivos selecionados são usados por tarefas, documentos ou comentários de página. Excluí-los os remove de lá permanentemente. Isso não pode ser desfeito."
+		}
+	},
+	"details": {
+		"title": "Detalhes",
+		"type": "Tipo",
+		"size": "Tamanho",
+		"owner": "Proprietário",
+		"created": "Criado",
+		"modified": "Modificado",
+		"location": "Local",
+		"source": "Origem",
+		"unknownOwner": "Desconhecido"
+	},
+	"source": {
+		"upload": "Enviado",
+		"task_attachment": "Anexo de tarefa",
+		"doc": "Arquivo de documento",
+		"annotation": "Captura de anotação"
+	},
+	"upload": {
+		"uploading": "Enviando {{count}} item",
+		"done": "Envios concluídos",
+		"failed": "{{count}} com falha",
+		"cancel": "Cancelar",
+		"dropHere": "Solte para enviar para {{where}}",
+		"error": "Falha no envio",
+		"uploading_other": "Enviando {{count}} itens"
+	},
+	"preview": {
+		"loading": "Carregando visualização…",
+		"tooLarge": "Este arquivo é grande demais para visualizar ({{size}}). Baixe-o para abrir.",
+		"failed": "Não foi possível carregar a visualização.",
+		"download": "Baixar",
+		"previous": "Arquivo anterior",
+		"next": "Próximo arquivo",
+		"close": "Fechar"
+	},
+	"toast": {
+		"folderCreated": "Pasta criada",
+		"renamed": "Renomeado",
+		"moved": "Movido",
+		"movedMany": "{{count}} itens movidos",
+		"trashed": "Movido para a lixeira",
+		"trashedMany": "{{count}} itens movidos para a lixeira",
+		"restored": "Restaurado",
+		"deleted": "Excluído",
+		"starred": "Estrela adicionada",
+		"unstarred": "Estrela removida",
+		"failed": "Algo deu errado"
+	},
+	"errors": {
+		"FILE_NODE_NOT_FOUND": "Esse item não existe mais.",
+		"FILE_NAME_INVALID": "Os nomes não podem ficar vazios nem conter barras.",
+		"FILE_NODE_LOCKED": "Este item é gerenciado pelo Paca e não pode ser alterado.",
+		"FILE_NOT_FOLDER": "Isso não é uma pasta.",
+		"FILE_NOT_FILE": "Isso não é um arquivo.",
+		"FILE_MOVE_INTO_SELF": "Uma pasta não pode ser movida para dentro dela mesma.",
+		"FILE_NODE_TRASHED": "Esse item está na lixeira.",
+		"FILE_NODE_NOT_TRASHED": "Esse item não está na lixeira.",
+		"FILE_UPLOAD_INCOMPLETE": "O envio não foi concluído.",
+		"FILE_TOO_LARGE": "Esse arquivo é grande demais para enviar.",
+		"FILE_TYPE_INVALID": "Filtro de tipo de arquivo desconhecido."
+	},
+	"noAccess": {
+		"title": "Você não pode ver estes arquivos",
+		"body": "Peça acesso aos arquivos a um administrador do projeto."
+	},
+	"selected": "{{count}} selecionados",
+	"picker": {
+		"search": "Pesquisar arquivos",
+		"root": "Arquivos",
+		"empty": "Nenhum arquivo correspondente nesta pasta"
+	},
+	"filePanel": {
+		"tabs": {
+			"upload": "Enviar",
+			"files": "Dos arquivos",
+			"embed": "Incorporar link"
+		},
+		"upload": {
+			"title": {
+				"image": "Enviar uma imagem",
+				"video": "Enviar um vídeo",
+				"audio": "Enviar um arquivo de áudio",
+				"file": "Enviar um arquivo"
+			},
+			"hint": "Arraste e solte, ou clique para escolher",
+			"uploading": "Enviando…",
+			"error": "O envio falhou. Tente novamente."
+		},
+		"files": {
+			"hint": {
+				"image": "Escolha uma imagem dos arquivos deste projeto",
+				"video": "Escolha um vídeo dos arquivos deste projeto",
+				"audio": "Escolha um áudio dos arquivos deste projeto",
+				"file": "Escolha um arquivo dos arquivos deste projeto"
+			}
+		},
+		"embed": {
+			"placeholder": "Cole um link…",
+			"button": {
+				"image": "Incorporar imagem",
+				"video": "Incorporar vídeo",
+				"audio": "Incorporar áudio",
+				"file": "Incorporar arquivo"
+			}
+		}
+	}
+}

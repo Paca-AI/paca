@@ -1,6 +1,7 @@
 import { infiniteQueryOptions } from "@tanstack/react-query";
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+import type { FileNode } from "./files-api";
 
 // ── API shapes ────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,31 @@ export interface TaskAttachment {
 	created_by?: string | null;
 	created_at: string;
 	file: AttachmentFile;
+}
+
+/**
+ * An attachment in the shape the file viewer takes. Its id stays the
+ * attachment id, so the viewer's URL lookup can go through the task
+ * attachment API (and its permissions) instead of the file manager's.
+ */
+export function attachmentAsFileNode(
+	a: TaskAttachment,
+	projectId: string,
+): FileNode {
+	return {
+		id: a.id,
+		project_id: projectId,
+		parent_id: null,
+		kind: "file",
+		name: a.file.file_name,
+		content_type: a.file.content_type,
+		size: a.file.file_size,
+		owner_id: a.created_by ?? null,
+		created_at: a.created_at,
+		updated_at: a.created_at,
+		starred: false,
+		locked: true,
+	};
 }
 
 export const TASK_ATTACHMENTS_PAGE_SIZE = 30;
@@ -103,6 +129,17 @@ async function completeUpload(
 		`/projects/${projectId}/tasks/${taskId}/attachments/complete-upload`,
 		payload,
 	);
+	return data.data;
+}
+
+export async function getTaskAttachment(
+	projectId: string,
+	taskId: string,
+	attachmentId: string,
+): Promise<TaskAttachment> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<TaskAttachment>
+	>(`/projects/${projectId}/tasks/${taskId}/attachments/${attachmentId}`);
 	return data.data;
 }
 

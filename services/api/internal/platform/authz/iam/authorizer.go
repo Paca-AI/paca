@@ -366,6 +366,8 @@ func PlatformRootFor(action string) string {
 		return "project"
 	case "git.identities":
 		return "git_identity/*"
+	case "files":
+		return "file/*"
 	}
 	return ""
 }
