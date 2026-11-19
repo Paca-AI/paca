@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { PaneResizeHandle } from "@/components/shared/pane-resize-handle";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import {
 	type ChildTaskFilters,
 	childTasksInfiniteQueryOptions,
@@ -32,6 +33,7 @@ import type {
 } from "@/lib/project-api";
 import { cn } from "@/lib/utils";
 import { AddTaskRow } from "./add-task-row";
+import { AssigneePicker } from "./assignee-picker";
 import {
 	barBox,
 	buildScale,
@@ -62,8 +64,10 @@ import {
 	buildColumnDropUpdate,
 	buildDynamicGroupDefs,
 	type ColumnGroupDef,
+	DEFAULT_VISIBLE_FIELDS,
 	getColumnGroupDefs,
 	getTaskColumnKeys,
+	isAutoAssignPending,
 	type TaskFieldUpdate,
 } from "./view-utils";
 
@@ -83,6 +87,8 @@ const ZOOM_LABEL_KEYS = {
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface GanttViewProps {
 	projectId?: string;
+	/** The project's task ID prefix (e.g. "PACA"); IDs fall back to "#n". */
+	taskIdPrefix?: string;
 	/** The view's filters/sort, applied to the tasks listed under a parent. */
 	childFilters?: ChildTaskFilters;
 	/** Identifies the view for remembering which rows are expanded. */
@@ -190,6 +196,7 @@ export function GanttView({
 	customFields = [],
 	columnBy = "status",
 	viewConfig,
+	taskIdPrefix = "",
 	canCreate = false,
 	canEdit = false,
 	manualSort = false,
@@ -221,6 +228,14 @@ export function GanttView({
 	const [overTaskId, setOverTaskId] = useState<string | null>(null);
 	const isStatusGrouping = !columnBy || columnBy === "status";
 	const canDrag = canEdit && !!onMoveToColumn;
+	const jevEnabled = useJevEnabled(projectId);
+	// Same "Fields" setting as the Table and Board: assignees show unless the
+	// view's field list leaves them out.
+	const visibleFields =
+		viewConfig?.fields && viewConfig.fields.length > 0
+			? viewConfig.fields
+			: DEFAULT_VISIBLE_FIELDS;
+	const showAssignee = visibleFields.includes("assignee");
 	const canReorder = manualSort && !!onReorderTask;
 	const canReschedule = canEdit && !!onRescheduleTask;
 
@@ -731,7 +746,10 @@ export function GanttView({
 			<div
 				role="button"
 				tabIndex={0}
-				className="group flex w-full cursor-pointer border-b border-border/10 text-left last:border-0"
+				// Every row carries its own divider (no `last:` reset: each row is the
+				// only child of its drag wrapper, so `last:` would strip them all) and
+				// highlights end to end so a task can be followed out to its bar.
+				className="group flex w-full cursor-pointer border-b border-dashed border-border/30 text-left transition-colors duration-100 hover:bg-muted/30"
 				onClick={() => {
 					if (suppressClickRef.current) {
 						suppressClickRef.current = false;
@@ -752,7 +770,9 @@ export function GanttView({
 					className={cn(
 						"sticky left-0 z-10 flex shrink-0 items-center gap-1.5",
 						"border-r border-border/20 bg-background px-4 py-2.5",
-						"group-hover:bg-muted/30 transition-colors duration-100",
+						// Opaque version of the row's hover tint: a translucent fill
+						// would let bars show through this sticky column when scrolled.
+						"group-hover:bg-[color-mix(in_oklab,var(--color-muted)_30%,var(--color-background))] transition-colors duration-100",
 					)}
 					style={{ width: leftColW, paddingLeft: 16 + depth * 16 }}
 				>
@@ -788,6 +808,13 @@ export function GanttView({
 								type?.color ?? "oklch(var(--muted-foreground) / 0.25)",
 						}}
 					/>
+					{(taskIdPrefix || task.task_number > 0) && (
+						<span className="shrink-0 font-[JetBrains_Mono,monospace] text-xs font-semibold tracking-wide text-muted-foreground/80">
+							{taskIdPrefix
+								? `${taskIdPrefix}-${task.task_number}`
+								: `#${task.task_number}`}
+						</span>
+					)}
 					<span className="min-w-0 truncate text-sm font-medium text-foreground/85">
 						{task.title}
 					</span>
@@ -801,6 +828,24 @@ export function GanttView({
 						>
 							{task.subtask_done_count ?? 0}/{count}
 						</span>
+					)}
+					{showAssignee && (
+						// biome-ignore lint/a11y/noStaticElementInteractions: stops the row click; the picker inside is the interactive element
+						<div
+							className="ml-auto flex shrink-0 items-center pl-2"
+							onClick={(e) => e.stopPropagation()}
+							onKeyDown={(e) => e.stopPropagation()}
+						>
+							<AssigneePicker
+								projectId={task.project_id}
+								assigneeIds={task.assignee_ids ?? []}
+								isAutoAssign={isAutoAssignPending(task)}
+								autoEnabled={jevEnabled}
+								canEdit={canEdit && !!onMoveToColumn}
+								align="end"
+								onChange={(patch) => onMoveToColumn?.(task.id, patch)}
+							/>
+						</div>
 					)}
 				</div>
 
@@ -1235,7 +1280,7 @@ function GanttChildRows({
 		[query.data],
 	);
 	const note = (text: React.ReactNode) => (
-		<div className="flex border-b border-border/10">
+		<div className="flex border-b border-dashed border-border/30">
 			<div
 				className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border/20 bg-background py-2 pr-4 text-xs text-muted-foreground/70"
 				style={{ width: leftColWidth, paddingLeft: 40 + depth * 16 }}

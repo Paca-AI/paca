@@ -78,7 +78,7 @@ export function FilesSidebarSection({ projectId }: { projectId?: string }) {
 			<SidebarGroupLabel
 				render={<button type="button" />}
 				aria-expanded={!collapsed}
-				className="flex w-full cursor-pointer items-center justify-between px-3 text-left transition-colors hover:text-sidebar-foreground"
+				className="flex w-full cursor-pointer items-center justify-between text-left transition-colors hover:text-sidebar-foreground"
 				onClick={toggle}
 			>
 				<span>{t("title")}</span>
