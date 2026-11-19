@@ -746,7 +746,10 @@ export function GanttView({
 			<div
 				role="button"
 				tabIndex={0}
-				className="group flex w-full cursor-pointer border-b border-border/10 text-left last:border-0"
+				// Every row carries its own divider (no `last:` reset: each row is the
+				// only child of its drag wrapper, so `last:` would strip them all) and
+				// highlights end to end so a task can be followed out to its bar.
+				className="group flex w-full cursor-pointer border-b border-dashed border-border/30 text-left transition-colors duration-100 hover:bg-muted/30"
 				onClick={() => {
 					if (suppressClickRef.current) {
 						suppressClickRef.current = false;
@@ -767,7 +770,9 @@ export function GanttView({
 					className={cn(
 						"sticky left-0 z-10 flex shrink-0 items-center gap-1.5",
 						"border-r border-border/20 bg-background px-4 py-2.5",
-						"group-hover:bg-muted/30 transition-colors duration-100",
+						// Opaque version of the row's hover tint: a translucent fill
+						// would let bars show through this sticky column when scrolled.
+						"group-hover:bg-[color-mix(in_oklab,var(--color-muted)_30%,var(--color-background))] transition-colors duration-100",
 					)}
 					style={{ width: leftColW, paddingLeft: 16 + depth * 16 }}
 				>
@@ -1275,7 +1280,7 @@ function GanttChildRows({
 		[query.data],
 	);
 	const note = (text: React.ReactNode) => (
-		<div className="flex border-b border-border/10">
+		<div className="flex border-b border-dashed border-border/30">
 			<div
 				className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border/20 bg-background py-2 pr-4 text-xs text-muted-foreground/70"
 				style={{ width: leftColWidth, paddingLeft: 40 + depth * 16 }}

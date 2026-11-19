@@ -807,7 +807,9 @@ export function TaskRow({
 			onMouseLeave={() => setIsHovered(false)}
 			className={cn(
 				"group relative flex items-center gap-2 px-4 py-2.5 cursor-pointer sm:gap-3",
-				"hover:bg-muted/30 transition-colors duration-150 border-b border-border/20 last:border-0",
+				// No `last:` reset: each row is the only child of its drag/menu
+				// wrapper, so `last:border-0` would strip every divider.
+				"hover:bg-muted/30 transition-colors duration-150 border-b border-dashed border-border/30",
 				isDragging && "opacity-40 bg-muted/20",
 				depth > 0 && "bg-muted/10",
 			)}
