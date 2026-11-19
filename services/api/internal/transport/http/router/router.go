@@ -28,6 +28,7 @@ type Deps struct {
 	Health  *handler.HealthHandler
 	Version *handler.VersionHandler
 	Auth    *handler.AuthHandler
+	Session *handler.SessionHandler
 	User    *handler.UserHandler
 	// Role serves the IAM roles and attachments API; RoleAttachments backs the
 	// assignment gates (which roles a request adds and removes). Both are
@@ -102,6 +103,8 @@ func New(deps Deps) http.Handler {
 	r.Use(loggerMiddleware(deps.Log))
 	r.Use(chimw.Recoverer)
 	r.Use(corsMiddleware(deps.CORSAllowedOrigins))
+	// Lets a sign-in or refresh record where it came from (see domainauth.ClientInfo).
+	r.Use(httpmw.WithClientInfo)
 
 	r.Route("/api", func(r chi.Router) {
 		// Public routes
@@ -206,6 +209,16 @@ func New(deps Deps) http.Handler {
 							r.Post("/me/passkeys/register/finish", deps.MFA.FinishPasskeyRegistration)
 							r.Post("/me/passkeys/verify/options", deps.MFA.BeginPasskeyVerification)
 							r.Delete("/me/passkeys/{passkeyId}", deps.MFA.DeletePasskey)
+						})
+					}
+					// Signed-in devices — JWT/cookie auth only, so a leaked API key
+					// can neither list nor end the owner's sessions.
+					if deps.Session != nil {
+						r.Group(func(r chi.Router) {
+							r.Use(httpmw.RequireJWTAuth())
+							r.Get("/me/sessions", deps.Session.List)
+							r.Delete("/me/sessions", deps.Session.RevokeOthers)
+							r.Delete("/me/sessions/{sessionId}", deps.Session.Revoke)
 						})
 					}
 					r.Post("/me/avatar/initiate-upload", deps.User.InitiateAvatarUpload)

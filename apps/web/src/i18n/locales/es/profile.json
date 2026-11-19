@@ -207,6 +207,28 @@
 				"invalid": "No se pudo verificar la llave de acceso. Inténtalo de nuevo.",
 				"generic": "Algo salió mal. Inténtalo de nuevo."
 			}
+		},
+		"sessions": {
+			"title": "Dispositivos con sesión iniciada",
+			"description": "Navegadores y dispositivos con la sesión iniciada en tu cuenta. Cierra la sesión de los que no reconozcas o ya no uses.",
+			"current": "Este dispositivo",
+			"empty": "Aún no hay dispositivos con sesión iniciada que mostrar.",
+			"activeNow": "Activo ahora",
+			"signedIn": "Sesión iniciada el {{date}}",
+			"deviceFull": "{{browser}} en {{os}}",
+			"unknownDevice": "Dispositivo desconocido",
+			"revoke": "Cerrar sesión",
+			"revokeLabel": "Cerrar la sesión de {{name}}",
+			"revokeOthers": "Cerrar la sesión en todos los demás dispositivos",
+			"revokeTitle": "¿Cerrar la sesión de este dispositivo?",
+			"revokeDescription": "Se cerrará la sesión de {{name}} de inmediato y tendrá que volver a iniciarla.",
+			"revokeOthersTitle": "¿Cerrar la sesión en todos los demás dispositivos?",
+			"revokeOthersDescription": "Se cerrará de inmediato la sesión en todos los dispositivos excepto este, y tendrán que volver a iniciarla.",
+			"confirm": "Cerrar sesión",
+			"errors": {
+				"load": "No se pudieron cargar tus dispositivos con sesión iniciada.",
+				"generic": "Algo salió mal. Inténtalo de nuevo."
+			}
 		}
 	}
 }

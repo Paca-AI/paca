@@ -2,7 +2,9 @@
 package jwttoken
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -16,6 +18,36 @@ type Manager struct {
 	secret     []byte
 	accessTTL  time.Duration
 	refreshTTL time.Duration
+	revoked    RevocationCheck
+}
+
+// RevocationCheck reports whether a session family has been revoked.
+type RevocationCheck func(ctx context.Context, familyID string) (bool, error)
+
+// WithRevocationCheck installs the lookup IsRevoked consults. Without one no
+// family is ever considered revoked.
+func (m *Manager) WithRevocationCheck(check RevocationCheck) *Manager {
+	m.revoked = check
+	return m
+}
+
+// IsRevoked reports whether the session family a token belongs to has been
+// signed out. A signed access token is otherwise valid until it expires, so
+// this is what makes "sign out that device" take effect at once.
+//
+// A failing lookup counts as not revoked: a cache outage must not sign every
+// user out, and the refresh path (which does fail closed) still ends the
+// session within one access-token lifetime.
+func (m *Manager) IsRevoked(ctx context.Context, familyID string) bool {
+	if m.revoked == nil || familyID == "" {
+		return false
+	}
+	revoked, err := m.revoked(ctx, familyID)
+	if err != nil {
+		slog.Warn("session revocation lookup failed", "error", err)
+		return false
+	}
+	return revoked
 }
 
 // New returns a Manager configured with the given secret and token lifetimes.

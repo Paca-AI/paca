@@ -207,6 +207,28 @@
 				"invalid": "The passkey couldn't be verified. Please try again.",
 				"generic": "Something went wrong. Please try again."
 			}
+		},
+		"sessions": {
+			"title": "Signed-in devices",
+			"description": "Browsers and devices currently signed in to your account. Sign out any you don't recognise or no longer use.",
+			"current": "This device",
+			"empty": "No signed-in devices to show yet.",
+			"activeNow": "Active now",
+			"signedIn": "Signed in {{date}}",
+			"deviceFull": "{{browser}} on {{os}}",
+			"unknownDevice": "Unknown device",
+			"revoke": "Sign out",
+			"revokeLabel": "Sign out {{name}}",
+			"revokeOthers": "Sign out all other devices",
+			"revokeTitle": "Sign out this device?",
+			"revokeDescription": "{{name}} will be signed out right away and will need to sign in again.",
+			"revokeOthersTitle": "Sign out all other devices?",
+			"revokeOthersDescription": "Every device except this one will be signed out right away and will need to sign in again.",
+			"confirm": "Sign out",
+			"errors": {
+				"load": "Couldn't load your signed-in devices.",
+				"generic": "Something went wrong. Please try again."
+			}
 		}
 	}
 }

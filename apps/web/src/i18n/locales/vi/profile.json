@@ -207,6 +207,28 @@
 				"invalid": "Không thể xác minh khóa truy cập. Vui lòng thử lại.",
 				"generic": "Đã xảy ra lỗi. Vui lòng thử lại."
 			}
+		},
+		"sessions": {
+			"title": "Thiết bị đang đăng nhập",
+			"description": "Các trình duyệt và thiết bị hiện đang đăng nhập vào tài khoản của bạn. Hãy đăng xuất những thiết bị bạn không nhận ra hoặc không còn dùng.",
+			"current": "Thiết bị này",
+			"empty": "Chưa có thiết bị đăng nhập nào để hiển thị.",
+			"activeNow": "Đang hoạt động",
+			"signedIn": "Đăng nhập {{date}}",
+			"deviceFull": "{{browser}} trên {{os}}",
+			"unknownDevice": "Thiết bị không xác định",
+			"revoke": "Đăng xuất",
+			"revokeLabel": "Đăng xuất {{name}}",
+			"revokeOthers": "Đăng xuất tất cả thiết bị khác",
+			"revokeTitle": "Đăng xuất thiết bị này?",
+			"revokeDescription": "{{name}} sẽ bị đăng xuất ngay lập tức và cần đăng nhập lại.",
+			"revokeOthersTitle": "Đăng xuất tất cả thiết bị khác?",
+			"revokeOthersDescription": "Mọi thiết bị trừ thiết bị này sẽ bị đăng xuất ngay lập tức và cần đăng nhập lại.",
+			"confirm": "Đăng xuất",
+			"errors": {
+				"load": "Không thể tải danh sách thiết bị đang đăng nhập.",
+				"generic": "Đã xảy ra lỗi. Vui lòng thử lại."
+			}
 		}
 	}
 }

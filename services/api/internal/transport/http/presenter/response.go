@@ -210,6 +210,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeInvalidCIDR
 	case errors.Is(err, domainauth.ErrTokenInvalid):
 		return http.StatusUnauthorized, apierr.CodeTokenInvalid
+	case errors.Is(err, domainauth.ErrSessionNotFound):
+		return http.StatusNotFound, apierr.CodeSessionNotFound
 	case errors.Is(err, domainauth.ErrSessionInvalidated):
 		return http.StatusUnauthorized, apierr.CodeTokenInvalid
 	case errors.Is(err, userdom.ErrNotFound):

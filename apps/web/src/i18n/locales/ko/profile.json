@@ -207,6 +207,28 @@
 				"invalid": "패스키를 확인할 수 없습니다. 다시 시도해 주세요.",
 				"generic": "문제가 발생했습니다. 다시 시도해 주세요."
 			}
+		},
+		"sessions": {
+			"title": "로그인된 기기",
+			"description": "현재 내 계정에 로그인되어 있는 브라우저와 기기입니다. 알아볼 수 없거나 더 이상 사용하지 않는 기기는 로그아웃하세요.",
+			"current": "이 기기",
+			"empty": "아직 표시할 로그인된 기기가 없습니다.",
+			"activeNow": "지금 활동 중",
+			"signedIn": "{{date}}에 로그인",
+			"deviceFull": "{{os}}의 {{browser}}",
+			"unknownDevice": "알 수 없는 기기",
+			"revoke": "로그아웃",
+			"revokeLabel": "{{name}} 로그아웃",
+			"revokeOthers": "다른 모든 기기에서 로그아웃",
+			"revokeTitle": "이 기기를 로그아웃할까요?",
+			"revokeDescription": "{{name}}이(가) 즉시 로그아웃되며 다시 로그인해야 합니다.",
+			"revokeOthersTitle": "다른 모든 기기에서 로그아웃할까요?",
+			"revokeOthersDescription": "이 기기를 제외한 모든 기기가 즉시 로그아웃되며 다시 로그인해야 합니다.",
+			"confirm": "로그아웃",
+			"errors": {
+				"load": "로그인된 기기를 불러오지 못했습니다.",
+				"generic": "문제가 발생했습니다. 다시 시도해 주세요."
+			}
 		}
 	}
 }

@@ -40,6 +40,8 @@ const (
 	CodePasskeyLimit Code = "PASSKEY_LIMIT"
 	// CodePasskeyNotFound means the account has no passkey with that id.
 	CodePasskeyNotFound Code = "PASSKEY_NOT_FOUND"
+	// CodeSessionNotFound means the account has no live session with that id.
+	CodeSessionNotFound Code = "SESSION_NOT_FOUND"
 	// CodeInvalidCIDR means an allow-list entry is not an IP or CIDR.
 	CodeInvalidCIDR Code = "INVALID_CIDR"
 	// CodeSelfLockout means the saved allow-list would exclude the admin saving it.

@@ -170,6 +170,10 @@ var mfaOpenRoutes = []string{
 	"POST /api/v1/users/me/passkeys/register/finish",
 	"POST /api/v1/users/me/passkeys/verify/options",
 	"DELETE /api/v1/users/me/passkeys/{passkeyId}",
+	// Signed-in device self-service on the caller's own account.
+	"GET /api/v1/users/me/sessions",
+	"DELETE /api/v1/users/me/sessions",
+	"DELETE /api/v1/users/me/sessions/{sessionId}",
 }
 
 // gatesOf returns the guards gates among a route's middlewares.

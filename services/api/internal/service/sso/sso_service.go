@@ -53,7 +53,7 @@ var slugRe = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$`)
 // SessionIssuer starts a Paca session for an authenticated user — see
 // authsvc.Service.IssueSession.
 type SessionIssuer interface {
-	IssueSession(u *userdom.User, rememberMe bool) (*domainauth.TokenPair, error)
+	IssueSession(ctx context.Context, u *userdom.User, rememberMe bool) (*domainauth.TokenPair, error)
 }
 
 // UserCreator provisions a new account with the default global role — see
@@ -492,7 +492,7 @@ func (s *Service) CompleteLogin(ctx context.Context, slug, baseURL, code, state,
 	if err := s.dropUnmeetablePasswordChange(ctx, u); err != nil {
 		return nil, "", err
 	}
-	pair, err := s.sessions.IssueSession(u, attempt.RememberMe)
+	pair, err := s.sessions.IssueSession(ctx, u, attempt.RememberMe)
 	if err != nil {
 		return nil, "", err
 	}
