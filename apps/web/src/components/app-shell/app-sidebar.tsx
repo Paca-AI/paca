@@ -2286,25 +2286,20 @@ export function AppSidebar() {
 
 			<SidebarSeparator />
 
-			{/* Navigation — switches between workspace and project context */}
-			{/* Optional sections render nothing when empty, which can leave two
-				   dividers back to back; show only the first. */}
-			<SidebarContent className="[&_[data-slot=sidebar-separator]+[data-slot=sidebar-separator]]:hidden">
+			{/* Navigation — switches between workspace and project context.
+			    Sections are set apart by their own headings, so no dividers
+			    between them; separators only frame the header and footer. */}
+			<SidebarContent>
 				{isProjectContext ? (
 					<>
 						{user && <ProjectNav />}
-						{user && <SidebarSeparator />}
 						<ProjectInteractionsSection projectId={projectId} />
-						<SidebarSeparator />
 						{canReadDocs && <DocsSidebarSection projectId={projectId} />}
-						<SidebarSeparator />
 						<ExtensionPoint
 							point="sidebar.project.section"
 							componentProps={{ projectId }}
 						/>
-						<SidebarSeparator />
 						<PluginProjectPages projectId={projectId} />
-						<SidebarSeparator />
 						<ProjectNavItems projectId={projectId} />
 					</>
 				) : (
@@ -2327,81 +2322,73 @@ export function AppSidebar() {
 						<ExtensionPoint point="sidebar.general.section" />
 						{/* Admin section */}
 						{showAdminSection ? (
-							<>
-								<SidebarSeparator />
-								<SidebarGroup>
-									<SidebarGroupLabel>
-										{t("nav.administration")}
-									</SidebarGroupLabel>
-									<SidebarGroupContent>
-										<SidebarMenu>
-											{canAccessGlobalRoles ? (
-												<NavItem
-													to="/admin/global-roles"
-													icon={Shield}
-													label={t("nav.globalRoles")}
-												/>
-											) : null}
-											{canAccessUsers ? (
-												<NavItem
-													to="/admin/users"
-													icon={Users}
-													label={t("nav.users")}
-												/>
-											) : null}
-											{canAccessGlobalAgents ? (
-												<NavItem
-													to="/admin/agents"
-													icon={Bot}
-													label={t("nav.agents")}
-												/>
-											) : null}
-											{canAccessServiceAccounts ? (
-												<NavItem
-													to="/admin/service-accounts"
-													icon={ServerCog}
-													label={t("nav.serviceAccounts")}
-												/>
-											) : null}
-											{canAccessPlugins ? (
-												<NavItem
-													to="/admin/plugins"
-													icon={Puzzle}
-													label={t("nav.plugins")}
-													exact
-												/>
-											) : null}
-											{canAccessSettings ? (
-												<NavItem
-													to="/admin/settings"
-													icon={Settings}
-													label={t("nav.settings")}
-												/>
-											) : null}
+							<SidebarGroup>
+								<SidebarGroupLabel>{t("nav.administration")}</SidebarGroupLabel>
+								<SidebarGroupContent>
+									<SidebarMenu>
+										{canAccessGlobalRoles ? (
 											<NavItem
-												to="/admin/changelog"
-												icon={Sparkles}
-												label={t("nav.changelog")}
+												to="/admin/global-roles"
+												icon={Shield}
+												label={t("nav.globalRoles")}
 											/>
-										</SidebarMenu>
-									</SidebarGroupContent>
-								</SidebarGroup>
-							</>
+										) : null}
+										{canAccessUsers ? (
+											<NavItem
+												to="/admin/users"
+												icon={Users}
+												label={t("nav.users")}
+											/>
+										) : null}
+										{canAccessGlobalAgents ? (
+											<NavItem
+												to="/admin/agents"
+												icon={Bot}
+												label={t("nav.agents")}
+											/>
+										) : null}
+										{canAccessServiceAccounts ? (
+											<NavItem
+												to="/admin/service-accounts"
+												icon={ServerCog}
+												label={t("nav.serviceAccounts")}
+											/>
+										) : null}
+										{canAccessPlugins ? (
+											<NavItem
+												to="/admin/plugins"
+												icon={Puzzle}
+												label={t("nav.plugins")}
+												exact
+											/>
+										) : null}
+										{canAccessSettings ? (
+											<NavItem
+												to="/admin/settings"
+												icon={Settings}
+												label={t("nav.settings")}
+											/>
+										) : null}
+										<NavItem
+											to="/admin/changelog"
+											icon={Sparkles}
+											label={t("nav.changelog")}
+										/>
+									</SidebarMenu>
+								</SidebarGroupContent>
+							</SidebarGroup>
 						) : null}
 						{/* Plugin-contributed admin pages get their own sidebar section,
 						   separate from core workspace administration. */}
 						{showPluginsSection ? (
-							<>
-								<SidebarSeparator />
-								<CollapsibleSidebarGroup
-									storageKey="paca:sidebar-admin-plugins-collapsed"
-									label={t("nav.plugins")}
-								>
-									<SidebarMenu>
-										<PluginAdminPages navItems={adminPluginNavItems} />
-									</SidebarMenu>
-								</CollapsibleSidebarGroup>
-							</>
+							<CollapsibleSidebarGroup
+								storageKey="paca:sidebar-admin-plugins-collapsed"
+								label={t("nav.plugins")}
+							>
+								<SidebarMenu>
+									<PluginAdminPages navItems={adminPluginNavItems} />
+								</SidebarMenu>
+							</CollapsibleSidebarGroup>
 						) : null}
 					</>
 				)}
