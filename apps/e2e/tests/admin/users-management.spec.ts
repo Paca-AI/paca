@@ -144,12 +144,17 @@ async function deleteUserIfExists(request: APIRequestContext, username: string) 
 async function openUsersPage(page: Page) {
   await page.goto('/admin/users');
   // If a prior test invalidated the server-side session stored in AUTH_FILE, the app
-  // redirects to login. Re-authenticate directly so these tests remain self-contained.
-  if (!page.url().includes('/admin')) {
-    await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
+  // redirects to login - but only after `/users/me` fails, which is after `load`. Wait
+  // for the page that actually rendered instead of sampling the URL.
+  const heading = page.getByRole('heading', { name: 'User Management' });
+  const usernameField = page.getByRole('textbox', { name: 'Username' });
+  await expect(heading.or(usernameField)).toBeVisible();
+  if (!(await heading.isVisible())) {
+    await usernameField.fill(USERNAME);
     await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.waitForURL(/\/home/);
+    // A login started from `?redirect=/admin/users` lands there, not on /home.
+    await page.waitForURL((url) => ['/home', '/admin/users'].includes(url.pathname));
     await page.goto('/admin/users');
   }
   await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
