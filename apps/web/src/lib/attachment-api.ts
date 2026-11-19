@@ -87,7 +87,10 @@ interface DownloadURLResult {
 const MULTIPART_CHUNK_SIZE = 5 * 1024 * 1024; // 5 MiB — matches server DefaultPartSize
 /** Parts of one file uploaded at the same time. */
 const MULTIPART_CONCURRENCY = 4;
-/** Files uploaded at the same time. */
+/**
+ * Files uploaded at the same time. Module-scoped, so the cap is app-wide:
+ * uploads from other tasks and inline description pastes share these slots.
+ */
 const limitFileUploads = createLimiter(3);
 
 // ── API calls ─────────────────────────────────────────────────────────────────
@@ -188,7 +191,7 @@ export function uploadAttachment(
 	file: File,
 	onProgress?: (loaded: number, total: number) => void,
 ): Promise<TaskAttachment> {
-	// Several files picked at once are uploaded a few at a time, the rest wait.
+	// Files are uploaded a few at a time across the whole app; the rest wait.
 	return limitFileUploads(() =>
 		uploadAttachmentNow(projectId, taskId, file, onProgress),
 	);
