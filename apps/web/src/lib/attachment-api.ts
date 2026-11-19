@@ -1,6 +1,7 @@
 import { infiniteQueryOptions } from "@tanstack/react-query";
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+import { createLimiter, mapPool } from "./concurrency";
 import type { FileNode } from "./files-api";
 
 // ── API shapes ────────────────────────────────────────────────────────────────
@@ -84,6 +85,10 @@ interface DownloadURLResult {
 }
 
 const MULTIPART_CHUNK_SIZE = 5 * 1024 * 1024; // 5 MiB — matches server DefaultPartSize
+/** Parts of one file uploaded at the same time. */
+const MULTIPART_CONCURRENCY = 4;
+/** Files uploaded at the same time. */
+const limitFileUploads = createLimiter(3);
 
 // ── API calls ─────────────────────────────────────────────────────────────────
 
@@ -177,7 +182,19 @@ export async function deleteTaskAttachment(
  *
  * @param onProgress Optional callback receiving bytes uploaded so far.
  */
-export async function uploadAttachment(
+export function uploadAttachment(
+	projectId: string,
+	taskId: string,
+	file: File,
+	onProgress?: (loaded: number, total: number) => void,
+): Promise<TaskAttachment> {
+	// Several files picked at once are uploaded a few at a time, the rest wait.
+	return limitFileUploads(() =>
+		uploadAttachmentNow(projectId, taskId, file, onProgress),
+	);
+}
+
+async function uploadAttachmentNow(
 	projectId: string,
 	taskId: string,
 	file: File,
@@ -191,41 +208,47 @@ export async function uploadAttachment(
 	});
 
 	if (session.is_multipart && session.multipart) {
-		// 2a. Multipart path: upload each part sequentially.
+		// 2a. Multipart path: upload parts a few at a time.
 		const { upload_id, parts } = session.multipart;
-		const completedParts: CompletedPart[] = [];
-		let loaded = 0;
+		const partLoaded = new Map<number, number>();
+		const contentType = file.type || "application/octet-stream";
 
-		for (const part of parts) {
-			const start = (part.part_number - 1) * MULTIPART_CHUNK_SIZE;
-			const end = Math.min(start + MULTIPART_CHUNK_SIZE, file.size);
-			const chunk = file.slice(start, end);
+		const completedParts: CompletedPart[] = await mapPool(
+			parts,
+			MULTIPART_CONCURRENCY,
+			async (part) => {
+				const start = (part.part_number - 1) * MULTIPART_CHUNK_SIZE;
+				const end = Math.min(start + MULTIPART_CHUNK_SIZE, file.size);
+				const chunk = file.slice(start, end);
 
-			const resp = await fetch(part.upload_url, {
-				method: "PUT",
-				body: chunk,
-				headers: { "Content-Type": file.type || "application/octet-stream" },
-			});
+				const resp = await fetch(part.upload_url, {
+					method: "PUT",
+					body: chunk,
+					headers: { "Content-Type": contentType },
+				});
 
-			if (!resp.ok) {
-				throw new Error(
-					`Part ${part.part_number} upload failed: ${resp.status}`,
-				);
-			}
+				if (!resp.ok) {
+					throw new Error(
+						`Part ${part.part_number} upload failed: ${resp.status}`,
+					);
+				}
 
-			// The S3-compatible store returns the ETag in the response headers.
-			const etag = resp.headers.get("ETag") ?? resp.headers.get("etag");
-			if (!etag) {
-				throw new Error(
-					`Part ${part.part_number} upload succeeded but did not return an ETag header. ` +
-						`Multipart uploads require the object store to expose ETag via CORS.`,
-				);
-			}
-			completedParts.push({ part_number: part.part_number, etag });
+				// The S3-compatible store returns the ETag in the response headers.
+				const etag = resp.headers.get("ETag") ?? resp.headers.get("etag");
+				if (!etag) {
+					throw new Error(
+						`Part ${part.part_number} upload succeeded but did not return an ETag header. ` +
+							`Multipart uploads require the object store to expose ETag via CORS.`,
+					);
+				}
 
-			loaded += chunk.size;
-			onProgress?.(loaded, file.size);
-		}
+				partLoaded.set(part.part_number, chunk.size);
+				let loaded = 0;
+				for (const v of partLoaded.values()) loaded += v;
+				onProgress?.(loaded, file.size);
+				return { part_number: part.part_number, etag };
+			},
+		);
 
 		// 3a. Complete multipart upload.
 		return completeUpload(projectId, taskId, {

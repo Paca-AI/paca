@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+import { mapPool } from "./concurrency";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -259,6 +260,8 @@ interface UploadSession {
 }
 
 const MULTIPART_CHUNK_SIZE = 5 * 1024 * 1024; // matches the server's DefaultPartSize
+/** Parts of one file uploaded at the same time. */
+const MULTIPART_CONCURRENCY = 4;
 
 export class UploadAbortedError extends Error {
 	constructor() {
@@ -330,28 +333,55 @@ export async function uploadFile(
 	} = { file_id: session.file_id };
 
 	if (session.is_multipart && session.multipart) {
-		const parts: { part_number: number; etag: string }[] = [];
-		let done = 0;
-		for (const part of session.multipart.parts) {
-			const start = (part.part_number - 1) * MULTIPART_CHUNK_SIZE;
-			const chunk = file.slice(
-				start,
-				Math.min(start + MULTIPART_CHUNK_SIZE, file.size),
+		const partLoaded = new Map<number, number>();
+		const reportParts = () => {
+			let sum = 0;
+			for (const v of partLoaded.values()) sum += v;
+			report(sum);
+		};
+		// A failed part aborts its siblings instead of letting them run on.
+		const partsController = new AbortController();
+		const onOuterAbort = () => partsController.abort();
+		opts.signal?.addEventListener("abort", onOuterAbort, { once: true });
+		if (opts.signal?.aborted) partsController.abort();
+		let parts: { part_number: number; etag: string }[];
+		try {
+			parts = await mapPool(
+				session.multipart.parts,
+				MULTIPART_CONCURRENCY,
+				async (part) => {
+					const start = (part.part_number - 1) * MULTIPART_CHUNK_SIZE;
+					const chunk = file.slice(
+						start,
+						Math.min(start + MULTIPART_CHUNK_SIZE, file.size),
+					);
+					try {
+						const etag = await putWithProgress(
+							part.upload_url,
+							chunk,
+							contentType,
+							(loaded) => {
+								partLoaded.set(part.part_number, loaded);
+								reportParts();
+							},
+							partsController.signal,
+						);
+						if (!etag) {
+							throw new Error(
+								"The object store did not expose the ETag header; multipart uploads need it exposed through CORS.",
+							);
+						}
+						partLoaded.set(part.part_number, chunk.size);
+						reportParts();
+						return { part_number: part.part_number, etag };
+					} catch (error) {
+						partsController.abort();
+						throw error;
+					}
+				},
 			);
-			const etag = await putWithProgress(
-				part.upload_url,
-				chunk,
-				contentType,
-				(loaded) => report(done + loaded),
-				opts.signal,
-			);
-			if (!etag) {
-				throw new Error(
-					"The object store did not expose the ETag header; multipart uploads need it exposed through CORS.",
-				);
-			}
-			parts.push({ part_number: part.part_number, etag });
-			done += chunk.size;
+		} finally {
+			opts.signal?.removeEventListener("abort", onOuterAbort);
 		}
 		completion = {
 			file_id: session.file_id,
