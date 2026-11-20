@@ -463,3 +463,72 @@ func TestUnifiedDocFolders_TrashRestorePurge(t *testing.T) {
 		t.Fatalf("a legacy deleted document must keep its content, got %v, %v", content, err)
 	}
 }
+
+// Without a document scope on the context, every whole-scope list leaves
+// Documentation out, and a documentation folder restored from under a trashed
+// parent returns to the top of Documentation, not the file root.
+func TestUnifiedDocFolders_UnscopedListsAndNestedRestore(t *testing.T) {
+	f := newScopeFx(t)
+	ctx := t.Context()
+	docs := NewDocumentRepository(f.db)
+	repo := NewFileRepository(f.db)
+	scope := filedom.Scope{ProjectID: &f.p}
+
+	parent := &docdom.DocFolder{ID: uuid.New(), ProjectID: f.p, Name: "Outer"}
+	if err := docs.CreateFolder(ctx, parent); err != nil {
+		t.Fatal(err)
+	}
+	child := &docdom.DocFolder{ID: uuid.New(), ProjectID: f.p, ParentID: &parent.ID, Name: "Inner"}
+	if err := docs.CreateFolder(ctx, child); err != nil {
+		t.Fatal(err)
+	}
+	doc := uuid.New()
+	pgExec(t, f.db, `INSERT INTO documents (id, project_id, folder_id, title, content) VALUES ($1, $2, $3, 'Secret', '[]'::jsonb)`, doc, f.p, child.ID)
+	for _, id := range []uuid.UUID{doc, child.ID} {
+		if err := repo.SetStarred(ctx, f.u, id, true); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.Touch(ctx, f.u, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, _, err := repo.ListStarred(ctx, scope, f.u, 100, 0); err != nil || len(got) != 0 {
+		t.Fatalf("unscoped starred = %v, %v; want nothing", namesOf(got), err)
+	}
+	if got, err := repo.ListRecent(ctx, scope, f.u, 100); err != nil || len(got) != 0 {
+		t.Fatalf("unscoped recent = %v, %v; want nothing", namesOf(got), err)
+	}
+
+	at := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)
+	node := func(id uuid.UUID) *filedom.Node {
+		t.Helper()
+		n, err := repo.GetNode(ctx, id, f.u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if err := repo.Trash(ctx, node(child.ID), f.u, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Trash(ctx, node(parent.ID), f.u, at.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, err := repo.ListTrash(ctx, scope, f.u, 100, 0); err != nil || len(got) != 0 {
+		t.Fatalf("unscoped trash = %v, %v; want nothing", namesOf(got), err)
+	}
+	if err := repo.Restore(ctx, node(child.ID)); err != nil {
+		t.Fatal(err)
+	}
+	n := node(child.ID)
+	var root uuid.UUID
+	if err := f.db.GetContext(ctx, &root, `SELECT id FROM file_folders WHERE project_id = $1 AND system_key = 'documentation'`, f.p); err != nil {
+		t.Fatal(err)
+	}
+	if n.ParentID == nil || *n.ParentID != root || n.Area != "docs" {
+		t.Fatalf("restored folder parent = %v area %q; want the Documentation folder", n.ParentID, n.Area)
+	}
+	if err := repo.Restore(ctx, node(parent.ID)); err != nil {
+		t.Fatal(err)
+	}
+}

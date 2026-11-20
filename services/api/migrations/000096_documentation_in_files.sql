@@ -125,8 +125,8 @@ SELECT d.id,
        d.project_id,
        COALESCE(d.parent_id, (SELECT r.id FROM file_folders r
                                WHERE r.project_id = d.project_id AND r.system_key = 'documentation')),
-       -- file_folders names may not contain a backslash; docs allowed it.
-       COALESCE(NULLIF(btrim(replace(d.name, '\', '-')), ''), 'Folder'),
+       -- file_folders names may not contain a slash or a backslash; docs allowed both.
+       COALESCE(NULLIF(btrim(regexp_replace(d.name, '[/\\]', '-', 'g')), ''), 'Folder'),
        d.position,
        'docs',
        (SELECT pm.account_id FROM project_members pm WHERE pm.id = d.created_by),

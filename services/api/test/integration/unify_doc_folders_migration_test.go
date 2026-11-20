@@ -32,10 +32,11 @@ func TestUnifyDocFoldersMigrationMovesExistingFolders(t *testing.T) {
 	mustExec(t, db, `INSERT INTO accounts (id, kind, name) VALUES ($1, 'user', 'Ann')`, account)
 	mustExec(t, db, `INSERT INTO project_members (id, project_id, account_id) VALUES ($1, $2, $3)`, member, project, account)
 
-	top, nested, odd := uuid.New(), uuid.New(), uuid.New()
+	top, nested, odd, slash := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	mustExec(t, db, `INSERT INTO doc_folders (id, project_id, name, position, created_by) VALUES ($1, $2, 'Governance', 3, $3)`, top, project, member)
 	mustExec(t, db, `INSERT INTO doc_folders (id, project_id, parent_id, name) VALUES ($1, $2, $3, 'Risks')`, nested, project, top)
 	mustExec(t, db, `INSERT INTO doc_folders (id, project_id, name) VALUES ($1, $2, 'A\B')`, odd, project)
+	mustExec(t, db, `INSERT INTO doc_folders (id, project_id, name) VALUES ($1, $2, 'Q1/Q2')`, slash, project)
 	doc := uuid.New()
 	mustExec(t, db, `INSERT INTO documents (id, project_id, folder_id, title) VALUES ($1, $2, $3, 'Plan')`, doc, project, nested)
 	gone := uuid.New()
@@ -76,6 +77,9 @@ func TestUnifyDocFoldersMigrationMovesExistingFolders(t *testing.T) {
 	if r := get(odd); r.name != "A-B" {
 		t.Errorf("name = %q, want the backslash replaced", r.name)
 	}
+	if r := get(slash); r.name != "Q1-Q2" {
+		t.Errorf("name = %q, want the slash replaced", r.name)
+	}
 
 	var folderID uuid.UUID
 	if err := db.QueryRowContext(t.Context(), `SELECT folder_id FROM documents WHERE id = $1`, doc).Scan(&folderID); err != nil || folderID != nested {
@@ -89,8 +93,8 @@ func TestUnifyDocFoldersMigrationMovesExistingFolders(t *testing.T) {
 		t.Errorf("view row parent=%v created_by=%v err=%v; want NULL parent and the member id", parent, author, err)
 	}
 	var n int
-	if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM doc_folders WHERE project_id = $1`, project).Scan(&n); err != nil || n != 3 {
-		t.Errorf("doc_folders rows = %d, %v; want 3 (the Documentation folder itself is not one)", n, err)
+	if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM doc_folders WHERE project_id = $1`, project).Scan(&n); err != nil || n != 4 {
+		t.Errorf("doc_folders rows = %d, %v; want 4 (the Documentation folder itself is not one)", n, err)
 	}
 
 	// The document is a Markdown file in the file tree, under its folder; a

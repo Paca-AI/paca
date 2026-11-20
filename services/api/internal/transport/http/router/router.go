@@ -440,7 +440,7 @@ func New(deps Deps) http.Handler {
 				if deps.File != nil {
 					r.Route("/files", func(r chi.Router) {
 						r.Get("/roots", deps.File.Roots)
-						mountFileRoutes(r, deps.File, require.Global(iam.ActionFilesRead), require.Global(iam.ActionFilesWrite), nil)
+						mountFileRoutes(r, deps.File, require.Global(iam.ActionFilesRead), require.Global(iam.ActionFilesWrite), nil, nil)
 					})
 				}
 			})
@@ -930,7 +930,7 @@ func New(deps Deps) http.Handler {
 				// the default folders for task attachments, doc files and screenshots.
 				if deps.File != nil {
 					r.Route("/files", func(r chi.Router) {
-						mountFileRoutes(r, deps.File, require.Project(iam.ActionFilesRead), require.Project(iam.ActionFilesWrite), require.FileDocs)
+						mountFileRoutes(r, deps.File, require.Project(iam.ActionFilesRead), require.Project(iam.ActionFilesWrite), require.FileDocs, require.Project(iam.ActionTasksRead))
 					})
 				}
 
@@ -1441,7 +1441,12 @@ func sameHostnameOrigin(origin, host string) bool {
 // mountFileRoutes registers the file manager routes of one scope. read and
 // write are that scope's gates (a project's files:*, or the general scope's
 // platform-root files:*). Starring is per-user state, so it only needs read.
-func mountFileRoutes(r chi.Router, h *handler.FileHandler, read, write func(http.Handler) http.Handler, docs func(iam.Action, ...httpmw.FileTarget) func(http.Handler) http.Handler) {
+func mountFileRoutes(r chi.Router, h *handler.FileHandler, read, write func(http.Handler) http.Handler, docs func(iam.Action, ...httpmw.FileTarget) func(http.Handler) http.Handler, tasksRead func(http.Handler) http.Handler) {
+	// Relations names the task a file is attached to, so a project also needs
+	// tasks:read for it. tasksRead is nil for the general scope.
+	if tasksRead == nil {
+		tasksRead = func(next http.Handler) http.Handler { return next }
+	}
 	// In a project, anything in the Documentation subtree also needs the docs
 	// action (docs:read to look, docs:write to change), on top of files:*.
 	// docs is nil for the general scope, which has no Documentation.
@@ -1463,7 +1468,7 @@ func mountFileRoutes(r chi.Router, h *handler.FileHandler, read, write func(http
 	r.With(read, docsRead(node)).Get("/nodes/{nodeId}", h.Get)
 	r.With(read, docsRead(node)).Get("/nodes/{nodeId}/path", h.Path)
 	r.With(read, docsRead(node)).Get("/nodes/{nodeId}/download-url", h.DownloadURL)
-	r.With(read, docsRead(node)).Get("/nodes/{nodeId}/relations", h.Relations)
+	r.With(read, tasksRead, docsRead(node)).Get("/nodes/{nodeId}/relations", h.Relations)
 	r.With(read, docsRead(node)).Put("/nodes/{nodeId}/star", h.SetStarred)
 	r.With(read, docsRead(node)).Post("/nodes/{nodeId}/open", h.RecordOpen)
 	r.With(read).Get("/starred", h.ListStarred)

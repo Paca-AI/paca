@@ -161,3 +161,19 @@ Direction: a document should behave like a file, downloads as Markdown, and uplo
 1. One file lives in one folder; showing it elsewhere would be a shortcut (not built).
 2. Deleting a doc folder keeps re-rooting its documents; files inside go to the Files trash. Full subtree trashing waits for a documents trash.
 3. The Documentation folder is locked (not renamable); its subfolders rename and move through the docs sidebar.
+
+## Known limits
+
+- **Trashing a folder trashes everything in it, including documents the caller
+  could not open.** The gate is `docs:write` on the project; a per-document Deny
+  applies to acting on that document, not to the folder it sits in. Restoring the
+  folder brings them all back.
+- **File relations scan document content.** `GET /files/nodes/{id}/relations`
+  matches the file's id against each document's content with no index. Add a
+  trigram index or a referenced-files table if projects grow large.
+- **The `doc_folders` view overwrites every column on update.** Its `INSTEAD OF
+  UPDATE` trigger copies `parent_id`, `name`, `position` and `updated_at` from
+  the new row, so a caller must send the full row. Retire the view when the docs
+  repository reads `file_folders` directly.
+- **`/relations` also needs `tasks:read`,** because it names the task a file is
+  attached to.
