@@ -71,17 +71,6 @@ export function TaskActivityPane({
 	const { comment: focusCommentId } = useSearch({ strict: false }) as {
 		comment?: string;
 	};
-	const typingNames = useMemo(
-		() =>
-			presence.typing
-				.filter((id) => id !== currentUser?.id)
-				.map((id) => {
-					const m = getMember(id);
-					return m ? m.full_name || m.username : undefined;
-				})
-				.filter((n): n is string => !!n),
-		[presence.typing, currentUser?.id, getMember],
-	);
 
 	const myMemberId = currentUser ? getMember(currentUser.id)?.id : undefined;
 
@@ -318,7 +307,7 @@ export function TaskActivityPane({
 			unreadSince={previousSeenAt}
 			focusEntryId={focusCommentId}
 			onTyping={canEdit ? presence.setTyping : undefined}
-			typingNames={typingNames}
+			typingNames={presence.typingNames}
 			projectId={projectId}
 			entityId={taskId}
 			queryKey={queryKey}

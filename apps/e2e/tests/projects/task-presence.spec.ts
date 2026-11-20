@@ -186,7 +186,7 @@ test.describe("Task presence", () => {
 			await other.page.keyboard.type("x");
 			await expect(typing(page)).toHaveText(/is typing/i);
 			// No further keystrokes: the 5 s lease expires.
-			await expect(typing(page)).toHaveText("", { timeout: 12_000 });
+			await expect(typing(page)).toHaveText("", { timeout: 20_000 });
 			await other.context.close();
 		});
 

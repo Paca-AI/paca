@@ -45,7 +45,7 @@ describe("parseLiveRef", () => {
 	it("accepts a task ref and rejects junk", () => {
 		expect(parseLiveRef(ref)).toEqual(ref);
 		expect(parseLiveRef({ ...ref, id: "x" })).toBeUndefined();
-		expect(parseLiveRef({ ...ref, kind: "doc" })).toBeUndefined();
+		expect(parseLiveRef({ ...ref, kind: "wiki" })).toBeUndefined();
 		expect(parseLiveRef(null)).toBeUndefined();
 	});
 });
@@ -214,5 +214,80 @@ describe("PresenceHub across replicas", () => {
 		advance(TYPING_TTL_MS + 1);
 		(hub as unknown as { tick(): void }).tick();
 		expect(published.at(-1)?.typing).toEqual([]);
+	});
+});
+
+describe("PresenceHub kinds", () => {
+	function recording() {
+		const asked: Array<{ project: string; action: string; resource: string }> =
+			[];
+		const emitted: PresenceSnapshot[] = [];
+		const decider = {
+			can: async (
+				_v: Viewer,
+				project: string,
+				q: { action: string; resource: string },
+			) => {
+				asked.push({ project, ...q });
+				return true;
+			},
+		} as unknown as AccessDecider;
+		const hub = new PresenceHub({
+			decider,
+			replica: "a",
+			transport: { emit: (_r, s) => emitted.push(s) },
+		});
+		return { hub, asked, emitted };
+	}
+
+	it("parses docs, project channels and project-less direct messages", () => {
+		expect(parseLiveRef({ kind: "doc", projectId: P, id: T })).toEqual({
+			kind: "doc",
+			projectId: P,
+			id: T,
+		});
+		expect(parseLiveRef({ kind: "channel", projectId: P, id: T })).toBeTruthy();
+		expect(parseLiveRef({ kind: "channel", projectId: "", id: T })).toEqual({
+			kind: "channel",
+			projectId: "",
+			id: T,
+		});
+		expect(parseLiveRef({ kind: "channel", id: T })?.projectId).toBe("");
+		// Only a channel may omit its project.
+		expect(parseLiveRef({ kind: "doc", projectId: "", id: T })).toBeUndefined();
+		expect(parseLiveRef({ kind: "wiki", projectId: P, id: T })).toBeUndefined();
+	});
+
+	it("checks the right action and resource for each kind", async () => {
+		const { hub, asked } = recording();
+		await hub.join("s1", v("u1"), { kind: "doc", projectId: P, id: T });
+		await hub.join("s1", v("u1"), { kind: "channel", projectId: P, id: T });
+		await hub.join("s1", v("u1"), { kind: "channel", projectId: "", id: T });
+		const seen = asked.map((a) => `${a.action} ${a.resource}`);
+		expect(seen).toContain(`docs:read project/${P}/doc/${T}`);
+		expect(seen).toContain(`docs:write project/${P}/doc/${T}`);
+		expect(seen).toContain(`channels:read project/${P}/channel/${T}`);
+		expect(seen).toContain(`messages:write project/${P}/channel/${T}`);
+		// A direct message has no project.
+		expect(seen).toContain(`channels:read channel/${T}`);
+		expect(asked.at(-1)?.project).toBe("");
+	});
+
+	it("lets a doc or channel typist be heard, with usernames as a fallback", async () => {
+		const { hub, emitted } = recording();
+		const typist = { userId: "u1", rawToken: "t", username: "mina" } as Viewer;
+		for (const kind of ["doc", "channel"] as const) {
+			emitted.length = 0;
+			await hub.join("s1", typist, { kind, projectId: P, id: T });
+			await hub.join("s2", v("u2"), { kind, projectId: P, id: T });
+			hub.typing("s1", kind, T, true);
+			expect(emitted.at(-1)).toMatchObject({
+				kind,
+				typing: ["u1"],
+				names: { u1: "mina" },
+			});
+			hub.leaveAll("s1");
+			hub.leaveAll("s2");
+		}
 	});
 });

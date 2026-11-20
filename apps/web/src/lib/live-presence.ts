@@ -1,6 +1,6 @@
 // Client side of the ephemeral presence layer (services/realtime/src/presence.ts).
 //
-// A view joins a "live room" for what it shows (today a task) and learns who
+// A view joins a "live room" for what it shows (a task, a doc or a chat channel) and learns who
 // is viewing and who is typing there. Joins are reference-counted per room,
 // re-sent after a reconnect, and nothing is persisted. Typing is throttled:
 // one message when it starts, one every TYPING_REFRESH_MS while it goes on,
@@ -9,7 +9,7 @@
 import type { Socket } from "socket.io-client";
 import { getSocket } from "./socket-client";
 
-export type LiveKind = "task";
+export type LiveKind = "task" | "doc" | "channel";
 
 export interface LiveRef {
 	kind: LiveKind;
@@ -22,6 +22,9 @@ export interface LivePresence {
 	viewers: string[];
 	/** Account ids typing right now (including your own). */
 	typing: string[];
+	/** Usernames by account id: what to show when the project's member list
+	 *  cannot name someone (no members permission, or a direct message). */
+	names: Record<string, string>;
 	/** False for a read-only viewer: typing is not sent. */
 	canType: boolean;
 	/** True once the server accepted the join. */
@@ -31,6 +34,7 @@ export interface LivePresence {
 export const EMPTY_PRESENCE: LivePresence = {
 	viewers: [],
 	typing: [],
+	names: {},
 	canType: false,
 	joined: false,
 };
@@ -88,6 +92,7 @@ function bind(socket: Socket): void {
 			id?: string;
 			viewers?: string[];
 			typing?: string[];
+			names?: Record<string, string>;
 		};
 		if (!m?.kind || !m.id) return;
 		const e = entries.get(keyOf({ kind: m.kind, id: m.id }));
@@ -96,6 +101,7 @@ function bind(socket: Socket): void {
 			...e.state,
 			viewers: Array.isArray(m.viewers) ? m.viewers : [],
 			typing: Array.isArray(m.typing) ? m.typing : [],
+			names: m.names && typeof m.names === "object" ? m.names : {},
 		};
 		notify(e);
 	});
@@ -129,7 +135,11 @@ function emitJoin(e: Entry): void {
 			const r = res as
 				| {
 						ok: true;
-						snapshot: { viewers: string[]; typing: string[] };
+						snapshot: {
+							viewers: string[];
+							typing: string[];
+							names?: Record<string, string>;
+						};
 						canType: boolean;
 				  }
 				| { ok: false; reason: string }
@@ -146,6 +156,7 @@ function emitJoin(e: Entry): void {
 			e.state = {
 				viewers: r.snapshot.viewers,
 				typing: r.snapshot.typing,
+				names: r.snapshot.names ?? {},
 				canType: r.canType,
 				joined: true,
 			};

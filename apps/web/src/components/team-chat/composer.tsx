@@ -62,7 +62,10 @@ export function Composer({
 	onSend,
 	autoFocus,
 	mentionProjectId,
+	onTyping,
 }: {
+	/** Reports whether the box has text, for the "is typing" indicator. */
+	onTyping?: (typing: boolean) => void;
 	/** Offers "@" suggestions from this project's members when set. */
 	mentionProjectId?: string;
 	draftId: string;
@@ -83,6 +86,15 @@ export function Composer({
 	const nextCaret = useRef<number | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const ref = useRef<HTMLTextAreaElement>(null);
+
+	// Tell the presence layer while there is text (it throttles), and when the
+	// box is cleared or sent.
+	const onTypingRef = useRef(onTyping);
+	onTypingRef.current = onTyping;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only the text matters
+	useEffect(() => {
+		onTypingRef.current?.(text.trim().length > 0);
+	}, [text]);
 
 	// A different channel or thread is a different draft.
 	useEffect(() => {

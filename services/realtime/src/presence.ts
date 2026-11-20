@@ -1,7 +1,7 @@
 // Ephemeral presence: who is viewing a thing and who is typing in it.
 //
-// A client joins a "live room" for what it is looking at (today `task:<id>`;
-// channels and docs later). Access is checked once, at join, through the same
+// A client joins a "live room" for what it is looking at (a task, a doc or a
+// chat channel). Access is checked once, at join, through the same
 // IAM decision the REST routes use; nothing is checked per event. Typing is a
 // short lease: the client says "typing" on start and every few seconds while
 // it continues, and the lease lapses on its own after TYPING_TTL_MS. Nothing
@@ -16,7 +16,7 @@
 import type { Logger } from "pino";
 import type { AccessDecider, Viewer } from "./access.ts";
 
-export type LiveKind = "task";
+export type LiveKind = "task" | "doc" | "channel";
 
 export interface LiveRef {
 	kind: LiveKind;
@@ -32,6 +32,9 @@ export interface PresenceSnapshot {
 	// avatars from the project's member list), sorted for stable output.
 	viewers: string[];
 	typing: string[];
+	// names maps those ids to usernames: what a client falls back on when it
+	// cannot list the project's members, or has no project (a direct message).
+	names: Record<string, string>;
 }
 
 // A replica's view of one room, as published on the bus.
@@ -40,6 +43,7 @@ export interface PresenceSummary {
 	room: string;
 	viewers: string[];
 	typing: string[];
+	names?: Record<string, string>;
 	// hello asks every replica that has the room to publish its own summary,
 	// so a socket that just joined sees remote viewers without waiting for the
 	// next heartbeat.
@@ -67,8 +71,28 @@ const MIN_TYPING_GAP_MS = 500;
 const UUID_RE =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// What each kind of room checks at join: the action that reads it, the action
+// that posts in it (typing is only accepted from those who may post) and the
+// IAM resource segment.
 const ACTIONS: Record<LiveKind, { read: string; write: string; seg: string }> =
-	{ task: { read: "tasks:read", write: "tasks:write", seg: "task" } };
+	{
+		task: { read: "tasks:read", write: "tasks:write", seg: "task" },
+		doc: { read: "docs:read", write: "docs:write", seg: "doc" },
+		channel: { read: "channels:read", write: "messages:write", seg: "channel" },
+	};
+
+export function isLiveKind(v: unknown): v is LiveKind {
+	return v === "task" || v === "doc" || v === "channel";
+}
+
+// resourceOf names a room's IAM resource. A direct message has no project: its
+// resource is channel/<id>.
+function resourceOf(ref: LiveRef): string {
+	const seg = ACTIONS[ref.kind].seg;
+	return ref.projectId
+		? `project/${ref.projectId}/${seg}/${ref.id}`
+		: `${seg}/${ref.id}`;
+}
 
 export function liveRoomName(kind: LiveKind, id: string): string {
 	return `live:${kind}:${id}`;
@@ -77,15 +101,20 @@ export function liveRoomName(kind: LiveKind, id: string): string {
 export function parseLiveRef(v: unknown): LiveRef | undefined {
 	if (!v || typeof v !== "object") return undefined;
 	const { kind, projectId, id } = v as Record<string, unknown>;
-	if (kind !== "task") return undefined;
+	if (!isLiveKind(kind)) return undefined;
+	if (typeof id !== "string" || !UUID_RE.test(id)) return undefined;
+	// Only a channel may have no project (a direct message).
+	if (kind === "channel" && (projectId === "" || projectId == null)) {
+		return { kind, projectId: "", id };
+	}
 	if (typeof projectId !== "string" || !UUID_RE.test(projectId))
 		return undefined;
-	if (typeof id !== "string" || !UUID_RE.test(id)) return undefined;
 	return { kind, projectId, id };
 }
 
 interface Member {
 	viewer: Viewer;
+	username: string;
 	canType: boolean;
 	lastTypingAt: number;
 }
@@ -159,7 +188,7 @@ export class PresenceHub {
 			return { ok: false, reason: "limit" };
 		}
 		const a = ACTIONS[ref.kind];
-		const resource = `project/${ref.projectId}/${a.seg}/${ref.id}`;
+		const resource = resourceOf(ref);
 		const key = `${socketId}|${name}`;
 		const ticket = ++this.joinSeq;
 		this.pending.set(key, ticket);
@@ -202,7 +231,12 @@ export class PresenceHub {
 			this.rooms.set(name, room);
 			fresh = true;
 		}
-		room.members.set(socketId, { viewer, canType, lastTypingAt: 0 });
+		room.members.set(socketId, {
+			viewer,
+			username: (viewer as { username?: string }).username ?? "",
+			canType,
+			lastTypingAt: 0,
+		});
 		const set = this.byRoom.get(socketId) ?? new Set();
 		set.add(name);
 		this.byRoom.set(socketId, set);
@@ -228,7 +262,7 @@ export class PresenceHub {
 
 	// typing records or clears the lease of the socket's account.
 	typing(socketId: string, kind: unknown, id: unknown, on: unknown): void {
-		if (kind !== "task" || typeof id !== "string") return;
+		if (!isLiveKind(kind) || typeof id !== "string") return;
 		const room = this.rooms.get(liveRoomName(kind, id));
 		const member = room?.members.get(socketId);
 		if (!room || !member || !member.canType) return;
@@ -251,7 +285,7 @@ export class PresenceHub {
 		const answers = new Map<string, Promise<[boolean, boolean]>>();
 		for (const room of [...this.rooms.values()]) {
 			const a = ACTIONS[room.ref.kind];
-			const resource = `project/${room.ref.projectId}/${a.seg}/${room.ref.id}`;
+			const resource = resourceOf(room.ref);
 			for (const [socketId, m] of [...room.members]) {
 				const key = `${room.name}|${m.viewer.userId}`;
 				let answer = answers.get(key);
@@ -338,29 +372,44 @@ export class PresenceHub {
 		}
 	}
 
-	private local(room: Room): { viewers: string[]; typing: string[] } {
+	private local(room: Room): {
+		viewers: string[];
+		typing: string[];
+		names: Record<string, string>;
+	} {
 		const now = this.now();
 		const viewers = new Set<string>();
-		for (const m of room.members.values()) viewers.add(m.viewer.userId);
+		const names: Record<string, string> = {};
+		for (const m of room.members.values()) {
+			viewers.add(m.viewer.userId);
+			if (m.username) names[m.viewer.userId] = m.username;
+		}
 		const typing = [...room.typingUntil]
 			.filter(([, until]) => until > now)
 			.map(([uid]) => uid);
-		return { viewers: [...viewers], typing };
+		return { viewers: [...viewers], typing, names };
 	}
 
 	private snapshot(room: Room): PresenceSnapshot {
-		const { viewers, typing } = this.local(room);
+		const { viewers, typing, names } = this.local(room);
 		const v = new Set(viewers);
 		const t = new Set(typing);
 		for (const { summary } of room.remote.values()) {
 			for (const u of summary.viewers) v.add(u);
 			for (const u of summary.typing) t.add(u);
+			for (const [id, name] of Object.entries(summary.names ?? {})) {
+				if (!(id in names)) names[id] = name;
+			}
+		}
+		for (const id of Object.keys(names)) {
+			if (!v.has(id) && !t.has(id)) delete names[id];
 		}
 		return {
 			kind: room.ref.kind,
 			id: room.ref.id,
 			viewers: [...v].sort(),
 			typing: [...t].sort(),
+			names,
 		};
 	}
 
@@ -379,14 +428,15 @@ export class PresenceHub {
 
 	private publish(room: Room, empty = false, hello = false): void {
 		if (!this.opts.bus) return;
-		const { viewers, typing } = empty
-			? { viewers: [], typing: [] }
+		const { viewers, typing, names } = empty
+			? { viewers: [], typing: [], names: {} }
 			: this.local(room);
 		this.opts.bus.publish({
 			replica: this.opts.replica,
 			room: room.name,
 			viewers,
 			typing,
+			names,
 			...(hello ? { hello: true } : {}),
 		});
 	}
