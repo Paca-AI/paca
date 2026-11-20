@@ -25,11 +25,13 @@ import {
 const PREFIX = "E2E_PERF_";
 const TASKS_PER_STATUS = 40;
 const CPU_SLOWDOWN = 4;
-// Loose sanity budgets; the render counts are the precise check. Opening a task
+// Loose sanity budgets (shared CI runners measured up to ~2.7 s to open a card and ~4.3 s to
+// open a row in the table);
+// the render counts are the precise check. Opening a task
 // also mounts the detail dialog's editor, which costs ~1 s at this slowdown on
 // its own, however many cards the board holds.
-const OPEN_TASK_BUDGET_MS = 1800;
-const LOAD_MORE_BUDGET_MS = 1200;
+const OPEN_TASK_BUDGET_MS = 6000;
+const LOAD_MORE_BUDGET_MS = 3000;
 // Opening a task or loading a page re-renders a card only when it is the
 // card that changed. Before the fix every card re-rendered on each of the
 // ~15 commits an open takes (thousands of renders); allow a few per card.

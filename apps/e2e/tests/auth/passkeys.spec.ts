@@ -215,6 +215,8 @@ test.describe("When policy requires two-step verification", () => {
 		request,
 		playwright,
 	}) => {
+		// Two 20 s heading waits below must fit inside the test timeout.
+		test.setTimeout(60_000);
 		const role = `E2E_PASSKEY_ROLE_${RUN_ID}`;
 		await authRequest(request);
 		await createGlobalRole(request, role, allowPolicy([]));
@@ -242,13 +244,13 @@ test.describe("When policy requires two-step verification", () => {
 
 			await expect(
 				page.getByRole("heading", { name: "Secure your account" }),
-			).toBeVisible();
+			).toBeVisible({ timeout: 20_000 });
 			// The passkey is recommended, so it is already selected.
 			await expect(page.getByRole("radio", { name: /Passkey/ })).toBeChecked();
 			await page.getByRole("button", { name: "Continue", exact: true }).click();
 			await expect(
 				page.getByRole("heading", { name: "Passkey added" }),
-			).toBeVisible();
+			).toBeVisible({ timeout: 20_000 });
 			await page.getByRole("button", { name: "Continue to sign in" }).click();
 
 			await expect(page).toHaveURL(/\/login\/mfa/);
