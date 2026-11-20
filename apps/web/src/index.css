@@ -629,3 +629,10 @@ a {
 		transition-duration: 0.01ms;
 	}
 }
+
+/* The file previewer renders Word documents on a white "paper" page but, in
+   dark mode, the text inherits the previewer's translucent-white foreground,
+   making it faint. Keep document text dark and opaque on the paper. */
+.rfp-root .rfp-docx-container {
+	color: #171717;
+}
