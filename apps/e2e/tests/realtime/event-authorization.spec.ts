@@ -291,6 +291,7 @@ test.describe("Joining a project", () => {
 			"conversations",
 			"docs",
 			"environments",
+			"files",
 			"members",
 			"project",
 			"sprints",
