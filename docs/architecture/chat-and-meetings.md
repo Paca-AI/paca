@@ -2,7 +2,7 @@
 
 Design and delivery plan for built-in team chat (a Slack alternative) and voice/video meetings (a Discord alternative) in Paca v1.0.0.
 
-> **Status:** proposal. Nothing here is implemented. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
+> **Status:** proposal; Phase 1b (presence and task-comment UX) is built, see [Phase 1b status](#phase-1b-status). The other phases are tracked by the delivery plan below. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
 
 ## Goals
 
@@ -450,6 +450,19 @@ Tested against the same stack with a Go client (`server-sdk-go` v2.20): an agent
 | **4. v1.1 extras** | Recording, voice-interactive agent (TTS, turn detection), realtime speech models, scheduled meetings, server-side approval. | |
 
 Phases 1 and 3 can run mostly in parallel once the `channels` table and IAM resources land: the LiveKit infra and token service touch different files from the chat UI. Each phase also updates the docs (`docs/architecture`, API docs, roadmap) and adds e2e specs. The e2e suite includes mobile projects, and calls need a mocked media device in Playwright.
+
+## Phase 1b status
+
+Built (uncommitted at the time of writing; unit-tested, not yet run through the Playwright suite):
+
+- **Presence layer** in `services/realtime/src/presence.ts` (live rooms, access checked at join, typing leases, cross-replica merge over Valkey); protocol and limits are in [services/realtime/README.md](../../services/realtime/README.md#presence-viewers-and-typing).
+- **Task UI:** "X is typing…" under the comment composer, viewer avatars in the task header, and a per-browser switch to stop sending typing (Account → Profile).
+- **Mention notifications that say where:** migration `000094` adds `comment_id`, `mention_source` and a stored `excerpt` to `notifications`. The list response gains `comment_id`, `mention_source`, `excerpt`, `task_status_name/color`, `sprint_id` and `sprint_name`; status and sprint are joined at read time so they stay right after the task moves. Cards show project, sprint (or *Backlog*), task, status and the excerpt with the mention highlighted; runs of mentions on one task collapse to "3 mentions in #142". Clicking opens the task with `?comment=<id>`, scrolled to and briefly highlighting that comment (only when it is on the newest loaded page of the activity feed).
+- **`/notifications` page** with All / Mentions / Assigned / Agents tabs and a project filter (`GET /users/me/notifications?type=&project_id=&actor=agent`), and a toast when a mention arrives while you are online.
+- **Unread cues:** `GET /users/me/notifications/unread-mentions` feeds a badge on task rows and a count on sprint headers. `task_reads` plus `PUT /projects/{id}/tasks/{taskId}/read` (gated on `tasks:read`) record the visit, read the caller's mentions on the task, and return the previous visit time for the *New since your last visit* divider in the activity pane.
+- **Description and document mentions** now create in-app rows (`mention_source` `description` / `document`) as well as the plugin event.
+
+Not done: the Watch toggle on tasks; the sprint-count shortcut in the Interactions sidebar (only sprint headers in the list view show it); badges on board cards; Playwright specs for typing, the `/notifications` page and the unread divider; copy for the mention excerpt beyond the first 140 characters of text. Typing indicators do not cover doc comments yet.
 
 ## Risks and open questions
 

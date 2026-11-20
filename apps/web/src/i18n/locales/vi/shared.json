@@ -22,7 +22,11 @@
 		"revert": "Hoàn tác",
 		"errors": {
 			"revertFailed": "Hoàn tác thất bại. Vui lòng thử lại."
-		}
+		},
+		"typingOne": "{{name}} đang nhập…",
+		"typingTwo": "{{a}} và {{b}} đang nhập…",
+		"typingMany": "{{name}} và {{n}} người khác đang nhập…",
+		"newSince": "Mới kể từ lần truy cập trước"
 	},
 	"contentDiff": {
 		"emptyLine": "(dòng trống)",

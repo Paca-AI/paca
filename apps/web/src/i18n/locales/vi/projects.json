@@ -1709,7 +1709,8 @@
 				"description": "Thao tác này sẽ xóa vĩnh viễn \"{{title}}\" và toàn bộ dữ liệu của nó. Hành động này không thể hoàn tác.",
 				"cancel": "Hủy",
 				"delete": "Xóa"
-			}
+			},
+			"viewingNow": "Đang xem: {{names}}"
 		},
 		"properties": {
 			"title": "Thuộc tính",
@@ -2170,7 +2171,9 @@
 			"loadMore": "Tải thêm công việc con",
 			"add": "Thêm công việc con",
 			"addPlaceholder": "Tiêu đề công việc con"
-		}
+		},
+		"mentionBadge": "Bạn có {{n}} lượt nhắc đến chưa đọc ở đây",
+		"sprintMentionBadge": "{{n}} công việc trong sprint này nhắc đến bạn"
 	},
 	"conversationsPage": {
 		"back": "Quay lại",

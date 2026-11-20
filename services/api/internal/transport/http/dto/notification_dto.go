@@ -36,9 +36,36 @@ type NotificationResponse struct {
 	ConversationID    *uuid.UUID `json:"conversation_id"`
 	ConversationTitle string     `json:"conversation_title"`
 	// Message is the text of an automation notification; empty otherwise.
-	Message   string     `json:"message"`
-	ReadAt    *time.Time `json:"read_at"`
-	CreatedAt time.Time  `json:"created_at"`
+	Message string `json:"message"`
+	// CommentID, MentionSource and Excerpt describe a mention: the comment it
+	// points at (nil for a description or document body), where it was made
+	// ("comment", "description", "document", "doc_comment") and the stored
+	// start of the text.
+	CommentID     *uuid.UUID `json:"comment_id"`
+	MentionSource string     `json:"mention_source"`
+	Excerpt       string     `json:"excerpt"`
+	// TaskStatusName/Color and SprintID/SprintName are where the task is now
+	// (joined at read time). SprintID is nil for a task in the backlog.
+	TaskStatusName  string     `json:"task_status_name"`
+	TaskStatusColor string     `json:"task_status_color"`
+	SprintID        *uuid.UUID `json:"sprint_id"`
+	SprintName      string     `json:"sprint_name"`
+	ReadAt          *time.Time `json:"read_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+}
+
+// UnreadMentionResponse is the count of one task's unread mentions.
+type UnreadMentionResponse struct {
+	ProjectID uuid.UUID  `json:"project_id"`
+	TaskID    uuid.UUID  `json:"task_id"`
+	SprintID  *uuid.UUID `json:"sprint_id"`
+	Count     int64      `json:"count"`
+}
+
+// TaskReadResponse says when the caller last viewed a task before now.
+type TaskReadResponse struct {
+	// PreviousSeenAt is nil the first time the caller opens the task.
+	PreviousSeenAt *time.Time `json:"previous_seen_at"`
 }
 
 // NotificationFromEntity converts a domain Notification to a response DTO.
@@ -68,6 +95,13 @@ func NotificationFromEntity(n *notificationdom.Notification) NotificationRespons
 		ConversationID:        n.ConversationID,
 		ConversationTitle:     n.ConversationTitle,
 		Message:               n.Message,
+		CommentID:             n.CommentID,
+		MentionSource:         string(n.MentionSource),
+		Excerpt:               n.Excerpt,
+		TaskStatusName:        n.TaskStatusName,
+		TaskStatusColor:       n.TaskStatusColor,
+		SprintID:              n.SprintID,
+		SprintName:            n.SprintName,
 		ReadAt:                n.ReadAt,
 		CreatedAt:             n.CreatedAt,
 	}

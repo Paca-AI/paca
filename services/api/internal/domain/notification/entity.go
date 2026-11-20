@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +27,55 @@ const (
 	// carries a free-text Message and, usually, the task it is about.
 	NotificationTypeAutomation NotificationType = "automation"
 )
+
+// MentionSource says where in a task or document a mention was made.
+type MentionSource string
+
+const (
+	// MentionSourceComment is a mention in a task comment.
+	MentionSourceComment MentionSource = "comment"
+	// MentionSourceDescription is a mention in a task's description.
+	MentionSourceDescription MentionSource = "description"
+	// MentionSourceDocument is a mention in a document's content.
+	MentionSourceDocument MentionSource = "document"
+	// MentionSourceDocComment is a mention in a document comment.
+	MentionSourceDocComment MentionSource = "doc_comment"
+)
+
+// ExcerptLen is how many characters of the mentioning text a notification keeps.
+const ExcerptLen = 140
+
+// Excerpt returns the first ExcerptLen characters of text with runs of
+// whitespace collapsed, cut on a rune boundary and ended with an ellipsis when
+// something was dropped.
+func Excerpt(text string) string {
+	fields := strings.Fields(text)
+	flat := strings.Join(fields, " ")
+	r := []rune(flat)
+	if len(r) <= ExcerptLen {
+		return flat
+	}
+	return strings.TrimRight(string(r[:ExcerptLen]), " ") + "…"
+}
+
+// ListFilter narrows a user's notification list. Zero value: everything.
+type ListFilter struct {
+	// Types keeps only these notification types (empty: all).
+	Types []NotificationType
+	// ProjectID keeps only one project's notifications.
+	ProjectID *uuid.UUID
+	// AgentActor keeps only notifications whose actor is an agent.
+	AgentActor bool
+}
+
+// UnreadMentions counts a user's unread mention notifications per task, for
+// the badges on task cards and sprint headers.
+type UnreadMentions struct {
+	ProjectID uuid.UUID
+	TaskID    uuid.UUID
+	SprintID  *uuid.UUID
+	Count     int64
+}
 
 // Notification is a single notification entry.
 type Notification struct {
@@ -78,6 +128,24 @@ type Notification struct {
 	// Message is the text of an automation notification (empty for every
 	// other type).
 	Message string
+	// CommentID is the comment a mention notification points at (a task
+	// comment or a document comment); nil for a mention in a description or a
+	// document body, and for every other type.
+	CommentID *uuid.UUID
+	// MentionSource says where a mention was made: one of the MentionSource
+	// constants. Empty for every other type.
+	MentionSource MentionSource
+	// Excerpt is the first characters of the text that mentioned the recipient,
+	// stored at creation so it survives edits and deletion of the comment.
+	Excerpt string
+	// TaskStatusName/TaskStatusColor, SprintID/SprintName describe where the
+	// task is now. They are joined when the notification is read, not stored,
+	// so they stay right after the task moves. SprintID is nil for a task in
+	// the backlog.
+	TaskStatusName  string
+	TaskStatusColor string
+	SprintID        *uuid.UUID
+	SprintName      string
 	// ReadAt is nil when the notification has not yet been read.
 	ReadAt    *time.Time
 	CreatedAt time.Time
@@ -101,7 +169,10 @@ type Repository interface {
 	// cursorAfter (nil for the first page — see EncodeNotificationCursor /
 	// DecodeNotificationCursor). hasMore reports whether another page
 	// remains beyond the returned items.
-	ListForUser(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) (items []*Notification, hasMore bool, err error)
+	ListForUser(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string, filter ListFilter) (items []*Notification, hasMore bool, err error)
+	// UnreadMentionsByTask returns the user's unread mention notifications
+	// grouped by task, optionally for one project.
+	UnreadMentionsByTask(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID) ([]UnreadMentions, error)
 	// UnreadCount returns the number of unread notifications for the given user.
 	UnreadCount(ctx context.Context, userID uuid.UUID) (int64, error)
 	// MarkAsRead sets read_at on a notification owned by userID.
@@ -110,6 +181,15 @@ type Repository interface {
 	MarkAsRead(ctx context.Context, id, userID uuid.UUID) error
 	// MarkAllAsRead sets read_at on all unread notifications for userID.
 	MarkAllAsRead(ctx context.Context, userID uuid.UUID) error
+	// MarkTaskMentionsRead sets read_at on userID's unread mention
+	// notifications for one task.
+	MarkTaskMentionsRead(ctx context.Context, userID, taskID uuid.UUID) error
+	// TaskLastSeen returns when userID last viewed the task, nil if never.
+	TaskLastSeen(ctx context.Context, userID, taskID uuid.UUID) (*time.Time, error)
+	// TouchTaskRead records that userID viewed the task at `at` (it never
+	// moves the time backwards) and returns the time it replaced, nil if the
+	// task had not been viewed before.
+	TouchTaskRead(ctx context.Context, userID, taskID uuid.UUID, at time.Time) (*time.Time, error)
 }
 
 // Service defines the notification use-cases exposed to callers.
@@ -129,18 +209,28 @@ type Service interface {
 	// @mentioned in a document comment. Does nothing for a self-mention or
 	// when the mentioned user is not a member of the project.
 	NotifyDocCommentMentioned(ctx context.Context, in NotifyDocCommentMentionedInput) error
-	// NotifyDocMentioned publishes a plugin event (no in-app row — see the
+	// NotifyDocMentioned creates an in-app row and publishes a plugin event (see the
 	// implementation's doc comment) for a user newly @mentioned in a
 	// document's content. Does nothing if mentionedUserID == actorID.
 	NotifyDocMentioned(ctx context.Context, mentionedUserID, actorID uuid.UUID, projectID, docID uuid.UUID)
-	// NotifyTaskDescriptionMentioned publishes a plugin event for a user
+	// NotifyTaskDescriptionMentioned creates an in-app row and publishes a plugin event for a user
 	// newly @mentioned in a task's description (as opposed to a comment,
 	// which NotifyMentioned handles). Does nothing if mentionedUserID ==
 	// actorID.
 	NotifyTaskDescriptionMentioned(ctx context.Context, mentionedUserID, actorID uuid.UUID, projectID, taskID uuid.UUID)
 	// ListNotifications returns up to limit notifications for the authenticated
 	// user, keyset-paginated via cursorAfter — see Repository.ListForUser.
-	ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) (items []*Notification, hasMore bool, err error)
+	ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string, filter ListFilter) (items []*Notification, hasMore bool, err error)
+	// UnreadMentionsByTask returns the user's unread mentions per task.
+	UnreadMentionsByTask(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID) ([]UnreadMentions, error)
+	// MarkTaskMentionsRead marks the user's unread mention notifications on
+	// one task as read (opening the task counts as reading them).
+	MarkTaskMentionsRead(ctx context.Context, userID, taskID uuid.UUID) error
+	// OpenTask records that the user is viewing the task now: it returns the
+	// previous last-seen time (nil on a first view), which the "unread since"
+	// divider is drawn from, and marks the user's unread mentions on the task
+	// as read.
+	OpenTask(ctx context.Context, userID, taskID uuid.UUID) (previous *time.Time, err error)
 	// UnreadCount returns the count of unread notifications for the user.
 	UnreadCount(ctx context.Context, userID uuid.UUID) (int64, error)
 	// MarkAsRead marks a single notification as read.
@@ -181,6 +271,10 @@ type NotifyDocCommentMentionedInput struct {
 	ActorID uuid.UUID
 	// MentionedUserID is the mentioned person's account id.
 	MentionedUserID uuid.UUID
+	// CommentID is the document comment that mentions.
+	CommentID uuid.UUID
+	// Excerpt is the readable text of the comment.
+	Excerpt string
 }
 
 // NotifyQuestionInput carries data for a question notification.
@@ -208,6 +302,11 @@ type NotifyMentionedInput struct {
 	// MentionedUserID is an optional direct reference to the mentioned user's ID.
 	// When provided, it takes precedence over username parsing from CommentText.
 	MentionedUserID *uuid.UUID
+	// CommentID is the comment that mentions; the notification links to it.
+	CommentID uuid.UUID
+	// Excerpt is the readable text of the comment (mentions as @name). Falls
+	// back to CommentText when empty.
+	Excerpt string
 }
 
 // ErrNotificationNotFound is returned when a notification does not exist or

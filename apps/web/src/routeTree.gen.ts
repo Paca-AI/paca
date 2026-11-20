@@ -15,6 +15,7 @@ import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginMfaRouteImport } from './routes/login/mfa'
+import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedConversationsRouteImport } from './routes/_authenticated/conversations'
 import { Route as AuthenticatedTaskKeyRouteImport } from './routes/_authenticated/$taskKey'
 import { Route as AuthenticatedAccountRouteRouteImport } from './routes/_authenticated/account/route'
@@ -100,6 +101,12 @@ const LoginMfaRoute = LoginMfaRouteImport.update({
   path: '/login/mfa',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedNotificationsRoute =
+  AuthenticatedNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedConversationsRoute =
   AuthenticatedConversationsRouteImport.update({
     id: '/conversations',
@@ -445,6 +452,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AuthenticatedAccountRouteRouteWithChildren
   '/$taskKey': typeof AuthenticatedTaskKeyRoute
   '/conversations': typeof AuthenticatedConversationsRouteWithChildren
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/login/mfa': typeof LoginMfaRoute
   '/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
   '/account/preferences': typeof AuthenticatedAccountPreferencesRoute
@@ -505,6 +513,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/set-password': typeof SetPasswordRoute
   '/$taskKey': typeof AuthenticatedTaskKeyRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/login/mfa': typeof LoginMfaRoute
   '/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
   '/account/preferences': typeof AuthenticatedAccountPreferencesRoute
@@ -567,6 +576,7 @@ export interface FileRoutesById {
   '/_authenticated/account': typeof AuthenticatedAccountRouteRouteWithChildren
   '/_authenticated/$taskKey': typeof AuthenticatedTaskKeyRoute
   '/_authenticated/conversations': typeof AuthenticatedConversationsRouteWithChildren
+  '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/login/mfa': typeof LoginMfaRoute
   '/_authenticated/account/api-keys': typeof AuthenticatedAccountApiKeysRoute
   '/_authenticated/account/preferences': typeof AuthenticatedAccountPreferencesRoute
@@ -631,6 +641,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/$taskKey'
     | '/conversations'
+    | '/notifications'
     | '/login/mfa'
     | '/account/api-keys'
     | '/account/preferences'
@@ -691,6 +702,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/set-password'
     | '/$taskKey'
+    | '/notifications'
     | '/login/mfa'
     | '/account/api-keys'
     | '/account/preferences'
@@ -752,6 +764,7 @@ export interface FileRouteTypes {
     | '/_authenticated/account'
     | '/_authenticated/$taskKey'
     | '/_authenticated/conversations'
+    | '/_authenticated/notifications'
     | '/login/mfa'
     | '/_authenticated/account/api-keys'
     | '/_authenticated/account/preferences'
@@ -859,6 +872,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login/mfa'
       preLoaderRoute: typeof LoginMfaRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/notifications': {
+      id: '/_authenticated/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/conversations': {
       id: '/_authenticated/conversations'
@@ -1397,6 +1417,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAccountRouteRoute: typeof AuthenticatedAccountRouteRouteWithChildren
   AuthenticatedTaskKeyRoute: typeof AuthenticatedTaskKeyRoute
   AuthenticatedConversationsRoute: typeof AuthenticatedConversationsRouteWithChildren
+  AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedFilesRecentRoute: typeof AuthenticatedFilesRecentRoute
   AuthenticatedFilesStarredRoute: typeof AuthenticatedFilesStarredRoute
   AuthenticatedFilesTrashRoute: typeof AuthenticatedFilesTrashRoute
@@ -1421,6 +1442,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAccountRouteRoute: AuthenticatedAccountRouteRouteWithChildren,
   AuthenticatedTaskKeyRoute: AuthenticatedTaskKeyRoute,
   AuthenticatedConversationsRoute: AuthenticatedConversationsRouteWithChildren,
+  AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedFilesRecentRoute: AuthenticatedFilesRecentRoute,
   AuthenticatedFilesStarredRoute: AuthenticatedFilesStarredRoute,
   AuthenticatedFilesTrashRoute: AuthenticatedFilesTrashRoute,

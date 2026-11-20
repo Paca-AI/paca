@@ -230,5 +230,10 @@
 				"generic": "Algo salió mal. Inténtalo de nuevo."
 			}
 		}
+	},
+	"presence": {
+		"title": "Actividad",
+		"description": "Elige qué pueden ver los demás mientras trabajas.",
+		"shareTyping": "Mostrar cuando estoy escribiendo un comentario"
 	}
 }

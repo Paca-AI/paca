@@ -230,5 +230,10 @@
 				"generic": "Une erreur s'est produite. Veuillez réessayer."
 			}
 		}
+	},
+	"presence": {
+		"title": "Activité",
+		"description": "Choisissez ce que les autres voient pendant que vous travaillez.",
+		"shareTyping": "Indiquer quand j’écris un commentaire"
 	}
 }

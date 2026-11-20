@@ -31,6 +31,7 @@ import type { Task } from "@/lib/interaction-api";
 import { deleteTask, taskShareUrl } from "@/lib/interaction-api";
 import { cn } from "@/lib/utils";
 import { shortId } from "./helpers";
+import { TaskViewers } from "./task-viewers";
 
 interface TaskHeaderProps {
 	task: Task;
@@ -131,6 +132,7 @@ export function TaskHeader({
 			</span>
 
 			<div className="ml-auto flex items-center gap-1">
+				<TaskViewers projectId={projectId} taskId={task.id} />
 				<button
 					type="button"
 					onClick={handleShare}

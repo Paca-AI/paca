@@ -22,7 +22,11 @@
 		"revert": "Откатить",
 		"errors": {
 			"revertFailed": "Не удалось откатить. Попробуйте ещё раз."
-		}
+		},
+		"typingOne": "{{name}} печатает…",
+		"typingTwo": "{{a}} и {{b}} печатают…",
+		"typingMany": "{{name}} и ещё {{n}} печатают…",
+		"newSince": "Новое с вашего последнего визита"
 	},
 	"contentDiff": {
 		"emptyLine": "(пустая строка)",

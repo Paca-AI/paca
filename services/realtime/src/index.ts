@@ -13,9 +13,10 @@ import pino from "pino";
 import { AccessDecider } from "./access.ts";
 import { ValkeyChangeLogReader } from "./change-log.ts";
 import { CollabCluster } from "./collab-cluster.ts";
-import { ValkeyBus, ValkeyLeases } from "./collab-valkey.ts";
+import { ValkeyBus, ValkeyLeases, ValkeyPresenceBus } from "./collab-valkey.ts";
 import { loadConfig } from "./config.ts";
 import { IamEpochWatcher } from "./iam-epoch.ts";
+import { liveRoomName } from "./presence.ts";
 import { createSocketServer } from "./server.ts";
 import { createSubscriber } from "./subscriber.ts";
 
@@ -52,13 +53,24 @@ const collabNet = config.collabCluster
 		}
 	: undefined;
 
-const { httpServer, io, resyncer, expiry, collab, sync } = createSocketServer(
-	config,
-	logger,
-	decider,
-	new ValkeyChangeLogReader(commands),
-	collabNet,
-);
+// Presence is fanned out between replicas the same way (see presence.ts).
+const presenceBus = config.collabCluster
+	? new ValkeyPresenceBus(
+			commands,
+			new Redis(config.valkey.url, { maxRetriesPerRequest: null }),
+		)
+	: undefined;
+
+const { httpServer, io, resyncer, expiry, collab, sync, presence } =
+	createSocketServer(
+		config,
+		logger,
+		decider,
+		new ValkeyChangeLogReader(commands),
+		collabNet,
+		presenceBus,
+	);
+await presenceBus?.listen((s) => presence.hear(s));
 if (collab instanceof CollabCluster) {
 	await collab.start();
 	logger.info(
@@ -71,6 +83,10 @@ if (collab instanceof CollabCluster) {
 function onIamChanged(): void {
 	resyncer.onIamChanged();
 	void collab.recheck();
+	void presence.recheck((id, ref) => {
+		io.in(id).socketsLeave(liveRoomName(ref.kind, ref.id));
+		io.to(id).emit("live:revoked", { kind: ref.kind, id: ref.id });
+	});
 }
 
 // A missed iam.changed announcement is noticed through the API's counter.
@@ -123,6 +139,8 @@ function shutdown(signal: string): void {
 			clearInterval(collabRecheck);
 			collab.close();
 			sync?.stop();
+			presence.stop();
+			presenceBus?.close();
 			iamEpoch.stop();
 			subscriber.disconnect();
 			commands.disconnect();

@@ -82,6 +82,12 @@ import {
 } from "./collab-cluster.ts";
 import type { Config } from "./config.ts";
 import { agentChatRoomName } from "./permissions.ts";
+import {
+	liveRoomName,
+	type PresenceBus,
+	PresenceHub,
+	parseLiveRef,
+} from "./presence.ts";
 import { createResyncer, type Resyncer } from "./resync.ts";
 import { syncProjectRooms } from "./rooms.ts";
 import { SyncHub } from "./sync.ts";
@@ -115,6 +121,8 @@ export interface SocketServer {
 	// sync is undefined when the protocol is off (no change log reader, or
 	// SYNC_ENABLED=false).
 	sync?: SyncHub;
+	// presence holds who views and who types (see presence.ts).
+	presence: PresenceHub;
 }
 
 // CollabFacade is what the server needs of collaborative editing: the hub itself
@@ -152,6 +160,7 @@ export function createSocketServer(
 	decider: AccessDecider,
 	changeLog?: ChangeLogReader,
 	collabNet?: CollabNet,
+	presenceBus?: PresenceBus,
 ): SocketServer {
 	const httpServer = createServer((req, res) => {
 		if (req.url === "/healthz" && req.method === "GET") {
@@ -297,6 +306,20 @@ export function createSocketServer(
 				})
 			: undefined;
 	sync?.start();
+
+	// Presence: viewers and typing in a task (see presence.ts).
+	const presence = new PresenceHub({
+		decider,
+		replica: config.replicaId,
+		bus: presenceBus,
+		logger,
+		transport: {
+			emit: (room, snapshot) => {
+				io.to(room).emit("live:presence", snapshot);
+			},
+		},
+	});
+	presence.start();
 
 	// ── Connection lifecycle ───────────────────────────────────────────────────
 
@@ -493,7 +516,41 @@ export function createSocketServer(
 			if (ref) void socket.leave(roomName(ref));
 		});
 
+		// ── Presence (viewers, typing) ─────────────────────────────────────
+		socket.on("live:join", async (req: unknown, ack?: (r: unknown) => void) => {
+			if (typeof ack !== "function") return;
+			const ref = parseLiveRef(req);
+			if (!ref) {
+				ack({ ok: false, reason: "invalid" });
+				return;
+			}
+			// Join the socket.io room first so no change between the access
+			// answer and the ack is missed; undone when the join is refused.
+			const room = liveRoomName(ref.kind, ref.id);
+			const res = await presence.join(
+				socket.id,
+				socket.data,
+				ref,
+				() => socket.connected,
+			);
+			if (res.ok) void socket.join(room);
+			ack(res);
+		});
+		socket.on("live:leave", (req: unknown) => {
+			const ref = parseLiveRef(req);
+			if (!ref) return;
+			presence.leave(socket.id, ref);
+			void socket.leave(liveRoomName(ref.kind, ref.id));
+		});
+		socket.on(
+			"live:typing",
+			(msg: { kind?: unknown; id?: unknown; typing?: unknown }) => {
+				presence.typing(socket.id, msg?.kind, msg?.id, msg?.typing);
+			},
+		);
+
 		socket.on("disconnect", (reason) => {
+			presence.leaveAll(socket.id);
 			collab.leaveAll(socket.id);
 			sync?.dropSocket(socket.id);
 			cancelExpiry();
@@ -508,5 +565,5 @@ export function createSocketServer(
 	resyncer.start();
 	expiry.start();
 
-	return { httpServer, io, resyncer, expiry, collab, sync };
+	return { httpServer, io, resyncer, expiry, collab, sync, presence };
 }

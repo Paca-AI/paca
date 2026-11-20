@@ -22,7 +22,11 @@
 		"revert": "되돌리기",
 		"errors": {
 			"revertFailed": "되돌리기에 실패했습니다. 다시 시도해 주세요."
-		}
+		},
+		"typingOne": "{{name}}님이 입력 중…",
+		"typingTwo": "{{a}}님과 {{b}}님이 입력 중…",
+		"typingMany": "{{name}}님 외 {{n}}명이 입력 중…",
+		"newSince": "마지막 방문 이후 새 항목"
 	},
 	"contentDiff": {
 		"emptyLine": "(빈 줄)",

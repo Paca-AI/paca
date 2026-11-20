@@ -86,6 +86,7 @@ var openRouteGroups = []struct {
 			"POST /api/v1/users/me/api-keys",
 			"DELETE /api/v1/users/me/api-keys/{keyId}",
 			"GET /api/v1/users/me/notifications",
+			"GET /api/v1/users/me/notifications/unread-mentions",
 			"PATCH /api/v1/users/me/notifications/{notificationId}/read",
 			"POST /api/v1/users/me/notifications/read-all",
 		},

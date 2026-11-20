@@ -230,5 +230,10 @@
 				"generic": "Đã xảy ra lỗi. Vui lòng thử lại."
 			}
 		}
+	},
+	"presence": {
+		"title": "Hoạt động",
+		"description": "Chọn nội dung người khác thấy khi bạn làm việc.",
+		"shareTyping": "Hiển thị khi tôi đang nhập bình luận"
 	}
 }

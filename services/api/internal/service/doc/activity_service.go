@@ -215,6 +215,8 @@ func (s *ActivitySvc) handleMentions(ctx context.Context, projectID, documentID 
 			ActorMemberID:   author.ID,
 			ActorID:         authorAccountID,
 			MentionedUserID: mentionedID,
+			CommentID:       a.ID,
+			Excerpt:         commentText(a.Content),
 		}); err != nil {
 			slog.WarnContext(ctx, "doc comment mention notification failed", "error", err, "project_id", projectID, "document_id", documentID)
 		}

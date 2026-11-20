@@ -84,7 +84,33 @@
 		},
 		"untitledConversation": "無題の会話",
 		"globalChat": "グローバルチャット",
-		"untitledDocument": "無題のドキュメント"
+		"untitledDocument": "無題のドキュメント",
+		"mentionedYou": "{{actor}} さんがあなたをメンションしました",
+		"groupedMentions": "#{{taskNumber}} — {{taskTitle}} で {{n}} 件のメンション",
+		"backlog": "バックログ",
+		"source": {
+			"comment": "コメント",
+			"description": "説明",
+			"document": "ドキュメント",
+			"docComment": "ドキュメントのコメント"
+		},
+		"viewAll": "すべての通知を表示",
+		"page": {
+			"filterLabel": "通知を絞り込む",
+			"tabs": {
+				"all": "すべて",
+				"mentions": "メンション",
+				"assigned": "アサイン",
+				"agents": "エージェント"
+			},
+			"projectFilter": "プロジェクトで絞り込む",
+			"allProjects": "すべてのプロジェクト",
+			"loadMore": "さらに読み込む"
+		},
+		"toast": {
+			"mentioned": "{{actor}} さんが #{{taskNumber}} — {{taskTitle}} であなたをメンションしました",
+			"open": "開く"
+		}
 	},
 	"userMenu": {
 		"signIn": "サインイン",

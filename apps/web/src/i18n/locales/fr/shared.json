@@ -22,7 +22,11 @@
 		"revert": "Annuler",
 		"errors": {
 			"revertFailed": "Échec de l'annulation. Veuillez réessayer."
-		}
+		},
+		"typingOne": "{{name}} est en train d’écrire…",
+		"typingTwo": "{{a}} et {{b}} sont en train d’écrire…",
+		"typingMany": "{{name}} et {{n}} autres sont en train d’écrire…",
+		"newSince": "Nouveau depuis votre dernière visite"
 	},
 	"contentDiff": {
 		"emptyLine": "(ligne vide)",

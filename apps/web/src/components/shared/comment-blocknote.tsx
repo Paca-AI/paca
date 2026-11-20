@@ -21,13 +21,18 @@ export interface CommentEditorHandle {
 interface CommentEditorProps {
 	initialBlocks?: unknown[];
 	onSubmit?: () => void;
+	/** Called after every change to the document (typing, paste, clear). */
+	onChange?: (blocks: unknown[]) => void;
 	projectId?: string | null;
 }
 
 export const CommentEditor = forwardRef<
 	CommentEditorHandle,
 	CommentEditorProps
->(function CommentEditor({ initialBlocks, onSubmit, projectId }, ref) {
+>(function CommentEditor(
+	{ initialBlocks, onSubmit, onChange, projectId },
+	ref,
+) {
 	const { resolvedMode } = useThemeMode();
 	const initializedRef = useRef(false);
 
@@ -51,6 +56,16 @@ export const CommentEditor = forwardRef<
 			},
 		},
 	});
+
+	const onChangeRef = useRef(onChange);
+	onChangeRef.current = onChange;
+	useEffect(
+		() =>
+			editor.onChange(() => {
+				onChangeRef.current?.(editor.document as unknown[]);
+			}),
+		[editor],
+	);
 
 	useImperativeHandle(ref, () => ({
 		getBlocks: () => {

@@ -243,6 +243,7 @@ func New(deps Deps) http.Handler {
 					// Notification routes
 					if deps.Notification != nil {
 						r.Get("/me/notifications", deps.Notification.List)
+						r.Get("/me/notifications/unread-mentions", deps.Notification.UnreadMentions)
 						r.Patch("/me/notifications/{notificationId}/read", deps.Notification.MarkAsRead)
 						r.Post("/me/notifications/read-all", deps.Notification.MarkAllAsRead)
 					}
@@ -802,6 +803,11 @@ func New(deps Deps) http.Handler {
 
 					if deps.Agent != nil {
 						r.With(require.ProjectEntity("task", "taskId", resTask, iam.ActionTasksWrite)).Post("/{taskId}/write-with-ai", deps.Agent.WriteTaskDescriptionWithAI)
+					}
+
+					// The caller opened the task: remember when, read their mentions on it.
+					if deps.Notification != nil {
+						r.With(require.ProjectEntity("task", "taskId", resTask, iam.ActionTasksRead)).Put("/{taskId}/read", deps.Notification.OpenTask)
 					}
 
 					// Activities

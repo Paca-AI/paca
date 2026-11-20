@@ -22,7 +22,11 @@
 		"revert": "Reverter",
 		"errors": {
 			"revertFailed": "Falha ao reverter. Tente novamente."
-		}
+		},
+		"typingOne": "{{name}} está digitando…",
+		"typingTwo": "{{a}} e {{b}} estão digitando…",
+		"typingMany": "{{name}} e mais {{n}} estão digitando…",
+		"newSince": "Novidades desde sua última visita"
 	},
 	"contentDiff": {
 		"emptyLine": "(linha vazia)",

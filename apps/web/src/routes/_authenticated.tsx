@@ -4,11 +4,13 @@ import {
 	createFileRoute,
 	Outlet,
 	redirect,
+	useNavigate,
 	useRouterState,
 } from "@tanstack/react-router";
 import { type CSSProperties, lazy, Suspense, useEffect } from "react";
 
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
+import { showMentionToast } from "@/components/app-shell/mention-toast";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { RouteErrorComponent } from "@/components/route-error-boundary";
 import {
@@ -86,6 +88,7 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 	const { data: user } = useQuery(currentUserQueryOptions);
 	const pathname = useRouterState({ select: (s) => s.location.pathname });
 	const sidebarPane = usePaneWidth(SIDEBAR_PANE);
@@ -103,10 +106,19 @@ function AuthenticatedLayout() {
 
 		const socket = connectSocket();
 
-		const handleNotification = ({ type }: { type: string }) => {
+		const handleNotification = ({
+			type,
+			payload,
+		}: {
+			type: string;
+			payload?: { id?: string; type?: string; task_id?: string | null };
+		}) => {
 			if (type === "notification.created") {
 				queryClient.invalidateQueries({ queryKey: ["notifications"] });
 				playNotificationSound();
+				if (payload?.type === "mentioned" && payload.task_id && payload.id) {
+					void showMentionToast(payload.id, navigate);
+				}
 			}
 		};
 		socket.on("notification", handleNotification);
@@ -141,7 +153,7 @@ function AuthenticatedLayout() {
 			socket.off("notification", handleNotification);
 			disconnectSocket();
 		};
-	}, [queryClient, user]);
+	}, [queryClient, user, navigate]);
 
 	return (
 		<PluginRegistryProvider>

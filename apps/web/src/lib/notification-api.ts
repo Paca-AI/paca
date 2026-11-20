@@ -1,4 +1,4 @@
-import { infiniteQueryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
@@ -40,6 +40,16 @@ export interface Notification {
 	conversation_title: string;
 	// Text of an "automation" notification (sent by a notify action).
 	message: string;
+	// A mention: the comment it points at (null for a description or a
+	// document body), where it was made, and the stored start of the text.
+	comment_id: string | null;
+	mention_source: "" | "comment" | "description" | "document" | "doc_comment";
+	excerpt: string;
+	// Where the task is now (joined when listed). sprint_id is null in the backlog.
+	task_status_name: string;
+	task_status_color: string;
+	sprint_id: string | null;
+	sprint_name: string;
 	read_at: string | null;
 	created_at: string;
 }
@@ -102,3 +112,117 @@ export const notificationsQueryOptions = infiniteQueryOptions({
 	getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 	staleTime: 30_000,
 });
+
+// ── Mentions in context ───────────────────────────────────────────────────────
+
+export interface NotificationFilter {
+	/** Notification types to keep (empty: all). */
+	types?: NotificationType[];
+	projectId?: string;
+	/** Only notifications caused by an agent. */
+	agentActor?: boolean;
+}
+
+export type NotificationTab = "all" | "mentions" | "assigned" | "agents";
+
+/** The server-side filter each tab of the /notifications page stands for. */
+export function filterForTab(
+	tab: NotificationTab,
+	projectId?: string,
+): NotificationFilter {
+	const f: NotificationFilter = { projectId };
+	if (tab === "mentions") f.types = ["mentioned"];
+	if (tab === "assigned") f.types = ["assigned"];
+	if (tab === "agents") f.agentActor = true;
+	return f;
+}
+
+/** The filtered, paginated list behind the /notifications page. */
+export const filteredNotificationsQueryOptions = (filter: NotificationFilter) =>
+	infiniteQueryOptions({
+		queryKey: ["notifications", "list", filter],
+		queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
+			const { data } = await apiClient.instance.get<
+				SuccessEnvelope<NotificationListResponse>
+			>("/users/me/notifications", {
+				params: {
+					cursor: pageParam,
+					page_size: NOTIFICATIONS_PAGE_SIZE,
+					type: filter.types?.join(",") || undefined,
+					project_id: filter.projectId,
+					actor: filter.agentActor ? "agent" : undefined,
+				},
+			});
+			return data.data;
+		},
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+		staleTime: 30_000,
+	});
+
+export interface UnreadMention {
+	project_id: string;
+	task_id: string;
+	sprint_id: string | null;
+	count: number;
+}
+
+/** The caller's unread mentions per task: badges on task cards and sprint
+ *  headers. Invalidated with ["notifications"] whenever one arrives or is read. */
+export const unreadMentionsQueryOptions = (projectId?: string) =>
+	queryOptions({
+		queryKey: ["notifications", "unread-mentions", projectId ?? null],
+		queryFn: async () => {
+			const { data } = await apiClient.instance.get<
+				SuccessEnvelope<UnreadMention[]>
+			>("/users/me/notifications/unread-mentions", {
+				params: { project_id: projectId },
+			});
+			return data.data;
+		},
+		staleTime: 30_000,
+	});
+
+/** The caller opened a task: the server remembers when and reads their
+ *  mentions on it. Resolves to the time of the previous visit (null the first
+ *  time), which the activity pane draws its "unread since" divider from. */
+export async function openTask(
+	projectId: string,
+	taskId: string,
+): Promise<string | null> {
+	const { data } = await apiClient.instance.put<
+		SuccessEnvelope<{ previous_seen_at: string | null }>
+	>(`/projects/${projectId}/tasks/${taskId}/read`);
+	return data.data.previous_seen_at;
+}
+
+/** Where a notification's card sends you. */
+export function notificationTarget(
+	n: Notification,
+):
+	| { kind: "task"; projectId: string; taskId: string; commentId?: string }
+	| { kind: "doc"; projectId: string; docId: string }
+	| { kind: "conversation"; projectId: string | null; conversationId: string }
+	| { kind: "project"; projectId: string }
+	| null {
+	if (n.type === "question" && n.conversation_id) {
+		return {
+			kind: "conversation",
+			projectId: n.project_id,
+			conversationId: n.conversation_id,
+		};
+	}
+	if (!n.project_id) return null;
+	if (n.document_id) {
+		return { kind: "doc", projectId: n.project_id, docId: n.document_id };
+	}
+	if (n.task_id) {
+		return {
+			kind: "task",
+			projectId: n.project_id,
+			taskId: n.task_id,
+			commentId: n.comment_id ?? undefined,
+		};
+	}
+	return { kind: "project", projectId: n.project_id };
+}

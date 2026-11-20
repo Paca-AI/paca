@@ -22,7 +22,11 @@
 		"revert": "还原",
 		"errors": {
 			"revertFailed": "还原失败，请重试。"
-		}
+		},
+		"typingOne": "{{name}} 正在输入…",
+		"typingTwo": "{{a}} 和 {{b}} 正在输入…",
+		"typingMany": "{{name}} 等 {{n}} 人正在输入…",
+		"newSince": "自上次访问以来的新内容"
 	},
 	"contentDiff": {
 		"emptyLine": "（空行）",

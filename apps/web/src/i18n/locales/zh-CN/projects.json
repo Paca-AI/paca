@@ -1709,7 +1709,8 @@
 				"description": "这将永久删除“{{title}}”及其所有数据。此操作无法撤销。",
 				"cancel": "取消",
 				"delete": "删除"
-			}
+			},
+			"viewingNow": "正在查看：{{names}}"
 		},
 		"properties": {
 			"title": "属性",
@@ -2170,7 +2171,9 @@
 			"loadMore": "加载更多子任务",
 			"add": "添加子任务",
 			"addPlaceholder": "子任务标题"
-		}
+		},
+		"mentionBadge": "这里有 {{n}} 条未读提及",
+		"sprintMentionBadge": "此迭代中有 {{n}} 个任务提到了你"
 	},
 	"conversationsPage": {
 		"back": "返回",

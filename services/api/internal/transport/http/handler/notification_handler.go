@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -66,6 +67,9 @@ func (h *NotificationHandler) toNotificationResponse(ctx context.Context, n *not
 // Supported query params (both optional):
 //   - page_size=<1-50>    defaults to 20
 //   - cursor=<opaque>     from the previous page's next_cursor; omit for the first page
+//   - type=<a,b>          keep only these types (assigned, mentioned, question, automation)
+//   - project_id=<uuid>   keep only one project's notifications
+//   - actor=agent         keep only notifications caused by an agent
 func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.ActorIDFromContext(r.Context())
 	if !ok {
@@ -80,7 +84,13 @@ func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	cursor := parseCursorParam(r)
 
-	notifications, hasMore, err := h.svc.ListNotifications(r.Context(), userID, pageSize, cursor)
+	filter, err := parseNotificationFilter(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	notifications, hasMore, err := h.svc.ListNotifications(r.Context(), userID, pageSize, cursor, filter)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -147,4 +157,89 @@ func (h *NotificationHandler) MarkAllAsRead(w http.ResponseWriter, r *http.Reque
 	}
 
 	presenter.NoContent(w)
+}
+
+// parseNotificationFilter reads the list endpoint's optional filters.
+func parseNotificationFilter(r *http.Request) (notificationdom.ListFilter, error) {
+	var f notificationdom.ListFilter
+	q := r.URL.Query()
+	if raw := q.Get("type"); raw != "" {
+		for _, t := range strings.Split(raw, ",") {
+			switch nt := notificationdom.NotificationType(strings.TrimSpace(t)); nt {
+			case notificationdom.NotificationTypeAssigned, notificationdom.NotificationTypeMentioned,
+				notificationdom.NotificationTypeQuestion, notificationdom.NotificationTypeAutomation:
+				f.Types = append(f.Types, nt)
+			default:
+				return f, apierr.New(apierr.CodeBadRequest, "invalid notification type")
+			}
+		}
+	}
+	if raw := q.Get("project_id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return f, apierr.New(apierr.CodeBadRequest, "invalid project id")
+		}
+		f.ProjectID = &id
+	}
+	switch q.Get("actor") {
+	case "":
+	case "agent":
+		f.AgentActor = true
+	default:
+		return f, apierr.New(apierr.CodeBadRequest, "invalid actor filter")
+	}
+	return f, nil
+}
+
+// UnreadMentions handles GET /users/me/notifications/unread-mentions: the
+// caller's unread mentions per task, for the badges on task cards and sprint
+// headers. Optional project_id narrows it to one project.
+func (h *NotificationHandler) UnreadMentions(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.ActorIDFromContext(r.Context())
+	if !ok {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+	var projectID *uuid.UUID
+	if raw := r.URL.Query().Get("project_id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid project id"))
+			return
+		}
+		projectID = &id
+	}
+	rows, err := h.svc.UnreadMentionsByTask(r.Context(), userID, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	items := make([]dto.UnreadMentionResponse, 0, len(rows))
+	for _, m := range rows {
+		items = append(items, dto.UnreadMentionResponse{ProjectID: m.ProjectID, TaskID: m.TaskID, SprintID: m.SprintID, Count: m.Count})
+	}
+	presenter.OK(w, r, items)
+}
+
+// OpenTask handles PUT /projects/:projectId/tasks/:taskId/read: the caller
+// opened the task. It records the view, reads the caller's mentions on it and
+// answers with the previous view time for the "unread since" divider. The
+// router gates it on read access to the task.
+func (h *NotificationHandler) OpenTask(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.ActorIDFromContext(r.Context())
+	if !ok {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+	taskID, err := uuid.Parse(chi.URLParam(r, "taskId"))
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid task id"))
+		return
+	}
+	prev, err := h.svc.OpenTask(r.Context(), userID, taskID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.TaskReadResponse{PreviousSeenAt: prev})
 }

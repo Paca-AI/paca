@@ -248,7 +248,28 @@ epoch, or ahead of the log is answered with `reset`.
 - **Same origin.** `X-Change-Seq` / `X-Change-Epoch` (response) and `If-Match` / `X-Client-Op-Id` / `X-Collab-Socket` (request) assume the web app reaches the API through the same origin, as the bundled proxy and Helm ingress do. A cross-origin deployment must add them to the CORS `Access-Control-Allow-Headers` / `Access-Control-Expose-Headers`.
 - **Retention is a choice, not a guarantee.** About 10 000 entries and 7 days per project bound the longest absence a client can resume from; beyond that it gets `reset` and refetches.
 - **Snapshots are entity-level.** An `entity` is checked with the event's own action and resource, so it is right only for data that is the same for every viewer; there is no field-level filtering. Plugins cannot yet emit entity changes of their own.
-- **Project-level presence** (who is viewing which task) is not built. It is a product feature rather than a sync gap; it would reuse the awareness idea of collaborative editing and stay out of the log.
+- **Presence** is a separate, ephemeral layer (see [Presence](#presence-viewers-and-typing)), not part of the log. It covers tasks only today.
+
+## Presence (viewers and typing)
+
+`src/presence.ts`. A client joins a **live room** for what it is looking at and learns who is viewing it and who is typing. Today the only kind is `task` (`live:task:<id>`); channels and docs reuse it later. Nothing here touches the API's database or the change log, and nothing is persisted.
+
+| Direction | Event | Payload |
+|---|---|---|
+| client → server | `live:join` (acked) | `{ kind: "task", projectId, id }` → `{ ok: true, snapshot, canType }` or `{ ok: false, reason: "forbidden" \| "unavailable" \| "limit" \| "invalid" }` |
+| client → server | `live:typing` | `{ kind, id, typing: boolean }` |
+| client → server | `live:leave` | `{ kind, projectId, id }` |
+| server → client | `live:presence` | `{ kind, id, viewers: string[], typing: string[] }` (account ids; full snapshot on every change) |
+| server → client | `live:revoked` | `{ kind, id }` when an IAM change took the room's read access away |
+
+- **Authorization is checked once, at join**, through the same IAM decision the REST routes use: `tasks:read` on `project/<p>/task/<t>` to join, `tasks:write` (what posting a comment needs) to be allowed to send typing at all. A read-only viewer's `live:typing` is ignored. On an IAM change the hub re-checks `tasks:read` for every joined socket and evicts the ones that lost it (`live:revoked`); a failed check keeps the socket, so one API blip evicts nobody.
+- **Typing is a lease.** Each `typing: true` sets a 5 s lease on the account (at least 0.5 s apart per socket); the client sends one when typing starts and then every 3 s while it goes on, and `typing: false` when the composer is cleared or sent. A 1 s sweep expires lapsed leases. An account typing from two tabs is one typist; its lease is dropped when its last socket leaves.
+- **Viewers** are distinct accounts with a socket in the room. A socket may hold 20 live rooms.
+- **Names are not sent.** Snapshots carry account ids; the web app resolves names and avatars from the project's member directory.
+- **Across replicas** (`COLLAB_CLUSTER`, default on): each replica holds only its own sockets and publishes its summary of a room (`{ replica, room, viewers, typing }`) on the Valkey channel `paca:presence` on every change and every 10 s. Every replica merges the summaries it hears with its own and emits the union to its sockets. A joining socket sends `hello`, which makes the replicas that have the room answer at once; a replica silent for 25 s ages out. With `COLLAB_CLUSTER=false` (or no Valkey) presence is per process.
+- **Privacy.** The web app has a per-browser switch (Account → Profile → Activity) that stops it sending typing; viewers are still listed.
+
+Not built: viewer lists for docs, sprints or channels; an "agent working on this task" row (it comes from the agent conversation status, not from presence); a per-account (rather than per-browser) typing preference.
 
 ## Running more than one replica
 
