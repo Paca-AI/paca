@@ -1591,6 +1591,8 @@ func TestNotifyDescriptionAndDocMentions_CreateInAppRows(t *testing.T) {
 			sawDesc = n.TaskID != nil && *n.TaskID == taskID
 		case notificationdom.MentionSourceDocument:
 			sawDoc = n.DocumentID != nil && *n.DocumentID == docID
+		case notificationdom.MentionSourceComment, notificationdom.MentionSourceDocComment:
+			t.Fatalf("unexpected mention source %q", n.MentionSource)
 		}
 	}
 	if !sawDesc || !sawDoc {

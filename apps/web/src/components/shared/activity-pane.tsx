@@ -109,7 +109,7 @@ export interface ActivityPaneConfig<T extends ActivityEntry> {
 	 *  layer (see lib/live-presence.ts). Called with false when the composer
 	 *  is cleared or the comment sent. */
 	onTyping?: (typing: boolean) => void;
-	/** Who else is typing, shown under the composer. */
+	/** Who else is typing, shown above the composer area. */
 	typingNames?: string[];
 	/** When the viewer last looked at this thread before now: entries from
 	 *  other people after it get an "unread since" divider. Null/undefined

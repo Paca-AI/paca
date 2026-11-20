@@ -278,13 +278,19 @@ export class PresenceHub {
 		const beat = now - this.lastBeat >= HEARTBEAT_MS;
 		if (beat) this.lastBeat = now;
 		for (const room of this.rooms.values()) {
+			let lapsed = false;
 			for (const [uid, until] of room.typingUntil) {
-				if (until <= now) room.typingUntil.delete(uid);
+				if (until <= now) {
+					room.typingUntil.delete(uid);
+					lapsed = true;
+				}
 			}
 			for (const [replica, r] of room.remote) {
 				if (now - r.at > REMOTE_TTL_MS) room.remote.delete(replica);
 			}
-			if (beat) this.publish(room);
+			// A lapsed lease is published at once, not on the next heartbeat, so
+			// other replicas stop showing "typing" when this one does.
+			if (beat || lapsed) this.publish(room);
 			this.emitIfChanged(room);
 		}
 	}

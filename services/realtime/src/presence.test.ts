@@ -156,3 +156,16 @@ describe("PresenceHub", () => {
 		expect(revoked).toEqual(["s1"]);
 	});
 });
+
+describe("PresenceHub across replicas", () => {
+	it("publishes a lapsed typing lease at once, not on the next heartbeat", async () => {
+		const { hub, published, advance } = setup();
+		await hub.join("s1", v("u1"), ref);
+		hub.typing("s1", "task", T, true);
+		expect(published.at(-1)?.typing).toEqual(["u1"]);
+		// Past the lease but well inside the 10 s heartbeat.
+		advance(TYPING_TTL_MS + 1);
+		(hub as unknown as { tick(): void }).tick();
+		expect(published.at(-1)?.typing).toEqual([]);
+	});
+});

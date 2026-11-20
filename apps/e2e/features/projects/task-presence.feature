@@ -2,7 +2,7 @@
 Feature: Who is viewing and typing on a task
   Opening a task joins a live room for it (services/realtime/src/presence.ts).
   Other people looking at the same task appear as avatars in the task header,
-  and "<name> is typing…" shows under the comment composer while somebody
+  and "<name> is typing…" shows above the comment composer while somebody
   writes a comment. Both are ephemeral: nothing is stored, a typing lease
   lapses after a few seconds, and access is checked once when joining.
 

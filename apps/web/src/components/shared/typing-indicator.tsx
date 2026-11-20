@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 
-/** "Mina is typing…" under a composer. Reserves its line so the layout does
+/** "Mina is typing…" above a composer area. Reserves its line so the layout does
  *  not jump when somebody starts or stops typing. */
 export function TypingIndicator({ names }: { names?: string[] }) {
 	const { t } = useTranslation("shared");

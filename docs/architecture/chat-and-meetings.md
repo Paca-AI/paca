@@ -165,7 +165,7 @@ Task comments get the same "X is typing…" indicator as chat. Both use one ephe
 
 - The client joins a **live room** for what it is viewing (`task:<id>`, `channel:<id>`; docs later). Access is checked once at join through the API's IAM (the existing access check and its short cache), not per event.
 - `presence:typing` events are throttled on the client (on start, then every few seconds while typing), expire after about 5 seconds server-side, are fanned out across replicas through Valkey like the collaborative-editing cluster, and are never persisted.
-- UI: "Mina is typing…" (or "Mina and 2 others…") under the comment composer, plus viewer avatars in the task header ("2 viewing"). An agent working on the task shows "Atlas is working…" from its conversation status instead of typing events.
+- UI: "Mina is typing…" (or "Mina and 2 others…") above the comment composer, plus viewer avatars in the task header ("2 viewing"). An agent working on the task shows "Atlas is working…" from its conversation status instead of typing events.
 - A per-user setting can turn typing broadcast off. Nothing is sent for a cleared composer or a read-only viewer.
 - The same primitive later serves doc comments and sprint pages.
 
@@ -462,16 +462,16 @@ Phases 1 and 3 can run mostly in parallel once the `channels` table and IAM reso
 
 ## Phase 1b status
 
-Built (uncommitted at the time of writing; unit-tested, not yet run through the Playwright suite):
+Built, unit-tested and covered by Playwright specs (`apps/e2e/tests/projects/task-presence.spec.ts`, `task-mentions.spec.ts`):
 
 - **Presence layer** (names in the viewer list and typing indicator are resolved from the project's member list, so they need `project.members:read`; without it the browser has ids it cannot name) in `services/realtime/src/presence.ts` (live rooms, access checked at join, typing leases, cross-replica merge over Valkey); protocol and limits are in [services/realtime/README.md](../../services/realtime/README.md#presence-viewers-and-typing).
-- **Task UI:** "X is typing…" under the comment composer, viewer avatars in the task header, and a per-browser switch to stop sending typing (Account → Profile).
+- **Task UI:** "X is typing…" above the comment composer (at the bottom of the activity list), viewer avatars in the task header, and a per-browser switch to stop sending typing (Account → Profile).
 - **Mention notifications that say where:** migration `000095` adds `comment_id`, `mention_source` and a stored `excerpt` to `notifications`. The list response gains `comment_id`, `mention_source`, `excerpt`, `task_status_name/color`, `sprint_id` and `sprint_name`; status and sprint are joined at read time so they stay right after the task moves. Cards show project, sprint (or *Backlog*), task, status and the excerpt with the mention highlighted; runs of mentions on one task collapse to "3 mentions in #142". Clicking opens the task with `?comment=<id>`, scrolled to and briefly highlighting that comment (only when it is on the newest loaded page of the activity feed).
 - **`/notifications` page** with All / Mentions / Assigned / Agents tabs and a project filter (`GET /users/me/notifications?type=&project_id=&actor=agent`), and a toast when a mention arrives while you are online.
 - **Unread cues:** `GET /users/me/notifications/unread-mentions` feeds a badge on task rows and a count on sprint headers. `task_reads` plus `PUT /projects/{id}/tasks/{taskId}/read` (gated on `tasks:read`) record the visit, read the caller's mentions on the task, and return the previous visit time for the *New since your last visit* divider in the activity pane.
 - **Description and document mentions** now create in-app rows (`mention_source` `description` / `document`) as well as the plugin event.
 
-Not done: the Watch toggle on tasks; the sprint-count shortcut in the Interactions sidebar (only sprint headers in the list view show it); badges on board cards; Playwright specs for typing, the `/notifications` page and the unread divider; copy for the mention excerpt beyond the first 140 characters of text. Typing indicators do not cover doc comments yet.
+Not done: the Watch toggle on tasks; the sprint-count shortcut in the Interactions sidebar (only sprint headers in the list view show it); badges on board cards; a Playwright scenario for the sprint-header badge (it only exists in a list grouped by sprint); copy for the mention excerpt beyond the first 140 characters of text. Typing indicators do not cover doc comments yet.
 
 ## Risks and open questions
 
