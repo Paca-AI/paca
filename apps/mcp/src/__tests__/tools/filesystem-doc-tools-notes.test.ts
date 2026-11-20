@@ -156,6 +156,42 @@ describe("write_doc with viewId", () => {
 		expect(text(result)).toBe("Updated note: Sprint goals (docId: n1)");
 	});
 
+	it("writes to the document another writer created first", async () => {
+		const { apiClient, docClient } = clients([]);
+		apiClient.createDocument.mockRejectedValueOnce(
+			new Error("DOC_NOTE_VIEW_TAKEN (HTTP 409)"),
+		);
+		// The view is empty on the first look, and holds the winner's document
+		// once the create has been refused.
+		apiClient.listDocuments
+			.mockResolvedValueOnce({ items: [], nextCursor: null })
+			.mockResolvedValueOnce({ items: [NOTE], nextCursor: null });
+		const result = await handleFilesystemDocTool(
+			"write_doc",
+			{ projectId: "p1", viewId: "v1", path: "Retro", content: "x" },
+			apiClient,
+			docClient,
+		);
+		expect(docClient.patchDocument).toHaveBeenCalledWith("p1", "n1", {
+			content: expect.any(Array),
+		});
+		expect(text(result)).toBe("Updated note: Sprint goals (docId: n1)");
+	});
+
+	it("rethrows a failed create when the view still has no document", async () => {
+		const { apiClient, docClient } = clients([]);
+		apiClient.createDocument.mockRejectedValueOnce(new Error("boom"));
+		await expect(
+			handleFilesystemDocTool(
+				"write_doc",
+				{ projectId: "p1", viewId: "v1", path: "Retro", content: "x" },
+				apiClient,
+				docClient,
+			),
+		).rejects.toThrow("boom");
+		expect(docClient.patchDocument).not.toHaveBeenCalled();
+	});
+
 	it("refuses a title with a slash", async () => {
 		const { apiClient, docClient } = clients();
 		const result = await handleFilesystemDocTool(
