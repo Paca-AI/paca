@@ -159,7 +159,7 @@ Direction: a document should behave like a file, downloads as Markdown, and uplo
 ## Decisions taken while building
 
 1. One file lives in one folder; showing it elsewhere would be a shortcut (not built).
-2. Deleting a doc folder keeps re-rooting its documents; files inside go to the Files trash. Full subtree trashing waits for a documents trash.
+2. Deleting a doc folder trashes it with its subfolders, documents and files; restoring the folder brings the whole subtree back.
 3. The Documentation folder is locked (not renamable); its subfolders rename and move through the docs sidebar.
 
 ## Known limits
