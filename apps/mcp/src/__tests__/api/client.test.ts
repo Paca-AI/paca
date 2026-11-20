@@ -348,6 +348,24 @@ describe("PacaAPIClient – listTasks", () => {
 		const result = await makeClient().listTasks("proj-1");
 		expect(result.nextCursor).toBe("cursor-abc");
 	});
+
+	it("keeps total_count and url-encodes the cursor", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					success: true,
+					data: { items: [], next_cursor: null, total_count: 370 },
+				}),
+			} as unknown as Response),
+		);
+		const result = await makeClient().listTasks("proj-1", {
+			cursor: "a+b/c=",
+		});
+		expect(result.total).toBe(370);
+		expect((fetch as any).mock.calls[0][0]).toContain("cursor=a%2Bb%2Fc%3D");
+	});
 });
 
 describe("PacaAPIClient – getTask", () => {

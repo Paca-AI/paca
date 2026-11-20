@@ -168,6 +168,55 @@ describe("handleTaskTool – list_tasks", () => {
 		expect(result.content[0].text).toContain("more available");
 	});
 
+	it("puts the exact cursor before the task list and keeps total", async () => {
+		const cursor = `eyJjYSI6${"A".repeat(300)}jIn0=`;
+		const longTask = { ...task, description: "x".repeat(50_000) };
+		const client = makeApiClient({
+			listTasks: vi.fn().mockResolvedValue({
+				items: Array.from({ length: 100 }, () => longTask),
+				nextCursor: cursor,
+				total: 370,
+			}),
+		});
+		const text = (
+			await handleTaskTool(
+				"list_tasks",
+				{ projectId: "p1", pageSize: 100 },
+				client,
+			)
+		).content[0].text as string;
+		expect(text).toContain("370 total");
+		expect(text).toContain(`next_cursor: ${cursor}`);
+		expect(text.indexOf(cursor)).toBeLessThan(text.indexOf("Task #1"));
+		expect(text).not.toContain("xxxx");
+	});
+
+	it("includes descriptions only when includeDescription is true", async () => {
+		const client = makeApiClient();
+		const compact = await handleTaskTool(
+			"list_tasks",
+			{ projectId: "p1" },
+			client,
+		);
+		expect(compact.content[0].text).toContain("Task #1: Do something");
+		expect(compact.content[0].text).not.toContain("task:t1");
+		const full = await handleTaskTool(
+			"list_tasks",
+			{ projectId: "p1", includeDescription: true },
+			client,
+		);
+		expect(full.content[0].text).toContain("task:t1");
+	});
+
+	it("omits next_cursor on the last page", async () => {
+		const result = await handleTaskTool(
+			"list_tasks",
+			{ projectId: "p1" },
+			makeApiClient(),
+		);
+		expect(result.content[0].text).not.toContain("next_cursor");
+	});
+
 	it("throws ZodError when projectId is missing", async () => {
 		await expect(
 			handleTaskTool("list_tasks", {}, makeApiClient()),

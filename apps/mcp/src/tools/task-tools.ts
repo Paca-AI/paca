@@ -18,6 +18,7 @@ const ListTasksSchema = z.object({
 	assigneeId: z.string().optional(),
 	taskTypeIds: z.array(z.string()).optional(),
 	parentTaskId: z.string().optional(),
+	includeDescription: z.boolean().optional(),
 });
 
 const GetTaskSchema = z.object({
@@ -68,6 +69,25 @@ const DeleteTaskSchema = z.object({
 	taskId: z.string(),
 });
 
+/** Compact task summary (no description) used for list output. */
+function formatTaskSummary(task: Task): string {
+	const assignees =
+		task.assignee_ids && task.assignee_ids.length > 0
+			? task.assignee_ids.join(", ")
+			: "Unassigned";
+	return `Task #${task.task_number}: ${task.title}
+ID: ${task.id}
+Status: ${task.status_id || "None"}
+Type: ${task.task_type_id || "None"}
+Sprint: ${task.sprint_id || "None"}
+Assignees: ${assignees}
+Parent Task: ${task.parent_task_id || "None"}
+Importance: ${task.importance}
+Story Points: ${task.story_points ?? "None"}
+Tags: ${task.tags && task.tags.length > 0 ? task.tags.join(", ") : "None"}
+Due Date: ${task.due_date || "None"}`;
+}
+
 /**
  * Returns all task-related MCP tools.
  * @returns Array of task tools
@@ -117,6 +137,11 @@ export function getTaskTools(): Tool[] {
 					parentTaskId: {
 						type: "string",
 						description: "Filter to subtasks of a specific parent task ID.",
+					},
+					includeDescription: {
+						type: "boolean",
+						description:
+							"Include full task descriptions (default false). The default compact summary keeps responses small so the pagination cursor is never truncated; use get_task for a task's full content.",
 					},
 				},
 				required: ["projectId"],
@@ -360,6 +385,7 @@ export async function handleTaskTool(
 				assigneeId,
 				taskTypeIds,
 				parentTaskId,
+				includeDescription,
 			} = ListTasksSchema.parse(args);
 			const result = await client.listTasks(projectId, {
 				cursor,
@@ -370,16 +396,24 @@ export async function handleTaskTool(
 				taskTypeIds,
 				parentTaskId,
 			});
-			const formatted = formatList(result.items, formatTask);
+			const formatted = formatList(
+				result.items,
+				includeDescription ? formatTask : formatTaskSummary,
+			);
 			const hasMore = Boolean(result.nextCursor);
-			const nextCursorNote = hasMore
-				? `\n\n_There are more tasks. Call list_tasks again with cursor="${result.nextCursor}" to fetch the next page._`
+			const totalNote =
+				result.total !== undefined ? `, ${result.total} total` : "";
+			// Pagination metadata goes first, before the (potentially large) task
+			// list, so a response-size limit can never cut the cursor off.
+			const header = `Tasks (${result.items.length} returned${totalNote}${hasMore ? ", more available" : ""}):`;
+			const cursorLine = hasMore
+				? `\nnext_cursor: ${result.nextCursor}\n(Pass next_cursor verbatim as the cursor argument of list_tasks to fetch the next page.)`
 				: "";
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Tasks (${result.items.length} returned${hasMore ? ", more available" : ""}):\n\n${formatted}${nextCursorNote}`,
+						text: `${header}${cursorLine}\n\n${formatted}`,
 					},
 				],
 			};
