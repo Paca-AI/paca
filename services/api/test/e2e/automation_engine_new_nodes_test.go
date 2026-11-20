@@ -39,6 +39,8 @@ func nnStartConsumer(t *testing.T, env *e2eEnv) {
 	notifier := notificationsvc.New(pgRepo.NewNotificationRepository(env.db), env.projectRepo, nil)
 	ac := worker.NewAutomationConsumer(env.redisClient, env.automationRepo, env.taskRepo, env.taskSvc, env.activitySvc, nil, log).
 		WithHTTPClient(http.DefaultClient).
+		// Jev must not share call_api's transport (see WithJevHTTPClient).
+		WithJevHTTPClient(http.DefaultClient).
 		WithNotifier(notifier).
 		WithConsumerGroup("e2e." + uuid.NewString())
 	ac.Start(env.ctx)

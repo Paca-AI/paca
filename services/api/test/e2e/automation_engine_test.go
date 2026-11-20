@@ -37,6 +37,9 @@ func startAutomationConsumer(t *testing.T, env *e2eEnv) *worker.AutomationConsum
 		// (127.0.0.1), which that client would otherwise reject. Safe here
 		// since this consumer only ever talks to a test's own local server.
 		WithHTTPClient(http.DefaultClient).
+		// Jev must not share call_api's transport (see WithJevHTTPClient),
+		// and its SSRF-safe default would reject the local httptest.Server.
+		WithJevHTTPClient(http.DefaultClient).
 		// Same wiring as bootstrap/app.go — lets a task-less trigger_ai_agent
 		// node fire a direct message instead of a task assignment.
 		WithAgentMessaging(env.projectRepo, env.agentSvc).
@@ -46,7 +49,7 @@ func startAutomationConsumer(t *testing.T, env *e2eEnv) *worker.AutomationConsum
 		WithSprintService(env.sprintRepo, env.sprintSvc).
 		// Same wiring as bootstrap/app.go — lets jev_condition nodes build a
 		// per-project Jev client (a project without a key routes to else).
-		// Its Jev calls share WithHTTPClient's plain transport above.
+		// Its Jev calls use WithJevHTTPClient's plain transport above.
 		WithJevProjectService(env.projectSvc, nil).
 		// Every test shares one physical Redis instance and stream (see
 		// TestMain), but each gets its own Postgres database — without a

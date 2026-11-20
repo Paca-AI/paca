@@ -433,11 +433,11 @@ func New(cfg *config.Config) (*App, error) {
 	taskAutofillConsumer.WithJevPrivateHosts(jevPrivateHosts)
 	taskAutoAssignConsumer.WithJevPrivateHosts(jevPrivateHosts)
 	automationConsumer.WithJevPrivateHosts(jevPrivateHosts)
-	// jev_condition reuses the consumer's shared outbound client for its Jev
-	// calls, so that client has to carry the set too. call_api keeps its full
-	// guard: the dialer only opens for requests whose context names the host
-	// (netguard.WithAllowedPrivateHosts), which call_api never adds.
-	automationConsumer.WithHTTPClient(netguard.NewSafeHTTPClientWithPrivateHosts(30*time.Second, jevPrivateHosts))
+	// The automation consumer's own outbound client (call_api) keeps its
+	// constructor default, netguard.NewSafeHTTPClient: a pooled connection a
+	// Jev request opened to an operator-listed private host must not let an
+	// unkeyed call_api request reuse it and skip the dial check — resolveJevAnswer
+	// uses the per-project client's own transport, so no shared client is needed.
 
 	pluginRuntime := pluginrt.NewRuntime(pluginStore, pluginrt.HostServices{
 		DB:        sqlDB,
