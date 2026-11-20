@@ -32,12 +32,12 @@ This document lists all MCP tools implemented for the Paca API server.
 - `read_doc` - Read a document as Markdown by path or `docId` (whole, outline, one section or a line range)
 - `grep_docs` - Find lines across documents, literal or regex, with context
 - `edit_doc` - Replace an exact string in a document, rewriting only the blocks it touches
-- `write_doc` - Create or update a document by path, or with `viewId` a note of a note view by title
+- `write_doc` - Create or update a document by path, or with `viewId` the one document of a note view
 - `delete_doc` - Delete a document or folder by path, or a document (such as a note) by `docId`
 - `move_doc` - Move or rename a document or folder
 - `pull_docs` / `push_docs` - Mirror a project's documents to Markdown files and push file changes back
 
-Notes are documents that belong to a note view (`viewType: "note"`) instead of a folder: they are not part of the docs tree, so no path reaches them.
+A note view holds one document (a note) instead of a folder of them: it is not part of the docs tree, so no path reaches it. A second document in the same view is refused (`DOC_NOTE_VIEW_TAKEN`).
 
 ### Search (2 tools)
 - `search_docs` - Keyword search over document titles and body text; returns path, match location and an excerpt

@@ -90,7 +90,8 @@ type DocumentRepository interface {
 	// FindDocumentByID returns a single non-deleted document.
 	FindDocumentByID(ctx context.Context, id uuid.UUID) (*Document, error)
 	// CreateDocument persists a new document. A note (ViewID set) whose view
-	// is not in the document's project, or is gone, is ErrNoteViewInvalid.
+	// is not in the document's project, or is gone, is ErrNoteViewInvalid; one
+	// whose view already has its document is ErrNoteViewTaken.
 	CreateDocument(ctx context.Context, d *Document) error
 	// UpdateDocumentAtomic loads the non-deleted document id under a row lock,
 	// calls decide to validate and mutate it, and writes it back in the same

@@ -1,9 +1,9 @@
 // spec: features/projects/note-views.feature
 // seed: tests/seed.spec.ts
 //
-// A note view (view_type "note") holds documents that belong to the view:
-// they are created, renamed, reordered and deleted in the view, open in the
-// docs editor, and never appear in the Docs sidebar.
+// A note view (view_type "note") holds one document that belongs to the view:
+// it is created when the view is first opened, opens in the docs editor with
+// no title and no list of notes, and never appears in the Docs sidebar.
 
 import {
 	type APIRequestContext,
@@ -74,24 +74,6 @@ const openBacklog = async (page: Page, projectId: string) => {
 	).toBeVisible({ timeout: 30_000 });
 };
 
-const noteList = (page: Page) =>
-	page.getByRole("complementary", { name: "Notes" });
-
-/** The note titles in list order (each row's own button; its ⋯ menu
- *  trigger is the labelled one). */
-const noteTitles = (page: Page) =>
-	noteList(page)
-		.locator("li > div > button:not([aria-label])")
-		.allTextContents();
-
-/** Opens the ⋯ menu of a note. The trigger only shows on hover, so the click
- *  is forced for touch devices. */
-const openNoteActions = async (page: Page, title: string) => {
-	await noteList(page)
-		.getByRole("button", { name: `Actions for ${title}` })
-		.click({ force: true });
-};
-
 test.describe("A note view is created from the Add view popover", () => {
 	let projectId: string;
 
@@ -104,7 +86,7 @@ test.describe("A note view is created from the Add view popover", () => {
 		await cleanupProjectsByPrefix(request, PREFIX);
 	});
 
-	test("Creating a note view and writing its first note", async ({ page }) => {
+	test("Creating a note view opens an editable document", async ({ page }) => {
 		await signIn(page);
 		await openBacklog(page, projectId);
 
@@ -116,16 +98,11 @@ test.describe("A note view is created from the Add view popover", () => {
 		await expect(
 			page.getByRole("button", { name: "Sprint notes", exact: true }),
 		).toBeVisible();
-		await expect(page.getByText("No notes yet")).toBeVisible();
-
-		await noteList(page).getByRole("button", { name: "New note" }).click();
-		const title = noteList(page).getByRole("textbox", { name: "Note title" });
-		await expect(title).toBeVisible();
-		await title.fill("Goals");
-		await title.press("Enter");
+		// No notes list and no "New note": the view is the document.
 		await expect(
-			noteList(page).getByRole("button", { name: "Goals", exact: true }),
-		).toBeVisible();
+			page.getByRole("complementary", { name: "Notes" }),
+		).toHaveCount(0);
+		await expect(page.getByRole("button", { name: "New note" })).toHaveCount(0);
 
 		const editor = page.locator('[contenteditable="true"]').last();
 		await expect(editor).toBeVisible({ timeout: 10_000 });
@@ -145,30 +122,27 @@ test.describe("A note view is created from the Add view popover", () => {
 			(v) => v.name === "Sprint notes",
 		);
 		if (!noteView) throw new Error("the Sprint notes view was not created");
-		const [note] = await listNotes(page.request, projectId, noteView.id);
-		expect(note.title).toBe("Goals");
-		expect(note.view_id).toBe(noteView.id);
+		const notes = await listNotes(page.request, projectId, noteView.id);
+		expect(notes).toHaveLength(1);
+		expect(notes[0].view_id).toBe(noteView.id);
 		const stored = await (
-			await page.request.get(`${API_URL}/projects/${projectId}/docs/${note.id}`)
+			await page.request.get(
+				`${API_URL}/projects/${projectId}/docs/${notes[0].id}`,
+			)
 		).json();
 		expect(JSON.stringify(stored.data.content)).toContain("Ship note views");
 	});
 });
 
-test.describe("Notes belong to their view", () => {
+test.describe("The document belongs to its view", () => {
 	let projectId: string;
 	let viewId: string;
-	let retro: StoredDoc;
 
 	test.beforeEach(async ({ request }) => {
 		await cleanupProjectsByPrefix(request, PREFIX);
 		projectId = await createProject(request, `${PREFIX}LIST_${RUN_ID}`);
 		viewId = await createNoteView(request, projectId, "Meeting notes");
-		retro = await createDoc(request, projectId, {
-			title: "Retro",
-			view_id: viewId,
-		});
-		await createDoc(request, projectId, { title: "Demo", view_id: viewId });
+		await createDoc(request, projectId, { title: "Retro", view_id: viewId });
 		await createDoc(request, projectId, { title: "Plan" });
 	});
 
@@ -176,27 +150,23 @@ test.describe("Notes belong to their view", () => {
 		await cleanupProjectsByPrefix(request, PREFIX);
 	});
 
-	const openNoteView = async (page: Page) => {
+	test("The document is not in the Docs sidebar, and opening the view adds no second one", async ({
+		page,
+	}) => {
 		await signIn(page);
 		await openBacklog(page, projectId);
 		await page
 			.getByRole("button", { name: "Meeting notes", exact: true })
 			.click();
-		await expect(noteList(page)).toBeVisible();
-	};
-
-	test("Notes are listed in the view and not in the Docs sidebar", async ({
-		page,
-	}) => {
-		await openNoteView(page);
-		// Same position: the list falls back to the title.
-		await expect.poll(() => noteTitles(page)).toEqual(["Demo", "Retro"]);
+		await expect(page.locator('[contenteditable="true"]').last()).toBeVisible({
+			timeout: 10_000,
+		});
 
 		const sidebar = page.locator('[data-sidebar="sidebar"]');
 		const viewport = page.viewportSize();
 		if (viewport && viewport.width >= 768) {
 			// On desktop the sidebar shows the docs tree: the tree document is
-			// there, the notes are not.
+			// there, the note is not.
 			await expect(
 				sidebar.getByRole("button", { name: "Plan", exact: true }),
 			).toBeVisible({ timeout: 10_000 });
@@ -204,38 +174,7 @@ test.describe("Notes belong to their view", () => {
 		await expect(
 			sidebar.getByRole("button", { name: "Retro", exact: true }),
 		).toHaveCount(0);
-	});
-
-	test("A note is moved down", async ({ page }) => {
-		await openNoteView(page);
-		await expect.poll(() => noteTitles(page)).toEqual(["Demo", "Retro"]);
-
-		await openNoteActions(page, "Demo");
-		await page.getByRole("menuitem", { name: "Move down" }).click();
-
-		await expect.poll(() => noteTitles(page)).toEqual(["Retro", "Demo"]);
-		await expect
-			.poll(async () =>
-				(await listNotes(page.request, projectId, viewId)).map((n) => n.title),
-			)
-			.toEqual(["Retro", "Demo"]);
-	});
-
-	test("Deleting a note asks for confirmation", async ({ page }) => {
-		await openNoteView(page);
-
-		await openNoteActions(page, "Retro");
-		await page.getByRole("menuitem", { name: "Delete" }).click();
-		const dialog = page.getByRole("dialog");
-		await expect(dialog).toContainText("“Retro” will be deleted for everyone.");
-		await dialog.getByRole("button", { name: "Delete" }).click();
-
-		await expect(
-			noteList(page).getByRole("button", { name: "Retro", exact: true }),
-		).toHaveCount(0);
-		const response = await page.request.get(
-			`${API_URL}/projects/${projectId}/docs/${retro.id}`,
-		);
-		expect(response.status()).toBe(404);
+		const notes = await listNotes(page.request, projectId, viewId);
+		expect(notes.map((n) => n.title)).toEqual(["Retro"]);
 	});
 });

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -171,12 +172,13 @@ func TestNotes_DeletedWithTheirView(t *testing.T) {
 	views := NewViewRepository(f.db)
 
 	view, kept := noteView(t, f, f.p, nil), noteView(t, f, f.p, nil)
-	a, b := newNote(t, repo, f.p, view, "a"), newNote(t, repo, f.p, view, "b")
-	survivor := newNote(t, repo, f.p, kept, "kept")
 	// A note deleted earlier keeps the time of its deletion.
+	b := newNote(t, repo, f.p, view, "b")
 	if err := repo.DeleteDocument(ctx, b.ID); err != nil {
 		t.Fatal(err)
 	}
+	a := newNote(t, repo, f.p, view, "a")
+	survivor := newNote(t, repo, f.p, kept, "kept")
 	var bDeleted time.Time
 	if err := f.db.GetContext(ctx, &bDeleted, `SELECT deleted_at FROM documents WHERE id = $1`, b.ID); err != nil {
 		t.Fatal(err)
@@ -287,5 +289,65 @@ func TestNotes_GoWithAHardDeletedProject(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatal("the note outlived its project")
+	}
+}
+
+func TestNotes_ANoteViewHoldsOneDocument(t *testing.T) {
+	f := newScopeFx(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(f.db)
+	view, other := noteView(t, f, f.p, nil), noteView(t, f, f.p, nil)
+	first := newNote(t, repo, f.p, view, "Goals")
+
+	now := time.Now().Truncate(time.Microsecond)
+	err := repo.CreateDocument(ctx, &docdom.Document{ID: uuid.New(), ProjectID: f.p, ViewID: &view, Title: "Second", CreatedAt: now, UpdatedAt: now})
+	if !errors.Is(err, docdom.ErrNoteViewTaken) {
+		t.Fatalf("second note: err = %v, want ErrNoteViewTaken", err)
+	}
+	// Another view still takes its own, and a document in the tree is not a note.
+	newNote(t, repo, f.p, other, "Goals")
+	pgExec(t, f.db, `INSERT INTO documents (id, project_id, title) VALUES ($1,$2,'Goals')`, uuid.New(), f.p)
+
+	// A deleted document frees the view.
+	if err := repo.DeleteDocument(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	newNote(t, repo, f.p, view, "Again")
+}
+
+// Migration 000095 keeps the first live note of a view with several and
+// soft-deletes the rest.
+func TestNotes_MigrationKeepsTheFirstNoteOfAViewWithSeveral(t *testing.T) {
+	f := newScopeFx(t)
+	ctx := context.Background()
+	view := noteView(t, f, f.p, nil)
+	first, second, gone := uuid.New(), uuid.New(), uuid.New()
+	pgExec(t, f.db, `DROP INDEX uq_documents_note_view`)
+	for id, pos := range map[uuid.UUID]int{second: 1, first: 0, gone: 2} {
+		pgExec(t, f.db, `INSERT INTO documents (id, project_id, view_id, title, position) VALUES ($1,$2,$3,'n',$4)`, id, f.p, view, pos)
+	}
+	pgExec(t, f.db, `UPDATE documents SET deleted_at = NOW() WHERE id = $1`, gone)
+
+	migration, err := os.ReadFile("../../../migrations/000095_note_view_single_document.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.ExecContext(ctx, string(migration)); err != nil {
+		t.Fatalf("migration: %v", err)
+	}
+	live := map[uuid.UUID]bool{}
+	var ids []string
+	if err := f.db.SelectContext(ctx, &ids, `SELECT id FROM documents WHERE view_id = $1 AND deleted_at IS NULL`, view); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		live[uuid.MustParse(id)] = true
+	}
+	if len(live) != 1 || !live[first] {
+		t.Fatalf("live notes after the migration = %v, want only %s", live, first)
+	}
+	// Running it again changes nothing.
+	if _, err := f.db.ExecContext(ctx, string(migration)); err != nil {
+		t.Fatalf("second run: %v", err)
 	}
 }

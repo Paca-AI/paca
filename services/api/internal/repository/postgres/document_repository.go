@@ -656,7 +656,8 @@ func (r *DocumentRepository) FindDocumentTitleByID(_ context.Context, id uuid.UU
 // only then the change counter: deleting a view holds the view row when its
 // trigger takes the counter to delete the view's notes (migration 000094), so
 // the reverse order could deadlock with it. A view deleted before the lock is
-// ErrNoteViewInvalid.
+// ErrNoteViewInvalid, and a view that already has its document is
+// ErrNoteViewTaken.
 func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Document) error {
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
 		if d.ViewID != nil {
@@ -673,7 +674,13 @@ func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Docum
 		if err := lockDocSeq(ctx, tx, d.ProjectID.String()); err != nil {
 			return err
 		}
-		return insertDocument(ctx, tx, d)
+		err := insertDocument(ctx, tx, d)
+		// A view holds one document (uq_documents_note_view, migration
+		// 000095); the index also settles two creators racing for it.
+		if name, ok := uniqueViolationConstraint(err); ok && name == "uq_documents_note_view" {
+			return docdom.ErrNoteViewTaken
+		}
+		return err
 	})
 }
 

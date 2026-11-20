@@ -526,6 +526,10 @@ export function InteractionLayout({
 	const activeViewId = activeView?.id ?? "";
 	// A note view shows documents, not tasks: no task query runs for it.
 	const isNoteView = activeView?.layout === "Note";
+	// The header element a note view's document renders its actions into.
+	const [noteHeaderSlot, setNoteHeaderSlot] = useState<HTMLElement | null>(
+		null,
+	);
 
 	// Plugin view registrations (for the "Add view" popover layout options)
 	const { getRegistrations } = usePluginRegistry();
@@ -2138,6 +2142,15 @@ export function InteractionLayout({
 					)}
 				</div>
 
+				{/* A note view's document puts its save status and comments and
+				    activity toggle here, where the other views keep their settings. */}
+				{isNoteView && (
+					<div
+						ref={setNoteHeaderSlot}
+						className="flex shrink-0 items-center gap-1 pl-3 border-l border-border/50 ml-2"
+					/>
+				)}
+
 				{/* Task search and view settings: a note view has neither. */}
 				<div
 					className={cn(
@@ -2248,6 +2261,7 @@ export function InteractionLayout({
 						key={activeView.id}
 						projectId={projectId}
 						viewId={activeView.id}
+						headerSlot={noteHeaderSlot}
 					/>
 				) : tasksLoading ? (
 					activeView?.layout === "Board" ? (

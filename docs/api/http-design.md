@@ -1791,6 +1791,7 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `VIEW_NAME_INVALID` | 400 | View name is empty or invalid. |
 | `VIEW_TYPE_INVALID` | 400 | View type is not one of `board`, `table`, `gantt`, `plugin`, or `note`. |
 | `VIEW_NOTE_TYPE_CHANGE` | 400 | An update would turn a note view into another type, or another view into a note view. |
+| `DOC_NOTE_VIEW_TAKEN` | 409 | A note view already has its document: it holds exactly one. |
 | `VIEW_IS_LAST_VIEW` | 409 | View cannot be deleted because it is the only remaining view on the sprint. |
 | `CUSTOM_FIELD_NOT_FOUND` | 404 | Custom field definition with the given ID does not exist. |
 | `CUSTOM_FIELD_KEY_INVALID` | 400 | `field_key` is empty or contains invalid characters. |

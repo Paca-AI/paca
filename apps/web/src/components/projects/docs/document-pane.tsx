@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, MessageSquare } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ReportIssueButton } from "@/components/report-issue-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
@@ -35,15 +36,24 @@ type RightPanel = "activity" | null;
 interface DocumentPaneProps {
 	projectId: string;
 	docId: string;
+	/** Embeds the pane in a host that has its own header (the note view's tab
+	 *  bar): the pane draws no header bar, and its save status and comments
+	 *  and activity toggle are rendered into this element instead (nothing
+	 *  until it is non-null). Leave undefined for the pane's own header. */
+	headerSlot?: HTMLElement | null;
 }
 
 /**
  * One document, open for reading and editing: its breadcrumb and save state,
  * the managed-copy banner, the BlockNote editor with live collaboration, and
  * the comments and activity pane. The docs route shows it for a document of
- * the docs tree, and a note view for the selected note.
+ * the docs tree, and a note view for its one document.
  */
-export function DocumentPane({ projectId, docId }: DocumentPaneProps) {
+export function DocumentPane({
+	projectId,
+	docId,
+	headerSlot,
+}: DocumentPaneProps) {
 	const { t } = useTranslation("projects");
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("docs:write");
@@ -255,66 +265,73 @@ export function DocumentPane({ projectId, docId }: DocumentPaneProps) {
 		);
 	}
 
+	const headerActions = (
+		<div className="flex items-center gap-2 shrink-0">
+			{dirty && !updateMutation.isPending && (
+				<span className="text-xs text-muted-foreground/90">
+					{t("docs.editorPage.unsaved")}
+				</span>
+			)}
+			{updateMutation.isPending && (
+				<span className="text-xs text-muted-foreground/90">
+					{t("docs.editorPage.saving")}
+				</span>
+			)}
+			{!dirty && updateMutation.isSuccess && !updateMutation.isPending && (
+				<span className="text-xs text-muted-foreground/90 flex items-center gap-1">
+					<Check className="size-3 text-success" />
+					{t("docs.editorPage.saved")}
+				</span>
+			)}
+
+			<Button
+				variant="ghost"
+				size="icon"
+				className={cn(
+					"size-7 text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150",
+					rightPanel === "activity" && "bg-muted/40 text-foreground",
+				)}
+				title={t("docs.editorPage.commentsAndActivity")}
+				aria-label={t("docs.editorPage.commentsAndActivity")}
+				onClick={() => togglePanel("activity")}
+			>
+				<MessageSquare className="size-3.5" />
+			</Button>
+		</div>
+	);
+
 	return (
 		<div className="flex flex-col h-full min-h-0">
 			{/* ── Header bar ───────────────────────────────────────────────── */}
-			<div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border/50 shrink-0 gap-3 min-w-0">
-				{/* Breadcrumb path */}
-				<Breadcrumb className="min-w-0">
-					<BreadcrumbList className="flex-nowrap gap-1 text-xs sm:gap-1">
-						{folderPath.map((folder) => (
-							<Fragment key={folder.id}>
-								<BreadcrumbItem className="min-w-0">
-									<span className="max-w-32 truncate">{folder.name}</span>
-								</BreadcrumbItem>
-								<BreadcrumbSeparator />
-							</Fragment>
-						))}
-						<BreadcrumbItem className="min-w-0">
-							{doc?.title ? (
-								<BreadcrumbPage className="max-w-60 truncate font-medium">
-									{doc.title}
-								</BreadcrumbPage>
-							) : !doc ? (
-								<Skeleton className="h-3 w-28" />
-							) : null}
-						</BreadcrumbItem>
-					</BreadcrumbList>
-				</Breadcrumb>
+			{headerSlot === undefined && (
+				<div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border/50 shrink-0 gap-3 min-w-0">
+					{/* Breadcrumb path */}
+					<Breadcrumb className="min-w-0">
+						<BreadcrumbList className="flex-nowrap gap-1 text-xs sm:gap-1">
+							{folderPath.map((folder) => (
+								<Fragment key={folder.id}>
+									<BreadcrumbItem className="min-w-0">
+										<span className="max-w-32 truncate">{folder.name}</span>
+									</BreadcrumbItem>
+									<BreadcrumbSeparator />
+								</Fragment>
+							))}
+							<BreadcrumbItem className="min-w-0">
+								{doc?.title ? (
+									<BreadcrumbPage className="max-w-60 truncate font-medium">
+										{doc.title}
+									</BreadcrumbPage>
+								) : !doc ? (
+									<Skeleton className="h-3 w-28" />
+								) : null}
+							</BreadcrumbItem>
+						</BreadcrumbList>
+					</Breadcrumb>
 
-				{/* Right: save status + panel toggle */}
-				<div className="flex items-center gap-2 shrink-0">
-					{dirty && !updateMutation.isPending && (
-						<span className="text-xs text-muted-foreground/90">
-							{t("docs.editorPage.unsaved")}
-						</span>
-					)}
-					{updateMutation.isPending && (
-						<span className="text-xs text-muted-foreground/90">
-							{t("docs.editorPage.saving")}
-						</span>
-					)}
-					{!dirty && updateMutation.isSuccess && !updateMutation.isPending && (
-						<span className="text-xs text-muted-foreground/90 flex items-center gap-1">
-							<Check className="size-3 text-success" />
-							{t("docs.editorPage.saved")}
-						</span>
-					)}
-
-					<Button
-						variant="ghost"
-						size="icon"
-						className={cn(
-							"size-7 text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150",
-							rightPanel === "activity" && "bg-muted/40 text-foreground",
-						)}
-						title={t("docs.editorPage.commentsAndActivity")}
-						onClick={() => togglePanel("activity")}
-					>
-						<MessageSquare className="size-3.5" />
-					</Button>
+					{headerActions}
 				</div>
-			</div>
+			)}
+			{headerSlot && createPortal(headerActions, headerSlot)}
 
 			{/* ── Body: editor + optional right panel ──────────────────────── */}
 			{/* Below `lg` the row itself scrolls as one column (editor, then the

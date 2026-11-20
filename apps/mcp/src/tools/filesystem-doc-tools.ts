@@ -165,9 +165,10 @@ async function findDoc(
 	return page.items[0];
 }
 
-/** write_doc with viewId: updates the note of the view titled `title`, or
- *  creates it. Notes have no path (they are not in the docs tree), so the
- *  by-path write cannot reach them. */
+/** write_doc with viewId: writes the view's one document, whatever its title
+ *  (`title` names it only when it is created), or creates it. Notes have no
+ *  path (they are not in the docs tree), so the by-path write cannot reach
+ *  them. */
 async function writeViewNote(
 	projectId: string,
 	viewId: string,
@@ -189,14 +190,10 @@ async function writeViewNote(
 			isError: true,
 		};
 	}
-	const existing = (
-		await clients.apiClient.listDocuments(projectId, {
-			viewId,
-			title: name,
-			pageSize: 1,
-		})
-	).items[0];
-	if (existing) {
+	const findExisting = async () =>
+		(await clients.apiClient.listDocuments(projectId, { viewId, pageSize: 1 }))
+			.items[0];
+	const update = async (existing: { id: string; title: string }) => {
 		await clients.docClient.patchDocument(projectId, existing.id, {
 			content: content ? markdownToBlocknote(content) : [],
 			...writeNote(note, task),
@@ -209,14 +206,25 @@ async function writeViewNote(
 				},
 			],
 		};
+	};
+	const existing = await findExisting();
+	if (existing) return update(existing);
+	let created: Awaited<ReturnType<PacaAPIClient["createDocument"]>>;
+	try {
+		created = await clients.apiClient.createDocument({
+			project_id: projectId,
+			title: name,
+			content,
+			view_id: viewId,
+			...writeNote(note, task),
+		});
+	} catch (err) {
+		// Another writer created the view's document first (409
+		// DOC_NOTE_VIEW_TAKEN): write to theirs instead of failing.
+		const winner = await findExisting();
+		if (winner) return update(winner);
+		throw err;
 	}
-	const created = await clients.apiClient.createDocument({
-		project_id: projectId,
-		title: name,
-		content,
-		view_id: viewId,
-		...writeNote(note, task),
-	});
 	return {
 		content: [
 			{
@@ -849,8 +857,8 @@ export function getFilesystemDocTools(): Tool[] {
 				"Missing intermediate folders are created automatically. " +
 				"Always prefer this over creating local files when writing project documentation. " +
 				"To change part of an existing document, use edit_doc instead: it rewrites only what changed. " +
-				"With viewId, write a note of that note view instead: path is the note's title (no '/'), " +
-				"and the view's note with that title is updated, or created when there is none.",
+				"With viewId, write the one document of that note view instead: it is updated, or created when the view has none " +
+				"(path is then its title, no '/'; ignored when the document exists).",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -864,12 +872,12 @@ export function getFilesystemDocTools(): Tool[] {
 						description:
 							"Full path for the document (e.g. 'Architecture/API Design' or 'README'). " +
 							"The last segment is the document title; preceding segments are folder names. " +
-							"With viewId, just the note's title (e.g. 'Sprint goals').",
+							"With viewId, just a title (e.g. 'Sprint goals'), used only if the view has no document yet.",
 					},
 					viewId: {
 						type: "string",
 						description:
-							"Optional: the ID of a note view (view type 'note', see list_views) to write a note of.",
+							"Optional: the ID of a note view (view type 'note', see list_views) to write the document of.",
 					},
 					content: {
 						type: "string",

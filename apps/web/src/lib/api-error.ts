@@ -131,6 +131,8 @@ export const ApiErrorCode = {
 
 	// Document domain errors.
 	DocTitleInvalid: "DOC_TITLE_INVALID",
+	/** The note view already has its document (a view holds one). */
+	DocNoteViewTaken: "DOC_NOTE_VIEW_TAKEN",
 	DocFolderNameInvalid: "DOC_FOLDER_NAME_INVALID",
 	DocFolderSelfParent: "DOC_FOLDER_SELF_PARENT",
 	DocFolderCycle: "DOC_FOLDER_CYCLE",

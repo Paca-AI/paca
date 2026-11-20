@@ -2372,35 +2372,18 @@
 			}
 		},
 		"noteView": {
-			"title": "Notes",
-			"newNote": "New note",
 			"untitled": "Untitled",
-			"titleLabel": "Note title",
-			"actions": "Actions for {{title}}",
-			"rename": "Rename",
-			"moveUp": "Move up",
-			"moveDown": "Move down",
-			"delete": "Delete",
+			"retry": "Try again",
 			"empty": {
-				"title": "No notes yet",
-				"description": "Write sprint goals, meeting minutes or a checklist that belongs to this view.",
-				"readOnly": "This view has no notes yet."
+				"readOnly": "This view has no document yet."
 			},
 			"noPermission": {
-				"title": "You can't see these notes",
-				"description": "Notes are documents. Ask a project admin for access to the project's documents."
-			},
-			"deleteDialog": {
-				"title": "Delete note?",
-				"description": "“{{title}}” will be deleted for everyone.",
-				"cancel": "Cancel",
-				"delete": "Delete"
+				"title": "You can't see this document",
+				"description": "The view's document is a project document. Ask a project admin for access to the project's documents."
 			},
 			"errors": {
-				"titleInvalid": "A title can't be empty or contain “/”.",
-				"renameFailed": "Couldn't rename the note. Please try again.",
-				"reorderFailed": "Couldn't reorder the notes",
-				"loadFailed": "Couldn't load the notes."
+				"loadFailed": "Couldn't load the document.",
+				"createFailed": "Couldn't create the document."
 			}
 		},
 		"renameViewDialog": {

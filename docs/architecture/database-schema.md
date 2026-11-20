@@ -368,7 +368,7 @@ Table documents {
   id         uuid [primary key]
   project_id uuid [not null, ref: > projects.id]
   folder_id  uuid [null, ref: > doc_folders.id, note: 'null = root (no folder)']
-  view_id    uuid [null, ref: > sprint_views.id, note: 'Set on a note: the note view it belongs to. A note is never in a folder (CHECK view_id IS NULL OR folder_id IS NULL) and never part of the docs tree, path lookups, search or the change feed. Deleting the view soft-deletes its notes (trigger, migration 000094); the foreign key then sets view_id to NULL on them.']
+  view_id    uuid [null, ref: > sprint_views.id, note: 'Set on a note: the note view it belongs to. A note is never in a folder (CHECK view_id IS NULL OR folder_id IS NULL) and never part of the docs tree, path lookups, search or the change feed. At most one live document names a view (partial unique index uq_documents_note_view, migration 000095). Deleting the view soft-deletes its notes (trigger, migration 000094); the foreign key then sets view_id to NULL on them.']
   title      varchar [not null, default: 'Untitled']
   content    jsonb [null, note: 'BlockNote rich-text document stored as a JSON array of block objects. null means no content. Each block follows the BlockNote schema: { id, type, props, content, children }.']
   position   integer [not null, default: 0, note: 'Zero-based order within the same folder/root']
